@@ -1,35 +1,35 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import React, { useState } from 'react';
+import { fetchTransactionBytecode } from './utils/etherscanApi';
+import { processBytecodeWithSynthesizer } from '@your-monorepo/synthesizer';
 
-function App() {
-  const [count, setCount] = useState(0)
+const App: React.FC = () => {
+  const [transactionId, setTransactionId] = useState('');
+  const [output, setOutput] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    try {
+      //const bytecode = await fetchTransactionBytecode(transactionId); 
+      //const result = processBytecodeWithSynthesizer(bytecode); // commented out for now
+      setOutput(result);
+    } catch (err) {
+      console.error('Error:', err);
+      setOutput('Error processing transaction');
+    }
+  };
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
-}
+    <div>
+      <h1>Synthesizer Developer Playground</h1>
+      <input
+        type="text"
+        value={transactionId}
+        onChange={(e) => setTransactionId(e.target.value)}
+        placeholder="Enter Transaction ID"
+      />
+      <button onClick={handleSubmit}>Process</button>
+      {output && <pre>{output}</pre>}
+    </div>
+  );
+};
 
-export default App
+export default App;
