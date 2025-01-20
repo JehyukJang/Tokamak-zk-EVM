@@ -1,7 +1,9 @@
 import axios from 'axios';
 
-const ETHERSCAN_API_URL = 'https://api.etherscan.io/api'; 
-const API_KEY = process.env.VITE_ETHERSCAN_API_KEY; //will be replaced by the actual API key 
+const ETHERSCAN_API_URL = 'https://api.etherscan.io/api';
+const API_KEY = import.meta.env.VITE_ETHERSCAN_API_KEY;
+console.log(import.meta.env);
+
 
 export const fetchTransactionBytecode = async (transactionId: string): Promise<string> => {
   const response = await axios.get(ETHERSCAN_API_URL, {
