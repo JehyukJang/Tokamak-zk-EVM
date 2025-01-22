@@ -4,23 +4,18 @@ import { Buffer } from 'buffer';
 
 window.Buffer = window.Buffer || Buffer;
 
-// Mock EVM and finalization logic
 const mockEVM = {
   runCode: async ({ code, gasLimit }: { code: Uint8Array; gasLimit: bigint }) => {
-    console.log('Mock EVM runCode called with:', { code, gasLimit });
-    return {
-      runState: {
-        synthesizer: {
-          placements: new Map(),
-        },
-      },
-    };
+    console.log('Processing bytecode in mock EVM:', { code, gasLimit });
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    return { runState: { synthesizer: { placements: new Map([['exampleKey', 'exampleValue']]) } } };
   },
 };
 
 const mockFinalize = async (placements: Map<any, any>, validate: boolean) => {
-  console.log('Mock finalize called with:', { placements, validate });
-  return { message: 'Finalized mock placements' };
+  console.log('Finalizing placements:', { placements, validate });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  return { message: 'Placements finalized successfully.', placements: Object.fromEntries(placements) };
 };
 
 const App: React.FC = () => {
@@ -45,7 +40,7 @@ const App: React.FC = () => {
       });
 
       setStatus('Finalizing placements...');
-      const finalizedPlacements = await mockFinalize(res.runState!.synthesizer.placements, true);
+      const finalizedPlacements = await mockFinalize(res.runState.synthesizer.placements, true);
 
       setStatus('Process complete!');
       setOutput(JSON.stringify(finalizedPlacements, null, 2));
@@ -77,7 +72,7 @@ const App: React.FC = () => {
         style={{
           padding: '10px 20px',
           background: '#007bff',
-          color: '#fff',
+          color: 'white',
           border: 'none',
           borderRadius: '4px',
           cursor: 'pointer',
