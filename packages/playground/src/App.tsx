@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { fetchTransactionBytecode } from '../utils/etherscanApi';
 import { Buffer } from 'buffer';
-import { createEVM } from '../../evm/src/constructors';
+import { createEVM } from '../../frontend/synthesizer/src/constructors';
+
 
 window.Buffer = window.Buffer || Buffer;
 
