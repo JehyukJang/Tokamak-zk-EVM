@@ -1,55 +1,48 @@
 import React, { useState } from 'react';
 import { fetchTransactionBytecode } from '../utils/etherscanApi';
 import { Buffer } from 'buffer';
+import { createEVM } from '../../synthesizer/src/constructors';
+//import { finalize } from '../../evm/src/tokamak/core/finalize';
 
 window.Buffer = window.Buffer || Buffer;
-
-const mockEVM = {
-  runCode: async ({ code, gasLimit }: { code: Uint8Array; gasLimit: bigint }) => {
-    console.log('Processing bytecode in mock EVM:', { code, gasLimit });
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    return { runState: { synthesizer: { placements: new Map([['exampleKey', 'exampleValue']]) } } };
-  },
-};
-
-const mockFinalize = async (placements: Map<any, any>, validate: boolean) => {
-  console.log('Finalizing placements:', { placements, validate });
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  return { message: 'Placements finalized successfully.', placements: Object.fromEntries(placements) };
-};
 
 const App: React.FC = () => {
   const [transactionId, setTransactionId] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [output, setOutput] = useState<string | null>(null);
 
-  const handleSubmit = async () => {
-    try {
-      if (!transactionId) {
-        setStatus('Please enter a valid Transaction ID.');
-        return;
-      }
+  // app.tsx
+const handleSubmit = async () => {
+  try {
+    const bytecode = await fetchTransactionBytecode(transactionId);
+    const evm = await createEVM();
+    const res = await evm.runCode({
+      code: Uint8Array.from(Buffer.from(bytecode.slice(2), 'hex')),
+      gasLimit: BigInt(0xffff),
+    });
 
-      setStatus('Fetching transaction bytecode...');
-      const bytecode = await fetchTransactionBytecode(transactionId);
+    // Instead of calling finalize() here, POST to our server
+    setStatus('Finalizing placements (server request)...');
+    const response = await fetch('http://localhost:3001/api/finalize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        placements: res.runState!.synthesizer.placements, // or whatever structure
+      }),
+    });
 
-      setStatus('Running EVM code...');
-      const res = await mockEVM.runCode({
-        code: Uint8Array.from(Buffer.from(bytecode.slice(2), 'hex')),
-        gasLimit: BigInt(0xffff),
-      });
+    const json = await response.json();
+    if (!json.ok) throw new Error(json.error);
 
-      setStatus('Finalizing placements...');
-      const finalizedPlacements = await mockFinalize(res.runState.synthesizer.placements, true);
+    setStatus('Process complete!');
+    setOutput(JSON.stringify(json.data, null, 2));
+  } catch (error) {
+    console.error('Error:', error);
+    setStatus('Error processing the transaction.');
+    setOutput('Error processing transaction');
+  }
+};
 
-      setStatus('Process complete!');
-      setOutput(JSON.stringify(finalizedPlacements, null, 2));
-    } catch (error) {
-      console.error('Error:', error);
-      setStatus('Error processing the transaction.');
-      setOutput('Error processing transaction');
-    }
-  };
 
   return (
     <div style={{ padding: '20px' }}>
