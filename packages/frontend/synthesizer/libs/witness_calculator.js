@@ -1,3 +1,4 @@
+// @ts-nocheck
 export async function builder(code, options) {
   options = options || {}
 

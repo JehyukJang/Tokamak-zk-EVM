@@ -3,9 +3,13 @@
   "compilerOptions": {
     "forceConsistentCasingInFileNames": true,
      "moduleResolution": "node16",
-     "allowJs": true,
+     "allowJs": false,
      "declaration": true,
+     "outDir": "./dist",
+      "skipLibCheck": true,
     "baseUrl": ".",
+      "allowSyntheticDefaultImports": true,
+       "noEmit": true,  // 필수: allowImportingTsExtensions와 함께 사용
     "paths": {
       "@ethereumjs/util": ["libs/util/dist/esm/index"],
       "@ethereumjs/common": ["libs/common/dist/esm/index"],
@@ -18,6 +22,6 @@
       "@ethereumjs/verkle": ["libs/verkle/dist/esm/index"],
       "@ethereumjs/verkle/*": ["libs/verkle/dist/esm/*"]
     },
-  }
+  },
 }
 

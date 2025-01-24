@@ -2,7 +2,6 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
-
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
@@ -30,6 +29,13 @@ export default defineConfig({
       '@ethereumjs/verkle': path.resolve(__dirname, '../frontend/synthesizer/libs/verkle/dist/esm/index.js'),
       
     }
+  },
+    define: {
+    'window.Buffer': ['buffer', 'Buffer'],
+    'global': {}
+  },
+   optimizeDeps: {
+    include: ['@ethereumjs/util', '@ethereumjs/common', '@ethereumjs/statemanager', 'buffer']
   }
 })
 

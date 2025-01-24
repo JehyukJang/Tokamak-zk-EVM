@@ -1,12 +1,32 @@
 {
-  "files": [],
-  "references": [
-    { "path": "./tsconfig.app.json" },
-    { "path": "./tsconfig.node.json" }
-  ],
    "compilerOptions": {
+    "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    // ... other options
-  }
+     "jsx": "react-jsx",  // JSX 설정 추가
+    "types": ["vite/client"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "paths": {
+      "@ethereumjs/common": ["../frontend/synthesizer/libs/common/dist/esm/index"],
+      "@ethereumjs/common/*": ["../frontend/synthesizer/libs/common/dist/esm/*"],
+      "@ethereumjs/statemanager": ["../frontend/synthesizer/libs/statemanager/dist/esm/index"],
+      "@ethereumjs/statemanager/*": ["../frontend/synthesizer/libs/statemanager/dist/esm/*"],
+      "@ethereumjs/util": ["../frontend/synthesizer/libs/util/dist/esm/index"],
+      "@ethereumjs/util/*": ["../frontend/synthesizer/libs/util/dist/esm/*"],
+      "@ethereumjs/mpt": ["../frontend/synthesizer/libs/mpt/dist/esm/index"],
+      "@ethereumjs/mpt/*": ["../frontend/synthesizer/libs/mpt/dist/esm/*"],
+      "@ethereumjs/vm": ["../frontend/synthesizer/libs/vm/dist/esm/index"],
+      "@ethereumjs/vm/*": ["../frontend/synthesizer/libs/vm/dist/esm/*"],
+      "@ethereumjs/tx": ["../frontend/synthesizer/libs/tx/dist/esm/index"],
+      "@ethereumjs/tx/*": ["../frontend/synthesizer/libs/tx/dist/esm/*"],
+      "@ethereumjs/trie": ["../frontend/synthesizer/libs/trie/dist/esm/index"],
+      "@ethereumjs/trie/*": ["../frontend/synthesizer/libs/trie/dist/esm/*"],
+      "@ethereumjs/verkle": ["../frontend/synthesizer/libs/verkle/dist/esm/index"],
+      "@ethereumjs/verkle/*": ["../frontend/synthesizer/libs/verkle/dist/esm/*"]
+    }
+  },
+  "include": ["src", "utils"]
 }
