@@ -48,7 +48,7 @@ body::after {
     }
 }
 
-/* Add twinkling effect */
+/* twinkling effect */
 .twinkle {
     position: fixed;
     width: 100%;
@@ -493,3 +493,59 @@ h1 span {
 }
 
 
+@media screen and (max-height: 900px) {
+  .log-entry {
+    padding: 10px;
+    margin: 8px auto;
+    font-size: 0.7rem;
+    max-height: 350px;
+    overflow-y: auto;
+  }
+
+  .log-field {
+    margin: 8px 0;
+    padding: 5px;
+  }
+
+  .log-topics, .log-data {
+    margin-left: 10px;
+    padding: 5px;
+  }
+
+  .container {
+    padding-top: 60px;
+  }
+
+  .logo-container {
+    width: 250px;
+  }
+
+  .main-title {
+    font-size: 2rem;
+  }
+
+  .subtitle {
+    font-size: 1rem;
+  }
+}
+
+.log-entry::-webkit-scrollbar {
+  width: 8px;
+}
+
+.log-entry::-webkit-scrollbar-track {
+  background: #000033;
+}
+
+.log-entry::-webkit-scrollbar-thumb {
+  background: #00ff00;
+  border: 2px solid #000033;
+}
+
+.status-download-container {
+  position: sticky;
+  bottom: 1px;
+  background: rgba(255, 255, 255, 0);
+  padding: 10px;
+  z-index: 2;
+}
