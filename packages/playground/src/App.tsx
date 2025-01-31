@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { fetchTransactionBytecode } from '../utils/etherscanApi';
+import { fetchTransactionBytecode, fetchContractCode } from '../utils/etherscanApi';
 import { Buffer } from 'buffer';
 import { createEVM } from '../../frontend/synthesizer/src/constructors';
 import { hexToBytes } from '../../frontend/synthesizer/libs/util/dist/esm/index.js';
@@ -49,9 +49,13 @@ const App: React.FC = () => {
             if (!bytecode || bytecode.length < 2) {
                 throw new Error('Invalid bytecode received. Check your transaction ID.');
             }
+            
 
-            const contractCode = TON_CONTRACT_CODE;
+            setStatus('Fetching contract code from Etherscan...');
+            const contractCode = hexToBytes(await fetchContractCode(to));
             setStatus('Creating and running the EVM...');
+            console.log("contractCode", await fetchContractCode(to));
+
             const evm = await createEVM();
             const contractAddr = new Address(hexToBytes(to));
             const sender = new Address(hexToBytes(from));

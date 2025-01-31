@@ -44,3 +44,30 @@ export const fetchTransactionBytecode = async (transactionId: string): Promise<{
     throw new Error('Failed to fetch transaction bytecode. Please check the transaction ID and try again.');
   }
 };
+
+export const fetchContractCode = async (address: string): Promise<string> => {
+  try {
+    const response = await axios.get(ETHERSCAN_API_URL, {
+      params: {
+        module: 'proxy',
+        action: 'eth_getCode',
+        address: address,
+        tag: 'latest',
+        apikey: API_KEY,
+      },
+    });
+
+    if (
+      !response.data ||
+      response.data.status === '0' ||
+      !response.data.result
+    ) {
+      throw new Error('Contract code not found or invalid response from Etherscan.');
+    }
+
+    return response.data.result;
+  } catch (error) {
+    console.error('Error fetching contract code:', error);
+    throw new Error('Failed to fetch contract code from Etherscan.');
+  }
+};
