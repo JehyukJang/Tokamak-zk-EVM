@@ -2293,57 +2293,34 @@ impl Prover {
         let RXY = &self.witness.rXY
             + &(&(&self.mixer.rR_X * &self.instance.t_mi)
                 + &(&self.mixer.rR_Y * &self.instance.t_smax));
-        let R_eval = crate::time_block!(
-            "poly.eval.prove3.R",
-            "poly",
-            vec![crate::timing::SizeInfo {
-                label: "R",
-                dims: vec![self.witness.rXY.x_size, self.witness.rXY.y_size]
-            },],
-            { RXY.eval(&chi, &zeta) }
-        );
-
         let omega_m_i = ntt::get_root_of_unity::<ScalarField>(m_i as u64);
         let omega_s_max = ntt::get_root_of_unity::<ScalarField>(s_max as u64);
-
-        let R_omegaX_XY = crate::time_block!(
-            "poly.scale_coeffs.prove3.R_omegaX",
+        let shifted_x = omega_m_i.inv() * chi;
+        let shifted_y = omega_s_max.inv() * zeta;
+        let [R_eval, R_omegaX_eval, R_omegaX_omegaY_eval] = crate::time_block!(
+            "poly.eval_three_batch.prove3.R",
             "poly",
             vec![crate::timing::SizeInfo {
                 label: "R",
-                dims: vec![self.witness.rXY.x_size, self.witness.rXY.y_size]
+                dims: vec![RXY.x_size, RXY.y_size]
             },],
-            { RXY.scale_coeffs_x(&omega_m_i.inv()) }
+            {
+                RXY.eval_three_batch(&chi, &zeta, &shifted_x, &shifted_y)
+                    .expect("ICICLE batched polynomial evaluation failed")
+            }
         );
-        let R_omegaX_eval = crate::time_block!(
-            "poly.eval.prove3.R_omegaX",
-            "poly",
-            vec![crate::timing::SizeInfo {
-                label: "R_omegaX",
-                dims: vec![self.witness.rXY.x_size, self.witness.rXY.y_size]
-            },],
-            { R_omegaX_XY.eval(&chi, &zeta) }
-        );
-        drop(RXY);
-
-        let R_omegaX_omegaY_XY = crate::time_block!(
-            "poly.scale_coeffs.prove3.R_omegaX_omegaY",
-            "poly",
-            vec![crate::timing::SizeInfo {
-                label: "R_omegaX",
-                dims: vec![self.witness.rXY.x_size, self.witness.rXY.y_size]
-            },],
-            { R_omegaX_XY.scale_coeffs_y(&omega_s_max.inv()) }
-        );
-        let R_omegaX_omegaY_eval = crate::time_block!(
-            "poly.eval.prove3.R_omegaX_omegaY",
-            "poly",
-            vec![crate::timing::SizeInfo {
-                label: "R_omegaX_omegaY",
-                dims: vec![self.witness.rXY.x_size, self.witness.rXY.y_size]
-            },],
-            { R_omegaX_omegaY_XY.eval(&chi, &zeta) }
-        );
+        #[cfg(feature = "testing-mode")]
+        {
+            let legacy_R_eval = RXY.eval(&chi, &zeta);
+            let legacy_R_omegaX_XY = RXY.scale_coeffs_x(&omega_m_i.inv());
+            let legacy_R_omegaX_eval = legacy_R_omegaX_XY.eval(&chi, &zeta);
+            let legacy_R_omegaX_omegaY_eval = legacy_R_omegaX_XY
+                .scale_coeffs_y(&omega_s_max.inv())
+                .eval(&chi, &zeta);
+            assert_eq!(R_eval, legacy_R_eval);
+            assert_eq!(R_omegaX_eval, legacy_R_omegaX_eval);
+            assert_eq!(R_omegaX_omegaY_eval, legacy_R_omegaX_omegaY_eval);
+        }
 
         return Proof3 {
             V_eval: FieldSerde(V_eval),

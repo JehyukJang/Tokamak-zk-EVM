@@ -5,6 +5,7 @@ use icicle_core::ntt::{self, NTTDir};
 use icicle_core::polynomials::UnivariatePolynomial;
 use icicle_core::traits::{Arithmetic, FieldConfig, FieldImpl, GenerateRandom};
 use icicle_core::vec_ops::{VecOps, VecOpsConfig};
+use icicle_runtime::errors::eIcicleError;
 use icicle_runtime::memory::{DeviceSlice, DeviceVec, HostOrDeviceSlice, HostSlice};
 use rayon::prelude::*;
 #[cfg(feature = "timing")]
@@ -18,6 +19,68 @@ use std::{
 
 #[cfg(feature = "timing")]
 use crate::timing::{record_detail, SizeInfo};
+
+extern "C" {
+    #[link_name = "bls12_381_poly_eval"]
+    fn bls12_381_poly_eval(
+        coeffs: *const ScalarField,
+        coeffs_size: u64,
+        domain: *const ScalarField,
+        domain_size: u64,
+        config: *const VecOpsConfig,
+        evals: *mut ScalarField,
+    ) -> eIcicleError;
+}
+
+pub(crate) fn polynomial_eval_batch<
+    C: HostOrDeviceSlice<ScalarField> + ?Sized,
+    D: HostOrDeviceSlice<ScalarField> + ?Sized,
+    O: HostOrDeviceSlice<ScalarField> + ?Sized,
+>(
+    coeffs: &C,
+    coeffs_size: usize,
+    domain: &D,
+    batch_size: usize,
+    columns_batch: bool,
+    evals: &mut O,
+) -> Result<(), eIcicleError> {
+    if coeffs_size == 0 || domain.is_empty() || batch_size == 0 {
+        return Err(eIcicleError::InvalidArgument);
+    }
+
+    let expected_coeffs = coeffs_size
+        .checked_mul(batch_size)
+        .ok_or(eIcicleError::InvalidArgument)?;
+    let expected_evals = domain
+        .len()
+        .checked_mul(batch_size)
+        .ok_or(eIcicleError::InvalidArgument)?;
+    if coeffs.len() != expected_coeffs || evals.len() != expected_evals {
+        return Err(eIcicleError::InvalidArgument);
+    }
+
+    let coeffs_size = u64::try_from(coeffs_size).map_err(|_| eIcicleError::InvalidArgument)?;
+    let domain_size = u64::try_from(domain.len()).map_err(|_| eIcicleError::InvalidArgument)?;
+    let batch_size = i32::try_from(batch_size).map_err(|_| eIcicleError::InvalidArgument)?;
+    let mut config = VecOpsConfig::default();
+    config.is_a_on_device = coeffs.is_on_device();
+    config.is_b_on_device = domain.is_on_device();
+    config.is_result_on_device = evals.is_on_device();
+    config.batch_size = batch_size;
+    config.columns_batch = columns_batch;
+
+    unsafe {
+        bls12_381_poly_eval(
+            coeffs.as_ptr(),
+            coeffs_size,
+            domain.as_ptr(),
+            domain_size,
+            &config,
+            evals.as_mut_ptr(),
+        )
+        .wrap()
+    }
+}
 
 #[cfg(feature = "timing")]
 fn record_detail_step(op: &'static str, start: Instant, label: &'static str, dims: Vec<usize>) {
@@ -1376,6 +1439,14 @@ where
 
     fn eval(&self, x: &Self::Field, y: &Self::Field) -> Self::Field;
 
+    fn eval_three_batch(
+        &self,
+        x: &Self::Field,
+        y: &Self::Field,
+        shifted_x: &Self::Field,
+        shifted_y: &Self::Field,
+    ) -> Result<[Self::Field; 3], eIcicleError>;
+
     // Method to retrieve a coefficient at a specific index.
     fn get_coeff(&self, idx_x: u64, idx_y: u64) -> Self::Field;
 
@@ -1756,6 +1827,55 @@ impl BivariatePolynomial for DensePolynomialExt {
         } else {
             res2.get_coeff(0, 0)
         }
+    }
+
+    fn eval_three_batch(
+        &self,
+        x: &Self::Field,
+        y: &Self::Field,
+        shifted_x: &Self::Field,
+        shifted_y: &Self::Field,
+    ) -> Result<[Self::Field; 3], eIcicleError> {
+        let coefficient_count = self
+            .x_size
+            .checked_mul(self.y_size)
+            .ok_or(eIcicleError::InvalidArgument)?;
+        let mut coefficients = DeviceVec::<Self::Field>::device_malloc(coefficient_count)?;
+        self.copy_coeffs(0, &mut coefficients);
+
+        let y_domain_host = [*y, *shifted_y];
+        let mut y_domain = DeviceVec::<Self::Field>::device_malloc(y_domain_host.len())?;
+        y_domain.copy_from_host(HostSlice::from_slice(&y_domain_host))?;
+        let first_stage_len = self
+            .x_size
+            .checked_mul(y_domain_host.len())
+            .ok_or(eIcicleError::InvalidArgument)?;
+        let mut first_stage = DeviceVec::<Self::Field>::device_malloc(first_stage_len)?;
+        polynomial_eval_batch(
+            &coefficients,
+            self.y_size,
+            &y_domain,
+            self.x_size,
+            false,
+            &mut first_stage,
+        )?;
+
+        let x_domain_host = [*x, *shifted_x];
+        let mut x_domain = DeviceVec::<Self::Field>::device_malloc(x_domain_host.len())?;
+        x_domain.copy_from_host(HostSlice::from_slice(&x_domain_host))?;
+        let mut second_stage = DeviceVec::<Self::Field>::device_malloc(4)?;
+        polynomial_eval_batch(
+            &first_stage,
+            self.x_size,
+            &x_domain,
+            2,
+            true,
+            &mut second_stage,
+        )?;
+
+        let mut outputs = [Self::Field::zero(); 4];
+        second_stage.copy_to_host(HostSlice::from_mut_slice(&mut outputs))?;
+        Ok([outputs[0], outputs[2], outputs[3]])
     }
 
     fn get_coeff(&self, idx_x: u64, idx_y: u64) -> Self::Field {
