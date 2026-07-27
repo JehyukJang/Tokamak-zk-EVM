@@ -4,11 +4,11 @@
 
 Candidate 2C passed exact correctness and fresh proof-verification gates. It
 removed the intended prove4 evaluation boundary, but its five-pair end-to-end
-result did not exceed observed noise. The recommendation is to reject it as a
-standalone production optimization under the campaign's primary metric.
+result did not exceed observed noise.
 
-The project owner has not made the final production decision. No production
-code has changed.
+The project owner rejected Candidate 2C as a standalone production
+optimization. No production code changed, and the isolated experiment was
+discarded after this decision.
 
 ## Source And Environment
 
@@ -202,14 +202,13 @@ the E2E variance, but excluding that sample after observing it would invalidate
 the predefined benchmark. The complete five-pair result must therefore remain
 the decision evidence.
 
-## Recommendation
+## Final Decision
 
-Reject Candidate 2C as a standalone production optimization. Its algebra,
-exact parity, fresh verification, and local prove4 saving are established, but
-the primary E2E `total_wall` improvement is only 0.027% and its confidence
-interval does not exclude either a material regression or improvement.
+Candidate 2C is rejected. Its algebra, exact parity, fresh verification, and
+local prove4 saving are established, but the primary E2E `total_wall`
+improvement is only 0.027% and its confidence interval does not exclude either
+a material regression or improvement.
 
-Do not integrate the scalar-derivation path unless the project owner explicitly
-overrides this recommendation or authorizes a new, predefined E2E measurement.
-The detached experiment and ignored raw timing files remain available until
-that decision.
+The scalar-derivation path must not enter production as part of this
+optimization campaign. The detached experiment and its ignored raw timing
+artifacts were removed after the project-owner decision.
