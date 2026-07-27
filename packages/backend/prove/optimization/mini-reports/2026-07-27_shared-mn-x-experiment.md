@@ -2,16 +2,18 @@
 
 ## Decision Status
 
-Candidate 1B is eligible for project-owner review. The isolated implementation
-passed coefficient, remainder, G1, proof, and verifier parity checks. It reduced
-mean CPU end-to-end `total_wall` by 1.602744 seconds, or 4.009%.
+The project owner approved Candidate 1B for production integration. The
+production implementation passed coefficient, remainder, G1, proof, and
+verifier parity checks. Five production runs measured a mean CPU end-to-end
+`total_wall` of 38.418836 seconds and a median of 38.499482 seconds.
 
-No production code has been changed. Production integration requires an
-explicit project-owner decision.
+The canonical production timing moved from 39.509995 seconds to 38.499482
+seconds, a 1.010512-second or 2.558% reduction. Candidate 1B is accepted.
 
 ## Source And Environment
 
 - Source revision: `a4e0aef8c`
+- Production commit: `57f9981ec`
 - Branch baseline: local `packages/backend`
 - Experiment isolation: detached temporary worktree
 - OS: macOS 26.5.2, build 25F84
@@ -212,11 +214,85 @@ The measured M/N boundary decreases by approximately 1.493 seconds. This agrees
 with the observed 1.563-second `prove4` reduction and 1.603-second end-to-end
 reduction. The remaining difference is within neighboring-stage movement.
 
+## Production Integration
+
+The approved implementation adds a focused shared-X Ruffini operation to the
+bivariate polynomial layer. It accepts one X point and multiple Y points and
+returns one X quotient, one Y quotient per Y point, and each scalar remainder.
+The existing generic two-dimensional Ruffini operation remains unchanged.
+
+Production `prove4` now:
+
+1. splits `RXY` once at the shared M/N X point;
+2. derives the distinct M and N Y quotients from the shared X remainder;
+3. commits the shared X quotient once;
+4. assigns the resulting G1 point to both `M_X` and `N_X`;
+5. commits `M_Y` and `N_Y` independently.
+
+Normal production builds contain no runtime experiment mode, legacy fallback,
+or redundant M/N commitment. Under `testing-mode`, the prover computes the
+legacy independent splits and asserts both reconstruction identities and exact
+G1 equality for all four M/N proof fields.
+
+The retained regression test compares the shared operation with two independent
+legacy splits for constant and representative dense polynomials. It checks
+exact quotient coefficients, scalar remainders, invariance under subtraction
+of each opening evaluation, and reconstruction at an independent point.
+
+## Production Validation
+
+The following gates passed:
+
+- `cargo check -p prove --features timing`;
+- `cargo check -p prove --features testing-mode`;
+- the focused shared-X Ruffini regression test;
+- `cargo test -p prove --lib`;
+- `cargo test -p prove --features testing-mode --lib`;
+- the full release fixture with `timing,testing-mode`;
+- all 39 non-ignored `libs` unit tests;
+- `cargo test -p verify --lib`.
+
+A new preprocess artifact and proof were generated with matching release
+binaries and inputs. The existing verifier returned `true`.
+
+## Production Timing
+
+Five release CPU runs used the same fixture, timing feature, and CPU fallback
+policy:
+
+| sample | `total_wall` | `prove4.total` |
+| ---: | ---: | ---: |
+| 1 | 37.971643 s | 9.007749 s |
+| 2 | 38.392882 s | 8.842167 s |
+| 3 | 38.544349 s | 8.864634 s |
+| 4 | 38.685825 s | 8.909582 s |
+| 5 | 38.499482 s | 8.777010 s |
+
+| statistic | `total_wall` | `prove4.total` |
+| --- | ---: | ---: |
+| mean | 38.418836 s | 8.880228 s |
+| median | 38.499482 s | 8.864634 s |
+| minimum | 37.971643 s | 8.777010 s |
+| maximum | 38.685825 s | 9.007749 s |
+| range | 0.714182 s | 0.230739 s |
+
+The canonical timing table uses sample 5, the median `total_wall` run. Against
+the preceding accepted canonical sample:
+
+| metric | before | after | delta |
+| --- | ---: | ---: | ---: |
+| `total_wall` | 39.509995 s | 38.499482 s | -1.010512 s (-2.558%) |
+| `prove4.total` | 10.071134 s | 8.777010 s | -1.294124 s (-12.850%) |
+
+The production mean is within 0.042135 seconds of the isolated candidate mean.
+This supports the isolated paired result while accounting for normal movement
+between benchmark sessions.
+
 ## Complexity And CUDA Implications
 
-The production implementation would add a focused shared-X Ruffini operation
-to the polynomial layer and replace only the M/N opening call site. It would
-return one X quotient, a Y quotient for each requested Y point, and the scalar
+The production implementation adds a focused shared-X Ruffini operation to the
+polynomial layer and replaces only the M/N opening call site. It returns one X
+quotient, a Y quotient for each requested Y point, and the scalar
 remainders. The generic two-dimensional Ruffini operation remains unchanged.
 
 The proof schema remains unchanged: the same committed X point is copied into
@@ -228,12 +304,8 @@ contracts, so no separate CUDA path is justified. Because a substantial part of
 the CPU gain comes from one removed MSM, CUDA end-to-end improvement may be
 smaller and remains unmeasured.
 
-## Recommendation
+## Final Decision
 
-Recommend approving Candidate 1B for production integration.
-
-The candidate is exact, verifier-compatible, faster in every measured pair, and
-its end-to-end movement agrees with the specific division and commitment work
-removed. An approved implementation must contain only the shared path, retain
-no runtime experiment mode or legacy fallback, and pass fresh preprocess,
-proof, verifier, and production timing gates.
+Candidate 1B is accepted. It is exact, verifier-compatible, and retains an
+end-to-end production improvement consistent with the division and commitment
+work removed. The isolated experiment can be deleted.
