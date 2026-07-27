@@ -1345,6 +1345,15 @@ where
     where
         Self: Sized;
 
+    // Divide once along X, then divide the shared X remainder at each Y point.
+    fn div_by_ruffini_shared_x(
+        &self,
+        x: &Self::Field,
+        y_points: &[Self::Field],
+    ) -> (Self, Vec<Self>, Vec<Self::Field>)
+    where
+        Self: Sized;
+
     // Method to shift coefficient indicies. The same effect as multiplying a monomial X^iY^j.
     fn mul_monomial(&self, x_exponent: usize, y_exponent: usize) -> Self;
 
@@ -2455,6 +2464,60 @@ impl BivariatePolynomial for DensePolynomialExt {
             DensePolynomialExt::_div_uni_coeffs_by_ruffini(&r_x_coeffs_vec, y);
         let q_y = DensePolynomialExt::from_coeffs(HostSlice::from_slice(&q_y_coeffs_vec), 1, y_len);
         (q_x, q_y, r_y)
+    }
+
+    fn div_by_ruffini_shared_x(
+        &self,
+        x: &Self::Field,
+        y_points: &[Self::Field],
+    ) -> (Self, Vec<Self>, Vec<Self::Field>)
+    where
+        Self: Sized,
+    {
+        assert!(!y_points.is_empty());
+        let x_len = self.x_size;
+        let y_len = self.y_size;
+
+        let x_polynomials = (0..y_len as u64)
+            .map(|y_index| {
+                let mut coefficients = vec![Self::Field::zero(); x_len];
+                self.get_univariate_polynomial_x(y_index)
+                    .copy_coeffs(0, HostSlice::from_mut_slice(&mut coefficients));
+                coefficients
+            })
+            .collect::<Vec<_>>();
+        let (x_quotients, x_remainders): (Vec<Vec<_>>, Vec<_>) = x_polynomials
+            .into_par_iter()
+            .map(|coefficients| Self::_div_uni_coeffs_by_ruffini(&coefficients, x))
+            .unzip();
+
+        let mut x_quotient_coefficients = x_quotients
+            .into_par_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        transpose_inplace(&mut x_quotient_coefficients, y_len, x_len);
+        let x_quotient = Self::from_coeffs(
+            HostSlice::from_slice(&x_quotient_coefficients),
+            x_len,
+            y_len,
+        );
+
+        let y_results = y_points
+            .par_iter()
+            .map(|y| Self::_div_uni_coeffs_by_ruffini(&x_remainders, y))
+            .collect::<Vec<_>>();
+        let y_quotients = y_results
+            .iter()
+            .map(|(coefficients, _)| {
+                Self::from_coeffs(HostSlice::from_slice(coefficients), 1, y_len)
+            })
+            .collect();
+        let remainders = y_results
+            .into_iter()
+            .map(|(_, remainder)| remainder)
+            .collect();
+
+        (x_quotient, y_quotients, remainders)
     }
 
     fn _div_uni_coeffs_by_ruffini(

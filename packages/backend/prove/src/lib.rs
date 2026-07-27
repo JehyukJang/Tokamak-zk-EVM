@@ -2544,136 +2544,127 @@ impl Prover {
             },],
             { &self.witness.rXY + &RXY_terms }
         );
-        let (M_X, M_Y) = {
-            let M_numerator = crate::time_block!(
-                "poly.add.prove4.M_numerator",
-                "poly",
-                vec![crate::timing::SizeInfo {
-                    label: "R",
-                    dims: vec![self.witness.rXY.x_size, self.witness.rXY.y_size]
-                },],
-                { &RXY - &proof3.R_omegaX_eval.0 }
-            );
-            let (mut M_X_XY, mut M_Y_XY, _rem2) = crate::time_block!(
-                "poly.div_by_ruffini.prove4.M",
-                "poly",
-                vec![crate::timing::SizeInfo {
-                    label: "R",
-                    dims: vec![self.witness.rXY.x_size, self.witness.rXY.y_size]
-                },],
-                { M_numerator.div_by_ruffini(&(omega_m_i.inv() * chi), &zeta) }
-            );
-            #[cfg(feature = "testing-mode")]
-            {
-                assert_eq!(_rem2, ScalarField::zero());
-                let x_e = ScalarCfg::generate_random(1)[0];
-                let y_e = ScalarCfg::generate_random(1)[0];
-                let lhs = M_numerator.eval(&x_e, &y_e);
-                let rhs = M_X_XY.eval(&x_e, &y_e) * (x_e - omega_m_i.inv() * chi)
-                    + M_Y_XY.eval(&x_e, &y_e) * (y_e - zeta);
-                assert_eq!(lhs, rhs);
-            }
+        let mn_x_point = omega_m_i.inv() * chi;
+        let mn_y_points = [zeta, omega_s_max.inv() * zeta];
+        let (mut MN_X_XY, y_quotients, mn_remainders) = crate::time_block!(
+            "poly.div_by_ruffini_shared_x.prove4.M_N",
+            "poly",
+            vec![crate::timing::SizeInfo {
+                label: "R",
+                dims: vec![self.witness.rXY.x_size, self.witness.rXY.y_size]
+            },],
+            { RXY.div_by_ruffini_shared_x(&mn_x_point, &mn_y_points) }
+        );
+        #[cfg(feature = "testing-mode")]
+        {
+            assert_eq!(mn_remainders[0], proof3.R_omegaX_eval.0);
+            assert_eq!(mn_remainders[1], proof3.R_omegaX_omegaY_eval.0);
+        }
+        #[cfg(not(feature = "testing-mode"))]
+        let _ = mn_remainders;
 
-            (
-                crate::time_block!(
-                    "prove4.encode.M_X",
-                    "encode_call",
-                    vec![crate::timing::SizeInfo {
-                        label: "M_X",
-                        dims: vec![self.witness.rXY.x_size, self.witness.rXY.y_size]
-                    },],
-                    {
-                        self.sigma.sigma1().encode_poly_timed(
-                            &mut M_X_XY,
-                            &self.setup_params,
-                            "prove4.encode.M_X",
-                        )
-                    }
-                ),
-                crate::time_block!(
+        let mut y_quotients = y_quotients.into_iter();
+        let mut M_Y_XY = y_quotients.next().unwrap();
+        let mut N_Y_XY = y_quotients.next().unwrap();
+        assert!(y_quotients.next().is_none());
+
+        let MN_X = crate::time_block!(
+            "prove4.encode.M_N_X",
+            "encode_call",
+            vec![crate::timing::SizeInfo {
+                label: "M_N_X",
+                dims: vec![self.witness.rXY.x_size, self.witness.rXY.y_size]
+            },],
+            {
+                self.sigma.sigma1().encode_poly_timed(
+                    &mut MN_X_XY,
+                    &self.setup_params,
+                    "prove4.encode.M_N_X",
+                )
+            }
+        );
+        let M_X = MN_X;
+        let N_X = MN_X;
+        let M_Y = crate::time_block!(
+            "prove4.encode.M_Y",
+            "encode_call",
+            vec![crate::timing::SizeInfo {
+                label: "M_Y",
+                dims: vec![self.witness.rXY.x_size, self.witness.rXY.y_size]
+            },],
+            {
+                self.sigma.sigma1().encode_poly_timed(
+                    &mut M_Y_XY,
+                    &self.setup_params,
                     "prove4.encode.M_Y",
-                    "encode_call",
-                    vec![crate::timing::SizeInfo {
-                        label: "M_Y",
-                        dims: vec![self.witness.rXY.x_size, self.witness.rXY.y_size]
-                    },],
-                    {
-                        self.sigma.sigma1().encode_poly_timed(
-                            &mut M_Y_XY,
-                            &self.setup_params,
-                            "prove4.encode.M_Y",
-                        )
-                    }
-                ),
-            )
-        };
-
-        let (N_X, N_Y) = {
-            let N_numerator = crate::time_block!(
-                "poly.add.prove4.N_numerator",
-                "poly",
-                vec![crate::timing::SizeInfo {
-                    label: "R",
-                    dims: vec![self.witness.rXY.x_size, self.witness.rXY.y_size]
-                },],
-                { &RXY - &proof3.R_omegaX_omegaY_eval.0 }
-            );
-            let (mut N_X_XY, mut N_Y_XY, _rem3) = crate::time_block!(
-                "poly.div_by_ruffini.prove4.N",
-                "poly",
-                vec![crate::timing::SizeInfo {
-                    label: "R",
-                    dims: vec![self.witness.rXY.x_size, self.witness.rXY.y_size]
-                },],
-                {
-                    N_numerator
-                        .div_by_ruffini(&(omega_m_i.inv() * chi), &(omega_s_max.inv() * zeta))
-                }
-            );
-            #[cfg(feature = "testing-mode")]
-            {
-                assert_eq!(_rem3, ScalarField::zero());
-                let x_e = ScalarCfg::generate_random(1)[0];
-                let y_e = ScalarCfg::generate_random(1)[0];
-                let lhs = N_numerator.eval(&x_e, &y_e);
-                let rhs = N_X_XY.eval(&x_e, &y_e) * (x_e - omega_m_i.inv() * chi)
-                    + N_Y_XY.eval(&x_e, &y_e) * (y_e - omega_s_max.inv() * zeta);
-                assert_eq!(lhs, rhs);
+                )
             }
-
-            (
-                crate::time_block!(
-                    "prove4.encode.N_X",
-                    "encode_call",
-                    vec![crate::timing::SizeInfo {
-                        label: "N_X",
-                        dims: vec![self.witness.rXY.x_size, self.witness.rXY.y_size]
-                    },],
-                    {
-                        self.sigma.sigma1().encode_poly_timed(
-                            &mut N_X_XY,
-                            &self.setup_params,
-                            "prove4.encode.N_X",
-                        )
-                    }
-                ),
-                crate::time_block!(
+        );
+        let N_Y = crate::time_block!(
+            "prove4.encode.N_Y",
+            "encode_call",
+            vec![crate::timing::SizeInfo {
+                label: "N_Y",
+                dims: vec![self.witness.rXY.x_size, self.witness.rXY.y_size]
+            },],
+            {
+                self.sigma.sigma1().encode_poly_timed(
+                    &mut N_Y_XY,
+                    &self.setup_params,
                     "prove4.encode.N_Y",
-                    "encode_call",
-                    vec![crate::timing::SizeInfo {
-                        label: "N_Y",
-                        dims: vec![self.witness.rXY.x_size, self.witness.rXY.y_size]
-                    },],
-                    {
-                        self.sigma.sigma1().encode_poly_timed(
-                            &mut N_Y_XY,
-                            &self.setup_params,
-                            "prove4.encode.N_Y",
-                        )
-                    }
-                ),
-            )
-        };
+                )
+            }
+        );
+
+        #[cfg(feature = "testing-mode")]
+        {
+            let M_numerator = &RXY - &proof3.R_omegaX_eval.0;
+            let N_numerator = &RXY - &proof3.R_omegaX_omegaY_eval.0;
+            let (mut legacy_M_X_XY, mut legacy_M_Y_XY, M_rem) =
+                M_numerator.div_by_ruffini(&mn_x_point, &mn_y_points[0]);
+            let (mut legacy_N_X_XY, mut legacy_N_Y_XY, N_rem) =
+                N_numerator.div_by_ruffini(&mn_x_point, &mn_y_points[1]);
+            assert_eq!(M_rem, ScalarField::zero());
+            assert_eq!(N_rem, ScalarField::zero());
+
+            let x_e = ScalarCfg::generate_random(1)[0];
+            let y_e = ScalarCfg::generate_random(1)[0];
+            assert_eq!(
+                M_numerator.eval(&x_e, &y_e),
+                legacy_M_X_XY.eval(&x_e, &y_e) * (x_e - mn_x_point)
+                    + legacy_M_Y_XY.eval(&x_e, &y_e) * (y_e - mn_y_points[0])
+            );
+            assert_eq!(
+                N_numerator.eval(&x_e, &y_e),
+                legacy_N_X_XY.eval(&x_e, &y_e) * (x_e - mn_x_point)
+                    + legacy_N_Y_XY.eval(&x_e, &y_e) * (y_e - mn_y_points[1])
+            );
+
+            assert_eq!(
+                M_X,
+                self.sigma
+                    .sigma1()
+                    .encode_poly(&mut legacy_M_X_XY, &self.setup_params)
+            );
+            assert_eq!(
+                M_Y,
+                self.sigma
+                    .sigma1()
+                    .encode_poly(&mut legacy_M_Y_XY, &self.setup_params)
+            );
+            assert_eq!(
+                N_X,
+                self.sigma
+                    .sigma1()
+                    .encode_poly(&mut legacy_N_X_XY, &self.setup_params)
+            );
+            assert_eq!(
+                N_Y,
+                self.sigma
+                    .sigma1()
+                    .encode_poly(&mut legacy_N_Y_XY, &self.setup_params)
+            );
+        }
 
         let (LHS_for_copy, Pi_CX, Pi_CY) = {
             let r_omegaX = crate::time_block!(

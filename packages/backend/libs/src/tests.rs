@@ -951,6 +951,77 @@ mod tests {
         assert!(estimated_p_eval.eq(&true_p_eval));
     }
 
+    fn assert_polynomial_coefficients_equal(
+        mut actual: DensePolynomialExt,
+        mut expected: DensePolynomialExt,
+    ) {
+        let x_size = actual.x_size.max(expected.x_size);
+        let y_size = actual.y_size.max(expected.y_size);
+        actual.resize(x_size, y_size);
+        expected.resize(x_size, y_size);
+        for x in 0..x_size {
+            for y in 0..y_size {
+                assert_eq!(
+                    actual.get_coeff(x as u64, y as u64),
+                    expected.get_coeff(x as u64, y as u64),
+                    "coefficient mismatch at ({x}, {y})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_div_by_ruffini_shared_x_matches_independent_splits() {
+        let polynomials = [
+            DensePolynomialExt::from_coeffs(
+                HostSlice::from_slice(&[ScalarField::from_u32(7)]),
+                1,
+                1,
+            ),
+            DensePolynomialExt::from_coeffs(
+                HostSlice::from_slice(&ScalarCfg::generate_random(64 * 8)),
+                64,
+                8,
+            ),
+        ];
+        let x = ScalarField::from_u32(5);
+        let y_points = [ScalarField::from_u32(7), ScalarField::from_u32(11)];
+
+        for polynomial in polynomials {
+            let (shared_x, shared_y, shared_remainders) =
+                polynomial.div_by_ruffini_shared_x(&x, &y_points);
+            for (index, y) in y_points.iter().enumerate() {
+                let (legacy_x, legacy_y, legacy_remainder) =
+                    polynomial.div_by_ruffini(&x, y);
+                assert_polynomial_coefficients_equal(shared_x.clone(), legacy_x);
+                assert_polynomial_coefficients_equal(shared_y[index].clone(), legacy_y);
+                assert_eq!(shared_remainders[index], legacy_remainder);
+
+                let numerator = &polynomial - &legacy_remainder;
+                let (numerator_x, numerator_y, numerator_remainder) =
+                    numerator.div_by_ruffini(&x, y);
+                assert_polynomial_coefficients_equal(shared_x.clone(), numerator_x);
+                assert_polynomial_coefficients_equal(
+                    shared_y[index].clone(),
+                    numerator_y,
+                );
+                assert_eq!(numerator_remainder, ScalarField::zero());
+
+                let evaluation_x = ScalarField::from_u32(13);
+                let evaluation_y = ScalarField::from_u32(17);
+                let reconstructed = shared_x.eval(&evaluation_x, &evaluation_y)
+                    * (evaluation_x - x)
+                    + shared_y[index].eval(&evaluation_x, &evaluation_y)
+                        * (evaluation_y - *y)
+                    + shared_remainders[index];
+                assert_eq!(
+                    polynomial.eval(&evaluation_x, &evaluation_y),
+                    reconstructed
+                );
+            }
+        }
+    }
+
     #[test]
     fn test_divide_x() {
         let x_size = 2usize.pow(10);
