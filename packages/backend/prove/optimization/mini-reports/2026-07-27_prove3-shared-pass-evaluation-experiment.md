@@ -2,15 +2,10 @@
 
 ## Decision Status
 
-Candidate 2B's single-threaded shared-pass implementation is eligible for
-project-owner review. It passed exact scalar, full-fixture, proof, and verifier
-parity checks. In a separated three-way benchmark, five CPU runs reduced mean
-end-to-end `total_wall` by 1.205487 seconds, or 3.017%, without Rayon.
-
-Rayon reduced the local prove3 shared-pass span further, but its additional
-mean E2E improvement over the serial shared pass was 0.217815 seconds with a
-95% interval of -0.770716 to 1.206345 seconds. Rayon is not independently
-qualified for production by the E2E gate.
+The project owner rejected the custom Serial and Rayon implementations.
+Candidate 2B must use the backend-neutral ICICLE Batch architecture if it is
+approved for production. The prover must not add a CPU-specific shared-pass
+path.
 
 No production prover code has been changed. Production integration requires an
 explicit project-owner decision.
@@ -20,6 +15,7 @@ explicit project-owner decision.
 - Source revision: `75f3fd440`
 - Initial experiment commit: `b1eeeba54`
 - Separated experiment commit: `8c0cb6bd3`
+- ICICLE Batch experiment commit: `d634ecb4c`
 - Branch baseline: local `packages/backend`
 - Experiment isolation: detached temporary worktree
 - OS: macOS 26.5.2, build 25F84
@@ -361,22 +357,56 @@ averaged 0.043294 seconds. The serial shared span averaged 0.177982 seconds;
 the Rayon shared span averaged 0.022043 seconds. Both local reductions agree
 with their respective `prove3.total` movement.
 
-## Recommendation
+## Backend-Neutral ICICLE Batch Comparison
 
-Recommend approving the single-threaded Candidate 2B shared pass for CPU
-production integration.
+The follow-up experiment added a private wrapper around ICICLE's
+`bls12_381_poly_eval` dispatcher and evaluated the three related points through
+two batched polynomial-evaluation stages. The same call structure delegates
+backend selection to ICICLE and does not branch on the active device.
 
-The serial candidate is exact, verifier-compatible, faster in every
-legacy-versus-serial pair, and its prove3 reduction agrees with the work
-removed. An approved production implementation must contain no experiment
-selector or legacy CPU fallback and must pass fresh preprocess, proof, verifier,
-and production timing gates.
+Exact parity passed for:
 
-Do not include Rayon in the initial production integration. Its local prove3
-benefit is real, but its additional E2E effect did not pass the primary metric.
-It may be reconsidered with a dedicated higher-sample E2E experiment.
+- row-major and column-batch layouts;
+- host and CPU-device buffers;
+- representative 4096-by-256 inputs;
+- complete Legacy, Serial, Rayon, and ICICLE Batch prover fixture outputs.
 
-Because the serial implementation is host-oriented, production design should
-retain the current ICICLE evaluation path for CUDA devices unless a future CUDA
-benchmark proves the host shared pass faster. The project owner must approve
-this explicit CPU/CUDA path split together with serial production integration.
+At the project owner's direction, the final CPU E2E comparison used three
+measured runs per path. Path order rotated as Legacy/Serial/Batch,
+Serial/Batch/Legacy, and Batch/Legacy/Serial.
+
+| sample | Legacy | Serial | ICICLE Batch |
+| ---: | ---: | ---: | ---: |
+| 1 | 37.720302 s | 36.994429 s | 37.117604 s |
+| 2 | 38.032900 s | 37.106074 s | 37.288260 s |
+| 3 | 37.999819 s | 37.004641 s | 37.255614 s |
+| mean | 37.917674 s | 37.035048 s | 37.220493 s |
+| range | 0.312597 s | 0.111645 s | 0.170656 s |
+
+Mean E2E improvements were:
+
+- Serial versus Legacy: 0.882626 seconds;
+- ICICLE Batch versus Legacy: 0.697181 seconds;
+- Serial versus ICICLE Batch: 0.185445 seconds.
+
+The three Serial-versus-Batch comparisons favored Serial by 0.123176,
+0.182186, and 0.250973 seconds. The corresponding small-sample 95% paired
+interval was 0.026556 to 0.344333 seconds. The target operation means were
+1.081413 seconds for Legacy, 0.175915 seconds for Serial, and 0.232912 seconds
+for ICICLE Batch.
+
+## Final Architecture Decision
+
+Reject Serial and Rayon despite their measured CPU performance. Their custom
+host implementations do not justify a backend-specific prover path under the
+project's backend-unification policy.
+
+Retain only the backend-neutral ICICLE Batch implementation as the Candidate
+2B production option. It improved mean E2E `total_wall` by 0.697181 seconds
+against Legacy while preserving one prove control flow for ICICLE's CPU and
+CUDA dispatchers.
+
+This architecture decision does not itself authorize production integration.
+An approved production implementation must contain no experiment selector,
+Serial path, Rayon path, device-type branch, or silent Legacy fallback and must
+pass fresh preprocess, proof, verifier, and production timing gates.
