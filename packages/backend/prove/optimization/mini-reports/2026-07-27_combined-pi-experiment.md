@@ -2,12 +2,13 @@
 
 ## Decision Status
 
-Candidate 1A is eligible for project-owner review. The isolated implementation
-passed coefficient, remainder, G1, proof, and verifier parity checks. It reduced
-mean CPU end-to-end `total_wall` by 2.520969 seconds, or 6.034%.
+The project owner approved Candidate 1A for production integration. The
+isolated implementation passed coefficient, remainder, G1, proof, and verifier
+parity checks. It reduced mean CPU end-to-end `total_wall` by 2.520969 seconds,
+or 6.034%.
 
-No production implementation has been made. The project owner must explicitly
-approve or reject production integration.
+The production implementation, fresh-artifact verification, and production CPU
+timing gate are complete.
 
 ## Source And Environment
 
@@ -32,7 +33,8 @@ fresh baseline. Raw timing reports are retained under the ignored
 
 ## Candidate Boundary
 
-Production currently constructs three opening numerators in `prove4`:
+Before this optimization, production constructed three opening numerators in
+`prove4`:
 
 - `pA_XY`;
 - `LHS_for_copy`;
@@ -191,12 +193,80 @@ historical timing table, so the CUDA end-to-end gain may be smaller. CUDA
 compatibility should be preserved, and CUDA performance must remain unclaimed
 until suitable hardware is available.
 
-## Recommendation
+## Production Integration
 
-Recommend approving Candidate 1A for production integration.
+The approved production implementation contains only the combined Pi path. It
+does not contain the experiment's environment switch or a legacy runtime
+fallback.
 
-The result is exact, verifier-compatible, consistent across all five pairs, and
-large relative to observed noise. If approved, integrate only the combined Pi
-path, regenerate fresh preprocess/proof artifacts, verify the proof, and then
-reproduce the complete production CPU timing table before retaining the
-change.
+Normal builds retain the three opening numerators, construct one combined
+numerator, perform one Ruffini split, and commit final `Pi_X` and `Pi_Y`.
+`testing-mode` additionally computes the decomposed legacy commitments and
+asserts:
+
+```text
+Pi_X == Pi_AX + Pi_CX + Pi_B
+Pi_Y == Pi_AY + Pi_CY
+```
+
+This preserves `Proof4Test` diagnostics without adding redundant commitment
+work to normal production builds.
+
+The following production checks passed:
+
+- `cargo check -p prove --features timing`;
+- `cargo check -p prove --features testing-mode`;
+- `cargo test -p prove --lib`;
+- `cargo test -p prove --features testing-mode --lib`;
+- timing integration-test compilation;
+- full release fixture execution with `timing,testing-mode`;
+- fresh release preprocess generation;
+- fresh release proof generation;
+- verification using the fresh preprocess and proof: `true`.
+
+The standalone release prover reported 39.302 seconds for the fresh proof run.
+
+## Production Timing
+
+Five warmed production timing runs produced:
+
+| sample | `total_wall` | `prove4.total` |
+| ---: | ---: | ---: |
+| 1 | 39.194337 s | 10.178372 s |
+| 2 | 39.342246 s | 10.140701 s |
+| 3 | 40.024063 s | 10.087872 s |
+| 4 | 39.509995 s | 10.071134 s |
+| 5 | 39.956981 s | 10.180891 s |
+
+| statistic | `total_wall` | `prove4.total` |
+| --- | ---: | ---: |
+| mean | 39.605524 s | 10.131794 s |
+| median | 39.509995 s | 10.140701 s |
+| minimum | 39.194337 s | 10.071134 s |
+| maximum | 40.024063 s | 10.180891 s |
+| range | 0.829727 s | 0.109757 s |
+
+The production `prove4` mean is 0.038760 seconds slower than the isolated
+candidate mean and remains 2.469353 seconds faster than the paired legacy mean.
+This confirms that the measured optimization survived production integration.
+The larger end-to-end variation is outside `prove4` and does not indicate loss
+of the combined-opening gain.
+
+The median end-to-end sample, sample 4, is recorded in:
+
+- `prove/optimization/timing.local.cpu.current.json`;
+- `prove/optimization/timing.local.cpu.current.md`.
+
+The canonical sample records:
+
+- `total_wall`: 39.509995 seconds;
+- `prove4.total`: 10.071134 seconds;
+- one `Pi_combined` Ruffini call;
+- two final Pi commitment call boundaries;
+- no normal-build `Pi_A`, `Pi_C`, or `Pi_B` Ruffini/commitment calls.
+
+## Final Decision
+
+Candidate 1A is accepted and retained in production. Its correctness,
+end-to-end gain, production proof verification, and production timing gate all
+passed.

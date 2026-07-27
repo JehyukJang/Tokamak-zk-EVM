@@ -2380,156 +2380,131 @@ impl Prover {
                 },
             ],
         );
-        let (Pi_AX, Pi_AY) = {
-            let (mut Pi_AX_XY, mut Pi_AY_XY, _rem) = {
-                let t_n_eval = crate::time_block!(
-                    "poly.eval.prove4.t_n",
-                    "poly",
-                    vec![crate::timing::SizeInfo {
-                        label: "t_n",
-                        dims: vec![self.instance.t_n.x_size, self.instance.t_n.y_size]
-                    },],
-                    { self.instance.t_n.eval(&chi, &ScalarField::one()) }
-                );
-                let t_smax_eval = crate::time_block!(
-                    "poly.eval.prove4.t_smax",
-                    "poly",
-                    vec![crate::timing::SizeInfo {
-                        label: "t_smax",
-                        dims: vec![self.instance.t_smax.x_size, self.instance.t_smax.y_size]
-                    },],
-                    { self.instance.t_smax.eval(&ScalarField::one(), &zeta) }
-                );
-                let small_v_eval = crate::time_block!(
-                    "poly.eval.prove4.vXY",
-                    "poly",
-                    vec![crate::timing::SizeInfo {
-                        label: "vXY",
-                        dims: vec![self.witness.vXY.x_size, self.witness.vXY.y_size]
-                    },],
-                    { self.witness.vXY.eval(&chi, &zeta) }
-                );
+        let t_n_eval = crate::time_block!(
+            "poly.eval.prove4.t_n",
+            "poly",
+            vec![crate::timing::SizeInfo {
+                label: "t_n",
+                dims: vec![self.instance.t_n.x_size, self.instance.t_n.y_size]
+            },],
+            { self.instance.t_n.eval(&chi, &ScalarField::one()) }
+        );
+        let t_smax_eval = crate::time_block!(
+            "poly.eval.prove4.t_smax",
+            "poly",
+            vec![crate::timing::SizeInfo {
+                label: "t_smax",
+                dims: vec![self.instance.t_smax.x_size, self.instance.t_smax.y_size]
+            },],
+            { self.instance.t_smax.eval(&ScalarField::one(), &zeta) }
+        );
+        let small_v_eval = crate::time_block!(
+            "poly.eval.prove4.vXY",
+            "poly",
+            vec![crate::timing::SizeInfo {
+                label: "vXY",
+                dims: vec![self.witness.vXY.x_size, self.witness.vXY.y_size]
+            },],
+            { self.witness.vXY.eval(&chi, &zeta) }
+        );
 
-                let rW_X = DensePolynomialExt::from_coeffs(
-                    HostSlice::from_slice(&self.mixer.rW_X),
-                    self.mixer.rW_X.len(),
-                    1,
-                );
-                let rW_Y = DensePolynomialExt::from_coeffs(
-                    HostSlice::from_slice(&self.mixer.rW_Y),
-                    1,
-                    self.mixer.rW_Y.len(),
-                );
-                let W_zk = self.cache.w_zk.clone().unwrap_or_else(|| {
-                    // Fallback for non-standard call order. Original cached expression:
-                    // W_zk = rW_X * t_n + rW_Y * t_smax.
-                    let rW_X_t_n =
-                        low_degree_x_times_vanishing(&self.mixer.rW_X, self.setup_params.n);
-                    let rW_Y_t_smax =
-                        low_degree_y_times_vanishing(&self.mixer.rW_Y, self.setup_params.s_max);
-                    &rW_X_t_n + &rW_Y_t_smax
-                });
+        let rW_X = DensePolynomialExt::from_coeffs(
+            HostSlice::from_slice(&self.mixer.rW_X),
+            self.mixer.rW_X.len(),
+            1,
+        );
+        let rW_Y = DensePolynomialExt::from_coeffs(
+            HostSlice::from_slice(&self.mixer.rW_Y),
+            1,
+            self.mixer.rW_Y.len(),
+        );
+        let W_zk = self.cache.w_zk.clone().unwrap_or_else(|| {
+            // Fallback for non-standard call order. Original cached expression:
+            // W_zk = rW_X * t_n + rW_Y * t_smax.
+            let rW_X_t_n = low_degree_x_times_vanishing(&self.mixer.rW_X, self.setup_params.n);
+            let rW_Y_t_smax =
+                low_degree_y_times_vanishing(&self.mixer.rW_Y, self.setup_params.s_max);
+            &rW_X_t_n + &rW_Y_t_smax
+        });
 
-                let VXY = crate::time_block!(
-                    "poly.combine.prove4.V",
-                    "poly",
-                    vec![crate::timing::SizeInfo {
-                        label: "vXY",
-                        dims: vec![self.witness.vXY.x_size, self.witness.vXY.y_size]
-                    },],
-                    {
-                        poly_comb!(
-                            (ScalarField::one(), self.witness.vXY),
-                            (self.mixer.rV_X, self.instance.t_n),
-                            (self.mixer.rV_Y, self.instance.t_smax)
-                        )
-                    }
-                );
-
-                let pA_XY = crate::time_block!(
-                    "poly.combine.prove4.Pi_A",
-                    "poly",
-                    vec![crate::timing::SizeInfo {
-                        label: "uXY",
-                        dims: vec![self.witness.uXY.x_size, self.witness.uXY.y_size]
-                    },],
-                    {
-                        poly_comb!(
-                            // for KZG of V
-                            (kappa1, &VXY - &proof3.V_eval.0),
-                            // for Arithmetic constraints
-                            (small_v_eval, self.witness.uXY),
-                            (ScalarField::zero() - ScalarField::one(), self.witness.wXY),
-                            (
-                                (ScalarField::zero() - ScalarField::one()) * t_n_eval,
-                                self.quotients.q0XY
-                            ),
-                            (
-                                (ScalarField::zero() - ScalarField::one()) * t_smax_eval,
-                                self.quotients.q1XY
-                            ),
-                            // for zero-knowledge
-                            (small_v_eval * self.mixer.rU_X, self.instance.t_n),
-                            (small_v_eval * self.mixer.rU_Y, self.instance.t_smax),
-                            (
-                                ScalarField::zero()
-                                    - ((self.mixer.rU_X * t_n_eval)
-                                        + (self.mixer.rU_Y * t_smax_eval)),
-                                self.witness.vXY
-                            ),
-                            // Original expression:
-                            // rW_X * (t_n_eval - t_n) + rW_Y * (t_smax_eval - t_smax).
-                            // Reuse W_zk = rW_X * t_n + rW_Y * t_smax.
-                            (t_n_eval, rW_X),
-                            (t_smax_eval, rW_Y),
-                            (ScalarField::zero() - ScalarField::one(), W_zk)
-                        )
-                    }
-                );
-                crate::time_block!(
-                    "poly.div_by_ruffini.prove4.Pi_A",
-                    "poly",
-                    vec![crate::timing::SizeInfo {
-                        label: "pA_XY",
-                        dims: vec![self.witness.uXY.x_size, self.witness.uXY.y_size]
-                    },],
-                    { pA_XY.div_by_ruffini(&chi, &zeta) }
+        let VXY = crate::time_block!(
+            "poly.combine.prove4.V",
+            "poly",
+            vec![crate::timing::SizeInfo {
+                label: "vXY",
+                dims: vec![self.witness.vXY.x_size, self.witness.vXY.y_size]
+            },],
+            {
+                poly_comb!(
+                    (ScalarField::one(), self.witness.vXY),
+                    (self.mixer.rV_X, self.instance.t_n),
+                    (self.mixer.rV_Y, self.instance.t_smax)
                 )
-            };
+            }
+        );
 
+        let pA_XY = crate::time_block!(
+            "poly.combine.prove4.Pi_A",
+            "poly",
+            vec![crate::timing::SizeInfo {
+                label: "uXY",
+                dims: vec![self.witness.uXY.x_size, self.witness.uXY.y_size]
+            },],
+            {
+                poly_comb!(
+                    // for KZG of V
+                    (kappa1, &VXY - &proof3.V_eval.0),
+                    // for Arithmetic constraints
+                    (small_v_eval, self.witness.uXY),
+                    (ScalarField::zero() - ScalarField::one(), self.witness.wXY),
+                    (
+                        (ScalarField::zero() - ScalarField::one()) * t_n_eval,
+                        self.quotients.q0XY
+                    ),
+                    (
+                        (ScalarField::zero() - ScalarField::one()) * t_smax_eval,
+                        self.quotients.q1XY
+                    ),
+                    // for zero-knowledge
+                    (small_v_eval * self.mixer.rU_X, self.instance.t_n),
+                    (small_v_eval * self.mixer.rU_Y, self.instance.t_smax),
+                    (
+                        ScalarField::zero()
+                            - ((self.mixer.rU_X * t_n_eval) + (self.mixer.rU_Y * t_smax_eval)),
+                        self.witness.vXY
+                    ),
+                    // Original expression:
+                    // rW_X * (t_n_eval - t_n) + rW_Y * (t_smax_eval - t_smax).
+                    // Reuse W_zk = rW_X * t_n + rW_Y * t_smax.
+                    (t_n_eval, rW_X),
+                    (t_smax_eval, rW_Y),
+                    (ScalarField::zero() - ScalarField::one(), W_zk)
+                )
+            }
+        );
+        #[cfg(feature = "testing-mode")]
+        let (Pi_AX, Pi_AY) = {
+            let (mut Pi_AX_XY, mut Pi_AY_XY, rem) = crate::time_block!(
+                "poly.div_by_ruffini.prove4.Pi_A_test",
+                "poly",
+                vec![crate::timing::SizeInfo {
+                    label: "pA_XY",
+                    dims: vec![self.witness.uXY.x_size, self.witness.uXY.y_size]
+                },],
+                { pA_XY.div_by_ruffini(&chi, &zeta) }
+            );
+            assert_eq!(rem, ScalarField::zero());
             (
-                crate::time_block!(
-                    "prove4.encode.Pi_AX",
-                    "encode_call",
-                    vec![crate::timing::SizeInfo {
-                        label: "Pi_AX",
-                        dims: vec![self.witness.uXY.x_size, self.witness.uXY.y_size]
-                    },],
-                    {
-                        self.sigma.sigma1().encode_poly_timed(
-                            &mut Pi_AX_XY,
-                            &self.setup_params,
-                            "prove4.encode.Pi_AX",
-                        )
-                    }
-                ),
-                crate::time_block!(
-                    "prove4.encode.Pi_AY",
-                    "encode_call",
-                    vec![crate::timing::SizeInfo {
-                        label: "Pi_AY",
-                        dims: vec![self.witness.uXY.x_size, self.witness.uXY.y_size]
-                    },],
-                    {
-                        self.sigma.sigma1().encode_poly_timed(
-                            &mut Pi_AY_XY,
-                            &self.setup_params,
-                            "prove4.encode.Pi_AY",
-                        )
-                    }
-                ),
+                self.sigma
+                    .sigma1()
+                    .encode_poly(&mut Pi_AX_XY, &self.setup_params),
+                self.sigma
+                    .sigma1()
+                    .encode_poly(&mut Pi_AY_XY, &self.setup_params),
             )
         };
+        #[cfg(not(feature = "testing-mode"))]
+        let (Pi_AX, Pi_AY) = (G1serde::zero(), G1serde::zero());
 
         let omega_m_i = ntt::get_root_of_unity::<ScalarField>(m_i as u64);
         let omega_s_max = ntt::get_root_of_unity::<ScalarField>(s_max as u64);
@@ -2700,7 +2675,7 @@ impl Prover {
             )
         };
 
-        let (Pi_CX, Pi_CY) = {
+        let (LHS_for_copy, Pi_CX, Pi_CY) = {
             let r_omegaX = crate::time_block!(
                 "poly.scale_coeffs.prove4.r_omegaX",
                 "poly",
@@ -3075,58 +3050,37 @@ impl Prover {
                 }
             );
 
-            let (mut Pi_CX_XY, mut Pi_CY_XY, _rem1) = crate::time_block!(
-                "poly.div_by_ruffini.prove4.Pi_C",
-                "poly",
-                vec![crate::timing::SizeInfo {
-                    label: "LHS_for_copy",
-                    dims: vec![m_i, s_max]
-                },],
-                { LHS_for_copy.div_by_ruffini(&chi, &zeta) }
-            );
             #[cfg(feature = "testing-mode")]
-            {
-                assert_eq!(_rem1, ScalarField::zero());
+            let (Pi_CX, Pi_CY) = {
+                let (mut Pi_CX_XY, mut Pi_CY_XY, rem) = crate::time_block!(
+                    "poly.div_by_ruffini.prove4.Pi_C_test",
+                    "poly",
+                    vec![crate::timing::SizeInfo {
+                        label: "LHS_for_copy",
+                        dims: vec![m_i, s_max]
+                    },],
+                    { LHS_for_copy.div_by_ruffini(&chi, &zeta) }
+                );
+                assert_eq!(rem, ScalarField::zero());
                 let x_e = ScalarCfg::generate_random(1)[0];
                 let y_e = ScalarCfg::generate_random(1)[0];
                 let lhs = LHS_for_copy.eval(&x_e, &y_e);
                 let rhs = Pi_CX_XY.eval(&x_e, &y_e) * (x_e - chi)
                     + Pi_CY_XY.eval(&x_e, &y_e) * (y_e - zeta);
                 assert_eq!(lhs, rhs);
-            }
+                (
+                    self.sigma
+                        .sigma1()
+                        .encode_poly(&mut Pi_CX_XY, &self.setup_params),
+                    self.sigma
+                        .sigma1()
+                        .encode_poly(&mut Pi_CY_XY, &self.setup_params),
+                )
+            };
+            #[cfg(not(feature = "testing-mode"))]
+            let (Pi_CX, Pi_CY) = (G1serde::zero(), G1serde::zero());
 
-            (
-                crate::time_block!(
-                    "prove4.encode.Pi_CX",
-                    "encode_call",
-                    vec![crate::timing::SizeInfo {
-                        label: "Pi_CX",
-                        dims: vec![m_i, s_max]
-                    },],
-                    {
-                        self.sigma.sigma1().encode_poly_timed(
-                            &mut Pi_CX_XY,
-                            &self.setup_params,
-                            "prove4.encode.Pi_CX",
-                        )
-                    }
-                ),
-                crate::time_block!(
-                    "prove4.encode.Pi_CY",
-                    "encode_call",
-                    vec![crate::timing::SizeInfo {
-                        label: "Pi_CY",
-                        dims: vec![m_i, s_max]
-                    },],
-                    {
-                        self.sigma.sigma1().encode_poly_timed(
-                            &mut Pi_CY_XY,
-                            &self.setup_params,
-                            "prove4.encode.Pi_CY",
-                        )
-                    }
-                ),
-            )
+            (LHS_for_copy, Pi_CX, Pi_CY)
         };
         #[cfg(feature = "testing-mode")]
         {
@@ -3134,7 +3088,7 @@ impl Prover {
         }
 
         drop(RXY);
-        let Pi_B = {
+        let (Pi_B_numerator, Pi_B) = {
             let A_eval = crate::time_block!(
                 "poly.eval.prove4.A_free",
                 "poly",
@@ -3153,35 +3107,92 @@ impl Prover {
                 },],
                 { &self.instance.a_free_X - &A_eval }
             );
-            let (mut pi_B_XY, _, _) = crate::time_block!(
-                "poly.div_by_ruffini.prove4.Pi_B",
-                "poly",
-                vec![crate::timing::SizeInfo {
-                    label: "a_free_X",
-                    dims: vec![self.instance.a_free_X.x_size, self.instance.a_free_X.y_size]
-                },],
-                { Pi_B_numerator.div_by_ruffini(&chi, &zeta) }
-            );
+            #[cfg(feature = "testing-mode")]
+            let Pi_B = {
+                let (mut pi_B_XY, _, rem) = crate::time_block!(
+                    "poly.div_by_ruffini.prove4.Pi_B_test",
+                    "poly",
+                    vec![crate::timing::SizeInfo {
+                        label: "a_free_X",
+                        dims: vec![self.instance.a_free_X.x_size, self.instance.a_free_X.y_size]
+                    },],
+                    { Pi_B_numerator.div_by_ruffini(&chi, &zeta) }
+                );
+                assert_eq!(rem, ScalarField::zero());
+                self.sigma
+                    .sigma1()
+                    .encode_poly(&mut pi_B_XY, &self.setup_params)
+                    * kappa1.pow(4)
+            };
+            #[cfg(not(feature = "testing-mode"))]
+            let Pi_B = G1serde::zero();
 
-            crate::time_block!(
-                "prove4.encode.Pi_B",
-                "encode_call",
-                vec![crate::timing::SizeInfo {
-                    label: "a_free_X",
-                    dims: vec![self.instance.a_free_X.x_size, self.instance.a_free_X.y_size]
-                },],
-                {
-                    self.sigma.sigma1().encode_poly_timed(
-                        &mut pi_B_XY,
-                        &self.setup_params,
-                        "prove4.encode.Pi_B",
-                    )
-                }
-            ) * kappa1.pow(4)
+            (Pi_B_numerator, Pi_B)
         };
 
-        let Pi_X = Pi_AX + Pi_CX + Pi_B;
-        let Pi_Y = Pi_AY + Pi_CY;
+        let combined_Pi_numerator = crate::time_block!(
+            "poly.combine.prove4.Pi_combined_numerator",
+            "poly",
+            vec![crate::timing::SizeInfo {
+                label: "m_i_s_max",
+                dims: vec![m_i, s_max]
+            },],
+            {
+                poly_comb!(
+                    (ScalarField::one(), pA_XY),
+                    (ScalarField::one(), LHS_for_copy),
+                    (kappa1.pow(4), Pi_B_numerator)
+                )
+            }
+        );
+        let (mut Pi_X_XY, mut Pi_Y_XY, combined_rem) = crate::time_block!(
+            "poly.div_by_ruffini.prove4.Pi_combined",
+            "poly",
+            vec![crate::timing::SizeInfo {
+                label: "m_i_s_max",
+                dims: vec![m_i, s_max]
+            },],
+            { combined_Pi_numerator.div_by_ruffini(&chi, &zeta) }
+        );
+        #[cfg(feature = "testing-mode")]
+        assert_eq!(combined_rem, ScalarField::zero());
+        #[cfg(not(feature = "testing-mode"))]
+        let _ = combined_rem;
+        let Pi_X = crate::time_block!(
+            "prove4.encode.Pi_X",
+            "encode_call",
+            vec![crate::timing::SizeInfo {
+                label: "m_i_s_max",
+                dims: vec![m_i, s_max]
+            },],
+            {
+                self.sigma.sigma1().encode_poly_timed(
+                    &mut Pi_X_XY,
+                    &self.setup_params,
+                    "prove4.encode.Pi_X",
+                )
+            }
+        );
+        let Pi_Y = crate::time_block!(
+            "prove4.encode.Pi_Y",
+            "encode_call",
+            vec![crate::timing::SizeInfo {
+                label: "m_i_s_max",
+                dims: vec![m_i, s_max]
+            },],
+            {
+                self.sigma.sigma1().encode_poly_timed(
+                    &mut Pi_Y_XY,
+                    &self.setup_params,
+                    "prove4.encode.Pi_Y",
+                )
+            }
+        );
+        #[cfg(feature = "testing-mode")]
+        {
+            assert_eq!(Pi_X, Pi_AX + Pi_CX + Pi_B);
+            assert_eq!(Pi_Y, Pi_AY + Pi_CY);
+        }
         return (
             Proof4 {
                 Pi_X,
