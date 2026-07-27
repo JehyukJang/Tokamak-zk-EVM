@@ -3,12 +3,9 @@
 ## Decision Status
 
 The project owner rejected the custom Serial and Rayon implementations.
-Candidate 2B must use the backend-neutral ICICLE Batch architecture if it is
-approved for production. The prover must not add a CPU-specific shared-pass
-path.
-
-No production prover code has been changed. Production integration requires an
-explicit project-owner decision.
+Candidate 2B was integrated through the backend-neutral ICICLE Batch
+architecture in production commit `1b1d4728f`. The prover does not contain a
+CPU-specific shared-pass path.
 
 ## Source And Environment
 
@@ -16,6 +13,7 @@ explicit project-owner decision.
 - Initial experiment commit: `b1eeeba54`
 - Separated experiment commit: `8c0cb6bd3`
 - ICICLE Batch experiment commit: `d634ecb4c`
+- Production integration commit: `1b1d4728f`
 - Branch baseline: local `packages/backend`
 - Experiment isolation: detached temporary worktree
 - OS: macOS 26.5.2, build 25F84
@@ -406,7 +404,51 @@ Retain only the backend-neutral ICICLE Batch implementation as the Candidate
 against Legacy while preserving one prove control flow for ICICLE's CPU and
 CUDA dispatchers.
 
-This architecture decision does not itself authorize production integration.
-An approved production implementation must contain no experiment selector,
-Serial path, Rayon path, device-type branch, or silent Legacy fallback and must
-pass fresh preprocess, proof, verifier, and production timing gates.
+## Production Integration And Validation
+
+Production commit `1b1d4728f`:
+
+- added the private `bls12_381_poly_eval` wrapper with checked dimensions and
+  memory-placement flags derived from typed ICICLE slices;
+- replaced prove3's two coefficient-scaling operations and three independent
+  evaluations with one backend-neutral two-stage Batch evaluation;
+- added no experiment selector, Serial path, Rayon path, active-device branch,
+  or silent Legacy fallback;
+- retained exact Legacy comparison only under `testing-mode`.
+
+Validation passed:
+
+- FFI row-major and column-batch layout tests with host and CPU-device buffers;
+- invalid-dimension rejection;
+- zero, constant, X-only, Y-only, sparse, and dense exact evaluation parity;
+- all 42 non-ignored `libs` tests;
+- the complete release `timing,testing-mode` fixture, including exact Legacy
+  prove3 evaluation assertions;
+- fresh preprocess generation;
+- fresh production proof generation;
+- fresh verifier execution with result `true`.
+
+Five production CPU timing runs measured:
+
+| sample | `total_wall` | `prove3.total` | Batch target |
+| ---: | ---: | ---: | ---: |
+| 1 | 36.905094 s | 0.633189 s | 0.233161 s |
+| 2 | 37.792731 s | 0.634801 s | 0.231500 s |
+| 3 | 37.224994 s | 0.629799 s | 0.231987 s |
+| 4 | 37.284809 s | 0.648629 s | 0.232448 s |
+| 5 | 37.215897 s | 0.646845 s | 0.235851 s |
+| mean | 37.284705 s | 0.638652 s | 0.232989 s |
+
+Run 3 was the median `total_wall` sample and became the canonical timing
+artifact. Relative to the previous canonical table:
+
+| metric | previous | ICICLE Batch | delta |
+| --- | ---: | ---: | ---: |
+| `total_wall` | 38.499482 s | 37.224994 s | -1.274488 s (-3.310%) |
+| `prove3.total` | 1.499741 s | 0.629799 s | -0.869942 s (-58.006%) |
+| replaced evaluation boundary | 1.095924 s | 0.231987 s | -0.863937 s (-78.833%) |
+
+Candidate 2B is accepted and complete on the available CPU backend. CUDA
+validation remains pending until suitable hardware is available, but it must
+exercise the same production control flow without a device-specific prover
+branch.
