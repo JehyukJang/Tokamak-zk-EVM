@@ -58,6 +58,10 @@ pub(crate) fn polynomial_eval_batch<
     if coeffs.len() != expected_coeffs || evals.len() != expected_evals {
         return Err(eIcicleError::InvalidArgument);
     }
+    // ICICLE v3.8.0 through v4.0.0 corrupt CUDA device outputs for column batches.
+    if columns_batch && evals.is_on_device() {
+        return Err(eIcicleError::ApiNotImplemented);
+    }
 
     let coeffs_size = u64::try_from(coeffs_size).map_err(|_| eIcicleError::InvalidArgument)?;
     let domain_size = u64::try_from(domain.len()).map_err(|_| eIcicleError::InvalidArgument)?;
@@ -1863,18 +1867,16 @@ impl BivariatePolynomial for DensePolynomialExt {
         let x_domain_host = [*x, *shifted_x];
         let mut x_domain = DeviceVec::<Self::Field>::device_malloc(x_domain_host.len())?;
         x_domain.copy_from_host(HostSlice::from_slice(&x_domain_host))?;
-        let mut second_stage = DeviceVec::<Self::Field>::device_malloc(4)?;
+        let mut outputs = [Self::Field::zero(); 4];
         polynomial_eval_batch(
             &first_stage,
             self.x_size,
             &x_domain,
             2,
             true,
-            &mut second_stage,
+            HostSlice::from_mut_slice(&mut outputs),
         )?;
 
-        let mut outputs = [Self::Field::zero(); 4];
-        second_stage.copy_to_host(HostSlice::from_mut_slice(&mut outputs))?;
         Ok([outputs[0], outputs[2], outputs[3]])
     }
 

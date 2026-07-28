@@ -98,7 +98,7 @@ mod tests {
     }
 
     #[test]
-    fn test_polynomial_eval_batch_cpu_host_and_device_layouts() {
+    fn test_polynomial_eval_batch_host_and_supported_device_layouts() {
         check_device();
         let row_polynomials = [
             [
@@ -187,19 +187,29 @@ mod tests {
         device_column_coefficients
             .copy_from_host(HostSlice::from_slice(&column_coefficients))
             .unwrap();
+        let mut device_column_host_output = [ScalarField::zero(); 4];
         polynomial_eval_batch(
             &device_column_coefficients,
             3,
             &device_domain,
             2,
             true,
-            &mut device_output,
+            HostSlice::from_mut_slice(&mut device_column_host_output),
         )
         .unwrap();
-        device_output
-            .copy_to_host(HostSlice::from_mut_slice(&mut copied_output))
-            .unwrap();
-        assert_eq!(copied_output, expected_columns);
+        assert_eq!(device_column_host_output, expected_columns);
+
+        assert_eq!(
+            polynomial_eval_batch(
+                &device_column_coefficients,
+                3,
+                &device_domain,
+                2,
+                true,
+                &mut device_output,
+            ),
+            Err(icicle_runtime::errors::eIcicleError::ApiNotImplemented)
+        );
     }
 
     #[test]
