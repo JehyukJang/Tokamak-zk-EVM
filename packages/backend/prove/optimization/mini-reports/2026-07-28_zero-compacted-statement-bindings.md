@@ -220,7 +220,17 @@ The machine was on AC power in automatic power mode, macOS reported no thermal
 or performance warning, and no competing high-CPU process was present during
 the baseline-only diagnostic. The current slowdown remains unexplained.
 
+After a full machine reboot, the initial Spotlight indexing load was allowed to
+finish before another diagnostic. The isolated experiment worktree baseline
+still measured 55.484695 seconds. To exclude the experiment implementation
+itself, the same command and fixture were then run from the clean
+`packages/backend` production worktree, which contains no Candidate 6 code.
+That baseline measured 54.027174 seconds. The production-worktree result
+confirms that the persistent slowdown is outside the Candidate 6 implementation
+and was not resolved by rebooting.
+
 The campaign plan requires reproducing the accepted baseline within normal
 variance before evaluating a candidate. Candidate 6 therefore stops at this
 environment blocker. The two warm-ups and diagnostic run are retained only for
-audit and must not be used to accept or reject either binding.
+audit and must not be used to accept or reject either binding. The post-reboot
+diagnostics are likewise excluded from candidate evaluation.
