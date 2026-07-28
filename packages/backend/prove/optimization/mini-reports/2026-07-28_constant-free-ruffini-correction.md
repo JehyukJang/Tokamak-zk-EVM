@@ -3,11 +3,11 @@
 ## Decision Status
 
 Candidate 3A passed exact correctness and fresh proof-verification gates, but
-its five-pair end-to-end result did not exceed observed noise. The
-recommendation is to reject it as a standalone production optimization.
+its five-pair end-to-end result did not exceed observed noise.
 
-The project owner has not made the final production decision. No production
-code has changed.
+The project owner rejected Candidate 3A as a standalone production
+optimization. No production code changed, and the isolated experiment was
+discarded after this decision.
 
 ## Source And Environment
 
@@ -287,15 +287,13 @@ The paired `prove4.total` interval was -0.155531 to 0.080780 seconds for
 Legacy minus Candidate. The approximately 20-millisecond local saving is
 smaller than variance inside prove4 and unchanged neighboring stages.
 
-## Recommendation
+## Final Decision
 
-Reject Candidate 3A as a standalone production optimization. Its algebra,
-exact quotient parity, fresh verification, and local boundary saving are
-established, but mean E2E `total_wall` regressed by 0.032% and the paired
-confidence interval does not exclude either a material regression or
-improvement.
+Candidate 3A is rejected. Its algebra, exact quotient parity, fresh
+verification, and local boundary saving are established, but mean E2E
+`total_wall` regressed by 0.032% and the paired confidence interval does not
+exclude either a material regression or improvement.
 
-Do not integrate the constant-free Ruffini correction unless the project owner
-explicitly overrides this recommendation or authorizes a new, predefined E2E
-measurement. The detached experiment and ignored raw timing files remain
-available until that decision.
+The constant-free Ruffini correction must not enter production as part of this
+optimization campaign. The detached experiment and its ignored raw timing
+artifacts were removed after the project-owner decision.
