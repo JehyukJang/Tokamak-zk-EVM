@@ -4,9 +4,9 @@
 
 Candidate 6 isolated correctness and E2E benchmarking are complete. Neither
 `O_mid` nor `O_prv` established an E2E improvement under the campaign
-acceptance rule. Production integration is not recommended and requires an
-explicit project-owner decision. No candidate code or production optimization
-has entered the production branch.
+acceptance rule. The project owner rejected both subcandidates. Candidate 6 is
+complete with no production integration, and no candidate code entered the
+production branch.
 
 ## Audience
 
@@ -298,13 +298,14 @@ unrelated deltas and the confidence interval show that the 0.502301-second mean
 cannot be attributed to zero compaction. `O_prv` therefore does not satisfy the
 E2E acceptance gate despite its repeatable local saving.
 
-## Recommendation
+## Final Decision
 
-Reject production integration of both Candidate 6 subcandidates:
+The project owner rejected production integration of both Candidate 6
+subcandidates:
 
 - `O_mid` saves only 1.562 milliseconds locally and has no E2E evidence;
 - `O_prv` saves 141.865 milliseconds locally, but its E2E confidence interval
   crosses zero and unrelated stages dominate the observed mean.
 
-This recommendation does not authorize a production change. Candidate 6 stops
-at the required project-owner decision.
+Candidate 6 is complete. No production source, feature, fallback, or runtime
+flag was added.
