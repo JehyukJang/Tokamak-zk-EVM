@@ -2035,13 +2035,14 @@ fn encode_poly_from_xy_powers(
     params: &SetupParams,
     xy_powers: &[ArchivedG1SerdeRkyv],
 ) -> G1serde {
-    encode_poly_from_xy_powers_with_timing(poly, params, xy_powers, None)
+    encode_poly_from_xy_powers_with_timing(poly, params, xy_powers, None, None)
 }
 
 fn encode_poly_from_xy_powers_with_timing(
     poly: &mut DensePolynomialExt,
     params: &SetupParams,
     xy_powers: &[ArchivedG1SerdeRkyv],
+    decoded_xy_powers: Option<&[G1Affine]>,
     _timing_name: Option<&'static str>,
 ) -> G1serde {
     poly.optimize_size();
@@ -2053,6 +2054,11 @@ fn encode_poly_from_xy_powers_with_timing(
     let target_y_size = (poly.y_degree + 1) as usize;
     if target_x_size > rs_x_size || target_y_size > rs_y_size {
         panic!("Insufficient length of sigma.sigma_1.xy_powers");
+    }
+    if let Some(decoded) = decoded_xy_powers {
+        if decoded.len() != xy_powers.len() {
+            panic!("Decoded CRS grid length does not match archived xy_powers");
+        }
     }
     if target_x_size * target_y_size == 0 {
         return G1serde::zero();
@@ -2072,13 +2078,18 @@ fn encode_poly_from_xy_powers_with_timing(
         )
     };
 
+    #[cfg(feature = "timing")]
+    let crs_prepare_start = Instant::now();
     let rs_unpacked: Vec<G1Affine> = {
         let mut res = Vec::with_capacity(target_x_size * target_y_size);
         for i in 0..target_x_size {
             for j in 0..target_y_size {
                 if i < rs_x_size && j < rs_y_size {
                     let idx = rs_y_size * i + j;
-                    res.push(xy_powers[idx].to_g1_affine());
+                    res.push(match decoded_xy_powers {
+                        Some(decoded) => decoded[idx],
+                        None => xy_powers[idx].to_g1_affine(),
+                    });
                 } else {
                     res.push(G1Affine::zero());
                 }
@@ -2086,6 +2097,18 @@ fn encode_poly_from_xy_powers_with_timing(
         }
         res
     };
+    #[cfg(feature = "timing")]
+    if let (Some(name), Some(_)) = (_timing_name, decoded_xy_powers) {
+        record_timing(
+            name,
+            "encode_crs_gather",
+            crs_prepare_start.elapsed(),
+            vec![SizeInfo {
+                label: "active",
+                dims: vec![target_x_size, target_y_size],
+            }],
+        );
+    }
 
     let mut msm_res = vec![G1Projective::zero(); 1];
     #[cfg(feature = "timing")]
@@ -2113,6 +2136,13 @@ fn encode_poly_from_xy_powers_with_timing(
 }
 
 impl ArchivedSigma1Rkyv {
+    pub fn decode_xy_powers(&self) -> Box<[G1Affine]> {
+        self.xy_powers
+            .iter()
+            .map(ArchivedG1SerdeRkyv::to_g1_affine)
+            .collect()
+    }
+
     pub fn encode_poly(&self, poly: &mut DensePolynomialExt, params: &SetupParams) -> G1serde {
         encode_poly_from_xy_powers(poly, params, self.xy_powers.as_slice())
     }
@@ -2127,6 +2157,38 @@ impl ArchivedSigma1Rkyv {
             poly,
             params,
             self.xy_powers.as_slice(),
+            None,
+            Some(timing_name),
+        )
+    }
+
+    pub fn encode_poly_with_decoded_xy_powers(
+        &self,
+        poly: &mut DensePolynomialExt,
+        params: &SetupParams,
+        decoded_xy_powers: &[G1Affine],
+    ) -> G1serde {
+        encode_poly_from_xy_powers_with_timing(
+            poly,
+            params,
+            self.xy_powers.as_slice(),
+            Some(decoded_xy_powers),
+            None,
+        )
+    }
+
+    pub fn encode_poly_timed_with_decoded_xy_powers(
+        &self,
+        poly: &mut DensePolynomialExt,
+        params: &SetupParams,
+        decoded_xy_powers: &[G1Affine],
+        timing_name: &'static str,
+    ) -> G1serde {
+        encode_poly_from_xy_powers_with_timing(
+            poly,
+            params,
+            self.xy_powers.as_slice(),
+            Some(decoded_xy_powers),
             Some(timing_name),
         )
     }
@@ -2228,6 +2290,7 @@ impl ArchivedPartialSigma1Rkyv {
             poly,
             params,
             self.xy_powers.as_slice(),
+            None,
             Some(timing_name),
         )
     }
@@ -2243,5 +2306,99 @@ impl ArchivedPartialSigma1Rkyv {
             self.gamma_inv_o_inst.len(),
             |idx| self.gamma_inv_o_inst[idx].to_g1_affine(),
         )
+    }
+}
+
+#[cfg(test)]
+mod decoded_xy_powers_tests {
+    use super::*;
+    use crate::utils::check_device;
+    use icicle_bls12_381::curve::{CurveCfg, ScalarCfg};
+    use icicle_core::curve::Curve;
+    use icicle_core::traits::GenerateRandom;
+
+    #[test]
+    fn cached_xy_powers_match_archived_commitments() {
+        check_device();
+        let params = SetupParams {
+            l_free: 1,
+            l: 2,
+            l_user_out: 0,
+            l_user: 0,
+            l_D: 4,
+            m_D: 8,
+            n: 4,
+            s_D: 4,
+            s_max: 4,
+        };
+        let points = CurveCfg::generate_random_affine_points(8 * 8);
+        let archive_source = PartialSigma1Rkyv {
+            xy_powers: points
+                .iter()
+                .map(|point| G1SerdeRkyv::from_g1serde(&G1serde(*point)))
+                .collect(),
+            gamma_inv_o_inst: Vec::new(),
+        };
+        let archive_bytes = rkyv::to_bytes::<_, 256>(&archive_source).unwrap();
+        let archived = rkyv::check_archived_root::<PartialSigma1Rkyv>(&archive_bytes).unwrap();
+        let decoded_xy_powers: Box<[G1Affine]> = archived
+            .xy_powers
+            .iter()
+            .map(ArchivedG1SerdeRkyv::to_g1_affine)
+            .collect();
+
+        let mut sparse_coefficients = vec![ScalarField::zero(); 8 * 8];
+        sparse_coefficients[0] = ScalarField::one();
+        sparse_coefficients[2] = ScalarField::from_u32(3);
+        sparse_coefficients[2 * 8 + 4] = ScalarField::from_u32(7);
+        let polynomials = vec![
+            DensePolynomialExt::zero(),
+            DensePolynomialExt::from_coeffs(
+                HostSlice::from_slice(&[ScalarField::from_u32(11)]),
+                1,
+                1,
+            ),
+            DensePolynomialExt::from_coeffs(
+                HostSlice::from_slice(&ScalarCfg::generate_random(8)),
+                8,
+                1,
+            ),
+            DensePolynomialExt::from_coeffs(
+                HostSlice::from_slice(&ScalarCfg::generate_random(8)),
+                1,
+                8,
+            ),
+            DensePolynomialExt::from_coeffs(HostSlice::from_slice(&sparse_coefficients), 8, 8),
+            DensePolynomialExt::from_coeffs(
+                HostSlice::from_slice(&ScalarCfg::generate_random(8 * 8)),
+                8,
+                8,
+            ),
+        ];
+
+        for polynomial in polynomials {
+            let mut archived_polynomial = polynomial.clone();
+            let archived_commitment = encode_poly_from_xy_powers_with_timing(
+                &mut archived_polynomial,
+                &params,
+                archived.xy_powers.as_slice(),
+                None,
+                None,
+            );
+            let mut cached_polynomial = polynomial;
+            let cached_commitment = encode_poly_from_xy_powers_with_timing(
+                &mut cached_polynomial,
+                &params,
+                archived.xy_powers.as_slice(),
+                Some(&decoded_xy_powers),
+                None,
+            );
+
+            assert_eq!(cached_commitment, archived_commitment);
+            assert_eq!(cached_polynomial.x_size, archived_polynomial.x_size);
+            assert_eq!(cached_polynomial.y_size, archived_polynomial.y_size);
+            assert_eq!(cached_polynomial.x_degree, archived_polynomial.x_degree);
+            assert_eq!(cached_polynomial.y_degree, archived_polynomial.y_degree);
+        }
     }
 }
