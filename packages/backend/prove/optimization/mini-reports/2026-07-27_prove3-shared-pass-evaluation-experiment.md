@@ -5,7 +5,8 @@
 The project owner rejected the custom Serial and Rayon implementations.
 Candidate 2B was integrated through the backend-neutral ICICLE Batch
 architecture in production commit `1b1d4728f`. The prover does not contain a
-CPU-specific shared-pass path.
+CPU-specific shared-pass path. CUDA support was restored through the
+four-scalar host-output workaround in production commit `7e1d82849`.
 
 ## Source And Environment
 
@@ -14,6 +15,7 @@ CPU-specific shared-pass path.
 - Separated experiment commit: `8c0cb6bd3`
 - ICICLE Batch experiment commit: `d634ecb4c`
 - Production integration commit: `1b1d4728f`
+- CUDA host-output workaround commit: `7e1d82849`
 - Branch baseline: local `packages/backend`
 - Experiment isolation: detached temporary worktree
 - OS: macOS 26.5.2, build 25F84
@@ -448,7 +450,102 @@ artifact. Relative to the previous canonical table:
 | `prove3.total` | 1.499741 s | 0.629799 s | -0.869942 s (-58.006%) |
 | replaced evaluation boundary | 1.095924 s | 0.231987 s | -0.863937 s (-78.833%) |
 
-Candidate 2B is accepted and complete on the available CPU backend. CUDA
-validation remains pending until suitable hardware is available, but it must
-exercise the same production control flow without a device-specific prover
-branch.
+Candidate 2B was accepted on the CPU backend at this stage. The subsequent
+section records CUDA validation and completion through the same production
+control flow without a device-specific prover branch.
+
+## CUDA Validation And Host-Output Workaround
+
+CUDA validation ran on a Lambda Cloud NVIDIA A10 with ICICLE's CUDA backend.
+The production Batch path failed after its second polynomial-evaluation call.
+The failing configuration combined column-batch layout, device-resident
+coefficients, and device-resident output. The dispatcher and explicit device
+synchronization returned success, but copying the four-scalar result to host
+terminated in `cuMemcpyDtoH_v2` with `SIGSEGV`.
+
+A standalone C++ reproducer using the ICICLE C API removed Rust, the local
+wrapper, and `DeviceVec` from the failure boundary. Matching frontend and CUDA
+backend builds of ICICLE v3.8.0, v3.9.2, and v4.0.0 reproduced the defect.
+Row-batch device output and column-batch host output passed.
+
+Production commit `7e1d82849` applies the project-owner-approved workaround:
+
+- the first row-batched stage remains device-to-device;
+- the second column-batched stage writes its four scalar results directly to a
+  host buffer;
+- the private wrapper rejects column-batched device output with
+  `ApiNotImplemented` before entering ICICLE FFI;
+- no active-device branch, alternate CPU algorithm, or silent fallback was
+  added.
+
+The workaround passed:
+
+- focused wrapper layout and `eval_three_batch` parity tests on CPU and CUDA;
+- all non-ignored `libs` tests on both backends:
+  `42 passed; 0 failed; 3 ignored`;
+- the complete CUDA release `timing,testing-mode` fixture;
+- fresh matching CUDA preprocess, proof generation, and verification, with
+  verifier result `true`.
+
+### CUDA Timing
+
+One warm-up preceded five timing-only runs on the A10.
+
+| sample | `total_wall` | second Batch stage |
+| ---: | ---: | ---: |
+| 1 | 24.731489 s | 97.410894 ms |
+| 2 | 26.209047 s | 98.128851 ms |
+| 3 | 26.555801 s | 97.911512 ms |
+| 4 | 25.413183 s | 98.380914 ms |
+| 5 | 24.107125 s | 97.099262 ms |
+| mean | 25.403329 s | 97.786287 ms |
+| median | 25.413183 s | 97.911512 ms |
+| range | 24.107125 to 26.555801 s | 97.099262 to 98.380914 ms |
+
+The defective device-output implementation cannot complete a proof, so it has
+no valid CUDA before/after timing sample. These values establish the restored
+path's absolute behavior and do not claim a CUDA speedup.
+
+### CPU Regression Check
+
+An initial local sample set was discarded because macOS was running on battery
+with Low Power Mode enabled. The invalid runs showed broad slowdown across
+initialization, polynomial work, and MSM rather than movement isolated to the
+workaround.
+
+After connecting AC power and confirming normal power mode, one warm-up
+preceded five timing-only workaround runs:
+
+| sample | `total_wall` | second Batch stage |
+| ---: | ---: | ---: |
+| 1 | 37.669889 s | 232.984459 ms |
+| 2 | 39.084410 s | 242.021792 ms |
+| 3 | 39.568471 s | 253.265167 ms |
+| 4 | 39.207099 s | 239.929917 ms |
+| 5 | 39.031914 s | 247.683959 ms |
+| mean | 38.912357 s | 243.177059 ms |
+| median | 39.084410 s | 242.021792 ms |
+| range | 37.669889 to 39.568471 s | 232.984459 to 253.265167 ms |
+
+The immediately preceding source revision was then built in a detached
+worktree under the same AC power mode. Its three measured timing-only runs
+produced:
+
+| sample | `total_wall` | second Batch stage |
+| ---: | ---: | ---: |
+| 1 | 38.877217 s | 237.021417 ms |
+| 2 | 38.275263 s | 235.066583 ms |
+| 3 | 38.173713 s | 244.501708 ms |
+| mean | 38.442065 s | 238.863236 ms |
+| median | 38.275263 s | 237.021417 ms |
+| range | 38.173713 to 38.877217 s | 235.066583 to 244.501708 ms |
+
+The target-boundary mean changed by 4.313823 milliseconds, and the observed
+ranges overlap. The sequential whole-run means differ by 0.470292 seconds, but
+the target movement cannot account for that difference; it is therefore not
+evidence of a workaround regression. The accepted canonical CPU timing table
+remains unchanged because this check validates the CUDA workaround rather than
+reselecting the Candidate 2B optimization baseline.
+
+Candidate 2B now passes the same backend-neutral prove control flow on CPU and
+CUDA. Its crash-recovery validation is complete.
