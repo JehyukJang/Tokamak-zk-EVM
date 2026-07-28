@@ -2,18 +2,23 @@
 
 ## Decision Status
 
-Candidate 5 diagnostic profiling is complete. Archived CRS point decoding is
-the only dominant preparation boundary. Selecting a cache architecture requires
-a project-owner decision before candidate implementation begins. No cache,
-representation change, or production optimization has been implemented.
+Candidate 5 diagnostic profiling and the three approved Phase 1 host-cache
+experiments are complete. Options A and C established first-proof and
+cache-reuse improvements; Option B established only a cache-reuse improvement.
+The project owner must select exactly one host-cache finalist before Phase 2.
+No cache, representation change, or production optimization has entered the
+production branch.
 
 ## Source And Environment
 
 - Production baseline: `e30506c16`
+- Option A experiment: `4cf658b4a`
+- Option B experiment: `44f8f29d1`
+- Option C experiment: `f030bf727`
 - Current benchmark backend: ICICLE CPU fallback
 - Primary metric for any later candidate: end-to-end `total_wall`
 - Diagnostic source: `prove/optimization/timing.local.cpu.current.json`
-- Experiment isolation: detached worktree
+- Experiment isolation: dedicated worktree and experiment-only branches
 
 ## Audience
 
@@ -236,10 +241,12 @@ the current 96-byte ICICLE affine representation, a decoded full grid is about
 384 MiB.
 
 There are ten distinct active shapes. Retaining one compact affine vector per
-distinct shape requires approximately 16.79 million points, or 1.54 GiB, before
-allocator overhead. The repeated 4097-by-257 shape accounts for most reuse.
+distinct shape requires approximately 16.79 million points, or 1.50 GiB of raw
+point storage before allocator overhead. The repeated 4097-by-257 shape
+accounts for most reuse.
 
-The project owner must select which independent experiments to run:
+The project owner required each of the following host-cache architectures to
+be tested independently before selecting a Phase 1 finalist:
 
 ### Option A: Full Decoded Grid
 
@@ -261,7 +268,8 @@ Decode each exact active rectangle on first use and retain it by
 - Advantage: repeated shapes reuse the final compact MSM base vector with no
   per-call gathering.
 - Cost: first-proof construction still decodes about 16.79 million points and
-  retains about 1.54 GiB; it removes only duplicate-shape decode work.
+  retains about 1.50 GiB of raw point storage; it removes only duplicate-shape
+  decode work.
 - Expected use: unlikely to outperform Option A on first-proof `total_wall`,
   but useful if repeated proofs dominate.
 
@@ -272,9 +280,10 @@ shape cache on first use.
 
 - Advantage: only 4.19 million field decodes, compact MSM inputs are reused,
   and repeated commitment shapes avoid later allocation and gathering.
-- Cost: approximately 1.92 GiB retained between the full grid and compact shape
-  vectors, plus one first-use copy per distinct shape; requires thread-safe
-  cache ownership because commitments may run concurrently.
+- Cost: approximately 1.88 GiB of raw point storage retained between the full
+  grid and compact shape vectors, plus one first-use copy per distinct shape;
+  requires thread-safe cache ownership because commitments may run
+  concurrently.
 - Expected use: strongest execution-time candidate under the package policy
   that permits aggressive memory use.
 
@@ -290,6 +299,158 @@ directly to the same MSM dispatcher.
 - Expected use: separate follow-up after a host decoded-cache baseline, not the
   first Candidate 5 implementation.
 
-The profiling evidence rejects degree, resize, coefficient compaction, and the
-thin Y commitments as first Candidate 5 targets. No cache option may proceed
-until the project owner chooses the experiment scope.
+The profiling evidence rejected degree, resize, coefficient compaction, and the
+thin Y commitments as first Candidate 5 targets.
+
+## Phase 1 Correctness
+
+Each option was implemented on an isolated experiment branch. The focused
+tests compared exact G1 outputs and post-optimization polynomial metadata
+against the unchanged implementation. Each option also passed the complete
+release `timing,testing-mode` parity fixture, fresh preprocess/prove/verify, and
+a second proof executed by the same `Prover`. Every fresh proof verified as
+`true`.
+
+The five measurements for each option used alternating baseline and candidate
+execution. First-proof results include cache construction. Reused-proof results
+measure a second proof from the same prover instance. Raw timing JSON, proof,
+and preprocess artifacts remain under ignored experiment directories and no
+experiment code entered the production branch.
+
+## Option A Results
+
+Option A decodes and retains the 4,194,304-point full grid, approximately
+384 MiB at 96 bytes per affine point. It still gathers approximately 19.95
+million active bases into compact vectors during each proof.
+
+| pair | baseline first | Option A first | improvement |
+| ---: | ---: | ---: | ---: |
+| 1 | 38.670327 s | 38.047879 s | 0.622448 s |
+| 2 | 38.550343 s | 38.038809 s | 0.511534 s |
+| 3 | 38.950966 s | 38.013384 s | 0.937582 s |
+| 4 | 38.823246 s | 37.908618 s | 0.914628 s |
+| 5 | 40.844997 s | 38.305743 s | 2.539254 s |
+| **mean** | **39.167976 s** | **38.062887 s** | **1.105089 s** |
+
+The paired first-proof 95% confidence interval is 0.083748 to 2.126431
+seconds. The baseline and candidate medians are 38.823246 and 38.038809
+seconds; their ranges are 2.294654 and 0.397125 seconds.
+
+| pair | baseline reused | Option A reused | improvement |
+| ---: | ---: | ---: | ---: |
+| 1 | 33.750363 s | 32.343459 s | 1.406904 s |
+| 2 | 33.478771 s | 32.150900 s | 1.327871 s |
+| 3 | 33.362732 s | 32.338259 s | 1.024473 s |
+| 4 | 34.113701 s | 32.428911 s | 1.684790 s |
+| 5 | 34.385636 s | 33.759853 s | 0.625783 s |
+| **mean** | **33.818241 s** | **32.604276 s** | **1.213964 s** |
+
+The paired reused-proof 95% confidence interval is 0.711995 to 1.715934
+seconds. The baseline and candidate medians are 33.750363 and 32.343459
+seconds; their ranges are 1.022905 and 1.608953 seconds.
+
+For first proofs, baseline archive decoding averaged 1.133925 seconds. Option A
+instead averaged 0.256072 seconds to construct the full cache and 0.119807
+seconds to gather active rectangles. Reused proofs still spent 0.085732 seconds
+gathering, while the baseline spent 1.087929 seconds decoding.
+
+## Option B Results
+
+Option B builds compact exact-shape caches directly from the archive. It
+decoded and retained 16,791,691 points across ten shapes, approximately
+1.50 GiB of raw point storage before allocator and map overhead. Four
+commitments reused an earlier shape during the first proof; all 14 hit the
+cache during the second proof.
+
+| pair | baseline first | Option B first | improvement |
+| ---: | ---: | ---: | ---: |
+| 1 | 38.691405 s | 38.648986 s | 0.042419 s |
+| 2 | 38.717706 s | 40.192866 s | -1.475160 s |
+| 3 | 40.510573 s | 38.748630 s | 1.761943 s |
+| 4 | 39.085121 s | 38.692035 s | 0.393086 s |
+| 5 | 38.631759 s | 38.869129 s | -0.237370 s |
+| **mean** | **39.127313 s** | **39.030329 s** | **0.096984 s** |
+
+The paired first-proof 95% confidence interval is -1.351854 to 1.545821
+seconds, so a first-proof improvement was not established. The baseline and
+candidate medians are 38.717706 and 38.748630 seconds; their ranges are
+1.878814 and 1.543880 seconds.
+
+| pair | baseline reused | Option B reused | improvement |
+| ---: | ---: | ---: | ---: |
+| 1 | 33.323909 s | 32.298623 s | 1.025287 s |
+| 2 | 33.669798 s | 32.342630 s | 1.327168 s |
+| 3 | 34.296523 s | 32.810996 s | 1.485527 s |
+| 4 | 33.411111 s | 32.275578 s | 1.135532 s |
+| 5 | 33.259649 s | 32.480578 s | 0.779071 s |
+| **mean** | **33.592198 s** | **32.441681 s** | **1.150517 s** |
+
+The paired reused-proof 95% confidence interval is 0.811997 to 1.489037
+seconds. The baseline and candidate medians are 33.411111 and 32.342630
+seconds; their ranges are 1.036875 and 0.535418 seconds.
+
+For first proofs, baseline archive decoding averaged 1.181759 seconds and
+Option B shape construction averaged 1.101788 seconds. Reused cache access
+averaged 0.000024 seconds, while baseline archive decoding averaged 1.135974
+seconds.
+
+## Option C Results
+
+Option C retains both the 4,194,304-point decoded full grid and 16,791,691
+points in exact-shape caches. The 20,985,995 stored points require
+approximately 1.88 GiB of raw point storage before allocator and map overhead.
+Four commitments reused a shape during the first proof; all 14 hit the shape
+cache during the second proof.
+
+| pair | baseline first | Option C first | improvement |
+| ---: | ---: | ---: | ---: |
+| 1 | 39.406301 s | 38.761319 s | 0.644982 s |
+| 2 | 39.621069 s | 38.507444 s | 1.113624 s |
+| 3 | 39.569381 s | 38.422901 s | 1.146480 s |
+| 4 | 39.541434 s | 38.654230 s | 0.887204 s |
+| 5 | 39.229935 s | 38.458693 s | 0.771243 s |
+| **mean** | **39.473624 s** | **38.560917 s** | **0.912707 s** |
+
+The paired first-proof 95% confidence interval is 0.643981 to 1.181432
+seconds. The baseline and candidate medians are 39.541434 and 38.507444
+seconds; their ranges are 0.391133 and 0.338419 seconds.
+
+| pair | baseline reused | Option C reused | improvement |
+| ---: | ---: | ---: | ---: |
+| 1 | 33.927221 s | 32.681855 s | 1.245366 s |
+| 2 | 34.571246 s | 32.636581 s | 1.934665 s |
+| 3 | 33.962158 s | 32.445001 s | 1.517157 s |
+| 4 | 33.847450 s | 32.848147 s | 0.999303 s |
+| 5 | 33.811665 s | 32.737557 s | 1.074107 s |
+| **mean** | **34.023948 s** | **32.669828 s** | **1.354120 s** |
+
+The paired reused-proof 95% confidence interval is 0.881413 to 1.826827
+seconds. The baseline and candidate medians are 33.927221 and 32.681855
+seconds; their ranges are 0.759582 and 0.403146 seconds.
+
+For first proofs, baseline archive decoding averaged 1.145008 seconds. Option C
+instead averaged 0.253789 seconds to construct the full grid and 0.189081
+seconds to construct shape caches. Reused cache access averaged 0.000019
+seconds, while baseline archive decoding averaged 1.108804 seconds.
+
+## Phase 1 Comparison And Blocker
+
+| option | first-proof mean improvement | paired 95% interval | reused-proof mean improvement | paired 95% interval | retained raw points |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| A | 1.105089 s | 0.083748 to 2.126431 s | 1.213964 s | 0.711995 to 1.715934 s | about 384 MiB |
+| B | 0.096984 s | -1.351854 to 1.545821 s | 1.150517 s | 0.811997 to 1.489037 s | about 1.50 GiB |
+| C | 0.912707 s | 0.643981 to 1.181432 s | 1.354120 s | 0.881413 to 1.826827 s | about 1.88 GiB |
+
+Option C is the execution-time recommendation. Its first-proof result is
+stable, it has the largest measured reused-proof improvement, and it eliminates
+both repeated archive decoding and repeated active-rectangle gathering after
+initial construction. Option A remains viable with much lower memory use but
+continues to gather approximately 19.95 million bases per proof. Option B did
+not establish a first-proof improvement.
+
+Candidate 5 is now blocked on the required project-owner selection of exactly
+one of Options A, B, or C. After that selection, Phase 2 compares the selected
+host cache by itself with the same cache combined with Option D. Option D
+performance measurement additionally requires a CUDA test machine, which is
+not currently available. No Phase 2 or production implementation is
+authorized by these results.
