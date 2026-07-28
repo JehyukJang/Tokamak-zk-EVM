@@ -2,10 +2,11 @@
 
 ## Decision Status
 
-Candidate 6 Stage 0 and the isolated correctness gates are complete. E2E
-benchmarking is blocked because the current environment cannot reproduce the
-accepted CPU baseline. No measured candidate pair is accepted, and no
-candidate code or production optimization has entered the production branch.
+Candidate 6 isolated correctness and E2E benchmarking are complete. Neither
+`O_mid` nor `O_prv` established an E2E improvement under the campaign
+acceptance rule. Production integration is not recommended and requires an
+explicit project-owner decision. No candidate code or production optimization
+has entered the production branch.
 
 ## Audience
 
@@ -188,21 +189,21 @@ sample. Its compact-path attribution was:
 These values establish the expected local boundary but cannot qualify either
 candidate without E2E evidence.
 
-## E2E Baseline Blocker
+## E2E Feature Mismatch And Resolution
 
 The accepted canonical E2E `total_wall` is 37.224994 seconds. The first
-benchmark attempt produced:
+benchmark attempt incorrectly enabled both `timing` and `testing-mode` and
+produced:
 
 | warm-up | `total_wall` |
 | --- | ---: |
 | baseline | 56.172021 s |
 | `O_mid` candidate | 56.082403 s |
 
-During that attempt, macOS `corespotlightd` was observed consuming about 222%
-CPU. The run sequence was interrupted and no measured pair was accepted.
-After that process load disappeared, an additional baseline-only diagnostic
-still measured 56.314920 seconds. The external indexing load was therefore not
-a sufficient explanation for the persistent slowdown.
+During that attempt, macOS `corespotlightd` was also observed consuming about
+222% CPU. The run sequence was interrupted and no measured pair was accepted.
+After that process load disappeared, an additional `timing,testing-mode`
+baseline still measured 56.314920 seconds.
 
 The diagnostic baseline differed from the canonical table across unrelated
 stages:
@@ -216,21 +217,94 @@ stages:
 | `prove3.total` | 0.629799 s | 1.765250 s | 1.135451 s |
 | `prove4.total` | 8.837530 s | 22.571293 s | 13.733762 s |
 
-The machine was on AC power in automatic power mode, macOS reported no thermal
-or performance warning, and no competing high-CPU process was present during
-the baseline-only diagnostic. The current slowdown remains unexplained.
-
 After a full machine reboot, the initial Spotlight indexing load was allowed to
 finish before another diagnostic. The isolated experiment worktree baseline
-still measured 55.484695 seconds. To exclude the experiment implementation
-itself, the same command and fixture were then run from the clean
-`packages/backend` production worktree, which contains no Candidate 6 code.
-That baseline measured 54.027174 seconds. The production-worktree result
-confirms that the persistent slowdown is outside the Candidate 6 implementation
-and was not resolved by rebooting.
+still measured 55.484695 seconds. The clean `packages/backend` worktree
+measured 54.027174 seconds with the same incorrect feature combination.
 
-The campaign plan requires reproducing the accepted baseline within normal
-variance before evaluating a candidate. Candidate 6 therefore stops at this
-environment blocker. The two warm-ups and diagnostic run are retained only for
-audit and must not be used to accept or reject either binding. The post-reboot
-diagnostics are likewise excluded from candidate evaluation.
+The project owner then reproduced 41.479473 seconds on `main` using the VS Code
+timing configuration. That configuration enables `timing` only. Running the
+same `timing`-only command on `packages/backend` measured 37.078758 seconds,
+while `timing,testing-mode` on the same source measured 54.027174 seconds:
+
+| stage | `timing` only | `timing,testing-mode` | added time |
+| --- | ---: | ---: | ---: |
+| `init.total` | 4.579265 s | 5.387713 s | 0.808448 s |
+| `prove0.total` | 8.987330 s | 9.878970 s | 0.891640 s |
+| `prove1.total` | 2.020562 s | 1.993406 s | -0.027155 s |
+| `prove2.total` | 12.008084 s | 13.572975 s | 1.564891 s |
+| `prove3.total` | 0.637429 s | 1.726801 s | 1.089372 s |
+| `prove4.total` | 8.836300 s | 21.457892 s | 12.621593 s |
+| **E2E `total_wall`** | **37.078758 s** | **54.027174 s** | **16.948415 s** |
+
+`testing-mode` executes expensive Lemma, R1CS, polynomial-relation, remainder,
+and copy-constraint checks inside the timed prover lifecycle. It is required
+for the correctness gate but is not the production timing boundary. The
+baseline problem was therefore a benchmark-command defect, not a machine,
+Candidate 6, or reboot issue.
+
+The invalid runs above are retained only for audit. All accepted performance
+measurements below use `--features timing` and reproduce the canonical
+baseline. The experiment baseline warm-up was 37.220255 seconds.
+
+## `O_mid` E2E Results
+
+| pair | baseline `total_wall` | candidate `total_wall` | improvement |
+| ---: | ---: | ---: | ---: |
+| 1 | 37.096465 s | 37.174970 s | -0.078505 s |
+| 2 | 37.313142 s | 37.433051 s | -0.119909 s |
+| 3 | 37.596672 s | 37.116100 s | 0.480572 s |
+| 4 | 37.100457 s | 37.110498 s | -0.010041 s |
+| 5 | 37.273517 s | 37.101357 s | 0.172160 s |
+| **mean** | **37.276051 s** | **37.187195 s** | **0.088855 s** |
+
+The paired 95% confidence interval is -0.216398 to 0.394109 seconds. Baseline
+and candidate medians are 37.273517 and 37.116100 seconds; their ranges are
+0.500207 and 0.331694 seconds.
+
+The target binding decreased from 0.007437 to 0.005875 seconds on mean, a local
+reduction of 0.001562 seconds. Candidate preparation averaged 0.000710 seconds
+for parsing, 0.000031 seconds for zero compaction, 0.001396 seconds for base
+decoding, and 0.003733 seconds for MSM. The unchanged `O_pub_free` control
+averaged 0.001231 seconds for baseline and 0.001233 seconds for candidate.
+
+The local saving is much smaller than E2E variance. `O_mid` does not qualify.
+
+## `O_prv` E2E Results
+
+| pair | baseline `total_wall` | candidate `total_wall` | improvement |
+| ---: | ---: | ---: | ---: |
+| 1 | 38.129231 s | 37.392086 s | 0.737144 s |
+| 2 | 37.432527 s | 37.213485 s | 0.219042 s |
+| 3 | 37.360184 s | 37.223306 s | 0.136878 s |
+| 4 | 38.485557 s | 37.203626 s | 1.281931 s |
+| 5 | 38.987475 s | 38.850965 s | 0.136511 s |
+| **mean** | **38.078995 s** | **37.576693 s** | **0.502301 s** |
+
+All five pairs favored the candidate, but the paired 95% confidence interval is
+-0.121796 to 1.126398 seconds. Baseline and candidate medians are 38.129231 and
+37.223306 seconds; their ranges are 1.627292 and 1.647339 seconds.
+
+The target binding decreased from 0.665781 to 0.523916 seconds on mean, a stable
+local reduction of 0.141865 seconds. Candidate preparation averaged 0.105671
+seconds for parsing, 0.002136 seconds for zero compaction, 0.047255 seconds for
+base decoding, and 0.368843 seconds for MSM. The unchanged `O_pub_free` control
+averaged 0.001263 seconds for baseline and 0.001239 seconds for candidate.
+
+Unrelated stages contributed materially to the apparent E2E mean difference:
+baseline minus candidate averaged 0.214418 seconds in `prove0` and 0.110828
+seconds in `prove1`, although Candidate 6 changes only initialization. These
+unrelated deltas and the confidence interval show that the 0.502301-second mean
+cannot be attributed to zero compaction. `O_prv` therefore does not satisfy the
+E2E acceptance gate despite its repeatable local saving.
+
+## Recommendation
+
+Reject production integration of both Candidate 6 subcandidates:
+
+- `O_mid` saves only 1.562 milliseconds locally and has no E2E evidence;
+- `O_prv` saves 141.865 milliseconds locally, but its E2E confidence interval
+  crosses zero and unrelated stages dominate the observed mean.
+
+This recommendation does not authorize a production change. Candidate 6 stops
+at the required project-owner decision.
