@@ -513,39 +513,33 @@ with Low Power Mode enabled. The invalid runs showed broad slowdown across
 initialization, polynomial work, and MSM rather than movement isolated to the
 workaround.
 
-After connecting AC power and confirming normal power mode, one warm-up
-preceded five timing-only workaround runs:
+The first AC measurement session was also invalidated after the project owner
+confirmed that another workload consumed CPU resources during its 38- and
+39-second runs. Those contaminated samples and the sequential baseline runs
+from the same interval are excluded from all statistics and conclusions below.
+The unaffected 37.669889-second sample from that session was retained.
+
+Three subsequent timing-only runs were collected on AC power with normal power
+mode and without the interfering workload. Together with the retained sample,
+the valid CPU results are:
 
 | sample | `total_wall` | second Batch stage |
 | ---: | ---: | ---: |
 | 1 | 37.669889 s | 232.984459 ms |
-| 2 | 39.084410 s | 242.021792 ms |
-| 3 | 39.568471 s | 253.265167 ms |
-| 4 | 39.207099 s | 239.929917 ms |
-| 5 | 39.031914 s | 247.683959 ms |
-| mean | 38.912357 s | 243.177059 ms |
-| median | 39.084410 s | 242.021792 ms |
-| range | 37.669889 to 39.568471 s | 232.984459 to 253.265167 ms |
+| 2 | 37.703730 s | 226.720334 ms |
+| 3 | 37.587054 s | 229.593334 ms |
+| 4 | 37.925402 s | 235.065458 ms |
+| mean | 37.721519 s | 231.090896 ms |
+| median | 37.686809 s | 231.288897 ms |
+| range | 37.587054 to 37.925402 s | 226.720334 to 235.065458 ms |
 
-The immediately preceding source revision was then built in a detached
-worktree under the same AC power mode. Its three measured timing-only runs
-produced:
-
-| sample | `total_wall` | second Batch stage |
-| ---: | ---: | ---: |
-| 1 | 38.877217 s | 237.021417 ms |
-| 2 | 38.275263 s | 235.066583 ms |
-| 3 | 38.173713 s | 244.501708 ms |
-| mean | 38.442065 s | 238.863236 ms |
-| median | 38.275263 s | 237.021417 ms |
-| range | 38.173713 to 38.877217 s | 235.066583 to 244.501708 ms |
-
-The target-boundary mean changed by 4.313823 milliseconds, and the observed
-ranges overlap. The sequential whole-run means differ by 0.470292 seconds, but
-the target movement cannot account for that difference; it is therefore not
-evidence of a workaround regression. The accepted canonical CPU timing table
-remains unchanged because this check validates the CUDA workaround rather than
-reselecting the Candidate 2B optimization baseline.
+The valid `total_wall` range is 0.338349 seconds. The workaround's second-stage
+mean is 0.895645 milliseconds below the accepted pre-workaround canonical
+sample's 231.986541 milliseconds. The comparison does not establish a speedup,
+but it provides no evidence of a CPU regression at the changed boundary. The
+accepted canonical CPU timing table remains unchanged because this check
+validates the CUDA workaround rather than reselecting the Candidate 2B
+optimization baseline.
 
 Candidate 2B now passes the same backend-neutral prove control flow on CPU and
 CUDA. Its crash-recovery validation is complete.
