@@ -8,10 +8,13 @@ cache-reuse improvements; Option B established only a cache-reuse improvement.
 The project owner selected Option A as the Phase 1 finalist. Phase 2 must
 compare Option A alone with Option A plus Option D. Phase 2 correctness and
 CUDA performance measurements are complete. First-proof improvement was not
-established, while reused-proof improvement was established. The final
-production choice is blocked on the project-owner decision. No cache,
-representation change, or production optimization has entered the production
-branch.
+established for D on CUDA. A later local CPU comparison measured the unchanged
+baseline, Option A, and Option A+D five times each using first proofs only.
+Both cache paths improved over baseline, while A+D did not improve over A.
+The project owner excluded reused-proof results from the production decision.
+The final production choice is blocked on the project-owner decision. No
+cache, representation change, or production optimization has entered the
+production branch.
 
 ## Source And Environment
 
@@ -553,7 +556,11 @@ device-cache gathering and transfer, while its device-base MSM calls were
 `0.078504s` faster on mean. This supports a small local first-proof reduction,
 but not the larger and statistically inconclusive E2E mean movement.
 
-### Reused-Proof Results
+### Historical Reused-Proof Results
+
+The following CUDA results were collected before the project owner excluded
+reused proofs from the Candidate 5 decision. They remain as historical
+supporting data but carry no acceptance weight.
 
 | pair | Option A | Option A+D | A minus A+D |
 | ---: | ---: | ---: | ---: |
@@ -577,14 +584,83 @@ than `0.009ms` and also reduced mean ICICLE MSM time from `1.080972s` to
 `0.876958s`; the remaining E2E movement is neighboring-stage variation and is
 not attributed to Option D.
 
-### Phase 2 Recommendation And Blocker
+### CUDA Decision Result
 
-Option D establishes a reused-proof improvement but does not pass the
-campaign's primary first-proof `total_wall` gate. Under the current acceptance
-policy, the recommendation is to retain Option A without D. Selecting A+D
-would require an explicit project-owner decision that repeated proofs from one
-initialized prover outweigh the unestablished first-proof benefit and the
-additional device-cache implementation.
+Option D did not pass the campaign's primary first-proof `total_wall` gate on
+CUDA. The reused-proof result is excluded from the final decision. The local
+CPU first-proof comparison below provides the requested three-way comparison
+against the unchanged baseline.
 
-Phase 2 experimentation is complete. Production integration is blocked until
-the project owner selects Option A or Option A+D.
+## Local CPU First-Proof Three-Way Comparison
+
+At the project owner's direction, the unchanged baseline, Option A, and
+Option A+D were each measured exactly five times on the local ICICLE CPU
+fallback backend. Reused proofs were not executed or considered. Every sample
+includes `Prover::init`, full-grid decoding where applicable, device-cache
+construction where applicable, and prove0 through prove4.
+
+The five round orders were `B-A-D`, `A-D-B`, `D-B-A`, `B-D-A`, and `A-B-D`,
+where `B` is baseline and `D` is Option A+D.
+
+| round | baseline | Option A | Option A+D |
+| ---: | ---: | ---: | ---: |
+| 1 | 38.548326 s | 37.018632 s | 37.081405 s |
+| 2 | 38.126604 s | 37.060732 s | 37.257991 s |
+| 3 | 37.835977 s | 37.150746 s | 37.073644 s |
+| 4 | 37.789129 s | 37.293829 s | 37.240274 s |
+| 5 | 37.917986 s | 37.196537 s | 37.610820 s |
+| **mean** | **38.043604 s** | **37.144095 s** | **37.252827 s** |
+| **median** | **37.917986 s** | **37.150746 s** | **37.240274 s** |
+| **range** | **0.759196 s** | **0.275198 s** | **0.537176 s** |
+
+Paired first-proof results were:
+
+| comparison | mean improvement | paired 95% interval | pair direction |
+| --- | ---: | ---: | --- |
+| Option A over baseline | 0.899509 s | 0.392926 to 1.406092 s | 5 of 5 favor A |
+| Option A+D over baseline | 0.790778 s | 0.250817 to 1.330739 s | 5 of 5 favor A+D |
+| Option A over Option A+D | 0.108732 s | -0.142826 to 0.360289 s | 3 of 5 favor A |
+
+Both cache architectures established a first-proof improvement over the
+unchanged baseline. Option A+D did not establish an improvement over Option A.
+
+Candidate-owned mean attribution was:
+
+| boundary | baseline | Option A | Option A+D |
+| --- | ---: | ---: | ---: |
+| full-grid cache build | not executed | 0.264930 s | 0.262494 s |
+| archived CRS decode | 1.152031 s | not executed | not executed |
+| host active-rectangle gather | not executed | 0.124032 s | not executed |
+| device-cache gather | not executed | not executed | 0.108899 s |
+| device-cache transfer | not executed | not executed | 0.076328 s |
+| ICICLE MSM | 19.913384 s | 19.814467 s | 19.877798 s |
+
+Option A replaced `1.152031s` of archive decoding with `0.388962s` of full-grid
+construction and active-rectangle gathering. Its MSM calls were also
+`0.098917s` faster on mean. The directly attributed reduction of approximately
+`0.861986s` agrees with the `0.899509s` E2E improvement.
+
+Option A+D spent `0.447721s` on full-grid construction, device-cache gathering,
+and CPU-backend transfer. Its MSM calls were `0.035586s` faster than baseline.
+The directly attributed reduction of approximately `0.739896s` agrees with the
+`0.790778s` E2E improvement.
+
+Process snapshots recorded macOS XProtect remediation processes consuming about
+80% to 93% of one CPU core during rounds 3 through 5, and a VS Code renderer
+using about 68% of one core before the first baseline run. The project owner
+specified exactly five runs per path, so no replacement samples were added.
+The external load limits precision, but it does not reverse the result:
+candidate-owned attribution agrees with both baseline comparisons, while the
+Option A versus Option A+D interval already includes zero.
+
+## Final Recommendation And Blocker
+
+Use Option A without D for the first-proof-only lifecycle:
+
+- it established a `0.899509s` mean first-proof improvement over baseline;
+- A+D established no additional first-proof improvement over A;
+- A avoids the device-cache ownership, allocation, and transfer surface.
+
+Candidate 5 experimentation is complete. Production integration remains
+blocked until the project owner explicitly selects Option A, Option A+D, or
+the unchanged baseline.
