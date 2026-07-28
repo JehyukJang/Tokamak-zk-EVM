@@ -5,9 +5,11 @@
 Candidate 5 diagnostic profiling and the three approved Phase 1 host-cache
 experiments are complete. Options A and C established first-proof and
 cache-reuse improvements; Option B established only a cache-reuse improvement.
-The project owner must select exactly one host-cache finalist before Phase 2.
-No cache, representation change, or production optimization has entered the
-production branch.
+The project owner selected Option A as the Phase 1 finalist. Phase 2 must
+compare Option A alone with Option A plus Option D, but its performance
+measurement is blocked until a CUDA test machine is available. No cache,
+representation change, or production optimization has entered the production
+branch.
 
 ## Source And Environment
 
@@ -433,24 +435,28 @@ instead averaged 0.253789 seconds to construct the full grid and 0.189081
 seconds to construct shape caches. Reused cache access averaged 0.000019
 seconds, while baseline archive decoding averaged 1.108804 seconds.
 
-## Phase 1 Comparison And Blocker
+## Phase 1 Comparison And Decision
 
-| option | first-proof mean improvement | paired 95% interval | reused-proof mean improvement | paired 95% interval | retained raw points |
+| option | E2E first-proof mean improvement | paired 95% interval | reused-proof supporting improvement | paired 95% interval | retained raw points |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | A | 1.105089 s | 0.083748 to 2.126431 s | 1.213964 s | 0.711995 to 1.715934 s | about 384 MiB |
 | B | 0.096984 s | -1.351854 to 1.545821 s | 1.150517 s | 0.811997 to 1.489037 s | about 1.50 GiB |
 | C | 0.912707 s | 0.643981 to 1.181432 s | 1.354120 s | 0.881413 to 1.826827 s | about 1.88 GiB |
 
-Option C is the execution-time recommendation. Its first-proof result is
-stable, it has the largest measured reused-proof improvement, and it eliminates
-both repeated archive decoding and repeated active-rectangle gathering after
-initial construction. Option A remains viable with much lower memory use but
-continues to gather approximately 19.95 million bases per proof. Option B did
-not establish a first-proof improvement.
+The first-proof column is the canonical timing-table E2E `total_wall`: it starts
+before `Prover::init` and includes initialization and all proof stages. The
+reused-proof column executes all proof stages again on the same initialized
+`Prover`, so it excludes initialization and is supporting evidence rather than
+the acceptance metric.
 
-Candidate 5 is now blocked on the required project-owner selection of exactly
-one of Options A, B, or C. After that selection, Phase 2 compares the selected
-host cache by itself with the same cache combined with Option D. Option D
-performance measurement additionally requires a CUDA test machine, which is
-not currently available. No Phase 2 or production implementation is
-authorized by these results.
+The earlier Option C recommendation incorrectly gave the supporting reused
+measurement decision weight. It is withdrawn. Options A and C independently
+established E2E improvement against their respective baselines, while Option B
+did not. The Phase 1 experiments were run in separate sessions and therefore
+do not establish a direct A-versus-C performance ordering.
+
+The project owner selected Option A as the Phase 1 finalist. Phase 2 must
+compare Option A alone with Option A combined with Option D. Option D
+performance measurement requires a CUDA test machine, which is not currently
+available, so Candidate 5 stops at this hardware blocker. No Phase 2 or
+production implementation is authorized by this selection.
