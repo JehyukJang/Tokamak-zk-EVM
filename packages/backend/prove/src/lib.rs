@@ -2735,33 +2735,33 @@ impl Prover {
                 { lagrange_K0_XY.eval(&chi, &zeta) }
             );
 
-            let small_r_eval = crate::time_block!(
-                "poly.eval.prove4.R",
-                "poly",
-                vec![crate::timing::SizeInfo {
-                    label: "R",
-                    dims: vec![self.witness.rXY.x_size, self.witness.rXY.y_size]
-                },],
-                { self.witness.rXY.eval(&chi, &zeta) }
-            );
-            let small_r_omegaX_eval = crate::time_block!(
-                "poly.eval.prove4.R_omegaX",
-                "poly",
-                vec![crate::timing::SizeInfo {
-                    label: "R_omegaX",
-                    dims: vec![self.witness.rXY.x_size, self.witness.rXY.y_size]
-                },],
-                { r_omegaX.eval(&chi, &zeta) }
-            );
-            let small_r_omegaX_omegaY_eval = crate::time_block!(
-                "poly.eval.prove4.R_omegaX_omegaY",
-                "poly",
-                vec![crate::timing::SizeInfo {
-                    label: "R_omegaX_omegaY",
-                    dims: vec![self.witness.rXY.x_size, self.witness.rXY.y_size]
-                },],
-                { r_omegaX_omegaY.eval(&chi, &zeta) }
-            );
+            let [small_r_eval, small_r_omegaX_eval, small_r_omegaX_omegaY_eval] =
+                crate::time_block!(
+                    "poly.eval_same_point_batch.prove4.R_family",
+                    "poly",
+                    vec![crate::timing::SizeInfo {
+                        label: "R_family",
+                        dims: vec![3, self.witness.rXY.x_size, self.witness.rXY.y_size]
+                    },],
+                    {
+                        let evaluations = DensePolynomialExt::eval_same_point_batch(
+                            &[&self.witness.rXY, &r_omegaX, &r_omegaX_omegaY],
+                            &chi,
+                            &zeta,
+                        )
+                        .unwrap();
+                        evaluations.try_into().unwrap()
+                    }
+                );
+            #[cfg(feature = "testing-mode")]
+            {
+                assert_eq!(small_r_eval, self.witness.rXY.eval(&chi, &zeta));
+                assert_eq!(small_r_omegaX_eval, r_omegaX.eval(&chi, &zeta));
+                assert_eq!(
+                    small_r_omegaX_omegaY_eval,
+                    r_omegaX_omegaY.eval(&chi, &zeta)
+                );
+            }
             let lagrange_KL_XY = self.cache.lagrange_kl_xy.clone().unwrap_or_else(|| {
                 // Fallback for non-standard call order. Original expression:
                 // lagrange_KL_XY = lagrange_K_XY * lagrange_L_XY.

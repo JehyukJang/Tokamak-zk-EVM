@@ -325,6 +325,83 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_same_point_batch_matches_independent_evaluations() {
+        check_device();
+        let one = ScalarField::one();
+        let minus_one = ScalarField::zero() - one;
+        let points = [
+            (ScalarField::zero(), ScalarField::zero()),
+            (one, minus_one),
+            (ScalarField::from_u32(11), ScalarField::from_u32(13)),
+        ];
+
+        for (x_size, y_size) in [(1, 1), (4, 1), (1, 4), (8, 4), (64, 16), (4096, 256)] {
+            let coefficient_count = x_size * y_size;
+            let zero_coefficients = vec![ScalarField::zero(); coefficient_count];
+            let mut constant_coefficients = vec![ScalarField::zero(); coefficient_count];
+            constant_coefficients[0] = ScalarField::from_u32(7);
+            let mut sparse_coefficients = vec![ScalarField::zero(); coefficient_count];
+            for index in (0..coefficient_count).step_by((coefficient_count / 7).max(1)) {
+                sparse_coefficients[index] = ScalarField::from_u32((index % 97 + 1) as u32);
+            }
+            let dense_coefficients = ScalarCfg::generate_random(coefficient_count);
+            let polynomials = [
+                DensePolynomialExt::from_coeffs(
+                    HostSlice::from_slice(&zero_coefficients),
+                    x_size,
+                    y_size,
+                ),
+                DensePolynomialExt::from_coeffs(
+                    HostSlice::from_slice(&constant_coefficients),
+                    x_size,
+                    y_size,
+                ),
+                DensePolynomialExt::from_coeffs(
+                    HostSlice::from_slice(&sparse_coefficients),
+                    x_size,
+                    y_size,
+                ),
+                DensePolynomialExt::from_coeffs(
+                    HostSlice::from_slice(&dense_coefficients),
+                    x_size,
+                    y_size,
+                ),
+            ];
+            let polynomial_refs = polynomials.iter().collect::<Vec<_>>();
+
+            for (x, y) in points {
+                let expected = polynomials
+                    .iter()
+                    .map(|polynomial| polynomial.eval(&x, &y))
+                    .collect::<Vec<_>>();
+                let actual =
+                    DensePolynomialExt::eval_same_point_batch(&polynomial_refs, &x, &y).unwrap();
+                assert_eq!(actual, expected);
+            }
+        }
+    }
+
+    #[test]
+    fn test_eval_same_point_batch_rejects_empty_and_mismatched_shapes() {
+        check_device();
+        let x = ScalarField::from_u32(3);
+        let y = ScalarField::from_u32(5);
+        assert_eq!(
+            DensePolynomialExt::eval_same_point_batch(&[], &x, &y),
+            Err(icicle_runtime::errors::eIcicleError::InvalidArgument)
+        );
+
+        let first =
+            DensePolynomialExt::from_coeffs(HostSlice::from_slice(&[ScalarField::one(); 4]), 2, 2);
+        let second =
+            DensePolynomialExt::from_coeffs(HostSlice::from_slice(&[ScalarField::one(); 8]), 4, 2);
+        assert_eq!(
+            DensePolynomialExt::eval_same_point_batch(&[&first, &second], &x, &y),
+            Err(icicle_runtime::errors::eIcicleError::InvalidArgument)
+        );
+    }
+
+    #[test]
     fn test_from_coeffs() {
         // pass
         let poly = create_simple_polynomial();
