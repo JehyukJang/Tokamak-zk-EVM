@@ -6,11 +6,12 @@ Candidate 5 diagnostic profiling and the three approved Phase 1 host-cache
 experiments are complete. Options A and C established first-proof and
 cache-reuse improvements; Option B established only a cache-reuse improvement.
 The project owner selected Option A as the Phase 1 finalist. Phase 2 must
-compare Option A alone with Option A plus Option D, but its performance
-measurement is deferred to the campaign's lowest-priority CUDA batch. It will
-begin after the remaining CPU campaign is complete and a CUDA environment is
-available. No cache, representation change, or production optimization has
-entered the production branch.
+compare Option A alone with Option A plus Option D. Phase 2 correctness and
+CUDA performance measurements are complete. First-proof improvement was not
+established, while reused-proof improvement was established. The final
+production choice is blocked on the project-owner decision. No cache,
+representation change, or production optimization has entered the production
+branch.
 
 ## Source And Environment
 
@@ -18,7 +19,9 @@ entered the production branch.
 - Option A experiment: `4cf658b4a`
 - Option B experiment: `44f8f29d1`
 - Option C experiment: `f030bf727`
-- Current benchmark backend: ICICLE CPU fallback
+- Phase 2 experiment: `13c7e0924`
+- Phase 2 CPU backend: ICICLE CPU fallback on Apple M4 Pro
+- Phase 2 CUDA backend: ICICLE v3.8.0 on NVIDIA A10 with 23,028 MiB
 - Primary metric for any later candidate: end-to-end `total_wall`
 - Diagnostic source: `prove/optimization/timing.local.cpu.current.json`
 - Experiment isolation: dedicated worktree and experiment-only branches
@@ -457,8 +460,131 @@ did not. The Phase 1 experiments were run in separate sessions and therefore
 do not establish a direct A-versus-C performance ordering.
 
 The project owner selected Option A as the Phase 1 finalist. Phase 2 must
-compare Option A alone with Option A combined with Option D. Option D
-performance measurement requires a CUDA test machine, so Phase 2 is deferred
-to the campaign's lowest-priority CUDA batch. This deferral does not block the
-next CPU-only candidate. No Phase 2 or production implementation is authorized
-by this selection.
+compare Option A alone with Option A combined with Option D. That comparison
+was initially deferred until a CUDA test machine became available. The
+following section records the completed Phase 2 experiment; the Phase 1
+selection did not itself authorize production integration.
+
+## Phase 2 Device-Residency Experiment
+
+Experiment commit `13c7e0924` retains Option A's complete decoded host grid and
+adds a device-resident cache keyed by the exact active CRS rectangle
+`(x_size, y_size)`. On a cache miss, the experiment gathers the compact
+row-major base vector from the decoded grid, allocates a typed ICICLE
+`DeviceVec<G1Affine>`, copies the bases to the active device, and retains the
+allocation for the prover lifetime. On a hit, the MSM dispatcher receives the
+same typed device slice directly.
+
+The implementation:
+
+- uses the same prove control flow on the ICICLE CPU and CUDA backends;
+- does not inspect the active backend;
+- does not add a host fallback;
+- keeps the cache lock only through first construction and returns an `Arc`
+  before invoking MSM;
+- includes full-grid decoding, device allocation, initial transfer, and cache
+  lifetime in the measured prover lifecycle.
+
+### Correctness
+
+The focused commitment test compared the archive baseline, Option A, and
+Option A+D exactly for zero, constant, X-only, Y-only, sparse, and dense
+polynomials. Polynomial metadata also matched exactly.
+
+The following gates passed:
+
+- focused CPU and CUDA device-base commitment parity;
+- all `libs` tests on CPU and CUDA: `43 passed; 0 failed; 3 ignored`;
+- complete CPU and CUDA release `timing,testing-mode` Option A+D versus
+  Option A parity;
+- fresh CUDA preprocess, Option A+D proof generation, and verification.
+
+The fresh verifier result was `true`. During the CUDA parity fixture,
+`nvidia-smi` observed approximately 3.8 GiB of device memory in use, within the
+NVIDIA A10's 23,028 MiB capacity.
+
+### CUDA Benchmark Protocol
+
+Option A and Option A+D each received one unmeasured warm-up. Five measured
+pairs alternated execution order:
+
+1. A, A+D;
+2. A+D, A;
+3. A, A+D;
+4. A+D, A;
+5. A, A+D.
+
+Each invocation recorded both the complete first proof, including
+`Prover::init` and cache construction, and a second proof using the same
+prover and retained cache. Runs used the release profile with `timing` only on
+the same A10, source revision, CRS, QAP, synthesizer output, and ICICLE v3.8.0
+CUDA backend.
+
+### First-Proof Results
+
+| pair | Option A | Option A+D | A minus A+D |
+| ---: | ---: | ---: | ---: |
+| 1 | 23.105823 s | 22.816105 s | 0.289718 s |
+| 2 | 23.262647 s | 23.303093 s | -0.040446 s |
+| 3 | 23.157733 s | 22.802643 s | 0.355090 s |
+| 4 | 23.188531 s | 23.443928 s | -0.255397 s |
+| 5 | 23.712127 s | 23.130695 s | 0.581433 s |
+| **mean** | **23.285372 s** | **23.099293 s** | **0.186080 s** |
+| **median** | **23.188531 s** | **23.130695 s** | **0.289718 s** |
+| **range** | **0.606305 s** | **0.641285 s** | **0.836829 s** |
+
+The paired first-proof delta had a sample standard deviation of `0.332350s`
+and a 95% interval of `-0.226587s` to `0.598746s`. Two of five pairs favored
+Option A. The primary first-proof `total_wall` metric therefore does not
+establish an Option D improvement.
+
+First-proof attribution means were:
+
+| boundary | Option A | Option A+D |
+| --- | ---: | ---: |
+| full-grid decode | 0.426427 s | 0.436893 s |
+| host active-rectangle gather | 0.794167 s | not executed |
+| device-cache gather | not executed | 0.659074 s |
+| device-cache H2D | not executed | 0.148273 s |
+| ICICLE MSM | 1.108153 s | 1.029649 s |
+
+Option A+D replaced `0.794167s` of host gathering with `0.807348s` of initial
+device-cache gathering and transfer, while its device-base MSM calls were
+`0.078504s` faster on mean. This supports a small local first-proof reduction,
+but not the larger and statistically inconclusive E2E mean movement.
+
+### Reused-Proof Results
+
+| pair | Option A | Option A+D | A minus A+D |
+| ---: | ---: | ---: | ---: |
+| 1 | 21.140451 s | 19.982775 s | 1.157675 s |
+| 2 | 21.746369 s | 21.183664 s | 0.562704 s |
+| 3 | 22.094405 s | 19.783540 s | 2.310864 s |
+| 4 | 21.996917 s | 21.085821 s | 0.911096 s |
+| 5 | 23.336713 s | 20.153908 s | 3.182806 s |
+| **mean** | **22.062971 s** | **20.437942 s** | **1.625029 s** |
+| **median** | **21.996917 s** | **20.153908 s** | **1.157675 s** |
+| **range** | **2.196263 s** | **1.400124 s** | **2.620101 s** |
+
+Every reused-proof pair favored Option A+D. The paired delta had a sample
+standard deviation of `1.090148s` and a 95% interval of `0.271432s` to
+`2.978627s`.
+
+Option A continued to spend `0.802261s` gathering active rectangles on each
+reused proof. Option A+D replaced that work with cache lookups totaling less
+than `0.009ms` and also reduced mean ICICLE MSM time from `1.080972s` to
+`1.006275s`. The directly attributed reused-proof saving was approximately
+`0.876958s`; the remaining E2E movement is neighboring-stage variation and is
+not attributed to Option D.
+
+### Phase 2 Recommendation And Blocker
+
+Option D establishes a reused-proof improvement but does not pass the
+campaign's primary first-proof `total_wall` gate. Under the current acceptance
+policy, the recommendation is to retain Option A without D. Selecting A+D
+would require an explicit project-owner decision that repeated proofs from one
+initialized prover outweigh the unestablished first-proof benefit and the
+additional device-cache implementation.
+
+Phase 2 experimentation is complete. Production integration is blocked until
+the project owner selects Option A or Option A+D.
