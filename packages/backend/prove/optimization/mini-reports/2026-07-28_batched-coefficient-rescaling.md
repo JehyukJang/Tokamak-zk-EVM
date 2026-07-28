@@ -2,12 +2,15 @@
 
 ## Decision Status
 
-Candidate 4 is defined but not yet implemented or benchmarked. No production
-code has changed.
+Candidate 4 is rejected. Both X-only and Y-only batching reduced their isolated
+and instrumented scaling boundaries, but neither improved end-to-end
+`total_wall` beyond observed noise. No production code changed.
 
 ## Source And Environment
 
 - Production baseline: `ee948ca0e`
+- Stage 0 report commit: `3c3f8367a`
+- Detached experiment commit: `19096e9a6`
 - Candidate owners: `DensePolynomialExt` coefficient scaling and prove2/prove4
   scaling call sites
 - Current benchmark backend: ICICLE CPU fallback
@@ -171,3 +174,141 @@ subcandidate:
 End-to-end `total_wall` is the acceptance metric. No subcandidate may enter
 production without exact correctness, fresh verification, an E2E improvement
 that exceeds observed noise, and explicit project-owner approval.
+
+## Experimental Implementation
+
+The detached experiment added Legacy, X-only, Y-only, Both, and Parity
+selectors. The selectors and candidate implementation existed only in the
+detached worktree and were never copied to the production branch.
+
+The candidate:
+
+1. copied the polynomial coefficients once to a device buffer;
+2. generated and uploaded one one-dimensional power table;
+3. invoked the public `icicle_core::vec_ops::scalar_mul` wrapper with contiguous
+   X batches or strided Y column batches;
+4. constructed the result directly from the device output.
+
+An initial focused test exposed an important API distinction. Calling the
+`ScalarCfg::scalar_mul` trait method directly bypassed the public wrapper's
+argument setup, leaving `VecOpsConfig.batch_size` at one. Only the first scalar,
+which is always one, was then used. The experiment was corrected to call the
+public wrapper, which infers the native batch size from the scalar slice and
+preserves `columns_batch`. All subsequent correctness and benchmark results use
+that corrected implementation.
+
+## Correctness Results
+
+The focused release test passed exact coefficient, shape, degree, and
+evaluation-identity parity for both directions across:
+
+- zero and constant polynomials;
+- one-by-many and many-by-one shapes;
+- sparse and dense polynomials;
+- 64-by-16 and representative 4096-by-256 shapes;
+- zero, one, negative-one, root-of-unity, and nontrivial scale factors.
+
+The complete release `timing,testing-mode` fixture passed with every prove2 and
+prove4 scaling call in Parity mode. A fresh preprocess artifact was generated,
+then independent X-only and Y-only proofs were generated. Both proofs passed
+the existing verifier with result `true`.
+
+The relevant commands were:
+
+```text
+cargo test --release -p libs --lib test_batched_coefficient_scaling_matches_legacy -- --nocapture
+cargo test --release -p libs --lib bench_batched_coefficient_scaling_candidates -- --ignored --nocapture
+TOKAMAK_COEFFICIENT_SCALING_EXPERIMENT=parity ... cargo test --release -p prove --features timing,testing-mode --test timing timing_prove_stages -- --nocapture
+cargo run --release -p preprocess -- ...
+TOKAMAK_COEFFICIENT_SCALING_EXPERIMENT=x cargo run --release -p prove -- ...
+cargo run --release -p verify -- ...
+TOKAMAK_COEFFICIENT_SCALING_EXPERIMENT=y cargo run --release -p prove -- ...
+cargo run --release -p verify -- ...
+```
+
+## Isolated Boundary Benchmark
+
+The representative 4096-by-256 benchmark used ten alternating Legacy/Candidate
+repetitions per direction and included coefficient copying, power generation
+and upload, allocation, native dispatch, synchronization, and result
+construction.
+
+| direction | Legacy mean | Candidate mean | reduction |
+| --- | ---: | ---: | ---: |
+| X | 0.005695 s | 0.003593 s | 0.002102 s |
+| Y | 0.008358 s | 0.004637 s | 0.003720 s |
+
+Exact coefficient parity passed on every repetition. These local reductions
+qualified both independent directions for E2E measurement but did not determine
+acceptance.
+
+## X-Only End-To-End Benchmark
+
+Legacy and X-only were warmed once, then measured in this order:
+
+```text
+L1, X1, X2, L2, L3, X3, X4, L4, L5, X5
+```
+
+| pair | Legacy `total_wall` | X-only `total_wall` | Legacy minus X-only |
+| ---: | ---: | ---: | ---: |
+| 1 | 37.933011 s | 37.964116 s | -0.031105 s |
+| 2 | 37.897023 s | 37.978838 s | -0.081815 s |
+| 3 | 38.057720 s | 37.921130 s | 0.136590 s |
+| 4 | 37.936089 s | 37.917543 s | 0.018546 s |
+| 5 | 37.993589 s | 38.028884 s | -0.035294 s |
+
+| statistic | Legacy | X-only | Legacy minus X-only |
+| --- | ---: | ---: | ---: |
+| mean | 37.963487 s | 37.962102 s | 0.001384 s |
+| median | 37.936089 s | 37.964116 s | -0.031105 s paired median |
+| minimum | 37.897023 s | 37.917543 s | -0.081815 s |
+| maximum | 38.057720 s | 38.028884 s | 0.136590 s |
+| range | 0.160697 s | 0.111340 s | 0.218405 s |
+
+The paired improvement had a 95% Student-t interval of `-0.102312 s` to
+`0.105080 s`. The two instrumented X scaling calls improved from a 0.014370
+second Legacy mean to a 0.008746 second candidate mean, a 0.005624 second local
+reduction. That work did not produce a measurable E2E improvement.
+
+## Y-Only End-To-End Benchmark
+
+Legacy and Y-only were independently warmed once, then measured in this order:
+
+```text
+L1, Y1, Y2, L2, L3, Y3, Y4, L4, L5, Y5
+```
+
+| pair | Legacy `total_wall` | Y-only `total_wall` | Legacy minus Y-only |
+| ---: | ---: | ---: | ---: |
+| 1 | 38.056052 s | 37.764812 s | 0.291239 s |
+| 2 | 37.947915 s | 37.929940 s | 0.017975 s |
+| 3 | 37.905231 s | 37.851449 s | 0.053782 s |
+| 4 | 37.929681 s | 38.375350 s | -0.445668 s |
+| 5 | 37.727354 s | 37.761218 s | -0.033865 s |
+
+| statistic | Legacy | Y-only | Legacy minus Y-only |
+| --- | ---: | ---: | ---: |
+| mean | 37.913246 s | 37.936554 s | -0.023307 s |
+| median | 37.929681 s | 37.851449 s | 0.017975 s paired median |
+| minimum | 37.727354 s | 37.761218 s | -0.445668 s |
+| maximum | 38.056052 s | 38.375350 s | 0.291239 s |
+| range | 0.328698 s | 0.614131 s | 0.736908 s |
+
+The paired improvement had a 95% Student-t interval of `-0.354791 s` to
+`0.308177 s`. The two instrumented Y scaling calls improved from a 0.035386
+second Legacy mean to a 0.010389 second candidate mean, a 0.024997 second local
+reduction. Mean E2E time nevertheless regressed by 0.023307 seconds.
+
+## Final Decision
+
+X-only and Y-only both failed the primary E2E gate. Their confidence intervals
+include zero by margins much larger than the work removed, and Y-only regressed
+on mean `total_wall`. The candidates must not be combined to manufacture a
+larger local boundary because the predefined protocol requires each direction
+to qualify independently.
+
+Candidate 4 is rejected. No production integration, production timing-table
+regeneration, backend-specific path, runtime selector, or fallback is retained.
+The detached experiment and ignored raw artifacts may be removed after this
+report is committed.
