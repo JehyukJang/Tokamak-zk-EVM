@@ -2,10 +2,10 @@
 
 ## Decision Status
 
-Candidate 6 Stage 0 is complete. The experiment will evaluate `O_mid` and
-`O_prv` independently by removing zero-scalar terms before their MSMs.
-`O_pub_free` remains unchanged as a small-input control. No candidate code or
-production optimization has been implemented.
+Candidate 6 Stage 0 and the isolated correctness gates are complete. E2E
+benchmarking is blocked because the current environment cannot reproduce the
+accepted CPU baseline. No measured candidate pair is accepted, and no
+candidate code or production optimization has entered the production branch.
 
 ## Audience
 
@@ -15,6 +15,8 @@ Rust/ICICLE prover in `packages/backend`.
 ## Source And Environment
 
 - Production baseline: `6d0631148`
+- Boundary-definition commit: `2818e4739`
+- Isolated experiment commit: `38fa95654`
 - Upstream baseline: `origin/main` at `c13e8067d`
 - Active backend: ICICLE CPU fallback
 - Primary metric: timing-table E2E `total_wall`
@@ -147,3 +149,78 @@ Each binding qualifies independently only when its paired E2E improvement is
 larger than observed noise and all correctness gates pass. A local binding
 reduction alone cannot qualify the candidate. No qualifying result authorizes
 production integration without a separate project-owner decision.
+
+## Isolated Correctness Results
+
+The focused helper tests passed for:
+
+- all-zero;
+- all-nonzero;
+- first-only;
+- last-only;
+- alternating;
+- representative sparse input;
+- retained base/scalar order;
+- selected-count validation before zero filtering.
+
+The complete `libs` test suite passed with 45 tests passed and 3 ignored. The
+release `timing,testing-mode` fixture then ran in `parity` mode on the complete
+234-placement fixture. Exact G1 equality passed for both `O_mid` and `O_prv`.
+The measured retained counts matched the static profile exactly:
+
+| binding | selected | retained |
+| --- | ---: | ---: |
+| `O_mid` | 6,820 | 4,391 |
+| `O_prv` | 650,925 | 352,160 |
+
+One fresh preprocess artifact was generated. Independent fresh `O_mid` and
+`O_prv` compact proofs were then generated and verified. The existing verifier
+returned `true` for both proofs.
+
+The parity run executed both full and compact bindings and is not a performance
+sample. Its compact-path attribution was:
+
+| binding | parse | zero compaction | base decode | MSM |
+| --- | ---: | ---: | ---: | ---: |
+| `O_mid` | 0.000631 s | 0.000027 s | 0.000296 s | 0.004134 s |
+| `O_prv` | 0.110684 s | 0.002132 s | 0.038703 s | 0.374590 s |
+
+These values establish the expected local boundary but cannot qualify either
+candidate without E2E evidence.
+
+## E2E Baseline Blocker
+
+The accepted canonical E2E `total_wall` is 37.224994 seconds. The first
+benchmark attempt produced:
+
+| warm-up | `total_wall` |
+| --- | ---: |
+| baseline | 56.172021 s |
+| `O_mid` candidate | 56.082403 s |
+
+During that attempt, macOS `corespotlightd` was observed consuming about 222%
+CPU. The run sequence was interrupted and no measured pair was accepted.
+After that process load disappeared, an additional baseline-only diagnostic
+still measured 56.314920 seconds. The external indexing load was therefore not
+a sufficient explanation for the persistent slowdown.
+
+The diagnostic baseline differed from the canonical table across unrelated
+stages:
+
+| stage | canonical | diagnostic | increase |
+| --- | ---: | ---: | ---: |
+| `init.total` | 4.650655 s | 5.611991 s | 0.961336 s |
+| `prove0.total` | 9.033163 s | 10.309062 s | 1.275899 s |
+| `prove1.total` | 1.991998 s | 2.105462 s | 0.113464 s |
+| `prove2.total` | 12.071667 s | 13.939766 s | 1.868098 s |
+| `prove3.total` | 0.629799 s | 1.765250 s | 1.135451 s |
+| `prove4.total` | 8.837530 s | 22.571293 s | 13.733762 s |
+
+The machine was on AC power in automatic power mode, macOS reported no thermal
+or performance warning, and no competing high-CPU process was present during
+the baseline-only diagnostic. The current slowdown remains unexplained.
+
+The campaign plan requires reproducing the accepted baseline within normal
+variance before evaluating a candidate. Candidate 6 therefore stops at this
+environment blocker. The two warm-ups and diagnostic run are retained only for
+audit and must not be used to accept or reject either binding.
