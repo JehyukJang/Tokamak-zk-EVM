@@ -13,9 +13,10 @@ baseline, Option A, and Option A+D five times each using first proofs only.
 Both cache paths improved over baseline, while A+D did not improve over A.
 The project owner excluded reused-proof results from the production decision.
 The project owner then rejected Option D. Option A remains the selected
-Candidate 5 architecture, but production integration has not been authorized
-or started. No cache, representation change, or production optimization has
-entered the production branch.
+Candidate 5 architecture. The project owner authorized production integration
+on 2026-07-29. Production commit `9eb399705` applies Option A without the
+experiment controls or Option D and has passed the production correctness and
+timing gates.
 
 ## Source And Environment
 
@@ -25,6 +26,7 @@ entered the production branch.
 - Option C experiment: `f030bf727`
 - Phase 2 experiment: `13c7e0924`
 - Option D rejection cleanup: `f17df6f96`
+- Option A production integration: `9eb399705`
 - Phase 2 CPU backend: ICICLE CPU fallback on Apple M4 Pro
 - Phase 2 CUDA backend: ICICLE v3.8.0 on NVIDIA A10 with 23,028 MiB
 - Primary metric for any later candidate: end-to-end `total_wall`
@@ -655,7 +657,7 @@ The external load limits precision, but it does not reverse the result:
 candidate-owned attribution agrees with both baseline comparisons, while the
 Option A versus Option A+D interval already includes zero.
 
-## Final Decision And Blocker
+## Final Decision And Production Integration
 
 The project owner rejected Option D. Option A remains selected for the
 first-proof-only lifecycle because:
@@ -668,6 +670,43 @@ Commit `f17df6f96` removed the Option D implementation from the isolated
 experiment branch while retaining Option A and the historical evidence in this
 report.
 
-Candidate 5 experimentation and architecture selection are complete.
-Production integration remains blocked until the project owner explicitly
-authorizes applying Option A to production.
+The project owner authorized Option A production integration on 2026-07-29.
+Production commit `9eb399705`:
+
+- decodes all 4,194,304 archived `xy_powers` once while loading `SigmaHolder`;
+- retains the approximately 384 MiB affine grid for the prover lifetime;
+- gathers each active row-major commitment rectangle from that decoded grid;
+- keeps ICICLE responsible for CPU or CUDA MSM backend selection;
+- retains the archive-decoding implementation as the independent unit-test
+  oracle;
+- excludes experiment environment variables, parity modes, reused-proof
+  runners, runtime fallback, and all Option D device-cache code.
+
+The production validation passed:
+
+- focused exact archive-versus-cache G1 and polynomial-metadata parity for
+  zero, constant, X-only, Y-only, sparse, and dense polynomials;
+- the complete `libs` suite with 43 passed and 3 ignored tests;
+- the release prover library build;
+- the complete release `timing,testing-mode` fixture;
+- fresh preprocess generation, fresh Option A proof generation, and
+  verification returning `true`.
+
+The regenerated production CPU timing table records:
+
+| timing table | `total_wall` | polynomial total | ICICLE MSM total |
+| --- | ---: | ---: | ---: |
+| immediate pre-integration table | 37.224994 s | 11.257661 s | 19.416715 s |
+| Option A production table | 37.346188 s | 11.466307 s | 19.993788 s |
+| post minus pre | +0.121194 s | +0.208646 s | +0.577073 s |
+
+The production run spent 0.266444 seconds building the full decoded grid and
+0.119650 seconds gathering all 15 active commitment rectangles. The two timing
+tables are unpaired single samples, and the movement is dominated by slower
+unchanged polynomial and MSM work. It therefore neither establishes a
+production regression nor supersedes the five paired first-proof experiment,
+which measured a 0.899509-second Option A improvement with a paired 95%
+interval of 0.392926 to 1.406092 seconds.
+
+Candidate 5 experimentation, architecture selection, production integration,
+correctness validation, and production timing regeneration are complete.
