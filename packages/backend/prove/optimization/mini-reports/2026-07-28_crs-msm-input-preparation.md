@@ -7,9 +7,10 @@ experiments are complete. Options A and C established first-proof and
 cache-reuse improvements; Option B established only a cache-reuse improvement.
 The project owner selected Option A as the Phase 1 finalist. Phase 2 must
 compare Option A alone with Option A plus Option D, but its performance
-measurement is blocked until a CUDA test machine is available. No cache,
-representation change, or production optimization has entered the production
-branch.
+measurement is deferred to the campaign's lowest-priority CUDA batch. It will
+begin after the remaining CPU campaign is complete and a CUDA environment is
+available. No cache, representation change, or production optimization has
+entered the production branch.
 
 ## Source And Environment
 
@@ -457,6 +458,7 @@ do not establish a direct A-versus-C performance ordering.
 
 The project owner selected Option A as the Phase 1 finalist. Phase 2 must
 compare Option A alone with Option A combined with Option D. Option D
-performance measurement requires a CUDA test machine, which is not currently
-available, so Candidate 5 stops at this hardware blocker. No Phase 2 or
-production implementation is authorized by this selection.
+performance measurement requires a CUDA test machine, so Phase 2 is deferred
+to the campaign's lowest-priority CUDA batch. This deferral does not block the
+next CPU-only candidate. No Phase 2 or production implementation is authorized
+by this selection.
