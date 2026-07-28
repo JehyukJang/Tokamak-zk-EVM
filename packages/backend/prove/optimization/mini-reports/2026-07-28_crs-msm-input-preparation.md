@@ -12,9 +12,10 @@ established for D on CUDA. A later local CPU comparison measured the unchanged
 baseline, Option A, and Option A+D five times each using first proofs only.
 Both cache paths improved over baseline, while A+D did not improve over A.
 The project owner excluded reused-proof results from the production decision.
-The final production choice is blocked on the project-owner decision. No
-cache, representation change, or production optimization has entered the
-production branch.
+The project owner then rejected Option D. Option A remains the selected
+Candidate 5 architecture, but production integration has not been authorized
+or started. No cache, representation change, or production optimization has
+entered the production branch.
 
 ## Source And Environment
 
@@ -23,6 +24,7 @@ production branch.
 - Option B experiment: `44f8f29d1`
 - Option C experiment: `f030bf727`
 - Phase 2 experiment: `13c7e0924`
+- Option D rejection cleanup: `f17df6f96`
 - Phase 2 CPU backend: ICICLE CPU fallback on Apple M4 Pro
 - Phase 2 CUDA backend: ICICLE v3.8.0 on NVIDIA A10 with 23,028 MiB
 - Primary metric for any later candidate: end-to-end `total_wall`
@@ -653,14 +655,19 @@ The external load limits precision, but it does not reverse the result:
 candidate-owned attribution agrees with both baseline comparisons, while the
 Option A versus Option A+D interval already includes zero.
 
-## Final Recommendation And Blocker
+## Final Decision And Blocker
 
-Use Option A without D for the first-proof-only lifecycle:
+The project owner rejected Option D. Option A remains selected for the
+first-proof-only lifecycle because:
 
 - it established a `0.899509s` mean first-proof improvement over baseline;
 - A+D established no additional first-proof improvement over A;
 - A avoids the device-cache ownership, allocation, and transfer surface.
 
-Candidate 5 experimentation is complete. Production integration remains
-blocked until the project owner explicitly selects Option A, Option A+D, or
-the unchanged baseline.
+Commit `f17df6f96` removed the Option D implementation from the isolated
+experiment branch while retaining Option A and the historical evidence in this
+report.
+
+Candidate 5 experimentation and architecture selection are complete.
+Production integration remains blocked until the project owner explicitly
+authorizes applying Option A to production.
