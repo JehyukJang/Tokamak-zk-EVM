@@ -82,7 +82,9 @@ mean. Mean `prove4.total` changed from `8.390605 s` to `7.998948 s`.
 ## Isolated CUDA Benchmark
 
 Five CUDA pairs used the same execution order, source, fixture, CRS, NVIDIA A10
-host, and timing instrumentation.
+host, and timing instrumentation. The host was later found to be in a degraded
+execution state. The paired deltas remain useful because each pair used the same
+host state, but the absolute `35 s` values below are not a valid CUDA baseline.
 
 | pair | Legacy `total_wall` | Candidate `total_wall` | improvement |
 | ---: | ---: | ---: | ---: |
@@ -139,15 +141,31 @@ The median `total_wall` sample regenerated
 
 | sample | `total_wall` | `prove4.total` | grouped boundary |
 | ---: | ---: | ---: | ---: |
-| 1 | 35.910590 s | 11.959916 s | 0.138864 s |
-| 2 | 35.034587 s | 11.417201 s | 0.128253 s |
-| 3 | 35.238560 s | 11.612610 s | 0.139030 s |
-| mean | 35.394579 s | 11.663242 s | 0.135382 s |
-| median | 35.238560 s | 11.612610 s | 0.138864 s |
+| 1 | 23.648456 s | 7.966462 s | 0.086485 s |
+| 2 | 23.336629 s | 7.773833 s | 0.086314 s |
+| 3 | 23.155058 s | 7.712419 s | 0.087091 s |
+| mean | 23.380048 s | 7.817571 s | 0.086630 s |
+| median | 23.336629 s | 7.773833 s | 0.086485 s |
 
-The new A10 host is broadly slower than the previous A10 environment across
-CPU preparation and GPU operations. Historical absolute CUDA tables are not
-used as the production comparison baseline.
+The first production CUDA set measured `35.910590 s`, `35.034587 s`, and
+`35.238560 s`. Those samples were rejected because the same 234-placement
+fixture had previously completed in approximately `22.8-23.7 s`, and a
+published prebuilt prover also regressed to `41.872 s` on the affected host.
+The slowdown was distributed across all prove stages rather than concentrated
+in the grouped evaluation.
+
+The CUDA environment was rebuilt on a fresh Lambda Cloud A10 instance with the
+same 30-vCPU Intel Xeon Platinum 8358 profile, NVIDIA driver `580.105.08`, CUDA
+toolkit `12.8`, ICICLE `3.8.0` Ubuntu 22 CUDA 12.2 backend, and published
+`tokamak-backend-crs-v2.1-20260502T085053Z.zip` CRS. A continuously monitored
+run measured `23.692819 s`. It observed no competing workload, CPU steal, I/O
+wait, swap activity, or memory pressure; the GPU ran at PCIe Gen4 x16 and up to
+1695 MHz. Three subsequent unmonitored timing-only runs produced the table
+above and restored the previous same-fixture range.
+
+The exact degraded-host cause was not recoverable after the instance was
+replaced. The clean-instance reproduction establishes that the `35 s` set was
+an environment failure rather than a Candidate 2D production regression.
 
 ## Final Result
 
