@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import {
+  activateManagedPrerequisiteEnvironment,
   assertPrerequisiteInstallMayRunAsCurrentUser,
   assertPrerequisiteInstallIsInteractive,
   buildPrerequisiteInstallationPlan,
@@ -192,6 +193,7 @@ export async function installRuntime(options: InstallOptions): Promise<RuntimeCo
     return await installDockerRuntime(options);
   }
 
+  activateManagedPrerequisiteEnvironment();
   const nativeOs = await detectSupportedNativeOs();
   const context = await createRuntimeContext();
   if (options.includePrerequisite) {

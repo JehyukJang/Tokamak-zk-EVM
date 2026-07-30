@@ -96,8 +96,9 @@ tokamak-cli --install --include-prerequisite
 ```
 
 This option detects Rust, Cargo, CMake, the C/C++ toolchain, `pkg-config`,
-`tar`, and `unzip`. It plans installation only for missing tools and does not
-upgrade or replace tools already found on `PATH`.
+`tar`, and `unzip`. It installs tools that are missing or fail a declared
+backend compatibility requirement. Compatible tools already found on `PATH`
+are not upgraded or replaced.
 
 Before changing the host, the CLI prints the detected operating system, the
 status and version of every managed prerequisite, the package or upstream
@@ -120,7 +121,7 @@ The option can be combined with `--trusted-setup`, `--no-setup`, and
 ### What Gets Installed?
 
 On Ubuntu 20.04 and 22.04, the CLI refreshes APT metadata and uses targeted
-`sudo apt-get` commands to install missing official Ubuntu packages:
+`sudo apt-get` commands to install missing or incompatible Ubuntu packages:
 
 - `build-essential` for the C/C++ toolchain
 - `cmake`
@@ -128,24 +129,34 @@ On Ubuntu 20.04 and 22.04, the CLI refreshes APT metadata and uses targeted
 - `tar`
 - `unzip`
 
+ICICLE v3.8.0 requires CMake 3.18 or newer. Ubuntu 22.04 supplies a compatible
+CMake through APT, but Ubuntu 20.04 supplies CMake 3.16.3. When CMake is
+missing or older than 3.18 on Ubuntu 20.04, the CLI instead downloads the
+release-pinned official Kitware binary for the host architecture, verifies its
+SHA-256 checksum from the packaged manifest, and installs it under `~/.local`.
+The CLI adds `~/.local/bin` to its own environment immediately; a new login
+shell may be required before other programs see that path.
+
 On macOS, missing Xcode Command Line Tools are handled first. The CLI launches
 `xcode-select --install`, stops, and asks you to rerun the same command after
 Apple's installer finishes. For other missing packages, it uses an existing
 Homebrew installation or runs Homebrew's official installer, loads
-`brew shellenv` into the current CLI process, and installs the required
-formulae.
+`brew shellenv` into the current CLI process, and installs or upgrades only the
+required formulae.
 
-If Rust or Cargo is missing on either operating system, the CLI runs the
-official rustup installer and installs the latest upstream stable toolchain in
-the standard `~/.rustup` and `~/.cargo` locations. Existing Rust and Cargo
-installations are not updated. Other missing tools use the latest version
-available from the operating system's configured official package manager; the
-CLI does not add PPAs, APT repositories, Homebrew taps, or equivalent package
+The packaged backend requires Rust and Cargo 1.85.0 or newer. If either command
+is missing, unverifiable, or older, the CLI runs the official rustup installer
+and installs the current upstream stable toolchain in the standard `~/.rustup`
+and `~/.cargo` locations. Compatible Rust and Cargo installations are retained.
+Apart from the pinned Ubuntu 20.04 CMake binary, other managed tools use the
+configured APT repositories, Homebrew, or Apple's signed installer. The CLI
+does not add PPAs, APT repositories, Homebrew taps, or equivalent package
 sources.
 
-After installation, the CLI verifies every managed command and its reported
-version. A verification failure stops the backend install without trying a
-different version or installer.
+After installation, the CLI verifies every managed command, its reported
+version, and the declared Rust/Cargo and CMake compatibility minimums. A
+verification failure stops the backend install without trying an unplanned
+fallback installer.
 
 Node.js 20 or newer and npm are not managed by this option: they must already
 be installed for `tokamak-cli` itself to run. The option also does not install
@@ -161,9 +172,9 @@ elevation only for Ubuntu package-manager commands that need it.
 package managers and official third-party installers. These tools may download
 code, contact external services, request credentials, display their own license
 terms, and modify system or user directories outside the Tokamak CLI cache.
-Available versions and installer behavior are controlled by Ubuntu, Apple,
-Homebrew, and Rust project infrastructure and can change independently of this
-package.
+The Ubuntu 20.04 CMake exception writes under `~/.local`; APT, Apple,
+Homebrew, Kitware, and Rust infrastructure control their respective installer
+behavior and can change independently of this package.
 
 Review the displayed plan, upstream terms, your organization's security
 policies, and any package-manager prompts before approving. You are responsible

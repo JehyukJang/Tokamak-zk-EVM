@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
 import type { Readable, Writable } from 'node:stream';
 import {
@@ -31,10 +32,12 @@ export type ManagedPrerequisiteId =
   | 'unzip';
 
 export interface PrerequisiteStatus {
+  compatible: boolean;
   commands: readonly string[];
   id: ManagedPrerequisiteId;
   installed: boolean;
   label: string;
+  requirement: string;
   version: string | null;
 }
 
@@ -42,6 +45,9 @@ export type PrerequisiteInstallationAction =
   | {
       kind: 'apt';
       packages: readonly string[];
+    }
+  | {
+      kind: 'kitware-cmake';
     }
   | {
       kind: 'brew';
@@ -69,8 +75,46 @@ export interface PrerequisiteInstallExecutionOptions {
 
 export type PrerequisiteInstallExecutionResult = 'complete' | 'rerun-required';
 
+const MINIMUM_RUST_VERSION = '1.85.0';
+const MINIMUM_CMAKE_VERSION = '3.18.0';
+
+interface CmakeManifest {
+  assets: Record<'arm64' | 'x64', {
+    sha256: string;
+    url: string;
+  }>;
+  minimumCompatibleVersion: string;
+  version: string;
+}
+
 export interface OsRelease {
   [key: string]: string;
+}
+
+function extractNumericVersion(output: string | null): string | null {
+  const match = output === null ? null : /(?:^|\D)(\d+\.\d+(?:\.\d+)?)(?:\D|$)/u.exec(output);
+  return match === null ? null : match[1];
+}
+
+function versionParts(version: string): [number, number, number] | null {
+  const match = /^(\d+)\.(\d+)(?:\.(\d+))?$/u.exec(version);
+  return match === null
+    ? null
+    : [Number(match[1]), Number(match[2]), Number(match[3] ?? 0)];
+}
+
+export function versionMeetsMinimum(version: string | null, minimumVersion: string): boolean {
+  const actual = version === null ? null : versionParts(version);
+  const minimum = versionParts(minimumVersion);
+  if (actual === null || minimum === null) {
+    return false;
+  }
+  for (let index = 0; index < actual.length; index += 1) {
+    if (actual[index] !== minimum[index]) {
+      return actual[index] > minimum[index];
+    }
+  }
+  return true;
 }
 
 function unquoteOsReleaseValue(value: string): string {
@@ -179,6 +223,7 @@ async function withDownloadedInstaller(
   url: string,
   prefix: string,
   run: (installerPath: string) => Promise<void>,
+  expectedSha256?: string,
 ): Promise<void> {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), `${prefix}-`));
   const installerPath = path.join(tempDir, 'install.sh');
@@ -187,7 +232,16 @@ async function withDownloadedInstaller(
     if (!response.ok) {
       throw new Error(`Failed to download ${url}: ${response.status} ${response.statusText}`);
     }
-    await fs.writeFile(installerPath, new Uint8Array(await response.arrayBuffer()), {
+    const contents = new Uint8Array(await response.arrayBuffer());
+    if (expectedSha256 !== undefined) {
+      const actualSha256 = createHash('sha256').update(contents).digest('hex');
+      if (actualSha256 !== expectedSha256) {
+        throw new Error(
+          `Downloaded installer from ${url} has SHA-256 ${actualSha256}, expected ${expectedSha256}.`,
+        );
+      }
+    }
+    await fs.writeFile(installerPath, contents, {
       mode: 0o700,
     });
     await run(installerPath);
@@ -206,6 +260,11 @@ export function prependPathValue(currentPath: string | undefined, entry: string)
 
 function prependPath(entry: string): void {
   process.env.PATH = prependPathValue(process.env.PATH, entry);
+}
+
+export function activateManagedPrerequisiteEnvironment(): void {
+  prependPath(path.join(os.homedir(), '.local', 'bin'));
+  prependPath(path.join(os.homedir(), '.cargo', 'bin'));
 }
 
 async function installRustup(options: PrerequisiteInstallExecutionOptions): Promise<void> {
@@ -253,6 +312,59 @@ async function installAptPackages(
   logInstallProgress(`Installing Ubuntu packages: ${packages.join(', ')}.`);
   await runInteractiveCommand('sudo', ['apt-get', 'update'], options);
   await runInteractiveCommand('sudo', ['apt-get', 'install', '-y', ...packages], options);
+}
+
+async function loadCmakeManifest(): Promise<CmakeManifest> {
+  const manifestPath = path.resolve(__dirname, '..', 'manifests', 'cmake-v4.4.0.json');
+  const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8')) as Partial<CmakeManifest>;
+  if (
+    typeof manifest.version !== 'string'
+    || manifest.minimumCompatibleVersion !== MINIMUM_CMAKE_VERSION
+    || typeof manifest.assets !== 'object'
+    || manifest.assets === null
+  ) {
+    throw new Error(`Invalid CMake prerequisite manifest: ${manifestPath}.`);
+  }
+  for (const architecture of ['x64', 'arm64'] as const) {
+    const asset = manifest.assets[architecture];
+    if (
+      typeof asset?.url !== 'string'
+      || !asset.url.startsWith('https://cmake.org/')
+      || typeof asset.sha256 !== 'string'
+      || !/^[a-f0-9]{64}$/u.test(asset.sha256)
+    ) {
+      throw new Error(`Invalid ${architecture} asset in CMake prerequisite manifest: ${manifestPath}.`);
+    }
+  }
+  return manifest as CmakeManifest;
+}
+
+async function installKitwareCmake(options: PrerequisiteInstallExecutionOptions): Promise<void> {
+  if (process.arch !== 'x64' && process.arch !== 'arm64') {
+    throw new Error(
+      `Official CMake installation supports x64 and arm64, but this host reports ${process.arch}.`,
+    );
+  }
+  const manifest = await loadCmakeManifest();
+  const asset = manifest.assets[process.arch];
+  const installPrefix = path.join(os.homedir(), '.local');
+  await fs.mkdir(installPrefix, { recursive: true });
+  logInstallProgress(
+    `Installing Kitware CMake ${manifest.version} into ${installPrefix}.`,
+  );
+  await withDownloadedInstaller(
+    asset.url,
+    'tokamak-cmake',
+    async (installerPath) => {
+      await runInteractiveCommand(
+        '/bin/sh',
+        [installerPath, '--skip-license', `--prefix=${installPrefix}`],
+        options,
+      );
+    },
+    asset.sha256,
+  );
+  prependPath(path.join(installPrefix, 'bin'));
 }
 
 function resolveBrewExecutable(): string | null {
@@ -350,8 +462,15 @@ async function installBrewFormulas(
     throw new Error('Homebrew is required to install the missing macOS prerequisites.');
   }
   refreshHomebrewEnvironment(brewExecutable);
-  logInstallProgress(`Installing Homebrew formulas: ${formulas.join(', ')}.`);
-  await runInteractiveCommand(brewExecutable, ['install', ...formulas], options);
+  for (const formula of formulas) {
+    const installed = spawnSync(brewExecutable, ['list', '--versions', formula], {
+      env: process.env,
+      stdio: 'ignore',
+    }).status === 0;
+    const operation = installed ? 'upgrade' : 'install';
+    logInstallProgress(`${operation === 'install' ? 'Installing' : 'Upgrading'} Homebrew formula: ${formula}.`);
+    await runInteractiveCommand(brewExecutable, [operation, formula], options);
+  }
 
   if (formulas.includes('gnu-tar')) {
     prependPath(path.join(brewFormulaPrefix(brewExecutable, 'gnu-tar'), 'libexec', 'gnubin'));
@@ -369,6 +488,9 @@ export async function executePrerequisiteInstallationPlan(
     switch (action.kind) {
       case 'apt':
         await installAptPackages(action.packages, options);
+        break;
+      case 'kitware-cmake':
+        await installKitwareCmake(options);
         break;
       case 'brew':
         await installBrewFormulas(action.formulas, options);
@@ -392,6 +514,7 @@ interface PrerequisiteDefinition {
   commands: (os: SupportedNativeOs) => readonly string[];
   id: ManagedPrerequisiteId;
   label: string;
+  minimumVersion?: string;
   versionArgs: readonly string[];
 }
 
@@ -400,18 +523,21 @@ const PREREQUISITE_DEFINITIONS: readonly PrerequisiteDefinition[] = [
     id: 'rust',
     label: 'Rust',
     commands: () => ['rustc'],
+    minimumVersion: MINIMUM_RUST_VERSION,
     versionArgs: ['--version'],
   },
   {
     id: 'cargo',
     label: 'Cargo',
     commands: () => ['cargo'],
+    minimumVersion: MINIMUM_RUST_VERSION,
     versionArgs: ['--version'],
   },
   {
     id: 'cmake',
     label: 'CMake',
     commands: () => ['cmake'],
+    minimumVersion: MINIMUM_CMAKE_VERSION,
     versionArgs: ['--version'],
   },
   {
@@ -451,11 +577,21 @@ export function detectManagedPrerequisites(
     const version = commandsPresent
       ? probe.version(commands[0], definition.versionArgs)
       : null;
+    const requirement = definition.minimumVersion === undefined
+      ? 'an installed command with verifiable version output'
+      : `version ${definition.minimumVersion} or newer`;
     return {
+      compatible: commandsPresent
+        && version !== null
+        && (
+          definition.minimumVersion === undefined
+          || versionMeetsMinimum(extractNumericVersion(version), definition.minimumVersion)
+        ),
       commands,
       id: definition.id,
       installed: commandsPresent,
       label: definition.label,
+      requirement,
       version,
     };
   });
@@ -471,14 +607,17 @@ export function prerequisiteVerificationFailures(
     if (status.version === null) {
       return [`${status.label}: installed commands were found, but version verification failed`];
     }
+    if (!status.compatible) {
+      return [`${status.label}: ${status.version} does not satisfy ${status.requirement}`];
+    }
     return [];
   });
 }
 
-function missingIds(statuses: readonly PrerequisiteStatus[]): Set<ManagedPrerequisiteId> {
+function installationTargetIds(statuses: readonly PrerequisiteStatus[]): Set<ManagedPrerequisiteId> {
   return new Set(
     statuses
-      .filter((status) => !status.installed || status.version === null)
+      .filter((status) => !status.compatible)
       .map((status) => status.id),
   );
 }
@@ -488,29 +627,32 @@ export function buildPrerequisiteInstallationPlan(
   statuses: readonly PrerequisiteStatus[],
   homebrewInstalled = false,
 ): PrerequisiteInstallationPlan {
-  const missing = missingIds(statuses);
+  const targets = installationTargetIds(statuses);
   const actions: PrerequisiteInstallationAction[] = [];
 
   if (os.platform === 'linux') {
     const packages: string[] = [];
-    if (missing.has('toolchain')) packages.push('build-essential');
-    if (missing.has('cmake')) packages.push('cmake');
-    if (missing.has('pkg-config')) packages.push('pkg-config');
-    if (missing.has('tar')) packages.push('tar');
-    if (missing.has('unzip')) packages.push('unzip');
+    if (targets.has('toolchain')) packages.push('build-essential');
+    if (targets.has('cmake') && os.ubuntuVersion === '22.04') packages.push('cmake');
+    if (targets.has('pkg-config')) packages.push('pkg-config');
+    if (targets.has('tar')) packages.push('tar');
+    if (targets.has('unzip')) packages.push('unzip');
     if (packages.length > 0) {
       actions.push({ kind: 'apt', packages });
     }
+    if (targets.has('cmake') && os.ubuntuVersion === '20.04') {
+      actions.push({ kind: 'kitware-cmake' });
+    }
   } else {
-    if (missing.has('toolchain')) {
+    if (targets.has('toolchain')) {
       actions.push({ kind: 'xcode-command-line-tools' });
     }
 
     const formulas: string[] = [];
-    if (missing.has('cmake')) formulas.push('cmake');
-    if (missing.has('pkg-config')) formulas.push('pkg-config');
-    if (missing.has('tar')) formulas.push('gnu-tar');
-    if (missing.has('unzip')) formulas.push('unzip');
+    if (targets.has('cmake')) formulas.push('cmake');
+    if (targets.has('pkg-config')) formulas.push('pkg-config');
+    if (targets.has('tar')) formulas.push('gnu-tar');
+    if (targets.has('unzip')) formulas.push('unzip');
     if (formulas.length > 0) {
       if (!homebrewInstalled) {
         actions.push({ kind: 'homebrew' });
@@ -519,7 +661,7 @@ export function buildPrerequisiteInstallationPlan(
     }
   }
 
-  if (missing.has('rust') || missing.has('cargo')) {
+  if (targets.has('rust') || targets.has('cargo')) {
     actions.push({ kind: 'rustup' });
   }
 
@@ -533,8 +675,13 @@ function actionDescription(action: PrerequisiteInstallationAction): string {
         '`sudo apt-get update`',
         `\`sudo apt-get install -y ${action.packages.join(' ')}\``,
       ].join('\n      ');
+    case 'kitware-cmake':
+      return [
+        'Download the manifest-pinned official Kitware CMake binary.',
+        'Verify its SHA-256 checksum and install it under `~/.local`.',
+      ].join('\n      ');
     case 'brew':
-      return `\`brew install ${action.formulas.join(' ')}\``;
+      return `Install or upgrade as needed with Homebrew: ${action.formulas.join(', ')}.`;
     case 'homebrew':
       return 'Download and run the official Homebrew installer from brew.sh.';
     case 'rustup':
@@ -564,11 +711,13 @@ export function renderPrerequisiteInstallationPlan(plan: PrerequisiteInstallatio
   for (const status of plan.statuses) {
     let detail: string;
     if (!status.installed) {
-      detail = `missing (${status.commands.join(', ')})`;
+      detail = `missing (${status.commands.join(', ')}); requires ${status.requirement}`;
     } else if (status.version === null) {
-      detail = 'present, but version verification failed';
+      detail = `present, but version verification failed; requires ${status.requirement}`;
+    } else if (!status.compatible) {
+      detail = `installed but incompatible (${status.version}); requires ${status.requirement}`;
     } else {
-      detail = `installed (${status.version})`;
+      detail = `installed and compatible (${status.version})`;
     }
     lines.push(`    - ${status.label}: ${detail}`);
   }
@@ -585,9 +734,10 @@ export function renderPrerequisiteInstallationPlan(plan: PrerequisiteInstallatio
   lines.push(
     '',
     '  Important notices:',
-    '    - Only missing tools are installed; existing tools are not upgraded or replaced.',
+    '    - Missing or incompatible tools are installed; compatible tools are not upgraded or replaced.',
     '    - Downloads and package-manager operations contact third-party services.',
     '    - Ubuntu package installation uses sudo for apt only and may modify system directories.',
+    '    - Ubuntu 20.04 receives checksum-verified CMake from Kitware under ~/.local.',
     '    - The Homebrew installer may request administrator authentication.',
     '    - Homebrew and rustup run their official upstream installers and modify their standard locations.',
     '    - `tokamak-cli --uninstall` does not remove any prerequisite installed here.',

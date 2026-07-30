@@ -17,6 +17,7 @@ const {
   prependPathValue,
   prerequisiteVerificationFailures,
   renderPrerequisiteInstallationPlan,
+  versionMeetsMinimum,
 } = require('../dist/prerequisites.js');
 const { parseArgs } = require('../dist/cli.js');
 
@@ -24,12 +25,21 @@ const linux = { platform: 'linux', ubuntuVersion: '22.04' };
 const macos = { platform: 'macos' };
 
 function createProbe(installed, versions = {}) {
+  const defaults = {
+    rustc: 'rustc 1.85.0',
+    cargo: 'cargo 1.85.0',
+    cmake: 'cmake version 3.18.0',
+    cc: 'cc 9.0.0',
+    'pkg-config': '0.29.1',
+    tar: 'tar 1.30',
+    unzip: 'UnZip 6.00',
+  };
   return {
     exists(command) {
       return installed.has(command);
     },
     version(command) {
-      return versions[command] ?? `${command} test-version`;
+      return versions[command] ?? defaults[command] ?? `${command} test-version`;
     },
   };
 }
@@ -106,6 +116,7 @@ test('detects all managed prerequisites and their representative versions', () =
   assert.equal(statuses.length, 7);
   assert.ok(statuses.every((status) => status.installed));
   assert.ok(statuses.every((status) => status.version !== null));
+  assert.ok(statuses.every((status) => status.compatible));
 });
 
 test('maps missing Ubuntu tools to apt packages and Rust to rustup', () => {
@@ -148,6 +159,53 @@ test('does not plan upgrades for already installed prerequisites', () => {
   ]);
   const statuses = detectManagedPrerequisites(macos, createProbe(installed));
   assert.deepEqual(buildPrerequisiteInstallationPlan(macos, statuses, true).actions, []);
+});
+
+test('uses official Kitware CMake only for incompatible Ubuntu 20.04 CMake', () => {
+  const installed = new Set([
+    'rustc',
+    'cargo',
+    'cmake',
+    'cc',
+    'c++',
+    'make',
+    'pkg-config',
+    'tar',
+    'unzip',
+  ]);
+  const ubuntu20 = { platform: 'linux', ubuntuVersion: '20.04' };
+  const statuses = detectManagedPrerequisites(
+    ubuntu20,
+    createProbe(installed, { cmake: 'cmake version 3.16.3' }),
+  );
+  const plan = buildPrerequisiteInstallationPlan(ubuntu20, statuses);
+  assert.deepEqual(plan.actions, [{ kind: 'kitware-cmake' }]);
+  assert.match(renderPrerequisiteInstallationPlan(plan), /Kitware/u);
+});
+
+test('uses APT for incompatible Ubuntu 22.04 CMake and retains compatible versions', () => {
+  assert.equal(versionMeetsMinimum('3.18.0', '3.18.0'), true);
+  assert.equal(versionMeetsMinimum('4.4.0', '3.18.0'), true);
+  assert.equal(versionMeetsMinimum('3.16.3', '3.18.0'), false);
+
+  const installed = new Set([
+    'rustc',
+    'cargo',
+    'cmake',
+    'cc',
+    'c++',
+    'make',
+    'pkg-config',
+    'tar',
+    'unzip',
+  ]);
+  const statuses = detectManagedPrerequisites(
+    linux,
+    createProbe(installed, { cmake: 'cmake version 3.16.3' }),
+  );
+  assert.deepEqual(buildPrerequisiteInstallationPlan(linux, statuses).actions, [
+    { kind: 'apt', packages: ['cmake'] },
+  ]);
 });
 
 test('accepts only explicit y or yes confirmation', () => {
@@ -195,10 +253,12 @@ test('rejects root execution and non-TTY execution', () => {
 
 test('reports missing commands and failed version probes during verification', () => {
   const status = (id, installed) => ({
+    compatible: false,
     commands: [id],
     id,
     installed,
     label: id,
+    requirement: 'a compatible test version',
     version: installed ? null : `${id} test-version`,
   });
   const failures = prerequisiteVerificationFailures([
