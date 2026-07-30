@@ -167,9 +167,30 @@ The exact degraded-host cause was not recoverable after the instance was
 replaced. The clean-instance reproduction establishes that the `35 s` set was
 an environment failure rather than a Candidate 2D production regression.
 
-## Final Result
+## Superseding Production Decision
 
-Candidate 2D is accepted as a unified backend-neutral optimization. Its CPU
-end-to-end benefit is established by the isolated paired benchmark. The known
-CUDA local-boundary regression is retained by explicit project-owner decision
-because the paired CUDA end-to-end result did not exceed noise.
+The consolidated July rebenchmark reopened the earlier decision. The project
+owner rejected Candidate 2D and directed production to restore the three
+independent same-point evaluations. The grouped API and its dedicated tests
+were removed; the historical measurements above remain experiment provenance
+and no longer describe the production path.
+
+The removal passed all 43 non-ignored `libs` tests, the `prove` library test,
+one complete release `timing,testing-mode` fixture, and a fresh matching
+preprocess/prove/verify sequence. The verifier returned `true`. Per the
+project-owner decision, no post-removal CUDA validation was performed.
+
+Three timing-only CPU runs measured:
+
+| sample | `total_wall` | `prove4.total` | three independent evaluations |
+| ---: | ---: | ---: | ---: |
+| 1 | 37.220667 s | 8.700148 s | 0.444120 s |
+| 2 | 38.195563 s | 8.721011 s | 0.442736 s |
+| 3 | 37.051648 s | 8.664940 s | 0.445104 s |
+| mean | 37.489293 s | 8.695366 s | 0.443987 s |
+| median | 37.220667 s | 8.700148 s | 0.444120 s |
+
+The median sample regenerated `timing.local.cpu.current.json` and
+`timing.local.cpu.current.md`. These runs are a production validation gate,
+not a same-session performance comparison with the removed grouped path; the
+disposition follows the consolidated owner decision.
