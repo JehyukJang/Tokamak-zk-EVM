@@ -11,6 +11,7 @@ Use `@tokamak-zk-evm/cli` when you want the complete local Tokamak zk-EVM workfl
 Main commands:
 
 - `--install`
+- `--install --include-prerequisite`
 - `--install --docker`
 - `--synthesize`
 - `--preprocess`
@@ -38,10 +39,16 @@ Before running `--install`, make sure the machine has:
 - npm
 - Rust and Cargo
 - `cmake`
+- `pkg-config`
 - `tar`
 - `unzip`
 - a working C/C++ toolchain
 - outbound HTTPS access to npm, crates.io, GitHub, GitHub Releases, and Google Drive
+
+Native Linux installation supports Ubuntu 20.04 and Ubuntu 22.04 only. The CLI
+rejects other Linux distributions and Ubuntu releases because the packaged
+ICICLE v3.8.0 manifest does not provide matching runtime artifacts. On another
+Linux distribution, use `--install --docker` with a working Docker daemon.
 
 For `--install --docker`, the Linux host or Windows host with Docker Desktop needs Docker installed and a running Docker daemon. CUDA is enabled only when a CUDA 12.2 Docker probe can run with `--gpus all`, report at least one NVIDIA GPU, and report driver version `525.60.13` or newer.
 
@@ -49,7 +56,7 @@ For `--install --docker`, the Linux host or Windows host with Docker Desktop nee
 
 ```bash
 xcode-select --install
-brew install node cmake
+brew install node cmake pkg-config
 curl https://sh.rustup.rs -sSf | sh
 source "$HOME/.cargo/env"
 npm install -g @tokamak-zk-evm/cli
@@ -79,6 +86,115 @@ Native Windows installation is not supported. Use WSL2, or install through Docke
 npm install -g @tokamak-zk-evm/cli
 tokamak-cli --install --docker
 ```
+
+## Can The CLI Install Missing Prerequisites?
+
+Yes. On macOS, Ubuntu 20.04, or Ubuntu 22.04, use:
+
+```bash
+tokamak-cli --install --include-prerequisite
+```
+
+This option detects Rust, Cargo, CMake, the C/C++ toolchain, `pkg-config`,
+`tar`, and `unzip`. It plans installation only for missing tools and does not
+upgrade or replace tools already found on `PATH`.
+
+Before changing the host, the CLI prints the detected operating system, the
+status and version of every managed prerequisite, the package or upstream
+installer for each missing tool, the commands that will run, and the operations
+that can request administrator authentication or open an operating-system UI.
+It then prompts:
+
+```text
+Proceed with prerequisite installation? [y/N]
+```
+
+Only `y` or `yes`, matched case-insensitively, approves the plan. Empty input,
+EOF, and every other response decline it. A terminal (TTY) is required; there
+is no unattended `--yes` mode.
+
+The option can be combined with `--trusted-setup`, `--no-setup`, and
+`--verbose`. It cannot be combined with `--docker`, and the existing
+`--trusted-setup`/`--no-setup` conflict still applies.
+
+### What Gets Installed?
+
+On Ubuntu 20.04 and 22.04, the CLI refreshes APT metadata and uses targeted
+`sudo apt-get` commands to install missing official Ubuntu packages:
+
+- `build-essential` for the C/C++ toolchain
+- `cmake`
+- `pkg-config`
+- `tar`
+- `unzip`
+
+On macOS, missing Xcode Command Line Tools are handled first. The CLI launches
+`xcode-select --install`, stops, and asks you to rerun the same command after
+Apple's installer finishes. For other missing packages, it uses an existing
+Homebrew installation or runs Homebrew's official installer, loads
+`brew shellenv` into the current CLI process, and installs the required
+formulae.
+
+If Rust or Cargo is missing on either operating system, the CLI runs the
+official rustup installer and installs the latest upstream stable toolchain in
+the standard `~/.rustup` and `~/.cargo` locations. Existing Rust and Cargo
+installations are not updated. Other missing tools use the latest version
+available from the operating system's configured official package manager; the
+CLI does not add PPAs, APT repositories, Homebrew taps, or equivalent package
+sources.
+
+After installation, the CLI verifies every managed command and its reported
+version. A verification failure stops the backend install without trying a
+different version or installer.
+
+Node.js 20 or newer and npm are not managed by this option: they must already
+be installed for `tokamak-cli` itself to run. The option also does not install
+Docker, Docker Desktop, GPU drivers, or network configuration.
+
+Do not run the full command with `sudo`. The CLI rejects
+`--include-prerequisite` when its own process is running as root and requests
+elevation only for Ubuntu package-manager commands that need it.
+
+### Prerequisite Installation Disclaimer
+
+`--include-prerequisite` is an opt-in convenience that invokes operating-system
+package managers and official third-party installers. These tools may download
+code, contact external services, request credentials, display their own license
+terms, and modify system or user directories outside the Tokamak CLI cache.
+Available versions and installer behavior are controlled by Ubuntu, Apple,
+Homebrew, and Rust project infrastructure and can change independently of this
+package.
+
+Review the displayed plan, upstream terms, your organization's security
+policies, and any package-manager prompts before approving. You are responsible
+for backups, access authorization, license compliance, and determining whether
+the proposed changes are appropriate for the machine. To retain full control,
+install the prerequisites manually and run `tokamak-cli --install` without this
+option.
+
+`tokamak-cli --uninstall` removes only the CLI-owned runtime workspace and
+downloads. It does not remove or roll back Rust, Cargo, Homebrew, Homebrew
+formulae, Xcode Command Line Tools, or APT packages installed through
+`--include-prerequisite`.
+
+### Troubleshooting Or Removing Prerequisites
+
+If an installer or package-manager command fails partway through, fix the
+reported upstream error and rerun the same `tokamak-cli` command. Detection is
+repeated on every run, so the next plan contains only tools that are still
+missing. The CLI does not attempt an automatic rollback.
+
+If post-install verification fails, confirm that the installed command is on
+`PATH` and works in a new terminal. Useful upstream checks include
+`xcode-select -p`, `brew shellenv`, `rustup show`, and the relevant APT or
+Homebrew package status command. The CLI deliberately stops before building
+the backend when verification is incomplete.
+
+Remove an unwanted prerequisite only through the tool that installed it:
+Ubuntu's APT, Homebrew, Apple's Xcode Command Line Tools management process, or
+`rustup self uninstall`. Review the official uninstall documentation and
+dependent packages first. Removing a shared compiler, package manager, or
+system package can break software unrelated to Tokamak zk-EVM.
 
 ## What Does `--install` Do?
 

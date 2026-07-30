@@ -55,6 +55,7 @@
     "prepare:package": "node scripts/prepare-package.mjs",
     "build": "npm run prepare:package && tsc -p tsconfig.json --pretty false",
     "release:check": "node scripts/release-readiness.cjs",
+    "test": "npm run build && node --test tests/*.test.cjs",
     "typecheck": "tsc -p tsconfig.json --pretty false --noEmit",
     "publish": "node scripts/publish-package.cjs",
     "prepack": "npm run build"

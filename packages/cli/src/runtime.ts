@@ -5,12 +5,26 @@ import fsSync from 'node:fs';
 import vm from 'node:vm';
 import crypto from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
+import {
+  assertPrerequisiteInstallMayRunAsCurrentUser,
+  assertPrerequisiteInstallIsInteractive,
+  buildPrerequisiteInstallationPlan,
+  confirmPrerequisiteInstallation,
+  createSystemCommandProbe,
+  detectManagedPrerequisites,
+  detectSupportedNativeOs,
+  executePrerequisiteInstallationPlan,
+  prerequisiteVerificationFailures,
+  renderPrerequisiteInstallationPlan,
+  type SupportedNativeOs,
+} from './prerequisites.js';
 
 export type CliPlatform = 'linux' | 'macos';
 type DockerHostPlatform = 'linux' | 'windows';
 
 export interface InstallOptions {
   docker: boolean;
+  includePrerequisite: boolean;
   noSetup: boolean;
   trustedSetup: boolean;
   verbose: boolean;
@@ -321,6 +335,48 @@ function ensureInstallPrerequisites(platform: CliPlatform, options: InstallOptio
       prerequisiteInstallHint(platform),
     ].join('\n'),
   );
+}
+
+async function installMissingPrerequisites(
+  nativeOs: SupportedNativeOs,
+  verbose: boolean,
+): Promise<void> {
+  assertPrerequisiteInstallMayRunAsCurrentUser();
+  assertPrerequisiteInstallIsInteractive();
+  const probe = createSystemCommandProbe();
+  const statuses = detectManagedPrerequisites(nativeOs, probe);
+  const plan = buildPrerequisiteInstallationPlan(
+    nativeOs,
+    statuses,
+    nativeOs.platform === 'macos' && probe.exists('brew'),
+  );
+
+  if (plan.actions.length === 0) {
+    process.stdout.write(`${renderPrerequisiteInstallationPlan(plan)}\n`);
+  } else {
+    if (!(await confirmPrerequisiteInstallation(plan))) {
+      throw new Error('Prerequisite installation was declined. No host or runtime changes were made.');
+    }
+
+    const result = await executePrerequisiteInstallationPlan(plan, { verbose });
+    if (result === 'rerun-required') {
+      throw new Error(
+        'Apple\'s Command Line Tools installer was launched. Complete the installation, then rerun the same tokamak-cli command.',
+      );
+    }
+  }
+
+  const verifiedStatuses = detectManagedPrerequisites(nativeOs);
+  const verificationFailures = prerequisiteVerificationFailures(verifiedStatuses);
+  if (verificationFailures.length > 0) {
+    throw new Error(
+      [
+        'Prerequisite installation finished, but verification failed. The backend install was not started.',
+        ...verificationFailures.map((failure) => `- ${failure}`),
+        'Resolve the reported issue and rerun the same tokamak-cli command. No alternate version or installer was attempted.',
+      ].join('\n'),
+    );
+  }
 }
 
 export function resolveCacheRoot(): string {
@@ -663,17 +719,6 @@ async function ensureVendoredBackendExists(packageRoot: string): Promise<string>
     throw new Error('The vendored backend workspace is missing. Rebuild the package so that vendor/backend is populated.');
   }
   return backendRoot;
-}
-
-async function readLinuxUbuntuMajorVersion(): Promise<'20' | '22'> {
-  try {
-    const osRelease = await fs.readFile('/etc/os-release', 'utf8');
-    const match = osRelease.match(/^VERSION_ID="?(\d+)/mu);
-    const major = match?.[1] ?? '22';
-    return major === '20' ? '20' : '22';
-  } catch {
-    return '22';
-  }
 }
 
 async function linuxCudaBackendAvailable(verbose: boolean): Promise<boolean> {
@@ -1411,7 +1456,11 @@ async function downloadIcicleAssetWithCache(
   return archivePath;
 }
 
-async function installIcicleRuntime(context: RuntimeContext, verbose: boolean): Promise<void> {
+async function installIcicleRuntime(
+  context: RuntimeContext,
+  nativeOs: SupportedNativeOs,
+  verbose: boolean,
+): Promise<void> {
   const manifest = await readIcicleManifest(context);
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-icicle-'));
   try {
@@ -1429,7 +1478,10 @@ async function installIcicleRuntime(context: RuntimeContext, verbose: boolean): 
       await extractTarArchive(commonTarball, tempRoot, verbose);
       await extractTarArchive(backendTarball, tempRoot, verbose);
     } else {
-      const ubuntuMajor = await readLinuxUbuntuMajorVersion();
+      if (nativeOs.platform !== 'linux') {
+        throw new Error('Internal error: the detected operating system does not match the Linux runtime.');
+      }
+      const ubuntuMajor = nativeOs.ubuntuVersion.slice(0, 2);
       const dockerEnvironment = dockerEnvironmentOverride();
       const commonTarball = await downloadIcicleAssetWithCache(
         context,
@@ -1944,7 +1996,11 @@ export async function installRuntime(options: InstallOptions): Promise<RuntimeCo
     return await installDockerRuntime(options);
   }
 
+  const nativeOs = await detectSupportedNativeOs();
   const context = await createRuntimeContext();
+  if (options.includePrerequisite) {
+    await installMissingPrerequisites(nativeOs, options.verbose);
+  }
   ensureInstallPrerequisites(context.platform, options);
   const backendRoot = await ensureVendoredBackendExists(context.packageRoot);
 
@@ -1953,7 +2009,7 @@ export async function installRuntime(options: InstallOptions): Promise<RuntimeCo
   const backendReleaseDir = await buildBackendReleaseBinaries(backendRoot, options);
   logVerbose(options.verbose, `Using backend release output ${backendReleaseDir}`);
   await copyBuiltBackendBinaries(context, backendReleaseDir, options);
-  await installIcicleRuntime(context, options.verbose);
+  await installIcicleRuntime(context, nativeOs, options.verbose);
   await configureMacosRuntime(context, options.verbose);
 
   if (options.noSetup) {
