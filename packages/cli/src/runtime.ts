@@ -1,6 +1,5 @@
 import fs from 'node:fs/promises';
 import {
-  activateManagedPrerequisiteEnvironment,
   assertPrerequisiteInstallMayRunAsCurrentUser,
   assertPrerequisiteInstallIsInteractive,
   buildPrerequisiteInstallationPlan,
@@ -154,7 +153,11 @@ async function installMissingPrerequisites(
   assertPrerequisiteInstallIsInteractive();
   const probe = createSystemCommandProbe();
   const statuses = detectManagedPrerequisites(nativeOs, probe);
-  const plan = buildPrerequisiteInstallationPlan(nativeOs, statuses);
+  const plan = buildPrerequisiteInstallationPlan(
+    nativeOs,
+    statuses,
+    nativeOs.platform === 'macos' && probe.exists('brew'),
+  );
 
   if (plan.actions.length === 0) {
     process.stdout.write(`${renderPrerequisiteInstallationPlan(plan)}\n`);
@@ -189,7 +192,6 @@ export async function installRuntime(options: InstallOptions): Promise<RuntimeCo
     return await installDockerRuntime(options);
   }
 
-  activateManagedPrerequisiteEnvironment();
   const nativeOs = await detectSupportedNativeOs();
   const context = await createRuntimeContext();
   if (options.includePrerequisite) {

@@ -207,14 +207,6 @@ function prependEnvPath(existing: string | undefined, nextValue: string): string
 export function backendEnvironment(context: RuntimeContext): NodeJS.ProcessEnv {
   const paths = runtimePaths(context);
   const env: NodeJS.ProcessEnv = { ...process.env };
-  env.LD_LIBRARY_PATH = prependEnvPath(
-    env.LD_LIBRARY_PATH,
-    path.join(os.homedir(), '.local', 'lib'),
-  );
-  env.LD_LIBRARY_PATH = prependEnvPath(
-    env.LD_LIBRARY_PATH,
-    path.join(os.homedir(), '.local', 'lib64'),
-  );
   env.LD_LIBRARY_PATH = prependEnvPath(env.LD_LIBRARY_PATH, paths.icicleLibDir);
   if (context.platform === 'macos') {
     env.DYLD_LIBRARY_PATH = prependEnvPath(env.DYLD_LIBRARY_PATH, paths.icicleLibDir);

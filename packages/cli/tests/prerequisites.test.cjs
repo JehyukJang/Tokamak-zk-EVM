@@ -11,15 +11,12 @@ const {
   confirmPrerequisiteInstallation,
   detectManagedPrerequisites,
   detectSupportedNativeOs,
-  extractNumericVersion,
   isPrerequisiteConfirmationAccepted,
-  loadPrerequisiteManifest,
   parseOsRelease,
   parseSupportedUbuntuRelease,
   prependPathValue,
   prerequisiteVerificationFailures,
   renderPrerequisiteInstallationPlan,
-  versionMeetsMinimum,
 } = require('../dist/prerequisites.js');
 const { parseArgs } = require('../dist/cli.js');
 
@@ -27,24 +24,12 @@ const linux = { platform: 'linux', ubuntuVersion: '22.04' };
 const macos = { platform: 'macos' };
 
 function createProbe(installed, versions = {}) {
-  const defaults = {
-    rustc: 'rustc 1.85.0',
-    cargo: 'cargo 1.85.0',
-    cmake: 'cmake version 3.18.0',
-    cc: 'Apple clang version 11.0.0',
-    gcc: 'gcc (GCC) 9.0.0',
-    'g++': 'g++ (GCC) 9.0.0',
-    make: 'GNU Make 4.2.1',
-    'pkg-config': '0.29.1',
-    tar: 'tar (GNU tar) 1.30',
-    unzip: 'UnZip 6.00',
-  };
   return {
     exists(command) {
       return installed.has(command);
     },
     version(command) {
-      return versions[command] ?? defaults[command] ?? `${command} test-version`;
+      return versions[command] ?? `${command} test-version`;
     },
   };
 }
@@ -110,8 +95,8 @@ test('detects all managed prerequisites and their representative versions', () =
     'rustc',
     'cargo',
     'cmake',
-    'gcc',
-    'g++',
+    'cc',
+    'c++',
     'make',
     'pkg-config',
     'tar',
@@ -121,45 +106,35 @@ test('detects all managed prerequisites and their representative versions', () =
   assert.equal(statuses.length, 7);
   assert.ok(statuses.every((status) => status.installed));
   assert.ok(statuses.every((status) => status.version !== null));
-  assert.ok(statuses.every((status) => status.compatible));
 });
 
-test('maps missing Ubuntu tools to bootstrap and official provider artifacts', () => {
+test('maps missing Ubuntu tools to apt packages and Rust to rustup', () => {
   const statuses = detectManagedPrerequisites(linux, createProbe(new Set()));
   const plan = buildPrerequisiteInstallationPlan(linux, statuses);
   assert.deepEqual(plan.actions, [
     {
-      kind: 'apt-bootstrap',
-      packages: ['build-essential'],
+      kind: 'apt',
+      packages: ['build-essential', 'cmake', 'pkg-config', 'tar', 'unzip'],
     },
-    { id: 'make', kind: 'official-artifact' },
-    { id: 'gcc', kind: 'official-artifact' },
-    { id: 'tar', kind: 'official-artifact' },
-    { id: 'cmake', kind: 'official-artifact' },
-    { id: 'pkg-config', kind: 'official-artifact' },
-    { id: 'unzip', kind: 'official-artifact' },
-    { id: 'rust', kind: 'official-artifact' },
+    { kind: 'rustup' },
   ]);
   const rendered = renderPrerequisiteInstallationPlan(plan);
   assert.match(rendered, /sudo apt-get update/u);
-  assert.match(rendered, /checksum-verified/u);
   assert.match(rendered, /tokamak-cli --uninstall.*does not remove/u);
 });
 
-test('orders Xcode before official artifacts on macOS', () => {
+test('orders Xcode before Homebrew formulas and rustup on macOS', () => {
   const statuses = detectManagedPrerequisites(macos, createProbe(new Set()));
-  const plan = buildPrerequisiteInstallationPlan(macos, statuses);
+  const plan = buildPrerequisiteInstallationPlan(macos, statuses, false);
   assert.deepEqual(plan.actions, [
     { kind: 'xcode-command-line-tools' },
-    { id: 'tar', kind: 'official-artifact' },
-    { id: 'cmake', kind: 'official-artifact' },
-    { id: 'pkg-config', kind: 'official-artifact' },
-    { id: 'unzip', kind: 'official-artifact' },
-    { id: 'rust', kind: 'official-artifact' },
+    { kind: 'homebrew' },
+    { kind: 'brew', formulas: ['cmake', 'pkg-config', 'gnu-tar', 'unzip'] },
+    { kind: 'rustup' },
   ]);
 });
 
-test('does not plan upgrades for compatible installed prerequisites', () => {
+test('does not plan upgrades for already installed prerequisites', () => {
   const installed = new Set([
     'rustc',
     'cargo',
@@ -172,51 +147,7 @@ test('does not plan upgrades for compatible installed prerequisites', () => {
     'unzip',
   ]);
   const statuses = detectManagedPrerequisites(macos, createProbe(installed));
-  assert.deepEqual(buildPrerequisiteInstallationPlan(macos, statuses).actions, []);
-});
-
-test('targets incompatible installed versions without upgrading compatible tools', () => {
-  const installed = new Set([
-    'rustc',
-    'cargo',
-    'cmake',
-    'gcc',
-    'g++',
-    'make',
-    'pkg-config',
-    'tar',
-    'unzip',
-  ]);
-  const statuses = detectManagedPrerequisites(
-    linux,
-    createProbe(installed, {
-      cmake: 'cmake version 3.16.3',
-      gcc: 'gcc (Ubuntu) 9.4.0',
-      make: 'GNU Make 4.2.1',
-    }),
-  );
-  assert.deepEqual(buildPrerequisiteInstallationPlan(linux, statuses).actions, [
-    { id: 'cmake', kind: 'official-artifact' },
-  ]);
-  assert.match(renderPrerequisiteInstallationPlan(buildPrerequisiteInstallationPlan(linux, statuses)), /incompatible/u);
-});
-
-test('parses and compares numeric prerequisite versions', () => {
-  assert.equal(extractNumericVersion('UnZip 6.00 of 20 April 2009'), '6.0.0');
-  assert.equal(extractNumericVersion('cmake version 3.18'), '3.18.0');
-  assert.equal(extractNumericVersion('unknown'), null);
-  assert.equal(versionMeetsMinimum('3.18.0', '3.18.0'), true);
-  assert.equal(versionMeetsMinimum('4.4.0', '3.18.0'), true);
-  assert.equal(versionMeetsMinimum('3.16.3', '3.18.0'), false);
-});
-
-test('loads a pinned official-provider manifest with checksummed assets', () => {
-  const manifest = loadPrerequisiteManifest();
-  assert.equal(manifest.schemaVersion, 1);
-  assert.equal(manifest.rust.minimumVersion, '1.85.0');
-  assert.equal(manifest.cmake.minimumVersion, '3.18.0');
-  assert.match(manifest.cmake.assets['linux-x64'].sha256, /^[a-f0-9]{64}$/u);
-  assert.match(manifest.linuxToolchain.gcc.asset.sha512, /^[a-f0-9]{128}$/u);
+  assert.deepEqual(buildPrerequisiteInstallationPlan(macos, statuses, true).actions, []);
 });
 
 test('accepts only explicit y or yes confirmation', () => {
@@ -264,12 +195,10 @@ test('rejects root execution and non-TTY execution', () => {
 
 test('reports missing commands and failed version probes during verification', () => {
   const status = (id, installed) => ({
-    compatible: false,
     commands: [id],
     id,
     installed,
     label: id,
-    requirement: 'a compatible test version',
     version: installed ? null : `${id} test-version`,
   });
   const failures = prerequisiteVerificationFailures([
