@@ -27,6 +27,14 @@ The format is based on Keep a Changelog.
   optimization documentation, examples, and embedded third-party license
   material without changing the supported prover or verifier protocol.
 
+### Backend Workspace
+
+- Reduced prover work by combining final Pi openings, sharing the M/N X opening, batching related challenge evaluations through ICICLE, deriving difference-polynomial evaluations from existing values, avoiding materialized constant subtraction before Ruffini division, and decoding the complete CRS grid once for reuse.
+- Restored independent same-point evaluation submissions after benchmarking rejected the grouped implementation, retained ICICLE two-stage batch evaluation, and documented the rejected serial, Rayon, coefficient-rescaling, alternative CRS-cache, zero-compaction, native polynomial-flow, and device-resident recursion paths.
+- Published the consolidated CPU/CUDA rebenchmark record and corrected the individual optimization reports, including failed experiments, invalidated measurements, algebraic rationale, testing-mode parity checks, and fresh preprocess/prove/verify results.
+- Removed repository-dead raw serializers, legacy MPC ceremony and utility paths, unused polynomial/vector/matrix/hash helpers, retired candidate and `poly_detail` diagnostics, Rust CRS code generation, and unused direct dependencies while preserving the active CRS, formatted preprocess, and formatted proof contracts.
+- Consolidated timing and transcript implementations, moved phase-2 MPC workspaces and the prover transcript to their owning modules, reduced the internal Rust API surface, and renamed the verifier directory from `verify-rust` to `verify`.
+
 ## [2.1.3] - 2026-07-27
 
 ### Repository
