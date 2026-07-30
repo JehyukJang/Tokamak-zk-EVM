@@ -2885,24 +2885,28 @@ impl Prover {
             let (LHS_zk1, LHS_zk2) = {
                 let r_D1 = &self.witness.rXY - &r_omegaX;
                 let r_D2 = &self.witness.rXY - &r_omegaX_omegaY;
-                let r_D1_eval = crate::time_block!(
-                    "poly.eval.prove4.r_D1",
+                // The original path evaluated the materialized r_D1 = R - R_omegaX
+                // and r_D2 = R - R_omegaX_omegaY polynomials. Evaluation is linear,
+                // so their values are the corresponding differences of known values.
+                let (r_D1_eval, r_D2_eval) = crate::time_block!(
+                    "poly.eval_derived.prove4.r_D1_r_D2",
                     "poly",
                     vec![crate::timing::SizeInfo {
-                        label: "R",
-                        dims: vec![self.witness.rXY.x_size, self.witness.rXY.y_size]
+                        label: "evaluations",
+                        dims: vec![2]
                     },],
-                    { r_D1.eval(&chi, &zeta) }
+                    {
+                        (
+                            small_r_eval - small_r_omegaX_eval,
+                            small_r_eval - small_r_omegaX_omegaY_eval,
+                        )
+                    }
                 );
-                let r_D2_eval = crate::time_block!(
-                    "poly.eval.prove4.r_D2",
-                    "poly",
-                    vec![crate::timing::SizeInfo {
-                        label: "R",
-                        dims: vec![self.witness.rXY.x_size, self.witness.rXY.y_size]
-                    },],
-                    { r_D2.eval(&chi, &zeta) }
-                );
+                #[cfg(feature = "testing-mode")]
+                {
+                    assert_eq!(r_D1_eval, r_D1.eval(&chi, &zeta));
+                    assert_eq!(r_D2_eval, r_D2.eval(&chi, &zeta));
+                }
                 let term_B_zk = self.cache.term_b_zk.clone().unwrap_or_else(|| {
                     crate::time_block!(
                         "poly.combine.prove4.term_B_zk",

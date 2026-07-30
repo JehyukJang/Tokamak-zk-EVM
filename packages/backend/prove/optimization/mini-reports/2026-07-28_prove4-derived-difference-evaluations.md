@@ -202,7 +202,7 @@ the E2E variance, but excluding that sample after observing it would invalidate
 the predefined benchmark. The complete five-pair result must therefore remain
 the decision evidence.
 
-## Final Decision
+## Historical Standalone Decision
 
 Candidate 2C is rejected. Its algebra, exact parity, fresh verification, and
 local prove4 saving are established, but the primary E2E `total_wall`
@@ -212,3 +212,38 @@ a material regression or improvement.
 The scalar-derivation path must not enter production as part of this
 optimization campaign. The detached experiment and its ignored raw timing
 artifacts were removed after the project-owner decision.
+
+## Superseding Production Decision
+
+The consolidated July decision superseded the standalone performance
+rejection. The project owner approved every backend-independent algebraic work
+reduction, including Candidate 2C, and directed production integration after
+Candidate 2D was removed.
+
+Production retains the materialized `r_D1` and `r_D2` polynomials required by
+the later `LHS_zk1` and `LHS_zk2` expressions. It replaces only their direct
+evaluations with the two scalar differences justified by evaluation
+linearity. The production comment records both the original operation and the
+identity, and `testing-mode` compares the derived values with direct
+evaluations.
+
+The integrated path passed the `prove` library test, one complete release
+`timing,testing-mode` fixture, and a fresh matching preprocess/prove/verify
+sequence. The verifier returned `true`. No post-integration CUDA validation
+was performed by project-owner decision.
+
+Three timing-only CPU runs measured:
+
+| sample | `total_wall` | `prove4.total` | derived scalar boundary |
+| ---: | ---: | ---: | ---: |
+| 1 | 37.579199 s | 8.597659 s | 0.000000250 s |
+| 2 | 37.192760 s | 8.492197 s | 0.000000375 s |
+| 3 | 37.113367 s | 8.397507 s | 0.000000291 s |
+| mean | 37.295109 s | 8.495787 s | 0.000000305 s |
+| median | 37.192760 s | 8.492197 s | 0.000000375 s |
+
+All three timing files contain no `poly.eval.prove4.r_D1` or
+`poly.eval.prove4.r_D2` event. The median sample regenerated
+`timing.local.cpu.current.json` and `timing.local.cpu.current.md`. The timing
+set is a production validation gate rather than a same-session paired
+comparison; the integration follows the algebraic owner decision.
