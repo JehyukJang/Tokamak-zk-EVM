@@ -2,11 +2,10 @@
 
 ## Decision Status
 
-Candidate 2A is rejected as a standalone production optimization. It is
-mathematically exact and reduced mean `prove3.total` by 45.569 milliseconds,
-but its end-to-end effect was noisy and did not improve mean `total_wall`.
-
-No production prover code has been changed.
+Candidate 2A's historical standalone experiment was rejected because its
+end-to-end effect did not exceed noise. That standalone conclusion is
+superseded for the current production state: the adjusted-point identity is
+retained as part of the accepted Candidate 2 shared-evaluation algorithm.
 
 ## Source And Environment
 
@@ -241,8 +240,14 @@ traversal may produce a larger measurable E2E reduction. Candidate 2B must
 benchmark the complete shared-pass implementation independently and must not
 claim Candidate 2A's unmeasurable standalone gain as an accepted result.
 
-## Final Decision
+## Historical Standalone Decision
 
-Reject Candidate 2A as a standalone production change. Preserve the algebraic
-identity as an input to Candidate 2B, delete the detached experiment, and leave
-the production prover unchanged.
+Candidate 2A was rejected as an isolated change and preserved as an input to
+Candidate 2B. The later cross-candidate rebenchmark confirmed that its correct
+comparator improves mean first-proof `total_wall` from `37.909550` to
+`37.805228` seconds on CPU and from `24.093717` to `23.943820` seconds on
+CUDA. The identity remains in production through Candidate 2.
+
+See
+[July Rebenchmark And Final Disposition](2026-07-30_july-rebenchmark-and-final-disposition.md)
+for every retained sample and the final implementation decision.

@@ -2,13 +2,10 @@
 
 ## Decision Status
 
-Candidate 2C passed exact correctness and fresh proof-verification gates. It
-removed the intended prove4 evaluation boundary, but its five-pair end-to-end
-result did not exceed observed noise.
-
-The project owner rejected Candidate 2C as a standalone production
-optimization. No production code changed, and the isolated experiment was
-discarded after this decision.
+Candidate 2C is integrated in production commit `6c132c3d8`. The project owner
+superseded the historical standalone rejection because the optimization
+removes two full polynomial evaluations algebraically. Exact parity, fresh
+verification, and the production CPU timing gate passed.
 
 ## Source And Environment
 
@@ -247,3 +244,15 @@ All three timing files contain no `poly.eval.prove4.r_D1` or
 `timing.local.cpu.current.json` and `timing.local.cpu.current.md`. The timing
 set is a production validation gate rather than a same-session paired
 comparison; the integration follows the algebraic owner decision.
+
+## Corrected July Rebenchmark
+
+Before integration, the corrected five-run candidate versus legacy means were
+`36.788042` versus `37.030477` seconds on CPU and `23.817396` versus
+`23.762909` seconds on CUDA. CUDA mean and median directions disagreed, so the
+isolated timing did not establish a backend-wide speedup. Integration followed
+the project-owner algebraic-work decision, not a new performance claim.
+
+See
+[July Rebenchmark And Final Disposition](2026-07-30_july-rebenchmark-and-final-disposition.md)
+for all samples, controls, and the completed production sequence.

@@ -2,13 +2,10 @@
 
 ## Decision Status
 
-Candidate 2D is complete and integrated into production.
-
-The project owner approved the unified backend-neutral path after reviewing the
-conflicting experiment result: CPU end-to-end time improved materially, while
-the CUDA candidate boundary regressed but the paired CUDA end-to-end interval
-included zero. Production does not inspect the active ICICLE device and has no
-legacy runtime fallback.
+Candidate 2D is rejected and no longer present in production. The leading
+historical integration decision is superseded by the corrected CPU/CUDA
+rebenchmark and project-owner disposition. Commit `9a871a9f5` restored three
+independent ICICLE submissions and removed the grouped helper and tests.
 
 ## Boundary
 
@@ -194,3 +191,14 @@ The median sample regenerated `timing.local.cpu.current.json` and
 `timing.local.cpu.current.md`. These runs are a production validation gate,
 not a same-session performance comparison with the removed grouped path; the
 disposition follows the consolidated owner decision.
+
+## Corrected July Rebenchmark
+
+Grouped versus independent first-proof means were `37.098911` versus
+`37.467135` seconds on CPU and `23.842643` versus `23.584914` seconds on CUDA.
+The opposite backend directions led the project owner to reject grouped
+submission. No fresh post-removal CUDA timing was collected.
+
+See
+[July Rebenchmark And Final Disposition](2026-07-30_july-rebenchmark-and-final-disposition.md)
+for all samples, controls, and the final removal record.

@@ -641,7 +641,6 @@ impl Add for &DensePolynomialExt {
         let step_start = Instant::now();
         let x_size = lhs_ext.x_size;
         let y_size = lhs_ext.y_size;
-        //let (x_degree, y_degree) = DensePolynomialExt::find_degree(&out_poly, x_size, y_size);
         let out = DensePolynomialExt {
             poly: out_poly,
             x_degree: x_size as i64 - 1,
@@ -713,7 +712,6 @@ impl AddAssign<&DensePolynomialExt> for DensePolynomialExt {
         let step_start = Instant::now();
         self.x_size = lhs_ext.x_size;
         self.y_size = lhs_ext.y_size;
-        //let (x_degree, y_degree) = DensePolynomialExt::find_degree(&self.poly, self.x_size, self.y_size);
         self.x_degree = self.x_size as i64 - 1;
         self.y_degree = self.y_size as i64 - 1;
         #[cfg(feature = "timing")]
@@ -781,7 +779,6 @@ impl Sub for &DensePolynomialExt {
         let step_start = Instant::now();
         let x_size = lhs_ext.x_size;
         let y_size = lhs_ext.y_size;
-        //let (x_degree, y_degree) = DensePolynomialExt::find_degree(&out_poly, x_size, y_size);
         let out = DensePolynomialExt {
             poly: out_poly,
             x_degree: x_size as i64 - 1,
@@ -1624,7 +1621,6 @@ impl BivariatePolynomial for DensePolynomialExt {
             return Self::zero();
         }
         let poly = DensePolynomial::from_coeffs(coeffs, x_size * y_size);
-        //let (x_degree, y_degree) = DensePolynomialExt::_find_degree(&poly, x_size, y_size);
         Self {
             poly,
             x_degree: x_size as i64 - 1,

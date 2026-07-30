@@ -24,6 +24,10 @@ Both wrappers write:
 - intermediate ceremony artifacts to `--intermediate`
 - final trusted-setup-compatible artifacts to `--output`
 
+The mathematical formulas, trapdoor ownership, contribution checks, and known
+security limitation of the implemented phase-2 protocol are documented in the
+[phase-2 output contract](docs/phase2-output-contract.md).
+
 ## Prerequisites
 
 Before running the ceremony:

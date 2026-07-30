@@ -25,8 +25,6 @@ pub struct VerifyInputPaths<'a> {
 pub struct Verifier {
     pub sigma: SigmaVerify,
     pub a_pub_X: DensePolynomialExt,
-    // pub publicInputBuffer: PublicInputBuffer,
-    // pub publicOutputBuffer: PublicOutputBuffer,
     pub preprocess: Preprocess,
     pub setup_params: SetupParams,
     pub proof: Proof,
@@ -78,8 +76,6 @@ impl Verifier {
 
         // Load Proof
         let proof_path = PathBuf::from(paths.proof_path).join("proof.json");
-        // let proof = Proof::read_from_json(&proof_path)
-        // .expect("No proof is found. Run the Prove first.");
         let proof = FormattedProof::read_from_json(proof_path)
             .expect("No proof is found. Run the Prove first.")
             .recover_proof_from_format();
@@ -87,8 +83,6 @@ impl Verifier {
         return Self {
             sigma,
             a_pub_X,
-            // publicInputBuffer: instance.publicInputBuffer,
-            // publicOutputBuffer: instance.publicOutputBuffer,
             setup_params,
             preprocess,
             proof,

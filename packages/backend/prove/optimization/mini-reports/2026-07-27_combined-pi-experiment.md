@@ -270,3 +270,14 @@ The canonical sample records:
 Candidate 1A is accepted and retained in production. Its correctness,
 end-to-end gain, production proof verification, and production timing gate all
 passed.
+
+## Corrected July Rebenchmark
+
+The same-revision five-run comparison measured current versus legacy
+first-proof means of `38.331634` versus `39.997688` seconds on CPU and
+`23.682864` versus `23.878389` seconds on CUDA. Both CPU paths retained their
+slow samples; the medians also favored the current path.
+
+See
+[July Rebenchmark And Final Disposition](2026-07-30_july-rebenchmark-and-final-disposition.md)
+for all samples, controls, invalidated evidence, and final classifications.

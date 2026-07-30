@@ -543,3 +543,25 @@ optimization baseline.
 
 Candidate 2B now passes the same backend-neutral prove control flow on CPU and
 CUDA. Its crash-recovery validation is complete.
+
+## Corrected July Rebenchmark And Implementation Selection
+
+The corrected five-run first-proof means were:
+
+| implementation | CPU | CUDA |
+| --- | ---: | ---: |
+| ICICLE two-stage Batch | 37.123245 s | 23.778090 s |
+| custom Rust Serial | 36.990655 s | 24.434111 s |
+| custom Rust Rayon | 36.765554 s | 23.770799 s |
+| adjusted independent comparator | 37.805228 s | 23.943820 s |
+
+The shared-evaluation algorithm is retained. The project owner selected ICICLE
+two-stage Batch because it preserves native backend dispatch, and rejected the
+custom Serial and Rayon realizations. The CUDA defect and four-scalar
+host-output workaround remain part of the accepted Batch implementation's
+history.
+
+See
+[July Rebenchmark And Final Disposition](2026-07-30_july-rebenchmark-and-final-disposition.md)
+for every sample, control, pairwise implementation delta, and final
+classification.

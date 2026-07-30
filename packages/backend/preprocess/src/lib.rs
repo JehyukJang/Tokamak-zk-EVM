@@ -22,9 +22,6 @@ pub struct Preprocess {
     pub s0: G1serde,
     pub s1: G1serde,
     pub O_pub_fix: G1serde,
-    // pub O_function_inst: G1serde,
-    // pub O_block_inst: G1serde,
-    // pub lagrange_KL: G1serde,
 }
 
 impl Preprocess {
@@ -49,35 +46,10 @@ impl Preprocess {
             .sigma_1
             .encode_O_pub_fix(&instance.a_pub_function, setup_params);
 
-        // let mut lagrange_KL_XY = {
-        //     let mut k_evals = vec![ScalarField::zero(); m_i];
-        //     k_evals[m_i - 1] = ScalarField::one();
-        //     let lagrange_K_XY = DensePolynomialExt::from_rou_evals(
-        //         HostSlice::from_slice(&k_evals),
-        //         m_i,
-        //         1,
-        //         None,
-        //         None
-        //     );
-        //     let mut l_evals = vec![ScalarField::zero(); s_max];
-        //     l_evals[s_max - 1] = ScalarField::one();
-        //     let lagrange_L_XY = DensePolynomialExt::from_rou_evals(
-        //         HostSlice::from_slice(&l_evals),
-        //         1,
-        //         s_max,
-        //         None,
-        //         None
-        //     );
-        //     &lagrange_K_XY * &lagrange_L_XY
-        // };
-        // let lagrange_KL = sigma.sigma_1.encode_poly(&mut lagrange_KL_XY, &setup_params);
-        // return Preprocess {s0, s1, lagrange_KL}
         return Preprocess {
             s0,
             s1,
             O_pub_fix,
-            // O_function_inst,
-            // O_block_inst,
         };
     }
 
@@ -95,8 +67,6 @@ impl Preprocess {
             &self.s0,
             &self.s1,
             &self.O_pub_fix,
-            // &self.O_function_inst,
-            // &self.O_block_inst,
         );
         return FormattedPreprocess {
             preprocess_entries_part1,

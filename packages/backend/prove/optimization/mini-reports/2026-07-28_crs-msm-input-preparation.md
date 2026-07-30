@@ -710,3 +710,22 @@ interval of 0.392926 to 1.406092 seconds.
 
 Candidate 5 experimentation, architecture selection, production integration,
 correctness validation, and production timing regeneration are complete.
+
+## Corrected July Rebenchmark
+
+The same-revision first-proof means were:
+
+| path | CPU | CUDA |
+| --- | ---: | ---: |
+| repeated archive decode | 37.869375 s | 24.919835 s |
+| Option A, full-grid decode once | 37.147465 s | 23.914115 s |
+| Option B, exact-shape archive cache | 37.954230 s | 25.138057 s |
+| Option C, full grid plus shape caches | 37.221069 s | 24.451163 s |
+
+These results retain Option A and reject archive-only production, B, and C.
+The separate first-proof A versus A+D experiment also failed to establish an
+Option D improvement; reused-proof results have no decision weight.
+
+See
+[July Rebenchmark And Final Disposition](2026-07-30_july-rebenchmark-and-final-disposition.md)
+for all samples, controls, Option D history, and artifact-integrity incidents.

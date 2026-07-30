@@ -49,7 +49,6 @@ macro_rules! impl_read_from_json {
                 use serde_json::from_reader;
                 use std::fs::File;
                 use std::io::BufReader;
-                // let abs_path = env::current_dir()?.join(path);
                 let file = File::open(path)?;
                 let reader = BufReader::new(file);
                 let res: Self = from_reader(reader)?;
@@ -67,7 +66,6 @@ macro_rules! impl_read_box_from_json {
                 use serde_json::from_reader;
                 use std::fs::File;
                 use std::io::BufReader;
-                // let abs_path = env::current_dir()?.join(path);
                 let file = File::open(path)?;
                 let reader = BufReader::new(file);
                 let box_data: Box<[Self]> = from_reader(reader)?;
@@ -471,7 +469,6 @@ impl_read_box_from_json!(SubcircuitInfo);
 pub fn read_global_wire_list_as_boxed_boxed_numbers(
     path: PathBuf,
 ) -> io::Result<Box<[Box<[usize]>]>> {
-    // let abs_path = env::current_dir()?.join(QAP_COMPILER_PATH_PREFIX).join(path);
     let file = File::open(path)?;
     let reader = BufReader::new(file);
 

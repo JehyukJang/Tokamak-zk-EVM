@@ -550,60 +550,6 @@ impl Sigma1 {
         }
     }
 
-    // pub fn encode_O_pub_free(
-    //     &self,
-    //     placement_variables: &[PlacementVariables],
-    //     subcircuit_infos: &[SubcircuitInfo],
-    //     setup_params: &SetupParams
-    // ) -> G1serde {
-    //     let mut aligned_rs = vec![G1Affine::zero(); setup_params.l];
-    //     let mut aligned_wtns = vec![ScalarField::zero(); setup_params.l];
-    //     let mut cnt: usize = 0;
-    //     let gamma_inv_o_inst = [
-    //         &self.gamma_inv_o_user_inst[..],
-    //         &self.gamma2_inv_o_block_inst[..],
-    //         &self.gamma2_inv_o_function_inst[..],
-    //     ].concat().into_boxed_slice();
-    //     for i in 0..4 {
-    //         let subcircuit_id = placement_variables[i].subcircuitId;
-    //         let variables = &placement_variables[i].variables;
-    //         let subcircuit_info = &subcircuit_infos[subcircuit_id];
-    //         let flatten_map = &subcircuit_info.flattenMap;
-    //         let (start_idx, end_idx_exclusive) = if subcircuit_info.name == "bufferPubOut" {
-    //             // PUBLIC_OUT
-    //             (subcircuit_info.Out_idx[0], subcircuit_info.Out_idx[0] + subcircuit_info.Out_idx[1])
-    //         } else if subcircuit_info.name == "bufferPubIn" {
-    //             // PUBLIC_IN
-    //             (subcircuit_info.In_idx[0], subcircuit_info.In_idx[0] + subcircuit_info.In_idx[1])
-    //         } else if subcircuit_info.name == "bufferBlockIn" {
-    //             // BLOCK_IN
-    //             (subcircuit_info.In_idx[0], subcircuit_info.In_idx[0] + subcircuit_info.In_idx[1])
-    //         } else if subcircuit_info.name == "bufferEVMIn" {
-    //             // EVM_IN
-    //             (subcircuit_info.In_idx[0], subcircuit_info.In_idx[0] + subcircuit_info.In_idx[1])
-    //         } else {
-    //             panic!("Target placement is not a buffer")
-    //         };
-
-    //         for j in start_idx..end_idx_exclusive {
-    //             aligned_wtns[cnt] = ScalarField::from_hex(&variables[j]);
-    //             let global_idx = flatten_map[j];
-    //             let curve_point = gamma_inv_o_inst[global_idx].0;
-    //             aligned_rs[cnt] = curve_point;
-    //             cnt += 1;
-    //         }
-    //     }
-    //     let mut msm_res = vec![G1Projective::zero(); 1];
-    //     msm::msm(
-    //         HostSlice::from_slice(&aligned_wtns),
-    //         HostSlice::from_slice(&aligned_rs),
-    //         &MSMConfig::default(),
-    //         HostSlice::from_mut_slice(&mut msm_res)
-    //     ).unwrap();
-
-    //     G1serde(G1Affine::from(msm_res[0]))
-    // }
-
     pub fn encode_O_pub_free(
         &self,
         placement_variables: &[PlacementVariables],
@@ -646,48 +592,6 @@ impl Sigma1 {
             subcircuit_infos,
             |global_idx, i| self.eta_inv_li_o_inter_alpha4_kj[global_idx][i].0,
         )
-
-        // let mut aligned_rs = vec![G1Affine::zero(); nVar];
-        // let mut aligned_wtns = vec![ScalarField::zero(); nVar];
-        // let mut cnt: usize = 0;
-        // for i in 0..placement_variables.len() {
-        //     let subcircuit_id = placement_variables[i].subcircuitId;
-        //     let variables = &placement_variables[i].variables;
-        //     let subcircuit_info = &subcircuit_infos[subcircuit_id];
-        //     let flatten_map = &subcircuit_info.flattenMap;
-        //     // Filterling out interface wires
-        //     let (start_idx, end_idx_exclusive) = if subcircuit_info.name == "bufferPubOut" {
-        //         // PUBLIC_OUT
-        //         (subcircuit_info.In_idx[0],  subcircuit_info.In_idx[0] + subcircuit_info.In_idx[1])
-        //     } else if subcircuit_info.name == "bufferPubIn" {
-        //         // PUBLIC_IN
-        //         (subcircuit_info.Out_idx[0], subcircuit_info.Out_idx[0] + subcircuit_info.Out_idx[1])
-        //     } else if subcircuit_info.name == "bufferBlockIn" {
-        //         // BLOCK_IN
-        //         (subcircuit_info.Out_idx[0], subcircuit_info.Out_idx[0] + subcircuit_info.Out_idx[1])
-        //     } else if subcircuit_info.name == "bufferEVMIn" {
-        //         // EVM_IN
-        //         (subcircuit_info.Out_idx[0], subcircuit_info.Out_idx[0] + subcircuit_info.Out_idx[1])
-        //     } else {
-        //         (subcircuit_info.Out_idx[0], subcircuit_info.Out_idx[0] + subcircuit_info.Out_idx[1] + subcircuit_info.In_idx[1])
-        //     };
-
-        //     for j in start_idx..end_idx_exclusive {
-        //         aligned_wtns[cnt] = ScalarField::from_hex(&variables[j]);
-        //         let global_idx = flatten_map[j] - setup_params.l;
-        //         let curve_point = self.eta_inv_li_o_inter_alpha4_kj[global_idx][i].0;
-        //         aligned_rs[cnt] = curve_point;
-        //         cnt += 1;
-        //     }
-        // }
-        // let mut msm_res = vec![G1Projective::zero(); 1];
-        // msm::msm(
-        //     HostSlice::from_slice(&aligned_wtns),
-        //     HostSlice::from_slice(&aligned_rs),
-        //     &MSMConfig::default(),
-        //     HostSlice::from_mut_slice(&mut msm_res)
-        // ).unwrap();
-        // return G1serde(G1Affine::from(msm_res[0]))
     }
 
     pub fn encode_O_prv_no_zk(
@@ -705,33 +609,6 @@ impl Sigma1 {
             subcircuit_infos,
             |global_idx, i| self.delta_inv_li_o_prv[global_idx][i].0,
         )
-
-        // let mut aligned_rs = vec![G1Affine::zero(); nVar];
-        // let mut aligned_wtns = vec![ScalarField::zero(); nVar];
-        // let mut cnt: usize = 0;
-        // for i in 0..placement_variables.len() {
-        //     let subcircuit_id = placement_variables[i].subcircuitId;
-        //     let variables = &placement_variables[i].variables;
-        //     let subcircuit_info = &subcircuit_infos[subcircuit_id];
-        //     let flatten_map = &subcircuit_info.flattenMap;
-        //     for j in 0..subcircuit_info.Nwires {
-        //         if flatten_map[j] >= setup_params.l_D {
-        //             let global_idx = flatten_map[j] - setup_params.l_D;
-        //             aligned_wtns[cnt] = ScalarField::from_hex(&variables[j]);
-        //             let curve_point = self.delta_inv_li_o_prv[global_idx][i].0;
-        //             aligned_rs[cnt] = curve_point;
-        //             cnt += 1;
-        //         }
-        //     }
-        // }
-        // let mut msm_res = vec![G1Projective::zero(); 1];
-        // msm::msm(
-        //     HostSlice::from_slice(&aligned_wtns),
-        //     HostSlice::from_slice(&aligned_rs),
-        //     &MSMConfig::default(),
-        //     HostSlice::from_mut_slice(&mut msm_res)
-        // ).unwrap();
-        // return G1serde(G1Affine::from(msm_res[0]))
     }
 }
 /// This corresponds to σ_2 in the paper:
@@ -802,48 +679,6 @@ impl PartialSigma1 {
         )
     }
 }
-
-// impl PartialSigma1 {
-//     pub fn encode_O_function_inst(
-//         &self,
-//         a_pub_function: &[String],
-//     ) -> G1serde {
-//         let mut msm_res = vec![G1Projective::zero(); 1];
-//         if a_pub_function.len() != self.gamma2_inv_o_function_inst.len() {
-//             panic!("Public function instance length mismatch with corresponding CRS elements")
-//         }
-//         let scalars_field = a_pub_function.iter().map( |val| ScalarField::from_hex(val)).collect::<Vec<_>>().into_boxed_slice();
-//         let bases_G1 = self.gamma2_inv_o_function_inst.iter().map(|serde| serde.0).collect::<Vec<_>>().into_boxed_slice();
-//         msm::msm(
-//             HostSlice::from_slice(&scalars_field),
-//             HostSlice::from_slice(&bases_G1),
-//             &MSMConfig::default(),
-//             HostSlice::from_mut_slice(&mut msm_res)
-//         ).unwrap();
-
-//         G1serde(G1Affine::from(msm_res[0]))
-//     }
-
-//     pub fn encode_O_block_inst(
-//         &self,
-//         a_pub_block: &[String],
-//     ) -> G1serde {
-//         let mut msm_res = vec![G1Projective::zero(); 1];
-//         if a_pub_block.len() != self.gamma2_inv_o_block_inst.len() {
-//             panic!("Public block instance length mismatch with corresponding CRS elements")
-//         }
-//         let scalars_field = a_pub_block.iter().map( |val| ScalarField::from_hex(val)).collect::<Vec<_>>().into_boxed_slice();
-//         let bases_G1 = self.gamma2_inv_o_block_inst.iter().map(|serde| serde.0).collect::<Vec<_>>().into_boxed_slice();
-//         msm::msm(
-//             HostSlice::from_slice(&scalars_field),
-//             HostSlice::from_slice(&bases_G1),
-//             &MSMConfig::default(),
-//             HostSlice::from_mut_slice(&mut msm_res)
-//         ).unwrap();
-
-//         G1serde(G1Affine::from(msm_res[0]))
-//     }
-// }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PartialSigma1Verify {
@@ -953,7 +788,6 @@ impl G2serde {
         Self(G2Affine::zero())
     }
 }
-//new added for G2Serde
 impl Add for G2serde {
     type Output = Self;
 

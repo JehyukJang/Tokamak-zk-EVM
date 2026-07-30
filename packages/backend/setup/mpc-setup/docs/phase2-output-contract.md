@@ -1,10 +1,11 @@
-# MPC Phase 2 Output Plan
+# MPC Phase 2 Output Contract
 
 ## Objective
 
-This document fixes the mathematical target of the final MPC phase-2 outputs.
-It intentionally describes the outputs as formulas, not as code paths.
-The purpose is to provide a stable reference before changing the phase-1 / phase-2 split.
+This document defines the mathematical contract implemented by the final MPC
+phase-2 outputs. It describes output formulas and ceremony invariants rather
+than source-code paths. Sections that discuss a random-beacon migration are
+explicit future hardening work and do not describe the current protocol.
 
 ## Notation
 
@@ -46,7 +47,7 @@ Public-wire segment selector:
 
 ## Tau Sets
 
-For the refactored ceremony discussed in this document, define:
+For the implemented x-only phase-1 ceremony, define:
 
 $$
 n_{\mathrm{Tokamak}} := \max(n, m_i).

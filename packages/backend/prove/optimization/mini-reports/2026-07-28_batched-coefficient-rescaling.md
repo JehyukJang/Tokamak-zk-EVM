@@ -312,3 +312,24 @@ Candidate 4 is rejected. No production integration, production timing-table
 regeneration, backend-specific path, runtime selector, or fallback is retained.
 The detached experiment and ignored raw artifacts may be removed after this
 report is committed.
+
+## Reopened July Comparison
+
+The later campaign measured legacy, X-only, Y-only, and combined X+Y paths on
+both CPU and CUDA. Mean first-proof results were:
+
+| path | CPU | CUDA |
+| --- | ---: | ---: |
+| legacy | 37.079145 s | 23.782945 s |
+| X | 37.005200 s | 23.518756 s |
+| Y | 36.977223 s | 23.650192 s |
+| X+Y | 37.122566 s | 23.512530 s |
+
+The combined path was a reopened-campaign measurement, not a promotion under
+the earlier independent-direction rule. CUDA controls moved from `24.104620`
+to `23.264654` seconds, more than every candidate delta, so the complete block
+is inconclusive. Candidate 4 remains rejected.
+
+See
+[July Rebenchmark And Final Disposition](2026-07-30_july-rebenchmark-and-final-disposition.md)
+for all retained samples and controls.

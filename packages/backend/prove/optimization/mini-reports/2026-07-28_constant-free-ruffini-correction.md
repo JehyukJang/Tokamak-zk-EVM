@@ -2,12 +2,10 @@
 
 ## Decision Status
 
-Candidate 3A passed exact correctness and fresh proof-verification gates, but
-its five-pair end-to-end result did not exceed observed noise.
-
-The project owner rejected Candidate 3A as a standalone production
-optimization. No production code changed, and the isolated experiment was
-discarded after this decision.
+Candidate 3A is integrated in production commit `627821017`. The project owner
+superseded the historical standalone rejection because the optimization
+removes three full scalar-polynomial subtractions algebraically. Exact parity,
+fresh verification, and the production CPU timing gate passed.
 
 ## Source And Environment
 
@@ -335,3 +333,15 @@ All three timing files omit `poly.add.prove4.V_minus_eval`,
 `timing.local.cpu.current.json` and `timing.local.cpu.current.md`. This timing
 set is a production validation gate rather than a same-session paired
 comparison; the integration follows the algebraic owner decision.
+
+## Corrected July Rebenchmark
+
+Before integration, the corrected five-run candidate versus legacy means were
+`37.010535` versus `37.089166` seconds on CPU and `23.721188` versus
+`23.582922` seconds on CUDA. These movements did not establish a performance
+win. Integration followed the project-owner algebraic-work decision, and no
+fresh post-integration CUDA timing was collected.
+
+See
+[July Rebenchmark And Final Disposition](2026-07-30_july-rebenchmark-and-final-disposition.md)
+for all samples, controls, and the completed production sequence.

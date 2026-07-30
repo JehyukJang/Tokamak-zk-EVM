@@ -112,13 +112,6 @@ pub fn from_r1cs_to_evaled_qap_mixture(
         &mut evaled_w_compact_col_vec,
     );
 
-    // // Collect all active wires to form o_i(x) := \alpha * u_i(x) + \alpha^2 * v_i(x) + \alpha^3 * w_i(x)
-    // let mut active_wires_o = HashSet::new();
-    // active_wires_o = active_wires_o.union(active_wires_A).copied().collect();
-    // active_wires_o = active_wires_o.union(active_wires_B).copied().collect();
-    // active_wires_o = active_wires_o.union(active_wires_C).copied().collect();
-    // let o_len = active_wires_o.len();
-
     // Prepare vectors for final evaluation
     let o_len = subcircuit_info.Nwires;
     let mut evaled_u_vec = vec![ScalarField::zero(); o_len].into_boxed_slice();

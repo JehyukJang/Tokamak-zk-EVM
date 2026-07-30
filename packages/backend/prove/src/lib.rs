@@ -3570,8 +3570,6 @@ impl TranscriptManager {
     }
 
     pub fn add_proof0(&mut self, proof: &Proof0) {
-        //println!("Adding proof0 commitments to transcript...");
-
         // Add each field element individually to match the verifier exactly
         // Order is critical: U_x, U_y, V_x, V_y, etc.
         match self.transcript.commit_bls12_381_field_element(&proof.U.0.x) {
@@ -3648,21 +3646,11 @@ impl TranscriptManager {
     }
 
     pub fn get_thetas(&mut self) -> Vec<ScalarField> {
-        //println!("Generating thetas from transcript...");
         let thetas = self.transcript.get_challenges(3);
-
-        // Print challenges for debugging
-        /*
-        for (i, theta) in thetas.iter().enumerate() {
-            println!("Theta_{}: {}", i, hex_string(theta));
-        }
-        */
         thetas
     }
 
     pub fn add_proof1(&mut self, proof: &Proof1) {
-        //println!("Adding proof1 commitments to transcript...");
-
         match self.transcript.commit_bls12_381_field_element(&proof.R.0.x) {
             Ok(_) => {}
             Err(e) => panic!("Failed to commit R.x: {}", e),
@@ -3675,15 +3663,11 @@ impl TranscriptManager {
     }
 
     pub fn get_kappa0(&mut self) -> ScalarField {
-        //println!("Generating kappa0 from transcript...");
         let kappa0 = self.transcript.get_challenge();
-        //println!("Kappa0: {}", hex_string(&kappa0));
         kappa0
     }
 
     pub fn add_proof2(&mut self, proof: &Proof2) {
-        //println!("Adding proof2 commitments to transcript...");
-
         match self
             .transcript
             .commit_bls12_381_field_element(&proof.Q_CX.0.x)
@@ -3718,19 +3702,13 @@ impl TranscriptManager {
     }
 
     pub fn get_chi_zeta(&mut self) -> (ScalarField, ScalarField) {
-        //println!("Generating chi and zeta from transcript...");
         let chi = self.transcript.get_challenge();
         let zeta = self.transcript.get_challenge();
-
-        //println!("Chi: {}", hex_string(&chi));
-        //println!("Zeta: {}", hex_string(&zeta));
 
         (chi, zeta)
     }
 
     pub fn add_proof3(&mut self, proof: &Proof3) {
-        //println!("Adding proof3 commitments to transcript...");
-
         match self.transcript.commit_field_as_bytes(&proof.V_eval.0) {
             Ok(_) => {}
             Err(e) => panic!("Failed to commit V_eval: {}", e),
@@ -3759,18 +3737,9 @@ impl TranscriptManager {
     }
 
     pub fn get_kappa1(&mut self) -> ScalarField {
-        //println!("Generating kappa1 from transcript...");
         let kappa1 = self.transcript.get_challenge();
-        //println!("Kappa1: {}", hex_string(&kappa1));
         kappa1
     }
-
-    // pub fn get_kappa2(&mut self) -> ScalarField {
-    //     //println!("Generating kappa2 from transcript...");
-    //     let kappa2 = self.transcript.get_challenge();
-    //     //println!("Kappa2: {}", hex_string(&kappa2));
-    //     kappa2
-    // }
 }
 
 // Helper function to convert a scalar field element to a hex string

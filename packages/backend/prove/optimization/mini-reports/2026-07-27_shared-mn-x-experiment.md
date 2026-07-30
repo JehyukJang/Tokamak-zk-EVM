@@ -309,3 +309,14 @@ smaller and remains unmeasured.
 Candidate 1B is accepted. It is exact, verifier-compatible, and retains an
 end-to-end production improvement consistent with the division and commitment
 work removed. The isolated experiment can be deleted.
+
+## Corrected July Rebenchmark
+
+The same-revision five-run comparison measured current versus legacy
+first-proof means of `37.156643` versus `38.464735` seconds on CPU and
+`23.758035` versus `24.759866` seconds on CUDA. The accepted path improved both
+environments.
+
+See
+[July Rebenchmark And Final Disposition](2026-07-30_july-rebenchmark-and-final-disposition.md)
+for all samples, controls, and final classifications.

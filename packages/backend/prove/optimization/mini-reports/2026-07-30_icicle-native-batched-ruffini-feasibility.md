@@ -2,14 +2,11 @@
 
 ## Decision Status
 
-Candidate 3C is blocked at the mandatory Stage 0 API-feasibility gate. ICICLE
-exposes a batched polynomial-division dispatcher, but neither the workspace's
-ICICLE `v3.8.0` CUDA backend nor the latest official `v4.0.0` CUDA backend
-registers an implementation for it. Only the CPU backend registers polynomial
-division.
-
-No experiment or production code was added. Proceeding requires an explicit
-project-owner decision to defer the candidate or change its architecture.
+Candidates 3B and 3C are rejected. Candidate 3C failed the Stage 0
+API-feasibility gate because neither the workspace's ICICLE `v3.8.0` CUDA
+backend nor the official `v4.0.0` CUDA backend registers polynomial division.
+Candidate 3B was not benchmarked or implemented. No Ruffini-kernel experiment
+or production integration remains planned.
 
 ## Current Production Boundary
 
@@ -126,15 +123,13 @@ remove and violate the single backend-neutral path requirement. A custom CUDA
 kernel creates backend-specific prove code. An NTT formulation is a different
 algorithm with different work, allocations, and performance risks.
 
-## Required Project-Owner Decision
+## Final Decision
 
-The available choices are:
+The project owner rejected both Candidate 3B's custom CPU recurrence and
+Candidate 3C's unavailable ICICLE-native CUDA path. Candidate 3B was not
+benchmarked; Candidate 3C stopped before implementation. Candidates 7 and 8
+were also rejected before implementation.
 
-1. defer Candidate 3C until ICICLE provides CUDA polynomial division;
-2. re-scope Candidate 3C as a backend-specific custom CUDA recurrence, with a
-   separately selected CPU path;
-3. replace Candidate 3C with a new backend-neutral NTT/convolution experiment;
-4. leave Candidate 3C blocked and proceed to Candidate 7 or Candidate 8.
-
-No choice has been made. The optimization campaign must not implement one of
-these alternatives implicitly.
+See
+[July Rebenchmark And Final Disposition](2026-07-30_july-rebenchmark-and-final-disposition.md)
+for the final cross-candidate disposition.

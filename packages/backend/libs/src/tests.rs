@@ -1619,8 +1619,6 @@ mod tests {
     fn update_degree_general_case() {
         let x_size = 2usize.pow(12);
         let y_size = 2usize.pow(6);
-        // let x_degree= 2i64.pow(9);
-        // let y_degree = 0;
         let x_degree: i64 = (x_size - 1) as i64;
         let y_degree: i64 = (y_size - 1) as i64;
 

@@ -73,8 +73,6 @@ pub fn scale_vec(scaler: ScalarField, vec: &[ScalarField], res: &mut [ScalarFiel
     let lhs_v = vec![scaler];
     let lhs_buff = HostSlice::from_slice(&lhs_v);
     let rhs_buff = HostSlice::from_slice(vec);
-    // let scaler = vec![lhs; rhs.len()];
-    // point_mul_two_vecs(&scaler, rhs, res);
     let res_buff = HostSlice::from_mut_slice(res);
     ScalarCfg::scalar_mul(lhs_buff, rhs_buff, res_buff, &vec_ops_cfg).unwrap();
 }
@@ -560,14 +558,12 @@ pub fn outer_product_two_vecs(
     let row_len = col_vec.len();
     let col_len = row_vec.len();
 
-    // let vec_ops_cfg = VecOpsConfig::default();
     let min_len = std::cmp::min(row_len, col_len);
     let max_len = std::cmp::max(row_len, col_len);
     let max_col = max_len == row_len;
 
     let base_vec = if max_col { col_vec } else { row_vec };
 
-    // let mut res_untransposed = vec![ScalarField::zero(); res.len()];
     for ind in 0..min_len {
         let scaler = if max_col { row_vec[ind] } else { col_vec[ind] };
         let mut _res_vec = vec![ScalarField::zero(); max_len];

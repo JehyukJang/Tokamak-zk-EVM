@@ -309,3 +309,27 @@ subcandidates:
 
 Candidate 6 is complete. No production source, feature, fallback, or runtime
 flag was added.
+
+## Corrected Classification And July Rebenchmark
+
+Zero-scalar compaction is an implementation optimization. The identity
+`0 * G = 0` proves correctness, but the proposed work is scalar scanning,
+allocation, copying, and compact MSM input preparation whose benefit depends
+on the active MSM implementation.
+
+The reopened first-proof means were:
+
+| path | CPU | CUDA |
+| --- | ---: | ---: |
+| full inputs | 38.179199 s | 23.936541 s |
+| compact `O_mid` | 37.361681 s | 23.831203 s |
+| compact `O_prv` | 37.525384 s | 23.791888 s |
+| compact both | 37.611980 s | 23.577906 s |
+
+Several paths contain isolated slow samples and control movement is material.
+The project owner rejected 6M and 6P; combined compaction is also absent from
+production.
+
+See
+[July Rebenchmark And Final Disposition](2026-07-30_july-rebenchmark-and-final-disposition.md)
+for every retained sample, median, range, and control.
