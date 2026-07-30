@@ -5,28 +5,29 @@ const packageRoot = path.resolve(import.meta.dirname, '..');
 const repoRoot = path.resolve(packageRoot, '..', '..');
 const vendoredBackendRoot = path.join(packageRoot, 'vendor', 'backend');
 
-const backendExclusions = new Set([
+const directoryExclusions = new Set([
   'target',
   '.vscode',
   'external-lib',
-]);
-
-const directoryExclusions = new Set([
   'output',
   'output-mpc',
   'output-mpc-general',
   'benches',
   'docs',
   'optimization',
+  'tmp',
 ]);
 
 const fileExclusions = [
   '.env',
   '.DS_Store',
+  '.gitignore',
   'README.md',
   'README_mpc.md',
   'download-ICICLE-lib.sh',
   'Dockerfile',
+  'google-drive-oauth-token.json',
+  /^client_secret_.*\.json$/u,
   /^Dockerfile\..*/u,
   /^gen-lang-client-.*\.json$/u,
 ];
@@ -42,15 +43,14 @@ async function ensureDir(target) {
   await fs.mkdir(target, { recursive: true });
 }
 
-function shouldCopyBackendPath(sourcePath) {
-  const relative = path.relative(path.join(repoRoot, 'packages', 'backend'), sourcePath);
+function shouldCopyBackendRelativePath(relative) {
   if (!relative || relative.startsWith('..')) {
     return true;
   }
 
   const parts = relative.split(path.sep);
   for (const part of parts) {
-    if (backendExclusions.has(part) || directoryExclusions.has(part)) {
+    if (directoryExclusions.has(part)) {
       return false;
     }
   }
@@ -61,6 +61,12 @@ function shouldCopyBackendPath(sourcePath) {
     }
   }
   return true;
+}
+
+function shouldCopyBackendPath(sourcePath) {
+  return shouldCopyBackendRelativePath(
+    path.relative(path.join(repoRoot, 'packages', 'backend'), sourcePath),
+  );
 }
 
 async function copyDirectory(from, to, filter) {
@@ -78,6 +84,19 @@ async function sanitizeCargoManifest(filePath) {
   await fs.writeFile(filePath, contents, 'utf8');
 }
 
+async function assertPreparedBackendTree(directory = vendoredBackendRoot) {
+  for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+    const entryPath = path.join(directory, entry.name);
+    const relative = path.relative(vendoredBackendRoot, entryPath);
+    if (!shouldCopyBackendRelativePath(relative)) {
+      throw new Error(`Excluded backend path entered package staging: ${relative}`);
+    }
+    if (entry.isDirectory()) {
+      await assertPreparedBackendTree(entryPath);
+    }
+  }
+}
+
 async function main() {
   await fs.rm(path.join(packageRoot, 'vendor'), { recursive: true, force: true });
   await ensureDir(vendoredBackendRoot);
@@ -89,6 +108,7 @@ async function main() {
 
   await sanitizeCargoManifest(path.join(vendoredBackendRoot, 'libs', 'Cargo.toml'));
   await sanitizeCargoManifest(path.join(vendoredBackendRoot, 'prove', 'Cargo.toml'));
+  await assertPreparedBackendTree();
 }
 
 await main();

@@ -11,7 +11,6 @@ const {
   confirmPrerequisiteInstallation,
   detectManagedPrerequisites,
   detectSupportedNativeOs,
-  executePrerequisiteInstallationPlan,
   isPrerequisiteConfirmationAccepted,
   parseOsRelease,
   parseSupportedUbuntuRelease,
@@ -60,24 +59,19 @@ test('rejects unsupported and unidentified Linux environments', async () => {
     parseSupportedUbuntuRelease('ID=ubuntu\nVERSION_ID="22.04"\n'),
     '22.04',
   );
-  assert.throws(
-    () => parseSupportedUbuntuRelease('ID=ubuntu\nVERSION_ID="24.04"\n'),
-    /Unsupported Ubuntu version/u,
-  );
-  assert.throws(
-    () => parseSupportedUbuntuRelease('ID=debian\nVERSION_ID="12"\n'),
-    /Unsupported Linux distribution/u,
-  );
+  for (const [contents, error] of [
+    ['ID=ubuntu\nVERSION_ID="24.04"\n', /Unsupported Ubuntu version/u],
+    ['ID=debian\nVERSION_ID="12"\n', /Unsupported Linux distribution/u],
+    ['NAME=Ubuntu\n', /Unsupported Linux distribution/u],
+  ]) {
+    assert.throws(() => parseSupportedUbuntuRelease(contents), error);
+  }
   for (const distribution of ['rhel', 'fedora', 'arch']) {
     assert.throws(
       () => parseSupportedUbuntuRelease(`ID=${distribution}\nVERSION_ID="1"\n`),
       /Unsupported Linux distribution/u,
     );
   }
-  assert.throws(
-    () => parseSupportedUbuntuRelease('NAME=Ubuntu\n'),
-    /Unsupported Linux distribution/u,
-  );
   await assert.rejects(
     detectSupportedNativeOs('linux', async () => {
       throw new Error('missing');
@@ -165,17 +159,14 @@ test('accepts only explicit y or yes confirmation', () => {
   }
 });
 
-function ttyInput() {
-  const stream = new PassThrough();
-  stream.isTTY = true;
-  return stream;
-}
-
-function ttyOutput() {
-  const stream = new PassThrough();
-  stream.isTTY = true;
-  stream.on('data', () => {});
-  return stream;
+async function answerPrompt(plan, answer) {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  input.isTTY = output.isTTY = true;
+  output.resume();
+  const result = confirmPrerequisiteInstallation(plan, input, output);
+  setImmediate(() => input.end(answer));
+  return await result;
 }
 
 test('confirms and declines through a real default-deny prompt', async () => {
@@ -185,23 +176,9 @@ test('confirms and declines through a real default-deny prompt', async () => {
     statuses: [],
   };
 
-  const acceptedInput = ttyInput();
-  const acceptedOutput = ttyOutput();
-  const accepted = confirmPrerequisiteInstallation(plan, acceptedInput, acceptedOutput);
-  setImmediate(() => acceptedInput.end('yes\n'));
-  assert.equal(await accepted, true);
-
-  const declinedInput = ttyInput();
-  const declinedOutput = ttyOutput();
-  const declined = confirmPrerequisiteInstallation(plan, declinedInput, declinedOutput);
-  setImmediate(() => declinedInput.end('\n'));
-  assert.equal(await declined, false);
-
-  const eofInput = ttyInput();
-  const eofOutput = ttyOutput();
-  const eof = confirmPrerequisiteInstallation(plan, eofInput, eofOutput);
-  setImmediate(() => eofInput.end());
-  assert.equal(await eof, false);
+  for (const [answer, expected] of [['yes\n', true], ['\n', false], [undefined, false]]) {
+    assert.equal(await answerPrompt(plan, answer), expected);
+  }
 });
 
 test('rejects root execution and non-TTY execution', () => {
@@ -217,81 +194,20 @@ test('rejects root execution and non-TTY execution', () => {
 });
 
 test('reports missing commands and failed version probes during verification', () => {
+  const status = (id, installed) => ({
+    commands: [id],
+    id,
+    installed,
+    label: id,
+    version: installed ? null : `${id} test-version`,
+  });
   const failures = prerequisiteVerificationFailures([
-    {
-      commands: ['cargo'],
-      id: 'cargo',
-      installed: false,
-      label: 'Cargo',
-      version: null,
-    },
-    {
-      commands: ['cmake'],
-      id: 'cmake',
-      installed: true,
-      label: 'CMake',
-      version: null,
-    },
+    status('cargo', false),
+    status('cmake', true),
   ]);
   assert.equal(failures.length, 2);
   assert.match(failures[0], /required command/u);
   assert.match(failures[1], /version verification failed/u);
-});
-
-test('dispatches allowlisted actions and stops after launching Xcode', async () => {
-  const calls = [];
-  const executor = {
-    async installApt(packages, options) {
-      calls.push(['apt', [...packages], options.verbose]);
-    },
-    async installBrew(formulas, options) {
-      calls.push(['brew', [...formulas], options.verbose]);
-    },
-    async installHomebrew(options) {
-      calls.push(['homebrew', options.verbose]);
-    },
-    async installRustup(options) {
-      calls.push(['rustup', options.verbose]);
-    },
-    async launchXcodeCommandLineTools(options) {
-      calls.push(['xcode', options.verbose]);
-    },
-  };
-
-  const linuxResult = await executePrerequisiteInstallationPlan(
-    {
-      actions: [
-        { kind: 'apt', packages: ['build-essential', 'cmake'] },
-        { kind: 'rustup' },
-      ],
-      os: linux,
-      statuses: [],
-    },
-    { verbose: true },
-    executor,
-  );
-  assert.equal(linuxResult, 'complete');
-  assert.deepEqual(calls, [
-    ['apt', ['build-essential', 'cmake'], true],
-    ['rustup', true],
-  ]);
-
-  calls.length = 0;
-  const macResult = await executePrerequisiteInstallationPlan(
-    {
-      actions: [
-        { kind: 'xcode-command-line-tools' },
-        { kind: 'homebrew' },
-        { kind: 'brew', formulas: ['cmake'] },
-      ],
-      os: macos,
-      statuses: [],
-    },
-    { verbose: false },
-    executor,
-  );
-  assert.equal(macResult, 'rerun-required');
-  assert.deepEqual(calls, [['xcode', false]]);
 });
 
 test('prepends tool paths exactly once', () => {
@@ -310,57 +226,33 @@ function runCli(args) {
   });
 }
 
-test('rejects invalid install option combinations before installation', () => {
-  const dockerConflict = runCli(['--install', '--include-prerequisite', '--docker']);
-  assert.notEqual(dockerConflict.status, 0);
-  assert.match(dockerConflict.stderr, /cannot be combined with --docker/u);
-
-  const setupConflict = runCli(['--install', '--trusted-setup', '--no-setup']);
-  assert.notEqual(setupConflict.status, 0);
-  assert.match(setupConflict.stderr, /cannot be combined with --no-setup/u);
+test('rejects invalid options at the executable boundary', () => {
+  for (const [args, error] of [
+    [['--install', '--include-prerequisite', '--docker'], /cannot be combined with --docker/u],
+    [['--install', '--trusted-setup', '--no-setup'], /cannot be combined with --no-setup/u],
+    [['--uninstall', '--include-prerequisite'], /Unknown option for --uninstall/u],
+  ]) {
+    const result = runCli(args);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, error);
+  }
 });
 
 test('parses every supported include-prerequisite combination', () => {
-  assert.deepEqual(parseArgs(['--install', '--include-prerequisite']), {
-    command: 'install',
-    verbose: false,
-    installOptions: {
-      docker: false,
-      includePrerequisite: true,
-      trustedSetup: false,
-      noSetup: false,
-    },
-  });
-  assert.deepEqual(
-    parseArgs(['--install', '--include-prerequisite', '--verbose', '--trusted-setup']),
-    {
+  for (const [options, expected] of [
+    [[], { verbose: false, trustedSetup: false, noSetup: false }],
+    [['--verbose', '--trusted-setup'], { verbose: true, trustedSetup: true, noSetup: false }],
+    [['--no-setup'], { verbose: false, trustedSetup: false, noSetup: true }],
+  ]) {
+    assert.deepEqual(parseArgs(['--install', '--include-prerequisite', ...options]), {
       command: 'install',
-      verbose: true,
+      verbose: expected.verbose,
       installOptions: {
         docker: false,
         includePrerequisite: true,
-        trustedSetup: true,
-        noSetup: false,
+        trustedSetup: expected.trustedSetup,
+        noSetup: expected.noSetup,
       },
-    },
-  );
-  assert.deepEqual(
-    parseArgs(['--install', '--include-prerequisite', '--no-setup']),
-    {
-      command: 'install',
-      verbose: false,
-      installOptions: {
-        docker: false,
-        includePrerequisite: true,
-        trustedSetup: false,
-        noSetup: true,
-      },
-    },
-  );
-});
-
-test('does not add prerequisite removal to uninstall', () => {
-  const result = runCli(['--uninstall', '--include-prerequisite']);
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Unknown option for --uninstall/u);
+    });
+  }
 });

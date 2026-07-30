@@ -37,7 +37,6 @@ COPY package.json ./
 RUN npm install --omit=dev --ignore-scripts
 
 COPY dist ./dist
-COPY scripts ./scripts
 COPY manifests ./manifests
 COPY vendor ./vendor
 

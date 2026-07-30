@@ -206,13 +206,17 @@ system package can break software unrelated to Tokamak zk-EVM.
 - retries the anonymous CRS download up to 5 times, then fails
 - writes everything into the CLI runtime cache
 
-`--install --docker` is supported on Linux hosts and Windows hosts with Docker Desktop. It uses the static Dockerfile shipped in the npm package, checks that Docker is running, probes CUDA with `docker run --rm --gpus all ... nvidia-smi`, then installs through either an `ubuntu22-cuda122` container environment or a CPU-only `ubuntu22` container environment. CUDA Docker installs re-check CUDA availability before each backend command and run without `--gpus all` if the GPU runtime is no longer available. Docker installs always write the Linux runtime cache and store Docker bootstrap files in:
+`--install --docker` is supported on Linux hosts and Windows hosts with Docker Desktop. It uses the static Dockerfile shipped in the npm package, checks that Docker is running, probes CUDA with `docker run --rm --gpus all ... nvidia-smi`, then installs through either an `ubuntu22-cuda122` container environment or a CPU-only `ubuntu22` container environment. CUDA Docker installs re-check CUDA availability before each backend command and run without `--gpus all` if the GPU runtime is no longer available. Docker installs always write the Linux runtime cache and store Docker bootstrap state in:
 
 ```text
-~/.tokamak-zk-evm/linux/docker
+~/.tokamak-zk-evm/linux/docker/bootstrap.json
 ```
 
-When `--preprocess`, `--prove`, or `--verify` runs later, the CLI uses that bootstrap to execute the backend command inside Docker if the bootstrap exists and Docker is running. On Linux, if Docker is not running, the CLI falls back to the native runtime path. On Windows, Docker Desktop must be running because native Windows backend execution is not supported.
+When `--preprocess`, `--prove`, or `--verify` runs later, the CLI reads that
+state and constructs the Docker command itself; it does not generate a launcher
+script. On Linux, if Docker is not running, the CLI falls back to the native
+runtime path. On Windows, Docker Desktop must be running because native Windows
+backend execution is not supported.
 
 ## What Does The Docker Install Image Include?
 

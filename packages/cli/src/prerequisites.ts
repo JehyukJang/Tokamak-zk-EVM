@@ -1,10 +1,14 @@
 import fs from 'node:fs/promises';
-import fsSync from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
 import type { Readable, Writable } from 'node:stream';
+import {
+  commandExists,
+  createSystemCommandProbe,
+  type CommandProbe,
+} from './system.js';
 
 export type SupportedUbuntuVersion = '20.04' | '22.04';
 
@@ -25,11 +29,6 @@ export type ManagedPrerequisiteId =
   | 'pkg-config'
   | 'tar'
   | 'unzip';
-
-export interface CommandProbe {
-  exists(command: string): boolean;
-  version(command: string, args: readonly string[]): string | null;
-}
 
 export interface PrerequisiteStatus {
   commands: readonly string[];
@@ -69,20 +68,6 @@ export interface PrerequisiteInstallExecutionOptions {
 }
 
 export type PrerequisiteInstallExecutionResult = 'complete' | 'rerun-required';
-
-export interface PrerequisiteActionExecutor {
-  installApt(
-    packages: readonly string[],
-    options: PrerequisiteInstallExecutionOptions,
-  ): Promise<void>;
-  installBrew(
-    formulas: readonly string[],
-    options: PrerequisiteInstallExecutionOptions,
-  ): Promise<void>;
-  installHomebrew(options: PrerequisiteInstallExecutionOptions): Promise<void>;
-  installRustup(options: PrerequisiteInstallExecutionOptions): Promise<void>;
-  launchXcodeCommandLineTools(options: PrerequisiteInstallExecutionOptions): Promise<void>;
-}
 
 export interface OsRelease {
   [key: string]: string;
@@ -155,70 +140,6 @@ export async function detectSupportedNativeOs(
   return {
     platform: 'linux',
     ubuntuVersion: parseSupportedUbuntuRelease(contents),
-  };
-}
-
-function pathEntries(env: NodeJS.ProcessEnv): string[] {
-  return (env.PATH ?? '')
-    .split(path.delimiter)
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
-}
-
-function isExecutableFile(target: string, platform: NodeJS.Platform): boolean {
-  try {
-    const mode = platform === 'win32' ? fsSync.constants.F_OK : fsSync.constants.X_OK;
-    fsSync.accessSync(target, mode);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function commandLookupNames(
-  command: string,
-  env: NodeJS.ProcessEnv,
-  platform: NodeJS.Platform,
-): string[] {
-  if (platform !== 'win32' || path.extname(command)) {
-    return [command];
-  }
-  const extensions = (env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD')
-    .split(';')
-    .map((extension) => extension.trim())
-    .filter((extension) => extension.length > 0);
-  return [command, ...extensions.map((extension) => `${command}${extension.toLowerCase()}`)];
-}
-
-export function createSystemCommandProbe(
-  env: NodeJS.ProcessEnv = process.env,
-  platform: NodeJS.Platform = process.platform,
-): CommandProbe {
-  return {
-    exists(command: string): boolean {
-      if (command.includes(path.sep)) {
-        return isExecutableFile(command, platform);
-      }
-      const names = commandLookupNames(command, env, platform);
-      return pathEntries(env).some((entry) =>
-        names.some((name) => isExecutableFile(path.join(entry, name), platform)),
-      );
-    },
-    version(command: string, args: readonly string[]): string | null {
-      const result = spawnSync(command, [...args], {
-        encoding: 'utf8',
-        env,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-      if (result.error || result.status !== 0) {
-        return null;
-      }
-      const output = `${result.stdout}\n${result.stderr}`
-        .split(/\r?\n/u)
-        .map((line) => line.trim())
-        .find((line) => line.length > 0);
-      return output ?? null;
-    },
   };
 }
 
@@ -341,7 +262,7 @@ function resolveBrewExecutable(): string | null {
     '/home/linuxbrew/.linuxbrew/bin/brew',
   ];
   for (const candidate of candidates) {
-    if (isExecutableFile(candidate, process.platform)) {
+    if (commandExists(candidate)) {
       return candidate;
     }
   }
@@ -387,7 +308,7 @@ function refreshHomebrewEnvironment(brewExecutable: string): void {
   }
 }
 
-async function installHomebrew(options: PrerequisiteInstallExecutionOptions): Promise<string> {
+async function installHomebrew(options: PrerequisiteInstallExecutionOptions): Promise<void> {
   logInstallProgress('Installing Homebrew with the official upstream installer.');
   await withDownloadedInstaller(
     'https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh',
@@ -401,7 +322,6 @@ async function installHomebrew(options: PrerequisiteInstallExecutionOptions): Pr
     throw new Error('Homebrew installation completed, but brew could not be found.');
   }
   refreshHomebrewEnvironment(brewExecutable);
-  return brewExecutable;
 }
 
 function brewFormulaPrefix(brewExecutable: string, formula: string): string {
@@ -444,55 +364,35 @@ async function installBrewFormulas(
 export async function executePrerequisiteInstallationPlan(
   plan: PrerequisiteInstallationPlan,
   options: PrerequisiteInstallExecutionOptions,
-  executor: PrerequisiteActionExecutor = SYSTEM_PREREQUISITE_ACTION_EXECUTOR,
 ): Promise<PrerequisiteInstallExecutionResult> {
   for (const action of plan.actions) {
     switch (action.kind) {
       case 'apt':
-        await executor.installApt(action.packages, options);
+        await installAptPackages(action.packages, options);
         break;
       case 'brew':
-        await executor.installBrew(action.formulas, options);
+        await installBrewFormulas(action.formulas, options);
         break;
       case 'homebrew':
-        await executor.installHomebrew(options);
+        await installHomebrew(options);
         break;
       case 'rustup':
-        await executor.installRustup(options);
+        await installRustup(options);
         break;
       case 'xcode-command-line-tools':
-        await executor.launchXcodeCommandLineTools(options);
+        logInstallProgress('Launching Apple\'s Command Line Tools installer.');
+        await runInteractiveCommand('xcode-select', ['--install'], options);
         return 'rerun-required';
     }
   }
   return 'complete';
 }
 
-const SYSTEM_PREREQUISITE_ACTION_EXECUTOR: PrerequisiteActionExecutor = {
-  async installApt(packages, options): Promise<void> {
-    await installAptPackages(packages, options);
-  },
-  async installBrew(formulas, options): Promise<void> {
-    await installBrewFormulas(formulas, options);
-  },
-  async installHomebrew(options): Promise<void> {
-    await installHomebrew(options);
-  },
-  async installRustup(options): Promise<void> {
-    await installRustup(options);
-  },
-  async launchXcodeCommandLineTools(options): Promise<void> {
-    logInstallProgress('Launching Apple\'s Command Line Tools installer.');
-    await runInteractiveCommand('xcode-select', ['--install'], options);
-  },
-};
-
 interface PrerequisiteDefinition {
   commands: (os: SupportedNativeOs) => readonly string[];
   id: ManagedPrerequisiteId;
   label: string;
   versionArgs: readonly string[];
-  versionCommand: (os: SupportedNativeOs) => string;
 }
 
 const PREREQUISITE_DEFINITIONS: readonly PrerequisiteDefinition[] = [
@@ -500,21 +400,18 @@ const PREREQUISITE_DEFINITIONS: readonly PrerequisiteDefinition[] = [
     id: 'rust',
     label: 'Rust',
     commands: () => ['rustc'],
-    versionCommand: () => 'rustc',
     versionArgs: ['--version'],
   },
   {
     id: 'cargo',
     label: 'Cargo',
     commands: () => ['cargo'],
-    versionCommand: () => 'cargo',
     versionArgs: ['--version'],
   },
   {
     id: 'cmake',
     label: 'CMake',
     commands: () => ['cmake'],
-    versionCommand: () => 'cmake',
     versionArgs: ['--version'],
   },
   {
@@ -522,28 +419,24 @@ const PREREQUISITE_DEFINITIONS: readonly PrerequisiteDefinition[] = [
     label: 'C/C++ toolchain',
     commands: (os) =>
       os.platform === 'macos' ? ['cc', 'c++', 'install_name_tool'] : ['cc', 'c++', 'make'],
-    versionCommand: () => 'cc',
     versionArgs: ['--version'],
   },
   {
     id: 'pkg-config',
     label: 'pkg-config',
     commands: () => ['pkg-config'],
-    versionCommand: () => 'pkg-config',
     versionArgs: ['--version'],
   },
   {
     id: 'tar',
     label: 'tar',
     commands: () => ['tar'],
-    versionCommand: () => 'tar',
     versionArgs: ['--version'],
   },
   {
     id: 'unzip',
     label: 'unzip',
     commands: () => ['unzip'],
-    versionCommand: () => 'unzip',
     versionArgs: ['-v'],
   },
 ];
@@ -556,7 +449,7 @@ export function detectManagedPrerequisites(
     const commands = definition.commands(os);
     const commandsPresent = commands.every((command) => probe.exists(command));
     const version = commandsPresent
-      ? probe.version(definition.versionCommand(os), definition.versionArgs)
+      ? probe.version(commands[0], definition.versionArgs)
       : null;
     return {
       commands,

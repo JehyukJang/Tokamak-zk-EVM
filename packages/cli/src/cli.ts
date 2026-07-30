@@ -462,21 +462,6 @@ function normalizeSynthesizeArgs(args: string[]): TokamakChannelTxFiles {
   return parsed as TokamakChannelTxFiles;
 }
 
-async function syncPreprocessInputs(context: RuntimeContext, inputPath: string): Promise<void> {
-  const paths = runtimePaths(context);
-  await syncStageInputs(inputPath, 'tokamak-preprocess', resolveStageInputRules(paths, PREPROCESS_INPUT_RULES));
-}
-
-async function syncProveInputs(context: RuntimeContext, inputPath: string): Promise<void> {
-  const paths = runtimePaths(context);
-  await syncStageInputs(inputPath, 'tokamak-prove', resolveStageInputRules(paths, PROVE_INPUT_RULES));
-}
-
-async function syncVerifyInputs(context: RuntimeContext, inputPath: string): Promise<void> {
-  const paths = runtimePaths(context);
-  await syncStageInputs(inputPath, 'tokamak-verify', resolveStageInputRules(paths, VERIFY_INPUT_RULES));
-}
-
 async function runPreprocess(context: RuntimeContext, inputPath: string | undefined, verbose: boolean): Promise<void> {
   const paths = runtimePaths(context);
   await runBackendStage(context, {
@@ -486,7 +471,11 @@ async function runPreprocess(context: RuntimeContext, inputPath: string | undefi
     outputDir: paths.preprocessOutputDir,
     requiredFiles: resolveRuntimeFiles(paths, PREPROCESS_REQUIRED_FILES),
     successMessage: `Preprocess complete → ${paths.preprocessOutputDir}`,
-    syncInputs: async (resolvedInputPath) => syncPreprocessInputs(context, resolvedInputPath),
+    syncInputs: async (resolvedInputPath) => syncStageInputs(
+      resolvedInputPath,
+      'tokamak-preprocess',
+      resolveStageInputRules(paths, PREPROCESS_INPUT_RULES),
+    ),
     verbose,
     args: backendOutputArgs(paths, paths.preprocessOutputDir),
   });
@@ -501,7 +490,11 @@ async function runProve(context: RuntimeContext, inputPath: string | undefined, 
     outputDir: paths.proveOutputDir,
     requiredFiles: resolveRuntimeFiles(paths, PROVE_REQUIRED_FILES),
     successMessage: `Proof artifacts available in ${paths.proveOutputDir}`,
-    syncInputs: async (resolvedInputPath) => syncProveInputs(context, resolvedInputPath),
+    syncInputs: async (resolvedInputPath) => syncStageInputs(
+      resolvedInputPath,
+      'tokamak-prove',
+      resolveStageInputRules(paths, PROVE_INPUT_RULES),
+    ),
     verbose,
     args: backendOutputArgs(paths, paths.proveOutputDir),
   });
@@ -521,7 +514,11 @@ async function runVerify(context: RuntimeContext, inputPath: string | undefined,
       return `Verify: verify output => ${lastLine}`;
     },
     requiredFiles: resolveRuntimeFiles(paths, VERIFY_REQUIRED_FILES),
-    syncInputs: async (resolvedInputPath) => syncVerifyInputs(context, resolvedInputPath),
+    syncInputs: async (resolvedInputPath) => syncStageInputs(
+      resolvedInputPath,
+      'tokamak-verify',
+      resolveStageInputRules(paths, VERIFY_INPUT_RULES),
+    ),
     verbose,
     args: backendVerifyArgs(paths),
   });
@@ -633,9 +630,7 @@ async function extractProofBundle(context: RuntimeContext, outputPathRaw: string
       archive.addLocalFile(filePath);
     }
   }
-  if (verbose) {
-    info(verbose, `Writing proof bundle archive: ${outputName}`);
-  }
+  info(verbose, `Writing proof bundle archive: ${outputName}`);
   archive.writeZip(outputPath);
   ok(`Proof bundle written → ${outputPath}`);
 }
