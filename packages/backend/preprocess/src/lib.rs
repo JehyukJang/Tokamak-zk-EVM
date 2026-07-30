@@ -75,9 +75,6 @@ impl Preprocess {
     }
 }
 
-impl_read_from_json!(Preprocess);
-impl_write_into_json!(Preprocess);
-
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FormattedPreprocess {
     pub preprocess_entries_part1: Vec<String>,

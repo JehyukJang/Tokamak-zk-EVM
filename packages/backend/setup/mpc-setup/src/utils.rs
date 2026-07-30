@@ -5,33 +5,27 @@ pub(crate) use crate::conversions::{
     hash_to_g2, icicle_g1_generator, icicle_g2_generator, serialize_g1_affine,
 };
 use crate::sigma::{SigmaV2, HASH_BYTES_LEN};
-use ark_bls12_381::Bls12_381;
-use ark_ec::pairing::PairingOutput;
-use ark_ec::{AffineRepr, PrimeGroup};
-use ark_ff::{One, Zero};
+#[cfg(test)]
+use ark_ff::One;
+use ark_ff::Zero;
 use ark_serialize::Compress;
 use blake2::{Blake2b, Digest};
 use blake3::Hasher;
 use clap::ValueEnum;
 use icicle_bls12_381::curve::{ScalarCfg, ScalarField};
-use icicle_core::curve::Curve;
 use icicle_core::traits::{Arithmetic, FieldImpl, GenerateRandom};
 use icicle_runtime::Device;
+#[cfg(test)]
 use libs::field_structures::Tau;
 use libs::group_structures::{pairing, G1serde, G2serde};
-use rand::Rng;
 use rayon::prelude::*;
-use serde::de::{MapAccess, SeqAccess, Visitor};
-use serde::ser::{SerializeStruct, SerializeTuple};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::from_reader;
 use serde_json::to_writer_pretty;
-use std::collections::HashMap;
 use std::env;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Write};
-use std::ops::{Add, Mul, Sub};
-use std::path::{Path, PathBuf};
+use std::ops::Mul;
 use std::time::Instant;
 use std::{fs, io};
 
@@ -106,58 +100,6 @@ pub fn load_gpu_if_possible() -> bool {
         is_gpu_enabled = true;
     }
     is_gpu_enabled
-}
-// Import rayon prelude
-pub fn list_files_map(folder: &str) -> io::Result<HashMap<String, PathBuf>> {
-    let mut file_map = HashMap::new();
-    for entry in fs::read_dir(folder)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_file() {
-            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                file_map.insert(stem.to_string(), path);
-            }
-        }
-    }
-    Ok(file_map)
-}
-pub fn check_outfile_writable(path: &str) -> std::io::Result<()> {
-    let path = Path::new(path);
-    // Try opening the file in write or create mode
-    let mut file = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .append(true)
-        .open(path)?;
-    // Attempt a no-op write
-    writeln!(file, "")?;
-    Ok(())
-}
-pub fn check_outfolder_writable(path: &str) -> std::io::Result<()> {
-    let path = Path::new(path);
-
-    if !path.exists() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "Folder does not exist",
-        ));
-    }
-    if !path.is_dir() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "Path is not a directory",
-        ));
-    }
-
-    // Try writing a temp file
-    let test_file_path = path.join(".test_write_permission");
-    let result = File::create(&test_file_path).and_then(|mut f| f.write_all(b"test"));
-    // Clean up if it worked
-    if test_file_path.exists() {
-        let _ = fs::remove_file(test_file_path);
-    }
-
-    result
 }
 #[macro_export]
 macro_rules! impl_read_from_json {
@@ -354,39 +296,6 @@ impl Phase1Proof {
         result
     }
 }
-//type 1: compute1
-pub fn compute1(
-    rng: &mut RandomGenerator,
-    g1: &G1serde,
-    prev_alpha: PairSerde,
-    v: &[u8],
-) -> (PairSerde, G1serde, G2serde) {
-    let alpha_r = rng.next_random();
-    let pok_alpha = pok(g1, alpha_r, v);
-    let alpha_rG1 = g1.mul(alpha_r);
-    let cur_alpha = prev_alpha.mul(alpha_r);
-    (cur_alpha, alpha_rG1, pok_alpha)
-}
-//type 1: verify1
-pub fn verify1(
-    g1: &G1serde,
-    prev_alpha: PairSerde,
-    cur_alpha: PairSerde,
-    alpha_rG1: &G1serde,
-    alpha_pok: G2serde,
-    v: &[u8],
-) -> bool {
-    if check_pok(alpha_rG1, g1, alpha_pok, v) {
-        let r_alpha = ro(&alpha_rG1, v);
-        return consistent(
-            &[prev_alpha.g1, cur_alpha.g1],
-            &[prev_alpha.g2, cur_alpha.g2],
-            &[r_alpha, alpha_pok],
-        );
-    }
-    false
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Phase2Proof {
     pub contributor_index: usize,
@@ -594,18 +503,6 @@ impl Phase2Proof {
         assert_eq!(consistent_all, true);
         true
     }
-}
-
-//type 2: compute2
-//Let [x^i]^0 = G_1 or [x^i]^0 = G
-pub fn compute2(
-    rng: &mut RandomGenerator,
-    g1: &G1serde,
-    prev_x: &SerialSerde,
-    v: &[u8; 64],
-) -> (SerialSerde, Proof2) {
-    let (cur_x, proof2, _) = compute2_temp(rng, &g1, prev_x, v);
-    (cur_x, proof2)
 }
 
 //type 2: verify2
@@ -817,33 +714,6 @@ impl RandomGenerator {
         out
     }
 }
-/// Prompts user for initial random input
-pub fn prompt_user_input(title: &str) -> String {
-    print!("{}", title);
-    io::stdout().flush().unwrap();
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
-    input.trim().to_string()
-}
-
-/// Prompts user for initial random input
-pub fn scalar_from_user_random_input(title: &str) -> [u8; 32] {
-    print!("{}", title);
-    io::stdout().flush().unwrap();
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
-
-    let mut hasher = Hasher::new();
-    hasher.update(input.trim().as_bytes());
-    let hash = hasher.finalize();
-
-    let mut bytes = [0u8; 32];
-    bytes.copy_from_slice(hash.as_bytes());
-    bytes
-}
-
 pub fn seed_bytes_from_input(input: &str) -> [u8; 32] {
     let mut hasher = Hasher::new();
     hasher.update(input.trim().as_bytes());
@@ -859,33 +729,6 @@ pub enum Mode {
     Random,
     Beacon, //deterministic from a given seed
 }
-/// Initializes a random generator based on the specified mode
-pub fn initialize_random_generator(mode: &Mode) -> RandomGenerator {
-    let (strategy, message, seed) = if crate::testing_mode_enabled() {
-        (
-            RandomStrategy::Testing,
-            "Initializing random generator in testing mode",
-            [0u8; 32],
-        )
-    } else {
-        match mode {
-            Mode::Beacon => (
-                RandomStrategy::UserInput,
-                "Initializing random generator in deterministic mode",
-                scalar_from_user_random_input("Enter seed input for randomization: "),
-            ),
-            Mode::Random => (
-                RandomStrategy::Hybrid,
-                "Initializing random generator in hybrid random mode",
-                scalar_from_user_random_input("Enter seed input for randomization: "),
-            ),
-        }
-    };
-
-    println!("{}", message);
-    RandomGenerator::new(strategy, seed)
-}
-
 pub fn initialize_random_generator_with_seed_input(
     mode: &Mode,
     seed_input: Option<&str>,
@@ -940,118 +783,6 @@ pub fn hash_sigma(sigma: &SigmaV2) -> [u8; 32] {
     result.copy_from_slice(&hash[..32]);
     result
 }
-//type 3: compute3
-//Let [x^i*y^k]
-pub fn compute3(
-    rng: &mut RandomGenerator,
-    g1: &G1serde,
-    prev_xy: &Vec<G1serde>,
-    prev_x: &Vec<PairSerde>,
-    prev_y: &SerialSerde,
-    v: &[u8; 64],
-) -> (
-    Vec<G1serde>,
-    Vec<PairSerde>,
-    SerialSerde,
-    Proof2,
-    Proof2,
-    Vec<ScalarField>,
-    Vec<ScalarField>,
-    Vec<ScalarField>,
-) {
-    let len_x = prev_x.len();
-
-    let x_r = rng.next_random();
-    let proof2_x = Proof2 {
-        x_r_g1: g1.mul(x_r),
-        pok_x: pok(g1, x_r, v),
-        v: *v,
-    };
-
-    // Precompute the powers of x_r efficiently
-    let x_powers = compute_powers(x_r, len_x);
-    let cur_x: Vec<PairSerde> = prev_x
-        .par_iter()
-        .zip(x_powers.par_iter())
-        .map(|(x, scalar)| x.mul(*scalar))
-        .collect();
-
-    let (cur_y, proof2_y, y_powers) = compute2_temp(rng, &g1, prev_y, v);
-
-    let xy_powers = vector_product(&x_powers, &y_powers);
-    let cur_xy: Vec<G1serde> = prev_xy
-        .par_iter()
-        .zip(xy_powers.par_iter())
-        .map(|(x, scalar)| x.mul(*scalar))
-        .collect();
-
-    (
-        cur_xy, cur_x, cur_y, proof2_x, proof2_y, x_powers, y_powers, xy_powers,
-    )
-}
-
-//type 3: verify3
-pub fn verify3(
-    g1: &G1serde,
-    g2: &G2serde,
-    prev_x: &Vec<PairSerde>,
-    prev_y: &SerialSerde,
-    cur_xy: &Vec<G1serde>,
-    cur_x: &Vec<PairSerde>,
-    cur_y: &SerialSerde,
-    proof2_x: &Proof2,
-    proof2_y: &Proof2,
-) -> bool {
-    if !verify2i(g1, g2, prev_x, cur_x, proof2_x) {
-        return false;
-    }
-    if !verify2(g1, g2, prev_y, cur_y, proof2_y) {
-        return false;
-    }
-    //check xy consistency
-    let len_y = cur_y.len_g1();
-
-    (0..cur_x.len()).into_par_iter().all(|i| {
-        let xi = cur_x[i];
-        (0..len_y).into_par_iter().all(|k| {
-            let ykG1 = cur_y.get_g1(k);
-            let xyG1 = cur_xy[i * len_y + k];
-            consistent(&[ykG1, xyG1], &[], &[*g2, xi.g2])
-        })
-    })
-}
-
-//type 3: verify3i
-pub fn verify3i(
-    g1: &G1serde,
-    g2: &G2serde,
-    prev_x: &Vec<PairSerde>,
-    prev_y: &Vec<PairSerde>,
-    cur_xy: &Vec<G1serde>,
-    cur_x: &Vec<PairSerde>,
-    cur_y: &Vec<PairSerde>,
-    proof2_x: &Proof2,
-    proof2_y: &Proof2,
-) -> bool {
-    if !verify2i(g1, g2, prev_x, cur_x, proof2_x) {
-        return false;
-    }
-    if !verify2i(g1, g2, prev_y, cur_y, proof2_y) {
-        return false;
-    }
-    //check xy consistency
-    let len_y = cur_y.len();
-
-    // Nested parallel loops for consistency checks
-    (0..cur_x.len()).into_par_iter().all(|i| {
-        let xi = cur_x[i];
-        (0..len_y).into_par_iter().all(|k| {
-            let ykG1 = cur_y[k].g1;
-            let xyG1 = cur_xy[i * len_y + k];
-            consistent(&[ykG1, xyG1], &[], &[*g2, xi.g2])
-        })
-    })
-}
 #[test]
 fn test_bilinear_map() {
     //initialize
@@ -1062,120 +793,6 @@ fn test_bilinear_map() {
 
     let pairing1 = pairing(&[g1, g1], &[g2, minusG2]);
     assert_eq!(pairing1.0.is_one(), true)
-}
-
-#[test]
-fn test_compute3() {
-    let rng = &mut RandomGenerator::new(RandomStrategy::SystemRandom, [0u8; 32]);
-    //initialize
-    let g1 = icicle_g1_generator();
-    let g2 = icicle_g2_generator();
-
-    let s_max1: usize = 4;
-    let s_max2: usize = 5;
-
-    let v = [34u8; 64];
-    let mut prev_x = vec![
-        PairSerde {
-            g1: g1.clone(),
-            g2: g2.clone()
-        };
-        s_max1
-    ];
-    let mut prev_y = SerialSerde::new(g1, g2, s_max2);
-    let mut prev_xy = vec![g1; s_max1 * s_max2];
-
-    // first participant
-    let (cur_xy, cur_x, cur_y, proof2_x, proof2_y, _, _, _) =
-        compute3(rng, &g1, &prev_xy, &prev_x, &prev_y, &v);
-    assert_eq!(
-        verify3(&g1, &g2, &prev_x, &prev_y, &cur_xy, &cur_x, &cur_y, &proof2_x, &proof2_y),
-        true,
-    );
-    prev_xy = cur_xy;
-    prev_x = cur_x;
-    prev_y = cur_y;
-
-    let (cur_xy, cur_x, cur_y, proof2_x, proof2_y, _, _, _) =
-        compute3(rng, &g1, &prev_xy, &prev_x, &prev_y, &v);
-    assert_eq!(
-        verify3(&g1, &g2, &prev_x, &prev_y, &cur_xy, &cur_x, &cur_y, &proof2_x, &proof2_y),
-        true,
-    );
-    prev_xy = cur_xy;
-    prev_x = cur_x;
-    prev_y = cur_y;
-
-    let (cur_xy, cur_x, cur_y, proof2_x, proof2_y, _, _, _) =
-        compute3(rng, &g1, &prev_xy, &prev_x, &prev_y, &v);
-    assert_eq!(
-        verify3(&g1, &g2, &prev_x, &prev_y, &cur_xy, &cur_x, &cur_y, &proof2_x, &proof2_y),
-        true,
-    );
-}
-
-pub fn compute5(
-    rng: &mut RandomGenerator,
-    g1: &G1serde,
-    _g2: &G2serde,
-    prev_alphaxy: &Vec<G1serde>,
-    prev_xy: &Vec<G1serde>,
-    prev_alphax: &Vec<G1serde>,
-    prev_alphay: &Vec<G1serde>,
-    prev_alpha: &Vec<PairSerde>,
-    prev_x: &Vec<PairSerde>,
-    prev_y: &SerialSerde,
-    v: &[u8; 64],
-) -> (
-    Vec<G1serde>,
-    Vec<G1serde>,
-    Vec<G1serde>,
-    Vec<G1serde>,
-    Vec<PairSerde>,
-    Vec<PairSerde>,
-    SerialSerde,
-    Phase1Proof,
-) {
-    let (cur_xy, cur_x, cur_y, proof2_x, proof2_y, x_powers, y_powers, xy_powers) =
-        compute3(rng, &g1, &prev_xy, &prev_x, &prev_y, &v);
-    let (cur_alpha, proof2_alpha, alpha_powers) = compute2_tempi(rng, g1, prev_alpha, v);
-
-    let alphaxy_powers = vector_product(&alpha_powers, &xy_powers);
-    let cur_alphaxy: Vec<G1serde> = prev_alphaxy
-        .par_iter()
-        .zip(alphaxy_powers.par_iter())
-        .map(|(x, scalar)| x.mul(*scalar))
-        .collect();
-
-    let alphax_powers = vector_product(&alpha_powers, &x_powers);
-    let cur_alphax: Vec<G1serde> = prev_alphax
-        .par_iter()
-        .zip(alphax_powers.par_iter())
-        .map(|(x, scalar)| x.mul(*scalar))
-        .collect();
-
-    let alphay_powers = vector_product(&alpha_powers, &y_powers);
-    let cur_alphay: Vec<G1serde> = prev_alphay
-        .par_iter()
-        .zip(alphay_powers.par_iter())
-        .map(|(y, scalar)| y.mul(*scalar))
-        .collect();
-
-    (
-        cur_alphaxy,
-        cur_xy,
-        cur_alphax,
-        cur_alphay,
-        cur_alpha,
-        cur_x,
-        cur_y,
-        Phase1Proof {
-            contributor_index: 0,
-            proof2_alpha,
-            proof2_x,
-            proof2_y,
-        },
-    )
 }
 
 pub fn compute_phase1_x_only(
@@ -1232,215 +849,6 @@ pub fn verify_phase1_x_only(
         return false;
     }
     verify_alpha_x_x_only(g2, cur_alphax, &cur_alpha_vec, cur_x)
-}
-
-//type 5: verify5
-pub fn verify5(
-    g1: &G1serde,
-    g2: &G2serde,
-    prev_alpha: &Vec<PairSerde>,
-    prev_x: &Vec<PairSerde>,
-    prev_y: &SerialSerde,
-    cur_alphaxy: &Vec<G1serde>,
-    cur_xy: &Vec<G1serde>,
-    cur_alphax: &Vec<G1serde>,
-    cur_alphay: &Vec<G1serde>,
-    cur_alpha: &Vec<PairSerde>,
-    cur_x: &Vec<PairSerde>,
-    cur_y: &SerialSerde,
-    proof5: &Phase1Proof,
-) -> bool {
-    if !verify2i(g1, g2, prev_alpha, cur_alpha, &proof5.proof2_alpha) {
-        return false;
-    }
-    if !verify3(
-        g1,
-        g2,
-        prev_x,
-        prev_y,
-        cur_xy,
-        cur_x,
-        cur_y,
-        &proof5.proof2_x,
-        &proof5.proof2_y,
-    ) {
-        return false;
-    }
-    if !verify3(
-        g1,
-        g2,
-        prev_alpha,
-        prev_y,
-        cur_alphay,
-        cur_alpha,
-        cur_y,
-        &proof5.proof2_alpha,
-        &proof5.proof2_y,
-    ) {
-        return false;
-    }
-    if !verify3i(
-        g1,
-        g2,
-        prev_alpha,
-        prev_x,
-        cur_alphax,
-        cur_alpha,
-        cur_x,
-        &proof5.proof2_alpha,
-        &proof5.proof2_x,
-    ) {
-        return false;
-    }
-    let start = Instant::now();
-
-    let len_x = prev_x.len();
-    let len_y = prev_y.len_g1();
-
-    let result = cur_alpha.par_iter().enumerate().all(|(h, alpha)| {
-        (0..cur_x.len()).into_par_iter().all(|i| {
-            let y_len = cur_y.len_g1();
-            let mut g1_0 = Vec::with_capacity(y_len);
-            let mut g2_1 = Vec::with_capacity(y_len);
-            let mut g1_1 = Vec::with_capacity(y_len);
-            let mut g2_0 = Vec::with_capacity(y_len);
-
-            for k in 0..y_len {
-                let xy = cur_xy[i * len_y + k];
-                let cur_alphaxy = cur_alphaxy[get_alphaxy_index(h, i, k, len_x, len_y)];
-                g1_0.push(xy);
-                g2_1.push(cur_alphaxy);
-                g1_1.push(*g2);
-                g2_0.push(alpha.g2);
-            }
-
-            let results: Vec<PairingOutput<Bls12_381>> = [(&g1_0, &g2_0), (&g2_1, &g1_1)]
-                .par_iter()
-                .map(|(g1, g2)| pairing(*g1, *g2))
-                .collect();
-            results[0].eq(&results[1])
-        })
-    });
-
-    println!(
-        "Time elapsed for verify for the last consistency: {:?}",
-        start.elapsed().as_secs()
-    );
-    result
-}
-//index = (h* len_x * len_y) + (i * len_y) + k;
-fn get_alphaxy_index(h: usize, i: usize, k: usize, len_x: usize, len_y: usize) -> usize {
-    h * len_x * len_y + i * len_y + k
-}
-
-#[test]
-fn test_compute5() {
-    let rng = &mut RandomGenerator::new(RandomStrategy::SystemRandom, [0u8; 32]);
-    //initialize
-    let g1 = icicle_g1_generator();
-    let g2 = icicle_g2_generator();
-
-    let s_max0: usize = 4; //alpha
-    let s_max1: usize = 16; //x^i
-    let s_max2: usize = 32; //y^k
-
-    let v = [34u8; 64];
-    let mut prev_alpha = vec![
-        PairSerde {
-            g1: g1.clone(),
-            g2: g2.clone()
-        };
-        s_max0
-    ];
-    let mut prev_x = vec![
-        PairSerde {
-            g1: g1.clone(),
-            g2: g2.clone()
-        };
-        s_max1
-    ];
-    let mut prev_y = SerialSerde::new(g1, g2, s_max2);
-    let mut prev_xy = vec![g1; s_max1 * s_max2];
-    let mut prev_alphax = vec![g1; s_max0 * s_max1];
-    let mut prev_alphay = vec![g1; s_max0 * s_max2];
-
-    let mut prev_alphaxy = vec![g1; s_max0 * s_max1 * s_max2];
-
-    // first participant
-    let (cur_alphaxy, cur_xy, cur_alphax, cur_alphay, cur_alpha, cur_x, cur_y, proof5) = compute5(
-        rng,
-        &g1,
-        &g2,
-        &prev_alphaxy,
-        &prev_xy,
-        &prev_alphax,
-        &prev_alphay,
-        &prev_alpha,
-        &prev_x,
-        &prev_y,
-        &v,
-    );
-
-    assert_eq!(
-        verify5(
-            &g1,
-            &g2,
-            &prev_alpha,
-            &prev_x,
-            &prev_y,
-            &cur_alphaxy,
-            &cur_xy,
-            &cur_alphax,
-            &cur_alphay,
-            &cur_alpha,
-            &cur_x,
-            &cur_y,
-            &proof5
-        ),
-        true,
-    );
-
-    prev_alpha = cur_alpha;
-    prev_x = cur_x;
-    prev_y = cur_y;
-    prev_xy = cur_xy;
-    prev_alphaxy = cur_alphaxy;
-    prev_alphax = cur_alphax;
-    prev_alphay = cur_alphay;
-
-    // second participant
-    let (cur_alphaxy, cur_xy, cur_alphax, cur_alphay, cur_alpha, cur_x, cur_y, proof5) = compute5(
-        rng,
-        &g1,
-        &g2,
-        &prev_alphaxy,
-        &prev_xy,
-        &prev_alphax,
-        &prev_alphay,
-        &prev_alpha,
-        &prev_x,
-        &prev_y,
-        &v,
-    );
-
-    assert_eq!(
-        verify5(
-            &g1,
-            &g2,
-            &prev_alpha,
-            &prev_x,
-            &prev_y,
-            &cur_alphaxy,
-            &cur_xy,
-            &cur_alphax,
-            &cur_alphay,
-            &cur_alpha,
-            &cur_x,
-            &cur_y,
-            &proof5
-        ),
-        true,
-    );
 }
 
 //ab_g1 = [A1 B1], ab_g2 = [A2, B2], c = [C1, C2]
@@ -1548,45 +956,6 @@ fn test_consistent_case3() {
 }
 
 #[test]
-fn test_compute1() {
-    let rng = &mut RandomGenerator::new(RandomStrategy::SystemRandom, [0u8; 32]);
-    //initialize
-    let g1 = &icicle_g1_generator();
-    let g2 = &icicle_g2_generator();
-
-    let alpha_0G1 = g1.clone();
-    let alpha_0G2 = g2.clone();
-
-    let v = [34u8; 32];
-    let mut prev_pair = PairSerde {
-        g1: alpha_0G1,
-        g2: alpha_0G2,
-    };
-    // first participant
-    let (cur_pair, alphaG1, pok_alpha) = compute1(rng, g1, prev_pair.clone(), &v);
-
-    assert_eq!(
-        verify1(g1, prev_pair, cur_pair, &alphaG1, pok_alpha, &v),
-        true,
-    );
-    prev_pair = cur_pair;
-    let (cur_pair, alphaG1, pok_alpha) = compute1(rng, g1, prev_pair.clone(), &v);
-
-    assert_eq!(
-        verify1(g1, prev_pair, cur_pair, &alphaG1, pok_alpha, &v),
-        true,
-    );
-    prev_pair = cur_pair;
-    let (cur_pair, alphaG1, pok_alpha) = compute1(rng, g1, prev_pair.clone(), &v);
-
-    //beacon verified
-    assert_eq!(
-        verify1(g1, prev_pair, cur_pair, &alphaG1, pok_alpha, &v),
-        true,
-    );
-}
-
-#[test]
 fn test_invs() {
     let g2 = &icicle_g2_generator();
     let sc = ScalarField::from_u32(3);
@@ -1599,40 +968,12 @@ fn test_invs() {
     //multiplicative inverse
     let xInvG2 = g2.mul(scInv);
     //addition inverse
-    let minusX = G2serde::zero().sub(x);
+    let minusX = G2serde::zero() - x;
 
     assert_eq!(xInvG2.mul(sc), *g2);
-    assert_eq!(x.add(minusX), G2serde::zero());
+    assert_eq!(x + minusX, G2serde::zero());
 }
 
-#[test]
-fn test_compute2() {
-    let rng = &mut RandomGenerator::new(RandomStrategy::SystemRandom, [0u8; 32]);
-    let s_max: usize = 16;
-
-    let g1 = &icicle_g1_generator();
-    let g2 = &icicle_g2_generator();
-
-    let v = [34u8; 64];
-    let mut prev_x_serial = SerialSerde::new(*g1, *g2, s_max);
-
-    // first participant
-    let (cur_pair, proof2) = compute2(rng, &g1, &prev_x_serial, &v);
-    assert_eq!(verify2(g1, g2, &prev_x_serial, &cur_pair, &proof2), true,);
-    prev_x_serial = cur_pair;
-
-    //second participant
-    let (cur_pair, proof2) = compute2(rng, &g1, &prev_x_serial, &v);
-    assert_eq!(verify2(g1, g2, &prev_x_serial, &cur_pair, &proof2), true,);
-    prev_x_serial = cur_pair;
-
-    //third participant
-    let (cur_x_serial, proof2) = compute2(rng, &g1, &prev_x_serial, &v);
-    assert_eq!(
-        verify2(g1, g2, &prev_x_serial, &cur_x_serial, &proof2),
-        true,
-    );
-}
 #[test]
 fn test_consistent_case4() {
     let rng = &mut RandomGenerator::new(RandomStrategy::SystemRandom, [0u8; 32]);

@@ -1,10 +1,9 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::drive_upload::{
     preflight_drive_upload, publish_output_archive, validate_release_build_metadata,
 };
-use libs::iotools::SetupParams;
 
 pub mod phase1_initialize;
 pub mod phase1_next_contributor;
@@ -34,11 +33,9 @@ pub fn run_native_mpc_setup(config: &NativeMpcSetupConfig) {
     ensure_directory(&config.output);
     ensure_directory(&config.intermediate);
     let qap_path = canonicalize_existing_path(&config.qap_path);
-    let s_max = load_s_max(&qap_path);
 
     phase1_initialize::run(&phase1_initialize::Phase1InitializeConfig {
         qap_path: qap_path.clone(),
-        s_max,
         setup_params_file: "setupParams.json".to_string(),
         outfolder: config.intermediate.clone(),
     });
@@ -157,13 +154,6 @@ fn derive_stage_seed_input(master_seed_input: Option<&str>, stage: &str) -> Opti
 
 fn canonicalize_existing_path(path: &str) -> PathBuf {
     fs::canonicalize(path).unwrap_or_else(|_| panic!("cannot resolve path {}", path))
-}
-
-fn load_s_max(qap_path: &Path) -> usize {
-    let setup_params_path = qap_path.join("setupParams.json");
-    SetupParams::read_from_json(setup_params_path)
-        .expect("cannot read setup parameters")
-        .s_max
 }
 
 fn ensure_directory(path: &str) {

@@ -37,14 +37,6 @@ macro_rules! poly_comb {
         }};
     }
 
-#[cfg(feature = "timing")]
-fn use_coeff_backend_for_prove2_p_comb_timing() -> bool {
-    std::env::var("TOKAMAK_PROVE2_PCOMB_BACKEND")
-        .ok()
-        .as_deref()
-        == Some("coeff")
-}
-
 fn div_by_ruffini_with_constant_correction(
     polynomial: &DensePolynomialExt,
     x: &ScalarField,
@@ -470,9 +462,6 @@ pub struct Proof {
     pub proof3: Proof3,
     pub proof4: Proof4,
 }
-
-impl_read_from_json!(Proof);
-impl_write_into_json!(Proof);
 
 impl Proof {
     pub fn convert_format_for_solidity_verifier(&self) -> FormattedProof {
@@ -2157,18 +2146,7 @@ impl Prover {
                     (kappa0, p2XY),
                     (kappa0_sq, p3XY),
                 ]);
-                #[cfg(feature = "timing")]
-                {
-                    if use_coeff_backend_for_prove2_p_comb_timing() {
-                        expr.evaluate_coeffs()
-                    } else {
-                        expr.evaluate_fused_with_domain(4 * m_i, 2 * s_max)
-                    }
-                }
-                #[cfg(not(feature = "timing"))]
-                {
-                    expr.evaluate_fused_with_domain(4 * m_i, 2 * s_max)
-                }
+                expr.evaluate_fused_with_domain(4 * m_i, 2 * s_max)
             }
         );
         (self.quotients.q2XY, self.quotients.q3XY) = crate::time_block!(

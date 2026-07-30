@@ -1,12 +1,8 @@
 use ark_bls12_381::{G1Affine as ArkG1Affine, G2Affine as ArkG2Affine};
+#[cfg(test)]
 use ark_ec::AffineRepr;
 use ark_ff::{BigInteger, Field, PrimeField};
-use ark_serialize::CanonicalDeserializeWithFlags;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress, Validate};
-use bincode;
-use blake2::crypto_mac::generic_array::typenum::U64;
-use blake2::crypto_mac::generic_array::GenericArray;
-use blake2::{Blake2b, Digest};
 use icicle_bls12_381::curve::{
     G1Affine as IcicleG1Affine, G2Affine as IcicleG2Affine, ScalarField,
 };
@@ -15,8 +11,9 @@ use libs::group_structures::{icicle_g1_affine_to_ark, icicle_g2_affine_to_ark, G
 use rand::Rng;
 use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaCha20Rng;
+#[cfg(test)]
 use rayon::prelude::*;
-use std::io::{Cursor, Write};
+use std::io::Cursor;
 use std::ops::Mul;
 
 #[cfg(test)]
@@ -186,48 +183,6 @@ pub fn hash_to_g2(digest: &[u8]) -> G2serde {
     let limbs: [u32; 8] = rng.gen();
     let scalar = ScalarField::from(limbs);
     G2serde(IcicleG2Affine::from(g2.0.to_projective().mul(scalar)))
-}
-/// Hashes to G2 and returns a compressed 96-byte representation.
-pub fn hash_to_g2_compressed(digest: &[u8]) -> [u8; 96] {
-    let point = hash_to_g2(digest);
-
-    let pointArk = icicle_g2_affine_to_ark(&point.0);
-    // Serialize to compressed form (96 bytes)
-    let mut buf = Vec::new();
-    pointArk
-        .serialize_with_mode(&mut buf, Compress::Yes)
-        .unwrap();
-
-    let mut out = [0u8; 96];
-    out.copy_from_slice(&buf);
-    out
-}
-
-#[test]
-fn test_hash_to_g2_compressed_deterministic() {
-    let digest = [99u8; 64];
-    let out1 = hash_to_g2_compressed(&digest);
-    let out2 = hash_to_g2_compressed(&digest);
-    assert_eq!(out1.len(), 96);
-    assert_eq!(out2.len(), 96);
-    assert_eq!(out1, out2, "Deterministic input should yield same output");
-}
-
-#[test]
-fn test_hash_to_g2_compressed_unique() {
-    let digest1 = [1u8; 64];
-    let digest2 = [2u8; 64];
-    let out1 = hash_to_g2_compressed(&digest1);
-    let out2 = hash_to_g2_compressed(&digest2);
-    assert_eq!(out1.len(), 96);
-    assert_eq!(out2.len(), 96);
-    assert_ne!(
-        out1, out2,
-        "Different inputs should yield different outputs"
-    );
-}
-pub fn blank_hash() -> GenericArray<u8, U64> {
-    Blake2b::new().result()
 }
 #[test]
 fn testG2Generator() {

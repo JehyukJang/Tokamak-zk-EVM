@@ -4,8 +4,7 @@ use std::path::{Path, PathBuf};
 use crate::phase1_source::{AccumulatorSource, DuskGroth16Source, Phase1Source, Phase1SrsSource};
 use crate::sigma::{save_contributor_info, SigmaV2, HASH_BYTES_LEN};
 use crate::utils::{
-    initialize_random_generator_with_seed_input, load_gpu_if_possible, Mode, RandomGenerator,
-    StepTimer,
+    initialize_random_generator_with_seed_input, load_gpu_if_possible, Mode, StepTimer,
 };
 use crate::{ensure_testing_mode, public_wire_segments, MsmWorkspace, NttWorkspace};
 use icicle_bls12_381::curve::{G1Affine, ScalarField};
@@ -113,19 +112,6 @@ fn ceremony_mode(beacon_mode: bool) -> Mode {
         Mode::Random
     }
 }
-pub fn extend_boxed_2d_array(target: &mut Box<[Box<[G1serde]>]>, source: &Box<[Box<[G1serde]>]>) {
-    let mut temp: Vec<Vec<G1serde>> = target.iter().map(|row| row.to_vec()).collect();
-    let source_vec: Vec<Vec<G1serde>> = source.iter().map(|row| row.to_vec()).collect();
-
-    temp.extend(source_vec);
-
-    *target = temp
-        .into_iter()
-        .map(|v| v.into_boxed_slice())
-        .collect::<Vec<_>>()
-        .into_boxed_slice();
-}
-
 fn merge_optional_point(target: &mut G1serde, source: G1serde) {
     if *target == G1serde::zero() {
         *target = source;
