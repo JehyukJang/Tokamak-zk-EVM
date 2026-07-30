@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-07-31",
+  "rust": {
+    "minimumVersion": "1.85.0",
+    "version": "1.97.1",
+    "rustupVersion": "1.29.0",
+    "assets": {
+      "linux-x64": {
+        "url": "https://static.rust-lang.org/rustup/archive/1.29.0/x86_64-unknown-linux-gnu/rustup-init",
+        "sha256": "4acc9acc76d5079515b46346a485974457b5a79893cfb01112423c89aeb5aa10"
+      },
+      "linux-arm64": {
+        "url": "https://static.rust-lang.org/rustup/archive/1.29.0/aarch64-unknown-linux-gnu/rustup-init",
+        "sha256": "9732d6c5e2a098d3521fca8145d826ae0aaa067ef2385ead08e6feac88fa5792"
+      },
+      "macos-x64": {
+        "url": "https://static.rust-lang.org/rustup/archive/1.29.0/x86_64-apple-darwin/rustup-init",
+        "sha256": "33cf85df9142bc6d29cbc62fa5ca1d4c29622cddb55213a4c1a43c457fb9b2d7"
+      },
+      "macos-arm64": {
+        "url": "https://static.rust-lang.org/rustup/archive/1.29.0/aarch64-apple-darwin/rustup-init",
+        "sha256": "aeb4105778ca1bd3c6b0e75768f581c656633cd51368fa61289b6a71696ac7e1"
+      }
+    }
+  },
+  "cmake": {
+    "minimumVersion": "3.18.0",
+    "version": "4.4.0",
+    "assets": {
+      "linux-x64": {
+        "url": "https://cmake.org/files/v4.4/cmake-4.4.0-linux-x86_64.tar.gz",
+        "sha256": "3864eb649b4466ae126a64bbde1657adad78efbbaa068bf38201de5cf1b5349f"
+      },
+      "linux-arm64": {
+        "url": "https://cmake.org/files/v4.4/cmake-4.4.0-linux-aarch64.tar.gz",
+        "sha256": "e98bb53e0b00a8f672424517d34c05bb9b94fd1c888c89e0b81bc8df51d1a94b"
+      },
+      "macos-x64": {
+        "url": "https://cmake.org/files/v4.4/cmake-4.4.0-macos-universal.tar.gz",
+        "sha256": "09d6382059aa1b986b25fd1809459f5eb3da6a1ab342d44d6084265f38541397"
+      },
+      "macos-arm64": {
+        "url": "https://cmake.org/files/v4.4/cmake-4.4.0-macos-universal.tar.gz",
+        "sha256": "09d6382059aa1b986b25fd1809459f5eb3da6a1ab342d44d6084265f38541397"
+      }
+    }
+  },
+  "linuxToolchain": {
+    "gcc": {
+      "minimumVersion": "9.0.0",
+      "version": "16.1.0",
+      "asset": {
+        "url": "https://gcc.gnu.org/pub/gcc/releases/gcc-16.1.0/gcc-16.1.0.tar.gz",
+        "sha512": "28224ba9b6a78d7758c0062d3b05f49d57582a73d52952af3775dc3e8c54ee04809d65b9318f5ec09bae5500619a207dc1e26d5b1534df0335294d1bd87923f2"
+      }
+    },
+    "make": {
+      "minimumVersion": "4.2.1",
+      "version": "4.4.1",
+      "asset": {
+        "url": "https://ftp.gnu.org/gnu/make/make-4.4.1.tar.gz",
+        "sha256": "dd16fb1d67bfab79a72f5e8390735c49e3e8e70b4945a15ab1f81ddb78658fb3"
+      }
+    }
+  },
+  "pkgConfig": {
+    "minimumVersion": "0.29.1",
+    "version": "0.29.2",
+    "asset": {
+      "url": "https://pkg-config.freedesktop.org/releases/pkg-config-0.29.2.tar.gz",
+      "sha256": "6fc69c01688c9458a57eb9a1664c9aba372ccda420a02bf4429fe610e7e7d591"
+    }
+  },
+  "tar": {
+    "minimumVersion": "1.30.0",
+    "version": "1.35",
+    "asset": {
+      "url": "https://ftp.gnu.org/gnu/tar/tar-1.35.tar.gz",
+      "sha256": "14d55e32063ea9526e057fbf35fcabd53378e769787eff7919c3755b02d2b57e"
+    }
+  },
+  "unzip": {
+    "minimumVersion": "6.0.0",
+    "version": "6.0",
+    "asset": {
+      "url": "https://downloads.sourceforge.net/project/infozip/UnZip%206.x%20%28latest%29/UnZip%206.0/unzip60.tar.gz",
+      "sha256": "036d96991646d0449ed0aa952e4fbe21b476ce994abc276e49d30e686708bd37"
+    }
+  },
+  "appleCommandLineTools": {
+    "delivery": "xcode-select",
+    "integrity": "apple-signed-software-update",
+    "minimumClangVersion": "11.0.0"
+  }
+}
