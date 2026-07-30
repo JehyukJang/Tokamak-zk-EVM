@@ -698,7 +698,7 @@ mod tests {
     use super::verify_dusk_tau_consistency;
     use crate::utils::{icicle_g1_generator, icicle_g2_generator};
     use icicle_bls12_381::curve::{G1Affine, G2Affine, ScalarField};
-    use icicle_core::traits::{Arithmetic, FieldImpl};
+    use icicle_core::traits::FieldImpl;
 
     fn synthetic_tau_sequences(len: usize, tau: ScalarField) -> (Vec<G1Affine>, Vec<G2Affine>) {
         let g1 = icicle_g1_generator().0;

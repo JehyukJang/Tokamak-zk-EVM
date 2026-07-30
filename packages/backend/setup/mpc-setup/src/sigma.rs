@@ -1,23 +1,19 @@
 use crate::contributor::{get_device_info, ContributorInfo};
-use crate::{impl_read_from_json, impl_write_into_json};
 use blake2::{Blake2b, Digest};
 use chrono::Local;
-use icicle_bls12_381::curve::{G1Affine, G2Affine, ScalarField};
+use icicle_bls12_381::curve::ScalarField;
 use icicle_core::traits::FieldImpl;
-use libs::field_structures::Tau;
 use libs::group_structures::{G1serde, Sigma};
-use libs::iotools::SetupParams;
-use libs::iotools::{ArchivedG1SerdeRkyv, ArchivedSigma1Rkyv, G1SerdeRkyv, Sigma1Rkyv, SigmaRkyv};
+use libs::iotools::{ArchivedG1SerdeRkyv, ArchivedSigma1Rkyv, G1SerdeRkyv, SigmaRkyv};
 use rkyv::ser::Serializer as _;
 use rkyv::{
     check_archived_value, Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{from_reader, to_writer_pretty};
 use std::env;
 use std::fs;
 use std::fs::File;
-use std::io::{self, BufReader, BufWriter, Write};
+use std::io::{self, BufWriter, Write};
 use std::path::PathBuf;
 
 pub const HASH_BYTES_LEN: usize = 64;
@@ -79,8 +75,6 @@ pub struct SigmaV2 {
     #[serde(default)]
     pub phase1_source_provenance: Option<Phase1SourceProvenance>,
 }
-impl_read_from_json!(SigmaV2);
-impl_write_into_json!(SigmaV2);
 
 #[derive(Debug, Archive, RkyvSerialize, RkyvDeserialize)]
 #[archive(check_bytes)]
@@ -175,41 +169,6 @@ impl SigmaV2 {
         file_bytes.extend_from_slice(&archived_pos.to_le_bytes());
         file_bytes.extend_from_slice(archived_bytes.as_ref());
         fs::write(&archive_path, file_bytes)
-    }
-
-    /// Generate full CRS
-    pub fn gen(
-        params: &SetupParams,
-        tau: &Tau,
-        o_vec: &Box<[ScalarField]>,
-        l_vec: &Box<[ScalarField]>,
-        k_vec: &Box<[ScalarField]>,
-        m_vec: &Box<[ScalarField]>,
-        g1_gen: &G1Affine,
-        g2_gen: &G2Affine,
-    ) -> Self {
-        let sigma = Sigma::gen(params, tau, o_vec, l_vec, k_vec, m_vec, g1_gen, g2_gen);
-        let gamma = G1serde(G1Affine::from((*g1_gen).to_projective() * tau.gamma));
-        Self {
-            contributor_index: 0,
-            sigma,
-            gamma,
-            public_y_hex: None,
-            phase1_source_provenance: None,
-        }
-    }
-    /// Write verifier CRS into JSON
-    pub fn write_into_json_for_verify(&self, abs_path: PathBuf) -> io::Result<()> {
-        self.sigma.write_into_json_for_verify(abs_path)
-    }
-
-    /// Write preprocess CRS into JSON
-    pub fn write_into_json_for_preprocess(&self, abs_path: PathBuf) -> io::Result<()> {
-        self.sigma.write_into_json_for_preprocess(abs_path)
-    }
-
-    pub fn write_into_rust_code(&self, path: &str) -> io::Result<()> {
-        self.sigma.write_into_rust_code(path)
     }
 
     fn parse_public_y_hex(input: &str) -> Result<ScalarField, String> {

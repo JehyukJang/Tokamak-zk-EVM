@@ -1,6 +1,7 @@
 use std::io;
 use std::path::Path;
 
+use icicle_bls12_381::curve::G1Affine;
 use libs::bivariate_polynomial::DensePolynomialExt;
 use libs::group_structures::G1serde;
 use libs::iotools::{
@@ -9,9 +10,12 @@ use libs::iotools::{
 };
 use memmap2::Mmap;
 use std::fs::File;
+#[cfg(feature = "timing")]
+use std::time::Instant;
 
 pub struct SigmaHolder {
     inner: SigmaZeroCopy,
+    decoded_xy_powers: Box<[G1Affine]>,
 }
 
 pub struct SigmaZeroCopy {
@@ -39,19 +43,43 @@ impl SigmaZeroCopy {
 
 impl SigmaHolder {
     pub fn load(path: &Path) -> std::io::Result<Self> {
-        SigmaZeroCopy::load(path).map(|inner| SigmaHolder { inner })
+        let inner = SigmaZeroCopy::load(path)?;
+        #[cfg(feature = "timing")]
+        let decode_start = Instant::now();
+        let decoded_xy_powers = inner.sigma().sigma_1.decode_xy_powers();
+        #[cfg(feature = "timing")]
+        libs::timing::record(
+            "sigma.full_grid_decode",
+            "encode_cache_build",
+            decode_start.elapsed(),
+            vec![libs::timing::SizeInfo {
+                label: "points",
+                dims: vec![decoded_xy_powers.len()],
+            }],
+        );
+        Ok(Self {
+            inner,
+            decoded_xy_powers,
+        })
     }
 
     pub fn sigma1(&self) -> Sigma1Handle<'_> {
-        Sigma1Handle(&self.inner.sigma().sigma_1)
+        Sigma1Handle {
+            archived: &self.inner.sigma().sigma_1,
+            decoded_xy_powers: &self.decoded_xy_powers,
+        }
     }
 }
 
-pub struct Sigma1Handle<'a>(&'a ArchivedSigma1Rkyv);
+pub struct Sigma1Handle<'a> {
+    archived: &'a ArchivedSigma1Rkyv,
+    decoded_xy_powers: &'a [G1Affine],
+}
 
 impl<'a> Sigma1Handle<'a> {
     pub fn encode_poly(&self, poly: &mut DensePolynomialExt, params: &SetupParams) -> G1serde {
-        self.0.encode_poly(poly, params)
+        self.archived
+            .encode_poly_with_decoded_xy_powers(poly, params, self.decoded_xy_powers)
     }
 
     pub fn encode_poly_timed(
@@ -60,7 +88,12 @@ impl<'a> Sigma1Handle<'a> {
         params: &SetupParams,
         timing_name: &'static str,
     ) -> G1serde {
-        self.0.encode_poly_timed(poly, params, timing_name)
+        self.archived.encode_poly_timed_with_decoded_xy_powers(
+            poly,
+            params,
+            self.decoded_xy_powers,
+            timing_name,
+        )
     }
 
     pub fn encode_O_pub_free(
@@ -69,7 +102,7 @@ impl<'a> Sigma1Handle<'a> {
         subcircuit_infos: &[SubcircuitInfo],
         setup_params: &SetupParams,
     ) -> G1serde {
-        self.0
+        self.archived
             .encode_O_pub_free(placement_variables, subcircuit_infos, setup_params)
     }
 
@@ -78,7 +111,7 @@ impl<'a> Sigma1Handle<'a> {
         a_pub_function: &[HexString],
         setup_params: &SetupParams,
     ) -> G1serde {
-        self.0.encode_O_pub_fix(a_pub_function, setup_params)
+        self.archived.encode_O_pub_fix(a_pub_function, setup_params)
     }
 
     pub fn encode_O_mid_no_zk(
@@ -87,7 +120,7 @@ impl<'a> Sigma1Handle<'a> {
         subcircuit_infos: &[SubcircuitInfo],
         setup_params: &SetupParams,
     ) -> G1serde {
-        self.0
+        self.archived
             .encode_O_mid_no_zk(placement_variables, subcircuit_infos, setup_params)
     }
 
@@ -97,27 +130,27 @@ impl<'a> Sigma1Handle<'a> {
         subcircuit_infos: &[SubcircuitInfo],
         setup_params: &SetupParams,
     ) -> G1serde {
-        self.0
+        self.archived
             .encode_O_prv_no_zk(placement_variables, subcircuit_infos, setup_params)
     }
 
     pub fn delta(&self) -> G1serde {
-        self.0.delta()
+        self.archived.delta()
     }
 
     pub fn eta(&self) -> G1serde {
-        self.0.eta()
+        self.archived.eta()
     }
 
     pub fn delta_inv_alphak_xh_tx(&self, k: usize, h: usize) -> G1serde {
-        self.0.delta_inv_alphak_xh_tx(k, h)
+        self.archived.delta_inv_alphak_xh_tx(k, h)
     }
 
     pub fn delta_inv_alpha4_xj_tx(&self, j: usize) -> G1serde {
-        self.0.delta_inv_alpha4_xj_tx(j)
+        self.archived.delta_inv_alpha4_xj_tx(j)
     }
 
     pub fn delta_inv_alphak_yi_ty(&self, k: usize, i: usize) -> G1serde {
-        self.0.delta_inv_alphak_yi_ty(k, i)
+        self.archived.delta_inv_alphak_yi_ty(k, i)
     }
 }

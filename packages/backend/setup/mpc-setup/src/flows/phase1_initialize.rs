@@ -21,7 +21,6 @@ const POWER_ALPHA_LENGTH: usize = 4;
 #[derive(Debug, Clone)]
 pub struct Phase1InitializeConfig {
     pub qap_path: PathBuf,
-    pub s_max: usize,
     pub setup_params_file: String,
     pub outfolder: String,
 }

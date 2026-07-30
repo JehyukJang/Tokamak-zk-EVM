@@ -11,7 +11,7 @@ use std::env;
 use std::fs;
 use std::fs::File as StdFile;
 use std::future::Future;
-use std::io::{self, Read, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use thiserror::Error;

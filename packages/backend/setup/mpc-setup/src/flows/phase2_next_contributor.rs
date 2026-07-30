@@ -10,11 +10,10 @@ use icicle_core::traits::{Arithmetic, FieldImpl};
 use libs::group_structures::G1serde;
 use rayon::prelude::*;
 use std::fs::File;
+use std::io;
 use std::io::{BufWriter, Write};
 use std::ops::Mul;
-use std::path::PathBuf;
 use std::time::Instant;
-use thiserror::Error;
 
 const CONTRIBUTOR_FILE_FORMAT: &str = "phase2_contributor_{}.txt";
 
@@ -24,24 +23,6 @@ pub struct Phase2NextContributorConfig {
     pub beacon_mode: bool,
     pub contributor_index: usize,
     pub random_seed_input: Option<String>,
-}
-#[derive(Error, Debug)]
-pub enum VerificationError {
-    #[error("Contributor index must be greater than 0")]
-    InvalidIndex,
-    #[error("File does not exist: {0}")]
-    MissingFile(PathBuf),
-    #[error("Invalid output folder: {0}")]
-    InvalidFolder(String),
-}
-#[derive(Error, Debug)]
-pub enum ContributorError {
-    #[error("Verification error: {0}")]
-    Verification(#[from] VerificationError),
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("Accumulator validation failed: {0}")]
-    AccumulatorValidation(String),
 }
 pub fn run(config: &Phase2NextContributorConfig) {
     let mut timer = StepTimer::new("phase2_next_contributor");
@@ -136,7 +117,7 @@ fn save_contributor_info(
     config: &Phase2NextContributorConfig,
     acc: &SigmaV2,
     proof: &Phase2Proof,
-) -> Result<(), ContributorError> {
+) -> io::Result<()> {
     let info = create_contributor_info(previous_hashes, start_time, acc, proof);
     let file_path = format!(
         "{}/{}",

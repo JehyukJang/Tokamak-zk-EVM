@@ -8,7 +8,7 @@ repository = { workspace = true }
 homepage = { workspace = true }
 
 [dependencies]
-serde = { version = "1.0.197", features = ["derive"] }
+serde = { workspace = true }
 
 icicle-core = { workspace = true }
 icicle-bls12-381 = { workspace = true }
@@ -20,31 +20,27 @@ rayon = { workspace = true }
 ark-bls12-381 = { workspace = true }
 ark-ec = { workspace = true }
 ark-ff = { workspace = true }
-rand = "0.8.5"
+rand = { workspace = true }
 blake2 = "0.8.1"
 rand_chacha = "0.3.1"
-bincode = "1.3.3"
+bincode = { workspace = true }
 memmap = "0.7.0"
-serde_json = "1.0.140"
-hex = "0.4.3"
+serde_json = { workspace = true }
+hex = { workspace = true }
 ark-std = "0.5.0"
 ark-serialize = "0.5.0"
-lazy_static = "1.5.0"
 blake3 = "1.8.2"
-clap = { version = "4.4", features = ["derive"] }
+clap = { workspace = true }
 chrono = "0.4"
 tokio = { version = "1", features = ["full"] }
-google-drive3 = "5.0.0+20220225"
+google-drive3 = "5.0.0"
 
-hyper = { version = "0.14", features = ["full"] }
-hyper-rustls = "0.24"
 thiserror = "2.0.12"
 zip = "4.0.0"
 tempfile = "3.20.0"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 sha2 = "0.10"
 dotenvy = "0.15"
-mime = "0.3"
 webbrowser = "1.0"
 [features]
 default = []

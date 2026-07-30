@@ -1,7 +1,6 @@
 use crate::accumulator::Accumulator;
 use crate::contributor::{get_device_info, ContributorInfo};
 use crate::sigma::AaccExt;
-use crate::testing_mode_enabled;
 use crate::utils::{
     initialize_random_generator_with_seed_input, load_gpu_if_possible, Mode, Phase1Proof, StepTimer,
 };

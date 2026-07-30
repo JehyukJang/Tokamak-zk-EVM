@@ -20,7 +20,7 @@ use serde_json::from_reader;
 use serde_json::to_writer_pretty;
 use std::fs::File;
 use std::io;
-use std::io::{BufReader, BufWriter, Read, Write};
+use std::io::{BufReader, BufWriter};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -347,6 +347,7 @@ impl AaccExt for Accumulator {
 mod tests {
     use super::*;
     use serde_json;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_accumulator_serialization_roundtrip() {
@@ -387,12 +388,11 @@ mod tests {
         let g1 = crate::utils::icicle_g1_generator();
         let g2 = crate::utils::icicle_g2_generator();
         let accumulator = Accumulator::new(g1, g2, 2, 4, true);
-        accumulator
-            .write_into_json("accumulator.json")
-            .expect("Failed to save");
+        let file = NamedTempFile::new().expect("Failed to create temporary accumulator file");
+        let path = file.path().to_str().expect("Temporary path is not UTF-8");
+        accumulator.write_into_json(path).expect("Failed to save");
 
-        let loaded_accumulator =
-            Accumulator::read_from_json("accumulator.json").expect("Failed to load");
+        let loaded_accumulator = Accumulator::read_from_json(path).expect("Failed to load");
         println!("Loaded Accumulator: {:?}", loaded_accumulator);
         assert_eq!(accumulator, loaded_accumulator);
     }

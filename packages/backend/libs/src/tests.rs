@@ -55,8 +55,8 @@ mod tests {
 
     use super::*;
     use crate::bivariate_polynomial::{
-        init_ntt_domain_for_size, BivariatePolynomial, DensePolynomialExt, DivByVanishingCache,
-        PolyExpr,
+        init_ntt_domain_for_size, polynomial_eval_batch, BivariatePolynomial, DensePolynomialExt,
+        DivByVanishingCache, PolyExpr,
     };
     use crate::utils::check_device;
     // Helper function: Create a simple 2D polynomial
@@ -86,6 +86,242 @@ mod tests {
             val = ScalarField::one();
         }
         val
+    }
+
+    fn horner(coefficients: &[ScalarField], point: ScalarField) -> ScalarField {
+        coefficients
+            .iter()
+            .rev()
+            .fold(ScalarField::zero(), |value, coefficient| {
+                value * point + *coefficient
+            })
+    }
+
+    #[test]
+    fn test_polynomial_eval_batch_host_and_supported_device_layouts() {
+        check_device();
+        let row_polynomials = [
+            [
+                ScalarField::from_u32(1),
+                ScalarField::from_u32(2),
+                ScalarField::from_u32(3),
+            ],
+            [
+                ScalarField::from_u32(5),
+                ScalarField::from_u32(7),
+                ScalarField::from_u32(11),
+            ],
+        ];
+        let domain_values = [ScalarField::from_u32(13), ScalarField::from_u32(17)];
+        let row_coefficients = row_polynomials.concat();
+        let expected_row = [
+            horner(&row_polynomials[0], domain_values[0]),
+            horner(&row_polynomials[0], domain_values[1]),
+            horner(&row_polynomials[1], domain_values[0]),
+            horner(&row_polynomials[1], domain_values[1]),
+        ];
+        let mut row_host_output = [ScalarField::zero(); 4];
+        polynomial_eval_batch(
+            HostSlice::from_slice(&row_coefficients),
+            3,
+            HostSlice::from_slice(&domain_values),
+            2,
+            false,
+            HostSlice::from_mut_slice(&mut row_host_output),
+        )
+        .unwrap();
+        assert_eq!(row_host_output, expected_row);
+
+        let column_coefficients = [
+            row_polynomials[0][0],
+            row_polynomials[1][0],
+            row_polynomials[0][1],
+            row_polynomials[1][1],
+            row_polynomials[0][2],
+            row_polynomials[1][2],
+        ];
+        let expected_columns = [
+            expected_row[0],
+            expected_row[2],
+            expected_row[1],
+            expected_row[3],
+        ];
+        let mut column_host_output = [ScalarField::zero(); 4];
+        polynomial_eval_batch(
+            HostSlice::from_slice(&column_coefficients),
+            3,
+            HostSlice::from_slice(&domain_values),
+            2,
+            true,
+            HostSlice::from_mut_slice(&mut column_host_output),
+        )
+        .unwrap();
+        assert_eq!(column_host_output, expected_columns);
+
+        let mut device_coefficients = DeviceVec::device_malloc(row_coefficients.len()).unwrap();
+        device_coefficients
+            .copy_from_host(HostSlice::from_slice(&row_coefficients))
+            .unwrap();
+        let mut device_domain = DeviceVec::device_malloc(domain_values.len()).unwrap();
+        device_domain
+            .copy_from_host(HostSlice::from_slice(&domain_values))
+            .unwrap();
+        let mut device_output = DeviceVec::device_malloc(expected_row.len()).unwrap();
+        polynomial_eval_batch(
+            &device_coefficients,
+            3,
+            &device_domain,
+            2,
+            false,
+            &mut device_output,
+        )
+        .unwrap();
+        let mut copied_output = [ScalarField::zero(); 4];
+        device_output
+            .copy_to_host(HostSlice::from_mut_slice(&mut copied_output))
+            .unwrap();
+        assert_eq!(copied_output, expected_row);
+
+        let mut device_column_coefficients =
+            DeviceVec::device_malloc(column_coefficients.len()).unwrap();
+        device_column_coefficients
+            .copy_from_host(HostSlice::from_slice(&column_coefficients))
+            .unwrap();
+        let mut device_column_host_output = [ScalarField::zero(); 4];
+        polynomial_eval_batch(
+            &device_column_coefficients,
+            3,
+            &device_domain,
+            2,
+            true,
+            HostSlice::from_mut_slice(&mut device_column_host_output),
+        )
+        .unwrap();
+        assert_eq!(device_column_host_output, expected_columns);
+
+        assert_eq!(
+            polynomial_eval_batch(
+                &device_column_coefficients,
+                3,
+                &device_domain,
+                2,
+                true,
+                &mut device_output,
+            ),
+            Err(icicle_runtime::errors::eIcicleError::ApiNotImplemented)
+        );
+    }
+
+    #[test]
+    fn test_polynomial_eval_batch_rejects_invalid_dimensions() {
+        check_device();
+        let coefficients = [ScalarField::one(); 4];
+        let domain = [ScalarField::one(); 2];
+        let mut output = [ScalarField::zero(); 4];
+        assert_eq!(
+            polynomial_eval_batch(
+                HostSlice::from_slice(&coefficients),
+                3,
+                HostSlice::from_slice(&domain),
+                2,
+                false,
+                HostSlice::from_mut_slice(&mut output),
+            ),
+            Err(icicle_runtime::errors::eIcicleError::InvalidArgument)
+        );
+    }
+
+    #[test]
+    fn test_eval_three_batch_matches_independent_evaluations() {
+        check_device();
+        let polynomials = [
+            DensePolynomialExt::zero(),
+            DensePolynomialExt::from_coeffs(
+                HostSlice::from_slice(&[ScalarField::from_u32(7)]),
+                1,
+                1,
+            ),
+            DensePolynomialExt::from_coeffs(
+                HostSlice::from_slice(&[
+                    ScalarField::from_u32(1),
+                    ScalarField::from_u32(2),
+                    ScalarField::from_u32(3),
+                    ScalarField::from_u32(4),
+                ]),
+                4,
+                1,
+            ),
+            DensePolynomialExt::from_coeffs(
+                HostSlice::from_slice(&[
+                    ScalarField::from_u32(1),
+                    ScalarField::from_u32(2),
+                    ScalarField::from_u32(3),
+                    ScalarField::from_u32(4),
+                ]),
+                1,
+                4,
+            ),
+            DensePolynomialExt::from_coeffs(
+                HostSlice::from_slice(&[
+                    ScalarField::from_u32(1),
+                    ScalarField::zero(),
+                    ScalarField::from_u32(3),
+                    ScalarField::zero(),
+                    ScalarField::zero(),
+                    ScalarField::from_u32(6),
+                    ScalarField::zero(),
+                    ScalarField::from_u32(8),
+                    ScalarField::from_u32(9),
+                    ScalarField::zero(),
+                    ScalarField::from_u32(11),
+                    ScalarField::zero(),
+                    ScalarField::zero(),
+                    ScalarField::from_u32(14),
+                    ScalarField::zero(),
+                    ScalarField::from_u32(16),
+                ]),
+                4,
+                4,
+            ),
+            DensePolynomialExt::from_coeffs(
+                HostSlice::from_slice(&ScalarCfg::generate_random(64 * 16)),
+                64,
+                16,
+            ),
+        ];
+        let one = ScalarField::one();
+        let minus_one = ScalarField::zero() - one;
+        let points = [
+            (
+                ScalarField::zero(),
+                ScalarField::zero(),
+                ScalarField::zero(),
+                ScalarField::zero(),
+            ),
+            (one, one, minus_one, minus_one),
+            (
+                ScalarField::from_u32(5),
+                ScalarField::from_u32(7),
+                ScalarField::from_u32(11),
+                ScalarField::from_u32(13),
+            ),
+        ];
+
+        for polynomial in polynomials {
+            for (x, y, shifted_x, shifted_y) in points {
+                let expected = [
+                    polynomial.eval(&x, &y),
+                    polynomial.eval(&shifted_x, &y),
+                    polynomial.eval(&shifted_x, &shifted_y),
+                ];
+                assert_eq!(
+                    polynomial
+                        .eval_three_batch(&x, &y, &shifted_x, &shifted_y)
+                        .unwrap(),
+                    expected
+                );
+            }
+        }
     }
 
     #[test]
@@ -951,6 +1187,69 @@ mod tests {
         assert!(estimated_p_eval.eq(&true_p_eval));
     }
 
+    fn assert_polynomial_coefficients_equal(
+        mut actual: DensePolynomialExt,
+        mut expected: DensePolynomialExt,
+    ) {
+        let x_size = actual.x_size.max(expected.x_size);
+        let y_size = actual.y_size.max(expected.y_size);
+        actual.resize(x_size, y_size);
+        expected.resize(x_size, y_size);
+        for x in 0..x_size {
+            for y in 0..y_size {
+                assert_eq!(
+                    actual.get_coeff(x as u64, y as u64),
+                    expected.get_coeff(x as u64, y as u64),
+                    "coefficient mismatch at ({x}, {y})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_div_by_ruffini_shared_x_matches_independent_splits() {
+        let polynomials = [
+            DensePolynomialExt::from_coeffs(
+                HostSlice::from_slice(&[ScalarField::from_u32(7)]),
+                1,
+                1,
+            ),
+            DensePolynomialExt::from_coeffs(
+                HostSlice::from_slice(&ScalarCfg::generate_random(64 * 8)),
+                64,
+                8,
+            ),
+        ];
+        let x = ScalarField::from_u32(5);
+        let y_points = [ScalarField::from_u32(7), ScalarField::from_u32(11)];
+
+        for polynomial in polynomials {
+            let (shared_x, shared_y, shared_remainders) =
+                polynomial.div_by_ruffini_shared_x(&x, &y_points);
+            for (index, y) in y_points.iter().enumerate() {
+                let (legacy_x, legacy_y, legacy_remainder) = polynomial.div_by_ruffini(&x, y);
+                assert_polynomial_coefficients_equal(shared_x.clone(), legacy_x);
+                assert_polynomial_coefficients_equal(shared_y[index].clone(), legacy_y);
+                assert_eq!(shared_remainders[index], legacy_remainder);
+
+                let numerator = &polynomial - &legacy_remainder;
+                let (numerator_x, numerator_y, numerator_remainder) =
+                    numerator.div_by_ruffini(&x, y);
+                assert_polynomial_coefficients_equal(shared_x.clone(), numerator_x);
+                assert_polynomial_coefficients_equal(shared_y[index].clone(), numerator_y);
+                assert_eq!(numerator_remainder, ScalarField::zero());
+
+                let evaluation_x = ScalarField::from_u32(13);
+                let evaluation_y = ScalarField::from_u32(17);
+                let reconstructed = shared_x.eval(&evaluation_x, &evaluation_y)
+                    * (evaluation_x - x)
+                    + shared_y[index].eval(&evaluation_x, &evaluation_y) * (evaluation_y - *y)
+                    + shared_remainders[index];
+                assert_eq!(polynomial.eval(&evaluation_x, &evaluation_y), reconstructed);
+            }
+        }
+    }
+
     #[test]
     fn test_divide_x() {
         let x_size = 2usize.pow(10);
@@ -1312,8 +1611,6 @@ mod tests {
     fn update_degree_general_case() {
         let x_size = 2usize.pow(12);
         let y_size = 2usize.pow(6);
-        // let x_degree= 2i64.pow(9);
-        // let y_degree = 0;
         let x_degree: i64 = (x_size - 1) as i64;
         let y_degree: i64 = (y_size - 1) as i64;
 
@@ -1570,26 +1867,6 @@ mod tests_vectors {
         for i in 0..4 {
             assert_eq!(res[i], expected[i], "Mismatch at index {}", i);
         }
-    }
-
-    #[test]
-    fn test_matrix_matrix_mul_tiled_matches_untiled() {
-        let lhs = (1u32..=12)
-            .map(ScalarField::from_u32)
-            .collect::<Vec<_>>()
-            .into_boxed_slice();
-        let rhs = (1u32..=20)
-            .map(ScalarField::from_u32)
-            .collect::<Vec<_>>()
-            .into_boxed_slice();
-
-        let mut untiled = vec![ScalarField::zero(); 15].into_boxed_slice();
-        matrix_matrix_mul(&lhs, &rhs, 3, 4, 5, &mut untiled);
-
-        let mut tiled = vec![ScalarField::zero(); 15].into_boxed_slice();
-        matrix_matrix_mul_tiled(&lhs, &rhs, 3, 4, 5, &mut tiled, 2);
-
-        assert_eq!(tiled, untiled);
     }
 
     #[test]

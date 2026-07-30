@@ -19,23 +19,7 @@ use prove::timing;
 
 #[cfg(feature = "timing")]
 fn take_all_timing_events() -> Vec<timing::TimingEvent> {
-    let mut events = timing::take_events();
-    events.extend(libs::timing::take_events().into_iter().map(|event| {
-        timing::TimingEvent {
-            name: event.name,
-            category: event.category,
-            nanos: event.nanos,
-            sizes: event
-                .sizes
-                .into_iter()
-                .map(|size| timing::SizeInfo {
-                    label: size.label,
-                    dims: size.dims,
-                })
-                .collect(),
-        }
-    }));
-    events
+    timing::take_events()
 }
 
 #[cfg(feature = "timing")]
@@ -69,15 +53,6 @@ struct TimingReport {
     setup_params: SetupParamsSummary,
     summary: BTreeMap<String, StageSummary>,
     events: Vec<timing::TimingEvent>,
-}
-
-#[cfg(feature = "timing")]
-#[derive(serde::Serialize)]
-struct CandidateBenchReport {
-    generated_at_unix_ms: u128,
-    repeats: usize,
-    setup_params: SetupParamsSummary,
-    results: Vec<prove::CandidateBenchResult>,
 }
 
 #[cfg(feature = "timing")]
@@ -135,7 +110,6 @@ fn timing_prove_stages() {
 
     check_device();
     timing::reset();
-    libs::timing::reset();
     let wall_start = Instant::now();
 
     let (mut prover, _binding) = Prover::init(&paths);
@@ -229,112 +203,6 @@ fn timing_prove_stages() {
     }
     if let Err(err) = fs::write(&out_path, report_json.as_bytes()) {
         eprintln!("Failed to write timing report to {:?}: {err}", out_path);
-    }
-}
-
-#[cfg(feature = "timing")]
-#[test]
-fn benchmark_fused_expression_candidates() {
-    if read_env("PROVE_CANDIDATE_BENCH").as_deref() != Some("1") {
-        eprintln!("Skipping candidate benchmark: PROVE_CANDIDATE_BENCH=1 is not set.");
-        return;
-    }
-    let qap_path = match read_env("PROVE_QAP_PATH") {
-        Some(v) => v,
-        None => {
-            eprintln!("Skipping candidate benchmark: PROVE_QAP_PATH is not set.");
-            return;
-        }
-    };
-    let synthesizer_path = match read_env("PROVE_SYNTHESIZER_PATH") {
-        Some(v) => v,
-        None => {
-            eprintln!("Skipping candidate benchmark: PROVE_SYNTHESIZER_PATH is not set.");
-            return;
-        }
-    };
-    let setup_path = match read_env("PROVE_SETUP_PATH") {
-        Some(v) => v,
-        None => {
-            eprintln!("Skipping candidate benchmark: PROVE_SETUP_PATH is not set.");
-            return;
-        }
-    };
-    let output_path = read_env("PROVE_OUT_PATH")
-        .unwrap_or_else(|| "tmp/candidate-bench-proof-output".to_string());
-    let repeats = read_env("PROVE_CANDIDATE_BENCH_REPEATS")
-        .and_then(|value| value.parse::<usize>().ok())
-        .unwrap_or(2)
-        .max(1);
-
-    let paths = ProveInputPaths {
-        qap_path: &qap_path,
-        synthesizer_path: &synthesizer_path,
-        setup_path: &setup_path,
-        output_path: &output_path,
-    };
-
-    check_device();
-    let (mut prover, _binding) = Prover::init(&paths);
-    let setup_params = SetupParamsSummary {
-        l_free: prover.setup_params.l_free,
-        l: prover.setup_params.l,
-        l_user_out: prover.setup_params.l_user_out,
-        l_user: prover.setup_params.l_user,
-        l_D: prover.setup_params.l_D,
-        m_D: prover.setup_params.m_D,
-        n: prover.setup_params.n,
-        s_D: prover.setup_params.s_D,
-        s_max: prover.setup_params.s_max,
-    };
-
-    let mut manager = TranscriptManager::new();
-    let proof0 = prover.prove0();
-    let thetas = proof0.verify0_with_manager(&mut manager);
-    let proof1 = prover.prove1(&thetas);
-    let kappa0 = proof1.verify1_with_manager(&mut manager);
-    let proof2 = prover.prove2(&thetas, kappa0);
-    let (chi, zeta) = proof2.verify2_with_manager(&mut manager);
-    let proof3 = prover.prove3(chi, zeta);
-    let _kappa1 = proof3.verify3_with_manager(&mut manager);
-
-    let results = prover.benchmark_fused_expression_candidates(
-        &thetas,
-        kappa0,
-        chi,
-        zeta,
-        repeats,
-    );
-    for result in &results {
-        println!(
-            "{} baseline_avg={:.6}ms fused_avg={:.6}ms delta={:.6}ms dims={}x{}",
-            result.name,
-            result.baseline_avg_ms,
-            result.fused_avg_ms,
-            result.delta_avg_ms,
-            result.output_x_size,
-            result.output_y_size
-        );
-    }
-
-    let report = CandidateBenchReport {
-        generated_at_unix_ms: generated_at_unix_ms(),
-        repeats,
-        setup_params,
-        results,
-    };
-    let out_path = read_env("PROVE_CANDIDATE_BENCH_OUT")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("tmp/fused-expression-candidate-bench.json"));
-    if let Some(parent) = out_path.parent() {
-        if let Err(err) = fs::create_dir_all(parent) {
-            eprintln!("Failed to create candidate benchmark report directory {parent:?}: {err}");
-        }
-    }
-    let report_json =
-        serde_json::to_string_pretty(&report).expect("failed to serialize candidate benchmark");
-    if let Err(err) = fs::write(&out_path, report_json.as_bytes()) {
-        eprintln!("Failed to write candidate benchmark report to {:?}: {err}", out_path);
     }
 }
 

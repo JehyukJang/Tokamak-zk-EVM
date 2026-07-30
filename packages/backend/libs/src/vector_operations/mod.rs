@@ -4,17 +4,6 @@ use icicle_core::traits::FieldImpl;
 use icicle_core::vec_ops::{VecOps, VecOpsConfig};
 use icicle_runtime::errors::eIcicleError;
 use icicle_runtime::memory::{DeviceSlice, DeviceVec, HostOrDeviceSlice, HostSlice};
-use std::env;
-use std::mem::size_of;
-
-const DEFAULT_GPU_MATMUL_MEMORY_FRACTION: f64 = 0.60;
-const DEFAULT_GPU_MATMUL_SAFETY_MARGIN_FRACTION: f64 = 0.15;
-const DEFAULT_GPU_MATMUL_SAFETY_MARGIN_BYTES: usize = 2 * 1024 * 1024 * 1024;
-const DEFAULT_GPU_MATMUL_FALLBACK_TILE_COLS: usize = 512;
-const MIN_GPU_MATMUL_TILE_COLS: usize = 1;
-const TILE_ENV: &str = "TOKAMAK_GPU_MATMUL_TILE_N";
-const MEMORY_FRACTION_ENV: &str = "TOKAMAK_GPU_MATMUL_MEMORY_FRACTION";
-const SAFETY_MARGIN_GIB_ENV: &str = "TOKAMAK_GPU_MATMUL_SAFETY_MARGIN_GIB";
 
 pub fn gen_evaled_lagrange_bases(val: &ScalarField, size: usize, res: &mut [ScalarField]) {
     let mut val_pows = vec![ScalarField::one(); size];
@@ -73,22 +62,8 @@ pub fn scale_vec(scaler: ScalarField, vec: &[ScalarField], res: &mut [ScalarFiel
     let lhs_v = vec![scaler];
     let lhs_buff = HostSlice::from_slice(&lhs_v);
     let rhs_buff = HostSlice::from_slice(vec);
-    // let scaler = vec![lhs; rhs.len()];
-    // point_mul_two_vecs(&scaler, rhs, res);
     let res_buff = HostSlice::from_mut_slice(res);
     ScalarCfg::scalar_mul(lhs_buff, rhs_buff, res_buff, &vec_ops_cfg).unwrap();
-}
-
-pub fn scalar_vec_sub(lhs: ScalarField, rhs: &[ScalarField], res: &mut [ScalarField]) {
-    if rhs.len() != res.len() {
-        panic!("Incorrect output buffer length");
-    }
-    let vec_ops_cfg = VecOpsConfig::default();
-    let lhs_v = vec![lhs];
-    let lhs_buff = HostSlice::from_slice(&lhs_v);
-    let rhs_buff = HostSlice::from_slice(rhs);
-    let res_buff = HostSlice::from_mut_slice(res);
-    ScalarCfg::scalar_sub(lhs_buff, rhs_buff, res_buff, &vec_ops_cfg).unwrap();
 }
 
 pub fn scalar_vec_add(scalar: ScalarField, vec: &[ScalarField], res: &mut [ScalarField]) {
@@ -101,28 +76,6 @@ pub fn scalar_vec_add(scalar: ScalarField, vec: &[ScalarField], res: &mut [Scala
     let rhs_buff = HostSlice::from_slice(vec);
     let res_buff = HostSlice::from_mut_slice(res);
     ScalarCfg::scalar_add(lhs_buff, rhs_buff, res_buff, &vec_ops_cfg).unwrap();
-}
-
-pub fn inner_product_two_vecs(lhs_vec: &[ScalarField], rhs_vec: &[ScalarField]) -> ScalarField {
-    if lhs_vec.len() != rhs_vec.len() {
-        panic!("Mismatch of sizes of vectors to be inner-producted");
-    }
-
-    let len = lhs_vec.len();
-    let vec_ops_cfg = VecOpsConfig::default();
-    let mut mul_res_vec = vec![ScalarField::zero(); len];
-    let mul_res_buff = HostSlice::from_mut_slice(&mut mul_res_vec);
-    ScalarCfg::mul(
-        HostSlice::from_slice(lhs_vec),
-        HostSlice::from_slice(rhs_vec),
-        mul_res_buff,
-        &vec_ops_cfg,
-    )
-    .unwrap();
-    let mut res_vec = vec![ScalarField::zero()];
-    let res = HostSlice::from_mut_slice(&mut res_vec);
-    ScalarCfg::sum(mul_res_buff, res, &vec_ops_cfg).unwrap();
-    res_vec[0]
 }
 
 pub fn transpose_inplace(a_vec: &mut [ScalarField], row_size: usize, col_size: usize) {
@@ -138,14 +91,6 @@ pub fn transpose_inplace(a_vec: &mut [ScalarField], row_size: usize, col_size: u
     let res = HostSlice::from_mut_slice(&mut res_vec);
     ScalarCfg::transpose(a, row_size as u32, col_size as u32, res, &vec_ops_cfg).unwrap();
     a_vec.clone_from_slice(&res_vec);
-}
-
-pub fn transpose_device_inplace(
-    a_vec: &mut DeviceSlice<ScalarField>,
-    row_size: usize,
-    col_size: usize,
-) {
-    transpose_device_inplace_checked(a_vec, row_size, col_size).unwrap();
 }
 
 fn transpose_device_inplace_checked(
@@ -341,213 +286,6 @@ fn matrix_matrix_mul_with_transposed_lhs(
     Ok(())
 }
 
-pub fn matrix_matrix_mul_auto_tiled(
-    lhs_mat: &[ScalarField],
-    rhs_mat: &[ScalarField],
-    m: usize,
-    n: usize,
-    l: usize,
-    res_mat: &mut [ScalarField],
-) {
-    let tile_cols = select_gpu_matmul_tile_cols(m, n, l);
-    if l <= 1 {
-        matrix_matrix_mul(lhs_mat, rhs_mat, m, n, l, res_mat);
-        return;
-    }
-
-    matrix_matrix_mul_tiled_with_retry(lhs_mat, rhs_mat, m, n, l, res_mat, tile_cols);
-}
-
-pub fn matrix_matrix_mul_tiled(
-    lhs_mat: &[ScalarField],
-    rhs_mat: &[ScalarField],
-    m: usize,
-    n: usize,
-    l: usize,
-    res_mat: &mut [ScalarField],
-    tile_cols: usize,
-) {
-    matrix_matrix_mul_tiled_checked(lhs_mat, rhs_mat, m, n, l, res_mat, tile_cols).unwrap();
-}
-
-fn matrix_matrix_mul_tiled_with_retry(
-    lhs_mat: &[ScalarField],
-    rhs_mat: &[ScalarField],
-    m: usize,
-    n: usize,
-    l: usize,
-    res_mat: &mut [ScalarField],
-    initial_tile_cols: usize,
-) {
-    let mut tile_cols = initial_tile_cols.clamp(MIN_GPU_MATMUL_TILE_COLS, l);
-    loop {
-        match matrix_matrix_mul_tiled_checked(lhs_mat, rhs_mat, m, n, l, res_mat, tile_cols) {
-            Ok(()) => return,
-            Err(eIcicleError::AllocationFailed | eIcicleError::OutOfMemory)
-                if tile_cols > MIN_GPU_MATMUL_TILE_COLS =>
-            {
-                let next_tile_cols = std::cmp::max(tile_cols / 2, MIN_GPU_MATMUL_TILE_COLS);
-                eprintln!(
-                    "GPU matmul tile allocation failed for tile_n={tile_cols}; retrying with tile_n={next_tile_cols}"
-                );
-                tile_cols = next_tile_cols;
-            }
-            Err(err) => panic!("GPU tiled matrix multiplication failed: {err:?}"),
-        }
-    }
-}
-
-fn matrix_matrix_mul_tiled_checked(
-    lhs_mat: &[ScalarField],
-    rhs_mat: &[ScalarField],
-    m: usize,
-    n: usize,
-    l: usize,
-    res_mat: &mut [ScalarField],
-    tile_cols: usize,
-) -> Result<(), eIcicleError> {
-    if lhs_mat.len() != m * n || rhs_mat.len() != n * l || res_mat.len() != m * l {
-        panic!("Incorrect sizes for the matrix multiplication")
-    }
-    if lhs_mat.is_empty() || rhs_mat.is_empty() {
-        res_mat.fill(ScalarField::zero());
-        return Ok(());
-    }
-    let tile_cols = tile_cols.clamp(MIN_GPU_MATMUL_TILE_COLS, l);
-    if tile_cols >= l {
-        return matrix_matrix_mul_checked(lhs_mat, rhs_mat, m, n, l, res_mat);
-    }
-
-    println!("GPU matmul tiling: m={m}, inner={n}, cols={l}, tile_n={tile_cols}");
-
-    let mut lhs_device = DeviceVec::device_malloc(m * n)?;
-    lhs_device
-        .as_mut_slice()
-        .copy_from_host(HostSlice::from_slice(lhs_mat))?;
-
-    let mut transposed_lhs = DeviceVec::device_malloc(m * n)?;
-    let mut vec_ops_cfg = VecOpsConfig::default();
-    vec_ops_cfg.is_a_on_device = true;
-    vec_ops_cfg.is_result_on_device = true;
-    ScalarCfg::transpose(
-        &lhs_device,
-        m as u32,
-        n as u32,
-        &mut transposed_lhs,
-        &vec_ops_cfg,
-    )?;
-
-    let mut col_start = 0;
-    while col_start < l {
-        let current_tile_cols = std::cmp::min(tile_cols, l - col_start);
-        let rhs_tile = pack_rhs_column_tile(rhs_mat, n, l, col_start, current_tile_cols);
-        let mut res_tile = vec![ScalarField::zero(); m * current_tile_cols];
-
-        matrix_matrix_mul_with_transposed_lhs(
-            &transposed_lhs,
-            &rhs_tile,
-            m,
-            n,
-            current_tile_cols,
-            &mut res_tile,
-        )?;
-
-        for row in 0..m {
-            let dst_start = row * l + col_start;
-            let src_start = row * current_tile_cols;
-            res_mat[dst_start..dst_start + current_tile_cols]
-                .copy_from_slice(&res_tile[src_start..src_start + current_tile_cols]);
-        }
-
-        col_start += current_tile_cols;
-    }
-    Ok(())
-}
-
-fn pack_rhs_column_tile(
-    rhs_mat: &[ScalarField],
-    rows: usize,
-    cols: usize,
-    col_start: usize,
-    tile_cols: usize,
-) -> Vec<ScalarField> {
-    let mut rhs_tile = vec![ScalarField::zero(); rows * tile_cols];
-    for row in 0..rows {
-        let src_start = row * cols + col_start;
-        let dst_start = row * tile_cols;
-        rhs_tile[dst_start..dst_start + tile_cols]
-            .copy_from_slice(&rhs_mat[src_start..src_start + tile_cols]);
-    }
-    rhs_tile
-}
-
-fn select_gpu_matmul_tile_cols(m: usize, n: usize, l: usize) -> usize {
-    if l <= 1 || m == 0 || n == 0 {
-        return l;
-    }
-    if let Some(tile_cols) = tile_cols_from_env(l) {
-        return tile_cols;
-    }
-
-    let budget = match icicle_runtime::get_available_memory() {
-        Ok((total, free)) => usable_gpu_matmul_budget(total, free) as u128,
-        Err(_) => required_tiled_matmul_bytes(m, n, DEFAULT_GPU_MATMUL_FALLBACK_TILE_COLS),
-    };
-
-    let mut max_tile_cols = l;
-    while max_tile_cols > MIN_GPU_MATMUL_TILE_COLS
-        && required_tiled_matmul_bytes(m, n, max_tile_cols) > budget
-    {
-        max_tile_cols /= 2;
-    }
-
-    max_tile_cols.clamp(MIN_GPU_MATMUL_TILE_COLS, l)
-}
-
-fn tile_cols_from_env(l: usize) -> Option<usize> {
-    let raw = env::var(TILE_ENV).ok()?;
-    let parsed = raw.parse::<usize>().ok()?;
-    if parsed == 0 {
-        return None;
-    }
-    Some(parsed.clamp(MIN_GPU_MATMUL_TILE_COLS, l))
-}
-
-fn usable_gpu_matmul_budget(total: usize, free: usize) -> usize {
-    let memory_fraction = env::var(MEMORY_FRACTION_ENV)
-        .ok()
-        .and_then(|raw| raw.parse::<f64>().ok())
-        .filter(|value| *value > 0.0 && *value <= 1.0)
-        .unwrap_or(DEFAULT_GPU_MATMUL_MEMORY_FRACTION);
-
-    let safety_margin = env::var(SAFETY_MARGIN_GIB_ENV)
-        .ok()
-        .and_then(|raw| raw.parse::<f64>().ok())
-        .filter(|value| *value >= 0.0)
-        .map(|gib| (gib * 1024.0 * 1024.0 * 1024.0) as usize)
-        .unwrap_or_else(|| {
-            std::cmp::max(
-                DEFAULT_GPU_MATMUL_SAFETY_MARGIN_BYTES,
-                (total as f64 * DEFAULT_GPU_MATMUL_SAFETY_MARGIN_FRACTION) as usize,
-            )
-        });
-
-    let fraction_budget = (free as f64 * memory_fraction) as usize;
-    let margin_budget = free.saturating_sub(safety_margin);
-    std::cmp::min(fraction_budget, margin_budget).max(1)
-}
-
-fn required_tiled_matmul_bytes(m: usize, n: usize, tile_cols: usize) -> u128 {
-    let m = m as u128;
-    let n = n as u128;
-    let tile_cols = tile_cols as u128;
-    let scalar_bytes = size_of::<ScalarField>() as u128;
-    let fixed_elements = 2 * m * n;
-    let rhs_elements = 2 * n * tile_cols;
-    let expanded_elements = (7 * m * n * tile_cols).div_ceil(2);
-    scalar_bytes * (fixed_elements + rhs_elements + expanded_elements)
-}
-
 pub fn outer_product_two_vecs(
     col_vec: &[ScalarField],
     row_vec: &[ScalarField],
@@ -560,14 +298,12 @@ pub fn outer_product_two_vecs(
     let row_len = col_vec.len();
     let col_len = row_vec.len();
 
-    // let vec_ops_cfg = VecOpsConfig::default();
     let min_len = std::cmp::min(row_len, col_len);
     let max_len = std::cmp::max(row_len, col_len);
     let max_col = max_len == row_len;
 
     let base_vec = if max_col { col_vec } else { row_vec };
 
-    // let mut res_untransposed = vec![ScalarField::zero(); res.len()];
     for ind in 0..min_len {
         let scaler = if max_col { row_vec[ind] } else { col_vec[ind] };
         let mut _res_vec = vec![ScalarField::zero(); max_len];
@@ -577,62 +313,6 @@ pub fn outer_product_two_vecs(
 
     if max_col {
         transpose_inplace(res, min_len, max_len);
-    }
-}
-
-pub fn outer_product_two_vecs_rayon(
-    col_vec: &[ScalarField],
-    row_vec: &[ScalarField],
-    res: &mut [ScalarField],
-) {
-    if col_vec.len() * row_vec.len() != res.len() {
-        panic!("Insufficient buffer length");
-    }
-
-    let col_len = col_vec.len();
-    let row_len = row_vec.len();
-
-    let vec_ops_cfg = VecOpsConfig::default();
-    let min_len = std::cmp::min(row_len, col_len);
-    let max_len = std::cmp::max(row_len, col_len);
-    let max_dir = max_len == row_len;
-
-    let base_vec = if max_dir { row_vec } else { col_vec };
-
-    let mut res_untransposed = vec![ScalarField::zero(); res.len()];
-
-    res_untransposed
-        .chunks_mut(max_len)
-        .enumerate()
-        .for_each(|(ind, chunk)| {
-            let scaler = if max_dir { col_vec[ind] } else { row_vec[ind] };
-            let scaler_vec = vec![scaler; max_len];
-            let mut res_vec = vec![ScalarField::zero(); max_len];
-
-            ScalarCfg::mul(
-                HostSlice::from_slice(&scaler_vec),
-                HostSlice::from_slice(base_vec),
-                HostSlice::from_mut_slice(&mut res_vec),
-                &vec_ops_cfg,
-            )
-            .unwrap();
-            chunk.copy_from_slice(&res_vec);
-        });
-
-    if !max_dir {
-        let res_untranposed_buf = HostSlice::from_slice(&res_untransposed);
-        let res_buf = HostSlice::from_mut_slice(res);
-
-        ScalarCfg::transpose(
-            res_untranposed_buf,
-            min_len as u32,
-            max_len as u32,
-            res_buf,
-            &vec_ops_cfg,
-        )
-        .unwrap();
-    } else {
-        res.clone_from_slice(&res_untransposed);
     }
 }
 

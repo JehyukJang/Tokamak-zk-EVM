@@ -24,6 +24,10 @@ Both wrappers write:
 - intermediate ceremony artifacts to `--intermediate`
 - final trusted-setup-compatible artifacts to `--output`
 
+The mathematical formulas, trapdoor ownership, contribution checks, and known
+security limitation of the implemented phase-2 protocol are documented in the
+[phase-2 output contract](docs/phase2-output-contract.md).
+
 ## Prerequisites
 
 Before running the ceremony:
@@ -233,7 +237,7 @@ the exact file it is about to load.
 - `y` is introduced during phase 2.
 - Later phase-2 contributors validate the disclosed `y`, but the first phase-2 step still
   determines that value.
-- Downstream `preprocess`, `prove`, and `verify-rust` continue to consume the same final CRS
+- Downstream `preprocess`, `prove`, and `verify` continue to consume the same final CRS
   layout as before.
 
 ## Future Work
