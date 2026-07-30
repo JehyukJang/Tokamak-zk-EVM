@@ -27,6 +27,9 @@ export type ManagedPrerequisiteId =
   | 'cargo'
   | 'cmake'
   | 'toolchain'
+  | 'llvm-toolchain'
+  | 'git'
+  | 'ninja'
   | 'pkg-config'
   | 'tar'
   | 'unzip';
@@ -47,7 +50,11 @@ export type PrerequisiteInstallationAction =
       packages: readonly string[];
     }
   | {
-      kind: 'kitware-cmake';
+      kind: 'kitware-cmake-source';
+    }
+  | {
+      kind: 'llvm-apt';
+      ubuntuVersion: SupportedUbuntuVersion;
     }
   | {
       kind: 'brew';
@@ -77,13 +84,41 @@ export type PrerequisiteInstallExecutionResult = 'complete' | 'rerun-required';
 
 const MINIMUM_RUST_VERSION = '1.85.0';
 const MINIMUM_CMAKE_VERSION = '3.18.0';
+const ICICLE_CMAKE_VERSION = '3.27.4';
+const UBUNTU_PACKAGE_ORDER: Record<SupportedUbuntuVersion, readonly string[]> = {
+  '20.04': [
+    'build-essential',
+    'wget',
+    'tar',
+    'libssl-dev',
+    'libcurl4-openssl-dev',
+    'libarchive-dev',
+    'zlib1g-dev',
+    'ninja-build',
+    'software-properties-common',
+    'gnupg',
+    'git',
+    'pkg-config',
+    'unzip',
+  ],
+  '22.04': [
+    'build-essential',
+    'cmake',
+    'tar',
+    'ninja-build',
+    'software-properties-common',
+    'wget',
+    'gnupg',
+    'git',
+    'pkg-config',
+    'unzip',
+  ],
+};
 
 interface CmakeManifest {
-  assets: Record<'arm64' | 'x64', {
-    sha256: string;
-    url: string;
-  }>;
   minimumCompatibleVersion: string;
+  sha256: string;
+  url: string;
   version: string;
 }
 
@@ -195,6 +230,7 @@ async function runInteractiveCommand(
   command: string,
   args: readonly string[],
   options: {
+    cwd?: string;
     env?: NodeJS.ProcessEnv;
     verbose: boolean;
   },
@@ -204,6 +240,7 @@ async function runInteractiveCommand(
   }
   await new Promise<void>((resolve, reject) => {
     const child = spawn(command, [...args], {
+      cwd: options.cwd,
       env: options.env ?? process.env,
       stdio: 'inherit',
     });
@@ -219,14 +256,15 @@ async function runInteractiveCommand(
   });
 }
 
-async function withDownloadedInstaller(
+async function withDownloadedFile(
   url: string,
   prefix: string,
-  run: (installerPath: string) => Promise<void>,
+  filename: string,
+  run: (downloadPath: string, tempDir: string) => Promise<void>,
   expectedSha256?: string,
 ): Promise<void> {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), `${prefix}-`));
-  const installerPath = path.join(tempDir, 'install.sh');
+  const downloadPath = path.join(tempDir, filename);
   try {
     const response = await fetch(url, { redirect: 'follow' });
     if (!response.ok) {
@@ -237,14 +275,14 @@ async function withDownloadedInstaller(
       const actualSha256 = createHash('sha256').update(contents).digest('hex');
       if (actualSha256 !== expectedSha256) {
         throw new Error(
-          `Downloaded installer from ${url} has SHA-256 ${actualSha256}, expected ${expectedSha256}.`,
+          `Downloaded file from ${url} has SHA-256 ${actualSha256}, expected ${expectedSha256}.`,
         );
       }
     }
-    await fs.writeFile(installerPath, contents, {
+    await fs.writeFile(downloadPath, contents, {
       mode: 0o700,
     });
-    await run(installerPath);
+    await run(downloadPath, tempDir);
   } finally {
     await fs.rm(tempDir, { force: true, recursive: true });
   }
@@ -285,13 +323,18 @@ async function installRustup(options: PrerequisiteInstallExecutionOptions): Prom
     await runInteractiveCommand('rustup', ['toolchain', 'install', 'stable'], commandOptions);
     await runInteractiveCommand('rustup', ['default', 'stable'], commandOptions);
   } else {
-    await withDownloadedInstaller('https://sh.rustup.rs', 'tokamak-rustup', async (installerPath) => {
-      await runInteractiveCommand(
-        '/bin/sh',
-        [installerPath, '-y', '--default-toolchain', 'stable'],
-        commandOptions,
-      );
-    });
+    await withDownloadedFile(
+      'https://sh.rustup.rs',
+      'tokamak-rustup',
+      'install.sh',
+      async (installerPath) => {
+        await runInteractiveCommand(
+          '/bin/sh',
+          [installerPath, '-y', '--default-toolchain', 'stable'],
+          commandOptions,
+        );
+      },
+    );
   }
   process.env.CARGO_HOME = cargoHome;
   process.env.RUSTUP_HOME = rustupHome;
@@ -315,56 +358,78 @@ async function installAptPackages(
 }
 
 async function loadCmakeManifest(): Promise<CmakeManifest> {
-  const manifestPath = path.resolve(__dirname, '..', 'manifests', 'cmake-v4.4.0.json');
+  const manifestPath = path.resolve(__dirname, '..', 'manifests', 'cmake-v3.27.4.json');
   const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8')) as Partial<CmakeManifest>;
   if (
-    typeof manifest.version !== 'string'
+    manifest.version !== ICICLE_CMAKE_VERSION
     || manifest.minimumCompatibleVersion !== MINIMUM_CMAKE_VERSION
-    || typeof manifest.assets !== 'object'
-    || manifest.assets === null
+    || typeof manifest.url !== 'string'
+    || manifest.url
+      !== `https://github.com/Kitware/CMake/releases/download/v${ICICLE_CMAKE_VERSION}/cmake-${ICICLE_CMAKE_VERSION}.tar.gz`
+    || typeof manifest.sha256 !== 'string'
+    || !/^[a-f0-9]{64}$/u.test(manifest.sha256)
   ) {
     throw new Error(`Invalid CMake prerequisite manifest: ${manifestPath}.`);
-  }
-  for (const architecture of ['x64', 'arm64'] as const) {
-    const asset = manifest.assets[architecture];
-    if (
-      typeof asset?.url !== 'string'
-      || !asset.url.startsWith('https://cmake.org/')
-      || typeof asset.sha256 !== 'string'
-      || !/^[a-f0-9]{64}$/u.test(asset.sha256)
-    ) {
-      throw new Error(`Invalid ${architecture} asset in CMake prerequisite manifest: ${manifestPath}.`);
-    }
   }
   return manifest as CmakeManifest;
 }
 
-async function installKitwareCmake(options: PrerequisiteInstallExecutionOptions): Promise<void> {
-  if (process.arch !== 'x64' && process.arch !== 'arm64') {
-    throw new Error(
-      `Official CMake installation supports x64 and arm64, but this host reports ${process.arch}.`,
-    );
-  }
+async function installKitwareCmakeSource(
+  options: PrerequisiteInstallExecutionOptions,
+): Promise<void> {
   const manifest = await loadCmakeManifest();
-  const asset = manifest.assets[process.arch];
-  const installPrefix = path.join(os.homedir(), '.local');
-  await fs.mkdir(installPrefix, { recursive: true });
   logInstallProgress(
-    `Installing Kitware CMake ${manifest.version} into ${installPrefix}.`,
+    `Building Kitware CMake ${manifest.version} from source for /usr/local.`,
   );
-  await withDownloadedInstaller(
-    asset.url,
+  await withDownloadedFile(
+    manifest.url,
     'tokamak-cmake',
-    async (installerPath) => {
+    `cmake-${manifest.version}.tar.gz`,
+    async (archivePath, tempDir) => {
+      await runInteractiveCommand('tar', ['-xzf', archivePath, '-C', tempDir], options);
+      const sourceDir = path.join(tempDir, `cmake-${manifest.version}`);
       await runInteractiveCommand(
-        '/bin/sh',
-        [installerPath, '--skip-license', `--prefix=${installPrefix}`],
-        options,
+        './bootstrap',
+        [],
+        { ...options, cwd: sourceDir },
+      );
+      await runInteractiveCommand(
+        'make',
+        [`-j${Math.max(1, os.cpus().length)}`],
+        { ...options, cwd: sourceDir },
+      );
+      await runInteractiveCommand(
+        'sudo',
+        ['make', 'install'],
+        { ...options, cwd: sourceDir },
       );
     },
-    asset.sha256,
+    manifest.sha256,
   );
-  prependPath(path.join(installPrefix, 'bin'));
+}
+
+async function installLlvmAptRepository(
+  ubuntuVersion: SupportedUbuntuVersion,
+  options: PrerequisiteInstallExecutionOptions,
+): Promise<void> {
+  const codename = ubuntuVersion === '20.04' ? 'focal' : 'jammy';
+  const repository = `deb http://apt.llvm.org/${codename}/ llvm-toolchain-${codename} main`;
+  logInstallProgress(`Adding the LLVM APT repository selected by ICICLE for ${codename}.`);
+  await runInteractiveCommand(
+    'sudo',
+    [
+      '/bin/sh',
+      '-c',
+      'wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -',
+    ],
+    options,
+  );
+  await runInteractiveCommand(
+    'sudo',
+    ['add-apt-repository', '-y', repository],
+    options,
+  );
+  await installAptPackages(['clang', 'lldb', 'lld'], options);
 }
 
 function resolveBrewExecutable(): string | null {
@@ -422,9 +487,10 @@ function refreshHomebrewEnvironment(brewExecutable: string): void {
 
 async function installHomebrew(options: PrerequisiteInstallExecutionOptions): Promise<void> {
   logInstallProgress('Installing Homebrew with the official upstream installer.');
-  await withDownloadedInstaller(
+  await withDownloadedFile(
     'https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh',
     'tokamak-homebrew',
+    'install.sh',
     async (installerPath) => {
       await runInteractiveCommand('/bin/bash', [installerPath], options);
     },
@@ -489,8 +555,11 @@ export async function executePrerequisiteInstallationPlan(
       case 'apt':
         await installAptPackages(action.packages, options);
         break;
-      case 'kitware-cmake':
-        await installKitwareCmake(options);
+      case 'kitware-cmake-source':
+        await installKitwareCmakeSource(options);
+        break;
+      case 'llvm-apt':
+        await installLlvmAptRepository(action.ubuntuVersion, options);
         break;
       case 'brew':
         await installBrewFormulas(action.formulas, options);
@@ -511,11 +580,13 @@ export async function executePrerequisiteInstallationPlan(
 }
 
 interface PrerequisiteDefinition {
+  appliesTo?: (os: SupportedNativeOs) => boolean;
   commands: (os: SupportedNativeOs) => readonly string[];
   id: ManagedPrerequisiteId;
   label: string;
   minimumVersion?: string;
   versionArgs: readonly string[];
+  verifyAllCommandVersions?: boolean;
 }
 
 const PREREQUISITE_DEFINITIONS: readonly PrerequisiteDefinition[] = [
@@ -548,6 +619,28 @@ const PREREQUISITE_DEFINITIONS: readonly PrerequisiteDefinition[] = [
     versionArgs: ['--version'],
   },
   {
+    appliesTo: (os) => os.platform === 'linux',
+    id: 'llvm-toolchain',
+    label: 'LLVM toolchain',
+    commands: () => ['clang', 'lldb', 'ld.lld'],
+    versionArgs: ['--version'],
+    verifyAllCommandVersions: true,
+  },
+  {
+    appliesTo: (os) => os.platform === 'linux',
+    id: 'git',
+    label: 'Git',
+    commands: () => ['git'],
+    versionArgs: ['--version'],
+  },
+  {
+    appliesTo: (os) => os.platform === 'linux',
+    id: 'ninja',
+    label: 'Ninja',
+    commands: () => ['ninja'],
+    versionArgs: ['--version'],
+  },
+  {
     id: 'pkg-config',
     label: 'pkg-config',
     commands: () => ['pkg-config'],
@@ -571,30 +664,36 @@ export function detectManagedPrerequisites(
   os: SupportedNativeOs,
   probe: CommandProbe = createSystemCommandProbe(),
 ): PrerequisiteStatus[] {
-  return PREREQUISITE_DEFINITIONS.map((definition) => {
-    const commands = definition.commands(os);
-    const commandsPresent = commands.every((command) => probe.exists(command));
-    const version = commandsPresent
-      ? probe.version(commands[0], definition.versionArgs)
-      : null;
-    const requirement = definition.minimumVersion === undefined
-      ? 'an installed command with verifiable version output'
-      : `version ${definition.minimumVersion} or newer`;
-    return {
-      compatible: commandsPresent
-        && version !== null
-        && (
-          definition.minimumVersion === undefined
-          || versionMeetsMinimum(extractNumericVersion(version), definition.minimumVersion)
-        ),
-      commands,
-      id: definition.id,
-      installed: commandsPresent,
-      label: definition.label,
-      requirement,
-      version,
-    };
-  });
+  return PREREQUISITE_DEFINITIONS
+    .filter((definition) => definition.appliesTo?.(os) ?? true)
+    .map((definition) => {
+      const commands = definition.commands(os);
+      const commandsPresent = commands.every((command) => probe.exists(command));
+      const versionOutputs = commandsPresent
+        ? (definition.verifyAllCommandVersions ? commands : [commands[0]])
+          .map((command) => probe.version(command, definition.versionArgs))
+        : [];
+      const version = versionOutputs.length > 0 && versionOutputs.every((output) => output !== null)
+        ? versionOutputs.join('; ')
+        : null;
+      const requirement = definition.minimumVersion === undefined
+        ? 'an installed command with verifiable version output'
+        : `version ${definition.minimumVersion} or newer`;
+      return {
+        compatible: commandsPresent
+          && version !== null
+          && (
+            definition.minimumVersion === undefined
+            || versionMeetsMinimum(extractNumericVersion(version), definition.minimumVersion)
+          ),
+        commands,
+        id: definition.id,
+        installed: commandsPresent,
+        label: definition.label,
+        requirement,
+        version,
+      };
+    });
 }
 
 export function prerequisiteVerificationFailures(
@@ -631,17 +730,50 @@ export function buildPrerequisiteInstallationPlan(
   const actions: PrerequisiteInstallationAction[] = [];
 
   if (os.platform === 'linux') {
-    const packages: string[] = [];
-    if (targets.has('toolchain')) packages.push('build-essential');
-    if (targets.has('cmake') && os.ubuntuVersion === '22.04') packages.push('cmake');
-    if (targets.has('pkg-config')) packages.push('pkg-config');
-    if (targets.has('tar')) packages.push('tar');
-    if (targets.has('unzip')) packages.push('unzip');
-    if (packages.length > 0) {
-      actions.push({ kind: 'apt', packages });
+    const packages = new Set<string>();
+    if (targets.has('toolchain')) packages.add('build-essential');
+    if (targets.has('git')) packages.add('git');
+    if (targets.has('ninja')) packages.add('ninja-build');
+    if (targets.has('pkg-config')) packages.add('pkg-config');
+    if (targets.has('tar')) packages.add('tar');
+    if (targets.has('unzip')) packages.add('unzip');
+    if (targets.has('llvm-toolchain')) {
+      packages.add('software-properties-common');
+      packages.add('wget');
+      packages.add('gnupg');
+    }
+    if (targets.has('cmake')) {
+      if (os.ubuntuVersion === '22.04') {
+        packages.add('cmake');
+      } else {
+        for (const packageName of [
+          'build-essential',
+          'wget',
+          'tar',
+          'libssl-dev',
+          'libcurl4-openssl-dev',
+          'libarchive-dev',
+          'zlib1g-dev',
+          'ninja-build',
+          'software-properties-common',
+          'gnupg',
+        ]) {
+          packages.add(packageName);
+        }
+      }
+    }
+    if (packages.size > 0) {
+      actions.push({
+        kind: 'apt',
+        packages: UBUNTU_PACKAGE_ORDER[os.ubuntuVersion]
+          .filter((packageName) => packages.has(packageName)),
+      });
+    }
+    if (targets.has('llvm-toolchain')) {
+      actions.push({ kind: 'llvm-apt', ubuntuVersion: os.ubuntuVersion });
     }
     if (targets.has('cmake') && os.ubuntuVersion === '20.04') {
-      actions.push({ kind: 'kitware-cmake' });
+      actions.push({ kind: 'kitware-cmake-source' });
     }
   } else {
     if (targets.has('toolchain')) {
@@ -675,11 +807,18 @@ function actionDescription(action: PrerequisiteInstallationAction): string {
         '`sudo apt-get update`',
         `\`sudo apt-get install -y ${action.packages.join(' ')}\``,
       ].join('\n      ');
-    case 'kitware-cmake':
+    case 'kitware-cmake-source':
       return [
-        'Download the manifest-pinned official Kitware CMake binary.',
-        'Verify its SHA-256 checksum and install it under `~/.local`.',
+        `Download ICICLE's CMake ${ICICLE_CMAKE_VERSION} source release.`,
+        'Verify its SHA-256 checksum, build it, and run `sudo make install` for `/usr/local`.',
       ].join('\n      ');
+    case 'llvm-apt': {
+      const codename = action.ubuntuVersion === '20.04' ? 'focal' : 'jammy';
+      return [
+        `Add the apt.llvm.org repository selected by ICICLE for ${codename}.`,
+        '`sudo apt-get install -y clang lldb lld`',
+      ].join('\n      ');
+    }
     case 'brew':
       return `Install or upgrade as needed with Homebrew: ${action.formulas.join(', ')}.`;
     case 'homebrew':
@@ -736,8 +875,9 @@ export function renderPrerequisiteInstallationPlan(plan: PrerequisiteInstallatio
     '  Important notices:',
     '    - Missing or incompatible tools are installed; compatible tools are not upgraded or replaced.',
     '    - Downloads and package-manager operations contact third-party services.',
-    '    - Ubuntu package installation uses sudo for apt only and may modify system directories.',
-    '    - Ubuntu 20.04 receives checksum-verified CMake from Kitware under ~/.local.',
+    '    - Ubuntu follows the package and LLVM repository policy in ICICLE v3.8.0\'s official Dockerfiles.',
+    '    - Ubuntu package installation, LLVM repository configuration, and Ubuntu 20.04 CMake installation use sudo.',
+    '    - Ubuntu 20.04 builds checksum-verified CMake 3.27.4 source and installs it under /usr/local.',
     '    - The Homebrew installer may request administrator authentication.',
     '    - Homebrew and rustup run their official upstream installers and modify their standard locations.',
     '    - `tokamak-cli --uninstall` does not remove any prerequisite installed here.',
@@ -756,7 +896,7 @@ export function assertPrerequisiteInstallMayRunAsCurrentUser(
 ): void {
   if (getUid?.() === 0) {
     throw new Error(
-      '`--include-prerequisite` must not be run as root. Run tokamak-cli as your normal user; the CLI invokes sudo only for Ubuntu package-manager commands.',
+      '`--include-prerequisite` must not be run as root. Run tokamak-cli as your normal user; the CLI invokes sudo only for displayed Ubuntu package, repository, and source-install commands.',
     );
   }
 }

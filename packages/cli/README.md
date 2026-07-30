@@ -43,6 +43,7 @@ Before running `--install`, make sure the machine has:
 - `tar`
 - `unzip`
 - a working C/C++ toolchain
+- Git, Ninja, Clang, LLDB, and LLD on Ubuntu
 - outbound HTTPS access to npm, crates.io, GitHub, GitHub Releases, and Google Drive
 
 Native Linux installation supports Ubuntu 20.04 and Ubuntu 22.04 only. The CLI
@@ -65,11 +66,8 @@ npm install -g @tokamak-zk-evm/cli
 ### Linux
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y build-essential curl cmake unzip tar pkg-config bash
-curl https://sh.rustup.rs -sSf | sh
-source "$HOME/.cargo/env"
 npm install -g @tokamak-zk-evm/cli
+tokamak-cli --install --include-prerequisite
 ```
 
 Docker installation is also available on Linux and Windows with Docker Desktop:
@@ -96,14 +94,16 @@ tokamak-cli --install --include-prerequisite
 ```
 
 This option detects Rust, Cargo, CMake, the C/C++ toolchain, `pkg-config`,
-`tar`, and `unzip`. It installs tools that are missing or fail a declared
-backend compatibility requirement. Compatible tools already found on `PATH`
-are not upgraded or replaced.
+`tar`, and `unzip`. On Ubuntu it also detects Git, Ninja, Clang, LLDB, and LLD
+as required by ICICLE v3.8.0's official Ubuntu Dockerfiles. It installs tools
+that are missing or fail a declared backend compatibility requirement.
+Compatible tools already found on `PATH` are not upgraded or replaced.
 
 Before changing the host, the CLI prints the detected operating system, the
 status and version of every managed prerequisite, the package or upstream
-installer for each missing tool, the commands that will run, and the operations
-that can request administrator authentication or open an operating-system UI.
+installer for each installation target, the commands that will run, and the
+operations that can request administrator authentication or open an
+operating-system UI.
 It then prompts:
 
 ```text
@@ -120,22 +120,34 @@ The option can be combined with `--trusted-setup`, `--no-setup`, and
 
 ### What Gets Installed?
 
-On Ubuntu 20.04 and 22.04, the CLI refreshes APT metadata and uses targeted
-`sudo apt-get` commands to install missing or incompatible Ubuntu packages:
+On Ubuntu, the CLI follows the installation policy in ICICLE v3.8.0's official
+[Ubuntu 20.04](https://github.com/ingonyama-zk/icicle/blob/v3.8.0/scripts/release/Dockerfile.ubuntu20)
+and
+[Ubuntu 22.04](https://github.com/ingonyama-zk/icicle/blob/v3.8.0/scripts/release/Dockerfile.ubuntu22)
+release Dockerfiles. Missing requirements are installed with targeted
+`sudo apt-get` commands. The clean-host plan includes:
 
-- `build-essential` for the C/C++ toolchain
-- `cmake`
-- `pkg-config`
-- `tar`
-- `unzip`
+- `build-essential`, Git, Tar, and Ninja;
+- `software-properties-common`, Wget, and GnuPG for configuring ICICLE's
+  apt.llvm.org repository;
+- the unversioned Clang, LLDB, and LLD packages after configuring the LLVM
+  project's `focal` repository on Ubuntu 20.04 or its `jammy` repository on
+  Ubuntu 22.04, matching the official ICICLE Dockerfiles; and
+- `pkg-config` and UnZip, which the packaged Rust backend and CLI download
+  flow additionally require.
 
-ICICLE v3.8.0 requires CMake 3.18 or newer. Ubuntu 22.04 supplies a compatible
-CMake through APT, but Ubuntu 20.04 supplies CMake 3.16.3. When CMake is
-missing or older than 3.18 on Ubuntu 20.04, the CLI instead downloads the
-release-pinned official Kitware binary for the host architecture, verifies its
-SHA-256 checksum from the packaged manifest, and installs it under `~/.local`.
-The CLI adds `~/.local/bin` to its own environment immediately; a new login
-shell may be required before other programs see that path.
+Ubuntu 20.04 also installs `libssl-dev`, `libcurl4-openssl-dev`,
+`libarchive-dev`, and `zlib1g-dev`, matching ICICLE's source-build image.
+ICICLE's Dockerfile pins CMake 3.27.4 for Ubuntu 20.04 because the distribution
+package is too old. When CMake is missing or older than 3.18, the CLI downloads
+that same Kitware source archive, verifies the SHA-256 checksum in the packaged
+manifest, builds it, and runs `sudo make install` for `/usr/local`. Ubuntu
+22.04 installs its compatible CMake package through APT.
+
+Container-only operations from the official Dockerfiles are not copied onto a
+shared user host: the CLI does not select an NVIDIA base image, set a global
+noninteractive environment, delete host APT caches, or replace
+`/usr/bin/cmake` with a symlink.
 
 On macOS, missing Xcode Command Line Tools are handled first. The CLI launches
 `xcode-select --install`, stops, and asks you to rerun the same command after
@@ -148,10 +160,9 @@ The packaged backend requires Rust and Cargo 1.85.0 or newer. If either command
 is missing, unverifiable, or older, the CLI runs the official rustup installer
 and installs the current upstream stable toolchain in the standard `~/.rustup`
 and `~/.cargo` locations. Compatible Rust and Cargo installations are retained.
-Apart from the pinned Ubuntu 20.04 CMake binary, other managed tools use the
-configured APT repositories, Homebrew, or Apple's signed installer. The CLI
-does not add PPAs, APT repositories, Homebrew taps, or equivalent package
-sources.
+Other managed tools use Ubuntu APT, ICICLE's apt.llvm.org repository, Homebrew,
+or Apple's signed installer. The CLI does not add unrelated PPAs, APT
+repositories, Homebrew taps, or equivalent package sources.
 
 After installation, the CLI verifies every managed command, its reported
 version, and the declared Rust/Cargo and CMake compatibility minimums. A
@@ -164,7 +175,8 @@ Docker, Docker Desktop, GPU drivers, or network configuration.
 
 Do not run the full command with `sudo`. The CLI rejects
 `--include-prerequisite` when its own process is running as root and requests
-elevation only for Ubuntu package-manager commands that need it.
+elevation only for Ubuntu package-manager, LLVM repository, and CMake
+installation commands that need it.
 
 ### Prerequisite Installation Disclaimer
 
@@ -172,9 +184,10 @@ elevation only for Ubuntu package-manager commands that need it.
 package managers and official third-party installers. These tools may download
 code, contact external services, request credentials, display their own license
 terms, and modify system or user directories outside the Tokamak CLI cache.
-The Ubuntu 20.04 CMake exception writes under `~/.local`; APT, Apple,
-Homebrew, Kitware, and Rust infrastructure control their respective installer
-behavior and can change independently of this package.
+The Ubuntu 20.04 CMake exception builds source in a temporary directory and
+installs under `/usr/local`. APT, apt.llvm.org, Apple, Homebrew, Kitware, and
+Rust infrastructure control their respective installer behavior and can
+change independently of this package.
 
 Review the displayed plan, upstream terms, your organization's security
 policies, and any package-manager prompts before approving. You are responsible
@@ -185,15 +198,15 @@ option.
 
 `tokamak-cli --uninstall` removes only the CLI-owned runtime workspace and
 downloads. It does not remove or roll back Rust, Cargo, Homebrew, Homebrew
-formulae, Xcode Command Line Tools, or APT packages installed through
-`--include-prerequisite`.
+formulae, Xcode Command Line Tools, APT packages, APT repository configuration,
+or source-built CMake installed through `--include-prerequisite`.
 
 ### Troubleshooting Or Removing Prerequisites
 
 If an installer or package-manager command fails partway through, fix the
 reported upstream error and rerun the same `tokamak-cli` command. Detection is
 repeated on every run, so the next plan contains only tools that are still
-missing. The CLI does not attempt an automatic rollback.
+missing or incompatible. The CLI does not attempt an automatic rollback.
 
 If post-install verification fails, confirm that the installed command is on
 `PATH` and works in a new terminal. Useful upstream checks include
@@ -201,11 +214,13 @@ If post-install verification fails, confirm that the installed command is on
 Homebrew package status command. The CLI deliberately stops before building
 the backend when verification is incomplete.
 
-Remove an unwanted prerequisite only through the tool that installed it:
-Ubuntu's APT, Homebrew, Apple's Xcode Command Line Tools management process, or
-`rustup self uninstall`. Review the official uninstall documentation and
-dependent packages first. Removing a shared compiler, package manager, or
-system package can break software unrelated to Tokamak zk-EVM.
+Remove an unwanted prerequisite only through the tool or upstream installation
+method that installed it: Ubuntu's APT, Kitware's CMake source installation,
+Homebrew, Apple's Xcode Command Line Tools management process, or
+`rustup self uninstall`. Review the official uninstall documentation,
+installed files, and dependent packages first. Removing a shared compiler,
+package manager, library, or system package can break software unrelated to
+Tokamak zk-EVM.
 
 ## What Does `--install` Do?
 
@@ -239,7 +254,8 @@ Inside the Docker image, the CLI installs the build and runtime tools needed to 
 - Ubuntu 22.04, or NVIDIA CUDA 12.2 on Ubuntu 22.04 when Docker CUDA probing succeeds
 - Node.js and npm for running the packaged CLI and backend build scripts
 - Rust and Cargo for building the backend binaries
-- C/C++ build tooling, `cmake`, `pkg-config`, `clang`, and `libclang-dev` for native Rust dependencies
+- C/C++ build tooling, CMake, Ninja, `pkg-config`, and ICICLE's apt.llvm.org
+  Clang, LLDB, LLD, and `libclang-dev` packages
 - `curl`, `git`, `tar`, `unzip`, and CA certificates for downloading, Git dependencies, and archive extraction
 
 The image is intentionally conservative rather than aggressively minimal. Removing packages such as `clang`, `libclang-dev`, `pkg-config`, or `bash` requires a clean Docker build test of the backend before release.

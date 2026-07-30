@@ -30,6 +30,11 @@ function createProbe(installed, versions = {}) {
     cargo: 'cargo 1.85.0',
     cmake: 'cmake version 3.18.0',
     cc: 'cc 9.0.0',
+    clang: 'clang version 18.0.0',
+    lldb: 'lldb version 18.0.0',
+    'ld.lld': 'LLD 18.0.0',
+    git: 'git version 2.25.1',
+    ninja: '1.10.0',
     'pkg-config': '0.29.1',
     tar: 'tar 1.30',
     unzip: 'UnZip 6.00',
@@ -108,15 +113,24 @@ test('detects all managed prerequisites and their representative versions', () =
     'cc',
     'c++',
     'make',
+    'clang',
+    'lldb',
+    'ld.lld',
+    'git',
+    'ninja',
     'pkg-config',
     'tar',
     'unzip',
   ]);
   const statuses = detectManagedPrerequisites(linux, createProbe(installed));
-  assert.equal(statuses.length, 7);
+  assert.equal(statuses.length, 10);
   assert.ok(statuses.every((status) => status.installed));
   assert.ok(statuses.every((status) => status.version !== null));
   assert.ok(statuses.every((status) => status.compatible));
+  assert.equal(
+    statuses.find((status) => status.id === 'llvm-toolchain').version,
+    'clang version 18.0.0; lldb version 18.0.0; LLD 18.0.0',
+  );
 });
 
 test('maps missing Ubuntu tools to apt packages and Rust to rustup', () => {
@@ -125,8 +139,20 @@ test('maps missing Ubuntu tools to apt packages and Rust to rustup', () => {
   assert.deepEqual(plan.actions, [
     {
       kind: 'apt',
-      packages: ['build-essential', 'cmake', 'pkg-config', 'tar', 'unzip'],
+      packages: [
+        'build-essential',
+        'cmake',
+        'tar',
+        'ninja-build',
+        'software-properties-common',
+        'wget',
+        'gnupg',
+        'git',
+        'pkg-config',
+        'unzip',
+      ],
     },
+    { kind: 'llvm-apt', ubuntuVersion: '22.04' },
     { kind: 'rustup' },
   ]);
   const rendered = renderPrerequisiteInstallationPlan(plan);
@@ -161,26 +187,34 @@ test('does not plan upgrades for already installed prerequisites', () => {
   assert.deepEqual(buildPrerequisiteInstallationPlan(macos, statuses, true).actions, []);
 });
 
-test('uses official Kitware CMake only for incompatible Ubuntu 20.04 CMake', () => {
-  const installed = new Set([
-    'rustc',
-    'cargo',
-    'cmake',
-    'cc',
-    'c++',
-    'make',
-    'pkg-config',
-    'tar',
-    'unzip',
-  ]);
+test('follows ICICLE Ubuntu 20.04 packages and CMake source policy', () => {
   const ubuntu20 = { platform: 'linux', ubuntuVersion: '20.04' };
-  const statuses = detectManagedPrerequisites(
-    ubuntu20,
-    createProbe(installed, { cmake: 'cmake version 3.16.3' }),
-  );
+  const statuses = detectManagedPrerequisites(ubuntu20, createProbe(new Set()));
   const plan = buildPrerequisiteInstallationPlan(ubuntu20, statuses);
-  assert.deepEqual(plan.actions, [{ kind: 'kitware-cmake' }]);
-  assert.match(renderPrerequisiteInstallationPlan(plan), /Kitware/u);
+  assert.deepEqual(plan.actions, [
+    {
+      kind: 'apt',
+      packages: [
+        'build-essential',
+        'wget',
+        'tar',
+        'libssl-dev',
+        'libcurl4-openssl-dev',
+        'libarchive-dev',
+        'zlib1g-dev',
+        'ninja-build',
+        'software-properties-common',
+        'gnupg',
+        'git',
+        'pkg-config',
+        'unzip',
+      ],
+    },
+    { kind: 'llvm-apt', ubuntuVersion: '20.04' },
+    { kind: 'kitware-cmake-source' },
+    { kind: 'rustup' },
+  ]);
+  assert.match(renderPrerequisiteInstallationPlan(plan), /CMake 3\.27\.4 source/u);
 });
 
 test('uses APT for incompatible Ubuntu 22.04 CMake and retains compatible versions', () => {
@@ -195,6 +229,11 @@ test('uses APT for incompatible Ubuntu 22.04 CMake and retains compatible versio
     'cc',
     'c++',
     'make',
+    'clang',
+    'lldb',
+    'ld.lld',
+    'git',
+    'ninja',
     'pkg-config',
     'tar',
     'unzip',
@@ -205,6 +244,29 @@ test('uses APT for incompatible Ubuntu 22.04 CMake and retains compatible versio
   );
   assert.deepEqual(buildPrerequisiteInstallationPlan(linux, statuses).actions, [
     { kind: 'apt', packages: ['cmake'] },
+  ]);
+});
+
+test('installs Git and the official LLVM toolchain required by ICICLE', () => {
+  const installed = new Set([
+    'rustc',
+    'cargo',
+    'cmake',
+    'cc',
+    'c++',
+    'make',
+    'ninja',
+    'pkg-config',
+    'tar',
+    'unzip',
+  ]);
+  const statuses = detectManagedPrerequisites(linux, createProbe(installed));
+  assert.deepEqual(buildPrerequisiteInstallationPlan(linux, statuses).actions, [
+    {
+      kind: 'apt',
+      packages: ['software-properties-common', 'wget', 'gnupg', 'git'],
+    },
+    { kind: 'llvm-apt', ubuntuVersion: '22.04' },
   ]);
 });
 
