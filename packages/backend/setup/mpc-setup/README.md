@@ -237,7 +237,7 @@ the exact file it is about to load.
 - `y` is introduced during phase 2.
 - Later phase-2 contributors validate the disclosed `y`, but the first phase-2 step still
   determines that value.
-- Downstream `preprocess`, `prove`, and `verify-rust` continue to consume the same final CRS
+- Downstream `preprocess`, `prove`, and `verify` continue to consume the same final CRS
   layout as before.
 
 ## Future Work
