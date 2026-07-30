@@ -15,7 +15,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tokamak-network/Tokamak-zk-EVM.git",
+    "url": "git+https://github.com/JehyukJang/Tokamak-zk-EVM.git",
     "directory": "packages/backend-wasm"
   },
   "homepage": "https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main/packages/backend-wasm#readme",
