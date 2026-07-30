@@ -12,7 +12,6 @@ icicle-core = { workspace = true }
 icicle-bls12-381 = { workspace = true }
 libs = { workspace = true }
 icicle-runtime = { workspace = true }
-rkyv = { workspace = true }
 clap = { workspace = true }
 
 [features]

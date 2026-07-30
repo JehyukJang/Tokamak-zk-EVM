@@ -46,11 +46,7 @@ impl Preprocess {
             .sigma_1
             .encode_O_pub_fix(&instance.a_pub_function, setup_params);
 
-        return Preprocess {
-            s0,
-            s1,
-            O_pub_fix,
-        };
+        return Preprocess { s0, s1, O_pub_fix };
     }
 
     pub fn convert_format_for_solidity_verifier(&self) -> FormattedPreprocess {

@@ -1227,8 +1227,7 @@ mod tests {
             let (shared_x, shared_y, shared_remainders) =
                 polynomial.div_by_ruffini_shared_x(&x, &y_points);
             for (index, y) in y_points.iter().enumerate() {
-                let (legacy_x, legacy_y, legacy_remainder) =
-                    polynomial.div_by_ruffini(&x, y);
+                let (legacy_x, legacy_y, legacy_remainder) = polynomial.div_by_ruffini(&x, y);
                 assert_polynomial_coefficients_equal(shared_x.clone(), legacy_x);
                 assert_polynomial_coefficients_equal(shared_y[index].clone(), legacy_y);
                 assert_eq!(shared_remainders[index], legacy_remainder);
@@ -1237,23 +1236,16 @@ mod tests {
                 let (numerator_x, numerator_y, numerator_remainder) =
                     numerator.div_by_ruffini(&x, y);
                 assert_polynomial_coefficients_equal(shared_x.clone(), numerator_x);
-                assert_polynomial_coefficients_equal(
-                    shared_y[index].clone(),
-                    numerator_y,
-                );
+                assert_polynomial_coefficients_equal(shared_y[index].clone(), numerator_y);
                 assert_eq!(numerator_remainder, ScalarField::zero());
 
                 let evaluation_x = ScalarField::from_u32(13);
                 let evaluation_y = ScalarField::from_u32(17);
                 let reconstructed = shared_x.eval(&evaluation_x, &evaluation_y)
                     * (evaluation_x - x)
-                    + shared_y[index].eval(&evaluation_x, &evaluation_y)
-                        * (evaluation_y - *y)
+                    + shared_y[index].eval(&evaluation_x, &evaluation_y) * (evaluation_y - *y)
                     + shared_remainders[index];
-                assert_eq!(
-                    polynomial.eval(&evaluation_x, &evaluation_y),
-                    reconstructed
-                );
+                assert_eq!(polynomial.eval(&evaluation_x, &evaluation_y), reconstructed);
             }
         }
     }

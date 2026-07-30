@@ -165,98 +165,7 @@ macro_rules! time_block {
 }
 
 #[cfg(feature = "timing")]
-pub mod timing {
-    use std::sync::{Mutex, OnceLock};
-    use std::time::{Duration, Instant};
-
-    use serde::Serialize;
-
-    #[derive(Clone, Debug, Serialize)]
-    pub struct SizeInfo {
-        pub label: &'static str,
-        pub dims: Vec<usize>,
-    }
-
-    #[derive(Clone, Debug, Serialize)]
-    pub struct TimingEvent {
-        pub name: String,
-        pub category: String,
-        pub nanos: u128,
-        pub sizes: Vec<SizeInfo>,
-    }
-
-    #[derive(Default)]
-    struct TimingCollector {
-        events: Vec<TimingEvent>,
-    }
-
-    static COLLECTOR: OnceLock<Mutex<TimingCollector>> = OnceLock::new();
-
-    fn collector() -> &'static Mutex<TimingCollector> {
-        COLLECTOR.get_or_init(|| Mutex::new(TimingCollector::default()))
-    }
-
-    pub fn reset() {
-        if let Ok(mut guard) = collector().lock() {
-            guard.events.clear();
-        }
-    }
-
-    pub fn record(
-        name: &'static str,
-        category: &'static str,
-        duration: Duration,
-        sizes: Vec<SizeInfo>,
-    ) {
-        record_string(name.to_string(), category.to_string(), duration, sizes);
-    }
-
-    fn record_string(name: String, category: String, duration: Duration, sizes: Vec<SizeInfo>) {
-        if let Ok(mut guard) = collector().lock() {
-            guard.events.push(TimingEvent {
-                name,
-                category,
-                nanos: duration.as_nanos(),
-                sizes,
-            });
-        }
-    }
-
-    pub fn take_events() -> Vec<TimingEvent> {
-        if let Ok(mut guard) = collector().lock() {
-            return std::mem::take(&mut guard.events);
-        }
-        Vec::new()
-    }
-
-    pub struct SpanGuard {
-        name: &'static str,
-        category: &'static str,
-        start: Instant,
-        sizes: Vec<SizeInfo>,
-        _detail_scope: Option<libs::timing::DetailScopeGuard>,
-    }
-
-    impl SpanGuard {
-        pub fn new(name: &'static str, category: &'static str, sizes: Vec<SizeInfo>) -> Self {
-            let detail_scope = Some(libs::timing::enter_detail_scope(name, category));
-            Self {
-                name,
-                category,
-                start: Instant::now(),
-                sizes,
-                _detail_scope: detail_scope,
-            }
-        }
-    }
-
-    impl Drop for SpanGuard {
-        fn drop(&mut self) {
-            let sizes = std::mem::take(&mut self.sizes);
-            record(self.name, self.category, self.start.elapsed(), sizes);
-        }
-    }
-}
+pub use libs::timing;
 
 pub struct ProveInputPaths<'a> {
     pub qap_path: &'a str,
@@ -325,132 +234,6 @@ pub struct Prover {
     pub mixer: Mixer,
     pub quotients: Quotients,
     pub cache: ProverCache,
-}
-
-#[cfg(feature = "timing")]
-#[derive(Debug, Serialize)]
-pub struct CandidateBenchResult {
-    pub name: &'static str,
-    pub repeats: usize,
-    pub baseline_ms: Vec<f64>,
-    pub fused_ms: Vec<f64>,
-    pub baseline_avg_ms: f64,
-    pub fused_avg_ms: f64,
-    pub delta_avg_ms: f64,
-    pub output_x_size: usize,
-    pub output_y_size: usize,
-}
-
-#[cfg(feature = "timing")]
-fn average_ms(values: &[f64]) -> f64 {
-    if values.is_empty() {
-        0.0
-    } else {
-        values.iter().sum::<f64>() / values.len() as f64
-    }
-}
-
-#[cfg(feature = "timing")]
-fn assert_same_polynomial(
-    name: &str,
-    baseline: &DensePolynomialExt,
-    fused: &DensePolynomialExt,
-) {
-    let target_x_size = baseline.x_size.max(fused.x_size);
-    let target_y_size = baseline.y_size.max(fused.y_size);
-    let mut baseline_resized = baseline.clone();
-    baseline_resized.resize(target_x_size, target_y_size);
-    let mut fused_resized = fused.clone();
-    fused_resized.resize(target_x_size, target_y_size);
-
-    let len = target_x_size * target_y_size;
-    let mut baseline_coeffs = vec![ScalarField::zero(); len];
-    let mut fused_coeffs = vec![ScalarField::zero(); len];
-    baseline_resized.copy_coeffs(0, HostSlice::from_mut_slice(&mut baseline_coeffs));
-    fused_resized.copy_coeffs(0, HostSlice::from_mut_slice(&mut fused_coeffs));
-    assert_eq!(baseline_coeffs, fused_coeffs, "{name} fused benchmark mismatch");
-}
-
-#[cfg(feature = "timing")]
-fn benchmark_candidate_pair<Baseline, Fused>(
-    name: &'static str,
-    repeats: usize,
-    baseline: Baseline,
-    fused: Fused,
-) -> CandidateBenchResult
-where
-    Baseline: Fn() -> DensePolynomialExt,
-    Fused: Fn(usize, usize) -> DensePolynomialExt,
-{
-    let warmup_baseline = baseline();
-    let output_x_size = warmup_baseline.x_size;
-    let output_y_size = warmup_baseline.y_size;
-    let warmup_fused = fused(output_x_size, output_y_size);
-    assert_same_polynomial(name, &warmup_baseline, &warmup_fused);
-    drop(warmup_baseline);
-    drop(warmup_fused);
-
-    let mut baseline_ms = Vec::with_capacity(repeats);
-    let mut fused_ms = Vec::with_capacity(repeats);
-    for _ in 0..repeats {
-        let start = Instant::now();
-        let baseline_result = baseline();
-        baseline_ms.push(start.elapsed().as_secs_f64() * 1000.0);
-
-        let start = Instant::now();
-        let fused_result = fused(output_x_size, output_y_size);
-        fused_ms.push(start.elapsed().as_secs_f64() * 1000.0);
-
-        assert_same_polynomial(name, &baseline_result, &fused_result);
-        std::hint::black_box((baseline_result.x_size, fused_result.x_size));
-    }
-
-    let baseline_avg_ms = average_ms(&baseline_ms);
-    let fused_avg_ms = average_ms(&fused_ms);
-    CandidateBenchResult {
-        name,
-        repeats,
-        baseline_ms,
-        fused_ms,
-        baseline_avg_ms,
-        fused_avg_ms,
-        delta_avg_ms: fused_avg_ms - baseline_avg_ms,
-        output_x_size,
-        output_y_size,
-    }
-}
-
-#[cfg(feature = "timing")]
-fn lagrange_kl_xy(m_i: usize, s_max: usize) -> DensePolynomialExt {
-    let mut k_evals = vec![ScalarField::zero(); m_i];
-    k_evals[m_i - 1] = ScalarField::one();
-    let lagrange_k_xy =
-        DensePolynomialExt::from_rou_evals(HostSlice::from_slice(&k_evals), m_i, 1, None, None);
-
-    let mut l_evals = vec![ScalarField::zero(); s_max];
-    l_evals[s_max - 1] = ScalarField::one();
-    let lagrange_l_xy =
-        DensePolynomialExt::from_rou_evals(HostSlice::from_slice(&l_evals), 1, s_max, None, None);
-    &lagrange_k_xy * &lagrange_l_xy
-}
-
-#[cfg(feature = "timing")]
-fn lagrange_k0_xy(m_i: usize) -> DensePolynomialExt {
-    let mut k0_evals = vec![ScalarField::zero(); m_i];
-    k0_evals[0] = ScalarField::one();
-    DensePolynomialExt::from_rou_evals(HostSlice::from_slice(&k0_evals), m_i, 1, None, None)
-}
-
-#[cfg(feature = "timing")]
-fn x_monomial() -> DensePolynomialExt {
-    let coeffs = [ScalarField::zero(), ScalarField::one()];
-    DensePolynomialExt::from_coeffs(HostSlice::from_slice(&coeffs), 2, 1)
-}
-
-#[cfg(feature = "timing")]
-fn y_monomial() -> DensePolynomialExt {
-    let coeffs = [ScalarField::zero(), ScalarField::one()];
-    DensePolynomialExt::from_coeffs(HostSlice::from_slice(&coeffs), 1, 2)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1217,244 +1000,6 @@ impl Prover {
             },
             binding,
         );
-    }
-
-    #[cfg(feature = "timing")]
-    pub fn benchmark_fused_expression_candidates(
-        &self,
-        thetas: &[ScalarField],
-        kappa0: ScalarField,
-        chi: ScalarField,
-        zeta: ScalarField,
-        repeats: usize,
-    ) -> Vec<CandidateBenchResult> {
-        let m_i = self.setup_params.l_D - self.setup_params.l;
-        let s_max = self.setup_params.s_max;
-        let kappa0_sq = kappa0.pow(2);
-        let omega_m_i = ntt::get_root_of_unity::<ScalarField>(m_i as u64);
-        let omega_s_max = ntt::get_root_of_unity::<ScalarField>(s_max as u64);
-
-        let r_omegaX = self.witness.rXY.scale_coeffs_x(&omega_m_i.inv());
-        let r_omegaX_omegaY = r_omegaX.scale_coeffs_y(&omega_s_max.inv());
-        let x_mono = x_monomial();
-        let y_mono = y_monomial();
-        let fXY = &(&(&self.witness.bXY + &(&thetas[0] * &self.instance.s0XY))
-            + &(&thetas[1] * &self.instance.s1XY))
-            + &thetas[2];
-        let gXY =
-            &(&(&self.witness.bXY + &(&thetas[0] * &x_mono)) + &(&thetas[1] * &y_mono))
-                + &thetas[2];
-        let lagrange_KL_XY = self
-            .cache
-            .lagrange_kl_xy
-            .clone()
-            .unwrap_or_else(|| lagrange_kl_xy(m_i, s_max));
-        let lagrange_K0_XY = lagrange_k0_xy(m_i);
-        let r_D1 = &self.witness.rXY - &r_omegaX;
-        let r_D2 = &self.witness.rXY - &r_omegaX_omegaY;
-        let g_D = &gXY - &fXY;
-
-        let term_B_zk = self.cache.term_b_zk.clone().unwrap_or_else(|| {
-            let rB_X_t_mi = low_degree_x_times_vanishing(&self.mixer.rB_X, m_i);
-            let rB_Y_t_smax = low_degree_y_times_vanishing(&self.mixer.rB_Y, s_max);
-            &rB_X_t_mi + &rB_Y_t_smax
-        });
-        let t_mi_eval = chi.pow(m_i) - ScalarField::one();
-        let t_s_max_eval = zeta.pow(s_max) - ScalarField::one();
-        let lagrange_K0_eval = lagrange_K0_XY.eval(&chi, &zeta);
-        let r_D1_eval = r_D1.eval(&chi, &zeta);
-        let r_D2_eval = r_D2.eval(&chi, &zeta);
-        let term10_scale = self.mixer.rR_X * t_mi_eval + self.mixer.rR_Y * t_s_max_eval;
-        let term10 = &term10_scale * &g_D;
-
-        let mut results = Vec::new();
-        results.push(benchmark_candidate_pair(
-            "prove0.p0XY",
-            repeats,
-            || &(&self.witness.uXY * &self.witness.vXY) - &self.witness.wXY,
-            |target_x_size, target_y_size| {
-                PolyExpr::sub(
-                    PolyExpr::mul(
-                        PolyExpr::poly(&self.witness.uXY),
-                        PolyExpr::poly(&self.witness.vXY),
-                    ),
-                    PolyExpr::poly(&self.witness.wXY),
-                )
-                .evaluate_fused_with_domain(target_x_size, target_y_size)
-            },
-        ));
-        results.push(benchmark_candidate_pair(
-            "prove2.Q_CX",
-            repeats,
-            || {
-                let rB_X_r_D1 = mul_by_linear_x(&r_D1, &self.mixer.rB_X);
-                let rB_X_r_D2 = mul_by_linear_x(&r_D2, &self.mixer.rB_X);
-                let d1_comb = &rB_X_r_D1 + &(&self.mixer.rR_X * &g_D);
-                let d2_comb = &rB_X_r_D2 + &(&self.mixer.rR_X * &g_D);
-                let x_minus_one_d1_comb = mul_by_x_minus_one(&d1_comb);
-                poly_comb!(
-                    (ScalarField::one(), self.quotients.q2XY),
-                    (self.mixer.rR_X, lagrange_KL_XY),
-                    (kappa0, x_minus_one_d1_comb),
-                    (kappa0_sq, &lagrange_K0_XY * &d2_comb)
-                )
-            },
-            |target_x_size, target_y_size| {
-                let rB_X_r_D1 = mul_by_linear_x(&r_D1, &self.mixer.rB_X);
-                let rB_X_r_D2 = mul_by_linear_x(&r_D2, &self.mixer.rB_X);
-                let d1_comb = &rB_X_r_D1 + &(&self.mixer.rR_X * &g_D);
-                let d2_comb = &rB_X_r_D2 + &(&self.mixer.rR_X * &g_D);
-                PolyExpr::weighted_sum(vec![
-                    (
-                        ScalarField::one(),
-                        PolyExpr::poly(&self.quotients.q2XY),
-                    ),
-                    (self.mixer.rR_X, PolyExpr::poly(&lagrange_KL_XY)),
-                    (kappa0, PolyExpr::mul_x_minus_one(PolyExpr::poly(&d1_comb))),
-                    (
-                        kappa0_sq,
-                        PolyExpr::mul(
-                            PolyExpr::poly(&lagrange_K0_XY),
-                            PolyExpr::poly(&d2_comb),
-                        ),
-                    ),
-                ])
-                .evaluate_fused_with_domain(target_x_size, target_y_size)
-            },
-        ));
-        results.push(benchmark_candidate_pair(
-            "prove2.Q_CY",
-            repeats,
-            || {
-                let rB_Y_r_D1 = mul_by_linear_y(&r_D1, &self.mixer.rB_Y);
-                let rB_Y_r_D2 = mul_by_linear_y(&r_D2, &self.mixer.rB_Y);
-                let d1_comb = &rB_Y_r_D1 + &(&self.mixer.rR_Y * &g_D);
-                let d2_comb = &rB_Y_r_D2 + &(&self.mixer.rR_Y * &g_D);
-                let x_minus_one_d1_comb = mul_by_x_minus_one(&d1_comb);
-                poly_comb!(
-                    (ScalarField::one(), self.quotients.q3XY),
-                    (self.mixer.rR_Y, lagrange_KL_XY),
-                    (kappa0, x_minus_one_d1_comb),
-                    (kappa0_sq, &lagrange_K0_XY * &d2_comb)
-                )
-            },
-            |target_x_size, target_y_size| {
-                let rB_Y_r_D1 = mul_by_linear_y(&r_D1, &self.mixer.rB_Y);
-                let rB_Y_r_D2 = mul_by_linear_y(&r_D2, &self.mixer.rB_Y);
-                let d1_comb = &rB_Y_r_D1 + &(&self.mixer.rR_Y * &g_D);
-                let d2_comb = &rB_Y_r_D2 + &(&self.mixer.rR_Y * &g_D);
-                PolyExpr::weighted_sum(vec![
-                    (
-                        ScalarField::one(),
-                        PolyExpr::poly(&self.quotients.q3XY),
-                    ),
-                    (self.mixer.rR_Y, PolyExpr::poly(&lagrange_KL_XY)),
-                    (kappa0, PolyExpr::mul_x_minus_one(PolyExpr::poly(&d1_comb))),
-                    (
-                        kappa0_sq,
-                        PolyExpr::mul(
-                            PolyExpr::poly(&lagrange_K0_XY),
-                            PolyExpr::poly(&d2_comb),
-                        ),
-                    ),
-                ])
-                .evaluate_fused_with_domain(target_x_size, target_y_size)
-            },
-        ));
-        results.push(benchmark_candidate_pair(
-            "prove4.LHS_zk1",
-            repeats,
-            || {
-                let r_D1_term9 = mul_by_term9(
-                    &r_D1,
-                    &self.mixer.rB_X,
-                    &self.mixer.rB_Y,
-                    &t_mi_eval,
-                    &t_s_max_eval,
-                );
-                let r_d1_term9_plus_term10 = &r_D1_term9 + &term10;
-                let one_minus_x_times = mul_by_one_minus_x(&r_d1_term9_plus_term10);
-                poly_comb!(
-                    ((chi - ScalarField::one()) * r_D1_eval, term_B_zk),
-                    (ScalarField::one(), one_minus_x_times),
-                    (chi - ScalarField::one(), term10)
-                )
-            },
-            |target_x_size, target_y_size| {
-                let r_D1_term9 = mul_by_term9(
-                    &r_D1,
-                    &self.mixer.rB_X,
-                    &self.mixer.rB_Y,
-                    &t_mi_eval,
-                    &t_s_max_eval,
-                );
-                let sum_expr = PolyExpr::add(
-                    PolyExpr::poly(&r_D1_term9),
-                    PolyExpr::poly(&term10),
-                );
-                let one_minus_x_expr = PolyExpr::scale(
-                    ScalarField::zero() - ScalarField::one(),
-                    PolyExpr::mul_x_minus_one(sum_expr),
-                );
-                PolyExpr::weighted_sum(vec![
-                    (
-                        (chi - ScalarField::one()) * r_D1_eval,
-                        PolyExpr::poly(&term_B_zk),
-                    ),
-                    (ScalarField::one(), one_minus_x_expr),
-                    (chi - ScalarField::one(), PolyExpr::poly(&term10)),
-                ])
-                .evaluate_fused_with_domain(target_x_size, target_y_size)
-            },
-        ));
-        results.push(benchmark_candidate_pair(
-            "prove4.LHS_zk2",
-            repeats,
-            || {
-                let r_D2_term9 = mul_by_term9(
-                    &r_D2,
-                    &self.mixer.rB_X,
-                    &self.mixer.rB_Y,
-                    &t_mi_eval,
-                    &t_s_max_eval,
-                );
-                let r_d2_term9_plus_term10 = &r_D2_term9 + &term10;
-                poly_comb!(
-                    (lagrange_K0_eval * r_D2_eval, term_B_zk),
-                    (lagrange_K0_eval, term10),
-                    (
-                        ScalarField::zero() - ScalarField::one(),
-                        &lagrange_K0_XY * &r_d2_term9_plus_term10
-                    )
-                )
-            },
-            |target_x_size, target_y_size| {
-                let r_D2_term9 = mul_by_term9(
-                    &r_D2,
-                    &self.mixer.rB_X,
-                    &self.mixer.rB_Y,
-                    &t_mi_eval,
-                    &t_s_max_eval,
-                );
-                let sum_expr = PolyExpr::add(
-                    PolyExpr::poly(&r_D2_term9),
-                    PolyExpr::poly(&term10),
-                );
-                PolyExpr::weighted_sum(vec![
-                    (
-                        lagrange_K0_eval * r_D2_eval,
-                        PolyExpr::poly(&term_B_zk),
-                    ),
-                    (lagrange_K0_eval, PolyExpr::poly(&term10)),
-                    (
-                        ScalarField::zero() - ScalarField::one(),
-                        PolyExpr::mul(PolyExpr::poly(&lagrange_K0_XY), sum_expr),
-                    ),
-                ])
-                .evaluate_fused_with_domain(target_x_size, target_y_size)
-            },
-        ));
-        results
     }
 
     pub fn prove0(&mut self) -> Proof0 {
@@ -3069,12 +2614,7 @@ impl Prover {
             #[cfg(not(feature = "testing-mode"))]
             let (Pi_CX, Pi_CY) = (G1serde::zero(), G1serde::zero());
 
-            (
-                LHS_for_copy,
-                Pi_CX,
-                Pi_CY,
-                pi_c_constant_correction,
-            )
+            (LHS_for_copy, Pi_CX, Pi_CY, pi_c_constant_correction)
         };
         #[cfg(feature = "testing-mode")]
         {
@@ -3136,9 +2676,8 @@ impl Prover {
                 )
             }
         );
-        let combined_pi_constant_correction = pA_constant_correction
-            + pi_c_constant_correction
-            + kappa1.pow(4) * A_eval;
+        let combined_pi_constant_correction =
+            pA_constant_correction + pi_c_constant_correction + kappa1.pow(4) * A_eval;
         let (mut Pi_X_XY, mut Pi_Y_XY, combined_rem) = crate::time_block!(
             "poly.div_by_ruffini.prove4.Pi_combined",
             "poly",
@@ -3235,7 +2774,6 @@ pub struct RollingKeccakTranscript {
     state_part_0: [u8; 32],
     state_part_1: [u8; 32],
     challenge_counter: u32,
-    debug_mode: bool,
 }
 
 impl RollingKeccakTranscript {
@@ -3249,19 +2787,6 @@ impl RollingKeccakTranscript {
             state_part_0: [0u8; 32],
             state_part_1: [0u8; 32],
             challenge_counter: 0,
-            debug_mode: false,
-        }
-    }
-
-    // Enable or disable debug mode
-    pub fn set_debug(&mut self, enable: bool) {
-        self.debug_mode = enable;
-    }
-
-    // Debug print helper
-    fn debug_print(&self, message: &str) {
-        if self.debug_mode {
-            println!("[Transcript Debug] {}", message);
         }
     }
 
@@ -3269,10 +2794,6 @@ impl RollingKeccakTranscript {
     fn update(&mut self, bytes: &[u8]) -> Result<(), &'static str> {
         if bytes.len() > 32 {
             return Err("Input must be 32 bytes or less");
-        }
-
-        if self.debug_mode {
-            println!("[Transcript Update] Adding value: 0x{}", hex_encode(bytes));
         }
 
         // Save the old states
@@ -3295,49 +2816,24 @@ impl RollingKeccakTranscript {
         let start_idx = 100 - bytes.len();
         hash_input[start_idx..100].copy_from_slice(bytes);
 
-        // Print the entire input for debugging
-        if self.debug_mode {
-            println!("[Hash Input for state_0] 0x{}", hex_encode(&hash_input));
-        }
-
         // Hash for state_0 update
         let mut hasher = Keccak::new_keccak256();
         hasher.update(&hash_input);
         hasher.finalize(&mut self.state_part_0);
 
-        if self.debug_mode {
-            println!(
-                "[Transcript State] After DST_0_TAG: state_0=0x{}",
-                hex_encode(&self.state_part_0)
-            );
-        }
-
         // Now for state_1, update the DST tag to 0x01
         hash_input[3] = Self::DST_1_TAG;
-
-        if self.debug_mode {
-            println!("[Hash Input for state_1] 0x{}", hex_encode(&hash_input));
-        }
 
         // Hash for state_1 update
         let mut hasher = Keccak::new_keccak256();
         hasher.update(&hash_input);
         hasher.finalize(&mut self.state_part_1);
 
-        if self.debug_mode {
-            println!(
-                "[Transcript State] After DST_1_TAG: state_1=0x{}",
-                hex_encode(&self.state_part_1)
-            );
-        }
-
         Ok(())
     }
 
     // GetChallenge function that strictly follows the provided documentation
     fn get_challenge_raw(&mut self) -> [u8; 32] {
-        self.debug_print(&format!("Generating challenge #{}", self.challenge_counter));
-
         // Create a buffer that exactly matches the Solidity memory layout for challenge generation
         let mut hash_input = [0u8; 72]; // 0x48 bytes (72 bytes)
 
@@ -3356,30 +2852,13 @@ impl RollingKeccakTranscript {
         hash_input[70] = (self.challenge_counter >> 8) as u8;
         hash_input[71] = self.challenge_counter as u8; // Least significant byte
 
-        if self.debug_mode {
-            println!(
-                "[Challenge #{} Input] Full hash input: 0x{}",
-                self.challenge_counter,
-                hex_encode(&hash_input)
-            );
-        }
-
         // Increment the counter AFTER using it for this challenge
-        let current_counter = self.challenge_counter;
         self.challenge_counter += 1;
 
         let mut value = [0u8; 32];
         let mut hasher = Keccak::new_keccak256();
         hasher.update(&hash_input);
         hasher.finalize(&mut value);
-
-        if self.debug_mode {
-            println!(
-                "[Challenge #{} Raw] 0x{}",
-                current_counter,
-                hex_encode(&value)
-            );
-        }
 
         value
     }
@@ -3394,21 +2873,12 @@ impl RollingKeccakTranscript {
 
         result.reverse();
 
-        if self.debug_mode {
-            println!("[Challenge Masked] 0x{}", hex_encode(&result));
-        }
-
         // Convert to scalar field
         let scalar = ScalarField::from_bytes_le(&result);
 
         // Ensure never zero
         if scalar == ScalarField::zero() {
-            self.debug_print("Challenge was zero, returning one instead");
             return ScalarField::one();
-        }
-
-        if self.debug_mode {
-            println!("[Challenge Final] 0x{}", hex_string(&scalar));
         }
 
         scalar
@@ -3439,11 +2909,6 @@ impl RollingKeccakTranscript {
     // This is used for BLS12-381 scalar field elements (Fr)
     pub fn commit_field_as_bytes<T: FieldImpl>(&mut self, element: &T) -> Result<(), &'static str> {
         let bytes = self.field_to_bytes(element);
-
-        if self.debug_mode {
-            println!("[Scalar Field Commit] BE bytes: 0x{}", hex_encode(&bytes));
-        }
-
         self.update(&bytes)
     }
 
@@ -3467,31 +2932,9 @@ impl RollingKeccakTranscript {
         let part1 = &le_bytes[0..16];
         let part2 = &le_bytes[16..48];
 
-        if self.debug_mode {
-            println!(
-                "[BLS12-381 Field] Original (BE): 0x{}",
-                hex_encode(&le_bytes)
-            );
-            println!(
-                "[BLS12-381 Field] Part1 (16 bytes): 0x{}",
-                hex_encode(part1)
-            );
-            println!(
-                "[BLS12-381 Field] Part2 (32 bytes): 0x{}",
-                hex_encode(part2)
-            );
-        }
-
         // Create padded part1 (16 bytes of zeros + 16 bytes of part1)
         let mut part1_padded = [0u8; 32];
         part1_padded[16..32].copy_from_slice(part1);
-
-        if self.debug_mode {
-            println!(
-                "[BLS12-381 Field] Part1 padded (32 bytes): 0x{}",
-                hex_encode(&part1_padded)
-            );
-        }
 
         // Commit each part separately
         self.update(&part1_padded)?;
@@ -3502,20 +2945,8 @@ impl RollingKeccakTranscript {
 
     // Helper function to commit a G1 point
     pub fn commit_g1_point(&mut self, point: &G1serde) -> Result<(), &'static str> {
-        // Since we've had issues with the G1 point commitments, let's be extra careful here
-        // and commit each part individually with complete state information
-        let x = &point.0.x;
-        let y = &point.0.y;
-
-        if self.debug_mode {
-            println!("[G1 Point Commit] Committing X: {}", any_field_to_hex(x));
-        }
-        self.commit_bls12_381_field_element(x)?;
-
-        if self.debug_mode {
-            println!("[G1 Point Commit] Committing Y: {}", any_field_to_hex(y));
-        }
-        self.commit_bls12_381_field_element(y)?;
+        self.commit_bls12_381_field_element(&point.0.x)?;
+        self.commit_bls12_381_field_element(&point.0.y)?;
 
         Ok(())
     }
@@ -3527,11 +2958,6 @@ impl RollingKeccakTranscript {
             challenges.push(self.get_challenge());
         }
         challenges
-    }
-
-    // Commit raw bytes (mainly for testing)
-    pub fn commit_bytes(&mut self, bytes: &[u8]) -> Result<(), &'static str> {
-        self.update(bytes)
     }
 }
 
@@ -3547,136 +2973,43 @@ impl TranscriptManager {
         }
     }
 
+    fn commit_point(&mut self, label: &str, point: &G1serde) {
+        self.transcript
+            .commit_g1_point(point)
+            .unwrap_or_else(|error| panic!("Failed to commit {label}: {error}"));
+    }
+
+    fn commit_scalar(&mut self, label: &str, scalar: &ScalarField) {
+        self.transcript
+            .commit_field_as_bytes(scalar)
+            .unwrap_or_else(|error| panic!("Failed to commit {label}: {error}"));
+    }
+
     pub fn add_proof0(&mut self, proof: &Proof0) {
-        // Add each field element individually to match the verifier exactly
-        // Order is critical: U_x, U_y, V_x, V_y, etc.
-        match self.transcript.commit_bls12_381_field_element(&proof.U.0.x) {
-            Ok(_) => {}
-            Err(e) => panic!("Failed to commit U.x: {}", e),
-        }
-
-        match self.transcript.commit_bls12_381_field_element(&proof.U.0.y) {
-            Ok(_) => {}
-            Err(e) => panic!("Failed to commit U.y: {}", e),
-        }
-
-        match self.transcript.commit_bls12_381_field_element(&proof.V.0.x) {
-            Ok(_) => {}
-            Err(e) => panic!("Failed to commit V.x: {}", e),
-        }
-
-        match self.transcript.commit_bls12_381_field_element(&proof.V.0.y) {
-            Ok(_) => {}
-            Err(e) => panic!("Failed to commit V.y: {}", e),
-        }
-
-        match self.transcript.commit_bls12_381_field_element(&proof.W.0.x) {
-            Ok(_) => {}
-            Err(e) => panic!("Failed to commit W.x: {}", e),
-        }
-
-        match self.transcript.commit_bls12_381_field_element(&proof.W.0.y) {
-            Ok(_) => {}
-            Err(e) => panic!("Failed to commit W.y: {}", e),
-        }
-
-        match self
-            .transcript
-            .commit_bls12_381_field_element(&proof.Q_AX.0.x)
-        {
-            Ok(_) => {}
-            Err(e) => panic!("Failed to commit Q_AX.x: {}", e),
-        }
-
-        match self
-            .transcript
-            .commit_bls12_381_field_element(&proof.Q_AX.0.y)
-        {
-            Ok(_) => {}
-            Err(e) => panic!("Failed to commit Q_AX.y: {}", e),
-        }
-
-        match self
-            .transcript
-            .commit_bls12_381_field_element(&proof.Q_AY.0.x)
-        {
-            Ok(_) => {}
-            Err(e) => panic!("Failed to commit Q_AY.x: {}", e),
-        }
-
-        match self
-            .transcript
-            .commit_bls12_381_field_element(&proof.Q_AY.0.y)
-        {
-            Ok(_) => {}
-            Err(e) => panic!("Failed to commit Q_AY.y: {}", e),
-        }
-
-        match self.transcript.commit_bls12_381_field_element(&proof.B.0.x) {
-            Ok(_) => {}
-            Err(e) => panic!("Failed to commit B.x: {}", e),
-        }
-
-        match self.transcript.commit_bls12_381_field_element(&proof.B.0.y) {
-            Ok(_) => {}
-            Err(e) => panic!("Failed to commit B.y: {}", e),
-        }
+        // This order is part of the verifier transcript contract.
+        self.commit_point("U", &proof.U);
+        self.commit_point("V", &proof.V);
+        self.commit_point("W", &proof.W);
+        self.commit_point("Q_AX", &proof.Q_AX);
+        self.commit_point("Q_AY", &proof.Q_AY);
+        self.commit_point("B", &proof.B);
     }
 
     pub fn get_thetas(&mut self) -> Vec<ScalarField> {
-        let thetas = self.transcript.get_challenges(3);
-        thetas
+        self.transcript.get_challenges(3)
     }
 
     pub fn add_proof1(&mut self, proof: &Proof1) {
-        match self.transcript.commit_bls12_381_field_element(&proof.R.0.x) {
-            Ok(_) => {}
-            Err(e) => panic!("Failed to commit R.x: {}", e),
-        }
-
-        match self.transcript.commit_bls12_381_field_element(&proof.R.0.y) {
-            Ok(_) => {}
-            Err(e) => panic!("Failed to commit R.y: {}", e),
-        }
+        self.commit_point("R", &proof.R);
     }
 
     pub fn get_kappa0(&mut self) -> ScalarField {
-        let kappa0 = self.transcript.get_challenge();
-        kappa0
+        self.transcript.get_challenge()
     }
 
     pub fn add_proof2(&mut self, proof: &Proof2) {
-        match self
-            .transcript
-            .commit_bls12_381_field_element(&proof.Q_CX.0.x)
-        {
-            Ok(_) => {}
-            Err(e) => panic!("Failed to commit Q_CX.x: {}", e),
-        }
-
-        match self
-            .transcript
-            .commit_bls12_381_field_element(&proof.Q_CX.0.y)
-        {
-            Ok(_) => {}
-            Err(e) => panic!("Failed to commit Q_CX.y: {}", e),
-        }
-
-        match self
-            .transcript
-            .commit_bls12_381_field_element(&proof.Q_CY.0.x)
-        {
-            Ok(_) => {}
-            Err(e) => panic!("Failed to commit Q_CY.x: {}", e),
-        }
-
-        match self
-            .transcript
-            .commit_bls12_381_field_element(&proof.Q_CY.0.y)
-        {
-            Ok(_) => {}
-            Err(e) => panic!("Failed to commit Q_CY.y: {}", e),
-        }
+        self.commit_point("Q_CX", &proof.Q_CX);
+        self.commit_point("Q_CY", &proof.Q_CY);
     }
 
     pub fn get_chi_zeta(&mut self) -> (ScalarField, ScalarField) {
@@ -3687,57 +3020,15 @@ impl TranscriptManager {
     }
 
     pub fn add_proof3(&mut self, proof: &Proof3) {
-        match self.transcript.commit_field_as_bytes(&proof.V_eval.0) {
-            Ok(_) => {}
-            Err(e) => panic!("Failed to commit V_eval: {}", e),
-        }
-
-        match self.transcript.commit_field_as_bytes(&proof.R_eval.0) {
-            Ok(_) => {}
-            Err(e) => panic!("Failed to commit R_eval: {}", e),
-        }
-
-        match self
-            .transcript
-            .commit_field_as_bytes(&proof.R_omegaX_eval.0)
-        {
-            Ok(_) => {}
-            Err(e) => panic!("Failed to commit R_omegaX_eval: {}", e),
-        }
-
-        match self
-            .transcript
-            .commit_field_as_bytes(&proof.R_omegaX_omegaY_eval.0)
-        {
-            Ok(_) => {}
-            Err(e) => panic!("Failed to commit R_omegaX_omegaY_eval: {}", e),
-        }
+        self.commit_scalar("V_eval", &proof.V_eval.0);
+        self.commit_scalar("R_eval", &proof.R_eval.0);
+        self.commit_scalar("R_omegaX_eval", &proof.R_omegaX_eval.0);
+        self.commit_scalar("R_omegaX_omegaY_eval", &proof.R_omegaX_omegaY_eval.0);
     }
 
     pub fn get_kappa1(&mut self) -> ScalarField {
-        let kappa1 = self.transcript.get_challenge();
-        kappa1
+        self.transcript.get_challenge()
     }
-}
-
-// Helper function to convert a scalar field element to a hex string
-pub fn hex_string(field: &ScalarField) -> String {
-    let bytes = field.to_bytes_le();
-    format!("0x{}", hex_encode(&bytes))
-}
-
-// More generic helper function for any FieldImpl
-pub fn any_field_to_hex<T: FieldImpl>(field: &T) -> String {
-    let bytes = field.to_bytes_le();
-    format!("0x{}", hex_encode(&bytes))
-}
-
-// Helper function to encode bytes as hex string
-pub fn hex_encode(bytes: &[u8]) -> String {
-    bytes
-        .iter()
-        .map(|byte| format!("{:02x}", byte))
-        .collect::<String>()
 }
 
 #[cfg(test)]
@@ -3748,9 +3039,7 @@ mod tests {
     #[test]
     fn constant_corrected_ruffini_matches_subtracted_numerator() {
         check_device();
-        let coefficients = (1..=16)
-            .map(ScalarField::from_u32)
-            .collect::<Vec<_>>();
+        let coefficients = (1..=16).map(ScalarField::from_u32).collect::<Vec<_>>();
         let polynomial =
             DensePolynomialExt::from_coeffs(HostSlice::from_slice(&coefficients), 4, 4);
         let corrections = [
@@ -3777,6 +3066,62 @@ mod tests {
                 assert_same_polynomial_exact(&actual_y, &expected_y);
                 assert_eq!(actual_remainder, expected_remainder);
             }
+        }
+    }
+
+    #[test]
+    fn transcript_challenges_match_protocol_snapshot() {
+        let mut manager = TranscriptManager::new();
+        let proof0 = Proof0 {
+            U: G1serde::zero(),
+            V: G1serde::zero(),
+            W: G1serde::zero(),
+            Q_AX: G1serde::zero(),
+            Q_AY: G1serde::zero(),
+            B: G1serde::zero(),
+        };
+        let proof1 = Proof1 { R: G1serde::zero() };
+        let proof2 = Proof2 {
+            Q_CX: G1serde::zero(),
+            Q_CY: G1serde::zero(),
+        };
+        let proof3 = Proof3 {
+            V_eval: FieldSerde(ScalarField::from_u32(1)),
+            R_eval: FieldSerde(ScalarField::from_u32(2)),
+            R_omegaX_eval: FieldSerde(ScalarField::from_u32(3)),
+            R_omegaX_omegaY_eval: FieldSerde(ScalarField::from_u32(4)),
+        };
+
+        manager.add_proof0(&proof0);
+        let thetas = manager.get_thetas();
+        manager.add_proof1(&proof1);
+        let kappa0 = manager.get_kappa0();
+        manager.add_proof2(&proof2);
+        let (chi, zeta) = manager.get_chi_zeta();
+        manager.add_proof3(&proof3);
+        let kappa1 = manager.get_kappa1();
+
+        let expected = [
+            "6597b56f56f8683716ba48f291e2ec6172ba3fb6337acb5de1cdf7503ce0ad05",
+            "9a241fed3463d64320c26c95d1ebe68342e893c4f500eff57c7f19da15011e1e",
+            "188421c22db479751e54c30c8d32d142021fed66c88df1ccb11da0f5a46c8707",
+            "587311a65e0795a7173f4491eadef54134cefba4feba7da3a8eba1ccab54860f",
+            "f7d87268d19f9d303205f78c8c8a59b9ebb02701acbb8da03b0271818a964506",
+            "83ee96f5106bacc1d73e8fa351a446fabd86017968a3ab7ae969c23a56da1709",
+            "8115ebdd773161aad0a8b111e0843c934ce91307c1a6707bf7cc6a3e3ab9d31a",
+        ];
+
+        for (value, expected) in thetas
+            .iter()
+            .chain([&kappa0, &chi, &zeta, &kappa1])
+            .zip(expected)
+        {
+            let actual = value
+                .to_bytes_le()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>();
+            assert_eq!(actual, expected);
         }
     }
 }

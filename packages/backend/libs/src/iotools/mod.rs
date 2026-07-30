@@ -197,7 +197,6 @@ impl Sigma {
         to_writer_pretty(writer, &self.sigma_preprocess())?;
         Ok(())
     }
-
 }
 
 #[derive(Debug, Clone)]

@@ -390,9 +390,7 @@ mod tests {
         let accumulator = Accumulator::new(g1, g2, 2, 4, true);
         let file = NamedTempFile::new().expect("Failed to create temporary accumulator file");
         let path = file.path().to_str().expect("Temporary path is not UTF-8");
-        accumulator
-            .write_into_json(path)
-            .expect("Failed to save");
+        accumulator.write_into_json(path).expect("Failed to save");
 
         let loaded_accumulator = Accumulator::read_from_json(path).expect("Failed to load");
         println!("Loaded Accumulator: {:?}", loaded_accumulator);
