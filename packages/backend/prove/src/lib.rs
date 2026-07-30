@@ -2297,6 +2297,9 @@ impl Prover {
         let omega_s_max = ntt::get_root_of_unity::<ScalarField>(s_max as u64);
         let shifted_x = omega_m_i.inv() * chi;
         let shifted_y = omega_s_max.inv() * zeta;
+        // The original path materialized scaleX/scaleY(RXY) before evaluating it.
+        // Since scaleX(a, P)(x, y) = P(a*x, y) and scaleY(b, P)(x, y) = P(x, b*y),
+        // evaluating RXY at the shifted challenges produces the same three scalars.
         let [R_eval, R_omegaX_eval, R_omegaX_omegaY_eval] = crate::time_block!(
             "poly.eval_three_batch.prove3.R",
             "poly",
@@ -2523,6 +2526,9 @@ impl Prover {
         );
         let mn_x_point = omega_m_i.inv() * chi;
         let mn_y_points = [zeta, omega_s_max.inv() * zeta];
+        // The original M and N openings split and committed the same X quotient
+        // independently. Their scalar subtractions and Y points affect only the
+        // X remainder and later Y split, so one X split and commitment serves both.
         let (mut MN_X_XY, y_quotients, mn_remainders) = crate::time_block!(
             "poly.div_by_ruffini_shared_x.prove4.M_N",
             "poly",
@@ -3098,6 +3104,9 @@ impl Prover {
             (Pi_B_numerator, Pi_B)
         };
 
+        // The original path opened Pi_A, Pi_C, and kappa1^4*Pi_B separately and
+        // combined their commitments. Ruffini splitting and KZG commitment are
+        // linear, so opening their weighted numerator sum yields the same Pi_X/Pi_Y.
         let combined_Pi_numerator = crate::time_block!(
             "poly.combine.prove4.Pi_combined_numerator",
             "poly",
