@@ -45,6 +45,31 @@ fn use_coeff_backend_for_prove2_p_comb_timing() -> bool {
         == Some("coeff")
 }
 
+fn div_by_ruffini_with_constant_correction(
+    polynomial: &DensePolynomialExt,
+    x: &ScalarField,
+    y: &ScalarField,
+    correction: &ScalarField,
+) -> (DensePolynomialExt, DensePolynomialExt, ScalarField) {
+    // The original path materialized P - c before splitting it. Subtracting a
+    // constant changes only the Ruffini remainder, so split P and correct r by c.
+    let (quotient_x, quotient_y, remainder) = polynomial.div_by_ruffini(x, y);
+    (quotient_x, quotient_y, remainder - *correction)
+}
+
+#[cfg(any(test, feature = "testing-mode"))]
+fn assert_same_polynomial_exact(lhs: &DensePolynomialExt, rhs: &DensePolynomialExt) {
+    assert_eq!(lhs.x_size, rhs.x_size);
+    assert_eq!(lhs.y_size, rhs.y_size);
+    assert_eq!(lhs.x_degree, rhs.x_degree);
+    assert_eq!(lhs.y_degree, rhs.y_degree);
+    let mut lhs_coefficients = vec![ScalarField::zero(); lhs.x_size * lhs.y_size];
+    let mut rhs_coefficients = vec![ScalarField::zero(); rhs.x_size * rhs.y_size];
+    lhs.copy_coeffs(0, HostSlice::from_mut_slice(&mut lhs_coefficients));
+    rhs.copy_coeffs(0, HostSlice::from_mut_slice(&mut rhs_coefficients));
+    assert_eq!(lhs_coefficients, rhs_coefficients);
+}
+
 fn low_degree_x_times_vanishing(coeffs: &[ScalarField], exponent: usize) -> DensePolynomialExt {
     assert!(exponent > 0);
     let x_size = (exponent + coeffs.len()).next_power_of_two();
@@ -2422,6 +2447,7 @@ impl Prover {
                 )
             }
         );
+        let pA_constant_correction = kappa1 * proof3.V_eval.0;
 
         let pA_XY = crate::time_block!(
             "poly.combine.prove4.Pi_A",
@@ -2433,7 +2459,7 @@ impl Prover {
             {
                 poly_comb!(
                     // for KZG of V
-                    (kappa1, &VXY - &proof3.V_eval.0),
+                    (kappa1, VXY),
                     // for Arithmetic constraints
                     (small_v_eval, self.witness.uXY),
                     (ScalarField::zero() - ScalarField::one(), self.witness.wXY),
@@ -2471,7 +2497,14 @@ impl Prover {
                     label: "pA_XY",
                     dims: vec![self.witness.uXY.x_size, self.witness.uXY.y_size]
                 },],
-                { pA_XY.div_by_ruffini(&chi, &zeta) }
+                {
+                    div_by_ruffini_with_constant_correction(
+                        &pA_XY,
+                        &chi,
+                        &zeta,
+                        &pA_constant_correction,
+                    )
+                }
             );
             assert_eq!(rem, ScalarField::zero());
             (
@@ -2649,7 +2682,7 @@ impl Prover {
             );
         }
 
-        let (LHS_for_copy, Pi_CX, Pi_CY) = {
+        let (LHS_for_copy, Pi_CX, Pi_CY, pi_c_constant_correction) = {
             let r_omegaX = crate::time_block!(
                 "poly.scale_coeffs.prove4.r_omegaX",
                 "poly",
@@ -3002,15 +3035,7 @@ impl Prover {
                     ),
                 )
             };
-            let R_minus_eval = crate::time_block!(
-                "poly.add.prove4.R_minus_eval",
-                "poly",
-                vec![crate::timing::SizeInfo {
-                    label: "R",
-                    dims: vec![self.witness.rXY.x_size, self.witness.rXY.y_size]
-                },],
-                { &RXY - &proof3.R_eval.0 }
-            );
+            let pi_c_constant_correction = kappa1.pow(3) * proof3.R_eval.0;
             let LHS_for_copy = crate::time_block!(
                 "poly.combine.prove4.LHS_for_copy",
                 "poly",
@@ -3023,7 +3048,7 @@ impl Prover {
                         (kappa1.pow(2), pC_XY),
                         (kappa1.pow(2) * kappa0, LHS_zk1),
                         (kappa1.pow(2) * kappa0.pow(2), LHS_zk2),
-                        (kappa1.pow(3), R_minus_eval)
+                        (kappa1.pow(3), RXY)
                     )
                 }
             );
@@ -3037,14 +3062,22 @@ impl Prover {
                         label: "LHS_for_copy",
                         dims: vec![m_i, s_max]
                     },],
-                    { LHS_for_copy.div_by_ruffini(&chi, &zeta) }
+                    {
+                        div_by_ruffini_with_constant_correction(
+                            &LHS_for_copy,
+                            &chi,
+                            &zeta,
+                            &pi_c_constant_correction,
+                        )
+                    }
                 );
                 assert_eq!(rem, ScalarField::zero());
                 let x_e = ScalarCfg::generate_random(1)[0];
                 let y_e = ScalarCfg::generate_random(1)[0];
                 let lhs = LHS_for_copy.eval(&x_e, &y_e);
                 let rhs = Pi_CX_XY.eval(&x_e, &y_e) * (x_e - chi)
-                    + Pi_CY_XY.eval(&x_e, &y_e) * (y_e - zeta);
+                    + Pi_CY_XY.eval(&x_e, &y_e) * (y_e - zeta)
+                    + pi_c_constant_correction;
                 assert_eq!(lhs, rhs);
                 (
                     self.sigma
@@ -3058,7 +3091,12 @@ impl Prover {
             #[cfg(not(feature = "testing-mode"))]
             let (Pi_CX, Pi_CY) = (G1serde::zero(), G1serde::zero());
 
-            (LHS_for_copy, Pi_CX, Pi_CY)
+            (
+                LHS_for_copy,
+                Pi_CX,
+                Pi_CY,
+                pi_c_constant_correction,
+            )
         };
         #[cfg(feature = "testing-mode")]
         {
@@ -3066,47 +3104,41 @@ impl Prover {
         }
 
         drop(RXY);
-        let (Pi_B_numerator, Pi_B) = {
-            let A_eval = crate::time_block!(
-                "poly.eval.prove4.A_free",
+        let A_eval = crate::time_block!(
+            "poly.eval.prove4.A_free",
+            "poly",
+            vec![crate::timing::SizeInfo {
+                label: "a_free_X",
+                dims: vec![self.instance.a_free_X.x_size, self.instance.a_free_X.y_size]
+            },],
+            { self.instance.a_free_X.eval(&chi, &zeta) }
+        );
+        #[cfg(feature = "testing-mode")]
+        let Pi_B = {
+            let (mut pi_B_XY, _, rem) = crate::time_block!(
+                "poly.div_by_ruffini.prove4.Pi_B_test",
                 "poly",
                 vec![crate::timing::SizeInfo {
                     label: "a_free_X",
                     dims: vec![self.instance.a_free_X.x_size, self.instance.a_free_X.y_size]
                 },],
-                { self.instance.a_free_X.eval(&chi, &zeta) }
+                {
+                    div_by_ruffini_with_constant_correction(
+                        &self.instance.a_free_X,
+                        &chi,
+                        &zeta,
+                        &A_eval,
+                    )
+                }
             );
-            let Pi_B_numerator = crate::time_block!(
-                "poly.add.prove4.Pi_B_numerator",
-                "poly",
-                vec![crate::timing::SizeInfo {
-                    label: "a_free_X",
-                    dims: vec![self.instance.a_free_X.x_size, self.instance.a_free_X.y_size]
-                },],
-                { &self.instance.a_free_X - &A_eval }
-            );
-            #[cfg(feature = "testing-mode")]
-            let Pi_B = {
-                let (mut pi_B_XY, _, rem) = crate::time_block!(
-                    "poly.div_by_ruffini.prove4.Pi_B_test",
-                    "poly",
-                    vec![crate::timing::SizeInfo {
-                        label: "a_free_X",
-                        dims: vec![self.instance.a_free_X.x_size, self.instance.a_free_X.y_size]
-                    },],
-                    { Pi_B_numerator.div_by_ruffini(&chi, &zeta) }
-                );
-                assert_eq!(rem, ScalarField::zero());
-                self.sigma
-                    .sigma1()
-                    .encode_poly(&mut pi_B_XY, &self.setup_params)
-                    * kappa1.pow(4)
-            };
-            #[cfg(not(feature = "testing-mode"))]
-            let Pi_B = G1serde::zero();
-
-            (Pi_B_numerator, Pi_B)
+            assert_eq!(rem, ScalarField::zero());
+            self.sigma
+                .sigma1()
+                .encode_poly(&mut pi_B_XY, &self.setup_params)
+                * kappa1.pow(4)
         };
+        #[cfg(not(feature = "testing-mode"))]
+        let Pi_B = G1serde::zero();
 
         // The original path opened Pi_A, Pi_C, and kappa1^4*Pi_B separately and
         // combined their commitments. Ruffini splitting and KZG commitment are
@@ -3122,10 +3154,13 @@ impl Prover {
                 poly_comb!(
                     (ScalarField::one(), pA_XY),
                     (ScalarField::one(), LHS_for_copy),
-                    (kappa1.pow(4), Pi_B_numerator)
+                    (kappa1.pow(4), self.instance.a_free_X)
                 )
             }
         );
+        let combined_pi_constant_correction = pA_constant_correction
+            + pi_c_constant_correction
+            + kappa1.pow(4) * A_eval;
         let (mut Pi_X_XY, mut Pi_Y_XY, combined_rem) = crate::time_block!(
             "poly.div_by_ruffini.prove4.Pi_combined",
             "poly",
@@ -3133,8 +3168,25 @@ impl Prover {
                 label: "m_i_s_max",
                 dims: vec![m_i, s_max]
             },],
-            { combined_Pi_numerator.div_by_ruffini(&chi, &zeta) }
+            {
+                div_by_ruffini_with_constant_correction(
+                    &combined_Pi_numerator,
+                    &chi,
+                    &zeta,
+                    &combined_pi_constant_correction,
+                )
+            }
         );
+        #[cfg(feature = "testing-mode")]
+        {
+            let legacy_combined_pi_numerator =
+                &combined_Pi_numerator - &combined_pi_constant_correction;
+            let (legacy_pi_x, legacy_pi_y, legacy_rem) =
+                legacy_combined_pi_numerator.div_by_ruffini(&chi, &zeta);
+            assert_same_polynomial_exact(&Pi_X_XY, &legacy_pi_x);
+            assert_same_polynomial_exact(&Pi_Y_XY, &legacy_pi_y);
+            assert_eq!(combined_rem, legacy_rem);
+        }
         #[cfg(feature = "testing-mode")]
         assert_eq!(combined_rem, ScalarField::zero());
         #[cfg(not(feature = "testing-mode"))]
@@ -3739,4 +3791,45 @@ pub fn hex_encode(bytes: &[u8]) -> String {
         .iter()
         .map(|byte| format!("{:02x}", byte))
         .collect::<String>()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use libs::utils::check_device;
+
+    #[test]
+    fn constant_corrected_ruffini_matches_subtracted_numerator() {
+        check_device();
+        let coefficients = (1..=16)
+            .map(ScalarField::from_u32)
+            .collect::<Vec<_>>();
+        let polynomial =
+            DensePolynomialExt::from_coeffs(HostSlice::from_slice(&coefficients), 4, 4);
+        let corrections = [
+            ScalarField::zero(),
+            ScalarField::one(),
+            ScalarField::zero() - ScalarField::one(),
+            ScalarField::from_u32(19),
+        ];
+        let split_points = [
+            (ScalarField::zero(), ScalarField::zero()),
+            (ScalarField::one(), ScalarField::from_u32(3)),
+            (ScalarField::from_u32(11), ScalarField::from_u32(13)),
+        ];
+
+        for correction in corrections {
+            let subtracted = &polynomial - &correction;
+            for (x, y) in split_points {
+                let (expected_x, expected_y, expected_remainder) =
+                    subtracted.div_by_ruffini(&x, &y);
+                let (actual_x, actual_y, actual_remainder) =
+                    div_by_ruffini_with_constant_correction(&polynomial, &x, &y, &correction);
+
+                assert_same_polynomial_exact(&actual_x, &expected_x);
+                assert_same_polynomial_exact(&actual_y, &expected_y);
+                assert_eq!(actual_remainder, expected_remainder);
+            }
+        }
+    }
 }

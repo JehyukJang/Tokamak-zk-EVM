@@ -287,7 +287,7 @@ The paired `prove4.total` interval was -0.155531 to 0.080780 seconds for
 Legacy minus Candidate. The approximately 20-millisecond local saving is
 smaller than variance inside prove4 and unchanged neighboring stages.
 
-## Final Decision
+## Historical Standalone Decision
 
 Candidate 3A is rejected. Its algebra, exact quotient parity, fresh
 verification, and local boundary saving are established, but mean E2E
@@ -297,3 +297,41 @@ exclude either a material regression or improvement.
 The constant-free Ruffini correction must not enter production as part of this
 optimization campaign. The detached experiment and its ignored raw timing
 artifacts were removed after the project-owner decision.
+
+## Superseding Production Decision
+
+The consolidated July decision superseded the standalone performance
+rejection. The project owner approved every backend-independent algebraic work
+reduction, including Candidate 3A, and directed production integration after
+Candidate 2C.
+
+Production now combines `VXY`, `RXY`, and `a_free_X` without first
+materializing their scalar-subtracted forms. A private helper delegates to the
+unchanged Ruffini split and subtracts the accumulated constant only from the
+remainder. Its production comment records the original `P - c` operation and
+the invariant that a constant changes the remainder but not either quotient.
+The retained unit test checks exact quotient and remainder parity, and
+`testing-mode` compares the final combined Pi quotient coefficient arrays with
+the original scalar-subtracted numerator.
+
+The integrated path passed the focused unit test, the `prove` library test,
+one complete release `timing,testing-mode` fixture, and a fresh matching
+preprocess/prove/verify sequence. The verifier returned `true`. No
+post-integration CUDA validation was performed by project-owner decision.
+
+Three timing-only CPU runs measured:
+
+| sample | `total_wall` | `prove4.total` | combined numerator plus Ruffini |
+| ---: | ---: | ---: | ---: |
+| 1 | 37.659379 s | 9.070844 s | 0.423513 s |
+| 2 | 37.071582 s | 8.423287 s | 0.393209 s |
+| 3 | 37.077365 s | 8.367933 s | 0.392820 s |
+| mean | 37.269442 s | 8.620688 s | 0.403181 s |
+| median | 37.077365 s | 8.423287 s | 0.393209 s |
+
+All three timing files omit `poly.add.prove4.V_minus_eval`,
+`poly.add.prove4.R_minus_eval`, and
+`poly.add.prove4.Pi_B_numerator`. The median `total_wall` sample regenerated
+`timing.local.cpu.current.json` and `timing.local.cpu.current.md`. This timing
+set is a production validation gate rather than a same-session paired
+comparison; the integration follows the algebraic owner decision.

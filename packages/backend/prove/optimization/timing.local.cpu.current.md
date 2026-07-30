@@ -4,7 +4,7 @@
 
 | item | value |
 | --- | --- |
-| total_wall | 37.192760 s |
+| total_wall | 37.077365 s |
 
 ## Timing Boundaries
 
@@ -32,230 +32,223 @@
 
 | module | total | poly | encode |
 | --- | --- | --- | --- |
-| init | 5.073298 s | - | - |
-| prove0 | 8.924349 s | 1.136197 s | 7.686472 s |
-| prove1 | 1.992648 s | 0.858409 s | 1.090058 s |
-| prove2 | 12.064485 s | 5.675294 s | 6.115717 s |
-| prove3 | 0.635378 s | 0.233395 s | 0.000000 s |
-| prove4 | 8.492197 s | 3.336015 s | 5.066934 s |
+| init | 4.982260 s | - | - |
+| prove0 | 8.852781 s | 1.143662 s | 7.609594 s |
+| prove1 | 1.979753 s | 0.843098 s | 1.093805 s |
+| prove2 | 12.251880 s | 5.719070 s | 6.272385 s |
+| prove3 | 0.632197 s | 0.234001 s | 0.000000 s |
+| prove4 | 8.367933 s | 3.227319 s | 5.053920 s |
 
 ## Init Details (load/build)
 
 | phase | variable | time | dims |
 | --- | --- | --- | --- |
-| build | A_free | 0.002882 s | A_free=128x1 |
-| build | O_mid_core | 0.007444 s | O_mid_core=4824x1 |
-| build | O_prv_core | 0.664139 s | O_prv_core=4824x1 |
-| build | O_pub_free | 0.001215 s | O_pub_free=128x1 |
-| build | a_free_X | 0.000051 s | a_free_X=128x1 |
-| build | bXY | 0.058668 s | bXY=4096x256 |
-| build | s0_s1 | 0.104575 s | s0/s1=4096x256 |
-| build | t_mi | 0.000009 s | t_mi=8192x1 |
-| build | t_n | 0.000007 s | t_n=8192x1 |
-| build | t_smax | 0.000001 s | t_smax=1x512 |
-| build | uvwXY | 0.212214 s | uXY/vXY/wXY=4096x256 |
-| load | instance | 0.000386 s | file_bytes=10940 |
-| load | permutation | 0.002534 s | file_bytes=342804 |
-| load | placement_variables | 0.085714 s | file_bytes=28085648 |
-| load | setup_params | 0.000116 s | file_bytes=140 |
-| load | sigma | 0.252693 s | file_bytes=1038543880 |
-| load | subcircuit_infos | 0.001925 s | file_bytes=146449 |
+| build | A_free | 0.001854 s | A_free=128x1 |
+| build | O_mid_core | 0.007572 s | O_mid_core=4824x1 |
+| build | O_prv_core | 0.681612 s | O_prv_core=4824x1 |
+| build | O_pub_free | 0.001196 s | O_pub_free=128x1 |
+| build | a_free_X | 0.000047 s | a_free_X=128x1 |
+| build | bXY | 0.056696 s | bXY=4096x256 |
+| build | s0_s1 | 0.100482 s | s0/s1=4096x256 |
+| build | t_mi | 0.000012 s | t_mi=8192x1 |
+| build | t_n | 0.000012 s | t_n=8192x1 |
+| build | t_smax | 0.000004 s | t_smax=1x512 |
+| build | uvwXY | 0.206544 s | uXY/vXY/wXY=4096x256 |
+| load | instance | 0.000177 s | file_bytes=10940 |
+| load | permutation | 0.000861 s | file_bytes=342804 |
+| load | placement_variables | 0.084337 s | file_bytes=28085648 |
+| load | setup_params | 0.000137 s | file_bytes=140 |
+| load | sigma | 0.256292 s | file_bytes=1038543880 |
+| load | subcircuit_infos | 0.000424 s | file_bytes=146449 |
 
 ## Category Totals
 
 | category | total |
 | --- | --- |
-| poly | 11.239310 s |
-| encode | 19.961892 s |
+| poly | 11.167150 s |
+| encode | 20.031351 s |
 
 ## Poly Operation Totals
 
 | operation | total |
 | --- | --- |
-| add | 0.034493 s |
-| combine | 8.316696 s |
-| div_by_ruffini | 0.357379 s |
-| div_by_ruffini_shared_x | 0.356165 s |
-| div_by_vanishing_opt | 0.225700 s |
-| eval | 0.825848 s |
+| add | 0.026311 s |
+| combine | 8.297103 s |
+| div_by_ruffini | 0.340334 s |
+| div_by_ruffini_shared_x | 0.343498 s |
+| div_by_vanishing_opt | 0.229197 s |
+| eval | 0.822658 s |
 | eval_derived | 0.000000 s |
-| eval_three_batch | 0.233395 s |
-| from_rou_evals | 0.052652 s |
-| mul | 0.005998 s |
-| recursion_eval | 0.681737 s |
-| scale_coeffs | 0.048599 s |
-| to_rou_evals | 0.100647 s |
+| eval_three_batch | 0.234001 s |
+| from_rou_evals | 0.053385 s |
+| mul | 0.005673 s |
+| recursion_eval | 0.666586 s |
+| scale_coeffs | 0.048405 s |
+| to_rou_evals | 0.099998 s |
 
 ## Poly Operation Details (by variable)
 
 | operation | module | variable | time | dims |
 | --- | --- | --- | --- | --- |
-| add | prove4 | Pi_B_numerator | 0.000003 s | a_free_X=128x1 |
-| add | prove4 | RXY | 0.013397 s | R=4096x256 |
-| add | prove4 | RXY_terms | 0.010763 s | m_i_s_max=4096x256 |
-| add | prove4 | R_minus_eval | 0.007884 s | R=4096x256 |
-| add | prove4 | g_minus_f | 0.002445 s | gXY=4096x256 |
-| combine | prove0 | B | 0.026860 s | B=4096x256 |
-| combine | prove0 | Q_AX | 0.066271 s | Q_AX=8192x512 |
-| combine | prove0 | Q_AY | 0.061338 s | Q_AY=4096x512 |
-| combine | prove0 | U | 0.034710 s | U=4096x256 |
-| combine | prove0 | V | 0.027499 s | V=4096x256 |
-| combine | prove0 | W | 0.026930 s | W=4096x256 |
-| combine | prove0 | p0XY | 0.803508 s | p0XY=4096x256 |
-| combine | prove1 | R | 0.025345 s | R=4096x256 |
-| combine | prove2 | Q_CX | 0.525005 s | Q_CX=16384x512 |
-| combine | prove2 | Q_CY | 0.890433 s | Q_CY=4096x512 |
-| combine | prove2 | p_comb | 4.108566 s | p_comb=4096x256 |
-| combine | prove4 | LHS_for_copy | 0.155392 s | m_i_s_max=4096x256 |
-| combine | prove4 | LHS_zk1 | 0.234307 s | m_i_s_max=4096x256 |
-| combine | prove4 | LHS_zk2 | 0.861215 s | m_i_s_max=4096x256 |
-| combine | prove4 | Pi_A | 0.170536 s | uXY=4096x256 |
-| combine | prove4 | Pi_combined_numerator | 0.052694 s | m_i_s_max=4096x256 |
-| combine | prove4 | V | 0.026929 s | vXY=4096x256 |
-| combine | prove4 | fXY | 0.026239 s | bXY=4096x256 |
-| combine | prove4 | gXY | 0.010572 s | bXY=4096x256 |
-| combine | prove4 | pC | 0.156959 s | m_i_s_max=4096x256 |
-| combine | prove4 | term5 | 0.014368 s | gXY=4096x256 |
-| combine | prove4 | term6 | 0.011016 s | gXY=4096x256 |
-| div_by_ruffini | prove4 | Pi_combined | 0.357379 s | m_i_s_max=4096x256 |
-| div_by_ruffini_shared_x | prove4 | M_N | 0.356165 s | R=4096x256 |
-| div_by_vanishing_opt | prove0 | q0q1 | 0.089081 s | vanishing=4096x256 |
-| div_by_vanishing_opt | prove2 | qCXqCY | 0.136619 s | vanishing=4096x256 |
-| eval | prove4 | A_free | 0.000979 s | a_free_X=128x1 |
-| eval | prove4 | K0 | 0.001224 s | K0=4096x1 |
-| eval | prove4 | R | 0.150643 s | R=4096x256 |
-| eval | prove4 | R_omegaX | 0.148692 s | R_omegaX=4096x256 |
-| eval | prove4 | R_omegaX_omegaY | 0.147620 s | R_omegaX_omegaY=4096x256 |
-| eval | prove4 | t_n | 0.001419 s | t_n=8192x1 |
-| eval | prove4 | t_smax | 0.226105 s | t_smax=1x512 |
-| eval | prove4 | vXY | 0.149167 s | vXY=4096x256 |
+| add | prove4 | RXY | 0.012903 s | R=4096x256 |
+| add | prove4 | RXY_terms | 0.010912 s | m_i_s_max=4096x256 |
+| add | prove4 | g_minus_f | 0.002496 s | gXY=4096x256 |
+| combine | prove0 | B | 0.026600 s | B=4096x256 |
+| combine | prove0 | Q_AX | 0.065749 s | Q_AX=8192x512 |
+| combine | prove0 | Q_AY | 0.060254 s | Q_AY=4096x512 |
+| combine | prove0 | U | 0.034296 s | U=4096x256 |
+| combine | prove0 | V | 0.026951 s | V=4096x256 |
+| combine | prove0 | W | 0.035090 s | W=4096x256 |
+| combine | prove0 | p0XY | 0.805456 s | p0XY=4096x256 |
+| combine | prove1 | R | 0.025013 s | R=4096x256 |
+| combine | prove2 | Q_CX | 0.520911 s | Q_CX=16384x512 |
+| combine | prove2 | Q_CY | 0.905750 s | Q_CY=4096x512 |
+| combine | prove2 | p_comb | 4.138046 s | p_comb=4096x256 |
+| combine | prove4 | LHS_for_copy | 0.148555 s | m_i_s_max=4096x256 |
+| combine | prove4 | LHS_zk1 | 0.230023 s | m_i_s_max=4096x256 |
+| combine | prove4 | LHS_zk2 | 0.838047 s | m_i_s_max=4096x256 |
+| combine | prove4 | Pi_A | 0.163403 s | uXY=4096x256 |
+| combine | prove4 | Pi_combined_numerator | 0.052486 s | m_i_s_max=4096x256 |
+| combine | prove4 | V | 0.027217 s | vXY=4096x256 |
+| combine | prove4 | fXY | 0.019313 s | bXY=4096x256 |
+| combine | prove4 | gXY | 0.008995 s | bXY=4096x256 |
+| combine | prove4 | pC | 0.141128 s | m_i_s_max=4096x256 |
+| combine | prove4 | term5 | 0.013014 s | gXY=4096x256 |
+| combine | prove4 | term6 | 0.010806 s | gXY=4096x256 |
+| div_by_ruffini | prove4 | Pi_combined | 0.340334 s | m_i_s_max=4096x256 |
+| div_by_ruffini_shared_x | prove4 | M_N | 0.343498 s | R=4096x256 |
+| div_by_vanishing_opt | prove0 | q0q1 | 0.089266 s | vanishing=4096x256 |
+| div_by_vanishing_opt | prove2 | qCXqCY | 0.139930 s | vanishing=4096x256 |
+| eval | prove4 | A_free | 0.000956 s | a_free_X=128x1 |
+| eval | prove4 | K0 | 0.001113 s | K0=4096x1 |
+| eval | prove4 | R | 0.158451 s | R=4096x256 |
+| eval | prove4 | R_omegaX | 0.144314 s | R_omegaX=4096x256 |
+| eval | prove4 | R_omegaX_omegaY | 0.147304 s | R_omegaX_omegaY=4096x256 |
+| eval | prove4 | t_n | 0.001569 s | t_n=8192x1 |
+| eval | prove4 | t_smax | 0.223268 s | t_smax=1x512 |
+| eval | prove4 | vXY | 0.145683 s | vXY=4096x256 |
 | eval_derived | prove4 | r_D1_r_D2 | 0.000000 s | evaluations=2 |
-| eval_three_batch | prove3 | R | 0.233395 s | R=8192x512 |
-| from_rou_evals | prove1 | rXY | 0.050680 s | rXY_evals=1048576, grid=4096x256 |
-| from_rou_evals | prove2 | K | 0.000599 s | k_evals=4096, grid=4096x1 |
-| from_rou_evals | prove2 | K0 | 0.000584 s | k0_evals=4096, grid=4096x1 |
-| from_rou_evals | prove2 | L | 0.000041 s | l_evals=256, grid=1x256 |
-| from_rou_evals | prove4 | K0 | 0.000749 s | k0_evals=4096, grid=4096x1 |
-| mul | prove4 | RXY_t_mi | 0.000622 s | t_mi=8192x1 |
-| mul | prove4 | RXY_t_smax | 0.000581 s | t_smax=1x512 |
-| mul | prove4 | term10 | 0.004795 s | gXY=4096x256 |
-| recursion_eval | prove1 | rXY | 0.681737 s | fXY_evals=1048576, gXY_evals=1048576, grid=4096x256 |
-| scale_coeffs | prove2 | r_omegaX | 0.007006 s | rXY=4096x256 |
-| scale_coeffs | prove2 | r_omegaX_omegaY | 0.006440 s | r_omegaX=4096x256 |
-| scale_coeffs | prove4 | r_omegaX | 0.006657 s | R=4096x256 |
-| scale_coeffs | prove4 | r_omegaX_omegaY | 0.028496 s | R_omegaX=4096x256 |
-| to_rou_evals | prove1 | fXY | 0.050928 s | fXY=4096x256 |
-| to_rou_evals | prove1 | gXY | 0.049720 s | gXY=4096x256 |
+| eval_three_batch | prove3 | R | 0.234001 s | R=8192x512 |
+| from_rou_evals | prove1 | rXY | 0.051500 s | rXY_evals=1048576, grid=4096x256 |
+| from_rou_evals | prove2 | K | 0.000591 s | k_evals=4096, grid=4096x1 |
+| from_rou_evals | prove2 | K0 | 0.000655 s | k0_evals=4096, grid=4096x1 |
+| from_rou_evals | prove2 | L | 0.000034 s | l_evals=256, grid=1x256 |
+| from_rou_evals | prove4 | K0 | 0.000605 s | k0_evals=4096, grid=4096x1 |
+| mul | prove4 | RXY_t_mi | 0.000496 s | t_mi=8192x1 |
+| mul | prove4 | RXY_t_smax | 0.000441 s | t_smax=1x512 |
+| mul | prove4 | term10 | 0.004736 s | gXY=4096x256 |
+| recursion_eval | prove1 | rXY | 0.666586 s | fXY_evals=1048576, gXY_evals=1048576, grid=4096x256 |
+| scale_coeffs | prove2 | r_omegaX | 0.006609 s | rXY=4096x256 |
+| scale_coeffs | prove2 | r_omegaX_omegaY | 0.006544 s | r_omegaX=4096x256 |
+| scale_coeffs | prove4 | r_omegaX | 0.006647 s | R=4096x256 |
+| scale_coeffs | prove4 | r_omegaX_omegaY | 0.028605 s | R_omegaX=4096x256 |
+| to_rou_evals | prove1 | fXY | 0.050722 s | fXY=4096x256 |
+| to_rou_evals | prove1 | gXY | 0.049276 s | gXY=4096x256 |
 
 ## Poly Combine Detail Totals
 
 | detail operation | total |
 | --- | --- |
-| add_clone_operands | 0.043732 s |
-| add_construct_result | 0.000001 s |
-| add_icicle_add | 0.077773 s |
-| add_resize_operands | 0.149058 s |
-| addassign_clone_operands | 0.160571 s |
-| addassign_icicle_add | 0.237187 s |
-| addassign_resize_operands | 0.315723 s |
+| add_clone_operands | 0.042393 s |
+| add_construct_result | 0.000006 s |
+| add_icicle_add | 0.074403 s |
+| add_resize_operands | 0.156101 s |
+| addassign_clone_operands | 0.153992 s |
+| addassign_icicle_add | 0.234441 s |
+| addassign_resize_operands | 0.311998 s |
 | addassign_update_metadata | 0.000001 s |
-| addition | 1.071858 s |
-| fused_final_from_rou_evals | 0.486314 s |
-| fused_leaf_alloc | 0.000029 s |
-| fused_leaf_cache_copy | 0.018000 s |
-| fused_leaf_output_copy | 0.031516 s |
-| fused_leaf_resize | 0.077863 s |
-| fused_leaf_to_rou_evals | 3.279333 s |
-| fused_mul_alloc | 0.000026 s |
-| fused_mul_pointwise | 0.078577 s |
-| fused_scale_alloc | 0.000011 s |
-| fused_scale_pointwise | 0.025870 s |
-| fused_sub_alloc | 0.000017 s |
-| fused_sub_pointwise | 0.015388 s |
-| fused_sum_alloc | 0.000018 s |
-| fused_sum_pointwise | 0.020649 s |
-| fused_x_minus_one_alloc | 0.000006 s |
-| fused_x_minus_one_pointwise | 0.013011 s |
-| mul_alloc_lhs_evals | 0.000006 s |
-| mul_alloc_out_evals | 0.000018 s |
-| mul_alloc_rhs_evals | 0.000007 s |
-| mul_clone_resize_lhs | 0.028668 s |
-| mul_clone_resize_rhs | 0.020994 s |
-| mul_compute_target_size | 0.000000 s |
-| mul_find_lhs_degree | 0.002837 s |
-| mul_find_rhs_degree | 0.012810 s |
-| mul_from_rou_evals | 0.825429 s |
-| mul_icicle_eval_mul | 0.024564 s |
-| mul_lhs_to_rou_evals | 0.858673 s |
-| mul_rhs_to_rou_evals | 0.828802 s |
-| mul_setup_vec_ops | 0.000001 s |
-| multiplication | 2.602916 s |
-| scalar_add_alloc_host | 0.000604 s |
-| scalar_add_clone_coeffs | 0.001334 s |
-| scalar_add_copy_coeffs | 0.001212 s |
-| scalar_add_from_coeffs | 0.002424 s |
+| addition | 1.053319 s |
+| fused_final_from_rou_evals | 0.483200 s |
+| fused_leaf_alloc | 0.000023 s |
+| fused_leaf_cache_copy | 0.017499 s |
+| fused_leaf_output_copy | 0.032482 s |
+| fused_leaf_resize | 0.074987 s |
+| fused_leaf_to_rou_evals | 3.318134 s |
+| fused_mul_alloc | 0.000025 s |
+| fused_mul_pointwise | 0.077617 s |
+| fused_scale_alloc | 0.000014 s |
+| fused_scale_pointwise | 0.024938 s |
+| fused_sub_alloc | 0.000019 s |
+| fused_sub_pointwise | 0.015532 s |
+| fused_sum_alloc | 0.000019 s |
+| fused_sum_pointwise | 0.019874 s |
+| fused_x_minus_one_alloc | 0.000004 s |
+| fused_x_minus_one_pointwise | 0.012830 s |
+| mul_alloc_lhs_evals | 0.000007 s |
+| mul_alloc_out_evals | 0.000024 s |
+| mul_alloc_rhs_evals | 0.000009 s |
+| mul_clone_resize_lhs | 0.029494 s |
+| mul_clone_resize_rhs | 0.016954 s |
+| mul_compute_target_size | 0.000001 s |
+| mul_find_lhs_degree | 0.002948 s |
+| mul_find_rhs_degree | 0.011700 s |
+| mul_from_rou_evals | 0.829996 s |
+| mul_icicle_eval_mul | 0.024282 s |
+| mul_lhs_to_rou_evals | 0.838446 s |
+| mul_rhs_to_rou_evals | 0.835538 s |
+| mul_setup_vec_ops | 0.000002 s |
+| multiplication | 2.589512 s |
+| scalar_add_alloc_host | 0.000555 s |
+| scalar_add_clone_coeffs | 0.001386 s |
+| scalar_add_copy_coeffs | 0.001256 s |
+| scalar_add_from_coeffs | 0.002501 s |
 | scalar_add_update_constant | 0.000001 s |
-| scalar_mul_alloc_input | 0.000304 s |
-| scalar_mul_alloc_output | 0.000126 s |
-| scalar_mul_copy_coeffs | 0.090922 s |
-| scalar_mul_from_coeffs | 0.112482 s |
-| scalar_mul_icicle_scalar_mul | 0.244851 s |
-| scalar_mul_one_clone | 0.023058 s |
-| scalar_mul_setup | 0.000038 s |
-| scalar_sub_alloc_host | 0.001079 s |
-| scalar_sub_clone_coeffs | 0.002468 s |
-| scalar_sub_copy_coeffs | 0.002089 s |
-| scalar_sub_from_coeffs | 0.002425 s |
-| scalar_sub_update_constant | 0.000000 s |
-| scaling | 0.472134 s |
-| sub_clone_operands | 0.015908 s |
+| scalar_mul_alloc_input | 0.000310 s |
+| scalar_mul_alloc_output | 0.000130 s |
+| scalar_mul_copy_coeffs | 0.083164 s |
+| scalar_mul_from_coeffs | 0.098939 s |
+| scalar_mul_icicle_scalar_mul | 0.245247 s |
+| scalar_mul_one_clone | 0.023012 s |
+| scalar_mul_setup | 0.000034 s |
+| scaling | 0.451164 s |
+| sub_clone_operands | 0.016851 s |
 | sub_construct_result | 0.000000 s |
-| sub_icicle_sub | 0.017788 s |
-| sub_resize_operands | 0.040043 s |
+| sub_icicle_sub | 0.017440 s |
+| sub_resize_operands | 0.039564 s |
 
 ## Poly Combine Detail By Target
 
-| module | variable | add_clone_operands | add_construct_result | add_icicle_add | add_resize_operands | addassign_clone_operands | addassign_icicle_add | addassign_resize_operands | addassign_update_metadata | addition | fused_final_from_rou_evals | fused_leaf_alloc | fused_leaf_cache_copy | fused_leaf_output_copy | fused_leaf_resize | fused_leaf_to_rou_evals | fused_mul_alloc | fused_mul_pointwise | fused_scale_alloc | fused_scale_pointwise | fused_sub_alloc | fused_sub_pointwise | fused_sum_alloc | fused_sum_pointwise | fused_x_minus_one_alloc | fused_x_minus_one_pointwise | mul_alloc_lhs_evals | mul_alloc_out_evals | mul_alloc_rhs_evals | mul_clone_resize_lhs | mul_clone_resize_rhs | mul_compute_target_size | mul_find_lhs_degree | mul_find_rhs_degree | mul_from_rou_evals | mul_icicle_eval_mul | mul_lhs_to_rou_evals | mul_rhs_to_rou_evals | mul_setup_vec_ops | multiplication | scalar_add_alloc_host | scalar_add_clone_coeffs | scalar_add_copy_coeffs | scalar_add_from_coeffs | scalar_add_update_constant | scalar_mul_alloc_input | scalar_mul_alloc_output | scalar_mul_copy_coeffs | scalar_mul_from_coeffs | scalar_mul_icicle_scalar_mul | scalar_mul_one_clone | scalar_mul_setup | scalar_sub_alloc_host | scalar_sub_clone_coeffs | scalar_sub_copy_coeffs | scalar_sub_from_coeffs | scalar_sub_update_constant | scaling | sub_clone_operands | sub_construct_result | sub_icicle_sub | sub_resize_operands | total |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| prove0 | B | 0.002980 s | 0.000000 s | 0.008369 s | 0.013362 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.024727 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.049438 s |
-| prove0 | Q_AX | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.012131 s | 0.020484 s | 0.022923 s | 0.000000 s | 0.055565 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000011 s | 0.000003 s | 0.001066 s | 0.001327 s | 0.006168 s | 0.002090 s | 0.000002 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.010683 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.132454 s |
-| prove0 | Q_AY | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.007302 s | 0.016641 s | 0.026453 s | 0.000000 s | 0.050419 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000015 s | 0.000007 s | 0.001274 s | 0.001023 s | 0.006026 s | 0.002530 s | 0.000004 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.010897 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.122591 s |
-| prove0 | U | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.001686 s | 0.006655 s | 0.024621 s | 0.000000 s | 0.032974 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000002 s | 0.000003 s | 0.000018 s | 0.000019 s | 0.001146 s | 0.000533 s | 0.000001 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.001728 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.069385 s |
-| prove0 | V | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.001577 s | 0.006450 s | 0.017810 s | 0.000000 s | 0.025849 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000003 s | 0.000001 s | 0.000006 s | 0.000008 s | 0.001100 s | 0.000515 s | 0.000001 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.001643 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.054963 s |
-| prove0 | W | 0.002651 s | 0.000000 s | 0.008817 s | 0.013353 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.024834 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.049655 s |
-| prove0 | p0XY | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.012428 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000002 s | 0.000003 s | 0.000001 s | 0.020546 s | 0.006486 s | 0.000000 s | 0.002611 s | 0.001012 s | 0.245064 s | 0.006893 s | 0.255448 s | 0.252973 s | 0.000000 s | 0.791071 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.002751 s | 0.000000 s | 0.003556 s | 0.006114 s | 1.606959 s |
-| prove1 | R | 0.002776 s | 0.000000 s | 0.008532 s | 0.012638 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.023961 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000002 s | 0.000001 s | 0.000007 s | 0.000012 s | 0.001336 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.001367 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.050633 s |
-| prove2 | Q_CX | 0.007553 s | 0.000000 s | 0.009758 s | 0.017597 s | 0.016685 s | 0.023816 s | 0.040838 s | 0.000000 s | 0.128961 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000001 s | 0.000005 s | 0.000002 s | 0.001682 s | 0.001327 s | 0.000000 s | 0.000110 s | 0.002589 s | 0.100740 s | 0.003801 s | 0.120936 s | 0.099102 s | 0.000000 s | 0.330318 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000046 s | 0.000013 s | 0.007933 s | 0.010578 s | 0.029827 s | 0.004726 s | 0.000004 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.053167 s | 0.003123 s | 0.000000 s | 0.003527 s | 0.006017 s | 1.024781 s |
-| prove2 | Q_CY | 0.006954 s | 0.000000 s | 0.009407 s | 0.018916 s | 0.009254 s | 0.013471 s | 0.012132 s | 0.000000 s | 0.082881 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000001 s | 0.000005 s | 0.000002 s | 0.003211 s | 0.007145 s | 0.000000 s | 0.000055 s | 0.002707 s | 0.238926 s | 0.007002 s | 0.243636 s | 0.236179 s | 0.000000 s | 0.738895 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000039 s | 0.000018 s | 0.009041 s | 0.010260 s | 0.032197 s | 0.001060 s | 0.000004 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.052656 s | 0.003332 s | 0.000000 s | 0.003547 s | 0.005829 s | 1.748762 s |
-| prove2 | p_comb | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.486314 s | 0.000029 s | 0.018000 s | 0.031516 s | 0.077863 s | 3.279333 s | 0.000026 s | 0.078577 s | 0.000011 s | 0.025870 s | 0.000017 s | 0.015388 s | 0.000018 s | 0.020649 s | 0.000006 s | 0.013011 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 4.046628 s |
-| prove4 | LHS_for_copy | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.022421 s | 0.034114 s | 0.024205 s | 0.000000 s | 0.080762 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000016 s | 0.000022 s | 0.022630 s | 0.013090 s | 0.038814 s | 0.000000 s | 0.000003 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.074606 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.310684 s |
-| prove4 | LHS_zk1 | 0.009676 s | 0.000000 s | 0.011478 s | 0.046551 s | 0.013515 s | 0.016362 s | 0.032524 s | 0.000000 s | 0.166085 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000012 s | 0.000011 s | 0.005725 s | 0.017410 s | 0.020474 s | 0.004361 s | 0.000002 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.048025 s | 0.006702 s | 0.000000 s | 0.007159 s | 0.022083 s | 0.428154 s |
-| prove4 | LHS_zk2 | 0.006884 s | 0.000000 s | 0.010744 s | 0.024809 s | 0.007074 s | 0.008858 s | 0.011006 s | 0.000000 s | 0.069400 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000001 s | 0.000004 s | 0.000002 s | 0.003229 s | 0.006035 s | 0.000000 s | 0.000061 s | 0.006503 s | 0.240700 s | 0.006868 s | 0.238653 s | 0.240548 s | 0.000000 s | 0.742631 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000013 s | 0.000008 s | 0.007543 s | 0.007809 s | 0.025829 s | 0.000000 s | 0.000003 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.041241 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 1.706457 s |
-| prove4 | Pi_A | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.029620 s | 0.041444 s | 0.038878 s | 0.000000 s | 0.118056 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000051 s | 0.000014 s | 0.009129 s | 0.009383 s | 0.033803 s | 0.000000 s | 0.000006 s | 0.001079 s | 0.002468 s | 0.002089 s | 0.002425 s | 0.000000 s | 0.052424 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.340871 s |
-| prove4 | Pi_combined_numerator | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.011286 s | 0.015833 s | 0.018446 s | 0.000000 s | 0.045580 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000001 s | 0.000000 s | 0.000001 s | 0.000007 s | 0.000417 s | 0.006675 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.007107 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.105354 s |
-| prove4 | V | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.001682 s | 0.006634 s | 0.017028 s | 0.000000 s | 0.025355 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000002 s | 0.000001 s | 0.000007 s | 0.000010 s | 0.000969 s | 0.000568 s | 0.000001 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.001566 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.053822 s |
-| prove4 | fXY | 0.002705 s | 0.000000 s | 0.006954 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.012973 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000300 s | 0.000620 s | 0.000556 s | 0.001819 s | 0.000001 s | 0.000006 s | 0.000004 s | 0.001077 s | 0.006934 s | 0.005171 s | 0.000000 s | 0.000001 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.013213 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.052337 s |
-| prove4 | gXY | 0.001554 s | 0.000000 s | 0.003714 s | 0.001834 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.009393 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000304 s | 0.000714 s | 0.000655 s | 0.000604 s | 0.000000 s | 0.000002 s | 0.000000 s | 0.000003 s | 0.000007 s | 0.001146 s | 0.000000 s | 0.000001 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.001166 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.021098 s |
-| prove4 | pC | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.024098 s | 0.020647 s | 0.028860 s | 0.000000 s | 0.073630 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000073 s | 0.000016 s | 0.020525 s | 0.031677 s | 0.030979 s | 0.000000 s | 0.000003 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.083299 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.313806 s |
-| prove4 | term5 | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.001194 s | 0.002765 s | 0.000000 s | 0.000000 s | 0.003964 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000003 s | 0.000003 s | 0.003654 s | 0.001878 s | 0.004850 s | 0.000000 s | 0.000001 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.010397 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.028709 s |
-| prove4 | term6 | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.001045 s | 0.003013 s | 0.000000 s | 0.000000 s | 0.004061 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000007 s | 0.000002 s | 0.001282 s | 0.001049 s | 0.004596 s | 0.000000 s | 0.000001 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.006948 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.022004 s |
+| module | variable | add_clone_operands | add_construct_result | add_icicle_add | add_resize_operands | addassign_clone_operands | addassign_icicle_add | addassign_resize_operands | addassign_update_metadata | addition | fused_final_from_rou_evals | fused_leaf_alloc | fused_leaf_cache_copy | fused_leaf_output_copy | fused_leaf_resize | fused_leaf_to_rou_evals | fused_mul_alloc | fused_mul_pointwise | fused_scale_alloc | fused_scale_pointwise | fused_sub_alloc | fused_sub_pointwise | fused_sum_alloc | fused_sum_pointwise | fused_x_minus_one_alloc | fused_x_minus_one_pointwise | mul_alloc_lhs_evals | mul_alloc_out_evals | mul_alloc_rhs_evals | mul_clone_resize_lhs | mul_clone_resize_rhs | mul_compute_target_size | mul_find_lhs_degree | mul_find_rhs_degree | mul_from_rou_evals | mul_icicle_eval_mul | mul_lhs_to_rou_evals | mul_rhs_to_rou_evals | mul_setup_vec_ops | multiplication | scalar_add_alloc_host | scalar_add_clone_coeffs | scalar_add_copy_coeffs | scalar_add_from_coeffs | scalar_add_update_constant | scalar_mul_alloc_input | scalar_mul_alloc_output | scalar_mul_copy_coeffs | scalar_mul_from_coeffs | scalar_mul_icicle_scalar_mul | scalar_mul_one_clone | scalar_mul_setup | scaling | sub_clone_operands | sub_construct_result | sub_icicle_sub | sub_resize_operands | total |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| prove0 | B | 0.002726 s | 0.000001 s | 0.008509 s | 0.013233 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.024483 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.048951 s |
+| prove0 | Q_AX | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.012137 s | 0.020406 s | 0.022894 s | 0.000000 s | 0.055461 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000010 s | 0.000003 s | 0.001060 s | 0.001014 s | 0.006071 s | 0.002087 s | 0.000002 s | 0.010266 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.131411 s |
+| prove0 | Q_AY | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.007672 s | 0.015441 s | 0.026077 s | 0.000000 s | 0.049212 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000015 s | 0.000004 s | 0.001137 s | 0.001069 s | 0.006223 s | 0.002551 s | 0.000002 s | 0.011019 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.120423 s |
+| prove0 | U | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.001568 s | 0.006693 s | 0.024404 s | 0.000000 s | 0.032679 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000002 s | 0.000003 s | 0.000030 s | 0.000021 s | 0.001007 s | 0.000535 s | 0.000001 s | 0.001607 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.068552 s |
+| prove0 | V | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.001627 s | 0.006697 s | 0.017027 s | 0.000000 s | 0.025364 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000003 s | 0.000001 s | 0.000007 s | 0.000010 s | 0.001030 s | 0.000516 s | 0.000001 s | 0.001578 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.053859 s |
+| prove0 | W | 0.002635 s | 0.000001 s | 0.008140 s | 0.021904 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.032694 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.065375 s |
+| prove0 | p0XY | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.012766 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000002 s | 0.000004 s | 0.000001 s | 0.021177 s | 0.006417 s | 0.000000 s | 0.002716 s | 0.000899 s | 0.252377 s | 0.006765 s | 0.254022 s | 0.248265 s | 0.000001 s | 0.792682 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.003196 s | 0.000000 s | 0.003359 s | 0.006205 s | 1.610854 s |
+| prove1 | R | 0.002612 s | 0.000000 s | 0.008267 s | 0.012860 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.023749 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000002 s | 0.000000 s | 0.000014 s | 0.000009 s | 0.001220 s | 0.000000 s | 0.000000 s | 0.001253 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.049988 s |
+| prove2 | Q_CX | 0.007470 s | 0.000001 s | 0.009911 s | 0.017415 s | 0.016703 s | 0.023376 s | 0.040396 s | 0.000000 s | 0.128275 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000001 s | 0.000006 s | 0.000005 s | 0.001680 s | 0.001169 s | 0.000000 s | 0.000087 s | 0.002420 s | 0.104208 s | 0.003693 s | 0.109890 s | 0.102525 s | 0.000000 s | 0.325706 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000040 s | 0.000015 s | 0.008401 s | 0.010967 s | 0.030043 s | 0.004203 s | 0.000006 s | 0.053716 s | 0.003614 s | 0.000000 s | 0.003365 s | 0.005978 s | 1.015285 s |
+| prove2 | Q_CY | 0.006864 s | 0.000001 s | 0.009374 s | 0.019042 s | 0.009033 s | 0.013620 s | 0.010868 s | 0.000000 s | 0.081883 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000003 s | 0.000008 s | 0.000002 s | 0.003334 s | 0.007161 s | 0.000000 s | 0.000049 s | 0.002796 s | 0.236753 s | 0.006886 s | 0.240335 s | 0.255386 s | 0.000000 s | 0.752739 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000049 s | 0.000019 s | 0.009300 s | 0.009350 s | 0.034049 s | 0.001056 s | 0.000004 s | 0.053867 s | 0.003449 s | 0.000000 s | 0.003597 s | 0.005990 s | 1.776867 s |
+| prove2 | p_comb | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.483200 s | 0.000023 s | 0.017499 s | 0.032482 s | 0.074987 s | 3.318134 s | 0.000025 s | 0.077617 s | 0.000014 s | 0.024938 s | 0.000019 s | 0.015532 s | 0.000019 s | 0.019874 s | 0.000004 s | 0.012830 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 4.077198 s |
+| prove4 | LHS_for_copy | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.021939 s | 0.033956 s | 0.024722 s | 0.000000 s | 0.080650 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000017 s | 0.000018 s | 0.015904 s | 0.013428 s | 0.038487 s | 0.000000 s | 0.000001 s | 0.067879 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.297001 s |
+| prove4 | LHS_zk1 | 0.009833 s | 0.000001 s | 0.011595 s | 0.045138 s | 0.013243 s | 0.015519 s | 0.030693 s | 0.000000 s | 0.161163 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000013 s | 0.000009 s | 0.005204 s | 0.017320 s | 0.020004 s | 0.004641 s | 0.000002 s | 0.047213 s | 0.006591 s | 0.000000 s | 0.007119 s | 0.021392 s | 0.416693 s |
+| prove4 | LHS_zk2 | 0.006667 s | 0.000001 s | 0.010378 s | 0.024751 s | 0.007052 s | 0.008710 s | 0.011482 s | 0.000000 s | 0.069066 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000001 s | 0.000006 s | 0.000002 s | 0.003303 s | 0.002207 s | 0.000000 s | 0.000096 s | 0.005584 s | 0.236658 s | 0.006938 s | 0.234199 s | 0.229361 s | 0.000000 s | 0.718385 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000014 s | 0.000009 s | 0.007749 s | 0.008122 s | 0.026494 s | 0.000000 s | 0.000002 s | 0.042420 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 1.659656 s |
+| prove4 | Pi_A | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.029319 s | 0.041919 s | 0.038210 s | 0.000000 s | 0.109499 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000057 s | 0.000018 s | 0.009184 s | 0.009764 s | 0.034780 s | 0.000000 s | 0.000006 s | 0.053846 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.326601 s |
+| prove4 | Pi_combined_numerator | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.010634 s | 0.015838 s | 0.018814 s | 0.000000 s | 0.045300 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000001 s | 0.000000 s | 0.000002 s | 0.000003 s | 0.000472 s | 0.006690 s | 0.000000 s | 0.007176 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.104931 s |
+| prove4 | V | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.001724 s | 0.006650 s | 0.016956 s | 0.000000 s | 0.025340 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000002 s | 0.000000 s | 0.000008 s | 0.000009 s | 0.001107 s | 0.000733 s | 0.000001 s | 0.001868 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.054397 s |
+| prove4 | fXY | 0.002479 s | 0.000000 s | 0.005409 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.011256 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000273 s | 0.000701 s | 0.000518 s | 0.001864 s | 0.000000 s | 0.000007 s | 0.000002 s | 0.001060 s | 0.002312 s | 0.004650 s | 0.000000 s | 0.000001 s | 0.008041 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.038575 s |
+| prove4 | gXY | 0.001106 s | 0.000000 s | 0.002820 s | 0.001759 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.008034 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000281 s | 0.000686 s | 0.000738 s | 0.000637 s | 0.000000 s | 0.000001 s | 0.000000 s | 0.000002 s | 0.000003 s | 0.000942 s | 0.000000 s | 0.000001 s | 0.000952 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.017963 s |
+| prove4 | pC | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.018933 s | 0.019802 s | 0.029455 s | 0.000000 s | 0.068215 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000067 s | 0.000022 s | 0.020283 s | 0.022805 s | 0.029677 s | 0.000000 s | 0.000003 s | 0.072885 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.282147 s |
+| prove4 | term5 | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.001056 s | 0.002895 s | 0.000000 s | 0.000000 s | 0.003955 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000002 s | 0.000004 s | 0.002771 s | 0.001686 s | 0.004579 s | 0.000000 s | 0.000001 s | 0.009052 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.026003 s |
+| prove4 | term6 | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.001353 s | 0.002918 s | 0.000000 s | 0.000000 s | 0.004275 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000007 s | 0.000002 s | 0.001048 s | 0.001047 s | 0.004414 s | 0.000000 s | 0.000001 s | 0.006525 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.000000 s | 0.021591 s |
 
 ## Encode Details (by variable)
 
 | module | variable | time | dims |
 | --- | --- | --- | --- |
-| init | A_free | 0.002712 s | msm=128x1 |
-| prove0 | B | 1.069625 s | msm=4098x258 |
-| prove0 | Q_AX | 2.155080 s | msm=4097x511 |
-| prove0 | Q_AY | 1.159705 s | msm=4097x257 |
-| prove0 | U | 1.102960 s | msm=4097x257 |
-| prove0 | V | 1.094557 s | msm=4097x257 |
-| prove0 | W | 1.104545 s | msm=4099x259 |
-| prove1 | R | 1.090058 s | msm=4097x257 |
-| prove2 | Q_CX | 3.950082 s | msm=8192x511 |
-| prove2 | Q_CY | 2.165635 s | msm=8191x257 |
-| prove4 | M_N_X | 1.095068 s | msm=4096x256 |
-| prove4 | M_Y | 0.002030 s | msm=1x256 |
-| prove4 | N_Y | 0.001779 s | msm=1x256 |
-| prove4 | Pi_X | 3.965595 s | msm=8191x511 |
-| prove4 | Pi_Y | 0.002463 s | msm=1x510 |
+| init | A_free | 0.001647 s | msm=128x1 |
+| prove0 | B | 1.088302 s | msm=4098x258 |
+| prove0 | Q_AX | 2.133061 s | msm=4097x511 |
+| prove0 | Q_AY | 1.087822 s | msm=4097x257 |
+| prove0 | U | 1.062771 s | msm=4097x257 |
+| prove0 | V | 1.112843 s | msm=4097x257 |
+| prove0 | W | 1.124795 s | msm=4099x259 |
+| prove1 | R | 1.093805 s | msm=4097x257 |
+| prove2 | Q_CX | 3.953322 s | msm=8192x511 |
+| prove2 | Q_CY | 2.319063 s | msm=8191x257 |
+| prove4 | M_N_X | 1.138822 s | msm=4096x256 |
+| prove4 | M_Y | 0.001976 s | msm=1x256 |
+| prove4 | N_Y | 0.001564 s | msm=1x256 |
+| prove4 | Pi_X | 3.909396 s | msm=8191x511 |
+| prove4 | Pi_Y | 0.002162 s | msm=1x510 |
