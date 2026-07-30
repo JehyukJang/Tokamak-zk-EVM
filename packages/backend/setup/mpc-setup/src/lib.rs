@@ -1,5 +1,3 @@
-#![allow(unused_imports)]
-
 use crate::mpc_utils::compute_langrange_i_coeffs;
 use icicle_bls12_381::curve::{G1Affine, G1Projective, ScalarField};
 use icicle_core::msm;
@@ -37,18 +35,18 @@ macro_rules! testing_log {
     }};
 }
 
-pub mod conversions;
-pub mod utils;
+mod conversions;
+mod utils;
 
-pub mod accumulator;
-pub mod contributor;
-pub mod drive_upload;
-pub mod flows;
-pub mod mpc_utils;
-pub mod phase1_source;
+mod accumulator;
+mod contributor;
+mod drive_upload;
+mod flows;
+mod mpc_utils;
+mod phase1_source;
 
-pub mod sigma;
-pub mod versioning;
+mod sigma;
+mod versioning;
 
 pub use flows::{
     run_dusk_backed_mpc_setup, run_native_mpc_setup, DuskBackedMpcSetupConfig, NativeMpcSetupConfig,
