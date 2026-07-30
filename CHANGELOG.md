@@ -8,6 +8,25 @@ The format is based on Keep a Changelog.
 
 ## Unreleased
 
+### Browser-Compatible SNARK
+
+- Added the independent browser preprocess API with explicit installation,
+  named permutation, instance, and preprocess-CRS inputs, optimized
+  prover-compatible primitives, and Node/Chromium parity coverage.
+- Changed `convertCrs()` to emit named prover, preprocess, and verifier CRS
+  binaries from one `combined_sigma.rkyv` source.
+- Extended instance binaries with the function-instance section required by
+  preprocess and intentionally rejected the unreleased earlier layout.
+- Added the complete Vite preprocess, prove, and verify workflow, focused
+  converter and staged-prover recipes, and a verified Webpack converter
+  consumer.
+- Required an explicit verifier CRS source for every package build and
+  prevented accumulated or stale compiled output from entering release
+  tarballs.
+- Simplified binary inspection, package boundaries, retained diagnostics,
+  optimization documentation, examples, and embedded third-party license
+  material without changing the supported prover or verifier protocol.
+
 ## [2.1.3] - 2026-07-27
 
 ### Repository

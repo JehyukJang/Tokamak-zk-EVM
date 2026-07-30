@@ -2,24 +2,9 @@
 import type {
   ProverPackedSparseMatrix,
   ProverPackedSparseSubcircuitR1cs,
-  ProverSetupParams,
   ProverSubcircuitInfo,
 } from "../protocol/witness.js";
 
-export const NATIVE_BACKEND_VERSION = "2.1.3";
-export const SUBCIRCUIT_LIBRARY_PACKAGE_VERSION = "2.1.3";
-
-export const GENERATED_PROVER_SETUP_PARAMS = {
-  "l_free": 128,
-  "l_user_out": 65,
-  "l_user": 85,
-  "l": 728,
-  "l_D": 4824,
-  "m_D": 26591,
-  "n": 4096,
-  "s_D": 14,
-  "s_max": 256
-} as const satisfies ProverSetupParams;
 export const GENERATED_PROVER_SUBCIRCUIT_INFOS = [
   {
     "id": 0,

@@ -1,5 +1,11 @@
 export type ConverterArtifactJson = Record<string, unknown>;
 
+export interface ConvertedCrs {
+  readonly proverCrs: Uint8Array;
+  readonly preprocessCrs: Uint8Array;
+  readonly verifierCrs: Uint8Array;
+}
+
 export interface ConvertProofJsonInput {
   readonly sourceFormat: "json";
   readonly proof: unknown;
@@ -11,10 +17,6 @@ export interface ConvertProofBinaryInput {
 }
 
 export type ConvertProofInput = ConvertProofJsonInput | ConvertProofBinaryInput;
-
-export interface BinaryInspectionOptions {
-  readonly includeSectionData?: boolean;
-}
 
 export interface BinaryArtifactInspection {
   readonly kind: number;
@@ -34,5 +36,4 @@ export interface BinarySectionInspection {
   readonly byteOffset: number;
   readonly byteLength: number;
   readonly flags: number;
-  readonly dataHex?: string;
 }

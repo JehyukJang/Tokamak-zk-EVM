@@ -11,6 +11,7 @@ in `README.md`.
 The package exposes only:
 
 - `@tokamak-zk-evm/snark-browser-compat/prover`
+- `@tokamak-zk-evm/snark-browser-compat/preprocess`
 - `@tokamak-zk-evm/snark-browser-compat/verifier`
 - `@tokamak-zk-evm/snark-browser-compat/converter`
 
@@ -35,6 +36,7 @@ packages/backend-wasm/
   src/
     artifacts/
     converter/
+    preprocess/
     prover/
     runtime/
     verifier/
@@ -47,6 +49,9 @@ packages/backend-wasm/
 - `src/artifacts`: binary containers, decoded views, and versioned specs.
 - `src/converter`: public converter API, material conversion, optional
   inspection and validation, and the prover CRS Worker.
+- `src/generated`: shared generated setup and dependency-version constants.
+- `src/preprocess`: independent preprocess lifecycle, permutation-polynomial
+  construction, and verifier-preprocess commitment output.
 - `src/prover`: public prover lifecycle and integrated protocol operations.
 - `src/runtime`: shared ffjavascript-backed field, curve, group, pairing,
   transcript, random, and polynomial infrastructure.
@@ -83,14 +88,17 @@ Do not edit generated production files manually. Maintain them through:
 ```sh
 npm run specs:generate
 npm run subcircuit-library:generate
+export BACKEND_WASM_VERIFIER_CRS_SOURCE=/absolute/path/to/sigma_verify.json
 npm run verifier-crs:generate
 ```
 
 The subcircuit generator reads the pinned
 `@tokamak-zk-evm/subcircuit-library` dependency. The verifier CRS generator
-requires the explicit native owner path
-`../backend/setup/output/sigma_verify.json`. Every production build regenerates
-these inputs instead of reusing a stale verifier CRS.
+requires `BACKEND_WASM_VERIFIER_CRS_SOURCE` to identify the explicit native
+owner `sigma_verify.json` path. `build`, `typecheck`, and `prepack` use the same
+required variable. They fail when it is missing, empty, or does not identify a
+file. Every production build regenerates these inputs instead of reusing a
+stale verifier CRS.
 
 ## Test fixture policy
 
@@ -121,6 +129,8 @@ npm run binary:check
 npm run prover:ops:check
 npm run prover:witness:check
 npm run verifier:check
+npm run preprocess:public-api:check
+npm run preprocess:browser:check
 npm run prover:check
 npm run verifier:browser:check
 npm run prover:browser:check
@@ -149,6 +159,7 @@ the repository's
 5. Inspect the actual packlist and packed metadata:
 
    ```sh
+   export BACKEND_WASM_VERIFIER_CRS_SOURCE=/absolute/path/to/sigma_verify.json
    npm pack --dry-run
    ```
 
@@ -157,7 +168,18 @@ the repository's
 7. Confirm that `test`, `scripts`, `fixtures`, `tools`, `tmp`, diagnostics, and
    copied artifacts are excluded.
 8. Exercise the packed package through the browser consumer checks before
-   publication.
+   publication:
+
+   ```sh
+   npm run converter:browser:check
+   npm run converter:crs:browser:check
+   npm run converter:webpack:check
+   ```
+
+   `converter:crs:browser:check` requires the copied and prepared owner
+   fixtures described above. The release CI runs the converter error and
+   Worker-boundary check because it does not acquire or generate test CRS
+   fixtures.
 
 The package intentionally remains outside the root npm workspace. Its release
 build resolves the exact synchronized `@tokamak-zk-evm/subcircuit-library`
@@ -165,29 +187,21 @@ version from npm after the release workflow publishes that package.
 
 The repository release workflow validates the latest compatible public CRS,
 exports its verified `sigma_verify.json`, rebuilds the embedded verifier CRS,
-and uploads `snark-browser-compat-release-tarball`. The workflow does not
-automatically publish while the package is absent from npm.
+and uploads `snark-browser-compat-release-tarball`. It compares the synchronized
+tarball version with npm and uses the configured npm Trusted Publisher to
+publish only a strictly newer version. An equal version is validated but not
+republished; an older repository version fails. npm versions are immutable and
+must never be reused for changed package contents.
 
-For the first publication:
+For a synchronized release:
 
-1. Merge the release PR into `main`.
-2. Wait for the `Build browser-compatible SNARK package` job to succeed.
-3. Download and extract the `snark-browser-compat-release-tarball` workflow
-   artifact.
-4. Run `sha256sum --check SHA256SUMS` in the extracted artifact directory.
-5. Publish the extracted tarball:
-
-   ```sh
-   npm publish --access public --ignore-scripts \
-     ./tokamak-zk-evm-snark-browser-compat-X.Y.Z.tgz
-   ```
-
-6. Configure npm Trusted Publisher for
-   `.github/workflows/publish-tokamak-zk-evm.yml`.
-
-After bootstrap, the same workflow compares the synchronized version with npm
-and publishes only a strictly newer package version. npm versions are
-immutable; never reuse a published version.
+1. Run the root version synchronization and validation commands.
+2. Review and merge the release PR into `main`.
+3. Require the browser-compatible SNARK build and pre-publish checks to pass.
+4. Confirm the publish job selects the exact verified tarball and reports the
+   expected local and previously published versions.
+5. Download `snark-browser-compat-release-tarball` when an independent archive
+   review is required and run `sha256sum --check SHA256SUMS`.
 
 License and redistribution findings for release 2.1.3 are recorded in the
 repository's

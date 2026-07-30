@@ -9,7 +9,11 @@ import { marked } from "marked";
 import { chromium } from "playwright";
 
 const execFileAsync = promisify(execFile);
-const DOCUMENTS = ["README.md", "CONTRIBUTING.md"] as const;
+const DOCUMENTS = [
+  "README.md",
+  "CONTRIBUTING.md",
+  "examples/browser/README.md",
+] as const;
 const EXPECTED_UNPUBLISHED_NPM_URL =
   "https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat";
 
@@ -191,13 +195,15 @@ function checkPublicApiReference(readme: string): void {
     "ProverSession.dispose()",
     "verifier.install()",
     "verifier.verify(input)",
+    "preprocess.install(options?)",
+    "preprocess.preprocess(input)",
     "convertWitness(value)",
     "convertPermutation(value)",
     "convertInstance(value)",
     "convertVerifierPreprocess(value)",
     "convertProof(input)",
-    "convertProverCrs(bytes)",
-    "inspectBinary(bytes, options?)",
+    "convertCrs(bytes)",
+    "inspectBinary(bytes)",
     "validateBinary(bytes)",
   ] as const;
   for (const entry of exactEntries) {
@@ -214,9 +220,12 @@ function checkPublicApiReference(readme: string): void {
     "ProverSession",
     "VerifierInput",
     "VerifierInstallationInfo",
+    "PreprocessInput",
+    "PreprocessInstallOptions",
+    "PreprocessInstallationInfo",
     "BinaryArtifactInspection",
-    "BinaryInspectionOptions",
     "BinarySectionInspection",
+    "ConvertedCrs",
     "ConverterArtifactJson",
     "ConvertProofBinaryInput",
     "ConvertProofInput",
@@ -232,7 +241,7 @@ function checkPublicApiReference(readme: string): void {
   }
 
   const workflows = readme.slice(reference.length);
-  for (const entry of ["install(", "verify(", "prove(", "begin(", "convert", "inspectBinary(", "validateBinary("]) {
+  for (const entry of ["install(", "preprocess(", "verify(", "prove(", "begin(", "convert", "inspectBinary(", "validateBinary("]) {
     if (!workflows.includes(entry)) {
       throw new Error(`README workflows do not use or select ${entry}.`);
     }
@@ -243,7 +252,7 @@ function checkQualifiedClaims(readme: string): void {
   const normalized = readme.replace(/\s+/g, " ");
   const requiredStatements = [
     "Firefox or Safari | Not yet verified",
-    "Webpack consumer build | Requires compatible ESM/Worker asset handling; not yet verified",
+    "Chromium with a Webpack production build | Verified",
     "not minimum requirements",
     "does not authenticate the producer",
     "does not silently fall back",
@@ -311,6 +320,24 @@ async function checkPackedPackage(): Promise<void> {
     }
     const result = results[0];
     const files = new Set(result.files.map((file) => file.path));
+    const requiredThirdPartyLicenses = [
+      "third-party-licenses/rkyv-decoder-wasm/ahash-0.7.8/LICENSE-MIT",
+      "third-party-licenses/rkyv-decoder-wasm/bytecheck-0.6.12/LICENSE",
+      "third-party-licenses/rkyv-decoder-wasm/cfg-if-1.0.4/LICENSE-MIT",
+      "third-party-licenses/rkyv-decoder-wasm/hashbrown-0.12.3/LICENSE-MIT",
+      "third-party-licenses/rkyv-decoder-wasm/once_cell-1.21.4/LICENSE-MIT",
+      "third-party-licenses/rkyv-decoder-wasm/ptr_meta-0.1.4/LICENSE",
+      "third-party-licenses/rkyv-decoder-wasm/rend-0.4.2/LICENSE",
+      "third-party-licenses/rkyv-decoder-wasm/rkyv-0.7.46/LICENSE",
+      "third-party-licenses/rkyv-decoder-wasm/rust-1.95.0/COPYRIGHT",
+      "third-party-licenses/rkyv-decoder-wasm/rust-1.95.0/LICENSE-MIT",
+      "third-party-licenses/rkyv-decoder-wasm/seahash-4.1.0/LICENSE-MIT",
+      "third-party-licenses/rkyv-decoder-wasm/simdutf8-0.1.5/LICENSE-MIT",
+      "third-party-licenses/rkyv-decoder-wasm/unicode-ident-1.0.24/LICENSE-MIT",
+      "third-party-licenses/rkyv-decoder-wasm/unicode-ident-1.0.24/LICENSE-UNICODE",
+      "third-party-licenses/rkyv-decoder-wasm/wasm-bindgen-0.2.126/LICENSE-MIT",
+      "third-party-licenses/rkyv-decoder-wasm/wasm-bindgen-shared-0.2.126/LICENSE-MIT",
+    ] as const;
     const required = [
       "package.json",
       "README.md",
@@ -318,21 +345,56 @@ async function checkPackedPackage(): Promise<void> {
       "LICENSE-MIT",
       "LICENSE-APACHE",
       "THIRD_PARTY_NOTICES.md",
+      ...requiredThirdPartyLicenses,
       "dist/prover/index.js",
       "dist/prover/index.d.ts",
+      "dist/preprocess/index.js",
+      "dist/preprocess/index.d.ts",
+      "dist/api/public-api-utils.js",
+      "dist/api/public-api-utils.d.ts",
+      "dist/generated/setup.generated.js",
+      "dist/generated/setup.generated.d.ts",
       "dist/verifier/index.js",
       "dist/verifier/index.d.ts",
       "dist/converter/index.js",
       "dist/converter/index.d.ts",
-      "dist/converter/worker/prover-crs-converter-worker.js",
+      "dist/converter/worker/crs-converter-worker.js",
       "dist/converter/worker/backend_wasm_rkyv_decoder_bg.wasm",
       "dist/verifier/generated/sigma-verify.generated.js",
+      "examples/browser/README.md",
+      "examples/browser/index.html",
+      "examples/browser/package.json",
+      "examples/browser/tsconfig.json",
+      "examples/browser/src/generate-proof.ts",
+      "examples/browser/src/global.d.ts",
+      "examples/browser/src/inspect-and-validate.ts",
+      "examples/browser/src/load-binary.ts",
       "examples/browser/src/main.ts",
+      "examples/browser/src/prepare-artifacts.ts",
+      "examples/browser/src/run-preprocess.ts",
+      "examples/browser/src/staged-proof.ts",
+      "examples/browser/src/styles.css",
+      "examples/browser/src/verify-proof.ts",
     ] as const;
     for (const file of required) {
       if (!files.has(file)) {
         throw new Error(`Packed package is missing ${file}.`);
       }
+    }
+    await checkPackedDistMatchesTrackedSource(files);
+    const packedThirdPartyLicenses = [...files]
+      .filter((file) => file.startsWith("third-party-licenses/"))
+      .sort();
+    const expectedThirdPartyLicenses = [...requiredThirdPartyLicenses].sort();
+    if (
+      packedThirdPartyLicenses.length !== expectedThirdPartyLicenses.length
+      || packedThirdPartyLicenses.some(
+        (file, index) => file !== expectedThirdPartyLicenses[index],
+      )
+    ) {
+      throw new Error(
+        `Packed third-party license set differs from the selected runtime license set: ${JSON.stringify(packedThirdPartyLicenses)}.`,
+      );
     }
 
     const excludedPrefixes = [
@@ -366,12 +428,59 @@ async function checkPackedPackage(): Promise<void> {
       throw new Error(`Packed package metadata is inconsistent: ${manifestSource}`);
     }
     const exports = Object.keys(manifest.exports).sort();
-    const expectedExports = ["./converter", "./prover", "./verifier"];
+    const expectedExports = ["./converter", "./preprocess", "./prover", "./verifier"];
     if (JSON.stringify(exports) !== JSON.stringify(expectedExports)) {
       throw new Error(`Packed public exports changed: ${exports.join(", ")}.`);
     }
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+}
+
+async function checkPackedDistMatchesTrackedSource(
+  packedFiles: ReadonlySet<string>,
+): Promise<void> {
+  const { stdout } = await execFileAsync(
+    "git",
+    ["ls-files", "src"],
+    { cwd: process.cwd(), maxBuffer: 1024 * 1024 },
+  );
+  const expected = new Set<string>([
+    "dist/converter/worker/backend_wasm_rkyv_decoder_bg.wasm",
+  ]);
+
+  const sources = stdout
+    .trim()
+    .split("\n")
+    .filter((file) => file.endsWith(".ts"));
+  for (const source of sources) {
+    if (source.endsWith(".d.ts")) {
+      continue;
+    }
+    const relative = source.slice("src/".length, -".ts".length);
+    expected.add(`dist/${relative}.js`);
+    expected.add(`dist/${relative}.d.ts`);
+    if (relative.includes("/")) {
+      expected.add(`dist/${relative}.js.map`);
+      expected.add(`dist/${relative}.d.ts.map`);
+    }
+  }
+
+  const actual = new Set(
+    [...packedFiles].filter((file) => file.startsWith("dist/")),
+  );
+  const missing = [...expected].filter((file) => !actual.has(file)).sort();
+  const stale = [...actual].filter((file) => !expected.has(file)).sort();
+  if (missing.length > 0 || stale.length > 0) {
+    throw new Error(
+      [
+        "Packed dist does not match tracked production source.",
+        missing.length > 0 ? `Missing: ${missing.join(", ")}` : undefined,
+        stale.length > 0 ? `Stale: ${stale.join(", ")}` : undefined,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
   }
 }
 

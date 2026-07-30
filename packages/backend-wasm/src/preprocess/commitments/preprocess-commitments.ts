@@ -1,0 +1,86 @@
+import type { CurveRuntime } from "../../runtime/curve/curve.js";
+import {
+  msmAffineMontgomeryChunks,
+  type AffineMontgomeryMsmChunk,
+} from "../../runtime/group/affine-msm.js";
+import { G1_AFFINE_BYTES } from "../../runtime/group/group.js";
+import type { BivariatePolynomialBuffer } from "../../runtime/polynomial/bivariate-polynomial-buffer.js";
+
+export async function commitDensePreprocessPolynomial(
+  runtime: CurveRuntime,
+  xyPowers: Uint8Array,
+  polynomial: BivariatePolynomialBuffer,
+  chunkPoints: number,
+): Promise<Uint8Array> {
+  assertChunkPoints(chunkPoints);
+  const pointCount = polynomial.xSize * polynomial.ySize;
+  assertBufferLength(xyPowers, pointCount * G1_AFFINE_BYTES, "Preprocess xy-powers");
+  assertBufferLength(
+    polynomial.coefficients,
+    pointCount * runtime.Fr.byteLength,
+    "Preprocess polynomial coefficients",
+  );
+
+  return msmAffineMontgomeryChunks(
+    runtime,
+    prepareDensePreprocessChunks(
+      xyPowers,
+      polynomial.coefficients,
+      pointCount,
+      runtime.Fr.byteLength,
+      chunkPoints,
+    ),
+  );
+}
+
+function* prepareDensePreprocessChunks(
+  xyPowers: Uint8Array,
+  coefficients: Uint8Array,
+  pointCount: number,
+  fieldElementBytes: number,
+  chunkPoints: number,
+): Iterable<AffineMontgomeryMsmChunk> {
+  for (let start = 0; start < pointCount; start += chunkPoints) {
+    const end = Math.min(start + chunkPoints, pointCount);
+    yield {
+      bases: xyPowers.subarray(
+        start * G1_AFFINE_BYTES,
+        end * G1_AFFINE_BYTES,
+      ),
+      montgomeryScalars: coefficients.subarray(
+        start * fieldElementBytes,
+        end * fieldElementBytes,
+      ),
+    };
+  }
+}
+
+export async function commitFunctionInstance(
+  runtime: CurveRuntime,
+  gammaInvOInst: Uint8Array,
+  functionInstance: Uint8Array,
+): Promise<Uint8Array> {
+  if (gammaInvOInst.byteLength % G1_AFFINE_BYTES !== 0) {
+    throw new Error("Preprocess gamma-inv-o-inst must contain whole affine G1 points.");
+  }
+  const pointCount = gammaInvOInst.byteLength / G1_AFFINE_BYTES;
+  assertBufferLength(
+    functionInstance,
+    pointCount * runtime.Fr.byteLength,
+    "Function instance",
+  );
+  const rawScalars = await runtime.Fr.batchFromMontgomeryBuffer(functionInstance);
+  return runtime.G1.msmAffineRaw(gammaInvOInst, rawScalars);
+}
+
+function assertChunkPoints(value: number): void {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error("Preprocess MSM chunk size must be a positive safe integer.");
+  }
+}
+
+function assertBufferLength(value: Uint8Array, expected: number, label: string): void {
+  if (value.byteLength !== expected) {
+    throw new Error(`${label} byte length must be ${expected}; received ${value.byteLength}.`);
+  }
+}

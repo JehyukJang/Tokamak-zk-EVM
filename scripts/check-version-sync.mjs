@@ -140,7 +140,7 @@ if (backendWasmVersionMatch?.[1] !== expectedVersion) {
 }
 
 const backendWasmGeneratedModule = readText(
-  'packages/backend-wasm/src/prover/generated/subcircuit-library.generated.ts',
+  'packages/backend-wasm/src/generated/setup.generated.ts',
 );
 for (const constantName of ['NATIVE_BACKEND_VERSION', 'SUBCIRCUIT_LIBRARY_PACKAGE_VERSION']) {
   const match = new RegExp(`${constantName}\\s*=\\s*"([^"]+)"`, 'u').exec(

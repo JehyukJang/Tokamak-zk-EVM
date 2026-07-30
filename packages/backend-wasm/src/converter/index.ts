@@ -1,16 +1,16 @@
 import { BackendWasmError } from "../backend-wasm-error.js";
 import { inspectBinary as inspectBinaryInternal } from "./conversion/binary-inspection.js";
+import { convertCrs as convertCrsInternal } from "./conversion/crs-converter.js";
 import { convertInstance as convertInstanceInternal } from "./conversion/instance-converter.js";
 import { convertPermutation as convertPermutationInternal } from "./conversion/permutation-converter.js";
 import { convertProof as convertProofInternal } from "./conversion/proof-converter.js";
-import { convertProverCrs as convertProverCrsInternal } from "./conversion/prover-crs-converter.js";
 import { convertVerifierPreprocess as convertVerifierPreprocessInternal } from "./conversion/verifier-preprocess-converter.js";
 import { convertWitness as convertWitnessInternal } from "./conversion/witness-converter.js";
 import { validateBinary as validateBinaryInternal } from "./validation/validators.js";
 import type { RuntimeArtifactFileValidationResult } from "./validation/validators.js";
 import type {
   BinaryArtifactInspection,
-  BinaryInspectionOptions,
+  ConvertedCrs,
   ConverterArtifactJson,
   ConvertProofBinaryInput,
   ConvertProofInput,
@@ -55,8 +55,8 @@ export function convertWitness(witness: unknown): Promise<Uint8Array> {
   return runConverter("convertWitness", () => convertWitnessInternal(witness));
 }
 
-export function convertProverCrs(rkyvBytes: Uint8Array): Promise<Uint8Array> {
-  return runConverter("convertProverCrs", () => convertProverCrsInternal(rkyvBytes));
+export function convertCrs(rkyvBytes: Uint8Array): Promise<ConvertedCrs> {
+  return runConverter("convertCrs", () => convertCrsInternal(rkyvBytes));
 }
 
 export function convertPermutation(permutation: unknown): Promise<Uint8Array> {
@@ -65,9 +65,8 @@ export function convertPermutation(permutation: unknown): Promise<Uint8Array> {
 
 export function inspectBinary(
   artifact: Uint8Array,
-  options: BinaryInspectionOptions = {},
 ): Promise<BinaryArtifactInspection> {
-  return runConverter("inspectBinary", () => inspectBinaryInternal(artifact, options));
+  return runConverter("inspectBinary", () => inspectBinaryInternal(artifact));
 }
 
 export function validateBinary(
@@ -98,8 +97,8 @@ export type { RuntimeArtifactFileValidationResult };
 
 export type {
   BinaryArtifactInspection,
-  BinaryInspectionOptions,
   BinarySectionInspection,
+  ConvertedCrs,
   ConverterArtifactJson,
   ConvertProofBinaryInput,
   ConvertProofInput,

@@ -222,11 +222,11 @@ replaceVersionConstant(
   'BACKEND_WASM_PACKAGE_VERSION',
 );
 replaceVersionConstant(
-  'packages/backend-wasm/src/prover/generated/subcircuit-library.generated.ts',
+  'packages/backend-wasm/src/generated/setup.generated.ts',
   'NATIVE_BACKEND_VERSION',
 );
 replaceVersionConstant(
-  'packages/backend-wasm/src/prover/generated/subcircuit-library.generated.ts',
+  'packages/backend-wasm/src/generated/setup.generated.ts',
   'SUBCIRCUIT_LIBRARY_PACKAGE_VERSION',
 );
 

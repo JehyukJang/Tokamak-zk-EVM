@@ -34,6 +34,11 @@ const SPEC_JOBS: readonly SpecJob[] = [
     constName: "PROVER_CRS_V1_SPEC",
   },
   {
+    jsonPath: "src/artifacts/specs/preprocess-crs.v1.json",
+    generatedPath: "src/artifacts/specs/preprocess-crs.v1.generated.ts",
+    constName: "PREPROCESS_CRS_V1_SPEC",
+  },
+  {
     jsonPath: "src/artifacts/specs/prover-placement-variables.v1.json",
     generatedPath: "src/artifacts/specs/prover-placement-variables.v1.generated.ts",
     constName: "PROVER_PLACEMENT_VARIABLES_V1_SPEC",
@@ -102,10 +107,10 @@ function parseRawSpec(raw: unknown, sourcePath: string): RawSpec {
     raw.name !== "verifier_preprocess" &&
     raw.name !== "verifier_proof" &&
     raw.name !== "instance" &&
+    raw.name !== "preprocess_crs" &&
     raw.name !== "prover_crs" &&
     raw.name !== "prover_placement_variables" &&
-    raw.name !== "prover_permutation" &&
-    raw.name !== "prover_setup_params"
+    raw.name !== "prover_permutation"
   ) {
     throw new Error(`${sourcePath} has unsupported spec name: ${String(raw.name)}.`);
   }
@@ -278,8 +283,6 @@ function parseSectionEncoding(value: unknown, sourcePath: string): string {
       return "FfjsG1Affine96";
     case "ffjs-g2-affine-192":
       return "FfjsG2Affine192";
-    case "scalar-raw-le-32":
-      return "ScalarRawLe32";
     case "bytes":
       return "Bytes";
     default:

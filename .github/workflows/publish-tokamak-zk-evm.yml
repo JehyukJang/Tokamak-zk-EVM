@@ -686,6 +686,8 @@ jobs:
     runs-on: ubuntu-22.04
     needs: check-main-crs
     timeout-minutes: 45
+    env:
+      BACKEND_WASM_VERIFIER_CRS_SOURCE: ../backend/setup/output/sigma_verify.json
 
     steps:
       - name: Checkout code
@@ -731,9 +733,11 @@ jobs:
           npm run typecheck
           npm run typecheck:scripts
 
-      - name: Check converter browser boundary
+      - name: Check converter browser boundaries
         working-directory: packages/backend-wasm
-        run: npm run converter:browser:check
+        run: |
+          npm run converter:browser:check
+          npm run converter:webpack:check
 
       - name: Check publication documentation and package boundary
         working-directory: packages/backend-wasm

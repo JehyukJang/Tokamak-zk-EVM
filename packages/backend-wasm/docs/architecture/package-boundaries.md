@@ -10,6 +10,7 @@ dependencies, generated assets, and publication contents.
 The npm package exposes only:
 
 - `@tokamak-zk-evm/snark-browser-compat/prover`
+- `@tokamak-zk-evm/snark-browser-compat/preprocess`
 - `@tokamak-zk-evm/snark-browser-compat/verifier`
 - `@tokamak-zk-evm/snark-browser-compat/converter`
 
@@ -18,10 +19,10 @@ constants, and polynomial implementations are internal. Internal compiled files
 may exist in the tarball as transitive dependencies, but the package `exports`
 map prevents direct consumer imports.
 
-Prover and verifier each own an explicit installation lifecycle and one
-page-lifetime or process-lifetime curve runtime. They do not install implicitly,
-accept a public `CurveRuntime`, or expose runtime termination. Converter
-operations have no persistent installation.
+Preprocess, prover, and verifier each own an explicit installation lifecycle
+and one page-lifetime or process-lifetime curve runtime. They do not install
+implicitly, accept a public `CurveRuntime`, or expose runtime termination.
+Converter operations have no persistent installation.
 
 The prover exposes both `prove(input)` and `begin(input)`. `prove()` is the
 complete-proof convenience wrapper. `begin()` returns one opaque session whose
@@ -39,9 +40,9 @@ progress callbacks.
 Production dependencies flow in this direction:
 
 ```text
-prover API ─┐
-            ├─> protocol operations ─> runtime primitives
-verifier API┘                         └> artifact binary/spec views
+preprocess API ─┐
+prover API ─────┼─> protocol operations ─> runtime primitives
+verifier API ───┘                         └> artifact binary/spec views
 
 converter API ─> converter implementations ─> artifact binary creation
                                       └──────> temporary conversion runtimes
@@ -49,21 +50,27 @@ converter API ─> converter implementations ─> artifact binary creation
 validator implementation ─> artifact binary/spec modules
 ```
 
-Prover and verifier must not import converter or validator entry points.
-Converters and validators must not be called implicitly by runtime prove or
-verify operations.
+Preprocess, prover, and verifier must not import converter or validator entry
+points. Converters and validators must not be called implicitly by runtime
+preprocess, prove, or verify operations.
 
 ## Directory Ownership
 
 ### `src/artifacts`
 
 - `binary`: binary header, table, digest, encoding, and decoding primitives.
+- `setup`: shared setup parameter types.
 - `specs`: one versioned JSON format specification per binary artifact kind and
   generated TypeScript spec constants.
 
+### `src/generated`
+
+- shared setup parameters and native/backend dependency versions generated from
+  the pinned subcircuit-library package and native backend manifest.
+
 ### `src/runtime`
 
-Shared execution infrastructure used by prover and verifier:
+Shared execution infrastructure used by preprocess, prover, and verifier:
 
 - curve construction and ffjavascript worker ownership;
 - field encoding, task construction, and custom WASM kernels;
@@ -79,8 +86,7 @@ formats.
 - `protocol`: one stateful prover flow and protocol-specific state/formulas.
 - `commitments`: Sigma1 encoding and statement/binding commitments.
 - `polynomial`: prover-owned polynomial formulas built on runtime buffers.
-- `generated`: build-generated setup parameters, packed R1CS data, and
-  subcircuit metadata.
+- `generated`: prover-only packed R1CS data and subcircuit metadata.
 
 File boundaries must not recreate numbered `prove0` through `prove4` modules or
 independent scheduling barriers. The four public session operations preserve
@@ -96,32 +102,52 @@ they do not serialize, validate, or recompute intermediates.
 
 The verifier returns boolean validity and does not produce an output artifact.
 
+### `src/preprocess`
+
+- `api`: independent public lifecycle, named binary input decoding, and binary
+  output creation.
+- `protocol`: permutation-polynomial construction and preprocess orchestration.
+- `commitments`: dense Sigma1 and function-instance commitments.
+
+Preprocess produces one verifier-preprocess binary containing `s0`, `s1`, and
+`O_pub_fix`. It does not call the prover, share prover installation state, or
+consume prover CRS. Its multithreaded dense-MSM outer chunk default is
+`2 ** 17` points; applications may select a supported exponent during
+preprocess installation without changing the prover's independent default.
+
 ### `src/converter`
 
 - `index.ts`: the only public converter entry point.
 - `conversion`: browser-compatible, material-specific converters plus binary
   inspection.
 - `validation`: optional binary layout, digest, and spec validation.
-- `worker`: temporary Prover CRS conversion Worker and its RKYV decoder
+- `worker`: temporary unified CRS conversion Worker and its RKYV decoder
   integration.
 
-Each material converter returns one binary artifact. No converter builds a
-bundle or manifest.
+Each converter handles one source material per call. `convertCrs` is the sole
+multi-output converter because one `combined_sigma.rkyv` decode produces the
+standalone prover, preprocess, and verifier CRS artifacts. No converter builds
+a bundle or manifest.
 
 ## Artifact Ownership
 
 Runtime inputs are independent binary files supplied as named object
 properties. Prover receives witness, permutation, instance, and prover CRS.
 Verifier receives proof, instance, and verifier preprocess.
+Preprocess receives permutation, instance, and preprocess CRS.
 
 The application completes transport and storage I/O before invoking the runtime
 API. Runtime code performs no network or filesystem I/O and does not fetch
 Google Drive assets.
 
-Setup parameters and packed subcircuit material are generated at build time from
-the pinned `@tokamak-zk-evm/subcircuit-library` package. Verifier CRS is
-regenerated during every build from the explicit native owner artifact path.
-Prover CRS remains a runtime binary input prepared through `convertProverCrs`.
+Shared setup parameters and dependency versions are generated under
+`src/generated` at build time from the pinned
+`@tokamak-zk-evm/subcircuit-library` package and native backend manifest.
+Prover-only packed R1CS data and subcircuit metadata are generated separately
+under `src/prover/generated`. Verifier CRS is regenerated during every build
+from the explicit native owner artifact path. Verifier does not consume the
+standalone verifier CRS emitted by `convertCrs`. Prover and preprocess CRS
+remain runtime binary inputs prepared through `convertCrs`.
 
 ## Generated And Development Assets
 
@@ -155,4 +181,4 @@ contain:
 - the development-only root aggregate.
 
 Every publication candidate must run a dry-run packlist inspection and verify
-the three public subpath imports.
+the four public subpath imports.
