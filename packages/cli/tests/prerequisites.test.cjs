@@ -1,10 +1,13 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { PassThrough } = require('node:stream');
 const test = require('node:test');
 
 const {
+  activateManagedPrerequisiteEnvironment,
   assertPrerequisiteInstallIsInteractive,
   assertPrerequisiteInstallMayRunAsCurrentUser,
   buildPrerequisiteInstallationPlan,
@@ -340,6 +343,39 @@ test('prepends tool paths exactly once', () => {
     ['/example/bin', '/usr/bin', '/bin'].join(path.delimiter),
   );
   assert.equal(prependPathValue(updated, '/example/bin'), updated);
+});
+
+test('restores the Homebrew shell environment on later macOS runs', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tokamak-brew-test-'));
+  const brew = path.join(tempDir, 'brew');
+  const originalEnv = { ...process.env };
+  fs.writeFileSync(
+    brew,
+    [
+      '#!/bin/sh',
+      'test "$1" = shellenv || exit 1',
+      `echo 'export HOMEBREW_PREFIX="${tempDir}"'`,
+      `echo 'export PATH="${tempDir}/bin:/usr/bin:/bin"'`,
+    ].join('\n'),
+    { mode: 0o755 },
+  );
+
+  try {
+    process.env.PATH = '/usr/bin:/bin';
+    delete process.env.HOMEBREW_PREFIX;
+    activateManagedPrerequisiteEnvironment('darwin', '/example/home', brew);
+    assert.equal(process.env.HOMEBREW_PREFIX, tempDir);
+    assert.equal(
+      process.env.PATH,
+      `${tempDir}/bin:/usr/bin:/bin`,
+    );
+  } finally {
+    for (const name of Object.keys(process.env)) {
+      if (!(name in originalEnv)) delete process.env[name];
+    }
+    Object.assign(process.env, originalEnv);
+    fs.rmSync(tempDir, { force: true, recursive: true });
+  }
 });
 
 function runCli(args) {

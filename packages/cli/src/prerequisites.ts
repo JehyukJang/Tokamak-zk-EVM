@@ -300,9 +300,16 @@ function prependPath(entry: string): void {
   process.env.PATH = prependPathValue(process.env.PATH, entry);
 }
 
-export function activateManagedPrerequisiteEnvironment(): void {
-  prependPath(path.join(os.homedir(), '.local', 'bin'));
-  prependPath(path.join(os.homedir(), '.cargo', 'bin'));
+export function activateManagedPrerequisiteEnvironment(
+  platform: NodeJS.Platform = process.platform,
+  homeDirectory: string = os.homedir(),
+  brewExecutable: string | null = platform === 'darwin' ? resolveBrewExecutable() : null,
+): void {
+  prependPath(path.join(homeDirectory, '.local', 'bin'));
+  prependPath(path.join(homeDirectory, '.cargo', 'bin'));
+  if (brewExecutable !== null) {
+    refreshHomebrewEnvironment(brewExecutable);
+  }
 }
 
 async function installRustup(options: PrerequisiteInstallExecutionOptions): Promise<void> {
