@@ -14,6 +14,7 @@
     "artifact-conversion",
     "webassembly",
     "wasm",
+    "JehyukJang",
     "bls12-381"
   ],
   "repository": {
@@ -21,9 +22,9 @@
     "url": "git+https://github.com/JehyukJang/Tokamak-zk-EVM.git",
     "directory": "packages/backend-wasm"
   },
-  "homepage": "https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main/packages/backend-wasm#readme",
+  "homepage": "https://github.com/JehyukJang/Tokamak-zk-EVM/tree/main/packages/backend-wasm#readme",
   "bugs": {
-    "url": "https://github.com/tokamak-network/Tokamak-zk-EVM/issues"
+    "url": "https://github.com/JehyukJang/Tokamak-zk-EVM/issues"
   },
   "publishConfig": {
     "access": "public"

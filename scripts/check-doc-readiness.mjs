@@ -402,6 +402,8 @@ function checkLicensing() {
 
 function checkPackageMetadata() {
   const publicationRepositoryPattern = /^(?:git\+)?https:\/\/github\.com\/JehyukJang\/Tokamak-zk-EVM(?:\.git)?$/u;
+  const packageHomepagePattern = /^https:\/\/github\.com\/JehyukJang\/Tokamak-zk-EVM\/tree\/main\/packages\//u;
+  const issueTrackerUrl = 'https://github.com/JehyukJang/Tokamak-zk-EVM/issues';
   const manifests = [
     'packages/cli/package.json',
     'packages/frontend/qap-compiler/package.json',
@@ -423,6 +425,12 @@ function checkPackageMetadata() {
     if (!Array.isArray(manifest.keywords) || manifest.keywords.length === 0) {
       fail(`${relativePath} must define non-empty keywords.`);
     }
+    if (!manifest.keywords.includes('JehyukJang')) {
+      fail(`${relativePath} must include JehyukJang in its npm keywords.`);
+    }
+    if (!packageHomepagePattern.test(manifest.homepage)) {
+      fail(`${relativePath} homepage must identify its package in the publication repository.`);
+    }
     if (!manifest.repository?.url || !manifest.repository?.directory) {
       fail(`${relativePath} must define repository.url and repository.directory.`);
     }
@@ -431,6 +439,9 @@ function checkPackageMetadata() {
     }
     if (!manifest.bugs?.url) {
       fail(`${relativePath} must define bugs.url.`);
+    }
+    if (manifest.bugs?.url !== issueTrackerUrl) {
+      fail(`${relativePath} bugs.url must identify the publication repository issue tracker.`);
     }
   }
 }

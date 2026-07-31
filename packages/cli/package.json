@@ -13,15 +13,16 @@
     "tokamak",
     "tokamak-cli",
     "tokamak-network",
+    "JehyukJang",
     "tokamak-zk-evm",
     "zk-proof",
     "zk-EVM",
     "zk-SNARK",
     "zero-knowledge"
   ],
-  "homepage": "https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main/packages/cli#readme",
+  "homepage": "https://github.com/JehyukJang/Tokamak-zk-EVM/tree/main/packages/cli#readme",
   "bugs": {
-    "url": "https://github.com/tokamak-network/Tokamak-zk-EVM/issues"
+    "url": "https://github.com/JehyukJang/Tokamak-zk-EVM/issues"
   },
   "repository": {
     "type": "git",

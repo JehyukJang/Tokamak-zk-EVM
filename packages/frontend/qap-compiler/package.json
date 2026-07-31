@@ -15,18 +15,19 @@
     "tokamak-zk-evm",
     "layer2",
     "tokamak-network",
+    "JehyukJang",
     "wasm",
     "zk-EVM",
     "zk-SNARK"
   ],
-  "homepage": "https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main/packages/frontend/qap-compiler#readme",
+  "homepage": "https://github.com/JehyukJang/Tokamak-zk-EVM/tree/main/packages/frontend/qap-compiler#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/JehyukJang/Tokamak-zk-EVM.git",
     "directory": "packages/frontend/qap-compiler"
   },
   "bugs": {
-    "url": "https://github.com/tokamak-network/Tokamak-zk-EVM/issues"
+    "url": "https://github.com/JehyukJang/Tokamak-zk-EVM/issues"
   },
   "files": [
     "functions/*.circom",
