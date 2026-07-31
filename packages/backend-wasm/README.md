@@ -468,14 +468,14 @@ duplicate WASM memories and temporary buffers.
 
 ## Compatibility and versioning
 
-Snark-browser-compat 2.1.3 is aligned with the Tokamak zk-EVM native backend and
-subcircuit-library 2.1.3 release line.
+Snark-browser-compat 2.1.4 is aligned with the Tokamak zk-EVM native backend and
+subcircuit-library 2.1.4 release line.
 
 | Boundary | Current value |
 | --- | --- |
-| Snark-browser-compat package | 2.1.3 |
-| Native backend release line | 2.1.3 |
-| `@tokamak-zk-evm/subcircuit-library` | 2.1.3 |
+| Snark-browser-compat package | 2.1.4 |
+| Native backend release line | 2.1.4 |
+| `@tokamak-zk-evm/subcircuit-library` | 2.1.4 |
 | Binary `formatVersion` | 1 |
 | Package module format | ESM |
 | Curve runtime | ffjavascript BLS12-381 |

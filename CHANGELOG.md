@@ -8,8 +8,24 @@ The format is based on Keep a Changelog.
 
 ## Unreleased
 
+## [2.1.4] - 2026-07-31
+
+### Repository
+
+- Synchronized the release version to `2.1.4` across the CLI, subcircuit
+  library, synthesizer packages, browser-compatible SNARK package, and backend
+  workspace.
+- Extended version synchronization and validation to cover the packaged
+  browser example, removed release-version literals from package tests, and
+  allowed pre-publication browser checks to install a local synchronized
+  subcircuit-library tarball.
+
 ### CLI
 
+- Bumped `@tokamak-zk-evm/cli` to `2.1.4` and updated its
+  `@tokamak-zk-evm/synthesizer-node` dependency to `^2.1.4`.
+- Kept `packages/cli/package.json tokamakZkEvm.compatibleBackendVersion` at
+  `2.1`.
 - Added the opt-in interactive `--install --include-prerequisite` flow for
   native Ubuntu 20.04, Ubuntu 22.04, and macOS installations. It detects
   compatible existing Rust, Cargo, CMake, compiler, `pkg-config`, Tar, and
@@ -32,8 +48,22 @@ The format is based on Keep a Changelog.
   into acyclic responsibility-specific modules without changing the supported
   command surface.
 
+### Subcircuit Library
+
+- Bumped `@tokamak-zk-evm/subcircuit-library` to `2.1.4`.
+
+### Synthesizer
+
+- Bumped `@tokamak-zk-evm/synthesizer-node` and
+  `@tokamak-zk-evm/synthesizer-web` to `2.1.4`.
+- Updated both synthesizer packages to consume
+  `@tokamak-zk-evm/subcircuit-library` through the synchronized `^2.1.4`
+  dependency range.
+
 ### Browser-Compatible SNARK
 
+- Bumped `@tokamak-zk-evm/snark-browser-compat` to `2.1.4` and kept its exact
+  `@tokamak-zk-evm/subcircuit-library` dependency synchronized at `2.1.4`.
 - Added the independent browser preprocess API with explicit installation,
   named permutation, instance, and preprocess-CRS inputs, optimized
   prover-compatible primitives, and Node/Chromium parity coverage.
@@ -53,6 +83,7 @@ The format is based on Keep a Changelog.
 
 ### Backend Workspace
 
+- Bumped the backend Rust workspace version to `2.1.4`.
 - Reduced prover work by combining final Pi openings, sharing the M/N X opening, batching related challenge evaluations through ICICLE, deriving difference-polynomial evaluations from existing values, avoiding materialized constant subtraction before Ruffini division, and decoding the complete CRS grid once for reuse.
 - Restored independent same-point evaluation submissions after benchmarking rejected the grouped implementation, retained ICICLE two-stage batch evaluation, and documented the rejected serial, Rayon, coefficient-rescaling, alternative CRS-cache, zero-compaction, native polynomial-flow, and device-resident recursion paths.
 - Published the consolidated CPU/CUDA rebenchmark record and corrected the individual optimization reports, including failed experiments, invalidated measurements, algebraic rationale, testing-mode parity checks, and fresh preprocess/prove/verify results.
