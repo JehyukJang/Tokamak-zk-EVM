@@ -46,28 +46,26 @@ The format is based on Keep a Changelog.
   explicit permutation, instance, and preprocess CRS inputs.
 - Added complete Vite examples for preprocessing, proving, and verification,
   plus Webpack guidance for CRS conversion.
-- Across the recorded WASM prover optimization campaign, fixed-taxonomy total
-  wall time decreased from `381.08 s` to `118.53 s`, a `262.55 s` (`68.9%`)
-  reduction. The final Chromium publication check generated a proof in
-  `118.82 s`, verified it in `19 ms`, and observed `10.03 GiB` peak total
-  Chromium-process RSS.
-- On the same Apple M4 Pro reference system and release fixture, browser
-  preprocessing averaged `10.942 s` across three runs with an `8 ms`
-  population standard deviation. These measurements are reference results,
-  not performance guarantees for other systems.
+- Tuned the browser preprocessing default introduced in this release. On the
+  Apple M4 Pro reference system, its three-run Chromium mean decreased from
+  `11.017 s` to `10.942 s` (`0.7%` faster). Every measured output matched the
+  native backend and passed browser verification. This result is a reference
+  measurement, not a performance guarantee for other systems.
 
 ### Native Backend
 
-- Five-run first-proof benchmarks measured the following mean end-to-end
-  improvements on an Apple M4 Pro CPU backend and an NVIDIA A10 CUDA backend:
+- Five-run benchmarks measured the following end-to-end first-proof
+  improvements from optimizations included in this release. Tests used an
+  Apple M4 Pro CPU backend and an NVIDIA A10 CUDA backend:
 
-  | Optimization | CPU mean | CUDA mean |
+  | Measured change | CPU mean | CUDA mean |
   | --- | ---: | ---: |
-  | Combined final proof openings | `39.998 s` → `38.332 s` (`4.2%` faster) | `23.878 s` → `23.683 s` (`0.8%` faster) |
-  | Reused shared M/N opening | `38.465 s` → `37.157 s` (`3.4%` faster) | `24.760 s` → `23.758 s` (`4.0%` faster) |
-  | Batched related challenge evaluations | `37.805 s` → `37.123 s` (`1.8%` faster) | `23.944 s` → `23.778 s` (`0.7%` faster) |
+  | Reduced final proof construction work | `39.998 s` → `38.332 s` (`4.2%` faster) | `23.878 s` → `23.683 s` (`0.8%` faster) |
+  | Removed a repeated proof calculation | `38.465 s` → `37.157 s` (`3.4%` faster) | `24.760 s` → `23.758 s` (`4.0%` faster) |
+  | Shared work across related evaluations | `37.805 s` → `37.123 s` (`1.8%` faster) | `23.944 s` → `23.778 s` (`0.7%` faster) |
+  | Reused decoded CRS data during the first proof | `37.869 s` → `37.147 s` (`1.9%` faster) | `24.920 s` → `23.914 s` (`4.0%` faster) |
 
-- These candidate-specific comparisons are not additive. All measured paths
+- These separately measured improvements are not additive. All measured paths
   used the same release fixture and preserved the supported proof protocol,
   proof output, and verifier behavior.
 
