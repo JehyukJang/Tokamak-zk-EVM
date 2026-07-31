@@ -31,7 +31,7 @@ The format is based on Keep a Changelog.
   CMake or `pkg-config` as missing.
 - Existing CLI commands and uninstall behavior are unchanged.
 
-### Browser-Compatible SNARK
+### Browser-Compatible SNARK (WASM Backend)
 
 - `convertProverCrs()` has been replaced by `convertCrs()`. Update converter
   calls to read the returned `proverCrs`, `preprocessCrs`, and `verifierCrs`
@@ -46,11 +46,30 @@ The format is based on Keep a Changelog.
   explicit permutation, instance, and preprocess CRS inputs.
 - Added complete Vite examples for preprocessing, proving, and verification,
   plus Webpack guidance for CRS conversion.
+- Across the recorded WASM prover optimization campaign, fixed-taxonomy total
+  wall time decreased from `381.08 s` to `118.53 s`, a `262.55 s` (`68.9%`)
+  reduction. The final Chromium publication check generated a proof in
+  `118.82 s`, verified it in `19 ms`, and observed `10.03 GiB` peak total
+  Chromium-process RSS.
+- On the same Apple M4 Pro reference system and release fixture, browser
+  preprocessing averaged `10.942 s` across three runs with an `8 ms`
+  population standard deviation. These measurements are reference results,
+  not performance guarantees for other systems.
 
 ### Native Backend
 
-- Improved proof-generation performance without changing the supported proof
-  protocol, proof output, or verifier behavior.
+- Five-run first-proof benchmarks measured the following mean end-to-end
+  improvements on an Apple M4 Pro CPU backend and an NVIDIA A10 CUDA backend:
+
+  | Optimization | CPU mean | CUDA mean |
+  | --- | ---: | ---: |
+  | Combined final proof openings | `39.998 s` → `38.332 s` (`4.2%` faster) | `23.878 s` → `23.683 s` (`0.8%` faster) |
+  | Reused shared M/N opening | `38.465 s` → `37.157 s` (`3.4%` faster) | `24.760 s` → `23.758 s` (`4.0%` faster) |
+  | Batched related challenge evaluations | `37.805 s` → `37.123 s` (`1.8%` faster) | `23.944 s` → `23.778 s` (`0.7%` faster) |
+
+- These candidate-specific comparisons are not additive. All measured paths
+  used the same release fixture and preserved the supported proof protocol,
+  proof output, and verifier behavior.
 
 ## [2.1.3] - 2026-07-27
 
