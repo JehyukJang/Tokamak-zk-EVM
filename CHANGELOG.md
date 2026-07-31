@@ -8,6 +8,31 @@ The format is based on Keep a Changelog.
 
 ## Unreleased
 
+## [2.1.5] - 2026-07-31
+
+### Compatibility and Upgrade Notes
+
+- Released the CLI, subcircuit library, synthesizer packages,
+  browser-compatible SNARK package, and native backend as version `2.1.5`.
+- This package-metadata patch does not change public APIs, input schemas,
+  proving algorithms, verification semantics, or the binary format version.
+  Existing `2.1` CRS artifacts remain compatible, so applications do not need
+  a new trusted setup or CRS download.
+- Existing `2.1.4` installations continue to work. Applications adopting
+  `2.1.5` should upgrade the synchronized packages together.
+
+### CLI
+
+- Updated the npm package homepage and issue links to the active GitHub
+  publication repository.
+
+### Package Discovery and Support
+
+- Applied the same homepage and issue-link update to the subcircuit library,
+  Node and Web Synthesizers, and browser-compatible SNARK package.
+- Added `JehyukJang` to every npm package's search metadata while retaining the
+  existing Tokamak Network discovery terms.
+
 ## [2.1.4] - 2026-07-31
 
 ### Compatibility and Upgrade Notes
