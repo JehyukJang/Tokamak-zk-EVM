@@ -10,85 +10,47 @@ The format is based on Keep a Changelog.
 
 ## [2.1.4] - 2026-07-31
 
-### Repository
+### Compatibility and Upgrade Notes
 
-- Synchronized the release version to `2.1.4` across the CLI, subcircuit
-  library, synthesizer packages, browser-compatible SNARK package, and backend
-  workspace.
-- Extended version synchronization and validation to cover the packaged
-  browser example, removed release-version literals from package tests, and
-  allowed pre-publication browser checks to install a local synchronized
-  subcircuit-library tarball.
+- Released the CLI, subcircuit library, synthesizer packages,
+  browser-compatible SNARK package, and native backend as version `2.1.4`.
+  Applications that use more than one Tokamak zk-EVM package should upgrade
+  them together.
+- Kept compatibility with the existing `2.1` backend CRS. This release does
+  not require a new trusted setup or CRS download.
+- Preserved the native proof inputs, proof format, and verification semantics.
 
 ### CLI
 
-- Bumped `@tokamak-zk-evm/cli` to `2.1.4` and updated its
-  `@tokamak-zk-evm/synthesizer-node` dependency to `^2.1.4`.
-- Kept `packages/cli/package.json tokamakZkEvm.compatibleBackendVersion` at
-  `2.1`.
-- Added the opt-in interactive `--install --include-prerequisite` flow for
-  native Ubuntu 20.04, Ubuntu 22.04, and macOS installations. It detects
-  compatible existing Rust, Cargo, CMake, compiler, `pkg-config`, Tar, and
-  UnZip commands and installs only missing, unverifiable, or incompatible
-  prerequisites.
-- Aligned Ubuntu provisioning with the packaged ICICLE 3.8.0 Dockerfiles,
-  including their release-specific LLVM repositories and CMake 3.27.4 source
-  build on Ubuntu 20.04, while using Apple's Command Line Tools, Homebrew, and
-  upstream rustup on macOS.
-- Required a normal interactive user, an explicit default-deny confirmation,
-  and a displayed installation plan and disclaimer before host changes.
-  `--include-prerequisite` cannot be combined with `--docker`, and
-  `--uninstall` continues to remove only CLI-owned runtime data.
-- Fixed later macOS CLI runs to restore an existing Homebrew `shellenv` before
-  prerequisite detection, preventing installed CMake and `pkg-config` from
-  being planned for installation again.
-- Reduced published and Docker artifacts, removed the obsolete macOS setup
-  script and generated Docker launcher, cleaned stale build output, retained
-  the manual release wrapper as `release:publish`, and split runtime internals
-  into acyclic responsibility-specific modules without changing the supported
-  command surface.
-
-### Subcircuit Library
-
-- Bumped `@tokamak-zk-evm/subcircuit-library` to `2.1.4`.
-
-### Synthesizer
-
-- Bumped `@tokamak-zk-evm/synthesizer-node` and
-  `@tokamak-zk-evm/synthesizer-web` to `2.1.4`.
-- Updated both synthesizer packages to consume
-  `@tokamak-zk-evm/subcircuit-library` through the synchronized `^2.1.4`
-  dependency range.
+- Added `tokamak-cli --install --include-prerequisite` for users who want the
+  CLI to detect and install missing native prerequisites on Ubuntu 20.04,
+  Ubuntu 22.04, or macOS.
+- The prerequisite flow shows the planned host changes and requires explicit
+  confirmation before installation. It is unavailable with `--docker`.
+- Fixed repeated macOS installations incorrectly reporting Homebrew-provided
+  CMake or `pkg-config` as missing.
+- Existing CLI commands and uninstall behavior are unchanged.
 
 ### Browser-Compatible SNARK
 
-- Bumped `@tokamak-zk-evm/snark-browser-compat` to `2.1.4` and kept its exact
-  `@tokamak-zk-evm/subcircuit-library` dependency synchronized at `2.1.4`.
-- Added the independent browser preprocess API with explicit installation,
-  named permutation, instance, and preprocess-CRS inputs, optimized
-  prover-compatible primitives, and Node/Chromium parity coverage.
-- Changed `convertCrs()` to emit named prover, preprocess, and verifier CRS
-  binaries from one `combined_sigma.rkyv` source.
-- Extended instance binaries with the function-instance section required by
-  preprocess and intentionally rejected the unreleased earlier layout.
-- Added the complete Vite preprocess, prove, and verify workflow, focused
-  converter and staged-prover recipes, and a verified Webpack converter
-  consumer.
-- Required an explicit verifier CRS source for every package build and
-  prevented accumulated or stale compiled output from entering release
-  tarballs.
-- Simplified binary inspection, package boundaries, retained diagnostics,
-  optimization documentation, examples, and embedded third-party license
-  material without changing the supported prover or verifier protocol.
+- `convertProverCrs()` has been replaced by `convertCrs()`. Update converter
+  calls to read the returned `proverCrs`, `preprocessCrs`, and `verifierCrs`
+  properties.
+- `convertInstance()` now requires `a_pub_function` and includes it as a
+  separate function-instance section. Regenerate instance binaries created
+  with version `2.1.3` before using them with version `2.1.4`.
+- `inspectBinary()` no longer accepts `includeSectionData` and no longer
+  returns section contents as `dataHex`. Applications that need section bytes
+  must retain the original binary and use the reported offsets and lengths.
+- Added browser preprocessing with an independent installation lifecycle and
+  explicit permutation, instance, and preprocess CRS inputs.
+- Added complete Vite examples for preprocessing, proving, and verification,
+  plus Webpack guidance for CRS conversion.
 
-### Backend Workspace
+### Native Backend
 
-- Bumped the backend Rust workspace version to `2.1.4`.
-- Reduced prover work by combining final Pi openings, sharing the M/N X opening, batching related challenge evaluations through ICICLE, deriving difference-polynomial evaluations from existing values, avoiding materialized constant subtraction before Ruffini division, and decoding the complete CRS grid once for reuse.
-- Restored independent same-point evaluation submissions after benchmarking rejected the grouped implementation, retained ICICLE two-stage batch evaluation, and documented the rejected serial, Rayon, coefficient-rescaling, alternative CRS-cache, zero-compaction, native polynomial-flow, and device-resident recursion paths.
-- Published the consolidated CPU/CUDA rebenchmark record and corrected the individual optimization reports, including failed experiments, invalidated measurements, algebraic rationale, testing-mode parity checks, and fresh preprocess/prove/verify results.
-- Removed repository-dead raw serializers, legacy MPC ceremony and utility paths, unused polynomial/vector/matrix/hash helpers, retired candidate and `poly_detail` diagnostics, Rust CRS code generation, and unused direct dependencies while preserving the active CRS, formatted preprocess, and formatted proof contracts.
-- Consolidated timing and transcript implementations, moved phase-2 MPC workspaces and the prover transcript to their owning modules, reduced the internal Rust API surface, and renamed the verifier directory from `verify-rust` to `verify`.
+- Improved proof-generation performance without changing the supported proof
+  protocol, proof output, or verifier behavior.
 
 ## [2.1.3] - 2026-07-27
 
