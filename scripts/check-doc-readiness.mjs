@@ -67,6 +67,66 @@ function isExternalLink(linkTarget) {
   return /^[a-z][a-z0-9+.-]*:/iu.test(linkTarget);
 }
 
+function checkMarkdownStructure(relativePath) {
+  if (!requireFile(relativePath)) {
+    return;
+  }
+
+  const source = readText(relativePath).replace(/^```[\s\S]*?^```$/gmu, '');
+  const headings = [...source.matchAll(/^(#{1,6})\s+(.+)$/gmu)].map(match => ({
+    depth: match[1].length,
+    label: match[2].trim(),
+  }));
+
+  if (headings.length === 0 || headings[0].depth !== 1) {
+    fail(`${relativePath} must begin its heading hierarchy with one H1.`);
+    return;
+  }
+  if (headings.filter(({ depth }) => depth === 1).length !== 1) {
+    fail(`${relativePath} must contain exactly one H1.`);
+  }
+
+  const anchors = new Set();
+  for (let index = 0; index < headings.length; index += 1) {
+    const heading = headings[index];
+    if (index > 0 && heading.depth > headings[index - 1].depth + 1) {
+      fail(`${relativePath} skips a heading level before "${heading.label}".`);
+    }
+
+    const anchor = heading.label
+      .toLowerCase()
+      .replace(/<[^>]+>/gu, '')
+      .replace(/[^\p{L}\p{N}\s-]/gu, '')
+      .trim()
+      .replace(/\s+/gu, '-');
+    if (anchors.has(anchor)) {
+      fail(`${relativePath} contains the duplicate heading anchor #${anchor}.`);
+    }
+    anchors.add(anchor);
+  }
+}
+
+function checkLocalMarkdownLinks(relativePath) {
+  if (!requireFile(relativePath)) {
+    return;
+  }
+
+  const documentDirectory = path.dirname(relativePath);
+  for (const linkTarget of parseMarkdownLinks(readText(relativePath))) {
+    if (isExternalLink(linkTarget)) {
+      continue;
+    }
+    const localTarget = decodeURIComponent(stripAnchor(linkTarget));
+    if (!localTarget) {
+      continue;
+    }
+    const resolvedTarget = path.normalize(path.join(documentDirectory, localTarget));
+    if (!fileExists(resolvedTarget)) {
+      fail(`${relativePath} links to missing local target ${linkTarget}.`);
+    }
+  }
+}
+
 function checkLlmsTxt() {
   const relativePath = 'llms.txt';
   if (!requireFile(relativePath)) {
@@ -108,38 +168,35 @@ function checkRootReadme() {
   const relativePath = 'README.md';
 
   for (const required of [
-    '## Package Chooser',
+    '## How the repository fits together',
+    '## Choose a package',
     '@tokamak-zk-evm/cli',
     '@tokamak-zk-evm/subcircuit-library',
     '@tokamak-zk-evm/synthesizer-node',
     '@tokamak-zk-evm/synthesizer-web',
     '@tokamak-zk-evm/snark-browser-compat',
-    '## npm Packages and Releases',
-    '## Repository FAQ',
-    '### What is Tokamak zk-EVM?',
-    '### What is a Tokamak Layer 2 transaction?',
-    'tokamak-l2js',
+    '## Releases and npm publication',
+    '## Repository map',
+    '## Scope and compatibility',
+    '## Documentation',
+    '## License',
     'https://github.com/tokamak-network/TokamakL2JS',
-    '### What are the main package groups in this monorepo?',
-    'The CLI package is the end-to-end local entry point.',
-    'The Synthesizer packages convert Tokamak L2 transaction replay data into circuit-ready inputs.',
-    'The subcircuit library package publishes the prebuilt R1CS',
-    'The native backend packages implement setup, proof generation, and proof verification',
     'An Efficient SNARK for Field-Programmable and RAM Circuits',
     'https://eprint.iacr.org/2024/507',
     'bridge/src/verifiers/TokamakVerifier.sol',
-    'https://etherscan.io/address/0x0C467a5082323Cc6F4b7077A9dFb0bbdaf6eC626',
-    'Use `@tokamak-zk-evm/snark-browser-compat` for supported bundler-based browser preprocessing, proof generation, and verification.',
+    'TPAC-Contract-Addresses.json',
+    'MIT',
+    'Apache-2.0',
     'CHANGELOG.md',
   ]) {
     requireIncludes(relativePath, required);
   }
-
   requirePattern(
     relativePath,
-    /Are browser preprocessing, proof generation, and verification officially supported\?[\s\S]*?Legacy WASM verifier packages remain deprecated/u,
-    'the supported browser SNARK and legacy WASM distinction',
+    /a source version is not a published release until it\s+appears on npm/iu,
+    'the distinction between source and published versions',
   );
+  requirePattern(relativePath, /tokamak-?l2js/iu, 'the TokamakL2JS input-format owner');
 
   if (
     /@tokamak-zk-evm\/verify-wasm|verify-wasm-web|verify-wasm-nodejs|verify-wasm-bundler/u.test(readText(relativePath))
@@ -153,8 +210,14 @@ function checkRootReadme() {
     '## How to run (for all platforms)',
     '## Disclaimer',
     '## Contributing',
-    '## License',
+    '## Security and operational responsibilities',
+    '## Security and application responsibilities',
+    '### Preprocess',
+    '### Prove',
+    '### Verify',
     '<CLI> --',
+    '0x0C17B6F51A9A0CAEb8111313877214f5c26AbfC0',
+    '0x0C467a5082323Cc6F4b7077A9dFb0bbdaf6eC626',
   ]) {
     if (readText(relativePath).includes(forbidden)) {
       fail(`${relativePath} must leave detailed usage and disclaimers to package READMEs; found ${forbidden}.`);
@@ -172,7 +235,6 @@ function checkPackageReadmes() {
   ];
 
   for (const [relativePath, packageName] of packageReadmes) {
-    requireIncludes(relativePath, '## When to use this package');
     requireIncludes(relativePath, packageName);
     requireIncludes(relativePath, '## npm publication');
     requireIncludes(relativePath, 'https://www.npmjs.com/package/');
@@ -228,7 +290,7 @@ function checkPackageReadmes() {
     [
       'packages/frontend/qap-compiler/README.md',
       [
-        '## Artifact formats and acquisition',
+        '## Published artifacts',
         'setupParams.json',
         'subcircuitInfo.json',
         '## Security and application responsibilities',
@@ -244,14 +306,74 @@ function checkPackageReadmes() {
 
   for (const requirement of [
     '## Distribution',
-    'not published as a standalone npm package',
-    '## Prove and Verify Inputs',
+    '## Preprocess, prove, and verify',
     'combined_sigma.rkyv',
     'sigma_preprocess.rkyv',
     'sigma_verify.json',
     '## Security and operator responsibilities',
   ]) {
     requireIncludes('packages/backend/README.md', requirement);
+  }
+  requirePattern(
+    'packages/backend/README.md',
+    /not published as a standalone npm(?: or crates\.io)? package/u,
+    'the native backend publication status',
+  );
+}
+
+function checkReadmeResponsibilities() {
+  const readmes = [
+    'README.md',
+    'packages/backend/README.md',
+    'packages/backend/setup/mpc-setup/README.md',
+    'packages/backend-wasm/README.md',
+    'packages/backend-wasm/examples/browser/README.md',
+    'packages/backend-wasm/tools/rkyv-decoder-wasm/README.md',
+    'packages/cli/README.md',
+    'packages/frontend/qap-compiler/README.md',
+    'packages/frontend/synthesizer/README.md',
+    'packages/frontend/synthesizer/node-cli/README.md',
+    'packages/frontend/synthesizer/web-app/README.md',
+  ];
+
+  for (const relativePath of readmes) {
+    checkMarkdownStructure(relativePath);
+    checkLocalMarkdownLinks(relativePath);
+    requirePattern(relativePath, /npm/iu, 'npm publication status');
+    requirePattern(relativePath, /MIT OR Apache-2\.0|MIT.*Apache-2\.0/su, 'the repository dual-license policy');
+  }
+}
+
+function checkLicensing() {
+  if (fileExists('LICENSE')) {
+    fail('The obsolete root LICENSE file must not override the dual-license declaration.');
+  }
+
+  for (const relativePath of ['LICENSE-MIT', 'LICENSE-APACHE']) {
+    requireFile(relativePath);
+  }
+
+  const rootApacheLicense = readText('LICENSE-APACHE');
+  for (const relativePath of [
+    'packages/backend-wasm/LICENSE-APACHE',
+    'packages/cli/LICENSE-APACHE',
+    'packages/frontend/qap-compiler/LICENSE-APACHE',
+    'packages/frontend/synthesizer/LICENSE-APACHE',
+    'packages/frontend/synthesizer/node-cli/LICENSE-APACHE',
+    'packages/frontend/synthesizer/web-app/LICENSE-APACHE',
+  ]) {
+    if (requireFile(relativePath) && readText(relativePath) !== rootApacheLicense) {
+      fail(`${relativePath} must contain the complete repository Apache-2.0 license text.`);
+    }
+  }
+
+  requirePattern(
+    'CONTRIBUTING.md',
+    /\[MIT\].* or \[Apache-2\.0\].*at the\s+recipient's option/su,
+    'the repository dual-license contribution policy',
+  );
+  if (/Mozilla Public License|MPL-2\.0/u.test(readText('CONTRIBUTING.md'))) {
+    fail('CONTRIBUTING.md must not retain the obsolete MPL-2.0 policy.');
   }
 }
 
@@ -290,10 +412,9 @@ function checkSynthesizerFaq() {
   const relativePath = 'packages/frontend/synthesizer/README.md';
   for (const required of [
     '<a id="transaction-support-faq"></a>',
-    'Does the current implementation support any arbitrary transaction/call data',
-    'Partially, yes.',
-    'support depends on whether the execution stays within the opcode set',
-    'it should not yet be described as supporting every arbitrary Ethereum transaction',
+    '## Transaction support',
+    'It supports contract calls when execution stays within the opcode',
+    'It should not be described as supporting every arbitrary Ethereum transaction.',
   ]) {
     requireIncludes(relativePath, required);
   }
@@ -302,6 +423,8 @@ function checkSynthesizerFaq() {
 checkLlmsTxt();
 checkRootReadme();
 checkPackageReadmes();
+checkReadmeResponsibilities();
+checkLicensing();
 checkPackageMetadata();
 checkSynthesizerFaq();
 

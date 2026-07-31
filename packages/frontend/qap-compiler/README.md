@@ -1,63 +1,41 @@
 # `@tokamak-zk-evm/subcircuit-library`
 
-Tokamak zk-EVM Subcircuit Library is a prebuilt R1CS subcircuit library package for Tokamak zk-EVM.
+Prebuilt circuit artifacts consumed by the Tokamak zk-EVM Synthesizer and
+proving backends. The repository directory retains the historical
+`qap-compiler` name because it also contains maintainer-side generation tools.
 
-The published package exposes consumer-facing subcircuit artifacts, metadata, witness-generation helpers, and synced Circom constants used by Tokamak zk-EVM consumers on the `main` branch.
+## Install
 
-Release notes are maintained in the [repository changelog](https://github.com/tokamak-network/Tokamak-zk-EVM/blob/main/CHANGELOG.md).
-
-## When to use this package
-
-Use `@tokamak-zk-evm/subcircuit-library` when you need the published prebuilt circuit artifacts consumed by Tokamak zk-EVM tooling: R1CS files, WASM witness-generation artifacts, JSON metadata, witness-generation helpers, and synced Circom constants.
-
-## Installation
-
-```shell
+```bash
 npm install @tokamak-zk-evm/subcircuit-library
 ```
 
-## npm publication
+Consumers install the npm package. They do not need to run the QAP compiler or
+rebuild the circuits.
 
-| Item                              | Value                                                                                                                 |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Package                           | [`@tokamak-zk-evm/subcircuit-library`](https://www.npmjs.com/package/@tokamak-zk-evm/subcircuit-library)              |
-| Current repository source version | `2.1.4`; check the npm page or `npm view @tokamak-zk-evm/subcircuit-library version` for the latest published version |
-| Release policy                    | Versioned with the other supported Tokamak zk-EVM packages                                                            |
-| Release notes                     | [Repository `CHANGELOG.md`](https://github.com/tokamak-network/Tokamak-zk-EVM/blob/main/CHANGELOG.md)                 |
+## Published artifacts
 
-Install from npm for consumer use. The `qap-compiler` source tree is
-maintainer tooling; it is not a separate npm package name.
+All files are acquired from the same installed npm package version:
 
-## Package Contents
+| Path                                          | Role                                                     | Format                      | Example            |
+| --------------------------------------------- | -------------------------------------------------------- | --------------------------- | ------------------ |
+| `subcircuits/library/r1cs/subcircuit<N>.r1cs` | Compiled constraints used by setup and proving           | Circom binary R1CS          | `subcircuit0.r1cs` |
+| `subcircuits/library/wasm/subcircuit<N>.wasm` | Witness generator for one subcircuit                     | WebAssembly                 | `subcircuit0.wasm` |
+| `subcircuits/library/json/subcircuit<N>.json` | Compiler metadata for one subcircuit                     | JSON                        | `subcircuit0.json` |
+| `subcircuits/library/setupParams.json`        | Circuit capacity and setup parameters                    | JSON numeric object         | Published file     |
+| `subcircuits/library/globalWireList.json`     | Global-to-local wire mapping                             | JSON two-number tuple array | Published file     |
+| `subcircuits/library/subcircuitInfo.json`     | Subcircuit catalog, wire ranges, and flattening metadata | JSON record array           | Published file     |
+| `subcircuits/library/frontendCfg.json`        | Frontend buffer and subcircuit configuration             | JSON                        | Published file     |
+| `subcircuits/library/generate_witness.js`     | Witness-generation entry point                           | JavaScript module           | Published file     |
+| `subcircuits/library/witness_calculator.js`   | Runtime witness calculator                               | JavaScript module           | Published file     |
+| `subcircuits/circom/constants.circom`         | Constants synchronized with the generated library        | Circom source               | Published file     |
+| `build-metadata.json`                         | Build identity and dependency versions                   | JSON                        | Package root       |
 
-- `subcircuits/library/r1cs/`: prebuilt R1CS subcircuit artifacts.
-- `subcircuits/library/wasm/`: per-subcircuit WASM artifacts used for witness generation and runtime loading.
-- `subcircuits/library/json/`: per-subcircuit JSON outputs generated alongside the compiled library.
-- `subcircuits/library/*.json`: library-wide metadata such as setup parameters, global wiring, frontend configuration, and the subcircuit catalog.
-- `subcircuits/library/*.js`: witness-generation helper scripts published with the library.
-- `subcircuits/circom/constants.circom`: synced Circom constants used by the generated library.
-- `build-metadata.json`: build metadata for the published package, including the `tokamak-l2js` package version used to generate the library.
+The supported acquisition path is npm. Keep R1CS, WASM, metadata, constants,
+and setup artifacts on one compatible release line.
 
-## Artifact formats and acquisition
-
-Installing the npm package is the supported acquisition path for all files in
-this table. Keep artifacts from one package version together.
-
-| Path                                                                  | Role                                                               | Format                              | Example                                     |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------- | ------------------------------------------- |
-| `subcircuits/library/r1cs/subcircuit<N>.r1cs`                         | Compiled constraints consumed by setup and the native backend      | Circom binary R1CS                  | `subcircuits/library/r1cs/subcircuit0.r1cs` |
-| `subcircuits/library/wasm/subcircuit<N>.wasm`                         | Witness generator for one compiled subcircuit                      | WebAssembly binary                  | `subcircuits/library/wasm/subcircuit0.wasm` |
-| `subcircuits/library/json/subcircuit<N>.json`                         | Compiler-emitted metadata for one subcircuit                       | JSON                                | `subcircuits/library/json/subcircuit0.json` |
-| `subcircuits/library/setupParams.json`                                | Shared circuit-capacity and setup parameters                       | JSON object with numeric parameters | `subcircuits/library/setupParams.json`      |
-| `subcircuits/library/globalWireList.json`                             | Mapping from global wires to subcircuit-local wires                | JSON array of two-number tuples     | `subcircuits/library/globalWireList.json`   |
-| `subcircuits/library/subcircuitInfo.json`                             | Catalog, wire ranges, and flattening metadata for every subcircuit | JSON array of subcircuit records    | `subcircuits/library/subcircuitInfo.json`   |
-| `subcircuits/library/frontendCfg.json`                                | Frontend buffer and subcircuit configuration                       | JSON                                | `subcircuits/library/frontendCfg.json`      |
-| `subcircuits/library/generate_witness.js` and `witness_calculator.js` | JavaScript helpers paired with the compiled witness generators     | JavaScript modules                  | Files at the library root                   |
-| `subcircuits/circom/constants.circom`                                 | Circom constants synchronized with the generated library           | Circom source                       | The published constants file                |
-| `build-metadata.json`                                                 | Package build identity and dependency versions                     | JSON                                | The package-root metadata file              |
-
-Consumers normally let the Synthesizer, CLI, or backend resolve these paths.
-Direct consumers can resolve a published file through Node's package resolver:
+Direct Node consumers can resolve a file without assuming an installation
+directory:
 
 ```js
 import { createRequire } from 'node:module';
@@ -66,80 +44,49 @@ const require = createRequire(import.meta.url);
 const setupParamsPath = require.resolve('@tokamak-zk-evm/subcircuit-library/subcircuits/library/setupParams.json');
 ```
 
-## Consumers
+Most applications should let the Synthesizer, CLI, or backend resolve these
+paths.
 
-- [`tokamak-cli`](https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main): orchestrates install, setup, proving, and verification flows that package the generated subcircuit library into runnable resources.
-- [`synthesizer`](https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main/packages/frontend/synthesizer): consumes the published library metadata and WASM artifacts to synthesize transaction-specific circuit inputs.
-- [`backend`](https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main/packages/backend): uses the subcircuit library as setup and proving input for the Tokamak zk-SNARK backend.
-- [`Tokamak-zk-EVM-contracts`](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts): integrates the generated subcircuit library through repository-level coordination with the Tokamak zk-EVM stack.
+## How it is used
 
-## Example Integration
+| Consumer                                        | Use                                                             |
+| ----------------------------------------------- | --------------------------------------------------------------- |
+| [Synthesizer](../synthesizer/README.md)         | Loads metadata and matching WASM witness generators             |
+| [Native backend](../../backend/README.md)       | Uses binary R1CS files during setup and proving                 |
+| [Browser backend](../../backend-wasm/README.md) | Converts and validates compatible runtime artifacts             |
+| [CLI](../../cli/README.md)                      | Installs the synchronized library as part of the local workflow |
 
-The `synthesizer` packages use the library as an installed artifact package rather than as a source dependency:
-
-1. They load library-wide metadata such as setup parameters, wiring data, frontend configuration, and the subcircuit catalog from the published package.
-2. They resolve that metadata into an internal subcircuit-library model used by the synthesizer runtime.
-3. They load the matching WASM subcircuit artifacts from the installed package to drive witness generation and execution-specific subcircuit handling.
-4. The web-facing synthesizer build can bundle those published assets ahead of time, while the Node-targeted synthesizer resolves them from the installed package at runtime.
+The Node Synthesizer resolves installed assets at runtime. The Web Synthesizer
+bundles the matching JSON and WASM assets at build time.
 
 ## Compatibility
 
-Published artifacts are consumer-facing and platform-neutral. Maintainer-side regeneration of the library is documented separately.
+- Consumer artifacts are platform-neutral.
+- Repository source currently targets `2.1.4`.
+- Maintainer-side regeneration requires Node.js 18+, Circom, and the validation
+  process in [the maintainer documentation](./docs/README.md).
+- The package is versioned with the other supported Tokamak zk-EVM packages.
 
-| Surface            | Compatibility                                                                                                                       |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Consumer support   | Supported for `main`-branch consumers of `tokamak-cli`, `synthesizer`, `backend`, and `Tokamak-zk-EVM-contracts`.                   |
-| Runtime shape      | Consumers integrate against published R1CS, JSON metadata, WASM artifacts, witness-generation helpers, and synced Circom constants. |
-| Maintainer tooling | Source regeneration of the library is maintained on Node.js 18+ for macOS and Linux.                                                |
+## npm publication
 
-## FAQ
-
-### Is this package source circuits or prebuilt artifacts?
-
-It is the published prebuilt subcircuit library package. Consumers use the generated artifacts that are shipped through npm.
-
-### How do consumers use this package?
-
-Consumers install the package and read its published artifacts and metadata. They do not use it as an application-level API library.
-
-### What formats does the package publish?
-
-The package publishes R1CS artifacts, WASM artifacts, JSON metadata, witness-generation helper scripts, and synced `constants.circom`.
-
-### Is it compatible with the Tokamak zk-EVM `main` branch?
-
-Yes. This package is documented and maintained as the consumer-facing subcircuit library surface for `main`-branch Tokamak zk-EVM consumers.
-
-### Was this package previously called QAP compiler?
-
-The maintainer-side generation algorithm and tooling are still referred to as `qap-compiler` in repository-internal contexts. The published consumer package is the Tokamak zk-EVM Subcircuit Library.
-
-## Further Documentation
-
-- [Detailed package documentation](https://github.com/tokamak-network/Tokamak-zk-EVM/blob/main/packages/frontend/qap-compiler/docs/README.md)
-- [Repository changelog](https://github.com/tokamak-network/Tokamak-zk-EVM/blob/main/CHANGELOG.md)
-- [Tokamak zk-SNARK paper](https://eprint.iacr.org/2024/507)
+| Item              | Value                                                                                                    |
+| ----------------- | -------------------------------------------------------------------------------------------------------- |
+| Package           | [`@tokamak-zk-evm/subcircuit-library`](https://www.npmjs.com/package/@tokamak-zk-evm/subcircuit-library) |
+| Published version | `npm view @tokamak-zk-evm/subcircuit-library version`                                                    |
+| Release notes     | [Repository `CHANGELOG.md`](../../../CHANGELOG.md)                                                       |
 
 ## Security and application responsibilities
 
-Pin a compatible package version and do not combine R1CS, WASM, metadata,
-constants, or setup artifacts from different releases. Package installation
-integrity and the npm registry source remain part of the consumer's supply
-chain and should be governed by the application's dependency policy.
+Pin a compatible package version and verify the package source according to
+the application's supply-chain policy. Do not combine artifacts from different
+builds. Published constraints and witness generators do not by themselves
+establish that a circuit, setup ceremony, integration, or surrounding protocol
+is secure.
 
-Prebuilt artifacts make the compiled circuit available to consumers; their
-presence does not by itself establish that a circuit, setup ceremony,
-application integration, or surrounding protocol is secure. Maintainers who
-regenerate capacity parameters or circuit artifacts must follow the detailed
-package documentation and complete the required validation and security review
-before publication.
+## Project and license
 
-## Original Contribution
-
-- [JehyukJang](https://github.com/JehyukJang): Overall planning and direction. Constraints optimization.
-- [pleiadex](https://github.com/pleiadex): Initial subcircuits design and implementation. Script development.
-- [jdhyun09](https://github.com/jdhyun09): Improvement of EVM compatibility. Constraints optimization.
-
-## License
+- [Maintainer documentation](./docs/README.md)
+- [Tokamak zk-SNARK paper](https://eprint.iacr.org/2024/507)
+- [Issues](https://github.com/tokamak-network/Tokamak-zk-EVM/issues)
 
 Dual-licensed under `MIT OR Apache-2.0`.

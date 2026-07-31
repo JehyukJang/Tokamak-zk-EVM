@@ -1,75 +1,15 @@
 # @tokamak-zk-evm/snark-browser-compat
 
-`@tokamak-zk-evm/snark-browser-compat` provides browser-compatible preprocessing,
-proof generation, proof verification, and artifact conversion for the Tokamak
-zk-EVM protocol.
-It is intended for application developers integrating Tokamak-specific proving
-workflows, not as a generic Groth16 or PLONK backend.
+Browser preprocessing, proof generation, verification, and artifact conversion
+for Tokamak zk-SNARK. Use it in a bundler-based browser application; use
+[`@tokamak-zk-evm/cli`](../cli/README.md) for the complete local native
+workflow.
 
-Browser proving is a long-running, memory-intensive operation. Applications
-must prepare and retain the required binary artifacts, install each required
-preprocess, prover, or verifier runtime explicitly, and use a bundler that
-supports ESM, Web Workers, WebAssembly, and bare npm imports inside Worker
-graphs.
+This package does not synthesize transactions, download artifacts, run setup,
+or provide a generic proving-system API. Browser proving is long-running and
+memory-intensive.
 
-## When to use this package
-
-Use this package when a bundler-based browser application must generate or
-verify Tokamak zk-SNARK proofs, compute the verifier preprocessing commitments
-for those proofs, or convert application artifacts into the binary formats
-consumed by those operations. Use `@tokamak-zk-evm/cli` instead for the complete
-local Node.js and native-backend workflow. This package is not a generic
-proving-system API and does not synthesize Tokamak L2 transactions.
-
-## Contents
-
-- [When to use this package](#when-to-use-this-package)
-- [Package facts](#package-facts)
-- [npm publication](#npm-publication)
-- [Install](#install)
-- [Choose an API](#choose-an-api)
-- [Public API reference](#public-api-reference)
-- [Load binary artifacts](#load-binary-artifacts)
-- [Run preprocess](#run-preprocess)
-- [Verify a proof](#verify-a-proof)
-- [Generate a proof](#generate-a-proof)
-- [Track proving progress](#track-proving-progress)
-- [Runtime artifact guide and acquisition](#runtime-artifact-guide-and-acquisition)
-- [Convert, inspect, and validate binaries](#convert-inspect-and-validate-binaries)
-- [Browser deployment and lifecycle](#browser-deployment-and-lifecycle)
-- [Compatibility and versioning](#compatibility-and-versioning)
-- [How this package relates to Tokamak zk-EVM](#how-this-package-relates-to-tokamak-zk-evm)
-- [Measured browser performance](#measured-browser-performance)
-- [Errors and troubleshooting](#errors-and-troubleshooting)
-- [Security and application responsibilities](#security-and-application-responsibilities)
-- [Project and license](#project-and-license)
-
-## Package facts
-
-| Fact                | Value                                                                                         |
-| ------------------- | --------------------------------------------------------------------------------------------- |
-| Scope               | Tokamak zk-EVM browser preprocessing, proof generation, verification, and artifact conversion |
-| Public entry points | `./preprocess`, `./prover`, `./verifier`, and `./converter`                                   |
-| Protocol            | Tokamak zk-SNARK protocol, not a generic proving-system API                                   |
-| Curve and runtime   | BLS12-381 through ffjavascript                                                                |
-| Module format       | ESM                                                                                           |
-| Runtime inputs      | Independent named binary artifacts supplied by the application                                |
-| Network behavior    | No package-owned artifact download or filesystem I/O                                          |
-| Package license     | `MIT OR Apache-2.0`; dependency licenses remain applicable                                    |
-
-## npm publication
-
-| Item                              | Value                                                                                                                   |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Package                           | [`@tokamak-zk-evm/snark-browser-compat`](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat)            |
-| Current repository source version | `2.1.4`; check the npm page or `npm view @tokamak-zk-evm/snark-browser-compat version` for the latest published version |
-| Release policy                    | Versioned with the compatible native backend and subcircuit-library release                                             |
-| Published runtime                 | ESM package with `./preprocess`, `./prover`, `./verifier`, and `./converter` exports                                    |
-| Release notes                     | [Repository `CHANGELOG.md`](https://github.com/tokamak-network/Tokamak-zk-EVM/blob/main/CHANGELOG.md)                   |
-
-## Install
-
-Install the package and its runtime dependencies from npm:
+## Install and entry points
 
 ```sh
 npm install @tokamak-zk-evm/snark-browser-compat
@@ -86,12 +26,19 @@ import('@tokamak-zk-evm/snark-browser-compat/converter');
 
 Do not import the package root, `dist/` files, runtime primitives, generated
 constants, or protocol internals. Vite and Webpack production consumers are
-verified. Bundler-free direct serving of the package's compiled files is
-unsupported. Complete preprocess, prover, staged-progress, verifier, converter,
-inspection, and validation source is available in
-[`examples/browser`](./examples/browser).
+verified; bundler-free direct serving is unsupported. A complete runnable
+integration is available in [`examples/browser`](./examples/browser).
 
-## Choose an API
+## npm publication
+
+| Item              | Value                                                                                                        |
+| ----------------- | ------------------------------------------------------------------------------------------------------------ |
+| Package           | [`@tokamak-zk-evm/snark-browser-compat`](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat) |
+| Repository source | `2.1.4`; use `npm view @tokamak-zk-evm/snark-browser-compat version` for the published version               |
+| Runtime           | ESM with `./preprocess`, `./prover`, `./verifier`, and `./converter`                                         |
+| Release notes     | [Repository `CHANGELOG.md`](../../CHANGELOG.md)                                                              |
+
+## Public API reference
 
 Use `./preprocess` to produce verifier preprocessing commitments, `./prover`
 to create proofs, `./verifier` to check proofs, and `./converter` to prepare or
@@ -107,11 +54,8 @@ examine binary artifacts.
 | Read binary tables               | `./converter` `inspectBinary()`  | No                     | Inspection object          |
 | Validate a binary                | `./converter` `validateBinary()` | No                     | Validated artifact view    |
 
-`inspectBinary()`, `validateBinary()`, and `verify()` answer different
-questions. Inspection decodes metadata, validation checks the binary's
-structure and self-digest, and verification checks the cryptographic proof.
-
-## Public API reference
+Inspection decodes metadata, validation checks binary structure and
+self-digest, and verification checks the cryptographic proof.
 
 ### Prover API
 
@@ -490,27 +434,6 @@ whole-file validation. Incompatible binary structure normally rejects with
 `INVALID_INPUT`; a structurally decodable but cryptographically incompatible
 proof may return `false`. Applications that manage multiple release lines
 should inspect or validate artifacts before selecting a runtime.
-
-## How this package relates to Tokamak zk-EVM
-
-| Entity                                                                                                   | Relationship                                                                                                                           |
-| -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| [Tokamak zk-EVM](https://github.com/tokamak-network/Tokamak-zk-EVM)                                      | The owner repository and shared release line for this package                                                                          |
-| [Tokamak zk-SNARK protocol paper](https://eprint.iacr.org/2024/507)                                      | The protocol definition implemented by preprocess, the prover, and the verifier                                                        |
-| [Native backend](https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main/packages/backend)           | The protocol reference and accelerated ICICLE/arkworks implementation; it owns setup, preprocess, native proof, and verifier artifacts |
-| [ffjavascript](https://github.com/iden3/ffjavascript)                                                    | The BLS12-381 field, group, MSM, FFT, pairing, WASM, and worker runtime used by browser execution                                      |
-| [`@tokamak-zk-evm/subcircuit-library`](https://www.npmjs.com/package/@tokamak-zk-evm/subcircuit-library) | The pinned source of build-generated setup parameters, packed R1CS data, and subcircuit metadata                                       |
-| [Immutable CRS release folder](https://drive.google.com/drive/folders/14xqCbLoyoVmUVTTlopiXtKnoHPBGL-Sv) | The application-acquired source of release CRS material, including `combined_sigma.rkyv`                                               |
-
-This package does not compile circuits, synthesize application inputs, run a
-trusted setup, download release artifacts, authenticate artifact provenance, or
-provide a generic proving-system abstraction.
-
-The repository root separately deprecates historical WASM verifier packages.
-That notice concerns the older verifier package surfaces. This README describes
-the supported `@tokamak-zk-evm/snark-browser-compat` package with the explicit
-`./preprocess`, `./prover`, `./verifier`, and `./converter` entry points; it
-does not revive or provide compatibility with those historical packages.
 
 ## Measured browser performance
 

@@ -1,8 +1,8 @@
 # Browser Workflow Example
 
-This example is for application developers integrating
-`@tokamak-zk-evm/snark-browser-compat` through Vite. It exposes independent
-installation and execution controls for preprocess, prover, and verifier.
+Runnable Vite integration for
+`@tokamak-zk-evm/snark-browser-compat`. It exposes independent installation and
+execution controls for preprocess, prove, and verify.
 
 ## Run
 
@@ -11,12 +11,10 @@ npm install
 npm run dev
 ```
 
-Open the Vite URL and run preprocess, prove, and verify in order. Each runtime
-must be installed explicitly. Preprocess and proof outputs remain in memory for
-the page lifetime, and verification requires those exact generated outputs.
-Each generated output also has a download link.
+Open the Vite URL and run preprocess, prove, and verify in order. Outputs remain
+in memory for the page lifetime and can also be downloaded.
 
-## Runnable Workflow Source
+## Source map
 
 The page entry point is [`src/main.ts`](./src/main.ts). It coordinates these
 operation-specific modules:
@@ -34,30 +32,27 @@ operation-specific modules:
 [`src/global.d.ts`](./src/global.d.ts) support the runnable page rather than
 defining separate API recipes.
 
-## Prepare Artifacts
+## Input artifacts
 
 Create `public/artifacts/` and provide the binary files needed by the operations
 you intend to run:
 
-| File | Used by |
-| --- | --- |
-| `permutation.bin` | Preprocess and prover |
-| `instance.bin` | Preprocess, prover, and verifier |
-| `preprocess-crs.bin` | Preprocess |
-| `witness.bin` | Prover |
-| `prover-crs.bin` | Prover |
+| File                 | Role and source                                                   | Used by                          |
+| -------------------- | ----------------------------------------------------------------- | -------------------------------- |
+| `permutation.bin`    | `convertPermutation(permutation.json)` from one synthesis         | Preprocess and prover            |
+| `instance.bin`       | `convertInstance(instance.json)` from the same synthesis          | Preprocess, prover, and verifier |
+| `preprocess-crs.bin` | `convertCrs(combined_sigma.rkyv).preprocessCrs`                   | Preprocess                       |
+| `witness.bin`        | `convertWitness(placementVariables.json)` from the same synthesis | Prover                           |
+| `prover-crs.bin`     | `convertCrs(combined_sigma.rkyv).proverCrs`                       | Prover                           |
 
 The default URLs in the page point to these names. They can be replaced with
 same-origin or CORS-enabled application URLs. The verifier CRS is compiled into
 the package and is not an application input.
 
-Prepare runtime binaries with the package converter APIs. In particular,
-`convertCrs(combinedSigmaRkyv)` returns the named `proverCrs` and
-`preprocessCrs` files used here. Source artifacts and provenance remain the
-application's responsibility.
-
 The CRS and witness files are intentionally not included in this example or in
-the npm package.
+the npm package. Obtain a compatible `combined_sigma.rkyv` from the published
+CRS release, authenticate its provenance, and keep transaction artifacts from
+one synthesis.
 
 ## Additional Recipes
 
@@ -70,3 +65,12 @@ with the example, but are not imported by the runnable page:
   metadata and independently validate the same artifact.
 - [`src/staged-proof.ts`](./src/staged-proof.ts): execute the ordered prover
   session API and report arithmetic, copy, binding, and finalization progress.
+
+## Publication and license
+
+This example package is private and is not published to npm. The public
+package is
+[`@tokamak-zk-evm/snark-browser-compat`](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat);
+release notes are in [CHANGELOG.md](../../../../CHANGELOG.md).
+
+Example source follows the repository's `MIT OR Apache-2.0` license.

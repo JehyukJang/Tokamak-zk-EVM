@@ -1,103 +1,76 @@
 # Tokamak zk-EVM Synthesizer
 
-Tokamak zk-EVM Synthesizer turns a Tokamak L2 transaction snapshot into circuit-ready artifacts for the downstream proving pipeline.
+The Synthesizer replays one Tokamak Layer 2 transaction and produces the
+transaction-specific circuit artifacts required by the proving backends.
 
-## Packages
+## Choose a runtime
 
-- `@tokamak-zk-evm/synthesizer-node`
-  - Use this package when you want a Node.js CLI that reads JSON files from disk and writes JSON outputs back to disk.
-  - Package docs: [node-cli/README.md](./node-cli/README.md)
-- `@tokamak-zk-evm/synthesizer-web`
-  - Use this package when you want a browser-facing API that accepts payload objects or uploaded files.
-  - Package docs: [web-app/README.md](./web-app/README.md)
+| Package                                                                                              | Use it when                                                     | Documentation                       |
+| ---------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ----------------------------------- |
+| [`@tokamak-zk-evm/synthesizer-node`](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-node) | A Node.js process reads and writes local JSON files             | [Node README](./node-cli/README.md) |
+| [`@tokamak-zk-evm/synthesizer-web`](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-web)   | A browser application supplies objects, uploaded files, or URLs | [Web README](./web-app/README.md)   |
 
-The shared synthesis runtime lives in `core/` and is not published as a standalone package.
+Both npm packages use the shared runtime under `core/`; `core/` is not a
+standalone public package. Repository source currently targets `2.1.4`. Check
+the npm pages for published versions and
+[CHANGELOG.md](../../../CHANGELOG.md) for release notes.
 
-## npm packages
+## Shared input contract
 
-| Package                            | Runtime                                   | npm                                                                           | Complete usage                              |
-| ---------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------- |
-| `@tokamak-zk-evm/synthesizer-node` | File-based Node.js CLI                    | [View on npm](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-node) | [Node package README](./node-cli/README.md) |
-| `@tokamak-zk-evm/synthesizer-web`  | Browser-facing object, file, and URL APIs | [View on npm](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-web)  | [Web package README](./web-app/README.md)   |
+Each runtime consumes one coherent transaction replay payload:
 
-Both packages follow the synchronized Tokamak zk-EVM release version.
-Repository source currently targets `2.1.4`; consult the linked npm pages for
-published versions and dist-tags. Release notes are maintained in the
-[repository changelog](../../../CHANGELOG.md).
+| Property        | Role                                                                      | Format owner                                                                                                              | Acquisition                                                                |
+| --------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `previousState` | State immediately before execution, including storage reconstruction data | [`tokamak-l2js` `StateSnapshot`](https://github.com/tokamak-network/TokamakL2JS/blob/main/src/interface/channel/types.ts) | Call `TokamakL2StateManager.captureStateSnapshot()`                        |
+| `transaction`   | Signed Tokamak L2 transaction to replay                                   | [`tokamak-l2js` `TxSnapshot`](https://github.com/tokamak-network/TokamakL2JS/blob/main/src/interface/channel/types.ts)    | Call `TokamakL2Tx.captureTxSnapshot()`                                     |
+| `blockInfo`     | L2 block and execution-environment values                                 | Synthesizer `BlockInfo`                                                                                                   | Normalize the trusted application or L2 RPC block context                  |
+| `contractCodes` | Deployed bytecode required by the supported call flow                     | Synthesizer `ContractCodeEntry[]`                                                                                         | Export application deployment/state data or query the trusted state source |
 
-## Shared Input Model
+The complete
+[`L2StateChannel` example](./examples/L2StateChannel) contains the conventional
+JSON filenames. The Node and Web package READMEs document each field and input
+method.
 
-Both published packages work from the same transaction payload shape:
+## Shared outputs
 
-- `previousState`: `tokamak-l2js` `StateSnapshot`;
-- `transaction`: `tokamak-l2js` `TxSnapshot`;
-- `blockInfo`: the Synthesizer's L2 block-context object; and
-- `contractCodes`: the Synthesizer's deployed-bytecode entry array.
+Primary outputs are:
 
-The package READMEs own the complete format, acquisition, and example guidance:
+| File                        | Purpose                                                |
+| --------------------------- | ------------------------------------------------------ |
+| `placementVariables.json`   | Placement IDs, offsets, and witness values for proving |
+| `instance.json`             | Public and function-instance field values              |
+| `instance_description.json` | Human-readable descriptions aligned with the instance  |
+| `permutation.json`          | Wire-equality cycles used by preprocessing and proving |
+| `state_snapshot.json`       | `tokamak-l2js` state snapshot after execution          |
 
-- [Node input-file guide](./node-cli/README.md#required-input-files)
-- [Web input guide](./web-app/README.md#input-shape)
+Supplementary execution logs and placement analysis are emitted only when
+requested with `--output-supplement` in Node or `{ outputSupplement: true }` in
+the Web output helpers.
 
-## Shared Output Model
-
-Both packages share the same logical output artifacts. By default, adapters expose primary outputs only:
-
-- `placementVariables.json`
-- `instance.json`
-- `instance_description.json`
-- `permutation.json`
-- `state_snapshot.json`
-
-Supplementary outputs are included only when requested:
-
-- `supplement/step_log.json`
-- `supplement/placements.json`
-- `supplement/message_code_addresses.json`
-
-Node callers request supplementary outputs with `--output-supplement`. Web callers request them with `{ outputSupplement: true }`.
-
-## Runtime Model
-
-- `@tokamak-zk-evm/synthesizer-node` loads `@tokamak-zk-evm/subcircuit-library` from the installed dependency at runtime.
-- `@tokamak-zk-evm/synthesizer-web` bundles the published subcircuit-library JSON and WASM artifacts at build time.
-
-## Documentation
-
-- Consumer landing: [README.md](./README.md)
-- Repository changelog: [../../../CHANGELOG.md](../../../CHANGELOG.md)
-- Maintainer docs index: [docs/README.md](./docs/README.md)
-
-## FAQ
-
-### Which package should I install?
-
-Install `@tokamak-zk-evm/synthesizer-node` for file-based Node.js execution. Install `@tokamak-zk-evm/synthesizer-web` for browser-style runtimes and UI integrations.
-
-### What input does the synthesizer need?
-
-Both packages expect one complete transaction replay payload with `previousState`, `transaction`, `blockInfo`, and `contractCodes`.
-
-### What does the synthesizer emit?
-
-The synthesizer emits circuit-ready placement data, public instances, permutation constraints, and the final state snapshot by default. Execution analysis files are supplementary outputs and require an explicit request.
+The Node runtime resolves the installed subcircuit library at execution time.
+The Web runtime bundles the compatible JSON and WASM circuit assets when the
+package is built.
 
 <a id="transaction-support-faq"></a>
 
-### Does the current implementation support any arbitrary transaction/call data, or is it limited to simple token/native transfers for now?
+## Transaction support
 
-Partially, yes.
+The Synthesizer is not limited to native transfers or a hardcoded ERC20
+template. It supports contract calls when execution stays within the opcode
+set, call flows, storage, memory, log handling, and runtime model implemented
+by Tokamak zk-EVM. Current validation is strongest for ERC20 transfers and the
+private-state mint, transfer, and redeem flows.
 
-The Synthesizer is not limited to simple native transfers or a hardcoded ERC20 transfer template. It accepts a complete transaction replay payload, including transaction data, contract code, previous state, and block information, then follows the Tokamak L2/EVM execution path to produce circuit-ready artifacts. In practical terms, this means it can be used for contract-call transactions, including calls into contracts with non-trivial internal logic, as long as the execution stays within the currently supported opcode set and runtime model.
+It should not be described as supporting every arbitrary Ethereum transaction.
+Contract creation, precompiles, transient storage, blob opcodes,
+invalid/self-destruct paths, and other unvalidated combinations are outside the
+supported Tokamak L2 boundary.
 
-For complex contracts, support is not determined by whether the transaction is an ERC20 transfer, a native transfer, or another simple transaction type. Instead, support depends on whether the execution stays within the opcode set, call flows, storage/memory/log handling, and runtime model currently supported by Tokamak zk-EVM. The current implementation includes broad support for arithmetic, calldata handling, memory, storage reads and writes, logs, block/environment opcodes, and message-call flows such as CALL, CALLCODE, DELEGATECALL, and STATICCALL. Current examples and validation coverage focus on ERC20 transfer flows and private-state mint, transfer, and redeem flows, so those are the strongest documented support cases today.
+## Project and license
 
-However, it should not yet be described as supporting every arbitrary Ethereum transaction. Transactions that require unsupported behavior, such as contract creation, precompiled contracts, transient storage, blob opcodes, invalid/selfdestruct paths, or other unvalidated opcode/control-flow combinations, are outside the supported consumer claim. These limitations are under intentional scope boundaries rather than underdevelopment or future works. Tokamak zk-EVM is designed under the strict assumption that it is used in Ethereum Layer 2 execution, so features that are outside that target runtime model are intentionally excluded from the consumer support claim.
+- [Maintainer documentation](./docs/README.md)
+- [Subcircuit Library](../qap-compiler/README.md)
+- [Release notes](../../../CHANGELOG.md)
 
-### How does this relate to `@tokamak-zk-evm/subcircuit-library`?
-
-The synthesizer depends on the published subcircuit library for metadata and WASM artifacts. The Node package resolves those assets from the installed package at runtime, while the web package bundles them at build time.
-
-### Is `core/` a public npm package?
-
-No. `core/` is an internal shared runtime used by both published packages.
+The published Synthesizer packages are dual-licensed under
+`MIT OR Apache-2.0`. Dependencies retain their own licenses.
