@@ -8,6 +8,30 @@ The format is based on Keep a Changelog.
 
 ## Unreleased
 
+### CLI
+
+- Added the opt-in interactive `--install --include-prerequisite` flow for
+  native Ubuntu 20.04, Ubuntu 22.04, and macOS installations. It detects
+  compatible existing Rust, Cargo, CMake, compiler, `pkg-config`, Tar, and
+  UnZip commands and installs only missing, unverifiable, or incompatible
+  prerequisites.
+- Aligned Ubuntu provisioning with the packaged ICICLE 3.8.0 Dockerfiles,
+  including their release-specific LLVM repositories and CMake 3.27.4 source
+  build on Ubuntu 20.04, while using Apple's Command Line Tools, Homebrew, and
+  upstream rustup on macOS.
+- Required a normal interactive user, an explicit default-deny confirmation,
+  and a displayed installation plan and disclaimer before host changes.
+  `--include-prerequisite` cannot be combined with `--docker`, and
+  `--uninstall` continues to remove only CLI-owned runtime data.
+- Fixed later macOS CLI runs to restore an existing Homebrew `shellenv` before
+  prerequisite detection, preventing installed CMake and `pkg-config` from
+  being planned for installation again.
+- Reduced published and Docker artifacts, removed the obsolete macOS setup
+  script and generated Docker launcher, cleaned stale build output, retained
+  the manual release wrapper as `release:publish`, and split runtime internals
+  into acyclic responsibility-specific modules without changing the supported
+  command surface.
+
 ### Browser-Compatible SNARK
 
 - Added the independent browser preprocess API with explicit installation,
