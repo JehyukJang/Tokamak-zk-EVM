@@ -13,14 +13,31 @@ Tokamak zk-EVM Synthesizer turns a Tokamak L2 transaction snapshot into circuit-
 
 The shared synthesis runtime lives in `core/` and is not published as a standalone package.
 
+## npm packages
+
+| Package                            | Runtime                                   | npm                                                                           | Complete usage                              |
+| ---------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------- |
+| `@tokamak-zk-evm/synthesizer-node` | File-based Node.js CLI                    | [View on npm](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-node) | [Node package README](./node-cli/README.md) |
+| `@tokamak-zk-evm/synthesizer-web`  | Browser-facing object, file, and URL APIs | [View on npm](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-web)  | [Web package README](./web-app/README.md)   |
+
+Both packages follow the synchronized Tokamak zk-EVM release version.
+Repository source currently targets `2.1.4`; consult the linked npm pages for
+published versions and dist-tags. Release notes are maintained in the
+[repository changelog](../../../CHANGELOG.md).
+
 ## Shared Input Model
 
 Both published packages work from the same transaction payload shape:
 
-- `previousState`
-- `transaction`
-- `blockInfo`
-- `contractCodes`
+- `previousState`: `tokamak-l2js` `StateSnapshot`;
+- `transaction`: `tokamak-l2js` `TxSnapshot`;
+- `blockInfo`: the Synthesizer's L2 block-context object; and
+- `contractCodes`: the Synthesizer's deployed-bytecode entry array.
+
+The package READMEs own the complete format, acquisition, and example guidance:
+
+- [Node input-file guide](./node-cli/README.md#required-input-files)
+- [Web input guide](./web-app/README.md#input-shape)
 
 ## Shared Output Model
 

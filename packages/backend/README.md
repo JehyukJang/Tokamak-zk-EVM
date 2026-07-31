@@ -15,6 +15,20 @@ The backend is organized around six user-facing binaries:
 `trusted-setup` and `mpc-setup` generate CRS artifacts. `preprocess`, `prove`, and `verify`
 consume those artifacts together with transaction-specific data from the frontend synthesizer.
 
+## Distribution
+
+The Rust backend is not published as a standalone npm package. End users obtain
+the supported native workflow through
+[`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli),
+which packages the compatible backend source, builds the binaries locally, and
+installs their runtime resources.
+
+The backend workspace version follows the synchronized Tokamak zk-EVM release;
+the current repository release is `2.1.4`. See the
+[repository changelog](https://github.com/tokamak-network/Tokamak-zk-EVM/blob/main/CHANGELOG.md)
+for native backend and CLI release notes. Direct Cargo commands in this README
+are for repository contributors and backend operators.
+
 ## Prerequisites
 
 - Node.js: https://nodejs.org/
@@ -119,80 +133,128 @@ See [setup/mpc-setup/README.md](./setup/mpc-setup/README.md) for the full MPC op
 
 ## Setup Outputs
 
-`trusted-setup` final output:
+Both setup flows produce the CRS files consumed by later commands:
 
-- `combined_sigma.rkyv`
-- `sigma_preprocess.rkyv`
-- `sigma_verify.json`
-
-`mpc-setup` final output:
-
-- `combined_sigma.rkyv`
-- `sigma_preprocess.rkyv`
-- `sigma_verify.json`
-- `crs_provenance.json`
+| File                    | Format and role                                                                    | Used by                                                        |
+| ----------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `combined_sigma.rkyv`   | Versioned Rust `rkyv` archive containing the prover CRS                            | `prove` and the browser-compatible package's CRS converter     |
+| `sigma_preprocess.rkyv` | Versioned Rust `rkyv` archive containing the CRS subset for verifier preprocessing | `preprocess`                                                   |
+| `sigma_verify.json`     | JSON verifier CRS                                                                  | `verify`                                                       |
+| `crs_provenance.json`   | JSON artifact digests and ceremony/publication metadata; emitted by MPC setup      | Operators and artifact consumers validating the release source |
 
 `crs_provenance.json` binds the final CRS files to their SHA-256 digests. In dusk-backed mode it
 also records the pinned Dusk source metadata, the Dusk raw digest, publication metadata, the CRS
 generation timestamp, and the backend version.
 
+Obtain these files by running one of the setup flows above or by downloading
+the compatible immutable release archive from the
+[Tokamak zk-EVM CRS release folder](https://drive.google.com/drive/folders/14xqCbLoyoVmUVTTlopiXtKnoHPBGL-Sv).
+Treat `.rkyv` files as opaque binary artifacts; do not edit or reserialize them.
+Keep all CRS files from the same setup output and verify published provenance
+before use.
+
 ## Prove and Verify Inputs
 
 ### `preprocess`
 
-Consumes:
+`preprocess` consumes:
 
-- the subcircuit library
-- `sigma_preprocess.rkyv`
-- synthesizer outputs such as `instance.json` and `permutation.json`
+| File or directory                               | Role and format                                                                                                | How to obtain it                                                                                         |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `sigma_preprocess.rkyv` in the CRS directory    | Opaque `rkyv` CRS archive used to commit permutation and fixed function-instance data                          | Run a compatible setup flow or download and authenticate the matching release CRS                        |
+| `permutation.json` in the Synthesizer directory | JSON wire-equality cycles emitted by the Synthesizer                                                           | Run `@tokamak-zk-evm/synthesizer-node`, `@tokamak-zk-evm/synthesizer-web`, or `tokamak-cli --synthesize` |
+| `instance.json` in the Synthesizer directory    | JSON public and function-instance field values from the same synthesis run                                     | Keep the matching Synthesizer output                                                                     |
+| subcircuit library                              | Binary R1CS constraints embedded in release builds or selected by `--subcircuit-library` in non-release builds | Install or build the compatible `@tokamak-zk-evm/subcircuit-library`                                     |
 
 Produces:
 
-- `preprocess.json`
+- `preprocess.json`: JSON verifier commitments represented as hex strings in
+  the native verifier/Solidity-compatible layout.
 
-CLI package example:
+Direct backend example:
 
 ```bash
-tokamak-cli --preprocess
+cargo run --release -p preprocess -- \
+  --crs ./setup/output \
+  --synthesizer-stat ./synthesizer/output \
+  --output ./preprocess/output
 ```
 
 ### `prove`
 
-Consumes:
+`prove` consumes:
 
-- the subcircuit library
-- CRS artifacts from setup
-- synthesizer outputs
+| File or directory                                      | Role and format                                                                                                | How to obtain it                                                  |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `combined_sigma.rkyv` in the CRS directory             | Opaque `rkyv` prover CRS archive                                                                               | Run setup or download and authenticate the compatible release CRS |
+| `placementVariables.json` in the Synthesizer directory | JSON witness values and subcircuit identity for every placement                                                | Run the Synthesizer                                               |
+| `permutation.json` in the Synthesizer directory        | JSON wire-equality cycles                                                                                      | Reuse the file from the same synthesis run                        |
+| `instance.json` in the Synthesizer directory           | JSON public and function-instance values                                                                       | Reuse the file from the same synthesis run                        |
+| subcircuit library                                     | Binary R1CS constraints embedded in release builds or selected by `--subcircuit-library` in non-release builds | Install or build the compatible subcircuit library                |
 
 Produces:
 
-- `proof.json`
+- `proof.json`: JSON proof points and evaluations represented as hex strings
+  in the native verifier/Solidity-compatible layout.
 
-CLI package example:
+Direct backend example:
 
 ```bash
-tokamak-cli --prove
+cargo run --release -p prove -- \
+  --crs ./setup/output \
+  --synthesizer-stat ./synthesizer/output \
+  --output ./prove/output
 ```
 
 ### `verify`
 
-Consumes:
+`verify` consumes:
 
-- the subcircuit library
-- CRS artifacts from setup
-- synthesizer outputs
-- `preprocess.json`
-- `proof.json`
+| File or directory                             | Role and format                                                                                                | How to obtain it                                                               |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `sigma_verify.json` in the CRS directory      | JSON verifier CRS                                                                                              | Run setup or download and authenticate the compatible release CRS              |
+| `instance.json` in the Synthesizer directory  | JSON public and function-instance values asserted by the proof                                                 | Reuse the instance from the matching synthesis run or proof bundle             |
+| `preprocess.json` in the preprocess directory | JSON verifier commitments tied to the matching permutation and function instance                               | Run `preprocess` for the same synthesis result                                 |
+| `proof.json` in the proof directory           | JSON proof to verify                                                                                           | Run `prove` for the same synthesis result or obtain it from a trusted producer |
+| subcircuit library                            | Binary R1CS constraints embedded in release builds or selected by `--subcircuit-library` in non-release builds | Install or build the compatible subcircuit library                             |
 
 Produces:
 
 - `true` or `false` on stdout
 
-CLI package example:
+Direct backend example:
 
 ```bash
-tokamak-cli --verify
+cargo run --release -p verify -- \
+  --crs ./setup/output \
+  --synthesizer-stat ./synthesizer/output \
+  --preprocess ./preprocess/output \
+  --proof ./prove/output
 ```
+
+Example input layout:
+
+```text
+setup/output/
+├── combined_sigma.rkyv
+├── sigma_preprocess.rkyv
+└── sigma_verify.json
+
+synthesizer/output/
+├── instance.json
+├── permutation.json
+└── placementVariables.json
+
+preprocess/output/
+└── preprocess.json
+
+prove/output/
+└── proof.json
+```
+
+Keep the Synthesizer files together as one transaction-specific set. The proof,
+preprocessing data, instance, CRS, subcircuit library, and backend must belong
+to compatible Tokamak zk-EVM release lines.
 
 ## Debugging with VS Code
 
@@ -221,6 +283,25 @@ python3 prove/optimization/scripts/timing_to_md.py \
 ## Contributing
 
 See [../../CONTRIBUTING.md](../../CONTRIBUTING.md).
+
+## Security and operator responsibilities
+
+Setup operators are responsible for ceremony integrity, contributor
+coordination, artifact provenance, digest publication, and secure disposal of
+any toxic waste produced by a trusted setup. Downloaders are responsible for
+authenticating the artifact source and verifying published digests before use.
+
+The backend reads transaction-derived witnesses, instances, and proofs from the
+filesystem. Protect those files according to the application's data policy and
+do not place RPC API keys, wallet credentials, or private signing keys in
+backend input directories. A successful proof or `true` verification result
+does not by itself establish the security of the application, circuit library,
+setup ceremony, artifact distribution channel, or surrounding protocol.
+
+Backend commands can consume substantial CPU, GPU, memory, disk, and time.
+Operators are responsible for resource limits, isolation, monitoring, and
+recovery appropriate to their environment. Published timing and memory results
+are reference observations, not deployment guarantees.
 
 ## Original Contribution
 

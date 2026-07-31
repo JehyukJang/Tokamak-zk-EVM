@@ -20,6 +20,19 @@ Main commands:
 - `--extract-proof`
 - `--doctor`
 
+## npm publication
+
+| Item                              | Value                                                                                                  |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Package                           | [`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli)                             |
+| Current repository source version | `2.1.4`; check the npm page or `npm view @tokamak-zk-evm/cli version` for the latest published version |
+| Installation model                | npm installs the launcher; the CLI builds the compatible native backend locally                        |
+| Release policy                    | Versioned with the supported Synthesizer, browser SNARK, and subcircuit-library packages               |
+| Release notes                     | [Repository `CHANGELOG.md`](https://github.com/tokamak-network/Tokamak-zk-EVM/blob/main/CHANGELOG.md)  |
+
+The native backend is not published as a separate npm package. This CLI package
+is its supported npm distribution and orchestration surface.
+
 ## Quick Start
 
 ```bash
@@ -310,6 +323,67 @@ If you pass a directory, it must contain:
 - `block_info.json`
 - `contract_codes.json`
 
+These four files describe one replayable Tokamak L2 transaction. Two formats
+belong to `tokamak-l2js`, while two are defined by the Tokamak zk-EVM
+Synthesizer:
+
+| File                           | Role                                                                                                                         | Format owner                                                                                                              | How to obtain it                                                                                                                                                            | Complete example                                                                                                                                                         |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `previous_state_snapshot.json` | State immediately before the transaction, including state roots and the storage data needed to reconstruct the state manager | [`tokamak-l2js` `StateSnapshot`](https://github.com/tokamak-network/TokamakL2JS/blob/main/src/interface/channel/types.ts) | Call `TokamakL2StateManager.captureStateSnapshot()` after preparing the pre-transaction state, or export the equivalent snapshot from an application that follows that type | [Example state snapshot](https://github.com/tokamak-network/Tokamak-zk-EVM/blob/main/packages/frontend/synthesizer/examples/L2StateChannel/previous_state_snapshot.json) |
+| `transaction.json`             | Signed Tokamak L2 transaction snapshot to replay                                                                             | [`tokamak-l2js` `TxSnapshot`](https://github.com/tokamak-network/TokamakL2JS/blob/main/src/interface/channel/types.ts)    | Call `TokamakL2Tx.captureTxSnapshot()` on the transaction                                                                                                                   | [Example transaction](https://github.com/tokamak-network/Tokamak-zk-EVM/blob/main/packages/frontend/synthesizer/examples/L2StateChannel/transaction.json)                |
+| `block_info.json`              | Block and execution-environment values used by block opcodes                                                                 | Tokamak zk-EVM `BlockInfo`                                                                                                | Normalize the target L2 block context from the application or its trusted RPC source                                                                                        | [Example block information](https://github.com/tokamak-network/Tokamak-zk-EVM/blob/main/packages/frontend/synthesizer/examples/L2StateChannel/block_info.json)           |
+| `contract_codes.json`          | Deployed bytecode for contracts whose code is needed while replaying the transaction                                         | Tokamak zk-EVM `ContractCodeEntry[]`                                                                                      | Export the deployed bytecode known to the application, or fetch it from the trusted state/RPC source used to construct the replay                                           | [Example contract code list](https://github.com/tokamak-network/Tokamak-zk-EVM/blob/main/packages/frontend/synthesizer/examples/L2StateChannel/contract_codes.json)      |
+
+The installed Synthesizer is built against a specific `tokamak-l2js` version.
+Use its exported `StateSnapshot` and `TxSnapshot` types rather than recreating
+those interfaces independently.
+
+### Synthesis input formats
+
+`previous_state_snapshot.json` is a JSON serialization of `StateSnapshot`:
+
+| Field              | JSON shape                               | Meaning                                                          |
+| ------------------ | ---------------------------------------- | ---------------------------------------------------------------- |
+| `stateRoots`       | `string[]`                               | Tokamak state roots before execution                             |
+| `storageAddresses` | `string[]`                               | Contracts with storage represented in the snapshot               |
+| `storageKeys`      | `string[][]`                             | Original storage-slot keys for each corresponding address        |
+| `storageTrieRoots` | `string[]`                               | Ethereum storage-trie roots for the corresponding addresses      |
+| `storageTrieDb`    | `{ "key": string, "value": string }[][]` | Serialized trie-node databases used to reconstruct storage tries |
+| `channelId`        | `number`                                 | Tokamak L2 state-channel identifier                              |
+
+The arrays indexed by storage address must describe the same addresses in the
+same order. `storageKeys` contains storage-slot keys; the `key` members inside
+`storageTrieDb` are trie database keys and are not interchangeable.
+
+`transaction.json` is a JSON serialization of `TxSnapshot`:
+
+| Field          | JSON shape               | Meaning                                                   |
+| -------------- | ------------------------ | --------------------------------------------------------- |
+| `nonce`        | `number`                 | Transaction nonce                                         |
+| `to`           | `string`                 | Destination address                                       |
+| `data`         | `string`                 | Hex-encoded calldata                                      |
+| `senderPubKey` | `string`                 | Tokamak L2 sender public key                              |
+| `v`, `r`, `s`  | optional `string` values | Signature components captured from the signed transaction |
+
+`block_info.json` is one JSON object. `coinBase`, `timeStamp`, `blockNumber`,
+`prevRanDao`, `gasLimit`, `chainId`, `selfBalance`, and `baseFee` are
+`0x`-prefixed hex strings. `prevBlockHashes` is an array of `0x`-prefixed
+block-hash strings.
+
+`contract_codes.json` is a JSON array:
+
+```json
+[
+  {
+    "address": "0x...",
+    "code": "0x..."
+  }
+]
+```
+
+Both values are hex strings. Include every deployed contract whose bytecode is
+required by the transaction's supported call flow.
+
 Example:
 
 ```bash
@@ -326,6 +400,10 @@ tokamak-cli --synthesize \
   --contract-code ./inputs/contract_codes.json
 ```
 
+The repository provides a complete
+[L2StateChannel input directory](https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main/packages/frontend/synthesizer/examples/L2StateChannel)
+that can be used to inspect the four files together.
+
 ## What Do `--preprocess`, `--prove`, and `--verify` Read?
 
 If you run them without an argument, they use the files already stored in the runtime cache.
@@ -335,6 +413,31 @@ If you pass a directory or zip file:
 - `--preprocess` needs `permutation.json` and `instance.json`
 - `--prove` needs `placementVariables.json`, `permutation.json`, and `instance.json`
 - `--verify` needs `proof.json`, `preprocess.json`, and `instance.json`
+
+Each external directory or ZIP supplies only transaction-specific files. The
+compatible setup artifact remains in the installed runtime cache.
+
+| Command        | Input file                | Role and format                                                                                | How to obtain it                                                                               |
+| -------------- | ------------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `--preprocess` | `permutation.json`        | JSON wire-equality permutation emitted by the Synthesizer                                      | Run `--synthesize`, or take it from the Synthesizer output directory                           |
+| `--preprocess` | `instance.json`           | JSON public and function-instance field values emitted by the Synthesizer                      | Run `--synthesize`; keep it paired with the same permutation                                   |
+| `--preprocess` | `sigma_preprocess.rkyv`   | Versioned Rust `rkyv` CRS archive used to commit verifier preprocessing data                   | Installed into the setup cache by `--install`; do not place it in the external input directory |
+| `--prove`      | `placementVariables.json` | JSON witness values and subcircuit placement metadata emitted by the Synthesizer               | Run `--synthesize`; keep it paired with the same permutation and instance                      |
+| `--prove`      | `permutation.json`        | JSON wire-equality permutation                                                                 | Run `--synthesize`                                                                             |
+| `--prove`      | `instance.json`           | JSON public and function-instance field values                                                 | Run `--synthesize`                                                                             |
+| `--prove`      | `combined_sigma.rkyv`     | Versioned Rust `rkyv` prover CRS archive                                                       | Installed into the setup cache by `--install`; do not place it in the external input directory |
+| `--verify`     | `proof.json`              | JSON proof generated in the native verifier/Solidity-compatible field and point representation | Run `--prove`, receive a proof bundle from its trusted producer, or use an extracted bundle    |
+| `--verify`     | `preprocess.json`         | JSON verifier commitments for the matching circuit permutation and function instance           | Run `--preprocess`, receive it with the proof artifacts, or use an extracted bundle            |
+| `--verify`     | `instance.json`           | JSON public and function-instance values asserted by the proof                                 | Reuse the matching Synthesizer output or the copy in an extracted proof bundle                 |
+| `--verify`     | `sigma_verify.json`       | JSON verifier CRS for the compatible backend release                                           | Installed into the setup cache by `--install`; do not place it in the proof bundle             |
+
+Do not mix files from different synthesis runs or incompatible Tokamak zk-EVM
+release lines. A proof bundle must describe one instance and its matching
+preprocess and proof.
+
+`--install --no-setup` intentionally omits the three setup artifacts. In that
+state, `--preprocess`, `--prove`, and `--verify` cannot run until setup
+artifacts are provisioned by another `--install` mode.
 
 Examples:
 
@@ -350,6 +453,27 @@ tokamak-cli --prove ./artifacts.zip
 tokamak-cli --verify ./proof-bundle.zip
 ```
 
+Example external layouts:
+
+```text
+preprocess-input/
+├── instance.json
+└── permutation.json
+
+prove-input/
+├── instance.json
+├── permutation.json
+└── placementVariables.json
+
+verify-input/
+├── instance.json
+├── preprocess.json
+└── proof.json
+```
+
+The same files may be placed at the root of a ZIP archive instead of a
+directory.
+
 ## What Does `--extract-proof` Produce?
 
 `--extract-proof <OUTPUT_ZIP_PATH>` writes a zip file that includes:
@@ -360,12 +484,38 @@ tokamak-cli --verify ./proof-bundle.zip
 - `instance_description.json`
 - `benchmark.json` when available
 
+The command reads `proof.json`, `preprocess.json`, `instance.json`, and
+`instance_description.json` from the runtime cache. Therefore, synthesis,
+preprocessing, and proving must already have completed for the same transaction.
+`instance_description.json` is the human-readable public-instance description
+created by `--synthesize`; `benchmark.json` is optional proving timing output.
+
 Example:
 
 ```bash
 tokamak-cli --extract-proof ./proof-bundle.zip
 tokamak-cli --verify ./proof-bundle.zip
 ```
+
+## Security and operational responsibilities
+
+The CLI does not require an RPC API key or wallet credential. If another tool
+uses an RPC service or wallet to construct the four synthesis inputs, keep its
+credentials outside the JSON files, command history, proof bundles, and source
+control. The CLI cannot protect credentials supplied to unrelated acquisition
+tools.
+
+Treat transaction snapshots, state snapshots, witnesses, proof bundles, and
+cache contents according to the application's data-handling policy. Verify the
+source, release compatibility, and integrity of externally supplied input
+directories, ZIP files, and CRS artifacts before relying on their results.
+
+`--include-prerequisite` and `--install --docker` can invoke external package
+managers, installers, container tooling, and network services. Review the
+printed plan and the package-specific prerequisite disclaimer before approving
+host changes. Proof generation and verification do not by themselves establish
+that an application, circuit, trusted setup, or surrounding protocol is secure
+or suitable for a particular deployment.
 
 ## What Does `--doctor` Check?
 
@@ -399,3 +549,12 @@ tokamak-cli --install
 ### How Do I Start From A Clean State?
 
 Delete the CLI cache directory and run `tokamak-cli --install` again.
+
+## Project, support, and license
+
+- [Source repository](https://github.com/tokamak-network/Tokamak-zk-EVM)
+- [Issue tracker](https://github.com/tokamak-network/Tokamak-zk-EVM/issues)
+- [Release notes](https://github.com/tokamak-network/Tokamak-zk-EVM/blob/main/CHANGELOG.md)
+
+The CLI package is dual-licensed under `MIT OR Apache-2.0`. Its packaged native
+backend and third-party dependencies retain their own applicable licenses.

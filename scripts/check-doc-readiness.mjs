@@ -114,6 +114,7 @@ function checkRootReadme() {
     '@tokamak-zk-evm/synthesizer-node',
     '@tokamak-zk-evm/synthesizer-web',
     '@tokamak-zk-evm/snark-browser-compat',
+    '## npm Packages and Releases',
     '## Repository FAQ',
     '### What is Tokamak zk-EVM?',
     '### What is a Tokamak Layer 2 transaction?',
@@ -140,8 +141,24 @@ function checkRootReadme() {
     'the supported browser SNARK and legacy WASM distinction',
   );
 
-  if (/@tokamak-zk-evm\/verify-wasm|verify-wasm-web|verify-wasm-nodejs|verify-wasm-bundler/u.test(readText(relativePath))) {
+  if (
+    /@tokamak-zk-evm\/verify-wasm|verify-wasm-web|verify-wasm-nodejs|verify-wasm-bundler/u.test(readText(relativePath))
+  ) {
     fail(`${relativePath} must not list deprecated WASM verifier packages as supported package choices.`);
+  }
+
+  for (const forbidden of [
+    '# Getting started',
+    '## Native npm installation',
+    '## How to run (for all platforms)',
+    '## Disclaimer',
+    '## Contributing',
+    '## License',
+    '<CLI> --',
+  ]) {
+    if (readText(relativePath).includes(forbidden)) {
+      fail(`${relativePath} must leave detailed usage and disclaimers to package READMEs; found ${forbidden}.`);
+    }
   }
 }
 
@@ -157,7 +174,84 @@ function checkPackageReadmes() {
   for (const [relativePath, packageName] of packageReadmes) {
     requireIncludes(relativePath, '## When to use this package');
     requireIncludes(relativePath, packageName);
+    requireIncludes(relativePath, '## npm publication');
+    requireIncludes(relativePath, 'https://www.npmjs.com/package/');
     requireIncludes(relativePath, 'CHANGELOG.md', 'a root changelog link');
+  }
+
+  const packageInputRequirements = [
+    [
+      'packages/cli/README.md',
+      [
+        'StateSnapshot',
+        'captureStateSnapshot()',
+        'TxSnapshot',
+        'captureTxSnapshot()',
+        'sigma_preprocess.rkyv',
+        'combined_sigma.rkyv',
+        'sigma_verify.json',
+        '## Security and operational responsibilities',
+      ],
+    ],
+    [
+      'packages/frontend/synthesizer/node-cli/README.md',
+      [
+        'StateSnapshot',
+        'captureStateSnapshot()',
+        'TxSnapshot',
+        'captureTxSnapshot()',
+        'contract_codes.json',
+        '## Security and application responsibilities',
+      ],
+    ],
+    [
+      'packages/frontend/synthesizer/web-app/README.md',
+      [
+        'StateSnapshot',
+        'captureStateSnapshot()',
+        'TxSnapshot',
+        'captureTxSnapshot()',
+        'loadSynthesisInputFromFiles',
+        'loadSynthesisInputFromUrls',
+        '## Security and application responsibilities',
+      ],
+    ],
+    [
+      'packages/backend-wasm/README.md',
+      [
+        '## Runtime artifact guide and acquisition',
+        'TZBWASM1',
+        'combined_sigma.rkyv',
+        '## Security and application responsibilities',
+      ],
+    ],
+    [
+      'packages/frontend/qap-compiler/README.md',
+      [
+        '## Artifact formats and acquisition',
+        'setupParams.json',
+        'subcircuitInfo.json',
+        '## Security and application responsibilities',
+      ],
+    ],
+  ];
+
+  for (const [relativePath, requirements] of packageInputRequirements) {
+    for (const requirement of requirements) {
+      requireIncludes(relativePath, requirement);
+    }
+  }
+
+  for (const requirement of [
+    '## Distribution',
+    'not published as a standalone npm package',
+    '## Prove and Verify Inputs',
+    'combined_sigma.rkyv',
+    'sigma_preprocess.rkyv',
+    'sigma_verify.json',
+    '## Security and operator responsibilities',
+  ]) {
+    requireIncludes('packages/backend/README.md', requirement);
   }
 }
 
