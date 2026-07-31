@@ -37,52 +37,31 @@ integration is available in [`examples/browser`](./examples/browser).
 | Published version | `npm view @tokamak-zk-evm/snark-browser-compat version`                                                      |
 | Release notes     | [Repository `CHANGELOG.md`](../../CHANGELOG.md)                                                              |
 
-## Public API reference
-
-| Subpath        | Export                             | Purpose                                                               |
-| -------------- | ---------------------------------- | --------------------------------------------------------------------- |
-| `./prover`     | `prover.install(options?)`         | Create or reuse the prover runtime                                    |
-| `./prover`     | `prover.prove(input)`              | Generate one complete verifier-proof binary                           |
-| `./prover`     | `prover.begin(input)`              | Start a staged proving session                                        |
-| `./prover`     | `ProverSession.proveArithmetic()`  | Execute the arithmetic phase                                          |
-| `./prover`     | `ProverSession.proveCopy()`        | Execute the copy phase                                                |
-| `./prover`     | `ProverSession.proveBinding()`     | Execute the binding phase                                             |
-| `./prover`     | `ProverSession.finalize()`         | Finalize, return the proof, and release the session                   |
-| `./prover`     | `ProverSession.dispose()`          | Release an unfinished session                                         |
-| `./preprocess` | `preprocess.install(options?)`     | Create or reuse the preprocess runtime                                |
-| `./preprocess` | `preprocess.preprocess(input)`     | Produce verifier-preprocess commitments                               |
-| `./verifier`   | `verifier.install()`               | Create or reuse the verifier runtime                                  |
-| `./verifier`   | `verifier.verify(input)`           | Return the cryptographic validity of one proof                        |
-| `./converter`  | `convertWitness(value)`            | Convert placement-variable JSON                                       |
-| `./converter`  | `convertPermutation(value)`        | Convert permutation JSON                                              |
-| `./converter`  | `convertInstance(value)`           | Convert public and function-instance JSON                             |
-| `./converter`  | `convertVerifierPreprocess(value)` | Convert native preprocess JSON                                        |
-| `./converter`  | `convertProof(input)`              | Convert between native proof JSON and proof binary                    |
-| `./converter`  | `convertCrs(bytes)`                | Split the combined CRS into prover, preprocess, and verifier binaries |
-| `./converter`  | `inspectBinary(bytes)`             | Read binary header and section information                            |
-| `./converter`  | `validateBinary(bytes)`            | Validate layout, digest, and the versioned artifact specification     |
-
-Public types are `ProverInput`, `ProverInstallOptions`,
-`ProverInstallationInfo`, `ProverSession`, `VerifierInput`,
-`VerifierInstallationInfo`, `PreprocessInput`, `PreprocessInstallOptions`,
-`PreprocessInstallationInfo`, `BinaryArtifactInspection`,
-`BinarySectionInspection`, `ConvertedCrs`, `ConverterArtifactJson`,
-`ConvertProofBinaryInput`, `ConvertProofInput`, `ConvertProofJsonInput`,
-`RuntimeArtifactFileValidationResult`, `BackendWasmError`, and
-`BackendWasmErrorCode`.
-
 ## Quick start
 
-The package does not fetch runtime inputs. Load non-empty `Uint8Array` values,
-install each runtime once, and keep all transaction artifacts from one
-synthesis:
+Before running this example, prepare these five files:
+
+- `witness.bin`, `permutation.bin`, and `instance.bin` converted from one
+  Synthesizer result;
+- `prover-crs.bin` and `preprocess-crs.bin` converted from one compatible
+  `combined_sigma.rkyv`.
+
+The [runtime artifact guide](#runtime-artifact-guide-and-acquisition) explains
+each source and conversion. The example below includes its loader, installs
+each runtime once, and keeps all transaction artifacts from one synthesis:
 
 ```ts
 import { install as installPreprocess, preprocess } from '@tokamak-zk-evm/snark-browser-compat/preprocess';
 import { install as installProver, prove } from '@tokamak-zk-evm/snark-browser-compat/prover';
 import { install as installVerifier, verify } from '@tokamak-zk-evm/snark-browser-compat/verifier';
 
-import { loadBinary } from './load-binary.js';
+async function loadBinary(url: string): Promise<Uint8Array> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to load ${url}: ${response.status}`);
+  }
+  return new Uint8Array(await response.arrayBuffer());
+}
 
 await Promise.all([installPreprocess(), installProver(), installVerifier()]);
 
@@ -97,7 +76,13 @@ const [witness, permutation, instance, proverCrs, preprocessCrs] = await Promise
 const verifierPreprocess = await preprocess({ permutation, instance, preprocessCrs });
 const proof = await prove({ witness, permutation, instance, proverCrs });
 const valid = await verify({ proof, instance, verifierPreprocess });
+console.log({ valid });
 ```
+
+The files may use different URLs, but they must be same-origin or served with
+the required CORS headers. See the
+[runnable Vite example](./examples/browser/README.md) for a complete
+application.
 
 Preprocess and prover accept `chunkSizeExponent` from `10` through `19`.
 Defaults are `17` for preprocess and `18` for proving. A later explicit
@@ -116,23 +101,28 @@ The calls are ordered and share one in-memory transcript:
 ```ts
 import { begin, type ProverInput } from '@tokamak-zk-evm/snark-browser-compat/prover';
 
-declare const input: ProverInput;
-
-const session = await begin(input);
-try {
-  await session.proveArithmetic();
-  await session.proveCopy();
-  await session.proveBinding();
-  const proof = await session.finalize();
-  console.log(proof.byteLength);
-} finally {
-  session.dispose();
+export async function proveWithProgress(input: ProverInput): Promise<Uint8Array> {
+  const session = await begin(input);
+  try {
+    console.log('Arithmetic');
+    await session.proveArithmetic();
+    console.log('Copy');
+    await session.proveCopy();
+    console.log('Binding');
+    await session.proveBinding();
+    console.log('Finalizing');
+    return await session.finalize();
+  } finally {
+    session.dispose();
+  }
 }
 ```
 
 These boundaries provide coarse progress, not percentages or resumable state.
 Finalize or dispose every session; an unfinished session retains large prover
-state.
+state. Pass the same `ProverInput` used by `prove()` after installing the prover.
+The runnable example includes a
+[callback-based progress recipe](./examples/browser/src/staged-proof.ts).
 
 ## Runtime artifact guide and acquisition
 
@@ -210,6 +200,43 @@ Preprocess, the prover, and the verifier deliberately do not call
 `validateBinary()`. They decode and process their named binary inputs directly
 to keep the runtime algorithms focused. Call validation separately when the
 application's trust boundary requires it.
+
+## Public API reference
+
+Use the workflow sections above for integration. This table is the complete
+public surface when looking up a specific operation:
+
+| Subpath        | Export                             | Purpose                                                               |
+| -------------- | ---------------------------------- | --------------------------------------------------------------------- |
+| `./prover`     | `prover.install(options?)`         | Create or reuse the prover runtime                                    |
+| `./prover`     | `prover.prove(input)`              | Generate one complete verifier-proof binary                           |
+| `./prover`     | `prover.begin(input)`              | Start a staged proving session                                        |
+| `./prover`     | `ProverSession.proveArithmetic()`  | Execute the arithmetic phase                                          |
+| `./prover`     | `ProverSession.proveCopy()`        | Execute the copy phase                                                |
+| `./prover`     | `ProverSession.proveBinding()`     | Execute the binding phase                                             |
+| `./prover`     | `ProverSession.finalize()`         | Finalize, return the proof, and release the session                   |
+| `./prover`     | `ProverSession.dispose()`          | Release an unfinished session                                         |
+| `./preprocess` | `preprocess.install(options?)`     | Create or reuse the preprocess runtime                                |
+| `./preprocess` | `preprocess.preprocess(input)`     | Produce verifier-preprocess commitments                               |
+| `./verifier`   | `verifier.install()`               | Create or reuse the verifier runtime                                  |
+| `./verifier`   | `verifier.verify(input)`           | Return the cryptographic validity of one proof                        |
+| `./converter`  | `convertWitness(value)`            | Convert placement-variable JSON                                       |
+| `./converter`  | `convertPermutation(value)`        | Convert permutation JSON                                              |
+| `./converter`  | `convertInstance(value)`           | Convert public and function-instance JSON                             |
+| `./converter`  | `convertVerifierPreprocess(value)` | Convert native preprocess JSON                                        |
+| `./converter`  | `convertProof(input)`              | Convert between native proof JSON and proof binary                    |
+| `./converter`  | `convertCrs(bytes)`                | Split the combined CRS into prover, preprocess, and verifier binaries |
+| `./converter`  | `inspectBinary(bytes)`             | Read binary header and section information                            |
+| `./converter`  | `validateBinary(bytes)`            | Validate layout, digest, and the versioned artifact specification     |
+
+Public types are `ProverInput`, `ProverInstallOptions`,
+`ProverInstallationInfo`, `ProverSession`, `VerifierInput`,
+`VerifierInstallationInfo`, `PreprocessInput`, `PreprocessInstallOptions`,
+`PreprocessInstallationInfo`, `BinaryArtifactInspection`,
+`BinarySectionInspection`, `ConvertedCrs`, `ConverterArtifactJson`,
+`ConvertProofBinaryInput`, `ConvertProofInput`, `ConvertProofJsonInput`,
+`RuntimeArtifactFileValidationResult`, `BackendWasmError`, and
+`BackendWasmErrorCode`.
 
 ## Browser support and lifecycle
 

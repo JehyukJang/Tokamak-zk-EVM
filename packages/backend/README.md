@@ -4,6 +4,14 @@ Rust workspace implementing the Tokamak zk-SNARK setup, preprocessing, proving,
 and verification algorithms described in the
 [protocol paper](https://eprint.iacr.org/2024/507).
 
+Use this guide when operating an individual Rust binary or contributing to the
+backend. For an end-to-end local workflow, use the
+[`@tokamak-zk-evm/cli`](../cli/README.md).
+
+In this guide, CRS means the common reference string used by the proving
+system, R1CS means the rank-1 constraint system that represents circuit
+constraints, and QAP means the corresponding quadratic arithmetic program.
+
 ## Components
 
 | Binary                  | Responsibility                                                |

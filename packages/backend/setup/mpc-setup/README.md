@@ -3,6 +3,12 @@
 Operator guide for generating Tokamak zk-SNARK CRS artifacts through the
 native or Dusk-backed setup flow.
 
+Phase 1 supplies reusable powers-of-tau material. Phase 2 specializes that
+material to the Tokamak circuit library and produces the final CRS (common
+reference string) consumed by preprocessing, proving, and verification. Beacon
+mode derives a contribution from an explicit seed so the contribution can be
+reproduced and audited.
+
 ## Modes and distribution
 
 | Binary                  | Phase-1 source                    | Phase 2         | Publication                                      |
@@ -91,13 +97,20 @@ fails the complete run.
 Testing behavior is a Cargo feature, not a runtime flag:
 
 ```bash
-cargo run --release --features testing-mode -p mpc-setup --bin <BINARY> -- \
-  --intermediate ./setup/mpc-setup/output/testing.intermediate \
-  --output ./setup/mpc-setup/output/testing.final
+# Test the native flow
+cargo run --release --features testing-mode -p mpc-setup \
+  --bin native_mpc_setup -- \
+  --intermediate ./setup/mpc-setup/output/native-testing.intermediate \
+  --output ./setup/mpc-setup/output/native-testing.final
+
+# Test the Dusk-backed flow
+cargo run --release --features testing-mode -p mpc-setup \
+  --bin dusk_backed_mpc_setup -- \
+  --intermediate ./setup/mpc-setup/output/dusk-testing.intermediate \
+  --output ./setup/mpc-setup/output/dusk-testing.final
 ```
 
-Set `<BINARY>` to `native_mpc_setup` or `dusk_backed_mpc_setup`. Testing-mode
-CRS must not be used as production setup material.
+Testing-mode CRS must not be used as production setup material.
 
 ## Outputs and provenance
 

@@ -24,6 +24,10 @@ const output = await synthesize(input);
 saveSynthesisOutputToFiles(output);
 ```
 
+`saveSynthesisOutputToFiles()` starts browser downloads for the generated JSON
+files. Each URL passed to `loadSynthesisInputFromUrls()` must return successful
+JSON and be either same-origin or accessible through CORS.
+
 Use this package for browser applications. Use
 [`@tokamak-zk-evm/synthesizer-node`](../node-cli/README.md) for local
 filesystem workflows.

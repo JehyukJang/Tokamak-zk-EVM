@@ -13,6 +13,28 @@ npm install @tokamak-zk-evm/subcircuit-library
 Consumers install the npm package. They do not need to run the QAP compiler or
 rebuild the circuits.
 
+## When to use this package
+
+Most applications should let the Synthesizer, CLI, or proving backend select
+and resolve this package. Import it directly only when an integration needs a
+specific published circuit file or is implementing one of those runtimes.
+
+R1CS means rank-1 constraint system: the compiled constraints used during
+setup and proving. Each matching WASM file generates witness values for one
+subcircuit.
+
+## How it is used
+
+| Consumer                                        | Use                                                           |
+| ----------------------------------------------- | ------------------------------------------------------------- |
+| [Synthesizer](../synthesizer/README.md)         | Loads metadata and matching WASM witness generators           |
+| [Native backend](../../backend/README.md)       | Uses binary R1CS files during setup and proving               |
+| [Browser backend](../../backend-wasm/README.md) | Converts and validates compatible runtime artifacts           |
+| [CLI](../../cli/README.md)                      | Installs the synchronized library in the local proof workflow |
+
+The Node Synthesizer resolves installed assets at runtime. The Web Synthesizer
+bundles the matching JSON and WASM assets at build time.
+
 ## Published artifacts
 
 All files are acquired from the same installed npm package version:
@@ -43,21 +65,6 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const setupParamsPath = require.resolve('@tokamak-zk-evm/subcircuit-library/subcircuits/library/setupParams.json');
 ```
-
-Most applications should let the Synthesizer, CLI, or backend resolve these
-paths.
-
-## How it is used
-
-| Consumer                                        | Use                                                             |
-| ----------------------------------------------- | --------------------------------------------------------------- |
-| [Synthesizer](../synthesizer/README.md)         | Loads metadata and matching WASM witness generators             |
-| [Native backend](../../backend/README.md)       | Uses binary R1CS files during setup and proving                 |
-| [Browser backend](../../backend-wasm/README.md) | Converts and validates compatible runtime artifacts             |
-| [CLI](../../cli/README.md)                      | Installs the synchronized library as part of the local workflow |
-
-The Node Synthesizer resolves installed assets at runtime. The Web Synthesizer
-bundles the matching JSON and WASM assets at build time.
 
 ## Compatibility
 

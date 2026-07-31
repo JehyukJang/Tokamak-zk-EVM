@@ -6,6 +6,17 @@ proof export.
 
 ## Install and run
 
+First prepare a directory containing the
+[four synthesis input files](#synthesis-inputs). The
+[`L2StateChannel` example](../frontend/synthesizer/examples/L2StateChannel)
+shows the expected layout and values.
+
+The quick start below assumes that the
+[native requirements](#native-requirements) are already installed and
+downloads the compatible CRS. Use
+[`--include-prerequisite`](#automatic-prerequisite-installation) for a guided
+macOS or Ubuntu setup, or `--docker` on another Linux distribution or Windows.
+
 ```bash
 npm install -g @tokamak-zk-evm/cli
 tokamak-cli --install
@@ -43,15 +54,15 @@ Native targets are macOS, Ubuntu 20.04, and Ubuntu 22.04. Other Linux
 distributions should use Docker. Native Windows is unsupported; use WSL2 or
 Docker Desktop.
 
-Manual baseline:
+Example host preparation:
 
 ```bash
-# macOS
+# macOS: install prerequisites yourself
 xcode-select --install
 brew install node cmake pkg-config
 curl https://sh.rustup.rs -sSf | sh
 
-# Ubuntu 20.04 or 22.04
+# Ubuntu 20.04 or 22.04: let the CLI propose missing prerequisites
 npm install -g @tokamak-zk-evm/cli
 tokamak-cli --install --include-prerequisite
 ```

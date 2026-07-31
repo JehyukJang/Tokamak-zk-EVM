@@ -7,7 +7,11 @@ into circuit-ready JSON artifacts.
 
 ```bash
 npm install @tokamak-zk-evm/synthesizer-node
-npx synthesizer ./L2StateChannel
+npx synthesizer tokamak-ch-tx \
+  --previous-state ./L2StateChannel/previous_state_snapshot.json \
+  --transaction ./L2StateChannel/transaction.json \
+  --block-info ./L2StateChannel/block_info.json \
+  --contract-code ./L2StateChannel/contract_codes.json
 ```
 
 Use this package when inputs and outputs belong on the local filesystem. Use
@@ -16,8 +20,9 @@ applications.
 
 ## Required input files
 
-An input directory contains four JSON files from the same pre-transaction
-state and block context:
+The command accepts four explicit JSON file paths. The files must describe the
+same pre-transaction state and block context; their directory and filenames are
+otherwise application choices.
 
 | File                           | Role                                                          | Format and owner                                                                                                          | How to obtain it                                                                     | Example                                                         |
 | ------------------------------ | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------- |
@@ -67,11 +72,19 @@ slots; `storageTrieDb[*][*].key` values are trie database keys.
 ## Commands
 
 ```bash
-# Conventional four-file directory
-npx synthesizer ./L2StateChannel
+npx synthesizer tokamak-ch-tx \
+  --previous-state ./inputs/previous_state_snapshot.json \
+  --transaction ./inputs/transaction.json \
+  --block-info ./inputs/block_info.json \
+  --contract-code ./inputs/contract_codes.json
 
 # Include supplementary execution analysis
-npx synthesizer ./L2StateChannel --output-supplement
+npx synthesizer tokamak-ch-tx \
+  --previous-state ./inputs/previous_state_snapshot.json \
+  --transaction ./inputs/transaction.json \
+  --block-info ./inputs/block_info.json \
+  --contract-code ./inputs/contract_codes.json \
+  --output-supplement
 ```
 
 Relative paths are resolved from the current working directory. The
@@ -79,6 +92,10 @@ Synthesizer rejects incomplete or incoherent inputs rather than fetching
 missing state.
 
 ## Outputs
+
+By default, the command creates `outputs/` under the detected application root,
+normally the current project root. The command prints each absolute output path
+as it writes the file.
 
 | File                        | Purpose                                               |
 | --------------------------- | ----------------------------------------------------- |

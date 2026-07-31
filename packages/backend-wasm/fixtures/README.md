@@ -9,7 +9,9 @@ are excluded from Git and package publication.
 Backend-wasm must not generate missing test artifacts by running native scripts,
 Rust binaries, CLI proof flows, setup commands, or prover/verifier execution.
 Developers prepare artifacts in their owning packages first. The source paths are
-declared in `small/copy-manifest.json`.
+declared in [`small/copy-manifest.json`](./small/copy-manifest.json). See the
+[runtime artifact guide](../README.md#runtime-artifact-guide-and-acquisition)
+for the role and production source of each artifact kind.
 
 1. Copy owner-package outputs:
 

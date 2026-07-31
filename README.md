@@ -30,16 +30,22 @@ The CLI is the supported end-to-end local entry point. Package READMEs own
 installation, commands, APIs, input formats, examples, and operational
 responsibilities.
 
+Unless you are embedding one component in another application, start with the
+CLI. In the package descriptions below, R1CS means the circuit's rank-1
+constraint system, a witness contains the values that satisfy those
+constraints, and a CRS is the common reference string used by the proving
+system.
+
 ## Choose a package
 
-| Need                                            | Package                                                                                                                                                                   | Purpose                                                                                                 |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Complete local proof workflow                   | `@tokamak-zk-evm/cli` · [README](./packages/cli/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/cli)                                                     | Installs the native runtime and runs synthesis, preprocessing, proving, verification, and proof export. |
-| File-based synthesis in Node.js                 | `@tokamak-zk-evm/synthesizer-node` · [README](./packages/frontend/synthesizer/node-cli/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-node) | Reads one Tokamak L2 replay snapshot from JSON files and writes circuit artifacts.                      |
-| Synthesis in a browser application              | `@tokamak-zk-evm/synthesizer-web` · [README](./packages/frontend/synthesizer/web-app/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-web)    | Accepts objects, uploaded JSON files, or URLs and uses bundled circuit assets.                          |
-| Browser preprocessing, proving, or verification | `@tokamak-zk-evm/snark-browser-compat` · [README](./packages/backend-wasm/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat)          | Converts runtime artifacts and runs Tokamak zk-SNARK operations in bundler-based browsers.              |
-| Prebuilt circuit artifacts                      | `@tokamak-zk-evm/subcircuit-library` · [README](./packages/frontend/qap-compiler/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/subcircuit-library)     | Publishes R1CS, witness-generator WASM, metadata, and related circuit files.                            |
-| Direct Rust backend development                 | [Backend workspace](./packages/backend/README.md) · source only                                                                                                           | Implements setup, preprocessing, proving, and verification.                                             |
+| Need                                            | Package                                     | Documentation and publication                                                                                                        |
+| ----------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Complete local proof workflow                   | `@tokamak-zk-evm/cli`                       | [README](./packages/cli/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/cli)                                        |
+| File-based synthesis in Node.js                 | `@tokamak-zk-evm/synthesizer-node`          | [README](./packages/frontend/synthesizer/node-cli/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-node) |
+| Synthesis in a browser application              | `@tokamak-zk-evm/synthesizer-web`           | [README](./packages/frontend/synthesizer/web-app/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-web)   |
+| Browser preprocessing, proving, or verification | `@tokamak-zk-evm/snark-browser-compat`      | [README](./packages/backend-wasm/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat)              |
+| Prebuilt circuit artifacts                      | `@tokamak-zk-evm/subcircuit-library`        | [README](./packages/frontend/qap-compiler/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/subcircuit-library)       |
+| Direct Rust backend development                 | Backend workspace; not separately published | [README](./packages/backend/README.md)                                                                                               |
 
 ## Releases and npm publication
 
