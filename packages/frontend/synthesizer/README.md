@@ -11,8 +11,7 @@ transaction-specific circuit artifacts required by the proving backends.
 | [`@tokamak-zk-evm/synthesizer-web`](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-web)   | A browser application supplies objects, uploaded files, or URLs | [Web README](./web-app/README.md)   |
 
 Both npm packages use the shared runtime under `core/`; `core/` is not a
-standalone public package. Repository source currently targets `2.1.4`. Check
-the npm pages for published versions and
+standalone public package. Check the npm pages for published versions and
 [CHANGELOG.md](../../../CHANGELOG.md) for release notes.
 
 ## Shared input contract

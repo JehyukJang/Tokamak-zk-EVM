@@ -62,29 +62,21 @@ driver `525.60.13` or newer.
 
 ### Automatic prerequisite installation
 
-`--include-prerequisite` first prints every detected tool, compatibility
-result, planned command, package source, and operation that can request
-administrator authentication or open an operating-system UI. It requires a
-TTY and proceeds only after an explicit `y` or `yes`; there is no unattended
-approval flag.
+`--include-prerequisite` requires a TTY, prints the complete change plan, and
+continues only after an explicit `y` or `yes`.
 
-On Ubuntu it uses targeted APT commands and the LLVM repository configuration
-used by ICICLE v3.8.0. Ubuntu 20.04 uses the pinned, checksum-verified CMake
-3.27.4 source archive when the installed CMake is too old. On macOS it uses
-Xcode Command Line Tools and Homebrew. Rust is installed through the official
-rustup installer when missing or incompatible. Node.js, npm, Docker, GPU
-drivers, and network configuration are never installed by this option.
+| Scope                 | Behavior                                                                                                   |
+| --------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Ubuntu                | Uses targeted APT/LLVM commands and, on 20.04 when needed, a checksum-verified CMake 3.27.4 source archive |
+| macOS                 | Uses Xcode Command Line Tools and Homebrew                                                                 |
+| Rust                  | Uses the official rustup installer when missing or incompatible                                            |
+| Never installed       | Node.js, npm, Docker, GPU drivers, and network configuration                                               |
+| Privileged operations | Requests elevation only for the individual operation; do not run the complete CLI as root                  |
+| Uninstall             | Removes only the CLI runtime, not system packages, Xcode tools, Rust, Homebrew, or source-installed CMake  |
 
-Do not run the complete CLI as root. The installer requests elevation only for
-the individual system operations that require it.
-
-The option invokes external package managers and installers that modify files
-outside the CLI cache and may present their own terms. Review the printed plan
-and organizational policy before approving it. `tokamak-cli --uninstall`
-removes only the CLI-owned runtime; it does not roll back APT packages,
-Homebrew, Xcode tools, Rust, or source-installed CMake. If an external
-installer fails, resolve its reported error and rerun the command; the CLI
-re-detects prerequisites and does not hide the failure with another installer.
+Review external installer terms and organizational policy before approval. If
+an installer fails, resolve its error and rerun the command; prerequisite
+detection resumes without masking the failure.
 
 ### What `--install` creates
 
@@ -244,12 +236,12 @@ platform has an installed runtime.
 
 ## npm publication
 
-| Item              | Value                                                                         |
-| ----------------- | ----------------------------------------------------------------------------- |
-| Package           | [`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli)    |
-| Repository source | `2.1.4`; use `npm view @tokamak-zk-evm/cli version` for the published version |
-| Distribution      | npm launcher plus locally built native backend                                |
-| Release notes     | [Repository `CHANGELOG.md`](../../CHANGELOG.md)                               |
+| Item              | Value                                                                      |
+| ----------------- | -------------------------------------------------------------------------- |
+| Package           | [`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli) |
+| Published version | `npm view @tokamak-zk-evm/cli version`                                     |
+| Distribution      | npm launcher plus locally built native backend                             |
+| Release notes     | [Repository `CHANGELOG.md`](../../CHANGELOG.md)                            |
 
 ## Security and operational responsibilities
 

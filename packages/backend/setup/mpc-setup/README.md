@@ -14,8 +14,7 @@ Both binaries are part of the Rust backend workspace. They are not published
 as standalone npm or crates.io packages. CLI users normally obtain compatible
 CRS artifacts through
 [`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli).
-Repository source currently targets `2.1.4`; release notes are in
-[CHANGELOG.md](../../../../CHANGELOG.md).
+Release notes are in [CHANGELOG.md](../../../../CHANGELOG.md).
 
 The two modes produce the same final CRS layout. Intermediate ceremony state
 is written to `--intermediate`; consumable artifacts are written to `--output`.
@@ -68,13 +67,8 @@ A release run also:
 4. uploads it and enables link-viewer download access; and
 5. records publication data in the provenance manifest.
 
-A non-release run performs generation but not publication:
-
-```bash
-cargo run -p mpc-setup --bin dusk_backed_mpc_setup -- \
-  --intermediate ./setup/mpc-setup/output/dusk.intermediate \
-  --output ./setup/mpc-setup/output/dusk.final
-```
+A non-release run omits `--release` and performs generation without
+publication.
 
 ## Publication environment
 
@@ -97,16 +91,13 @@ fails the complete run.
 Testing behavior is a Cargo feature, not a runtime flag:
 
 ```bash
-cargo run --release --features testing-mode -p mpc-setup --bin native_mpc_setup -- \
-  --intermediate ./setup/mpc-setup/output/native-testing.intermediate \
-  --output ./setup/mpc-setup/output/native-testing.final
-
-cargo run --release --features testing-mode -p mpc-setup --bin dusk_backed_mpc_setup -- \
-  --intermediate ./setup/mpc-setup/output/dusk-testing.intermediate \
-  --output ./setup/mpc-setup/output/dusk-testing.final
+cargo run --release --features testing-mode -p mpc-setup --bin <BINARY> -- \
+  --intermediate ./setup/mpc-setup/output/testing.intermediate \
+  --output ./setup/mpc-setup/output/testing.final
 ```
 
-Testing-mode CRS must not be used as production setup material.
+Set `<BINARY>` to `native_mpc_setup` or `dusk_backed_mpc_setup`. Testing-mode
+CRS must not be used as production setup material.
 
 ## Outputs and provenance
 

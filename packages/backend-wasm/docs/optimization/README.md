@@ -1,4 +1,4 @@
-# Optimization Reports
+# Optimization reports
 
 Audience: backend-wasm maintainers reviewing accepted and rejected prover
 performance work before changing production algorithms or benchmark coverage.

@@ -178,7 +178,7 @@ function checkRootReadme() {
     '## Releases and npm publication',
     '## Repository map',
     '## Scope and compatibility',
-    '## Documentation',
+    '## Learn more',
     '## License',
     'https://github.com/tokamak-network/TokamakL2JS',
     'An Efficient SNARK for Field-Programmable and RAM Circuits',
@@ -193,7 +193,7 @@ function checkRootReadme() {
   }
   requirePattern(
     relativePath,
-    /a source version is not a published release until it\s+appears on npm/iu,
+    /a manifest version is not a published release\s+until it appears\s+on npm/iu,
     'the distinction between source and published versions',
   );
   requirePattern(relativePath, /tokamak-?l2js/iu, 'the TokamakL2JS input-format owner');
@@ -327,11 +327,15 @@ function checkReadmeResponsibilities() {
     'packages/backend/README.md',
     'packages/backend/setup/mpc-setup/README.md',
     'packages/backend-wasm/README.md',
+    'packages/backend-wasm/docs/optimization/README.md',
     'packages/backend-wasm/examples/browser/README.md',
+    'packages/backend-wasm/fixtures/README.md',
     'packages/backend-wasm/tools/rkyv-decoder-wasm/README.md',
     'packages/cli/README.md',
     'packages/frontend/qap-compiler/README.md',
+    'packages/frontend/qap-compiler/docs/README.md',
     'packages/frontend/synthesizer/README.md',
+    'packages/frontend/synthesizer/docs/README.md',
     'packages/frontend/synthesizer/node-cli/README.md',
     'packages/frontend/synthesizer/web-app/README.md',
   ];
@@ -339,6 +343,25 @@ function checkReadmeResponsibilities() {
   for (const relativePath of readmes) {
     checkMarkdownStructure(relativePath);
     checkLocalMarkdownLinks(relativePath);
+    const repositoryVersion = readJson('package.json').version;
+    if (readText(relativePath).includes(repositoryVersion)) {
+      fail(`${relativePath} must not hard-code the synchronized repository version.`);
+    }
+  }
+
+  for (const relativePath of [
+    'README.md',
+    'packages/backend/README.md',
+    'packages/backend/setup/mpc-setup/README.md',
+    'packages/backend-wasm/README.md',
+    'packages/backend-wasm/examples/browser/README.md',
+    'packages/backend-wasm/tools/rkyv-decoder-wasm/README.md',
+    'packages/cli/README.md',
+    'packages/frontend/qap-compiler/README.md',
+    'packages/frontend/synthesizer/README.md',
+    'packages/frontend/synthesizer/node-cli/README.md',
+    'packages/frontend/synthesizer/web-app/README.md',
+  ]) {
     requirePattern(relativePath, /npm/iu, 'npm publication status');
     requirePattern(relativePath, /MIT OR Apache-2\.0|MIT.*Apache-2\.0/su, 'the repository dual-license policy');
   }

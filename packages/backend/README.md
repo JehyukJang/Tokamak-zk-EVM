@@ -23,8 +23,7 @@ obtain the supported native workflow through
 which ships the compatible source, builds it locally, and installs its runtime
 resources.
 
-Repository source currently targets `2.1.4`. See
-[CHANGELOG.md](../../CHANGELOG.md) for consumer-facing changes. The direct
+See [CHANGELOG.md](../../CHANGELOG.md) for consumer-facing changes. The direct
 Cargo commands below are for backend operators and repository contributors.
 
 ## Prerequisites
@@ -74,22 +73,9 @@ cargo run -p trusted-setup -- \
 
 ### MPC setup
 
-```bash
-# Native Tokamak phase 1 and phase 2
-cargo run --release -p mpc-setup --bin native_mpc_setup -- \
-  --intermediate ./setup/mpc-setup/output/native.intermediate \
-  --output ./setup/mpc-setup/output/native.final
-
-# Pinned Dusk phase-1 source followed by Tokamak phase 2
-cargo run --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
-  --intermediate ./setup/mpc-setup/output/dusk.intermediate \
-  --output ./setup/mpc-setup/output/dusk.final
-```
-
-The Dusk-backed release flow validates its pinned source and publishes the
-result through the configured Google Drive account. Ceremony configuration,
-provenance checks, and the phase-2 trust limitation are documented in the
-[MPC operator guide](./setup/mpc-setup/README.md).
+Use the [MPC operator guide](./setup/mpc-setup/README.md) for native and
+Dusk-backed commands, ceremony configuration, provenance checks, publication,
+and the phase-2 trust limitation.
 
 ### Setup outputs
 

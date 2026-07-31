@@ -32,29 +32,21 @@ responsibilities.
 
 ## Choose a package
 
-| Need                                            | Package or documentation                                                                 | Purpose                                                                                                 |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Complete local proof workflow                   | [`@tokamak-zk-evm/cli`](./packages/cli/README.md)                                        | Installs the native runtime and runs synthesis, preprocessing, proving, verification, and proof export. |
-| File-based synthesis in Node.js                 | [`@tokamak-zk-evm/synthesizer-node`](./packages/frontend/synthesizer/node-cli/README.md) | Reads one Tokamak L2 replay snapshot from JSON files and writes circuit artifacts.                      |
-| Synthesis in a browser application              | [`@tokamak-zk-evm/synthesizer-web`](./packages/frontend/synthesizer/web-app/README.md)   | Accepts objects, uploaded JSON files, or URLs and uses bundled circuit assets.                          |
-| Browser preprocessing, proving, or verification | [`@tokamak-zk-evm/snark-browser-compat`](./packages/backend-wasm/README.md)              | Converts runtime artifacts and runs Tokamak zk-SNARK operations in bundler-based browsers.              |
-| Prebuilt circuit artifacts                      | [`@tokamak-zk-evm/subcircuit-library`](./packages/frontend/qap-compiler/README.md)       | Publishes R1CS, witness-generator WASM, metadata, and related circuit files.                            |
-| Direct Rust backend development                 | [Backend workspace](./packages/backend/README.md)                                        | Implements setup, preprocessing, proving, and verification.                                             |
+| Need                                            | Package                                                                                                                                                                   | Purpose                                                                                                 |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Complete local proof workflow                   | `@tokamak-zk-evm/cli` · [README](./packages/cli/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/cli)                                                     | Installs the native runtime and runs synthesis, preprocessing, proving, verification, and proof export. |
+| File-based synthesis in Node.js                 | `@tokamak-zk-evm/synthesizer-node` · [README](./packages/frontend/synthesizer/node-cli/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-node) | Reads one Tokamak L2 replay snapshot from JSON files and writes circuit artifacts.                      |
+| Synthesis in a browser application              | `@tokamak-zk-evm/synthesizer-web` · [README](./packages/frontend/synthesizer/web-app/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-web)    | Accepts objects, uploaded JSON files, or URLs and uses bundled circuit assets.                          |
+| Browser preprocessing, proving, or verification | `@tokamak-zk-evm/snark-browser-compat` · [README](./packages/backend-wasm/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat)          | Converts runtime artifacts and runs Tokamak zk-SNARK operations in bundler-based browsers.              |
+| Prebuilt circuit artifacts                      | `@tokamak-zk-evm/subcircuit-library` · [README](./packages/frontend/qap-compiler/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/subcircuit-library)     | Publishes R1CS, witness-generator WASM, metadata, and related circuit files.                            |
+| Direct Rust backend development                 | [Backend workspace](./packages/backend/README.md) · source only                                                                                                           | Implements setup, preprocessing, proving, and verification.                                             |
 
 ## Releases and npm publication
 
-The supported packages share one repository source version. Manifests
-currently target `2.1.4`; a source version is not a published release until it
-appears on npm. Use the npm page as the source of truth for published versions
-and dist-tags, and keep packages on the same compatible release line.
-
-| Package                                | npm                                                                       |
-| -------------------------------------- | ------------------------------------------------------------------------- |
-| `@tokamak-zk-evm/cli`                  | [npm](https://www.npmjs.com/package/@tokamak-zk-evm/cli)                  |
-| `@tokamak-zk-evm/synthesizer-node`     | [npm](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-node)     |
-| `@tokamak-zk-evm/synthesizer-web`      | [npm](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-web)      |
-| `@tokamak-zk-evm/snark-browser-compat` | [npm](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat) |
-| `@tokamak-zk-evm/subcircuit-library`   | [npm](https://www.npmjs.com/package/@tokamak-zk-evm/subcircuit-library)   |
+The supported packages share one repository source version and compatible
+release line. A manifest version is not a published release until it appears
+on npm; use the npm links above as the source of truth for published versions
+and dist-tags.
 
 The Rust backend is not published as a standalone npm package. The CLI ships
 the compatible source and builds it locally. Consumer-facing release notes are
@@ -93,15 +85,8 @@ used by
 Package-specific compatibility and verified environments are documented in the
 corresponding package README.
 
-## Documentation
+## Learn more
 
-- [CLI](./packages/cli/README.md)
-- [Synthesizer overview](./packages/frontend/synthesizer/README.md)
-- [Node Synthesizer](./packages/frontend/synthesizer/node-cli/README.md)
-- [Web Synthesizer](./packages/frontend/synthesizer/web-app/README.md)
-- [Browser SNARK backend](./packages/backend-wasm/README.md)
-- [Subcircuit Library](./packages/frontend/qap-compiler/README.md)
-- [Native backend](./packages/backend/README.md)
 - [LLM-readable repository map](./llms.txt)
 - [Project overview on Medium](https://medium.com/tokamak-network/project-tokamak-zk-evm-67483656fd21) (updated January 2026)
 - [Project slides](https://docs.google.com/presentation/d/1D49fRElwkZYbEvQXB_rp5DEy22HFsabnXyeMQdNgjRw/edit?usp=sharing)

@@ -1,4 +1,4 @@
-# Browser Workflow Example
+# Browser workflow example
 
 Runnable Vite integration for
 `@tokamak-zk-evm/snark-browser-compat`. It exposes independent installation and
@@ -54,7 +54,7 @@ the npm package. Obtain a compatible `combined_sigma.rkyv` from the published
 CRS release, authenticate its provenance, and keep transaction artifacts from
 one synthesis.
 
-## Additional Recipes
+## Additional recipes
 
 These focused modules are source recipes. They are typechecked and published
 with the example, but are not imported by the runnable page:

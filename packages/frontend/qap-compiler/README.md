@@ -62,7 +62,6 @@ bundles the matching JSON and WASM assets at build time.
 ## Compatibility
 
 - Consumer artifacts are platform-neutral.
-- Repository source currently targets `2.1.4`.
 - Maintainer-side regeneration requires Node.js 18+, Circom, and the validation
   process in [the maintainer documentation](./docs/README.md).
 - The package is versioned with the other supported Tokamak zk-EVM packages.

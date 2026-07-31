@@ -101,7 +101,7 @@ Transaction support follows the
 | Item              | Value                                                                                                |
 | ----------------- | ---------------------------------------------------------------------------------------------------- |
 | Package           | [`@tokamak-zk-evm/synthesizer-node`](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-node) |
-| Repository source | `2.1.4`; use `npm view @tokamak-zk-evm/synthesizer-node version` for the published version           |
+| Published version | `npm view @tokamak-zk-evm/synthesizer-node version`                                                  |
 | Release notes     | [Repository `CHANGELOG.md`](../../../../CHANGELOG.md)                                                |
 
 ## Security and application responsibilities

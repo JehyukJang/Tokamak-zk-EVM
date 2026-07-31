@@ -105,7 +105,7 @@ Transaction support follows the
 | Item              | Value                                                                                              |
 | ----------------- | -------------------------------------------------------------------------------------------------- |
 | Package           | [`@tokamak-zk-evm/synthesizer-web`](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-web) |
-| Repository source | `2.1.4`; use `npm view @tokamak-zk-evm/synthesizer-web version` for the published version          |
+| Published version | `npm view @tokamak-zk-evm/synthesizer-web version`                                                 |
 | Runtime           | ESM browser package with bundled circuit assets                                                    |
 | Release notes     | [Repository `CHANGELOG.md`](../../../../CHANGELOG.md)                                              |
 
