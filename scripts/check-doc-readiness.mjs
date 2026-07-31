@@ -401,6 +401,7 @@ function checkLicensing() {
 }
 
 function checkPackageMetadata() {
+  const publicationRepositoryPattern = /^(?:git\+)?https:\/\/github\.com\/JehyukJang\/Tokamak-zk-EVM(?:\.git)?$/u;
   const manifests = [
     'packages/cli/package.json',
     'packages/frontend/qap-compiler/package.json',
@@ -424,6 +425,9 @@ function checkPackageMetadata() {
     }
     if (!manifest.repository?.url || !manifest.repository?.directory) {
       fail(`${relativePath} must define repository.url and repository.directory.`);
+    }
+    if (!publicationRepositoryPattern.test(manifest.repository?.url ?? '')) {
+      fail(`${relativePath} repository.url must identify the GitHub repository that publishes npm provenance.`);
     }
     if (!manifest.bugs?.url) {
       fail(`${relativePath} must define bugs.url.`);
