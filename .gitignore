@@ -23,10 +23,12 @@ coverage.json
 *.swp
 *.swo
 
+# Temporary workspace files
+tmp/
+
 # Misc
 .DS_Store
 *.log
-tmp/
 
 #Cursor
 .cursor

@@ -25,7 +25,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/JehyukJang/Tokamak-zk-EVM.git",
+    "url": "git+https://github.com/tokamak-network/Tokamak-zk-EVM.git",
     "directory": "packages/cli"
   },
   "license": "MIT OR Apache-2.0",
@@ -45,7 +45,6 @@
     "docker",
     "dist",
     "manifests",
-    "scripts",
     "vendor",
     "README.md",
     "LICENSE-MIT",
@@ -53,10 +52,12 @@
   ],
   "scripts": {
     "prepare:package": "node scripts/prepare-package.mjs",
-    "build": "npm run prepare:package && tsc -p tsconfig.json --pretty false",
+    "build": "npm run prepare:package && npm run clean && tsc -p tsconfig.json --pretty false",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "release:check": "node scripts/release-readiness.cjs",
+    "test": "npm run build && node --test tests/*.test.cjs",
     "typecheck": "tsc -p tsconfig.json --pretty false --noEmit",
-    "publish": "node scripts/publish-package.cjs",
+    "release:publish": "node scripts/publish-package.cjs",
     "prepack": "npm run build"
   },
   "dependencies": {
