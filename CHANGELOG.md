@@ -8,6 +8,13 @@ The format is based on Keep a Changelog.
 
 ## Unreleased
 
+### Bug Fixes
+
+- Fixed Synthesizer calldata offset and length decoding for a normal `CALL`
+  executed within an inherited static context. CALL-family stack layouts are
+  now selected from the actual opcode, so such calls are no longer decoded as
+  six-argument `STATICCALL` operations.
+
 ## [2.1.5] - 2026-07-31
 
 ### Compatibility and Upgrade Notes
