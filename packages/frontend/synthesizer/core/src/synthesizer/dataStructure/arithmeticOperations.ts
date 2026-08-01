@@ -1,5 +1,5 @@
 import { jubjub } from "@noble/curves/misc.js"
-import { poseidon_raw, poseidonChainCompress, POSEIDON_INPUTS } from 'tokamak-l2js'
+import { poseidon_raw, poseidonChainCompress } from 'tokamak-l2js'
 import { DEFAULT_SOURCE_BIT_SIZE} from "../../synthesizer/params/constants.ts"
 
 const convertToSigned = (value: bigint): bigint => {
@@ -619,98 +619,4 @@ export class ArithmeticOperations {
     return []
   }
 
-  // Old version: Reconstructing the Merkle tree root
-  // /**
-  //  * VerifyMerkleProof
-  //  */
-  // static verifyMerkleProof(inVals: bigint[]): bigint[] {
-
-  //   if (inVals.length !== 1 + POSEIDON_INPUTS) {
-  //     throw new Error(`VerifyMerkleProof expected exactly ${1 + POSEIDON_INPUTS} input values, but got ${inVals.length} values`)
-  //   }
-  //   const children = inVals.slice(0, POSEIDON_INPUTS)
-  //   const parent = inVals[inVals.length - 1]
-  //   // console.log(`children: ${children}`)
-  //   // console.log(`parent: ${parent}`)
-  //   if (
-  //     parent !== poseidon_raw(children)
-  //   ) {
-  //     throw new Error('verifyMerkleProof failed')
-  //   }
-  //   return []
-  // }
-
-  /**
-   * VerifyMerkleProof
-   */
-  static verifyMerkleProof(inVals: bigint[]): bigint[] {
-    return ArithmeticOperations.verifyMerkleProofNx(inVals, 1)
-  }
-
-  /**
-   * VerifyMerkleProof2x
-   */
-  static verifyMerkleProof2x(inVals: bigint[]): bigint[] {
-    return ArithmeticOperations.verifyMerkleProofNx(inVals, 2)
-  }
-
-  /**
-   * VerifyMerkleProof3x
-   */
-  static verifyMerkleProof3x(inVals: bigint[]): bigint[] {
-    return ArithmeticOperations.verifyMerkleProofNx(inVals, 3)
-  }
-
-  /**
-   * VerifyMerkleProof4x
-   */
-  static verifyMerkleProof4x(inVals: bigint[]): bigint[] {
-    return ArithmeticOperations.verifyMerkleProofNx(inVals, 4)
-  }
-
-  /**
-   * VerifyMerkleProof5x
-   */
-  static verifyMerkleProof5x(inVals: bigint[]): bigint[] {
-    return ArithmeticOperations.verifyMerkleProofNx(inVals, 5)
-  }
-
-  /**
-   * VerifyMerkleProof6x
-   */
-  static verifyMerkleProof6x(inVals: bigint[]): bigint[] {
-    return ArithmeticOperations.verifyMerkleProofNx(inVals, 6)
-  }
-
-  private static verifyMerkleProofNx(inVals: bigint[], nSteps: number): bigint[] {
-    const nSiblings = POSEIDON_INPUTS - 1
-    const nIns = 4 + nSteps * nSiblings
-    if (inVals.length !== nIns) {
-      throw new Error(`VerifyMerkleProof expected exactly ${nIns} input values, but got ${inVals.length} values`)
-    }
-
-    const parentIndex = Number(inVals[nIns - 2])
-    const parent = inVals[nIns - 1]
-    let currentIndex = Number(inVals[0])
-    let currentNode = inVals[1]
-
-    for (let step = 0; step < nSteps; step++) {
-      const siblingStart = 2 + step * nSiblings
-      const siblings = inVals.slice(siblingStart, siblingStart + nSiblings)
-      const childHomeIndex = currentIndex % POSEIDON_INPUTS
-      const children = [
-        ...siblings.slice(0, childHomeIndex),
-        currentNode,
-        ...siblings.slice(childHomeIndex),
-      ]
-
-      currentNode = poseidon_raw(children)
-      currentIndex = Math.floor(currentIndex / POSEIDON_INPUTS)
-    }
-
-    if (parent !== currentNode || parentIndex !== currentIndex) {
-      throw new Error('verifyMerkleProof failed')
-    }
-    return []
-  }
 }

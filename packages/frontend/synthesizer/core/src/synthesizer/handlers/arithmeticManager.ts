@@ -4,7 +4,7 @@ import { DataPtFactory } from '../dataStructure/index.ts';
 import { DEFAULT_SOURCE_BIT_SIZE } from '../../synthesizer/params/constants.ts';
 import { ArithmeticOperator, SUBCIRCUIT_ALU_MAPPING, SubcircuitNames } from '../../subcircuit/configuredTypes.ts';
 import { ArithmeticOperations } from '../dataStructure/arithmeticOperations.ts';
-import { MT_DEPTH, POSEIDON_INPUTS } from 'tokamak-l2js';
+import { POSEIDON_INPUTS } from 'tokamak-l2js';
 
 export class ArithmeticManager {
   constructor(
@@ -71,12 +71,6 @@ export class ArithmeticManager {
         break
       case 'JubjubExpBatch':
       case 'EdDsaVerify':
-      case 'VerifyMerkleProof':
-      case 'VerifyMerkleProof2x':
-      case 'VerifyMerkleProof3x':
-      case 'VerifyMerkleProof4x':
-      case 'VerifyMerkleProof5x':
-      case 'VerifyMerkleProof6x':
         sourceBitSize = 255
         break
       default:
@@ -95,41 +89,6 @@ export class ArithmeticManager {
           }, value),
         )
       : []
-  }
-
-  private _normalizeMerkleProofInputs(
-    name: ArithmeticOperator,
-    inPts: DataPt[],
-  ): DataPt[] {
-    const stepByName: Partial<Record<ArithmeticOperator, number>> = {
-      VerifyMerkleProof: 1,
-      VerifyMerkleProof2x: 2,
-      VerifyMerkleProof3x: 3,
-      VerifyMerkleProof4x: 4,
-      VerifyMerkleProof5x: 5,
-      VerifyMerkleProof6x: 6,
-    }
-    const nSteps = stepByName[name]
-    if (nSteps === undefined) {
-      return inPts
-    }
-
-    const expectedLen = nSteps + 4
-    if (inPts.length !== expectedLen) {
-      throw new Error(`Synthesizer: Operation ${name} expected ${expectedLen} inputs, but got ${inPts.length}.`)
-    }
-
-    const childIndexPt = inPts[0]
-    const childPt = inPts[1]
-    const siblingPts = inPts.slice(2, -2)
-    const parentIndexPt = inPts[inPts.length - 2]
-    const parentPt = inPts[inPts.length - 1]
-    const zeroPt = this.parent.loadArbitraryStatic(0n, 255)
-    const paddedSiblings = siblingPts.concat(
-      Array.from({ length: 6 - nSteps }, () => DataPtFactory.deepCopy(zeroPt)),
-    )
-
-    return [childIndexPt, childPt, ...paddedSiblings, parentIndexPt, parentPt]
   }
 
   private _normalizePoseidonInputs(
@@ -184,7 +143,6 @@ export class ArithmeticManager {
     }
 
     let finalInPts: DataPt[] = this._normalizePoseidonInputs(name, inPts);
-    finalInPts = this._normalizeMerkleProofInputs(name, finalInPts);
     if (selector !== undefined) {
       const selectorPt = this.parent.loadArbitraryStatic(selector, 32, `ALU selector for ${name} of ${subcircuitName}`);
       finalInPts = [selectorPt, ...finalInPts];
@@ -417,136 +375,6 @@ export class ArithmeticManager {
 
     return DataPtFactory.deepCopy(P)
   }
-
-  public placeMerkleProofVerification (indexPt: DataPt, leafPt: DataPt, siblingPts: DataPt[][], rootPt: DataPt): void {
-    if (siblingPts.length !== MT_DEPTH) {
-      throw new Error(`Merkle proof should have exactly ${MT_DEPTH} sibling levels, but got ${siblingPts.length}.`)
-    }
-    // const computeParentsNodePts = (childIndexPt: DataPt, childPt: DataPt, siblings: bigint[]): {parentIndexPt: DataPt, parentPt: DataPt} => {
-    //   if (siblings.length !== POSEIDON_INPUTS - 1) {
-    //     throw new Error(`Siblings of each level for a Merkle proof should be ${POSEIDON_INPUTS - 1}, but got ${siblings.length}.`)
-    //   }
-    //   const childIndex = Number(childIndexPt.value)
-    //   const childHomeIndex = childIndex % POSEIDON_INPUTS
-    //   const parentIndex = Math.floor( childIndex / POSEIDON_INPUTS)
-      
-    //   const children = [
-    //     ...siblings.slice(0, childHomeIndex),
-    //     childPt.value,
-    //     ...siblings.slice(childHomeIndex, )
-    //   ]
-
-    //   return{
-    //     parentIndexPt: this.parent.addReservedVariableToBufferIn('MERKLE_PROOF', BigInt(parentIndex), true),
-    //     parentPt: this.parent.addReservedVariableToBufferIn('MERKLE_PROOF', poseidon_raw(children), true),  
-    //   }
-    // }
-
-    const computeParentsNode = (childIndex: number, child: bigint, siblingPts: DataPt[]): {parentIndex: number, parent: bigint} => {
-      if (siblingPts.length !== POSEIDON_INPUTS - 1) {
-        throw new Error(`Siblings of each level for a Merkle proof should be ${POSEIDON_INPUTS - 1}, but got ${siblingPts.length}.`)
-      }
-      const siblings = siblingPts.map((pt) => pt.value)
-      const childHomeIndex = childIndex % POSEIDON_INPUTS
-      const parentIndex = Math.floor( childIndex / POSEIDON_INPUTS)
-      
-      const children = [
-        ...siblings.slice(0, childHomeIndex),
-        child,
-        ...siblings.slice(childHomeIndex, )
-      ]
-
-      return{
-        parentIndex,
-        parent: ArithmeticOperations.poseidonN(children),  
-      }
-    }
-    let childPt: DataPt = leafPt
-    let childIndexPt: DataPt = indexPt
-
-    // for (var level = 0; level < MT_DEPTH; level++) {
-    //   const thisSiblings = siblingPts[level]
-    //   const siblingPts: DataPt[] = thisSiblings.map(value => this.parent.addReservedVariableToBufferIn('MERKLE_PROOF', value, true))
-    //   const {parentIndexPt, parentPt} = computeParentsNodePts(childIndexPt, childPt, thisSiblings)
-
-    //   if (level < MT_DEPTH - 1) {
-    //     this.placeArith('VerifyMerkleProof', [childIndexPt, childPt, ...siblingPts, parentIndexPt, parentPt])
-    //   } else {
-    //     this.placeArith('VerifyMerkleProof', [childIndexPt, childPt, ...siblingPts, parentIndexPt, rootPt])
-    //   }
-
-    //   childPt = parentPt
-    //   childIndexPt = parentIndexPt
-    // }
-
-    const placeMerkleBatch = (nSteps: number, finalRootPt: DataPt): { nextIndexPt: DataPt; nextChildPt: DataPt } => {
-      const siblingBatch = siblingPts.slice(level, level + nSteps)
-      let nextParentIndex = Number(childIndexPt.value)
-      let nextParentValue = childPt.value
-
-      for (const siblings of siblingBatch) {
-        const parentNode = computeParentsNode(nextParentIndex, nextParentValue, siblings)
-        nextParentIndex = parentNode.parentIndex
-        nextParentValue = parentNode.parent
-      }
-
-      const parentIndexPt = this.parent.addReservedVariableToBufferIn('MERKLE_PROOF', BigInt(nextParentIndex), true)
-      const parentPt = this.parent.addReservedVariableToBufferIn('MERKLE_PROOF', nextParentValue, true)
-      const isLastGroup = level + nSteps >= MT_DEPTH
-      const finalParentPt = isLastGroup ? finalRootPt : parentPt
-      const operationName = `VerifyMerkleProof${nSteps === 1 ? '' : `${nSteps}x`}` as ArithmeticOperator
-
-      this.placeArith(operationName, [
-        childIndexPt,
-        childPt,
-        ...siblingBatch.flat(),
-        parentIndexPt,
-        finalParentPt,
-      ])
-
-      return {
-        nextIndexPt: parentIndexPt,
-        nextChildPt: finalParentPt,
-      }
-    }
-
-    let level = 0
-    while (level < MT_DEPTH) {
-      const remaining = MT_DEPTH - level
-
-      if (remaining >= 6) {
-        const placedBatch = placeMerkleBatch(6, rootPt)
-        childPt = placedBatch.nextChildPt
-        childIndexPt = placedBatch.nextIndexPt
-        level += 6
-      } else if (remaining >= 5) {
-        const placedBatch = placeMerkleBatch(5, rootPt)
-        childPt = placedBatch.nextChildPt
-        childIndexPt = placedBatch.nextIndexPt
-        level += 5
-      } else if (remaining >= 4) {
-        const placedBatch = placeMerkleBatch(4, rootPt)
-        childPt = placedBatch.nextChildPt
-        childIndexPt = placedBatch.nextIndexPt
-        level += 4
-      } else if (remaining >= 3) {
-        const placedBatch = placeMerkleBatch(3, rootPt)
-        childPt = placedBatch.nextChildPt
-        childIndexPt = placedBatch.nextIndexPt
-        level += 3
-      } else if (remaining >= 2) {
-        const placedBatch = placeMerkleBatch(2, rootPt)
-        childPt = placedBatch.nextChildPt
-        childIndexPt = placedBatch.nextIndexPt
-        level += 2
-      } else {
-        const placedBatch = placeMerkleBatch(1, rootPt)
-        childPt = placedBatch.nextChildPt
-        childIndexPt = placedBatch.nextIndexPt
-        level += 1
-      }
-    }
-  }
 }
 
 
@@ -610,11 +438,5 @@ const ARITHMETIC_MAPPING: Record<ArithmeticOperator, (...args: any) => any> = {
   // PrepareEdDsaScalars: ArithmeticOperations.prepareEdDsaScalars,
   JubjubExpBatch: ArithmeticOperations.jubjubExpBatch,
   EdDsaVerify: ArithmeticOperations.edDsaVerify,
-  VerifyMerkleProof: ArithmeticOperations.verifyMerkleProof,
-  VerifyMerkleProof2x: ArithmeticOperations.verifyMerkleProof2x,
-  VerifyMerkleProof3x: ArithmeticOperations.verifyMerkleProof3x,
-  VerifyMerkleProof4x: ArithmeticOperations.verifyMerkleProof4x,
-  VerifyMerkleProof5x: ArithmeticOperations.verifyMerkleProof5x,
-  VerifyMerkleProof6x: ArithmeticOperations.verifyMerkleProof6x,
   EqualBatch: ArithmeticOperations.equalBatch,
 } as const

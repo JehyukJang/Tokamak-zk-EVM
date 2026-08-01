@@ -4,7 +4,7 @@ import { DataPt, DataPtDescription, ISynthesizerProvider, ReservedVariable, Synt
 import { DataPtFactory } from '../dataStructure/index.ts';
 import { BUFFER_DESCRIPTION, BUFFER_LIST } from '../../subcircuit/configuredTypes.ts';
 import { DEFAULT_SOURCE_BIT_SIZE } from '../params/constants.ts';
-import { FUNCTION_INPUT_LENGTH, MAX_MT_LEAVES } from 'tokamak-l2js';
+import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
 
 export class BufferManager {
   private parent: ISynthesizerProvider;
@@ -147,7 +147,6 @@ export class BufferManager {
     this.addReservedVariableToBufferIn('JUBJUB_BASE_Y', jubjub.Point.BASE.toAffine().y)
     this.addReservedVariableToBufferIn('JUBJUB_POI_X', jubjub.Point.ZERO.toAffine().x)
     this.addReservedVariableToBufferIn('JUBJUB_POI_Y', jubjub.Point.ZERO.toAffine().y)
-    this.addReservedVariableToBufferIn('TREE_SIZE', BigInt(MAX_MT_LEAVES))
     // const nullPoseidonL0 = poseidon_raw(Array(POSEIDON_INPUTS).fill(0n))
     // this.addReservedVariableToBufferIn('NULL_POSEIDON_LEVEL0', nullPoseidonL0)
     // const nullPoseidonL1 = poseidon_raw(Array(POSEIDON_INPUTS).fill(nullPoseidonL0))
@@ -208,20 +207,6 @@ export class BufferManager {
     }
   }
 
-  // private async _initStorageInputBuffer(): Promise<void> {
-  //   // TODO: Verify Merkle tree root
-  //   for (var storageIndex = 0; storageIndex < MAX_MT_LEAVES; storageIndex++) {
-  //     const key = this.cachedOpts.stateManager.registeredKeys![storageIndex]
-  //     const contractAddress = createAddressFromBigInt(this.loadReservedVariableFromBuffer('CONTRACT_ADDRESS').value)
-  //     const valueBytes = await this.cachedOpts.stateManager.getStorage(contractAddress, key)
-  //     this.parent.state.cachedStorage.set(bytesToBigInt(key), {
-  //       index: storageIndex, 
-  //       keyPt: this.addReservedVariableToBufferIn('MPT_KEY', bytesToBigInt(key), storageIndex, 2),
-  //       valuePt: this.addReservedVariableToBufferIn('VALUE', bytesToBigInt(valueBytes), storageIndex, 2), 
-  //     })
-  //   }
-  // }
-  
   public getReservedVariableFromBuffer(varName: ReservedVariable): DataPt {
     if (VARIABLE_DESCRIPTION[varName].extSource === undefined) {
       throw new Error('Usable only for reserved variables of input buffers')

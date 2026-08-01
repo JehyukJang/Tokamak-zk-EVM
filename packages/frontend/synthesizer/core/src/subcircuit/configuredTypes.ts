@@ -39,12 +39,6 @@ export const ARITHMETIC_OPERATOR_LIST = [
   // 'PrepareEdDsaScalars',
   'JubjubExpBatch',
   'EdDsaVerify',
-  'VerifyMerkleProof',
-  'VerifyMerkleProof2x',
-  'VerifyMerkleProof3x',
-  'VerifyMerkleProof4x',
-  'VerifyMerkleProof5x',
-  'VerifyMerkleProof6x',
   'EqualBatch',
 ] as const
 
@@ -81,7 +75,7 @@ export const BUFFER_DESCRIPTION: Record<ReservedBuffer, string> = {
   PUBLIC_IN: '[Private output & Public input] Buffer to load user input',
   BLOCK_IN: '[Private output & Public input] Buffer to load block input',
   EVM_IN: '[Private output & Public input] Buffer to load public static input such as ROM, environmental data, or ALU selectors',
-  PRIVATE_IN: '[Private output & Private input] Buffer to load witness as private, such as initial storage, transaction data, and Merkle tree proofs',
+  PRIVATE_IN: '[Private output & Private input] Buffer to load witness as private, such as initial storage and transaction data',
 } as const
 
 export type ReservedBuffer = (typeof BUFFER_LIST)[number]
@@ -101,7 +95,6 @@ export const SUBCIRCUIT_LIST = [
     // 'PrepareEdDsaScalars',
     'JubjubExpBatch',
     'EdDsaVerify',
-    'VerifyMerkleProof',
     'EqualBatch',
 ] as const
 
@@ -162,12 +155,6 @@ export const SUBCIRCUIT_ALU_MAPPING: Record<ArithmeticOperator, [SubcircuitNames
   // PrepareEdDsaScalars: ['PrepareEdDsaScalars', undefined],
   EdDsaVerify: ['EdDsaVerify', undefined],
   JubjubExpBatch: ['JubjubExpBatch', undefined],
-  VerifyMerkleProof: ['VerifyMerkleProof', 1n],
-  VerifyMerkleProof2x: ['VerifyMerkleProof', 2n],
-  VerifyMerkleProof3x: ['VerifyMerkleProof', 4n],
-  VerifyMerkleProof4x: ['VerifyMerkleProof', 8n],
-  VerifyMerkleProof5x: ['VerifyMerkleProof', 16n],
-  VerifyMerkleProof6x: ['VerifyMerkleProof', 32n],
   EqualBatch: ['EqualBatch', undefined],
 } as const;
 

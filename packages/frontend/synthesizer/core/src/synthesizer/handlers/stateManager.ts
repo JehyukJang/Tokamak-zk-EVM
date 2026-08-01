@@ -65,7 +65,6 @@ export class StateManager {
 
   public cachedEVMIn: Map<bigint, Map<number, DataPt>> = new Map()
   public cachedOrigin: DataPt | undefined = undefined
-  public cachedRoots: Map<bigint, DataPt[]> = new Map()
 
   public contextByDepth: ContextManager[] = [];
 

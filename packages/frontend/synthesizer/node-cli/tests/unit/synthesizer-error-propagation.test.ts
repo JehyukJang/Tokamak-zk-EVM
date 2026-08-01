@@ -64,22 +64,17 @@ describe('Synthesizer VM event error propagation', () => {
     const firstError = new Error('first Synthesizer failure');
     const applyHandler = vi.fn().mockRejectedValue(firstError);
     (synthesizer as any)._applySynthesizerHandler = applyHandler;
-    const finalizeStorage = vi
-      .spyOn(synthesizer as any, '_finalizeStorage')
-      .mockRejectedValue(new Error('later Synthesizer failure'));
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     vmModule.runTx.mockImplementation(async () => {
       const step = { opcode: { name: 'ADD' } };
       await evmEvents.emit('step', step);
       await evmEvents.emit('step', step);
-      await vmEvents.emit('afterTx', {});
       throw new Error('VM failure');
     });
 
     await expect(synthesizer.synthesizeTX()).rejects.toBe(firstError);
     expect(applyHandler).toHaveBeenCalledTimes(1);
-    expect(finalizeStorage).not.toHaveBeenCalled();
   });
 
   it('propagates an afterMessage handler error after runTx returns', async () => {
@@ -88,15 +83,12 @@ describe('Synthesizer VM event error propagation', () => {
     vmModule.createVM.mockResolvedValue({ events: vmEvents, evm: { events: evmEvents } });
 
     const synthesizer = createBareSynthesizer();
-    const finalizeStorage = vi.spyOn(synthesizer as any, '_finalizeStorage');
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     vmModule.runTx.mockImplementation(async () => {
       await evmEvents.emit('afterMessage', { execResult: { runState: undefined } });
-      await vmEvents.emit('afterTx', {});
       return {};
     });
 
     await expect(synthesizer.synthesizeTX()).rejects.toThrow('Failed to capture the final state');
-    expect(finalizeStorage).not.toHaveBeenCalled();
   });
 });

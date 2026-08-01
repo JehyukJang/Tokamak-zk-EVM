@@ -13,8 +13,16 @@ The format is based on Keep a Changelog.
 - Added the input-only `EqualBatch` subcircuit to the qap-compiler circuit set.
   It constrains equality between two batches of two 256-bit values, with
   `nEqualBatch` fixed to `2`.
+- Removed `VerifyMerkleProof` from the compiled qap-compiler circuit set and
+  the Synthesizer subcircuit inventory.
 - This circuit-set change requires regenerated subcircuit-library artifacts
   and a compatible backend CRS before it can be used for proving.
+
+### Synthesizer
+
+- Removed internal storage Merkle-root tracking, proof construction, proof
+  placements, and Merkle-specific reserved variables. Storage consistency is
+  now tracked through the transaction-scoped storage cache and `EqualBatch`.
 
 ### Bug Fixes
 

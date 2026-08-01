@@ -1,4 +1,4 @@
-import { AfterTxEvent, createVM, runTx, RunTxOpts, RunTxResult, VM, VMOpts } from '@ethereumjs/vm';
+import { createVM, runTx, RunTxOpts, RunTxResult, VM, VMOpts } from '@ethereumjs/vm';
 
 import { BlockData, BlockOptions, createBlock, HeaderData } from '@ethereumjs/block';
 import { bigIntToBytes, bigIntToHex, bytesToBigInt, bytesToHex, createAddressFromBigInt, setLengthLeft } from '@ethereumjs/util';
@@ -155,39 +155,11 @@ export class Synthesizer implements SynthesizerInterface
       })()
     })
 
-    vm.events.on('afterTx', (_data: AfterTxEvent, resolve?: (result?: any) => void) => {
-      ; (async () => {
-        try {
-          if (!this._hasEventHandlerError) {
-            await this._finalizeStorage()
-          }
-        } catch (err) {
-          this._recordEventHandlerError('afterTx', err)
-        } finally {
-          // console.log(`code = ${bytesToHex(data.execResult.runState!.code)}`)
-          resolve?.()
-        }
-      })()
-    })
   }
 
   private async _prepareSynthesizeTransaction(): Promise<void> {
     this.state.storageCache.reset()
     this.state.initialStorageReads.reset()
-    this.state.cachedRoots = new Map()
-    const storageAddresses = this.cachedOpts.stateManager.storageAddresses;
-    const roots = this.cachedOpts.stateManager.merkleTrees.getRoots(storageAddresses);
-    if (roots.length !== storageAddresses.length) {
-      throw new Error('Mismatch between Merkle root count and storage address count')
-    }
-    for (const [idx, address] of storageAddresses.entries()) {
-      const addressBigInt = bytesToBigInt(address.bytes);
-      const addressString = address.toString();
-      this.state.cachedRoots.set(
-        addressBigInt,
-        [this.addReservedVariableToBufferIn('INI_MERKLE_ROOT', roots[idx], true, ` of ${addressString}`)],
-      );
-    }
     this.state.cachedOrigin = this._instructionHandlers.getOriginAddressPt();
   }
 
@@ -317,27 +289,6 @@ export class Synthesizer implements SynthesizerInterface
     };
     this.state.storageCache.beginFrame(depth)
     this.state.contextByDepth[depth] = new ContextManager(contextData);
-  }
-
-  private async _finalizeStorage(): Promise<void> {    
-    const storageAddresses = this.cachedOpts.stateManager.storageAddresses;
-    const roots = this.cachedOpts.stateManager.merkleTrees.getRoots(storageAddresses);
-    if (roots.length !== storageAddresses.length) {
-      throw new Error('Mismatch between Merkle root count and storage address count')
-    }
-    for (const [addressIdx, address] of storageAddresses.entries()) {
-      const addressBigInt = bytesToBigInt(address.bytes);
-      const addressString = address.toString();
-      const cachedRoots = this.state.cachedRoots.get(addressBigInt);
-      if (cachedRoots === undefined || cachedRoots.length === 0) {
-        throw new Error(`Cached Merkle roots are missing for address ${addressString}`)
-      }
-      const finalRootPt = cachedRoots[cachedRoots.length - 1];
-      if (finalRootPt.value !== roots[addressIdx]) {
-        throw new Error(`Final Merkle root mismatch for address ${addressString}`)
-      }
-      this.addReservedVariableToBufferOut('RES_MERKLE_ROOT', finalRootPt, true, ` of ${addressString}`)
-    }
   }
 
   public async synthesizeTX(): Promise<RunTxResult> {
@@ -510,10 +461,6 @@ export class Synthesizer implements SynthesizerInterface
   placePoseidon(inPts: DataPt[]): DataPt {
     return this._arithmeticManager.placePoseidon(inPts)
   }
-  placeMerkleProofVerification(indexPt: DataPt, leafPt: DataPt, siblingPts: DataPt[][], rootPt: DataPt): void {
-    return this._arithmeticManager.placeMerkleProofVerification(indexPt, leafPt, siblingPts, rootPt)
-  }
-
   placeMemoryToStack(dataAliasInfos: DataAliasInfos): DataPt {
     return this._memoryManager.placeMemoryToStack(dataAliasInfos);
   }

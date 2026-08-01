@@ -5,7 +5,7 @@
 set -euo pipefail
 
 # Library configuration for merged arithmetic circuits
-names=("bufferPubOut" "bufferPubIn" "bufferBlockIn" "bufferEVMIn" "bufferPrvIn" "ALU1" "ALU2" "DecToBit" "SubExpBatch" "Accumulator" "Poseidon" "JubjubExpBatch" "EdDsaVerify" "VerifyMerkleProof" "EqualBatch")
+names=("bufferPubOut" "bufferPubIn" "bufferBlockIn" "bufferEVMIn" "bufferPrvIn" "ALU1" "ALU2" "DecToBit" "SubExpBatch" "Accumulator" "Poseidon" "JubjubExpBatch" "EdDsaVerify" "EqualBatch")
 CURVE_NAME="bls12381"
 
 original_cwd="$(pwd)"
