@@ -509,7 +509,90 @@ export class InstructionHandler {
     return refInitRootPt[refInitRootPt.length - 1];
   }
 
-  public async loadStorage(address: Address, keyPt: DataPt, valueGiven?: bigint): Promise<DataPt> {
+  private _getStorageLocation(
+    address: Address,
+    addressPt: DataPt,
+    keyPt: DataPt,
+  ): { addressValue: bigint, keyValue: bigint } {
+    const addressValue = bytesToBigInt(address.bytes)
+    if (addressPt.value !== addressValue) {
+      throw new Error('Synthesizer: Storage address mismatch between EVM and storageAddressPt')
+    }
+    return { addressValue, keyValue: keyPt.value }
+  }
+
+  private _constrainStorageLocationEquality(
+    currentAddressPt: DataPt,
+    currentKeyPt: DataPt,
+    canonicalAddressPt: DataPt,
+    canonicalKeyPt: DataPt,
+  ): void {
+    const equalBatchInfo = this.parent.state.subcircuitInfoByName.get('EqualBatch')
+    if (equalBatchInfo === undefined) {
+      throw new Error('Synthesizer: EqualBatch subcircuit is required for repeated storage access')
+    }
+    if (equalBatchInfo.NInWires !== 8 || equalBatchInfo.NOutWires !== 0) {
+      throw new Error('Synthesizer: EqualBatch must have eight input wires and no output wires')
+    }
+    const inPts = [
+      currentAddressPt,
+      currentKeyPt,
+      canonicalAddressPt,
+      canonicalKeyPt,
+    ]
+    if (inPts.some((pt) => pt.sourceBitSize <= 128)) {
+      throw new Error('Synthesizer: EqualBatch storage identities must use two-limb DataPts')
+    }
+    this.parent.place(
+      'EqualBatch',
+      inPts,
+      [],
+      'Storage address and key equality',
+    )
+  }
+
+  private _getCachedStorageEntry(
+    addressValue: bigint,
+    keyValue: bigint,
+    addressPt: DataPt,
+    keyPt: DataPt,
+  ) {
+    const cachedEntry = this.parent.state.getStorageCacheEntry(addressValue, keyValue)
+    if (cachedEntry !== undefined) {
+      this._constrainStorageLocationEquality(
+        addressPt,
+        keyPt,
+        cachedEntry.canonicalAddressPt,
+        cachedEntry.canonicalKeyPt,
+      )
+      return cachedEntry
+    }
+
+    const initialRead = this.parent.state.getInitialStorageRead(addressValue, keyValue)
+    if (initialRead === undefined) {
+      return undefined
+    }
+    this._constrainStorageLocationEquality(
+      addressPt,
+      keyPt,
+      initialRead.addressPt,
+      initialRead.keyPt,
+    )
+    return {
+      canonicalAddressPt: initialRead.addressPt,
+      canonicalKeyPt: initialRead.keyPt,
+      latestValuePt: initialRead.valuePt,
+      dirty: false,
+    }
+  }
+
+  public async loadStorage(
+    address: Address,
+    addressPt: DataPt,
+    keyPt: DataPt,
+    valueGiven?: bigint,
+  ): Promise<DataPt> {
+    const { addressValue, keyValue } = this._getStorageLocation(address, addressPt, keyPt)
     const valueStored = bytesToBigInt(
       await this.cachedOpts.stateManager.getStorage(
         address,
@@ -539,14 +622,37 @@ export class InstructionHandler {
       this.getLatestCachedRootPt(bytesToBigInt(address.bytes)),
     )
 
+    const cachedEntry = this._getCachedStorageEntry(addressValue, keyValue, addressPt, keyPt)
+    if (cachedEntry !== undefined) {
+      if (cachedEntry.latestValuePt.value !== valueStored) {
+        throw new Error('Synthesizer: Cached storage value does not match EVM storage')
+      }
+      this.parent.state.setStorageCacheEntry(addressValue, keyValue, cachedEntry)
+      return DataPtFactory.deepCopy(cachedEntry.latestValuePt)
+    }
+
+    const initialRead = {
+      addressPt: DataPtFactory.deepCopy(addressPt),
+      keyPt: DataPtFactory.deepCopy(keyPt),
+      valuePt: DataPtFactory.deepCopy(valuePt),
+    }
+    this.parent.state.addInitialStorageRead(addressValue, keyValue, initialRead)
+    this.parent.state.setStorageCacheEntry(addressValue, keyValue, {
+      canonicalAddressPt: initialRead.addressPt,
+      canonicalKeyPt: initialRead.keyPt,
+      latestValuePt: initialRead.valuePt,
+      dirty: false,
+    })
     return DataPtFactory.deepCopy(valuePt);
   }
 
   public async storeStorage(
     address: Address,
+    addressPt: DataPt,
     keyPt: DataPt,
     symbolDataPt: DataPt,
   ): Promise<void> {
+    const { addressValue, keyValue } = this._getStorageLocation(address, addressPt, keyPt)
     const cachedMerkleProof = this.parent.state.cachedMerkleProof;
     if (cachedMerkleProof === null) {
       throw new Error('Debug: cachedMerkleProof is required for SSTORE main-step verification')
@@ -583,6 +689,14 @@ export class InstructionHandler {
     
     cachedRoots.push(DataPtFactory.deepCopy(refRootPt));
     this.parent.state.cachedRoots.set(addrBigint, cachedRoots);
+
+    const cachedEntry = this._getCachedStorageEntry(addressValue, keyValue, addressPt, keyPt)
+    this.parent.state.setStorageCacheEntry(addressValue, keyValue, {
+      canonicalAddressPt: cachedEntry?.canonicalAddressPt ?? addressPt,
+      canonicalKeyPt: cachedEntry?.canonicalKeyPt ?? keyPt,
+      latestValuePt: symbolDataPt,
+      dirty: true,
+    })
     this.parent.state.cachedMerkleProof = null
   }
 
@@ -1019,14 +1133,24 @@ export class InstructionHandler {
       case 'SLOAD': 
         {
           const keyPt = inPts[0]
-          opts.stackPt.push(await this.loadStorage(opts.thisAddress, keyPt, out!))
+          opts.stackPt.push(await this.loadStorage(
+            opts.thisAddress,
+            opts.thisContext.storageAddressPt,
+            keyPt,
+            out!,
+          ))
         }
         break
       case 'SSTORE': 
         {
           const keyPt = inPts[0]
           const dataPt = inPts[1]
-          await this.storeStorage(opts.thisAddress, keyPt, dataPt)
+          await this.storeStorage(
+            opts.thisAddress,
+            opts.thisContext.storageAddressPt,
+            keyPt,
+            dataPt,
+          )
           if ( dataPt.value !== ins[1] ) {
             throw new Error(`Synthesizer: ${op}: Output storage data mismatch`)
           } 

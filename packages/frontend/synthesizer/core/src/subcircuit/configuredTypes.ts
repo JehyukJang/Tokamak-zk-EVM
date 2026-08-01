@@ -101,6 +101,7 @@ export const SUBCIRCUIT_LIST = [
     'JubjubExpBatch',
     'EdDsaVerify',
     'VerifyMerkleProof',
+    'EqualBatch',
 ] as const
 
 export type SubcircuitNames = typeof SUBCIRCUIT_LIST[number]
