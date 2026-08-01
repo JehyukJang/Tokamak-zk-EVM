@@ -16,10 +16,11 @@ The format is based on Keep a Changelog.
 - Removed `VerifyMerkleProof` from the compiled qap-compiler circuit set and
   the Synthesizer subcircuit inventory.
 - Replaced the compiled `bufferPubOut` circuit with `bufferLogOut` and
-  `bufferStorageOut`, and expanded `bufferPubIn` to reserve initial SLOAD
-  records. All qap-compiler buffer capacities are now measured in 256-bit
-  words. The provisional capacities are 58 words for `bufferPubIn`, 32 for
-  `bufferLogOut`, and 48 for `bufferStorageOut`.
+  `bufferStorageOut`, and split `bufferPubIn` into `bufferTxIn` and
+  `bufferStorageIn`. All qap-compiler buffer capacities are now measured in
+  256-bit words. The capacities are 3 words for `bufferTxIn`, 48 provisional
+  words for `bufferStorageIn`, 32 provisional words for `bufferLogOut`, and
+  48 provisional words for `bufferStorageOut`.
 - This circuit-set change requires regenerated subcircuit-library artifacts
   and a compatible backend CRS before it can be used for proving.
 
