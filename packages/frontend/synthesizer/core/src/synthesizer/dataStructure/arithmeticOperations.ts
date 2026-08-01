@@ -179,6 +179,16 @@ export class ArithmeticOperations {
     return ins[0] === ins[1] ? 1n : 0n
   }
 
+  static equalBatch(ins: bigint[]): bigint[] {
+    if (ins.length !== 4) {
+      throw new Error('equalBatch expected two pairs of inputs')
+    }
+    if (ins[0] !== ins[2] || ins[1] !== ins[3]) {
+      throw new Error('equalBatch inputs are not equal')
+    }
+    return []
+  }
+
   static iszero(ins: bigint[]): bigint {
     if (ins.length !== 1) {
       throw new Error('iszero expected one input')

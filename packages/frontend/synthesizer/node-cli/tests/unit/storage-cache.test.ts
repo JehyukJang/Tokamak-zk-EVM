@@ -62,9 +62,10 @@ const createStorageHarness = (initialValue: bigint) => {
       subcircuitInfoByName: new Map([['EqualBatch', equalBatchInfo]]),
     },
     place: vi.fn(),
-    placeArith: vi.fn((_name: string, inPts: DataPt[]) => [
-      dataPt(inPts[0].value % inPts[1].value, nextSource++),
-    ]),
+    placeArith: vi.fn((name: string, inPts: DataPt[]) => name === 'EqualBatch'
+      ? []
+      : [dataPt(inPts[0].value % inPts[1].value, nextSource++)]
+    ),
     getReservedVariableFromBuffer: vi.fn(() => dataPt(1024n, 10)),
     addReservedVariableToBufferIn: vi.fn((_name: string, value: bigint) =>
       dataPt(value, nextSource++, 0, 255),
@@ -178,8 +179,11 @@ describe('InstructionHandler storage cache', () => {
       wireIndex: firstValuePt.wireIndex,
       value: firstValuePt.value,
     });
-    expect(parent.place).toHaveBeenCalledTimes(1);
-    expect(parent.place).toHaveBeenCalledWith(
+    const equalBatchCalls = parent.placeArith.mock.calls.filter(
+      (call: any[]) => call[0] === 'EqualBatch',
+    );
+    expect(equalBatchCalls).toHaveLength(1);
+    expect(parent.placeArith).toHaveBeenCalledWith(
       'EqualBatch',
       [
         expect.objectContaining({ source: 40, value: addressValue }),
@@ -187,8 +191,6 @@ describe('InstructionHandler storage cache', () => {
         expect.objectContaining({ source: 30, value: addressValue }),
         expect.objectContaining({ source: 31, value: 9n }),
       ],
-      [],
-      'Storage address and key equality',
     );
   });
 
@@ -216,7 +218,9 @@ describe('InstructionHandler storage cache', () => {
       wireIndex: firstValuePt.wireIndex,
       value: 6n,
     });
-    expect(parent.place).toHaveBeenCalledTimes(1);
+    expect(parent.placeArith.mock.calls.filter(
+      (call: any[]) => call[0] === 'EqualBatch',
+    )).toHaveLength(1);
   });
 
   it('updates the cached value on SSTORE and does not add an initial SLOAD afterward', async () => {
@@ -242,7 +246,9 @@ describe('InstructionHandler storage cache', () => {
       dirty: true,
     });
     expect(loadedPt).toMatchObject({ source: 51, value: 11n });
-    expect(parent.place).toHaveBeenCalledTimes(1);
+    expect(parent.placeArith.mock.calls.filter(
+      (call: any[]) => call[0] === 'EqualBatch',
+    )).toHaveLength(1);
   });
 
   it('rejects a storageAddressPt that does not match the EVM storage address', async () => {

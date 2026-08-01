@@ -540,12 +540,7 @@ export class InstructionHandler {
     if (inPts.some((pt) => pt.sourceBitSize <= 128)) {
       throw new Error('Synthesizer: EqualBatch storage identities must use two-limb DataPts')
     }
-    this.parent.place(
-      'EqualBatch',
-      inPts,
-      [],
-      'Storage address and key equality',
-    )
+    this.parent.placeArith('EqualBatch', inPts)
   }
 
   private _getCachedStorageEntry(

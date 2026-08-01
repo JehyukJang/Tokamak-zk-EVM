@@ -616,4 +616,5 @@ const ARITHMETIC_MAPPING: Record<ArithmeticOperator, (...args: any) => any> = {
   VerifyMerkleProof4x: ArithmeticOperations.verifyMerkleProof4x,
   VerifyMerkleProof5x: ArithmeticOperations.verifyMerkleProof5x,
   VerifyMerkleProof6x: ArithmeticOperations.verifyMerkleProof6x,
+  EqualBatch: ArithmeticOperations.equalBatch,
 } as const
