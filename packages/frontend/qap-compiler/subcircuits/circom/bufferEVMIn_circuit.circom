@@ -3,4 +3,4 @@ include "../../templates/buffer.circom";
 include "./constants.circom";
 
 // Input wires are public, and output wires are private.
-component main{public [in]} = Buffer2(nEVMIn());
+component main{public [in]} = Buffer2(nEVMIn() * 2);

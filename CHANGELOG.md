@@ -17,8 +17,9 @@ The format is based on Keep a Changelog.
   the Synthesizer subcircuit inventory.
 - Replaced the compiled `bufferPubOut` circuit with `bufferLogOut` and
   `bufferStorageOut`, and expanded `bufferPubIn` to reserve initial SLOAD
-  records. The provisional qap-compiler capacities are 16 SLOAD triples, 16
-  SSTORE triples, and 16 LOG tuples.
+  records. All qap-compiler buffer capacities are now measured in 256-bit
+  words. The provisional capacities are 58 words for `bufferPubIn`, 32 for
+  `bufferLogOut`, and 48 for `bufferStorageOut`.
 - This circuit-set change requires regenerated subcircuit-library artifacts
   and a compatible backend CRS before it can be used for proving.
 
