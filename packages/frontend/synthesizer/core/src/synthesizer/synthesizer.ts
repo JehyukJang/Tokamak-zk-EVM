@@ -26,6 +26,8 @@ export class Synthesizer implements SynthesizerInterface
   protected _instructionHandlers: InstructionHandler
   public readonly cachedOpts: SynthesizerOpts
   public readonly subcircuitLibrary: ResolvedSubcircuitLibrary
+  private _eventHandlerError: unknown
+  private _hasEventHandlerError: boolean
   private _stepLogs: SynthesizerStepLogEntry[]
   private _messageCodeAddresses: Set<`0x${string}`>
 
@@ -38,8 +40,18 @@ export class Synthesizer implements SynthesizerInterface
     this._arithmeticManager = new ArithmeticManager(this)
     this._memoryManager = new MemoryManager(this)
     this._instructionHandlers =  new InstructionHandler(this)
+    this._eventHandlerError = undefined
+    this._hasEventHandlerError = false
     this._stepLogs = []
     this._messageCodeAddresses = new Set()
+  }
+
+  private _recordEventHandlerError(handlerName: string, err: unknown): void {
+    if (!this._hasEventHandlerError) {
+      this._eventHandlerError = err
+      this._hasEventHandlerError = true
+    }
+    console.error(`Synthesizer: ${handlerName} error:`, err)
   }
 
   private _attachSynthesizerToVM(vm: VM): void {
@@ -49,20 +61,24 @@ export class Synthesizer implements SynthesizerInterface
     vm.events.on('beforeTx', (_data: TypedTransaction, resolve?: (result?: any) => void) => {
       ; (async () => {
         try {
-          await this._prepareSynthesizeTransaction()
-          // TODO: BLOCKHASH preparation in state manager for EIP-7709
+          if (!this._hasEventHandlerError) {
+            await this._prepareSynthesizeTransaction()
+            // TODO: BLOCKHASH preparation in state manager for EIP-7709
+          }
         } catch (err) {
-          console.error('Synthesizer: beforeTx error:', err)
+          this._recordEventHandlerError('beforeTx', err)
         } finally {
           resolve?.()
         }
       })()
     });
     vm.evm.events.on('beforeMessage', (data: Message, resolve?: (result?: any) => void) => {
-      try { 
-        this._prepareMessageCall(data);
+      try {
+        if (!this._hasEventHandlerError) {
+          this._prepareMessageCall(data);
+        }
       } catch (err) {
-        console.error('Synthesizer: beforeMessage error:', err)
+        this._recordEventHandlerError('beforeMessage', err)
       } finally {
         resolve?.()
       }
@@ -70,12 +86,14 @@ export class Synthesizer implements SynthesizerInterface
     vm.evm.events!.on('step', (data: InterpreterStep, resolve?: (result?: any) => void) => {
       ; (async () => {
         try {
-          await this._applySynthesizerHandler(data);
-          if (data.opcode.name === 'SSTORE') {
-            await this._updateStoragePreStep(data);
+          if (!this._hasEventHandlerError) {
+            await this._applySynthesizerHandler(data);
+            if (data.opcode.name === 'SSTORE') {
+              await this._updateStoragePreStep(data);
+            }
           }
         } catch (err) {
-          console.error('Synthesizer: step error:', err)
+          this._recordEventHandlerError('step', err)
         } finally {
           resolve?.()
         }
@@ -84,6 +102,9 @@ export class Synthesizer implements SynthesizerInterface
     vm.evm.events.on('afterMessage', (data: EVMResult, resolve?: (result?: any) => void) => {
       ; (async () => {
         try {
+          if (this._hasEventHandlerError) {
+            return
+          }
           const _runState = data.execResult.runState
           if (_runState === undefined) {
             throw new Error('Failed to capture the final state')
@@ -125,7 +146,7 @@ export class Synthesizer implements SynthesizerInterface
           await this._applySynthesizerHandler(stepData);
           this._returnMessageCall(stepData.depth);
         } catch (err) {
-          console.error('Synthesizer: afterMessage error:', err)
+          this._recordEventHandlerError('afterMessage', err)
         } finally {
           // console.log(`code = ${bytesToHex(data.execResult.runState!.code)}`)
           resolve?.()
@@ -136,9 +157,11 @@ export class Synthesizer implements SynthesizerInterface
     vm.events.on('afterTx', (_data: AfterTxEvent, resolve?: (result?: any) => void) => {
       ; (async () => {
         try {
-          await this._finalizeStorage()
+          if (!this._hasEventHandlerError) {
+            await this._finalizeStorage()
+          }
         } catch (err) {
-          console.error('Synthesizer: afterTx error:', err)
+          this._recordEventHandlerError('afterTx', err)
         } finally {
           // console.log(`code = ${bytesToHex(data.execResult.runState!.code)}`)
           resolve?.()
@@ -315,6 +338,8 @@ export class Synthesizer implements SynthesizerInterface
 
   public async synthesizeTX(): Promise<RunTxResult> {
     const common = this.cachedOpts.stateManager.common;
+    this._eventHandlerError = undefined
+    this._hasEventHandlerError = false
     this._stepLogs = []
 
     const headerData: HeaderData = {
@@ -358,7 +383,19 @@ export class Synthesizer implements SynthesizerInterface
       skipHardForkValidation: true,
       reportPreimages: true,
     };
-    return await runTx(vm, runTxOpts)
+    let result: RunTxResult
+    try {
+      result = await runTx(vm, runTxOpts)
+    } catch (err) {
+      if (this._hasEventHandlerError) {
+        throw this._eventHandlerError
+      }
+      throw err
+    }
+    if (this._hasEventHandlerError) {
+      throw this._eventHandlerError
+    }
+    return result
   }
 
   private _applySynthesizerHandler = async (data: InterpreterStep): Promise<void> => {

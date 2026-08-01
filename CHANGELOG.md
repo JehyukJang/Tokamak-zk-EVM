@@ -10,6 +10,9 @@ The format is based on Keep a Changelog.
 
 ### Bug Fixes
 
+- Fixed VM event handlers swallowing Synthesizer failures. The first
+  Synthesizer event-handler error is now rethrown after transaction execution,
+  allowing host assertions and other consistency checks to fail synthesis.
 - Fixed Synthesizer calldata offset and length decoding for a normal `CALL`
   executed within an inherited static context. CALL-family stack layouts are
   now selected from the actual opcode, so such calls are no longer decoded as
