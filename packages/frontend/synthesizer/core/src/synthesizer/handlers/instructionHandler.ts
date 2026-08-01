@@ -549,6 +549,8 @@ export class InstructionHandler {
     addressPt: DataPt,
     keyPt: DataPt,
   ) {
+    // The cache-entry and retained-initial-read branches are mutually exclusive,
+    // so each lookup places EqualBatch at most once.
     const cachedEntry = this.parent.state.storageCache.get(addressValue, keyValue)
     if (cachedEntry !== undefined) {
       this._constrainStorageLocationEquality(
