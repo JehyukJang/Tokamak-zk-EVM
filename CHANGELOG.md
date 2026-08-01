@@ -8,11 +8,20 @@ The format is based on Keep a Changelog.
 
 ## Unreleased
 
+### Subcircuit Library
+
+- Added the `EqualBatch` subcircuit to the qap-compiler circuit set. It uses
+  `Buffer2` to constrain equality between two batches of two 256-bit values,
+  with `nEqualBatch` fixed to `2`.
+- This circuit-set change requires regenerated subcircuit-library artifacts
+  and a compatible backend CRS before it can be used for proving.
+
 ### Bug Fixes
 
 - Fixed VM event handlers swallowing Synthesizer failures. The first
-  Synthesizer event-handler error is now rethrown after transaction execution,
-  allowing host assertions and other consistency checks to fail synthesis.
+  Synthesizer event-handler error is now retained while the VM finishes the
+  transaction and then rethrown unchanged, even if `runTx` also fails. This
+  allows host assertions and other consistency checks to fail synthesis.
 - Fixed Synthesizer calldata offset and length decoding for a normal `CALL`
   executed within an inherited static context. CALL-family stack layouts are
   now selected from the actual opcode, so such calls are no longer decoded as
