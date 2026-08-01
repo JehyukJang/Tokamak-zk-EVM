@@ -725,9 +725,9 @@ export class InstructionHandler {
     switch (op) {
       case 'ADDRESS': 
         {
-          const cache = opts.thisContext.toAddressPt;
+          const cache = opts.thisContext.storageAddressPt;
           if (cache === undefined) {
-            throw new Error(`No cache for To Address`)
+            throw new Error(`No cache for storage address`)
           }
           stackPt.push(DataPtFactory.deepCopy(cache))
           // checkRequiredInput(opts.originAddress)

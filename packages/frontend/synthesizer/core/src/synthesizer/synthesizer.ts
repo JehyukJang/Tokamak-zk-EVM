@@ -188,7 +188,8 @@ export class Synthesizer implements SynthesizerInterface
     const depth = message.depth;
     let callDataMemoryPts: MemoryPts;
     let callerPt: DataPt;
-    let toAddressPt: DataPt;
+    let codeAddressPt: DataPt;
+    let storageAddressPt: DataPt;
     if (depth == 0) {
       const selectorPt = this.getReservedVariableFromBuffer('FUNCTION_SELECTOR')
       const inPts: DataPt[] = Array.from({ length: FUNCTION_INPUT_LENGTH }, (_, i) =>
@@ -206,7 +207,9 @@ export class Synthesizer implements SynthesizerInterface
         throw new Error(`Sender address must be verified first`)
       }
       callerPt = DataPtFactory.deepCopy(this.state.cachedOrigin);
-      toAddressPt = this.getReservedVariableFromBuffer('CONTRACT_ADDRESS');
+      const contractAddressPt = this.getReservedVariableFromBuffer('CONTRACT_ADDRESS');
+      codeAddressPt = DataPtFactory.deepCopy(contractAddressPt);
+      storageAddressPt = DataPtFactory.deepCopy(contractAddressPt);
     } else if (depth > 0) {
       const parentContext = this.state.contextByDepth[depth - 1];
       if (parentContext === undefined) {
@@ -216,36 +219,55 @@ export class Synthesizer implements SynthesizerInterface
       if (callingStep === null) {
         throw new Error('Debug: A child context is called but no relevant interpreter step in the parent context')
       }
-      let toAddress: bigint
+      let codeAddress: bigint
       let inOffset: bigint
       let inLength: bigint
-      if (message.isStatic || message.delegatecall) {
-        const ins = callingStep.stack.slice(0, 6);
-        toAddress = ins[1]
-        toAddressPt = DataPtFactory.deepCopy(parentContext.stackPt.peek(6)[1]);
-        inOffset = ins[2]
-        inLength = ins[3]
-      } else {
-        const ins = callingStep.stack.slice(0, 7);
-        toAddress = ins[1]
-        toAddressPt = DataPtFactory.deepCopy(parentContext.stackPt.peek(7)[1]);
-        inOffset = ins[3]
-        inLength = ins[4]
+      switch (callingStep.opcode.name) {
+        case 'CALL':
+        case 'CALLCODE': {
+          const ins = callingStep.stack.slice(0, 7);
+          codeAddress = ins[1]
+          codeAddressPt = DataPtFactory.deepCopy(parentContext.stackPt.peek(7)[1]);
+          inOffset = ins[3]
+          inLength = ins[4]
+          break
+        }
+        case 'DELEGATECALL':
+        case 'STATICCALL': {
+          const ins = callingStep.stack.slice(0, 6);
+          codeAddress = ins[1]
+          codeAddressPt = DataPtFactory.deepCopy(parentContext.stackPt.peek(6)[1]);
+          inOffset = ins[2]
+          inLength = ins[3]
+          break
+        }
+        default:
+          throw new Error(`Debug: Unsupported message call opcode: ${callingStep.opcode.name}`)
       }
 
-      if (toAddress >= 1n && toAddress <= 10n) {
+      if (codeAddress >= 1n && codeAddress <= 10n) {
         throw new Error(
           `Precompiles are not implemented in Synthesizer.`,
         )
       }
-      if (toAddress !== toAddressPt.value) {
+      if (codeAddress !== codeAddressPt.value) {
         throw new Error(`Debug: Address to call mismatch between EVM and Synthesizer`)
       }
-      callerPt = DataPtFactory.deepCopy(
-        message.delegatecall === true ? 
-        this.state.contextByDepth[depth - 1].callerPt : 
-        this.state.contextByDepth[depth - 1].toAddressPt
-      );
+      switch (callingStep.opcode.name) {
+        case 'CALL':
+        case 'STATICCALL':
+          callerPt = DataPtFactory.deepCopy(parentContext.storageAddressPt);
+          storageAddressPt = DataPtFactory.deepCopy(codeAddressPt);
+          break
+        case 'CALLCODE':
+          callerPt = DataPtFactory.deepCopy(parentContext.storageAddressPt);
+          storageAddressPt = DataPtFactory.deepCopy(parentContext.storageAddressPt);
+          break
+        case 'DELEGATECALL':
+          callerPt = DataPtFactory.deepCopy(parentContext.callerPt);
+          storageAddressPt = DataPtFactory.deepCopy(parentContext.storageAddressPt);
+          break
+      }
 
       callDataMemoryPts = this.copyMemoryPts(
         parentContext.memoryPt.read(Number(inOffset), Number(inLength)),
@@ -264,7 +286,8 @@ export class Synthesizer implements SynthesizerInterface
     const contextData: ContextConstructionData = {
       callDataMemoryPts,
       callerPt,
-      toAddressPt,
+      codeAddressPt,
+      storageAddressPt,
     };
     this.state.contextByDepth[depth] = new ContextManager(contextData);
   }

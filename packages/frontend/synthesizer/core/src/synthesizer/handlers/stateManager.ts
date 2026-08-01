@@ -21,7 +21,8 @@ import { InterpreterStep } from '@ethereumjs/evm';
 
 export type ContextConstructionData = {
   callerPt: DataPt;
-  toAddressPt: DataPt;
+  codeAddressPt: DataPt;
+  storageAddressPt: DataPt;
   callDataMemoryPts: MemoryPts;
 }
 
@@ -34,7 +35,8 @@ export class ContextManager {
   public stackPt: StackPt;
   public memoryPt: MemoryPt;
   public callerPt: DataPt;
-  public toAddressPt: DataPt;
+  public codeAddressPt: DataPt;
+  public storageAddressPt: DataPt;
   public returnDataMemoryPts: MemoryPts;
   public callDataMemoryPts: MemoryPts;
   public prevInterpreterStep: InterpreterStep | null;
@@ -44,7 +46,8 @@ export class ContextManager {
     this.stackPt = new StackPt();
     this.memoryPt = new MemoryPt();
     this.callerPt = data.callerPt;
-    this.toAddressPt = data.toAddressPt;
+    this.codeAddressPt = data.codeAddressPt;
+    this.storageAddressPt = data.storageAddressPt;
     this.callDataMemoryPts = data.callDataMemoryPts;
     this.returnDataMemoryPts = [];
     this.prevInterpreterStep = null;
