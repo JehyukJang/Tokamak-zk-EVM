@@ -557,7 +557,7 @@ export class InstructionHandler {
     addressPt: DataPt,
     keyPt: DataPt,
   ) {
-    const cachedEntry = this.parent.state.getStorageCacheEntry(addressValue, keyValue)
+    const cachedEntry = this.parent.state.storageCache.get(addressValue, keyValue)
     if (cachedEntry !== undefined) {
       this._constrainStorageLocationEquality(
         addressPt,
@@ -568,7 +568,7 @@ export class InstructionHandler {
       return cachedEntry
     }
 
-    const initialRead = this.parent.state.getInitialStorageRead(addressValue, keyValue)
+    const initialRead = this.parent.state.initialStorageReads.get(addressValue, keyValue)
     if (initialRead === undefined) {
       return undefined
     }
@@ -627,7 +627,7 @@ export class InstructionHandler {
       if (cachedEntry.latestValuePt.value !== valueStored) {
         throw new Error('Synthesizer: Cached storage value does not match EVM storage')
       }
-      this.parent.state.setStorageCacheEntry(addressValue, keyValue, cachedEntry)
+      this.parent.state.storageCache.set(addressValue, keyValue, cachedEntry)
       return DataPtFactory.deepCopy(cachedEntry.latestValuePt)
     }
 
@@ -636,8 +636,8 @@ export class InstructionHandler {
       keyPt: DataPtFactory.deepCopy(keyPt),
       valuePt: DataPtFactory.deepCopy(valuePt),
     }
-    this.parent.state.addInitialStorageRead(addressValue, keyValue, initialRead)
-    this.parent.state.setStorageCacheEntry(addressValue, keyValue, {
+    this.parent.state.initialStorageReads.add(addressValue, keyValue, initialRead)
+    this.parent.state.storageCache.set(addressValue, keyValue, {
       canonicalAddressPt: initialRead.addressPt,
       canonicalKeyPt: initialRead.keyPt,
       latestValuePt: initialRead.valuePt,
@@ -691,7 +691,7 @@ export class InstructionHandler {
     this.parent.state.cachedRoots.set(addrBigint, cachedRoots);
 
     const cachedEntry = this._getCachedStorageEntry(addressValue, keyValue, addressPt, keyPt)
-    this.parent.state.setStorageCacheEntry(addressValue, keyValue, {
+    this.parent.state.storageCache.set(addressValue, keyValue, {
       canonicalAddressPt: cachedEntry?.canonicalAddressPt ?? addressPt,
       canonicalKeyPt: cachedEntry?.canonicalKeyPt ?? keyPt,
       latestValuePt: symbolDataPt,

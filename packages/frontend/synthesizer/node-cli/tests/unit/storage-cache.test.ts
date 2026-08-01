@@ -2,11 +2,11 @@ import { createAddressFromBigInt, bigIntToBytes, setLengthLeft } from '@ethereum
 import { describe, expect, it, vi } from 'vitest';
 
 import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
-import {
-  StateManager,
-  type InitialStorageRead,
-  type StorageCacheEntry,
-} from '../../../core/src/synthesizer/handlers/stateManager.ts';
+import { StateManager } from '../../../core/src/synthesizer/handlers/stateManager.ts';
+import type {
+  InitialStorageRead,
+  StorageCacheEntry,
+} from '../../../core/src/synthesizer/handlers/storageAccess.ts';
 import type { DataPt } from '../../../core/src/synthesizer/types/index.ts';
 
 const dataPt = (
@@ -93,10 +93,10 @@ describe('StateManager storage tracking', () => {
       latestValuePt: dataPt(3n, 3),
       dirty: false,
     };
-    state.setStorageCacheEntry(1n, 2n, parentEntry);
-    state.beginStorageFrame(1);
+    state.storageCache.set(1n, 2n, parentEntry);
+    state.storageCache.beginFrame(1);
 
-    state.setStorageCacheEntry(1n, 2n, {
+    state.storageCache.set(1n, 2n, {
       ...parentEntry,
       latestValuePt: dataPt(4n, 4),
       dirty: true,
@@ -106,25 +106,25 @@ describe('StateManager storage tracking', () => {
       keyPt: dataPt(6n, 6),
       valuePt: dataPt(7n, 7),
     };
-    state.addInitialStorageRead(1n, 6n, childRead);
-    state.setStorageCacheEntry(1n, 6n, {
+    state.initialStorageReads.add(1n, 6n, childRead);
+    state.storageCache.set(1n, 6n, {
       canonicalAddressPt: childRead.addressPt,
       canonicalKeyPt: childRead.keyPt,
       latestValuePt: childRead.valuePt,
       dirty: false,
     });
 
-    state.completeStorageFrame(1, false);
+    state.storageCache.completeFrame(1, false);
 
-    expect(state.getStorageCacheEntry(1n, 2n)).toMatchObject({
+    expect(state.storageCache.get(1n, 2n)).toMatchObject({
       latestValuePt: { value: 3n, source: 3 },
       dirty: false,
     });
-    expect(state.getStorageCacheEntry(1n, 6n)).toBeUndefined();
-    expect(state.getInitialStorageRead(1n, 6n)).toMatchObject({
+    expect(state.storageCache.get(1n, 6n)).toBeUndefined();
+    expect(state.initialStorageReads.get(1n, 6n)).toMatchObject({
       valuePt: { value: 7n, source: 7 },
     });
-    expect(state.initialStorageReads).toHaveLength(1);
+    expect(state.initialStorageReads.entries).toHaveLength(1);
   });
 
   it('keeps a successful child update until an enclosing frame rolls back', () => {
@@ -135,23 +135,23 @@ describe('StateManager storage tracking', () => {
       latestValuePt: dataPt(3n, 3),
       dirty: false,
     };
-    state.setStorageCacheEntry(1n, 2n, baseEntry);
-    state.beginStorageFrame(0);
-    state.beginStorageFrame(1);
-    state.setStorageCacheEntry(1n, 2n, {
+    state.storageCache.set(1n, 2n, baseEntry);
+    state.storageCache.beginFrame(0);
+    state.storageCache.beginFrame(1);
+    state.storageCache.set(1n, 2n, {
       ...baseEntry,
       latestValuePt: dataPt(8n, 8),
       dirty: true,
     });
 
-    state.completeStorageFrame(1, true);
-    expect(state.getStorageCacheEntry(1n, 2n)).toMatchObject({
+    state.storageCache.completeFrame(1, true);
+    expect(state.storageCache.get(1n, 2n)).toMatchObject({
       latestValuePt: { value: 8n },
       dirty: true,
     });
 
-    state.completeStorageFrame(0, false);
-    expect(state.getStorageCacheEntry(1n, 2n)).toMatchObject({
+    state.storageCache.completeFrame(0, false);
+    expect(state.storageCache.get(1n, 2n)).toMatchObject({
       latestValuePt: { value: 3n },
       dirty: false,
     });
@@ -172,7 +172,7 @@ describe('InstructionHandler storage cache', () => {
       5n,
     );
 
-    expect(parent.state.initialStorageReads).toHaveLength(1);
+    expect(parent.state.initialStorageReads.entries).toHaveLength(1);
     expect(secondValuePt).toMatchObject({
       source: firstValuePt.source,
       wireIndex: firstValuePt.wireIndex,
@@ -194,7 +194,7 @@ describe('InstructionHandler storage cache', () => {
 
   it('reuses a retained initial SLOAD after its frame is rolled back', async () => {
     const { address, addressValue, handler, parent } = createStorageHarness(6n);
-    parent.state.beginStorageFrame(1);
+    parent.state.storageCache.beginFrame(1);
     const firstValuePt = await handler.loadStorage(
       address,
       dataPt(addressValue, 42),
@@ -202,8 +202,8 @@ describe('InstructionHandler storage cache', () => {
       6n,
     );
 
-    parent.state.completeStorageFrame(1, false);
-    expect(parent.state.getStorageCacheEntry(addressValue, 10n)).toBeUndefined();
+    parent.state.storageCache.completeFrame(1, false);
+    expect(parent.state.storageCache.get(addressValue, 10n)).toBeUndefined();
 
     const secondValuePt = await handler.loadStorage(
       address,
@@ -212,7 +212,7 @@ describe('InstructionHandler storage cache', () => {
       6n,
     );
 
-    expect(parent.state.initialStorageReads).toHaveLength(1);
+    expect(parent.state.initialStorageReads.entries).toHaveLength(1);
     expect(secondValuePt).toMatchObject({
       source: firstValuePt.source,
       wireIndex: firstValuePt.wireIndex,
@@ -239,8 +239,8 @@ describe('InstructionHandler storage cache', () => {
       11n,
     );
 
-    expect(parent.state.initialStorageReads).toHaveLength(0);
-    expect(parent.state.getStorageCacheEntry(addressValue, 7n)).toMatchObject({
+    expect(parent.state.initialStorageReads.entries).toHaveLength(0);
+    expect(parent.state.storageCache.get(addressValue, 7n)).toMatchObject({
       latestValuePt: { source: 51, value: 11n },
       dirty: true,
     });
@@ -259,6 +259,6 @@ describe('InstructionHandler storage cache', () => {
     )).rejects.toThrow('Storage address mismatch');
 
     expect(parent.cachedOpts.stateManager.getStorage).not.toHaveBeenCalled();
-    expect(parent.state.initialStorageReads).toHaveLength(0);
+    expect(parent.state.initialStorageReads.entries).toHaveLength(0);
   });
 });

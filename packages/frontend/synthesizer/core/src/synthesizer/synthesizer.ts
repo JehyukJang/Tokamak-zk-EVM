@@ -145,7 +145,7 @@ export class Synthesizer implements SynthesizerInterface
           }
           await this._applySynthesizerHandler(stepData);
           this._returnMessageCall(stepData.depth);
-          this.state.completeStorageFrame(
+          this.state.storageCache.completeFrame(
             stepData.depth,
             data.execResult.exceptionError === undefined,
           )
@@ -175,7 +175,8 @@ export class Synthesizer implements SynthesizerInterface
   }
 
   private async _prepareSynthesizeTransaction(): Promise<void> {
-    this.state.resetStorageAccessTracking()
+    this.state.storageCache.reset()
+    this.state.initialStorageReads.reset()
     this.state.cachedRoots = new Map()
     const storageAddresses = this.cachedOpts.stateManager.storageAddresses;
     const roots = this.cachedOpts.stateManager.merkleTrees.getRoots(storageAddresses);
@@ -317,7 +318,7 @@ export class Synthesizer implements SynthesizerInterface
       codeAddressPt,
       storageAddressPt,
     };
-    this.state.beginStorageFrame(depth)
+    this.state.storageCache.beginFrame(depth)
     this.state.contextByDepth[depth] = new ContextManager(contextData);
   }
 
