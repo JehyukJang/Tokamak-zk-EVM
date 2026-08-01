@@ -2,6 +2,7 @@ import { createAddressFromBigInt, bigIntToBytes, setLengthLeft } from '@ethereum
 import { describe, expect, it, vi } from 'vitest';
 
 import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
+import { StackPt } from '../../../core/src/synthesizer/dataStructure/index.ts';
 import { StateManager } from '../../../core/src/synthesizer/handlers/stateManager.ts';
 import type {
   InitialStorageRead,
@@ -160,13 +161,12 @@ describe('StateManager storage tracking', () => {
 
 describe('InstructionHandler storage cache', () => {
   it('registers one initial SLOAD and reuses its value DataPt on repeated reads', async () => {
-    const { address, addressValue, handler, parent } = createStorageHarness(5n);
+    const { addressValue, handler, parent } = createStorageHarness(5n);
     const firstAddressPt = dataPt(addressValue, 30);
     const firstKeyPt = dataPt(9n, 31);
 
-    const firstValuePt = await handler.loadStorage(address, firstAddressPt, firstKeyPt, 5n);
+    const firstValuePt = await handler.loadStorage(firstAddressPt, firstKeyPt, 5n);
     const secondValuePt = await handler.loadStorage(
-      address,
       dataPt(addressValue, 40),
       dataPt(9n, 41),
       5n,
@@ -193,10 +193,9 @@ describe('InstructionHandler storage cache', () => {
   });
 
   it('reuses a retained initial SLOAD after its frame is rolled back', async () => {
-    const { address, addressValue, handler, parent } = createStorageHarness(6n);
+    const { addressValue, handler, parent } = createStorageHarness(6n);
     parent.state.storageCache.beginFrame(1);
     const firstValuePt = await handler.loadStorage(
-      address,
       dataPt(addressValue, 42),
       dataPt(10n, 43),
       6n,
@@ -206,7 +205,6 @@ describe('InstructionHandler storage cache', () => {
     expect(parent.state.storageCache.get(addressValue, 10n)).toBeUndefined();
 
     const secondValuePt = await handler.loadStorage(
-      address,
       dataPt(addressValue, 44),
       dataPt(10n, 45),
       6n,
@@ -222,7 +220,7 @@ describe('InstructionHandler storage cache', () => {
   });
 
   it('updates the cached value on SSTORE and does not add an initial SLOAD afterward', async () => {
-    const { address, addressValue, handler, parent, setStorageValue } = createStorageHarness(11n);
+    const { addressValue, handler, parent, setStorageValue } = createStorageHarness(11n);
     const keyPt = dataPt(7n, 50);
     const writePt = dataPt(11n, 51);
     parent.state.cachedMerkleProof = {
@@ -230,10 +228,9 @@ describe('InstructionHandler storage cache', () => {
       siblingPts: [],
     };
 
-    await handler.storeStorage(address, dataPt(addressValue, 53), keyPt, writePt);
+    await handler.storeStorage(dataPt(addressValue, 53), keyPt, writePt);
     setStorageValue(11n);
     const loadedPt = await handler.loadStorage(
-      address,
       dataPt(addressValue, 54),
       dataPt(7n, 55),
       11n,
@@ -250,13 +247,15 @@ describe('InstructionHandler storage cache', () => {
 
   it('rejects a storageAddressPt that does not match the EVM storage address', async () => {
     const { address, handler, parent } = createStorageHarness(5n);
+    const stackPt = new StackPt();
+    stackPt.push(dataPt(1n, 61));
 
-    await expect(handler.loadStorage(
-      address,
-      dataPt(0x9999n, 60),
-      dataPt(1n, 61),
-      5n,
-    )).rejects.toThrow('Storage address mismatch');
+    await expect(handler.handleSysFlow([1n], 5n, {
+      op: 'SLOAD',
+      stackPt,
+      thisAddress: address,
+      thisContext: { storageAddressPt: dataPt(0x9999n, 60) },
+    } as any)).rejects.toThrow('Storage address mismatch');
 
     expect(parent.cachedOpts.stateManager.getStorage).not.toHaveBeenCalled();
     expect(parent.state.initialStorageReads.entries).toHaveLength(0);

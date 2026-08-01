@@ -509,16 +509,13 @@ export class InstructionHandler {
     return refInitRootPt[refInitRootPt.length - 1];
   }
 
-  private _getStorageLocation(
+  private _assertStorageAddress(
     address: Address,
     addressPt: DataPt,
-    keyPt: DataPt,
-  ): { addressValue: bigint, keyValue: bigint } {
-    const addressValue = bytesToBigInt(address.bytes)
-    if (addressPt.value !== addressValue) {
+  ): void {
+    if (addressPt.value !== bytesToBigInt(address.bytes)) {
       throw new Error('Synthesizer: Storage address mismatch between EVM and storageAddressPt')
     }
-    return { addressValue, keyValue: keyPt.value }
   }
 
   private _constrainStorageLocationEquality(
@@ -587,12 +584,13 @@ export class InstructionHandler {
   }
 
   public async loadStorage(
-    address: Address,
     addressPt: DataPt,
     keyPt: DataPt,
     valueGiven?: bigint,
   ): Promise<DataPt> {
-    const { addressValue, keyValue } = this._getStorageLocation(address, addressPt, keyPt)
+    const addressValue = addressPt.value
+    const keyValue = keyPt.value
+    const address = createAddressFromBigInt(addressValue)
     const valueStored = bytesToBigInt(
       await this.cachedOpts.stateManager.getStorage(
         address,
@@ -647,12 +645,13 @@ export class InstructionHandler {
   }
 
   public async storeStorage(
-    address: Address,
     addressPt: DataPt,
     keyPt: DataPt,
     symbolDataPt: DataPt,
   ): Promise<void> {
-    const { addressValue, keyValue } = this._getStorageLocation(address, addressPt, keyPt)
+    const addressValue = addressPt.value
+    const keyValue = keyPt.value
+    const address = createAddressFromBigInt(addressValue)
     const cachedMerkleProof = this.parent.state.cachedMerkleProof;
     if (cachedMerkleProof === null) {
       throw new Error('Debug: cachedMerkleProof is required for SSTORE main-step verification')
@@ -1133,9 +1132,10 @@ export class InstructionHandler {
       case 'SLOAD': 
         {
           const keyPt = inPts[0]
+          const addressPt = opts.thisContext.storageAddressPt
+          this._assertStorageAddress(opts.thisAddress, addressPt)
           opts.stackPt.push(await this.loadStorage(
-            opts.thisAddress,
-            opts.thisContext.storageAddressPt,
+            addressPt,
             keyPt,
             out!,
           ))
@@ -1145,9 +1145,10 @@ export class InstructionHandler {
         {
           const keyPt = inPts[0]
           const dataPt = inPts[1]
+          const addressPt = opts.thisContext.storageAddressPt
+          this._assertStorageAddress(opts.thisAddress, addressPt)
           await this.storeStorage(
-            opts.thisAddress,
-            opts.thisContext.storageAddressPt,
+            addressPt,
             keyPt,
             dataPt,
           )
