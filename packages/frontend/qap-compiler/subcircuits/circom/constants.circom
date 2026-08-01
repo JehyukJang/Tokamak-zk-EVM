@@ -11,3 +11,4 @@ function nAccumulation() {return 32;}
 function nPrevBlockHashes() {return 4;}
 function nJubjubExpBatch() {return 128;}
 function nSubExpBatch() {return 32;}
+function nEqualBatch() {return 2;}
