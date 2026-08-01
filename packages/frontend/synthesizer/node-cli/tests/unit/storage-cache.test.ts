@@ -51,10 +51,6 @@ const createStorageHarness = (initialValue: bigint) => {
 
   const stateManager = {
     getStorage: vi.fn(async () => setLengthLeft(bigIntToBytes(storageValue), 32)),
-    merkleTrees: {
-      getProof: vi.fn(() => ({ leaf: storageValue, siblings: [] })),
-      getRoot: vi.fn(() => 99n),
-    },
   };
   const parent: any = {
     cachedOpts: { stateManager },
@@ -62,18 +58,12 @@ const createStorageHarness = (initialValue: bigint) => {
       subcircuitInfoByName: new Map([['EqualBatch', equalBatchInfo]]),
     },
     place: vi.fn(),
-    placeArith: vi.fn((name: string, inPts: DataPt[]) => name === 'EqualBatch'
-      ? []
-      : [dataPt(inPts[0].value % inPts[1].value, nextSource++)]
-    ),
-    getReservedVariableFromBuffer: vi.fn(() => dataPt(1024n, 10)),
+    placeArith: vi.fn(() => []),
     addReservedVariableToBufferIn: vi.fn((_name: string, value: bigint) =>
       dataPt(value, nextSource++, 0, 255),
     ),
-    placeMerkleProofVerification: vi.fn(),
   };
   parent.state = new StateManager(parent);
-  parent.state.cachedRoots.set(addressValue, [dataPt(1n, 20, 0, 255)]);
 
   return {
     address,
@@ -174,6 +164,7 @@ describe('InstructionHandler storage cache', () => {
     );
 
     expect(parent.state.initialStorageReads.entries).toHaveLength(1);
+    expect(parent.addReservedVariableToBufferIn).toHaveBeenCalledTimes(1);
     expect(secondValuePt).toMatchObject({
       source: firstValuePt.source,
       wireIndex: firstValuePt.wireIndex,
@@ -213,6 +204,7 @@ describe('InstructionHandler storage cache', () => {
     );
 
     expect(parent.state.initialStorageReads.entries).toHaveLength(1);
+    expect(parent.addReservedVariableToBufferIn).toHaveBeenCalledTimes(1);
     expect(secondValuePt).toMatchObject({
       source: firstValuePt.source,
       wireIndex: firstValuePt.wireIndex,
@@ -227,10 +219,6 @@ describe('InstructionHandler storage cache', () => {
     const { addressValue, handler, parent, setStorageValue } = createStorageHarness(11n);
     const keyPt = dataPt(7n, 50);
     const writePt = dataPt(11n, 51);
-    parent.state.cachedMerkleProof = {
-      indexPt: dataPt(7n, 52),
-      siblingPts: [],
-    };
 
     await handler.storeStorage(dataPt(addressValue, 53), keyPt, writePt);
     setStorageValue(11n);
@@ -241,6 +229,7 @@ describe('InstructionHandler storage cache', () => {
     );
 
     expect(parent.state.initialStorageReads.entries).toHaveLength(0);
+    expect(parent.addReservedVariableToBufferIn).not.toHaveBeenCalled();
     expect(parent.state.storageCache.get(addressValue, 7n)).toMatchObject({
       latestValuePt: { source: 51, value: 11n },
       dirty: true,

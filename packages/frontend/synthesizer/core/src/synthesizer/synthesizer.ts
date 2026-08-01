@@ -88,9 +88,6 @@ export class Synthesizer implements SynthesizerInterface
         try {
           if (!this._hasEventHandlerError) {
             await this._applySynthesizerHandler(data);
-            if (data.opcode.name === 'SSTORE') {
-              await this._updateStoragePreStep(data);
-            }
           }
         } catch (err) {
           this._recordEventHandlerError('step', err)
@@ -449,59 +446,6 @@ export class Synthesizer implements SynthesizerInterface
       ...stepResult,
       stack: stepResult.stack.slice(),
     }
-  }
-
-  private async _updateStoragePreStep(data: InterpreterStep): Promise<void> {
-    const stepResult: InterpreterStep = {
-      ...data,
-      stack: data.stack.slice().reverse(),
-    }
-    const context = this.state.contextByDepth[stepResult.depth];
-    if (context === undefined) {
-      throw new Error('Debug: The current context is not initialized')
-    }
-
-    const [keyPt, valuePt] = context.stackPt.peek(2);
-    const key = stepResult.stack[0];
-    const value = stepResult.stack[1];
-    if (key === undefined || value === undefined) {
-      throw new Error('Synthesizer: SSTORE pre-step requires key and value on stack')
-    }
-    if (keyPt.value !== key || valuePt.value !== value) {
-      throw new Error('Synthesizer: SSTORE pre-step stack mismatch')
-    }
-    const { merkleProof, indexPt, siblingPts } =
-      await this._instructionHandlers.buildStorageProof(stepResult.address, keyPt);
-
-    const valueStored = bytesToBigInt(
-      await this.cachedOpts.stateManager.getStorage(
-        stepResult.address,
-        setLengthLeft(bigIntToBytes(keyPt.value), 32),
-      ),
-    );
-    if (merkleProof.leaf !== valueStored) {
-      throw new Error('Mismatch in storage values between MPT and EVM stack');
-    }
-    const valueStoredPt = this.addReservedVariableToBufferIn(
-      'STORAGE_READ',
-      valueStored,
-      true,
-      ` at MT index: ${Number(indexPt.value)} of address: ${stepResult.address.toString()}`,
-    );
-
-    this.placeMerkleProofVerification(
-      indexPt,
-      valueStoredPt,
-      siblingPts,
-      this._instructionHandlers.getLatestCachedRootPt(bytesToBigInt(stepResult.address.bytes)),
-    )
-    if (this.state.cachedMerkleProof !== null) {
-      throw new Error('Debug: cachedMerkleProof must be empty before SSTORE pre-step caching')
-    }
-    this.state.cachedMerkleProof = {
-      indexPt: DataPtFactory.deepCopy(indexPt),
-      siblingPts: siblingPts.map((pts) => pts.map((pt) => DataPtFactory.deepCopy(pt))),
-    };
   }
 
   public get state(): StateManager {

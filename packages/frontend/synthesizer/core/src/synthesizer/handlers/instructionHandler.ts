@@ -15,9 +15,8 @@ import { InterpreterStep } from '@ethereumjs/evm'
 import { DEFAULT_SOURCE_BIT_SIZE } from '../../synthesizer/params/constants.ts';
 import { DataPtFactory, MemoryPt, StackPt } from '../dataStructure/index.ts';
 import { ArithmeticOperator, TX_MESSAGE_TO_HASH } from '../../subcircuit/configuredTypes.ts';
-import { FUNCTION_INPUT_LENGTH, MAX_MT_LEAVES } from 'tokamak-l2js';
+import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
 import { ContextManager } from './stateManager.ts';
-import { IMTMerkleProof } from '@zk-kit/imt';
 
 export interface HandlerOpts {
   op: SynthesizerSupportedOpcodes,
@@ -475,40 +474,6 @@ export class InstructionHandler {
     return DataPtFactory.deepCopy(this.parent.state.cachedOrigin!)
   }
 
-  public async buildStorageProof(
-    address: Address,
-    keyPt: DataPt,
-  ): Promise<{
-    merkleProof: IMTMerkleProof,
-    indexPt: DataPt,
-    siblingPts: DataPt[][],
-  }> {
-    const merkleTree = this.cachedOpts.stateManager.merkleTrees;
-    const merkleProof = merkleTree.getProof(address, keyPt.value);
-    const indexPt = this.parent.placeArith('MOD', [keyPt, this.parent.getReservedVariableFromBuffer('TREE_SIZE')])[0];
-    const siblingPts = merkleProof.siblings.map((siblingsAtLevel) => {
-      if (!Array.isArray(siblingsAtLevel)) {
-        throw new Error('Merkle proof siblings must be arrays')
-      }
-      return siblingsAtLevel.map((sibling) => {
-        let siblingBigInt = sibling;
-        if (typeof siblingBigInt !== 'bigint') {
-          siblingBigInt = BigInt(sibling);
-        }
-        return this.parent.addReservedVariableToBufferIn('MERKLE_PROOF', siblingBigInt, true)
-      })
-    });
-    return { merkleProof, indexPt, siblingPts };
-  }
-
-  public getLatestCachedRootPt(refAddress: bigint): DataPt {
-    const refInitRootPt = this.parent.state.cachedRoots.get(refAddress);
-    if (refInitRootPt === undefined || refInitRootPt.length === 0) {
-      throw new Error('Initial Merkle tree root for a specific address was not initialized in Synthesizer')
-    }
-    return refInitRootPt[refInitRootPt.length - 1];
-  }
-
   private _assertStorageAddress(
     address: Address,
     addressPt: DataPt,
@@ -598,25 +563,6 @@ export class InstructionHandler {
       throw new Error('Mismatch in storage values');
     }
 
-    const { merkleProof, indexPt, siblingPts } = await this.buildStorageProof(address, keyPt);
-    if (merkleProof.leaf !== valueStored) {
-      throw new Error(`Mismatch between stored values in MPT and MT`)
-    }
-
-    const valuePt = this.parent.addReservedVariableToBufferIn(
-      'STORAGE_READ',
-      valueStored,
-      true,
-      ` at MT index: ${Number(indexPt.value)} of address: ${address}`,
-    );
-    
-    this.parent.placeMerkleProofVerification(
-      indexPt,
-      valuePt,
-      siblingPts,
-      this.getLatestCachedRootPt(bytesToBigInt(address.bytes)),
-    )
-
     const cachedEntry = this._getCachedStorageEntry(addressValue, keyValue, addressPt, keyPt)
     if (cachedEntry !== undefined) {
       if (cachedEntry.latestValuePt.value !== valueStored) {
@@ -626,6 +572,12 @@ export class InstructionHandler {
       return DataPtFactory.deepCopy(cachedEntry.latestValuePt)
     }
 
+    const valuePt = this.parent.addReservedVariableToBufferIn(
+      'STORAGE_READ',
+      valueStored,
+      true,
+      ` of address: ${address}`,
+    );
     const initialRead = {
       addressPt: DataPtFactory.deepCopy(addressPt),
       keyPt: DataPtFactory.deepCopy(keyPt),
@@ -649,15 +601,6 @@ export class InstructionHandler {
     const addressValue = addressPt.value
     const keyValue = keyPt.value
     const address = createAddressFromBigInt(addressValue)
-    const cachedMerkleProof = this.parent.state.cachedMerkleProof;
-    if (cachedMerkleProof === null) {
-      throw new Error('Debug: cachedMerkleProof is required for SSTORE main-step verification')
-    }
-    const indexPt = DataPtFactory.deepCopy(cachedMerkleProof.indexPt);
-    if (keyPt.value % BigInt(MAX_MT_LEAVES) !== indexPt.value) {
-      throw new Error('Mismatch between storage key modulo MAX_MT_LEAVES and cached tree index')
-    }
-    const siblingPts = cachedMerkleProof.siblingPts.map((pts) => pts.map((pt) => DataPtFactory.deepCopy(pt)));
     const valueStored = bytesToBigInt(
       await this.cachedOpts.stateManager.getStorage(
         address,
@@ -667,24 +610,6 @@ export class InstructionHandler {
     if (valueStored !== symbolDataPt.value) {
       throw new Error('Mismatch in storage values between MPT and EVM stack');
     }
-    const merkleTree = this.cachedOpts.stateManager.merkleTrees;
-    const root = merkleTree.getRoot(address);
-    const refRootPt = this.parent.addReservedVariableToBufferIn('INTER_MERKLE_ROOT', root, true);
-    const addrBigint = bytesToBigInt(address.bytes);
-    const cachedRoots = this.parent.state.cachedRoots.get(addrBigint);
-    if (cachedRoots === undefined || cachedRoots.length === 0) {
-      throw new Error('Initial Merkle tree root for a specific address was not initialized in Synthesizer')
-    }
-
-    this.parent.placeMerkleProofVerification(
-      indexPt,
-      symbolDataPt,
-      siblingPts,
-      refRootPt,
-    )
-    
-    cachedRoots.push(DataPtFactory.deepCopy(refRootPt));
-    this.parent.state.cachedRoots.set(addrBigint, cachedRoots);
 
     const cachedEntry = this._getCachedStorageEntry(addressValue, keyValue, addressPt, keyPt)
     this.parent.state.storageCache.set(addressValue, keyValue, {
@@ -693,7 +618,6 @@ export class InstructionHandler {
       latestValuePt: symbolDataPt,
       dirty: true,
     })
-    this.parent.state.cachedMerkleProof = null
   }
 
   public handleArith = (
