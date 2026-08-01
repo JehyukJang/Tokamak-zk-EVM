@@ -3,6 +3,9 @@ function nPubOut() {return 65;}
 function nPubIn() {return 20;}
 function nEVMIn() {return 600;}
 function nPrvIn() {return 1060;}
+function nSload() {return 16;}
+function nSstore() {return 16;}
+function nLog() {return 16;}
 
 function nPoseidonInputs() {return 2;}
 function nMtDepth() {return 36;}

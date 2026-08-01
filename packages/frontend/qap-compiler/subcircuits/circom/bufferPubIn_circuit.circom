@@ -3,4 +3,5 @@ include "../../templates/buffer.circom";
 include "./constants.circom";
 
 // Input wires are public, and output wires are private.
-component main{public [in]} = Buffer2(nPubIn());
+// Each SLOAD record contains three 256-bit values represented by two limbs each.
+component main{public [in]} = Buffer2(nPubIn() + nSload() * 3 * 2);

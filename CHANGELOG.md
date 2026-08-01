@@ -15,6 +15,10 @@ The format is based on Keep a Changelog.
   `nEqualBatch` fixed to `2`.
 - Removed `VerifyMerkleProof` from the compiled qap-compiler circuit set and
   the Synthesizer subcircuit inventory.
+- Replaced the compiled `bufferPubOut` circuit with `bufferLogOut` and
+  `bufferStorageOut`, and expanded `bufferPubIn` to reserve initial SLOAD
+  records. The provisional qap-compiler capacities are 16 SLOAD triples, 16
+  SSTORE triples, and 16 LOG tuples.
 - This circuit-set change requires regenerated subcircuit-library artifacts
   and a compatible backend CRS before it can be used for proving.
 

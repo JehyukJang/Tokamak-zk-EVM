@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-# The buffers must be placed in the following order: "bufferPubOut" "bufferPubIn" "bufferPrvOut" "bufferPrvIn"
+# Output buffers must precede input buffers in the circuit list.
 
 set -euo pipefail
 
 # Library configuration for merged arithmetic circuits
-names=("bufferPubOut" "bufferPubIn" "bufferBlockIn" "bufferEVMIn" "bufferPrvIn" "ALU1" "ALU2" "DecToBit" "SubExpBatch" "Accumulator" "Poseidon" "JubjubExpBatch" "EdDsaVerify" "EqualBatch")
+names=("bufferLogOut" "bufferStorageOut" "bufferPubIn" "bufferBlockIn" "bufferEVMIn" "bufferPrvIn" "ALU1" "ALU2" "DecToBit" "SubExpBatch" "Accumulator" "Poseidon" "JubjubExpBatch" "EdDsaVerify" "EqualBatch")
 CURVE_NAME="bls12381"
 
 original_cwd="$(pwd)"
