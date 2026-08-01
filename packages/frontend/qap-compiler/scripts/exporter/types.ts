@@ -2,7 +2,6 @@
 // Required Circom constants (qap-compiler/scripts/constants.circom)
 export const REQUIRED_CIRCOM_KEYS = [
   'nPubIn',
-  'nPubOut',
   'nPrvIn',
   'nEVMIn',
   'nSload',
