@@ -10,9 +10,9 @@ The format is based on Keep a Changelog.
 
 ### Subcircuit Library
 
-- Added the `EqualBatch` subcircuit to the qap-compiler circuit set. It uses
-  `Buffer2` to constrain equality between two batches of two 256-bit values,
-  with `nEqualBatch` fixed to `2`.
+- Added the input-only `EqualBatch` subcircuit to the qap-compiler circuit set.
+  It constrains equality between two batches of two 256-bit values, with
+  `nEqualBatch` fixed to `2`.
 - This circuit-set change requires regenerated subcircuit-library artifacts
   and a compatible backend CRS before it can be used for proving.
 
