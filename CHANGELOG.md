@@ -15,12 +15,12 @@ The format is based on Keep a Changelog.
   `nEqualBatch` fixed to `2`.
 - Removed `VerifyMerkleProof` from the compiled qap-compiler circuit set and
   the Synthesizer subcircuit inventory.
-- Replaced the compiled `bufferPubOut` circuit with `bufferLogOut` and
-  `bufferStorageOut`, and split `bufferPubIn` into `bufferTxIn` and
-  `bufferStorageIn`. All qap-compiler buffer capacities are now measured in
+- Replaced the compiled `bufferPubOut` circuit with `bufferLogOut`,
+  `bufferStorageStore`, and `bufferStorageLoad`, and replaced `bufferPubIn`
+  with `bufferTxIn`. All qap-compiler buffer capacities are now measured in
   256-bit words. The capacities are 3 words for `bufferTxIn`, 48 provisional
-  words for `bufferStorageIn`, 32 provisional words for `bufferLogOut`, and
-  48 provisional words for `bufferStorageOut`.
+  words each for `bufferStorageLoad` and `bufferStorageStore`, and 32
+  provisional words for `bufferLogOut`.
 - Added cumulative `setupParams` boundaries for every public buffer. Public
   wires are now grouped by their configured segment order instead of relying
   on the subcircuit compilation order.
@@ -37,6 +37,8 @@ The format is based on Keep a Changelog.
 - Removed internal storage Merkle-root tracking, proof construction, proof
   placements, and Merkle-specific reserved variables. Storage consistency is
   now tracked through the transaction-scoped storage cache and `EqualBatch`.
+- Added public initial-storage-read output through `STORAGE_LOAD` and final
+  committed storage-write output through `STORAGE_STORE`.
 
 ### Bug Fixes
 

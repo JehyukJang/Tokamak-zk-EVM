@@ -90,6 +90,28 @@ describe('StateManager storage tracking', () => {
     });
   });
 
+  it('exposes only dirty entries for final storage output', () => {
+    const state = createState();
+    state.storageCache.set(1n, 2n, {
+      canonicalAddressPt: dataPt(1n, 1),
+      canonicalKeyPt: dataPt(2n, 2),
+      latestValuePt: dataPt(3n, 3),
+      dirty: false,
+    });
+    state.storageCache.set(4n, 5n, {
+      canonicalAddressPt: dataPt(4n, 4),
+      canonicalKeyPt: dataPt(5n, 5),
+      latestValuePt: dataPt(6n, 6),
+      dirty: true,
+    });
+
+    expect(state.storageCache.dirtyEntries.map((entry) => [
+      entry.canonicalAddressPt.value,
+      entry.canonicalKeyPt.value,
+      entry.latestValuePt.value,
+    ])).toEqual([[4n, 5n, 6n]]);
+  });
+
   it('restores only the storage cache and retains initial SLOAD records on frame failure', () => {
     const state = createState();
     const parentEntry: StorageCacheEntry = {

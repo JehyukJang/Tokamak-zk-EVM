@@ -163,6 +163,14 @@ export class Synthesizer implements SynthesizerInterface
     this.state.cachedOrigin = this._instructionHandlers.getOriginAddressPt();
   }
 
+  private _finalizeStorageStore(): void {
+    for (const entry of this.state.storageCache.dirtyEntries) {
+      this.addReservedVariableToBufferOut('SSTORE_ADDRESS', entry.canonicalAddressPt, true)
+      this.addReservedVariableToBufferOut('SSTORE_KEY', entry.canonicalKeyPt, true)
+      this.addReservedVariableToBufferOut('SSTORE_VALUE', entry.latestValuePt, true)
+    }
+  }
+
   private _returnMessageCall(depth: number):void {
     if (depth > 0){
       this.state.contextByDepth[depth - 1].returnDataMemoryPts = this.state.contextByDepth[depth].resultMemoryPts.map(entry => {
@@ -349,6 +357,9 @@ export class Synthesizer implements SynthesizerInterface
     }
     if (this._hasEventHandlerError) {
       throw this._eventHandlerError
+    }
+    if (result.execResult.exceptionError === undefined) {
+      this._finalizeStorageStore()
     }
     return result
   }

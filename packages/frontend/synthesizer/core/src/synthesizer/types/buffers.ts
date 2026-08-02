@@ -14,7 +14,9 @@ const STORAGE_STORE_VARIABLES_STATIC = [
   // Nothing
 ] as const
 const STORAGE_STORE_VARIABLES_DYNAMIC = [
-  // Nothing
+  'SSTORE_ADDRESS',
+  'SSTORE_KEY',
+  'SSTORE_VALUE',
 ] as const
 const TX_IN_VARIABLES_STATIC = [
   'EDDSA_SIGNATURE',  // For debugging. Can be moved to PRIVATE_IN buffer
@@ -469,6 +471,9 @@ const VARIABLE_DESCRIPTION_INCOMPLETE: Record<ReservedVariable, DataPtDescriptio
 
 VARIABLE_DESCRIPTION_INCOMPLETE.LOG_TOPIC.extDest = `Log topic`;
 VARIABLE_DESCRIPTION_INCOMPLETE.LOG_VALUE.extDest = `Log value`;
+VARIABLE_DESCRIPTION_INCOMPLETE.SSTORE_ADDRESS.extDest = `Final storage write address`;
+VARIABLE_DESCRIPTION_INCOMPLETE.SSTORE_KEY.extDest = `Final storage write key`;
+VARIABLE_DESCRIPTION_INCOMPLETE.SSTORE_VALUE.extDest = `Final storage write value`;
 
 VARIABLE_DESCRIPTION_INCOMPLETE.EDDSA_SIGNATURE.extSource = `EdDSA signature of transaction`;
 VARIABLE_DESCRIPTION_INCOMPLETE.EDDSA_SIGNATURE.sourceBitSize = 255;

@@ -54,7 +54,47 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('Synthesizer VM event error propagation', () => {
+describe('Synthesizer VM lifecycle', () => {
+  it('emits final dirty storage triples only after a successful transaction', async () => {
+    const vmEvents = new TestEventEmitter();
+    const evmEvents = new TestEventEmitter();
+    vmModule.createVM.mockResolvedValue({ events: vmEvents, evm: { events: evmEvents } });
+
+    const synthesizer = createBareSynthesizer();
+    const addressPt = { source: 1, wireIndex: 0, sourceBitSize: 256, value: 1n };
+    const keyPt = { source: 2, wireIndex: 0, sourceBitSize: 256, value: 2n };
+    const valuePt = { source: 3, wireIndex: 0, sourceBitSize: 256, value: 3n };
+    Object.defineProperty(synthesizer, '_state', {
+      value: {
+        storageCache: {
+          dirtyEntries: [{
+            canonicalAddressPt: addressPt,
+            canonicalKeyPt: keyPt,
+            latestValuePt: valuePt,
+            dirty: true,
+          }],
+        },
+      },
+    });
+    const addStorageOutput = vi.spyOn(synthesizer, 'addReservedVariableToBufferOut')
+      .mockReturnValue({} as any);
+    vmModule.runTx.mockResolvedValue({ execResult: { exceptionError: undefined } });
+
+    await synthesizer.synthesizeTX();
+
+    expect(addStorageOutput.mock.calls).toEqual([
+      ['SSTORE_ADDRESS', addressPt, true],
+      ['SSTORE_KEY', keyPt, true],
+      ['SSTORE_VALUE', valuePt, true],
+    ]);
+    addStorageOutput.mockClear();
+    vmModule.runTx.mockResolvedValue({ execResult: { exceptionError: new Error('revert') } });
+
+    await synthesizer.synthesizeTX();
+
+    expect(addStorageOutput).not.toHaveBeenCalled();
+  });
+
   it('rethrows the first handler error after runTx and skips later handlers', async () => {
     const vmEvents = new TestEventEmitter();
     const evmEvents = new TestEventEmitter();

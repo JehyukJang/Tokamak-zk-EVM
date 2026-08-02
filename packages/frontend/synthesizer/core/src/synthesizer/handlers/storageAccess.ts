@@ -30,6 +30,14 @@ export class StorageCache {
   private _entries: StorageCacheEntries = new Map()
   private _snapshotsByDepth: Map<number, StorageCacheEntries> = new Map()
 
+  public get dirtyEntries(): StorageCacheEntry[] {
+    return Array.from(this._entries.values()).flatMap((entriesByKey) =>
+      Array.from(entriesByKey.values())
+        .filter((entry) => entry.dirty)
+        .map(copyStorageCacheEntry),
+    )
+  }
+
   public reset(): void {
     this._entries = new Map()
     this._snapshotsByDepth = new Map()
