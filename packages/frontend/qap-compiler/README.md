@@ -35,6 +35,10 @@ subcircuit.
 The Node Synthesizer resolves installed assets at runtime. The Web Synthesizer
 bundles the matching JSON and WASM assets at build time.
 
+Fixed-capacity public-output buffers are zero-padded. The higher-level protocol
+is responsible for filtering storage tuples with a zero address and log tuples
+whose fields are all zero.
+
 ## Published artifacts
 
 All files are acquired from the same installed npm package version:
