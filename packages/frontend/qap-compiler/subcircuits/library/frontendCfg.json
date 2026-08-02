@@ -1,9 +1,9 @@
 {
   "nTxIn": 3,
-  "nStorageLoad": 15,
-  "nLogOut": 15,
-  "nStorageStore": 10,
-  "nEVMIn": 210,
+  "nStorageLoad": 20,
+  "nLogOut": 20,
+  "nStorageStore": 15,
+  "nEVMIn": 250,
   "nPrvIn": 40,
   "nPoseidonInputs": 2,
   "nPoseidonBatch": 3,

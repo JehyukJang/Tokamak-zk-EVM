@@ -1,10 +1,10 @@
 pragma circom 2.1.6;
 // Buffer capacities are measured in 256-bit words.
 function nTxIn() {return 3;}
-function nStorageLoad() {return 15;}
-function nLogOut() {return 15;}
-function nStorageStore() {return 10;}
-function nEVMIn() {return 210;}
+function nStorageLoad() {return 20;}
+function nLogOut() {return 20;}
+function nStorageStore() {return 15;}
+function nEVMIn() {return 250;}
 function nPrvIn() {return 40;}
 
 function nPoseidonInputs() {return 2;}
