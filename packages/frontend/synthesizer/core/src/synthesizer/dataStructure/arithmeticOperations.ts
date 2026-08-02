@@ -189,16 +189,6 @@ export class ArithmeticOperations {
     return []
   }
 
-  static checkBus(ins: bigint[]): bigint[] {
-    if (ins.length !== 1) {
-      throw new Error('checkBus expected one input')
-    }
-    if (ins[0] < 0n || ins[0] >= (1n << 256n)) {
-      throw new Error('checkBus input must be a 256-bit word')
-    }
-    return []
-  }
-
   static iszero(ins: bigint[]): bigint {
     if (ins.length !== 1) {
       throw new Error('iszero expected one input')

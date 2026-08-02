@@ -35,7 +35,6 @@ export const ARITHMETIC_OPERATOR_LIST = [
   'JubjubExpBatch',
   'EdDsaVerify',
   'EqualBatch',
-  'CheckBus',
 ] as const
 
 export type ArithmeticOperator = (typeof ARITHMETIC_OPERATOR_LIST)[number]
@@ -140,42 +139,6 @@ export type SubcircuitInfoByName = Map<
   SubcircuitNames,
   SubcircuitInfoByNameEntry
 >;
-
-export const SUBCIRCUIT_ARITHMETIC_MAPPING: Record<ArithmeticOperator, SubcircuitNames> = {
-  ADD: 'ADD',
-  MUL: 'MUL',
-  SUB: 'SUB',
-  DIV: 'DIV',
-  SDIV: 'SDIV',
-  MOD: 'MOD',
-  SMOD: 'SMOD',
-  ADDMOD: 'ADDMOD',
-  MULMOD: 'MULMOD',
-  SubExpBatch: 'SubExpBatch',
-  SIGNEXTEND: 'SIGNEXTEND',
-  LT: 'LT',
-  GT: 'GT',
-  SLT: 'SLT',
-  SGT: 'SGT',
-  EQ: 'EQ',
-  ISZERO: 'ISZERO',
-  AND: 'AND',
-  OR: 'OR',
-  XOR: 'XOR',
-  NOT: 'NOT',
-  BYTE: 'BYTE',
-  SHL: 'SHL',
-  SHR: 'SHR',
-  SAR: 'SAR',
-  DecToBit: 'DecToBit',
-  Accumulator: 'Accumulator',
-  EXP: 'SubExpBatch', // EXP is implemented as a sequence of SubExpBatch placements.
-  Poseidon: 'Poseidon',
-  EdDsaVerify: 'EdDsaVerify',
-  JubjubExpBatch: 'JubjubExpBatch',
-  EqualBatch: 'EqualBatch',
-  CheckBus: 'CheckBus',
-} as const;
 
 export const TX_MESSAGE_TO_HASH = [
   'TRANSACTION_NONCE', 'CONTRACT_ADDRESS', 'FUNCTION_SELECTOR',

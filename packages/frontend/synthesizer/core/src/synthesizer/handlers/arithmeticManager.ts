@@ -2,7 +2,7 @@
 import { DataPt, ISynthesizerProvider } from '../types/index.ts';
 import { DataPtFactory } from '../dataStructure/index.ts';
 import { DEFAULT_SOURCE_BIT_SIZE } from '../../synthesizer/params/constants.ts';
-import { ArithmeticOperator, SUBCIRCUIT_ARITHMETIC_MAPPING, SubcircuitNames } from '../../subcircuit/configuredTypes.ts';
+import { ArithmeticOperator, SubcircuitNames } from '../../subcircuit/configuredTypes.ts';
 import { ArithmeticOperations } from '../dataStructure/arithmeticOperations.ts';
 import { POSEIDON_INPUTS } from 'tokamak-l2js';
 
@@ -95,7 +95,7 @@ export class ArithmeticManager {
     name: ArithmeticOperator,
     inPts: DataPt[],
   ): { subcircuitName: SubcircuitNames; finalInPts: DataPt[] } {
-    const subcircuitName = SUBCIRCUIT_ARITHMETIC_MAPPING[name];
+    const subcircuitName: SubcircuitNames = name === 'EXP' ? 'SubExpBatch' : name;
 
     const subcircuitInfo = this.parent.state.subcircuitInfoByName.get(subcircuitName)
     if (subcircuitInfo === undefined) {
@@ -149,7 +149,7 @@ export class ArithmeticManager {
       if (inPts[0] === undefined) {
         throw new Error(`Synthesizer: ${name} requires a first operand.`)
       }
-      this.placeArith('CheckBus', [inPts[0]])
+      this.parent.place('CheckBus', [inPts[0]], [], 'CheckBus')
     }
 
     const outPts = this._createArithmeticOutput(name, inPts);
@@ -401,5 +401,4 @@ const ARITHMETIC_MAPPING: Record<ArithmeticOperator, (...args: any) => any> = {
   JubjubExpBatch: ArithmeticOperations.jubjubExpBatch,
   EdDsaVerify: ArithmeticOperations.edDsaVerify,
   EqualBatch: ArithmeticOperations.equalBatch,
-  CheckBus: ArithmeticOperations.checkBus,
 } as const

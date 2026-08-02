@@ -1,6 +1,6 @@
 import { DataAliasInfoEntry, DataAliasInfos, DataPt, DataPtDescription, ISynthesizerProvider, MemoryPtEntry, MemoryPts } from '../types/index.ts';
 import { DataPtFactory, MemoryPt } from '../dataStructure/index.ts';
-import { ArithmeticOperator, SUBCIRCUIT_ARITHMETIC_MAPPING } from '../../subcircuit/configuredTypes.ts';
+import { ArithmeticOperator } from '../../subcircuit/configuredTypes.ts';
 import { DEFAULT_SOURCE_BIT_SIZE } from '../params/constants.ts';
 
 export class MemoryManager {
@@ -18,7 +18,6 @@ export class MemoryManager {
       const outValue = dataPt.value & BigInt(maskerString);
       if (dataPt.value !== outValue) {
         const usage = 'AND';
-        const subcircuitName = SUBCIRCUIT_ARITHMETIC_MAPPING[usage];
         const inPts: DataPt[] = [
           this.parent.loadArbitraryStatic(BigInt(maskerString), DEFAULT_SOURCE_BIT_SIZE, 'Masker for memory manipulation'),
           dataPt,
@@ -29,7 +28,7 @@ export class MemoryManager {
           sourceBitSize: truncBitSize,
         };
         const outPts: DataPt[] = [DataPtFactory.create(rawOutPt, outValue)];
-        this.parent.place(subcircuitName, inPts, outPts, usage);
+        this.parent.place(usage, inPts, outPts, usage);
 
         return DataPtFactory.deepCopy(outPts[0]);
       }
