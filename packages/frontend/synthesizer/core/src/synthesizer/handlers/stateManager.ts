@@ -16,14 +16,6 @@ import { InterpreterStep } from '@ethereumjs/evm';
 import { LogCache } from './logAccess.ts';
 import { InitialStorageReadList, StorageCache } from './storageAccess.ts';
 
-// export type CachedStorageEntry = {
-//   addressIndex: number,
-//   indexPt: DataPt | null,
-//   keyPt: DataPt,
-//   valuePt: DataPt,
-//   access: 'Read' | 'Write'
-// }
-
 export type ContextConstructionData = {
   callerPt: DataPt;
   codeAddressPt: DataPt;
@@ -64,8 +56,6 @@ export class StateManager {
   public readonly storageCache = new StorageCache()
   public readonly initialStorageReads = new InitialStorageReadList()
 
-  // public verifiedStorageMTIndices: [number, number][] = [] // [ADDRESS_INDEX, LEAF_INDEX]
-  // public cachedStorage: Map<string, Map<bigint, CachedStorageEntry[]>> = new Map() // Map<ADDRESS_STRING, Map<KEY, ENTRY>>
   public subcircuitInfoByName: SubcircuitInfoByName;
 
   public cachedEVMIn: Map<bigint, Map<number, DataPt>> = new Map()

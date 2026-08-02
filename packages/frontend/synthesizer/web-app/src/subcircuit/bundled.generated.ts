@@ -16,6 +16,10 @@ import wasm10 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/
 import wasm11 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit11.wasm';
 import wasm12 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit12.wasm';
 import wasm13 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit13.wasm';
+import wasm14 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit14.wasm';
+import wasm15 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit15.wasm';
+import wasm16 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit16.wasm';
+import wasm17 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit17.wasm';
 
 export {
   setupParamsJson,
@@ -39,4 +43,8 @@ export const wasmFiles: Record<number, Uint8Array> = {
   11: wasm11,
   12: wasm12,
   13: wasm13,
+  14: wasm14,
+  15: wasm15,
+  16: wasm16,
+  17: wasm17,
 };

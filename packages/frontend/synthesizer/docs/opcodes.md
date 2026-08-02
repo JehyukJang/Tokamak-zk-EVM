@@ -18,4 +18,4 @@ The table below reflects `InstructionHandler` mappings in `core/src/synthesizer/
 
 Notes:
 - Gas accounting is observed from the VM but not yet enforced in circuit constraints.
-- Storage ops enforce access-order Merkle proof verification for registered keys; unregistered keys are handled as dynamic inputs/outputs.
+- The first load of a storage location emits its address/key/value triple through `STORAGE_LOAD`. Repeated accesses use `EqualBatch` to bind their address and key to the cached symbolic identity, and final writes are emitted through `STORAGE_STORE`.

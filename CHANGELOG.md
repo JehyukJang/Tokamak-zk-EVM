@@ -14,7 +14,9 @@ The format is based on Keep a Changelog.
   It constrains equality between two batches of two 256-bit values, with
   `nEqualBatch` fixed to `2`.
 - Removed `VerifyMerkleProof` from the compiled qap-compiler circuit set and
-  the Synthesizer subcircuit inventory.
+  the Synthesizer subcircuit inventory. Removed its remaining Circom template,
+  wrapper, and test, together with the obsolete `nMtDepth` and `nMtLeaves`
+  configuration and Synthesizer schema fields.
 - Replaced the compiled `bufferPubOut` circuit with `bufferLogOut`,
   `bufferStorageStore`, and `bufferStorageLoad`, and replaced `bufferPubIn`
   with `bufferTxIn`. All qap-compiler buffer capacities are now measured in

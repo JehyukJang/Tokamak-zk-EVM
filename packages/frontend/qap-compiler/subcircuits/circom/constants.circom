@@ -9,8 +9,6 @@ function nPrvIn() {return 40;}
 
 function nPoseidonInputs() {return 2;}
 function nPoseidonBatch() {return 1;}
-function nMtDepth() {return 36;}
-function nMtLeaves() {return nPoseidonInputs() ** nMtDepth();}
 function nAccumulation() {return 32;}
 function nPrevBlockHashes() {return 4;}
 function nJubjubExpBatch() {return 37;}

@@ -6,9 +6,9 @@ if (typeof constantsPath !== 'string' || constantsPath.length === 0) {
   throw new Error('Expected constants.circom path as the first argument.');
 }
 
-const { POSEIDON_INPUTS, MT_DEPTH } = loadTokamakL2JsConstants();
-if (!Number.isInteger(POSEIDON_INPUTS) || !Number.isInteger(MT_DEPTH)) {
-  throw new Error(`Invalid TokamakL2JS constants: POSEIDON_INPUTS=${POSEIDON_INPUTS}, MT_DEPTH=${MT_DEPTH}`);
+const { POSEIDON_INPUTS } = loadTokamakL2JsConstants();
+if (!Number.isInteger(POSEIDON_INPUTS)) {
+  throw new Error(`Invalid TokamakL2JS constant: POSEIDON_INPUTS=${POSEIDON_INPUTS}`);
 }
 
 const src = fs.readFileSync(constantsPath, 'utf8');
@@ -23,11 +23,9 @@ const readCurrentConstant = (source, name) => {
 };
 
 const previousPoseidonInputs = readCurrentConstant(src, 'nPoseidonInputs');
-const previousMtDepth = readCurrentConstant(src, 'nMtDepth');
 
 let next = src;
 let updatedPoseidonInputs = false;
-let updatedMtDepth = false;
 next = next.replace(
   /(function\s+nPoseidonInputs\s*\(\s*\)\s*\{\s*return\s+)\d+(\s*;\s*\})/,
   (_, prefix, suffix) => {
@@ -35,23 +33,14 @@ next = next.replace(
     return `${prefix}${POSEIDON_INPUTS}${suffix}`;
   }
 );
-next = next.replace(
-  /(function\s+nMtDepth\s*\(\s*\)\s*\{\s*return\s+)\d+(\s*;\s*\})/,
-  (_, prefix, suffix) => {
-    updatedMtDepth = true;
-    return `${prefix}${MT_DEPTH}${suffix}`;
-  }
-);
 
-if (!updatedPoseidonInputs || !updatedMtDepth) {
+if (!updatedPoseidonInputs) {
   throw new Error('Failed to update constants.circom (pattern not found).');
 }
 
 fs.writeFileSync(constantsPath, next);
 
 const poseidonStatus = previousPoseidonInputs === POSEIDON_INPUTS ? 'unchanged' : 'updated';
-const mtDepthStatus = previousMtDepth === MT_DEPTH ? 'unchanged' : 'updated';
 
 console.log(`[qap-compiler] Reloaded constants in ${constantsPath}`);
 console.log(`[qap-compiler] nPoseidonInputs: ${previousPoseidonInputs} -> ${POSEIDON_INPUTS} (${poseidonStatus})`);
-console.log(`[qap-compiler] nMtDepth: ${previousMtDepth} -> ${MT_DEPTH} (${mtDepthStatus})`);

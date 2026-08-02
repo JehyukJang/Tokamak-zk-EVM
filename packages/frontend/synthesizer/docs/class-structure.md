@@ -19,7 +19,7 @@ This document summarizes the main classes and modules in the current split works
   - coordinates arithmetic, memory, and storage flows
 - **BufferManager** (`core/src/synthesizer/handlers/bufferManager.ts`)
   - initializes reserved buffer placements
-  - injects block, transaction, and Merkle-root inputs
+  - injects block, transaction, execution, and private witness inputs
 - **ArithmeticManager** (`core/src/synthesizer/handlers/arithmeticManager.ts`)
   - maps arithmetic operations to subcircuits
 - **MemoryManager** (`core/src/synthesizer/handlers/memoryManager.ts`)

@@ -7,7 +7,6 @@
   "nPrvIn": 40,
   "nPoseidonInputs": 2,
   "nPoseidonBatch": 1,
-  "nMtDepth": 36,
   "nAccumulation": 32,
   "nPrevBlockHashes": 4,
   "nJubjubExpBatch": 37,
