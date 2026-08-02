@@ -17,9 +17,9 @@ export function resolveSubcircuitLibraryData(
     subcircuitInfoByName,
     subcircuitBufferMapping: {
       LOG_OUT: subcircuitInfoByName.get('bufferLogOut'),
-      STORAGE_OUT: subcircuitInfoByName.get('bufferStorageOut'),
+      STORAGE_STORE: subcircuitInfoByName.get('bufferStorageStore'),
+      STORAGE_LOAD: subcircuitInfoByName.get('bufferStorageLoad'),
       TX_IN: subcircuitInfoByName.get('bufferTxIn'),
-      STORAGE_IN: subcircuitInfoByName.get('bufferStorageIn'),
       BLOCK_IN: subcircuitInfoByName.get('bufferBlockIn'),
       EVM_IN: subcircuitInfoByName.get('bufferEVMIn'),
       PRIVATE_IN: subcircuitInfoByName.get('bufferPrvIn'),

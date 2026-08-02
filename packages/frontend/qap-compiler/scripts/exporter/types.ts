@@ -2,9 +2,9 @@
 // Required Circom constants (qap-compiler/scripts/constants.circom)
 export const REQUIRED_CIRCOM_KEYS = [
   'nTxIn',
-  'nStorageIn',
+  'nStorageLoad',
   'nLogOut',
-  'nStorageOut',
+  'nStorageStore',
   'nPrvIn',
   'nEVMIn',
   'nPoseidonInputs',

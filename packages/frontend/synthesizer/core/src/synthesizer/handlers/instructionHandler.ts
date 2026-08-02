@@ -572,34 +572,34 @@ export class InstructionHandler {
       return DataPtFactory.deepCopy(cachedEntry.latestValuePt)
     }
 
-    const publicAddressPt = this.parent.addReservedVariableToBufferIn(
-      'SLOAD_ADDRESS',
-      addressValue,
-      true,
-      ` of address: ${address}`,
-    );
-    const publicKeyPt = this.parent.addReservedVariableToBufferIn(
-      'SLOAD_KEY',
-      keyValue,
-      true,
-      ` of address: ${address}`,
-    );
-    const publicValuePt = this.parent.addReservedVariableToBufferIn(
-      'SLOAD_VALUE',
+    const valuePt = this.parent.addReservedVariableToBufferIn(
+      'STORAGE_READ',
       valueStored,
       true,
       ` of address: ${address}`,
     );
-    this._constrainStorageLocationEquality(
+    this.parent.addReservedVariableToBufferOut(
+      'SLOAD_ADDRESS',
       addressPt,
+      true,
+      ` of address: ${address}`,
+    );
+    this.parent.addReservedVariableToBufferOut(
+      'SLOAD_KEY',
       keyPt,
-      publicAddressPt,
-      publicKeyPt,
-    )
+      true,
+      ` of address: ${address}`,
+    );
+    this.parent.addReservedVariableToBufferOut(
+      'SLOAD_VALUE',
+      valuePt,
+      true,
+      ` of address: ${address}`,
+    );
     const initialRead = {
-      addressPt: DataPtFactory.deepCopy(publicAddressPt),
-      keyPt: DataPtFactory.deepCopy(publicKeyPt),
-      valuePt: DataPtFactory.deepCopy(publicValuePt),
+      addressPt: DataPtFactory.deepCopy(addressPt),
+      keyPt: DataPtFactory.deepCopy(keyPt),
+      valuePt: DataPtFactory.deepCopy(valuePt),
     }
     this.parent.state.initialStorageReads.add(addressValue, keyValue, initialRead)
     this.parent.state.storageCache.set(addressValue, keyValue, {
@@ -608,7 +608,7 @@ export class InstructionHandler {
       latestValuePt: initialRead.valuePt,
       dirty: false,
     })
-    return DataPtFactory.deepCopy(publicValuePt);
+    return DataPtFactory.deepCopy(valuePt);
   }
 
   public async storeStorage(

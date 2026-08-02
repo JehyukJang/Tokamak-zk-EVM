@@ -10,10 +10,10 @@ const LOG_OUT_VARIABLES_DYNAMIC = [
   'LOG_TOPIC',
   'LOG_VALUE',
 ] as const
-const STORAGE_OUT_VARIABLES_STATIC = [
+const STORAGE_STORE_VARIABLES_STATIC = [
   // Nothing
 ] as const
-const STORAGE_OUT_VARIABLES_DYNAMIC = [
+const STORAGE_STORE_VARIABLES_DYNAMIC = [
   // Nothing
 ] as const
 const TX_IN_VARIABLES_STATIC = [
@@ -24,10 +24,10 @@ const TX_IN_VARIABLES_STATIC = [
 const TX_IN_VARIABLES_DYNAMIC = [
   // Nothing
 ] as const
-const STORAGE_IN_VARIABLES_STATIC = [
+const STORAGE_LOAD_VARIABLES_STATIC = [
   // Nothing
 ] as const
-const STORAGE_IN_VARIABLES_DYNAMIC = [
+const STORAGE_LOAD_VARIABLES_DYNAMIC = [
   'SLOAD_ADDRESS',
   'SLOAD_KEY',
   'SLOAD_VALUE',
@@ -352,21 +352,21 @@ const PRIVATE_IN_VARIABLES_STATIC = [
   'EDDSA_RANDOMIZER_Y',
 ] as const
 const PRIVATE_IN_VARIABLES_DYNAMIC = [
-  // Nothing
+  'STORAGE_READ',
 ] as const
 
 type LogOutVariable =
   | (typeof LOG_OUT_VARIABLES_STATIC)[number]
   | (typeof LOG_OUT_VARIABLES_DYNAMIC)[number]
-type StorageOutVariable =
-  | (typeof STORAGE_OUT_VARIABLES_STATIC)[number]
-  | (typeof STORAGE_OUT_VARIABLES_DYNAMIC)[number]
+type StorageStoreVariable =
+  | (typeof STORAGE_STORE_VARIABLES_STATIC)[number]
+  | (typeof STORAGE_STORE_VARIABLES_DYNAMIC)[number]
 type TxInVariable =
   | (typeof TX_IN_VARIABLES_STATIC)[number]
   | (typeof TX_IN_VARIABLES_DYNAMIC)[number]
-type StorageInVariable =
-  | (typeof STORAGE_IN_VARIABLES_STATIC)[number]
-  | (typeof STORAGE_IN_VARIABLES_DYNAMIC)[number]
+type StorageLoadVariable =
+  | (typeof STORAGE_LOAD_VARIABLES_STATIC)[number]
+  | (typeof STORAGE_LOAD_VARIABLES_DYNAMIC)[number]
 type BlockInVariable =
   | (typeof BLOCK_IN_VARIABLES_STATIC)[number]
   | (typeof BLOCK_IN_VARIABLES_DYNAMIC)[number]
@@ -378,9 +378,9 @@ type PrivateInVariable =
   | (typeof PRIVATE_IN_VARIABLES_DYNAMIC)[number]
 export type ReservedVariable =
   | LogOutVariable
-  | StorageOutVariable
+  | StorageStoreVariable
   | TxInVariable
-  | StorageInVariable
+  | StorageLoadVariable
   | BlockInVariable
   | EVMInVariable
   | PrivateInVariable
@@ -388,12 +388,12 @@ export type ReservedVariable =
 const _VARIABLES: string[] = [
   ...LOG_OUT_VARIABLES_STATIC,
   ...LOG_OUT_VARIABLES_DYNAMIC,
-  ...STORAGE_OUT_VARIABLES_STATIC,
-  ...STORAGE_OUT_VARIABLES_DYNAMIC,
+  ...STORAGE_STORE_VARIABLES_STATIC,
+  ...STORAGE_STORE_VARIABLES_DYNAMIC,
   ...TX_IN_VARIABLES_STATIC,
   ...TX_IN_VARIABLES_DYNAMIC,
-  ...STORAGE_IN_VARIABLES_STATIC,
-  ...STORAGE_IN_VARIABLES_DYNAMIC,
+  ...STORAGE_LOAD_VARIABLES_STATIC,
+  ...STORAGE_LOAD_VARIABLES_DYNAMIC,
   ...BLOCK_IN_VARIABLES_STATIC,
   ...BLOCK_IN_VARIABLES_DYNAMIC,
   ...EVM_IN_VARIABLES_STATIC,
@@ -426,21 +426,21 @@ const _LOG_OUT_DESCRIPTION_INCOMPLETE = __buildIncompleteDescription(
   LOG_OUT_VARIABLES_DYNAMIC,
   'LOG_OUT',
 ) as Record<LogOutVariable, DataPtDescription>;
-const _STORAGE_OUT_DESCRIPTION_INCOMPLETE = __buildIncompleteDescription(
-  STORAGE_OUT_VARIABLES_STATIC,
-  STORAGE_OUT_VARIABLES_DYNAMIC,
-  'STORAGE_OUT',
-) as Record<StorageOutVariable, DataPtDescription>;
+const _STORAGE_STORE_DESCRIPTION_INCOMPLETE = __buildIncompleteDescription(
+  STORAGE_STORE_VARIABLES_STATIC,
+  STORAGE_STORE_VARIABLES_DYNAMIC,
+  'STORAGE_STORE',
+) as Record<StorageStoreVariable, DataPtDescription>;
 const _TX_IN_DESCRIPTION_INCOMPLETE = __buildIncompleteDescription(
   TX_IN_VARIABLES_STATIC,
   TX_IN_VARIABLES_DYNAMIC,
   'TX_IN',
 ) as Record<TxInVariable, DataPtDescription>;
-const _STORAGE_IN_DESCRIPTION_INCOMPLETE = __buildIncompleteDescription(
-  STORAGE_IN_VARIABLES_STATIC,
-  STORAGE_IN_VARIABLES_DYNAMIC,
-  'STORAGE_IN',
-) as Record<StorageInVariable, DataPtDescription>;
+const _STORAGE_LOAD_DESCRIPTION_INCOMPLETE = __buildIncompleteDescription(
+  STORAGE_LOAD_VARIABLES_STATIC,
+  STORAGE_LOAD_VARIABLES_DYNAMIC,
+  'STORAGE_LOAD',
+) as Record<StorageLoadVariable, DataPtDescription>;
 const _BLOCK_IN_DESCRIPTION_INCOMPLETE = __buildIncompleteDescription(
   BLOCK_IN_VARIABLES_STATIC,
   BLOCK_IN_VARIABLES_DYNAMIC,
@@ -459,9 +459,9 @@ const _PRIVATE_IN_DESCRIPTION_INCOMPLETE = __buildIncompleteDescription(
 
 const VARIABLE_DESCRIPTION_INCOMPLETE: Record<ReservedVariable, DataPtDescription> = {
   ..._LOG_OUT_DESCRIPTION_INCOMPLETE,
-  ..._STORAGE_OUT_DESCRIPTION_INCOMPLETE,
+  ..._STORAGE_STORE_DESCRIPTION_INCOMPLETE,
   ..._TX_IN_DESCRIPTION_INCOMPLETE,
-  ..._STORAGE_IN_DESCRIPTION_INCOMPLETE,
+  ..._STORAGE_LOAD_DESCRIPTION_INCOMPLETE,
   ..._BLOCK_IN_DESCRIPTION_INCOMPLETE,
   ..._EVM_IN_DESCRIPTION_INCOMPLETE,
   ..._PRIVATE_IN_DESCRIPTION_INCOMPLETE,
@@ -475,9 +475,9 @@ VARIABLE_DESCRIPTION_INCOMPLETE.EDDSA_SIGNATURE.sourceBitSize = 255;
 
 VARIABLE_DESCRIPTION_INCOMPLETE.CONTRACT_ADDRESS.extSource = `Contract address to call`;
 VARIABLE_DESCRIPTION_INCOMPLETE.FUNCTION_SELECTOR.extSource = `Selector for a function to call`;
-VARIABLE_DESCRIPTION_INCOMPLETE.SLOAD_ADDRESS.extSource = `Initial storage read address`;
-VARIABLE_DESCRIPTION_INCOMPLETE.SLOAD_KEY.extSource = `Initial storage read key`;
-VARIABLE_DESCRIPTION_INCOMPLETE.SLOAD_VALUE.extSource = `Initial storage read value`;
+VARIABLE_DESCRIPTION_INCOMPLETE.SLOAD_ADDRESS.extDest = `Initial storage read address`;
+VARIABLE_DESCRIPTION_INCOMPLETE.SLOAD_KEY.extDest = `Initial storage read key`;
+VARIABLE_DESCRIPTION_INCOMPLETE.SLOAD_VALUE.extDest = `Initial storage read value`;
 VARIABLE_DESCRIPTION_INCOMPLETE.COINBASE.extSource = `COINBASE`;
 VARIABLE_DESCRIPTION_INCOMPLETE.TIMESTAMP.extSource = `TIMESTAMP`;
 VARIABLE_DESCRIPTION_INCOMPLETE.NUMBER.extSource = `NUMBER`;
@@ -536,6 +536,9 @@ VARIABLE_DESCRIPTION_INCOMPLETE.EDDSA_RANDOMIZER_X.sourceBitSize = 255;
 
 VARIABLE_DESCRIPTION_INCOMPLETE.EDDSA_RANDOMIZER_Y.extSource = `EdDSA randomizer (y coordinate)`;
 VARIABLE_DESCRIPTION_INCOMPLETE.EDDSA_RANDOMIZER_Y.sourceBitSize = 255;
+
+VARIABLE_DESCRIPTION_INCOMPLETE.STORAGE_READ.extSource = `Storage read (restricted to 255-bit word)`;
+VARIABLE_DESCRIPTION_INCOMPLETE.STORAGE_READ.sourceBitSize = 255;
 
 for (const _varName of _VARIABLES) {
   const varName = _varName as ReservedVariable

@@ -12,7 +12,7 @@ import type {
 
 // Single source of truth for SetupParams keys
 export const SETUP_PARAMS_KEYS = [
-  'l_log_out', 'l_storage_out', 'l_tx_in', 'l_storage_in',
+  'l_log_out', 'l_storage_store', 'l_storage_load', 'l_tx_in',
   'l_block_in', 'l_evm_in',
   'l_free', 'l_user_out', 'l_user', 'l',
   'l_D', 'm_D', 'n', 's_D', 's_max',
@@ -53,9 +53,9 @@ export type SubcircuitInfo = SubcircuitInfoItem[];
 // Required Circom constants (qap-compiler/scripts/constants.circom)
 export const REQUIRED_CIRCOM_KEYS = [
   'nTxIn',
-  'nStorageIn',
+  'nStorageLoad',
   'nLogOut',
-  'nStorageOut',
+  'nStorageStore',
   'nPrvIn',
   'nEVMIn',
   'nPoseidonInputs',

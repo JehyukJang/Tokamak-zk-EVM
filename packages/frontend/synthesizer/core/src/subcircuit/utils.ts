@@ -39,9 +39,9 @@ export function parseSetupParams(value: unknown): SetupParams {
 
   return {
     l_log_out: getRequiredNumber(value, 'l_log_out'),
-    l_storage_out: getRequiredNumber(value, 'l_storage_out'),
+    l_storage_store: getRequiredNumber(value, 'l_storage_store'),
+    l_storage_load: getRequiredNumber(value, 'l_storage_load'),
     l_tx_in: getRequiredNumber(value, 'l_tx_in'),
-    l_storage_in: getRequiredNumber(value, 'l_storage_in'),
     l_block_in: getRequiredNumber(value, 'l_block_in'),
     l_evm_in: getRequiredNumber(value, 'l_evm_in'),
     l_free: getRequiredNumber(value, 'l_free'),
@@ -81,9 +81,9 @@ export function parseFrontendConfig(value: unknown): FrontendConfig {
 
   return {
     nTxIn: getRequiredNumber(value, 'nTxIn'),
-    nStorageIn: getRequiredNumber(value, 'nStorageIn'),
+    nStorageLoad: getRequiredNumber(value, 'nStorageLoad'),
     nLogOut: getRequiredNumber(value, 'nLogOut'),
-    nStorageOut: getRequiredNumber(value, 'nStorageOut'),
+    nStorageStore: getRequiredNumber(value, 'nStorageStore'),
     nPrvIn: getRequiredNumber(value, 'nPrvIn'),
     nEVMIn: getRequiredNumber(value, 'nEVMIn'),
     nPoseidonInputs: getRequiredNumber(value, 'nPoseidonInputs'),

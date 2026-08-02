@@ -62,10 +62,10 @@ if (TRANSACTION_INPUT_VARIABLES.length !== FUNCTION_INPUT_LENGTH) {
 export const BUFFER_LIST = [
     // Public output, private input
     'LOG_OUT',
-    'STORAGE_OUT',
+    'STORAGE_STORE',
+    'STORAGE_LOAD',
     // Private output, public input
     'TX_IN',
-    'STORAGE_IN',
     'BLOCK_IN',         // Determined by channel opening
     'EVM_IN',        // Determined by contract and function selector
     // Private output, private input
@@ -74,9 +74,9 @@ export const BUFFER_LIST = [
 
 export const BUFFER_DESCRIPTION: Record<ReservedBuffer, string> = {
   LOG_OUT: '[Public output & Private input] Buffer to emit committed EVM logs',
-  STORAGE_OUT: '[Public output & Private input] Buffer to emit final storage writes',
+  STORAGE_STORE: '[Public output & Private input] Buffer to emit final storage writes',
+  STORAGE_LOAD: '[Public output & Private input] Buffer to emit initial storage reads',
   TX_IN: '[Private output & Public input] Buffer to load transaction input',
-  STORAGE_IN: '[Private output & Public input] Buffer to load initial storage reads',
   BLOCK_IN: '[Private output & Public input] Buffer to load block input',
   EVM_IN: '[Private output & Public input] Buffer to load public static input such as ROM, environmental data, or ALU selectors',
   PRIVATE_IN: '[Private output & Private input] Buffer to load witness as private, such as initial storage and transaction data',
@@ -86,9 +86,9 @@ export type ReservedBuffer = (typeof BUFFER_LIST)[number]
 
 export const SUBCIRCUIT_LIST = [
     'bufferLogOut',
-    'bufferStorageOut',
+    'bufferStorageStore',
+    'bufferStorageLoad',
     'bufferTxIn',
-    'bufferStorageIn',
     'bufferBlockIn',
     'bufferEVMIn',
     'bufferPrvIn',

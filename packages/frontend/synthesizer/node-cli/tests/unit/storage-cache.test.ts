@@ -62,6 +62,9 @@ const createStorageHarness = (initialValue: bigint) => {
     addReservedVariableToBufferIn: vi.fn((_name: string, value: bigint) =>
       dataPt(value, nextSource++),
     ),
+    addReservedVariableToBufferOut: vi.fn((_name: string, valuePt: DataPt) =>
+      dataPt(valuePt.value, nextSource++),
+    ),
   };
   parent.state = new StateManager(parent);
 
@@ -166,11 +169,18 @@ describe('InstructionHandler storage cache', () => {
     expect(parent.state.initialStorageReads.entries).toHaveLength(1);
     expect(parent.addReservedVariableToBufferIn.mock.calls.map(
       ([name]: [string]) => name,
-    )).toEqual(['SLOAD_ADDRESS', 'SLOAD_KEY', 'SLOAD_VALUE']);
+    )).toEqual(['STORAGE_READ']);
+    expect(parent.addReservedVariableToBufferOut.mock.calls.map(
+      ([name, valuePt]: [string, DataPt]) => [name, valuePt.source, valuePt.value],
+    )).toEqual([
+      ['SLOAD_ADDRESS', 30, addressValue],
+      ['SLOAD_KEY', 31, 9n],
+      ['SLOAD_VALUE', 100, 5n],
+    ]);
     expect(parent.state.initialStorageReads.entries[0]).toMatchObject({
-      addressPt: { source: 100, value: addressValue },
-      keyPt: { source: 101, value: 9n },
-      valuePt: { source: 102, value: 5n },
+      addressPt: { source: 30, value: addressValue },
+      keyPt: { source: 31, value: 9n },
+      valuePt: { source: 100, value: 5n },
     });
     expect(secondValuePt).toMatchObject({
       source: firstValuePt.source,
@@ -180,23 +190,14 @@ describe('InstructionHandler storage cache', () => {
     const equalBatchCalls = parent.placeArith.mock.calls.filter(
       (call: any[]) => call[0] === 'EqualBatch',
     );
-    expect(equalBatchCalls).toHaveLength(2);
+    expect(equalBatchCalls).toHaveLength(1);
     expect(equalBatchCalls[0]).toEqual([
-      'EqualBatch',
-      [
-        expect.objectContaining({ source: 30, value: addressValue }),
-        expect.objectContaining({ source: 31, value: 9n }),
-        expect.objectContaining({ source: 100, value: addressValue }),
-        expect.objectContaining({ source: 101, value: 9n }),
-      ],
-    ]);
-    expect(equalBatchCalls[1]).toEqual([
       'EqualBatch',
       [
         expect.objectContaining({ source: 40, value: addressValue }),
         expect.objectContaining({ source: 41, value: 9n }),
-        expect.objectContaining({ source: 100, value: addressValue }),
-        expect.objectContaining({ source: 101, value: 9n }),
+        expect.objectContaining({ source: 30, value: addressValue }),
+        expect.objectContaining({ source: 31, value: 9n }),
       ],
     ]);
   });
@@ -220,7 +221,8 @@ describe('InstructionHandler storage cache', () => {
     );
 
     expect(parent.state.initialStorageReads.entries).toHaveLength(1);
-    expect(parent.addReservedVariableToBufferIn).toHaveBeenCalledTimes(3);
+    expect(parent.addReservedVariableToBufferIn).toHaveBeenCalledTimes(1);
+    expect(parent.addReservedVariableToBufferOut).toHaveBeenCalledTimes(3);
     expect(secondValuePt).toMatchObject({
       source: firstValuePt.source,
       wireIndex: firstValuePt.wireIndex,
@@ -228,7 +230,7 @@ describe('InstructionHandler storage cache', () => {
     });
     expect(parent.placeArith.mock.calls.filter(
       (call: any[]) => call[0] === 'EqualBatch',
-    )).toHaveLength(2);
+    )).toHaveLength(1);
   });
 
   it('updates the cached value on SSTORE and does not add an initial SLOAD afterward', async () => {
@@ -246,6 +248,7 @@ describe('InstructionHandler storage cache', () => {
 
     expect(parent.state.initialStorageReads.entries).toHaveLength(0);
     expect(parent.addReservedVariableToBufferIn).not.toHaveBeenCalled();
+    expect(parent.addReservedVariableToBufferOut).not.toHaveBeenCalled();
     expect(parent.state.storageCache.get(addressValue, 7n)).toMatchObject({
       latestValuePt: { source: 51, value: 11n },
       dirty: true,

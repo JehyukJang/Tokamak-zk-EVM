@@ -202,11 +202,11 @@ function parseWireList(subcircuitInfos) {
   if (ind !== l_free_actual) {
     throw new Error(`parseWireList: Error during flattening public wires: ind = ${ind}, l_free_actual = ${l_free_actual}`)
   }
-  if (publicWireBoundaries.l_storage_out !== l_user_out) {
-    throw new Error(`parseWireList: l_storage_out must equal l_user_out.`)
+  if (publicWireBoundaries.l_storage_load !== l_user_out) {
+    throw new Error(`parseWireList: l_storage_load must equal l_user_out.`)
   }
-  if (publicWireBoundaries.l_storage_in !== l_user) {
-    throw new Error(`parseWireList: l_storage_in must equal l_user.`)
+  if (publicWireBoundaries.l_tx_in !== l_user) {
+    throw new Error(`parseWireList: l_tx_in must equal l_user.`)
   }
   if (publicWireBoundaries.l_block_in !== l_free_actual) {
     throw new Error(`parseWireList: l_block_in must equal the unpadded free-public boundary.`)
@@ -449,9 +449,9 @@ fs.readFile(compilerOutputPath, 'utf8', function(err, data) {
 
   const setupParams = {
     l_log_out: globalWireInfo.l_log_out,
-    l_storage_out: globalWireInfo.l_storage_out,
+    l_storage_store: globalWireInfo.l_storage_store,
+    l_storage_load: globalWireInfo.l_storage_load,
     l_tx_in: globalWireInfo.l_tx_in,
-    l_storage_in: globalWireInfo.l_storage_in,
     l_block_in: globalWireInfo.l_block_in,
     l_evm_in: globalWireInfo.l_evm_in,
     l_free: globalWireInfo.l_free,
