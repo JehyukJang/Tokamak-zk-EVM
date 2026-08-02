@@ -40,6 +40,8 @@ The format is based on Keep a Changelog.
 
 ### Bug Fixes
 
+- Fixed initial SLOAD rejecting valid 256-bit EVM storage values outside the
+  BLS12-381 scalar field range.
 - Fixed VM event handlers swallowing Synthesizer failures. The first
   Synthesizer event-handler error is now retained while the VM finishes the
   transaction and then rethrown unchanged, even if `runTx` also fails. This

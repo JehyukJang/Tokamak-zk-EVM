@@ -2,8 +2,9 @@ import { createAddressFromBigInt, bigIntToBytes, setLengthLeft } from '@ethereum
 import { describe, expect, it, vi } from 'vitest';
 
 import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
-import { StackPt } from '../../../core/src/synthesizer/dataStructure/index.ts';
+import { DataPtFactory, StackPt } from '../../../core/src/synthesizer/dataStructure/index.ts';
 import { StateManager } from '../../../core/src/synthesizer/handlers/stateManager.ts';
+import { VARIABLE_DESCRIPTION } from '../../../core/src/synthesizer/types/buffers.ts';
 import type {
   InitialStorageRead,
   StorageCacheEntry,
@@ -80,6 +81,15 @@ const createStorageHarness = (initialValue: bigint) => {
 };
 
 describe('StateManager storage tracking', () => {
+  it('accepts a full 256-bit initial storage value', () => {
+    const value = (1n << 256n) - 1n;
+
+    expect(DataPtFactory.create(VARIABLE_DESCRIPTION.STORAGE_READ, value)).toMatchObject({
+      sourceBitSize: 256,
+      value,
+    });
+  });
+
   it('restores only the storage cache and retains initial SLOAD records on frame failure', () => {
     const state = createState();
     const parentEntry: StorageCacheEntry = {
