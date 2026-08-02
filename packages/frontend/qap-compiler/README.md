@@ -37,7 +37,8 @@ bundles the matching JSON and WASM assets at build time.
 
 Fixed-capacity public-output buffers are zero-padded. The higher-level protocol
 is responsible for filtering storage tuples with a zero address and log tuples
-whose fields are all zero.
+whose fields are all zero. Each 256-bit word is encoded as its lower 128-bit
+limb followed by its upper 128-bit limb.
 
 ## Published artifacts
 
