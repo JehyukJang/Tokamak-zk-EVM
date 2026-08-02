@@ -3,19 +3,31 @@ import type { DataPtDescription } from './index.ts'
 import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
 import { BUFFER_LIST, ReservedBuffer } from '../../subcircuit/configuredTypes.ts';
 
-const PUBLIC_OUT_VARIABLES_STATIC = [
+const LOG_OUT_VARIABLES_STATIC = [
   // Nothing
 ] as const
-const PUBLIC_OUT_VARIABLES_DYNAMIC = [
+const LOG_OUT_VARIABLES_DYNAMIC = [
   'LOG_TOPIC',
   'LOG_VALUE',
 ] as const
-const PUBLIC_IN_VARIABLES_STATIC = [
+const STORAGE_OUT_VARIABLES_STATIC = [
+  // Nothing
+] as const
+const STORAGE_OUT_VARIABLES_DYNAMIC = [
+  // Nothing
+] as const
+const TX_IN_VARIABLES_STATIC = [
   'EDDSA_SIGNATURE',  // For debugging. Can be moved to PRIVATE_IN buffer
   'CONTRACT_ADDRESS',    
   'FUNCTION_SELECTOR',   
 ] as const
-const PUBLIC_IN_VARIABLES_DYNAMIC = [
+const TX_IN_VARIABLES_DYNAMIC = [
+  // Nothing
+] as const
+const STORAGE_IN_VARIABLES_STATIC = [
+  // Nothing
+] as const
+const STORAGE_IN_VARIABLES_DYNAMIC = [
   // Nothing
 ] as const
 const BLOCK_IN_VARIABLES_STATIC = [
@@ -341,12 +353,18 @@ const PRIVATE_IN_VARIABLES_DYNAMIC = [
   'STORAGE_READ',
 ] as const
 
-type PublicOutVariable = 
-  | (typeof PUBLIC_OUT_VARIABLES_STATIC)[number]
-  | (typeof PUBLIC_OUT_VARIABLES_DYNAMIC)[number]
-type PublicInVariable =
-  | (typeof PUBLIC_IN_VARIABLES_STATIC)[number]
-  | (typeof PUBLIC_IN_VARIABLES_DYNAMIC)[number]
+type LogOutVariable =
+  | (typeof LOG_OUT_VARIABLES_STATIC)[number]
+  | (typeof LOG_OUT_VARIABLES_DYNAMIC)[number]
+type StorageOutVariable =
+  | (typeof STORAGE_OUT_VARIABLES_STATIC)[number]
+  | (typeof STORAGE_OUT_VARIABLES_DYNAMIC)[number]
+type TxInVariable =
+  | (typeof TX_IN_VARIABLES_STATIC)[number]
+  | (typeof TX_IN_VARIABLES_DYNAMIC)[number]
+type StorageInVariable =
+  | (typeof STORAGE_IN_VARIABLES_STATIC)[number]
+  | (typeof STORAGE_IN_VARIABLES_DYNAMIC)[number]
 type BlockInVariable =
   | (typeof BLOCK_IN_VARIABLES_STATIC)[number]
   | (typeof BLOCK_IN_VARIABLES_DYNAMIC)[number]
@@ -357,17 +375,23 @@ type PrivateInVariable =
   | (typeof PRIVATE_IN_VARIABLES_STATIC)[number]
   | (typeof PRIVATE_IN_VARIABLES_DYNAMIC)[number]
 export type ReservedVariable =
-  | PublicOutVariable
-  | PublicInVariable
+  | LogOutVariable
+  | StorageOutVariable
+  | TxInVariable
+  | StorageInVariable
   | BlockInVariable
   | EVMInVariable
   | PrivateInVariable
 
 const _VARIABLES: string[] = [
-  ...PUBLIC_OUT_VARIABLES_STATIC,
-  ...PUBLIC_OUT_VARIABLES_DYNAMIC,
-  ...PUBLIC_IN_VARIABLES_STATIC,
-  ...PUBLIC_IN_VARIABLES_DYNAMIC,
+  ...LOG_OUT_VARIABLES_STATIC,
+  ...LOG_OUT_VARIABLES_DYNAMIC,
+  ...STORAGE_OUT_VARIABLES_STATIC,
+  ...STORAGE_OUT_VARIABLES_DYNAMIC,
+  ...TX_IN_VARIABLES_STATIC,
+  ...TX_IN_VARIABLES_DYNAMIC,
+  ...STORAGE_IN_VARIABLES_STATIC,
+  ...STORAGE_IN_VARIABLES_DYNAMIC,
   ...BLOCK_IN_VARIABLES_STATIC,
   ...BLOCK_IN_VARIABLES_DYNAMIC,
   ...EVM_IN_VARIABLES_STATIC,
@@ -395,16 +419,26 @@ const __buildIncompleteDescription = (
   }
   return m as unknown
 }
-const _PUBLIC_OUT_DESCRIPTION_INCOMPLETE = __buildIncompleteDescription(
-  PUBLIC_OUT_VARIABLES_STATIC,
-  PUBLIC_OUT_VARIABLES_DYNAMIC,
-  'PUBLIC_OUT',
-) as Record<PublicOutVariable, DataPtDescription>;
-const _PUBLIC_IN_DESCRIPTION_INCOMPLETE = __buildIncompleteDescription(
-  PUBLIC_IN_VARIABLES_STATIC,
-  PUBLIC_IN_VARIABLES_DYNAMIC,
-  'PUBLIC_IN',
-) as Record<PublicInVariable, DataPtDescription>;
+const _LOG_OUT_DESCRIPTION_INCOMPLETE = __buildIncompleteDescription(
+  LOG_OUT_VARIABLES_STATIC,
+  LOG_OUT_VARIABLES_DYNAMIC,
+  'LOG_OUT',
+) as Record<LogOutVariable, DataPtDescription>;
+const _STORAGE_OUT_DESCRIPTION_INCOMPLETE = __buildIncompleteDescription(
+  STORAGE_OUT_VARIABLES_STATIC,
+  STORAGE_OUT_VARIABLES_DYNAMIC,
+  'STORAGE_OUT',
+) as Record<StorageOutVariable, DataPtDescription>;
+const _TX_IN_DESCRIPTION_INCOMPLETE = __buildIncompleteDescription(
+  TX_IN_VARIABLES_STATIC,
+  TX_IN_VARIABLES_DYNAMIC,
+  'TX_IN',
+) as Record<TxInVariable, DataPtDescription>;
+const _STORAGE_IN_DESCRIPTION_INCOMPLETE = __buildIncompleteDescription(
+  STORAGE_IN_VARIABLES_STATIC,
+  STORAGE_IN_VARIABLES_DYNAMIC,
+  'STORAGE_IN',
+) as Record<StorageInVariable, DataPtDescription>;
 const _BLOCK_IN_DESCRIPTION_INCOMPLETE = __buildIncompleteDescription(
   BLOCK_IN_VARIABLES_STATIC,
   BLOCK_IN_VARIABLES_DYNAMIC,
@@ -422,8 +456,10 @@ const _PRIVATE_IN_DESCRIPTION_INCOMPLETE = __buildIncompleteDescription(
 ) as Record<PrivateInVariable, DataPtDescription>;
 
 const VARIABLE_DESCRIPTION_INCOMPLETE: Record<ReservedVariable, DataPtDescription> = {
-  ..._PUBLIC_OUT_DESCRIPTION_INCOMPLETE,
-  ..._PUBLIC_IN_DESCRIPTION_INCOMPLETE,
+  ..._LOG_OUT_DESCRIPTION_INCOMPLETE,
+  ..._STORAGE_OUT_DESCRIPTION_INCOMPLETE,
+  ..._TX_IN_DESCRIPTION_INCOMPLETE,
+  ..._STORAGE_IN_DESCRIPTION_INCOMPLETE,
   ..._BLOCK_IN_DESCRIPTION_INCOMPLETE,
   ..._EVM_IN_DESCRIPTION_INCOMPLETE,
   ..._PRIVATE_IN_DESCRIPTION_INCOMPLETE,
