@@ -397,6 +397,88 @@ describe('InstructionHandler storage cache', () => {
     expect(parent.addReservedVariableToBufferOut).not.toHaveBeenCalled();
   });
 
+  it('keeps the initial SLOAD record while replacing the cached value on SSTORE', async () => {
+    const { addressValue, handler, parent, setStorageValue } = createStorageHarness(12n);
+    const initialValuePt = await handler.loadStorage(
+      dataPt(addressValue, 80),
+      dataPt(9n, 81),
+      12n,
+    );
+
+    setStorageValue(22n);
+    await handler.storeStorage(
+      dataPt(addressValue, 82),
+      dataPt(9n, 83),
+      dataPt(22n, 84),
+    );
+
+    expect(parent.state.initialStorageReads.entries).toEqual([
+      expect.objectContaining({
+        addressPt: expect.objectContaining({ source: 80, value: addressValue }),
+        keyPt: expect.objectContaining({ source: 81, value: 9n }),
+        valuePt: expect.objectContaining({
+          source: initialValuePt.source,
+          value: 12n,
+        }),
+      }),
+    ]);
+    expect(parent.state.storageCache.dirtyEntries).toEqual([
+      expect.objectContaining({
+        canonicalAddressPt: expect.objectContaining({ source: 80, value: addressValue }),
+        canonicalKeyPt: expect.objectContaining({ source: 81, value: 9n }),
+        latestValuePt: expect.objectContaining({ source: 84, value: 22n }),
+        dirty: true,
+      }),
+    ]);
+    expect(parent.placeArith.mock.calls.filter(
+      (call: any[]) => call[0] === 'EqualBatch',
+    )[0]?.[1].map((pt: DataPt) => pt.source)).toEqual([82, 83, 80, 81]);
+    expect(parent.addReservedVariableToBufferOut).toHaveBeenCalledTimes(3);
+  });
+
+  it('tracks distinct address and key pairs independently', async () => {
+    const { addressValue, handler, parent, setStorageValue } = createStorageHarness(1n);
+    await handler.loadStorage(dataPt(addressValue, 90), dataPt(1n, 91), 1n);
+
+    setStorageValue(2n);
+    await handler.loadStorage(dataPt(addressValue + 1n, 92), dataPt(1n, 93), 2n);
+
+    setStorageValue(3n);
+    await handler.storeStorage(
+      dataPt(addressValue, 94),
+      dataPt(1n, 95),
+      dataPt(3n, 96),
+    );
+
+    setStorageValue(4n);
+    await handler.storeStorage(
+      dataPt(addressValue, 97),
+      dataPt(2n, 98),
+      dataPt(4n, 99),
+    );
+
+    expect(parent.state.initialStorageReads.entries.map((entry: InitialStorageRead) => [
+      entry.addressPt.value,
+      entry.keyPt.value,
+      entry.valuePt.value,
+    ])).toEqual([
+      [addressValue, 1n, 1n],
+      [addressValue + 1n, 1n, 2n],
+    ]);
+    expect(parent.state.storageCache.dirtyEntries.map((entry: StorageCacheEntry) => [
+      entry.canonicalAddressPt.value,
+      entry.canonicalKeyPt.value,
+      entry.latestValuePt.value,
+    ])).toEqual([
+      [addressValue, 1n, 3n],
+      [addressValue, 2n, 4n],
+    ]);
+    expect(parent.placeArith.mock.calls.filter(
+      (call: any[]) => call[0] === 'EqualBatch',
+    )).toHaveLength(1);
+    expect(parent.addReservedVariableToBufferOut).toHaveBeenCalledTimes(6);
+  });
+
   it('rejects a storageAddressPt that does not match the EVM storage address', async () => {
     const { address, handler, parent } = createStorageHarness(5n);
     const stackPt = new StackPt();
