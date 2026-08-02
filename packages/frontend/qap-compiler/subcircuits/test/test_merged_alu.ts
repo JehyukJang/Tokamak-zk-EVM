@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 
 import builderModule from "./wasm/witness_calculator.js";
 import { split256BitInteger } from "./helper_functions.js";
-import { ArithmeticOperations } from "../../../synthesizer/src/synthesizer/dataStructure/arithmeticOperations.ts";
+import { ArithmeticOperations } from "../../../synthesizer/core/src/synthesizer/dataStructure/arithmeticOperations.ts";
 
 type WitnessValue = bigint | string | number;
 type WitnessCalculator = {
@@ -19,7 +19,7 @@ type Alu1Input = {
   expected: bigint;
 };
 
-type Alu2Input = {
+type Alu3Or4Input = {
   in1: bigint;
   in2: bigint;
   in3: bigint;
@@ -33,11 +33,11 @@ type Alu1OpCase = {
   sample: (iteration: number) => Alu1Input;
 };
 
-type Alu2OpCase = {
+type Alu3Or4OpCase = {
   name: string;
   selector: bigint;
-  edgeCases: Alu2Input[];
-  sample: (iteration: number) => Alu2Input;
+  edgeCases: Alu3Or4Input[];
+  sample: (iteration: number) => Alu3Or4Input;
 };
 
 const RANDOM_CASES = 500;
@@ -45,6 +45,7 @@ const builder = builderModule as (code: Uint8Array, options?: unknown) => Promis
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const subcircuitLibraryDir = process.env.QAP_SUBCIRCUIT_LIBRARY_DIR ?? path.join(__dirname, "../library");
 const MAX_UINT256 = (1n << 256n) - 1n;
 const MIN_INT256 = 1n << 255n;
 const NEG_ONE = MAX_UINT256;
@@ -62,15 +63,15 @@ const randomWord = (): bigint => randomNByteBigInt(32);
 const randomSmall = (): bigint => randomNByteBigInt(1);
 const normalizeWitnessValue = (value: WitnessValue): bigint => BigInt(value.toString());
 
-const loadWitnessCalculator = async (name: "ALU1" | "ALU2"): Promise<WitnessCalculator> => {
-  const subcircuitInfoPath = path.join(__dirname, "../library/subcircuitInfo.json");
+const loadWitnessCalculator = async (name: "ALU1" | "ALU2" | "ALU3" | "ALU4"): Promise<WitnessCalculator> => {
+  const subcircuitInfoPath = path.join(subcircuitLibraryDir, "subcircuitInfo.json");
   const subcircuitInfo = JSON.parse(readFileSync(subcircuitInfoPath, "utf8")) as Array<{ id: number; name: string }>;
   const targetInfo = subcircuitInfo.find((entry) => entry.name === name);
   if (targetInfo === undefined) {
     throw new Error(`${name} subcircuit was not found in subcircuitInfo.json`);
   }
 
-  const wasmPath = path.join(__dirname, `../library/wasm/subcircuit${targetInfo.id}.wasm`);
+  const wasmPath = path.join(subcircuitLibraryDir, `wasm/subcircuit${targetInfo.id}.wasm`);
   return builder(readFileSync(wasmPath));
 };
 
@@ -78,7 +79,7 @@ const encodeAlu1Input = (selector: bigint, in1: bigint, in2: bigint): bigint[] =
   return [selector, ...split256BitInteger(in1), ...split256BitInteger(in2)];
 };
 
-const encodeAlu2Input = (selector: bigint, in1: bigint, in2: bigint, in3: bigint): bigint[] => {
+const encodeAlu3Input = (selector: bigint, in1: bigint, in2: bigint, in3: bigint): bigint[] => {
   return [selector, ...split256BitInteger(in1), ...split256BitInteger(in2), ...split256BitInteger(in3)];
 };
 
@@ -101,6 +102,7 @@ const expectWitnessFailure = async (
 
 const runAlu1Op = async (
   witnessCalculator: WitnessCalculator,
+  target: "ALU1" | "ALU2",
   opCase: Alu1OpCase,
 ): Promise<void> => {
   for (const [index, edgeCase] of opCase.edgeCases.entries()) {
@@ -108,7 +110,7 @@ const runAlu1Op = async (
       { in: encodeAlu1Input(opCase.selector, edgeCase.in1, edgeCase.in2) },
       true,
     );
-    assertWitnessMatches(witness, edgeCase.expected, `ALU1 ${opCase.name} edge ${index}`);
+    assertWitnessMatches(witness, edgeCase.expected, `${target} ${opCase.name} edge ${index}`);
   }
   for (let iteration = 0; iteration < RANDOM_CASES; iteration++) {
     const { in1, in2, expected } = opCase.sample(iteration);
@@ -116,36 +118,45 @@ const runAlu1Op = async (
       { in: encodeAlu1Input(opCase.selector, in1, in2) },
       true,
     );
-    assertWitnessMatches(witness, expected, `ALU1 ${opCase.name} case ${iteration}`);
+    assertWitnessMatches(witness, expected, `${target} ${opCase.name} case ${iteration}`);
   }
-  console.log(`ALU1 ${opCase.name} passed ${opCase.edgeCases.length} edge cases and ${RANDOM_CASES} randomized cases`);
+  console.log(`${target} ${opCase.name} passed ${opCase.edgeCases.length} edge cases and ${RANDOM_CASES} randomized cases`);
 };
 
-const runAlu2Op = async (
+const runAlu3Or4Op = async (
   witnessCalculator: WitnessCalculator,
-  opCase: Alu2OpCase,
+  target: "ALU3" | "ALU4",
+  opCase: Alu3Or4OpCase,
 ): Promise<void> => {
   for (const [index, edgeCase] of opCase.edgeCases.entries()) {
+    const input = target === "ALU3"
+      ? encodeAlu3Input(opCase.selector, edgeCase.in1, edgeCase.in2, edgeCase.in3)
+      : encodeAlu1Input(opCase.selector, edgeCase.in1, edgeCase.in2);
     const witness = await witnessCalculator.calculateWitness(
-      { in: encodeAlu2Input(opCase.selector, edgeCase.in1, edgeCase.in2, edgeCase.in3) },
+      { in: input },
       true,
     );
-    assertWitnessMatches(witness, edgeCase.expected, `ALU2 ${opCase.name} edge ${index}`);
+    assertWitnessMatches(witness, edgeCase.expected, `${target} ${opCase.name} edge ${index}`);
   }
   for (let iteration = 0; iteration < RANDOM_CASES; iteration++) {
     const { in1, in2, in3, expected } = opCase.sample(iteration);
+    const input = target === "ALU3"
+      ? encodeAlu3Input(opCase.selector, in1, in2, in3)
+      : encodeAlu1Input(opCase.selector, in1, in2);
     const witness = await witnessCalculator.calculateWitness(
-      { in: encodeAlu2Input(opCase.selector, in1, in2, in3) },
+      { in: input },
       true,
     );
-    assertWitnessMatches(witness, expected, `ALU2 ${opCase.name} case ${iteration}`);
+    assertWitnessMatches(witness, expected, `${target} ${opCase.name} case ${iteration}`);
   }
-  console.log(`ALU2 ${opCase.name} passed ${opCase.edgeCases.length} edge cases and ${RANDOM_CASES} randomized cases`);
+  console.log(`${target} ${opCase.name} passed ${opCase.edgeCases.length} edge cases and ${RANDOM_CASES} randomized cases`);
 };
 
 const main = async (): Promise<void> => {
   const alu1WitnessCalculator = await loadWitnessCalculator("ALU1");
   const alu2WitnessCalculator = await loadWitnessCalculator("ALU2");
+  const alu3WitnessCalculator = await loadWitnessCalculator("ALU3");
+  const alu4WitnessCalculator = await loadWitnessCalculator("ALU4");
 
   const alu1Cases: Alu1OpCase[] = [
     {
@@ -330,7 +341,7 @@ const main = async (): Promise<void> => {
     },
   ];
 
-  const alu2Cases: Alu2OpCase[] = [
+  const alu3Or4Cases: Alu3Or4OpCase[] = [
     {
       name: "DIV",
       selector: 1n << 4n,
@@ -498,22 +509,28 @@ const main = async (): Promise<void> => {
     },
   ];
 
+  const alu2Operations = new Set(["AND", "OR", "XOR", "NOT"]);
   for (const opCase of alu1Cases) {
-    await runAlu1Op(alu1WitnessCalculator, opCase);
+    const target = alu2Operations.has(opCase.name) ? "ALU2" : "ALU1";
+    const witnessCalculator = target === "ALU2" ? alu2WitnessCalculator : alu1WitnessCalculator;
+    await runAlu1Op(witnessCalculator, target, opCase);
   }
 
-  for (const opCase of alu2Cases) {
-    await runAlu2Op(alu2WitnessCalculator, opCase);
+  const alu3Operations = new Set(["DIV", "SDIV", "MOD", "SMOD", "ADDMOD", "MULMOD"]);
+  for (const opCase of alu3Or4Cases) {
+    const target = alu3Operations.has(opCase.name) ? "ALU3" : "ALU4";
+    const witnessCalculator = target === "ALU3" ? alu3WitnessCalculator : alu4WitnessCalculator;
+    await runAlu3Or4Op(witnessCalculator, target, opCase);
   }
 
   await expectWitnessFailure(
-    alu2WitnessCalculator.calculateWitness(
-      { in: encodeAlu2Input(1n << 28n, 300n, randomWord(), 0n) },
+    alu4WitnessCalculator.calculateWitness(
+      { in: encodeAlu1Input(1n << 28n, 300n, randomWord()) },
       true,
     ),
-    "ALU2 invalid shift test",
+    "ALU4 invalid shift test",
   );
-  console.log("ALU2 invalid shift test passed");
+  console.log("ALU4 invalid shift test passed");
 
   await expectWitnessFailure(
     alu1WitnessCalculator.calculateWitness(
@@ -526,7 +543,7 @@ const main = async (): Promise<void> => {
 
   await expectWitnessFailure(
     alu2WitnessCalculator.calculateWitness(
-      { in: encodeAlu2Input((1n << 4n) + (1n << 10n), 9n, 3n, 0n) },
+      { in: encodeAlu1Input((1n << 22n) + (1n << 10n), 7n, 9n) },
       true,
     ),
     "ALU2 invalid selector test",
@@ -534,31 +551,76 @@ const main = async (): Promise<void> => {
   console.log("ALU2 invalid selector test passed");
 
   await expectWitnessFailure(
-    alu2WitnessCalculator.calculateWitness(
-      { in: [1n << 11n, 5n, 1n, ...split256BitInteger(0x80n), 0n, 0n] },
+    alu1WitnessCalculator.calculateWitness(
+      { in: [1n << 1n, 1n << 128n, 0n, 0n, 0n] },
       true,
     ),
-    "ALU2 invalid signextend high-limb test",
+    "ALU1 invalid limb test",
   );
-  console.log("ALU2 invalid signextend high-limb test passed");
+  console.log("ALU1 invalid limb test passed");
 
   await expectWitnessFailure(
     alu2WitnessCalculator.calculateWitness(
-      { in: [1n << 26n, 31n, 42n, ...split256BitInteger(MAX_UINT256), 0n, 0n] },
+      { in: [1n << 22n, 1n << 128n, 0n, 0n, 0n] },
       true,
     ),
-    "ALU2 invalid byte high-limb test",
+    "ALU2 invalid limb test",
   );
-  console.log("ALU2 invalid byte high-limb test passed");
+  console.log("ALU2 invalid limb test passed");
 
   await expectWitnessFailure(
-    alu2WitnessCalculator.calculateWitness(
-      { in: [1n << 28n, 1n, 123456789n, ...split256BitInteger(5n), 0n, 0n] },
+    alu3WitnessCalculator.calculateWitness(
+      { in: encodeAlu3Input((1n << 4n) + (1n << 10n), 9n, 3n, 0n) },
       true,
     ),
-    "ALU2 invalid shift high-limb test",
+    "ALU3 invalid selector test",
   );
-  console.log("ALU2 invalid shift high-limb test passed");
+  console.log("ALU3 invalid selector test passed");
+
+  await expectWitnessFailure(
+    alu3WitnessCalculator.calculateWitness(
+      { in: [1n << 4n, 1n << 128n, 0n, 1n, 0n, 0n, 0n] },
+      true,
+    ),
+    "ALU3 invalid limb test",
+  );
+  console.log("ALU3 invalid limb test passed");
+
+  await expectWitnessFailure(
+    alu4WitnessCalculator.calculateWitness(
+      { in: encodeAlu1Input((1n << 28n) + (1n << 4n), 1n, 5n) },
+      true,
+    ),
+    "ALU4 invalid selector test",
+  );
+  console.log("ALU4 invalid selector test passed");
+
+  await expectWitnessFailure(
+    alu4WitnessCalculator.calculateWitness(
+      { in: [1n << 11n, 5n, 1n, ...split256BitInteger(0x80n)] },
+      true,
+    ),
+    "ALU4 invalid signextend high-limb test",
+  );
+  console.log("ALU4 invalid signextend high-limb test passed");
+
+  await expectWitnessFailure(
+    alu4WitnessCalculator.calculateWitness(
+      { in: [1n << 26n, 31n, 42n, ...split256BitInteger(MAX_UINT256)] },
+      true,
+    ),
+    "ALU4 invalid byte high-limb test",
+  );
+  console.log("ALU4 invalid byte high-limb test passed");
+
+  await expectWitnessFailure(
+    alu4WitnessCalculator.calculateWitness(
+      { in: [1n << 28n, 1n, 123456789n, ...split256BitInteger(5n)] },
+      true,
+    ),
+    "ALU4 invalid shift high-limb test",
+  );
+  console.log("ALU4 invalid shift high-limb test passed");
 };
 
 main().catch((error) => {

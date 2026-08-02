@@ -17,14 +17,9 @@ const builder = builderModule as (code: Uint8Array, options?: unknown) => Promis
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const SELECTOR_BY_INPUT_LEN: Record<number, bigint> = {
-  2: 1n,
-  3: 2n,
-  4: 4n,
-  5: 8n,
-  6: 16n,
-  7: 32n,
-};
+const frontendConfigPath = path.join(__dirname, "../library/frontendCfg.json");
+const frontendConfig = JSON.parse(readFileSync(frontendConfigPath, "utf8")) as { nPoseidonBatch: number };
+const poseidonBatchSize = frontendConfig.nPoseidonBatch;
 
 const loadWitnessCalculator = async (): Promise<WitnessCalculator> => {
   const subcircuitInfoPath = path.join(__dirname, "../library/subcircuitInfo.json");
@@ -41,7 +36,7 @@ const loadWitnessCalculator = async (): Promise<WitnessCalculator> => {
 const normalizeWitnessValue = (value: WitnessValue): bigint => BigInt(value.toString());
 
 const encodeCircuitInput = (selector: bigint, inVals: bigint[]): bigint[] => {
-  const paddedInputs = inVals.concat(Array.from({ length: 7 - inVals.length }, () => 0n));
+  const paddedInputs = inVals.concat(Array.from({ length: poseidonBatchSize + 1 - inVals.length }, () => 0n));
   return [selector, ...paddedInputs.flatMap((value) => split256BitInteger(value))];
 };
 
@@ -67,19 +62,14 @@ const expectWitnessFailure = async (
 const main = async (): Promise<void> => {
   const witnessCalculator = await loadWitnessCalculator();
 
-  const baseInputs = [
-    (1n << 200n) + 12345n,
-    (1n << 180n) + 67890n,
-    (1n << 160n) + 13579n,
-    (1n << 140n) + 24680n,
-    (1n << 120n) + 11111n,
-    (1n << 100n) + 22222n,
-    (1n << 80n) + 33333n,
-  ];
+  const baseInputs = Array.from(
+    { length: poseidonBatchSize + 1 },
+    (_, index) => (1n << BigInt(80 + index)) + BigInt(index + 1),
+  );
 
-  for (let inputLen = 2; inputLen <= 7; inputLen++) {
+  for (let inputLen = 2; inputLen <= poseidonBatchSize + 1; inputLen++) {
     const inVals = baseInputs.slice(0, inputLen);
-    const selector = SELECTOR_BY_INPUT_LEN[inputLen];
+    const selector = 1n << BigInt(inputLen - 2);
     const encodedInput = encodeCircuitInput(selector, inVals);
     const witness = await witnessCalculator.calculateWitness({ in: encodedInput }, true);
     const expected = expectedHash(inVals);
@@ -92,7 +82,7 @@ const main = async (): Promise<void> => {
 
   await expectWitnessFailure(
     witnessCalculator,
-    encodeCircuitInput(3n, baseInputs.slice(0, 3)),
+    encodeCircuitInput(3n, baseInputs.slice(0, Math.min(3, baseInputs.length))),
   );
   console.log("Poseidon invalid selector test passed");
 };

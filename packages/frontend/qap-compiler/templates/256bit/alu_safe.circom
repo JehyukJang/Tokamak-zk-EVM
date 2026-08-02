@@ -654,12 +654,10 @@ template ALU_basic () {
     CheckBus()(out2);
 }
 
-// Error: in1[2] can't be used as both shifting index and field element
-// ALU2 + ALU3 + ALU5
-template ALU_based_on_div () {
+template ALU_division () {
     var NUM_TOTAL_FUNCTIONS = 29; // number of functions in the ALU
     var NUM_SELECTOR_BITS = NUM_TOTAL_FUNCTIONS + 1;
-    var NUM_ALU_FUNCTIONS = 11;
+    var NUM_ALU_FUNCTIONS = 6;
     // selector is expected to 2^(opcode).
     signal input in1[2], in2[2], in3[2], selector;
     signal output out[2];
@@ -667,7 +665,7 @@ template ALU_based_on_div () {
     // b_selector[Opcode] = 1, b_selector[i] = 0 for all i != Opcode.
     // selector bitification
     signal b_selector[NUM_SELECTOR_BITS] <== Num2Bits(NUM_SELECTOR_BITS)(selector);
-    signal unsupported_selector_sum <== b_selector[0] + b_selector[1] + b_selector[2] + b_selector[3] + b_selector[10] + b_selector[12] + b_selector[13] + b_selector[14] + b_selector[15] + b_selector[16] + b_selector[17] + b_selector[18] + b_selector[19] + b_selector[20] + b_selector[21] + b_selector[22] + b_selector[23] + b_selector[24] + b_selector[25];
+    signal unsupported_selector_sum <== b_selector[0] + b_selector[1] + b_selector[2] + b_selector[3] + b_selector[10] + b_selector[11] + b_selector[12] + b_selector[13] + b_selector[14] + b_selector[15] + b_selector[16] + b_selector[17] + b_selector[18] + b_selector[19] + b_selector[20] + b_selector[21] + b_selector[22] + b_selector[23] + b_selector[24] + b_selector[25] + b_selector[26] + b_selector[27] + b_selector[28] + b_selector[29];
     unsupported_selector_sum === 0;
 
     /* Input range check can be omitted, as each subcircuit will be connected to other subcircuits.
@@ -749,84 +747,7 @@ template ALU_based_on_div () {
     flags[ind] <== b_selector[9];
     ind++;
 
-    // common process for SIGNEXTEND and BYTE
-    // The byte index constraint should only be enforced for BYTE and SIGNEXTEND selectors.
-    signal is_byte_family <== b_selector[11] + b_selector[26];
-    signal safe_byte_minus_one <== is_byte_family * in1[0];
-    signal (SE_exp_shift[2], SE_is_shift_gt_255, BY_exp_shift[2], BY_is_shift_gt_255) <== FindShiftingTwosPower256TwoInput(11, 11)(safe_byte_minus_one * 8 + 8, safe_byte_minus_one * 8);
-
-    // operator 0x0B (11): SIGNEXTEND
-    // in[0] * 8 + 8: bit length
-    component signExtend = _SignExted256_internal();
-    signExtend.masker_plus_one <== SE_exp_shift;
-    signExtend.is_size_gt_255 <== SE_is_shift_gt_255;
-    signExtend.byte_minus_one <== safe_byte_minus_one;
-    signExtend.in <== in2;
-    outs[ind] <== signExtend.out;
-    rems[ind] <== signExtend.rem;
-    divisors[ind] <== signExtend.divisor;
-    flags[ind] <== b_selector[11];
-    ind++;
-
-    // operator 0x1A (26): BYTE
-    component byte_ = _Byte256_internal();
-    byte_.exp_shift <== BY_exp_shift;
-    byte_.is_shift_gt_255 <== BY_is_shift_gt_255;
-    byte_.in <== in2;
-    outs[ind] <== [byte_.out, 0];
-    rems[ind] <== [byte_.rem, 0];
-    divisors[ind] <== [byte_.divisor, 0];
-    flags[ind] <== b_selector[26];
-    ind++;
-
-    // common process for SHL, SHR, SAR
-    // The shift constraint should only be enforced for shift-family selectors.
-    signal is_shift_family <== b_selector[27] + b_selector[28] + b_selector[29];
-    signal safe_shift <== is_shift_family * in1[0];
-    signal is_index_family <== is_byte_family + is_shift_family;
-    in1[1] * is_index_family === 0;
-    signal inv_shift <== 256 - safe_shift;
-    signal (exp_shift[2], is_shift_gt_255, exp_inv_shift[2], is_inv_shift_gt_255) <== FindShiftingTwosPower256TwoInput(8, 8)(safe_shift, inv_shift);
-
-    // operator 0x1B (27): SHL
-    component lshift = Mul256_unsafe();
-    lshift.in1 <== in2;
-    lshift.in2 <== exp_shift;
-    outs[ind] <== lshift.out;
-    signal shl_range_check <== LessEqThan(128)([lshift.out[0], (1<<128) - 1]);
-    shl_range_check === 1;
-    rems[ind] <== lshift.out;
-    divisors[ind] <== [0, 1<<128];
-    flags[ind] <== b_selector[27];
-    ind++;
-
-    // operator 0x1C (28): SHR
-    // in1[0] is assumed to be less than 256. Otherwise, assertion error.
-    component rshift = Div256_unsafe();
-    rshift.in1 <== in2;
-    rshift.in2 <== exp_shift;
-    signal safe_div_exp_shift[2] <== _SafeDivisor()(exp_shift);
-    outs[ind] <== rshift.q;
-    rems[ind] <== rshift.r;
-    divisors[ind] <== safe_div_exp_shift;
-    flags[ind] <== b_selector[28];
-    ind++;
-
-    // operator 0x1D (29): SAR
-    signal (isNeg_in, abs[2]) <== getSignAndAbs256_unsafe()(in2);
-    component sar = _SignedShiftRight256_internal();
-    sar.shift <== safe_shift;
-    sar.shifted_in <== rshift.q;
-    sar.isNeg_in <== isNeg_in;
-    sar.exp_inv_shift <== exp_inv_shift;
-    sar.is_inv_shift_gt_255 <== is_inv_shift_gt_255;
-    outs[ind] <== sar.out;
-    rems[ind] <== rshift.r;
-    divisors[ind] <== divisors[ind - 1];
-    flags[ind] <== b_selector[29];
-    ind++;
-
-    signal flags_sum <== flags[0] + flags[1] + flags[2] + flags[3] + flags[4] + flags[5] + flags[6] + flags[7] + flags[8] + flags[9] + flags[10];
+    signal flags_sum <== flags[0] + flags[1] + flags[2] + flags[3] + flags[4] + flags[5];
     flags_sum === 1;
 
     component mux1 = ComplexMux256_checked(NUM_ALU_FUNCTIONS);
@@ -849,10 +770,114 @@ template ALU_based_on_div () {
     range_check === 1;
 }
 
+template ALU_index () {
+    var NUM_TOTAL_FUNCTIONS = 29;
+    var NUM_SELECTOR_BITS = NUM_TOTAL_FUNCTIONS + 1;
+    var NUM_ALU_FUNCTIONS = 5;
+    signal input in1[2], in2[2], selector;
+    signal output out[2];
+
+    signal b_selector[NUM_SELECTOR_BITS] <== Num2Bits(NUM_SELECTOR_BITS)(selector);
+    signal unsupported_selector_sum <== b_selector[0] + b_selector[1] + b_selector[2] + b_selector[3] + b_selector[4] + b_selector[5] + b_selector[6] + b_selector[7] + b_selector[8] + b_selector[9] + b_selector[10] + b_selector[12] + b_selector[13] + b_selector[14] + b_selector[15] + b_selector[16] + b_selector[17] + b_selector[18] + b_selector[19] + b_selector[20] + b_selector[21] + b_selector[22] + b_selector[23] + b_selector[24] + b_selector[25];
+    unsupported_selector_sum === 0;
+
+    signal outs[NUM_ALU_FUNCTIONS][2];
+    signal rems[NUM_ALU_FUNCTIONS][2];
+    signal divisors[NUM_ALU_FUNCTIONS][2];
+    signal flags[NUM_ALU_FUNCTIONS];
+    var ind = 0;
+
+    signal is_byte_family <== b_selector[11] + b_selector[26];
+    signal safe_byte_minus_one <== is_byte_family * in1[0];
+    signal (SE_exp_shift[2], SE_is_shift_gt_255, BY_exp_shift[2], BY_is_shift_gt_255) <== FindShiftingTwosPower256TwoInput(11, 11)(safe_byte_minus_one * 8 + 8, safe_byte_minus_one * 8);
+
+    component signExtend = _SignExted256_internal();
+    signExtend.masker_plus_one <== SE_exp_shift;
+    signExtend.is_size_gt_255 <== SE_is_shift_gt_255;
+    signExtend.byte_minus_one <== safe_byte_minus_one;
+    signExtend.in <== in2;
+    outs[ind] <== signExtend.out;
+    rems[ind] <== signExtend.rem;
+    divisors[ind] <== signExtend.divisor;
+    flags[ind] <== b_selector[11];
+    ind++;
+
+    component byte_ = _Byte256_internal();
+    byte_.exp_shift <== BY_exp_shift;
+    byte_.is_shift_gt_255 <== BY_is_shift_gt_255;
+    byte_.in <== in2;
+    outs[ind] <== [byte_.out, 0];
+    rems[ind] <== [byte_.rem, 0];
+    divisors[ind] <== [byte_.divisor, 0];
+    flags[ind] <== b_selector[26];
+    ind++;
+
+    signal is_shift_family <== b_selector[27] + b_selector[28] + b_selector[29];
+    signal safe_shift <== is_shift_family * in1[0];
+    in1[1] * (is_byte_family + is_shift_family) === 0;
+    signal inv_shift <== 256 - safe_shift;
+    signal (exp_shift[2], is_shift_gt_255, exp_inv_shift[2], is_inv_shift_gt_255) <== FindShiftingTwosPower256TwoInput(8, 8)(safe_shift, inv_shift);
+
+    component lshift = Mul256_unsafe();
+    lshift.in1 <== in2;
+    lshift.in2 <== exp_shift;
+    outs[ind] <== lshift.out;
+    signal shl_range_check <== LessEqThan(128)([lshift.out[0], (1<<128) - 1]);
+    shl_range_check === 1;
+    rems[ind] <== lshift.out;
+    divisors[ind] <== [0, 1<<128];
+    flags[ind] <== b_selector[27];
+    ind++;
+
+    component rshift = Div256_unsafe();
+    rshift.in1 <== in2;
+    rshift.in2 <== exp_shift;
+    signal safe_div_exp_shift[2] <== _SafeDivisor()(exp_shift);
+    outs[ind] <== rshift.q;
+    rems[ind] <== rshift.r;
+    divisors[ind] <== safe_div_exp_shift;
+    flags[ind] <== b_selector[28];
+    ind++;
+
+    signal (isNeg_in, abs[2]) <== getSignAndAbs256_unsafe()(in2);
+    component sar = _SignedShiftRight256_internal();
+    sar.shift <== safe_shift;
+    sar.shifted_in <== rshift.q;
+    sar.isNeg_in <== isNeg_in;
+    sar.exp_inv_shift <== exp_inv_shift;
+    sar.is_inv_shift_gt_255 <== is_inv_shift_gt_255;
+    outs[ind] <== sar.out;
+    rems[ind] <== rshift.r;
+    divisors[ind] <== safe_div_exp_shift;
+    flags[ind] <== b_selector[29];
+    ind++;
+
+    signal flags_sum <== flags[0] + flags[1] + flags[2] + flags[3] + flags[4];
+    flags_sum === 1;
+
+    component mux1 = ComplexMux256_checked(NUM_ALU_FUNCTIONS);
+    mux1.selector <== flags;
+    mux1.ins <== outs;
+    out <== mux1.out;
+
+    component mux2 = ComplexMux256_checked(NUM_ALU_FUNCTIONS);
+    mux2.selector <== flags;
+    mux2.ins <== rems;
+    signal rem[2] <== mux2.out;
+
+    component mux3 = ComplexMux256_checked(NUM_ALU_FUNCTIONS);
+    mux3.selector <== flags;
+    mux3.ins <== divisors;
+    signal divisor[2] <== mux3.out;
+
+    signal range_check <== LessThan256()(rem, divisor);
+    range_check === 1;
+}
+
 template ALU_bitwise () {
     var NUM_TOTAL_FUNCTIONS = 29; // number of functions over all ALUs
     var NUM_SELECTOR_BITS = NUM_TOTAL_FUNCTIONS + 1;
-    var NUM_ALU_FUNCTIONS = 3; // number of functions in this ALU
+    var NUM_ALU_FUNCTIONS = 4; // number of functions in this ALU
     // selector is expected to 2^(opcode).
     signal input in1[2], in2[2], selector;
     signal output out[2];
@@ -860,7 +885,7 @@ template ALU_bitwise () {
     // b_selector[Opcode] = 1, b_selector[i] = 0 for all i != Opcode.
     // selector bitification
     signal b_selector[NUM_SELECTOR_BITS] <== Num2Bits(NUM_SELECTOR_BITS)(selector);
-    signal unsupported_selector_sum <== b_selector[0] + b_selector[1] + b_selector[2] + b_selector[3] + b_selector[4] + b_selector[5] + b_selector[6] + b_selector[7] + b_selector[8] + b_selector[9] + b_selector[10] + b_selector[11] + b_selector[12] + b_selector[13] + b_selector[14] + b_selector[15] + b_selector[16] + b_selector[17] + b_selector[18] + b_selector[19] + b_selector[20] + b_selector[21] + b_selector[25] + b_selector[26] + b_selector[27] + b_selector[28] + b_selector[29];
+    signal unsupported_selector_sum <== b_selector[0] + b_selector[1] + b_selector[2] + b_selector[3] + b_selector[4] + b_selector[5] + b_selector[6] + b_selector[7] + b_selector[8] + b_selector[9] + b_selector[10] + b_selector[11] + b_selector[12] + b_selector[13] + b_selector[14] + b_selector[15] + b_selector[16] + b_selector[17] + b_selector[18] + b_selector[19] + b_selector[20] + b_selector[21] + b_selector[26] + b_selector[27] + b_selector[28] + b_selector[29];
     unsupported_selector_sum === 0;
 
     /* Input range check can be omitted, as each subcircuit will be connected to other subcircuits.
@@ -934,7 +959,16 @@ template ALU_bitwise () {
     flags[ind] <== b_selector[24];
     ind++;
 
-    component mux = ComplexMux256_unsafe(NUM_ALU_FUNCTIONS);
+    component not = Not256_unsafe();
+    not.in <== in1;
+    outs[ind] <== not.out;
+    flags[ind] <== b_selector[25];
+    ind++;
+
+    signal flags_sum <== flags[0] + flags[1] + flags[2] + flags[3];
+    flags_sum === 1;
+
+    component mux = ComplexMux256_checked(NUM_ALU_FUNCTIONS);
     mux.selector <== flags;
     mux.ins <== outs;
     out <== mux.out;

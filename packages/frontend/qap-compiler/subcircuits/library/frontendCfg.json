@@ -1,12 +1,16 @@
 {
-  "nPubOut": 65,
-  "nPubIn": 20,
-  "nEVMIn": 600,
-  "nPrvIn": 1060,
+  "nTxIn": 3,
+  "nStorageLoad": 15,
+  "nLogOut": 15,
+  "nStorageStore": 10,
+  "nEVMIn": 210,
+  "nPrvIn": 40,
   "nPoseidonInputs": 2,
+  "nPoseidonBatch": 3,
   "nMtDepth": 36,
   "nAccumulation": 32,
   "nPrevBlockHashes": 4,
-  "nJubjubExpBatch": 128,
-  "nSubExpBatch": 32
+  "nJubjubExpBatch": 75,
+  "nSubExpBatch": 16,
+  "nEqualBatch": 2
 }

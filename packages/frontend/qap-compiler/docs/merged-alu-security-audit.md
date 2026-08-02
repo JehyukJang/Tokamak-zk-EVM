@@ -12,28 +12,35 @@ This report now has two layers:
 The fresh compile-target review was performed from code and witness behavior without using the older findings in this document as the source of truth. The older merged-ALU findings are preserved here for historical continuity, but the current-status notes have been updated to match the repository state.
 
 The original scope was the merged arithmetic circuits introduced by the two-circuit ALU consolidation.
+
 - Audited wrappers:
   - [subcircuits/circom/ALU1_circuit.circom](../subcircuits/circom/ALU1_circuit.circom)
   - [subcircuits/circom/ALU2_circuit.circom](../subcircuits/circom/ALU2_circuit.circom)
+  - [subcircuits/circom/ALU3_circuit.circom](../subcircuits/circom/ALU3_circuit.circom)
+  - [subcircuits/circom/ALU4_circuit.circom](../subcircuits/circom/ALU4_circuit.circom)
 
 The comparison baseline is the pre-merge implementation from the parent of commit `9b5b616b`, which used separate `ALU1` through `ALU5` wrappers and standalone `AND`, `OR`, and `XOR` circuits.
 
 The added compile-target review scope is the full set of circuits currently built by [scripts/compile.sh](../scripts/compile.sh):
 
-- `bufferPubOut`
-- `bufferPubIn`
+- `bufferLogOut`
+- `bufferStorageStore`
+- `bufferStorageLoad`
+- `bufferTxIn`
 - `bufferBlockIn`
 - `bufferEVMIn`
 - `bufferPrvIn`
 - `ALU1`
 - `ALU2`
+- `ALU3`
+- `ALU4`
 - `DecToBit`
 - `SubExpBatch`
 - `Accumulator`
 - `Poseidon`
 - `JubjubExpBatch`
 - `EdDsaVerify`
-- `VerifyMerkleProof`
+- `EqualBatch`
 
 The goal of the combined document is to preserve the merged-ALU audit history while also recording the current security posture of the compiled circuit library.
 
@@ -165,14 +172,13 @@ This is the most important regression identified in the audit.
 
 This issue is now fixed in the merged path.
 
-The current compiled `ALU2` path now gates the high limb of `in1` for the byte and shift families:
+The current compiled `ALU4` path now gates the high limb of `in1` for the byte and shift families:
 
-- `is_index_family <== is_byte_family + is_shift_family`
-- `in1[1] * is_index_family === 0`
+- `in1[1] * (is_byte_family + is_shift_family) === 0`
 
 Relevant implementation:
 
-- [`subcircuits/circom/ALU2_circuit.circom`](../subcircuits/circom/ALU2_circuit.circom)
+- [`subcircuits/circom/ALU4_circuit.circom`](../subcircuits/circom/ALU4_circuit.circom)
 - [`templates/256bit/alu_safe.circom`](../templates/256bit/alu_safe.circom)
 
 This restores the missing canonicalization constraint for `SIGNEXTEND`, `BYTE`, `SHL`, `SHR`, and `SAR` in the merged ALU path.
@@ -216,9 +222,11 @@ The current `ALU1` wrapper constrains the full selector weight to exactly one af
 
 - [`subcircuits/circom/ALU1_circuit.circom`](../subcircuits/circom/ALU1_circuit.circom)
 
-The current merged division-based compiled path also enforces the same selector-weight rule:
+The current `ALU2`, `ALU3`, and `ALU4` compiled paths also enforce the same selector-weight rule:
 
 - [`subcircuits/circom/ALU2_circuit.circom`](../subcircuits/circom/ALU2_circuit.circom)
+- [`subcircuits/circom/ALU3_circuit.circom`](../subcircuits/circom/ALU3_circuit.circom)
+- [`subcircuits/circom/ALU4_circuit.circom`](../subcircuits/circom/ALU4_circuit.circom)
 - [`templates/256bit/alu_safe.circom`](../templates/256bit/alu_safe.circom)
 
 This resolves the original merged-wrapper selector issue for the current compiled ALU targets.
@@ -234,19 +242,23 @@ At audit time, the merged compiled ALU wrappers still relied on external wiring 
 - If upstream circuits always constrain each limb to 128 bits, the design is consistent.
 - If that assumption is violated anywhere, several `unsafe` arithmetic templates can be fed malformed non-canonical limbs.
 
-This was a residual security dependency, not a newly introduced bug. The current repository state hardens the merged `ALU1` and `ALU2` wrappers with direct input-bound enforcement.
+This was a residual security dependency, not a newly introduced bug. The current repository state hardens all four compiled ALU wrappers with direct input-bound enforcement.
 
 #### Current status revalidation
 
 This concern is now resolved for the merged wrappers reviewed in this report:
 
-- The current `ALU2` wrapper applies `CheckBus()` directly to `in1`, `in2`, and `in3`.
-- The current `ALU1` wrapper bit-decomposes every input limb with `Num2Bits(128)`, which also enforces the 128-bit limb bound.
+- The current `ALU1` wrapper applies `CheckBus()` directly to `in1` and `in2`.
+- The current `ALU2` wrapper bit-decomposes every input limb with `Num2Bits(128)`, which also enforces the 128-bit limb bound.
+- The current `ALU3` wrapper applies `CheckBus()` directly to `in1`, `in2`, and `in3`.
+- The current `ALU4` wrapper applies `CheckBus()` directly to `in1` and `in2`.
 
 Relevant code:
 
 - [`subcircuits/circom/ALU1_circuit.circom`](../subcircuits/circom/ALU1_circuit.circom)
 - [`subcircuits/circom/ALU2_circuit.circom`](../subcircuits/circom/ALU2_circuit.circom)
+- [`subcircuits/circom/ALU3_circuit.circom`](../subcircuits/circom/ALU3_circuit.circom)
+- [`subcircuits/circom/ALU4_circuit.circom`](../subcircuits/circom/ALU4_circuit.circom)
 
 The underlying implementation still relies on correct callers in some helper paths, but the merged wrappers covered by this document no longer expose the original bus-canonicalization gap.
 
@@ -280,7 +292,7 @@ This was a live soundness issue in the compiled merged `ALU2` path.
 
 #### Current status revalidation
 
-This issue is now fixed in the compiled `ALU2` division path.
+This issue is now fixed in the compiled `ALU3` division path.
 
 The current implementation explicitly constrains each quotient limb to zero when `is_zero_denom == 1`:
 
@@ -291,7 +303,7 @@ Relevant code:
 
 - [`templates/256bit/arithmetic_unsafe_type2.circom`](../templates/256bit/arithmetic_unsafe_type2.circom)
 
-Focused witness-generation checks against the current `ALU2` build show that `DIV` by zero now yields output `(0, 0)`.
+Focused witness-generation checks against the current `ALU3` build show that `DIV` by zero now yields output `(0, 0)`.
 
 ### Finding 5: The compiled `ALU2` path for `SHR` and `SAR` admitted unconstrained outputs when `shift >= 256`
 
@@ -318,7 +330,7 @@ This was a live semantic and soundness issue in the compiled merged `ALU2` path.
 
 This finding is resolved as originally stated because the unconstrained-output path is no longer available.
 
-Focused witness-generation checks against the current `ALU2` build show:
+Focused witness-generation checks against the current `ALU4` build show:
 
 - `SHR` with `shift = 256` yields `(0, 0)`
 - `SAR` with `shift = 256` yields `(0, 0)` for non-negative input
@@ -340,7 +352,7 @@ An earlier follow-up note recorded selector-canonicalization gaps in helper ALU 
 - `ALU_basic`
 - `ALU_bitwise`
 
-Those helper circuits are not part of the current `scripts/compile.sh` target set and therefore are not part of the live compile-target review in this document.
+Those legacy helper templates are not instantiated by the current `ALU1` through `ALU4` wrappers. The current `ALU3` and `ALU4` wrapper names are reused for the new division/modular and byte/shift groups, not the legacy helper implementations.
 
 The current compiled targets covered by this document do not expose that issue.
 
@@ -367,14 +379,13 @@ At the compile-target level, the affected wrappers are:
 - [`subcircuits/circom/Poseidon_circuit.circom`](../subcircuits/circom/Poseidon_circuit.circom)
 - [`subcircuits/circom/JubjubExpBatch_circuit.circom`](../subcircuits/circom/JubjubExpBatch_circuit.circom)
 - [`subcircuits/circom/EdDsaVerify_circuit.circom`](../subcircuits/circom/EdDsaVerify_circuit.circom)
-- [`subcircuits/circom/VerifyMerkleProof_circuit.circom`](../subcircuits/circom/VerifyMerkleProof_circuit.circom)
 
-Those wrappers pass split limbs into 255-bit Poseidon, Merkle, and Jubjub logic without adding local `< Fr` or canonical-encoding checks at the wrapper boundary.
+Those wrappers pass split limbs into 255-bit Poseidon and Jubjub logic without adding local `< Fr` or canonical-encoding checks at the wrapper boundary.
 
 Security impact:
 
 - if a final composed circuit exposes such split-limb values as statement-bearing boundary data without canonicalization, different encodings congruent modulo the field can collapse to the same internal field value
-- that ambiguity can matter for Poseidon inputs, Merkle-path values, or Jubjub coordinates if the surrounding system expects unique split-limb binding
+- that ambiguity can matter for Poseidon inputs or Jubjub coordinates if the surrounding system expects unique split-limb binding
 
 This issue was identified during the broader follow-up review and was not part of the original merged-ALU audit scope.
 
@@ -597,7 +608,7 @@ The arithmetic inside the merged implementation was preserved, but the pre-merge
 
 ## Additional Notes
 
-The merged bitwise implementation is not weaker than the old standalone `AND`, `OR`, and `XOR` circuits. The merged `ALU1` explicitly decomposes both input limbs with `Num2Bits(128)` and reconstructs outputs with `Bits2Num`, which is at least as strong as the previous standalone design.
+The split `ALU2` bitwise implementation is not weaker than the old standalone `AND`, `OR`, and `XOR` circuits. It explicitly decomposes both input limbs with `Num2Bits(128)` and reconstructs outputs with `Bits2Num`, which is at least as strong as the previous standalone design.
 
 No evidence was found that the merge removed the remainder checks for:
 

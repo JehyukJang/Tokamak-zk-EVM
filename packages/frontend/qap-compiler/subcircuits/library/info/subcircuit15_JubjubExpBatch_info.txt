@@ -1,0 +1,12 @@
+[32mtemplate instances[0m: 6
+non-linear constraints: 1875
+linear constraints: 158
+public inputs: 0
+private inputs: 83
+public outputs: 8
+wires: 2046
+labels: 3744
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/JubjubExpBatch_circuit.r1cs
+[32mConstraints written in:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/JubjubExpBatch_circuit_constraints.json
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/JubjubExpBatch_circuit_js/JubjubExpBatch_circuit.wasm
+[32mEverything went okay[0m

@@ -8,6 +8,7 @@ export const REQUIRED_CIRCOM_KEYS = [
   'nPrvIn',
   'nEVMIn',
   'nPoseidonInputs',
+  'nPoseidonBatch',
   'nMtDepth',
   'nAccumulation',
   'nPrevBlockHashes',

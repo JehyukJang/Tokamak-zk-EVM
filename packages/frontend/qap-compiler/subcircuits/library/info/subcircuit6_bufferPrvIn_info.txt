@@ -1,0 +1,12 @@
+[32mtemplate instances[0m: 1
+non-linear constraints: 80
+linear constraints: 80
+public inputs: 80
+private inputs: 0
+public outputs: 80
+wires: 161
+labels: 161
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/bufferPrvIn_circuit.r1cs
+[32mConstraints written in:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/bufferPrvIn_circuit_constraints.json
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/bufferPrvIn_circuit_js/bufferPrvIn_circuit.wasm
+[32mEverything went okay[0m
