@@ -1,11 +1,11 @@
 [32mtemplate instances[0m: 72
-non-linear constraints: 732
-linear constraints: 1167
+non-linear constraints: 244
+linear constraints: 389
 public inputs: 0
-private inputs: 9
+private inputs: 5
 public outputs: 2
-wires: 1911
-labels: 3352
+wires: 639
+labels: 1128
 [32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/Poseidon_circuit.r1cs
 [32mConstraints written in:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/Poseidon_circuit_constraints.json
 [32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/Poseidon_circuit_js/Poseidon_circuit.wasm

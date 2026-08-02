@@ -1,11 +1,11 @@
 [32mtemplate instances[0m: 7
-non-linear constraints: 656
-linear constraints: 1312
+non-linear constraints: 328
+linear constraints: 656
 public inputs: 0
-private inputs: 20
+private inputs: 12
 public outputs: 4
-wires: 2549
-labels: 4405
+wires: 1277
+labels: 2213
 [32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/SubExpBatch_circuit.r1cs
 [32mConstraints written in:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/SubExpBatch_circuit_constraints.json
 [32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/SubExpBatch_circuit_js/SubExpBatch_circuit.wasm
