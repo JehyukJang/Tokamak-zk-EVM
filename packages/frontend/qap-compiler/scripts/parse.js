@@ -1,7 +1,9 @@
 //const {opcodeDictionary} = require('./opcode.js')
 const {S_MAX} = require('./configure.js')
 const {LIST_PUBLIC} = require('./configure.js')
+const {PUBLIC_WIRE_SEGMENTS} = require('./configure.js')
 const listPublic = LIST_PUBLIC
+const publicWireSegments = PUBLIC_WIRE_SEGMENTS
 
 const fs = require('fs')
 const path = require('path')
@@ -34,6 +36,38 @@ function _buildWireFlattenMap(globalWireList, subcircuitInfos, globalWireIndex, 
     subcircuitId,
     subcircuitWireId,
   ]
+}
+
+function _getPublicWireRange(targetSubcircuit, type) {
+  if (type === 'outUser') {
+    return [targetSubcircuit.outWireIndex, targetSubcircuit.NOutWires]
+  }
+  if (type === 'inUser' || type === 'inBlock' || type === 'inFunction') {
+    return [targetSubcircuit.inWireIndex, targetSubcircuit.NInWires]
+  }
+  throw new Error(`parseWireList: Unsupported public wire type '${type}'.`)
+}
+
+function _appendPublicWireSegment(globalWireList, subcircuitInfos, globalWireIndex, targetSubcircuit, type) {
+  const [localWireIndex, numWires] = _getPublicWireRange(targetSubcircuit, type)
+  let ind = globalWireIndex
+  for (let i = 0; i < numWires; i++) {
+    _buildWireFlattenMap(
+      globalWireList,
+      subcircuitInfos,
+      ind++,
+      targetSubcircuit.id,
+      localWireIndex + i,
+    )
+  }
+  return ind
+}
+
+function _recordPublicWireBoundary(boundaries, boundary, globalWireIndex) {
+  if (boundaries[boundary] !== undefined) {
+    throw new Error(`parseWireList: Duplicate public wire boundary '${boundary}'.`)
+  }
+  boundaries[boundary] = globalWireIndex
 }
 
 function parseWireList(subcircuitInfos) {
@@ -79,6 +113,10 @@ function parseWireList(subcircuitInfos) {
       numInterfaceWires += 1 // + 1 is for the constance wire
     }
 
+    if (subcircuitInfoByName.has(subcircuit.name)) {
+      throw new Error(`parseWireList: Duplicate subcircuit name '${subcircuit.name}'.`)
+    }
+
     const entryObject = {
       id: subcircuit.id,
       NWires: subcircuit.Nwires,
@@ -88,6 +126,23 @@ function parseWireList(subcircuitInfos) {
       outWireIndex: subcircuit.Out_idx[0],
     }
     subcircuitInfoByName.set(subcircuit.name, entryObject)
+  }
+
+  const configuredPublicNames = new Set()
+  for (const { name, type, boundary } of publicWireSegments) {
+    if (configuredPublicNames.has(name)) {
+      throw new Error(`parseWireList: Duplicate configured public subcircuit '${name}'.`)
+    }
+    configuredPublicNames.add(name)
+    if (listPublic.get(name) !== type) {
+      throw new Error(`parseWireList: Public wire segment type mismatch for '${name}'.`)
+    }
+    if (!subcircuitInfoByName.has(name)) {
+      throw new Error(`parseWireList: Missing configured public subcircuit '${name}'.`)
+    }
+    if (typeof boundary !== 'string' || boundary.length === 0) {
+      throw new Error(`parseWireList: Missing public wire boundary for '${name}'.`)
+    }
   }
 
   const l_user_out = numPubUserOutWires
@@ -126,40 +181,35 @@ function parseWireList(subcircuitInfos) {
   console.log(`m_I: ${l_D - l}`)
 
   const globalWireList = []
+  const publicWireBoundaries = {}
 
   // Processing free public wires
   let ind = 0  
-  for ( const subcircuitName of subcircuitInfoByName.keys() ){
-    const targetSubcircuit = subcircuitInfoByName.get(subcircuitName)
-    if (listPublic.has(subcircuitName)) {
-      if (listPublic.get(subcircuitName) === 'outUser') {
-        const _numInterestWires = targetSubcircuit.NOutWires
-        for (let i = 0; i < _numInterestWires; i++) {
-          _buildWireFlattenMap(
-            globalWireList,
-            subcircuitInfos,
-            ind++,
-            targetSubcircuit.id,
-            targetSubcircuit.outWireIndex + i,
-          )
-        }
-      } else if (listPublic.get(subcircuitName) === 'inUser' || listPublic.get(subcircuitName) === 'inBlock') {
-        const _numInterestWires = targetSubcircuit.NInWires
-        for (let i = 0; i < _numInterestWires; i++) {
-          _buildWireFlattenMap(
-            globalWireList,
-            subcircuitInfos,
-            ind++,
-            targetSubcircuit.id,
-            targetSubcircuit.inWireIndex + i,
-          )
-        }
-      }
-    }   
+  for (const { name, type, boundary } of publicWireSegments) {
+    if (type === 'inFunction') {
+      continue
+    }
+    ind = _appendPublicWireSegment(
+      globalWireList,
+      subcircuitInfos,
+      ind,
+      subcircuitInfoByName.get(name),
+      type,
+    )
+    _recordPublicWireBoundary(publicWireBoundaries, boundary, ind)
   }
 
   if (ind !== l_free_actual) {
     throw new Error(`parseWireList: Error during flattening public wires: ind = ${ind}, l_free_actual = ${l_free_actual}`)
+  }
+  if (publicWireBoundaries.l_storage_out !== l_user_out) {
+    throw new Error(`parseWireList: l_storage_out must equal l_user_out.`)
+  }
+  if (publicWireBoundaries.l_storage_in !== l_user) {
+    throw new Error(`parseWireList: l_storage_in must equal l_user.`)
+  }
+  if (publicWireBoundaries.l_block_in !== l_free_actual) {
+    throw new Error(`parseWireList: l_block_in must equal the unpadded free-public boundary.`)
   }
 
   for (let i = 0; i < numDiff_l_free; i++) {
@@ -177,26 +227,25 @@ function parseWireList(subcircuitInfos) {
   }
 
   // Processing fixed public wires
-  for ( const subcircuitName of subcircuitInfoByName.keys() ){
-    const targetSubcircuit = subcircuitInfoByName.get(subcircuitName)
-    if (listPublic.has(subcircuitName)) {
-      if (listPublic.get(subcircuitName) === 'inFunction' ) {
-        const _numInterestWires = targetSubcircuit.NInWires
-        for (let i = 0; i < _numInterestWires; i++) {
-          _buildWireFlattenMap(
-            globalWireList,
-            subcircuitInfos,
-            ind++,
-            targetSubcircuit.id,
-            targetSubcircuit.inWireIndex + i,
-          )
-        }
-      }
-    }   
+  for (const { name, type, boundary } of publicWireSegments) {
+    if (type !== 'inFunction') {
+      continue
+    }
+    ind = _appendPublicWireSegment(
+      globalWireList,
+      subcircuitInfos,
+      ind,
+      subcircuitInfoByName.get(name),
+      type,
+    )
+    _recordPublicWireBoundary(publicWireBoundaries, boundary, ind)
   }
 
   if (ind !== l) {
     throw new Error(`parseWireList: Error during flattening public wires: ind = ${ind}, l_free = ${l_free}`)
+  }
+  if (publicWireBoundaries.l_evm_in !== l) {
+    throw new Error(`parseWireList: l_evm_in must equal l.`)
   }
 
   // Processing internal interface wires
@@ -299,6 +348,7 @@ function parseWireList(subcircuitInfos) {
   }
 
   return {
+    ...publicWireBoundaries,
     l_user_out,
     l_user,
     l_free,
@@ -398,6 +448,12 @@ fs.readFile(compilerOutputPath, 'utf8', function(err, data) {
   }
 
   const setupParams = {
+    l_log_out: globalWireInfo.l_log_out,
+    l_storage_out: globalWireInfo.l_storage_out,
+    l_tx_in: globalWireInfo.l_tx_in,
+    l_storage_in: globalWireInfo.l_storage_in,
+    l_block_in: globalWireInfo.l_block_in,
+    l_evm_in: globalWireInfo.l_evm_in,
     l_free: globalWireInfo.l_free,
     l_user_out: globalWireInfo.l_user_out,
     l_user: globalWireInfo.l_user,

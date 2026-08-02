@@ -1,11 +1,17 @@
 module.exports.S_MAX = 256
 
-const listPublic = new Map()
-listPublic.set('bufferLogOut', 'outUser')
-listPublic.set('bufferStorageOut', 'outUser')
-listPublic.set('bufferTxIn', 'inUser')
-listPublic.set('bufferStorageIn', 'inUser')
-listPublic.set('bufferBlockIn', 'inBlock')
-listPublic.set('bufferEVMIn', 'inFunction')
+const publicWireSegments = [
+  { name: 'bufferLogOut', type: 'outUser', boundary: 'l_log_out' },
+  { name: 'bufferStorageOut', type: 'outUser', boundary: 'l_storage_out' },
+  { name: 'bufferTxIn', type: 'inUser', boundary: 'l_tx_in' },
+  { name: 'bufferStorageIn', type: 'inUser', boundary: 'l_storage_in' },
+  { name: 'bufferBlockIn', type: 'inBlock', boundary: 'l_block_in' },
+  { name: 'bufferEVMIn', type: 'inFunction', boundary: 'l_evm_in' },
+]
+
+const listPublic = new Map(
+  publicWireSegments.map(({ name, type }) => [name, type]),
+)
 
 module.exports.LIST_PUBLIC = listPublic
+module.exports.PUBLIC_WIRE_SEGMENTS = publicWireSegments

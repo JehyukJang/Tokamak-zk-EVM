@@ -21,8 +21,16 @@ The format is based on Keep a Changelog.
   256-bit words. The capacities are 3 words for `bufferTxIn`, 48 provisional
   words for `bufferStorageIn`, 32 provisional words for `bufferLogOut`, and
   48 provisional words for `bufferStorageOut`.
+- Added cumulative `setupParams` boundaries for every public buffer. Public
+  wires are now grouped by their configured segment order instead of relying
+  on the subcircuit compilation order.
 - This circuit-set change requires regenerated subcircuit-library artifacts
   and a compatible backend CRS before it can be used for proving.
+
+### Native Backend
+
+- Added the per-buffer public-wire boundaries to the native `SetupParams`
+  schema.
 
 ### Synthesizer
 

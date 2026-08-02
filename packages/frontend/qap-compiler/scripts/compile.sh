@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Output buffers must precede input buffers in the circuit list.
+# parse.js determines public wire segment order independently of this list.
 
 set -euo pipefail
 
