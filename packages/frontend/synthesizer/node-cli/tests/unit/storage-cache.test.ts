@@ -35,10 +35,24 @@ const equalBatchInfo = {
   flattenMap: [],
 };
 
+const logOutInfo = {
+  id: 0,
+  name: 'bufferLogOut' as const,
+  NWires: 129,
+  NInWires: 64,
+  NOutWires: 64,
+  inWireIndex: 65,
+  outWireIndex: 1,
+  flattenMap: [],
+};
+
 const createState = (): StateManager => {
   const parent = {
     subcircuitLibrary: {
-      subcircuitInfoByName: new Map([['EqualBatch', equalBatchInfo]]),
+      subcircuitInfoByName: new Map([
+        ['bufferLogOut', logOutInfo],
+        ['EqualBatch', equalBatchInfo],
+      ]),
     },
   } as any;
   return new StateManager(parent);
@@ -110,6 +124,49 @@ describe('StateManager storage tracking', () => {
       entry.canonicalKeyPt.value,
       entry.latestValuePt.value,
     ])).toEqual([[4n, 5n, 6n]]);
+  });
+
+  it('coordinates nested storage-cache and LOG_OUT frame rollback', () => {
+    const state = createState();
+    const baseEntry: StorageCacheEntry = {
+      canonicalAddressPt: dataPt(1n, 1),
+      canonicalKeyPt: dataPt(2n, 2),
+      latestValuePt: dataPt(3n, 3),
+      dirty: false,
+    };
+    state.place('bufferLogOut', [], [], 'test LOG_OUT');
+    state.storageCache.set(1n, 2n, baseEntry);
+
+    state.beginFrame(0);
+    state.storageCache.set(1n, 2n, {
+      ...baseEntry,
+      latestValuePt: dataPt(4n, 4),
+      dirty: true,
+    });
+    state.addWirePairToBufferIn(dataPt(10n, 10), dataPt(10n, 0, 0), true);
+
+    state.beginFrame(1);
+    state.storageCache.set(1n, 2n, {
+      ...baseEntry,
+      latestValuePt: dataPt(5n, 5),
+      dirty: true,
+    });
+    state.addWirePairToBufferIn(dataPt(11n, 11), dataPt(11n, 0, 1), true);
+
+    state.completeFrame(1, true);
+    expect(state.placements[0]).toMatchObject({
+      inPts: [{ value: 10n }, { value: 11n }],
+      outPts: [{ value: 10n }, { value: 11n }],
+    });
+    expect(state.storageCache.get(1n, 2n)?.latestValuePt.value).toBe(5n);
+
+    state.completeFrame(0, false);
+    expect(state.placements).toHaveLength(1);
+    expect(state.placements[0]).toMatchObject({ inPts: [], outPts: [] });
+    expect(state.storageCache.get(1n, 2n)).toMatchObject({
+      latestValuePt: { value: 3n },
+      dirty: false,
+    });
   });
 
   it('restores only the storage cache and retains initial SLOAD records on frame failure', () => {

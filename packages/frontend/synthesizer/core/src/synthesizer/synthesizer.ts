@@ -142,7 +142,7 @@ export class Synthesizer implements SynthesizerInterface
           }
           await this._applySynthesizerHandler(stepData);
           this._returnMessageCall(stepData.depth);
-          this.state.storageCache.completeFrame(
+          this.state.completeFrame(
             stepData.depth,
             data.execResult.exceptionError === undefined,
           )
@@ -158,8 +158,7 @@ export class Synthesizer implements SynthesizerInterface
   }
 
   private async _prepareSynthesizeTransaction(): Promise<void> {
-    this.state.storageCache.reset()
-    this.state.initialStorageReads.reset()
+    this.state.resetTransactionTracking()
     this.state.cachedOrigin = this._instructionHandlers.getOriginAddressPt();
   }
 
@@ -295,7 +294,7 @@ export class Synthesizer implements SynthesizerInterface
       codeAddressPt,
       storageAddressPt,
     };
-    this.state.storageCache.beginFrame(depth)
+    this.state.beginFrame(depth)
     this.state.contextByDepth[depth] = new ContextManager(contextData);
   }
 
