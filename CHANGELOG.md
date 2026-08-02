@@ -41,6 +41,8 @@ The format is based on Keep a Changelog.
   committed storage-write output through `STORAGE_STORE`.
 - Enabled the existing REVERT system-flow handler so failed frames reach the
   coordinated storage-cache and committed-log rollback path.
+- Changed every unsuccessful top-level transaction result, including REVERT
+  and exceptional halts, to fail synthesis with the original EVM error.
 
 ### Bug Fixes
 

@@ -88,9 +88,10 @@ describe('Synthesizer VM lifecycle', () => {
       ['SSTORE_VALUE', valuePt, true],
     ]);
     addStorageOutput.mockClear();
-    vmModule.runTx.mockResolvedValue({ execResult: { exceptionError: new Error('revert') } });
+    const revertError = new Error('revert');
+    vmModule.runTx.mockResolvedValue({ execResult: { exceptionError: revertError } });
 
-    await synthesizer.synthesizeTX();
+    await expect(synthesizer.synthesizeTX()).rejects.toBe(revertError);
 
     expect(addStorageOutput).not.toHaveBeenCalled();
   });

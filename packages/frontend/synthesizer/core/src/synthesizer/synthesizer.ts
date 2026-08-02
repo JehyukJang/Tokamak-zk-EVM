@@ -357,9 +357,10 @@ export class Synthesizer implements SynthesizerInterface
     if (this._hasEventHandlerError) {
       throw this._eventHandlerError
     }
-    if (result.execResult.exceptionError === undefined) {
-      this._finalizeStorageStore()
+    if (result.execResult.exceptionError !== undefined) {
+      throw result.execResult.exceptionError
     }
+    this._finalizeStorageStore()
     return result
   }
 
