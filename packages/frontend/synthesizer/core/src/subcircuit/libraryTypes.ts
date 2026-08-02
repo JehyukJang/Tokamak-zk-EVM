@@ -12,6 +12,8 @@ import type {
 
 // Single source of truth for SetupParams keys
 export const SETUP_PARAMS_KEYS = [
+  'l_log_out', 'l_storage_out', 'l_tx_in', 'l_storage_in',
+  'l_block_in', 'l_evm_in',
   'l_free', 'l_user_out', 'l_user', 'l',
   'l_D', 'm_D', 'n', 's_D', 's_max',
 ] as const;
@@ -50,8 +52,10 @@ export type SubcircuitInfo = SubcircuitInfoItem[];
 
 // Required Circom constants (qap-compiler/scripts/constants.circom)
 export const REQUIRED_CIRCOM_KEYS = [
-  'nPubIn',
-  'nPubOut',
+  'nTxIn',
+  'nStorageIn',
+  'nLogOut',
+  'nStorageOut',
   'nPrvIn',
   'nEVMIn',
   'nPoseidonInputs',
@@ -60,6 +64,7 @@ export const REQUIRED_CIRCOM_KEYS = [
   'nPrevBlockHashes',
   'nJubjubExpBatch',
   'nSubExpBatch',
+  'nEqualBatch',
 ] as const;
 export type CircomKey = typeof REQUIRED_CIRCOM_KEYS[number];
 

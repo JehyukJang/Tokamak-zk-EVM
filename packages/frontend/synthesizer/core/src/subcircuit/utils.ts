@@ -38,6 +38,12 @@ export function parseSetupParams(value: unknown): SetupParams {
   }
 
   return {
+    l_log_out: getRequiredNumber(value, 'l_log_out'),
+    l_storage_out: getRequiredNumber(value, 'l_storage_out'),
+    l_tx_in: getRequiredNumber(value, 'l_tx_in'),
+    l_storage_in: getRequiredNumber(value, 'l_storage_in'),
+    l_block_in: getRequiredNumber(value, 'l_block_in'),
+    l_evm_in: getRequiredNumber(value, 'l_evm_in'),
     l_free: getRequiredNumber(value, 'l_free'),
     l_user_out: getRequiredNumber(value, 'l_user_out'),
     l_user: getRequiredNumber(value, 'l_user'),
@@ -74,8 +80,10 @@ export function parseFrontendConfig(value: unknown): FrontendConfig {
   }
 
   return {
-    nPubIn: getRequiredNumber(value, 'nPubIn'),
-    nPubOut: getRequiredNumber(value, 'nPubOut'),
+    nTxIn: getRequiredNumber(value, 'nTxIn'),
+    nStorageIn: getRequiredNumber(value, 'nStorageIn'),
+    nLogOut: getRequiredNumber(value, 'nLogOut'),
+    nStorageOut: getRequiredNumber(value, 'nStorageOut'),
     nPrvIn: getRequiredNumber(value, 'nPrvIn'),
     nEVMIn: getRequiredNumber(value, 'nEVMIn'),
     nPoseidonInputs: getRequiredNumber(value, 'nPoseidonInputs'),
@@ -84,6 +92,7 @@ export function parseFrontendConfig(value: unknown): FrontendConfig {
     nPrevBlockHashes: getRequiredNumber(value, 'nPrevBlockHashes'),
     nJubjubExpBatch: getRequiredNumber(value, 'nJubjubExpBatch'),
     nSubExpBatch: getRequiredNumber(value, 'nSubExpBatch'),
+    nEqualBatch: getRequiredNumber(value, 'nEqualBatch'),
   };
 }
 
