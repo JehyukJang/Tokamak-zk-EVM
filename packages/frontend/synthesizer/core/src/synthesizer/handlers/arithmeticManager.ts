@@ -7,9 +7,16 @@ import { ArithmeticOperations } from '../dataStructure/arithmeticOperations.ts';
 import { POSEIDON_INPUTS } from 'tokamak-l2js';
 
 export class ArithmeticManager {
+  private readonly poseidonBatchSize: number
+
   constructor(
     private parent: ISynthesizerProvider
   ) {
+    const poseidonBatchSize = this.parent.subcircuitLibrary.poseidonBatchSize
+    if (!Number.isInteger(poseidonBatchSize) || poseidonBatchSize < 1 || poseidonBatchSize > 128) {
+      throw new Error('Synthesizer: nPoseidonBatch must be an integer between 1 and 128')
+    }
+    this.poseidonBatchSize = poseidonBatchSize
     ArithmeticOperations.configure({
       arithExpBatchSize: this.parent.subcircuitLibrary.arithExpBatchSize,
       jubjubExpBatchSize: this.parent.subcircuitLibrary.jubjubExpBatchSize,
@@ -34,38 +41,10 @@ export class ArithmeticManager {
         sourceBitSize = 1
         break
       case 'Poseidon':
-        if (inPts.length !== POSEIDON_INPUTS) {
-          throw new Error(`Use 'placePoseidon' function for variable input length, instead.`)
-        }
-        sourceBitSize = 255
-        break
-      case 'Poseidon2x':
-        if (inPts.length !== POSEIDON_INPUTS + 1) {
-          throw new Error(`Use 'placePoseidon' function for variable input length, instead.`)
-        }
-        sourceBitSize = 255
-        break
-      case 'Poseidon3x':
-        if (inPts.length !== POSEIDON_INPUTS + 2) {
-          throw new Error(`Use 'placePoseidon' function for variable input length, instead.`)
-        }
-        sourceBitSize = 255
-        break
-      case 'Poseidon4x':
-        if (inPts.length !== POSEIDON_INPUTS + 3) {
-          throw new Error(`Use 'placePoseidon' function for variable input length, instead.`)
-        }
-        sourceBitSize = 255
-        break
-      case 'Poseidon5x':
-        if (inPts.length !== POSEIDON_INPUTS + 4) {
-          throw new Error(`Use 'placePoseidon' function for variable input length, instead.`)
-        }
-        sourceBitSize = 255
-        break
-      case 'Poseidon6x':
-        if (inPts.length !== POSEIDON_INPUTS + 5) {
-          throw new Error(`Use 'placePoseidon' function for variable input length, instead.`)
+        if (inPts.length < POSEIDON_INPUTS || inPts.length > this.poseidonBatchSize + 1) {
+          throw new Error(
+            `Synthesizer: Poseidon expected between ${POSEIDON_INPUTS} and ${this.poseidonBatchSize + 1} inputs, but got ${inPts.length}.`,
+          )
         }
         sourceBitSize = 255
         break
@@ -91,35 +70,18 @@ export class ArithmeticManager {
       : []
   }
 
-  private _normalizePoseidonInputs(
-    name: ArithmeticOperator,
-    inPts: DataPt[],
-  ): DataPt[] {
-    const nCallsByName: Partial<Record<ArithmeticOperator, number>> = {
-      Poseidon: 1,
-      Poseidon2x: 2,
-      Poseidon3x: 3,
-      Poseidon4x: 4,
-      Poseidon5x: 5,
-      Poseidon6x: 6,
-    }
-    const nCalls = nCallsByName[name]
-    if (nCalls === undefined) {
-      return inPts
-    }
-
-    const expectedLen = nCalls + 1
-    if (inPts.length !== expectedLen) {
-      throw new Error(`Synthesizer: Operation ${name} expected ${expectedLen} inputs, but got ${inPts.length}.`)
-    }
-
+  private _normalizePoseidonInputs(inPts: DataPt[]): { selector: bigint; inPts: DataPt[] } {
+    const nCalls = inPts.length - 1
     const zeroPt = this.parent.loadArbitraryStatic(0n, 255)
-    return inPts.concat(
-      Array.from(
-        { length: 7 - expectedLen },
-        () => DataPtFactory.deepCopy(zeroPt),
+    return {
+      selector: 1n << BigInt(nCalls - 1),
+      inPts: inPts.concat(
+        Array.from(
+          { length: this.poseidonBatchSize + 1 - inPts.length },
+          () => DataPtFactory.deepCopy(zeroPt),
+        ),
       ),
-    )
+    }
   }
 
   /**
@@ -133,7 +95,7 @@ export class ArithmeticManager {
     name: ArithmeticOperator,
     inPts: DataPt[],
   ): { subcircuitName: SubcircuitNames; finalInPts: DataPt[] } {
-    const [subcircuitName, selector] = SUBCIRCUIT_ALU_MAPPING[name];
+    const [subcircuitName, configuredSelector] = SUBCIRCUIT_ALU_MAPPING[name];
 
     const subcircuitInfo = this.parent.state.subcircuitInfoByName.get(subcircuitName)
     if (subcircuitInfo === undefined) {
@@ -142,9 +104,20 @@ export class ArithmeticManager {
       );
     }
 
-    let finalInPts: DataPt[] = this._normalizePoseidonInputs(name, inPts);
+    let selector = configuredSelector
+    let finalInPts = inPts
+    if (name === 'Poseidon') {
+      const normalized = this._normalizePoseidonInputs(inPts)
+      selector = normalized.selector
+      finalInPts = normalized.inPts
+    }
     if (selector !== undefined) {
-      const selectorPt = this.parent.loadArbitraryStatic(selector, 32, `ALU selector for ${name} of ${subcircuitName}`);
+      const selectorBitSize = name === 'Poseidon' ? Math.max(32, this.poseidonBatchSize) : 32
+      const selectorPt = this.parent.loadArbitraryStatic(
+        selector,
+        selectorBitSize,
+        `ALU selector for ${name} of ${subcircuitName}`,
+      );
       finalInPts = [selectorPt, ...finalInPts];
     }
 
@@ -195,23 +168,15 @@ export class ArithmeticManager {
       return this.placeArith('Poseidon', [inPts[0], this.parent.loadArbitraryStatic(0n)])[0]
     }
 
-    const operationByLen: Record<number, ArithmeticOperator> = {
-      2: 'Poseidon',
-      3: 'Poseidon2x',
-      4: 'Poseidon3x',
-      5: 'Poseidon4x',
-      6: 'Poseidon5x',
-      7: 'Poseidon6x',
-    }
-
+    const inputLimit = this.poseidonBatchSize + 1
     let chainInputs = [...inPts]
-    while (chainInputs.length > 7) {
-      const prefixHash = this.placeArith('Poseidon6x', chainInputs.slice(0, 7))[0]
-      chainInputs = [prefixHash, ...chainInputs.slice(7)]
+    while (chainInputs.length > inputLimit) {
+      const prefixHash = this.placeArith('Poseidon', chainInputs.slice(0, inputLimit))[0]
+      chainInputs = [prefixHash, ...chainInputs.slice(inputLimit)]
     }
 
     return DataPtFactory.deepCopy(
-      this.placeArith(operationByLen[chainInputs.length], chainInputs)[0],
+      this.placeArith('Poseidon', chainInputs)[0],
     )
   }
 
@@ -429,12 +394,7 @@ const ARITHMETIC_MAPPING: Record<ArithmeticOperator, (...args: any) => any> = {
   // SubEXP: ArithmeticOperations.subEXP,
   SubExpBatch: ArithmeticOperations.subExpBatch,
   Accumulator: ArithmeticOperations.accumulator,
-  Poseidon: ArithmeticOperations.poseidonN,
-  Poseidon2x: (values: bigint[]) => ArithmeticOperations.poseidonChainCompress(values),
-  Poseidon3x: (values: bigint[]) => ArithmeticOperations.poseidonChainCompress(values),
-  Poseidon4x: (values: bigint[]) => ArithmeticOperations.poseidonChainCompress(values),
-  Poseidon5x: (values: bigint[]) => ArithmeticOperations.poseidonChainCompress(values),
-  Poseidon6x: (values: bigint[]) => ArithmeticOperations.poseidonChainCompress(values),
+  Poseidon: (values: bigint[]) => ArithmeticOperations.poseidonChainCompress(values),
   // PrepareEdDsaScalars: ArithmeticOperations.prepareEdDsaScalars,
   JubjubExpBatch: ArithmeticOperations.jubjubExpBatch,
   EdDsaVerify: ArithmeticOperations.edDsaVerify,

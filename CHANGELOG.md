@@ -24,6 +24,14 @@ The format is based on Keep a Changelog.
 - Added cumulative `setupParams` boundaries for every public buffer. Public
   wires are now grouped by their configured segment order instead of relying
   on the subcircuit compilation order.
+- Replaced the six-step hardcoded Poseidon chain with an `nPoseidonBatch`
+  parameter. Set `nPoseidonBatch`, `nJubjubExpBatch`, and `nSubExpBatch` to
+  `3`, `75`, and `16`, respectively, so each batch subcircuit has at most
+  2048 compiled constraints.
+- Replaced the two merged ALU targets with `ALU1` through `ALU4`, grouped as
+  basic/comparison, bitwise, division/modular, and byte/shift operations. Their
+  compiled constraint totals are 1505, 1600, 1752, and 1867, respectively,
+  while retaining selector and 256-bit bus canonicalization.
 - This circuit-set change requires regenerated subcircuit-library artifacts
   and a compatible backend CRS before it can be used for proving.
 
@@ -39,6 +47,8 @@ The format is based on Keep a Changelog.
   now tracked through the transaction-scoped storage cache and `EqualBatch`.
 - Added public initial-storage-read output through `STORAGE_LOAD` and final
   committed storage-write output through `STORAGE_STORE`.
+- Made Poseidon selector generation, input padding, and long-chain chunking use
+  the subcircuit library's `nPoseidonBatch` value.
 - Enabled the existing REVERT system-flow handler so failed frames reach the
   coordinated storage-cache and committed-log rollback path.
 - Changed every unsuccessful top-level transaction result, including REVERT

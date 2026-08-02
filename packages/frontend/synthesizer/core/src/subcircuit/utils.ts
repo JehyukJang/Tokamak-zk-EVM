@@ -87,6 +87,7 @@ export function parseFrontendConfig(value: unknown): FrontendConfig {
     nPrvIn: getRequiredNumber(value, 'nPrvIn'),
     nEVMIn: getRequiredNumber(value, 'nEVMIn'),
     nPoseidonInputs: getRequiredNumber(value, 'nPoseidonInputs'),
+    nPoseidonBatch: getRequiredNumber(value, 'nPoseidonBatch'),
     nMtDepth: getRequiredNumber(value, 'nMtDepth'),
     nAccumulation: getRequiredNumber(value, 'nAccumulation'),
     nPrevBlockHashes: getRequiredNumber(value, 'nPrevBlockHashes'),
