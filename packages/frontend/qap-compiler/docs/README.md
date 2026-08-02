@@ -7,4 +7,4 @@ Maintainer and integration references behind the
 | ----------------------------------------- | ------------------------------------------------------------------------ |
 | Integrate the published artifacts         | [Consumer integration](./consumer-integration.md)                        |
 | Generate, version, or release the library | [Generation and release](./subcircuit-library-generation-and-release.md) |
-| Review the compiled ALU security history  | [Merged ALU security audit](./merged-alu-security-audit.md)              |
+| Review the historical ALU security work   | [Merged ALU security audit](./merged-alu-security-audit.md)              |

@@ -30,10 +30,12 @@ The format is based on Keep a Changelog.
   parameter. Set `nPoseidonBatch`, `nJubjubExpBatch`, and `nSubExpBatch` to
   `3`, `75`, and `16`, respectively, so each batch subcircuit has at most
   2048 compiled constraints.
-- Replaced the two merged ALU targets with `ALU1` through `ALU4`, grouped as
-  basic/comparison, bitwise, division/modular, and byte/shift operations. Their
-  compiled constraint totals are 1505, 1600, 1752, and 1867, respectively,
-  while retaining selector and 256-bit bus canonicalization.
+- Replaced selector-based ALU circuits with one compiled subcircuit per EVM
+  arithmetic operation. Every arithmetic target now has fewer than 1024
+  constraints; `MULMOD` is the largest at 1020 constraints.
+- Added the input-only `CheckBus` subcircuit. `ADDMOD` and `MULMOD` omit the
+  first operand's local bus check and require a composed `CheckBus` placement
+  for that exact operand.
 - This circuit-set change requires regenerated subcircuit-library artifacts
   and a compatible backend CRS before it can be used for proving.
 
@@ -51,6 +53,9 @@ The format is based on Keep a Changelog.
   committed storage-write output through `STORAGE_STORE`.
 - Made Poseidon selector generation, input padding, and long-chain chunking use
   the subcircuit library's `nPoseidonBatch` value.
+- Mapped each EVM arithmetic opcode directly to its dedicated subcircuit,
+  without an ALU selector. Every `ADDMOD` and `MULMOD` placement is now
+  immediately preceded by the required `CheckBus` placement.
 - Enabled the existing REVERT system-flow handler so failed frames reach the
   coordinated storage-cache and committed-log rollback path.
 - Changed every unsuccessful top-level transaction result, including REVERT
@@ -58,6 +63,9 @@ The format is based on Keep a Changelog.
 
 ### Bug Fixes
 
+- Fixed direct memory-mask placement using the grouped bitwise circuit without
+  its selector. Memory masking now places the dedicated `AND` subcircuit with
+  the exact two expected operands.
 - Fixed initial SLOAD rejecting valid 256-bit EVM storage values outside the
   BLS12-381 scalar field range.
 - Fixed VM event handlers swallowing Synthesizer failures. The first

@@ -94,6 +94,24 @@ export class StateManager {
     outPts: DataPt[],
     usage: string,
   ) {
+    if (name === 'ADDMOD' || name === 'MULMOD') {
+      const checkedOperand = inPts[0]
+      const checkPlacement = this._placements.at(-1)
+      const checkInput = checkPlacement?.inPts[0]
+      if (
+        checkedOperand === undefined
+        || checkPlacement?.name !== 'CheckBus'
+        || checkPlacement.inPts.length !== 1
+        || checkPlacement.outPts.length !== 0
+        || checkInput?.source !== checkedOperand.source
+        || checkInput.wireIndex !== checkedOperand.wireIndex
+      ) {
+        throw new Error(
+          `Synthesizer: ${name} must immediately follow CheckBus for its first operand.`,
+        )
+      }
+    }
+
     for (const inPt of inPts) {
       if (typeof inPt.source !== 'number') {
         throw new Error(
