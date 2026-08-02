@@ -39,6 +39,8 @@ The format is based on Keep a Changelog.
   now tracked through the transaction-scoped storage cache and `EqualBatch`.
 - Added public initial-storage-read output through `STORAGE_LOAD` and final
   committed storage-write output through `STORAGE_STORE`.
+- Enabled the existing REVERT system-flow handler so failed frames reach the
+  coordinated storage-cache and committed-log rollback path.
 
 ### Bug Fixes
 

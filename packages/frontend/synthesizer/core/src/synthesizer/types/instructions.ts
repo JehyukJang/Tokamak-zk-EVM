@@ -260,7 +260,7 @@ export const synthesizerOpcodeList: Record<number, SynthesizerSupportedOpcodes> 
   0xf4: 'DELEGATECALL',
   // 0xf5: 'CREATE2', (unsupported per current status)
   0xfa: 'STATICCALL',
-  // 0xfd: 'REVERT', (unsupported per current status)
+  0xfd: 'REVERT',
   // 0xfe: 'INVALID', (unsupported per current status)
   // 0xff: 'SELFDESTRUCT', (unsupported per current status)
 } as const;

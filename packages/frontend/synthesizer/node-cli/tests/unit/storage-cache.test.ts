@@ -242,6 +242,14 @@ describe('StateManager storage tracking', () => {
   });
 });
 
+describe('InstructionHandler opcode registration', () => {
+  it('registers the existing REVERT handler at opcode 0xfd', () => {
+    const { handler } = createStorageHarness(0n);
+
+    expect(handler.synthesizerHandlers.get(0xfd)).toBeTypeOf('function');
+  });
+});
+
 describe('InstructionHandler storage cache', () => {
   it('registers one initial SLOAD and reuses its value DataPt on repeated reads', async () => {
     const { addressValue, handler, parent } = createStorageHarness(5n);
