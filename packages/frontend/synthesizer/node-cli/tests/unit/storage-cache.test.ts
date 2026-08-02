@@ -356,6 +356,47 @@ describe('InstructionHandler storage cache', () => {
     )).toHaveLength(1);
   });
 
+  it('keeps only the latest value DataPt across repeated SSTORE operations', async () => {
+    const { addressValue, handler, parent, setStorageValue } = createStorageHarness(10n);
+
+    await handler.storeStorage(
+      dataPt(addressValue, 70),
+      dataPt(8n, 71),
+      dataPt(10n, 72),
+    );
+    setStorageValue(20n);
+    await handler.storeStorage(
+      dataPt(addressValue, 73),
+      dataPt(8n, 74),
+      dataPt(20n, 75),
+    );
+    setStorageValue(30n);
+    await handler.storeStorage(
+      dataPt(addressValue, 76),
+      dataPt(8n, 77),
+      dataPt(30n, 78),
+    );
+
+    expect(parent.state.storageCache.dirtyEntries).toEqual([
+      expect.objectContaining({
+        canonicalAddressPt: expect.objectContaining({ source: 70, value: addressValue }),
+        canonicalKeyPt: expect.objectContaining({ source: 71, value: 8n }),
+        latestValuePt: expect.objectContaining({ source: 78, value: 30n }),
+        dirty: true,
+      }),
+    ]);
+    const equalBatchCalls = parent.placeArith.mock.calls.filter(
+      (call: any[]) => call[0] === 'EqualBatch',
+    );
+    expect(equalBatchCalls.map(([, inPts]: [string, DataPt[]]) =>
+      inPts.map((pt) => pt.source)
+    )).toEqual([
+      [73, 74, 70, 71],
+      [76, 77, 70, 71],
+    ]);
+    expect(parent.addReservedVariableToBufferOut).not.toHaveBeenCalled();
+  });
+
   it('rejects a storageAddressPt that does not match the EVM storage address', async () => {
     const { address, handler, parent } = createStorageHarness(5n);
     const stackPt = new StackPt();
