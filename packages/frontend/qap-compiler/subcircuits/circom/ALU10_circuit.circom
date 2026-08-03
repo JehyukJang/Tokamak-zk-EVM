@@ -1,0 +1,22 @@
+pragma circom 2.1.6;
+include "../../templates/256bit/alu_safe.circom";
+
+template ALU10_() {
+    signal input in[5];
+    signal output out[2];
+    signal index[2] <== [in[1], in[2]];
+    signal value[2] <== [in[3], in[4]];
+
+    in[0] === 1 << 26;
+    index[1] === 0;
+    CheckBus128()(index[0]);
+    CheckBus()(value);
+
+    signal result;
+    signal rem;
+    signal divisor;
+    (result, rem, divisor) <== Byte256_unsafe()(index[0], value);
+    out <== [result, 0];
+}
+
+component main {public [in]} = ALU10_();
