@@ -9,7 +9,8 @@ export type SelectorDefinition = bigint | null | 'dynamic';
 export type InputReference =
   | Readonly<{ kind: 'selector' }>
   | Readonly<{ kind: 'operand'; index: number }>
-  | Readonly<{ kind: 'step-output'; index: number }>;
+  | Readonly<{ kind: 'step-output'; index: number }>
+  | Readonly<{ kind: 'constant'; index: number }>;
 
 export type OutputReference =
   | Readonly<{ kind: 'step-output'; index: number }>
@@ -24,7 +25,13 @@ export type CompositionStep = Readonly<{
   outputs: readonly OutputReference[];
 }>;
 
+export type ConstantDefinition = Readonly<{
+  value: bigint;
+  sourceBitSize: number;
+}>;
+
 export type ArithmeticOperationComposition = Readonly<{
+  constants: readonly ConstantDefinition[];
   numSteps: number | 'dynamic';
   numOperands: number;
   numResults: number;
@@ -51,6 +58,10 @@ const freezeReference = <Reference extends InputReference | OutputReference>(
 const freezeComposition = (
   composition: ArithmeticOperationComposition,
 ): ArithmeticOperationComposition => Object.freeze({
+  constants: Object.freeze(composition.constants.map((constant) => Object.freeze({
+    value: constant.value,
+    sourceBitSize: constant.sourceBitSize,
+  }))),
   numSteps: composition.numSteps,
   numOperands: composition.numOperands,
   numResults: composition.numResults,
@@ -131,7 +142,16 @@ export class ArithmeticSubcircuitComposition {
 
     const intermediates = new Set<number>();
     const consumedIntermediates = new Set<number>();
+    const consumedConstants = new Set<number>();
     const results = new Set<number>();
+
+    for (const [constantIndex, constant] of composition.constants.entries()) {
+      if (!Number.isInteger(constant.sourceBitSize) || constant.sourceBitSize < 1) {
+        throw new Error(
+          `ArithmeticSubcircuitComposition: ${operation} constant ${constantIndex} sourceBitSize must be a positive integer`,
+        );
+      }
+    }
 
     for (const [stepIndex, step] of composition.steps.entries()) {
       const expectedUsage = step.subcircuit.startsWith('ALU')
@@ -166,6 +186,14 @@ export class ArithmeticSubcircuitComposition {
             );
           }
           consumedIntermediates.add(input.index);
+        } else if (input.kind === 'constant') {
+          assertIndex(input.index, `${operation} step ${stepIndex} constant index`);
+          if (input.index >= composition.constants.length) {
+            throw new Error(
+              `ArithmeticSubcircuitComposition: ${operation} step ${stepIndex} constant index is out of range`,
+            );
+          }
+          consumedConstants.add(input.index);
         }
       }
 
@@ -192,6 +220,14 @@ export class ArithmeticSubcircuitComposition {
           }
           results.add(output.index);
         }
+      }
+    }
+
+    for (const [constantIndex] of composition.constants.entries()) {
+      if (!consumedConstants.has(constantIndex)) {
+        throw new Error(
+          `ArithmeticSubcircuitComposition: ${operation} constant ${constantIndex} is never used`,
+        );
       }
     }
 
