@@ -109,13 +109,33 @@ describe('full-domain word operation synthesis', () => {
     },
   );
 
-  it.each(['SHR', 'SAR'] as const)('retains the oversized-shift limit for %s', (operation) => {
+  it.each([256n, 1n << 128n, (1n << 256n) - 1n])(
+    'places SHR for oversized EVM shift %s and returns zero',
+    (shift) => {
+      const { manager, placements } = createHarness();
+      const shiftPt = dataPt(shift, 10, 3);
+      const valuePt = dataPt((1n << 256n) - 1n, 11, 4);
+
+      const result = manager.placeArith('SHR', [shiftPt, valuePt]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].value).toBe(0n);
+      expect(placements).toHaveLength(1);
+      expect(placements[0]).toMatchObject({ name: 'ALU6', usage: 'SHR' });
+      expect(placements[0].inPts).toHaveLength(3);
+      expect(placements[0].inPts[0].value).toBe(1n << 28n);
+      expect(placements[0].inPts[1]).toMatchObject({ source: 10, wireIndex: 3 });
+      expect(placements[0].inPts[2]).toMatchObject({ source: 11, wireIndex: 4 });
+    },
+  );
+
+  it('retains the oversized-shift limit for SAR', () => {
     const { manager, placements } = createHarness();
 
-    expect(() => manager.placeArith(operation, [
+    expect(() => manager.placeArith('SAR', [
       dataPt(256n, 10),
       dataPt(1n, 11),
-    ])).toThrow(`Operation ${operation} has a shift value greater than 255`);
+    ])).toThrow('Operation SAR has a shift value greater than 255');
     expect(placements).toHaveLength(0);
   });
 });

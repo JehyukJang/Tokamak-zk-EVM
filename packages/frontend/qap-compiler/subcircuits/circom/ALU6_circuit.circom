@@ -9,31 +9,24 @@ template ALU6_() {
 
     signal useSar <== (in[0] - (1 << 28)) / ((1 << 29) - (1 << 28));
     useSar * (1 - useSar) === 0;
-    shift[1] === 0;
-    CheckBus128()(shift[0]);
-    CheckBus256()(value);
 
-    signal inverseShift <== 256 - shift[0];
-    signal (expShift[2], isShiftGt255, expInverseShift[2], isInverseShiftGt255) <== FindShiftingTwosPower256TwoInput(8, 8)(shift[0], inverseShift);
+    component right = ShiftRight256();
+    right.shift <== shift;
+    right.value <== value;
+    useSar * (1 - right.inRange) === 0;
 
-    component right = Div256_unsafe();
-    right.in1 <== value;
-    right.in2 <== expShift;
-    signal safeDivisor[2] <== _SafeDivisor()(expShift);
-
-    signal (isNegative, absoluteValue[2]) <== getSignAndAbs256_unsafe()(value);
+    signal safeSarShift <== useSar * shift[0];
+    signal inverseShift <== 256 - safeSarShift;
+    signal (expInverseShift[2], isInverseShiftGt255) <== FindShiftingTwosPower256(9)(inverseShift);
     component signedRight = _SignedShiftRight256_internal();
-    signedRight.shift <== shift[0];
-    signedRight.shifted_in <== right.q;
-    signedRight.isNeg_in <== isNegative;
+    signedRight.shift <== safeSarShift;
+    signedRight.shifted_in <== right.out;
+    signedRight.isNeg_in <== right.valueSign;
     signedRight.exp_inv_shift <== expInverseShift;
     signedRight.is_inv_shift_gt_255 <== isInverseShiftGt255;
 
-    out[0] <== right.q[0] + useSar * (signedRight.out[0] - right.q[0]);
-    out[1] <== right.q[1] + useSar * (signedRight.out[1] - right.q[1]);
-
-    signal rangeCheck <== LessThan256()(right.r, safeDivisor);
-    rangeCheck === 1;
+    out[0] <== right.out[0] + useSar * (signedRight.out[0] - right.out[0]);
+    out[1] <== right.out[1] + useSar * (signedRight.out[1] - right.out[1]);
 }
 
 component main {public [in]} = ALU6_();
