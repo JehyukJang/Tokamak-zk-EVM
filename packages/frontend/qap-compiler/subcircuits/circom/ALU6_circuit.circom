@@ -13,20 +13,21 @@ template ALU6_() {
     component right = ShiftRight256();
     right.shift <== shift;
     right.value <== value;
-    useSar * (1 - right.inRange) === 0;
 
-    signal safeSarShift <== useSar * shift[0];
-    signal inverseShift <== 256 - safeSarShift;
-    signal (expInverseShift[2], isInverseShiftGt255) <== FindShiftingTwosPower256(9)(inverseShift);
-    component signedRight = _SignedShiftRight256_internal();
-    signedRight.shift <== safeSarShift;
-    signedRight.shifted_in <== right.out;
-    signedRight.isNeg_in <== right.valueSign;
-    signedRight.exp_inv_shift <== expInverseShift;
-    signedRight.is_inv_shift_gt_255 <== isInverseShiftGt255;
+    component inversePower = InverseShiftPower256FromBits_unsafe();
+    inversePower.shiftBits <== right.shiftLowBits;
 
-    out[0] <== right.out[0] + useSar * (signedRight.out[0] - right.out[0]);
-    out[1] <== right.out[1] + useSar * (signedRight.out[1] - right.out[1]);
+    var MAX_LIMB = (1 << 128) - 1;
+    signal adjustedFiller[2];
+    for (var limb = 0; limb < 2; limb++) {
+        adjustedFiller[limb] <== inversePower.negativeFiller[limb]
+            + (1 - right.inRange)
+            * (MAX_LIMB - inversePower.negativeFiller[limb]);
+    }
+
+    signal applySignFill <== useSar * right.valueSign;
+    out[0] <== right.out[0] + applySignFill * adjustedFiller[0];
+    out[1] <== right.out[1] + applySignFill * adjustedFiller[1];
 }
 
 component main {public [in]} = ALU6_();

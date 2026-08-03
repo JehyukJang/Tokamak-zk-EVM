@@ -18,6 +18,9 @@ const expectedShiftRight = (shift, value) => {
 };
 const expectedArithmeticShiftRight = (shift, value) => {
   const signedValue = value >> 255n === 0n ? value : value - (1n << 256n);
+  if (shift >= 256n) {
+    return signedValue < 0n ? MAX_UINT256 : 0n;
+  }
   return signedValue >> shift & MAX_UINT256;
 };
 
@@ -131,15 +134,31 @@ const main = async () => {
     (1n << 255n) + 1n,
     MAX_UINT256,
   ];
-  for (const shift of boundaryShifts.filter((candidate) => candidate < 256n)) {
+  for (const shift of boundaryShifts) {
     for (const value of signedBoundaryValues) {
       await assertArithmeticShiftRight(
         witnessCalculator,
         shift,
         value,
-        `SAR retained boundary ${shift}:${value}`,
+        `SAR boundary ${shift}:${value}`,
       );
     }
+  }
+
+  for (let index = 0; index < RANDOM_CASES; index++) {
+    const value = randomWord();
+    await assertArithmeticShiftRight(
+      witnessCalculator,
+      BigInt(crypto.randomBytes(1)[0]),
+      value,
+      `SAR in-range randomized case ${index}`,
+    );
+    await assertArithmeticShiftRight(
+      witnessCalculator,
+      randomWord(),
+      value,
+      `SAR full-domain randomized case ${index}`,
+    );
   }
 
   const invalidLimb = 1n << 128n;
@@ -157,12 +176,6 @@ const main = async () => {
     undefined,
     "unsupported selector must be rejected",
   );
-  await assert.rejects(
-    calculate(witnessCalculator, 1n << 29n, 256n, patternedValue),
-    undefined,
-    "SAR must retain its oversized-shift restriction",
-  );
-
   const packageRoot = path.join(__dirname, "../..");
   const circuit = await wasm(
     path.join(packageRoot, "subcircuits/circom/ALU6_circuit.circom"),
@@ -193,8 +206,32 @@ const main = async () => {
     1n << 65n,
   );
 
+  const sarWitness = await circuit.calculateWitness({
+    in: [1n << 29n, 13n, 0n, ...split256BitInteger(MAX_UINT256)],
+  }, true);
+  await mutateAndReject(circuit, sarWitness, "main.out[0]", 0n);
+  await mutateAndReject(
+    circuit,
+    sarWitness,
+    "main.inversePower.borrowedBit[0]",
+    0n,
+  );
+  await mutateAndReject(
+    circuit,
+    sarWitness,
+    "main.inversePower.power[1]",
+    0n,
+  );
+  await mutateAndReject(
+    circuit,
+    sarWitness,
+    "main.inversePower.negativeFiller[1]",
+    0n,
+  );
+  await mutateAndReject(circuit, sarWitness, "main.adjustedFiller[1]", 0n);
+
   console.log(
-    `SHR passed ${boundaryShifts.length * boundaryValues.length} boundary cases, ${RANDOM_CASES} in-range and ${RANDOM_CASES} full-domain randomized cases, retained SAR boundary cases, canonicality checks, shared-core mutation checks, and wrong-claim rejection`,
+    `SHR and SAR passed full-domain boundary and randomized cases, canonicality checks, shared-core and sign-filler mutation checks, and wrong-claim rejection`,
   );
 };
 

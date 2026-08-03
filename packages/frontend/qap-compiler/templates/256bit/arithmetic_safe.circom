@@ -278,7 +278,7 @@ template ShiftLeft256() {
 
 template ShiftRight256() {
     signal input shift[2], value[2];
-    signal output out[2], inRange, valueSign;
+    signal output out[2], inRange, valueSign, shiftLowBits[8];
 
     component shiftBits[2];
     component valueBits[2];
@@ -312,4 +312,56 @@ template ShiftRight256() {
     }
     inRange <== core.inRange;
     valueSign <== valueBits[1].out[127];
+    for (var bit = 0; bit < 8; bit++) {
+        shiftLowBits[bit] <== shiftBits[0].out[bit];
+    }
+}
+
+// The input bits must come from a constrained decomposition. For a nonzero
+// shift byte, negativeFiller is 2^256 - 2^(256 - shift). A zero shift produces
+// a zero filler.
+template InverseShiftPower256FromBits_unsafe() {
+    var BASE64 = 1 << 64;
+    var BASE128 = 1 << 128;
+
+    signal input shiftBits[8];
+    signal output negativeFiller[2];
+
+    signal borrow[9];
+    signal borrowedBit[8];
+    signal shiftMinusOneBits[8];
+    signal inverseBits[8];
+    borrow[0] <== 1;
+    for (var bit = 0; bit < 8; bit++) {
+        borrowedBit[bit] <== shiftBits[bit] * borrow[bit];
+        shiftMinusOneBits[bit]
+            <== shiftBits[bit] + borrow[bit] - 2 * borrowedBit[bit];
+        borrow[bit + 1] <== borrow[bit] - borrowedBit[bit];
+        inverseBits[bit] <== 1 - shiftMinusOneBits[bit];
+    }
+
+    signal wordPower[7];
+    wordPower[0] <== 1;
+    for (var bit = 0; bit < 6; bit++) {
+        var selectedFactor = (1 << (1 << bit)) - 1;
+        wordPower[bit + 1] <== wordPower[bit]
+            * (1 + inverseBits[bit] * selectedFactor);
+    }
+
+    signal powerWords[4];
+    signal lowPair <== wordPower[6] * (1 - inverseBits[7]);
+    signal highPair <== wordPower[6] - lowPair;
+    powerWords[1] <== lowPair * inverseBits[6];
+    powerWords[0] <== lowPair - powerWords[1] - borrow[8];
+    powerWords[3] <== highPair * inverseBits[6];
+    powerWords[2] <== highPair - powerWords[3];
+
+    signal power[2];
+    power[0] <== powerWords[0] + BASE64 * powerWords[1];
+    power[1] <== powerWords[2] + BASE64 * powerWords[3];
+
+    signal lowPower <== 1 - borrow[8] - inverseBits[7];
+    negativeFiller[0] <== lowPower * BASE128 - power[0];
+    negativeFiller[1] <== lowPower * (BASE128 - 1)
+        + inverseBits[7] * BASE128 - power[1];
 }
