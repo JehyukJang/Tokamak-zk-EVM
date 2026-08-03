@@ -37,6 +37,9 @@ The format is based on Keep a Changelog.
   by `ADDMOD` and `MULMOD`.
 - Renamed the two-limb `CheckBus` template to `CheckBus256` and implemented it
   by composing two `CheckBus128` limb checks.
+- Simplified the local `MULMOD` zero-modulus range condition without relying
+  on external composition, reducing its optimized constraint count from 1026
+  to 1021 while retaining the boolean addition-carry checks.
 - This circuit-set change requires regenerated subcircuit-library artifacts
   and a compatible backend CRS before it can be used for proving.
 

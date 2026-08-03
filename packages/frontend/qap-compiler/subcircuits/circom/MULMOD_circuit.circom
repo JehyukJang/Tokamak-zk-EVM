@@ -14,9 +14,9 @@ template MULMOD_() {
     CheckBus256()(in3);
 
     signal result[2] <== MulMod256_unsafe()(in1, in2, in3);
-    signal safeDivisor[2] <== _SafeDivisor()(in3);
-    signal rangeCheck <== LessThan256()(result, safeDivisor);
-    rangeCheck === 1;
+    signal isZeroModulus <== IsZero256()(in3);
+    signal rangeCheck <== LessThan256()(result, in3);
+    rangeCheck + isZeroModulus === 1;
     out <== result;
 }
 
