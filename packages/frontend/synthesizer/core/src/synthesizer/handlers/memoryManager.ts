@@ -1,12 +1,25 @@
 import { DataAliasInfoEntry, DataAliasInfos, DataPt, DataPtDescription, ISynthesizerProvider, MemoryPtEntry, MemoryPts } from '../types/index.ts';
 import { DataPtFactory, MemoryPt } from '../dataStructure/index.ts';
-import { ArithmeticOperator, SUBCIRCUIT_ALU_MAPPING } from '../../subcircuit/configuredTypes.ts';
+import { ArithmeticOperator } from '../../subcircuit/configuredTypes.ts';
+import {
+  ArithmeticSubcircuitCompositions,
+  createArithmeticSubcircuitCompositions,
+} from '../../subcircuit/arithmeticSubcircuitCompositions.ts';
 import { DEFAULT_SOURCE_BIT_SIZE } from '../params/constants.ts';
 
 export class MemoryManager {
+  private readonly arithmeticCompositions: ArithmeticSubcircuitCompositions
+
   constructor(
     private parent: ISynthesizerProvider,
-  ) {}
+  ) {
+    this.arithmeticCompositions = createArithmeticSubcircuitCompositions({
+      accumulatorInputLimit: this.parent.subcircuitLibrary.accumulatorInputLimit,
+      arithExpBatchSize: this.parent.subcircuitLibrary.arithExpBatchSize,
+      jubjubExpBatchSize: this.parent.subcircuitLibrary.jubjubExpBatchSize,
+      poseidonBatchSize: this.parent.subcircuitLibrary.poseidonBatchSize,
+    })
+  }
 
   public placeMSTORE(dataPt: DataPt, truncBitSize: number): DataPt {
     // MSTORE8 is used as truncSize=1, storing only the lowest 1 byte of data and discarding the rest.
@@ -18,7 +31,10 @@ export class MemoryManager {
       const outValue = dataPt.value & BigInt(maskerString);
       if (dataPt.value !== outValue) {
         const usage = 'AND';
-        const subcircuitName = SUBCIRCUIT_ALU_MAPPING[usage][0];
+        const operationStep = this.arithmeticCompositions[usage].steps[0]
+        if (operationStep === undefined) {
+          throw new Error('Synthesizer: AND composition must contain one placement step')
+        }
         const inPts: DataPt[] = [
           this.parent.loadArbitraryStatic(BigInt(maskerString), DEFAULT_SOURCE_BIT_SIZE, 'Masker for memory manipulation'),
           dataPt,
@@ -29,7 +45,7 @@ export class MemoryManager {
           sourceBitSize: truncBitSize,
         };
         const outPts: DataPt[] = [DataPtFactory.create(rawOutPt, outValue)];
-        this.parent.place(subcircuitName, inPts, outPts, usage);
+        this.parent.place(operationStep.subcircuit, inPts, outPts, operationStep.usage);
 
         return DataPtFactory.deepCopy(outPts[0]);
       }

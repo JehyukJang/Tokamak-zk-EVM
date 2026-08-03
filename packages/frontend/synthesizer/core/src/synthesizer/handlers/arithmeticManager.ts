@@ -2,12 +2,17 @@
 import { DataPt, ISynthesizerProvider } from '../types/index.ts';
 import { DataPtFactory } from '../dataStructure/index.ts';
 import { DEFAULT_SOURCE_BIT_SIZE } from '../../synthesizer/params/constants.ts';
-import { ArithmeticOperator, SUBCIRCUIT_ALU_MAPPING, SubcircuitNames } from '../../subcircuit/configuredTypes.ts';
+import { ArithmeticOperator, SubcircuitNames } from '../../subcircuit/configuredTypes.ts';
+import {
+  ArithmeticSubcircuitCompositions,
+  createArithmeticSubcircuitCompositions,
+} from '../../subcircuit/arithmeticSubcircuitCompositions.ts';
 import { ArithmeticOperations } from '../dataStructure/arithmeticOperations.ts';
 import { POSEIDON_INPUTS } from 'tokamak-l2js';
 
 export class ArithmeticManager {
   private readonly poseidonBatchSize: number
+  private readonly arithmeticCompositions: ArithmeticSubcircuitCompositions
 
   constructor(
     private parent: ISynthesizerProvider
@@ -17,6 +22,12 @@ export class ArithmeticManager {
       throw new Error('Synthesizer: nPoseidonBatch must be an integer between 1 and 128')
     }
     this.poseidonBatchSize = poseidonBatchSize
+    this.arithmeticCompositions = createArithmeticSubcircuitCompositions({
+      accumulatorInputLimit: this.parent.subcircuitLibrary.accumulatorInputLimit,
+      arithExpBatchSize: this.parent.subcircuitLibrary.arithExpBatchSize,
+      jubjubExpBatchSize: this.parent.subcircuitLibrary.jubjubExpBatchSize,
+      poseidonBatchSize,
+    })
     ArithmeticOperations.configure({
       arithExpBatchSize: this.parent.subcircuitLibrary.arithExpBatchSize,
       jubjubExpBatchSize: this.parent.subcircuitLibrary.jubjubExpBatchSize,
@@ -95,7 +106,12 @@ export class ArithmeticManager {
     name: ArithmeticOperator,
     inPts: DataPt[],
   ): { subcircuitName: SubcircuitNames; finalInPts: DataPt[] } {
-    const [subcircuitName, configuredSelector] = SUBCIRCUIT_ALU_MAPPING[name];
+    const composition = this.arithmeticCompositions[name]
+    const operationStep = composition.steps.find((step) => step.usage === name)
+    if (operationStep === undefined) {
+      throw new Error(`Synthesizer: No placement step is defined for operation ${name}.`)
+    }
+    const { subcircuit: subcircuitName, selector: configuredSelector } = operationStep
 
     const subcircuitInfo = this.parent.state.subcircuitInfoByName.get(subcircuitName)
     if (subcircuitInfo === undefined) {
@@ -111,7 +127,10 @@ export class ArithmeticManager {
       selector = normalized.selector
       finalInPts = normalized.inPts
     }
-    if (selector !== undefined) {
+    if (selector === 'dynamic') {
+      throw new Error(`Synthesizer: Dynamic selector is not resolved for operation ${name}.`)
+    }
+    if (selector !== null) {
       const selectorBitSize = name === 'Poseidon' ? Math.max(32, this.poseidonBatchSize) : 32
       const selectorPt = this.parent.loadArbitraryStatic(
         selector,
