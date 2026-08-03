@@ -5,197 +5,236 @@ const { readFileSync } = require("node:fs");
 
 const { wasm } = require("circom_tester");
 const builder = require("./wasm/witness_calculator.js");
-const { split256BitInteger } = require("./helper_functions.js");
 
 const libraryDir = process.env.QAP_SUBCIRCUIT_LIBRARY_DIR
   ?? path.join(__dirname, "../library");
-const MAX_UINT256 = (1n << 256n) - 1n;
-const RANDOM_CASES = 128;
+const WORD_BASE = 1n << 256n;
+const SIGN_BIT = 1n << 255n;
+const WORD_MASK = WORD_BASE - 1n;
+const LIMB_MASK = (1n << 128n) - 1n;
+const RANDOM_CASES_PER_OPERATION = 128;
 
+const selectors = {
+  DIV: 1n << 4n,
+  SDIV: 1n << 5n,
+  MOD: 1n << 6n,
+  SMOD: 1n << 7n,
+};
+
+const split128 = (value) => [value & LIMB_MASK, value >> 128n];
+const unsignedWord = (value) => value & WORD_MASK;
+const signedWord = (value) => value >= SIGN_BIT ? value - WORD_BASE : value;
 const randomWord = () => BigInt(`0x${crypto.randomBytes(32).toString("hex")}`);
+const normalizeWitness = (values) => values.map((value) => BigInt(value.toString()));
 
-const loadAlu4 = async () => {
+const execute = (operation, dividend, divisor) => {
+  if (divisor === 0n) {
+    return 0n;
+  }
+  switch (operation) {
+    case "DIV":
+      return dividend / divisor;
+    case "MOD":
+      return dividend % divisor;
+    case "SDIV":
+      return unsignedWord(signedWord(dividend) / signedWord(divisor));
+    case "SMOD":
+      return unsignedWord(signedWord(dividend) % signedWord(divisor));
+    default:
+      throw new Error(`Unsupported operation ${operation}`);
+  }
+};
+
+const encodePart1Input = (operation, dividend, divisor) => [
+  selectors[operation],
+  ...split128(dividend),
+  ...split128(divisor),
+];
+
+const loadCalculators = async () => {
   const subcircuitInfo = JSON.parse(
     readFileSync(path.join(libraryDir, "subcircuitInfo.json"), "utf8"),
   );
-  const alu4Info = subcircuitInfo.find((entry) => entry.name === "ALU4");
-  if (alu4Info === undefined) {
-    throw new Error("ALU4 subcircuit was not found in subcircuitInfo.json");
-  }
-  return builder(readFileSync(path.join(libraryDir, `wasm/subcircuit${alu4Info.id}.wasm`)));
+  const load = async (name) => {
+    const info = subcircuitInfo.find((entry) => entry.name === name);
+    if (info === undefined) {
+      throw new Error(`${name} subcircuit was not found in subcircuitInfo.json`);
+    }
+    return builder(readFileSync(path.join(libraryDir, `wasm/subcircuit${info.id}.wasm`)));
+  };
+
+  return {
+    first: await load("ALU4A"),
+    second: await load("ALU4B"),
+  };
 };
 
-const calculate = (witnessCalculator, selector, dividend, divisor) => {
-  return witnessCalculator.calculateWitness({
-    in: [
-      selector,
-      ...split256BitInteger(dividend),
-      ...split256BitInteger(divisor),
-    ],
+const calculatePair = async (calculators, operation, dividend, divisor) => {
+  const firstWitness = await calculators.first.calculateWitness({
+    in: encodePart1Input(operation, dividend, divisor),
   }, true);
+  const bridge = normalizeWitness(firstWitness.slice(1, 14));
+  assert.equal(bridge.length, 13, "ALU4A must expose exactly 13 output wires");
+
+  const secondWitness = await calculators.second.calculateWitness({ in: bridge }, true);
+  return {
+    bridge,
+    result: normalizeWitness(secondWitness.slice(1, 3)),
+  };
 };
 
-const assertOperation = async (
-  witnessCalculator,
-  selector,
-  dividend,
-  divisor,
-  expected,
-  label,
-) => {
-  const witness = await calculate(
-    witnessCalculator,
-    selector,
+const assertOperation = async (calculators, operation, dividend, divisor, label) => {
+  const { result } = await calculatePair(
+    calculators,
+    operation,
     dividend,
     divisor,
   );
-  const [expectedLow, expectedHigh] = split256BitInteger(expected);
-  assert.equal(BigInt(witness[1].toString()), expectedLow, `${label} low limb`);
-  assert.equal(BigInt(witness[2].toString()), expectedHigh, `${label} high limb`);
+  assert.deepEqual(
+    result,
+    split128(execute(operation, dividend, divisor)),
+    label,
+  );
 };
 
 const mutateAndReject = async (circuit, witness, symbol, value) => {
   const wireIndex = circuit.symbols[symbol]?.varIdx;
   assert.notEqual(wireIndex, undefined, `${symbol} must exist`);
-  const maliciousWitness = [...witness];
-  maliciousWitness[wireIndex] = value;
+  assert.notEqual(wireIndex, -1, `${symbol} must survive O1`);
+  const changed = [...witness];
+  changed[wireIndex] = value;
   await assert.rejects(
-    circuit.checkConstraints(maliciousWitness),
+    circuit.checkConstraints(changed),
     /Constraint doesn't match/,
     `${symbol} mutation must be rejected`,
   );
 };
 
-const toggleBitAndReject = async (circuit, witness, symbol) => {
-  const wireIndex = circuit.symbols[symbol]?.varIdx;
-  assert.notEqual(wireIndex, undefined, `${symbol} must exist`);
-  await mutateAndReject(
-    circuit,
-    witness,
-    symbol,
-    1n - BigInt(witness[wireIndex].toString()),
-  );
-};
-
 const main = async () => {
-  const witnessCalculator = await loadAlu4();
+  const calculators = await loadCalculators();
   const boundaryCases = [
-    [0n, 0n],
-    [1n, 0n],
-    [MAX_UINT256, 0n],
-    [0n, 1n],
-    [1n, 1n],
-    [1n, MAX_UINT256],
-    [MAX_UINT256, 1n],
-    [MAX_UINT256, 2n],
-    [MAX_UINT256, 1n << 128n],
-    [MAX_UINT256, MAX_UINT256 - 1n],
-    [MAX_UINT256, MAX_UINT256],
-    [1n << 255n, (1n << 128n) + 1n],
+    ["DIV", 0n, 0n],
+    ["DIV", 1n, 0n],
+    ["DIV", WORD_MASK, 0n],
+    ["DIV", WORD_MASK, 1n],
+    ["DIV", WORD_MASK, WORD_MASK],
+    ["MOD", WORD_MASK, 0n],
+    ["MOD", WORD_MASK, 2n],
+    ["MOD", WORD_MASK, (1n << 128n) + 17n],
+    ["SDIV", unsignedWord(-7n), 3n],
+    ["SDIV", unsignedWord(-7n), unsignedWord(-3n)],
+    ["SDIV", 7n, unsignedWord(-3n)],
+    ["SDIV", SIGN_BIT, unsignedWord(-1n)],
+    ["SDIV", SIGN_BIT, 1n],
+    ["SDIV", SIGN_BIT, 0n],
+    ["SMOD", unsignedWord(-7n), 3n],
+    ["SMOD", 7n, unsignedWord(-3n)],
+    ["SMOD", unsignedWord(-7n), unsignedWord(-3n)],
+    ["SMOD", SIGN_BIT, unsignedWord(-1n)],
+    ["SMOD", unsignedWord(-123n), 0n],
   ];
 
-  for (const [index, [dividend, divisor]] of boundaryCases.entries()) {
-    const expectedQuotient = divisor === 0n ? 0n : dividend / divisor;
-    const expectedRemainder = divisor === 0n ? 0n : dividend % divisor;
+  for (const [index, [operation, dividend, divisor]] of boundaryCases.entries()) {
     await assertOperation(
-      witnessCalculator,
-      1n << 4n,
+      calculators,
+      operation,
       dividend,
       divisor,
-      expectedQuotient,
-      `DIV boundary case ${index}`,
-    );
-    await assertOperation(
-      witnessCalculator,
-      1n << 6n,
-      dividend,
-      divisor,
-      expectedRemainder,
-      `MOD boundary case ${index}`,
+      `${operation} boundary case ${index}`,
     );
   }
 
-  for (let index = 0; index < RANDOM_CASES; index++) {
-    const dividend = randomWord();
-    const divisor = randomWord();
-    const expectedQuotient = divisor === 0n ? 0n : dividend / divisor;
-    const expectedRemainder = divisor === 0n ? 0n : dividend % divisor;
-    await assertOperation(
-      witnessCalculator,
-      1n << 4n,
-      dividend,
-      divisor,
-      expectedQuotient,
-      `DIV randomized case ${index}`,
-    );
-    await assertOperation(
-      witnessCalculator,
-      1n << 6n,
-      dividend,
-      divisor,
-      expectedRemainder,
-      `MOD randomized case ${index}`,
+  for (const operation of Object.keys(selectors)) {
+    for (let index = 0; index < RANDOM_CASES_PER_OPERATION; index++) {
+      await assertOperation(
+        calculators,
+        operation,
+        randomWord(),
+        randomWord(),
+        `${operation} randomized case ${index}`,
+      );
+    }
+  }
+
+  const signedBridge = await calculatePair(
+    calculators,
+    "SMOD",
+    unsignedWord(-7n),
+    3n,
+  );
+  assert.deepEqual(
+    signedBridge.bridge,
+    [7n, 0n, 2n, 0n, 1n, 0n, 3n, 0n, 0n, 0n, 0n, 1n, 1n],
+    "ALU4A-to-ALU4B wire order must match the 13-wire contract",
+  );
+
+  for (const selector of [0n, 3n << 4n, 1n << 8n]) {
+    await assert.rejects(
+      calculators.first.calculateWitness({ in: [selector, 1n, 0n, 1n, 0n] }, true),
     );
   }
 
   const invalidLimb = 1n << 128n;
   for (let limb = 1; limb <= 4; limb++) {
-    const input = [1n << 4n, 0n, 0n, 1n, 0n];
+    const input = [selectors.SDIV, 0n, 0n, 1n, 0n];
     input[limb] = invalidLimb;
-    await assert.rejects(
-      witnessCalculator.calculateWitness({ in: input }, true),
-      undefined,
-      `non-canonical input limb ${limb} must be rejected`,
-    );
+    await assert.rejects(calculators.first.calculateWitness({ in: input }, true));
   }
-  await assert.rejects(
-    calculate(
-      witnessCalculator,
-      (1n << 4n) + (1n << 6n),
-      MAX_UINT256,
-      3n,
-    ),
-    undefined,
-    "unsupported selector must be rejected",
-  );
 
   const packageRoot = path.join(__dirname, "../..");
   const circuit = await wasm(
-    path.join(packageRoot, "subcircuits/circom/ALU4_circuit.circom"),
+    path.join(__dirname, "circom/division_family_composed.circom"),
     {
       include: path.join(packageRoot, "node_modules"),
       prime: "bls12381",
     },
   );
-  const mutationDividend = MAX_UINT256;
-  const mutationDivisor = (1n << 128n) + 12345n;
-  const witness = await circuit.calculateWitness({
-    in: [
-      1n << 6n,
-      ...split256BitInteger(mutationDividend),
-      ...split256BitInteger(mutationDivisor),
-    ],
-  }, true);
+  const mutationInput = {
+    selector: selectors.SMOD,
+    dividend: split128(unsignedWord(-((1n << 200n) + 12345n))),
+    divisor: split128((1n << 129n) + 77n),
+  };
+  const mutationWitness = await circuit.calculateWitness(mutationInput, true);
   await circuit.loadSymbols();
 
-  const quotientLowIndex = circuit.symbols["main.div.relationQuotient[0]"]?.varIdx;
+  const quotientLowIndex = circuit.symbols["main.first.absQuotient[0]"]?.varIdx;
+  const remainderHighIndex = circuit.symbols["main.first.absRemainder[1]"]?.varIdx;
+  const coefficientHighIndex = circuit.symbols["main.second.coefficient[4]"]?.varIdx;
+  const negativeValueSymbol = Object.keys(circuit.symbols).find(
+    (symbol) => symbol.startsWith(
+      "main.second.RecoverSignedMagnitudeFromCanonical_unsafe_",
+    ) && symbol.endsWith(".negativeValue[0]"),
+  );
   assert.notEqual(quotientLowIndex, undefined);
+  assert.notEqual(remainderHighIndex, undefined);
+  assert.notEqual(coefficientHighIndex, undefined);
+  assert.notEqual(negativeValueSymbol, undefined);
+
   await mutateAndReject(
     circuit,
-    witness,
-    "main.div.relationQuotient[0]",
-    BigInt(witness[quotientLowIndex].toString()) + 1n,
+    mutationWitness,
+    "main.first.absQuotient[0]",
+    BigInt(mutationWitness[quotientLowIndex].toString()) + 1n,
   );
-  await mutateAndReject(circuit, witness, "main.div.carry[0]", 1n << 65n);
-  await mutateAndReject(circuit, witness, "main.div.carry[1]", 1n << 66n);
-  await mutateAndReject(circuit, witness, "main.div.coefficient[4]", 1n);
-  await toggleBitAndReject(circuit, witness, "main.div.quotientBits[0].out[0]");
-  await toggleBitAndReject(circuit, witness, "main.div.remainderBits[0].out[0]");
-  await toggleBitAndReject(circuit, witness, "main.div.divisorBits[0].out[0]");
-  await mutateAndReject(circuit, witness, "main.out[0]", 0n);
+  await mutateAndReject(
+    circuit,
+    mutationWitness,
+    "main.first.absRemainder[1]",
+    BigInt(mutationWitness[remainderHighIndex].toString()) + 1n,
+  );
+  await mutateAndReject(circuit, mutationWitness, "main.second.carry[0]", 1n << 65n);
+  await mutateAndReject(circuit, mutationWitness, "main.second.carry[1]", 1n << 66n);
+  await mutateAndReject(
+    circuit,
+    mutationWitness,
+    "main.second.coefficient[4]",
+    BigInt(mutationWitness[coefficientHighIndex].toString()) + 1n,
+  );
+  await mutateAndReject(circuit, mutationWitness, negativeValueSymbol, 0n);
+  await mutateAndReject(circuit, mutationWitness, "main.out[0]", 0n);
 
   console.log(
-    `ALU4 DIV/MOD passed ${boundaryCases.length} boundary cases and ${RANDOM_CASES} randomized cases per operation, zero-divisor behavior, canonicality and selector rejection, and bounded quotient-remainder and high-block witness mutations`,
+    `ALU4A/ALU4B passed ${boundaryCases.length} boundary cases, ${RANDOM_CASES_PER_OPERATION} randomized cases per operation, exact bridge ordering, input rejection, and composed soundness mutations`,
   );
 };
 
