@@ -1,7 +1,7 @@
 pragma circom 2.1.6;
 include "../../templates/256bit/alu_safe.circom";
 
-template ALU7_() {
+template ALU4_() {
     signal input in[5];
     signal output out[2];
     signal in1[2] <== [in[1], in[2]];
@@ -23,4 +23,4 @@ template ALU7_() {
     out <== Mux256()(useMod, div.r, div.q);
 }
 
-component main {public [in]} = ALU7_();
+component main {public [in]} = ALU4_();

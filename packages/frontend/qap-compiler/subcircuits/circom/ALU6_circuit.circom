@@ -1,7 +1,7 @@
 pragma circom 2.1.6;
 include "../../templates/256bit/alu_safe.circom";
 
-template ALU12_() {
+template ALU6_() {
     signal input in[5];
     signal output out[2];
     signal shift[2] <== [in[1], in[2]];
@@ -36,4 +36,4 @@ template ALU12_() {
     rangeCheck === 1;
 }
 
-component main {public [in]} = ALU12_();
+component main {public [in]} = ALU6_();
