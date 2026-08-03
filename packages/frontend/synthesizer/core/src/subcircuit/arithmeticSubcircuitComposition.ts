@@ -253,3 +253,62 @@ export class ArithmeticSubcircuitComposition {
     }
   }
 }
+
+const createFixedSingleStepMapping = (
+  operation: ArithmeticOperator,
+  subcircuit: SubcircuitNames,
+  selector: bigint,
+  numOperands: number,
+  constants: readonly ConstantDefinition[] = [],
+): ArithmeticSubcircuitMapping => Object.freeze({
+  operation,
+  composition: freezeComposition({
+    constants,
+    numSteps: 1,
+    numOperands,
+    numResults: 1,
+    steps: [{
+      subcircuit,
+      usage: subcircuit.startsWith('ALU') ? operation : subcircuit,
+      selector,
+      inputs: [
+        { kind: 'selector' },
+        ...Array.from(
+          { length: numOperands },
+          (_, index): InputReference => ({ kind: 'operand', index }),
+        ),
+        ...constants.map(
+          (_, index): InputReference => ({ kind: 'constant', index }),
+        ),
+      ],
+      outputs: [{ kind: 'result', index: 0 }],
+    }],
+  }),
+});
+
+const ZERO_WORD_CONSTANT: ConstantDefinition = Object.freeze({
+  value: 0n,
+  sourceBitSize: 256,
+});
+
+export const FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS: readonly ArithmeticSubcircuitMapping[] =
+  Object.freeze([
+    createFixedSingleStepMapping('ADD', 'ALU1', 1n << 1n, 2),
+    createFixedSingleStepMapping('MUL', 'ALU1', 1n << 2n, 2),
+    createFixedSingleStepMapping('SUB', 'ALU1', 1n << 3n, 2),
+    createFixedSingleStepMapping('LT', 'ALU2', 1n << 16n, 2),
+    createFixedSingleStepMapping('GT', 'ALU2', 1n << 17n, 2),
+    createFixedSingleStepMapping('SLT', 'ALU3', 1n << 18n, 2),
+    createFixedSingleStepMapping('SGT', 'ALU3', 1n << 19n, 2),
+    createFixedSingleStepMapping('EQ', 'ALU1', 1n << 20n, 2),
+    createFixedSingleStepMapping('ISZERO', 'ALU1', 1n << 21n, 1, [ZERO_WORD_CONSTANT]),
+    createFixedSingleStepMapping('AND', 'AND', 1n << 22n, 2),
+    createFixedSingleStepMapping('OR', 'OR', 1n << 23n, 2),
+    createFixedSingleStepMapping('XOR', 'XOR', 1n << 24n, 2),
+    createFixedSingleStepMapping('NOT', 'ALU1', 1n << 25n, 1, [ZERO_WORD_CONSTANT]),
+    createFixedSingleStepMapping('BYTE', 'BYTE', 1n << 26n, 2),
+    createFixedSingleStepMapping('SHL', 'SHL', 1n << 27n, 2),
+    createFixedSingleStepMapping('SHR', 'ALU6', 1n << 28n, 2),
+    createFixedSingleStepMapping('SAR', 'ALU6', 1n << 29n, 2),
+    createFixedSingleStepMapping('SIGNEXTEND', 'SIGNEXTEND', 1n << 11n, 2),
+  ]);
