@@ -65,6 +65,9 @@ The format is based on Keep a Changelog.
 
 ### Bug Fixes
 
+- Constrained both carry signals in the shared 256-bit addition relation to be
+  boolean. This removes non-boolean carry witnesses from ADD, SUB, and other
+  subcircuits that reuse the same addition template.
 - Fixed initial SLOAD rejecting valid 256-bit EVM storage values outside the
   BLS12-381 scalar field range.
 - Fixed VM event handlers swallowing Synthesizer failures. The first

@@ -18,9 +18,11 @@ template Add256_unsafe() {
 
     // Check the correctness of out[0] and low_add_carry
     in1[0] + in2[0] === out[0] + low_add_carry * FIELD_SIZE;
+    low_add_carry * (low_add_carry - 1) === 0;
 
     // Check the correctenss of out[1] and up_add_carry
     in1[1] + in2[1] + low_add_carry === out[1] + carry * FIELD_SIZE;
+    carry * (carry - 1) === 0;
 }
 
 template Sub256_unsafe() {
