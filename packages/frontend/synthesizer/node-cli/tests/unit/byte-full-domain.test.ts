@@ -30,7 +30,7 @@ const createHarness = () => {
     },
     state: {
       subcircuitInfoByName: new Map(
-        ['BYTE', 'SIGNEXTEND'].map((name) => [name, { name }]),
+        ['BYTE', 'SIGNEXTEND', 'SHL', 'ALU6'].map((name) => [name, { name }]),
       ),
     },
     loadArbitraryStatic: vi.fn((value: bigint, sourceBitSize = 256) => ({
@@ -48,7 +48,7 @@ const createHarness = () => {
   };
 };
 
-describe('full-domain BYTE and SIGNEXTEND synthesis', () => {
+describe('full-domain word operation synthesis', () => {
   it.each([32n, 1n << 128n, (1n << 256n) - 1n])(
     'places BYTE for out-of-range EVM index %s and returns zero',
     (index) => {
@@ -88,4 +88,34 @@ describe('full-domain BYTE and SIGNEXTEND synthesis', () => {
       expect(placements[0].inPts[2]).toMatchObject({ source: 11, wireIndex: 4 });
     },
   );
+
+  it.each([256n, 1n << 128n, (1n << 256n) - 1n])(
+    'places SHL for oversized EVM shift %s and returns zero',
+    (shift) => {
+      const { manager, placements } = createHarness();
+      const shiftPt = dataPt(shift, 10, 3);
+      const valuePt = dataPt((1n << 256n) - 1n, 11, 4);
+
+      const result = manager.placeArith('SHL', [shiftPt, valuePt]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].value).toBe(0n);
+      expect(placements).toHaveLength(1);
+      expect(placements[0]).toMatchObject({ name: 'SHL', usage: 'SHL' });
+      expect(placements[0].inPts).toHaveLength(3);
+      expect(placements[0].inPts[0].value).toBe(1n << 27n);
+      expect(placements[0].inPts[1]).toMatchObject({ source: 10, wireIndex: 3 });
+      expect(placements[0].inPts[2]).toMatchObject({ source: 11, wireIndex: 4 });
+    },
+  );
+
+  it.each(['SHR', 'SAR'] as const)('retains the oversized-shift limit for %s', (operation) => {
+    const { manager, placements } = createHarness();
+
+    expect(() => manager.placeArith(operation, [
+      dataPt(256n, 10),
+      dataPt(1n, 11),
+    ])).toThrow(`Operation ${operation} has a shift value greater than 255`);
+    expect(placements).toHaveLength(0);
+  });
 });

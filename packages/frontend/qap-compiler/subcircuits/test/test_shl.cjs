@@ -1,0 +1,147 @@
+const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
+const path = require("node:path");
+const { readFileSync } = require("node:fs");
+
+const { wasm } = require("circom_tester");
+const builder = require("./wasm/witness_calculator.js");
+const { split256BitInteger } = require("./helper_functions.js");
+
+const libraryDir = process.env.QAP_SUBCIRCUIT_LIBRARY_DIR
+  ?? path.join(__dirname, "../library");
+const MAX_UINT256 = (1n << 256n) - 1n;
+const RANDOM_CASES = 128;
+
+const randomWord = () => BigInt(`0x${crypto.randomBytes(32).toString("hex")}`);
+const expectedShiftLeft = (shift, value) => {
+  return shift >= 256n ? 0n : value << shift & MAX_UINT256;
+};
+
+const loadShiftLeft = async () => {
+  const subcircuitInfo = JSON.parse(
+    readFileSync(path.join(libraryDir, "subcircuitInfo.json"), "utf8"),
+  );
+  const shiftLeftInfo = subcircuitInfo.find((entry) => entry.name === "SHL");
+  if (shiftLeftInfo === undefined) {
+    throw new Error("SHL subcircuit was not found in subcircuitInfo.json");
+  }
+  return builder(
+    readFileSync(path.join(libraryDir, `wasm/subcircuit${shiftLeftInfo.id}.wasm`)),
+  );
+};
+
+const calculate = (witnessCalculator, selector, shift, value) => {
+  return witnessCalculator.calculateWitness({
+    in: [
+      selector,
+      ...split256BitInteger(shift),
+      ...split256BitInteger(value),
+    ],
+  }, true);
+};
+
+const assertShiftLeft = async (witnessCalculator, shift, value, label) => {
+  const witness = await calculate(witnessCalculator, 1n << 27n, shift, value);
+  const [expectedLow, expectedHigh] = split256BitInteger(
+    expectedShiftLeft(shift, value),
+  );
+  assert.equal(BigInt(witness[1].toString()), expectedLow, `${label} low limb`);
+  assert.equal(BigInt(witness[2].toString()), expectedHigh, `${label} high limb`);
+};
+
+const main = async () => {
+  const witnessCalculator = await loadShiftLeft();
+  const patternedValue = BigInt(
+    `0x${Array.from({ length: 32 }, (_, index) => (index * 5 + 1).toString(16).padStart(2, "0")).join("")}`,
+  );
+  const boundaryShifts = [
+    0n,
+    1n,
+    63n,
+    64n,
+    127n,
+    128n,
+    191n,
+    192n,
+    254n,
+    255n,
+    256n,
+    257n,
+    1n << 128n,
+    1n << 255n,
+    MAX_UINT256,
+  ];
+  const boundaryValues = [0n, 1n, patternedValue, MAX_UINT256];
+  for (const shift of boundaryShifts) {
+    for (const value of boundaryValues) {
+      await assertShiftLeft(
+        witnessCalculator,
+        shift,
+        value,
+        `SHL boundary ${shift}:${value}`,
+      );
+    }
+  }
+
+  for (let index = 0; index < RANDOM_CASES; index++) {
+    const value = randomWord();
+    await assertShiftLeft(
+      witnessCalculator,
+      BigInt(crypto.randomBytes(1)[0]),
+      value,
+      `SHL in-range randomized case ${index}`,
+    );
+    await assertShiftLeft(
+      witnessCalculator,
+      randomWord(),
+      value,
+      `SHL full-domain randomized case ${index}`,
+    );
+  }
+
+  const invalidLimb = 1n << 128n;
+  for (let limb = 1; limb <= 4; limb++) {
+    const input = [1n << 27n, 0n, 0n, 0n, 0n];
+    input[limb] = invalidLimb;
+    await assert.rejects(
+      witnessCalculator.calculateWitness({ in: input }, true),
+      undefined,
+      `non-canonical input limb ${limb} must be rejected`,
+    );
+  }
+  await assert.rejects(
+    calculate(witnessCalculator, 1n << 28n, 1n, patternedValue),
+    undefined,
+    "unsupported selector must be rejected",
+  );
+
+  const packageRoot = path.join(__dirname, "../..");
+  const circuit = await wasm(
+    path.join(packageRoot, "subcircuits/circom/SHL_circuit.circom"),
+    {
+      include: path.join(packageRoot, "node_modules"),
+      prime: "bls12381",
+    },
+  );
+  const witness = await circuit.calculateWitness({
+    in: [1n << 27n, 1n, 0n, 1n, 0n],
+  }, true);
+  await circuit.loadSymbols();
+  const outputLowIndex = circuit.symbols["main.out[0]"]?.varIdx;
+  assert.notEqual(outputLowIndex, undefined);
+  const maliciousWitness = [...witness];
+  maliciousWitness[outputLowIndex] = 0n;
+  await assert.rejects(
+    circuit.checkConstraints(maliciousWitness),
+    /Constraint doesn't match/,
+  );
+
+  console.log(
+    `SHL passed ${boundaryShifts.length * boundaryValues.length} boundary cases, ${RANDOM_CASES} in-range and ${RANDOM_CASES} full-domain randomized cases, canonicality checks, and wrong-claim rejection`,
+  );
+};
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

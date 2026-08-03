@@ -80,6 +80,8 @@ The format is based on Keep a Changelog.
   index above 31 instead of rejecting it during synthesis.
 - Extended SIGNEXTEND to the full 256-bit EVM index domain, preserving the
   original value for every index above 31 instead of rejecting it.
+- Extended SHL to the full 256-bit EVM shift domain, returning zero for every
+  shift above 255 instead of rejecting it during synthesis.
 - Fixed initial SLOAD rejecting valid 256-bit EVM storage values outside the
   BLS12-381 scalar field range.
 - Fixed VM event handlers swallowing Synthesizer failures. The first
