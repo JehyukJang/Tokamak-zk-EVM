@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { createArithmeticSubcircuitComposition } from '../../../core/src/subcircuit/arithmeticSubcircuitComposition.ts';
 import { ArithmeticManager } from '../../../core/src/synthesizer/handlers/arithmeticManager.ts';
 import type { DataPt } from '../../../core/src/synthesizer/types/dataStructure.ts';
 
@@ -27,6 +28,13 @@ const createHarness = (
   const parent = {
     placements,
     subcircuitLibrary: {
+      arithmeticSubcircuitComposition: createArithmeticSubcircuitComposition({
+        nAccumulation: 4,
+        nEqualBatch: 2,
+        nJubjubExpBatch: 128,
+        nPoseidonBatch: 1,
+        nSubExpBatch: 32,
+      }),
       poseidonBatchSize: 1,
       arithExpBatchSize: 32,
       jubjubExpBatchSize: 128,
@@ -150,7 +158,7 @@ describe('modular CheckBus256 topology', () => {
     expect(() => manager.placeArith('MULMOD', [
       dataPt(5n, 10),
       dataPt(7n, 11),
-    ])).toThrow('MULMOD requires exactly three operands');
+    ])).toThrow('MULMOD expected 3 operands, but got 2');
     expect(placements).toHaveLength(0);
   });
 });

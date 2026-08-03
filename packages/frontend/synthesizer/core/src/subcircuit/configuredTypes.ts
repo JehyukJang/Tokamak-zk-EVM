@@ -130,44 +130,6 @@ export type SubcircuitInfoByName = Map<
   SubcircuitInfoByNameEntry
 >;
 
-export const SUBCIRCUIT_ALU_MAPPING: Record<ArithmeticOperator, [SubcircuitNames, bigint | undefined]> = {
-  ADD: ['ALU1', 1n << 1n],
-  MUL: ['ALU1', 1n << 2n],
-  SUB: ['ALU1', 1n << 3n],
-  // Transitional only: this legacy single-placement mapping cannot express ALU4A -> ALU4B.
-  DIV: ['ALU4A', 1n << 4n],
-  SDIV: ['ALU4A', 1n << 5n],
-  MOD: ['ALU4A', 1n << 6n],
-  SMOD: ['ALU4A', 1n << 7n],
-  ADDMOD: ['ADDMOD', 1n << 8n],
-  MULMOD: ['MULMOD', 1n << 9n],
-  // SubEXP: ['ALU1', 1n << 10n],
-  SubExpBatch: ['SubExpBatch', undefined],
-  SIGNEXTEND: ['SIGNEXTEND', 1n << 11n],
-  LT: ['ALU2', 1n << 16n],
-  GT: ['ALU2', 1n << 17n],
-  SLT: ['ALU3', 1n << 18n],
-  SGT: ['ALU3', 1n << 19n],
-  EQ: ['ALU1', 1n << 20n],
-  ISZERO: ['ALU1', 1n << 21n],
-  AND: ['AND', 1n << 22n],
-  OR: ['OR', 1n << 23n],
-  XOR: ['XOR', 1n << 24n],
-  NOT: ['ALU1', 1n << 25n],
-  BYTE: ['BYTE', 1n << 26n],
-  SHL: ['SHL', 1n << 27n],
-  SHR: ['ALU6', 1n << 28n],
-  SAR: ['ALU6', 1n << 29n],
-  DecToBit: ['DecToBit', undefined],
-  Accumulator: ['Accumulator', undefined],
-  EXP: ['ALU1', 1n << 10n], // Not directly used. SubEXP is used instead.
-  Poseidon: ['Poseidon', undefined],
-  // PrepareEdDsaScalars: ['PrepareEdDsaScalars', undefined],
-  EdDsaVerify: ['EdDsaVerify', undefined],
-  JubjubExpBatch: ['JubjubExpBatch', undefined],
-  EqualBatch: ['EqualBatch', undefined],
-} as const;
-
 export const TX_MESSAGE_TO_HASH = [
   'TRANSACTION_NONCE', 'CONTRACT_ADDRESS', 'FUNCTION_SELECTOR',
   ...TRANSACTION_INPUT_VARIABLES,

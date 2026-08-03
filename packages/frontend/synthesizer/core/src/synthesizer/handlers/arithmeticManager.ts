@@ -2,7 +2,8 @@
 import { DataPt, ISynthesizerProvider } from '../types/index.ts';
 import { DataPtFactory } from '../dataStructure/index.ts';
 import { DEFAULT_SOURCE_BIT_SIZE } from '../../synthesizer/params/constants.ts';
-import { ArithmeticOperator, SUBCIRCUIT_ALU_MAPPING, SubcircuitNames } from '../../subcircuit/configuredTypes.ts';
+import { ArithmeticOperator } from '../../subcircuit/configuredTypes.ts';
+import type { ArithmeticOperationComposition } from '../../subcircuit/arithmeticSubcircuitComposition.ts';
 import { ArithmeticOperations } from '../dataStructure/arithmeticOperations.ts';
 import { POSEIDON_INPUTS } from 'tokamak-l2js';
 
@@ -84,44 +85,150 @@ export class ArithmeticManager {
     }
   }
 
-  /**
-   * Prepares the inputs for a subcircuit, including any required selectors.
-   *
-   * @param {ArithmeticOperator} name - The name of the arithmetic operation.
-   * @param {DataPt[]} inPts - The input data points.
-   * @returns {{ subcircuitName: SubcircuitNames; finalInPts: DataPt[] }} The name of the subcircuit and the final input data points.
-   */
-  private _prepareSubcircuitInputs(
+  private _processArithmeticComposition(
     name: ArithmeticOperator,
+    composition: ArithmeticOperationComposition,
     inPts: DataPt[],
-  ): { subcircuitName: SubcircuitNames; finalInPts: DataPt[] } {
-    const [subcircuitName, configuredSelector] = SUBCIRCUIT_ALU_MAPPING[name];
-
-    const subcircuitInfo = this.parent.state.subcircuitInfoByName.get(subcircuitName)
-    if (subcircuitInfo === undefined) {
+    dynamicSelector?: bigint,
+    dynamicArithmeticInPts?: DataPt[],
+  ): DataPt[] {
+    if (inPts.length !== composition.numOperands) {
       throw new Error(
-        `Synthesizer: ${subcircuitName} subcircuit is not found for operation ${name}. Check qap-compiler.`,
-      );
+        `Synthesizer: ${name} expected ${composition.numOperands} operands, but got ${inPts.length}`,
+      )
     }
 
-    let selector = configuredSelector
-    let finalInPts = inPts
-    if (name === 'Poseidon') {
-      const normalized = this._normalizePoseidonInputs(inPts)
-      selector = normalized.selector
-      finalInPts = normalized.inPts
-    }
-    if (selector !== undefined) {
-      const selectorBitSize = name === 'Poseidon' ? Math.max(32, this.poseidonBatchSize) : 32
-      const selectorPt = this.parent.loadArbitraryStatic(
-        selector,
-        selectorBitSize,
-        `ALU selector for ${name} of ${subcircuitName}`,
-      );
-      finalInPts = [selectorPt, ...finalInPts];
+    const intermediateOutPts: Array<DataPt | undefined> = []
+    const resultPts: Array<DataPt | undefined> = Array(composition.numResults)
+
+    for (const [stepIndex, step] of composition.steps.entries()) {
+      if (!this.parent.state.subcircuitInfoByName.has(step.subcircuit)) {
+        throw new Error(
+          `Synthesizer: ${step.subcircuit} subcircuit is not found for operation ${name}. Check qap-compiler.`,
+        )
+      }
+
+      const finalInPts: DataPt[] = []
+      const arithmeticInPts: DataPt[] = []
+      for (const input of step.inputs) {
+        switch (input.kind) {
+          case 'selector': {
+            const selector = step.selector === 'dynamic'
+              ? dynamicSelector
+              : step.selector
+            if (typeof selector !== 'bigint') {
+              throw new Error(
+                `Synthesizer: ${name} step ${stepIndex} requires a dynamic selector`,
+              )
+            }
+            const selectorBitSize = step.selector === 'dynamic'
+              ? Math.max(32, this.poseidonBatchSize)
+              : 32
+            finalInPts.push(this.parent.loadArbitraryStatic(
+              selector,
+              selectorBitSize,
+              `ALU selector for ${name} of ${step.subcircuit}`,
+            ))
+            break
+          }
+          case 'operand': {
+            const operand = inPts[input.index]
+            if (operand === undefined) {
+              throw new Error(
+                `Synthesizer: ${name} step ${stepIndex} operand ${input.index} is unavailable`,
+              )
+            }
+            finalInPts.push(operand)
+            arithmeticInPts.push(operand)
+            break
+          }
+          case 'constant': {
+            const constant = composition.constants[input.index]
+            if (constant === undefined) {
+              throw new Error(
+                `Synthesizer: ${name} step ${stepIndex} constant ${input.index} is unavailable`,
+              )
+            }
+            const constantPt = this.parent.loadArbitraryStatic(
+              constant.value,
+              constant.sourceBitSize,
+            )
+            finalInPts.push(constantPt)
+            arithmeticInPts.push(constantPt)
+            break
+          }
+          case 'step-output': {
+            const intermediateOutPt = intermediateOutPts[input.index]
+            if (intermediateOutPt === undefined) {
+              throw new Error(
+                `Synthesizer: ${name} step ${stepIndex} intermediate ${input.index} is unavailable`,
+              )
+            }
+            finalInPts.push(intermediateOutPt)
+            arithmeticInPts.push(intermediateOutPt)
+            break
+          }
+        }
+      }
+
+      const outputOperation = step.usage as ArithmeticOperator
+      let outPts: DataPt[]
+      if (Object.prototype.hasOwnProperty.call(ARITHMETIC_MAPPING, outputOperation)) {
+        const outputInPts = step.selector === 'dynamic'
+          ? dynamicArithmeticInPts
+          : arithmeticInPts
+        if (outputInPts === undefined) {
+          throw new Error(
+            `Synthesizer: ${name} step ${stepIndex} requires dynamic arithmetic inputs`,
+          )
+        }
+        outPts = this._createArithmeticOutput(outputOperation, outputInPts)
+      } else if (step.outputs.length === 0) {
+        outPts = []
+      } else {
+        throw new Error(
+          `Synthesizer: ${name} step ${stepIndex} has no output generator for ${step.usage}`,
+        )
+      }
+      if (outPts.length !== step.outputs.length) {
+        throw new Error(
+          `Synthesizer: ${name} step ${stepIndex} expected ${step.outputs.length} outputs, but generated ${outPts.length}`,
+        )
+      }
+
+      this.parent.place(step.subcircuit, finalInPts, outPts, step.usage)
+
+      for (const [outputIndex, output] of step.outputs.entries()) {
+        const outPt = outPts[outputIndex]
+        if (outPt === undefined) {
+          throw new Error(
+            `Synthesizer: ${name} step ${stepIndex} output ${outputIndex} is unavailable`,
+          )
+        }
+        if (output.kind === 'step-output') {
+          if (intermediateOutPts[output.index] !== undefined) {
+            throw new Error(
+              `Synthesizer: ${name} intermediate ${output.index} is already assigned`,
+            )
+          }
+          intermediateOutPts[output.index] = outPt
+        } else if (output.kind === 'result') {
+          if (resultPts[output.index] !== undefined) {
+            throw new Error(
+              `Synthesizer: ${name} result ${output.index} is already assigned`,
+            )
+          }
+          resultPts[output.index] = outPt
+        }
+      }
     }
 
-    return { subcircuitName, finalInPts };
+    return resultPts.map((resultPt, index) => {
+      if (resultPt === undefined) {
+        throw new Error(`Synthesizer: ${name} result ${index} is unavailable`)
+      }
+      return DataPtFactory.deepCopy(resultPt)
+    })
   }
 
   private _assertModularCheckTopology(
@@ -172,28 +279,32 @@ export class ArithmeticManager {
    * @returns {DataPt[]} The output data points from the operation.
    */
   public placeArith(name: ArithmeticOperator, inPts: DataPt[]): DataPt[] {
-    let modularCheckPlacementIndex: number | undefined
-    let modularFirstOperand: DataPt | undefined
-    if (name === 'ADDMOD' || name === 'MULMOD') {
-      modularFirstOperand = inPts[0]
-      if (inPts.length !== 3 || modularFirstOperand === undefined) {
-        throw new Error(`Synthesizer: ${name} requires exactly three operands`)
-      }
-      if (!this.parent.state.subcircuitInfoByName.has('CheckBus256')) {
-        throw new Error('Synthesizer: CheckBus256 subcircuit is required for modular arithmetic')
-      }
-      modularCheckPlacementIndex = this.parent.placements.length
-      this.parent.place('CheckBus256', [modularFirstOperand], [], 'CheckBus256')
+    const composition = this.parent.subcircuitLibrary
+      .arithmeticSubcircuitComposition.get(name)
+    let compositionInPts = inPts
+    let dynamicSelector: bigint | undefined
+    if (name === 'Poseidon') {
+      const normalized = this._normalizePoseidonInputs(inPts)
+      compositionInPts = normalized.inPts
+      dynamicSelector = normalized.selector
     }
 
-    const outPts = this._createArithmeticOutput(name, inPts);
-    const { subcircuitName, finalInPts } = this._prepareSubcircuitInputs(
+    const modularCheckPlacementIndex = name === 'ADDMOD' || name === 'MULMOD'
+      ? this.parent.placements.length
+      : undefined
+    const outPts = this._processArithmeticComposition(
       name,
-      inPts,
-    );
-    this.parent.place(subcircuitName, finalInPts, outPts, name);
+      composition,
+      compositionInPts,
+      dynamicSelector,
+      name === 'Poseidon' ? inPts : undefined,
+    )
 
-    if (modularCheckPlacementIndex !== undefined && modularFirstOperand !== undefined) {
+    if (modularCheckPlacementIndex !== undefined) {
+      const modularFirstOperand = inPts[0]
+      if (modularFirstOperand === undefined) {
+        throw new Error(`Synthesizer: ${name} requires a first operand`)
+      }
       this._assertModularCheckTopology(
         name as 'ADDMOD' | 'MULMOD',
         modularFirstOperand,
@@ -201,7 +312,7 @@ export class ArithmeticManager {
       )
     }
 
-    return DataPtFactory.deepCopy(outPts);
+    return outPts
   }
 
   public placePoseidon(inPts: DataPt[]): DataPt {

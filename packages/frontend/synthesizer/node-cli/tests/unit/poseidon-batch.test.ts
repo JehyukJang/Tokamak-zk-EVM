@@ -1,6 +1,7 @@
 import { poseidonChainCompress } from 'tokamak-l2js';
 import { describe, expect, it, vi } from 'vitest';
 
+import { createArithmeticSubcircuitComposition } from '../../../core/src/subcircuit/arithmeticSubcircuitComposition.ts';
 import { ArithmeticManager } from '../../../core/src/synthesizer/handlers/arithmeticManager.ts';
 import type { DataPt } from '../../../core/src/synthesizer/types/dataStructure.ts';
 
@@ -23,6 +24,13 @@ const createHarness = (poseidonBatchSize: number) => {
   const parent = {
     placements,
     subcircuitLibrary: {
+      arithmeticSubcircuitComposition: createArithmeticSubcircuitComposition({
+        nAccumulation: 4,
+        nEqualBatch: 2,
+        nJubjubExpBatch: 128,
+        nPoseidonBatch: poseidonBatchSize,
+        nSubExpBatch: 32,
+      }),
       poseidonBatchSize,
       arithExpBatchSize: 32,
       jubjubExpBatchSize: 128,
