@@ -25,6 +25,7 @@ export type CompositionStep = Readonly<{
 }>;
 
 export type ArithmeticOperationComposition = Readonly<{
+  numSteps: number | 'dynamic';
   numOperands: number;
   numResults: number;
   steps: readonly CompositionStep[];
@@ -50,6 +51,7 @@ const freezeReference = <Reference extends InputReference | OutputReference>(
 const freezeComposition = (
   composition: ArithmeticOperationComposition,
 ): ArithmeticOperationComposition => Object.freeze({
+  numSteps: composition.numSteps,
   numOperands: composition.numOperands,
   numResults: composition.numResults,
   steps: Object.freeze(composition.steps.map((step) => Object.freeze({
@@ -111,6 +113,14 @@ export class ArithmeticSubcircuitComposition {
     operation: ArithmeticOperator,
     composition: ArithmeticOperationComposition,
   ): void {
+    if (composition.numSteps !== 'dynamic') {
+      assertIndex(composition.numSteps, `${operation} numSteps`);
+      if (composition.numSteps !== composition.steps.length) {
+        throw new Error(
+          `ArithmeticSubcircuitComposition: ${operation} numSteps must match its step count`,
+        );
+      }
+    }
     assertIndex(composition.numOperands, `${operation} numOperands`);
     assertIndex(composition.numResults, `${operation} numResults`);
     if (composition.steps.length === 0) {
