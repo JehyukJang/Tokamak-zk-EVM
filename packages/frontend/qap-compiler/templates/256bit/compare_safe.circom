@@ -98,6 +98,13 @@ template IsEqual256() {
     out <== eq_lower_out * eq_upper_out;
 }
 
+template CheckBus128() {
+    signal input in;
+
+    signal in_range <== LessEqThan(128)([in, (1<<128) - 1]);
+    in_range === 1;
+}
+
 template CheckBus() {
     signal input in[2];
 

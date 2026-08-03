@@ -9,8 +9,7 @@ template ALU9_() {
 
     in[0] === 1 << 11;
     index[1] === 0;
-    signal indexLowRange <== LessEqThan(128)([index[0], (1 << 128) - 1]);
-    indexLowRange === 1;
+    CheckBus128()(index[0]);
     CheckBus()(value);
 
     signal rem[2];
