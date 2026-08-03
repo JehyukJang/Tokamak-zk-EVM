@@ -93,8 +93,8 @@ export const SUBCIRCUIT_LIST = [
     'AND',
     'OR',
     'XOR',
-    'ALU4A',
-    'ALU4B',
+    'ALU4',
+    'ALU5',
     'SIGNEXTEND',
     'BYTE',
     'SHL',
@@ -130,189 +130,42 @@ export type SubcircuitInfoByName = Map<
   SubcircuitInfoByNameEntry
 >;
 
-export type SubcircuitPlacementDefinition = Readonly<{
-  subcircuit: SubcircuitNames;
-  inputWires: number;
-  outputWires: number;
-}>;
-
-export type SingleOperationDefinition = Readonly<{
-  kind: 'single';
-  selector: bigint | undefined;
-  selectorPlacement: 0;
-  placements: readonly [SubcircuitPlacementDefinition];
-  result: Readonly<{
-    kind: 'all-outputs';
-    placement: 0;
-  }>;
-}>;
-
-export type CheckedOperationDefinition = Readonly<{
-  kind: 'checked-operation';
-  selector: bigint;
-  selectorPlacement: 1;
-  placements: readonly [SubcircuitPlacementDefinition, SubcircuitPlacementDefinition];
-  sharedInputs: readonly [Readonly<{
-    operand: 0;
-    bitSize: 256;
-    consumers: readonly [
-      Readonly<{ placement: 0; input: 0 }>,
-      Readonly<{ placement: 1; input: 1 }>,
-    ];
-  }>];
-  result: Readonly<{
-    kind: 'output';
-    placement: 1;
-    output: 0;
-    bitSize: 256;
-  }>;
-}>;
-
-export type DivisionBridgeName =
-  | 'absDividend'
-  | 'absQuotient'
-  | 'absRemainder'
-  | 'absDivisorWord0'
-  | 'absDivisorWord1'
-  | 'absDivisorWord2'
-  | 'absDivisorWord3'
-  | 'divisorIsZero'
-  | 'resultIsNegative'
-  | 'useMod';
-
-export type DivisionFamilyOperationDefinition = Readonly<{
-  kind: 'division-family';
-  selector: bigint;
-  selectorPlacement: 0;
-  placements: readonly [SubcircuitPlacementDefinition, SubcircuitPlacementDefinition];
-  operands: readonly [
-    Readonly<{ operand: 0; placement: 0; input: 1; bitSize: 256 }>,
-    Readonly<{ operand: 1; placement: 0; input: 2; bitSize: 256 }>,
-  ];
-  bridge: readonly Readonly<{
-    name: DivisionBridgeName;
-    producer: Readonly<{ placement: 0; output: number }>;
-    consumer: Readonly<{ placement: 1; input: number }>;
-    bitSize: 1 | 64 | 256;
-  }>[];
-  result: Readonly<{
-    kind: 'output';
-    placement: 1;
-    output: 0;
-    bitSize: 256;
-  }>;
-}>;
-
-export type ArithmeticOperationDefinition =
-  | SingleOperationDefinition
-  | CheckedOperationDefinition
-  | DivisionFamilyOperationDefinition;
-
-const singleOperation = (
-  subcircuit: SubcircuitNames,
-  selector: bigint | undefined,
-  inputWires: number,
-  outputWires: number,
-): SingleOperationDefinition => ({
-  kind: 'single',
-  selector,
-  selectorPlacement: 0,
-  placements: [{ subcircuit, inputWires, outputWires }],
-  result: { kind: 'all-outputs', placement: 0 },
-});
-
-const checkedOperation = (
-  subcircuit: 'ADDMOD' | 'MULMOD',
-  selector: bigint,
-): CheckedOperationDefinition => ({
-  kind: 'checked-operation',
-  selector,
-  selectorPlacement: 1,
-  placements: [
-    { subcircuit: 'CheckBus256', inputWires: 2, outputWires: 0 },
-    { subcircuit, inputWires: 7, outputWires: 2 },
-  ],
-  sharedInputs: [{
-    operand: 0,
-    bitSize: 256,
-    consumers: [
-      { placement: 0, input: 0 },
-      { placement: 1, input: 1 },
-    ],
-  }],
-  result: { kind: 'output', placement: 1, output: 0, bitSize: 256 },
-});
-
-const DIVISION_BRIDGE = [
-  ['absDividend', 256],
-  ['absQuotient', 256],
-  ['absRemainder', 256],
-  ['absDivisorWord0', 64],
-  ['absDivisorWord1', 64],
-  ['absDivisorWord2', 64],
-  ['absDivisorWord3', 64],
-  ['divisorIsZero', 1],
-  ['resultIsNegative', 1],
-  ['useMod', 1],
-] as const satisfies readonly (readonly [DivisionBridgeName, 1 | 64 | 256])[];
-
-const divisionFamilyOperation = (
-  selector: bigint,
-): DivisionFamilyOperationDefinition => ({
-  kind: 'division-family',
-  selector,
-  selectorPlacement: 0,
-  placements: [
-    { subcircuit: 'ALU4A', inputWires: 5, outputWires: 13 },
-    { subcircuit: 'ALU4B', inputWires: 13, outputWires: 2 },
-  ],
-  operands: [
-    { operand: 0, placement: 0, input: 1, bitSize: 256 },
-    { operand: 1, placement: 0, input: 2, bitSize: 256 },
-  ],
-  bridge: DIVISION_BRIDGE.map(([name, bitSize], index) => ({
-    name,
-    producer: { placement: 0, output: index },
-    consumer: { placement: 1, input: index },
-    bitSize,
-  })),
-  result: { kind: 'output', placement: 1, output: 0, bitSize: 256 },
-});
-
-export const ARITHMETIC_OPERATION_DEFINITIONS = {
-  ADD: singleOperation('ALU1', 1n << 1n, 5, 2),
-  MUL: singleOperation('ALU1', 1n << 2n, 5, 2),
-  SUB: singleOperation('ALU1', 1n << 3n, 5, 2),
-  DIV: divisionFamilyOperation(1n << 4n),
-  SDIV: divisionFamilyOperation(1n << 5n),
-  MOD: divisionFamilyOperation(1n << 6n),
-  SMOD: divisionFamilyOperation(1n << 7n),
-  ADDMOD: checkedOperation('ADDMOD', 1n << 8n),
-  MULMOD: checkedOperation('MULMOD', 1n << 9n),
-  EXP: singleOperation('ALU1', 1n << 10n, 5, 2), // Not directly used. SubExpBatch is used instead.
-  SIGNEXTEND: singleOperation('SIGNEXTEND', 1n << 11n, 5, 2),
-  LT: singleOperation('ALU2', 1n << 16n, 5, 2),
-  GT: singleOperation('ALU2', 1n << 17n, 5, 2),
-  SLT: singleOperation('ALU3', 1n << 18n, 5, 2),
-  SGT: singleOperation('ALU3', 1n << 19n, 5, 2),
-  EQ: singleOperation('ALU1', 1n << 20n, 5, 2),
-  ISZERO: singleOperation('ALU1', 1n << 21n, 5, 2),
-  AND: singleOperation('AND', 1n << 22n, 5, 2),
-  OR: singleOperation('OR', 1n << 23n, 5, 2),
-  XOR: singleOperation('XOR', 1n << 24n, 5, 2),
-  NOT: singleOperation('ALU1', 1n << 25n, 5, 2),
-  BYTE: singleOperation('BYTE', 1n << 26n, 5, 2),
-  SHL: singleOperation('SHL', 1n << 27n, 5, 2),
-  SHR: singleOperation('ALU6', 1n << 28n, 5, 2),
-  SAR: singleOperation('ALU6', 1n << 29n, 5, 2),
-  DecToBit: singleOperation('DecToBit', undefined, 2, 256),
-  SubExpBatch: singleOperation('SubExpBatch', undefined, 12, 4),
-  Accumulator: singleOperation('Accumulator', undefined, 64, 2),
-  Poseidon: singleOperation('Poseidon', undefined, 5, 2),
-  JubjubExpBatch: singleOperation('JubjubExpBatch', undefined, 45, 8),
-  EdDsaVerify: singleOperation('EdDsaVerify', undefined, 12, 0),
-  EqualBatch: singleOperation('EqualBatch', undefined, 8, 0),
-} as const satisfies Record<ArithmeticOperator, ArithmeticOperationDefinition>;
+export const SUBCIRCUIT_ALU_MAPPING: Record<ArithmeticOperator, [SubcircuitNames, bigint | undefined]> = {
+  ADD: ['ALU1', 1n << 1n],
+  MUL: ['ALU1', 1n << 2n],
+  SUB: ['ALU1', 1n << 3n],
+  DIV: ['ALU4', 1n << 4n],
+  SDIV: ['ALU5', 1n << 5n],
+  MOD: ['ALU4', 1n << 6n],
+  SMOD: ['ALU5', 1n << 7n],
+  ADDMOD: ['ADDMOD', 1n << 8n],
+  MULMOD: ['MULMOD', 1n << 9n],
+  // SubEXP: ['ALU1', 1n << 10n],
+  SubExpBatch: ['SubExpBatch', undefined],
+  SIGNEXTEND: ['SIGNEXTEND', 1n << 11n],
+  LT: ['ALU2', 1n << 16n],
+  GT: ['ALU2', 1n << 17n],
+  SLT: ['ALU3', 1n << 18n],
+  SGT: ['ALU3', 1n << 19n],
+  EQ: ['ALU1', 1n << 20n],
+  ISZERO: ['ALU1', 1n << 21n],
+  AND: ['AND', 1n << 22n],
+  OR: ['OR', 1n << 23n],
+  XOR: ['XOR', 1n << 24n],
+  NOT: ['ALU1', 1n << 25n],
+  BYTE: ['BYTE', 1n << 26n],
+  SHL: ['SHL', 1n << 27n],
+  SHR: ['ALU6', 1n << 28n],
+  SAR: ['ALU6', 1n << 29n],
+  DecToBit: ['DecToBit', undefined],
+  Accumulator: ['Accumulator', undefined],
+  EXP: ['ALU1', 1n << 10n], // Not directly used. SubEXP is used instead.
+  Poseidon: ['Poseidon', undefined],
+  // PrepareEdDsaScalars: ['PrepareEdDsaScalars', undefined],
+  EdDsaVerify: ['EdDsaVerify', undefined],
+  JubjubExpBatch: ['JubjubExpBatch', undefined],
+  EqualBatch: ['EqualBatch', undefined],
+} as const;
 
 export const TX_MESSAGE_TO_HASH = [
   'TRANSACTION_NONCE', 'CONTRACT_ADDRESS', 'FUNCTION_SELECTOR',
