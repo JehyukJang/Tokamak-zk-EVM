@@ -1,7 +1,7 @@
 pragma circom 2.1.6;
 include "../../templates/256bit/alu_safe.circom";
 
-template ALU10_() {
+template BYTE_() {
     signal input in[5];
     signal output out[2];
     signal index[2] <== [in[1], in[2]];
@@ -19,4 +19,4 @@ template ALU10_() {
     out <== [result, 0];
 }
 
-component main {public [in]} = ALU10_();
+component main {public [in]} = BYTE_();
