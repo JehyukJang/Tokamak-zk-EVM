@@ -5,7 +5,7 @@
 set -euo pipefail
 
 # Subcircuit library configuration
-names=("bufferLogOut" "bufferStorageStore" "bufferStorageLoad" "bufferTxIn" "bufferBlockIn" "bufferEVMIn" "bufferPrvIn" "ADD" "MUL" "SUB" "DIV" "SDIV" "MOD" "SMOD" "ADDMOD" "MULMOD" "LT" "GT" "SLT" "SGT" "EQ" "ISZERO" "AND" "OR" "XOR" "NOT" "SIGNEXTEND" "BYTE" "SHL" "SHR" "SAR" "CheckBus" "DecToBit" "SubExpBatch" "Accumulator" "Poseidon" "JubjubExpBatch" "EdDsaVerify" "EqualBatch")
+names=("bufferLogOut" "bufferStorageStore" "bufferStorageLoad" "bufferTxIn" "bufferBlockIn" "bufferEVMIn" "bufferPrvIn" "ALU1" "ALU2" "ALU3" "ALU4" "DecToBit" "SubExpBatch" "Accumulator" "Poseidon" "JubjubExpBatch" "EdDsaVerify" "EqualBatch")
 CURVE_NAME="bls12381"
 
 original_cwd="$(pwd)"

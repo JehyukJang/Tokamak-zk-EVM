@@ -2,7 +2,7 @@
 import { DataPt, ISynthesizerProvider } from '../types/index.ts';
 import { DataPtFactory } from '../dataStructure/index.ts';
 import { DEFAULT_SOURCE_BIT_SIZE } from '../../synthesizer/params/constants.ts';
-import { ArithmeticOperator, SubcircuitNames } from '../../subcircuit/configuredTypes.ts';
+import { ArithmeticOperator, SUBCIRCUIT_ALU_MAPPING, SubcircuitNames } from '../../subcircuit/configuredTypes.ts';
 import { ArithmeticOperations } from '../dataStructure/arithmeticOperations.ts';
 import { POSEIDON_INPUTS } from 'tokamak-l2js';
 
@@ -85,7 +85,7 @@ export class ArithmeticManager {
   }
 
   /**
-   * Prepares the inputs for a subcircuit, including the Poseidon mode selector.
+   * Prepares the inputs for a subcircuit, including any required selectors.
    *
    * @param {ArithmeticOperator} name - The name of the arithmetic operation.
    * @param {DataPt[]} inPts - The input data points.
@@ -95,7 +95,7 @@ export class ArithmeticManager {
     name: ArithmeticOperator,
     inPts: DataPt[],
   ): { subcircuitName: SubcircuitNames; finalInPts: DataPt[] } {
-    const subcircuitName: SubcircuitNames = name === 'EXP' ? 'SubExpBatch' : name;
+    const [subcircuitName, configuredSelector] = SUBCIRCUIT_ALU_MAPPING[name];
 
     const subcircuitInfo = this.parent.state.subcircuitInfoByName.get(subcircuitName)
     if (subcircuitInfo === undefined) {
@@ -104,14 +104,19 @@ export class ArithmeticManager {
       );
     }
 
+    let selector = configuredSelector
     let finalInPts = inPts
     if (name === 'Poseidon') {
       const normalized = this._normalizePoseidonInputs(inPts)
+      selector = normalized.selector
       finalInPts = normalized.inPts
+    }
+    if (selector !== undefined) {
+      const selectorBitSize = name === 'Poseidon' ? Math.max(32, this.poseidonBatchSize) : 32
       const selectorPt = this.parent.loadArbitraryStatic(
-        normalized.selector,
-        Math.max(32, this.poseidonBatchSize),
-        `Mode selector for ${name} of ${subcircuitName}`,
+        selector,
+        selectorBitSize,
+        `ALU selector for ${name} of ${subcircuitName}`,
       );
       finalInPts = [selectorPt, ...finalInPts];
     }
@@ -145,13 +150,6 @@ export class ArithmeticManager {
    * @returns {DataPt[]} The output data points from the operation.
    */
   public placeArith(name: ArithmeticOperator, inPts: DataPt[]): DataPt[] {
-    if (name === 'ADDMOD' || name === 'MULMOD') {
-      if (inPts[0] === undefined) {
-        throw new Error(`Synthesizer: ${name} requires a first operand.`)
-      }
-      this.parent.place('CheckBus', [inPts[0]], [], 'CheckBus')
-    }
-
     const outPts = this._createArithmeticOutput(name, inPts);
     const { subcircuitName, finalInPts } = this._prepareSubcircuitInputs(
       name,

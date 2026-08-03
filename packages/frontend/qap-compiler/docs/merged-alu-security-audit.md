@@ -1,10 +1,5 @@
 # Merged ALU Security Audit
 
-> Historical document: the compiled selector-based ALU topology was removed on
-> August 3, 2026 and replaced by one selector-free subcircuit per EVM arithmetic
-> operation. References below to the "current" ALU implementation describe the
-> superseded topology at the time of its review.
-
 > Status update: Revalidated against the repository state on April 4, 2026. The original merged-wrapper findings in this document are resolved. Under the composed-system model used by the external compiler, the fresh review identified two topology-dependent contract gaps outside the original merged-ALU scope. The `Accumulator` / `SubExpBatch` canonicalization observations collapse into system-level bus-well-formedness dependencies rather than standalone public-input exploits. The separate 255-bit split-limb canonicalization observation is retained below only as a boundary-handling note for affected compile targets, not as a live in-repository compiled-circuit issue.
 
 ## Scope
@@ -320,7 +315,7 @@ The compiled `ALU2` shift-family path mapped shifts greater than `255` to a zero
 
 Relevant code:
 
-- [`templates/256bit/shift_power.circom`](../templates/256bit/shift_power.circom)
+- [`templates/256bit/arithmetic_safe.circom`](../templates/256bit/arithmetic_safe.circom)
 - [`templates/256bit/arithmetic_unsafe_type2.circom`](../templates/256bit/arithmetic_unsafe_type2.circom)
 - [`templates/256bit/alu_safe.circom`](../templates/256bit/alu_safe.circom)
 
