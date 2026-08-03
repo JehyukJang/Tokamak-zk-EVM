@@ -129,7 +129,7 @@ export class ArithmeticManager {
       }
     }
 
-    if (name === 'BYTE' || name === 'SIGNEXTEND') {
+    if (name === 'SIGNEXTEND') {
       if (inPts[0] !== undefined && inPts[0].value > 31n) {
         throw new Error(
           `Synthesizer: Operation ${name} has an index or size value greater than 31. Adjust ${subcircuitName} subcircuit in qap-compiler.`,
