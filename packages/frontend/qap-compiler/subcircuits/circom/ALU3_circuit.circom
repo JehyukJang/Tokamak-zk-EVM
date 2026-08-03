@@ -7,33 +7,29 @@ template ALU3_() {
     signal in1[2] <== [in[1], in[2]];
     signal in2[2] <== [in[3], in[4]];
 
-    CheckBus256()(in1);
-    CheckBus256()(in2);
+    CheckBus128()(in1[0]);
+    CheckBus128()(in2[0]);
+
+    component in1HighBits = Num2Bits(128);
+    component in2HighBits = Num2Bits(128);
+    in1HighBits.in <== in1[1];
+    in2HighBits.in <== in2[1];
+    signal isNeg1 <== in1HighBits.out[127];
+    signal isNeg2 <== in2HighBits.out[127];
 
     signal useGt <== (in[0] - (1 << 18)) / ((1 << 19) - (1 << 18));
     useGt * (1 - useGt) === 0;
 
-    signal (isNeg1, abs1[2]) <== getSignAndAbs256_unsafe()(in1);
-    signal (isNeg2, abs2[2]) <== getSignAndAbs256_unsafe()(in2);
-    signal absLtLower <== LessThan(128)([abs1[0], abs2[0]]);
-    signal absLtUpper <== LessThan(128)([abs1[1], abs2[1]]);
-    signal absUpperEq <== IsEqual()([abs1[1], abs2[1]]);
-    signal absLowerEq <== IsEqual()([abs1[0], abs2[0]]);
-    signal absEqual <== absUpperEq * absLowerEq;
-    signal absUpperLess <== (1 - absUpperEq) * absLtUpper;
-    signal absLowerLess <== absUpperEq * absLtLower;
-    signal absLess <== absUpperLess + absLowerLess;
-    signal absGreater <== (1 - absLess) * (1 - absEqual);
-    signal signDiff <== XOR()(isNeg1, isNeg2);
-    signal positiveLess <== absLess * (1 - isNeg1);
-    signal negativeLess <== absGreater * isNeg1;
-    signal sameSignLess <== OR()(positiveLess, negativeLess);
-    signal less <== sameSignLess + signDiff * (isNeg1 - sameSignLess);
+    signal lowerLess <== LessThan(128)([in1[0], in2[0]]);
+    signal upperLess <== LessThan(128)([in1[1], in2[1]]);
+    signal upperEqual <== IsEqual()([in1[1], in2[1]]);
+    signal lowerEqual <== IsEqual()([in1[0], in2[0]]);
+    signal unsignedLess <== upperLess + upperEqual * lowerLess;
+    signal equal <== upperEqual * lowerEqual;
 
-    signal rawUpperEq <== IsEqual()([in1[1], in2[1]]);
-    signal rawLowerEq <== IsEqual()([in1[0], in2[0]]);
-    signal rawEqual <== rawUpperEq * rawLowerEq;
-    signal greater <== (1 - less) * (1 - rawEqual);
+    signal signDiff <== isNeg1 + isNeg2 - 2 * isNeg1 * isNeg2;
+    signal less <== unsignedLess + signDiff * (isNeg1 - unsignedLess);
+    signal greater <== 1 - less - equal;
 
     out <== [less + useGt * (greater - less), 0];
 }

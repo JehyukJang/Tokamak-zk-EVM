@@ -74,6 +74,8 @@ The format is based on Keep a Changelog.
 - Replaced ALU1's truncated multiplication relation with a bounded 64-bit
   schoolbook construction. Its operand decompositions are shared with the
   wrapper's input canonicality checks, and both radix carries are range-bound.
+- Replaced ALU3's absolute-value-based signed comparison with a direct
+  two's-complement ordering relation that reuses constrained sign bits.
 - Fixed initial SLOAD rejecting valid 256-bit EVM storage values outside the
   BLS12-381 scalar field range.
 - Fixed VM event handlers swallowing Synthesizer failures. The first
