@@ -188,14 +188,14 @@ const main = async () => {
   );
   await mutateAndReject(circuit, witness, "main.div.carry[0]", 1n << 65n);
   await mutateAndReject(circuit, witness, "main.div.carry[1]", 1n << 66n);
-  await mutateAndReject(circuit, witness, "main.div.carry[2]", 1n << 65n);
+  await mutateAndReject(circuit, witness, "main.div.coefficient[4]", 1n);
   await toggleBitAndReject(circuit, witness, "main.div.quotientBits[0].out[0]");
   await toggleBitAndReject(circuit, witness, "main.div.remainderBits[0].out[0]");
   await toggleBitAndReject(circuit, witness, "main.div.divisorBits[0].out[0]");
   await mutateAndReject(circuit, witness, "main.out[0]", 0n);
 
   console.log(
-    `ALU4 DIV/MOD passed ${boundaryCases.length} boundary cases and ${RANDOM_CASES} randomized cases per operation, zero-divisor behavior, canonicality and selector rejection, and bounded quotient-remainder witness mutations`,
+    `ALU4 DIV/MOD passed ${boundaryCases.length} boundary cases and ${RANDOM_CASES} randomized cases per operation, zero-divisor behavior, canonicality and selector rejection, and bounded quotient-remainder and high-block witness mutations`,
   );
 };
 
