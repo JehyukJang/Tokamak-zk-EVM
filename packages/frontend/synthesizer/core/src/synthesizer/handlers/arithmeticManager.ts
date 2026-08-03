@@ -195,8 +195,11 @@ export class ArithmeticManager {
       if (inPts.length !== 3 || modularFirstOperand === undefined) {
         throw new Error(`Synthesizer: ${name} requires exactly three operands`)
       }
+      if (!this.parent.state.subcircuitInfoByName.has('CheckBus256')) {
+        throw new Error('Synthesizer: CheckBus256 subcircuit is required for modular arithmetic')
+      }
       modularCheckPlacementIndex = this.parent.placements.length
-      this.placeArith('CheckBus256', [modularFirstOperand])
+      this.parent.place('CheckBus256', [modularFirstOperand], [], 'CheckBus256')
     }
 
     const outPts = this._createArithmeticOutput(name, inPts);
@@ -447,7 +450,6 @@ const ARITHMETIC_MAPPING: Record<ArithmeticOperator, (...args: any) => any> = {
   SAR: ArithmeticOperations.sar,
   BYTE: ArithmeticOperations.byte,
   SIGNEXTEND: ArithmeticOperations.signextend,
-  CheckBus256: () => [],
   DecToBit: ArithmeticOperations.decToBit,
   // SubEXP: ArithmeticOperations.subEXP,
   SubExpBatch: ArithmeticOperations.subExpBatch,
