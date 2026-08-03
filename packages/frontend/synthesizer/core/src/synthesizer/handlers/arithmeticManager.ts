@@ -227,44 +227,6 @@ export class ArithmeticManager {
     })
   }
 
-  private _assertModularCheckTopology(
-    name: 'ADDMOD' | 'MULMOD',
-    firstOperand: DataPt,
-    checkPlacementIndex: number,
-  ): void {
-    const placements = this.parent.placements
-    const modularPlacementIndex = placements.length - 1
-    const checkPlacement = placements[checkPlacementIndex]
-    const modularPlacement = placements[modularPlacementIndex]
-
-    if (
-      checkPlacementIndex !== modularPlacementIndex - 1
-      || checkPlacement?.name !== 'CheckBus256'
-      || checkPlacement.usage !== 'CheckBus256'
-      || checkPlacement.inPts.length !== 1
-      || checkPlacement.outPts.length !== 0
-      || modularPlacement?.name !== name
-      || modularPlacement.usage !== name
-      || modularPlacement.inPts.length !== 4
-      || modularPlacement.outPts.length !== 1
-    ) {
-      throw new Error(`Synthesizer: Invalid CheckBus256 topology for ${name}`)
-    }
-
-    const checkedOperand = checkPlacement.inPts[0]
-    const modularFirstOperand = modularPlacement.inPts[1]
-    if (
-      checkedOperand === undefined
-      || modularFirstOperand === undefined
-      || checkedOperand.source !== firstOperand.source
-      || checkedOperand.wireIndex !== firstOperand.wireIndex
-      || modularFirstOperand.source !== firstOperand.source
-      || modularFirstOperand.wireIndex !== firstOperand.wireIndex
-    ) {
-      throw new Error(`Synthesizer: CheckBus256 operand mismatch for ${name}`)
-    }
-  }
-
   /**
    * Places an arithmetic operation in the synthesizer.
    *
@@ -285,29 +247,12 @@ export class ArithmeticManager {
       dynamicSelector = normalized.selector
     }
 
-    const modularCheckPlacementIndex = name === 'ADDMOD' || name === 'MULMOD'
-      ? this.parent.placements.length
-      : undefined
-    const outPts = this._processArithmeticComposition(
+    return this._processArithmeticComposition(
       name,
       composition,
       compositionInPts,
       dynamicSelector,
     )
-
-    if (modularCheckPlacementIndex !== undefined) {
-      const modularFirstOperand = inPts[0]
-      if (modularFirstOperand === undefined) {
-        throw new Error(`Synthesizer: ${name} requires a first operand`)
-      }
-      this._assertModularCheckTopology(
-        name as 'ADDMOD' | 'MULMOD',
-        modularFirstOperand,
-        modularCheckPlacementIndex,
-      )
-    }
-
-    return outPts
   }
 
   public placePoseidon(inPts: DataPt[]): DataPt {

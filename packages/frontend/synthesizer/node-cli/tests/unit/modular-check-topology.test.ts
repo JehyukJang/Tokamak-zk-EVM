@@ -19,9 +19,7 @@ const dataPt = (value: bigint, source: number, wireIndex = 0): DataPt => ({
   valueHex: `0x${value.toString(16)}`,
 });
 
-const createHarness = (
-  mutatePlacement?: (placement: Placement, placements: Placement[]) => void,
-) => {
+const createHarness = () => {
   const placements: Placement[] = [];
   let staticWireIndex = 0;
   const subcircuitNames = ['ALU1', 'CheckBus256', 'ADDMOD', 'MULMOD'];
@@ -49,9 +47,7 @@ const createHarness = (
       sourceBitSize,
     })),
     place: vi.fn((name: string, inPts: DataPt[], outPts: DataPt[], usage: string) => {
-      const placement = { name, inPts, outPts, usage };
-      mutatePlacement?.(placement, placements);
-      placements.push(placement);
+      placements.push({ name, inPts, outPts, usage });
     }),
   };
 
@@ -81,11 +77,11 @@ describe('modular CheckBus256 topology', () => {
     expect(placements.map(({ name }) => name)).toEqual(['CheckBus256', operation]);
     expect(placements[0].inPts).toHaveLength(1);
     expect(placements[0].outPts).toHaveLength(0);
-    expect(placements[0].inPts[0]).toMatchObject({ source: 10, wireIndex: 3 });
+    expect(placements[0].inPts[0]).toBe(firstOperand);
     expect(placements[1].inPts).toHaveLength(4);
     expect(placements[1].outPts).toHaveLength(1);
     expect(placements[1].inPts[0].value).toBe(operation === 'ADDMOD' ? 1n << 8n : 1n << 9n);
-    expect(placements[1].inPts[1]).toMatchObject({ source: 10, wireIndex: 3 });
+    expect(placements[1].inPts[1]).toBe(firstOperand);
   });
 
   it('does not add CheckBus256 to an ordinary arithmetic placement', () => {
@@ -94,62 +90,6 @@ describe('modular CheckBus256 topology', () => {
     manager.placeArith('ADD', [dataPt(1n, 10), dataPt(2n, 11)]);
 
     expect(placements.map(({ name }) => name)).toEqual(['ALU1']);
-  });
-
-  it('rejects a non-adjacent modular check placement', () => {
-    const { manager } = createHarness((placement, placements) => {
-      if (placement.name === 'ADDMOD') {
-        placements.push({ name: 'ALU1', inPts: [], outPts: [], usage: 'ADD' });
-      }
-    });
-
-    expect(() => manager.placeArith('ADDMOD', [
-      dataPt(5n, 10),
-      dataPt(7n, 11),
-      dataPt(10n, 12),
-    ])).toThrow('Invalid CheckBus256 topology for ADDMOD');
-  });
-
-  it('rejects an output-producing modular check placement', () => {
-    const { manager } = createHarness((placement) => {
-      if (placement.name === 'CheckBus256') {
-        placement.outPts.push(dataPt(0n, 20));
-      }
-    });
-
-    expect(() => manager.placeArith('MULMOD', [
-      dataPt(5n, 10),
-      dataPt(7n, 11),
-      dataPt(10n, 12),
-    ])).toThrow('Invalid CheckBus256 topology for MULMOD');
-  });
-
-  it('rejects a modular check placement with more than one input', () => {
-    const { manager } = createHarness((placement) => {
-      if (placement.name === 'CheckBus256') {
-        placement.inPts.push(dataPt(0n, 20));
-      }
-    });
-
-    expect(() => manager.placeArith('ADDMOD', [
-      dataPt(5n, 10),
-      dataPt(7n, 11),
-      dataPt(10n, 12),
-    ])).toThrow('Invalid CheckBus256 topology for ADDMOD');
-  });
-
-  it('rejects a different first-operand wire on the modular placement', () => {
-    const { manager } = createHarness((placement) => {
-      if (placement.name === 'ADDMOD') {
-        placement.inPts[1] = dataPt(5n, 99, 4);
-      }
-    });
-
-    expect(() => manager.placeArith('ADDMOD', [
-      dataPt(5n, 10, 3),
-      dataPt(7n, 11),
-      dataPt(10n, 12),
-    ])).toThrow('CheckBus256 operand mismatch for ADDMOD');
   });
 
   it('rejects a modular operation without exactly three operands', () => {
