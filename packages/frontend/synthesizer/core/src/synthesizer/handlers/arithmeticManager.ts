@@ -2,23 +2,22 @@
 import { DataPt, ISynthesizerProvider } from '../types/index.ts';
 import { DataPtFactory } from '../dataStructure/index.ts';
 import { DEFAULT_SOURCE_BIT_SIZE } from '../../synthesizer/params/constants.ts';
-import { ARITHMETIC_OPERATION_DEFINITIONS, ArithmeticOperator, SubcircuitNames } from '../../subcircuit/configuredTypes.ts';
+import {
+  ARITHMETIC_OPERATION_DEFINITIONS,
+  ArithmeticOperationDefinition,
+  ArithmeticOperator,
+  CheckedOperationDefinition,
+  DivisionBridgeName,
+  DivisionFamilyOperationDefinition,
+  SingleOperationDefinition,
+  SubcircuitNames,
+} from '../../subcircuit/configuredTypes.ts';
 import { ArithmeticOperations } from '../dataStructure/arithmeticOperations.ts';
 import { POSEIDON_INPUTS } from 'tokamak-l2js';
 
-type DivisionFamilyOperator = 'DIV' | 'SDIV' | 'MOD' | 'SMOD'
 const DIVISION_FAMILY_BRIDGE_BIT_SIZES = [
   256, 256, 256, 64, 64, 64, 64, 1, 1, 1,
 ] as const
-
-const isDivisionFamilyOperator = (
-  name: ArithmeticOperator,
-): name is DivisionFamilyOperator => (
-  name === 'DIV'
-  || name === 'SDIV'
-  || name === 'MOD'
-  || name === 'SMOD'
-)
 
 export class ArithmeticManager {
   private readonly poseidonBatchSize: number
@@ -107,9 +106,9 @@ export class ArithmeticManager {
    */
   private _prepareSubcircuitInputs(
     name: ArithmeticOperator,
+    definition: ArithmeticOperationDefinition,
     inPts: DataPt[],
   ): { subcircuitName: SubcircuitNames; finalInPts: DataPt[] } {
-    const definition = ARITHMETIC_OPERATION_DEFINITIONS[name]
     const subcircuitName = definition.placements[definition.selectorPlacement]!.subcircuit
     const configuredSelector = definition.selector
 
@@ -141,7 +140,7 @@ export class ArithmeticManager {
   }
 
   private _assertModularCheckTopology(
-    name: 'ADDMOD' | 'MULMOD',
+    name: ArithmeticOperator,
     firstOperand: DataPt,
     checkPlacementIndex: number,
   ): void {
@@ -179,7 +178,8 @@ export class ArithmeticManager {
   }
 
   private _createDivisionFamilyBridge(
-    name: DivisionFamilyOperator,
+    name: ArithmeticOperator,
+    definition: DivisionFamilyOperationDefinition,
     inPts: DataPt[],
     source: number,
   ): DataPt[] {
@@ -200,23 +200,23 @@ export class ArithmeticManager {
         ? (signedDividend < 0n ? 1n : 0n)
         : 0n
     const wordMask = (1n << 64n) - 1n
-    const values = [
+    const values = {
       absDividend,
       absQuotient,
       absRemainder,
-      absDivisor & wordMask,
-      (absDivisor >> 64n) & wordMask,
-      (absDivisor >> 128n) & wordMask,
-      absDivisor >> 192n,
-      absDivisor === 0n ? 1n : 0n,
+      absDivisorWord0: absDivisor & wordMask,
+      absDivisorWord1: (absDivisor >> 64n) & wordMask,
+      absDivisorWord2: (absDivisor >> 128n) & wordMask,
+      absDivisorWord3: absDivisor >> 192n,
+      divisorIsZero: absDivisor === 0n ? 1n : 0n,
       resultIsNegative,
       useMod,
-    ]
-    return values.map((value, wireIndex) => DataPtFactory.create({
+    } satisfies Record<DivisionBridgeName, bigint>
+    return definition.bridge.map(({ name: bridgeName, bitSize }, wireIndex) => DataPtFactory.create({
       source,
       wireIndex,
-      sourceBitSize: DIVISION_FAMILY_BRIDGE_BIT_SIZES[wireIndex]!,
-    }, value))
+      sourceBitSize: bitSize,
+    }, values[bridgeName]))
   }
 
   private _circuitWireCount(dataPts: DataPt[]): number {
@@ -227,7 +227,7 @@ export class ArithmeticManager {
   }
 
   private _assertDivisionFamilyTopology(
-    name: DivisionFamilyOperator,
+    name: ArithmeticOperator,
     inPts: DataPt[],
     firstPlacementIndex: number,
   ): void {
@@ -301,41 +301,106 @@ export class ArithmeticManager {
   }
 
   private _placeDivisionFamily(
-    name: DivisionFamilyOperator,
+    name: ArithmeticOperator,
+    definition: DivisionFamilyOperationDefinition,
     inPts: DataPt[],
   ): DataPt[] {
-    if (inPts.length !== 2) {
+    if (inPts.length !== definition.operands.length) {
       throw new Error(`Synthesizer: ${name} requires exactly two operands`)
     }
 
-    const firstInfo = this.parent.state.subcircuitInfoByName.get('ALU4A')
-    const secondInfo = this.parent.state.subcircuitInfoByName.get('ALU4B')
+    const [firstDefinition, secondDefinition] = definition.placements
+    const firstInfo = this.parent.state.subcircuitInfoByName.get(firstDefinition.subcircuit)
+    const secondInfo = this.parent.state.subcircuitInfoByName.get(secondDefinition.subcircuit)
     if (firstInfo === undefined || secondInfo === undefined) {
       throw new Error('Synthesizer: ALU4A and ALU4B subcircuits are required for division arithmetic')
     }
     if (
-      firstInfo.NInWires !== 5
-      || firstInfo.NOutWires !== 13
-      || secondInfo.NInWires !== 13
-      || secondInfo.NOutWires !== 2
+      firstInfo.NInWires !== firstDefinition.inputWires
+      || firstInfo.NOutWires !== firstDefinition.outputWires
+      || secondInfo.NInWires !== secondDefinition.inputWires
+      || secondInfo.NOutWires !== secondDefinition.outputWires
     ) {
       throw new Error('Synthesizer: Invalid ALU4A/ALU4B subcircuit interface')
     }
 
-    const { subcircuitName, finalInPts } = this._prepareSubcircuitInputs(name, inPts)
-    if (subcircuitName !== 'ALU4A') {
-      throw new Error(`Synthesizer: Invalid division-family mapping for ${name}`)
-    }
+    const { finalInPts } = this._prepareSubcircuitInputs(name, definition, inPts)
 
     const firstPlacementIndex = this.parent.placements.length
-    const bridgePts = this._createDivisionFamilyBridge(name, inPts, firstPlacementIndex)
-    this.parent.place('ALU4A', finalInPts, bridgePts, name)
+    const bridgePts = this._createDivisionFamilyBridge(name, definition, inPts, firstPlacementIndex)
+    this.parent.place(firstDefinition.subcircuit, finalInPts, bridgePts, name)
 
     const outPts = this._createArithmeticOutput(name, inPts)
-    this.parent.place('ALU4B', bridgePts, outPts, name)
+    this.parent.place(secondDefinition.subcircuit, bridgePts, outPts, name)
     this._assertDivisionFamilyTopology(name, inPts, firstPlacementIndex)
 
+    return DataPtFactory.deepCopy([outPts[definition.result.output]!])
+  }
+
+  private _placeCheckedOperation(
+    name: ArithmeticOperator,
+    definition: CheckedOperationDefinition,
+    inPts: DataPt[],
+  ): DataPt[] {
+    const firstOperand = inPts[definition.sharedInputs[0].operand]
+    if (inPts.length !== 3 || firstOperand === undefined) {
+      throw new Error(`Synthesizer: ${name} requires exactly three operands`)
+    }
+
+    const checkDefinition = definition.placements[0]
+    if (!this.parent.state.subcircuitInfoByName.has(checkDefinition.subcircuit)) {
+      throw new Error('Synthesizer: CheckBus256 subcircuit is required for modular arithmetic')
+    }
+
+    const checkPlacementIndex = this.parent.placements.length
+    this.parent.place(
+      checkDefinition.subcircuit,
+      [firstOperand],
+      [],
+      checkDefinition.subcircuit,
+    )
+
+    const outPts = this._createArithmeticOutput(name, inPts)
+    const { subcircuitName, finalInPts } = this._prepareSubcircuitInputs(
+      name,
+      definition,
+      inPts,
+    )
+    this.parent.place(subcircuitName, finalInPts, outPts, name)
+    this._assertModularCheckTopology(name, firstOperand, checkPlacementIndex)
+
+    return DataPtFactory.deepCopy([outPts[definition.result.output]!])
+  }
+
+  private _placeSingleOperation(
+    name: ArithmeticOperator,
+    definition: SingleOperationDefinition,
+    inPts: DataPt[],
+  ): DataPt[] {
+    const outPts = this._createArithmeticOutput(name, inPts)
+    const { subcircuitName, finalInPts } = this._prepareSubcircuitInputs(
+      name,
+      definition,
+      inPts,
+    )
+    this.parent.place(subcircuitName, finalInPts, outPts, name)
+
     return DataPtFactory.deepCopy(outPts)
+  }
+
+  private _placeComposition(
+    name: ArithmeticOperator,
+    definition: ArithmeticOperationDefinition,
+    inPts: DataPt[],
+  ): DataPt[] {
+    switch (definition.kind) {
+      case 'single':
+        return this._placeSingleOperation(name, definition, inPts)
+      case 'checked-operation':
+        return this._placeCheckedOperation(name, definition, inPts)
+      case 'division-family':
+        return this._placeDivisionFamily(name, definition, inPts)
+    }
   }
 
   /**
@@ -348,40 +413,7 @@ export class ArithmeticManager {
    * @returns {DataPt[]} The output data points from the operation.
    */
   public placeArith(name: ArithmeticOperator, inPts: DataPt[]): DataPt[] {
-    if (isDivisionFamilyOperator(name)) {
-      return this._placeDivisionFamily(name, inPts)
-    }
-
-    let modularCheckPlacementIndex: number | undefined
-    let modularFirstOperand: DataPt | undefined
-    if (name === 'ADDMOD' || name === 'MULMOD') {
-      modularFirstOperand = inPts[0]
-      if (inPts.length !== 3 || modularFirstOperand === undefined) {
-        throw new Error(`Synthesizer: ${name} requires exactly three operands`)
-      }
-      if (!this.parent.state.subcircuitInfoByName.has('CheckBus256')) {
-        throw new Error('Synthesizer: CheckBus256 subcircuit is required for modular arithmetic')
-      }
-      modularCheckPlacementIndex = this.parent.placements.length
-      this.parent.place('CheckBus256', [modularFirstOperand], [], 'CheckBus256')
-    }
-
-    const outPts = this._createArithmeticOutput(name, inPts);
-    const { subcircuitName, finalInPts } = this._prepareSubcircuitInputs(
-      name,
-      inPts,
-    );
-    this.parent.place(subcircuitName, finalInPts, outPts, name);
-
-    if (modularCheckPlacementIndex !== undefined && modularFirstOperand !== undefined) {
-      this._assertModularCheckTopology(
-        name as 'ADDMOD' | 'MULMOD',
-        modularFirstOperand,
-        modularCheckPlacementIndex,
-      )
-    }
-
-    return DataPtFactory.deepCopy(outPts);
+    return this._placeComposition(name, ARITHMETIC_OPERATION_DEFINITIONS[name], inPts)
   }
 
   public placePoseidon(inPts: DataPt[]): DataPt {
