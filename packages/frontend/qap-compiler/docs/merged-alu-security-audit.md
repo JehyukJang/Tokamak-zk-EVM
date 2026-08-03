@@ -320,7 +320,7 @@ The compiled `ALU2` shift-family path mapped shifts greater than `255` to a zero
 
 Relevant code:
 
-- [`templates/256bit/arithmetic_safe.circom`](../templates/256bit/arithmetic_safe.circom)
+- [`templates/256bit/shift_power.circom`](../templates/256bit/shift_power.circom)
 - [`templates/256bit/arithmetic_unsafe_type2.circom`](../templates/256bit/arithmetic_unsafe_type2.circom)
 - [`templates/256bit/alu_safe.circom`](../templates/256bit/alu_safe.circom)
 

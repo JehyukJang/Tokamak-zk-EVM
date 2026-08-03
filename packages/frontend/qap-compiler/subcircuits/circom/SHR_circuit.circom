@@ -1,5 +1,5 @@
 pragma circom 2.1.6;
-include "../../templates/256bit/evm_arithmetic.circom";
+include "../../templates/256bit/evm_word_operations.circom";
 
 template SHR_() {
     signal input in[4];

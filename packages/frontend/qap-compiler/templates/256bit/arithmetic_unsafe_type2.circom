@@ -1,6 +1,6 @@
 pragma circom 2.1.6;
 include "arithmetic_unsafe_type1.circom";
-include "arithmetic_safe.circom";
+include "shift_power.circom";
 include "../512bit/arithmetic.circom";
 include "../128bit/arithmetic.circom";
 include "two_complement_unsafe.circom";
