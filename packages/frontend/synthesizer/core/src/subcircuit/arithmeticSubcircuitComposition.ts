@@ -577,3 +577,23 @@ export const DIVISION_ARITHMETIC_MAPPINGS: readonly ArithmeticSubcircuitMapping[
     createDivisionArithmeticMapping('MOD', 1n << 6n),
     createDivisionArithmeticMapping('SMOD', 1n << 7n),
   ]);
+
+export type ArithmeticSubcircuitCompositionConfig = Pick<
+  FrontendConfig,
+  | 'nAccumulation'
+  | 'nEqualBatch'
+  | 'nJubjubExpBatch'
+  | 'nPoseidonBatch'
+  | 'nSubExpBatch'
+>;
+
+export const createArithmeticSubcircuitComposition = (
+  config: ArithmeticSubcircuitCompositionConfig,
+): ArithmeticSubcircuitComposition => new ArithmeticSubcircuitComposition([
+  ...FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS,
+  ...DIVISION_ARITHMETIC_MAPPINGS,
+  ...MODULAR_ARITHMETIC_MAPPINGS,
+  ...createSelectorFreeArithmeticMappings(config),
+  createExpArithmeticMapping(config),
+  createPoseidonArithmeticMapping(config),
+]);

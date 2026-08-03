@@ -1,4 +1,5 @@
 import { BUFFER_LIST } from '../subcircuit/configuredTypes.ts';
+import { createArithmeticSubcircuitComposition } from '../subcircuit/arithmeticSubcircuitComposition.ts';
 import type {
   ResolvedSubcircuitLibrary,
   SubcircuitInfo,
@@ -14,6 +15,9 @@ export function resolveSubcircuitLibraryData(
 
   return {
     data,
+    arithmeticSubcircuitComposition: createArithmeticSubcircuitComposition(
+      data.frontendCfg,
+    ),
     subcircuitInfoByName,
     subcircuitBufferMapping: {
       LOG_OUT: subcircuitInfoByName.get('bufferLogOut'),

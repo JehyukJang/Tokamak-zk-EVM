@@ -4,6 +4,7 @@
 // -----------------------------------------------------------------------------
 
 import { SUBCIRCUIT_LIST, SubcircuitNames } from "./configuredTypes.ts";
+import type { ArithmeticSubcircuitComposition } from './arithmeticSubcircuitComposition.ts';
 import type {
   ReservedBuffer,
   SubcircuitInfoByName,
@@ -84,6 +85,7 @@ export interface SubcircuitLibraryProvider {
 
 export interface ResolvedSubcircuitLibrary {
   data: SubcircuitLibraryData;
+  arithmeticSubcircuitComposition: ArithmeticSubcircuitComposition;
   subcircuitInfoByName: SubcircuitInfoByName;
   subcircuitBufferMapping: Record<ReservedBuffer, SubcircuitInfoByNameEntry | undefined>;
   accumulatorInputLimit: number;
