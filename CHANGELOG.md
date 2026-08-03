@@ -71,6 +71,9 @@ The format is based on Keep a Changelog.
 - Constrained both carry signals in the shared 256-bit addition relation to be
   boolean. This removes non-boolean carry witnesses from ADD, SUB, and other
   subcircuits that reuse the same addition template.
+- Replaced ALU1's truncated multiplication relation with a bounded 64-bit
+  schoolbook construction. Its operand decompositions are shared with the
+  wrapper's input canonicality checks, and both radix carries are range-bound.
 - Fixed initial SLOAD rejecting valid 256-bit EVM storage values outside the
   BLS12-381 scalar field range.
 - Fixed VM event handlers swallowing Synthesizer failures. The first

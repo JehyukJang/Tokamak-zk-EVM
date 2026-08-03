@@ -94,6 +94,46 @@ template Mul256_unsafe() {
     carry[0] <== z;
 }
 
+// Multiplies two canonical 256-bit words represented as four 64-bit words and
+// returns the product modulo 2^256. The caller must constrain every input word
+// to 64 bits and the selected output limbs to 128 bits.
+template Mul256TruncatedFrom64_unsafe() {
+    var BASE64 = 1 << 64;
+    var BASE128 = 1 << 128;
+
+    signal input in1[4], in2[4];
+    signal output out[2];
+
+    signal product[4][4];
+    for (var i = 0; i < 4; i++) {
+        for (var j = 0; j < 4; j++) {
+            if (i + j < 4) {
+                product[i][j] <== in1[i] * in2[j];
+            } else {
+                product[i][j] <== 0;
+            }
+        }
+    }
+
+    signal rawLow <== product[0][0]
+        + BASE64 * (product[0][1] + product[1][0]);
+    signal carryLow <-- rawLow \ BASE128;
+    out[0] <-- rawLow % BASE128;
+    signal carryLowBits[65] <== Num2Bits(65)(carryLow);
+    rawLow === out[0] + carryLow * BASE128;
+
+    signal rawHigh <== carryLow
+        + product[0][2] + product[1][1] + product[2][0]
+        + BASE64 * (
+            product[0][3] + product[1][2]
+            + product[2][1] + product[3][0]
+        );
+    signal carryHigh <-- rawHigh \ BASE128;
+    out[1] <-- rawHigh % BASE128;
+    signal carryHighBits[66] <== Num2Bits(66)(carryHigh);
+    rawHigh === out[1] + carryHigh * BASE128;
+}
+
 template Not256_unsafe() {
     signal input in[2];
     signal output out[2];
