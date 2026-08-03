@@ -4,6 +4,8 @@ include "circomlib/circuits/bitify.circom";
 include "circomlib/circuits/gates.circom";
 include "../128bit/arithmetic.circom";
 include "mux.circom";
+include "compare_safe.circom";
+include "../../functions/arithmetic.circom";
 
 template FindShiftingTwosPower256(N) {
     signal input shift;
@@ -51,6 +53,129 @@ template FindShiftingTwosPower256TwoInput(N1, N2) {
     signal case23_out2[2] <== Mux256()(is_shift2_gt_127, [0, exp_shift2_case2], [exp_shift2_case3, 0]);
     twos_power1 <== Mux256()(is_shift1_gt_255, [0, 0], case23_out1);
     twos_power2 <== Mux256()(is_shift2_gt_255, [0, 0], case23_out2);
+}
+
+template DivMod256() {
+    var BASE64 = 1 << 64;
+    var BASE128 = 1 << 128;
+
+    signal input dividend[2], divisor[2];
+    signal output quotient[2], remainder[2];
+
+    signal divisorIsZero <== IsZero256()(divisor);
+    signal safeDivisor[2] <== [divisor[0] + divisorIsZero, divisor[1]];
+
+    var division[2][2] = _div256(dividend, safeDivisor);
+    signal relationQuotient[2] <-- division[0];
+    signal relationRemainder[2] <-- division[1];
+
+    component divisorBits[2];
+    component dividendBits[2];
+    component quotientBits[2];
+    component remainderBits[2];
+    signal divisorWords[4];
+    signal quotientWords[4];
+    for (var limb = 0; limb < 2; limb++) {
+        divisorBits[limb] = Num2Bits(128);
+        dividendBits[limb] = Num2Bits(128);
+        quotientBits[limb] = Num2Bits(128);
+        remainderBits[limb] = Num2Bits(128);
+        divisorBits[limb].in <== divisor[limb];
+        dividendBits[limb].in <== dividend[limb];
+        quotientBits[limb].in <== relationQuotient[limb];
+        remainderBits[limb].in <== relationRemainder[limb];
+
+        var divisorLow = 0;
+        var divisorHigh = 0;
+        var quotientLow = 0;
+        var quotientHigh = 0;
+        for (var bit = 0; bit < 64; bit++) {
+            divisorLow += divisorBits[limb].out[bit] * (1 << bit);
+            divisorHigh += divisorBits[limb].out[bit + 64] * (1 << bit);
+            quotientLow += quotientBits[limb].out[bit] * (1 << bit);
+            quotientHigh += quotientBits[limb].out[bit + 64] * (1 << bit);
+        }
+        divisorWords[2 * limb] <== divisorLow;
+        divisorWords[2 * limb + 1] <== divisorHigh;
+        quotientWords[2 * limb] <== quotientLow;
+        quotientWords[2 * limb + 1] <== quotientHigh;
+    }
+    signal safeDivisorWords[4] <== [
+        divisorWords[0] + divisorIsZero,
+        divisorWords[1],
+        divisorWords[2],
+        divisorWords[3]
+    ];
+
+    signal products[4][4];
+    for (var quotientWord = 0; quotientWord < 4; quotientWord++) {
+        for (var divisorWord = 0; divisorWord < 4; divisorWord++) {
+            products[quotientWord][divisorWord]
+                <== quotientWords[quotientWord] * safeDivisorWords[divisorWord];
+        }
+    }
+
+    signal coefficient[7];
+    for (var degree = 0; degree < 7; degree++) {
+        var coefficientSum = 0;
+        for (var quotientWord = 0; quotientWord < 4; quotientWord++) {
+            var divisorWord = degree - quotientWord;
+            if (divisorWord >= 0 && divisorWord < 4) {
+                coefficientSum += products[quotientWord][divisorWord];
+            }
+        }
+        coefficient[degree] <== coefficientSum;
+    }
+
+    signal carry[3];
+    carry[0] <-- (
+        coefficient[0]
+        + BASE64 * coefficient[1]
+        + relationRemainder[0]
+    ) \ BASE128;
+    carry[1] <-- (
+        coefficient[2]
+        + BASE64 * coefficient[3]
+        + relationRemainder[1]
+        + carry[0]
+    ) \ BASE128;
+    carry[2] <-- (
+        coefficient[4]
+        + BASE64 * coefficient[5]
+        + carry[1]
+    ) \ BASE128;
+
+    component carryLowBits = Num2Bits(65);
+    component carryMiddleBits = Num2Bits(66);
+    component carryHighBits = Num2Bits(65);
+    carryLowBits.in <== carry[0];
+    carryMiddleBits.in <== carry[1];
+    carryHighBits.in <== carry[2];
+
+    coefficient[0]
+        + BASE64 * coefficient[1]
+        + relationRemainder[0]
+        === dividend[0] + BASE128 * carry[0];
+    coefficient[2]
+        + BASE64 * coefficient[3]
+        + relationRemainder[1]
+        + carry[0]
+        === dividend[1] + BASE128 * carry[1];
+    coefficient[4]
+        + BASE64 * coefficient[5]
+        + carry[1]
+        === BASE128 * carry[2];
+    coefficient[6] + carry[2] === 0;
+
+    signal remainderInRange
+        <== LessThan256()(relationRemainder, safeDivisor);
+    remainderInRange === 1;
+
+    for (var limb = 0; limb < 2; limb++) {
+        quotient[limb]
+            <== (1 - divisorIsZero) * relationQuotient[limb];
+        remainder[limb] <== relationRemainder[limb];
+    }
 }
 
 template Byte256() {

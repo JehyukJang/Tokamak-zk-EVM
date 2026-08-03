@@ -7,20 +7,14 @@ template ALU4_() {
     signal in1[2] <== [in[1], in[2]];
     signal in2[2] <== [in[3], in[4]];
 
-    CheckBus256()(in1);
-    CheckBus256()(in2);
-
     signal useMod <== (in[0] - (1 << 4)) / ((1 << 6) - (1 << 4));
     useMod * (1 - useMod) === 0;
 
-    component div = Div256_unsafe();
-    div.in1 <== in1;
-    div.in2 <== in2;
-    signal safeDivisor[2] <== _SafeDivisor()(in2);
-    signal rangeCheck <== LessThan256()(div.r, safeDivisor);
-    rangeCheck === 1;
+    component div = DivMod256();
+    div.dividend <== in1;
+    div.divisor <== in2;
 
-    out <== Mux256()(useMod, div.r, div.q);
+    out <== Mux256()(useMod, div.remainder, div.quotient);
 }
 
 component main {public [in]} = ALU4_();
