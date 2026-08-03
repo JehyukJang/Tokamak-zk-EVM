@@ -90,7 +90,6 @@ export class ArithmeticManager {
     composition: ArithmeticOperationComposition,
     inPts: DataPt[],
     dynamicSelector?: bigint,
-    dynamicArithmeticInPts?: DataPt[],
   ): DataPt[] {
     if (inPts.length !== composition.numOperands) {
       throw new Error(
@@ -174,15 +173,12 @@ export class ArithmeticManager {
       const outputOperation = step.usage as ArithmeticOperator
       let outPts: DataPt[]
       if (Object.prototype.hasOwnProperty.call(ARITHMETIC_MAPPING, outputOperation)) {
-        const outputInPts = step.selector === 'dynamic'
-          ? dynamicArithmeticInPts
-          : arithmeticInPts
-        if (outputInPts === undefined) {
+        if (step.selector === 'dynamic') {
           throw new Error(
-            `Synthesizer: ${name} step ${stepIndex} requires dynamic arithmetic inputs`,
+            `Synthesizer: ${name} step ${stepIndex} dynamic output generation is unavailable`,
           )
         }
-        outPts = this._createArithmeticOutput(outputOperation, outputInPts)
+        outPts = this._createArithmeticOutput(outputOperation, arithmeticInPts)
       } else if (step.outputs.length === 0) {
         outPts = []
       } else {
@@ -297,7 +293,6 @@ export class ArithmeticManager {
       composition,
       compositionInPts,
       dynamicSelector,
-      name === 'Poseidon' ? inPts : undefined,
     )
 
     if (modularCheckPlacementIndex !== undefined) {

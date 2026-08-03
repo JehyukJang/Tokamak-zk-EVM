@@ -1,4 +1,3 @@
-import { poseidonChainCompress } from 'tokamak-l2js';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createArithmeticSubcircuitComposition } from '../../../core/src/subcircuit/arithmeticSubcircuitComposition.ts';
@@ -57,27 +56,13 @@ describe('configurable Poseidon batching', () => {
     expect(() => createHarness(129)).toThrow('nPoseidonBatch must be an integer between 1 and 128');
   });
 
-  it('uses the configured batch size for selector generation and padding', () => {
+  it('rejects execution until dynamic output generation is defined', () => {
     const { manager, placements } = createHarness(4);
     const inputs = [dataPt(1n), dataPt(2n), dataPt(3n)];
 
-    const result = manager.placePoseidon(inputs);
-
-    expect(result.value).toBe(poseidonChainCompress(inputs.map(input => input.value)));
-    expect(placements).toHaveLength(1);
-    expect(placements[0].name).toBe('Poseidon');
-    expect(placements[0].inPts.map(input => input.value)).toEqual([2n, 1n, 2n, 3n, 0n, 0n]);
-  });
-
-  it('chunks a chain at the configured number of Poseidon calls', () => {
-    const { manager, placements } = createHarness(3);
-    const inputs = [1n, 2n, 3n, 4n, 5n, 6n].map(value => dataPt(value));
-
-    const result = manager.placePoseidon(inputs);
-
-    expect(result.value).toBe(poseidonChainCompress(inputs.map(input => input.value)));
-    expect(placements).toHaveLength(2);
-    expect(placements[0].inPts[0].value).toBe(4n);
-    expect(placements[1].inPts.map(input => input.value)).toEqual([2n, placements[0].outPts[0].value, 5n, 6n, 0n]);
+    expect(() => manager.placePoseidon(inputs)).toThrow(
+      'Poseidon step 0 dynamic output generation is unavailable',
+    );
+    expect(placements).toHaveLength(0);
   });
 });
