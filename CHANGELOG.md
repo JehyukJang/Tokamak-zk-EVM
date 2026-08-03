@@ -27,15 +27,31 @@ The format is based on Keep a Changelog.
   wires are now grouped by their configured segment order instead of relying
   on the subcircuit compilation order.
 - Replaced the six-step hardcoded Poseidon chain with an `nPoseidonBatch`
-  parameter. Set `nPoseidonBatch`, `nJubjubExpBatch`, and `nSubExpBatch` to
-  `3`, `75`, and `16`, respectively, so each batch subcircuit has at most
-  2048 compiled constraints.
+  parameter. The current `nPoseidonBatch`, `nJubjubExpBatch`, and
+  `nSubExpBatch` values are `1`, `37`, and `8`, respectively.
 - Replaced selector-based ALU circuits with one compiled subcircuit per EVM
-  arithmetic operation. Every arithmetic target now has fewer than 1024
-  constraints; `MULMOD` is the largest at 1020 constraints.
+  arithmetic operation.
 - Added the input-only `CheckBus` subcircuit. `ADDMOD` and `MULMOD` omit the
   first operand's local bus check and require a composed `CheckBus` placement
   for that exact operand.
+- Replaced under-constrained arithmetic witnesses with bounded integer
+  relations. Addition and subtraction now constrain every result limb and
+  carry or borrow; multiplication uses range-constrained 64-bit limbs and
+  bounded carries; division and modular reduction prove their full-width
+  quotient-product and canonical remainder relations; and signed operations
+  derive their sign directly from bit 255.
+- Reimplemented `SHL`, `SHR`, `SAR`, `BYTE`, and `SIGNEXTEND` as direct
+  bit-constrained operations over the complete 256-bit EVM shift or index
+  domain. Oversized operands now prove the EVM zero, sign-filled, or identity
+  result inside the circuit.
+- Reimplemented `SubExpBatch` with the bounded truncated multiplication
+  relation and corrected its conditional multiplication factor.
+- Added O0 adversarial statement tests that reject the previously accepted
+  forged `3 * 5 = 14` result, an inconsistent division quotient/remainder,
+  and a nonzero result for an oversized left shift.
+- The sound reference circuits that currently exceed the 1024-constraint
+  target are reported during arithmetic-library testing rather than weakened
+  or skipped. Circuit partitioning remains follow-up optimization work.
 - This circuit-set change requires regenerated subcircuit-library artifacts
   and a compatible backend CRS before it can be used for proving.
 
@@ -56,12 +72,18 @@ The format is based on Keep a Changelog.
 - Mapped each EVM arithmetic opcode directly to its dedicated subcircuit,
   without an ALU selector. Every `ADDMOD` and `MULMOD` placement is now
   immediately preceded by the required `CheckBus` placement.
+- Removed the Synthesizer-only limits on shift, `BYTE`, and `SIGNEXTEND`
+  operands now that their circuits enforce the complete EVM input domain.
 - Enabled the existing REVERT system-flow handler so failed frames reach the
   coordinated storage-cache and committed-log rollback path.
 - Changed every unsuccessful top-level transaction result, including REVERT
   and exceptional halts, to fail synthesis with the original EVM error.
 
 ### Bug Fixes
+
+- Fixed live arithmetic soundness defects that allowed adversarial witnesses
+  to alter carries, signs, quotients, remainders, and multiplication results
+  while satisfying the previous field equations.
 
 - Fixed direct memory-mask placement using the grouped bitwise circuit without
   its selector. Memory masking now places the dedicated `AND` subcircuit with

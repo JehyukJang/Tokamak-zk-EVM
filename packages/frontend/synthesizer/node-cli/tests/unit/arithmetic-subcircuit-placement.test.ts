@@ -19,7 +19,7 @@ const createHarness = () => {
     outPts: DataPt[];
     usage: string;
   }> = [];
-  const subcircuitNames = ['ADD', 'ADDMOD', 'MULMOD', 'CheckBus'];
+  const subcircuitNames = ['ADD', 'ADDMOD', 'MULMOD', 'SHL', 'SHR', 'SAR', 'BYTE', 'SIGNEXTEND', 'CheckBus'];
   const parent = {
     placements,
     subcircuitLibrary: {
@@ -98,5 +98,22 @@ describe('per-operation arithmetic subcircuit placement', () => {
 
     state.place('CheckBus', [inputs[0]], [], 'CheckBus');
     expect(() => state.place('ADDMOD', inputs, [output], 'ADDMOD')).not.toThrow();
+  });
+
+  it.each([
+    ['SHL', [256n, 1n], 0n],
+    ['SHR', [1n << 200n, 1n], 0n],
+    ['SAR', [256n, 1n << 255n], (1n << 256n) - 1n],
+    ['BYTE', [32n, (1n << 256n) - 1n], 0n],
+    ['SIGNEXTEND', [1n << 200n, 0x80n], 0x80n],
+  ] as const)('places full-domain %s inputs without host-side rejection', (operation, values, expected) => {
+    const { manager, placements } = createHarness();
+    const inputs = values.map(value => dataPt(value));
+
+    const [result] = manager.placeArith(operation, inputs);
+
+    expect(result.value).toBe(expected);
+    expect(placements).toHaveLength(1);
+    expect(placements[0]).toMatchObject({ name: operation, inPts: inputs });
   });
 });

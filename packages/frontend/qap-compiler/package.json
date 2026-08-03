@@ -55,6 +55,7 @@
   },
   "scripts": {
     "postinstall": "node scripts/setup-local-bin.mjs",
+    "test:arithmetic-soundness": "node --import tsx subcircuits/test/test_arithmetic_soundness.ts",
     "reload-constants": "npx qap-compiler --reload-constants",
     "build:library": "npx qap-compiler --build",
     "dist": "npx qap-compiler --dist",
