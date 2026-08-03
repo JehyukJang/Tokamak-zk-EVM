@@ -48,7 +48,7 @@ const createHarness = () => {
   };
 };
 
-describe('full-domain BYTE synthesis', () => {
+describe('full-domain BYTE and SIGNEXTEND synthesis', () => {
   it.each([32n, 1n << 128n, (1n << 256n) - 1n])(
     'places BYTE for out-of-range EVM index %s and returns zero',
     (index) => {
@@ -69,13 +69,23 @@ describe('full-domain BYTE synthesis', () => {
     },
   );
 
-  it('retains the index limit for SIGNEXTEND', () => {
-    const { manager, placements } = createHarness();
+  it.each([32n, 1n << 128n, (1n << 256n) - 1n])(
+    'places SIGNEXTEND for out-of-range EVM index %s and preserves the value',
+    (index) => {
+      const { manager, placements } = createHarness();
+      const indexPt = dataPt(index, 10, 3);
+      const valuePt = dataPt((1n << 255n) + 0x80n, 11, 4);
 
-    expect(() => manager.placeArith('SIGNEXTEND', [
-      dataPt(32n, 10),
-      dataPt(1n, 11),
-    ])).toThrow('Operation SIGNEXTEND has an index or size value greater than 31');
-    expect(placements).toHaveLength(0);
-  });
+      const result = manager.placeArith('SIGNEXTEND', [indexPt, valuePt]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].value).toBe(valuePt.value);
+      expect(placements).toHaveLength(1);
+      expect(placements[0]).toMatchObject({ name: 'SIGNEXTEND', usage: 'SIGNEXTEND' });
+      expect(placements[0].inPts).toHaveLength(3);
+      expect(placements[0].inPts[0].value).toBe(1n << 11n);
+      expect(placements[0].inPts[1]).toMatchObject({ source: 10, wireIndex: 3 });
+      expect(placements[0].inPts[2]).toMatchObject({ source: 11, wireIndex: 4 });
+    },
+  );
 });

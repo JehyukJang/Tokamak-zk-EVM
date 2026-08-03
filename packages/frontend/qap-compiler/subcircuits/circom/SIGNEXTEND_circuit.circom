@@ -8,15 +8,7 @@ template SIGNEXTEND_() {
     signal value[2] <== [in[3], in[4]];
 
     in[0] === 1 << 11;
-    index[1] === 0;
-    CheckBus128()(index[0]);
-    CheckBus256()(value);
-
-    signal rem[2];
-    signal divisor[2];
-    (out, rem, divisor) <== SignExtend256_unsafe()(index[0], value);
-    signal rangeCheck <== LessThan256()(rem, divisor);
-    rangeCheck === 1;
+    out <== SignExtend256()(index, value);
 }
 
 component main {public [in]} = SIGNEXTEND_();

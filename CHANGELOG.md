@@ -78,6 +78,8 @@ The format is based on Keep a Changelog.
   two's-complement ordering relation that reuses constrained sign bits.
 - Extended BYTE to the full 256-bit EVM index domain, returning zero for every
   index above 31 instead of rejecting it during synthesis.
+- Extended SIGNEXTEND to the full 256-bit EVM index domain, preserving the
+  original value for every index above 31 instead of rejecting it.
 - Fixed initial SLOAD rejecting valid 256-bit EVM storage values outside the
   BLS12-381 scalar field range.
 - Fixed VM event handlers swallowing Synthesizer failures. The first
