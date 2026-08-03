@@ -58,6 +58,10 @@ The format is based on Keep a Changelog.
   coordinated storage-cache and committed-log rollback path.
 - Changed every unsuccessful top-level transaction result, including REVERT
   and exceptional halts, to fail synthesis with the original EVM error.
+- Updated arithmetic dispatch for the final subcircuit set. Every `ADDMOD` and
+  `MULMOD` placement now immediately follows an input-only `CheckBus256`
+  placement connected to the same first-operand wire, and malformed modular
+  placement topology fails synthesis.
 
 ### Bug Fixes
 
