@@ -34,6 +34,8 @@ The format is based on Keep a Changelog.
   basic/comparison, bitwise, division/modular, and byte/shift operations. Their
   compiled constraint totals are 1505, 1600, 1752, and 1867, respectively,
   while retaining selector and 256-bit bus canonicalization.
+- Renamed the two-limb `CheckBus` template to `CheckBus256` and implemented it
+  by composing two `CheckBus128` limb checks.
 - This circuit-set change requires regenerated subcircuit-library artifacts
   and a compatible backend CRS before it can be used for proving.
 

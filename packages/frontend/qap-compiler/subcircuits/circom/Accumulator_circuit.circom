@@ -18,7 +18,7 @@ template Accumulator() {
         adds[i].in2 <== [in[(i + 1) * 2], in[(i + 1) * 2 + 1]]; 
     }
     out <== adds[N-2].out;
-    CheckBus()(out);
+    CheckBus256()(out);
 }
 
 component main {public [in]} = Accumulator();

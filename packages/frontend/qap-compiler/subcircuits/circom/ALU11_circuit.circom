@@ -10,7 +10,7 @@ template ALU11_() {
     in[0] === 1 << 27;
     shift[1] === 0;
     CheckBus128()(shift[0]);
-    CheckBus()(value);
+    CheckBus256()(value);
 
     signal (expShift[2], isShiftGt255) <== FindShiftingTwosPower256(8)(shift[0]);
     component left = Mul256_unsafe();

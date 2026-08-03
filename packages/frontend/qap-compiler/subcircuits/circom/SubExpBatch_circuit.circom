@@ -18,8 +18,8 @@ template SubExpBatch(N) {
         module.a_next[0], module.a_next[1]
     ];
 
-    // CheckBus()(c_next);
-    // CheckBus()(a_next);
+    // CheckBus256()(c_next);
+    // CheckBus256()(a_next);
 }
 
 component main = SubExpBatch(nSubExpBatch());

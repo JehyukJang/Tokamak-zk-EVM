@@ -10,9 +10,9 @@ template TestRangeCheck () {
     out[1] <== in1[1] * in2[1];
 
     // Check input is in 128 bit
-    CheckBus()(in1);
-    CheckBus()(in2);
-    CheckBus()(out);
+    CheckBus256()(in1);
+    CheckBus256()(in2);
+    CheckBus256()(out);
 }
 
 component main {public [in1, in2]} = TestRangeCheck();

@@ -21,8 +21,8 @@ template SubEXP () {
     a_prev[1] <== in[3];
     signal b <== in[4];
 
-    CheckBus()(c_prev);
-    CheckBus()(a_prev);
+    CheckBus256()(c_prev);
+    CheckBus256()(a_prev);
     b * ( 1 - b ) === 0;
     
     // Constraint 2: a_next <== a_prev * a_prev
@@ -47,7 +47,7 @@ template SubEXP () {
     (c_next, carry2) <== Mul256_unsafe()(c_prev, inter3);
     // carry2 is thrown away according to the EVM spec.
 
-    CheckBus()(c_next);
+    CheckBus256()(c_next);
 }
 
 component main {public [in]} = SubEXP();

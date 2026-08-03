@@ -7,7 +7,7 @@ template BYTE() {
     signal output out[2];
 
     // // Check the input value is in 128 bit limbs
-    // CheckBus()([in[2], in[3]]);
+    // CheckBus256()([in[2], in[3]]);
     // // Byte256_unsafe checks that the shift is in 8 bit
     in[1] === 0;
 

@@ -8,7 +8,7 @@ template SIGNEXTEND() {
     signal output out[2];
 
     // Check the input value is in 128 bit limbs
-    CheckBus()([in[2], in[3]]);
+    CheckBus256()([in[2], in[3]]);
     signal is_shift_small <== IsZero()(in[1]);
 
     component signExtend = SignExtend256_unsafe();

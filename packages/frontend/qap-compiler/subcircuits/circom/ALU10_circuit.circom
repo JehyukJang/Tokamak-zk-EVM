@@ -10,7 +10,7 @@ template ALU10_() {
     in[0] === 1 << 26;
     index[1] === 0;
     CheckBus128()(index[0]);
-    CheckBus()(value);
+    CheckBus256()(value);
 
     signal result;
     signal rem;

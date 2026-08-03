@@ -248,10 +248,10 @@ This was a residual security dependency, not a newly introduced bug. The current
 
 This concern is now resolved for the merged wrappers reviewed in this report:
 
-- The current `ALU1` wrapper applies `CheckBus()` directly to `in1` and `in2`.
+- The current `ALU1` wrapper applies `CheckBus256()` directly to `in1` and `in2`.
 - The current `ALU2` wrapper bit-decomposes every input limb with `Num2Bits(128)`, which also enforces the 128-bit limb bound.
-- The current `ALU3` wrapper applies `CheckBus()` directly to `in1`, `in2`, and `in3`.
-- The current `ALU4` wrapper applies `CheckBus()` directly to `in1` and `in2`.
+- The current `ALU3` wrapper applies `CheckBus256()` directly to `in1`, `in2`, and `in3`.
+- The current `ALU4` wrapper applies `CheckBus256()` directly to `in1` and `in2`.
 
 Relevant code:
 
@@ -417,7 +417,7 @@ The arithmetic implementation used by the compiled wrapper explicitly assumes th
 
 - [`templates/256bit/arithmetic_unsafe_type1.circom`](../templates/256bit/arithmetic_unsafe_type1.circom)
 
-No `CheckBus()` or equivalent bit-decomposition is applied to the public input pairs before they are fed into the addition chain.
+No `CheckBus256()` or equivalent bit-decomposition is applied to the public input pairs before they are fed into the addition chain.
 
 #### Reproduction
 

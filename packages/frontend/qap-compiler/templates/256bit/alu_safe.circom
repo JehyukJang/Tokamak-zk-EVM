@@ -27,9 +27,9 @@ template ALU1 () {
 
     /* Input range check can be omitted, as each subcircuit will be connected to other subcircuits.
     // // Check inputs are in 128 bit limbs
-    // CheckBus()(in1);
-    // CheckBus()(in2);
-    // CheckBus()(in3);
+    // CheckBus256()(in1);
+    // CheckBus256()(in2);
+    // CheckBus256()(in3);
     */
 
     // signal is_in1_1_zero <== IsZero()(in1[1]);
@@ -110,7 +110,7 @@ template ALU1 () {
     out2 <== [0, 0];
 
     // Check outputs are in 128 bit limbs
-    CheckBus()(out1);
+    CheckBus256()(out1);
 }
 
 template _SafeDivisor(){
@@ -137,8 +137,8 @@ template ALU2 () {
 
     /* Input range check can be omitted, as each subcircuit will be connected to other subcircuits.
     // // Check inputs are in 128 bit limbs
-    // CheckBus()(in1);
-    // CheckBus()(in2);
+    // CheckBus256()(in1);
+    // CheckBus256()(in2);
     */
 
     signal outs[NUM_ALU_FUNCTIONS][2];
@@ -253,8 +253,8 @@ template ALU3 () {
 
     /* Input range check can be omitted, as each subcircuit will be connected to other subcircuits.
     // // Check inputs are in 128 bit limbs
-    // CheckBus()(in1);
-    // CheckBus()(in2);
+    // CheckBus256()(in1);
+    // CheckBus256()(in2);
     */
 
     signal outs[NUM_ALU_FUNCTIONS][2];
@@ -422,8 +422,8 @@ template ALU5 () {
 
     /* Input range check can be omitted, as each subcircuit will be connected to other subcircuits.
     // // Check inputs are in 128 bit limbs
-    // CheckBus()(in1);
-    // CheckBus()(in2);
+    // CheckBus256()(in1);
+    // CheckBus256()(in2);
     */
 
     signal outs[NUM_ALU_FUNCTIONS][2];
@@ -501,9 +501,9 @@ template ALU_basic () {
 
     /* Input range check can be omitted, as each subcircuit will be connected to other subcircuits.
     // // Check inputs are in 128 bit limbs
-    // CheckBus()(in1);
-    // CheckBus()(in2);
-    // CheckBus()(in3);
+    // CheckBus256()(in1);
+    // CheckBus256()(in2);
+    // CheckBus256()(in3);
     */
 
     // signal is_in1_1_zero <== IsZero()(in1[1]);
@@ -650,8 +650,8 @@ template ALU_basic () {
     out2 <== mux2.out;
 
     // Check outputs are in 128 bit limbs
-    CheckBus()(out1);
-    CheckBus()(out2);
+    CheckBus256()(out1);
+    CheckBus256()(out2);
 }
 
 template ALU_division () {
@@ -670,8 +670,8 @@ template ALU_division () {
 
     /* Input range check can be omitted, as each subcircuit will be connected to other subcircuits.
     // // Check inputs are in 128 bit limbs
-    // CheckBus()(in1);
-    // CheckBus()(in2);
+    // CheckBus256()(in1);
+    // CheckBus256()(in2);
     */
 
     signal outs[NUM_ALU_FUNCTIONS][2];
@@ -890,9 +890,9 @@ template ALU_bitwise () {
 
     /* Input range check can be omitted, as each subcircuit will be connected to other subcircuits.
     // // Check inputs are in 128 bit limbs
-    // CheckBus()(in1);
-    // CheckBus()(in2);
-    // CheckBus()(in3);
+    // CheckBus256()(in1);
+    // CheckBus256()(in2);
+    // CheckBus256()(in3);
     */
 
     // signal is_in1_1_zero <== IsZero()(in1[1]);
@@ -974,5 +974,5 @@ template ALU_bitwise () {
     out <== mux.out;
 
     // Check outputs are in 128 bit limbs
-    CheckBus()(out);
+    CheckBus256()(out);
 }

@@ -13,8 +13,8 @@ template ALU1_() {
     signal in1[2] <== [in[1], in[2]];
     signal in2[2] <== [in[3], in[4]];
 
-    CheckBus()(in1);
-    CheckBus()(in2);
+    CheckBus256()(in1);
+    CheckBus256()(in2);
 
     signal b_selector[NUM_SELECTOR_BITS] <== Num2Bits(NUM_SELECTOR_BITS)(selector);
     signal unsupported_selector_sum <== b_selector[0] + b_selector[4] + b_selector[5] + b_selector[6] + b_selector[7] + b_selector[8] + b_selector[9] + b_selector[10] + b_selector[11] + b_selector[12] + b_selector[13] + b_selector[14] + b_selector[15] + b_selector[16] + b_selector[17] + b_selector[18] + b_selector[19] + b_selector[22] + b_selector[23] + b_selector[24] + b_selector[26] + b_selector[27] + b_selector[28] + b_selector[29];
@@ -72,7 +72,7 @@ template ALU1_() {
     mux.ins <== outs;
     out <== mux.out;
 
-    CheckBus()(out);
+    CheckBus256()(out);
 }
 
 component main {public [in]} = ALU1_();

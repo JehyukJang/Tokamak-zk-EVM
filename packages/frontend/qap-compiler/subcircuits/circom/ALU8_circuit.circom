@@ -7,8 +7,8 @@ template ALU8_() {
     signal in1[2] <== [in[1], in[2]];
     signal in2[2] <== [in[3], in[4]];
 
-    CheckBus()(in1);
-    CheckBus()(in2);
+    CheckBus256()(in1);
+    CheckBus256()(in2);
 
     signal useMod <== (in[0] - (1 << 5)) / ((1 << 7) - (1 << 5));
     useMod * (1 - useMod) === 0;

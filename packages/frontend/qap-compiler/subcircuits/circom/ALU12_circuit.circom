@@ -11,7 +11,7 @@ template ALU12_() {
     useSar * (1 - useSar) === 0;
     shift[1] === 0;
     CheckBus128()(shift[0]);
-    CheckBus()(value);
+    CheckBus256()(value);
 
     signal inverseShift <== 256 - shift[0];
     signal (expShift[2], isShiftGt255, expInverseShift[2], isInverseShiftGt255) <== FindShiftingTwosPower256TwoInput(8, 8)(shift[0], inverseShift);

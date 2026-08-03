@@ -105,11 +105,9 @@ template CheckBus128() {
     in_range === 1;
 }
 
-template CheckBus() {
+template CheckBus256() {
     signal input in[2];
 
-    signal in0_range <== LessEqThan(128)([in[0], (1<<128) - 1]);
-    signal in1_range <== LessEqThan(128)([in[1], (1<<128) - 1]);
-    signal res <== in0_range * in1_range;
-    res === 1;
+    CheckBus128()(in[0]);
+    CheckBus128()(in[1]);
 }

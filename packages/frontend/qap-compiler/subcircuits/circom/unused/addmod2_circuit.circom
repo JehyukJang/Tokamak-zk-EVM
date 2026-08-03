@@ -9,7 +9,7 @@ template ADDMOD2() {
     signal add_res[2] <== [in[0], in[1]];
     signal carry <== in[2];
     signal in3[2] <== [in[3], in[4]];
-    CheckBus()(in3);
+    CheckBus256()(in3);
 
     signal (quo[4], rem[4]) <== Div512by256_unsafe()([add_res[0], add_res[1], carry, 0], in3);
 
