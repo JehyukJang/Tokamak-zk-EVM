@@ -414,3 +414,37 @@ export const MODULAR_ARITHMETIC_MAPPINGS: readonly ArithmeticSubcircuitMapping[]
     createModularArithmeticMapping('ADDMOD', 1n << 8n),
     createModularArithmeticMapping('MULMOD', 1n << 9n),
   ]);
+
+export type PoseidonArithmeticMappingConfig = Pick<
+  FrontendConfig,
+  'nPoseidonBatch'
+>;
+
+export const createPoseidonArithmeticMapping = (
+  config: PoseidonArithmeticMappingConfig,
+): ArithmeticSubcircuitMapping => {
+  assertPositiveInteger(config.nPoseidonBatch, 'nPoseidonBatch');
+
+  return Object.freeze({
+    operation: 'Poseidon',
+    composition: freezeComposition({
+      constants: [],
+      numSteps: 'dynamic',
+      numOperands: config.nPoseidonBatch + 1,
+      numResults: 1,
+      steps: [{
+        subcircuit: 'Poseidon',
+        usage: 'Poseidon',
+        selector: 'dynamic',
+        inputs: [
+          { kind: 'selector' },
+          ...Array.from(
+            { length: config.nPoseidonBatch + 1 },
+            (_, index): InputReference => ({ kind: 'operand', index }),
+          ),
+        ],
+        outputs: [{ kind: 'result', index: 0 }],
+      }],
+    }),
+  });
+};
