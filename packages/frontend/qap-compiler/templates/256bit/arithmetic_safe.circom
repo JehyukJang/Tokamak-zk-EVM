@@ -199,24 +199,18 @@ template SignExtend256() {
     out[1] <== high;
 }
 
-template ShiftLeft256() {
-    signal input shift[2], value[2];
-    signal output out[2];
+// Every input must be connected to a locally constrained bit decomposition.
+template ShiftLeft256FromBits_unsafe() {
+    signal input shiftBits[2][128], valueBits[2][128];
+    signal output out[2], outBits[2][128];
 
-    component shiftBits[2];
-    component valueBits[2];
     signal valueWords[4];
     for (var limb = 0; limb < 2; limb++) {
-        shiftBits[limb] = Num2Bits(128);
-        valueBits[limb] = Num2Bits(128);
-        shiftBits[limb].in <== shift[limb];
-        valueBits[limb].in <== value[limb];
-
         var lowWord = 0;
         var highWord = 0;
         for (var bit = 0; bit < 64; bit++) {
-            lowWord += valueBits[limb].out[bit] * (1 << bit);
-            highWord += valueBits[limb].out[bit + 64] * (1 << bit);
+            lowWord += valueBits[limb][bit] * (1 << bit);
+            highWord += valueBits[limb][bit + 64] * (1 << bit);
         }
         valueWords[2 * limb] <== lowWord;
         valueWords[2 * limb + 1] <== highWord;
@@ -224,10 +218,10 @@ template ShiftLeft256() {
 
     var oversizedSum = 0;
     for (var bit = 8; bit < 128; bit++) {
-        oversizedSum += shiftBits[0].out[bit];
+        oversizedSum += shiftBits[0][bit];
     }
     for (var bit = 0; bit < 128; bit++) {
-        oversizedSum += shiftBits[1].out[bit];
+        oversizedSum += shiftBits[1][bit];
     }
     signal inRange <== IsZero()(oversizedSum);
 
@@ -236,15 +230,15 @@ template ShiftLeft256() {
     for (var bit = 0; bit < 6; bit++) {
         var selectedFactor = (1 << (1 << bit)) - 1;
         wordPower[bit + 1] <== wordPower[bit]
-            * (1 + shiftBits[0].out[bit] * selectedFactor);
+            * (1 + shiftBits[0][bit] * selectedFactor);
     }
 
     signal shiftWords[4];
-    signal lowPair <== wordPower[6] * (1 - shiftBits[0].out[7]);
+    signal lowPair <== wordPower[6] * (1 - shiftBits[0][7]);
     signal highPair <== wordPower[6] - lowPair;
-    shiftWords[1] <== lowPair * shiftBits[0].out[6];
+    shiftWords[1] <== lowPair * shiftBits[0][6];
     shiftWords[0] <== lowPair - shiftWords[1];
-    shiftWords[3] <== highPair * shiftBits[0].out[6];
+    shiftWords[3] <== highPair * shiftBits[0][6];
     shiftWords[2] <== highPair - shiftWords[3];
 
     component shifted = Mul256TruncatedFrom64_unsafe();
@@ -252,11 +246,34 @@ template ShiftLeft256() {
     shifted.in2 <== shiftWords;
     out[0] <== inRange * shifted.out[0];
     out[1] <== inRange * shifted.out[1];
-    component outputBits[2];
+    component canonicalOutput[2];
     for (var limb = 0; limb < 2; limb++) {
-        outputBits[limb] = Num2Bits(128);
-        outputBits[limb].in <== out[limb];
+        canonicalOutput[limb] = Num2Bits(128);
+        canonicalOutput[limb].in <== out[limb];
+        for (var bit = 0; bit < 128; bit++) {
+            outBits[limb][bit] <== canonicalOutput[limb].out[bit];
+        }
     }
+}
+
+template ShiftLeft256() {
+    signal input shift[2], value[2];
+    signal output out[2];
+
+    component shiftBits[2];
+    component valueBits[2];
+    component core = ShiftLeft256FromBits_unsafe();
+    for (var limb = 0; limb < 2; limb++) {
+        shiftBits[limb] = Num2Bits(128);
+        valueBits[limb] = Num2Bits(128);
+        shiftBits[limb].in <== shift[limb];
+        valueBits[limb].in <== value[limb];
+        for (var bit = 0; bit < 128; bit++) {
+            core.shiftBits[limb][bit] <== shiftBits[limb].out[bit];
+            core.valueBits[limb][bit] <== valueBits[limb].out[bit];
+        }
+    }
+    out <== core.out;
 }
 
 template ShiftRight256() {
