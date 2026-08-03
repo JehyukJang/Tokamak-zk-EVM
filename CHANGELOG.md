@@ -30,10 +30,11 @@ The format is based on Keep a Changelog.
   parameter. Set `nPoseidonBatch`, `nJubjubExpBatch`, and `nSubExpBatch` to
   `3`, `75`, and `16`, respectively, so each batch subcircuit has at most
   2048 compiled constraints.
-- Replaced the two merged ALU targets with `ALU1` through `ALU4`, grouped as
-  basic/comparison, bitwise, division/modular, and byte/shift operations. Their
-  compiled constraint totals are 1505, 1600, 1752, and 1867, respectively,
-  while retaining selector and 256-bit bus canonicalization.
+- Replaced the merged arithmetic targets with `ALU1` through `ALU6` for
+  multi-operation selector groups and operation-named `AND`, `OR`, `XOR`,
+  `SIGNEXTEND`, `BYTE`, `SHL`, `ADDMOD`, and `MULMOD` targets for individual
+  operations. Added the input-only `CheckBus256` composition target required
+  by `ADDMOD` and `MULMOD`.
 - Renamed the two-limb `CheckBus` template to `CheckBus256` and implemented it
   by composing two `CheckBus128` limb checks.
 - This circuit-set change requires regenerated subcircuit-library artifacts
