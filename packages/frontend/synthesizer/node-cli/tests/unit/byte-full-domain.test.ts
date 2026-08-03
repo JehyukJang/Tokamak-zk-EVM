@@ -24,7 +24,6 @@ const createHarness = () => {
   const parent = {
     placements,
     subcircuitLibrary: {
-      accumulatorInputLimit: 32,
       poseidonBatchSize: 1,
       arithExpBatchSize: 32,
       jubjubExpBatchSize: 128,

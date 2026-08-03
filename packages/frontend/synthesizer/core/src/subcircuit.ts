@@ -2,23 +2,6 @@ export {
   BUFFER_LIST,
 } from './subcircuit/configuredTypes.ts';
 export {
-  ArithmeticSubcircuitComposition,
-} from './subcircuit/arithmeticSubcircuitComposition.ts';
-export type {
-  ArithmeticSubcircuitCompositionDefinition,
-  CompositionStep,
-  InputReference,
-  OutputReference,
-  SelectorDefinition,
-} from './subcircuit/arithmeticSubcircuitComposition.ts';
-export {
-  createArithmeticSubcircuitCompositions,
-} from './subcircuit/arithmeticSubcircuitCompositions.ts';
-export type {
-  ArithmeticSubcircuitCompositionConfig,
-  ArithmeticSubcircuitCompositions,
-} from './subcircuit/arithmeticSubcircuitCompositions.ts';
-export {
   createInfoByName,
   parseFrontendConfig,
   parseGlobalWireList,
