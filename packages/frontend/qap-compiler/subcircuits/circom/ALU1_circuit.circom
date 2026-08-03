@@ -4,7 +4,7 @@ include "../../templates/256bit/alu_safe.circom";
 template ALU1_() {
     var NUM_TOTAL_FUNCTIONS = 29;
     var NUM_SELECTOR_BITS = NUM_TOTAL_FUNCTIONS + 1;
-    var NUM_ALU_FUNCTIONS = 9;
+    var NUM_ALU_FUNCTIONS = 6;
 
     signal input in[5];
     signal output out[2];
@@ -17,7 +17,7 @@ template ALU1_() {
     CheckBus()(in2);
 
     signal b_selector[NUM_SELECTOR_BITS] <== Num2Bits(NUM_SELECTOR_BITS)(selector);
-    signal unsupported_selector_sum <== b_selector[0] + b_selector[4] + b_selector[5] + b_selector[6] + b_selector[7] + b_selector[8] + b_selector[9] + b_selector[10] + b_selector[11] + b_selector[12] + b_selector[13] + b_selector[14] + b_selector[15] + b_selector[22] + b_selector[23] + b_selector[24] + b_selector[25] + b_selector[26] + b_selector[27] + b_selector[28] + b_selector[29];
+    signal unsupported_selector_sum <== b_selector[0] + b_selector[4] + b_selector[5] + b_selector[6] + b_selector[7] + b_selector[8] + b_selector[9] + b_selector[10] + b_selector[11] + b_selector[12] + b_selector[13] + b_selector[14] + b_selector[15] + b_selector[16] + b_selector[17] + b_selector[18] + b_selector[19] + b_selector[22] + b_selector[23] + b_selector[24] + b_selector[26] + b_selector[27] + b_selector[28] + b_selector[29];
     unsupported_selector_sum === 0;
     signal outs[NUM_ALU_FUNCTIONS][2];
     signal flags[NUM_ALU_FUNCTIONS];
@@ -44,53 +44,9 @@ template ALU1_() {
     flags[ind] <== b_selector[3];
     ind++;
 
-    signal lt_lower_out <== LessThan(128)([in1[0], in2[0]]);
-    signal lt_upper_out <== LessThan(128)([in1[1], in2[1]]);
     signal is_upper_eq <== IsEqual()([in1[1], in2[1]]);
     signal is_lower_eq <== IsEqual()([in1[0], in2[0]]);
     signal is_eq <== is_upper_eq * is_lower_eq;
-    signal is_upper_lt <== (1 - is_upper_eq) * lt_upper_out;
-    signal is_lower_lt <== is_upper_eq * lt_lower_out;
-    signal is_lt256 <== is_upper_lt + is_lower_lt;
-
-    outs[ind] <== [is_lt256, 0];
-    flags[ind] <== b_selector[16];
-    ind++;
-
-    outs[ind] <== [(1 - is_lt256) * (1 - is_eq), 0];
-    flags[ind] <== b_selector[17];
-    ind++;
-
-    signal isNeg_in1;
-    signal abs_in1[2];
-    signal isNeg_in2;
-    signal abs_in2[2];
-    (isNeg_in1, abs_in1) <== getSignAndAbs256_unsafe()(in1);
-    (isNeg_in2, abs_in2) <== getSignAndAbs256_unsafe()(in2);
-
-    signal abs_lt_lower_out <== LessThan(128)([abs_in1[0], abs_in2[0]]);
-    signal abs_lt_upper_out <== LessThan(128)([abs_in1[1], abs_in2[1]]);
-    signal is_abs_upper_eq <== IsEqual()([abs_in1[1], abs_in2[1]]);
-    signal is_abs_lower_eq <== IsEqual()([abs_in1[0], abs_in2[0]]);
-    signal is_abs_eq <== is_abs_upper_eq * is_abs_lower_eq;
-    signal is_abs_upper_lt <== (1 - is_abs_upper_eq) * abs_lt_upper_out;
-    signal is_abs_lower_lt <== is_abs_upper_eq * abs_lt_lower_out;
-    signal is_abs_lt256 <== is_abs_upper_lt + is_abs_lower_lt;
-    signal is_abs_gt256 <== (1 - is_abs_lt256) * (1 - is_abs_eq);
-    signal sign_xor_out <== XOR()(isNeg_in1, isNeg_in2);
-    signal inter2 <== is_abs_lt256 * (1 - isNeg_in1);
-    signal inter3 <== is_abs_gt256 * isNeg_in1;
-    signal inter4 <== OR()(inter2, inter3);
-    signal inter5 <== sign_xor_out * isNeg_in1;
-    signal is_slt256 <== (1 - sign_xor_out) * inter4 + inter5;
-
-    outs[ind] <== [is_slt256, 0];
-    flags[ind] <== b_selector[18];
-    ind++;
-
-    outs[ind] <== [(1 - is_slt256) * (1 - is_eq), 0];
-    flags[ind] <== b_selector[19];
-    ind++;
 
     outs[ind] <== [is_eq, 0];
     flags[ind] <== b_selector[20];
@@ -102,7 +58,13 @@ template ALU1_() {
     flags[ind] <== b_selector[21];
     ind++;
 
-    signal flags_sum <== flags[0] + flags[1] + flags[2] + flags[3] + flags[4] + flags[5] + flags[6] + flags[7] + flags[8];
+    component not = Not256_unsafe();
+    not.in <== in1;
+    outs[ind] <== not.out;
+    flags[ind] <== b_selector[25];
+    ind++;
+
+    signal flags_sum <== flags[0] + flags[1] + flags[2] + flags[3] + flags[4] + flags[5];
     flags_sum === 1;
 
     component mux = ComplexMux256_checked(NUM_ALU_FUNCTIONS);
