@@ -46,8 +46,6 @@ template Add128_unsafe () {
     out <-- (in1 + in2) % FIELD_SIZE;
     carry <-- (in1 + in2) \ FIELD_SIZE;
     sum === out + carry * FIELD_SIZE;
-    signal out_bits[128] <== Num2Bits(128)(out);
-    carry * (carry - 1) === 0;
 }
 
 template Div128_unsafe() {

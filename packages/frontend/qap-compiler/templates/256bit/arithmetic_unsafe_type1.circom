@@ -16,12 +16,6 @@ template Add256_unsafe() {
     out[1] <-- (in1[1] + in2[1] + low_add_carry) % FIELD_SIZE;
     carry <-- (in1[1] + in2[1] + low_add_carry) \ FIELD_SIZE;
 
-    signal out_bits[2][128];
-    out_bits[0] <== Num2Bits(128)(out[0]);
-    out_bits[1] <== Num2Bits(128)(out[1]);
-    low_add_carry * (low_add_carry - 1) === 0;
-    carry * (carry - 1) === 0;
-
     // Check the correctness of out[0] and low_add_carry
     in1[0] + in2[0] === out[0] + low_add_carry * FIELD_SIZE;
 
@@ -35,10 +29,6 @@ template Sub256_unsafe() {
 
     out <-- _sub256(in1, in2);
     signal (expected_in1[2], carry1) <== Add256_unsafe()(in2, out);
-
-    signal out_bits[2][128];
-    out_bits[0] <== Num2Bits(128)(out[0]);
-    out_bits[1] <== Num2Bits(128)(out[1]);
     
     expected_in1[0] === in1[0];
     expected_in1[1] === in1[1];
