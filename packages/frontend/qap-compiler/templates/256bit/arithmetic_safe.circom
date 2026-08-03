@@ -202,7 +202,7 @@ template SignExtend256() {
 // Every input must be connected to a locally constrained bit decomposition.
 template ShiftLeft256FromBits_unsafe() {
     signal input shiftBits[2][128], valueBits[2][128];
-    signal output out[2], outBits[2][128];
+    signal output out[2], outBits[2][128], inRange;
 
     signal valueWords[4];
     for (var limb = 0; limb < 2; limb++) {
@@ -223,7 +223,7 @@ template ShiftLeft256FromBits_unsafe() {
     for (var bit = 0; bit < 128; bit++) {
         oversizedSum += shiftBits[1][bit];
     }
-    signal inRange <== IsZero()(oversizedSum);
+    inRange <== IsZero()(oversizedSum);
 
     signal wordPower[7];
     wordPower[0] <== 1;
@@ -277,106 +277,39 @@ template ShiftLeft256() {
 }
 
 template ShiftRight256() {
-    var BASE64 = 1 << 64;
-
     signal input shift[2], value[2];
     signal output out[2], inRange, valueSign;
 
     component shiftBits[2];
     component valueBits[2];
-    signal valueWords[4];
+    component core = ShiftLeft256FromBits_unsafe();
     for (var limb = 0; limb < 2; limb++) {
         shiftBits[limb] = Num2Bits(128);
         valueBits[limb] = Num2Bits(128);
         shiftBits[limb].in <== shift[limb];
         valueBits[limb].in <== value[limb];
-
-        var lowWord = 0;
-        var highWord = 0;
-        for (var bit = 0; bit < 64; bit++) {
-            lowWord += valueBits[limb].out[bit] * (1 << bit);
-            highWord += valueBits[limb].out[bit + 64] * (1 << bit);
+    }
+    for (var limb = 0; limb < 2; limb++) {
+        for (var bit = 0; bit < 128; bit++) {
+            var reversed = 255 - (128 * limb + bit);
+            var reversedLimb = reversed \ 128;
+            var reversedBit = reversed % 128;
+            core.shiftBits[limb][bit] <== shiftBits[limb].out[bit];
+            core.valueBits[limb][bit]
+                <== valueBits[reversedLimb].out[reversedBit];
         }
-        valueWords[2 * limb] <== lowWord;
-        valueWords[2 * limb + 1] <== highWord;
     }
+
+    for (var limb = 0; limb < 2; limb++) {
+        var result = 0;
+        for (var bit = 0; bit < 128; bit++) {
+            var reversed = 255 - (128 * limb + bit);
+            var reversedLimb = reversed \ 128;
+            var reversedBit = reversed % 128;
+            result += core.outBits[reversedLimb][reversedBit] * (1 << bit);
+        }
+        out[limb] <== result;
+    }
+    inRange <== core.inRange;
     valueSign <== valueBits[1].out[127];
-
-    var oversizedSum = 0;
-    for (var bit = 8; bit < 128; bit++) {
-        oversizedSum += shiftBits[0].out[bit];
-    }
-    for (var bit = 0; bit < 128; bit++) {
-        oversizedSum += shiftBits[1].out[bit];
-    }
-    inRange <== IsZero()(oversizedSum);
-
-    signal wordPower[7];
-    wordPower[0] <== 1;
-    for (var bit = 0; bit < 6; bit++) {
-        var selectedFactor = (1 << (1 << bit)) - 1;
-        wordPower[bit + 1] <== wordPower[bit]
-            * (1 + shiftBits[0].out[bit] * selectedFactor);
-    }
-
-    // These values are witness hints only; the bounded radix equations below
-    // prove the quotient and remainder relation independently.
-    var division[2][2] = _div256(value, [wordPower[6], 0]);
-    signal remainder;
-    remainder <-- division[1][0];
-
-    signal quotientWords[4];
-    quotientWords[0] <-- division[0][0] % BASE64;
-    quotientWords[1] <-- division[0][0] \ BASE64;
-    quotientWords[2] <-- division[0][1] % BASE64;
-    quotientWords[3] <-- division[0][1] \ BASE64;
-
-    component quotientBits[4];
-    for (var word = 0; word < 4; word++) {
-        quotientBits[word] = Num2Bits(64);
-        quotientBits[word].in <== quotientWords[word];
-    }
-
-    component remainderBits = Num2Bits(63);
-    remainderBits.in <== remainder;
-    signal remainderInRange <== LessThan(64)([remainder, wordPower[6]]);
-    remainderInRange === 1;
-
-    signal carry[3];
-    carry[0] <-- (quotientWords[0] * wordPower[6] + remainder) \ BASE64;
-    carry[1] <-- (quotientWords[1] * wordPower[6] + carry[0]) \ BASE64;
-    carry[2] <-- (quotientWords[2] * wordPower[6] + carry[1]) \ BASE64;
-    component carryBits[3];
-    for (var word = 0; word < 3; word++) {
-        carryBits[word] = Num2Bits(63);
-        carryBits[word].in <== carry[word];
-    }
-
-    quotientWords[0] * wordPower[6] + remainder
-        === valueWords[0] + BASE64 * carry[0];
-    quotientWords[1] * wordPower[6] + carry[0]
-        === valueWords[1] + BASE64 * carry[1];
-    quotientWords[2] * wordPower[6] + carry[1]
-        === valueWords[2] + BASE64 * carry[2];
-    quotientWords[3] * wordPower[6] + carry[2]
-        === valueWords[3];
-
-    // The division handles shift mod 64. These two stages select the remaining
-    // 64-bit and 128-bit word offsets.
-    signal shiftedBy64[4];
-    for (var word = 0; word < 4; word++) {
-        var nextWord = word < 3 ? quotientWords[word + 1] : 0;
-        shiftedBy64[word] <== quotientWords[word]
-            + shiftBits[0].out[6] * (nextWord - quotientWords[word]);
-    }
-
-    signal shiftedByWords[4];
-    for (var word = 0; word < 4; word++) {
-        var nextPairWord = word < 2 ? shiftedBy64[word + 2] : 0;
-        shiftedByWords[word] <== shiftedBy64[word]
-            + shiftBits[0].out[7] * (nextPairWord - shiftedBy64[word]);
-    }
-
-    out[0] <== inRange * (shiftedByWords[0] + BASE64 * shiftedByWords[1]);
-    out[1] <== inRange * (shiftedByWords[2] + BASE64 * shiftedByWords[3]);
 }

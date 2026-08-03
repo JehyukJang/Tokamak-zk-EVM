@@ -176,12 +176,25 @@ const main = async () => {
   }, true);
   await circuit.loadSymbols();
   await mutateAndReject(circuit, witness, "main.out[0]", 0n);
-  await mutateAndReject(circuit, witness, "main.right.quotientWords[0]", 1n << 64n);
-  await mutateAndReject(circuit, witness, "main.right.remainder", 1n << 63n);
-  await mutateAndReject(circuit, witness, "main.right.carry[0]", 1n << 63n);
+  await mutateAndReject(circuit, witness, "main.right.core.out[0]", 1n << 128n);
+  const coreOutputBit = "main.right.core.outBits[0][0]";
+  const coreOutputBitIndex = circuit.symbols[coreOutputBit]?.varIdx;
+  assert.notEqual(coreOutputBitIndex, undefined, `${coreOutputBit} must exist`);
+  await mutateAndReject(
+    circuit,
+    witness,
+    coreOutputBit,
+    1n - BigInt(witness[coreOutputBitIndex].toString()),
+  );
+  await mutateAndReject(
+    circuit,
+    witness,
+    "main.right.core.shifted.carryLow",
+    1n << 65n,
+  );
 
   console.log(
-    `SHR passed ${boundaryShifts.length * boundaryValues.length} boundary cases, ${RANDOM_CASES} in-range and ${RANDOM_CASES} full-domain randomized cases, retained SAR boundary cases, canonicality checks, bounded-witness mutation checks, and wrong-claim rejection`,
+    `SHR passed ${boundaryShifts.length * boundaryValues.length} boundary cases, ${RANDOM_CASES} in-range and ${RANDOM_CASES} full-domain randomized cases, retained SAR boundary cases, canonicality checks, shared-core mutation checks, and wrong-claim rejection`,
   );
 };
 
