@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  SUBCIRCUIT_ALU_MAPPING,
+  ARITHMETIC_OPERATION_DEFINITIONS,
   SUBCIRCUIT_LIST,
 } from '../../../core/src/subcircuit/configuredTypes.ts';
 import { VariableGenerator } from '../../../core/src/circuitGenerator/handlers/variableGenerator.ts';
@@ -87,7 +87,7 @@ describe('division-family topology', () => {
     expect(SUBCIRCUIT_LIST.slice(13, 15)).toEqual(['ALU4A', 'ALU4B']);
 
     for (const operation of ['DIV', 'SDIV', 'MOD', 'SMOD'] as const) {
-      expect(SUBCIRCUIT_ALU_MAPPING[operation][0]).toBe('ALU4A');
+      expect(ARITHMETIC_OPERATION_DEFINITIONS[operation].placements[0].subcircuit).toBe('ALU4A');
     }
   });
 
@@ -120,7 +120,7 @@ describe('division-family topology', () => {
 
       const first = placements[0];
       const second = placements[1];
-      expect(first.inPts[0].value).toBe(SUBCIRCUIT_ALU_MAPPING[operation][1]);
+      expect(first.inPts[0].value).toBe(ARITHMETIC_OPERATION_DEFINITIONS[operation].selector);
       expect(first.inPts[1]).toMatchObject({ source: 10, wireIndex: 3 });
       expect(first.inPts[2]).toMatchObject({ source: 11, wireIndex: 4 });
       expect(first.outPts.map(({ value }) => value)).toEqual([

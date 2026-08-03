@@ -2,7 +2,7 @@
 import { DataPt, ISynthesizerProvider } from '../types/index.ts';
 import { DataPtFactory } from '../dataStructure/index.ts';
 import { DEFAULT_SOURCE_BIT_SIZE } from '../../synthesizer/params/constants.ts';
-import { ArithmeticOperator, SUBCIRCUIT_ALU_MAPPING, SubcircuitNames } from '../../subcircuit/configuredTypes.ts';
+import { ARITHMETIC_OPERATION_DEFINITIONS, ArithmeticOperator, SubcircuitNames } from '../../subcircuit/configuredTypes.ts';
 import { ArithmeticOperations } from '../dataStructure/arithmeticOperations.ts';
 import { POSEIDON_INPUTS } from 'tokamak-l2js';
 
@@ -109,7 +109,9 @@ export class ArithmeticManager {
     name: ArithmeticOperator,
     inPts: DataPt[],
   ): { subcircuitName: SubcircuitNames; finalInPts: DataPt[] } {
-    const [subcircuitName, configuredSelector] = SUBCIRCUIT_ALU_MAPPING[name];
+    const definition = ARITHMETIC_OPERATION_DEFINITIONS[name]
+    const subcircuitName = definition.placements[definition.selectorPlacement]!.subcircuit
+    const configuredSelector = definition.selector
 
     const subcircuitInfo = this.parent.state.subcircuitInfoByName.get(subcircuitName)
     if (subcircuitInfo === undefined) {
