@@ -129,13 +129,30 @@ describe('full-domain word operation synthesis', () => {
     },
   );
 
-  it('retains the oversized-shift limit for SAR', () => {
-    const { manager, placements } = createHarness();
+  it.each([
+    [256n, 'nonnegative', 1n << 254n, 0n],
+    [256n, 'negative', 1n << 255n, (1n << 256n) - 1n],
+    [1n << 128n, 'nonnegative', 1n << 254n, 0n],
+    [1n << 128n, 'negative', 1n << 255n, (1n << 256n) - 1n],
+    [(1n << 256n) - 1n, 'nonnegative', 1n << 254n, 0n],
+    [(1n << 256n) - 1n, 'negative', 1n << 255n, (1n << 256n) - 1n],
+  ])(
+    'places SAR for oversized EVM shift %s and %s value',
+    (shift, _sign, value, expected) => {
+      const { manager, placements } = createHarness();
+      const shiftPt = dataPt(shift, 10, 3);
+      const valuePt = dataPt(value, 11, 4);
 
-    expect(() => manager.placeArith('SAR', [
-      dataPt(256n, 10),
-      dataPt(1n, 11),
-    ])).toThrow('Operation SAR has a shift value greater than 255');
-    expect(placements).toHaveLength(0);
-  });
+      const result = manager.placeArith('SAR', [shiftPt, valuePt]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].value).toBe(expected);
+      expect(placements).toHaveLength(1);
+      expect(placements[0]).toMatchObject({ name: 'ALU6', usage: 'SAR' });
+      expect(placements[0].inPts).toHaveLength(3);
+      expect(placements[0].inPts[0].value).toBe(1n << 29n);
+      expect(placements[0].inPts[1]).toBe(shiftPt);
+      expect(placements[0].inPts[2]).toBe(valuePt);
+    },
+  );
 });

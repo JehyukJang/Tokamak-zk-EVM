@@ -121,14 +121,6 @@ export class ArithmeticManager {
       finalInPts = [selectorPt, ...finalInPts];
     }
 
-    if (name === 'SAR') {
-      if (inPts[0] !== undefined && inPts[0].value > 255n) {
-        throw new Error(
-          `Synthesizer: Operation ${name} has a shift value greater than 255. Adjust ${subcircuitName} subcircuit in qap-compiler.`,
-        );
-      }
-    }
-
     return { subcircuitName, finalInPts };
   }
 
