@@ -3,6 +3,7 @@ import {
   type ArithmeticOperator,
   type SubcircuitNames,
 } from './configuredTypes.ts';
+import type { FrontendConfig } from './libraryTypes.ts';
 
 export type SelectorDefinition = bigint | null | 'dynamic';
 
@@ -254,11 +255,12 @@ export class ArithmeticSubcircuitComposition {
   }
 }
 
-const createFixedSingleStepMapping = (
+const createSingleStepMapping = (
   operation: ArithmeticOperator,
   subcircuit: SubcircuitNames,
-  selector: bigint,
+  selector: SelectorDefinition,
   numOperands: number,
+  numResults: number,
   constants: readonly ConstantDefinition[] = [],
 ): ArithmeticSubcircuitMapping => Object.freeze({
   operation,
@@ -266,13 +268,15 @@ const createFixedSingleStepMapping = (
     constants,
     numSteps: 1,
     numOperands,
-    numResults: 1,
+    numResults,
     steps: [{
       subcircuit,
       usage: subcircuit.startsWith('ALU') ? operation : subcircuit,
       selector,
       inputs: [
-        { kind: 'selector' },
+        ...(selector === null
+          ? []
+          : [{ kind: 'selector' } as const]),
         ...Array.from(
           { length: numOperands },
           (_, index): InputReference => ({ kind: 'operand', index }),
@@ -281,7 +285,10 @@ const createFixedSingleStepMapping = (
           (_, index): InputReference => ({ kind: 'constant', index }),
         ),
       ],
-      outputs: [{ kind: 'result', index: 0 }],
+      outputs: Array.from(
+        { length: numResults },
+        (_, index): OutputReference => ({ kind: 'result', index }),
+      ),
     }],
   }),
 });
@@ -293,22 +300,77 @@ const ZERO_WORD_CONSTANT: ConstantDefinition = Object.freeze({
 
 export const FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS: readonly ArithmeticSubcircuitMapping[] =
   Object.freeze([
-    createFixedSingleStepMapping('ADD', 'ALU1', 1n << 1n, 2),
-    createFixedSingleStepMapping('MUL', 'ALU1', 1n << 2n, 2),
-    createFixedSingleStepMapping('SUB', 'ALU1', 1n << 3n, 2),
-    createFixedSingleStepMapping('LT', 'ALU2', 1n << 16n, 2),
-    createFixedSingleStepMapping('GT', 'ALU2', 1n << 17n, 2),
-    createFixedSingleStepMapping('SLT', 'ALU3', 1n << 18n, 2),
-    createFixedSingleStepMapping('SGT', 'ALU3', 1n << 19n, 2),
-    createFixedSingleStepMapping('EQ', 'ALU1', 1n << 20n, 2),
-    createFixedSingleStepMapping('ISZERO', 'ALU1', 1n << 21n, 1, [ZERO_WORD_CONSTANT]),
-    createFixedSingleStepMapping('AND', 'AND', 1n << 22n, 2),
-    createFixedSingleStepMapping('OR', 'OR', 1n << 23n, 2),
-    createFixedSingleStepMapping('XOR', 'XOR', 1n << 24n, 2),
-    createFixedSingleStepMapping('NOT', 'ALU1', 1n << 25n, 1, [ZERO_WORD_CONSTANT]),
-    createFixedSingleStepMapping('BYTE', 'BYTE', 1n << 26n, 2),
-    createFixedSingleStepMapping('SHL', 'SHL', 1n << 27n, 2),
-    createFixedSingleStepMapping('SHR', 'ALU6', 1n << 28n, 2),
-    createFixedSingleStepMapping('SAR', 'ALU6', 1n << 29n, 2),
-    createFixedSingleStepMapping('SIGNEXTEND', 'SIGNEXTEND', 1n << 11n, 2),
+    createSingleStepMapping('ADD', 'ALU1', 1n << 1n, 2, 1),
+    createSingleStepMapping('MUL', 'ALU1', 1n << 2n, 2, 1),
+    createSingleStepMapping('SUB', 'ALU1', 1n << 3n, 2, 1),
+    createSingleStepMapping('LT', 'ALU2', 1n << 16n, 2, 1),
+    createSingleStepMapping('GT', 'ALU2', 1n << 17n, 2, 1),
+    createSingleStepMapping('SLT', 'ALU3', 1n << 18n, 2, 1),
+    createSingleStepMapping('SGT', 'ALU3', 1n << 19n, 2, 1),
+    createSingleStepMapping('EQ', 'ALU1', 1n << 20n, 2, 1),
+    createSingleStepMapping('ISZERO', 'ALU1', 1n << 21n, 1, 1, [ZERO_WORD_CONSTANT]),
+    createSingleStepMapping('AND', 'AND', 1n << 22n, 2, 1),
+    createSingleStepMapping('OR', 'OR', 1n << 23n, 2, 1),
+    createSingleStepMapping('XOR', 'XOR', 1n << 24n, 2, 1),
+    createSingleStepMapping('NOT', 'ALU1', 1n << 25n, 1, 1, [ZERO_WORD_CONSTANT]),
+    createSingleStepMapping('BYTE', 'BYTE', 1n << 26n, 2, 1),
+    createSingleStepMapping('SHL', 'SHL', 1n << 27n, 2, 1),
+    createSingleStepMapping('SHR', 'ALU6', 1n << 28n, 2, 1),
+    createSingleStepMapping('SAR', 'ALU6', 1n << 29n, 2, 1),
+    createSingleStepMapping('SIGNEXTEND', 'SIGNEXTEND', 1n << 11n, 2, 1),
   ]);
+
+export type SelectorFreeArithmeticMappingConfig = Pick<
+  FrontendConfig,
+  'nAccumulation' | 'nEqualBatch' | 'nJubjubExpBatch' | 'nSubExpBatch'
+>;
+
+const assertPositiveInteger = (value: number, description: string): void => {
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(
+      `ArithmeticSubcircuitComposition: ${description} must be a positive integer`,
+    );
+  }
+};
+
+export const createSelectorFreeArithmeticMappings = (
+  config: SelectorFreeArithmeticMappingConfig,
+): readonly ArithmeticSubcircuitMapping[] => {
+  assertPositiveInteger(config.nAccumulation, 'nAccumulation');
+  assertPositiveInteger(config.nEqualBatch, 'nEqualBatch');
+  assertPositiveInteger(config.nJubjubExpBatch, 'nJubjubExpBatch');
+  assertPositiveInteger(config.nSubExpBatch, 'nSubExpBatch');
+
+  return Object.freeze([
+    createSingleStepMapping('DecToBit', 'DecToBit', null, 1, 256),
+    createSingleStepMapping(
+      'SubExpBatch',
+      'SubExpBatch',
+      null,
+      2 + config.nSubExpBatch,
+      2,
+    ),
+    createSingleStepMapping(
+      'Accumulator',
+      'Accumulator',
+      null,
+      config.nAccumulation,
+      1,
+    ),
+    createSingleStepMapping(
+      'JubjubExpBatch',
+      'JubjubExpBatch',
+      null,
+      4 + config.nJubjubExpBatch,
+      4,
+    ),
+    createSingleStepMapping('EdDsaVerify', 'EdDsaVerify', null, 6, 0),
+    createSingleStepMapping(
+      'EqualBatch',
+      'EqualBatch',
+      null,
+      2 * config.nEqualBatch,
+      0,
+    ),
+  ]);
+};
