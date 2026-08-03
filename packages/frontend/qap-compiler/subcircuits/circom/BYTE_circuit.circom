@@ -8,15 +8,7 @@ template BYTE_() {
     signal value[2] <== [in[3], in[4]];
 
     in[0] === 1 << 26;
-    index[1] === 0;
-    CheckBus128()(index[0]);
-    CheckBus256()(value);
-
-    signal result;
-    signal rem;
-    signal divisor;
-    (result, rem, divisor) <== Byte256_unsafe()(index[0], value);
-    out <== [result, 0];
+    out <== Byte256()(index, value);
 }
 
 component main {public [in]} = BYTE_();

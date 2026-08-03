@@ -1,5 +1,7 @@
 pragma circom 2.1.6;
 include "circomlib/circuits/comparators.circom";
+include "circomlib/circuits/bitify.circom";
+include "circomlib/circuits/gates.circom";
 include "../128bit/arithmetic.circom";
 include "mux.circom";
 
@@ -49,4 +51,57 @@ template FindShiftingTwosPower256TwoInput(N1, N2) {
     signal case23_out2[2] <== Mux256()(is_shift2_gt_127, [0, exp_shift2_case2], [exp_shift2_case3, 0]);
     twos_power1 <== Mux256()(is_shift1_gt_255, [0, 0], case23_out1);
     twos_power2 <== Mux256()(is_shift2_gt_255, [0, 0], case23_out2);
+}
+
+template Byte256() {
+    signal input index[2], value[2];
+    signal output out[2];
+
+    component indexBits[2];
+    component valueBits[2];
+    for (var limb = 0; limb < 2; limb++) {
+        indexBits[limb] = Num2Bits(128);
+        valueBits[limb] = Num2Bits(128);
+        indexBits[limb].in <== index[limb];
+        valueBits[limb].in <== value[limb];
+    }
+
+    var oversizedSum = 0;
+    for (var bit = 5; bit < 128; bit++) {
+        oversizedSum += indexBits[0].out[bit];
+    }
+    for (var bit = 0; bit < 128; bit++) {
+        oversizedSum += indexBits[1].out[bit];
+    }
+    signal inRange <== IsZero()(oversizedSum);
+
+    signal selected[6][32];
+    for (var byte = 0; byte < 32; byte++) {
+        var sourceByte = 31 - byte;
+        var byteValue = 0;
+        for (var bit = 0; bit < 8; bit++) {
+            if (sourceByte < 16) {
+                byteValue += valueBits[0].out[8 * sourceByte + bit] * (1 << bit);
+            } else {
+                byteValue += valueBits[1].out[8 * (sourceByte - 16) + bit] * (1 << bit);
+            }
+        }
+        selected[0][byte] <== byteValue;
+    }
+
+    for (var step = 0; step < 5; step++) {
+        var active = 32 \ (1 << (step + 1));
+        for (var candidate = 0; candidate < 32; candidate++) {
+            if (candidate < active) {
+                selected[step + 1][candidate] <== selected[step][2 * candidate]
+                    + indexBits[0].out[step]
+                    * (selected[step][2 * candidate + 1] - selected[step][2 * candidate]);
+            } else {
+                selected[step + 1][candidate] <== 0;
+            }
+        }
+    }
+
+    out[0] <== inRange * selected[5][0];
+    out[1] <== 0;
 }
