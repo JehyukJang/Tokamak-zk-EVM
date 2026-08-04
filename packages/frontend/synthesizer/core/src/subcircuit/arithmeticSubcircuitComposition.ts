@@ -571,6 +571,9 @@ export const createJubjubExpArithmeticMapping = (
   const numScalarBits = 256;
   const numBatches = Math.ceil(numScalarBits / config.nJubjubExpBatch);
   const numPaddedScalarBits = numBatches * config.nJubjubExpBatch;
+  const constants: ConstantDefinition[] = numPaddedScalarBits > numScalarBits
+    ? [{ value: 0n, sourceBitSize: 1 }]
+    : [];
   const steps: CompositionStep[] = [];
 
   for (let batchIndex = 0; batchIndex < numBatches; batchIndex++) {
@@ -590,10 +593,12 @@ export const createJubjubExpArithmeticMapping = (
         );
     const bitInputs = Array.from(
       { length: config.nJubjubExpBatch },
-      (_, bitIndex): InputReference => ({
-        kind: 'operand',
-        index: 4 + batchIndex * config.nJubjubExpBatch + bitIndex,
-      }),
+      (_, bitIndex): InputReference => {
+        const scalarBitIndex = batchIndex * config.nJubjubExpBatch + bitIndex;
+        return scalarBitIndex < numScalarBits
+          ? { kind: 'operand', index: 4 + scalarBitIndex }
+          : { kind: 'constant', index: 0 };
+      },
     );
     const outputs: OutputReference[] = isFinalBatch
       ? [
@@ -623,9 +628,9 @@ export const createJubjubExpArithmeticMapping = (
     operation: 'JubjubExp',
     composition: freezeComposition({
       placementStrategy: 'generic',
-      constants: [],
+      constants,
       numSteps: steps.length,
-      numOperands: 4 + numPaddedScalarBits,
+      numOperands: 4 + numScalarBits,
       numResults: 2,
       steps,
     }),

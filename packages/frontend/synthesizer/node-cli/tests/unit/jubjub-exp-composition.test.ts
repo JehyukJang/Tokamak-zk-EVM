@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createArithmeticSubcircuitComposition } from '../../../core/src/subcircuit/arithmeticSubcircuitComposition.ts';
 import { ArithmeticManager } from '../../../core/src/synthesizer/handlers/arithmeticManager.ts';
+import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
 import type { DataPt } from '../../../core/src/synthesizer/types/dataStructure.ts';
 
 const JUBJUB_EXP_BATCH_SIZE = 37;
@@ -32,7 +33,7 @@ const createHarness = () => {
     outPts: DataPt[];
     usage: string;
   }> = [];
-  const zeroPt = dataPt(0n, 5, 1, 1);
+  let staticWireIndex = 0;
   const parent = {
     placements,
     subcircuitLibrary: {
@@ -58,7 +59,8 @@ const createHarness = () => {
         },
       ]]),
     },
-    getReservedVariableFromBuffer: vi.fn(() => ({ ...zeroPt })),
+    loadArbitraryStatic: vi.fn((value: bigint, sourceBitSize = 256) =>
+      dataPt(value, 5, staticWireIndex++, sourceBitSize)),
     place: vi.fn((name: string, inPts: DataPt[], outPts: DataPt[], usage: string) => {
       placements.push({ name, inPts, outPts, usage });
     }),
@@ -67,11 +69,11 @@ const createHarness = () => {
   return {
     manager: new ArithmeticManager(parent as never),
     placements,
-    getReservedVariableFromBuffer: parent.getReservedVariableFromBuffer,
+    loadArbitraryStatic: parent.loadArbitraryStatic,
   };
 };
 
-const createInputs = (scalar: bigint, reference = scalar): DataPt[] => {
+const createInputs = (scalar: bigint): DataPt[] => {
   const pointAtInfinity = jubjub.Point.ZERO.toAffine();
   const base = jubjub.Point.BASE.toAffine();
   const scalarBits = Array.from(
@@ -84,13 +86,12 @@ const createInputs = (scalar: bigint, reference = scalar): DataPt[] => {
     dataPt(base.x, 5, 4, 255),
     dataPt(base.y, 5, 5, 255),
     ...scalarBits,
-    dataPt(reference, 11, 0, 256),
   ];
 };
 
 describe('JubjubExp composition execution', () => {
   it('places the fixed batch chain and pads only its final scalar chunk', () => {
-    const { manager, placements, getReservedVariableFromBuffer } = createHarness();
+    const { manager, placements, loadArbitraryStatic } = createHarness();
     const scalar = TEST_SCALAR;
 
     const result = manager.placeArithComposition('JubjubExp', createInputs(scalar));
@@ -100,9 +101,10 @@ describe('JubjubExp composition execution', () => {
     expect(placements).toHaveLength(NUM_BATCHES);
     expect(placements.every(({ name }) => name === 'JubjubExpBatch')).toBe(true);
     expect(placements.every(({ usage }) => usage === 'JubjubExpBatch')).toBe(true);
-    expect(getReservedVariableFromBuffer).toHaveBeenCalledTimes(
+    expect(loadArbitraryStatic).toHaveBeenCalledTimes(
       NUM_BATCHES * JUBJUB_EXP_BATCH_SIZE - 256,
     );
+    expect(loadArbitraryStatic).toHaveBeenCalledWith(0n, 1);
 
     expect(placements[0]!.inPts.slice(0, 4)).toEqual(createInputs(scalar).slice(0, 4));
     for (let batchIndex = 1; batchIndex < NUM_BATCHES; batchIndex++) {
@@ -121,19 +123,23 @@ describe('JubjubExp composition execution', () => {
     ]);
   });
 
-  it('rejects a reference that cannot be recovered from the scalar bits', () => {
-    const { manager, placements } = createHarness();
+  it('keeps the scalar reference assertion in signature orchestration', () => {
+    const assertion = InstructionHandler.prototype as unknown as {
+      _assertBitDecomposition(referencePt: DataPt, bitPts: DataPt[]): void;
+    };
+    const bitPts = createInputs(TEST_SCALAR).slice(4);
 
-    expect(() => manager.placeArithComposition('JubjubExp', createInputs(TEST_SCALAR, TEST_SCALAR + 1n)))
-      .toThrow('The reference value cannot be recovered from the bit string');
-    expect(placements).toHaveLength(0);
+    expect(() => assertion._assertBitDecomposition(
+      dataPt(TEST_SCALAR + 1n, 11, 0, 256),
+      bitPts,
+    )).toThrow('The reference value cannot be recovered from the bit string');
   });
 
   it('rejects the wrong high-level operand count before placement', () => {
     const { manager, placements } = createHarness();
 
     expect(() => manager.placeArithComposition('JubjubExp', createInputs(TEST_SCALAR).slice(0, -1)))
-      .toThrow('JubjubExp expected 261 operands, but got 260');
+      .toThrow('JubjubExp expected 260 operands, but got 259');
     expect(placements).toHaveLength(0);
   });
 });

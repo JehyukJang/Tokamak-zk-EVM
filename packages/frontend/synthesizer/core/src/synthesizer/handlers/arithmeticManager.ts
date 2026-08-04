@@ -193,39 +193,6 @@ export class ArithmeticManager {
     return [DataPtFactory.deepCopy(placeNormalized(chainInputs))]
   }
 
-  private _prepareJubjubExpBatchInputs(
-    composition: ArithmeticOperationComposition,
-    inPts: DataPt[],
-  ): DataPt[] {
-    const numPointInputs = 4
-    const referenceIndex = numPointInputs + DEFAULT_SOURCE_BIT_SIZE
-    if (inPts.length !== referenceIndex + 1) {
-      throw new Error(
-        `Synthesizer: JubjubExp expected ${referenceIndex + 1} operands, but got ${inPts.length}`,
-      )
-    }
-
-    const recoveredReference = inPts
-      .slice(numPointInputs, referenceIndex)
-      .reduce(
-        (accumulator, bit, index) => accumulator | (bit.value << BigInt(index)),
-        0n,
-      )
-    if (inPts[referenceIndex]!.value !== recoveredReference) {
-      throw new Error('The reference value cannot be recovered from the bit string')
-    }
-
-    const preparedInPts = inPts.slice(0, referenceIndex)
-    if (preparedInPts.length > composition.numOperands) {
-      throw new Error('Synthesizer: JubjubExp composition has insufficient operands')
-    }
-    preparedInPts.push(...Array.from(
-      { length: composition.numOperands - preparedInPts.length },
-      () => this.parent.getReservedVariableFromBuffer('CIRCOM_CONST_ZERO'),
-    ))
-    return preparedInPts
-  }
-
   public placeArithComposition(
     name: ArithmeticOperator,
     inPts: DataPt[],
@@ -245,12 +212,9 @@ export class ArithmeticManager {
       }
     }
 
-    const preparedInPts = name === 'JubjubExp'
-      ? this._prepareJubjubExpBatchInputs(composition, inPts)
-      : inPts
-    if (preparedInPts.length !== composition.numOperands) {
+    if (inPts.length !== composition.numOperands) {
       throw new Error(
-        `Synthesizer: ${name} expected ${composition.numOperands} operands, but got ${preparedInPts.length}`,
+        `Synthesizer: ${name} expected ${composition.numOperands} operands, but got ${inPts.length}`,
       )
     }
 
@@ -281,7 +245,7 @@ export class ArithmeticManager {
             break
           }
           case 'operand': {
-            const operand = preparedInPts[input.index]
+            const operand = inPts[input.index]
             if (operand === undefined) {
               throw new Error(
                 `Synthesizer: ${name} step ${stepIndex} operand ${input.index} is unavailable`,

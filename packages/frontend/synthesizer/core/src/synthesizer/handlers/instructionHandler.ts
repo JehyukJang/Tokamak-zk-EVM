@@ -418,6 +418,22 @@ export class InstructionHandler {
 
   }
 
+  private _assertBitDecomposition(referencePt: DataPt, bitPts: DataPt[]): void {
+    if (bitPts.length !== DEFAULT_SOURCE_BIT_SIZE) {
+      throw new Error(
+        `Synthesizer: Expected ${DEFAULT_SOURCE_BIT_SIZE} bits, but got ${bitPts.length}`,
+      )
+    }
+
+    const recoveredReference = bitPts.reduce(
+      (accumulator, bit, index) => accumulator | (bit.value << BigInt(index)),
+      0n,
+    )
+    if (referencePt.value !== recoveredReference) {
+      throw new Error('The reference value cannot be recovered from the bit string')
+    }
+  }
+
   getOriginAddressPt(): DataPt {
     const messagePts: DataPt[] = TX_MESSAGE_TO_HASH.map(msg => this.parent.getReservedVariableFromBuffer(msg))
 
@@ -438,6 +454,8 @@ export class InstructionHandler {
     const poseidonOut = this.parent.placeArithComposition('Poseidon', poseidonIn)[0]
     const signBits = this.parent.placeArithComposition('DecToBit', [signaturePt])
     const challengeBits = this.parent.placeArithComposition('DecToBit', [poseidonOut])
+    this._assertBitDecomposition(signaturePt, signBits)
+    this._assertBitDecomposition(poseidonOut, challengeBits)
     const jubjubBasePt: DataPt[] = [
       this.parent.getReservedVariableFromBuffer('JUBJUB_BASE_X'),
       this.parent.getReservedVariableFromBuffer('JUBJUB_BASE_Y')
@@ -449,12 +467,12 @@ export class InstructionHandler {
 
     const sG: DataPt[] = this.parent.placeArithComposition(
       'JubjubExp',
-      [...jubjubPoIPt, ...jubjubBasePt, ...signBits, signaturePt],
+      [...jubjubPoIPt, ...jubjubBasePt, ...signBits],
     )
 
     const eA: DataPt[] = this.parent.placeArithComposition(
       'JubjubExp',
-      [...jubjubPoIPt, ...publicKeyPt, ...challengeBits, poseidonOut],
+      [...jubjubPoIPt, ...publicKeyPt, ...challengeBits],
     )
 
     this.parent.placeArithComposition('EdDsaVerify', [...sG, ...randomizerPt, ...eA])
