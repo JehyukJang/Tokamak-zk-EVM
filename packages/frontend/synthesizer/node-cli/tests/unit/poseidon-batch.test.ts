@@ -36,7 +36,14 @@ const createHarness = (poseidonBatchSize: number) => {
       jubjubExpBatchSize: 128,
     },
     state: {
-      subcircuitInfoByName: new Map([['Poseidon', { name: 'Poseidon' }]]),
+      subcircuitInfoByName: new Map([[
+        'Poseidon',
+        {
+          name: 'Poseidon',
+          NInWires: 1 + 2 * (poseidonBatchSize + 1),
+          NOutWires: 2,
+        },
+      ]]),
     },
     loadArbitraryStatic: vi.fn((value: bigint, sourceBitSize = 256) =>
       dataPt(value, 0, staticWireIndex++, sourceBitSize),

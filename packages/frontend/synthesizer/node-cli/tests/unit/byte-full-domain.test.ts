@@ -38,7 +38,10 @@ const createHarness = () => {
     },
     state: {
       subcircuitInfoByName: new Map(
-        ['BYTE', 'SIGNEXTEND', 'SHL', 'ALU6'].map((name) => [name, { name }]),
+        ['BYTE', 'SIGNEXTEND', 'SHL', 'ALU6'].map((name) => [
+          name,
+          { name, NInWires: 5, NOutWires: 2 },
+        ]),
       ),
     },
     loadArbitraryStatic: vi.fn((value: bigint, sourceBitSize = 256) => ({

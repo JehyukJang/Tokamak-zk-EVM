@@ -90,6 +90,36 @@ export class ArithmeticManager {
     return Array.isArray(out) ? out : [out]
   }
 
+  private _countCircuitWires(dataPts: DataPt[]): number {
+    return dataPts.reduce(
+      (count, dataPt) => count + (dataPt.sourceBitSize > 128 ? 2 : 1),
+      0,
+    )
+  }
+
+  private _assertArithSubcircuitWireCount(
+    subcircuit: ArithmeticSubcircuit,
+    target: 'input' | 'output',
+    dataPts: DataPt[],
+  ): void {
+    const subcircuitInfo = this.parent.state.subcircuitInfoByName.get(subcircuit)
+    if (subcircuitInfo === undefined) {
+      throw new Error(
+        `Synthesizer: ${subcircuit} subcircuit is not found. Check qap-compiler.`,
+      )
+    }
+
+    const expectedWireCount = target === 'input'
+      ? subcircuitInfo.NInWires
+      : subcircuitInfo.NOutWires
+    const actualWireCount = this._countCircuitWires(dataPts)
+    if (actualWireCount !== expectedWireCount) {
+      throw new Error(
+        `Synthesizer: ${subcircuit} expected ${expectedWireCount} ${target} wires, but got ${actualWireCount}`,
+      )
+    }
+  }
+
   private _normalizePoseidonInputs(inPts: DataPt[]): { selector: bigint; inPts: DataPt[] } {
     const nCalls = inPts.length - 1
     const zeroPt = this.parent.loadArbitraryStatic(0n, 255)
@@ -109,7 +139,9 @@ export class ArithmeticManager {
     finalInPts: DataPt[],
     usage: ArithmeticOperator | ArithmeticSubcircuit,
   ): DataPt[] {
+    this._assertArithSubcircuitWireCount(subcircuit, 'input', finalInPts)
     const outPts = this._createArithSubcircuitOutput(subcircuit, finalInPts)
+    this._assertArithSubcircuitWireCount(subcircuit, 'output', outPts)
     this.parent.place(subcircuit, finalInPts, outPts, usage)
     return outPts
   }
@@ -258,6 +290,8 @@ export class ArithmeticManager {
       let outPts: DataPt[]
       if (step.outputs.length === 0) {
         outPts = []
+        this._assertArithSubcircuitWireCount(step.subcircuit, 'input', finalInPts)
+        this._assertArithSubcircuitWireCount(step.subcircuit, 'output', outPts)
         this.parent.place(step.subcircuit, finalInPts, outPts, step.usage)
       } else {
         outPts = this._placeSingleArithSubcircuit(

@@ -42,7 +42,10 @@ describe('arithmetic composition execution', () => {
       },
       state: {
         subcircuitInfoByName: new Map(
-          ['DecToBit', 'SubExpBatch'].map((name) => [name, { name }]),
+          [
+            ['DecToBit', { name: 'DecToBit', NInWires: 2, NOutWires: 256 }],
+            ['SubExpBatch', { name: 'SubExpBatch', NInWires: 12, NOutWires: 4 }],
+          ],
         ),
       },
       loadArbitraryStatic: vi.fn((value: bigint, sourceBitSize = 256) =>
@@ -106,7 +109,10 @@ describe('arithmetic composition execution', () => {
         },
         state: {
           subcircuitInfoByName: new Map(
-            ['ALU4A', 'ALU4B'].map((name) => [name, { name }]),
+            [
+              ['ALU4A', { name: 'ALU4A', NInWires: 5, NOutWires: 13 }],
+              ['ALU4B', { name: 'ALU4B', NInWires: 13, NOutWires: 2 }],
+            ],
           ),
         },
         loadArbitraryStatic: vi.fn((value: bigint, sourceBitSize = 256) =>

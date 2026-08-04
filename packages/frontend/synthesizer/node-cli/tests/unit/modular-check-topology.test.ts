@@ -19,10 +19,15 @@ const dataPt = (value: bigint, source: number, wireIndex = 0): DataPt => ({
   valueHex: `0x${value.toString(16)}`,
 });
 
-const createHarness = () => {
+const createHarness = (alu1Interface = { NInWires: 5, NOutWires: 2 }) => {
   const placements: Placement[] = [];
   let staticWireIndex = 0;
-  const subcircuitNames = ['ALU1', 'CheckBus256', 'ADDMOD', 'MULMOD'];
+  const subcircuitInfo = [
+    ['ALU1', { name: 'ALU1', ...alu1Interface }],
+    ['CheckBus256', { name: 'CheckBus256', NInWires: 2, NOutWires: 0 }],
+    ['ADDMOD', { name: 'ADDMOD', NInWires: 7, NOutWires: 2 }],
+    ['MULMOD', { name: 'MULMOD', NInWires: 7, NOutWires: 2 }],
+  ] as const;
   const parent = {
     placements,
     subcircuitLibrary: {
@@ -38,9 +43,7 @@ const createHarness = () => {
       jubjubExpBatchSize: 128,
     },
     state: {
-      subcircuitInfoByName: new Map(
-        subcircuitNames.map((name) => [name, { name }]),
-      ),
+      subcircuitInfoByName: new Map(subcircuitInfo),
     },
     loadArbitraryStatic: vi.fn((value: bigint, sourceBitSize = 256) => ({
       ...dataPt(value, 0, staticWireIndex++),
@@ -101,4 +104,20 @@ describe('modular CheckBus256 topology', () => {
     ])).toThrow('MULMOD expected 3 operands, but got 2');
     expect(placements).toHaveLength(0);
   });
+
+  it.each([
+    ['input', { NInWires: 4, NOutWires: 2 }, 'ALU1 expected 4 input wires, but got 5'],
+    ['output', { NInWires: 5, NOutWires: 1 }, 'ALU1 expected 1 output wires, but got 2'],
+  ] as const)(
+    'rejects an incompatible loaded ALU1 %s interface before placement',
+    (_target, alu1Interface, expectedError) => {
+      const { manager, placements } = createHarness(alu1Interface);
+
+      expect(() => manager.placeArithComposition('ADD', [
+        dataPt(1n, 10),
+        dataPt(2n, 11),
+      ])).toThrow(expectedError);
+      expect(placements).toHaveLength(0);
+    },
+  );
 });
