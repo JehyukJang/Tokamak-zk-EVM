@@ -8,7 +8,10 @@ import { createAddMulModArithmeticMappings } from './special-builders/addMulModA
 import { createDivisionArithmeticMappings } from './special-builders/divModArithmetic.ts';
 import { createExpArithmeticMapping } from './special-builders/expArithmetic.ts';
 import { createPoseidonArithmeticMapping } from './special-builders/poseidonArithmetic.ts';
-import { createJubjubExpArithmeticMapping } from './special-builders/txSignVerifyArithmetic.ts';
+import {
+  createJubjubExpArithmeticMapping,
+  createTransactionSignatureVerifyArithmeticMapping,
+} from './special-builders/txSignVerifyArithmetic.ts';
 
 export type SelectorDefinition = bigint | null | 'dynamic';
 
@@ -421,6 +424,7 @@ export const createArithmeticSubcircuitComposition = (
   ...createAddMulModArithmeticMappings(),
   ...createSelectorFreeArithmeticMappings(config),
   createExpArithmeticMapping(config),
+  createTransactionSignatureVerifyArithmeticMapping(config),
   createJubjubExpArithmeticMapping(config),
   createPoseidonArithmeticMapping(config),
 ]);

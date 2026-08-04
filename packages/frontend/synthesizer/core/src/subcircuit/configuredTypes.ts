@@ -31,6 +31,7 @@ export const ARITHMETIC_OPERATOR_LIST = [
   'SubExpBatch',
   'Accumulator',
   'Poseidon',
+  'TransactionSignatureVerify',
   'JubjubExp',
   // 'PrepareEdDsaScalars',
   'JubjubExpBatch',
