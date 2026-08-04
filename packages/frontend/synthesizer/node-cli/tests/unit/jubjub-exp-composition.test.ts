@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createArithmeticSubcircuitComposition } from '../../../core/src/subcircuit/arithmeticSubcircuitComposition.ts';
 import { ArithmeticManager } from '../../../core/src/synthesizer/handlers/arithmeticManager.ts';
-import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
 import type { DataPt } from '../../../core/src/synthesizer/types/dataStructure.ts';
 
 const JUBJUB_EXP_BATCH_SIZE = 37;
@@ -121,18 +120,6 @@ describe('JubjubExp composition execution', () => {
       { source: NUM_BATCHES - 1, wireIndex: 0, sourceBitSize: 255 },
       { source: NUM_BATCHES - 1, wireIndex: 1, sourceBitSize: 255 },
     ]);
-  });
-
-  it('keeps the scalar reference assertion in signature orchestration', () => {
-    const assertion = InstructionHandler.prototype as unknown as {
-      _assertBitDecomposition(referencePt: DataPt, bitPts: DataPt[]): void;
-    };
-    const bitPts = createInputs(TEST_SCALAR).slice(4);
-
-    expect(() => assertion._assertBitDecomposition(
-      dataPt(TEST_SCALAR + 1n, 11, 0, 256),
-      bitPts,
-    )).toThrow('The reference value cannot be recovered from the bit string');
   });
 
   it('rejects the wrong high-level operand count before placement', () => {

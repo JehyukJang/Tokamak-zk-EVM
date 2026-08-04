@@ -1,6 +1,17 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createArithmeticSubcircuitComposition } from '../../../core/src/subcircuit/arithmeticSubcircuitComposition.ts';
+import { TX_MESSAGE_TO_HASH } from '../../../core/src/subcircuit/configuredTypes.ts';
+import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
+import type { DataPt } from '../../../core/src/synthesizer/types/dataStructure.ts';
+
+const dataPt = (value: bigint, wireIndex: number): DataPt => ({
+  source: 1,
+  wireIndex,
+  sourceBitSize: 256,
+  value,
+  valueHex: `0x${value.toString(16)}`,
+});
 
 describe('transaction signature composition definition', () => {
   it('preserves the complete fixed signature-verification topology', () => {
@@ -161,5 +172,64 @@ describe('transaction signature composition definition', () => {
       { kind: 'constant', index: 0 },
       { kind: 'constant', index: 0 },
     ]);
+  });
+});
+
+describe('transaction signature composition caller', () => {
+  const operandNames = [
+    'EDDSA_RANDOMIZER_X',
+    'EDDSA_RANDOMIZER_Y',
+    'EDDSA_PUBLIC_KEY_X',
+    'EDDSA_PUBLIC_KEY_Y',
+    ...TX_MESSAGE_TO_HASH,
+    'EDDSA_SIGNATURE',
+    'JUBJUB_BASE_X',
+    'JUBJUB_BASE_Y',
+    'JUBJUB_POI_X',
+    'JUBJUB_POI_Y',
+    'ADDRESS_MASK',
+  ] as const;
+
+  const createCallerHarness = (results: DataPt[]) => {
+    const operands = new Map(operandNames.map(
+      (name, index) => [name, dataPt(BigInt(index + 1), index)] as const,
+    ));
+    const parent = {
+      cachedOpts: {},
+      state: { cachedOrigin: undefined as DataPt | undefined },
+      getReservedVariableFromBuffer: vi.fn((name: typeof operandNames[number]) =>
+        operands.get(name)!),
+      placeArithComposition: vi.fn(() => results),
+    };
+
+    return {
+      handler: new InstructionHandler(parent as never),
+      operands,
+      parent,
+    };
+  };
+
+  it('passes the complete ordered operand list through the single logical operation', () => {
+    const origin = dataPt(0x1234n, 100);
+    const { handler, operands, parent } = createCallerHarness([origin]);
+
+    const result = handler.getOriginAddressPt();
+
+    expect(parent.placeArithComposition).toHaveBeenCalledOnce();
+    expect(parent.placeArithComposition).toHaveBeenCalledWith(
+      'TransactionSignatureVerify',
+      operandNames.map(name => operands.get(name)),
+    );
+    expect(parent.state.cachedOrigin).toBe(origin);
+    expect(result).toEqual(origin);
+    expect(result).not.toBe(origin);
+  });
+
+  it('rejects a composition result count other than one', () => {
+    const { handler } = createCallerHarness([]);
+
+    expect(() => handler.getOriginAddressPt()).toThrow(
+      'TransactionSignatureVerify must produce exactly one origin',
+    );
   });
 });

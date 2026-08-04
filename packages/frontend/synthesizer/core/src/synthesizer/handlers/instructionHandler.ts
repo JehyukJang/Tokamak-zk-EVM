@@ -418,22 +418,6 @@ export class InstructionHandler {
 
   }
 
-  private _assertBitDecomposition(referencePt: DataPt, bitPts: DataPt[]): void {
-    if (bitPts.length !== DEFAULT_SOURCE_BIT_SIZE) {
-      throw new Error(
-        `Synthesizer: Expected ${DEFAULT_SOURCE_BIT_SIZE} bits, but got ${bitPts.length}`,
-      )
-    }
-
-    const recoveredReference = bitPts.reduce(
-      (accumulator, bit, index) => accumulator | (bit.value << BigInt(index)),
-      0n,
-    )
-    if (referencePt.value !== recoveredReference) {
-      throw new Error('The reference value cannot be recovered from the bit string')
-    }
-  }
-
   getOriginAddressPt(): DataPt {
     const messagePts: DataPt[] = TX_MESSAGE_TO_HASH.map(msg => this.parent.getReservedVariableFromBuffer(msg))
 
@@ -450,12 +434,6 @@ export class InstructionHandler {
       this.parent.getReservedVariableFromBuffer('EDDSA_RANDOMIZER_Y')
     ]
     const signaturePt: DataPt = this.parent.getReservedVariableFromBuffer('EDDSA_SIGNATURE')
-    const poseidonIn: DataPt[] = [...randomizerPt, ...publicKeyPt, ...messagePts]
-    const poseidonOut = this.parent.placeArithComposition('Poseidon', poseidonIn)[0]
-    const signBits = this.parent.placeArithComposition('DecToBit', [signaturePt])
-    const challengeBits = this.parent.placeArithComposition('DecToBit', [poseidonOut])
-    this._assertBitDecomposition(signaturePt, signBits)
-    this._assertBitDecomposition(poseidonOut, challengeBits)
     const jubjubBasePt: DataPt[] = [
       this.parent.getReservedVariableFromBuffer('JUBJUB_BASE_X'),
       this.parent.getReservedVariableFromBuffer('JUBJUB_BASE_Y')
@@ -464,25 +442,24 @@ export class InstructionHandler {
       this.parent.getReservedVariableFromBuffer('JUBJUB_POI_X'),
       this.parent.getReservedVariableFromBuffer('JUBJUB_POI_Y')
     ]
-
-    const sG: DataPt[] = this.parent.placeArithComposition(
-      'JubjubExp',
-      [...jubjubPoIPt, ...jubjubBasePt, ...signBits],
-    )
-
-    const eA: DataPt[] = this.parent.placeArithComposition(
-      'JubjubExp',
-      [...jubjubPoIPt, ...publicKeyPt, ...challengeBits],
-    )
-
-    this.parent.placeArithComposition('EdDsaVerify', [...sG, ...randomizerPt, ...eA])
-    
-    const hashPt = this.parent.placeArithComposition('Poseidon', publicKeyPt)[0]
     const addrMaskPt: DataPt = this.parent.getReservedVariableFromBuffer('ADDRESS_MASK')
-    this.parent.state.cachedOrigin = this.parent.placeArithComposition(
-      'AND',
-      [hashPt, addrMaskPt],
-    )[0]
+
+    const originPts = this.parent.placeArithComposition(
+      'TransactionSignatureVerify',
+      [
+        ...randomizerPt,
+        ...publicKeyPt,
+        ...messagePts,
+        signaturePt,
+        ...jubjubBasePt,
+        ...jubjubPoIPt,
+        addrMaskPt,
+      ],
+    )
+    if (originPts.length !== 1 || originPts[0] === undefined) {
+      throw new Error('Synthesizer: TransactionSignatureVerify must produce exactly one origin')
+    }
+    this.parent.state.cachedOrigin = originPts[0]
     return DataPtFactory.deepCopy(this.parent.state.cachedOrigin!)
   }
 
