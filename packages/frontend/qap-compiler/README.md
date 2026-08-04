@@ -94,10 +94,11 @@ builds. Published constraints and witness generators do not by themselves
 establish that a circuit, setup ceremony, integration, or surrounding protocol
 is secure.
 
-Maintainers changing circuit sources or Synthesizer placement must review the
-[circuit implementation and composition reference](./docs/circuit-implementation-reference.md),
-which records each production subcircuit's interface, constraint count, and
-soundness dependencies.
+For a plain-language overview and a complete technical table, see the
+[circuit implementation and composition reference](./docs/circuit-implementation-reference.md).
+It explains how subcircuits become one proof and records each production
+subcircuit's operation, interface, constraint count, visibility, and soundness
+dependencies.
 
 ## Project and license
 

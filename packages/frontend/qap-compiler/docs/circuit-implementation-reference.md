@@ -1,23 +1,146 @@
 # Circuit Implementation and Composition Reference
 
-## Scope and audience
+## What this document explains
 
-This document is an implementation reference for Tokamak zk-EVM developers
-who change the qap-compiler subcircuits, Synthesizer placement logic, or the
-final proof interface. It covers every production target in
+Tokamak zk-EVM proves that an Ethereum Virtual Machine (EVM) transaction was
+executed correctly without asking the verifier to execute the transaction
+again. The proof circuit is not written as one monolithic program. It is built
+from smaller **subcircuits**, each of which handles a particular relation such
+as addition, comparison, hashing, signature arithmetic, or movement across a
+public input/output boundary.
+
+This document explains every subcircuit built from the current qap-compiler
+source. For each one, it answers five questions:
+
+1. What operation does it perform?
+2. How many constraints does it contain?
+3. How many input and output wires does it expose?
+4. Which wires are public and which remain private?
+5. Is the subcircuit sufficient by itself, or does it rely on a particular
+   composition created by the Synthesizer?
+
+The intended audience is any reader who needs to understand the circuit
+library, including application developers, auditors, integrators, and new
+contributors. The detailed tables remain useful to circuit maintainers, but
+no prior knowledge of this repository is assumed.
+
+## Where the subcircuits fit
+
+The qap-compiler directory contains Circom source and tools for producing the
+prebuilt subcircuit library. The directory name is historical; users receive
+the artifacts through the `@tokamak-zk-evm/subcircuit-library` package. The
+**Synthesizer** executes a supported EVM transaction, selects the required
+subcircuits, and records how their wires must be connected. The proving system
+then uses those placements and connections as one composed circuit. A verifier
+sees only the final proof and the wires that the composed interface declares
+public.
+
+```mermaid
+flowchart LR
+    transaction["EVM transaction"] --> synthesizer["Synthesizer: execute and select placements"]
+    library["Subcircuit library: constraints and witness generators"] --> synthesizer
+    synthesizer --> composed["One composed proof circuit"]
+    composed --> proof["Proof plus public inputs and outputs"]
+    proof --> verifier["Verifier"]
+```
+
+This distinction matters for security. A compiled subcircuit is a reusable
+module, not normally a complete proof statement. Some modules are deliberately
+split to stay small. For example, EVM division is implemented by `ALU4A`
+followed by `ALU4B`; neither half proves division by itself. The final
+permutation must connect the exact outputs of the first half to the exact
+inputs of the second half.
+
+Most users should therefore consume the synchronized package through the
+Synthesizer, CLI, or proving backend. They should not select individual R1CS
+files and treat them as standalone proofs.
+
+## Terms used in this document
+
+| Term | Meaning here |
+| --- | --- |
+| EVM word | One 256-bit bit pattern used by the EVM. Signed opcodes interpret the same pattern using two's-complement notation. |
+| Limb | Half of an EVM word. This library represents one 256-bit word as two 128-bit limbs. |
+| Wire | One scalar-field value entering, leaving, or connecting circuit constraints. A 256-bit word therefore occupies two physical wires. |
+| Constraint | An algebraic equation that a valid witness must satisfy. More constraints generally mean more proving work, but the count is not a security score. |
+| R1CS | Rank-1 constraint system, the compiled algebraic form consumed by setup and proving. |
+| Witness | The complete set of public and private wire values used to satisfy the circuit. |
+| Public wire | A value bound to the final proof statement and available to the verifier. |
+| Private wire | A witness value hidden from the verifier. Private does not mean unconstrained. |
+| Placement | One use of a subcircuit in the circuit generated for a transaction. |
+| Permutation | The final wire connections that make one placement's output equal another placement's input. |
+| Canonical representation | The unique allowed limb encoding of an integer or field element. |
+| Soundness | The property that satisfying the constraints is enough to establish the operation claimed by the circuit contract. |
+
+## How to interpret the soundness status
+
+The status describes the current source-level relation under the composition
+model used by Tokamak zk-EVM:
+
+- **Locally sound** means the subcircuit itself enforces the listed operation
+  for its declared input representation. It still needs normal wire routing,
+  but it has no mandatory partner circuit.
+- **Composition-dependent** means the system claim is sound only when the
+  Synthesizer and final permutation enforce the exact producer, consumer,
+  ordering, or public-boundary contract stated in this document.
+- **Incomplete** means known constraint work remains in the current source.
+  The normal composition topology alone is not enough to claim soundness for
+  that operation.
+
+An `Incomplete` row is a warning about the repository state described by this
+page, not a conclusion about every previously published npm release. A release
+must be evaluated using the source, generated artifacts, and setup material
+from that same version. Never mix artifacts from different versions.
+
+This page is an engineering reference, not a formal proof or third-party
+security certification. It reports composition dependencies explicitly so
+that a property enforced by another subcircuit or by the verifier boundary is
+not mistakenly attributed to an isolated artifact.
+
+## Three representative examples
+
+### A self-contained arithmetic operation
+
+For `ADD`, the Synthesizer places `ALU1` with the `ADD` selector and two EVM
+words. `ALU1` checks the limb ranges, constrains the addition, and returns one
+canonical EVM word. No second arithmetic subcircuit is required, so the row is
+marked locally sound.
+
+### An operation split across two subcircuits
+
+For `DIV`, the Synthesizer must place `ALU4A` and `ALU4B` in that order.
+`ALU4A` prepares the quotient, remainder, magnitude, and mode information;
+`ALU4B` checks the remaining division relation and produces the EVM result.
+The pair is sound only if all 13 intermediate wires are connected exactly, so
+both rows are marked composition-dependent.
+
+### A public boundary
+
+`bufferTxIn` copies public transaction-input wires to private internal wires.
+The verifier can see the public side, while later computation uses the private
+side. `bufferPrvIn` is different: both sides remain private because it carries
+private witness data. Buffer constraints prove equality across the boundary;
+the surrounding protocol assigns meaning to the values.
+
+## How the rest of this page is organized
+
+- **Buffer subcircuits** lists the modules that cross the final public/private
+  boundary and explains the type and capacity of each buffer.
+- **Computational subcircuits** lists arithmetic, comparison, hashing,
+  signature, conversion, and equality modules.
+- **Mandatory and conditional composition contracts** expands every table row
+  whose security or full operation semantics depend on another placement or
+  on a restricted producer.
+- **Update checklist** tells maintainers which synchronized artifacts and
+  contracts must be reconsidered when the implementation changes.
+
+## Scope and source snapshot
+
+The tables cover every production target in
 [`scripts/compile.sh`](../scripts/compile.sh). Files under
-`subcircuits/circom/unused/` are not production targets and are not listed.
-
-This is an engineering statement of the current circuit contracts, not a
-formal verification result. In this document, a subcircuit is **locally
-sound** when its own constraints enforce the stated operation for its declared
-input representation. A **composition-dependent** subcircuit enforces the
-intended system statement only when the Synthesizer and final permutation wire
-it according to the stated contract. **Incomplete** means that a known local
-constraint gap remains; satisfying the normal composition contract is not, by
-itself, enough to claim soundness.
-
-## Measurement and visibility conventions
+`subcircuits/circom/unused/` are historical or experimental and are not
+included. The values describe the current source tree, not necessarily the
+contents of an older installed package or the checked-in generated library.
 
 Constraint counts were measured from the current source with Circom 2.2.3,
 the compiler's default optimization, the BLS12-381 scalar field, and the
@@ -25,21 +148,18 @@ production target list in `scripts/compile.sh`. A total is the sum of the
 reported nonlinear and linear constraints. Re-run the production compile
 before relying on these numbers after any source or constant change.
 
-Wire counts are physical scalar-field wires after a 256-bit value has been
-split into lower and upper 128-bit limbs. The interface counts do not include
-the local constant-one wire.
+Wire counts are physical scalar-field wires. Interface counts do not include
+the local constant-one wire. Every 256-bit word uses this order:
+
+1. lower 128-bit limb
+2. upper 128-bit limb
 
 Visibility refers to the final composed proof interface constructed by
 [`scripts/parse.js`](../scripts/parse.js) and
 [`scripts/configure.js`](../scripts/configure.js), not to the temporary
-standalone visibility used while Circom compiles an individual wrapper.
-Consequently, all non-buffer interfaces are private internal wires. The public
-side of each buffer is selected explicitly by `PUBLIC_WIRE_SEGMENTS`.
-
-Every 256-bit word uses little-endian limb order:
-
-1. lower 128-bit limb
-2. upper 128-bit limb
+standalone visibility used while Circom compiles one wrapper. All non-buffer
+interfaces are private internal wires. The public side of each buffer is
+selected explicitly by `PUBLIC_WIRE_SEGMENTS`.
 
 ## Buffer subcircuits
 
@@ -67,7 +187,9 @@ fields are all zero. The buffer circuits do not perform those semantic checks.
 
 In the interface descriptions below, `word` means two physical 128-bit limb
 wires and `bit` means one scalar-field wire constrained to be boolean where the
-stated local relation requires it.
+stated local relation requires it. All interfaces in this table are private
+inside the final composed proof; the verifier does not receive each arithmetic
+input and intermediate result as a separate public value.
 
 | Subcircuit | Operation or role | Constraints (nonlinear + linear = total) | Private interface | Status |
 | --- | --- | ---: | --- | --- |
