@@ -4,6 +4,7 @@ import {
   type ArithmeticOperator,
 } from './configuredTypes.ts';
 import type { FrontendConfig } from './libraryTypes.ts';
+import { createAddMulModArithmeticMappings } from './special-builders/addMulModArithmetic.ts';
 import { createDivisionArithmeticMappings } from './special-builders/divModArithmetic.ts';
 import { createExpArithmeticMapping } from './special-builders/expArithmetic.ts';
 import { createPoseidonArithmeticMapping } from './special-builders/poseidonArithmetic.ts';
@@ -403,47 +404,6 @@ export const createSelectorFreeArithmeticMappings = (
   ]);
 };
 
-const createModularArithmeticMapping = (
-  operation: 'ADDMOD' | 'MULMOD',
-  selector: bigint,
-): ArithmeticSubcircuitMapping => Object.freeze({
-  operation,
-  composition: freezeComposition({
-    placementStrategy: 'generic',
-    constants: [],
-    numSteps: 2,
-    numOperands: 3,
-    numResults: 1,
-    steps: [
-      {
-        subcircuit: 'CheckBus256',
-        usage: 'CheckBus256',
-        selector: null,
-        inputs: [{ kind: 'operand', index: 0 }],
-        outputs: [],
-      },
-      {
-        subcircuit: operation,
-        usage: operation,
-        selector,
-        inputs: [
-          { kind: 'selector' },
-          { kind: 'operand', index: 0 },
-          { kind: 'operand', index: 1 },
-          { kind: 'operand', index: 2 },
-        ],
-        outputs: [{ kind: 'result', index: 0 }],
-      },
-    ],
-  }),
-});
-
-export const MODULAR_ARITHMETIC_MAPPINGS: readonly ArithmeticSubcircuitMapping[] =
-  Object.freeze([
-    createModularArithmeticMapping('ADDMOD', 1n << 8n),
-    createModularArithmeticMapping('MULMOD', 1n << 9n),
-  ]);
-
 export type ArithmeticSubcircuitCompositionConfig = Pick<
   FrontendConfig,
   | 'nAccumulation'
@@ -458,7 +418,7 @@ export const createArithmeticSubcircuitComposition = (
 ): ArithmeticSubcircuitComposition => new ArithmeticSubcircuitComposition([
   ...FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS,
   ...createDivisionArithmeticMappings(),
-  ...MODULAR_ARITHMETIC_MAPPINGS,
+  ...createAddMulModArithmeticMappings(),
   ...createSelectorFreeArithmeticMappings(config),
   createExpArithmeticMapping(config),
   createJubjubExpArithmeticMapping(config),
