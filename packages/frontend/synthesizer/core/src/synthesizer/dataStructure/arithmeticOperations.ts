@@ -37,6 +37,35 @@ export class ArithmeticOperations {
     }
     return value
   }
+
+  private static _requireSubcircuitInputs(
+    inVals: bigint[],
+    expectedLength: number,
+    subcircuit: string,
+  ): void {
+    if (inVals.length !== expectedLength) {
+      throw new Error(
+        `${subcircuit} expected ${expectedLength} inputs, but got ${inVals.length}`,
+      )
+    }
+  }
+
+  private static _requireSelector(
+    inVals: bigint[],
+    expectedSelector: bigint,
+    subcircuit: string,
+    numOperands: number,
+  ): bigint[] {
+    ArithmeticOperations._requireSubcircuitInputs(
+      inVals,
+      numOperands + 1,
+      subcircuit,
+    )
+    if (inVals[0] !== expectedSelector) {
+      throw new Error(`${subcircuit} received an invalid selector`)
+    }
+    return inVals.slice(1)
+  }
   
   /**
    * Basic arithmetic operations
@@ -180,11 +209,14 @@ export class ArithmeticOperations {
   }
 
   static equalBatch(ins: bigint[]): bigint[] {
-    if (ins.length !== 4) {
-      throw new Error('equalBatch expected two pairs of inputs')
+    if (ins.length === 0 || ins.length % 2 !== 0) {
+      throw new Error('equalBatch expected two equally sized input batches')
     }
-    if (ins[0] !== ins[2] || ins[1] !== ins[3]) {
-      throw new Error('equalBatch inputs are not equal')
+    const batchSize = ins.length / 2
+    for (let index = 0; index < batchSize; index++) {
+      if (ins[index] !== ins[batchSize + index]) {
+        throw new Error('equalBatch inputs are not equal')
+      }
     }
     return []
   }
@@ -306,6 +338,213 @@ export class ArithmeticOperations {
   }
 
   /**
+   * Output calculations for arithmetic subcircuits.
+   *
+   * These methods consume logical DataPt values in the same order as each
+   * subcircuit placement, including the selector when the circuit has one.
+   */
+  static alu1(inVals: bigint[]): bigint {
+    ArithmeticOperations._requireSubcircuitInputs(inVals, 3, 'ALU1')
+    const operands = inVals.slice(1)
+    switch (inVals[0]) {
+      case 1n << 1n:
+        return ArithmeticOperations.add(operands)
+      case 1n << 2n:
+        return ArithmeticOperations.mul(operands)
+      case 1n << 3n:
+        return ArithmeticOperations.sub(operands)
+      case 1n << 20n:
+        return ArithmeticOperations.eq(operands)
+      case 1n << 21n:
+        return ArithmeticOperations.iszero(operands.slice(0, 1))
+      case 1n << 25n:
+        return ArithmeticOperations.not(operands.slice(0, 1))
+      default:
+        throw new Error('ALU1 received an invalid selector')
+    }
+  }
+
+  static alu2(inVals: bigint[]): bigint {
+    ArithmeticOperations._requireSubcircuitInputs(inVals, 3, 'ALU2')
+    const operands = inVals.slice(1)
+    switch (inVals[0]) {
+      case 1n << 16n:
+        return ArithmeticOperations.lt(operands)
+      case 1n << 17n:
+        return ArithmeticOperations.gt(operands)
+      default:
+        throw new Error('ALU2 received an invalid selector')
+    }
+  }
+
+  static alu3(inVals: bigint[]): bigint {
+    ArithmeticOperations._requireSubcircuitInputs(inVals, 3, 'ALU3')
+    const operands = inVals.slice(1)
+    switch (inVals[0]) {
+      case 1n << 18n:
+        return ArithmeticOperations.slt(operands)
+      case 1n << 19n:
+        return ArithmeticOperations.sgt(operands)
+      default:
+        throw new Error('ALU3 received an invalid selector')
+    }
+  }
+
+  static andSubcircuit(inVals: bigint[]): bigint {
+    return ArithmeticOperations.and(ArithmeticOperations._requireSelector(
+      inVals,
+      1n << 22n,
+      'AND',
+      2,
+    ))
+  }
+
+  static orSubcircuit(inVals: bigint[]): bigint {
+    return ArithmeticOperations.or(ArithmeticOperations._requireSelector(
+      inVals,
+      1n << 23n,
+      'OR',
+      2,
+    ))
+  }
+
+  static xorSubcircuit(inVals: bigint[]): bigint {
+    return ArithmeticOperations.xor(ArithmeticOperations._requireSelector(
+      inVals,
+      1n << 24n,
+      'XOR',
+      2,
+    ))
+  }
+
+  static alu4a(inVals: bigint[]): bigint[] {
+    ArithmeticOperations._requireSubcircuitInputs(inVals, 3, 'ALU4A')
+    const selector = inVals[0]
+    const isSigned = selector === 1n << 5n || selector === 1n << 7n
+    const useMod = selector === 1n << 6n || selector === 1n << 7n
+    if (
+      selector !== 1n << 4n
+      && selector !== 1n << 5n
+      && selector !== 1n << 6n
+      && selector !== 1n << 7n
+    ) {
+      throw new Error('ALU4A received an invalid selector')
+    }
+
+    const dividend = isSigned ? BigInt.asIntN(256, inVals[1]) : inVals[1]
+    const divisor = isSigned ? BigInt.asIntN(256, inVals[2]) : inVals[2]
+    const absDividend = dividend < 0n ? -dividend : dividend
+    const absDivisor = divisor < 0n ? -divisor : divisor
+    const safeDivisor = absDivisor === 0n ? 1n : absDivisor
+    const absQuotient = absDividend / safeDivisor
+    const absRemainder = absDividend % safeDivisor
+    const resultIsNegative = selector === 1n << 5n
+      ? Number((dividend < 0n) !== (divisor < 0n))
+      : selector === 1n << 7n
+        ? Number(dividend < 0n)
+        : 0
+    const wordMask = (1n << 64n) - 1n
+
+    return [
+      absDividend,
+      absQuotient,
+      absRemainder,
+      absDivisor & wordMask,
+      (absDivisor >> 64n) & wordMask,
+      (absDivisor >> 128n) & wordMask,
+      (absDivisor >> 192n) & wordMask,
+      absDivisor === 0n ? 1n : 0n,
+      BigInt(resultIsNegative),
+      useMod ? 1n : 0n,
+    ]
+  }
+
+  static alu4b(inVals: bigint[]): bigint {
+    ArithmeticOperations._requireSubcircuitInputs(inVals, 10, 'ALU4B')
+    const absQuotient = inVals[1]
+    const absRemainder = inVals[2]
+    const divisorIsZero = inVals[7]
+    const resultIsNegative = inVals[8]
+    const useMod = inVals[9]
+    if (
+      (divisorIsZero !== 0n && divisorIsZero !== 1n)
+      || (resultIsNegative !== 0n && resultIsNegative !== 1n)
+      || (useMod !== 0n && useMod !== 1n)
+    ) {
+      throw new Error('ALU4B flags must be binary')
+    }
+
+    const evmQuotient = divisorIsZero === 1n ? 0n : absQuotient
+    const selectedMagnitude = useMod === 1n ? absRemainder : evmQuotient
+    return resultIsNegative === 1n
+      ? BigInt.asUintN(256, -selectedMagnitude)
+      : selectedMagnitude
+  }
+
+  static signextendSubcircuit(inVals: bigint[]): bigint {
+    return ArithmeticOperations.signextend(ArithmeticOperations._requireSelector(
+      inVals,
+      1n << 11n,
+      'SIGNEXTEND',
+      2,
+    ))
+  }
+
+  static byteSubcircuit(inVals: bigint[]): bigint {
+    return ArithmeticOperations.byte(ArithmeticOperations._requireSelector(
+      inVals,
+      1n << 26n,
+      'BYTE',
+      2,
+    ))
+  }
+
+  static shlSubcircuit(inVals: bigint[]): bigint {
+    return ArithmeticOperations.shl(ArithmeticOperations._requireSelector(
+      inVals,
+      1n << 27n,
+      'SHL',
+      2,
+    ))
+  }
+
+  static alu6(inVals: bigint[]): bigint {
+    ArithmeticOperations._requireSubcircuitInputs(inVals, 3, 'ALU6')
+    const operands = inVals.slice(1)
+    switch (inVals[0]) {
+      case 1n << 28n:
+        return ArithmeticOperations.shr(operands)
+      case 1n << 29n:
+        return ArithmeticOperations.sar(operands)
+      default:
+        throw new Error('ALU6 received an invalid selector')
+    }
+  }
+
+  static checkBus256(inVals: bigint[]): bigint[] {
+    ArithmeticOperations._requireSubcircuitInputs(inVals, 1, 'CheckBus256')
+    return []
+  }
+
+  static addmodSubcircuit(inVals: bigint[]): bigint {
+    return ArithmeticOperations.addmod(ArithmeticOperations._requireSelector(
+      inVals,
+      1n << 8n,
+      'ADDMOD',
+      3,
+    ))
+  }
+
+  static mulmodSubcircuit(inVals: bigint[]): bigint {
+    return ArithmeticOperations.mulmod(ArithmeticOperations._requireSelector(
+      inVals,
+      1n << 9n,
+      'MULMOD',
+      3,
+    ))
+  }
+
+  /**
    * Decimal to Bit
    */
   static decToBit(ins: bigint[]): bigint[] {
@@ -378,7 +617,7 @@ export class ArithmeticOperations {
     for (const in_val of in_vals) {
       acc += in_val;
     }
-    return acc
+    return acc & ArithmeticOperations.MAX_UINT256
   }
 
   /**
@@ -393,6 +632,28 @@ export class ArithmeticOperations {
    */
   static poseidonChainCompress(in_vals: bigint[]): bigint {
     return poseidonChainCompress(in_vals)
+  }
+
+  static poseidon(inVals: bigint[]): bigint {
+    if (inVals.length < 3) {
+      throw new Error('Poseidon expected a selector and at least two inputs')
+    }
+    const selector = inVals[0]
+    if (selector <= 0n || (selector & (selector - 1n)) !== 0n) {
+      throw new Error('Poseidon received an invalid selector')
+    }
+
+    let selectorIndex = 0
+    for (let remaining = selector; remaining > 1n; remaining >>= 1n) {
+      selectorIndex++
+    }
+    const numInputs = selectorIndex + 2
+    if (numInputs > inVals.length - 1) {
+      throw new Error('Poseidon selector exceeds the configured input capacity')
+    }
+    return ArithmeticOperations.poseidonChainCompress(
+      inVals.slice(1, numInputs + 1),
+    )
   }
 
   // /**

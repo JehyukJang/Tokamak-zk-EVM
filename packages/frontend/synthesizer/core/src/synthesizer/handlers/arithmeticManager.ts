@@ -3,7 +3,6 @@ import { DataPt, ISynthesizerProvider } from '../types/index.ts';
 import { DataPtFactory } from '../dataStructure/index.ts';
 import { DEFAULT_SOURCE_BIT_SIZE } from '../../synthesizer/params/constants.ts';
 import {
-  ARITHMETIC_OPERATOR_LIST,
   type ArithmeticSubcircuit,
   type ArithmeticOperator,
 } from '../../subcircuit/configuredTypes.ts';
@@ -29,50 +28,66 @@ export class ArithmeticManager {
   }
 
   /**
-   * Creates the output data points for an arithmetic operation.
+   * Creates the output data points for an arithmetic subcircuit.
    *
-   * @param {ArithmeticOperator} name - The name of the arithmetic operation.
+   * @param {ArithmeticSubcircuit} name - The name of the arithmetic subcircuit.
    * @param {DataPt[]} inPts - The input data points for the operation.
    * @returns {DataPt[]} An array of output data points.
    */
-  private _createArithmeticOutput(
-    name: ArithmeticOperator,
+  private _createArithSubcircuitOutput(
+    name: ArithmeticSubcircuit,
     inPts: DataPt[],
   ): DataPt[] {
-    let sourceBitSize: number
+    let sourceBitSizes: readonly number[] | undefined
     switch (name) {
       case 'DecToBit':
-      // case 'PrepareEdDsaScalars': 
-        sourceBitSize = 1
+        sourceBitSizes = Array(DEFAULT_SOURCE_BIT_SIZE).fill(1)
         break
       case 'Poseidon':
-        if (inPts.length < POSEIDON_INPUTS || inPts.length > this.poseidonBatchSize + 1) {
+        if (inPts.length < POSEIDON_INPUTS + 1 || inPts.length > this.poseidonBatchSize + 2) {
           throw new Error(
-            `Synthesizer: Poseidon expected between ${POSEIDON_INPUTS} and ${this.poseidonBatchSize + 1} inputs, but got ${inPts.length}.`,
+            `Synthesizer: Poseidon expected a selector and between ${POSEIDON_INPUTS} and ${this.poseidonBatchSize + 1} inputs, but got ${inPts.length}.`,
           )
         }
-        sourceBitSize = 255
+        sourceBitSizes = [255]
         break
       case 'JubjubExpBatch':
       case 'EdDsaVerify':
-        sourceBitSize = 255
+        sourceBitSizes = Array(name === 'JubjubExpBatch' ? 4 : 0).fill(255)
         break
-      default:
-        sourceBitSize = DEFAULT_SOURCE_BIT_SIZE
+      case 'ALU4A':
+        sourceBitSizes = [256, 256, 256, 64, 64, 64, 64, 1, 1, 1]
+        break
     }
 
     const values = inPts.map((pt) => pt.value);
-    const outValue: bigint[] = executeOperation(name, values);
+    const outValue = this._executeArithSubcircuit(name, values);
+    const resolvedSourceBitSizes = sourceBitSizes
+      ?? Array(outValue.length).fill(DEFAULT_SOURCE_BIT_SIZE)
+    if (resolvedSourceBitSizes.length !== outValue.length) {
+      throw new Error(
+        `Synthesizer: ${name} produced ${outValue.length} outputs with ${resolvedSourceBitSizes.length} output bit sizes`,
+      )
+    }
 
     return outValue.length > 0
       ? outValue.map((value, index) =>
           DataPtFactory.create({
             source: this.parent.placements.length,
             wireIndex: index,
-            sourceBitSize,
+            sourceBitSize: resolvedSourceBitSizes[index],
           }, value),
         )
       : []
+  }
+
+  private _executeArithSubcircuit(
+    name: ArithmeticSubcircuit,
+    values: bigint[],
+  ): bigint[] {
+    const operation = ARITHMETIC_MAPPING[name]
+    const out = operation(values)
+    return Array.isArray(out) ? out : [out]
   }
 
   private _normalizePoseidonInputs(inPts: DataPt[]): { selector: bigint; inPts: DataPt[] } {
@@ -92,20 +107,9 @@ export class ArithmeticManager {
   private _placeSingleArithSubcircuit(
     subcircuit: ArithmeticSubcircuit,
     finalInPts: DataPt[],
-    arithmeticInPts: DataPt[],
     usage: ArithmeticOperator | ArithmeticSubcircuit,
   ): DataPt[] {
-    if (subcircuit === 'ALU4A' || subcircuit === 'ALU4B') {
-      throw new Error(
-        `Synthesizer: ${subcircuit} output generation is not implemented`,
-      )
-    }
-    const operation = ARITHMETIC_OPERATOR_LIST.includes(
-      subcircuit as ArithmeticOperator,
-    )
-      ? subcircuit as ArithmeticOperator
-      : usage as ArithmeticOperator
-    const outPts = this._createArithmeticOutput(operation, arithmeticInPts)
+    const outPts = this._createArithSubcircuitOutput(subcircuit, finalInPts)
     this.parent.place(subcircuit, finalInPts, outPts, usage)
     return outPts
   }
@@ -129,7 +133,6 @@ export class ArithmeticManager {
       const outPts = this._placeSingleArithSubcircuit(
         step.subcircuit,
         [selectorPt, ...normalized.inPts],
-        normalized.inPts,
         step.usage,
       )
       const outPt = outPts[0]
@@ -194,7 +197,6 @@ export class ArithmeticManager {
       }
 
       const finalInPts: DataPt[] = []
-      const arithmeticInPts: DataPt[] = []
       for (const input of step.inputs) {
         switch (input.kind) {
           case 'selector': {
@@ -224,7 +226,6 @@ export class ArithmeticManager {
               )
             }
             finalInPts.push(operand)
-            arithmeticInPts.push(operand)
             break
           }
           case 'constant': {
@@ -239,7 +240,6 @@ export class ArithmeticManager {
               constant.sourceBitSize,
             )
             finalInPts.push(constantPt)
-            arithmeticInPts.push(constantPt)
             break
           }
           case 'step-output': {
@@ -250,7 +250,6 @@ export class ArithmeticManager {
               )
             }
             finalInPts.push(intermediateOutPt)
-            arithmeticInPts.push(intermediateOutPt)
             break
           }
         }
@@ -264,7 +263,6 @@ export class ArithmeticManager {
         outPts = this._placeSingleArithSubcircuit(
           step.subcircuit,
           finalInPts,
-          arithmeticInPts,
           step.usage,
         )
       }
@@ -376,60 +374,26 @@ export class ArithmeticManager {
   }
 }
 
-
-/**
- * Executes an arithmetic operation on the given values.
- *
- * @param {ArithmeticOperator} name - The name of the arithmetic operation.
- * @param {bigint[]} values - An array of bigint values as input for the operation.
- * @returns {bigint | bigint[]} The result of the operation.
- */
-function executeOperation(
-  name: ArithmeticOperator,
-  values: bigint[],
-): bigint[] {
-  const operation = ARITHMETIC_MAPPING[name];
-  const out = operation(values)
-  if (!Array.isArray(out)) {
-    return [out]
-  } else {
-    return out
-  }
-}
-
-// Operator and function mapping
-const ARITHMETIC_MAPPING: Record<ArithmeticOperator, (...args: any) => any> = {
-  ADD: ArithmeticOperations.add,
-  MUL: ArithmeticOperations.mul,
-  SUB: ArithmeticOperations.sub,
-  DIV: ArithmeticOperations.div,
-  SDIV: ArithmeticOperations.sdiv,
-  MOD: ArithmeticOperations.mod,
-  SMOD: ArithmeticOperations.smod,
-  ADDMOD: ArithmeticOperations.addmod,
-  MULMOD: ArithmeticOperations.mulmod,
-  EXP: ArithmeticOperations.subExpBatch, //not directly used
-  LT: ArithmeticOperations.lt,
-  GT: ArithmeticOperations.gt,
-  SLT: ArithmeticOperations.slt,
-  SGT: ArithmeticOperations.sgt,
-  EQ: ArithmeticOperations.eq,
-  ISZERO: ArithmeticOperations.iszero,
-  AND: ArithmeticOperations.and,
-  OR: ArithmeticOperations.or,
-  XOR: ArithmeticOperations.xor,
-  NOT: ArithmeticOperations.not,
-  SHL: ArithmeticOperations.shl,
-  SHR: ArithmeticOperations.shr,
-  SAR: ArithmeticOperations.sar,
-  BYTE: ArithmeticOperations.byte,
-  SIGNEXTEND: ArithmeticOperations.signextend,
+const ARITHMETIC_MAPPING: Record<ArithmeticSubcircuit, (values: bigint[]) => bigint | bigint[]> = {
+  ALU1: ArithmeticOperations.alu1,
+  ALU2: ArithmeticOperations.alu2,
+  ALU3: ArithmeticOperations.alu3,
+  AND: ArithmeticOperations.andSubcircuit,
+  OR: ArithmeticOperations.orSubcircuit,
+  XOR: ArithmeticOperations.xorSubcircuit,
+  ALU4A: ArithmeticOperations.alu4a,
+  ALU4B: ArithmeticOperations.alu4b,
+  SIGNEXTEND: ArithmeticOperations.signextendSubcircuit,
+  BYTE: ArithmeticOperations.byteSubcircuit,
+  SHL: ArithmeticOperations.shlSubcircuit,
+  ALU6: ArithmeticOperations.alu6,
+  CheckBus256: ArithmeticOperations.checkBus256,
+  ADDMOD: ArithmeticOperations.addmodSubcircuit,
+  MULMOD: ArithmeticOperations.mulmodSubcircuit,
   DecToBit: ArithmeticOperations.decToBit,
-  // SubEXP: ArithmeticOperations.subEXP,
   SubExpBatch: ArithmeticOperations.subExpBatch,
   Accumulator: ArithmeticOperations.accumulator,
-  Poseidon: (values: bigint[]) => ArithmeticOperations.poseidonChainCompress(values),
-  // PrepareEdDsaScalars: ArithmeticOperations.prepareEdDsaScalars,
+  Poseidon: ArithmeticOperations.poseidon,
   JubjubExpBatch: ArithmeticOperations.jubjubExpBatch,
   EdDsaVerify: ArithmeticOperations.edDsaVerify,
   EqualBatch: ArithmeticOperations.equalBatch,

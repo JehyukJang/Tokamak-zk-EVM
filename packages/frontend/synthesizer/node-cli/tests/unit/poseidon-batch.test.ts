@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { poseidonChainCompress } from 'tokamak-l2js';
 
 import { createArithmeticSubcircuitComposition } from '../../../core/src/subcircuit/arithmeticSubcircuitComposition.ts';
 import { ArithmeticManager } from '../../../core/src/synthesizer/handlers/arithmeticManager.ts';
@@ -67,6 +68,7 @@ describe('configurable Poseidon batching', () => {
     expect(placements[0].usage).toBe('Poseidon');
     expect(placements[0].inPts).toHaveLength(6);
     expect(placements[0].outPts).toHaveLength(1);
+    expect(result.value).toBe(poseidonChainCompress(inputs.map(({ value }) => value)));
     expect(result.value).toBe(placements[0].outPts[0].value);
   });
 });
