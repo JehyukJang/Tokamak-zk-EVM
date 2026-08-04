@@ -73,7 +73,7 @@ const createStorageHarness = (initialValue: bigint) => {
       subcircuitInfoByName: new Map([['EqualBatch', equalBatchInfo]]),
     },
     place: vi.fn(),
-    placeArith: vi.fn(() => []),
+    placeArithComposition: vi.fn(() => []),
     addReservedVariableToBufferIn: vi.fn((_name: string, value: bigint) =>
       dataPt(value, nextSource++),
     ),
@@ -284,7 +284,7 @@ describe('InstructionHandler storage cache', () => {
       wireIndex: firstValuePt.wireIndex,
       value: firstValuePt.value,
     });
-    const equalBatchCalls = parent.placeArith.mock.calls.filter(
+    const equalBatchCalls = parent.placeArithComposition.mock.calls.filter(
       (call: any[]) => call[0] === 'EqualBatch',
     );
     expect(equalBatchCalls).toHaveLength(1);
@@ -325,7 +325,7 @@ describe('InstructionHandler storage cache', () => {
       wireIndex: firstValuePt.wireIndex,
       value: 6n,
     });
-    expect(parent.placeArith.mock.calls.filter(
+    expect(parent.placeArithComposition.mock.calls.filter(
       (call: any[]) => call[0] === 'EqualBatch',
     )).toHaveLength(1);
   });
@@ -351,7 +351,7 @@ describe('InstructionHandler storage cache', () => {
       dirty: true,
     });
     expect(loadedPt).toMatchObject({ source: 51, value: 11n });
-    expect(parent.placeArith.mock.calls.filter(
+    expect(parent.placeArithComposition.mock.calls.filter(
       (call: any[]) => call[0] === 'EqualBatch',
     )).toHaveLength(1);
   });
@@ -385,7 +385,7 @@ describe('InstructionHandler storage cache', () => {
         dirty: true,
       }),
     ]);
-    const equalBatchCalls = parent.placeArith.mock.calls.filter(
+    const equalBatchCalls = parent.placeArithComposition.mock.calls.filter(
       (call: any[]) => call[0] === 'EqualBatch',
     );
     expect(equalBatchCalls.map(([, inPts]: [string, DataPt[]]) =>
@@ -430,7 +430,7 @@ describe('InstructionHandler storage cache', () => {
         dirty: true,
       }),
     ]);
-    expect(parent.placeArith.mock.calls.filter(
+    expect(parent.placeArithComposition.mock.calls.filter(
       (call: any[]) => call[0] === 'EqualBatch',
     )[0]?.[1].map((pt: DataPt) => pt.source)).toEqual([82, 83, 80, 81]);
     expect(parent.addReservedVariableToBufferOut).toHaveBeenCalledTimes(3);
@@ -473,7 +473,7 @@ describe('InstructionHandler storage cache', () => {
       [addressValue, 1n, 3n],
       [addressValue, 2n, 4n],
     ]);
-    expect(parent.placeArith.mock.calls.filter(
+    expect(parent.placeArithComposition.mock.calls.filter(
       (call: any[]) => call[0] === 'EqualBatch',
     )).toHaveLength(1);
     expect(parent.addReservedVariableToBufferOut).toHaveBeenCalledTimes(6);

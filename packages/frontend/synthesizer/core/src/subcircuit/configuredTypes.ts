@@ -8,6 +8,8 @@ export const ARITHMETIC_OPERATOR_LIST = [
   'SDIV',
   'MOD',
   'SMOD',
+  'ALU4A',
+  'ALU4B',
   'ADDMOD',
   'MULMOD',
   'EXP',

@@ -2,7 +2,11 @@
 import { DataPt, ISynthesizerProvider } from '../types/index.ts';
 import { DataPtFactory } from '../dataStructure/index.ts';
 import { DEFAULT_SOURCE_BIT_SIZE } from '../../synthesizer/params/constants.ts';
-import { ArithmeticOperator } from '../../subcircuit/configuredTypes.ts';
+import {
+  ARITHMETIC_OPERATOR_LIST,
+  ArithmeticOperator,
+  SubcircuitNames,
+} from '../../subcircuit/configuredTypes.ts';
 import type { ArithmeticOperationComposition } from '../../subcircuit/arithmeticSubcircuitComposition.ts';
 import { ArithmeticOperations } from '../dataStructure/arithmeticOperations.ts';
 import { POSEIDON_INPUTS } from 'tokamak-l2js';
@@ -85,12 +89,82 @@ export class ArithmeticManager {
     }
   }
 
-  private _processArithmeticComposition(
-    name: ArithmeticOperator,
+  private _placeSingleArithSubcircuit(
+    operation: ArithmeticOperator,
+    subcircuit: SubcircuitNames,
+    finalInPts: DataPt[],
+    arithmeticInPts: DataPt[],
+    usage: string,
+  ): DataPt[] {
+    const outPts = this._createArithmeticOutput(operation, arithmeticInPts)
+    this.parent.place(subcircuit, finalInPts, outPts, usage)
+    return outPts
+  }
+
+  private _placePoseidon(
     composition: ArithmeticOperationComposition,
     inPts: DataPt[],
-    dynamicSelector?: bigint,
   ): DataPt[] {
+    const step = composition.steps[0]
+    if (step === undefined || composition.steps.length !== 1) {
+      throw new Error('Synthesizer: Poseidon requires one normalized composition step')
+    }
+
+    const placeNormalized = (inputs: DataPt[]): DataPt => {
+      const normalized = this._normalizePoseidonInputs(inputs)
+      const selectorPt = this.parent.loadArbitraryStatic(
+        normalized.selector,
+        Math.max(32, this.poseidonBatchSize),
+        `ALU selector for Poseidon of ${step.subcircuit}`,
+      )
+      const outPts = this._placeSingleArithSubcircuit(
+        'Poseidon',
+        step.subcircuit,
+        [selectorPt, ...normalized.inPts],
+        normalized.inPts,
+        step.usage,
+      )
+      const outPt = outPts[0]
+      if (outPt === undefined || outPts.length !== 1) {
+        throw new Error('Synthesizer: Poseidon must produce exactly one output')
+      }
+      return outPt
+    }
+
+    if (inPts.length === 0) {
+      return [placeNormalized(
+        Array<DataPt>(POSEIDON_INPUTS).fill(this.parent.loadArbitraryStatic(0n)),
+      )]
+    }
+    if (inPts.length === 1) {
+      return [placeNormalized([inPts[0], this.parent.loadArbitraryStatic(0n)])]
+    }
+
+    const inputLimit = this.poseidonBatchSize + 1
+    let chainInputs = [...inPts]
+    while (chainInputs.length > inputLimit) {
+      const prefixHash = placeNormalized(chainInputs.slice(0, inputLimit))
+      chainInputs = [prefixHash, ...chainInputs.slice(inputLimit)]
+    }
+
+    return [DataPtFactory.deepCopy(placeNormalized(chainInputs))]
+  }
+
+  public placeArithComposition(
+    name: ArithmeticOperator,
+    inPts: DataPt[],
+  ): DataPt[] {
+    const composition = this.parent.subcircuitLibrary
+      .arithmeticSubcircuitComposition.get(name)
+    if (composition.numSteps === 'dynamic') {
+      if (name === 'Poseidon') {
+        return this._placePoseidon(composition, inPts)
+      }
+      throw new Error(
+        `Synthesizer: ${name} has no dynamic arithmetic placement handler`,
+      )
+    }
+
     if (inPts.length !== composition.numOperands) {
       throw new Error(
         `Synthesizer: ${name} expected ${composition.numOperands} operands, but got ${inPts.length}`,
@@ -113,7 +187,7 @@ export class ArithmeticManager {
         switch (input.kind) {
           case 'selector': {
             const selector = step.selector === 'dynamic'
-              ? dynamicSelector
+              ? undefined
               : step.selector
             if (typeof selector !== 'bigint') {
               throw new Error(
@@ -170,20 +244,22 @@ export class ArithmeticManager {
         }
       }
 
-      const outputOperation = step.usage as ArithmeticOperator
       let outPts: DataPt[]
-      if (Object.prototype.hasOwnProperty.call(ARITHMETIC_MAPPING, outputOperation)) {
-        if (step.selector === 'dynamic') {
-          throw new Error(
-            `Synthesizer: ${name} step ${stepIndex} dynamic output generation is unavailable`,
-          )
-        }
-        outPts = this._createArithmeticOutput(outputOperation, arithmeticInPts)
-      } else if (step.outputs.length === 0) {
+      if (step.outputs.length === 0) {
         outPts = []
+        this.parent.place(step.subcircuit, finalInPts, outPts, step.usage)
       } else {
-        throw new Error(
-          `Synthesizer: ${name} step ${stepIndex} has no output generator for ${step.usage}`,
+        const outputOperation = ARITHMETIC_OPERATOR_LIST.includes(
+          step.subcircuit as ArithmeticOperator,
+        )
+          ? step.subcircuit as ArithmeticOperator
+          : step.usage as ArithmeticOperator
+        outPts = this._placeSingleArithSubcircuit(
+          outputOperation,
+          step.subcircuit,
+          finalInPts,
+          arithmeticInPts,
+          step.usage,
         )
       }
       if (outPts.length !== step.outputs.length) {
@@ -191,9 +267,6 @@ export class ArithmeticManager {
           `Synthesizer: ${name} step ${stepIndex} expected ${step.outputs.length} outputs, but generated ${outPts.length}`,
         )
       }
-
-      this.parent.place(step.subcircuit, finalInPts, outPts, step.usage)
-
       for (const [outputIndex, output] of step.outputs.entries()) {
         const outPt = outPts[outputIndex]
         if (outPt === undefined) {
@@ -225,149 +298,6 @@ export class ArithmeticManager {
       }
       return DataPtFactory.deepCopy(resultPt)
     })
-  }
-
-  /**
-   * Places an arithmetic operation in the synthesizer.
-   *
-   * This involves creating output data points, preparing inputs, and adding the placement.
-   *
-   * @param {ArithmeticOperator} name - The name of the arithmetic operation.
-   * @param {DataPt[]} inPts - The input data points.
-   * @returns {DataPt[]} The output data points from the operation.
-   */
-  public placeArith(name: ArithmeticOperator, inPts: DataPt[]): DataPt[] {
-    const composition = this.parent.subcircuitLibrary
-      .arithmeticSubcircuitComposition.get(name)
-    let compositionInPts = inPts
-    let dynamicSelector: bigint | undefined
-    if (name === 'Poseidon') {
-      const normalized = this._normalizePoseidonInputs(inPts)
-      compositionInPts = normalized.inPts
-      dynamicSelector = normalized.selector
-    }
-
-    return this._processArithmeticComposition(
-      name,
-      composition,
-      compositionInPts,
-      dynamicSelector,
-    )
-  }
-
-  public placePoseidon(inPts: DataPt[]): DataPt {
-    if (inPts.length === 0) {
-      return this.placeArith('Poseidon', Array<DataPt>(POSEIDON_INPUTS).fill(this.parent.loadArbitraryStatic(0n)))[0]
-    }
-    if (inPts.length === 1) {
-      return this.placeArith('Poseidon', [inPts[0], this.parent.loadArbitraryStatic(0n)])[0]
-    }
-
-    const inputLimit = this.poseidonBatchSize + 1
-    let chainInputs = [...inPts]
-    while (chainInputs.length > inputLimit) {
-      const prefixHash = this.placeArith('Poseidon', chainInputs.slice(0, inputLimit))[0]
-      chainInputs = [prefixHash, ...chainInputs.slice(inputLimit)]
-    }
-
-    return DataPtFactory.deepCopy(
-      this.placeArith('Poseidon', chainInputs)[0],
-    )
-  }
-
-  // public placeExp(inPts: DataPt[]): DataPt {
-  //   const synthesizer = this.parent
-  //   // a^b
-  //   const aPt = inPts[0];
-  //   const bPt = inPts[1];
-  //   const bNum = Number(bPt.value);
-
-  //   // Handle base cases for exponent
-  //   if (bNum === 0) {
-  //     return DataPtFactory.deepCopy(synthesizer.loadArbitraryStatic(BIGINT_1));
-  //   }
-  //   if (bNum === 1) {
-  //     return DataPtFactory.deepCopy(aPt);
-  //   }
-
-  //   const k = Math.floor(Math.log2(bNum)) + 1; //bit length of b
-
-  //   const bitifyOutPts = synthesizer.placeArith('DecToBit', [bPt]).reverse();
-  //   // LSB at index 0
-
-  //   const chPts: DataPt[] = [];
-  //   const ahPts: DataPt[] = [];
-  //   chPts.push(synthesizer.loadArbitraryStatic(BIGINT_1));
-  //   ahPts.push(aPt);
-
-  //   for (let i = 1; i <= k; i++) {
-  //     const _inPts = [chPts[i - 1], ahPts[i - 1], bitifyOutPts[i - 1]];
-  //     const _outPts = synthesizer.placeArith('SubEXP', _inPts);
-  //     chPts.push(_outPts[0]);
-  //     ahPts.push(_outPts[1]);
-  //   }
-
-  //   return DataPtFactory.deepCopy(chPts[chPts.length - 1]);
-  // }
-
-  public placeExp(inPts: DataPt[], reference?: bigint): DataPt {
-    // a^b
-    const CHUNK_SIZE = this.parent.subcircuitLibrary.arithExpBatchSize
-    const NUM_CHUNKS = Math.ceil(DEFAULT_SOURCE_BIT_SIZE / CHUNK_SIZE)
-    if (inPts.length !== DEFAULT_SOURCE_BIT_SIZE + 1) {
-      throw new Error('Invalid input to SubExp')
-    }
-    const base: DataPt= inPts[0]
-    // Make sure that the input scalar bits are in LSB-first
-    const scalar_bits_LSB: DataPt[] = inPts.slice(1, )
-    if (reference !== undefined) {
-      const recoverValueFromLSBString = (string: DataPt[]): bigint => {
-        return string.map(pt => pt.value).reduce((acc, b, i) => acc | (b << BigInt(i)), 0n);
-      }
-      if (reference !== recoverValueFromLSBString(scalar_bits_LSB)) {
-        throw new Error('The reference value cannot be recovered from the bit string')
-      }
-    }
-
-    // const scalar_bits_chunk: DataPt[][] = Array.from({ length: NUM_CHUNKS }, (_, i) =>
-    //   scalar_bits_LSB.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE),
-    // )
-
-    const scalar_bits_chunk: DataPt[][] = Array.from({ length: NUM_CHUNKS }, (_, i) => {
-      const start = i * CHUNK_SIZE;
-      const end = (i + 1) * CHUNK_SIZE;
-      const chunk = scalar_bits_LSB.slice(start, end);
-      return chunk.length === CHUNK_SIZE
-        ? chunk
-        : chunk.concat(
-            Array.from({ length: CHUNK_SIZE - chunk.length },
-              () => this.parent.getReservedVariableFromBuffer('CIRCOM_CONST_ZERO'),
-            )
-          );
-    });
-
-    var c: DataPt = this.parent.loadArbitraryStatic(1n)
-    var a: DataPt = base
-    for (var i = 0; i < NUM_CHUNKS; i++) {
-      const prev_c = c
-      const prev_a = a
-      // LSB first
-      const chunkedInPts: DataPt[] = [prev_c, prev_a, ...scalar_bits_chunk[i]]
-      const outPts: DataPt[] = this.parent.placeArith('SubExpBatch', chunkedInPts)
-      if (outPts.length !== 2) {
-        throw new Error('Something wrong with SubExpBatch')
-      }
-      c = outPts[0]
-      a = outPts[1]
-    }
-
-    if (reference !== undefined) {
-      if ((base.value ** reference) % (1n<<256n) !== c.value) {
-        throw new Error(`SubExpBatch calculation is incorrect`)
-      }
-    }
-    
-    return DataPtFactory.deepCopy(c)
   }
 
   public placeJubjubExp(inPts: DataPt[], PoI: DataPt[], reference?: bigint): DataPt[] {
@@ -416,7 +346,10 @@ export class ArithmeticManager {
       const prevG = G.slice()
       // LSB first
       const chunkedInPts: DataPt[] = [...prevP, ...prevG, ...scalar_bits_chunk[i]]
-      const outPts: DataPt[] = this.parent.placeArith('JubjubExpBatch', chunkedInPts)
+      const outPts: DataPt[] = this.parent.placeArithComposition(
+        'JubjubExpBatch',
+        chunkedInPts,
+      )
       if (outPts.length !== 4) {
         throw new Error('Something wrong with JubjubExpBatch')
       }
@@ -467,6 +400,12 @@ const ARITHMETIC_MAPPING: Record<ArithmeticOperator, (...args: any) => any> = {
   SDIV: ArithmeticOperations.sdiv,
   MOD: ArithmeticOperations.mod,
   SMOD: ArithmeticOperations.smod,
+  ALU4A: () => {
+    throw new Error('Synthesizer: ALU4A output generation is not implemented')
+  },
+  ALU4B: () => {
+    throw new Error('Synthesizer: ALU4B output generation is not implemented')
+  },
   ADDMOD: ArithmeticOperations.addmod,
   MULMOD: ArithmeticOperations.mulmod,
   EXP: ArithmeticOperations.subExpBatch, //not directly used

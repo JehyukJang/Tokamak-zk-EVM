@@ -54,7 +54,7 @@ describe('arithmetic composition execution', () => {
     };
     const manager = new ArithmeticManager(parent as never);
 
-    const [result] = manager.placeArith('EXP', [
+    const [result] = manager.placeArithComposition('EXP', [
       dataPt(3n, 10),
       dataPt(5n, 11),
     ]);

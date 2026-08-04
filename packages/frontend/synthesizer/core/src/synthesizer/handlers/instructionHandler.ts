@@ -435,16 +435,9 @@ export class InstructionHandler {
     ]
     const signaturePt: DataPt = this.parent.getReservedVariableFromBuffer('EDDSA_SIGNATURE')
     const poseidonIn: DataPt[] = [...randomizerPt, ...publicKeyPt, ...messagePts]
-    const poseidonOut: DataPt = this.parent.placePoseidon(poseidonIn)
-    // const bitsOut: DataPt[] = this.parent.placeArith('PrepareEdDsaScalars', [signaturePt, poseidonOut])
-    // if (bitsOut.length !== 504) {
-    //   throw new Error(`PrepareEdDsaScalar was expected to output 504 bits, got ${bitsOut.length}`);
-    // }
-    // const signBits: DataPt[] = bitsOut.slice(0, 252)
-    // const challengeBits: DataPt[] = bitsOut.slice(252, )
-
-    const signBits = this.parent.placeArith('DecToBit', [signaturePt])
-    const challengeBits = this.parent.placeArith('DecToBit', [poseidonOut])
+    const poseidonOut = this.parent.placeArithComposition('Poseidon', poseidonIn)[0]
+    const signBits = this.parent.placeArithComposition('DecToBit', [signaturePt])
+    const challengeBits = this.parent.placeArithComposition('DecToBit', [poseidonOut])
     const jubjubBasePt: DataPt[] = [
       this.parent.getReservedVariableFromBuffer('JUBJUB_BASE_X'),
       this.parent.getReservedVariableFromBuffer('JUBJUB_BASE_Y')
@@ -466,11 +459,14 @@ export class InstructionHandler {
       poseidonOut.value
     )
 
-    this.parent.placeArith('EdDsaVerify', [...sG, ...randomizerPt, ...eA])
+    this.parent.placeArithComposition('EdDsaVerify', [...sG, ...randomizerPt, ...eA])
     
-    const hashPt: DataPt = this.parent.placePoseidon(publicKeyPt)
+    const hashPt = this.parent.placeArithComposition('Poseidon', publicKeyPt)[0]
     const addrMaskPt: DataPt = this.parent.getReservedVariableFromBuffer('ADDRESS_MASK')
-    this.parent.state.cachedOrigin = this.parent.placeArith('AND', [hashPt, addrMaskPt])[0]
+    this.parent.state.cachedOrigin = this.parent.placeArithComposition(
+      'AND',
+      [hashPt, addrMaskPt],
+    )[0]
     return DataPtFactory.deepCopy(this.parent.state.cachedOrigin!)
   }
 
@@ -505,7 +501,7 @@ export class InstructionHandler {
     if (inPts.some((pt) => pt.sourceBitSize <= 128)) {
       throw new Error('Synthesizer: EqualBatch storage identities must use two-limb DataPts')
     }
-    this.parent.placeArith('EqualBatch', inPts)
+    this.parent.placeArithComposition('EqualBatch', inPts)
   }
 
   private _getCachedStorageEntry(
@@ -648,10 +644,7 @@ export class InstructionHandler {
     const op = opts.op as SynthesizerSupportedArithOpcodes
     switch (op) {
       case 'EXP':
-        const basePt = inPts[0]
-        const exponentPt = inPts[1]
-        const exponentBits = this.parent.placeArith('DecToBit', [exponentPt])
-        outPts = [this.parent.placeExp([basePt, ...exponentBits], exponentPt.value)];
+        outPts = this.parent.placeArithComposition('EXP', inPts)
         break;
       case 'KECCAK256': {
           checkRequiredInput(opts.memOut)
@@ -665,11 +658,11 @@ export class InstructionHandler {
           if (bytesToBigInt(opts.memOut!) !== dataRecovered) {
             throw new Error(`Synthesizer: ${op}: Memory data to load mismatch`)
           }
-          outPts = [this.parent.placePoseidon(chunkDataPts)]
+          outPts = this.parent.placeArithComposition('Poseidon', chunkDataPts)
         }
         break
       default:
-        outPts = this.parent.placeArith(op as ArithmeticOperator, inPts);
+        outPts = this.parent.placeArithComposition(op as ArithmeticOperator, inPts);
         break;
     }
     if (outPts.length !== 1 || outPts[0].value !== out) {

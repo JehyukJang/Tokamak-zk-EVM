@@ -459,18 +459,12 @@ export class Synthesizer implements SynthesizerInterface
     return this._bufferManager.loadArbitraryStatic(value, bitSize, desc)
   }
 
-  placeArith(name: ArithmeticOperator, inPts: DataPt[]): DataPt[] {
-    return this._arithmeticManager.placeArith(name, inPts);
+  placeArithComposition(name: ArithmeticOperator, inPts: DataPt[]): DataPt[] {
+    return this._arithmeticManager.placeArithComposition(name, inPts);
   }
 
-  placeExp(inPts: DataPt[], reference?: bigint): DataPt {
-    return this._arithmeticManager.placeExp(inPts, reference)
-  }
   placeJubjubExp(inPts: DataPt[], PoI: DataPt[], reference?: bigint): DataPt[] {
     return this._arithmeticManager.placeJubjubExp(inPts, PoI, reference)
-  }
-  placePoseidon(inPts: DataPt[]): DataPt {
-    return this._arithmeticManager.placePoseidon(inPts)
   }
   placeMemoryToStack(dataAliasInfos: DataAliasInfos): DataPt {
     return this._memoryManager.placeMemoryToStack(dataAliasInfos);

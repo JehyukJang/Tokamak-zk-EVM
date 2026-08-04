@@ -65,7 +65,7 @@ describe('modular CheckBus256 topology', () => {
     const { manager, placements } = createHarness();
     const firstOperand = dataPt(5n, 10, 3);
 
-    const result = manager.placeArith(operation, [
+    const result = manager.placeArithComposition(operation, [
       firstOperand,
       dataPt(7n, 11),
       dataPt(10n, 12),
@@ -87,7 +87,7 @@ describe('modular CheckBus256 topology', () => {
   it('does not add CheckBus256 to an ordinary arithmetic placement', () => {
     const { manager, placements } = createHarness();
 
-    manager.placeArith('ADD', [dataPt(1n, 10), dataPt(2n, 11)]);
+    manager.placeArithComposition('ADD', [dataPt(1n, 10), dataPt(2n, 11)]);
 
     expect(placements.map(({ name }) => name)).toEqual(['ALU1']);
   });
@@ -95,7 +95,7 @@ describe('modular CheckBus256 topology', () => {
   it('rejects a modular operation without exactly three operands', () => {
     const { manager, placements } = createHarness();
 
-    expect(() => manager.placeArith('MULMOD', [
+    expect(() => manager.placeArithComposition('MULMOD', [
       dataPt(5n, 10),
       dataPt(7n, 11),
     ])).toThrow('MULMOD expected 3 operands, but got 2');

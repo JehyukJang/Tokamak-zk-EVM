@@ -60,7 +60,7 @@ describe('configurable Poseidon batching', () => {
     const { manager, placements } = createHarness(4);
     const inputs = [dataPt(1n), dataPt(2n), dataPt(3n)];
 
-    expect(() => manager.placePoseidon(inputs)).toThrow(
+    expect(() => manager.placeArithComposition('Poseidon', inputs)).toThrow(
       'Poseidon step 0 dynamic output generation is unavailable',
     );
     expect(placements).toHaveLength(0);

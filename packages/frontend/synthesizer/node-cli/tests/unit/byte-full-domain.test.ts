@@ -64,7 +64,7 @@ describe('full-domain word operation synthesis', () => {
       const indexPt = dataPt(index, 10, 3);
       const valuePt = dataPt((1n << 256n) - 1n, 11, 4);
 
-      const result = manager.placeArith('BYTE', [indexPt, valuePt]);
+      const result = manager.placeArithComposition('BYTE', [indexPt, valuePt]);
 
       expect(result).toHaveLength(1);
       expect(result[0].value).toBe(0n);
@@ -84,7 +84,7 @@ describe('full-domain word operation synthesis', () => {
       const indexPt = dataPt(index, 10, 3);
       const valuePt = dataPt((1n << 255n) + 0x80n, 11, 4);
 
-      const result = manager.placeArith('SIGNEXTEND', [indexPt, valuePt]);
+      const result = manager.placeArithComposition('SIGNEXTEND', [indexPt, valuePt]);
 
       expect(result).toHaveLength(1);
       expect(result[0].value).toBe(valuePt.value);
@@ -104,7 +104,7 @@ describe('full-domain word operation synthesis', () => {
       const shiftPt = dataPt(shift, 10, 3);
       const valuePt = dataPt((1n << 256n) - 1n, 11, 4);
 
-      const result = manager.placeArith('SHL', [shiftPt, valuePt]);
+      const result = manager.placeArithComposition('SHL', [shiftPt, valuePt]);
 
       expect(result).toHaveLength(1);
       expect(result[0].value).toBe(0n);
@@ -124,7 +124,7 @@ describe('full-domain word operation synthesis', () => {
       const shiftPt = dataPt(shift, 10, 3);
       const valuePt = dataPt((1n << 256n) - 1n, 11, 4);
 
-      const result = manager.placeArith('SHR', [shiftPt, valuePt]);
+      const result = manager.placeArithComposition('SHR', [shiftPt, valuePt]);
 
       expect(result).toHaveLength(1);
       expect(result[0].value).toBe(0n);
@@ -151,7 +151,7 @@ describe('full-domain word operation synthesis', () => {
       const shiftPt = dataPt(shift, 10, 3);
       const valuePt = dataPt(value, 11, 4);
 
-      const result = manager.placeArith('SAR', [shiftPt, valuePt]);
+      const result = manager.placeArithComposition('SAR', [shiftPt, valuePt]);
 
       expect(result).toHaveLength(1);
       expect(result[0].value).toBe(expected);

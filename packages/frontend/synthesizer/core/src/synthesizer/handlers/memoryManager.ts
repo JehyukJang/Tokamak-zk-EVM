@@ -147,7 +147,7 @@ export class MemoryManager {
       return dataPt;
     }
     // SHR data to truncate the ending part
-    const [truncatedPt] = this.parent.placeArith('SHR', [
+    const [truncatedPt] = this.parent.placeArithComposition('SHR', [
       this.parent.loadArbitraryStatic(BigInt(endingGap * 8), DEFAULT_SOURCE_BIT_SIZE, 'Shifter for memory manipulation'),
       dataPt,
     ]);
@@ -169,8 +169,8 @@ export class MemoryManager {
       );
     }
 
-    // placeArith returns an array of outPts, but Accumulator returns one.
-    const [accumulatedPt] = this.parent.placeArith(
+    // Arithmetic compositions return arrays, while Accumulator produces one output.
+    const [accumulatedPt] = this.parent.placeArithComposition(
       'Accumulator',
       transformedSlices,
     );
@@ -198,7 +198,7 @@ export class MemoryManager {
         this.parent.loadArbitraryStatic(BigInt(absShift), DEFAULT_SOURCE_BIT_SIZE, 'Shifter for memory manipulation'),
         dataPt,
       ];
-      outPts = this.parent.placeArith(subcircuitName, inPts);
+      outPts = this.parent.placeArithComposition(subcircuitName, inPts);
     }
     return outPts[0];
   }
@@ -218,7 +218,7 @@ export class MemoryManager {
     let outPts = [dataPt];
     if (maskOutValue !== dataPt.value) {
       const inPts: DataPt[] = [this.parent.loadArbitraryStatic(BigInt(masker), DEFAULT_SOURCE_BIT_SIZE, 'Masker for memory manipulation'), dataPt];
-      outPts = this.parent.placeArith('AND', inPts);
+      outPts = this.parent.placeArithComposition('AND', inPts);
     }
     return outPts[0];
   }
