@@ -50,13 +50,29 @@ describe('arithmetic subcircuit composition assembly', () => {
     expect(() => new ArithmeticSubcircuitComposition(replaceComposition('ADD', {
       ...composition.get('ADD'),
       numSteps: 'dynamic',
-    }))).toThrow('ADD must use numeric numSteps with generic placement');
+    }))).toThrow('ADD cannot use generic placement with dynamic numSteps or selectors');
   });
 
-  it('rejects numeric numSteps for the Poseidon placement strategy', () => {
+  it('rejects a dynamic selector for the generic placement strategy', () => {
+    const addComposition = composition.get('ADD');
+    expect(() => new ArithmeticSubcircuitComposition(replaceComposition('ADD', {
+      ...addComposition,
+      steps: [{
+        ...addComposition.steps[0],
+        selector: 'dynamic',
+      }],
+    }))).toThrow('ADD cannot use generic placement with dynamic numSteps or selectors');
+  });
+
+  it('allows a special placement strategy without dynamic fields', () => {
+    const poseidonComposition = composition.get('Poseidon');
     expect(() => new ArithmeticSubcircuitComposition(replaceComposition('Poseidon', {
-      ...composition.get('Poseidon'),
+      ...poseidonComposition,
       numSteps: 1,
-    }))).toThrow('Poseidon must use dynamic numSteps with Poseidon placement');
+      steps: [{
+        ...poseidonComposition.steps[0],
+        selector: 1n,
+      }],
+    }))).not.toThrow();
   });
 });

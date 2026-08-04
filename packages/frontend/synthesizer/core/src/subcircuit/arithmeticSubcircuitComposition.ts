@@ -137,20 +137,15 @@ export class ArithmeticSubcircuitComposition {
         `ArithmeticSubcircuitComposition: ${operation} has an invalid placement strategy`,
       );
     }
+    const hasDynamicSelector = composition.steps.some(
+      ({ selector }) => selector === 'dynamic',
+    );
     if (
       composition.placementStrategy === 'generic'
-      && composition.numSteps === 'dynamic'
+      && (composition.numSteps === 'dynamic' || hasDynamicSelector)
     ) {
       throw new Error(
-        `ArithmeticSubcircuitComposition: ${operation} must use numeric numSteps with generic placement`,
-      );
-    }
-    if (
-      composition.placementStrategy === 'poseidon'
-      && composition.numSteps !== 'dynamic'
-    ) {
-      throw new Error(
-        `ArithmeticSubcircuitComposition: ${operation} must use dynamic numSteps with Poseidon placement`,
+        `ArithmeticSubcircuitComposition: ${operation} cannot use generic placement with dynamic numSteps or selectors`,
       );
     }
     if (composition.numSteps !== 'dynamic') {
