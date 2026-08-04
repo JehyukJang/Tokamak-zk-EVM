@@ -164,13 +164,17 @@ export class ArithmeticManager {
   ): DataPt[] {
     const composition = this.parent.subcircuitLibrary
       .arithmeticSubcircuitComposition.get(name)
-    if (composition.numSteps === 'dynamic') {
-      if (name === 'Poseidon') {
+    switch (composition.placementStrategy) {
+      case 'generic':
+        break
+      case 'poseidon':
         return this._placePoseidon(composition, inPts)
+      default: {
+        const invalidStrategy: never = composition.placementStrategy
+        throw new Error(
+          `Synthesizer: ${name} has unsupported placement strategy ${invalidStrategy}`,
+        )
       }
-      throw new Error(
-        `Synthesizer: ${name} has no dynamic arithmetic placement handler`,
-      )
     }
 
     if (inPts.length !== composition.numOperands) {

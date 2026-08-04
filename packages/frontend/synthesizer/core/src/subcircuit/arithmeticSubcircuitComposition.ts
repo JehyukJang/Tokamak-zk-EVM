@@ -7,6 +7,8 @@ import type { FrontendConfig } from './libraryTypes.ts';
 
 export type SelectorDefinition = bigint | null | 'dynamic';
 
+export type ArithmeticPlacementStrategy = 'generic' | 'poseidon';
+
 export type InputReference =
   | Readonly<{ kind: 'selector' }>
   | Readonly<{ kind: 'operand'; index: number }>
@@ -32,6 +34,7 @@ export type ConstantDefinition = Readonly<{
 }>;
 
 export type ArithmeticOperationComposition = Readonly<{
+  placementStrategy: ArithmeticPlacementStrategy;
   constants: readonly ConstantDefinition[];
   numSteps: number | 'dynamic';
   numOperands: number;
@@ -59,6 +62,7 @@ const freezeReference = <Reference extends InputReference | OutputReference>(
 const freezeComposition = (
   composition: ArithmeticOperationComposition,
 ): ArithmeticOperationComposition => Object.freeze({
+  placementStrategy: composition.placementStrategy,
   constants: Object.freeze(composition.constants.map((constant) => Object.freeze({
     value: constant.value,
     sourceBitSize: constant.sourceBitSize,
@@ -125,6 +129,30 @@ export class ArithmeticSubcircuitComposition {
     operation: ArithmeticOperator,
     composition: ArithmeticOperationComposition,
   ): void {
+    if (
+      composition.placementStrategy !== 'generic'
+      && composition.placementStrategy !== 'poseidon'
+    ) {
+      throw new Error(
+        `ArithmeticSubcircuitComposition: ${operation} has an invalid placement strategy`,
+      );
+    }
+    if (
+      composition.placementStrategy === 'generic'
+      && composition.numSteps === 'dynamic'
+    ) {
+      throw new Error(
+        `ArithmeticSubcircuitComposition: ${operation} must use numeric numSteps with generic placement`,
+      );
+    }
+    if (
+      composition.placementStrategy === 'poseidon'
+      && composition.numSteps !== 'dynamic'
+    ) {
+      throw new Error(
+        `ArithmeticSubcircuitComposition: ${operation} must use dynamic numSteps with Poseidon placement`,
+      );
+    }
     if (composition.numSteps !== 'dynamic') {
       assertIndex(composition.numSteps, `${operation} numSteps`);
       if (composition.numSteps !== composition.steps.length) {
@@ -265,6 +293,7 @@ const createSingleStepMapping = (
 ): ArithmeticSubcircuitMapping => Object.freeze({
   operation,
   composition: freezeComposition({
+    placementStrategy: 'generic',
     constants,
     numSteps: 1,
     numOperands,
@@ -381,6 +410,7 @@ const createModularArithmeticMapping = (
 ): ArithmeticSubcircuitMapping => Object.freeze({
   operation,
   composition: freezeComposition({
+    placementStrategy: 'generic',
     constants: [],
     numSteps: 2,
     numOperands: 3,
@@ -428,6 +458,7 @@ export const createPoseidonArithmeticMapping = (
   return Object.freeze({
     operation: 'Poseidon',
     composition: freezeComposition({
+      placementStrategy: 'poseidon',
       constants: [],
       numSteps: 'dynamic',
       numOperands: config.nPoseidonBatch + 1,
@@ -522,6 +553,7 @@ export const createExpArithmeticMapping = (
   return Object.freeze({
     operation: 'EXP',
     composition: freezeComposition({
+      placementStrategy: 'generic',
       constants,
       numSteps: steps.length,
       numOperands: 2,
@@ -537,6 +569,7 @@ const createDivisionArithmeticMapping = (
 ): ArithmeticSubcircuitMapping => Object.freeze({
   operation,
   composition: freezeComposition({
+    placementStrategy: 'generic',
     constants: [],
     numSteps: 2,
     numOperands: 2,
