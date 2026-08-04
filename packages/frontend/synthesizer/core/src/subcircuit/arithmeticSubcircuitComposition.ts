@@ -558,6 +558,80 @@ export const createExpArithmeticMapping = (
   });
 };
 
+export type JubjubExpArithmeticMappingConfig = Pick<
+  FrontendConfig,
+  'nJubjubExpBatch'
+>;
+
+export const createJubjubExpArithmeticMapping = (
+  config: JubjubExpArithmeticMappingConfig,
+): ArithmeticSubcircuitMapping => {
+  assertPositiveInteger(config.nJubjubExpBatch, 'nJubjubExpBatch');
+
+  const numScalarBits = 256;
+  const numBatches = Math.ceil(numScalarBits / config.nJubjubExpBatch);
+  const numPaddedScalarBits = numBatches * config.nJubjubExpBatch;
+  const steps: CompositionStep[] = [];
+
+  for (let batchIndex = 0; batchIndex < numBatches; batchIndex++) {
+    const isFirstBatch = batchIndex === 0;
+    const isFinalBatch = batchIndex === numBatches - 1;
+    const stateInputs: InputReference[] = isFirstBatch
+      ? Array.from(
+          { length: 4 },
+          (_, index): InputReference => ({ kind: 'operand', index }),
+        )
+      : Array.from(
+          { length: 4 },
+          (_, index): InputReference => ({
+            kind: 'step-output',
+            index: 4 * (batchIndex - 1) + index,
+          }),
+        );
+    const bitInputs = Array.from(
+      { length: config.nJubjubExpBatch },
+      (_, bitIndex): InputReference => ({
+        kind: 'operand',
+        index: 4 + batchIndex * config.nJubjubExpBatch + bitIndex,
+      }),
+    );
+    const outputs: OutputReference[] = isFinalBatch
+      ? [
+          { kind: 'result', index: 0 },
+          { kind: 'result', index: 1 },
+          { kind: 'discard' },
+          { kind: 'discard' },
+        ]
+      : Array.from(
+          { length: 4 },
+          (_, index): OutputReference => ({
+            kind: 'step-output',
+            index: 4 * batchIndex + index,
+          }),
+        );
+
+    steps.push({
+      subcircuit: 'JubjubExpBatch',
+      usage: 'JubjubExpBatch',
+      selector: null,
+      inputs: [...stateInputs, ...bitInputs],
+      outputs,
+    });
+  }
+
+  return Object.freeze({
+    operation: 'JubjubExp',
+    composition: freezeComposition({
+      placementStrategy: 'generic',
+      constants: [],
+      numSteps: steps.length,
+      numOperands: 4 + numPaddedScalarBits,
+      numResults: 2,
+      steps,
+    }),
+  });
+};
+
 const createDivisionArithmeticMapping = (
   operation: 'DIV' | 'SDIV' | 'MOD' | 'SMOD',
   selector: bigint,
@@ -623,5 +697,6 @@ export const createArithmeticSubcircuitComposition = (
   ...MODULAR_ARITHMETIC_MAPPINGS,
   ...createSelectorFreeArithmeticMappings(config),
   createExpArithmeticMapping(config),
+  createJubjubExpArithmeticMapping(config),
   createPoseidonArithmeticMapping(config),
 ]);

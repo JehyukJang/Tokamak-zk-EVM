@@ -193,6 +193,39 @@ export class ArithmeticManager {
     return [DataPtFactory.deepCopy(placeNormalized(chainInputs))]
   }
 
+  private _prepareJubjubExpBatchInputs(
+    composition: ArithmeticOperationComposition,
+    inPts: DataPt[],
+  ): DataPt[] {
+    const numPointInputs = 4
+    const referenceIndex = numPointInputs + DEFAULT_SOURCE_BIT_SIZE
+    if (inPts.length !== referenceIndex + 1) {
+      throw new Error(
+        `Synthesizer: JubjubExp expected ${referenceIndex + 1} operands, but got ${inPts.length}`,
+      )
+    }
+
+    const recoveredReference = inPts
+      .slice(numPointInputs, referenceIndex)
+      .reduce(
+        (accumulator, bit, index) => accumulator | (bit.value << BigInt(index)),
+        0n,
+      )
+    if (inPts[referenceIndex]!.value !== recoveredReference) {
+      throw new Error('The reference value cannot be recovered from the bit string')
+    }
+
+    const preparedInPts = inPts.slice(0, referenceIndex)
+    if (preparedInPts.length > composition.numOperands) {
+      throw new Error('Synthesizer: JubjubExp composition has insufficient operands')
+    }
+    preparedInPts.push(...Array.from(
+      { length: composition.numOperands - preparedInPts.length },
+      () => this.parent.getReservedVariableFromBuffer('CIRCOM_CONST_ZERO'),
+    ))
+    return preparedInPts
+  }
+
   public placeArithComposition(
     name: ArithmeticOperator,
     inPts: DataPt[],
@@ -212,9 +245,12 @@ export class ArithmeticManager {
       }
     }
 
-    if (inPts.length !== composition.numOperands) {
+    const preparedInPts = name === 'JubjubExp'
+      ? this._prepareJubjubExpBatchInputs(composition, inPts)
+      : inPts
+    if (preparedInPts.length !== composition.numOperands) {
       throw new Error(
-        `Synthesizer: ${name} expected ${composition.numOperands} operands, but got ${inPts.length}`,
+        `Synthesizer: ${name} expected ${composition.numOperands} operands, but got ${preparedInPts.length}`,
       )
     }
 
@@ -232,26 +268,20 @@ export class ArithmeticManager {
       for (const input of step.inputs) {
         switch (input.kind) {
           case 'selector': {
-            const selector = step.selector === 'dynamic'
-              ? undefined
-              : step.selector
-            if (typeof selector !== 'bigint') {
+            if (typeof step.selector !== 'bigint') {
               throw new Error(
-                `Synthesizer: ${name} step ${stepIndex} requires a dynamic selector`,
+                `Synthesizer: ${name} step ${stepIndex} requires a static selector`,
               )
             }
-            const selectorBitSize = step.selector === 'dynamic'
-              ? Math.max(32, this.poseidonBatchSize)
-              : 32
             finalInPts.push(this.parent.loadArbitraryStatic(
-              selector,
-              selectorBitSize,
+              step.selector,
+              32,
               `ALU selector for ${name} of ${step.subcircuit}`,
             ))
             break
           }
           case 'operand': {
-            const operand = inPts[input.index]
+            const operand = preparedInPts[input.index]
             if (operand === undefined) {
               throw new Error(
                 `Synthesizer: ${name} step ${stepIndex} operand ${input.index} is unavailable`,
@@ -338,74 +368,6 @@ export class ArithmeticManager {
     })
   }
 
-  public placeJubjubExp(inPts: DataPt[], PoI: DataPt[], reference?: bigint): DataPt[] {
-    const CHUNK_SIZE = this.parent.subcircuitLibrary.jubjubExpBatchSize
-    const NUM_CHUNKS = Math.ceil(DEFAULT_SOURCE_BIT_SIZE / CHUNK_SIZE)
-
-    if (inPts.length !== DEFAULT_SOURCE_BIT_SIZE + 2) {
-      throw new Error('Invalid input to placeJubjubExp')
-    }
-    const base: DataPt[] = inPts.slice(0, 2)
-    // Make sure that the input scalar bits are in LSB-first
-    const scalar_bits_LSB: DataPt[] = inPts.slice(2, )
-    if (reference !== undefined) {
-      const recoverValueFromLSBString = (string: DataPt[]): bigint => {
-        return string.map(pt => pt.value).reduce((acc, b, i) => acc | (b << BigInt(i)), 0n);
-      }
-      if (reference !== recoverValueFromLSBString(scalar_bits_LSB)) {
-        throw new Error('The reference value cannot be recovered from the bit string')
-      }
-    }
-
-    // const scalar_bits_chunk: DataPt[][] = Array.from({ length: NUM_CHUNKS }, (_, i) =>
-    //   scalar_bits_LSB.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE),
-    // )
-
-    const scalar_bits_chunk: DataPt[][] = Array.from({ length: NUM_CHUNKS }, (_, i) => {
-      const start = i * CHUNK_SIZE;
-      const end = (i + 1) * CHUNK_SIZE;
-      const chunk = scalar_bits_LSB.slice(start, end);
-      return chunk.length === CHUNK_SIZE
-        ? chunk
-        : chunk.concat(
-            Array.from({ length: CHUNK_SIZE - chunk.length },
-              () => this.parent.getReservedVariableFromBuffer('CIRCOM_CONST_ZERO'),
-            )
-          );
-    });
-
-    if (PoI.length !== 2) {
-      throw new Error('Invalid input to placeJubjubExp')
-    }
-    var P: DataPt[] = PoI.slice()
-    var G: DataPt[] = base.slice()
-    for (var i = 0; i < NUM_CHUNKS; i++) {
-      const prevP = P.slice()
-      const prevG = G.slice()
-      // LSB first
-      const chunkedInPts: DataPt[] = [...prevP, ...prevG, ...scalar_bits_chunk[i]]
-      const outPts: DataPt[] = this.parent.placeArithComposition(
-        'JubjubExpBatch',
-        chunkedInPts,
-      )
-      if (outPts.length !== 4) {
-        throw new Error('Something wrong with JubjubExpBatch')
-      }
-      P = [outPts[0], outPts[1]]
-      G = outPts.slice(2, )
-
-      // //TESTED
-      // const base_edwards = jubjub.Point.fromAffine({x: base[0].value, y: base[1].value})
-      // const exponent = scalar_bits_chunk.slice(i, ).flat().map(pt => pt.value).reduce((acc, b, i) => acc | (b << BigInt(i)), 0n);
-      // const P_plain = base_edwards.multiply(exponent % jubjub.Point.Fn.ORDER)
-      // const P_edwards = jubjub.Point.fromAffine({x: P[0].value, y: P[1].value})
-      // if (!P_plain.equals(P_edwards)) {
-      //   throw new Error('JubjubExp mismatch from the reference')
-      // }
-    }
-
-    return DataPtFactory.deepCopy(P)
-  }
 }
 
 const ARITHMETIC_MAPPING: Record<ArithmeticSubcircuit, (values: bigint[]) => bigint | bigint[]> = {

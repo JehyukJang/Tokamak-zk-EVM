@@ -462,10 +462,6 @@ export class Synthesizer implements SynthesizerInterface
   placeArithComposition(name: ArithmeticOperator, inPts: DataPt[]): DataPt[] {
     return this._arithmeticManager.placeArithComposition(name, inPts);
   }
-
-  placeJubjubExp(inPts: DataPt[], PoI: DataPt[], reference?: bigint): DataPt[] {
-    return this._arithmeticManager.placeJubjubExp(inPts, PoI, reference)
-  }
   placeMemoryToStack(dataAliasInfos: DataAliasInfos): DataPt {
     return this._memoryManager.placeMemoryToStack(dataAliasInfos);
   }

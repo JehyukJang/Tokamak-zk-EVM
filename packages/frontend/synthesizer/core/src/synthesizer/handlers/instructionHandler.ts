@@ -447,16 +447,14 @@ export class InstructionHandler {
       this.parent.getReservedVariableFromBuffer('JUBJUB_POI_Y')
     ]
 
-    const sG: DataPt[] = this.parent.placeJubjubExp(
-      [...jubjubBasePt, ...signBits],
-      jubjubPoIPt,
-      signaturePt.value
+    const sG: DataPt[] = this.parent.placeArithComposition(
+      'JubjubExp',
+      [...jubjubPoIPt, ...jubjubBasePt, ...signBits, signaturePt],
     )
 
-    const eA: DataPt[] = this.parent.placeJubjubExp(
-      [...publicKeyPt, ...challengeBits],
-      jubjubPoIPt,
-      poseidonOut.value
+    const eA: DataPt[] = this.parent.placeArithComposition(
+      'JubjubExp',
+      [...jubjubPoIPt, ...publicKeyPt, ...challengeBits, poseidonOut],
     )
 
     this.parent.placeArithComposition('EdDsaVerify', [...sG, ...randomizerPt, ...eA])
