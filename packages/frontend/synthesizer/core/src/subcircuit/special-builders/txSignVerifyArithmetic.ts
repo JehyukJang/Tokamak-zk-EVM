@@ -11,11 +11,6 @@ import {
   type OutputReference,
 } from '../arithmeticSubcircuitComposition.ts';
 
-export type JubjubExpArithmeticMappingConfig = Pick<
-  FrontendConfig,
-  'nJubjubExpBatch'
->;
-
 export type TransactionSignatureVerifyArithmeticMappingConfig = Pick<
   FrontendConfig,
   'nJubjubExpBatch' | 'nPoseidonBatch'
@@ -136,47 +131,6 @@ const createJubjubExpBatchSteps = (
   }
 
   return steps;
-};
-
-export const createJubjubExpArithmeticMapping = (
-  config: JubjubExpArithmeticMappingConfig,
-): ArithmeticSubcircuitMapping => {
-  assertPositiveInteger(config.nJubjubExpBatch, 'nJubjubExpBatch');
-
-  const numBatches = Math.ceil(NUM_SCALAR_BITS / config.nJubjubExpBatch);
-  const numPaddedScalarBits = numBatches * config.nJubjubExpBatch;
-  const constants: ConstantDefinition[] = numPaddedScalarBits > NUM_SCALAR_BITS
-    ? [{ value: 0n, sourceBitSize: 1 }]
-    : [];
-  const steps = createJubjubExpBatchSteps(
-    config.nJubjubExpBatch,
-    Array.from(
-      { length: 4 },
-      (_, index): InputReference => ({ kind: 'operand', index }),
-    ),
-    Array.from(
-      { length: NUM_SCALAR_BITS },
-      (_, index): InputReference => ({ kind: 'operand', index: 4 + index }),
-    ),
-    constants.length === 0 ? undefined : { kind: 'constant', index: 0 },
-    0,
-    [
-      { kind: 'result', index: 0 },
-      { kind: 'result', index: 1 },
-    ],
-  );
-
-  return Object.freeze({
-    operation: 'JubjubExp',
-    composition: freezeComposition({
-      placementStrategy: 'generic',
-      constants,
-      numSteps: steps.length,
-      numOperands: 4 + NUM_SCALAR_BITS,
-      numResults: 2,
-      steps,
-    }),
-  });
 };
 
 export const createTransactionSignatureVerifyArithmeticMapping = (

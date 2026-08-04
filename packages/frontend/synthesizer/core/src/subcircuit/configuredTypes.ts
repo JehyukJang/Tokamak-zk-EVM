@@ -32,10 +32,7 @@ export const ARITHMETIC_OPERATOR_LIST = [
   'Accumulator',
   'Poseidon',
   'TransactionSignatureVerify',
-  'JubjubExp',
   // 'PrepareEdDsaScalars',
-  'JubjubExpBatch',
-  'EdDsaVerify',
   'EqualBatch',
 ] as const
 

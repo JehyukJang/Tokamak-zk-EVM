@@ -9,7 +9,6 @@ import { createDivisionArithmeticMappings } from './special-builders/divModArith
 import { createExpArithmeticMapping } from './special-builders/expArithmetic.ts';
 import { createPoseidonArithmeticMapping } from './special-builders/poseidonArithmetic.ts';
 import {
-  createJubjubExpArithmeticMapping,
   createTransactionSignatureVerifyArithmeticMapping,
 } from './special-builders/txSignVerifyArithmetic.ts';
 
@@ -354,7 +353,7 @@ export const FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS: readonly ArithmeticSubcircui
 
 export type SelectorFreeArithmeticMappingConfig = Pick<
   FrontendConfig,
-  'nAccumulation' | 'nEqualBatch' | 'nJubjubExpBatch' | 'nSubExpBatch'
+  'nAccumulation' | 'nEqualBatch' | 'nSubExpBatch'
 >;
 
 export const assertPositiveInteger = (value: number, description: string): void => {
@@ -370,7 +369,6 @@ export const createSelectorFreeArithmeticMappings = (
 ): readonly ArithmeticSubcircuitMapping[] => {
   assertPositiveInteger(config.nAccumulation, 'nAccumulation');
   assertPositiveInteger(config.nEqualBatch, 'nEqualBatch');
-  assertPositiveInteger(config.nJubjubExpBatch, 'nJubjubExpBatch');
   assertPositiveInteger(config.nSubExpBatch, 'nSubExpBatch');
 
   return Object.freeze([
@@ -389,14 +387,6 @@ export const createSelectorFreeArithmeticMappings = (
       config.nAccumulation,
       1,
     ),
-    createSingleStepMapping(
-      'JubjubExpBatch',
-      'JubjubExpBatch',
-      null,
-      4 + config.nJubjubExpBatch,
-      4,
-    ),
-    createSingleStepMapping('EdDsaVerify', 'EdDsaVerify', null, 6, 0),
     createSingleStepMapping(
       'EqualBatch',
       'EqualBatch',
@@ -425,6 +415,5 @@ export const createArithmeticSubcircuitComposition = (
   ...createSelectorFreeArithmeticMappings(config),
   createExpArithmeticMapping(config),
   createTransactionSignatureVerifyArithmeticMapping(config),
-  createJubjubExpArithmeticMapping(config),
   createPoseidonArithmeticMapping(config),
 ]);

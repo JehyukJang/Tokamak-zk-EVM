@@ -40,9 +40,6 @@ describe('arithmetic subcircuit composition assembly', () => {
   it('uses the loaded structural constants in parameterized mappings', () => {
     expect(composition.get('Accumulator').numOperands).toBe(4);
     expect(composition.get('EqualBatch').numOperands).toBe(4);
-    expect(composition.get('JubjubExp').numOperands).toBe(260);
-    expect(composition.get('JubjubExp').numSteps).toBe(64);
-    expect(composition.get('JubjubExpBatch').numOperands).toBe(8);
     expect(composition.get('Poseidon').numOperands).toBe(7);
     expect(composition.get('SubExpBatch').numOperands).toBe(10);
     expect(composition.get('EXP').numSteps).toBe(33);
