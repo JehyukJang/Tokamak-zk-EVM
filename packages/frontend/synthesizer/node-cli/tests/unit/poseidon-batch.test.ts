@@ -56,13 +56,17 @@ describe('configurable Poseidon batching', () => {
     expect(() => createHarness(129)).toThrow('nPoseidonBatch must be an integer between 1 and 128');
   });
 
-  it('rejects execution until dynamic output generation is defined', () => {
+  it('places a normalized dynamic Poseidon step through the composition entry point', () => {
     const { manager, placements } = createHarness(4);
     const inputs = [dataPt(1n), dataPt(2n), dataPt(3n)];
 
-    expect(() => manager.placeArithComposition('Poseidon', inputs)).toThrow(
-      'Poseidon step 0 dynamic output generation is unavailable',
-    );
-    expect(placements).toHaveLength(0);
+    const [result] = manager.placeArithComposition('Poseidon', inputs);
+
+    expect(placements).toHaveLength(1);
+    expect(placements[0].name).toBe('Poseidon');
+    expect(placements[0].usage).toBe('Poseidon');
+    expect(placements[0].inPts).toHaveLength(6);
+    expect(placements[0].outPts).toHaveLength(1);
+    expect(result.value).toBe(placements[0].outPts[0].value);
   });
 });

@@ -8,8 +8,6 @@ export const ARITHMETIC_OPERATOR_LIST = [
   'SDIV',
   'MOD',
   'SMOD',
-  'ALU4A',
-  'ALU4B',
   'ADDMOD',
   'MULMOD',
   'EXP',
@@ -81,14 +79,7 @@ export const BUFFER_DESCRIPTION: Record<ReservedBuffer, string> = {
 
 export type ReservedBuffer = (typeof BUFFER_LIST)[number]
 
-export const SUBCIRCUIT_LIST = [
-    'bufferLogOut',
-    'bufferStorageStore',
-    'bufferStorageLoad',
-    'bufferTxIn',
-    'bufferBlockIn',
-    'bufferEVMIn',
-    'bufferPrvIn',
+export const ARITHMETIC_SUBCIRCUIT_LIST = [
     'ALU1',
     'ALU2',
     'ALU3',
@@ -112,6 +103,19 @@ export const SUBCIRCUIT_LIST = [
     'JubjubExpBatch',
     'EdDsaVerify',
     'EqualBatch',
+] as const
+
+export type ArithmeticSubcircuit = (typeof ARITHMETIC_SUBCIRCUIT_LIST)[number]
+
+export const SUBCIRCUIT_LIST = [
+    'bufferLogOut',
+    'bufferStorageStore',
+    'bufferStorageLoad',
+    'bufferTxIn',
+    'bufferBlockIn',
+    'bufferEVMIn',
+    'bufferPrvIn',
+    ...ARITHMETIC_SUBCIRCUIT_LIST,
 ] as const
 
 export type SubcircuitNames = typeof SUBCIRCUIT_LIST[number]

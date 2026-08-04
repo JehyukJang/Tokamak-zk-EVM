@@ -4,8 +4,8 @@ import { DataPtFactory } from '../dataStructure/index.ts';
 import { DEFAULT_SOURCE_BIT_SIZE } from '../../synthesizer/params/constants.ts';
 import {
   ARITHMETIC_OPERATOR_LIST,
-  ArithmeticOperator,
-  SubcircuitNames,
+  type ArithmeticSubcircuit,
+  type ArithmeticOperator,
 } from '../../subcircuit/configuredTypes.ts';
 import type { ArithmeticOperationComposition } from '../../subcircuit/arithmeticSubcircuitComposition.ts';
 import { ArithmeticOperations } from '../dataStructure/arithmeticOperations.ts';
@@ -90,12 +90,21 @@ export class ArithmeticManager {
   }
 
   private _placeSingleArithSubcircuit(
-    operation: ArithmeticOperator,
-    subcircuit: SubcircuitNames,
+    subcircuit: ArithmeticSubcircuit,
     finalInPts: DataPt[],
     arithmeticInPts: DataPt[],
-    usage: string,
+    usage: ArithmeticOperator | ArithmeticSubcircuit,
   ): DataPt[] {
+    if (subcircuit === 'ALU4A' || subcircuit === 'ALU4B') {
+      throw new Error(
+        `Synthesizer: ${subcircuit} output generation is not implemented`,
+      )
+    }
+    const operation = ARITHMETIC_OPERATOR_LIST.includes(
+      subcircuit as ArithmeticOperator,
+    )
+      ? subcircuit as ArithmeticOperator
+      : usage as ArithmeticOperator
     const outPts = this._createArithmeticOutput(operation, arithmeticInPts)
     this.parent.place(subcircuit, finalInPts, outPts, usage)
     return outPts
@@ -118,7 +127,6 @@ export class ArithmeticManager {
         `ALU selector for Poseidon of ${step.subcircuit}`,
       )
       const outPts = this._placeSingleArithSubcircuit(
-        'Poseidon',
         step.subcircuit,
         [selectorPt, ...normalized.inPts],
         normalized.inPts,
@@ -249,13 +257,7 @@ export class ArithmeticManager {
         outPts = []
         this.parent.place(step.subcircuit, finalInPts, outPts, step.usage)
       } else {
-        const outputOperation = ARITHMETIC_OPERATOR_LIST.includes(
-          step.subcircuit as ArithmeticOperator,
-        )
-          ? step.subcircuit as ArithmeticOperator
-          : step.usage as ArithmeticOperator
         outPts = this._placeSingleArithSubcircuit(
-          outputOperation,
           step.subcircuit,
           finalInPts,
           arithmeticInPts,
@@ -400,12 +402,6 @@ const ARITHMETIC_MAPPING: Record<ArithmeticOperator, (...args: any) => any> = {
   SDIV: ArithmeticOperations.sdiv,
   MOD: ArithmeticOperations.mod,
   SMOD: ArithmeticOperations.smod,
-  ALU4A: () => {
-    throw new Error('Synthesizer: ALU4A output generation is not implemented')
-  },
-  ALU4B: () => {
-    throw new Error('Synthesizer: ALU4B output generation is not implemented')
-  },
   ADDMOD: ArithmeticOperations.addmod,
   MULMOD: ArithmeticOperations.mulmod,
   EXP: ArithmeticOperations.subExpBatch, //not directly used

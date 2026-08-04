@@ -1,7 +1,7 @@
 import {
   ARITHMETIC_OPERATOR_LIST,
+  type ArithmeticSubcircuit,
   type ArithmeticOperator,
-  type SubcircuitNames,
 } from './configuredTypes.ts';
 import type { FrontendConfig } from './libraryTypes.ts';
 
@@ -19,8 +19,8 @@ export type OutputReference =
   | Readonly<{ kind: 'discard' }>;
 
 export type CompositionStep = Readonly<{
-  subcircuit: SubcircuitNames;
-  usage: ArithmeticOperator | SubcircuitNames;
+  subcircuit: ArithmeticSubcircuit;
+  usage: ArithmeticOperator | ArithmeticSubcircuit;
   selector: SelectorDefinition;
   inputs: readonly InputReference[];
   outputs: readonly OutputReference[];
@@ -257,7 +257,7 @@ export class ArithmeticSubcircuitComposition {
 
 const createSingleStepMapping = (
   operation: ArithmeticOperator,
-  subcircuit: SubcircuitNames,
+  subcircuit: ArithmeticSubcircuit,
   selector: SelectorDefinition,
   numOperands: number,
   numResults: number,
