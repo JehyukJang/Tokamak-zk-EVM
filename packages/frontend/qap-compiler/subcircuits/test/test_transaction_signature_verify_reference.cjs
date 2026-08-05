@@ -232,6 +232,22 @@ const main = async () => {
   boundaries[CHALLENGE_INPUT_COUNT - 1] = FIELD_PRIME - 1n;
   await assertReference(circuit, boundaries, "private-message boundaries");
 
+  const privateWordIndices = [
+    4,
+    ...Array.from(
+      { length: PRIVATE_INPUT_COUNT },
+      (_, index) => index + 7,
+    ),
+  ];
+  for (const wordIndex of privateWordIndices) {
+    await assertRejectedWord(
+      circuit,
+      wordIndex,
+      ordinary[wordIndex] + FIELD_PRIME,
+      `private message word ${wordIndex} must reject its x + Fr alias`,
+    );
+  }
+
   for (const value of [FIELD_PRIME, FIELD_PRIME + 1n, (1n << 255n) - 1n]) {
     await assertRejectedWord(
       circuit,
