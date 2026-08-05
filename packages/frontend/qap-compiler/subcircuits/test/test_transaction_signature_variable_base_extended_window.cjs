@@ -55,6 +55,8 @@ const main = async () => {
     SCALAR_ORDER,
     SCALAR_ORDER + 1n,
     1n << 254n,
+    8n * SCALAR_ORDER - 1n,
+    8n * SCALAR_ORDER,
     FIELD_PRIME - 1n,
   ];
 
