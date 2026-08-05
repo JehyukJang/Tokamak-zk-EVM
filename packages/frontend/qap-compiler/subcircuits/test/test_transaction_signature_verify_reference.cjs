@@ -61,12 +61,21 @@ const calculateReferenceWitness = (
   values,
   signature = DEFAULT_SIGNATURE,
   generator = jubjub.Point.BASE,
+  identity = jubjub.Point.ZERO,
 ) => {
   return circuit.calculateWitness({
     in: encode(values),
     S: split(signature),
     G: encodePoint(generator),
+    O: encodePoint(identity),
   }, true);
+};
+
+const multiplySubgroupPoint = (point, scalar) => {
+  const reducedScalar = scalar % SCALAR_ORDER;
+  return reducedScalar === 0n
+    ? jubjub.Point.ZERO
+    : point.multiply(reducedScalar);
 };
 
 const powMod = (base, exponent) => {
@@ -100,6 +109,17 @@ const assertReference = async (
     y: values[3],
   }).multiply(8n).toAffine();
   const expectedG8 = generator.multiply(8n).toAffine();
+  const expectedSG8 = multiplySubgroupPoint(
+    generator.multiply(8n),
+    signature,
+  ).toAffine();
+  const expectedHA8 = multiplySubgroupPoint(
+    jubjub.Point.fromAffine({
+      x: values[2],
+      y: values[3],
+    }).multiply(8n),
+    expected,
+  ).toAffine();
   const witness = await calculateReferenceWitness(
     circuit,
     values,
@@ -113,6 +133,8 @@ const assertReference = async (
     A8: [expectedA8.x, expectedA8.y],
     G8: [expectedG8.x, expectedG8.y],
     R8: [expectedR8.x, expectedR8.y],
+    sG8: [expectedSG8.x, expectedSG8.y],
+    hA8: [expectedHA8.x, expectedHA8.y],
   });
   assert.equal(normalize(witness[1]), expected & LIMB_MASK, `${label} low limb`);
   assert.equal(normalize(witness[2]), expected >> 128n, `${label} high limb`);
@@ -126,6 +148,7 @@ const assertRejectedWord = async (circuit, wordIndex, value, label) => {
       in: encoded,
       S: split(DEFAULT_SIGNATURE),
       G: encodePoint(jubjub.Point.BASE),
+      O: encodePoint(jubjub.Point.ZERO),
     }, true),
     undefined,
     label,
@@ -218,6 +241,7 @@ const main = async () => {
       in: invalidLowLimb,
       S: split(DEFAULT_SIGNATURE),
       G: encodePoint(jubjub.Point.BASE),
+      O: encodePoint(jubjub.Point.ZERO),
     }, true),
     undefined,
     "a 129-bit private low limb must be rejected",
@@ -230,6 +254,7 @@ const main = async () => {
       in: invalidHighLimb,
       S: split(DEFAULT_SIGNATURE),
       G: encodePoint(jubjub.Point.BASE),
+      O: encodePoint(jubjub.Point.ZERO),
     }, true),
     undefined,
     "a 128-bit private high limb must be rejected",
@@ -304,6 +329,7 @@ const main = async () => {
     in: encode(ordinary),
     S: [LIMB_BASE, 0n],
     G: encodePoint(jubjub.Point.BASE),
+    O: encodePoint(jubjub.Point.ZERO),
   }, true);
   await circuit.assertOut(nonCanonicalPublicLowLimb, {
     sBits: toBits(LIMB_BASE).slice(0, 252),
@@ -330,6 +356,8 @@ const main = async () => {
   for (const [outputName, label] of [
     ["G8", "generator cofactor output"],
     ["R8", "randomizer cofactor output"],
+    ["sG8", "response scalar output"],
+    ["hA8", "challenge scalar output"],
   ]) {
     const outputIndex = circuit.symbols[`main.${outputName}[0]`]?.varIdx;
     assert.notEqual(outputIndex, undefined, `${label} must exist in the witness`);
@@ -352,6 +380,14 @@ const main = async () => {
     [
       "main.cofactorPoints.randomizerCofactor.point4[0]",
       "randomizer cofactor intermediate",
+    ],
+    [
+      "main.responseScalar.accumulators[127][0]",
+      "response scalar accumulator",
+    ],
+    [
+      "main.challengeScalar.accumulators[128][0]",
+      "challenge scalar accumulator",
     ],
   ]) {
     const signalIndex = circuit.symbols[signalName]?.varIdx;

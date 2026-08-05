@@ -182,24 +182,27 @@ template JubjubScalarMulFromConstrainedBits_unsafe(N) {
 //
 // R.x, R.y, A.x, A.y, nonce, contract, selector, input[0..N-1].
 //
-// S and G are declared separately so the diagnostic main can preserve their
+// S, G, and O are declared separately so the diagnostic main can preserve their
 // public boundary while all N + 7 challenge inputs remain private. They are
-// logical operands N + 7 through N + 9 in the final ordered interface. The
-// final reference will also consume O and expose only origin. This stage exposes
-// challenge bits, S bits, A8, G8, and R8 solely so their exact construction can
-// be tested before their scalar-multiplication consumers are added.
+// logical operands N + 7 through N + 11 in the final ordered interface. The
+// final reference will expose only origin. This stage exposes its intermediate
+// values solely so their exact construction can be tested before the terminal
+// equation and origin derivation are added.
 template TransactionSignatureVerifyReferenceStage(N) {
     assert(N > 0);
 
     signal input in[N + 7][2];
     signal input S[2];
     signal input G[2][2];
+    signal input O[2][2];
     signal output challenge[2];
     signal output challengeBits[255];
     signal output sBits[252];
     signal output A8[2];
     signal output G8[2];
     signal output R8[2];
+    signal output sG8[2];
+    signal output hA8[2];
 
     var LIMB_BASE = 1 << 128;
 
@@ -270,4 +273,21 @@ template TransactionSignatureVerifyReferenceStage(N) {
     component signatureDecomposition = Num2Bits(252);
     signatureDecomposition.in <== S[0] + S[1] * LIMB_BASE;
     sBits <== signatureDecomposition.out;
+
+    signal nativeO[2];
+    for (var coordinate = 0; coordinate < 2; coordinate++) {
+        nativeO[coordinate] <== O[coordinate][0] + O[coordinate][1] * LIMB_BASE;
+    }
+
+    component responseScalar = JubjubScalarMulFromConstrainedBits_unsafe(252);
+    responseScalar.identity <== nativeO;
+    responseScalar.base <== cofactorPoints.G8;
+    responseScalar.bits <== signatureDecomposition.out;
+    sG8 <== responseScalar.result;
+
+    component challengeScalar = JubjubScalarMulFromConstrainedBits_unsafe(255);
+    challengeScalar.identity <== nativeO;
+    challengeScalar.base <== pointValidation.A8;
+    challengeScalar.bits <== canonicalChallenge.bits;
+    hA8 <== challengeScalar.result;
 }
