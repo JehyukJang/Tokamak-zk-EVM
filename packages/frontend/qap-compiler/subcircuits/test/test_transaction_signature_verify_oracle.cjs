@@ -13,6 +13,15 @@ const {
   getChallengeInputs,
 } = require("./transaction_signature_verify_oracle.cjs");
 
+const LIMB_BASE = 1n << 128n;
+
+const clonePublicBoundary = ({ contractAddress, functionSelector, S, O }) => ({
+  contractAddress: [...contractAddress],
+  functionSelector: [...functionSelector],
+  S: [...S],
+  O: O.map((word) => [...word]),
+});
+
 const main = () => {
   const corpus = createTransactionSignatureCorpus();
   const ids = new Set();
@@ -31,6 +40,10 @@ const main = () => {
     POLICY.functionSelectorRange,
     "delegated-public-0<=selector<2^32",
   );
+  assert.equal(
+    POLICY.identityEncoding,
+    "delegated-public-O=[[0,0],[1,0]]",
+  );
 
   for (const vector of corpus) {
     assert.equal(ids.has(vector.id), false, `duplicate corpus id ${vector.id}`);
@@ -44,6 +57,16 @@ const main = () => {
       getChallengeInputs(vector).length,
       CHALLENGE_INPUT_COUNT,
       `${vector.id} challenge length`,
+    );
+    assert.deepEqual(
+      [
+        vector.publicBoundary.contractAddress,
+        vector.publicBoundary.functionSelector,
+        vector.publicBoundary.S,
+        ...vector.publicBoundary.O,
+      ].map((word) => word.length),
+      [2, 2, 2, 2, 2],
+      `${vector.id} raw public boundary shape`,
     );
 
     const actual = evaluateCompleteStatement(vector);
@@ -121,6 +144,47 @@ const main = () => {
     evaluateCompleteStatement(oversizedSelector).delegatedPublic.reason,
     "function-selector-range",
   );
+
+  const nonCanonicalSignature = corpus.find(
+    ({ id }) => id === "delegate-noncanonical-signature-limb-rejection",
+  );
+  assert.equal(evaluateCompleteStatement(nonCanonicalSignature).circuit.accepted, true);
+  assert.equal(
+    evaluateCompleteStatement(nonCanonicalSignature).delegatedPublic.reason,
+    "public-limb-range",
+  );
+
+  const aliasedIdentity = corpus.find(
+    ({ id }) => id === "delegate-aliased-identity-encoding-rejection",
+  );
+  assert.equal(evaluateCompleteStatement(aliasedIdentity).circuit.accepted, true);
+  assert.equal(
+    evaluateCompleteStatement(aliasedIdentity).delegatedPublic.reason,
+    "identity-binding",
+  );
+
+  const valid = corpus.find(({ id }) => id === "valid-deterministic-subgroup");
+  const publicWordPaths = [
+    ["contractAddress"],
+    ["functionSelector"],
+    ["S"],
+    ["O", 0],
+    ["O", 1],
+  ];
+  for (const path of publicWordPaths) {
+    for (let limbIndex = 0; limbIndex < 2; limbIndex++) {
+      const publicBoundary = clonePublicBoundary(valid.publicBoundary);
+      const word = path.length === 1
+        ? publicBoundary[path[0]]
+        : publicBoundary[path[0]][path[1]];
+      word[limbIndex] = LIMB_BASE;
+      assert.equal(
+        evaluateCompleteStatement({ ...valid, publicBoundary }).delegatedPublic.reason,
+        "public-limb-range",
+        `${path.join(".")} limb ${limbIndex} range`,
+      );
+    }
+  }
 
   const zeroSignature = corpus.find(
     ({ id }) => id === "reject-zero-signature",

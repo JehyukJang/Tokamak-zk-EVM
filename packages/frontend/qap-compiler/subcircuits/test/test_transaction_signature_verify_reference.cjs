@@ -87,11 +87,17 @@ const calculateReferenceWitness = (
   values,
   signature = signatureFor(values),
   identity = jubjub.Point.ZERO,
+  publicBoundary,
 ) => {
+  const boundaryInputs = toBoundaryInputs(encode(values));
   return circuit.calculateWitness({
-    ...toBoundaryInputs(encode(values)),
-    S: split(signature),
-    O: encodePoint(identity),
+    ...boundaryInputs,
+    contractAddress: publicBoundary?.contractAddress
+      ?? boundaryInputs.contractAddress,
+    functionSelector: publicBoundary?.functionSelector
+      ?? boundaryInputs.functionSelector,
+    S: publicBoundary?.S ?? split(signature),
+    O: publicBoundary?.O ?? encodePoint(identity),
   }, true);
 };
 
@@ -114,6 +120,7 @@ const assertReference = async (
   values,
   label,
   signature = signatureFor(values),
+  publicBoundary,
 ) => {
   const expectedPublicKeyHash = poseidon2([values[2], values[3]]);
   const expectedOrigin = [
@@ -124,6 +131,8 @@ const assertReference = async (
     circuit,
     values,
     signature,
+    jubjub.Point.ZERO,
+    publicBoundary,
   );
   await circuit.assertOut(witness, {
     origin: expectedOrigin,
@@ -161,7 +170,13 @@ const assertPolicyCorpus = async (circuit) => {
         `${vector.id} must remain a circuit-owned rejection`,
       );
       await assert.rejects(
-        calculateReferenceWitness(circuit, values, vector.signature),
+        calculateReferenceWitness(
+          circuit,
+          values,
+          vector.signature,
+          jubjub.Point.ZERO,
+          vector.publicBoundary,
+        ),
         undefined,
         `${vector.id} must be rejected by the circuit`,
       );
@@ -169,7 +184,13 @@ const assertPolicyCorpus = async (circuit) => {
     }
 
     assert.equal(oracle.circuit.accepted, true, `${vector.id} oracle`);
-    await assertReference(circuit, values, vector.id, vector.signature);
+    await assertReference(
+      circuit,
+      values,
+      vector.id,
+      vector.signature,
+      vector.publicBoundary,
+    );
 
     if (vector.disposition === DISPOSITIONS.DELEGATED_PUBLIC_REJECTION) {
       assert.equal(oracle.delegatedPublic.accepted, false, `${vector.id} boundary`);

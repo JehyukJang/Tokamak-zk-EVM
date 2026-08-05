@@ -12,6 +12,8 @@ const CHALLENGE_INPUT_COUNT = FUNCTION_INPUT_LENGTH + 7;
 const ORIGIN_MASK = (1n << 160n) - 1n;
 const CONTRACT_ADDRESS_LIMIT = 1n << 160n;
 const FUNCTION_SELECTOR_LIMIT = 1n << 32n;
+const LIMB_BASE = 1n << 128n;
+const LIMB_MASK = LIMB_BASE - 1n;
 
 const DISPOSITIONS = Object.freeze({
   VALID_COMPLETE_STATEMENT: "valid-complete-statement",
@@ -27,7 +29,43 @@ const POLICY = Object.freeze({
   responseScalarRange: "delegated-public-0<=S<n",
   contractAddressRange: "delegated-public-0<=contract<2^160",
   functionSelectorRange: "delegated-public-0<=selector<2^32",
+  identityEncoding: "delegated-public-O=[[0,0],[1,0]]",
 });
+
+const splitWord = (value) => [value & LIMB_MASK, value >> 128n];
+
+const mergeWord = ([low, high]) => low + high * LIMB_BASE;
+
+const freezeWord = (word) => Object.freeze([...word]);
+
+const freezePublicBoundary = (publicBoundary) => Object.freeze({
+  contractAddress: freezeWord(publicBoundary.contractAddress),
+  functionSelector: freezeWord(publicBoundary.functionSelector),
+  S: freezeWord(publicBoundary.S),
+  O: Object.freeze(publicBoundary.O.map(freezeWord)),
+});
+
+const createPublicBoundary = ({ messageWords, signature }) => (
+  freezePublicBoundary({
+    contractAddress: splitWord(messageWords[1]),
+    functionSelector: splitWord(messageWords[2]),
+    S: splitWord(signature),
+    O: [[0n, 0n], [1n, 0n]],
+  })
+);
+
+const getPublicWords = ({ contractAddress, functionSelector, S, O }) => [
+  contractAddress,
+  functionSelector,
+  S,
+  O[0],
+  O[1],
+];
+
+const normalizeField = (value) => {
+  const normalized = value % FIELD_PRIME;
+  return normalized < 0n ? normalized + FIELD_PRIME : normalized;
+};
 
 const poseidonChainCompress = (values) => {
   if (values.length < 2) {
@@ -111,7 +149,26 @@ const validatePrivateMessageWords = (messageWords) => {
 };
 
 const evaluateCircuitStatement = (statement) => {
-  const { publicKey, randomizer, messageWords, signature } = statement;
+  const {
+    publicBoundary,
+    publicKey,
+    randomizer,
+    messageWords,
+    signature,
+  } = statement;
+
+  if (
+    normalizeField(mergeWord(publicBoundary.contractAddress))
+      !== normalizeField(messageWords[1])
+    || normalizeField(mergeWord(publicBoundary.functionSelector))
+      !== normalizeField(messageWords[2])
+    || normalizeField(mergeWord(publicBoundary.S))
+      !== normalizeField(signature)
+    || normalizeField(mergeWord(publicBoundary.O[0])) !== 0n
+    || normalizeField(mergeWord(publicBoundary.O[1])) !== 1n
+  ) {
+    return Object.freeze({ accepted: false, reason: "public-boundary-field-binding" });
+  }
 
   if (!validatePrivateMessageWords(messageWords)) {
     return Object.freeze({ accepted: false, reason: "private-message-canonicality" });
@@ -148,7 +205,33 @@ const evaluateCircuitStatement = (statement) => {
   });
 };
 
-const evaluateDelegatedPublicBoundary = ({ messageWords, signature }) => {
+const evaluateDelegatedPublicBoundary = ({
+  messageWords,
+  publicBoundary,
+  signature,
+}) => {
+  if (getPublicWords(publicBoundary).some(
+    (word) => word.some((limb) => limb < 0n || limb >= LIMB_BASE),
+  )) {
+    return Object.freeze({ accepted: false, reason: "public-limb-range" });
+  }
+  if (mergeWord(publicBoundary.S) !== signature) {
+    return Object.freeze({ accepted: false, reason: "response-scalar-binding" });
+  }
+  if (mergeWord(publicBoundary.contractAddress) !== messageWords[1]) {
+    return Object.freeze({ accepted: false, reason: "contract-address-binding" });
+  }
+  if (mergeWord(publicBoundary.functionSelector) !== messageWords[2]) {
+    return Object.freeze({ accepted: false, reason: "function-selector-binding" });
+  }
+  if (
+    publicBoundary.O[0][0] !== 0n
+    || publicBoundary.O[0][1] !== 0n
+    || publicBoundary.O[1][0] !== 1n
+    || publicBoundary.O[1][1] !== 0n
+  ) {
+    return Object.freeze({ accepted: false, reason: "identity-binding" });
+  }
   if (signature < 0n || signature >= SCALAR_ORDER) {
     return Object.freeze({ accepted: false, reason: "response-scalar-range" });
   }
@@ -200,18 +283,25 @@ const makeVector = ({
   publicKey,
   randomizer,
   messageWords,
+  publicBoundary,
   signature,
   source,
-}) => Object.freeze({
-  id,
-  disposition,
-  expected: expectedFor(disposition),
-  publicKey,
-  randomizer,
-  messageWords: Object.freeze([...messageWords]),
-  signature,
-  source,
-});
+}) => {
+  const frozenMessageWords = Object.freeze([...messageWords]);
+  return Object.freeze({
+    id,
+    disposition,
+    expected: expectedFor(disposition),
+    publicKey,
+    randomizer,
+    messageWords: frozenMessageWords,
+    publicBoundary: publicBoundary === undefined
+      ? createPublicBoundary({ messageWords: frozenMessageWords, signature })
+      : freezePublicBoundary(publicBoundary),
+    signature,
+    source,
+  });
+};
 
 const createTransactionSignatureCorpus = () => {
   const publicKey = jubjub.Point.BASE.multiply(PRIVATE_KEY);
@@ -271,6 +361,21 @@ const createTransactionSignatureCorpus = () => {
   oversizedContractWords[1] = CONTRACT_ADDRESS_LIMIT;
   const oversizedSelectorWords = [...messageWords];
   oversizedSelectorWords[2] = FUNCTION_SELECTOR_LIMIT;
+  const canonicalPublicBoundary = createPublicBoundary(base);
+  if (canonicalPublicBoundary.S[1] === 0n) {
+    throw new Error("Raw public-limb corpus requires a nonzero S high limb");
+  }
+  const nonCanonicalSignatureBoundary = {
+    ...canonicalPublicBoundary,
+    S: [
+      canonicalPublicBoundary.S[0] + LIMB_BASE,
+      canonicalPublicBoundary.S[1] - 1n,
+    ],
+  };
+  const aliasedIdentityBoundary = {
+    ...canonicalPublicBoundary,
+    O: [splitWord(FIELD_PRIME), canonicalPublicBoundary.O[1]],
+  };
 
   return Object.freeze([
     vector(
@@ -361,6 +466,16 @@ const createTransactionSignatureCorpus = () => {
           messageWords: oversizedSelectorWords,
         }),
       },
+    ),
+    vector(
+      "delegate-noncanonical-signature-limb-rejection",
+      DISPOSITIONS.DELEGATED_PUBLIC_REJECTION,
+      { publicBoundary: nonCanonicalSignatureBoundary },
+    ),
+    vector(
+      "delegate-aliased-identity-encoding-rejection",
+      DISPOSITIONS.DELEGATED_PUBLIC_REJECTION,
+      { publicBoundary: aliasedIdentityBoundary },
     ),
   ]);
 };
