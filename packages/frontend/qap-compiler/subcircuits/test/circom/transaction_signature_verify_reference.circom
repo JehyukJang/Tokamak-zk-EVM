@@ -81,6 +81,17 @@ template RejectJubjubIdentityFromValidatedY_unsafe() {
     (y - 1) * inverse === 1;
 }
 
+// Multiplies an already-valid Jubjub point by the curve cofactor. Completeness
+// of jubjubAdd guarantees that all three doublings have nonzero denominators.
+template JubjubMulByCofactor8FromValidPoint_unsafe() {
+    signal input point[2];
+    signal output point8[2];
+
+    signal point2[2] <== jubjubAdd()(point, point);
+    signal point4[2] <== jubjubAdd()(point2, point2);
+    point8 <== jubjubAdd()(point4, point4);
+}
+
 // The affine addition formula used by jubjubAdd is complete for this curve:
 // a = -1 is a square and d = -(10240/10241) is a nonsquare in BLS12-381 Fr.
 // Consequently, all three doublings have nonzero denominators for an on-curve
@@ -96,15 +107,33 @@ template TransactionSignaturePointValidationReference() {
     component checkR = jubjubCheck();
     checkR.in <== R;
 
-    signal A2[2] <== jubjubAdd()(A, A);
-    signal A4[2] <== jubjubAdd()(A2, A2);
-    A8 <== jubjubAdd()(A4, A4);
+    component publicKeyCofactor = JubjubMulByCofactor8FromValidPoint_unsafe();
+    publicKeyCofactor.point <== A;
+    A8 <== publicKeyCofactor.point8;
 
     component rejectA8Identity = RejectJubjubIdentityFromValidatedY_unsafe();
     rejectA8Identity.y <== A8[1];
 
     component rejectRIdentity = RejectJubjubIdentityFromValidatedY_unsafe();
     rejectRIdentity.y <== R[1];
+}
+
+// Computes the two remaining cofactor points used by the final verification
+// equation. R is validated inside this reference circuit. G is an approved
+// public constant whose exact value and curve validity are owned by Solidity.
+template TransactionSignatureCofactorPointsReference() {
+    signal input G[2];
+    signal input R[2];
+    signal output G8[2];
+    signal output R8[2];
+
+    component generatorCofactor = JubjubMulByCofactor8FromValidPoint_unsafe();
+    generatorCofactor.point <== G;
+    G8 <== generatorCofactor.point8;
+
+    component randomizerCofactor = JubjubMulByCofactor8FromValidPoint_unsafe();
+    randomizerCofactor.point <== R;
+    R8 <== randomizerCofactor.point8;
 }
 
 // Binary LSB-first scalar multiplication for an already validated Jubjub base,
@@ -153,21 +182,24 @@ template JubjubScalarMulFromConstrainedBits_unsafe(N) {
 //
 // R.x, R.y, A.x, A.y, nonce, contract, selector, input[0..N-1].
 //
-// S is declared separately so the diagnostic main can preserve its public
-// boundary while all N + 7 challenge inputs remain private. It is logical
-// operand N + 7 in the final ordered interface. The final reference will also
-// consume G and O and expose only origin. This stage exposes challenge bits,
-// S bits, and A8 solely so their exact construction can be tested before their
-// scalar-multiplication consumers are added.
+// S and G are declared separately so the diagnostic main can preserve their
+// public boundary while all N + 7 challenge inputs remain private. They are
+// logical operands N + 7 through N + 9 in the final ordered interface. The
+// final reference will also consume O and expose only origin. This stage exposes
+// challenge bits, S bits, A8, G8, and R8 solely so their exact construction can
+// be tested before their scalar-multiplication consumers are added.
 template TransactionSignatureVerifyReferenceStage(N) {
     assert(N > 0);
 
     signal input in[N + 7][2];
     signal input S[2];
+    signal input G[2][2];
     signal output challenge[2];
     signal output challengeBits[255];
     signal output sBits[252];
     signal output A8[2];
+    signal output G8[2];
+    signal output R8[2];
 
     var LIMB_BASE = 1 << 128;
 
@@ -194,6 +226,17 @@ template TransactionSignatureVerifyReferenceStage(N) {
     pointValidation.R <== [challengeInputs[0], challengeInputs[1]];
     pointValidation.A <== [challengeInputs[2], challengeInputs[3]];
     A8 <== pointValidation.A8;
+
+    signal nativeG[2];
+    for (var coordinate = 0; coordinate < 2; coordinate++) {
+        nativeG[coordinate] <== G[coordinate][0] + G[coordinate][1] * LIMB_BASE;
+    }
+
+    component cofactorPoints = TransactionSignatureCofactorPointsReference();
+    cofactorPoints.G <== nativeG;
+    cofactorPoints.R <== [challengeInputs[0], challengeInputs[1]];
+    G8 <== cofactorPoints.G8;
+    R8 <== cofactorPoints.R8;
 
     component hashes[N + 6];
     hashes[0] = Poseidon255(2);

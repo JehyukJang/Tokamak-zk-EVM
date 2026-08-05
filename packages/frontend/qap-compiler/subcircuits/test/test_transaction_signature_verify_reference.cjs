@@ -51,10 +51,21 @@ const toBits = (value) => Array.from(
 
 const normalize = (value) => BigInt(value.toString());
 
-const calculateReferenceWitness = (circuit, values, signature = DEFAULT_SIGNATURE) => {
+const encodePoint = (point) => {
+  const affine = point.toAffine();
+  return [split(affine.x), split(affine.y)];
+};
+
+const calculateReferenceWitness = (
+  circuit,
+  values,
+  signature = DEFAULT_SIGNATURE,
+  generator = jubjub.Point.BASE,
+) => {
   return circuit.calculateWitness({
     in: encode(values),
     S: split(signature),
+    G: encodePoint(generator),
   }, true);
 };
 
@@ -72,23 +83,36 @@ const powMod = (base, exponent) => {
   return result;
 };
 
-const assertChallenge = async (
+const assertReference = async (
   circuit,
   values,
   label,
   signature = DEFAULT_SIGNATURE,
+  generator = jubjub.Point.BASE,
 ) => {
   const expected = poseidonChainCompress(values);
+  const expectedR8 = jubjub.Point.fromAffine({
+    x: values[0],
+    y: values[1],
+  }).multiply(8n).toAffine();
   const expectedA8 = jubjub.Point.fromAffine({
     x: values[2],
     y: values[3],
   }).multiply(8n).toAffine();
-  const witness = await calculateReferenceWitness(circuit, values, signature);
+  const expectedG8 = generator.multiply(8n).toAffine();
+  const witness = await calculateReferenceWitness(
+    circuit,
+    values,
+    signature,
+    generator,
+  );
   await circuit.assertOut(witness, {
     challenge: split(expected),
     challengeBits: toBits(expected),
     sBits: toBits(signature).slice(0, 252),
     A8: [expectedA8.x, expectedA8.y],
+    G8: [expectedG8.x, expectedG8.y],
+    R8: [expectedR8.x, expectedR8.y],
   });
   assert.equal(normalize(witness[1]), expected & LIMB_MASK, `${label} low limb`);
   assert.equal(normalize(witness[2]), expected >> 128n, `${label} high limb`);
@@ -98,7 +122,11 @@ const assertRejectedWord = async (circuit, wordIndex, value, label) => {
   const encoded = encode(makeValues());
   encoded[wordIndex] = split(value);
   await assert.rejects(
-    circuit.calculateWitness({ in: encoded, S: split(DEFAULT_SIGNATURE) }, true),
+    circuit.calculateWitness({
+      in: encoded,
+      S: split(DEFAULT_SIGNATURE),
+      G: encodePoint(jubjub.Point.BASE),
+    }, true),
     undefined,
     label,
   );
@@ -142,7 +170,7 @@ const main = async () => {
   );
 
   const ordinary = makeValues();
-  await assertChallenge(circuit, ordinary, "ordinary challenge");
+  await assertReference(circuit, ordinary, "ordinary challenge");
 
   const ordinaryWitness = await calculateReferenceWitness(circuit, ordinary);
   await circuit.loadSymbols();
@@ -160,7 +188,7 @@ const main = async () => {
   boundaries[4] = FIELD_PRIME - 1n;
   boundaries[7] = 0n;
   boundaries[CHALLENGE_INPUT_COUNT - 1] = FIELD_PRIME - 1n;
-  await assertChallenge(circuit, boundaries, "private-message boundaries");
+  await assertReference(circuit, boundaries, "private-message boundaries");
 
   for (const value of [FIELD_PRIME, FIELD_PRIME + 1n, (1n << 255n) - 1n]) {
     await assertRejectedWord(
@@ -189,6 +217,7 @@ const main = async () => {
     circuit.calculateWitness({
       in: invalidLowLimb,
       S: split(DEFAULT_SIGNATURE),
+      G: encodePoint(jubjub.Point.BASE),
     }, true),
     undefined,
     "a 129-bit private low limb must be rejected",
@@ -200,6 +229,7 @@ const main = async () => {
     circuit.calculateWitness({
       in: invalidHighLimb,
       S: split(DEFAULT_SIGNATURE),
+      G: encodePoint(jubjub.Point.BASE),
     }, true),
     undefined,
     "a 128-bit private high limb must be rejected",
@@ -245,7 +275,7 @@ const main = async () => {
   const orderTwoRandomizer = makeValues();
   orderTwoRandomizer[0] = 0n;
   orderTwoRandomizer[1] = FIELD_PRIME - 1n;
-  await assertChallenge(
+  await assertReference(
     circuit,
     orderTwoRandomizer,
     "non-identity order-two randomizer",
@@ -257,7 +287,7 @@ const main = async () => {
     SCALAR_ORDER,
     (1n << 252n) - 1n,
   ]) {
-    await assertChallenge(
+    await assertReference(
       circuit,
       ordinary,
       `signature scalar ${signature}`,
@@ -273,6 +303,7 @@ const main = async () => {
   const nonCanonicalPublicLowLimb = await circuit.calculateWitness({
     in: encode(ordinary),
     S: [LIMB_BASE, 0n],
+    G: encodePoint(jubjub.Point.BASE),
   }, true);
   await circuit.assertOut(nonCanonicalPublicLowLimb, {
     sBits: toBits(LIMB_BASE).slice(0, 252),
@@ -287,6 +318,54 @@ const main = async () => {
     /Constraint doesn't match/,
     "a mutated S decomposition bit must be rejected",
   );
+
+  await assertReference(
+    circuit,
+    ordinary,
+    "alternate valid public generator",
+    DEFAULT_SIGNATURE,
+    jubjub.Point.BASE.multiply(2n),
+  );
+
+  for (const [outputName, label] of [
+    ["G8", "generator cofactor output"],
+    ["R8", "randomizer cofactor output"],
+  ]) {
+    const outputIndex = circuit.symbols[`main.${outputName}[0]`]?.varIdx;
+    assert.notEqual(outputIndex, undefined, `${label} must exist in the witness`);
+    const wrongOutput = [...ordinaryWitness];
+    wrongOutput[outputIndex] = (
+      normalize(wrongOutput[outputIndex]) + 1n
+    ) % FIELD_PRIME;
+    await assert.rejects(
+      circuit.checkConstraints(wrongOutput),
+      /Constraint doesn't match/,
+      `a mutated ${label} must be rejected`,
+    );
+  }
+
+  for (const [signalName, label] of [
+    [
+      "main.cofactorPoints.generatorCofactor.point4[0]",
+      "generator cofactor intermediate",
+    ],
+    [
+      "main.cofactorPoints.randomizerCofactor.point4[0]",
+      "randomizer cofactor intermediate",
+    ],
+  ]) {
+    const signalIndex = circuit.symbols[signalName]?.varIdx;
+    assert.notEqual(signalIndex, undefined, `${label} must exist in the witness`);
+    const wrongIntermediate = [...ordinaryWitness];
+    wrongIntermediate[signalIndex] = (
+      normalize(wrongIntermediate[signalIndex]) + 1n
+    ) % FIELD_PRIME;
+    await assert.rejects(
+      circuit.checkConstraints(wrongIntermediate),
+      /Constraint doesn't match/,
+      `a mutated ${label} must be rejected`,
+    );
+  }
 
   await canonicalFieldBits.calculateWitness({
     fieldValue: FIELD_PRIME - 1n,
