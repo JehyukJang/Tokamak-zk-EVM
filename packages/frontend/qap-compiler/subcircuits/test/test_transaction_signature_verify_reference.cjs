@@ -80,13 +80,6 @@ const calculateReferenceWitness = (
   }, true);
 };
 
-const multiplySubgroupPoint = (point, scalar) => {
-  const reducedScalar = scalar % SCALAR_ORDER;
-  return reducedScalar === 0n
-    ? jubjub.Point.ZERO
-    : point.multiply(reducedScalar);
-};
-
 const powMod = (base, exponent) => {
   let result = 1n;
   let factor = base % FIELD_PRIME;
@@ -108,30 +101,11 @@ const assertReference = async (
   signature = signatureFor(values),
   generator = jubjub.Point.BASE,
 ) => {
-  const expected = poseidonChainCompress(values);
-  const expectedR8Point = jubjub.Point.fromAffine({
-    x: values[0],
-    y: values[1],
-  }).multiply(8n);
-  const expectedR8 = expectedR8Point.toAffine();
-  const expectedA8Point = jubjub.Point.fromAffine({
-    x: values[2],
-    y: values[3],
-  }).multiply(8n);
-  const expectedA8 = expectedA8Point.toAffine();
-  const expectedG8 = generator.multiply(8n).toAffine();
   const expectedPublicKeyHash = poseidon2([values[2], values[3]]);
-  const expectedSignatureRhs = expectedR8Point.add(
-    multiplySubgroupPoint(expectedA8Point, expected),
-  ).toAffine();
-  const expectedSG8 = multiplySubgroupPoint(
-    generator.multiply(8n),
-    signature,
-  ).toAffine();
-  const expectedHA8 = multiplySubgroupPoint(
-    expectedA8Point,
-    expected,
-  ).toAffine();
+  const expectedOrigin = [
+    expectedPublicKeyHash & LIMB_MASK,
+    expectedPublicKeyHash >> 128n & ((1n << 32n) - 1n),
+  ];
   const witness = await calculateReferenceWitness(
     circuit,
     values,
@@ -139,24 +113,10 @@ const assertReference = async (
     generator,
   );
   await circuit.assertOut(witness, {
-    challenge: split(expected),
-    challengeBits: toBits(expected),
-    sBits: toBits(signature).slice(0, 252),
-    A8: [expectedA8.x, expectedA8.y],
-    G8: [expectedG8.x, expectedG8.y],
-    R8: [expectedR8.x, expectedR8.y],
-    sG8: [expectedSG8.x, expectedSG8.y],
-    hA8: [expectedHA8.x, expectedHA8.y],
-    signatureRhs: [expectedSignatureRhs.x, expectedSignatureRhs.y],
-    publicKeyHash: split(expectedPublicKeyHash),
-    publicKeyHashBits: toBits(expectedPublicKeyHash),
-    origin: [
-      expectedPublicKeyHash & LIMB_MASK,
-      expectedPublicKeyHash >> 128n & ((1n << 32n) - 1n),
-    ],
+    origin: expectedOrigin,
   });
-  assert.equal(normalize(witness[1]), expected & LIMB_MASK, `${label} low limb`);
-  assert.equal(normalize(witness[2]), expected >> 128n, `${label} high limb`);
+  assert.equal(normalize(witness[1]), expectedOrigin[0], `${label} low limb`);
+  assert.equal(normalize(witness[2]), expectedOrigin[1], `${label} high limb`);
 };
 
 const assertRejectedWord = async (circuit, wordIndex, value, label) => {
@@ -216,15 +176,6 @@ const main = async () => {
 
   const ordinaryWitness = await calculateReferenceWitness(circuit, ordinary);
   await circuit.loadSymbols();
-  const A8XIndex = circuit.symbols["main.A8[0]"]?.varIdx;
-  assert.notEqual(A8XIndex, undefined, "A8.x must be present in the reference witness");
-  const wrongA8Witness = [...ordinaryWitness];
-  wrongA8Witness[A8XIndex] = (normalize(wrongA8Witness[A8XIndex]) + 1n) % FIELD_PRIME;
-  await assert.rejects(
-    circuit.checkConstraints(wrongA8Witness),
-    /Constraint doesn't match/,
-    "a mutated A8 output must be rejected",
-  );
 
   const boundaries = makeValues();
   boundaries[4] = FIELD_PRIME - 1n;
@@ -373,19 +324,7 @@ const main = async () => {
     G: encodePoint(jubjub.Point.BASE),
     O: encodePoint(jubjub.Point.ZERO),
   }, true);
-  await circuit.assertOut(nonCanonicalPublicLowLimb, {
-    sBits: toBits(ordinarySignature).slice(0, 252),
-  });
-
-  const sBitIndex = circuit.symbols["main.sBits[0]"]?.varIdx;
-  assert.notEqual(sBitIndex, undefined, "sBits[0] must be present in the reference witness");
-  const wrongSBitWitness = [...ordinaryWitness];
-  wrongSBitWitness[sBitIndex] = 1n - normalize(wrongSBitWitness[sBitIndex]);
-  await assert.rejects(
-    circuit.checkConstraints(wrongSBitWitness),
-    /Constraint doesn't match/,
-    "a mutated S decomposition bit must be rejected",
-  );
+  await circuit.checkConstraints(nonCanonicalPublicLowLimb);
 
   await assertReference(
     circuit,
@@ -395,44 +334,23 @@ const main = async () => {
     jubjub.Point.BASE.multiply(2n),
   );
 
-  for (const [outputName, label] of [
-    ["G8", "generator cofactor output"],
-    ["R8", "randomizer cofactor output"],
-    ["sG8", "response scalar output"],
-    ["hA8", "challenge scalar output"],
-    ["signatureRhs", "terminal signature right-hand side"],
-    ["publicKeyHash", "public-key hash"],
-    ["origin", "origin address"],
-  ]) {
-    const outputIndex = circuit.symbols[`main.${outputName}[0]`]?.varIdx;
-    assert.notEqual(outputIndex, undefined, `${label} must exist in the witness`);
-    const wrongOutput = [...ordinaryWitness];
-    wrongOutput[outputIndex] = (
-      normalize(wrongOutput[outputIndex]) + 1n
-    ) % FIELD_PRIME;
-    await assert.rejects(
-      circuit.checkConstraints(wrongOutput),
-      /Constraint doesn't match/,
-      `a mutated ${label} must be rejected`,
-    );
-  }
+  const originIndex = circuit.symbols["main.origin[0]"]?.varIdx;
+  assert.notEqual(originIndex, undefined, "origin must exist in the witness");
+  const wrongOrigin = [...ordinaryWitness];
+  wrongOrigin[originIndex] = (
+    normalize(wrongOrigin[originIndex]) + 1n
+  ) % FIELD_PRIME;
+  await assert.rejects(
+    circuit.checkConstraints(wrongOrigin),
+    /Constraint doesn't match/,
+    "a mutated origin must be rejected",
+  );
 
   for (const [signalName, label] of [
-    ["main.publicKeyHashBits[0]", "public-key hash low bit"],
-    ["main.publicKeyHashBits[254]", "public-key hash high bit"],
-  ]) {
-    const signalIndex = circuit.symbols[signalName]?.varIdx;
-    assert.notEqual(signalIndex, undefined, `${label} must exist in the witness`);
-    const wrongBit = [...ordinaryWitness];
-    wrongBit[signalIndex] = 1n - normalize(wrongBit[signalIndex]);
-    await assert.rejects(
-      circuit.checkConstraints(wrongBit),
-      /Constraint doesn't match/,
-      `a mutated ${label} must be rejected`,
-    );
-  }
-
-  for (const [signalName, label] of [
+    [
+      "main.pointValidation.publicKeyCofactor.point4[0]",
+      "public-key cofactor intermediate",
+    ],
     [
       "main.cofactorPoints.generatorCofactor.point4[0]",
       "generator cofactor intermediate",
@@ -449,6 +367,9 @@ const main = async () => {
       "main.challengeScalar.accumulators[128][0]",
       "challenge scalar accumulator",
     ],
+    ["main.terminalAddition.inter1", "terminal addition intermediate"],
+    ["main.canonicalPublicKeyHash.bits[0]", "public-key hash low bit"],
+    ["main.canonicalPublicKeyHash.bits[254]", "public-key hash high bit"],
   ]) {
     const signalIndex = circuit.symbols[signalName]?.varIdx;
     assert.notEqual(signalIndex, undefined, `${label} must exist in the witness`);
@@ -479,7 +400,7 @@ const main = async () => {
   }
 
   console.log(
-    "Transaction signature reference passed challenge, canonicality, public-scalar, complete-addition, and point-policy tests",
+    "Transaction signature reference passed canonicality, cofactored-equation, point-policy, and verified-origin tests",
   );
 };
 

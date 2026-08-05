@@ -176,36 +176,21 @@ template JubjubScalarMulFromConstrainedBits_unsafe(N) {
     result <== accumulators[N];
 }
 
-// This is the current executable stage of the non-production monolithic
-// TransactionSignatureVerify reference. Its inputs are exactly the N + 7 word
-// prefix of the final N + 12 operand interface:
+// Non-production monolithic TransactionSignatureVerify reference. Its private
+// inputs begin with the N + 7 word challenge prefix:
 //
 // R.x, R.y, A.x, A.y, nonce, contract, selector, input[0..N-1].
 //
-// S, G, and O are declared separately so the diagnostic main can preserve their
-// public boundary while all N + 7 challenge inputs remain private. They are
-// logical operands N + 7 through N + 11 in the final ordered interface. The
-// final reference will expose only origin. This stage exposes its intermediate
-// values solely so their exact construction can be tested before the terminal
-// equation and origin derivation are added.
-template TransactionSignatureVerifyReferenceStage(N) {
+// S, G, and O are declared separately to preserve their public boundary while
+// all N + 7 challenge inputs remain private. They are logical operands N + 7
+// through N + 11 in the final ordered interface. Origin is the only result.
+template TransactionSignatureVerifyReference(N) {
     assert(N > 0);
 
     signal input in[N + 7][2];
     signal input S[2];
     signal input G[2][2];
     signal input O[2][2];
-    signal output challenge[2];
-    signal output challengeBits[255];
-    signal output sBits[252];
-    signal output A8[2];
-    signal output G8[2];
-    signal output R8[2];
-    signal output sG8[2];
-    signal output hA8[2];
-    signal output signatureRhs[2];
-    signal output publicKeyHash[2];
-    signal output publicKeyHashBits[255];
     signal output origin[2];
 
     var LIMB_BASE = 1 << 128;
@@ -232,7 +217,6 @@ template TransactionSignatureVerifyReferenceStage(N) {
     component pointValidation = TransactionSignaturePointValidationReference();
     pointValidation.R <== [challengeInputs[0], challengeInputs[1]];
     pointValidation.A <== [challengeInputs[2], challengeInputs[3]];
-    A8 <== pointValidation.A8;
 
     signal nativeG[2];
     for (var coordinate = 0; coordinate < 2; coordinate++) {
@@ -242,8 +226,6 @@ template TransactionSignatureVerifyReferenceStage(N) {
     component cofactorPoints = TransactionSignatureCofactorPointsReference();
     cofactorPoints.G <== nativeG;
     cofactorPoints.R <== [challengeInputs[0], challengeInputs[1]];
-    G8 <== cofactorPoints.G8;
-    R8 <== cofactorPoints.R8;
 
     component hashes[N + 6];
     hashes[0] = Poseidon255(2);
@@ -258,25 +240,12 @@ template TransactionSignatureVerifyReferenceStage(N) {
 
     component canonicalChallenge = CanonicalBls12381FieldBits();
     canonicalChallenge.in <== hashes[N + 5].out;
-    challengeBits <== canonicalChallenge.bits;
-
-    var challengeLow = 0;
-    var challengeHigh = 0;
-    for (var i = 0; i < 128; i++) {
-        challengeLow += canonicalChallenge.bits[i] * (1 << i);
-    }
-    for (var i = 128; i < 255; i++) {
-        challengeHigh += canonicalChallenge.bits[i] * (1 << (i - 128));
-    }
-    challenge[0] <== challengeLow;
-    challenge[1] <== challengeHigh;
 
     // Solidity owns the exact public-limb checks and S < n. This relation only
     // reconstructs those same public limbs into the 252 bits required by the
     // fixed-base scalar multiplication. It must not reduce S modulo n.
     component signatureDecomposition = Num2Bits(252);
     signatureDecomposition.in <== S[0] + S[1] * LIMB_BASE;
-    sBits <== signatureDecomposition.out;
 
     signal nativeO[2];
     for (var coordinate = 0; coordinate < 2; coordinate++) {
@@ -287,18 +256,15 @@ template TransactionSignatureVerifyReferenceStage(N) {
     responseScalar.identity <== nativeO;
     responseScalar.base <== cofactorPoints.G8;
     responseScalar.bits <== signatureDecomposition.out;
-    sG8 <== responseScalar.result;
 
     component challengeScalar = JubjubScalarMulFromConstrainedBits_unsafe(255);
     challengeScalar.identity <== nativeO;
     challengeScalar.base <== pointValidation.A8;
     challengeScalar.bits <== canonicalChallenge.bits;
-    hA8 <== challengeScalar.result;
 
     component terminalAddition = jubjubAdd();
     terminalAddition.in1 <== cofactorPoints.R8;
     terminalAddition.in2 <== challengeScalar.result;
-    signatureRhs <== terminalAddition.out;
 
     for (var coordinate = 0; coordinate < 2; coordinate++) {
         responseScalar.result[coordinate] === terminalAddition.out[coordinate];
@@ -310,20 +276,12 @@ template TransactionSignatureVerifyReferenceStage(N) {
 
     component canonicalPublicKeyHash = CanonicalBls12381FieldBits();
     canonicalPublicKeyHash.in <== publicKeyHasher.out;
-    publicKeyHashBits <== canonicalPublicKeyHash.bits;
 
-    var publicKeyHashLow = 0;
-    var publicKeyHashHigh = 0;
+    var originLow = 0;
     for (var i = 0; i < 128; i++) {
-        publicKeyHashLow += canonicalPublicKeyHash.bits[i] * (1 << i);
+        originLow += canonicalPublicKeyHash.bits[i] * (1 << i);
     }
-    for (var i = 128; i < 255; i++) {
-        publicKeyHashHigh += canonicalPublicKeyHash.bits[i] * (1 << (i - 128));
-    }
-    publicKeyHash[0] <== publicKeyHashLow;
-    publicKeyHash[1] <== publicKeyHashHigh;
-
-    origin[0] <== publicKeyHashLow;
+    origin[0] <== originLow;
     var originHigh = 0;
     for (var i = 128; i < 160; i++) {
         originHigh += canonicalPublicKeyHash.bits[i] * (1 << (i - 128));
