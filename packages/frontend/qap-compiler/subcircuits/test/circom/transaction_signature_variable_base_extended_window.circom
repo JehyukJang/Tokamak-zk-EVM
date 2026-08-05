@@ -60,6 +60,40 @@ template ExtendedJubjubAddAffineWithT_unsafe() {
     result[3] <== (B - A) * (B + A);
 }
 
+// Complete addition of two exact extended-coordinate points.
+template ExtendedJubjubAdd_unsafe() {
+    signal input point1[4];
+    signal input point2[4];
+    signal output result[4];
+
+    var constants[3] = jubjubconst();
+    var K = 2 * constants[1];
+
+    signal A <== (point1[1] - point1[0]) * (point2[1] - point2[0]);
+    signal B <== (point1[1] + point1[0]) * (point2[1] + point2[0]);
+    signal C <== K * point1[3] * point2[3];
+    signal D <== 2 * point1[2] * point2[2];
+
+    result[0] <== (B - A) * (D - C);
+    result[1] <== (D + C) * (B + A);
+    result[2] <== (D - C) * (D + C);
+    result[3] <== (B - A) * (B + A);
+}
+
+template AffineJubjubMulByCofactor8Extended_unsafe() {
+    signal input point[2];
+    signal output point8[4];
+
+    signal extended[4] <== [point[0], point[1], 1, point[0] * point[1]];
+    component point2 = ExtendedJubjubDouble_unsafe();
+    component point4 = ExtendedJubjubDouble_unsafe();
+    component point8Component = ExtendedJubjubDouble_unsafe();
+    point2.point <== extended;
+    point4.point <== point2.result;
+    point8Component.point <== point4.result;
+    point8 <== point8Component.result;
+}
+
 // Uses affine runtime-table selection but keeps the accumulator in complete
 // extended coordinates. This isolates coordinate-system cost without changing
 // scalar digit decomposition or table semantics.
