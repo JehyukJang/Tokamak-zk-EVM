@@ -204,6 +204,9 @@ template TransactionSignatureVerifyReferenceStage(N) {
     signal output sG8[2];
     signal output hA8[2];
     signal output signatureRhs[2];
+    signal output publicKeyHash[2];
+    signal output publicKeyHashBits[255];
+    signal output origin[2];
 
     var LIMB_BASE = 1 << 128;
 
@@ -300,4 +303,30 @@ template TransactionSignatureVerifyReferenceStage(N) {
     for (var coordinate = 0; coordinate < 2; coordinate++) {
         responseScalar.result[coordinate] === terminalAddition.out[coordinate];
     }
+
+    component publicKeyHasher = Poseidon255(2);
+    publicKeyHasher.in[0] <== challengeInputs[2];
+    publicKeyHasher.in[1] <== challengeInputs[3];
+
+    component canonicalPublicKeyHash = CanonicalBls12381FieldBits();
+    canonicalPublicKeyHash.in <== publicKeyHasher.out;
+    publicKeyHashBits <== canonicalPublicKeyHash.bits;
+
+    var publicKeyHashLow = 0;
+    var publicKeyHashHigh = 0;
+    for (var i = 0; i < 128; i++) {
+        publicKeyHashLow += canonicalPublicKeyHash.bits[i] * (1 << i);
+    }
+    for (var i = 128; i < 255; i++) {
+        publicKeyHashHigh += canonicalPublicKeyHash.bits[i] * (1 << (i - 128));
+    }
+    publicKeyHash[0] <== publicKeyHashLow;
+    publicKeyHash[1] <== publicKeyHashHigh;
+
+    origin[0] <== publicKeyHashLow;
+    var originHigh = 0;
+    for (var i = 128; i < 160; i++) {
+        originHigh += canonicalPublicKeyHash.bits[i] * (1 << (i - 128));
+    }
+    origin[1] <== originHigh;
 }

@@ -120,6 +120,7 @@ const assertReference = async (
   }).multiply(8n);
   const expectedA8 = expectedA8Point.toAffine();
   const expectedG8 = generator.multiply(8n).toAffine();
+  const expectedPublicKeyHash = poseidon2([values[2], values[3]]);
   const expectedSignatureRhs = expectedR8Point.add(
     multiplySubgroupPoint(expectedA8Point, expected),
   ).toAffine();
@@ -147,6 +148,12 @@ const assertReference = async (
     sG8: [expectedSG8.x, expectedSG8.y],
     hA8: [expectedHA8.x, expectedHA8.y],
     signatureRhs: [expectedSignatureRhs.x, expectedSignatureRhs.y],
+    publicKeyHash: split(expectedPublicKeyHash),
+    publicKeyHashBits: toBits(expectedPublicKeyHash),
+    origin: [
+      expectedPublicKeyHash & LIMB_MASK,
+      expectedPublicKeyHash >> 128n & ((1n << 32n) - 1n),
+    ],
   });
   assert.equal(normalize(witness[1]), expected & LIMB_MASK, `${label} low limb`);
   assert.equal(normalize(witness[2]), expected >> 128n, `${label} high limb`);
@@ -394,6 +401,8 @@ const main = async () => {
     ["sG8", "response scalar output"],
     ["hA8", "challenge scalar output"],
     ["signatureRhs", "terminal signature right-hand side"],
+    ["publicKeyHash", "public-key hash"],
+    ["origin", "origin address"],
   ]) {
     const outputIndex = circuit.symbols[`main.${outputName}[0]`]?.varIdx;
     assert.notEqual(outputIndex, undefined, `${label} must exist in the witness`);
@@ -403,6 +412,21 @@ const main = async () => {
     ) % FIELD_PRIME;
     await assert.rejects(
       circuit.checkConstraints(wrongOutput),
+      /Constraint doesn't match/,
+      `a mutated ${label} must be rejected`,
+    );
+  }
+
+  for (const [signalName, label] of [
+    ["main.publicKeyHashBits[0]", "public-key hash low bit"],
+    ["main.publicKeyHashBits[254]", "public-key hash high bit"],
+  ]) {
+    const signalIndex = circuit.symbols[signalName]?.varIdx;
+    assert.notEqual(signalIndex, undefined, `${label} must exist in the witness`);
+    const wrongBit = [...ordinaryWitness];
+    wrongBit[signalIndex] = 1n - normalize(wrongBit[signalIndex]);
+    await assert.rejects(
+      circuit.checkConstraints(wrongBit),
       /Constraint doesn't match/,
       `a mutated ${label} must be rejected`,
     );
