@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { mkdtempSync, rmSync } = require("node:fs");
+const { mkdtempSync, readFileSync, rmSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
@@ -9,6 +9,8 @@ const stripAnsi = (value) => value.replace(
   /\u001b\[[0-9;]*m/g,
   "",
 );
+
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const main = () => {
   const packageRoot = path.join(__dirname, "../..");
@@ -70,6 +72,34 @@ const main = () => {
         output.includes(warning),
         true,
         `missing approved inspection warning: ${warning}`,
+      );
+    }
+
+    const symbols = readFileSync(
+      path.join(
+        outputDirectory,
+        "transaction_signature_verify_reference_test.sym",
+      ),
+      "utf8",
+    );
+    const expectedPublicWires = [
+      [1, "main.origin[0]"],
+      [2, "main.origin[1]"],
+      [3, "main.contractAddress[0]"],
+      [4, "main.contractAddress[1]"],
+      [5, "main.functionSelector[0]"],
+      [6, "main.functionSelector[1]"],
+      [7, "main.S[0]"],
+      [8, "main.S[1]"],
+      [9, "main.O[0][0]"],
+      [10, "main.O[0][1]"],
+      [11, "main.O[1][0]"],
+      [12, "main.O[1][1]"],
+    ];
+    for (const [wireIndex, signalName] of expectedPublicWires) {
+      assert.match(
+        symbols,
+        new RegExp(`^\\d+,${wireIndex},\\d+,${escapeRegExp(signalName)}$`, "m"),
       );
     }
 
