@@ -40,6 +40,26 @@ template ExtendedJubjubAddAffine_unsafe() {
     result[3] <== (B - A) * (B + A);
 }
 
+// Complete mixed addition when the exact affine T = x*y coordinate is already
+// available, as it is for a compile-time table selection.
+template ExtendedJubjubAddAffineWithT_unsafe() {
+    signal input point[4];
+    signal input affine[3];
+    signal output result[4];
+
+    var constants[3] = jubjubconst();
+    var K = 2 * constants[1];
+
+    signal A <== (point[1] - point[0]) * (affine[1] - affine[0]);
+    signal B <== (point[1] + point[0]) * (affine[1] + affine[0]);
+    signal C <== K * point[3] * affine[2];
+
+    result[0] <== (B - A) * (2 * point[2] - C);
+    result[1] <== (2 * point[2] + C) * (B + A);
+    result[2] <== (2 * point[2] - C) * (2 * point[2] + C);
+    result[3] <== (B - A) * (B + A);
+}
+
 // Uses affine runtime-table selection but keeps the accumulator in complete
 // extended coordinates. This isolates coordinate-system cost without changing
 // scalar digit decomposition or table semantics.
