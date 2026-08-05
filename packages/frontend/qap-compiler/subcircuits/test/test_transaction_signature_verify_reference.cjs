@@ -351,19 +351,19 @@ const main = async () => {
       "challenge scalar runtime table",
     ],
     [
-      "main.challengeScalar.selectors[42].nodes[8][0]",
+      "main.challengeScalar.selectors[64].nodes[4][0]",
       "challenge scalar selection tree",
     ],
     [
-      "main.challengeScalar.doublings[126].A",
+      "main.challengeScalar.doublings[128].A",
       "challenge scalar doubling chain",
     ],
     [
-      "main.challengeScalar.additions[42].affineT",
+      "main.challengeScalar.additions[64].affineT",
       "challenge scalar mixed addition",
     ],
     [
-      "main.challengeScalar.accumulators[42][0]",
+      "main.challengeScalar.accumulators[64][0]",
       "challenge scalar accumulator",
     ],
     ["main.terminalAddition.C", "terminal mixed-addition intermediate"],

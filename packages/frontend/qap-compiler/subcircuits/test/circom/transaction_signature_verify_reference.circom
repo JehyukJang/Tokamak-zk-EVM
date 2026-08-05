@@ -254,7 +254,7 @@ template TransactionSignatureVerifyReference(N) {
     component responseScalar = FixedG8ExtendedWindowScalarMulFromConstrainedBits_unsafe(252, 3);
     responseScalar.bits <== signatureDecomposition.out;
 
-    component challengeScalar = VariableBaseExtendedWindowScalarMulFromConstrainedBits_unsafe(255, 3);
+    component challengeScalar = VariableBaseExtendedWindowScalarMulFromConstrainedBits_unsafe(255, 2);
     challengeScalar.identity <== nativeO;
     challengeScalar.base <== pointValidation.A8;
     challengeScalar.bits <== canonicalChallenge.bits;
