@@ -95,6 +95,14 @@ const main = async () => {
     const numWindows = Math.ceil(255 / width);
     const middleWindow = Math.floor(numWindows / 2);
     const tableSize = 1 << width;
+    const firstUnusedDoubling = (numWindows - 1) * width;
+    assert.equal(
+      Object.keys(circuit.symbols).some(
+        (name) => name.startsWith(`main.core.doublings[${firstUnusedDoubling}]`),
+      ),
+      false,
+      `window${width} must omit the final unused doubling`,
+    );
     for (const [signalName, label] of [
       ["main.core.tableAdditions[0].inter1", "runtime table"],
       [
