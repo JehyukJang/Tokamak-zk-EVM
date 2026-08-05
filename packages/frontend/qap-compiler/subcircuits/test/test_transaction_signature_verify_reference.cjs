@@ -375,6 +375,24 @@ const main = async () => {
 
   for (const [signalName, label] of [
     [
+      "main.privateWords[0].lowBits.out[0]",
+      "private-word low-limb range-check bit",
+    ],
+    [
+      "main.privateWords[0].highBits.out[126]",
+      "private-word high-limb range-check bit",
+    ],
+    [
+      "main.privateWords[0].fieldBound.lowDifference.out[0]",
+      "private-word field-bound low-difference bit",
+    ],
+    [
+      "main.privateWords[0].fieldBound.highDifference.out[126]",
+      "private-word field-bound high-difference bit",
+    ],
+    ["main.hashes[0].m[63].out[1]", "Poseidon terminal state word 1"],
+    ["main.hashes[0].m[63].out[2]", "Poseidon terminal state word 2"],
+    [
       "main.pointValidation.publicKeyCofactor.point4.A",
       "public-key cofactor intermediate",
     ],
@@ -410,6 +428,8 @@ const main = async () => {
       "challenge scalar accumulator",
     ],
     ["main.terminalAddition.C", "terminal mixed-addition intermediate"],
+    ["main.responseScalar.result[3]", "response terminal T coordinate"],
+    ["main.terminalAddition.result[3]", "sum terminal T coordinate"],
     ["main.terminalEquality.scale", "terminal projective scale"],
     ["main.canonicalPublicKeyHash.bits[0]", "public-key hash low bit"],
     ["main.canonicalPublicKeyHash.bits[254]", "public-key hash high bit"],
