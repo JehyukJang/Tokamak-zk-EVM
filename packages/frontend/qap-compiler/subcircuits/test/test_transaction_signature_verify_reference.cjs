@@ -354,8 +354,12 @@ const main = async () => {
       "challenge scalar selection tree",
     ],
     [
-      "main.challengeScalar.doublings[126].inter1",
+      "main.challengeScalar.doublings[126].A",
       "challenge scalar doubling chain",
+    ],
+    [
+      "main.challengeScalar.additions[42].affineT",
+      "challenge scalar mixed addition",
     ],
     [
       "main.challengeScalar.accumulators[42][0]",
