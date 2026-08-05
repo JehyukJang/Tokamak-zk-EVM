@@ -26,17 +26,20 @@ const assertMutatedSignalRejected = async (circuit, witness, signalName, label) 
 
 const main = async () => {
   const packageRoot = path.join(__dirname, "../..");
-  const circuit = await wasm(
-    path.join(
-      packageRoot,
-      "subcircuits/test/circom/transaction_signature_fixed_base_window3_extended_test.circom",
+  const candidates = await Promise.all([2, 3, 4].map(async (width) => ({
+    width,
+    circuit: await wasm(
+      path.join(
+        packageRoot,
+        `subcircuits/test/circom/transaction_signature_fixed_base_window${width}_extended_test.circom`,
+      ),
+      {
+        include: path.join(packageRoot, "node_modules"),
+        prime: "bls12381",
+        O: 1,
+      },
     ),
-    {
-      include: path.join(packageRoot, "node_modules"),
-      prime: "bls12381",
-      O: 1,
-    },
-  );
+  })));
   const scalars = [
     0n,
     1n,
@@ -52,38 +55,54 @@ const main = async () => {
     MAX_SCALAR,
   ];
 
-  let mutationWitness;
-  for (const scalar of scalars) {
-    const witness = await circuit.calculateWitness({ scalar }, true);
-    const reducedScalar = scalar % SCALAR_ORDER;
-    const expected = (
-      reducedScalar === 0n ? jubjub.Point.ZERO : G8.multiply(reducedScalar)
-    ).toAffine();
-    await circuit.assertOut(witness, { result: [expected.x, expected.y] });
-    assert.equal(normalize(witness[1]), expected.x, `scalar ${scalar} result.x`);
-    assert.equal(normalize(witness[2]), expected.y, `scalar ${scalar} result.y`);
-    if (scalar === 0xa55an) {
-      mutationWitness = witness;
+  for (const { width, circuit } of candidates) {
+    let mutationWitness;
+    for (const scalar of scalars) {
+      const witness = await circuit.calculateWitness({ scalar }, true);
+      const reducedScalar = scalar % SCALAR_ORDER;
+      const expected = (
+        reducedScalar === 0n ? jubjub.Point.ZERO : G8.multiply(reducedScalar)
+      ).toAffine();
+      await circuit.assertOut(witness, { result: [expected.x, expected.y] });
+      assert.equal(
+        normalize(witness[1]),
+        expected.x,
+        `window${width} scalar ${scalar} result.x`,
+      );
+      assert.equal(
+        normalize(witness[2]),
+        expected.y,
+        `window${width} scalar ${scalar} result.y`,
+      );
+      if (scalar === 0xa55an) {
+        mutationWitness = witness;
+      }
     }
-  }
-  await assert.rejects(
-    circuit.calculateWitness({ scalar: 1n << 252n }, true),
-    undefined,
-    "the extended candidate rejects a 253-bit scalar",
-  );
+    await assert.rejects(
+      circuit.calculateWitness({ scalar: 1n << 252n }, true),
+      undefined,
+      `window${width} rejects a 253-bit scalar`,
+    );
 
-  await circuit.loadSymbols();
-  for (const [signalName, label] of [
-    ["main.core.products[42][0]", "selector monomial"],
-    ["main.core.selected[42][2]", "selected affine T"],
-    ["main.core.additions[42].C", "mixed addition"],
-    ["main.core.accumulators[42][0]", "extended accumulator"],
-  ]) {
-    await assertMutatedSignalRejected(circuit, mutationWitness, signalName, label);
+    await circuit.loadSymbols();
+    const middleWindow = Math.floor((252 / width) / 2);
+    for (const [signalName, label] of [
+      [`main.core.products[${middleWindow}][0]`, "selector monomial"],
+      [`main.core.selected[${middleWindow}][2]`, "selected affine T"],
+      [`main.core.additions[${middleWindow}].C`, "mixed addition"],
+      [`main.core.accumulators[${middleWindow}][0]`, "extended accumulator"],
+    ]) {
+      await assertMutatedSignalRejected(
+        circuit,
+        mutationWitness,
+        signalName,
+        `window${width} ${label}`,
+      );
+    }
   }
 
   console.log(
-    "Extended fixed-base window passed scalar boundaries, table selection, and internal mutation tests",
+    "Extended fixed-base windows passed scalar boundaries, table selection, and internal mutation tests",
   );
 };
 
