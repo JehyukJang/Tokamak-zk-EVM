@@ -1,7 +1,6 @@
 pragma circom 2.1.6;
 
-include "poseidon-bls12381-circom/circuits/poseidon255.circom";
-include "circomlib/circuits/bitify.circom";
+include "../../../templates/255bit/jubjub.circom";
 
 // BLS12-381 Fr is split at the 128-bit limb boundary. This helper assumes
 // that low is already constrained to 128 bits and high to 127 bits. It proves
@@ -73,22 +72,57 @@ template CanonicalBls12381FieldBits() {
     fieldBound.high <== high;
 }
 
-// This is the first executable stage of the non-production monolithic
+// For a validated point on this curve, y == 1 implies x == 0 because a != d.
+// Therefore this single inverse relation rejects exactly the identity (0, 1).
+template RejectJubjubIdentityFromValidatedY_unsafe() {
+    signal input y;
+
+    signal inverse <-- 1 / (y - 1);
+    (y - 1) * inverse === 1;
+}
+
+// The affine addition formula used by jubjubAdd is complete for this curve:
+// a = -1 is a square and d = -(10240/10241) is a nonsquare in BLS12-381 Fr.
+// Consequently, all three doublings have nonzero denominators for an on-curve
+// A, and every produced point remains on the same curve.
+template TransactionSignaturePointValidationReference() {
+    signal input A[2];
+    signal input R[2];
+    signal output A8[2];
+
+    component checkA = jubjubCheck();
+    checkA.in <== A;
+
+    component checkR = jubjubCheck();
+    checkR.in <== R;
+
+    signal A2[2] <== jubjubAdd()(A, A);
+    signal A4[2] <== jubjubAdd()(A2, A2);
+    A8 <== jubjubAdd()(A4, A4);
+
+    component rejectA8Identity = RejectJubjubIdentityFromValidatedY_unsafe();
+    rejectA8Identity.y <== A8[1];
+
+    component rejectRIdentity = RejectJubjubIdentityFromValidatedY_unsafe();
+    rejectRIdentity.y <== R[1];
+}
+
+// This is the current executable stage of the non-production monolithic
 // TransactionSignatureVerify reference. Its inputs are exactly the N + 7 word
 // prefix of the final N + 12 operand interface:
 //
 // R.x, R.y, A.x, A.y, nonce, contract, selector, input[0..N-1].
 //
 // The final reference circuit will consume the remaining S, G, and O operands
-// and expose only origin. This stage exposes the challenge solely so its fixed
-// schedule and canonical decomposition can be tested before those relations
-// are implemented.
-template TransactionSignatureChallengeReference(N) {
+// and expose only origin. This stage exposes the challenge and A8 solely so
+// their exact construction can be tested before their consumers are added.
+template TransactionSignatureVerifyReferenceStage(N) {
     assert(N > 0);
 
     signal input in[N + 7][2];
     signal output challenge[2];
     signal output challengeBits[255];
+    signal output A8[2];
 
     var LIMB_BASE = 1 << 128;
 
@@ -110,6 +144,11 @@ template TransactionSignatureChallengeReference(N) {
         privateWords[i + 1].in <== in[i + 7];
         challengeInputs[i + 7] <== privateWords[i + 1].value;
     }
+
+    component pointValidation = TransactionSignaturePointValidationReference();
+    pointValidation.R <== [challengeInputs[0], challengeInputs[1]];
+    pointValidation.A <== [challengeInputs[2], challengeInputs[3]];
+    A8 <== pointValidation.A8;
 
     component hashes[N + 6];
     hashes[0] = Poseidon255(2);
