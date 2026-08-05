@@ -107,6 +107,46 @@ template TransactionSignaturePointValidationReference() {
     rejectRIdentity.y <== R[1];
 }
 
+// Binary LSB-first scalar multiplication for an already validated Jubjub base,
+// an exact identity point, and bits constrained by one upstream decomposition.
+// This core intentionally owns neither point validity nor bitness. It omits the
+// final base doubling because no later scalar bit can consume that value.
+template JubjubScalarMulFromConstrainedBits_unsafe(N) {
+    assert(N > 0);
+
+    signal input identity[2];
+    signal input base[2];
+    signal input bits[N];
+    signal output result[2];
+
+    signal accumulators[N + 1][2];
+    signal powers[N][2];
+    accumulators[0] <== identity;
+    powers[0] <== base;
+
+    component additions[N];
+    component doublings[N - 1];
+    for (var i = 0; i < N; i++) {
+        additions[i] = jubjubAdd();
+        additions[i].in1 <== accumulators[i];
+        additions[i].in2 <== powers[i];
+
+        for (var coordinate = 0; coordinate < 2; coordinate++) {
+            accumulators[i + 1][coordinate] <== accumulators[i][coordinate]
+                + bits[i] * (additions[i].out[coordinate] - accumulators[i][coordinate]);
+        }
+
+        if (i + 1 < N) {
+            doublings[i] = jubjubAdd();
+            doublings[i].in1 <== powers[i];
+            doublings[i].in2 <== powers[i];
+            powers[i + 1] <== doublings[i].out;
+        }
+    }
+
+    result <== accumulators[N];
+}
+
 // This is the current executable stage of the non-production monolithic
 // TransactionSignatureVerify reference. Its inputs are exactly the N + 7 word
 // prefix of the final N + 12 operand interface:
