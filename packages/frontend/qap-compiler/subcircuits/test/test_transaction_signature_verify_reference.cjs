@@ -15,6 +15,8 @@ const PRIVATE_INPUT_COUNT = FUNCTION_INPUT_LENGTH;
 const CHALLENGE_INPUT_COUNT = PRIVATE_INPUT_COUNT + 7;
 const PUBLIC_KEY = jubjub.Point.BASE.multiply(7n);
 const RANDOMIZER = jubjub.Point.BASE.multiply(11n);
+const SCALAR_ORDER = jubjub.Point.Fn.ORDER;
+const DEFAULT_SIGNATURE = 123456789n;
 
 const split = (value) => [value & LIMB_MASK, value >> 128n];
 
@@ -49,6 +51,13 @@ const toBits = (value) => Array.from(
 
 const normalize = (value) => BigInt(value.toString());
 
+const calculateReferenceWitness = (circuit, values, signature = DEFAULT_SIGNATURE) => {
+  return circuit.calculateWitness({
+    in: encode(values),
+    S: split(signature),
+  }, true);
+};
+
 const powMod = (base, exponent) => {
   let result = 1n;
   let factor = base % FIELD_PRIME;
@@ -63,16 +72,22 @@ const powMod = (base, exponent) => {
   return result;
 };
 
-const assertChallenge = async (circuit, values, label) => {
+const assertChallenge = async (
+  circuit,
+  values,
+  label,
+  signature = DEFAULT_SIGNATURE,
+) => {
   const expected = poseidonChainCompress(values);
   const expectedA8 = jubjub.Point.fromAffine({
     x: values[2],
     y: values[3],
   }).multiply(8n).toAffine();
-  const witness = await circuit.calculateWitness({ in: encode(values) }, true);
+  const witness = await calculateReferenceWitness(circuit, values, signature);
   await circuit.assertOut(witness, {
     challenge: split(expected),
     challengeBits: toBits(expected),
+    sBits: toBits(signature).slice(0, 252),
     A8: [expectedA8.x, expectedA8.y],
   });
   assert.equal(normalize(witness[1]), expected & LIMB_MASK, `${label} low limb`);
@@ -83,7 +98,7 @@ const assertRejectedWord = async (circuit, wordIndex, value, label) => {
   const encoded = encode(makeValues());
   encoded[wordIndex] = split(value);
   await assert.rejects(
-    circuit.calculateWitness({ in: encoded }, true),
+    circuit.calculateWitness({ in: encoded, S: split(DEFAULT_SIGNATURE) }, true),
     undefined,
     label,
   );
@@ -129,9 +144,7 @@ const main = async () => {
   const ordinary = makeValues();
   await assertChallenge(circuit, ordinary, "ordinary challenge");
 
-  const ordinaryWitness = await circuit.calculateWitness({
-    in: encode(ordinary),
-  }, true);
+  const ordinaryWitness = await calculateReferenceWitness(circuit, ordinary);
   await circuit.loadSymbols();
   const A8XIndex = circuit.symbols["main.A8[0]"]?.varIdx;
   assert.notEqual(A8XIndex, undefined, "A8.x must be present in the reference witness");
@@ -173,7 +186,10 @@ const main = async () => {
   const invalidLowLimb = encode(makeValues());
   invalidLowLimb[4] = [LIMB_BASE, 0n];
   await assert.rejects(
-    circuit.calculateWitness({ in: invalidLowLimb }, true),
+    circuit.calculateWitness({
+      in: invalidLowLimb,
+      S: split(DEFAULT_SIGNATURE),
+    }, true),
     undefined,
     "a 129-bit private low limb must be rejected",
   );
@@ -181,7 +197,10 @@ const main = async () => {
   const invalidHighLimb = encode(makeValues());
   invalidHighLimb[7] = [0n, 1n << 127n];
   await assert.rejects(
-    circuit.calculateWitness({ in: invalidHighLimb }, true),
+    circuit.calculateWitness({
+      in: invalidHighLimb,
+      S: split(DEFAULT_SIGNATURE),
+    }, true),
     undefined,
     "a 128-bit private high limb must be rejected",
   );
@@ -190,7 +209,7 @@ const main = async () => {
     const invalidPoint = makeValues();
     invalidPoint[coordinate] = value;
     await assert.rejects(
-      circuit.calculateWitness({ in: encode(invalidPoint) }, true),
+      calculateReferenceWitness(circuit, invalidPoint),
       undefined,
       `invalid curve coordinate ${coordinate} must be rejected`,
     );
@@ -200,7 +219,7 @@ const main = async () => {
   identityPublicKey[2] = 0n;
   identityPublicKey[3] = 1n;
   await assert.rejects(
-    circuit.calculateWitness({ in: encode(identityPublicKey) }, true),
+    calculateReferenceWitness(circuit, identityPublicKey),
     undefined,
     "the identity public key must be rejected",
   );
@@ -209,7 +228,7 @@ const main = async () => {
   orderTwoPublicKey[2] = 0n;
   orderTwoPublicKey[3] = FIELD_PRIME - 1n;
   await assert.rejects(
-    circuit.calculateWitness({ in: encode(orderTwoPublicKey) }, true),
+    calculateReferenceWitness(circuit, orderTwoPublicKey),
     undefined,
     "a pure order-two public key must be rejected by A8 != O",
   );
@@ -218,7 +237,7 @@ const main = async () => {
   identityRandomizer[0] = 0n;
   identityRandomizer[1] = 1n;
   await assert.rejects(
-    circuit.calculateWitness({ in: encode(identityRandomizer) }, true),
+    calculateReferenceWitness(circuit, identityRandomizer),
     undefined,
     "the identity randomizer must be rejected",
   );
@@ -230,6 +249,43 @@ const main = async () => {
     circuit,
     orderTwoRandomizer,
     "non-identity order-two randomizer",
+  );
+
+  for (const signature of [
+    0n,
+    SCALAR_ORDER - 1n,
+    SCALAR_ORDER,
+    (1n << 252n) - 1n,
+  ]) {
+    await assertChallenge(
+      circuit,
+      ordinary,
+      `signature scalar ${signature}`,
+      signature,
+    );
+  }
+  await assert.rejects(
+    calculateReferenceWitness(circuit, ordinary, 1n << 252n),
+    undefined,
+    "a 253-bit S must be rejected by the scalar decomposition",
+  );
+
+  const nonCanonicalPublicLowLimb = await circuit.calculateWitness({
+    in: encode(ordinary),
+    S: [LIMB_BASE, 0n],
+  }, true);
+  await circuit.assertOut(nonCanonicalPublicLowLimb, {
+    sBits: toBits(LIMB_BASE).slice(0, 252),
+  });
+
+  const sBitIndex = circuit.symbols["main.sBits[0]"]?.varIdx;
+  assert.notEqual(sBitIndex, undefined, "sBits[0] must be present in the reference witness");
+  const wrongSBitWitness = [...ordinaryWitness];
+  wrongSBitWitness[sBitIndex] = 1n - normalize(wrongSBitWitness[sBitIndex]);
+  await assert.rejects(
+    circuit.checkConstraints(wrongSBitWitness),
+    /Constraint doesn't match/,
+    "a mutated S decomposition bit must be rejected",
   );
 
   await canonicalFieldBits.calculateWitness({
@@ -248,7 +304,7 @@ const main = async () => {
   }
 
   console.log(
-    "Transaction signature reference passed challenge, canonicality, complete-addition, and point-policy tests",
+    "Transaction signature reference passed challenge, canonicality, public-scalar, complete-addition, and point-policy tests",
   );
 };
 

@@ -113,15 +113,20 @@ template TransactionSignaturePointValidationReference() {
 //
 // R.x, R.y, A.x, A.y, nonce, contract, selector, input[0..N-1].
 //
-// The final reference circuit will consume the remaining S, G, and O operands
-// and expose only origin. This stage exposes the challenge and A8 solely so
-// their exact construction can be tested before their consumers are added.
+// S is declared separately so the diagnostic main can preserve its public
+// boundary while all N + 7 challenge inputs remain private. It is logical
+// operand N + 7 in the final ordered interface. The final reference will also
+// consume G and O and expose only origin. This stage exposes challenge bits,
+// S bits, and A8 solely so their exact construction can be tested before their
+// scalar-multiplication consumers are added.
 template TransactionSignatureVerifyReferenceStage(N) {
     assert(N > 0);
 
     signal input in[N + 7][2];
+    signal input S[2];
     signal output challenge[2];
     signal output challengeBits[255];
+    signal output sBits[252];
     signal output A8[2];
 
     var LIMB_BASE = 1 << 128;
@@ -175,4 +180,11 @@ template TransactionSignatureVerifyReferenceStage(N) {
     }
     challenge[0] <== challengeLow;
     challenge[1] <== challengeHigh;
+
+    // Solidity owns the exact public-limb checks and S < n. This relation only
+    // reconstructs those same public limbs into the 252 bits required by the
+    // fixed-base scalar multiplication. It must not reduce S modulo n.
+    component signatureDecomposition = Num2Bits(252);
+    signatureDecomposition.in <== S[0] + S[1] * LIMB_BASE;
+    sBits <== signatureDecomposition.out;
 }
