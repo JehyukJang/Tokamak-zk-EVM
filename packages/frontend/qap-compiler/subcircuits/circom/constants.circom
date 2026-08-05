@@ -7,6 +7,7 @@ function nStorageStore() {return 15;}
 function nEVMIn() {return 265;}
 function nPrvIn() {return 40;}
 
+function nPrivateMessageInputs() {return 29;}
 function nPoseidonInputs() {return 2;}
 function nPoseidonBatch() {return 1;}
 function nAccumulation() {return 32;}

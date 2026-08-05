@@ -7,6 +7,7 @@ export const REQUIRED_CIRCOM_KEYS = [
   'nStorageStore',
   'nPrvIn',
   'nEVMIn',
+  'nPrivateMessageInputs',
   'nPoseidonInputs',
   'nPoseidonBatch',
   'nAccumulation',

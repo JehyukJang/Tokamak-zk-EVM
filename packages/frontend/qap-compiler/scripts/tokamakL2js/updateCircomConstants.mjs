@@ -6,7 +6,12 @@ if (typeof constantsPath !== 'string' || constantsPath.length === 0) {
   throw new Error('Expected constants.circom path as the first argument.');
 }
 
-const { POSEIDON_INPUTS } = loadTokamakL2JsConstants();
+const { FUNCTION_INPUT_LENGTH, POSEIDON_INPUTS } = loadTokamakL2JsConstants();
+if (!Number.isInteger(FUNCTION_INPUT_LENGTH) || FUNCTION_INPUT_LENGTH < 0) {
+  throw new Error(
+    `Invalid TokamakL2JS constant: FUNCTION_INPUT_LENGTH=${FUNCTION_INPUT_LENGTH}`,
+  );
+}
 if (!Number.isInteger(POSEIDON_INPUTS)) {
   throw new Error(`Invalid TokamakL2JS constant: POSEIDON_INPUTS=${POSEIDON_INPUTS}`);
 }
@@ -22,9 +27,19 @@ const readCurrentConstant = (source, name) => {
   return Number(match[1]);
 };
 
+const previousPrivateMessageInputs = readCurrentConstant(src, 'nPrivateMessageInputs');
 const previousPoseidonInputs = readCurrentConstant(src, 'nPoseidonInputs');
 
 let next = src;
+let updatedPrivateMessageInputs = false;
+next = next.replace(
+  /(function\s+nPrivateMessageInputs\s*\(\s*\)\s*\{\s*return\s+)\d+(\s*;\s*\})/,
+  (_, prefix, suffix) => {
+    updatedPrivateMessageInputs = true;
+    return `${prefix}${FUNCTION_INPUT_LENGTH}${suffix}`;
+  }
+);
+
 let updatedPoseidonInputs = false;
 next = next.replace(
   /(function\s+nPoseidonInputs\s*\(\s*\)\s*\{\s*return\s+)\d+(\s*;\s*\})/,
@@ -34,13 +49,19 @@ next = next.replace(
   }
 );
 
-if (!updatedPoseidonInputs) {
+if (!updatedPrivateMessageInputs || !updatedPoseidonInputs) {
   throw new Error('Failed to update constants.circom (pattern not found).');
 }
 
 fs.writeFileSync(constantsPath, next);
 
+const privateMessageStatus = previousPrivateMessageInputs === FUNCTION_INPUT_LENGTH
+  ? 'unchanged'
+  : 'updated';
 const poseidonStatus = previousPoseidonInputs === POSEIDON_INPUTS ? 'unchanged' : 'updated';
 
 console.log(`[qap-compiler] Reloaded constants in ${constantsPath}`);
+console.log(
+  `[qap-compiler] nPrivateMessageInputs: ${previousPrivateMessageInputs} -> ${FUNCTION_INPUT_LENGTH} (${privateMessageStatus})`,
+);
 console.log(`[qap-compiler] nPoseidonInputs: ${previousPoseidonInputs} -> ${POSEIDON_INPUTS} (${poseidonStatus})`);
