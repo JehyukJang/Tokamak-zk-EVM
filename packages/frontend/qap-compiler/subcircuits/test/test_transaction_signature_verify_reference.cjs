@@ -518,6 +518,8 @@ const main = async () => {
     ["main.reference.responseScalar.result[3]", "response terminal T coordinate"],
     ["main.reference.terminalAddition.result[3]", "sum terminal T coordinate"],
     ["main.reference.terminalEquality.scale", "terminal projective scale"],
+    ["main.reference.canonicalChallenge.bits[0]", "challenge low bit"],
+    ["main.reference.canonicalChallenge.bits[254]", "challenge high bit"],
     ["main.reference.canonicalPublicKeyHash.bits[0]", "public-key hash low bit"],
     ["main.reference.canonicalPublicKeyHash.bits[254]", "public-key hash high bit"],
   ]) {
