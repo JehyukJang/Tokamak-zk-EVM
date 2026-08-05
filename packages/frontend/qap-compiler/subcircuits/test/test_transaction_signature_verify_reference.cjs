@@ -346,7 +346,19 @@ const main = async () => {
     ["main.responseScalar.selected[42][0]", "response table selection"],
     ["main.responseScalar.products[42][0]", "response selector monomial"],
     [
-      "main.challengeScalar.accumulators[128][0]",
+      "main.challengeScalar.tableAdditions[0].inter1",
+      "challenge scalar runtime table",
+    ],
+    [
+      "main.challengeScalar.selectors[42].nodes[8][0]",
+      "challenge scalar selection tree",
+    ],
+    [
+      "main.challengeScalar.doublings[126].inter1",
+      "challenge scalar doubling chain",
+    ],
+    [
+      "main.challengeScalar.accumulators[42][0]",
       "challenge scalar accumulator",
     ],
     ["main.terminalAddition.inter1", "terminal addition intermediate"],

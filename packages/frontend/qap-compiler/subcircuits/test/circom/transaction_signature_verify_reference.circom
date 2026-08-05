@@ -1,6 +1,7 @@
 pragma circom 2.1.6;
 
 include "./transaction_signature_fixed_base_window.circom";
+include "./transaction_signature_variable_base_window.circom";
 
 // BLS12-381 Fr is split at the 128-bit limb boundary. This helper assumes
 // that low is already constrained to 128 bits and high to 127 bits. It proves
@@ -241,7 +242,7 @@ template TransactionSignatureVerifyReference(N) {
     component responseScalar = FixedG8WindowScalarMulFromConstrainedBits_unsafe(252, 3);
     responseScalar.bits <== signatureDecomposition.out;
 
-    component challengeScalar = JubjubScalarMulFromConstrainedBits_unsafe(255);
+    component challengeScalar = VariableBaseWindowScalarMulFromConstrainedBits_unsafe(255, 3);
     challengeScalar.identity <== nativeO;
     challengeScalar.base <== pointValidation.A8;
     challengeScalar.bits <== canonicalChallenge.bits;
