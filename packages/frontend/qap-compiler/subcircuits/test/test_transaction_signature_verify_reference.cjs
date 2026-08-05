@@ -46,6 +46,8 @@ const makeValues = () => {
   values[1] = randomizer.y;
   values[2] = publicKey.x;
   values[3] = publicKey.y;
+  values[5] = 0x111122223333444455556666777788889999aaaAn;
+  values[6] = 0xa9059cbbn;
   return values;
 };
 

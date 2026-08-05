@@ -23,6 +23,14 @@ const main = () => {
     "[8S]G = [8]R + [8h]A",
     "the oracle must state the selected cofactor-8 equation",
   );
+  assert.equal(
+    POLICY.contractAddressRange,
+    "delegated-public-0<=contract<2^160",
+  );
+  assert.equal(
+    POLICY.functionSelectorRange,
+    "delegated-public-0<=selector<2^32",
+  );
 
   for (const vector of corpus) {
     assert.equal(ids.has(vector.id), false, `duplicate corpus id ${vector.id}`);
@@ -94,6 +102,24 @@ const main = () => {
   assert.equal(
     evaluateCompleteStatement(delegated).delegatedPublic.accepted,
     false,
+  );
+
+  const oversizedContract = corpus.find(
+    ({ id }) => id === "delegate-oversized-contract-address-rejection",
+  );
+  assert.equal(evaluateCompleteStatement(oversizedContract).circuit.accepted, true);
+  assert.equal(
+    evaluateCompleteStatement(oversizedContract).delegatedPublic.reason,
+    "contract-address-range",
+  );
+
+  const oversizedSelector = corpus.find(
+    ({ id }) => id === "delegate-oversized-function-selector-rejection",
+  );
+  assert.equal(evaluateCompleteStatement(oversizedSelector).circuit.accepted, true);
+  assert.equal(
+    evaluateCompleteStatement(oversizedSelector).delegatedPublic.reason,
+    "function-selector-range",
   );
 
   const zeroSignature = corpus.find(

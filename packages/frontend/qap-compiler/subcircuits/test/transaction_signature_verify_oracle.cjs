@@ -10,6 +10,8 @@ const RANDOMIZER_SCALAR = 11n;
 const MESSAGE_WORD_COUNT = FUNCTION_INPUT_LENGTH + 3;
 const CHALLENGE_INPUT_COUNT = FUNCTION_INPUT_LENGTH + 7;
 const ORIGIN_MASK = (1n << 160n) - 1n;
+const CONTRACT_ADDRESS_LIMIT = 1n << 160n;
+const FUNCTION_SELECTOR_LIMIT = 1n << 32n;
 
 const DISPOSITIONS = Object.freeze({
   VALID_COMPLETE_STATEMENT: "valid-complete-statement",
@@ -23,6 +25,8 @@ const POLICY = Object.freeze({
   nonIdentitySmallOrderRandomizer: "accept",
   identityRandomizer: "reject",
   responseScalarRange: "delegated-public-0<=S<n",
+  contractAddressRange: "delegated-public-0<=contract<2^160",
+  functionSelectorRange: "delegated-public-0<=selector<2^32",
 });
 
 const poseidonChainCompress = (values) => {
@@ -51,10 +55,15 @@ const toWordBytes = (value) => {
   return bytes;
 };
 
-const makeMessageWords = () => Array.from(
-  { length: MESSAGE_WORD_COUNT },
-  (_, index) => BigInt(index + 1) * 0x10000000000000001n,
-);
+const makeMessageWords = () => {
+  const words = Array.from(
+    { length: MESSAGE_WORD_COUNT },
+    (_, index) => BigInt(index + 1) * 0x10000000000000001n,
+  );
+  words[1] = 0x111122223333444455556666777788889999aaaAn;
+  words[2] = 0xa9059cbbn;
+  return words;
+};
 
 const getChallengeInputs = ({ publicKey, randomizer, messageWords }) => {
   if (messageWords.length !== MESSAGE_WORD_COUNT) {
@@ -139,12 +148,17 @@ const evaluateCircuitStatement = (statement) => {
   });
 };
 
-const evaluateDelegatedPublicBoundary = ({ signature }) => {
-  const accepted = signature >= 0n && signature < SCALAR_ORDER;
-  return Object.freeze({
-    accepted,
-    reason: accepted ? "accepted" : "response-scalar-range",
-  });
+const evaluateDelegatedPublicBoundary = ({ messageWords, signature }) => {
+  if (signature < 0n || signature >= SCALAR_ORDER) {
+    return Object.freeze({ accepted: false, reason: "response-scalar-range" });
+  }
+  if (messageWords[1] < 0n || messageWords[1] >= CONTRACT_ADDRESS_LIMIT) {
+    return Object.freeze({ accepted: false, reason: "contract-address-range" });
+  }
+  if (messageWords[2] < 0n || messageWords[2] >= FUNCTION_SELECTOR_LIMIT) {
+    return Object.freeze({ accepted: false, reason: "function-selector-range" });
+  }
+  return Object.freeze({ accepted: true, reason: "accepted" });
 };
 
 const evaluateCompleteStatement = (statement) => {
@@ -253,6 +267,10 @@ const createTransactionSignatureCorpus = () => {
   changedMessageWords[3] += 1n;
   const nonCanonicalNonce = [...messageWords];
   nonCanonicalNonce[0] = FIELD_PRIME;
+  const oversizedContractWords = [...messageWords];
+  oversizedContractWords[1] = CONTRACT_ADDRESS_LIMIT;
+  const oversizedSelectorWords = [...messageWords];
+  oversizedSelectorWords[2] = FUNCTION_SELECTOR_LIMIT;
 
   return Object.freeze([
     vector(
@@ -320,6 +338,30 @@ const createTransactionSignatureCorpus = () => {
       messageWords: delegatedMessageWords,
       signature: delegatedSignature,
     }),
+    vector(
+      "delegate-oversized-contract-address-rejection",
+      DISPOSITIONS.DELEGATED_PUBLIC_REJECTION,
+      {
+        messageWords: oversizedContractWords,
+        signature: signatureFor({
+          publicKey,
+          randomizer,
+          messageWords: oversizedContractWords,
+        }),
+      },
+    ),
+    vector(
+      "delegate-oversized-function-selector-rejection",
+      DISPOSITIONS.DELEGATED_PUBLIC_REJECTION,
+      {
+        messageWords: oversizedSelectorWords,
+        signature: signatureFor({
+          publicKey,
+          randomizer,
+          messageWords: oversizedSelectorWords,
+        }),
+      },
+    ),
   ]);
 };
 
