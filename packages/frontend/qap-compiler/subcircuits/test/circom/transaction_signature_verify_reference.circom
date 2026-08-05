@@ -203,6 +203,7 @@ template TransactionSignatureVerifyReferenceStage(N) {
     signal output R8[2];
     signal output sG8[2];
     signal output hA8[2];
+    signal output signatureRhs[2];
 
     var LIMB_BASE = 1 << 128;
 
@@ -290,4 +291,13 @@ template TransactionSignatureVerifyReferenceStage(N) {
     challengeScalar.base <== pointValidation.A8;
     challengeScalar.bits <== canonicalChallenge.bits;
     hA8 <== challengeScalar.result;
+
+    component terminalAddition = jubjubAdd();
+    terminalAddition.in1 <== cofactorPoints.R8;
+    terminalAddition.in2 <== challengeScalar.result;
+    signatureRhs <== terminalAddition.out;
+
+    for (var coordinate = 0; coordinate < 2; coordinate++) {
+        responseScalar.result[coordinate] === terminalAddition.out[coordinate];
+    }
 }

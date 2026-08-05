@@ -16,7 +16,8 @@ const CHALLENGE_INPUT_COUNT = PRIVATE_INPUT_COUNT + 7;
 const PUBLIC_KEY = jubjub.Point.BASE.multiply(7n);
 const RANDOMIZER = jubjub.Point.BASE.multiply(11n);
 const SCALAR_ORDER = jubjub.Point.Fn.ORDER;
-const DEFAULT_SIGNATURE = 123456789n;
+const PRIVATE_KEY = 7n;
+const RANDOMIZER_SCALAR = 11n;
 
 const split = (value) => [value & LIMB_MASK, value >> 128n];
 
@@ -56,10 +57,18 @@ const encodePoint = (point) => {
   return [split(affine.x), split(affine.y)];
 };
 
+const signatureFor = (
+  values,
+  privateKey = PRIVATE_KEY,
+  randomizer = RANDOMIZER_SCALAR,
+) => (
+  randomizer + poseidonChainCompress(values) * privateKey
+) % SCALAR_ORDER;
+
 const calculateReferenceWitness = (
   circuit,
   values,
-  signature = DEFAULT_SIGNATURE,
+  signature = signatureFor(values),
   generator = jubjub.Point.BASE,
   identity = jubjub.Point.ZERO,
 ) => {
@@ -96,28 +105,30 @@ const assertReference = async (
   circuit,
   values,
   label,
-  signature = DEFAULT_SIGNATURE,
+  signature = signatureFor(values),
   generator = jubjub.Point.BASE,
 ) => {
   const expected = poseidonChainCompress(values);
-  const expectedR8 = jubjub.Point.fromAffine({
+  const expectedR8Point = jubjub.Point.fromAffine({
     x: values[0],
     y: values[1],
-  }).multiply(8n).toAffine();
-  const expectedA8 = jubjub.Point.fromAffine({
+  }).multiply(8n);
+  const expectedR8 = expectedR8Point.toAffine();
+  const expectedA8Point = jubjub.Point.fromAffine({
     x: values[2],
     y: values[3],
-  }).multiply(8n).toAffine();
+  }).multiply(8n);
+  const expectedA8 = expectedA8Point.toAffine();
   const expectedG8 = generator.multiply(8n).toAffine();
+  const expectedSignatureRhs = expectedR8Point.add(
+    multiplySubgroupPoint(expectedA8Point, expected),
+  ).toAffine();
   const expectedSG8 = multiplySubgroupPoint(
     generator.multiply(8n),
     signature,
   ).toAffine();
   const expectedHA8 = multiplySubgroupPoint(
-    jubjub.Point.fromAffine({
-      x: values[2],
-      y: values[3],
-    }).multiply(8n),
+    expectedA8Point,
     expected,
   ).toAffine();
   const witness = await calculateReferenceWitness(
@@ -135,6 +146,7 @@ const assertReference = async (
     R8: [expectedR8.x, expectedR8.y],
     sG8: [expectedSG8.x, expectedSG8.y],
     hA8: [expectedHA8.x, expectedHA8.y],
+    signatureRhs: [expectedSignatureRhs.x, expectedSignatureRhs.y],
   });
   assert.equal(normalize(witness[1]), expected & LIMB_MASK, `${label} low limb`);
   assert.equal(normalize(witness[2]), expected >> 128n, `${label} high limb`);
@@ -146,7 +158,7 @@ const assertRejectedWord = async (circuit, wordIndex, value, label) => {
   await assert.rejects(
     circuit.calculateWitness({
       in: encoded,
-      S: split(DEFAULT_SIGNATURE),
+      S: split(signatureFor(makeValues())),
       G: encodePoint(jubjub.Point.BASE),
       O: encodePoint(jubjub.Point.ZERO),
     }, true),
@@ -239,7 +251,7 @@ const main = async () => {
   await assert.rejects(
     circuit.calculateWitness({
       in: invalidLowLimb,
-      S: split(DEFAULT_SIGNATURE),
+      S: split(signatureFor(makeValues())),
       G: encodePoint(jubjub.Point.BASE),
       O: encodePoint(jubjub.Point.ZERO),
     }, true),
@@ -252,7 +264,7 @@ const main = async () => {
   await assert.rejects(
     circuit.calculateWitness({
       in: invalidHighLimb,
-      S: split(DEFAULT_SIGNATURE),
+      S: split(signatureFor(makeValues())),
       G: encodePoint(jubjub.Point.BASE),
       O: encodePoint(jubjub.Point.ZERO),
     }, true),
@@ -304,35 +316,58 @@ const main = async () => {
     circuit,
     orderTwoRandomizer,
     "non-identity order-two randomizer",
+    poseidonChainCompress(orderTwoRandomizer) * PRIVATE_KEY % SCALAR_ORDER,
   );
 
-  for (const signature of [
-    0n,
-    SCALAR_ORDER - 1n,
-    SCALAR_ORDER,
-    (1n << 252n) - 1n,
-  ]) {
-    await assertReference(
-      circuit,
-      ordinary,
-      `signature scalar ${signature}`,
-      signature,
-    );
+  let outOfRangeSignatureValues;
+  let outOfRangeSignature;
+  for (let candidate = 0n; candidate < 64n; candidate++) {
+    const candidateValues = makeValues();
+    candidateValues[7] += candidate;
+    const canonicalSignature = signatureFor(candidateValues);
+    if (canonicalSignature + SCALAR_ORDER < 1n << 252n) {
+      outOfRangeSignatureValues = candidateValues;
+      outOfRangeSignature = canonicalSignature + SCALAR_ORDER;
+      break;
+    }
   }
+  assert.notEqual(
+    outOfRangeSignatureValues,
+    undefined,
+    "a deterministic S + n test vector must exist",
+  );
+  await assertReference(
+    circuit,
+    outOfRangeSignatureValues,
+    "externally invalid S + n",
+    outOfRangeSignature,
+  );
   await assert.rejects(
     calculateReferenceWitness(circuit, ordinary, 1n << 252n),
     undefined,
     "a 253-bit S must be rejected by the scalar decomposition",
   );
 
+  const ordinarySignature = signatureFor(ordinary);
+  await assert.rejects(
+    calculateReferenceWitness(circuit, ordinary, ordinarySignature + 1n),
+    undefined,
+    "an invalid terminal signature equation must be rejected",
+  );
+  const [ordinarySignatureLow, ordinarySignatureHigh] = split(ordinarySignature);
+  assert.notEqual(
+    ordinarySignatureHigh,
+    0n,
+    "the non-canonical public-limb test requires a nonzero high limb",
+  );
   const nonCanonicalPublicLowLimb = await circuit.calculateWitness({
     in: encode(ordinary),
-    S: [LIMB_BASE, 0n],
+    S: [ordinarySignatureLow + LIMB_BASE, ordinarySignatureHigh - 1n],
     G: encodePoint(jubjub.Point.BASE),
     O: encodePoint(jubjub.Point.ZERO),
   }, true);
   await circuit.assertOut(nonCanonicalPublicLowLimb, {
-    sBits: toBits(LIMB_BASE).slice(0, 252),
+    sBits: toBits(ordinarySignature).slice(0, 252),
   });
 
   const sBitIndex = circuit.symbols["main.sBits[0]"]?.varIdx;
@@ -349,7 +384,7 @@ const main = async () => {
     circuit,
     ordinary,
     "alternate valid public generator",
-    DEFAULT_SIGNATURE,
+    ordinarySignature * ((SCALAR_ORDER + 1n) / 2n) % SCALAR_ORDER,
     jubjub.Point.BASE.multiply(2n),
   );
 
@@ -358,6 +393,7 @@ const main = async () => {
     ["R8", "randomizer cofactor output"],
     ["sG8", "response scalar output"],
     ["hA8", "challenge scalar output"],
+    ["signatureRhs", "terminal signature right-hand side"],
   ]) {
     const outputIndex = circuit.symbols[`main.${outputName}[0]`]?.varIdx;
     assert.notEqual(outputIndex, undefined, `${label} must exist in the witness`);
