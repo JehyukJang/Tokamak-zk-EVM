@@ -479,6 +479,8 @@ const main = async () => {
     ],
     ["main.reference.hashes[0].m[63].out[1]", "Poseidon terminal state word 1"],
     ["main.reference.hashes[0].m[63].out[2]", "Poseidon terminal state word 2"],
+    ["main.reference.responseScalar.bits[0]", "response scalar low bit"],
+    ["main.reference.responseScalar.bits[251]", "response scalar high bit"],
     [
       "main.reference.pointValidation.publicKeyCofactor.point4.A",
       "public-key cofactor intermediate",
