@@ -41,11 +41,11 @@ const main = () => {
     assert.equal(result.status, 0, output);
     assert.match(output, /non-linear constraints: 30077\b/);
     assert.match(output, /linear constraints: 14321\b/);
-    assert.match(output, /public inputs: 6\b/);
-    assert.match(output, /private inputs: 72\b/);
+    assert.match(output, /public inputs: 10\b/);
+    assert.match(output, /private inputs: 68\b/);
     assert.match(output, /public outputs: 2\b/);
     assert.match(output, /wires: 44346\b/);
-    assert.match(output, /labels: 68288\b/);
+    assert.match(output, /labels: 68368\b/);
 
     const expectedWarnings = [
       "StrictBls12381FieldBoundFromLimbs_unsafe()\": Array of subcomponent input/output signals highDifference.out contains a total of 127 signals",

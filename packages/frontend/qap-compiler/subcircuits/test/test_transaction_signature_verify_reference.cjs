@@ -51,6 +51,15 @@ const makeValues = () => {
 
 const encode = (values) => values.map(split);
 
+const toBoundaryInputs = (encodedValues) => ({
+  privateIn: [
+    ...encodedValues.slice(0, 5),
+    ...encodedValues.slice(7),
+  ],
+  contractAddress: encodedValues[5],
+  functionSelector: encodedValues[6],
+});
+
 const toBits = (value) => Array.from(
   { length: 255 },
   (_, index) => value >> BigInt(index) & 1n,
@@ -78,7 +87,7 @@ const calculateReferenceWitness = (
   identity = jubjub.Point.ZERO,
 ) => {
   return circuit.calculateWitness({
-    in: encode(values),
+    ...toBoundaryInputs(encode(values)),
     S: split(signature),
     O: encodePoint(identity),
   }, true);
@@ -126,7 +135,7 @@ const assertRejectedWord = async (circuit, wordIndex, value, label) => {
   encoded[wordIndex] = split(value);
   await assert.rejects(
     circuit.calculateWitness({
-      in: encoded,
+      ...toBoundaryInputs(encoded),
       S: split(signatureFor(makeValues())),
       O: encodePoint(jubjub.Point.ZERO),
     }, true),
@@ -246,7 +255,7 @@ const main = async () => {
   invalidLowLimb[4] = [LIMB_BASE, 0n];
   await assert.rejects(
     circuit.calculateWitness({
-      in: invalidLowLimb,
+      ...toBoundaryInputs(invalidLowLimb),
       S: split(signatureFor(makeValues())),
       O: encodePoint(jubjub.Point.ZERO),
     }, true),
@@ -258,7 +267,7 @@ const main = async () => {
   invalidHighLimb[7] = [0n, 1n << 127n];
   await assert.rejects(
     circuit.calculateWitness({
-      in: invalidHighLimb,
+      ...toBoundaryInputs(invalidHighLimb),
       S: split(signatureFor(makeValues())),
       O: encodePoint(jubjub.Point.ZERO),
     }, true),
@@ -343,6 +352,29 @@ const main = async () => {
   );
 
   const ordinarySignature = signatureFor(ordinary);
+  for (const [wordIndex, label] of [
+    [5, "contract address"],
+    [6, "function selector"],
+  ]) {
+    const changedPublicWord = [...ordinary];
+    changedPublicWord[wordIndex] += 1n;
+    await assert.rejects(
+      calculateReferenceWitness(circuit, changedPublicWord, ordinarySignature),
+      undefined,
+      `a changed public ${label} must invalidate the signed statement`,
+    );
+  }
+  const swappedPublicWords = [...ordinary];
+  [swappedPublicWords[5], swappedPublicWords[6]] = [
+    swappedPublicWords[6],
+    swappedPublicWords[5],
+  ];
+  await assert.rejects(
+    calculateReferenceWitness(circuit, swappedPublicWords, ordinarySignature),
+    undefined,
+    "swapped contract-address and function-selector inputs must be rejected",
+  );
+
   await assert.rejects(
     calculateReferenceWitness(circuit, ordinary, ordinarySignature + 1n),
     undefined,
@@ -355,7 +387,7 @@ const main = async () => {
     "the non-canonical public-limb test requires a nonzero high limb",
   );
   const nonCanonicalPublicLowLimb = await circuit.calculateWitness({
-    in: encode(ordinary),
+    ...toBoundaryInputs(encode(ordinary)),
     S: [ordinarySignatureLow + LIMB_BASE, ordinarySignatureHigh - 1n],
     O: encodePoint(jubjub.Point.ZERO),
   }, true);
@@ -375,64 +407,64 @@ const main = async () => {
 
   for (const [signalName, label] of [
     [
-      "main.privateWords[0].lowBits.out[0]",
+      "main.reference.privateWords[0].lowBits.out[0]",
       "private-word low-limb range-check bit",
     ],
     [
-      "main.privateWords[0].highBits.out[126]",
+      "main.reference.privateWords[0].highBits.out[126]",
       "private-word high-limb range-check bit",
     ],
     [
-      "main.privateWords[0].fieldBound.lowDifference.out[0]",
+      "main.reference.privateWords[0].fieldBound.lowDifference.out[0]",
       "private-word field-bound low-difference bit",
     ],
     [
-      "main.privateWords[0].fieldBound.highDifference.out[126]",
+      "main.reference.privateWords[0].fieldBound.highDifference.out[126]",
       "private-word field-bound high-difference bit",
     ],
-    ["main.hashes[0].m[63].out[1]", "Poseidon terminal state word 1"],
-    ["main.hashes[0].m[63].out[2]", "Poseidon terminal state word 2"],
+    ["main.reference.hashes[0].m[63].out[1]", "Poseidon terminal state word 1"],
+    ["main.reference.hashes[0].m[63].out[2]", "Poseidon terminal state word 2"],
     [
-      "main.pointValidation.publicKeyCofactor.point4.A",
+      "main.reference.pointValidation.publicKeyCofactor.point4.A",
       "public-key cofactor intermediate",
     ],
     [
-      "main.randomizerCofactor.randomizerCofactor.point4.A",
+      "main.reference.randomizerCofactor.randomizerCofactor.point4.A",
       "randomizer cofactor intermediate",
     ],
     [
-      "main.responseScalar.accumulators[42][0]",
+      "main.reference.responseScalar.accumulators[42][0]",
       "response scalar accumulator",
     ],
-    ["main.responseScalar.selected[42][2]", "response selected T"],
-    ["main.responseScalar.selected[42][0]", "response table selection"],
-    ["main.responseScalar.products[42][0]", "response selector monomial"],
+    ["main.reference.responseScalar.selected[42][2]", "response selected T"],
+    ["main.reference.responseScalar.selected[42][0]", "response table selection"],
+    ["main.reference.responseScalar.products[42][0]", "response selector monomial"],
     [
-      "main.challengeScalar.tableAdditions[0].inter1",
+      "main.reference.challengeScalar.tableAdditions[0].inter1",
       "challenge scalar runtime table",
     ],
     [
-      "main.challengeScalar.selectors[64].nodes[4][0]",
+      "main.reference.challengeScalar.selectors[64].nodes[4][0]",
       "challenge scalar selection tree",
     ],
     [
-      "main.challengeScalar.doublings[128].A",
+      "main.reference.challengeScalar.doublings[128].A",
       "challenge scalar doubling chain",
     ],
     [
-      "main.challengeScalar.additions[64].affineT",
+      "main.reference.challengeScalar.additions[64].affineT",
       "challenge scalar mixed addition",
     ],
     [
-      "main.challengeScalar.accumulators[64][0]",
+      "main.reference.challengeScalar.accumulators[64][0]",
       "challenge scalar accumulator",
     ],
-    ["main.terminalAddition.C", "terminal mixed-addition intermediate"],
-    ["main.responseScalar.result[3]", "response terminal T coordinate"],
-    ["main.terminalAddition.result[3]", "sum terminal T coordinate"],
-    ["main.terminalEquality.scale", "terminal projective scale"],
-    ["main.canonicalPublicKeyHash.bits[0]", "public-key hash low bit"],
-    ["main.canonicalPublicKeyHash.bits[254]", "public-key hash high bit"],
+    ["main.reference.terminalAddition.C", "terminal mixed-addition intermediate"],
+    ["main.reference.responseScalar.result[3]", "response terminal T coordinate"],
+    ["main.reference.terminalAddition.result[3]", "sum terminal T coordinate"],
+    ["main.reference.terminalEquality.scale", "terminal projective scale"],
+    ["main.reference.canonicalPublicKeyHash.bits[0]", "public-key hash low bit"],
+    ["main.reference.canonicalPublicKeyHash.bits[254]", "public-key hash high bit"],
   ]) {
     const signalIndex = circuit.symbols[signalName]?.varIdx;
     assert.notEqual(signalIndex, undefined, `${label} must exist in the witness`);
