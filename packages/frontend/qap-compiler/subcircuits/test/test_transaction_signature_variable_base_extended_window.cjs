@@ -24,17 +24,20 @@ const assertMutatedSignalRejected = async (circuit, witness, signalName, label) 
 
 const main = async () => {
   const packageRoot = path.join(__dirname, "../..");
-  const circuit = await wasm(
-    path.join(
-      packageRoot,
-      "subcircuits/test/circom/transaction_signature_variable_base_window3_extended_test.circom",
+  const candidates = await Promise.all([2, 3, 4].map(async (width) => ({
+    width,
+    circuit: await wasm(
+      path.join(
+        packageRoot,
+        `subcircuits/test/circom/transaction_signature_variable_base_window${width}_extended_test.circom`,
+      ),
+      {
+        include: path.join(packageRoot, "node_modules"),
+        prime: "bls12381",
+        O: 1,
+      },
     ),
-    {
-      include: path.join(packageRoot, "node_modules"),
-      prime: "bls12381",
-      O: 1,
-    },
-  );
+  })));
   const identity = jubjub.Point.ZERO.toAffine();
   const bases = [
     jubjub.Point.BASE.multiply(7n).multiply(8n),
@@ -55,41 +58,71 @@ const main = async () => {
     FIELD_PRIME - 1n,
   ];
 
-  let mutationWitness;
-  for (const base of bases) {
-    const affineBase = base.toAffine();
-    for (const scalar of scalars) {
-      const witness = await circuit.calculateWitness({
-        identity: [identity.x, identity.y],
-        base: [affineBase.x, affineBase.y],
-        scalar,
-      }, true);
-      const reducedScalar = scalar % SCALAR_ORDER;
-      const expected = (
-        reducedScalar === 0n ? jubjub.Point.ZERO : base.multiply(reducedScalar)
-      ).toAffine();
-      assert.equal(normalize(witness[1]), expected.x, `scalar ${scalar} result.x`);
-      assert.equal(normalize(witness[2]), expected.y, `scalar ${scalar} result.y`);
-      await circuit.assertOut(witness, { result: [expected.x, expected.y] });
-      if (mutationWitness === undefined && scalar === 0xa55an) {
-        mutationWitness = witness;
+  for (const { width, circuit } of candidates) {
+    let mutationWitness;
+    for (const base of bases) {
+      const affineBase = base.toAffine();
+      for (const scalar of scalars) {
+        const witness = await circuit.calculateWitness({
+          identity: [identity.x, identity.y],
+          base: [affineBase.x, affineBase.y],
+          scalar,
+        }, true);
+        const reducedScalar = scalar % SCALAR_ORDER;
+        const expected = (
+          reducedScalar === 0n ? jubjub.Point.ZERO : base.multiply(reducedScalar)
+        ).toAffine();
+        assert.equal(
+          normalize(witness[1]),
+          expected.x,
+          `window${width} scalar ${scalar} result.x`,
+        );
+        assert.equal(
+          normalize(witness[2]),
+          expected.y,
+          `window${width} scalar ${scalar} result.y`,
+        );
+        await circuit.assertOut(witness, { result: [expected.x, expected.y] });
+        if (mutationWitness === undefined && scalar === 0xa55an) {
+          mutationWitness = witness;
+        }
       }
+    }
+
+    await circuit.loadSymbols();
+    const numWindows = Math.ceil(255 / width);
+    const middleWindow = Math.floor(numWindows / 2);
+    const tableSize = 1 << width;
+    for (const [signalName, label] of [
+      ["main.core.tableAdditions[0].inter1", "runtime table"],
+      [
+        `main.core.selectors[${middleWindow}].nodes[${tableSize}][0]`,
+        "selection tree",
+      ],
+      [
+        `main.core.doublings[${middleWindow * width}].A`,
+        "extended doubling",
+      ],
+      [
+        `main.core.additions[${middleWindow}].affineT`,
+        "mixed addition",
+      ],
+      [
+        `main.core.accumulators[${middleWindow}][0]`,
+        "extended accumulator",
+      ],
+    ]) {
+      await assertMutatedSignalRejected(
+        circuit,
+        mutationWitness,
+        signalName,
+        `window${width} ${label}`,
+      );
     }
   }
 
-  await circuit.loadSymbols();
-  for (const [signalName, label] of [
-    ["main.core.tableAdditions[0].inter1", "runtime table"],
-    ["main.core.selectors[42].nodes[8][0]", "selection tree"],
-    ["main.core.doublings[126].A", "extended doubling"],
-    ["main.core.additions[42].affineT", "mixed addition"],
-    ["main.core.accumulators[42][0]", "extended accumulator"],
-  ]) {
-    await assertMutatedSignalRejected(circuit, mutationWitness, signalName, label);
-  }
-
   console.log(
-    "Extended variable-base window passed scalar boundaries and internal mutation tests",
+    "Extended variable-base windows passed scalar boundaries and internal mutation tests",
   );
 };
 
