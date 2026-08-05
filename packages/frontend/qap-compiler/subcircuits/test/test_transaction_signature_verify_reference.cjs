@@ -332,11 +332,11 @@ const main = async () => {
 
   for (const [signalName, label] of [
     [
-      "main.pointValidation.publicKeyCofactor.point4[0]",
+      "main.pointValidation.publicKeyCofactor.point4.A",
       "public-key cofactor intermediate",
     ],
     [
-      "main.randomizerCofactor.randomizerCofactor.point4[0]",
+      "main.randomizerCofactor.randomizerCofactor.point4.A",
       "randomizer cofactor intermediate",
     ],
     [

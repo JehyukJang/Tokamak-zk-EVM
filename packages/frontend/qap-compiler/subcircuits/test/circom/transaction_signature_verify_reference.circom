@@ -105,10 +105,8 @@ template JubjubMulByCofactor8FromValidPoint_unsafe() {
     point8 <== jubjubAdd()(point4, point4);
 }
 
-// The affine addition formula used by jubjubAdd is complete for this curve:
+// The complete extended-coordinate formula is valid for this curve because
 // a = -1 is a square and d = -(10240/10241) is a nonsquare in BLS12-381 Fr.
-// Consequently, all three doublings have nonzero denominators for an on-curve
-// A, and every produced point remains on the same curve.
 template TransactionSignaturePointValidationReference() {
     signal input A[2];
     signal input R[2];
@@ -120,9 +118,11 @@ template TransactionSignaturePointValidationReference() {
     component checkR = jubjubCheck();
     checkR.in <== R;
 
-    component publicKeyCofactor = JubjubMulByCofactor8FromValidPoint_unsafe();
+    component publicKeyCofactor = AffineJubjubMulByCofactor8Extended_unsafe();
     publicKeyCofactor.point <== A;
-    A8 <== publicKeyCofactor.point8;
+    component affinePublicKeyCofactor = ExtendedJubjubToAffine_unsafe();
+    affinePublicKeyCofactor.point <== publicKeyCofactor.point8;
+    A8 <== affinePublicKeyCofactor.affine;
 
     component rejectA8Identity = RejectJubjubIdentityFromValidatedY_unsafe();
     rejectA8Identity.y <== A8[1];
@@ -135,9 +135,9 @@ template TransactionSignaturePointValidationReference() {
 // equation. R is validated inside this reference circuit.
 template TransactionSignatureRandomizerCofactorReference() {
     signal input R[2];
-    signal output R8[2];
+    signal output R8[4];
 
-    component randomizerCofactor = JubjubMulByCofactor8FromValidPoint_unsafe();
+    component randomizerCofactor = AffineJubjubMulByCofactor8Extended_unsafe();
     randomizerCofactor.point <== R;
     R8 <== randomizerCofactor.point8;
 }
@@ -259,9 +259,9 @@ template TransactionSignatureVerifyReference(N) {
     challengeScalar.base <== pointValidation.A8;
     challengeScalar.bits <== canonicalChallenge.bits;
 
-    component terminalAddition = ExtendedJubjubAddAffine_unsafe();
-    terminalAddition.point <== challengeScalar.result;
-    terminalAddition.affine <== randomizerCofactor.R8;
+    component terminalAddition = ExtendedJubjubAdd_unsafe();
+    terminalAddition.point1 <== challengeScalar.result;
+    terminalAddition.point2 <== randomizerCofactor.R8;
 
     component terminalEquality = AssertExtendedJubjubEqual_unsafe();
     terminalEquality.lhs <== responseScalar.result;
