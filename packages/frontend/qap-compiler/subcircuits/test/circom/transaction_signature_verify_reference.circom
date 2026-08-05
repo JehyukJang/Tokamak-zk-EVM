@@ -1,6 +1,6 @@
 pragma circom 2.1.6;
 
-include "../../../templates/255bit/jubjub.circom";
+include "./transaction_signature_fixed_base_window.circom";
 
 // BLS12-381 Fr is split at the 128-bit limb boundary. This helper assumes
 // that low is already constrained to 128 bits and high to 127 bits. It proves
@@ -118,18 +118,11 @@ template TransactionSignaturePointValidationReference() {
     rejectRIdentity.y <== R[1];
 }
 
-// Computes the two remaining cofactor points used by the final verification
-// equation. R is validated inside this reference circuit. G is an approved
-// public constant whose exact value and curve validity are owned by Solidity.
-template TransactionSignatureCofactorPointsReference() {
-    signal input G[2];
+// Computes the randomizer cofactor point used by the final verification
+// equation. R is validated inside this reference circuit.
+template TransactionSignatureRandomizerCofactorReference() {
     signal input R[2];
-    signal output G8[2];
     signal output R8[2];
-
-    component generatorCofactor = JubjubMulByCofactor8FromValidPoint_unsafe();
-    generatorCofactor.point <== G;
-    G8 <== generatorCofactor.point8;
 
     component randomizerCofactor = JubjubMulByCofactor8FromValidPoint_unsafe();
     randomizerCofactor.point <== R;
@@ -181,15 +174,14 @@ template JubjubScalarMulFromConstrainedBits_unsafe(N) {
 //
 // R.x, R.y, A.x, A.y, nonce, contract, selector, input[0..N-1].
 //
-// S, G, and O are declared separately to preserve their public boundary while
-// all N + 7 challenge inputs remain private. They are logical operands N + 7
-// through N + 11 in the final ordered interface. Origin is the only result.
+// S and O are declared separately to preserve their public boundary while all
+// N + 7 challenge inputs remain private. They are logical operands N + 7
+// through N + 9 in the final ordered interface. Origin is the only result.
 template TransactionSignatureVerifyReference(N) {
     assert(N > 0);
 
     signal input in[N + 7][2];
     signal input S[2];
-    signal input G[2][2];
     signal input O[2][2];
     signal output origin[2];
 
@@ -218,14 +210,8 @@ template TransactionSignatureVerifyReference(N) {
     pointValidation.R <== [challengeInputs[0], challengeInputs[1]];
     pointValidation.A <== [challengeInputs[2], challengeInputs[3]];
 
-    signal nativeG[2];
-    for (var coordinate = 0; coordinate < 2; coordinate++) {
-        nativeG[coordinate] <== G[coordinate][0] + G[coordinate][1] * LIMB_BASE;
-    }
-
-    component cofactorPoints = TransactionSignatureCofactorPointsReference();
-    cofactorPoints.G <== nativeG;
-    cofactorPoints.R <== [challengeInputs[0], challengeInputs[1]];
+    component randomizerCofactor = TransactionSignatureRandomizerCofactorReference();
+    randomizerCofactor.R <== [challengeInputs[0], challengeInputs[1]];
 
     component hashes[N + 6];
     hashes[0] = Poseidon255(2);
@@ -252,9 +238,7 @@ template TransactionSignatureVerifyReference(N) {
         nativeO[coordinate] <== O[coordinate][0] + O[coordinate][1] * LIMB_BASE;
     }
 
-    component responseScalar = JubjubScalarMulFromConstrainedBits_unsafe(252);
-    responseScalar.identity <== nativeO;
-    responseScalar.base <== cofactorPoints.G8;
+    component responseScalar = FixedG8WindowScalarMulFromConstrainedBits_unsafe(252, 3);
     responseScalar.bits <== signatureDecomposition.out;
 
     component challengeScalar = JubjubScalarMulFromConstrainedBits_unsafe(255);
@@ -263,7 +247,7 @@ template TransactionSignatureVerifyReference(N) {
     challengeScalar.bits <== canonicalChallenge.bits;
 
     component terminalAddition = jubjubAdd();
-    terminalAddition.in1 <== cofactorPoints.R8;
+    terminalAddition.in1 <== randomizerCofactor.R8;
     terminalAddition.in2 <== challengeScalar.result;
 
     for (var coordinate = 0; coordinate < 2; coordinate++) {

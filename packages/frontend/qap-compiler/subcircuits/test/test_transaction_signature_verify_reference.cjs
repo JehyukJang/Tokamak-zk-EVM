@@ -69,13 +69,11 @@ const calculateReferenceWitness = (
   circuit,
   values,
   signature = signatureFor(values),
-  generator = jubjub.Point.BASE,
   identity = jubjub.Point.ZERO,
 ) => {
   return circuit.calculateWitness({
     in: encode(values),
     S: split(signature),
-    G: encodePoint(generator),
     O: encodePoint(identity),
   }, true);
 };
@@ -99,7 +97,6 @@ const assertReference = async (
   values,
   label,
   signature = signatureFor(values),
-  generator = jubjub.Point.BASE,
 ) => {
   const expectedPublicKeyHash = poseidon2([values[2], values[3]]);
   const expectedOrigin = [
@@ -110,7 +107,6 @@ const assertReference = async (
     circuit,
     values,
     signature,
-    generator,
   );
   await circuit.assertOut(witness, {
     origin: expectedOrigin,
@@ -126,7 +122,6 @@ const assertRejectedWord = async (circuit, wordIndex, value, label) => {
     circuit.calculateWitness({
       in: encoded,
       S: split(signatureFor(makeValues())),
-      G: encodePoint(jubjub.Point.BASE),
       O: encodePoint(jubjub.Point.ZERO),
     }, true),
     undefined,
@@ -210,7 +205,6 @@ const main = async () => {
     circuit.calculateWitness({
       in: invalidLowLimb,
       S: split(signatureFor(makeValues())),
-      G: encodePoint(jubjub.Point.BASE),
       O: encodePoint(jubjub.Point.ZERO),
     }, true),
     undefined,
@@ -223,7 +217,6 @@ const main = async () => {
     circuit.calculateWitness({
       in: invalidHighLimb,
       S: split(signatureFor(makeValues())),
-      G: encodePoint(jubjub.Point.BASE),
       O: encodePoint(jubjub.Point.ZERO),
     }, true),
     undefined,
@@ -321,18 +314,9 @@ const main = async () => {
   const nonCanonicalPublicLowLimb = await circuit.calculateWitness({
     in: encode(ordinary),
     S: [ordinarySignatureLow + LIMB_BASE, ordinarySignatureHigh - 1n],
-    G: encodePoint(jubjub.Point.BASE),
     O: encodePoint(jubjub.Point.ZERO),
   }, true);
   await circuit.checkConstraints(nonCanonicalPublicLowLimb);
-
-  await assertReference(
-    circuit,
-    ordinary,
-    "alternate valid public generator",
-    ordinarySignature * ((SCALAR_ORDER + 1n) / 2n) % SCALAR_ORDER,
-    jubjub.Point.BASE.multiply(2n),
-  );
 
   const originIndex = circuit.symbols["main.origin[0]"]?.varIdx;
   assert.notEqual(originIndex, undefined, "origin must exist in the witness");
@@ -352,17 +336,15 @@ const main = async () => {
       "public-key cofactor intermediate",
     ],
     [
-      "main.cofactorPoints.generatorCofactor.point4[0]",
-      "generator cofactor intermediate",
-    ],
-    [
-      "main.cofactorPoints.randomizerCofactor.point4[0]",
+      "main.randomizerCofactor.randomizerCofactor.point4[0]",
       "randomizer cofactor intermediate",
     ],
     [
-      "main.responseScalar.accumulators[127][0]",
+      "main.responseScalar.accumulators[42][0]",
       "response scalar accumulator",
     ],
+    ["main.responseScalar.selected[42][0]", "response table selection"],
+    ["main.responseScalar.products[42][0]", "response selector monomial"],
     [
       "main.challengeScalar.accumulators[128][0]",
       "challenge scalar accumulator",
