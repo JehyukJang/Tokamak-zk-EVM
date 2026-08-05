@@ -5,6 +5,12 @@ const { wasm } = require("circom_tester");
 const { jubjub } = require("@noble/curves/misc.js");
 const { poseidon2 } = require("poseidon-bls12381");
 const { FUNCTION_INPUT_LENGTH } = require("tokamak-l2js");
+const {
+  DISPOSITIONS,
+  createTransactionSignatureCorpus,
+  evaluateCompleteStatement,
+  getChallengeInputs,
+} = require("./transaction_signature_verify_oracle.cjs");
 
 const FIELD_PRIME = 52435875175126190479447740508185965837690552500527637822603658699938581184513n;
 const JUBJUB_A = FIELD_PRIME - 1n;
@@ -127,6 +133,43 @@ const assertRejectedWord = async (circuit, wordIndex, value, label) => {
     undefined,
     label,
   );
+};
+
+const assertPolicyCorpus = async (circuit) => {
+  const corpus = createTransactionSignatureCorpus();
+
+  for (const vector of corpus) {
+    const oracle = evaluateCompleteStatement(vector);
+    const values = getChallengeInputs(vector);
+
+    if (vector.disposition === DISPOSITIONS.CIRCUIT_LOCAL_REJECTION) {
+      assert.equal(oracle.circuit.accepted, false, `${vector.id} oracle`);
+      assert.equal(
+        oracle.delegatedPublic.accepted,
+        true,
+        `${vector.id} must remain a circuit-owned rejection`,
+      );
+      await assert.rejects(
+        calculateReferenceWitness(circuit, values, vector.signature),
+        undefined,
+        `${vector.id} must be rejected by the circuit`,
+      );
+      continue;
+    }
+
+    assert.equal(oracle.circuit.accepted, true, `${vector.id} oracle`);
+    await assertReference(circuit, values, vector.id, vector.signature);
+
+    if (vector.disposition === DISPOSITIONS.DELEGATED_PUBLIC_REJECTION) {
+      assert.equal(oracle.delegatedPublic.accepted, false, `${vector.id} boundary`);
+      assert.equal(oracle.accepted, false, `${vector.id} complete statement`);
+    } else {
+      assert.equal(oracle.delegatedPublic.accepted, true, `${vector.id} boundary`);
+      assert.equal(oracle.accepted, true, `${vector.id} complete statement`);
+    }
+  }
+
+  return corpus.length;
 };
 
 const main = async () => {
@@ -399,8 +442,10 @@ const main = async () => {
     );
   }
 
+  const corpusSize = await assertPolicyCorpus(circuit);
+
   console.log(
-    "Transaction signature reference passed canonicality, cofactored-equation, point-policy, and verified-origin tests",
+    `Transaction signature reference passed canonicality, cofactored-equation, point-policy, verified-origin, and ${corpusSize} policy-corpus tests`,
   );
 };
 
