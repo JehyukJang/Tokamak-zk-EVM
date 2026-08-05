@@ -343,6 +343,7 @@ const main = async () => {
       "main.responseScalar.accumulators[42][0]",
       "response scalar accumulator",
     ],
+    ["main.responseScalar.selected[42][2]", "response selected T"],
     ["main.responseScalar.selected[42][0]", "response table selection"],
     ["main.responseScalar.products[42][0]", "response selector monomial"],
     [
@@ -365,7 +366,8 @@ const main = async () => {
       "main.challengeScalar.accumulators[42][0]",
       "challenge scalar accumulator",
     ],
-    ["main.terminalAddition.inter1", "terminal addition intermediate"],
+    ["main.terminalAddition.C", "terminal mixed-addition intermediate"],
+    ["main.terminalEquality.scale", "terminal projective scale"],
     ["main.canonicalPublicKeyHash.bits[0]", "public-key hash low bit"],
     ["main.canonicalPublicKeyHash.bits[254]", "public-key hash high bit"],
   ]) {

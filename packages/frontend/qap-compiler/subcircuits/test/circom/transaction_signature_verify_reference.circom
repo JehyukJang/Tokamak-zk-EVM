@@ -1,7 +1,6 @@
 pragma circom 2.1.6;
 
-include "./transaction_signature_fixed_base_window.circom";
-include "./transaction_signature_variable_base_extended_window.circom";
+include "./transaction_signature_fixed_base_extended_window.circom";
 
 // BLS12-381 Fr is split at the 128-bit limb boundary. This helper assumes
 // that low is already constrained to 128 bits and high to 127 bits. It proves
@@ -80,6 +79,19 @@ template RejectJubjubIdentityFromValidatedY_unsafe() {
 
     signal inverse <-- 1 / (y - 1);
     (y - 1) * inverse === 1;
+}
+
+// Both inputs must already be valid extended points with nonzero Z. Equality
+// of X, Y, and Z up to one common scale proves equality of their affine points;
+// T is then fixed by the extended-coordinate invariant.
+template AssertExtendedJubjubEqual_unsafe() {
+    signal input lhs[4];
+    signal input rhs[4];
+
+    signal scale <-- lhs[2] / rhs[2];
+    for (var coordinate = 0; coordinate < 3; coordinate++) {
+        lhs[coordinate] === scale * rhs[coordinate];
+    }
 }
 
 // Multiplies an already-valid Jubjub point by the curve cofactor. Completeness
@@ -239,7 +251,7 @@ template TransactionSignatureVerifyReference(N) {
         nativeO[coordinate] <== O[coordinate][0] + O[coordinate][1] * LIMB_BASE;
     }
 
-    component responseScalar = FixedG8WindowScalarMulFromConstrainedBits_unsafe(252, 3);
+    component responseScalar = FixedG8ExtendedWindowScalarMulFromConstrainedBits_unsafe(252, 3);
     responseScalar.bits <== signatureDecomposition.out;
 
     component challengeScalar = VariableBaseExtendedWindowScalarMulFromConstrainedBits_unsafe(255, 3);
@@ -247,16 +259,13 @@ template TransactionSignatureVerifyReference(N) {
     challengeScalar.base <== pointValidation.A8;
     challengeScalar.bits <== canonicalChallenge.bits;
 
-    component affineChallengeScalar = ExtendedJubjubToAffine_unsafe();
-    affineChallengeScalar.point <== challengeScalar.result;
+    component terminalAddition = ExtendedJubjubAddAffine_unsafe();
+    terminalAddition.point <== challengeScalar.result;
+    terminalAddition.affine <== randomizerCofactor.R8;
 
-    component terminalAddition = jubjubAdd();
-    terminalAddition.in1 <== randomizerCofactor.R8;
-    terminalAddition.in2 <== affineChallengeScalar.affine;
-
-    for (var coordinate = 0; coordinate < 2; coordinate++) {
-        responseScalar.result[coordinate] === terminalAddition.out[coordinate];
-    }
+    component terminalEquality = AssertExtendedJubjubEqual_unsafe();
+    terminalEquality.lhs <== responseScalar.result;
+    terminalEquality.rhs <== terminalAddition.result;
 
     component publicKeyHasher = Poseidon255(2);
     publicKeyHasher.in[0] <== challengeInputs[2];
