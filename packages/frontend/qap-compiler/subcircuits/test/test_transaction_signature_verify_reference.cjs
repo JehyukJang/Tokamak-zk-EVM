@@ -223,6 +223,22 @@ const main = async () => {
   const ordinary = makeValues();
   await assertReference(circuit, ordinary, "ordinary challenge");
 
+  for (const [coordinateIndex, label] of [
+    [0, "randomizer x"],
+    [1, "randomizer y"],
+    [2, "public-key x"],
+    [3, "public-key y"],
+  ]) {
+    const aliasedCoordinates = [...ordinary];
+    aliasedCoordinates[coordinateIndex] += FIELD_PRIME;
+    await assertReference(
+      circuit,
+      aliasedCoordinates,
+      `${label} alternate field representation`,
+      signatureFor(ordinary),
+    );
+  }
+
   const ordinaryWitness = await calculateReferenceWitness(circuit, ordinary);
   await circuit.loadSymbols();
 
