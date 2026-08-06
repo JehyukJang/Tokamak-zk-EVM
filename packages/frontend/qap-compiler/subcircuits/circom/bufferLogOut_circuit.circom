@@ -3,4 +3,4 @@ include "../../templates/buffer.circom";
 include "./constants.circom";
 
 // Input wires are private, and output wires are public.
-component main{public [in]} = Buffer2(nLogOut() * 2);
+component main{public [in]} = Buffer2(nLogOut());

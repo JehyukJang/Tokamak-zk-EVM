@@ -1,11 +1,12 @@
 pragma circom 2.1.6;
-// Buffer capacities are measured in 256-bit words.
-function nTxIn() {return 3;}
-function nStorageLoad() {return 20;}
-function nLogOut() {return 25;}
-function nStorageStore() {return 15;}
-function nEVMIn() {return 265;}
-function nPrvIn() {return 40;}
+// Buffer capacities are measured in input wires.
+function nTxIn() {return 6;}
+function nStorageLoad() {return 40;}
+function nLogOut() {return 50;}
+function nStorageStore() {return 30;}
+function nBlockIn() {return 24;}
+function nEVMIn() {return 530;}
+function nPrvIn() {return 80;}
 
 function nPrivateMessageInputs() {return 29;}
 function nPoseidonInputs() {return 2;}

@@ -3,4 +3,4 @@ include "../../templates/buffer.circom";
 include "./constants.circom";
 
 // Initial storage reads enter through private wires and leave through public wires.
-component main{public [in]} = Buffer2(nStorageLoad() * 2);
+component main{public [in]} = Buffer2(nStorageLoad());
