@@ -168,15 +168,23 @@ both columns represented in the R1CS. That copy relation is locally sound.
 The semantic type, capacity, padding interpretation, and public-format checks
 are composition or higher-protocol responsibilities.
 
+A buffer capacity is the number of physical input wires accepted by its
+`Buffer2` instance. The buffer exposes the same number of output wires, but
+those outputs are not added to the capacity. Buffers do not impose one common
+logical value type: a native field value or one-limb value occupies one input
+wire, while a 256-bit EVM word occupies two 128-bit-limb input wires. Mixed
+values therefore consume capacity according to their actual physical wire
+layouts after expansion by the composition layer.
+
 | Subcircuit | Role and current capacity | Constraints (nonlinear + linear = total) | Final interface visibility | Soundness contract |
 | --- | --- | ---: | --- | --- |
-| `bufferLogOut` | Committed EVM log output; 25 256-bit words | 50 + 50 = 100 | 50 private inputs -> 50 public outputs | Local equality; the higher protocol interprets tuple layout and all-zero padding. |
-| `bufferStorageStore` | Final storage writes; 15 256-bit words | 30 + 30 = 60 | 30 private inputs -> 30 public outputs | Local equality; triples must be routed as address, key, value. |
-| `bufferStorageLoad` | Initial storage reads; 20 256-bit words | 40 + 40 = 80 | 40 private inputs -> 40 public outputs | Local equality; triples must be routed as address, key, value. |
-| `bufferTxIn` | Transaction inputs; 3 256-bit words | 6 + 6 = 12 | 6 public inputs -> 6 private outputs | Local equality plus public-boundary format checking. |
-| `bufferBlockIn` | Eight block fields and four previous block hashes; 12 256-bit words | 24 + 24 = 48 | 24 public inputs -> 24 private outputs | Local equality plus public-boundary format checking. |
-| `bufferEVMIn` | Fixed EVM inputs and constants; 265 256-bit words | 530 + 530 = 1,060 | 530 public inputs -> 530 private outputs | Local equality plus public-boundary format checking. |
-| `bufferPrvIn` | Private witness inputs; 40 256-bit words | 80 + 80 = 160 | 80 private inputs -> 80 private outputs | Local equality; it is intentionally absent from `PUBLIC_WIRE_SEGMENTS`. |
+| `bufferLogOut` | Committed EVM log output; 50 input wires | 50 + 50 = 100 | 50 private inputs -> 50 public outputs | Local equality; the higher protocol interprets tuple layout and all-zero padding. |
+| `bufferStorageStore` | Final storage writes; 30 input wires | 30 + 30 = 60 | 30 private inputs -> 30 public outputs | Local equality; triples must be routed as address, key, value. |
+| `bufferStorageLoad` | Initial storage reads; 40 input wires | 40 + 40 = 80 | 40 private inputs -> 40 public outputs | Local equality; triples must be routed as address, key, value. |
+| `bufferTxIn` | Transaction inputs; 6 input wires | 6 + 6 = 12 | 6 public inputs -> 6 private outputs | Local equality plus public-boundary format checking. |
+| `bufferBlockIn` | Block fields and previous block hashes; 24 input wires | 24 + 24 = 48 | 24 public inputs -> 24 private outputs | Local equality plus public-boundary format checking. |
+| `bufferEVMIn` | Fixed EVM inputs and constants; 530 input wires | 530 + 530 = 1,060 | 530 public inputs -> 530 private outputs | Local equality plus public-boundary format checking. |
+| `bufferPrvIn` | Private witness inputs; 80 input wires | 80 + 80 = 160 | 80 private inputs -> 80 private outputs | Local equality; it is intentionally absent from `PUBLIC_WIRE_SEGMENTS`. |
 
 Public-output buffers are fixed-capacity and zero-padded. The higher-level
 protocol filters storage entries with a zero address and log entries whose
