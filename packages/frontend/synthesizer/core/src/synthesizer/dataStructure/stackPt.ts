@@ -1,4 +1,5 @@
 import type { DataPt } from '../types/index.ts'
+import { DataPtFactory } from './dataPt.ts'
 
 /**
  * Key differences between Stack and StackPt classes
@@ -82,8 +83,10 @@ export class StackPt {
       )
     }
 
+    const evmWordPt = DataPtFactory.createEVMWordView(pt)
     // Read current length, set `_storePt` to value, and then increase the length
-    this._storePt[this._len++] = pt
+    this._storePt[this._len] = evmWordPt
+    this._len++
   }
 
   pop(): DataPt {
@@ -174,13 +177,8 @@ export class StackPt {
       throw new Error('Unreachable stackPt index')
     }
 
-    // Note: this code is borrowed from `push()` (avoids a call)
-    if (len >= this._maxHeight) {
-      throw new Error('Unreachable stackPt index')
-    }
-
     const i = len - position
-    this._storePt[this._len++] = this._storePt[i]
+    this.push(this._storePt[i])
   }
 
   /**

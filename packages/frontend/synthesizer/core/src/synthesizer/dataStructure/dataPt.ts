@@ -140,6 +140,29 @@ export class DataPtFactory {
     };
   }
 
+  public static createEVMWordView(dataPt: DataPt): DataPt {
+    const { wireLayout } = dataPt.dataPtType;
+    if (wireLayout.kind !== 'limbs-128' || wireLayout.count !== 2) {
+      throw new Error('DataPt EVM word views require the limbs-128(2) layout');
+    }
+    const {
+      value,
+      valueHex: _valueHex,
+      dataPtType: _dataPtType,
+      ...description
+    } = dataPt;
+    return DataPtFactory.create(
+      {
+        ...description,
+        dataPtType: {
+          valueDomain: { kind: 'uint', bits: 256 },
+          wireLayout: { kind: 'limbs-128', count: 2 },
+        },
+      },
+      value,
+    );
+  }
+
   public static createBufferTwin(dataPt: DataPt): DataPt {
     const placementId = dataPt.source;
     const thisWireIndex = dataPt.wireIndex;
