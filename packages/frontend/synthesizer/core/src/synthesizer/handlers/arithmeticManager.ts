@@ -1,7 +1,6 @@
 
-import { DataPt, ISynthesizerProvider } from '../types/index.ts';
+import { DataPt, DataPtType, ISynthesizerProvider } from '../types/index.ts';
 import { DataPtFactory } from '../dataStructure/index.ts';
-import { DEFAULT_SOURCE_BIT_SIZE } from '../../synthesizer/params/constants.ts';
 import {
   type ArithmeticSubcircuit,
   type ArithmeticOperator,
@@ -9,6 +8,23 @@ import {
 import type { ArithmeticOperationComposition } from '../../subcircuit/arithmeticSubcircuitComposition.ts';
 import { ArithmeticOperations } from '../dataStructure/arithmeticOperations.ts';
 import { POSEIDON_INPUTS } from 'tokamak-l2js';
+
+const EVM_WORD_DATA_PT_TYPE: DataPtType = {
+  valueDomain: { kind: 'uint', bits: 256 },
+  wireLayout: { kind: 'limbs-128', count: 2 },
+}
+const UINT64_DATA_PT_TYPE: DataPtType = {
+  valueDomain: { kind: 'uint', bits: 64 },
+  wireLayout: { kind: 'limbs-128', count: 1 },
+}
+const BIT_DATA_PT_TYPE: DataPtType = {
+  valueDomain: { kind: 'uint', bits: 1 },
+  wireLayout: { kind: 'limbs-128', count: 1 },
+}
+const LEGACY_FIELD_DATA_PT_TYPE: DataPtType = {
+  valueDomain: { kind: 'bls12-381-fr' },
+  wireLayout: { kind: 'limbs-128', count: 2 },
+}
 
 export class ArithmeticManager {
   private readonly poseidonBatchSize: number
@@ -38,10 +54,10 @@ export class ArithmeticManager {
     name: ArithmeticSubcircuit,
     inPts: DataPt[],
   ): DataPt[] {
-    let sourceBitSizes: readonly number[] | undefined
+    let dataPtTypes: readonly DataPtType[] | undefined
     switch (name) {
       case 'DecToBit':
-        sourceBitSizes = Array(DEFAULT_SOURCE_BIT_SIZE).fill(1)
+        dataPtTypes = Array(256).fill(BIT_DATA_PT_TYPE)
         break
       case 'Poseidon':
         if (inPts.length < POSEIDON_INPUTS + 1 || inPts.length > this.poseidonBatchSize + 2) {
@@ -49,24 +65,35 @@ export class ArithmeticManager {
             `Synthesizer: Poseidon expected a selector and between ${POSEIDON_INPUTS} and ${this.poseidonBatchSize + 1} inputs, but got ${inPts.length}.`,
           )
         }
-        sourceBitSizes = [255]
+        dataPtTypes = [LEGACY_FIELD_DATA_PT_TYPE]
         break
       case 'JubjubExpBatch':
       case 'EdDsaVerify':
-        sourceBitSizes = Array(name === 'JubjubExpBatch' ? 4 : 0).fill(255)
+        dataPtTypes = Array(name === 'JubjubExpBatch' ? 4 : 0).fill(LEGACY_FIELD_DATA_PT_TYPE)
         break
       case 'ALU4A':
-        sourceBitSizes = [256, 256, 256, 64, 64, 64, 64, 1, 1, 1]
+        dataPtTypes = [
+          EVM_WORD_DATA_PT_TYPE,
+          EVM_WORD_DATA_PT_TYPE,
+          EVM_WORD_DATA_PT_TYPE,
+          UINT64_DATA_PT_TYPE,
+          UINT64_DATA_PT_TYPE,
+          UINT64_DATA_PT_TYPE,
+          UINT64_DATA_PT_TYPE,
+          BIT_DATA_PT_TYPE,
+          BIT_DATA_PT_TYPE,
+          BIT_DATA_PT_TYPE,
+        ]
         break
     }
 
     const values = inPts.map((pt) => pt.value);
     const outValue = this._executeArithSubcircuit(name, values);
-    const resolvedSourceBitSizes = sourceBitSizes
-      ?? Array(outValue.length).fill(DEFAULT_SOURCE_BIT_SIZE)
-    if (resolvedSourceBitSizes.length !== outValue.length) {
+    const resolvedDataPtTypes = dataPtTypes
+      ?? Array(outValue.length).fill(EVM_WORD_DATA_PT_TYPE)
+    if (resolvedDataPtTypes.length !== outValue.length) {
       throw new Error(
-        `Synthesizer: ${name} produced ${outValue.length} outputs with ${resolvedSourceBitSizes.length} output bit sizes`,
+        `Synthesizer: ${name} produced ${outValue.length} outputs with ${resolvedDataPtTypes.length} output types`,
       )
     }
 
@@ -75,7 +102,7 @@ export class ArithmeticManager {
           DataPtFactory.create({
             source: this.parent.placements.length,
             wireIndex: index,
-            sourceBitSize: resolvedSourceBitSizes[index],
+            dataPtType: resolvedDataPtTypes[index],
           }, value),
         )
       : []
@@ -92,7 +119,8 @@ export class ArithmeticManager {
 
   private _countCircuitWires(dataPts: DataPt[]): number {
     return dataPts.reduce(
-      (count, dataPt) => count + (dataPt.sourceBitSize > 128 ? 2 : 1),
+      (count, { dataPtType: { wireLayout } }) =>
+        count + (wireLayout.kind === 'native-fr' ? 1 : wireLayout.count),
       0,
     )
   }
