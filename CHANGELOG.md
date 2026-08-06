@@ -94,6 +94,9 @@ The format is based on Keep a Changelog.
   executed within an inherited static context. CALL-family stack layouts are
   now selected from the actual opcode, so such calls are no longer decoded as
   six-argument `STATICCALL` operations.
+- Fixed MSTORE8 masking bypassing the arithmetic composition path and being
+  omitted when the input already fit in one byte. Every MSTORE8 execution now
+  places the existing 256-bit `AND` composition with the `0xff` word mask.
 
 ## [2.1.5] - 2026-07-31
 

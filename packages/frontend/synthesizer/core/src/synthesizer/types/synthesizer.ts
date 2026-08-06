@@ -54,7 +54,7 @@ export interface ISynthesizerProvider extends SynthesizerInterface {
   //from memoryManager
   placeMemoryToMemory(dataAliasInfos: DataAliasInfos): DataPt[]
   placeMemoryToStack(dataAliasInfos: DataAliasInfos): DataPt
-  placeMSTORE(dataPt: DataPt, truncBitSize: number): DataPt
+  placeMSTORE8(dataPt: DataPt): DataPt
   copyMemoryPts(target: MemoryPts, srcOffset: bigint, length: bigint, dstOffset?: bigint): MemoryPts
   //from instructionHandler
   get synthesizerHandlers(): Map<number, SynthesizerOpHandler>

@@ -468,8 +468,8 @@ export class Synthesizer implements SynthesizerInterface
   placeMemoryToMemory(dataAliasInfos: DataAliasInfos): DataPt[] {
     return this._memoryManager.placeMemoryToMemory(dataAliasInfos);
   }
-  placeMSTORE(dataPt: DataPt, truncBitSize: number): DataPt {
-    return this._memoryManager.placeMSTORE(dataPt, truncBitSize);
+  placeMSTORE8(dataPt: DataPt): DataPt {
+    return this._memoryManager.placeMSTORE8(dataPt);
   }
   copyMemoryPts(
     target: MemoryPts,

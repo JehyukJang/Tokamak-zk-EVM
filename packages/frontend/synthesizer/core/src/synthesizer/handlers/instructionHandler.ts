@@ -12,7 +12,6 @@ import {
   bigIntToBytes,
 } from '@ethereumjs/util'
 import { InterpreterStep } from '@ethereumjs/evm'
-import { DEFAULT_SOURCE_BIT_SIZE } from '../../synthesizer/params/constants.ts';
 import { DataPtFactory, MemoryPt, StackPt } from '../dataStructure/index.ts';
 import { ArithmeticOperator, TX_MESSAGE_TO_HASH } from '../../subcircuit/configuredTypes.ts';
 import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
@@ -1077,10 +1076,11 @@ export class InstructionHandler {
           checkRequiredInput(opts.memOut)
           const offsetNum = Number(ins[0])
           const originalDataPt = inPts[1]
-          const truncBitSize = op === 'MSTORE' ? DEFAULT_SOURCE_BIT_SIZE : 8
-          // Replace dataPt in StackPt with the tracked memPt
-          const newDataPt = truncBitSize < originalDataPt.sourceBitSize ? this.parent.placeMSTORE(originalDataPt, truncBitSize) : originalDataPt
-          const _out = opts.memoryPt.write(offsetNum, Math.ceil(truncBitSize / 8), newDataPt)
+          const dataPtToStore = op === 'MSTORE8'
+            ? this.parent.placeMSTORE8(originalDataPt)
+            : originalDataPt
+          const byteSize = op === 'MSTORE8' ? 1 : 32
+          const _out = opts.memoryPt.write(offsetNum, byteSize, dataPtToStore)
           if ( bytesToBigInt(_out) !== bytesToBigInt(opts.memOut!)) {
             throw new Error(`Synthesizer: ${op}: Output memory data mismatch`)
           } 

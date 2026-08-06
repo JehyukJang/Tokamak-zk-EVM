@@ -1,4 +1,4 @@
-import { DataAliasInfoEntry, DataAliasInfos, DataPt, DataPtDescription, ISynthesizerProvider, MemoryPtEntry, MemoryPts } from '../types/index.ts';
+import { DataAliasInfoEntry, DataAliasInfos, DataPt, ISynthesizerProvider, MemoryPtEntry, MemoryPts } from '../types/index.ts';
 import { DataPtFactory, MemoryPt } from '../dataStructure/index.ts';
 import { ArithmeticOperator } from '../../subcircuit/configuredTypes.ts';
 
@@ -7,47 +7,23 @@ export class MemoryManager {
     private parent: ISynthesizerProvider,
   ) {}
 
-  public placeMSTORE(dataPt: DataPt, truncBitSize: number): DataPt {
-    // MSTORE8 is used as truncSize=1, storing only the lowest 1 byte of data and discarding the rest.
-    if (truncBitSize < dataPt.sourceBitSize) {
-      // Since there is a modification in the original data, create a virtual operation to track this in Placements.
-      // MSTORE8's modification is possible with AND operation (= AND(data, 0xff))
-      const maskerString = '0x' + 'FF'.repeat(Math.ceil(truncBitSize / 8));
-
-      const outValue = dataPt.value & BigInt(maskerString);
-      if (dataPt.value !== outValue) {
-        const usage = 'AND';
-        const composition = this.parent.subcircuitLibrary
-          .arithmeticSubcircuitComposition.get(usage)
-        if (composition.steps.length !== 1) {
-          throw new Error('Synthesizer: memory masking requires one AND placement')
-        }
-        const subcircuitName = composition.steps[0].subcircuit
-        const inPts: DataPt[] = [
-          this.parent.loadArbitraryStatic(
-            BigInt(maskerString),
-            {
-              valueDomain: { kind: 'uint', bits: 256 },
-              wireLayout: { kind: 'limbs-128', count: 2 },
-            },
-            'Masker for memory manipulation',
-          ),
-          dataPt,
-        ];
-        const rawOutPt: DataPtDescription = {
-          source: this.parent.placements.length,
-          wireIndex: 0,
-          sourceBitSize: truncBitSize,
-        };
-        const outPts: DataPt[] = [DataPtFactory.create(rawOutPt, outValue)];
-        this.parent.place(subcircuitName, inPts, outPts, usage);
-
-        return DataPtFactory.deepCopy(outPts[0]);
-      }
+  public placeMSTORE8(dataPt: DataPt): DataPt {
+    const maskPt = this.parent.loadArbitraryStatic(
+      0xffn,
+      {
+        valueDomain: { kind: 'uint', bits: 256 },
+        wireLayout: { kind: 'limbs-128', count: 2 },
+      },
+      'Masker for MSTORE8',
+    )
+    const outPts = this.parent.placeArithComposition('AND', [maskPt, dataPt])
+    if (outPts.length !== 1 || outPts[0] === undefined) {
+      throw new Error('Synthesizer: MSTORE8 masking must produce exactly one output')
     }
-    const outPt = dataPt;
-    outPt.sourceBitSize = truncBitSize;
-    return DataPtFactory.deepCopy(outPt);
+    if (outPts[0].value !== (dataPt.value & 0xffn)) {
+      throw new Error('Synthesizer: MSTORE8 masking output mismatch')
+    }
+    return DataPtFactory.deepCopy(outPts[0])
   }
 
   public placeMemoryToStack(dataAliasInfos: DataAliasInfos): DataPt {
