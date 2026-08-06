@@ -200,14 +200,15 @@ export class VariableGenerator {
     };
   }
 
-  private _halveWordSizeOfWires(origDataPt: DataPt): DataPt[] {
+  private _expandDataPtIntoCircomWires(origDataPt: DataPt): DataPt[] {
     const newDataPts: DataPt[] = [];
     const copied = DataPtFactory.deepCopy(origDataPt);
-    if (origDataPt.sourceBitSize > 128) {
+    const { wireLayout } = origDataPt.dataPtType;
+    if (wireLayout.kind === 'limbs-128' && wireLayout.count === 2) {
       const lowerVal = copied.value & ((1n << 128n) - 1n);
       const upperVal = copied.value >> 128n;
       if (upperVal * (1n << 128n) + lowerVal !== copied.value) {
-        throw new Error('Mismatch between original and halved values');
+        throw new Error('Mismatch between original and expanded limb values');
       }
       // Lower bytes
       newDataPts.push({
@@ -271,7 +272,7 @@ export class VariableGenerator {
       const _newOutPts: DataPt[] = [];
       const _wireIndexChangeTracker: Map<number, number[]> = new Map();
       for (const outPt of placement.outPts) {
-        const splitOutPts = this._halveWordSizeOfWires(outPt);
+        const splitOutPts = this._expandDataPtIntoCircomWires(outPt);
         _wireIndexChangeTracker.set(outPt.wireIndex, []);
         for (const newOutPt of splitOutPts) {
           const newIndex = _newOutPts.length; // capture before push
@@ -293,7 +294,7 @@ export class VariableGenerator {
         const sourceOutWireOldInd = inPt.wireIndex;
         if (sourcePlacementId === thisPlacementId) {
           // If the source comes from external
-          const splitInPts = this._halveWordSizeOfWires(inPt);
+          const splitInPts = this._expandDataPtIntoCircomWires(inPt);
           for (const newInPt of splitInPts) {
             const newIndex = _newInPts.length; // capture before push
             _newInPts.push({ ...newInPt, wireIndex: newIndex });
