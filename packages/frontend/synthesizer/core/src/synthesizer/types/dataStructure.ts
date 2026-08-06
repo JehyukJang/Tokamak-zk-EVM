@@ -10,6 +10,26 @@ export type DataPtType = Readonly<{
   wireLayout: DataPtWireLayout;
 }>;
 
+export const EVM_WORD_DATA_PT_TYPE: DataPtType = Object.freeze({
+  valueDomain: Object.freeze({ kind: 'uint', bits: 256 }),
+  wireLayout: Object.freeze({ kind: 'limbs-128', count: 2 }),
+});
+
+export const UINT64_LIMB_DATA_PT_TYPE: DataPtType = Object.freeze({
+  valueDomain: Object.freeze({ kind: 'uint', bits: 64 }),
+  wireLayout: Object.freeze({ kind: 'limbs-128', count: 1 }),
+});
+
+export const BIT_LIMB_DATA_PT_TYPE: DataPtType = Object.freeze({
+  valueDomain: Object.freeze({ kind: 'uint', bits: 1 }),
+  wireLayout: Object.freeze({ kind: 'limbs-128', count: 1 }),
+});
+
+export const BLS12_381_FR_NATIVE_DATA_PT_TYPE: DataPtType = Object.freeze({
+  valueDomain: Object.freeze({ kind: 'bls12-381-fr' }),
+  wireLayout: Object.freeze({ kind: 'native-fr' }),
+});
+
 export type DataPtDescription = {
   // if data comes from external
   extSource?: string;

@@ -1,5 +1,12 @@
 import { bigIntToHex } from '@ethereumjs/util';
-import type { DataPt, DataPtDescription, DataPtType, DataPtValueDomain, DataPtWireLayout } from '../types/index.ts';
+import {
+  EVM_WORD_DATA_PT_TYPE,
+  type DataPt,
+  type DataPtDescription,
+  type DataPtType,
+  type DataPtValueDomain,
+  type DataPtWireLayout,
+} from '../types/dataStructure.ts';
 import { BLS12831ARITHMODULUS, JUBJUBARITHMODULUS } from '../../synthesizer/params/constants.ts';
 
 function copyAndFreezeValueDomain(valueDomain: DataPtValueDomain): DataPtValueDomain {
@@ -154,10 +161,7 @@ export class DataPtFactory {
     return DataPtFactory.create(
       {
         ...description,
-        dataPtType: {
-          valueDomain: { kind: 'uint', bits: 256 },
-          wireLayout: { kind: 'limbs-128', count: 2 },
-        },
+        dataPtType: EVM_WORD_DATA_PT_TYPE,
       },
       value,
     );

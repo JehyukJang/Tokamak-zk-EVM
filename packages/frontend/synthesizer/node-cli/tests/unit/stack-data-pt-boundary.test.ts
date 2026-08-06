@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
 import { StackPt } from '../../../core/src/synthesizer/dataStructure/stackPt.ts';
-import type { DataPtType } from '../../../core/src/synthesizer/types/dataStructure.ts';
+import {
+  BIT_LIMB_DATA_PT_TYPE,
+  BLS12_381_FR_NATIVE_DATA_PT_TYPE,
+  EVM_WORD_DATA_PT_TYPE,
+  UINT64_LIMB_DATA_PT_TYPE,
+  type DataPtType,
+} from '../../../core/src/synthesizer/types/dataStructure.ts';
 
 const dataPt = (value: bigint, dataPtType: DataPtType, source = 7, wireIndex = 3) =>
   DataPtFactory.create(
@@ -17,6 +23,19 @@ const dataPt = (value: bigint, dataPtType: DataPtType, source = 7, wireIndex = 3
   );
 
 describe('EVM stack DataPt boundary', () => {
+  it('exports deeply frozen canonical DataPt types', () => {
+    for (const dataPtType of [
+      EVM_WORD_DATA_PT_TYPE,
+      UINT64_LIMB_DATA_PT_TYPE,
+      BIT_LIMB_DATA_PT_TYPE,
+      BLS12_381_FR_NATIVE_DATA_PT_TYPE,
+    ]) {
+      expect(Object.isFrozen(dataPtType)).toBe(true);
+      expect(Object.isFrozen(dataPtType.valueDomain)).toBe(true);
+      expect(Object.isFrozen(dataPtType.wireLayout)).toBe(true);
+    }
+  });
+
   it('widens a two-limb address view without changing its source or value', () => {
     const addressPt = dataPt(0x1234n, {
       valueDomain: { kind: 'uint', bits: 160 },
@@ -37,6 +56,9 @@ describe('EVM stack DataPt boundary', () => {
       },
     });
     expect(wordPt).not.toBe(addressPt);
+    expect(wordPt.dataPtType).not.toBe(EVM_WORD_DATA_PT_TYPE);
+    expect(wordPt.dataPtType.valueDomain).not.toBe(EVM_WORD_DATA_PT_TYPE.valueDomain);
+    expect(wordPt.dataPtType.wireLayout).not.toBe(EVM_WORD_DATA_PT_TYPE.wireLayout);
   });
 
   it('widens a two-limb field value to an EVM word view', () => {

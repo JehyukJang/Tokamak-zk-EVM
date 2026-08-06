@@ -2,16 +2,25 @@ import { describe, expect, it, vi } from 'vitest';
 import { poseidonChainCompress } from 'tokamak-l2js';
 
 import { createArithmeticSubcircuitComposition } from '../../../core/src/subcircuit/arithmeticSubcircuitComposition.ts';
+import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
 import { ArithmeticManager } from '../../../core/src/synthesizer/handlers/arithmeticManager.ts';
-import type { DataPt } from '../../../core/src/synthesizer/types/dataStructure.ts';
+import {
+  EVM_WORD_DATA_PT_TYPE,
+  type DataPt,
+  type DataPtType,
+} from '../../../core/src/synthesizer/types/dataStructure.ts';
 
-const dataPt = (value: bigint, source = 1, wireIndex = 0, sourceBitSize = 255): DataPt => ({
-  source,
-  wireIndex,
-  sourceBitSize,
-  value,
-  valueHex: `0x${value.toString(16)}`,
-});
+const SPLIT_FIELD_DATA_PT_TYPE: DataPtType = {
+  valueDomain: { kind: 'bls12-381-fr' },
+  wireLayout: { kind: 'limbs-128', count: 2 },
+};
+
+const dataPt = (
+  value: bigint,
+  source = 1,
+  wireIndex = 0,
+  dataPtType = SPLIT_FIELD_DATA_PT_TYPE,
+): DataPt => DataPtFactory.create({ source, wireIndex, dataPtType }, value);
 
 const createHarness = (poseidonBatchSize: number) => {
   const placements: Array<{
@@ -45,8 +54,8 @@ const createHarness = (poseidonBatchSize: number) => {
         },
       ]]),
     },
-    loadArbitraryStatic: vi.fn((value: bigint, sourceBitSize = 256) =>
-      dataPt(value, 0, staticWireIndex++, sourceBitSize),
+    loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
+      dataPt(value, 0, staticWireIndex++, dataPtType),
     ),
     place: vi.fn((name: string, inPts: DataPt[], outPts: DataPt[], usage: string) => {
       placements.push({ name, inPts, outPts, usage });
@@ -77,5 +86,6 @@ describe('configurable Poseidon batching', () => {
     expect(placements[0].outPts).toHaveLength(1);
     expect(result.value).toBe(poseidonChainCompress(inputs.map(({ value }) => value)));
     expect(result.value).toBe(placements[0].outPts[0].value);
+    expect(result.dataPtType).toEqual(EVM_WORD_DATA_PT_TYPE);
   });
 });

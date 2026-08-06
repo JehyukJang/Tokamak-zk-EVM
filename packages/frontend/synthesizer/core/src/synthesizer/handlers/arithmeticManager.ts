@@ -1,5 +1,11 @@
 
-import { DataPt, DataPtType, ISynthesizerProvider } from '../types/index.ts';
+import type { DataPt, DataPtType, ISynthesizerProvider } from '../types/index.ts';
+import {
+  BIT_LIMB_DATA_PT_TYPE,
+  BLS12_381_FR_NATIVE_DATA_PT_TYPE,
+  EVM_WORD_DATA_PT_TYPE,
+  UINT64_LIMB_DATA_PT_TYPE,
+} from '../types/dataStructure.ts';
 import { DataPtFactory } from '../dataStructure/index.ts';
 import {
   type ArithmeticSubcircuit,
@@ -8,23 +14,6 @@ import {
 import type { ArithmeticOperationComposition } from '../../subcircuit/arithmeticSubcircuitComposition.ts';
 import { ArithmeticOperations } from '../dataStructure/arithmeticOperations.ts';
 import { POSEIDON_INPUTS } from 'tokamak-l2js';
-
-const EVM_WORD_DATA_PT_TYPE: DataPtType = {
-  valueDomain: { kind: 'uint', bits: 256 },
-  wireLayout: { kind: 'limbs-128', count: 2 },
-}
-const UINT64_DATA_PT_TYPE: DataPtType = {
-  valueDomain: { kind: 'uint', bits: 64 },
-  wireLayout: { kind: 'limbs-128', count: 1 },
-}
-const BIT_DATA_PT_TYPE: DataPtType = {
-  valueDomain: { kind: 'uint', bits: 1 },
-  wireLayout: { kind: 'limbs-128', count: 1 },
-}
-const LEGACY_FIELD_DATA_PT_TYPE: DataPtType = {
-  valueDomain: { kind: 'bls12-381-fr' },
-  wireLayout: { kind: 'limbs-128', count: 2 },
-}
 
 export class ArithmeticManager {
   private readonly poseidonBatchSize: number
@@ -57,7 +46,7 @@ export class ArithmeticManager {
     let dataPtTypes: readonly DataPtType[] | undefined
     switch (name) {
       case 'DecToBit':
-        dataPtTypes = Array(256).fill(BIT_DATA_PT_TYPE)
+        dataPtTypes = Array(256).fill(BIT_LIMB_DATA_PT_TYPE)
         break
       case 'Poseidon':
         if (inPts.length < POSEIDON_INPUTS + 1 || inPts.length > this.poseidonBatchSize + 2) {
@@ -65,24 +54,24 @@ export class ArithmeticManager {
             `Synthesizer: Poseidon expected a selector and between ${POSEIDON_INPUTS} and ${this.poseidonBatchSize + 1} inputs, but got ${inPts.length}.`,
           )
         }
-        dataPtTypes = [LEGACY_FIELD_DATA_PT_TYPE]
+        dataPtTypes = [EVM_WORD_DATA_PT_TYPE]
         break
       case 'JubjubExpBatch':
       case 'EdDsaVerify':
-        dataPtTypes = Array(name === 'JubjubExpBatch' ? 4 : 0).fill(LEGACY_FIELD_DATA_PT_TYPE)
+        dataPtTypes = Array(name === 'JubjubExpBatch' ? 4 : 0).fill(BLS12_381_FR_NATIVE_DATA_PT_TYPE)
         break
       case 'ALU4A':
         dataPtTypes = [
           EVM_WORD_DATA_PT_TYPE,
           EVM_WORD_DATA_PT_TYPE,
           EVM_WORD_DATA_PT_TYPE,
-          UINT64_DATA_PT_TYPE,
-          UINT64_DATA_PT_TYPE,
-          UINT64_DATA_PT_TYPE,
-          UINT64_DATA_PT_TYPE,
-          BIT_DATA_PT_TYPE,
-          BIT_DATA_PT_TYPE,
-          BIT_DATA_PT_TYPE,
+          UINT64_LIMB_DATA_PT_TYPE,
+          UINT64_LIMB_DATA_PT_TYPE,
+          UINT64_LIMB_DATA_PT_TYPE,
+          UINT64_LIMB_DATA_PT_TYPE,
+          BIT_LIMB_DATA_PT_TYPE,
+          BIT_LIMB_DATA_PT_TYPE,
+          BIT_LIMB_DATA_PT_TYPE,
         ]
         break
     }
