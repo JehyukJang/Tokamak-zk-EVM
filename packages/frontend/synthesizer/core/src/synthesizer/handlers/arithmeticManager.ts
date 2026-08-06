@@ -124,8 +124,10 @@ export class ArithmeticManager {
     const nCalls = inPts.length - 1
     const zeroPt = this.parent.loadArbitraryStatic(
       0n,
-      { kind: 'bls12-381-fr' },
-      { kind: 'limbs-128', count: 2 },
+      {
+        valueDomain: { kind: 'bls12-381-fr' },
+        wireLayout: { kind: 'limbs-128', count: 2 },
+      },
     )
     return {
       selector: 1n << BigInt(nCalls - 1),
@@ -163,8 +165,10 @@ export class ArithmeticManager {
       const normalized = this._normalizePoseidonInputs(inputs)
       const selectorPt = this.parent.loadArbitraryStatic(
         normalized.selector,
-        { kind: 'uint', bits: Math.max(32, this.poseidonBatchSize) },
-        { kind: 'limbs-128', count: 1 },
+        {
+          valueDomain: { kind: 'uint', bits: Math.max(32, this.poseidonBatchSize) },
+          wireLayout: { kind: 'limbs-128', count: 1 },
+        },
         `ALU selector for Poseidon of ${step.subcircuit}`,
       )
       const outPts = this._placeSingleArithSubcircuit(
@@ -183,16 +187,20 @@ export class ArithmeticManager {
       return [placeNormalized(
         Array<DataPt>(POSEIDON_INPUTS).fill(this.parent.loadArbitraryStatic(
           0n,
-          { kind: 'bls12-381-fr' },
-          { kind: 'limbs-128', count: 2 },
+          {
+            valueDomain: { kind: 'bls12-381-fr' },
+            wireLayout: { kind: 'limbs-128', count: 2 },
+          },
         )),
       )]
     }
     if (inPts.length === 1) {
       return [placeNormalized([inPts[0], this.parent.loadArbitraryStatic(
         0n,
-        { kind: 'bls12-381-fr' },
-        { kind: 'limbs-128', count: 2 },
+        {
+          valueDomain: { kind: 'bls12-381-fr' },
+          wireLayout: { kind: 'limbs-128', count: 2 },
+        },
       )])]
     }
 
@@ -252,8 +260,10 @@ export class ArithmeticManager {
             }
             finalInPts.push(this.parent.loadArbitraryStatic(
               step.selector,
-              { kind: 'uint', bits: 32 },
-              { kind: 'limbs-128', count: 1 },
+              {
+                valueDomain: { kind: 'uint', bits: 32 },
+                wireLayout: { kind: 'limbs-128', count: 1 },
+              },
               `ALU selector for ${name} of ${step.subcircuit}`,
             ))
             break
@@ -277,8 +287,7 @@ export class ArithmeticManager {
             }
             const constantPt = this.parent.loadArbitraryStatic(
               constant.value,
-              constant.valueDomain,
-              constant.wireLayout,
+              constant.dataPtType,
             )
             finalInPts.push(constantPt)
             break

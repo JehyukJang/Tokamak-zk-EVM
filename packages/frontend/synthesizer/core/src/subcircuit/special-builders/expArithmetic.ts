@@ -25,14 +25,18 @@ export const createExpArithmeticMapping = (
   const constants: ConstantDefinition[] = [
     {
       value: 1n,
-      valueDomain: { kind: 'uint', bits: 256 },
-      wireLayout: { kind: 'limbs-128', count: 2 },
+      dataPtType: {
+        valueDomain: { kind: 'uint', bits: 256 },
+        wireLayout: { kind: 'limbs-128', count: 2 },
+      },
     },
     ...(requiresPadding
       ? [{
           value: 0n,
-          valueDomain: { kind: 'uint', bits: 1 } as const,
-          wireLayout: { kind: 'limbs-128', count: 1 } as const,
+          dataPtType: {
+            valueDomain: { kind: 'uint', bits: 1 } as const,
+            wireLayout: { kind: 'limbs-128', count: 1 } as const,
+          },
         }]
       : []),
   ];

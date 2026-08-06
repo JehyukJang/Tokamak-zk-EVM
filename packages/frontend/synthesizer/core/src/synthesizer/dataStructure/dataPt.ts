@@ -1,5 +1,5 @@
 import { bigIntToHex } from '@ethereumjs/util';
-import type { DataPt, DataPtDescription, DataPtValueDomain, DataPtWireLayout } from '../types/index.ts';
+import type { DataPt, DataPtDescription, DataPtType, DataPtValueDomain, DataPtWireLayout } from '../types/index.ts';
 import { BLS12831ARITHMODULUS, JUBJUBARITHMODULUS } from '../../synthesizer/params/constants.ts';
 
 function copyAndFreezeValueDomain(valueDomain: DataPtValueDomain): DataPtValueDomain {
@@ -38,7 +38,8 @@ function copyAndFreezeWireLayout(wireLayout: DataPtWireLayout): DataPtWireLayout
   }
 }
 
-function validateDomainLayout(valueDomain: DataPtValueDomain, wireLayout: DataPtWireLayout): void {
+function validateDomainLayout(dataPtType: DataPtType): void {
+  const { valueDomain, wireLayout } = dataPtType;
   if (wireLayout.kind === 'native-fr') {
     if (valueDomain.kind === 'uint') {
       throw new Error('DataPt uint domains cannot use the native-fr layout');
@@ -58,7 +59,8 @@ function validateDomainLayout(valueDomain: DataPtValueDomain, wireLayout: DataPt
   }
 }
 
-function validateValue(valueDomain: DataPtValueDomain, value: bigint): void {
+function validateValue(dataPtType: DataPtType, value: bigint): void {
+  const { valueDomain } = dataPtType;
   if (value < 0n) {
     throw new Error('DataPt values cannot be negative');
   }
@@ -80,6 +82,17 @@ function validateValue(valueDomain: DataPtValueDomain, value: bigint): void {
       }
       break;
   }
+}
+
+function copyAndFreezeDataPtType(dataPtType: DataPtType): DataPtType {
+  if (dataPtType === undefined || dataPtType === null) {
+    throw new Error('DataPt type is required');
+  }
+  const valueDomain = copyAndFreezeValueDomain(dataPtType.valueDomain);
+  const wireLayout = copyAndFreezeWireLayout(dataPtType.wireLayout);
+  const frozenDataPtType = Object.freeze({ valueDomain, wireLayout });
+  validateDomainLayout(frozenDataPtType);
+  return frozenDataPtType;
 }
 
 function copyDataPt(dataPt: DataPt): DataPt {
@@ -114,14 +127,14 @@ export class DataPtFactory {
     if ('sourceBitSize' in params) {
       throw new Error('DataPt sourceBitSize is no longer supported');
     }
-    const valueDomain = copyAndFreezeValueDomain(params.valueDomain);
-    const wireLayout = copyAndFreezeWireLayout(params.wireLayout);
-    validateDomainLayout(valueDomain, wireLayout);
-    validateValue(valueDomain, value);
+    if ('valueDomain' in params || 'wireLayout' in params) {
+      throw new Error('DataPt valueDomain and wireLayout must be provided together through dataPtType');
+    }
+    const dataPtType = copyAndFreezeDataPtType(params.dataPtType);
+    validateValue(dataPtType, value);
     return {
       ...params,
-      valueDomain,
-      wireLayout,
+      dataPtType,
       value,
       valueHex: bigIntToHex(value),
     };
@@ -134,8 +147,7 @@ export class DataPtFactory {
     const outPtRaw: DataPtDescription = {
       source: placementId,
       wireIndex: thisWireIndex,
-      valueDomain: dataPt.valueDomain,
-      wireLayout: dataPt.wireLayout,
+      dataPtType: dataPt.dataPtType,
     };
     return DataPtFactory.create(outPtRaw, dataPt.value);
   }

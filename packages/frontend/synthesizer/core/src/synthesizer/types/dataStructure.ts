@@ -5,6 +5,11 @@ export type DataPtValueDomain =
   | Readonly<{ kind: 'bls12-381-fr' }>
   | Readonly<{ kind: 'jubjub-scalar' }>;
 
+export type DataPtType = Readonly<{
+  valueDomain: DataPtValueDomain;
+  wireLayout: DataPtWireLayout;
+}>;
+
 export type DataPtDescription = {
   // if data comes from external
   extSource?: string;
@@ -24,8 +29,7 @@ export type DataPtDescription = {
   // wire index at which the dataPt comes from
   wireIndex: number;
 
-  readonly valueDomain: DataPtValueDomain;
-  readonly wireLayout: DataPtWireLayout;
+  readonly dataPtType: DataPtType;
 
   // identifier?: string
 };

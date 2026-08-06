@@ -1,6 +1,6 @@
 import { bytesToBigInt, hexToBigInt, toBytes } from '@ethereumjs/util';
 import { jubjub } from "@noble/curves/misc.js";
-import { DataPt, DataPtDescription, DataPtValueDomain, DataPtWireLayout, ISynthesizerProvider, ReservedVariable, SynthesizerOpts, VARIABLE_DESCRIPTION } from '../types/index.ts';
+import { DataPt, DataPtDescription, DataPtType, ISynthesizerProvider, ReservedVariable, SynthesizerOpts, VARIABLE_DESCRIPTION } from '../types/index.ts';
 import { DataPtFactory } from '../dataStructure/index.ts';
 import { BUFFER_DESCRIPTION, BUFFER_LIST } from '../../subcircuit/configuredTypes.ts';
 import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
@@ -76,11 +76,10 @@ export class BufferManager {
 
   public loadArbitraryStatic(
     value: bigint,
-    valueDomain: DataPtValueDomain,
-    wireLayout: DataPtWireLayout,
+    dataPtType: DataPtType,
     desc?: string,
   ): DataPt {
-    const cacheKey = this._getArbitraryStaticCacheKey(valueDomain, wireLayout)
+    const cacheKey = this._getArbitraryStaticCacheKey(dataPtType)
     if (desc === undefined) {
       const cachedDataPt = this.parent.state.cachedEVMIn.get(value)?.get(cacheKey)
       if (cachedDataPt !== undefined) {
@@ -92,8 +91,7 @@ export class BufferManager {
       extSource: desc ?? 'Arbitrary constant',
       source: placementIndex,
       wireIndex: this.parent.placements[placementIndex]!.inPts.length,
-      valueDomain,
-      wireLayout,
+      dataPtType,
     };
     const inPt = DataPtFactory.create(inPtRaw, value)
     const outPt = DataPtFactory.createBufferTwin(inPt)
@@ -105,9 +103,9 @@ export class BufferManager {
   }
 
   private _getArbitraryStaticCacheKey(
-    valueDomain: DataPtValueDomain,
-    wireLayout: DataPtWireLayout,
+    dataPtType: DataPtType,
   ): string {
+    const { valueDomain, wireLayout } = dataPtType
     const domainKey = valueDomain.kind === 'uint'
       ? `uint-${valueDomain.bits}`
       : valueDomain.kind

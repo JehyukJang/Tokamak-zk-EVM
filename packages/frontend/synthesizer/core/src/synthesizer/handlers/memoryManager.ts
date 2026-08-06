@@ -26,8 +26,10 @@ export class MemoryManager {
         const inPts: DataPt[] = [
           this.parent.loadArbitraryStatic(
             BigInt(maskerString),
-            { kind: 'uint', bits: 256 },
-            { kind: 'limbs-128', count: 2 },
+            {
+              valueDomain: { kind: 'uint', bits: 256 },
+              wireLayout: { kind: 'limbs-128', count: 2 },
+            },
             'Masker for memory manipulation',
           ),
           dataPt,
@@ -124,8 +126,10 @@ export class MemoryManager {
       containerByteSize: lengthNum,
       dataPt: this.parent.loadArbitraryStatic(
         0n,
-        { kind: 'uint', bits: 256 },
-        { kind: 'limbs-128', count: 2 },
+        {
+          valueDomain: { kind: 'uint', bits: 256 },
+          wireLayout: { kind: 'limbs-128', count: 2 },
+        },
       ),
     }
     if (toMemoryPts.length > 0) {
@@ -158,8 +162,10 @@ export class MemoryManager {
     const [truncatedPt] = this.parent.placeArithComposition('SHR', [
       this.parent.loadArbitraryStatic(
         BigInt(endingGap * 8),
-        { kind: 'uint', bits: 256 },
-        { kind: 'limbs-128', count: 2 },
+        {
+          valueDomain: { kind: 'uint', bits: 256 },
+          wireLayout: { kind: 'limbs-128', count: 2 },
+        },
         'Shifter for memory manipulation',
       ),
       dataPt,
@@ -210,8 +216,10 @@ export class MemoryManager {
       const inPts: DataPt[] = [
         this.parent.loadArbitraryStatic(
           BigInt(absShift),
-          { kind: 'uint', bits: 256 },
-          { kind: 'limbs-128', count: 2 },
+          {
+            valueDomain: { kind: 'uint', bits: 256 },
+            wireLayout: { kind: 'limbs-128', count: 2 },
+          },
           'Shifter for memory manipulation',
         ),
         dataPt,
@@ -238,8 +246,10 @@ export class MemoryManager {
       const inPts: DataPt[] = [
         this.parent.loadArbitraryStatic(
           BigInt(masker),
-          { kind: 'uint', bits: 256 },
-          { kind: 'limbs-128', count: 2 },
+          {
+            valueDomain: { kind: 'uint', bits: 256 },
+            wireLayout: { kind: 'limbs-128', count: 2 },
+          },
           'Masker for memory manipulation',
         ),
         dataPt,

@@ -154,8 +154,10 @@ export const createTransactionSignatureVerifyArithmeticMapping = (
         kind: 'constant',
         index: constants.push({
           value: 0n,
-          valueDomain: { kind: 'bls12-381-fr' },
-          wireLayout: { kind: 'limbs-128', count: 2 },
+          dataPtType: {
+            valueDomain: { kind: 'bls12-381-fr' },
+            wireLayout: { kind: 'limbs-128', count: 2 },
+          },
         }) - 1,
       }
     : undefined;
@@ -166,8 +168,10 @@ export const createTransactionSignatureVerifyArithmeticMapping = (
           kind: 'constant',
           index: constants.push({
             value: 0n,
-            valueDomain: { kind: 'uint', bits: 1 },
-            wireLayout: { kind: 'limbs-128', count: 1 },
+            dataPtType: {
+              valueDomain: { kind: 'uint', bits: 1 },
+              wireLayout: { kind: 'limbs-128', count: 1 },
+            },
           }) - 1,
         }
       : undefined;

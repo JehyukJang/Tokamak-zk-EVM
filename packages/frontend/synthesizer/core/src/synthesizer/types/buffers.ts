@@ -1,4 +1,4 @@
-import type { DataPtDescription, DataPtValueDomain, DataPtWireLayout } from './index.ts'
+import type { DataPtDescription, DataPtType } from './index.ts'
 import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
 import { BUFFER_LIST, ReservedBuffer } from '../../subcircuit/configuredTypes.ts';
 
@@ -417,8 +417,10 @@ const __buildIncompleteDescription = (
     m[varName] = {
       source: BUFFER_LIST.findIndex(name => name === bufferName),
       wireIndex: STATIC_VARIABLES.findIndex(staticName => staticName === varName),
-      valueDomain: { kind: 'uint', bits: 256 },
-      wireLayout: { kind: 'limbs-128', count: 2 },
+      dataPtType: {
+        valueDomain: { kind: 'uint', bits: 256 },
+        wireLayout: { kind: 'limbs-128', count: 2 },
+      },
     }
   }
   return m as unknown
@@ -469,15 +471,13 @@ const VARIABLE_DESCRIPTION_INCOMPLETE: Record<ReservedVariable, DataPtDescriptio
   ..._PRIVATE_IN_DESCRIPTION_INCOMPLETE,
 }
 
-const __setDataPtDomainAndLayout = (
+const __setDataPtType = (
   varName: ReservedVariable,
-  valueDomain: DataPtValueDomain,
-  wireLayout: DataPtWireLayout,
+  dataPtType: DataPtType,
 ): void => {
   VARIABLE_DESCRIPTION_INCOMPLETE[varName] = {
     ...VARIABLE_DESCRIPTION_INCOMPLETE[varName],
-    valueDomain,
-    wireLayout,
+    dataPtType,
   }
 }
 
@@ -488,12 +488,21 @@ VARIABLE_DESCRIPTION_INCOMPLETE.SSTORE_KEY.extDest = `Final storage write key`;
 VARIABLE_DESCRIPTION_INCOMPLETE.SSTORE_VALUE.extDest = `Final storage write value`;
 
 VARIABLE_DESCRIPTION_INCOMPLETE.EDDSA_SIGNATURE.extSource = `EdDSA signature of transaction`;
-__setDataPtDomainAndLayout('EDDSA_SIGNATURE', { kind: 'jubjub-scalar' }, { kind: 'limbs-128', count: 2 })
+__setDataPtType('EDDSA_SIGNATURE', {
+  valueDomain: { kind: 'jubjub-scalar' },
+  wireLayout: { kind: 'limbs-128', count: 2 },
+})
 
 VARIABLE_DESCRIPTION_INCOMPLETE.CONTRACT_ADDRESS.extSource = `Contract address to call`;
-__setDataPtDomainAndLayout('CONTRACT_ADDRESS', { kind: 'uint', bits: 160 }, { kind: 'limbs-128', count: 2 })
+__setDataPtType('CONTRACT_ADDRESS', {
+  valueDomain: { kind: 'uint', bits: 160 },
+  wireLayout: { kind: 'limbs-128', count: 2 },
+})
 VARIABLE_DESCRIPTION_INCOMPLETE.FUNCTION_SELECTOR.extSource = `Selector for a function to call`;
-__setDataPtDomainAndLayout('FUNCTION_SELECTOR', { kind: 'uint', bits: 32 }, { kind: 'limbs-128', count: 2 })
+__setDataPtType('FUNCTION_SELECTOR', {
+  valueDomain: { kind: 'uint', bits: 32 },
+  wireLayout: { kind: 'limbs-128', count: 2 },
+})
 VARIABLE_DESCRIPTION_INCOMPLETE.SLOAD_ADDRESS.extDest = `Initial storage read address`;
 VARIABLE_DESCRIPTION_INCOMPLETE.SLOAD_KEY.extDest = `Initial storage read key`;
 VARIABLE_DESCRIPTION_INCOMPLETE.SLOAD_VALUE.extDest = `Initial storage read value`;
@@ -514,47 +523,86 @@ for (let i = 1; i <= 256; i++) {
 }
 
 VARIABLE_DESCRIPTION_INCOMPLETE.CIRCOM_CONST_ONE.extSource = 'Arbitrary constant',
-__setDataPtDomainAndLayout('CIRCOM_CONST_ONE', { kind: 'uint', bits: 1 }, { kind: 'limbs-128', count: 1 })
+__setDataPtType('CIRCOM_CONST_ONE', {
+  valueDomain: { kind: 'uint', bits: 1 },
+  wireLayout: { kind: 'limbs-128', count: 1 },
+})
 
 VARIABLE_DESCRIPTION_INCOMPLETE.CIRCOM_CONST_ZERO.extSource = 'Arbitrary constant',
-__setDataPtDomainAndLayout('CIRCOM_CONST_ZERO', { kind: 'uint', bits: 1 }, { kind: 'limbs-128', count: 1 })
+__setDataPtType('CIRCOM_CONST_ZERO', {
+  valueDomain: { kind: 'uint', bits: 1 },
+  wireLayout: { kind: 'limbs-128', count: 1 },
+})
 
 VARIABLE_DESCRIPTION_INCOMPLETE.ADDRESS_MASK.extSource = `Masker for Ethereum address (20 bytes)`;
-__setDataPtDomainAndLayout('ADDRESS_MASK', { kind: 'uint', bits: 160 }, { kind: 'limbs-128', count: 2 })
+__setDataPtType('ADDRESS_MASK', {
+  valueDomain: { kind: 'uint', bits: 160 },
+  wireLayout: { kind: 'limbs-128', count: 2 },
+})
 
 VARIABLE_DESCRIPTION_INCOMPLETE.JUBJUB_BASE_X.extSource = `Base point of Jubjub curve (x coordinate)`;
-__setDataPtDomainAndLayout('JUBJUB_BASE_X', { kind: 'bls12-381-fr' }, { kind: 'limbs-128', count: 2 })
+__setDataPtType('JUBJUB_BASE_X', {
+  valueDomain: { kind: 'bls12-381-fr' },
+  wireLayout: { kind: 'limbs-128', count: 2 },
+})
 
 VARIABLE_DESCRIPTION_INCOMPLETE.JUBJUB_BASE_Y.extSource = `Base point of Jubjub curve (y coordinate)`;
-__setDataPtDomainAndLayout('JUBJUB_BASE_Y', { kind: 'bls12-381-fr' }, { kind: 'limbs-128', count: 2 })
+__setDataPtType('JUBJUB_BASE_Y', {
+  valueDomain: { kind: 'bls12-381-fr' },
+  wireLayout: { kind: 'limbs-128', count: 2 },
+})
 
 VARIABLE_DESCRIPTION_INCOMPLETE.JUBJUB_POI_X.extSource = `Point at infinity of Jubjub curve (x coordinate)`;
-__setDataPtDomainAndLayout('JUBJUB_POI_X', { kind: 'bls12-381-fr' }, { kind: 'limbs-128', count: 2 })
+__setDataPtType('JUBJUB_POI_X', {
+  valueDomain: { kind: 'bls12-381-fr' },
+  wireLayout: { kind: 'limbs-128', count: 2 },
+})
 
 VARIABLE_DESCRIPTION_INCOMPLETE.JUBJUB_POI_Y.extSource = `Point at infinity of Jubjub curve (y coordinate)`;
-__setDataPtDomainAndLayout('JUBJUB_POI_Y', { kind: 'bls12-381-fr' }, { kind: 'limbs-128', count: 2 })
+__setDataPtType('JUBJUB_POI_Y', {
+  valueDomain: { kind: 'bls12-381-fr' },
+  wireLayout: { kind: 'limbs-128', count: 2 },
+})
 
 VARIABLE_DESCRIPTION_INCOMPLETE.TRANSACTION_NONCE.extSource = `Transaction nonce`;
-__setDataPtDomainAndLayout('TRANSACTION_NONCE', { kind: 'bls12-381-fr' }, { kind: 'limbs-128', count: 2 })
+__setDataPtType('TRANSACTION_NONCE', {
+  valueDomain: { kind: 'bls12-381-fr' },
+  wireLayout: { kind: 'limbs-128', count: 2 },
+})
 
 VARIABLE_DESCRIPTION_INCOMPLETE.EDDSA_PUBLIC_KEY_X.extSource = `EdDSA public key of caller (x coordinate)`;
-__setDataPtDomainAndLayout('EDDSA_PUBLIC_KEY_X', { kind: 'bls12-381-fr' }, { kind: 'limbs-128', count: 2 })
+__setDataPtType('EDDSA_PUBLIC_KEY_X', {
+  valueDomain: { kind: 'bls12-381-fr' },
+  wireLayout: { kind: 'limbs-128', count: 2 },
+})
 
 VARIABLE_DESCRIPTION_INCOMPLETE.EDDSA_PUBLIC_KEY_Y.extSource = `EdDSA public key of caller (y coordinate)`;
-__setDataPtDomainAndLayout('EDDSA_PUBLIC_KEY_Y', { kind: 'bls12-381-fr' }, { kind: 'limbs-128', count: 2 })
+__setDataPtType('EDDSA_PUBLIC_KEY_Y', {
+  valueDomain: { kind: 'bls12-381-fr' },
+  wireLayout: { kind: 'limbs-128', count: 2 },
+})
 for (let i = 0; i < FUNCTION_INPUT_LENGTH; i++) {
   const varName = `TRANSACTION_INPUT${i}` as ReservedVariable
   if ( PRIVATE_IN_VARIABLES_STATIC.findIndex(staticVarName => staticVarName === varName) < 0 ) {
     throw new Error(`${varName} is not a ReservedVariable`)
   }
   VARIABLE_DESCRIPTION_INCOMPLETE[varName].extSource = `The ${i}-th input to the selected function`;
-  __setDataPtDomainAndLayout(varName, { kind: 'bls12-381-fr' }, { kind: 'limbs-128', count: 2 })
+  __setDataPtType(varName, {
+    valueDomain: { kind: 'bls12-381-fr' },
+    wireLayout: { kind: 'limbs-128', count: 2 },
+  })
 }
 VARIABLE_DESCRIPTION_INCOMPLETE.EDDSA_RANDOMIZER_X.extSource = `EdDSA randomizer (x coordinate)`;
-__setDataPtDomainAndLayout('EDDSA_RANDOMIZER_X', { kind: 'bls12-381-fr' }, { kind: 'limbs-128', count: 2 })
+__setDataPtType('EDDSA_RANDOMIZER_X', {
+  valueDomain: { kind: 'bls12-381-fr' },
+  wireLayout: { kind: 'limbs-128', count: 2 },
+})
 
 VARIABLE_DESCRIPTION_INCOMPLETE.EDDSA_RANDOMIZER_Y.extSource = `EdDSA randomizer (y coordinate)`;
-__setDataPtDomainAndLayout('EDDSA_RANDOMIZER_Y', { kind: 'bls12-381-fr' }, { kind: 'limbs-128', count: 2 })
+__setDataPtType('EDDSA_RANDOMIZER_Y', {
+  valueDomain: { kind: 'bls12-381-fr' },
+  wireLayout: { kind: 'limbs-128', count: 2 },
+})
 
 VARIABLE_DESCRIPTION_INCOMPLETE.STORAGE_READ.extSource = `Storage read`;
 

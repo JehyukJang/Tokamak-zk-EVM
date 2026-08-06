@@ -4,7 +4,7 @@ import { BlockData, BlockOptions, createBlock, HeaderData } from '@ethereumjs/bl
 import { bigIntToBytes, bigIntToHex, bytesToBigInt, bytesToHex, createAddressFromBigInt, setLengthLeft } from '@ethereumjs/util';
 
 import { EVMResult, InterpreterStep, Message } from '@ethereumjs/evm';
-import { DataAliasInfos, DataPt, DataPtValueDomain, DataPtWireLayout, MemoryPts, Placements, ReservedVariable, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
+import { DataAliasInfos, DataPt, DataPtType, MemoryPts, Placements, ReservedVariable, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
 import { ArithmeticManager, BufferManager, ContextConstructionData, ContextManager, InstructionHandler, MemoryManager, StateManager, SynthesizerOpHandler } from './handlers/index.ts';
 import { ArithmeticOperator, SubcircuitNames } from '../subcircuit/configuredTypes.ts';
 import type { ResolvedSubcircuitLibrary } from '../subcircuit/libraryTypes.ts';
@@ -453,11 +453,10 @@ export class Synthesizer implements SynthesizerInterface
 
   loadArbitraryStatic(
     value: bigint,
-    valueDomain: DataPtValueDomain,
-    wireLayout: DataPtWireLayout,
+    dataPtType: DataPtType,
     desc?: string,
   ): DataPt {
-    return this._bufferManager.loadArbitraryStatic(value, valueDomain, wireLayout, desc)
+    return this._bufferManager.loadArbitraryStatic(value, dataPtType, desc)
   }
 
   placeArithComposition(name: ArithmeticOperator, inPts: DataPt[]): DataPt[] {

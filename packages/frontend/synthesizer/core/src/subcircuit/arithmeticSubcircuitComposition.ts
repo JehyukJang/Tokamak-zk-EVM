@@ -5,8 +5,7 @@ import {
 } from './configuredTypes.ts';
 import type { FrontendConfig } from './libraryTypes.ts';
 import type {
-  DataPtValueDomain,
-  DataPtWireLayout,
+  DataPtType,
 } from '../synthesizer/types/dataStructure.ts';
 import { createAddMulModArithmeticMappings } from './special-builders/addMulModArithmetic.ts';
 import { createDivisionArithmeticMappings } from './special-builders/divModArithmetic.ts';
@@ -41,8 +40,7 @@ export type CompositionStep = Readonly<{
 
 export type ConstantDefinition = Readonly<{
   value: bigint;
-  valueDomain: DataPtValueDomain;
-  wireLayout: DataPtWireLayout;
+  dataPtType: DataPtType;
 }>;
 
 export type ArithmeticOperationComposition = Readonly<{
@@ -77,8 +75,10 @@ export const freezeComposition = (
   placementStrategy: composition.placementStrategy,
   constants: Object.freeze(composition.constants.map((constant) => Object.freeze({
     value: constant.value,
-    valueDomain: Object.freeze({ ...constant.valueDomain }),
-    wireLayout: Object.freeze({ ...constant.wireLayout }),
+    dataPtType: Object.freeze({
+      valueDomain: Object.freeze({ ...constant.dataPtType.valueDomain }),
+      wireLayout: Object.freeze({ ...constant.dataPtType.wireLayout }),
+    }),
   }))),
   numSteps: composition.numSteps,
   numOperands: composition.numOperands,
@@ -183,12 +183,13 @@ export class ArithmeticSubcircuitComposition {
     const results = new Set<number>();
 
     for (const [constantIndex, constant] of composition.constants.entries()) {
+      const { valueDomain, wireLayout } = constant.dataPtType
       if (
-        constant.valueDomain.kind === 'uint'
+        valueDomain.kind === 'uint'
         && (
-          !Number.isInteger(constant.valueDomain.bits)
-          || constant.valueDomain.bits < 1
-          || constant.valueDomain.bits > 256
+          !Number.isInteger(valueDomain.bits)
+          || valueDomain.bits < 1
+          || valueDomain.bits > 256
         )
       ) {
         throw new Error(
@@ -196,11 +197,11 @@ export class ArithmeticSubcircuitComposition {
         );
       }
       if (
-        constant.wireLayout.kind === 'limbs-128'
-        && constant.wireLayout.count === 1
+        wireLayout.kind === 'limbs-128'
+        && wireLayout.count === 1
         && (
-          constant.valueDomain.kind !== 'uint'
-          || constant.valueDomain.bits > 128
+          valueDomain.kind !== 'uint'
+          || valueDomain.bits > 128
         )
       ) {
         throw new Error(
@@ -208,8 +209,8 @@ export class ArithmeticSubcircuitComposition {
         );
       }
       if (
-        constant.wireLayout.kind === 'native-fr'
-        && constant.valueDomain.kind === 'uint'
+        wireLayout.kind === 'native-fr'
+        && valueDomain.kind === 'uint'
       ) {
         throw new Error(
           `ArithmeticSubcircuitComposition: ${operation} constant ${constantIndex} native-fr layout requires a field or scalar domain`,
@@ -359,8 +360,10 @@ const createSingleStepMapping = (
 
 const ZERO_WORD_CONSTANT: ConstantDefinition = Object.freeze({
   value: 0n,
-  valueDomain: { kind: 'uint', bits: 256 },
-  wireLayout: { kind: 'limbs-128', count: 2 },
+  dataPtType: {
+    valueDomain: { kind: 'uint', bits: 256 },
+    wireLayout: { kind: 'limbs-128', count: 2 },
+  },
 } satisfies ConstantDefinition);
 
 export const FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS: readonly ArithmeticSubcircuitMapping[] =
