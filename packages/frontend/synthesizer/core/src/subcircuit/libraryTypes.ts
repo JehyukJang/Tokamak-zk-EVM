@@ -51,12 +51,14 @@ type SubcircuitInfoItem = { [K in keyof ValidatorMap]: ValidatorMap[K] extends (
 // Array of items
 export type SubcircuitInfo = SubcircuitInfoItem[];
 
-// Required Circom constants (qap-compiler/scripts/constants.circom)
+// Required Circom constants (qap-compiler/subcircuits/circom/constants.circom).
+// Every buffer n* constant is an input-wire capacity and requires no scaling.
 export const REQUIRED_CIRCOM_KEYS = [
   'nTxIn',
   'nStorageLoad',
   'nLogOut',
   'nStorageStore',
+  'nBlockIn',
   'nPrvIn',
   'nEVMIn',
   'nPoseidonInputs',

@@ -84,6 +84,7 @@ export function parseFrontendConfig(value: unknown): FrontendConfig {
     nStorageLoad: getRequiredNumber(value, 'nStorageLoad'),
     nLogOut: getRequiredNumber(value, 'nLogOut'),
     nStorageStore: getRequiredNumber(value, 'nStorageStore'),
+    nBlockIn: getRequiredNumber(value, 'nBlockIn'),
     nPrvIn: getRequiredNumber(value, 'nPrvIn'),
     nEVMIn: getRequiredNumber(value, 'nEVMIn'),
     nPoseidonInputs: getRequiredNumber(value, 'nPoseidonInputs'),
