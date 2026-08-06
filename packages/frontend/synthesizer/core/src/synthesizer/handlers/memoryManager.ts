@@ -206,31 +206,35 @@ export class MemoryManager {
   }
 
   private applyMask(info: DataAliasInfoEntry, unshift?: boolean): DataPt {
-    let masker = info.masker;
+    let alignedMask = BigInt(info.masker);
     const { shift, dataPt } = info;
     if (unshift === true) {
-      const maskerBigint = BigInt(masker);
-      const unshiftMaskerBigint =
+      alignedMask =
         shift > 0
-          ? maskerBigint >> BigInt(Math.abs(shift))
-          : maskerBigint << BigInt(Math.abs(shift));
-      masker = '0x' + unshiftMaskerBigint.toString(16);
+          ? alignedMask >> BigInt(Math.abs(shift))
+          : alignedMask << BigInt(Math.abs(shift));
     }
-    const maskOutValue = dataPt.value & BigInt(masker);
-    let outPts = [dataPt];
-    if (maskOutValue !== dataPt.value) {
-      const inPts: DataPt[] = [
-        this.parent.loadArbitraryStatic(
-          BigInt(masker),
-          {
-            valueDomain: { kind: 'uint', bits: 256 },
-            wireLayout: { kind: 'limbs-128', count: 2 },
-          },
-          'Masker for memory manipulation',
-        ),
-        dataPt,
-      ];
-      outPts = this.parent.placeArithComposition('AND', inPts);
+
+    const effectiveMask = alignedMask & ((1n << 256n) - 1n);
+    const inPts: DataPt[] = [
+      this.parent.loadArbitraryStatic(
+        effectiveMask,
+        {
+          valueDomain: { kind: 'uint', bits: 256 },
+          wireLayout: { kind: 'limbs-128', count: 2 },
+        },
+        'Masker for memory manipulation',
+      ),
+      dataPt,
+    ];
+    const outPts = this.parent.placeArithComposition('AND', inPts);
+    if (outPts.length !== 1 || outPts[0] === undefined) {
+      throw new Error(
+        'Synthesizer: memory masking must produce exactly one output',
+      );
+    }
+    if (outPts[0].value !== (dataPt.value & effectiveMask)) {
+      throw new Error('Synthesizer: memory masking output mismatch');
     }
     return outPts[0];
   }
