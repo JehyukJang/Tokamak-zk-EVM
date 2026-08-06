@@ -1,13 +1,9 @@
+export type DataPtWireLayout = Readonly<{ kind: 'limbs-128'; count: 1 | 2 }> | Readonly<{ kind: 'native-fr' }>;
 
-
-/**
- * @property {string | number } source - Where the data is from. If the source is a string, it should be a stringfied address of which the code is running. If it is a number, it is a placement key.  See "functions.ts" for detail
- * @property {string} type? - The type of data, when the source is either an address or 'block'. E.g., 'hardcoded', 'BLOCKHASH', 'CALLDATA'. See "functions.ts" for detail
- * @property {number} wireIndex? - The index of wire at which the data is from, when the source is a placement key (= subcircuit).
- * @property {number} offset? - The offset at which the data is read, when the source is string and the type either 'hardcoded' or 'CALLDATA'.
- * @property {number} sourceSize - Actual size of the data.
- * @property {bigint} value - Data value.
- */
+export type DataPtValueDomain =
+  | Readonly<{ kind: 'uint'; bits: number }>
+  | Readonly<{ kind: 'bls12-381-fr' }>
+  | Readonly<{ kind: 'jubjub-scalar' }>;
 
 export type DataPtDescription = {
   // if data comes from external
@@ -27,13 +23,13 @@ export type DataPtDescription = {
   source: number;
   // wire index at which the dataPt comes from
   wireIndex: number;
-  
-  sourceBitSize: number;
-  
-  // identifier?: string
-}
-export type DataPt = DataPtDescription & { value: bigint, valueHex: string };
 
+  readonly valueDomain: DataPtValueDomain;
+  readonly wireLayout: DataPtWireLayout;
+
+  // identifier?: string
+};
+export type DataPt = DataPtDescription & { value: bigint; valueHex: string };
 
 /**
  * Structure representing data alias information.
@@ -41,8 +37,8 @@ export type DataPt = DataPtDescription & { value: bigint, valueHex: string };
  * @property {number} shift - Number of bit shifts (positive for SHL, negative for SHR)
  * @property {string} masker - Hexadecimal string representing valid bytes (FF) or invalid bytes (00)
  */
-export type DataAliasInfoEntry = { dataPt: DataPt; shift: number; masker: string }
-export type DataAliasInfos = DataAliasInfoEntry[]
+export type DataAliasInfoEntry = { dataPt: DataPt; shift: number; masker: string };
+export type DataAliasInfos = DataAliasInfoEntry[];
 
 /**
  * Structure representing memory information.
@@ -50,9 +46,9 @@ export type DataAliasInfos = DataAliasInfoEntry[]
  * @property {number} containerSize - Container size
  * @property {DataPt} dataPt - Data pointer
  */
-export type MemoryPtEntry = { memByteOffset: number; containerByteSize: number; dataPt: DataPt }
+export type MemoryPtEntry = { memByteOffset: number; containerByteSize: number; dataPt: DataPt };
 
 /**
  * Array of memory information. Lower indices represent older memory information.
  */
-export type MemoryPts = MemoryPtEntry[]
+export type MemoryPts = MemoryPtEntry[];

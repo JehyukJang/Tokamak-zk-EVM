@@ -1,25 +1,90 @@
-import { bigIntToHex } from '@ethereumjs/util'
-import { DataPt, DataPtDescription } from '../types/index.ts'
-import { BLS12831ARITHMODULUS, JUBJUBARITHMODULUS } from '../../synthesizer/params/constants.ts'
+import { bigIntToHex } from '@ethereumjs/util';
+import type { DataPt, DataPtDescription, DataPtValueDomain, DataPtWireLayout } from '../types/index.ts';
+import { BLS12831ARITHMODULUS, JUBJUBARITHMODULUS } from '../../synthesizer/params/constants.ts';
 
-/**
- * Validates if the value is within Ethereum word size limits
- * @param value Value to validate
- * @throws {Error} If value is negative or exceeds word size
- */
-function validateValue(params: DataPtDescription, value: bigint): void {
+function copyAndFreezeValueDomain(valueDomain: DataPtValueDomain): DataPtValueDomain {
+  if (valueDomain === undefined || valueDomain === null) {
+    throw new Error('DataPt value domain is required');
+  }
+  switch (valueDomain.kind) {
+    case 'uint':
+      if (!Number.isInteger(valueDomain.bits) || valueDomain.bits < 1 || valueDomain.bits > 256) {
+        throw new Error('DataPt uint domain bits must be an integer between 1 and 256');
+      }
+      return Object.freeze({ kind: 'uint', bits: valueDomain.bits });
+    case 'bls12-381-fr':
+      return Object.freeze({ kind: 'bls12-381-fr' });
+    case 'jubjub-scalar':
+      return Object.freeze({ kind: 'jubjub-scalar' });
+    default:
+      throw new Error(`Unsupported DataPt value domain: ${String((valueDomain as { kind?: unknown }).kind)}`);
+  }
+}
+
+function copyAndFreezeWireLayout(wireLayout: DataPtWireLayout): DataPtWireLayout {
+  if (wireLayout === undefined || wireLayout === null) {
+    throw new Error('DataPt wire layout is required');
+  }
+  switch (wireLayout.kind) {
+    case 'limbs-128':
+      if (wireLayout.count !== 1 && wireLayout.count !== 2) {
+        throw new Error('DataPt limb layout count must be 1 or 2');
+      }
+      return Object.freeze({ kind: 'limbs-128', count: wireLayout.count });
+    case 'native-fr':
+      return Object.freeze({ kind: 'native-fr' });
+    default:
+      throw new Error(`Unsupported DataPt wire layout: ${String((wireLayout as { kind?: unknown }).kind)}`);
+  }
+}
+
+function validateDomainLayout(valueDomain: DataPtValueDomain, wireLayout: DataPtWireLayout): void {
+  if (wireLayout.kind === 'native-fr') {
+    if (valueDomain.kind === 'uint') {
+      throw new Error('DataPt uint domains cannot use the native-fr layout');
+    }
+    return;
+  }
+
+  if (valueDomain.kind === 'uint') {
+    if (wireLayout.count === 1 && valueDomain.bits > 128) {
+      throw new Error('DataPt uint domains wider than 128 bits require two limbs');
+    }
+    return;
+  }
+
+  if (wireLayout.count !== 2) {
+    throw new Error('DataPt field and scalar domains require two limbs or the native-fr layout');
+  }
+}
+
+function validateValue(valueDomain: DataPtValueDomain, value: bigint): void {
   if (value < 0n) {
-    throw new Error('Negative values are not allowed')
+    throw new Error('DataPt values cannot be negative');
   }
-  if (value >= 1n << BigInt(params.sourceBitSize)) {
-    throw new Error('The value exceeds its source bit size')
+
+  switch (valueDomain.kind) {
+    case 'uint':
+      if (value >= 1n << BigInt(valueDomain.bits)) {
+        throw new Error(`DataPt value exceeds its uint(${valueDomain.bits}) domain`);
+      }
+      break;
+    case 'bls12-381-fr':
+      if (value >= BLS12831ARITHMODULUS) {
+        throw new Error('DataPt value is outside the BLS12-381 Fr domain');
+      }
+      break;
+    case 'jubjub-scalar':
+      if (value >= JUBJUBARITHMODULUS) {
+        throw new Error('DataPt value is outside the Jubjub scalar domain');
+      }
+      break;
   }
-  if (params.sourceBitSize === 255 && value >= BLS12831ARITHMODULUS) {
-    throw new Error('The value is of 255 bit length but out of BLS12-381 scalar field')
-  }
-  if (params.sourceBitSize === 252 && value >= JUBJUBARITHMODULUS) {
-    throw new Error('The value is of 252 bit length but out of JubJub scalar field')
-  }
+}
+
+function copyDataPt(dataPt: DataPt): DataPt {
+  const { value, valueHex: _valueHex, ...description } = dataPt;
+  return DataPtFactory.create(description, value);
 }
 
 export class DataPtFactory {
@@ -36,47 +101,42 @@ export class DataPtFactory {
       // Handle fixed-length 2-tuple precisely to preserve tuple type
       if (a.length === 2) {
         const [d0, d1] = a as unknown as readonly [DataPt, DataPt];
-        const tuple: [DataPt, DataPt] = [{ ...d0 }, { ...d1 }];
+        const tuple: [DataPt, DataPt] = [copyDataPt(d0), copyDataPt(d1)];
         return tuple as unknown as T;
       }
-      // General array clone (deep at 1-level; DataPt is a flat object)
-      const arr = (a as ReadonlyArray<DataPt>).map((dp) => ({ ...dp }));
+      const arr = (a as ReadonlyArray<DataPt>).map(copyDataPt);
       return arr as unknown as T;
     }
-    // Single object
-    return { ...(a as DataPt) } as T;
+    return copyDataPt(a as DataPt) as T;
   }
 
   public static create(params: DataPtDescription, value: bigint): DataPt {
-    validateValue(params, value)
+    if ('sourceBitSize' in params) {
+      throw new Error('DataPt sourceBitSize is no longer supported');
+    }
+    const valueDomain = copyAndFreezeValueDomain(params.valueDomain);
+    const wireLayout = copyAndFreezeWireLayout(params.wireLayout);
+    validateDomainLayout(valueDomain, wireLayout);
+    validateValue(valueDomain, value);
     return {
       ...params,
+      valueDomain,
+      wireLayout,
       value,
       valueHex: bigIntToHex(value),
-    }
+    };
   }
 
   public static createBufferTwin(dataPt: DataPt): DataPt {
-    const placementId = dataPt.source
-    const thisWireIndex = dataPt.wireIndex
+    const placementId = dataPt.source;
+    const thisWireIndex = dataPt.wireIndex;
     // Create output data point
     const outPtRaw: DataPtDescription = {
       source: placementId,
       wireIndex: thisWireIndex,
-      sourceBitSize: dataPt.sourceBitSize,
+      valueDomain: dataPt.valueDomain,
+      wireLayout: dataPt.wireLayout,
     };
     return DataPtFactory.create(outPtRaw, dataPt.value);
   }
-
-  // public static createInputBufferWirePair(params: DataPtDescription, value: bigint): {inPt: DataPt, outPt: DataPt} {
-  //   const inPt: DataPt = this.create(params, value)
-  //   const outPt: DataPt = {
-  //     source: inPt.source,
-  //     wireIndex: inPt.wireIndex,
-  //     sourceBitSize: inPt.sourceBitSize,
-  //     value: inPt.value,
-  //     valueHex: inPt.valueHex
-  //   };
-  //   return {inPt, outPt}
-  // }
 }
