@@ -150,12 +150,26 @@ export const createTransactionSignatureVerifyArithmeticMapping = (
 
   const constants: ConstantDefinition[] = [];
   const poseidonPaddingInput: InputReference | undefined = config.nPoseidonBatch > 1
-    ? { kind: 'constant', index: constants.push({ value: 0n, sourceBitSize: 255 }) - 1 }
+    ? {
+        kind: 'constant',
+        index: constants.push({
+          value: 0n,
+          valueDomain: { kind: 'bls12-381-fr' },
+          wireLayout: { kind: 'limbs-128', count: 2 },
+        }) - 1,
+      }
     : undefined;
   const numJubjubBatches = Math.ceil(NUM_SCALAR_BITS / config.nJubjubExpBatch);
   const jubjubPaddingInput: InputReference | undefined =
     numJubjubBatches * config.nJubjubExpBatch > NUM_SCALAR_BITS
-      ? { kind: 'constant', index: constants.push({ value: 0n, sourceBitSize: 1 }) - 1 }
+      ? {
+          kind: 'constant',
+          index: constants.push({
+            value: 0n,
+            valueDomain: { kind: 'uint', bits: 1 },
+            wireLayout: { kind: 'limbs-128', count: 1 },
+          }) - 1,
+        }
       : undefined;
 
   const steps: CompositionStep[] = [];

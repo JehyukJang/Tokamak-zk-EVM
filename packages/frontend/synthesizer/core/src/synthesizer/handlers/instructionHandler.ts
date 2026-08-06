@@ -371,7 +371,8 @@ export class InstructionHandler {
         const staticInDesc = `Static input for PUSH${numToPush} instruction at PC ${opts.pc} of code address ${opts.thisAddress} (depth: ${opts.callDepth})`
         opts.stackPt.push(this.parent.loadArbitraryStatic(
           out,
-          DEFAULT_SOURCE_BIT_SIZE,
+          { kind: 'uint', bits: 256 },
+          { kind: 'limbs-128', count: 2 },
           staticInDesc,
         ))
         if (opts.stackPt.peek(1)[0].value !== out) {
@@ -691,7 +692,11 @@ export class InstructionHandler {
         this._popStackPtAndCheckInputConsistency(opts.stackPt, [blockNumber]);
         const blockNumberDiff = this.parent.getReservedVariableFromBuffer('NUMBER').value - blockNumber;
         if (blockNumberDiff <= 0n || blockNumberDiff > 256n) {
-          dataPt = this.parent.loadArbitraryStatic(0n)
+          dataPt = this.parent.loadArbitraryStatic(
+            0n,
+            { kind: 'uint', bits: 256 },
+            { kind: 'limbs-128', count: 2 },
+          )
           break
         }
         if (blockNumberDiff > BigInt(this.parent.subcircuitLibrary.numberOfPrevBlockHashes)) {
@@ -721,7 +726,8 @@ export class InstructionHandler {
     // return cachedDataPt ?? this.parent.loadArbitraryStatic(
     return this.parent.loadArbitraryStatic(
       value,
-      DEFAULT_SOURCE_BIT_SIZE,
+      { kind: 'uint', bits: 256 },
+      { kind: 'limbs-128', count: 2 },
       staticInDesc + targetDesc,
     )
   }
@@ -815,10 +821,18 @@ export class InstructionHandler {
             if (dataAliasInfos.length > 0) {
               stackPt.push(this.parent.placeMemoryToStack(dataAliasInfos))
             } else {
-              stackPt.push(this.parent.loadArbitraryStatic(0n))
+              stackPt.push(this.parent.loadArbitraryStatic(
+                0n,
+                { kind: 'uint', bits: 256 },
+                { kind: 'limbs-128', count: 2 },
+              ))
             }
           } else {
-            stackPt.push(this.parent.loadArbitraryStatic(0n))
+            stackPt.push(this.parent.loadArbitraryStatic(
+              0n,
+              { kind: 'uint', bits: 256 },
+              { kind: 'limbs-128', count: 2 },
+            ))
           }   
         }
         break
@@ -1035,7 +1049,13 @@ export class InstructionHandler {
             Number(pos),
             32,
           )
-          const mutDataPt = dataAliasInfos.length === 0 ? this.parent.loadArbitraryStatic(0n) : this.parent.placeMemoryToStack(dataAliasInfos)
+          const mutDataPt = dataAliasInfos.length === 0
+            ? this.parent.loadArbitraryStatic(
+                0n,
+                { kind: 'uint', bits: 256 },
+                { kind: 'limbs-128', count: 2 },
+              )
+            : this.parent.placeMemoryToStack(dataAliasInfos)
           opts.stackPt.push(mutDataPt)
         }
         break
@@ -1090,7 +1110,12 @@ export class InstructionHandler {
       case 'GAS':
         {
           const staticInDesc = `Static input for ${opts.op} instruction at PC ${opts.pc} of code address ${opts.codeAddress} (depth: ${opts.callDepth})`
-          opts.stackPt.push(this.parent.loadArbitraryStatic(out!, DEFAULT_SOURCE_BIT_SIZE, staticInDesc))
+          opts.stackPt.push(this.parent.loadArbitraryStatic(
+            out!,
+            { kind: 'uint', bits: 256 },
+            { kind: 'limbs-128', count: 2 },
+            staticInDesc,
+          ))
         }
         break
       case 'JUMPDEST': 
@@ -1142,7 +1167,8 @@ export class InstructionHandler {
           }
           opts.stackPt.push(this.parent.loadArbitraryStatic(
             out!,
-            DEFAULT_SOURCE_BIT_SIZE,
+            { kind: 'uint', bits: 256 },
+            { kind: 'limbs-128', count: 2 },
             `Call result of ${op} instruction at PC ${opts.pc} of code address ${opts.codeAddress} (depth: ${opts.callDepth})`,
           ))
         }
@@ -1210,7 +1236,12 @@ export class InstructionHandler {
       const sliceLength = Math.min(32, lengthLeft)
       const dataSlice = bytesToBigInt(getDataSlice(code, codeOffset + accOffsetShift, BigInt(sliceLength)))
       const desc = `Code of address: ${bigIntToHex(targetAddress)}, offset: ${Number(codeOffset)}, length: ${Number(dataLength)} bytes, chunk: ${i+1} out of ${nChunks}.`
-      const dataPt = this.parent.loadArbitraryStatic(dataSlice, DEFAULT_SOURCE_BIT_SIZE, desc)
+      const dataPt = this.parent.loadArbitraryStatic(
+        dataSlice,
+        { kind: 'uint', bits: 256 },
+        { kind: 'limbs-128', count: 2 },
+        desc,
+      )
       memPts.push({
         memByteOffset: Number(memOffset + accOffsetShift),
         containerByteSize: sliceLength,
@@ -1245,7 +1276,11 @@ export class InstructionHandler {
       if (dataAliasInfos.length > 0) {
         chunkDataPts[i] = this.parent.placeMemoryToStack(dataAliasInfos);
       } else {
-        chunkDataPts[i] = this.parent.loadArbitraryStatic(0n);
+        chunkDataPts[i] = this.parent.loadArbitraryStatic(
+          0n,
+          { kind: 'uint', bits: 256 },
+          { kind: 'limbs-128', count: 2 },
+        );
       }
   
       dataRecovered += chunkDataPts[i].value << BigInt(lengthLeft * 8);

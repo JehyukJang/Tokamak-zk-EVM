@@ -1,7 +1,6 @@
 import { DataAliasInfoEntry, DataAliasInfos, DataPt, DataPtDescription, ISynthesizerProvider, MemoryPtEntry, MemoryPts } from '../types/index.ts';
 import { DataPtFactory, MemoryPt } from '../dataStructure/index.ts';
 import { ArithmeticOperator } from '../../subcircuit/configuredTypes.ts';
-import { DEFAULT_SOURCE_BIT_SIZE } from '../params/constants.ts';
 
 export class MemoryManager {
   constructor(
@@ -25,7 +24,12 @@ export class MemoryManager {
         }
         const subcircuitName = composition.steps[0].subcircuit
         const inPts: DataPt[] = [
-          this.parent.loadArbitraryStatic(BigInt(maskerString), DEFAULT_SOURCE_BIT_SIZE, 'Masker for memory manipulation'),
+          this.parent.loadArbitraryStatic(
+            BigInt(maskerString),
+            { kind: 'uint', bits: 256 },
+            { kind: 'limbs-128', count: 2 },
+            'Masker for memory manipulation',
+          ),
           dataPt,
         ];
         const rawOutPt: DataPtDescription = {
@@ -118,7 +122,11 @@ export class MemoryManager {
     const zeroMemoryPtEntry: MemoryPtEntry = {
       memByteOffset: dstOffsetNum,
       containerByteSize: lengthNum,
-      dataPt: this.parent.loadArbitraryStatic(0n),
+      dataPt: this.parent.loadArbitraryStatic(
+        0n,
+        { kind: 'uint', bits: 256 },
+        { kind: 'limbs-128', count: 2 },
+      ),
     }
     if (toMemoryPts.length > 0) {
       const simToMemoryPt = MemoryPt.simulateMemoryPt(toMemoryPts)
@@ -148,7 +156,12 @@ export class MemoryManager {
     }
     // SHR data to truncate the ending part
     const [truncatedPt] = this.parent.placeArithComposition('SHR', [
-      this.parent.loadArbitraryStatic(BigInt(endingGap * 8), DEFAULT_SOURCE_BIT_SIZE, 'Shifter for memory manipulation'),
+      this.parent.loadArbitraryStatic(
+        BigInt(endingGap * 8),
+        { kind: 'uint', bits: 256 },
+        { kind: 'limbs-128', count: 2 },
+        'Shifter for memory manipulation',
+      ),
       dataPt,
     ]);
     return truncatedPt;
@@ -195,7 +208,12 @@ export class MemoryManager {
       const subcircuitName: ArithmeticOperator = shift > 0 ? 'SHL' : 'SHR';
       const absShift = Math.abs(shift);
       const inPts: DataPt[] = [
-        this.parent.loadArbitraryStatic(BigInt(absShift), DEFAULT_SOURCE_BIT_SIZE, 'Shifter for memory manipulation'),
+        this.parent.loadArbitraryStatic(
+          BigInt(absShift),
+          { kind: 'uint', bits: 256 },
+          { kind: 'limbs-128', count: 2 },
+          'Shifter for memory manipulation',
+        ),
         dataPt,
       ];
       outPts = this.parent.placeArithComposition(subcircuitName, inPts);
@@ -217,7 +235,15 @@ export class MemoryManager {
     const maskOutValue = dataPt.value & BigInt(masker);
     let outPts = [dataPt];
     if (maskOutValue !== dataPt.value) {
-      const inPts: DataPt[] = [this.parent.loadArbitraryStatic(BigInt(masker), DEFAULT_SOURCE_BIT_SIZE, 'Masker for memory manipulation'), dataPt];
+      const inPts: DataPt[] = [
+        this.parent.loadArbitraryStatic(
+          BigInt(masker),
+          { kind: 'uint', bits: 256 },
+          { kind: 'limbs-128', count: 2 },
+          'Masker for memory manipulation',
+        ),
+        dataPt,
+      ];
       outPts = this.parent.placeArithComposition('AND', inPts);
     }
     return outPts[0];

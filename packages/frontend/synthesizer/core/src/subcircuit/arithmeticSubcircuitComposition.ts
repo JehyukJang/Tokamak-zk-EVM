@@ -4,6 +4,10 @@ import {
   type ArithmeticOperator,
 } from './configuredTypes.ts';
 import type { FrontendConfig } from './libraryTypes.ts';
+import type {
+  DataPtValueDomain,
+  DataPtWireLayout,
+} from '../synthesizer/types/dataStructure.ts';
 import { createAddMulModArithmeticMappings } from './special-builders/addMulModArithmetic.ts';
 import { createDivisionArithmeticMappings } from './special-builders/divModArithmetic.ts';
 import { createExpArithmeticMapping } from './special-builders/expArithmetic.ts';
@@ -37,7 +41,8 @@ export type CompositionStep = Readonly<{
 
 export type ConstantDefinition = Readonly<{
   value: bigint;
-  sourceBitSize: number;
+  valueDomain: DataPtValueDomain;
+  wireLayout: DataPtWireLayout;
 }>;
 
 export type ArithmeticOperationComposition = Readonly<{
@@ -72,7 +77,8 @@ export const freezeComposition = (
   placementStrategy: composition.placementStrategy,
   constants: Object.freeze(composition.constants.map((constant) => Object.freeze({
     value: constant.value,
-    sourceBitSize: constant.sourceBitSize,
+    valueDomain: Object.freeze({ ...constant.valueDomain }),
+    wireLayout: Object.freeze({ ...constant.wireLayout }),
   }))),
   numSteps: composition.numSteps,
   numOperands: composition.numOperands,
@@ -177,9 +183,36 @@ export class ArithmeticSubcircuitComposition {
     const results = new Set<number>();
 
     for (const [constantIndex, constant] of composition.constants.entries()) {
-      if (!Number.isInteger(constant.sourceBitSize) || constant.sourceBitSize < 1) {
+      if (
+        constant.valueDomain.kind === 'uint'
+        && (
+          !Number.isInteger(constant.valueDomain.bits)
+          || constant.valueDomain.bits < 1
+          || constant.valueDomain.bits > 256
+        )
+      ) {
         throw new Error(
-          `ArithmeticSubcircuitComposition: ${operation} constant ${constantIndex} sourceBitSize must be a positive integer`,
+          `ArithmeticSubcircuitComposition: ${operation} constant ${constantIndex} uint domain must have between 1 and 256 bits`,
+        );
+      }
+      if (
+        constant.wireLayout.kind === 'limbs-128'
+        && constant.wireLayout.count === 1
+        && (
+          constant.valueDomain.kind !== 'uint'
+          || constant.valueDomain.bits > 128
+        )
+      ) {
+        throw new Error(
+          `ArithmeticSubcircuitComposition: ${operation} constant ${constantIndex} one-limb layout requires a uint domain of at most 128 bits`,
+        );
+      }
+      if (
+        constant.wireLayout.kind === 'native-fr'
+        && constant.valueDomain.kind === 'uint'
+      ) {
+        throw new Error(
+          `ArithmeticSubcircuitComposition: ${operation} constant ${constantIndex} native-fr layout requires a field or scalar domain`,
         );
       }
     }
@@ -326,8 +359,9 @@ const createSingleStepMapping = (
 
 const ZERO_WORD_CONSTANT: ConstantDefinition = Object.freeze({
   value: 0n,
-  sourceBitSize: 256,
-});
+  valueDomain: { kind: 'uint', bits: 256 },
+  wireLayout: { kind: 'limbs-128', count: 2 },
+} satisfies ConstantDefinition);
 
 export const FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS: readonly ArithmeticSubcircuitMapping[] =
   Object.freeze([

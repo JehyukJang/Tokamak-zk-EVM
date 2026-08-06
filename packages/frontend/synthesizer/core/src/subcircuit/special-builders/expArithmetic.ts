@@ -23,9 +23,17 @@ export const createExpArithmeticMapping = (
   const numBatches = Math.ceil(numExponentBits / config.nSubExpBatch);
   const requiresPadding = numBatches * config.nSubExpBatch > numExponentBits;
   const constants: ConstantDefinition[] = [
-    { value: 1n, sourceBitSize: 256 },
+    {
+      value: 1n,
+      valueDomain: { kind: 'uint', bits: 256 },
+      wireLayout: { kind: 'limbs-128', count: 2 },
+    },
     ...(requiresPadding
-      ? [{ value: 0n, sourceBitSize: 1 }]
+      ? [{
+          value: 0n,
+          valueDomain: { kind: 'uint', bits: 1 } as const,
+          wireLayout: { kind: 'limbs-128', count: 1 } as const,
+        }]
       : []),
   ];
   const steps: CompositionStep[] = [{

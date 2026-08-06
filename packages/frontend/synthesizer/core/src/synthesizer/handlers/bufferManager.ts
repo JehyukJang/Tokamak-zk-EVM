@@ -1,9 +1,8 @@
 import { bytesToBigInt, hexToBigInt, toBytes } from '@ethereumjs/util';
 import { jubjub } from "@noble/curves/misc.js";
-import { DataPt, DataPtDescription, ISynthesizerProvider, ReservedVariable, SynthesizerOpts, VARIABLE_DESCRIPTION } from '../types/index.ts';
+import { DataPt, DataPtDescription, DataPtValueDomain, DataPtWireLayout, ISynthesizerProvider, ReservedVariable, SynthesizerOpts, VARIABLE_DESCRIPTION } from '../types/index.ts';
 import { DataPtFactory } from '../dataStructure/index.ts';
 import { BUFFER_DESCRIPTION, BUFFER_LIST } from '../../subcircuit/configuredTypes.ts';
-import { DEFAULT_SOURCE_BIT_SIZE } from '../params/constants.ts';
 import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
 
 export class BufferManager {
@@ -77,12 +76,13 @@ export class BufferManager {
 
   public loadArbitraryStatic(
     value: bigint,
-    bitSize?: number,
+    valueDomain: DataPtValueDomain,
+    wireLayout: DataPtWireLayout,
     desc?: string,
   ): DataPt {
-    const resolvedBitSize = bitSize ?? DEFAULT_SOURCE_BIT_SIZE
+    const cacheKey = this._getArbitraryStaticCacheKey(valueDomain, wireLayout)
     if (desc === undefined) {
-      const cachedDataPt = this.parent.state.cachedEVMIn.get(value)?.get(resolvedBitSize)
+      const cachedDataPt = this.parent.state.cachedEVMIn.get(value)?.get(cacheKey)
       if (cachedDataPt !== undefined) {
         return DataPtFactory.deepCopy(cachedDataPt)
       }
@@ -90,17 +90,31 @@ export class BufferManager {
     const placementIndex = BUFFER_LIST.findIndex(str => str === 'EVM_IN')
     const inPtRaw: DataPtDescription = {
       extSource: desc ?? 'Arbitrary constant',
-      sourceBitSize: resolvedBitSize,
       source: placementIndex,
       wireIndex: this.parent.placements[placementIndex]!.inPts.length,
+      valueDomain,
+      wireLayout,
     };
     const inPt = DataPtFactory.create(inPtRaw, value)
     const outPt = DataPtFactory.createBufferTwin(inPt)
     this.parent.addWirePairToBufferIn(inPt, outPt, true)
-    const cachedByBitSize = this.parent.state.cachedEVMIn.get(value) ?? new Map<number, DataPt>()
-    cachedByBitSize.set(resolvedBitSize, outPt)
-    this.parent.state.cachedEVMIn.set(value, cachedByBitSize)
+    const cachedByDomainAndLayout = this.parent.state.cachedEVMIn.get(value) ?? new Map<string, DataPt>()
+    cachedByDomainAndLayout.set(cacheKey, outPt)
+    this.parent.state.cachedEVMIn.set(value, cachedByDomainAndLayout)
     return DataPtFactory.deepCopy(outPt)
+  }
+
+  private _getArbitraryStaticCacheKey(
+    valueDomain: DataPtValueDomain,
+    wireLayout: DataPtWireLayout,
+  ): string {
+    const domainKey = valueDomain.kind === 'uint'
+      ? `uint-${valueDomain.bits}`
+      : valueDomain.kind
+    const layoutKey = wireLayout.kind === 'limbs-128'
+      ? `limbs-128-${wireLayout.count}`
+      : wireLayout.kind
+    return `${domainKey}:${layoutKey}`
   }
 
   /**

@@ -58,7 +58,7 @@ export class StateManager {
 
   public subcircuitInfoByName: SubcircuitInfoByName;
 
-  public cachedEVMIn: Map<bigint, Map<number, DataPt>> = new Map()
+  public cachedEVMIn: Map<bigint, Map<string, DataPt>> = new Map()
   public cachedOrigin: DataPt | undefined = undefined
 
   public contextByDepth: ContextManager[] = [];
