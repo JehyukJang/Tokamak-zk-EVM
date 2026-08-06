@@ -1,0 +1,7 @@
+{
+  "inputs": [
+    { "name": "lhs", "length": { "constant": "nEqualBatch" }, "dataPtType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
+    { "name": "rhs", "length": { "constant": "nEqualBatch" }, "dataPtType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } }
+  ],
+  "outputs": []
+}

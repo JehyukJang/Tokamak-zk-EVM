@@ -7,10 +7,13 @@ const publicWireSegments = PUBLIC_WIRE_SEGMENTS
 
 const fs = require('fs')
 const path = require('path')
+const { loadLogicalInterfaces } = require('./parse-interfaces.js')
 const { collectInterfaceSignals, parseSymbolTable } = require('./parse-symbols.js')
 
 const outputDir = process.argv[2] ? path.resolve(process.argv[2]) : path.resolve(__dirname, '../subcircuits/library')
 const compilerOutputPath = process.argv[3] ? path.resolve(process.argv[3]) : path.resolve(__dirname, 'temp.txt')
+const interfaceDir = path.resolve(__dirname, '../subcircuits/interface')
+const constantsPath = path.resolve(__dirname, '../subcircuits/circom/constants.circom')
 const ansiEscapePattern = /\u001b\[[0-9;]*m/g
 
 function _buildWireFlattenMap(globalWireList, subcircuitInfos, globalWireIndex, subcircuitId, subcircuitWireId) {
@@ -446,6 +449,18 @@ fs.readFile(compilerOutputPath, 'utf8', function(err, data) {
     const symbolSource = fs.readFileSync(symbolPath, 'utf8')
     const symbolEntries = parseSymbolTable(symbolSource, symbolPath)
     collectInterfaceSignals(symbolEntries, subcircuit, symbolPath)
+  }
+
+  const logicalInterfaces = loadLogicalInterfaces(
+    subcircuits,
+    interfaceDir,
+    constantsPath,
+  )
+  for (const subcircuit of subcircuits) {
+    const logicalInterface = logicalInterfaces.get(subcircuit.name)
+    if (logicalInterface !== undefined) {
+      subcircuit.logicalInterface = logicalInterface
+    }
   }
 
   const globalWireInfo = parseWireList(subcircuits)

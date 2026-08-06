@@ -1,0 +1,8 @@
+{
+  "inputs": [
+    { "name": "value", "length": { "constant": "nAccumulation" }, "dataPtType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } }
+  ],
+  "outputs": [
+    { "name": "sum", "dataPtType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } }
+  ]
+}

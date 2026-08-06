@@ -1,0 +1,14 @@
+{
+  "inputs": [
+    { "name": "absDividend", "dataPtType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
+    { "name": "absQuotient", "dataPtType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
+    { "name": "absRemainder", "dataPtType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
+    { "name": "absDivisorWord", "length": 4, "dataPtType": { "valueDomain": { "kind": "uint", "bits": 64 }, "wireLayout": { "kind": "limbs-128", "count": 1 } } },
+    { "name": "divisorIsZero", "dataPtType": { "valueDomain": { "kind": "uint", "bits": 1 }, "wireLayout": { "kind": "limbs-128", "count": 1 } } },
+    { "name": "resultIsNegative", "dataPtType": { "valueDomain": { "kind": "uint", "bits": 1 }, "wireLayout": { "kind": "limbs-128", "count": 1 } } },
+    { "name": "useMod", "dataPtType": { "valueDomain": { "kind": "uint", "bits": 1 }, "wireLayout": { "kind": "limbs-128", "count": 1 } } }
+  ],
+  "outputs": [
+    { "name": "result", "dataPtType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } }
+  ]
+}

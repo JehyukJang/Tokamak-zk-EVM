@@ -1,0 +1,10 @@
+{
+  "inputs": [
+    { "name": "selector", "dataPtType": { "valueDomain": { "kind": "uint", "bits": 32 }, "wireLayout": { "kind": "limbs-128", "count": 1 } } },
+    { "name": "lhs", "dataPtType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
+    { "name": "rhs", "dataPtType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } }
+  ],
+  "outputs": [
+    { "name": "result", "dataPtType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } }
+  ]
+}

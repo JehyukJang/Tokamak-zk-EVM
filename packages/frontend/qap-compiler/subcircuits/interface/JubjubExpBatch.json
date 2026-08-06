@@ -1,0 +1,15 @@
+{
+  "inputs": [
+    { "name": "accumulatorX", "dataPtType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
+    { "name": "accumulatorY", "dataPtType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
+    { "name": "baseX", "dataPtType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
+    { "name": "baseY", "dataPtType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
+    { "name": "bit", "length": { "constant": "nJubjubExpBatch" }, "dataPtType": { "valueDomain": { "kind": "uint", "bits": 1 }, "wireLayout": { "kind": "limbs-128", "count": 1 } } }
+  ],
+  "outputs": [
+    { "name": "nextAccumulatorX", "dataPtType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
+    { "name": "nextAccumulatorY", "dataPtType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
+    { "name": "nextBaseX", "dataPtType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
+    { "name": "nextBaseY", "dataPtType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "limbs-128", "count": 2 } } }
+  ]
+}
