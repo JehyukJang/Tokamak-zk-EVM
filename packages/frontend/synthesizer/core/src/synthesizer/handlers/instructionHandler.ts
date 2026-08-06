@@ -493,7 +493,7 @@ export class InstructionHandler {
       canonicalAddressPt,
       canonicalKeyPt,
     ]
-    if (inPts.some((pt) => pt.sourceBitSize <= 128)) {
+    if (inPts.some(({ dataPtType: { wireLayout } }) => wireLayout.kind !== 'limbs-128' || wireLayout.count !== 2)) {
       throw new Error('Synthesizer: EqualBatch storage identities must use two-limb DataPts')
     }
     this.parent.placeArithComposition('EqualBatch', inPts)
