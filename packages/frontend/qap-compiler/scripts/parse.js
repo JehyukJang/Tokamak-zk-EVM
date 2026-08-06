@@ -7,6 +7,7 @@ const publicWireSegments = PUBLIC_WIRE_SEGMENTS
 
 const fs = require('fs')
 const path = require('path')
+const { collectInterfaceSignals, parseSymbolTable } = require('./parse-symbols.js')
 
 const outputDir = process.argv[2] ? path.resolve(process.argv[2]) : path.resolve(__dirname, '../subcircuits/library')
 const compilerOutputPath = process.argv[3] ? path.resolve(process.argv[3]) : path.resolve(__dirname, 'temp.txt')
@@ -438,6 +439,13 @@ fs.readFile(compilerOutputPath, 'utf8', function(err, data) {
 
   if (currentBlock.length > 0) {
     subcircuits.push(parseSubcircuitBlock(currentBlock))
+  }
+
+  for (const subcircuit of subcircuits) {
+    const symbolPath = path.join(outputDir, `${subcircuit.name}_circuit.sym`)
+    const symbolSource = fs.readFileSync(symbolPath, 'utf8')
+    const symbolEntries = parseSymbolTable(symbolSource, symbolPath)
+    collectInterfaceSignals(symbolEntries, subcircuit, symbolPath)
   }
 
   const globalWireInfo = parseWireList(subcircuits)

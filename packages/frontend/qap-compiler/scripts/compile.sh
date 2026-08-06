@@ -105,7 +105,7 @@ for (( i = 0 ; i < ${#names[@]} ; i++ )) ; do
 
   (
     cd "$circom_work_dir"
-    "${circom_cmd[@]}" "${package_root}/subcircuits/circom/${names[$i]}_circuit.circom" --r1cs --wasm --json -o "$output_dir_path" -p "$CURVE_NAME" "${include_args[@]}"
+    "${circom_cmd[@]}" "${package_root}/subcircuits/circom/${names[$i]}_circuit.circom" --r1cs --wasm --json --sym -o "$output_dir_path" -p "$CURVE_NAME" "${include_args[@]}"
   ) | tee "$output_dir_path/info/subcircuit${i}_${names[$i]}_info.txt"
   cat "$output_dir_path/info/subcircuit${i}_${names[$i]}_info.txt" >> "$compiler_output_file"
   mv "$output_dir_path/${names[$i]}_circuit_constraints.json" "$output_dir_path/json/subcircuit${i}.json"
@@ -117,5 +117,6 @@ for (( i = 0 ; i < ${#names[@]} ; i++ )) ; do
 done
 
 node parse.js "$output_dir_path" "$compiler_output_file"
+rm -f "$output_dir_path"/*_circuit.sym
 node --import tsx ./exporter/exporter.ts "$output_dir_path"
 rm -f "$compiler_output_file"

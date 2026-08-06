@@ -38,6 +38,7 @@
     "scripts/configure.js",
     "scripts/exporter/**/*",
     "scripts/parse.js",
+    "scripts/parse-symbols.js",
     "scripts/qap-compiler.mjs",
     "scripts/reload-constants.sh",
     "scripts/tokamakL2js/**/*",
