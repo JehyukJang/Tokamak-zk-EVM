@@ -3,6 +3,15 @@ const path = require('node:path')
 
 const CIRCOM_CONSTANT_PATTERN = /function\s+([A-Za-z_]\w*)\s*\(\)\s*{\s*return\s+(\d+)\s*;\s*}/g
 const PORT_KEYS = new Set(['name', 'logicalType', 'length'])
+const BUFFER_CAPACITY_CONSTANTS = new Map([
+  ['bufferLogOut', 'nLogOut'],
+  ['bufferStorageStore', 'nStorageStore'],
+  ['bufferStorageLoad', 'nStorageLoad'],
+  ['bufferTxIn', 'nTxIn'],
+  ['bufferBlockIn', 'nBlockIn'],
+  ['bufferEVMIn', 'nEVMIn'],
+  ['bufferPrvIn', 'nPrvIn'],
+])
 
 function assertObject(value, description) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
@@ -152,6 +161,31 @@ function countPhysicalWires(ports) {
     count + (wireLayout.kind === 'native-fr' ? 1 : wireLayout.count), 0)
 }
 
+function validateBufferCapacities(subcircuits, constants) {
+  const subcircuitByName = new Map(subcircuits.map((subcircuit) => [subcircuit.name, subcircuit]))
+
+  for (const [bufferName, constantName] of BUFFER_CAPACITY_CONSTANTS) {
+    const subcircuit = subcircuitByName.get(bufferName)
+    if (subcircuit === undefined) {
+      throw new Error(`Buffer capacity validation is missing compiled subcircuit '${bufferName}'.`)
+    }
+    const capacity = constants.get(constantName)
+    if (!Number.isSafeInteger(capacity) || capacity < 1) {
+      throw new Error(`Buffer capacity constant '${constantName}' must be a positive safe integer.`)
+    }
+    if (subcircuit.In_idx[1] !== capacity) {
+      throw new Error(
+        `${bufferName} has ${subcircuit.In_idx[1]} compiled input wires, but ${constantName} is ${capacity}.`,
+      )
+    }
+    if (subcircuit.Out_idx[1] !== capacity) {
+      throw new Error(
+        `${bufferName} has ${subcircuit.Out_idx[1]} compiled output wires, but ${constantName} is ${capacity}.`,
+      )
+    }
+  }
+}
+
 function parseLogicalInterface(sourceText, constants, source = 'logical interface') {
   let value
   try {
@@ -237,4 +271,5 @@ module.exports = {
   loadLogicalInterfaces,
   parseCircomConstants,
   parseLogicalInterface,
+  validateBufferCapacities,
 }

@@ -7,7 +7,11 @@ const publicWireSegments = PUBLIC_WIRE_SEGMENTS
 
 const fs = require('fs')
 const path = require('path')
-const { loadLogicalInterfaces } = require('./parse-interfaces.js')
+const {
+  loadLogicalInterfaces,
+  parseCircomConstants,
+  validateBufferCapacities,
+} = require('./parse-interfaces.js')
 const { collectInterfaceSignals, parseSymbolTable } = require('./parse-symbols.js')
 
 const outputDir = process.argv[2] ? path.resolve(process.argv[2]) : path.resolve(__dirname, '../subcircuits/library')
@@ -450,6 +454,12 @@ fs.readFile(compilerOutputPath, 'utf8', function(err, data) {
     const symbolEntries = parseSymbolTable(symbolSource, symbolPath)
     collectInterfaceSignals(symbolEntries, subcircuit, symbolPath)
   }
+
+  const circomConstants = parseCircomConstants(
+    fs.readFileSync(constantsPath, 'utf8'),
+    constantsPath,
+  )
+  validateBufferCapacities(subcircuits, circomConstants)
 
   const logicalInterfaces = loadLogicalInterfaces(
     subcircuits,

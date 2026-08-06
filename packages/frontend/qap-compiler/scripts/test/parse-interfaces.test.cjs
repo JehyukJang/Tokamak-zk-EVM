@@ -9,6 +9,7 @@ const {
   loadLogicalInterfaces,
   parseCircomConstants,
   parseLogicalInterface,
+  validateBufferCapacities,
 } = require('../parse-interfaces.js')
 
 const UINT256 = {
@@ -20,6 +21,30 @@ const BIT = {
   valueDomain: { kind: 'uint', bits: 1 },
   wireLayout: { kind: 'limbs-128', count: 1 },
 }
+
+const BUFFER_CAPACITIES = new Map([
+  ['nLogOut', 5],
+  ['nStorageStore', 6],
+  ['nStorageLoad', 7],
+  ['nTxIn', 8],
+  ['nBlockIn', 9],
+  ['nEVMIn', 10],
+  ['nPrvIn', 11],
+])
+
+const BUFFER_SUBCIRCUITS = [
+  ['bufferLogOut', 5],
+  ['bufferStorageStore', 6],
+  ['bufferStorageLoad', 7],
+  ['bufferTxIn', 8],
+  ['bufferBlockIn', 9],
+  ['bufferEVMIn', 10],
+  ['bufferPrvIn', 11],
+].map(([name, capacity]) => ({
+  name,
+  In_idx: [capacity + 1, capacity],
+  Out_idx: [1, capacity],
+}))
 
 test('expands fixed and Circom-constant logical port lengths', () => {
   const constants = parseCircomConstants([
@@ -117,5 +142,48 @@ test('rejects logical wire counts that disagree with compiled interfaces', (cont
       constantsPath,
     ),
     /Logical inputs expand to 2 wires, but Example has 3 compiled input wires/,
+  )
+})
+
+test('validates buffer input and output wire counts independently', () => {
+  assert.doesNotThrow(() => validateBufferCapacities(BUFFER_SUBCIRCUITS, BUFFER_CAPACITIES))
+
+  const wrongInput = BUFFER_SUBCIRCUITS.map((subcircuit) => ({
+    ...subcircuit,
+    In_idx: [...subcircuit.In_idx],
+    Out_idx: [...subcircuit.Out_idx],
+  }))
+  wrongInput[3].In_idx[1] += 1
+  assert.throws(
+    () => validateBufferCapacities(wrongInput, BUFFER_CAPACITIES),
+    /bufferTxIn has 9 compiled input wires, but nTxIn is 8/,
+  )
+
+  const wrongOutput = BUFFER_SUBCIRCUITS.map((subcircuit) => ({
+    ...subcircuit,
+    In_idx: [...subcircuit.In_idx],
+    Out_idx: [...subcircuit.Out_idx],
+  }))
+  wrongOutput[3].Out_idx[1] += 1
+  assert.throws(
+    () => validateBufferCapacities(wrongOutput, BUFFER_CAPACITIES),
+    /bufferTxIn has 9 compiled output wires, but nTxIn is 8/,
+  )
+})
+
+test('requires every buffer capacity constant and compiled buffer', () => {
+  const missingConstant = new Map(BUFFER_CAPACITIES)
+  missingConstant.delete('nBlockIn')
+  assert.throws(
+    () => validateBufferCapacities(BUFFER_SUBCIRCUITS, missingConstant),
+    /nBlockIn.*positive safe integer/,
+  )
+
+  assert.throws(
+    () => validateBufferCapacities(
+      BUFFER_SUBCIRCUITS.filter(({ name }) => name !== 'bufferBlockIn'),
+      BUFFER_CAPACITIES,
+    ),
+    /missing compiled subcircuit 'bufferBlockIn'/,
   )
 })

@@ -5,6 +5,7 @@ export const REQUIRED_CIRCOM_KEYS = [
   'nStorageLoad',
   'nLogOut',
   'nStorageStore',
+  'nBlockIn',
   'nPrvIn',
   'nEVMIn',
   'nPrivateMessageInputs',
