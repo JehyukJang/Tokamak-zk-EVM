@@ -1,11 +1,11 @@
 {
   "inputs": [
-    { "name": "responseX", "dataPtType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
-    { "name": "responseY", "dataPtType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
-    { "name": "randomizerX", "dataPtType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
-    { "name": "randomizerY", "dataPtType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
-    { "name": "challengeX", "dataPtType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
-    { "name": "challengeY", "dataPtType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "limbs-128", "count": 2 } } }
+    { "name": "responseX", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
+    { "name": "responseY", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
+    { "name": "randomizerX", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
+    { "name": "randomizerY", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
+    { "name": "challengeX", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
+    { "name": "challengeY", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "limbs-128", "count": 2 } } }
   ],
   "outputs": []
 }

@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
 
 import builderModule from "./wasm/witness_calculator.js";
+import { EvmArithmetic } from "./evm_arithmetic.ts";
 import { split256BitInteger } from "./helper_functions.js";
-import { ArithmeticOperations } from "../../../synthesizer/core/src/synthesizer/dataStructure/arithmeticOperations.ts";
 
 type WitnessValue = bigint | string | number;
 type WitnessCalculator = {
@@ -49,14 +49,14 @@ const cases: TestCase[] = [
     selector: 1n << 1n,
     in1: LOW_LIMB_MAX,
     in2: 1n,
-    expected: ArithmeticOperations.add([LOW_LIMB_MAX, 1n]),
+    expected: EvmArithmetic.add([LOW_LIMB_MAX, 1n]),
   },
   {
     name: "ADD full-word overflow",
     selector: 1n << 1n,
     in1: MAX_UINT256,
     in2: 1n,
-    expected: ArithmeticOperations.add([MAX_UINT256, 1n]),
+    expected: EvmArithmetic.add([MAX_UINT256, 1n]),
   },
   { name: "SUB zero", selector: 1n << 3n, in1: 0n, in2: 0n, expected: 0n },
   {
@@ -64,14 +64,14 @@ const cases: TestCase[] = [
     selector: 1n << 3n,
     in1: 1n << 128n,
     in2: 1n,
-    expected: ArithmeticOperations.sub([1n << 128n, 1n]),
+    expected: EvmArithmetic.sub([1n << 128n, 1n]),
   },
   {
     name: "SUB full-word underflow",
     selector: 1n << 3n,
     in1: 0n,
     in2: 1n,
-    expected: ArithmeticOperations.sub([0n, 1n]),
+    expected: EvmArithmetic.sub([0n, 1n]),
   },
 ];
 
@@ -104,14 +104,14 @@ const main = async (): Promise<void> => {
       selector: 1n << 1n,
       in1,
       in2,
-      expected: ArithmeticOperations.add([in1, in2]),
+      expected: EvmArithmetic.add([in1, in2]),
     });
     await assertCase(witnessCalculator, {
       name: `SUB randomized case ${index}`,
       selector: 1n << 3n,
       in1,
       in2,
-      expected: ArithmeticOperations.sub([in1, in2]),
+      expected: EvmArithmetic.sub([in1, in2]),
     });
   }
   console.log(

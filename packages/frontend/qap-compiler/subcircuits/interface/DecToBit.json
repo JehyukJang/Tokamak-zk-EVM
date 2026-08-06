@@ -1,8 +1,8 @@
 {
   "inputs": [
-    { "name": "value", "dataPtType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } }
+    { "name": "value", "logicalType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } }
   ],
   "outputs": [
-    { "name": "bit", "length": 256, "dataPtType": { "valueDomain": { "kind": "uint", "bits": 1 }, "wireLayout": { "kind": "limbs-128", "count": 1 } } }
+    { "name": "bit", "length": 256, "logicalType": { "valueDomain": { "kind": "uint", "bits": 1 }, "wireLayout": { "kind": "limbs-128", "count": 1 } } }
   ]
 }

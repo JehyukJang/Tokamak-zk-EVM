@@ -17,7 +17,7 @@ source. For each one, it answers five questions:
 3. How many input and output wires does it expose?
 4. Which wires are public and which remain private?
 5. Is the subcircuit sufficient by itself, or does it rely on a particular
-   composition created by the Synthesizer?
+   composition with other subcircuits?
 
 The intended audience is any reader who needs to understand the circuit
 library, including application developers, auditors, integrators, and new
@@ -28,18 +28,17 @@ no prior knowledge of this repository is assumed.
 
 The qap-compiler directory contains Circom source and tools for producing the
 prebuilt subcircuit library. The directory name is historical; users receive
-the artifacts through the `@tokamak-zk-evm/subcircuit-library` package. The
-**Synthesizer** executes a supported EVM transaction, selects the required
-subcircuits, and records how their wires must be connected. The proving system
-then uses those placements and connections as one composed circuit. A verifier
-sees only the final proof and the wires that the composed interface declares
-public.
+the artifacts through the `@tokamak-zk-evm/subcircuit-library` package. A
+separate **composition layer** selects the required subcircuits and records how
+their wires must be connected. The proving system then uses those placements
+and connections as one composed circuit. A verifier sees only the final proof
+and the wires that the composed interface declares public.
 
 ```mermaid
 flowchart LR
-    transaction["EVM transaction"] --> synthesizer["Synthesizer: execute and select placements"]
-    library["Subcircuit library: constraints and witness generators"] --> synthesizer
-    synthesizer --> composed["One composed proof circuit"]
+    statement["Operation or execution statement"] --> composer["Composition layer: select and connect placements"]
+    library["Subcircuit library: constraints and witness generators"] --> composer
+    composer --> composed["One composed proof circuit"]
     composed --> proof["Proof plus public inputs and outputs"]
     proof --> verifier["Verifier"]
 ```
@@ -51,9 +50,9 @@ followed by `ALU4B`; neither half proves division by itself. The final
 permutation must connect the exact outputs of the first half to the exact
 inputs of the second half.
 
-Most users should therefore consume the synchronized package through the
-Synthesizer, CLI, or proving backend. They should not select individual R1CS
-files and treat them as standalone proofs.
+Most users should therefore consume the synchronized package through a
+supported composition layer, CLI, or proving backend. They should not select
+individual R1CS files and treat them as standalone proofs.
 
 ## Terms used in this document
 
@@ -81,7 +80,7 @@ model used by Tokamak zk-EVM:
   for its declared input representation. It still needs normal wire routing,
   but it has no mandatory partner circuit.
 - **Composition-dependent** means the system claim is sound only when the
-  Synthesizer and final permutation enforce the exact producer, consumer,
+  composition layer and final permutation enforce the exact producer, consumer,
   ordering, or public-boundary contract stated in this document.
 - **Incomplete** means known constraint work remains in the current source.
   The normal composition topology alone is not enough to claim soundness for
@@ -101,14 +100,14 @@ not mistakenly attributed to an isolated artifact.
 
 ### A self-contained arithmetic operation
 
-For `ADD`, the Synthesizer places `ALU1` with the `ADD` selector and two EVM
+For `ADD`, the composition layer places `ALU1` with the `ADD` selector and two EVM
 words. `ALU1` checks the limb ranges, constrains the addition, and returns one
 canonical EVM word. No second arithmetic subcircuit is required, so the row is
 marked locally sound.
 
 ### An operation split across two subcircuits
 
-For `DIV`, the Synthesizer must place `ALU4A` and `ALU4B` in that order.
+For `DIV`, the composition layer must place `ALU4A` and `ALU4B` in that order.
 `ALU4A` prepares the quotient, remainder, magnitude, and mode information;
 `ALU4B` checks the remaining division relation and produces the EVM result.
 The pair is sound only if all 13 intermediate wires are connected exactly, so
@@ -214,7 +213,7 @@ input and intermediate result as a separate public value.
 | `Poseidon` | Selector-chosen chain of two-input Poseidon compressions; current batch size is 1 | 244 + 389 = 633 | 5 inputs: selector and two split 255-bit values; 2 outputs: one split 255-bit value | Composition-dependent for canonical split-field encoding. The hash relation is local, but unique 255-bit encodings must be guaranteed by connected producers or the public-boundary verifier. |
 | `JubjubExpBatch` | Advances Jubjub accumulator and doubled base through 37 scalar bits | 925 + 82 = 1,007 | 45 inputs: two split points and 37 bits; 8 outputs: two split points | Composition-dependent. It is sound for the intended system use only in the seeded serial chain ending in `EdDsaVerify`. |
 | `EdDsaVerify` | Checks three curve points and `sG = R + eA` | 19 + 7 = 26 | 12 inputs: three split Jubjub points; no outputs | Composition-dependent. It is a terminal group-relation check, not a standalone EdDSA statement and not meaningful without the signature composition described below. |
-| `EqualBatch` | Enforces two pairs of 256-bit words to be equal | 8 + 0 = 8 | 8 inputs: two left words followed by two right words; no outputs | Locally sound as limb equality. Storage consistency additionally depends on the Synthesizer routing the current and cached address/key `DataPt`s to the corresponding positions. |
+| `EqualBatch` | Enforces two pairs of 256-bit words to be equal | 8 + 0 = 8 | 8 inputs: two left words followed by two right words; no outputs | Locally sound as limb equality. Storage consistency additionally depends on the composition layer routing the current and cached address/key values to the corresponding positions. |
 
 ## Mandatory and conditional composition contracts
 
@@ -266,7 +265,7 @@ This topology defines the intended operation but does not close the current
 One `Poseidon` placement supports up to `nPoseidonBatch()` consecutive
 two-input compressions. The current batch size is 1, so the local selector is
 `1` and each placement performs exactly one compression. For a longer input
-list, the Synthesizer repeats this normalized placement and connects each
+list, the composition layer repeats this normalized placement and connects each
 previous hash output as the first input of the next placement. This repetition
 is structurally determined by the input count, not by witness values.
 
@@ -301,7 +300,7 @@ representations.
 ### Accumulator producer restriction
 
 `Accumulator` is intended only for combining memory slices that were already
-shifted and masked by sound arithmetic placements. The Synthesizer must route
+shifted and masked by sound arithmetic placements. The composition layer must route
 only those canonical outputs into all 32 input-word positions and must not
 permit a direct unchecked producer. The intended use also assumes that the
 integer sum does not overflow 256 bits. These producer and overflow contracts
@@ -319,11 +318,11 @@ encodings; checking each limb as merely 128-bit is not sufficient.
 
 When a subcircuit, capacity constant, or composition changes:
 
-1. Update the production target list and Synthesizer subcircuit list together.
+1. Update the production target list and every consumer-side target registry together.
 2. Recompile every production target and update constraint and wire counts in
    this document.
 3. Re-evaluate local soundness and every mandatory producer/consumer contract.
-4. Update Synthesizer composition definitions and exact-wire permutation tests.
+4. Update consumer-side composition definitions and exact-wire permutation tests.
 5. Re-evaluate public/private boundaries in `scripts/configure.js` and
    `scripts/parse.js`.
 6. Regenerate published circuit artifacts and any setup material only after

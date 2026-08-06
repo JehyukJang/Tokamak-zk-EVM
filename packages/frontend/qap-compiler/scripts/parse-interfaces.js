@@ -2,7 +2,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 
 const CIRCOM_CONSTANT_PATTERN = /function\s+([A-Za-z_]\w*)\s*\(\)\s*{\s*return\s+(\d+)\s*;\s*}/g
-const PORT_KEYS = new Set(['name', 'dataPtType', 'length'])
+const PORT_KEYS = new Set(['name', 'logicalType', 'length'])
 
 function assertObject(value, description) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
@@ -35,7 +35,7 @@ function parseCircomConstants(sourceText, source = 'constants.circom') {
   return constants
 }
 
-function validateDataPtType(value, description) {
+function validateLogicalType(value, description) {
   assertObject(value, description)
   assertOnlyKeys(value, new Set(['valueDomain', 'wireLayout']), description)
   if (!Object.hasOwn(value, 'valueDomain') || !Object.hasOwn(value, 'wireLayout')) {
@@ -129,11 +129,11 @@ function expandPorts(ports, constants, description) {
     if (typeof port.name !== 'string' || !/^[A-Za-z][A-Za-z0-9]*$/.test(port.name)) {
       throw new Error(`${portDescription}.name must be an alphanumeric identifier.`)
     }
-    if (!Object.hasOwn(port, 'dataPtType')) {
-      throw new Error(`${portDescription} must define dataPtType.`)
+    if (!Object.hasOwn(port, 'logicalType')) {
+      throw new Error(`${portDescription} must define logicalType.`)
     }
 
-    const dataPtType = validateDataPtType(port.dataPtType, `${portDescription}.dataPtType`)
+    const logicalType = validateLogicalType(port.logicalType, `${portDescription}.logicalType`)
     const length = resolveLength(port.length, constants, `${portDescription}.length`)
     for (let repeatedIndex = 0; repeatedIndex < length; repeatedIndex++) {
       const name = length === 1 ? port.name : `${port.name}[${repeatedIndex}]`
@@ -141,14 +141,14 @@ function expandPorts(ports, constants, description) {
         throw new Error(`${description} has duplicate expanded port name '${name}'.`)
       }
       names.add(name)
-      expanded.push({ name, dataPtType })
+      expanded.push({ name, logicalType })
     }
   }
   return expanded
 }
 
 function countPhysicalWires(ports) {
-  return ports.reduce((count, { dataPtType: { wireLayout } }) =>
+  return ports.reduce((count, { logicalType: { wireLayout } }) =>
     count + (wireLayout.kind === 'native-fr' ? 1 : wireLayout.count), 0)
 }
 

@@ -3,6 +3,9 @@
 Prebuilt circuit artifacts consumed by the Tokamak zk-EVM Synthesizer and
 proving backends. The repository directory retains the historical
 `qap-compiler` name because it also contains maintainer-side generation tools.
+The dependency direction is one-way: consumers interpret this package's
+qap-owned circuit metadata; this package does not import or model a consumer's
+internal data structures.
 
 ## Install
 

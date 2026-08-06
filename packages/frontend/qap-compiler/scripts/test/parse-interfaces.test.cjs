@@ -28,11 +28,11 @@ test('expands fixed and Circom-constant logical port lengths', () => {
   ].join('\n'))
   const logicalInterface = parseLogicalInterface(JSON.stringify({
     inputs: [
-      { name: 'word', dataPtType: UINT256 },
+      { name: 'word', logicalType: UINT256 },
       {
         name: 'bit',
         length: { constant: 'nBatch', offset: 1 },
-        dataPtType: BIT,
+        logicalType: BIT,
       },
     ],
     outputs: [],
@@ -52,7 +52,7 @@ test('rejects invalid domain and layout combinations', () => {
     () => parseLogicalInterface(JSON.stringify({
       inputs: [{
         name: 'word',
-        dataPtType: {
+        logicalType: {
           valueDomain: { kind: 'uint', bits: 256 },
           wireLayout: { kind: 'limbs-128', count: 1 },
         },
@@ -71,7 +71,7 @@ test('requires exactly one JSON declaration for every non-buffer target', (conte
   const constantsPath = path.join(root, 'constants.circom')
   fs.writeFileSync(constantsPath, '')
   fs.writeFileSync(path.join(interfaceDir, 'Example.json'), JSON.stringify({
-    inputs: [{ name: 'word', dataPtType: UINT256 }],
+    inputs: [{ name: 'word', logicalType: UINT256 }],
     outputs: [],
   }))
 
@@ -88,7 +88,7 @@ test('requires exactly one JSON declaration for every non-buffer target', (conte
   )
 
   fs.writeFileSync(path.join(interfaceDir, 'Example.json'), JSON.stringify({
-    inputs: [{ name: 'word', dataPtType: UINT256 }],
+    inputs: [{ name: 'word', logicalType: UINT256 }],
     outputs: [],
   }))
   fs.writeFileSync(path.join(interfaceDir, 'Extra.json'), JSON.stringify({ inputs: [], outputs: [] }))
@@ -106,7 +106,7 @@ test('rejects logical wire counts that disagree with compiled interfaces', (cont
   const constantsPath = path.join(root, 'constants.circom')
   fs.writeFileSync(constantsPath, '')
   fs.writeFileSync(path.join(interfaceDir, 'Example.json'), JSON.stringify({
-    inputs: [{ name: 'word', dataPtType: UINT256 }],
+    inputs: [{ name: 'word', logicalType: UINT256 }],
     outputs: [],
   }))
 

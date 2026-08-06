@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
+import { poseidon_raw, poseidonChainCompress } from "tokamak-l2js";
 
 import builderModule from "./wasm/witness_calculator.js";
 import { split256BitInteger } from "./helper_functions.js";
-import { ArithmeticOperations } from "../../../synthesizer/src/synthesizer/dataStructure/arithmeticOperations.ts";
 
 type WitnessValue = bigint | string | number;
 type WitnessCalculator = {
@@ -42,8 +42,8 @@ const encodeCircuitInput = (selector: bigint, inVals: bigint[]): bigint[] => {
 
 const expectedHash = (inVals: bigint[]): bigint => {
   return inVals.length === 2
-    ? ArithmeticOperations.poseidonN(inVals)
-    : ArithmeticOperations.poseidonChainCompress(inVals);
+    ? poseidon_raw(inVals)
+    : poseidonChainCompress(inVals);
 };
 
 const expectWitnessFailure = async (
