@@ -224,15 +224,16 @@ export class Synthesizer implements SynthesizerInterface
       if (callingStep === null) {
         throw new Error('Debug: A child context is called but no relevant interpreter step in the parent context')
       }
-      let codeAddress: bigint
+      let rawCodeAddress: bigint
+      let rawCodeAddressPt: DataPt
       let inOffset: bigint
       let inLength: bigint
       switch (callingStep.opcode.name) {
         case 'CALL':
         case 'CALLCODE': {
           const ins = callingStep.stack.slice(0, 7);
-          codeAddress = ins[1]
-          codeAddressPt = DataPtFactory.deepCopy(parentContext.stackPt.peek(7)[1]);
+          rawCodeAddress = ins[1]
+          rawCodeAddressPt = DataPtFactory.deepCopy(parentContext.stackPt.peek(7)[1]);
           inOffset = ins[3]
           inLength = ins[4]
           break
@@ -240,8 +241,8 @@ export class Synthesizer implements SynthesizerInterface
         case 'DELEGATECALL':
         case 'STATICCALL': {
           const ins = callingStep.stack.slice(0, 6);
-          codeAddress = ins[1]
-          codeAddressPt = DataPtFactory.deepCopy(parentContext.stackPt.peek(6)[1]);
+          rawCodeAddress = ins[1]
+          rawCodeAddressPt = DataPtFactory.deepCopy(parentContext.stackPt.peek(6)[1]);
           inOffset = ins[2]
           inLength = ins[3]
           break
@@ -250,13 +251,23 @@ export class Synthesizer implements SynthesizerInterface
           throw new Error(`Debug: Unsupported message call opcode: ${callingStep.opcode.name}`)
       }
 
+      if (rawCodeAddress !== rawCodeAddressPt.value) {
+        throw new Error(`Debug: Raw address to call mismatch between EVM and Synthesizer`)
+      }
+      const addressMaskPt = this.getReservedVariableFromBuffer('ADDRESS_MASK')
+      const maskedAddressPts = this.placeArithComposition('AND', [rawCodeAddressPt, addressMaskPt])
+      if (maskedAddressPts.length !== 1 || maskedAddressPts[0] === undefined) {
+        throw new Error(`Synthesizer: CALL target mask must produce exactly one address`)
+      }
+      codeAddressPt = maskedAddressPts[0]
+      const codeAddress = BigInt(message.codeAddress.toString())
+      if (codeAddress !== codeAddressPt.value) {
+        throw new Error(`Debug: Address to call mismatch between EVM and Synthesizer`)
+      }
       if (codeAddress >= 1n && codeAddress <= 10n) {
         throw new Error(
           `Precompiles are not implemented in Synthesizer.`,
         )
-      }
-      if (codeAddress !== codeAddressPt.value) {
-        throw new Error(`Debug: Address to call mismatch between EVM and Synthesizer`)
       }
       switch (callingStep.opcode.name) {
         case 'CALL':
