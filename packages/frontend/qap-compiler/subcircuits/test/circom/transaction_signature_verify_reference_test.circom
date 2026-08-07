@@ -4,11 +4,14 @@ include "./transaction_signature_verify_reference.circom";
 include "../../circom/constants.circom";
 
 template TransactionSignatureVerifyReferenceBoundary(N) {
-    signal input privateIn[N + 5][2];
-    signal input contractAddress[2];
-    signal input functionSelector[2];
-    signal input S[2];
-    signal input O[2][2];
+    signal input privateIn[N + 5];
+    signal input contractAddress;
+    signal input functionSelector;
+    signal input S;
+    signal input O[2];
+    signal output evmContractAddress[2];
+    signal output evmFunctionSelector[2];
+    signal output evmTransactionInputs[N][2];
     signal output origin[2];
 
     component reference = TransactionSignatureVerifyReference(N);
@@ -22,8 +25,14 @@ template TransactionSignatureVerifyReferenceBoundary(N) {
     }
     reference.S <== S;
     reference.O <== O;
+    evmContractAddress <== reference.evmContractAddress;
+    evmFunctionSelector <== reference.evmFunctionSelector;
+    evmTransactionInputs <== reference.evmTransactionInputs;
     origin <== reference.origin;
 }
 
+// This diagnostic main exposes every operation result so the revised physical
+// interface can be inspected. These outputs do not define the public boundary
+// of the later composed production circuit.
 component main {public [contractAddress, functionSelector, S, O]} =
     TransactionSignatureVerifyReferenceBoundary(nPrivateMessageInputs());

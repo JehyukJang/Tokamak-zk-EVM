@@ -72,6 +72,29 @@ template CanonicalBls12381FieldBits() {
     fieldBound.high <== high;
 }
 
+// Produces the unique canonical EVM-word view of a native Fr element. The
+// upper limb has only 127 meaningful bits because every Fr element is below
+// 2^255, but it is exposed through the ordinary two-limb EVM interface.
+template CanonicalBls12381FieldEvmWord() {
+    signal input in;
+    signal output limbs[2];
+
+    component canonical = CanonicalBls12381FieldBits();
+    canonical.in <== in;
+
+    var lowExpression = 0;
+    for (var i = 0; i < 128; i++) {
+        lowExpression += canonical.bits[i] * (1 << i);
+    }
+    limbs[0] <== lowExpression;
+
+    var highExpression = 0;
+    for (var i = 128; i < 255; i++) {
+        highExpression += canonical.bits[i] * (1 << (i - 128));
+    }
+    limbs[1] <== highExpression;
+}
+
 // For a validated point on this curve, y == 1 implies x == 0 because a != d.
 // Therefore this single inverse relation rejects exactly the identity (0, 1).
 template RejectJubjubIdentityFromValidatedY_unsafe() {
@@ -189,34 +212,36 @@ template JubjubScalarMulFromConstrainedBits_unsafe(N) {
 //
 // S and O are declared separately to preserve their public boundary while all
 // N + 7 challenge inputs remain private. They are logical operands N + 7
-// through N + 9 in the final ordered interface. Origin is the only result.
+// through N + 9 in the final ordered interface. Every operand uses one native
+// field wire. Results follow root EVM transaction-data order: contract,
+// selector, input[0..N-1], then origin.
 template TransactionSignatureVerifyReference(N) {
     assert(N > 0);
 
-    signal input in[N + 7][2];
-    signal input S[2];
-    signal input O[2][2];
+    signal input in[N + 7];
+    signal input S;
+    signal input O[2];
+    signal output evmContractAddress[2];
+    signal output evmFunctionSelector[2];
+    signal output evmTransactionInputs[N][2];
     signal output origin[2];
 
-    var LIMB_BASE = 1 << 128;
-
     signal challengeInputs[N + 7];
-    for (var i = 0; i < 4; i++) {
-        challengeInputs[i] <== in[i][0] + in[i][1] * LIMB_BASE;
-    }
+    challengeInputs <== in;
 
-    component privateWords[N + 1];
-    privateWords[0] = CanonicalPrivateFieldWord();
-    privateWords[0].in <== in[4];
-    challengeInputs[4] <== privateWords[0].value;
+    component canonicalContractAddress = CanonicalBls12381FieldEvmWord();
+    canonicalContractAddress.in <== challengeInputs[5];
+    evmContractAddress <== canonicalContractAddress.limbs;
 
-    challengeInputs[5] <== in[5][0] + in[5][1] * LIMB_BASE;
-    challengeInputs[6] <== in[6][0] + in[6][1] * LIMB_BASE;
+    component canonicalFunctionSelector = CanonicalBls12381FieldEvmWord();
+    canonicalFunctionSelector.in <== challengeInputs[6];
+    evmFunctionSelector <== canonicalFunctionSelector.limbs;
 
+    component canonicalTransactionInputs[N];
     for (var i = 0; i < N; i++) {
-        privateWords[i + 1] = CanonicalPrivateFieldWord();
-        privateWords[i + 1].in <== in[i + 7];
-        challengeInputs[i + 7] <== privateWords[i + 1].value;
+        canonicalTransactionInputs[i] = CanonicalBls12381FieldEvmWord();
+        canonicalTransactionInputs[i].in <== challengeInputs[i + 7];
+        evmTransactionInputs[i] <== canonicalTransactionInputs[i].limbs;
     }
 
     component pointValidation = TransactionSignaturePointValidationReference();
@@ -240,22 +265,17 @@ template TransactionSignatureVerifyReference(N) {
     component canonicalChallenge = CanonicalBls12381FieldBits();
     canonicalChallenge.in <== hashes[N + 5].out;
 
-    // Solidity owns the exact public-limb checks and S < n. This relation only
-    // reconstructs those same public limbs into the 252 bits required by the
-    // fixed-base scalar multiplication. It must not reduce S modulo n.
+    // Solidity owns S < n. This relation decomposes the exact same native
+    // public wire into the 252 bits required by fixed-base multiplication. It
+    // must not reduce S modulo n.
     component signatureDecomposition = Num2Bits(252);
-    signatureDecomposition.in <== S[0] + S[1] * LIMB_BASE;
-
-    signal nativeO[2];
-    for (var coordinate = 0; coordinate < 2; coordinate++) {
-        nativeO[coordinate] <== O[coordinate][0] + O[coordinate][1] * LIMB_BASE;
-    }
+    signatureDecomposition.in <== S;
 
     component responseScalar = FixedG8ExtendedWindowScalarMulFromConstrainedBits_unsafe(252, 3);
     responseScalar.bits <== signatureDecomposition.out;
 
     component challengeScalar = VariableBaseExtendedWindowScalarMulFromConstrainedBits_unsafe(255, 2);
-    challengeScalar.identity <== nativeO;
+    challengeScalar.identity <== O;
     challengeScalar.base <== pointValidation.A8;
     challengeScalar.bits <== canonicalChallenge.bits;
 
