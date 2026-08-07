@@ -229,13 +229,24 @@ template TransactionSignatureVerifyReference(N) {
     signal challengeInputs[N + 7];
     challengeInputs <== in;
 
-    component canonicalContractAddress = CanonicalBls12381FieldEvmWord();
-    canonicalContractAddress.in <== challengeInputs[5];
-    evmContractAddress <== canonicalContractAddress.limbs;
+    component contractAddressBits = Num2Bits(160);
+    contractAddressBits.in <== challengeInputs[5];
 
-    component canonicalFunctionSelector = CanonicalBls12381FieldEvmWord();
-    canonicalFunctionSelector.in <== challengeInputs[6];
-    evmFunctionSelector <== canonicalFunctionSelector.limbs;
+    var contractAddressLow = 0;
+    for (var i = 0; i < 128; i++) {
+        contractAddressLow += contractAddressBits.out[i] * (1 << i);
+    }
+    evmContractAddress[0] <== contractAddressLow;
+
+    var contractAddressHigh = 0;
+    for (var i = 128; i < 160; i++) {
+        contractAddressHigh += contractAddressBits.out[i] * (1 << (i - 128));
+    }
+    evmContractAddress[1] <== contractAddressHigh;
+
+    // Solidity constrains the exact public selector wire to 32 bits.
+    evmFunctionSelector[0] <== challengeInputs[6];
+    evmFunctionSelector[1] <== 0;
 
     component canonicalTransactionInputs[N];
     for (var i = 0; i < N; i++) {

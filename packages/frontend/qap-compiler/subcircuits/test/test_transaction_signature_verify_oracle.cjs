@@ -34,7 +34,7 @@ const main = () => {
   );
   assert.equal(
     POLICY.contractAddressRange,
-    "delegated-public-0<=contract<2^160",
+    "circuit-local-0<=contract<2^160",
   );
   assert.equal(
     POLICY.functionSelectorRange,
@@ -123,12 +123,16 @@ const main = () => {
   );
 
   const oversizedContract = corpus.find(
-    ({ id }) => id === "delegate-oversized-contract-address-rejection",
+    ({ id }) => id === "reject-oversized-contract-address",
   );
-  assert.equal(evaluateCompleteStatement(oversizedContract).circuit.accepted, true);
+  assert.equal(evaluateCompleteStatement(oversizedContract).circuit.accepted, false);
   assert.equal(
-    evaluateCompleteStatement(oversizedContract).delegatedPublic.reason,
+    evaluateCompleteStatement(oversizedContract).circuit.reason,
     "contract-address-range",
+  );
+  assert.equal(
+    evaluateCompleteStatement(oversizedContract).delegatedPublic.accepted,
+    true,
   );
 
   const oversizedSelector = corpus.find(

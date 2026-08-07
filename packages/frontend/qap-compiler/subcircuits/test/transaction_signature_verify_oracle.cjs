@@ -25,7 +25,7 @@ const POLICY = Object.freeze({
   nonIdentitySmallOrderRandomizer: "accept",
   identityRandomizer: "reject",
   responseScalarRange: "delegated-public-0<=S<n",
-  contractAddressRange: "delegated-public-0<=contract<2^160",
+  contractAddressRange: "circuit-local-0<=contract<2^160",
   functionSelectorRange: "delegated-public-0<=selector<2^32",
   identityEncoding: "delegated-public-O=[[0,0],[1,0]]",
 });
@@ -157,6 +157,9 @@ const evaluateCircuitStatement = (statement) => {
   if (!hasExpectedMessageLength(messageWords)) {
     return Object.freeze({ accepted: false, reason: "private-message-length" });
   }
+  if (normalizeField(messageWords[1]) >= CONTRACT_ADDRESS_LIMIT) {
+    return Object.freeze({ accepted: false, reason: "contract-address-range" });
+  }
   if (signature < 0n || signature >= CIRCUIT_SCALAR_LIMIT) {
     return Object.freeze({ accepted: false, reason: "response-scalar-bit-width" });
   }
@@ -216,9 +219,6 @@ const evaluateDelegatedPublicBoundary = ({
   }
   if (signature < 0n || signature >= SCALAR_ORDER) {
     return Object.freeze({ accepted: false, reason: "response-scalar-range" });
-  }
-  if (messageWords[1] < 0n || messageWords[1] >= CONTRACT_ADDRESS_LIMIT) {
-    return Object.freeze({ accepted: false, reason: "contract-address-range" });
   }
   if (messageWords[2] < 0n || messageWords[2] >= FUNCTION_SELECTOR_LIMIT) {
     return Object.freeze({ accepted: false, reason: "function-selector-range" });
@@ -422,8 +422,8 @@ const createTransactionSignatureCorpus = () => {
       signature: delegatedSignature,
     }),
     vector(
-      "delegate-oversized-contract-address-rejection",
-      DISPOSITIONS.DELEGATED_PUBLIC_REJECTION,
+      "reject-oversized-contract-address",
+      DISPOSITIONS.CIRCUIT_LOCAL_REJECTION,
       {
         messageWords: oversizedContractWords,
         signature: signatureFor({

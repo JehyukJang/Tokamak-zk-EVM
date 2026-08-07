@@ -24,6 +24,7 @@ const RANDOMIZER = jubjub.Point.BASE.multiply(11n);
 const SCALAR_ORDER = jubjub.Point.Fn.ORDER;
 const PRIVATE_KEY = 7n;
 const RANDOMIZER_SCALAR = 11n;
+const CONTRACT_ADDRESS_LIMIT = 1n << 160n;
 
 const split = (value) => [value & LIMB_MASK, value >> 128n];
 
@@ -134,7 +135,7 @@ const assertReference = async (
     (value) => split(normalizeField(value)),
   );
   const expectedContractAddress = split(normalizeField(values[5]));
-  const expectedFunctionSelector = split(normalizeField(values[6]));
+  const expectedFunctionSelector = [normalizeField(values[6]), 0n];
   const witness = await calculateReferenceWitness(
     circuit,
     values,
@@ -309,6 +310,33 @@ const main = async () => {
       circuit,
       lastInputBoundary,
       `last native transaction input ${value}`,
+    );
+  }
+
+  for (const value of [0n, LIMB_MASK, LIMB_BASE, CONTRACT_ADDRESS_LIMIT - 1n]) {
+    const contractBoundary = makeValues();
+    contractBoundary[5] = value;
+    await assertReference(
+      circuit,
+      contractBoundary,
+      `160-bit contract-address boundary ${value}`,
+    );
+  }
+  const oversizedContractAddress = makeValues();
+  oversizedContractAddress[5] = CONTRACT_ADDRESS_LIMIT;
+  await assert.rejects(
+    calculateReferenceWitness(circuit, oversizedContractAddress),
+    undefined,
+    "a 161-bit contract address must be rejected locally",
+  );
+
+  for (const value of [0n, (1n << 32n) - 1n, 1n << 32n, LIMB_BASE, FIELD_PRIME - 1n]) {
+    const selectorBoundary = makeValues();
+    selectorBoundary[6] = value;
+    await assertReference(
+      circuit,
+      selectorBoundary,
+      `verifier-owned function-selector boundary ${value}`,
     );
   }
 
@@ -489,6 +517,8 @@ const main = async () => {
   }
 
   for (const [signalName, label] of [
+    ["main.reference.contractAddressBits.out[0]", "contract-address low bit"],
+    ["main.reference.contractAddressBits.out[159]", "contract-address high bit"],
     [
       "main.reference.canonicalTransactionInputs[0].canonical.bits[0]",
       "transaction-input canonical low bit",

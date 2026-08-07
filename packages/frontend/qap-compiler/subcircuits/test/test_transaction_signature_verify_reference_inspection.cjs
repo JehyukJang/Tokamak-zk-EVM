@@ -41,13 +41,13 @@ const main = () => {
     const output = stripAnsi(`${result.stdout ?? ""}${result.stderr ?? ""}`);
 
     assert.equal(result.status, 0, output);
-    assert.match(output, /non-linear constraints: 30588\b/);
-    assert.match(output, /linear constraints: 14381\b/);
+    assert.match(output, /non-linear constraints: 29726\b/);
+    assert.match(output, /linear constraints: 14368\b/);
     assert.match(output, /public inputs: 5\b/);
     assert.match(output, /private inputs: 34\b/);
     assert.match(output, /public outputs: 64\b/);
-    assert.match(output, /wires: 44905\b/);
-    assert.match(output, /labels: 76899\b/);
+    assert.match(output, /wires: 44035\b/);
+    assert.match(output, /labels: 75506\b/);
 
     const expectedWarnings = [
       {
