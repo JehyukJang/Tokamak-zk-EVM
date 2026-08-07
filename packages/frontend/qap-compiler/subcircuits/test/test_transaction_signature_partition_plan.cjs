@@ -193,6 +193,81 @@ const expectedTopologyMultiplicities = Object.freeze({
   "low-check-batch-7": 3,
 });
 
+const poseidonWordBoundHighInterface = Object.freeze({
+  inputs: Object.freeze([
+    Object.freeze({ name: "previousChallengeHash", logicalType: "bls12-381-fr", physicalWires: 1 }),
+    Object.freeze({ name: "challengeWord", logicalType: "bls12-381-fr", physicalWires: 1 }),
+    Object.freeze({ name: "transactionInput", logicalType: "bls12-381-fr", physicalWires: 1 }),
+  ]),
+  outputs: Object.freeze([
+    Object.freeze({
+      name: "nextChallengeHash",
+      logicalType: "bls12-381-fr",
+      physicalWires: Object.freeze(["nextChallengeHash"]),
+    }),
+    Object.freeze({
+      name: "transactionInputEvmWord",
+      logicalType: "uint256",
+      physicalWires: Object.freeze(["low128", "high128"]),
+    }),
+  ]),
+});
+
+const challengeWordSource = (challengeIndex) => {
+  if (challengeIndex === 4) {
+    return Object.freeze({ operand: "contract", operandIndex: 5 });
+  }
+  if (challengeIndex === 5) {
+    return Object.freeze({ operand: "selector", operandIndex: 6 });
+  }
+  const transactionInputIndex = challengeIndex - 6;
+  return Object.freeze({
+    operand: `input${transactionInputIndex}`,
+    operandIndex: 7 + transactionInputIndex,
+  });
+};
+
+const lowCheckPlacement = (transactionInputIndex) => {
+  if (transactionInputIndex <= 4) return 34;
+  if (transactionInputIndex <= 7) return 35;
+  if (transactionInputIndex <= 14) return 41;
+  if (transactionInputIndex <= 21) return 42;
+  return 43;
+};
+
+const poseidonWordBoundHighBindings = Object.freeze(Array.from(
+  { length: 27 },
+  (_, offset) => {
+    const placement = 5 + offset;
+    const challengeIndex = 4 + offset;
+    const transactionInputIndex = 2 + offset;
+    return Object.freeze({
+      placement,
+      inputs: Object.freeze({
+        previousChallengeHash: Object.freeze({
+          producerPlacement: placement - 1,
+          challengeIndex: challengeIndex - 1,
+        }),
+        challengeWord: challengeWordSource(challengeIndex),
+        transactionInput: Object.freeze({
+          operand: `input${transactionInputIndex}`,
+          operandIndex: 7 + transactionInputIndex,
+        }),
+      }),
+      outputs: Object.freeze({
+        nextChallengeHash: Object.freeze({
+          challengeIndex,
+          consumerPlacement: placement + 1,
+        }),
+        transactionInputEvmWord: Object.freeze({
+          resultIndex: 2 + transactionInputIndex,
+          lowCheckPlacement: lowCheckPlacement(transactionInputIndex),
+        }),
+      }),
+    });
+  },
+));
+
 assert.equal(bins.length, 44, "the arithmetic lower bound requires 44 placements");
 assert.equal(placementTopologies.length, bins.length);
 
@@ -271,6 +346,79 @@ for (const topology of Object.keys(actualTopologyMultiplicities)) {
   assert.equal(signatures.size, 1, `${topology} placements must own the same atom roles`);
 }
 
+assert.deepEqual(
+  poseidonWordBoundHighInterface.inputs.map(({ name, physicalWires }) => [name, physicalWires]),
+  [
+    ["previousChallengeHash", 1],
+    ["challengeWord", 1],
+    ["transactionInput", 1],
+  ],
+);
+assert.deepEqual(
+  poseidonWordBoundHighInterface.outputs.flatMap(({ name, physicalWires }) => (
+    physicalWires.map((wire) => `${name}.${wire}`)
+  )),
+  [
+    "nextChallengeHash.nextChallengeHash",
+    "transactionInputEvmWord.low128",
+    "transactionInputEvmWord.high128",
+  ],
+);
+assert.equal(poseidonWordBoundHighBindings.length, 27);
+for (const [offset, binding] of poseidonWordBoundHighBindings.entries()) {
+  const expectedPlacement = 5 + offset;
+  const expectedChallengeIndex = 4 + offset;
+  const expectedTransactionInputIndex = 2 + offset;
+  assert.equal(placementTopologies[binding.placement], "poseidon-word-bound-high");
+  assert.equal(binding.placement, expectedPlacement);
+  assert.deepEqual(binding.inputs.previousChallengeHash, {
+    producerPlacement: expectedPlacement - 1,
+    challengeIndex: expectedChallengeIndex - 1,
+  });
+  assert.deepEqual(binding.inputs.challengeWord, challengeWordSource(expectedChallengeIndex));
+  assert.deepEqual(binding.inputs.transactionInput, {
+    operand: `input${expectedTransactionInputIndex}`,
+    operandIndex: 7 + expectedTransactionInputIndex,
+  });
+  assert.notEqual(
+    binding.inputs.challengeWord.operandIndex,
+    binding.inputs.transactionInput.operandIndex,
+    `placement ${expectedPlacement} must not conflate its packed Poseidon and EVM-view inputs`,
+  );
+  assert.deepEqual(binding.outputs.nextChallengeHash, {
+    challengeIndex: expectedChallengeIndex,
+    consumerPlacement: expectedPlacement + 1,
+  });
+  assert.deepEqual(binding.outputs.transactionInputEvmWord, {
+    resultIndex: 2 + expectedTransactionInputIndex,
+    lowCheckPlacement: lowCheckPlacement(expectedTransactionInputIndex),
+  });
+}
+assert.deepEqual(poseidonWordBoundHighBindings[0], {
+  placement: 5,
+  inputs: {
+    previousChallengeHash: { producerPlacement: 4, challengeIndex: 3 },
+    challengeWord: { operand: "contract", operandIndex: 5 },
+    transactionInput: { operand: "input2", operandIndex: 9 },
+  },
+  outputs: {
+    nextChallengeHash: { challengeIndex: 4, consumerPlacement: 6 },
+    transactionInputEvmWord: { resultIndex: 4, lowCheckPlacement: 34 },
+  },
+});
+assert.deepEqual(poseidonWordBoundHighBindings.at(-1), {
+  placement: 31,
+  inputs: {
+    previousChallengeHash: { producerPlacement: 30, challengeIndex: 29 },
+    challengeWord: { operand: "input24", operandIndex: 31 },
+    transactionInput: { operand: "input28", operandIndex: 35 },
+  },
+  outputs: {
+    nextChallengeHash: { challengeIndex: 30, consumerPlacement: 32 },
+    transactionInputEvmWord: { resultIndex: 30, lowCheckPlacement: 43 },
+  },
+});
+
 console.log(
-  `Transaction signature partition plan assigns ${atoms.size} atoms once across 44 acyclic placements of 11 reusable types at ${partitionTotal} constraints`,
+  `Transaction signature partition plan assigns ${atoms.size} atoms once across 44 acyclic placements of 11 reusable types at ${partitionTotal} constraints; P05-P31 reuse one 3-wire-input/3-wire-output interface`,
 );
