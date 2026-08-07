@@ -153,14 +153,48 @@ const bins = [
     variableLinearGlue,
     terminalEquation,
     publicKeyHashCanonical,
-    privateWords[8].lowCheck,
   ],
-  range(privateWords, 9, 14).map(({ lowCheck }) => lowCheck),
+  range(privateWords, 8, 14).map(({ lowCheck }) => lowCheck),
   range(privateWords, 15, 21).map(({ lowCheck }) => lowCheck),
   range(privateWords, 22, 28).map(({ lowCheck }) => lowCheck),
 ];
 
-assert.equal(bins.length, 44, "the arithmetic lower bound requires 44 fragments");
+const placementTopologies = [
+  "initial-policy-and-hash",
+  "fixed-scalar-start",
+  "fixed-scalar-batch-28",
+  "fixed-scalar-batch-28",
+  "fixed-scalar-tail",
+  ...Array(27).fill("poseidon-word-bound-high"),
+  "poseidon-bound-high",
+  "poseidon-bound-high",
+  "poseidon-low-check-3",
+  "poseidon-low-check-3",
+  "variable-scalar-start",
+  "variable-scalar-batch-34",
+  "variable-scalar-batch-34",
+  "variable-scalar-batch-34",
+  "variable-scalar-tail",
+  "low-check-batch-7",
+  "low-check-batch-7",
+  "low-check-batch-7",
+];
+const expectedTopologyMultiplicities = Object.freeze({
+  "initial-policy-and-hash": 1,
+  "fixed-scalar-start": 1,
+  "fixed-scalar-batch-28": 2,
+  "fixed-scalar-tail": 1,
+  "poseidon-word-bound-high": 27,
+  "poseidon-bound-high": 2,
+  "poseidon-low-check-3": 2,
+  "variable-scalar-start": 1,
+  "variable-scalar-batch-34": 3,
+  "variable-scalar-tail": 1,
+  "low-check-batch-7": 3,
+});
+
+assert.equal(bins.length, 44, "the arithmetic lower bound requires 44 placements");
+assert.equal(placementTopologies.length, bins.length);
 
 const assignedBin = new Map();
 let partitionTotal = 0;
@@ -192,7 +226,7 @@ for (const atom of atoms.values()) {
 
 const expectedPartitionTotal = MONOLITH_TOTAL - PRIVATE_INPUT_COUNT * 2;
 assert.equal(partitionTotal, expectedPartitionTotal);
-assert.ok(43 * LIMIT < partitionTotal, "43 fragments must be arithmetically impossible");
+assert.ok(43 * LIMIT < partitionTotal, "43 placements must be arithmetically impossible");
 assert.equal(44 * LIMIT - partitionTotal, 1020);
 
 const binTotals = bins.map((bin) => bin.reduce(
@@ -201,6 +235,42 @@ const binTotals = bins.map((bin) => bin.reduce(
 ));
 assert.equal(Math.max(...binTotals), 1020);
 
+const normalizeAtomRole = (atomId) => {
+  if (/^poseidon-challenge-\d+$/.test(atomId)) return "poseidon-challenge";
+  const privateWordMatch = atomId.match(/^input-\d+-(.+)$/);
+  if (privateWordMatch !== null) return `input-${privateWordMatch[1]}`;
+  if (atomId === "fixed-window-0") return "fixed-window-partial";
+  if (/^fixed-window-\d+$/.test(atomId)) return "fixed-window-regular";
+  if (atomId === "variable-window-0") return "variable-window-partial";
+  if (/^variable-window-\d+$/.test(atomId)) return "variable-window-regular";
+  return atomId;
+};
+const topologySignatures = bins.map((bin) => (
+  bin.map(normalizeAtomRole).sort().join("|")
+));
+const actualTopologyMultiplicities = Object.fromEntries(
+  [...new Set(placementTopologies)].map((topology) => [
+    topology,
+    placementTopologies.filter((candidate) => candidate === topology).length,
+  ]),
+);
+assert.deepEqual(actualTopologyMultiplicities, expectedTopologyMultiplicities);
+assert.equal(Object.keys(actualTopologyMultiplicities).length, 11);
+for (const topology of Object.keys(actualTopologyMultiplicities)) {
+  const totals = new Set(
+    placementTopologies.flatMap((candidate, index) => (
+      candidate === topology ? [binTotals[index]] : []
+    )),
+  );
+  assert.equal(totals.size, 1, `${topology} placements must have one fixed topology`);
+  const signatures = new Set(
+    placementTopologies.flatMap((candidate, index) => (
+      candidate === topology ? [topologySignatures[index]] : []
+    )),
+  );
+  assert.equal(signatures.size, 1, `${topology} placements must own the same atom roles`);
+}
+
 console.log(
-  `Transaction signature partition plan assigns ${atoms.size} atoms once across 44 acyclic fragments at ${partitionTotal} constraints`,
+  `Transaction signature partition plan assigns ${atoms.size} atoms once across 44 acyclic placements of 11 reusable types at ${partitionTotal} constraints`,
 );
