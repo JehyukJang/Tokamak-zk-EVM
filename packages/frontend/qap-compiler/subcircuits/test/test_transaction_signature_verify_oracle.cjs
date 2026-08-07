@@ -13,13 +13,13 @@ const {
   getChallengeInputs,
 } = require("./transaction_signature_verify_oracle.cjs");
 
-const LIMB_BASE = 1n << 128n;
+const FIELD_PRIME = 52435875175126190479447740508185965837690552500527637822603658699938581184513n;
 
 const clonePublicBoundary = ({ contractAddress, functionSelector, S, O }) => ({
-  contractAddress: [...contractAddress],
-  functionSelector: [...functionSelector],
-  S: [...S],
-  O: O.map((word) => [...word]),
+  contractAddress,
+  functionSelector,
+  S,
+  O: [...O],
 });
 
 const main = () => {
@@ -58,16 +58,11 @@ const main = () => {
       CHALLENGE_INPUT_COUNT,
       `${vector.id} challenge length`,
     );
-    assert.deepEqual(
-      [
-        vector.publicBoundary.contractAddress,
-        vector.publicBoundary.functionSelector,
-        vector.publicBoundary.S,
-        ...vector.publicBoundary.O,
-      ].map((word) => word.length),
-      [2, 2, 2, 2, 2],
-      `${vector.id} raw public boundary shape`,
-    );
+    assert.equal(typeof vector.publicBoundary.contractAddress, "bigint");
+    assert.equal(typeof vector.publicBoundary.functionSelector, "bigint");
+    assert.equal(typeof vector.publicBoundary.S, "bigint");
+    assert.equal(vector.publicBoundary.O.length, 2);
+    assert.ok(vector.publicBoundary.O.every((value) => typeof value === "bigint"));
 
     const actual = evaluateCompleteStatement(vector);
     assert.equal(
@@ -146,12 +141,12 @@ const main = () => {
   );
 
   const nonCanonicalSignature = corpus.find(
-    ({ id }) => id === "delegate-noncanonical-signature-limb-rejection",
+    ({ id }) => id === "delegate-noncanonical-signature-field-rejection",
   );
   assert.equal(evaluateCompleteStatement(nonCanonicalSignature).circuit.accepted, true);
   assert.equal(
     evaluateCompleteStatement(nonCanonicalSignature).delegatedPublic.reason,
-    "public-limb-range",
+    "public-field-range",
   );
 
   const aliasedIdentity = corpus.find(
@@ -160,7 +155,7 @@ const main = () => {
   assert.equal(evaluateCompleteStatement(aliasedIdentity).circuit.accepted, true);
   assert.equal(
     evaluateCompleteStatement(aliasedIdentity).delegatedPublic.reason,
-    "identity-binding",
+    "public-field-range",
   );
 
   const valid = corpus.find(({ id }) => id === "valid-deterministic-subgroup");
@@ -172,18 +167,17 @@ const main = () => {
     ["O", 1],
   ];
   for (const path of publicWordPaths) {
-    for (let limbIndex = 0; limbIndex < 2; limbIndex++) {
-      const publicBoundary = clonePublicBoundary(valid.publicBoundary);
-      const word = path.length === 1
-        ? publicBoundary[path[0]]
-        : publicBoundary[path[0]][path[1]];
-      word[limbIndex] = LIMB_BASE;
-      assert.equal(
-        evaluateCompleteStatement({ ...valid, publicBoundary }).delegatedPublic.reason,
-        "public-limb-range",
-        `${path.join(".")} limb ${limbIndex} range`,
-      );
+    const publicBoundary = clonePublicBoundary(valid.publicBoundary);
+    if (path.length === 1) {
+      publicBoundary[path[0]] = FIELD_PRIME;
+    } else {
+      publicBoundary[path[0]][path[1]] = FIELD_PRIME;
     }
+    assert.equal(
+      evaluateCompleteStatement({ ...valid, publicBoundary }).delegatedPublic.reason,
+      "public-field-range",
+      `${path.join(".")} field range`,
+    );
   }
 
   const zeroSignature = corpus.find(

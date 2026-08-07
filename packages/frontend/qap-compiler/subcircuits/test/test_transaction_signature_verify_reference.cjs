@@ -27,6 +27,11 @@ const RANDOMIZER_SCALAR = 11n;
 
 const split = (value) => [value & LIMB_MASK, value >> 128n];
 
+const normalizeField = (value) => {
+  const normalized = value % FIELD_PRIME;
+  return normalized < 0n ? normalized + FIELD_PRIME : normalized;
+};
+
 const poseidonChainCompress = (values) => {
   let accumulator = poseidon2([values[0], values[1]]);
   for (let index = 2; index < values.length; index++) {
@@ -51,15 +56,13 @@ const makeValues = () => {
   return values;
 };
 
-const encode = (values) => values.map(split);
-
-const toBoundaryInputs = (encodedValues) => ({
+const toBoundaryInputs = (values) => ({
   privateIn: [
-    ...encodedValues.slice(0, 5),
-    ...encodedValues.slice(7),
+    ...values.slice(0, 5),
+    ...values.slice(7),
   ],
-  contractAddress: encodedValues[5],
-  functionSelector: encodedValues[6],
+  contractAddress: values[5],
+  functionSelector: values[6],
 });
 
 const toBits = (value) => Array.from(
@@ -69,9 +72,9 @@ const toBits = (value) => Array.from(
 
 const normalize = (value) => BigInt(value.toString());
 
-const encodePoint = (point) => {
+const nativePoint = (point) => {
   const affine = point.toAffine();
-  return [split(affine.x), split(affine.y)];
+  return [affine.x, affine.y];
 };
 
 const signatureFor = (
@@ -89,15 +92,15 @@ const calculateReferenceWitness = (
   identity = jubjub.Point.ZERO,
   publicBoundary,
 ) => {
-  const boundaryInputs = toBoundaryInputs(encode(values));
+  const boundaryInputs = toBoundaryInputs(values);
   return circuit.calculateWitness({
     ...boundaryInputs,
     contractAddress: publicBoundary?.contractAddress
       ?? boundaryInputs.contractAddress,
     functionSelector: publicBoundary?.functionSelector
       ?? boundaryInputs.functionSelector,
-    S: publicBoundary?.S ?? split(signature),
-    O: publicBoundary?.O ?? encodePoint(identity),
+    S: publicBoundary?.S ?? signature,
+    O: publicBoundary?.O ?? nativePoint(identity),
   }, true);
 };
 
@@ -127,6 +130,11 @@ const assertReference = async (
     expectedPublicKeyHash & LIMB_MASK,
     expectedPublicKeyHash >> 128n & ((1n << 32n) - 1n),
   ];
+  const expectedTransactionInputs = values.slice(7).map(
+    (value) => split(normalizeField(value)),
+  );
+  const expectedContractAddress = split(normalizeField(values[5]));
+  const expectedFunctionSelector = split(normalizeField(values[6]));
   const witness = await calculateReferenceWitness(
     circuit,
     values,
@@ -135,24 +143,15 @@ const assertReference = async (
     publicBoundary,
   );
   await circuit.assertOut(witness, {
+    evmContractAddress: expectedContractAddress,
+    evmFunctionSelector: expectedFunctionSelector,
+    evmTransactionInputs: expectedTransactionInputs,
     origin: expectedOrigin,
   });
-  assert.equal(normalize(witness[1]), expectedOrigin[0], `${label} low limb`);
-  assert.equal(normalize(witness[2]), expectedOrigin[1], `${label} high limb`);
-};
-
-const assertRejectedWord = async (circuit, wordIndex, value, label) => {
-  const encoded = encode(makeValues());
-  encoded[wordIndex] = split(value);
-  await assert.rejects(
-    circuit.calculateWitness({
-      ...toBoundaryInputs(encoded),
-      S: split(signatureFor(makeValues())),
-      O: encodePoint(jubjub.Point.ZERO),
-    }, true),
-    undefined,
-    label,
-  );
+  assert.equal(normalize(witness[1]), expectedContractAddress[0], `${label} contract`);
+  assert.equal(normalize(witness[3]), expectedFunctionSelector[0], `${label} selector`);
+  assert.equal(normalize(witness[63]), expectedOrigin[0], `${label} origin low`);
+  assert.equal(normalize(witness[64]), expectedOrigin[1], `${label} origin high`);
 };
 
 const assertPolicyCorpus = async (circuit) => {
@@ -277,58 +276,41 @@ const main = async () => {
     ),
   ];
   for (const wordIndex of privateWordIndices) {
-    await assertRejectedWord(
+    const aliasedValues = [...ordinary];
+    aliasedValues[wordIndex] += FIELD_PRIME;
+    await assertReference(
       circuit,
-      wordIndex,
-      ordinary[wordIndex] + FIELD_PRIME,
-      `private message word ${wordIndex} must reject its x + Fr alias`,
+      aliasedValues,
+      `private native word ${wordIndex} x + Fr alias`,
+      signatureFor(ordinary),
     );
   }
 
   for (const value of [FIELD_PRIME, FIELD_PRIME + 1n, (1n << 255n) - 1n]) {
-    await assertRejectedWord(
+    const nonceBoundary = makeValues();
+    nonceBoundary[4] = value;
+    await assertReference(
       circuit,
-      4,
-      value,
-      `nonce ${value} must be rejected`,
+      nonceBoundary,
+      `native nonce ${value}`,
     );
-    await assertRejectedWord(
+
+    const firstInputBoundary = makeValues();
+    firstInputBoundary[7] = value;
+    await assertReference(
       circuit,
-      7,
-      value,
-      `first private input ${value} must be rejected`,
+      firstInputBoundary,
+      `first native transaction input ${value}`,
     );
-    await assertRejectedWord(
+
+    const lastInputBoundary = makeValues();
+    lastInputBoundary[CHALLENGE_INPUT_COUNT - 1] = value;
+    await assertReference(
       circuit,
-      CHALLENGE_INPUT_COUNT - 1,
-      value,
-      `last private input ${value} must be rejected`,
+      lastInputBoundary,
+      `last native transaction input ${value}`,
     );
   }
-
-  const invalidLowLimb = encode(makeValues());
-  invalidLowLimb[4] = [LIMB_BASE, 0n];
-  await assert.rejects(
-    circuit.calculateWitness({
-      ...toBoundaryInputs(invalidLowLimb),
-      S: split(signatureFor(makeValues())),
-      O: encodePoint(jubjub.Point.ZERO),
-    }, true),
-    undefined,
-    "a 129-bit private low limb must be rejected",
-  );
-
-  const invalidHighLimb = encode(makeValues());
-  invalidHighLimb[7] = [0n, 1n << 127n];
-  await assert.rejects(
-    circuit.calculateWitness({
-      ...toBoundaryInputs(invalidHighLimb),
-      S: split(signatureFor(makeValues())),
-      O: encodePoint(jubjub.Point.ZERO),
-    }, true),
-    undefined,
-    "a 128-bit private high limb must be rejected",
-  );
 
   for (const [coordinate, value] of [[0, 1n], [1, 1n], [2, 1n], [3, 1n]]) {
     const invalidPoint = makeValues();
@@ -435,47 +417,93 @@ const main = async () => {
     undefined,
     "an invalid terminal signature equation must be rejected",
   );
-  const [ordinarySignatureLow, ordinarySignatureHigh] = split(ordinarySignature);
-  assert.notEqual(
-    ordinarySignatureHigh,
-    0n,
-    "the non-canonical public-limb test requires a nonzero high limb",
-  );
-  const nonCanonicalPublicLowLimb = await circuit.calculateWitness({
-    ...toBoundaryInputs(encode(ordinary)),
-    S: [ordinarySignatureLow + LIMB_BASE, ordinarySignatureHigh - 1n],
-    O: encodePoint(jubjub.Point.ZERO),
+  const nonCanonicalPublicSignature = await circuit.calculateWitness({
+    ...toBoundaryInputs(ordinary),
+    S: ordinarySignature + FIELD_PRIME,
+    O: nativePoint(jubjub.Point.ZERO),
   }, true);
-  await circuit.checkConstraints(nonCanonicalPublicLowLimb);
+  await circuit.checkConstraints(nonCanonicalPublicSignature);
 
-  const originIndex = circuit.symbols["main.origin[0]"]?.varIdx;
-  assert.notEqual(originIndex, undefined, "origin must exist in the witness");
-  const wrongOrigin = [...ordinaryWitness];
-  wrongOrigin[originIndex] = (
-    normalize(wrongOrigin[originIndex]) + 1n
-  ) % FIELD_PRIME;
-  await assert.rejects(
-    circuit.checkConstraints(wrongOrigin),
-    /Constraint doesn't match/,
-    "a mutated origin must be rejected",
-  );
+  const orderedOutputSignals = [
+    "main.evmContractAddress[0]",
+    "main.evmContractAddress[1]",
+    "main.evmFunctionSelector[0]",
+    "main.evmFunctionSelector[1]",
+    ...Array.from(
+      { length: PRIVATE_INPUT_COUNT },
+      (_, inputIndex) => [
+        `main.evmTransactionInputs[${inputIndex}][0]`,
+        `main.evmTransactionInputs[${inputIndex}][1]`,
+      ],
+    ).flat(),
+    "main.origin[0]",
+    "main.origin[1]",
+  ];
+  assert.equal(orderedOutputSignals.length, 64);
+  for (const [outputIndex, signalName] of orderedOutputSignals.entries()) {
+    const signalIndex = circuit.symbols[signalName]?.varIdx;
+    assert.equal(
+      signalIndex,
+      outputIndex + 1,
+      `${signalName} must occupy frozen output wire ${outputIndex + 1}`,
+    );
+    const wrongOutput = [...ordinaryWitness];
+    wrongOutput[signalIndex] = (
+      normalize(wrongOutput[signalIndex]) + 1n
+    ) % FIELD_PRIME;
+    await assert.rejects(
+      circuit.checkConstraints(wrongOutput),
+      /Constraint doesn't match/,
+      `a mutated ${signalName} must be rejected`,
+    );
+  }
+
+  for (const [lhs, rhs, label] of [
+    [
+      ["main.evmContractAddress[0]", "main.evmContractAddress[1]"],
+      ["main.evmFunctionSelector[0]", "main.evmFunctionSelector[1]"],
+      "contract and selector",
+    ],
+    [
+      ["main.evmTransactionInputs[0][0]", "main.evmTransactionInputs[0][1]"],
+      ["main.evmTransactionInputs[1][0]", "main.evmTransactionInputs[1][1]"],
+      "transaction inputs 0 and 1",
+    ],
+  ]) {
+    const swappedOutputs = [...ordinaryWitness];
+    for (let limbIndex = 0; limbIndex < 2; limbIndex++) {
+      const lhsIndex = circuit.symbols[lhs[limbIndex]]?.varIdx;
+      const rhsIndex = circuit.symbols[rhs[limbIndex]]?.varIdx;
+      assert.notEqual(lhsIndex, undefined);
+      assert.notEqual(rhsIndex, undefined);
+      [swappedOutputs[lhsIndex], swappedOutputs[rhsIndex]] = [
+        swappedOutputs[rhsIndex],
+        swappedOutputs[lhsIndex],
+      ];
+    }
+    await assert.rejects(
+      circuit.checkConstraints(swappedOutputs),
+      /Constraint doesn't match/,
+      `swapped ${label} outputs must be rejected`,
+    );
+  }
 
   for (const [signalName, label] of [
     [
-      "main.reference.privateWords[0].lowBits.out[0]",
-      "private-word low-limb range-check bit",
+      "main.reference.canonicalTransactionInputs[0].canonical.bits[0]",
+      "transaction-input canonical low bit",
     ],
     [
-      "main.reference.privateWords[0].highBits.out[126]",
-      "private-word high-limb range-check bit",
+      "main.reference.canonicalTransactionInputs[0].canonical.bits[254]",
+      "transaction-input canonical high bit",
     ],
     [
-      "main.reference.privateWords[0].fieldBound.lowDifference.out[0]",
-      "private-word field-bound low-difference bit",
+      "main.reference.canonicalTransactionInputs[0].canonical.fieldBound.lowDifference.out[0]",
+      "transaction-input field-bound low-difference bit",
     ],
     [
-      "main.reference.privateWords[0].fieldBound.highDifference.out[126]",
-      "private-word field-bound high-difference bit",
+      "main.reference.canonicalTransactionInputs[0].canonical.fieldBound.highDifference.out[126]",
+      "transaction-input field-bound high-difference bit",
     ],
     ["main.reference.hashes[0].m[63].out[1]", "Poseidon terminal state word 1"],
     ["main.reference.hashes[0].m[63].out[2]", "Poseidon terminal state word 2"],
