@@ -41,25 +41,47 @@ const main = () => {
     const output = stripAnsi(`${result.stdout ?? ""}${result.stderr ?? ""}`);
 
     assert.equal(result.status, 0, output);
-    assert.match(output, /non-linear constraints: 30077\b/);
-    assert.match(output, /linear constraints: 14321\b/);
-    assert.match(output, /public inputs: 10\b/);
-    assert.match(output, /private inputs: 68\b/);
-    assert.match(output, /public outputs: 2\b/);
-    assert.match(output, /wires: 44346\b/);
-    assert.match(output, /labels: 68368\b/);
+    assert.match(output, /non-linear constraints: 30588\b/);
+    assert.match(output, /linear constraints: 14381\b/);
+    assert.match(output, /public inputs: 5\b/);
+    assert.match(output, /private inputs: 34\b/);
+    assert.match(output, /public outputs: 64\b/);
+    assert.match(output, /wires: 44905\b/);
+    assert.match(output, /labels: 76899\b/);
 
     const expectedWarnings = [
-      "StrictBls12381FieldBoundFromLimbs_unsafe()\": Array of subcomponent input/output signals highDifference.out contains a total of 127 signals",
-      "StrictBls12381FieldBoundFromLimbs_unsafe()\": Array of subcomponent input/output signals lowDifference.out contains a total of 128 signals",
-      "CanonicalPrivateFieldWord()\": Array of subcomponent input/output signals highBits.out contains a total of 127 signals",
-      "CanonicalPrivateFieldWord()\": Array of subcomponent input/output signals lowBits.out contains a total of 128 signals",
-      "ExtendedJubjubDouble_unsafe()\": Local signal point[3] does not appear in any constraint",
-      "ExtendedJubjubToAffine_unsafe()\": Local signal point[3] does not appear in any constraint",
-      "Poseidon255(2)\": Array of subcomponent input/output signals m[63].out contains a total of 2 signals",
-      "AssertExtendedJubjubEqual_unsafe()\": Local signal lhs[3] does not appear in any constraint",
-      "AssertExtendedJubjubEqual_unsafe()\": Local signal rhs[3] does not appear in any constraint",
-      "TransactionSignatureVerifyReference(29)\": Array of subcomponent input/output signals canonicalPublicKeyHash.bits contains a total of 95 signals",
+      {
+        classification: "internally-constrained range-proof output",
+        text: "StrictBls12381FieldBoundFromLimbs_unsafe()\": Array of subcomponent input/output signals highDifference.out contains a total of 127 signals",
+      },
+      {
+        classification: "internally-constrained range-proof output",
+        text: "StrictBls12381FieldBoundFromLimbs_unsafe()\": Array of subcomponent input/output signals lowDifference.out contains a total of 128 signals",
+      },
+      {
+        classification: "redundant valid extended-point coordinate",
+        text: "ExtendedJubjubDouble_unsafe()\": Local signal point[3] does not appear in any constraint",
+      },
+      {
+        classification: "redundant valid extended-point coordinate",
+        text: "ExtendedJubjubToAffine_unsafe()\": Local signal point[3] does not appear in any constraint",
+      },
+      {
+        classification: "unused non-hash Poseidon state output",
+        text: "Poseidon255(2)\": Array of subcomponent input/output signals m[63].out contains a total of 2 signals",
+      },
+      {
+        classification: "redundant valid extended-point coordinate",
+        text: "AssertExtendedJubjubEqual_unsafe()\": Local signal lhs[3] does not appear in any constraint",
+      },
+      {
+        classification: "redundant valid extended-point coordinate",
+        text: "AssertExtendedJubjubEqual_unsafe()\": Local signal rhs[3] does not appear in any constraint",
+      },
+      {
+        classification: "canonical hash bits outside the 160-bit origin",
+        text: "TransactionSignatureVerifyReference(29)\": Array of subcomponent input/output signals canonicalPublicKeyHash.bits contains a total of 95 signals",
+      },
     ];
 
     assert.equal(
@@ -67,11 +89,11 @@ const main = () => {
       expectedWarnings.length,
       output,
     );
-    for (const warning of expectedWarnings) {
+    for (const { classification, text } of expectedWarnings) {
       assert.equal(
-        output.includes(warning),
+        output.includes(text),
         true,
-        `missing approved inspection warning: ${warning}`,
+        `missing approved ${classification} warning: ${text}`,
       );
     }
 
@@ -82,21 +104,31 @@ const main = () => {
       ),
       "utf8",
     );
-    const expectedPublicWires = [
-      [1, "main.origin[0]"],
-      [2, "main.origin[1]"],
-      [3, "main.contractAddress[0]"],
-      [4, "main.contractAddress[1]"],
-      [5, "main.functionSelector[0]"],
-      [6, "main.functionSelector[1]"],
-      [7, "main.S[0]"],
-      [8, "main.S[1]"],
-      [9, "main.O[0][0]"],
-      [10, "main.O[0][1]"],
-      [11, "main.O[1][0]"],
-      [12, "main.O[1][1]"],
+    const expectedInterfaceWires = [
+      [1, "main.evmContractAddress[0]"],
+      [2, "main.evmContractAddress[1]"],
+      [3, "main.evmFunctionSelector[0]"],
+      [4, "main.evmFunctionSelector[1]"],
+      ...Array.from(
+        { length: 29 },
+        (_, inputIndex) => [
+          [5 + inputIndex * 2, `main.evmTransactionInputs[${inputIndex}][0]`],
+          [6 + inputIndex * 2, `main.evmTransactionInputs[${inputIndex}][1]`],
+        ],
+      ).flat(),
+      [63, "main.origin[0]"],
+      [64, "main.origin[1]"],
+      [65, "main.contractAddress"],
+      [66, "main.functionSelector"],
+      [67, "main.S"],
+      [68, "main.O[0]"],
+      [69, "main.O[1]"],
+      ...Array.from(
+        { length: 34 },
+        (_, inputIndex) => [70 + inputIndex, `main.privateIn[${inputIndex}]`],
+      ),
     ];
-    for (const [wireIndex, signalName] of expectedPublicWires) {
+    for (const [wireIndex, signalName] of expectedInterfaceWires) {
       assert.match(
         symbols,
         new RegExp(`^\\d+,${wireIndex},\\d+,${escapeRegExp(signalName)}$`, "m"),
