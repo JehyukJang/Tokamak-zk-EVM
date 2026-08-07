@@ -8,7 +8,7 @@ const { wasm } = require("circom_tester");
 const { poseidon2 } = require("poseidon-bls12381");
 
 const FIELD_PRIME = 52435875175126190479447740508185965837690552500527637822603658699938581184513n;
-const SOURCE_NAME = "transaction_signature_poseidon_batch3_candidate_test";
+const SOURCE_NAME = "transaction_signature_poseidon_batch4_candidate_test";
 
 const normalize = (value) => BigInt(value.toString());
 const stripAnsi = (value) => value.replace(
@@ -18,7 +18,7 @@ const stripAnsi = (value) => value.replace(
 );
 
 const compileAndMeasure = (packageRoot, outputRoot) => {
-  const outputDirectory = path.join(outputRoot, "poseidon-batch3");
+  const outputDirectory = path.join(outputRoot, "poseidon-batch4");
   mkdirSync(outputDirectory);
   const source = path.join(
     packageRoot,
@@ -98,7 +98,7 @@ const assertMutatedSignalRejected = async (circuit, witness, signalName) => {
 
 const main = async () => {
   const packageRoot = path.join(__dirname, "../..");
-  const outputRoot = mkdtempSync(path.join(tmpdir(), "tokamak-poseidon-batch3-"));
+  const outputRoot = mkdtempSync(path.join(tmpdir(), "tokamak-poseidon-batch4-"));
 
   try {
     const measurement = compileAndMeasure(packageRoot, outputRoot);
@@ -110,10 +110,10 @@ const main = async () => {
         nonzeroCoefficients: measurement.nonzeroCoefficients,
       },
       {
-        nonlinear: 713,
+        nonlinear: 950,
         linear: 0,
-        wires: 719,
-        nonzeroCoefficients: 8537,
+        wires: 957,
+        nonzeroCoefficients: 11380,
       },
     );
     assert.deepEqual(
@@ -122,7 +122,7 @@ const main = async () => {
         privateInputs: measurement.privateInputs,
         publicOutputs: measurement.publicOutputs,
       },
-      { publicInputs: 6, privateInputs: 0, publicOutputs: 2 },
+      { publicInputs: 7, privateInputs: 0, publicOutputs: 2 },
     );
     const wireIndex = (signal) => Number(measurement.symbols.match(
       new RegExp(`^\\d+,(\\d+),\\d+,${signal.replace(/[\[\]]/g, "\\$&")}$`, "m"),
@@ -137,8 +137,9 @@ const main = async () => {
         "main.in[3]",
         "main.in[4]",
         "main.in[5]",
+        "main.in[6]",
       ].map(wireIndex),
-      [1, 2, 3, 4, 5, 6, 7, 8],
+      [1, 2, 3, 4, 5, 6, 7, 8, 9],
     );
 
     const circuit = await wasm(
@@ -162,32 +163,35 @@ const main = async () => {
         index * 47n + 3n,
         index * 61n + 4n,
         index * 73n + 5n,
+        index * 89n + 6n,
       ].map((value) => value % FIELD_PRIME);
 
       const chainFirst = poseidon2([values[0], values[1]]);
       const chainSecond = poseidon2([chainFirst, values[3]]);
+      const chainThird = poseidon2([chainSecond, values[4]]);
       const chainWitness = await circuit.calculateWitness({
-        in: [1n, values[0], values[1], values[2], values[3], values[4]],
+        in: [1n, ...values],
       }, true);
       await circuit.assertOut(chainWitness, {
-        out: [chainFirst, poseidon2([chainSecond, values[4]])],
+        out: [chainFirst, poseidon2([chainThird, values[5]])],
       });
       chainMutationWitness ??= chainWitness;
 
       const independentFirst = poseidon2([values[0], values[1]]);
       const independentSecond = poseidon2([values[2], values[3]]);
+      const independentThird = poseidon2([independentSecond, values[4]]);
       const independentWitness = await circuit.calculateWitness({
-        in: [0n, values[0], values[1], values[2], values[3], values[4]],
+        in: [0n, ...values],
       }, true);
       await circuit.assertOut(independentWitness, {
-        out: [independentFirst, poseidon2([independentSecond, values[4]])],
+        out: [independentFirst, poseidon2([independentThird, values[5]])],
       });
       independentMutationWitness ??= independentWitness;
     }
 
     for (const invalidMode of [2n, FIELD_PRIME - 1n]) {
       await assert.rejects(circuit.calculateWitness({
-        in: [invalidMode, 1n, 2n, 3n, 4n, 5n],
+        in: [invalidMode, 1n, 2n, 3n, 4n, 5n, 6n],
       }, true));
     }
 
@@ -196,6 +200,7 @@ const main = async () => {
       "main.firstHash.x5F[0][1].in2",
       "main.secondHash.x5P[0].in4",
       "main.thirdHash.x5F[1][2].in4",
+      "main.fourthHash.x5F[7][2].in2",
       "main.secondLeft",
       "main.out[0]",
       "main.out[1]",
@@ -205,7 +210,7 @@ const main = async () => {
     }
 
     console.log(
-      "Three-Poseidon batch passed O2 interface, mode, oracle, and mutation checks",
+      "Four-Poseidon batch passed O2 interface, mode, oracle, and mutation checks",
     );
   } finally {
     rmSync(outputRoot, { recursive: true, force: true });
