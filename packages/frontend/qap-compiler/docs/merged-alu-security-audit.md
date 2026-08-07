@@ -1,6 +1,13 @@
 # Merged ALU Security Audit
 
-> Status update: Revalidated against the repository state on April 4, 2026. The original merged-wrapper findings in this document are resolved. Under the composed-system model used by the external compiler, the fresh review identified two topology-dependent contract gaps outside the original merged-ALU scope. The `Accumulator` / `SubExpBatch` canonicalization observations collapse into system-level bus-well-formedness dependencies rather than standalone public-input exploits. The separate 255-bit split-limb canonicalization observation is retained below only as a boundary-handling note for affected compile targets, not as a live in-repository compiled-circuit issue.
+> Historical status: This audit was revalidated on April 4, 2026. Its
+> `JubjubExpBatch` and `EdDsaVerify` discussion describes the retired signature
+> path and is preserved as audit history. Those targets were later replaced by
+> the six-type native-field transaction-signature composition documented in
+> [Circuit Implementation and Composition Reference](./circuit-implementation-reference.md).
+> The original merged-wrapper findings remain resolved. The `Accumulator` and
+> `SubExpBatch` observations remain system-level bus-well-formedness
+> dependencies rather than standalone public-input exploits.
 
 ## Scope
 
@@ -21,7 +28,8 @@ The original scope was the merged arithmetic circuits introduced by the two-circ
 
 The comparison baseline is the pre-merge implementation from the parent of commit `9b5b616b`, which used separate `ALU1` through `ALU5` wrappers and standalone `AND`, `OR`, and `XOR` circuits.
 
-The added compile-target review scope is the full set of circuits currently built by [scripts/compile.sh](../scripts/compile.sh):
+The added compile-target review scope was the full set of circuits built by
+[`scripts/compile.sh`](../scripts/compile.sh) at the April 4 snapshot:
 
 - `bufferLogOut`
 - `bufferStorageStore`
@@ -377,8 +385,8 @@ Current status: Conditional
 At the compile-target level, the affected wrappers are:
 
 - [`subcircuits/circom/Poseidon_circuit.circom`](../subcircuits/circom/Poseidon_circuit.circom)
-- [`subcircuits/circom/JubjubExpBatch_circuit.circom`](../subcircuits/circom/JubjubExpBatch_circuit.circom)
-- [`subcircuits/circom/EdDsaVerify_circuit.circom`](../subcircuits/circom/EdDsaVerify_circuit.circom)
+- [`subcircuits/circom/unused/JubjubExpBatch_circuit.circom`](../subcircuits/circom/unused/JubjubExpBatch_circuit.circom)
+- [`subcircuits/circom/unused/EdDsaVerify_circuit.circom`](../subcircuits/circom/unused/EdDsaVerify_circuit.circom)
 
 Those wrappers pass split limbs into 255-bit Poseidon and Jubjub logic without adding local `< Fr` or canonical-encoding checks at the wrapper boundary.
 
@@ -494,9 +502,9 @@ Severity: High
 
 Current status: Resolved
 
-`JubjubExpBatch_circuit.circom` passes split-limb points into its exponentiation implementation, but it never performs local `jubjubCheck()` validation on those points:
+The retired `JubjubExpBatch_circuit.circom` passed split-limb points into its exponentiation implementation, but it never performed local `jubjubCheck()` validation on those points:
 
-- [`subcircuits/circom/JubjubExpBatch_circuit.circom`](../subcircuits/circom/JubjubExpBatch_circuit.circom)
+- [`subcircuits/circom/unused/JubjubExpBatch_circuit.circom`](../subcircuits/circom/unused/JubjubExpBatch_circuit.circom)
 - [`templates/255bit/jubjub.circom`](../templates/255bit/jubjub.circom)
 
 Unlike the compiled `EdDsaVerify` path, the compiled `JubjubExpBatch` path never calls `jubjubCheck()`.
@@ -536,7 +544,7 @@ Current status: Resolved
 
 The compiled `EdDsaVerify` wrapper exposes no public inputs and no public outputs:
 
-- [`subcircuits/circom/EdDsaVerify_circuit.circom`](../subcircuits/circom/EdDsaVerify_circuit.circom)
+- [`subcircuits/circom/unused/EdDsaVerify_circuit.circom`](../subcircuits/circom/unused/EdDsaVerify_circuit.circom)
 
 Its implementation checks only that three private Jubjub points satisfy the curve equation and the relation `SG = R + eA`:
 

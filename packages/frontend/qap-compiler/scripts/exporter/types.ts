@@ -13,7 +13,6 @@ export const REQUIRED_CIRCOM_KEYS = [
   'nPoseidonBatch',
   'nAccumulation',
   'nPrevBlockHashes',
-  'nJubjubExpBatch',
   'nSubExpBatch',
   'nEqualBatch',
 ] as const;

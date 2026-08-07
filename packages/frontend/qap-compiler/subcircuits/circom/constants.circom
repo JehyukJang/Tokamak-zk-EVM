@@ -13,6 +13,5 @@ function nPoseidonInputs() {return 2;}
 function nPoseidonBatch() {return 1;}
 function nAccumulation() {return 32;}
 function nPrevBlockHashes() {return 4;}
-function nJubjubExpBatch() {return 37;}
 function nSubExpBatch() {return 8;}
 function nEqualBatch() {return 2;}

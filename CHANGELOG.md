@@ -15,6 +15,13 @@ The format is based on Keep a Changelog.
   as standalone public inputs during generation so O2 cannot eliminate wires
   required by the composition interface; final proof visibility remains
   defined by the qap composition metadata.
+- Replaced the standalone `JubjubExpBatch` and `EdDsaVerify` targets with six
+  native-field transaction-signature composition targets. The 46-placement
+  topology batches four Poseidon compressions, canonicalizes the exact signed
+  transaction inputs used by later EVM execution, validates the Jubjub point
+  policy, performs the fixed- and variable-base scalar multiplications, checks
+  the cofactored signature equation, and returns the verified transaction data
+  and origin through exact composition wires.
 - Added the input-only `EqualBatch` subcircuit to the qap-compiler circuit set.
   It constrains equality between two batches of two 256-bit values, with
   `nEqualBatch` fixed to `2`.
@@ -31,10 +38,10 @@ The format is based on Keep a Changelog.
 - Added cumulative `setupParams` boundaries for every public buffer. Public
   wires are now grouped by their configured segment order instead of relying
   on the subcircuit compilation order.
-- Replaced the six-step hardcoded Poseidon chain with an `nPoseidonBatch`
-  parameter. Set `nPoseidonBatch`, `nJubjubExpBatch`, and `nSubExpBatch` to
-  `3`, `75`, and `16`, respectively, so each batch subcircuit has at most
-  2048 compiled constraints.
+- Replaced the six-step hardcoded general Poseidon chain with an
+  `nPoseidonBatch` parameter. The current general Poseidon and EVM exponent
+  batch sizes are `1` and `8`; transaction-signature Poseidon uses its own
+  fixed four-compression production target.
 - Replaced the merged arithmetic targets with `ALU1` through `ALU6` for
   multi-operation selector groups and operation-named `AND`, `OR`, `XOR`,
   `SIGNEXTEND`, `BYTE`, `SHL`, `ADDMOD`, and `MULMOD` targets for individual

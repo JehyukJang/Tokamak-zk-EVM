@@ -1,0 +1,582 @@
+pragma circom 2.1.6;
+
+include "./jubjub.circom";
+include "../../subcircuits/circom/constants.circom";
+
+// This file owns the reusable relations used by the production transaction-
+// signature composition. Templates with an _unsafe suffix require the exact
+// upstream bit, point, or accumulator relation documented at their interface.
+
+function tsvFixedJubjubAdd(point1, point2) {
+    var constants[3] = jubjubconst();
+    var product = point1[0] * point2[0] * point1[1] * point2[1];
+    var denominatorX = 1 + constants[1] * product;
+    var denominatorY = 1 - constants[1] * product;
+    var numeratorX = point1[0] * point2[1] + point1[1] * point2[0];
+    var numeratorY = point1[1] * point2[1] - constants[0] * point1[0] * point2[0];
+    return [numeratorX / denominatorX, numeratorY / denominatorY];
+}
+
+function tsvBitCount(value, width) {
+    var count = 0;
+    for (var bit = 0; bit < width; bit++) {
+        count += (value >> bit) & 1;
+    }
+    return count;
+}
+
+function tsvOnlyBitIndex(value, width) {
+    var index = 0;
+    for (var bit = 0; bit < width; bit++) {
+        if (((value >> bit) & 1) == 1) {
+            index = bit;
+        }
+    }
+    return index;
+}
+
+template TSVSelectPointByBits_unsafe(W) {
+    assert(W == 2);
+
+    var TABLE_SIZE = 1 << W;
+    signal input table[TABLE_SIZE][2];
+    signal input bits[W];
+    signal output point[2];
+
+    signal nodes[2 * TABLE_SIZE - 1][2];
+    for (var index = 0; index < TABLE_SIZE; index++) {
+        nodes[index] <== table[index];
+    }
+
+    var sourceStart = 0;
+    var destinationStart = TABLE_SIZE;
+    var sourceCount = TABLE_SIZE;
+    for (var bit = 0; bit < W; bit++) {
+        for (var pair = 0; pair < sourceCount \ 2; pair++) {
+            for (var coordinate = 0; coordinate < 2; coordinate++) {
+                nodes[destinationStart + pair][coordinate] <==
+                    nodes[sourceStart + 2 * pair][coordinate]
+                    + bits[bit] * (
+                        nodes[sourceStart + 2 * pair + 1][coordinate]
+                        - nodes[sourceStart + 2 * pair][coordinate]
+                    );
+            }
+        }
+        sourceStart = destinationStart;
+        destinationStart += sourceCount \ 2;
+        sourceCount \= 2;
+    }
+
+    point <== nodes[2 * TABLE_SIZE - 2];
+}
+
+template TSVStrictFieldBoundFromLimbs_unsafe() {
+    signal input low;
+    signal input high;
+
+    var LIMB_BASE = 1 << 128;
+    var FIELD_MAX_LOW = 111310594309268602877181240610339684352;
+    var FIELD_MAX_HIGH = 154095187621958656428822154526901524485;
+
+    signal lowBorrow <-- low > FIELD_MAX_LOW;
+    lowBorrow * (1 - lowBorrow) === 0;
+
+    component lowDifference = Num2Bits(128);
+    lowDifference.in <== FIELD_MAX_LOW - low + lowBorrow * LIMB_BASE;
+
+    component highDifference = Num2Bits(127);
+    highDifference.in <== FIELD_MAX_HIGH - high - lowBorrow;
+}
+
+template TSVCanonicalFrView() {
+    signal input in;
+    signal output out[257];
+
+    component decomposition = Num2Bits(255);
+    decomposition.in <== in;
+
+    var lowExpression = 0;
+    var highExpression = 0;
+    for (var bit = 0; bit < 128; bit++) {
+        out[bit] <== decomposition.out[bit];
+        lowExpression += decomposition.out[bit] * (1 << bit);
+    }
+    for (var bit = 128; bit < 255; bit++) {
+        out[bit] <== decomposition.out[bit];
+        highExpression += decomposition.out[bit] * (1 << (bit - 128));
+    }
+
+    signal low <== lowExpression;
+    signal high <== highExpression;
+    component fieldBound = TSVStrictFieldBoundFromLimbs_unsafe();
+    fieldBound.low <== low;
+    fieldBound.high <== high;
+
+    out[255] <== low;
+    out[256] <== high;
+}
+
+template TSVExtendedDouble_unsafe() {
+    signal input point[4];
+    signal output result[4];
+
+    signal A <== point[0] * point[0];
+    signal B <== point[1] * point[1];
+    signal C <== 2 * point[2] * point[2];
+    signal E <== (point[0] + point[1]) * (point[0] + point[1]) - A - B;
+
+    result[0] <== E * (-A + B - C);
+    result[1] <== (-A + B) * (-A - B);
+    result[2] <== (-A + B - C) * (-A + B);
+    result[3] <== E * (-A - B);
+}
+
+template TSVExtendedAddAffineWithT_unsafe() {
+    signal input point[4];
+    signal input affine[3];
+    signal output result[4];
+
+    var constants[3] = jubjubconst();
+    var K = 2 * constants[1];
+
+    signal A <== (point[1] - point[0]) * (affine[1] - affine[0]);
+    signal B <== (point[1] + point[0]) * (affine[1] + affine[0]);
+    signal C <== K * point[3] * affine[2];
+
+    result[0] <== (B - A) * (2 * point[2] - C);
+    result[1] <== (2 * point[2] + C) * (B + A);
+    result[2] <== (2 * point[2] - C) * (2 * point[2] + C);
+    result[3] <== (B - A) * (B + A);
+}
+
+template TSVExtendedAddAffine_unsafe() {
+    signal input point[4];
+    signal input affine[2];
+    signal output result[4];
+
+    signal affineT <== affine[0] * affine[1];
+    component addition = TSVExtendedAddAffineWithT_unsafe();
+    addition.point <== point;
+    addition.affine <== [affine[0], affine[1], affineT];
+    result <== addition.result;
+}
+
+template TSVExtendedAdd_unsafe() {
+    signal input point1[4];
+    signal input point2[4];
+    signal output result[4];
+
+    var constants[3] = jubjubconst();
+    var K = 2 * constants[1];
+
+    signal A <== (point1[1] - point1[0]) * (point2[1] - point2[0]);
+    signal B <== (point1[1] + point1[0]) * (point2[1] + point2[0]);
+    signal C <== K * point1[3] * point2[3];
+    signal D <== 2 * point1[2] * point2[2];
+
+    result[0] <== (B - A) * (D - C);
+    result[1] <== (D + C) * (B + A);
+    result[2] <== (D - C) * (D + C);
+    result[3] <== (B - A) * (B + A);
+}
+
+template TSVPointTimesCofactor8_unsafe() {
+    signal input point[2];
+    signal output point8[4];
+
+    signal extended[4] <== [point[0], point[1], 1, point[0] * point[1]];
+    component point2 = TSVExtendedDouble_unsafe();
+    component point4 = TSVExtendedDouble_unsafe();
+    component point8Component = TSVExtendedDouble_unsafe();
+    point2.point <== extended;
+    point4.point <== point2.result;
+    point8Component.point <== point4.result;
+    point8 <== point8Component.result;
+}
+
+template TSVExtendedToAffine_unsafe() {
+    signal input point[4];
+    signal output affine[2];
+
+    affine[0] <-- point[0] / point[2];
+    affine[1] <-- point[1] / point[2];
+    point[0] === affine[0] * point[2];
+    point[1] === affine[1] * point[2];
+}
+
+template TSVRejectIdentityFromValidatedY_unsafe() {
+    signal input y;
+    signal inverse <-- 1 / (y - 1);
+    (y - 1) * inverse === 1;
+}
+
+template TSVFixedWindowBatch_unsafe(START_WINDOW, NUM_WINDOWS) {
+    assert(START_WINDOW >= 0);
+    assert(NUM_WINDOWS > 0);
+    assert(START_WINDOW + NUM_WINDOWS <= 84);
+
+    signal input bits[NUM_WINDOWS * 3];
+    signal input previous[4];
+    signal output next[4];
+
+    var TABLE_SIZE = 8;
+    var NUM_PRODUCTS = 4;
+    var G8[2] = [
+        52363696936650001301287582521711853146588465673974699354184720335305084401224,
+        12024993157431732930272824407495979791132374572895036891122288541794509830761
+    ];
+    var windowBase[2] = G8;
+    for (var skippedBit = 0; skippedBit < START_WINDOW * 3; skippedBit++) {
+        windowBase = tsvFixedJubjubAdd(windowBase, windowBase);
+    }
+
+    var table[NUM_WINDOWS][TABLE_SIZE][3];
+    var coefficients[NUM_WINDOWS][TABLE_SIZE][3];
+    for (var window = 0; window < NUM_WINDOWS; window++) {
+        table[window][0] = [0, 1, 0];
+        for (var digit = 1; digit < TABLE_SIZE; digit++) {
+            var point[2] = tsvFixedJubjubAdd(
+                [table[window][digit - 1][0], table[window][digit - 1][1]],
+                windowBase
+            );
+            table[window][digit] = [point[0], point[1], point[0] * point[1]];
+        }
+        for (var digit = 0; digit < TABLE_SIZE; digit++) {
+            coefficients[window][digit] = table[window][digit];
+        }
+        for (var bit = 0; bit < 3; bit++) {
+            for (var mask = 0; mask < TABLE_SIZE; mask++) {
+                if (((mask >> bit) & 1) == 1) {
+                    for (var coordinate = 0; coordinate < 3; coordinate++) {
+                        coefficients[window][mask][coordinate] -=
+                            coefficients[window][mask - (1 << bit)][coordinate];
+                    }
+                }
+            }
+        }
+        for (var bit = 0; bit < 3; bit++) {
+            windowBase = tsvFixedJubjubAdd(windowBase, windowBase);
+        }
+    }
+
+    var productIndex[TABLE_SIZE];
+    var nextProduct = 0;
+    for (var mask = 0; mask < TABLE_SIZE; mask++) {
+        productIndex[mask] = -1;
+        if (tsvBitCount(mask, 3) >= 2) {
+            productIndex[mask] = nextProduct;
+            nextProduct++;
+        }
+    }
+
+    signal products[NUM_WINDOWS][NUM_PRODUCTS];
+    signal accumulators[NUM_WINDOWS + 1][4];
+    accumulators[0] <== previous;
+    component additions[NUM_WINDOWS];
+    for (var window = 0; window < NUM_WINDOWS; window++) {
+        for (var mask = 1; mask < TABLE_SIZE; mask++) {
+            if (tsvBitCount(mask, 3) >= 2) {
+                var factorBit = tsvOnlyBitIndex(mask & (0 - mask), 3);
+                var previousMask = mask - (1 << factorBit);
+                if (tsvBitCount(previousMask, 3) == 1) {
+                    var previousBit = tsvOnlyBitIndex(previousMask, 3);
+                    products[window][productIndex[mask]] <==
+                        bits[window * 3 + factorBit] * bits[window * 3 + previousBit];
+                } else {
+                    products[window][productIndex[mask]] <==
+                        bits[window * 3 + factorBit]
+                        * products[window][productIndex[previousMask]];
+                }
+            }
+        }
+
+        additions[window] = TSVExtendedAddAffineWithT_unsafe();
+        additions[window].point <== accumulators[window];
+        for (var coordinate = 0; coordinate < 3; coordinate++) {
+            var selectedExpression = coefficients[window][0][coordinate];
+            for (var mask = 1; mask < TABLE_SIZE; mask++) {
+                if (tsvBitCount(mask, 3) == 1) {
+                    var selectedBit = tsvOnlyBitIndex(mask, 3);
+                    selectedExpression += coefficients[window][mask][coordinate]
+                        * bits[window * 3 + selectedBit];
+                } else {
+                    selectedExpression += coefficients[window][mask][coordinate]
+                        * products[window][productIndex[mask]];
+                }
+            }
+            additions[window].affine[coordinate] <== selectedExpression;
+        }
+        accumulators[window + 1] <== additions[window].result;
+    }
+    next <== accumulators[NUM_WINDOWS];
+}
+
+template TSVRuntimeTable_unsafe() {
+    signal input identity[2];
+    signal input base[2];
+    signal output table[4][2];
+
+    table[0] <== identity;
+    table[1] <== base;
+    component additions[2];
+    for (var digit = 2; digit < 4; digit++) {
+        additions[digit - 2] = jubjubAdd();
+        additions[digit - 2].in1 <== table[digit - 1];
+        additions[digit - 2].in2 <== base;
+        table[digit] <== additions[digit - 2].out;
+    }
+}
+
+// Bits are supplied in increasing scalar-bit order. Processing is MSB-first.
+// HAS_TOP_PADDING is one only for the first batch, whose missing bit 255 is 0.
+template TSVVariableWindowBatch_unsafe(NUM_WINDOWS, HAS_TOP_PADDING, IS_FIRST) {
+    assert(NUM_WINDOWS > 0);
+    assert(HAS_TOP_PADDING == 0 || HAS_TOP_PADDING == 1);
+    assert(IS_FIRST == 0 || IS_FIRST == 1);
+    assert(HAS_TOP_PADDING <= IS_FIRST);
+
+    var NUM_BITS = NUM_WINDOWS * 2 - HAS_TOP_PADDING;
+    signal input bits[NUM_BITS];
+    signal input table[4][2];
+    signal input previous[4];
+    signal output next[4];
+
+    component selectors[NUM_WINDOWS];
+    for (var step = 0; step < NUM_WINDOWS; step++) {
+        selectors[step] = TSVSelectPointByBits_unsafe(2);
+        selectors[step].table <== table;
+        if (HAS_TOP_PADDING == 1 && step == 0) {
+            selectors[step].bits[0] <== bits[NUM_BITS - 1];
+            selectors[step].bits[1] <== 0;
+        } else {
+            var sourceStart = NUM_BITS - 2 * (step + 1) + HAS_TOP_PADDING;
+            selectors[step].bits[0] <== bits[sourceStart];
+            selectors[step].bits[1] <== bits[sourceStart + 1];
+        }
+    }
+
+    signal accumulators[NUM_WINDOWS + 1][4];
+    accumulators[0] <== previous;
+    component firstDoublings[NUM_WINDOWS];
+    component secondDoublings[NUM_WINDOWS];
+    component additions[NUM_WINDOWS];
+    for (var step = 0; step < NUM_WINDOWS; step++) {
+        additions[step] = TSVExtendedAddAffine_unsafe();
+        if (IS_FIRST == 1 && step == 0) {
+            additions[step].point <== accumulators[step];
+        } else {
+            firstDoublings[step] = TSVExtendedDouble_unsafe();
+            secondDoublings[step] = TSVExtendedDouble_unsafe();
+            firstDoublings[step].point <== accumulators[step];
+            secondDoublings[step].point <== firstDoublings[step].result;
+            additions[step].point <== secondDoublings[step].result;
+        }
+        additions[step].affine <== selectors[step].point;
+        accumulators[step + 1] <== additions[step].result;
+    }
+    next <== accumulators[NUM_WINDOWS];
+}
+
+template TSVAssertExtendedEqual_unsafe() {
+    signal input lhs[4];
+    signal input rhs[4];
+
+    signal scale <-- lhs[2] / rhs[2];
+    for (var coordinate = 0; coordinate < 3; coordinate++) {
+        lhs[coordinate] === scale * rhs[coordinate];
+    }
+}
+
+template TransactionSignaturePoseidonBatch4() {
+    assert(nPrivateMessageInputs() == 29);
+    signal input in[7];
+    signal output out[2];
+
+    signal mode <== in[0];
+    mode * (mode - 1) === 0;
+
+    component firstHash = Poseidon255(2);
+    firstHash.in <== [in[1], in[2]];
+    signal secondLeft <== in[3] + mode * (firstHash.out - in[3]);
+    component secondHash = Poseidon255(2);
+    secondHash.in <== [secondLeft, in[4]];
+    component thirdHash = Poseidon255(2);
+    thirdHash.in <== [secondHash.out, in[5]];
+    component fourthHash = Poseidon255(2);
+    fourthHash.in <== [thirdHash.out, in[6]];
+    out <== [firstHash.out, fourthHash.out];
+}
+
+template TransactionSignatureCanonicalFrView() {
+    assert(nPrivateMessageInputs() == 29);
+    signal input in[1];
+    signal output out[257];
+    component view = TSVCanonicalFrView();
+    view.in <== in[0];
+    out <== view.out;
+}
+
+template TransactionSignaturePolicyFixedPrefix() {
+    assert(nPrivateMessageInputs() == 29);
+    signal input in[9];
+    signal output out[161];
+
+    component contractBits = Num2Bits(160);
+    contractBits.in <== in[4];
+    var contractLow = 0;
+    var contractHigh = 0;
+    for (var bit = 0; bit < 128; bit++) {
+        contractLow += contractBits.out[bit] * (1 << bit);
+    }
+    for (var bit = 128; bit < 160; bit++) {
+        contractHigh += contractBits.out[bit] * (1 << (bit - 128));
+    }
+    out[0] <== contractLow;
+    out[1] <== contractHigh;
+    out[2] <== in[5];
+    out[3] <== 0;
+
+    component checkA = jubjubCheck();
+    checkA.in <== [in[2], in[3]];
+    component checkR = jubjubCheck();
+    checkR.in <== [in[0], in[1]];
+
+    component publicKeyCofactor = TSVPointTimesCofactor8_unsafe();
+    publicKeyCofactor.point <== [in[2], in[3]];
+    component publicKeyAffine = TSVExtendedToAffine_unsafe();
+    publicKeyAffine.point <== publicKeyCofactor.point8;
+    component rejectPublicKeyIdentity = TSVRejectIdentityFromValidatedY_unsafe();
+    rejectPublicKeyIdentity.y <== publicKeyAffine.affine[1];
+    component rejectRandomizerIdentity = TSVRejectIdentityFromValidatedY_unsafe();
+    rejectRandomizerIdentity.y <== in[1];
+
+    component randomizerCofactor = TSVPointTimesCofactor8_unsafe();
+    randomizerCofactor.point <== [in[0], in[1]];
+
+    component signatureBits = Num2Bits(252);
+    signatureBits.in <== in[6];
+    component fixedPrefix = TSVFixedWindowBatch_unsafe(0, 37);
+    fixedPrefix.previous <== [0, 1, 1, 0];
+    for (var bit = 0; bit < 111; bit++) {
+        fixedPrefix.bits[bit] <== signatureBits.out[bit];
+    }
+    for (var bit = 111; bit < 252; bit++) {
+        out[4 + bit - 111] <== signatureBits.out[bit];
+    }
+    for (var coordinate = 0; coordinate < 4; coordinate++) {
+        out[145 + coordinate] <== fixedPrefix.next[coordinate];
+    }
+
+    component runtimeTable = TSVRuntimeTable_unsafe();
+    runtimeTable.identity <== [in[7], in[8]];
+    runtimeTable.base <== publicKeyAffine.affine;
+    for (var digit = 0; digit < 4; digit++) {
+        for (var coordinate = 0; coordinate < 2; coordinate++) {
+            out[149 + digit * 2 + coordinate] <== runtimeTable.table[digit][coordinate];
+        }
+    }
+    for (var coordinate = 0; coordinate < 4; coordinate++) {
+        out[157 + coordinate] <== randomizerCofactor.point8[coordinate];
+    }
+}
+
+template TransactionSignatureFixedVariableBridge() {
+    assert(nPrivateMessageInputs() == 29);
+    signal input in[159];
+    signal output out[8];
+
+    component fixedMiddle = TSVFixedWindowBatch_unsafe(37, 38);
+    for (var bit = 0; bit < 114; bit++) {
+        fixedMiddle.bits[bit] <== in[bit];
+    }
+    for (var coordinate = 0; coordinate < 4; coordinate++) {
+        fixedMiddle.previous[coordinate] <== in[114 + coordinate];
+    }
+
+    signal table[4][2];
+    for (var digit = 0; digit < 4; digit++) {
+        for (var coordinate = 0; coordinate < 2; coordinate++) {
+            table[digit][coordinate] <== in[151 + digit * 2 + coordinate];
+        }
+    }
+    component variableStart = TSVVariableWindowBatch_unsafe(17, 1, 1);
+    for (var bit = 0; bit < 33; bit++) {
+        variableStart.bits[bit] <== in[118 + bit];
+    }
+    variableStart.table <== table;
+    variableStart.previous <== [table[0][0], table[0][1], 1, table[0][0] * table[0][1]];
+
+    for (var coordinate = 0; coordinate < 4; coordinate++) {
+        out[coordinate] <== fixedMiddle.next[coordinate];
+        out[4 + coordinate] <== variableStart.next[coordinate];
+    }
+}
+
+template TransactionSignatureVariableBatch() {
+    assert(nPrivateMessageInputs() == 29);
+    signal input in[80];
+    signal output out[4];
+
+    component batch = TSVVariableWindowBatch_unsafe(34, 0, 0);
+    for (var bit = 0; bit < 68; bit++) {
+        batch.bits[bit] <== in[bit];
+    }
+    for (var digit = 0; digit < 4; digit++) {
+        for (var coordinate = 0; coordinate < 2; coordinate++) {
+            batch.table[digit][coordinate] <== in[68 + digit * 2 + coordinate];
+        }
+    }
+    for (var coordinate = 0; coordinate < 4; coordinate++) {
+        batch.previous[coordinate] <== in[76 + coordinate];
+    }
+    for (var coordinate = 0; coordinate < 4; coordinate++) {
+        out[coordinate] <== batch.next[coordinate];
+    }
+}
+
+template TransactionSignatureFinal() {
+    assert(nPrivateMessageInputs() == 29);
+    signal input in[225];
+    signal output out[2];
+
+    component fixedTail = TSVFixedWindowBatch_unsafe(75, 9);
+    for (var bit = 0; bit < 27; bit++) {
+        fixedTail.bits[bit] <== in[bit];
+    }
+    for (var coordinate = 0; coordinate < 4; coordinate++) {
+        fixedTail.previous[coordinate] <== in[27 + coordinate];
+    }
+
+    component variableTail = TSVVariableWindowBatch_unsafe(9, 0, 0);
+    for (var bit = 0; bit < 18; bit++) {
+        variableTail.bits[bit] <== in[31 + bit];
+    }
+    for (var coordinate = 0; coordinate < 4; coordinate++) {
+        variableTail.previous[coordinate] <== in[49 + coordinate];
+    }
+    for (var digit = 0; digit < 4; digit++) {
+        for (var coordinate = 0; coordinate < 2; coordinate++) {
+            variableTail.table[digit][coordinate] <== in[53 + digit * 2 + coordinate];
+        }
+    }
+
+    component terminalAddition = TSVExtendedAdd_unsafe();
+    terminalAddition.point1 <== variableTail.next;
+    for (var coordinate = 0; coordinate < 4; coordinate++) {
+        terminalAddition.point2[coordinate] <== in[61 + coordinate];
+    }
+    component terminalEquality = TSVAssertExtendedEqual_unsafe();
+    terminalEquality.lhs <== fixedTail.next;
+    terminalEquality.rhs <== terminalAddition.result;
+
+    var originLow = 0;
+    var originHigh = 0;
+    for (var bit = 0; bit < 128; bit++) {
+        originLow += in[65 + bit] * (1 << bit);
+    }
+    for (var bit = 128; bit < 160; bit++) {
+        originHigh += in[65 + bit] * (1 << (bit - 128));
+    }
+    out[0] <== originLow;
+    out[1] <== originHigh;
+}

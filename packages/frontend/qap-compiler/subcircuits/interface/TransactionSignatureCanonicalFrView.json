@@ -1,0 +1,9 @@
+{
+  "inputs": [
+    { "name": "value", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } }
+  ],
+  "outputs": [
+    { "name": "bit", "length": 255, "logicalType": { "valueDomain": { "kind": "uint", "bits": 1 }, "wireLayout": { "kind": "limbs-128", "count": 1 } } },
+    { "name": "evmWord", "logicalType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } }
+  ]
+}
