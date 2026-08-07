@@ -27,4 +27,4 @@ template JubjubExp(N) {
     ];
 }
 
-component main = JubjubExp(nJubjubExpBatch());
+component main {public [in]} = JubjubExp(nJubjubExpBatch());

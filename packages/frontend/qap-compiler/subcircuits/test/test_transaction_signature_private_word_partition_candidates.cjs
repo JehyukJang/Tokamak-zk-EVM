@@ -34,7 +34,7 @@ const compileAndMeasure = (packageRoot, outputRoot, name) => {
     source,
     "--r1cs",
     "--inspect",
-    "--O1",
+    "--O2",
     "--prime",
     "bls12381",
     "-l",
@@ -71,9 +71,9 @@ const main = async () => {
     const boundMerge = compileAndMeasure(packageRoot, outputRoot, "bound_merge");
     const partition = compileAndMeasure(packageRoot, outputRoot, "partition");
 
-    assert.deepEqual(limbCheck, { nonlinear: 255, linear: 2, total: 257 });
-    assert.deepEqual(boundMerge, { nonlinear: 256, linear: 5, total: 261 });
-    assert.deepEqual(partition, { nonlinear: 511, linear: 7, total: 518 });
+    assert.deepEqual(limbCheck, { nonlinear: 255, linear: 0, total: 255 });
+    assert.deepEqual(boundMerge, { nonlinear: 256, linear: 0, total: 256 });
+    assert.deepEqual(partition, { nonlinear: 511, linear: 0, total: 511 });
     assert.equal(limbCheck.total + boundMerge.total, partition.total);
 
     const circuit = await wasm(
@@ -84,7 +84,7 @@ const main = async () => {
       {
         include: path.join(packageRoot, "node_modules"),
         prime: "bls12381",
-        O: 1,
+        O: 2,
       },
     );
 
@@ -111,7 +111,7 @@ const main = async () => {
     );
 
     console.log(
-      "Transaction signature private-word partition preserves the 518-constraint relation",
+      "Transaction signature private-word partition preserves the 511-constraint O2 relation",
     );
   } finally {
     rmSync(outputRoot, { recursive: true, force: true });

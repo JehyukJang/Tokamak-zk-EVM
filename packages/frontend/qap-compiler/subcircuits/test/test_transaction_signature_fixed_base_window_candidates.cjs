@@ -27,7 +27,7 @@ const compileCandidate = (packageRoot, name) => wasm(
   {
     include: path.join(packageRoot, "node_modules"),
     prime: "bls12381",
-    O: 1,
+    O: 2,
   },
 );
 

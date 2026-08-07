@@ -10,6 +10,11 @@ The format is based on Keep a Changelog.
 
 ### Subcircuit Library
 
+- Changed qap-compiler generation and circuit-test compilation to require
+  Circom O2 optimization explicitly. Compiled subcircuit inputs are retained
+  as standalone public inputs during generation so O2 cannot eliminate wires
+  required by the composition interface; final proof visibility remains
+  defined by the qap composition metadata.
 - Added the input-only `EqualBatch` subcircuit to the qap-compiler circuit set.
   It constrains equality between two batches of two 256-bit values, with
   `nEqualBatch` fixed to `2`.

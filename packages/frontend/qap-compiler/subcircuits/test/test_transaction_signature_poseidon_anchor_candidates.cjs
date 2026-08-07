@@ -37,7 +37,7 @@ const compileAndMeasure = (packageRoot, outputRoot, name) => {
     "--r1cs",
     "--sym",
     "--inspect",
-    "--O1",
+    "--O2",
     "--prime",
     "bls12381",
     "-l",
@@ -98,19 +98,19 @@ const main = async () => {
 
     assert.deepEqual(
       { nonlinear: poseidon.nonlinear, linear: poseidon.linear },
-      { nonlinear: 240, linear: 384 },
+      { nonlinear: 237, linear: 0 },
     );
     assert.deepEqual(
       { nonlinear: anchor.nonlinear, linear: anchor.linear },
-      { nonlinear: 496, linear: 389 },
+      { nonlinear: 493, linear: 0 },
     );
     assert.deepEqual(
       { nonlinear: composition.nonlinear, linear: composition.linear },
-      { nonlinear: 751, linear: 391 },
+      { nonlinear: 748, linear: 0 },
     );
-    assert.equal(anchor.nonlinear + anchor.linear, 885);
-    assert.equal(composition.nonlinear + composition.linear, 1142);
-    assert.equal(composition.nonlinear + composition.linear, 257 + 885);
+    assert.equal(anchor.nonlinear + anchor.linear, 493);
+    assert.equal(composition.nonlinear + composition.linear, 748);
+    assert.equal(composition.nonlinear + composition.linear, 255 + 493);
 
     assert.deepEqual(
       {
@@ -135,14 +135,14 @@ const main = async () => {
           packageRoot,
           "subcircuits/test/circom/transaction_signature_poseidon_anchor_candidate_test.circom",
         ),
-        { include: path.join(packageRoot, "node_modules"), prime: "bls12381", O: 1 },
+        { include: path.join(packageRoot, "node_modules"), prime: "bls12381", O: 2 },
       ),
       wasm(
         path.join(
           packageRoot,
           "subcircuits/test/circom/transaction_signature_poseidon_anchor_composition_test.circom",
         ),
-        { include: path.join(packageRoot, "node_modules"), prime: "bls12381", O: 1 },
+        { include: path.join(packageRoot, "node_modules"), prime: "bls12381", O: 2 },
       ),
     ]);
 
@@ -193,7 +193,7 @@ const main = async () => {
     );
 
     console.log(
-      "Representative Poseidon anchor preserves the 1,142-constraint composed relation with a 3-input, 1-output, 885-constraint anchor",
+      "Representative Poseidon anchor preserves the 748-constraint O2-composed relation with a 3-input, 1-output, 493-constraint anchor",
     );
   } finally {
     rmSync(outputRoot, { recursive: true, force: true });

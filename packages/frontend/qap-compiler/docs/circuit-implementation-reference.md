@@ -142,10 +142,16 @@ included. The values describe the current source tree, not necessarily the
 contents of an older installed package or the checked-in generated library.
 
 Constraint counts were measured from the current source with Circom 2.2.3,
-the compiler's default optimization, the BLS12-381 scalar field, and the
+explicit O2 optimization, the BLS12-381 scalar field, and the
 production target list in `scripts/compile.sh`. A total is the sum of the
 reported nonlinear and linear constraints. Re-run the production compile
 before relying on these numbers after any source or constant change.
+
+O2 may eliminate a private signal that is used only through linear relations.
+Every compiled subcircuit wrapper therefore exposes its intended physical
+inputs as temporary public inputs to Circom. The final composition layer still
+assigns actual proof visibility; this standalone compiler annotation exists
+only to preserve every reviewed subcircuit interface wire during O2.
 
 Wire counts are physical scalar-field wires. Interface counts do not include
 the local constant-one wire. Every 256-bit word uses this order:
@@ -200,27 +206,27 @@ input and intermediate result as a separate public value.
 
 | Subcircuit | Operation or role | Constraints (nonlinear + linear = total) | Private interface | Status |
 | --- | --- | ---: | --- | --- |
-| `ALU1` | `ADD`, `MUL`, `SUB`, `EQ`, `ISZERO`, `NOT` selected by the EVM selector | 965 + 39 = 1,004 | 5 inputs: selector, two words; 2 outputs: one word | Locally sound. The wrapper constrains both input words, the selected result, and supported selectors. Unary operations receive a constrained zero second operand from the composition definition. |
-| `ALU2` | Unsigned `LT`, `GT` | 784 + 27 = 811 | 5 inputs: selector, two words; 2 outputs: one word | Locally sound. Both words are canonical and the selector is restricted to the two supported values. |
-| `ALU3` | Signed `SLT`, `SGT` | 782 + 21 = 803 | 5 inputs: selector, two words; 2 outputs: one word | Locally sound. Both words and their sign bits are constrained locally. |
-| `AND` | Bitwise `AND` | 768 + 7 = 775 | 5 inputs: selector, two words; 2 outputs: one word | Locally sound. Both operands are bit-decomposed and the selector is fixed. |
-| `OR` | Bitwise `OR` | 768 + 7 = 775 | 5 inputs: selector, two words; 2 outputs: one word | Locally sound. Both operands are bit-decomposed and the selector is fixed. |
-| `XOR` | Bitwise `XOR` | 768 + 7 = 775 | 5 inputs: selector, two words; 2 outputs: one word | Locally sound. Both operands are bit-decomposed and the selector is fixed. |
-| `ALU4A` | First half of `DIV`, `MOD`, `SDIV`, `SMOD` | 673 + 47 = 720 | 5 inputs: selector, dividend word, divisor word; 13 outputs | Composition-dependent; never use as an independent EVM operation. It must be followed by `ALU4B` with all 13 outputs connected exactly. |
-| `ALU4B` | Second half of `DIV`, `MOD`, `SDIV`, `SMOD` | 802 + 32 = 834 | 13 inputs; 2 outputs: one word | Composition-dependent; never use independently. Its inputs must be the exact `ALU4A` outputs from the same operation. |
-| `SIGNEXTEND` | Full-domain EVM `SIGNEXTEND` | 637 + 73 = 710 | 5 inputs: selector, index word, value word; 2 outputs: one word | Locally sound, including indices greater than or equal to 32. |
-| `BYTE` | Full-domain EVM `BYTE` | 546 + 39 = 585 | 5 inputs: selector, index word, value word; 2 outputs: one word | Locally sound, including indices greater than or equal to 32. |
-| `SHL` | Full-domain EVM logical left shift | 921 + 22 = 943 | 5 inputs: selector, shift word, value word; 2 outputs: one word | Locally sound, including shifts greater than or equal to 256. |
-| `ALU6` | Full-domain EVM `SHR`, `SAR` | 942 + 58 = 1,000 | 5 inputs: selector, shift word, value word; 2 outputs: one word | Locally sound. `SHR` and `SAR` share the constrained right-shift core; `SAR` adds sign fill locally. |
-| `CheckBus256` | Proves that both limbs form a canonical 256-bit word | 258 + 8 = 266 | 2 inputs: one word; no outputs | Locally sound as a range assertion. It is also a mandatory support placement for the first operand of `ADDMOD` and `MULMOD`. |
-| `ADDMOD` | EVM full-precision addition followed by modular reduction | 836 + 139 = 975 | 7 inputs: selector, three words; 2 outputs: one word | **Incomplete.** It also requires an adjacent `CheckBus256` on the exact first operand, but that topology does not resolve the outstanding local modular-reduction soundness work. |
-| `MULMOD` | EVM full-precision multiplication followed by modular reduction | 848 + 173 = 1,021 | 7 inputs: selector, three words; 2 outputs: one word | **Incomplete.** It also requires an adjacent `CheckBus256` on the exact first operand, and the current local full-product/reduction relation still requires remediation. |
+| `ALU1` | `ADD`, `MUL`, `SUB`, `EQ`, `ISZERO`, `NOT` selected by the EVM selector | 963 + 0 = 963 | 5 inputs: selector, two words; 2 outputs: one word | Locally sound. The wrapper constrains both input words, the selected result, and supported selectors. Unary operations receive a constrained zero second operand from the composition definition. |
+| `ALU2` | Unsigned `LT`, `GT` | 780 + 1 = 781 | 5 inputs: selector, two words; 2 outputs: one word | Locally sound. Both words are canonical and the selector is restricted to the two supported values. |
+| `ALU3` | Signed `SLT`, `SGT` | 780 + 1 = 781 | 5 inputs: selector, two words; 2 outputs: one word | Locally sound. Both words and their sign bits are constrained locally. |
+| `AND` | Bitwise `AND` | 768 + 1 = 769 | 5 inputs: selector, two words; 2 outputs: one word | Locally sound. Both operands are bit-decomposed and the selector is fixed. |
+| `OR` | Bitwise `OR` | 768 + 1 = 769 | 5 inputs: selector, two words; 2 outputs: one word | Locally sound. Both operands are bit-decomposed and the selector is fixed. |
+| `XOR` | Bitwise `XOR` | 768 + 1 = 769 | 5 inputs: selector, two words; 2 outputs: one word | Locally sound. Both operands are bit-decomposed and the selector is fixed. |
+| `ALU4A` | First half of `DIV`, `MOD`, `SDIV`, `SMOD` | 673 + 0 = 673 | 5 inputs: selector, dividend word, divisor word; 13 outputs | Composition-dependent; never use as an independent EVM operation. It must be followed by `ALU4B` with all 13 outputs connected exactly. |
+| `ALU4B` | Second half of `DIV`, `MOD`, `SDIV`, `SMOD` | 802 + 0 = 802 | 13 inputs; 2 outputs: one word | Composition-dependent; never use independently. Its inputs must be the exact `ALU4A` outputs from the same operation. |
+| `SIGNEXTEND` | Full-domain EVM `SIGNEXTEND` | 637 + 1 = 638 | 5 inputs: selector, index word, value word; 2 outputs: one word | Locally sound, including indices greater than or equal to 32. |
+| `BYTE` | Full-domain EVM `BYTE` | 546 + 2 = 548 | 5 inputs: selector, index word, value word; 2 outputs: one word | Locally sound, including indices greater than or equal to 32. |
+| `SHL` | Full-domain EVM logical left shift | 921 + 1 = 922 | 5 inputs: selector, shift word, value word; 2 outputs: one word | Locally sound, including shifts greater than or equal to 256. |
+| `ALU6` | Full-domain EVM `SHR`, `SAR` | 942 + 0 = 942 | 5 inputs: selector, shift word, value word; 2 outputs: one word | Locally sound. `SHR` and `SAR` share the constrained right-shift core; `SAR` adds sign fill locally. |
+| `CheckBus256` | Proves that both limbs form a canonical 256-bit word | 256 + 0 = 256 | 2 inputs: one word; no outputs | Locally sound as a range assertion. It is also a mandatory support placement for the first operand of `ADDMOD` and `MULMOD`. |
+| `ADDMOD` | EVM full-precision addition followed by modular reduction | 832 + 1 = 833 | 7 inputs: selector, three words; 2 outputs: one word | **Incomplete.** It also requires an adjacent `CheckBus256` on the exact first operand, but that topology does not resolve the outstanding local modular-reduction soundness work. |
+| `MULMOD` | EVM full-precision multiplication followed by modular reduction | 844 + 1 = 845 | 7 inputs: selector, three words; 2 outputs: one word | **Incomplete.** It also requires an adjacent `CheckBus256` on the exact first operand, and the current local full-product/reduction relation still requires remediation. |
 | `DecToBit` | Decomposes one canonical 256-bit word into 256 LSB-first bits | 256 + 2 = 258 | 2 inputs: one word; 256 bit outputs | Locally sound. It supplies exponent or scalar bits to composed exponentiation chains. |
-| `SubExpBatch` | Eight LSB-first square-and-multiply steps for EVM `EXP` | 328 + 656 = 984 | 12 inputs: accumulator word, base-power word, 8 bits; 4 outputs: next accumulator and base-power words | **Incomplete.** The intended chain is defined below, but the current unsafe multiplication relation and bus contract still require local remediation. |
-| `Accumulator` | Adds 32 256-bit memory-slice words | 320 + 70 = 390 | 64 inputs: 32 words; 2 outputs: one word | Composition-dependent and pending hardening. Every input must come from the approved canonical shift-and-mask path, and the composition must exclude overflow; direct unchecked producers are not allowed. |
-| `Poseidon` | Selector-chosen chain of two-input Poseidon compressions; current batch size is 1 | 244 + 389 = 633 | 5 inputs: selector and two split 255-bit values; 2 outputs: one split 255-bit value | Composition-dependent for canonical split-field encoding. The hash relation is local, but unique 255-bit encodings must be guaranteed by connected producers or the public-boundary verifier. |
-| `JubjubExpBatch` | Advances Jubjub accumulator and doubled base through 37 scalar bits | 925 + 82 = 1,007 | 45 inputs: two split points and 37 bits; 8 outputs: two split points | Composition-dependent. It is sound for the intended system use only in the seeded serial chain ending in `EdDsaVerify`. |
-| `EdDsaVerify` | Checks three curve points and `sG = R + eA` | 19 + 7 = 26 | 12 inputs: three split Jubjub points; no outputs | Composition-dependent. It is a terminal group-relation check, not a standalone EdDSA statement and not meaningful without the signature composition described below. |
+| `SubExpBatch` | Eight LSB-first square-and-multiply steps for EVM `EXP` | 328 + 0 = 328 | 12 inputs: accumulator word, base-power word, 8 bits; 4 outputs: next accumulator and base-power words | **Incomplete.** The intended chain is defined below, but the current unsafe multiplication relation and bus contract still require local remediation. |
+| `Accumulator` | Adds 32 256-bit memory-slice words | 318 + 0 = 318 | 64 inputs: 32 words; 2 outputs: one word | Composition-dependent and pending hardening. Every input must come from the approved canonical shift-and-mask path, and the composition must exclude overflow; direct unchecked producers are not allowed. |
+| `Poseidon` | Selector-chosen chain of two-input Poseidon compressions; current batch size is 1 | 238 + 1 = 239 | 5 inputs: selector and two split 255-bit values; 2 outputs: one split 255-bit value | Composition-dependent for canonical split-field encoding. The hash relation is local, but unique 255-bit encodings must be guaranteed by connected producers or the public-boundary verifier. |
+| `JubjubExpBatch` | Advances Jubjub accumulator and doubled base through 37 scalar bits | 925 + 0 = 925 | 45 inputs: two split points and 37 bits; 8 outputs: two split points | Composition-dependent. It is sound for the intended system use only in the seeded serial chain ending in `EdDsaVerify`. |
+| `EdDsaVerify` | Checks three curve points and `sG = R + eA` | 19 + 0 = 19 | 12 inputs: three split Jubjub points; no outputs | Composition-dependent. It is a terminal group-relation check, not a standalone EdDSA statement and not meaningful without the signature composition described below. |
 | `EqualBatch` | Enforces two pairs of 256-bit words to be equal | 8 + 0 = 8 | 8 inputs: two left words followed by two right words; no outputs | Locally sound as limb equality. Storage consistency additionally depends on the composition layer routing the current and cached address/key values to the corresponding positions. |
 
 ## Mandatory and conditional composition contracts

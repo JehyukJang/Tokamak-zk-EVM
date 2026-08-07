@@ -105,7 +105,7 @@ for (( i = 0 ; i < ${#names[@]} ; i++ )) ; do
 
   (
     cd "$circom_work_dir"
-    "${circom_cmd[@]}" "${package_root}/subcircuits/circom/${names[$i]}_circuit.circom" --r1cs --wasm --json --sym -o "$output_dir_path" -p "$CURVE_NAME" "${include_args[@]}"
+    "${circom_cmd[@]}" "${package_root}/subcircuits/circom/${names[$i]}_circuit.circom" --r1cs --wasm --json --sym --O2 -o "$output_dir_path" -p "$CURVE_NAME" "${include_args[@]}"
   ) | tee "$output_dir_path/info/subcircuit${i}_${names[$i]}_info.txt"
   cat "$output_dir_path/info/subcircuit${i}_${names[$i]}_info.txt" >> "$compiler_output_file"
   mv "$output_dir_path/${names[$i]}_circuit_constraints.json" "$output_dir_path/json/subcircuit${i}.json"

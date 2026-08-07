@@ -18,4 +18,4 @@ template EdDsaVerify() {
     ];
 }
 
-component main = EdDsaVerify();
+component main {public [in]} = EdDsaVerify();

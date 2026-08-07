@@ -26,7 +26,9 @@ More concretely:
 The maintainer-side flow is:
 
 1. Sync `subcircuits/circom/constants.circom` from the published `tokamak-l2js` dependency.
-2. Build the generated subcircuit library into `subcircuits/library`.
+2. Build the generated subcircuit library into `subcircuits/library`. The build
+   invokes Circom with explicit O2 optimization; compiler-default, O0, and O1
+   artifacts are not valid library outputs or constraint-measurement baselines.
 3. Assemble the publishable `dist` package from the generated library, synced constants, package metadata, and the consumer-facing README.
 4. Publish `dist` to npm.
 

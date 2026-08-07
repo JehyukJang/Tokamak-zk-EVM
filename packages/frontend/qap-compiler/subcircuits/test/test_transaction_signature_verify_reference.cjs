@@ -214,7 +214,7 @@ const main = async () => {
     {
       include: path.join(packageRoot, "node_modules"),
       prime: "bls12381",
-      O: 1,
+      O: 2,
     },
   );
 
@@ -237,7 +237,7 @@ const main = async () => {
     {
       include: path.join(packageRoot, "node_modules"),
       prime: "bls12381",
-      O: 1,
+      O: 2,
     },
   );
 

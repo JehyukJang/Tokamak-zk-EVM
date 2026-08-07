@@ -187,6 +187,7 @@ const main = async () => {
     {
       include: path.join(packageRoot, "node_modules"),
       prime: "bls12381",
+      O: 2,
     },
   );
   const mutationInput = {

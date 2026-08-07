@@ -30,7 +30,7 @@ const compileAndMeasure = (packageRoot, outputRoot, name) => {
     source,
     "--r1cs",
     "--inspect",
-    "--O1",
+    "--O2",
     "--prime",
     "bls12381",
     "-l",
@@ -76,10 +76,10 @@ const main = async () => {
     const fieldBound = compileAndMeasure(packageRoot, outputRoot, "field_bound_candidate");
     const partition = compileAndMeasure(packageRoot, outputRoot, "partition_candidate");
 
-    assert.deepEqual(merge, { nonlinear: 0, linear: 1 });
-    assert.deepEqual(lowCheck, { nonlinear: 128, linear: 1 });
-    assert.deepEqual(highCheck, { nonlinear: 127, linear: 1 });
-    assert.deepEqual(fieldBound, { nonlinear: 256, linear: 4 });
+    assert.deepEqual(merge, { nonlinear: 0, linear: 0 });
+    assert.deepEqual(lowCheck, { nonlinear: 128, linear: 0 });
+    assert.deepEqual(highCheck, { nonlinear: 127, linear: 0 });
+    assert.deepEqual(fieldBound, { nonlinear: 256, linear: 0 });
     assert.equal(
       merge.nonlinear
         + lowCheck.nonlinear
@@ -91,7 +91,7 @@ const main = async () => {
       merge.linear + lowCheck.linear + highCheck.linear + fieldBound.linear,
       partition.linear,
     );
-    assert.deepEqual(partition, { nonlinear: 511, linear: 7 });
+    assert.deepEqual(partition, { nonlinear: 511, linear: 0 });
 
     const [mergeCircuit, partitionCircuit] = await Promise.all([
       wasm(
@@ -99,14 +99,14 @@ const main = async () => {
           packageRoot,
           "subcircuits/test/circom/transaction_signature_native_evm_word_merge_candidate_test.circom",
         ),
-        { include: path.join(packageRoot, "node_modules"), prime: "bls12381", O: 1 },
+        { include: path.join(packageRoot, "node_modules"), prime: "bls12381", O: 2 },
       ),
       wasm(
         path.join(
           packageRoot,
           "subcircuits/test/circom/transaction_signature_native_evm_word_partition_candidate_test.circom",
         ),
-        { include: path.join(packageRoot, "node_modules"), prime: "bls12381", O: 1 },
+        { include: path.join(packageRoot, "node_modules"), prime: "bls12381", O: 2 },
       ),
     ]);
 

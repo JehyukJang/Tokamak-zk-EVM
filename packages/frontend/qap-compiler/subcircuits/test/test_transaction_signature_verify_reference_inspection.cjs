@@ -27,7 +27,7 @@ const main = () => {
       "--r1cs",
       "--sym",
       "--inspect",
-      "--O1",
+      "--O2",
       "--prime",
       "bls12381",
       "-l",
@@ -41,12 +41,12 @@ const main = () => {
     const output = stripAnsi(`${result.stdout ?? ""}${result.stderr ?? ""}`);
 
     assert.equal(result.status, 0, output);
-    assert.match(output, /non-linear constraints: 29726\b/);
-    assert.match(output, /linear constraints: 14368\b/);
+    assert.match(output, /non-linear constraints: 29615\b/);
+    assert.match(output, /linear constraints: 3\b/);
     assert.match(output, /public inputs: 5\b/);
     assert.match(output, /private inputs: 34\b/);
     assert.match(output, /public outputs: 64\b/);
-    assert.match(output, /wires: 44035\b/);
+    assert.match(output, /wires: 29559\b/);
     assert.match(output, /labels: 75506\b/);
 
     const expectedWarnings = [
@@ -124,7 +124,7 @@ const main = () => {
       [68, "main.O[0]"],
       [69, "main.O[1]"],
       ...Array.from(
-        { length: 34 },
+        { length: 5 },
         (_, inputIndex) => [70 + inputIndex, `main.privateIn[${inputIndex}]`],
       ),
     ];
@@ -134,9 +134,15 @@ const main = () => {
         new RegExp(`^\\d+,${wireIndex},\\d+,${escapeRegExp(signalName)}$`, "m"),
       );
     }
+    for (let inputIndex = 5; inputIndex < 34; inputIndex++) {
+      assert.match(
+        symbols,
+        new RegExp(`^\\d+,-1,\\d+,${escapeRegExp(`main.privateIn[${inputIndex}]`)}$`, "m"),
+      );
+    }
 
     console.log(
-      "Transaction signature reference inspection matched the frozen constraint graph and approved warning inventory",
+      "Transaction signature reference inspection matched the O2 constraint graph, substitutions, and approved warning inventory",
     );
   } finally {
     rmSync(outputDirectory, { recursive: true, force: true });

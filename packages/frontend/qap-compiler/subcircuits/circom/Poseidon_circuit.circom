@@ -17,4 +17,4 @@ template PoseidonTokamak(N, M) {
 
 }
 
-component main = PoseidonTokamak(nPoseidonInputs(), nPoseidonBatch());
+component main {public [in]} = PoseidonTokamak(nPoseidonInputs(), nPoseidonBatch());

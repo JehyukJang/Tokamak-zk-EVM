@@ -22,4 +22,4 @@ template SubExpBatch(N) {
     // CheckBus256()(a_next);
 }
 
-component main = SubExpBatch(nSubExpBatch());
+component main {public [in]} = SubExpBatch(nSubExpBatch());
