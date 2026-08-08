@@ -34,8 +34,8 @@ template SubExpBatch(N) {
     signal bits[N];
     signal factorWords[N][4];
     for (var step = 0; step < N; step++) {
+        // The EXP composition connects these inputs to DecToBit outputs.
         bits[step] <== in[4 + step];
-        bits[step] * (bits[step] - 1) === 0;
 
         factorWords[step][0]
             <== 1 - bits[step]
@@ -45,9 +45,8 @@ template SubExpBatch(N) {
                 <== bits[step] * basePowerWords[step][word];
         }
 
-        square[step] = Mul256TruncatedFrom64_unsafe();
-        square[step].in1 <== basePowerWords[step];
-        square[step].in2 <== basePowerWords[step];
+        square[step] = Square256TruncatedFrom64_unsafe();
+        square[step].in <== basePowerWords[step];
 
         accumulate[step] = Mul256TruncatedFrom64_unsafe();
         accumulate[step].in1 <== accumulatorWords[step];

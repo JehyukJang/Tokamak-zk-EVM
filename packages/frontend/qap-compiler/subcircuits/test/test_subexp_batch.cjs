@@ -162,16 +162,6 @@ const main = async () => {
       `entry limb ${limb} must be canonical`,
     );
   }
-  for (let bitIndex = 0; bitIndex < BATCH_SIZE; bitIndex++) {
-    const bits = [...zeros];
-    bits[bitIndex] = 2n;
-    await assert.rejects(
-      circuit.calculateWitness(encodeInput(1n, 3n, bits), true),
-      undefined,
-      `bit ${bitIndex} must be boolean`,
-    );
-  }
-
   const mutationWitness = await assertBatch(
     circuit,
     WORD_MASK,
@@ -186,6 +176,7 @@ const main = async () => {
     "main.accumulatorWords[4][0]",
     "main.basePowerWords[4][2]",
     "main.factorWords[3][1]",
+    "main.square[3].product01",
   ];
   for (const signalName of mutationSignals) {
     const wireIndex = circuit.symbols[signalName]?.varIdx;
@@ -201,7 +192,7 @@ const main = async () => {
   }
 
   console.log(
-    `SubExpBatch passed ${BATCH_SIZE} bit positions, ${RANDOM_CASES} randomized batches, ${exponentiationCases.length} complete exponentiations, canonicality, Boolean-bit, and mutation checks`,
+    `SubExpBatch passed ${BATCH_SIZE} bit positions, ${RANDOM_CASES} randomized batches, ${exponentiationCases.length} complete exponentiations, canonicality, and mutation checks`,
   );
 };
 

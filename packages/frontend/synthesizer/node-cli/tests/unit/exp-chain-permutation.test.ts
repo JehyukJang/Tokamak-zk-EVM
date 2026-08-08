@@ -5,7 +5,12 @@ import { VariableGenerator } from '../../../core/src/circuitGenerator/handlers/v
 import { createArithmeticSubcircuitComposition } from '../../../core/src/subcircuit/arithmeticSubcircuitComposition.ts';
 import type { SubcircuitInfoByNameEntry } from '../../../core/src/subcircuit/configuredTypes.ts';
 import { ArithmeticManager } from '../../../core/src/synthesizer/handlers/arithmeticManager.ts';
-import type { DataPt } from '../../../core/src/synthesizer/types/dataStructure.ts';
+import {
+  BIT_LIMB_DATA_PT_TYPE,
+  EVM_WORD_DATA_PT_TYPE,
+  type DataPt,
+  type DataPtType,
+} from '../../../core/src/synthesizer/types/dataStructure.ts';
 import type { Placements, PlacementVariables } from '../../../core/src/synthesizer/types/placements.ts';
 
 const BUFFER_SUBCIRCUITS = [
@@ -22,10 +27,15 @@ const EXP_BATCH_COUNT = 256 / EXP_BATCH_SIZE;
 const DEC_TO_BIT_PLACEMENT = BUFFER_SUBCIRCUITS.length;
 const FIRST_BATCH_PLACEMENT = DEC_TO_BIT_PLACEMENT + 1;
 
-const dataPt = (value: bigint, source: number, wireIndex: number, sourceBitSize: number): DataPt => ({
+const dataPt = (
+  value: bigint,
+  source: number,
+  wireIndex: number,
+  dataPtType: DataPtType = EVM_WORD_DATA_PT_TYPE,
+): DataPt => ({
   source,
   wireIndex,
-  sourceBitSize,
+  dataPtType,
   value,
   valueHex: `0x${value.toString(16)}`,
 });
@@ -39,9 +49,9 @@ const createLogicalPlacements = (): { placements: Placements; result: DataPt } =
     outPts: [],
   }));
 
-  placements[5]!.outPts = [dataPt(1n, 5, 0, 1)];
-  const base = dataPt(3n, 6, 0, 256);
-  const exponent = dataPt(5n, 6, 1, 256);
+  placements[5]!.outPts = [dataPt(1n, 5, 0, BIT_LIMB_DATA_PT_TYPE)];
+  const base = dataPt(3n, 6, 0);
+  const exponent = dataPt(5n, 6, 1);
   placements[6]!.outPts = [base, exponent];
 
   const subcircuitInfoByName = new Map([
@@ -63,8 +73,8 @@ const createLogicalPlacements = (): { placements: Placements; result: DataPt } =
       jubjubExpBatchSize: 4,
     },
     state: { subcircuitInfoByName },
-    loadArbitraryStatic: vi.fn((value: bigint, sourceBitSize = 256) => {
-      const point = dataPt(value, 5, placements[5]!.outPts.length, sourceBitSize);
+    loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) => {
+      const point = dataPt(value, 5, placements[5]!.outPts.length, dataPtType);
       placements[5]!.outPts.push(point);
       return point;
     }),
@@ -192,7 +202,7 @@ describe('EXP chain physical permutation', () => {
     expect(result).toMatchObject({
       source: FIRST_BATCH_PLACEMENT + EXP_BATCH_COUNT - 1,
       wireIndex: 0,
-      sourceBitSize: 256,
+      dataPtType: EVM_WORD_DATA_PT_TYPE,
     });
 
     convertToCircuitWires(placements);

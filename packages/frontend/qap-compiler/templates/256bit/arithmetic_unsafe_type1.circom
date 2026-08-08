@@ -134,6 +134,38 @@ template Mul256TruncatedFrom64_unsafe() {
     rawHigh === out[1] + carryHigh * BASE128;
 }
 
+// Squares one canonical 256-bit word represented as four 64-bit words and
+// returns the result modulo 2^256. The caller must constrain every input word
+// to 64 bits and both output limbs to 128 bits.
+template Square256TruncatedFrom64_unsafe() {
+    var BASE64 = 1 << 64;
+    var BASE128 = 1 << 128;
+
+    signal input in[4];
+    signal output out[2];
+
+    signal square00 <== in[0] * in[0];
+    signal product01 <== in[0] * in[1];
+    signal product02 <== in[0] * in[2];
+    signal square11 <== in[1] * in[1];
+    signal product03 <== in[0] * in[3];
+    signal product12 <== in[1] * in[2];
+
+    signal rawLow <== square00 + BASE64 * (2 * product01);
+    signal carryLow <-- rawLow \ BASE128;
+    out[0] <-- rawLow % BASE128;
+    signal carryLowBits[65] <== Num2Bits(65)(carryLow);
+    rawLow === out[0] + carryLow * BASE128;
+
+    signal rawHigh <== carryLow
+        + 2 * product02 + square11
+        + BASE64 * (2 * product03 + 2 * product12);
+    signal carryHigh <-- rawHigh \ BASE128;
+    out[1] <-- rawHigh % BASE128;
+    signal carryHighBits[66] <== Num2Bits(66)(carryHigh);
+    rawHigh === out[1] + carryHigh * BASE128;
+}
+
 template Not256_unsafe() {
     signal input in[2];
     signal output out[2];

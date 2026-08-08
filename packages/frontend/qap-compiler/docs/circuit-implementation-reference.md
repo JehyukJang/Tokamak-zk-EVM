@@ -290,7 +290,7 @@ input and intermediate result as a separate public value.
 | `MULMODCandidate` | Canonicalizes the quotient and remainder candidates for the full-width reduction relation | 768 + 6 = 774 | 6 inputs: four quotient limbs and two remainder limbs; 12 outputs: eight quotient words and four remainder words | Composition-dependent; never use independently. Its six inputs must be the exact candidate outputs of `MULMODPrepare`, without host reconstruction or substitution. |
 | `MULMODVerify` | Proves the complete 512-bit multiplication and modular-reduction relation and returns the EVM result | 981 + 2 = 983 | 24 inputs: twelve operand words, eight quotient words, and four remainder words; 2 outputs: one word | Composition-dependent; never use independently. It proves `lhs * rhs = quotient * safeModulus + remainder`, enforces `remainder < safeModulus`, and uses a safe modulus of one so zero modulus returns zero. |
 | `DecToBit` | Decomposes one canonical 256-bit word into 256 LSB-first bits | 256 + 2 = 258 | 2 inputs: one word; 256 bit outputs | Locally sound. It supplies exponent or scalar bits to composed exponentiation chains. |
-| `SubExpBatch` | Eight LSB-first square-and-multiply steps for EVM `EXP` | 6,904 + 0 = 6,904 | 12 inputs: accumulator word, base-power word, 8 bits; 4 outputs: next accumulator and base-power words | Locally sound for one batch. Entry words and every carried state are canonical, each exponent input is Boolean, the conditional factor selects exactly one or the current base power, and both truncated products are constrained modulo `2^256`. |
+| `SubExpBatch` | Eight LSB-first square-and-multiply steps for EVM `EXP` | 6,864 + 0 = 6,864 | 12 inputs: accumulator word, base-power word, 8 bits; 4 outputs: next accumulator and base-power words | Composition-dependent. Entry words and every carried state are canonical locally, while each exponent bit must be the exact output of `DecToBit`. The conditional factor, specialized truncated square, and truncated accumulator product are constrained modulo `2^256`. |
 | `Accumulator` | Adds 32 256-bit memory-slice words | 318 + 0 = 318 | 64 inputs: 32 words; 2 outputs: one word | **Incomplete.** Every input must come from the approved canonical shift-and-mask path, direct unchecked producers are forbidden, and the current unsafe addition chain must be replaced by the planned bounded limb sum so overflow is constrained. |
 | `Poseidon` | Selector-chosen chain of up to four two-input Poseidon compressions over `uint(256)` words; current batch size is 4 | 964 + 0 = 964 | 11 inputs: selector and five lower-first `uint(256)` words; 2 outputs: one lower-first `uint(256)` word | Composition-dependent for exact limb representation. The local hash relation is `PoseidonFr(x mod Fr)` for each input word and intentionally does not require `x < Fr`; connected producers or the public-boundary verifier must constrain each physical limb to its declared width. |
 | `FrToLimbsPair` | Converts two independent native BLS12-381 scalar-field values to lower-first two-limb EVM words | 1,022 + 2 = 1,024 | 2 native-field inputs; 4 outputs: two lower-first limb pairs | Locally sound as two canonical conversions. Each input is constrained to its unique integer representation `0 ≤ x < Fr`; the circuit is general-purpose and is not part of the TSV placement catalog. |
@@ -389,9 +389,11 @@ Each later batch consumes the exact accumulator and base-power outputs of its
 predecessor and the next LSB-first bit group. Only the final accumulator is the
 EVM result; the final base-power output is discarded.
 
-Each batch is locally sound, but the complete EVM exponentiation still depends
-on this exact serial topology: the exponent bits must be consumed once in
-LSB-first order, and every state input must be the exact preceding output.
+Each batch depends on this exact serial topology. Every exponent-bit input must
+be the corresponding Boolean output of `DecToBit`, consumed once in LSB-first
+order, and every state input must be the exact preceding batch output. A
+`SubExpBatch` placement with an arbitrary bit producer is not an approved
+composition.
 
 ### Poseidon chain expansion
 

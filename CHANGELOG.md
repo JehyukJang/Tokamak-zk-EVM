@@ -52,6 +52,10 @@ The format is based on Keep a Changelog.
   a zero/nonzero condition while retaining canonical low-shift and value
   decompositions. Their composition contract now requires the connected
   producer to constrain that high wire as a 128-bit limb.
+- Reduced `SubExpBatch` from 6,904 to 6,864 optimized constraints by reusing
+  the Boolean exponent-bit guarantee from its mandatory `DecToBit` producer
+  and replacing generic multiplication with a symmetric truncated-square
+  relation for base-power updates.
 - Replaced the oversized single ADDMOD target with the composition-only
   `ADDMODPrepare` and `ADDMODVerify` targets. They use a field-safe radix-86
   reduction boundary, contain 944 and 959 optimized constraints respectively,
