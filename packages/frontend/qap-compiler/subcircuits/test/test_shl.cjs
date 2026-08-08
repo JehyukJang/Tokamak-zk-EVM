@@ -100,7 +100,7 @@ const main = async () => {
   }
 
   const invalidLimb = 1n << 128n;
-  for (let limb = 1; limb <= 4; limb++) {
+  for (const limb of [1, 3, 4]) {
     const input = [1n << 27n, 0n, 0n, 0n, 0n];
     input[limb] = invalidLimb;
     await assert.rejects(
@@ -109,6 +109,16 @@ const main = async () => {
       `non-canonical input limb ${limb} must be rejected`,
     );
   }
+  const nonCanonicalHighShiftWitness = await witnessCalculator.calculateWitness({
+    in: [
+      1n << 27n,
+      0n,
+      1n << 128n,
+      ...split256BitInteger(patternedValue),
+    ],
+  }, true);
+  assert.equal(BigInt(nonCanonicalHighShiftWitness[1].toString()), 0n);
+  assert.equal(BigInt(nonCanonicalHighShiftWitness[2].toString()), 0n);
   await assert.rejects(
     calculate(witnessCalculator, 1n << 28n, 1n, patternedValue),
     undefined,
@@ -137,8 +147,26 @@ const main = async () => {
     /Constraint doesn't match/,
   );
 
+  const oversizedWitness = await circuit.calculateWitness({
+    in: [1n << 27n, 0n, 1n << 128n, ...split256BitInteger(patternedValue)],
+  }, true);
+  assert.equal(BigInt(oversizedWitness[1].toString()), 0n);
+  assert.equal(BigInt(oversizedWitness[2].toString()), 0n);
+  const highIsZeroInverseSymbol = Object.keys(circuit.symbols).find((name) => (
+    name.endsWith(".shiftHighIsZero.inv")
+  ));
+  assert.notEqual(highIsZeroInverseSymbol, undefined);
+  const highIsZeroIndex = circuit.symbols[highIsZeroInverseSymbol]?.varIdx;
+  assert.notEqual(highIsZeroIndex, undefined);
+  const maliciousOversizedWitness = [...oversizedWitness];
+  maliciousOversizedWitness[highIsZeroIndex] = 1n;
+  await assert.rejects(
+    circuit.checkConstraints(maliciousOversizedWitness),
+    /Constraint doesn't match/,
+  );
+
   console.log(
-    `SHL passed ${boundaryShifts.length * boundaryValues.length} boundary cases, ${RANDOM_CASES} in-range and ${RANDOM_CASES} full-domain randomized cases, canonicality checks, and wrong-claim rejection`,
+    `SHL passed ${boundaryShifts.length * boundaryValues.length} boundary cases, ${RANDOM_CASES} in-range and ${RANDOM_CASES} full-domain randomized cases, constrained-limb checks, high-shift zero detection, and wrong-claim rejection`,
   );
 };
 
