@@ -99,6 +99,29 @@ template TSVCanonicalFrView() {
     out[256] <== high;
 }
 
+template TSVCanonicalFrBitsOnly() {
+    signal input in;
+    signal output bits[255];
+
+    component decomposition = Num2Bits(255);
+    decomposition.in <== in;
+
+    var lowExpression = 0;
+    var highExpression = 0;
+    for (var bit = 0; bit < 128; bit++) {
+        bits[bit] <== decomposition.out[bit];
+        lowExpression += decomposition.out[bit] * (1 << bit);
+    }
+    for (var bit = 128; bit < 255; bit++) {
+        bits[bit] <== decomposition.out[bit];
+        highExpression += decomposition.out[bit] * (1 << (bit - 128));
+    }
+
+    component fieldBound = StrictBls12381FrBoundFromLimbs();
+    fieldBound.low <== lowExpression;
+    fieldBound.high <== highExpression;
+}
+
 template TSVExtendedDouble_unsafe() {
     signal input point[4];
     signal output result[4];
@@ -530,6 +553,36 @@ template TransactionSignatureFixedPrefix70() {
     }
     for (var coordinate = 0; coordinate < 4; coordinate++) {
         out[42 + coordinate] <== fixedPrefix.next[coordinate];
+    }
+}
+
+template TransactionSignatureChallengeVariablePrefix() {
+    assert(nPrivateMessageInputs() == 29);
+    signal input in[9];
+    signal output out[226];
+
+    component challenge = TSVCanonicalFrBitsOnly();
+    challenge.in <== in[0];
+
+    signal table[4][2];
+    for (var digit = 0; digit < 4; digit++) {
+        for (var coordinate = 0; coordinate < 2; coordinate++) {
+            table[digit][coordinate] <== in[1 + digit * 2 + coordinate];
+        }
+    }
+
+    component variableStart = TSVVariableWindowBatch_unsafe(17, 1, 1);
+    for (var bit = 0; bit < 33; bit++) {
+        variableStart.bits[bit] <== challenge.bits[222 + bit];
+    }
+    variableStart.table <== table;
+    variableStart.previous <== [table[0][0], table[0][1], 1, table[0][0] * table[0][1]];
+
+    for (var bit = 0; bit < 222; bit++) {
+        out[bit] <== challenge.bits[bit];
+    }
+    for (var coordinate = 0; coordinate < 4; coordinate++) {
+        out[222 + coordinate] <== variableStart.next[coordinate];
     }
 }
 
