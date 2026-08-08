@@ -227,11 +227,11 @@ input and intermediate result as a separate public value.
 | `Poseidon` | Selector-chosen chain of two-input Poseidon compressions; current batch size is 1 | 238 + 1 = 239 | 5 inputs: selector and two split 255-bit values; 2 outputs: one split 255-bit value | Composition-dependent for canonical split-field encoding. The hash relation is local, but unique 255-bit encodings must be guaranteed by connected producers or the public-boundary verifier. |
 | `FrToLimbsPair` | Converts two independent native BLS12-381 scalar-field values to lower-first two-limb EVM words | 1,022 + 2 = 1,024 | 2 native-field inputs; 4 outputs: two lower-first limb pairs | Locally sound as two canonical conversions. Each input is constrained to its unique integer representation `0 ≤ x < Fr`; the circuit is general-purpose and is not part of the TSV placement catalog. |
 | `TransactionSignaturePoseidonBatch4` | Performs either four consecutive native-field Poseidon compressions or one independent compression plus a three-compression chain | 950 + 0 = 950 | 7 inputs: mode and six native field wires; 2 native-field outputs | Composition-dependent. Mode is locally Boolean, but the composition must assign the approved structural mode and connect every chain state exactly. |
-| `TransactionSignatureCanonicalFrView` | Produces the unique 255-bit decomposition and lower-first two-limb EVM view of one native BLS12-381 scalar-field value | 511 + 3 = 514 | 1 native-field input; 257 outputs: 255 bits and 2 limbs | Locally sound as a canonical conversion. Signature composition must use these exact outputs rather than reconstructing an equal host value. |
-| `TransactionSignaturePolicyFixedPrefix` | Checks contract width, validates `A` and `R`, applies cofactor policy, decomposes `S`, builds the variable-base table, and processes fixed-base windows 0–36 | 891 + 5 = 896 | 9 inputs; 161 outputs | Composition-dependent. Solidity must bind `S < n`, selector width, and the identity point; later signature placements must consume its exact bits, table, accumulators, and `R8`. |
-| `TransactionSignatureFixedVariableBridge` | Processes fixed-base windows 37–74 and variable-base windows 127–111 | 911 + 0 = 911 | 159 inputs; 8 extended-coordinate outputs | Composition-dependent. It consumes exact prefix outputs and the high 33 challenge bits from the canonical challenge view. |
+| `TransactionSignaturePointPolicy` | Checks contract width, validates `A` and `R`, applies the public-key cofactor policy, rejects an identity randomizer, builds the variable-base table, and computes `R8` | 238 + 5 = 243 | 8 inputs; 16 outputs: contract and selector limbs, 8 table coordinates, and 4 `R8` coordinates | Composition-dependent. Solidity must bind selector width and the identity point; later signature placements must consume the exact table and `R8` outputs. |
+| `TransactionSignatureFixedPrefix70` | Canonically decomposes `S` into 252 bits and processes fixed-base windows 0–69 | 1,016 + 0 = 1,016 | 1 native scalar input; 46 outputs: 42 remaining bits and 4 accumulator coordinates | Composition-dependent. Solidity must bind `S < n`, and `TransactionSignatureFinal` must consume its exact remaining bits and accumulator. |
+| `TransactionSignatureChallengeVariablePrefix` | Canonically decomposes the native challenge hash and processes variable-base windows 127–111 | 1,004 + 0 = 1,004 | 9 inputs: challenge plus 8 table coordinates; 226 outputs: 222 remaining bits and 4 accumulator coordinates | Composition-dependent. It must consume the exact final challenge hash and exact point-policy table; all later variable placements must consume its exact bits and accumulator. |
 | `TransactionSignatureVariableBatch` | Processes 34 two-bit variable-base windows while retaining the extended accumulator | 1,020 + 0 = 1,020 | 80 inputs; 4 extended-coordinate outputs | Composition-dependent. Exactly three serial placements consume disjoint descending challenge-bit ranges and the same exact runtime-table wires. |
-| `TransactionSignatureFinal` | Finishes both scalar multiplications, enforces the cofactored signature equation, and returns the 160-bit origin | 380 + 2 = 382 | 225 inputs; 2 origin limbs | Composition-dependent. It must receive both exact accumulator chains, `R8`, and bits 0–159 of the canonical public-key-hash view. |
+| `TransactionSignatureFinal` | Processes fixed-base windows 70–83 and variable-base windows 8–0, enforces the cofactored signature equation, canonically decomposes the public-key hash, and returns the 160-bit origin | 946 + 0 = 946 | 81 inputs; 2 origin limbs | Composition-dependent. It must receive the exact remaining response and challenge bits, both accumulator chains, runtime table, `R8`, and native public-key hash from the preceding placements. |
 | `EqualBatch` | Enforces two pairs of 256-bit words to be equal | 8 + 0 = 8 | 8 inputs: two left words followed by two right words; no outputs | Locally sound as limb equality. Storage consistency additionally depends on the composition layer routing the current and cached address/key values to the corresponding positions. |
 
 ## Mandatory and conditional composition contracts
@@ -294,7 +294,7 @@ split-field encoding remains a separate producer or public-boundary contract.
 ### Transaction-signature composition
 
 Transaction signature verification is one operation implemented by six
-compiled subcircuit types and 46 placements. The types are not six independent
+compiled subcircuit types and 16 placements. The types are not six independent
 signature schemes. Their exact ordered composition is the security boundary:
 
 1. Eight chain-mode `TransactionSignaturePoseidonBatch4` placements compute
@@ -302,38 +302,47 @@ signature schemes. Their exact ordered composition is the security boundary:
    hash and challenge hashes 32–34. This accounts for all 35 challenge
    compressions and the one public-key compression without using the general
    split-limb EVM `Poseidon` circuit.
-2. Twenty-nine `TransactionSignatureCanonicalFrView` placements convert the
-   signed private transaction inputs into the exact two-limb values later used
-   by EVM execution. Two more placements decompose the final challenge and the
-   public-key hash. The EVM path must consume the 29 conversion outputs; it must
-   not consume independently reconstructed limbs from the input buffer.
-3. One `TransactionSignaturePolicyFixedPrefix` placement owns point validity,
-   public-key subgroup policy, randomizer identity rejection, the 160-bit
-   contract check, response-scalar decomposition, fixed windows 0–36, the
-   runtime variable-base table, and `R8`.
-4. One `TransactionSignatureFixedVariableBridge` placement consumes response
-   bits 111–224 and challenge bits 222–254. It emits the fixed accumulator after
-   window 74 and the variable accumulator after the first 17 MSB-first windows.
+2. One `TransactionSignaturePointPolicy` placement owns point validity,
+   public-key cofactor policy, randomizer identity rejection, the 160-bit
+   contract check, selector limb projection, the runtime variable-base table,
+   and `R8`.
+3. One `TransactionSignatureFixedPrefix70` placement canonically decomposes
+   `S`, consumes response bits 0–209 in fixed-base windows 0–69, and exposes
+   only response bits 210–251 plus its four-coordinate accumulator.
+4. One `TransactionSignatureChallengeVariablePrefix` placement canonically
+   decomposes the exact final challenge hash, consumes challenge bits 222–254
+   in variable-base windows 127–111, and exposes only challenge bits 0–221 plus
+   its four-coordinate accumulator.
 5. Three serial `TransactionSignatureVariableBatch` placements consume
    challenge-bit ranges 154–221, 86–153, and 18–85, respectively. Every
    placement receives the same eight runtime-table wires and the exact previous
    four-wire accumulator.
-6. One `TransactionSignatureFinal` placement consumes response bits 225–251,
-   challenge bits 0–17, both final accumulator chains, the exact four-wire
-   `R8`, and public-key-hash bits 0–159. It enforces the cofactored equation and
-   exposes the lower-first two-limb origin result.
+6. One `TransactionSignatureFinal` placement consumes response bits 210–251,
+   challenge bits 0–17, both final accumulator chains, the exact runtime table,
+   exact four-wire `R8`, and exact native public-key hash. It processes the
+   remaining 14 fixed windows and 9 variable windows, enforces the cofactored
+   equation, canonically decomposes the hash internally, and exposes only the
+   lower-first two-limb origin result.
 
-For 29 private transaction inputs, the six distinct types contain 4,673 O2
-constraints and 5,150 R1CS wires in total. The 46 placements contain 29,733
-constraints before final cross-placement permutation, and the live internal
-boundary has 634 wire incidences. A diagnostic direct composition compiles to
-29,615 nonlinear plus 3 linear constraints, exactly matching the monolithic
-reference after O2.
+For 29 private transaction inputs, the six distinct types contain 5,179 O2
+constraints and 5,358 R1CS wires in total. The 16 placements contain 14,819
+constraints before final cross-placement permutation. Their declared
+interfaces contain 402 placement input ports and 320 placement output ports.
+A diagnostic direct composition compiles to 14,796 nonlinear plus 3 linear
+constraints, 14,827 wires, and 135,510 nonzero matrix entries. The direct
+composition and the monolithic reference accept and reject the same complete
+21-vector regression corpus and produce the same contract, selector, and
+origin outputs for every accepted vector.
 
 The circuit owns contract width, point validity, public-key cofactor policy,
-randomizer identity rejection, canonical transaction-input and challenge
-views, scalar arithmetic, the cofactored terminal equation, and origin
-derivation. The Solidity verifier must bind the exact public wires and enforce
+randomizer identity rejection, canonical challenge and public-key-hash views,
+scalar arithmetic, the cofactored terminal equation, and origin derivation.
+Transaction inputs remain native field wires during signature verification.
+When later EVM execution needs 256-bit words, the composition layer must place
+general `FrToLimbsPair` conversions on those exact authenticated input wires
+and must route only the conversion outputs into the EVM path; those conversions
+are deliberately outside the 16 signature placements. The Solidity verifier
+must bind the exact public wires and enforce
 `S < n`, `selector < 2^32`, and `O = (0, 1)`. These delegated checks are part of
 the complete statement and cannot be omitted. All native field operands and
 all intermediate accumulator coordinates remain private internal wires.
