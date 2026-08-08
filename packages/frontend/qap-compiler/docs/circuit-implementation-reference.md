@@ -260,8 +260,8 @@ input and intermediate result as a separate public value.
 | Subcircuit | Operation or role | Constraints (nonlinear + linear = total) | Private interface | Status |
 | --- | --- | ---: | --- | --- |
 | `ALU1` | `ADD`, `MUL`, `SUB`, `EQ`, `ISZERO`, `NOT` selected by the EVM selector | 963 + 0 = 963 | 5 inputs: selector, two words; 2 outputs: one word | Locally sound. The wrapper constrains both input words, the selected result, and supported selectors. Unary operations receive a constrained zero second operand from the composition definition. |
-| `ALU2` | Unsigned `LT`, `GT` | 780 + 1 = 781 | 5 inputs: selector, two words; 2 outputs: one word | Locally sound. Both words are canonical and the selector is restricted to the two supported values. |
-| `ALU3` | Signed `SLT`, `SGT` | 780 + 1 = 781 | 5 inputs: selector, two words; 2 outputs: one word | Locally sound. Both words and their sign bits are constrained locally. |
+| `ALU2` | `LT`, `GT`, `SLT`, `SGT`, `EQ`, and `ISZERO` | 793 + 1 = 794 | 5 inputs: selector, two words; 2 outputs: one word | Locally sound. Both words are canonical, signed and unsigned comparisons share the same constrained ordering data, equality is reused by `EQ`, `ISZERO` is checked locally, and the selector is restricted to the six supported values. |
+| `ALU3` | Signed `SLT`, `SGT` | 780 + 1 = 781 | 5 inputs: selector, two words; 2 outputs: one word | Transitional compiled target retained until the approved shared index/bitwise `ALU3` replacement. Its current signed comparisons remain locally sound but logical ownership has moved to `ALU2`. |
 | `AND` | Bitwise `AND` | 768 + 1 = 769 | 5 inputs: selector, two words; 2 outputs: one word | Locally sound. Both operands are bit-decomposed and the selector is fixed. |
 | `OR` | Bitwise `OR` | 768 + 1 = 769 | 5 inputs: selector, two words; 2 outputs: one word | Locally sound. Both operands are bit-decomposed and the selector is fixed. |
 | `XOR` | Bitwise `XOR` | 768 + 1 = 769 | 5 inputs: selector, two words; 2 outputs: one word | Locally sound. Both operands are bit-decomposed and the selector is fixed. |
