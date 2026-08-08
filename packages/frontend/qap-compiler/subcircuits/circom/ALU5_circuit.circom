@@ -1,7 +1,7 @@
 pragma circom 2.1.6;
 include "../../templates/256bit/alu_safe.circom";
 
-template ALU6_() {
+template ALU5_() {
     signal input in[5];
     signal output out[2];
     signal shift[2] <== [in[1], in[2]];
@@ -30,4 +30,4 @@ template ALU6_() {
     out[1] <== right.out[1] + applySignFill * adjustedFiller[1];
 }
 
-component main {public [in]} = ALU6_();
+component main {public [in]} = ALU5_();

@@ -28,9 +28,9 @@ const loadShiftRight = async () => {
   const subcircuitInfo = JSON.parse(
     readFileSync(path.join(libraryDir, "subcircuitInfo.json"), "utf8"),
   );
-  const shiftRightInfo = subcircuitInfo.find((entry) => entry.name === "ALU6");
+  const shiftRightInfo = subcircuitInfo.find((entry) => entry.name === "ALU5");
   if (shiftRightInfo === undefined) {
-    throw new Error("ALU6 subcircuit was not found in subcircuitInfo.json");
+    throw new Error("ALU5 subcircuit was not found in subcircuitInfo.json");
   }
   return builder(
     readFileSync(path.join(libraryDir, `wasm/subcircuit${shiftRightInfo.id}.wasm`)),
@@ -178,7 +178,7 @@ const main = async () => {
   );
   const packageRoot = path.join(__dirname, "../..");
   const circuit = await wasm(
-    path.join(packageRoot, "subcircuits/circom/ALU6_circuit.circom"),
+    path.join(packageRoot, "subcircuits/circom/ALU5_circuit.circom"),
     {
       include: path.join(packageRoot, "node_modules"),
       prime: "bls12381",
