@@ -526,13 +526,47 @@ export class ArithmeticOperations {
     return []
   }
 
-  static addmodSubcircuit(inVals: bigint[]): bigint {
-    return ArithmeticOperations.addmod(ArithmeticOperations._requireSelector(
+  static addmodPrepare(inVals: bigint[]): bigint[] {
+    const [lhs, rhs, modulus] = ArithmeticOperations._requireSelector(
       inVals,
       1n << 8n,
-      'ADDMOD',
+      'ADDMODPrepare',
       3,
-    ))
+    )
+    const wordMask = (1n << 64n) - 1n
+    const numerator = lhs + rhs
+    const safeModulus = modulus === 0n ? 1n : modulus
+    const quotient = numerator / safeModulus
+    const remainder = numerator % safeModulus
+    return [
+      numerator & wordMask,
+      numerator >> 64n & wordMask,
+      numerator >> 128n & wordMask,
+      numerator >> 192n & wordMask,
+      numerator >> 256n,
+      modulus & wordMask,
+      modulus >> 64n & wordMask,
+      modulus >> 128n & wordMask,
+      modulus >> 192n & wordMask,
+      modulus === 0n ? 1n : 0n,
+      quotient & wordMask,
+      quotient >> 64n & wordMask,
+      quotient >> 128n & wordMask,
+      quotient >> 192n & wordMask,
+      quotient >> 256n,
+      remainder & wordMask,
+      remainder >> 64n & wordMask,
+      remainder >> 128n & wordMask,
+      remainder >> 192n & wordMask,
+    ]
+  }
+
+  static addmodVerify(inVals: bigint[]): bigint {
+    ArithmeticOperations._requireSubcircuitInputs(inVals, 19, 'ADDMODVerify')
+    return inVals.slice(15, 19).reduce(
+      (value, word, index) => value + (word << BigInt(64 * index)),
+      0n,
+    )
   }
 
   static mulmodSubcircuit(inVals: bigint[]): bigint {

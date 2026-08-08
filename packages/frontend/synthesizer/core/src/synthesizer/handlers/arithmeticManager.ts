@@ -74,6 +74,29 @@ export class ArithmeticManager {
           BIT_LIMB_DATA_PT_TYPE,
         ]
         break
+      case 'ADDMODPrepare':
+        dataPtTypes = [
+          UINT64_LIMB_DATA_PT_TYPE,
+          UINT64_LIMB_DATA_PT_TYPE,
+          UINT64_LIMB_DATA_PT_TYPE,
+          UINT64_LIMB_DATA_PT_TYPE,
+          BIT_LIMB_DATA_PT_TYPE,
+          UINT64_LIMB_DATA_PT_TYPE,
+          UINT64_LIMB_DATA_PT_TYPE,
+          UINT64_LIMB_DATA_PT_TYPE,
+          UINT64_LIMB_DATA_PT_TYPE,
+          BIT_LIMB_DATA_PT_TYPE,
+          UINT64_LIMB_DATA_PT_TYPE,
+          UINT64_LIMB_DATA_PT_TYPE,
+          UINT64_LIMB_DATA_PT_TYPE,
+          UINT64_LIMB_DATA_PT_TYPE,
+          BIT_LIMB_DATA_PT_TYPE,
+          UINT64_LIMB_DATA_PT_TYPE,
+          UINT64_LIMB_DATA_PT_TYPE,
+          UINT64_LIMB_DATA_PT_TYPE,
+          UINT64_LIMB_DATA_PT_TYPE,
+        ]
+        break
     }
 
     const values = inPts.map((pt) => pt.value);
@@ -389,7 +412,8 @@ const ARITHMETIC_MAPPING: Record<ArithmeticSubcircuit, (values: bigint[]) => big
   SHL: ArithmeticOperations.shlSubcircuit,
   ALU6: ArithmeticOperations.alu6,
   CheckBus256: ArithmeticOperations.checkBus256,
-  ADDMOD: ArithmeticOperations.addmodSubcircuit,
+  ADDMODPrepare: ArithmeticOperations.addmodPrepare,
+  ADDMODVerify: ArithmeticOperations.addmodVerify,
   MULMOD: ArithmeticOperations.mulmodSubcircuit,
   DecToBit: ArithmeticOperations.decToBit,
   SubExpBatch: ArithmeticOperations.subExpBatch,

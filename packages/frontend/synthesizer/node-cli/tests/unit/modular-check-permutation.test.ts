@@ -5,7 +5,12 @@ import { VariableGenerator } from '../../../core/src/circuitGenerator/handlers/v
 import { createArithmeticSubcircuitComposition } from '../../../core/src/subcircuit/arithmeticSubcircuitComposition.ts';
 import type { SubcircuitInfoByNameEntry } from '../../../core/src/subcircuit/configuredTypes.ts';
 import { ArithmeticManager } from '../../../core/src/synthesizer/handlers/arithmeticManager.ts';
-import type { DataPt } from '../../../core/src/synthesizer/types/dataStructure.ts';
+import {
+  EVM_WORD_DATA_PT_TYPE,
+  UINT64_LIMB_DATA_PT_TYPE,
+  type DataPt,
+  type DataPtType,
+} from '../../../core/src/synthesizer/types/dataStructure.ts';
 import type { Placements, PlacementVariables } from '../../../core/src/synthesizer/types/placements.ts';
 
 const BUFFER_SUBCIRCUITS = [
@@ -20,10 +25,15 @@ const BUFFER_SUBCIRCUITS = [
 
 type ModularOperation = 'ADDMOD' | 'MULMOD';
 
-const dataPt = (value: bigint, source: number, wireIndex: number, sourceBitSize: number): DataPt => ({
+const dataPt = (
+  value: bigint,
+  source: number,
+  wireIndex: number,
+  dataPtType: DataPtType = EVM_WORD_DATA_PT_TYPE,
+): DataPt => ({
   source,
   wireIndex,
-  sourceBitSize,
+  dataPtType,
   value,
   valueHex: `0x${value.toString(16)}`,
 });
@@ -37,17 +47,17 @@ const createLogicalPlacements = (operation: ModularOperation): Placements => {
     outPts: [],
   }));
 
-  placements[5]!.outPts = [dataPt(1n, 5, 0, 1)];
+  placements[5]!.outPts = [dataPt(1n, 5, 0, UINT64_LIMB_DATA_PT_TYPE)];
 
-  const firstOperand = dataPt(5n, 6, 0, 256);
-  const secondOperand = dataPt(7n, 6, 1, 256);
-  const modulus = dataPt(10n, 6, 2, 256);
-  const duplicateFirstOperand = dataPt(5n, 6, 3, 256);
+  const firstOperand = dataPt(5n, 6, 0);
+  const secondOperand = dataPt(7n, 6, 1);
+  const modulus = dataPt(10n, 6, 2);
+  const duplicateFirstOperand = dataPt(5n, 6, 3);
   placements[6]!.outPts = [firstOperand, secondOperand, modulus, duplicateFirstOperand];
 
   // Equal-valued wires used only by mutation tests ensure that source and
   // wire-index identity are checked independently from the witness value.
-  placements[3]!.outPts = [dataPt(5n, 3, 0, 256)];
+  placements[3]!.outPts = [dataPt(5n, 3, 0)];
 
   const subcircuitInfoByName = new Map([
     [
@@ -59,15 +69,14 @@ const createLogicalPlacements = (operation: ModularOperation): Placements => {
         NOutWires: 0,
       },
     ],
-    [
-      operation,
-      {
-        id: 8,
-        name: operation,
-        NInWires: 7,
-        NOutWires: 2,
-      },
-    ],
+    ...(operation === 'ADDMOD'
+      ? [
+          ['ADDMODPrepare', { id: 8, name: 'ADDMODPrepare', NInWires: 7, NOutWires: 19 }],
+          ['ADDMODVerify', { id: 9, name: 'ADDMODVerify', NInWires: 19, NOutWires: 2 }],
+        ]
+      : [
+          ['MULMOD', { id: 8, name: 'MULMOD', NInWires: 7, NOutWires: 2 }],
+        ]),
   ]);
   const parent = {
     placements,
@@ -84,12 +93,12 @@ const createLogicalPlacements = (operation: ModularOperation): Placements => {
       jubjubExpBatchSize: 4,
     },
     state: { subcircuitInfoByName },
-    loadArbitraryStatic: vi.fn((value: bigint, sourceBitSize = 256) => {
-      const point = dataPt(value, 5, placements[5]!.outPts.length, sourceBitSize);
+    loadArbitraryStatic: vi.fn((value: bigint, dataPtType = EVM_WORD_DATA_PT_TYPE) => {
+      const point = dataPt(value, 5, placements[5]!.outPts.length, dataPtType);
       placements[5]!.outPts.push(point);
       return point;
     }),
-    place: vi.fn((name: 'CheckBus256' | ModularOperation, inPts: DataPt[], outPts: DataPt[], usage: string) => {
+    place: vi.fn((name: string, inPts: DataPt[], outPts: DataPt[], usage: string) => {
       placements.push({
         name,
         usage,
@@ -124,7 +133,7 @@ const assertExactModularInputs = (placements: Placements, operation: ModularOper
   const modular = placements[8]!;
 
   expect(checkBus.name).toBe('CheckBus256');
-  expect(modular.name).toBe(operation);
+  expect(modular.name).toBe(operation === 'ADDMOD' ? 'ADDMODPrepare' : operation);
   expect(checkBus.inPts).toHaveLength(2);
   expect(modular.inPts).toHaveLength(7);
   for (let limb = 0; limb < 2; limb++) {
@@ -133,8 +142,13 @@ const assertExactModularInputs = (placements: Placements, operation: ModularOper
     expect(privateInput.outPts[limb]).toMatchObject({
       source: 6,
       wireIndex: limb,
-      sourceBitSize: 256,
+      dataPtType: EVM_WORD_DATA_PT_TYPE,
     });
+  }
+  if (operation === 'ADDMOD') {
+    const prepare = placements[8]!;
+    const verify = placements[9]!;
+    expect(verify.inPts).toEqual(prepare.outPts);
   }
 };
 
@@ -146,7 +160,12 @@ const createPermutation = (placements: Placements, operation: ModularOperation) 
       NOutWires: name === 'bufferTxIn' ? 2 : name === 'bufferEVMIn' ? 2 : name === 'bufferPrvIn' ? 8 : 0,
     })),
     { name: 'CheckBus256' as const, NInWires: 2, NOutWires: 0 },
-    { name: operation, NInWires: 7, NOutWires: 2 },
+    ...(operation === 'ADDMOD'
+      ? [
+          { name: 'ADDMODPrepare' as const, NInWires: 7, NOutWires: 19 },
+          { name: 'ADDMODVerify' as const, NInWires: 19, NOutWires: 2 },
+        ]
+      : [{ name: 'MULMOD' as const, NInWires: 7, NOutWires: 2 }]),
   ];
   let nextGlobalWire = 0;
   const subcircuitInfoByName = new Map<string, SubcircuitInfoByNameEntry>();
@@ -208,7 +227,9 @@ describe('modular CheckBus256 physical permutation', () => {
       const { permutation, subcircuitInfoByName } = createPermutation(placements, operation);
       const privateInfo = subcircuitInfoByName.get('bufferPrvIn')!;
       const checkInfo = subcircuitInfoByName.get('CheckBus256')!;
-      const modularInfo = subcircuitInfoByName.get(operation)!;
+      const modularInfo = subcircuitInfoByName.get(
+        operation === 'ADDMOD' ? 'ADDMODPrepare' : operation,
+      )!;
       for (let limb = 0; limb < 2; limb++) {
         const producerWire = privateInfo.flattenMap[privateInfo.outWireIndex + limb];
         const checkWire = checkInfo.flattenMap[checkInfo.inWireIndex + limb];
@@ -235,13 +256,40 @@ describe('modular CheckBus256 physical permutation', () => {
     },
   );
 
+  it('connects every ADDMOD preparation wire to ADDMODVerify', () => {
+    const placements = createLogicalPlacements('ADDMOD');
+    convertToCircuitWires(placements);
+    assertExactModularInputs(placements, 'ADDMOD');
+
+    const { permutation, subcircuitInfoByName } = createPermutation(placements, 'ADDMOD');
+    const prepareInfo = subcircuitInfoByName.get('ADDMODPrepare')!;
+    const verifyInfo = subcircuitInfoByName.get('ADDMODVerify')!;
+
+    for (let index = 0; index < 19; index++) {
+      const prepareWire = prepareInfo.flattenMap[prepareInfo.outWireIndex + index];
+      const verifyWire = verifyInfo.flattenMap[verifyInfo.inWireIndex + index];
+      expect(permutation).toContainEqual({
+        row: prepareWire,
+        col: 8,
+        X: verifyWire,
+        Y: 9,
+      });
+      expect(permutation).toContainEqual({
+        row: verifyWire,
+        col: 9,
+        X: prepareWire,
+        Y: 8,
+      });
+    }
+  });
+
   it.each([
     ['ADDMOD', 'source'],
     ['ADDMOD', 'wireIndex'],
-    ['ADDMOD', 'sourceBitSize'],
+    ['ADDMOD', 'dataPtType'],
     ['MULMOD', 'source'],
     ['MULMOD', 'wireIndex'],
-    ['MULMOD', 'sourceBitSize'],
+    ['MULMOD', 'dataPtType'],
   ] as const)('detects a %s first-operand %s mutation after physical conversion', (operation, mutation) => {
     const placements = createLogicalPlacements(operation);
     if (mutation === 'source') {
@@ -249,7 +297,7 @@ describe('modular CheckBus256 physical permutation', () => {
     } else if (mutation === 'wireIndex') {
       placements[8]!.inPts[1] = placements[6]!.outPts[3]!;
     } else {
-      placements[6]!.outPts[0]!.sourceBitSize = 128;
+      placements[6]!.outPts[0]!.dataPtType = UINT64_LIMB_DATA_PT_TYPE;
     }
 
     convertToCircuitWires(placements);

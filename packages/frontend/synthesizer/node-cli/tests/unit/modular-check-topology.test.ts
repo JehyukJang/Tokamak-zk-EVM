@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createArithmeticSubcircuitComposition } from '../../../core/src/subcircuit/arithmeticSubcircuitComposition.ts';
 import { ArithmeticManager } from '../../../core/src/synthesizer/handlers/arithmeticManager.ts';
 import type { DataPt } from '../../../core/src/synthesizer/types/dataStructure.ts';
+import { EVM_WORD_DATA_PT_TYPE } from '../../../core/src/synthesizer/types/dataStructure.ts';
 
 type Placement = {
   name: string;
@@ -14,7 +15,7 @@ type Placement = {
 const dataPt = (value: bigint, source: number, wireIndex = 0): DataPt => ({
   source,
   wireIndex,
-  sourceBitSize: 256,
+  dataPtType: EVM_WORD_DATA_PT_TYPE,
   value,
   valueHex: `0x${value.toString(16)}`,
 });
@@ -25,7 +26,8 @@ const createHarness = (alu1Interface = { NInWires: 5, NOutWires: 2 }) => {
   const subcircuitInfo = [
     ['ALU1', { name: 'ALU1', ...alu1Interface }],
     ['CheckBus256', { name: 'CheckBus256', NInWires: 2, NOutWires: 0 }],
-    ['ADDMOD', { name: 'ADDMOD', NInWires: 7, NOutWires: 2 }],
+    ['ADDMODPrepare', { name: 'ADDMODPrepare', NInWires: 7, NOutWires: 19 }],
+    ['ADDMODVerify', { name: 'ADDMODVerify', NInWires: 19, NOutWires: 2 }],
     ['MULMOD', { name: 'MULMOD', NInWires: 7, NOutWires: 2 }],
   ] as const;
   const parent = {
@@ -45,9 +47,9 @@ const createHarness = (alu1Interface = { NInWires: 5, NOutWires: 2 }) => {
     state: {
       subcircuitInfoByName: new Map(subcircuitInfo),
     },
-    loadArbitraryStatic: vi.fn((value: bigint, sourceBitSize = 256) => ({
+    loadArbitraryStatic: vi.fn((value: bigint, dataPtType = EVM_WORD_DATA_PT_TYPE) => ({
       ...dataPt(value, 0, staticWireIndex++),
-      sourceBitSize,
+      dataPtType,
     })),
     place: vi.fn((name: string, inPts: DataPt[], outPts: DataPt[], usage: string) => {
       placements.push({ name, inPts, outPts, usage });
@@ -76,15 +78,21 @@ describe('modular CheckBus256 topology', () => {
 
     expect(result).toHaveLength(1);
     expect(result[0].value).toBe(expected);
-    expect(result[0].source).toBe(1);
-    expect(placements.map(({ name }) => name)).toEqual(['CheckBus256', operation]);
+    expect(result[0].source).toBe(operation === 'ADDMOD' ? 2 : 1);
+    expect(placements.map(({ name }) => name)).toEqual(operation === 'ADDMOD'
+      ? ['CheckBus256', 'ADDMODPrepare', 'ADDMODVerify']
+      : ['CheckBus256', 'MULMOD']);
     expect(placements[0].inPts).toHaveLength(1);
     expect(placements[0].outPts).toHaveLength(0);
     expect(placements[0].inPts[0]).toBe(firstOperand);
     expect(placements[1].inPts).toHaveLength(4);
-    expect(placements[1].outPts).toHaveLength(1);
+    expect(placements[1].outPts).toHaveLength(operation === 'ADDMOD' ? 19 : 1);
     expect(placements[1].inPts[0].value).toBe(operation === 'ADDMOD' ? 1n << 8n : 1n << 9n);
     expect(placements[1].inPts[1]).toBe(firstOperand);
+    if (operation === 'ADDMOD') {
+      expect(placements[2].inPts).toEqual(placements[1].outPts);
+      expect(placements[2].outPts).toHaveLength(1);
+    }
   });
 
   it('does not add CheckBus256 to an ordinary arithmetic placement', () => {

@@ -204,25 +204,160 @@ template Reduce512By256FromCanonical64() {
     remainderInRange === 1;
 }
 
-template AddMod256() {
+template AddMod257Prepare() {
+    var BASE64 = 1 << 64;
+
+    signal input selector;
     signal input in1[2], in2[2], modulus[2];
-    signal output out[2];
+    signal output numeratorWords[5];
+    signal output modulusWords[4];
+    signal output modulusIsZero;
+    signal output quotientWords[5];
+    signal output remainderWords[4];
+
+    selector === 1 << 8;
+    CheckBus256()(in2);
 
     signal (sum[2], sumCarry) <== Add256_unsafe()(in1, in2);
     component sumSplit[2];
-    signal numeratorWords[8];
+    component modulusSplit[2];
     for (var limb = 0; limb < 2; limb++) {
         sumSplit[limb] = Split128To64();
         sumSplit[limb].in <== sum[limb];
         numeratorWords[2 * limb] <== sumSplit[limb].words[0];
         numeratorWords[2 * limb + 1] <== sumSplit[limb].words[1];
+
+        modulusSplit[limb] = Split128To64();
+        modulusSplit[limb].in <== modulus[limb];
+        modulusWords[2 * limb] <== modulusSplit[limb].words[0];
+        modulusWords[2 * limb + 1] <== modulusSplit[limb].words[1];
     }
     numeratorWords[4] <== sumCarry;
-    for (var word = 5; word < 8; word++) {
-        numeratorWords[word] <== 0;
+    modulusIsZero <== IsZero256()(modulus);
+
+    signal numerator[4] <== [
+        numeratorWords[0] + BASE64 * numeratorWords[1],
+        numeratorWords[2] + BASE64 * numeratorWords[3],
+        numeratorWords[4],
+        0
+    ];
+    signal safeModulus[2] <== [
+        modulusWords[0] + BASE64 * modulusWords[1] + modulusIsZero,
+        modulusWords[2] + BASE64 * modulusWords[3]
+    ];
+
+    signal division[2][4] <-- _div512by256(numerator, safeModulus);
+    for (var limb = 0; limb < 2; limb++) {
+        quotientWords[2 * limb] <-- division[0][limb] % BASE64;
+        quotientWords[2 * limb + 1] <-- division[0][limb] \ BASE64;
+        remainderWords[2 * limb] <-- division[1][limb] % BASE64;
+        remainderWords[2 * limb + 1] <-- division[1][limb] \ BASE64;
+    }
+    quotientWords[4] <== division[0][2];
+
+    component quotientWordBits[3];
+    for (var word = 0; word < 3; word++) {
+        quotientWordBits[word] = Num2Bits(64);
+        quotientWordBits[word].in <== quotientWords[word];
+    }
+    quotientWords[4] * (quotientWords[4] - 1) === 0;
+}
+
+template AddMod257Verify() {
+    var BASE64 = 1 << 64;
+
+    signal input numeratorWords[5];
+    signal input modulusWords[4];
+    signal input modulusIsZero;
+    signal input quotientWords[5];
+    signal input remainderWords[4];
+    signal output remainder[2];
+
+    component quotientWordBits = Num2Bits(64);
+    quotientWordBits.in <== quotientWords[3];
+    component remainderWordBits[4];
+    for (var word = 0; word < 4; word++) {
+        remainderWordBits[word] = Num2Bits(64);
+        remainderWordBits[word].in <== remainderWords[word];
     }
 
-    out <== Reduce512By256FromCanonical64()(numeratorWords, modulus);
+    signal safeModulusWords[4] <== [
+        modulusWords[0] + modulusIsZero,
+        modulusWords[1],
+        modulusWords[2],
+        modulusWords[3]
+    ];
+
+    signal products[5][4];
+    for (var quotientWord = 0; quotientWord < 5; quotientWord++) {
+        for (var modulusWord = 0; modulusWord < 4; modulusWord++) {
+            products[quotientWord][modulusWord]
+                <== quotientWords[quotientWord]
+                * safeModulusWords[modulusWord];
+        }
+    }
+
+    var carryWidths[4] = [64, 65, 66, 66];
+    signal carry[4];
+    component carryBits[4];
+    for (var degree = 0; degree < 4; degree++) {
+        var coefficient = 0;
+        for (var quotientWord = 0; quotientWord < 5; quotientWord++) {
+            var modulusWord = degree - quotientWord;
+            if (modulusWord >= 0 && modulusWord < 4) {
+                coefficient += products[quotientWord][modulusWord];
+            }
+        }
+
+        var previousCarry = 0;
+        if (degree > 0) {
+            previousCarry = carry[degree - 1];
+        }
+        carry[degree] <-- (
+            coefficient + previousCarry + remainderWords[degree] - numeratorWords[degree]
+        ) \ BASE64;
+        coefficient + previousCarry + remainderWords[degree]
+            === numeratorWords[degree] + BASE64 * carry[degree];
+
+        carryBits[degree] = Num2Bits(carryWidths[degree]);
+        carryBits[degree].in <== carry[degree];
+    }
+
+    var degree4Coefficient = 0;
+    for (var quotientWord = 1; quotientWord < 5; quotientWord++) {
+        degree4Coefficient += products[quotientWord][4 - quotientWord];
+    }
+    degree4Coefficient + carry[3] === numeratorWords[4];
+
+    for (var degree = 5; degree < 8; degree++) {
+        var highCoefficient = 0;
+        for (var quotientWord = 0; quotientWord < 5; quotientWord++) {
+            var modulusWord = degree - quotientWord;
+            if (modulusWord >= 0 && modulusWord < 4) {
+                highCoefficient += products[quotientWord][modulusWord];
+            }
+        }
+        highCoefficient === 0;
+    }
+
+    remainder <== [
+        remainderWords[0] + BASE64 * remainderWords[1],
+        remainderWords[2] + BASE64 * remainderWords[3]
+    ];
+    signal safeModulus[2] <== [
+        safeModulusWords[0] + BASE64 * safeModulusWords[1],
+        safeModulusWords[2] + BASE64 * safeModulusWords[3]
+    ];
+    signal remainderLowerLess
+        <== LessThan(128)([remainder[0], safeModulus[0]]);
+    signal remainderUpperLess
+        <== LessThan(128)([remainder[1], safeModulus[1]]);
+    signal remainderUpperEqual
+        <== IsEqual()([remainder[1], safeModulus[1]]);
+    signal remainderInRange
+        <== remainderUpperLess
+        + remainderUpperEqual * remainderLowerLess;
+    remainderInRange === 1;
 }
 
 template MulMod256() {

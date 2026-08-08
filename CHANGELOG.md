@@ -54,6 +54,10 @@ The format is based on Keep a Changelog.
   producer to constrain that high wire as a 128-bit limb.
 - Added the input-only `CheckBus256` composition target required by `ADDMOD`
   and `MULMOD`.
+- Replaced the oversized single ADDMOD target with the composition-only
+  `ADDMODPrepare` and `ADDMODVerify` targets. They specialize reduction to the
+  exact 257-bit addition numerator and contain 972 and 864 optimized
+  constraints respectively.
 - Renamed the two-limb `CheckBus` template to `CheckBus256` and implemented it
   by composing two `CheckBus128` limb checks.
 - Simplified the local `MULMOD` zero-modulus range condition without relying
@@ -80,10 +84,10 @@ The format is based on Keep a Changelog.
   coordinated storage-cache and committed-log rollback path.
 - Changed every unsuccessful top-level transaction result, including REVERT
   and exceptional halts, to fail synthesis with the original EVM error.
-- Updated arithmetic dispatch for the final subcircuit set. Every `ADDMOD` and
-  `MULMOD` placement now immediately follows an input-only `CheckBus256`
-  placement connected to the same first-operand wire, and malformed modular
-  placement topology fails synthesis.
+- Updated arithmetic dispatch for the final subcircuit set. Every `ADDMOD`
+  uses `CheckBus256 -> ADDMODPrepare -> ADDMODVerify`, while every `MULMOD`
+  uses `CheckBus256 -> MULMOD`. The composition connects the exact first
+  operand and every ADDMOD intermediate without host reconstruction.
 
 ### Bug Fixes
 
@@ -96,10 +100,10 @@ The format is based on Keep a Changelog.
 - Replaced ALU3's absolute-value-based signed comparison with a direct
   two's-complement ordering relation that reuses constrained sign bits.
 - Replaced the truncated and under-constrained ADDMOD and MULMOD reductions
-  with full-width relations. ADDMOD now reduces its exact 257-bit sum, MULMOD
-  proves the complete 512-bit product, and both prove a bounded 512-by-256
-  quotient/remainder identity with canonical modulus, quotient, and remainder
-  words. A zero modulus is handled through reduction by one and returns zero.
+  with full-width relations. ADDMOD now proves its exact 257-bit sum through
+  two mandatory composition targets, while MULMOD proves the complete
+  512-bit product and reduction locally. Both constrain canonical modulus,
+  quotient, and remainder words; reduction by one handles a zero modulus.
 - Replaced the unsafe EVM exponentiation batch relation with canonical
   square-and-multiply state transitions. Each eight-bit batch now proves its
   entry limbs, Boolean exponent bits, conditional factor, truncated products,

@@ -1,0 +1,29 @@
+{
+  "inputs": [
+    { "name": "selector", "logicalType": { "kind": "uint", "bits": 32 } },
+    { "name": "lhs", "logicalType": { "kind": "uint", "bits": 256 } },
+    { "name": "rhs", "logicalType": { "kind": "uint", "bits": 256 } },
+    { "name": "modulus", "logicalType": { "kind": "uint", "bits": 256 } }
+  ],
+  "outputs": [
+    { "name": "numeratorWord0", "logicalType": { "kind": "uint", "bits": 64 } },
+    { "name": "numeratorWord1", "logicalType": { "kind": "uint", "bits": 64 } },
+    { "name": "numeratorWord2", "logicalType": { "kind": "uint", "bits": 64 } },
+    { "name": "numeratorWord3", "logicalType": { "kind": "uint", "bits": 64 } },
+    { "name": "numeratorWord4", "logicalType": { "kind": "uint", "bits": 1 } },
+    { "name": "modulusWord0", "logicalType": { "kind": "uint", "bits": 64 } },
+    { "name": "modulusWord1", "logicalType": { "kind": "uint", "bits": 64 } },
+    { "name": "modulusWord2", "logicalType": { "kind": "uint", "bits": 64 } },
+    { "name": "modulusWord3", "logicalType": { "kind": "uint", "bits": 64 } },
+    { "name": "modulusIsZero", "logicalType": { "kind": "uint", "bits": 1 } },
+    { "name": "quotientWord0", "logicalType": { "kind": "uint", "bits": 64 } },
+    { "name": "quotientWord1", "logicalType": { "kind": "uint", "bits": 64 } },
+    { "name": "quotientWord2", "logicalType": { "kind": "uint", "bits": 64 } },
+    { "name": "quotientWord3", "logicalType": { "kind": "uint", "bits": 64 } },
+    { "name": "quotientWord4", "logicalType": { "kind": "uint", "bits": 1 } },
+    { "name": "remainderWord0", "logicalType": { "kind": "uint", "bits": 64 } },
+    { "name": "remainderWord1", "logicalType": { "kind": "uint", "bits": 64 } },
+    { "name": "remainderWord2", "logicalType": { "kind": "uint", "bits": 64 } },
+    { "name": "remainderWord3", "logicalType": { "kind": "uint", "bits": 64 } }
+  ]
+}

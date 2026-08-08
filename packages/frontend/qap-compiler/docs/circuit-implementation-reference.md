@@ -167,8 +167,8 @@ The tables cover every production target in
 included. The values describe the current source tree, not necessarily the
 contents of an older installed package or the checked-in generated library.
 
-The production list currently contains 29 compiled subcircuit types: seven
-generic buffers, 16 general computational or support types, and six
+The production list currently contains 30 compiled subcircuit types: seven
+generic buffers, 17 general computational or support types, and six
 transaction-signature component types. This is a physical library catalog,
 not a count of EVM operations or transaction placements. A logical operation
 may select one type, compose several different types, or place the same type
@@ -181,12 +181,12 @@ excludes each wrapper's constant-one wire and declared input/output ports.
 
 | Catalog subset | Types | Constraints | R1CS wires | Internal wires | Input ports | Output ports | Nonzero coefficients |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Entire production catalog | 29 | 28,011 | 28,218 | 25,732 | 1,104 | 1,353 | 163,182 |
+| Entire production catalog | 30 | 27,350 | 27,580 | 25,055 | 1,123 | 1,372 | 159,519 |
 | Generic buffers | 7 | 1,520 | 1,527 | 0 | 760 | 760 | 4,560 |
-| Computational and support types | 22 | 26,491 | 26,691 | 25,732 | 344 | 593 | 158,622 |
+| Computational and support types | 23 | 25,830 | 26,053 | 25,055 | 363 | 612 | 154,959 |
 | Transaction-signature types only | 6 | 5,097 | 5,276 | 4,788 | 186 | 296 | 34,848 |
 
-A hypothetical “one placement of every type” would contain 29 placements, but
+A hypothetical “one placement of every type” would contain 30 placements, but
 it is not an operation supported by the system. Actual placement multiplicity
 is defined by the composition contracts below. For example, most ALU opcodes
 use one placement, division uses the `ALU4A -> ALU4B` pair, and transaction
@@ -285,8 +285,9 @@ input and intermediate result as a separate public value.
 | `SHL` | Full-domain EVM logical left shift | 795 + 1 = 796 | 5 inputs: selector, shift word, value word; 2 outputs: one word | Composition-dependent for exact limb representation. The low shift limb and both value limbs are canonical locally; the high shift limb is checked only for zero because every nonzero value yields the same zero result. Its producer must constrain that wire as a canonical 128-bit limb. |
 | `ALU5` | Full-domain EVM `SHR`, `SAR` | 816 + 0 = 816 | 5 inputs: selector, shift word, value word; 2 outputs: one word | Composition-dependent for exact limb representation. The low shift limb and both value limbs are canonical locally; the high shift limb is checked only for zero because all nonzero values select the same oversized-shift result. Its producer must constrain that wire as a canonical 128-bit limb. `SHR` and `SAR` share the shift core, and `SAR` constrains sign fill locally. |
 | `CheckBus256` | Proves that both limbs form a canonical 256-bit word | 256 + 0 = 256 | 2 inputs: one word; no outputs | Locally sound as a range assertion. It is also a mandatory support placement for the first operand of `ADDMOD` and `MULMOD`. |
-| `ADDMOD` | EVM full-precision addition followed by modular reduction | 2,496 + 1 = 2,497 | 7 inputs: selector, three words; 2 outputs: one word | Composition-dependent. The circuit constructs the exact 257-bit numerator, proves the 512-by-256 quotient/remainder identity with bounded 64-bit words, and enforces a canonical remainder below the safe modulus. The exact first operand must also pass the immediately preceding `CheckBus256` placement. |
-| `MULMOD` | EVM full-precision multiplication followed by modular reduction | 3,418 + 1 = 3,419 | 7 inputs: selector, three words; 2 outputs: one word | Composition-dependent by the catalog topology. The circuit locally proves the complete 512-bit product and the same bounded quotient/remainder relation. Its full-product word decomposition also proves the first operand locally, but the uniform mandatory `CheckBus256` placement remains part of the approved operation mapping. |
+| `ADDMODPrepare` | Prepares the exact 257-bit numerator and bounded reduction candidates | 968 + 4 = 972 | 7 inputs: selector and three words; 19 outputs: five numerator words, four modulus words, one zero flag, five quotient words, and four remainder words | Composition-dependent. The exact first operand must pass the preceding `CheckBus256`. This target checks the second operand and modulus, constrains the addition carry, and bounds the first three quotient words and its 257th bit. |
+| `ADDMODVerify` | Completes candidate bounds, verifies the 257-by-256 reduction, and returns the EVM result | 862 + 2 = 864 | 19 inputs: every `ADDMODPrepare` output; 2 outputs: one word | Composition-dependent. It bounds the remaining quotient word and all remainder words, proves `numerator = quotient * safeModulus + remainder` without unused 512-bit carry ranges, enforces `remainder < safeModulus`, and returns zero for an original zero modulus. |
+| `MULMOD` | EVM full-precision multiplication followed by modular reduction | 3,418 + 1 = 3,419 | 7 inputs: selector, three words; 2 outputs: one word | Composition-dependent by the catalog topology. The circuit locally proves the complete 512-bit product and a bounded 512-by-256 quotient/remainder relation. Its full-product word decomposition also proves the first operand locally, but the uniform mandatory `CheckBus256` placement remains part of the approved operation mapping. |
 | `DecToBit` | Decomposes one canonical 256-bit word into 256 LSB-first bits | 256 + 2 = 258 | 2 inputs: one word; 256 bit outputs | Locally sound. It supplies exponent or scalar bits to composed exponentiation chains. |
 | `SubExpBatch` | Eight LSB-first square-and-multiply steps for EVM `EXP` | 6,904 + 0 = 6,904 | 12 inputs: accumulator word, base-power word, 8 bits; 4 outputs: next accumulator and base-power words | Locally sound for one batch. Entry words and every carried state are canonical, each exponent input is Boolean, the conditional factor selects exactly one or the current base power, and both truncated products are constrained modulo `2^256`. |
 | `Accumulator` | Adds 32 256-bit memory-slice words | 318 + 0 = 318 | 64 inputs: 32 words; 2 outputs: one word | **Incomplete.** Every input must come from the approved canonical shift-and-mask path, direct unchecked producers are forbidden, and the current unsafe addition chain must be replaced by the planned bounded limb sum so overflow is constrained. |
@@ -320,15 +321,29 @@ without substitution or reordering:
 Only the two-limb output of `ALU4B` is the EVM result. Neither half represents
 a sound or independently usable EVM division operation.
 
-### Modular family: `CheckBus256 -> ADDMOD | MULMOD`
+### Modular family
 
-Every `ADDMOD` and `MULMOD` placement must be immediately preceded by one
-`CheckBus256` placement. The two check inputs and the modular circuit's first
-operand must be the exact same source wires in the final permutation. The
-modular wrapper checks its second operand and modulus locally. `ADDMOD` uses
-the preceding support placement as the canonicality proof for its first
-operand. `MULMOD` additionally decomposes both multiplicands into constrained
-64-bit words because the complete product relation consumes those words.
+Every logical `ADDMOD` uses exactly three placements:
+
+```text
+CheckBus256 -> ADDMODPrepare -> ADDMODVerify
+```
+
+The check inputs and `ADDMODPrepare` first operand must be the exact same
+source wires. All 19 preparation outputs must feed `ADDMODVerify` without host
+reconstruction, substitution, or reordering. Only the final two
+`ADDMODVerify` outputs form the EVM result. The two ADDMOD targets are
+individually composition-dependent and jointly prove the exact operation.
+
+Every `MULMOD` still uses exactly two placements:
+
+```text
+CheckBus256 -> MULMOD
+```
+
+The check inputs and the MULMOD first operand must likewise be the exact same
+source wires. MULMOD decomposes both multiplicands into constrained 64-bit
+words because the complete product relation consumes those words.
 
 The arithmetic relations preserve the full 257-bit addition numerator or
 512-bit multiplication numerator. Reduction uses a safe modulus of one for an

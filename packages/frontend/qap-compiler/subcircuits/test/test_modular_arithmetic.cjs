@@ -15,6 +15,7 @@ const randomWord = () => BigInt(`0x${crypto.randomBytes(32).toString("hex")}`);
 const operations = [
   {
     name: "ADDMOD",
+    circuit: "subcircuits/test/circom/addmod257_composed.circom",
     selector: 1n << 8n,
     evaluate: (lhs, rhs, modulus) => modulus === 0n
       ? 0n
@@ -22,6 +23,7 @@ const operations = [
   },
   {
     name: "MULMOD",
+    circuit: "subcircuits/circom/MULMOD_circuit.circom",
     selector: 1n << 9n,
     evaluate: (lhs, rhs, modulus) => modulus === 0n
       ? 0n
@@ -67,6 +69,8 @@ const main = async () => {
   const packageRoot = path.join(__dirname, "../..");
   const boundaries = [
     [0n, 0n, 0n],
+    [WORD_MASK, WORD_MASK, 1n],
+    [WORD_MASK, WORD_MASK, 2n],
     [5n, 7n, 10n],
     [WORD_MASK, WORD_MASK, 97n],
     [WORD_MASK, WORD_MASK, WORD_MASK],
@@ -78,7 +82,7 @@ const main = async () => {
     const circuit = await wasm(
       path.join(
         packageRoot,
-        `subcircuits/circom/${operation.name}_circuit.circom`,
+        operation.circuit,
       ),
       {
         include: path.join(packageRoot, "node_modules"),
@@ -113,13 +117,13 @@ const main = async () => {
     }
 
     const invalidLimb = 1n << 128n;
-    for (const limb of [3, 4, 5, 6]) {
+    for (const limb of [1, 2, 3, 4, 5, 6]) {
       const input = [operation.selector, 0n, 0n, 0n, 0n, 1n, 0n];
       input[limb] = invalidLimb;
       await assert.rejects(
         circuit.calculateWitness({ in: input }, true),
         undefined,
-        `${operation.name} must reject non-canonical local limb ${limb}`,
+        `${operation.name} must reject non-canonical input limb ${limb}`,
       );
     }
     for (const selector of [
@@ -145,6 +149,10 @@ const main = async () => {
       findSurvivingWire(circuit, ".numeratorWords[0]"),
       findSurvivingWire(circuit, ".quotientWords[0]"),
       findSurvivingWire(circuit, ".remainderWords[0]"),
+      ...(operation.name === "ADDMOD" ? [
+        findSurvivingWire(circuit, ".quotientWords[3]"),
+        findSurvivingWire(circuit, ".quotientWords[4]"),
+      ] : []),
     ];
     for (const wireIndex of new Set(mutationTargets)) {
       const mutated = [...mutationWitness];
