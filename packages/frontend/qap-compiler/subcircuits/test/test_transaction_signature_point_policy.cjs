@@ -5,6 +5,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const { wasm } = require("circom_tester");
+const { jubjub } = require("@noble/curves/misc.js");
 const {
   createTransactionSignatureCorpus,
   getChallengeInputs,
@@ -64,6 +65,25 @@ const compileAndMeasure = (packageRoot, outputRoot) => {
 
 const normalize = (value) => BigInt(value.toString());
 
+const invert = (value) => {
+  let result = 1n;
+  let factor = normalize(value);
+  let exponent = FIELD_PRIME - 2n;
+  while (exponent !== 0n) {
+    if ((exponent & 1n) === 1n) {
+      result = result * factor % FIELD_PRIME;
+    }
+    factor = factor * factor % FIELD_PRIME;
+    exponent >>= 1n;
+  }
+  return result;
+};
+
+const affine = (point) => {
+  const value = point.toAffine();
+  return [value.x, value.y];
+};
+
 const assertMutatedSignalRejected = async (circuit, witness, signalName) => {
   const signalIndex = circuit.symbols[signalName]?.varIdx;
   assert.notEqual(signalIndex, undefined, `${signalName} must exist`);
@@ -90,10 +110,6 @@ const main = async () => {
       path.join(packageRoot, "subcircuits/circom/TransactionSignaturePointPolicy_circuit.circom"),
       { include: path.join(packageRoot, "node_modules"), prime: "bls12381", O: 2 },
     );
-    const oldPolicy = await wasm(
-      path.join(packageRoot, "subcircuits/circom/TransactionSignaturePolicyFixedPrefix_circuit.circom"),
-      { include: path.join(packageRoot, "node_modules"), prime: "bls12381", O: 2 },
-    );
     const vector = createTransactionSignatureCorpus()[0];
     const challengeInputs = getChallengeInputs(vector);
     const common = [
@@ -104,15 +120,27 @@ const main = async () => {
     const witness = await pointPolicy.calculateWitness({
       in: [...common, ...vector.publicBoundary.O],
     }, true);
-    const oldWitness = await oldPolicy.calculateWitness({
-      in: [...common, vector.publicBoundary.S, ...vector.publicBoundary.O],
-    }, true);
+    const publicKey8 = vector.publicKey.multiply(8n);
+    const randomizer8 = vector.randomizer.multiply(8n);
+    const randomizerZInverse = invert(witness[15]);
     assert.deepEqual(
-      witness.slice(1, 17).map(normalize),
+      witness.slice(1, 13).map(normalize),
       [
-        ...oldWitness.slice(1, 5),
-        ...oldWitness.slice(150, 162),
-      ].map(normalize),
+        vector.publicBoundary.contractAddress,
+        0n,
+        vector.publicBoundary.functionSelector,
+        0n,
+        ...vector.publicBoundary.O,
+        ...affine(publicKey8),
+        ...affine(publicKey8.multiply(2n)),
+        ...affine(publicKey8.multiply(3n)),
+      ],
+    );
+    assert.deepEqual(
+      witness.slice(13, 15).map((coordinate) => (
+        normalize(coordinate) * randomizerZInverse % FIELD_PRIME
+      )),
+      affine(randomizer8),
     );
 
     await assert.rejects(pointPolicy.calculateWitness({
