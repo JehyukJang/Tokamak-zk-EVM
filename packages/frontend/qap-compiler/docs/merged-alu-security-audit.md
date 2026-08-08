@@ -1,13 +1,14 @@
 # Merged ALU Security Audit
 
-> Historical status: This audit was revalidated on April 4, 2026. Its
+> Historical status: This audit records the compile-target snapshot reviewed
+> on April 4, 2026; it is not the current production catalog. Its
 > `JubjubExpBatch` and `EdDsaVerify` discussion describes the retired signature
 > path and is preserved as audit history. Those targets were later replaced by
 > the six-type native-field transaction-signature composition documented in
 > [Circuit Implementation and Composition Reference](./circuit-implementation-reference.md).
-> The original merged-wrapper findings remain resolved. The `Accumulator` and
-> `SubExpBatch` observations remain system-level bus-well-formedness
-> dependencies rather than standalone public-input exploits.
+> Current target identities, counts, and soundness dependencies are maintained
+> only in the linked circuit implementation reference. The original
+> merged-wrapper findings remain useful as audit history.
 
 ## Scope
 
@@ -16,7 +17,11 @@ This report now has two layers:
 - the original merged-ALU security audit
 - a fresh April 4, 2026 review of every circuit currently compiled by `scripts/compile.sh`
 
-The fresh compile-target review was performed from code and witness behavior without using the older findings in this document as the source of truth. The older merged-ALU findings are preserved here for historical continuity, but the current-status notes have been updated to match the repository state.
+The April 4 compile-target review was performed from code and witness behavior
+without using the older findings in this document as the source of truth. The
+older merged-ALU findings and that dated revalidation are preserved for
+historical continuity; later catalog changes are intentionally not folded into
+this snapshot.
 
 The original scope was the merged arithmetic circuits introduced by the two-circuit ALU consolidation.
 

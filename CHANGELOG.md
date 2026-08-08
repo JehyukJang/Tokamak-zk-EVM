@@ -42,11 +42,18 @@ The format is based on Keep a Changelog.
   `nPoseidonBatch` parameter. The current general Poseidon and EVM exponent
   batch sizes are `1` and `8`; transaction-signature Poseidon uses its own
   fixed four-compression production target.
-- Replaced the merged arithmetic targets with `ALU1` through `ALU6` for
-  multi-operation selector groups and operation-named `AND`, `OR`, `XOR`,
-  `SIGNEXTEND`, `BYTE`, `SHL`, `ADDMOD`, and `MULMOD` targets for individual
-  operations. Added the input-only `CheckBus256` composition target required
-  by `ADDMOD` and `MULMOD`.
+- Reorganized the arithmetic catalog around three shared selector targets:
+  `ALU1` handles `ADD`, `MUL`, `SUB`, and `NOT`; `ALU2` handles unsigned and
+  signed comparisons plus `EQ` and `ISZERO`; and `ALU3` handles `SIGNEXTEND`,
+  `AND`, `OR`, `XOR`, and `BYTE` with shared operand decomposition. Division
+  remains the paired `ALU4A`/`ALU4B` composition, while `ALU5` handles `SHR`
+  and `SAR`. Removed the five superseded standalone operation targets.
+- Reduced the SHL and ALU5 shift relations by treating the high shift limb as
+  a zero/nonzero condition while retaining canonical low-shift and value
+  decompositions. Their composition contract now requires the connected
+  producer to constrain that high wire as a 128-bit limb.
+- Added the input-only `CheckBus256` composition target required by `ADDMOD`
+  and `MULMOD`.
 - Renamed the two-limb `CheckBus` template to `CheckBus256` and implemented it
   by composing two `CheckBus128` limb checks.
 - Simplified the local `MULMOD` zero-modulus range condition without relying

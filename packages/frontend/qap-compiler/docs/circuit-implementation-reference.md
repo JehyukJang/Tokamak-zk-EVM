@@ -167,12 +167,30 @@ The tables cover every production target in
 included. The values describe the current source tree, not necessarily the
 contents of an older installed package or the checked-in generated library.
 
-The production list currently contains 34 compiled subcircuit types: seven
-generic buffers, 21 general computational or support types, and six
+The production list currently contains 29 compiled subcircuit types: seven
+generic buffers, 16 general computational or support types, and six
 transaction-signature component types. This is a physical library catalog,
 not a count of EVM operations or transaction placements. A logical operation
 may select one type, compose several different types, or place the same type
 multiple times.
+
+The integrated O2 build has the following catalog totals. These values sum
+each distinct compiled type exactly once; they are not a transaction's dynamic
+placement count or its placement-weighted proving cost. “Internal wires”
+excludes each wrapper's constant-one wire and declared input/output ports.
+
+| Catalog subset | Types | Constraints | R1CS wires | Internal wires | Input ports | Output ports | Nonzero coefficients |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Entire production catalog | 29 | 17,197 | 17,760 | 15,274 | 1,104 | 1,353 | 108,238 |
+| Generic buffers | 7 | 1,520 | 1,527 | 0 | 760 | 760 | 4,560 |
+| Computational and support types | 22 | 15,677 | 16,233 | 15,274 | 344 | 593 | 103,678 |
+| Transaction-signature types only | 6 | 5,097 | 5,276 | 4,788 | 186 | 296 | 34,848 |
+
+A hypothetical “one placement of every type” would contain 29 placements, but
+it is not an operation supported by the system. Actual placement multiplicity
+is defined by the composition contracts below. For example, most ALU opcodes
+use one placement, division uses the `ALU4A -> ALU4B` pair, and transaction
+signature verification uses 16 placements of six distinct types.
 
 > **Implementation and release status**
 >
