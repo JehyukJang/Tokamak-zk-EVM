@@ -284,10 +284,10 @@ input and intermediate result as a separate public value.
 | `ALU4B` | Second half of `DIV`, `MOD`, `SDIV`, `SMOD` | 802 + 0 = 802 | 13 inputs; 2 outputs: one word | Composition-dependent; never use independently. Its inputs must be the exact `ALU4A` outputs from the same operation. |
 | `SHL` | Full-domain EVM logical left shift | 795 + 1 = 796 | 5 inputs: selector, shift word, value word; 2 outputs: one word | Composition-dependent for exact limb representation. The low shift limb and both value limbs are canonical locally; the high shift limb is checked only for zero because every nonzero value yields the same zero result. Its producer must constrain that wire as a canonical 128-bit limb. |
 | `ALU5` | Full-domain EVM `SHR`, `SAR` | 816 + 0 = 816 | 5 inputs: selector, shift word, value word; 2 outputs: one word | Composition-dependent for exact limb representation. The low shift limb and both value limbs are canonical locally; the high shift limb is checked only for zero because all nonzero values select the same oversized-shift result. Its producer must constrain that wire as a canonical 128-bit limb. `SHR` and `SAR` share the shift core, and `SAR` constrains sign fill locally. |
-| `CheckBus256` | Proves that both limbs form a canonical 256-bit word | 256 + 0 = 256 | 2 inputs: one word; no outputs | Locally sound as a range assertion. It is also a mandatory support placement for the first operand of `ADDMOD` and `MULMOD`. |
+| `CheckBus256` | Proves that both limbs form a canonical 256-bit word | 256 + 0 = 256 | 2 inputs: one word; no outputs | Locally sound as a range assertion. It is also a mandatory support placement for the first operand of `ADDMOD`. |
 | `ADDMODPrepare` | Prepares the exact 257-bit numerator and bounded reduction candidates | 968 + 4 = 972 | 7 inputs: selector and three words; 19 outputs: five numerator words, four modulus words, one zero flag, five quotient words, and four remainder words | Composition-dependent. The exact first operand must pass the preceding `CheckBus256`. This target checks the second operand and modulus, constrains the addition carry, and bounds the first three quotient words and its 257th bit. |
 | `ADDMODVerify` | Completes candidate bounds, verifies the 257-by-256 reduction, and returns the EVM result | 862 + 2 = 864 | 19 inputs: every `ADDMODPrepare` output; 2 outputs: one word | Composition-dependent. It bounds the remaining quotient word and all remainder words, proves `numerator = quotient * safeModulus + remainder` without unused 512-bit carry ranges, enforces `remainder < safeModulus`, and returns zero for an original zero modulus. |
-| `MULMOD` | EVM full-precision multiplication followed by modular reduction | 3,418 + 1 = 3,419 | 7 inputs: selector, three words; 2 outputs: one word | Composition-dependent by the catalog topology. The circuit locally proves the complete 512-bit product and a bounded 512-by-256 quotient/remainder relation. Its full-product word decomposition also proves the first operand locally, but the uniform mandatory `CheckBus256` placement remains part of the approved operation mapping. |
+| `MULMOD` | EVM full-precision multiplication followed by modular reduction | 3,418 + 0 = 3,418 | 6 inputs: three words; 2 outputs: one word | Locally sound. The operation-specific wrapper has no selector, and the circuit locally proves all three input words canonical, the complete 512-bit product, and a bounded 512-by-256 quotient/remainder relation. This oversized target is temporary pending the approved composition redesign. |
 | `DecToBit` | Decomposes one canonical 256-bit word into 256 LSB-first bits | 256 + 2 = 258 | 2 inputs: one word; 256 bit outputs | Locally sound. It supplies exponent or scalar bits to composed exponentiation chains. |
 | `SubExpBatch` | Eight LSB-first square-and-multiply steps for EVM `EXP` | 6,904 + 0 = 6,904 | 12 inputs: accumulator word, base-power word, 8 bits; 4 outputs: next accumulator and base-power words | Locally sound for one batch. Entry words and every carried state are canonical, each exponent input is Boolean, the conditional factor selects exactly one or the current base power, and both truncated products are constrained modulo `2^256`. |
 | `Accumulator` | Adds 32 256-bit memory-slice words | 318 + 0 = 318 | 64 inputs: 32 words; 2 outputs: one word | **Incomplete.** Every input must come from the approved canonical shift-and-mask path, direct unchecked producers are forbidden, and the current unsafe addition chain must be replaced by the planned bounded limb sum so overflow is constrained. |
@@ -335,15 +335,17 @@ reconstruction, substitution, or reordering. Only the final two
 `ADDMODVerify` outputs form the EVM result. The two ADDMOD targets are
 individually composition-dependent and jointly prove the exact operation.
 
-Every `MULMOD` still uses exactly two placements:
+The current temporary `MULMOD` target uses one placement:
 
 ```text
-CheckBus256 -> MULMOD
+MULMOD
 ```
 
-The check inputs and the MULMOD first operand must likewise be the exact same
-source wires. MULMOD decomposes both multiplicands into constrained 64-bit
-words because the complete product relation consumes those words.
+MULMOD has no selector input. It decomposes both multiplicands into constrained
+64-bit words because the complete product relation consumes those words, so a
+preceding `CheckBus256` would duplicate the first operand's canonicality proof.
+Its final replacement may use multiple mandatory placements, but every physical
+target in that composition must remain at or below 1,024 constraints.
 
 The arithmetic relations preserve the full 257-bit addition numerator or
 512-bit multiplication numerator. Reduction uses a safe modulus of one for an

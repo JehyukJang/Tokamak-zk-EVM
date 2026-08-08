@@ -28,7 +28,7 @@ const createHarness = (alu1Interface = { NInWires: 5, NOutWires: 2 }) => {
     ['CheckBus256', { name: 'CheckBus256', NInWires: 2, NOutWires: 0 }],
     ['ADDMODPrepare', { name: 'ADDMODPrepare', NInWires: 7, NOutWires: 19 }],
     ['ADDMODVerify', { name: 'ADDMODVerify', NInWires: 19, NOutWires: 2 }],
-    ['MULMOD', { name: 'MULMOD', NInWires: 7, NOutWires: 2 }],
+    ['MULMOD', { name: 'MULMOD', NInWires: 6, NOutWires: 2 }],
   ] as const;
   const parent = {
     placements,
@@ -63,36 +63,52 @@ const createHarness = (alu1Interface = { NInWires: 5, NOutWires: 2 }) => {
 };
 
 describe('modular CheckBus256 topology', () => {
-  it.each([
-    ['ADDMOD', 2n],
-    ['MULMOD', 5n],
-  ] as const)('places CheckBus256 immediately before %s', (operation, expected) => {
+  it('places CheckBus256 immediately before ADDMODPrepare', () => {
     const { manager, placements } = createHarness();
     const firstOperand = dataPt(5n, 10, 3);
 
-    const result = manager.placeArithComposition(operation, [
+    const result = manager.placeArithComposition('ADDMOD', [
       firstOperand,
       dataPt(7n, 11),
       dataPt(10n, 12),
     ]);
 
     expect(result).toHaveLength(1);
-    expect(result[0].value).toBe(expected);
-    expect(result[0].source).toBe(operation === 'ADDMOD' ? 2 : 1);
-    expect(placements.map(({ name }) => name)).toEqual(operation === 'ADDMOD'
-      ? ['CheckBus256', 'ADDMODPrepare', 'ADDMODVerify']
-      : ['CheckBus256', 'MULMOD']);
+    expect(result[0].value).toBe(2n);
+    expect(result[0].source).toBe(2);
+    expect(placements.map(({ name }) => name)).toEqual([
+      'CheckBus256',
+      'ADDMODPrepare',
+      'ADDMODVerify',
+    ]);
     expect(placements[0].inPts).toHaveLength(1);
     expect(placements[0].outPts).toHaveLength(0);
     expect(placements[0].inPts[0]).toBe(firstOperand);
     expect(placements[1].inPts).toHaveLength(4);
-    expect(placements[1].outPts).toHaveLength(operation === 'ADDMOD' ? 19 : 1);
-    expect(placements[1].inPts[0].value).toBe(operation === 'ADDMOD' ? 1n << 8n : 1n << 9n);
+    expect(placements[1].outPts).toHaveLength(19);
+    expect(placements[1].inPts[0].value).toBe(1n << 8n);
     expect(placements[1].inPts[1]).toBe(firstOperand);
-    if (operation === 'ADDMOD') {
-      expect(placements[2].inPts).toEqual(placements[1].outPts);
-      expect(placements[2].outPts).toHaveLength(1);
-    }
+    expect(placements[2].inPts).toEqual(placements[1].outPts);
+    expect(placements[2].outPts).toHaveLength(1);
+  });
+
+  it('places MULMOD directly without a selector or CheckBus256', () => {
+    const { manager, placements } = createHarness();
+    const firstOperand = dataPt(5n, 10, 3);
+
+    const result = manager.placeArithComposition('MULMOD', [
+      firstOperand,
+      dataPt(7n, 11),
+      dataPt(10n, 12),
+    ]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].value).toBe(5n);
+    expect(result[0].source).toBe(0);
+    expect(placements.map(({ name }) => name)).toEqual(['MULMOD']);
+    expect(placements[0].inPts).toHaveLength(3);
+    expect(placements[0].inPts[0]).toBe(firstOperand);
+    expect(placements[0].outPts).toHaveLength(1);
   });
 
   it('does not add CheckBus256 to an ordinary arithmetic placement', () => {

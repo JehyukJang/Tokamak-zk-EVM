@@ -1,6 +1,5 @@
 {
   "inputs": [
-    { "name": "selector", "logicalType": { "kind": "uint", "bits": 32 } },
     { "name": "lhs", "logicalType": { "kind": "uint", "bits": 256 } },
     { "name": "rhs", "logicalType": { "kind": "uint", "bits": 256 } },
     { "name": "modulus", "logicalType": { "kind": "uint", "bits": 256 } }

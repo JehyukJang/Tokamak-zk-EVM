@@ -21,7 +21,6 @@ const loadMulmod = async () => {
 };
 
 const encodeInput = (in1, in2, modulus) => [
-  1n << 9n,
   ...split256BitInteger(in1),
   ...split256BitInteger(in2),
   ...split256BitInteger(modulus),

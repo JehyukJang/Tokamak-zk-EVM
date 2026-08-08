@@ -24,7 +24,7 @@ const operations = [
   {
     name: "MULMOD",
     circuit: "subcircuits/circom/MULMOD_circuit.circom",
-    selector: 1n << 9n,
+    selector: null,
     evaluate: (lhs, rhs, modulus) => modulus === 0n
       ? 0n
       : lhs * rhs % modulus,
@@ -33,7 +33,7 @@ const operations = [
 
 const encodeInput = (operation, lhs, rhs, modulus) => ({
   in: [
-    operation.selector,
+    ...(operation.selector === null ? [] : [operation.selector]),
     ...split256BitInteger(lhs),
     ...split256BitInteger(rhs),
     ...split256BitInteger(modulus),
@@ -117,8 +117,9 @@ const main = async () => {
     }
 
     const invalidLimb = 1n << 128n;
-    for (const limb of [1, 2, 3, 4, 5, 6]) {
-      const input = [operation.selector, 0n, 0n, 0n, 0n, 1n, 0n];
+    const firstInputLimb = operation.selector === null ? 0 : 1;
+    for (const limb of Array.from({ length: 6 }, (_, index) => firstInputLimb + index)) {
+      const input = encodeInput(operation, 0n, 0n, 1n).in;
       input[limb] = invalidLimb;
       await assert.rejects(
         circuit.calculateWitness({ in: input }, true),
@@ -126,19 +127,21 @@ const main = async () => {
         `${operation.name} must reject non-canonical input limb ${limb}`,
       );
     }
-    for (const selector of [
-      0n,
-      1n,
-      operation.selector + 1n,
-      operation.name === "ADDMOD" ? 1n << 9n : 1n << 8n,
-    ]) {
-      await assert.rejects(
-        circuit.calculateWitness({
-          in: [selector, 0n, 0n, 0n, 0n, 1n, 0n],
-        }, true),
-        undefined,
-        `${operation.name} must reject selector ${selector}`,
-      );
+    if (operation.selector !== null) {
+      for (const selector of [
+        0n,
+        1n,
+        operation.selector + 1n,
+        1n << 9n,
+      ]) {
+        await assert.rejects(
+          circuit.calculateWitness({
+            in: [selector, 0n, 0n, 0n, 0n, 1n, 0n],
+          }, true),
+          undefined,
+          `${operation.name} must reject selector ${selector}`,
+        );
+      }
     }
 
     assert.notEqual(mutationWitness, undefined);
@@ -165,7 +168,7 @@ const main = async () => {
     }
 
     console.log(
-      `${operation.name} passed ${boundaries.length} boundary cases, ${RANDOM_CASES} randomized cases, local canonicality, selector, and mutation checks`,
+      `${operation.name} passed ${boundaries.length} boundary cases, ${RANDOM_CASES} randomized cases, local canonicality${operation.selector === null ? "" : ", selector"}, and mutation checks`,
     );
   }
 };

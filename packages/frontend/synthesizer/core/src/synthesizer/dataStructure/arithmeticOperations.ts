@@ -570,12 +570,8 @@ export class ArithmeticOperations {
   }
 
   static mulmodSubcircuit(inVals: bigint[]): bigint {
-    return ArithmeticOperations.mulmod(ArithmeticOperations._requireSelector(
-      inVals,
-      1n << 9n,
-      'MULMOD',
-      3,
-    ))
+    ArithmeticOperations._requireSubcircuitInputs(inVals, 3, 'MULMOD')
+    return ArithmeticOperations.mulmod(inVals)
   }
 
   /**
