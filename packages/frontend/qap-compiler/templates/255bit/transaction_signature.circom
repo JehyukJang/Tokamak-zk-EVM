@@ -94,9 +94,10 @@ template TSVCanonicalFrBitsOnly() {
     fieldBound.high <== highExpression;
 }
 
-template TSVExtendedDouble_unsafe() {
-    signal input point[4];
-    signal output result[4];
+template TSVExtendedDouble_unsafe(INCLUDE_T) {
+    assert(INCLUDE_T == 0 || INCLUDE_T == 1);
+    signal input point[3];
+    signal output result[3 + INCLUDE_T];
 
     signal A <== point[0] * point[0];
     signal B <== point[1] * point[1];
@@ -106,13 +107,16 @@ template TSVExtendedDouble_unsafe() {
     result[0] <== E * (-A + B - C);
     result[1] <== (-A + B) * (-A - B);
     result[2] <== (-A + B - C) * (-A + B);
-    result[3] <== E * (-A - B);
+    if (INCLUDE_T == 1) {
+        result[3] <== E * (-A - B);
+    }
 }
 
-template TSVExtendedAddAffineWithT_unsafe() {
+template TSVExtendedAddAffineWithT_unsafe(INCLUDE_T) {
+    assert(INCLUDE_T == 0 || INCLUDE_T == 1);
     signal input point[4];
     signal input affine[3];
-    signal output result[4];
+    signal output result[3 + INCLUDE_T];
 
     var constants[3] = jubjubconst();
     var K = 2 * constants[1];
@@ -124,7 +128,9 @@ template TSVExtendedAddAffineWithT_unsafe() {
     result[0] <== (B - A) * (2 * point[2] - C);
     result[1] <== (2 * point[2] + C) * (B + A);
     result[2] <== (2 * point[2] - C) * (2 * point[2] + C);
-    result[3] <== (B - A) * (B + A);
+    if (INCLUDE_T == 1) {
+        result[3] <== (B - A) * (B + A);
+    }
 }
 
 template TSVExtendedAddAffine_unsafe() {
@@ -133,7 +139,7 @@ template TSVExtendedAddAffine_unsafe() {
     signal output result[4];
 
     signal affineT <== affine[0] * affine[1];
-    component addition = TSVExtendedAddAffineWithT_unsafe();
+    component addition = TSVExtendedAddAffineWithT_unsafe(1);
     addition.point <== point;
     addition.affine <== [affine[0], affine[1], affineT];
     result <== addition.result;
@@ -142,7 +148,7 @@ template TSVExtendedAddAffine_unsafe() {
 template TSVExtendedAdd_unsafe() {
     signal input point1[4];
     signal input point2[4];
-    signal output result[4];
+    signal output result[3];
 
     var constants[3] = jubjubconst();
     var K = 2 * constants[1];
@@ -155,18 +161,17 @@ template TSVExtendedAdd_unsafe() {
     result[0] <== (B - A) * (D - C);
     result[1] <== (D + C) * (B + A);
     result[2] <== (D - C) * (D + C);
-    result[3] <== (B - A) * (B + A);
 }
 
-template TSVPointTimesCofactor8_unsafe() {
+template TSVPointTimesCofactor8_unsafe(INCLUDE_T) {
+    assert(INCLUDE_T == 0 || INCLUDE_T == 1);
     signal input point[2];
-    signal output point8[4];
+    signal output point8[3 + INCLUDE_T];
 
-    signal extended[4] <== [point[0], point[1], 1, point[0] * point[1]];
-    component point2 = TSVExtendedDouble_unsafe();
-    component point4 = TSVExtendedDouble_unsafe();
-    component point8Component = TSVExtendedDouble_unsafe();
-    point2.point <== extended;
+    component point2 = TSVExtendedDouble_unsafe(0);
+    component point4 = TSVExtendedDouble_unsafe(0);
+    component point8Component = TSVExtendedDouble_unsafe(INCLUDE_T);
+    point2.point <== [point[0], point[1], 1];
     point4.point <== point2.result;
     point8Component.point <== point4.result;
     point8 <== point8Component.result;
@@ -195,7 +200,7 @@ template TSVFactoredAffineAdd_unsafe() {
 }
 
 template TSVExtendedToAffine_unsafe() {
-    signal input point[4];
+    signal input point[3];
     signal output affine[2];
 
     affine[0] <-- point[0] / point[2];
@@ -210,14 +215,15 @@ template TSVRejectIdentityFromValidatedY_unsafe() {
     (y - 1) * inverse === 1;
 }
 
-template TSVFixedWindowBatch_unsafe(START_WINDOW, NUM_WINDOWS) {
+template TSVFixedWindowBatch_unsafe(START_WINDOW, NUM_WINDOWS, INCLUDE_T) {
     assert(START_WINDOW >= 0);
     assert(NUM_WINDOWS > 0);
     assert(START_WINDOW + NUM_WINDOWS <= 84);
+    assert(INCLUDE_T == 0 || INCLUDE_T == 1);
 
     signal input bits[NUM_WINDOWS * 3];
     signal input previous[4];
-    signal output next[4];
+    signal output next[3 + INCLUDE_T];
 
     var TABLE_SIZE = 8;
     var NUM_PRODUCTS = 4;
@@ -270,7 +276,7 @@ template TSVFixedWindowBatch_unsafe(START_WINDOW, NUM_WINDOWS) {
     }
 
     signal products[NUM_WINDOWS][NUM_PRODUCTS];
-    signal accumulators[NUM_WINDOWS + 1][4];
+    signal accumulators[NUM_WINDOWS][4];
     accumulators[0] <== previous;
     component additions[NUM_WINDOWS];
     for (var window = 0; window < NUM_WINDOWS; window++) {
@@ -290,7 +296,9 @@ template TSVFixedWindowBatch_unsafe(START_WINDOW, NUM_WINDOWS) {
             }
         }
 
-        additions[window] = TSVExtendedAddAffineWithT_unsafe();
+        var isLastWindow = window + 1 == NUM_WINDOWS;
+        var additionIncludesT = isLastWindow ? INCLUDE_T : 1;
+        additions[window] = TSVExtendedAddAffineWithT_unsafe(additionIncludesT);
         additions[window].point <== accumulators[window];
         for (var coordinate = 0; coordinate < 3; coordinate++) {
             var selectedExpression = coefficients[window][0][coordinate];
@@ -306,9 +314,12 @@ template TSVFixedWindowBatch_unsafe(START_WINDOW, NUM_WINDOWS) {
             }
             additions[window].affine[coordinate] <== selectedExpression;
         }
-        accumulators[window + 1] <== additions[window].result;
+        if (isLastWindow) {
+            next <== additions[window].result;
+        } else {
+            accumulators[window + 1] <== additions[window].result;
+        }
     }
-    next <== accumulators[NUM_WINDOWS];
 }
 
 template TSVRuntimeTable_unsafe() {
@@ -365,9 +376,11 @@ template TSVVariableWindowBatch_unsafe(NUM_WINDOWS, HAS_TOP_PADDING, IS_FIRST) {
         if (IS_FIRST == 1 && step == 0) {
             additions[step].point <== accumulators[step];
         } else {
-            firstDoublings[step] = TSVExtendedDouble_unsafe();
-            secondDoublings[step] = TSVExtendedDouble_unsafe();
-            firstDoublings[step].point <== accumulators[step];
+            firstDoublings[step] = TSVExtendedDouble_unsafe(0);
+            secondDoublings[step] = TSVExtendedDouble_unsafe(1);
+            for (var coordinate = 0; coordinate < 3; coordinate++) {
+                firstDoublings[step].point[coordinate] <== accumulators[step][coordinate];
+            }
             secondDoublings[step].point <== firstDoublings[step].result;
             additions[step].point <== secondDoublings[step].result;
         }
@@ -378,8 +391,8 @@ template TSVVariableWindowBatch_unsafe(NUM_WINDOWS, HAS_TOP_PADDING, IS_FIRST) {
 }
 
 template TSVAssertExtendedEqual_unsafe() {
-    signal input lhs[4];
-    signal input rhs[4];
+    signal input lhs[3];
+    signal input rhs[3];
 
     signal scale <-- lhs[2] / rhs[2];
     for (var coordinate = 0; coordinate < 3; coordinate++) {
@@ -432,7 +445,7 @@ template TransactionSignaturePointPolicy() {
     component checkR = jubjubCheck();
     checkR.in <== [in[0], in[1]];
 
-    component publicKeyCofactor = TSVPointTimesCofactor8_unsafe();
+    component publicKeyCofactor = TSVPointTimesCofactor8_unsafe(0);
     publicKeyCofactor.point <== [in[2], in[3]];
     component publicKeyAffine = TSVExtendedToAffine_unsafe();
     publicKeyAffine.point <== publicKeyCofactor.point8;
@@ -441,7 +454,7 @@ template TransactionSignaturePointPolicy() {
     component rejectRandomizerIdentity = TSVRejectIdentityFromValidatedY_unsafe();
     rejectRandomizerIdentity.y <== in[1];
 
-    component randomizerCofactor = TSVPointTimesCofactor8_unsafe();
+    component randomizerCofactor = TSVPointTimesCofactor8_unsafe(1);
     randomizerCofactor.point <== [in[0], in[1]];
 
     component runtimeTable = TSVRuntimeTable_unsafe();
@@ -464,7 +477,7 @@ template TransactionSignatureFixedPrefix70() {
 
     component signatureBits = Num2Bits(252);
     signatureBits.in <== in[0];
-    component fixedPrefix = TSVFixedWindowBatch_unsafe(0, 70);
+    component fixedPrefix = TSVFixedWindowBatch_unsafe(0, 70, 1);
     fixedPrefix.previous <== [0, 1, 1, 0];
     for (var bit = 0; bit < 210; bit++) {
         fixedPrefix.bits[bit] <== signatureBits.out[bit];
@@ -534,7 +547,7 @@ template TransactionSignatureFinal() {
     signal input in[81];
     signal output out[2];
 
-    component fixedTail = TSVFixedWindowBatch_unsafe(70, 14);
+    component fixedTail = TSVFixedWindowBatch_unsafe(70, 14, 0);
     for (var bit = 0; bit < 42; bit++) {
         fixedTail.bits[bit] <== in[bit];
     }

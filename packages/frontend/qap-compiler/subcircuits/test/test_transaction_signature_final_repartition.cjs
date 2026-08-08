@@ -106,7 +106,7 @@ const main = async () => {
         outputs: measurement.outputs,
         wires: measurement.wires,
       },
-      { nonlinear: 946, linear: 0, inputs: 81, outputs: 2, wires: 1023 },
+      { nonlinear: 935, linear: 0, inputs: 81, outputs: 2, wires: 1012 },
     );
 
     const [pointPolicy, fixedPrefix, challengePrefix, variableBatch, finalCircuit] = await Promise.all([

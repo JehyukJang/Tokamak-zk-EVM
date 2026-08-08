@@ -96,9 +96,9 @@ const main = async () => {
         outputs: measurement.outputs,
         wires: measurement.wires,
       },
-      { nonlinear: 998, linear: 0, inputs: 9, outputs: 226, wires: 1005 },
+      { nonlinear: 982, linear: 0, inputs: 9, outputs: 226, wires: 989 },
     );
-    assert.equal(measurement.nonzero, 6322);
+    assert.equal(measurement.nonzero, 6258);
 
     const prefix = await wasm(
       path.join(packageRoot, "subcircuits/circom/TransactionSignatureChallengeVariablePrefix_circuit.circom"),
