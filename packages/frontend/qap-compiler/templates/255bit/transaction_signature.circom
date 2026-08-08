@@ -642,46 +642,49 @@ template TransactionSignatureVariableBatch() {
 
 template TransactionSignatureFinal() {
     assert(nPrivateMessageInputs() == 29);
-    signal input in[225];
+    signal input in[81];
     signal output out[2];
 
-    component fixedTail = TSVFixedWindowBatch_unsafe(75, 9);
-    for (var bit = 0; bit < 27; bit++) {
+    component fixedTail = TSVFixedWindowBatch_unsafe(70, 14);
+    for (var bit = 0; bit < 42; bit++) {
         fixedTail.bits[bit] <== in[bit];
     }
     for (var coordinate = 0; coordinate < 4; coordinate++) {
-        fixedTail.previous[coordinate] <== in[27 + coordinate];
+        fixedTail.previous[coordinate] <== in[42 + coordinate];
     }
 
     component variableTail = TSVVariableWindowBatch_unsafe(9, 0, 0);
     for (var bit = 0; bit < 18; bit++) {
-        variableTail.bits[bit] <== in[31 + bit];
+        variableTail.bits[bit] <== in[46 + bit];
     }
     for (var coordinate = 0; coordinate < 4; coordinate++) {
-        variableTail.previous[coordinate] <== in[49 + coordinate];
+        variableTail.previous[coordinate] <== in[64 + coordinate];
     }
     for (var digit = 0; digit < 4; digit++) {
         for (var coordinate = 0; coordinate < 2; coordinate++) {
-            variableTail.table[digit][coordinate] <== in[53 + digit * 2 + coordinate];
+            variableTail.table[digit][coordinate] <== in[68 + digit * 2 + coordinate];
         }
     }
 
     component terminalAddition = TSVExtendedAdd_unsafe();
     terminalAddition.point1 <== variableTail.next;
     for (var coordinate = 0; coordinate < 4; coordinate++) {
-        terminalAddition.point2[coordinate] <== in[61 + coordinate];
+        terminalAddition.point2[coordinate] <== in[76 + coordinate];
     }
     component terminalEquality = TSVAssertExtendedEqual_unsafe();
     terminalEquality.lhs <== fixedTail.next;
     terminalEquality.rhs <== terminalAddition.result;
 
+    component publicKeyHash = TSVCanonicalFrBitsOnly();
+    publicKeyHash.in <== in[80];
+
     var originLow = 0;
     var originHigh = 0;
     for (var bit = 0; bit < 128; bit++) {
-        originLow += in[65 + bit] * (1 << bit);
+        originLow += publicKeyHash.bits[bit] * (1 << bit);
     }
     for (var bit = 128; bit < 160; bit++) {
-        originHigh += in[65 + bit] * (1 << (bit - 128));
+        originHigh += publicKeyHash.bits[bit] * (1 << (bit - 128));
     }
     out[0] <== originLow;
     out[1] <== originHigh;
