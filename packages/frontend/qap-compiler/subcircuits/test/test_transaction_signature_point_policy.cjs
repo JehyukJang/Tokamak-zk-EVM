@@ -12,6 +12,7 @@ const {
 } = require("./transaction_signature_verify_oracle.cjs");
 
 const FIELD_PRIME = 52435875175126190479447740508185965837690552500527637822603658699938581184513n;
+const LIMB_MASK = (1n << 128n) - 1n;
 
 const stripAnsi = (value) => value.replace(
   // eslint-disable-next-line no-control-regex
@@ -84,6 +85,8 @@ const affine = (point) => {
   return [value.x, value.y];
 };
 
+const split = (value) => [value & LIMB_MASK, value >> 128n];
+
 const assertMutatedSignalRejected = async (circuit, witness, signalName) => {
   const signalIndex = circuit.symbols[signalName]?.varIdx;
   assert.notEqual(signalIndex, undefined, `${signalName} must exist`);
@@ -126,8 +129,7 @@ const main = async () => {
     assert.deepEqual(
       witness.slice(1, 13).map(normalize),
       [
-        vector.publicBoundary.contractAddress,
-        0n,
+        ...split(vector.publicBoundary.contractAddress),
         vector.publicBoundary.functionSelector,
         0n,
         ...vector.publicBoundary.O,
