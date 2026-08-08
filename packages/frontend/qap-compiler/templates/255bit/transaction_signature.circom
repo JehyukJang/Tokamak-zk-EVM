@@ -1,6 +1,7 @@
 pragma circom 2.1.6;
 
 include "./jubjub.circom";
+include "./fr_to_limbs.circom";
 include "../../subcircuits/circom/constants.circom";
 
 // This file owns the reusable relations used by the production transaction-
@@ -70,24 +71,6 @@ template TSVSelectPointByBits_unsafe(W) {
     point <== nodes[2 * TABLE_SIZE - 2];
 }
 
-template TSVStrictFieldBoundFromLimbs_unsafe() {
-    signal input low;
-    signal input high;
-
-    var LIMB_BASE = 1 << 128;
-    var FIELD_MAX_LOW = 111310594309268602877181240610339684352;
-    var FIELD_MAX_HIGH = 154095187621958656428822154526901524485;
-
-    signal lowBorrow <-- low > FIELD_MAX_LOW;
-    lowBorrow * (1 - lowBorrow) === 0;
-
-    component lowDifference = Num2Bits(128);
-    lowDifference.in <== FIELD_MAX_LOW - low + lowBorrow * LIMB_BASE;
-
-    component highDifference = Num2Bits(127);
-    highDifference.in <== FIELD_MAX_HIGH - high - lowBorrow;
-}
-
 template TSVCanonicalFrView() {
     signal input in;
     signal output out[257];
@@ -108,7 +91,7 @@ template TSVCanonicalFrView() {
 
     signal low <== lowExpression;
     signal high <== highExpression;
-    component fieldBound = TSVStrictFieldBoundFromLimbs_unsafe();
+    component fieldBound = StrictBls12381FrBoundFromLimbs();
     fieldBound.low <== low;
     fieldBound.high <== high;
 

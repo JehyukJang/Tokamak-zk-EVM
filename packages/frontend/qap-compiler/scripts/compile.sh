@@ -5,7 +5,7 @@
 set -euo pipefail
 
 # Subcircuit library configuration
-names=("bufferLogOut" "bufferStorageStore" "bufferStorageLoad" "bufferTxIn" "bufferBlockIn" "bufferEVMIn" "bufferPrvIn" "ALU1" "ALU2" "ALU3" "AND" "OR" "XOR" "ALU4A" "ALU4B" "SIGNEXTEND" "BYTE" "SHL" "ALU6" "CheckBus256" "ADDMOD" "MULMOD" "DecToBit" "SubExpBatch" "Accumulator" "Poseidon" "TransactionSignaturePoseidonBatch4" "TransactionSignatureCanonicalFrView" "TransactionSignaturePolicyFixedPrefix" "TransactionSignatureFixedVariableBridge" "TransactionSignatureVariableBatch" "TransactionSignatureFinal" "EqualBatch")
+names=("bufferLogOut" "bufferStorageStore" "bufferStorageLoad" "bufferTxIn" "bufferBlockIn" "bufferEVMIn" "bufferPrvIn" "ALU1" "ALU2" "ALU3" "AND" "OR" "XOR" "ALU4A" "ALU4B" "SIGNEXTEND" "BYTE" "SHL" "ALU6" "CheckBus256" "ADDMOD" "MULMOD" "DecToBit" "SubExpBatch" "Accumulator" "Poseidon" "FrToLimbsPair" "TransactionSignaturePoseidonBatch4" "TransactionSignatureCanonicalFrView" "TransactionSignaturePolicyFixedPrefix" "TransactionSignatureFixedVariableBridge" "TransactionSignatureVariableBatch" "TransactionSignatureFinal" "EqualBatch")
 CURVE_NAME="bls12381"
 
 original_cwd="$(pwd)"

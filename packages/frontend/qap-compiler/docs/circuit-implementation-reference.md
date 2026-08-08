@@ -225,6 +225,7 @@ input and intermediate result as a separate public value.
 | `SubExpBatch` | Eight LSB-first square-and-multiply steps for EVM `EXP` | 328 + 0 = 328 | 12 inputs: accumulator word, base-power word, 8 bits; 4 outputs: next accumulator and base-power words | **Incomplete.** The intended chain is defined below, but the current unsafe multiplication relation and bus contract still require local remediation. |
 | `Accumulator` | Adds 32 256-bit memory-slice words | 318 + 0 = 318 | 64 inputs: 32 words; 2 outputs: one word | Composition-dependent and pending hardening. Every input must come from the approved canonical shift-and-mask path, and the composition must exclude overflow; direct unchecked producers are not allowed. |
 | `Poseidon` | Selector-chosen chain of two-input Poseidon compressions; current batch size is 1 | 238 + 1 = 239 | 5 inputs: selector and two split 255-bit values; 2 outputs: one split 255-bit value | Composition-dependent for canonical split-field encoding. The hash relation is local, but unique 255-bit encodings must be guaranteed by connected producers or the public-boundary verifier. |
+| `FrToLimbsPair` | Converts two independent native BLS12-381 scalar-field values to lower-first two-limb EVM words | 1,022 + 2 = 1,024 | 2 native-field inputs; 4 outputs: two lower-first limb pairs | Locally sound as two canonical conversions. Each input is constrained to its unique integer representation `0 ≤ x < Fr`; the circuit is general-purpose and not specific to transaction signatures. |
 | `TransactionSignaturePoseidonBatch4` | Performs either four consecutive native-field Poseidon compressions or one independent compression plus a three-compression chain | 950 + 0 = 950 | 7 inputs: mode and six native field wires; 2 native-field outputs | Composition-dependent. Mode is locally Boolean, but the composition must assign the approved structural mode and connect every chain state exactly. |
 | `TransactionSignatureCanonicalFrView` | Produces the unique 255-bit decomposition and lower-first two-limb EVM view of one native BLS12-381 scalar-field value | 511 + 3 = 514 | 1 native-field input; 257 outputs: 255 bits and 2 limbs | Locally sound as a canonical conversion. Signature composition must use these exact outputs rather than reconstructing an equal host value. |
 | `TransactionSignaturePolicyFixedPrefix` | Checks contract width, validates `A` and `R`, applies cofactor policy, decomposes `S`, builds the variable-base table, and processes fixed-base windows 0–36 | 891 + 5 = 896 | 9 inputs; 161 outputs | Composition-dependent. Solidity must bind `S < n`, selector width, and the identity point; later signature placements must consume its exact bits, table, accumulators, and `R8`. |
@@ -292,8 +293,8 @@ split-field encoding remains a separate producer or public-boundary contract.
 
 ### Transaction-signature composition
 
-Transaction signature verification is one operation implemented by six
-compiled subcircuit types and 46 placements. The types are not six independent
+Transaction signature verification is one operation implemented by seven
+compiled subcircuit types and 32 placements. The types are not independent
 signature schemes. Their exact ordered composition is the security boundary:
 
 1. Eight chain-mode `TransactionSignaturePoseidonBatch4` placements compute
@@ -301,11 +302,12 @@ signature schemes. Their exact ordered composition is the security boundary:
    hash and challenge hashes 32–34. This accounts for all 35 challenge
    compressions and the one public-key compression without using the general
    split-limb EVM `Poseidon` circuit.
-2. Twenty-nine `TransactionSignatureCanonicalFrView` placements convert the
-   signed private transaction inputs into the exact two-limb values later used
-   by EVM execution. Two more placements decompose the final challenge and the
-   public-key hash. The EVM path must consume the 29 conversion outputs; it must
-   not consume independently reconstructed limbs from the input buffer.
+2. Fourteen `FrToLimbsPair` placements convert 28 signed private transaction
+   inputs into exact lower-first EVM limb pairs. One
+   `TransactionSignatureCanonicalFrView` converts the remaining private input;
+   two more canonical views decompose the final challenge and public-key hash.
+   The EVM path must consume the 29 conversion outputs; it must not consume
+   independently reconstructed limbs from the input buffer.
 3. One `TransactionSignaturePolicyFixedPrefix` placement owns point validity,
    public-key subgroup policy, randomizer identity rejection, the 160-bit
    contract check, response-scalar decomposition, fixed windows 0–36, the
@@ -322,8 +324,8 @@ signature schemes. Their exact ordered composition is the security boundary:
    `R8`, and public-key-hash bits 0–159. It enforces the cofactored equation and
    exposes the lower-first two-limb origin result.
 
-For 29 private transaction inputs, the six distinct types contain 4,673 O2
-constraints and 5,150 R1CS wires in total. The 46 placements contain 29,733
+For 29 private transaction inputs, the seven distinct types contain 5,697 O2
+constraints and 6,171 R1CS wires in total. The 32 placements contain 29,677
 constraints before final cross-placement permutation, and the live internal
 boundary has 634 wire incidences. A diagnostic direct composition compiles to
 29,615 nonlinear plus 3 linear constraints, exactly matching the monolithic
