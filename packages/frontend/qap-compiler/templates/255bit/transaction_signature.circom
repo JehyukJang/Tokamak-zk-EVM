@@ -598,7 +598,7 @@ template TransactionSignatureChallengeVariablePrefix() {
         variableStart.bits[bit] <== challenge.bits[222 + bit];
     }
     variableStart.table <== table;
-    variableStart.previous <== [table[0][0], table[0][1], 1, table[0][0] * table[0][1]];
+    variableStart.previous <== [table[0][0], table[0][1], 1, 0];
 
     for (var bit = 0; bit < 222; bit++) {
         out[bit] <== challenge.bits[bit];

@@ -111,13 +111,13 @@ const main = async () => {
   assert.equal(FUNCTION_INPUT_LENGTH, 29);
   const packageRoot = path.join(__dirname, "../..");
   assert.deepEqual(compileAndMeasure(packageRoot), {
-    nonlinear: 14788,
+    nonlinear: 14782,
     linear: 3,
     publicInputs: 5,
     privateInputs: 34,
     outputs: 6,
-    wires: 14819,
-    nonzero: 135492,
+    wires: 14813,
+    nonzero: 135468,
   });
   const circuit = await wasm(
     path.join(

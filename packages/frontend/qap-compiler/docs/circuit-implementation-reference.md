@@ -229,7 +229,7 @@ input and intermediate result as a separate public value.
 | `TransactionSignaturePoseidonBatch4` | Performs either four consecutive native-field Poseidon compressions or one independent compression plus a three-compression chain | 950 + 0 = 950 | 7 inputs: mode and six native field wires; 2 native-field outputs | Composition-dependent. Mode is locally Boolean, but the composition must assign the approved structural mode and connect every chain state exactly. |
 | `TransactionSignaturePointPolicy` | Checks contract width, validates `A` and `R`, applies the public-key cofactor policy, rejects an identity randomizer, builds the variable-base table, and computes `R8` | 230 + 5 = 235 | 8 inputs; 16 outputs: contract and selector limbs, 8 table coordinates, and 4 `R8` coordinates | Composition-dependent. Solidity must bind selector width and the identity point; later signature placements must consume the exact table and `R8` outputs. |
 | `TransactionSignatureFixedPrefix70` | Canonically decomposes `S` into 252 bits and processes fixed-base windows 0–69 | 1,016 + 0 = 1,016 | 1 native scalar input; 46 outputs: 42 remaining bits and 4 accumulator coordinates | Composition-dependent. Solidity must bind `S < n`, and `TransactionSignatureFinal` must consume its exact remaining bits and accumulator. |
-| `TransactionSignatureChallengeVariablePrefix` | Canonically decomposes the native challenge hash and processes variable-base windows 127–111 | 1,004 + 0 = 1,004 | 9 inputs: challenge plus 8 table coordinates; 226 outputs: 222 remaining bits and 4 accumulator coordinates | Composition-dependent. It must consume the exact final challenge hash and exact point-policy table; all later variable placements must consume its exact bits and accumulator. |
+| `TransactionSignatureChallengeVariablePrefix` | Canonically decomposes the native challenge hash and processes variable-base windows 127–111 | 998 + 0 = 998 | 9 inputs: challenge plus 8 table coordinates; 226 outputs: 222 remaining bits and 4 accumulator coordinates | Composition-dependent. It must consume the exact final challenge hash and exact point-policy table; the table's first point must be the verifier-bound identity `(0, 1)`, and all later variable placements must consume its exact bits and accumulator. |
 | `TransactionSignatureVariableBatch` | Processes 34 two-bit variable-base windows while retaining the extended accumulator | 1,020 + 0 = 1,020 | 80 inputs; 4 extended-coordinate outputs | Composition-dependent. Exactly three serial placements consume disjoint descending challenge-bit ranges and the same exact runtime-table wires. |
 | `TransactionSignatureFinal` | Processes fixed-base windows 70–83 and variable-base windows 8–0, enforces the cofactored signature equation, canonically decomposes the public-key hash, and returns the 160-bit origin | 946 + 0 = 946 | 81 inputs; 2 origin limbs | Composition-dependent. It must receive the exact remaining response and challenge bits, both accumulator chains, runtime table, `R8`, and native public-key hash from the preceding placements. |
 | `EqualBatch` | Enforces two pairs of 256-bit words to be equal | 8 + 0 = 8 | 8 inputs: two left words followed by two right words; no outputs | Locally sound as limb equality. Storage consistency additionally depends on the composition layer routing the current and cached address/key values to the corresponding positions. |
@@ -324,12 +324,12 @@ signature schemes. Their exact ordered composition is the security boundary:
    equation, canonically decomposes the hash internally, and exposes only the
    lower-first two-limb origin result.
 
-For 29 private transaction inputs, the six distinct types contain 5,171 O2
-constraints and 5,350 R1CS wires in total. The 16 placements contain 14,811
+For 29 private transaction inputs, the six distinct types contain 5,165 O2
+constraints and 5,344 R1CS wires in total. The 16 placements contain 14,805
 constraints before final cross-placement permutation. Their declared
 interfaces contain 402 placement input ports and 320 placement output ports.
-A diagnostic direct composition compiles to 14,788 nonlinear plus 3 linear
-constraints, 14,819 wires, and 135,492 nonzero matrix entries. The direct
+A diagnostic direct composition compiles to 14,782 nonlinear plus 3 linear
+constraints, 14,813 wires, and 135,468 nonzero matrix entries. The direct
 composition and the monolithic reference accept and reject the same complete
 21-vector regression corpus and produce the same contract, selector, and
 origin outputs for every accepted vector.

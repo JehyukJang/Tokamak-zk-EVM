@@ -18,7 +18,7 @@ const EXPECTED = Object.freeze([
   Object.freeze({ name: "TransactionSignaturePoseidonBatch4", nonlinear: 950, linear: 0, inputs: 7, outputs: 2, wires: 957, nonzero: 11380, warnings: 1, placements: 9 }),
   Object.freeze({ name: "TransactionSignaturePointPolicy", nonlinear: 230, linear: 5, inputs: 8, outputs: 16, wires: 241, nonzero: 1108, warnings: 2, placements: 1 }),
   Object.freeze({ name: "TransactionSignatureFixedPrefix70", nonlinear: 1016, linear: 0, inputs: 1, outputs: 46, wires: 1017, nonzero: 6894, warnings: 0, placements: 1 }),
-  Object.freeze({ name: "TransactionSignatureChallengeVariablePrefix", nonlinear: 1004, linear: 0, inputs: 9, outputs: 226, wires: 1011, nonzero: 6346, warnings: 3, placements: 1 }),
+  Object.freeze({ name: "TransactionSignatureChallengeVariablePrefix", nonlinear: 998, linear: 0, inputs: 9, outputs: 226, wires: 1005, nonzero: 6322, warnings: 3, placements: 1 }),
   Object.freeze({ name: "TransactionSignatureVariableBatch", nonlinear: 1020, linear: 0, inputs: 80, outputs: 4, wires: 1101, nonzero: 4692, warnings: 1, placements: 3 }),
   Object.freeze({ name: "TransactionSignatureFinal", nonlinear: 946, linear: 0, inputs: 81, outputs: 2, wires: 1023, nonzero: 4724, warnings: 6, placements: 1 }),
 ]);
@@ -107,16 +107,16 @@ const main = () => {
 
     assert.equal(
       measurements.reduce((sum, item) => sum + item.nonlinear + item.linear, 0),
-      5171,
+      5165,
     );
-    assert.equal(measurements.reduce((sum, item) => sum + item.wires, 0), 5350);
+    assert.equal(measurements.reduce((sum, item) => sum + item.wires, 0), 5344);
     assert.equal(measurements.reduce((sum, item) => sum + item.placements, 0), 16);
     assert.equal(
       measurements.reduce(
         (sum, item) => sum + item.placements * (item.nonlinear + item.linear),
         0,
       ),
-      14811,
+      14805,
     );
 
     const compileScript = readFileSync(
@@ -132,7 +132,7 @@ const main = () => {
     );
 
     console.log(
-      "Transaction signature production catalog freezes six types, 16 placements, 5171 unique constraints, and 14811 placement-weighted constraints",
+      "Transaction signature production catalog freezes six types, 16 placements, 5165 unique constraints, and 14805 placement-weighted constraints",
     );
   } finally {
     rmSync(outputRoot, { recursive: true, force: true });
