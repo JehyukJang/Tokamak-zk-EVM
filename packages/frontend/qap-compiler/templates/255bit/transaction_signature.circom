@@ -463,6 +463,56 @@ template TransactionSignaturePolicyFixedPrefix() {
     }
 }
 
+template TransactionSignaturePointPolicy() {
+    assert(nPrivateMessageInputs() == 29);
+    signal input in[8];
+    signal output out[16];
+
+    component contractBits = Num2Bits(160);
+    contractBits.in <== in[4];
+    var contractLow = 0;
+    var contractHigh = 0;
+    for (var bit = 0; bit < 128; bit++) {
+        contractLow += contractBits.out[bit] * (1 << bit);
+    }
+    for (var bit = 128; bit < 160; bit++) {
+        contractHigh += contractBits.out[bit] * (1 << (bit - 128));
+    }
+    out[0] <== contractLow;
+    out[1] <== contractHigh;
+    out[2] <== in[5];
+    out[3] <== 0;
+
+    component checkA = jubjubCheck();
+    checkA.in <== [in[2], in[3]];
+    component checkR = jubjubCheck();
+    checkR.in <== [in[0], in[1]];
+
+    component publicKeyCofactor = TSVPointTimesCofactor8_unsafe();
+    publicKeyCofactor.point <== [in[2], in[3]];
+    component publicKeyAffine = TSVExtendedToAffine_unsafe();
+    publicKeyAffine.point <== publicKeyCofactor.point8;
+    component rejectPublicKeyIdentity = TSVRejectIdentityFromValidatedY_unsafe();
+    rejectPublicKeyIdentity.y <== publicKeyAffine.affine[1];
+    component rejectRandomizerIdentity = TSVRejectIdentityFromValidatedY_unsafe();
+    rejectRandomizerIdentity.y <== in[1];
+
+    component randomizerCofactor = TSVPointTimesCofactor8_unsafe();
+    randomizerCofactor.point <== [in[0], in[1]];
+
+    component runtimeTable = TSVRuntimeTable_unsafe();
+    runtimeTable.identity <== [in[6], in[7]];
+    runtimeTable.base <== publicKeyAffine.affine;
+    for (var digit = 0; digit < 4; digit++) {
+        for (var coordinate = 0; coordinate < 2; coordinate++) {
+            out[4 + digit * 2 + coordinate] <== runtimeTable.table[digit][coordinate];
+        }
+    }
+    for (var coordinate = 0; coordinate < 4; coordinate++) {
+        out[12 + coordinate] <== randomizerCofactor.point8[coordinate];
+    }
+}
+
 template TransactionSignatureFixedVariableBridge() {
     assert(nPrivateMessageInputs() == 29);
     signal input in[159];

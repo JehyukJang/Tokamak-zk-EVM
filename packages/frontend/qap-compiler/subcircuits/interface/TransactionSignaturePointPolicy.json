@@ -1,0 +1,18 @@
+{
+  "inputs": [
+    { "name": "randomizerX", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } },
+    { "name": "randomizerY", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } },
+    { "name": "publicKeyX", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } },
+    { "name": "publicKeyY", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } },
+    { "name": "contractAddress", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } },
+    { "name": "functionSelector", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } },
+    { "name": "identityX", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } },
+    { "name": "identityY", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } }
+  ],
+  "outputs": [
+    { "name": "contractAddress", "logicalType": { "valueDomain": { "kind": "uint", "bits": 160 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
+    { "name": "functionSelector", "logicalType": { "valueDomain": { "kind": "uint", "bits": 32 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
+    { "name": "runtimeTableCoordinate", "length": 8, "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } },
+    { "name": "randomizerCofactorCoordinate", "length": 4, "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } }
+  ]
+}
