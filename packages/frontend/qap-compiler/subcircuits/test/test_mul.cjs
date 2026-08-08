@@ -83,30 +83,21 @@ const main = async () => {
   );
   await assertAlu1(
     witnessCalculator,
-    1n << 20n,
-    MAX_UINT256,
-    MAX_UINT256,
-    1n,
-    "EQ shared input decomposition",
-  );
-  await assertAlu1(
-    witnessCalculator,
-    1n << 21n,
-    0n,
-    MAX_UINT256,
-    1n,
-    "ISZERO shared input decomposition",
-  );
-  await assertAlu1(
-    witnessCalculator,
     1n << 25n,
     0n,
     MAX_UINT256,
     MAX_UINT256,
     "NOT shared input decomposition",
   );
+  for (const removedSelector of [1n << 20n, 1n << 21n]) {
+    await assert.rejects(
+      witnessCalculator.calculateWitness({
+        in: [removedSelector, 0n, 0n, 0n, 0n],
+      }, true),
+    );
+  }
   console.log(
-    `ALU1 MUL passed ${boundaryCases.length} boundary cases, ${RANDOM_CASES} randomized cases, input canonicality rejection, and unchanged ALU1 operation checks`,
+    `ALU1 MUL passed ${boundaryCases.length} boundary cases, ${RANDOM_CASES} randomized cases, input canonicality rejection, NOT, and removed-selector rejection`,
   );
 };
 
