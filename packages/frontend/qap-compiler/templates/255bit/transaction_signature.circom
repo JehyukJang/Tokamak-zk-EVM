@@ -200,6 +200,28 @@ template TSVPointTimesCofactor8_unsafe() {
     point8 <== point8Component.result;
 }
 
+// Both inputs must already be valid affine points. The complete Jubjub
+// addition law guarantees nonzero denominators for this curve.
+template TSVFactoredAffineAdd_unsafe() {
+    signal input point1[2];
+    signal input point2[2];
+    signal output result[2];
+
+    var constants[3] = jubjubconst();
+    signal xProduct <== point1[0] * point2[0];
+    signal yProduct <== point1[1] * point2[1];
+    signal coordinateProduct <== xProduct * yProduct;
+    signal sumProduct <== (point1[0] + point1[1]) * (point2[0] + point2[1]);
+    signal denominatorTerm <== constants[1] * coordinateProduct;
+    signal numeratorX <== sumProduct - xProduct - yProduct;
+    signal numeratorY <== yProduct + xProduct;
+
+    result[0] <-- numeratorX / (1 + denominatorTerm);
+    result[1] <-- numeratorY / (1 - denominatorTerm);
+    numeratorX === result[0] * (1 + denominatorTerm);
+    numeratorY === result[1] * (1 - denominatorTerm);
+}
+
 template TSVExtendedToAffine_unsafe() {
     signal input point[4];
     signal output affine[2];
@@ -326,10 +348,10 @@ template TSVRuntimeTable_unsafe() {
     table[1] <== base;
     component additions[2];
     for (var digit = 2; digit < 4; digit++) {
-        additions[digit - 2] = jubjubAdd();
-        additions[digit - 2].in1 <== table[digit - 1];
-        additions[digit - 2].in2 <== base;
-        table[digit] <== additions[digit - 2].out;
+        additions[digit - 2] = TSVFactoredAffineAdd_unsafe();
+        additions[digit - 2].point1 <== table[digit - 1];
+        additions[digit - 2].point2 <== base;
+        table[digit] <== additions[digit - 2].result;
     }
 }
 

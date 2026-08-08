@@ -101,12 +101,12 @@ const main = async () => {
   const outputRoot = mkdtempSync(path.join(tmpdir(), "tokamak-tsv-point-policy-"));
   try {
     assert.deepEqual(compileAndMeasure(packageRoot, outputRoot), {
-      nonlinear: 238,
+      nonlinear: 230,
       linear: 5,
       inputs: 8,
       outputs: 16,
-      wires: 249,
-      nonzero: 1126,
+      wires: 241,
+      nonzero: 1108,
     });
 
     const pointPolicy = await wasm(
