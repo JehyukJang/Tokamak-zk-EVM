@@ -1,11 +1,11 @@
 {
   "inputs": [
-    { "name": "power", "logicalType": { "kind": "uint", "bits": 256 } },
     { "name": "accumulator", "logicalType": { "kind": "uint", "bits": 256 } },
+    { "name": "basePower", "logicalType": { "kind": "uint", "bits": 256 } },
     { "name": "bit", "length": { "constant": "nSubExpBatch" }, "logicalType": { "kind": "uint", "bits": 1 } }
   ],
   "outputs": [
-    { "name": "nextPower", "logicalType": { "kind": "uint", "bits": 256 } },
-    { "name": "nextAccumulator", "logicalType": { "kind": "uint", "bits": 256 } }
+    { "name": "nextAccumulator", "logicalType": { "kind": "uint", "bits": 256 } },
+    { "name": "nextBasePower", "logicalType": { "kind": "uint", "bits": 256 } }
   ]
 }

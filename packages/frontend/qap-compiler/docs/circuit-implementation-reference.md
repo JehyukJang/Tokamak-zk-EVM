@@ -181,9 +181,9 @@ excludes each wrapper's constant-one wire and declared input/output ports.
 
 | Catalog subset | Types | Constraints | R1CS wires | Internal wires | Input ports | Output ports | Nonzero coefficients |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Entire production catalog | 29 | 21,435 | 21,886 | 19,400 | 1,104 | 1,353 | 130,260 |
+| Entire production catalog | 29 | 28,011 | 28,218 | 25,732 | 1,104 | 1,353 | 163,182 |
 | Generic buffers | 7 | 1,520 | 1,527 | 0 | 760 | 760 | 4,560 |
-| Computational and support types | 22 | 19,915 | 20,359 | 19,400 | 344 | 593 | 125,700 |
+| Computational and support types | 22 | 26,491 | 26,691 | 25,732 | 344 | 593 | 158,622 |
 | Transaction-signature types only | 6 | 5,097 | 5,276 | 4,788 | 186 | 296 | 34,848 |
 
 A hypothetical “one placement of every type” would contain 29 placements, but
@@ -288,7 +288,7 @@ input and intermediate result as a separate public value.
 | `ADDMOD` | EVM full-precision addition followed by modular reduction | 2,496 + 1 = 2,497 | 7 inputs: selector, three words; 2 outputs: one word | Composition-dependent. The circuit constructs the exact 257-bit numerator, proves the 512-by-256 quotient/remainder identity with bounded 64-bit words, and enforces a canonical remainder below the safe modulus. The exact first operand must also pass the immediately preceding `CheckBus256` placement. |
 | `MULMOD` | EVM full-precision multiplication followed by modular reduction | 3,418 + 1 = 3,419 | 7 inputs: selector, three words; 2 outputs: one word | Composition-dependent by the catalog topology. The circuit locally proves the complete 512-bit product and the same bounded quotient/remainder relation. Its full-product word decomposition also proves the first operand locally, but the uniform mandatory `CheckBus256` placement remains part of the approved operation mapping. |
 | `DecToBit` | Decomposes one canonical 256-bit word into 256 LSB-first bits | 256 + 2 = 258 | 2 inputs: one word; 256 bit outputs | Locally sound. It supplies exponent or scalar bits to composed exponentiation chains. |
-| `SubExpBatch` | Eight LSB-first square-and-multiply steps for EVM `EXP` | 328 + 0 = 328 | 12 inputs: accumulator word, base-power word, 8 bits; 4 outputs: next accumulator and base-power words | **Incomplete.** The intended chain is defined below, but the current unsafe multiplication relation and bus contract still require local remediation. |
+| `SubExpBatch` | Eight LSB-first square-and-multiply steps for EVM `EXP` | 6,904 + 0 = 6,904 | 12 inputs: accumulator word, base-power word, 8 bits; 4 outputs: next accumulator and base-power words | Locally sound for one batch. Entry words and every carried state are canonical, each exponent input is Boolean, the conditional factor selects exactly one or the current base power, and both truncated products are constrained modulo `2^256`. |
 | `Accumulator` | Adds 32 256-bit memory-slice words | 318 + 0 = 318 | 64 inputs: 32 words; 2 outputs: one word | **Incomplete.** Every input must come from the approved canonical shift-and-mask path, direct unchecked producers are forbidden, and the current unsafe addition chain must be replaced by the planned bounded limb sum so overflow is constrained. |
 | `Poseidon` | Selector-chosen chain of up to four two-input Poseidon compressions over `uint(256)` words; current batch size is 4 | 964 + 0 = 964 | 11 inputs: selector and five lower-first `uint(256)` words; 2 outputs: one lower-first `uint(256)` word | Composition-dependent for exact limb representation. The local hash relation is `PoseidonFr(x mod Fr)` for each input word and intentionally does not require `x < Fr`; connected producers or the public-boundary verifier must constrain each physical limb to its declared width. |
 | `FrToLimbsPair` | Converts two independent native BLS12-381 scalar-field values to lower-first two-limb EVM words | 1,022 + 2 = 1,024 | 2 native-field inputs; 4 outputs: two lower-first limb pairs | Locally sound as two canonical conversions. Each input is constrained to its unique integer representation `0 ≤ x < Fr`; the circuit is general-purpose and is not part of the TSV placement catalog. |
@@ -346,8 +346,9 @@ Each later batch consumes the exact accumulator and base-power outputs of its
 predecessor and the next LSB-first bit group. Only the final accumulator is the
 EVM result; the final base-power output is discarded.
 
-This topology defines the intended operation but does not close the current
-`SubExpBatch` local soundness gap.
+Each batch is locally sound, but the complete EVM exponentiation still depends
+on this exact serial topology: the exponent bits must be consumed once in
+LSB-first order, and every state input must be the exact preceding output.
 
 ### Poseidon chain expansion
 

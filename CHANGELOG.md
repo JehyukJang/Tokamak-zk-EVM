@@ -100,6 +100,10 @@ The format is based on Keep a Changelog.
   proves the complete 512-bit product, and both prove a bounded 512-by-256
   quotient/remainder identity with canonical modulus, quotient, and remainder
   words. A zero modulus is handled through reduction by one and returns zero.
+- Replaced the unsafe EVM exponentiation batch relation with canonical
+  square-and-multiply state transitions. Each eight-bit batch now proves its
+  entry limbs, Boolean exponent bits, conditional factor, truncated products,
+  and every carried accumulator and base-power word.
 - Extended BYTE to the full 256-bit EVM index domain, returning zero for every
   index above 31 instead of rejecting it during synthesis.
 - Extended SIGNEXTEND to the full 256-bit EVM index domain, preserving the
