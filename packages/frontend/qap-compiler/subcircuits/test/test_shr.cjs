@@ -162,7 +162,7 @@ const main = async () => {
   }
 
   const invalidLimb = 1n << 128n;
-  for (let limb = 1; limb <= 4; limb++) {
+  for (const limb of [1, 3, 4]) {
     const input = [1n << 28n, 0n, 0n, 0n, 0n];
     input[limb] = invalidLimb;
     await assert.rejects(
@@ -171,6 +171,16 @@ const main = async () => {
       `non-canonical input limb ${limb} must be rejected`,
     );
   }
+  const nonCanonicalHighShiftWitness = await witnessCalculator.calculateWitness({
+    in: [
+      1n << 28n,
+      0n,
+      1n << 128n,
+      ...split256BitInteger(patternedValue),
+    ],
+  }, true);
+  assert.equal(BigInt(nonCanonicalHighShiftWitness[1].toString()), 0n);
+  assert.equal(BigInt(nonCanonicalHighShiftWitness[2].toString()), 0n);
   await assert.rejects(
     calculate(witnessCalculator, 1n << 27n, 1n, patternedValue),
     undefined,
@@ -231,8 +241,26 @@ const main = async () => {
   );
   await mutateAndReject(circuit, sarWitness, "main.adjustedFiller[1]", 0n);
 
+  const oversizedWitness = await circuit.calculateWitness({
+    in: [1n << 29n, 0n, 1n << 128n, ...split256BitInteger(MAX_UINT256)],
+  }, true);
+  assert.equal(BigInt(oversizedWitness[1].toString()), (1n << 128n) - 1n);
+  assert.equal(BigInt(oversizedWitness[2].toString()), (1n << 128n) - 1n);
+  const highIsZeroInverseSymbol = Object.keys(circuit.symbols).find((name) => (
+    name.endsWith(".shiftHighIsZero.inv")
+  ));
+  assert.notEqual(highIsZeroInverseSymbol, undefined);
+  const highIsZeroInverseIndex = circuit.symbols[highIsZeroInverseSymbol]?.varIdx;
+  assert.notEqual(highIsZeroInverseIndex, undefined);
+  const maliciousOversizedWitness = [...oversizedWitness];
+  maliciousOversizedWitness[highIsZeroInverseIndex] = 0n;
+  await assert.rejects(
+    circuit.checkConstraints(maliciousOversizedWitness),
+    /Constraint doesn't match/,
+  );
+
   console.log(
-    `SHR and SAR passed full-domain boundary and randomized cases, canonicality checks, shared-core and sign-filler mutation checks, and wrong-claim rejection`,
+    `SHR and SAR passed full-domain boundary and randomized cases, constrained-limb checks, high-shift zero detection, shared-core and sign-filler mutation checks, and wrong-claim rejection`,
   );
 };
 

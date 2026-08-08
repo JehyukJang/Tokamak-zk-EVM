@@ -414,21 +414,20 @@ template ShiftRight256() {
     signal input shift[2], value[2];
     signal output out[2], inRange, valueSign, shiftLowBits[8];
 
-    component shiftBits[2];
+    component shiftLowBitsComponent = Num2Bits(128);
+    component shiftHighIsZero = IsZero();
     component valueBits[2];
     component core = ShiftLeft256FromBits_unsafe();
+    shiftLowBitsComponent.in <== shift[0];
+    shiftHighIsZero.in <== shift[1];
+    core.shiftHighContribution <== 1 - shiftHighIsZero.out;
+    for (var bit = 0; bit < 128; bit++) {
+        core.shiftLowBits[bit] <== shiftLowBitsComponent.out[bit];
+    }
     for (var limb = 0; limb < 2; limb++) {
-        shiftBits[limb] = Num2Bits(128);
         valueBits[limb] = Num2Bits(128);
-        shiftBits[limb].in <== shift[limb];
         valueBits[limb].in <== value[limb];
     }
-    var shiftHighContribution = 0;
-    for (var bit = 0; bit < 128; bit++) {
-        shiftHighContribution += shiftBits[1].out[bit];
-        core.shiftLowBits[bit] <== shiftBits[0].out[bit];
-    }
-    core.shiftHighContribution <== shiftHighContribution;
     for (var limb = 0; limb < 2; limb++) {
         for (var bit = 0; bit < 128; bit++) {
             var reversed = 255 - (128 * limb + bit);
@@ -452,7 +451,7 @@ template ShiftRight256() {
     inRange <== core.inRange;
     valueSign <== valueBits[1].out[127];
     for (var bit = 0; bit < 8; bit++) {
-        shiftLowBits[bit] <== shiftBits[0].out[bit];
+        shiftLowBits[bit] <== shiftLowBitsComponent.out[bit];
     }
 }
 
