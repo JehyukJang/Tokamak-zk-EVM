@@ -71,34 +71,6 @@ template TSVSelectPointByBits_unsafe(W) {
     point <== nodes[2 * TABLE_SIZE - 2];
 }
 
-template TSVCanonicalFrView() {
-    signal input in;
-    signal output out[257];
-
-    component decomposition = Num2Bits(255);
-    decomposition.in <== in;
-
-    var lowExpression = 0;
-    var highExpression = 0;
-    for (var bit = 0; bit < 128; bit++) {
-        out[bit] <== decomposition.out[bit];
-        lowExpression += decomposition.out[bit] * (1 << bit);
-    }
-    for (var bit = 128; bit < 255; bit++) {
-        out[bit] <== decomposition.out[bit];
-        highExpression += decomposition.out[bit] * (1 << (bit - 128));
-    }
-
-    signal low <== lowExpression;
-    signal high <== highExpression;
-    component fieldBound = StrictBls12381FrBoundFromLimbs();
-    fieldBound.low <== low;
-    fieldBound.high <== high;
-
-    out[255] <== low;
-    out[256] <== high;
-}
-
 template TSVCanonicalFrBitsOnly() {
     signal input in;
     signal output bits[255];
@@ -435,79 +407,6 @@ template TransactionSignaturePoseidonBatch4() {
     out <== [firstHash.out, fourthHash.out];
 }
 
-template TransactionSignatureCanonicalFrView() {
-    assert(nPrivateMessageInputs() == 29);
-    signal input in[1];
-    signal output out[257];
-    component view = TSVCanonicalFrView();
-    view.in <== in[0];
-    out <== view.out;
-}
-
-template TransactionSignaturePolicyFixedPrefix() {
-    assert(nPrivateMessageInputs() == 29);
-    signal input in[9];
-    signal output out[161];
-
-    component contractBits = Num2Bits(160);
-    contractBits.in <== in[4];
-    var contractLow = 0;
-    var contractHigh = 0;
-    for (var bit = 0; bit < 128; bit++) {
-        contractLow += contractBits.out[bit] * (1 << bit);
-    }
-    for (var bit = 128; bit < 160; bit++) {
-        contractHigh += contractBits.out[bit] * (1 << (bit - 128));
-    }
-    out[0] <== contractLow;
-    out[1] <== contractHigh;
-    out[2] <== in[5];
-    out[3] <== 0;
-
-    component checkA = jubjubCheck();
-    checkA.in <== [in[2], in[3]];
-    component checkR = jubjubCheck();
-    checkR.in <== [in[0], in[1]];
-
-    component publicKeyCofactor = TSVPointTimesCofactor8_unsafe();
-    publicKeyCofactor.point <== [in[2], in[3]];
-    component publicKeyAffine = TSVExtendedToAffine_unsafe();
-    publicKeyAffine.point <== publicKeyCofactor.point8;
-    component rejectPublicKeyIdentity = TSVRejectIdentityFromValidatedY_unsafe();
-    rejectPublicKeyIdentity.y <== publicKeyAffine.affine[1];
-    component rejectRandomizerIdentity = TSVRejectIdentityFromValidatedY_unsafe();
-    rejectRandomizerIdentity.y <== in[1];
-
-    component randomizerCofactor = TSVPointTimesCofactor8_unsafe();
-    randomizerCofactor.point <== [in[0], in[1]];
-
-    component signatureBits = Num2Bits(252);
-    signatureBits.in <== in[6];
-    component fixedPrefix = TSVFixedWindowBatch_unsafe(0, 37);
-    fixedPrefix.previous <== [0, 1, 1, 0];
-    for (var bit = 0; bit < 111; bit++) {
-        fixedPrefix.bits[bit] <== signatureBits.out[bit];
-    }
-    for (var bit = 111; bit < 252; bit++) {
-        out[4 + bit - 111] <== signatureBits.out[bit];
-    }
-    for (var coordinate = 0; coordinate < 4; coordinate++) {
-        out[145 + coordinate] <== fixedPrefix.next[coordinate];
-    }
-
-    component runtimeTable = TSVRuntimeTable_unsafe();
-    runtimeTable.identity <== [in[7], in[8]];
-    runtimeTable.base <== publicKeyAffine.affine;
-    for (var digit = 0; digit < 4; digit++) {
-        for (var coordinate = 0; coordinate < 2; coordinate++) {
-            out[149 + digit * 2 + coordinate] <== runtimeTable.table[digit][coordinate];
-        }
-    }
-    for (var coordinate = 0; coordinate < 4; coordinate++) {
-        out[157 + coordinate] <== randomizerCofactor.point8[coordinate];
-    }
-}
-
 template TransactionSignaturePointPolicy() {
     assert(nPrivateMessageInputs() == 29);
     signal input in[8];
@@ -605,38 +504,6 @@ template TransactionSignatureChallengeVariablePrefix() {
     }
     for (var coordinate = 0; coordinate < 4; coordinate++) {
         out[222 + coordinate] <== variableStart.next[coordinate];
-    }
-}
-
-template TransactionSignatureFixedVariableBridge() {
-    assert(nPrivateMessageInputs() == 29);
-    signal input in[159];
-    signal output out[8];
-
-    component fixedMiddle = TSVFixedWindowBatch_unsafe(37, 38);
-    for (var bit = 0; bit < 114; bit++) {
-        fixedMiddle.bits[bit] <== in[bit];
-    }
-    for (var coordinate = 0; coordinate < 4; coordinate++) {
-        fixedMiddle.previous[coordinate] <== in[114 + coordinate];
-    }
-
-    signal table[4][2];
-    for (var digit = 0; digit < 4; digit++) {
-        for (var coordinate = 0; coordinate < 2; coordinate++) {
-            table[digit][coordinate] <== in[151 + digit * 2 + coordinate];
-        }
-    }
-    component variableStart = TSVVariableWindowBatch_unsafe(17, 1, 1);
-    for (var bit = 0; bit < 33; bit++) {
-        variableStart.bits[bit] <== in[118 + bit];
-    }
-    variableStart.table <== table;
-    variableStart.previous <== [table[0][0], table[0][1], 1, table[0][0] * table[0][1]];
-
-    for (var coordinate = 0; coordinate < 4; coordinate++) {
-        out[coordinate] <== fixedMiddle.next[coordinate];
-        out[4 + coordinate] <== variableStart.next[coordinate];
     }
 }
 
