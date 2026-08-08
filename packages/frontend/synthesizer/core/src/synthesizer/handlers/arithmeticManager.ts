@@ -5,6 +5,8 @@ import {
   BLS12_381_FR_NATIVE_DATA_PT_TYPE,
   EVM_WORD_DATA_PT_TYPE,
   UINT64_LIMB_DATA_PT_TYPE,
+  UINT85_LIMB_DATA_PT_TYPE,
+  UINT86_LIMB_DATA_PT_TYPE,
 } from '../types/dataStructure.ts';
 import { DataPtFactory } from '../dataStructure/index.ts';
 import {
@@ -76,25 +78,13 @@ export class ArithmeticManager {
         break
       case 'ADDMODPrepare':
         dataPtTypes = [
-          UINT64_LIMB_DATA_PT_TYPE,
-          UINT64_LIMB_DATA_PT_TYPE,
-          UINT64_LIMB_DATA_PT_TYPE,
-          UINT64_LIMB_DATA_PT_TYPE,
-          BIT_LIMB_DATA_PT_TYPE,
-          UINT64_LIMB_DATA_PT_TYPE,
-          UINT64_LIMB_DATA_PT_TYPE,
-          UINT64_LIMB_DATA_PT_TYPE,
-          UINT64_LIMB_DATA_PT_TYPE,
-          BIT_LIMB_DATA_PT_TYPE,
-          UINT64_LIMB_DATA_PT_TYPE,
-          UINT64_LIMB_DATA_PT_TYPE,
-          UINT64_LIMB_DATA_PT_TYPE,
-          UINT64_LIMB_DATA_PT_TYPE,
-          BIT_LIMB_DATA_PT_TYPE,
-          UINT64_LIMB_DATA_PT_TYPE,
-          UINT64_LIMB_DATA_PT_TYPE,
-          UINT64_LIMB_DATA_PT_TYPE,
-          UINT64_LIMB_DATA_PT_TYPE,
+          UINT86_LIMB_DATA_PT_TYPE,
+          UINT86_LIMB_DATA_PT_TYPE,
+          UINT85_LIMB_DATA_PT_TYPE,
+          UINT86_LIMB_DATA_PT_TYPE,
+          UINT86_LIMB_DATA_PT_TYPE,
+          UINT85_LIMB_DATA_PT_TYPE,
+          EVM_WORD_DATA_PT_TYPE,
         ]
         break
       case 'MULMODPrepare':
@@ -420,7 +410,6 @@ const ARITHMETIC_MAPPING: Record<ArithmeticSubcircuit, (values: bigint[]) => big
   BYTE: ArithmeticOperations.byteSubcircuit,
   SHL: ArithmeticOperations.shlSubcircuit,
   ALU6: ArithmeticOperations.alu6,
-  CheckBus256: ArithmeticOperations.checkBus256,
   ADDMODPrepare: ArithmeticOperations.addmodPrepare,
   ADDMODVerify: ArithmeticOperations.addmodVerify,
   MULMODPrepare: ArithmeticOperations.mulmodPrepare,

@@ -25,9 +25,8 @@ const createHarness = (alu1Interface = { NInWires: 5, NOutWires: 2 }) => {
   let staticWireIndex = 0;
   const subcircuitInfo = [
     ['ALU1', { name: 'ALU1', ...alu1Interface }],
-    ['CheckBus256', { name: 'CheckBus256', NInWires: 2, NOutWires: 0 }],
-    ['ADDMODPrepare', { name: 'ADDMODPrepare', NInWires: 7, NOutWires: 19 }],
-    ['ADDMODVerify', { name: 'ADDMODVerify', NInWires: 19, NOutWires: 2 }],
+    ['ADDMODPrepare', { name: 'ADDMODPrepare', NInWires: 6, NOutWires: 8 }],
+    ['ADDMODVerify', { name: 'ADDMODVerify', NInWires: 10, NOutWires: 2 }],
     ['MULMODPrepare', { name: 'MULMODPrepare', NInWires: 6, NOutWires: 18 }],
     ['MULMODCandidate', { name: 'MULMODCandidate', NInWires: 6, NOutWires: 12 }],
     ['MULMODVerify', { name: 'MULMODVerify', NInWires: 24, NOutWires: 2 }],
@@ -64,37 +63,37 @@ const createHarness = (alu1Interface = { NInWires: 5, NOutWires: 2 }) => {
   };
 };
 
-describe('modular CheckBus256 topology', () => {
-  it('places CheckBus256 immediately before ADDMODPrepare', () => {
+describe('modular arithmetic topology', () => {
+  it('places the two ADDMOD stages with the exact original modulus', () => {
     const { manager, placements } = createHarness();
     const firstOperand = dataPt(5n, 10, 3);
+    const secondOperand = dataPt(7n, 11);
+    const modulus = dataPt(10n, 12);
 
     const result = manager.placeArithComposition('ADDMOD', [
       firstOperand,
-      dataPt(7n, 11),
-      dataPt(10n, 12),
+      secondOperand,
+      modulus,
     ]);
 
     expect(result).toHaveLength(1);
     expect(result[0].value).toBe(2n);
-    expect(result[0].source).toBe(2);
+    expect(result[0].source).toBe(1);
     expect(placements.map(({ name }) => name)).toEqual([
-      'CheckBus256',
       'ADDMODPrepare',
       'ADDMODVerify',
     ]);
-    expect(placements[0].inPts).toHaveLength(1);
-    expect(placements[0].outPts).toHaveLength(0);
-    expect(placements[0].inPts[0]).toBe(firstOperand);
-    expect(placements[1].inPts).toHaveLength(4);
-    expect(placements[1].outPts).toHaveLength(19);
-    expect(placements[1].inPts[0].value).toBe(1n << 8n);
-    expect(placements[1].inPts[1]).toBe(firstOperand);
-    expect(placements[2].inPts).toEqual(placements[1].outPts);
-    expect(placements[2].outPts).toHaveLength(1);
+    expect(placements[0].inPts).toEqual([firstOperand, secondOperand, modulus]);
+    expect(placements[0].outPts).toHaveLength(7);
+    expect(placements[1].inPts).toEqual([
+      ...placements[0].outPts.slice(0, 3),
+      modulus,
+      ...placements[0].outPts.slice(3),
+    ]);
+    expect(placements[1].outPts).toHaveLength(1);
   });
 
-  it('places the three MULMOD stages without a selector or CheckBus256', () => {
+  it('places the three MULMOD stages without a selector', () => {
     const { manager, placements } = createHarness();
     const firstOperand = dataPt(5n, 10, 3);
 
@@ -124,7 +123,7 @@ describe('modular CheckBus256 topology', () => {
     expect(placements[2].outPts).toHaveLength(1);
   });
 
-  it('does not add CheckBus256 to an ordinary arithmetic placement', () => {
+  it('uses one placement for an ordinary arithmetic operation', () => {
     const { manager, placements } = createHarness();
 
     manager.placeArithComposition('ADD', [dataPt(1n, 10), dataPt(2n, 11)]);

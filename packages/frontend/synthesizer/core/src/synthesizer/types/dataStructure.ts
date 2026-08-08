@@ -20,6 +20,16 @@ export const UINT64_LIMB_DATA_PT_TYPE: DataPtType = Object.freeze({
   wireLayout: Object.freeze({ kind: 'limbs-128', count: 1 }),
 });
 
+export const UINT85_LIMB_DATA_PT_TYPE: DataPtType = Object.freeze({
+  valueDomain: Object.freeze({ kind: 'uint', bits: 85 }),
+  wireLayout: Object.freeze({ kind: 'limbs-128', count: 1 }),
+});
+
+export const UINT86_LIMB_DATA_PT_TYPE: DataPtType = Object.freeze({
+  valueDomain: Object.freeze({ kind: 'uint', bits: 86 }),
+  wireLayout: Object.freeze({ kind: 'limbs-128', count: 1 }),
+});
+
 export const BIT_LIMB_DATA_PT_TYPE: DataPtType = Object.freeze({
   valueDomain: Object.freeze({ kind: 'uint', bits: 1 }),
   wireLayout: Object.freeze({ kind: 'limbs-128', count: 1 }),

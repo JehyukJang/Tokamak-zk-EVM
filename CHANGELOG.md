@@ -52,11 +52,10 @@ The format is based on Keep a Changelog.
   a zero/nonzero condition while retaining canonical low-shift and value
   decompositions. Their composition contract now requires the connected
   producer to constrain that high wire as a 128-bit limb.
-- Added the input-only `CheckBus256` composition target required by `ADDMOD`.
 - Replaced the oversized single ADDMOD target with the composition-only
-  `ADDMODPrepare` and `ADDMODVerify` targets. They specialize reduction to the
-  exact 257-bit addition numerator and contain 972 and 864 optimized
-  constraints respectively.
+  `ADDMODPrepare` and `ADDMODVerify` targets. They use a field-safe radix-86
+  reduction boundary, contain 944 and 959 optimized constraints respectively,
+  and need only eight physical wires between the two placements.
 - Renamed the two-limb `CheckBus` template to `CheckBus256` and implemented it
   by composing two `CheckBus128` limb checks.
 - Replaced the oversized standalone `MULMOD` target with the mandatory
@@ -86,7 +85,7 @@ The format is based on Keep a Changelog.
 - Changed every unsuccessful top-level transaction result, including REVERT
   and exceptional halts, to fail synthesis with the original EVM error.
 - Updated arithmetic dispatch for the final subcircuit set. Every `ADDMOD`
-  uses `CheckBus256 -> ADDMODPrepare -> ADDMODVerify`, while every `MULMOD`
+  uses `ADDMODPrepare -> ADDMODVerify`, while every `MULMOD`
   uses `MULMODPrepare -> MULMODCandidate -> MULMODVerify`. Each composition
   connects every required operand and intermediate directly, without host
   reconstruction.
@@ -103,7 +102,7 @@ The format is based on Keep a Changelog.
   two's-complement ordering relation that reuses constrained sign bits.
 - Replaced the truncated and under-constrained ADDMOD and MULMOD reductions
   with full-width relations. ADDMOD proves its exact 257-bit sum through two
-  mandatory arithmetic targets and one input check. MULMOD proves its complete
+  mandatory arithmetic targets. MULMOD proves its complete
   512-bit product and reduction through three mandatory arithmetic targets.
   Both constrain canonical modulus, quotient, and remainder words; reduction
   by one handles a zero modulus.

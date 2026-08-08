@@ -16,7 +16,7 @@ const operations = [
   {
     name: "ADDMOD",
     circuit: "subcircuits/test/circom/addmod257_composed.circom",
-    selector: 1n << 8n,
+    selector: null,
     evaluate: (lhs, rhs, modulus) => modulus === 0n
       ? 0n
       : (lhs + rhs) % modulus,
@@ -150,11 +150,18 @@ const main = async () => {
       circuit.symbols["main.out[0]"].varIdx,
       circuit.symbols["main.out[1]"].varIdx,
       findSurvivingWire(circuit, ".quotientWords[0]"),
-      findSurvivingWire(circuit, ".remainderWords[0]"),
+      findSurvivingWire(
+        circuit,
+        operation.name === "ADDMOD"
+          ? ".verify.remainderSplit.bits[0].out[0]"
+          : ".remainderWords[0]",
+      ),
       ...(operation.name === "ADDMOD" ? [
-        findSurvivingWire(circuit, ".numeratorWords[0]"),
-        findSurvivingWire(circuit, ".quotientWords[3]"),
-        findSurvivingWire(circuit, ".quotientWords[4]"),
+        findSurvivingWire(circuit, ".prepare.numeratorWords[0]"),
+        findSurvivingWire(circuit, ".prepare.quotientWords[0]"),
+        findSurvivingWire(circuit, ".prepare.quotientWords[2]"),
+        findSurvivingWire(circuit, ".verify.products[0][0]"),
+        findSurvivingWire(circuit, ".verify.carry[0]"),
       ] : [
         findSurvivingWire(circuit, ".prepare.lhsWords[0]"),
         findSurvivingWire(circuit, ".verify.lhsProducts[0][0]"),
@@ -172,7 +179,7 @@ const main = async () => {
     }
 
     console.log(
-      `${operation.name} passed ${boundaries.length} boundary cases, ${RANDOM_CASES} randomized cases, local canonicality${operation.selector === null ? "" : ", selector"}, and mutation checks`,
+      `${operation.name} passed ${boundaries.length} boundary cases, ${RANDOM_CASES} randomized cases, local canonicality, and mutation checks`,
     );
   }
 };

@@ -89,7 +89,6 @@ export const ARITHMETIC_SUBCIRCUIT_LIST = [
     'BYTE',
     'SHL',
     'ALU6',
-    'CheckBus256',
     'ADDMODPrepare',
     'ADDMODVerify',
     'MULMODPrepare',

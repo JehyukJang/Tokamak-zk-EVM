@@ -60,19 +60,10 @@ const createLogicalPlacements = (operation: ModularOperation): Placements => {
   placements[3]!.outPts = [dataPt(5n, 3, 0)];
 
   const subcircuitInfoByName = new Map([
-    [
-      'CheckBus256',
-      {
-        id: 7,
-        name: 'CheckBus256',
-        NInWires: 2,
-        NOutWires: 0,
-      },
-    ],
     ...(operation === 'ADDMOD'
       ? [
-          ['ADDMODPrepare', { id: 8, name: 'ADDMODPrepare', NInWires: 7, NOutWires: 19 }],
-          ['ADDMODVerify', { id: 9, name: 'ADDMODVerify', NInWires: 19, NOutWires: 2 }],
+          ['ADDMODPrepare', { id: 7, name: 'ADDMODPrepare', NInWires: 6, NOutWires: 8 }],
+          ['ADDMODVerify', { id: 8, name: 'ADDMODVerify', NInWires: 10, NOutWires: 2 }],
         ]
       : [
           ['MULMODPrepare', { id: 8, name: 'MULMODPrepare', NInWires: 6, NOutWires: 18 }],
@@ -131,20 +122,12 @@ const convertToCircuitWires = (placements: Placements): void => {
 
 const assertExactModularInputs = (placements: Placements, operation: ModularOperation): void => {
   const privateInput = placements[6]!;
-  const checkBus = operation === 'ADDMOD' ? placements[7]! : undefined;
-  const modular = operation === 'ADDMOD' ? placements[8]! : placements[7]!;
+  const modular = placements[7]!;
 
-  if (checkBus !== undefined) {
-    expect(checkBus.name).toBe('CheckBus256');
-    expect(checkBus.inPts).toHaveLength(2);
-  }
   expect(modular.name).toBe(operation === 'ADDMOD' ? 'ADDMODPrepare' : 'MULMODPrepare');
-  expect(modular.inPts).toHaveLength(operation === 'ADDMOD' ? 7 : 6);
+  expect(modular.inPts).toHaveLength(6);
   for (let limb = 0; limb < 2; limb++) {
-    if (checkBus !== undefined) {
-      expect(checkBus.inPts[limb]).toBe(privateInput.outPts[limb]);
-    }
-    expect(modular.inPts[(operation === 'ADDMOD' ? 1 : 0) + limb]).toBe(privateInput.outPts[limb]);
+    expect(modular.inPts[limb]).toBe(privateInput.outPts[limb]);
     expect(privateInput.outPts[limb]).toMatchObject({
       source: 6,
       wireIndex: limb,
@@ -152,9 +135,13 @@ const assertExactModularInputs = (placements: Placements, operation: ModularOper
     });
   }
   if (operation === 'ADDMOD') {
-    const prepare = placements[8]!;
-    const verify = placements[9]!;
-    expect(verify.inPts).toEqual(prepare.outPts);
+    const prepare = placements[7]!;
+    const verify = placements[8]!;
+    expect(verify.inPts).toEqual([
+      ...prepare.outPts.slice(0, 3),
+      ...privateInput.outPts.slice(4, 6),
+      ...prepare.outPts.slice(3),
+    ]);
   } else {
     const prepare = placements[7]!;
     const candidate = placements[8]!;
@@ -176,11 +163,10 @@ const createPermutation = (placements: Placements, operation: ModularOperation) 
       NInWires: 0,
       NOutWires: name === 'bufferTxIn' ? 2 : name === 'bufferEVMIn' ? 2 : name === 'bufferPrvIn' ? 8 : 0,
     })),
-    { name: 'CheckBus256' as const, NInWires: 2, NOutWires: 0 },
     ...(operation === 'ADDMOD'
       ? [
-          { name: 'ADDMODPrepare' as const, NInWires: 7, NOutWires: 19 },
-          { name: 'ADDMODVerify' as const, NInWires: 19, NOutWires: 2 },
+          { name: 'ADDMODPrepare' as const, NInWires: 6, NOutWires: 8 },
+          { name: 'ADDMODVerify' as const, NInWires: 10, NOutWires: 2 },
         ]
       : [
           { name: 'MULMODPrepare' as const, NInWires: 6, NOutWires: 18 },
@@ -252,44 +238,19 @@ describe('modular arithmetic physical permutation', () => {
       )!;
       for (let limb = 0; limb < 2; limb++) {
         const producerWire = privateInfo.flattenMap[privateInfo.outWireIndex + limb];
-        const modularWire = modularInfo.flattenMap[
-          modularInfo.inWireIndex + (operation === 'ADDMOD' ? 1 : 0) + limb
-        ];
-        if (operation === 'ADDMOD') {
-          const checkInfo = subcircuitInfoByName.get('CheckBus256')!;
-          const checkWire = checkInfo.flattenMap[checkInfo.inWireIndex + limb];
-          expect(permutation).toContainEqual({
-            row: producerWire,
-            col: 6,
-            X: checkWire,
-            Y: 7,
-          });
-          expect(permutation).toContainEqual({
-            row: checkWire,
-            col: 7,
-            X: modularWire,
-            Y: 8,
-          });
-          expect(permutation).toContainEqual({
-            row: modularWire,
-            col: 8,
-            X: producerWire,
-            Y: 6,
-          });
-        } else {
-          expect(permutation).toContainEqual({
-            row: producerWire,
-            col: 6,
-            X: modularWire,
-            Y: 7,
-          });
-          expect(permutation).toContainEqual({
-            row: modularWire,
-            col: 7,
-            X: producerWire,
-            Y: 6,
-          });
-        }
+        const modularWire = modularInfo.flattenMap[modularInfo.inWireIndex + limb];
+        expect(permutation).toContainEqual({
+          row: producerWire,
+          col: 6,
+          X: modularWire,
+          Y: 7,
+        });
+        expect(permutation).toContainEqual({
+          row: modularWire,
+          col: 7,
+          X: producerWire,
+          Y: 6,
+        });
       }
     },
   );
@@ -303,20 +264,57 @@ describe('modular arithmetic physical permutation', () => {
     const prepareInfo = subcircuitInfoByName.get('ADDMODPrepare')!;
     const verifyInfo = subcircuitInfoByName.get('ADDMODVerify')!;
 
-    for (let index = 0; index < 19; index++) {
+    const verifyInputIndices = [0, 1, 2, 5, 6, 7, 8, 9];
+    for (let index = 0; index < 8; index++) {
       const prepareWire = prepareInfo.flattenMap[prepareInfo.outWireIndex + index];
-      const verifyWire = verifyInfo.flattenMap[verifyInfo.inWireIndex + index];
+      const verifyWire = verifyInfo.flattenMap[
+        verifyInfo.inWireIndex + verifyInputIndices[index]
+      ];
       expect(permutation).toContainEqual({
         row: prepareWire,
-        col: 8,
+        col: 7,
         X: verifyWire,
-        Y: 9,
+        Y: 8,
       });
       expect(permutation).toContainEqual({
         row: verifyWire,
-        col: 9,
+        col: 8,
         X: prepareWire,
+        Y: 7,
+      });
+    }
+  });
+
+  it('connects the exact original ADDMOD modulus to both stages', () => {
+    const placements = createLogicalPlacements('ADDMOD');
+    convertToCircuitWires(placements);
+    assertExactModularInputs(placements, 'ADDMOD');
+
+    const { permutation, subcircuitInfoByName } = createPermutation(placements, 'ADDMOD');
+    const privateInfo = subcircuitInfoByName.get('bufferPrvIn')!;
+    const prepareInfo = subcircuitInfoByName.get('ADDMODPrepare')!;
+    const verifyInfo = subcircuitInfoByName.get('ADDMODVerify')!;
+    for (let limb = 0; limb < 2; limb++) {
+      const producerWire = privateInfo.flattenMap[privateInfo.outWireIndex + 4 + limb];
+      const prepareWire = prepareInfo.flattenMap[prepareInfo.inWireIndex + 4 + limb];
+      const verifyWire = verifyInfo.flattenMap[verifyInfo.inWireIndex + 3 + limb];
+      expect(permutation).toContainEqual({
+        row: producerWire,
+        col: 6,
+        X: prepareWire,
+        Y: 7,
+      });
+      expect(permutation).toContainEqual({
+        row: prepareWire,
+        col: 7,
+        X: verifyWire,
         Y: 8,
+      });
+      expect(permutation).toContainEqual({
+        row: verifyWire,
+        col: 8,
+        X: producerWire,
+        Y: 6,
       });
     }
   });
@@ -390,11 +388,11 @@ describe('modular arithmetic physical permutation', () => {
     ['MULMOD', 'dataPtType'],
   ] as const)('detects a %s first-operand %s mutation after physical conversion', (operation, mutation) => {
     const placements = createLogicalPlacements(operation);
-    const modular = operation === 'ADDMOD' ? placements[8]! : placements[7]!;
+    const modular = placements[7]!;
     if (mutation === 'source') {
-      modular.inPts[operation === 'ADDMOD' ? 1 : 0] = placements[3]!.outPts[0]!;
+      modular.inPts[0] = placements[3]!.outPts[0]!;
     } else if (mutation === 'wireIndex') {
-      modular.inPts[operation === 'ADDMOD' ? 1 : 0] = placements[6]!.outPts[3]!;
+      modular.inPts[0] = placements[6]!.outPts[3]!;
     } else {
       placements[6]!.outPts[0]!.dataPtType = UINT64_LIMB_DATA_PT_TYPE;
     }

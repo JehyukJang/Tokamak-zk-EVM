@@ -521,52 +521,28 @@ export class ArithmeticOperations {
     }
   }
 
-  static checkBus256(inVals: bigint[]): bigint[] {
-    ArithmeticOperations._requireSubcircuitInputs(inVals, 1, 'CheckBus256')
-    return []
-  }
-
   static addmodPrepare(inVals: bigint[]): bigint[] {
-    const [lhs, rhs, modulus] = ArithmeticOperations._requireSelector(
-      inVals,
-      1n << 8n,
-      'ADDMODPrepare',
-      3,
-    )
-    const wordMask = (1n << 64n) - 1n
+    ArithmeticOperations._requireSubcircuitInputs(inVals, 3, 'ADDMODPrepare')
+    const [lhs, rhs, modulus] = inVals
+    const wordMask = (1n << 86n) - 1n
     const numerator = lhs + rhs
     const safeModulus = modulus === 0n ? 1n : modulus
     const quotient = numerator / safeModulus
     const remainder = numerator % safeModulus
     return [
       numerator & wordMask,
-      numerator >> 64n & wordMask,
-      numerator >> 128n & wordMask,
-      numerator >> 192n & wordMask,
-      numerator >> 256n,
-      modulus & wordMask,
-      modulus >> 64n & wordMask,
-      modulus >> 128n & wordMask,
-      modulus >> 192n & wordMask,
-      modulus === 0n ? 1n : 0n,
+      numerator >> 86n & wordMask,
+      numerator >> 172n,
       quotient & wordMask,
-      quotient >> 64n & wordMask,
-      quotient >> 128n & wordMask,
-      quotient >> 192n & wordMask,
-      quotient >> 256n,
-      remainder & wordMask,
-      remainder >> 64n & wordMask,
-      remainder >> 128n & wordMask,
-      remainder >> 192n & wordMask,
+      quotient >> 86n & wordMask,
+      quotient >> 172n,
+      remainder,
     ]
   }
 
   static addmodVerify(inVals: bigint[]): bigint {
-    ArithmeticOperations._requireSubcircuitInputs(inVals, 19, 'ADDMODVerify')
-    return inVals.slice(15, 19).reduce(
-      (value, word, index) => value + (word << BigInt(64 * index)),
-      0n,
-    )
+    ArithmeticOperations._requireSubcircuitInputs(inVals, 8, 'ADDMODVerify')
+    return inVals[7]
   }
 
   private static _split64Words(value: bigint, count: number): bigint[] {

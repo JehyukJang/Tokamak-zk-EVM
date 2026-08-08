@@ -167,8 +167,8 @@ The tables cover every production target in
 included. The values describe the current source tree, not necessarily the
 contents of an older installed package or the checked-in generated library.
 
-The production list currently contains 32 compiled subcircuit types: seven
-generic buffers, 19 general computational or support types, and six
+The production list currently contains 31 compiled subcircuit types: seven
+generic buffers, 18 general computational or support types, and six
 transaction-signature component types. This is a physical library catalog,
 not a count of EVM operations or transaction placements. A logical operation
 may select one type, compose several different types, or place the same type
@@ -181,12 +181,12 @@ excludes each wrapper's constant-one wire and declared input/output ports.
 
 | Catalog subset | Types | Constraints | R1CS wires | Internal wires | Input ports | Output ports | Nonzero coefficients |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Entire production catalog | 32 | 26,462 | 26,731 | 24,145 | 1,152 | 1,402 | 155,042 |
+| Entire production catalog | 31 | 26,273 | 26,533 | 23,971 | 1,140 | 1,391 | 154,154 |
 | Generic buffers | 7 | 1,520 | 1,527 | 0 | 760 | 760 | 4,560 |
-| Computational and support types | 25 | 24,942 | 25,204 | 24,145 | 392 | 642 | 150,482 |
+| Computational and support types | 24 | 24,753 | 25,006 | 23,971 | 380 | 631 | 149,594 |
 | Transaction-signature types only | 6 | 5,097 | 5,276 | 4,788 | 186 | 296 | 34,848 |
 
-A hypothetical “one placement of every type” would contain 32 placements, but
+A hypothetical “one placement of every type” would contain 31 placements, but
 it is not an operation supported by the system. Actual placement multiplicity
 is defined by the composition contracts below. For example, most ALU opcodes
 use one placement, division uses the `ALU4A -> ALU4B` pair, and transaction
@@ -284,9 +284,8 @@ input and intermediate result as a separate public value.
 | `ALU4B` | Second half of `DIV`, `MOD`, `SDIV`, `SMOD` | 802 + 0 = 802 | 13 inputs; 2 outputs: one word | Composition-dependent; never use independently. Its inputs must be the exact `ALU4A` outputs from the same operation. |
 | `SHL` | Full-domain EVM logical left shift | 795 + 1 = 796 | 5 inputs: selector, shift word, value word; 2 outputs: one word | Composition-dependent for exact limb representation. The low shift limb and both value limbs are canonical locally; the high shift limb is checked only for zero because every nonzero value yields the same zero result. Its producer must constrain that wire as a canonical 128-bit limb. |
 | `ALU5` | Full-domain EVM `SHR`, `SAR` | 816 + 0 = 816 | 5 inputs: selector, shift word, value word; 2 outputs: one word | Composition-dependent for exact limb representation. The low shift limb and both value limbs are canonical locally; the high shift limb is checked only for zero because all nonzero values select the same oversized-shift result. Its producer must constrain that wire as a canonical 128-bit limb. `SHR` and `SAR` share the shift core, and `SAR` constrains sign fill locally. |
-| `CheckBus256` | Proves that both limbs form a canonical 256-bit word | 256 + 0 = 256 | 2 inputs: one word; no outputs | Locally sound as a range assertion. It is also a mandatory support placement for the first operand of `ADDMOD`. |
-| `ADDMODPrepare` | Prepares the exact 257-bit numerator and bounded reduction candidates | 968 + 4 = 972 | 7 inputs: selector and three words; 19 outputs: five numerator words, four modulus words, one zero flag, five quotient words, and four remainder words | Composition-dependent. The exact first operand must pass the preceding `CheckBus256`. This target checks the second operand and modulus, constrains the addition carry, and bounds the first three quotient words and its 257th bit. |
-| `ADDMODVerify` | Completes candidate bounds, verifies the 257-by-256 reduction, and returns the EVM result | 862 + 2 = 864 | 19 inputs: every `ADDMODPrepare` output; 2 outputs: one word | Composition-dependent. It bounds the remaining quotient word and all remainder words, proves `numerator = quotient * safeModulus + remainder` without unused 512-bit carry ranges, enforces `remainder < safeModulus`, and returns zero for an original zero modulus. |
+| `ADDMODPrepare` | Canonicalizes the addends and prepares the exact 257-bit numerator and bounded reduction candidates | 943 + 1 = 944 | 6 inputs: three words; 8 outputs: three numerator words, three quotient words, and one remainder word | Composition-dependent. It decomposes both addends into field-safe radix-86 words, proves their exact sum, bounds the complete quotient candidate, and emits the remainder candidate. The remainder becomes constrained only in `ADDMODVerify`. |
+| `ADDMODVerify` | Canonicalizes the modulus and remainder, verifies the 257-by-256 reduction, and returns the EVM result | 957 + 2 = 959 | 10 inputs: eight preparation wires plus the original modulus word; 2 outputs: one word | Composition-dependent. It must receive the exact `ADDMODPrepare` outputs and the exact original modulus operand. It proves `numerator = quotient * safeModulus + remainder` in radix 86, enforces `remainder < safeModulus`, and returns zero for an original zero modulus. |
 | `MULMODPrepare` | Canonicalizes the three EVM operands and generates the full-width quotient and remainder candidates | 768 + 6 = 774 | 6 inputs: three words; 18 outputs: twelve 64-bit operand words, four quotient limbs, and two remainder limbs | Composition-dependent; never use independently. The operand words are canonical, but the quotient and remainder outputs are witness candidates whose validity is established only by the following two stages. |
 | `MULMODCandidate` | Canonicalizes the quotient and remainder candidates for the full-width reduction relation | 768 + 6 = 774 | 6 inputs: four quotient limbs and two remainder limbs; 12 outputs: eight quotient words and four remainder words | Composition-dependent; never use independently. Its six inputs must be the exact candidate outputs of `MULMODPrepare`, without host reconstruction or substitution. |
 | `MULMODVerify` | Proves the complete 512-bit multiplication and modular-reduction relation and returns the EVM result | 981 + 2 = 983 | 24 inputs: twelve operand words, eight quotient words, and four remainder words; 2 outputs: one word | Composition-dependent; never use independently. It proves `lhs * rhs = quotient * safeModulus + remainder`, enforces `remainder < safeModulus`, and uses a safe modulus of one so zero modulus returns zero. |
@@ -325,17 +324,28 @@ a sound or independently usable EVM division operation.
 
 ### Modular family
 
-Every logical `ADDMOD` uses exactly three placements:
+Every logical `ADDMOD` uses exactly two placements:
 
 ```text
-CheckBus256 -> ADDMODPrepare -> ADDMODVerify
+ADDMODPrepare -> ADDMODVerify
 ```
 
-The check inputs and `ADDMODPrepare` first operand must be the exact same
-source wires. All 19 preparation outputs must feed `ADDMODVerify` without host
-reconstruction, substitution, or reordering. Only the final two
-`ADDMODVerify` outputs form the EVM result. The two ADDMOD targets are
-individually composition-dependent and jointly prove the exact operation.
+All eight physical preparation outputs must feed their declared
+`ADDMODVerify` inputs without host reconstruction, substitution, or
+reordering. The exact original modulus operand supplied to `ADDMODPrepare`
+must also feed the two dedicated modulus inputs of `ADDMODVerify`. Only the
+final two `ADDMODVerify` outputs form the EVM result. The two targets contain
+944 and 959 constraints respectively, for a one-per-type sum of 1,903; each
+target remains below the 1,024-constraint limit. Neither target is an
+independently usable EVM operation.
+
+Circom inspection intentionally reports the `ADDMODPrepare` modulus and
+remainder-candidate hint path as locally unconstrained. The modulus is needed
+there to generate the quotient and remainder witness candidates, while
+`ADDMODVerify` owns the actual reduction claim. This is acceptable only when
+the exact original modulus and all exact preparation outputs are connected to
+the verifier stage as specified above. The preparation target alone makes no
+modular-reduction claim.
 
 Every logical `MULMOD` uses exactly three placements:
 
