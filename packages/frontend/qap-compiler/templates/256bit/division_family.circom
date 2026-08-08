@@ -62,19 +62,16 @@ template DivisionFamilyPart1() {
     signal output resultIsNegative;
     signal output useMod;
 
-    component selectorBits = Num2Bits(8);
-    selectorBits.in <== selector;
-    for (var bit = 0; bit < 4; bit++) {
-        selectorBits.out[bit] === 0;
-    }
-    selectorBits.out[4]
-        + selectorBits.out[5]
-        + selectorBits.out[6]
-        + selectorBits.out[7]
-        === 1;
-
-    signal isSigned <== selectorBits.out[5] + selectorBits.out[7];
-    useMod <== selectorBits.out[6] + selectorBits.out[7];
+    signal isSigned
+        <-- selector == (1 << 5) || selector == (1 << 7) ? 1 : 0;
+    useMod <-- selector == (1 << 6) || selector == (1 << 7) ? 1 : 0;
+    isSigned * (1 - isSigned) === 0;
+    useMod * (1 - useMod) === 0;
+    selector
+        === 16
+        + 16 * isSigned
+        + 48 * useMod
+        + 48 * isSigned * useMod;
 
     component dividendBits[2];
     component divisorBits[2];
@@ -123,11 +120,9 @@ template DivisionFamilyPart1() {
 
     signal quotientIsNegative
         <== XOR()(dividendMagnitude.sign, divisorMagnitude.sign);
-    signal selectedQuotientSign
-        <== selectorBits.out[5] * quotientIsNegative;
-    signal selectedRemainderSign
-        <== selectorBits.out[7] * dividendMagnitude.sign;
-    resultIsNegative <== selectedQuotientSign + selectedRemainderSign;
+    signal selectedSign <== quotientIsNegative
+        + useMod * (dividendMagnitude.sign - quotientIsNegative);
+    resultIsNegative <== isSigned * selectedSign;
 }
 
 // This helper assumes that magnitude is canonical and isNegative is boolean.

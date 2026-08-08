@@ -232,6 +232,8 @@ const main = async () => {
     BigInt(mutationWitness[coefficientHighIndex].toString()) + 1n,
   );
   await mutateAndReject(circuit, mutationWitness, negativeValueSymbol, 0n);
+  await mutateAndReject(circuit, mutationWitness, "main.first.isSigned", 0n);
+  await mutateAndReject(circuit, mutationWitness, "main.first.useMod", 0n);
   await mutateAndReject(circuit, mutationWitness, "main.out[0]", 0n);
 
   console.log(
