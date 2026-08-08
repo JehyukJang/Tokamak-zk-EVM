@@ -71,6 +71,32 @@ individual R1CS files and treat them as standalone proofs.
 | Canonical representation | The unique allowed limb encoding of an integer or field element. |
 | Soundness | The property that satisfying the constraints is enough to establish the operation claimed by the circuit contract. |
 
+### Logical types and physical wires
+
+Non-buffer interfaces use a closed set of logical types. The interface JSON
+files under `subcircuits/interface/` declare these types, and the build parser
+derives the physical wire count rather than accepting a separately selectable
+wire layout:
+
+| Logical type | Meaning | Physical representation |
+| --- | --- | --- |
+| `uint(bits)` for `1 <= bits <= 128` | An unsigned integer in the declared range | One field wire |
+| `uint(bits)` for `129 <= bits <= 256` | An unsigned integer in the declared range | Two lower-first limb wires: 128 low bits, then `bits - 128` high bits |
+| `bls12-381-fr` | One native BLS12-381 scalar-field element | One field wire |
+| `jubjub-scalar` | One integer in the Jubjub scalar domain | One field wire |
+
+Buffers are deliberately different. They are generic arrays of field wires
+and have no per-entry interface JSON. A buffer may carry native field values,
+one-wire flags or narrow integers, and limb pairs in the same physical array.
+The connected producer, consumer, and public-boundary protocol retain the
+logical meaning of each wire; the buffer itself proves only equality.
+
+The generated witness wrapper uses the logical interface metadata to warn when
+an original input is outside its declared domain. A warning is diagnostic only:
+it is not a circuit constraint, does not make an invalid witness valid, and
+must not be treated as a security check. Soundness comes from circuit
+constraints and the explicitly documented composition and verifier contracts.
+
 ## How to interpret the soundness status
 
 The status describes the current source-level relation under the composition
@@ -141,6 +167,24 @@ The tables cover every production target in
 included. The values describe the current source tree, not necessarily the
 contents of an older installed package or the checked-in generated library.
 
+The production list currently contains 34 compiled subcircuit types: seven
+generic buffers, 21 general computational or support types, and six
+transaction-signature component types. This is a physical library catalog,
+not a count of EVM operations or transaction placements. A logical operation
+may select one type, compose several different types, or place the same type
+multiple times.
+
+> **Implementation and release status**
+>
+> The qap source catalog and qap-local direct-composition tests described here
+> are implemented. The revised transaction-signature composition is not yet
+> enabled by the Synthesizer. Compatibility replay against the released
+> TokamakL2JS implementation of issue #2 and the delegated Solidity public
+> checks are still pending. Checked-in generated circuit artifacts and the CRS
+> have not been updated for this source catalog. This page therefore describes
+> source implementation and required integration contracts; it is not a
+> statement that the complete system is ready to publish or deploy.
+
 Constraint counts were measured from the current source with Circom 2.2.3,
 explicit O2 optimization, the BLS12-381 scalar field, and the
 production target list in `scripts/compile.sh`. A total is the sum of the
@@ -165,6 +209,15 @@ Visibility refers to the final composed proof interface constructed by
 standalone visibility used while Circom compiles one wrapper. All non-buffer
 interfaces are private internal wires. The public side of each buffer is
 selected explicitly by `PUBLIC_WIRE_SEGMENTS`.
+
+Physical non-buffer privacy must not be confused with semantic disclosure.
+For transaction-signature verification, `contract`, `selector`, `S`, and the
+identity point `O` are bound through public buffers even though their wires are
+routed privately after crossing that boundary. `A`, `R`, private transaction
+inputs, the challenge hash, the public-key hash, and all signature accumulator
+state remain hidden. A composition is valid only if it connects these exact
+boundary-supplied wires; substituting an equal-looking host value is not an
+equivalent security contract.
 
 ## Buffer subcircuits
 
@@ -223,15 +276,15 @@ input and intermediate result as a separate public value.
 | `MULMOD` | EVM full-precision multiplication followed by modular reduction | 844 + 1 = 845 | 7 inputs: selector, three words; 2 outputs: one word | **Incomplete.** It also requires an adjacent `CheckBus256` on the exact first operand, and the current local full-product/reduction relation still requires remediation. |
 | `DecToBit` | Decomposes one canonical 256-bit word into 256 LSB-first bits | 256 + 2 = 258 | 2 inputs: one word; 256 bit outputs | Locally sound. It supplies exponent or scalar bits to composed exponentiation chains. |
 | `SubExpBatch` | Eight LSB-first square-and-multiply steps for EVM `EXP` | 328 + 0 = 328 | 12 inputs: accumulator word, base-power word, 8 bits; 4 outputs: next accumulator and base-power words | **Incomplete.** The intended chain is defined below, but the current unsafe multiplication relation and bus contract still require local remediation. |
-| `Accumulator` | Adds 32 256-bit memory-slice words | 318 + 0 = 318 | 64 inputs: 32 words; 2 outputs: one word | Composition-dependent and pending hardening. Every input must come from the approved canonical shift-and-mask path, and the composition must exclude overflow; direct unchecked producers are not allowed. |
-| `Poseidon` | Selector-chosen chain of two-input Poseidon compressions; current batch size is 1 | 238 + 1 = 239 | 5 inputs: selector and two split 255-bit values; 2 outputs: one split 255-bit value | Composition-dependent for canonical split-field encoding. The hash relation is local, but unique 255-bit encodings must be guaranteed by connected producers or the public-boundary verifier. |
+| `Accumulator` | Adds 32 256-bit memory-slice words | 318 + 0 = 318 | 64 inputs: 32 words; 2 outputs: one word | **Incomplete.** Every input must come from the approved canonical shift-and-mask path, direct unchecked producers are forbidden, and the current unsafe addition chain must be replaced by the planned bounded limb sum so overflow is constrained. |
+| `Poseidon` | Selector-chosen chain of two-input Poseidon compressions over `uint(256)` words; current batch size is 1 | 238 + 1 = 239 | 5 inputs: selector and two lower-first `uint(256)` words; 2 outputs: one lower-first `uint(256)` word | Composition-dependent for exact limb representation. The local hash relation is `PoseidonFr(x mod Fr)` for each input word and intentionally does not require `x < Fr`; connected producers or the public-boundary verifier must constrain each physical limb to its declared width. |
 | `FrToLimbsPair` | Converts two independent native BLS12-381 scalar-field values to lower-first two-limb EVM words | 1,022 + 2 = 1,024 | 2 native-field inputs; 4 outputs: two lower-first limb pairs | Locally sound as two canonical conversions. Each input is constrained to its unique integer representation `0 ≤ x < Fr`; the circuit is general-purpose and is not part of the TSV placement catalog. |
 | `TransactionSignaturePoseidonBatch4` | Performs either four consecutive native-field Poseidon compressions or one independent compression plus a three-compression chain | 950 + 0 = 950 | 7 inputs: mode and six native field wires; 2 native-field outputs | Composition-dependent. Mode is locally Boolean, but the composition must assign the approved structural mode and connect every chain state exactly. |
 | `TransactionSignaturePointPolicy` | Checks contract width, validates `A` and `R`, applies the public-key cofactor policy, rejects an identity randomizer, builds the variable-base table, and computes `R8` | 223 + 5 = 228 | 8 inputs; 16 outputs: contract and selector limbs, 8 table coordinates, and 4 `R8` coordinates | Composition-dependent. Solidity must bind selector width and the identity point; later signature placements must consume the exact table and `R8` outputs. |
 | `TransactionSignatureFixedPrefix70` | Canonically decomposes `S` into 252 bits and processes fixed-base windows 0–69 | 1,016 + 0 = 1,016 | 1 native scalar input; 46 outputs: 42 remaining bits and 4 accumulator coordinates | Composition-dependent. Solidity must bind `S < n`, and `TransactionSignatureFinal` must consume its exact remaining bits and accumulator. |
 | `TransactionSignatureChallengeVariablePrefix` | Canonically decomposes the native challenge hash and processes variable-base windows 127–111 | 982 + 0 = 982 | 9 inputs: challenge plus 8 table coordinates; 226 outputs: 222 remaining bits and 4 accumulator coordinates | Composition-dependent. It must consume the exact final challenge hash and exact point-policy table; the table's first point must be the verifier-bound identity `(0, 1)`, and all later variable placements must consume its exact bits and accumulator. |
 | `TransactionSignatureVariableBatch` | Processes 34 two-bit variable-base windows while retaining the extended accumulator | 986 + 0 = 986 | 80 inputs; 4 extended-coordinate outputs | Composition-dependent. Exactly three serial placements consume disjoint descending challenge-bit ranges and the same exact runtime-table wires. |
-| `TransactionSignatureFinal` | Processes fixed-base windows 70–83 and variable-base windows 8–0, enforces the cofactored signature equation, canonically decomposes the public-key hash, and returns the 160-bit origin | 935 + 0 = 935 | 81 inputs; 2 origin limbs | Composition-dependent. It must receive the exact remaining response and challenge bits, both accumulator chains, runtime table, `R8`, and native public-key hash from the preceding placements. |
+| `TransactionSignatureFinal` | Processes fixed-base windows 70–83 and variable-base windows 8–0, enforces the cofactored signature equation, canonically decomposes the public-key hash, and returns the 160-bit origin | 935 + 0 = 935 | 81 inputs; 2 outputs: origin limbs | Composition-dependent. It must receive the exact remaining response and challenge bits, both accumulator chains, runtime table, `R8`, and native public-key hash from the preceding placements. |
 | `EqualBatch` | Enforces two pairs of 256-bit words to be equal | 8 + 0 = 8 | 8 inputs: two left words followed by two right words; no outputs | Locally sound as limb equality. Storage consistency additionally depends on the composition layer routing the current and cached address/key values to the corresponding positions. |
 
 ## Mandatory and conditional composition contracts
@@ -289,7 +342,12 @@ previous hash output as the first input of the next placement. This repetition
 is structurally determined by the input count, not by witness values.
 
 The repeated topology is required for the higher-arity hash operation. Unique
-split-field encoding remains a separate producer or public-boundary contract.
+`uint(256)` limb representation remains a separate producer or public-boundary
+contract. The operation deliberately maps each reconstructed input integer to
+the circuit field before hashing: inputs that differ by a multiple of `Fr`
+represent the same Poseidon field input. It does not hash the two limbs as two
+independent Poseidon inputs and it does not reject an input merely because the
+reconstructed 256-bit integer is greater than or equal to `Fr`.
 
 ### Transaction-signature composition
 
@@ -327,7 +385,8 @@ signature schemes. Their exact ordered composition is the security boundary:
 For 29 private transaction inputs, the six distinct types contain 5,097 O2
 constraints and 5,276 R1CS wires in total. The 16 placements contain 14,669
 constraints before final cross-placement permutation. Their declared
-interfaces contain 402 placement input ports and 320 placement output ports.
+interfaces contain 402 physical placement input wires and 320 physical
+placement output wires.
 A diagnostic direct composition compiles to 14,646 nonlinear plus 3 linear
 constraints, 14,677 wires, and 134,924 nonzero matrix entries. The direct
 composition and the monolithic reference accept and reject the same complete
@@ -345,7 +404,13 @@ are deliberately outside the 16 signature placements. The Solidity verifier
 must bind the exact public wires and enforce
 `S < n`, `selector < 2^32`, and `O = (0, 1)`. These delegated checks are part of
 the complete statement and cannot be omitted. All native field operands and
-all intermediate accumulator coordinates remain private internal wires.
+all intermediate accumulator coordinates remain private internal wires. The
+five public semantic inputs are the one-wire contract, selector, and `S`
+values plus the two coordinates of `O`; the remaining 34 direct-composition
+inputs are private. The six direct-composition outputs are the two-limb
+contract, two-limb selector, and two-limb origin views. These diagnostic
+composition counts describe qap-local testing, not the final public indices of
+an enabled Synthesizer build.
 
 ### Accumulator producer restriction
 
@@ -353,27 +418,39 @@ all intermediate accumulator coordinates remain private internal wires.
 shifted and masked by sound arithmetic placements. The composition layer must route
 only those canonical outputs into all 32 input-word positions and must not
 permit a direct unchecked producer. The intended use also assumes that the
-integer sum does not overflow 256 bits. These producer and overflow contracts
-must be enforced before treating the current accumulator relation as sound.
+integer sum does not overflow 256 bits. The current circuit does not yet prove
+all of these requirements, so `Accumulator` remains incomplete until the
+planned bounded limb sum is implemented and its producer topology is tested.
 
 ### Public boundary contract
 
-The final verifier wrapper validates the format of every public buffer input
-and output. Non-buffer inputs and outputs are private internal wires connected
-by the final permutation. If a future composition exposes a split 255-bit
-Poseidon or Jubjub value publicly, the boundary must reject non-canonical field
-encodings; checking each limb as merely 128-bit is not sufficient.
+A complete system and every releasable artifact set must validate the format
+of every public buffer input and output in the verifier wrapper. Non-buffer
+inputs and outputs remain private internal wires connected by the final
+permutation. The current source catalog alone does not prove that a deployed
+wrapper already satisfies this requirement. If a future composition exposes a
+native field or Jubjub value through a public buffer, that boundary must enforce
+the value's declared domain rather than relying only on field normalization.
+For the general `Poseidon` adapter, the boundary instead enforces the declared
+`uint(256)` limb widths; `x < Fr` is intentionally not part of that operation.
 
 ## Update checklist
 
 When a subcircuit, capacity constant, or composition changes:
 
 1. Update the production target list and every consumer-side target registry together.
-2. Recompile every production target and update constraint and wire counts in
+2. Add or update the non-buffer interface JSON and verify that each declared
+   logical port expands to the compiled physical input and output wire counts.
+3. Recompile every production target and update constraint and wire counts in
    this document.
-3. Re-evaluate local soundness and every mandatory producer/consumer contract.
-4. Update consumer-side composition definitions and exact-wire permutation tests.
-5. Re-evaluate public/private boundaries in `scripts/configure.js` and
+4. Re-evaluate local soundness and every mandatory producer/consumer contract.
+5. Update consumer-side composition definitions and exact-wire permutation tests.
+6. Re-evaluate public/private boundaries in `scripts/configure.js` and
    `scripts/parse.js`.
-6. Regenerate published circuit artifacts and any setup material only after
+7. Verify that every supported closed logical type still has one unambiguous
+   physical expansion and that generic buffers have not acquired an implicit
+   value type.
+8. Verify witness diagnostics cover every declared input port, while keeping
+   warnings explicitly non-authoritative for proof soundness.
+9. Regenerate published circuit artifacts and any setup material only after
    the topology and soundness review is approved.
