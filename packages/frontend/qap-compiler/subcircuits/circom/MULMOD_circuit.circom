@@ -10,14 +10,8 @@ template MULMOD_() {
     signal in3[2] <== [in[5], in[6]];
 
     in[0] === 1 << 9;
-    CheckBus256()(in2);
-    CheckBus256()(in3);
 
-    signal result[2] <== MulMod256_unsafe()(in1, in2, in3);
-    signal isZeroModulus <== IsZero256()(in3);
-    signal rangeCheck <== LessThan256()(result, in3);
-    rangeCheck + isZeroModulus === 1;
-    out <== result;
+    out <== MulMod256()(in1, in2, in3);
 }
 
 component main {public [in]} = MULMOD_();

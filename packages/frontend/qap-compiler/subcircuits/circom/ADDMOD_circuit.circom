@@ -11,13 +11,8 @@ template ADDMOD_() {
 
     in[0] === 1 << 8;
     CheckBus256()(in2);
-    CheckBus256()(in3);
 
-    signal result[2] <== AddMod256_unsafe()(in1, in2, in3);
-    signal safeDivisor[2] <== _SafeDivisor()(in3);
-    signal rangeCheck <== LessThan256()(result, safeDivisor);
-    rangeCheck === 1;
-    out <== result;
+    out <== AddMod256()(in1, in2, in3);
 }
 
 component main {public [in]} = ADDMOD_();

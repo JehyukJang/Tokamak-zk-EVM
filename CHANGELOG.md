@@ -95,6 +95,11 @@ The format is based on Keep a Changelog.
   wrapper's input canonicality checks, and both radix carries are range-bound.
 - Replaced ALU3's absolute-value-based signed comparison with a direct
   two's-complement ordering relation that reuses constrained sign bits.
+- Replaced the truncated and under-constrained ADDMOD and MULMOD reductions
+  with full-width relations. ADDMOD now reduces its exact 257-bit sum, MULMOD
+  proves the complete 512-bit product, and both prove a bounded 512-by-256
+  quotient/remainder identity with canonical modulus, quotient, and remainder
+  words. A zero modulus is handled through reduction by one and returns zero.
 - Extended BYTE to the full 256-bit EVM index domain, returning zero for every
   index above 31 instead of rejecting it during synthesis.
 - Extended SIGNEXTEND to the full 256-bit EVM index domain, preserving the

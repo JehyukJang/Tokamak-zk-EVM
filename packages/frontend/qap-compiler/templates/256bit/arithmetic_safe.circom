@@ -7,6 +7,232 @@ include "mux.circom";
 include "compare_safe.circom";
 include "../../functions/arithmetic.circom";
 
+template Split128To64() {
+    var BASE64 = 1 << 64;
+
+    signal input in;
+    signal output words[2];
+
+    words[0] <-- in % BASE64;
+    words[1] <-- in \ BASE64;
+
+    component wordBits[2];
+    for (var word = 0; word < 2; word++) {
+        wordBits[word] = Num2Bits(64);
+        wordBits[word].in <== words[word];
+    }
+
+    in === words[0] + BASE64 * words[1];
+}
+
+template Mul256Full() {
+    var BASE64 = 1 << 64;
+
+    signal input in1[2], in2[2];
+    signal output productWords[8];
+
+    component in1Split[2];
+    component in2Split[2];
+    signal in1Words[4];
+    signal in2Words[4];
+    for (var limb = 0; limb < 2; limb++) {
+        in1Split[limb] = Split128To64();
+        in2Split[limb] = Split128To64();
+        in1Split[limb].in <== in1[limb];
+        in2Split[limb].in <== in2[limb];
+        in1Words[2 * limb] <== in1Split[limb].words[0];
+        in1Words[2 * limb + 1] <== in1Split[limb].words[1];
+        in2Words[2 * limb] <== in2Split[limb].words[0];
+        in2Words[2 * limb + 1] <== in2Split[limb].words[1];
+    }
+
+    signal products[4][4];
+    for (var lhsWord = 0; lhsWord < 4; lhsWord++) {
+        for (var rhsWord = 0; rhsWord < 4; rhsWord++) {
+            products[lhsWord][rhsWord]
+                <== in1Words[lhsWord] * in2Words[rhsWord];
+        }
+    }
+
+    signal carry[7];
+    component productWordBits[8];
+    component carryBits[6];
+    for (var degree = 0; degree < 7; degree++) {
+        var coefficient = 0;
+        for (var lhsWord = 0; lhsWord < 4; lhsWord++) {
+            var rhsWord = degree - lhsWord;
+            if (rhsWord >= 0 && rhsWord < 4) {
+                coefficient += products[lhsWord][rhsWord];
+            }
+        }
+
+        var previousCarry = 0;
+        if (degree > 0) {
+            previousCarry = carry[degree - 1];
+        }
+        productWords[degree] <-- (coefficient + previousCarry) % BASE64;
+        carry[degree] <-- (coefficient + previousCarry) \ BASE64;
+        coefficient + previousCarry
+            === productWords[degree] + BASE64 * carry[degree];
+
+        productWordBits[degree] = Num2Bits(64);
+        productWordBits[degree].in <== productWords[degree];
+        if (degree < 6) {
+            carryBits[degree] = Num2Bits(66);
+            carryBits[degree].in <== carry[degree];
+        }
+    }
+
+    productWords[7] <== carry[6];
+    productWordBits[7] = Num2Bits(64);
+    productWordBits[7].in <== productWords[7];
+}
+
+// numeratorWords must be eight canonical 64-bit words supplied by the
+// numerator relation in the same compiled circuit.
+template Reduce512By256FromCanonical64() {
+    var BASE64 = 1 << 64;
+
+    signal input numeratorWords[8], modulus[2];
+    signal output remainder[2];
+
+    component modulusSplit[2];
+    signal modulusWords[4];
+    for (var limb = 0; limb < 2; limb++) {
+        modulusSplit[limb] = Split128To64();
+        modulusSplit[limb].in <== modulus[limb];
+        modulusWords[2 * limb] <== modulusSplit[limb].words[0];
+        modulusWords[2 * limb + 1] <== modulusSplit[limb].words[1];
+    }
+
+    signal modulusIsZero <== IsZero256()(modulus);
+    signal safeModulus[2] <== [modulus[0] + modulusIsZero, modulus[1]];
+    signal safeModulusWords[4] <== [
+        modulusWords[0] + modulusIsZero,
+        modulusWords[1],
+        modulusWords[2],
+        modulusWords[3]
+    ];
+
+    signal numerator[4];
+    for (var limb = 0; limb < 4; limb++) {
+        numerator[limb]
+            <== numeratorWords[2 * limb]
+            + BASE64 * numeratorWords[2 * limb + 1];
+    }
+
+    signal division[2][4] <-- _div512by256(numerator, safeModulus);
+    signal quotient[4] <== division[0];
+    signal remainderWide[4] <== division[1];
+    remainderWide[2] === 0;
+    remainderWide[3] === 0;
+
+    component quotientSplit[4];
+    signal quotientWords[8];
+    for (var limb = 0; limb < 4; limb++) {
+        quotientSplit[limb] = Split128To64();
+        quotientSplit[limb].in <== quotient[limb];
+        quotientWords[2 * limb] <== quotientSplit[limb].words[0];
+        quotientWords[2 * limb + 1] <== quotientSplit[limb].words[1];
+    }
+
+    component remainderSplit[2];
+    signal remainderWords[4];
+    for (var limb = 0; limb < 2; limb++) {
+        remainderSplit[limb] = Split128To64();
+        remainderSplit[limb].in <== remainderWide[limb];
+        remainderWords[2 * limb] <== remainderSplit[limb].words[0];
+        remainderWords[2 * limb + 1] <== remainderSplit[limb].words[1];
+        remainder[limb] <== remainderWide[limb];
+    }
+
+    signal products[8][4];
+    for (var quotientWord = 0; quotientWord < 8; quotientWord++) {
+        for (var modulusWord = 0; modulusWord < 4; modulusWord++) {
+            products[quotientWord][modulusWord]
+                <== quotientWords[quotientWord]
+                * safeModulusWords[modulusWord];
+        }
+    }
+
+    signal carry[11];
+    component carryBits[10];
+    for (var degree = 0; degree < 11; degree++) {
+        var coefficient = 0;
+        for (var quotientWord = 0; quotientWord < 8; quotientWord++) {
+            var modulusWord = degree - quotientWord;
+            if (modulusWord >= 0 && modulusWord < 4) {
+                coefficient += products[quotientWord][modulusWord];
+            }
+        }
+
+        var previousCarry = 0;
+        if (degree > 0) {
+            previousCarry = carry[degree - 1];
+        }
+        var remainderWord = 0;
+        if (degree < 4) {
+            remainderWord = remainderWords[degree];
+        }
+        var numeratorWord = 0;
+        if (degree < 8) {
+            numeratorWord = numeratorWords[degree];
+        }
+
+        carry[degree] <-- (
+            coefficient + previousCarry + remainderWord - numeratorWord
+        ) \ BASE64;
+        coefficient + previousCarry + remainderWord
+            === numeratorWord + BASE64 * carry[degree];
+
+        if (degree < 10) {
+            carryBits[degree] = Num2Bits(66);
+            carryBits[degree].in <== carry[degree];
+        }
+    }
+    carry[10] === 0;
+
+    signal remainderLowerLess
+        <== LessThan(128)([remainder[0], safeModulus[0]]);
+    signal remainderUpperLess
+        <== LessThan(128)([remainder[1], safeModulus[1]]);
+    signal remainderUpperEqual
+        <== IsEqual()([remainder[1], safeModulus[1]]);
+    signal remainderInRange
+        <== remainderUpperLess
+        + remainderUpperEqual * remainderLowerLess;
+    remainderInRange === 1;
+}
+
+template AddMod256() {
+    signal input in1[2], in2[2], modulus[2];
+    signal output out[2];
+
+    signal (sum[2], sumCarry) <== Add256_unsafe()(in1, in2);
+    component sumSplit[2];
+    signal numeratorWords[8];
+    for (var limb = 0; limb < 2; limb++) {
+        sumSplit[limb] = Split128To64();
+        sumSplit[limb].in <== sum[limb];
+        numeratorWords[2 * limb] <== sumSplit[limb].words[0];
+        numeratorWords[2 * limb + 1] <== sumSplit[limb].words[1];
+    }
+    numeratorWords[4] <== sumCarry;
+    for (var word = 5; word < 8; word++) {
+        numeratorWords[word] <== 0;
+    }
+
+    out <== Reduce512By256FromCanonical64()(numeratorWords, modulus);
+}
+
+template MulMod256() {
+    signal input in1[2], in2[2], modulus[2];
+    signal output out[2];
+
+    signal numeratorWords[8] <== Mul256Full()(in1, in2);
+    out <== Reduce512By256FromCanonical64()(numeratorWords, modulus);
+}
+
 template FindShiftingTwosPower256(N) {
     signal input shift;
     signal output twos_power[2], is_shift_gt_255;
