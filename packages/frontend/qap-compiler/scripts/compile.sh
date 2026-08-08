@@ -111,10 +111,12 @@ for (( i = 0 ; i < ${#names[@]} ; i++ )) ; do
   mv "$output_dir_path/${names[$i]}_circuit_constraints.json" "$output_dir_path/json/subcircuit${i}.json"
   mv "$output_dir_path/${names[$i]}_circuit.r1cs" "$output_dir_path/r1cs/subcircuit${i}.r1cs"
   mv "$output_dir_path/${names[$i]}_circuit_js/${names[$i]}_circuit.wasm" "$output_dir_path/wasm/subcircuit${i}.wasm"
-  mv -n "$output_dir_path/${names[$i]}_circuit_js/generate_witness.js" "$output_dir_path/generate_witness.js"
   mv -n "$output_dir_path/${names[$i]}_circuit_js/witness_calculator.js" "$output_dir_path/witness_calculator.js"
   rm -rf "$output_dir_path/${names[$i]}_circuit_js"
 done
+
+cp "$package_root/scripts/runtime/generate_witness.js" "$output_dir_path/generate_witness.js"
+cp "$package_root/scripts/runtime/witness-input-diagnostics.js" "$output_dir_path/witness-input-diagnostics.js"
 
 node parse.js "$output_dir_path" "$compiler_output_file"
 rm -f "$output_dir_path"/*_circuit.sym

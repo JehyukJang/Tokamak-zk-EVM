@@ -64,12 +64,20 @@ All files are acquired from the same installed npm package version:
 | `subcircuits/library/subcircuitInfo.json`     | Subcircuit catalog, wire ranges, and flattening metadata | JSON record array           | Published file     |
 | `subcircuits/library/frontendCfg.json`        | Frontend buffer and subcircuit configuration             | JSON                        | Published file     |
 | `subcircuits/library/generate_witness.js`     | Witness-generation entry point                           | JavaScript module           | Published file     |
+| `subcircuits/library/witness-input-diagnostics.js` | Original-input format diagnostics                  | JavaScript module           | Published file     |
 | `subcircuits/library/witness_calculator.js`   | Runtime witness calculator                               | JavaScript module           | Published file     |
 | `subcircuits/circom/constants.circom`         | Constants synchronized with the generated library        | Circom source               | Published file     |
 | `build-metadata.json`                         | Build identity and dependency versions                   | JSON                        | Package root       |
 
 The supported acquisition path is npm. Keep R1CS, WASM, metadata, constants,
 and setup artifacts on one compatible release line.
+
+The published witness entry point validates the exact `{ in: [...] }` shape and
+lossless scalar syntax before calculation. Values outside the declared logical
+input range produce structured `QAP_INPUT_OUT_OF_SPEC` warnings without
+including the value itself. These warnings are diagnostic only: the unchanged
+value is still passed to the circuit, and only circuit constraints determine
+whether the witness is valid.
 
 Direct Node consumers can resolve a file without assuming an installation
 directory:
