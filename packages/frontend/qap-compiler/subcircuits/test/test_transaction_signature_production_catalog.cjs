@@ -11,8 +11,7 @@ const { spawnSync } = require("node:child_process");
 
 const EXPECTED = Object.freeze([
   Object.freeze({ name: "TransactionSignaturePoseidonBatch4", nonlinear: 950, linear: 0, inputs: 7, outputs: 2, wires: 957, nonzero: 11380, warnings: 1, placements: 9 }),
-  Object.freeze({ name: "FrToLimbsPair", nonlinear: 1022, linear: 2, inputs: 2, outputs: 4, wires: 1021, nonzero: 5108, warnings: 2, placements: 14 }),
-  Object.freeze({ name: "TransactionSignatureCanonicalFrView", nonlinear: 511, linear: 3, inputs: 1, outputs: 257, wires: 513, nonzero: 2558, warnings: 2, placements: 3 }),
+  Object.freeze({ name: "TransactionSignatureCanonicalFrView", nonlinear: 511, linear: 3, inputs: 1, outputs: 257, wires: 513, nonzero: 2558, warnings: 2, placements: 31 }),
   Object.freeze({ name: "TransactionSignaturePolicyFixedPrefix", nonlinear: 891, linear: 5, inputs: 9, outputs: 161, wires: 902, nonzero: 5941, warnings: 2, placements: 1 }),
   Object.freeze({ name: "TransactionSignatureFixedVariableBridge", nonlinear: 911, linear: 0, inputs: 159, outputs: 8, wires: 1071, nonzero: 4661, warnings: 1, placements: 1 }),
   Object.freeze({ name: "TransactionSignatureVariableBatch", nonlinear: 1020, linear: 0, inputs: 80, outputs: 4, wires: 1101, nonzero: 4692, warnings: 1, placements: 3 }),
@@ -92,16 +91,16 @@ const main = () => {
 
     assert.equal(
       measurements.reduce((sum, item) => sum + item.nonlinear + item.linear, 0),
-      5697,
+      4673,
     );
-    assert.equal(measurements.reduce((sum, item) => sum + item.wires, 0), 6171);
-    assert.equal(measurements.reduce((sum, item) => sum + item.placements, 0), 32);
+    assert.equal(measurements.reduce((sum, item) => sum + item.wires, 0), 5150);
+    assert.equal(measurements.reduce((sum, item) => sum + item.placements, 0), 46);
     assert.equal(
       measurements.reduce(
         (sum, item) => sum + item.placements * (item.nonlinear + item.linear),
         0,
       ),
-      29677,
+      29733,
     );
 
     const compileScript = readFileSync(
@@ -114,7 +113,7 @@ const main = () => {
     assert.doesNotMatch(compileScript, /\"(?:JubjubExpBatch|EdDsaVerify)\"/);
 
     console.log(
-      "Transaction signature production catalog freezes seven types, 32 placements, 5697 unique constraints, and 29677 placement-weighted constraints",
+      "Transaction signature production catalog freezes six types, 46 placements, 4673 unique constraints, and 29733 placement-weighted constraints",
     );
   } finally {
     rmSync(outputRoot, { recursive: true, force: true });

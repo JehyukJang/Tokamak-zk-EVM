@@ -50,21 +50,13 @@ template TransactionSignatureProductionComposition(N) {
     finalHashBatch.in[5] <== challengeInputs[34];
     finalHashBatch.in[6] <== challengeInputs[35];
 
-    var NUM_TRANSACTION_INPUT_PAIRS = N \ 2;
-    component transactionInputPairs[NUM_TRANSACTION_INPUT_PAIRS];
-    for (var pair = 0; pair < NUM_TRANSACTION_INPUT_PAIRS; pair++) {
-        transactionInputPairs[pair] = FrToLimbsPair();
-        transactionInputPairs[pair].in[0] <== challengeInputs[7 + 2 * pair];
-        transactionInputPairs[pair].in[1] <== challengeInputs[7 + 2 * pair + 1];
-        evmTransactionInputs[2 * pair][0] <== transactionInputPairs[pair].out[0];
-        evmTransactionInputs[2 * pair][1] <== transactionInputPairs[pair].out[1];
-        evmTransactionInputs[2 * pair + 1][0] <== transactionInputPairs[pair].out[2];
-        evmTransactionInputs[2 * pair + 1][1] <== transactionInputPairs[pair].out[3];
+    component transactionInputViews[N];
+    for (var index = 0; index < N; index++) {
+        transactionInputViews[index] = TransactionSignatureCanonicalFrView();
+        transactionInputViews[index].in[0] <== challengeInputs[7 + index];
+        evmTransactionInputs[index][0] <== transactionInputViews[index].out[255];
+        evmTransactionInputs[index][1] <== transactionInputViews[index].out[256];
     }
-    component finalTransactionInputView = TransactionSignatureCanonicalFrView();
-    finalTransactionInputView.in[0] <== challengeInputs[7 + N - 1];
-    evmTransactionInputs[N - 1][0] <== finalTransactionInputView.out[255];
-    evmTransactionInputs[N - 1][1] <== finalTransactionInputView.out[256];
     component challengeView = TransactionSignatureCanonicalFrView();
     challengeView.in[0] <== finalHashBatch.out[1];
     component publicKeyHashView = TransactionSignatureCanonicalFrView();
