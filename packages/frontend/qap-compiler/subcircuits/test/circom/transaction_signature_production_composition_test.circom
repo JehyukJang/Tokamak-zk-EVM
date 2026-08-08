@@ -12,7 +12,6 @@ template TransactionSignatureProductionComposition(N) {
     signal input O[2];
     signal output evmContractAddress[2];
     signal output evmFunctionSelector[2];
-    signal output evmTransactionInputs[N][2];
     signal output origin[2];
 
     signal challengeInputs[N + 7];
@@ -50,42 +49,24 @@ template TransactionSignatureProductionComposition(N) {
     finalHashBatch.in[5] <== challengeInputs[34];
     finalHashBatch.in[6] <== challengeInputs[35];
 
-    component transactionInputViews[N];
-    for (var index = 0; index < N; index++) {
-        transactionInputViews[index] = TransactionSignatureCanonicalFrView();
-        transactionInputViews[index].in[0] <== challengeInputs[7 + index];
-        evmTransactionInputs[index][0] <== transactionInputViews[index].out[255];
-        evmTransactionInputs[index][1] <== transactionInputViews[index].out[256];
-    }
-    component challengeView = TransactionSignatureCanonicalFrView();
-    challengeView.in[0] <== finalHashBatch.out[1];
-    component publicKeyHashView = TransactionSignatureCanonicalFrView();
-    publicKeyHashView.in[0] <== finalHashBatch.out[0];
-
-    component policy = TransactionSignaturePolicyFixedPrefix();
-    for (var index = 0; index < 4; index++) {
-        policy.in[index] <== challengeInputs[index];
-    }
-    policy.in[4] <== contractAddress;
-    policy.in[5] <== functionSelector;
-    policy.in[6] <== S;
-    policy.in[7] <== O[0];
-    policy.in[8] <== O[1];
-    evmContractAddress <== [policy.out[0], policy.out[1]];
-    evmFunctionSelector <== [policy.out[2], policy.out[3]];
-
-    component bridge = TransactionSignatureFixedVariableBridge();
-    for (var bit = 0; bit < 114; bit++) {
-        bridge.in[bit] <== policy.out[4 + bit];
-    }
+    component pointPolicy = TransactionSignaturePointPolicy();
     for (var coordinate = 0; coordinate < 4; coordinate++) {
-        bridge.in[114 + coordinate] <== policy.out[145 + coordinate];
+        pointPolicy.in[coordinate] <== challengeInputs[coordinate];
     }
-    for (var bit = 0; bit < 33; bit++) {
-        bridge.in[118 + bit] <== challengeView.out[222 + bit];
-    }
+    pointPolicy.in[4] <== contractAddress;
+    pointPolicy.in[5] <== functionSelector;
+    pointPolicy.in[6] <== O[0];
+    pointPolicy.in[7] <== O[1];
+    evmContractAddress <== [pointPolicy.out[0], pointPolicy.out[1]];
+    evmFunctionSelector <== [pointPolicy.out[2], pointPolicy.out[3]];
+
+    component fixedPrefix = TransactionSignatureFixedPrefix70();
+    fixedPrefix.in[0] <== S;
+
+    component challengePrefix = TransactionSignatureChallengeVariablePrefix();
+    challengePrefix.in[0] <== finalHashBatch.out[1];
     for (var coordinate = 0; coordinate < 8; coordinate++) {
-        bridge.in[151 + coordinate] <== policy.out[149 + coordinate];
+        challengePrefix.in[1 + coordinate] <== pointPolicy.out[4 + coordinate];
     }
 
     component variableBatches[3];
@@ -94,14 +75,16 @@ template TransactionSignatureProductionComposition(N) {
         variableBatches[batch] = TransactionSignatureVariableBatch();
         for (var bit = 0; bit < 68; bit++) {
             variableBatches[batch].in[bit] <==
-                challengeView.out[challengeStarts[batch] + bit];
+                challengePrefix.out[challengeStarts[batch] + bit];
         }
         for (var coordinate = 0; coordinate < 8; coordinate++) {
-            variableBatches[batch].in[68 + coordinate] <== policy.out[149 + coordinate];
+            variableBatches[batch].in[68 + coordinate] <==
+                pointPolicy.out[4 + coordinate];
         }
         for (var coordinate = 0; coordinate < 4; coordinate++) {
             if (batch == 0) {
-                variableBatches[batch].in[76 + coordinate] <== bridge.out[4 + coordinate];
+                variableBatches[batch].in[76 + coordinate] <==
+                    challengePrefix.out[222 + coordinate];
             } else {
                 variableBatches[batch].in[76 + coordinate] <==
                     variableBatches[batch - 1].out[coordinate];
@@ -110,27 +93,25 @@ template TransactionSignatureProductionComposition(N) {
     }
 
     component final = TransactionSignatureFinal();
-    for (var bit = 0; bit < 27; bit++) {
-        final.in[bit] <== policy.out[118 + bit];
+    for (var bit = 0; bit < 42; bit++) {
+        final.in[bit] <== fixedPrefix.out[bit];
     }
     for (var coordinate = 0; coordinate < 4; coordinate++) {
-        final.in[27 + coordinate] <== bridge.out[coordinate];
+        final.in[42 + coordinate] <== fixedPrefix.out[42 + coordinate];
     }
     for (var bit = 0; bit < 18; bit++) {
-        final.in[31 + bit] <== challengeView.out[bit];
+        final.in[46 + bit] <== challengePrefix.out[bit];
     }
     for (var coordinate = 0; coordinate < 4; coordinate++) {
-        final.in[49 + coordinate] <== variableBatches[2].out[coordinate];
+        final.in[64 + coordinate] <== variableBatches[2].out[coordinate];
     }
     for (var coordinate = 0; coordinate < 8; coordinate++) {
-        final.in[53 + coordinate] <== policy.out[149 + coordinate];
+        final.in[68 + coordinate] <== pointPolicy.out[4 + coordinate];
     }
     for (var coordinate = 0; coordinate < 4; coordinate++) {
-        final.in[61 + coordinate] <== policy.out[157 + coordinate];
+        final.in[76 + coordinate] <== pointPolicy.out[12 + coordinate];
     }
-    for (var bit = 0; bit < 160; bit++) {
-        final.in[65 + bit] <== publicKeyHashView.out[bit];
-    }
+    final.in[80] <== finalHashBatch.out[0];
     origin <== final.out;
 }
 
