@@ -569,9 +569,42 @@ export class ArithmeticOperations {
     )
   }
 
-  static mulmodSubcircuit(inVals: bigint[]): bigint {
+  private static _split64Words(value: bigint, count: number): bigint[] {
+    const wordMask = (1n << 64n) - 1n
+    return Array.from(
+      { length: count },
+      (_, index) => value >> BigInt(64 * index) & wordMask,
+    )
+  }
+
+  static mulmodPrepare(inVals: bigint[]): bigint[] {
     ArithmeticOperations._requireSubcircuitInputs(inVals, 3, 'MULMOD')
-    return ArithmeticOperations.mulmod(inVals)
+    const [lhs, rhs, modulus] = inVals
+    const product = lhs * rhs
+    const safeModulus = modulus === 0n ? 1n : modulus
+    const quotient = product / safeModulus
+    const remainder = product % safeModulus
+    return [
+      ...ArithmeticOperations._split64Words(lhs, 4),
+      ...ArithmeticOperations._split64Words(rhs, 4),
+      ...ArithmeticOperations._split64Words(modulus, 4),
+      quotient & ArithmeticOperations.MAX_UINT256,
+      quotient >> 256n,
+      remainder,
+    ]
+  }
+
+  static mulmodCandidate(inVals: bigint[]): bigint[] {
+    ArithmeticOperations._requireSubcircuitInputs(inVals, 3, 'MULMODCandidate')
+    return inVals.flatMap(value => ArithmeticOperations._split64Words(value, 4))
+  }
+
+  static mulmodVerify(inVals: bigint[]): bigint {
+    ArithmeticOperations._requireSubcircuitInputs(inVals, 24, 'MULMODVerify')
+    return inVals.slice(20, 24).reduce(
+      (value, word, index) => value + (word << BigInt(64 * index)),
+      0n,
+    )
   }
 
   /**

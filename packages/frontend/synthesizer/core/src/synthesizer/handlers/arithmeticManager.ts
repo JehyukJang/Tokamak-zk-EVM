@@ -97,6 +97,15 @@ export class ArithmeticManager {
           UINT64_LIMB_DATA_PT_TYPE,
         ]
         break
+      case 'MULMODPrepare':
+        dataPtTypes = [
+          ...Array(12).fill(UINT64_LIMB_DATA_PT_TYPE),
+          ...Array(3).fill(EVM_WORD_DATA_PT_TYPE),
+        ]
+        break
+      case 'MULMODCandidate':
+        dataPtTypes = Array(12).fill(UINT64_LIMB_DATA_PT_TYPE)
+        break
     }
 
     const values = inPts.map((pt) => pt.value);
@@ -414,7 +423,9 @@ const ARITHMETIC_MAPPING: Record<ArithmeticSubcircuit, (values: bigint[]) => big
   CheckBus256: ArithmeticOperations.checkBus256,
   ADDMODPrepare: ArithmeticOperations.addmodPrepare,
   ADDMODVerify: ArithmeticOperations.addmodVerify,
-  MULMOD: ArithmeticOperations.mulmodSubcircuit,
+  MULMODPrepare: ArithmeticOperations.mulmodPrepare,
+  MULMODCandidate: ArithmeticOperations.mulmodCandidate,
+  MULMODVerify: ArithmeticOperations.mulmodVerify,
   DecToBit: ArithmeticOperations.decToBit,
   SubExpBatch: ArithmeticOperations.subExpBatch,
   Accumulator: ArithmeticOperations.accumulator,

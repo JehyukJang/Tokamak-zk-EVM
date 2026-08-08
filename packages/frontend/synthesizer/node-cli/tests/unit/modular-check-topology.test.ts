@@ -28,7 +28,9 @@ const createHarness = (alu1Interface = { NInWires: 5, NOutWires: 2 }) => {
     ['CheckBus256', { name: 'CheckBus256', NInWires: 2, NOutWires: 0 }],
     ['ADDMODPrepare', { name: 'ADDMODPrepare', NInWires: 7, NOutWires: 19 }],
     ['ADDMODVerify', { name: 'ADDMODVerify', NInWires: 19, NOutWires: 2 }],
-    ['MULMOD', { name: 'MULMOD', NInWires: 6, NOutWires: 2 }],
+    ['MULMODPrepare', { name: 'MULMODPrepare', NInWires: 6, NOutWires: 18 }],
+    ['MULMODCandidate', { name: 'MULMODCandidate', NInWires: 6, NOutWires: 12 }],
+    ['MULMODVerify', { name: 'MULMODVerify', NInWires: 24, NOutWires: 2 }],
   ] as const;
   const parent = {
     placements,
@@ -92,7 +94,7 @@ describe('modular CheckBus256 topology', () => {
     expect(placements[2].outPts).toHaveLength(1);
   });
 
-  it('places MULMOD directly without a selector or CheckBus256', () => {
+  it('places the three MULMOD stages without a selector or CheckBus256', () => {
     const { manager, placements } = createHarness();
     const firstOperand = dataPt(5n, 10, 3);
 
@@ -104,11 +106,22 @@ describe('modular CheckBus256 topology', () => {
 
     expect(result).toHaveLength(1);
     expect(result[0].value).toBe(5n);
-    expect(result[0].source).toBe(0);
-    expect(placements.map(({ name }) => name)).toEqual(['MULMOD']);
+    expect(result[0].source).toBe(2);
+    expect(placements.map(({ name }) => name)).toEqual([
+      'MULMODPrepare',
+      'MULMODCandidate',
+      'MULMODVerify',
+    ]);
     expect(placements[0].inPts).toHaveLength(3);
     expect(placements[0].inPts[0]).toBe(firstOperand);
-    expect(placements[0].outPts).toHaveLength(1);
+    expect(placements[0].outPts).toHaveLength(15);
+    expect(placements[1].inPts).toEqual(placements[0].outPts.slice(12, 15));
+    expect(placements[1].outPts).toHaveLength(12);
+    expect(placements[2].inPts).toEqual([
+      ...placements[0].outPts.slice(0, 12),
+      ...placements[1].outPts,
+    ]);
+    expect(placements[2].outPts).toHaveLength(1);
   });
 
   it('does not add CheckBus256 to an ordinary arithmetic placement', () => {

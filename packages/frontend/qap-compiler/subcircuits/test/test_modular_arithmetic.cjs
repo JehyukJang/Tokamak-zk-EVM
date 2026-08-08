@@ -23,7 +23,7 @@ const operations = [
   },
   {
     name: "MULMOD",
-    circuit: "subcircuits/circom/MULMOD_circuit.circom",
+    circuit: "subcircuits/test/circom/mulmod_composed.circom",
     selector: null,
     evaluate: (lhs, rhs, modulus) => modulus === 0n
       ? 0n
@@ -149,13 +149,17 @@ const main = async () => {
     const mutationTargets = [
       circuit.symbols["main.out[0]"].varIdx,
       circuit.symbols["main.out[1]"].varIdx,
-      findSurvivingWire(circuit, ".numeratorWords[0]"),
       findSurvivingWire(circuit, ".quotientWords[0]"),
       findSurvivingWire(circuit, ".remainderWords[0]"),
       ...(operation.name === "ADDMOD" ? [
+        findSurvivingWire(circuit, ".numeratorWords[0]"),
         findSurvivingWire(circuit, ".quotientWords[3]"),
         findSurvivingWire(circuit, ".quotientWords[4]"),
-      ] : []),
+      ] : [
+        findSurvivingWire(circuit, ".prepare.lhsWords[0]"),
+        findSurvivingWire(circuit, ".verify.lhsProducts[0][0]"),
+        findSurvivingWire(circuit, ".verify.quotientProducts[0][0]"),
+      ]),
     ];
     for (const wireIndex of new Set(mutationTargets)) {
       const mutated = [...mutationWitness];

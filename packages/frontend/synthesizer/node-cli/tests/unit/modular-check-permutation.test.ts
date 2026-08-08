@@ -75,7 +75,9 @@ const createLogicalPlacements = (operation: ModularOperation): Placements => {
           ['ADDMODVerify', { id: 9, name: 'ADDMODVerify', NInWires: 19, NOutWires: 2 }],
         ]
       : [
-          ['MULMOD', { id: 8, name: 'MULMOD', NInWires: 6, NOutWires: 2 }],
+          ['MULMODPrepare', { id: 8, name: 'MULMODPrepare', NInWires: 6, NOutWires: 18 }],
+          ['MULMODCandidate', { id: 9, name: 'MULMODCandidate', NInWires: 6, NOutWires: 12 }],
+          ['MULMODVerify', { id: 10, name: 'MULMODVerify', NInWires: 24, NOutWires: 2 }],
         ]),
   ]);
   const parent = {
@@ -136,7 +138,7 @@ const assertExactModularInputs = (placements: Placements, operation: ModularOper
     expect(checkBus.name).toBe('CheckBus256');
     expect(checkBus.inPts).toHaveLength(2);
   }
-  expect(modular.name).toBe(operation === 'ADDMOD' ? 'ADDMODPrepare' : operation);
+  expect(modular.name).toBe(operation === 'ADDMOD' ? 'ADDMODPrepare' : 'MULMODPrepare');
   expect(modular.inPts).toHaveLength(operation === 'ADDMOD' ? 7 : 6);
   for (let limb = 0; limb < 2; limb++) {
     if (checkBus !== undefined) {
@@ -153,6 +155,17 @@ const assertExactModularInputs = (placements: Placements, operation: ModularOper
     const prepare = placements[8]!;
     const verify = placements[9]!;
     expect(verify.inPts).toEqual(prepare.outPts);
+  } else {
+    const prepare = placements[7]!;
+    const candidate = placements[8]!;
+    const verify = placements[9]!;
+    expect(candidate.name).toBe('MULMODCandidate');
+    expect(candidate.inPts).toEqual(prepare.outPts.slice(12, 18));
+    expect(verify.name).toBe('MULMODVerify');
+    expect(verify.inPts).toEqual([
+      ...prepare.outPts.slice(0, 12),
+      ...candidate.outPts,
+    ]);
   }
 };
 
@@ -169,7 +182,11 @@ const createPermutation = (placements: Placements, operation: ModularOperation) 
           { name: 'ADDMODPrepare' as const, NInWires: 7, NOutWires: 19 },
           { name: 'ADDMODVerify' as const, NInWires: 19, NOutWires: 2 },
         ]
-      : [{ name: 'MULMOD' as const, NInWires: 6, NOutWires: 2 }]),
+      : [
+          { name: 'MULMODPrepare' as const, NInWires: 6, NOutWires: 18 },
+          { name: 'MULMODCandidate' as const, NInWires: 6, NOutWires: 12 },
+          { name: 'MULMODVerify' as const, NInWires: 24, NOutWires: 2 },
+        ]),
   ];
   let nextGlobalWire = 0;
   const subcircuitInfoByName = new Map<string, SubcircuitInfoByNameEntry>();
@@ -231,7 +248,7 @@ describe('modular arithmetic physical permutation', () => {
       const { permutation, subcircuitInfoByName } = createPermutation(placements, operation);
       const privateInfo = subcircuitInfoByName.get('bufferPrvIn')!;
       const modularInfo = subcircuitInfoByName.get(
-        operation === 'ADDMOD' ? 'ADDMODPrepare' : operation,
+        operation === 'ADDMOD' ? 'ADDMODPrepare' : 'MULMODPrepare',
       )!;
       for (let limb = 0; limb < 2; limb++) {
         const producerWire = privateInfo.flattenMap[privateInfo.outWireIndex + limb];
@@ -299,6 +316,66 @@ describe('modular arithmetic physical permutation', () => {
         row: verifyWire,
         col: 9,
         X: prepareWire,
+        Y: 8,
+      });
+    }
+  });
+
+  it('connects all 30 MULMOD intermediate wires in exact order', () => {
+    const placements = createLogicalPlacements('MULMOD');
+    convertToCircuitWires(placements);
+    assertExactModularInputs(placements, 'MULMOD');
+
+    const { permutation, subcircuitInfoByName } = createPermutation(placements, 'MULMOD');
+    const prepareInfo = subcircuitInfoByName.get('MULMODPrepare')!;
+    const candidateInfo = subcircuitInfoByName.get('MULMODCandidate')!;
+    const verifyInfo = subcircuitInfoByName.get('MULMODVerify')!;
+
+    for (let index = 0; index < 6; index++) {
+      const prepareWire = prepareInfo.flattenMap[prepareInfo.outWireIndex + 12 + index];
+      const candidateWire = candidateInfo.flattenMap[candidateInfo.inWireIndex + index];
+      expect(permutation).toContainEqual({
+        row: prepareWire,
+        col: 7,
+        X: candidateWire,
+        Y: 8,
+      });
+      expect(permutation).toContainEqual({
+        row: candidateWire,
+        col: 8,
+        X: prepareWire,
+        Y: 7,
+      });
+    }
+    for (let index = 0; index < 12; index++) {
+      const prepareWire = prepareInfo.flattenMap[prepareInfo.outWireIndex + index];
+      const verifyWire = verifyInfo.flattenMap[verifyInfo.inWireIndex + index];
+      expect(permutation).toContainEqual({
+        row: prepareWire,
+        col: 7,
+        X: verifyWire,
+        Y: 9,
+      });
+      expect(permutation).toContainEqual({
+        row: verifyWire,
+        col: 9,
+        X: prepareWire,
+        Y: 7,
+      });
+    }
+    for (let index = 0; index < 12; index++) {
+      const candidateWire = candidateInfo.flattenMap[candidateInfo.outWireIndex + index];
+      const verifyWire = verifyInfo.flattenMap[verifyInfo.inWireIndex + 12 + index];
+      expect(permutation).toContainEqual({
+        row: candidateWire,
+        col: 8,
+        X: verifyWire,
+        Y: 9,
+      });
+      expect(permutation).toContainEqual({
+        row: verifyWire,
+        col: 9,
+        X: candidateWire,
         Y: 8,
       });
     }

@@ -167,8 +167,8 @@ The tables cover every production target in
 included. The values describe the current source tree, not necessarily the
 contents of an older installed package or the checked-in generated library.
 
-The production list currently contains 30 compiled subcircuit types: seven
-generic buffers, 17 general computational or support types, and six
+The production list currently contains 32 compiled subcircuit types: seven
+generic buffers, 19 general computational or support types, and six
 transaction-signature component types. This is a physical library catalog,
 not a count of EVM operations or transaction placements. A logical operation
 may select one type, compose several different types, or place the same type
@@ -181,12 +181,12 @@ excludes each wrapper's constant-one wire and declared input/output ports.
 
 | Catalog subset | Types | Constraints | R1CS wires | Internal wires | Input ports | Output ports | Nonzero coefficients |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Entire production catalog | 30 | 27,350 | 27,580 | 25,055 | 1,123 | 1,372 | 159,519 |
+| Entire production catalog | 32 | 26,462 | 26,731 | 24,145 | 1,152 | 1,402 | 155,042 |
 | Generic buffers | 7 | 1,520 | 1,527 | 0 | 760 | 760 | 4,560 |
-| Computational and support types | 23 | 25,830 | 26,053 | 25,055 | 363 | 612 | 154,959 |
+| Computational and support types | 25 | 24,942 | 25,204 | 24,145 | 392 | 642 | 150,482 |
 | Transaction-signature types only | 6 | 5,097 | 5,276 | 4,788 | 186 | 296 | 34,848 |
 
-A hypothetical “one placement of every type” would contain 30 placements, but
+A hypothetical “one placement of every type” would contain 32 placements, but
 it is not an operation supported by the system. Actual placement multiplicity
 is defined by the composition contracts below. For example, most ALU opcodes
 use one placement, division uses the `ALU4A -> ALU4B` pair, and transaction
@@ -287,7 +287,9 @@ input and intermediate result as a separate public value.
 | `CheckBus256` | Proves that both limbs form a canonical 256-bit word | 256 + 0 = 256 | 2 inputs: one word; no outputs | Locally sound as a range assertion. It is also a mandatory support placement for the first operand of `ADDMOD`. |
 | `ADDMODPrepare` | Prepares the exact 257-bit numerator and bounded reduction candidates | 968 + 4 = 972 | 7 inputs: selector and three words; 19 outputs: five numerator words, four modulus words, one zero flag, five quotient words, and four remainder words | Composition-dependent. The exact first operand must pass the preceding `CheckBus256`. This target checks the second operand and modulus, constrains the addition carry, and bounds the first three quotient words and its 257th bit. |
 | `ADDMODVerify` | Completes candidate bounds, verifies the 257-by-256 reduction, and returns the EVM result | 862 + 2 = 864 | 19 inputs: every `ADDMODPrepare` output; 2 outputs: one word | Composition-dependent. It bounds the remaining quotient word and all remainder words, proves `numerator = quotient * safeModulus + remainder` without unused 512-bit carry ranges, enforces `remainder < safeModulus`, and returns zero for an original zero modulus. |
-| `MULMOD` | EVM full-precision multiplication followed by modular reduction | 3,418 + 0 = 3,418 | 6 inputs: three words; 2 outputs: one word | Locally sound. The operation-specific wrapper has no selector, and the circuit locally proves all three input words canonical, the complete 512-bit product, and a bounded 512-by-256 quotient/remainder relation. This oversized target is temporary pending the approved composition redesign. |
+| `MULMODPrepare` | Canonicalizes the three EVM operands and generates the full-width quotient and remainder candidates | 768 + 6 = 774 | 6 inputs: three words; 18 outputs: twelve 64-bit operand words, four quotient limbs, and two remainder limbs | Composition-dependent; never use independently. The operand words are canonical, but the quotient and remainder outputs are witness candidates whose validity is established only by the following two stages. |
+| `MULMODCandidate` | Canonicalizes the quotient and remainder candidates for the full-width reduction relation | 768 + 6 = 774 | 6 inputs: four quotient limbs and two remainder limbs; 12 outputs: eight quotient words and four remainder words | Composition-dependent; never use independently. Its six inputs must be the exact candidate outputs of `MULMODPrepare`, without host reconstruction or substitution. |
+| `MULMODVerify` | Proves the complete 512-bit multiplication and modular-reduction relation and returns the EVM result | 981 + 2 = 983 | 24 inputs: twelve operand words, eight quotient words, and four remainder words; 2 outputs: one word | Composition-dependent; never use independently. It proves `lhs * rhs = quotient * safeModulus + remainder`, enforces `remainder < safeModulus`, and uses a safe modulus of one so zero modulus returns zero. |
 | `DecToBit` | Decomposes one canonical 256-bit word into 256 LSB-first bits | 256 + 2 = 258 | 2 inputs: one word; 256 bit outputs | Locally sound. It supplies exponent or scalar bits to composed exponentiation chains. |
 | `SubExpBatch` | Eight LSB-first square-and-multiply steps for EVM `EXP` | 6,904 + 0 = 6,904 | 12 inputs: accumulator word, base-power word, 8 bits; 4 outputs: next accumulator and base-power words | Locally sound for one batch. Entry words and every carried state are canonical, each exponent input is Boolean, the conditional factor selects exactly one or the current base power, and both truncated products are constrained modulo `2^256`. |
 | `Accumulator` | Adds 32 256-bit memory-slice words | 318 + 0 = 318 | 64 inputs: 32 words; 2 outputs: one word | **Incomplete.** Every input must come from the approved canonical shift-and-mask path, direct unchecked producers are forbidden, and the current unsafe addition chain must be replaced by the planned bounded limb sum so overflow is constrained. |
@@ -335,17 +337,31 @@ reconstruction, substitution, or reordering. Only the final two
 `ADDMODVerify` outputs form the EVM result. The two ADDMOD targets are
 individually composition-dependent and jointly prove the exact operation.
 
-The current temporary `MULMOD` target uses one placement:
+Every logical `MULMOD` uses exactly three placements:
 
 ```text
-MULMOD
+MULMODPrepare -> MULMODCandidate -> MULMODVerify
 ```
 
-MULMOD has no selector input. It decomposes both multiplicands into constrained
-64-bit words because the complete product relation consumes those words, so a
-preceding `CheckBus256` would duplicate the first operand's canonicality proof.
-Its final replacement may use multiple mandatory placements, but every physical
-target in that composition must remain at or below 1,024 constraints.
+The operation has no selector input and no preceding `CheckBus256` placement.
+`MULMODPrepare` locally canonicalizes all three input words. Its six physical
+quotient and remainder candidate wires must feed `MULMODCandidate` exactly.
+The twelve canonical operand-word outputs of `MULMODPrepare`, followed by all
+twelve outputs of `MULMODCandidate`, must feed `MULMODVerify` in their declared
+order. This produces 30 exact producer-consumer wire connections across the
+composition. Host reconstruction, substitution, reordering, omission, or
+independent use of any stage violates the soundness contract. Only the final
+two `MULMODVerify` outputs form the EVM result. The three targets contain 774,
+774, and 983 constraints respectively, for a one-per-type sum of 2,531; each
+target remains below the 1,024-constraint limit.
+
+Circom inspection intentionally reports the quotient and remainder candidate
+signals in `MULMODPrepare` as locally unconstrained. They are witness-generation
+hints, not claims proved by that stage. This warning is acceptable only because
+the mandatory composition connects those exact wires to `MULMODCandidate` and
+then to `MULMODVerify`, which proves their canonical bounds and complete
+arithmetic relation. Treating `MULMODPrepare` as a standalone circuit would be
+unsound.
 
 The arithmetic relations preserve the full 257-bit addition numerator or
 512-bit multiplication numerator. Reduction uses a safe modulus of one for an

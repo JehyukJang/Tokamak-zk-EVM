@@ -87,18 +87,51 @@ const createMulModArithmeticMapping = (): ArithmeticSubcircuitMapping => Object.
   composition: freezeComposition({
     placementStrategy: 'generic',
     constants: [],
-    numSteps: 1,
+    numSteps: 3,
     numOperands: 3,
     numResults: 1,
     steps: [
       {
-        subcircuit: 'MULMOD',
-        usage: 'MULMOD',
+        subcircuit: 'MULMODPrepare',
+        usage: 'MULMODPrepare',
         selector: null,
         inputs: [
           { kind: 'operand', index: 0 },
           { kind: 'operand', index: 1 },
           { kind: 'operand', index: 2 },
+        ],
+        outputs: Array.from(
+          { length: 15 },
+          (_, index) => ({ kind: 'step-output' as const, index }),
+        ),
+      },
+      {
+        subcircuit: 'MULMODCandidate',
+        usage: 'MULMODCandidate',
+        selector: null,
+        inputs: [
+          { kind: 'step-output', index: 12 },
+          { kind: 'step-output', index: 13 },
+          { kind: 'step-output', index: 14 },
+        ],
+        outputs: Array.from(
+          { length: 12 },
+          (_, index) => ({ kind: 'step-output' as const, index: 15 + index }),
+        ),
+      },
+      {
+        subcircuit: 'MULMODVerify',
+        usage: 'MULMODVerify',
+        selector: null,
+        inputs: [
+          ...Array.from(
+            { length: 12 },
+            (_, index) => ({ kind: 'step-output' as const, index }),
+          ),
+          ...Array.from(
+            { length: 12 },
+            (_, index) => ({ kind: 'step-output' as const, index: 15 + index }),
+          ),
         ],
         outputs: [{ kind: 'result', index: 0 }],
       },

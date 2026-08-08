@@ -52,17 +52,18 @@ The format is based on Keep a Changelog.
   a zero/nonzero condition while retaining canonical low-shift and value
   decompositions. Their composition contract now requires the connected
   producer to constrain that high wire as a 128-bit limb.
-- Added the input-only `CheckBus256` composition target required by `ADDMOD`
-  and `MULMOD`.
+- Added the input-only `CheckBus256` composition target required by `ADDMOD`.
 - Replaced the oversized single ADDMOD target with the composition-only
   `ADDMODPrepare` and `ADDMODVerify` targets. They specialize reduction to the
   exact 257-bit addition numerator and contain 972 and 864 optimized
   constraints respectively.
 - Renamed the two-limb `CheckBus` template to `CheckBus256` and implemented it
   by composing two `CheckBus128` limb checks.
-- Simplified the local `MULMOD` zero-modulus range condition without relying
-  on external composition, reducing its optimized constraint count from 1026
-  to 1021 while retaining the boolean addition-carry checks.
+- Replaced the oversized standalone `MULMOD` target with the mandatory
+  `MULMODPrepare -> MULMODCandidate -> MULMODVerify` composition. The three
+  targets contain 774, 774, and 983 optimized constraints, use exactly three
+  placements and 30 intermediate wire connections, and require no selector or
+  external `CheckBus256` placement.
 - This circuit-set change requires regenerated subcircuit-library artifacts
   and a compatible backend CRS before it can be used for proving.
 
@@ -86,8 +87,9 @@ The format is based on Keep a Changelog.
   and exceptional halts, to fail synthesis with the original EVM error.
 - Updated arithmetic dispatch for the final subcircuit set. Every `ADDMOD`
   uses `CheckBus256 -> ADDMODPrepare -> ADDMODVerify`, while every `MULMOD`
-  uses `CheckBus256 -> MULMOD`. The composition connects the exact first
-  operand and every ADDMOD intermediate without host reconstruction.
+  uses `MULMODPrepare -> MULMODCandidate -> MULMODVerify`. Each composition
+  connects every required operand and intermediate directly, without host
+  reconstruction.
 
 ### Bug Fixes
 
@@ -100,10 +102,11 @@ The format is based on Keep a Changelog.
 - Replaced ALU3's absolute-value-based signed comparison with a direct
   two's-complement ordering relation that reuses constrained sign bits.
 - Replaced the truncated and under-constrained ADDMOD and MULMOD reductions
-  with full-width relations. ADDMOD now proves its exact 257-bit sum through
-  two mandatory composition targets, while MULMOD proves the complete
-  512-bit product and reduction locally. Both constrain canonical modulus,
-  quotient, and remainder words; reduction by one handles a zero modulus.
+  with full-width relations. ADDMOD proves its exact 257-bit sum through two
+  mandatory arithmetic targets and one input check. MULMOD proves its complete
+  512-bit product and reduction through three mandatory arithmetic targets.
+  Both constrain canonical modulus, quotient, and remainder words; reduction
+  by one handles a zero modulus.
 - Replaced the unsafe EVM exponentiation batch relation with canonical
   square-and-multiply state transitions. Each eight-bit batch now proves its
   entry limbs, Boolean exponent bits, conditional factor, truncated products,
