@@ -513,6 +513,26 @@ template TransactionSignaturePointPolicy() {
     }
 }
 
+template TransactionSignatureFixedPrefix70() {
+    assert(nPrivateMessageInputs() == 29);
+    signal input in[1];
+    signal output out[46];
+
+    component signatureBits = Num2Bits(252);
+    signatureBits.in <== in[0];
+    component fixedPrefix = TSVFixedWindowBatch_unsafe(0, 70);
+    fixedPrefix.previous <== [0, 1, 1, 0];
+    for (var bit = 0; bit < 210; bit++) {
+        fixedPrefix.bits[bit] <== signatureBits.out[bit];
+    }
+    for (var bit = 210; bit < 252; bit++) {
+        out[bit - 210] <== signatureBits.out[bit];
+    }
+    for (var coordinate = 0; coordinate < 4; coordinate++) {
+        out[42 + coordinate] <== fixedPrefix.next[coordinate];
+    }
+}
+
 template TransactionSignatureFixedVariableBridge() {
     assert(nPrivateMessageInputs() == 29);
     signal input in[159];
