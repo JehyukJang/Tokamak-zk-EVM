@@ -277,7 +277,7 @@ input and intermediate result as a separate public value.
 | `DecToBit` | Decomposes one canonical 256-bit word into 256 LSB-first bits | 256 + 2 = 258 | 2 inputs: one word; 256 bit outputs | Locally sound. It supplies exponent or scalar bits to composed exponentiation chains. |
 | `SubExpBatch` | Eight LSB-first square-and-multiply steps for EVM `EXP` | 328 + 0 = 328 | 12 inputs: accumulator word, base-power word, 8 bits; 4 outputs: next accumulator and base-power words | **Incomplete.** The intended chain is defined below, but the current unsafe multiplication relation and bus contract still require local remediation. |
 | `Accumulator` | Adds 32 256-bit memory-slice words | 318 + 0 = 318 | 64 inputs: 32 words; 2 outputs: one word | **Incomplete.** Every input must come from the approved canonical shift-and-mask path, direct unchecked producers are forbidden, and the current unsafe addition chain must be replaced by the planned bounded limb sum so overflow is constrained. |
-| `Poseidon` | Selector-chosen chain of two-input Poseidon compressions over `uint(256)` words; current batch size is 1 | 238 + 1 = 239 | 5 inputs: selector and two lower-first `uint(256)` words; 2 outputs: one lower-first `uint(256)` word | Composition-dependent for exact limb representation. The local hash relation is `PoseidonFr(x mod Fr)` for each input word and intentionally does not require `x < Fr`; connected producers or the public-boundary verifier must constrain each physical limb to its declared width. |
+| `Poseidon` | Selector-chosen chain of up to four two-input Poseidon compressions over `uint(256)` words; current batch size is 4 | 964 + 0 = 964 | 11 inputs: selector and five lower-first `uint(256)` words; 2 outputs: one lower-first `uint(256)` word | Composition-dependent for exact limb representation. The local hash relation is `PoseidonFr(x mod Fr)` for each input word and intentionally does not require `x < Fr`; connected producers or the public-boundary verifier must constrain each physical limb to its declared width. |
 | `FrToLimbsPair` | Converts two independent native BLS12-381 scalar-field values to lower-first two-limb EVM words | 1,022 + 2 = 1,024 | 2 native-field inputs; 4 outputs: two lower-first limb pairs | Locally sound as two canonical conversions. Each input is constrained to its unique integer representation `0 ≤ x < Fr`; the circuit is general-purpose and is not part of the TSV placement catalog. |
 | `TransactionSignaturePoseidonBatch4` | Performs either four consecutive native-field Poseidon compressions or one independent compression plus a three-compression chain | 950 + 0 = 950 | 7 inputs: mode and six native field wires; 2 native-field outputs | Composition-dependent. Mode is locally Boolean, but the composition must assign the approved structural mode and connect every chain state exactly. |
 | `TransactionSignaturePointPolicy` | Checks contract width, validates `A` and `R`, applies the public-key cofactor policy, rejects an identity randomizer, builds the variable-base table, and computes `R8` | 223 + 5 = 228 | 8 inputs; 16 outputs: contract and selector limbs, 8 table coordinates, and 4 `R8` coordinates | Composition-dependent. Solidity must bind selector width and the identity point; later signature placements must consume the exact table and `R8` outputs. |
@@ -335,11 +335,13 @@ This topology defines the intended operation but does not close the current
 ### Poseidon chain expansion
 
 One `Poseidon` placement supports up to `nPoseidonBatch()` consecutive
-two-input compressions. The current batch size is 1, so the local selector is
-`1` and each placement performs exactly one compression. For a longer input
-list, the composition layer repeats this normalized placement and connects each
-previous hash output as the first input of the next placement. This repetition
-is structurally determined by the input count, not by witness values.
+two-input compressions. The current batch size is 4, so selectors `1`, `2`,
+`4`, and `8` select one through four compressions, respectively. A placement
+always receives five padded `uint(256)` words: the first chain value followed
+by four possible right-hand inputs. For a longer input list, the composition
+layer repeats this normalized placement and connects each previous hash output
+as the first input of the next placement. This repetition and every selector
+are structurally determined by the input count, not by witness values.
 
 The repeated topology is required for the higher-arity hash operation. Unique
 `uint(256)` limb representation remains a separate producer or public-boundary

@@ -10,7 +10,7 @@ function nPrvIn() {return 80;}
 
 function nPrivateMessageInputs() {return 29;}
 function nPoseidonInputs() {return 2;}
-function nPoseidonBatch() {return 1;}
+function nPoseidonBatch() {return 4;}
 function nAccumulation() {return 32;}
 function nPrevBlockHashes() {return 4;}
 function nSubExpBatch() {return 8;}
