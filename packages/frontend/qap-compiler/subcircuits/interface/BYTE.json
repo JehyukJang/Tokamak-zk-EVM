@@ -1,10 +1,10 @@
 {
   "inputs": [
-    { "name": "selector", "logicalType": { "valueDomain": { "kind": "uint", "bits": 32 }, "wireLayout": { "kind": "limbs-128", "count": 1 } } },
-    { "name": "index", "logicalType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
-    { "name": "value", "logicalType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } }
+    { "name": "selector", "logicalType": { "kind": "uint", "bits": 32 } },
+    { "name": "index", "logicalType": { "kind": "uint", "bits": 256 } },
+    { "name": "value", "logicalType": { "kind": "uint", "bits": 256 } }
   ],
   "outputs": [
-    { "name": "result", "logicalType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } }
+    { "name": "result", "logicalType": { "kind": "uint", "bits": 256 } }
   ]
 }

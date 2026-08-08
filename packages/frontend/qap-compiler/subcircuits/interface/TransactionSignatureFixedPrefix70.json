@@ -1,9 +1,9 @@
 {
   "inputs": [
-    { "name": "responseScalar", "logicalType": { "valueDomain": { "kind": "jubjub-scalar" }, "wireLayout": { "kind": "native-fr" } } }
+    { "name": "responseScalar", "logicalType": { "kind": "jubjub-scalar" } }
   ],
   "outputs": [
-    { "name": "remainingResponseBit", "length": 42, "logicalType": { "valueDomain": { "kind": "uint", "bits": 1 }, "wireLayout": { "kind": "limbs-128", "count": 1 } } },
-    { "name": "fixedAccumulator", "length": 4, "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } }
+    { "name": "remainingResponseBit", "length": 42, "logicalType": { "kind": "uint", "bits": 1 } },
+    { "name": "fixedAccumulator", "length": 4, "logicalType": { "kind": "bls12-381-fr" } }
   ]
 }

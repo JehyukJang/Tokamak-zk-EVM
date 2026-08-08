@@ -1,6 +1,6 @@
 {
   "inputs": [
-    { "name": "value", "logicalType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } }
+    { "name": "value", "logicalType": { "kind": "uint", "bits": 256 } }
   ],
   "outputs": []
 }

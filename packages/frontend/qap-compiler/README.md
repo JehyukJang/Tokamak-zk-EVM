@@ -40,8 +40,15 @@ bundles the matching JSON and WASM assets at build time.
 
 Fixed-capacity public-output buffers are zero-padded. The higher-level protocol
 is responsible for filtering storage tuples with a zero address and log tuples
-whose fields are all zero. Each 256-bit word is encoded as its lower 128-bit
-limb followed by its upper 128-bit limb.
+whose fields are all zero. Generic buffers carry physical field wires without
+assigning one uniform value type to every slot.
+
+For non-buffer subcircuits, `subcircuitInfo.json` declares each logical input
+and output with one closed type. `uint` values of at most 128 bits use one wire;
+wider `uint` values use lower-then-upper 128-bit limbs. `bls12-381-fr` and
+`jubjub-scalar` values each use one native field wire. The scalar type records a
+distinct semantic bound even though its physical wire belongs to the circuit
+field. Consumers must not infer or override a separate wire layout.
 
 ## Published artifacts
 

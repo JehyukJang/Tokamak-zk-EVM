@@ -1,10 +1,10 @@
 {
   "inputs": [
-    { "name": "challengeBit", "length": 68, "logicalType": { "valueDomain": { "kind": "uint", "bits": 1 }, "wireLayout": { "kind": "limbs-128", "count": 1 } } },
-    { "name": "runtimeTableCoordinate", "length": 8, "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } },
-    { "name": "variableAccumulator", "length": 4, "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } }
+    { "name": "challengeBit", "length": 68, "logicalType": { "kind": "uint", "bits": 1 } },
+    { "name": "runtimeTableCoordinate", "length": 8, "logicalType": { "kind": "bls12-381-fr" } },
+    { "name": "variableAccumulator", "length": 4, "logicalType": { "kind": "bls12-381-fr" } }
   ],
   "outputs": [
-    { "name": "variableAccumulator", "length": 4, "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } }
+    { "name": "variableAccumulator", "length": 4, "logicalType": { "kind": "bls12-381-fr" } }
   ]
 }

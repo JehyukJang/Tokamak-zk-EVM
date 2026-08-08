@@ -46,51 +46,18 @@ function parseCircomConstants(sourceText, source = 'constants.circom') {
 
 function validateLogicalType(value, description) {
   assertObject(value, description)
-  assertOnlyKeys(value, new Set(['valueDomain', 'wireLayout']), description)
-  if (!Object.hasOwn(value, 'valueDomain') || !Object.hasOwn(value, 'wireLayout')) {
-    throw new Error(`${description} must define valueDomain and wireLayout.`)
-  }
-
-  const { valueDomain, wireLayout } = value
-  assertObject(valueDomain, `${description}.valueDomain`)
-  assertObject(wireLayout, `${description}.wireLayout`)
-
-  if (valueDomain.kind === 'uint') {
-    assertOnlyKeys(valueDomain, new Set(['kind', 'bits']), `${description}.valueDomain`)
-    if (!Number.isInteger(valueDomain.bits) || valueDomain.bits < 1 || valueDomain.bits > 256) {
-      throw new Error(`${description}.valueDomain.bits must be an integer between 1 and 256.`)
+  if (value.kind === 'uint') {
+    assertOnlyKeys(value, new Set(['kind', 'bits']), description)
+    if (!Number.isInteger(value.bits) || value.bits < 1 || value.bits > 256) {
+      throw new Error(`${description}.bits must be an integer between 1 and 256.`)
     }
-  } else if (valueDomain.kind === 'bls12-381-fr' || valueDomain.kind === 'jubjub-scalar') {
-    assertOnlyKeys(valueDomain, new Set(['kind']), `${description}.valueDomain`)
+  } else if (value.kind === 'bls12-381-fr' || value.kind === 'jubjub-scalar') {
+    assertOnlyKeys(value, new Set(['kind']), description)
   } else {
-    throw new Error(`${description}.valueDomain.kind is unsupported.`)
+    throw new Error(`${description}.kind is unsupported.`)
   }
 
-  if (wireLayout.kind === 'limbs-128') {
-    assertOnlyKeys(wireLayout, new Set(['kind', 'count']), `${description}.wireLayout`)
-    if (wireLayout.count !== 1 && wireLayout.count !== 2) {
-      throw new Error(`${description}.wireLayout.count must be 1 or 2.`)
-    }
-    if (valueDomain.kind === 'uint') {
-      if (wireLayout.count === 1 && valueDomain.bits > 128) {
-        throw new Error(`${description} cannot encode uint(${valueDomain.bits}) in one 128-bit limb.`)
-      }
-    } else if (wireLayout.count !== 2) {
-      throw new Error(`${description} must encode a split field or scalar in two 128-bit limbs.`)
-    }
-  } else if (wireLayout.kind === 'native-fr') {
-    assertOnlyKeys(wireLayout, new Set(['kind']), `${description}.wireLayout`)
-    if (valueDomain.kind === 'uint') {
-      throw new Error(`${description} cannot encode an integer as native-fr.`)
-    }
-  } else {
-    throw new Error(`${description}.wireLayout.kind is unsupported.`)
-  }
-
-  return {
-    valueDomain: { ...valueDomain },
-    wireLayout: { ...wireLayout },
-  }
+  return { ...value }
 }
 
 function resolveLength(value, constants, description) {
@@ -157,8 +124,8 @@ function expandPorts(ports, constants, description) {
 }
 
 function countPhysicalWires(ports) {
-  return ports.reduce((count, { logicalType: { wireLayout } }) =>
-    count + (wireLayout.kind === 'native-fr' ? 1 : wireLayout.count), 0)
+  return ports.reduce((count, { logicalType }) =>
+    count + (logicalType.kind === 'uint' && logicalType.bits > 128 ? 2 : 1), 0)
 }
 
 function validateBufferCapacities(subcircuits, constants) {

@@ -1,11 +1,11 @@
 {
   "inputs": [
-    { "name": "power", "logicalType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
-    { "name": "accumulator", "logicalType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
-    { "name": "bit", "length": { "constant": "nSubExpBatch" }, "logicalType": { "valueDomain": { "kind": "uint", "bits": 1 }, "wireLayout": { "kind": "limbs-128", "count": 1 } } }
+    { "name": "power", "logicalType": { "kind": "uint", "bits": 256 } },
+    { "name": "accumulator", "logicalType": { "kind": "uint", "bits": 256 } },
+    { "name": "bit", "length": { "constant": "nSubExpBatch" }, "logicalType": { "kind": "uint", "bits": 1 } }
   ],
   "outputs": [
-    { "name": "nextPower", "logicalType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } },
-    { "name": "nextAccumulator", "logicalType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } }
+    { "name": "nextPower", "logicalType": { "kind": "uint", "bits": 256 } },
+    { "name": "nextAccumulator", "logicalType": { "kind": "uint", "bits": 256 } }
   ]
 }

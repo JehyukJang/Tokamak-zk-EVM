@@ -1,8 +1,8 @@
 {
   "inputs": [
-    { "name": "value", "length": 2, "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } }
+    { "name": "value", "length": 2, "logicalType": { "kind": "bls12-381-fr" } }
   ],
   "outputs": [
-    { "name": "evmWord", "length": 2, "logicalType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } }
+    { "name": "evmWord", "length": 2, "logicalType": { "kind": "uint", "bits": 256 } }
   ]
 }

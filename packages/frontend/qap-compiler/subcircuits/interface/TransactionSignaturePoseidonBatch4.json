@@ -1,15 +1,15 @@
 {
   "inputs": [
-    { "name": "mode", "logicalType": { "valueDomain": { "kind": "uint", "bits": 1 }, "wireLayout": { "kind": "limbs-128", "count": 1 } } },
-    { "name": "firstLeft", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } },
-    { "name": "firstRight", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } },
-    { "name": "independentSecondLeft", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } },
-    { "name": "secondRight", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } },
-    { "name": "thirdRight", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } },
-    { "name": "fourthRight", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } }
+    { "name": "mode", "logicalType": { "kind": "uint", "bits": 1 } },
+    { "name": "firstLeft", "logicalType": { "kind": "bls12-381-fr" } },
+    { "name": "firstRight", "logicalType": { "kind": "bls12-381-fr" } },
+    { "name": "independentSecondLeft", "logicalType": { "kind": "bls12-381-fr" } },
+    { "name": "secondRight", "logicalType": { "kind": "bls12-381-fr" } },
+    { "name": "thirdRight", "logicalType": { "kind": "bls12-381-fr" } },
+    { "name": "fourthRight", "logicalType": { "kind": "bls12-381-fr" } }
   ],
   "outputs": [
-    { "name": "firstHash", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } },
-    { "name": "finalHash", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } }
+    { "name": "firstHash", "logicalType": { "kind": "bls12-381-fr" } },
+    { "name": "finalHash", "logicalType": { "kind": "bls12-381-fr" } }
   ]
 }

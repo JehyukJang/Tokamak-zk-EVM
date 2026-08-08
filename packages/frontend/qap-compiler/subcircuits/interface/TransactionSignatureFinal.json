@@ -1,14 +1,14 @@
 {
   "inputs": [
-    { "name": "responseBit", "length": 42, "logicalType": { "valueDomain": { "kind": "uint", "bits": 1 }, "wireLayout": { "kind": "limbs-128", "count": 1 } } },
-    { "name": "fixedAccumulator", "length": 4, "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } },
-    { "name": "challengeBit", "length": 18, "logicalType": { "valueDomain": { "kind": "uint", "bits": 1 }, "wireLayout": { "kind": "limbs-128", "count": 1 } } },
-    { "name": "variableAccumulator", "length": 4, "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } },
-    { "name": "runtimeTableCoordinate", "length": 8, "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } },
-    { "name": "randomizerCofactorCoordinate", "length": 4, "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } },
-    { "name": "publicKeyHash", "logicalType": { "valueDomain": { "kind": "bls12-381-fr" }, "wireLayout": { "kind": "native-fr" } } }
+    { "name": "responseBit", "length": 42, "logicalType": { "kind": "uint", "bits": 1 } },
+    { "name": "fixedAccumulator", "length": 4, "logicalType": { "kind": "bls12-381-fr" } },
+    { "name": "challengeBit", "length": 18, "logicalType": { "kind": "uint", "bits": 1 } },
+    { "name": "variableAccumulator", "length": 4, "logicalType": { "kind": "bls12-381-fr" } },
+    { "name": "runtimeTableCoordinate", "length": 8, "logicalType": { "kind": "bls12-381-fr" } },
+    { "name": "randomizerCofactorCoordinate", "length": 4, "logicalType": { "kind": "bls12-381-fr" } },
+    { "name": "publicKeyHash", "logicalType": { "kind": "bls12-381-fr" } }
   ],
   "outputs": [
-    { "name": "origin", "logicalType": { "valueDomain": { "kind": "uint", "bits": 160 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } }
+    { "name": "origin", "logicalType": { "kind": "uint", "bits": 160 } }
   ]
 }

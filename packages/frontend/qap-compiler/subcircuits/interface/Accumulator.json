@@ -1,8 +1,8 @@
 {
   "inputs": [
-    { "name": "value", "length": { "constant": "nAccumulation" }, "logicalType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } }
+    { "name": "value", "length": { "constant": "nAccumulation" }, "logicalType": { "kind": "uint", "bits": 256 } }
   ],
   "outputs": [
-    { "name": "sum", "logicalType": { "valueDomain": { "kind": "uint", "bits": 256 }, "wireLayout": { "kind": "limbs-128", "count": 2 } } }
+    { "name": "sum", "logicalType": { "kind": "uint", "bits": 256 } }
   ]
 }

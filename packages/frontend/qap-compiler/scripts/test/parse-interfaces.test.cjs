@@ -12,15 +12,9 @@ const {
   validateBufferCapacities,
 } = require('../parse-interfaces.js')
 
-const UINT256 = {
-  valueDomain: { kind: 'uint', bits: 256 },
-  wireLayout: { kind: 'limbs-128', count: 2 },
-}
+const UINT256 = { kind: 'uint', bits: 256 }
 
-const BIT = {
-  valueDomain: { kind: 'uint', bits: 1 },
-  wireLayout: { kind: 'limbs-128', count: 1 },
-}
+const BIT = { kind: 'uint', bits: 1 }
 
 const BUFFER_CAPACITIES = new Map([
   ['nLogOut', 5],
@@ -72,19 +66,37 @@ test('expands fixed and Circom-constant logical port lengths', () => {
   assert.equal(countPhysicalWires(logicalInterface.inputs), 5)
 })
 
-test('rejects invalid domain and layout combinations', () => {
+test('derives physical wire counts from closed logical types', () => {
+  assert.equal(countPhysicalWires([
+    { logicalType: { kind: 'uint', bits: 128 } },
+    { logicalType: { kind: 'uint', bits: 129 } },
+    { logicalType: { kind: 'bls12-381-fr' } },
+    { logicalType: { kind: 'jubjub-scalar' } },
+  ]), 5)
+})
+
+test('rejects fields outside the closed logical type definitions', () => {
   assert.throws(
     () => parseLogicalInterface(JSON.stringify({
       inputs: [{
         name: 'word',
         logicalType: {
-          valueDomain: { kind: 'uint', bits: 256 },
           wireLayout: { kind: 'limbs-128', count: 1 },
+          kind: 'uint',
+          bits: 256,
         },
       }],
       outputs: [],
     }), new Map()),
-    /cannot encode uint\(256\) in one 128-bit limb/,
+    /unsupported field 'wireLayout'/,
+  )
+
+  assert.throws(
+    () => parseLogicalInterface(JSON.stringify({
+      inputs: [{ name: 'word', logicalType: { kind: 'uint', bits: 257 } }],
+      outputs: [],
+    }), new Map()),
+    /bits must be an integer between 1 and 256/,
   )
 })
 
