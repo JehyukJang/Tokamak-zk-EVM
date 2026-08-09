@@ -29,7 +29,6 @@ export class ArithmeticManager {
     }
     this.poseidonBatchSize = poseidonBatchSize
     ArithmeticOperations.configure({
-      arithExpBatchSize: this.parent.subcircuitLibrary.arithExpBatchSize,
       jubjubExpBatchSize: this.parent.subcircuitLibrary.jubjubExpBatchSize,
     })
   }
@@ -416,7 +415,8 @@ const ARITHMETIC_MAPPING: Record<ArithmeticSubcircuit, (values: bigint[]) => big
   MULMODCandidate: ArithmeticOperations.mulmodCandidate,
   MULMODVerify: ArithmeticOperations.mulmodVerify,
   DecToBit: ArithmeticOperations.decToBit,
-  SubExpBatch: ArithmeticOperations.subExpBatch,
+  SubExp: ArithmeticOperations.subExp,
+  CheckBus256: ArithmeticOperations.checkBus256,
   Accumulator: ArithmeticOperations.accumulator,
   Poseidon: ArithmeticOperations.poseidon,
   JubjubExpBatch: ArithmeticOperations.jubjubExpBatch,

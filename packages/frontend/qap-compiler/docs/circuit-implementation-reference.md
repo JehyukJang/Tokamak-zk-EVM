@@ -167,8 +167,8 @@ The tables cover every production target in
 included. The values describe the current source tree, not necessarily the
 contents of an older installed package or the checked-in generated library.
 
-The production list currently contains 31 compiled subcircuit types: seven
-generic buffers, 18 general computational or support types, and six
+The production list currently contains 32 compiled subcircuit types: seven
+generic buffers, 19 general computational or support types, and six
 transaction-signature component types. This is a physical library catalog,
 not a count of EVM operations or transaction placements. A logical operation
 may select one type, compose several different types, or place the same type
@@ -181,12 +181,12 @@ excludes each wrapper's constant-one wire and declared input/output ports.
 
 | Catalog subset | Types | Constraints | R1CS wires | Internal wires | Input ports | Output ports | Nonzero coefficients |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Entire production catalog | 31 | 26,273 | 26,533 | 23,971 | 1,140 | 1,391 | 154,154 |
+| Entire production catalog | 32 | 20,421 | 20,715 | 18,155 | 1,135 | 1,393 | 124,917 |
 | Generic buffers | 7 | 1,520 | 1,527 | 0 | 760 | 760 | 4,560 |
-| Computational and support types | 24 | 24,753 | 25,006 | 23,971 | 380 | 631 | 149,594 |
+| Computational and support types | 25 | 18,901 | 19,188 | 18,155 | 375 | 633 | 120,357 |
 | Transaction-signature types only | 6 | 5,097 | 5,276 | 4,788 | 186 | 296 | 34,848 |
 
-A hypothetical “one placement of every type” would contain 31 placements, but
+A hypothetical “one placement of every type” would contain 32 placements, but
 it is not an operation supported by the system. Actual placement multiplicity
 is defined by the composition contracts below. For example, most ALU opcodes
 use one placement, division uses the `ALU4A -> ALU4B` pair, and transaction
@@ -290,7 +290,8 @@ input and intermediate result as a separate public value.
 | `MULMODCandidate` | Canonicalizes the quotient and remainder candidates for the full-width reduction relation | 768 + 6 = 774 | 6 inputs: four quotient limbs and two remainder limbs; 12 outputs: eight quotient words and four remainder words | Composition-dependent; never use independently. Its six inputs must be the exact candidate outputs of `MULMODPrepare`, without host reconstruction or substitution. |
 | `MULMODVerify` | Proves the complete 512-bit multiplication and modular-reduction relation and returns the EVM result | 981 + 2 = 983 | 24 inputs: twelve operand words, eight quotient words, and four remainder words; 2 outputs: one word | Composition-dependent; never use independently. It proves `lhs * rhs = quotient * safeModulus + remainder`, enforces `remainder < safeModulus`, and uses a safe modulus of one so zero modulus returns zero. |
 | `DecToBit` | Decomposes one canonical 256-bit word into 256 LSB-first bits | 256 + 2 = 258 | 2 inputs: one word; 256 bit outputs | Locally sound. It supplies exponent or scalar bits to composed exponentiation chains. |
-| `SubExpBatch` | Eight LSB-first square-and-multiply steps for EVM `EXP` | 6,864 + 0 = 6,864 | 12 inputs: accumulator word, base-power word, 8 bits; 4 outputs: next accumulator and base-power words | Composition-dependent. Entry words and every carried state are canonical locally, while each exponent bit must be the exact output of `DecToBit`. The conditional factor, specialized truncated square, and truncated accumulator product are constrained modulo `2^256`. |
+| `SubExp` | One LSB-first square-and-multiply step for EVM `EXP` | 794 + 0 = 794 | 5 inputs: accumulator word, base-power word, and one bit; 4 outputs: next accumulator and base-power words | Composition-dependent; never use independently. It canonicalizes both input words and constrains the conditional factor, truncated square, and truncated accumulator product modulo `2^256`. Its bit must be the exact corresponding output of `DecToBit`. Both output words must feed the exact next `SubExp`; after the last step, the accumulator must feed `CheckBus256`. The unused final base-power word is discarded. |
+| `CheckBus256` | Canonicalizes and passes through one 256-bit word | 256 + 2 = 258 | 2 inputs: one word; 2 outputs: the exact checked word | Locally sound. In the EVM `EXP` composition it is the mandatory terminal consumer of the final `SubExp` accumulator and supplies the operation result. |
 | `Accumulator` | Adds 32 256-bit memory-slice words | 318 + 0 = 318 | 64 inputs: 32 words; 2 outputs: one word | **Incomplete.** Every input must come from the approved canonical shift-and-mask path, direct unchecked producers are forbidden, and the current unsafe addition chain must be replaced by the planned bounded limb sum so overflow is constrained. |
 | `Poseidon` | Selector-chosen chain of up to four two-input Poseidon compressions over `uint(256)` words; current batch size is 4 | 964 + 0 = 964 | 11 inputs: selector and five lower-first `uint(256)` words; 2 outputs: one lower-first `uint(256)` word | Composition-dependent for exact limb representation. The local hash relation is `PoseidonFr(x mod Fr)` for each input word and intentionally does not require `x < Fr`; connected producers or the public-boundary verifier must constrain each physical limb to its declared width. |
 | `FrToLimbsPair` | Converts two independent native BLS12-381 scalar-field values to lower-first two-limb EVM words | 1,022 + 2 = 1,024 | 2 native-field inputs; 4 outputs: two lower-first limb pairs | Locally sound as two canonical conversions. Each input is constrained to its unique integer representation `0 ≤ x < Fr`; the circuit is general-purpose and is not part of the TSV placement catalog. |
@@ -379,21 +380,27 @@ EVM zero modulus, proves the complete quotient-product-plus-remainder identity,
 and constrains the remainder below the safe modulus. Both operations therefore
 return zero for a zero modulus without truncating the numerator.
 
-### EVM exponentiation: `DecToBit -> SubExpBatch*`
+### EVM exponentiation: `DecToBit -> SubExp* -> CheckBus256`
 
 EVM `EXP(base, exponent)` uses one `DecToBit` placement on the exponent,
-followed by `ceil(256 / nSubExpBatch())` serial `SubExpBatch` placements. With
-the current `nSubExpBatch() = 8`, the chain has 32 batches. The first batch
-receives accumulator `1`, base-power `base`, and exponent bits 0 through 7.
-Each later batch consumes the exact accumulator and base-power outputs of its
-predecessor and the next LSB-first bit group. Only the final accumulator is the
-EVM result; the final base-power output is discarded.
+followed by exactly 256 serial `SubExp` placements and one terminal
+`CheckBus256` placement. The first step receives accumulator `1`, base-power
+`base`, and exponent bit 0. Each later step consumes all four exact state
+outputs of its predecessor and the next LSB-first exponent bit. The terminal
+checker consumes the exact final accumulator and returns the EVM result; the
+final base-power output is discarded because no later statement uses it.
 
-Each batch depends on this exact serial topology. Every exponent-bit input must
-be the corresponding Boolean output of `DecToBit`, consumed once in LSB-first
-order, and every state input must be the exact preceding batch output. A
-`SubExpBatch` placement with an arbitrary bit producer is not an approved
-composition.
+This topology is part of the soundness contract. Every bit input must be the
+corresponding Boolean output of the same `DecToBit` placement, every four-wire
+state transition must be connected without substitution or reconstruction,
+and the terminal accumulator must pass through `CheckBus256`. A standalone
+`SubExp` does not locally canonicalize its outputs and is therefore not an
+independently usable exponentiation statement.
+
+The three target types contain 258, 794, and 258 constraints respectively, so
+every physical target remains below the 1,024-constraint limit. A full EVM
+`EXP` uses 258 placements and 203,780 placement-weighted constraints. The
+distinct-type constraint sum for this composition is 1,310.
 
 ### Poseidon chain expansion
 

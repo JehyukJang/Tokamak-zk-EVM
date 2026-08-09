@@ -1,6 +1,4 @@
-import type { FrontendConfig } from '../libraryTypes.ts';
 import {
-  assertPositiveInteger,
   freezeComposition,
   type ArithmeticSubcircuitMapping,
   type CompositionStep,
@@ -9,87 +7,71 @@ import {
   type OutputReference,
 } from '../arithmeticSubcircuitComposition.ts';
 
-export type ExpArithmeticMappingConfig = Pick<
-  FrontendConfig,
-  'nSubExpBatch'
->;
+const NUM_EXPONENT_BITS = 256;
 
-export const createExpArithmeticMapping = (
-  config: ExpArithmeticMappingConfig,
-): ArithmeticSubcircuitMapping => {
-  assertPositiveInteger(config.nSubExpBatch, 'nSubExpBatch');
-
-  const numExponentBits = 256;
-  const numBatches = Math.ceil(numExponentBits / config.nSubExpBatch);
-  const requiresPadding = numBatches * config.nSubExpBatch > numExponentBits;
-  const constants: ConstantDefinition[] = [
-    {
-      value: 1n,
-      dataPtType: {
-        valueDomain: { kind: 'uint', bits: 256 },
-        wireLayout: { kind: 'limbs-128', count: 2 },
-      },
+export const createExpArithmeticMapping = (): ArithmeticSubcircuitMapping => {
+  const constants: readonly ConstantDefinition[] = [{
+    value: 1n,
+    dataPtType: {
+      valueDomain: { kind: 'uint', bits: 256 },
+      wireLayout: { kind: 'limbs-128', count: 2 },
     },
-    ...(requiresPadding
-      ? [{
-          value: 0n,
-          dataPtType: {
-            valueDomain: { kind: 'uint', bits: 1 } as const,
-            wireLayout: { kind: 'limbs-128', count: 1 } as const,
-          },
-        }]
-      : []),
-  ];
+  }];
   const steps: CompositionStep[] = [{
     subcircuit: 'DecToBit',
     usage: 'DecToBit',
     selector: null,
     inputs: [{ kind: 'operand', index: 1 }],
     outputs: Array.from(
-      { length: numExponentBits },
+      { length: NUM_EXPONENT_BITS },
       (_, index): OutputReference => ({ kind: 'step-output', index }),
     ),
   }];
 
-  for (let batchIndex = 0; batchIndex < numBatches; batchIndex++) {
-    const isFirstBatch = batchIndex === 0;
-    const isFinalBatch = batchIndex === numBatches - 1;
-    const stateInputs: InputReference[] = isFirstBatch
+  for (let bitIndex = 0; bitIndex < NUM_EXPONENT_BITS; bitIndex++) {
+    const isFirstStep = bitIndex === 0;
+    const isFinalStep = bitIndex === NUM_EXPONENT_BITS - 1;
+    const stateInputs: InputReference[] = isFirstStep
       ? [
           { kind: 'constant', index: 0 },
           { kind: 'operand', index: 0 },
         ]
       : [
-          { kind: 'step-output', index: numExponentBits + 2 * (batchIndex - 1) },
-          { kind: 'step-output', index: numExponentBits + 2 * (batchIndex - 1) + 1 },
+          { kind: 'step-output', index: NUM_EXPONENT_BITS + 2 * (bitIndex - 1) },
+          { kind: 'step-output', index: NUM_EXPONENT_BITS + 2 * (bitIndex - 1) + 1 },
         ];
-    const bitInputs = Array.from(
-      { length: config.nSubExpBatch },
-      (_, bitIndex): InputReference => {
-        const exponentBitIndex = batchIndex * config.nSubExpBatch + bitIndex;
-        return exponentBitIndex < numExponentBits
-          ? { kind: 'step-output', index: exponentBitIndex }
-          : { kind: 'constant', index: 1 };
-      },
-    );
-    const outputs: OutputReference[] = isFinalBatch
+    const outputs: OutputReference[] = isFinalStep
       ? [
-          { kind: 'result', index: 0 },
+          { kind: 'step-output', index: NUM_EXPONENT_BITS + 2 * bitIndex },
           { kind: 'discard' },
         ]
       : [
-          { kind: 'step-output', index: numExponentBits + 2 * batchIndex },
-          { kind: 'step-output', index: numExponentBits + 2 * batchIndex + 1 },
+          { kind: 'step-output', index: NUM_EXPONENT_BITS + 2 * bitIndex },
+          { kind: 'step-output', index: NUM_EXPONENT_BITS + 2 * bitIndex + 1 },
         ];
 
     steps.push({
-      subcircuit: 'SubExpBatch',
-      usage: 'SubExpBatch',
+      subcircuit: 'SubExp',
+      usage: 'SubExp',
       selector: null,
-      inputs: [...stateInputs, ...bitInputs],
+      inputs: [
+        ...stateInputs,
+        { kind: 'step-output', index: bitIndex },
+      ],
       outputs,
     });
   }
+
+  steps.push({
+    subcircuit: 'CheckBus256',
+    usage: 'CheckBus256',
+    selector: null,
+    inputs: [{
+      kind: 'step-output',
+      index: NUM_EXPONENT_BITS + 2 * (NUM_EXPONENT_BITS - 1),
+    }],
+    outputs: [{ kind: 'result', index: 0 }],
+  });
 
   return Object.freeze({
     operation: 'EXP',

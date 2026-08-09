@@ -13,7 +13,6 @@ const composition = createArithmeticSubcircuitComposition({
   nEqualBatch: 2,
   nJubjubExpBatch: 4,
   nPoseidonBatch: 6,
-  nSubExpBatch: 8,
 });
 
 const replaceComposition = (
@@ -41,7 +40,7 @@ describe('arithmetic subcircuit composition assembly', () => {
     expect(composition.get('Accumulator').numOperands).toBe(4);
     expect(composition.get('EqualBatch').numOperands).toBe(4);
     expect(composition.get('Poseidon').numOperands).toBe(7);
-    expect(composition.get('EXP').numSteps).toBe(33);
+    expect(composition.get('EXP').numSteps).toBe(258);
   });
 
   it('rejects dynamic numSteps for the generic placement strategy', () => {

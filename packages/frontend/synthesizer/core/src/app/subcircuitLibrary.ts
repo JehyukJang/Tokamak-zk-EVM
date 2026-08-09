@@ -32,7 +32,6 @@ export function resolveSubcircuitLibraryData(
     numberOfPrevBlockHashes: data.frontendCfg.nPrevBlockHashes,
     poseidonBatchSize: data.frontendCfg.nPoseidonBatch,
     jubjubExpBatchSize: data.frontendCfg.nJubjubExpBatch,
-    arithExpBatchSize: data.frontendCfg.nSubExpBatch,
     firstArithmeticPlacementIndex: BUFFER_LIST.length,
   };
 }

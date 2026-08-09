@@ -431,7 +431,6 @@ export type ArithmeticSubcircuitCompositionConfig = Pick<
   | 'nEqualBatch'
   | 'nJubjubExpBatch'
   | 'nPoseidonBatch'
-  | 'nSubExpBatch'
 >;
 
 export const createArithmeticSubcircuitComposition = (
@@ -441,7 +440,7 @@ export const createArithmeticSubcircuitComposition = (
   ...createDivisionArithmeticMappings(),
   ...createAddMulModArithmeticMappings(),
   ...createSelectorFreeArithmeticMappings(config),
-  createExpArithmeticMapping(config),
+  createExpArithmeticMapping(),
   createTransactionSignatureVerifyArithmeticMapping(config),
   createPoseidonArithmeticMapping(config),
 ]);

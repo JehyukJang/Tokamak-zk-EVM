@@ -15,7 +15,6 @@ const validConfig = {
   nAccumulation: 32,
   nPrevBlockHashes: 4,
   nJubjubExpBatch: 37,
-  nSubExpBatch: 8,
   nEqualBatch: 2,
 };
 

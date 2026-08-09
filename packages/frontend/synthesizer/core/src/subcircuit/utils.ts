@@ -92,7 +92,6 @@ export function parseFrontendConfig(value: unknown): FrontendConfig {
     nAccumulation: getRequiredNumber(value, 'nAccumulation'),
     nPrevBlockHashes: getRequiredNumber(value, 'nPrevBlockHashes'),
     nJubjubExpBatch: getRequiredNumber(value, 'nJubjubExpBatch'),
-    nSubExpBatch: getRequiredNumber(value, 'nSubExpBatch'),
     nEqualBatch: getRequiredNumber(value, 'nEqualBatch'),
   };
 }

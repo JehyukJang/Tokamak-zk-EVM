@@ -38,10 +38,8 @@ const createHarness = (poseidonBatchSize: number) => {
         nEqualBatch: 2,
         nJubjubExpBatch: 128,
         nPoseidonBatch: poseidonBatchSize,
-        nSubExpBatch: 32,
       }),
       poseidonBatchSize,
-      arithExpBatchSize: 32,
       jubjubExpBatchSize: 128,
     },
     state: {

@@ -11,10 +11,8 @@ const convertToSigned = (value: bigint): bigint => {
  */
 export class ArithmeticOperations {
   private static _config: {
-    arithExpBatchSize: number;
     jubjubExpBatchSize: number;
   } = {
-    arithExpBatchSize: 0,
     jubjubExpBatchSize: 0,
   }
 
@@ -25,7 +23,6 @@ export class ArithmeticOperations {
   // Convert to signed integer (256-bit)
 
   static configure(config: {
-    arithExpBatchSize: number;
     jubjubExpBatchSize: number;
   }): void {
     ArithmeticOperations._config = config
@@ -618,34 +615,27 @@ export class ArithmeticOperations {
   // }
 
   /**
-   * SubExpBatch
+   * One LSB-first square-and-multiply step for EXP.
    */
-  static subExpBatch(in_vals: bigint[]): bigint[] {
-    const modPow = (base: bigint, exp: bigint, M: bigint) => {
-      let res = 1n, b = base % M, e = exp;
-      while (e > 0n) { if (e & 1n) res = (res * b) % M; b = (b * b) % M; e >>= 1n; }
-      return res;
-    };
-
-    const Nbits = ArithmeticOperations._requireBatchSize(
-      ArithmeticOperations._config.arithExpBatchSize,
-      'SubExpBatch',
-    )
-    if (in_vals.length !== 2 + Nbits) {
-      throw new Error(`subExpBatch expected exactly ${2 + Nbits} input values, but got ${in_vals.length} values`)
+  static subExp(in_vals: bigint[]): bigint[] {
+    if (in_vals.length !== 3) {
+      throw new Error(`subExp expected exactly 3 input values, but got ${in_vals.length} values`)
     }
-    const c = in_vals[0]
-    const a = in_vals[1]
-    // Input bits should be LSB-first.
-    const scalarBitsMSB = in_vals.slice(2, ).reverse()
-    if (scalarBitsMSB.some(b => b !== 0n && b !== 1n)) {
-      throw new Error('subExpBatch: scalar bits must be 0n or 1n');
+    const [accumulator, basePower, bit] = in_vals
+    if (bit !== 0n && bit !== 1n) {
+      throw new Error('subExp: bit must be 0n or 1n')
     }
+    return [
+      accumulator * (bit === 1n ? basePower : 1n) % ArithmeticOperations.N,
+      basePower * basePower % ArithmeticOperations.N,
+    ]
+  }
 
-    const exponent = scalarBitsMSB.reduce((acc, b) => (acc << 1n) | b, 0n)
-    const a_next = modPow(a, 1n << BigInt(Nbits), ArithmeticOperations.N);
-    const c_next = (c * modPow(a, exponent, ArithmeticOperations.N)) % ArithmeticOperations.N;
-    return [c_next, a_next]
+  static checkBus256(in_vals: bigint[]): bigint {
+    if (in_vals.length !== 1) {
+      throw new Error(`checkBus256 expected exactly 1 input value, but got ${in_vals.length} values`)
+    }
+    return in_vals[0]
   }
 
   /**

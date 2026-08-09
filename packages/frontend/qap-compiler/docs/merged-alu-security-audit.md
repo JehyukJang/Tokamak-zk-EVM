@@ -119,7 +119,8 @@ However, the fresh compile-target review identified additional issues outside th
 
 Under the composed-system assumptions above:
 
-- `Accumulator` and `SubExpBatch` no longer present standalone-statement attacks by themselves, but they still rely on system-level bus well-formedness along every producer path that reaches them
+- `Accumulator` still relies on system-level bus well-formedness along every producer path that reaches it
+- the historical `SubExpBatch` concern has been resolved by replacing that target with the exact `DecToBit -> SubExp x 256 -> CheckBus256` composition
 - the `jubjubExpBatch -> ... -> EdDsaVerify` chain no longer remains a live issue from this repository alone once the valid chain seed and fixed terminal `EdDsaVerify` sink are taken as part of the system contract
 - the standalone `EdDsaVerify` vacuity observation is not a live issue if the artifact is never used standalone
 
@@ -385,7 +386,7 @@ The implementation now zeroes unsupported selector bits before the mux stage, an
 
 Severity: Medium
 
-Current status: Conditional
+Current status: Resolved by replacement
 
 At the compile-target level, the affected wrappers are:
 
@@ -466,10 +467,10 @@ Severity: Medium
 
 Current status: Conditional
 
-`SubExpBatch_circuit.circom` forwards `c_prev` and `a_prev` directly into the compiled exponentiation batch path without any bus-range checks, while the implementation underneath is built from `SubExp_unsafe()`, `Mul256_unsafe()`, and `Add256_unsafe()`:
-
-- [`subcircuits/circom/SubExpBatch_circuit.circom`](../subcircuits/circom/SubExpBatch_circuit.circom)
-- [`templates/256bit/arithmetic_unsafe_type1.circom`](../templates/256bit/arithmetic_unsafe_type1.circom)
+At the April 4 snapshot, `SubExpBatch_circuit.circom` forwarded `c_prev` and
+`a_prev` directly into the compiled exponentiation batch path without any
+bus-range checks. The implementation underneath used `SubExp_unsafe()`,
+`Mul256_unsafe()`, and `Add256_unsafe()`. That wrapper has since been removed.
 
 The wrapper also leaves its output bus checks commented out.
 
@@ -499,7 +500,21 @@ As with `Accumulator`, this weakens the standalone exploit claim and turns the i
 - if all producer paths into `SubExpBatch` already enforce canonical 128-bit limbs, the missing local bus checks are redundant
 - if unchecked producer paths can drive `SubExpBatch`, the ambiguity can still persist inside the composed witness
 
-This finding therefore remains relevant as a composition requirement, but it is not by itself a proof that the final top-level circuit is vulnerable.
+This was a relevant composition requirement for the historical target, but it
+is not by itself a proof that the final top-level circuit was vulnerable.
+
+#### Current remediation
+
+The former eight-bit batch target has been replaced with a one-bit `SubExp`
+target containing exactly 794 O2 constraints. Every `SubExp` canonicalizes its
+incoming accumulator and base-power words. The Synthesizer composition places
+exactly 256 steps, connects all four state outputs of each step to the exact
+next step, and connects each bit to the corresponding `DecToBit` output. The
+last accumulator passes through a 258-constraint `CheckBus256`; the unused
+last base-power output is discarded. This exact chain prevents unchecked
+intermediate or terminal accumulator state from escaping the composition.
+Direct circuit tests cover invalid entry limbs, invalid bits, exact two-step
+state forwarding, the terminal range check, and internal witness mutation.
 
 ### Finding 10: The compiled `JubjubExpBatch` wrapper omits local point-validity checks, but that does not remain a live issue under the fixed composed chain
 
@@ -639,7 +654,7 @@ Those checks still exist through the `rem < divisor` structure and the internal 
 
 Fix or discharge the remaining compiled-circuit issues at the system level:
 
-- ensure every producer path into `Accumulator` and `SubExpBatch` enforces canonical 128-bit limbs, or add local bus checks inside those subcircuits
+- ensure every producer path into `Accumulator` enforces canonical 128-bit limbs, or add local bus checks inside that subcircuit
 - ensure the top-level proof statement binds the intended EdDSA message, challenge, key, and relation if `EdDsaVerify` is used as part of the composed circuit
 
 ### Recommended follow-up hardening
@@ -657,7 +672,7 @@ If a future composition exposes raw 255-bit split-limb values through public buf
 Add negative tests for:
 
 - unchecked producer paths feeding non-canonical values into `Accumulator`
-- unchecked producer paths feeding non-canonical values into `SubExpBatch`
+- any future change that bypasses the exact `DecToBit -> SubExp x 256 -> CheckBus256` exponentiation topology
 - top-level statement-binding failures around any composed use of `EdDsaVerify`
 
 ## Final Assessment
@@ -668,6 +683,6 @@ The later merged division-path soundness bugs around zero-divisor handling and o
 
 Under the composed-system assumptions supplied for this repository, the current residual concerns are:
 
-- a system-level requirement that producer paths into `Accumulator` and `SubExpBatch` enforce canonical 256-bit bus encoding
+- a system-level requirement that producer paths into `Accumulator` enforce canonical 256-bit bus encoding
 
 The earlier standalone-artifact concerns about `JubjubExpBatch` and `EdDsaVerify` do not remain live issues once the wrappers are understood strictly as internal subcircuits under the fixed composed-chain contract described above. The 255-bit split-limb note is retained only as a boundary-handling consideration for future compositions that choose to expose those values publicly.

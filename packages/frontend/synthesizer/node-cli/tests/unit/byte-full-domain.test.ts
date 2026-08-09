@@ -30,10 +30,8 @@ const createHarness = () => {
         nEqualBatch: 2,
         nJubjubExpBatch: 128,
         nPoseidonBatch: 1,
-        nSubExpBatch: 32,
       }),
       poseidonBatchSize: 1,
-      arithExpBatchSize: 32,
       jubjubExpBatchSize: 128,
     },
     state: {

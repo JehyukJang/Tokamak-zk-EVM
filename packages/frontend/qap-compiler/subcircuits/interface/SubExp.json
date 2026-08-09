@@ -2,7 +2,7 @@
   "inputs": [
     { "name": "accumulator", "logicalType": { "kind": "uint", "bits": 256 } },
     { "name": "basePower", "logicalType": { "kind": "uint", "bits": 256 } },
-    { "name": "bit", "length": { "constant": "nSubExpBatch" }, "logicalType": { "kind": "uint", "bits": 1 } }
+    { "name": "bit", "logicalType": { "kind": "uint", "bits": 1 } }
   ],
   "outputs": [
     { "name": "nextAccumulator", "logicalType": { "kind": "uint", "bits": 256 } },

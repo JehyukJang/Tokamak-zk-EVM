@@ -39,9 +39,9 @@ The format is based on Keep a Changelog.
   wires are now grouped by their configured segment order instead of relying
   on the subcircuit compilation order.
 - Replaced the six-step hardcoded general Poseidon chain with an
-  `nPoseidonBatch` parameter. The current general Poseidon and EVM exponent
-  batch sizes are `1` and `8`; transaction-signature Poseidon uses its own
-  fixed four-compression production target.
+  `nPoseidonBatch` parameter. The current general Poseidon batch size is `4`;
+  transaction-signature Poseidon uses its own fixed four-compression
+  production target.
 - Reorganized the arithmetic catalog around three shared selector targets:
   `ALU1` handles `ADD`, `MUL`, `SUB`, and `NOT`; `ALU2` handles unsigned and
   signed comparisons plus `EQ` and `ISZERO`; and `ALU3` handles `SIGNEXTEND`,
@@ -52,10 +52,11 @@ The format is based on Keep a Changelog.
   a zero/nonzero condition while retaining canonical low-shift and value
   decompositions. Their composition contract now requires the connected
   producer to constrain that high wire as a 128-bit limb.
-- Reduced `SubExpBatch` from 6,904 to 6,864 optimized constraints by reusing
-  the Boolean exponent-bit guarantee from its mandatory `DecToBit` producer
-  and replacing generic multiplication with a symmetric truncated-square
-  relation for base-power updates.
+- Replaced the oversized eight-bit `SubExpBatch` target with a 794-constraint
+  one-bit `SubExp` target. EVM exponentiation now composes `DecToBit`, exactly
+  256 serial `SubExp` placements, and a terminal 258-constraint
+  `CheckBus256`; every physical target remains within the 1,024-constraint
+  limit. Removed the obsolete `nSubExpBatch` library constant.
 - Replaced the oversized single ADDMOD target with the composition-only
   `ADDMODPrepare` and `ADDMODVerify` targets. They use a field-safe radix-86
   reduction boundary, contain 944 and 959 optimized constraints respectively,
@@ -84,6 +85,9 @@ The format is based on Keep a Changelog.
   committed storage-write output through `STORAGE_STORE`.
 - Made Poseidon selector generation, input padding, and long-chain chunking use
   the subcircuit library's `nPoseidonBatch` value.
+- Replaced the 32-placement batched EVM exponentiation topology with the exact
+  258-placement `DecToBit -> SubExp x 256 -> CheckBus256` topology and removed
+  the obsolete exponent-batch configuration field.
 - Enabled the existing REVERT system-flow handler so failed frames reach the
   coordinated storage-cache and committed-log rollback path.
 - Changed every unsuccessful top-level transaction result, including REVERT

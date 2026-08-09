@@ -22,10 +22,11 @@ const BUFFER_SUBCIRCUITS = [
   'bufferEVMIn',
   'bufferPrvIn',
 ] as const;
-const EXP_BATCH_SIZE = 8;
-const EXP_BATCH_COUNT = 256 / EXP_BATCH_SIZE;
+const NUM_EXPONENT_BITS = 256;
 const DEC_TO_BIT_PLACEMENT = BUFFER_SUBCIRCUITS.length;
-const FIRST_BATCH_PLACEMENT = DEC_TO_BIT_PLACEMENT + 1;
+const FIRST_SUB_EXP_PLACEMENT = DEC_TO_BIT_PLACEMENT + 1;
+const FINAL_SUB_EXP_PLACEMENT = FIRST_SUB_EXP_PLACEMENT + NUM_EXPONENT_BITS - 1;
+const CHECK_BUS_PLACEMENT = FINAL_SUB_EXP_PLACEMENT + 1;
 
 const dataPt = (
   value: bigint,
@@ -56,7 +57,8 @@ const createLogicalPlacements = (): { placements: Placements; result: DataPt } =
 
   const subcircuitInfoByName = new Map([
     ['DecToBit', { id: 7, name: 'DecToBit', NInWires: 2, NOutWires: 256 }],
-    ['SubExpBatch', { id: 8, name: 'SubExpBatch', NInWires: 12, NOutWires: 4 }],
+    ['SubExp', { id: 8, name: 'SubExp', NInWires: 5, NOutWires: 4 }],
+    ['CheckBus256', { id: 9, name: 'CheckBus256', NInWires: 2, NOutWires: 2 }],
   ]);
   const parent = {
     placements,
@@ -66,10 +68,8 @@ const createLogicalPlacements = (): { placements: Placements; result: DataPt } =
         nEqualBatch: 2,
         nJubjubExpBatch: 4,
         nPoseidonBatch: 1,
-        nSubExpBatch: EXP_BATCH_SIZE,
       }),
       poseidonBatchSize: 1,
-      arithExpBatchSize: EXP_BATCH_SIZE,
       jubjubExpBatchSize: 4,
     },
     state: { subcircuitInfoByName },
@@ -78,7 +78,12 @@ const createLogicalPlacements = (): { placements: Placements; result: DataPt } =
       placements[5]!.outPts.push(point);
       return point;
     }),
-    place: vi.fn((name: 'DecToBit' | 'SubExpBatch', inPts: DataPt[], outPts: DataPt[], usage: string) => {
+    place: vi.fn((
+      name: 'DecToBit' | 'SubExp' | 'CheckBus256',
+      inPts: DataPt[],
+      outPts: DataPt[],
+      usage: string,
+    ) => {
       placements.push({
         name,
         usage,
@@ -89,7 +94,8 @@ const createLogicalPlacements = (): { placements: Placements; result: DataPt } =
     }),
   };
 
-  const [result] = new ArithmeticManager(parent as never).placeArithComposition('EXP', [base, exponent]);
+  const [result] = new ArithmeticManager(parent as never)
+    .placeArithComposition('EXP', [base, exponent]);
   expect(result.value).toBe(243n);
   return { placements, result };
 };
@@ -103,45 +109,6 @@ const convertToCircuitWires = (placements: Placements): void => {
   )._convertEVMWiresIntoCircomWires(placements);
 };
 
-const assertExactExpInputs = (placements: Placements): void => {
-  const evmInput = placements[5]!;
-  const privateInput = placements[6]!;
-  const decToBit = placements[DEC_TO_BIT_PLACEMENT]!;
-  expect(placements).toHaveLength(FIRST_BATCH_PLACEMENT + EXP_BATCH_COUNT);
-  expect(decToBit.name).toBe('DecToBit');
-  expect(decToBit.inPts).toHaveLength(2);
-  expect(decToBit.outPts).toHaveLength(256);
-  for (let limb = 0; limb < 2; limb++) {
-    expect(decToBit.inPts[limb]).toBe(privateInput.outPts[2 + limb]);
-  }
-
-  for (let batchIndex = 0; batchIndex < EXP_BATCH_COUNT; batchIndex++) {
-    const batchPlacement = FIRST_BATCH_PLACEMENT + batchIndex;
-    const batch = placements[batchPlacement]!;
-    expect(batch.name).toBe('SubExpBatch');
-    expect(batch.inPts).toHaveLength(12);
-    expect(batch.outPts).toHaveLength(4);
-
-    if (batchIndex === 0) {
-      for (let limb = 0; limb < 2; limb++) {
-        expect(batch.inPts[limb]).toBe(evmInput.outPts[1 + limb]);
-        expect(batch.inPts[2 + limb]).toBe(privateInput.outPts[limb]);
-      }
-    } else {
-      const previousBatch = placements[batchPlacement - 1]!;
-      for (let wireIndex = 0; wireIndex < 4; wireIndex++) {
-        expect(batch.inPts[wireIndex]).toBe(previousBatch.outPts[wireIndex]);
-      }
-    }
-
-    for (let bitIndex = 0; bitIndex < EXP_BATCH_SIZE; bitIndex++) {
-      expect(batch.inPts[4 + bitIndex]).toBe(
-        decToBit.outPts[batchIndex * EXP_BATCH_SIZE + bitIndex],
-      );
-    }
-  }
-};
-
 const createPermutation = (placements: Placements) => {
   const physicalInterfaces = [
     ...BUFFER_SUBCIRCUITS.map(name => ({
@@ -150,7 +117,8 @@ const createPermutation = (placements: Placements) => {
       NOutWires: name === 'bufferEVMIn' ? 3 : name === 'bufferPrvIn' ? 4 : 0,
     })),
     { name: 'DecToBit' as const, NInWires: 2, NOutWires: 256 },
-    { name: 'SubExpBatch' as const, NInWires: 12, NOutWires: 4 },
+    { name: 'SubExp' as const, NInWires: 5, NOutWires: 4 },
+    { name: 'CheckBus256' as const, NInWires: 2, NOutWires: 2 },
   ];
   let nextGlobalWire = 0;
   const subcircuitInfoByName = new Map<string, SubcircuitInfoByNameEntry>();
@@ -171,9 +139,11 @@ const createPermutation = (placements: Placements) => {
 
   const placementVariables: PlacementVariables = placements.map(placement => ({
     subcircuitId: placement.subcircuitId,
-    variables: [1n, ...placement.outPts.map(({ value }) => value), ...placement.inPts.map(({ value }) => value)].map(
-      value => `0x${value.toString(16)}`,
-    ),
+    variables: [
+      1n,
+      ...placement.outPts.map(({ value }) => value),
+      ...placement.inPts.map(({ value }) => value),
+    ].map(value => `0x${value.toString(16)}`),
     instanceList: [],
   }));
   const parent = {
@@ -197,22 +167,57 @@ const createPermutation = (placements: Placements) => {
 };
 
 describe('EXP chain physical permutation', () => {
-  it('connects every exponent bit and state limb to the declared batch input', () => {
+  it('connects all bits, every serial state, and the terminal range check', () => {
     const { placements, result } = createLogicalPlacements();
     expect(result).toMatchObject({
-      source: FIRST_BATCH_PLACEMENT + EXP_BATCH_COUNT - 1,
+      source: CHECK_BUS_PLACEMENT,
       wireIndex: 0,
       dataPtType: EVM_WORD_DATA_PT_TYPE,
     });
 
     convertToCircuitWires(placements);
-    assertExactExpInputs(placements);
+    expect(placements).toHaveLength(CHECK_BUS_PLACEMENT + 1);
+
+    const evmInput = placements[5]!;
+    const privateInput = placements[6]!;
+    const decToBit = placements[DEC_TO_BIT_PLACEMENT]!;
+    expect(decToBit.name).toBe('DecToBit');
+    expect(decToBit.inPts).toHaveLength(2);
+    expect(decToBit.outPts).toHaveLength(NUM_EXPONENT_BITS);
+
+    for (let bitIndex = 0; bitIndex < NUM_EXPONENT_BITS; bitIndex++) {
+      const placementIndex = FIRST_SUB_EXP_PLACEMENT + bitIndex;
+      const subExp = placements[placementIndex]!;
+      expect(subExp.name).toBe('SubExp');
+      expect(subExp.inPts).toHaveLength(5);
+      expect(subExp.outPts).toHaveLength(4);
+
+      if (bitIndex === 0) {
+        for (let limb = 0; limb < 2; limb++) {
+          expect(subExp.inPts[limb]).toBe(evmInput.outPts[1 + limb]);
+          expect(subExp.inPts[2 + limb]).toBe(privateInput.outPts[limb]);
+        }
+      } else {
+        const previous = placements[placementIndex - 1]!;
+        for (let wireIndex = 0; wireIndex < 4; wireIndex++) {
+          expect(subExp.inPts[wireIndex]).toBe(previous.outPts[wireIndex]);
+        }
+      }
+      expect(subExp.inPts[4]).toBe(decToBit.outPts[bitIndex]);
+    }
+
+    const checkBus = placements[CHECK_BUS_PLACEMENT]!;
+    const finalSubExp = placements[FINAL_SUB_EXP_PLACEMENT]!;
+    expect(checkBus.name).toBe('CheckBus256');
+    expect(checkBus.inPts).toEqual(finalSubExp.outPts.slice(0, 2));
+    expect(checkBus.outPts).toHaveLength(2);
 
     const { permutation, subcircuitInfoByName } = createPermutation(placements);
     const evmInputInfo = subcircuitInfoByName.get('bufferEVMIn')!;
     const privateInputInfo = subcircuitInfoByName.get('bufferPrvIn')!;
     const decToBitInfo = subcircuitInfoByName.get('DecToBit')!;
-    const batchInfo = subcircuitInfoByName.get('SubExpBatch')!;
+    const subExpInfo = subcircuitInfoByName.get('SubExp')!;
+    const checkBusInfo = subcircuitInfoByName.get('CheckBus256')!;
 
     for (let limb = 0; limb < 2; limb++) {
       expect(permutation).toContainEqual({
@@ -224,39 +229,44 @@ describe('EXP chain physical permutation', () => {
       expect(permutation).toContainEqual({
         row: evmInputInfo.flattenMap[evmInputInfo.outWireIndex + 1 + limb],
         col: 5,
-        X: batchInfo.flattenMap[batchInfo.inWireIndex + limb],
-        Y: FIRST_BATCH_PLACEMENT,
+        X: subExpInfo.flattenMap[subExpInfo.inWireIndex + limb],
+        Y: FIRST_SUB_EXP_PLACEMENT,
       });
       expect(permutation).toContainEqual({
         row: privateInputInfo.flattenMap[privateInputInfo.outWireIndex + limb],
         col: 6,
-        X: batchInfo.flattenMap[batchInfo.inWireIndex + 2 + limb],
-        Y: FIRST_BATCH_PLACEMENT,
+        X: subExpInfo.flattenMap[subExpInfo.inWireIndex + 2 + limb],
+        Y: FIRST_SUB_EXP_PLACEMENT,
       });
     }
 
-    for (let batchIndex = 0; batchIndex < EXP_BATCH_COUNT; batchIndex++) {
-      const batchPlacement = FIRST_BATCH_PLACEMENT + batchIndex;
-      for (let bitIndex = 0; bitIndex < EXP_BATCH_SIZE; bitIndex++) {
-        const exponentBitIndex = batchIndex * EXP_BATCH_SIZE + bitIndex;
-        expect(permutation).toContainEqual({
-          row: decToBitInfo.flattenMap[decToBitInfo.outWireIndex + exponentBitIndex],
-          col: DEC_TO_BIT_PLACEMENT,
-          X: batchInfo.flattenMap[batchInfo.inWireIndex + 4 + bitIndex],
-          Y: batchPlacement,
-        });
-      }
-
-      if (batchIndex > 0) {
+    for (let bitIndex = 0; bitIndex < NUM_EXPONENT_BITS; bitIndex++) {
+      const placementIndex = FIRST_SUB_EXP_PLACEMENT + bitIndex;
+      expect(permutation).toContainEqual({
+        row: decToBitInfo.flattenMap[decToBitInfo.outWireIndex + bitIndex],
+        col: DEC_TO_BIT_PLACEMENT,
+        X: subExpInfo.flattenMap[subExpInfo.inWireIndex + 4],
+        Y: placementIndex,
+      });
+      if (bitIndex > 0) {
         for (let wireIndex = 0; wireIndex < 4; wireIndex++) {
           expect(permutation).toContainEqual({
-            row: batchInfo.flattenMap[batchInfo.outWireIndex + wireIndex],
-            col: batchPlacement - 1,
-            X: batchInfo.flattenMap[batchInfo.inWireIndex + wireIndex],
-            Y: batchPlacement,
+            row: subExpInfo.flattenMap[subExpInfo.outWireIndex + wireIndex],
+            col: placementIndex - 1,
+            X: subExpInfo.flattenMap[subExpInfo.inWireIndex + wireIndex],
+            Y: placementIndex,
           });
         }
       }
+    }
+
+    for (let limb = 0; limb < 2; limb++) {
+      expect(permutation).toContainEqual({
+        row: subExpInfo.flattenMap[subExpInfo.outWireIndex + limb],
+        col: FINAL_SUB_EXP_PLACEMENT,
+        X: checkBusInfo.flattenMap[checkBusInfo.inWireIndex + limb],
+        Y: CHECK_BUS_PLACEMENT,
+      });
     }
   });
 });

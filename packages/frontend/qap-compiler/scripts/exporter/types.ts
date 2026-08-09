@@ -13,7 +13,6 @@ export const REQUIRED_CIRCOM_KEYS = [
   'nPoseidonBatch',
   'nAccumulation',
   'nPrevBlockHashes',
-  'nSubExpBatch',
   'nEqualBatch',
 ] as const;
 export type CircomKey = typeof REQUIRED_CIRCOM_KEYS[number];

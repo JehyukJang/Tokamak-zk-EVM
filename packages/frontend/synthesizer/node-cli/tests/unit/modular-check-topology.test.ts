@@ -39,10 +39,8 @@ const createHarness = (alu1Interface = { NInWires: 5, NOutWires: 2 }) => {
         nEqualBatch: 2,
         nJubjubExpBatch: 128,
         nPoseidonBatch: 1,
-        nSubExpBatch: 32,
       }),
       poseidonBatchSize: 1,
-      arithExpBatchSize: 32,
       jubjubExpBatchSize: 128,
     },
     state: {

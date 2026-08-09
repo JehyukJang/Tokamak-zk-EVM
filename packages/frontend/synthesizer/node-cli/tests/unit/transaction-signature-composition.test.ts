@@ -20,7 +20,6 @@ describe('transaction signature composition definition', () => {
       nEqualBatch: 2,
       nJubjubExpBatch: 37,
       nPoseidonBatch: 1,
-      nSubExpBatch: 8,
     }).get('TransactionSignatureVerify');
 
     expect(composition.placementStrategy).toBe('generic');
@@ -146,7 +145,6 @@ describe('transaction signature composition definition', () => {
       nEqualBatch: 2,
       nJubjubExpBatch: 4,
       nPoseidonBatch: 6,
-      nSubExpBatch: 8,
     }).get('TransactionSignatureVerify');
 
     expect(composition.numSteps).toBe(139);

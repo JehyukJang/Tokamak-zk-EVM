@@ -66,7 +66,6 @@ export const REQUIRED_CIRCOM_KEYS = [
   'nAccumulation',
   'nPrevBlockHashes',
   'nJubjubExpBatch',
-  'nSubExpBatch',
   'nEqualBatch',
 ] as const;
 export type CircomKey = typeof REQUIRED_CIRCOM_KEYS[number];
@@ -94,6 +93,5 @@ export interface ResolvedSubcircuitLibrary {
   numberOfPrevBlockHashes: number;
   poseidonBatchSize: number;
   jubjubExpBatchSize: number;
-  arithExpBatchSize: number;
   firstArithmeticPlacementIndex: number;
 }
