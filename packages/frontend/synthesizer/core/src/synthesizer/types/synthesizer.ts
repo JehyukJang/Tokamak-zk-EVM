@@ -1,7 +1,7 @@
 import { RunTxResult } from '@ethereumjs/vm';
 import { TokamakL2StateManager, TokamakL2Tx } from 'tokamak-l2js';
 import { StateManager } from '../handlers/index.ts';
-import { DataAliasGeometries, DataPt, DataPtType, MemoryPts, Placements, ReservedVariable } from './index.ts';
+import { DataAliasGeometries, DataPt, DataPtType, MemoryPts, Placements, PreparedComposition, ReservedVariable } from './index.ts';
 import { SynthesizerOpHandler } from '../handlers/instructionHandler.ts';
 import { ArithmeticOperator, ReservedBuffer } from '../../subcircuit/configuredTypes.ts';
 import type { ResolvedSubcircuitLibrary } from '../../subcircuit/libraryTypes.ts';
@@ -38,6 +38,7 @@ export interface ISynthesizerProvider extends SynthesizerInterface {
     outPts: DataPt[],
     usage: string,
   ): void;
+  placeComposition(preparedComposition: PreparedComposition): void;
   // storeStorage(key: bigint, inPt: DataPt): void
   //from BufferManager
   loadArbitraryStatic(

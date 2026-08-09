@@ -4,7 +4,7 @@ import { BlockData, BlockOptions, createBlock, HeaderData } from '@ethereumjs/bl
 import { bigIntToBytes, bigIntToHex, bytesToBigInt, bytesToHex, createAddressFromBigInt, setLengthLeft } from '@ethereumjs/util';
 
 import { EVMResult, InterpreterStep, Message } from '@ethereumjs/evm';
-import { DataAliasGeometries, DataPt, DataPtType, MemoryPts, Placements, ReservedVariable, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
+import { DataAliasGeometries, DataPt, DataPtType, MemoryPts, Placements, PreparedComposition, ReservedVariable, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
 import { ArithmeticManager, BufferManager, ContextConstructionData, ContextManager, InstructionHandler, MemoryManager, StateManager, SynthesizerOpHandler } from './handlers/index.ts';
 import { ArithmeticOperator, ReservedBuffer } from '../subcircuit/configuredTypes.ts';
 import type { ResolvedSubcircuitLibrary } from '../subcircuit/libraryTypes.ts';
@@ -443,6 +443,10 @@ export class Synthesizer implements SynthesizerInterface
 
   placeBuffer(buffer: ReservedBuffer, inPts: DataPt[], outPts: DataPt[], usage: string): void {
     this._state.placeBuffer(buffer, inPts, outPts, usage)
+  }
+
+  placeComposition(preparedComposition: PreparedComposition): void {
+    this._state.placeComposition(preparedComposition)
   }
 
   getReservedVariableFromBuffer(
