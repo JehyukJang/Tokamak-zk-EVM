@@ -26,7 +26,10 @@ export class MemoryManager {
     return DataPtFactory.deepCopy(outPts[0])
   }
 
-  public placeMemoryToStack(dataAliasInfos: DataAliasInfos): DataPt {
+  public placeMemoryToStack(dataAliasInfos: DataAliasInfos, viewByteLength: number): DataPt {
+    if (!Number.isInteger(viewByteLength) || viewByteLength < 1 || viewByteLength > 32) {
+      throw new Error(`Synthesizer: placeMemoryToStack: Invalid view byte length ${viewByteLength}`)
+    }
     if (dataAliasInfos.length === 0) {
       throw new Error(`Synthesizer: placeMemoryToStack: Noting tho load`);
     }

@@ -53,7 +53,7 @@ export interface ISynthesizerProvider extends SynthesizerInterface {
   placeArithComposition(name: ArithmeticOperator, inPts: DataPt[]): DataPt[];
   //from memoryManager
   placeMemoryToMemory(dataAliasInfos: DataAliasInfos): DataPt[]
-  placeMemoryToStack(dataAliasInfos: DataAliasInfos): DataPt
+  placeMemoryToStack(dataAliasInfos: DataAliasInfos, viewByteLength: number): DataPt
   placeMSTORE8(dataPt: DataPt): DataPt
   copyMemoryPts(target: MemoryPts, srcOffset: bigint, length: bigint, dstOffset?: bigint): MemoryPts
   //from instructionHandler

@@ -824,7 +824,7 @@ export class InstructionHandler {
             const calldataMemoryPt = MemoryPt.simulateMemoryPt(calldataMemoryPts);
             const dataAliasInfos = calldataMemoryPt.getDataAlias(i, 32);
             if (dataAliasInfos.length > 0) {
-              stackPt.push(this.parent.placeMemoryToStack(dataAliasInfos))
+              stackPt.push(this.parent.placeMemoryToStack(dataAliasInfos, 32))
             } else {
               stackPt.push(this.parent.loadArbitraryStatic(
                 0n,
@@ -1066,7 +1066,7 @@ export class InstructionHandler {
                   wireLayout: { kind: 'limbs-128', count: 2 },
                 },
               )
-            : this.parent.placeMemoryToStack(dataAliasInfos)
+            : this.parent.placeMemoryToStack(dataAliasInfos, 32)
           opts.stackPt.push(mutDataPt)
         }
         break
@@ -1292,7 +1292,7 @@ export class InstructionHandler {
   
       const dataAliasInfos = memoryPt.getDataAlias(_offset, _length);
       if (dataAliasInfos.length > 0) {
-        chunkDataPts[i] = this.parent.placeMemoryToStack(dataAliasInfos);
+        chunkDataPts[i] = this.parent.placeMemoryToStack(dataAliasInfos, _length);
       } else {
         chunkDataPts[i] = this.parent.loadArbitraryStatic(
           0n,

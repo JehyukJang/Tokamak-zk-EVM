@@ -473,8 +473,8 @@ export class Synthesizer implements SynthesizerInterface
   placeArithComposition(name: ArithmeticOperator, inPts: DataPt[]): DataPt[] {
     return this._arithmeticManager.placeArithComposition(name, inPts);
   }
-  placeMemoryToStack(dataAliasInfos: DataAliasInfos): DataPt {
-    return this._memoryManager.placeMemoryToStack(dataAliasInfos);
+  placeMemoryToStack(dataAliasInfos: DataAliasInfos, viewByteLength: number): DataPt {
+    return this._memoryManager.placeMemoryToStack(dataAliasInfos, viewByteLength);
   }
   placeMemoryToMemory(dataAliasInfos: DataAliasInfos): DataPt[] {
     return this._memoryManager.placeMemoryToMemory(dataAliasInfos);
