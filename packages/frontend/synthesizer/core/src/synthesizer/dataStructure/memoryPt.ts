@@ -1,5 +1,5 @@
 import { bigIntToBytes, concatBytes, EthereumJSErrorWithoutCode, setLengthLeft } from '@ethereumjs/util'
-import type { DataAliasInfos, DataPt, MemoryPtEntry, MemoryPts } from '../types/index.ts'
+import type { DataAliasGeometries, DataAliasGeometryEntry, DataPt, MemoryPtEntry, MemoryPts } from '../types/index.ts'
 
 /**
  * Key differences between Memory and MemoryPt classes
@@ -166,10 +166,10 @@ export class MemoryPt {
    * Returns data transformation information for a specific memory range. Used when moving data from Memory to Stack.
    * @param offset - Starting memory position to read
    * @param size - Number of bytes to read
-   * @returns {DataAliasInfos}
+   * @returns Raw byte geometry for MemoryManager to materialize as DataPts.
    */
-  getDataAlias(offset: number, size: number): DataAliasInfos {
-    const dataAliasInfos: DataAliasInfos = []
+  getDataAlias(offset: number, size: number): DataAliasGeometries {
+    const dataAliasInfos: DataAliasGeometryEntry[] = []
     const dataFragments = this._viewMemoryConflict(offset, size)
 
     const sortedTimeStamps = Array.from(dataFragments.keys()).sort((a, b) => a - b)

@@ -2,7 +2,6 @@
 import type { DataPt, DataPtType, ISynthesizerProvider } from '../types/index.ts';
 import {
   BIT_LIMB_DATA_PT_TYPE,
-  BLS12_381_FR_NATIVE_DATA_PT_TYPE,
   EVM_WORD_DATA_PT_TYPE,
   UINT64_LIMB_DATA_PT_TYPE,
   UINT85_LIMB_DATA_PT_TYPE,
@@ -13,7 +12,7 @@ import {
   type ArithmeticSubcircuit,
   type ArithmeticOperator,
 } from '../../subcircuit/configuredTypes.ts';
-import type { ArithmeticPlacementComposition } from '../../subcircuit/placementCompositionManager.ts';
+import type { PlacementComposition } from '../../subcircuit/placementCompositionManager.ts';
 import { ArithmeticOperations } from '../dataStructure/arithmeticOperations.ts';
 import { POSEIDON_INPUTS } from 'tokamak-l2js';
 
@@ -56,10 +55,6 @@ export class ArithmeticManager {
           )
         }
         dataPtTypes = [EVM_WORD_DATA_PT_TYPE]
-        break
-      case 'JubjubExpBatch':
-      case 'EdDsaVerify':
-        dataPtTypes = Array(name === 'JubjubExpBatch' ? 4 : 0).fill(BLS12_381_FR_NATIVE_DATA_PT_TYPE)
         break
       case 'ALU4A':
         dataPtTypes = [
@@ -191,7 +186,7 @@ export class ArithmeticManager {
   }
 
   private _placePoseidon(
-    composition: ArithmeticPlacementComposition,
+    composition: PlacementComposition,
     inPts: DataPt[],
   ): DataPt[] {
     const step = composition.steps[0]
@@ -418,7 +413,4 @@ const ARITHMETIC_MAPPING: Record<ArithmeticSubcircuit, (values: bigint[]) => big
   SubExp: ArithmeticOperations.subExp,
   CheckBus256: ArithmeticOperations.checkBus256,
   Poseidon: ArithmeticOperations.poseidon,
-  JubjubExpBatch: ArithmeticOperations.jubjubExpBatch,
-  EdDsaVerify: ArithmeticOperations.edDsaVerify,
-  EqualBatch: ArithmeticOperations.equalBatch,
 } as const

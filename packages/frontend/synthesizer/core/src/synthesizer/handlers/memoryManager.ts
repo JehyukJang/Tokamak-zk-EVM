@@ -1,4 +1,4 @@
-import { DataAliasInfoEntry, DataAliasInfos, DataPt, ISynthesizerProvider, MemoryPtEntry, MemoryPts } from '../types/index.ts';
+import { DataAliasGeometries, DataAliasInfos, DataPt, ISynthesizerProvider, MemoryPtEntry, MemoryPts } from '../types/index.ts';
 import { DataPtFactory, MemoryPt } from '../dataStructure/index.ts';
 import { ArithmeticOperator } from '../../subcircuit/configuredTypes.ts';
 
@@ -26,7 +26,7 @@ export class MemoryManager {
     return DataPtFactory.deepCopy(outPts[0])
   }
 
-  public placeMemoryToStack(dataAliasInfos: DataAliasInfos, viewByteLength: number): DataPt {
+  public placeMemoryToStack(dataAliasInfos: DataAliasGeometries, viewByteLength: number): DataPt {
     if (!Number.isInteger(viewByteLength) || viewByteLength < 1 || viewByteLength > 32) {
       throw new Error(`Synthesizer: placeMemoryToStack: Invalid view byte length ${viewByteLength}`)
     }
@@ -36,7 +36,7 @@ export class MemoryManager {
     return DataPtFactory.deepCopy(this.combineMemorySlices(dataAliasInfos));
   }
 
-  public placeMemoryToMemory(dataAliasInfos: DataAliasInfos): DataPt[] {
+  public placeMemoryToMemory(dataAliasInfos: DataAliasGeometries): DataPt[] {
     if (dataAliasInfos.length === 0) {
       throw new Error(`Synthesizer: placeMemoryToMemory: Nothing to load`);
     }
@@ -46,6 +46,32 @@ export class MemoryManager {
       copiedDataPts.push(this.applyMask(info, true));
     }
     return DataPtFactory.deepCopy(copiedDataPts);
+  }
+
+  public createDataAliasInfos(dataAliasGeometries: DataAliasGeometries): DataAliasInfos {
+    return dataAliasGeometries.map(({ dataPt, shift, masker }) => {
+      const direction = shift < 0 ? 1n : 0n;
+      const shiftMagnitude = BigInt(Math.abs(shift) / 8);
+      const ownershipMask = this._createOwnershipMask(masker);
+      return Object.freeze({
+        dataPt,
+        shiftPt: this.parent.loadArbitraryStatic(
+          shiftMagnitude,
+          { valueDomain: { kind: 'uint', bits: 5 }, wireLayout: { kind: 'limbs-128', count: 1 } },
+          'Memory-load byte shift magnitude',
+        ),
+        directionPt: this.parent.loadArbitraryStatic(
+          direction,
+          { valueDomain: { kind: 'uint', bits: 1 }, wireLayout: { kind: 'limbs-128', count: 1 } },
+          'Memory-load shift direction',
+        ),
+        maskerPt: this.parent.loadArbitraryStatic(
+          ownershipMask,
+          { valueDomain: { kind: 'uint', bits: 32 }, wireLayout: { kind: 'limbs-128', count: 1 } },
+          'Memory-load byte ownership mask',
+        ),
+      });
+    });
   }
 
   private calculateViewAdjustment(
@@ -152,7 +178,7 @@ export class MemoryManager {
     return truncatedPt;
   }
 
-  private combineMemorySlices(dataAliasInfos: DataAliasInfos): DataPt {
+  private combineMemorySlices(dataAliasInfos: DataAliasGeometries): DataPt {
     const transformedSlices = dataAliasInfos.map((info) =>
       this.transformMemorySlice(info),
     );
@@ -175,9 +201,9 @@ export class MemoryManager {
     return accumulatedPt;
   }
 
-  private transformMemorySlice(info: DataAliasInfoEntry): DataPt {
+  private transformMemorySlice(info: DataAliasGeometries[number]): DataPt {
     const shiftedPt = this.applyShift(info);
-    const modInfo: DataAliasInfoEntry = {
+    const modInfo: DataAliasGeometries[number] = {
       dataPt: shiftedPt,
       masker: info.masker,
       shift: info.shift,
@@ -185,7 +211,7 @@ export class MemoryManager {
     return this.applyMask(modInfo);
   }
 
-  private applyShift(info: DataAliasInfoEntry): DataPt {
+  private applyShift(info: DataAliasGeometries[number]): DataPt {
     const { dataPt: dataPt, shift: shift } = info;
     let outPts = [dataPt];
     if (Math.abs(shift) > 0) {
@@ -208,7 +234,7 @@ export class MemoryManager {
     return outPts[0];
   }
 
-  private applyMask(info: DataAliasInfoEntry, unshift?: boolean): DataPt {
+  private applyMask(info: DataAliasGeometries[number], unshift?: boolean): DataPt {
     let alignedMask = BigInt(info.masker);
     const { shift, dataPt } = info;
     if (unshift === true) {
@@ -240,5 +266,21 @@ export class MemoryManager {
       throw new Error('Synthesizer: memory masking output mismatch');
     }
     return outPts[0];
+  }
+
+  private _createOwnershipMask(masker: string): bigint {
+    if (masker.length % 2 !== 0) {
+      throw new Error('Synthesizer: memory ownership mask must contain whole bytes');
+    }
+    let ownershipMask = 0n;
+    for (let byteIndex = 0; byteIndex < masker.length / 2; byteIndex++) {
+      const byte = masker.slice(byteIndex * 2, byteIndex * 2 + 2);
+      if (byte === 'ff' || byte === 'FF') {
+        ownershipMask |= 1n << BigInt(masker.length / 2 - byteIndex - 1);
+      } else if (byte !== '00') {
+        throw new Error('Synthesizer: memory ownership mask must contain only FF or 00 bytes');
+      }
+    }
+    return ownershipMask;
   }
 }

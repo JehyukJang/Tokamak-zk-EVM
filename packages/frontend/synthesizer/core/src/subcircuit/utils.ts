@@ -20,11 +20,9 @@ import {
   SETUP_PARAMS_KEYS,
 } from './libraryTypes.ts';
 import type {
-  ArithmeticPlacementComposition,
   InputReference,
   OutputReference,
   PlacementComposition,
-  SysFlowPlacementComposition,
 } from './placementCompositionManager.ts';
 
 const freezeReference = <Reference extends InputReference | OutputReference>(
@@ -32,32 +30,8 @@ const freezeReference = <Reference extends InputReference | OutputReference>(
 ): Reference => Object.freeze({ ...reference }) as Reference;
 
 export function freezeComposition(
-  composition: ArithmeticPlacementComposition,
-): ArithmeticPlacementComposition;
-export function freezeComposition(
-  composition: SysFlowPlacementComposition,
-): SysFlowPlacementComposition;
-export function freezeComposition(
-  composition: PlacementComposition,
-): PlacementComposition;
-export function freezeComposition(
   composition: PlacementComposition,
 ): PlacementComposition {
-  if ('operator' in composition) {
-    switch (composition.operator) {
-      case 'MEMORY_TO_STACK_LOAD':
-        return Object.freeze({
-          operator: composition.operator,
-          topology: composition.topology,
-        });
-      case 'MEMORY_TO_MEMORY_LOAD':
-        return Object.freeze({
-          operator: composition.operator,
-          topology: composition.topology,
-        });
-    }
-  }
-
   return Object.freeze({
     placementStrategy: composition.placementStrategy,
     constants: Object.freeze(composition.constants.map((constant) => Object.freeze({

@@ -4,7 +4,7 @@ import { BlockData, BlockOptions, createBlock, HeaderData } from '@ethereumjs/bl
 import { bigIntToBytes, bigIntToHex, bytesToBigInt, bytesToHex, createAddressFromBigInt, setLengthLeft } from '@ethereumjs/util';
 
 import { EVMResult, InterpreterStep, Message } from '@ethereumjs/evm';
-import { DataAliasInfos, DataPt, DataPtType, MemoryPts, Placements, ReservedVariable, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
+import { DataAliasGeometries, DataPt, DataPtType, MemoryPts, Placements, ReservedVariable, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
 import { ArithmeticManager, BufferManager, ContextConstructionData, ContextManager, InstructionHandler, MemoryManager, StateManager, SynthesizerOpHandler } from './handlers/index.ts';
 import { ArithmeticOperator, SubcircuitNames } from '../subcircuit/configuredTypes.ts';
 import type { ResolvedSubcircuitLibrary } from '../subcircuit/libraryTypes.ts';
@@ -473,10 +473,10 @@ export class Synthesizer implements SynthesizerInterface
   placeArithComposition(name: ArithmeticOperator, inPts: DataPt[]): DataPt[] {
     return this._arithmeticManager.placeArithComposition(name, inPts);
   }
-  placeMemoryToStack(dataAliasInfos: DataAliasInfos, viewByteLength: number): DataPt {
+  placeMemoryToStack(dataAliasInfos: DataAliasGeometries, viewByteLength: number): DataPt {
     return this._memoryManager.placeMemoryToStack(dataAliasInfos, viewByteLength);
   }
-  placeMemoryToMemory(dataAliasInfos: DataAliasInfos): DataPt[] {
+  placeMemoryToMemory(dataAliasInfos: DataAliasGeometries): DataPt[] {
     return this._memoryManager.placeMemoryToMemory(dataAliasInfos);
   }
   placeMSTORE8(dataPt: DataPt): DataPt {

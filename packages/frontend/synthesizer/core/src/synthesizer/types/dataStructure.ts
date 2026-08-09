@@ -65,14 +65,22 @@ export type DataPtDescription = {
 };
 export type DataPt = DataPtDescription & { value: bigint; valueHex: string };
 
-/**
- * Structure representing data alias information.
- * @property {DataPt} dataPt - Original data pointer
- * @property {number} shift - Number of bit shifts (positive for SHL, negative for SHR)
- * @property {string} masker - Hexadecimal string representing valid bytes (FF) or invalid bytes (00)
- */
-export type DataAliasInfoEntry = { dataPt: DataPt; shift: number; masker: string };
-export type DataAliasInfos = DataAliasInfoEntry[];
+/** Raw byte geometry reported by MemoryPt before symbolic inputs are created. */
+export type DataAliasGeometryEntry = Readonly<{
+  dataPt: DataPt;
+  shift: number;
+  masker: string;
+}>;
+export type DataAliasGeometries = readonly DataAliasGeometryEntry[];
+
+/** Symbolic inputs for one memory-load fragment. */
+export type DataAliasInfoEntry = Readonly<{
+  dataPt: DataPt;
+  shiftPt: DataPt;
+  directionPt: DataPt;
+  maskerPt: DataPt;
+}>;
+export type DataAliasInfos = readonly DataAliasInfoEntry[];
 
 /**
  * Structure representing memory information.

@@ -1,7 +1,7 @@
 import { RunTxResult } from '@ethereumjs/vm';
 import { TokamakL2StateManager, TokamakL2Tx } from 'tokamak-l2js';
 import { StateManager } from '../handlers/index.ts';
-import { DataAliasInfos, DataPt, DataPtType, MemoryPts, Placements, ReservedVariable } from './index.ts';
+import { DataAliasGeometries, DataPt, DataPtType, MemoryPts, Placements, ReservedVariable } from './index.ts';
 import { SynthesizerOpHandler } from '../handlers/instructionHandler.ts';
 import { ArithmeticOperator, SubcircuitNames } from '../../subcircuit/configuredTypes.ts';
 import type { ResolvedSubcircuitLibrary } from '../../subcircuit/libraryTypes.ts';
@@ -52,8 +52,8 @@ export interface ISynthesizerProvider extends SynthesizerInterface {
   //from ArithmeticHandler
   placeArithComposition(name: ArithmeticOperator, inPts: DataPt[]): DataPt[];
   //from memoryManager
-  placeMemoryToMemory(dataAliasInfos: DataAliasInfos): DataPt[]
-  placeMemoryToStack(dataAliasInfos: DataAliasInfos, viewByteLength: number): DataPt
+  placeMemoryToMemory(dataAliasInfos: DataAliasGeometries): DataPt[]
+  placeMemoryToStack(dataAliasInfos: DataAliasGeometries, viewByteLength: number): DataPt
   placeMSTORE8(dataPt: DataPt): DataPt
   copyMemoryPts(target: MemoryPts, srcOffset: bigint, length: bigint, dstOffset?: bigint): MemoryPts
   //from instructionHandler

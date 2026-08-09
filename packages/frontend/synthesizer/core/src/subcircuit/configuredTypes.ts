@@ -28,23 +28,28 @@ export const ARITHMETIC_OPERATORS = [
   'SIGNEXTEND',
   // 'SubEXP',
   'Poseidon',
-  'TransactionSignatureVerify',
   // 'PrepareEdDsaScalars',
-  'EqualBatch',
 ] as const
 
 export type ArithmeticOperator = (typeof ARITHMETIC_OPERATORS)[number]
 
 export const SYS_FLOW_OPERATORS = [
-  'MEMORY_TO_STACK_LOAD',
-  'MEMORY_TO_MEMORY_LOAD',
+  'MemoryLoad',
+  'StorageAccess',
 ] as const
 
 export type SysFlowOperator = (typeof SYS_FLOW_OPERATORS)[number]
 
+export const CRYPTO_OPERATORS = [
+  'TransactionSignatureVerify',
+] as const
+
+export type CryptoOperator = (typeof CRYPTO_OPERATORS)[number]
+
 export const OPERATOR_LIST = [
   ...ARITHMETIC_OPERATORS,
   ...SYS_FLOW_OPERATORS,
+  ...CRYPTO_OPERATORS,
 ] as const
 
 export type Operator = (typeof OPERATOR_LIST)[number]
@@ -111,23 +116,32 @@ export const ARITHMETIC_SUBCIRCUIT_LIST = [
     'SubExp',
     'CheckBus256',
     'Poseidon',
-    // 'PrepareEdDsaScalars',
-    'JubjubExpBatch',
-    'EdDsaVerify',
-    'EqualBatch',
 ] as const
 
 export type ArithmeticSubcircuit = (typeof ARITHMETIC_SUBCIRCUIT_LIST)[number]
 
 export const SYS_FLOW_SUBCIRCUIT_LIST = [
     'MemoryLoadStep',
+    'EqualBatch',
 ] as const
 
 export type SysFlowSubcircuit = (typeof SYS_FLOW_SUBCIRCUIT_LIST)[number]
 
+export const CRYPTO_SUBCIRCUIT_LIST = [
+    'TransactionSignaturePoseidonBatch4',
+    'TransactionSignaturePointPolicy',
+    'TransactionSignatureFixedPrefix70',
+    'TransactionSignatureChallengeVariablePrefix',
+    'TransactionSignatureVariableBatch',
+    'TransactionSignatureFinal',
+] as const
+
+export type CryptoSubcircuit = (typeof CRYPTO_SUBCIRCUIT_LIST)[number]
+
 export const COMPOSITION_SUBCIRCUIT_LIST = [
     ...ARITHMETIC_SUBCIRCUIT_LIST,
     ...SYS_FLOW_SUBCIRCUIT_LIST,
+    ...CRYPTO_SUBCIRCUIT_LIST,
 ] as const
 
 export type CompositionSubcircuit = (typeof COMPOSITION_SUBCIRCUIT_LIST)[number]

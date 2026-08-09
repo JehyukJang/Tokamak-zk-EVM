@@ -1,30 +1,19 @@
 import {
-  ARITHMETIC_OPERATORS,
   OPERATOR_LIST,
-  SYS_FLOW_OPERATORS,
-  type ArithmeticSubcircuit,
-  type ArithmeticOperator,
+  type CompositionSubcircuit,
   type Operator,
-  type SysFlowOperator,
 } from './configuredTypes.ts';
 import { assertPositiveInteger, freezeComposition } from './utils.ts';
-import type {
-  DataAliasInfos,
-  DataPt,
-  DataPtType,
-  MemoryPts,
-} from '../synthesizer/types/dataStructure.ts';
-import { createAddMulModArithmeticMappings } from './special-builders/addMulModArithmetic.ts';
-import { createDivisionArithmeticMappings } from './special-builders/divModArithmetic.ts';
-import { createExpArithmeticMapping } from './special-builders/expArithmetic.ts';
-import { createPoseidonArithmeticMapping } from './special-builders/poseidonArithmetic.ts';
-import {
-  createTransactionSignatureVerifyArithmeticMapping,
-} from './special-builders/txSignVerifyArithmetic.ts';
+import type { DataPtType } from '../synthesizer/types/dataStructure.ts';
+import { createAddMulModCompositionMappings } from './special-builders/addMulModComposition.ts';
+import { createDivisionCompositionMappings } from './special-builders/divModComposition.ts';
+import { createExpCompositionMapping } from './special-builders/expComposition.ts';
+import { createMemoryLoadCompositionMapping } from './special-builders/memoryLoadComposition.ts';
+import { createPoseidonCompositionMapping } from './special-builders/poseidonComposition.ts';
 
 export type SelectorDefinition = bigint | null | 'dynamic';
 
-export type PlacementStrategy = 'generic' | 'poseidon';
+export type PlacementStrategy = 'generic' | 'poseidon' | 'memory-load';
 
 export type InputReference =
   | Readonly<{ kind: 'selector' }>
@@ -38,8 +27,8 @@ export type OutputReference =
   | Readonly<{ kind: 'discard' }>;
 
 export type CompositionStep = Readonly<{
-  subcircuit: ArithmeticSubcircuit;
-  usage: ArithmeticOperator | ArithmeticSubcircuit;
+  subcircuit: CompositionSubcircuit;
+  usage: Operator | CompositionSubcircuit;
   selector: SelectorDefinition;
   inputs: readonly InputReference[];
   outputs: readonly OutputReference[];
@@ -50,54 +39,14 @@ export type ConstantDefinition = Readonly<{
   dataPtType: DataPtType;
 }>;
 
-export type ArithmeticPlacementComposition = Readonly<{
+export type PlacementComposition = Readonly<{
   placementStrategy: PlacementStrategy;
   constants: readonly ConstantDefinition[];
   numSteps: number | 'dynamic';
-  numOperands: number;
+  numOperands: number | 'dynamic';
   numResults: number;
   steps: readonly CompositionStep[];
 }>;
-
-export type MemoryToStackLoadPlacementRequest = Readonly<{
-  operator: 'MEMORY_TO_STACK_LOAD';
-  dataAliasInfos: DataAliasInfos;
-  viewByteLength: number;
-}>;
-
-export type MemoryToStackLoadPlacementResult = DataPt;
-
-export type MemoryToMemoryLoadPlacementRequest = Readonly<{
-  operator: 'MEMORY_TO_MEMORY_LOAD';
-  sourceMemoryPts: MemoryPts;
-  sourceOffset: bigint;
-  destinationOffset: bigint;
-  length: bigint;
-}>;
-
-export type MemoryToMemoryLoadPlacementResult = MemoryPts;
-
-export type SysFlowPlacementRequest =
-  | MemoryToStackLoadPlacementRequest
-  | MemoryToMemoryLoadPlacementRequest;
-
-export type SysFlowPlacementResult =
-  | MemoryToStackLoadPlacementResult
-  | MemoryToMemoryLoadPlacementResult;
-
-export type SysFlowPlacementComposition =
-  | Readonly<{
-    operator: 'MEMORY_TO_STACK_LOAD';
-    topology: 'serial-memory-load-step';
-  }>
-  | Readonly<{
-    operator: 'MEMORY_TO_MEMORY_LOAD';
-    topology: 'chunk-first-memory-load-step';
-  }>;
-
-export type PlacementComposition =
-  | ArithmeticPlacementComposition
-  | SysFlowPlacementComposition;
 
 export type PlacementCompositionMapping = Readonly<{
   operation: Operator;
@@ -111,16 +60,6 @@ const assertIndex = (index: number, description: string): void => {
     );
   }
 };
-
-const isArithmeticOperator = (operator: string): operator is ArithmeticOperator =>
-  (ARITHMETIC_OPERATORS as readonly string[]).includes(operator);
-
-const isSysFlowOperator = (operator: string): operator is SysFlowOperator =>
-  (SYS_FLOW_OPERATORS as readonly string[]).includes(operator);
-
-const isSysFlowComposition = (
-  composition: PlacementComposition,
-): composition is SysFlowPlacementComposition => 'operator' in composition;
 
 export class PlacementCompositionManager {
   private readonly compositions: ReadonlyMap<
@@ -155,9 +94,6 @@ export class PlacementCompositionManager {
     Object.freeze(this);
   }
 
-  public get(operation: ArithmeticOperator): ArithmeticPlacementComposition;
-  public get(operation: SysFlowOperator): SysFlowPlacementComposition;
-  public get(operation: Operator): PlacementComposition;
   public get(operation: Operator): PlacementComposition {
     const composition = this.compositions.get(operation);
     if (composition === undefined) {
@@ -165,15 +101,7 @@ export class PlacementCompositionManager {
         `PlacementCompositionManager: operation ${operation} has no mapping`,
       );
     }
-    if (isArithmeticOperator(operation) && !isSysFlowComposition(composition)) {
-      return composition;
-    }
-    if (isSysFlowOperator(operation) && isSysFlowComposition(composition)) {
-      return composition;
-    }
-    throw new Error(
-      `PlacementCompositionManager: operation ${operation} has an invalid composition type`,
-    );
+    return composition;
   }
 
   private _validateComposition(
@@ -186,45 +114,40 @@ export class PlacementCompositionManager {
       );
     }
 
-    if (isArithmeticOperator(operation)) {
-      if (isSysFlowComposition(composition)) {
-        throw new Error(
-          `PlacementCompositionManager: arithmetic operation ${operation} requires an arithmetic composition`,
-        );
-      }
-      this._validateArithmeticComposition(operation, composition);
-      return;
-    }
-
-    if (!isSysFlowOperator(operation) || !isSysFlowComposition(composition)) {
-      throw new Error(
-        `PlacementCompositionManager: sys-flow operation ${operation} requires a sys-flow composition`,
-      );
-    }
-    this._validateSysFlowComposition(operation, composition);
+    this._validatePlacementComposition(operation, composition);
   }
 
-  private _validateArithmeticComposition(
-    operation: ArithmeticOperator,
-    composition: ArithmeticPlacementComposition,
+  private _validatePlacementComposition(
+    operation: Operator,
+    composition: PlacementComposition,
   ): void {
-    if (
-      composition.placementStrategy !== 'generic'
-      && composition.placementStrategy !== 'poseidon'
-    ) {
-      throw new Error(
-        `PlacementCompositionManager: ${operation} has an invalid placement strategy`,
-      );
-    }
     const hasDynamicSelector = composition.steps.some(
       ({ selector }) => selector === 'dynamic',
     );
-    if (
-      composition.placementStrategy === 'generic'
-      && (composition.numSteps === 'dynamic' || hasDynamicSelector)
-    ) {
+    const isGeneric = composition.placementStrategy === 'generic';
+    const expectedSpecialOperator = composition.placementStrategy === 'poseidon'
+      ? 'Poseidon'
+      : composition.placementStrategy === 'memory-load'
+        ? 'MemoryLoad'
+        : undefined;
+    if (isGeneric && (composition.numSteps === 'dynamic' || hasDynamicSelector)) {
       throw new Error(
         `PlacementCompositionManager: ${operation} cannot use generic placement with dynamic numSteps or selectors`,
+      );
+    }
+    if (!isGeneric && expectedSpecialOperator !== operation) {
+      throw new Error(
+        `PlacementCompositionManager: ${operation} has an invalid ${composition.placementStrategy} placement strategy`,
+      );
+    }
+    if (isGeneric && composition.numOperands === 'dynamic') {
+      throw new Error(
+        `PlacementCompositionManager: ${operation} generic placement requires a fixed operand count`,
+      );
+    }
+    if (!isGeneric && composition.numOperands !== 'dynamic') {
+      throw new Error(
+        `PlacementCompositionManager: ${operation} special placement requires a dynamic operand count`,
       );
     }
     if (composition.numSteps !== 'dynamic') {
@@ -235,7 +158,6 @@ export class PlacementCompositionManager {
         );
       }
     }
-    assertIndex(composition.numOperands, `${operation} numOperands`);
     assertIndex(composition.numResults, `${operation} numResults`);
     if (composition.steps.length === 0) {
       throw new Error(
@@ -247,6 +169,7 @@ export class PlacementCompositionManager {
     const consumedIntermediates = new Set<number>();
     const consumedConstants = new Set<number>();
     const results = new Set<number>();
+    let highestOperandIndex = -1;
 
     for (const [constantIndex, constant] of composition.constants.entries()) {
       const { valueDomain, wireLayout } = constant.dataPtType
@@ -304,11 +227,7 @@ export class PlacementCompositionManager {
       for (const input of step.inputs) {
         if (input.kind === 'operand') {
           assertIndex(input.index, `${operation} step ${stepIndex} operand index`);
-          if (input.index >= composition.numOperands) {
-            throw new Error(
-              `PlacementCompositionManager: ${operation} step ${stepIndex} operand index is out of range`,
-            );
-          }
+          highestOperandIndex = Math.max(highestOperandIndex, input.index);
         } else if (input.kind === 'step-output') {
           assertIndex(input.index, `${operation} step ${stepIndex} intermediate input index`);
           if (!intermediates.has(input.index)) {
@@ -354,6 +273,12 @@ export class PlacementCompositionManager {
       }
     }
 
+    if (isGeneric && composition.numOperands !== highestOperandIndex + 1) {
+      throw new Error(
+        `PlacementCompositionManager: ${operation} generic operand count must match its operand references`,
+      );
+    }
+
     for (const [constantIndex] of composition.constants.entries()) {
       if (!consumedConstants.has(constantIndex)) {
         throw new Error(
@@ -384,37 +309,11 @@ export class PlacementCompositionManager {
     }
   }
 
-  private _validateSysFlowComposition(
-    operation: SysFlowOperator,
-    composition: SysFlowPlacementComposition,
-  ): void {
-    if (composition.operator !== operation) {
-      throw new Error(
-        `PlacementCompositionManager: sys-flow operation ${operation} does not match composition operator ${composition.operator}`,
-      );
-    }
-    if (
-      composition.operator === 'MEMORY_TO_STACK_LOAD'
-      && composition.topology !== 'serial-memory-load-step'
-    ) {
-      throw new Error(
-        'PlacementCompositionManager: MEMORY_TO_STACK_LOAD requires serial-memory-load-step topology',
-      );
-    }
-    if (
-      composition.operator === 'MEMORY_TO_MEMORY_LOAD'
-      && composition.topology !== 'chunk-first-memory-load-step'
-    ) {
-      throw new Error(
-        'PlacementCompositionManager: MEMORY_TO_MEMORY_LOAD requires chunk-first-memory-load-step topology',
-      );
-    }
-  }
 }
 
 const createSingleStepMapping = (
-  operation: ArithmeticOperator,
-  subcircuit: ArithmeticSubcircuit,
+  operation: Operator,
+  subcircuit: CompositionSubcircuit,
   selector: SelectorDefinition,
   numOperands: number,
   numResults: number,
@@ -481,37 +380,19 @@ export const FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS: readonly PlacementCompositio
     createSingleStepMapping('SIGNEXTEND', 'SIGNEXTEND', 1n << 11n, 2, 1),
   ]);
 
-export const FIXED_SYS_FLOW_COMPOSITION_MAPPINGS: readonly PlacementCompositionMapping[] =
-  Object.freeze([
-    Object.freeze({
-      operation: 'MEMORY_TO_STACK_LOAD',
-      composition: freezeComposition({
-        operator: 'MEMORY_TO_STACK_LOAD',
-        topology: 'serial-memory-load-step',
-      }),
-    }),
-    Object.freeze({
-      operation: 'MEMORY_TO_MEMORY_LOAD',
-      composition: freezeComposition({
-        operator: 'MEMORY_TO_MEMORY_LOAD',
-        topology: 'chunk-first-memory-load-step',
-      }),
-    }),
-  ]);
-
-export type SelectorFreeArithmeticMappingConfig = Pick<
+export type SelectorFreeCompositionMappingConfig = Pick<
   PlacementCompositionManagerConfig,
   'nEqualBatch'
 >;
 
-export const createSelectorFreeArithmeticMappings = (
-  config: SelectorFreeArithmeticMappingConfig,
+export const createSelectorFreeCompositionMappings = (
+  config: SelectorFreeCompositionMappingConfig,
 ): readonly PlacementCompositionMapping[] => {
   assertPositiveInteger(config.nEqualBatch, 'nEqualBatch');
 
   return Object.freeze([
     createSingleStepMapping(
-      'EqualBatch',
+      'StorageAccess',
       'EqualBatch',
       null,
       2 * config.nEqualBatch,
@@ -522,7 +403,6 @@ export const createSelectorFreeArithmeticMappings = (
 
 export type PlacementCompositionManagerConfig = Readonly<{
   nEqualBatch: number;
-  nJubjubExpBatch: number;
   nPoseidonBatch: number;
 }>;
 
@@ -530,11 +410,10 @@ export const createPlacementCompositionManager = (
   config: PlacementCompositionManagerConfig,
 ): PlacementCompositionManager => new PlacementCompositionManager([
   ...FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS,
-  ...FIXED_SYS_FLOW_COMPOSITION_MAPPINGS,
-  ...createDivisionArithmeticMappings(),
-  ...createAddMulModArithmeticMappings(),
-  ...createSelectorFreeArithmeticMappings(config),
-  createExpArithmeticMapping(),
-  createTransactionSignatureVerifyArithmeticMapping(config),
-  createPoseidonArithmeticMapping(config),
+  ...createDivisionCompositionMappings(),
+  ...createAddMulModCompositionMappings(),
+  ...createSelectorFreeCompositionMappings(config),
+  createExpCompositionMapping(),
+  createMemoryLoadCompositionMapping(),
+  createPoseidonCompositionMapping(config),
 ]);
