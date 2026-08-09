@@ -446,7 +446,7 @@ export class InstructionHandler {
     ]
     const addrMaskPt: DataPt = this.parent.getReservedVariableFromBuffer('ADDRESS_MASK')
 
-    const originPts = this.parent.placeArithComposition(
+    const originPts = this.parent.placeComposition(
       'TransactionSignatureVerify',
       [
         ...randomizerPt,
@@ -496,7 +496,7 @@ export class InstructionHandler {
     if (inPts.some(({ dataPtType: { wireLayout } }) => wireLayout.kind !== 'limbs-128' || wireLayout.count !== 2)) {
       throw new Error('Synthesizer: EqualBatch storage identities must use two-limb DataPts')
     }
-    this.parent.placeArithComposition('EqualBatch', inPts)
+    this.parent.placeComposition('StorageAccess', inPts)
   }
 
   private _getCachedStorageEntry(
@@ -639,7 +639,7 @@ export class InstructionHandler {
     const op = opts.op as SynthesizerSupportedArithOpcodes
     switch (op) {
       case 'EXP':
-        outPts = this.parent.placeArithComposition('EXP', inPts)
+        outPts = this.parent.placeComposition('EXP', inPts)
         break;
       case 'KECCAK256': {
           checkRequiredInput(opts.memOut)
@@ -653,11 +653,11 @@ export class InstructionHandler {
           if (bytesToBigInt(opts.memOut!) !== dataRecovered) {
             throw new Error(`Synthesizer: ${op}: Memory data to load mismatch`)
           }
-          outPts = this.parent.placeArithComposition('Poseidon', chunkDataPts)
+          outPts = this.parent.placeComposition('Poseidon', chunkDataPts)
         }
         break
       default:
-        outPts = this.parent.placeArithComposition(op as ArithmeticOperator, inPts);
+        outPts = this.parent.placeComposition(op as ArithmeticOperator, inPts);
         break;
     }
     if (outPts.length !== 1 || outPts[0].value !== out) {

@@ -247,7 +247,7 @@ export class ArithmeticManager {
     return [DataPtFactory.deepCopy(placeNormalized(chainInputs))]
   }
 
-  public placeArithComposition(
+  public placeComposition(
     name: ArithmeticOperator,
     inPts: DataPt[],
   ): DataPt[] {

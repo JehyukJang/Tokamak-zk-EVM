@@ -16,7 +16,7 @@ export class MemoryManager {
       },
       'Masker for MSTORE8',
     )
-    const outPts = this.parent.placeArithComposition('AND', [maskPt, dataPt])
+    const outPts = this.parent.placeComposition('AND', [maskPt, dataPt])
     if (outPts.length !== 1 || outPts[0] === undefined) {
       throw new Error('Synthesizer: MSTORE8 masking must produce exactly one output')
     }
@@ -164,7 +164,7 @@ export class MemoryManager {
       return dataPt;
     }
     // SHR data to truncate the ending part
-    const [truncatedPt] = this.parent.placeArithComposition('SHR', [
+    const [truncatedPt] = this.parent.placeComposition('SHR', [
       this.parent.loadArbitraryStatic(
         BigInt(endingGap * 8),
         {
@@ -194,7 +194,7 @@ export class MemoryManager {
     }
 
     // Arithmetic compositions return arrays, while Accumulator produces one output.
-    const [accumulatedPt] = this.parent.placeArithComposition(
+    const [accumulatedPt] = this.parent.placeComposition(
       'Accumulator',
       transformedSlices,
     );
@@ -229,7 +229,7 @@ export class MemoryManager {
         ),
         dataPt,
       ];
-      outPts = this.parent.placeArithComposition(subcircuitName, inPts);
+      outPts = this.parent.placeComposition(subcircuitName, inPts);
     }
     return outPts[0];
   }
@@ -256,7 +256,7 @@ export class MemoryManager {
       ),
       dataPt,
     ];
-    const outPts = this.parent.placeArithComposition('AND', inPts);
+    const outPts = this.parent.placeComposition('AND', inPts);
     if (outPts.length !== 1 || outPts[0] === undefined) {
       throw new Error(
         'Synthesizer: memory masking must produce exactly one output',

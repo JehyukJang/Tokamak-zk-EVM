@@ -4,9 +4,9 @@ import { BlockData, BlockOptions, createBlock, HeaderData } from '@ethereumjs/bl
 import { bigIntToBytes, bigIntToHex, bytesToBigInt, bytesToHex, createAddressFromBigInt, setLengthLeft } from '@ethereumjs/util';
 
 import { EVMResult, InterpreterStep, Message } from '@ethereumjs/evm';
-import { DataAliasGeometries, DataPt, DataPtType, MemoryPts, Placements, PreparedComposition, ReservedVariable, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
+import { DataAliasGeometries, DataPt, DataPtType, MemoryPts, Placements, ReservedVariable, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
 import { ArithmeticManager, BufferManager, ContextConstructionData, ContextManager, InstructionHandler, MemoryManager, StateManager, SynthesizerOpHandler } from './handlers/index.ts';
-import { ArithmeticOperator, ReservedBuffer } from '../subcircuit/configuredTypes.ts';
+import { ARITHMETIC_OPERATORS, ArithmeticOperator, Operator, ReservedBuffer } from '../subcircuit/configuredTypes.ts';
 import type { ResolvedSubcircuitLibrary } from '../subcircuit/libraryTypes.ts';
 import { DataPtFactory } from './dataStructure/dataPt.ts';
 import { TypedTransaction } from '@ethereumjs/tx';
@@ -255,7 +255,7 @@ export class Synthesizer implements SynthesizerInterface
         throw new Error(`Debug: Raw address to call mismatch between EVM and Synthesizer`)
       }
       const addressMaskPt = this.getReservedVariableFromBuffer('ADDRESS_MASK')
-      const maskedAddressPts = this.placeArithComposition('AND', [rawCodeAddressPt, addressMaskPt])
+      const maskedAddressPts = this.placeComposition('AND', [rawCodeAddressPt, addressMaskPt])
       if (maskedAddressPts.length !== 1 || maskedAddressPts[0] === undefined) {
         throw new Error(`Synthesizer: CALL target mask must produce exactly one address`)
       }
@@ -445,8 +445,11 @@ export class Synthesizer implements SynthesizerInterface
     this._state.placeBuffer(buffer, inPts, outPts, usage)
   }
 
-  placeComposition(preparedComposition: PreparedComposition): void {
-    this._state.placeComposition(preparedComposition)
+  placeComposition(name: Operator, inPts: DataPt[]): DataPt[] {
+    if ((ARITHMETIC_OPERATORS as readonly string[]).includes(name)) {
+      return this._arithmeticManager.placeComposition(name as ArithmeticOperator, inPts)
+    }
+    throw new Error(`Synthesizer: ${name} composition producer is not implemented`)
   }
 
   getReservedVariableFromBuffer(
@@ -474,9 +477,6 @@ export class Synthesizer implements SynthesizerInterface
     return this._bufferManager.loadArbitraryStatic(value, dataPtType, desc)
   }
 
-  placeArithComposition(name: ArithmeticOperator, inPts: DataPt[]): DataPt[] {
-    return this._arithmeticManager.placeArithComposition(name, inPts);
-  }
   placeMemoryToStack(dataAliasInfos: DataAliasGeometries, viewByteLength: number): DataPt {
     return this._memoryManager.placeMemoryToStack(dataAliasInfos, viewByteLength);
   }
