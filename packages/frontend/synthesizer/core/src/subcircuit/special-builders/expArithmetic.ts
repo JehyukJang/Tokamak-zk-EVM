@@ -1,15 +1,15 @@
-import {
-  freezeComposition,
-  type ArithmeticSubcircuitMapping,
-  type CompositionStep,
-  type ConstantDefinition,
-  type InputReference,
-  type OutputReference,
-} from '../arithmeticSubcircuitComposition.ts';
+import { freezeComposition } from '../utils.ts';
+import type {
+  PlacementCompositionMapping,
+  CompositionStep,
+  ConstantDefinition,
+  InputReference,
+  OutputReference,
+} from '../placementCompositionManager.ts';
 
 const NUM_EXPONENT_BITS = 256;
 
-export const createExpArithmeticMapping = (): ArithmeticSubcircuitMapping => {
+export const createExpArithmeticMapping = (): PlacementCompositionMapping => {
   const constants: readonly ConstantDefinition[] = [{
     value: 1n,
     dataPtType: {

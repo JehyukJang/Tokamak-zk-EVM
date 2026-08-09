@@ -19,6 +19,46 @@ import {
   REQUIRED_CIRCOM_KEYS,
   SETUP_PARAMS_KEYS,
 } from './libraryTypes.ts';
+import type {
+  ArithmeticPlacementComposition,
+  InputReference,
+  OutputReference,
+} from './placementCompositionManager.ts';
+
+const freezeReference = <Reference extends InputReference | OutputReference>(
+  reference: Reference,
+): Reference => Object.freeze({ ...reference }) as Reference;
+
+export const freezeComposition = (
+  composition: ArithmeticPlacementComposition,
+): ArithmeticPlacementComposition => Object.freeze({
+  placementStrategy: composition.placementStrategy,
+  constants: Object.freeze(composition.constants.map((constant) => Object.freeze({
+    value: constant.value,
+    dataPtType: Object.freeze({
+      valueDomain: Object.freeze({ ...constant.dataPtType.valueDomain }),
+      wireLayout: Object.freeze({ ...constant.dataPtType.wireLayout }),
+    }),
+  }))),
+  numSteps: composition.numSteps,
+  numOperands: composition.numOperands,
+  numResults: composition.numResults,
+  steps: Object.freeze(composition.steps.map((step) => Object.freeze({
+    subcircuit: step.subcircuit,
+    usage: step.usage,
+    selector: step.selector,
+    inputs: Object.freeze(step.inputs.map(freezeReference)),
+    outputs: Object.freeze(step.outputs.map(freezeReference)),
+  }))),
+});
+
+export const assertPositiveInteger = (value: number, description: string): void => {
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(
+      `PlacementCompositionManager: ${description} must be a positive integer`,
+    );
+  }
+};
 
 const getRequiredNumber = (record: Record<string, unknown>, key: string): number => {
   const value = record[key];

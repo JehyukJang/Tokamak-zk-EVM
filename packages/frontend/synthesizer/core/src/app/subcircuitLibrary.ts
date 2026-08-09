@@ -1,5 +1,5 @@
 import { BUFFER_LIST } from '../subcircuit/configuredTypes.ts';
-import { createArithmeticSubcircuitComposition } from '../subcircuit/arithmeticSubcircuitComposition.ts';
+import { createPlacementCompositionManager } from '../subcircuit/placementCompositionManager.ts';
 import type {
   ResolvedSubcircuitLibrary,
   SubcircuitInfo,
@@ -15,7 +15,7 @@ export function resolveSubcircuitLibraryData(
 
   return {
     data,
-    arithmeticSubcircuitComposition: createArithmeticSubcircuitComposition(
+    placementCompositionManager: createPlacementCompositionManager(
       data.frontendCfg,
     ),
     subcircuitInfoByName,

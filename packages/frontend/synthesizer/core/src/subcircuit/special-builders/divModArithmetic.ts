@@ -1,14 +1,14 @@
-import {
-  freezeComposition,
-  type ArithmeticSubcircuitMapping,
-  type InputReference,
-  type OutputReference,
-} from '../arithmeticSubcircuitComposition.ts';
+import { freezeComposition } from '../utils.ts';
+import type {
+  PlacementCompositionMapping,
+  InputReference,
+  OutputReference,
+} from '../placementCompositionManager.ts';
 
 const createDivisionArithmeticMapping = (
   operation: 'DIV' | 'SDIV' | 'MOD' | 'SMOD',
   selector: bigint,
-): ArithmeticSubcircuitMapping => Object.freeze({
+): PlacementCompositionMapping => Object.freeze({
   operation,
   composition: freezeComposition({
     placementStrategy: 'generic',
@@ -45,7 +45,7 @@ const createDivisionArithmeticMapping = (
   }),
 });
 
-export const createDivisionArithmeticMappings = (): readonly ArithmeticSubcircuitMapping[] =>
+export const createDivisionArithmeticMappings = (): readonly PlacementCompositionMapping[] =>
   Object.freeze([
     createDivisionArithmeticMapping('DIV', 1n << 4n),
     createDivisionArithmeticMapping('SDIV', 1n << 5n),

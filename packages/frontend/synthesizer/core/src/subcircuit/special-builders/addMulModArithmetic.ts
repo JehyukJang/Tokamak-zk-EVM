@@ -1,9 +1,7 @@
-import {
-  freezeComposition,
-  type ArithmeticSubcircuitMapping,
-} from '../arithmeticSubcircuitComposition.ts';
+import { freezeComposition } from '../utils.ts';
+import type { PlacementCompositionMapping } from '../placementCompositionManager.ts';
 
-const createAddModArithmeticMapping = (): ArithmeticSubcircuitMapping => Object.freeze({
+const createAddModArithmeticMapping = (): PlacementCompositionMapping => Object.freeze({
   operation: 'ADDMOD',
   composition: freezeComposition({
     placementStrategy: 'generic',
@@ -46,7 +44,7 @@ const createAddModArithmeticMapping = (): ArithmeticSubcircuitMapping => Object.
   }),
 });
 
-const createMulModArithmeticMapping = (): ArithmeticSubcircuitMapping => Object.freeze({
+const createMulModArithmeticMapping = (): PlacementCompositionMapping => Object.freeze({
   operation: 'MULMOD',
   composition: freezeComposition({
     placementStrategy: 'generic',
@@ -103,7 +101,7 @@ const createMulModArithmeticMapping = (): ArithmeticSubcircuitMapping => Object.
   }),
 });
 
-export const createAddMulModArithmeticMappings = (): readonly ArithmeticSubcircuitMapping[] =>
+export const createAddMulModArithmeticMappings = (): readonly PlacementCompositionMapping[] =>
   Object.freeze([
     createAddModArithmeticMapping(),
     createMulModArithmeticMapping(),

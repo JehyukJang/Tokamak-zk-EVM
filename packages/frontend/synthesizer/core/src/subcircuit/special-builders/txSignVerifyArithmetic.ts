@@ -1,18 +1,20 @@
 import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
 
-import type { FrontendConfig } from '../libraryTypes.ts';
 import {
   assertPositiveInteger,
   freezeComposition,
-  type ArithmeticSubcircuitMapping,
-  type CompositionStep,
-  type ConstantDefinition,
-  type InputReference,
-  type OutputReference,
-} from '../arithmeticSubcircuitComposition.ts';
+} from '../utils.ts';
+import type {
+  PlacementCompositionManagerConfig,
+  PlacementCompositionMapping,
+  CompositionStep,
+  ConstantDefinition,
+  InputReference,
+  OutputReference,
+} from '../placementCompositionManager.ts';
 
 export type TransactionSignatureVerifyArithmeticMappingConfig = Pick<
-  FrontendConfig,
+  PlacementCompositionManagerConfig,
   'nJubjubExpBatch' | 'nPoseidonBatch'
 >;
 
@@ -135,7 +137,7 @@ const createJubjubExpBatchSteps = (
 
 export const createTransactionSignatureVerifyArithmeticMapping = (
   config: TransactionSignatureVerifyArithmeticMappingConfig,
-): ArithmeticSubcircuitMapping => {
+): PlacementCompositionMapping => {
   assertPositiveInteger(config.nJubjubExpBatch, 'nJubjubExpBatch');
   assertPositiveInteger(config.nPoseidonBatch, 'nPoseidonBatch');
 

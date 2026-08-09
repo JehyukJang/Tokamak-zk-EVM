@@ -3,7 +3,7 @@ import {
   type ArithmeticSubcircuit,
   type ArithmeticOperator,
 } from './configuredTypes.ts';
-import type { FrontendConfig } from './libraryTypes.ts';
+import { assertPositiveInteger, freezeComposition } from './utils.ts';
 import type {
   DataPtType,
 } from '../synthesizer/types/dataStructure.ts';
@@ -17,7 +17,7 @@ import {
 
 export type SelectorDefinition = bigint | null | 'dynamic';
 
-export type ArithmeticPlacementStrategy = 'generic' | 'poseidon';
+export type PlacementStrategy = 'generic' | 'poseidon';
 
 export type InputReference =
   | Readonly<{ kind: 'selector' }>
@@ -43,8 +43,8 @@ export type ConstantDefinition = Readonly<{
   dataPtType: DataPtType;
 }>;
 
-export type ArithmeticOperationComposition = Readonly<{
-  placementStrategy: ArithmeticPlacementStrategy;
+export type ArithmeticPlacementComposition = Readonly<{
+  placementStrategy: PlacementStrategy;
   constants: readonly ConstantDefinition[];
   numSteps: number | 'dynamic';
   numOperands: number;
@@ -52,62 +52,35 @@ export type ArithmeticOperationComposition = Readonly<{
   steps: readonly CompositionStep[];
 }>;
 
-export type ArithmeticSubcircuitMapping = Readonly<{
+export type PlacementCompositionMapping = Readonly<{
   operation: ArithmeticOperator;
-  composition: ArithmeticOperationComposition;
+  composition: ArithmeticPlacementComposition;
 }>;
 
 const assertIndex = (index: number, description: string): void => {
   if (!Number.isInteger(index) || index < 0) {
     throw new Error(
-      `ArithmeticSubcircuitComposition: ${description} must be a non-negative integer`,
+      `PlacementCompositionManager: ${description} must be a non-negative integer`,
     );
   }
 };
 
-const freezeReference = <Reference extends InputReference | OutputReference>(
-  reference: Reference,
-): Reference => Object.freeze({ ...reference }) as Reference;
-
-export const freezeComposition = (
-  composition: ArithmeticOperationComposition,
-): ArithmeticOperationComposition => Object.freeze({
-  placementStrategy: composition.placementStrategy,
-  constants: Object.freeze(composition.constants.map((constant) => Object.freeze({
-    value: constant.value,
-    dataPtType: Object.freeze({
-      valueDomain: Object.freeze({ ...constant.dataPtType.valueDomain }),
-      wireLayout: Object.freeze({ ...constant.dataPtType.wireLayout }),
-    }),
-  }))),
-  numSteps: composition.numSteps,
-  numOperands: composition.numOperands,
-  numResults: composition.numResults,
-  steps: Object.freeze(composition.steps.map((step) => Object.freeze({
-    subcircuit: step.subcircuit,
-    usage: step.usage,
-    selector: step.selector,
-    inputs: Object.freeze(step.inputs.map(freezeReference)),
-    outputs: Object.freeze(step.outputs.map(freezeReference)),
-  }))),
-});
-
-export class ArithmeticSubcircuitComposition {
+export class PlacementCompositionManager {
   private readonly compositions: ReadonlyMap<
     ArithmeticOperator,
-    ArithmeticOperationComposition
+    ArithmeticPlacementComposition
   >;
 
-  constructor(mappings: readonly ArithmeticSubcircuitMapping[]) {
+  constructor(mappings: readonly PlacementCompositionMapping[]) {
     const compositions = new Map<
       ArithmeticOperator,
-      ArithmeticOperationComposition
+      ArithmeticPlacementComposition
     >();
 
     for (const { operation, composition: sourceComposition } of mappings) {
       if (compositions.has(operation)) {
         throw new Error(
-          `ArithmeticSubcircuitComposition: operation ${operation} has multiple mappings`,
+          `PlacementCompositionManager: operation ${operation} has multiple mappings`,
         );
       }
 
@@ -119,7 +92,7 @@ export class ArithmeticSubcircuitComposition {
     for (const operation of ARITHMETIC_OPERATORS) {
       if (!compositions.has(operation)) {
         throw new Error(
-          `ArithmeticSubcircuitComposition: operation ${operation} has no mapping`,
+          `PlacementCompositionManager: operation ${operation} has no mapping`,
         );
       }
     }
@@ -128,11 +101,11 @@ export class ArithmeticSubcircuitComposition {
     Object.freeze(this);
   }
 
-  public get(operation: ArithmeticOperator): ArithmeticOperationComposition {
+  public get(operation: ArithmeticOperator): ArithmeticPlacementComposition {
     const composition = this.compositions.get(operation);
     if (composition === undefined) {
       throw new Error(
-        `ArithmeticSubcircuitComposition: operation ${operation} has no mapping`,
+        `PlacementCompositionManager: operation ${operation} has no mapping`,
       );
     }
     return composition;
@@ -140,14 +113,14 @@ export class ArithmeticSubcircuitComposition {
 
   private _validateComposition(
     operation: ArithmeticOperator,
-    composition: ArithmeticOperationComposition,
+    composition: ArithmeticPlacementComposition,
   ): void {
     if (
       composition.placementStrategy !== 'generic'
       && composition.placementStrategy !== 'poseidon'
     ) {
       throw new Error(
-        `ArithmeticSubcircuitComposition: ${operation} has an invalid placement strategy`,
+        `PlacementCompositionManager: ${operation} has an invalid placement strategy`,
       );
     }
     const hasDynamicSelector = composition.steps.some(
@@ -158,14 +131,14 @@ export class ArithmeticSubcircuitComposition {
       && (composition.numSteps === 'dynamic' || hasDynamicSelector)
     ) {
       throw new Error(
-        `ArithmeticSubcircuitComposition: ${operation} cannot use generic placement with dynamic numSteps or selectors`,
+        `PlacementCompositionManager: ${operation} cannot use generic placement with dynamic numSteps or selectors`,
       );
     }
     if (composition.numSteps !== 'dynamic') {
       assertIndex(composition.numSteps, `${operation} numSteps`);
       if (composition.numSteps !== composition.steps.length) {
         throw new Error(
-          `ArithmeticSubcircuitComposition: ${operation} numSteps must match its step count`,
+          `PlacementCompositionManager: ${operation} numSteps must match its step count`,
         );
       }
     }
@@ -173,7 +146,7 @@ export class ArithmeticSubcircuitComposition {
     assertIndex(composition.numResults, `${operation} numResults`);
     if (composition.steps.length === 0) {
       throw new Error(
-        `ArithmeticSubcircuitComposition: operation ${operation} requires at least one step`,
+        `PlacementCompositionManager: operation ${operation} requires at least one step`,
       );
     }
 
@@ -193,7 +166,7 @@ export class ArithmeticSubcircuitComposition {
         )
       ) {
         throw new Error(
-          `ArithmeticSubcircuitComposition: ${operation} constant ${constantIndex} uint domain must have between 1 and 256 bits`,
+          `PlacementCompositionManager: ${operation} constant ${constantIndex} uint domain must have between 1 and 256 bits`,
         );
       }
       if (
@@ -205,7 +178,7 @@ export class ArithmeticSubcircuitComposition {
         )
       ) {
         throw new Error(
-          `ArithmeticSubcircuitComposition: ${operation} constant ${constantIndex} one-limb layout requires a uint domain of at most 128 bits`,
+          `PlacementCompositionManager: ${operation} constant ${constantIndex} one-limb layout requires a uint domain of at most 128 bits`,
         );
       }
       if (
@@ -213,7 +186,7 @@ export class ArithmeticSubcircuitComposition {
         && valueDomain.kind === 'uint'
       ) {
         throw new Error(
-          `ArithmeticSubcircuitComposition: ${operation} constant ${constantIndex} native-fr layout requires a field or scalar domain`,
+          `PlacementCompositionManager: ${operation} constant ${constantIndex} native-fr layout requires a field or scalar domain`,
         );
       }
     }
@@ -224,14 +197,14 @@ export class ArithmeticSubcircuitComposition {
         : step.subcircuit;
       if (step.usage !== expectedUsage) {
         throw new Error(
-          `ArithmeticSubcircuitComposition: ${operation} step ${stepIndex} usage must be ${expectedUsage}`,
+          `PlacementCompositionManager: ${operation} step ${stepIndex} usage must be ${expectedUsage}`,
         );
       }
 
       const selectorInputs = step.inputs.filter(({ kind }) => kind === 'selector').length;
       if (selectorInputs !== (step.selector === null ? 0 : 1)) {
         throw new Error(
-          `ArithmeticSubcircuitComposition: ${operation} step ${stepIndex} selector input does not match its selector definition`,
+          `PlacementCompositionManager: ${operation} step ${stepIndex} selector input does not match its selector definition`,
         );
       }
 
@@ -240,14 +213,14 @@ export class ArithmeticSubcircuitComposition {
           assertIndex(input.index, `${operation} step ${stepIndex} operand index`);
           if (input.index >= composition.numOperands) {
             throw new Error(
-              `ArithmeticSubcircuitComposition: ${operation} step ${stepIndex} operand index is out of range`,
+              `PlacementCompositionManager: ${operation} step ${stepIndex} operand index is out of range`,
             );
           }
         } else if (input.kind === 'step-output') {
           assertIndex(input.index, `${operation} step ${stepIndex} intermediate input index`);
           if (!intermediates.has(input.index)) {
             throw new Error(
-              `ArithmeticSubcircuitComposition: ${operation} step ${stepIndex} references an intermediate before it is produced`,
+              `PlacementCompositionManager: ${operation} step ${stepIndex} references an intermediate before it is produced`,
             );
           }
           consumedIntermediates.add(input.index);
@@ -255,7 +228,7 @@ export class ArithmeticSubcircuitComposition {
           assertIndex(input.index, `${operation} step ${stepIndex} constant index`);
           if (input.index >= composition.constants.length) {
             throw new Error(
-              `ArithmeticSubcircuitComposition: ${operation} step ${stepIndex} constant index is out of range`,
+              `PlacementCompositionManager: ${operation} step ${stepIndex} constant index is out of range`,
             );
           }
           consumedConstants.add(input.index);
@@ -267,7 +240,7 @@ export class ArithmeticSubcircuitComposition {
           assertIndex(output.index, `${operation} step ${stepIndex} intermediate output index`);
           if (intermediates.has(output.index)) {
             throw new Error(
-              `ArithmeticSubcircuitComposition: ${operation} intermediate ${output.index} has multiple producers`,
+              `PlacementCompositionManager: ${operation} intermediate ${output.index} has multiple producers`,
             );
           }
           intermediates.add(output.index);
@@ -275,12 +248,12 @@ export class ArithmeticSubcircuitComposition {
           assertIndex(output.index, `${operation} step ${stepIndex} result index`);
           if (output.index >= composition.numResults) {
             throw new Error(
-              `ArithmeticSubcircuitComposition: ${operation} step ${stepIndex} result index is out of range`,
+              `PlacementCompositionManager: ${operation} step ${stepIndex} result index is out of range`,
             );
           }
           if (results.has(output.index)) {
             throw new Error(
-              `ArithmeticSubcircuitComposition: ${operation} result ${output.index} has multiple producers`,
+              `PlacementCompositionManager: ${operation} result ${output.index} has multiple producers`,
             );
           }
           results.add(output.index);
@@ -291,7 +264,7 @@ export class ArithmeticSubcircuitComposition {
     for (const [constantIndex] of composition.constants.entries()) {
       if (!consumedConstants.has(constantIndex)) {
         throw new Error(
-          `ArithmeticSubcircuitComposition: ${operation} constant ${constantIndex} is never used`,
+          `PlacementCompositionManager: ${operation} constant ${constantIndex} is never used`,
         );
       }
     }
@@ -299,12 +272,12 @@ export class ArithmeticSubcircuitComposition {
     for (let index = 0; index < intermediates.size; index++) {
       if (!intermediates.has(index)) {
         throw new Error(
-          `ArithmeticSubcircuitComposition: ${operation} intermediate indices must be contiguous`,
+          `PlacementCompositionManager: ${operation} intermediate indices must be contiguous`,
         );
       }
       if (!consumedIntermediates.has(index)) {
         throw new Error(
-          `ArithmeticSubcircuitComposition: ${operation} intermediate ${index} is never consumed`,
+          `PlacementCompositionManager: ${operation} intermediate ${index} is never consumed`,
         );
       }
     }
@@ -312,7 +285,7 @@ export class ArithmeticSubcircuitComposition {
     for (let index = 0; index < composition.numResults; index++) {
       if (!results.has(index)) {
         throw new Error(
-          `ArithmeticSubcircuitComposition: ${operation} result ${index} is not produced`,
+          `PlacementCompositionManager: ${operation} result ${index} is not produced`,
         );
       }
     }
@@ -326,7 +299,7 @@ const createSingleStepMapping = (
   numOperands: number,
   numResults: number,
   constants: readonly ConstantDefinition[] = [],
-): ArithmeticSubcircuitMapping => Object.freeze({
+): PlacementCompositionMapping => Object.freeze({
   operation,
   composition: freezeComposition({
     placementStrategy: 'generic',
@@ -366,7 +339,7 @@ const ZERO_WORD_CONSTANT: ConstantDefinition = Object.freeze({
   },
 } satisfies ConstantDefinition);
 
-export const FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS: readonly ArithmeticSubcircuitMapping[] =
+export const FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS: readonly PlacementCompositionMapping[] =
   Object.freeze([
     createSingleStepMapping('ADD', 'ALU1', 1n << 1n, 2, 1),
     createSingleStepMapping('MUL', 'ALU1', 1n << 2n, 2, 1),
@@ -389,21 +362,13 @@ export const FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS: readonly ArithmeticSubcircui
   ]);
 
 export type SelectorFreeArithmeticMappingConfig = Pick<
-  FrontendConfig,
+  PlacementCompositionManagerConfig,
   'nEqualBatch'
 >;
 
-export const assertPositiveInteger = (value: number, description: string): void => {
-  if (!Number.isInteger(value) || value < 1) {
-    throw new Error(
-      `ArithmeticSubcircuitComposition: ${description} must be a positive integer`,
-    );
-  }
-};
-
 export const createSelectorFreeArithmeticMappings = (
   config: SelectorFreeArithmeticMappingConfig,
-): readonly ArithmeticSubcircuitMapping[] => {
+): readonly PlacementCompositionMapping[] => {
   assertPositiveInteger(config.nEqualBatch, 'nEqualBatch');
 
   return Object.freeze([
@@ -417,16 +382,15 @@ export const createSelectorFreeArithmeticMappings = (
   ]);
 };
 
-export type ArithmeticSubcircuitCompositionConfig = Pick<
-  FrontendConfig,
-  | 'nEqualBatch'
-  | 'nJubjubExpBatch'
-  | 'nPoseidonBatch'
->;
+export type PlacementCompositionManagerConfig = Readonly<{
+  nEqualBatch: number;
+  nJubjubExpBatch: number;
+  nPoseidonBatch: number;
+}>;
 
-export const createArithmeticSubcircuitComposition = (
-  config: ArithmeticSubcircuitCompositionConfig,
-): ArithmeticSubcircuitComposition => new ArithmeticSubcircuitComposition([
+export const createPlacementCompositionManager = (
+  config: PlacementCompositionManagerConfig,
+): PlacementCompositionManager => new PlacementCompositionManager([
   ...FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS,
   ...createDivisionArithmeticMappings(),
   ...createAddMulModArithmeticMappings(),

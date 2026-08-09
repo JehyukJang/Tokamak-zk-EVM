@@ -1,19 +1,21 @@
-import type { FrontendConfig } from '../libraryTypes.ts';
 import {
   assertPositiveInteger,
   freezeComposition,
-  type ArithmeticSubcircuitMapping,
-  type InputReference,
-} from '../arithmeticSubcircuitComposition.ts';
+} from '../utils.ts';
+import type {
+  PlacementCompositionManagerConfig,
+  PlacementCompositionMapping,
+  InputReference,
+} from '../placementCompositionManager.ts';
 
 export type PoseidonArithmeticMappingConfig = Pick<
-  FrontendConfig,
+  PlacementCompositionManagerConfig,
   'nPoseidonBatch'
 >;
 
 export const createPoseidonArithmeticMapping = (
   config: PoseidonArithmeticMappingConfig,
-): ArithmeticSubcircuitMapping => {
+): PlacementCompositionMapping => {
   assertPositiveInteger(config.nPoseidonBatch, 'nPoseidonBatch');
 
   return Object.freeze({

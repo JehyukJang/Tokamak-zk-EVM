@@ -13,7 +13,7 @@ import {
   type ArithmeticSubcircuit,
   type ArithmeticOperator,
 } from '../../subcircuit/configuredTypes.ts';
-import type { ArithmeticOperationComposition } from '../../subcircuit/arithmeticSubcircuitComposition.ts';
+import type { ArithmeticPlacementComposition } from '../../subcircuit/placementCompositionManager.ts';
 import { ArithmeticOperations } from '../dataStructure/arithmeticOperations.ts';
 import { POSEIDON_INPUTS } from 'tokamak-l2js';
 
@@ -191,7 +191,7 @@ export class ArithmeticManager {
   }
 
   private _placePoseidon(
-    composition: ArithmeticOperationComposition,
+    composition: ArithmeticPlacementComposition,
     inPts: DataPt[],
   ): DataPt[] {
     const step = composition.steps[0]
@@ -257,7 +257,7 @@ export class ArithmeticManager {
     inPts: DataPt[],
   ): DataPt[] {
     const composition = this.parent.subcircuitLibrary
-      .arithmeticSubcircuitComposition.get(name)
+      .placementCompositionManager.get(name)
     switch (composition.placementStrategy) {
       case 'generic':
         break
