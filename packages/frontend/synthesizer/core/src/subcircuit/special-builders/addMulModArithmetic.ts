@@ -4,6 +4,7 @@ import type { PlacementCompositionMapping } from '../placementCompositionManager
 const createAddModArithmeticMapping = (): PlacementCompositionMapping => Object.freeze({
   operation: 'ADDMOD',
   composition: freezeComposition({
+    category: 'arithmetic',
     placementStrategy: 'generic',
     constants: [],
     numSteps: 2,
@@ -47,6 +48,7 @@ const createAddModArithmeticMapping = (): PlacementCompositionMapping => Object.
 const createMulModArithmeticMapping = (): PlacementCompositionMapping => Object.freeze({
   operation: 'MULMOD',
   composition: freezeComposition({
+    category: 'arithmetic',
     placementStrategy: 'generic',
     constants: [],
     numSteps: 3,

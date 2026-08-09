@@ -11,6 +11,7 @@ const createDivisionArithmeticMapping = (
 ): PlacementCompositionMapping => Object.freeze({
   operation,
   composition: freezeComposition({
+    category: 'arithmetic',
     placementStrategy: 'generic',
     constants: [],
     numSteps: 2,

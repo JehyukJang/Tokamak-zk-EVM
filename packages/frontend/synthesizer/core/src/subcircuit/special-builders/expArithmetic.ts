@@ -76,6 +76,7 @@ export const createExpArithmeticMapping = (): PlacementCompositionMapping => {
   return Object.freeze({
     operation: 'EXP',
     composition: freezeComposition({
+      category: 'arithmetic',
       placementStrategy: 'generic',
       constants,
       numSteps: steps.length,

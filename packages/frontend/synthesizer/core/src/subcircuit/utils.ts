@@ -23,34 +23,65 @@ import type {
   ArithmeticPlacementComposition,
   InputReference,
   OutputReference,
+  PlacementComposition,
+  SysFlowPlacementComposition,
 } from './placementCompositionManager.ts';
 
 const freezeReference = <Reference extends InputReference | OutputReference>(
   reference: Reference,
 ): Reference => Object.freeze({ ...reference }) as Reference;
 
-export const freezeComposition = (
+export function freezeComposition(
   composition: ArithmeticPlacementComposition,
-): ArithmeticPlacementComposition => Object.freeze({
-  placementStrategy: composition.placementStrategy,
-  constants: Object.freeze(composition.constants.map((constant) => Object.freeze({
-    value: constant.value,
-    dataPtType: Object.freeze({
-      valueDomain: Object.freeze({ ...constant.dataPtType.valueDomain }),
-      wireLayout: Object.freeze({ ...constant.dataPtType.wireLayout }),
-    }),
-  }))),
-  numSteps: composition.numSteps,
-  numOperands: composition.numOperands,
-  numResults: composition.numResults,
-  steps: Object.freeze(composition.steps.map((step) => Object.freeze({
-    subcircuit: step.subcircuit,
-    usage: step.usage,
-    selector: step.selector,
-    inputs: Object.freeze(step.inputs.map(freezeReference)),
-    outputs: Object.freeze(step.outputs.map(freezeReference)),
-  }))),
-});
+): ArithmeticPlacementComposition;
+export function freezeComposition(
+  composition: SysFlowPlacementComposition,
+): SysFlowPlacementComposition;
+export function freezeComposition(
+  composition: PlacementComposition,
+): PlacementComposition;
+export function freezeComposition(
+  composition: PlacementComposition,
+): PlacementComposition {
+  if (composition.category === 'sys-flow') {
+    switch (composition.operator) {
+      case 'MEMORY_TO_STACK_LOAD':
+        return Object.freeze({
+          category: composition.category,
+          operator: composition.operator,
+          topology: composition.topology,
+        });
+      case 'MEMORY_TO_MEMORY_LOAD':
+        return Object.freeze({
+          category: composition.category,
+          operator: composition.operator,
+          topology: composition.topology,
+        });
+    }
+  }
+
+  return Object.freeze({
+    category: composition.category,
+    placementStrategy: composition.placementStrategy,
+    constants: Object.freeze(composition.constants.map((constant) => Object.freeze({
+      value: constant.value,
+      dataPtType: Object.freeze({
+        valueDomain: Object.freeze({ ...constant.dataPtType.valueDomain }),
+        wireLayout: Object.freeze({ ...constant.dataPtType.wireLayout }),
+      }),
+    }))),
+    numSteps: composition.numSteps,
+    numOperands: composition.numOperands,
+    numResults: composition.numResults,
+    steps: Object.freeze(composition.steps.map((step) => Object.freeze({
+      subcircuit: step.subcircuit,
+      usage: step.usage,
+      selector: step.selector,
+      inputs: Object.freeze(step.inputs.map(freezeReference)),
+      outputs: Object.freeze(step.outputs.map(freezeReference)),
+    }))),
+  });
+}
 
 export const assertPositiveInteger = (value: number, description: string): void => {
   if (!Number.isInteger(value) || value < 1) {
