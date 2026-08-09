@@ -6,6 +6,8 @@
 > path and is preserved as audit history. Those targets were later replaced by
 > the six-type native-field transaction-signature composition documented in
 > [Circuit Implementation and Composition Reference](./circuit-implementation-reference.md).
+> The `Accumulator` target described below was also retired and replaced by
+> the composition-dependent `MemoryLoadStep` target.
 > Current target identities, counts, and soundness dependencies are maintained
 > only in the linked circuit implementation reference. The original
 > merged-wrapper findings remain useful as audit history.
@@ -421,11 +423,11 @@ Accordingly, this finding is kept only as a compile-target boundary note rather 
 
 Severity: Medium
 
-Current status: Conditional
+Current status: Historical; the audited target is retired
 
-`Accumulator_circuit.circom` chains `Add256_unsafe()` over public split-limb inputs but only checks the final output bus:
-
-- [`subcircuits/circom/Accumulator_circuit.circom`](../subcircuits/circom/Accumulator_circuit.circom)
+At the audited snapshot, `Accumulator_circuit.circom` chained
+`Add256_unsafe()` over public split-limb inputs but checked only the final
+output bus. That wrapper no longer exists in the production target list.
 
 The arithmetic implementation used by the compiled wrapper explicitly assumes that input and output well-formedness is guaranteed:
 
@@ -460,6 +462,16 @@ That means the standalone reproduction above no longer translates directly into 
 - if any producer path can carry unchecked non-canonical split limbs into `Accumulator`, the same ambiguity can still propagate through the composed system
 
 So this is not a confirmed top-level exploit from the local code alone, but it remains a real dependency that must be discharged by the external composition.
+
+#### Current resolution
+
+The production catalog replaces this target with
+[`MemoryLoadStep`](../subcircuits/circom/MemoryLoadStep_circuit.circom).
+`MemoryLoadStep` locally constrains source limbs, shift metadata, ownership,
+masking, and disjointness. It also exposes the complete running word and
+ownership state so the composition can enforce exact serial wiring. The
+current target and its mandatory composition dependencies are documented in
+[Circuit Implementation and Composition Reference](./circuit-implementation-reference.md#memory-load-composition).
 
 ### Finding 9: `SubExpBatch` accepts non-canonical hidden 256-bit state
 
@@ -654,7 +666,6 @@ Those checks still exist through the `rem < divisor` structure and the internal 
 
 Fix or discharge the remaining compiled-circuit issues at the system level:
 
-- ensure every producer path into `Accumulator` enforces canonical 128-bit limbs, or add local bus checks inside that subcircuit
 - ensure the top-level proof statement binds the intended EdDSA message, challenge, key, and relation if `EdDsaVerify` is used as part of the composed circuit
 
 ### Recommended follow-up hardening
@@ -671,7 +682,7 @@ If a future composition exposes raw 255-bit split-limb values through public buf
 
 Add negative tests for:
 
-- unchecked producer paths feeding non-canonical values into `Accumulator`
+- malformed inputs and broken serial-state wiring in the replacement memory-load composition
 - any future change that bypasses the exact `DecToBit -> SubExp x 256 -> CheckBus256` exponentiation topology
 - top-level statement-binding failures around any composed use of `EdDsaVerify`
 
@@ -683,6 +694,6 @@ The later merged division-path soundness bugs around zero-divisor handling and o
 
 Under the composed-system assumptions supplied for this repository, the current residual concerns are:
 
-- a system-level requirement that producer paths into `Accumulator` enforce canonical 256-bit bus encoding
+- the mandatory exact-state and terminal-coverage wiring of the replacement memory-load composition
 
 The earlier standalone-artifact concerns about `JubjubExpBatch` and `EdDsaVerify` do not remain live issues once the wrappers are understood strictly as internal subcircuits under the fixed composed-chain contract described above. The 255-bit split-limb note is retained only as a boundary-handling consideration for future compositions that choose to expose those values publicly.

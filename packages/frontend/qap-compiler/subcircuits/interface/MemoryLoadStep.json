@@ -1,0 +1,16 @@
+{
+  "inputs": [
+    { "name": "sourceWord", "logicalType": { "kind": "uint", "bits": 256 } },
+    { "name": "byteShiftMagnitude", "logicalType": { "kind": "uint", "bits": 5 } },
+    { "name": "shiftDirection", "logicalType": { "kind": "uint", "bits": 1 } },
+    { "name": "incomingOwnership", "logicalType": { "kind": "uint", "bits": 32 } },
+    { "name": "previousWord", "logicalType": { "kind": "uint", "bits": 256 } },
+    { "name": "previousOwnership", "logicalType": { "kind": "uint", "bits": 32 } },
+    { "name": "expectedFinalCoverage", "logicalType": { "kind": "uint", "bits": 32 } },
+    { "name": "finalMode", "logicalType": { "kind": "uint", "bits": 1 } }
+  ],
+  "outputs": [
+    { "name": "nextWord", "logicalType": { "kind": "uint", "bits": 256 } },
+    { "name": "nextOwnership", "logicalType": { "kind": "uint", "bits": 32 } }
+  ]
+}

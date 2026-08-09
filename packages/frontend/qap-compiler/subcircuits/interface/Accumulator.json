@@ -1,8 +1,0 @@
-{
-  "inputs": [
-    { "name": "value", "length": { "constant": "nAccumulation" }, "logicalType": { "kind": "uint", "bits": 256 } }
-  ],
-  "outputs": [
-    { "name": "sum", "logicalType": { "kind": "uint", "bits": 256 } }
-  ]
-}

@@ -11,7 +11,6 @@ export const REQUIRED_CIRCOM_KEYS = [
   'nPrivateMessageInputs',
   'nPoseidonInputs',
   'nPoseidonBatch',
-  'nAccumulation',
   'nPrevBlockHashes',
   'nEqualBatch',
 ] as const;
