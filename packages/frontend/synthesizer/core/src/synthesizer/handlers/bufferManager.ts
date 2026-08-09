@@ -136,14 +136,8 @@ export class BufferManager {
     // }
 
     for (const buffer of BUFFER_LIST) {
-      const subcircuit = this.parent.subcircuitLibrary.subcircuitBufferMapping[buffer];
-      if (subcircuit === undefined) {
-        throw new Error(
-          `Could not find subcircuit info for placement '${buffer}'`,
-        )
-      }
-      this.parent.place(
-        subcircuit.name,
+      this.parent.placeBuffer(
+        buffer,
         new Array<DataPt>(0),
         new Array<DataPt>(0),
         BUFFER_DESCRIPTION[buffer],

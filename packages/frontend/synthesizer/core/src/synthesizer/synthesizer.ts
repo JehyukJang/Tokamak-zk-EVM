@@ -6,7 +6,7 @@ import { bigIntToBytes, bigIntToHex, bytesToBigInt, bytesToHex, createAddressFro
 import { EVMResult, InterpreterStep, Message } from '@ethereumjs/evm';
 import { DataAliasGeometries, DataPt, DataPtType, MemoryPts, Placements, ReservedVariable, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
 import { ArithmeticManager, BufferManager, ContextConstructionData, ContextManager, InstructionHandler, MemoryManager, StateManager, SynthesizerOpHandler } from './handlers/index.ts';
-import { ArithmeticOperator, SubcircuitNames } from '../subcircuit/configuredTypes.ts';
+import { ArithmeticOperator, ReservedBuffer } from '../subcircuit/configuredTypes.ts';
 import type { ResolvedSubcircuitLibrary } from '../subcircuit/libraryTypes.ts';
 import { DataPtFactory } from './dataStructure/dataPt.ts';
 import { TypedTransaction } from '@ethereumjs/tx';
@@ -441,8 +441,8 @@ export class Synthesizer implements SynthesizerInterface
       return this._instructionHandlers.synthesizerHandlers
     }
 
-  place(name: SubcircuitNames, inPts: DataPt[], outPts: DataPt[], usage: string): void {
-    this._state.place(name, inPts, outPts, usage)
+  placeBuffer(buffer: ReservedBuffer, inPts: DataPt[], outPts: DataPt[], usage: string): void {
+    this._state.placeBuffer(buffer, inPts, outPts, usage)
   }
 
   getReservedVariableFromBuffer(

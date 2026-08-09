@@ -9,7 +9,9 @@ import {
 } from '../types/index.ts';
 import { MemoryPt, StackPt } from '../dataStructure/index.ts';
 import {
+  ReservedBuffer,
   SubcircuitInfoByName,
+  SubcircuitInfoByNameEntry,
   SubcircuitNames,
 } from '../../subcircuit/configuredTypes.ts';
 import { InterpreterStep } from '@ethereumjs/evm';
@@ -57,6 +59,7 @@ export class StateManager {
   public readonly initialStorageReads = new InitialStorageReadList()
 
   public subcircuitInfoByName: SubcircuitInfoByName;
+  private readonly _bufferSubcircuitByBuffer: Record<ReservedBuffer, SubcircuitInfoByNameEntry | undefined>;
 
   public cachedEVMIn: Map<bigint, Map<string, DataPt>> = new Map()
   public cachedOrigin: DataPt | undefined = undefined
@@ -65,10 +68,11 @@ export class StateManager {
 
   constructor(parent: ISynthesizerProvider) {
     this.subcircuitInfoByName = parent.subcircuitLibrary.subcircuitInfoByName
+    this._bufferSubcircuitByBuffer = parent.subcircuitLibrary.subcircuitBufferMapping
   }
 
   public get placements(): Placements {
-    // placements are protected and can be manipulated only by this.place and this.addWirePairToBufferIn
+    // placements are protected and can be manipulated only by this._place and this.addWirePairToBufferIn
     return placementsDeepCopy(this._placements)
   }
 
@@ -88,7 +92,7 @@ export class StateManager {
     this.storageCache.completeFrame(depth, succeeded)
   }
 
-  public place(
+  private _place(
     name: SubcircuitNames,
     inPts: DataPt[],
     outPts: DataPt[],
@@ -109,6 +113,19 @@ export class StateManager {
       outPts,
     };
     this._placements.push(placement);
+  }
+
+  public placeBuffer(
+    buffer: ReservedBuffer,
+    inPts: DataPt[],
+    outPts: DataPt[],
+    usage: string,
+  ): void {
+    const subcircuit = this._bufferSubcircuitByBuffer[buffer]
+    if (subcircuit === undefined) {
+      throw new Error(`Synthesizer: Buffer subcircuit is not found for ${buffer}`)
+    }
+    this._place(subcircuit.name, inPts, outPts, usage)
   }
 
   public addWirePairToBufferIn(inPt: DataPt, outPt: DataPt, dynamic: boolean): DataPt {

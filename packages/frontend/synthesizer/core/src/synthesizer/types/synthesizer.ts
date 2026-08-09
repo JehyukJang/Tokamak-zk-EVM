@@ -3,7 +3,7 @@ import { TokamakL2StateManager, TokamakL2Tx } from 'tokamak-l2js';
 import { StateManager } from '../handlers/index.ts';
 import { DataAliasGeometries, DataPt, DataPtType, MemoryPts, Placements, ReservedVariable } from './index.ts';
 import { SynthesizerOpHandler } from '../handlers/instructionHandler.ts';
-import { ArithmeticOperator, SubcircuitNames } from '../../subcircuit/configuredTypes.ts';
+import { ArithmeticOperator, ReservedBuffer } from '../../subcircuit/configuredTypes.ts';
 import type { ResolvedSubcircuitLibrary } from '../../subcircuit/libraryTypes.ts';
 import type { BlockInfo } from '../../app/types.ts';
 
@@ -32,8 +32,8 @@ export interface SynthesizerInterface {
 
 export interface ISynthesizerProvider extends SynthesizerInterface {
   // from StateManager
-  place(
-    name: SubcircuitNames,
+  placeBuffer(
+    buffer: ReservedBuffer,
     inPts: DataPt[],
     outPts: DataPt[],
     usage: string,
