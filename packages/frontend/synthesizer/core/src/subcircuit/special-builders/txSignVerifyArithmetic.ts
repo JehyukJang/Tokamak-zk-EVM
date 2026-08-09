@@ -308,7 +308,6 @@ export const createTransactionSignatureVerifyArithmeticMapping = (
   return Object.freeze({
     operation: 'TransactionSignatureVerify',
     composition: freezeComposition({
-      category: 'arithmetic',
       placementStrategy: 'generic',
       constants,
       numSteps: steps.length,

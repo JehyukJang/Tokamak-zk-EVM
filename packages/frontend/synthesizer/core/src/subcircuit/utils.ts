@@ -43,17 +43,15 @@ export function freezeComposition(
 export function freezeComposition(
   composition: PlacementComposition,
 ): PlacementComposition {
-  if (composition.category === 'sys-flow') {
+  if ('operator' in composition) {
     switch (composition.operator) {
       case 'MEMORY_TO_STACK_LOAD':
         return Object.freeze({
-          category: composition.category,
           operator: composition.operator,
           topology: composition.topology,
         });
       case 'MEMORY_TO_MEMORY_LOAD':
         return Object.freeze({
-          category: composition.category,
           operator: composition.operator,
           topology: composition.topology,
         });
@@ -61,7 +59,6 @@ export function freezeComposition(
   }
 
   return Object.freeze({
-    category: composition.category,
     placementStrategy: composition.placementStrategy,
     constants: Object.freeze(composition.constants.map((constant) => Object.freeze({
       value: constant.value,

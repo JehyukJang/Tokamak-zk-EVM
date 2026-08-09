@@ -21,7 +21,6 @@ export const createPoseidonArithmeticMapping = (
   return Object.freeze({
     operation: 'Poseidon',
     composition: freezeComposition({
-      category: 'arithmetic',
       placementStrategy: 'poseidon',
       constants: [],
       numSteps: 'dynamic',

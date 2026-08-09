@@ -51,7 +51,6 @@ export type ConstantDefinition = Readonly<{
 }>;
 
 export type ArithmeticPlacementComposition = Readonly<{
-  category: 'arithmetic';
   placementStrategy: PlacementStrategy;
   constants: readonly ConstantDefinition[];
   numSteps: number | 'dynamic';
@@ -88,12 +87,10 @@ export type SysFlowPlacementResult =
 
 export type SysFlowPlacementComposition =
   | Readonly<{
-    category: 'sys-flow';
     operator: 'MEMORY_TO_STACK_LOAD';
     topology: 'serial-memory-load-step';
   }>
   | Readonly<{
-    category: 'sys-flow';
     operator: 'MEMORY_TO_MEMORY_LOAD';
     topology: 'chunk-first-memory-load-step';
   }>;
@@ -120,6 +117,10 @@ const isArithmeticOperator = (operator: string): operator is ArithmeticOperator 
 
 const isSysFlowOperator = (operator: string): operator is SysFlowOperator =>
   (SYS_FLOW_OPERATORS as readonly string[]).includes(operator);
+
+const isSysFlowComposition = (
+  composition: PlacementComposition,
+): composition is SysFlowPlacementComposition => 'operator' in composition;
 
 export class PlacementCompositionManager {
   private readonly compositions: ReadonlyMap<
@@ -164,14 +165,14 @@ export class PlacementCompositionManager {
         `PlacementCompositionManager: operation ${operation} has no mapping`,
       );
     }
-    if (isArithmeticOperator(operation) && composition.category === 'arithmetic') {
+    if (isArithmeticOperator(operation) && !isSysFlowComposition(composition)) {
       return composition;
     }
-    if (isSysFlowOperator(operation) && composition.category === 'sys-flow') {
+    if (isSysFlowOperator(operation) && isSysFlowComposition(composition)) {
       return composition;
     }
     throw new Error(
-      `PlacementCompositionManager: operation ${operation} has an invalid composition category`,
+      `PlacementCompositionManager: operation ${operation} has an invalid composition type`,
     );
   }
 
@@ -186,7 +187,7 @@ export class PlacementCompositionManager {
     }
 
     if (isArithmeticOperator(operation)) {
-      if (composition.category !== 'arithmetic') {
+      if (isSysFlowComposition(composition)) {
         throw new Error(
           `PlacementCompositionManager: arithmetic operation ${operation} requires an arithmetic composition`,
         );
@@ -195,7 +196,7 @@ export class PlacementCompositionManager {
       return;
     }
 
-    if (!isSysFlowOperator(operation) || composition.category !== 'sys-flow') {
+    if (!isSysFlowOperator(operation) || !isSysFlowComposition(composition)) {
       throw new Error(
         `PlacementCompositionManager: sys-flow operation ${operation} requires a sys-flow composition`,
       );
@@ -421,7 +422,6 @@ const createSingleStepMapping = (
 ): PlacementCompositionMapping => Object.freeze({
   operation,
   composition: freezeComposition({
-    category: 'arithmetic',
     placementStrategy: 'generic',
     constants,
     numSteps: 1,
@@ -486,7 +486,6 @@ export const FIXED_SYS_FLOW_COMPOSITION_MAPPINGS: readonly PlacementCompositionM
     Object.freeze({
       operation: 'MEMORY_TO_STACK_LOAD',
       composition: freezeComposition({
-        category: 'sys-flow',
         operator: 'MEMORY_TO_STACK_LOAD',
         topology: 'serial-memory-load-step',
       }),
@@ -494,7 +493,6 @@ export const FIXED_SYS_FLOW_COMPOSITION_MAPPINGS: readonly PlacementCompositionM
     Object.freeze({
       operation: 'MEMORY_TO_MEMORY_LOAD',
       composition: freezeComposition({
-        category: 'sys-flow',
         operator: 'MEMORY_TO_MEMORY_LOAD',
         topology: 'chunk-first-memory-load-step',
       }),
