@@ -1,5 +1,5 @@
 import {
-  ARITHMETIC_OPERATOR_LIST,
+  ARITHMETIC_OPERATORS,
   type ArithmeticSubcircuit,
   type ArithmeticOperator,
 } from './configuredTypes.ts';
@@ -116,7 +116,7 @@ export class ArithmeticSubcircuitComposition {
       compositions.set(operation, composition);
     }
 
-    for (const operation of ARITHMETIC_OPERATOR_LIST) {
+    for (const operation of ARITHMETIC_OPERATORS) {
       if (!compositions.has(operation)) {
         throw new Error(
           `ArithmeticSubcircuitComposition: operation ${operation} has no mapping`,

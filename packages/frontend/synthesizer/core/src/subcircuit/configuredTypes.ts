@@ -1,6 +1,6 @@
 import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
 
-export const ARITHMETIC_OPERATOR_LIST = [
+export const ARITHMETIC_OPERATORS = [
   'ADD',
   'MUL',
   'SUB',
@@ -33,7 +33,21 @@ export const ARITHMETIC_OPERATOR_LIST = [
   'EqualBatch',
 ] as const
 
-export type ArithmeticOperator = (typeof ARITHMETIC_OPERATOR_LIST)[number]
+export type ArithmeticOperator = (typeof ARITHMETIC_OPERATORS)[number]
+
+export const SYS_FLOW_OPERATORS = [
+  'MEMORY_TO_STACK_LOAD',
+  'MEMORY_TO_MEMORY_LOAD',
+] as const
+
+export type SysFlowOperator = (typeof SYS_FLOW_OPERATORS)[number]
+
+export const OPERATOR_LIST = [
+  ...ARITHMETIC_OPERATORS,
+  ...SYS_FLOW_OPERATORS,
+] as const
+
+export type Operator = (typeof OPERATOR_LIST)[number]
 
 const TRANSACTION_INPUT_VARIABLES = [
   'TRANSACTION_INPUT0', 'TRANSACTION_INPUT1', 'TRANSACTION_INPUT2', 'TRANSACTION_INPUT3',
@@ -96,7 +110,6 @@ export const ARITHMETIC_SUBCIRCUIT_LIST = [
     'DecToBit',
     'SubExp',
     'CheckBus256',
-    'MemoryLoadStep',
     'Poseidon',
     // 'PrepareEdDsaScalars',
     'JubjubExpBatch',
@@ -106,6 +119,19 @@ export const ARITHMETIC_SUBCIRCUIT_LIST = [
 
 export type ArithmeticSubcircuit = (typeof ARITHMETIC_SUBCIRCUIT_LIST)[number]
 
+export const SYS_FLOW_SUBCIRCUIT_LIST = [
+    'MemoryLoadStep',
+] as const
+
+export type SysFlowSubcircuit = (typeof SYS_FLOW_SUBCIRCUIT_LIST)[number]
+
+export const COMPOSITION_SUBCIRCUIT_LIST = [
+    ...ARITHMETIC_SUBCIRCUIT_LIST,
+    ...SYS_FLOW_SUBCIRCUIT_LIST,
+] as const
+
+export type CompositionSubcircuit = (typeof COMPOSITION_SUBCIRCUIT_LIST)[number]
+
 export const SUBCIRCUIT_LIST = [
     'bufferLogOut',
     'bufferStorageStore',
@@ -114,7 +140,7 @@ export const SUBCIRCUIT_LIST = [
     'bufferBlockIn',
     'bufferEVMIn',
     'bufferPrvIn',
-    ...ARITHMETIC_SUBCIRCUIT_LIST,
+    ...COMPOSITION_SUBCIRCUIT_LIST,
 ] as const
 
 export type SubcircuitNames = typeof SUBCIRCUIT_LIST[number]
