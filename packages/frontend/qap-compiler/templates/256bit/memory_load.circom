@@ -7,7 +7,7 @@ include "circomlib/circuits/bitify.circom";
 // The running word is sound only in the approved serial composition: the first
 // step receives the exact zero state and every later step receives the previous
 // step's three outputs on the same physical wires. Source limbs and both packed
-// ownership masks are checked locally.
+// ownership and expected-coverage masks are checked locally.
 template MemoryLoadStep() {
     // in[0..1]: source word, lower 128-bit limb first
     // in[2]: byte-shift magnitude
@@ -39,6 +39,9 @@ template MemoryLoadStep() {
 
     component previousOwnershipBits = Num2Bits(32);
     previousOwnershipBits.in <== in[7];
+
+    component expectedOwnershipBits = Num2Bits(32);
+    expectedOwnershipBits.in <== in[8];
 
     signal sourceByte[32];
     signal directionOrientedByte[32];
@@ -89,6 +92,7 @@ template MemoryLoadStep() {
         ownershipSum[byte] <== previousOwnershipBits.out[byte]
             + incomingOwnershipBits.out[byte];
         ownershipSum[byte] * (ownershipSum[byte] - 1) === 0;
+        ownershipSum[byte] * (1 - expectedOwnershipBits.out[byte]) === 0;
     }
 
     var lowAddition = 0;
@@ -99,8 +103,7 @@ template MemoryLoadStep() {
     }
     out[0] <== in[5] + lowAddition;
     out[1] <== in[6] + highAddition;
-    out[2] <== in[7] + in[4];
-
     in[9] * (in[9] - 1) === 0;
-    in[9] * (out[2] - in[8]) === 0;
+    out[2] <== in[7] + in[4]
+        + in[9] * (in[8] - in[7] - in[4]);
 }

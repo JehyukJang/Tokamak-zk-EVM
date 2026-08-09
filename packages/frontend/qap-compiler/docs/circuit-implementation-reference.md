@@ -295,7 +295,7 @@ input and intermediate result as a separate public value.
 | `DecToBit` | Decomposes one canonical 256-bit word into 256 LSB-first bits | 256 + 2 = 258 | 2 inputs: one word; 256 bit outputs | Locally sound. It supplies exponent or scalar bits to composed exponentiation chains. |
 | `SubExp` | One LSB-first square-and-multiply step for EVM `EXP` | 794 + 0 = 794 | 5 inputs: accumulator word, base-power word, and one bit; 4 outputs: next accumulator and base-power words | Composition-dependent; never use independently. It canonicalizes both input words and constrains the conditional factor, truncated square, and truncated accumulator product modulo `2^256`. Its bit must be the exact corresponding output of `DecToBit`. Both output words must feed the exact next `SubExp`; after the last step, the accumulator must feed `CheckBus256`. The unused final base-power word is discarded. |
 | `CheckBus256` | Canonicalizes and passes through one 256-bit word | 256 + 2 = 258 | 2 inputs: one word; 2 outputs: the exact checked word | Locally sound. In the EVM `EXP` composition it is the mandatory terminal consumer of the final `SubExp` accumulator and supplies the operation result. |
-| `MemoryLoadStep` | Applies one byte-aligned fragment to a running 256-bit memory view and its packed byte-ownership state | 616 + 1 = 617 | 10 inputs: source word, byte shift, direction, incoming ownership, previous word, previous ownership, expected coverage, and final mode; 3 outputs: next word and ownership | Composition-dependent; never use independently. Source limbs, shift metadata, ownership masks, byte shift, masking, and disjointness are constrained locally. The first placement must receive an exact zero state, every later placement must receive the previous placement's exact three outputs, and exactly the terminal placement must enable final coverage. |
+| `MemoryLoadStep` | Applies one byte-aligned fragment to a running 256-bit memory view and its packed byte-ownership state | 680 + 0 = 680 | 10 inputs: source word, byte shift, direction, incoming ownership, previous word, previous ownership, expected coverage, and final mode; 3 outputs: next word and ownership | Composition-dependent; never use independently. Source limbs, shift metadata, all ownership and coverage masks, byte shift, masking, disjointness, and the real-ownership subset relation are constrained locally. The first placement must receive an exact zero state, every later placement must receive the previous placement's exact three outputs, and exactly the terminal placement must close ownership to the expected coverage. |
 | `Poseidon` | Selector-chosen chain of up to four two-input Poseidon compressions over `uint(256)` words; current batch size is 4 | 964 + 0 = 964 | 11 inputs: selector and five lower-first `uint(256)` words; 2 outputs: one lower-first `uint(256)` word | Composition-dependent for exact limb representation. The local hash relation is `PoseidonFr(x mod Fr)` for each input word and intentionally does not require `x < Fr`; connected producers or the public-boundary verifier must constrain each physical limb to its declared width. |
 | `FrToLimbsPair` | Converts two independent native BLS12-381 scalar-field values to lower-first two-limb EVM words | 1,022 + 2 = 1,024 | 2 native-field inputs; 4 outputs: two lower-first limb pairs | Locally sound as two canonical conversions. Each input is constrained to its unique integer representation `0 ≤ x < Fr`; the circuit is general-purpose and is not part of the TSV placement catalog. |
 | `TransactionSignaturePoseidonBatch4` | Performs either four consecutive native-field Poseidon compressions or one independent compression plus a three-compression chain | 950 + 0 = 950 | 7 inputs: mode and six native field wires; 2 native-field outputs | Composition-dependent. Mode is locally Boolean, but the composition must assign the approved structural mode and connect every chain state exactly. |
@@ -505,22 +505,29 @@ and adds only disjoint byte positions to the running word. Consequently the
 serial composition needs neither an addition carry witness nor a terminal word
 range-check placement.
 
-Every placement receives the same expected packed coverage value. Final mode
-must be zero on every nonterminal placement and one on the terminal placement,
-where it enforces exact equality between the next ownership and expected
-coverage. The target constrains final mode to be Boolean but cannot determine
-its position in a variable-length composition by itself. The composition layer
-must therefore bind those mode values and all three state wires exactly. An
-all-zero final-mode sequence is not a valid memory-load composition even though
-an isolated set of step witnesses could satisfy the local target.
+Every placement receives the same expected packed coverage value. The target
+decomposes that value and proves that the real accumulated ownership is a subset
+of it. Final mode must be zero on every nonterminal placement and one on the
+terminal placement. A nonterminal placement returns only the real ownership
+union; the terminal placement returns the exact expected coverage without
+changing the accumulated word. Any expected but unowned byte is therefore zero
+by induction from the exact zero initial state and the rule that a step writes
+only bytes it owns. The target constrains final mode to be Boolean but cannot
+determine its position in a variable-length composition by itself. The
+composition layer must therefore bind those mode values and all three state
+wires exactly. An all-zero final-mode sequence is not a valid memory-load
+composition even though an isolated set of step witnesses could satisfy the
+local target.
 
 The composition layer must convert each selected memory byte from its existing
-`FF`/`00` value mask to the same-position ownership bit, reject malformed mask
-bytes and non-byte-aligned shifts, and add at most one zero-valued fragment that
-owns all uninitialized gaps. A completely uninitialized view may use the exact
-static-zero route without placing this target. These producer, terminal-mode,
-and state-wiring conditions are mandatory soundness dependencies and require
-Synthesizer permutation tests before the source catalog can be enabled.
+`FF`/`00` value mask to the same-position ownership bit and reject malformed
+mask bytes and non-byte-aligned shifts. It must not add a synthetic zero-valued
+fragment for uninitialized gaps; terminal gap closure handles those bytes
+inside the final real-fragment placement. A completely uninitialized view may
+use the exact static-zero route without placing this target. These producer,
+terminal-mode, and state-wiring conditions are mandatory soundness dependencies
+and require Synthesizer permutation tests before the source catalog can be
+enabled.
 
 ### Public boundary contract
 
