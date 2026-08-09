@@ -28,7 +28,6 @@ export function resolveSubcircuitLibraryData(
       EVM_IN: subcircuitInfoByName.get('bufferEVMIn'),
       PRIVATE_IN: subcircuitInfoByName.get('bufferPrvIn'),
     },
-    accumulatorInputLimit: data.frontendCfg.nAccumulation,
     numberOfPrevBlockHashes: data.frontendCfg.nPrevBlockHashes,
     poseidonBatchSize: data.frontendCfg.nPoseidonBatch,
     jubjubExpBatchSize: data.frontendCfg.nJubjubExpBatch,

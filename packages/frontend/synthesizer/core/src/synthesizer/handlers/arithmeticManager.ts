@@ -417,7 +417,6 @@ const ARITHMETIC_MAPPING: Record<ArithmeticSubcircuit, (values: bigint[]) => big
   DecToBit: ArithmeticOperations.decToBit,
   SubExp: ArithmeticOperations.subExp,
   CheckBus256: ArithmeticOperations.checkBus256,
-  Accumulator: ArithmeticOperations.accumulator,
   Poseidon: ArithmeticOperations.poseidon,
   JubjubExpBatch: ArithmeticOperations.jubjubExpBatch,
   EdDsaVerify: ArithmeticOperations.edDsaVerify,

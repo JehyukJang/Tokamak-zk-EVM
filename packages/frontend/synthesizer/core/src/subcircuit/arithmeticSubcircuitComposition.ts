@@ -390,7 +390,7 @@ export const FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS: readonly ArithmeticSubcircui
 
 export type SelectorFreeArithmeticMappingConfig = Pick<
   FrontendConfig,
-  'nAccumulation' | 'nEqualBatch'
+  'nEqualBatch'
 >;
 
 export const assertPositiveInteger = (value: number, description: string): void => {
@@ -404,17 +404,9 @@ export const assertPositiveInteger = (value: number, description: string): void 
 export const createSelectorFreeArithmeticMappings = (
   config: SelectorFreeArithmeticMappingConfig,
 ): readonly ArithmeticSubcircuitMapping[] => {
-  assertPositiveInteger(config.nAccumulation, 'nAccumulation');
   assertPositiveInteger(config.nEqualBatch, 'nEqualBatch');
 
   return Object.freeze([
-    createSingleStepMapping(
-      'Accumulator',
-      'Accumulator',
-      null,
-      config.nAccumulation,
-      1,
-    ),
     createSingleStepMapping(
       'EqualBatch',
       'EqualBatch',
@@ -427,7 +419,6 @@ export const createSelectorFreeArithmeticMappings = (
 
 export type ArithmeticSubcircuitCompositionConfig = Pick<
   FrontendConfig,
-  | 'nAccumulation'
   | 'nEqualBatch'
   | 'nJubjubExpBatch'
   | 'nPoseidonBatch'

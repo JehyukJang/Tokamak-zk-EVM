@@ -63,7 +63,6 @@ export const REQUIRED_CIRCOM_KEYS = [
   'nEVMIn',
   'nPoseidonInputs',
   'nPoseidonBatch',
-  'nAccumulation',
   'nPrevBlockHashes',
   'nJubjubExpBatch',
   'nEqualBatch',
@@ -89,7 +88,6 @@ export interface ResolvedSubcircuitLibrary {
   arithmeticSubcircuitComposition: ArithmeticSubcircuitComposition;
   subcircuitInfoByName: SubcircuitInfoByName;
   subcircuitBufferMapping: Record<ReservedBuffer, SubcircuitInfoByNameEntry | undefined>;
-  accumulatorInputLimit: number;
   numberOfPrevBlockHashes: number;
   poseidonBatchSize: number;
   jubjubExpBatchSize: number;

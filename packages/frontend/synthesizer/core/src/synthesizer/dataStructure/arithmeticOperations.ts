@@ -639,17 +639,6 @@ export class ArithmeticOperations {
   }
 
   /**
-   * Accumulator
-   */
-  static accumulator(in_vals: bigint[]): bigint {
-    let acc = 0n
-    for (const in_val of in_vals) {
-      acc += in_val;
-    }
-    return acc & ArithmeticOperations.MAX_UINT256
-  }
-
-  /**
    * PoseidonN
    */
   static poseidonN(in_vals: bigint[]): bigint {
