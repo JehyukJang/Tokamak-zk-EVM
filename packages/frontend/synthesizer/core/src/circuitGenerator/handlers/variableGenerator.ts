@@ -4,11 +4,13 @@ import { DataPtFactory } from '../../synthesizer/dataStructure/dataPt.ts';
 import { DataPt } from '../../synthesizer/types/dataStructure.ts';
 import {
   PlacementEntry,
-  placementEntryDeepCopy,
   Placements,
-  placementsDeepCopy,
   PlacementVariables,
 } from '../../synthesizer/types/placements.ts';
+import {
+  placementEntryDeepCopy,
+  placementsDeepCopy,
+} from '../../synthesizer/handlers/stateManager.ts';
 import { CircuitGenerator } from '../circuitGenerator.ts';
 import { builder } from '../utils/witness_calculator.ts';
 import { VARIABLE_DESCRIPTION } from '../../synthesizer/types/buffers.ts';

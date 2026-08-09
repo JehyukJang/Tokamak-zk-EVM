@@ -2,7 +2,6 @@ import { DataPtFactory } from '../../synthesizer/dataStructure/dataPt.ts';
 import {
   ISynthesizerProvider,
   MemoryPts,
-  placementsDeepCopy,
   type DataPt,
   type PlacementEntry,
   type Placements,
@@ -23,6 +22,130 @@ import type {
 import { InterpreterStep } from '@ethereumjs/evm';
 import { LogCache } from './logAccess.ts';
 import { InitialStorageReadList, StorageCache } from './storageAccess.ts';
+
+export function placementEntryDeepCopy(placement: PlacementEntry): PlacementEntry {
+  return {
+    ...placement,
+    inPts: placement.inPts.slice(),
+    outPts: placement.outPts.slice(),
+  }
+}
+
+export function placementsDeepCopy(placements: Placements): Placements {
+  const copy: Placements = []
+  for (const placement of placements) {
+    copy.push(placementEntryDeepCopy(placement))
+  }
+  return copy
+}
+
+function _assertPreparedInput(
+  preparedComposition: PreparedComposition,
+  stepIndex: number,
+  inputIndex: number,
+  input: PlacementComposition['steps'][number]['inputs'][number],
+  preparedInput: DataPt,
+  composition: PlacementComposition,
+  intermediateOutPts: readonly (DataPt | undefined)[],
+  basePlacementIndex: number,
+): void {
+  if (
+    !Number.isInteger(preparedInput.source)
+    || preparedInput.source < 0
+    || preparedInput.source >= basePlacementIndex + stepIndex
+  ) {
+    throw new Error(
+      `Synthesizer: ${preparedComposition.operation} step ${stepIndex} input ${inputIndex} is not connected to an earlier placement output`,
+    )
+  }
+
+  let expectedInput: DataPt | undefined
+  switch (input.kind) {
+    case 'operand':
+      expectedInput = preparedComposition.operands[input.index]
+      break
+    case 'step-output':
+      expectedInput = intermediateOutPts[input.index]
+      break
+    case 'constant': {
+      const constant = composition.constants[input.index]
+      if (
+        constant === undefined
+        || preparedInput.source !== BUFFER_LIST.indexOf('EVM_IN')
+        || preparedInput.value !== constant.value
+        || !_hasSameDataPtType(preparedInput, constant.dataPtType)
+      ) {
+        throw new Error(
+          `Synthesizer: ${preparedComposition.operation} step ${stepIndex} constant ${input.index} is invalid`,
+        )
+      }
+      return
+    }
+    case 'selector':
+      if (typeof composition.steps[stepIndex]!.selector !== 'bigint') {
+        throw new Error(
+          `Synthesizer: ${preparedComposition.operation} step ${stepIndex} requires a static selector`,
+        )
+      }
+      if (
+        preparedInput.source !== BUFFER_LIST.indexOf('EVM_IN')
+        || preparedInput.value !== composition.steps[stepIndex]!.selector
+      ) {
+        throw new Error(
+          `Synthesizer: ${preparedComposition.operation} step ${stepIndex} selector is invalid`,
+        )
+      }
+      return
+  }
+
+  if (expectedInput === undefined || !_isSameWire(preparedInput, expectedInput)) {
+    throw new Error(
+      `Synthesizer: ${preparedComposition.operation} step ${stepIndex} input ${inputIndex} is not connected to its declared source`,
+    )
+  }
+}
+
+function _assertPreparedWireCount(
+  operation: PreparedComposition['operation'],
+  subcircuit: SubcircuitNames,
+  target: 'input' | 'output',
+  dataPts: readonly DataPt[],
+  expectedWireCount: number,
+): void {
+  const actualWireCount = dataPts.reduce(
+    (count, { dataPtType: { wireLayout } }) =>
+      count + (wireLayout.kind === 'native-fr' ? 1 : wireLayout.count),
+    0,
+  )
+  if (actualWireCount !== expectedWireCount) {
+    throw new Error(
+      `Synthesizer: ${operation} ${subcircuit} expected ${expectedWireCount} ${target} wires, but got ${actualWireCount}`,
+    )
+  }
+}
+
+function _isSameWire(left: DataPt, right: DataPt): boolean {
+  return left.source === right.source && left.wireIndex === right.wireIndex
+}
+
+function _hasSameDataPtType(
+  dataPt: DataPt,
+  expectedType: DataPt['dataPtType'],
+): boolean {
+  const { valueDomain, wireLayout } = dataPt.dataPtType
+  return (
+    valueDomain.kind === expectedType.valueDomain.kind
+    && (valueDomain.kind !== 'uint' || (
+      expectedType.valueDomain.kind === 'uint'
+      && valueDomain.bits === expectedType.valueDomain.bits
+    ))
+    && wireLayout.kind === expectedType.wireLayout.kind
+    && (wireLayout.kind !== 'limbs-128' || (
+      expectedType.wireLayout.kind === 'limbs-128'
+      && wireLayout.count === expectedType.wireLayout.count
+    ))
+  )
+}
 
 export type ContextConstructionData = {
   callerPt: DataPt;
@@ -196,14 +319,14 @@ export class StateManager {
           `Synthesizer: ${step.subcircuit} subcircuit is not found for ${preparedComposition.operation}. Check qap-compiler.`,
         )
       }
-      this._assertPreparedWireCount(
+      _assertPreparedWireCount(
         preparedComposition.operation,
         step.subcircuit,
         'input',
         preparedStep.inPts,
         subcircuit.NInWires,
       )
-      this._assertPreparedWireCount(
+      _assertPreparedWireCount(
         preparedComposition.operation,
         step.subcircuit,
         'output',
@@ -222,7 +345,7 @@ export class StateManager {
       }
 
       for (const [inputIndex, input] of step.inputs.entries()) {
-        this._assertPreparedInput(
+        _assertPreparedInput(
           preparedComposition,
           stepIndex,
           inputIndex,
@@ -254,120 +377,12 @@ export class StateManager {
 
     for (const [resultIndex, resultPt] of preparedComposition.resultPts.entries()) {
       const producedResult = resultOutPts[resultIndex]
-      if (producedResult === undefined || !this._isSameWire(resultPt, producedResult)) {
+      if (producedResult === undefined || !_isSameWire(resultPt, producedResult)) {
         throw new Error(
           `Synthesizer: ${preparedComposition.operation} result ${resultIndex} is not connected to its declared producer`,
         )
       }
     }
-  }
-
-  private _assertPreparedInput(
-    preparedComposition: PreparedComposition,
-    stepIndex: number,
-    inputIndex: number,
-    input: PlacementComposition['steps'][number]['inputs'][number],
-    preparedInput: DataPt,
-    composition: PlacementComposition,
-    intermediateOutPts: readonly (DataPt | undefined)[],
-    basePlacementIndex: number,
-  ): void {
-    if (
-      !Number.isInteger(preparedInput.source)
-      || preparedInput.source < 0
-      || preparedInput.source >= basePlacementIndex + stepIndex
-    ) {
-      throw new Error(
-        `Synthesizer: ${preparedComposition.operation} step ${stepIndex} input ${inputIndex} is not connected to an earlier placement output`,
-      )
-    }
-
-    let expectedInput: DataPt | undefined
-    switch (input.kind) {
-      case 'operand':
-        expectedInput = preparedComposition.operands[input.index]
-        break
-      case 'step-output':
-        expectedInput = intermediateOutPts[input.index]
-        break
-      case 'constant': {
-        const constant = composition.constants[input.index]
-        if (
-          constant === undefined
-          || preparedInput.source !== BUFFER_LIST.indexOf('EVM_IN')
-          || preparedInput.value !== constant.value
-          || !this._hasSameDataPtType(preparedInput, constant.dataPtType)
-        ) {
-          throw new Error(
-            `Synthesizer: ${preparedComposition.operation} step ${stepIndex} constant ${input.index} is invalid`,
-          )
-        }
-        return
-      }
-      case 'selector':
-        if (typeof composition.steps[stepIndex]!.selector !== 'bigint') {
-          throw new Error(
-            `Synthesizer: ${preparedComposition.operation} step ${stepIndex} requires a static selector`,
-          )
-        }
-        if (
-          preparedInput.source !== BUFFER_LIST.indexOf('EVM_IN')
-          || preparedInput.value !== composition.steps[stepIndex]!.selector
-        ) {
-          throw new Error(
-            `Synthesizer: ${preparedComposition.operation} step ${stepIndex} selector is invalid`,
-          )
-        }
-        return
-    }
-
-    if (expectedInput === undefined || !this._isSameWire(preparedInput, expectedInput)) {
-      throw new Error(
-        `Synthesizer: ${preparedComposition.operation} step ${stepIndex} input ${inputIndex} is not connected to its declared source`,
-      )
-    }
-  }
-
-  private _assertPreparedWireCount(
-    operation: PreparedComposition['operation'],
-    subcircuit: SubcircuitNames,
-    target: 'input' | 'output',
-    dataPts: readonly DataPt[],
-    expectedWireCount: number,
-  ): void {
-    const actualWireCount = dataPts.reduce(
-      (count, { dataPtType: { wireLayout } }) =>
-        count + (wireLayout.kind === 'native-fr' ? 1 : wireLayout.count),
-      0,
-    )
-    if (actualWireCount !== expectedWireCount) {
-      throw new Error(
-        `Synthesizer: ${operation} ${subcircuit} expected ${expectedWireCount} ${target} wires, but got ${actualWireCount}`,
-      )
-    }
-  }
-
-  private _isSameWire(left: DataPt, right: DataPt): boolean {
-    return left.source === right.source && left.wireIndex === right.wireIndex
-  }
-
-  private _hasSameDataPtType(
-    dataPt: DataPt,
-    expectedType: DataPt['dataPtType'],
-  ): boolean {
-    const { valueDomain, wireLayout } = dataPt.dataPtType
-    return (
-      valueDomain.kind === expectedType.valueDomain.kind
-      && (valueDomain.kind !== 'uint' || (
-        expectedType.valueDomain.kind === 'uint'
-        && valueDomain.bits === expectedType.valueDomain.bits
-      ))
-      && wireLayout.kind === expectedType.wireLayout.kind
-      && (wireLayout.kind !== 'limbs-128' || (
-        expectedType.wireLayout.kind === 'limbs-128'
-        && wireLayout.count === expectedType.wireLayout.count
-      ))
-    )
   }
 
   public addWirePairToBufferIn(inPt: DataPt, outPt: DataPt, dynamic: boolean): DataPt {

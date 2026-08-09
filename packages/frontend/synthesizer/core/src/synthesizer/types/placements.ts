@@ -24,26 +24,6 @@ export type PreparedComposition = Readonly<{
   steps: readonly PreparedCompositionStep[];
 }>;
 
-export function placementEntryDeepCopy(placement: PlacementEntry): PlacementEntry {
-  return {
-    ...placement,
-    inPts: placement.inPts.slice(),
-    outPts: placement.outPts.slice(),
-  }
-}
-
-export function placementsDeepCopy(placements: Placements): Placements {
-  const copy: Placements = []
-  for (const placement of placements) {
-    copy.push({
-      ...placement,
-      inPts: placement.inPts.slice(),
-      outPts: placement.outPts.slice(),
-    })
-  }
-  return copy
-}
-
 export type PlacementVariableEntry = {
   subcircuitId: number;
   variables: string[];
