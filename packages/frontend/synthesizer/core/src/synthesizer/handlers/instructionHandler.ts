@@ -1,5 +1,5 @@
 
-import { ISynthesizerProvider, MemoryPts, PreparedComposition, synthesizerOpcodeByName, SynthesizerOpts, SynthesizerSupportedArithOpcodes, SynthesizerSupportedBlkInfOpcodes, SynthesizerSupportedEnvInfOpcodes, SynthesizerSupportedLogOpcodes, SynthesizerSupportedSysFlowOpcodes, type DataPt, type ReservedVariable, type SynthesizerSupportedOpcodes, UINT256_DATA_PT_TYPE } from '../types/index.ts';
+import { getDataPtWireCount, ISynthesizerProvider, MemoryPts, PreparedComposition, synthesizerOpcodeByName, SynthesizerOpts, SynthesizerSupportedArithOpcodes, SynthesizerSupportedBlkInfOpcodes, SynthesizerSupportedEnvInfOpcodes, SynthesizerSupportedLogOpcodes, SynthesizerSupportedSysFlowOpcodes, type DataPt, type ReservedVariable, type SynthesizerSupportedOpcodes, UINT256_DATA_PT_TYPE, UINT32_DATA_PT_TYPE } from '../types/index.ts';
 
 import {
   Address,
@@ -444,10 +444,7 @@ export class InstructionHandler {
           }
           finalInPts.push(this.parent.loadArbitraryStatic(
             step.selector,
-            {
-              valueDomain: { kind: 'uint', bits: 32 },
-              wireLayout: { kind: 'limbs-128', count: 1 },
-            },
+            UINT32_DATA_PT_TYPE,
             `ALU selector for ${operation} of ${step.subcircuit}`,
           ))
           break
@@ -580,7 +577,7 @@ export class InstructionHandler {
       canonicalAddressPt,
       canonicalKeyPt,
     ]
-    if (inPts.some(({ dataPtType: { wireLayout } }) => wireLayout.kind !== 'limbs-128' || wireLayout.count !== 2)) {
+    if (inPts.some(({ dataPtType }) => getDataPtWireCount(dataPtType) !== 2)) {
       throw new Error('Synthesizer: EqualBatch storage identities must use two-limb DataPts')
     }
     this.parent.placeComposition('StorageAccess', inPts)
