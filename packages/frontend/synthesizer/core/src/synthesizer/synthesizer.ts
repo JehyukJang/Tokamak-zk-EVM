@@ -38,6 +38,13 @@ export class Synthesizer implements SynthesizerInterface
     this._state = new StateManager(this)
     this._bufferManager = new BufferManager(this)
     this._arithmeticManager = new ArithmeticManager(this)
+    this._state.registerCompositionProducer(
+      ARITHMETIC_OPERATORS,
+      (name, inPts) => this._arithmeticManager.placeComposition(
+        name as ArithmeticOperator,
+        inPts,
+      ),
+    )
     this._memoryManager = new MemoryManager(this)
     this._instructionHandlers =  new InstructionHandler(this)
     this._eventHandlerError = undefined
@@ -446,10 +453,7 @@ export class Synthesizer implements SynthesizerInterface
   }
 
   placeComposition(name: Operator, inPts: DataPt[]): DataPt[] {
-    if ((ARITHMETIC_OPERATORS as readonly string[]).includes(name)) {
-      return this._arithmeticManager.placeComposition(name as ArithmeticOperator, inPts)
-    }
-    throw new Error(`Synthesizer: ${name} composition producer is not implemented`)
+    return this._state.placeComposition(name, inPts)
   }
 
   getReservedVariableFromBuffer(
