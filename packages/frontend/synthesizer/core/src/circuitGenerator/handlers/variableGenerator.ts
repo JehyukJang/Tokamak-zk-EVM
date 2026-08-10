@@ -1,7 +1,10 @@
 import { addHexPrefix, bigIntToHex } from '@ethereumjs/util';
 import { BUFFER_LIST } from '../../subcircuit/configuredTypes.ts';
 import { DataPtFactory } from '../../synthesizer/dataStructure/dataPt.ts';
-import { DataPt } from '../../synthesizer/types/dataStructure.ts';
+import {
+  getDataPtWireCount,
+  type DataPt,
+} from '../../synthesizer/types/dataStructure.ts';
 import {
   PlacementEntry,
   Placements,
@@ -205,8 +208,7 @@ export class VariableGenerator {
   private _expandDataPtIntoCircomWires(origDataPt: DataPt): DataPt[] {
     const newDataPts: DataPt[] = [];
     const copied = DataPtFactory.deepCopy(origDataPt);
-    const { wireLayout } = origDataPt.dataPtType;
-    if (wireLayout.kind === 'limbs-128' && wireLayout.count === 2) {
+    if (getDataPtWireCount(origDataPt.dataPtType) === 2) {
       const lowerVal = copied.value & ((1n << 128n) - 1n);
       const upperVal = copied.value >> 128n;
       if (upperVal * (1n << 128n) + lowerVal !== copied.value) {
