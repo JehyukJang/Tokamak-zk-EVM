@@ -4,7 +4,11 @@ import {
   type Operator,
 } from './configuredTypes.ts';
 import { assertPositiveInteger, freezeComposition } from './utils.ts';
-import type { DataPtType } from '../synthesizer/types/dataStructure.ts';
+import {
+  isDataPtType,
+  type DataPtType,
+  UINT256_DATA_PT_TYPE,
+} from '../synthesizer/types/dataStructure.ts';
 import { createAddMulModCompositionMappings } from './special-builders/addMulModComposition.ts';
 import { createDivisionCompositionMappings } from './special-builders/divModComposition.ts';
 import { createExpCompositionMapping } from './special-builders/expComposition.ts';
@@ -172,37 +176,9 @@ export class PlacementCompositionManager {
     let highestOperandIndex = -1;
 
     for (const [constantIndex, constant] of composition.constants.entries()) {
-      const { valueDomain, wireLayout } = constant.dataPtType
-      if (
-        valueDomain.kind === 'uint'
-        && (
-          !Number.isInteger(valueDomain.bits)
-          || valueDomain.bits < 1
-          || valueDomain.bits > 256
-        )
-      ) {
+      if (!isDataPtType(constant.dataPtType)) {
         throw new Error(
-          `PlacementCompositionManager: ${operation} constant ${constantIndex} uint domain must have between 1 and 256 bits`,
-        );
-      }
-      if (
-        wireLayout.kind === 'limbs-128'
-        && wireLayout.count === 1
-        && (
-          valueDomain.kind !== 'uint'
-          || valueDomain.bits > 128
-        )
-      ) {
-        throw new Error(
-          `PlacementCompositionManager: ${operation} constant ${constantIndex} one-limb layout requires a uint domain of at most 128 bits`,
-        );
-      }
-      if (
-        wireLayout.kind === 'native-fr'
-        && valueDomain.kind === 'uint'
-      ) {
-        throw new Error(
-          `PlacementCompositionManager: ${operation} constant ${constantIndex} native-fr layout requires a field or scalar domain`,
+          `PlacementCompositionManager: ${operation} constant ${constantIndex} has an invalid canonical DataPt type`,
         );
       }
     }
@@ -352,10 +328,7 @@ const createSingleStepMapping = (
 
 const ZERO_WORD_CONSTANT: ConstantDefinition = Object.freeze({
   value: 0n,
-  dataPtType: {
-    valueDomain: { kind: 'uint', bits: 256 },
-    wireLayout: { kind: 'limbs-128', count: 2 },
-  },
+  dataPtType: UINT256_DATA_PT_TYPE,
 } satisfies ConstantDefinition);
 
 export const FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS: readonly PlacementCompositionMapping[] =

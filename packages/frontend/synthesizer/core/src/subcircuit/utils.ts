@@ -40,10 +40,7 @@ export function freezeComposition(
     placementStrategy: composition.placementStrategy,
     constants: Object.freeze(composition.constants.map((constant) => Object.freeze({
       value: constant.value,
-      dataPtType: Object.freeze({
-        valueDomain: Object.freeze({ ...constant.dataPtType.valueDomain }),
-        wireLayout: Object.freeze({ ...constant.dataPtType.wireLayout }),
-      }),
+      dataPtType: constant.dataPtType,
     }))),
     numSteps: composition.numSteps,
     numOperands: composition.numOperands,
