@@ -6,7 +6,7 @@ import { bigIntToBytes, bigIntToHex, bytesToBigInt, bytesToHex, createAddressFro
 import { EVMResult, InterpreterStep, Message } from '@ethereumjs/evm';
 import { DataAliasGeometries, DataPt, DataPtType, MemoryPts, Placements, PreparedComposition, ReservedVariable, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
 import { ArithmeticManager, BufferManager, ContextConstructionData, ContextManager, InstructionHandler, MemoryManager, StateManager, SynthesizerOpHandler } from './handlers/index.ts';
-import { ReservedBuffer } from '../subcircuit/configuredTypes.ts';
+import { ArithmeticSubcircuit, ReservedBuffer } from '../subcircuit/configuredTypes.ts';
 import type { ResolvedSubcircuitLibrary } from '../subcircuit/libraryTypes.ts';
 import { DataPtFactory } from './dataStructure/dataPt.ts';
 import { TypedTransaction } from '@ethereumjs/tx';
@@ -447,6 +447,13 @@ export class Synthesizer implements SynthesizerInterface
 
   placeComposition(preparedComposition: PreparedComposition): void {
     this._state.placeComposition(preparedComposition)
+  }
+
+  calculateArithSubcircuitOutputValues(
+    name: ArithmeticSubcircuit,
+    values: bigint[],
+  ): bigint[] {
+    return this._arithmeticManager.calculateArithSubcircuitOutputValues(name, values)
   }
 
   getReservedVariableFromBuffer(
