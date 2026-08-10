@@ -341,7 +341,7 @@ export const FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS: readonly PlacementCompositio
     createSingleStepMapping('SLT', 'ALU3', 1n << 18n, 2, 1),
     createSingleStepMapping('SGT', 'ALU3', 1n << 19n, 2, 1),
     createSingleStepMapping('EQ', 'ALU1', 1n << 20n, 2, 1),
-    createSingleStepMapping('ISZERO', 'ALU1', 1n << 21n, 1, 1, [ZERO_WORD_CONSTANT]),
+    createSingleStepMapping('ISZERO', 'ALU2', 1n << 21n, 1, 1, [ZERO_WORD_CONSTANT]),
     createSingleStepMapping('AND', 'AND', 1n << 22n, 2, 1),
     createSingleStepMapping('OR', 'OR', 1n << 23n, 2, 1),
     createSingleStepMapping('XOR', 'XOR', 1n << 24n, 2, 1),
