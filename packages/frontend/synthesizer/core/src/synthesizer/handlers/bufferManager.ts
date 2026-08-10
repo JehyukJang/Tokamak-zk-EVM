@@ -79,7 +79,7 @@ export class BufferManager {
     dataPtType: DataPtType,
     desc?: string,
   ): DataPt {
-    const cacheKey = this._getArbitraryStaticCacheKey(dataPtType)
+    const cacheKey = dataPtType
     if (desc === undefined) {
       const cachedDataPt = this.parent.state.cachedEVMIn.get(value)?.get(cacheKey)
       if (cachedDataPt !== undefined) {
@@ -100,12 +100,6 @@ export class BufferManager {
     cachedByDomainAndLayout.set(cacheKey, outPt)
     this.parent.state.cachedEVMIn.set(value, cachedByDomainAndLayout)
     return DataPtFactory.deepCopy(outPt)
-  }
-
-  private _getArbitraryStaticCacheKey(
-    dataPtType: DataPtType,
-  ): string {
-    return dataPtType
   }
 
   /**
