@@ -1,5 +1,5 @@
 
-import { ISynthesizerProvider, MemoryPts, synthesizerOpcodeByName, SynthesizerOpts, SynthesizerSupportedArithOpcodes, SynthesizerSupportedBlkInfOpcodes, SynthesizerSupportedEnvInfOpcodes, SynthesizerSupportedLogOpcodes, SynthesizerSupportedSysFlowOpcodes, type DataPt, type ReservedVariable, type SynthesizerSupportedOpcodes } from '../types/index.ts';
+import { EVM_WORD_DATA_PT_TYPE, ISynthesizerProvider, MemoryPts, PreparedComposition, synthesizerOpcodeByName, SynthesizerOpts, SynthesizerSupportedArithOpcodes, SynthesizerSupportedBlkInfOpcodes, SynthesizerSupportedEnvInfOpcodes, SynthesizerSupportedLogOpcodes, SynthesizerSupportedSysFlowOpcodes, type DataPt, type ReservedVariable, type SynthesizerSupportedOpcodes } from '../types/index.ts';
 
 import {
   Address,
@@ -13,7 +13,7 @@ import {
 } from '@ethereumjs/util'
 import { InterpreterStep } from '@ethereumjs/evm'
 import { DataPtFactory, MemoryPt, StackPt } from '../dataStructure/index.ts';
-import { ArithmeticOperator, TX_MESSAGE_TO_HASH } from '../../subcircuit/configuredTypes.ts';
+import { ArithmeticOperator, type ArithmeticSubcircuit, TX_MESSAGE_TO_HASH } from '../../subcircuit/configuredTypes.ts';
 import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
 import { ContextManager } from './stateManager.ts';
 
@@ -420,6 +420,96 @@ export class InstructionHandler {
 
   }
 
+  private _submitSingleStepArithmeticComposition(
+    operation: ArithmeticOperator,
+    operands: DataPt[],
+  ): DataPt[] {
+    const composition = this.parent.subcircuitLibrary
+      .placementCompositionManager.get(operation)
+    const step = composition.steps[0]
+    if (
+      composition.placementStrategy !== 'generic'
+      || composition.numSteps !== 1
+      || composition.numResults !== 1
+      || step === undefined
+    ) {
+      throw new Error(
+        `Synthesizer: ${operation} is not a supported single-step arithmetic composition`,
+      )
+    }
+
+    const finalInPts: DataPt[] = []
+    for (const input of step.inputs) {
+      switch (input.kind) {
+        case 'selector':
+          if (typeof step.selector !== 'bigint') {
+            throw new Error(`Synthesizer: ${operation} requires a static selector`)
+          }
+          finalInPts.push(this.parent.loadArbitraryStatic(
+            step.selector,
+            {
+              valueDomain: { kind: 'uint', bits: 32 },
+              wireLayout: { kind: 'limbs-128', count: 1 },
+            },
+            `ALU selector for ${operation} of ${step.subcircuit}`,
+          ))
+          break
+        case 'operand': {
+          const operand = operands[input.index]
+          if (operand === undefined) {
+            throw new Error(
+              `Synthesizer: ${operation} operand ${input.index} is unavailable`,
+            )
+          }
+          finalInPts.push(operand)
+          break
+        }
+        case 'constant': {
+          const constant = composition.constants[input.index]
+          if (constant === undefined) {
+            throw new Error(
+              `Synthesizer: ${operation} constant ${input.index} is unavailable`,
+            )
+          }
+          finalInPts.push(this.parent.loadArbitraryStatic(
+            constant.value,
+            constant.dataPtType,
+          ))
+          break
+        }
+        case 'step-output':
+          throw new Error(
+            `Synthesizer: ${operation} single-step composition cannot consume an intermediate output`,
+          )
+      }
+    }
+
+    const values = this.parent.calculateArithSubcircuitOutputValues(
+      step.subcircuit as ArithmeticSubcircuit,
+      finalInPts.map(({ value }) => value),
+    )
+    const value = values[0]
+    if (value === undefined) {
+      throw new Error(
+        `Synthesizer: ${operation} did not produce a first subcircuit output`,
+      )
+    }
+
+    const resultPt = DataPtFactory.create({
+      source: this.parent.placements.length,
+      wireIndex: 0,
+      dataPtType: EVM_WORD_DATA_PT_TYPE,
+    }, value)
+    const preparedComposition: PreparedComposition = {
+      operation,
+      operands,
+      resultPts: [resultPt],
+      steps: [{ inPts: finalInPts, outPts: [resultPt] }],
+    }
+    this.parent.placeComposition(preparedComposition)
+    return [resultPt]
+  }
+
   getOriginAddressPt(): DataPt {
     const messagePts: DataPt[] = TX_MESSAGE_TO_HASH.map(msg => this.parent.getReservedVariableFromBuffer(msg))
 
@@ -657,7 +747,10 @@ export class InstructionHandler {
         }
         break
       default:
-        outPts = this.parent.placeComposition(op as ArithmeticOperator, inPts);
+        outPts = this._submitSingleStepArithmeticComposition(
+          op as ArithmeticOperator,
+          inPts,
+        );
         break;
     }
     if (outPts.length !== 1 || outPts[0].value !== out) {
