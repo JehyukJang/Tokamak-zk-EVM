@@ -1,4 +1,14 @@
-import { DataAliasGeometries, DataAliasInfos, DataPt, ISynthesizerProvider, MemoryPtEntry, MemoryPts } from '../types/index.ts';
+import {
+  BIT_DATA_PT_TYPE,
+  DataAliasGeometries,
+  DataAliasInfos,
+  DataPt,
+  ISynthesizerProvider,
+  MemoryPtEntry,
+  MemoryPts,
+  UINT256_DATA_PT_TYPE,
+  UINT32_DATA_PT_TYPE,
+} from '../types/index.ts';
 import { DataPtFactory, MemoryPt } from '../dataStructure/index.ts';
 import { ArithmeticOperator } from '../../subcircuit/configuredTypes.ts';
 
@@ -10,10 +20,7 @@ export class MemoryManager {
   public placeMSTORE8(dataPt: DataPt): DataPt {
     const maskPt = this.parent.loadArbitraryStatic(
       0xffn,
-      {
-        valueDomain: { kind: 'uint', bits: 256 },
-        wireLayout: { kind: 'limbs-128', count: 2 },
-      },
+      UINT256_DATA_PT_TYPE,
       'Masker for MSTORE8',
     )
     const outPts = this.parent.placeComposition('AND', [maskPt, dataPt])
@@ -57,17 +64,17 @@ export class MemoryManager {
         dataPt,
         shiftPt: this.parent.loadArbitraryStatic(
           shiftMagnitude,
-          { valueDomain: { kind: 'uint', bits: 5 }, wireLayout: { kind: 'limbs-128', count: 1 } },
+          UINT32_DATA_PT_TYPE,
           'Memory-load byte shift magnitude',
         ),
         directionPt: this.parent.loadArbitraryStatic(
           direction,
-          { valueDomain: { kind: 'uint', bits: 1 }, wireLayout: { kind: 'limbs-128', count: 1 } },
+          BIT_DATA_PT_TYPE,
           'Memory-load shift direction',
         ),
         maskerPt: this.parent.loadArbitraryStatic(
           ownershipMask,
-          { valueDomain: { kind: 'uint', bits: 32 }, wireLayout: { kind: 'limbs-128', count: 1 } },
+          UINT32_DATA_PT_TYPE,
           'Memory-load byte ownership mask',
         ),
       });
@@ -131,10 +138,7 @@ export class MemoryManager {
       containerByteSize: lengthNum,
       dataPt: this.parent.loadArbitraryStatic(
         0n,
-        {
-          valueDomain: { kind: 'uint', bits: 256 },
-          wireLayout: { kind: 'limbs-128', count: 2 },
-        },
+        UINT256_DATA_PT_TYPE,
       ),
     }
     if (toMemoryPts.length > 0) {
@@ -167,10 +171,7 @@ export class MemoryManager {
     const [truncatedPt] = this.parent.placeComposition('SHR', [
       this.parent.loadArbitraryStatic(
         BigInt(endingGap * 8),
-        {
-          valueDomain: { kind: 'uint', bits: 256 },
-          wireLayout: { kind: 'limbs-128', count: 2 },
-        },
+        UINT256_DATA_PT_TYPE,
         'Shifter for memory manipulation',
       ),
       dataPt,
@@ -221,10 +222,7 @@ export class MemoryManager {
       const inPts: DataPt[] = [
         this.parent.loadArbitraryStatic(
           BigInt(absShift),
-          {
-            valueDomain: { kind: 'uint', bits: 256 },
-            wireLayout: { kind: 'limbs-128', count: 2 },
-          },
+          UINT256_DATA_PT_TYPE,
           'Shifter for memory manipulation',
         ),
         dataPt,
@@ -248,10 +246,7 @@ export class MemoryManager {
     const inPts: DataPt[] = [
       this.parent.loadArbitraryStatic(
         effectiveMask,
-        {
-          valueDomain: { kind: 'uint', bits: 256 },
-          wireLayout: { kind: 'limbs-128', count: 2 },
-        },
+        UINT256_DATA_PT_TYPE,
         'Masker for memory manipulation',
       ),
       dataPt,
