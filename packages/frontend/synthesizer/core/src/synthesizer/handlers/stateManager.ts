@@ -7,6 +7,7 @@ import {
   type Placements,
   type PreparedComposition,
 } from '../types/index.ts';
+import { getDataPtWireCount } from '../types/dataStructure.ts';
 import { MemoryPt, StackPt } from '../dataStructure/index.ts';
 import {
   BUFFER_LIST,
@@ -113,8 +114,7 @@ function _assertPreparedWireCount(
   expectedWireCount: number,
 ): void {
   const actualWireCount = dataPts.reduce(
-    (count, { dataPtType: { wireLayout } }) =>
-      count + (wireLayout.kind === 'native-fr' ? 1 : wireLayout.count),
+    (count, { dataPtType }) => count + getDataPtWireCount(dataPtType),
     0,
   )
   if (actualWireCount !== expectedWireCount) {
@@ -132,19 +132,7 @@ function _hasSameDataPtType(
   dataPt: DataPt,
   expectedType: DataPt['dataPtType'],
 ): boolean {
-  const { valueDomain, wireLayout } = dataPt.dataPtType
-  return (
-    valueDomain.kind === expectedType.valueDomain.kind
-    && (valueDomain.kind !== 'uint' || (
-      expectedType.valueDomain.kind === 'uint'
-      && valueDomain.bits === expectedType.valueDomain.bits
-    ))
-    && wireLayout.kind === expectedType.wireLayout.kind
-    && (wireLayout.kind !== 'limbs-128' || (
-      expectedType.wireLayout.kind === 'limbs-128'
-      && wireLayout.count === expectedType.wireLayout.count
-    ))
-  )
+  return dataPt.dataPtType === expectedType
 }
 
 export type ContextConstructionData = {
