@@ -1,5 +1,5 @@
 
-import { EVM_WORD_DATA_PT_TYPE, ISynthesizerProvider, MemoryPts, PreparedComposition, synthesizerOpcodeByName, SynthesizerOpts, SynthesizerSupportedArithOpcodes, SynthesizerSupportedBlkInfOpcodes, SynthesizerSupportedEnvInfOpcodes, SynthesizerSupportedLogOpcodes, SynthesizerSupportedSysFlowOpcodes, type DataPt, type ReservedVariable, type SynthesizerSupportedOpcodes } from '../types/index.ts';
+import { ISynthesizerProvider, MemoryPts, PreparedComposition, synthesizerOpcodeByName, SynthesizerOpts, SynthesizerSupportedArithOpcodes, SynthesizerSupportedBlkInfOpcodes, SynthesizerSupportedEnvInfOpcodes, SynthesizerSupportedLogOpcodes, SynthesizerSupportedSysFlowOpcodes, type DataPt, type ReservedVariable, type SynthesizerSupportedOpcodes, UINT256_DATA_PT_TYPE } from '../types/index.ts';
 
 import {
   Address,
@@ -370,10 +370,7 @@ export class InstructionHandler {
         const staticInDesc = `Static input for PUSH${numToPush} instruction at PC ${opts.pc} of code address ${opts.thisAddress} (depth: ${opts.callDepth})`
         opts.stackPt.push(this.parent.loadArbitraryStatic(
           out,
-          {
-            valueDomain: { kind: 'uint', bits: 256 },
-            wireLayout: { kind: 'limbs-128', count: 2 },
-          },
+          UINT256_DATA_PT_TYPE,
           staticInDesc,
         ))
         if (opts.stackPt.peek(1)[0].value !== out) {
@@ -498,7 +495,7 @@ export class InstructionHandler {
     const resultPt = DataPtFactory.create({
       source: this.parent.placements.length,
       wireIndex: 0,
-      dataPtType: EVM_WORD_DATA_PT_TYPE,
+      dataPtType: UINT256_DATA_PT_TYPE,
     }, value)
     const preparedComposition: PreparedComposition = {
       operation,
@@ -788,10 +785,7 @@ export class InstructionHandler {
         if (blockNumberDiff <= 0n || blockNumberDiff > 256n) {
           dataPt = this.parent.loadArbitraryStatic(
             0n,
-            {
-              valueDomain: { kind: 'uint', bits: 256 },
-              wireLayout: { kind: 'limbs-128', count: 2 },
-            },
+            UINT256_DATA_PT_TYPE,
           )
           break
         }
@@ -822,10 +816,7 @@ export class InstructionHandler {
     // return cachedDataPt ?? this.parent.loadArbitraryStatic(
     return this.parent.loadArbitraryStatic(
       value,
-      {
-        valueDomain: { kind: 'uint', bits: 256 },
-        wireLayout: { kind: 'limbs-128', count: 2 },
-      },
+      UINT256_DATA_PT_TYPE,
       staticInDesc + targetDesc,
     )
   }
@@ -921,19 +912,13 @@ export class InstructionHandler {
             } else {
               stackPt.push(this.parent.loadArbitraryStatic(
                 0n,
-                {
-                  valueDomain: { kind: 'uint', bits: 256 },
-                  wireLayout: { kind: 'limbs-128', count: 2 },
-                },
+                UINT256_DATA_PT_TYPE,
               ))
             }
           } else {
             stackPt.push(this.parent.loadArbitraryStatic(
               0n,
-              {
-                valueDomain: { kind: 'uint', bits: 256 },
-                wireLayout: { kind: 'limbs-128', count: 2 },
-              },
+              UINT256_DATA_PT_TYPE,
             ))
           }   
         }
@@ -1154,10 +1139,7 @@ export class InstructionHandler {
           const mutDataPt = dataAliasInfos.length === 0
             ? this.parent.loadArbitraryStatic(
                 0n,
-                {
-                  valueDomain: { kind: 'uint', bits: 256 },
-                  wireLayout: { kind: 'limbs-128', count: 2 },
-                },
+                UINT256_DATA_PT_TYPE,
               )
             : this.parent.placeMemoryToStack(dataAliasInfos, 32)
           opts.stackPt.push(mutDataPt)
@@ -1217,10 +1199,7 @@ export class InstructionHandler {
           const staticInDesc = `Static input for ${opts.op} instruction at PC ${opts.pc} of code address ${opts.codeAddress} (depth: ${opts.callDepth})`
           opts.stackPt.push(this.parent.loadArbitraryStatic(
             out!,
-            {
-              valueDomain: { kind: 'uint', bits: 256 },
-              wireLayout: { kind: 'limbs-128', count: 2 },
-            },
+            UINT256_DATA_PT_TYPE,
             staticInDesc,
           ))
         }
@@ -1274,10 +1253,7 @@ export class InstructionHandler {
           }
           opts.stackPt.push(this.parent.loadArbitraryStatic(
             out!,
-            {
-              valueDomain: { kind: 'uint', bits: 256 },
-              wireLayout: { kind: 'limbs-128', count: 2 },
-            },
+            UINT256_DATA_PT_TYPE,
             `Call result of ${op} instruction at PC ${opts.pc} of code address ${opts.codeAddress} (depth: ${opts.callDepth})`,
           ))
         }
@@ -1347,10 +1323,7 @@ export class InstructionHandler {
       const desc = `Code of address: ${bigIntToHex(targetAddress)}, offset: ${Number(codeOffset)}, length: ${Number(dataLength)} bytes, chunk: ${i+1} out of ${nChunks}.`
       const dataPt = this.parent.loadArbitraryStatic(
         dataSlice,
-        {
-          valueDomain: { kind: 'uint', bits: 256 },
-          wireLayout: { kind: 'limbs-128', count: 2 },
-        },
+        UINT256_DATA_PT_TYPE,
         desc,
       )
       memPts.push({
@@ -1389,10 +1362,7 @@ export class InstructionHandler {
       } else {
         chunkDataPts[i] = this.parent.loadArbitraryStatic(
           0n,
-          {
-            valueDomain: { kind: 'uint', bits: 256 },
-            wireLayout: { kind: 'limbs-128', count: 2 },
-          },
+          UINT256_DATA_PT_TYPE,
         );
       }
   
