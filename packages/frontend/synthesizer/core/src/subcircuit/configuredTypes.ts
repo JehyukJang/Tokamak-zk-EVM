@@ -1,4 +1,5 @@
 import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
+import type { LogicalInterface } from './libraryTypes.ts';
 
 export const ARITHMETIC_OPERATORS = [
   'ADD',
@@ -168,6 +169,7 @@ export type SubcircuitInfoByNameEntry = {
   outWireIndex: number;
   NOutWires: number;
   flattenMap: number[];
+  logicalInterface?: LogicalInterface;
 };
 
 export type SubcircuitInfoByName = Map<

@@ -1,6 +1,9 @@
 import {
   FrontendConfig,
   GlobalWireList,
+  LogicalInterface,
+  LogicalInterfacePort,
+  LogicalInterfaceType,
   SetupParams,
   SubcircuitInfo,
   SubcircuitLibraryData,
@@ -9,6 +12,7 @@ import {
   SubcircuitInfoByName,
   SubcircuitInfoByNameEntry,
   SubcircuitNames,
+  COMPOSITION_SUBCIRCUIT_LIST,
 } from './configuredTypes.ts';
 import {
   isNumber,
@@ -154,6 +158,7 @@ export function parseSubcircuitInfo(value: unknown): SubcircuitInfo {
     const outIdx = entry.Out_idx;
     const inIdx = entry.In_idx;
     const flattenMap = entry.flattenMap;
+    const logicalInterface = entry.logicalInterface;
 
     if (!isNumber(id)) throw new Error('Invalid field in subcircuitInfo.json: id');
     if (!isSubcircuitName(name)) throw new Error('Invalid field in subcircuitInfo.json: name');
@@ -163,6 +168,15 @@ export function parseSubcircuitInfo(value: unknown): SubcircuitInfo {
     if (!isTupleNumber2(inIdx)) throw new Error('Invalid field in subcircuitInfo.json: In_idx');
     if (!isNumberArray(flattenMap)) throw new Error('Invalid field in subcircuitInfo.json: flattenMap');
 
+    const isCompositionSubcircuit = (COMPOSITION_SUBCIRCUIT_LIST as readonly string[])
+      .includes(name);
+    if (isCompositionSubcircuit && logicalInterface === undefined) {
+      throw new Error(`Invalid field in subcircuitInfo.json: ${name} logicalInterface is required`);
+    }
+    if (!isCompositionSubcircuit && logicalInterface !== undefined) {
+      throw new Error(`Invalid field in subcircuitInfo.json: ${name} buffer must not define logicalInterface`);
+    }
+
     return {
       id,
       name,
@@ -171,8 +185,50 @@ export function parseSubcircuitInfo(value: unknown): SubcircuitInfo {
       Out_idx: [outIdx[0], outIdx[1]],
       In_idx: [inIdx[0], inIdx[1]],
       flattenMap: [...flattenMap],
+      ...(logicalInterface === undefined
+        ? {}
+        : { logicalInterface: parseLogicalInterface(logicalInterface) }),
     };
   });
+}
+
+function parseLogicalInterfaceType(value: unknown): LogicalInterfaceType {
+  if (!isObjectRecord(value) || typeof value.kind !== 'string') {
+    throw new Error('Invalid logical interface type');
+  }
+  switch (value.kind) {
+    case 'uint':
+      if (!isNumber(value.bits) || !Number.isInteger(value.bits) || value.bits < 1 || value.bits > 256) {
+        throw new Error('Invalid logical interface uint width');
+      }
+      return { kind: 'uint', bits: value.bits };
+    case 'bls12-381-fr':
+      return { kind: 'bls12-381-fr' };
+    case 'jubjub-scalar':
+      return { kind: 'jubjub-scalar' };
+    default:
+      throw new Error(`Unsupported logical interface type: ${value.kind}`);
+  }
+}
+
+function parseLogicalInterfacePort(value: unknown): LogicalInterfacePort {
+  if (!isObjectRecord(value) || typeof value.name !== 'string' || value.name.length === 0) {
+    throw new Error('Invalid logical interface port');
+  }
+  return {
+    name: value.name,
+    logicalType: parseLogicalInterfaceType(value.logicalType),
+  };
+}
+
+function parseLogicalInterface(value: unknown): LogicalInterface {
+  if (!isObjectRecord(value) || !Array.isArray(value.inputs) || !Array.isArray(value.outputs)) {
+    throw new Error('Invalid logical interface');
+  }
+  return {
+    inputs: value.inputs.map(parseLogicalInterfacePort),
+    outputs: value.outputs.map(parseLogicalInterfacePort),
+  };
 }
 
 export function parseSubcircuitLibraryData(input: {
@@ -205,6 +261,7 @@ export function createInfoByName(subcircuitInfo: SubcircuitInfo): SubcircuitInfo
       inWireIndex: subcircuit.In_idx[0],
       outWireIndex: subcircuit.Out_idx[0],
       flattenMap: subcircuit.flattenMap,
+      logicalInterface: subcircuit.logicalInterface,
     };
 
     subcircuitInfoByName.set(subcircuit.name, entryObject);

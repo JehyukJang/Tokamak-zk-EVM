@@ -24,6 +24,21 @@ export type SetupParams = Record<typeof SETUP_PARAMS_KEYS[number], number>;
 export type GlobalWireEntry = readonly [subcircuitId: number, localWireIndex: number];
 export type GlobalWireList = GlobalWireEntry[];
 
+export type LogicalInterfaceType =
+  | Readonly<{ kind: 'uint'; bits: number }>
+  | Readonly<{ kind: 'bls12-381-fr' }>
+  | Readonly<{ kind: 'jubjub-scalar' }>;
+
+export type LogicalInterfacePort = Readonly<{
+  name: string;
+  logicalType: LogicalInterfaceType;
+}>;
+
+export type LogicalInterface = Readonly<{
+  inputs: readonly LogicalInterfacePort[];
+  outputs: readonly LogicalInterfacePort[];
+}>;
+
 // Primitive validators
 export const isObjectRecord = (x: unknown): x is Record<string, unknown> =>
   typeof x === 'object' && x !== null;
@@ -47,7 +62,11 @@ export const SUBCIRCUIT_INFO_VALIDATORS = {
 
 export type ValidatorMap = typeof SUBCIRCUIT_INFO_VALIDATORS;
 // Derive the item shape from the validator map (no duplication)
-type SubcircuitInfoItem = { [K in keyof ValidatorMap]: ValidatorMap[K] extends (x: unknown) => x is infer T ? T : never };
+type SubcircuitInfoItem = {
+  [K in keyof ValidatorMap]: ValidatorMap[K] extends (x: unknown) => x is infer T ? T : never
+} & {
+  logicalInterface?: LogicalInterface;
+};
 // Array of items
 export type SubcircuitInfo = SubcircuitInfoItem[];
 
