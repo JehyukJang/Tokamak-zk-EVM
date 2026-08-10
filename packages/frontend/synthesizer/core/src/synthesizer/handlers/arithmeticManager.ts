@@ -93,7 +93,7 @@ export class ArithmeticManager {
     }
 
     const values = inPts.map((pt) => pt.value);
-    const outValue = this._executeArithSubcircuit(name, values);
+    const outValue = this.calculateArithSubcircuitOutputValues(name, values);
     const resolvedDataPtTypes = dataPtTypes
       ?? Array(outValue.length).fill(EVM_WORD_DATA_PT_TYPE)
     if (resolvedDataPtTypes.length !== outValue.length) {
@@ -113,7 +113,7 @@ export class ArithmeticManager {
       : []
   }
 
-  private _executeArithSubcircuit(
+  public calculateArithSubcircuitOutputValues(
     name: ArithmeticSubcircuit,
     values: bigint[],
   ): bigint[] {
