@@ -105,14 +105,7 @@ export class BufferManager {
   private _getArbitraryStaticCacheKey(
     dataPtType: DataPtType,
   ): string {
-    const { valueDomain, wireLayout } = dataPtType
-    const domainKey = valueDomain.kind === 'uint'
-      ? `uint-${valueDomain.bits}`
-      : valueDomain.kind
-    const layoutKey = wireLayout.kind === 'limbs-128'
-      ? `limbs-128-${wireLayout.count}`
-      : wireLayout.kind
-    return `${domainKey}:${layoutKey}`
+    return dataPtType
   }
 
   /**
