@@ -10,7 +10,6 @@ import {
 import { MemoryPt, StackPt } from '../dataStructure/index.ts';
 import {
   BUFFER_LIST,
-  Operator,
   ReservedBuffer,
   SubcircuitInfoByName,
   SubcircuitInfoByNameEntry,
@@ -259,12 +258,7 @@ export class StateManager {
     this._place(subcircuit.name, inPts, outPts, usage)
   }
 
-  public placeComposition(name: Operator, inPts: DataPt[]): DataPt[] {
-    void inPts
-    throw new Error(`Synthesizer: ${name} composition producer is not implemented`)
-  }
-
-  private _placePreparedComposition(preparedComposition: PreparedComposition): void {
+  public placeComposition(preparedComposition: PreparedComposition): void {
     const composition = this._placementCompositionManager.get(preparedComposition.operation)
     if (composition.placementStrategy !== 'generic') {
       throw new Error(

@@ -4,9 +4,9 @@ import { BlockData, BlockOptions, createBlock, HeaderData } from '@ethereumjs/bl
 import { bigIntToBytes, bigIntToHex, bytesToBigInt, bytesToHex, createAddressFromBigInt, setLengthLeft } from '@ethereumjs/util';
 
 import { EVMResult, InterpreterStep, Message } from '@ethereumjs/evm';
-import { DataAliasGeometries, DataPt, DataPtType, MemoryPts, Placements, ReservedVariable, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
+import { DataAliasGeometries, DataPt, DataPtType, MemoryPts, Placements, PreparedComposition, ReservedVariable, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
 import { ArithmeticManager, BufferManager, ContextConstructionData, ContextManager, InstructionHandler, MemoryManager, StateManager, SynthesizerOpHandler } from './handlers/index.ts';
-import { Operator, ReservedBuffer } from '../subcircuit/configuredTypes.ts';
+import { ReservedBuffer } from '../subcircuit/configuredTypes.ts';
 import type { ResolvedSubcircuitLibrary } from '../subcircuit/libraryTypes.ts';
 import { DataPtFactory } from './dataStructure/dataPt.ts';
 import { TypedTransaction } from '@ethereumjs/tx';
@@ -445,8 +445,8 @@ export class Synthesizer implements SynthesizerInterface
     this._state.placeBuffer(buffer, inPts, outPts, usage)
   }
 
-  placeComposition(name: Operator, inPts: DataPt[]): DataPt[] {
-    return this._state.placeComposition(name, inPts)
+  placeComposition(preparedComposition: PreparedComposition): void {
+    this._state.placeComposition(preparedComposition)
   }
 
   getReservedVariableFromBuffer(
