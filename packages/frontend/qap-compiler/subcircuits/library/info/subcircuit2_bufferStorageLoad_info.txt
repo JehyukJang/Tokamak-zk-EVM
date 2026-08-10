@@ -7,6 +7,7 @@ public outputs: 40
 wires: 81
 labels: 81
 [32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/bufferStorageLoad_circuit.r1cs
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/bufferStorageLoad_circuit.sym
 [32mConstraints written in:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/bufferStorageLoad_circuit_constraints.json
 [32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/bufferStorageLoad_circuit_js/bufferStorageLoad_circuit.wasm
 [32mEverything went okay[0m

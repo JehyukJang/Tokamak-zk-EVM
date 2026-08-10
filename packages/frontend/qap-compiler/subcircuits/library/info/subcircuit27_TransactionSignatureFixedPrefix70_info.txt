@@ -1,0 +1,13 @@
+[32mtemplate instances[0m: 4
+non-linear constraints: 1016
+linear constraints: 0
+public inputs: 1
+private inputs: 0
+public outputs: 46
+wires: 1017
+labels: 2059
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/TransactionSignatureFixedPrefix70_circuit.r1cs
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/TransactionSignatureFixedPrefix70_circuit.sym
+[32mConstraints written in:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/TransactionSignatureFixedPrefix70_circuit_constraints.json
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/TransactionSignatureFixedPrefix70_circuit_js/TransactionSignatureFixedPrefix70_circuit.wasm
+[32mEverything went okay[0m

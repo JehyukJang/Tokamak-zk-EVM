@@ -7,6 +7,7 @@ public outputs: 80
 wires: 161
 labels: 161
 [32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/bufferPrvIn_circuit.r1cs
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/bufferPrvIn_circuit.sym
 [32mConstraints written in:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/bufferPrvIn_circuit_constraints.json
 [32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/bufferPrvIn_circuit_js/bufferPrvIn_circuit.wasm
 [32mEverything went okay[0m

@@ -5,7 +5,7 @@ function nStorageLoad() {return 40;}
 function nLogOut() {return 50;}
 function nStorageStore() {return 30;}
 function nBlockIn() {return 24;}
-function nEVMIn() {return 530;}
+function nEVMIn() {return 500;}
 function nPrvIn() {return 80;}
 
 function nPrivateMessageInputs() {return 29;}

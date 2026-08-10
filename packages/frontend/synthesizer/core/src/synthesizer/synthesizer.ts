@@ -6,7 +6,7 @@ import { bigIntToBytes, bigIntToHex, bytesToBigInt, bytesToHex, createAddressFro
 import { EVMResult, InterpreterStep, Message } from '@ethereumjs/evm';
 import { DataAliasGeometries, DataPt, DataPtType, MemoryPts, Placements, ReservedVariable, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
 import { ArithmeticManager, BufferManager, ContextConstructionData, ContextManager, InstructionHandler, MemoryManager, StateManager, SynthesizerOpHandler } from './handlers/index.ts';
-import { ARITHMETIC_OPERATORS, ArithmeticOperator, Operator, ReservedBuffer } from '../subcircuit/configuredTypes.ts';
+import { Operator, ReservedBuffer } from '../subcircuit/configuredTypes.ts';
 import type { ResolvedSubcircuitLibrary } from '../subcircuit/libraryTypes.ts';
 import { DataPtFactory } from './dataStructure/dataPt.ts';
 import { TypedTransaction } from '@ethereumjs/tx';
@@ -38,13 +38,6 @@ export class Synthesizer implements SynthesizerInterface
     this._state = new StateManager(this)
     this._bufferManager = new BufferManager(this)
     this._arithmeticManager = new ArithmeticManager(this)
-    this._state.registerCompositionProducer(
-      ARITHMETIC_OPERATORS,
-      (name, inPts) => this._arithmeticManager.placeComposition(
-        name as ArithmeticOperator,
-        inPts,
-      ),
-    )
     this._memoryManager = new MemoryManager(this)
     this._instructionHandlers =  new InstructionHandler(this)
     this._eventHandlerError = undefined

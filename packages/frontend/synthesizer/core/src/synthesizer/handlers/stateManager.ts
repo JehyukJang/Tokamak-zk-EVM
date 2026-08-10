@@ -24,8 +24,6 @@ import { InterpreterStep } from '@ethereumjs/evm';
 import { LogCache } from './logAccess.ts';
 import { InitialStorageReadList, StorageCache } from './storageAccess.ts';
 
-type CompositionProducer = (name: Operator, inPts: DataPt[]) => DataPt[];
-
 export function placementEntryDeepCopy(placement: PlacementEntry): PlacementEntry {
   return {
     ...placement,
@@ -193,8 +191,6 @@ export class StateManager {
   public subcircuitInfoByName: SubcircuitInfoByName;
   private readonly _bufferSubcircuitByBuffer: Record<ReservedBuffer, SubcircuitInfoByNameEntry | undefined>;
   private readonly _placementCompositionManager: PlacementCompositionManager;
-  private readonly _compositionProducerByOperator = new Map<Operator, CompositionProducer>();
-
   public cachedEVMIn: Map<bigint, Map<string, DataPt>> = new Map()
   public cachedOrigin: DataPt | undefined = undefined
 
@@ -263,24 +259,9 @@ export class StateManager {
     this._place(subcircuit.name, inPts, outPts, usage)
   }
 
-  public registerCompositionProducer(
-    operators: readonly Operator[],
-    producer: CompositionProducer,
-  ): void {
-    for (const operator of operators) {
-      if (this._compositionProducerByOperator.has(operator)) {
-        throw new Error(`Synthesizer: ${operator} composition producer is already registered`)
-      }
-      this._compositionProducerByOperator.set(operator, producer)
-    }
-  }
-
   public placeComposition(name: Operator, inPts: DataPt[]): DataPt[] {
-    const producer = this._compositionProducerByOperator.get(name)
-    if (producer === undefined) {
-      throw new Error(`Synthesizer: ${name} composition producer is not implemented`)
-    }
-    return producer(name, inPts)
+    void inPts
+    throw new Error(`Synthesizer: ${name} composition producer is not implemented`)
   }
 
   private _placePreparedComposition(preparedComposition: PreparedComposition): void {
