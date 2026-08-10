@@ -1,58 +1,65 @@
-export type DataPtWireLayout = Readonly<{ kind: 'limbs-128'; count: 1 | 2 }> | Readonly<{ kind: 'native-fr' }>;
+import type { LogicalInterfaceType } from '../../subcircuit/libraryTypes.ts';
 
-export type DataPtValueDomain =
-  | Readonly<{ kind: 'uint'; bits: number }>
-  | Readonly<{ kind: 'bls12-381-fr' }>
-  | Readonly<{ kind: 'jubjub-scalar' }>;
+export const BIT_DATA_PT_TYPE = 'bit';
+export const UINT32_DATA_PT_TYPE = 'uint32';
+export const UINT128_DATA_PT_TYPE = 'uint128';
+export const UINT160_DATA_PT_TYPE = 'uint160';
+export const UINT256_DATA_PT_TYPE = 'uint256';
+export const BLS12_381_FR_DATA_PT_TYPE = 'bls12-381-fr';
+export const JUBJUB_SCALAR_DATA_PT_TYPE = 'jubjub-scalar';
 
-export type DataPtType = Readonly<{
-  valueDomain: DataPtValueDomain;
-  wireLayout: DataPtWireLayout;
-}>;
+export const DATA_PT_TYPE_LIST = [
+  BIT_DATA_PT_TYPE,
+  UINT32_DATA_PT_TYPE,
+  UINT128_DATA_PT_TYPE,
+  UINT160_DATA_PT_TYPE,
+  UINT256_DATA_PT_TYPE,
+  BLS12_381_FR_DATA_PT_TYPE,
+  JUBJUB_SCALAR_DATA_PT_TYPE,
+] as const;
 
-export const EVM_WORD_DATA_PT_TYPE: DataPtType = Object.freeze({
-  valueDomain: Object.freeze({ kind: 'uint', bits: 256 }),
-  wireLayout: Object.freeze({ kind: 'limbs-128', count: 2 }),
-});
+export type DataPtType = (typeof DATA_PT_TYPE_LIST)[number];
 
-export const UINT64_LIMB_DATA_PT_TYPE: DataPtType = Object.freeze({
-  valueDomain: Object.freeze({ kind: 'uint', bits: 64 }),
-  wireLayout: Object.freeze({ kind: 'limbs-128', count: 1 }),
-});
+export function isDataPtType(value: unknown): value is DataPtType {
+  return (DATA_PT_TYPE_LIST as readonly unknown[]).includes(value);
+}
 
-export const UINT85_LIMB_DATA_PT_TYPE: DataPtType = Object.freeze({
-  valueDomain: Object.freeze({ kind: 'uint', bits: 85 }),
-  wireLayout: Object.freeze({ kind: 'limbs-128', count: 1 }),
-});
+export function getDataPtWireCount(dataPtType: DataPtType): 1 | 2 {
+  switch (dataPtType) {
+    case BIT_DATA_PT_TYPE:
+    case UINT32_DATA_PT_TYPE:
+    case UINT128_DATA_PT_TYPE:
+    case BLS12_381_FR_DATA_PT_TYPE:
+    case JUBJUB_SCALAR_DATA_PT_TYPE:
+      return 1;
+    case UINT160_DATA_PT_TYPE:
+    case UINT256_DATA_PT_TYPE:
+      return 2;
+  }
+}
 
-export const UINT86_LIMB_DATA_PT_TYPE: DataPtType = Object.freeze({
-  valueDomain: Object.freeze({ kind: 'uint', bits: 86 }),
-  wireLayout: Object.freeze({ kind: 'limbs-128', count: 1 }),
-});
-
-export const BIT_LIMB_DATA_PT_TYPE: DataPtType = Object.freeze({
-  valueDomain: Object.freeze({ kind: 'uint', bits: 1 }),
-  wireLayout: Object.freeze({ kind: 'limbs-128', count: 1 }),
-});
-
-export const BLS12_381_FR_NATIVE_DATA_PT_TYPE: DataPtType = Object.freeze({
-  valueDomain: Object.freeze({ kind: 'bls12-381-fr' }),
-  wireLayout: Object.freeze({ kind: 'native-fr' }),
-});
+export function getDataPtTypeFromLogicalInterfaceType(
+  logicalType: LogicalInterfaceType,
+): DataPtType {
+  switch (logicalType.kind) {
+    case 'uint':
+      if (logicalType.bits === 1) return BIT_DATA_PT_TYPE;
+      if (logicalType.bits <= 32) return UINT32_DATA_PT_TYPE;
+      if (logicalType.bits <= 128) return UINT128_DATA_PT_TYPE;
+      if (logicalType.bits <= 160) return UINT160_DATA_PT_TYPE;
+      return UINT256_DATA_PT_TYPE;
+    case 'bls12-381-fr':
+      return BLS12_381_FR_DATA_PT_TYPE;
+    case 'jubjub-scalar':
+      return JUBJUB_SCALAR_DATA_PT_TYPE;
+  }
+}
 
 export type DataPtDescription = {
   // if data comes from external
   extSource?: string;
   // if data is provided to external
   extDest?: string;
-  // external data type
-  // type?: string;
-  // // key if the external data comes from or goes to a DB
-  // key?: string;
-  // offset if the external data comes from a memory
-  // offset?: number;
-  // // used for pairing the Keccak input and output (as input can be longer than 256 bit)
-  // pairedInputWireIndices?: number[]
 
   // placement index at which the dataPt comes from
   source: number;
@@ -60,8 +67,6 @@ export type DataPtDescription = {
   wireIndex: number;
 
   readonly dataPtType: DataPtType;
-
-  // identifier?: string
 };
 export type DataPt = DataPtDescription & { value: bigint; valueHex: string };
 

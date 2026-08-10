@@ -1,105 +1,51 @@
 import { bigIntToHex } from '@ethereumjs/util';
 import {
-  EVM_WORD_DATA_PT_TYPE,
+  BLS12_381_FR_DATA_PT_TYPE,
+  BIT_DATA_PT_TYPE,
+  isDataPtType,
+  JUBJUB_SCALAR_DATA_PT_TYPE,
+  UINT128_DATA_PT_TYPE,
+  UINT160_DATA_PT_TYPE,
+  UINT256_DATA_PT_TYPE,
+  UINT32_DATA_PT_TYPE,
   type DataPt,
   type DataPtDescription,
   type DataPtType,
-  type DataPtValueDomain,
-  type DataPtWireLayout,
 } from '../types/dataStructure.ts';
 import { BLS12831ARITHMODULUS, JUBJUBARITHMODULUS } from '../../synthesizer/params/constants.ts';
 
-function copyAndFreezeValueDomain(valueDomain: DataPtValueDomain): DataPtValueDomain {
-  if (valueDomain === undefined || valueDomain === null) {
-    throw new Error('DataPt value domain is required');
-  }
-  switch (valueDomain.kind) {
-    case 'uint':
-      if (!Number.isInteger(valueDomain.bits) || valueDomain.bits < 1 || valueDomain.bits > 256) {
-        throw new Error('DataPt uint domain bits must be an integer between 1 and 256');
-      }
-      return Object.freeze({ kind: 'uint', bits: valueDomain.bits });
-    case 'bls12-381-fr':
-      return Object.freeze({ kind: 'bls12-381-fr' });
-    case 'jubjub-scalar':
-      return Object.freeze({ kind: 'jubjub-scalar' });
-    default:
-      throw new Error(`Unsupported DataPt value domain: ${String((valueDomain as { kind?: unknown }).kind)}`);
-  }
-}
-
-function copyAndFreezeWireLayout(wireLayout: DataPtWireLayout): DataPtWireLayout {
-  if (wireLayout === undefined || wireLayout === null) {
-    throw new Error('DataPt wire layout is required');
-  }
-  switch (wireLayout.kind) {
-    case 'limbs-128':
-      if (wireLayout.count !== 1 && wireLayout.count !== 2) {
-        throw new Error('DataPt limb layout count must be 1 or 2');
-      }
-      return Object.freeze({ kind: 'limbs-128', count: wireLayout.count });
-    case 'native-fr':
-      return Object.freeze({ kind: 'native-fr' });
-    default:
-      throw new Error(`Unsupported DataPt wire layout: ${String((wireLayout as { kind?: unknown }).kind)}`);
-  }
-}
-
-function validateDomainLayout(dataPtType: DataPtType): void {
-  const { valueDomain, wireLayout } = dataPtType;
-  if (wireLayout.kind === 'native-fr') {
-    if (valueDomain.kind === 'uint') {
-      throw new Error('DataPt uint domains cannot use the native-fr layout');
-    }
-    return;
-  }
-
-  if (valueDomain.kind === 'uint') {
-    if (wireLayout.count === 1 && valueDomain.bits > 128) {
-      throw new Error('DataPt uint domains wider than 128 bits require two limbs');
-    }
-    return;
-  }
-
-  if (wireLayout.count !== 2) {
-    throw new Error('DataPt field and scalar domains require two limbs or the native-fr layout');
-  }
-}
-
 function validateValue(dataPtType: DataPtType, value: bigint): void {
-  const { valueDomain } = dataPtType;
   if (value < 0n) {
     throw new Error('DataPt values cannot be negative');
   }
 
-  switch (valueDomain.kind) {
-    case 'uint':
-      if (value >= 1n << BigInt(valueDomain.bits)) {
-        throw new Error(`DataPt value exceeds its uint(${valueDomain.bits}) domain`);
-      }
+  switch (dataPtType) {
+    case BIT_DATA_PT_TYPE:
+      if (value >= 2n) throw new Error('DataPt value exceeds its bit domain');
       break;
-    case 'bls12-381-fr':
+    case UINT32_DATA_PT_TYPE:
+      if (value >= 1n << 32n) throw new Error('DataPt value exceeds its uint32 domain');
+      break;
+    case UINT128_DATA_PT_TYPE:
+      if (value >= 1n << 128n) throw new Error('DataPt value exceeds its uint128 domain');
+      break;
+    case UINT160_DATA_PT_TYPE:
+      if (value >= 1n << 160n) throw new Error('DataPt value exceeds its uint160 domain');
+      break;
+    case UINT256_DATA_PT_TYPE:
+      if (value >= 1n << 256n) throw new Error('DataPt value exceeds its uint256 domain');
+      break;
+    case BLS12_381_FR_DATA_PT_TYPE:
       if (value >= BLS12831ARITHMODULUS) {
         throw new Error('DataPt value is outside the BLS12-381 Fr domain');
       }
       break;
-    case 'jubjub-scalar':
+    case JUBJUB_SCALAR_DATA_PT_TYPE:
       if (value >= JUBJUBARITHMODULUS) {
         throw new Error('DataPt value is outside the Jubjub scalar domain');
       }
       break;
   }
-}
-
-function copyAndFreezeDataPtType(dataPtType: DataPtType): DataPtType {
-  if (dataPtType === undefined || dataPtType === null) {
-    throw new Error('DataPt type is required');
-  }
-  const valueDomain = copyAndFreezeValueDomain(dataPtType.valueDomain);
-  const wireLayout = copyAndFreezeWireLayout(dataPtType.wireLayout);
-  const frozenDataPtType = Object.freeze({ valueDomain, wireLayout });
-  validateDomainLayout(frozenDataPtType);
-  return frozenDataPtType;
 }
 
 function copyDataPt(dataPt: DataPt): DataPt {
@@ -134,23 +80,20 @@ export class DataPtFactory {
     if ('sourceBitSize' in params) {
       throw new Error('DataPt sourceBitSize is no longer supported');
     }
-    if ('valueDomain' in params || 'wireLayout' in params) {
-      throw new Error('DataPt valueDomain and wireLayout must be provided together through dataPtType');
+    if (!isDataPtType(params.dataPtType)) {
+      throw new Error('DataPt type must be one of the configured canonical types');
     }
-    const dataPtType = copyAndFreezeDataPtType(params.dataPtType);
-    validateValue(dataPtType, value);
+    validateValue(params.dataPtType, value);
     return {
       ...params,
-      dataPtType,
       value,
       valueHex: bigIntToHex(value),
     };
   }
 
   public static createEVMWordView(dataPt: DataPt): DataPt {
-    const { wireLayout } = dataPt.dataPtType;
-    if (wireLayout.kind !== 'limbs-128' || wireLayout.count !== 2) {
-      throw new Error('DataPt EVM word views require the limbs-128(2) layout');
+    if (dataPt.dataPtType !== UINT256_DATA_PT_TYPE) {
+      throw new Error('DataPt EVM word views require a uint256 data point');
     }
     const {
       value,
@@ -161,7 +104,7 @@ export class DataPtFactory {
     return DataPtFactory.create(
       {
         ...description,
-        dataPtType: EVM_WORD_DATA_PT_TYPE,
+        dataPtType: UINT256_DATA_PT_TYPE,
       },
       value,
     );
