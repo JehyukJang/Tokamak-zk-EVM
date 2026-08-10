@@ -92,32 +92,25 @@ test('checks every closed logical input boundary without exposing values', () =>
   assert.ok(!JSON.stringify(privateWarning).includes(privateValue.toString()))
 })
 
-test('checks lower-first limbs against the exact declared uint width', () => {
+test('checks a uint160 native wire against its exact declared width', () => {
   const targetInfo = target('NarrowWord', [
     { name: 'address[3]', logicalType: { kind: 'uint', bits: 160 } },
   ])
-  const lowLimit = 1n << 128n
-  const highLimit = 1n << 32n
+  const limit = 1n << 160n
 
-  assert.deepEqual(warningsFor(targetInfo, [0n, 0n]), [])
-  assert.deepEqual(warningsFor(targetInfo, [lowLimit - 1n, highLimit - 1n]), [])
+  assert.deepEqual(warningsFor(targetInfo, [0n]), [])
+  assert.deepEqual(warningsFor(targetInfo, [limit - 1n]), [])
 
-  const lowWarning = warningsFor(targetInfo, [lowLimit, 0n])
-  assert.equal(lowWarning.length, 1)
+  const warning = warningsFor(targetInfo, [limit])
+  assert.equal(warning.length, 1)
   assert.deepEqual(
     {
-      limb: lowWarning[0].limb,
-      physicalInputIndex: lowWarning[0].physicalInputIndex,
-      portName: lowWarning[0].portName,
-      repetitionIndex: lowWarning[0].repetitionIndex,
+      physicalInputIndex: warning[0].physicalInputIndex,
+      portName: warning[0].portName,
+      repetitionIndex: warning[0].repetitionIndex,
     },
-    { limb: 'low', physicalInputIndex: 0, portName: 'address', repetitionIndex: 3 },
+    { physicalInputIndex: 0, portName: 'address', repetitionIndex: 3 },
   )
-
-  const highWarning = warningsFor(targetInfo, [0n, highLimit])
-  assert.equal(highWarning.length, 1)
-  assert.equal(highWarning[0].limb, 'high')
-  assert.equal(highWarning[0].physicalInputIndex, 1)
 })
 
 test('covers every production physical input exactly once', () => {

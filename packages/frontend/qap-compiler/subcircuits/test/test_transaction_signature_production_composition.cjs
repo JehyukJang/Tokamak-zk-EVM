@@ -101,7 +101,13 @@ const toCircuitInput = (vector) => {
   };
 };
 
-const expectedOutput = (vector, oracle) => ({
+const expectedProductionOutput = (vector, oracle) => ({
+  evmContractAddress: vector.publicBoundary.contractAddress,
+  evmFunctionSelector: [vector.publicBoundary.functionSelector, 0n],
+  origin: split(oracle.circuit.origin),
+});
+
+const expectedReferenceOutput = (vector, oracle) => ({
   evmContractAddress: split(vector.publicBoundary.contractAddress),
   evmFunctionSelector: [vector.publicBoundary.functionSelector, 0n],
   origin: split(oracle.circuit.origin),
@@ -115,9 +121,9 @@ const main = async () => {
     linear: 3,
     publicInputs: 5,
     privateInputs: 34,
-    outputs: 6,
+    outputs: 5,
     wires: 14677,
-    nonzero: 134924,
+    nonzero: 134925,
   });
   const circuit = await wasm(
     path.join(
@@ -159,10 +165,10 @@ const main = async () => {
     const witness = await circuit.calculateWitness(input, true);
     const referenceWitness = await reference.calculateWitness(input, true);
     await circuit.checkConstraints(witness);
-    await circuit.assertOut(witness, expectedOutput(vector, oracle));
+    await circuit.assertOut(witness, expectedProductionOutput(vector, oracle));
     await reference.checkConstraints(referenceWitness);
     await reference.assertOut(referenceWitness, {
-      ...expectedOutput(vector, oracle),
+      ...expectedReferenceOutput(vector, oracle),
       evmTransactionInputs: vector.messageWords.slice(3).map(split),
     });
     mutationWitness ??= witness;

@@ -198,6 +198,7 @@ export class StateManager {
     this.storageCache.reset()
     this.initialStorageReads.reset()
     this.logCache.reset()
+    this.cachedOrigin = undefined
   }
 
   public beginFrame(depth: number): void {

@@ -125,7 +125,7 @@ function expandPorts(ports, constants, description) {
 
 function countPhysicalWires(ports) {
   return ports.reduce((count, { logicalType }) =>
-    count + (logicalType.kind === 'uint' && logicalType.bits > 128 ? 2 : 1), 0)
+    count + (logicalType.kind === 'uint' && logicalType.bits > 160 ? 2 : 1), 0)
 }
 
 function validateBufferCapacities(subcircuits, constants) {

@@ -6,17 +6,13 @@ import type { ArithmeticOperator } from '../../../core/src/subcircuit/configured
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
 import { ContextManager } from '../../../core/src/synthesizer/handlers/stateManager.ts';
 import { Synthesizer } from '../../../core/src/synthesizer/synthesizer.ts';
-import type { DataPt, DataPtType } from '../../../core/src/synthesizer/types/dataStructure.ts';
+import {
+  UINT256_DATA_PT_TYPE,
+  type DataPt,
+  type DataPtType,
+} from '../../../core/src/synthesizer/types/dataStructure.ts';
 
 const ADDRESS_MASK = (1n << 160n) - 1n;
-const WORD_TYPE = {
-  valueDomain: { kind: 'uint', bits: 256 },
-  wireLayout: { kind: 'limbs-128', count: 2 },
-} as const satisfies DataPtType;
-const ADDRESS_TYPE = {
-  valueDomain: { kind: 'uint', bits: 160 },
-  wireLayout: { kind: 'limbs-128', count: 2 },
-} as const satisfies DataPtType;
 const CALL_OPCODES = ['CALL', 'CALLCODE', 'DELEGATECALL', 'STATICCALL'] as const;
 
 type CallOpcode = typeof CALL_OPCODES[number];
@@ -32,7 +28,7 @@ const dataPt = (
   value: bigint,
   source: number,
   wireIndex = 0,
-  dataPtType: DataPtType = WORD_TYPE,
+  dataPtType: DataPtType = UINT256_DATA_PT_TYPE,
 ): DataPt => DataPtFactory.create({ source, wireIndex, dataPtType }, value);
 
 const callOperands = (opcode: CallOpcode, target: bigint): bigint[] =>
@@ -65,7 +61,7 @@ const createHarness = (
     memory: new Uint8Array(0),
   } as InterpreterStep;
 
-  const maskPt = dataPt(ADDRESS_MASK, 5, 7, ADDRESS_TYPE);
+  const maskPt = dataPt(ADDRESS_MASK, 5, 7, UINT256_DATA_PT_TYPE);
   const normalizedTarget = rawTarget & ADDRESS_MASK;
   const maskedResults = options.maskedResults ?? [dataPt(normalizedTarget, 99, 0)];
   const arithmeticCalls: ArithmeticCall[] = [];

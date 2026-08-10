@@ -159,7 +159,6 @@ export class Synthesizer implements SynthesizerInterface
 
   private async _prepareSynthesizeTransaction(): Promise<void> {
     this.state.resetTransactionTracking()
-    this.state.cachedOrigin = this._instructionHandlers.getOriginAddressPt();
   }
 
   private _finalizeStorageStore(): void {

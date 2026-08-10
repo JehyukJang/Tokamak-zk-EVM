@@ -29,10 +29,10 @@ export function getDataPtWireCount(dataPtType: DataPtType): 1 | 2 {
     case BIT_DATA_PT_TYPE:
     case UINT32_DATA_PT_TYPE:
     case UINT128_DATA_PT_TYPE:
+    case UINT160_DATA_PT_TYPE:
     case BLS12_381_FR_DATA_PT_TYPE:
     case JUBJUB_SCALAR_DATA_PT_TYPE:
       return 1;
-    case UINT160_DATA_PT_TYPE:
     case UINT256_DATA_PT_TYPE:
       return 2;
   }

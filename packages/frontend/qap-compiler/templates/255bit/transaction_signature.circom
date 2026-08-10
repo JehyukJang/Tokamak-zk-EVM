@@ -423,22 +423,17 @@ template TransactionSignaturePoseidonBatch4() {
 template TransactionSignaturePointPolicy() {
     assert(nPrivateMessageInputs() == 29);
     signal input in[8];
-    signal output out[16];
+    signal output out[15];
 
     component contractBits = Num2Bits(160);
     contractBits.in <== in[4];
-    var contractLow = 0;
-    var contractHigh = 0;
-    for (var bit = 0; bit < 128; bit++) {
-        contractLow += contractBits.out[bit] * (1 << bit);
+    var contractAddress = 0;
+    for (var bit = 0; bit < 160; bit++) {
+        contractAddress += contractBits.out[bit] * (1 << bit);
     }
-    for (var bit = 128; bit < 160; bit++) {
-        contractHigh += contractBits.out[bit] * (1 << (bit - 128));
-    }
-    out[0] <== contractLow;
-    out[1] <== contractHigh;
-    out[2] <== in[5];
-    out[3] <== 0;
+    out[0] <== contractAddress;
+    out[1] <== in[5];
+    out[2] <== 0;
 
     component checkA = jubjubCheck();
     checkA.in <== [in[2], in[3]];
@@ -462,11 +457,11 @@ template TransactionSignaturePointPolicy() {
     runtimeTable.base <== publicKeyAffine.affine;
     for (var digit = 0; digit < 4; digit++) {
         for (var coordinate = 0; coordinate < 2; coordinate++) {
-            out[4 + digit * 2 + coordinate] <== runtimeTable.table[digit][coordinate];
+            out[3 + digit * 2 + coordinate] <== runtimeTable.table[digit][coordinate];
         }
     }
     for (var coordinate = 0; coordinate < 4; coordinate++) {
-        out[12 + coordinate] <== randomizerCofactor.point8[coordinate];
+        out[11 + coordinate] <== randomizerCofactor.point8[coordinate];
     }
 }
 

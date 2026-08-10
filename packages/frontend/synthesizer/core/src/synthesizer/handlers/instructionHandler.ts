@@ -13,8 +13,7 @@ import {
 } from '@ethereumjs/util'
 import { InterpreterStep } from '@ethereumjs/evm'
 import { DataPtFactory, MemoryPt, StackPt } from '../dataStructure/index.ts';
-import { ArithmeticOperator, type ArithmeticSubcircuit, TX_MESSAGE_TO_HASH } from '../../subcircuit/configuredTypes.ts';
-import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
+import { ArithmeticOperator, type ArithmeticSubcircuit } from '../../subcircuit/configuredTypes.ts';
 import { ContextManager } from './stateManager.ts';
 
 export interface HandlerOpts {
@@ -504,51 +503,6 @@ export class InstructionHandler {
     return [resultPt]
   }
 
-  getOriginAddressPt(): DataPt {
-    const messagePts: DataPt[] = TX_MESSAGE_TO_HASH.map(msg => this.parent.getReservedVariableFromBuffer(msg))
-
-    if (messagePts.length !== 3 + FUNCTION_INPUT_LENGTH) {
-      throw new Error('Invalid data pointer to the transaction message to be signed')
-    }
-    
-    const publicKeyPt: [DataPt, DataPt] = [
-      this.parent.getReservedVariableFromBuffer('EDDSA_PUBLIC_KEY_X'),
-      this.parent.getReservedVariableFromBuffer('EDDSA_PUBLIC_KEY_Y')
-    ]
-    const randomizerPt: DataPt[] = [
-      this.parent.getReservedVariableFromBuffer('EDDSA_RANDOMIZER_X'),
-      this.parent.getReservedVariableFromBuffer('EDDSA_RANDOMIZER_Y')
-    ]
-    const signaturePt: DataPt = this.parent.getReservedVariableFromBuffer('EDDSA_SIGNATURE')
-    const jubjubBasePt: DataPt[] = [
-      this.parent.getReservedVariableFromBuffer('JUBJUB_BASE_X'),
-      this.parent.getReservedVariableFromBuffer('JUBJUB_BASE_Y')
-    ]
-    const jubjubPoIPt: DataPt[] = [
-      this.parent.getReservedVariableFromBuffer('JUBJUB_POI_X'),
-      this.parent.getReservedVariableFromBuffer('JUBJUB_POI_Y')
-    ]
-    const addrMaskPt: DataPt = this.parent.getReservedVariableFromBuffer('ADDRESS_MASK')
-
-    const originPts = this.parent.placeComposition(
-      'TransactionSignatureVerify',
-      [
-        ...randomizerPt,
-        ...publicKeyPt,
-        ...messagePts,
-        signaturePt,
-        ...jubjubBasePt,
-        ...jubjubPoIPt,
-        addrMaskPt,
-      ],
-    )
-    if (originPts.length !== 1 || originPts[0] === undefined) {
-      throw new Error('Synthesizer: TransactionSignatureVerify must produce exactly one origin')
-    }
-    this.parent.state.cachedOrigin = originPts[0]
-    return DataPtFactory.deepCopy(this.parent.state.cachedOrigin!)
-  }
-
   private _assertStorageAddress(
     address: Address,
     addressPt: DataPt,
@@ -836,11 +790,9 @@ export class InstructionHandler {
   ): void {
     const _retrieveOriginAddressPt = (): DataPt => {
       checkRequiredInput(opts.originAddress)
-      let dataPt: DataPt
-      if (this.parent.state.cachedOrigin === undefined) {
-        dataPt = this.getOriginAddressPt()
-      } else {
-        dataPt = this.parent.state.cachedOrigin
+      const dataPt = this.parent.state.cachedOrigin
+      if (dataPt === undefined) {
+        throw new Error('Synthesizer: Origin address is not populated by TransactionSignatureVerify')
       }
       if (dataPt.value !== bytesToBigInt(opts.originAddress!.bytes)) {
         throw new Error("Mismatch of the origin between EVM and Synthesizer")

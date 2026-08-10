@@ -16,7 +16,7 @@ const {
 
 const EXPECTED = Object.freeze([
   Object.freeze({ name: "TransactionSignaturePoseidonBatch4", nonlinear: 950, linear: 0, inputs: 7, outputs: 2, wires: 957, nonzero: 11380, warnings: 1, placements: 9 }),
-  Object.freeze({ name: "TransactionSignaturePointPolicy", nonlinear: 223, linear: 5, inputs: 8, outputs: 16, wires: 234, nonzero: 1082, warnings: 0, placements: 1 }),
+  Object.freeze({ name: "TransactionSignaturePointPolicy", nonlinear: 223, linear: 5, inputs: 8, outputs: 15, wires: 234, nonzero: 1083, warnings: 0, placements: 1 }),
   Object.freeze({ name: "TransactionSignatureFixedPrefix70", nonlinear: 1016, linear: 0, inputs: 1, outputs: 46, wires: 1017, nonzero: 6894, warnings: 0, placements: 1 }),
   Object.freeze({ name: "TransactionSignatureChallengeVariablePrefix", nonlinear: 982, linear: 0, inputs: 9, outputs: 226, wires: 989, nonzero: 6258, warnings: 2, placements: 1 }),
   Object.freeze({ name: "TransactionSignatureVariableBatch", nonlinear: 986, linear: 0, inputs: 80, outputs: 4, wires: 1067, nonzero: 4556, warnings: 0, placements: 3 }),

@@ -44,7 +44,7 @@ whose fields are all zero. Generic buffers carry physical field wires without
 assigning one uniform value type to every slot.
 
 For non-buffer subcircuits, `subcircuitInfo.json` declares each logical input
-and output with one closed type. `uint` values of at most 128 bits use one wire;
+and output with one closed type. `uint` values of at most 160 bits use one wire;
 wider `uint` values use lower-then-upper 128-bit limbs. `bls12-381-fr` and
 `jubjub-scalar` values each use one native field wire. The scalar type records a
 distinct semantic bound even though its physical wire belongs to the circuit

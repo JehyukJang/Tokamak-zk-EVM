@@ -70,9 +70,11 @@ test('derives physical wire counts from closed logical types', () => {
   assert.equal(countPhysicalWires([
     { logicalType: { kind: 'uint', bits: 128 } },
     { logicalType: { kind: 'uint', bits: 129 } },
+    { logicalType: { kind: 'uint', bits: 160 } },
+    { logicalType: { kind: 'uint', bits: 161 } },
     { logicalType: { kind: 'bls12-381-fr' } },
     { logicalType: { kind: 'jubjub-scalar' } },
-  ]), 5)
+  ]), 7)
 })
 
 test('rejects fields outside the closed logical type definitions', () => {

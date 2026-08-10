@@ -9,6 +9,6 @@
     { "name": "publicKeyHash", "logicalType": { "kind": "bls12-381-fr" } }
   ],
   "outputs": [
-    { "name": "origin", "logicalType": { "kind": "uint", "bits": 160 } }
+    { "name": "origin", "logicalType": { "kind": "uint", "bits": 256 } }
   ]
 }

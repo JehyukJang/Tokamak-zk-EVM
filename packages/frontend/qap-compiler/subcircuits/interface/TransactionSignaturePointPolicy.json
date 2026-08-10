@@ -4,7 +4,7 @@
     { "name": "randomizerY", "logicalType": { "kind": "bls12-381-fr" } },
     { "name": "publicKeyX", "logicalType": { "kind": "bls12-381-fr" } },
     { "name": "publicKeyY", "logicalType": { "kind": "bls12-381-fr" } },
-    { "name": "contractAddress", "logicalType": { "kind": "bls12-381-fr" } },
+    { "name": "contractAddress", "logicalType": { "kind": "uint", "bits": 160 } },
     { "name": "functionSelector", "logicalType": { "kind": "bls12-381-fr" } },
     { "name": "identityX", "logicalType": { "kind": "bls12-381-fr" } },
     { "name": "identityY", "logicalType": { "kind": "bls12-381-fr" } }
