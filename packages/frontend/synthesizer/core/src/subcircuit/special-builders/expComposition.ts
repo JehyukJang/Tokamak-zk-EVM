@@ -1,4 +1,5 @@
 import { freezeComposition } from '../utils.ts'
+import { UINT256_DATA_PT_TYPE } from '../../synthesizer/types/dataStructure.ts'
 import type {
   PlacementCompositionMapping,
   CompositionStep,
@@ -13,10 +14,7 @@ export const createExpCompositionMapping = (): PlacementCompositionMapping => {
   const constants: readonly ConstantDefinition[] = [
     {
       value: 1n,
-      dataPtType: {
-        valueDomain: { kind: 'uint', bits: 256 },
-        wireLayout: { kind: 'limbs-128', count: 2 }
-      }
+      dataPtType: UINT256_DATA_PT_TYPE,
     }
   ]
   const steps: CompositionStep[] = [
