@@ -12,6 +12,7 @@ import {
   bigIntToBytes,
 } from '@ethereumjs/util'
 import { InterpreterStep } from '@ethereumjs/evm'
+import { POSEIDON_INPUTS } from 'tokamak-l2js'
 import { DataPtFactory, MemoryPt, StackPt } from '../dataStructure/index.ts';
 import { ArithmeticOperator, type ArithmeticSubcircuit } from '../../subcircuit/configuredTypes.ts';
 import { ContextManager } from './stateManager.ts';
@@ -527,6 +528,107 @@ export class InstructionHandler {
     return preparedComposition.resultPts.slice()
   }
 
+  private _submitPoseidonComposition(operands: DataPt[]): DataPt[] {
+    const composition = this.parent.subcircuitLibrary
+      .placementCompositionManager.get('Poseidon')
+    const step = composition.steps[0]
+    if (
+      composition.placementStrategy !== 'poseidon'
+      || composition.numSteps !== 'dynamic'
+      || composition.numOperands !== 'dynamic'
+      || composition.numResults !== 1
+      || composition.steps.length !== 1
+      || step === undefined
+      || step.subcircuit !== 'Poseidon'
+      || step.selector !== 'dynamic'
+      || step.inputs[0]?.kind !== 'selector'
+    ) {
+      throw new Error('Synthesizer: Poseidon has an invalid placement composition')
+    }
+
+    const logicalInterface = this.parent.subcircuitLibrary.subcircuitInfoByName
+      .get(step.subcircuit)?.logicalInterface
+    const selectorPort = logicalInterface?.inputs[0]
+    const valuePort = logicalInterface?.inputs[1]
+    const resultPort = logicalInterface?.outputs[0]
+    if (
+      logicalInterface === undefined
+      || logicalInterface.inputs.length !== step.inputs.length
+      || logicalInterface.outputs.length !== 1
+      || selectorPort === undefined
+      || valuePort === undefined
+      || resultPort === undefined
+    ) {
+      throw new Error('Synthesizer: Poseidon logical interface is unavailable')
+    }
+
+    const inputLimit = step.inputs.length - 1
+    if (inputLimit < POSEIDON_INPUTS) {
+      throw new Error('Synthesizer: Poseidon input capacity is too small')
+    }
+    const selectorType = getDataPtTypeFromLogicalInterfaceType(selectorPort.logicalType)
+    const valueType = getDataPtTypeFromLogicalInterfaceType(valuePort.logicalType)
+    const resultType = getDataPtTypeFromLogicalInterfaceType(resultPort.logicalType)
+    const zeroPt = this.parent.loadArbitraryStatic(0n, valueType)
+    const basePlacementIndex = this.parent.placements.length
+    const steps: Array<PreparedComposition['steps'][number]> = []
+
+    const placeNormalized = (inputPts: DataPt[]): DataPt => {
+      if (inputPts.length < POSEIDON_INPUTS || inputPts.length > inputLimit) {
+        throw new Error(
+          `Synthesizer: Poseidon expected between ${POSEIDON_INPUTS} and ${inputLimit} inputs, but got ${inputPts.length}`,
+        )
+      }
+      const selector = 1n << BigInt(inputPts.length - POSEIDON_INPUTS)
+      const finalInPts = [
+        this.parent.loadArbitraryStatic(
+          selector,
+          selectorType,
+          'ALU selector for Poseidon',
+        ),
+        ...inputPts,
+        ...Array.from(
+          { length: inputLimit - inputPts.length },
+          () => DataPtFactory.deepCopy(zeroPt),
+        ),
+      ]
+      const values = this.parent.calculateArithSubcircuitOutputValues(
+        'Poseidon',
+        finalInPts.map(({ value }) => value),
+      )
+      if (values.length !== 1) {
+        throw new Error(`Synthesizer: Poseidon produced ${values.length} outputs`)
+      }
+      const outPt = DataPtFactory.create({
+        source: basePlacementIndex + steps.length,
+        wireIndex: 0,
+        dataPtType: resultType,
+      }, values[0]!)
+      steps.push({ inPts: finalInPts, outPts: [outPt] })
+      return outPt
+    }
+
+    let chainInputs = operands.slice()
+    if (chainInputs.length === 0) {
+      chainInputs = [DataPtFactory.deepCopy(zeroPt), DataPtFactory.deepCopy(zeroPt)]
+    } else if (chainInputs.length === 1) {
+      chainInputs.push(DataPtFactory.deepCopy(zeroPt))
+    }
+    while (chainInputs.length > inputLimit) {
+      const prefixHash = placeNormalized(chainInputs.slice(0, inputLimit))
+      chainInputs = [prefixHash, ...chainInputs.slice(inputLimit)]
+    }
+    const resultPt = placeNormalized(chainInputs)
+    const preparedComposition: PreparedComposition = {
+      operation: 'Poseidon',
+      operands,
+      resultPts: [resultPt],
+      steps,
+    }
+    this.parent.placeComposition(preparedComposition)
+    return [resultPt]
+  }
+
   private _submitSingleStepArithmeticComposition(
     operation: ArithmeticOperator,
     operands: DataPt[],
@@ -802,7 +904,7 @@ export class InstructionHandler {
           if (bytesToBigInt(opts.memOut!) !== dataRecovered) {
             throw new Error(`Synthesizer: ${op}: Memory data to load mismatch`)
           }
-          outPts = this.parent.placeComposition('Poseidon', chunkDataPts)
+          outPts = this._submitPoseidonComposition(chunkDataPts)
         }
         break
       default:

@@ -25,6 +25,7 @@ import type {
 } from '../../subcircuit/placementCompositionManager.ts';
 import type { LogicalInterfacePort } from '../../subcircuit/libraryTypes.ts';
 import { InterpreterStep } from '@ethereumjs/evm';
+import { POSEIDON_INPUTS } from 'tokamak-l2js';
 import { LogCache } from './logAccess.ts';
 import { InitialStorageReadList, StorageCache } from './storageAccess.ts';
 
@@ -152,6 +153,47 @@ function _assertPreparedPortTypes(
   }
 }
 
+function _assertPreparedStepPorts(
+  operation: PreparedComposition['operation'],
+  subcircuitName: SubcircuitNames,
+  preparedStep: PreparedComposition['steps'][number],
+  subcircuit: SubcircuitInfoByNameEntry,
+): void {
+  _assertPreparedWireCount(
+    operation,
+    subcircuitName,
+    'input',
+    preparedStep.inPts,
+    subcircuit.NInWires,
+  )
+  _assertPreparedWireCount(
+    operation,
+    subcircuitName,
+    'output',
+    preparedStep.outPts,
+    subcircuit.NOutWires,
+  )
+  if (subcircuit.logicalInterface === undefined) {
+    throw new Error(
+      `Synthesizer: ${subcircuitName} has no logical interface for ${operation}`,
+    )
+  }
+  _assertPreparedPortTypes(
+    operation,
+    subcircuitName,
+    'input',
+    preparedStep.inPts,
+    subcircuit.logicalInterface.inputs,
+  )
+  _assertPreparedPortTypes(
+    operation,
+    subcircuitName,
+    'output',
+    preparedStep.outPts,
+    subcircuit.logicalInterface.outputs,
+  )
+}
+
 function _isSameWire(left: DataPt, right: DataPt): boolean {
   return left.source === right.source && left.wireIndex === right.wireIndex
 }
@@ -277,22 +319,177 @@ export class StateManager {
 
   public placeComposition(preparedComposition: PreparedComposition): void {
     const composition = this._placementCompositionManager.get(preparedComposition.operation)
-    if (composition.placementStrategy !== 'generic') {
+    if (composition.placementStrategy === 'generic') {
+      this._validatePreparedGenericComposition(preparedComposition, composition)
+      for (const [stepIndex, step] of composition.steps.entries()) {
+        const preparedStep = preparedComposition.steps[stepIndex]!
+        this._place(
+          step.subcircuit,
+          preparedStep.inPts.slice(),
+          preparedStep.outPts.slice(),
+          step.usage,
+        )
+      }
+      return
+    }
+    if (composition.placementStrategy === 'poseidon') {
+      this._validatePreparedPoseidonComposition(preparedComposition, composition)
+      const step = composition.steps[0]!
+      for (const preparedStep of preparedComposition.steps) {
+        this._place(
+          step.subcircuit,
+          preparedStep.inPts.slice(),
+          preparedStep.outPts.slice(),
+          step.usage,
+        )
+      }
+      return
+    }
+    throw new Error(
+      `Synthesizer: ${preparedComposition.operation} requires ${composition.placementStrategy} placement preparation`,
+    )
+  }
+
+  private _validatePreparedPoseidonComposition(
+    preparedComposition: PreparedComposition,
+    composition: PlacementComposition,
+  ): void {
+    const step = composition.steps[0]
+    if (
+      composition.numSteps !== 'dynamic'
+      || composition.numOperands !== 'dynamic'
+      || composition.numResults !== 1
+      || composition.steps.length !== 1
+      || step === undefined
+      || step.subcircuit !== 'Poseidon'
+      || step.selector !== 'dynamic'
+      || step.inputs[0]?.kind !== 'selector'
+      || step.outputs.length !== 1
+      || step.outputs[0]?.kind !== 'result'
+      || step.outputs[0].index !== 0
+    ) {
       throw new Error(
-        `Synthesizer: ${preparedComposition.operation} requires ${composition.placementStrategy} placement preparation`,
+        'Synthesizer: Poseidon has an invalid placement composition',
       )
+    }
+    if (preparedComposition.resultPts.length !== 1) {
+      throw new Error('Synthesizer: Poseidon must produce exactly one result')
     }
 
-    this._validatePreparedGenericComposition(preparedComposition, composition)
-    for (const [stepIndex, step] of composition.steps.entries()) {
-      const preparedStep = preparedComposition.steps[stepIndex]!
-      this._place(
-        step.subcircuit,
-        preparedStep.inPts.slice(),
-        preparedStep.outPts.slice(),
-        step.usage,
+    const subcircuit = this.subcircuitInfoByName.get(step.subcircuit)
+    if (subcircuit === undefined) {
+      throw new Error('Synthesizer: Poseidon subcircuit is not found. Check qap-compiler.')
+    }
+    const inputLimit = step.inputs.length - 1
+    if (inputLimit < POSEIDON_INPUTS) {
+      throw new Error('Synthesizer: Poseidon input capacity is too small')
+    }
+
+    const basePlacementIndex = this._placements.length
+    let chainInputs: Array<DataPt | undefined> = preparedComposition.operands.slice()
+    if (chainInputs.length === 0) {
+      chainInputs = [undefined, undefined]
+    } else if (chainInputs.length === 1) {
+      chainInputs.push(undefined)
+    }
+
+    let stepIndex = 0
+    let resultPt: DataPt
+    while (chainInputs.length > inputLimit) {
+      resultPt = this._validatePreparedPoseidonStep(
+        preparedComposition,
+        step,
+        subcircuit,
+        stepIndex,
+        chainInputs.slice(0, inputLimit),
+        basePlacementIndex,
+      )
+      chainInputs = [resultPt, ...chainInputs.slice(inputLimit)]
+      stepIndex++
+    }
+    resultPt = this._validatePreparedPoseidonStep(
+      preparedComposition,
+      step,
+      subcircuit,
+      stepIndex,
+      chainInputs,
+      basePlacementIndex,
+    )
+    stepIndex++
+    if (preparedComposition.steps.length !== stepIndex) {
+      throw new Error(
+        `Synthesizer: Poseidon expected ${stepIndex} placement steps, but got ${preparedComposition.steps.length}`,
       )
     }
+    if (!_isSameWire(preparedComposition.resultPts[0]!, resultPt)) {
+      throw new Error('Synthesizer: Poseidon result is not connected to its final placement')
+    }
+  }
+
+  private _validatePreparedPoseidonStep(
+    preparedComposition: PreparedComposition,
+    step: PlacementComposition['steps'][number],
+    subcircuit: SubcircuitInfoByNameEntry,
+    stepIndex: number,
+    expectedPayload: readonly (DataPt | undefined)[],
+    basePlacementIndex: number,
+  ): DataPt {
+    const preparedStep = preparedComposition.steps[stepIndex]
+    if (preparedStep === undefined) {
+      throw new Error(`Synthesizer: Poseidon step ${stepIndex} is unavailable`)
+    }
+    _assertPreparedStepPorts(
+      preparedComposition.operation,
+      step.subcircuit,
+      preparedStep,
+      subcircuit,
+    )
+    if (
+      preparedStep.inPts.length !== step.inputs.length
+      || preparedStep.outPts.length !== step.outputs.length
+    ) {
+      throw new Error(`Synthesizer: Poseidon step ${stepIndex} has an invalid port count`)
+    }
+    const selector = preparedStep.inPts[0]!
+    const expectedSelector = 1n << BigInt(expectedPayload.length - POSEIDON_INPUTS)
+    if (
+      selector.source !== BUFFER_LIST.indexOf('EVM_IN')
+      || selector.value !== expectedSelector
+    ) {
+      throw new Error(`Synthesizer: Poseidon step ${stepIndex} selector is invalid`)
+    }
+
+    for (let payloadIndex = 0; payloadIndex < step.inputs.length - 1; payloadIndex++) {
+      const input = preparedStep.inPts[payloadIndex + 1]!
+      if (
+        !Number.isInteger(input.source)
+        || input.source < 0
+        || input.source >= basePlacementIndex + stepIndex
+      ) {
+        throw new Error(
+          `Synthesizer: Poseidon step ${stepIndex} input ${payloadIndex} is not connected to an earlier placement output`,
+        )
+      }
+      const expectedInput = expectedPayload[payloadIndex]
+      if (expectedInput === undefined) {
+        if (input.source !== BUFFER_LIST.indexOf('EVM_IN') || input.value !== 0n) {
+          throw new Error(`Synthesizer: Poseidon step ${stepIndex} padding is invalid`)
+        }
+      } else if (!_isSameWire(input, expectedInput)) {
+        throw new Error(
+          `Synthesizer: Poseidon step ${stepIndex} input ${payloadIndex} is not connected to its declared source`,
+        )
+      }
+    }
+
+    const output = preparedStep.outPts[0]!
+    if (
+      output.source !== basePlacementIndex + stepIndex
+      || output.wireIndex !== 0
+    ) {
+      throw new Error(`Synthesizer: Poseidon step ${stepIndex} has an invalid output source`)
+    }
+    return output
   }
 
   private _validatePreparedGenericComposition(
@@ -335,38 +532,11 @@ export class StateManager {
           `Synthesizer: ${step.subcircuit} subcircuit is not found for ${preparedComposition.operation}. Check qap-compiler.`,
         )
       }
-      _assertPreparedWireCount(
+      _assertPreparedStepPorts(
         preparedComposition.operation,
         step.subcircuit,
-        'input',
-        preparedStep.inPts,
-        subcircuit.NInWires,
-      )
-      _assertPreparedWireCount(
-        preparedComposition.operation,
-        step.subcircuit,
-        'output',
-        preparedStep.outPts,
-        subcircuit.NOutWires,
-      )
-      if (subcircuit.logicalInterface === undefined) {
-        throw new Error(
-          `Synthesizer: ${step.subcircuit} has no logical interface for ${preparedComposition.operation}`,
-        )
-      }
-      _assertPreparedPortTypes(
-        preparedComposition.operation,
-        step.subcircuit,
-        'input',
-        preparedStep.inPts,
-        subcircuit.logicalInterface.inputs,
-      )
-      _assertPreparedPortTypes(
-        preparedComposition.operation,
-        step.subcircuit,
-        'output',
-        preparedStep.outPts,
-        subcircuit.logicalInterface.outputs,
+        preparedStep,
+        subcircuit,
       )
       if (preparedStep.inPts.length !== step.inputs.length) {
         throw new Error(
