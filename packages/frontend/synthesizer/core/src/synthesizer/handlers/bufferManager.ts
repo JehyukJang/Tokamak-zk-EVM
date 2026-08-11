@@ -17,36 +17,6 @@ export class BufferManager {
     this._initBuffers();
   }
 
-  // public addWireToOutBuffer(
-  //   outPt: DataPt,
-  //   placementId: number,
-  // ): void {
-  //   // Use the length of existing output list as index for new output
-  //   if (
-  //     this.parent.placements.get(placementId)!.inPts.length !==
-  //       this.parent.placements.get(placementId)!.outPts.length
-  //     ) {
-  //     throw new Error(
-  //       `Synthesizer: Mismatches in the buffer wires (placement id: ${placementId})`,
-  //     );
-  //   }
-  //   const inWireIndex = 
-  //   const inPtRaw: DataPtDescription = {
-  //     source: placementId,
-  //     wireIndex: inWireIndex,
-  //     sourceBitSize: inPt.sourceBitSize,
-  //   }
-  //   let outPtIdx = this.parent.placements.get(placementId)!.outPts.length;
-  //   if (outPt.wireIndex !== outPtIdx) {
-  //     throw new Error(
-  //       `Synthesizer: Invalid indexing in the output wire of an output buffer (placement id: ${placementId}, wire id: ${outPtIdx})`,
-  //     );
-  //   }
-  //   // Add input-output pair to the output buffer subcircuit
-  //   this.parent.placements.get(placementId)!.inPts.push(inPt);
-  //   this.parent.placements.get(placementId)!.outPts.push(outPt);
-  // }
-
   public addReservedVariableToBufferIn(varName: ReservedVariable, value: bigint = 0n, dynamic: boolean = false, message?: string): DataPt {
     const placementIndex = VARIABLE_DESCRIPTION[varName].source
     const wireDesc: DataPtDescription = {...VARIABLE_DESCRIPTION[varName], extSource: VARIABLE_DESCRIPTION[varName].extSource + (message ?? '')}
@@ -106,22 +76,6 @@ export class BufferManager {
    * Initializes the default placements for public/private inputs and outputs.
    */
   private _initBuffers(): void {
-    // const _addUnusedBufferWire = (buffer: ReservedBuffer): void => {
-    //   const placementIndex = BUFFER_PLACEMENT[buffer].placementIndex
-    //   const placement = this.parent.placements[placementIndex]!
-    //   const inPtDesc: DataPtDescription = {
-    //     source: placementIndex,
-    //     sourceBitSize: 1,
-    //     wireIndex: placement.inPts.length
-    //   }
-    //   const {inPt, outPt} = DataPtFactory.createInputBufferWirePair(inPtDesc, 0n)
-    //   if (outPt.wireIndex !== placement.outPts.length || inPt.wireIndex !== outPt.wireIndex) {
-    //     throw new Error(`Wire index mismatch while initializing buffers`)
-    //   }
-    //   this.parent.placements[placementIndex]!.inPts.push(inPt)
-    //   this.parent.placements[placementIndex]!.outPts.push(outPt)
-    // }
-
     for (const buffer of BUFFER_LIST) {
       this.parent.placeBuffer(
         buffer,
@@ -140,15 +94,6 @@ export class BufferManager {
     this.addReservedVariableToBufferIn('JUBJUB_BASE_Y', jubjub.Point.BASE.toAffine().y)
     this.addReservedVariableToBufferIn('JUBJUB_POI_X', jubjub.Point.ZERO.toAffine().x)
     this.addReservedVariableToBufferIn('JUBJUB_POI_Y', jubjub.Point.ZERO.toAffine().y)
-    // const nullPoseidonL0 = poseidon_raw(Array(POSEIDON_INPUTS).fill(0n))
-    // this.addReservedVariableToBufferIn('NULL_POSEIDON_LEVEL0', nullPoseidonL0)
-    // const nullPoseidonL1 = poseidon_raw(Array(POSEIDON_INPUTS).fill(nullPoseidonL0))
-    // this.addReservedVariableToBufferIn('NULL_POSEIDON_LEVEL1', nullPoseidonL1)
-    // const nullPoseidonL2 = poseidon_raw(Array(POSEIDON_INPUTS).fill(nullPoseidonL1))
-    // this.addReservedVariableToBufferIn('NULL_POSEIDON_LEVEL2', nullPoseidonL2)
-    // const nullPoseidonL3 = poseidon_raw(Array(POSEIDON_INPUTS).fill(nullPoseidonL2))
-    // this.addReservedVariableToBufferIn('NULL_POSEIDON_LEVEL3', nullPoseidonL3)
-
     this.addReservedVariableToBufferIn('COINBASE', hexToBigInt(this.cachedOpts.blockInfo.coinBase))
     this.addReservedVariableToBufferIn('TIMESTAMP', hexToBigInt(this.cachedOpts.blockInfo.timeStamp))
     this.addReservedVariableToBufferIn('NUMBER', hexToBigInt(this.cachedOpts.blockInfo.blockNumber))
@@ -206,36 +151,6 @@ export class BufferManager {
     }
     const placementIndex = VARIABLE_DESCRIPTION[varName].source
     const wireIndex: number = VARIABLE_DESCRIPTION[varName].wireIndex
-    // switch (varName) {
-    //   case 'EDDSA_SIGNATURE':
-    //   case 'EDDSA_RANDOMIZER_X':
-    //   case 'EDDSA_RANDOMIZER_Y':
-    //     if (txNonce === undefined) {
-    //       throw new Error('Reading transaction related variables requires transaction nonce')
-    //     }
-    //     wireIndex += txNonce * 3
-    //     break
-    //   case 'TRANSACTION_NONCE':
-    //   case 'CONTRACT_ADDRESS':
-    //   case 'FUNCTION_SELECTOR':
-    //   case 'TRANSACTION_INPUT0':
-    //   case 'TRANSACTION_INPUT1':
-    //   case 'TRANSACTION_INPUT2':
-    //   case 'TRANSACTION_INPUT3':
-    //   case 'TRANSACTION_INPUT4':
-    //   case 'TRANSACTION_INPUT5':
-    //   case 'TRANSACTION_INPUT6':
-    //   case 'TRANSACTION_INPUT7':
-    //   case 'TRANSACTION_INPUT8':
-    //     if (txNonce === undefined) {
-    //       throw new Error('Reading transaction related variables requires transaction nonce')
-    //     }
-    //     wireIndex += txNonce * 12
-    //     break
-    //   default:
-    //     break
-    // }
-
     const outPt = this.parent.placements[placementIndex]!.outPts[wireIndex]
     if (outPt.wireIndex !== wireIndex || outPt.source !== placementIndex) {
       throw new Error('Invalid wire information')
