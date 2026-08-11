@@ -142,27 +142,6 @@ export class MemoryPt {
   }
 
   /**
-     * read is not used for MemoryPt manipulation. Instead, "getDataAlias" is used.
-     * Reads a slice of memory from `offset` till `offset + size` as a `Uint8Array`.
-     * It fills up the difference between memory's length and `offset + size` with zeros.
-     * @param offset - Starting memory position
-     * @param size - How many bytes to read
-     * @param avoidCopy - Avoid memory copy if possible for performance reasons (optional)
-    
-    read(offset: number, size: number): Uint8Array {
-        const loaded = this._storePt.subarray(offset, offset + size)
-        if (avoidCopy === true) {
-        return loaded
-        }
-        const returnBytes = new Uint8Array(size)
-        // Copy the stored "buffer" from memory into the return Uint8Array
-        returnBytes.set(loaded)
-
-        return returnBytes
-    }
-    */
-
-  /**
    * Returns fully derived alias geometry for a specific memory range.
    * DataPt creation and placement remain the instruction handler's responsibility.
    * @param offset - Starting memory position to read
@@ -210,21 +189,6 @@ export class MemoryPt {
       const buf = setLengthLeft(bigIntToBytes(memoryPtEntry.dataPt.value), containerSize)
       simMem.write(containerOffset + BIAS, containerSize, buf)
 
-      // // Find the offset where nonzero value starts
-      // const storedOffset = storedEndOffset - this._storePt.get(timeStamp)!.dataPt.sourceSize + 1
-      // // If data is in the range
-      // if (storedEndOffset >= offset && storedOffset <= endOffset) {
-      //   const _offset = this._storePt.get(timeStamp)!.memByteOffset // This data offset can be negative.
-      //   const _containerSize = this._storePt.get(timeStamp)!.containerByteSize
-      //   const _actualSize = this._storePt.get(timeStamp)!.dataPt.sourceSize
-      //   const value = this._storePt.get(timeStamp)!.dataPt.value
-      //   let valuePadded = setLengthLeft(bigIntToBytes(value), _actualSize)
-      //   if (_containerSize < _actualSize){
-      //     valuePadded = valuePadded.slice(0, _containerSize)
-      //   }
-      //   console.log(bytesToHex(valuePadded))
-      //   simMem.write(_offset + BIAS, Math.min(_containerSize, _actualSize), valuePadded)
-      // }
     }
 
     return simMem.read(offset + BIAS, length)
@@ -284,52 +248,6 @@ export class MemoryPt {
     }
     return dataFragments
   }
-
-  // private _viewMemoryConflict(offset: number, size: number): _DataFragments {
-  //   const dataFragments: _DataFragments = new Map()
-  //   const endOffset = offset + size - 1
-  //   const sortedTimeStamps = Array.from(this._storePt.keys()).sort((a, b) => a - b)
-
-  //   let i = 0
-  //   for (const timeStamp of sortedTimeStamps) {
-  //     const containerOffset = this._storePt.get(timeStamp)!.memByteOffset
-  //     const storedEndOffset = containerOffset + this._storePt.get(timeStamp)!.containerByteSize - 1
-  //     // Find the offset where nonzero value starts
-  //     const storedOffset = storedEndOffset - this._storePt.get(timeStamp)!.dataPt.sourceSize + 1
-  //     const sortedTimeStamps_firsts = sortedTimeStamps.slice(0, i)
-  //     // If data is in the range
-  //     if (storedEndOffset >= offset && storedOffset <= endOffset) {
-  //       const overlapStart = Math.max(offset, storedOffset)
-  //       const overlapEnd = Math.min(endOffset, storedEndOffset)
-  //       const thisDataOriginalRange = createRangeSet(storedOffset, storedEndOffset)
-  //       const thisDataValidRange = createRangeSet(overlapStart, overlapEnd)
-
-  //       dataFragments.set(timeStamp, {
-  //         originalRange: thisDataOriginalRange,
-  //         validRange: thisDataValidRange,
-  //       })
-  //       // Update previous data overlap ranges
-  //       for (const _timeStamp of sortedTimeStamps_firsts) {
-  //         if (dataFragments.has(_timeStamp)) {
-  //           const overwrittenRange = setMinus(
-  //             dataFragments.get(_timeStamp)!.validRange,
-  //             dataFragments.get(timeStamp)!.validRange,
-  //           )
-  //           if (overwrittenRange.size <= 0) {
-  //             dataFragments.delete(_timeStamp)
-  //           } else {
-  //             dataFragments.set(_timeStamp, {
-  //               originalRange: dataFragments.get(_timeStamp)!.originalRange,
-  //               validRange: overwrittenRange,
-  //             })
-  //           }
-  //         }
-  //       }
-  //     }
-  //     i++
-  //   }
-  //   return dataFragments
-  // }
 
   private _generateMasker(offset: number, size: number, validRange: Set<number>): string {
     const targetRange = createRangeSet(offset, offset + size - 1)
