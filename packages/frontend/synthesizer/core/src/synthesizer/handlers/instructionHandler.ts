@@ -45,6 +45,16 @@ type PreparedMemoryCopy = Readonly<{
   destinationEntries: MemoryPts
 }>
 
+/**
+ * Side-effect-free preparation for contiguous memory views consumed by one
+ * opcode. The caller records each composition before consuming chunk data.
+ */
+type PreparedMemoryChunks = Readonly<{
+  compositions: readonly PreparedComposition[]
+  chunkDataPts: DataPt[]
+  dataRecovered: bigint
+}>
+
 const checkRequiredInput = (...input: unknown[]): void => {
   if (input.some(v => v === undefined)) throw new Error('Required inputs are missing')
 }
@@ -923,11 +933,16 @@ export class InstructionHandler {
           checkRequiredInput(opts.memOut)
           const memOffset = ins[0]
           const dataLength = ins[1]
-          const { chunkDataPts, dataRecovered } = this._chunkMemory(
+          const preparedMemoryChunks = this._prepareMemoryChunks(
             opts.memoryPt,
             memOffset,
             dataLength,
+            this.parent.placements.length,
           )
+          for (const preparedComposition of preparedMemoryChunks.compositions) {
+            this.parent.placeComposition(preparedComposition)
+          }
+          const { chunkDataPts, dataRecovered } = preparedMemoryChunks
           if (bytesToBigInt(opts.memOut!) !== dataRecovered) {
             throw new Error(`Synthesizer: ${op}: Memory data to load mismatch`)
           }
@@ -1103,7 +1118,13 @@ export class InstructionHandler {
             const calldataMemoryPt = MemoryPt.simulateMemoryPt(calldataMemoryPts);
             const dataAliasInfos = calldataMemoryPt.getDataAlias(i, 32);
             if (dataAliasInfos.length > 0) {
-              stackPt.push(this._placeMemoryLoadComposition(dataAliasInfos, 32))
+              const preparedComposition = this._prepareMemoryLoadComposition(
+                dataAliasInfos,
+                32,
+                this.parent.placements.length,
+              )
+              this.parent.placeComposition(preparedComposition)
+              stackPt.push(preparedComposition.resultPts[0]!)
             } else {
               stackPt.push(this.parent.loadArbitraryStatic(
                 0n,
@@ -1284,11 +1305,16 @@ export class InstructionHandler {
       )
     }
 
-    const { chunkDataPts, dataRecovered } = this._chunkMemory(
+    const preparedMemoryChunks = this._prepareMemoryChunks(
       opts.memoryPt,
       memOffset,
       dataLength,
+      this.parent.placements.length,
     )
+    for (const preparedComposition of preparedMemoryChunks.compositions) {
+      this.parent.placeComposition(preparedComposition)
+    }
+    const { chunkDataPts, dataRecovered } = preparedMemoryChunks
     const expectedLogData = bytesToBigInt(
       opts.prevStepResult.memory.subarray(Number(memOffset), Number(memOffset) + Number(dataLength)),
     )
@@ -1333,12 +1359,21 @@ export class InstructionHandler {
             Number(pos),
             32,
           )
-          const mutDataPt = dataAliasInfos.length === 0
-            ? this.parent.loadArbitraryStatic(
-                0n,
-                UINT256_DATA_PT_TYPE,
-              )
-            : this._placeMemoryLoadComposition(dataAliasInfos, 32)
+          let mutDataPt: DataPt
+          if (dataAliasInfos.length === 0) {
+            mutDataPt = this.parent.loadArbitraryStatic(
+              0n,
+              UINT256_DATA_PT_TYPE,
+            )
+          } else {
+            const preparedComposition = this._prepareMemoryLoadComposition(
+              dataAliasInfos,
+              32,
+              this.parent.placements.length,
+            )
+            this.parent.placeComposition(preparedComposition)
+            mutDataPt = preparedComposition.resultPts[0]!
+          }
           opts.stackPt.push(mutDataPt)
         }
         break
@@ -1348,16 +1383,23 @@ export class InstructionHandler {
           checkRequiredInput(opts.memOut)
           const offsetNum = Number(ins[0])
           const originalDataPt = inPts[1]
-          const dataPtToStore = op === 'MSTORE8'
-            ? this.prepareSingleStepArithmeticComposition('AND', [
+          let dataPtToStore = originalDataPt
+          if (op === 'MSTORE8') {
+            const preparedComposition = this._prepareSingleStepArithmeticComposition(
+              'AND',
+              [
                 this.parent.loadArbitraryStatic(
                   0xffn,
                   UINT256_DATA_PT_TYPE,
                   'Masker for MSTORE8',
                 ),
                 originalDataPt,
-              ])[0]!
-            : originalDataPt
+              ],
+              this.parent.placements.length,
+            )
+            this.parent.placeComposition(preparedComposition)
+            dataPtToStore = preparedComposition.resultPts[0]!
+          }
           const byteSize = op === 'MSTORE8' ? 1 : 32
           const _out = opts.memoryPt.write(offsetNum, byteSize, dataPtToStore)
           if ( bytesToBigInt(_out) !== bytesToBigInt(opts.memOut!)) {
@@ -1545,10 +1587,11 @@ export class InstructionHandler {
     return memPts
   }
 
-  private _placeMemoryLoadComposition(
+  private _prepareMemoryLoadComposition(
     dataAliasGeometries: DataAliasGeometries,
     viewByteLength: number,
-  ): DataPt {
+    basePlacementIndex: number,
+  ): PreparedComposition {
     if (!Number.isInteger(viewByteLength) || viewByteLength < 1 || viewByteLength > 32) {
       throw new Error(`Synthesizer: MemoryLoad has an invalid view byte length ${viewByteLength}`)
     }
@@ -1605,7 +1648,6 @@ export class InstructionHandler {
       directionType,
       ownershipType,
     )
-    const basePlacementIndex = this.parent.placements.length
     const expectedCoveragePt = this.parent.loadArbitraryStatic(
       dataAliasInfos.reduce(
         (coverage, { maskerPt }) => coverage | maskerPt.value,
@@ -1679,8 +1721,7 @@ export class InstructionHandler {
       resultPts: [previousWordPt],
       steps,
     }
-    this.parent.placeComposition(preparedComposition)
-    return previousWordPt
+    return preparedComposition
   }
 
   private _createDataAliasInfos(
@@ -1746,18 +1787,21 @@ export class InstructionHandler {
     return destinationEntries
   }
 
-  private _chunkMemory(
+  private _prepareMemoryChunks(
     memoryPt: MemoryPt,
     offset: bigint,
     length: bigint,
-  ): { chunkDataPts: DataPt[]; dataRecovered: bigint } {
+    basePlacementIndex: number,
+  ): PreparedMemoryChunks {
     const offsetNum = Number(offset);
     const lengthNum = Number(length);
     let nChunks = lengthNum > 32 ? Math.ceil(lengthNum / 32) : 1;
   
     const chunkDataPts: DataPt[] = [];
+    const compositions: PreparedComposition[] = []
     let dataRecovered = 0n;
     let lengthLeft = lengthNum;
+    let nextPlacementIndex = basePlacementIndex
   
     for (let i = 0; i < nChunks; i++) {
       const _offset = offsetNum + 32 * i;
@@ -1766,7 +1810,14 @@ export class InstructionHandler {
   
       const dataAliasInfos = memoryPt.getDataAlias(_offset, _length);
       if (dataAliasInfos.length > 0) {
-        chunkDataPts[i] = this._placeMemoryLoadComposition(dataAliasInfos, _length);
+        const preparedComposition = this._prepareMemoryLoadComposition(
+          dataAliasInfos,
+          _length,
+          nextPlacementIndex,
+        )
+        compositions.push(preparedComposition)
+        nextPlacementIndex += preparedComposition.steps.length
+        chunkDataPts[i] = preparedComposition.resultPts[0]!
       } else {
         chunkDataPts[i] = this.parent.loadArbitraryStatic(
           0n,
@@ -1777,6 +1828,6 @@ export class InstructionHandler {
       dataRecovered += chunkDataPts[i].value << BigInt(lengthLeft * 8);
     }
   
-    return { chunkDataPts, dataRecovered };
+    return { compositions, chunkDataPts, dataRecovered };
   }
 }
