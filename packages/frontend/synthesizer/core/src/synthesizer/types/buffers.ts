@@ -361,6 +361,9 @@ const PRIVATE_IN_VARIABLES_STATIC = [
   'EDDSA_RANDOMIZER_X',
   'EDDSA_RANDOMIZER_Y',
 ] as const
+const PRIVATE_IN_VARIABLES_DYNAMIC = [
+  // Nothing
+] as const
 type LogOutVariable =
   | (typeof LOG_OUT_VARIABLES_STATIC)[number]
   | (typeof LOG_OUT_VARIABLES_DYNAMIC)[number]
@@ -379,7 +382,9 @@ type BlockInVariable =
 type EVMInVariable =
   | (typeof EVM_IN_VARIABLES_STATIC)[number]
   | (typeof EVM_IN_VARIABLES_DYNAMIC)[number]
-type PrivateInVariable = (typeof PRIVATE_IN_VARIABLES_STATIC)[number]
+type PrivateInVariable =
+  | (typeof PRIVATE_IN_VARIABLES_STATIC)[number]
+  | (typeof PRIVATE_IN_VARIABLES_DYNAMIC)[number]
 export type ReservedVariable =
   | LogOutVariable
   | StorageStoreVariable
@@ -403,6 +408,7 @@ const _VARIABLES: string[] = [
   ...EVM_IN_VARIABLES_STATIC,
   ...EVM_IN_VARIABLES_DYNAMIC,
   ...PRIVATE_IN_VARIABLES_STATIC,
+  ...PRIVATE_IN_VARIABLES_DYNAMIC,
 ]
     
 const __buildIncompleteDescription = (
@@ -456,7 +462,7 @@ const _EVM_IN_DESCRIPTION_INCOMPLETE = __buildIncompleteDescription(
 ) as Record<EVMInVariable, DataPtDescription>;
 const _PRIVATE_IN_DESCRIPTION_INCOMPLETE = __buildIncompleteDescription(
   PRIVATE_IN_VARIABLES_STATIC,
-  [],
+  PRIVATE_IN_VARIABLES_DYNAMIC,
   'PRIVATE_IN',
 ) as Record<PrivateInVariable, DataPtDescription>;
 
