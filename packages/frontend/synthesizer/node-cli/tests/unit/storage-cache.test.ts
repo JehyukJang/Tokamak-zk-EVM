@@ -2,9 +2,11 @@ import { createAddressFromBigInt, bigIntToBytes, setLengthLeft } from '@ethereum
 import { describe, expect, it, vi } from 'vitest';
 
 import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
+import { BUFFER_LIST } from '../../../core/src/subcircuit/configuredTypes.ts';
 import { DataPtFactory, StackPt } from '../../../core/src/synthesizer/dataStructure/index.ts';
 import { StateManager } from '../../../core/src/synthesizer/handlers/stateManager.ts';
 import { VARIABLE_DESCRIPTION } from '../../../core/src/synthesizer/types/buffers.ts';
+import { UINT256_DATA_PT_TYPE } from '../../../core/src/synthesizer/types/dataStructure.ts';
 import type {
   InitialStorageRead,
   StorageCacheEntry,
@@ -15,14 +17,11 @@ const dataPt = (
   value: bigint,
   source: number,
   wireIndex = 0,
-  sourceBitSize = 256,
-): DataPt => ({
+): DataPt => DataPtFactory.create({
   source,
   wireIndex,
-  sourceBitSize,
-  value,
-  valueHex: `0x${value.toString(16)}`,
-});
+  dataPtType: UINT256_DATA_PT_TYPE,
+}, value);
 
 const equalBatchInfo = {
   id: 14,
@@ -53,6 +52,7 @@ const createState = (): StateManager => {
         ['bufferLogOut', logOutInfo],
         ['EqualBatch', equalBatchInfo],
       ]),
+      subcircuitBufferMapping: { LOG_OUT: logOutInfo },
     },
   } as any;
   return new StateManager(parent);
@@ -72,8 +72,7 @@ const createStorageHarness = (initialValue: bigint) => {
     subcircuitLibrary: {
       subcircuitInfoByName: new Map([['EqualBatch', equalBatchInfo]]),
     },
-    place: vi.fn(),
-    placeArithComposition: vi.fn(() => []),
+    placeComposition: vi.fn(),
     addReservedVariableToBufferIn: vi.fn((_name: string, value: bigint) =>
       dataPt(value, nextSource++),
     ),
@@ -95,13 +94,16 @@ const createStorageHarness = (initialValue: bigint) => {
 };
 
 describe('StateManager storage tracking', () => {
-  it('accepts a full 256-bit initial storage value', () => {
+  it('uses a full 256-bit value for the STORAGE_LOAD private input', () => {
     const value = (1n << 256n) - 1n;
 
-    expect(DataPtFactory.create(VARIABLE_DESCRIPTION.STORAGE_READ, value)).toMatchObject({
-      sourceBitSize: 256,
+    expect(DataPtFactory.create(VARIABLE_DESCRIPTION.SLOAD_VALUE, value)).toMatchObject({
+      dataPtType: UINT256_DATA_PT_TYPE,
       value,
     });
+    expect(VARIABLE_DESCRIPTION.SLOAD_VALUE.source).toBe(
+      BUFFER_LIST.indexOf('STORAGE_LOAD'),
+    );
   });
 
   it('exposes only dirty entries for final storage output', () => {
@@ -134,7 +136,7 @@ describe('StateManager storage tracking', () => {
       latestValuePt: dataPt(3n, 3),
       dirty: false,
     };
-    state.place('bufferLogOut', [], [], 'test LOG_OUT');
+    state.placeBuffer('LOG_OUT', [], [], 'test LOG_OUT');
     state.storageCache.set(1n, 2n, baseEntry);
 
     state.beginFrame(0);
@@ -266,30 +268,29 @@ describe('InstructionHandler storage cache', () => {
     expect(parent.state.initialStorageReads.entries).toHaveLength(1);
     expect(parent.addReservedVariableToBufferIn.mock.calls.map(
       ([name]: [string]) => name,
-    )).toEqual(['STORAGE_READ']);
+    )).toEqual(['SLOAD_VALUE']);
     expect(parent.addReservedVariableToBufferOut.mock.calls.map(
       ([name, valuePt]: [string, DataPt]) => [name, valuePt.source, valuePt.value],
     )).toEqual([
       ['SLOAD_ADDRESS', 30, addressValue],
       ['SLOAD_KEY', 31, 9n],
-      ['SLOAD_VALUE', 100, 5n],
     ]);
     expect(parent.state.initialStorageReads.entries[0]).toMatchObject({
       addressPt: { source: 30, value: addressValue },
       keyPt: { source: 31, value: 9n },
-      valuePt: { source: 100, value: 5n },
+      valuePt: { source: 102, value: 5n },
     });
     expect(secondValuePt).toMatchObject({
       source: firstValuePt.source,
       wireIndex: firstValuePt.wireIndex,
       value: firstValuePt.value,
     });
-    const equalBatchCalls = parent.placeArithComposition.mock.calls.filter(
-      (call: any[]) => call[0] === 'EqualBatch',
+    const equalBatchCalls = parent.placeComposition.mock.calls.filter(
+      (call: any[]) => call[0] === 'StorageAccess',
     );
     expect(equalBatchCalls).toHaveLength(1);
     expect(equalBatchCalls[0]).toEqual([
-      'EqualBatch',
+      'StorageAccess',
       [
         expect.objectContaining({ source: 40, value: addressValue }),
         expect.objectContaining({ source: 41, value: 9n }),
@@ -319,14 +320,14 @@ describe('InstructionHandler storage cache', () => {
 
     expect(parent.state.initialStorageReads.entries).toHaveLength(1);
     expect(parent.addReservedVariableToBufferIn).toHaveBeenCalledTimes(1);
-    expect(parent.addReservedVariableToBufferOut).toHaveBeenCalledTimes(3);
+    expect(parent.addReservedVariableToBufferOut).toHaveBeenCalledTimes(2);
     expect(secondValuePt).toMatchObject({
       source: firstValuePt.source,
       wireIndex: firstValuePt.wireIndex,
       value: 6n,
     });
-    expect(parent.placeArithComposition.mock.calls.filter(
-      (call: any[]) => call[0] === 'EqualBatch',
+    expect(parent.placeComposition.mock.calls.filter(
+      (call: any[]) => call[0] === 'StorageAccess',
     )).toHaveLength(1);
   });
 
@@ -351,8 +352,8 @@ describe('InstructionHandler storage cache', () => {
       dirty: true,
     });
     expect(loadedPt).toMatchObject({ source: 51, value: 11n });
-    expect(parent.placeArithComposition.mock.calls.filter(
-      (call: any[]) => call[0] === 'EqualBatch',
+    expect(parent.placeComposition.mock.calls.filter(
+      (call: any[]) => call[0] === 'StorageAccess',
     )).toHaveLength(1);
   });
 
@@ -385,8 +386,8 @@ describe('InstructionHandler storage cache', () => {
         dirty: true,
       }),
     ]);
-    const equalBatchCalls = parent.placeArithComposition.mock.calls.filter(
-      (call: any[]) => call[0] === 'EqualBatch',
+    const equalBatchCalls = parent.placeComposition.mock.calls.filter(
+      (call: any[]) => call[0] === 'StorageAccess',
     );
     expect(equalBatchCalls.map(([, inPts]: [string, DataPt[]]) =>
       inPts.map((pt) => pt.source)
@@ -430,10 +431,10 @@ describe('InstructionHandler storage cache', () => {
         dirty: true,
       }),
     ]);
-    expect(parent.placeArithComposition.mock.calls.filter(
-      (call: any[]) => call[0] === 'EqualBatch',
+    expect(parent.placeComposition.mock.calls.filter(
+      (call: any[]) => call[0] === 'StorageAccess',
     )[0]?.[1].map((pt: DataPt) => pt.source)).toEqual([82, 83, 80, 81]);
-    expect(parent.addReservedVariableToBufferOut).toHaveBeenCalledTimes(3);
+    expect(parent.addReservedVariableToBufferOut).toHaveBeenCalledTimes(2);
   });
 
   it('tracks distinct address and key pairs independently', async () => {
@@ -473,10 +474,10 @@ describe('InstructionHandler storage cache', () => {
       [addressValue, 1n, 3n],
       [addressValue, 2n, 4n],
     ]);
-    expect(parent.placeArithComposition.mock.calls.filter(
-      (call: any[]) => call[0] === 'EqualBatch',
+    expect(parent.placeComposition.mock.calls.filter(
+      (call: any[]) => call[0] === 'StorageAccess',
     )).toHaveLength(1);
-    expect(parent.addReservedVariableToBufferOut).toHaveBeenCalledTimes(6);
+    expect(parent.addReservedVariableToBufferOut).toHaveBeenCalledTimes(4);
   });
 
   it('rejects a storageAddressPt that does not match the EVM storage address', async () => {

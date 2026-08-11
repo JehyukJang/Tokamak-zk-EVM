@@ -601,12 +601,6 @@ export class InstructionHandler {
       return DataPtFactory.deepCopy(cachedEntry.latestValuePt)
     }
 
-    const valuePt = this.parent.addReservedVariableToBufferIn(
-      'STORAGE_READ',
-      valueStored,
-      true,
-      ` of address: ${address}`,
-    );
     this.parent.addReservedVariableToBufferOut(
       'SLOAD_ADDRESS',
       addressPt,
@@ -619,9 +613,9 @@ export class InstructionHandler {
       true,
       ` of address: ${address}`,
     );
-    this.parent.addReservedVariableToBufferOut(
+    const valuePt = this.parent.addReservedVariableToBufferIn(
       'SLOAD_VALUE',
-      valuePt,
+      valueStored,
       true,
       ` of address: ${address}`,
     );

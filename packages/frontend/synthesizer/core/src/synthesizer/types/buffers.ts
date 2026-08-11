@@ -361,10 +361,6 @@ const PRIVATE_IN_VARIABLES_STATIC = [
   'EDDSA_RANDOMIZER_X',
   'EDDSA_RANDOMIZER_Y',
 ] as const
-const PRIVATE_IN_VARIABLES_DYNAMIC = [
-  'STORAGE_READ',
-] as const
-
 type LogOutVariable =
   | (typeof LOG_OUT_VARIABLES_STATIC)[number]
   | (typeof LOG_OUT_VARIABLES_DYNAMIC)[number]
@@ -383,9 +379,7 @@ type BlockInVariable =
 type EVMInVariable =
   | (typeof EVM_IN_VARIABLES_STATIC)[number]
   | (typeof EVM_IN_VARIABLES_DYNAMIC)[number]
-type PrivateInVariable =
-  | (typeof PRIVATE_IN_VARIABLES_STATIC)[number]
-  | (typeof PRIVATE_IN_VARIABLES_DYNAMIC)[number]
+type PrivateInVariable = (typeof PRIVATE_IN_VARIABLES_STATIC)[number]
 export type ReservedVariable =
   | LogOutVariable
   | StorageStoreVariable
@@ -409,7 +403,6 @@ const _VARIABLES: string[] = [
   ...EVM_IN_VARIABLES_STATIC,
   ...EVM_IN_VARIABLES_DYNAMIC,
   ...PRIVATE_IN_VARIABLES_STATIC,
-  ...PRIVATE_IN_VARIABLES_DYNAMIC,
 ]
     
 const __buildIncompleteDescription = (
@@ -463,7 +456,7 @@ const _EVM_IN_DESCRIPTION_INCOMPLETE = __buildIncompleteDescription(
 ) as Record<EVMInVariable, DataPtDescription>;
 const _PRIVATE_IN_DESCRIPTION_INCOMPLETE = __buildIncompleteDescription(
   PRIVATE_IN_VARIABLES_STATIC,
-  PRIVATE_IN_VARIABLES_DYNAMIC,
+  [],
   'PRIVATE_IN',
 ) as Record<PrivateInVariable, DataPtDescription>;
 
@@ -502,7 +495,7 @@ VARIABLE_DESCRIPTION_INCOMPLETE.FUNCTION_SELECTOR.extSource = `Selector for a fu
 __setDataPtType('FUNCTION_SELECTOR', UINT32_DATA_PT_TYPE)
 VARIABLE_DESCRIPTION_INCOMPLETE.SLOAD_ADDRESS.extDest = `Initial storage read address`;
 VARIABLE_DESCRIPTION_INCOMPLETE.SLOAD_KEY.extDest = `Initial storage read key`;
-VARIABLE_DESCRIPTION_INCOMPLETE.SLOAD_VALUE.extDest = `Initial storage read value`;
+VARIABLE_DESCRIPTION_INCOMPLETE.SLOAD_VALUE.extSource = `Initial storage read value`;
 VARIABLE_DESCRIPTION_INCOMPLETE.COINBASE.extSource = `COINBASE`;
 VARIABLE_DESCRIPTION_INCOMPLETE.TIMESTAMP.extSource = `TIMESTAMP`;
 VARIABLE_DESCRIPTION_INCOMPLETE.NUMBER.extSource = `NUMBER`;
@@ -561,8 +554,6 @@ __setDataPtType('EDDSA_RANDOMIZER_X', BLS12_381_FR_DATA_PT_TYPE)
 
 VARIABLE_DESCRIPTION_INCOMPLETE.EDDSA_RANDOMIZER_Y.extSource = `EdDSA randomizer (y coordinate)`;
 __setDataPtType('EDDSA_RANDOMIZER_Y', BLS12_381_FR_DATA_PT_TYPE)
-
-VARIABLE_DESCRIPTION_INCOMPLETE.STORAGE_READ.extSource = `Storage read`;
 
 for (const _varName of _VARIABLES) {
   const varName = _varName as ReservedVariable
