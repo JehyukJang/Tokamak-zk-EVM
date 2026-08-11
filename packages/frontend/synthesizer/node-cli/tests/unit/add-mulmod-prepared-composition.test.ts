@@ -1,14 +1,26 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createAddMulModCompositionMappings } from '../../../core/src/subcircuit/special-builders/addMulModComposition.ts';
+import { createDivisionCompositionMappings } from '../../../core/src/subcircuit/special-builders/divModComposition.ts';
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
 import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
 import {
+  BIT_DATA_PT_TYPE,
   UINT128_DATA_PT_TYPE,
   UINT256_DATA_PT_TYPE,
+  UINT32_DATA_PT_TYPE,
   type DataPt,
+  type DataPtType,
 } from '../../../core/src/synthesizer/types/dataStructure.ts';
 import type { PreparedComposition } from '../../../core/src/synthesizer/types/placements.ts';
+
+type FixedMultiStepOperation =
+  | 'DIV'
+  | 'SDIV'
+  | 'MOD'
+  | 'SMOD'
+  | 'ADDMOD'
+  | 'MULMOD'
 
 const uint = (bits: number) => ({ kind: 'uint' as const, bits })
 
@@ -52,20 +64,40 @@ const subcircuitInfoByName = new Map([
       outputs: [{ name: 'result', logicalType: uint(256) }],
     },
   }],
+  ['ALU4A', {
+    logicalInterface: {
+      inputs: [],
+      outputs: [
+        ...Array.from({ length: 3 }, (_, index) => ({ name: `word${index}`, logicalType: uint(256) })),
+        ...Array.from({ length: 4 }, (_, index) => ({ name: `limb${index}`, logicalType: uint(64) })),
+        ...Array.from({ length: 3 }, (_, index) => ({ name: `flag${index}`, logicalType: uint(1) })),
+      ],
+    },
+  }],
+  ['ALU4B', {
+    logicalInterface: {
+      inputs: [],
+      outputs: [{ name: 'result', logicalType: uint(256) }],
+    },
+  }],
 ])
 
-const dataPt = (value: bigint, source: number, wireIndex = 0): DataPt =>
-  DataPtFactory.create({ source, wireIndex, dataPtType: UINT256_DATA_PT_TYPE }, value)
+const dataPt = (
+  value: bigint,
+  source: number,
+  wireIndex = 0,
+  dataPtType: DataPtType = UINT256_DATA_PT_TYPE,
+): DataPt => DataPtFactory.create({ source, wireIndex, dataPtType }, value)
 
-const addMulModCompositions = new Map(
-  createAddMulModCompositionMappings().map(({ operation, composition }) => [
-    operation,
-    composition,
-  ]),
+const fixedMultiStepCompositions = new Map(
+  [
+    ...createAddMulModCompositionMappings(),
+    ...createDivisionCompositionMappings(),
+  ].map(({ operation, composition }) => [operation, composition]),
 )
 
 const submit = (
-  operation: 'ADDMOD' | 'MULMOD',
+  operation: FixedMultiStepOperation,
 ): { preparedComposition: PreparedComposition; resultPts: DataPt[] } => {
   const placeComposition = vi.fn()
   const calculateArithSubcircuitOutputValues = vi.fn((name: string): bigint[] => {
@@ -80,35 +112,42 @@ const submit = (
         return Array.from({ length: 12 }, (_, index) => BigInt(index))
       case 'MULMODVerify':
         return [11n]
+      case 'ALU4A':
+        return [0n, 1n, 2n, 3n, 4n, 5n, 6n, 0n, 1n, 0n]
+      case 'ALU4B':
+        return [13n]
       default:
         throw new Error(`Unexpected subcircuit ${name}`)
     }
   })
+  let nextStaticWireIndex = 0
   const parent = {
     cachedOpts: {},
     placements: [],
     state: {},
     subcircuitLibrary: {
       placementCompositionManager: {
-        get: (name: 'ADDMOD' | 'MULMOD') => addMulModCompositions.get(name)!,
+        get: (name: FixedMultiStepOperation) => fixedMultiStepCompositions.get(name)!,
       },
       subcircuitInfoByName,
     },
     calculateArithSubcircuitOutputValues,
-    loadArbitraryStatic: vi.fn(),
+    loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
+      dataPt(value, 5, nextStaticWireIndex++, dataPtType)),
     placeComposition,
   }
   const handler = new InstructionHandler(parent as never)
   const resultPts = (handler as unknown as {
-    _submitAddMulModComposition(
-      operation: 'ADDMOD' | 'MULMOD',
+    _submitFixedMultiStepArithmeticComposition(
+      operation: FixedMultiStepOperation,
       operands: DataPt[],
     ): DataPt[];
-  })._submitAddMulModComposition(operation, [
-    dataPt(3n, 10),
-    dataPt(4n, 11),
-    dataPt(5n, 12),
-  ])
+  })._submitFixedMultiStepArithmeticComposition(
+    operation,
+    operation === 'ADDMOD' || operation === 'MULMOD'
+      ? [dataPt(3n, 10), dataPt(4n, 11), dataPt(5n, 12)]
+      : [dataPt(3n, 10), dataPt(4n, 11)],
+  )
 
   expect(placeComposition).toHaveBeenCalledOnce()
   return {
@@ -117,7 +156,7 @@ const submit = (
   }
 }
 
-describe('ADDMOD and MULMOD prepared compositions', () => {
+describe('fixed multi-step arithmetic prepared compositions', () => {
   it('prepares the two ADDMOD steps with typed intermediate outputs', () => {
     const { preparedComposition, resultPts } = submit('ADDMOD')
 
@@ -149,5 +188,32 @@ describe('ADDMOD and MULMOD prepared compositions', () => {
     expect(preparedComposition.steps[2]!.inPts.slice(12).map(({ source }) => source))
       .toEqual(Array(12).fill(1))
     expect(resultPts).toMatchObject([{ source: 2, wireIndex: 0, value: 11n }])
+  })
+
+  it('prepares the division-family steps with a selector and typed flags', () => {
+    const { preparedComposition, resultPts } = submit('DIV')
+
+    expect(preparedComposition.steps.map((step) => [step.inPts.length, step.outPts.length]))
+      .toEqual([[3, 10], [10, 1]])
+    expect(preparedComposition.steps[0]!.inPts[0]).toMatchObject({
+      source: 5,
+      value: 1n << 4n,
+      dataPtType: UINT32_DATA_PT_TYPE,
+    })
+    expect(preparedComposition.steps[0]!.outPts.map(({ dataPtType }) => dataPtType)).toEqual([
+      UINT256_DATA_PT_TYPE,
+      UINT256_DATA_PT_TYPE,
+      UINT256_DATA_PT_TYPE,
+      UINT128_DATA_PT_TYPE,
+      UINT128_DATA_PT_TYPE,
+      UINT128_DATA_PT_TYPE,
+      UINT128_DATA_PT_TYPE,
+      BIT_DATA_PT_TYPE,
+      BIT_DATA_PT_TYPE,
+      BIT_DATA_PT_TYPE,
+    ])
+    expect(preparedComposition.steps[1]!.inPts.map(({ source }) => source))
+      .toEqual(Array(10).fill(0))
+    expect(resultPts).toMatchObject([{ source: 1, wireIndex: 0, value: 13n }])
   })
 })

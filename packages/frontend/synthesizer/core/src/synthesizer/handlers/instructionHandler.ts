@@ -416,8 +416,8 @@ export class InstructionHandler {
 
   }
 
-  private _submitAddMulModComposition(
-    operation: 'ADDMOD' | 'MULMOD',
+  private _submitFixedMultiStepArithmeticComposition(
+    operation: ArithmeticOperator,
     operands: DataPt[],
   ): DataPt[] {
     const composition = this.parent.subcircuitLibrary
@@ -781,9 +781,13 @@ export class InstructionHandler {
     let outPts: DataPt[];
     const op = opts.op as SynthesizerSupportedArithOpcodes
     switch (op) {
+      case 'DIV':
+      case 'SDIV':
+      case 'MOD':
+      case 'SMOD':
       case 'ADDMOD':
       case 'MULMOD':
-        outPts = this._submitAddMulModComposition(op, inPts)
+        outPts = this._submitFixedMultiStepArithmeticComposition(op, inPts)
         break
       case 'EXP':
         outPts = this.parent.placeComposition('EXP', inPts)
