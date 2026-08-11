@@ -37,22 +37,22 @@ export interface SynthesizerOpHandler {
 }
 
 /**
- * Side-effect-free preparation for one memory copy. Compositions must be
- * recorded in order before destination entries are written to MemoryPt.
+ * Side-effect-free preparation for a read over consecutive memory views. The
+ * caller records each composition before consuming the corresponding value.
+ */
+type PreparedMemoryRead = Readonly<{
+  compositions: readonly PreparedComposition[]
+  viewDataPts: DataPt[]
+  recoveredValue: bigint
+}>
+
+/**
+ * Side-effect-free preparation for a memory copy. The caller records the
+ * compositions in order before writing the destination entries to MemoryPt.
  */
 type PreparedMemoryCopy = Readonly<{
   compositions: readonly PreparedComposition[]
   destinationEntries: MemoryPts
-}>
-
-/**
- * Side-effect-free preparation for contiguous memory views consumed by one
- * opcode. The caller records each composition before consuming chunk data.
- */
-type PreparedMemoryChunks = Readonly<{
-  compositions: readonly PreparedComposition[]
-  chunkDataPts: DataPt[]
-  dataRecovered: bigint
 }>
 
 const checkRequiredInput = (...input: unknown[]): void => {
@@ -67,20 +67,6 @@ export class InstructionHandler {
   ) {
     this.cachedOpts = parent.cachedOpts
     this._createSynthesizerHandlers()
-  }
-
-  public prepareMemoryCopy(
-    sourceMemoryPts: MemoryPts,
-    sourceOffset: bigint,
-    length: bigint,
-    destinationOffset: bigint = 0n,
-  ): MemoryPts {
-    return this._prepareMemoryCopyFrom(
-      MemoryPt.simulateMemoryPt(sourceMemoryPts),
-      sourceOffset,
-      length,
-      destinationOffset,
-    )
   }
 
   private _createHandlerOpts(opName: SynthesizerSupportedOpcodes, context: ContextManager): HandlerOpts {
@@ -933,21 +919,21 @@ export class InstructionHandler {
           checkRequiredInput(opts.memOut)
           const memOffset = ins[0]
           const dataLength = ins[1]
-          const preparedMemoryChunks = this._prepareMemoryChunks(
+          const preparedMemoryRead = this._prepareMemoryRead(
             opts.memoryPt,
             memOffset,
             dataLength,
             this.parent.placements.length,
           )
-          for (const preparedComposition of preparedMemoryChunks.compositions) {
+          for (const preparedComposition of preparedMemoryRead.compositions) {
             this.parent.placeComposition(preparedComposition)
           }
-          const { chunkDataPts, dataRecovered } = preparedMemoryChunks
-          if (bytesToBigInt(opts.memOut!) !== dataRecovered) {
+          const { viewDataPts, recoveredValue } = preparedMemoryRead
+          if (bytesToBigInt(opts.memOut!) !== recoveredValue) {
             throw new Error(`Synthesizer: ${op}: Memory data to load mismatch`)
           }
           preparedComposition = this._preparePoseidonComposition(
-            chunkDataPts,
+            viewDataPts,
             this.parent.placements.length,
           )
         }
@@ -1118,7 +1104,7 @@ export class InstructionHandler {
             const calldataMemoryPt = MemoryPt.simulateMemoryPt(calldataMemoryPts);
             const dataAliasInfos = calldataMemoryPt.getDataAlias(i, 32);
             if (dataAliasInfos.length > 0) {
-              const preparedComposition = this._prepareMemoryLoadComposition(
+              const preparedComposition = this._prepareMemoryLoadViewComposition(
                 dataAliasInfos,
                 32,
                 this.parent.placements.length,
@@ -1149,13 +1135,17 @@ export class InstructionHandler {
           const dataLength = ins[2]
           checkRequiredInput(opts.memOut)
           if (dataLength !== BIGINT_0) {
-            const memPts = this.prepareMemoryCopy(
-              opts.thisContext.callDataMemoryPts,
+            const preparedMemoryCopy = this._prepareMemoryCopy(
+              MemoryPt.simulateMemoryPt(opts.thisContext.callDataMemoryPts),
               dataOffset,
               dataLength,
               memOffset,
+              this.parent.placements.length,
             )
-            memoryPt.writeBatch(memPts)
+            for (const preparedComposition of preparedMemoryCopy.compositions) {
+              this.parent.placeComposition(preparedComposition)
+            }
+            memoryPt.writeBatch(preparedMemoryCopy.destinationEntries)
           }
           const _outData = memoryPt.viewMemory(
             Number(memOffset),
@@ -1243,13 +1233,17 @@ export class InstructionHandler {
             throw new Error(`Synthesizer: ${op}: requested range exceeds return data`)
           }
           if (dataLength !== BIGINT_0) {
-            const copiedMemoryPts = this.prepareMemoryCopy(
-              opts.thisContext.returnDataMemoryPts,
+            const preparedMemoryCopy = this._prepareMemoryCopy(
+              MemoryPt.simulateMemoryPt(opts.thisContext.returnDataMemoryPts),
               returnDataOffset,
               dataLength,
               memOffset,
+              this.parent.placements.length,
             )
-            memoryPt.writeBatch(copiedMemoryPts)
+            for (const preparedComposition of preparedMemoryCopy.compositions) {
+              this.parent.placeComposition(preparedComposition)
+            }
+            memoryPt.writeBatch(preparedMemoryCopy.destinationEntries)
           }
           const _outData = memoryPt.viewMemory(
             Number(memOffset),
@@ -1305,27 +1299,27 @@ export class InstructionHandler {
       )
     }
 
-    const preparedMemoryChunks = this._prepareMemoryChunks(
+    const preparedMemoryRead = this._prepareMemoryRead(
       opts.memoryPt,
       memOffset,
       dataLength,
       this.parent.placements.length,
     )
-    for (const preparedComposition of preparedMemoryChunks.compositions) {
+    for (const preparedComposition of preparedMemoryRead.compositions) {
       this.parent.placeComposition(preparedComposition)
     }
-    const { chunkDataPts, dataRecovered } = preparedMemoryChunks
+    const { viewDataPts, recoveredValue } = preparedMemoryRead
     const expectedLogData = bytesToBigInt(
       opts.prevStepResult.memory.subarray(Number(memOffset), Number(memOffset) + Number(dataLength)),
     )
-    if (dataRecovered !== expectedLogData) {
+    if (recoveredValue !== expectedLogData) {
       throw new Error(`Synthesizer: ${op}: Log data mismatch`)
     }
 
-    for (const [index, chunkDataPt] of chunkDataPts.entries()) {
+    for (const [index, viewDataPt] of viewDataPts.entries()) {
       this.parent.addReservedVariableToBufferOut(
         'LOG_VALUE',
-        chunkDataPt,
+        viewDataPt,
         true,
         ` for ${op} instruction, data index: ${index}`,
       )
@@ -1366,7 +1360,7 @@ export class InstructionHandler {
               UINT256_DATA_PT_TYPE,
             )
           } else {
-            const preparedComposition = this._prepareMemoryLoadComposition(
+            const preparedComposition = this._prepareMemoryLoadViewComposition(
               dataAliasInfos,
               32,
               this.parent.placements.length,
@@ -1456,12 +1450,17 @@ export class InstructionHandler {
         {
           const [dstOffset, srcOffset, length] = ins
           checkRequiredInput(opts.memOut)
-          const _out = opts.memoryPt.writeBatch(this._prepareMemoryCopyFrom(
+          const preparedMemoryCopy = this._prepareMemoryCopy(
             opts.memoryPt,
             srcOffset,
             length,
             dstOffset,
-          ))
+            this.parent.placements.length,
+          )
+          for (const preparedComposition of preparedMemoryCopy.compositions) {
+            this.parent.placeComposition(preparedComposition)
+          }
+          const _out = opts.memoryPt.writeBatch(preparedMemoryCopy.destinationEntries)
           if (bytesToBigInt(_out) !== bytesToBigInt(opts.memOut!)) {
             throw new Error(`Synthesizer: ${op}: Output memory data mismatch`)
           }
@@ -1486,12 +1485,17 @@ export class InstructionHandler {
             ? outLength
             : BigInt(opts.thisContext.returnDataByteLength)
           if (copiedLength !== BIGINT_0) {
-            opts.memoryPt.writeBatch(this.prepareMemoryCopy(
-              opts.thisContext.returnDataMemoryPts,
+            const preparedMemoryCopy = this._prepareMemoryCopy(
+              MemoryPt.simulateMemoryPt(opts.thisContext.returnDataMemoryPts),
               0n,
               copiedLength,
               outOffset,
-            ))
+              this.parent.placements.length,
+            )
+            for (const preparedComposition of preparedMemoryCopy.compositions) {
+              this.parent.placeComposition(preparedComposition)
+            }
+            opts.memoryPt.writeBatch(preparedMemoryCopy.destinationEntries)
           }
           const _out = opts.memoryPt.viewMemory(Number(outOffset), Number(outLength))
           if (bytesToBigInt(_out) !== bytesToBigInt(opts.memOut!)) {
@@ -1511,11 +1515,17 @@ export class InstructionHandler {
         {
           checkRequiredInput(opts.memOut)
           const [offset, length] = ins;
-          opts.thisContext.resultMemoryPts = this._prepareMemoryCopyFrom(
+          const preparedMemoryCopy = this._prepareMemoryCopy(
             opts.memoryPt,
             offset,
             length,
+            0n,
+            this.parent.placements.length,
           )
+          for (const preparedComposition of preparedMemoryCopy.compositions) {
+            this.parent.placeComposition(preparedComposition)
+          }
+          opts.thisContext.resultMemoryPts = preparedMemoryCopy.destinationEntries
           opts.thisContext.resultDataByteLength = Number(length)
           
           const simMemoryPt = MemoryPt.simulateMemoryPt(opts.thisContext.resultMemoryPts);
@@ -1587,7 +1597,7 @@ export class InstructionHandler {
     return memPts
   }
 
-  private _prepareMemoryLoadComposition(
+  private _prepareMemoryLoadViewComposition(
     dataAliasGeometries: DataAliasGeometries,
     viewByteLength: number,
     basePlacementIndex: number,
@@ -1753,81 +1763,79 @@ export class InstructionHandler {
     })
   }
 
-  private _prepareMemoryCopyFrom(
+  private _prepareMemoryCopy(
     sourceMemoryPt: MemoryPt,
     sourceOffset: bigint,
     length: bigint,
     destinationOffset: bigint = 0n,
-  ): MemoryPts {
+    basePlacementIndex: number,
+  ): PreparedMemoryCopy {
     if (length === BIGINT_0) {
-      return []
+      return { compositions: [], destinationEntries: [] }
     }
     const sourceOffsetNumber = Number(sourceOffset)
     const lengthNumber = Number(length)
-    const destinationOffsetNumber = Number(destinationOffset)
     const sourceSnapshot = MemoryPt.simulateMemoryPt(
       sourceMemoryPt.read(sourceOffsetNumber, lengthNumber),
     )
-    const destinationEntries: MemoryPts = []
-    for (let copiedLength = 0; copiedLength < lengthNumber; copiedLength += 32) {
-      const viewByteLength = Math.min(32, lengthNumber - copiedLength)
-      const dataAliasGeometries = sourceSnapshot.getDataAlias(
-        sourceOffsetNumber + copiedLength,
-        viewByteLength,
-      )
-      const dataPt = dataAliasGeometries.length === 0
-        ? this.parent.loadArbitraryStatic(0n, UINT256_DATA_PT_TYPE)
-        : this._placeMemoryLoadComposition(dataAliasGeometries, viewByteLength)
-      destinationEntries.push({
-        memByteOffset: destinationOffsetNumber + copiedLength,
-        containerByteSize: viewByteLength,
-        dataPt,
-      })
+    const preparedMemoryRead = this._prepareMemoryRead(
+      sourceSnapshot,
+      sourceOffset,
+      length,
+      basePlacementIndex,
+    )
+    const destinationEntries = preparedMemoryRead.viewDataPts.map((dataPt, index) => ({
+      memByteOffset: Number(destinationOffset) + 32 * index,
+      containerByteSize: Math.min(32, lengthNumber - 32 * index),
+      dataPt,
+    }))
+    return {
+      compositions: preparedMemoryRead.compositions,
+      destinationEntries,
     }
-    return destinationEntries
   }
 
-  private _prepareMemoryChunks(
+  private _prepareMemoryRead(
     memoryPt: MemoryPt,
     offset: bigint,
     length: bigint,
     basePlacementIndex: number,
-  ): PreparedMemoryChunks {
+  ): PreparedMemoryRead {
     const offsetNum = Number(offset);
     const lengthNum = Number(length);
-    let nChunks = lengthNum > 32 ? Math.ceil(lengthNum / 32) : 1;
+    const nViews = lengthNum > 32 ? Math.ceil(lengthNum / 32) : 1;
   
-    const chunkDataPts: DataPt[] = [];
+    const viewDataPts: DataPt[] = [];
     const compositions: PreparedComposition[] = []
-    let dataRecovered = 0n;
+    let recoveredValue = 0n;
     let lengthLeft = lengthNum;
     let nextPlacementIndex = basePlacementIndex
   
-    for (let i = 0; i < nChunks; i++) {
+    for (let i = 0; i < nViews; i++) {
       const _offset = offsetNum + 32 * i;
       const _length = lengthLeft > 32 ? 32 : lengthLeft;
       lengthLeft -= _length;
   
       const dataAliasInfos = memoryPt.getDataAlias(_offset, _length);
       if (dataAliasInfos.length > 0) {
-        const preparedComposition = this._prepareMemoryLoadComposition(
+        const preparedComposition = this._prepareMemoryLoadViewComposition(
           dataAliasInfos,
           _length,
           nextPlacementIndex,
         )
         compositions.push(preparedComposition)
         nextPlacementIndex += preparedComposition.steps.length
-        chunkDataPts[i] = preparedComposition.resultPts[0]!
+        viewDataPts[i] = preparedComposition.resultPts[0]!
       } else {
-        chunkDataPts[i] = this.parent.loadArbitraryStatic(
+        viewDataPts[i] = this.parent.loadArbitraryStatic(
           0n,
           UINT256_DATA_PT_TYPE,
         );
       }
   
-      dataRecovered += chunkDataPts[i].value << BigInt(lengthLeft * 8);
+      recoveredValue += viewDataPts[i].value << BigInt(lengthLeft * 8);
     }
   
-    return { compositions, chunkDataPts, dataRecovered };
+    return { compositions, viewDataPts, recoveredValue };
   }
 }
