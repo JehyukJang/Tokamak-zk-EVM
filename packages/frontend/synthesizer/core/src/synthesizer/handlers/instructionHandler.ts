@@ -440,10 +440,11 @@ export class InstructionHandler {
 
   }
 
-  private _submitFixedMultiStepArithmeticComposition(
+  private _prepareFixedMultiStepArithmeticComposition(
     operation: ArithmeticOperator,
     operands: DataPt[],
-  ): DataPt[] {
+    basePlacementIndex: number,
+  ): PreparedComposition {
     const composition = this.parent.subcircuitLibrary
       .placementCompositionManager.get(operation)
     if (
@@ -456,7 +457,6 @@ export class InstructionHandler {
       throw new Error(`Synthesizer: ${operation} has an invalid fixed generic composition`)
     }
 
-    const basePlacementIndex = this.parent.placements.length
     const intermediateOutPts: Array<DataPt | undefined> = []
     const resultPts: Array<DataPt | undefined> = Array(composition.numResults)
     const steps: Array<PreparedComposition['steps'][number]> = []
@@ -547,11 +547,13 @@ export class InstructionHandler {
       resultPts: resultPts as DataPt[],
       steps,
     }
-    this.parent.placeComposition(preparedComposition)
-    return preparedComposition.resultPts.slice()
+    return preparedComposition
   }
 
-  private _submitPoseidonComposition(operands: DataPt[]): DataPt[] {
+  private _preparePoseidonComposition(
+    operands: DataPt[],
+    basePlacementIndex: number,
+  ): PreparedComposition {
     const composition = this.parent.subcircuitLibrary
       .placementCompositionManager.get('Poseidon')
     const step = composition.steps[0]
@@ -593,7 +595,6 @@ export class InstructionHandler {
     const valueType = getDataPtTypeFromLogicalInterfaceType(valuePort.logicalType)
     const resultType = getDataPtTypeFromLogicalInterfaceType(resultPort.logicalType)
     const zeroPt = this.parent.loadArbitraryStatic(0n, valueType)
-    const basePlacementIndex = this.parent.placements.length
     const steps: Array<PreparedComposition['steps'][number]> = []
 
     const placeNormalized = (inputPts: DataPt[]): DataPt => {
@@ -648,14 +649,14 @@ export class InstructionHandler {
       resultPts: [resultPt],
       steps,
     }
-    this.parent.placeComposition(preparedComposition)
-    return [resultPt]
+    return preparedComposition
   }
 
-  public prepareSingleStepArithmeticComposition(
+  private _prepareSingleStepArithmeticComposition(
     operation: ArithmeticOperator,
     operands: DataPt[],
-  ): DataPt[] {
+    basePlacementIndex: number,
+  ): PreparedComposition {
     const composition = this.parent.subcircuitLibrary
       .placementCompositionManager.get(operation)
     const step = composition.steps[0]
@@ -725,7 +726,7 @@ export class InstructionHandler {
     }
 
     const resultPt = DataPtFactory.create({
-      source: this.parent.placements.length,
+      source: basePlacementIndex,
       wireIndex: 0,
       dataPtType: UINT256_DATA_PT_TYPE,
     }, value)
@@ -735,8 +736,7 @@ export class InstructionHandler {
       resultPts: [resultPt],
       steps: [{ inPts: finalInPts, outPts: [resultPt] }],
     }
-    this.parent.placeComposition(preparedComposition)
-    return [resultPt]
+    return preparedComposition
   }
 
   private _assertStorageAddress(
@@ -903,7 +903,7 @@ export class InstructionHandler {
     opts: HandlerOpts,
   ): void => {
     const inPts = this._popStackPtAndCheckInputConsistency(opts.stackPt, ins)
-    let outPts: DataPt[];
+    let preparedComposition: PreparedComposition;
     const op = opts.op as SynthesizerSupportedArithOpcodes
     switch (op) {
       case 'DIV':
@@ -913,7 +913,11 @@ export class InstructionHandler {
       case 'ADDMOD':
       case 'MULMOD':
       case 'EXP':
-        outPts = this._submitFixedMultiStepArithmeticComposition(op, inPts)
+        preparedComposition = this._prepareFixedMultiStepArithmeticComposition(
+          op,
+          inPts,
+          this.parent.placements.length,
+        )
         break
       case 'KECCAK256': {
           checkRequiredInput(opts.memOut)
@@ -927,16 +931,22 @@ export class InstructionHandler {
           if (bytesToBigInt(opts.memOut!) !== dataRecovered) {
             throw new Error(`Synthesizer: ${op}: Memory data to load mismatch`)
           }
-          outPts = this._submitPoseidonComposition(chunkDataPts)
+          preparedComposition = this._preparePoseidonComposition(
+            chunkDataPts,
+            this.parent.placements.length,
+          )
         }
         break
       default:
-        outPts = this.prepareSingleStepArithmeticComposition(
+        preparedComposition = this._prepareSingleStepArithmeticComposition(
           op as ArithmeticOperator,
           inPts,
+          this.parent.placements.length,
         );
         break;
     }
+    this.parent.placeComposition(preparedComposition)
+    const outPts = preparedComposition.resultPts
     if (outPts.length !== 1 || outPts[0].value !== out) {
       throw new Error(`Synthesizer: ${op}: Output data mismatch`);
     }
