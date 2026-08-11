@@ -205,6 +205,40 @@ function _hasSameDataPtType(
   return dataPt.dataPtType === expectedType
 }
 
+function _assertStaticPreparedValue(
+  operation: PreparedComposition['operation'],
+  description: string,
+  dataPt: DataPt,
+  expectedValue: bigint,
+): void {
+  if (
+    dataPt.source !== BUFFER_LIST.indexOf('EVM_IN')
+    || dataPt.value !== expectedValue
+  ) {
+    throw new Error(
+      `Synthesizer: ${operation} ${description} must be the EVM_IN static value ${expectedValue}`,
+    )
+  }
+}
+
+function _assertPreparedEarlierSource(
+  operation: PreparedComposition['operation'],
+  stepIndex: number,
+  inputIndex: number,
+  dataPt: DataPt,
+  basePlacementIndex: number,
+): void {
+  if (
+    !Number.isInteger(dataPt.source)
+    || dataPt.source < 0
+    || dataPt.source >= basePlacementIndex + stepIndex
+  ) {
+    throw new Error(
+      `Synthesizer: ${operation} step ${stepIndex} input ${inputIndex} is not connected to an earlier placement output`,
+    )
+  }
+}
+
 export type ContextConstructionData = {
   callerPt: DataPt;
   codeAddressPt: DataPt;
@@ -345,6 +379,19 @@ export class StateManager {
       }
       return
     }
+    if (composition.placementStrategy === 'memory-load') {
+      this._validatePreparedMemoryLoadComposition(preparedComposition, composition)
+      const step = composition.steps[0]!
+      for (const preparedStep of preparedComposition.steps) {
+        this._place(
+          step.subcircuit,
+          preparedStep.inPts.slice(),
+          preparedStep.outPts.slice(),
+          step.usage,
+        )
+      }
+      return
+    }
     throw new Error(
       `Synthesizer: ${preparedComposition.operation} requires ${composition.placementStrategy} placement preparation`,
     )
@@ -402,6 +449,128 @@ export class StateManager {
     }
     if (!_isSameWire(preparedComposition.resultPts[0]!, resultPt)) {
       throw new Error('Synthesizer: Poseidon result is not connected to its final placement')
+    }
+  }
+
+  private _validatePreparedMemoryLoadComposition(
+    preparedComposition: PreparedComposition,
+    composition: PlacementComposition,
+  ): void {
+    const step = composition.steps[0]!
+    const inputsPerFragment = 4
+    if (preparedComposition.resultPts.length !== 1) {
+      throw new Error('Synthesizer: MemoryLoad must produce exactly one result')
+    }
+    if (
+      preparedComposition.operands.length <= 1
+      || (preparedComposition.operands.length - 1) % inputsPerFragment !== 0
+    ) {
+      throw new Error('Synthesizer: MemoryLoad operands must contain one or more four-input fragments and final coverage')
+    }
+    const fragmentCount = (preparedComposition.operands.length - 1) / inputsPerFragment
+    if (preparedComposition.steps.length !== fragmentCount) {
+      throw new Error(
+        `Synthesizer: MemoryLoad expected ${fragmentCount} placement steps, but got ${preparedComposition.steps.length}`,
+      )
+    }
+    const subcircuit = this.subcircuitInfoByName.get(step.subcircuit)
+    if (subcircuit === undefined) {
+      throw new Error('Synthesizer: MemoryLoadStep subcircuit is not found. Check qap-compiler.')
+    }
+
+    const basePlacementIndex = this._placements.length
+    const expectedCoveragePt = preparedComposition.operands.at(-1)!
+    let accumulatedCoverage = 0n
+    let previousWordPt: DataPt | undefined
+    let previousOwnershipPt: DataPt | undefined
+
+    for (let stepIndex = 0; stepIndex < fragmentCount; stepIndex++) {
+      const preparedStep = preparedComposition.steps[stepIndex]!
+      _assertPreparedStepPorts(
+        preparedComposition.operation,
+        step.subcircuit,
+        preparedStep,
+        subcircuit,
+      )
+      if (
+        preparedStep.inPts.length !== step.inputs.length
+        || preparedStep.outPts.length !== step.outputs.length
+      ) {
+        throw new Error(`Synthesizer: MemoryLoad step ${stepIndex} has an invalid port count`)
+      }
+
+      const operandOffset = stepIndex * inputsPerFragment
+      for (let inputIndex = 0; inputIndex < inputsPerFragment; inputIndex++) {
+        const input = preparedStep.inPts[inputIndex]!
+        if (!_isSameWire(input, preparedComposition.operands[operandOffset + inputIndex]!)) {
+          throw new Error(
+            `Synthesizer: MemoryLoad step ${stepIndex} fragment input ${inputIndex} is not connected to its declared operand`,
+          )
+        }
+        _assertPreparedEarlierSource(
+          preparedComposition.operation,
+          stepIndex,
+          inputIndex,
+          input,
+          basePlacementIndex,
+        )
+      }
+
+      const [sourceWordPt, shiftPt, directionPt, ownershipPt] = preparedStep.inPts
+      _assertStaticPreparedValue(preparedComposition.operation, `step ${stepIndex} byte shift`, shiftPt!, shiftPt!.value)
+      _assertStaticPreparedValue(preparedComposition.operation, `step ${stepIndex} shift direction`, directionPt!, directionPt!.value)
+      _assertStaticPreparedValue(preparedComposition.operation, `step ${stepIndex} byte ownership`, ownershipPt!, ownershipPt!.value)
+      if (sourceWordPt === undefined || shiftPt === undefined || directionPt === undefined || ownershipPt === undefined) {
+        throw new Error(`Synthesizer: MemoryLoad step ${stepIndex} is missing fragment inputs`)
+      }
+
+      accumulatedCoverage |= ownershipPt.value
+      const previousWordInput = preparedStep.inPts[4]!
+      const previousOwnershipInput = preparedStep.inPts[5]!
+      if (stepIndex === 0) {
+        _assertStaticPreparedValue(preparedComposition.operation, 'initial word', previousWordInput, 0n)
+        _assertStaticPreparedValue(preparedComposition.operation, 'initial byte ownership', previousOwnershipInput, 0n)
+      } else if (
+        previousWordPt === undefined
+        || previousOwnershipPt === undefined
+        || !_isSameWire(previousWordInput, previousWordPt)
+        || !_isSameWire(previousOwnershipInput, previousOwnershipPt)
+      ) {
+        throw new Error(`Synthesizer: MemoryLoad step ${stepIndex} is not connected to the previous step`)
+      }
+
+      if (!_isSameWire(preparedStep.inPts[6]!, expectedCoveragePt)) {
+        throw new Error(`Synthesizer: MemoryLoad step ${stepIndex} final coverage is inconsistent`)
+      }
+      _assertStaticPreparedValue(
+        preparedComposition.operation,
+        `step ${stepIndex} final-mode flag`,
+        preparedStep.inPts[7]!,
+        stepIndex === fragmentCount - 1 ? 1n : 0n,
+      )
+
+      const nextWordPt = preparedStep.outPts[0]!
+      const nextOwnershipPt = preparedStep.outPts[1]!
+      if (
+        nextWordPt.source !== basePlacementIndex + stepIndex
+        || nextWordPt.wireIndex !== 0
+        || nextOwnershipPt.source !== basePlacementIndex + stepIndex
+        || nextOwnershipPt.wireIndex !== 1
+      ) {
+        throw new Error(`Synthesizer: MemoryLoad step ${stepIndex} has invalid output sources`)
+      }
+      previousWordPt = nextWordPt
+      previousOwnershipPt = nextOwnershipPt
+    }
+
+    _assertStaticPreparedValue(
+      preparedComposition.operation,
+      'final byte ownership',
+      expectedCoveragePt,
+      accumulatedCoverage,
+    )
+    if (previousWordPt === undefined || !_isSameWire(preparedComposition.resultPts[0]!, previousWordPt)) {
+      throw new Error('Synthesizer: MemoryLoad result is not connected to its final placement')
     }
   }
 

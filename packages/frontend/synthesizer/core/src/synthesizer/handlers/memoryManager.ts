@@ -6,11 +6,11 @@ import {
   ISynthesizerProvider,
   MemoryPtEntry,
   MemoryPts,
+  PreparedComposition,
   UINT256_DATA_PT_TYPE,
   UINT32_DATA_PT_TYPE,
 } from '../types/index.ts';
 import { DataPtFactory, MemoryPt } from '../dataStructure/index.ts';
-import { ArithmeticOperator } from '../../subcircuit/configuredTypes.ts';
 
 export class MemoryManager {
   constructor(
@@ -40,7 +40,9 @@ export class MemoryManager {
     if (dataAliasInfos.length === 0) {
       throw new Error(`Synthesizer: placeMemoryToStack: Noting tho load`);
     }
-    return DataPtFactory.deepCopy(this.combineMemorySlices(dataAliasInfos));
+    return DataPtFactory.deepCopy(
+      this._placeMemoryLoadComposition(this.createDataAliasInfos(dataAliasInfos)),
+    );
   }
 
   public placeMemoryToMemory(dataAliasInfos: DataAliasGeometries): DataPt[] {
@@ -57,6 +59,9 @@ export class MemoryManager {
 
   public createDataAliasInfos(dataAliasGeometries: DataAliasGeometries): DataAliasInfos {
     return dataAliasGeometries.map(({ dataPt, shift, masker }) => {
+      if (!Number.isInteger(shift) || shift % 8 !== 0 || Math.abs(shift) > 31 * 8) {
+        throw new Error('Synthesizer: memory-load shift must be a byte-aligned value from -248 to 248')
+      }
       const direction = shift < 0 ? 1n : 0n;
       const shiftMagnitude = BigInt(Math.abs(shift) / 8);
       const ownershipMask = this._createOwnershipMask(masker);
@@ -179,57 +184,87 @@ export class MemoryManager {
     return truncatedPt;
   }
 
-  private combineMemorySlices(dataAliasInfos: DataAliasGeometries): DataPt {
-    const transformedSlices = dataAliasInfos.map((info) =>
-      this.transformMemorySlice(info),
-    );
+  private _placeMemoryLoadComposition(dataAliasInfos: DataAliasInfos): DataPt {
+    const basePlacementIndex = this.parent.placements.length
+    const expectedCoverageValue = dataAliasInfos.reduce(
+      (coverage, { maskerPt }) => coverage | maskerPt.value,
+      0n,
+    )
+    const expectedCoveragePt = this.parent.loadArbitraryStatic(
+      expectedCoverageValue,
+      UINT32_DATA_PT_TYPE,
+      'Memory-load final byte ownership',
+    )
+    const zeroWordPt = this.parent.loadArbitraryStatic(
+      0n,
+      UINT256_DATA_PT_TYPE,
+      'Memory-load initial word',
+    )
+    const zeroOwnershipPt = this.parent.loadArbitraryStatic(
+      0n,
+      UINT32_DATA_PT_TYPE,
+      'Memory-load initial byte ownership',
+    )
+    const operands: DataPt[] = []
+    const steps: PreparedComposition['steps'][number][] = []
+    let previousWordPt = zeroWordPt
+    let previousOwnershipPt = zeroOwnershipPt
 
-    if (transformedSlices.length === 1) {
-      return transformedSlices[0];
+    for (const [stepIndex, info] of dataAliasInfos.entries()) {
+      const isFinalStep = stepIndex === dataAliasInfos.length - 1
+      const finalModePt = this.parent.loadArbitraryStatic(
+        isFinalStep ? 1n : 0n,
+        BIT_DATA_PT_TYPE,
+        'Memory-load final-mode flag',
+      )
+      const shiftedValue = info.directionPt.value === 0n
+        ? (info.dataPt.value << (info.shiftPt.value * 8n))
+        : info.dataPt.value >> (info.shiftPt.value * 8n)
+      const maskedValue = shiftedValue & this._expandOwnershipMask(info.maskerPt.value)
+      const nextWordValue = previousWordPt.value + maskedValue
+      if (nextWordValue >= 1n << 256n) {
+        throw new Error('Synthesizer: memory-load fragment sum exceeds an EVM word')
+      }
+      const nextOwnershipValue = isFinalStep
+        ? expectedCoveragePt.value
+        : previousOwnershipPt.value + info.maskerPt.value
+      const nextWordPt = DataPtFactory.create({
+        source: basePlacementIndex + stepIndex,
+        wireIndex: 0,
+        dataPtType: UINT256_DATA_PT_TYPE,
+      }, nextWordValue)
+      const nextOwnershipPt = DataPtFactory.create({
+        source: basePlacementIndex + stepIndex,
+        wireIndex: 1,
+        dataPtType: UINT32_DATA_PT_TYPE,
+      }, nextOwnershipValue)
+      steps.push({
+        inPts: [
+          info.dataPt,
+          info.shiftPt,
+          info.directionPt,
+          info.maskerPt,
+          previousWordPt,
+          previousOwnershipPt,
+          expectedCoveragePt,
+          finalModePt,
+        ],
+        outPts: [nextWordPt, nextOwnershipPt],
+      })
+      operands.push(info.dataPt, info.shiftPt, info.directionPt, info.maskerPt)
+      previousWordPt = nextWordPt
+      previousOwnershipPt = nextOwnershipPt
     }
+    operands.push(expectedCoveragePt)
 
-    if (transformedSlices.length > this.parent.subcircuitLibrary.accumulatorInputLimit) {
-      throw new Error(
-        `Synthesizer: Go to qap-compiler and unlimit the number of inputs for the Accumulator.`,
-      );
+    const preparedComposition: PreparedComposition = {
+      operation: 'MemoryLoad',
+      operands,
+      resultPts: [previousWordPt],
+      steps,
     }
-
-    // Arithmetic compositions return arrays, while Accumulator produces one output.
-    const [accumulatedPt] = this.parent.placeComposition(
-      'Accumulator',
-      transformedSlices,
-    );
-    return accumulatedPt;
-  }
-
-  private transformMemorySlice(info: DataAliasGeometries[number]): DataPt {
-    const shiftedPt = this.applyShift(info);
-    const modInfo: DataAliasGeometries[number] = {
-      dataPt: shiftedPt,
-      masker: info.masker,
-      shift: info.shift,
-    };
-    return this.applyMask(modInfo);
-  }
-
-  private applyShift(info: DataAliasGeometries[number]): DataPt {
-    const { dataPt: dataPt, shift: shift } = info;
-    let outPts = [dataPt];
-    if (Math.abs(shift) > 0) {
-      // The relationship between shift value and shift direction is defined in MemoryPt
-      const subcircuitName: ArithmeticOperator = shift > 0 ? 'SHL' : 'SHR';
-      const absShift = Math.abs(shift);
-      const inPts: DataPt[] = [
-        this.parent.loadArbitraryStatic(
-          BigInt(absShift),
-          UINT256_DATA_PT_TYPE,
-          'Shifter for memory manipulation',
-        ),
-        dataPt,
-      ];
-      outPts = this.parent.placeComposition(subcircuitName, inPts);
-    }
-    return outPts[0];
+    this.parent.placeComposition(preparedComposition)
+    return previousWordPt
   }
 
   private applyMask(info: DataAliasGeometries[number], unshift?: boolean): DataPt {
@@ -277,5 +312,15 @@ export class MemoryManager {
       }
     }
     return ownershipMask;
+  }
+
+  private _expandOwnershipMask(ownershipMask: bigint): bigint {
+    let wordMask = 0n
+    for (let byteIndex = 0; byteIndex < 32; byteIndex++) {
+      if ((ownershipMask & (1n << BigInt(byteIndex))) !== 0n) {
+        wordMask |= 0xffn << BigInt(byteIndex * 8)
+      }
+    }
+    return wordMask
   }
 }

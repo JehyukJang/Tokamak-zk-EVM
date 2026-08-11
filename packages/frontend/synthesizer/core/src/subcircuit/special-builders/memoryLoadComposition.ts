@@ -1,5 +1,8 @@
 import { freezeComposition } from '../utils.ts'
-import type { PlacementCompositionMapping } from '../placementCompositionManager.ts'
+import type {
+  InputReference,
+  PlacementCompositionMapping,
+} from '../placementCompositionManager.ts'
 
 /**
  * Defines one logical memory view reconstruction. The memory-load placement
@@ -18,9 +21,15 @@ export const createMemoryLoadCompositionMapping = (): PlacementCompositionMappin
         {
           subcircuit: 'MemoryLoadStep',
           usage: 'MemoryLoadStep',
-          selector: 'dynamic',
-          inputs: [],
-          outputs: [{ kind: 'result', index: 0 }]
+          selector: null,
+          inputs: Array.from(
+            { length: 8 },
+            (_, index): InputReference => ({ kind: 'operand', index }),
+          ),
+          outputs: [
+            { kind: 'result', index: 0 },
+            { kind: 'discard' },
+          ]
         }
       ]
     })
