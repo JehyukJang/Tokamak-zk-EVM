@@ -244,6 +244,7 @@ export type ContextConstructionData = {
   codeAddressPt: DataPt;
   storageAddressPt: DataPt;
   callDataMemoryPts: MemoryPts;
+  callDataByteLength: number;
 }
 
 export class ContextManager {
@@ -253,9 +254,12 @@ export class ContextManager {
   public codeAddressPt: DataPt;
   public storageAddressPt: DataPt;
   public returnDataMemoryPts: MemoryPts;
+  public returnDataByteLength: number;
   public callDataMemoryPts: MemoryPts;
+  public callDataByteLength: number;
   public prevInterpreterStep: InterpreterStep | null;
   public resultMemoryPts: MemoryPts;
+  public resultDataByteLength: number;
 
   constructor(data: ContextConstructionData) {
     this.stackPt = new StackPt();
@@ -264,9 +268,12 @@ export class ContextManager {
     this.codeAddressPt = data.codeAddressPt;
     this.storageAddressPt = data.storageAddressPt;
     this.callDataMemoryPts = data.callDataMemoryPts;
+    this.callDataByteLength = data.callDataByteLength;
     this.returnDataMemoryPts = [];
+    this.returnDataByteLength = 0;
     this.prevInterpreterStep = null;
     this.resultMemoryPts = [];
+    this.resultDataByteLength = 0;
   }
 }
 

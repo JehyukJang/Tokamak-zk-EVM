@@ -6,7 +6,7 @@ import type {
 
 /**
  * Defines one logical memory view reconstruction. The memory-load placement
- * strategy receives its fragment inputs from MemoryManager at placement time.
+ * strategy receives its fragment inputs from InstructionHandler at placement time.
  */
 export const createMemoryLoadCompositionMapping = (): PlacementCompositionMapping =>
   Object.freeze({

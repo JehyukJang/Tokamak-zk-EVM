@@ -1,6 +1,5 @@
 export * from './arithmeticManager.ts'
 export * from './bufferManager.ts'
-export * from './memoryManager.ts'
 export * from './stateManager.ts'
 export * from './logAccess.ts'
 export * from './storageAccess.ts'

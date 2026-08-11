@@ -191,9 +191,6 @@ export class MemoryPt {
         : dataPt.value << BigInt(shift)
       dataAliasInfos.push({
         dataPt,
-        // shift is positive for SHL, negative for SHR
-        shift,
-        masker,
         shiftMagnitude: Math.abs(shift) / 8,
         direction: shift < 0 ? 1 : 0,
         ownershipMask,

@@ -50,6 +50,20 @@ export class InstructionHandler {
     this._createSynthesizerHandlers()
   }
 
+  public prepareMemoryCopy(
+    sourceMemoryPts: MemoryPts,
+    sourceOffset: bigint,
+    length: bigint,
+    destinationOffset: bigint = 0n,
+  ): MemoryPts {
+    return this._prepareMemoryCopyFrom(
+      MemoryPt.simulateMemoryPt(sourceMemoryPts),
+      sourceOffset,
+      length,
+      destinationOffset,
+    )
+  }
+
   private _createHandlerOpts(opName: SynthesizerSupportedOpcodes, context: ContextManager): HandlerOpts {
     const prevStepResult = context.prevInterpreterStep;
     if (prevStepResult === null) {
@@ -629,7 +643,7 @@ export class InstructionHandler {
     return [resultPt]
   }
 
-  private _submitSingleStepArithmeticComposition(
+  public prepareSingleStepArithmeticComposition(
     operation: ArithmeticOperator,
     operands: DataPt[],
   ): DataPt[] {
@@ -908,7 +922,7 @@ export class InstructionHandler {
         }
         break
       default:
-        outPts = this._submitSingleStepArithmeticComposition(
+        outPts = this.prepareSingleStepArithmeticComposition(
           op as ArithmeticOperator,
           inPts,
         );
@@ -1095,9 +1109,8 @@ export class InstructionHandler {
           const dataLength = ins[2]
           checkRequiredInput(opts.memOut)
           if (dataLength !== BIGINT_0) {
-            const calldataMemoryPts = opts.thisContext.callDataMemoryPts;
-            const memPts: MemoryPts = this.parent.copyMemoryPts(
-              calldataMemoryPts,
+            const memPts = this.prepareMemoryCopy(
+              opts.thisContext.callDataMemoryPts,
               dataOffset,
               dataLength,
               memOffset,
@@ -1186,8 +1199,11 @@ export class InstructionHandler {
           const returnDataOffset = ins[1]
           const dataLength = ins[2]
           checkRequiredInput(opts.memOut)
+          if (returnDataOffset + dataLength > BigInt(opts.thisContext.returnDataByteLength)) {
+            throw new Error(`Synthesizer: ${op}: requested range exceeds return data`)
+          }
           if (dataLength !== BIGINT_0) {
-            const copiedMemoryPts = this.parent.copyMemoryPts(
+            const copiedMemoryPts = this.prepareMemoryCopy(
               opts.thisContext.returnDataMemoryPts,
               returnDataOffset,
               dataLength,
@@ -1314,7 +1330,14 @@ export class InstructionHandler {
           const offsetNum = Number(ins[0])
           const originalDataPt = inPts[1]
           const dataPtToStore = op === 'MSTORE8'
-            ? this.parent.placeMSTORE8(originalDataPt)
+            ? this.prepareSingleStepArithmeticComposition('AND', [
+                this.parent.loadArbitraryStatic(
+                  0xffn,
+                  UINT256_DATA_PT_TYPE,
+                  'Masker for MSTORE8',
+                ),
+                originalDataPt,
+              ])[0]!
             : originalDataPt
           const byteSize = op === 'MSTORE8' ? 1 : 32
           const _out = opts.memoryPt.write(offsetNum, byteSize, dataPtToStore)
@@ -1372,14 +1395,12 @@ export class InstructionHandler {
         {
           const [dstOffset, srcOffset, length] = ins
           checkRequiredInput(opts.memOut)
-          const _out = opts.memoryPt.writeBatch(
-            this.parent.copyMemoryPts(
-              opts.memoryPt.read(Number(srcOffset), Number(length)),
-              srcOffset,
-              length,
-              dstOffset,
-            )
-          )
+          const _out = opts.memoryPt.writeBatch(this._prepareMemoryCopyFrom(
+            opts.memoryPt,
+            srcOffset,
+            length,
+            dstOffset,
+          ))
           if (bytesToBigInt(_out) !== bytesToBigInt(opts.memOut!)) {
             throw new Error(`Synthesizer: ${op}: Output memory data mismatch`)
           }
@@ -1400,14 +1421,18 @@ export class InstructionHandler {
               `Synthesizer: Precompiles are not implemented in Synthesizer.`,
             )
           }
-          const _out = opts.memoryPt.writeBatch(
-            this.parent.copyMemoryPts(
-              opts.thisContext.returnDataMemoryPts, 
-              0n, 
-              outLength, 
-              outOffset
-            )
-          )
+          const copiedLength = outLength < BigInt(opts.thisContext.returnDataByteLength)
+            ? outLength
+            : BigInt(opts.thisContext.returnDataByteLength)
+          if (copiedLength !== BIGINT_0) {
+            opts.memoryPt.writeBatch(this.prepareMemoryCopy(
+              opts.thisContext.returnDataMemoryPts,
+              0n,
+              copiedLength,
+              outOffset,
+            ))
+          }
+          const _out = opts.memoryPt.viewMemory(Number(outOffset), Number(outLength))
           if (bytesToBigInt(_out) !== bytesToBigInt(opts.memOut!)) {
             throw new Error(
               `Synthesizer: ${op}: Return memory data mismatch`,
@@ -1425,11 +1450,12 @@ export class InstructionHandler {
         {
           checkRequiredInput(opts.memOut)
           const [offset, length] = ins;
-          opts.thisContext.resultMemoryPts = this.parent.copyMemoryPts(
-            opts.memoryPt.read(Number(offset), Number(length)),
+          opts.thisContext.resultMemoryPts = this._prepareMemoryCopyFrom(
+            opts.memoryPt,
             offset,
             length,
           )
+          opts.thisContext.resultDataByteLength = Number(length)
           
           const simMemoryPt = MemoryPt.simulateMemoryPt(opts.thisContext.resultMemoryPts);
           const _out = simMemoryPt.viewMemory(0, Number(length));
@@ -1665,6 +1691,40 @@ export class InstructionHandler {
         maskedFragmentValue: geometry.maskedFragmentValue,
       })
     })
+  }
+
+  private _prepareMemoryCopyFrom(
+    sourceMemoryPt: MemoryPt,
+    sourceOffset: bigint,
+    length: bigint,
+    destinationOffset: bigint = 0n,
+  ): MemoryPts {
+    if (length === BIGINT_0) {
+      return []
+    }
+    const sourceOffsetNumber = Number(sourceOffset)
+    const lengthNumber = Number(length)
+    const destinationOffsetNumber = Number(destinationOffset)
+    const sourceSnapshot = MemoryPt.simulateMemoryPt(
+      sourceMemoryPt.read(sourceOffsetNumber, lengthNumber),
+    )
+    const destinationEntries: MemoryPts = []
+    for (let copiedLength = 0; copiedLength < lengthNumber; copiedLength += 32) {
+      const viewByteLength = Math.min(32, lengthNumber - copiedLength)
+      const dataAliasGeometries = sourceSnapshot.getDataAlias(
+        sourceOffsetNumber + copiedLength,
+        viewByteLength,
+      )
+      const dataPt = dataAliasGeometries.length === 0
+        ? this.parent.loadArbitraryStatic(0n, UINT256_DATA_PT_TYPE)
+        : this._placeMemoryLoadComposition(dataAliasGeometries, viewByteLength)
+      destinationEntries.push({
+        memByteOffset: destinationOffsetNumber + copiedLength,
+        containerByteSize: viewByteLength,
+        dataPt,
+      })
+    }
+    return destinationEntries
   }
 
   private _chunkMemory(

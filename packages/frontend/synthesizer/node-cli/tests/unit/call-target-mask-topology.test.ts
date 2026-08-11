@@ -49,6 +49,7 @@ const createHarness = (
     codeAddressPt: dataPt(0x2222n, 2),
     storageAddressPt: dataPt(0x3333n, 3),
     callDataMemoryPts: [],
+    callDataByteLength: 0,
   });
   const interpreterOperands = callOperands(opcode, rawTarget);
   const symbolicOperands = callOperands(opcode, options.stackTarget ?? rawTarget);
@@ -65,7 +66,7 @@ const createHarness = (
   const normalizedTarget = rawTarget & ADDRESS_MASK;
   const maskedResults = options.maskedResults ?? [dataPt(normalizedTarget, 99, 0)];
   const arithmeticCalls: ArithmeticCall[] = [];
-  const placeArithComposition = vi.fn((name: ArithmeticOperator, inPts: DataPt[]) => {
+  const prepareSingleStepArithmeticComposition = vi.fn((name: ArithmeticOperator, inPts: DataPt[]) => {
     arithmeticCalls.push({ name, inPts });
     return maskedResults;
   });
@@ -82,8 +83,10 @@ const createHarness = (
     _bufferManager: {
       getReservedVariableFromBuffer,
     },
-    _arithmeticManager: { placeArithComposition },
-    _memoryManager: { copyMemoryPts: vi.fn(() => []) },
+    _instructionHandlers: {
+      prepareMemoryCopy: vi.fn(() => []),
+      prepareSingleStepArithmeticComposition,
+    },
   });
   const message = {
     depth: 1,
@@ -100,7 +103,7 @@ const createHarness = (
     maskedResults,
     message,
     parentContext,
-    placeArithComposition,
+    prepareSingleStepArithmeticComposition,
     state,
     synthesizer,
   };
@@ -162,7 +165,7 @@ describe('CALL-family target-mask topology', () => {
     expect(() => harness.synthesizer._prepareMessageCall(harness.message)).toThrow(
       'Raw address to call mismatch',
     );
-    expect(harness.placeArithComposition).not.toHaveBeenCalled();
+    expect(harness.prepareSingleStepArithmeticComposition).not.toHaveBeenCalled();
     expect(harness.beginFrame).not.toHaveBeenCalled();
   });
 
@@ -170,9 +173,9 @@ describe('CALL-family target-mask topology', () => {
     const harness = createHarness('CALL', 0x1234n, { maskedResults: [] });
 
     expect(() => harness.synthesizer._prepareMessageCall(harness.message)).toThrow(
-      'CALL target mask must produce exactly one address',
+      'CALL target mask produced no address',
     );
-    expect(harness.placeArithComposition).toHaveBeenCalledOnce();
+    expect(harness.prepareSingleStepArithmeticComposition).toHaveBeenCalledOnce();
     expect(harness.beginFrame).not.toHaveBeenCalled();
   });
 
@@ -184,7 +187,7 @@ describe('CALL-family target-mask topology', () => {
     expect(() => harness.synthesizer._prepareMessageCall(harness.message)).toThrow(
       'Address to call mismatch between EVM and Synthesizer',
     );
-    expect(harness.placeArithComposition).toHaveBeenCalledOnce();
+    expect(harness.prepareSingleStepArithmeticComposition).toHaveBeenCalledOnce();
     expect(harness.beginFrame).not.toHaveBeenCalled();
   });
 });

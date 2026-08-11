@@ -4,8 +4,8 @@ import { BlockData, BlockOptions, createBlock, HeaderData } from '@ethereumjs/bl
 import { bigIntToBytes, bigIntToHex, bytesToBigInt, bytesToHex, createAddressFromBigInt, setLengthLeft } from '@ethereumjs/util';
 
 import { EVMResult, InterpreterStep, Message } from '@ethereumjs/evm';
-import { DataAliasGeometries, DataPt, DataPtType, MemoryPts, Placements, PreparedComposition, ReservedVariable, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
-import { ArithmeticManager, BufferManager, ContextConstructionData, ContextManager, InstructionHandler, MemoryManager, StateManager, SynthesizerOpHandler } from './handlers/index.ts';
+import { DataPt, DataPtType, MemoryPts, Placements, PreparedComposition, ReservedVariable, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
+import { ArithmeticManager, BufferManager, ContextConstructionData, ContextManager, InstructionHandler, StateManager, SynthesizerOpHandler } from './handlers/index.ts';
 import { ArithmeticSubcircuit, ReservedBuffer } from '../subcircuit/configuredTypes.ts';
 import type { ResolvedSubcircuitLibrary } from '../subcircuit/libraryTypes.ts';
 import { DataPtFactory } from './dataStructure/dataPt.ts';
@@ -21,7 +21,6 @@ export class Synthesizer implements SynthesizerInterface
 {
   protected _state: StateManager
   protected _arithmeticManager: ArithmeticManager
-  protected _memoryManager: MemoryManager
   protected _bufferManager: BufferManager
   protected _instructionHandlers: InstructionHandler
   public readonly cachedOpts: SynthesizerOpts
@@ -38,7 +37,6 @@ export class Synthesizer implements SynthesizerInterface
     this._state = new StateManager(this)
     this._bufferManager = new BufferManager(this)
     this._arithmeticManager = new ArithmeticManager(this)
-    this._memoryManager = new MemoryManager(this)
     this._instructionHandlers =  new InstructionHandler(this)
     this._eventHandlerError = undefined
     this._hasEventHandlerError = false
@@ -171,12 +169,18 @@ export class Synthesizer implements SynthesizerInterface
 
   private _returnMessageCall(depth: number):void {
     if (depth > 0){
-      this.state.contextByDepth[depth - 1].returnDataMemoryPts = this.state.contextByDepth[depth].resultMemoryPts.map(entry => {
+      const parentContext = this.state.contextByDepth[depth - 1]
+      const childContext = this.state.contextByDepth[depth]
+      if (parentContext === undefined || childContext === undefined) {
+        throw new Error('Synthesizer: message return context is unavailable')
+      }
+      parentContext.returnDataMemoryPts = childContext.resultMemoryPts.map(entry => {
         return {
           ...entry,
           dataPt: DataPtFactory.deepCopy(entry.dataPt),
         }
       });
+      parentContext.returnDataByteLength = childContext.resultDataByteLength
     }
   }
 
@@ -194,6 +198,7 @@ export class Synthesizer implements SynthesizerInterface
     let callerPt: DataPt;
     let codeAddressPt: DataPt;
     let storageAddressPt: DataPt;
+    let callDataByteLength: number;
     if (depth == 0) {
       const selectorPt = this.getReservedVariableFromBuffer('FUNCTION_SELECTOR')
       const inPts: DataPt[] = Array.from({ length: FUNCTION_INPUT_LENGTH }, (_, i) =>
@@ -207,6 +212,7 @@ export class Synthesizer implements SynthesizerInterface
           dataPt,
         })),
       ]
+      callDataByteLength = message.data.length
       if (this.state.cachedOrigin === undefined) {
         throw new Error(`Sender address must be verified first`)
       }
@@ -254,11 +260,12 @@ export class Synthesizer implements SynthesizerInterface
         throw new Error(`Debug: Raw address to call mismatch between EVM and Synthesizer`)
       }
       const addressMaskPt = this.getReservedVariableFromBuffer('ADDRESS_MASK')
-      const maskedAddressPts = this.placeComposition('AND', [rawCodeAddressPt, addressMaskPt])
-      if (maskedAddressPts.length !== 1 || maskedAddressPts[0] === undefined) {
-        throw new Error(`Synthesizer: CALL target mask must produce exactly one address`)
+      const [maskedAddressPt] = this._instructionHandlers
+        .prepareSingleStepArithmeticComposition('AND', [rawCodeAddressPt, addressMaskPt])
+      if (maskedAddressPt === undefined) {
+        throw new Error('Synthesizer: CALL target mask produced no address')
       }
-      codeAddressPt = maskedAddressPts[0]
+      codeAddressPt = maskedAddressPt
       const codeAddress = BigInt(message.codeAddress.toString())
       if (codeAddress !== codeAddressPt.value) {
         throw new Error(`Debug: Address to call mismatch between EVM and Synthesizer`)
@@ -284,11 +291,12 @@ export class Synthesizer implements SynthesizerInterface
           break
       }
 
-      callDataMemoryPts = this.copyMemoryPts(
+      callDataMemoryPts = this._instructionHandlers.prepareMemoryCopy(
         parentContext.memoryPt.read(Number(inOffset), Number(inLength)),
         inOffset,
         inLength,
       );
+      callDataByteLength = Number(inLength)
       const simCalldataMemoryPt = MemoryPt.simulateMemoryPt(callDataMemoryPts);
       const syntheCallData = simCalldataMemoryPt.viewMemory(0, Number(inLength));
       const actualCallData = callingStep.memory.subarray(Number(inOffset), Number(inOffset) + Number(inLength))
@@ -300,6 +308,7 @@ export class Synthesizer implements SynthesizerInterface
     }
     const contextData: ContextConstructionData = {
       callDataMemoryPts,
+      callDataByteLength,
       callerPt,
       codeAddressPt,
       storageAddressPt,
@@ -480,18 +489,4 @@ export class Synthesizer implements SynthesizerInterface
     return this._bufferManager.loadArbitraryStatic(value, dataPtType, desc)
   }
 
-  placeMemoryToMemory(dataAliasInfos: DataAliasGeometries): DataPt[] {
-    return this._memoryManager.placeMemoryToMemory(dataAliasInfos);
-  }
-  placeMSTORE8(dataPt: DataPt): DataPt {
-    return this._memoryManager.placeMSTORE8(dataPt);
-  }
-  copyMemoryPts(
-    target: MemoryPts,
-    srcOffset: bigint,
-    length: bigint,
-    dstOffset?: bigint,
-  ): MemoryPts {
-    return this._memoryManager.copyMemoryPts(target, srcOffset, length, dstOffset)
-  }
 }
