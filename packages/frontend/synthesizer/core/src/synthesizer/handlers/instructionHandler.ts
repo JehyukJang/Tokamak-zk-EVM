@@ -36,6 +36,15 @@ export interface SynthesizerOpHandler {
   (context: ContextManager, stepResult: InterpreterStep): void | Promise<void>
 }
 
+/**
+ * Side-effect-free preparation for one memory copy. Compositions must be
+ * recorded in order before destination entries are written to MemoryPt.
+ */
+type PreparedMemoryCopy = Readonly<{
+  compositions: readonly PreparedComposition[]
+  destinationEntries: MemoryPts
+}>
+
 const checkRequiredInput = (...input: unknown[]): void => {
   if (input.some(v => v === undefined)) throw new Error('Required inputs are missing')
 }
