@@ -354,36 +354,15 @@ export class StateManager {
     preparedComposition: PreparedComposition,
     composition: PlacementComposition,
   ): void {
-    const step = composition.steps[0]
-    if (
-      composition.numSteps !== 'dynamic'
-      || composition.numOperands !== 'dynamic'
-      || composition.numResults !== 1
-      || composition.steps.length !== 1
-      || step === undefined
-      || step.subcircuit !== 'Poseidon'
-      || step.selector !== 'dynamic'
-      || step.inputs[0]?.kind !== 'selector'
-      || step.outputs.length !== 1
-      || step.outputs[0]?.kind !== 'result'
-      || step.outputs[0].index !== 0
-    ) {
-      throw new Error(
-        'Synthesizer: Poseidon has an invalid placement composition',
-      )
-    }
+    const step = composition.steps[0]!
     if (preparedComposition.resultPts.length !== 1) {
       throw new Error('Synthesizer: Poseidon must produce exactly one result')
     }
-
     const subcircuit = this.subcircuitInfoByName.get(step.subcircuit)
     if (subcircuit === undefined) {
       throw new Error('Synthesizer: Poseidon subcircuit is not found. Check qap-compiler.')
     }
     const inputLimit = step.inputs.length - 1
-    if (inputLimit < POSEIDON_INPUTS) {
-      throw new Error('Synthesizer: Poseidon input capacity is too small')
-    }
 
     const basePlacementIndex = this._placements.length
     let chainInputs: Array<DataPt | undefined> = preparedComposition.operands.slice()
