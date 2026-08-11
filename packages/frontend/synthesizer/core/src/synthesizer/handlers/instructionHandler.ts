@@ -1,5 +1,5 @@
 
-import { BIT_DATA_PT_TYPE, DataAliasGeometries, DataAliasInfos, getDataPtTypeFromLogicalInterfaceType, getDataPtWireCount, ISynthesizerProvider, MemoryPts, PreparedComposition, synthesizerOpcodeByName, SynthesizerOpts, SynthesizerSupportedArithOpcodes, SynthesizerSupportedBlkInfOpcodes, SynthesizerSupportedEnvInfOpcodes, SynthesizerSupportedLogOpcodes, SynthesizerSupportedSysFlowOpcodes, type DataPt, type ReservedVariable, type SynthesizerSupportedOpcodes, UINT256_DATA_PT_TYPE, UINT32_DATA_PT_TYPE } from '../types/index.ts';
+import { BIT_DATA_PT_TYPE, DataAliasGeometries, DataAliasInfos, getDataPtTypeFromLogicalInterfaceType, ISynthesizerProvider, MemoryPts, PreparedComposition, synthesizerOpcodeByName, SynthesizerOpts, SynthesizerSupportedArithOpcodes, SynthesizerSupportedBlkInfOpcodes, SynthesizerSupportedEnvInfOpcodes, SynthesizerSupportedLogOpcodes, SynthesizerSupportedSysFlowOpcodes, type DataPt, type ReservedVariable, type SynthesizerSupportedOpcodes, UINT256_DATA_PT_TYPE, UINT32_DATA_PT_TYPE } from '../types/index.ts';
 
 import {
   Address,
@@ -901,23 +901,19 @@ export class InstructionHandler {
     canonicalAddressPt: DataPt,
     canonicalKeyPt: DataPt,
   ): void {
-    const equalBatchInfo = this.parent.state.subcircuitInfoByName.get('EqualBatch')
-    if (equalBatchInfo === undefined) {
-      throw new Error('Synthesizer: EqualBatch subcircuit is required for repeated storage access')
-    }
-    if (equalBatchInfo.NInWires !== 8 || equalBatchInfo.NOutWires !== 0) {
-      throw new Error('Synthesizer: EqualBatch must have eight input wires and no output wires')
-    }
     const inPts = [
       currentAddressPt,
       currentKeyPt,
       canonicalAddressPt,
       canonicalKeyPt,
     ]
-    if (inPts.some(({ dataPtType }) => getDataPtWireCount(dataPtType) !== 2)) {
-      throw new Error('Synthesizer: EqualBatch storage identities must use two-limb DataPts')
+    const preparedComposition: PreparedComposition = {
+      operation: 'StorageAccess',
+      operands: inPts,
+      resultPts: [],
+      steps: [{ inPts, outPts: [] }],
     }
-    this.parent.placeComposition('StorageAccess', inPts)
+    this.parent.placeComposition(preparedComposition)
   }
 
   private _getCachedStorageEntry(
