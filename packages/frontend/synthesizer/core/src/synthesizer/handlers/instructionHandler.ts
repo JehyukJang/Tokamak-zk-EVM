@@ -787,11 +787,9 @@ export class InstructionHandler {
       case 'SMOD':
       case 'ADDMOD':
       case 'MULMOD':
+      case 'EXP':
         outPts = this._submitFixedMultiStepArithmeticComposition(op, inPts)
         break
-      case 'EXP':
-        outPts = this.parent.placeComposition('EXP', inPts)
-        break;
       case 'KECCAK256': {
           checkRequiredInput(opts.memOut)
           const memOffset = ins[0]

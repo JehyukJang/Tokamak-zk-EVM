@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createAddMulModCompositionMappings } from '../../../core/src/subcircuit/special-builders/addMulModComposition.ts';
 import { createDivisionCompositionMappings } from '../../../core/src/subcircuit/special-builders/divModComposition.ts';
+import { createExpCompositionMapping } from '../../../core/src/subcircuit/special-builders/expComposition.ts';
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
 import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
 import {
@@ -21,6 +22,7 @@ type FixedMultiStepOperation =
   | 'SMOD'
   | 'ADDMOD'
   | 'MULMOD'
+  | 'EXP'
 
 const uint = (bits: number) => ({ kind: 'uint' as const, bits })
 
@@ -80,6 +82,30 @@ const subcircuitInfoByName = new Map([
       outputs: [{ name: 'result', logicalType: uint(256) }],
     },
   }],
+  ['DecToBit', {
+    logicalInterface: {
+      inputs: [],
+      outputs: Array.from(
+        { length: 256 },
+        (_, index) => ({ name: `bit${index}`, logicalType: uint(1) }),
+      ),
+    },
+  }],
+  ['SubExp', {
+    logicalInterface: {
+      inputs: [],
+      outputs: [
+        { name: 'nextAccumulator', logicalType: uint(256) },
+        { name: 'nextBasePower', logicalType: uint(256) },
+      ],
+    },
+  }],
+  ['CheckBus256', {
+    logicalInterface: {
+      inputs: [],
+      outputs: [{ name: 'checkedWord', logicalType: uint(256) }],
+    },
+  }],
 ])
 
 const dataPt = (
@@ -93,6 +119,7 @@ const fixedMultiStepCompositions = new Map(
   [
     ...createAddMulModCompositionMappings(),
     ...createDivisionCompositionMappings(),
+    createExpCompositionMapping(),
   ].map(({ operation, composition }) => [operation, composition]),
 )
 
@@ -116,6 +143,12 @@ const submit = (
         return [0n, 1n, 2n, 3n, 4n, 5n, 6n, 0n, 1n, 0n]
       case 'ALU4B':
         return [13n]
+      case 'DecToBit':
+        return Array.from({ length: 256 }, (_, index) => BigInt(index % 2))
+      case 'SubExp':
+        return [17n, 19n]
+      case 'CheckBus256':
+        return [23n]
       default:
         throw new Error(`Unexpected subcircuit ${name}`)
     }
@@ -215,5 +248,24 @@ describe('fixed multi-step arithmetic prepared compositions', () => {
     expect(preparedComposition.steps[1]!.inPts.map(({ source }) => source))
       .toEqual(Array(10).fill(0))
     expect(resultPts).toMatchObject([{ source: 1, wireIndex: 0, value: 13n }])
+  })
+
+  it('prepares every declared EXP step and preserves the serial state connections', () => {
+    const { preparedComposition, resultPts } = submit('EXP')
+
+    expect(preparedComposition.steps).toHaveLength(258)
+    expect(preparedComposition.steps[0]!.inPts).toHaveLength(1)
+    expect(preparedComposition.steps[0]!.outPts).toHaveLength(256)
+    expect(preparedComposition.steps[0]!.outPts.every(
+      ({ dataPtType }) => dataPtType === BIT_DATA_PT_TYPE,
+    )).toBe(true)
+    expect(preparedComposition.steps[1]!.inPts.map(({ value }) => value)).toEqual([1n, 3n, 0n])
+    expect(preparedComposition.steps[2]!.inPts.map(({ source, wireIndex }) => [source, wireIndex]))
+      .toEqual([[1, 0], [1, 1], [0, 1]])
+    expect(preparedComposition.steps.at(-1)).toMatchObject({
+      inPts: [{ source: 256, wireIndex: 0, value: 17n }],
+      outPts: [{ source: 257, wireIndex: 0, value: 23n, dataPtType: UINT256_DATA_PT_TYPE }],
+    })
+    expect(resultPts).toMatchObject([{ source: 257, wireIndex: 0, value: 23n }])
   })
 })
