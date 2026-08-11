@@ -744,7 +744,7 @@ export class InstructionHandler {
     const zeroPt = this.parent.loadArbitraryStatic(0n, valueType)
     const steps: Array<PreparedComposition['steps'][number]> = []
 
-    const placeNormalized = (inputPts: DataPt[]): DataPt => {
+    const prepareNormalized = (inputPts: DataPt[]): DataPt => {
       if (inputPts.length < POSEIDON_INPUTS || inputPts.length > inputLimit) {
         throw new Error(
           `Synthesizer: Poseidon expected between ${POSEIDON_INPUTS} and ${inputLimit} inputs, but got ${inputPts.length}`,
@@ -786,10 +786,10 @@ export class InstructionHandler {
       chainInputs.push(DataPtFactory.deepCopy(zeroPt))
     }
     while (chainInputs.length > inputLimit) {
-      const prefixHash = placeNormalized(chainInputs.slice(0, inputLimit))
+      const prefixHash = prepareNormalized(chainInputs.slice(0, inputLimit))
       chainInputs = [prefixHash, ...chainInputs.slice(inputLimit)]
     }
-    const resultPt = placeNormalized(chainInputs)
+    const resultPt = prepareNormalized(chainInputs)
     const preparedComposition: PreparedComposition = {
       operation: 'Poseidon',
       operands,
@@ -957,7 +957,7 @@ export class InstructionHandler {
     }
   }
 
-  public async loadStorage(
+  private async loadStorage(
     addressPt: DataPt,
     keyPt: DataPt,
     valueGiven?: bigint,
@@ -1017,7 +1017,7 @@ export class InstructionHandler {
     return DataPtFactory.deepCopy(valuePt);
   }
 
-  public async storeStorage(
+  private async storeStorage(
     addressPt: DataPt,
     keyPt: DataPt,
     symbolDataPt: DataPt,

@@ -43,7 +43,6 @@ export interface ISynthesizerProvider extends SynthesizerInterface {
     name: ArithmeticSubcircuit,
     values: bigint[],
   ): bigint[];
-  // storeStorage(key: bigint, inPt: DataPt): void
   //from BufferManager
   loadArbitraryStatic(
     value: bigint,
