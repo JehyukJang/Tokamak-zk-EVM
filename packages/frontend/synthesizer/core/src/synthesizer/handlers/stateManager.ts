@@ -7,7 +7,10 @@ import {
   type Placements,
   type PreparedComposition,
 } from '../types/index.ts';
-import { getDataPtWireCount } from '../types/dataStructure.ts';
+import {
+  getDataPtTypeFromLogicalInterfaceType,
+  getDataPtWireCount,
+} from '../types/dataStructure.ts';
 import { MemoryPt, StackPt } from '../dataStructure/index.ts';
 import {
   BUFFER_LIST,
@@ -20,6 +23,7 @@ import type {
   PlacementComposition,
   PlacementCompositionManager,
 } from '../../subcircuit/placementCompositionManager.ts';
+import type { LogicalInterfacePort } from '../../subcircuit/libraryTypes.ts';
 import { InterpreterStep } from '@ethereumjs/evm';
 import { LogCache } from './logAccess.ts';
 import { InitialStorageReadList, StorageCache } from './storageAccess.ts';
@@ -121,6 +125,30 @@ function _assertPreparedWireCount(
     throw new Error(
       `Synthesizer: ${operation} ${subcircuit} expected ${expectedWireCount} ${target} wires, but got ${actualWireCount}`,
     )
+  }
+}
+
+function _assertPreparedPortTypes(
+  operation: PreparedComposition['operation'],
+  subcircuit: SubcircuitNames,
+  target: 'input' | 'output',
+  dataPts: readonly DataPt[],
+  ports: readonly LogicalInterfacePort[],
+): void {
+  if (dataPts.length !== ports.length) {
+    throw new Error(
+      `Synthesizer: ${operation} ${subcircuit} expected ${ports.length} ${target} ports, but got ${dataPts.length}`,
+    )
+  }
+
+  for (const [portIndex, port] of ports.entries()) {
+    const expectedDataPtType = getDataPtTypeFromLogicalInterfaceType(port.logicalType)
+    const dataPt = dataPts[portIndex]!
+    if (!_hasSameDataPtType(dataPt, expectedDataPtType)) {
+      throw new Error(
+        `Synthesizer: ${operation} ${subcircuit} ${target} port ${portIndex} (${port.name}) expected ${expectedDataPtType}, but got ${dataPt.dataPtType}`,
+      )
+    }
   }
 }
 
@@ -320,6 +348,25 @@ export class StateManager {
         'output',
         preparedStep.outPts,
         subcircuit.NOutWires,
+      )
+      if (subcircuit.logicalInterface === undefined) {
+        throw new Error(
+          `Synthesizer: ${step.subcircuit} has no logical interface for ${preparedComposition.operation}`,
+        )
+      }
+      _assertPreparedPortTypes(
+        preparedComposition.operation,
+        step.subcircuit,
+        'input',
+        preparedStep.inPts,
+        subcircuit.logicalInterface.inputs,
+      )
+      _assertPreparedPortTypes(
+        preparedComposition.operation,
+        step.subcircuit,
+        'output',
+        preparedStep.outPts,
+        subcircuit.logicalInterface.outputs,
       )
       if (preparedStep.inPts.length !== step.inputs.length) {
         throw new Error(
