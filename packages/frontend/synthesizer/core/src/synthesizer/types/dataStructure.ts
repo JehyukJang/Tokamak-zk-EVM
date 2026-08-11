@@ -73,8 +73,18 @@ export type DataPt = DataPtDescription & { value: bigint; valueHex: string };
 /** Raw byte geometry reported by MemoryPt before symbolic inputs are created. */
 export type DataAliasGeometryEntry = Readonly<{
   dataPt: DataPt;
+  /** Signed bit shift retained for legacy memory-copy preparation. */
   shift: number;
+  /** Byte mask retained for legacy memory-copy preparation. */
   masker: string;
+  /** Absolute byte shift consumed by MemoryLoadStep. */
+  shiftMagnitude: number;
+  /** Zero selects a left shift; one selects a right shift. */
+  direction: 0 | 1;
+  /** One bit per output byte, consumed by MemoryLoadStep. */
+  ownershipMask: bigint;
+  /** Host value contributed by this fragment after shift and byte masking. */
+  maskedFragmentValue: bigint;
 }>;
 export type DataAliasGeometries = readonly DataAliasGeometryEntry[];
 
@@ -84,6 +94,7 @@ export type DataAliasInfoEntry = Readonly<{
   shiftPt: DataPt;
   directionPt: DataPt;
   maskerPt: DataPt;
+  maskedFragmentValue: bigint;
 }>;
 export type DataAliasInfos = readonly DataAliasInfoEntry[];
 

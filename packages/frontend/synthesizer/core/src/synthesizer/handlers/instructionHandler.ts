@@ -1511,24 +1511,72 @@ export class InstructionHandler {
       throw new Error('Synthesizer: MemoryLoad requires at least one alias geometry')
     }
 
-    const dataAliasInfos = this._createDataAliasInfos(dataAliasGeometries)
+    const composition = this.parent.subcircuitLibrary
+      .placementCompositionManager.get('MemoryLoad')
+    const step = composition.steps[0]
+    if (step === undefined) {
+      throw new Error('Synthesizer: MemoryLoad composition has no placement step')
+    }
+    const logicalInterface = this.parent.subcircuitLibrary.subcircuitInfoByName
+      .get(step.subcircuit)?.logicalInterface
+    if (logicalInterface === undefined) {
+      throw new Error(`Synthesizer: ${step.subcircuit} logical interface is unavailable`)
+    }
+    const inputTypes = logicalInterface.inputs.map(({ logicalType }) =>
+      getDataPtTypeFromLogicalInterfaceType(logicalType),
+    )
+    const outputTypes = logicalInterface.outputs.map(({ logicalType }) =>
+      getDataPtTypeFromLogicalInterfaceType(logicalType),
+    )
+    const [
+      sourceWordType,
+      shiftType,
+      directionType,
+      ownershipType,
+      previousWordType,
+      previousOwnershipType,
+      coverageType,
+      finalModeType,
+    ] = inputTypes
+    const [nextWordType, nextOwnershipType] = outputTypes
+    if (
+      sourceWordType === undefined
+      || shiftType === undefined
+      || directionType === undefined
+      || ownershipType === undefined
+      || previousWordType === undefined
+      || previousOwnershipType === undefined
+      || coverageType === undefined
+      || finalModeType === undefined
+      || nextWordType === undefined
+      || nextOwnershipType === undefined
+    ) {
+      throw new Error(`Synthesizer: ${step.subcircuit} logical interface is incomplete`)
+    }
+
+    const dataAliasInfos = this._createDataAliasInfos(
+      dataAliasGeometries,
+      shiftType,
+      directionType,
+      ownershipType,
+    )
     const basePlacementIndex = this.parent.placements.length
     const expectedCoveragePt = this.parent.loadArbitraryStatic(
       dataAliasInfos.reduce(
         (coverage, { maskerPt }) => coverage | maskerPt.value,
         0n,
       ),
-      UINT32_DATA_PT_TYPE,
+      coverageType,
       'Memory-load final byte ownership',
     )
     const zeroWordPt = this.parent.loadArbitraryStatic(
       0n,
-      UINT256_DATA_PT_TYPE,
+      previousWordType,
       'Memory-load initial word',
     )
     const zeroOwnershipPt = this.parent.loadArbitraryStatic(
       0n,
-      UINT32_DATA_PT_TYPE,
+      previousOwnershipType,
       'Memory-load initial byte ownership',
     )
     const operands: DataPt[] = []
@@ -1540,14 +1588,11 @@ export class InstructionHandler {
       const isFinalStep = stepIndex === dataAliasInfos.length - 1
       const finalModePt = this.parent.loadArbitraryStatic(
         isFinalStep ? 1n : 0n,
-        BIT_DATA_PT_TYPE,
+        finalModeType,
         'Memory-load final-mode flag',
       )
-      const shiftedValue = info.directionPt.value === 0n
-        ? info.dataPt.value << (info.shiftPt.value * 8n)
-        : info.dataPt.value >> (info.shiftPt.value * 8n)
       const nextWordValue = previousWordPt.value
-        + (shiftedValue & this._expandOwnershipMask(info.maskerPt.value))
+        + info.maskedFragmentValue
       if (nextWordValue >= 1n << 256n) {
         throw new Error('Synthesizer: MemoryLoad fragment sum exceeds an EVM word')
       }
@@ -1557,12 +1602,12 @@ export class InstructionHandler {
       const nextWordPt = DataPtFactory.create({
         source: basePlacementIndex + stepIndex,
         wireIndex: 0,
-        dataPtType: UINT256_DATA_PT_TYPE,
+        dataPtType: nextWordType,
       }, nextWordValue)
       const nextOwnershipPt = DataPtFactory.create({
         source: basePlacementIndex + stepIndex,
         wireIndex: 1,
-        dataPtType: UINT32_DATA_PT_TYPE,
+        dataPtType: nextOwnershipType,
       }, nextOwnershipValue)
       steps.push({
         inPts: [
@@ -1593,56 +1638,33 @@ export class InstructionHandler {
     return previousWordPt
   }
 
-  private _createDataAliasInfos(dataAliasGeometries: DataAliasGeometries): DataAliasInfos {
-    return dataAliasGeometries.map(({ dataPt, shift, masker }) => {
-      if (!Number.isInteger(shift) || shift % 8 !== 0 || Math.abs(shift) > 31 * 8) {
-        throw new Error('Synthesizer: memory-load shift must be a byte-aligned value from -248 to 248')
-      }
+  private _createDataAliasInfos(
+    dataAliasGeometries: DataAliasGeometries,
+    shiftType: DataPt['dataPtType'],
+    directionType: DataPt['dataPtType'],
+    ownershipType: DataPt['dataPtType'],
+  ): DataAliasInfos {
+    return dataAliasGeometries.map((geometry) => {
       return Object.freeze({
-        dataPt,
+        dataPt: geometry.dataPt,
         shiftPt: this.parent.loadArbitraryStatic(
-          BigInt(Math.abs(shift) / 8),
-          UINT32_DATA_PT_TYPE,
+          BigInt(geometry.shiftMagnitude),
+          shiftType,
           'Memory-load byte shift magnitude',
         ),
         directionPt: this.parent.loadArbitraryStatic(
-          shift < 0 ? 1n : 0n,
-          BIT_DATA_PT_TYPE,
+          BigInt(geometry.direction),
+          directionType,
           'Memory-load shift direction',
         ),
         maskerPt: this.parent.loadArbitraryStatic(
-          this._createOwnershipMask(masker),
-          UINT32_DATA_PT_TYPE,
+          geometry.ownershipMask,
+          ownershipType,
           'Memory-load byte ownership mask',
         ),
+        maskedFragmentValue: geometry.maskedFragmentValue,
       })
     })
-  }
-
-  private _createOwnershipMask(masker: string): bigint {
-    if (masker.length % 2 !== 0) {
-      throw new Error('Synthesizer: memory ownership mask must contain whole bytes')
-    }
-    let ownershipMask = 0n
-    for (let byteIndex = 0; byteIndex < masker.length / 2; byteIndex++) {
-      const byte = masker.slice(byteIndex * 2, byteIndex * 2 + 2)
-      if (byte === 'ff' || byte === 'FF') {
-        ownershipMask |= 1n << BigInt(masker.length / 2 - byteIndex - 1)
-      } else if (byte !== '00') {
-        throw new Error('Synthesizer: memory ownership mask must contain only FF or 00 bytes')
-      }
-    }
-    return ownershipMask
-  }
-
-  private _expandOwnershipMask(ownershipMask: bigint): bigint {
-    let wordMask = 0n
-    for (let byteIndex = 0; byteIndex < 32; byteIndex++) {
-      if ((ownershipMask & (1n << BigInt(byteIndex))) !== 0n) {
-        wordMask |= 0xffn << BigInt(byteIndex * 8)
-      }
-    }
-    return wordMask
   }
 
   private _chunkMemory(

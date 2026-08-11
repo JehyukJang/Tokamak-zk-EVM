@@ -163,10 +163,11 @@ export class MemoryPt {
     */
 
   /**
-   * Returns data transformation information for a specific memory range. Used when moving data from Memory to Stack.
+   * Returns fully derived alias geometry for a specific memory range.
+   * DataPt creation and placement remain the instruction handler's responsibility.
    * @param offset - Starting memory position to read
    * @param size - Number of bytes to read
-   * @returns Raw byte geometry for MemoryManager to materialize as DataPts.
+   * @returns Byte geometry and derived MemoryLoadStep facts.
    */
   getDataAlias(offset: number, size: number): DataAliasGeometries {
     const dataAliasInfos: DataAliasGeometryEntry[] = []
@@ -178,11 +179,25 @@ export class MemoryPt {
       const dataEndOffset =
         this._storePt.get(timeStamp)!.memByteOffset + this._storePt.get(timeStamp)!.containerByteSize - 1
       const viewEndOffset = offset + size - 1
+      const dataPt = this._storePt.get(timeStamp)!.dataPt
+      const shift = (viewEndOffset - dataEndOffset) * 8
+      if (!Number.isInteger(shift) || shift % 8 !== 0 || Math.abs(shift) > 31 * 8) {
+        throw new Error('MemoryPt: memory-load shift must be a byte-aligned value from -248 to 248.')
+      }
+      const masker = this._generateMasker(offset, size, _value.validRange)
+      const ownershipMask = this._createOwnershipMask(masker)
+      const shiftedValue = shift < 0
+        ? dataPt.value >> BigInt(Math.abs(shift))
+        : dataPt.value << BigInt(shift)
       dataAliasInfos.push({
-        dataPt: this._storePt.get(timeStamp)!.dataPt,
+        dataPt,
         // shift is positive for SHL, negative for SHR
-        shift: (viewEndOffset - dataEndOffset) * 8,
-        masker: this._generateMasker(offset, size, _value.validRange),
+        shift,
+        masker,
+        shiftMagnitude: Math.abs(shift) / 8,
+        direction: shift < 0 ? 1 : 0,
+        ownershipMask,
+        maskedFragmentValue: shiftedValue & this._expandOwnershipMask(ownershipMask),
       })
     }
     return dataAliasInfos
@@ -337,6 +352,33 @@ export class MemoryPt {
     }
 
     return maskerString
+  }
+
+  private _createOwnershipMask(masker: string): bigint {
+    if (!masker.startsWith('0x') || (masker.length - 2) % 2 !== 0) {
+      throw new Error('MemoryPt: memory ownership mask must contain whole bytes.')
+    }
+    let ownershipMask = 0n
+    const byteLength = (masker.length - 2) / 2
+    for (let byteIndex = 0; byteIndex < byteLength; byteIndex++) {
+      const byte = masker.slice(2 + byteIndex * 2, 4 + byteIndex * 2)
+      if (byte === 'FF') {
+        ownershipMask |= 1n << BigInt(byteLength - byteIndex - 1)
+      } else if (byte !== '00') {
+        throw new Error('MemoryPt: memory ownership mask must contain only FF or 00 bytes.')
+      }
+    }
+    return ownershipMask
+  }
+
+  private _expandOwnershipMask(ownershipMask: bigint): bigint {
+    let wordMask = 0n
+    for (let byteIndex = 0; byteIndex < 32; byteIndex++) {
+      if ((ownershipMask & (1n << BigInt(byteIndex))) !== 0n) {
+        wordMask |= 0xffn << BigInt(byteIndex * 8)
+      }
+    }
+    return wordMask
   }
 }
 
