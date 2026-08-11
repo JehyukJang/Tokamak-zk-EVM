@@ -3,7 +3,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { VariableGenerator } from '../../../core/src/circuitGenerator/handlers/variableGenerator.ts';
 import { BUFFER_LIST } from '../../../core/src/subcircuit/configuredTypes.ts';
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
-import type { DataPt, DataPtType } from '../../../core/src/synthesizer/types/dataStructure.ts';
+import {
+  BIT_DATA_PT_TYPE,
+  BLS12_381_FR_DATA_PT_TYPE,
+  UINT256_DATA_PT_TYPE,
+  type DataPt,
+  type DataPtType,
+} from '../../../core/src/synthesizer/types/dataStructure.ts';
 import type { Placements } from '../../../core/src/synthesizer/types/placements.ts';
 
 const expand = (generator: VariableGenerator, dataPt: DataPt): DataPt[] =>
@@ -84,10 +90,7 @@ describe('VariableGenerator word encoding', () => {
       {
         source: 0,
         wireIndex: 0,
-        dataPtType: {
-          valueDomain: { kind: 'uint', bits: 256 },
-          wireLayout: { kind: 'limbs-128', count: 2 },
-        },
+        dataPtType: UINT256_DATA_PT_TYPE,
         extSource: 'word source',
         extDest: 'word destination',
       },
@@ -109,10 +112,7 @@ describe('VariableGenerator word encoding', () => {
     const generator = new VariableGenerator({} as never);
     const original = dataPt(
       1n,
-      {
-        valueDomain: { kind: 'uint', bits: 1 },
-        wireLayout: { kind: 'limbs-128', count: 1 },
-      },
+      BIT_DATA_PT_TYPE,
       7,
       3,
     );
@@ -128,10 +128,7 @@ describe('VariableGenerator word encoding', () => {
     const generator = new VariableGenerator({} as never);
     const original = dataPt(
       123n,
-      {
-        valueDomain: { kind: 'bls12-381-fr' },
-        wireLayout: { kind: 'native-fr' },
-      },
+      BLS12_381_FR_DATA_PT_TYPE,
       8,
       5,
     );
@@ -148,10 +145,7 @@ describe('VariableGenerator buffer wire capacity', () => {
   it('preserves a buffer twin data type', () => {
     const original = dataPt(
       123n,
-      {
-        valueDomain: { kind: 'bls12-381-fr' },
-        wireLayout: { kind: 'native-fr' },
-      },
+      BLS12_381_FR_DATA_PT_TYPE,
       privateBufferIndex,
       0,
     );
@@ -159,23 +153,14 @@ describe('VariableGenerator buffer wire capacity', () => {
     const twin = DataPtFactory.createBufferTwin(original);
 
     expect(twin.dataPtType).toEqual(original.dataPtType);
-    expect(twin.dataPtType).not.toBe(original.dataPtType);
+    expect(twin).not.toBe(original);
   });
 
-  it('accepts mixed layouts that exactly fill the input-wire capacity', () => {
+  it('accepts mixed canonical types that exactly fill the input-wire capacity', () => {
     const placements = createBufferPlacements();
-    addPrivateBufferValue(placements, 1n, {
-      valueDomain: { kind: 'uint', bits: 1 },
-      wireLayout: { kind: 'limbs-128', count: 1 },
-    });
-    addPrivateBufferValue(placements, 123n, {
-      valueDomain: { kind: 'bls12-381-fr' },
-      wireLayout: { kind: 'native-fr' },
-    });
-    addPrivateBufferValue(placements, (1n << 255n) + 7n, {
-      valueDomain: { kind: 'uint', bits: 256 },
-      wireLayout: { kind: 'limbs-128', count: 2 },
-    });
+    addPrivateBufferValue(placements, 1n, BIT_DATA_PT_TYPE);
+    addPrivateBufferValue(placements, 123n, BLS12_381_FR_DATA_PT_TYPE);
+    addPrivateBufferValue(placements, (1n << 255n) + 7n, UINT256_DATA_PT_TYPE);
 
     convertAndValidateBuffers(createBufferGenerator(4), placements);
 
@@ -185,22 +170,10 @@ describe('VariableGenerator buffer wire capacity', () => {
 
   it('rejects one physical input wire beyond capacity without counting outputs', () => {
     const placements = createBufferPlacements();
-    addPrivateBufferValue(placements, 1n, {
-      valueDomain: { kind: 'uint', bits: 1 },
-      wireLayout: { kind: 'limbs-128', count: 1 },
-    });
-    addPrivateBufferValue(placements, 123n, {
-      valueDomain: { kind: 'bls12-381-fr' },
-      wireLayout: { kind: 'native-fr' },
-    });
-    addPrivateBufferValue(placements, (1n << 255n) + 7n, {
-      valueDomain: { kind: 'uint', bits: 256 },
-      wireLayout: { kind: 'limbs-128', count: 2 },
-    });
-    addPrivateBufferValue(placements, 0n, {
-      valueDomain: { kind: 'uint', bits: 1 },
-      wireLayout: { kind: 'limbs-128', count: 1 },
-    });
+    addPrivateBufferValue(placements, 1n, BIT_DATA_PT_TYPE);
+    addPrivateBufferValue(placements, 123n, BLS12_381_FR_DATA_PT_TYPE);
+    addPrivateBufferValue(placements, (1n << 255n) + 7n, UINT256_DATA_PT_TYPE);
+    addPrivateBufferValue(placements, 0n, BIT_DATA_PT_TYPE);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
     expect(() => convertAndValidateBuffers(createBufferGenerator(4), placements)).toThrow(

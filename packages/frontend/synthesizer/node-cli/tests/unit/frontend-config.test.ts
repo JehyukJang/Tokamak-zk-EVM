@@ -12,7 +12,6 @@ const validConfig = {
   nEVMIn: 530,
   nPoseidonInputs: 2,
   nPoseidonBatch: 1,
-  nAccumulation: 32,
   nPrevBlockHashes: 4,
   nJubjubExpBatch: 37,
   nEqualBatch: 2,
