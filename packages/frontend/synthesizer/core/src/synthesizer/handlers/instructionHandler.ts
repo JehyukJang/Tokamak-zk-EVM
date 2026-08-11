@@ -1,5 +1,5 @@
 
-import { getDataPtWireCount, ISynthesizerProvider, MemoryPts, PreparedComposition, synthesizerOpcodeByName, SynthesizerOpts, SynthesizerSupportedArithOpcodes, SynthesizerSupportedBlkInfOpcodes, SynthesizerSupportedEnvInfOpcodes, SynthesizerSupportedLogOpcodes, SynthesizerSupportedSysFlowOpcodes, type DataPt, type ReservedVariable, type SynthesizerSupportedOpcodes, UINT256_DATA_PT_TYPE, UINT32_DATA_PT_TYPE } from '../types/index.ts';
+import { getDataPtTypeFromLogicalInterfaceType, getDataPtWireCount, ISynthesizerProvider, MemoryPts, PreparedComposition, synthesizerOpcodeByName, SynthesizerOpts, SynthesizerSupportedArithOpcodes, SynthesizerSupportedBlkInfOpcodes, SynthesizerSupportedEnvInfOpcodes, SynthesizerSupportedLogOpcodes, SynthesizerSupportedSysFlowOpcodes, type DataPt, type ReservedVariable, type SynthesizerSupportedOpcodes, UINT256_DATA_PT_TYPE, UINT32_DATA_PT_TYPE } from '../types/index.ts';
 
 import {
   Address,
@@ -416,6 +416,117 @@ export class InstructionHandler {
 
   }
 
+  private _submitAddMulModComposition(
+    operation: 'ADDMOD' | 'MULMOD',
+    operands: DataPt[],
+  ): DataPt[] {
+    const composition = this.parent.subcircuitLibrary
+      .placementCompositionManager.get(operation)
+    if (
+      composition.placementStrategy !== 'generic'
+      || composition.numSteps === 'dynamic'
+      || composition.numOperands === 'dynamic'
+      || composition.numResults !== 1
+      || operands.length !== composition.numOperands
+    ) {
+      throw new Error(`Synthesizer: ${operation} has an invalid fixed generic composition`)
+    }
+
+    const basePlacementIndex = this.parent.placements.length
+    const intermediateOutPts: Array<DataPt | undefined> = []
+    const resultPts: Array<DataPt | undefined> = Array(composition.numResults)
+    const steps: Array<PreparedComposition['steps'][number]> = []
+
+    for (const [stepIndex, step] of composition.steps.entries()) {
+      const inPts: DataPt[] = []
+      for (const input of step.inputs) {
+        switch (input.kind) {
+          case 'operand': {
+            const operand = operands[input.index]
+            if (operand === undefined) {
+              throw new Error(`Synthesizer: ${operation} operand ${input.index} is unavailable`)
+            }
+            inPts.push(operand)
+            break
+          }
+          case 'step-output': {
+            const output = intermediateOutPts[input.index]
+            if (output === undefined) {
+              throw new Error(`Synthesizer: ${operation} intermediate ${input.index} is unavailable`)
+            }
+            inPts.push(output)
+            break
+          }
+          case 'constant': {
+            const constant = composition.constants[input.index]
+            if (constant === undefined) {
+              throw new Error(`Synthesizer: ${operation} constant ${input.index} is unavailable`)
+            }
+            inPts.push(this.parent.loadArbitraryStatic(constant.value, constant.dataPtType))
+            break
+          }
+          case 'selector':
+            if (typeof step.selector !== 'bigint') {
+              throw new Error(`Synthesizer: ${operation} requires a static selector`)
+            }
+            inPts.push(this.parent.loadArbitraryStatic(
+              step.selector,
+              UINT32_DATA_PT_TYPE,
+              `ALU selector for ${operation} of ${step.subcircuit}`,
+            ))
+            break
+        }
+      }
+
+      const logicalInterface = this.parent.subcircuitLibrary.subcircuitInfoByName
+        .get(step.subcircuit)?.logicalInterface
+      if (logicalInterface === undefined) {
+        throw new Error(`Synthesizer: ${step.subcircuit} logical interface is unavailable`)
+      }
+      const values = this.parent.calculateArithSubcircuitOutputValues(
+        step.subcircuit as ArithmeticSubcircuit,
+        inPts.map(({ value }) => value),
+      )
+      if (values.length !== logicalInterface.outputs.length) {
+        throw new Error(
+          `Synthesizer: ${step.subcircuit} produced ${values.length} outputs, but its logical interface declares ${logicalInterface.outputs.length}`,
+        )
+      }
+      const outPts = values.map((value, outputIndex) => DataPtFactory.create({
+        source: basePlacementIndex + stepIndex,
+        wireIndex: outputIndex,
+        dataPtType: getDataPtTypeFromLogicalInterfaceType(
+          logicalInterface.outputs[outputIndex]!.logicalType,
+        ),
+      }, value))
+
+      for (const [outputIndex, output] of step.outputs.entries()) {
+        const outPt = outPts[outputIndex]
+        if (outPt === undefined) {
+          throw new Error(`Synthesizer: ${operation} step ${stepIndex} output ${outputIndex} is unavailable`)
+        }
+        if (output.kind === 'step-output') {
+          intermediateOutPts[output.index] = outPt
+        } else if (output.kind === 'result') {
+          resultPts[output.index] = outPt
+        }
+      }
+      steps.push({ inPts, outPts })
+    }
+
+    if (resultPts.some((resultPt) => resultPt === undefined)) {
+      throw new Error(`Synthesizer: ${operation} did not produce every declared result`)
+    }
+    const preparedComposition: PreparedComposition = {
+      operation,
+      operands,
+      resultPts: resultPts as DataPt[],
+      steps,
+    }
+    this.parent.placeComposition(preparedComposition)
+    return preparedComposition.resultPts.slice()
+  }
+
   private _submitSingleStepArithmeticComposition(
     operation: ArithmeticOperator,
     operands: DataPt[],
@@ -670,6 +781,10 @@ export class InstructionHandler {
     let outPts: DataPt[];
     const op = opts.op as SynthesizerSupportedArithOpcodes
     switch (op) {
+      case 'ADDMOD':
+      case 'MULMOD':
+        outPts = this._submitAddMulModComposition(op, inPts)
+        break
       case 'EXP':
         outPts = this.parent.placeComposition('EXP', inPts)
         break;
