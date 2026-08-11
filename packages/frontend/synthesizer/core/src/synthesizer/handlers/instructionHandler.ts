@@ -1,5 +1,5 @@
 
-import { getDataPtTypeFromLogicalInterfaceType, getDataPtWireCount, ISynthesizerProvider, MemoryPts, PreparedComposition, synthesizerOpcodeByName, SynthesizerOpts, SynthesizerSupportedArithOpcodes, SynthesizerSupportedBlkInfOpcodes, SynthesizerSupportedEnvInfOpcodes, SynthesizerSupportedLogOpcodes, SynthesizerSupportedSysFlowOpcodes, type DataPt, type ReservedVariable, type SynthesizerSupportedOpcodes, UINT256_DATA_PT_TYPE, UINT32_DATA_PT_TYPE } from '../types/index.ts';
+import { BIT_DATA_PT_TYPE, DataAliasGeometries, DataAliasInfos, getDataPtTypeFromLogicalInterfaceType, getDataPtWireCount, ISynthesizerProvider, MemoryPts, PreparedComposition, synthesizerOpcodeByName, SynthesizerOpts, SynthesizerSupportedArithOpcodes, SynthesizerSupportedBlkInfOpcodes, SynthesizerSupportedEnvInfOpcodes, SynthesizerSupportedLogOpcodes, SynthesizerSupportedSysFlowOpcodes, type DataPt, type ReservedVariable, type SynthesizerSupportedOpcodes, UINT256_DATA_PT_TYPE, UINT32_DATA_PT_TYPE } from '../types/index.ts';
 
 import {
   Address,
@@ -1070,7 +1070,7 @@ export class InstructionHandler {
             const calldataMemoryPt = MemoryPt.simulateMemoryPt(calldataMemoryPts);
             const dataAliasInfos = calldataMemoryPt.getDataAlias(i, 32);
             if (dataAliasInfos.length > 0) {
-              stackPt.push(this.parent.placeMemoryToStack(dataAliasInfos, 32))
+              stackPt.push(this._placeMemoryLoadComposition(dataAliasInfos, 32))
             } else {
               stackPt.push(this.parent.loadArbitraryStatic(
                 0n,
@@ -1303,7 +1303,7 @@ export class InstructionHandler {
                 0n,
                 UINT256_DATA_PT_TYPE,
               )
-            : this.parent.placeMemoryToStack(dataAliasInfos, 32)
+            : this._placeMemoryLoadComposition(dataAliasInfos, 32)
           opts.stackPt.push(mutDataPt)
         }
         break
@@ -1500,6 +1500,151 @@ export class InstructionHandler {
     return memPts
   }
 
+  private _placeMemoryLoadComposition(
+    dataAliasGeometries: DataAliasGeometries,
+    viewByteLength: number,
+  ): DataPt {
+    if (!Number.isInteger(viewByteLength) || viewByteLength < 1 || viewByteLength > 32) {
+      throw new Error(`Synthesizer: MemoryLoad has an invalid view byte length ${viewByteLength}`)
+    }
+    if (dataAliasGeometries.length === 0) {
+      throw new Error('Synthesizer: MemoryLoad requires at least one alias geometry')
+    }
+
+    const dataAliasInfos = this._createDataAliasInfos(dataAliasGeometries)
+    const basePlacementIndex = this.parent.placements.length
+    const expectedCoveragePt = this.parent.loadArbitraryStatic(
+      dataAliasInfos.reduce(
+        (coverage, { maskerPt }) => coverage | maskerPt.value,
+        0n,
+      ),
+      UINT32_DATA_PT_TYPE,
+      'Memory-load final byte ownership',
+    )
+    const zeroWordPt = this.parent.loadArbitraryStatic(
+      0n,
+      UINT256_DATA_PT_TYPE,
+      'Memory-load initial word',
+    )
+    const zeroOwnershipPt = this.parent.loadArbitraryStatic(
+      0n,
+      UINT32_DATA_PT_TYPE,
+      'Memory-load initial byte ownership',
+    )
+    const operands: DataPt[] = []
+    const steps: PreparedComposition['steps'][number][] = []
+    let previousWordPt = zeroWordPt
+    let previousOwnershipPt = zeroOwnershipPt
+
+    for (const [stepIndex, info] of dataAliasInfos.entries()) {
+      const isFinalStep = stepIndex === dataAliasInfos.length - 1
+      const finalModePt = this.parent.loadArbitraryStatic(
+        isFinalStep ? 1n : 0n,
+        BIT_DATA_PT_TYPE,
+        'Memory-load final-mode flag',
+      )
+      const shiftedValue = info.directionPt.value === 0n
+        ? info.dataPt.value << (info.shiftPt.value * 8n)
+        : info.dataPt.value >> (info.shiftPt.value * 8n)
+      const nextWordValue = previousWordPt.value
+        + (shiftedValue & this._expandOwnershipMask(info.maskerPt.value))
+      if (nextWordValue >= 1n << 256n) {
+        throw new Error('Synthesizer: MemoryLoad fragment sum exceeds an EVM word')
+      }
+      const nextOwnershipValue = isFinalStep
+        ? expectedCoveragePt.value
+        : previousOwnershipPt.value + info.maskerPt.value
+      const nextWordPt = DataPtFactory.create({
+        source: basePlacementIndex + stepIndex,
+        wireIndex: 0,
+        dataPtType: UINT256_DATA_PT_TYPE,
+      }, nextWordValue)
+      const nextOwnershipPt = DataPtFactory.create({
+        source: basePlacementIndex + stepIndex,
+        wireIndex: 1,
+        dataPtType: UINT32_DATA_PT_TYPE,
+      }, nextOwnershipValue)
+      steps.push({
+        inPts: [
+          info.dataPt,
+          info.shiftPt,
+          info.directionPt,
+          info.maskerPt,
+          previousWordPt,
+          previousOwnershipPt,
+          expectedCoveragePt,
+          finalModePt,
+        ],
+        outPts: [nextWordPt, nextOwnershipPt],
+      })
+      operands.push(info.dataPt, info.shiftPt, info.directionPt, info.maskerPt)
+      previousWordPt = nextWordPt
+      previousOwnershipPt = nextOwnershipPt
+    }
+    operands.push(expectedCoveragePt)
+
+    const preparedComposition: PreparedComposition = {
+      operation: 'MemoryLoad',
+      operands,
+      resultPts: [previousWordPt],
+      steps,
+    }
+    this.parent.placeComposition(preparedComposition)
+    return previousWordPt
+  }
+
+  private _createDataAliasInfos(dataAliasGeometries: DataAliasGeometries): DataAliasInfos {
+    return dataAliasGeometries.map(({ dataPt, shift, masker }) => {
+      if (!Number.isInteger(shift) || shift % 8 !== 0 || Math.abs(shift) > 31 * 8) {
+        throw new Error('Synthesizer: memory-load shift must be a byte-aligned value from -248 to 248')
+      }
+      return Object.freeze({
+        dataPt,
+        shiftPt: this.parent.loadArbitraryStatic(
+          BigInt(Math.abs(shift) / 8),
+          UINT32_DATA_PT_TYPE,
+          'Memory-load byte shift magnitude',
+        ),
+        directionPt: this.parent.loadArbitraryStatic(
+          shift < 0 ? 1n : 0n,
+          BIT_DATA_PT_TYPE,
+          'Memory-load shift direction',
+        ),
+        maskerPt: this.parent.loadArbitraryStatic(
+          this._createOwnershipMask(masker),
+          UINT32_DATA_PT_TYPE,
+          'Memory-load byte ownership mask',
+        ),
+      })
+    })
+  }
+
+  private _createOwnershipMask(masker: string): bigint {
+    if (masker.length % 2 !== 0) {
+      throw new Error('Synthesizer: memory ownership mask must contain whole bytes')
+    }
+    let ownershipMask = 0n
+    for (let byteIndex = 0; byteIndex < masker.length / 2; byteIndex++) {
+      const byte = masker.slice(byteIndex * 2, byteIndex * 2 + 2)
+      if (byte === 'ff' || byte === 'FF') {
+        ownershipMask |= 1n << BigInt(masker.length / 2 - byteIndex - 1)
+      } else if (byte !== '00') {
+        throw new Error('Synthesizer: memory ownership mask must contain only FF or 00 bytes')
+      }
+    }
+    return ownershipMask
+  }
+
+  private _expandOwnershipMask(ownershipMask: bigint): bigint {
+    let wordMask = 0n
+    for (let byteIndex = 0; byteIndex < 32; byteIndex++) {
+      if ((ownershipMask & (1n << BigInt(byteIndex))) !== 0n) {
+        wordMask |= 0xffn << BigInt(byteIndex * 8)
+      }
+    }
+    return wordMask
+  }
+
   private _chunkMemory(
     memoryPt: MemoryPt,
     offset: bigint,
@@ -1520,7 +1665,7 @@ export class InstructionHandler {
   
       const dataAliasInfos = memoryPt.getDataAlias(_offset, _length);
       if (dataAliasInfos.length > 0) {
-        chunkDataPts[i] = this.parent.placeMemoryToStack(dataAliasInfos, _length);
+        chunkDataPts[i] = this._placeMemoryLoadComposition(dataAliasInfos, _length);
       } else {
         chunkDataPts[i] = this.parent.loadArbitraryStatic(
           0n,

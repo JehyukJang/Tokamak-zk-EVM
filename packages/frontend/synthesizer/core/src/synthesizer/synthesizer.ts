@@ -480,9 +480,6 @@ export class Synthesizer implements SynthesizerInterface
     return this._bufferManager.loadArbitraryStatic(value, dataPtType, desc)
   }
 
-  placeMemoryToStack(dataAliasInfos: DataAliasGeometries, viewByteLength: number): DataPt {
-    return this._memoryManager.placeMemoryToStack(dataAliasInfos, viewByteLength);
-  }
   placeMemoryToMemory(dataAliasInfos: DataAliasGeometries): DataPt[] {
     return this._memoryManager.placeMemoryToMemory(dataAliasInfos);
   }

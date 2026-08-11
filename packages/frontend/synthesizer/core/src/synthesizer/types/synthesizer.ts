@@ -56,7 +56,6 @@ export interface ISynthesizerProvider extends SynthesizerInterface {
   addReservedVariableToBufferOut(varName: ReservedVariable, symbolDataPt: DataPt, dynamic?: boolean, message?: string): DataPt
   //from memoryManager
   placeMemoryToMemory(dataAliasInfos: DataAliasGeometries): DataPt[]
-  placeMemoryToStack(dataAliasInfos: DataAliasGeometries, viewByteLength: number): DataPt
   placeMSTORE8(dataPt: DataPt): DataPt
   copyMemoryPts(target: MemoryPts, srcOffset: bigint, length: bigint, dstOffset?: bigint): MemoryPts
   //from instructionHandler
