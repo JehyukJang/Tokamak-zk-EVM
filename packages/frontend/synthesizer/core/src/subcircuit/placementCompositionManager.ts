@@ -14,6 +14,7 @@ import { createDivisionCompositionMappings } from './special-builders/divModComp
 import { createExpCompositionMapping } from './special-builders/expComposition.ts';
 import { createMemoryLoadCompositionMapping } from './special-builders/memoryLoadComposition.ts';
 import { createPoseidonCompositionMapping } from './special-builders/poseidonComposition.ts';
+import { createTransactionSignatureVerifyCompositionMapping } from './special-builders/txSignVerifyComposition.ts';
 
 export type SelectorDefinition = bigint | null | 'dynamic';
 
@@ -389,4 +390,5 @@ export const createPlacementCompositionManager = (
   createExpCompositionMapping(),
   createMemoryLoadCompositionMapping(),
   createPoseidonCompositionMapping(config),
+  createTransactionSignatureVerifyCompositionMapping(),
 ]);

@@ -62,7 +62,7 @@ describe('placement composition assembly', () => {
     }))).toThrow('ADD cannot use generic placement with dynamic numSteps or selectors');
   });
 
-  it('requires a dynamic operand count for a special placement strategy', () => {
+  it('allows a special placement strategy with fixed declared steps', () => {
     const poseidonComposition = composition.get('Poseidon');
     expect(() => new PlacementCompositionManager(replaceComposition('Poseidon', {
       ...poseidonComposition,
@@ -71,6 +71,6 @@ describe('placement composition assembly', () => {
         ...poseidonComposition.steps[0],
         selector: 1n,
       }],
-    }))).toThrow('Poseidon special placement requires a dynamic operand count');
+    }))).not.toThrow();
   });
 });
