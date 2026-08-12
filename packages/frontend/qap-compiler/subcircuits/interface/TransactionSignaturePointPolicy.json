@@ -5,7 +5,7 @@
     { "name": "publicKeyX", "logicalType": { "kind": "bls12-381-fr" } },
     { "name": "publicKeyY", "logicalType": { "kind": "bls12-381-fr" } },
     { "name": "contractAddress", "logicalType": { "kind": "uint", "bits": 160 } },
-    { "name": "functionSelector", "logicalType": { "kind": "bls12-381-fr" } },
+    { "name": "functionSelector", "logicalType": { "kind": "uint", "bits": 32 } },
     { "name": "identityX", "logicalType": { "kind": "bls12-381-fr" } },
     { "name": "identityY", "logicalType": { "kind": "bls12-381-fr" } }
   ],
