@@ -28,7 +28,6 @@ export class Synthesizer implements SynthesizerInterface
   private _stepLogs: SynthesizerStepLogEntry[]
   private _messageCodeAddresses: Set<`0x${string}`>
 
-  // @deprecated
   constructor(opts: SynthesizerOpts, subcircuitLibrary: ResolvedSubcircuitLibrary) {
     this.cachedOpts = opts
     this.subcircuitLibrary = subcircuitLibrary
