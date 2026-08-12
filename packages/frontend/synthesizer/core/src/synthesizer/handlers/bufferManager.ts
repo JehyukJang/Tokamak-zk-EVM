@@ -28,7 +28,7 @@ export class BufferManager {
       externalDataPt.wireIndex = this.parent.placements[placementIndex]!.inPts.length
     }
     const symbolDataPt = DataPtFactory.createBufferTwin(externalDataPt)
-    return DataPtFactory.deepCopy(this.parent.addWirePairToBufferIn(externalDataPt, symbolDataPt, dynamic))
+    return DataPtFactory.deepCopy(this.parent.appendBufferWirePair(externalDataPt, symbolDataPt, dynamic))
   }
 
   public addReservedVariableToBufferOut(varName: ReservedVariable, symbolDataPt: DataPt, dynamic: boolean = false, message?: string): DataPt {
@@ -41,7 +41,7 @@ export class BufferManager {
       }
       externalDataPt.wireIndex = this.parent.placements[placementIndex]!.inPts.length
     } 
-    return DataPtFactory.deepCopy(this.parent.addWirePairToBufferIn(symbolDataPt, externalDataPt, dynamic))
+    return DataPtFactory.deepCopy(this.parent.appendBufferWirePair(symbolDataPt, externalDataPt, dynamic))
   }
 
   public loadArbitraryStatic(
@@ -65,7 +65,7 @@ export class BufferManager {
     };
     const inPt = DataPtFactory.create(inPtRaw, value)
     const outPt = DataPtFactory.createBufferTwin(inPt)
-    this.parent.addWirePairToBufferIn(inPt, outPt, true)
+    this.parent.appendBufferWirePair(inPt, outPt, true)
     const cachedByDomainAndLayout = this.parent.state.cachedEVMIn.get(value) ?? new Map<string, DataPt>()
     cachedByDomainAndLayout.set(cacheKey, outPt)
     this.parent.state.cachedEVMIn.set(value, cachedByDomainAndLayout)

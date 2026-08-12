@@ -49,7 +49,7 @@ export interface ISynthesizerProvider extends SynthesizerInterface {
     desc?: string,
   ): DataPt
   getReservedVariableFromBuffer(varName: ReservedVariable): DataPt
-  addWirePairToBufferIn(inPt: DataPt, outPt: DataPt, dynamic?: boolean): DataPt
+  appendBufferWirePair(inPt: DataPt, outPt: DataPt, dynamic?: boolean): DataPt
   addReservedVariableToBufferIn(varName: ReservedVariable, value?: bigint, dynamic?: boolean, message?: string): DataPt
   addReservedVariableToBufferOut(varName: ReservedVariable, symbolDataPt: DataPt, dynamic?: boolean, message?: string): DataPt
 }

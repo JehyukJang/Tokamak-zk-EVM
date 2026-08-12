@@ -327,8 +327,8 @@ export class Synthesizer implements SynthesizerInterface
     return this._bufferManager.getReservedVariableFromBuffer(varName)
   }
 
-  addWirePairToBufferIn(inPt: DataPt, outPt: DataPt, dynamic: boolean): DataPt {
-    return this._state.addWirePairToBufferIn(inPt, outPt, dynamic)
+  appendBufferWirePair(inPt: DataPt, outPt: DataPt, dynamic: boolean): DataPt {
+    return this._state.appendBufferWirePair(inPt, outPt, dynamic)
   }
 
   addReservedVariableToBufferIn(varName: ReservedVariable, value?: bigint, dynamic?: boolean, message?: string): DataPt {

@@ -301,7 +301,7 @@ export class StateManager {
   }
 
   public get placements(): Placements {
-    // placements are protected and can be manipulated only by this._place and this.addWirePairToBufferIn
+    // placements are protected and can be manipulated only by this._place and this.appendBufferWirePair
     return placementsDeepCopy(this._placements)
   }
 
@@ -777,7 +777,7 @@ export class StateManager {
     }
   }
 
-  public addWirePairToBufferIn(inPt: DataPt, outPt: DataPt, dynamic: boolean): DataPt {
+  public appendBufferWirePair(inPt: DataPt, outPt: DataPt, dynamic: boolean): DataPt {
     const thisPlacementId = outPt.source
     if (dynamic) {
       if (
