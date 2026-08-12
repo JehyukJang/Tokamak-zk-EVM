@@ -2,17 +2,9 @@ import { jubjub } from '@noble/curves/misc.js'
 import { poseidonChainCompress } from 'tokamak-l2js'
 import { describe, expect, it } from 'vitest'
 
+import type { CryptoSubcircuit } from '../../../core/src/subcircuit/configuredTypes.ts'
 import { createTransactionSignatureVerifyCompositionMapping } from '../../../core/src/subcircuit/special-builders/txSignVerifyComposition.ts'
-import { TransactionSignatureOperations } from '../../../core/src/synthesizer/dataStructure/transactionSignatureOperations.ts'
-
-const outputValues = {
-  TransactionSignaturePoseidonBatch4: TransactionSignatureOperations.poseidonBatch4,
-  TransactionSignaturePointPolicy: TransactionSignatureOperations.pointPolicy,
-  TransactionSignatureFixedPrefix70: TransactionSignatureOperations.fixedPrefix70,
-  TransactionSignatureChallengeVariablePrefix: TransactionSignatureOperations.challengeVariablePrefix,
-  TransactionSignatureVariableBatch: TransactionSignatureOperations.variableBatch,
-  TransactionSignatureFinal: TransactionSignatureOperations.final,
-} as const
+import { SubcircuitOutputCalculator } from '../../../core/src/synthesizer/handlers/subcircuitOutputCalculator.ts'
 
 describe('transaction-signature host output calculations', () => {
   it('reproduces the complete production TSV witness flow', () => {
@@ -52,11 +44,14 @@ describe('transaction-signature host output calculations', () => {
       x: extended[0]! * inverse(extended[2]!) % modulus,
       y: extended[1]! * inverse(extended[2]!) % modulus,
     })
-    expect(toAffine(TransactionSignatureOperations.fixedPrefix70([1n]).slice(42))).toEqual(
+    expect(toAffine(SubcircuitOutputCalculator
+      .calculateSubcircuitOutputValues('TransactionSignatureFixedPrefix70', [1n])
+      .slice(42))).toEqual(
       jubjub.Point.BASE.multiply(8n).toAffine(),
     )
-    const prefix = TransactionSignatureOperations.fixedPrefix70([response])
-    const policy = TransactionSignatureOperations.pointPolicy([
+    const prefix = SubcircuitOutputCalculator
+      .calculateSubcircuitOutputValues('TransactionSignatureFixedPrefix70', [response])
+    const policy = SubcircuitOutputCalculator.calculateSubcircuitOutputValues('TransactionSignaturePointPolicy', [
       randomizer.x,
       randomizer.y,
       publicKey.x,
@@ -100,7 +95,10 @@ describe('transaction-signature host output calculations', () => {
             throw new Error('TSV does not use selector inputs')
         }
       })
-      const calculated = outputValues[step.subcircuit](values)
+      const calculated = SubcircuitOutputCalculator.calculateSubcircuitOutputValues(
+        step.subcircuit as CryptoSubcircuit,
+        values,
+      )
       step.outputs.forEach((output, index) => {
         if (output.kind === 'step-output') intermediates.set(output.index, calculated[index]!)
         if (output.kind === 'result') results.set(output.index, calculated[index]!)
@@ -114,7 +112,7 @@ describe('transaction-signature host output calculations', () => {
 
   it('rejects a non-canonical challenge hash before producing variable scalar bits', () => {
     const modulus = jubjub.Point.Fp.ORDER
-    expect(() => TransactionSignatureOperations.challengeVariablePrefix([
+    expect(() => SubcircuitOutputCalculator.calculateSubcircuitOutputValues('TransactionSignatureChallengeVariablePrefix', [
       modulus,
       0n,
       1n,

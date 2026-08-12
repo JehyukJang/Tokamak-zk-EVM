@@ -1,6 +1,206 @@
-import { jubjub } from "@noble/curves/misc.js"
+import { jubjub } from '@noble/curves/misc.js'
 import { poseidon_raw, poseidonChainCompress } from 'tokamak-l2js'
-import { DEFAULT_SOURCE_BIT_SIZE} from "../../synthesizer/params/constants.ts"
+
+import type {
+  ArithmeticSubcircuit,
+  CryptoSubcircuit,
+} from '../../subcircuit/configuredTypes.ts'
+import { DEFAULT_SOURCE_BIT_SIZE } from '../params/constants.ts'
+
+type Affine = readonly [bigint, bigint]
+type Extended = readonly [bigint, bigint, bigint, bigint]
+
+const Q = jubjub.Point.Fp.ORDER
+const D = 19257038036680949359750312669786877991949435402254120286184196891950884077233n
+const G8: Affine = [
+  52363696936650001301287582521711853146588465673974699354184720335305084401224n,
+  12024993157431732930272824407495979791132374572895036891122288541794509830761n,
+]
+
+const mod = (value: bigint): bigint => {
+  const remainder = value % Q
+  return remainder < 0n ? remainder + Q : remainder
+}
+
+const mul = (left: bigint, right: bigint): bigint => mod(left * right)
+
+const inverse = (value: bigint, description: string): bigint => {
+  let base = mod(value)
+  if (base === 0n) throw new Error(`TransactionSignature: ${description} is zero`)
+  let exponent = Q - 2n
+  let result = 1n
+  while (exponent > 0n) {
+    if ((exponent & 1n) === 1n) result = mul(result, base)
+    base = mul(base, base)
+    exponent >>= 1n
+  }
+  return result
+}
+
+const expectLength = (values: readonly bigint[], expected: number, name: string): void => {
+  if (values.length !== expected) {
+    throw new Error(`TransactionSignature: ${name} expected ${expected} inputs, but got ${values.length}`)
+  }
+}
+
+const expectBit = (value: bigint, description: string): void => {
+  if (value !== 0n && value !== 1n) throw new Error(`TransactionSignature: ${description} is not a bit`)
+}
+
+const expectFr = (value: bigint, description: string): void => {
+  if (value < 0n || value >= Q) {
+    throw new Error(`TransactionSignature: ${description} is not a canonical BLS12-381 Fr value`)
+  }
+}
+
+const toBits = (value: bigint, width: number, description: string): bigint[] => {
+  if (value < 0n || value >= (1n << BigInt(width))) {
+    throw new Error(`TransactionSignature: ${description} does not fit in ${width} bits`)
+  }
+  return Array.from({ length: width }, (_, index) => (value >> BigInt(index)) & 1n)
+}
+
+const expectPoint = (point: Affine, description: string): void => {
+  expectFr(point[0], `${description}.x`)
+  expectFr(point[1], `${description}.y`)
+  const x2 = mul(point[0], point[0])
+  const y2 = mul(point[1], point[1])
+  if (mod(-x2 + y2) !== mod(1n + mul(D, mul(x2, y2)))) {
+    throw new Error(`TransactionSignature: ${description} is not a Jubjub point`)
+  }
+}
+
+const affineAdd = (left: Affine, right: Affine): Affine => {
+  const xProduct = mul(left[0], right[0])
+  const yProduct = mul(left[1], right[1])
+  const denominatorTerm = mul(D, mul(xProduct, yProduct))
+  const numeratorX = mod(mul(left[0] + left[1], right[0] + right[1]) - xProduct - yProduct)
+  return [
+    mul(numeratorX, inverse(1n + denominatorTerm, 'affine x denominator')),
+    mul(yProduct + xProduct, inverse(1n - denominatorTerm, 'affine y denominator')),
+  ]
+}
+
+const double = (
+  point: readonly [bigint, bigint, bigint],
+  includeT: boolean,
+): readonly bigint[] => {
+  const a = mul(point[0], point[0])
+  const b = mul(point[1], point[1])
+  const c = mul(2n, mul(point[2], point[2]))
+  const e = mod(mul(point[0] + point[1], point[0] + point[1]) - a - b)
+  const xFactor = mod(-a + b - c)
+  const yFactor = mod(-a + b)
+  const result = [mul(e, xFactor), mul(yFactor, -a - b), mul(xFactor, yFactor)]
+  if (includeT) result.push(mul(e, -a - b))
+  return result
+}
+
+const addAffineWithT = (
+  point: Extended,
+  affine: readonly [bigint, bigint, bigint],
+  includeT: boolean,
+): readonly bigint[] => {
+  const a = mul(point[1] - point[0], affine[1] - affine[0])
+  const b = mul(point[1] + point[0], affine[1] + affine[0])
+  const c = mul(2n * D, mul(point[3], affine[2]))
+  const xFactor = mod(2n * point[2] - c)
+  const yFactor = mod(2n * point[2] + c)
+  const result = [mul(b - a, xFactor), mul(yFactor, b + a), mul(xFactor, yFactor)]
+  if (includeT) result.push(mul(b - a, b + a))
+  return result
+}
+
+const addAffine = (point: Extended, affine: Affine): Extended => addAffineWithT(
+  point,
+  [affine[0], affine[1], mul(affine[0], affine[1])],
+  true,
+) as Extended
+
+const addExtended = (
+  left: Extended,
+  right: Extended,
+): readonly [bigint, bigint, bigint] => {
+  const a = mul(left[1] - left[0], right[1] - right[0])
+  const b = mul(left[1] + left[0], right[1] + right[0])
+  const c = mul(2n * D, mul(left[3], right[3]))
+  const d = mul(2n, mul(left[2], right[2]))
+  return [mul(b - a, d - c), mul(d + c, b + a), mul(d - c, d + c)]
+}
+
+const toAffine = (point: readonly [bigint, bigint, bigint]): Affine => [
+  mul(point[0], inverse(point[2], 'extended point z coordinate')),
+  mul(point[1], inverse(point[2], 'extended point z coordinate')),
+]
+
+const cofactorEight = (point: Affine, includeT: boolean): readonly bigint[] => {
+  const point2 = double([point[0], point[1], 1n], false) as readonly [bigint, bigint, bigint]
+  const point4 = double(point2, false) as readonly [bigint, bigint, bigint]
+  return double(point4, includeT)
+}
+
+const fixedBatch = (
+  scalarBits: readonly bigint[],
+  previous: Extended,
+  startWindow: number,
+  includeT: boolean,
+): readonly bigint[] => {
+  if (scalarBits.length % 3 !== 0) throw new Error('TransactionSignature: fixed-window bit count is invalid')
+  scalarBits.forEach((bit, index) => expectBit(bit, `fixed-window bit ${index}`))
+  let base = G8
+  for (let bit = 0; bit < startWindow * 3; bit++) base = affineAdd(base, base)
+  let accumulator = previous
+  const numWindows = scalarBits.length / 3
+  for (let window = 0; window < numWindows; window++) {
+    const table: Affine[] = [[0n, 1n]]
+    for (let digit = 1; digit < 8; digit++) table.push(affineAdd(table[digit - 1]!, base))
+    const digit = Number(scalarBits[3 * window]! + 2n * scalarBits[3 * window + 1]! + 4n * scalarBits[3 * window + 2]!)
+    accumulator = addAffineWithT(
+      accumulator,
+      [table[digit]![0], table[digit]![1], mul(table[digit]![0], table[digit]![1])],
+      window + 1 === numWindows ? includeT : true,
+    ) as Extended
+    for (let bit = 0; bit < 3; bit++) base = affineAdd(base, base)
+  }
+  return accumulator
+}
+
+const variableBatch = (
+  scalarBits: readonly bigint[],
+  table: readonly Affine[],
+  previous: Extended,
+  topPadding: boolean,
+  first: boolean,
+): Extended => {
+  if (table.length !== 4) throw new Error('TransactionSignature: variable-window table must contain four points')
+  scalarBits.forEach((bit, index) => expectBit(bit, `variable-window bit ${index}`))
+  const windows = topPadding ? (scalarBits.length + 1) / 2 : scalarBits.length / 2
+  if (!Number.isInteger(windows) || windows <= 0) throw new Error('TransactionSignature: variable-window bit count is invalid')
+  let accumulator = previous
+  for (let step = 0; step < windows; step++) {
+    const start = scalarBits.length - 2 * (step + 1) + (topPadding ? 1 : 0)
+    const low = topPadding && step === 0 ? scalarBits[scalarBits.length - 1]! : scalarBits[start]!
+    const high = topPadding && step === 0 ? 0n : scalarBits[start + 1]!
+    if (!(first && step === 0)) {
+      const firstDouble = double([accumulator[0], accumulator[1], accumulator[2]], false) as readonly [bigint, bigint, bigint]
+      accumulator = double(firstDouble, true) as Extended
+    }
+    accumulator = addAffine(accumulator, table[Number(low + 2n * high)]!)
+  }
+  return accumulator
+}
+
+const expectExtendedEqual = (
+  left: readonly [bigint, bigint, bigint],
+  right: readonly [bigint, bigint, bigint],
+): void => {
+  const scale = mul(left[2], inverse(right[2], 'extended equality right z coordinate'))
+  for (let coordinate = 0; coordinate < 3; coordinate++) {
+    if (left[coordinate] !== mul(scale, right[coordinate])) {
+      throw new Error('TransactionSignature: terminal extended points are not equal')
+    }
+  }
+}
 
 const convertToSigned = (value: bigint): bigint => {
   const SIGN_BIT = 1n << 255n
@@ -9,7 +209,7 @@ const convertToSigned = (value: bigint): bigint => {
 /**
  * Utility class for handling Synthesizer arithmetic operations
  */
-export class ArithmeticOperations {
+export class SubcircuitOutputCalculator {
   private static _config: {
     jubjubExpBatchSize: number;
   } = {
@@ -25,7 +225,7 @@ export class ArithmeticOperations {
   static configure(config: {
     jubjubExpBatchSize: number;
   }): void {
-    ArithmeticOperations._config = config
+    SubcircuitOutputCalculator._config = config
   }
 
   private static _requireBatchSize(value: number, operationName: string): number {
@@ -53,7 +253,7 @@ export class ArithmeticOperations {
     subcircuit: string,
     numOperands: number,
   ): bigint[] {
-    ArithmeticOperations._requireSubcircuitInputs(
+    SubcircuitOutputCalculator._requireSubcircuitInputs(
       inVals,
       numOperands + 1,
       subcircuit,
@@ -71,21 +271,21 @@ export class ArithmeticOperations {
     if (ins.length !== 2) {
       throw new Error('add expected two inputs')
     }
-    return (ins[0] + ins[1]) & ArithmeticOperations.MAX_UINT256
+    return (ins[0] + ins[1]) & SubcircuitOutputCalculator.MAX_UINT256
   }
 
   static mul(ins: bigint[]): bigint {
     if (ins.length !== 2) {
       throw new Error('mul expected two inputs')
     }
-    return (ins[0] * ins[1]) & ArithmeticOperations.MAX_UINT256
+    return (ins[0] * ins[1]) & SubcircuitOutputCalculator.MAX_UINT256
   }
 
   static sub(ins: bigint[]): bigint {
     if (ins.length !== 2) {
       throw new Error('sub expected two inputs')
     }
-    return (ins[0] - ins[1]) & ArithmeticOperations.MAX_UINT256
+    return (ins[0] - ins[1]) & SubcircuitOutputCalculator.MAX_UINT256
   }
 
   static div(ins: bigint[]): bigint {
@@ -103,7 +303,7 @@ export class ArithmeticOperations {
     const signedA = convertToSigned(ins[0])
     const signedB = convertToSigned(ins[1])
     const result = signedA / signedB
-    return result < 0n ? ArithmeticOperations.MAX_UINT256 + result + 1n : result
+    return result < 0n ? SubcircuitOutputCalculator.MAX_UINT256 + result + 1n : result
   }
 
   /**
@@ -124,7 +324,7 @@ export class ArithmeticOperations {
     const signedA = convertToSigned(ins[0])
     const signedB = convertToSigned(ins[1])
     const result = signedA % signedB
-    return result < 0n ? ArithmeticOperations.MAX_UINT256 + result + 1n : result
+    return result < 0n ? SubcircuitOutputCalculator.MAX_UINT256 + result + 1n : result
   }
 
   static addmod(ins: bigint[]): bigint {
@@ -229,7 +429,7 @@ export class ArithmeticOperations {
     if (ins.length !== 1) {
       throw new Error('not expected one input')
     }
-    return ~ins[0] & ArithmeticOperations.MAX_UINT256
+    return ~ins[0] & SubcircuitOutputCalculator.MAX_UINT256
   }
 
   /**
@@ -241,7 +441,7 @@ export class ArithmeticOperations {
     }
     const shift = ins[0]
     const value = ins[1]
-    return shift >= 256n ? 0n : (value << shift) & ArithmeticOperations.MAX_UINT256
+    return shift >= 256n ? 0n : (value << shift) & SubcircuitOutputCalculator.MAX_UINT256
   }
 
   static shr(ins: bigint[]): bigint {
@@ -260,12 +460,12 @@ export class ArithmeticOperations {
     const shift = ins[0]
     const value = ins[1]
     if (shift >= 256n) {
-      return (value & (1n << 255n)) === 0n ? 0n : ArithmeticOperations.MAX_UINT256
+      return (value & (1n << 255n)) === 0n ? 0n : SubcircuitOutputCalculator.MAX_UINT256
     }
 
     const isNegative = (value & (1n << 255n)) !== 0n
     if (isNegative) {
-      const mask = ArithmeticOperations.MAX_UINT256 << (256n - shift)
+      const mask = SubcircuitOutputCalculator.MAX_UINT256 << (256n - shift)
       // Apply the mask to the shifted value and ensure the result is within 256 bits
       return BigInt.asUintN(256, (value >> shift) | mask)
     }
@@ -317,54 +517,54 @@ export class ArithmeticOperations {
    * subcircuit placement, including the selector when the circuit has one.
    */
   static alu1(inVals: bigint[]): bigint {
-    ArithmeticOperations._requireSubcircuitInputs(inVals, 3, 'ALU1')
+    SubcircuitOutputCalculator._requireSubcircuitInputs(inVals, 3, 'ALU1')
     const operands = inVals.slice(1)
     switch (inVals[0]) {
       case 1n << 1n:
-        return ArithmeticOperations.add(operands)
+        return SubcircuitOutputCalculator.add(operands)
       case 1n << 2n:
-        return ArithmeticOperations.mul(operands)
+        return SubcircuitOutputCalculator.mul(operands)
       case 1n << 3n:
-        return ArithmeticOperations.sub(operands)
+        return SubcircuitOutputCalculator.sub(operands)
       case 1n << 20n:
-        return ArithmeticOperations.eq(operands)
+        return SubcircuitOutputCalculator.eq(operands)
       case 1n << 21n:
-        return ArithmeticOperations.iszero(operands.slice(0, 1))
+        return SubcircuitOutputCalculator.iszero(operands.slice(0, 1))
       case 1n << 25n:
-        return ArithmeticOperations.not(operands.slice(0, 1))
+        return SubcircuitOutputCalculator.not(operands.slice(0, 1))
       default:
         throw new Error('ALU1 received an invalid selector')
     }
   }
 
   static alu2(inVals: bigint[]): bigint {
-    ArithmeticOperations._requireSubcircuitInputs(inVals, 3, 'ALU2')
+    SubcircuitOutputCalculator._requireSubcircuitInputs(inVals, 3, 'ALU2')
     const operands = inVals.slice(1)
     switch (inVals[0]) {
       case 1n << 16n:
-        return ArithmeticOperations.lt(operands)
+        return SubcircuitOutputCalculator.lt(operands)
       case 1n << 17n:
-        return ArithmeticOperations.gt(operands)
+        return SubcircuitOutputCalculator.gt(operands)
       default:
         throw new Error('ALU2 received an invalid selector')
     }
   }
 
   static alu3(inVals: bigint[]): bigint {
-    ArithmeticOperations._requireSubcircuitInputs(inVals, 3, 'ALU3')
+    SubcircuitOutputCalculator._requireSubcircuitInputs(inVals, 3, 'ALU3')
     const operands = inVals.slice(1)
     switch (inVals[0]) {
       case 1n << 18n:
-        return ArithmeticOperations.slt(operands)
+        return SubcircuitOutputCalculator.slt(operands)
       case 1n << 19n:
-        return ArithmeticOperations.sgt(operands)
+        return SubcircuitOutputCalculator.sgt(operands)
       default:
         throw new Error('ALU3 received an invalid selector')
     }
   }
 
   static andSubcircuit(inVals: bigint[]): bigint {
-    return ArithmeticOperations.and(ArithmeticOperations._requireSelector(
+    return SubcircuitOutputCalculator.and(SubcircuitOutputCalculator._requireSelector(
       inVals,
       1n << 22n,
       'AND',
@@ -373,7 +573,7 @@ export class ArithmeticOperations {
   }
 
   static orSubcircuit(inVals: bigint[]): bigint {
-    return ArithmeticOperations.or(ArithmeticOperations._requireSelector(
+    return SubcircuitOutputCalculator.or(SubcircuitOutputCalculator._requireSelector(
       inVals,
       1n << 23n,
       'OR',
@@ -382,7 +582,7 @@ export class ArithmeticOperations {
   }
 
   static xorSubcircuit(inVals: bigint[]): bigint {
-    return ArithmeticOperations.xor(ArithmeticOperations._requireSelector(
+    return SubcircuitOutputCalculator.xor(SubcircuitOutputCalculator._requireSelector(
       inVals,
       1n << 24n,
       'XOR',
@@ -391,7 +591,7 @@ export class ArithmeticOperations {
   }
 
   static alu4a(inVals: bigint[]): bigint[] {
-    ArithmeticOperations._requireSubcircuitInputs(inVals, 3, 'ALU4A')
+    SubcircuitOutputCalculator._requireSubcircuitInputs(inVals, 3, 'ALU4A')
     const selector = inVals[0]
     const isSigned = selector === 1n << 5n || selector === 1n << 7n
     const useMod = selector === 1n << 6n || selector === 1n << 7n
@@ -433,7 +633,7 @@ export class ArithmeticOperations {
   }
 
   static alu4b(inVals: bigint[]): bigint {
-    ArithmeticOperations._requireSubcircuitInputs(inVals, 10, 'ALU4B')
+    SubcircuitOutputCalculator._requireSubcircuitInputs(inVals, 10, 'ALU4B')
     const absQuotient = inVals[1]
     const absRemainder = inVals[2]
     const divisorIsZero = inVals[7]
@@ -455,7 +655,7 @@ export class ArithmeticOperations {
   }
 
   static signextendSubcircuit(inVals: bigint[]): bigint {
-    return ArithmeticOperations.signextend(ArithmeticOperations._requireSelector(
+    return SubcircuitOutputCalculator.signextend(SubcircuitOutputCalculator._requireSelector(
       inVals,
       1n << 11n,
       'SIGNEXTEND',
@@ -464,7 +664,7 @@ export class ArithmeticOperations {
   }
 
   static byteSubcircuit(inVals: bigint[]): bigint {
-    return ArithmeticOperations.byte(ArithmeticOperations._requireSelector(
+    return SubcircuitOutputCalculator.byte(SubcircuitOutputCalculator._requireSelector(
       inVals,
       1n << 26n,
       'BYTE',
@@ -473,7 +673,7 @@ export class ArithmeticOperations {
   }
 
   static shlSubcircuit(inVals: bigint[]): bigint {
-    return ArithmeticOperations.shl(ArithmeticOperations._requireSelector(
+    return SubcircuitOutputCalculator.shl(SubcircuitOutputCalculator._requireSelector(
       inVals,
       1n << 27n,
       'SHL',
@@ -482,20 +682,20 @@ export class ArithmeticOperations {
   }
 
   static alu6(inVals: bigint[]): bigint {
-    ArithmeticOperations._requireSubcircuitInputs(inVals, 3, 'ALU6')
+    SubcircuitOutputCalculator._requireSubcircuitInputs(inVals, 3, 'ALU6')
     const operands = inVals.slice(1)
     switch (inVals[0]) {
       case 1n << 28n:
-        return ArithmeticOperations.shr(operands)
+        return SubcircuitOutputCalculator.shr(operands)
       case 1n << 29n:
-        return ArithmeticOperations.sar(operands)
+        return SubcircuitOutputCalculator.sar(operands)
       default:
         throw new Error('ALU6 received an invalid selector')
     }
   }
 
   static addmodPrepare(inVals: bigint[]): bigint[] {
-    ArithmeticOperations._requireSubcircuitInputs(inVals, 3, 'ADDMODPrepare')
+    SubcircuitOutputCalculator._requireSubcircuitInputs(inVals, 3, 'ADDMODPrepare')
     const [lhs, rhs, modulus] = inVals
     const wordMask = (1n << 86n) - 1n
     const numerator = lhs + rhs
@@ -514,7 +714,7 @@ export class ArithmeticOperations {
   }
 
   static addmodVerify(inVals: bigint[]): bigint {
-    ArithmeticOperations._requireSubcircuitInputs(inVals, 8, 'ADDMODVerify')
+    SubcircuitOutputCalculator._requireSubcircuitInputs(inVals, 8, 'ADDMODVerify')
     return inVals[7]
   }
 
@@ -527,29 +727,29 @@ export class ArithmeticOperations {
   }
 
   static mulmodPrepare(inVals: bigint[]): bigint[] {
-    ArithmeticOperations._requireSubcircuitInputs(inVals, 3, 'MULMOD')
+    SubcircuitOutputCalculator._requireSubcircuitInputs(inVals, 3, 'MULMOD')
     const [lhs, rhs, modulus] = inVals
     const product = lhs * rhs
     const safeModulus = modulus === 0n ? 1n : modulus
     const quotient = product / safeModulus
     const remainder = product % safeModulus
     return [
-      ...ArithmeticOperations._split64Words(lhs, 4),
-      ...ArithmeticOperations._split64Words(rhs, 4),
-      ...ArithmeticOperations._split64Words(modulus, 4),
-      quotient & ArithmeticOperations.MAX_UINT256,
+      ...SubcircuitOutputCalculator._split64Words(lhs, 4),
+      ...SubcircuitOutputCalculator._split64Words(rhs, 4),
+      ...SubcircuitOutputCalculator._split64Words(modulus, 4),
+      quotient & SubcircuitOutputCalculator.MAX_UINT256,
       quotient >> 256n,
       remainder,
     ]
   }
 
   static mulmodCandidate(inVals: bigint[]): bigint[] {
-    ArithmeticOperations._requireSubcircuitInputs(inVals, 3, 'MULMODCandidate')
-    return inVals.flatMap(value => ArithmeticOperations._split64Words(value, 4))
+    SubcircuitOutputCalculator._requireSubcircuitInputs(inVals, 3, 'MULMODCandidate')
+    return inVals.flatMap(value => SubcircuitOutputCalculator._split64Words(value, 4))
   }
 
   static mulmodVerify(inVals: bigint[]): bigint {
-    ArithmeticOperations._requireSubcircuitInputs(inVals, 24, 'MULMODVerify')
+    SubcircuitOutputCalculator._requireSubcircuitInputs(inVals, 24, 'MULMODVerify')
     return inVals.slice(20, 24).reduce(
       (value, word, index) => value + (word << BigInt(64 * index)),
       0n,
@@ -584,8 +784,8 @@ export class ArithmeticOperations {
       throw new Error('subExp: bit must be 0n or 1n')
     }
     return [
-      accumulator * (bit === 1n ? basePower : 1n) % ArithmeticOperations.N,
-      basePower * basePower % ArithmeticOperations.N,
+      accumulator * (bit === 1n ? basePower : 1n) % SubcircuitOutputCalculator.N,
+      basePower * basePower % SubcircuitOutputCalculator.N,
     ]
   }
 
@@ -627,13 +827,13 @@ export class ArithmeticOperations {
     if (numInputs > inVals.length - 1) {
       throw new Error('Poseidon selector exceeds the configured input capacity')
     }
-    return ArithmeticOperations.poseidonChainCompress(
+    return SubcircuitOutputCalculator.poseidonChainCompress(
       inVals.slice(1, numInputs + 1),
     )
   }
 
   private static _bls12381Arith(): {mod: Function, add: Function, sub: Function, mul: Function} {
-    const mod = (x: bigint) => ((x % ArithmeticOperations.BLS12381MODULUS) + ArithmeticOperations.BLS12381MODULUS) % ArithmeticOperations.BLS12381MODULUS;
+    const mod = (x: bigint) => ((x % SubcircuitOutputCalculator.BLS12381MODULUS) + SubcircuitOutputCalculator.BLS12381MODULUS) % SubcircuitOutputCalculator.BLS12381MODULUS;
     const add = (a: bigint, b: bigint) => mod(a + b);
     const sub = (a: bigint, b: bigint) => mod(a - b);
     const mul = (a: bigint, b: bigint) => mod(a * b);
@@ -649,18 +849,18 @@ export class ArithmeticOperations {
     if ( jubjub.Point.CURVE().d !== D) {
         throw new Error('Jubjub parameter mismatch')
     }
-    const {mod, add, sub, mul} = ArithmeticOperations._bls12381Arith()
+    const {mod, add, sub, mul} = SubcircuitOutputCalculator._bls12381Arith()
     
     const inv = (a: bigint): bigint => {
       let t = 0n, newT = 1n;
-      let r = ArithmeticOperations.BLS12381MODULUS, newR = mod(a);
+      let r = SubcircuitOutputCalculator.BLS12381MODULUS, newR = mod(a);
       while (newR !== 0n) {
         const q = r / newR;
         [t, newT] = [newT, t - q * newT];
         [r, newR] = [newR, r - q * newR];
       }
       if (r !== 1n) throw new Error("inverse does not exist");
-      return t < 0n ? t + ArithmeticOperations.BLS12381MODULUS : t;
+      return t < 0n ? t + SubcircuitOutputCalculator.BLS12381MODULUS : t;
     }
 
     // t = d * in1[0]*in2[0]*in1[1]*in2[1]
@@ -703,8 +903,8 @@ export class ArithmeticOperations {
    * JubjubExpBatch
    */
   static jubjubExpBatch(in_vals: bigint[]): bigint[] {
-    const Nbits = ArithmeticOperations._requireBatchSize(
-      ArithmeticOperations._config.jubjubExpBatchSize,
+    const Nbits = SubcircuitOutputCalculator._requireBatchSize(
+      SubcircuitOutputCalculator._config.jubjubExpBatchSize,
       'JubjubExpBatch',
     )
     if (in_vals.length !== 4 + Nbits) {
@@ -729,7 +929,7 @@ export class ArithmeticOperations {
    * EdDsaVerify
    */
   static edDsaVerify(in_vals: bigint[]): bigint[] {
-    const {add, mul} = ArithmeticOperations._bls12381Arith()
+    const {add, mul} = SubcircuitOutputCalculator._bls12381Arith()
     
     const jubjubCheck = (point: bigint[]): void => {
       var A = 52435875175126190479447740508185965837690552500527637822603658699938581184512n;
@@ -750,7 +950,7 @@ export class ArithmeticOperations {
       throw new Error('edDsaVerify expected three jubjub input points')
     }
     for (var i = 0; i < 6; i++) {
-      if (in_vals[i] >= ArithmeticOperations.BLS12381MODULUS) {
+      if (in_vals[i] >= SubcircuitOutputCalculator.BLS12381MODULUS) {
         throw new Error('jubjubExpBatch input curve points must be of Jubjub')
       }
     }
@@ -761,7 +961,7 @@ export class ArithmeticOperations {
     jubjubCheck(sG)
     jubjubCheck(R)
     jubjubCheck(eA)
-    const RHS: bigint[] = ArithmeticOperations._jubjubAdd(R, eA)
+    const RHS: bigint[] = SubcircuitOutputCalculator._jubjubAdd(R, eA)
     
     if ( sG[0] !== RHS[0] || sG[1] !== RHS[1] ){
       throw new Error('edDsaVerifiy failed')
@@ -769,4 +969,108 @@ export class ArithmeticOperations {
     return []
   }
 
+
+  static calculateSubcircuitOutputValues(
+    name: ArithmeticSubcircuit | CryptoSubcircuit,
+    values: bigint[],
+  ): bigint[] {
+    const operation = SUBCIRCUIT_OPERATION_MAPPING[name]
+    const outputValues = operation(values)
+    return Array.isArray(outputValues) ? outputValues : [outputValues]
+  }
+
+  static poseidonBatch4(values: readonly bigint[]): bigint[] {
+    expectLength(values, 7, 'TransactionSignaturePoseidonBatch4')
+    const [mode, firstLeft, firstRight, independentLeft, secondRight, thirdRight, fourthRight] = values
+    expectBit(mode!, 'Poseidon batch mode')
+    const firstHash = poseidon_raw([firstLeft!, firstRight!])
+    const secondHash = poseidon_raw([mode === 1n ? firstHash : independentLeft!, secondRight!])
+    const thirdHash = poseidon_raw([secondHash, thirdRight!])
+    return [firstHash, poseidon_raw([thirdHash, fourthRight!])]
+  }
+
+  static pointPolicy(values: readonly bigint[]): bigint[] {
+    expectLength(values, 8, 'TransactionSignaturePointPolicy')
+    const randomizer: Affine = [values[0]!, values[1]!]
+    const publicKey: Affine = [values[2]!, values[3]!]
+    const identity: Affine = [values[6]!, values[7]!]
+    if (values[4]! < 0n || values[4]! >= (1n << 160n)) throw new Error('TransactionSignature: contract address does not fit in 160 bits')
+    if (values[5]! < 0n || values[5]! >= (1n << 32n)) throw new Error('TransactionSignature: function selector does not fit in 32 bits')
+    expectPoint(randomizer, 'randomizer')
+    expectPoint(publicKey, 'public key')
+    const cofactoredPublicKey = cofactorEight(publicKey, false) as readonly [bigint, bigint, bigint]
+    const publicKeyAffine = toAffine(cofactoredPublicKey)
+    if (publicKeyAffine[1] === 1n) throw new Error('TransactionSignature: public key is the identity')
+    if (randomizer[1] === 1n) throw new Error('TransactionSignature: randomizer is the identity')
+    const table: Affine[] = [identity, publicKeyAffine]
+    table.push(affineAdd(table[1]!, publicKeyAffine))
+    table.push(affineAdd(table[2]!, publicKeyAffine))
+    return [values[4]!, values[5]!, ...table.flat(), ...cofactorEight(randomizer, true)]
+  }
+
+  static fixedPrefix70(values: readonly bigint[]): bigint[] {
+    expectLength(values, 1, 'TransactionSignatureFixedPrefix70')
+    const signatureBits = toBits(values[0]!, 252, 'response scalar')
+    return [...signatureBits.slice(210), ...fixedBatch(signatureBits.slice(0, 210), [0n, 1n, 1n, 0n], 0, true)]
+  }
+
+  static challengeVariablePrefix(values: readonly bigint[]): bigint[] {
+    expectLength(values, 9, 'TransactionSignatureChallengeVariablePrefix')
+    expectFr(values[0]!, 'challenge hash')
+    const challengeBits = toBits(values[0]!, 255, 'challenge hash')
+    const table = Array.from({ length: 4 }, (_, index): Affine => [values[1 + 2 * index]!, values[2 + 2 * index]!])
+    return [...challengeBits.slice(0, 222), ...variableBatch(challengeBits.slice(222), table, [table[0]![0], table[0]![1], 1n, 0n], true, true)]
+  }
+
+  static variableBatch(values: readonly bigint[]): bigint[] {
+    expectLength(values, 80, 'TransactionSignatureVariableBatch')
+    const table = Array.from({ length: 4 }, (_, index): Affine => [values[68 + 2 * index]!, values[69 + 2 * index]!])
+    return [...variableBatch(values.slice(0, 68), table, [values[76]!, values[77]!, values[78]!, values[79]!], false, false)]
+  }
+
+  static final(values: readonly bigint[]): bigint[] {
+    expectLength(values, 81, 'TransactionSignatureFinal')
+    const fixedTail = fixedBatch(values.slice(0, 42), [values[42]!, values[43]!, values[44]!, values[45]!], 70, false) as readonly [bigint, bigint, bigint]
+    const table = Array.from({ length: 4 }, (_, index): Affine => [values[68 + 2 * index]!, values[69 + 2 * index]!])
+    const variableTail = variableBatch(values.slice(46, 64), table, [values[64]!, values[65]!, values[66]!, values[67]!], false, false)
+    expectExtendedEqual(fixedTail, addExtended(variableTail, [values[76]!, values[77]!, values[78]!, values[79]!]))
+    expectFr(values[80]!, 'public key hash')
+    return [values[80]! & ((1n << 160n) - 1n)]
+  }
+}
+
+type CalculatedSubcircuit = ArithmeticSubcircuit | CryptoSubcircuit
+type SubcircuitOperation = (values: bigint[]) => bigint | bigint[]
+
+const SUBCIRCUIT_OPERATION_MAPPING: Record<
+  CalculatedSubcircuit,
+  SubcircuitOperation
+> = {
+  ALU1: SubcircuitOutputCalculator.alu1,
+  ALU2: SubcircuitOutputCalculator.alu2,
+  ALU3: SubcircuitOutputCalculator.alu3,
+  AND: SubcircuitOutputCalculator.andSubcircuit,
+  OR: SubcircuitOutputCalculator.orSubcircuit,
+  XOR: SubcircuitOutputCalculator.xorSubcircuit,
+  ALU4A: SubcircuitOutputCalculator.alu4a,
+  ALU4B: SubcircuitOutputCalculator.alu4b,
+  SIGNEXTEND: SubcircuitOutputCalculator.signextendSubcircuit,
+  BYTE: SubcircuitOutputCalculator.byteSubcircuit,
+  SHL: SubcircuitOutputCalculator.shlSubcircuit,
+  ALU6: SubcircuitOutputCalculator.alu6,
+  ADDMODPrepare: SubcircuitOutputCalculator.addmodPrepare,
+  ADDMODVerify: SubcircuitOutputCalculator.addmodVerify,
+  MULMODPrepare: SubcircuitOutputCalculator.mulmodPrepare,
+  MULMODCandidate: SubcircuitOutputCalculator.mulmodCandidate,
+  MULMODVerify: SubcircuitOutputCalculator.mulmodVerify,
+  DecToBit: SubcircuitOutputCalculator.decToBit,
+  SubExp: SubcircuitOutputCalculator.subExp,
+  CheckBus256: SubcircuitOutputCalculator.checkBus256,
+  Poseidon: SubcircuitOutputCalculator.poseidon,
+  TransactionSignaturePoseidonBatch4: SubcircuitOutputCalculator.poseidonBatch4,
+  TransactionSignaturePointPolicy: SubcircuitOutputCalculator.pointPolicy,
+  TransactionSignatureFixedPrefix70: SubcircuitOutputCalculator.fixedPrefix70,
+  TransactionSignatureChallengeVariablePrefix: SubcircuitOutputCalculator.challengeVariablePrefix,
+  TransactionSignatureVariableBatch: SubcircuitOutputCalculator.variableBatch,
+  TransactionSignatureFinal: SubcircuitOutputCalculator.final,
 }
