@@ -5,7 +5,7 @@ import { bigIntToBytes, bigIntToHex, bytesToHex, createAddressFromBigInt, setLen
 
 import { EVMResult, InterpreterStep } from '@ethereumjs/evm';
 import { DataPt, DataPtType, Placements, PreparedComposition, ReservedVariable, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
-import { ArithmeticManager, BufferManager, InstructionHandler, StateManager, SynthesizerOpHandler } from './handlers/index.ts';
+import { ArithmeticManager, BufferManager, InstructionHandler, StateManager } from './handlers/index.ts';
 import { ArithmeticSubcircuit, ReservedBuffer } from '../subcircuit/configuredTypes.ts';
 import type { ResolvedSubcircuitLibrary } from '../subcircuit/libraryTypes.ts';
 import { DataPtFactory } from './dataStructure/dataPt.ts';
@@ -256,7 +256,7 @@ export class Synthesizer implements SynthesizerInterface
     const prevStepResult = thisContext.prevInterpreterStep;
     if ( prevStepResult !== null) {
       const opcode = prevStepResult.opcode
-      const opHandler = this.synthesizerHandlers.get(opcode.code)
+      const opHandler = this._instructionHandlers.synthesizerHandlers.get(opcode.code)
       if (opHandler === undefined) {
         throw new Error(`Undefined synthesizer handler for opcode ${opcode.name}`)
       }
@@ -305,10 +305,6 @@ export class Synthesizer implements SynthesizerInterface
   public get placements(): Placements {
     return this._state.placements
   }
-
-  public get synthesizerHandlers(): Map<number, SynthesizerOpHandler> {
-      return this._instructionHandlers.synthesizerHandlers
-    }
 
   placeBuffer(buffer: ReservedBuffer, inPts: DataPt[], outPts: DataPt[], usage: string): void {
     this._state.placeBuffer(buffer, inPts, outPts, usage)

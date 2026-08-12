@@ -2,7 +2,6 @@ import { RunTxResult } from '@ethereumjs/vm';
 import { TokamakL2StateManager, TokamakL2Tx } from 'tokamak-l2js';
 import { StateManager } from '../handlers/index.ts';
 import { DataPt, DataPtType, Placements, PreparedComposition, ReservedVariable } from './index.ts';
-import { SynthesizerOpHandler } from '../handlers/instructionHandler.ts';
 import { ArithmeticSubcircuit, ReservedBuffer } from '../../subcircuit/configuredTypes.ts';
 import type { ResolvedSubcircuitLibrary } from '../../subcircuit/libraryTypes.ts';
 import type { BlockInfo } from '../../app/types.ts';
@@ -53,6 +52,4 @@ export interface ISynthesizerProvider extends SynthesizerInterface {
   addWirePairToBufferIn(inPt: DataPt, outPt: DataPt, dynamic?: boolean): DataPt
   addReservedVariableToBufferIn(varName: ReservedVariable, value?: bigint, dynamic?: boolean, message?: string): DataPt
   addReservedVariableToBufferOut(varName: ReservedVariable, symbolDataPt: DataPt, dynamic?: boolean, message?: string): DataPt
-  //from instructionHandler
-  get synthesizerHandlers(): Map<number, SynthesizerOpHandler>
 }
