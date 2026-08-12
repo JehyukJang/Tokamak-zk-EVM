@@ -33,7 +33,7 @@ export class Synthesizer implements SynthesizerInterface
     this.subcircuitLibrary = subcircuitLibrary
     this._state = new StateManager(this)
     this._bufferManager = new BufferManager(this)
-    this._arithmeticManager = new ArithmeticManager(this)
+    this._arithmeticManager = new ArithmeticManager()
     this._instructionHandlers =  new InstructionHandler(this)
     this._eventHandlerError = undefined
     this._hasEventHandlerError = false
