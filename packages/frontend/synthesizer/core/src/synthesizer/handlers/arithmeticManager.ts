@@ -1,7 +1,8 @@
 
 import type { ISynthesizerProvider } from '../types/index.ts';
-import type { ArithmeticSubcircuit } from '../../subcircuit/configuredTypes.ts';
+import type { ArithmeticSubcircuit, CryptoSubcircuit } from '../../subcircuit/configuredTypes.ts';
 import { ArithmeticOperations } from '../dataStructure/arithmeticOperations.ts';
+import { TransactionSignatureOperations } from '../dataStructure/transactionSignatureOperations.ts';
 
 export class ArithmeticManager {
   constructor(
@@ -19,6 +20,13 @@ export class ArithmeticManager {
     const operation = ARITHMETIC_MAPPING[name]
     const out = operation(values)
     return Array.isArray(out) ? out : [out]
+  }
+
+  public calculateCryptoSubcircuitOutputValues(
+    name: CryptoSubcircuit,
+    values: bigint[],
+  ): bigint[] {
+    return CRYPTO_SUBCIRCUIT_MAPPING[name](values)
   }
 
 }
@@ -45,4 +53,13 @@ const ARITHMETIC_MAPPING: Record<ArithmeticSubcircuit, (values: bigint[]) => big
   SubExp: ArithmeticOperations.subExp,
   CheckBus256: ArithmeticOperations.checkBus256,
   Poseidon: ArithmeticOperations.poseidon,
+} as const
+
+const CRYPTO_SUBCIRCUIT_MAPPING: Record<CryptoSubcircuit, (values: readonly bigint[]) => bigint[]> = {
+  TransactionSignaturePoseidonBatch4: TransactionSignatureOperations.poseidonBatch4,
+  TransactionSignaturePointPolicy: TransactionSignatureOperations.pointPolicy,
+  TransactionSignatureFixedPrefix70: TransactionSignatureOperations.fixedPrefix70,
+  TransactionSignatureChallengeVariablePrefix: TransactionSignatureOperations.challengeVariablePrefix,
+  TransactionSignatureVariableBatch: TransactionSignatureOperations.variableBatch,
+  TransactionSignatureFinal: TransactionSignatureOperations.final,
 } as const
