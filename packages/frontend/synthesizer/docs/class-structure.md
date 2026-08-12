@@ -20,8 +20,8 @@ This document summarizes the main classes and modules in the current split works
 - **BufferManager** (`core/src/synthesizer/handlers/bufferManager.ts`)
   - initializes reserved buffer placements
   - injects block, transaction, execution, and private witness inputs
-- **ArithmeticManager** (`core/src/synthesizer/handlers/arithmeticManager.ts`)
-  - maps arithmetic operations to subcircuits
+- **SubcircuitOutputCalculator** (`core/src/synthesizer/handlers/subcircuitOutputCalculator.ts`)
+  - calculates host output values for arithmetic and crypto subcircuits
 - **MemoryManager** (`core/src/synthesizer/handlers/memoryManager.ts`)
   - resolves memory aliasing and copy semantics
 

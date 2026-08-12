@@ -646,7 +646,7 @@ export class InstructionHandler {
       if (logicalInterface === undefined) {
         throw new Error(`Synthesizer: ${step.subcircuit} logical interface is unavailable`)
       }
-      const values = this.parent.calculateArithSubcircuitOutputValues(
+      const values = this.parent.calculateSubcircuitOutputValues(
         step.subcircuit as ArithmeticSubcircuit,
         inPts.map(({ value }) => value),
       )
@@ -755,7 +755,7 @@ export class InstructionHandler {
           () => DataPtFactory.deepCopy(zeroPt),
         ),
       ]
-      const values = this.parent.calculateArithSubcircuitOutputValues(
+      const values = this.parent.calculateSubcircuitOutputValues(
         'Poseidon',
         finalInPts.map(({ value }) => value),
       )
@@ -853,7 +853,7 @@ export class InstructionHandler {
       }
     }
 
-    const values = this.parent.calculateArithSubcircuitOutputValues(
+    const values = this.parent.calculateSubcircuitOutputValues(
       step.subcircuit as ArithmeticSubcircuit,
       finalInPts.map(({ value }) => value),
     )

@@ -5,8 +5,8 @@ import { bigIntToBytes, bigIntToHex, bytesToHex, createAddressFromBigInt, setLen
 
 import { EVMResult, InterpreterStep } from '@ethereumjs/evm';
 import { DataPt, DataPtType, Placements, PreparedComposition, ReservedVariable, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
-import { ArithmeticManager, BufferManager, InstructionHandler, StateManager } from './handlers/index.ts';
-import { ArithmeticSubcircuit, CryptoSubcircuit, ReservedBuffer } from '../subcircuit/configuredTypes.ts';
+import { BufferManager, InstructionHandler, StateManager, SubcircuitOutputCalculator, type OutputCalculatedSubcircuit } from './handlers/index.ts';
+import { ReservedBuffer } from '../subcircuit/configuredTypes.ts';
 import type { ResolvedSubcircuitLibrary } from '../subcircuit/libraryTypes.ts';
 import { DataPtFactory } from './dataStructure/dataPt.ts';
 import { TypedTransaction } from '@ethereumjs/tx';
@@ -18,7 +18,7 @@ import { TypedTransaction } from '@ethereumjs/tx';
 export class Synthesizer implements SynthesizerInterface
 {
   protected _state: StateManager
-  protected _arithmeticManager: ArithmeticManager
+  protected _subcircuitOutputCalculator: SubcircuitOutputCalculator
   protected _bufferManager: BufferManager
   protected _instructionHandlers: InstructionHandler
   public readonly cachedOpts: SynthesizerOpts
@@ -33,7 +33,7 @@ export class Synthesizer implements SynthesizerInterface
     this.subcircuitLibrary = subcircuitLibrary
     this._state = new StateManager(this)
     this._bufferManager = new BufferManager(this)
-    this._arithmeticManager = new ArithmeticManager()
+    this._subcircuitOutputCalculator = new SubcircuitOutputCalculator()
     this._instructionHandlers =  new InstructionHandler(this)
     this._eventHandlerError = undefined
     this._hasEventHandlerError = false
@@ -314,18 +314,11 @@ export class Synthesizer implements SynthesizerInterface
     this._state.placeComposition(preparedComposition)
   }
 
-  calculateArithSubcircuitOutputValues(
-    name: ArithmeticSubcircuit,
+  calculateSubcircuitOutputValues(
+    name: OutputCalculatedSubcircuit,
     values: bigint[],
   ): bigint[] {
-    return this._arithmeticManager.calculateArithSubcircuitOutputValues(name, values)
-  }
-
-  calculateCryptoSubcircuitOutputValues(
-    name: CryptoSubcircuit,
-    values: bigint[],
-  ): bigint[] {
-    return this._arithmeticManager.calculateCryptoSubcircuitOutputValues(name, values)
+    return this._subcircuitOutputCalculator.calculateSubcircuitOutputValues(name, values)
   }
 
   getReservedVariableFromBuffer(

@@ -42,7 +42,7 @@ const prepare = (operands: DataPt[]): PreparedComposition => {
       placementCompositionManager: { get: () => poseidonComposition },
       subcircuitInfoByName: new Map([['Poseidon', { logicalInterface }]]),
     },
-    calculateArithSubcircuitOutputValues: vi.fn((_: string, values: bigint[]) => [
+    calculateSubcircuitOutputValues: vi.fn((_: string, values: bigint[]) => [
       values.reduce((sum, value) => sum + value, 0n),
     ]),
     loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>

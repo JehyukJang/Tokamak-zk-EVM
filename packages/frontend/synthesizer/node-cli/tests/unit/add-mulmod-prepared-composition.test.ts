@@ -126,7 +126,7 @@ const fixedMultiStepCompositions = new Map(
 const submit = (
   operation: FixedMultiStepOperation,
 ): { preparedComposition: PreparedComposition; resultPts: DataPt[] } => {
-  const calculateArithSubcircuitOutputValues = vi.fn((name: string): bigint[] => {
+  const calculateSubcircuitOutputValues = vi.fn((name: string): bigint[] => {
     switch (name) {
       case 'ADDMODPrepare':
         return Array.from({ length: 7 }, (_, index) => BigInt(index))
@@ -163,7 +163,7 @@ const submit = (
       },
       subcircuitInfoByName,
     },
-    calculateArithSubcircuitOutputValues,
+    calculateSubcircuitOutputValues,
     loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
       dataPt(value, 5, nextStaticWireIndex++, dataPtType)),
   }

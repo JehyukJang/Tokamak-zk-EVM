@@ -2,7 +2,8 @@ import { RunTxResult } from '@ethereumjs/vm';
 import { TokamakL2StateManager, TokamakL2Tx } from 'tokamak-l2js';
 import { StateManager } from '../handlers/index.ts';
 import { DataPt, DataPtType, Placements, PreparedComposition, ReservedVariable } from './index.ts';
-import { ArithmeticSubcircuit, CryptoSubcircuit, ReservedBuffer } from '../../subcircuit/configuredTypes.ts';
+import { ReservedBuffer } from '../../subcircuit/configuredTypes.ts';
+import type { OutputCalculatedSubcircuit } from '../handlers/subcircuitOutputCalculator.ts';
 import type { ResolvedSubcircuitLibrary } from '../../subcircuit/libraryTypes.ts';
 import type { BlockInfo } from '../../app/types.ts';
 
@@ -38,12 +39,8 @@ export interface ISynthesizerProvider extends SynthesizerInterface {
     usage: string,
   ): void;
   placeComposition(preparedComposition: PreparedComposition): void;
-  calculateArithSubcircuitOutputValues(
-    name: ArithmeticSubcircuit,
-    values: bigint[],
-  ): bigint[];
-  calculateCryptoSubcircuitOutputValues(
-    name: CryptoSubcircuit,
+  calculateSubcircuitOutputValues(
+    name: OutputCalculatedSubcircuit,
     values: bigint[],
   ): bigint[];
   //from BufferManager

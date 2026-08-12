@@ -9,6 +9,7 @@ import { DEFAULT_SOURCE_BIT_SIZE } from '../params/constants.ts'
 
 type Affine = readonly [bigint, bigint]
 type Extended = readonly [bigint, bigint, bigint, bigint]
+export type OutputCalculatedSubcircuit = ArithmeticSubcircuit | CryptoSubcircuit
 
 const Q = jubjub.Point.Fp.ORDER
 const D = 19257038036680949359750312669786877991949435402254120286184196891950884077233n
@@ -794,8 +795,8 @@ export class SubcircuitOutputCalculator {
     return poseidonChainCompress(inVals.slice(1, numInputs + 1))
   }
 
-  static calculateSubcircuitOutputValues(
-    name: ArithmeticSubcircuit | CryptoSubcircuit,
+  public calculateSubcircuitOutputValues(
+    name: OutputCalculatedSubcircuit,
     values: bigint[],
   ): bigint[] {
     const operation = SUBCIRCUIT_OPERATION_MAPPING[name]
@@ -863,11 +864,10 @@ export class SubcircuitOutputCalculator {
   }
 }
 
-type CalculatedSubcircuit = ArithmeticSubcircuit | CryptoSubcircuit
 type SubcircuitOperation = (values: bigint[]) => bigint | bigint[]
 
 const SUBCIRCUIT_OPERATION_MAPPING: Record<
-  CalculatedSubcircuit,
+  OutputCalculatedSubcircuit,
   SubcircuitOperation
 > = {
   ALU1: SubcircuitOutputCalculator.alu1,
