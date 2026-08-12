@@ -493,8 +493,6 @@ export class InstructionHandler {
       'CHAINID',
       'SELFBALANCE',
       'BASEFEE',
-      //'BLOBHASH',
-      //'BLOBBASEFEE',
     ] satisfies SynthesizerSupportedOpcodes[]).forEach(__createBlkInfHandler)
     ;(['POP'
       ,'MLOAD'
@@ -508,19 +506,13 @@ export class InstructionHandler {
       , 'MSIZE'
       , 'GAS'
       , 'JUMPDEST'
-      // , 'TLOAD'
-      // , 'TSTORE'
       , 'MCOPY'
-      // , 'CREATE'
       , 'CALL'
       , 'CALLCODE'
       , 'RETURN'
       , 'DELEGATECALL'
-      // , 'CREATE2'
       , 'STATICCALL'
       , 'REVERT'
-      // , 'INVALID'
-      // , 'SELFDESTRUCT'
     ] satisfies SynthesizerSupportedOpcodes[]).forEach(__createSysFlowHandlers)
     ;([
       'LOG0',
@@ -1155,10 +1147,8 @@ export class InstructionHandler {
 
   private _getStaticInDataPt = (output: bigint, opts: HandlerOpts, targetAddress?: bigint): DataPt => {
     const value = output
-    // const cachedDataPt = this.parent.state.cachedEVMIn.get(value)
     const staticInDesc = `Static input for ${opts.op} instruction at PC ${opts.pc} of code address ${opts.codeAddress} (depth : ${opts.callDepth})`
     let targetDesc = targetAddress === undefined ? `` : `(target: ${createAddressFromBigInt(targetAddress).toString()})`
-    // return cachedDataPt ?? this.parent.loadArbitraryStatic(
     return this.parent.loadArbitraryStatic(
       value,
       UINT256_DATA_PT_TYPE,
@@ -1206,14 +1196,6 @@ export class InstructionHandler {
             throw new Error(`No cache for storage address`)
           }
           stackPt.push(DataPtFactory.deepCopy(cache))
-          // checkRequiredInput(opts.originAddress)
-          // const origin = opts.originAddress!
-          // const thisAddress = opts.thisAddress ?? this.cachedOpts.signedTransaction.to
-          // if (origin === thisAddress) {
-          //   stackPt.push(_retrieveOriginAddressPt())
-          // } else {
-          //   stackPt.push(this._getStaticInDataPt(out!, opts))
-          // }
         }
         break
       case 'BALANCE': 
@@ -1232,11 +1214,6 @@ export class InstructionHandler {
             throw new Error(`No cache for caller address`)
           }
           stackPt.push(DataPtFactory.deepCopy(cache))
-          // if (opts.callDepth === 0) {
-            // stackPt.push(_retrieveOriginAddressPt())
-          // } else {
-          //   stackPt.push(this._getStaticInDataPt(out!, opts))
-          // }  
         }
         break
       case 'CALLVALUE': 
