@@ -282,7 +282,7 @@ export class ContextManager {
  */
 export class StateManager {
   private _placements: Placements = []
-  public readonly logCache = new LogCache(this._placements)
+  public readonly logCache = new LogCache()
   public readonly storageCache = new StorageCache()
   public readonly initialStorageReads = new InitialStorageReadList()
 
@@ -314,12 +314,44 @@ export class StateManager {
 
   public beginFrame(depth: number): void {
     this.storageCache.beginFrame(depth)
-    this.logCache.beginFrame(depth)
+    this.logCache.beginFrame(depth, this._getLogOutWireLength())
   }
 
   public completeFrame(depth: number, succeeded: boolean): void {
-    this.logCache.completeFrame(depth, succeeded)
+    const logOutLength = this.logCache.getFrameLength(depth)
+    this._completeLogOutFrame(logOutLength, succeeded)
+    this.logCache.completeFrame(depth)
     this.storageCache.completeFrame(depth, succeeded)
+  }
+
+  private _getLogOutPlacement(): PlacementEntry {
+    const logOutPlacement = this._placements[BUFFER_LIST.indexOf('LOG_OUT')]
+    if (logOutPlacement === undefined) {
+      throw new Error('Synthesizer: LOG_OUT buffer placement is missing')
+    }
+    return logOutPlacement
+  }
+
+  private _getLogOutWireLength(): number {
+    const logOutPlacement = this._getLogOutPlacement()
+    if (logOutPlacement.inPts.length !== logOutPlacement.outPts.length) {
+      throw new Error('Synthesizer: LOG_OUT input and output lengths do not match')
+    }
+    return logOutPlacement.inPts.length
+  }
+
+  private _completeLogOutFrame(logOutLength: number, succeeded: boolean): void {
+    const logOutPlacement = this._getLogOutPlacement()
+    if (
+      logOutPlacement.inPts.length !== logOutPlacement.outPts.length
+      || logOutPlacement.inPts.length < logOutLength
+    ) {
+      throw new Error('Synthesizer: LOG_OUT buffer is inconsistent with its frame snapshot')
+    }
+    if (!succeeded) {
+      logOutPlacement.inPts.length = logOutLength
+      logOutPlacement.outPts.length = logOutLength
+    }
   }
 
   private _place(
