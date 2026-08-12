@@ -144,7 +144,6 @@ export class Synthesizer implements SynthesizerInterface
         } catch (err) {
           this._recordEventHandlerError('afterMessage', err)
         } finally {
-          // console.log(`code = ${bytesToHex(data.execResult.runState!.code)}`)
           resolve?.()
         }
       })()
@@ -199,8 +198,6 @@ export class Synthesizer implements SynthesizerInterface
       gasLimit: this.getReservedVariableFromBuffer('GASLIMIT').value,
       timestamp: this.getReservedVariableFromBuffer('TIMESTAMP').value,
 
-      // To bypass checking EIPs
-      // baseFeePerGas: this.getReservedVariableFromBuffer('BASEFEE').valuef,
       baseFeePerGas: undefined,
     };
     

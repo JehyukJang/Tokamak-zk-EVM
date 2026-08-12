@@ -74,8 +74,6 @@ export class MemoryPt {
       return this.viewMemory(offset, byteSize)
     }
 
-    // if setLengthLeft(bigIntToBytes(dataPt.value), 32).length !== size) throw new Error('Invalid value size')
-    // if (offset + size > this._storePt.length) throw new Error('Value exceeds memory capacity')
     this._memPtCleanUp(offset, byteSize)
     this._storePt.set(this._timeStamp++, {
       memByteOffset: offset,

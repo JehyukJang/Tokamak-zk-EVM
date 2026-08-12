@@ -167,10 +167,6 @@ export class StackPt {
    * Pushes a copy of an item in the stack.
    * @param position - Index of item to be copied (1-indexed)
    */
-  // I would say that we do not need this method any more
-  // since you can't copy a primitive data type
-  // Nevertheless not sure if we "loose" something here?
-  // Will keep commented out for now
   dup(position: number) {
     const len = this._len
     if (len < position) {

@@ -632,28 +632,6 @@ export class ArithmeticOperations {
     )
   }
 
-  // /**
-  //  * PrepareEdDsaScalars
-  //  */
-  // static prepareEdDsaScalars(in_vals: bigint[]): bigint[] {
-  //   if (in_vals.length !== 2) {
-  //     throw new Error('prepareEdDsaScalars expected exactly two input values')
-  //   }
-  //   const sign = in_vals[0]
-  //   const poseidonOut = in_vals[1]
-  //   const modded: bigint[] = [sign % jubjub.Point.Fn.ORDER, poseidonOut % jubjub.Point.Fn.ORDER]
-  //   const bits: bigint[] = []
-  //   for (const val of modded) {
-  //     // MSB-left
-  //     const binaryString = val.toString(2)
-  //     const paddedBinaryString = binaryString.padStart(252, '0')
-  //     // LSB-left
-  //     bits.push(...Array.from(paddedBinaryString, (bit) => BigInt(bit)).reverse())
-  //   }
-    
-  //   return bits
-  // }
-
   private static _bls12381Arith(): {mod: Function, add: Function, sub: Function, mul: Function} {
     const mod = (x: bigint) => ((x % ArithmeticOperations.BLS12381MODULUS) + ArithmeticOperations.BLS12381MODULUS) % ArithmeticOperations.BLS12381MODULUS;
     const add = (a: bigint, b: bigint) => mod(a + b);
