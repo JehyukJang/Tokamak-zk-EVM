@@ -781,7 +781,6 @@ export class StateManager {
     const thisPlacementId = outPt.source
     if (dynamic) {
       if (
-        // double confirmation
         this._placements[thisPlacementId]!.inPts.length !== this._placements[thisPlacementId]!.outPts.length
         || this._placements[thisPlacementId]!.outPts.length !== outPt.wireIndex
       ) {
@@ -789,7 +788,7 @@ export class StateManager {
           `Synthesizer: Mismatch in the buffer wires (placement id: ${thisPlacementId})`
         );
       }
-      // Add input-output pair to the input buffer subcircuit
+      // Append one input-output pair to the buffer placement.
       this._placements[thisPlacementId]!.inPts.push(inPt);
       this._placements[thisPlacementId]!.outPts.push(outPt);
     } else {

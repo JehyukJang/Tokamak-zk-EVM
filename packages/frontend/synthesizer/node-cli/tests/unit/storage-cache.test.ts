@@ -178,6 +178,18 @@ describe('StateManager storage tracking', () => {
     });
   });
 
+  it('rejects a dynamic buffer append that does not use the next output wire', () => {
+    const state = createState();
+    state.placeBuffer('LOG_OUT', [], [], 'test LOG_OUT');
+    state.appendBufferWirePair(dataPt(10n, 10), dataPt(10n, 0, 0), true);
+
+    expect(() => state.appendBufferWirePair(
+      dataPt(11n, 11),
+      dataPt(11n, 0, 0),
+      true,
+    )).toThrow('Mismatch in the buffer wires');
+  });
+
   it('restores only the storage cache and retains initial SLOAD records on frame failure', () => {
     const state = createState();
     const parentEntry: StorageCacheEntry = {
