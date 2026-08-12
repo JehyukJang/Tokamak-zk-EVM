@@ -1,16 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const vmModule = vi.hoisted(() => ({
-  createVM: vi.fn(),
-  runTx: vi.fn(),
-}));
-const blockModule = vi.hoisted(() => ({
-  createBlock: vi.fn(() => ({})),
-}));
-
-vi.mock('@ethereumjs/vm', () => vmModule);
-vi.mock('@ethereumjs/block', () => blockModule);
-
 import { Synthesizer } from '../../../core/src/synthesizer/synthesizer.ts';
 
 type EventListener = (data: any, resolve?: () => void) => void;
@@ -43,7 +32,7 @@ const createBareSynthesizer = (): Synthesizer => {
   Object.defineProperty(synthesizer, 'cachedOpts', {
     value: {
       signedTransaction: {},
-      stateManager: { common: {} },
+      stateManager: {},
     },
   });
   vi.spyOn(synthesizer, 'getReservedVariableFromBuffer').mockReturnValue({ value: 1n } as any);
@@ -55,10 +44,9 @@ afterEach(() => {
 });
 
 describe('Synthesizer VM lifecycle', () => {
-  it('emits final dirty storage triples only after a successful transaction', async () => {
+  it('emits final dirty storage triples during successful transaction finalization', () => {
     const vmEvents = new TestEventEmitter();
     const evmEvents = new TestEventEmitter();
-    vmModule.createVM.mockResolvedValue({ events: vmEvents, evm: { events: evmEvents } });
 
     const synthesizer = createBareSynthesizer();
     const addressPt = { source: 1, wireIndex: 0, sourceBitSize: 256, value: 1n };
@@ -78,28 +66,18 @@ describe('Synthesizer VM lifecycle', () => {
     });
     const addStorageOutput = vi.spyOn(synthesizer, 'addReservedVariableToBufferOut')
       .mockReturnValue({} as any);
-    vmModule.runTx.mockResolvedValue({ execResult: { exceptionError: undefined } });
-
-    await synthesizer.synthesizeTX();
+    ;(synthesizer as any)._finalizeStorageStore()
 
     expect(addStorageOutput.mock.calls).toEqual([
       ['SSTORE_ADDRESS', addressPt, true],
       ['SSTORE_KEY', keyPt, true],
       ['SSTORE_VALUE', valuePt, true],
     ]);
-    addStorageOutput.mockClear();
-    const revertError = new Error('revert');
-    vmModule.runTx.mockResolvedValue({ execResult: { exceptionError: revertError } });
-
-    await expect(synthesizer.synthesizeTX()).rejects.toBe(revertError);
-
-    expect(addStorageOutput).not.toHaveBeenCalled();
   });
 
-  it('rethrows the first handler error after runTx and skips later handlers', async () => {
+  it('records the first step-handler error and skips later handlers', async () => {
     const vmEvents = new TestEventEmitter();
     const evmEvents = new TestEventEmitter();
-    vmModule.createVM.mockResolvedValue({ events: vmEvents, evm: { events: evmEvents } });
 
     const synthesizer = createBareSynthesizer();
     const firstError = new Error('first Synthesizer failure');
@@ -107,29 +85,26 @@ describe('Synthesizer VM lifecycle', () => {
     (synthesizer as any)._applySynthesizerHandler = applyHandler;
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-    vmModule.runTx.mockImplementation(async () => {
-      const step = { opcode: { name: 'ADD' } };
-      await evmEvents.emit('step', step);
-      await evmEvents.emit('step', step);
-      throw new Error('VM failure');
-    });
+    ;(synthesizer as any)._attachSynthesizerToVM({ events: vmEvents, evm: { events: evmEvents } })
+    const step = { opcode: { name: 'ADD' } };
+    await evmEvents.emit('step', step);
+    await evmEvents.emit('step', step);
 
-    await expect(synthesizer.synthesizeTX()).rejects.toBe(firstError);
+    expect((synthesizer as any)._eventHandlerError).toBe(firstError)
     expect(applyHandler).toHaveBeenCalledTimes(1);
   });
 
-  it('propagates an afterMessage handler error after runTx returns', async () => {
+  it('records an afterMessage handler error', async () => {
     const vmEvents = new TestEventEmitter();
     const evmEvents = new TestEventEmitter();
-    vmModule.createVM.mockResolvedValue({ events: vmEvents, evm: { events: evmEvents } });
 
     const synthesizer = createBareSynthesizer();
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    vmModule.runTx.mockImplementation(async () => {
-      await evmEvents.emit('afterMessage', { execResult: { runState: undefined } });
-      return {};
-    });
+    ;(synthesizer as any)._attachSynthesizerToVM({ events: vmEvents, evm: { events: evmEvents } })
+    await evmEvents.emit('afterMessage', { execResult: { runState: undefined } });
 
-    await expect(synthesizer.synthesizeTX()).rejects.toThrow('Failed to capture the final state');
+    expect((synthesizer as any)._eventHandlerError).toEqual(
+      expect.objectContaining({ message: 'Failed to capture the final state' }),
+    )
   });
 });

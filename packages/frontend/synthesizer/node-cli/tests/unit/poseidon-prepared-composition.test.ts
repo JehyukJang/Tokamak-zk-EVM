@@ -33,7 +33,6 @@ const dataPt = (
 ): DataPt => DataPtFactory.create({ source, wireIndex, dataPtType }, value)
 
 const prepare = (operands: DataPt[]): PreparedComposition => {
-  const placeComposition = vi.fn()
   let nextStaticWireIndex = 0
   const parent = {
     cachedOpts: {},
@@ -48,13 +47,14 @@ const prepare = (operands: DataPt[]): PreparedComposition => {
     ]),
     loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
       dataPt(value, 5, nextStaticWireIndex++, dataPtType)),
-    placeComposition,
   }
   const handler = new InstructionHandler(parent as never)
-  ;(handler as unknown as {
-    _submitPoseidonComposition(input: DataPt[]): DataPt[];
-  })._submitPoseidonComposition(operands)
-  return placeComposition.mock.calls[0]![0] as PreparedComposition
+  return (handler as unknown as {
+    _preparePoseidonComposition(
+      input: DataPt[],
+      basePlacementIndex: number,
+    ): PreparedComposition;
+  })._preparePoseidonComposition(operands, 0)
 }
 
 function createState(): StateManager {

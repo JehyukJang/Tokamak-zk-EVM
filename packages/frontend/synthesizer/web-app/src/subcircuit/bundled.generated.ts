@@ -20,6 +20,20 @@ import wasm14 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/
 import wasm15 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit15.wasm';
 import wasm16 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit16.wasm';
 import wasm17 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit17.wasm';
+import wasm18 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit18.wasm';
+import wasm19 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit19.wasm';
+import wasm20 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit20.wasm';
+import wasm21 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit21.wasm';
+import wasm22 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit22.wasm';
+import wasm23 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit23.wasm';
+import wasm24 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit24.wasm';
+import wasm25 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit25.wasm';
+import wasm26 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit26.wasm';
+import wasm27 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit27.wasm';
+import wasm28 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit28.wasm';
+import wasm29 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit29.wasm';
+import wasm30 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit30.wasm';
+import wasm31 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit31.wasm';
 
 export {
   setupParamsJson,
@@ -47,4 +61,18 @@ export const wasmFiles: Record<number, Uint8Array> = {
   15: wasm15,
   16: wasm16,
   17: wasm17,
+  18: wasm18,
+  19: wasm19,
+  20: wasm20,
+  21: wasm21,
+  22: wasm22,
+  23: wasm23,
+  24: wasm24,
+  25: wasm25,
+  26: wasm26,
+  27: wasm27,
+  28: wasm28,
+  29: wasm29,
+  30: wasm30,
+  31: wasm31,
 };

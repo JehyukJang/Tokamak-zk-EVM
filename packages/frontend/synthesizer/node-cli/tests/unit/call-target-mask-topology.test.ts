@@ -4,13 +4,14 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { ArithmeticOperator } from '../../../core/src/subcircuit/configuredTypes.ts';
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
+import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
 import { ContextManager } from '../../../core/src/synthesizer/handlers/stateManager.ts';
-import { Synthesizer } from '../../../core/src/synthesizer/synthesizer.ts';
 import {
   UINT256_DATA_PT_TYPE,
   type DataPt,
   type DataPtType,
 } from '../../../core/src/synthesizer/types/dataStructure.ts';
+import type { PreparedComposition } from '../../../core/src/synthesizer/types/placements.ts';
 
 const ADDRESS_MASK = (1n << 160n) - 1n;
 const CALL_OPCODES = ['CALL', 'CALLCODE', 'DELEGATECALL', 'STATICCALL'] as const;
@@ -20,10 +21,6 @@ type ArithmeticCall = {
   name: ArithmeticOperator;
   inPts: DataPt[];
 };
-type HarnessSynthesizer = Synthesizer & {
-  _prepareMessageCall(message: Message): void;
-};
-
 const dataPt = (
   value: bigint,
   source: number,
@@ -68,7 +65,12 @@ const createHarness = (
   const arithmeticCalls: ArithmeticCall[] = [];
   const prepareSingleStepArithmeticComposition = vi.fn((name: ArithmeticOperator, inPts: DataPt[]) => {
     arithmeticCalls.push({ name, inPts });
-    return maskedResults;
+    return {
+      operation: name,
+      operands: inPts,
+      resultPts: maskedResults,
+      steps: [{ inPts, outPts: maskedResults }],
+    } satisfies PreparedComposition;
   });
   const beginFrame = vi.fn();
   const getReservedVariableFromBuffer = vi.fn(() => maskPt);
@@ -76,18 +78,17 @@ const createHarness = (
     contextByDepth: [parentContext] as ContextManager[],
     beginFrame,
   };
-  const synthesizer = Object.create(Synthesizer.prototype) as HarnessSynthesizer;
-  Object.assign(synthesizer, {
-    _state: state,
-    _messageCodeAddresses: new Set(),
-    _bufferManager: {
-      getReservedVariableFromBuffer,
-    },
-    _instructionHandlers: {
-      prepareMemoryCopy: vi.fn(() => []),
-      prepareSingleStepArithmeticComposition,
-    },
-  });
+  const parent = {
+    cachedOpts: {},
+    placements: [],
+    state,
+    messageCodeAddresses: new Set<string>(),
+    getReservedVariableFromBuffer,
+    placeComposition: vi.fn(),
+  };
+  const handler = new InstructionHandler(parent as never);
+  vi.spyOn(handler as never, '_prepareSingleStepArithmeticComposition' as never)
+    .mockImplementation(prepareSingleStepArithmeticComposition as never);
   const message = {
     depth: 1,
     codeAddress: createAddressFromBigInt(normalizedTarget),
@@ -105,7 +106,7 @@ const createHarness = (
     parentContext,
     prepareSingleStepArithmeticComposition,
     state,
-    synthesizer,
+    handler,
   };
 };
 
@@ -114,7 +115,7 @@ describe('CALL-family target-mask topology', () => {
     const rawTarget = (1n << 200n) | 0x1234n;
     const harness = createHarness(opcode, rawTarget);
 
-    harness.synthesizer._prepareMessageCall(harness.message);
+    harness.handler.initializeMessageContext(harness.message);
 
     expect(harness.arithmeticCalls).toHaveLength(1);
     expect(harness.arithmeticCalls[0]).toMatchObject({ name: 'AND' });
@@ -149,7 +150,7 @@ describe('CALL-family target-mask topology', () => {
   it('uses the same single-placement shape with and without discarded high bits', () => {
     const shape = (rawTarget: bigint) => {
       const harness = createHarness('CALL', rawTarget);
-      harness.synthesizer._prepareMessageCall(harness.message);
+      harness.handler.initializeMessageContext(harness.message);
       return harness.arithmeticCalls.map(({ name, inPts }) => ({
         name,
         inputs: inPts.map(({ source, wireIndex, dataPtType }) => ({ source, wireIndex, dataPtType })),
@@ -162,7 +163,7 @@ describe('CALL-family target-mask topology', () => {
   it('rejects a substituted raw target before placing the mask', () => {
     const harness = createHarness('CALL', 0x1234n, { stackTarget: 0x5678n });
 
-    expect(() => harness.synthesizer._prepareMessageCall(harness.message)).toThrow(
+    expect(() => harness.handler.initializeMessageContext(harness.message)).toThrow(
       'Raw address to call mismatch',
     );
     expect(harness.prepareSingleStepArithmeticComposition).not.toHaveBeenCalled();
@@ -172,7 +173,7 @@ describe('CALL-family target-mask topology', () => {
   it('rejects an omitted mask output', () => {
     const harness = createHarness('CALL', 0x1234n, { maskedResults: [] });
 
-    expect(() => harness.synthesizer._prepareMessageCall(harness.message)).toThrow(
+    expect(() => harness.handler.initializeMessageContext(harness.message)).toThrow(
       'CALL target mask produced no address',
     );
     expect(harness.prepareSingleStepArithmeticComposition).toHaveBeenCalledOnce();
@@ -184,7 +185,7 @@ describe('CALL-family target-mask topology', () => {
       maskedResults: [dataPt(0x5678n, 99)],
     });
 
-    expect(() => harness.synthesizer._prepareMessageCall(harness.message)).toThrow(
+    expect(() => harness.handler.initializeMessageContext(harness.message)).toThrow(
       'Address to call mismatch between EVM and Synthesizer',
     );
     expect(harness.prepareSingleStepArithmeticComposition).toHaveBeenCalledOnce();

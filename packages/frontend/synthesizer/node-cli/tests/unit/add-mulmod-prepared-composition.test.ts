@@ -126,7 +126,6 @@ const fixedMultiStepCompositions = new Map(
 const submit = (
   operation: FixedMultiStepOperation,
 ): { preparedComposition: PreparedComposition; resultPts: DataPt[] } => {
-  const placeComposition = vi.fn()
   const calculateArithSubcircuitOutputValues = vi.fn((name: string): bigint[] => {
     switch (name) {
       case 'ADDMODPrepare':
@@ -167,25 +166,25 @@ const submit = (
     calculateArithSubcircuitOutputValues,
     loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
       dataPt(value, 5, nextStaticWireIndex++, dataPtType)),
-    placeComposition,
   }
   const handler = new InstructionHandler(parent as never)
-  const resultPts = (handler as unknown as {
-    _submitFixedMultiStepArithmeticComposition(
+  const preparedComposition = (handler as unknown as {
+    _prepareFixedMultiStepArithmeticComposition(
       operation: FixedMultiStepOperation,
       operands: DataPt[],
-    ): DataPt[];
-  })._submitFixedMultiStepArithmeticComposition(
+      basePlacementIndex: number,
+    ): PreparedComposition;
+  })._prepareFixedMultiStepArithmeticComposition(
     operation,
     operation === 'ADDMOD' || operation === 'MULMOD'
       ? [dataPt(3n, 10), dataPt(4n, 11), dataPt(5n, 12)]
       : [dataPt(3n, 10), dataPt(4n, 11)],
+    0,
   )
 
-  expect(placeComposition).toHaveBeenCalledOnce()
   return {
-    preparedComposition: placeComposition.mock.calls[0]![0],
-    resultPts,
+    preparedComposition,
+    resultPts: preparedComposition.resultPts,
   }
 }
 

@@ -12,6 +12,7 @@ import type {
   StorageCacheEntry,
 } from '../../../core/src/synthesizer/handlers/storageAccess.ts';
 import type { DataPt } from '../../../core/src/synthesizer/types/index.ts';
+import type { PreparedComposition } from '../../../core/src/synthesizer/types/placements.ts';
 
 const dataPt = (
   value: bigint,
@@ -93,6 +94,12 @@ const createStorageHarness = (initialValue: bigint) => {
   };
 };
 
+const storageAccessCompositions = (parent: {
+  placeComposition: ReturnType<typeof vi.fn>;
+}): PreparedComposition[] => parent.placeComposition.mock.calls
+  .map(([preparedComposition]) => preparedComposition as PreparedComposition)
+  .filter(({ operation }) => operation === 'StorageAccess');
+
 describe('StateManager storage tracking', () => {
   it('uses a full 256-bit value for the STORAGE_LOAD private input', () => {
     const value = (1n << 256n) - 1n;
@@ -145,7 +152,7 @@ describe('StateManager storage tracking', () => {
       latestValuePt: dataPt(4n, 4),
       dirty: true,
     });
-    state.addWirePairToBufferIn(dataPt(10n, 10), dataPt(10n, 0, 0), true);
+    state.appendBufferWirePair(dataPt(10n, 10), dataPt(10n, 0, 0), true);
 
     state.beginFrame(1);
     state.storageCache.set(1n, 2n, {
@@ -153,7 +160,7 @@ describe('StateManager storage tracking', () => {
       latestValuePt: dataPt(5n, 5),
       dirty: true,
     });
-    state.addWirePairToBufferIn(dataPt(11n, 11), dataPt(11n, 0, 1), true);
+    state.appendBufferWirePair(dataPt(11n, 11), dataPt(11n, 0, 1), true);
 
     state.completeFrame(1, true);
     expect(state.placements[0]).toMatchObject({
@@ -285,19 +292,19 @@ describe('InstructionHandler storage cache', () => {
       wireIndex: firstValuePt.wireIndex,
       value: firstValuePt.value,
     });
-    const equalBatchCalls = parent.placeComposition.mock.calls.filter(
-      (call: any[]) => call[0] === 'StorageAccess',
-    );
+    const equalBatchCalls = storageAccessCompositions(parent);
     expect(equalBatchCalls).toHaveLength(1);
-    expect(equalBatchCalls[0]).toEqual([
-      'StorageAccess',
-      [
+    expect(equalBatchCalls[0]).toMatchObject({
+      operation: 'StorageAccess',
+      operands: [
         expect.objectContaining({ source: 40, value: addressValue }),
         expect.objectContaining({ source: 41, value: 9n }),
         expect.objectContaining({ source: 30, value: addressValue }),
         expect.objectContaining({ source: 31, value: 9n }),
       ],
-    ]);
+      resultPts: [],
+      steps: [{ outPts: [] }],
+    });
   });
 
   it('reuses a retained initial SLOAD after its frame is rolled back', async () => {
@@ -326,9 +333,7 @@ describe('InstructionHandler storage cache', () => {
       wireIndex: firstValuePt.wireIndex,
       value: 6n,
     });
-    expect(parent.placeComposition.mock.calls.filter(
-      (call: any[]) => call[0] === 'StorageAccess',
-    )).toHaveLength(1);
+    expect(storageAccessCompositions(parent)).toHaveLength(1);
   });
 
   it('updates the cached value on SSTORE and does not add an initial SLOAD afterward', async () => {
@@ -352,9 +357,7 @@ describe('InstructionHandler storage cache', () => {
       dirty: true,
     });
     expect(loadedPt).toMatchObject({ source: 51, value: 11n });
-    expect(parent.placeComposition.mock.calls.filter(
-      (call: any[]) => call[0] === 'StorageAccess',
-    )).toHaveLength(1);
+    expect(storageAccessCompositions(parent)).toHaveLength(1);
   });
 
   it('keeps only the latest value DataPt across repeated SSTORE operations', async () => {
@@ -386,12 +389,8 @@ describe('InstructionHandler storage cache', () => {
         dirty: true,
       }),
     ]);
-    const equalBatchCalls = parent.placeComposition.mock.calls.filter(
-      (call: any[]) => call[0] === 'StorageAccess',
-    );
-    expect(equalBatchCalls.map(([, inPts]: [string, DataPt[]]) =>
-      inPts.map((pt) => pt.source)
-    )).toEqual([
+    const equalBatchCalls = storageAccessCompositions(parent);
+    expect(equalBatchCalls.map(({ operands }) => operands.map(({ source }) => source))).toEqual([
       [73, 74, 70, 71],
       [76, 77, 70, 71],
     ]);
@@ -431,9 +430,8 @@ describe('InstructionHandler storage cache', () => {
         dirty: true,
       }),
     ]);
-    expect(parent.placeComposition.mock.calls.filter(
-      (call: any[]) => call[0] === 'StorageAccess',
-    )[0]?.[1].map((pt: DataPt) => pt.source)).toEqual([82, 83, 80, 81]);
+    expect(storageAccessCompositions(parent)[0]?.operands.map(({ source }) => source))
+      .toEqual([82, 83, 80, 81]);
     expect(parent.addReservedVariableToBufferOut).toHaveBeenCalledTimes(2);
   });
 
@@ -474,9 +472,7 @@ describe('InstructionHandler storage cache', () => {
       [addressValue, 1n, 3n],
       [addressValue, 2n, 4n],
     ]);
-    expect(parent.placeComposition.mock.calls.filter(
-      (call: any[]) => call[0] === 'StorageAccess',
-    )).toHaveLength(1);
+    expect(storageAccessCompositions(parent)).toHaveLength(1);
     expect(parent.addReservedVariableToBufferOut).toHaveBeenCalledTimes(4);
   });
 
