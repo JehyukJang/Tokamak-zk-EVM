@@ -290,8 +290,6 @@ export class StateManager {
   private readonly _bufferSubcircuitByBuffer: Record<ReservedBuffer, SubcircuitInfoByNameEntry | undefined>;
   private readonly _placementCompositionManager: PlacementCompositionManager;
   public cachedEVMIn: Map<bigint, Map<string, DataPt>> = new Map()
-  public cachedContractAddress: DataPt | undefined = undefined
-  public cachedFunctionSelector: DataPt | undefined = undefined
   public cachedOrigin: DataPt | undefined = undefined
 
   public contextByDepth: ContextManager[] = [];
@@ -320,8 +318,6 @@ export class StateManager {
     this.storageCache.reset()
     this.initialStorageReads.reset()
     this.logCache.reset()
-    this.cachedContractAddress = undefined
-    this.cachedFunctionSelector = undefined
     this.cachedOrigin = undefined
     this._messageCodeAddresses.clear()
   }

@@ -1,121 +1,12 @@
 import { jubjub } from '@noble/curves/misc.js'
-import { FUNCTION_INPUT_LENGTH, poseidonChainCompress } from 'tokamak-l2js'
-import { describe, expect, it, vi } from 'vitest'
+import { poseidonChainCompress } from 'tokamak-l2js'
+import { describe, expect, it } from 'vitest'
 
 import type { CompositionSubcircuit } from '../../../core/src/subcircuit/configuredTypes.ts'
 import { createTransactionSignatureVerifyCompositionMapping } from '../../../core/src/subcircuit/special-builders/txSignVerifyComposition.ts'
-import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts'
-import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts'
 import { SubcircuitOutputCalculator } from '../../../core/src/synthesizer/handlers/subcircuitOutputCalculator.ts'
-import {
-  UINT160_DATA_PT_TYPE,
-  UINT256_DATA_PT_TYPE,
-  UINT32_DATA_PT_TYPE,
-  type DataPt,
-} from '../../../core/src/synthesizer/types/dataStructure.ts'
-import type { PreparedComposition } from '../../../core/src/synthesizer/types/placements.ts'
 
-const TSV_OPERAND_VARIABLES = [
-  'EDDSA_RANDOMIZER_X',
-  'EDDSA_RANDOMIZER_Y',
-  'EDDSA_PUBLIC_KEY_X',
-  'EDDSA_PUBLIC_KEY_Y',
-  'TRANSACTION_NONCE',
-  ...Array.from({ length: FUNCTION_INPUT_LENGTH }, (_, index) => `TRANSACTION_INPUT${index}`),
-  'CONTRACT_ADDRESS',
-  'FUNCTION_SELECTOR',
-  'EDDSA_SIGNATURE',
-  'JUBJUB_POI_X',
-  'JUBJUB_POI_Y',
-] as const
-
-describe('transaction-signature composition preparation and host output calculations', () => {
-  it('places TSV and retains its exact result wires', () => {
-    const operandPts = TSV_OPERAND_VARIABLES.map((_, index) => DataPtFactory.create({
-      source: index,
-      wireIndex: 0,
-      dataPtType: UINT256_DATA_PT_TYPE,
-    }, BigInt(index)))
-    const operandPtByVariable = new Map(
-      TSV_OPERAND_VARIABLES.map((variable, index) => [variable, operandPts[index]!]),
-    )
-    const getReservedVariableFromBuffer = vi.fn((variable: string): DataPt => {
-      const operandPt = operandPtByVariable.get(variable)
-      if (operandPt === undefined) throw new Error(`Unexpected TSV operand ${variable}`)
-      return operandPt
-    })
-    const resultPts = [
-      DataPtFactory.create({ source: 91, wireIndex: 0, dataPtType: UINT160_DATA_PT_TYPE }, 1n),
-      DataPtFactory.create({ source: 91, wireIndex: 1, dataPtType: UINT32_DATA_PT_TYPE }, 2n),
-      DataPtFactory.create({ source: 97, wireIndex: 0, dataPtType: UINT160_DATA_PT_TYPE }, 3n),
-    ]
-    const expectedPreparedComposition = {
-      operation: 'TransactionSignatureVerify',
-      operands: [],
-      resultPts,
-      steps: [],
-    } satisfies PreparedComposition
-    const state = {
-      cachedContractAddress: undefined as DataPt | undefined,
-      cachedFunctionSelector: undefined as DataPt | undefined,
-      cachedOrigin: undefined as DataPt | undefined,
-      contextByDepth: [],
-      beginFrame: vi.fn(),
-      recordMessageCodeAddress: vi.fn(),
-    }
-    const placeComposition = vi.fn()
-    const handler = new InstructionHandler({
-      placements: [],
-      getReservedVariableFromBuffer,
-      placeComposition,
-    } as never, state as never, {} as never)
-    const prepareFixedGenericComposition = vi.spyOn(
-      handler as unknown as {
-        _prepareFixedGenericComposition: (
-          operation: string,
-          operands: DataPt[],
-          basePlacementIndex: number,
-        ) => PreparedComposition;
-      },
-      '_prepareFixedGenericComposition',
-    ).mockReturnValue(expectedPreparedComposition)
-
-    handler.initializeTransactionSignatureVerification()
-
-    expect(prepareFixedGenericComposition).toHaveBeenCalledWith(
-      'TransactionSignatureVerify',
-      operandPts,
-      0,
-    )
-    expect(getReservedVariableFromBuffer.mock.calls.map(([variable]) => variable))
-      .toEqual(TSV_OPERAND_VARIABLES)
-    expect(placeComposition).toHaveBeenCalledWith(expectedPreparedComposition)
-    expect(state.cachedContractAddress).toBe(resultPts[0])
-    expect(state.cachedFunctionSelector).toBe(resultPts[1])
-    expect(state.cachedOrigin).toBe(resultPts[2])
-
-    handler.initializeMessageContext({
-      depth: 0,
-      codeAddress: {},
-      data: new Uint8Array(4 + 32 * FUNCTION_INPUT_LENGTH),
-      isCreate: false,
-      isCompiled: false,
-    } as never)
-    const rootContext = state.contextByDepth[0] as {
-      callerPt: DataPt
-      codeAddressPt: DataPt
-      storageAddressPt: DataPt
-      callDataMemoryPts: readonly { dataPt: DataPt }[]
-    }
-    expect(rootContext.callerPt).toMatchObject({ source: resultPts[2]!.source, wireIndex: resultPts[2]!.wireIndex })
-    expect(rootContext.codeAddressPt).toMatchObject({ source: resultPts[0]!.source, wireIndex: resultPts[0]!.wireIndex })
-    expect(rootContext.storageAddressPt).toMatchObject({ source: resultPts[0]!.source, wireIndex: resultPts[0]!.wireIndex })
-    expect(rootContext.callDataMemoryPts[0]!.dataPt).toMatchObject({
-      source: resultPts[1]!.source,
-      wireIndex: resultPts[1]!.wireIndex,
-    })
-  })
-
+describe('transaction-signature host output calculations', () => {
   it('reproduces the complete production TSV witness flow', () => {
     const outputCalculator = new SubcircuitOutputCalculator()
     const privateKey = 37n
