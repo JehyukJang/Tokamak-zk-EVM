@@ -13,7 +13,7 @@ import {
 import {
   placementEntryDeepCopy,
   placementsDeepCopy,
-} from '../../synthesizer/handlers/stateManager.ts';
+} from '../../synthesizer/handlers/placementManager.ts';
 import { CircuitGenerator } from '../circuitGenerator.ts';
 import { builder } from '../utils/witness_calculator.ts';
 import { VARIABLE_DESCRIPTION } from '../../synthesizer/types/buffers.ts';

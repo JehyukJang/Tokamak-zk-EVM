@@ -5,7 +5,7 @@ import { bigIntToBytes, bigIntToHex, bytesToHex, createAddressFromBigInt, setLen
 
 import { EVMResult, InterpreterStep } from '@ethereumjs/evm';
 import { DataAliasGeometries, DataPt, DataPtType, getDataPtTypeFromLogicalInterfaceType, Placements, PreparedComposition, ReservedVariable, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry, UINT32_DATA_PT_TYPE } from './types/index.ts';
-import { BufferManager, InstructionHandler, StateManager } from './handlers/index.ts';
+import { BufferManager, InstructionHandler, PlacementManager, StateManager } from './handlers/index.ts';
 import { ReservedBuffer, type CompositionSubcircuit, type Operator } from '../subcircuit/configuredTypes.ts';
 import type { ResolvedSubcircuitLibrary } from '../subcircuit/libraryTypes.ts';
 import { DataPtFactory } from './dataStructure/dataPt.ts';
@@ -19,6 +19,7 @@ import { POSEIDON_INPUTS } from 'tokamak-l2js';
 export class Synthesizer implements SynthesizerInterface
 {
   private _state: StateManager
+  private _placementManager: PlacementManager
   protected _bufferManager: BufferManager
   protected _instructionHandlers: InstructionHandler
   private readonly _cachedOpts: SynthesizerOpts
@@ -30,7 +31,8 @@ export class Synthesizer implements SynthesizerInterface
   constructor(opts: SynthesizerOpts, subcircuitLibrary: ResolvedSubcircuitLibrary) {
     this._cachedOpts = opts
     this.subcircuitLibrary = subcircuitLibrary
-    this._state = new StateManager(this)
+    this._placementManager = new PlacementManager(this)
+    this._state = new StateManager(this._placementManager)
     this._bufferManager = new BufferManager(this, this._state, this._cachedOpts)
     this._instructionHandlers = new InstructionHandler(this, this._state, this._cachedOpts)
     this._eventHandlerError = undefined
@@ -296,15 +298,15 @@ export class Synthesizer implements SynthesizerInterface
   }
 
   public get placements(): Placements {
-    return this._state.placements
+    return this._placementManager.placements
   }
 
   placeBuffer(buffer: ReservedBuffer, inPts: DataPt[], outPts: DataPt[], usage: string): void {
-    this._state.placeBuffer(buffer, inPts, outPts, usage)
+    this._placementManager.placeBuffer(buffer, inPts, outPts, usage)
   }
 
   placeComposition(preparedComposition: PreparedComposition): void {
-    this._state.placeComposition(preparedComposition)
+    this._placementManager.placeComposition(preparedComposition)
   }
 
   calculateSubcircuitOutputValues(
@@ -321,7 +323,7 @@ export class Synthesizer implements SynthesizerInterface
   }
 
   appendBufferWirePair(inPt: DataPt, outPt: DataPt, dynamic: boolean): DataPt {
-    return this._state.appendBufferWirePair(inPt, outPt, dynamic)
+    return this._placementManager.appendBufferWirePair(inPt, outPt, dynamic)
   }
 
   addReservedVariableToBufferIn(varName: ReservedVariable, value?: bigint, dynamic?: boolean, message?: string): DataPt {
