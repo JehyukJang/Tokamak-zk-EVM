@@ -6,7 +6,6 @@ import {
 import { assertPositiveInteger, freezeComposition } from './utils.ts';
 import {
   type DataAliasGeometries,
-  type DataAliasInfos,
   type DataPt,
   isDataPtType,
   type DataPtType,
@@ -168,12 +167,24 @@ export class PlacementCompositionManager {
       throw new Error(`Synthesizer: ${step.subcircuit} logical interface is incomplete`)
     }
 
-    const dataAliasInfos = this.createDataAliasInfos(
-      dataAliasGeometries,
-      shiftType,
-      directionType,
-      ownershipType,
-    )
+    const dataAliasInfos = dataAliasGeometries.map((geometry) => Object.freeze({
+      dataPt: geometry.dataPt,
+      shiftPt: this.parent.loadArbitraryStatic(
+        BigInt(geometry.shiftMagnitude),
+        shiftType,
+        'Memory-load byte shift magnitude',
+      ),
+      directionPt: this.parent.loadArbitraryStatic(
+        BigInt(geometry.direction),
+        directionType,
+        'Memory-load shift direction',
+      ),
+      maskerPt: this.parent.loadArbitraryStatic(
+        geometry.ownershipMask,
+        ownershipType,
+        'Memory-load byte ownership mask',
+      ),
+    }))
     const expectedCoveragePt = this.parent.loadArbitraryStatic(
       dataAliasInfos.reduce(
         (coverage, { maskerPt }) => coverage | maskerPt.value,

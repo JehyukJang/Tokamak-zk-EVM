@@ -82,15 +82,6 @@ export type DataAliasGeometryEntry = Readonly<{
 }>;
 export type DataAliasGeometries = readonly DataAliasGeometryEntry[];
 
-/** Symbolic inputs for one memory-load fragment. */
-export type DataAliasInfoEntry = Readonly<{
-  dataPt: DataPt;
-  shiftPt: DataPt;
-  directionPt: DataPt;
-  maskerPt: DataPt;
-}>;
-export type DataAliasInfos = readonly DataAliasInfoEntry[];
-
 /**
  * Structure representing memory information.
  * @property {number} memOffset - Memory offset

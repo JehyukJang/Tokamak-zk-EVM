@@ -1,5 +1,5 @@
 
-import { BIT_DATA_PT_TYPE, DataAliasGeometries, DataAliasInfos, getDataPtTypeFromLogicalInterfaceType, ISynthesizerProvider, MemoryPts, PreparedComposition, synthesizerOpcodeByName, SynthesizerOpts, SynthesizerSupportedArithOpcodes, SynthesizerSupportedBlkInfOpcodes, SynthesizerSupportedEnvInfOpcodes, SynthesizerSupportedLogOpcodes, SynthesizerSupportedSysFlowOpcodes, type DataPt, type ReservedVariable, type SynthesizerSupportedOpcodes, UINT256_DATA_PT_TYPE, UINT32_DATA_PT_TYPE } from '../types/index.ts';
+import { BIT_DATA_PT_TYPE, getDataPtTypeFromLogicalInterfaceType, ISynthesizerProvider, MemoryPts, PreparedComposition, synthesizerOpcodeByName, SynthesizerOpts, SynthesizerSupportedArithOpcodes, SynthesizerSupportedBlkInfOpcodes, SynthesizerSupportedEnvInfOpcodes, SynthesizerSupportedLogOpcodes, SynthesizerSupportedSysFlowOpcodes, type DataPt, type ReservedVariable, type SynthesizerSupportedOpcodes, UINT256_DATA_PT_TYPE, UINT32_DATA_PT_TYPE } from '../types/index.ts';
 
 import {
   Address,
@@ -1631,32 +1631,6 @@ export class InstructionHandler {
     }
     
     return memPts
-  }
-
-  public createDataAliasInfos(
-    dataAliasGeometries: DataAliasGeometries,
-    shiftType: DataPt['dataPtType'],
-    directionType: DataPt['dataPtType'],
-    ownershipType: DataPt['dataPtType'],
-  ): DataAliasInfos {
-    return dataAliasGeometries.map((geometry) => Object.freeze({
-      dataPt: geometry.dataPt,
-      shiftPt: this.parent.loadArbitraryStatic(
-        BigInt(geometry.shiftMagnitude),
-        shiftType,
-        'Memory-load byte shift magnitude',
-      ),
-      directionPt: this.parent.loadArbitraryStatic(
-        BigInt(geometry.direction),
-        directionType,
-        'Memory-load shift direction',
-      ),
-      maskerPt: this.parent.loadArbitraryStatic(
-        geometry.ownershipMask,
-        ownershipType,
-        'Memory-load byte ownership mask',
-      ),
-    }))
   }
 
   private _prepareMemoryCopy(

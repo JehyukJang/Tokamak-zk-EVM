@@ -31,13 +31,10 @@ Most low-level structures live under `core/src/synthesizer/types/` and `core/src
 - `MemoryPt` (`core/src/synthesizer/dataStructure/memoryPt.ts`) tracks memory writes as a time-ordered map of `{ memByteOffset, containerByteSize, dataPt }`
 - `MemoryPt.getDataAlias()` supports overlapping-read reconstruction for `MLOAD`, `MCOPY`, and related copy operations
 
-## MemoryPts and DataAliasInfos
+## MemoryPts
 
 - `MemoryPts`
   - arrays of memory entries returned by memory reads or batch writes
-- `DataAliasInfos`
-  - shift and mask descriptions used to rebuild a value from overlapping memory fragments
-  - consumed by `MemoryManager` to place `SHL`, `SHR`, and `AND` subcircuits
 
 ## Storage access tracking
 
