@@ -156,9 +156,7 @@ const submit = (
   const parent = {
     placements: [],
     subcircuitLibrary: {
-      placementCompositionManager: {
-        get: (name: FixedMultiStepOperation) => fixedMultiStepCompositions.get(name)!,
-      },
+      placementCompositionMapping: Object.fromEntries(fixedMultiStepCompositions),
       subcircuitInfoByName,
     },
     calculateSubcircuitOutputValues,
@@ -201,7 +199,7 @@ describe('fixed generic prepared compositions', () => {
     const parent = {
       placements: [],
       subcircuitLibrary: {
-        placementCompositionManager: { get: () => composition },
+        placementCompositionMapping: { ADDMOD: composition },
         subcircuitInfoByName: new Map([['ALU1', {
           logicalInterface: {
             inputs: [],

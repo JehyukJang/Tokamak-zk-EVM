@@ -21,8 +21,8 @@ import {
 } from '../../subcircuit/configuredTypes.ts';
 import type {
   PlacementComposition,
-  PlacementCompositionManager,
-} from '../../subcircuit/placementCompositionManager.ts';
+  PlacementCompositionMapping,
+} from '../../subcircuit/placementCompositionMapping.ts';
 import type { LogicalInterfacePort } from '../../subcircuit/libraryTypes.ts';
 import { InterpreterStep } from '@ethereumjs/evm';
 import { POSEIDON_INPUTS } from 'tokamak-l2js';
@@ -315,7 +315,7 @@ export class StateManager {
 
   public subcircuitInfoByName: SubcircuitInfoByName;
   private readonly _bufferSubcircuitByBuffer: Record<ReservedBuffer, SubcircuitInfoByNameEntry | undefined>;
-  private readonly _placementCompositionManager: PlacementCompositionManager;
+  private readonly _placementCompositionMapping: PlacementCompositionMapping;
   public cachedEVMIn: Map<bigint, Map<string, DataPt>> = new Map()
   public cachedOrigin: DataPt | undefined = undefined
 
@@ -325,7 +325,7 @@ export class StateManager {
   constructor(parent: ISynthesizerProvider) {
     this.subcircuitInfoByName = parent.subcircuitLibrary.subcircuitInfoByName
     this._bufferSubcircuitByBuffer = parent.subcircuitLibrary.subcircuitBufferMapping
-    this._placementCompositionManager = parent.subcircuitLibrary.placementCompositionManager
+    this._placementCompositionMapping = parent.subcircuitLibrary.placementCompositionMapping
   }
 
   public get placements(): Placements {
@@ -428,7 +428,7 @@ export class StateManager {
   }
 
   public placeComposition(preparedComposition: PreparedComposition): void {
-    const composition = this._placementCompositionManager.get(preparedComposition.operation)
+    const composition = this._placementCompositionMapping[preparedComposition.operation]
     if (composition.placementStrategy === 'generic') {
       this._validatePreparedGenericComposition(preparedComposition, composition)
       for (const [stepIndex, step] of composition.steps.entries()) {

@@ -1,16 +1,16 @@
 import { freezeComposition } from '../utils.ts'
 import { UINT256_DATA_PT_TYPE } from '../../synthesizer/types/dataStructure.ts'
 import type {
-  PlacementCompositionMapping,
+  PlacementCompositionEntry,
   CompositionStep,
   ConstantDefinition,
   InputReference,
   OutputReference
-} from '../placementCompositionManager.ts'
+} from '../placementCompositionMapping.ts'
 
 const NUM_EXPONENT_BITS = 256
 
-export const createExpCompositionMapping = (): PlacementCompositionMapping => {
+export const createExpCompositionMapping = (): PlacementCompositionEntry => {
   const constants: readonly ConstantDefinition[] = [
     {
       value: 1n,

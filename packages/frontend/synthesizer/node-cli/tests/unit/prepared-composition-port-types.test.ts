@@ -9,7 +9,7 @@ import {
   type DataPt,
   type DataPtType,
 } from '../../../core/src/synthesizer/types/dataStructure.ts';
-import type { PlacementComposition } from '../../../core/src/subcircuit/placementCompositionManager.ts';
+import type { PlacementComposition } from '../../../core/src/subcircuit/placementCompositionMapping.ts';
 
 const composition = {
   placementStrategy: 'generic',
@@ -65,7 +65,7 @@ function createState(): StateManager {
         ],
       },
     }]]),
-    _placementCompositionManager: { get: () => composition },
+    _placementCompositionMapping: { ADD: composition },
   }) as StateManager;
 }
 

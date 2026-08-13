@@ -1,10 +1,10 @@
 import { freezeComposition } from '../utils.ts'
-import type { PlacementCompositionMapping, InputReference, OutputReference } from '../placementCompositionManager.ts'
+import type { PlacementCompositionEntry, InputReference, OutputReference } from '../placementCompositionMapping.ts'
 
 const createDivisionCompositionMapping = (
   operation: 'DIV' | 'SDIV' | 'MOD' | 'SMOD',
   selector: bigint
-): PlacementCompositionMapping =>
+): PlacementCompositionEntry =>
   Object.freeze({
     operation,
     composition: freezeComposition({
@@ -30,7 +30,7 @@ const createDivisionCompositionMapping = (
     })
   })
 
-export const createDivisionCompositionMappings = (): readonly PlacementCompositionMapping[] =>
+export const createDivisionCompositionMappings = (): readonly PlacementCompositionEntry[] =>
   Object.freeze([
     createDivisionCompositionMapping('DIV', 1n << 4n),
     createDivisionCompositionMapping('SDIV', 1n << 5n),

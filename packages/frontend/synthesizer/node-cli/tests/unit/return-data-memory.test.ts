@@ -65,7 +65,7 @@ const createHarness = () => {
   const parent = {
     placements: Array.from({ length: 6 }, () => ({})),
     subcircuitLibrary: {
-      placementCompositionManager: { get: () => memoryLoadComposition },
+      placementCompositionMapping: { MemoryLoad: memoryLoadComposition },
       subcircuitInfoByName: new Map([['MemoryLoadStep', memoryLoadInfo]]),
     },
     loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>

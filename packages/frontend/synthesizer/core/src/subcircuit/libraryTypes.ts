@@ -4,7 +4,7 @@
 // -----------------------------------------------------------------------------
 
 import { SUBCIRCUIT_LIST, SubcircuitNames } from "./configuredTypes.ts";
-import type { PlacementCompositionManager } from './placementCompositionManager.ts';
+import type { PlacementCompositionMapping } from './placementCompositionMapping.ts';
 import type { calculateSubcircuitOutputValues } from './subcircuitOutputOperations.ts';
 import type {
   ReservedBuffer,
@@ -104,7 +104,7 @@ export interface SubcircuitLibraryProvider {
 
 export interface ResolvedSubcircuitLibrary {
   data: SubcircuitLibraryData;
-  placementCompositionManager: PlacementCompositionManager;
+  placementCompositionMapping: PlacementCompositionMapping;
   calculateSubcircuitOutputValues: typeof calculateSubcircuitOutputValues;
   subcircuitInfoByName: SubcircuitInfoByName;
   subcircuitBufferMapping: Record<ReservedBuffer, SubcircuitInfoByNameEntry | undefined>;

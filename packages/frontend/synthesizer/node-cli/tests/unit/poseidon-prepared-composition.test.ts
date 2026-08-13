@@ -37,7 +37,7 @@ const prepare = (operands: DataPt[]): PreparedComposition => {
   const parent = {
     placements: [],
     subcircuitLibrary: {
-      placementCompositionManager: { get: () => poseidonComposition },
+      placementCompositionMapping: { Poseidon: poseidonComposition },
       subcircuitInfoByName: new Map([['Poseidon', { logicalInterface }]]),
     },
     calculateSubcircuitOutputValues: vi.fn((_: string, values: bigint[]) => [
@@ -69,7 +69,7 @@ function createState(): StateManager {
       flattenMap: [],
       logicalInterface,
     }]]),
-    _placementCompositionManager: { get: () => poseidonComposition },
+    _placementCompositionMapping: { Poseidon: poseidonComposition },
   }) as StateManager
 }
 

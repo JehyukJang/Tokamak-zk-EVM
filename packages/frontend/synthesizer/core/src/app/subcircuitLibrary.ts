@@ -1,5 +1,5 @@
 import { BUFFER_LIST } from '../subcircuit/configuredTypes.ts';
-import { createPlacementCompositionManager } from '../subcircuit/placementCompositionManager.ts';
+import { createPlacementCompositionMapping } from '../subcircuit/placementCompositionMapping.ts';
 import { calculateSubcircuitOutputValues } from '../subcircuit/subcircuitOutputOperations.ts';
 import {
   getDataPtTypeFromLogicalInterfaceType,
@@ -53,7 +53,7 @@ export function resolveSubcircuitLibraryData(
 
   return {
     data,
-    placementCompositionManager: createPlacementCompositionManager(
+    placementCompositionMapping: createPlacementCompositionMapping(
       data.frontendCfg,
     ),
     calculateSubcircuitOutputValues,

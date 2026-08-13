@@ -1,14 +1,14 @@
 import { freezeComposition } from '../utils.ts'
 import type {
   InputReference,
-  PlacementCompositionMapping,
-} from '../placementCompositionManager.ts'
+  PlacementCompositionEntry,
+} from '../placementCompositionMapping.ts'
 
 /**
  * Defines one logical memory view reconstruction. The memory-load placement
  * strategy receives its fragment inputs from InstructionHandler at placement time.
  */
-export const createMemoryLoadCompositionMapping = (): PlacementCompositionMapping =>
+export const createMemoryLoadCompositionMapping = (): PlacementCompositionEntry =>
   Object.freeze({
     operation: 'MemoryLoad',
     composition: freezeComposition({

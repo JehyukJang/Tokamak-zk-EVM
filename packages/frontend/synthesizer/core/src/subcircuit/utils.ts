@@ -27,7 +27,7 @@ import type {
   InputReference,
   OutputReference,
   PlacementComposition,
-} from './placementCompositionManager.ts';
+} from './placementCompositionMapping.ts';
 
 const freezeReference = <Reference extends InputReference | OutputReference>(
   reference: Reference,
@@ -57,7 +57,7 @@ export function freezeComposition(
 export const assertPositiveInteger = (value: number, description: string): void => {
   if (!Number.isInteger(value) || value < 1) {
     throw new Error(
-      `PlacementCompositionManager: ${description} must be a positive integer`,
+      `PlacementCompositionMapping: ${description} must be a positive integer`,
     );
   }
 };

@@ -4,29 +4,18 @@ import {
   OPERATOR_LIST,
 } from '../../../core/src/subcircuit/configuredTypes.ts';
 import {
-  PlacementCompositionManager,
-  createPlacementCompositionManager,
-} from '../../../core/src/subcircuit/placementCompositionManager.ts';
+  createPlacementCompositionMapping,
+} from '../../../core/src/subcircuit/placementCompositionMapping.ts';
 
-const composition = createPlacementCompositionManager({
+const mapping = createPlacementCompositionMapping({
   nEqualBatch: 2,
   nPoseidonBatch: 6,
 });
 
-const replaceComposition = (
-  operationToReplace: (typeof OPERATOR_LIST)[number],
-  replacement: ReturnType<typeof composition.get>,
-) => OPERATOR_LIST.map((operation) => ({
-  operation,
-  composition: operation === operationToReplace
-    ? replacement
-    : composition.get(operation),
-}));
-
 describe('placement composition assembly', () => {
   it('contains every configured operator', () => {
     for (const operation of OPERATOR_LIST) {
-      const definition = composition.get(operation);
+      const definition = mapping[operation];
       expect(definition).toBeDefined();
       expect(definition.placementStrategy).toBe(
         operation === 'Poseidon'
@@ -39,44 +28,35 @@ describe('placement composition assembly', () => {
   });
 
   it('uses the loaded structural constants in parameterized mappings', () => {
-    expect(composition.get('StorageAccess').numOperands).toBe(4);
-    expect(composition.get('Poseidon').numOperands).toBe('dynamic');
-    expect(composition.get('EXP').numSteps).toBe(258);
+    expect(mapping.StorageAccess.numOperands).toBe(4);
+    expect(mapping.Poseidon.numOperands).toBe('dynamic');
+    expect(mapping.EXP.numSteps).toBe(258);
   });
 
-  it('rejects dynamic numSteps for the generic placement strategy', () => {
-    expect(() => new PlacementCompositionManager(replaceComposition('ADD', {
-      ...composition.get('ADD'),
-      numSteps: 'dynamic',
-    }))).toThrow('ADD cannot use generic placement with dynamic numSteps or selectors');
+  it('rejects a non-positive EqualBatch size', () => {
+    expect(() => createPlacementCompositionMapping({
+      nEqualBatch: 0,
+      nPoseidonBatch: 6,
+    })).toThrow('nEqualBatch must be a positive integer');
   });
 
-  it('rejects a dynamic selector for the generic placement strategy', () => {
-    const addComposition = composition.get('ADD');
-    expect(() => new PlacementCompositionManager(replaceComposition('ADD', {
-      ...addComposition,
-      steps: [{
-        ...addComposition.steps[0],
-        selector: 'dynamic',
-      }],
-    }))).toThrow('ADD cannot use generic placement with dynamic numSteps or selectors');
+  it('rejects a non-positive Poseidon batch size', () => {
+    expect(() => createPlacementCompositionMapping({
+      nEqualBatch: 2,
+      nPoseidonBatch: 0,
+    })).toThrow('nPoseidonBatch must be a positive integer');
   });
 
-  it('allows a special placement strategy with fixed declared steps', () => {
-    const poseidonComposition = composition.get('Poseidon');
-    expect(() => new PlacementCompositionManager(replaceComposition('Poseidon', {
-      ...poseidonComposition,
-      numSteps: 1,
-      steps: [{
-        ...poseidonComposition.steps[0],
-        selector: 1n,
-      }],
-    }))).not.toThrow();
+  it('freezes the mapping and every composition definition', () => {
+    expect(Object.isFrozen(mapping)).toBe(true);
+    for (const operation of OPERATOR_LIST) {
+      expect(Object.isFrozen(mapping[operation])).toBe(true);
+    }
   });
 
   it('does not retain usage metadata on composition steps', () => {
     for (const operation of OPERATOR_LIST) {
-      for (const step of composition.get(operation).steps) {
+      for (const step of mapping[operation].steps) {
         expect(step).not.toHaveProperty('usage');
       }
     }

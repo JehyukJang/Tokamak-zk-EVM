@@ -9,8 +9,8 @@ import type {
   CompositionStep,
   InputReference,
   OutputReference,
-  PlacementCompositionMapping,
-} from '../placementCompositionManager.ts'
+  PlacementCompositionEntry,
+} from '../placementCompositionMapping.ts'
 
 const NUM_CHALLENGE_INPUTS = FUNCTION_INPUT_LENGTH + 7
 const NUM_CHAIN_POSEIDON_BATCHES = 8
@@ -41,7 +41,7 @@ const challengeInput = (index: number): InputReference => {
   return { kind: 'operand', index: index - 2 }
 }
 
-export const createTransactionSignatureVerifyCompositionMapping = (): PlacementCompositionMapping => {
+export const createTransactionSignatureVerifyCompositionMapping = (): PlacementCompositionEntry => {
   const steps: CompositionStep[] = []
   let nextIntermediateIndex = 0
   const allocateIntermediate = (): number => nextIntermediateIndex++

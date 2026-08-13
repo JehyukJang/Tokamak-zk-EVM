@@ -350,7 +350,7 @@ export class Synthesizer implements SynthesizerInterface
     if (dataAliasGeometries.length === 0) {
       throw new Error('Synthesizer: MemoryLoad requires at least one alias geometry')
     }
-    const composition = this.subcircuitLibrary.placementCompositionManager.get('MemoryLoad')
+    const composition = this.subcircuitLibrary.placementCompositionMapping.MemoryLoad
     const step = composition.steps[0]
     if (step === undefined) {
       throw new Error('Synthesizer: MemoryLoad composition has no placement step')
@@ -426,7 +426,7 @@ export class Synthesizer implements SynthesizerInterface
     operands: DataPt[],
     basePlacementIndex: number,
   ): PreparedComposition {
-    const composition = this.subcircuitLibrary.placementCompositionManager.get(operation)
+    const composition = this.subcircuitLibrary.placementCompositionMapping[operation]
     if (composition.placementStrategy !== 'generic' || composition.numSteps === 'dynamic'
       || composition.numOperands === 'dynamic' || operands.length !== composition.numOperands) {
       throw new Error(`Synthesizer: ${operation} has an invalid fixed generic composition`)
@@ -495,7 +495,7 @@ export class Synthesizer implements SynthesizerInterface
     operands: DataPt[],
     basePlacementIndex: number,
   ): PreparedComposition {
-    const composition = this.subcircuitLibrary.placementCompositionManager.get('Poseidon')
+    const composition = this.subcircuitLibrary.placementCompositionMapping.Poseidon
     const step = composition.steps[0]
     if (composition.placementStrategy !== 'poseidon' || composition.numSteps !== 'dynamic'
       || composition.numOperands !== 'dynamic' || composition.numResults !== 1
