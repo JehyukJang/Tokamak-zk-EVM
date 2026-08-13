@@ -149,7 +149,7 @@ export class InstructionHandler {
         throw new Error('Debug: Raw address to call mismatch between EVM and Synthesizer')
       }
       const addressMaskPt = this.parent.getReservedVariableFromBuffer('ADDRESS_MASK')
-      const preparedTargetMask = this._prepareFixedGenericComposition(
+      const preparedTargetMask = this.parent.prepareFixedGenericComposition(
         'AND',
         [rawCodeAddressPt, addressMaskPt],
         this.parent.placements.length,
@@ -749,7 +749,7 @@ export class InstructionHandler {
       case 'ADDMOD':
       case 'MULMOD':
       case 'EXP':
-        preparedComposition = this._prepareFixedGenericComposition(
+        preparedComposition = this.parent.prepareFixedGenericComposition(
           op,
           inPts,
           this.parent.placements.length,
@@ -772,14 +772,14 @@ export class InstructionHandler {
           if (bytesToBigInt(opts.memOut!) !== recoveredValue) {
             throw new Error(`Synthesizer: ${op}: Memory data to load mismatch`)
           }
-          preparedComposition = this._preparePoseidonComposition(
+          preparedComposition = this.parent.preparePoseidonComposition(
             viewDataPts,
             this.parent.placements.length,
           )
         }
         break
       default:
-        preparedComposition = this._prepareFixedGenericComposition(
+        preparedComposition = this.parent.prepareFixedGenericComposition(
           op as Operator,
           inPts,
           this.parent.placements.length,
@@ -929,7 +929,7 @@ export class InstructionHandler {
             const calldataMemoryPt = MemoryPt.simulateMemoryPt(calldataMemoryPts);
             const dataAliasInfos = calldataMemoryPt.getDataAlias(i, 32);
             if (dataAliasInfos.length > 0) {
-              const preparedComposition = this._prepareMemoryLoadViewComposition(
+              const preparedComposition = this.parent.prepareMemoryLoadViewComposition(
                 dataAliasInfos,
                 32,
                 this.parent.placements.length,
@@ -1185,7 +1185,7 @@ export class InstructionHandler {
               UINT256_DATA_PT_TYPE,
             )
           } else {
-            const preparedComposition = this._prepareMemoryLoadViewComposition(
+            const preparedComposition = this.parent.prepareMemoryLoadViewComposition(
               dataAliasInfos,
               32,
               this.parent.placements.length,
@@ -1204,7 +1204,7 @@ export class InstructionHandler {
           const originalDataPt = inPts[1]
           let dataPtToStore = originalDataPt
           if (op === 'MSTORE8') {
-            const preparedComposition = this._prepareFixedGenericComposition(
+            const preparedComposition = this.parent.prepareFixedGenericComposition(
               'AND',
               [
                 this.parent.loadArbitraryStatic(
@@ -1477,7 +1477,7 @@ export class InstructionHandler {
   
       const dataAliasInfos = memoryPt.getDataAlias(_offset, _length);
       if (dataAliasInfos.length > 0) {
-        const preparedComposition = this._prepareMemoryLoadViewComposition(
+        const preparedComposition = this.parent.prepareMemoryLoadViewComposition(
           dataAliasInfos,
           _length,
           nextPlacementIndex,

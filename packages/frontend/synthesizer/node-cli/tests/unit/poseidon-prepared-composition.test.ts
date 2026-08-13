@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createPoseidonCompositionMapping } from '../../../core/src/subcircuit/special-builders/poseidonComposition.ts';
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
-import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
+import { Synthesizer } from '../../../core/src/synthesizer/synthesizer.ts';
 import { StateManager } from '../../../core/src/synthesizer/handlers/stateManager.ts';
 import {
   UINT256_DATA_PT_TYPE,
@@ -46,13 +46,7 @@ const prepare = (operands: DataPt[]): PreparedComposition => {
     loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
       dataPt(value, 5, nextStaticWireIndex++, dataPtType)),
   }
-  const handler = new InstructionHandler(parent as never, {} as never, {} as never)
-  return (handler as unknown as {
-    _preparePoseidonComposition(
-      input: DataPt[],
-      basePlacementIndex: number,
-    ): PreparedComposition;
-  })._preparePoseidonComposition(operands, 0)
+  return Synthesizer.prototype.preparePoseidonComposition.call(parent, operands, 0)
 }
 
 function createState(): StateManager {

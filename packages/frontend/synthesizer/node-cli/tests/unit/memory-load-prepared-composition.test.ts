@@ -7,6 +7,7 @@ import { MemoryPt } from '../../../core/src/synthesizer/dataStructure/memoryPt.t
 import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
 import { StateManager } from '../../../core/src/synthesizer/handlers/stateManager.ts';
 import { SubcircuitOutputCalculator } from '../../../core/src/synthesizer/handlers/subcircuitOutputCalculator.ts';
+import { Synthesizer } from '../../../core/src/synthesizer/synthesizer.ts';
 import {
   BIT_DATA_PT_TYPE,
   UINT256_DATA_PT_TYPE,
@@ -73,6 +74,7 @@ const createHarness = () => {
     loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
       dataPt(value, evmInSource, staticWireIndex++, dataPtType)),
     calculateSubcircuitOutputValues: outputCalculator.calculateSubcircuitOutputValues.bind(outputCalculator),
+    prepareMemoryLoadViewComposition: Synthesizer.prototype.prepareMemoryLoadViewComposition,
   }
   const handler = new InstructionHandler(parent as never, {} as never, {} as never)
   const state = Object.assign(Object.create(StateManager.prototype), {
@@ -85,18 +87,12 @@ const createHarness = () => {
 }
 
 const prepareView = (
-  handler: InstructionHandler,
+  parent: ReturnType<typeof createHarness>['parent'],
   memoryPt: MemoryPt,
   offset: number,
   length: number,
   basePlacementIndex = 6,
-): PreparedComposition => (handler as unknown as {
-  _prepareMemoryLoadViewComposition(
-    geometries: ReturnType<MemoryPt['getDataAlias']>,
-    viewByteLength: number,
-    basePlacementIndex: number,
-  ): PreparedComposition;
-})._prepareMemoryLoadViewComposition(
+): PreparedComposition => parent.prepareMemoryLoadViewComposition(
   memoryPt.getDataAlias(offset, length),
   length,
   basePlacementIndex,
@@ -156,12 +152,12 @@ const wordPt = (value: bigint, source: number): DataPt =>
 
 describe('prepared MemoryLoad compositions', () => {
   it('prepares a serial fragment chain without recording a placement', () => {
-    const { handler, parent, state } = createHarness()
+    const { parent, state } = createHarness()
     const memoryPt = new MemoryPt()
     memoryPt.write(0, 2, wordPt(0x1122n, 1))
     memoryPt.write(2, 2, wordPt(0x3344n, 2))
 
-    const prepared = prepareView(handler, memoryPt, 0, 4)
+    const prepared = prepareView(parent, memoryPt, 0, 4)
 
     expect(parent.placements).toHaveLength(6)
     expect(prepared.steps).toHaveLength(2)
@@ -175,11 +171,11 @@ describe('prepared MemoryLoad compositions', () => {
   })
 
   it('rejects a fragment chain with a substituted prior output before recording anything', () => {
-    const { handler, state } = createHarness()
+    const { parent, state } = createHarness()
     const memoryPt = new MemoryPt()
     memoryPt.write(0, 2, wordPt(0x1122n, 1))
     memoryPt.write(2, 2, wordPt(0x3344n, 2))
-    const prepared = prepareView(handler, memoryPt, 0, 4)
+    const prepared = prepareView(parent, memoryPt, 0, 4)
     const mutated: PreparedComposition = {
       ...prepared,
       steps: [

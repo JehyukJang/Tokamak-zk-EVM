@@ -1,7 +1,7 @@
 import { RunTxResult } from '@ethereumjs/vm';
 import { TokamakL2StateManager, TokamakL2Tx } from 'tokamak-l2js';
-import { DataPt, DataPtType, Placements, PreparedComposition, ReservedVariable } from './index.ts';
-import { ReservedBuffer, type CompositionSubcircuit } from '../../subcircuit/configuredTypes.ts';
+import { DataAliasGeometries, DataPt, DataPtType, Placements, PreparedComposition, ReservedVariable } from './index.ts';
+import { ReservedBuffer, type CompositionSubcircuit, type Operator } from '../../subcircuit/configuredTypes.ts';
 import type { ResolvedSubcircuitLibrary } from '../../subcircuit/libraryTypes.ts';
 import type { BlockInfo } from '../../app/types.ts';
 
@@ -37,6 +37,20 @@ export interface ISynthesizerProvider {
     usage: string,
   ): void;
   placeComposition(preparedComposition: PreparedComposition): void;
+  prepareMemoryLoadViewComposition(
+    dataAliasGeometries: DataAliasGeometries,
+    viewByteLength: number,
+    basePlacementIndex: number,
+  ): PreparedComposition;
+  prepareFixedGenericComposition(
+    operation: Operator,
+    operands: DataPt[],
+    basePlacementIndex: number,
+  ): PreparedComposition;
+  preparePoseidonComposition(
+    operands: DataPt[],
+    basePlacementIndex: number,
+  ): PreparedComposition;
   calculateSubcircuitOutputValues(
     name: CompositionSubcircuit,
     values: bigint[],

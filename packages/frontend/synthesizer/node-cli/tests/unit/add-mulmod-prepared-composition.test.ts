@@ -4,7 +4,7 @@ import { createAddMulModCompositionMappings } from '../../../core/src/subcircuit
 import { createDivisionCompositionMappings } from '../../../core/src/subcircuit/special-builders/divModComposition.ts';
 import { createExpCompositionMapping } from '../../../core/src/subcircuit/special-builders/expComposition.ts';
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
-import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
+import { Synthesizer } from '../../../core/src/synthesizer/synthesizer.ts';
 import {
   BIT_DATA_PT_TYPE,
   UINT128_DATA_PT_TYPE,
@@ -165,14 +165,7 @@ const submit = (
     loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
       dataPt(value, 5, nextStaticWireIndex++, dataPtType)),
   }
-  const handler = new InstructionHandler(parent as never, {} as never, {} as never)
-  const preparedComposition = (handler as unknown as {
-    _prepareFixedGenericComposition(
-      operation: FixedMultiStepOperation,
-      operands: DataPt[],
-      basePlacementIndex: number,
-    ): PreparedComposition;
-  })._prepareFixedGenericComposition(
+  const preparedComposition = Synthesizer.prototype.prepareFixedGenericComposition.call(parent,
     operation,
     operation === 'ADDMOD' || operation === 'MULMOD'
       ? [dataPt(3n, 10), dataPt(4n, 11), dataPt(5n, 12)]
@@ -205,7 +198,7 @@ describe('fixed generic prepared compositions', () => {
         ],
       }],
     }
-    const handler = new InstructionHandler({
+    const parent = {
       placements: [],
       subcircuitLibrary: {
         placementCompositionManager: { get: () => composition },
@@ -219,15 +212,14 @@ describe('fixed generic prepared compositions', () => {
       },
       calculateSubcircuitOutputValues: () => [1n, 2n, 3n],
       loadArbitraryStatic: vi.fn(),
-    } as never, {} as never, {} as never)
+    }
 
-    const prepared = (handler as unknown as {
-      _prepareFixedGenericComposition(
-        operation: FixedMultiStepOperation,
-        operands: DataPt[],
-        basePlacementIndex: number,
-      ): PreparedComposition;
-    })._prepareFixedGenericComposition('ADDMOD', [dataPt(7n, 10)], 4)
+    const prepared = Synthesizer.prototype.prepareFixedGenericComposition.call(
+      parent as never,
+      'ADDMOD',
+      [dataPt(7n, 10)],
+      4,
+    )
 
     expect(prepared.resultPts).toMatchObject([
       { source: 4, wireIndex: 0, value: 1n, dataPtType: BIT_DATA_PT_TYPE },

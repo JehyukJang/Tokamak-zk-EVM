@@ -8,6 +8,7 @@ import { StackPt } from '../../../core/src/synthesizer/dataStructure/stackPt.ts'
 import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
 import { ContextManager } from '../../../core/src/synthesizer/handlers/stateManager.ts';
 import { SubcircuitOutputCalculator } from '../../../core/src/synthesizer/handlers/subcircuitOutputCalculator.ts';
+import { Synthesizer } from '../../../core/src/synthesizer/synthesizer.ts';
 import {
   UINT256_DATA_PT_TYPE,
   type DataPt,
@@ -71,6 +72,7 @@ const createHarness = () => {
     loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
       dataPt(value, evmInSource, staticWireIndex++, dataPtType)),
     calculateSubcircuitOutputValues: outputCalculator.calculateSubcircuitOutputValues.bind(outputCalculator),
+    prepareMemoryLoadViewComposition: Synthesizer.prototype.prepareMemoryLoadViewComposition,
     placeComposition: vi.fn(),
   }
   return { handler: new InstructionHandler(parent as never, {} as never, {} as never), parent }

@@ -84,10 +84,9 @@ const createHarness = (
     placements: [],
     getReservedVariableFromBuffer,
     placeComposition: vi.fn(),
+    prepareFixedGenericComposition,
   };
   const handler = new InstructionHandler(parent as never, state as never, {} as never);
-  vi.spyOn(handler as never, '_prepareFixedGenericComposition' as never)
-    .mockImplementation(prepareFixedGenericComposition as never);
   const message = {
     depth: 1,
     codeAddress: createAddressFromBigInt(normalizedTarget),
