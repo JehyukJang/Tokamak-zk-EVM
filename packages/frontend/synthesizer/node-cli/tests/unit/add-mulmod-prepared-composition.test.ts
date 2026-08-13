@@ -187,6 +187,55 @@ const submit = (
 }
 
 describe('fixed multi-step arithmetic prepared compositions', () => {
+  it('prepares every declared result of a fixed generic composition', () => {
+    const composition = {
+      placementStrategy: 'generic' as const,
+      constants: [],
+      numSteps: 1,
+      numOperands: 1,
+      numResults: 3,
+      steps: [{
+        subcircuit: 'ALU1' as const,
+        selector: null,
+        inputs: [{ kind: 'operand' as const, index: 0 }],
+        outputs: [
+          { kind: 'result' as const, index: 0 },
+          { kind: 'result' as const, index: 1 },
+          { kind: 'result' as const, index: 2 },
+        ],
+      }],
+    }
+    const handler = new InstructionHandler({
+      placements: [],
+      subcircuitLibrary: {
+        placementCompositionManager: { get: () => composition },
+        subcircuitInfoByName: new Map([['ALU1', {
+          logicalInterface: {
+            inputs: [],
+            outputs: [uint(1), uint(32), uint(256)]
+              .map((logicalType, index) => ({ name: `out${index}`, logicalType })),
+          },
+        }]]),
+      },
+      calculateSubcircuitOutputValues: () => [1n, 2n, 3n],
+      loadArbitraryStatic: vi.fn(),
+    } as never, {} as never, {} as never)
+
+    const prepared = (handler as unknown as {
+      _prepareFixedMultiStepArithmeticComposition(
+        operation: FixedMultiStepOperation,
+        operands: DataPt[],
+        basePlacementIndex: number,
+      ): PreparedComposition;
+    })._prepareFixedMultiStepArithmeticComposition('ADDMOD', [dataPt(7n, 10)], 4)
+
+    expect(prepared.resultPts).toMatchObject([
+      { source: 4, wireIndex: 0, value: 1n, dataPtType: BIT_DATA_PT_TYPE },
+      { source: 4, wireIndex: 1, value: 2n, dataPtType: UINT32_DATA_PT_TYPE },
+      { source: 4, wireIndex: 2, value: 3n, dataPtType: UINT256_DATA_PT_TYPE },
+    ])
+  })
+
   it('prepares the two ADDMOD steps with typed intermediate outputs', () => {
     const { preparedComposition, resultPts } = submit('ADDMOD')
 

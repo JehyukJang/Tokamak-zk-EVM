@@ -590,7 +590,6 @@ export class InstructionHandler {
       composition.placementStrategy !== 'generic'
       || composition.numSteps === 'dynamic'
       || composition.numOperands === 'dynamic'
-      || composition.numResults !== 1
       || operands.length !== composition.numOperands
     ) {
       throw new Error(`Synthesizer: ${operation} has an invalid fixed generic composition`)
