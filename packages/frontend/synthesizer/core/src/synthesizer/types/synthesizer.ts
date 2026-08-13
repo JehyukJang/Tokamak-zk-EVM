@@ -1,6 +1,5 @@
 import { RunTxResult } from '@ethereumjs/vm';
 import { TokamakL2StateManager, TokamakL2Tx } from 'tokamak-l2js';
-import { StateManager } from '../handlers/index.ts';
 import { DataPt, DataPtType, Placements, PreparedComposition, ReservedVariable } from './index.ts';
 import { ReservedBuffer } from '../../subcircuit/configuredTypes.ts';
 import type { OutputCalculatedSubcircuit } from '../handlers/subcircuitOutputCalculator.ts';
@@ -29,10 +28,8 @@ export interface SynthesizerInterface {
 }
 
 export interface ISynthesizerProvider {
-  get state(): StateManager
   get placements(): Placements
   readonly subcircuitLibrary: ResolvedSubcircuitLibrary
-  readonly cachedOpts: SynthesizerOpts
 
   placeBuffer(
     buffer: ReservedBuffer,

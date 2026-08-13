@@ -15,7 +15,7 @@ import { InterpreterStep, Message } from '@ethereumjs/evm'
 import { FUNCTION_INPUT_LENGTH, POSEIDON_INPUTS } from 'tokamak-l2js'
 import { DataPtFactory, MemoryPt, StackPt } from '../dataStructure/index.ts';
 import { ArithmeticOperator, type ArithmeticSubcircuit } from '../../subcircuit/configuredTypes.ts';
-import { ContextManager, type ContextConstructionData } from './stateManager.ts';
+import { ContextManager, type ContextConstructionData, type StateManager } from './stateManager.ts';
 
 export interface HandlerOpts {
   op: SynthesizerSupportedOpcodes,
@@ -61,16 +61,16 @@ const checkRequiredInput = (...input: unknown[]): void => {
 
 export class InstructionHandler {
   public synthesizerHandlers!: Map<number, SynthesizerOpHandler>
-  private cachedOpts: SynthesizerOpts
   constructor(
     private parent: ISynthesizerProvider,
+    private readonly state: StateManager,
+    private readonly cachedOpts: SynthesizerOpts,
   ) {
-    this.cachedOpts = parent.cachedOpts
     this._createSynthesizerHandlers()
   }
 
   public initializeMessageContext(message: Message): void {
-    this.parent.state.recordMessageCodeAddress(message.codeAddress.toString())
+    this.state.recordMessageCodeAddress(message.codeAddress.toString())
     if (message.isCreate) {
       throw new Error('CREATE is not supported.')
     }
@@ -101,15 +101,15 @@ export class InstructionHandler {
         })),
       ]
       callDataByteLength = message.data.length
-      if (this.parent.state.cachedOrigin === undefined) {
+      if (this.state.cachedOrigin === undefined) {
         throw new Error('Sender address must be verified first')
       }
-      callerPt = DataPtFactory.deepCopy(this.parent.state.cachedOrigin)
+      callerPt = DataPtFactory.deepCopy(this.state.cachedOrigin)
       const contractAddressPt = this.parent.getReservedVariableFromBuffer('CONTRACT_ADDRESS')
       codeAddressPt = DataPtFactory.deepCopy(contractAddressPt)
       storageAddressPt = DataPtFactory.deepCopy(contractAddressPt)
     } else if (depth > 0) {
-      const parentContext = this.parent.state.contextByDepth[depth - 1]
+      const parentContext = this.state.contextByDepth[depth - 1]
       if (parentContext === undefined) {
         throw new Error('Debug: No parent context')
       }
@@ -216,8 +216,8 @@ export class InstructionHandler {
       codeAddressPt,
       storageAddressPt,
     }
-    this.parent.state.beginFrame(depth)
-    this.parent.state.contextByDepth[depth] = new ContextManager(contextData)
+    this.state.beginFrame(depth)
+    this.state.contextByDepth[depth] = new ContextManager(contextData)
   }
 
   private _createHandlerOpts(opName: SynthesizerSupportedOpcodes, context: ContextManager): HandlerOpts {
@@ -227,7 +227,7 @@ export class InstructionHandler {
     }
     const depth = prevStepResult.depth;
     const callerAddr = context.callerPt.value;
-    const originAddr = this.parent.state.cachedOrigin?.value
+    const originAddr = this.state.cachedOrigin?.value
     if (originAddr === undefined) {
       throw new Error('Debug: Origin address is not verified')
     }
@@ -916,7 +916,7 @@ export class InstructionHandler {
   ) {
     // The cache-entry and retained-initial-read branches are mutually exclusive,
     // so each lookup places EqualBatch at most once.
-    const cachedEntry = this.parent.state.storageCache.get(addressValue, keyValue)
+    const cachedEntry = this.state.storageCache.get(addressValue, keyValue)
     if (cachedEntry !== undefined) {
       this._constrainStorageLocationEquality(
         addressPt,
@@ -927,7 +927,7 @@ export class InstructionHandler {
       return cachedEntry
     }
 
-    const initialRead = this.parent.state.initialStorageReads.get(addressValue, keyValue)
+    const initialRead = this.state.initialStorageReads.get(addressValue, keyValue)
     if (initialRead === undefined) {
       return undefined
     }
@@ -968,7 +968,7 @@ export class InstructionHandler {
       if (cachedEntry.latestValuePt.value !== valueStored) {
         throw new Error('Synthesizer: Cached storage value does not match EVM storage')
       }
-      this.parent.state.storageCache.set(addressValue, keyValue, cachedEntry)
+      this.state.storageCache.set(addressValue, keyValue, cachedEntry)
       return DataPtFactory.deepCopy(cachedEntry.latestValuePt)
     }
 
@@ -995,8 +995,8 @@ export class InstructionHandler {
       keyPt: DataPtFactory.deepCopy(keyPt),
       valuePt: DataPtFactory.deepCopy(valuePt),
     }
-    this.parent.state.initialStorageReads.add(addressValue, keyValue, initialRead)
-    this.parent.state.storageCache.set(addressValue, keyValue, {
+    this.state.initialStorageReads.add(addressValue, keyValue, initialRead)
+    this.state.storageCache.set(addressValue, keyValue, {
       canonicalAddressPt: initialRead.addressPt,
       canonicalKeyPt: initialRead.keyPt,
       latestValuePt: initialRead.valuePt,
@@ -1024,7 +1024,7 @@ export class InstructionHandler {
     }
 
     const cachedEntry = this._getCachedStorageEntry(addressValue, keyValue, addressPt, keyPt)
-    this.parent.state.storageCache.set(addressValue, keyValue, {
+    this.state.storageCache.set(addressValue, keyValue, {
       canonicalAddressPt: cachedEntry?.canonicalAddressPt ?? addressPt,
       canonicalKeyPt: cachedEntry?.canonicalKeyPt ?? keyPt,
       latestValuePt: symbolDataPt,
@@ -1174,7 +1174,7 @@ export class InstructionHandler {
   ): void {
     const _retrieveOriginAddressPt = (): DataPt => {
       checkRequiredInput(opts.originAddress)
-      const dataPt = this.parent.state.cachedOrigin
+      const dataPt = this.state.cachedOrigin
       if (dataPt === undefined) {
         throw new Error('Synthesizer: Origin address is not populated by TransactionSignatureVerify')
       }

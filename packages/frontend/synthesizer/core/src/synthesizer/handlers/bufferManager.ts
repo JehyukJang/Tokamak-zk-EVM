@@ -4,16 +4,14 @@ import { DataPt, DataPtDescription, DataPtType, ISynthesizerProvider, ReservedVa
 import { DataPtFactory } from '../dataStructure/index.ts';
 import { BUFFER_DESCRIPTION, BUFFER_LIST } from '../../subcircuit/configuredTypes.ts';
 import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
+import type { StateManager } from './stateManager.ts';
 
 export class BufferManager {
-  private parent: ISynthesizerProvider;
-  private cachedOpts: SynthesizerOpts;
-
   constructor(
-    parent: ISynthesizerProvider,
+    private parent: ISynthesizerProvider,
+    private readonly state: StateManager,
+    private readonly cachedOpts: SynthesizerOpts,
   ) {
-    this.parent = parent;
-    this.cachedOpts = parent.cachedOpts;
     this._initBuffers();
   }
 
@@ -51,7 +49,7 @@ export class BufferManager {
   ): DataPt {
     const cacheKey = dataPtType
     if (desc === undefined) {
-      const cachedDataPt = this.parent.state.cachedEVMIn.get(value)?.get(cacheKey)
+      const cachedDataPt = this.state.cachedEVMIn.get(value)?.get(cacheKey)
       if (cachedDataPt !== undefined) {
         return DataPtFactory.deepCopy(cachedDataPt)
       }
@@ -66,9 +64,9 @@ export class BufferManager {
     const inPt = DataPtFactory.create(inPtRaw, value)
     const outPt = DataPtFactory.createBufferTwin(inPt)
     this.parent.appendBufferWirePair(inPt, outPt, true)
-    const cachedByDomainAndLayout = this.parent.state.cachedEVMIn.get(value) ?? new Map<string, DataPt>()
+    const cachedByDomainAndLayout = this.state.cachedEVMIn.get(value) ?? new Map<string, DataPt>()
     cachedByDomainAndLayout.set(cacheKey, outPt)
-    this.parent.state.cachedEVMIn.set(value, cachedByDomainAndLayout)
+    this.state.cachedEVMIn.set(value, cachedByDomainAndLayout)
     return DataPtFactory.deepCopy(outPt)
   }
 

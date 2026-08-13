@@ -35,9 +35,7 @@ const dataPt = (
 const prepare = (operands: DataPt[]): PreparedComposition => {
   let nextStaticWireIndex = 0
   const parent = {
-    cachedOpts: {},
     placements: [],
-    state: {},
     subcircuitLibrary: {
       placementCompositionManager: { get: () => poseidonComposition },
       subcircuitInfoByName: new Map([['Poseidon', { logicalInterface }]]),
@@ -48,7 +46,7 @@ const prepare = (operands: DataPt[]): PreparedComposition => {
     loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
       dataPt(value, 5, nextStaticWireIndex++, dataPtType)),
   }
-  const handler = new InstructionHandler(parent as never)
+  const handler = new InstructionHandler(parent as never, {} as never, {} as never)
   return (handler as unknown as {
     _preparePoseidonComposition(
       input: DataPt[],

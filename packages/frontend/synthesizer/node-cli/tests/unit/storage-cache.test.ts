@@ -68,8 +68,8 @@ const createStorageHarness = (initialValue: bigint) => {
   const stateManager = {
     getStorage: vi.fn(async () => setLengthLeft(bigIntToBytes(storageValue), 32)),
   };
+  const cachedOpts = { stateManager };
   const parent: any = {
-    cachedOpts: { stateManager },
     subcircuitLibrary: {
       subcircuitInfoByName: new Map([['EqualBatch', equalBatchInfo]]),
     },
@@ -86,8 +86,9 @@ const createStorageHarness = (initialValue: bigint) => {
   return {
     address,
     addressValue,
-    handler: new InstructionHandler(parent),
+    handler: new InstructionHandler(parent, parent.state, cachedOpts as never),
     parent,
+    stateManager,
     setStorageValue: (value: bigint) => {
       storageValue = value;
     },
@@ -503,7 +504,7 @@ describe('InstructionHandler storage cache', () => {
   });
 
   it('rejects a storageAddressPt that does not match the EVM storage address', async () => {
-    const { address, handler, parent } = createStorageHarness(5n);
+    const { address, handler, parent, stateManager } = createStorageHarness(5n);
     const stackPt = new StackPt();
     stackPt.push(dataPt(1n, 61));
 
@@ -514,7 +515,7 @@ describe('InstructionHandler storage cache', () => {
       thisContext: { storageAddressPt: dataPt(0x9999n, 60) },
     } as any)).rejects.toThrow('Storage address mismatch');
 
-    expect(parent.cachedOpts.stateManager.getStorage).not.toHaveBeenCalled();
+    expect(stateManager.getStorage).not.toHaveBeenCalled();
     expect(parent.state.initialStorageReads.entries).toHaveLength(0);
   });
 });

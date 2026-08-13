@@ -31,9 +31,9 @@ export class Synthesizer implements SynthesizerInterface
     this._cachedOpts = opts
     this.subcircuitLibrary = subcircuitLibrary
     this._state = new StateManager(this)
-    this._bufferManager = new BufferManager(this)
+    this._bufferManager = new BufferManager(this, this._state, this._cachedOpts)
     this._subcircuitOutputCalculator = new SubcircuitOutputCalculator()
-    this._instructionHandlers =  new InstructionHandler(this)
+    this._instructionHandlers = new InstructionHandler(this, this._state, this._cachedOpts)
     this._eventHandlerError = undefined
     this._hasEventHandlerError = false
     this._stepLogs = []

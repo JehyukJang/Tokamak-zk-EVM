@@ -154,9 +154,7 @@ const submit = (
   })
   let nextStaticWireIndex = 0
   const parent = {
-    cachedOpts: {},
     placements: [],
-    state: {},
     subcircuitLibrary: {
       placementCompositionManager: {
         get: (name: FixedMultiStepOperation) => fixedMultiStepCompositions.get(name)!,
@@ -167,7 +165,7 @@ const submit = (
     loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
       dataPt(value, 5, nextStaticWireIndex++, dataPtType)),
   }
-  const handler = new InstructionHandler(parent as never)
+  const handler = new InstructionHandler(parent as never, {} as never, {} as never)
   const preparedComposition = (handler as unknown as {
     _prepareFixedMultiStepArithmeticComposition(
       operation: FixedMultiStepOperation,

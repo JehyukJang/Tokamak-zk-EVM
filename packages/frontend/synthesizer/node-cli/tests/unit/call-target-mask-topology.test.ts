@@ -81,13 +81,11 @@ const createHarness = (
     recordMessageCodeAddress,
   };
   const parent = {
-    cachedOpts: {},
     placements: [],
-    state,
     getReservedVariableFromBuffer,
     placeComposition: vi.fn(),
   };
-  const handler = new InstructionHandler(parent as never);
+  const handler = new InstructionHandler(parent as never, state as never, {} as never);
   vi.spyOn(handler as never, '_prepareSingleStepArithmeticComposition' as never)
     .mockImplementation(prepareSingleStepArithmeticComposition as never);
   const message = {
