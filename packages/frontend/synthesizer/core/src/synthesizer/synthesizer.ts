@@ -17,18 +17,18 @@ import { TypedTransaction } from '@ethereumjs/tx';
  */
 export class Synthesizer implements SynthesizerInterface
 {
-  protected _state: StateManager
+  private _state: StateManager
   protected _subcircuitOutputCalculator: SubcircuitOutputCalculator
   protected _bufferManager: BufferManager
   protected _instructionHandlers: InstructionHandler
-  public readonly cachedOpts: SynthesizerOpts
+  private readonly _cachedOpts: SynthesizerOpts
   public readonly subcircuitLibrary: ResolvedSubcircuitLibrary
   private _eventHandlerError: unknown
   private _hasEventHandlerError: boolean
   private _stepLogs: SynthesizerStepLogEntry[]
 
   constructor(opts: SynthesizerOpts, subcircuitLibrary: ResolvedSubcircuitLibrary) {
-    this.cachedOpts = opts
+    this._cachedOpts = opts
     this.subcircuitLibrary = subcircuitLibrary
     this._state = new StateManager(this)
     this._bufferManager = new BufferManager(this)
@@ -135,7 +135,7 @@ export class Synthesizer implements SynthesizerInterface
           }
           await this._applySynthesizerHandler(stepData);
           this._returnMessageCall(stepData.depth);
-          this.state.completeFrame(
+          this._state.completeFrame(
             stepData.depth,
             data.execResult.exceptionError === undefined,
           )
@@ -150,11 +150,11 @@ export class Synthesizer implements SynthesizerInterface
   }
 
   private async _prepareSynthesizeTransaction(): Promise<void> {
-    this.state.resetTransactionTracking()
+    this._state.resetTransactionTracking()
   }
 
   private _finalizeStorageStore(): void {
-    for (const entry of this.state.storageCache.dirtyEntries) {
+    for (const entry of this._state.storageCache.dirtyEntries) {
       this.addReservedVariableToBufferOut('SSTORE_ADDRESS', entry.canonicalAddressPt, true)
       this.addReservedVariableToBufferOut('SSTORE_KEY', entry.canonicalKeyPt, true)
       this.addReservedVariableToBufferOut('SSTORE_VALUE', entry.latestValuePt, true)
@@ -163,8 +163,8 @@ export class Synthesizer implements SynthesizerInterface
 
   private _returnMessageCall(depth: number):void {
     if (depth > 0){
-      const parentContext = this.state.contextByDepth[depth - 1]
-      const childContext = this.state.contextByDepth[depth]
+      const parentContext = this._state.contextByDepth[depth - 1]
+      const childContext = this._state.contextByDepth[depth]
       if (parentContext === undefined || childContext === undefined) {
         throw new Error('Synthesizer: message return context is unavailable')
       }
@@ -179,7 +179,7 @@ export class Synthesizer implements SynthesizerInterface
   }
 
   public async synthesizeTX(): Promise<RunTxResult> {
-    const common = this.cachedOpts.stateManager.common;
+    const common = this._cachedOpts.stateManager.common;
     this._eventHandlerError = undefined
     this._hasEventHandlerError = false
     this._stepLogs = []
@@ -201,7 +201,7 @@ export class Synthesizer implements SynthesizerInterface
     
     const vmOpts: VMOpts = {
       common,
-      stateManager: this.cachedOpts.stateManager,
+      stateManager: this._cachedOpts.stateManager,
       profilerOpts: {reportAfterTx: true},
     };
     const vm = await createVM(vmOpts);
@@ -217,7 +217,7 @@ export class Synthesizer implements SynthesizerInterface
     const block = createBlock(blockData, blockOpts);
     const runTxOpts: RunTxOpts = {
       block,
-      tx: this.cachedOpts.signedTransaction,
+      tx: this._cachedOpts.signedTransaction,
       skipBalance: true,
       skipBlockGasLimitValidation: true,
       skipHardForkValidation: true,
@@ -247,7 +247,7 @@ export class Synthesizer implements SynthesizerInterface
       ...data,
       stack: data.stack.slice().reverse(),
     }
-    const thisContext = this.state.contextByDepth[stepResult.depth];
+    const thisContext = this._state.contextByDepth[stepResult.depth];
     if (thisContext === undefined ) {
       throw new Error('Debug: The current context is not initialized')
     }
@@ -286,10 +286,6 @@ export class Synthesizer implements SynthesizerInterface
       ...stepResult,
       stack: stepResult.stack.slice(),
     }
-  }
-
-  public get state(): StateManager {
-    return this._state;
   }
 
   public get stepLogs(): SynthesizerStepLogEntry[] {

@@ -21,13 +21,11 @@ export interface SynthesizerStepLogEntry {
 }
 
 export interface SynthesizerInterface {
-  get state(): StateManager
   get placements(): Placements
   get stepLogs(): SynthesizerStepLogEntry[]
   get messageCodeAddresses(): readonly string[]
   readonly subcircuitLibrary: ResolvedSubcircuitLibrary
   synthesizeTX(): Promise<RunTxResult>
-  cachedOpts: SynthesizerOpts
 }
 
 export interface ISynthesizerProvider {
