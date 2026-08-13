@@ -5,9 +5,7 @@ import {
   Address,
   BIGINT_0,
   bytesToBigInt,
-  setLengthRight,
   createAddressFromBigInt,
-  bigIntToHex,
   setLengthLeft,
   bigIntToBytes,
 } from '@ethereumjs/util'
@@ -15,6 +13,7 @@ import { InterpreterStep, Message } from '@ethereumjs/evm'
 import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js'
 import { DataPtFactory, MemoryPt, StackPt } from '../dataStructure/index.ts';
 import type { PlacementManager } from './placementManager.ts';
+import type { MemoryManager } from './memoryManager.ts';
 import type { MessageContext, StateManager } from './stateManager.ts';
 
 export interface HandlerOpts {
@@ -36,25 +35,6 @@ export interface SynthesizerOpHandler {
   (context: MessageContext, stepResult: InterpreterStep): void | Promise<void>
 }
 
-/**
- * Side-effect-free preparation for a read over consecutive memory views. The
- * caller records each composition before consuming the corresponding value.
- */
-type PreparedMemoryRead = Readonly<{
-  compositions: readonly PreparedComposition[]
-  viewDataPts: DataPt[]
-  recoveredValue: bigint
-}>
-
-/**
- * Side-effect-free preparation for a memory copy. The caller records the
- * compositions in order before writing the destination entries to MemoryPt.
- */
-type PreparedMemoryCopy = Readonly<{
-  compositions: readonly PreparedComposition[]
-  destinationEntries: MemoryPts
-}>
-
 const checkRequiredInput = (...input: unknown[]): void => {
   if (input.some(v => v === undefined)) throw new Error('Required inputs are missing')
 }
@@ -65,6 +45,7 @@ export class InstructionHandler {
     private parent: ISynthesizerProvider,
     private readonly state: StateManager,
     private readonly placementManager: PlacementManager,
+    private readonly memoryManager: MemoryManager,
     private readonly cachedOpts: SynthesizerOpts,
   ) {
     this._createSynthesizerHandlers()
@@ -184,7 +165,7 @@ export class InstructionHandler {
           break
       }
 
-      const preparedMemoryCopy = this._prepareMemoryCopy(
+      const preparedMemoryCopy = this.memoryManager.prepareMemoryCopy(
         parentContext.memoryPt,
         inputOffset,
         inputLength,
@@ -765,7 +746,7 @@ export class InstructionHandler {
           checkRequiredInput(opts.memOut)
           const memOffset = ins[0]
           const dataLength = ins[1]
-          const preparedMemoryRead = this._prepareMemoryRead(
+          const preparedMemoryRead = this.memoryManager.prepareMemoryRead(
             opts.memoryPt,
             memOffset,
             dataLength,
@@ -964,7 +945,7 @@ export class InstructionHandler {
           const dataLength = ins[2]
           checkRequiredInput(opts.memOut)
           if (dataLength !== BIGINT_0) {
-            const preparedMemoryCopy = this._prepareMemoryCopy(
+            const preparedMemoryCopy = this.memoryManager.prepareMemoryCopy(
               MemoryPt.simulateMemoryPt(opts.thisContext.callDataMemoryPts),
               dataOffset,
               dataLength,
@@ -995,7 +976,7 @@ export class InstructionHandler {
           checkRequiredInput(opts.memOut)
           const thisAddress = opts.thisAddress ?? this.cachedOpts.signedTransaction.to
           if (dataLength !== BIGINT_0) {
-            const memPts: MemoryPts = this._prepareCodeMemoryPts(
+            const memPts: MemoryPts = this.memoryManager.prepareCodeMemoryPts(
               opts.memOut!,
               bytesToBigInt(thisAddress.toBytes()),
               memOffset,
@@ -1030,7 +1011,7 @@ export class InstructionHandler {
           const dataLength = ins[3]
           checkRequiredInput(opts.memOut)
           if (dataLength !== BIGINT_0) {
-            const memPts: MemoryPts = this._prepareCodeMemoryPts(
+            const memPts: MemoryPts = this.memoryManager.prepareCodeMemoryPts(
               opts.memOut!,
               addressBigInt,
               memOffset,
@@ -1062,7 +1043,7 @@ export class InstructionHandler {
             throw new Error(`Synthesizer: ${op}: requested range exceeds return data`)
           }
           if (dataLength !== BIGINT_0) {
-            const preparedMemoryCopy = this._prepareMemoryCopy(
+            const preparedMemoryCopy = this.memoryManager.prepareMemoryCopy(
               MemoryPt.simulateMemoryPt(opts.thisContext.returnDataMemoryPts),
               returnDataOffset,
               dataLength,
@@ -1128,7 +1109,7 @@ export class InstructionHandler {
       )
     }
 
-    const preparedMemoryRead = this._prepareMemoryRead(
+    const preparedMemoryRead = this.memoryManager.prepareMemoryRead(
       opts.memoryPt,
       memOffset,
       dataLength,
@@ -1277,7 +1258,7 @@ export class InstructionHandler {
         {
           const [dstOffset, srcOffset, length] = ins
           checkRequiredInput(opts.memOut)
-          const preparedMemoryCopy = this._prepareMemoryCopy(
+          const preparedMemoryCopy = this.memoryManager.prepareMemoryCopy(
             opts.memoryPt,
             srcOffset,
             length,
@@ -1312,7 +1293,7 @@ export class InstructionHandler {
             ? outLength
             : BigInt(opts.thisContext.returnDataByteLength)
           if (copiedLength !== BIGINT_0) {
-            const preparedMemoryCopy = this._prepareMemoryCopy(
+            const preparedMemoryCopy = this.memoryManager.prepareMemoryCopy(
               MemoryPt.simulateMemoryPt(opts.thisContext.returnDataMemoryPts),
               0n,
               copiedLength,
@@ -1342,7 +1323,7 @@ export class InstructionHandler {
         {
           checkRequiredInput(opts.memOut)
           const [offset, length] = ins;
-          const preparedMemoryCopy = this._prepareMemoryCopy(
+          const preparedMemoryCopy = this.memoryManager.prepareMemoryCopy(
             opts.memoryPt,
             offset,
             length,
@@ -1376,126 +1357,4 @@ export class InstructionHandler {
     }
   }
 
-  private _prepareCodeMemoryPts(
-    code: Uint8Array<ArrayBufferLike>,
-    targetAddress: bigint,
-    memOffset: bigint,
-    codeOffset: bigint = 0n,
-    dataLength: bigint = BigInt(code.byteLength),
-  ): MemoryPts {
-    // Copied from @ethereumjs/evm/src/opcdes/util.ts
-    const getDataSlice = (data: Uint8Array, offset: bigint, length: bigint): Uint8Array => {
-      const len = BigInt(data.length)
-      if (offset > len) {
-        offset = len
-      }
-      let end = offset + length
-      if (end > len) {
-        end = len
-      }
-      data = data.subarray(Number(offset), Number(end))
-      // Right-pad with zeros to fill dataLength bytes
-      data = setLengthRight(data, Number(length))
-      return data
-    }
-
-    let memPts: MemoryPts = []
-    const nChunks = Math.ceil(Number(dataLength) / 32)
-    let accOffsetShift = 0n
-    let lengthLeft = Number(dataLength)
-    for (let i = 0; i < nChunks; i++){
-      const sliceLength = Math.min(32, lengthLeft)
-      const dataSlice = bytesToBigInt(getDataSlice(code, codeOffset + accOffsetShift, BigInt(sliceLength)))
-      const desc = `Code of address: ${bigIntToHex(targetAddress)}, offset: ${Number(codeOffset)}, length: ${Number(dataLength)} bytes, chunk: ${i+1} out of ${nChunks}.`
-      const dataPt = this.parent.loadArbitraryStatic(
-        dataSlice,
-        UINT256_DATA_PT_TYPE,
-        desc,
-      )
-      memPts.push({
-        memByteOffset: Number(memOffset + accOffsetShift),
-        containerByteSize: sliceLength,
-        dataPt
-      })
-      lengthLeft -= sliceLength
-      accOffsetShift += BigInt(sliceLength)
-    }
-    
-    return memPts
-  }
-
-  private _prepareMemoryCopy(
-    sourceMemoryPt: MemoryPt,
-    sourceOffset: bigint,
-    length: bigint,
-    destinationOffset: bigint = 0n,
-    basePlacementIndex: number,
-  ): PreparedMemoryCopy {
-    if (length === BIGINT_0) {
-      return { compositions: [], destinationEntries: [] }
-    }
-    const sourceOffsetNumber = Number(sourceOffset)
-    const lengthNumber = Number(length)
-    const sourceSnapshot = MemoryPt.simulateMemoryPt(
-      sourceMemoryPt.read(sourceOffsetNumber, lengthNumber),
-    )
-    const preparedMemoryRead = this._prepareMemoryRead(
-      sourceSnapshot,
-      sourceOffset,
-      length,
-      basePlacementIndex,
-    )
-    const destinationEntries = preparedMemoryRead.viewDataPts.map((dataPt, index) => ({
-      memByteOffset: Number(destinationOffset) + 32 * index,
-      containerByteSize: Math.min(32, lengthNumber - 32 * index),
-      dataPt,
-    }))
-    return {
-      compositions: preparedMemoryRead.compositions,
-      destinationEntries,
-    }
-  }
-
-  private _prepareMemoryRead(
-    memoryPt: MemoryPt,
-    offset: bigint,
-    length: bigint,
-    basePlacementIndex: number,
-  ): PreparedMemoryRead {
-    const offsetNum = Number(offset);
-    const lengthNum = Number(length);
-    const nViews = lengthNum > 32 ? Math.ceil(lengthNum / 32) : 1;
-  
-    const viewDataPts: DataPt[] = [];
-    const compositions: PreparedComposition[] = []
-    let recoveredValue = 0n;
-    let lengthLeft = lengthNum;
-    let nextPlacementIndex = basePlacementIndex
-  
-    for (let i = 0; i < nViews; i++) {
-      const _offset = offsetNum + 32 * i;
-      const _length = lengthLeft > 32 ? 32 : lengthLeft;
-      lengthLeft -= _length;
-  
-      const dataAliasInfos = memoryPt.getDataAlias(_offset, _length);
-      if (dataAliasInfos.length > 0) {
-        const preparedComposition = this.placementManager.prepareComposition(
-          { operation: 'MemoryLoad', dataAliasGeometries: dataAliasInfos, viewByteLength: _length },
-          nextPlacementIndex,
-        )
-        compositions.push(preparedComposition)
-        nextPlacementIndex += preparedComposition.steps.length
-        viewDataPts[i] = preparedComposition.resultPts[0]!
-      } else {
-        viewDataPts[i] = this.parent.loadArbitraryStatic(
-          0n,
-          UINT256_DATA_PT_TYPE,
-        );
-      }
-  
-      recoveredValue += viewDataPts[i].value << BigInt(lengthLeft * 8);
-    }
-  
-    return { compositions, viewDataPts, recoveredValue };
-  }
 }

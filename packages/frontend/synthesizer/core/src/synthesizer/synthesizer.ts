@@ -5,7 +5,7 @@ import { bigIntToBytes, bigIntToHex, bytesToHex, createAddressFromBigInt, setLen
 
 import { EVMResult, InterpreterStep } from '@ethereumjs/evm';
 import { DataPt, DataPtType, Placements, PreparedComposition, ReservedVariable, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
-import { InstructionHandler, PlacementManager, StateManager } from './handlers/index.ts';
+import { InstructionHandler, MemoryManager, PlacementManager, StateManager } from './handlers/index.ts';
 import { type CompositionSubcircuit } from '../subcircuit/configuredTypes.ts';
 import type { ResolvedSubcircuitLibrary } from '../subcircuit/libraryTypes.ts';
 import { DataPtFactory } from './dataStructure/dataPt.ts';
@@ -19,6 +19,7 @@ export class Synthesizer implements SynthesizerInterface
 {
   private _state: StateManager
   private _placementManager: PlacementManager
+  private _memoryManager: MemoryManager
   protected _instructionHandlers: InstructionHandler
   private readonly _cachedOpts: SynthesizerOpts
   public readonly subcircuitLibrary: ResolvedSubcircuitLibrary
@@ -30,11 +31,13 @@ export class Synthesizer implements SynthesizerInterface
     this._cachedOpts = opts
     this.subcircuitLibrary = subcircuitLibrary
     this._placementManager = new PlacementManager(this, this._cachedOpts)
+    this._memoryManager = new MemoryManager(this._placementManager)
     this._state = new StateManager(this._placementManager)
     this._instructionHandlers = new InstructionHandler(
       this,
       this._state,
       this._placementManager,
+      this._memoryManager,
       this._cachedOpts,
     )
     this._eventHandlerError = undefined
