@@ -4,13 +4,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
 import { BUFFER_LIST } from '../../../core/src/subcircuit/configuredTypes.ts';
 import { DataPtFactory, StackPt } from '../../../core/src/synthesizer/dataStructure/index.ts';
-import { StateManager } from '../../../core/src/synthesizer/handlers/stateManager.ts';
+import {
+  StateManager,
+  type InitialStorageRead,
+  type StorageCacheEntry,
+} from '../../../core/src/synthesizer/handlers/stateManager.ts';
 import { VARIABLE_DESCRIPTION } from '../../../core/src/synthesizer/types/buffers.ts';
 import { UINT256_DATA_PT_TYPE } from '../../../core/src/synthesizer/types/dataStructure.ts';
-import type {
-  InitialStorageRead,
-  StorageCacheEntry,
-} from '../../../core/src/synthesizer/handlers/storageAccess.ts';
 import type { DataPt } from '../../../core/src/synthesizer/types/index.ts';
 import type { PreparedComposition } from '../../../core/src/synthesizer/types/placements.ts';
 
