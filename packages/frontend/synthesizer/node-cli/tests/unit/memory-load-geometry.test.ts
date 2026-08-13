@@ -62,4 +62,18 @@ describe('MemoryPt MemoryLoad geometry', () => {
       0n,
     )).toBe(0x11aabb44n);
   });
+
+  it('preserves zero gaps and a partial write in the recovered memory view', () => {
+    const memoryPt = new MemoryPt();
+    memoryPt.write(1, 2, wordPt(0xaabbn));
+
+    expect(memoryPt.viewMemory(0, 4)).toEqual(
+      new Uint8Array([0x00, 0xaa, 0xbb, 0x00]),
+    );
+    const [geometry] = memoryPt.getDataAlias(0, 4);
+    expect(geometry).toMatchObject({
+      ownershipMask: 0b0110n,
+      maskedFragmentValue: 0x00aabb00n,
+    });
+  });
 });
