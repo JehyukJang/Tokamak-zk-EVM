@@ -191,7 +191,7 @@ export class ContextManager {
 
   constructor(private readonly placementManager: PlacementManager) {}
 
-  public prepareCodeMemoryPts(
+  public prepareCodeMemoryEntries(
     code: Uint8Array<ArrayBufferLike>,
     targetAddress: bigint,
     memOffset: bigint,

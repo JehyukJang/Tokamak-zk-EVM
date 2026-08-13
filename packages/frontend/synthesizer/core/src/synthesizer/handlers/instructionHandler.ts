@@ -817,7 +817,7 @@ export class InstructionHandler {
           checkRequiredInput(opts.memOut)
           const thisAddress = opts.thisAddress ?? this.cachedOpts.signedTransaction.to
           if (dataLength !== BIGINT_0) {
-            const memPts: MemoryPts = this.contextManager.prepareCodeMemoryPts(
+            const memPts: MemoryPts = this.contextManager.prepareCodeMemoryEntries(
               opts.memOut!,
               bytesToBigInt(thisAddress.toBytes()),
               memOffset,
@@ -852,7 +852,7 @@ export class InstructionHandler {
           const dataLength = ins[3]
           checkRequiredInput(opts.memOut)
           if (dataLength !== BIGINT_0) {
-            const memPts: MemoryPts = this.contextManager.prepareCodeMemoryPts(
+            const memPts: MemoryPts = this.contextManager.prepareCodeMemoryEntries(
               opts.memOut!,
               addressBigInt,
               memOffset,
