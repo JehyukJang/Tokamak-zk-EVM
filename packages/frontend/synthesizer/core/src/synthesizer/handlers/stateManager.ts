@@ -293,6 +293,7 @@ export class StateManager {
   public cachedOrigin: DataPt | undefined = undefined
 
   public contextByDepth: ContextManager[] = [];
+  private _messageCodeAddresses = new Set<string>()
 
   constructor(parent: ISynthesizerProvider) {
     this.subcircuitInfoByName = parent.subcircuitLibrary.subcircuitInfoByName
@@ -305,11 +306,20 @@ export class StateManager {
     return placementsDeepCopy(this._placements)
   }
 
+  public get messageCodeAddresses(): readonly string[] {
+    return Array.from(this._messageCodeAddresses)
+  }
+
+  public recordMessageCodeAddress(codeAddress: string): void {
+    this._messageCodeAddresses.add(codeAddress)
+  }
+
   public resetTransactionTracking(): void {
     this.storageCache.reset()
     this.initialStorageReads.reset()
     this.logCache.reset()
     this.cachedOrigin = undefined
+    this._messageCodeAddresses.clear()
   }
 
   public beginFrame(depth: number): void {

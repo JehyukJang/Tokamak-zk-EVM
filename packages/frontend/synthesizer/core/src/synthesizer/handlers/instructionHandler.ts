@@ -70,7 +70,7 @@ export class InstructionHandler {
   }
 
   public initializeMessageContext(message: Message): void {
-    this.parent.messageCodeAddresses.add(message.codeAddress.toString())
+    this.parent.state.recordMessageCodeAddress(message.codeAddress.toString())
     if (message.isCreate) {
       throw new Error('CREATE is not supported.')
     }

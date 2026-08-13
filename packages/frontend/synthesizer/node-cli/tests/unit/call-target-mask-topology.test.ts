@@ -73,16 +73,17 @@ const createHarness = (
     } satisfies PreparedComposition;
   });
   const beginFrame = vi.fn();
+  const recordMessageCodeAddress = vi.fn();
   const getReservedVariableFromBuffer = vi.fn(() => maskPt);
   const state = {
     contextByDepth: [parentContext] as ContextManager[],
     beginFrame,
+    recordMessageCodeAddress,
   };
   const parent = {
     cachedOpts: {},
     placements: [],
     state,
-    messageCodeAddresses: new Set<string>(),
     getReservedVariableFromBuffer,
     placeComposition: vi.fn(),
   };
@@ -105,6 +106,7 @@ const createHarness = (
     message,
     parentContext,
     prepareSingleStepArithmeticComposition,
+    recordMessageCodeAddress,
     state,
     handler,
   };
@@ -129,6 +131,10 @@ describe('CALL-family target-mask topology', () => {
     expect(harness.getReservedVariableFromBuffer).toHaveBeenCalledWith('ADDRESS_MASK');
     expect(harness.beginFrame).toHaveBeenCalledOnce();
     expect(harness.beginFrame).toHaveBeenCalledWith(1);
+    expect(harness.recordMessageCodeAddress).toHaveBeenCalledOnce();
+    expect(harness.recordMessageCodeAddress).toHaveBeenCalledWith(
+      harness.message.codeAddress.toString(),
+    );
 
     const childContext = harness.state.contextByDepth[1];
     expect(childContext.codeAddressPt).toBe(harness.maskedResults[0]);

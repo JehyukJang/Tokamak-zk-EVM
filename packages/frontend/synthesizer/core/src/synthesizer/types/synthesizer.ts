@@ -24,7 +24,7 @@ export interface SynthesizerInterface {
   get state(): StateManager
   get placements(): Placements
   get stepLogs(): SynthesizerStepLogEntry[]
-  get messageCodeAddresses(): Set<`0x${string}`>
+  get messageCodeAddresses(): readonly string[]
   readonly subcircuitLibrary: ResolvedSubcircuitLibrary
   synthesizeTX(): Promise<RunTxResult>
   cachedOpts: SynthesizerOpts

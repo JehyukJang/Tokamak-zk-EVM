@@ -69,7 +69,7 @@ export async function synthesizeFromSnapshotInput(
     finalStateSnapshot,
     evmAnalysis: {
       stepLogs: synthesizer.stepLogs,
-      messageCodeAddresses: Array.from(synthesizer.messageCodeAddresses),
+      messageCodeAddresses: synthesizer.messageCodeAddresses.slice(),
     },
   };
 }

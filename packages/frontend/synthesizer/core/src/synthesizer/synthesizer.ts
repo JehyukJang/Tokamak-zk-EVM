@@ -26,7 +26,6 @@ export class Synthesizer implements SynthesizerInterface
   private _eventHandlerError: unknown
   private _hasEventHandlerError: boolean
   private _stepLogs: SynthesizerStepLogEntry[]
-  private _messageCodeAddresses: Set<`0x${string}`>
 
   constructor(opts: SynthesizerOpts, subcircuitLibrary: ResolvedSubcircuitLibrary) {
     this.cachedOpts = opts
@@ -38,7 +37,6 @@ export class Synthesizer implements SynthesizerInterface
     this._eventHandlerError = undefined
     this._hasEventHandlerError = false
     this._stepLogs = []
-    this._messageCodeAddresses = new Set()
   }
 
   private _recordEventHandlerError(handlerName: string, err: unknown): void {
@@ -298,8 +296,8 @@ export class Synthesizer implements SynthesizerInterface
     return this._stepLogs
   }
 
-  public get messageCodeAddresses(): Set<`0x${string}`> {
-    return this._messageCodeAddresses
+  public get messageCodeAddresses(): readonly string[] {
+    return this._state.messageCodeAddresses
   }
 
   public get placements(): Placements {

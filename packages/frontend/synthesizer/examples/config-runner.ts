@@ -232,7 +232,7 @@ async function runConfigExample<TConfig>(
     finalStateSnapshot,
     evmAnalysis: {
       stepLogs: synthesizer.stepLogs,
-      messageCodeAddresses: Array.from(synthesizer.messageCodeAddresses),
+      messageCodeAddresses: synthesizer.messageCodeAddresses.slice(),
     },
   };
   writeSynthesisOutputJson(output, undefined, {

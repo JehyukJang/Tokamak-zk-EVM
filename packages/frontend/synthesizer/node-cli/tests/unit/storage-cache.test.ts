@@ -101,6 +101,20 @@ const storageAccessCompositions = (parent: {
   .filter(({ operation }) => operation === 'StorageAccess');
 
 describe('StateManager storage tracking', () => {
+  it('owns a resettable snapshot of transaction message code addresses', () => {
+    const state = createState();
+    state.recordMessageCodeAddress('0x1234');
+    state.recordMessageCodeAddress('0x1234');
+    state.recordMessageCodeAddress('0x5678');
+
+    const snapshot = state.messageCodeAddresses;
+    expect(snapshot).toEqual(['0x1234', '0x5678']);
+    expect(snapshot).not.toBe(state.messageCodeAddresses);
+
+    state.resetTransactionTracking();
+    expect(state.messageCodeAddresses).toEqual([]);
+  });
+
   it('uses a full 256-bit value for the STORAGE_LOAD private input', () => {
     const value = (1n << 256n) - 1n;
 
