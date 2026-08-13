@@ -21,7 +21,6 @@ describe('MemoryPt MemoryLoad geometry', () => {
       shiftMagnitude: 1,
       direction: 1,
       ownershipMask: 0b11n,
-      maskedFragmentValue: 0x2233n,
     });
   });
 
@@ -35,7 +34,6 @@ describe('MemoryPt MemoryLoad geometry', () => {
       shiftMagnitude: 0,
       direction: 0,
       ownershipMask: 0b1111n,
-      maskedFragmentValue: 0x11223344n,
     });
   });
 
@@ -46,21 +44,12 @@ describe('MemoryPt MemoryLoad geometry', () => {
 
     const geometries = memoryPt.getDataAlias(0, 4);
 
-    expect(geometries.map(({ ownershipMask, maskedFragmentValue }) => [
-      ownershipMask,
-      maskedFragmentValue,
-    ])).toEqual([
-      [0b1001n, 0x11000044n],
-      [0b0110n, 0x00aabb00n],
-    ]);
+    expect(geometries.map(({ ownershipMask }) => ownershipMask)).toEqual([0b1001n, 0b0110n]);
     expect(geometries.reduce(
       (coverage, { ownershipMask }) => coverage | ownershipMask,
       0n,
     )).toBe(0b1111n);
-    expect(geometries.reduce(
-      (value, { maskedFragmentValue }) => value + maskedFragmentValue,
-      0n,
-    )).toBe(0x11aabb44n);
+    expect(memoryPt.viewMemory(0, 4)).toEqual(new Uint8Array([0x11, 0xaa, 0xbb, 0x44]));
   });
 
   it('preserves zero gaps and a partial write in the recovered memory view', () => {
@@ -73,7 +62,6 @@ describe('MemoryPt MemoryLoad geometry', () => {
     const [geometry] = memoryPt.getDataAlias(0, 4);
     expect(geometry).toMatchObject({
       ownershipMask: 0b0110n,
-      maskedFragmentValue: 0x00aabb00n,
     });
   });
 });

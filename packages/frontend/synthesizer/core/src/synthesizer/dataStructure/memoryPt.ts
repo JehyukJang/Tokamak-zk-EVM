@@ -163,15 +163,11 @@ export class MemoryPt {
       }
       const masker = this._generateMasker(offset, size, _value.validRange)
       const ownershipMask = this._createOwnershipMask(masker)
-      const shiftedValue = shift < 0
-        ? dataPt.value >> BigInt(Math.abs(shift))
-        : dataPt.value << BigInt(shift)
       dataAliasInfos.push({
         dataPt,
         shiftMagnitude: Math.abs(shift) / 8,
         direction: shift < 0 ? 1 : 0,
         ownershipMask,
-        maskedFragmentValue: shiftedValue & this._expandOwnershipMask(ownershipMask),
       })
     }
     return dataAliasInfos
@@ -284,15 +280,6 @@ export class MemoryPt {
     return ownershipMask
   }
 
-  private _expandOwnershipMask(ownershipMask: bigint): bigint {
-    let wordMask = 0n
-    for (let byteIndex = 0; byteIndex < 32; byteIndex++) {
-      if ((ownershipMask & (1n << BigInt(byteIndex))) !== 0n) {
-        wordMask |= 0xffn << BigInt(byteIndex * 8)
-      }
-    }
-    return wordMask
-  }
 }
 
 /**

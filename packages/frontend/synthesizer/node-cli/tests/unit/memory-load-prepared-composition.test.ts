@@ -6,6 +6,7 @@ import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataP
 import { MemoryPt } from '../../../core/src/synthesizer/dataStructure/memoryPt.ts';
 import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
 import { StateManager } from '../../../core/src/synthesizer/handlers/stateManager.ts';
+import { SubcircuitOutputCalculator } from '../../../core/src/synthesizer/handlers/subcircuitOutputCalculator.ts';
 import {
   BIT_DATA_PT_TYPE,
   UINT256_DATA_PT_TYPE,
@@ -62,6 +63,7 @@ const initialPlacements = Array.from({ length: 6 }, () => ({
 
 const createHarness = () => {
   let staticWireIndex = 0
+  const outputCalculator = new SubcircuitOutputCalculator()
   const parent = {
     placements: initialPlacements.map((placement) => ({ ...placement })),
     subcircuitLibrary: {
@@ -70,6 +72,7 @@ const createHarness = () => {
     },
     loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
       dataPt(value, evmInSource, staticWireIndex++, dataPtType)),
+    calculateSubcircuitOutputValues: outputCalculator.calculateSubcircuitOutputValues.bind(outputCalculator),
   }
   const handler = new InstructionHandler(parent as never, {} as never, {} as never)
   const state = Object.assign(Object.create(StateManager.prototype), {

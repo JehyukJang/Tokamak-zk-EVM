@@ -13,6 +13,7 @@ const G8: Affine = [
   52363696936650001301287582521711853146588465673974699354184720335305084401224n,
   12024993157431732930272824407495979791132374572895036891122288541794509830761n,
 ]
+const EVM_WORD_LIMIT = 1n << 256n
 
 const mod = (value: bigint): bigint => {
   const remainder = value % Q
@@ -791,6 +792,38 @@ export class SubcircuitOutputCalculator {
     return poseidonChainCompress(inVals.slice(1, numInputs + 1))
   }
 
+  static memoryLoadStep(values: readonly bigint[]): bigint[] {
+    expectLength(values, 8, 'MemoryLoadStep')
+    const [
+      sourceWord,
+      shiftMagnitude,
+      direction,
+      ownership,
+      previousWord,
+      previousOwnership,
+      expectedOwnership,
+      finalMode,
+    ] = values
+    const shiftBits = shiftMagnitude! * 8n
+    const shiftedWord = direction === 0n
+      ? sourceWord! << shiftBits
+      : sourceWord! >> shiftBits
+    let ownershipWordMask = 0n
+    for (let byte = 0n; byte < 32n; byte++) {
+      if ((ownership! & (1n << byte)) !== 0n) {
+        ownershipWordMask |= 0xffn << (8n * byte)
+      }
+    }
+    const nextWord = previousWord! + (shiftedWord & ownershipWordMask)
+    if (nextWord >= EVM_WORD_LIMIT) {
+      throw new Error('MemoryLoadStep: fragment sum exceeds an EVM word')
+    }
+    const nextOwnership = finalMode === 1n
+      ? expectedOwnership!
+      : previousOwnership! + ownership!
+    return [nextWord, nextOwnership]
+  }
+
   public calculateSubcircuitOutputValues(
     name: CompositionSubcircuit,
     values: bigint[],
@@ -887,6 +920,7 @@ const SUBCIRCUIT_OPERATION_MAPPING: Partial<Record<CompositionSubcircuit, Subcir
   SubExp: SubcircuitOutputCalculator.subExp,
   CheckBus256: SubcircuitOutputCalculator.checkBus256,
   Poseidon: SubcircuitOutputCalculator.poseidon,
+  MemoryLoadStep: SubcircuitOutputCalculator.memoryLoadStep,
   EqualBatch: () => [],
   TransactionSignaturePoseidonBatch4: SubcircuitOutputCalculator.poseidonBatch4,
   TransactionSignaturePointPolicy: SubcircuitOutputCalculator.pointPolicy,

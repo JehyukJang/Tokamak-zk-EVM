@@ -1812,14 +1812,24 @@ export class InstructionHandler {
         finalModeType,
         'Memory-load final-mode flag',
       )
-      const nextWordValue = previousWordPt.value
-        + info.maskedFragmentValue
-      if (nextWordValue >= 1n << 256n) {
-        throw new Error('Synthesizer: MemoryLoad fragment sum exceeds an EVM word')
+      const inPts = [
+        info.dataPt,
+        info.shiftPt,
+        info.directionPt,
+        info.maskerPt,
+        previousWordPt,
+        previousOwnershipPt,
+        expectedCoveragePt,
+        finalModePt,
+      ]
+      const [nextWordValue, nextOwnershipValue] = this.parent
+        .calculateSubcircuitOutputValues(
+          'MemoryLoadStep',
+          inPts.map(({ value }) => value),
+        )
+      if (nextWordValue === undefined || nextOwnershipValue === undefined) {
+        throw new Error('Synthesizer: MemoryLoadStep did not produce both outputs')
       }
-      const nextOwnershipValue = isFinalStep
-        ? expectedCoveragePt.value
-        : previousOwnershipPt.value + info.maskerPt.value
       const nextWordPt = DataPtFactory.create({
         source: basePlacementIndex + stepIndex,
         wireIndex: 0,
@@ -1831,16 +1841,7 @@ export class InstructionHandler {
         dataPtType: nextOwnershipType,
       }, nextOwnershipValue)
       steps.push({
-        inPts: [
-          info.dataPt,
-          info.shiftPt,
-          info.directionPt,
-          info.maskerPt,
-          previousWordPt,
-          previousOwnershipPt,
-          expectedCoveragePt,
-          finalModePt,
-        ],
+        inPts,
         outPts: [nextWordPt, nextOwnershipPt],
       })
       operands.push(info.dataPt, info.shiftPt, info.directionPt, info.maskerPt)
@@ -1882,7 +1883,6 @@ export class InstructionHandler {
           ownershipType,
           'Memory-load byte ownership mask',
         ),
-        maskedFragmentValue: geometry.maskedFragmentValue,
       })
     })
   }

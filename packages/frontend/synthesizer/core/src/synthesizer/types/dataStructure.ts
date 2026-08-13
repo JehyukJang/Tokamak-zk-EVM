@@ -79,8 +79,6 @@ export type DataAliasGeometryEntry = Readonly<{
   direction: 0 | 1;
   /** One bit per output byte, consumed by MemoryLoadStep. */
   ownershipMask: bigint;
-  /** Host value contributed by this fragment after shift and byte masking. */
-  maskedFragmentValue: bigint;
 }>;
 export type DataAliasGeometries = readonly DataAliasGeometryEntry[];
 
@@ -90,7 +88,6 @@ export type DataAliasInfoEntry = Readonly<{
   shiftPt: DataPt;
   directionPt: DataPt;
   maskerPt: DataPt;
-  maskedFragmentValue: bigint;
 }>;
 export type DataAliasInfos = readonly DataAliasInfoEntry[];
 
