@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { StateManager } from '../../../core/src/synthesizer/handlers/stateManager.ts';
+import { PlacementManager } from '../../../core/src/synthesizer/handlers/placementManager.ts';
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
 import {
   UINT160_DATA_PT_TYPE,
@@ -36,8 +36,8 @@ const createDataPt = (
   value: bigint,
 ): DataPt => DataPtFactory.create({ dataPtType, source, wireIndex }, value);
 
-function createState(): StateManager {
-  return Object.assign(Object.create(StateManager.prototype), {
+function createPlacementManager(): PlacementManager {
+  return Object.assign(Object.create(PlacementManager.prototype), {
     _placements: Array.from({ length: 6 }, () => ({
       name: 'ALU1',
       usage: 'test',
@@ -66,7 +66,7 @@ function createState(): StateManager {
       },
     }]]),
     _placementCompositionMapping: { ADD: composition },
-  }) as StateManager;
+  }) as PlacementManager;
 }
 
 function createPreparedComposition(selectorType = UINT32_DATA_PT_TYPE) {
@@ -85,22 +85,22 @@ function createPreparedComposition(selectorType = UINT32_DATA_PT_TYPE) {
 
 describe('prepared composition logical ports', () => {
   it('accepts DataPt types that match every qap logical port', () => {
-    const state = createState()
+    const placementManager = createPlacementManager()
 
-    expect(() => state.placeComposition(createPreparedComposition())).not.toThrow()
-    expect(state.placements.at(-1)?.usage).toBe('ADD')
+    expect(() => placementManager.placeComposition(createPreparedComposition())).not.toThrow()
+    expect(placementManager.placements.at(-1)?.usage).toBe('ADD')
   })
 
   it('rejects a same-width DataPt whose logical port type differs', () => {
-    const state = createState()
+    const placementManager = createPlacementManager()
 
-    expect(() => state.placeComposition(createPreparedComposition(UINT160_DATA_PT_TYPE))).toThrow(
+    expect(() => placementManager.placeComposition(createPreparedComposition(UINT160_DATA_PT_TYPE))).toThrow(
       'ADD ALU1 input port 0 (selector) expected uint32, but got uint160',
     )
   })
 
   it('does not record a partial composition after a prepared wire is mutated', () => {
-    const state = createState()
+    const placementManager = createPlacementManager()
     const prepared = createPreparedComposition()
     const mutated = {
       ...prepared,
@@ -110,14 +110,14 @@ describe('prepared composition logical ports', () => {
       }],
     }
 
-    expect(() => state.placeComposition(mutated)).toThrow(
+    expect(() => placementManager.placeComposition(mutated)).toThrow(
       'ADD step 0 output 0 has an invalid placement source',
     )
-    expect(state.placements).toHaveLength(6)
+    expect(placementManager.placements).toHaveLength(6)
   })
 
   it('does not record a partial composition after a declared operand is replaced', () => {
-    const state = createState()
+    const placementManager = createPlacementManager()
     const prepared = createPreparedComposition()
     const mutated = {
       ...prepared,
@@ -131,9 +131,9 @@ describe('prepared composition logical ports', () => {
       }],
     }
 
-    expect(() => state.placeComposition(mutated)).toThrow(
+    expect(() => placementManager.placeComposition(mutated)).toThrow(
       'ADD step 0 input 1 is not connected to its declared source',
     )
-    expect(state.placements).toHaveLength(6)
+    expect(placementManager.placements).toHaveLength(6)
   })
 })

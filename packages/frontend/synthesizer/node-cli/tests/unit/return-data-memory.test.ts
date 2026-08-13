@@ -6,9 +6,10 @@ import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataP
 import { MemoryPt } from '../../../core/src/synthesizer/dataStructure/memoryPt.ts';
 import { StackPt } from '../../../core/src/synthesizer/dataStructure/stackPt.ts';
 import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
-import type { MessageContext } from '../../../core/src/synthesizer/handlers/stateManager.ts';
+import type { MessageContext } from '../../../core/src/synthesizer/handlers/contextManager.ts';
+import { MemoryManager } from '../../../core/src/synthesizer/handlers/memoryManager.ts';
+import { PlacementManager } from '../../../core/src/synthesizer/handlers/placementManager.ts';
 import { calculateSubcircuitOutputValues } from '../../../core/src/subcircuit/subcircuitOutputOperations.ts';
-import { Synthesizer } from '../../../core/src/synthesizer/synthesizer.ts';
 import {
   UINT256_DATA_PT_TYPE,
   type DataPt,
@@ -70,18 +71,31 @@ const createContext = (): MessageContext => ({
 const createHarness = () => {
   let staticWireIndex = 0
   const parent = {
-    placements: Array.from({ length: 6 }, () => ({})),
-    subcircuitLibrary: {
-      placementCompositionMapping: { MemoryLoad: memoryLoadComposition },
-      subcircuitInfoByName: new Map([['MemoryLoadStep', memoryLoadInfo]]),
-    },
+    _placements: Array.from({ length: 6 }, () => ({
+      name: 'MemoryLoadStep',
+      usage: 'MemoryLoad',
+      subcircuitId: 0,
+      inPts: [],
+      outPts: [],
+    })),
+    _placementCompositionMapping: { MemoryLoad: memoryLoadComposition },
+    subcircuitInfoByName: new Map([['MemoryLoadStep', memoryLoadInfo]]),
     loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
       dataPt(value, evmInSource, staticWireIndex++, dataPtType)),
-    calculateSubcircuitOutputValues,
-    prepareMemoryLoadViewComposition: Synthesizer.prototype.prepareMemoryLoadViewComposition,
     placeComposition: vi.fn(),
   }
-  return { handler: new InstructionHandler(parent as never, {} as never, {} as never), parent }
+  const subcircuitLibrary = { calculateSubcircuitOutputValues }
+  Object.assign(parent, { subcircuitLibrary })
+  const placementManager = Object.assign(Object.create(PlacementManager.prototype), parent) as PlacementManager
+  const memoryManager = new MemoryManager(placementManager)
+  const handler = new InstructionHandler(
+    {} as never,
+    placementManager,
+    memoryManager,
+    subcircuitLibrary as never,
+    {} as never,
+  )
+  return { handler, placementManager }
 }
 
 const stackFor = (inputs: bigint[]): StackPt => {
@@ -94,7 +108,7 @@ const stackFor = (inputs: bigint[]): StackPt => {
 
 describe('RETURNDATACOPY memory flow', () => {
   it('copies the requested returndata view into the requested destination offset', () => {
-    const { handler, parent } = createHarness()
+    const { handler, placementManager } = createHarness()
     const context = createContext()
     context.returnDataMemoryPts = [{
       memByteOffset: 0,
@@ -120,12 +134,12 @@ describe('RETURNDATACOPY memory flow', () => {
       memOut: new Uint8Array([0x11, 0x22, 0x33, 0x44]),
     })
 
-    expect(parent.placeComposition).toHaveBeenCalledOnce()
+    expect(placementManager.placeComposition).toHaveBeenCalledOnce()
     expect(memoryPt.viewMemory(8, 4)).toEqual(new Uint8Array([0x11, 0x22, 0x33, 0x44]))
   })
 
   it('rejects a returndata range beyond the child result before recording a composition', () => {
-    const { handler, parent } = createHarness()
+    const { handler, placementManager } = createHarness()
     const context = createContext()
     context.returnDataMemoryPts = [{
       memByteOffset: 0,
@@ -149,7 +163,7 @@ describe('RETURNDATACOPY memory flow', () => {
       memoryPt,
       memOut: new Uint8Array(5),
     })).toThrow('RETURNDATACOPY: requested range exceeds return data')
-    expect(parent.placeComposition).not.toHaveBeenCalled()
+    expect(placementManager.placeComposition).not.toHaveBeenCalled()
     expect(memoryPt.viewMemory(0, 5)).toEqual(new Uint8Array(5))
   })
 })

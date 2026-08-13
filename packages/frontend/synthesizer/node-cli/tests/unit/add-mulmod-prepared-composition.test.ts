@@ -4,7 +4,7 @@ import { createAddMulModCompositionMappings } from '../../../core/src/subcircuit
 import { createDivisionCompositionMappings } from '../../../core/src/subcircuit/special-builders/divModComposition.ts';
 import { createExpCompositionMapping } from '../../../core/src/subcircuit/special-builders/expComposition.ts';
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
-import { Synthesizer } from '../../../core/src/synthesizer/synthesizer.ts';
+import { PlacementManager } from '../../../core/src/synthesizer/handlers/placementManager.ts';
 import {
   BIT_DATA_PT_TYPE,
   UINT128_DATA_PT_TYPE,
@@ -153,21 +153,22 @@ const submit = (
     }
   })
   let nextStaticWireIndex = 0
-  const parent = {
-    placements: [],
+  const parent = Object.assign(Object.create(PlacementManager.prototype), {
+    _placementCompositionMapping: Object.fromEntries(fixedMultiStepCompositions),
+    subcircuitInfoByName,
     subcircuitLibrary: {
-      placementCompositionMapping: Object.fromEntries(fixedMultiStepCompositions),
-      subcircuitInfoByName,
+      calculateSubcircuitOutputValues,
     },
-    calculateSubcircuitOutputValues,
     loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
       dataPt(value, 5, nextStaticWireIndex++, dataPtType)),
-  }
-  const preparedComposition = Synthesizer.prototype.prepareFixedGenericComposition.call(parent,
-    operation,
-    operation === 'ADDMOD' || operation === 'MULMOD'
+  }) as PlacementManager
+  const preparedComposition = parent.prepareComposition(
+    {
+      operation,
+      operands: operation === 'ADDMOD' || operation === 'MULMOD'
       ? [dataPt(3n, 10), dataPt(4n, 11), dataPt(5n, 12)]
       : [dataPt(3n, 10), dataPt(4n, 11)],
+    },
     0,
   )
 
@@ -196,26 +197,23 @@ describe('fixed generic prepared compositions', () => {
         ],
       }],
     }
-    const parent = {
-      placements: [],
+    const parent = Object.assign(Object.create(PlacementManager.prototype), {
+      _placementCompositionMapping: { ADDMOD: composition },
+      subcircuitInfoByName: new Map([['ALU1', {
+        logicalInterface: {
+          inputs: [],
+          outputs: [uint(1), uint(32), uint(256)]
+            .map((logicalType, index) => ({ name: `out${index}`, logicalType })),
+        },
+      }]]),
       subcircuitLibrary: {
-        placementCompositionMapping: { ADDMOD: composition },
-        subcircuitInfoByName: new Map([['ALU1', {
-          logicalInterface: {
-            inputs: [],
-            outputs: [uint(1), uint(32), uint(256)]
-              .map((logicalType, index) => ({ name: `out${index}`, logicalType })),
-          },
-        }]]),
+        calculateSubcircuitOutputValues: () => [1n, 2n, 3n],
       },
-      calculateSubcircuitOutputValues: () => [1n, 2n, 3n],
       loadArbitraryStatic: vi.fn(),
-    }
+    }) as PlacementManager
 
-    const prepared = Synthesizer.prototype.prepareFixedGenericComposition.call(
-      parent as never,
-      'ADDMOD',
-      [dataPt(7n, 10)],
+    const prepared = parent.prepareComposition(
+      { operation: 'ADDMOD', operands: [dataPt(7n, 10)] },
       4,
     )
 

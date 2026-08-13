@@ -5,10 +5,11 @@ import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instr
 import { BUFFER_LIST } from '../../../core/src/subcircuit/configuredTypes.ts';
 import { DataPtFactory, StackPt } from '../../../core/src/synthesizer/dataStructure/index.ts';
 import {
-  StateManager,
+  ContextManager,
   type InitialStorageRead,
   type StorageCacheEntry,
-} from '../../../core/src/synthesizer/handlers/stateManager.ts';
+} from '../../../core/src/synthesizer/handlers/contextManager.ts';
+import { PlacementManager } from '../../../core/src/synthesizer/handlers/placementManager.ts';
 import { VARIABLE_DESCRIPTION } from '../../../core/src/synthesizer/types/buffers.ts';
 import { UINT256_DATA_PT_TYPE } from '../../../core/src/synthesizer/types/dataStructure.ts';
 import type { DataPt } from '../../../core/src/synthesizer/types/index.ts';
@@ -46,17 +47,22 @@ const logOutInfo = {
   flattenMap: [],
 };
 
-const createState = (): StateManager => {
-  const parent = {
-    subcircuitLibrary: {
-      subcircuitInfoByName: new Map([
-        ['bufferLogOut', logOutInfo],
-        ['EqualBatch', equalBatchInfo],
-      ]),
-      subcircuitBufferMapping: { LOG_OUT: logOutInfo },
-    },
-  } as any;
-  return new StateManager(parent);
+const createManagers = () => {
+  const placementManager = Object.assign(Object.create(PlacementManager.prototype), {
+    _placements: [{
+      name: 'bufferLogOut',
+      usage: 'test LOG_OUT',
+      subcircuitId: 0,
+      inPts: [],
+      outPts: [],
+    }],
+    subcircuitInfoByName: new Map([
+      ['bufferLogOut', logOutInfo],
+      ['EqualBatch', equalBatchInfo],
+    ]),
+  }) as PlacementManager;
+  const contextManager = new ContextManager(placementManager, {} as never);
+  return { contextManager, placementManager };
 };
 
 const createStorageHarness = (initialValue: bigint) => {
@@ -81,12 +87,25 @@ const createStorageHarness = (initialValue: bigint) => {
       dataPt(valuePt.value, nextSource++),
     ),
   };
-  parent.state = new StateManager(parent);
+  const placementManager = {
+    placements: [],
+    placeComposition: parent.placeComposition,
+    addReservedVariableToBufferIn: parent.addReservedVariableToBufferIn,
+    addReservedVariableToBufferOut: parent.addReservedVariableToBufferOut,
+    loadArbitraryStatic: vi.fn(),
+  };
+  parent.state = new ContextManager(placementManager as never, {} as never);
 
   return {
     address,
     addressValue,
-    handler: new InstructionHandler(parent, parent.state, cachedOpts as never),
+    handler: new InstructionHandler(
+      parent.state,
+      placementManager as never,
+      {} as never,
+      parent.subcircuitLibrary as never,
+      cachedOpts as never,
+    ),
     parent,
     stateManager,
     setStorageValue: (value: bigint) => {
@@ -103,7 +122,7 @@ const storageAccessCompositions = (parent: {
 
 describe('StateManager storage tracking', () => {
   it('owns a resettable snapshot of transaction message code addresses', () => {
-    const state = createState();
+    const { contextManager: state } = createManagers();
     state.recordMessageCodeAddress('0x1234');
     state.recordMessageCodeAddress('0x1234');
     state.recordMessageCodeAddress('0x5678');
@@ -129,7 +148,7 @@ describe('StateManager storage tracking', () => {
   });
 
   it('exposes only dirty entries for final storage output', () => {
-    const state = createState();
+    const { contextManager: state } = createManagers();
     state.storageCache.set(1n, 2n, {
       canonicalAddressPt: dataPt(1n, 1),
       canonicalKeyPt: dataPt(2n, 2),
@@ -151,14 +170,13 @@ describe('StateManager storage tracking', () => {
   });
 
   it('coordinates nested storage-cache and LOG_OUT frame rollback', () => {
-    const state = createState();
+    const { contextManager: state, placementManager } = createManagers();
     const baseEntry: StorageCacheEntry = {
       canonicalAddressPt: dataPt(1n, 1),
       canonicalKeyPt: dataPt(2n, 2),
       latestValuePt: dataPt(3n, 3),
       dirty: false,
     };
-    state.placeBuffer('LOG_OUT', [], [], 'test LOG_OUT');
     state.storageCache.set(1n, 2n, baseEntry);
 
     state.beginFrame(0);
@@ -167,7 +185,7 @@ describe('StateManager storage tracking', () => {
       latestValuePt: dataPt(4n, 4),
       dirty: true,
     });
-    state.appendBufferWirePair(dataPt(10n, 10), dataPt(10n, 0, 0), true);
+    ;(placementManager as any)._appendBufferWirePair(dataPt(10n, 10), dataPt(10n, 0, 0), true);
 
     state.beginFrame(1);
     state.storageCache.set(1n, 2n, {
@@ -175,18 +193,18 @@ describe('StateManager storage tracking', () => {
       latestValuePt: dataPt(5n, 5),
       dirty: true,
     });
-    state.appendBufferWirePair(dataPt(11n, 11), dataPt(11n, 0, 1), true);
+    ;(placementManager as any)._appendBufferWirePair(dataPt(11n, 11), dataPt(11n, 0, 1), true);
 
     state.completeFrame(1, true);
-    expect(state.placements[0]).toMatchObject({
+    expect(placementManager.placements[0]).toMatchObject({
       inPts: [{ value: 10n }, { value: 11n }],
       outPts: [{ value: 10n }, { value: 11n }],
     });
     expect(state.storageCache.get(1n, 2n)?.latestValuePt.value).toBe(5n);
 
     state.completeFrame(0, false);
-    expect(state.placements).toHaveLength(1);
-    expect(state.placements[0]).toMatchObject({ inPts: [], outPts: [] });
+    expect(placementManager.placements).toHaveLength(1);
+    expect(placementManager.placements[0]).toMatchObject({ inPts: [], outPts: [] });
     expect(state.storageCache.get(1n, 2n)).toMatchObject({
       latestValuePt: { value: 3n },
       dirty: false,
@@ -194,11 +212,10 @@ describe('StateManager storage tracking', () => {
   });
 
   it('rejects a dynamic buffer append that does not use the next output wire', () => {
-    const state = createState();
-    state.placeBuffer('LOG_OUT', [], [], 'test LOG_OUT');
-    state.appendBufferWirePair(dataPt(10n, 10), dataPt(10n, 0, 0), true);
+    const { placementManager } = createManagers();
+    ;(placementManager as any)._appendBufferWirePair(dataPt(10n, 10), dataPt(10n, 0, 0), true);
 
-    expect(() => state.appendBufferWirePair(
+    expect(() => (placementManager as any)._appendBufferWirePair(
       dataPt(11n, 11),
       dataPt(11n, 0, 0),
       true,
@@ -206,7 +223,7 @@ describe('StateManager storage tracking', () => {
   });
 
   it('restores only the storage cache and retains initial SLOAD records on frame failure', () => {
-    const state = createState();
+    const { contextManager: state } = createManagers();
     const parentEntry: StorageCacheEntry = {
       canonicalAddressPt: dataPt(1n, 1),
       canonicalKeyPt: dataPt(2n, 2),
@@ -248,7 +265,7 @@ describe('StateManager storage tracking', () => {
   });
 
   it('keeps a successful child update until an enclosing frame rolls back', () => {
-    const state = createState();
+    const { contextManager: state } = createManagers();
     const baseEntry: StorageCacheEntry = {
       canonicalAddressPt: dataPt(1n, 1),
       canonicalKeyPt: dataPt(2n, 2),

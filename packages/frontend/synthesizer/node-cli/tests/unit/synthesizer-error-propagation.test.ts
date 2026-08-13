@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { Synthesizer } from '../../../core/src/synthesizer/synthesizer.ts';
 import { DataPtFactory, MemoryPt, StackPt } from '../../../core/src/synthesizer/dataStructure/index.ts';
-import type { MessageContext } from '../../../core/src/synthesizer/handlers/stateManager.ts';
+import { ContextManager, type MessageContext } from '../../../core/src/synthesizer/handlers/contextManager.ts';
 import { UINT256_DATA_PT_TYPE } from '../../../core/src/synthesizer/types/dataStructure.ts';
 
 type EventListener = (data: any, resolve?: () => void) => void;
@@ -32,13 +32,25 @@ class TestEventEmitter {
 
 const createBareSynthesizer = (): Synthesizer => {
   const synthesizer = Object.create(Synthesizer.prototype) as Synthesizer;
-  Object.defineProperty(synthesizer, 'cachedOpts', {
+  Object.defineProperty(synthesizer, '_cachedOpts', {
     value: {
       signedTransaction: {},
       stateManager: {},
     },
   });
-  vi.spyOn(synthesizer, 'getReservedVariableFromBuffer').mockReturnValue({ value: 1n } as any);
+  Object.defineProperty(synthesizer, '_placementManager', {
+    value: {
+      getReservedVariableFromBuffer: vi.fn(() => ({ value: 1n })),
+      addReservedVariableToBufferOut: vi.fn(),
+    },
+  });
+  Object.defineProperty(synthesizer, '_contextManager', {
+    configurable: true,
+    value: {
+      returnMessageCall: vi.fn(),
+      completeFrame: vi.fn(),
+    },
+  });
   return synthesizer;
 };
 
@@ -76,7 +88,7 @@ describe('Synthesizer VM lifecycle', () => {
     const addressPt = { source: 1, wireIndex: 0, sourceBitSize: 256, value: 1n };
     const keyPt = { source: 2, wireIndex: 0, sourceBitSize: 256, value: 2n };
     const valuePt = { source: 3, wireIndex: 0, sourceBitSize: 256, value: 3n };
-    Object.defineProperty(synthesizer, '_state', {
+    Object.defineProperty(synthesizer, '_contextManager', {
       value: {
         storageCache: {
           dirtyEntries: [{
@@ -88,8 +100,7 @@ describe('Synthesizer VM lifecycle', () => {
         },
       },
     });
-    const addStorageOutput = vi.spyOn(synthesizer, 'addReservedVariableToBufferOut')
-      .mockReturnValue({} as any);
+    const addStorageOutput = (synthesizer as any)._placementManager.addReservedVariableToBufferOut;
     ;(synthesizer as any)._finalizeStorageStore()
 
     expect(addStorageOutput.mock.calls).toEqual([
@@ -143,11 +154,9 @@ describe('Synthesizer VM lifecycle', () => {
       dataPt: childResultPt,
     }];
     childContext.resultDataByteLength = 4;
-    Object.defineProperty(synthesizer, '_state', {
-      value: { contextByDepth: [parentContext, childContext] },
-    });
-
-    ;(synthesizer as any)._returnMessageCall(1)
+    const contextManager = new ContextManager({} as never, {} as never)
+    contextManager.contextByDepth = [parentContext, childContext]
+    contextManager.returnMessageCall(1)
 
     expect(parentContext.returnDataByteLength).toBe(4);
     expect(parentContext.returnDataMemoryPts).toEqual(childContext.resultMemoryPts);

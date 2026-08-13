@@ -4,8 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { Operator } from '../../../core/src/subcircuit/configuredTypes.ts';
 import { DataPtFactory, MemoryPt, StackPt } from '../../../core/src/synthesizer/dataStructure/index.ts';
-import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
-import type { MessageContext } from '../../../core/src/synthesizer/handlers/stateManager.ts';
+import { ContextManager, type MessageContext } from '../../../core/src/synthesizer/handlers/contextManager.ts';
 import {
   UINT256_DATA_PT_TYPE,
   type DataPt,
@@ -70,7 +69,8 @@ const createHarness = (
   const normalizedTarget = rawTarget & ADDRESS_MASK;
   const maskedResults = options.maskedResults ?? [dataPt(normalizedTarget, 99, 0)];
   const arithmeticCalls: ArithmeticCall[] = [];
-  const prepareFixedGenericComposition = vi.fn((name: Operator, inPts: DataPt[]) => {
+  const prepareComposition = vi.fn((request: { operation: Operator; operands: DataPt[] }) => {
+    const { operation: name, operands: inPts } = request;
     arithmeticCalls.push({ name, inPts });
     return {
       operation: name,
@@ -79,21 +79,21 @@ const createHarness = (
       steps: [{ inPts, outPts: maskedResults }],
     } satisfies PreparedComposition;
   });
-  const beginFrame = vi.fn();
-  const recordMessageCodeAddress = vi.fn();
   const getReservedVariableFromBuffer = vi.fn(() => maskPt);
-  const state = {
-    contextByDepth: [parentContext] as MessageContext[],
-    beginFrame,
-    recordMessageCodeAddress,
-  };
-  const parent = {
+  const placementManager = {
     placements: [],
     getReservedVariableFromBuffer,
     placeComposition: vi.fn(),
-    prepareFixedGenericComposition,
+    prepareComposition,
+    getLogOutWireLength: vi.fn(() => 0),
   };
-  const handler = new InstructionHandler(parent as never, state as never, {} as never);
+  const memoryManager = {
+    prepareMemoryCopy: vi.fn(() => ({ compositions: [], destinationEntries: [] })),
+  };
+  const contextManager = new ContextManager(placementManager as never, memoryManager as never);
+  contextManager.contextByDepth[0] = parentContext;
+  const beginFrame = vi.spyOn(contextManager, 'beginFrame');
+  const recordMessageCodeAddress = vi.spyOn(contextManager, 'recordMessageCodeAddress');
   const message = {
     depth: 1,
     codeAddress: createAddressFromBigInt(normalizedTarget),
@@ -109,10 +109,9 @@ const createHarness = (
     maskedResults,
     message,
     parentContext,
-    prepareFixedGenericComposition,
+    prepareComposition,
     recordMessageCodeAddress,
-    state,
-    handler,
+    contextManager,
   };
 };
 
@@ -121,7 +120,7 @@ describe('CALL-family target-mask topology', () => {
     const rawTarget = (1n << 200n) | 0x1234n;
     const harness = createHarness(opcode, rawTarget);
 
-    harness.handler.initializeMessageContext(harness.message);
+    harness.contextManager.initializeMessageContext(harness.message);
 
     expect(harness.arithmeticCalls).toHaveLength(1);
     expect(harness.arithmeticCalls[0]).toMatchObject({ name: 'AND' });
@@ -140,7 +139,7 @@ describe('CALL-family target-mask topology', () => {
       harness.message.codeAddress.toString(),
     );
 
-    const childContext = harness.state.contextByDepth[1];
+    const childContext = harness.contextManager.contextByDepth[1];
     expect(childContext.codeAddressPt).toBe(harness.maskedResults[0]);
     expect(childContext.codeAddressPt).toMatchObject({
       value: 0x1234n,
@@ -160,7 +159,7 @@ describe('CALL-family target-mask topology', () => {
   it('uses the same single-placement shape with and without discarded high bits', () => {
     const shape = (rawTarget: bigint) => {
       const harness = createHarness('CALL', rawTarget);
-      harness.handler.initializeMessageContext(harness.message);
+      harness.contextManager.initializeMessageContext(harness.message);
       return harness.arithmeticCalls.map(({ name, inPts }) => ({
         name,
         inputs: inPts.map(({ source, wireIndex, dataPtType }) => ({ source, wireIndex, dataPtType })),
@@ -173,20 +172,20 @@ describe('CALL-family target-mask topology', () => {
   it('rejects a substituted raw target before placing the mask', () => {
     const harness = createHarness('CALL', 0x1234n, { stackTarget: 0x5678n });
 
-    expect(() => harness.handler.initializeMessageContext(harness.message)).toThrow(
+    expect(() => harness.contextManager.initializeMessageContext(harness.message)).toThrow(
       'Raw address to call mismatch',
     );
-    expect(harness.prepareFixedGenericComposition).not.toHaveBeenCalled();
+    expect(harness.prepareComposition).not.toHaveBeenCalled();
     expect(harness.beginFrame).not.toHaveBeenCalled();
   });
 
   it('rejects an omitted mask output', () => {
     const harness = createHarness('CALL', 0x1234n, { maskedResults: [] });
 
-    expect(() => harness.handler.initializeMessageContext(harness.message)).toThrow(
+    expect(() => harness.contextManager.initializeMessageContext(harness.message)).toThrow(
       'CALL target mask produced no address',
     );
-    expect(harness.prepareFixedGenericComposition).toHaveBeenCalledOnce();
+    expect(harness.prepareComposition).toHaveBeenCalledOnce();
     expect(harness.beginFrame).not.toHaveBeenCalled();
   });
 
@@ -195,10 +194,10 @@ describe('CALL-family target-mask topology', () => {
       maskedResults: [dataPt(0x5678n, 99)],
     });
 
-    expect(() => harness.handler.initializeMessageContext(harness.message)).toThrow(
+    expect(() => harness.contextManager.initializeMessageContext(harness.message)).toThrow(
       'Address to call mismatch between EVM and Synthesizer',
     );
-    expect(harness.prepareFixedGenericComposition).toHaveBeenCalledOnce();
+    expect(harness.prepareComposition).toHaveBeenCalledOnce();
     expect(harness.beginFrame).not.toHaveBeenCalled();
   });
 });

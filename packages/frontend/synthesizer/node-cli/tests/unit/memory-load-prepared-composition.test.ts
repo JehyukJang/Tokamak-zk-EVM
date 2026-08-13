@@ -4,10 +4,9 @@ import { createMemoryLoadCompositionMapping } from '../../../core/src/subcircuit
 import { BUFFER_LIST } from '../../../core/src/subcircuit/configuredTypes.ts';
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
 import { MemoryPt } from '../../../core/src/synthesizer/dataStructure/memoryPt.ts';
-import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
-import { StateManager } from '../../../core/src/synthesizer/handlers/stateManager.ts';
+import { PlacementManager } from '../../../core/src/synthesizer/handlers/placementManager.ts';
+import { MemoryManager } from '../../../core/src/synthesizer/handlers/memoryManager.ts';
 import { calculateSubcircuitOutputValues } from '../../../core/src/subcircuit/subcircuitOutputOperations.ts';
-import { Synthesizer } from '../../../core/src/synthesizer/synthesizer.ts';
 import {
   BIT_DATA_PT_TYPE,
   UINT256_DATA_PT_TYPE,
@@ -65,80 +64,49 @@ const initialPlacements = Array.from({ length: 6 }, () => ({
 const createHarness = () => {
   let staticWireIndex = 0
   const parent = {
-    placements: initialPlacements.map((placement) => ({ ...placement })),
+    _placements: initialPlacements.map((placement) => ({ ...placement })),
+    _placementCompositionMapping: { MemoryLoad: memoryLoadComposition },
+    subcircuitInfoByName: new Map([['MemoryLoadStep', memoryLoadInfo]]),
     subcircuitLibrary: {
-      placementCompositionMapping: { MemoryLoad: memoryLoadComposition },
-      subcircuitInfoByName: new Map([['MemoryLoadStep', memoryLoadInfo]]),
+      calculateSubcircuitOutputValues,
     },
     loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
       dataPt(value, evmInSource, staticWireIndex++, dataPtType)),
-    calculateSubcircuitOutputValues,
-    prepareMemoryLoadViewComposition: Synthesizer.prototype.prepareMemoryLoadViewComposition,
   }
-  const handler = new InstructionHandler(parent as never, {} as never, {} as never)
-  const state = Object.assign(Object.create(StateManager.prototype), {
-    _placements: initialPlacements.map((placement) => ({ ...placement })),
-    subcircuitInfoByName: new Map([['MemoryLoadStep', memoryLoadInfo]]),
-    _placementCompositionMapping: { MemoryLoad: memoryLoadComposition },
-  }) as StateManager
+  const placementManager = Object.assign(Object.create(PlacementManager.prototype), parent) as PlacementManager
+  const memoryManager = new MemoryManager(placementManager)
 
-  return { handler, parent, state }
+  return { parent, placementManager, memoryManager }
 }
 
 const prepareView = (
-  parent: ReturnType<typeof createHarness>['parent'],
+  placementManager: PlacementManager,
   memoryPt: MemoryPt,
   offset: number,
   length: number,
   basePlacementIndex = 6,
-): PreparedComposition => parent.prepareMemoryLoadViewComposition(
-  memoryPt.getDataAlias(offset, length),
-  length,
-  basePlacementIndex,
-)
+): PreparedComposition => placementManager.prepareComposition({
+  operation: 'MemoryLoad',
+  dataAliasGeometries: memoryPt.getDataAlias(offset, length),
+  viewByteLength: length,
+}, basePlacementIndex)
 
 const prepareRead = (
-  handler: InstructionHandler,
+  memoryManager: MemoryManager,
   memoryPt: MemoryPt,
   offset: bigint,
   length: bigint,
   basePlacementIndex = 6,
-) => (handler as unknown as {
-  _prepareMemoryRead(
-    sourceMemoryPt: MemoryPt,
-    sourceOffset: bigint,
-    length: bigint,
-    basePlacementIndex: number,
-  ): {
-    compositions: readonly PreparedComposition[];
-    viewDataPts: readonly DataPt[];
-    recoveredValue: bigint;
-  };
-})._prepareMemoryRead(memoryPt, offset, length, basePlacementIndex)
+) => memoryManager.prepareMemoryRead(memoryPt, offset, length, basePlacementIndex)
 
 const prepareCopy = (
-  handler: InstructionHandler,
+  memoryManager: MemoryManager,
   memoryPt: MemoryPt,
   sourceOffset: bigint,
   length: bigint,
   destinationOffset: bigint,
   basePlacementIndex = 6,
-) => (handler as unknown as {
-  _prepareMemoryCopy(
-    sourceMemoryPt: MemoryPt,
-    sourceOffset: bigint,
-    length: bigint,
-    destinationOffset: bigint,
-    basePlacementIndex: number,
-  ): {
-    compositions: readonly PreparedComposition[];
-    destinationEntries: readonly {
-      memByteOffset: number;
-      containerByteSize: number;
-      dataPt: DataPt;
-    }[];
-  };
-})._prepareMemoryCopy(
+) => memoryManager.prepareMemoryCopy(
   memoryPt,
   sourceOffset,
   length,
@@ -151,30 +119,30 @@ const wordPt = (value: bigint, source: number): DataPt =>
 
 describe('prepared MemoryLoad compositions', () => {
   it('prepares a serial fragment chain without recording a placement', () => {
-    const { parent, state } = createHarness()
+    const { placementManager } = createHarness()
     const memoryPt = new MemoryPt()
     memoryPt.write(0, 2, wordPt(0x1122n, 1))
     memoryPt.write(2, 2, wordPt(0x3344n, 2))
 
-    const prepared = prepareView(parent, memoryPt, 0, 4)
+    const prepared = prepareView(placementManager, memoryPt, 0, 4)
 
-    expect(parent.placements).toHaveLength(6)
+    expect(placementManager.placements).toHaveLength(6)
     expect(prepared.steps).toHaveLength(2)
     expect(prepared.steps[0]!.inPts.slice(4, 6).map(({ value }) => value)).toEqual([0n, 0n])
     expect(prepared.steps[1]!.inPts.slice(4, 6).map(({ source, wireIndex }) => [source, wireIndex]))
       .toEqual([[6, 0], [6, 1]])
     expect(prepared.resultPts).toEqual(prepared.steps[1]!.outPts.slice(0, 1))
 
-    state.placeComposition(prepared)
-    expect(state.placements).toHaveLength(8)
+    placementManager.placeComposition(prepared)
+    expect(placementManager.placements).toHaveLength(8)
   })
 
   it('rejects a fragment chain with a substituted prior output before recording anything', () => {
-    const { parent, state } = createHarness()
+    const { placementManager } = createHarness()
     const memoryPt = new MemoryPt()
     memoryPt.write(0, 2, wordPt(0x1122n, 1))
     memoryPt.write(2, 2, wordPt(0x3344n, 2))
-    const prepared = prepareView(parent, memoryPt, 0, 4)
+    const prepared = prepareView(placementManager, memoryPt, 0, 4)
     const mutated: PreparedComposition = {
       ...prepared,
       steps: [
@@ -191,32 +159,32 @@ describe('prepared MemoryLoad compositions', () => {
       ],
     }
 
-    expect(() => state.placeComposition(mutated)).toThrow(
+    expect(() => placementManager.placeComposition(mutated)).toThrow(
       'MemoryLoad step 1 is not connected to the previous step',
     )
-    expect(state.placements).toHaveLength(6)
+    expect(placementManager.placements).toHaveLength(6)
   })
 
   it('keeps all-zero views placement-free and retains their EVM_IN zero word', () => {
-    const { handler, parent } = createHarness()
+    const { memoryManager, placementManager } = createHarness()
 
-    const preparedRead = prepareRead(handler, new MemoryPt(), 0n, 32n)
+    const preparedRead = prepareRead(memoryManager, new MemoryPt(), 0n, 32n)
 
     expect(preparedRead.compositions).toEqual([])
     expect(preparedRead.viewDataPts).toMatchObject([
       { source: evmInSource, dataPtType: UINT256_DATA_PT_TYPE, value: 0n },
     ])
     expect(preparedRead.recoveredValue).toBe(0n)
-    expect(parent.placements).toHaveLength(6)
+    expect(placementManager.placements).toHaveLength(6)
   })
 
   it('keeps consecutive views in source order with monotonically advancing outputs', () => {
-    const { handler } = createHarness()
+    const { memoryManager } = createHarness()
     const memoryPt = new MemoryPt()
     memoryPt.write(0, 32, wordPt(1n, 1))
     memoryPt.write(32, 32, wordPt(2n, 2))
 
-    const preparedRead = prepareRead(handler, memoryPt, 0n, 64n)
+    const preparedRead = prepareRead(memoryManager, memoryPt, 0n, 64n)
 
     expect(preparedRead.compositions).toHaveLength(2)
     expect(preparedRead.compositions.map(({ steps }) => steps[0]!.inPts[0]!.source))
@@ -226,12 +194,12 @@ describe('prepared MemoryLoad compositions', () => {
   })
 
   it('freezes copy source inputs before later writes and creates compact destination views', () => {
-    const { handler } = createHarness()
+    const { memoryManager } = createHarness()
     const memoryPt = new MemoryPt()
     memoryPt.write(0, 32, wordPt(1n, 1))
     memoryPt.write(32, 8, wordPt(2n, 2))
 
-    const preparedCopy = prepareCopy(handler, memoryPt, 0n, 40n, 96n)
+    const preparedCopy = prepareCopy(memoryManager, memoryPt, 0n, 40n, 96n)
     memoryPt.write(0, 32, wordPt(3n, 3))
 
     expect(preparedCopy.compositions).toHaveLength(2)

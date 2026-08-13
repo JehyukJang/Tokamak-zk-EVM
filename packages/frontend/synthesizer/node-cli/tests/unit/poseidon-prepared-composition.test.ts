@@ -2,8 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createPoseidonCompositionMapping } from '../../../core/src/subcircuit/special-builders/poseidonComposition.ts';
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
-import { Synthesizer } from '../../../core/src/synthesizer/synthesizer.ts';
-import { StateManager } from '../../../core/src/synthesizer/handlers/stateManager.ts';
+import { PlacementManager } from '../../../core/src/synthesizer/handlers/placementManager.ts';
 import {
   UINT256_DATA_PT_TYPE,
   UINT32_DATA_PT_TYPE,
@@ -34,23 +33,25 @@ const dataPt = (
 
 const prepare = (operands: DataPt[]): PreparedComposition => {
   let nextStaticWireIndex = 0
-  const parent = {
-    placements: [],
+  const parent = Object.assign(Object.create(PlacementManager.prototype), {
+    _placementCompositionMapping: { Poseidon: poseidonComposition },
+    subcircuitInfoByName: new Map([['Poseidon', { logicalInterface }]]),
     subcircuitLibrary: {
-      placementCompositionMapping: { Poseidon: poseidonComposition },
-      subcircuitInfoByName: new Map([['Poseidon', { logicalInterface }]]),
+      calculateSubcircuitOutputValues: vi.fn((_: string, values: bigint[]) => [
+        values.reduce((sum, value) => sum + value, 0n),
+      ]),
     },
-    calculateSubcircuitOutputValues: vi.fn((_: string, values: bigint[]) => [
-      values.reduce((sum, value) => sum + value, 0n),
-    ]),
     loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
       dataPt(value, 5, nextStaticWireIndex++, dataPtType)),
-  }
-  return Synthesizer.prototype.preparePoseidonComposition.call(parent, operands, 0)
+  }) as PlacementManager
+  return parent.prepareComposition(
+    { operation: 'Poseidon', operands },
+    0,
+  )
 }
 
-function createState(): StateManager {
-  return Object.assign(Object.create(StateManager.prototype), {
+function createPlacementManager(): PlacementManager {
+  return Object.assign(Object.create(PlacementManager.prototype), {
     _placements: Array.from({ length: 6 }, () => ({
       name: 'Poseidon',
       usage: 'test',
@@ -70,7 +71,7 @@ function createState(): StateManager {
       logicalInterface,
     }]]),
     _placementCompositionMapping: { Poseidon: poseidonComposition },
-  }) as StateManager
+  }) as PlacementManager
 }
 
 describe('prepared Poseidon composition', () => {
@@ -134,7 +135,7 @@ describe('prepared Poseidon composition', () => {
       ],
     }
 
-    expect(() => createState().placeComposition(prepared)).toThrow(
+    expect(() => createPlacementManager().placeComposition(prepared)).toThrow(
       'Poseidon step 1 input 0 is not connected to its declared source',
     )
   })
