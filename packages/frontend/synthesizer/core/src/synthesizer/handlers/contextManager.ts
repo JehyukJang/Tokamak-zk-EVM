@@ -4,18 +4,15 @@ import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
 
 import { DataPtFactory } from '../dataStructure/dataPt.ts';
 import { MemoryPt, StackPt } from '../dataStructure/index.ts';
-import type { DataPt, MemoryPts, ReservedVariable } from '../types/index.ts';
+import type {
+  DataPt,
+  MemoryPts,
+  ReservedVariable,
+  StorageCacheEntries,
+  StorageCacheEntry,
+} from '../types/index.ts';
 import type { MemoryManager } from './memoryManager.ts';
 import type { PlacementManager } from './placementManager.ts';
-
-export type StorageCacheEntry = {
-  canonicalAddressPt: DataPt;
-  canonicalKeyPt: DataPt;
-  latestValuePt: DataPt;
-  dirty: boolean;
-}
-
-type StorageCacheEntries = Map<bigint, Map<bigint, StorageCacheEntry>>;
 
 const copyStorageCacheEntry = (entry: StorageCacheEntry): StorageCacheEntry => ({
   canonicalAddressPt: DataPtFactory.deepCopy(entry.canonicalAddressPt),

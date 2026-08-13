@@ -7,11 +7,13 @@ import { DataPtFactory, StackPt } from '../../../core/src/synthesizer/dataStruct
 import {
   ContextManager,
   type InitialStorageRead,
-  type StorageCacheEntry,
 } from '../../../core/src/synthesizer/handlers/contextManager.ts';
 import { PlacementManager } from '../../../core/src/synthesizer/handlers/placementManager.ts';
 import { VARIABLE_DESCRIPTION } from '../../../core/src/synthesizer/types/buffers.ts';
-import { UINT256_DATA_PT_TYPE } from '../../../core/src/synthesizer/types/dataStructure.ts';
+import {
+  type StorageCacheEntry,
+  UINT256_DATA_PT_TYPE,
+} from '../../../core/src/synthesizer/types/dataStructure.ts';
 import type { DataPt } from '../../../core/src/synthesizer/types/index.ts';
 import type { PreparedComposition } from '../../../core/src/synthesizer/types/placements.ts';
 

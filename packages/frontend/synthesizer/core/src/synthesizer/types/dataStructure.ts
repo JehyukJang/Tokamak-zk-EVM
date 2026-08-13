@@ -94,3 +94,12 @@ export type MemoryPtEntry = { memByteOffset: number; containerByteSize: number; 
  * Array of memory information. Lower indices represent older memory information.
  */
 export type MemoryPts = MemoryPtEntry[];
+
+export type StorageCacheEntry = {
+  canonicalAddressPt: DataPt;
+  canonicalKeyPt: DataPt;
+  latestValuePt: DataPt;
+  dirty: boolean;
+};
+
+export type StorageCacheEntries = Map<bigint, Map<bigint, StorageCacheEntry>>;
