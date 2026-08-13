@@ -12,7 +12,7 @@ import {
   type DataPtDescription,
   type DataPtType,
 } from '../types/dataStructure.ts';
-import { BLS12831ARITHMODULUS, JUBJUBARITHMODULUS } from '../../synthesizer/params/constants.ts';
+import { BLS12831ARITHMODULUS, JUBJUBARITHMODULUS } from '../../subcircuit/constants.ts';
 
 function validateValue(dataPtType: DataPtType, value: bigint): void {
   if (value < 0n) {

@@ -10,7 +10,7 @@ This document focuses on how opcodes are translated into placements while a tran
 - **afterMessage**: processes the final step, propagates return data, and commits or restores the frame-scoped storage and log snapshots.
 
 ## Opcode categories
-- **Arithmetic / Bitwise**: ADD, MUL, SUB, DIV/SDIV, MOD/SMOD, ADDMOD, MULMOD, EXP, SIGNEXTEND, LT/GT/SLT/SGT, EQ, ISZERO, AND/OR/XOR/NOT, BYTE, SHL/SHR/SAR, KECCAK256 (mapped to Poseidon). `handleArith` prepares the corresponding composition and obtains its host output values from `SubcircuitOutputCalculator`.
+- **Arithmetic / Bitwise**: ADD, MUL, SUB, DIV/SDIV, MOD/SMOD, ADDMOD, MULMOD, EXP, SIGNEXTEND, LT/GT/SLT/SGT, EQ, ISZERO, AND/OR/XOR/NOT, BYTE, SHL/SHR/SAR, KECCAK256 (mapped to Poseidon). `handleArith` prepares the corresponding composition and obtains its host output values through the resolved subcircuit library.
 - **Environment**: ADDRESS, BALANCE, ORIGIN, CALLER, CALLVALUE, CALLDATALOAD/SIZE/COPY, CODESIZE/COPY, GASPRICE, EXTCODESIZE/COPY/HASH, RETURNDATASIZE/COPY. Inputs are validated against reserved buffer values; memory copies reconstruct data through `MemoryManager`.
 - **Block**: BLOCKHASH, COINBASE, TIMESTAMP, NUMBER, PREVRANDAO, GASLIMIT, CHAINID, SELFBALANCE, BASEFEE. Values are loaded from `BLOCK_IN`/`EVM_IN` buffers.
 - **System / Control**: POP, MLOAD/MSTORE/MSTORE8, SLOAD/SSTORE, JUMP/JUMPI/JUMPDEST, PC, MSIZE, GAS, MCOPY, PUSH0/PUSH1–PUSH32, DUP1–DUP16, SWAP1–SWAP16, LOG0–LOG4, CALL/CALLCODE/DELEGATECALL/STATICCALL, RETURN, REVERT. Memory-aware opcodes use `MemoryManager`; storage ops interact with `StorageCache` and `InitialStorageReadList`; call opcodes update caller/origin caches.

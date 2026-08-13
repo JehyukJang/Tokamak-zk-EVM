@@ -1,5 +1,6 @@
 import { BUFFER_LIST } from '../subcircuit/configuredTypes.ts';
 import { createPlacementCompositionManager } from '../subcircuit/placementCompositionManager.ts';
+import { calculateSubcircuitOutputValues } from '../subcircuit/subcircuitOutputOperations.ts';
 import {
   getDataPtTypeFromLogicalInterfaceType,
   getDataPtWireCount,
@@ -55,6 +56,7 @@ export function resolveSubcircuitLibraryData(
     placementCompositionManager: createPlacementCompositionManager(
       data.frontendCfg,
     ),
+    calculateSubcircuitOutputValues,
     subcircuitInfoByName,
     subcircuitBufferMapping: {
       LOG_OUT: subcircuitInfoByName.get('bufferLogOut'),

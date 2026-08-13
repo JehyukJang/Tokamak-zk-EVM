@@ -4,11 +4,10 @@ import { describe, expect, it } from 'vitest'
 
 import type { CompositionSubcircuit } from '../../../core/src/subcircuit/configuredTypes.ts'
 import { createTransactionSignatureVerifyCompositionMapping } from '../../../core/src/subcircuit/special-builders/txSignVerifyComposition.ts'
-import { SubcircuitOutputCalculator } from '../../../core/src/synthesizer/handlers/subcircuitOutputCalculator.ts'
+import { calculateSubcircuitOutputValues } from '../../../core/src/subcircuit/subcircuitOutputOperations.ts'
 
 describe('transaction-signature host output calculations', () => {
   it('reproduces the complete production TSV witness flow', () => {
-    const outputCalculator = new SubcircuitOutputCalculator()
     const privateKey = 37n
     const randomizerScalar = 61n
     const publicKey = jubjub.Point.BASE.multiply(privateKey).toAffine()
@@ -45,14 +44,12 @@ describe('transaction-signature host output calculations', () => {
       x: extended[0]! * inverse(extended[2]!) % modulus,
       y: extended[1]! * inverse(extended[2]!) % modulus,
     })
-    expect(toAffine(outputCalculator
-      .calculateSubcircuitOutputValues('TransactionSignatureFixedPrefix70', [1n])
+    expect(toAffine(calculateSubcircuitOutputValues('TransactionSignatureFixedPrefix70', [1n])
       .slice(42))).toEqual(
       jubjub.Point.BASE.multiply(8n).toAffine(),
     )
-    const prefix = outputCalculator
-      .calculateSubcircuitOutputValues('TransactionSignatureFixedPrefix70', [response])
-    const policy = outputCalculator.calculateSubcircuitOutputValues('TransactionSignaturePointPolicy', [
+    const prefix = calculateSubcircuitOutputValues('TransactionSignatureFixedPrefix70', [response])
+    const policy = calculateSubcircuitOutputValues('TransactionSignaturePointPolicy', [
       randomizer.x,
       randomizer.y,
       publicKey.x,
@@ -96,7 +93,7 @@ describe('transaction-signature host output calculations', () => {
             throw new Error('TSV does not use selector inputs')
         }
       })
-      const calculated = outputCalculator.calculateSubcircuitOutputValues(
+      const calculated = calculateSubcircuitOutputValues(
         step.subcircuit as CompositionSubcircuit,
         values,
       )
@@ -113,8 +110,7 @@ describe('transaction-signature host output calculations', () => {
 
   it('rejects a non-canonical challenge hash before producing variable scalar bits', () => {
     const modulus = jubjub.Point.Fp.ORDER
-    const outputCalculator = new SubcircuitOutputCalculator()
-    expect(() => outputCalculator.calculateSubcircuitOutputValues('TransactionSignatureChallengeVariablePrefix', [
+    expect(() => calculateSubcircuitOutputValues('TransactionSignatureChallengeVariablePrefix', [
       modulus,
       0n,
       1n,

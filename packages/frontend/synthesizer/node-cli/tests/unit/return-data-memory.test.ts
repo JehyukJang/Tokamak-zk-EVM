@@ -7,7 +7,7 @@ import { MemoryPt } from '../../../core/src/synthesizer/dataStructure/memoryPt.t
 import { StackPt } from '../../../core/src/synthesizer/dataStructure/stackPt.ts';
 import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
 import { ContextManager } from '../../../core/src/synthesizer/handlers/stateManager.ts';
-import { SubcircuitOutputCalculator } from '../../../core/src/synthesizer/handlers/subcircuitOutputCalculator.ts';
+import { calculateSubcircuitOutputValues } from '../../../core/src/subcircuit/subcircuitOutputOperations.ts';
 import { Synthesizer } from '../../../core/src/synthesizer/synthesizer.ts';
 import {
   UINT256_DATA_PT_TYPE,
@@ -62,7 +62,6 @@ const createContext = () => new ContextManager({
 
 const createHarness = () => {
   let staticWireIndex = 0
-  const outputCalculator = new SubcircuitOutputCalculator()
   const parent = {
     placements: Array.from({ length: 6 }, () => ({})),
     subcircuitLibrary: {
@@ -71,7 +70,7 @@ const createHarness = () => {
     },
     loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
       dataPt(value, evmInSource, staticWireIndex++, dataPtType)),
-    calculateSubcircuitOutputValues: outputCalculator.calculateSubcircuitOutputValues.bind(outputCalculator),
+    calculateSubcircuitOutputValues,
     prepareMemoryLoadViewComposition: Synthesizer.prototype.prepareMemoryLoadViewComposition,
     placeComposition: vi.fn(),
   }

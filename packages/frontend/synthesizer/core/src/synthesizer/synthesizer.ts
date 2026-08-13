@@ -5,7 +5,7 @@ import { bigIntToBytes, bigIntToHex, bytesToHex, createAddressFromBigInt, setLen
 
 import { EVMResult, InterpreterStep } from '@ethereumjs/evm';
 import { DataAliasGeometries, DataPt, DataPtType, getDataPtTypeFromLogicalInterfaceType, Placements, PreparedComposition, ReservedVariable, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry, UINT32_DATA_PT_TYPE } from './types/index.ts';
-import { BufferManager, InstructionHandler, StateManager, SubcircuitOutputCalculator } from './handlers/index.ts';
+import { BufferManager, InstructionHandler, StateManager } from './handlers/index.ts';
 import { ReservedBuffer, type CompositionSubcircuit, type Operator } from '../subcircuit/configuredTypes.ts';
 import type { ResolvedSubcircuitLibrary } from '../subcircuit/libraryTypes.ts';
 import { DataPtFactory } from './dataStructure/dataPt.ts';
@@ -19,7 +19,6 @@ import { POSEIDON_INPUTS } from 'tokamak-l2js';
 export class Synthesizer implements SynthesizerInterface
 {
   private _state: StateManager
-  protected _subcircuitOutputCalculator: SubcircuitOutputCalculator
   protected _bufferManager: BufferManager
   protected _instructionHandlers: InstructionHandler
   private readonly _cachedOpts: SynthesizerOpts
@@ -33,7 +32,6 @@ export class Synthesizer implements SynthesizerInterface
     this.subcircuitLibrary = subcircuitLibrary
     this._state = new StateManager(this)
     this._bufferManager = new BufferManager(this, this._state, this._cachedOpts)
-    this._subcircuitOutputCalculator = new SubcircuitOutputCalculator()
     this._instructionHandlers = new InstructionHandler(this, this._state, this._cachedOpts)
     this._eventHandlerError = undefined
     this._hasEventHandlerError = false
@@ -313,7 +311,7 @@ export class Synthesizer implements SynthesizerInterface
     name: CompositionSubcircuit,
     values: bigint[],
   ): bigint[] {
-    return this._subcircuitOutputCalculator.calculateSubcircuitOutputValues(name, values)
+    return this.subcircuitLibrary.calculateSubcircuitOutputValues(name, values)
   }
 
   getReservedVariableFromBuffer(

@@ -5,6 +5,7 @@
 
 import { SUBCIRCUIT_LIST, SubcircuitNames } from "./configuredTypes.ts";
 import type { PlacementCompositionManager } from './placementCompositionManager.ts';
+import type { calculateSubcircuitOutputValues } from './subcircuitOutputOperations.ts';
 import type {
   ReservedBuffer,
   SubcircuitInfoByName,
@@ -104,6 +105,7 @@ export interface SubcircuitLibraryProvider {
 export interface ResolvedSubcircuitLibrary {
   data: SubcircuitLibraryData;
   placementCompositionManager: PlacementCompositionManager;
+  calculateSubcircuitOutputValues: typeof calculateSubcircuitOutputValues;
   subcircuitInfoByName: SubcircuitInfoByName;
   subcircuitBufferMapping: Record<ReservedBuffer, SubcircuitInfoByNameEntry | undefined>;
   numberOfPrevBlockHashes: number;
