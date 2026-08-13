@@ -4,9 +4,8 @@ import { BlockData, BlockOptions, createBlock, HeaderData } from '@ethereumjs/bl
 import { bigIntToBytes, bigIntToHex, bytesToHex, createAddressFromBigInt, setLengthLeft } from '@ethereumjs/util';
 
 import { EVMResult, InterpreterStep } from '@ethereumjs/evm';
-import { DataPt, DataPtType, Placements, PreparedComposition, ReservedVariable, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
+import { Placements, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
 import { ContextManager, InstructionHandler, MemoryManager, PlacementManager } from './handlers/index.ts';
-import { type CompositionSubcircuit } from '../subcircuit/configuredTypes.ts';
 import type { ResolvedSubcircuitLibrary } from '../subcircuit/libraryTypes.ts';
 import { TypedTransaction } from '@ethereumjs/tx';
 
@@ -29,14 +28,14 @@ export class Synthesizer implements SynthesizerInterface
   constructor(opts: SynthesizerOpts, subcircuitLibrary: ResolvedSubcircuitLibrary) {
     this._cachedOpts = opts
     this.subcircuitLibrary = subcircuitLibrary
-    this._placementManager = new PlacementManager(this, this._cachedOpts)
+    this._placementManager = new PlacementManager(this.subcircuitLibrary, this._cachedOpts)
     this._memoryManager = new MemoryManager(this._placementManager)
     this._contextManager = new ContextManager(this._placementManager, this._memoryManager)
     this._instructionHandlers = new InstructionHandler(
-      this,
       this._contextManager,
       this._placementManager,
       this._memoryManager,
+      this.subcircuitLibrary,
       this._cachedOpts,
     )
     this._eventHandlerError = undefined
@@ -160,9 +159,9 @@ export class Synthesizer implements SynthesizerInterface
 
   private _finalizeStorageStore(): void {
     for (const entry of this._contextManager.storageCache.dirtyEntries) {
-      this.addReservedVariableToBufferOut('SSTORE_ADDRESS', entry.canonicalAddressPt, true)
-      this.addReservedVariableToBufferOut('SSTORE_KEY', entry.canonicalKeyPt, true)
-      this.addReservedVariableToBufferOut('SSTORE_VALUE', entry.latestValuePt, true)
+      this._placementManager.addReservedVariableToBufferOut('SSTORE_ADDRESS', entry.canonicalAddressPt, true)
+      this._placementManager.addReservedVariableToBufferOut('SSTORE_KEY', entry.canonicalKeyPt, true)
+      this._placementManager.addReservedVariableToBufferOut('SSTORE_VALUE', entry.latestValuePt, true)
     }
   }
 
@@ -174,15 +173,15 @@ export class Synthesizer implements SynthesizerInterface
 
     const headerData: HeaderData = {
       parentHash: setLengthLeft(
-        bigIntToBytes(this.getReservedVariableFromBuffer('BLOCKHASH_1').value),
+        bigIntToBytes(this._placementManager.getReservedVariableFromBuffer('BLOCKHASH_1').value),
         32,
       ),
-      coinbase: createAddressFromBigInt(this.getReservedVariableFromBuffer('COINBASE').value),
+      coinbase: createAddressFromBigInt(this._placementManager.getReservedVariableFromBuffer('COINBASE').value),
       // difficulty = 0 for PoS blocks
       difficulty: 0n,
-      number: this.getReservedVariableFromBuffer('NUMBER').value,
-      gasLimit: this.getReservedVariableFromBuffer('GASLIMIT').value,
-      timestamp: this.getReservedVariableFromBuffer('TIMESTAMP').value,
+      number: this._placementManager.getReservedVariableFromBuffer('NUMBER').value,
+      gasLimit: this._placementManager.getReservedVariableFromBuffer('GASLIMIT').value,
+      timestamp: this._placementManager.getReservedVariableFromBuffer('TIMESTAMP').value,
 
       baseFeePerGas: undefined,
     };
@@ -286,38 +285,6 @@ export class Synthesizer implements SynthesizerInterface
 
   public get placements(): Placements {
     return this._placementManager.placements
-  }
-
-  placeComposition(preparedComposition: PreparedComposition): void {
-    this._placementManager.placeComposition(preparedComposition)
-  }
-
-  calculateSubcircuitOutputValues(
-    name: CompositionSubcircuit,
-    values: bigint[],
-  ): bigint[] {
-    return this.subcircuitLibrary.calculateSubcircuitOutputValues(name, values)
-  }
-
-  getReservedVariableFromBuffer(
-    varName: ReservedVariable
-  ): DataPt {
-    return this._placementManager.getReservedVariableFromBuffer(varName)
-  }
-
-  addReservedVariableToBufferIn(varName: ReservedVariable, value?: bigint, dynamic?: boolean, message?: string): DataPt {
-    return this._placementManager.addReservedVariableToBufferIn(varName, value, dynamic, message)
-  }
-  addReservedVariableToBufferOut(varName: ReservedVariable, symbolDataPt: DataPt, dynamic?: boolean, message?: string): DataPt {
-    return this._placementManager.addReservedVariableToBufferOut(varName, symbolDataPt, dynamic, message)
-  }
-
-  loadArbitraryStatic(
-    value: bigint,
-    dataPtType: DataPtType,
-    desc?: string,
-  ): DataPt {
-    return this._placementManager.loadArbitraryStatic(value, dataPtType, desc)
   }
 
 }

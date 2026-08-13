@@ -5,7 +5,6 @@ import {
   DataPtDescription,
   DataPtType,
   DataAliasGeometries,
-  ISynthesizerProvider,
   ReservedVariable,
   SynthesizerOpts,
   VARIABLE_DESCRIPTION,
@@ -32,7 +31,7 @@ import type {
   PlacementComposition,
   PlacementCompositionMapping,
 } from '../../subcircuit/placementCompositionMapping.ts';
-import type { LogicalInterfacePort } from '../../subcircuit/libraryTypes.ts';
+import type { LogicalInterfacePort, ResolvedSubcircuitLibrary } from '../../subcircuit/libraryTypes.ts';
 import { FUNCTION_INPUT_LENGTH, POSEIDON_INPUTS } from 'tokamak-l2js';
 
 export type CompositionPreparationRequest =
@@ -265,12 +264,12 @@ export class PlacementManager {
   private readonly _placementCompositionMapping: PlacementCompositionMapping;
 
   constructor(
-    private readonly parent: ISynthesizerProvider,
+    private readonly subcircuitLibrary: ResolvedSubcircuitLibrary,
     private readonly cachedOpts: SynthesizerOpts,
   ) {
-    this.subcircuitInfoByName = parent.subcircuitLibrary.subcircuitInfoByName
-    this._bufferSubcircuitByBuffer = parent.subcircuitLibrary.subcircuitBufferMapping
-    this._placementCompositionMapping = parent.subcircuitLibrary.placementCompositionMapping
+    this.subcircuitInfoByName = subcircuitLibrary.subcircuitInfoByName
+    this._bufferSubcircuitByBuffer = subcircuitLibrary.subcircuitBufferMapping
+    this._placementCompositionMapping = subcircuitLibrary.placementCompositionMapping
     this._initBuffers()
   }
 
@@ -383,7 +382,7 @@ export class PlacementManager {
     this.addReservedVariableToBufferIn('CHAINID', hexToBigInt(this.cachedOpts.blockInfo.chainId))
     this.addReservedVariableToBufferIn('SELFBALANCE', hexToBigInt(this.cachedOpts.blockInfo.selfBalance))
     this.addReservedVariableToBufferIn('BASEFEE', hexToBigInt(this.cachedOpts.blockInfo.baseFee))
-    for (let i = 1; i <= this.parent.subcircuitLibrary.numberOfPrevBlockHashes; i++) {
+    for (let i = 1; i <= this.subcircuitLibrary.numberOfPrevBlockHashes; i++) {
       this.addReservedVariableToBufferIn(
         `BLOCKHASH_${i}` as ReservedVariable,
         hexToBigInt(this.cachedOpts.blockInfo.prevBlockHashes[i - 1]),
@@ -520,7 +519,7 @@ export class PlacementManager {
       )
       const inPts = [info.dataPt, info.shiftPt, info.directionPt, info.maskerPt,
         previousWordPt, previousOwnershipPt, expectedCoveragePt, finalModePt]
-      const [nextWordValue, nextOwnershipValue] = this.parent.calculateSubcircuitOutputValues(
+      const [nextWordValue, nextOwnershipValue] = this.subcircuitLibrary.calculateSubcircuitOutputValues(
         'MemoryLoadStep', inPts.map(({ value }) => value),
       )
       if (nextWordValue === undefined || nextOwnershipValue === undefined) {
@@ -602,7 +601,7 @@ export class PlacementManager {
       if (logicalInterface === undefined) {
         throw new Error(`Synthesizer: ${step.subcircuit} logical interface is unavailable`)
       }
-      const values = this.parent.calculateSubcircuitOutputValues(
+      const values = this.subcircuitLibrary.calculateSubcircuitOutputValues(
         step.subcircuit,
         inPts.map(({ value }) => value),
       )
@@ -678,7 +677,7 @@ export class PlacementManager {
           () => DataPtFactory.deepCopy(zeroPt),
         ),
       ]
-      const values = this.parent.calculateSubcircuitOutputValues(
+      const values = this.subcircuitLibrary.calculateSubcircuitOutputValues(
         'Poseidon',
         finalInPts.map(({ value }) => value),
       )

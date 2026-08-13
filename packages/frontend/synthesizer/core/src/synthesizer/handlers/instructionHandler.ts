@@ -1,5 +1,5 @@
 
-import { BIT_DATA_PT_TYPE, ISynthesizerProvider, MemoryPts, PreparedComposition, synthesizerOpcodeByName, SynthesizerOpts, SynthesizerSupportedArithOpcodes, SynthesizerSupportedBlkInfOpcodes, SynthesizerSupportedEnvInfOpcodes, SynthesizerSupportedLogOpcodes, SynthesizerSupportedSysFlowOpcodes, type DataPt, type ReservedVariable, type SynthesizerSupportedOpcodes, UINT256_DATA_PT_TYPE } from '../types/index.ts';
+import { BIT_DATA_PT_TYPE, MemoryPts, PreparedComposition, synthesizerOpcodeByName, SynthesizerOpts, SynthesizerSupportedArithOpcodes, SynthesizerSupportedBlkInfOpcodes, SynthesizerSupportedEnvInfOpcodes, SynthesizerSupportedLogOpcodes, SynthesizerSupportedSysFlowOpcodes, type DataPt, type ReservedVariable, type SynthesizerSupportedOpcodes, UINT256_DATA_PT_TYPE } from '../types/index.ts';
 
 import {
   Address,
@@ -14,6 +14,7 @@ import { DataPtFactory, MemoryPt, StackPt } from '../dataStructure/index.ts';
 import type { PlacementManager } from './placementManager.ts';
 import type { MemoryManager } from './memoryManager.ts';
 import type { ContextManager, MessageContext } from './contextManager.ts';
+import type { ResolvedSubcircuitLibrary } from '../../subcircuit/libraryTypes.ts';
 
 export interface HandlerOpts {
   op: SynthesizerSupportedOpcodes,
@@ -41,10 +42,10 @@ const checkRequiredInput = (...input: unknown[]): void => {
 export class InstructionHandler {
   public synthesizerHandlers!: Map<number, SynthesizerOpHandler>
   constructor(
-    private parent: ISynthesizerProvider,
     private readonly contextManager: ContextManager,
     private readonly placementManager: PlacementManager,
     private readonly memoryManager: MemoryManager,
+    private readonly subcircuitLibrary: ResolvedSubcircuitLibrary,
     private readonly cachedOpts: SynthesizerOpts,
   ) {
     this._createSynthesizerHandlers()
@@ -360,7 +361,7 @@ export class InstructionHandler {
         const out: bigint = stepResult.stack[0]
         const numToPush = opts.prevStepResult.opcode.code - 0x5f
         const staticInDesc = `Static input for PUSH${numToPush} instruction at PC ${opts.pc} of code address ${opts.thisAddress} (depth: ${opts.callDepth})`
-        opts.stackPt.push(this.parent.loadArbitraryStatic(
+        opts.stackPt.push(this.placementManager.loadArbitraryStatic(
           out,
           UINT256_DATA_PT_TYPE,
           staticInDesc,
@@ -436,7 +437,7 @@ export class InstructionHandler {
       resultPts: [],
       steps: [{ inPts, outPts: [] }],
     }
-    this.parent.placeComposition(preparedComposition)
+    this.placementManager.placeComposition(preparedComposition)
   }
 
   private _getCachedStorageEntry(
@@ -503,19 +504,19 @@ export class InstructionHandler {
       return DataPtFactory.deepCopy(cachedEntry.latestValuePt)
     }
 
-    this.parent.addReservedVariableToBufferOut(
+    this.placementManager.addReservedVariableToBufferOut(
       'SLOAD_ADDRESS',
       addressPt,
       true,
       ` of address: ${address}`,
     );
-    this.parent.addReservedVariableToBufferOut(
+    this.placementManager.addReservedVariableToBufferOut(
       'SLOAD_KEY',
       keyPt,
       true,
       ` of address: ${address}`,
     );
-    const valuePt = this.parent.addReservedVariableToBufferIn(
+    const valuePt = this.placementManager.addReservedVariableToBufferIn(
       'SLOAD_VALUE',
       valueStored,
       true,
@@ -581,7 +582,7 @@ export class InstructionHandler {
       case 'EXP':
         preparedComposition = this.placementManager.prepareComposition(
           { operation: op, operands: inPts },
-          this.parent.placements.length,
+          this.placementManager.placements.length,
         )
         break
       case 'KECCAK256': {
@@ -592,10 +593,10 @@ export class InstructionHandler {
             opts.memoryPt,
             memOffset,
             dataLength,
-            this.parent.placements.length,
+            this.placementManager.placements.length,
           )
           for (const preparedComposition of preparedMemoryRead.compositions) {
-            this.parent.placeComposition(preparedComposition)
+            this.placementManager.placeComposition(preparedComposition)
           }
           const { viewDataPts, recoveredValue } = preparedMemoryRead
           if (bytesToBigInt(opts.memOut!) !== recoveredValue) {
@@ -603,18 +604,18 @@ export class InstructionHandler {
           }
           preparedComposition = this.placementManager.prepareComposition(
             { operation: 'Poseidon', operands: viewDataPts },
-            this.parent.placements.length,
+            this.placementManager.placements.length,
           )
         }
         break
       default:
         preparedComposition = this.placementManager.prepareComposition(
           { operation: op, operands: inPts },
-          this.parent.placements.length,
+          this.placementManager.placements.length,
         );
         break;
     }
-    this.parent.placeComposition(preparedComposition)
+    this.placementManager.placeComposition(preparedComposition)
     const outPts = preparedComposition.resultPts
     if (outPts.length !== 1 || outPts[0].value !== out) {
       throw new Error(`Synthesizer: ${op}: Output data mismatch`);
@@ -638,7 +639,7 @@ export class InstructionHandler {
       case 'CHAINID':
       case 'SELFBALANCE':
       case 'BASEFEE': {
-        dataPt = this.parent.getReservedVariableFromBuffer(op)
+        dataPt = this.placementManager.getReservedVariableFromBuffer(op)
         break
       }
       case 'BLOCKHASH': {
@@ -647,20 +648,20 @@ export class InstructionHandler {
           throw new Error('Debug: BLOCKHASH requires an input block number')
         }
         this._popStackPtAndCheckInputConsistency(opts.stackPt, [blockNumber]);
-        const blockNumberDiff = this.parent.getReservedVariableFromBuffer('NUMBER').value - blockNumber;
+        const blockNumberDiff = this.placementManager.getReservedVariableFromBuffer('NUMBER').value - blockNumber;
         if (blockNumberDiff <= 0n || blockNumberDiff > 256n) {
-          dataPt = this.parent.loadArbitraryStatic(
+          dataPt = this.placementManager.loadArbitraryStatic(
             0n,
             UINT256_DATA_PT_TYPE,
           )
           break
         }
-        if (blockNumberDiff > BigInt(this.parent.subcircuitLibrary.numberOfPrevBlockHashes)) {
+        if (blockNumberDiff > BigInt(this.subcircuitLibrary.numberOfPrevBlockHashes)) {
           throw new Error(
-            `Synthesizer: BLOCKHASH requires ${blockNumberDiff.toString()} previous block hashes, but qap-compiler nPrevBlockHashes is ${this.parent.subcircuitLibrary.numberOfPrevBlockHashes}. Increase qap-compiler nPrevBlockHashes.`,
+            `Synthesizer: BLOCKHASH requires ${blockNumberDiff.toString()} previous block hashes, but qap-compiler nPrevBlockHashes is ${this.subcircuitLibrary.numberOfPrevBlockHashes}. Increase qap-compiler nPrevBlockHashes.`,
           )
         }
-        dataPt = this.parent.getReservedVariableFromBuffer(`BLOCKHASH_${blockNumberDiff}` as ReservedVariable)
+        dataPt = this.placementManager.getReservedVariableFromBuffer(`BLOCKHASH_${blockNumberDiff}` as ReservedVariable)
         break
       }
       default:
@@ -678,7 +679,7 @@ export class InstructionHandler {
     const value = output
     const staticInDesc = `Static input for ${opts.op} instruction at PC ${opts.pc} of code address ${opts.codeAddress} (depth : ${opts.callDepth})`
     let targetDesc = targetAddress === undefined ? `` : `(target: ${createAddressFromBigInt(targetAddress).toString()})`
-    return this.parent.loadArbitraryStatic(
+    return this.placementManager.loadArbitraryStatic(
       value,
       UINT256_DATA_PT_TYPE,
       staticInDesc + targetDesc,
@@ -759,18 +760,18 @@ export class InstructionHandler {
             if (dataAliasInfos.length > 0) {
               const preparedComposition = this.placementManager.prepareComposition(
                 { operation: 'MemoryLoad', dataAliasGeometries: dataAliasInfos, viewByteLength: 32 },
-                this.parent.placements.length,
+                this.placementManager.placements.length,
               )
-              this.parent.placeComposition(preparedComposition)
+              this.placementManager.placeComposition(preparedComposition)
               stackPt.push(preparedComposition.resultPts[0]!)
             } else {
-              stackPt.push(this.parent.loadArbitraryStatic(
+              stackPt.push(this.placementManager.loadArbitraryStatic(
                 0n,
                 UINT256_DATA_PT_TYPE,
               ))
             }
           } else {
-            stackPt.push(this.parent.loadArbitraryStatic(
+            stackPt.push(this.placementManager.loadArbitraryStatic(
               0n,
               UINT256_DATA_PT_TYPE,
             ))
@@ -792,10 +793,10 @@ export class InstructionHandler {
               dataOffset,
               dataLength,
               memOffset,
-              this.parent.placements.length,
+              this.placementManager.placements.length,
             )
             for (const preparedComposition of preparedMemoryCopy.compositions) {
-              this.parent.placeComposition(preparedComposition)
+              this.placementManager.placeComposition(preparedComposition)
             }
             memoryPt.writeBatch(preparedMemoryCopy.destinationEntries)
           }
@@ -890,10 +891,10 @@ export class InstructionHandler {
               returnDataOffset,
               dataLength,
               memOffset,
-              this.parent.placements.length,
+              this.placementManager.placements.length,
             )
             for (const preparedComposition of preparedMemoryCopy.compositions) {
-              this.parent.placeComposition(preparedComposition)
+              this.placementManager.placeComposition(preparedComposition)
             }
             memoryPt.writeBatch(preparedMemoryCopy.destinationEntries)
           }
@@ -943,7 +944,7 @@ export class InstructionHandler {
     }
 
     for (const [index, topicPt] of topicPts.entries()) {
-      this.parent.addReservedVariableToBufferOut(
+      this.placementManager.addReservedVariableToBufferOut(
         'LOG_TOPIC',
         topicPt,
         true,
@@ -955,10 +956,10 @@ export class InstructionHandler {
       opts.memoryPt,
       memOffset,
       dataLength,
-      this.parent.placements.length,
+      this.placementManager.placements.length,
     )
     for (const preparedComposition of preparedMemoryRead.compositions) {
-      this.parent.placeComposition(preparedComposition)
+      this.placementManager.placeComposition(preparedComposition)
     }
     const { viewDataPts, recoveredValue } = preparedMemoryRead
     const expectedLogData = bytesToBigInt(
@@ -969,7 +970,7 @@ export class InstructionHandler {
     }
 
     for (const [index, viewDataPt] of viewDataPts.entries()) {
-      this.parent.addReservedVariableToBufferOut(
+      this.placementManager.addReservedVariableToBufferOut(
         'LOG_VALUE',
         viewDataPt,
         true,
@@ -1007,16 +1008,16 @@ export class InstructionHandler {
           )
           let mutDataPt: DataPt
           if (dataAliasInfos.length === 0) {
-            mutDataPt = this.parent.loadArbitraryStatic(
+            mutDataPt = this.placementManager.loadArbitraryStatic(
               0n,
               UINT256_DATA_PT_TYPE,
             )
           } else {
             const preparedComposition = this.placementManager.prepareComposition(
               { operation: 'MemoryLoad', dataAliasGeometries: dataAliasInfos, viewByteLength: 32 },
-              this.parent.placements.length,
+              this.placementManager.placements.length,
             )
-            this.parent.placeComposition(preparedComposition)
+            this.placementManager.placeComposition(preparedComposition)
             mutDataPt = preparedComposition.resultPts[0]!
           }
           opts.stackPt.push(mutDataPt)
@@ -1032,16 +1033,16 @@ export class InstructionHandler {
           if (op === 'MSTORE8') {
             const preparedComposition = this.placementManager.prepareComposition(
               { operation: 'AND', operands: [
-                this.parent.loadArbitraryStatic(
+                this.placementManager.loadArbitraryStatic(
                   0xffn,
                   UINT256_DATA_PT_TYPE,
                   'Masker for MSTORE8',
                 ),
                 originalDataPt,
               ] },
-              this.parent.placements.length,
+              this.placementManager.placements.length,
             )
-            this.parent.placeComposition(preparedComposition)
+            this.placementManager.placeComposition(preparedComposition)
             dataPtToStore = preparedComposition.resultPts[0]!
           }
           const byteSize = op === 'MSTORE8' ? 1 : 32
@@ -1087,7 +1088,7 @@ export class InstructionHandler {
       case 'GAS':
         {
           const staticInDesc = `Static input for ${opts.op} instruction at PC ${opts.pc} of code address ${opts.codeAddress} (depth: ${opts.callDepth})`
-          opts.stackPt.push(this.parent.loadArbitraryStatic(
+          opts.stackPt.push(this.placementManager.loadArbitraryStatic(
             out!,
             UINT256_DATA_PT_TYPE,
             staticInDesc,
@@ -1105,10 +1106,10 @@ export class InstructionHandler {
             srcOffset,
             length,
             dstOffset,
-            this.parent.placements.length,
+            this.placementManager.placements.length,
           )
           for (const preparedComposition of preparedMemoryCopy.compositions) {
-            this.parent.placeComposition(preparedComposition)
+            this.placementManager.placeComposition(preparedComposition)
           }
           const _out = opts.memoryPt.writeBatch(preparedMemoryCopy.destinationEntries)
           if (bytesToBigInt(_out) !== bytesToBigInt(opts.memOut!)) {
@@ -1140,10 +1141,10 @@ export class InstructionHandler {
               0n,
               copiedLength,
               outOffset,
-              this.parent.placements.length,
+              this.placementManager.placements.length,
             )
             for (const preparedComposition of preparedMemoryCopy.compositions) {
-              this.parent.placeComposition(preparedComposition)
+              this.placementManager.placeComposition(preparedComposition)
             }
             opts.memoryPt.writeBatch(preparedMemoryCopy.destinationEntries)
           }
@@ -1153,7 +1154,7 @@ export class InstructionHandler {
               `Synthesizer: ${op}: Return memory data mismatch`,
             )
           }
-          opts.stackPt.push(this.parent.loadArbitraryStatic(
+          opts.stackPt.push(this.placementManager.loadArbitraryStatic(
             out!,
             UINT256_DATA_PT_TYPE,
             `Call result of ${op} instruction at PC ${opts.pc} of code address ${opts.codeAddress} (depth: ${opts.callDepth})`,
@@ -1170,10 +1171,10 @@ export class InstructionHandler {
             offset,
             length,
             0n,
-            this.parent.placements.length,
+            this.placementManager.placements.length,
           )
           for (const preparedComposition of preparedMemoryCopy.compositions) {
-            this.parent.placeComposition(preparedComposition)
+            this.placementManager.placeComposition(preparedComposition)
           }
           opts.thisContext.resultMemoryPts = preparedMemoryCopy.destinationEntries
           opts.thisContext.resultDataByteLength = Number(length)
