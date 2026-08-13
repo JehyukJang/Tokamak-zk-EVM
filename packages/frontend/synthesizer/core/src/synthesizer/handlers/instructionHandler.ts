@@ -14,7 +14,7 @@ import {
 import { InterpreterStep, Message } from '@ethereumjs/evm'
 import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js'
 import { DataPtFactory, MemoryPt, StackPt } from '../dataStructure/index.ts';
-import type { Operator } from '../../subcircuit/configuredTypes.ts';
+import type { PlacementManager } from './placementManager.ts';
 import type { MessageContext, StateManager } from './stateManager.ts';
 
 export interface HandlerOpts {
@@ -64,6 +64,7 @@ export class InstructionHandler {
   constructor(
     private parent: ISynthesizerProvider,
     private readonly state: StateManager,
+    private readonly placementManager: PlacementManager,
     private readonly cachedOpts: SynthesizerOpts,
   ) {
     this._createSynthesizerHandlers()
@@ -149,9 +150,8 @@ export class InstructionHandler {
         throw new Error('Debug: Raw address to call mismatch between EVM and Synthesizer')
       }
       const addressMaskPt = this.parent.getReservedVariableFromBuffer('ADDRESS_MASK')
-      const preparedTargetMask = this.parent.prepareFixedGenericComposition(
-        'AND',
-        [rawCodeAddressPt, addressMaskPt],
+      const preparedTargetMask = this.placementManager.prepareComposition(
+        { operation: 'AND', operands: [rawCodeAddressPt, addressMaskPt] },
         this.parent.placements.length,
       )
       this.parent.placeComposition(preparedTargetMask)
@@ -756,9 +756,8 @@ export class InstructionHandler {
       case 'ADDMOD':
       case 'MULMOD':
       case 'EXP':
-        preparedComposition = this.parent.prepareFixedGenericComposition(
-          op,
-          inPts,
+        preparedComposition = this.placementManager.prepareComposition(
+          { operation: op, operands: inPts },
           this.parent.placements.length,
         )
         break
@@ -779,16 +778,15 @@ export class InstructionHandler {
           if (bytesToBigInt(opts.memOut!) !== recoveredValue) {
             throw new Error(`Synthesizer: ${op}: Memory data to load mismatch`)
           }
-          preparedComposition = this.parent.preparePoseidonComposition(
-            viewDataPts,
+          preparedComposition = this.placementManager.prepareComposition(
+            { operation: 'Poseidon', operands: viewDataPts },
             this.parent.placements.length,
           )
         }
         break
       default:
-        preparedComposition = this.parent.prepareFixedGenericComposition(
-          op as Operator,
-          inPts,
+        preparedComposition = this.placementManager.prepareComposition(
+          { operation: op, operands: inPts },
           this.parent.placements.length,
         );
         break;
@@ -936,9 +934,8 @@ export class InstructionHandler {
             const calldataMemoryPt = MemoryPt.simulateMemoryPt(calldataMemoryPts);
             const dataAliasInfos = calldataMemoryPt.getDataAlias(i, 32);
             if (dataAliasInfos.length > 0) {
-              const preparedComposition = this.parent.prepareMemoryLoadViewComposition(
-                dataAliasInfos,
-                32,
+              const preparedComposition = this.placementManager.prepareComposition(
+                { operation: 'MemoryLoad', dataAliasGeometries: dataAliasInfos, viewByteLength: 32 },
                 this.parent.placements.length,
               )
               this.parent.placeComposition(preparedComposition)
@@ -1192,9 +1189,8 @@ export class InstructionHandler {
               UINT256_DATA_PT_TYPE,
             )
           } else {
-            const preparedComposition = this.parent.prepareMemoryLoadViewComposition(
-              dataAliasInfos,
-              32,
+            const preparedComposition = this.placementManager.prepareComposition(
+              { operation: 'MemoryLoad', dataAliasGeometries: dataAliasInfos, viewByteLength: 32 },
               this.parent.placements.length,
             )
             this.parent.placeComposition(preparedComposition)
@@ -1211,16 +1207,15 @@ export class InstructionHandler {
           const originalDataPt = inPts[1]
           let dataPtToStore = originalDataPt
           if (op === 'MSTORE8') {
-            const preparedComposition = this.parent.prepareFixedGenericComposition(
-              'AND',
-              [
+            const preparedComposition = this.placementManager.prepareComposition(
+              { operation: 'AND', operands: [
                 this.parent.loadArbitraryStatic(
                   0xffn,
                   UINT256_DATA_PT_TYPE,
                   'Masker for MSTORE8',
                 ),
                 originalDataPt,
-              ],
+              ] },
               this.parent.placements.length,
             )
             this.parent.placeComposition(preparedComposition)
@@ -1484,9 +1479,8 @@ export class InstructionHandler {
   
       const dataAliasInfos = memoryPt.getDataAlias(_offset, _length);
       if (dataAliasInfos.length > 0) {
-        const preparedComposition = this.parent.prepareMemoryLoadViewComposition(
-          dataAliasInfos,
-          _length,
+        const preparedComposition = this.placementManager.prepareComposition(
+          { operation: 'MemoryLoad', dataAliasGeometries: dataAliasInfos, viewByteLength: _length },
           nextPlacementIndex,
         )
         compositions.push(preparedComposition)
