@@ -22,8 +22,8 @@ This document summarizes the main classes and modules in the current split works
   - injects block, transaction, execution, and private witness inputs
 - **Subcircuit output operations** (`core/src/subcircuit/subcircuitOutputOperations.ts`)
   - provides the library-owned host output calculation function for composition subcircuits
-- **MemoryManager** (`core/src/synthesizer/handlers/memoryManager.ts`)
-  - resolves memory aliasing and copy semantics
+- **ContextManager memory preparation** (`core/src/synthesizer/handlers/contextManager.ts`)
+  - resolves memory aliasing and copy semantics for context-owned memory
 
 ## Shared circuit generation
 

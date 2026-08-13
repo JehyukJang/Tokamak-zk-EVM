@@ -154,7 +154,7 @@ describe('Synthesizer VM lifecycle', () => {
       dataPt: childResultPt,
     }];
     childContext.resultDataByteLength = 4;
-    const contextManager = new ContextManager({} as never, {} as never)
+    const contextManager = new ContextManager({} as never)
     contextManager.contextByDepth = [parentContext, childContext]
     contextManager.returnMessageCall(1)
 

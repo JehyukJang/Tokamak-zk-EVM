@@ -6,8 +6,7 @@ import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataP
 import { MemoryPt } from '../../../core/src/synthesizer/dataStructure/memoryPt.ts';
 import { StackPt } from '../../../core/src/synthesizer/dataStructure/stackPt.ts';
 import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
-import type { MessageContext } from '../../../core/src/synthesizer/handlers/contextManager.ts';
-import { MemoryManager } from '../../../core/src/synthesizer/handlers/memoryManager.ts';
+import { ContextManager, type MessageContext } from '../../../core/src/synthesizer/handlers/contextManager.ts';
 import { PlacementManager } from '../../../core/src/synthesizer/handlers/placementManager.ts';
 import { calculateSubcircuitOutputValues } from '../../../core/src/subcircuit/subcircuitOutputOperations.ts';
 import {
@@ -87,11 +86,10 @@ const createHarness = () => {
   const subcircuitLibrary = { calculateSubcircuitOutputValues }
   Object.assign(parent, { subcircuitLibrary })
   const placementManager = Object.assign(Object.create(PlacementManager.prototype), parent) as PlacementManager
-  const memoryManager = new MemoryManager(placementManager)
+  const contextManager = new ContextManager(placementManager)
   const handler = new InstructionHandler(
-    {} as never,
+    contextManager,
     placementManager,
-    memoryManager,
     subcircuitLibrary as never,
     {} as never,
   )

@@ -12,7 +12,6 @@ import {
 import { InterpreterStep } from '@ethereumjs/evm'
 import { DataPtFactory, MemoryPt, StackPt } from '../dataStructure/index.ts';
 import type { PlacementManager } from './placementManager.ts';
-import type { MemoryManager } from './memoryManager.ts';
 import type { ContextManager, MessageContext } from './contextManager.ts';
 import type { ResolvedSubcircuitLibrary } from '../../subcircuit/libraryTypes.ts';
 
@@ -44,7 +43,6 @@ export class InstructionHandler {
   constructor(
     private readonly contextManager: ContextManager,
     private readonly placementManager: PlacementManager,
-    private readonly memoryManager: MemoryManager,
     private readonly subcircuitLibrary: ResolvedSubcircuitLibrary,
     private readonly cachedOpts: SynthesizerOpts,
   ) {
@@ -589,7 +587,7 @@ export class InstructionHandler {
           checkRequiredInput(opts.memOut)
           const memOffset = ins[0]
           const dataLength = ins[1]
-          const preparedMemoryRead = this.memoryManager.prepareMemoryRead(
+          const preparedMemoryRead = this.contextManager.prepareMemoryRead(
             opts.memoryPt,
             memOffset,
             dataLength,
@@ -788,7 +786,7 @@ export class InstructionHandler {
           const dataLength = ins[2]
           checkRequiredInput(opts.memOut)
           if (dataLength !== BIGINT_0) {
-            const preparedMemoryCopy = this.memoryManager.prepareMemoryCopy(
+            const preparedMemoryCopy = this.contextManager.prepareMemoryCopy(
               MemoryPt.simulateMemoryPt(opts.thisContext.callDataMemoryPts),
               dataOffset,
               dataLength,
@@ -819,7 +817,7 @@ export class InstructionHandler {
           checkRequiredInput(opts.memOut)
           const thisAddress = opts.thisAddress ?? this.cachedOpts.signedTransaction.to
           if (dataLength !== BIGINT_0) {
-            const memPts: MemoryPts = this.memoryManager.prepareCodeMemoryPts(
+            const memPts: MemoryPts = this.contextManager.prepareCodeMemoryPts(
               opts.memOut!,
               bytesToBigInt(thisAddress.toBytes()),
               memOffset,
@@ -854,7 +852,7 @@ export class InstructionHandler {
           const dataLength = ins[3]
           checkRequiredInput(opts.memOut)
           if (dataLength !== BIGINT_0) {
-            const memPts: MemoryPts = this.memoryManager.prepareCodeMemoryPts(
+            const memPts: MemoryPts = this.contextManager.prepareCodeMemoryPts(
               opts.memOut!,
               addressBigInt,
               memOffset,
@@ -886,7 +884,7 @@ export class InstructionHandler {
             throw new Error(`Synthesizer: ${op}: requested range exceeds return data`)
           }
           if (dataLength !== BIGINT_0) {
-            const preparedMemoryCopy = this.memoryManager.prepareMemoryCopy(
+            const preparedMemoryCopy = this.contextManager.prepareMemoryCopy(
               MemoryPt.simulateMemoryPt(opts.thisContext.returnDataMemoryPts),
               returnDataOffset,
               dataLength,
@@ -952,7 +950,7 @@ export class InstructionHandler {
       )
     }
 
-    const preparedMemoryRead = this.memoryManager.prepareMemoryRead(
+    const preparedMemoryRead = this.contextManager.prepareMemoryRead(
       opts.memoryPt,
       memOffset,
       dataLength,
@@ -1101,7 +1099,7 @@ export class InstructionHandler {
         {
           const [dstOffset, srcOffset, length] = ins
           checkRequiredInput(opts.memOut)
-          const preparedMemoryCopy = this.memoryManager.prepareMemoryCopy(
+          const preparedMemoryCopy = this.contextManager.prepareMemoryCopy(
             opts.memoryPt,
             srcOffset,
             length,
@@ -1136,7 +1134,7 @@ export class InstructionHandler {
             ? outLength
             : BigInt(opts.thisContext.returnDataByteLength)
           if (copiedLength !== BIGINT_0) {
-            const preparedMemoryCopy = this.memoryManager.prepareMemoryCopy(
+            const preparedMemoryCopy = this.contextManager.prepareMemoryCopy(
               MemoryPt.simulateMemoryPt(opts.thisContext.returnDataMemoryPts),
               0n,
               copiedLength,
@@ -1166,7 +1164,7 @@ export class InstructionHandler {
         {
           checkRequiredInput(opts.memOut)
           const [offset, length] = ins;
-          const preparedMemoryCopy = this.memoryManager.prepareMemoryCopy(
+          const preparedMemoryCopy = this.contextManager.prepareMemoryCopy(
             opts.memoryPt,
             offset,
             length,

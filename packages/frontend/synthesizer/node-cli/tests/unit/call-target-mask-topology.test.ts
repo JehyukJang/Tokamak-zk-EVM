@@ -87,10 +87,7 @@ const createHarness = (
     prepareComposition,
     getLogOutWireLength: vi.fn(() => 0),
   };
-  const memoryManager = {
-    prepareMemoryCopy: vi.fn(() => ({ compositions: [], destinationEntries: [] })),
-  };
-  const contextManager = new ContextManager(placementManager as never, memoryManager as never);
+  const contextManager = new ContextManager(placementManager as never);
   contextManager.contextByDepth[0] = parentContext;
   const beginFrame = vi.spyOn(contextManager, 'beginFrame');
   const recordMessageCodeAddress = vi.spyOn(contextManager, 'recordMessageCodeAddress');

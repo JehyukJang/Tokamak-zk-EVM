@@ -63,7 +63,7 @@ const createManagers = () => {
       ['EqualBatch', equalBatchInfo],
     ]),
   }) as PlacementManager;
-  const contextManager = new ContextManager(placementManager, {} as never);
+  const contextManager = new ContextManager(placementManager);
   return { contextManager, placementManager };
 };
 
@@ -96,7 +96,7 @@ const createStorageHarness = (initialValue: bigint) => {
     addReservedVariableToBufferOut: parent.addReservedVariableToBufferOut,
     loadArbitraryStatic: vi.fn(),
   };
-  parent.state = new ContextManager(placementManager as never, {} as never);
+  parent.state = new ContextManager(placementManager as never);
 
   return {
     address,
@@ -104,7 +104,6 @@ const createStorageHarness = (initialValue: bigint) => {
     handler: new InstructionHandler(
       parent.state,
       placementManager as never,
-      {} as never,
       parent.subcircuitLibrary as never,
       cachedOpts as never,
     ),

@@ -11,9 +11,9 @@ This document focuses on how opcodes are translated into placements while a tran
 
 ## Opcode categories
 - **Arithmetic / Bitwise**: ADD, MUL, SUB, DIV/SDIV, MOD/SMOD, ADDMOD, MULMOD, EXP, SIGNEXTEND, LT/GT/SLT/SGT, EQ, ISZERO, AND/OR/XOR/NOT, BYTE, SHL/SHR/SAR, KECCAK256 (mapped to Poseidon). `handleArith` prepares the corresponding composition and obtains its host output values through the resolved subcircuit library.
-- **Environment**: ADDRESS, BALANCE, ORIGIN, CALLER, CALLVALUE, CALLDATALOAD/SIZE/COPY, CODESIZE/COPY, GASPRICE, EXTCODESIZE/COPY/HASH, RETURNDATASIZE/COPY. Inputs are validated against reserved buffer values; memory copies reconstruct data through `MemoryManager`.
+- **Environment**: ADDRESS, BALANCE, ORIGIN, CALLER, CALLVALUE, CALLDATALOAD/SIZE/COPY, CODESIZE/COPY, GASPRICE, EXTCODESIZE/COPY/HASH, RETURNDATASIZE/COPY. Inputs are validated against reserved buffer values; memory copies reconstruct data through `ContextManager`.
 - **Block**: BLOCKHASH, COINBASE, TIMESTAMP, NUMBER, PREVRANDAO, GASLIMIT, CHAINID, SELFBALANCE, BASEFEE. Values are loaded from `BLOCK_IN`/`EVM_IN` buffers.
-- **System / Control**: POP, MLOAD/MSTORE/MSTORE8, SLOAD/SSTORE, JUMP/JUMPI/JUMPDEST, PC, MSIZE, GAS, MCOPY, PUSH0/PUSH1–PUSH32, DUP1–DUP16, SWAP1–SWAP16, LOG0–LOG4, CALL/CALLCODE/DELEGATECALL/STATICCALL, RETURN, REVERT. Memory-aware opcodes use `MemoryManager`; storage ops interact with `StorageCache` and `InitialStorageReadList`; call opcodes update caller/origin caches.
+- **System / Control**: POP, MLOAD/MSTORE/MSTORE8, SLOAD/SSTORE, JUMP/JUMPI/JUMPDEST, PC, MSIZE, GAS, MCOPY, PUSH0/PUSH1–PUSH32, DUP1–DUP16, SWAP1–SWAP16, LOG0–LOG4, CALL/CALLCODE/DELEGATECALL/STATICCALL, RETURN, REVERT. Memory-aware opcodes use `ContextManager`; storage ops interact with `StorageCache` and `InitialStorageReadList`; call opcodes update caller/origin caches.
 - **Unsupported**: CREATE/CREATE2/SELFDESTRUCT, TLOAD/TSTORE, BLOB opcodes, and precompiles are not synthesized.
 
 ## Storage handling
@@ -26,5 +26,5 @@ This document focuses on how opcodes are translated into placements while a tran
 - Caller/origin resolution uses EDDSA verification: Poseidon hash of transaction message, signature bits (`EDDSA_SIGNATURE`), and Jubjub base/public keys to derive the sender address.
 
 ## Memory aliasing
-- `MemoryPt` keeps a timestamped map of writes. `MemoryManager` uses `getDataAlias` to rebuild overlapping regions for MLOAD/MCOPY/CALLDATACOPY/etc., inserting SHL/SHR/AND placements to align bytes.
+- `MemoryPt` keeps a timestamped map of writes. `ContextManager` uses `getDataAlias` to rebuild overlapping regions for MLOAD/MCOPY/CALLDATACOPY/etc., inserting SHL/SHR/AND placements to align bytes.
 - For MCOPY and CALL-related copies, `memOut` slices from the interpreter step are compared against reconstructed values to ensure consistency before producing placements.

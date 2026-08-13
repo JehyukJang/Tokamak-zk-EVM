@@ -4,8 +4,8 @@ import { createMemoryLoadCompositionMapping } from '../../../core/src/subcircuit
 import { BUFFER_LIST } from '../../../core/src/subcircuit/configuredTypes.ts';
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
 import { MemoryPt } from '../../../core/src/synthesizer/dataStructure/memoryPt.ts';
+import { ContextManager } from '../../../core/src/synthesizer/handlers/contextManager.ts';
 import { PlacementManager } from '../../../core/src/synthesizer/handlers/placementManager.ts';
-import { MemoryManager } from '../../../core/src/synthesizer/handlers/memoryManager.ts';
 import { calculateSubcircuitOutputValues } from '../../../core/src/subcircuit/subcircuitOutputOperations.ts';
 import {
   BIT_DATA_PT_TYPE,
@@ -74,9 +74,9 @@ const createHarness = () => {
       dataPt(value, evmInSource, staticWireIndex++, dataPtType)),
   }
   const placementManager = Object.assign(Object.create(PlacementManager.prototype), parent) as PlacementManager
-  const memoryManager = new MemoryManager(placementManager)
+  const contextManager = new ContextManager(placementManager)
 
-  return { parent, placementManager, memoryManager }
+  return { parent, placementManager, contextManager }
 }
 
 const prepareView = (
@@ -92,21 +92,21 @@ const prepareView = (
 }, basePlacementIndex)
 
 const prepareRead = (
-  memoryManager: MemoryManager,
+  contextManager: ContextManager,
   memoryPt: MemoryPt,
   offset: bigint,
   length: bigint,
   basePlacementIndex = 6,
-) => memoryManager.prepareMemoryRead(memoryPt, offset, length, basePlacementIndex)
+) => contextManager.prepareMemoryRead(memoryPt, offset, length, basePlacementIndex)
 
 const prepareCopy = (
-  memoryManager: MemoryManager,
+  contextManager: ContextManager,
   memoryPt: MemoryPt,
   sourceOffset: bigint,
   length: bigint,
   destinationOffset: bigint,
   basePlacementIndex = 6,
-) => memoryManager.prepareMemoryCopy(
+) => contextManager.prepareMemoryCopy(
   memoryPt,
   sourceOffset,
   length,
@@ -166,9 +166,9 @@ describe('prepared MemoryLoad compositions', () => {
   })
 
   it('keeps all-zero views placement-free and retains their EVM_IN zero word', () => {
-    const { memoryManager, placementManager } = createHarness()
+    const { contextManager, placementManager } = createHarness()
 
-    const preparedRead = prepareRead(memoryManager, new MemoryPt(), 0n, 32n)
+    const preparedRead = prepareRead(contextManager, new MemoryPt(), 0n, 32n)
 
     expect(preparedRead.compositions).toEqual([])
     expect(preparedRead.viewDataPts).toMatchObject([
@@ -179,12 +179,12 @@ describe('prepared MemoryLoad compositions', () => {
   })
 
   it('keeps consecutive views in source order with monotonically advancing outputs', () => {
-    const { memoryManager } = createHarness()
+    const { contextManager } = createHarness()
     const memoryPt = new MemoryPt()
     memoryPt.write(0, 32, wordPt(1n, 1))
     memoryPt.write(32, 32, wordPt(2n, 2))
 
-    const preparedRead = prepareRead(memoryManager, memoryPt, 0n, 64n)
+    const preparedRead = prepareRead(contextManager, memoryPt, 0n, 64n)
 
     expect(preparedRead.compositions).toHaveLength(2)
     expect(preparedRead.compositions.map(({ steps }) => steps[0]!.inPts[0]!.source))
@@ -194,12 +194,12 @@ describe('prepared MemoryLoad compositions', () => {
   })
 
   it('freezes copy source inputs before later writes and creates compact destination views', () => {
-    const { memoryManager } = createHarness()
+    const { contextManager } = createHarness()
     const memoryPt = new MemoryPt()
     memoryPt.write(0, 32, wordPt(1n, 1))
     memoryPt.write(32, 8, wordPt(2n, 2))
 
-    const preparedCopy = prepareCopy(memoryManager, memoryPt, 0n, 40n, 96n)
+    const preparedCopy = prepareCopy(contextManager, memoryPt, 0n, 40n, 96n)
     memoryPt.write(0, 32, wordPt(3n, 3))
 
     expect(preparedCopy.compositions).toHaveLength(2)

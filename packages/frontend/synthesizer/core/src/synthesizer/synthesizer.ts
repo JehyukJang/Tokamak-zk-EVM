@@ -5,7 +5,7 @@ import { bigIntToBytes, bigIntToHex, bytesToHex, createAddressFromBigInt, setLen
 
 import { EVMResult, InterpreterStep } from '@ethereumjs/evm';
 import { Placements, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
-import { ContextManager, InstructionHandler, MemoryManager, PlacementManager } from './handlers/index.ts';
+import { ContextManager, InstructionHandler, PlacementManager } from './handlers/index.ts';
 import type { ResolvedSubcircuitLibrary } from '../subcircuit/libraryTypes.ts';
 import { TypedTransaction } from '@ethereumjs/tx';
 
@@ -17,7 +17,6 @@ export class Synthesizer implements SynthesizerInterface
 {
   private _contextManager: ContextManager
   private _placementManager: PlacementManager
-  private _memoryManager: MemoryManager
   protected _instructionHandlers: InstructionHandler
   private readonly _cachedOpts: SynthesizerOpts
   public readonly subcircuitLibrary: ResolvedSubcircuitLibrary
@@ -29,12 +28,10 @@ export class Synthesizer implements SynthesizerInterface
     this._cachedOpts = opts
     this.subcircuitLibrary = subcircuitLibrary
     this._placementManager = new PlacementManager(this.subcircuitLibrary, this._cachedOpts)
-    this._memoryManager = new MemoryManager(this._placementManager)
-    this._contextManager = new ContextManager(this._placementManager, this._memoryManager)
+    this._contextManager = new ContextManager(this._placementManager)
     this._instructionHandlers = new InstructionHandler(
       this._contextManager,
       this._placementManager,
-      this._memoryManager,
       this.subcircuitLibrary,
       this._cachedOpts,
     )

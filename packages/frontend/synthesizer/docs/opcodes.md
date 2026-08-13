@@ -9,7 +9,7 @@ The table below reflects `InstructionHandler` mappings in `core/src/synthesizer/
 | ------ | ------- | ----- |
 | ✅ | STOP, ADD, MUL, SUB, DIV/SDIV, MOD/SMOD, ADDMOD, MULMOD, EXP, SIGNEXTEND, LT/GT/SLT/SGT, EQ, ISZERO, AND/OR/XOR/NOT, BYTE, SHL/SHR/SAR | Arithmetic/bitwise mapped to ALU subcircuits. |
 | ⚠️ | KECCAK256 | Implemented via Poseidon hashing of memory chunks (not true Keccak). |
-| ✅ | ADDRESS, BALANCE, ORIGIN, CALLER, CALLVALUE, CALLDATALOAD/SIZE/COPY, CODESIZE/COPY, GASPRICE, EXTCODESIZE/COPY/HASH, RETURNDATASIZE/COPY | Uses reserved buffers; memory copies reconstructed via `MemoryManager`. |
+| ✅ | ADDRESS, BALANCE, ORIGIN, CALLER, CALLVALUE, CALLDATALOAD/SIZE/COPY, CODESIZE/COPY, GASPRICE, EXTCODESIZE/COPY/HASH, RETURNDATASIZE/COPY | Uses reserved buffers; memory copies reconstructed via `ContextManager`. |
 | ✅ | BLOCKHASH, COINBASE, TIMESTAMP, NUMBER, PREVRANDAO, GASLIMIT, CHAINID, SELFBALANCE, BASEFEE | Loaded from block buffers. |
 | ✅ | POP, MLOAD, MSTORE, MSTORE8, SLOAD, SSTORE, JUMP, JUMPI, JUMPDEST, PC, MSIZE, GAS | Stack/memory/storage synchronized with VM state. |
 | ✅ | MCOPY, PUSH0, PUSH1–PUSH32, DUP1–DUP16, SWAP1–SWAP16, LOG0–LOG4 | LOGs are tracked for stack consistency; no proof output yet. |
