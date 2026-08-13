@@ -38,4 +38,28 @@ describe('MemoryPt MemoryLoad geometry', () => {
       maskedFragmentValue: 0x11223344n,
     });
   });
+
+  it('partitions an overwritten view into non-overlapping latest fragments', () => {
+    const memoryPt = new MemoryPt();
+    memoryPt.write(0, 4, wordPt(0x11223344n));
+    memoryPt.write(1, 2, wordPt(0xaabbn));
+
+    const geometries = memoryPt.getDataAlias(0, 4);
+
+    expect(geometries.map(({ ownershipMask, maskedFragmentValue }) => [
+      ownershipMask,
+      maskedFragmentValue,
+    ])).toEqual([
+      [0b1001n, 0x11000044n],
+      [0b0110n, 0x00aabb00n],
+    ]);
+    expect(geometries.reduce(
+      (coverage, { ownershipMask }) => coverage | ownershipMask,
+      0n,
+    )).toBe(0b1111n);
+    expect(geometries.reduce(
+      (value, { maskedFragmentValue }) => value + maskedFragmentValue,
+      0n,
+    )).toBe(0x11aabb44n);
+  });
 });

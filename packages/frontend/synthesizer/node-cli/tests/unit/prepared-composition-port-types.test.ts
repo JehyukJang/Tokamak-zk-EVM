@@ -98,4 +98,42 @@ describe('prepared composition logical ports', () => {
       'ADD ALU1 input port 0 (selector) expected uint32, but got uint160',
     )
   })
+
+  it('does not record a partial composition after a prepared wire is mutated', () => {
+    const state = createState()
+    const prepared = createPreparedComposition()
+    const mutated = {
+      ...prepared,
+      steps: [{
+        ...prepared.steps[0]!,
+        outPts: [createDataPt(UINT256_DATA_PT_TYPE, 5, 0, 5n)],
+      }],
+    }
+
+    expect(() => state.placeComposition(mutated)).toThrow(
+      'ADD step 0 output 0 has an invalid placement source',
+    )
+    expect(state.placements).toHaveLength(6)
+  })
+
+  it('does not record a partial composition after a declared operand is replaced', () => {
+    const state = createState()
+    const prepared = createPreparedComposition()
+    const mutated = {
+      ...prepared,
+      steps: [{
+        ...prepared.steps[0]!,
+        inPts: [
+          prepared.steps[0]!.inPts[0]!,
+          createDataPt(UINT256_DATA_PT_TYPE, 4, 0, 2n),
+          prepared.steps[0]!.inPts[2]!,
+        ],
+      }],
+    }
+
+    expect(() => state.placeComposition(mutated)).toThrow(
+      'ADD step 0 input 1 is not connected to its declared source',
+    )
+    expect(state.placements).toHaveLength(6)
+  })
 })
