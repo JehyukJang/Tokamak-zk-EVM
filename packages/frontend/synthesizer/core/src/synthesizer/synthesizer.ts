@@ -5,8 +5,8 @@ import { bigIntToBytes, bigIntToHex, bytesToHex, createAddressFromBigInt, setLen
 
 import { EVMResult, InterpreterStep } from '@ethereumjs/evm';
 import { DataPt, DataPtType, Placements, PreparedComposition, ReservedVariable, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
-import { BufferManager, InstructionHandler, StateManager, SubcircuitOutputCalculator, type OutputCalculatedSubcircuit } from './handlers/index.ts';
-import { ReservedBuffer } from '../subcircuit/configuredTypes.ts';
+import { BufferManager, InstructionHandler, StateManager, SubcircuitOutputCalculator } from './handlers/index.ts';
+import { ReservedBuffer, type CompositionSubcircuit } from '../subcircuit/configuredTypes.ts';
 import type { ResolvedSubcircuitLibrary } from '../subcircuit/libraryTypes.ts';
 import { DataPtFactory } from './dataStructure/dataPt.ts';
 import { TypedTransaction } from '@ethereumjs/tx';
@@ -309,7 +309,7 @@ export class Synthesizer implements SynthesizerInterface
   }
 
   calculateSubcircuitOutputValues(
-    name: OutputCalculatedSubcircuit,
+    name: CompositionSubcircuit,
     values: bigint[],
   ): bigint[] {
     return this._subcircuitOutputCalculator.calculateSubcircuitOutputValues(name, values)

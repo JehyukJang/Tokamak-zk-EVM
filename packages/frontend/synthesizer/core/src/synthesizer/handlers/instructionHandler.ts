@@ -14,8 +14,7 @@ import {
 import { InterpreterStep, Message } from '@ethereumjs/evm'
 import { FUNCTION_INPUT_LENGTH, POSEIDON_INPUTS } from 'tokamak-l2js'
 import { DataPtFactory, MemoryPt, StackPt } from '../dataStructure/index.ts';
-import type { Operator } from '../../subcircuit/configuredTypes.ts';
-import type { OutputCalculatedSubcircuit } from './subcircuitOutputCalculator.ts';
+import type { CompositionSubcircuit, Operator } from '../../subcircuit/configuredTypes.ts';
 import { ContextManager, type ContextConstructionData, type StateManager } from './stateManager.ts';
 
 export interface HandlerOpts {
@@ -648,7 +647,7 @@ export class InstructionHandler {
         throw new Error(`Synthesizer: ${step.subcircuit} logical interface is unavailable`)
       }
       const values = this.parent.calculateSubcircuitOutputValues(
-        step.subcircuit as OutputCalculatedSubcircuit,
+        step.subcircuit as CompositionSubcircuit,
         inPts.map(({ value }) => value),
       )
       if (values.length !== logicalInterface.outputs.length) {
@@ -855,7 +854,7 @@ export class InstructionHandler {
     }
 
     const values = this.parent.calculateSubcircuitOutputValues(
-      step.subcircuit as OutputCalculatedSubcircuit,
+      step.subcircuit as CompositionSubcircuit,
       finalInPts.map(({ value }) => value),
     )
     const value = values[0]
