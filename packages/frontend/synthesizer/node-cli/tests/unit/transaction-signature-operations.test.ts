@@ -7,7 +7,12 @@ import { createTransactionSignatureVerifyCompositionMapping } from '../../../cor
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts'
 import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts'
 import { SubcircuitOutputCalculator } from '../../../core/src/synthesizer/handlers/subcircuitOutputCalculator.ts'
-import { UINT256_DATA_PT_TYPE, type DataPt } from '../../../core/src/synthesizer/types/dataStructure.ts'
+import {
+  UINT160_DATA_PT_TYPE,
+  UINT256_DATA_PT_TYPE,
+  UINT32_DATA_PT_TYPE,
+  type DataPt,
+} from '../../../core/src/synthesizer/types/dataStructure.ts'
 import type { PreparedComposition } from '../../../core/src/synthesizer/types/placements.ts'
 
 const TSV_OPERAND_VARIABLES = [
@@ -25,7 +30,7 @@ const TSV_OPERAND_VARIABLES = [
 ] as const
 
 describe('transaction-signature composition preparation and host output calculations', () => {
-  it('prepares TSV operands in the registered composition order', () => {
+  it('places TSV and retains its exact result wires', () => {
     const operandPts = TSV_OPERAND_VARIABLES.map((_, index) => DataPtFactory.create({
       source: index,
       wireIndex: 0,
@@ -39,10 +44,31 @@ describe('transaction-signature composition preparation and host output calculat
       if (operandPt === undefined) throw new Error(`Unexpected TSV operand ${variable}`)
       return operandPt
     })
-    const expectedPreparedComposition = {} as PreparedComposition
+    const resultPts = [
+      DataPtFactory.create({ source: 91, wireIndex: 0, dataPtType: UINT160_DATA_PT_TYPE }, 1n),
+      DataPtFactory.create({ source: 91, wireIndex: 1, dataPtType: UINT32_DATA_PT_TYPE }, 2n),
+      DataPtFactory.create({ source: 97, wireIndex: 0, dataPtType: UINT160_DATA_PT_TYPE }, 3n),
+    ]
+    const expectedPreparedComposition = {
+      operation: 'TransactionSignatureVerify',
+      operands: [],
+      resultPts,
+      steps: [],
+    } satisfies PreparedComposition
+    const state = {
+      cachedContractAddress: undefined as DataPt | undefined,
+      cachedFunctionSelector: undefined as DataPt | undefined,
+      cachedOrigin: undefined as DataPt | undefined,
+      contextByDepth: [],
+      beginFrame: vi.fn(),
+      recordMessageCodeAddress: vi.fn(),
+    }
+    const placeComposition = vi.fn()
     const handler = new InstructionHandler({
+      placements: [],
       getReservedVariableFromBuffer,
-    } as never, {} as never, {} as never)
+      placeComposition,
+    } as never, state as never, {} as never)
     const prepareFixedGenericComposition = vi.spyOn(
       handler as unknown as {
         _prepareFixedGenericComposition: (
@@ -54,20 +80,40 @@ describe('transaction-signature composition preparation and host output calculat
       '_prepareFixedGenericComposition',
     ).mockReturnValue(expectedPreparedComposition)
 
-    const preparedComposition = (handler as unknown as {
-      _prepareTransactionSignatureVerifyComposition: (
-        basePlacementIndex: number,
-      ) => PreparedComposition;
-    })._prepareTransactionSignatureVerifyComposition(37)
+    handler.initializeTransactionSignatureVerification()
 
-    expect(preparedComposition).toBe(expectedPreparedComposition)
     expect(prepareFixedGenericComposition).toHaveBeenCalledWith(
       'TransactionSignatureVerify',
       operandPts,
-      37,
+      0,
     )
     expect(getReservedVariableFromBuffer.mock.calls.map(([variable]) => variable))
       .toEqual(TSV_OPERAND_VARIABLES)
+    expect(placeComposition).toHaveBeenCalledWith(expectedPreparedComposition)
+    expect(state.cachedContractAddress).toBe(resultPts[0])
+    expect(state.cachedFunctionSelector).toBe(resultPts[1])
+    expect(state.cachedOrigin).toBe(resultPts[2])
+
+    handler.initializeMessageContext({
+      depth: 0,
+      codeAddress: {},
+      data: new Uint8Array(4 + 32 * FUNCTION_INPUT_LENGTH),
+      isCreate: false,
+      isCompiled: false,
+    } as never)
+    const rootContext = state.contextByDepth[0] as {
+      callerPt: DataPt
+      codeAddressPt: DataPt
+      storageAddressPt: DataPt
+      callDataMemoryPts: readonly { dataPt: DataPt }[]
+    }
+    expect(rootContext.callerPt).toMatchObject({ source: resultPts[2]!.source, wireIndex: resultPts[2]!.wireIndex })
+    expect(rootContext.codeAddressPt).toMatchObject({ source: resultPts[0]!.source, wireIndex: resultPts[0]!.wireIndex })
+    expect(rootContext.storageAddressPt).toMatchObject({ source: resultPts[0]!.source, wireIndex: resultPts[0]!.wireIndex })
+    expect(rootContext.callDataMemoryPts[0]!.dataPt).toMatchObject({
+      source: resultPts[1]!.source,
+      wireIndex: resultPts[1]!.wireIndex,
+    })
   })
 
   it('reproduces the complete production TSV witness flow', () => {

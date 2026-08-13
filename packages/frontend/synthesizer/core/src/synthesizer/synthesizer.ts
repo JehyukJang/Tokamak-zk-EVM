@@ -151,6 +151,7 @@ export class Synthesizer implements SynthesizerInterface
 
   private async _prepareSynthesizeTransaction(): Promise<void> {
     this._state.resetTransactionTracking()
+    this._instructionHandlers.initializeTransactionSignatureVerification()
   }
 
   private _finalizeStorageStore(): void {

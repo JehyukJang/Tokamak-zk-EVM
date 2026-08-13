@@ -69,6 +69,42 @@ export class InstructionHandler {
     this._createSynthesizerHandlers()
   }
 
+  public initializeTransactionSignatureVerification(): void {
+    const operands = [
+      this.parent.getReservedVariableFromBuffer('EDDSA_RANDOMIZER_X'),
+      this.parent.getReservedVariableFromBuffer('EDDSA_RANDOMIZER_Y'),
+      this.parent.getReservedVariableFromBuffer('EDDSA_PUBLIC_KEY_X'),
+      this.parent.getReservedVariableFromBuffer('EDDSA_PUBLIC_KEY_Y'),
+      this.parent.getReservedVariableFromBuffer('TRANSACTION_NONCE'),
+      ...Array.from({ length: FUNCTION_INPUT_LENGTH }, (_, index) =>
+        this.parent.getReservedVariableFromBuffer(
+          `TRANSACTION_INPUT${index}` as ReservedVariable,
+        )),
+      this.parent.getReservedVariableFromBuffer('CONTRACT_ADDRESS'),
+      this.parent.getReservedVariableFromBuffer('FUNCTION_SELECTOR'),
+      this.parent.getReservedVariableFromBuffer('EDDSA_SIGNATURE'),
+      this.parent.getReservedVariableFromBuffer('JUBJUB_POI_X'),
+      this.parent.getReservedVariableFromBuffer('JUBJUB_POI_Y'),
+    ]
+    const preparedComposition = this._prepareFixedGenericComposition(
+      'TransactionSignatureVerify',
+      operands,
+      this.parent.placements.length,
+    )
+    this.parent.placeComposition(preparedComposition)
+    const [contractAddressPt, functionSelectorPt, originPt] = preparedComposition.resultPts
+    if (
+      contractAddressPt === undefined
+      || functionSelectorPt === undefined
+      || originPt === undefined
+    ) {
+      throw new Error('Synthesizer: TransactionSignatureVerify did not produce every result')
+    }
+    this.state.cachedContractAddress = contractAddressPt
+    this.state.cachedFunctionSelector = functionSelectorPt
+    this.state.cachedOrigin = originPt
+  }
+
   public initializeMessageContext(message: Message): void {
     this.state.recordMessageCodeAddress(message.codeAddress.toString())
     if (message.isCreate) {
@@ -86,7 +122,16 @@ export class InstructionHandler {
     let callDataByteLength: number
 
     if (depth === 0) {
-      const selectorPt = this.parent.getReservedVariableFromBuffer('FUNCTION_SELECTOR')
+      const selectorPt = this.state.cachedFunctionSelector
+      const contractAddressPt = this.state.cachedContractAddress
+      const originPt = this.state.cachedOrigin
+      if (
+        selectorPt === undefined
+        || contractAddressPt === undefined
+        || originPt === undefined
+      ) {
+        throw new Error('Transaction signature must be verified before the root message')
+      }
       const inputPts: DataPt[] = Array.from({ length: FUNCTION_INPUT_LENGTH }, (_, index) =>
         this.parent.getReservedVariableFromBuffer(
           `TRANSACTION_INPUT${index}` as ReservedVariable,
@@ -101,11 +146,7 @@ export class InstructionHandler {
         })),
       ]
       callDataByteLength = message.data.length
-      if (this.state.cachedOrigin === undefined) {
-        throw new Error('Sender address must be verified first')
-      }
-      callerPt = DataPtFactory.deepCopy(this.state.cachedOrigin)
-      const contractAddressPt = this.parent.getReservedVariableFromBuffer('CONTRACT_ADDRESS')
+      callerPt = DataPtFactory.deepCopy(originPt)
       codeAddressPt = DataPtFactory.deepCopy(contractAddressPt)
       storageAddressPt = DataPtFactory.deepCopy(contractAddressPt)
     } else if (depth > 0) {
@@ -686,32 +727,6 @@ export class InstructionHandler {
       steps,
     }
     return preparedComposition
-  }
-
-  private _prepareTransactionSignatureVerifyComposition(
-    basePlacementIndex: number,
-  ): PreparedComposition {
-    const operands = [
-      this.parent.getReservedVariableFromBuffer('EDDSA_RANDOMIZER_X'),
-      this.parent.getReservedVariableFromBuffer('EDDSA_RANDOMIZER_Y'),
-      this.parent.getReservedVariableFromBuffer('EDDSA_PUBLIC_KEY_X'),
-      this.parent.getReservedVariableFromBuffer('EDDSA_PUBLIC_KEY_Y'),
-      this.parent.getReservedVariableFromBuffer('TRANSACTION_NONCE'),
-      ...Array.from({ length: FUNCTION_INPUT_LENGTH }, (_, index) =>
-        this.parent.getReservedVariableFromBuffer(
-          `TRANSACTION_INPUT${index}` as ReservedVariable,
-        )),
-      this.parent.getReservedVariableFromBuffer('CONTRACT_ADDRESS'),
-      this.parent.getReservedVariableFromBuffer('FUNCTION_SELECTOR'),
-      this.parent.getReservedVariableFromBuffer('EDDSA_SIGNATURE'),
-      this.parent.getReservedVariableFromBuffer('JUBJUB_POI_X'),
-      this.parent.getReservedVariableFromBuffer('JUBJUB_POI_Y'),
-    ]
-    return this._prepareFixedGenericComposition(
-      'TransactionSignatureVerify',
-      operands,
-      basePlacementIndex,
-    )
   }
 
   private _preparePoseidonComposition(
