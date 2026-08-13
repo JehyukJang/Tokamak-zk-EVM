@@ -1633,170 +1633,30 @@ export class InstructionHandler {
     return memPts
   }
 
-  private _prepareMemoryLoadViewComposition(
-    dataAliasGeometries: DataAliasGeometries,
-    viewByteLength: number,
-    basePlacementIndex: number,
-  ): PreparedComposition {
-    if (!Number.isInteger(viewByteLength) || viewByteLength < 1 || viewByteLength > 32) {
-      throw new Error(`Synthesizer: MemoryLoad has an invalid view byte length ${viewByteLength}`)
-    }
-    if (dataAliasGeometries.length === 0) {
-      throw new Error('Synthesizer: MemoryLoad requires at least one alias geometry')
-    }
-
-    const composition = this.parent.subcircuitLibrary
-      .placementCompositionManager.get('MemoryLoad')
-    const step = composition.steps[0]
-    if (step === undefined) {
-      throw new Error('Synthesizer: MemoryLoad composition has no placement step')
-    }
-    const logicalInterface = this.parent.subcircuitLibrary.subcircuitInfoByName
-      .get(step.subcircuit)?.logicalInterface
-    if (logicalInterface === undefined) {
-      throw new Error(`Synthesizer: ${step.subcircuit} logical interface is unavailable`)
-    }
-    const inputTypes = logicalInterface.inputs.map(({ logicalType }) =>
-      getDataPtTypeFromLogicalInterfaceType(logicalType),
-    )
-    const outputTypes = logicalInterface.outputs.map(({ logicalType }) =>
-      getDataPtTypeFromLogicalInterfaceType(logicalType),
-    )
-    const [
-      sourceWordType,
-      shiftType,
-      directionType,
-      ownershipType,
-      previousWordType,
-      previousOwnershipType,
-      coverageType,
-      finalModeType,
-    ] = inputTypes
-    const [nextWordType, nextOwnershipType] = outputTypes
-    if (
-      sourceWordType === undefined
-      || shiftType === undefined
-      || directionType === undefined
-      || ownershipType === undefined
-      || previousWordType === undefined
-      || previousOwnershipType === undefined
-      || coverageType === undefined
-      || finalModeType === undefined
-      || nextWordType === undefined
-      || nextOwnershipType === undefined
-    ) {
-      throw new Error(`Synthesizer: ${step.subcircuit} logical interface is incomplete`)
-    }
-
-    const dataAliasInfos = this._createDataAliasInfos(
-      dataAliasGeometries,
-      shiftType,
-      directionType,
-      ownershipType,
-    )
-    const expectedCoveragePt = this.parent.loadArbitraryStatic(
-      dataAliasInfos.reduce(
-        (coverage, { maskerPt }) => coverage | maskerPt.value,
-        0n,
-      ),
-      coverageType,
-      'Memory-load final byte ownership',
-    )
-    const zeroWordPt = this.parent.loadArbitraryStatic(
-      0n,
-      previousWordType,
-      'Memory-load initial word',
-    )
-    const zeroOwnershipPt = this.parent.loadArbitraryStatic(
-      0n,
-      previousOwnershipType,
-      'Memory-load initial byte ownership',
-    )
-    const operands: DataPt[] = []
-    const steps: PreparedComposition['steps'][number][] = []
-    let previousWordPt = zeroWordPt
-    let previousOwnershipPt = zeroOwnershipPt
-
-    for (const [stepIndex, info] of dataAliasInfos.entries()) {
-      const isFinalStep = stepIndex === dataAliasInfos.length - 1
-      const finalModePt = this.parent.loadArbitraryStatic(
-        isFinalStep ? 1n : 0n,
-        finalModeType,
-        'Memory-load final-mode flag',
-      )
-      const inPts = [
-        info.dataPt,
-        info.shiftPt,
-        info.directionPt,
-        info.maskerPt,
-        previousWordPt,
-        previousOwnershipPt,
-        expectedCoveragePt,
-        finalModePt,
-      ]
-      const [nextWordValue, nextOwnershipValue] = this.parent
-        .calculateSubcircuitOutputValues(
-          'MemoryLoadStep',
-          inPts.map(({ value }) => value),
-        )
-      if (nextWordValue === undefined || nextOwnershipValue === undefined) {
-        throw new Error('Synthesizer: MemoryLoadStep did not produce both outputs')
-      }
-      const nextWordPt = DataPtFactory.create({
-        source: basePlacementIndex + stepIndex,
-        wireIndex: 0,
-        dataPtType: nextWordType,
-      }, nextWordValue)
-      const nextOwnershipPt = DataPtFactory.create({
-        source: basePlacementIndex + stepIndex,
-        wireIndex: 1,
-        dataPtType: nextOwnershipType,
-      }, nextOwnershipValue)
-      steps.push({
-        inPts,
-        outPts: [nextWordPt, nextOwnershipPt],
-      })
-      operands.push(info.dataPt, info.shiftPt, info.directionPt, info.maskerPt)
-      previousWordPt = nextWordPt
-      previousOwnershipPt = nextOwnershipPt
-    }
-    operands.push(expectedCoveragePt)
-
-    const preparedComposition: PreparedComposition = {
-      operation: 'MemoryLoad',
-      operands,
-      resultPts: [previousWordPt],
-      steps,
-    }
-    return preparedComposition
-  }
-
-  private _createDataAliasInfos(
+  public createDataAliasInfos(
     dataAliasGeometries: DataAliasGeometries,
     shiftType: DataPt['dataPtType'],
     directionType: DataPt['dataPtType'],
     ownershipType: DataPt['dataPtType'],
   ): DataAliasInfos {
-    return dataAliasGeometries.map((geometry) => {
-      return Object.freeze({
-        dataPt: geometry.dataPt,
-        shiftPt: this.parent.loadArbitraryStatic(
-          BigInt(geometry.shiftMagnitude),
-          shiftType,
-          'Memory-load byte shift magnitude',
-        ),
-        directionPt: this.parent.loadArbitraryStatic(
-          BigInt(geometry.direction),
-          directionType,
-          'Memory-load shift direction',
-        ),
-        maskerPt: this.parent.loadArbitraryStatic(
-          geometry.ownershipMask,
-          ownershipType,
-          'Memory-load byte ownership mask',
-        ),
-      })
-    })
+    return dataAliasGeometries.map((geometry) => Object.freeze({
+      dataPt: geometry.dataPt,
+      shiftPt: this.parent.loadArbitraryStatic(
+        BigInt(geometry.shiftMagnitude),
+        shiftType,
+        'Memory-load byte shift magnitude',
+      ),
+      directionPt: this.parent.loadArbitraryStatic(
+        BigInt(geometry.direction),
+        directionType,
+        'Memory-load shift direction',
+      ),
+      maskerPt: this.parent.loadArbitraryStatic(
+        geometry.ownershipMask,
+        ownershipType,
+        'Memory-load byte ownership mask',
+      ),
+    }))
   }
 
   private _prepareMemoryCopy(

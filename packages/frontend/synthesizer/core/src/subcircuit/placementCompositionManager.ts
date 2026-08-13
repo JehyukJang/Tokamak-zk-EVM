@@ -5,10 +5,16 @@ import {
 } from './configuredTypes.ts';
 import { assertPositiveInteger, freezeComposition } from './utils.ts';
 import {
+  type DataAliasGeometries,
+  type DataAliasInfos,
+  type DataPt,
   isDataPtType,
   type DataPtType,
+  getDataPtTypeFromLogicalInterfaceType,
   UINT256_DATA_PT_TYPE,
 } from '../synthesizer/types/dataStructure.ts';
+import { DataPtFactory } from '../synthesizer/dataStructure/dataPt.ts';
+import type { PreparedComposition } from '../synthesizer/types/placements.ts';
 import { createAddMulModCompositionMappings } from './special-builders/addMulModComposition.ts';
 import { createDivisionCompositionMappings } from './special-builders/divModComposition.ts';
 import { createExpCompositionMapping } from './special-builders/expComposition.ts';
@@ -106,6 +112,141 @@ export class PlacementCompositionManager {
       );
     }
     return composition;
+  }
+
+  public prepareMemoryLoadViewComposition(
+    dataAliasGeometries: DataAliasGeometries,
+    viewByteLength: number,
+    basePlacementIndex: number,
+  ): PreparedComposition {
+    if (!Number.isInteger(viewByteLength) || viewByteLength < 1 || viewByteLength > 32) {
+      throw new Error(`Synthesizer: MemoryLoad has an invalid view byte length ${viewByteLength}`)
+    }
+    if (dataAliasGeometries.length === 0) {
+      throw new Error('Synthesizer: MemoryLoad requires at least one alias geometry')
+    }
+
+    const composition = this.get('MemoryLoad')
+    const step = composition.steps[0]
+    if (step === undefined) {
+      throw new Error('Synthesizer: MemoryLoad composition has no placement step')
+    }
+    const logicalInterface = this.parent.subcircuitLibrary.subcircuitInfoByName
+      .get(step.subcircuit)?.logicalInterface
+    if (logicalInterface === undefined) {
+      throw new Error(`Synthesizer: ${step.subcircuit} logical interface is unavailable`)
+    }
+    const inputTypes = logicalInterface.inputs.map(({ logicalType }) =>
+      getDataPtTypeFromLogicalInterfaceType(logicalType),
+    )
+    const outputTypes = logicalInterface.outputs.map(({ logicalType }) =>
+      getDataPtTypeFromLogicalInterfaceType(logicalType),
+    )
+    const [
+      sourceWordType,
+      shiftType,
+      directionType,
+      ownershipType,
+      previousWordType,
+      previousOwnershipType,
+      coverageType,
+      finalModeType,
+    ] = inputTypes
+    const [nextWordType, nextOwnershipType] = outputTypes
+    if (
+      sourceWordType === undefined
+      || shiftType === undefined
+      || directionType === undefined
+      || ownershipType === undefined
+      || previousWordType === undefined
+      || previousOwnershipType === undefined
+      || coverageType === undefined
+      || finalModeType === undefined
+      || nextWordType === undefined
+      || nextOwnershipType === undefined
+    ) {
+      throw new Error(`Synthesizer: ${step.subcircuit} logical interface is incomplete`)
+    }
+
+    const dataAliasInfos = this.createDataAliasInfos(
+      dataAliasGeometries,
+      shiftType,
+      directionType,
+      ownershipType,
+    )
+    const expectedCoveragePt = this.parent.loadArbitraryStatic(
+      dataAliasInfos.reduce(
+        (coverage, { maskerPt }) => coverage | maskerPt.value,
+        0n,
+      ),
+      coverageType,
+      'Memory-load final byte ownership',
+    )
+    const zeroWordPt = this.parent.loadArbitraryStatic(
+      0n,
+      previousWordType,
+      'Memory-load initial word',
+    )
+    const zeroOwnershipPt = this.parent.loadArbitraryStatic(
+      0n,
+      previousOwnershipType,
+      'Memory-load initial byte ownership',
+    )
+    const operands: DataPt[] = []
+    const steps: PreparedComposition['steps'][number][] = []
+    let previousWordPt = zeroWordPt
+    let previousOwnershipPt = zeroOwnershipPt
+
+    for (const [stepIndex, info] of dataAliasInfos.entries()) {
+      const isFinalStep = stepIndex === dataAliasInfos.length - 1
+      const finalModePt = this.parent.loadArbitraryStatic(
+        isFinalStep ? 1n : 0n,
+        finalModeType,
+        'Memory-load final-mode flag',
+      )
+      const inPts = [
+        info.dataPt,
+        info.shiftPt,
+        info.directionPt,
+        info.maskerPt,
+        previousWordPt,
+        previousOwnershipPt,
+        expectedCoveragePt,
+        finalModePt,
+      ]
+      const [nextWordValue, nextOwnershipValue] = this.parent.calculateSubcircuitOutputValues(
+          'MemoryLoadStep',
+          inPts.map(({ value }) => value),
+        )
+      if (nextWordValue === undefined || nextOwnershipValue === undefined) {
+        throw new Error('Synthesizer: MemoryLoadStep did not produce both outputs')
+      }
+      const nextWordPt = DataPtFactory.create({
+        source: basePlacementIndex + stepIndex,
+        wireIndex: 0,
+        dataPtType: nextWordType,
+      }, nextWordValue)
+      const nextOwnershipPt = DataPtFactory.create({
+        source: basePlacementIndex + stepIndex,
+        wireIndex: 1,
+        dataPtType: nextOwnershipType,
+      }, nextOwnershipValue)
+      steps.push({
+        inPts,
+        outPts: [nextWordPt, nextOwnershipPt],
+      })
+      operands.push(info.dataPt, info.shiftPt, info.directionPt, info.maskerPt)
+      previousWordPt = nextWordPt
+      previousOwnershipPt = nextOwnershipPt
+    }
+    operands.push(expectedCoveragePt)
+
+    return {
+      operation: 'MemoryLoad',
+      operands,
+      resultPts: [previousWordPt],
+      steps,
+    }
   }
 
   private _validateComposition(
