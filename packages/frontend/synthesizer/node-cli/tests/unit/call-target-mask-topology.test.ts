@@ -3,9 +3,9 @@ import type { InterpreterStep, Message } from '@ethereumjs/evm';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { Operator } from '../../../core/src/subcircuit/configuredTypes.ts';
-import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
+import { DataPtFactory, MemoryPt, StackPt } from '../../../core/src/synthesizer/dataStructure/index.ts';
 import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
-import { ContextManager } from '../../../core/src/synthesizer/handlers/stateManager.ts';
+import type { MessageContext } from '../../../core/src/synthesizer/handlers/stateManager.ts';
 import {
   UINT256_DATA_PT_TYPE,
   type DataPt,
@@ -41,13 +41,20 @@ const createHarness = (
     maskedResults?: DataPt[];
   } = {},
 ) => {
-  const parentContext = new ContextManager({
+  const parentContext: MessageContext = {
+    stackPt: new StackPt(),
+    memoryPt: new MemoryPt(),
     callerPt: dataPt(0x1111n, 1),
     codeAddressPt: dataPt(0x2222n, 2),
     storageAddressPt: dataPt(0x3333n, 3),
     callDataMemoryPts: [],
     callDataByteLength: 0,
-  });
+    returnDataMemoryPts: [],
+    returnDataByteLength: 0,
+    prevInterpreterStep: null,
+    resultMemoryPts: [],
+    resultDataByteLength: 0,
+  };
   const interpreterOperands = callOperands(opcode, rawTarget);
   const symbolicOperands = callOperands(opcode, options.stackTarget ?? rawTarget);
   for (const [wireIndex, value] of symbolicOperands.slice().reverse().entries()) {
@@ -76,7 +83,7 @@ const createHarness = (
   const recordMessageCodeAddress = vi.fn();
   const getReservedVariableFromBuffer = vi.fn(() => maskPt);
   const state = {
-    contextByDepth: [parentContext] as ContextManager[],
+    contextByDepth: [parentContext] as MessageContext[],
     beginFrame,
     recordMessageCodeAddress,
   };

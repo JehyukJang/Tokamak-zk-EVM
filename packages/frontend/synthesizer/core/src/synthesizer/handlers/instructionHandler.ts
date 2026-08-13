@@ -15,7 +15,7 @@ import { InterpreterStep, Message } from '@ethereumjs/evm'
 import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js'
 import { DataPtFactory, MemoryPt, StackPt } from '../dataStructure/index.ts';
 import type { Operator } from '../../subcircuit/configuredTypes.ts';
-import { ContextManager, type ContextConstructionData, type StateManager } from './stateManager.ts';
+import type { MessageContext, StateManager } from './stateManager.ts';
 
 export interface HandlerOpts {
   op: SynthesizerSupportedOpcodes,
@@ -25,7 +25,7 @@ export interface HandlerOpts {
   originAddress: Address,
   callerAddress: Address,
   callDepth: number,
-  thisContext: ContextManager,
+  thisContext: MessageContext,
   prevStepResult: InterpreterStep,
   stackPt: StackPt,
   memoryPt: MemoryPt,
@@ -33,7 +33,7 @@ export interface HandlerOpts {
 }
 
 export interface SynthesizerOpHandler {
-  (context: ContextManager, stepResult: InterpreterStep): void | Promise<void>
+  (context: MessageContext, stepResult: InterpreterStep): void | Promise<void>
 }
 
 /**
@@ -209,18 +209,25 @@ export class InstructionHandler {
       throw new Error(`Debug: Invalid call depth: ${depth}`)
     }
 
-    const contextData: ContextConstructionData = {
+    const context: MessageContext = {
+      stackPt: new StackPt(),
+      memoryPt: new MemoryPt(),
       callDataMemoryPts,
       callDataByteLength,
       callerPt,
       codeAddressPt,
       storageAddressPt,
+      returnDataMemoryPts: [],
+      returnDataByteLength: 0,
+      prevInterpreterStep: null,
+      resultMemoryPts: [],
+      resultDataByteLength: 0,
     }
     this.state.beginFrame(depth)
-    this.state.contextByDepth[depth] = new ContextManager(contextData)
+    this.state.contextByDepth[depth] = context
   }
 
-  private _createHandlerOpts(opName: SynthesizerSupportedOpcodes, context: ContextManager): HandlerOpts {
+  private _createHandlerOpts(opName: SynthesizerSupportedOpcodes, context: MessageContext): HandlerOpts {
     const prevStepResult = context.prevInterpreterStep;
     if (prevStepResult === null) {
       throw new Error('Debug: previous interpreter step is not set')

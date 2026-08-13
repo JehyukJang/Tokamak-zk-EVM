@@ -353,42 +353,19 @@ function _assertPreparedEarlierSource(
   }
 }
 
-export type ContextConstructionData = {
+export type MessageContext = {
+  stackPt: StackPt;
+  memoryPt: MemoryPt;
   callerPt: DataPt;
   codeAddressPt: DataPt;
   storageAddressPt: DataPt;
+  returnDataMemoryPts: MemoryPts;
+  returnDataByteLength: number;
   callDataMemoryPts: MemoryPts;
   callDataByteLength: number;
-}
-
-export class ContextManager {
-  public stackPt: StackPt;
-  public memoryPt: MemoryPt;
-  public callerPt: DataPt;
-  public codeAddressPt: DataPt;
-  public storageAddressPt: DataPt;
-  public returnDataMemoryPts: MemoryPts;
-  public returnDataByteLength: number;
-  public callDataMemoryPts: MemoryPts;
-  public callDataByteLength: number;
-  public prevInterpreterStep: InterpreterStep | null;
-  public resultMemoryPts: MemoryPts;
-  public resultDataByteLength: number;
-
-  constructor(data: ContextConstructionData) {
-    this.stackPt = new StackPt();
-    this.memoryPt = new MemoryPt();
-    this.callerPt = data.callerPt;
-    this.codeAddressPt = data.codeAddressPt;
-    this.storageAddressPt = data.storageAddressPt;
-    this.callDataMemoryPts = data.callDataMemoryPts;
-    this.callDataByteLength = data.callDataByteLength;
-    this.returnDataMemoryPts = [];
-    this.returnDataByteLength = 0;
-    this.prevInterpreterStep = null;
-    this.resultMemoryPts = [];
-    this.resultDataByteLength = 0;
-  }
+  prevInterpreterStep: InterpreterStep | null;
+  resultMemoryPts: MemoryPts;
+  resultDataByteLength: number;
 }
 
 export class LogCache {
@@ -434,7 +411,7 @@ export class StateManager {
   public cachedEVMIn: Map<bigint, Map<string, DataPt>> = new Map()
   public cachedOrigin: DataPt | undefined = undefined
 
-  public contextByDepth: ContextManager[] = [];
+  public contextByDepth: MessageContext[] = [];
   private _messageCodeAddresses = new Set<string>()
 
   constructor(parent: ISynthesizerProvider) {

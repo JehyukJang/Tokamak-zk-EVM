@@ -6,7 +6,7 @@ import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataP
 import { MemoryPt } from '../../../core/src/synthesizer/dataStructure/memoryPt.ts';
 import { StackPt } from '../../../core/src/synthesizer/dataStructure/stackPt.ts';
 import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
-import { ContextManager } from '../../../core/src/synthesizer/handlers/stateManager.ts';
+import type { MessageContext } from '../../../core/src/synthesizer/handlers/stateManager.ts';
 import { calculateSubcircuitOutputValues } from '../../../core/src/subcircuit/subcircuitOutputOperations.ts';
 import { Synthesizer } from '../../../core/src/synthesizer/synthesizer.ts';
 import {
@@ -52,12 +52,19 @@ const memoryLoadInfo = {
   },
 }
 
-const createContext = () => new ContextManager({
+const createContext = (): MessageContext => ({
+  stackPt: new StackPt(),
+  memoryPt: new MemoryPt(),
   callerPt: dataPt(1n, 1),
   codeAddressPt: dataPt(2n, 2),
   storageAddressPt: dataPt(3n, 3),
   callDataMemoryPts: [],
   callDataByteLength: 0,
+  returnDataMemoryPts: [],
+  returnDataByteLength: 0,
+  prevInterpreterStep: null,
+  resultMemoryPts: [],
+  resultDataByteLength: 0,
 })
 
 const createHarness = () => {

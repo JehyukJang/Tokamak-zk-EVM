@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { Synthesizer } from '../../../core/src/synthesizer/synthesizer.ts';
-import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
-import { ContextManager } from '../../../core/src/synthesizer/handlers/stateManager.ts';
+import { DataPtFactory, MemoryPt, StackPt } from '../../../core/src/synthesizer/dataStructure/index.ts';
+import type { MessageContext } from '../../../core/src/synthesizer/handlers/stateManager.ts';
 import { UINT256_DATA_PT_TYPE } from '../../../core/src/synthesizer/types/dataStructure.ts';
 
 type EventListener = (data: any, resolve?: () => void) => void;
@@ -48,12 +48,19 @@ const dataPt = (value: bigint, source: number) => DataPtFactory.create({
   dataPtType: UINT256_DATA_PT_TYPE,
 }, value);
 
-const createContext = () => new ContextManager({
+const createContext = (): MessageContext => ({
+  stackPt: new StackPt(),
+  memoryPt: new MemoryPt(),
   callerPt: dataPt(1n, 1),
   codeAddressPt: dataPt(2n, 2),
   storageAddressPt: dataPt(3n, 3),
   callDataMemoryPts: [],
   callDataByteLength: 0,
+  returnDataMemoryPts: [],
+  returnDataByteLength: 0,
+  prevInterpreterStep: null,
+  resultMemoryPts: [],
+  resultDataByteLength: 0,
 });
 
 afterEach(() => {
