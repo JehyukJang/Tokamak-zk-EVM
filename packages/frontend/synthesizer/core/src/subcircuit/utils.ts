@@ -133,7 +133,6 @@ export function parseFrontendConfig(value: unknown): FrontendConfig {
     nPoseidonInputs: getRequiredNumber(value, 'nPoseidonInputs'),
     nPoseidonBatch: getRequiredNumber(value, 'nPoseidonBatch'),
     nPrevBlockHashes: getRequiredNumber(value, 'nPrevBlockHashes'),
-    nJubjubExpBatch: getRequiredNumber(value, 'nJubjubExpBatch'),
     nEqualBatch: getRequiredNumber(value, 'nEqualBatch'),
   };
 }

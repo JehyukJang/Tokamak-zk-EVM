@@ -83,7 +83,6 @@ export const REQUIRED_CIRCOM_KEYS = [
   'nPoseidonInputs',
   'nPoseidonBatch',
   'nPrevBlockHashes',
-  'nJubjubExpBatch',
   'nEqualBatch',
 ] as const;
 export type CircomKey = typeof REQUIRED_CIRCOM_KEYS[number];
@@ -109,6 +108,5 @@ export interface ResolvedSubcircuitLibrary {
   subcircuitBufferMapping: Record<ReservedBuffer, SubcircuitInfoByNameEntry | undefined>;
   numberOfPrevBlockHashes: number;
   poseidonBatchSize: number;
-  jubjubExpBatchSize: number;
   firstArithmeticPlacementIndex: number;
 }

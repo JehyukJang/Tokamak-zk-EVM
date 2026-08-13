@@ -14,7 +14,6 @@ const frontendCfg = {
   nPoseidonInputs: 2,
   nPoseidonBatch: 1,
   nPrevBlockHashes: 4,
-  nJubjubExpBatch: 37,
   nEqualBatch: 2,
 } as const;
 

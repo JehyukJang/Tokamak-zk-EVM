@@ -13,7 +13,6 @@ const validConfig = {
   nPoseidonInputs: 2,
   nPoseidonBatch: 1,
   nPrevBlockHashes: 4,
-  nJubjubExpBatch: 37,
   nEqualBatch: 2,
 };
 
@@ -28,5 +27,12 @@ describe('frontend configuration parsing', () => {
     expect(() => parseFrontendConfig(missingBlockCapacity)).toThrow(
       'Invalid values in frontendCfg.json: all keys must be finite numbers',
     );
+  });
+
+  it('rejects the retired Jubjub batch key', () => {
+    expect(() => parseFrontendConfig({
+      ...validConfig,
+      nJubjubExpBatch: 37,
+    })).toThrow('Unexpected key in frontendCfg.json: nJubjubExpBatch');
   });
 });
