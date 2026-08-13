@@ -1,12 +1,75 @@
 import { jubjub } from '@noble/curves/misc.js'
-import { poseidonChainCompress } from 'tokamak-l2js'
-import { describe, expect, it } from 'vitest'
+import { FUNCTION_INPUT_LENGTH, poseidonChainCompress } from 'tokamak-l2js'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { CompositionSubcircuit } from '../../../core/src/subcircuit/configuredTypes.ts'
 import { createTransactionSignatureVerifyCompositionMapping } from '../../../core/src/subcircuit/special-builders/txSignVerifyComposition.ts'
+import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts'
+import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts'
 import { SubcircuitOutputCalculator } from '../../../core/src/synthesizer/handlers/subcircuitOutputCalculator.ts'
+import { UINT256_DATA_PT_TYPE, type DataPt } from '../../../core/src/synthesizer/types/dataStructure.ts'
+import type { PreparedComposition } from '../../../core/src/synthesizer/types/placements.ts'
 
-describe('transaction-signature host output calculations', () => {
+const TSV_OPERAND_VARIABLES = [
+  'EDDSA_RANDOMIZER_X',
+  'EDDSA_RANDOMIZER_Y',
+  'EDDSA_PUBLIC_KEY_X',
+  'EDDSA_PUBLIC_KEY_Y',
+  'TRANSACTION_NONCE',
+  ...Array.from({ length: FUNCTION_INPUT_LENGTH }, (_, index) => `TRANSACTION_INPUT${index}`),
+  'CONTRACT_ADDRESS',
+  'FUNCTION_SELECTOR',
+  'EDDSA_SIGNATURE',
+  'JUBJUB_POI_X',
+  'JUBJUB_POI_Y',
+] as const
+
+describe('transaction-signature composition preparation and host output calculations', () => {
+  it('prepares TSV operands in the registered composition order', () => {
+    const operandPts = TSV_OPERAND_VARIABLES.map((_, index) => DataPtFactory.create({
+      source: index,
+      wireIndex: 0,
+      dataPtType: UINT256_DATA_PT_TYPE,
+    }, BigInt(index)))
+    const operandPtByVariable = new Map(
+      TSV_OPERAND_VARIABLES.map((variable, index) => [variable, operandPts[index]!]),
+    )
+    const getReservedVariableFromBuffer = vi.fn((variable: string): DataPt => {
+      const operandPt = operandPtByVariable.get(variable)
+      if (operandPt === undefined) throw new Error(`Unexpected TSV operand ${variable}`)
+      return operandPt
+    })
+    const expectedPreparedComposition = {} as PreparedComposition
+    const handler = new InstructionHandler({
+      getReservedVariableFromBuffer,
+    } as never, {} as never, {} as never)
+    const prepareFixedGenericComposition = vi.spyOn(
+      handler as unknown as {
+        _prepareFixedGenericComposition: (
+          operation: string,
+          operands: DataPt[],
+          basePlacementIndex: number,
+        ) => PreparedComposition;
+      },
+      '_prepareFixedGenericComposition',
+    ).mockReturnValue(expectedPreparedComposition)
+
+    const preparedComposition = (handler as unknown as {
+      _prepareTransactionSignatureVerifyComposition: (
+        basePlacementIndex: number,
+      ) => PreparedComposition;
+    })._prepareTransactionSignatureVerifyComposition(37)
+
+    expect(preparedComposition).toBe(expectedPreparedComposition)
+    expect(prepareFixedGenericComposition).toHaveBeenCalledWith(
+      'TransactionSignatureVerify',
+      operandPts,
+      37,
+    )
+    expect(getReservedVariableFromBuffer.mock.calls.map(([variable]) => variable))
+      .toEqual(TSV_OPERAND_VARIABLES)
+  })
+
   it('reproduces the complete production TSV witness flow', () => {
     const outputCalculator = new SubcircuitOutputCalculator()
     const privateKey = 37n

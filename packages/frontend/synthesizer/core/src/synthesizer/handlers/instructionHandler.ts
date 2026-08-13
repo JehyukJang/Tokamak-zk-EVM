@@ -688,6 +688,32 @@ export class InstructionHandler {
     return preparedComposition
   }
 
+  private _prepareTransactionSignatureVerifyComposition(
+    basePlacementIndex: number,
+  ): PreparedComposition {
+    const operands = [
+      this.parent.getReservedVariableFromBuffer('EDDSA_RANDOMIZER_X'),
+      this.parent.getReservedVariableFromBuffer('EDDSA_RANDOMIZER_Y'),
+      this.parent.getReservedVariableFromBuffer('EDDSA_PUBLIC_KEY_X'),
+      this.parent.getReservedVariableFromBuffer('EDDSA_PUBLIC_KEY_Y'),
+      this.parent.getReservedVariableFromBuffer('TRANSACTION_NONCE'),
+      ...Array.from({ length: FUNCTION_INPUT_LENGTH }, (_, index) =>
+        this.parent.getReservedVariableFromBuffer(
+          `TRANSACTION_INPUT${index}` as ReservedVariable,
+        )),
+      this.parent.getReservedVariableFromBuffer('CONTRACT_ADDRESS'),
+      this.parent.getReservedVariableFromBuffer('FUNCTION_SELECTOR'),
+      this.parent.getReservedVariableFromBuffer('EDDSA_SIGNATURE'),
+      this.parent.getReservedVariableFromBuffer('JUBJUB_POI_X'),
+      this.parent.getReservedVariableFromBuffer('JUBJUB_POI_Y'),
+    ]
+    return this._prepareFixedGenericComposition(
+      'TransactionSignatureVerify',
+      operands,
+      basePlacementIndex,
+    )
+  }
+
   private _preparePoseidonComposition(
     operands: DataPt[],
     basePlacementIndex: number,
