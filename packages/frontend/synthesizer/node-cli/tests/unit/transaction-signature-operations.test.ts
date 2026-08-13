@@ -2,9 +2,11 @@ import { jubjub } from '@noble/curves/misc.js'
 import { poseidonChainCompress } from 'tokamak-l2js'
 import { describe, expect, it } from 'vitest'
 
-import type { CryptoSubcircuit } from '../../../core/src/subcircuit/configuredTypes.ts'
 import { createTransactionSignatureVerifyCompositionMapping } from '../../../core/src/subcircuit/special-builders/txSignVerifyComposition.ts'
-import { SubcircuitOutputCalculator } from '../../../core/src/synthesizer/handlers/subcircuitOutputCalculator.ts'
+import {
+  type OutputCalculatedSubcircuit,
+  SubcircuitOutputCalculator,
+} from '../../../core/src/synthesizer/handlers/subcircuitOutputCalculator.ts'
 
 describe('transaction-signature host output calculations', () => {
   it('reproduces the complete production TSV witness flow', () => {
@@ -97,7 +99,7 @@ describe('transaction-signature host output calculations', () => {
         }
       })
       const calculated = outputCalculator.calculateSubcircuitOutputValues(
-        step.subcircuit as CryptoSubcircuit,
+        step.subcircuit as OutputCalculatedSubcircuit,
         values,
       )
       step.outputs.forEach((output, index) => {

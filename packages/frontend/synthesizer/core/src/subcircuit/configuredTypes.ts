@@ -1,7 +1,7 @@
 import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
 import type { LogicalInterface } from './libraryTypes.ts';
 
-export const ARITHMETIC_OPERATORS = [
+export const OPERATOR_LIST = [
   'ADD',
   'MUL',
   'SUB',
@@ -30,27 +30,9 @@ export const ARITHMETIC_OPERATORS = [
   // 'SubEXP',
   'Poseidon',
   // 'PrepareEdDsaScalars',
-] as const
-
-export type ArithmeticOperator = (typeof ARITHMETIC_OPERATORS)[number]
-
-export const SYS_FLOW_OPERATORS = [
   'MemoryLoad',
   'StorageAccess',
-] as const
-
-export type SysFlowOperator = (typeof SYS_FLOW_OPERATORS)[number]
-
-export const CRYPTO_OPERATORS = [
   'TransactionSignatureVerify',
-] as const
-
-export type CryptoOperator = (typeof CRYPTO_OPERATORS)[number]
-
-export const OPERATOR_LIST = [
-  ...ARITHMETIC_OPERATORS,
-  ...SYS_FLOW_OPERATORS,
-  ...CRYPTO_OPERATORS,
 ] as const
 
 export type Operator = (typeof OPERATOR_LIST)[number]
@@ -95,7 +77,7 @@ export const BUFFER_DESCRIPTION: Record<ReservedBuffer, string> = {
 
 export type ReservedBuffer = (typeof BUFFER_LIST)[number]
 
-export const ARITHMETIC_SUBCIRCUIT_LIST = [
+export const COMPOSITION_SUBCIRCUIT_LIST = [
     'ALU1',
     'ALU2',
     'ALU3',
@@ -117,32 +99,14 @@ export const ARITHMETIC_SUBCIRCUIT_LIST = [
     'SubExp',
     'CheckBus256',
     'Poseidon',
-] as const
-
-export type ArithmeticSubcircuit = (typeof ARITHMETIC_SUBCIRCUIT_LIST)[number]
-
-export const SYS_FLOW_SUBCIRCUIT_LIST = [
     'MemoryLoadStep',
     'EqualBatch',
-] as const
-
-export type SysFlowSubcircuit = (typeof SYS_FLOW_SUBCIRCUIT_LIST)[number]
-
-export const CRYPTO_SUBCIRCUIT_LIST = [
     'TransactionSignaturePoseidonBatch4',
     'TransactionSignaturePointPolicy',
     'TransactionSignatureFixedPrefix70',
     'TransactionSignatureChallengeVariablePrefix',
     'TransactionSignatureVariableBatch',
     'TransactionSignatureFinal',
-] as const
-
-export type CryptoSubcircuit = (typeof CRYPTO_SUBCIRCUIT_LIST)[number]
-
-export const COMPOSITION_SUBCIRCUIT_LIST = [
-    ...ARITHMETIC_SUBCIRCUIT_LIST,
-    ...SYS_FLOW_SUBCIRCUIT_LIST,
-    ...CRYPTO_SUBCIRCUIT_LIST,
 ] as const
 
 export type CompositionSubcircuit = (typeof COMPOSITION_SUBCIRCUIT_LIST)[number]

@@ -14,7 +14,8 @@ import {
 import { InterpreterStep, Message } from '@ethereumjs/evm'
 import { FUNCTION_INPUT_LENGTH, POSEIDON_INPUTS } from 'tokamak-l2js'
 import { DataPtFactory, MemoryPt, StackPt } from '../dataStructure/index.ts';
-import { ArithmeticOperator, type ArithmeticSubcircuit } from '../../subcircuit/configuredTypes.ts';
+import type { Operator } from '../../subcircuit/configuredTypes.ts';
+import type { OutputCalculatedSubcircuit } from './subcircuitOutputCalculator.ts';
 import { ContextManager, type ContextConstructionData, type StateManager } from './stateManager.ts';
 
 export interface HandlerOpts {
@@ -580,7 +581,7 @@ export class InstructionHandler {
   }
 
   private _prepareFixedMultiStepArithmeticComposition(
-    operation: ArithmeticOperator,
+    operation: Operator,
     operands: DataPt[],
     basePlacementIndex: number,
   ): PreparedComposition {
@@ -647,7 +648,7 @@ export class InstructionHandler {
         throw new Error(`Synthesizer: ${step.subcircuit} logical interface is unavailable`)
       }
       const values = this.parent.calculateSubcircuitOutputValues(
-        step.subcircuit as ArithmeticSubcircuit,
+        step.subcircuit as OutputCalculatedSubcircuit,
         inPts.map(({ value }) => value),
       )
       if (values.length !== logicalInterface.outputs.length) {
@@ -792,7 +793,7 @@ export class InstructionHandler {
   }
 
   private _prepareSingleStepArithmeticComposition(
-    operation: ArithmeticOperator,
+    operation: Operator,
     operands: DataPt[],
     basePlacementIndex: number,
   ): PreparedComposition {
@@ -854,7 +855,7 @@ export class InstructionHandler {
     }
 
     const values = this.parent.calculateSubcircuitOutputValues(
-      step.subcircuit as ArithmeticSubcircuit,
+      step.subcircuit as OutputCalculatedSubcircuit,
       finalInPts.map(({ value }) => value),
     )
     const value = values[0]
@@ -1079,7 +1080,7 @@ export class InstructionHandler {
         break
       default:
         preparedComposition = this._prepareSingleStepArithmeticComposition(
-          op as ArithmeticOperator,
+          op as Operator,
           inPts,
           this.parent.placements.length,
         );

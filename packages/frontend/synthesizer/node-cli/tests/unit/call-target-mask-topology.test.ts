@@ -2,7 +2,7 @@ import { createAddressFromBigInt } from '@ethereumjs/util';
 import type { InterpreterStep, Message } from '@ethereumjs/evm';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { ArithmeticOperator } from '../../../core/src/subcircuit/configuredTypes.ts';
+import type { Operator } from '../../../core/src/subcircuit/configuredTypes.ts';
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
 import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
 import { ContextManager } from '../../../core/src/synthesizer/handlers/stateManager.ts';
@@ -18,7 +18,7 @@ const CALL_OPCODES = ['CALL', 'CALLCODE', 'DELEGATECALL', 'STATICCALL'] as const
 
 type CallOpcode = typeof CALL_OPCODES[number];
 type ArithmeticCall = {
-  name: ArithmeticOperator;
+  name: Operator;
   inPts: DataPt[];
 };
 const dataPt = (
@@ -63,7 +63,7 @@ const createHarness = (
   const normalizedTarget = rawTarget & ADDRESS_MASK;
   const maskedResults = options.maskedResults ?? [dataPt(normalizedTarget, 99, 0)];
   const arithmeticCalls: ArithmeticCall[] = [];
-  const prepareSingleStepArithmeticComposition = vi.fn((name: ArithmeticOperator, inPts: DataPt[]) => {
+  const prepareSingleStepArithmeticComposition = vi.fn((name: Operator, inPts: DataPt[]) => {
     arithmeticCalls.push({ name, inPts });
     return {
       operation: name,
