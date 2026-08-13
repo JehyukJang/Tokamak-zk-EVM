@@ -4,7 +4,14 @@ import { BlockData, BlockOptions, createBlock, HeaderData } from '@ethereumjs/bl
 import { bigIntToBytes, bigIntToHex, bytesToHex, createAddressFromBigInt, setLengthLeft } from '@ethereumjs/util';
 
 import { EVMResult, InterpreterStep } from '@ethereumjs/evm';
-import { Placements, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
+import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
+import {
+  Placements,
+  type ReservedVariable,
+  SynthesizerInterface,
+  SynthesizerOpts,
+  SynthesizerStepLogEntry,
+} from './types/index.ts';
 import { ContextManager, InstructionHandler, PlacementManager } from './handlers/index.ts';
 import type { ResolvedSubcircuitLibrary } from '../subcircuit/libraryTypes.ts';
 import { TypedTransaction } from '@ethereumjs/tx';
@@ -152,6 +159,28 @@ export class Synthesizer implements SynthesizerInterface
 
   private async _prepareSynthesizeTransaction(): Promise<void> {
     this._contextManager.resetTransactionTracking()
+    const operands = [
+      this._placementManager.getReservedVariableFromBuffer('EDDSA_RANDOMIZER_X'),
+      this._placementManager.getReservedVariableFromBuffer('EDDSA_RANDOMIZER_Y'),
+      this._placementManager.getReservedVariableFromBuffer('EDDSA_PUBLIC_KEY_X'),
+      this._placementManager.getReservedVariableFromBuffer('EDDSA_PUBLIC_KEY_Y'),
+      this._placementManager.getReservedVariableFromBuffer('TRANSACTION_NONCE'),
+      ...Array.from({ length: FUNCTION_INPUT_LENGTH }, (_, index) =>
+        this._placementManager.getReservedVariableFromBuffer(
+          `TRANSACTION_INPUT${index}` as ReservedVariable,
+        ),
+      ),
+      this._placementManager.getReservedVariableFromBuffer('CONTRACT_ADDRESS'),
+      this._placementManager.getReservedVariableFromBuffer('FUNCTION_SELECTOR'),
+      this._placementManager.getReservedVariableFromBuffer('EDDSA_SIGNATURE'),
+      this._placementManager.getReservedVariableFromBuffer('JUBJUB_POI_X'),
+      this._placementManager.getReservedVariableFromBuffer('JUBJUB_POI_Y'),
+    ]
+    const preparedComposition = this._placementManager.prepareComposition(
+      { operation: 'TransactionSignatureVerify', operands },
+      this._placementManager.placements.length,
+    )
+    this._placementManager.placeComposition(preparedComposition)
   }
 
   private _finalizeStorageStore(): void {
