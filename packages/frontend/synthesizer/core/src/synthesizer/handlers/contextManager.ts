@@ -1,0 +1,389 @@
+import { InterpreterStep, Message } from '@ethereumjs/evm';
+import { bytesToBigInt } from '@ethereumjs/util';
+import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
+
+import { DataPtFactory } from '../dataStructure/dataPt.ts';
+import { MemoryPt, StackPt } from '../dataStructure/index.ts';
+import type { DataPt, MemoryPts, ReservedVariable } from '../types/index.ts';
+import type { MemoryManager } from './memoryManager.ts';
+import type { PlacementManager } from './placementManager.ts';
+
+export type StorageCacheEntry = {
+  canonicalAddressPt: DataPt;
+  canonicalKeyPt: DataPt;
+  latestValuePt: DataPt;
+  dirty: boolean;
+}
+
+type StorageCacheEntries = Map<bigint, Map<bigint, StorageCacheEntry>>;
+
+const copyStorageCacheEntry = (entry: StorageCacheEntry): StorageCacheEntry => ({
+  canonicalAddressPt: DataPtFactory.deepCopy(entry.canonicalAddressPt),
+  canonicalKeyPt: DataPtFactory.deepCopy(entry.canonicalKeyPt),
+  latestValuePt: DataPtFactory.deepCopy(entry.latestValuePt),
+  dirty: entry.dirty,
+});
+
+const copyStorageCacheEntries = (entries: StorageCacheEntries): StorageCacheEntries => new Map(
+  Array.from(entries, ([address, entriesByKey]) => [
+    address,
+    new Map(
+      Array.from(entriesByKey, ([key, entry]) => [key, copyStorageCacheEntry(entry)]),
+    ),
+  ]),
+);
+
+export class StorageCache {
+  private _entries: StorageCacheEntries = new Map()
+  private _snapshotsByDepth: Map<number, StorageCacheEntries> = new Map()
+
+  public get dirtyEntries(): StorageCacheEntry[] {
+    return Array.from(this._entries.values()).flatMap((entriesByKey) =>
+      Array.from(entriesByKey.values())
+        .filter((entry) => entry.dirty)
+        .map(copyStorageCacheEntry),
+    )
+  }
+
+  public reset(): void {
+    this._entries = new Map()
+    this._snapshotsByDepth = new Map()
+  }
+
+  public beginFrame(depth: number): void {
+    if (this._snapshotsByDepth.has(depth)) {
+      throw new Error(`Synthesizer: Storage cache snapshot already exists at call depth ${depth}`)
+    }
+    this._snapshotsByDepth.set(depth, copyStorageCacheEntries(this._entries))
+  }
+
+  public completeFrame(depth: number, succeeded: boolean): void {
+    const snapshot = this._snapshotsByDepth.get(depth)
+    if (snapshot === undefined) {
+      throw new Error(`Synthesizer: Storage cache snapshot is missing at call depth ${depth}`)
+    }
+    if (!succeeded) {
+      this._entries = snapshot
+    }
+    this._snapshotsByDepth.delete(depth)
+  }
+
+  public get(address: bigint, key: bigint): StorageCacheEntry | undefined {
+    const entry = this._entries.get(address)?.get(key)
+    return entry === undefined ? undefined : copyStorageCacheEntry(entry)
+  }
+
+  public set(address: bigint, key: bigint, entry: StorageCacheEntry): void {
+    if (entry.canonicalAddressPt.value !== address || entry.canonicalKeyPt.value !== key) {
+      throw new Error('Synthesizer: Storage cache identity does not match its host lookup key')
+    }
+    const entriesByKey = this._entries.get(address) ?? new Map<bigint, StorageCacheEntry>()
+    entriesByKey.set(key, copyStorageCacheEntry(entry))
+    this._entries.set(address, entriesByKey)
+  }
+}
+
+export type InitialStorageRead = {
+  addressPt: DataPt;
+  keyPt: DataPt;
+  valuePt: DataPt;
+}
+
+const copyInitialStorageRead = (entry: InitialStorageRead): InitialStorageRead => ({
+  addressPt: DataPtFactory.deepCopy(entry.addressPt),
+  keyPt: DataPtFactory.deepCopy(entry.keyPt),
+  valuePt: DataPtFactory.deepCopy(entry.valuePt),
+});
+
+export class InitialStorageReadList {
+  private _entries: InitialStorageRead[] = []
+
+  public get entries(): InitialStorageRead[] {
+    return this._entries.map(copyInitialStorageRead)
+  }
+
+  public reset(): void {
+    this._entries = []
+  }
+
+  public get(address: bigint, key: bigint): InitialStorageRead | undefined {
+    const entry = this._entries.find(
+      (candidate) => candidate.addressPt.value === address && candidate.keyPt.value === key,
+    )
+    return entry === undefined ? undefined : copyInitialStorageRead(entry)
+  }
+
+  public add(address: bigint, key: bigint, entry: InitialStorageRead): void {
+    if (entry.addressPt.value !== address || entry.keyPt.value !== key) {
+      throw new Error('Synthesizer: Initial SLOAD identity does not match its host lookup key')
+    }
+    if (this.get(address, key) !== undefined) {
+      throw new Error('Synthesizer: Initial SLOAD already exists for this storage location')
+    }
+    this._entries.push(copyInitialStorageRead(entry))
+  }
+}
+
+export type MessageContext = {
+  stackPt: StackPt;
+  memoryPt: MemoryPt;
+  callerPt: DataPt;
+  codeAddressPt: DataPt;
+  storageAddressPt: DataPt;
+  returnDataMemoryPts: MemoryPts;
+  returnDataByteLength: number;
+  callDataMemoryPts: MemoryPts;
+  callDataByteLength: number;
+  prevInterpreterStep: InterpreterStep | null;
+  resultMemoryPts: MemoryPts;
+  resultDataByteLength: number;
+}
+
+export class LogCache {
+  private _snapshotsByDepth: Map<number, number> = new Map()
+
+  public reset(): void {
+    this._snapshotsByDepth = new Map()
+  }
+
+  public beginFrame(depth: number, logOutLength: number): void {
+    if (this._snapshotsByDepth.has(depth)) {
+      throw new Error(`Synthesizer: LOG_OUT snapshot already exists at call depth ${depth}`)
+    }
+    this._snapshotsByDepth.set(depth, logOutLength)
+  }
+
+  public getFrameLength(depth: number): number {
+    const logOutLength = this._snapshotsByDepth.get(depth)
+    if (logOutLength === undefined) {
+      throw new Error(`Synthesizer: LOG_OUT snapshot is missing at call depth ${depth}`)
+    }
+    return logOutLength
+  }
+
+  public completeFrame(depth: number): void {
+    this.getFrameLength(depth)
+    this._snapshotsByDepth.delete(depth)
+  }
+}
+
+export class ContextManager {
+  public readonly logCache = new LogCache()
+  public readonly storageCache = new StorageCache()
+  public readonly initialStorageReads = new InitialStorageReadList()
+  public cachedOrigin: DataPt | undefined = undefined
+  public contextByDepth: MessageContext[] = []
+  private _messageCodeAddresses = new Set<string>()
+
+  constructor(
+    private readonly placementManager: PlacementManager,
+    private readonly memoryManager: MemoryManager,
+  ) {}
+
+  public initializeMessageContext(message: Message): void {
+    this.recordMessageCodeAddress(message.codeAddress.toString())
+    if (message.isCreate) {
+      throw new Error('CREATE is not supported.')
+    }
+    if (message.isCompiled) {
+      throw new Error('Precompiled functions are not supported.')
+    }
+
+    const depth = message.depth
+    let callDataMemoryPts: MemoryPts
+    let callerPt: DataPt
+    let codeAddressPt: DataPt
+    let storageAddressPt: DataPt
+    let callDataByteLength: number
+
+    if (depth === 0) {
+      const selectorPt = this.placementManager.getReservedVariableFromBuffer('FUNCTION_SELECTOR')
+      const inputPts: DataPt[] = Array.from({ length: FUNCTION_INPUT_LENGTH }, (_, index) =>
+        this.placementManager.getReservedVariableFromBuffer(
+          `TRANSACTION_INPUT${index}` as ReservedVariable,
+        ),
+      )
+      callDataMemoryPts = [
+        { memByteOffset: 0, containerByteSize: 4, dataPt: selectorPt },
+        ...inputPts.map((dataPt, index) => ({
+          memByteOffset: 4 + 32 * index,
+          containerByteSize: 32,
+          dataPt,
+        })),
+      ]
+      callDataByteLength = message.data.length
+      if (this.cachedOrigin === undefined) {
+        throw new Error('Sender address must be verified first')
+      }
+      callerPt = DataPtFactory.deepCopy(this.cachedOrigin)
+      const contractAddressPt = this.placementManager.getReservedVariableFromBuffer('CONTRACT_ADDRESS')
+      codeAddressPt = DataPtFactory.deepCopy(contractAddressPt)
+      storageAddressPt = DataPtFactory.deepCopy(contractAddressPt)
+    } else if (depth > 0) {
+      const parentContext = this.contextByDepth[depth - 1]
+      if (parentContext === undefined) {
+        throw new Error('Debug: No parent context')
+      }
+      const callingStep = parentContext.prevInterpreterStep
+      if (callingStep === null) {
+        throw new Error('Debug: A child context is called but no relevant interpreter step in the parent context')
+      }
+
+      let rawCodeAddress: bigint
+      let rawCodeAddressPt: DataPt
+      let inputOffset: bigint
+      let inputLength: bigint
+      switch (callingStep.opcode.name) {
+        case 'CALL':
+        case 'CALLCODE': {
+          const inputs = callingStep.stack.slice(0, 7)
+          rawCodeAddress = inputs[1]
+          rawCodeAddressPt = DataPtFactory.deepCopy(parentContext.stackPt.peek(7)[1])
+          inputOffset = inputs[3]
+          inputLength = inputs[4]
+          break
+        }
+        case 'DELEGATECALL':
+        case 'STATICCALL': {
+          const inputs = callingStep.stack.slice(0, 6)
+          rawCodeAddress = inputs[1]
+          rawCodeAddressPt = DataPtFactory.deepCopy(parentContext.stackPt.peek(6)[1])
+          inputOffset = inputs[2]
+          inputLength = inputs[3]
+          break
+        }
+        default:
+          throw new Error(`Debug: Unsupported message call opcode: ${callingStep.opcode.name}`)
+      }
+
+      if (rawCodeAddress !== rawCodeAddressPt.value) {
+        throw new Error('Debug: Raw address to call mismatch between EVM and Synthesizer')
+      }
+      const addressMaskPt = this.placementManager.getReservedVariableFromBuffer('ADDRESS_MASK')
+      const preparedTargetMask = this.placementManager.prepareComposition(
+        { operation: 'AND', operands: [rawCodeAddressPt, addressMaskPt] },
+        this.placementManager.placements.length,
+      )
+      this.placementManager.placeComposition(preparedTargetMask)
+      const maskedAddressPt = preparedTargetMask.resultPts[0]
+      if (maskedAddressPt === undefined) {
+        throw new Error('Synthesizer: CALL target mask produced no address')
+      }
+      codeAddressPt = maskedAddressPt
+      const codeAddress = BigInt(message.codeAddress.toString())
+      if (codeAddress !== codeAddressPt.value) {
+        throw new Error('Debug: Address to call mismatch between EVM and Synthesizer')
+      }
+      if (codeAddress >= 1n && codeAddress <= 10n) {
+        throw new Error('Precompiles are not implemented in Synthesizer.')
+      }
+
+      switch (callingStep.opcode.name) {
+        case 'CALL':
+        case 'STATICCALL':
+          callerPt = DataPtFactory.deepCopy(parentContext.storageAddressPt)
+          storageAddressPt = DataPtFactory.deepCopy(codeAddressPt)
+          break
+        case 'CALLCODE':
+          callerPt = DataPtFactory.deepCopy(parentContext.storageAddressPt)
+          storageAddressPt = DataPtFactory.deepCopy(parentContext.storageAddressPt)
+          break
+        case 'DELEGATECALL':
+          callerPt = DataPtFactory.deepCopy(parentContext.callerPt)
+          storageAddressPt = DataPtFactory.deepCopy(parentContext.storageAddressPt)
+          break
+      }
+
+      const preparedMemoryCopy = this.memoryManager.prepareMemoryCopy(
+        parentContext.memoryPt,
+        inputOffset,
+        inputLength,
+        0n,
+        this.placementManager.placements.length,
+      )
+      for (const preparedComposition of preparedMemoryCopy.compositions) {
+        this.placementManager.placeComposition(preparedComposition)
+      }
+      callDataMemoryPts = preparedMemoryCopy.destinationEntries
+      callDataByteLength = Number(inputLength)
+      const simulatedCallDataMemoryPt = MemoryPt.simulateMemoryPt(callDataMemoryPts)
+      const synthesizedCallData = simulatedCallDataMemoryPt.viewMemory(0, Number(inputLength))
+      const actualCallData = callingStep.memory.subarray(
+        Number(inputOffset),
+        Number(inputOffset) + Number(inputLength),
+      )
+      if (bytesToBigInt(synthesizedCallData) !== bytesToBigInt(actualCallData)) {
+        throw new Error('Debug: Mismatch between calldata memory and memoryPt of the parent context')
+      }
+    } else {
+      throw new Error(`Debug: Invalid call depth: ${depth}`)
+    }
+
+    const context: MessageContext = {
+      stackPt: new StackPt(),
+      memoryPt: new MemoryPt(),
+      callDataMemoryPts,
+      callDataByteLength,
+      callerPt,
+      codeAddressPt,
+      storageAddressPt,
+      returnDataMemoryPts: [],
+      returnDataByteLength: 0,
+      prevInterpreterStep: null,
+      resultMemoryPts: [],
+      resultDataByteLength: 0,
+    }
+    this.beginFrame(depth)
+    this.contextByDepth[depth] = context
+  }
+
+  public returnMessageCall(depth: number): void {
+    if (depth === 0) {
+      return
+    }
+    const parentContext = this.contextByDepth[depth - 1]
+    const childContext = this.contextByDepth[depth]
+    if (parentContext === undefined || childContext === undefined) {
+      throw new Error('Synthesizer: message return context is unavailable')
+    }
+    parentContext.returnDataMemoryPts = childContext.resultMemoryPts.map((entry) => ({
+      ...entry,
+      dataPt: DataPtFactory.deepCopy(entry.dataPt),
+    }))
+    parentContext.returnDataByteLength = childContext.resultDataByteLength
+  }
+
+  public get messageCodeAddresses(): readonly string[] {
+    return Array.from(this._messageCodeAddresses)
+  }
+
+  public recordMessageCodeAddress(codeAddress: string): void {
+    this._messageCodeAddresses.add(codeAddress)
+  }
+
+  public resetTransactionTracking(): void {
+    this.storageCache.reset()
+    this.initialStorageReads.reset()
+    this.logCache.reset()
+    this.cachedOrigin = undefined
+    this._messageCodeAddresses.clear()
+  }
+
+  public beginFrame(depth: number): void {
+    this.storageCache.beginFrame(depth)
+    this.logCache.beginFrame(depth, this.placementManager.getLogOutWireLength())
+  }
+
+  public completeFrame(depth: number, succeeded: boolean): void {
+    const logOutLength = this.logCache.getFrameLength(depth)
+    const currentLogOutLength = this.placementManager.getLogOutWireLength()
+    if (currentLogOutLength < logOutLength) {
+      throw new Error('Synthesizer: LOG_OUT buffer is inconsistent with its frame snapshot')
+    }
+    if (!succeeded) {
+      this.placementManager.truncateLogOut(logOutLength)
+    }
+    this.logCache.completeFrame(depth)
+    this.storageCache.completeFrame(depth, succeeded)
+  }
+}

@@ -5,10 +5,9 @@ import { bigIntToBytes, bigIntToHex, bytesToHex, createAddressFromBigInt, setLen
 
 import { EVMResult, InterpreterStep } from '@ethereumjs/evm';
 import { DataPt, DataPtType, Placements, PreparedComposition, ReservedVariable, SynthesizerInterface, SynthesizerOpts, SynthesizerStepLogEntry } from './types/index.ts';
-import { InstructionHandler, MemoryManager, PlacementManager, StateManager } from './handlers/index.ts';
+import { ContextManager, InstructionHandler, MemoryManager, PlacementManager } from './handlers/index.ts';
 import { type CompositionSubcircuit } from '../subcircuit/configuredTypes.ts';
 import type { ResolvedSubcircuitLibrary } from '../subcircuit/libraryTypes.ts';
-import { DataPtFactory } from './dataStructure/dataPt.ts';
 import { TypedTransaction } from '@ethereumjs/tx';
 
 /**
@@ -17,7 +16,7 @@ import { TypedTransaction } from '@ethereumjs/tx';
  */
 export class Synthesizer implements SynthesizerInterface
 {
-  private _state: StateManager
+  private _contextManager: ContextManager
   private _placementManager: PlacementManager
   private _memoryManager: MemoryManager
   protected _instructionHandlers: InstructionHandler
@@ -32,10 +31,10 @@ export class Synthesizer implements SynthesizerInterface
     this.subcircuitLibrary = subcircuitLibrary
     this._placementManager = new PlacementManager(this, this._cachedOpts)
     this._memoryManager = new MemoryManager(this._placementManager)
-    this._state = new StateManager(this._placementManager)
+    this._contextManager = new ContextManager(this._placementManager, this._memoryManager)
     this._instructionHandlers = new InstructionHandler(
       this,
-      this._state,
+      this._contextManager,
       this._placementManager,
       this._memoryManager,
       this._cachedOpts,
@@ -74,7 +73,7 @@ export class Synthesizer implements SynthesizerInterface
     vm.evm.events.on('beforeMessage', (data, resolve?: (result?: any) => void) => {
       try {
         if (!this._hasEventHandlerError) {
-          this._instructionHandlers.initializeMessageContext(data);
+          this._contextManager.initializeMessageContext(data);
         }
       } catch (err) {
         this._recordEventHandlerError('beforeMessage', err)
@@ -140,8 +139,8 @@ export class Synthesizer implements SynthesizerInterface
               _interpreter._env.eof !== undefined ? _interpreter._env.eof?.eofRunState.returnStack.length + 1 : undefined,
           }
           await this._applySynthesizerHandler(stepData);
-          this._returnMessageCall(stepData.depth);
-          this._state.completeFrame(
+          this._contextManager.returnMessageCall(stepData.depth);
+          this._contextManager.completeFrame(
             stepData.depth,
             data.execResult.exceptionError === undefined,
           )
@@ -156,31 +155,14 @@ export class Synthesizer implements SynthesizerInterface
   }
 
   private async _prepareSynthesizeTransaction(): Promise<void> {
-    this._state.resetTransactionTracking()
+    this._contextManager.resetTransactionTracking()
   }
 
   private _finalizeStorageStore(): void {
-    for (const entry of this._state.storageCache.dirtyEntries) {
+    for (const entry of this._contextManager.storageCache.dirtyEntries) {
       this.addReservedVariableToBufferOut('SSTORE_ADDRESS', entry.canonicalAddressPt, true)
       this.addReservedVariableToBufferOut('SSTORE_KEY', entry.canonicalKeyPt, true)
       this.addReservedVariableToBufferOut('SSTORE_VALUE', entry.latestValuePt, true)
-    }
-  }
-
-  private _returnMessageCall(depth: number):void {
-    if (depth > 0){
-      const parentContext = this._state.contextByDepth[depth - 1]
-      const childContext = this._state.contextByDepth[depth]
-      if (parentContext === undefined || childContext === undefined) {
-        throw new Error('Synthesizer: message return context is unavailable')
-      }
-      parentContext.returnDataMemoryPts = childContext.resultMemoryPts.map(entry => {
-        return {
-          ...entry,
-          dataPt: DataPtFactory.deepCopy(entry.dataPt),
-        }
-      });
-      parentContext.returnDataByteLength = childContext.resultDataByteLength
     }
   }
 
@@ -253,7 +235,7 @@ export class Synthesizer implements SynthesizerInterface
       ...data,
       stack: data.stack.slice().reverse(),
     }
-    const thisContext = this._state.contextByDepth[stepResult.depth];
+    const thisContext = this._contextManager.contextByDepth[stepResult.depth];
     if (thisContext === undefined ) {
       throw new Error('Debug: The current context is not initialized')
     }
@@ -299,7 +281,7 @@ export class Synthesizer implements SynthesizerInterface
   }
 
   public get messageCodeAddresses(): readonly string[] {
-    return this._state.messageCodeAddresses
+    return this._contextManager.messageCodeAddresses
   }
 
   public get placements(): Placements {

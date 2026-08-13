@@ -9,12 +9,11 @@ import {
   setLengthLeft,
   bigIntToBytes,
 } from '@ethereumjs/util'
-import { InterpreterStep, Message } from '@ethereumjs/evm'
-import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js'
+import { InterpreterStep } from '@ethereumjs/evm'
 import { DataPtFactory, MemoryPt, StackPt } from '../dataStructure/index.ts';
 import type { PlacementManager } from './placementManager.ts';
 import type { MemoryManager } from './memoryManager.ts';
-import type { MessageContext, StateManager } from './stateManager.ts';
+import type { ContextManager, MessageContext } from './contextManager.ts';
 
 export interface HandlerOpts {
   op: SynthesizerSupportedOpcodes,
@@ -43,169 +42,12 @@ export class InstructionHandler {
   public synthesizerHandlers!: Map<number, SynthesizerOpHandler>
   constructor(
     private parent: ISynthesizerProvider,
-    private readonly state: StateManager,
+    private readonly contextManager: ContextManager,
     private readonly placementManager: PlacementManager,
     private readonly memoryManager: MemoryManager,
     private readonly cachedOpts: SynthesizerOpts,
   ) {
     this._createSynthesizerHandlers()
-  }
-
-  public initializeMessageContext(message: Message): void {
-    this.state.recordMessageCodeAddress(message.codeAddress.toString())
-    if (message.isCreate) {
-      throw new Error('CREATE is not supported.')
-    }
-    if (message.isCompiled) {
-      throw new Error('Precompiled functions are not supported.')
-    }
-
-    const depth = message.depth
-    let callDataMemoryPts: MemoryPts
-    let callerPt: DataPt
-    let codeAddressPt: DataPt
-    let storageAddressPt: DataPt
-    let callDataByteLength: number
-
-    if (depth === 0) {
-      const selectorPt = this.parent.getReservedVariableFromBuffer('FUNCTION_SELECTOR')
-      const inputPts: DataPt[] = Array.from({ length: FUNCTION_INPUT_LENGTH }, (_, index) =>
-        this.parent.getReservedVariableFromBuffer(
-          `TRANSACTION_INPUT${index}` as ReservedVariable,
-        ),
-      )
-      callDataMemoryPts = [
-        { memByteOffset: 0, containerByteSize: 4, dataPt: selectorPt },
-        ...inputPts.map((dataPt, index) => ({
-          memByteOffset: 4 + 32 * index,
-          containerByteSize: 32,
-          dataPt,
-        })),
-      ]
-      callDataByteLength = message.data.length
-      if (this.state.cachedOrigin === undefined) {
-        throw new Error('Sender address must be verified first')
-      }
-      callerPt = DataPtFactory.deepCopy(this.state.cachedOrigin)
-      const contractAddressPt = this.parent.getReservedVariableFromBuffer('CONTRACT_ADDRESS')
-      codeAddressPt = DataPtFactory.deepCopy(contractAddressPt)
-      storageAddressPt = DataPtFactory.deepCopy(contractAddressPt)
-    } else if (depth > 0) {
-      const parentContext = this.state.contextByDepth[depth - 1]
-      if (parentContext === undefined) {
-        throw new Error('Debug: No parent context')
-      }
-      const callingStep = parentContext.prevInterpreterStep
-      if (callingStep === null) {
-        throw new Error('Debug: A child context is called but no relevant interpreter step in the parent context')
-      }
-
-      let rawCodeAddress: bigint
-      let rawCodeAddressPt: DataPt
-      let inputOffset: bigint
-      let inputLength: bigint
-      switch (callingStep.opcode.name) {
-        case 'CALL':
-        case 'CALLCODE': {
-          const inputs = callingStep.stack.slice(0, 7)
-          rawCodeAddress = inputs[1]
-          rawCodeAddressPt = DataPtFactory.deepCopy(parentContext.stackPt.peek(7)[1])
-          inputOffset = inputs[3]
-          inputLength = inputs[4]
-          break
-        }
-        case 'DELEGATECALL':
-        case 'STATICCALL': {
-          const inputs = callingStep.stack.slice(0, 6)
-          rawCodeAddress = inputs[1]
-          rawCodeAddressPt = DataPtFactory.deepCopy(parentContext.stackPt.peek(6)[1])
-          inputOffset = inputs[2]
-          inputLength = inputs[3]
-          break
-        }
-        default:
-          throw new Error(`Debug: Unsupported message call opcode: ${callingStep.opcode.name}`)
-      }
-
-      if (rawCodeAddress !== rawCodeAddressPt.value) {
-        throw new Error('Debug: Raw address to call mismatch between EVM and Synthesizer')
-      }
-      const addressMaskPt = this.parent.getReservedVariableFromBuffer('ADDRESS_MASK')
-      const preparedTargetMask = this.placementManager.prepareComposition(
-        { operation: 'AND', operands: [rawCodeAddressPt, addressMaskPt] },
-        this.parent.placements.length,
-      )
-      this.parent.placeComposition(preparedTargetMask)
-      const maskedAddressPt = preparedTargetMask.resultPts[0]
-      if (maskedAddressPt === undefined) {
-        throw new Error('Synthesizer: CALL target mask produced no address')
-      }
-      codeAddressPt = maskedAddressPt
-      const codeAddress = BigInt(message.codeAddress.toString())
-      if (codeAddress !== codeAddressPt.value) {
-        throw new Error('Debug: Address to call mismatch between EVM and Synthesizer')
-      }
-      if (codeAddress >= 1n && codeAddress <= 10n) {
-        throw new Error('Precompiles are not implemented in Synthesizer.')
-      }
-
-      switch (callingStep.opcode.name) {
-        case 'CALL':
-        case 'STATICCALL':
-          callerPt = DataPtFactory.deepCopy(parentContext.storageAddressPt)
-          storageAddressPt = DataPtFactory.deepCopy(codeAddressPt)
-          break
-        case 'CALLCODE':
-          callerPt = DataPtFactory.deepCopy(parentContext.storageAddressPt)
-          storageAddressPt = DataPtFactory.deepCopy(parentContext.storageAddressPt)
-          break
-        case 'DELEGATECALL':
-          callerPt = DataPtFactory.deepCopy(parentContext.callerPt)
-          storageAddressPt = DataPtFactory.deepCopy(parentContext.storageAddressPt)
-          break
-      }
-
-      const preparedMemoryCopy = this.memoryManager.prepareMemoryCopy(
-        parentContext.memoryPt,
-        inputOffset,
-        inputLength,
-        0n,
-        this.parent.placements.length,
-      )
-      for (const preparedComposition of preparedMemoryCopy.compositions) {
-        this.parent.placeComposition(preparedComposition)
-      }
-      callDataMemoryPts = preparedMemoryCopy.destinationEntries
-      callDataByteLength = Number(inputLength)
-      const simulatedCallDataMemoryPt = MemoryPt.simulateMemoryPt(callDataMemoryPts)
-      const synthesizedCallData = simulatedCallDataMemoryPt.viewMemory(0, Number(inputLength))
-      const actualCallData = callingStep.memory.subarray(
-        Number(inputOffset),
-        Number(inputOffset) + Number(inputLength),
-      )
-      if (bytesToBigInt(synthesizedCallData) !== bytesToBigInt(actualCallData)) {
-        throw new Error('Debug: Mismatch between calldata memory and memoryPt of the parent context')
-      }
-    } else {
-      throw new Error(`Debug: Invalid call depth: ${depth}`)
-    }
-
-    const context: MessageContext = {
-      stackPt: new StackPt(),
-      memoryPt: new MemoryPt(),
-      callDataMemoryPts,
-      callDataByteLength,
-      callerPt,
-      codeAddressPt,
-      storageAddressPt,
-      returnDataMemoryPts: [],
-      returnDataByteLength: 0,
-      prevInterpreterStep: null,
-      resultMemoryPts: [],
-      resultDataByteLength: 0,
-    }
-    this.state.beginFrame(depth)
-    this.state.contextByDepth[depth] = context
   }
 
   private _createHandlerOpts(opName: SynthesizerSupportedOpcodes, context: MessageContext): HandlerOpts {
@@ -215,7 +57,7 @@ export class InstructionHandler {
     }
     const depth = prevStepResult.depth;
     const callerAddr = context.callerPt.value;
-    const originAddr = this.state.cachedOrigin?.value
+    const originAddr = this.contextManager.cachedOrigin?.value
     if (originAddr === undefined) {
       throw new Error('Debug: Origin address is not verified')
     }
@@ -605,7 +447,7 @@ export class InstructionHandler {
   ) {
     // The cache-entry and retained-initial-read branches are mutually exclusive,
     // so each lookup places EqualBatch at most once.
-    const cachedEntry = this.state.storageCache.get(addressValue, keyValue)
+    const cachedEntry = this.contextManager.storageCache.get(addressValue, keyValue)
     if (cachedEntry !== undefined) {
       this._constrainStorageLocationEquality(
         addressPt,
@@ -616,7 +458,7 @@ export class InstructionHandler {
       return cachedEntry
     }
 
-    const initialRead = this.state.initialStorageReads.get(addressValue, keyValue)
+    const initialRead = this.contextManager.initialStorageReads.get(addressValue, keyValue)
     if (initialRead === undefined) {
       return undefined
     }
@@ -657,7 +499,7 @@ export class InstructionHandler {
       if (cachedEntry.latestValuePt.value !== valueStored) {
         throw new Error('Synthesizer: Cached storage value does not match EVM storage')
       }
-      this.state.storageCache.set(addressValue, keyValue, cachedEntry)
+      this.contextManager.storageCache.set(addressValue, keyValue, cachedEntry)
       return DataPtFactory.deepCopy(cachedEntry.latestValuePt)
     }
 
@@ -684,8 +526,8 @@ export class InstructionHandler {
       keyPt: DataPtFactory.deepCopy(keyPt),
       valuePt: DataPtFactory.deepCopy(valuePt),
     }
-    this.state.initialStorageReads.add(addressValue, keyValue, initialRead)
-    this.state.storageCache.set(addressValue, keyValue, {
+    this.contextManager.initialStorageReads.add(addressValue, keyValue, initialRead)
+    this.contextManager.storageCache.set(addressValue, keyValue, {
       canonicalAddressPt: initialRead.addressPt,
       canonicalKeyPt: initialRead.keyPt,
       latestValuePt: initialRead.valuePt,
@@ -713,7 +555,7 @@ export class InstructionHandler {
     }
 
     const cachedEntry = this._getCachedStorageEntry(addressValue, keyValue, addressPt, keyPt)
-    this.state.storageCache.set(addressValue, keyValue, {
+    this.contextManager.storageCache.set(addressValue, keyValue, {
       canonicalAddressPt: cachedEntry?.canonicalAddressPt ?? addressPt,
       canonicalKeyPt: cachedEntry?.canonicalKeyPt ?? keyPt,
       latestValuePt: symbolDataPt,
@@ -861,7 +703,7 @@ export class InstructionHandler {
   ): void {
     const _retrieveOriginAddressPt = (): DataPt => {
       checkRequiredInput(opts.originAddress)
-      const dataPt = this.state.cachedOrigin
+      const dataPt = this.contextManager.cachedOrigin
       if (dataPt === undefined) {
         throw new Error('Synthesizer: Origin address is not populated by TransactionSignatureVerify')
       }
