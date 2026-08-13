@@ -167,12 +167,12 @@ const submit = (
   }
   const handler = new InstructionHandler(parent as never, {} as never, {} as never)
   const preparedComposition = (handler as unknown as {
-    _prepareFixedMultiStepArithmeticComposition(
+    _prepareFixedGenericComposition(
       operation: FixedMultiStepOperation,
       operands: DataPt[],
       basePlacementIndex: number,
     ): PreparedComposition;
-  })._prepareFixedMultiStepArithmeticComposition(
+  })._prepareFixedGenericComposition(
     operation,
     operation === 'ADDMOD' || operation === 'MULMOD'
       ? [dataPt(3n, 10), dataPt(4n, 11), dataPt(5n, 12)]
@@ -186,7 +186,7 @@ const submit = (
   }
 }
 
-describe('fixed multi-step arithmetic prepared compositions', () => {
+describe('fixed generic prepared compositions', () => {
   it('prepares every declared result of a fixed generic composition', () => {
     const composition = {
       placementStrategy: 'generic' as const,
@@ -222,12 +222,12 @@ describe('fixed multi-step arithmetic prepared compositions', () => {
     } as never, {} as never, {} as never)
 
     const prepared = (handler as unknown as {
-      _prepareFixedMultiStepArithmeticComposition(
+      _prepareFixedGenericComposition(
         operation: FixedMultiStepOperation,
         operands: DataPt[],
         basePlacementIndex: number,
       ): PreparedComposition;
-    })._prepareFixedMultiStepArithmeticComposition('ADDMOD', [dataPt(7n, 10)], 4)
+    })._prepareFixedGenericComposition('ADDMOD', [dataPt(7n, 10)], 4)
 
     expect(prepared.resultPts).toMatchObject([
       { source: 4, wireIndex: 0, value: 1n, dataPtType: BIT_DATA_PT_TYPE },

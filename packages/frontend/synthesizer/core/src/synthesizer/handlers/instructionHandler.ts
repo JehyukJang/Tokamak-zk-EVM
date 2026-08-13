@@ -149,7 +149,7 @@ export class InstructionHandler {
         throw new Error('Debug: Raw address to call mismatch between EVM and Synthesizer')
       }
       const addressMaskPt = this.parent.getReservedVariableFromBuffer('ADDRESS_MASK')
-      const preparedTargetMask = this._prepareSingleStepArithmeticComposition(
+      const preparedTargetMask = this._prepareFixedGenericComposition(
         'AND',
         [rawCodeAddressPt, addressMaskPt],
         this.parent.placements.length,
@@ -579,7 +579,7 @@ export class InstructionHandler {
 
   }
 
-  private _prepareFixedMultiStepArithmeticComposition(
+  private _prepareFixedGenericComposition(
     operation: Operator,
     operands: DataPt[],
     basePlacementIndex: number,
@@ -790,93 +790,6 @@ export class InstructionHandler {
     return preparedComposition
   }
 
-  private _prepareSingleStepArithmeticComposition(
-    operation: Operator,
-    operands: DataPt[],
-    basePlacementIndex: number,
-  ): PreparedComposition {
-    const composition = this.parent.subcircuitLibrary
-      .placementCompositionManager.get(operation)
-    const step = composition.steps[0]
-    if (
-      composition.placementStrategy !== 'generic'
-      || composition.numSteps !== 1
-      || composition.numResults !== 1
-      || step === undefined
-    ) {
-      throw new Error(
-        `Synthesizer: ${operation} is not a supported single-step arithmetic composition`,
-      )
-    }
-
-    const finalInPts: DataPt[] = []
-    for (const input of step.inputs) {
-      switch (input.kind) {
-        case 'selector':
-          if (typeof step.selector !== 'bigint') {
-            throw new Error(`Synthesizer: ${operation} requires a static selector`)
-          }
-          finalInPts.push(this.parent.loadArbitraryStatic(
-            step.selector,
-            UINT32_DATA_PT_TYPE,
-            `ALU selector for ${operation} of ${step.subcircuit}`,
-          ))
-          break
-        case 'operand': {
-          const operand = operands[input.index]
-          if (operand === undefined) {
-            throw new Error(
-              `Synthesizer: ${operation} operand ${input.index} is unavailable`,
-            )
-          }
-          finalInPts.push(operand)
-          break
-        }
-        case 'constant': {
-          const constant = composition.constants[input.index]
-          if (constant === undefined) {
-            throw new Error(
-              `Synthesizer: ${operation} constant ${input.index} is unavailable`,
-            )
-          }
-          finalInPts.push(this.parent.loadArbitraryStatic(
-            constant.value,
-            constant.dataPtType,
-          ))
-          break
-        }
-        case 'step-output':
-          throw new Error(
-            `Synthesizer: ${operation} single-step composition cannot consume an intermediate output`,
-          )
-      }
-    }
-
-    const values = this.parent.calculateSubcircuitOutputValues(
-      step.subcircuit as CompositionSubcircuit,
-      finalInPts.map(({ value }) => value),
-    )
-    const value = values[0]
-    if (value === undefined) {
-      throw new Error(
-        `Synthesizer: ${operation} did not produce a first subcircuit output`,
-      )
-    }
-
-    const resultPt = DataPtFactory.create({
-      source: basePlacementIndex,
-      wireIndex: 0,
-      dataPtType: UINT256_DATA_PT_TYPE,
-    }, value)
-    const preparedComposition: PreparedComposition = {
-      operation,
-      operands,
-      resultPts: [resultPt],
-      steps: [{ inPts: finalInPts, outPts: [resultPt] }],
-    }
-    return preparedComposition
-  }
-
   private _assertStorageAddress(
     address: Address,
     addressPt: DataPt,
@@ -1047,7 +960,7 @@ export class InstructionHandler {
       case 'ADDMOD':
       case 'MULMOD':
       case 'EXP':
-        preparedComposition = this._prepareFixedMultiStepArithmeticComposition(
+        preparedComposition = this._prepareFixedGenericComposition(
           op,
           inPts,
           this.parent.placements.length,
@@ -1077,7 +990,7 @@ export class InstructionHandler {
         }
         break
       default:
-        preparedComposition = this._prepareSingleStepArithmeticComposition(
+        preparedComposition = this._prepareFixedGenericComposition(
           op as Operator,
           inPts,
           this.parent.placements.length,
@@ -1502,7 +1415,7 @@ export class InstructionHandler {
           const originalDataPt = inPts[1]
           let dataPtToStore = originalDataPt
           if (op === 'MSTORE8') {
-            const preparedComposition = this._prepareSingleStepArithmeticComposition(
+            const preparedComposition = this._prepareFixedGenericComposition(
               'AND',
               [
                 this.parent.loadArbitraryStatic(
