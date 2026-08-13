@@ -33,6 +33,7 @@ export const OPERATOR_LIST = [
   'MemoryLoad',
   'StorageAccess',
   'TransactionSignatureVerify',
+  'FrToLimbsPair',
 ] as const
 
 export type Operator = (typeof OPERATOR_LIST)[number]
@@ -107,6 +108,7 @@ export const COMPOSITION_SUBCIRCUIT_LIST = [
     'TransactionSignatureChallengeVariablePrefix',
     'TransactionSignatureVariableBatch',
     'TransactionSignatureFinal',
+    'FrToLimbsPair',
 ] as const
 
 export type CompositionSubcircuit = (typeof COMPOSITION_SUBCIRCUIT_LIST)[number]

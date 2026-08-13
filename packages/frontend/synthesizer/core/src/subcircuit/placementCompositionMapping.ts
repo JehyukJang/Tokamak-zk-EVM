@@ -280,7 +280,10 @@ const createSelectorFreeCompositionMappings = (
 ): readonly PlacementCompositionEntry[] => {
   assertPositiveInteger(config.nEqualBatch, 'nEqualBatch');
 
-  return Object.freeze([createSingleStepMapping('StorageAccess', 'EqualBatch', null, 2 * config.nEqualBatch, 0)]);
+  return Object.freeze([
+    createSingleStepMapping('StorageAccess', 'EqualBatch', null, 2 * config.nEqualBatch, 0),
+    createSingleStepMapping('FrToLimbsPair', 'FrToLimbsPair', null, 2, 2),
+  ]);
 };
 
 export type PlacementCompositionConfig = Readonly<{

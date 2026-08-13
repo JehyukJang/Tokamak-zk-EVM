@@ -6,6 +6,7 @@ import { bigIntToBytes, bigIntToHex, bytesToHex, createAddressFromBigInt, setLen
 import { EVMResult, InterpreterStep } from '@ethereumjs/evm';
 import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
 import {
+  BLS12_381_FR_DATA_PT_TYPE,
   Placements,
   type ReservedVariable,
   SynthesizerInterface,
@@ -159,17 +160,18 @@ export class Synthesizer implements SynthesizerInterface
 
   private async _prepareSynthesizeTransaction(): Promise<void> {
     this._contextManager.resetTransactionTracking()
+    const transactionInputPts = Array.from({ length: FUNCTION_INPUT_LENGTH }, (_, index) =>
+      this._placementManager.getReservedVariableFromBuffer(
+        `TRANSACTION_INPUT${index}` as ReservedVariable,
+      ),
+    )
     const operands = [
       this._placementManager.getReservedVariableFromBuffer('EDDSA_RANDOMIZER_X'),
       this._placementManager.getReservedVariableFromBuffer('EDDSA_RANDOMIZER_Y'),
       this._placementManager.getReservedVariableFromBuffer('EDDSA_PUBLIC_KEY_X'),
       this._placementManager.getReservedVariableFromBuffer('EDDSA_PUBLIC_KEY_Y'),
       this._placementManager.getReservedVariableFromBuffer('TRANSACTION_NONCE'),
-      ...Array.from({ length: FUNCTION_INPUT_LENGTH }, (_, index) =>
-        this._placementManager.getReservedVariableFromBuffer(
-          `TRANSACTION_INPUT${index}` as ReservedVariable,
-        ),
-      ),
+      ...transactionInputPts,
       this._placementManager.getReservedVariableFromBuffer('CONTRACT_ADDRESS'),
       this._placementManager.getReservedVariableFromBuffer('FUNCTION_SELECTOR'),
       this._placementManager.getReservedVariableFromBuffer('EDDSA_SIGNATURE'),
@@ -181,6 +183,21 @@ export class Synthesizer implements SynthesizerInterface
       this._placementManager.placements.length,
     )
     this._placementManager.placeComposition(preparedComposition)
+
+    const zeroFrPt = this._placementManager.loadArbitraryStatic(
+      0n,
+      BLS12_381_FR_DATA_PT_TYPE,
+    )
+    for (let inputIndex = 0; inputIndex < transactionInputPts.length; inputIndex += 2) {
+      const preparedConversion = this._placementManager.prepareComposition(
+        {
+          operation: 'FrToLimbsPair',
+          operands: [transactionInputPts[inputIndex]!, transactionInputPts[inputIndex + 1] ?? zeroFrPt],
+        },
+        this._placementManager.placements.length,
+      )
+      this._placementManager.placeComposition(preparedConversion)
+    }
   }
 
   private _finalizeStorageStore(): void {

@@ -862,6 +862,7 @@ const SUBCIRCUIT_OPERATION_MAPPING: Partial<Record<CompositionSubcircuit, Subcir
   TransactionSignatureChallengeVariablePrefix: challengeVariablePrefix,
   TransactionSignatureVariableBatch: transactionSignatureVariableBatch,
   TransactionSignatureFinal: final,
+  FrToLimbsPair: (values) => values,
 };
 
 export function calculateSubcircuitOutputValues(name: CompositionSubcircuit, values: bigint[]): bigint[] {
