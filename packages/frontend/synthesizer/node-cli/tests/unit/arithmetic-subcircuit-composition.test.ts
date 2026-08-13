@@ -73,4 +73,15 @@ describe('placement composition assembly', () => {
       }],
     }))).not.toThrow();
   });
+
+  it('preserves explicitly declared usage without inferring it from the subcircuit name', () => {
+    const addComposition = composition.get('ADD');
+    expect(() => new PlacementCompositionManager(replaceComposition('ADD', {
+      ...addComposition,
+      steps: [{
+        ...addComposition.steps[0],
+        usage: 'ALU1',
+      }],
+    }))).not.toThrow();
+  });
 });

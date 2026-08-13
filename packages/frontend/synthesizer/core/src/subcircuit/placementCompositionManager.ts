@@ -185,15 +185,6 @@ export class PlacementCompositionManager {
     }
 
     for (const [stepIndex, step] of composition.steps.entries()) {
-      const expectedUsage = step.subcircuit.startsWith('ALU')
-        ? operation
-        : step.subcircuit;
-      if (step.usage !== expectedUsage) {
-        throw new Error(
-          `PlacementCompositionManager: ${operation} step ${stepIndex} usage must be ${expectedUsage}`,
-        );
-      }
-
       const selectorInputs = step.inputs.filter(({ kind }) => kind === 'selector').length;
       if (selectorInputs !== (step.selector === null ? 0 : 1)) {
         throw new Error(
@@ -291,6 +282,7 @@ export class PlacementCompositionManager {
 const createSingleStepMapping = (
   operation: Operator,
   subcircuit: CompositionSubcircuit,
+  usage: Operator | CompositionSubcircuit,
   selector: SelectorDefinition,
   numOperands: number,
   numResults: number,
@@ -305,7 +297,7 @@ const createSingleStepMapping = (
     numResults,
     steps: [{
       subcircuit,
-      usage: subcircuit.startsWith('ALU') ? operation : subcircuit,
+      usage,
       selector,
       inputs: [
         ...(selector === null
@@ -334,24 +326,24 @@ const ZERO_WORD_CONSTANT: ConstantDefinition = Object.freeze({
 
 export const FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS: readonly PlacementCompositionMapping[] =
   Object.freeze([
-    createSingleStepMapping('ADD', 'ALU1', 1n << 1n, 2, 1),
-    createSingleStepMapping('MUL', 'ALU1', 1n << 2n, 2, 1),
-    createSingleStepMapping('SUB', 'ALU1', 1n << 3n, 2, 1),
-    createSingleStepMapping('LT', 'ALU2', 1n << 16n, 2, 1),
-    createSingleStepMapping('GT', 'ALU2', 1n << 17n, 2, 1),
-    createSingleStepMapping('SLT', 'ALU3', 1n << 18n, 2, 1),
-    createSingleStepMapping('SGT', 'ALU3', 1n << 19n, 2, 1),
-    createSingleStepMapping('EQ', 'ALU1', 1n << 20n, 2, 1),
-    createSingleStepMapping('ISZERO', 'ALU2', 1n << 21n, 1, 1, [ZERO_WORD_CONSTANT]),
-    createSingleStepMapping('AND', 'AND', 1n << 22n, 2, 1),
-    createSingleStepMapping('OR', 'OR', 1n << 23n, 2, 1),
-    createSingleStepMapping('XOR', 'XOR', 1n << 24n, 2, 1),
-    createSingleStepMapping('NOT', 'ALU1', 1n << 25n, 1, 1, [ZERO_WORD_CONSTANT]),
-    createSingleStepMapping('BYTE', 'BYTE', 1n << 26n, 2, 1),
-    createSingleStepMapping('SHL', 'SHL', 1n << 27n, 2, 1),
-    createSingleStepMapping('SHR', 'ALU6', 1n << 28n, 2, 1),
-    createSingleStepMapping('SAR', 'ALU6', 1n << 29n, 2, 1),
-    createSingleStepMapping('SIGNEXTEND', 'SIGNEXTEND', 1n << 11n, 2, 1),
+    createSingleStepMapping('ADD', 'ALU1', 'ADD', 1n << 1n, 2, 1),
+    createSingleStepMapping('MUL', 'ALU1', 'MUL', 1n << 2n, 2, 1),
+    createSingleStepMapping('SUB', 'ALU1', 'SUB', 1n << 3n, 2, 1),
+    createSingleStepMapping('LT', 'ALU2', 'LT', 1n << 16n, 2, 1),
+    createSingleStepMapping('GT', 'ALU2', 'GT', 1n << 17n, 2, 1),
+    createSingleStepMapping('SLT', 'ALU3', 'SLT', 1n << 18n, 2, 1),
+    createSingleStepMapping('SGT', 'ALU3', 'SGT', 1n << 19n, 2, 1),
+    createSingleStepMapping('EQ', 'ALU1', 'EQ', 1n << 20n, 2, 1),
+    createSingleStepMapping('ISZERO', 'ALU2', 'ISZERO', 1n << 21n, 1, 1, [ZERO_WORD_CONSTANT]),
+    createSingleStepMapping('AND', 'AND', 'AND', 1n << 22n, 2, 1),
+    createSingleStepMapping('OR', 'OR', 'OR', 1n << 23n, 2, 1),
+    createSingleStepMapping('XOR', 'XOR', 'XOR', 1n << 24n, 2, 1),
+    createSingleStepMapping('NOT', 'ALU1', 'NOT', 1n << 25n, 1, 1, [ZERO_WORD_CONSTANT]),
+    createSingleStepMapping('BYTE', 'BYTE', 'BYTE', 1n << 26n, 2, 1),
+    createSingleStepMapping('SHL', 'SHL', 'SHL', 1n << 27n, 2, 1),
+    createSingleStepMapping('SHR', 'ALU6', 'SHR', 1n << 28n, 2, 1),
+    createSingleStepMapping('SAR', 'ALU6', 'SAR', 1n << 29n, 2, 1),
+    createSingleStepMapping('SIGNEXTEND', 'SIGNEXTEND', 'SIGNEXTEND', 1n << 11n, 2, 1),
   ]);
 
 export type SelectorFreeCompositionMappingConfig = Pick<
@@ -367,6 +359,7 @@ export const createSelectorFreeCompositionMappings = (
   return Object.freeze([
     createSingleStepMapping(
       'StorageAccess',
+      'EqualBatch',
       'EqualBatch',
       null,
       2 * config.nEqualBatch,
