@@ -74,14 +74,11 @@ describe('placement composition assembly', () => {
     }))).not.toThrow();
   });
 
-  it('preserves explicitly declared usage without inferring it from the subcircuit name', () => {
-    const addComposition = composition.get('ADD');
-    expect(() => new PlacementCompositionManager(replaceComposition('ADD', {
-      ...addComposition,
-      steps: [{
-        ...addComposition.steps[0],
-        usage: 'ALU1',
-      }],
-    }))).not.toThrow();
+  it('does not retain usage metadata on composition steps', () => {
+    for (const operation of OPERATOR_LIST) {
+      for (const step of composition.get(operation).steps) {
+        expect(step).not.toHaveProperty('usage');
+      }
+    }
   });
 });

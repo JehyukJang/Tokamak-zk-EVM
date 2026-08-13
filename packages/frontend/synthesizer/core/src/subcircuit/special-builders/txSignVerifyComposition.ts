@@ -58,7 +58,6 @@ export const createTransactionSignatureVerifyCompositionMapping = (): PlacementC
     const challengeOffset = 4 * batch
     steps.push({
       subcircuit: 'TransactionSignaturePoseidonBatch4',
-      usage: 'TransactionSignaturePoseidonBatch4',
       selector: null,
       inputs: [
         { kind: 'constant', index: chainModeConstantIndex },
@@ -87,7 +86,6 @@ export const createTransactionSignatureVerifyCompositionMapping = (): PlacementC
   const challengeHashIndex = allocateIntermediate()
   steps.push({
     subcircuit: 'TransactionSignaturePoseidonBatch4',
-    usage: 'TransactionSignaturePoseidonBatch4',
     selector: null,
     inputs: [
       { kind: 'constant', index: independentModeConstantIndex },
@@ -108,7 +106,6 @@ export const createTransactionSignatureVerifyCompositionMapping = (): PlacementC
   const randomizerCofactorIndices = allocateIntermediates(NUM_EXTENDED_COORDINATES)
   steps.push({
     subcircuit: 'TransactionSignaturePointPolicy',
-    usage: 'TransactionSignaturePointPolicy',
     selector: null,
     inputs: [
       challengeInput(0),
@@ -138,7 +135,6 @@ export const createTransactionSignatureVerifyCompositionMapping = (): PlacementC
   const fixedAccumulatorIndices = allocateIntermediates(NUM_EXTENDED_COORDINATES)
   steps.push({
     subcircuit: 'TransactionSignatureFixedPrefix70',
-    usage: 'TransactionSignatureFixedPrefix70',
     selector: null,
     inputs: [{ kind: 'operand', index: RESPONSE_OPERAND_INDEX }],
     outputs: [
@@ -157,7 +153,6 @@ export const createTransactionSignatureVerifyCompositionMapping = (): PlacementC
   const initialVariableAccumulatorIndices = allocateIntermediates(NUM_EXTENDED_COORDINATES)
   steps.push({
     subcircuit: 'TransactionSignatureChallengeVariablePrefix',
-    usage: 'TransactionSignatureChallengeVariablePrefix',
     selector: null,
     inputs: [
       { kind: 'step-output', index: challengeHashIndex },
@@ -184,7 +179,6 @@ export const createTransactionSignatureVerifyCompositionMapping = (): PlacementC
     const nextVariableAccumulatorIndices = allocateIntermediates(NUM_EXTENDED_COORDINATES)
     steps.push({
       subcircuit: 'TransactionSignatureVariableBatch',
-      usage: 'TransactionSignatureVariableBatch',
       selector: null,
       inputs: [
         ...remainingChallengeBitIndices.slice(
@@ -210,7 +204,6 @@ export const createTransactionSignatureVerifyCompositionMapping = (): PlacementC
 
   steps.push({
     subcircuit: 'TransactionSignatureFinal',
-    usage: 'TransactionSignatureFinal',
     selector: null,
     inputs: [
       ...remainingResponseBitIndices.map((index): InputReference => ({

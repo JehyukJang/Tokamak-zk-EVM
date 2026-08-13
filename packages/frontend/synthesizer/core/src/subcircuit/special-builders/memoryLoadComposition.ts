@@ -20,7 +20,6 @@ export const createMemoryLoadCompositionMapping = (): PlacementCompositionMappin
       steps: [
         {
           subcircuit: 'MemoryLoadStep',
-          usage: 'MemoryLoadStep',
           selector: null,
           inputs: Array.from(
             { length: 8 },

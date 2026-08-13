@@ -20,7 +20,6 @@ export const createExpCompositionMapping = (): PlacementCompositionMapping => {
   const steps: CompositionStep[] = [
     {
       subcircuit: 'DecToBit',
-      usage: 'DecToBit',
       selector: null,
       inputs: [{ kind: 'operand', index: 1 }],
       outputs: Array.from(
@@ -51,7 +50,6 @@ export const createExpCompositionMapping = (): PlacementCompositionMapping => {
 
     steps.push({
       subcircuit: 'SubExp',
-      usage: 'SubExp',
       selector: null,
       inputs: [...stateInputs, { kind: 'step-output', index: bitIndex }],
       outputs
@@ -60,7 +58,6 @@ export const createExpCompositionMapping = (): PlacementCompositionMapping => {
 
   steps.push({
     subcircuit: 'CheckBus256',
-    usage: 'CheckBus256',
     selector: null,
     inputs: [
       {

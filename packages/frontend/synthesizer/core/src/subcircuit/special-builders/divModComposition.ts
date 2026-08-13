@@ -16,14 +16,12 @@ const createDivisionCompositionMapping = (
       steps: [
         {
           subcircuit: 'ALU4A',
-          usage: operation,
           selector,
           inputs: [{ kind: 'selector' }, { kind: 'operand', index: 0 }, { kind: 'operand', index: 1 }],
           outputs: Array.from({ length: 10 }, (_, index): OutputReference => ({ kind: 'step-output', index }))
         },
         {
           subcircuit: 'ALU4B',
-          usage: operation,
           selector: null,
           inputs: Array.from({ length: 10 }, (_, index): InputReference => ({ kind: 'step-output', index })),
           outputs: [{ kind: 'result', index: 0 }]

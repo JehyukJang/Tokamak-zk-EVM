@@ -47,7 +47,6 @@ export function freezeComposition(
     numResults: composition.numResults,
     steps: Object.freeze(composition.steps.map((step) => Object.freeze({
       subcircuit: step.subcircuit,
-      usage: step.usage,
       selector: step.selector,
       inputs: Object.freeze(step.inputs.map(freezeReference)),
       outputs: Object.freeze(step.outputs.map(freezeReference)),

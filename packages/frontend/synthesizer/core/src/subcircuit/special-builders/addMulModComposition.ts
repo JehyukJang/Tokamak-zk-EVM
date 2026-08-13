@@ -13,7 +13,6 @@ const createAddModCompositionMapping = (): PlacementCompositionMapping =>
       steps: [
         {
           subcircuit: 'ADDMODPrepare',
-          usage: 'ADDMODPrepare',
           selector: null,
           inputs: [
             { kind: 'operand', index: 0 },
@@ -24,7 +23,6 @@ const createAddModCompositionMapping = (): PlacementCompositionMapping =>
         },
         {
           subcircuit: 'ADDMODVerify',
-          usage: 'ADDMODVerify',
           selector: null,
           inputs: [
             { kind: 'step-output', index: 0 },
@@ -54,7 +52,6 @@ const createMulModCompositionMapping = (): PlacementCompositionMapping =>
       steps: [
         {
           subcircuit: 'MULMODPrepare',
-          usage: 'MULMODPrepare',
           selector: null,
           inputs: [
             { kind: 'operand', index: 0 },
@@ -65,7 +62,6 @@ const createMulModCompositionMapping = (): PlacementCompositionMapping =>
         },
         {
           subcircuit: 'MULMODCandidate',
-          usage: 'MULMODCandidate',
           selector: null,
           inputs: [
             { kind: 'step-output', index: 12 },
@@ -76,7 +72,6 @@ const createMulModCompositionMapping = (): PlacementCompositionMapping =>
         },
         {
           subcircuit: 'MULMODVerify',
-          usage: 'MULMODVerify',
           selector: null,
           inputs: [
             ...Array.from({ length: 12 }, (_, index) => ({ kind: 'step-output' as const, index })),

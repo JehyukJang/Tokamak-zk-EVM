@@ -410,7 +410,7 @@ export class StateManager {
           step.subcircuit,
           preparedStep.inPts.slice(),
           preparedStep.outPts.slice(),
-          step.usage,
+          preparedComposition.operation,
         )
       }
       return
@@ -423,7 +423,7 @@ export class StateManager {
           step.subcircuit,
           preparedStep.inPts.slice(),
           preparedStep.outPts.slice(),
-          step.usage,
+          preparedComposition.operation,
         )
       }
       return
@@ -436,7 +436,7 @@ export class StateManager {
           step.subcircuit,
           preparedStep.inPts.slice(),
           preparedStep.outPts.slice(),
-          step.usage,
+          preparedComposition.operation,
         )
       }
       return

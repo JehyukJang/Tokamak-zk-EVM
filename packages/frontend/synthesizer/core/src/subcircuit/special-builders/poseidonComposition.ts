@@ -23,7 +23,6 @@ export const createPoseidonCompositionMapping = (
       steps: [
         {
           subcircuit: 'Poseidon',
-          usage: 'Poseidon',
           selector: 'dynamic',
           inputs: [
             { kind: 'selector' },

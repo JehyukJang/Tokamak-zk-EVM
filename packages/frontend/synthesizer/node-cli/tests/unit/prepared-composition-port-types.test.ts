@@ -19,7 +19,6 @@ const composition = {
   numResults: 1,
   steps: [{
     subcircuit: 'ALU1',
-    usage: 'ADD',
     selector: 1n,
     inputs: [
       { kind: 'selector' },
@@ -89,6 +88,7 @@ describe('prepared composition logical ports', () => {
     const state = createState()
 
     expect(() => state.placeComposition(createPreparedComposition())).not.toThrow()
+    expect(state.placements.at(-1)?.usage).toBe('ADD')
   })
 
   it('rejects a same-width DataPt whose logical port type differs', () => {
