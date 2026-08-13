@@ -1,6 +1,13 @@
+import { bytesToBigInt, hexToBigInt, toBytes } from '@ethereumjs/util';
+import { jubjub } from '@noble/curves/misc.js';
 import { DataPtFactory } from '../../synthesizer/dataStructure/dataPt.ts';
 import {
+  DataPtDescription,
+  DataPtType,
   ISynthesizerProvider,
+  ReservedVariable,
+  SynthesizerOpts,
+  VARIABLE_DESCRIPTION,
   type DataPt,
   type PlacementEntry,
   type Placements,
@@ -11,6 +18,7 @@ import {
   getDataPtWireCount,
 } from '../types/dataStructure.ts';
 import {
+  BUFFER_DESCRIPTION,
   BUFFER_LIST,
   ReservedBuffer,
   SubcircuitInfoByName,
@@ -22,7 +30,7 @@ import type {
   PlacementCompositionMapping,
 } from '../../subcircuit/placementCompositionMapping.ts';
 import type { LogicalInterfacePort } from '../../subcircuit/libraryTypes.ts';
-import { POSEIDON_INPUTS } from 'tokamak-l2js';
+import { FUNCTION_INPUT_LENGTH, POSEIDON_INPUTS } from 'tokamak-l2js';
 
 export function placementEntryDeepCopy(placement: PlacementEntry): PlacementEntry {
   return {
@@ -236,20 +244,174 @@ function _assertPreparedEarlierSource(
 
 export class PlacementManager {
   private _placements: Placements = []
+  private _cachedEVMIn: Map<bigint, Map<string, DataPt>> = new Map()
 
   public subcircuitInfoByName: SubcircuitInfoByName;
   private readonly _bufferSubcircuitByBuffer: Record<ReservedBuffer, SubcircuitInfoByNameEntry | undefined>;
   private readonly _placementCompositionMapping: PlacementCompositionMapping;
 
-  constructor(parent: ISynthesizerProvider) {
+  constructor(
+    private readonly parent: ISynthesizerProvider,
+    private readonly cachedOpts: SynthesizerOpts,
+  ) {
     this.subcircuitInfoByName = parent.subcircuitLibrary.subcircuitInfoByName
     this._bufferSubcircuitByBuffer = parent.subcircuitLibrary.subcircuitBufferMapping
     this._placementCompositionMapping = parent.subcircuitLibrary.placementCompositionMapping
+    this._initBuffers()
   }
 
   public get placements(): Placements {
-    // placements are protected and can be manipulated only by this._place and this.appendBufferWirePair
+    // Placements are mutated only through this class's private placement and buffer helpers.
     return placementsDeepCopy(this._placements)
+  }
+
+  public addReservedVariableToBufferIn(
+    varName: ReservedVariable,
+    value: bigint = 0n,
+    dynamic: boolean = false,
+    message?: string,
+  ): DataPt {
+    const placementIndex = VARIABLE_DESCRIPTION[varName].source
+    const wireDesc: DataPtDescription = {
+      ...VARIABLE_DESCRIPTION[varName],
+      extSource: VARIABLE_DESCRIPTION[varName].extSource + (message ?? ''),
+    }
+    const externalDataPt = DataPtFactory.create(wireDesc, value)
+    if (dynamic) {
+      if (wireDesc.wireIndex !== -1) {
+        throw new Error('This variable is static')
+      }
+      externalDataPt.wireIndex = this._placements[placementIndex]!.inPts.length
+    }
+    const symbolDataPt = DataPtFactory.createBufferTwin(externalDataPt)
+    return DataPtFactory.deepCopy(this._appendBufferWirePair(externalDataPt, symbolDataPt, dynamic))
+  }
+
+  public addReservedVariableToBufferOut(
+    varName: ReservedVariable,
+    symbolDataPt: DataPt,
+    dynamic: boolean = false,
+    message?: string,
+  ): DataPt {
+    const placementIndex = VARIABLE_DESCRIPTION[varName].source
+    const wireDesc: DataPtDescription = {
+      ...VARIABLE_DESCRIPTION[varName],
+      extDest: VARIABLE_DESCRIPTION[varName].extDest + (message ?? ''),
+    }
+    const externalDataPt = DataPtFactory.create(wireDesc, symbolDataPt.value)
+    if (dynamic) {
+      if (wireDesc.wireIndex !== -1) {
+        throw new Error('This variable is static')
+      }
+      externalDataPt.wireIndex = this._placements[placementIndex]!.inPts.length
+    }
+    return DataPtFactory.deepCopy(this._appendBufferWirePair(symbolDataPt, externalDataPt, dynamic))
+  }
+
+  public loadArbitraryStatic(
+    value: bigint,
+    dataPtType: DataPtType,
+    desc?: string,
+  ): DataPt {
+    const cacheKey = dataPtType
+    if (desc === undefined) {
+      const cachedDataPt = this._cachedEVMIn.get(value)?.get(cacheKey)
+      if (cachedDataPt !== undefined) {
+        return DataPtFactory.deepCopy(cachedDataPt)
+      }
+    }
+    const placementIndex = BUFFER_LIST.indexOf('EVM_IN')
+    const inPtRaw: DataPtDescription = {
+      extSource: desc ?? 'Arbitrary constant',
+      source: placementIndex,
+      wireIndex: this._placements[placementIndex]!.inPts.length,
+      dataPtType,
+    }
+    const inPt = DataPtFactory.create(inPtRaw, value)
+    const outPt = DataPtFactory.createBufferTwin(inPt)
+    this._appendBufferWirePair(inPt, outPt, true)
+    const cachedByType = this._cachedEVMIn.get(value) ?? new Map<string, DataPt>()
+    cachedByType.set(cacheKey, outPt)
+    this._cachedEVMIn.set(value, cachedByType)
+    return DataPtFactory.deepCopy(outPt)
+  }
+
+  public getReservedVariableFromBuffer(varName: ReservedVariable): DataPt {
+    if (VARIABLE_DESCRIPTION[varName].extSource === undefined) {
+      throw new Error('Usable only for reserved variables of input buffers')
+    }
+    const placementIndex = VARIABLE_DESCRIPTION[varName].source
+    const wireIndex = VARIABLE_DESCRIPTION[varName].wireIndex
+    const outPt = this._placements[placementIndex]!.outPts[wireIndex]!
+    if (outPt.wireIndex !== wireIndex || outPt.source !== placementIndex) {
+      throw new Error('Invalid wire information')
+    }
+    return DataPtFactory.deepCopy(outPt)
+  }
+
+  private _initBuffers(): void {
+    for (const buffer of BUFFER_LIST) {
+      this._placeBuffer(buffer, [], [], BUFFER_DESCRIPTION[buffer])
+    }
+
+    this.addReservedVariableToBufferIn('CIRCOM_CONST_ONE', 1n)
+    this.addReservedVariableToBufferIn('CIRCOM_CONST_ZERO', 0n)
+    this.addReservedVariableToBufferIn('ADDRESS_MASK', (1n << 160n) - 1n)
+    this.addReservedVariableToBufferIn('JUBJUB_BASE_X', jubjub.Point.BASE.toAffine().x)
+    this.addReservedVariableToBufferIn('JUBJUB_BASE_Y', jubjub.Point.BASE.toAffine().y)
+    this.addReservedVariableToBufferIn('JUBJUB_POI_X', jubjub.Point.ZERO.toAffine().x)
+    this.addReservedVariableToBufferIn('JUBJUB_POI_Y', jubjub.Point.ZERO.toAffine().y)
+    this.addReservedVariableToBufferIn('COINBASE', hexToBigInt(this.cachedOpts.blockInfo.coinBase))
+    this.addReservedVariableToBufferIn('TIMESTAMP', hexToBigInt(this.cachedOpts.blockInfo.timeStamp))
+    this.addReservedVariableToBufferIn('NUMBER', hexToBigInt(this.cachedOpts.blockInfo.blockNumber))
+    this.addReservedVariableToBufferIn('PREVRANDAO', hexToBigInt(this.cachedOpts.blockInfo.prevRanDao))
+    this.addReservedVariableToBufferIn('GASLIMIT', hexToBigInt(this.cachedOpts.blockInfo.gasLimit))
+    this.addReservedVariableToBufferIn('CHAINID', hexToBigInt(this.cachedOpts.blockInfo.chainId))
+    this.addReservedVariableToBufferIn('SELFBALANCE', hexToBigInt(this.cachedOpts.blockInfo.selfBalance))
+    this.addReservedVariableToBufferIn('BASEFEE', hexToBigInt(this.cachedOpts.blockInfo.baseFee))
+    for (let i = 1; i <= this.parent.subcircuitLibrary.numberOfPrevBlockHashes; i++) {
+      this.addReservedVariableToBufferIn(
+        `BLOCKHASH_${i}` as ReservedVariable,
+        hexToBigInt(this.cachedOpts.blockInfo.prevBlockHashes[i - 1]),
+      )
+    }
+
+    this._initTransactionBuffer()
+
+    for (const [placementIndex, buffer] of BUFFER_LIST.entries()) {
+      const placement = this._placements[placementIndex]!
+      const actualNumberInWires = placement.inPts.filter((wire) => wire !== undefined).length
+      const actualNumberOutWires = placement.outPts.filter((wire) => wire !== undefined).length
+      if (
+        actualNumberInWires - 1 !== (placement.inPts.at(-1)?.wireIndex ?? -1)
+        || actualNumberOutWires - 1 !== (placement.outPts.at(-1)?.wireIndex ?? -1)
+      ) {
+        throw new Error('Some wires are omitted while initializing buffers')
+      }
+      if (actualNumberInWires !== actualNumberOutWires) {
+        throw new Error(`Input and output wires mismatch in ${buffer} buffer`)
+      }
+    }
+  }
+
+  private _initTransactionBuffer(): void {
+    const l2Tx = this.cachedOpts.signedTransaction
+    const senderPublicKey = l2Tx.getUnsafeEddsaPubKey()
+    const randomizer = l2Tx.r === undefined ? undefined : l2Tx.getUnsafeEddsaRandomizer()
+    this.addReservedVariableToBufferIn('EDDSA_PUBLIC_KEY_X', senderPublicKey.toAffine().x)
+    this.addReservedVariableToBufferIn('EDDSA_PUBLIC_KEY_Y', senderPublicKey.toAffine().y)
+    this.addReservedVariableToBufferIn('EDDSA_RANDOMIZER_X', randomizer?.toAffine().x)
+    this.addReservedVariableToBufferIn('EDDSA_RANDOMIZER_Y', randomizer?.toAffine().y)
+    this.addReservedVariableToBufferIn('EDDSA_SIGNATURE', l2Tx.s)
+    this.addReservedVariableToBufferIn('CONTRACT_ADDRESS', bytesToBigInt(toBytes(l2Tx.to)))
+    this.addReservedVariableToBufferIn('FUNCTION_SELECTOR', bytesToBigInt(l2Tx.getFunctionSelector()))
+    this.addReservedVariableToBufferIn('TRANSACTION_NONCE', l2Tx.nonce)
+    for (let inputIndex = 0; inputIndex < FUNCTION_INPUT_LENGTH; inputIndex++) {
+      this.addReservedVariableToBufferIn(
+        `TRANSACTION_INPUT${inputIndex}` as ReservedVariable,
+        bytesToBigInt(l2Tx.getFunctionInput(inputIndex)),
+      )
+    }
   }
 
   private _getLogOutPlacement(): PlacementEntry {
@@ -303,7 +465,7 @@ export class PlacementManager {
     this._placements.push(placement);
   }
 
-  public placeBuffer(
+  private _placeBuffer(
     buffer: ReservedBuffer,
     inPts: DataPt[],
     outPts: DataPt[],
@@ -703,7 +865,7 @@ export class PlacementManager {
     }
   }
 
-  public appendBufferWirePair(inPt: DataPt, outPt: DataPt, dynamic: boolean): DataPt {
+  private _appendBufferWirePair(inPt: DataPt, outPt: DataPt, dynamic: boolean): DataPt {
     const thisPlacementId = outPt.source
     if (dynamic) {
       if (

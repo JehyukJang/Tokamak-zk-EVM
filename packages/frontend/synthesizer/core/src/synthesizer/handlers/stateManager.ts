@@ -168,7 +168,6 @@ export class StateManager {
   public readonly logCache = new LogCache()
   public readonly storageCache = new StorageCache()
   public readonly initialStorageReads = new InitialStorageReadList()
-  public cachedEVMIn: Map<bigint, Map<string, DataPt>> = new Map()
   public cachedOrigin: DataPt | undefined = undefined
   public contextByDepth: MessageContext[] = []
   private _messageCodeAddresses = new Set<string>()
