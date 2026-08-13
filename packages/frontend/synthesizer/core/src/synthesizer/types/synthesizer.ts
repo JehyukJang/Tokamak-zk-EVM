@@ -30,8 +30,12 @@ export interface SynthesizerInterface {
   cachedOpts: SynthesizerOpts
 }
 
-export interface ISynthesizerProvider extends SynthesizerInterface {
-  // from StateManager
+export interface ISynthesizerProvider {
+  get state(): StateManager
+  get placements(): Placements
+  readonly subcircuitLibrary: ResolvedSubcircuitLibrary
+  readonly cachedOpts: SynthesizerOpts
+
   placeBuffer(
     buffer: ReservedBuffer,
     inPts: DataPt[],
@@ -43,7 +47,6 @@ export interface ISynthesizerProvider extends SynthesizerInterface {
     name: OutputCalculatedSubcircuit,
     values: bigint[],
   ): bigint[];
-  //from BufferManager
   loadArbitraryStatic(
     value: bigint,
     dataPtType: DataPtType,
