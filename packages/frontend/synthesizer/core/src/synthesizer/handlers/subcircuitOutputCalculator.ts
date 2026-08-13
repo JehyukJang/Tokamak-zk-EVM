@@ -887,6 +887,7 @@ const SUBCIRCUIT_OPERATION_MAPPING: Partial<Record<CompositionSubcircuit, Subcir
   SubExp: SubcircuitOutputCalculator.subExp,
   CheckBus256: SubcircuitOutputCalculator.checkBus256,
   Poseidon: SubcircuitOutputCalculator.poseidon,
+  EqualBatch: () => [],
   TransactionSignaturePoseidonBatch4: SubcircuitOutputCalculator.poseidonBatch4,
   TransactionSignaturePointPolicy: SubcircuitOutputCalculator.pointPolicy,
   TransactionSignatureFixedPrefix70: SubcircuitOutputCalculator.fixedPrefix70,
