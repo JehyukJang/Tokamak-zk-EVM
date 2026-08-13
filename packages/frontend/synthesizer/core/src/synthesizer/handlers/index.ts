@@ -1,6 +1,5 @@
 export * from './subcircuitOutputCalculator.ts'
 export * from './bufferManager.ts'
 export * from './stateManager.ts'
-export * from './logAccess.ts'
 export * from './storageAccess.ts'
 export * from './instructionHandler.ts'
