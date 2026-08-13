@@ -1,4 +1,5 @@
 import { bigIntToHex } from '@ethereumjs/util';
+import { jubjub } from '@noble/curves/misc.js';
 import {
   BLS12_381_FR_DATA_PT_TYPE,
   BIT_DATA_PT_TYPE,
@@ -12,7 +13,6 @@ import {
   type DataPtDescription,
   type DataPtType,
 } from '../types/dataStructure.ts';
-import { BLS12831ARITHMODULUS, JUBJUBARITHMODULUS } from '../../subcircuit/constants.ts';
 
 function validateValue(dataPtType: DataPtType, value: bigint): void {
   if (value < 0n) {
@@ -36,12 +36,12 @@ function validateValue(dataPtType: DataPtType, value: bigint): void {
       if (value >= 1n << 256n) throw new Error('DataPt value exceeds its uint256 domain');
       break;
     case BLS12_381_FR_DATA_PT_TYPE:
-      if (value >= BLS12831ARITHMODULUS) {
+      if (value >= jubjub.Point.Fp.ORDER) {
         throw new Error('DataPt value is outside the BLS12-381 Fr domain');
       }
       break;
     case JUBJUB_SCALAR_DATA_PT_TYPE:
-      if (value >= JUBJUBARITHMODULUS) {
+      if (value >= jubjub.Point.Fn.ORDER) {
         throw new Error('DataPt value is outside the Jubjub scalar domain');
       }
       break;

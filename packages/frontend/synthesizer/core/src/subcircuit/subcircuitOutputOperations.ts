@@ -1,19 +1,19 @@
 import { jubjub } from '@noble/curves/misc.js';
 import { poseidon_raw, poseidonChainCompress } from 'tokamak-l2js';
 
-import { DEFAULT_SOURCE_BIT_SIZE } from './constants.ts';
 import type { CompositionSubcircuit } from './configuredTypes.ts';
 
 type Affine = readonly [bigint, bigint];
 type Extended = readonly [bigint, bigint, bigint, bigint];
 
 const Q = jubjub.Point.Fp.ORDER;
-const D = 19257038036680949359750312669786877991949435402254120286184196891950884077233n;
-const G8: Affine = [
-  52363696936650001301287582521711853146588465673974699354184720335305084401224n,
-  12024993157431732930272824407495979791132374572895036891122288541794509830761n,
-];
-const EVM_WORD_LIMIT = 1n << 256n;
+const D = jubjub.CURVE.d;
+const G8: Affine = (() => {
+  const { x, y } = jubjub.Point.BASE.multiply(jubjub.CURVE.h).toAffine();
+  return [x, y];
+})();
+const EVM_WORD_MODULUS = 1n << 256n;
+const MAX_UINT256 = EVM_WORD_MODULUS - 1n;
 
 const mod = (value: bigint): bigint => {
   const remainder = value % Q;
@@ -200,8 +200,6 @@ const convertToSigned = (value: bigint): bigint => {
   const SIGN_BIT = 1n << 255n;
   return (value & SIGN_BIT) !== 0n ? value - (1n << 256n) : value;
 };
-const MAX_UINT256 = (1n << 256n) - 1n;
-const N = 1n << 256n;
 const requireSubcircuitInputs = (inVals: bigint[], expectedLength: number, subcircuit: string): void => {
   if (inVals.length !== expectedLength) {
     throw new Error(`${subcircuit} expected ${expectedLength} inputs, but got ${inVals.length}`);
@@ -677,7 +675,7 @@ const decToBit = (ins: bigint[]): bigint[] => {
   const binaryString = ins[0].toString(2); // MSB-left
   const paddedBinaryString = binaryString.padStart(256, '0'); // left-padding
   const bits = Array.from(paddedBinaryString, bit => BigInt(bit)).reverse(); //LSB-left
-  if (bits.length > DEFAULT_SOURCE_BIT_SIZE) {
+  if (bits.length > 256) {
     throw new Error('Input value exceeds 256-bit word');
   }
   return bits;
@@ -694,7 +692,10 @@ const evmSubExp = (in_vals: bigint[]): bigint[] => {
   if (bit !== 0n && bit !== 1n) {
     throw new Error('subExp: bit must be 0n or 1n');
   }
-  return [(accumulator * (bit === 1n ? basePower : 1n)) % N, (basePower * basePower) % N];
+  return [
+    (accumulator * (bit === 1n ? basePower : 1n)) % EVM_WORD_MODULUS,
+    (basePower * basePower) % EVM_WORD_MODULUS,
+  ];
 };
 
 const checkBus256 = (in_vals: bigint[]): bigint => {
@@ -745,7 +746,7 @@ const memoryLoadStep = (values: readonly bigint[]): bigint[] => {
     }
   }
   const nextWord = previousWord! + (shiftedWord & ownershipWordMask);
-  if (nextWord >= EVM_WORD_LIMIT) {
+  if (nextWord >= EVM_WORD_MODULUS) {
     throw new Error('MemoryLoadStep: fragment sum exceeds an EVM word');
   }
   const nextOwnership = finalMode === 1n ? expectedOwnership! : previousOwnership! + ownership!;
