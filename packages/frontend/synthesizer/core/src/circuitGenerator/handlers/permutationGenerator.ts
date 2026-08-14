@@ -190,11 +190,15 @@ export class PermutationGenerator {
         if (!hasParent) {
           // The input wire has no parent, meaning that it can form a group as a representative, only when it is in one of the following cases:
           // 1) it is unused or
-          // 2) it is an input wire of PRV_IN_PLACEMENT.
+          // 2) it is a private input wire of PRIVATE_IN or STORAGE_LOAD.
           let isQualified = false;
           if (
             thisInPt === undefined ||
-            thisInPt.source === BUFFER_LIST.findIndex(buffer => buffer === 'PRIVATE_IN')
+            thisInPt.source === BUFFER_LIST.findIndex(buffer => buffer === 'PRIVATE_IN') ||
+            (
+              thisPlacement.name === 'bufferStorageLoad' &&
+              thisInPt.source === thisPlacementId
+            )
           ) {
             isQualified = true;
           }
