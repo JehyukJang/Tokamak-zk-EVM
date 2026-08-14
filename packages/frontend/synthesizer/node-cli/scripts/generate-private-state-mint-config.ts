@@ -35,7 +35,7 @@ type StorageConfigEntry = {
 
 type PrivateStateMintConfig = {
   network: 'anvil';
-  channelId?: number;
+  channelId: string;
   participants: ParticipantEntry[];
   storageConfigs: StorageConfigEntry[];
   callCodeAddresses: `0x${string}`[];
@@ -74,7 +74,7 @@ const DEFAULT_PARTICIPANT_COUNT = 4;
 const DEFAULT_NOTE_VALUE = 1n * 10n ** 18n;
 const DEFAULT_NOTE_OWNER_INDEX = -1;
 const DEFAULT_L2_TX_NONCE = 0;
-const DEFAULT_CHANNEL_ID = 4;
+const DEFAULT_CHANNEL_ID = '4';
 
 const applyEnvFileIfPresent = (targetPath: string) => {
   try {

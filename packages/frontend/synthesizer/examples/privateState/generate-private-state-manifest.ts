@@ -79,7 +79,7 @@ const loadTokamakL2MerkleTrees = async (): Promise<TokamakL2MerkleTreesConstruct
   return module.TokamakL2MerkleTrees;
 };
 const privateStateControllerCallableAbiFilename = 'PrivateStateController.callable-abi.json';
-const defaultChannelId = 4;
+const defaultChannelId = '4';
 const defaultParticipantCount = 4;
 const defaultMintNoteValue = 1n * 10n ** 18n;
 const defaultRedeemNoteValue = 1n * 10n ** 18n;
@@ -505,6 +505,7 @@ const buildMintManifest = async (context: ExampleContext, contractCodes: Contrac
 
     const calldata = buildPrivateStateMintCalldata(
       {
+        channelId: defaultChannelId,
         network: context.exampleNetwork,
         participants: context.participants,
         storageConfigs: [],
@@ -615,6 +616,7 @@ const buildTransferManifest = async (context: ExampleContext, contractCodes: Con
 
     const calldata = buildPrivateStateTransferCalldata(
       {
+        channelId: defaultChannelId,
         network: context.exampleNetwork,
         participants: context.participants,
         storageConfigs: [],
@@ -689,6 +691,7 @@ const buildRedeemManifest = async (context: ExampleContext, contractCodes: Contr
 
     const calldata = buildPrivateStateRedeemCalldata(
       {
+        channelId: defaultChannelId,
         network: context.exampleNetwork,
         participants: context.participants,
         storageConfigs: [],

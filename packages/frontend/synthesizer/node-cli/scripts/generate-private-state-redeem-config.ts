@@ -49,6 +49,7 @@ const DEFAULT_ANVIL_MNEMONIC = 'test test test test test test test test test tes
 const DEFAULT_PARTICIPANT_COUNT = 4;
 const DEFAULT_NOTE_VALUE = 1n * 10n ** 18n;
 const DEFAULT_L2_TX_NONCE = 0;
+const DEFAULT_CHANNEL_ID = '4';
 
 const applyEnvFileIfPresent = (targetPath: string) => {
   try {
@@ -321,6 +322,7 @@ const main = async () => {
   })) as PrivateStateRedeemConfig['inputNotes'];
 
   const config: PrivateStateRedeemConfig = {
+    channelId: DEFAULT_CHANNEL_ID,
     network: 'anvil',
     participants,
     storageConfigs: [],

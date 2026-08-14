@@ -11,7 +11,10 @@ import type {
 import {
   deriveL2KeysFromSignature,
   fromEdwardsToAddress,
+  parseChannelId,
 } from 'tokamak-l2js';
+const DEFAULT_CHANNEL_ID =
+  '108336797649051254585401751173864353497144788660297920004548699607442466523065';
 export type ExampleErc20TransferConfig = ChannelStateConfig & {
   txNonce: number;
   senderIndex: number;
@@ -48,6 +51,15 @@ const parseNumberValue = (value: unknown, label: string): number => {
     throw new Error(`${label} must be an integer`);
   }
   return parsed;
+};
+
+const parseChannelIdValue = (value: unknown, label: string): string => {
+  const channelId = value === undefined ? DEFAULT_CHANNEL_ID : value;
+  if (typeof channelId !== 'string') {
+    throw new Error(`${label} must be a canonical unsigned decimal string`);
+  }
+  parseChannelId(channelId);
+  return channelId;
 };
 
 const assertStringArray = (value: unknown, label: string): string[] => {
@@ -128,6 +140,7 @@ export const loadConfig = async (configPath: string): Promise<ExampleErc20Transf
   );
 
   return {
+    channelId: parseChannelIdValue(configRaw.channelId, 'channelId'),
     network: parseNetwork(configRaw.network, 'network'),
     participants,
     storageConfigs,
@@ -195,6 +208,7 @@ export const buildErc20Calldata = (
 export const toStateManagerChannelConfig = (
   config: ExampleErc20TransferConfig,
 ): ChannelStateConfig => ({
+  channelId: config.channelId,
   network: config.network,
   participants: config.participants,
   storageConfigs: config.storageConfigs,
