@@ -469,10 +469,10 @@ The production catalog replaces this target with
 [`MemoryLoadStep`](../subcircuits/circom/MemoryLoadStep_circuit.circom).
 `MemoryLoadStep` locally constrains source limbs, shift metadata, ownership,
 expected coverage, masking, disjointness, and the real-ownership subset
-relation. Its terminal placement closes ownership to the exact expected
-coverage without adding a synthetic zero-gap fragment. It also exposes the
-complete running word and ownership state so the composition can enforce exact
-serial wiring. The current target and its mandatory composition dependencies
+relation. Every placement returns the real ownership union without adding a
+synthetic zero-gap fragment. It also exposes the complete running word and
+ownership state so the composition can enforce exact serial wiring and select
+the terminal word. The current target and its mandatory composition dependencies
 are documented in
 [Circuit Implementation and Composition Reference](./circuit-implementation-reference.md#memory-load-composition).
 

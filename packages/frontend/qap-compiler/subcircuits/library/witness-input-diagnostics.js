@@ -60,7 +60,7 @@ function buildPhysicalInputDescriptors(target) {
       if (!Number.isInteger(logicalType.bits) || logicalType.bits < 1 || logicalType.bits > 256) {
         throw new TypeError(`Target '${target.name}' input '${port.name}' has an invalid uint width.`)
       }
-      if (logicalType.bits <= 128) {
+      if (logicalType.bits <= 160) {
         descriptors.push({
           ...portIdentity,
           expectedDomain: `0 <= x < 2^${logicalType.bits}`,

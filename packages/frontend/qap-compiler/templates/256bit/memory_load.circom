@@ -16,8 +16,7 @@ template MemoryLoadStep() {
     // in[5..6]: previous accumulated word, lower limb first
     // in[7]: previous packed 32-bit byte ownership
     // in[8]: expected final packed byte ownership
-    // in[9]: final-mode flag
-    signal input in[10];
+    signal input in[9];
 
     // out[0..1]: next accumulated word, lower limb first
     // out[2]: next packed byte ownership
@@ -103,7 +102,5 @@ template MemoryLoadStep() {
     }
     out[0] <== in[5] + lowAddition;
     out[1] <== in[6] + highAddition;
-    in[9] * (in[9] - 1) === 0;
-    out[2] <== in[7] + in[4]
-        + in[9] * (in[8] - in[7] - in[4]);
+    out[2] <== in[7] + in[4];
 }

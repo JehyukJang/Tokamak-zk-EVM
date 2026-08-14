@@ -1,11 +1,11 @@
 [32mtemplate instances[0m: 4
-non-linear constraints: 680
-linear constraints: 0
-public inputs: 10
+non-linear constraints: 678
+linear constraints: 1
+public inputs: 9
 private inputs: 0
 public outputs: 3
-wires: 619
-labels: 729
+wires: 618
+labels: 728
 [32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/MemoryLoadStep_circuit.r1cs
 [32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/MemoryLoadStep_circuit.sym
 [32mConstraints written in:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/MemoryLoadStep_circuit_constraints.json

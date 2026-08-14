@@ -35,7 +35,6 @@ const inputFor = ({
   previousWord,
   previousOwnership,
   expectedFinalCoverage,
-  finalMode,
 }) => [
   ...split256BitInteger(source),
   BigInt(magnitude),
@@ -44,7 +43,6 @@ const inputFor = ({
   ...split256BitInteger(previousWord),
   previousOwnership,
   expectedFinalCoverage,
-  BigInt(finalMode),
 ];
 
 const expectedStep = ({
@@ -54,16 +52,12 @@ const expectedStep = ({
   incomingOwnership,
   previousWord,
   previousOwnership,
-  expectedFinalCoverage,
-  finalMode,
 }) => ({
   nextWord: previousWord + applyOwnership(
     shiftWord(source, magnitude, direction),
     incomingOwnership,
   ),
-  nextOwnership: finalMode === 1
-    ? expectedFinalCoverage
-    : previousOwnership + incomingOwnership,
+  nextOwnership: previousOwnership + incomingOwnership,
 });
 
 const assertStep = async (circuit, vector, label) => {
@@ -110,19 +104,19 @@ const assertCompiledMetrics = (packageRoot) => {
       return Number(match[1]);
     };
 
-    assert.equal(readMetric("non-linear constraints"), 680);
-    assert.equal(readMetric("linear constraints"), 0);
-    assert.equal(readMetric("public inputs"), 10);
+    assert.equal(readMetric("non-linear constraints"), 678);
+    assert.equal(readMetric("linear constraints"), 1);
+    assert.equal(readMetric("public inputs"), 9);
     assert.equal(readMetric("public outputs"), 3);
-    assert.equal(readMetric("wires"), 619);
-    assert.equal(readMetric("labels"), 729);
+    assert.equal(readMetric("wires"), 618);
+    assert.equal(readMetric("labels"), 728);
 
     const constraintsFile = JSON.parse(readFileSync(path.join(
       outputDirectory,
       "MemoryLoadStep_circuit_constraints.json",
     )));
     const constraints = constraintsFile.constraints;
-    assert.equal(constraints.length, 680);
+    assert.equal(constraints.length, 679);
     const nonzeroCoefficients = constraints.reduce(
       (total, row) => total + row.reduce(
         (rowTotal, term) => rowTotal + Object.keys(term).length,
@@ -130,7 +124,7 @@ const assertCompiledMetrics = (packageRoot) => {
       ),
       0,
     );
-    assert.equal(nonzeroCoefficients, 3695);
+    assert.equal(nonzeroCoefficients, 3688);
   } finally {
     rmSync(outputDirectory, { recursive: true, force: true });
   }
@@ -165,7 +159,6 @@ const main = async () => {
         previousWord: 0n,
         previousOwnership: 0n,
         expectedFinalCoverage: ownership,
-        finalMode: 1,
       }, `boundary shift ${magnitude}:${direction}`);
     }
   }
@@ -180,18 +173,7 @@ const main = async () => {
     previousWord: 0n,
     previousOwnership: 0n,
     expectedFinalCoverage: partialCoverage,
-    finalMode: 0,
-  }, "nonterminal step retains real ownership");
-  await assertStep(circuit, {
-    source: patterned,
-    magnitude: 0,
-    direction: 0,
-    incomingOwnership: realCoverage,
-    previousWord: 0n,
-    previousOwnership: 0n,
-    expectedFinalCoverage: partialCoverage,
-    finalMode: 1,
-  }, "terminal step closes zero-filled gaps");
+  }, "step retains real ownership");
 
   const first = {
     source: patterned,
@@ -201,7 +183,6 @@ const main = async () => {
     previousWord: 0n,
     previousOwnership: 0n,
     expectedFinalCoverage: MAX_OWNERSHIP,
-    finalMode: 0,
   };
   const firstExpected = expectedStep(first);
   const second = {
@@ -212,7 +193,6 @@ const main = async () => {
     previousWord: firstExpected.nextWord,
     previousOwnership: firstExpected.nextOwnership,
     expectedFinalCoverage: MAX_OWNERSHIP,
-    finalMode: 1,
   };
   await assertStep(circuit, first, "first serial transition");
   const finalWitness = await assertStep(circuit, second, "final serial transition");
@@ -244,12 +224,10 @@ const main = async () => {
         previousOwnership: 1n,
       }),
     },
-    { label: "non-Boolean final mode", input: inputFor({ ...first, finalMode: 2 }) },
     {
       label: "real ownership outside expected coverage",
       input: inputFor({
         ...first,
-        finalMode: 0,
         expectedFinalCoverage: first.incomingOwnership ^ 1n,
       }),
     },
@@ -358,7 +336,7 @@ const main = async () => {
   }
 
   console.log(
-    "MemoryLoadStep passed byte-shift boundaries, local and serial gap closure, exact state wiring, malformed-input rejection, overlap rejection, and output mutation rejection",
+    "MemoryLoadStep passed byte-shift boundaries, local and serial sparse coverage, exact state wiring, malformed-input rejection, overlap rejection, and output mutation rejection",
   );
 };
 

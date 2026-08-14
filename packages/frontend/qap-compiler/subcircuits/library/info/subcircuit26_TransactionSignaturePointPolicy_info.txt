@@ -3,9 +3,9 @@ non-linear constraints: 223
 linear constraints: 5
 public inputs: 8
 private inputs: 0
-public outputs: 16
+public outputs: 15
 wires: 234
-labels: 313
+labels: 312
 [32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/TransactionSignaturePointPolicy_circuit.r1cs
 [32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/TransactionSignaturePointPolicy_circuit.sym
 [32mConstraints written in:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/TransactionSignaturePointPolicy_circuit_constraints.json

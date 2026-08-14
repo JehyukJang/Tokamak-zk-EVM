@@ -18,7 +18,6 @@ template MemoryLoadStepComposed() {
     first.in[6] <== 0;
     first.in[7] <== 0;
     first.in[8] <== in[10];
-    first.in[9] <== 0;
 
     component second = MemoryLoadStep();
     second.in[0] <== in[5];
@@ -30,7 +29,6 @@ template MemoryLoadStepComposed() {
     second.in[6] <== first.out[1];
     second.in[7] <== first.out[2];
     second.in[8] <== in[10];
-    second.in[9] <== 1;
 
     out <== second.out;
 }
