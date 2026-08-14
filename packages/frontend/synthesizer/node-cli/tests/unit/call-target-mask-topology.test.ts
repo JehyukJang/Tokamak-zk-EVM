@@ -10,7 +10,6 @@ import {
   type DataPt,
   type DataPtType,
 } from '../../../core/src/synthesizer/types/dataStructure.ts';
-import type { PreparedComposition } from '../../../core/src/synthesizer/types/placements.ts';
 
 const ADDRESS_MASK = (1n << 160n) - 1n;
 const CALL_OPCODES = ['CALL', 'CALLCODE', 'DELEGATECALL', 'STATICCALL'] as const;
@@ -69,22 +68,21 @@ const createHarness = (
   const normalizedTarget = rawTarget & ADDRESS_MASK;
   const maskedResults = options.maskedResults ?? [dataPt(normalizedTarget, 99, 0)];
   const arithmeticCalls: ArithmeticCall[] = [];
-  const prepareComposition = vi.fn((request: { operation: Operator; operands: DataPt[] }) => {
-    const { operation: name, operands: inPts } = request;
-    arithmeticCalls.push({ name, inPts });
-    return {
-      operation: name,
-      operands: inPts,
-      resultPts: maskedResults,
-      steps: [{ inPts, outPts: maskedResults }],
-    } satisfies PreparedComposition;
+  const placeComposition = vi.fn((name: Operator, inPts: DataPt[] | DataPt[][]) => {
+    if (name === 'AND') {
+      arithmeticCalls.push({ name, inPts: inPts as DataPt[] });
+      return maskedResults;
+    }
+    if (name === 'MemoryView') {
+      return (inPts as DataPt[][]).map((view) => view[0] ?? dataPt(0n, 5));
+    }
+    throw new Error(`Unexpected composition ${name}`)
   });
   const getReservedVariableFromBuffer = vi.fn(() => maskPt);
   const placementManager = {
     placements: [],
     getReservedVariableFromBuffer,
-    placeComposition: vi.fn(),
-    prepareComposition,
+    placeComposition,
     getLogOutWireLength: vi.fn(() => 0),
   };
   const contextManager = new ContextManager(placementManager as never);
@@ -106,7 +104,7 @@ const createHarness = (
     maskedResults,
     message,
     parentContext,
-    prepareComposition,
+    placeComposition,
     recordMessageCodeAddress,
     contextManager,
   };
@@ -172,7 +170,7 @@ describe('CALL-family target-mask topology', () => {
     expect(() => harness.contextManager.initializeMessageContext(harness.message)).toThrow(
       'Raw address to call mismatch',
     );
-    expect(harness.prepareComposition).not.toHaveBeenCalled();
+    expect(harness.placeComposition).not.toHaveBeenCalled();
     expect(harness.beginFrame).not.toHaveBeenCalled();
   });
 
@@ -182,7 +180,7 @@ describe('CALL-family target-mask topology', () => {
     expect(() => harness.contextManager.initializeMessageContext(harness.message)).toThrow(
       'CALL target mask produced no address',
     );
-    expect(harness.prepareComposition).toHaveBeenCalledOnce();
+    expect(harness.placeComposition).toHaveBeenCalledOnce();
     expect(harness.beginFrame).not.toHaveBeenCalled();
   });
 
@@ -194,7 +192,7 @@ describe('CALL-family target-mask topology', () => {
     expect(() => harness.contextManager.initializeMessageContext(harness.message)).toThrow(
       'Address to call mismatch between EVM and Synthesizer',
     );
-    expect(harness.prepareComposition).toHaveBeenCalledOnce();
+    expect(harness.placeComposition).toHaveBeenCalledOnce();
     expect(harness.beginFrame).not.toHaveBeenCalled();
   });
 });

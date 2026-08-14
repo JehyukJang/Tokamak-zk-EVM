@@ -15,7 +15,6 @@ import {
   UINT256_DATA_PT_TYPE,
 } from '../../../core/src/synthesizer/types/dataStructure.ts';
 import type { DataPt } from '../../../core/src/synthesizer/types/index.ts';
-import type { PreparedComposition } from '../../../core/src/synthesizer/types/placements.ts';
 
 const dataPt = (
   value: bigint,
@@ -117,9 +116,9 @@ const createStorageHarness = (initialValue: bigint) => {
 
 const storageAccessCompositions = (parent: {
   placeComposition: ReturnType<typeof vi.fn>;
-}): PreparedComposition[] => parent.placeComposition.mock.calls
-  .map(([preparedComposition]) => preparedComposition as PreparedComposition)
-  .filter(({ operation }) => operation === 'StorageAccess');
+}): DataPt[][] => parent.placeComposition.mock.calls
+  .filter(([operation]) => operation === 'StorageAccess')
+  .map(([, operands]) => operands as DataPt[]);
 
 describe('StateManager storage tracking', () => {
   it('owns a resettable snapshot of transaction message code addresses', () => {
@@ -339,17 +338,12 @@ describe('InstructionHandler storage cache', () => {
     });
     const equalBatchCalls = storageAccessCompositions(parent);
     expect(equalBatchCalls).toHaveLength(1);
-    expect(equalBatchCalls[0]).toMatchObject({
-      operation: 'StorageAccess',
-      operands: [
-        expect.objectContaining({ source: 40, value: addressValue }),
-        expect.objectContaining({ source: 41, value: 9n }),
-        expect.objectContaining({ source: 30, value: addressValue }),
-        expect.objectContaining({ source: 31, value: 9n }),
-      ],
-      resultPts: [],
-      steps: [{ outPts: [] }],
-    });
+    expect(equalBatchCalls[0]).toMatchObject([
+      expect.objectContaining({ source: 40, value: addressValue }),
+      expect.objectContaining({ source: 41, value: 9n }),
+      expect.objectContaining({ source: 30, value: addressValue }),
+      expect.objectContaining({ source: 31, value: 9n }),
+    ]);
   });
 
   it('reuses a retained initial SLOAD after its frame is rolled back', async () => {
@@ -435,7 +429,7 @@ describe('InstructionHandler storage cache', () => {
       }),
     ]);
     const equalBatchCalls = storageAccessCompositions(parent);
-    expect(equalBatchCalls.map(({ operands }) => operands.map(({ source }) => source))).toEqual([
+    expect(equalBatchCalls.map((operands) => operands.map(({ source }) => source))).toEqual([
       [73, 74, 70, 71],
       [76, 77, 70, 71],
     ]);
@@ -475,7 +469,7 @@ describe('InstructionHandler storage cache', () => {
         dirty: true,
       }),
     ]);
-    expect(storageAccessCompositions(parent)[0]?.operands.map(({ source }) => source))
+    expect(storageAccessCompositions(parent)[0]?.map(({ source }) => source))
       .toEqual([82, 83, 80, 81]);
     expect(parent.addReservedVariableToBufferOut).toHaveBeenCalledTimes(2);
   });

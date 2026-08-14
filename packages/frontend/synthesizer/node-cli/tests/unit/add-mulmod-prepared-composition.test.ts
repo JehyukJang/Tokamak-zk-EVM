@@ -13,7 +13,6 @@ import {
   type DataPt,
   type DataPtType,
 } from '../../../core/src/synthesizer/types/dataStructure.ts';
-import type { PreparedComposition } from '../../../core/src/synthesizer/types/placements.ts';
 
 type FixedMultiStepOperation =
   | 'DIV'
@@ -26,86 +25,46 @@ type FixedMultiStepOperation =
 
 const uint = (bits: number) => ({ kind: 'uint' as const, bits })
 
+const ports = (bits: readonly number[], prefix: string) => bits.map((bitSize, index) => ({
+  name: `${prefix}${index}`,
+  logicalType: uint(bitSize),
+}))
+
+const wireCount = (bits: readonly number[]) => bits.reduce(
+  (count, bitSize) => count + (bitSize === 256 ? 2 : 1),
+  0,
+)
+
+const subcircuitInfo = (
+  name: string,
+  inputBits: readonly number[],
+  outputBits: readonly number[],
+) => ({
+  id: 0,
+  name,
+  NWires: 1 + wireCount(inputBits) + wireCount(outputBits),
+  NInWires: wireCount(inputBits),
+  NOutWires: wireCount(outputBits),
+  inWireIndex: 1 + wireCount(outputBits),
+  outWireIndex: 1,
+  flattenMap: [],
+  logicalInterface: {
+    inputs: ports(inputBits, 'in'),
+    outputs: ports(outputBits, 'out'),
+  },
+})
+
 const subcircuitInfoByName = new Map([
-  ['ADDMODPrepare', {
-    logicalInterface: {
-      inputs: [],
-      outputs: [uint(86), uint(86), uint(85), uint(86), uint(86), uint(85), uint(256)]
-        .map((logicalType, index) => ({ name: `out${index}`, logicalType })),
-    },
-  }],
-  ['ADDMODVerify', {
-    logicalInterface: {
-      inputs: [],
-      outputs: [{ name: 'result', logicalType: uint(256) }],
-    },
-  }],
-  ['MULMODPrepare', {
-    logicalInterface: {
-      inputs: [],
-      outputs: [
-        ...Array.from({ length: 12 }, (_, index) => ({ name: `word${index}`, logicalType: uint(64) })),
-        { name: 'quotientLow', logicalType: uint(256) },
-        { name: 'quotientHigh', logicalType: uint(256) },
-        { name: 'remainder', logicalType: uint(256) },
-      ],
-    },
-  }],
-  ['MULMODCandidate', {
-    logicalInterface: {
-      inputs: [],
-      outputs: Array.from(
-        { length: 12 },
-        (_, index) => ({ name: `word${index}`, logicalType: uint(64) }),
-      ),
-    },
-  }],
-  ['MULMODVerify', {
-    logicalInterface: {
-      inputs: [],
-      outputs: [{ name: 'result', logicalType: uint(256) }],
-    },
-  }],
-  ['ALU4A', {
-    logicalInterface: {
-      inputs: [],
-      outputs: [
-        ...Array.from({ length: 3 }, (_, index) => ({ name: `word${index}`, logicalType: uint(256) })),
-        ...Array.from({ length: 4 }, (_, index) => ({ name: `limb${index}`, logicalType: uint(64) })),
-        ...Array.from({ length: 3 }, (_, index) => ({ name: `flag${index}`, logicalType: uint(1) })),
-      ],
-    },
-  }],
-  ['ALU4B', {
-    logicalInterface: {
-      inputs: [],
-      outputs: [{ name: 'result', logicalType: uint(256) }],
-    },
-  }],
-  ['DecToBit', {
-    logicalInterface: {
-      inputs: [],
-      outputs: Array.from(
-        { length: 256 },
-        (_, index) => ({ name: `bit${index}`, logicalType: uint(1) }),
-      ),
-    },
-  }],
-  ['SubExp', {
-    logicalInterface: {
-      inputs: [],
-      outputs: [
-        { name: 'nextAccumulator', logicalType: uint(256) },
-        { name: 'nextBasePower', logicalType: uint(256) },
-      ],
-    },
-  }],
-  ['CheckBus256', {
-    logicalInterface: {
-      inputs: [],
-      outputs: [{ name: 'checkedWord', logicalType: uint(256) }],
-    },
-  }],
+  ['ADDMODPrepare', subcircuitInfo('ADDMODPrepare', [256, 256, 256], [86, 86, 85, 86, 86, 85, 256])],
+  ['ADDMODVerify', subcircuitInfo('ADDMODVerify', [86, 86, 85, 256, 86, 86, 85, 256], [256])],
+  ['MULMODPrepare', subcircuitInfo('MULMODPrepare', [256, 256, 256], [...Array(12).fill(64), 256, 256, 256])],
+  ['MULMODCandidate', subcircuitInfo('MULMODCandidate', [256, 256, 256], Array(12).fill(64))],
+  ['MULMODVerify', subcircuitInfo('MULMODVerify', Array(24).fill(64), [256])],
+  ['ALU4A', subcircuitInfo('ALU4A', [32, 256, 256], [256, 256, 256, 64, 64, 64, 64, 1, 1, 1])],
+  ['ALU4B', subcircuitInfo('ALU4B', [256, 256, 256, 64, 64, 64, 64, 1, 1, 1], [256])],
+  ['DecToBit', subcircuitInfo('DecToBit', [256], Array(256).fill(1))],
+  ['SubExp', subcircuitInfo('SubExp', [256, 256, 1], [256, 256])],
+  ['CheckBus256', subcircuitInfo('CheckBus256', [256], [256])],
 ])
 
 const dataPt = (
@@ -125,7 +84,7 @@ const fixedMultiStepCompositions = new Map(
 
 const submit = (
   operation: FixedMultiStepOperation,
-): { preparedComposition: PreparedComposition; resultPts: DataPt[] } => {
+): { placements: PlacementManager['placements']; resultPts: readonly DataPt[] } => {
   const calculateSubcircuitOutputValues = vi.fn((name: string): bigint[] => {
     switch (name) {
       case 'ADDMODPrepare':
@@ -154,6 +113,13 @@ const submit = (
   })
   let nextStaticWireIndex = 0
   const parent = Object.assign(Object.create(PlacementManager.prototype), {
+    _placements: Array.from({ length: 6 }, () => ({
+      name: 'ALU1',
+      usage: 'test',
+      subcircuitId: 0,
+      inPts: [],
+      outPts: [],
+    })),
     _placementCompositionMapping: Object.fromEntries(fixedMultiStepCompositions),
     subcircuitInfoByName,
     subcircuitLibrary: {
@@ -161,24 +127,24 @@ const submit = (
     },
     loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
       dataPt(value, 5, nextStaticWireIndex++, dataPtType)),
+    getReservedVariableFromBuffer: vi.fn((name: string) =>
+      dataPt(name === 'BIT_CONST_ONE' ? 1n : 0n, 5, nextStaticWireIndex++,
+        name.startsWith('BIT_') ? BIT_DATA_PT_TYPE : UINT256_DATA_PT_TYPE)),
   }) as PlacementManager
-  const preparedComposition = parent.prepareComposition(
-    {
-      operation,
-      operands: operation === 'ADDMOD' || operation === 'MULMOD'
-      ? [dataPt(3n, 10), dataPt(4n, 11), dataPt(5n, 12)]
-      : [dataPt(3n, 10), dataPt(4n, 11)],
-    },
-    0,
+  const resultPts = parent.placeComposition(
+    operation,
+    operation === 'ADDMOD' || operation === 'MULMOD'
+      ? [dataPt(3n, 0), dataPt(4n, 1), dataPt(5n, 2)]
+      : [dataPt(3n, 0), dataPt(4n, 1)],
   )
 
   return {
-    preparedComposition,
-    resultPts: preparedComposition.resultPts,
+    placements: parent.placements.slice(6),
+    resultPts,
   }
 }
 
-describe('fixed generic prepared compositions', () => {
+describe('fixed generic atomic compositions', () => {
   it('prepares every declared result of a fixed generic composition', () => {
     const composition = {
       placementStrategy: 'generic' as const,
@@ -198,26 +164,20 @@ describe('fixed generic prepared compositions', () => {
       }],
     }
     const parent = Object.assign(Object.create(PlacementManager.prototype), {
+      _placements: Array.from({ length: 4 }, () => ({
+        name: 'ALU1', usage: 'test', subcircuitId: 0, inPts: [], outPts: [],
+      })),
       _placementCompositionMapping: { ADDMOD: composition },
-      subcircuitInfoByName: new Map([['ALU1', {
-        logicalInterface: {
-          inputs: [],
-          outputs: [uint(1), uint(32), uint(256)]
-            .map((logicalType, index) => ({ name: `out${index}`, logicalType })),
-        },
-      }]]),
+      subcircuitInfoByName: new Map([['ALU1', subcircuitInfo('ALU1', [256], [1, 32, 256])]]),
       subcircuitLibrary: {
         calculateSubcircuitOutputValues: () => [1n, 2n, 3n],
       },
       loadArbitraryStatic: vi.fn(),
     }) as PlacementManager
 
-    const prepared = parent.prepareComposition(
-      { operation: 'ADDMOD', operands: [dataPt(7n, 10)] },
-      4,
-    )
+    const resultPts = parent.placeComposition('ADDMOD', [dataPt(7n, 0)])
 
-    expect(prepared.resultPts).toMatchObject([
+    expect(resultPts).toMatchObject([
       { source: 4, wireIndex: 0, value: 1n, dataPtType: BIT_DATA_PT_TYPE },
       { source: 4, wireIndex: 1, value: 2n, dataPtType: UINT32_DATA_PT_TYPE },
       { source: 4, wireIndex: 2, value: 3n, dataPtType: UINT256_DATA_PT_TYPE },
@@ -225,11 +185,11 @@ describe('fixed generic prepared compositions', () => {
   })
 
   it('prepares the two ADDMOD steps with typed intermediate outputs', () => {
-    const { preparedComposition, resultPts } = submit('ADDMOD')
+    const { placements, resultPts } = submit('ADDMOD')
 
-    expect(preparedComposition.steps.map((step) => [step.inPts.length, step.outPts.length]))
+    expect(placements.map((step) => [step.inPts.length, step.outPts.length]))
       .toEqual([[3, 7], [8, 1]])
-    expect(preparedComposition.steps[0]!.outPts.map(({ dataPtType }) => dataPtType)).toEqual([
+    expect(placements[0]!.outPts.map(({ dataPtType }) => dataPtType)).toEqual([
       UINT128_DATA_PT_TYPE,
       UINT128_DATA_PT_TYPE,
       UINT128_DATA_PT_TYPE,
@@ -238,36 +198,36 @@ describe('fixed generic prepared compositions', () => {
       UINT128_DATA_PT_TYPE,
       UINT256_DATA_PT_TYPE,
     ])
-    expect(preparedComposition.steps[1]!.inPts[0]).toMatchObject({ source: 0, wireIndex: 0 })
-    expect(preparedComposition.steps[1]!.inPts[3]).toMatchObject({ source: 12, wireIndex: 0 })
-    expect(resultPts).toMatchObject([{ source: 1, wireIndex: 0, value: 7n }])
+    expect(placements[1]!.inPts[0]).toMatchObject({ source: 6, wireIndex: 0 })
+    expect(placements[1]!.inPts[3]).toMatchObject({ source: 2, wireIndex: 0 })
+    expect(resultPts).toMatchObject([{ source: 7, wireIndex: 0, value: 7n }])
   })
 
   it('prepares the three MULMOD steps with every intermediate connected by wire', () => {
-    const { preparedComposition, resultPts } = submit('MULMOD')
+    const { placements, resultPts } = submit('MULMOD')
 
-    expect(preparedComposition.steps.map((step) => [step.inPts.length, step.outPts.length]))
+    expect(placements.map((step) => [step.inPts.length, step.outPts.length]))
       .toEqual([[3, 15], [3, 12], [24, 1]])
-    expect(preparedComposition.steps[1]!.inPts.map(({ source, wireIndex }) => [source, wireIndex]))
-      .toEqual([[0, 12], [0, 13], [0, 14]])
-    expect(preparedComposition.steps[2]!.inPts.slice(0, 12).map(({ source }) => source))
-      .toEqual(Array(12).fill(0))
-    expect(preparedComposition.steps[2]!.inPts.slice(12).map(({ source }) => source))
-      .toEqual(Array(12).fill(1))
-    expect(resultPts).toMatchObject([{ source: 2, wireIndex: 0, value: 11n }])
+    expect(placements[1]!.inPts.map(({ source, wireIndex }) => [source, wireIndex]))
+      .toEqual([[6, 12], [6, 13], [6, 14]])
+    expect(placements[2]!.inPts.slice(0, 12).map(({ source }) => source))
+      .toEqual(Array(12).fill(6))
+    expect(placements[2]!.inPts.slice(12).map(({ source }) => source))
+      .toEqual(Array(12).fill(7))
+    expect(resultPts).toMatchObject([{ source: 8, wireIndex: 0, value: 11n }])
   })
 
   it('prepares the division-family steps with a selector and typed flags', () => {
-    const { preparedComposition, resultPts } = submit('DIV')
+    const { placements, resultPts } = submit('DIV')
 
-    expect(preparedComposition.steps.map((step) => [step.inPts.length, step.outPts.length]))
+    expect(placements.map((step) => [step.inPts.length, step.outPts.length]))
       .toEqual([[3, 10], [10, 1]])
-    expect(preparedComposition.steps[0]!.inPts[0]).toMatchObject({
+    expect(placements[0]!.inPts[0]).toMatchObject({
       source: 5,
       value: 1n << 4n,
       dataPtType: UINT32_DATA_PT_TYPE,
     })
-    expect(preparedComposition.steps[0]!.outPts.map(({ dataPtType }) => dataPtType)).toEqual([
+    expect(placements[0]!.outPts.map(({ dataPtType }) => dataPtType)).toEqual([
       UINT256_DATA_PT_TYPE,
       UINT256_DATA_PT_TYPE,
       UINT256_DATA_PT_TYPE,
@@ -279,27 +239,27 @@ describe('fixed generic prepared compositions', () => {
       BIT_DATA_PT_TYPE,
       BIT_DATA_PT_TYPE,
     ])
-    expect(preparedComposition.steps[1]!.inPts.map(({ source }) => source))
-      .toEqual(Array(10).fill(0))
-    expect(resultPts).toMatchObject([{ source: 1, wireIndex: 0, value: 13n }])
+    expect(placements[1]!.inPts.map(({ source }) => source))
+      .toEqual(Array(10).fill(6))
+    expect(resultPts).toMatchObject([{ source: 7, wireIndex: 0, value: 13n }])
   })
 
   it('prepares every declared EXP step and preserves the serial state connections', () => {
-    const { preparedComposition, resultPts } = submit('EXP')
+    const { placements, resultPts } = submit('EXP')
 
-    expect(preparedComposition.steps).toHaveLength(258)
-    expect(preparedComposition.steps[0]!.inPts).toHaveLength(1)
-    expect(preparedComposition.steps[0]!.outPts).toHaveLength(256)
-    expect(preparedComposition.steps[0]!.outPts.every(
+    expect(placements).toHaveLength(258)
+    expect(placements[0]!.inPts).toHaveLength(1)
+    expect(placements[0]!.outPts).toHaveLength(256)
+    expect(placements[0]!.outPts.every(
       ({ dataPtType }) => dataPtType === BIT_DATA_PT_TYPE,
     )).toBe(true)
-    expect(preparedComposition.steps[1]!.inPts.map(({ value }) => value)).toEqual([1n, 3n, 0n])
-    expect(preparedComposition.steps[2]!.inPts.map(({ source, wireIndex }) => [source, wireIndex]))
-      .toEqual([[1, 0], [1, 1], [0, 1]])
-    expect(preparedComposition.steps.at(-1)).toMatchObject({
-      inPts: [{ source: 256, wireIndex: 0, value: 17n }],
-      outPts: [{ source: 257, wireIndex: 0, value: 23n, dataPtType: UINT256_DATA_PT_TYPE }],
+    expect(placements[1]!.inPts.map(({ value }) => value)).toEqual([1n, 3n, 0n])
+    expect(placements[2]!.inPts.map(({ source, wireIndex }) => [source, wireIndex]))
+      .toEqual([[7, 0], [7, 1], [6, 1]])
+    expect(placements.at(-1)).toMatchObject({
+      inPts: [{ source: 262, wireIndex: 0, value: 17n }],
+      outPts: [{ source: 263, wireIndex: 0, value: 23n, dataPtType: UINT256_DATA_PT_TYPE }],
     })
-    expect(resultPts).toMatchObject([{ source: 257, wireIndex: 0, value: 23n }])
+    expect(resultPts).toMatchObject([{ source: 263, wireIndex: 0, value: 23n }])
   })
 })

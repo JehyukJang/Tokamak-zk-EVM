@@ -1,13 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { BUFFER_LIST } from '../../../core/src/subcircuit/configuredTypes.ts';
-import { createMemoryLoadCompositionMapping } from '../../../core/src/subcircuit/special-builders/memoryLoadComposition.ts';
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
 import { MemoryPt } from '../../../core/src/synthesizer/dataStructure/memoryPt.ts';
 import { StackPt } from '../../../core/src/synthesizer/dataStructure/stackPt.ts';
 import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
 import { ContextManager, type MessageContext } from '../../../core/src/synthesizer/handlers/contextManager.ts';
-import { PlacementManager } from '../../../core/src/synthesizer/handlers/placementManager.ts';
 import { calculateSubcircuitOutputValues } from '../../../core/src/subcircuit/subcircuitOutputOperations.ts';
 import {
   UINT256_DATA_PT_TYPE,
@@ -15,7 +13,6 @@ import {
   type DataPtType,
 } from '../../../core/src/synthesizer/types/dataStructure.ts';
 
-const memoryLoadComposition = createMemoryLoadCompositionMapping().composition
 const evmInSource = BUFFER_LIST.indexOf('EVM_IN')
 
 const dataPt = (
@@ -24,33 +21,6 @@ const dataPt = (
   wireIndex = 0,
   dataPtType: DataPtType = UINT256_DATA_PT_TYPE,
 ): DataPt => DataPtFactory.create({ source, wireIndex, dataPtType }, value)
-
-const memoryLoadInfo = {
-  id: 0,
-  name: 'MemoryLoadStep' as const,
-  NWires: 14,
-  NInWires: 10,
-  NOutWires: 3,
-  inWireIndex: 4,
-  outWireIndex: 1,
-  flattenMap: [],
-  logicalInterface: {
-    inputs: [
-      { name: 'sourceWord', logicalType: { kind: 'uint' as const, bits: 256 } },
-      { name: 'shift', logicalType: { kind: 'uint' as const, bits: 32 } },
-      { name: 'direction', logicalType: { kind: 'uint' as const, bits: 1 } },
-      { name: 'ownership', logicalType: { kind: 'uint' as const, bits: 32 } },
-      { name: 'previousWord', logicalType: { kind: 'uint' as const, bits: 256 } },
-      { name: 'previousOwnership', logicalType: { kind: 'uint' as const, bits: 32 } },
-      { name: 'expectedOwnership', logicalType: { kind: 'uint' as const, bits: 32 } },
-      { name: 'finalMode', logicalType: { kind: 'uint' as const, bits: 1 } },
-    ],
-    outputs: [
-      { name: 'nextWord', logicalType: { kind: 'uint' as const, bits: 256 } },
-      { name: 'nextOwnership', logicalType: { kind: 'uint' as const, bits: 32 } },
-    ],
-  },
-}
 
 const createContext = (): MessageContext => ({
   stackPt: new StackPt(),
@@ -69,24 +39,30 @@ const createContext = (): MessageContext => ({
 
 const createHarness = () => {
   let staticWireIndex = 0
-  const parent = {
-    _placements: Array.from({ length: 6 }, () => ({
-      name: 'MemoryLoadStep',
-      usage: 'MemoryLoad',
-      subcircuitId: 0,
-      inPts: [],
-      outPts: [],
-    })),
-    _placementCompositionMapping: { MemoryLoad: memoryLoadComposition },
-    subcircuitInfoByName: new Map([['MemoryLoadStep', memoryLoadInfo]]),
+  const placementManager = {
     loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
       dataPt(value, evmInSource, staticWireIndex++, dataPtType)),
-    placeComposition: vi.fn(),
+    placeComposition: vi.fn((_operation: string, operands: readonly (readonly DataPt[])[]) =>
+      operands.map((view, viewIndex) => {
+        let previousWord = 0n
+        let previousOwnership = 0n
+        for (let index = 0; index < view.length; index += 3) {
+          [previousWord, previousOwnership] = calculateSubcircuitOutputValues(
+            'MemoryViewStep',
+            [
+              view[index]!.value,
+              view[index + 1]!.value,
+              view[index + 2]!.value,
+              previousWord,
+              previousOwnership,
+            ],
+          )
+        }
+        return dataPt(previousWord, 99, viewIndex)
+      })),
   }
-  const subcircuitLibrary = { calculateSubcircuitOutputValues }
-  Object.assign(parent, { subcircuitLibrary })
-  const placementManager = Object.assign(Object.create(PlacementManager.prototype), parent) as PlacementManager
-  const contextManager = new ContextManager(placementManager)
+  const subcircuitLibrary = {}
+  const contextManager = new ContextManager(placementManager as never)
   const handler = new InstructionHandler(
     contextManager,
     placementManager,
@@ -163,5 +139,38 @@ describe('RETURNDATACOPY memory flow', () => {
     })).toThrow('RETURNDATACOPY: requested range exceeds return data')
     expect(placementManager.placeComposition).not.toHaveBeenCalled()
     expect(memoryPt.viewMemory(0, 5)).toEqual(new Uint8Array(5))
+  })
+})
+
+describe('CALLDATACOPY memory flow', () => {
+  it('copies the available calldata suffix and zero-fills the remainder', () => {
+    const { handler, placementManager } = createHarness()
+    const context = createContext()
+    context.callDataMemoryPts = [{
+      memByteOffset: 0,
+      containerByteSize: 4,
+      dataPt: dataPt(0x11223344n, 1),
+    }]
+    context.callDataByteLength = 4
+    const memoryPt = new MemoryPt()
+    const expected = new Uint8Array([0x33, 0x44, 0, 0, 0, 0])
+
+    handler.handleEnvInf([8n, 2n, 6n], null, {
+      op: 'CALLDATACOPY',
+      pc: 0n,
+      thisAddress: {} as never,
+      codeAddress: {} as never,
+      originAddress: {} as never,
+      callerAddress: {} as never,
+      callDepth: 0,
+      thisContext: context,
+      prevStepResult: {} as never,
+      stackPt: stackFor([8n, 2n, 6n]),
+      memoryPt,
+      memOut: expected,
+    })
+
+    expect(placementManager.placeComposition).toHaveBeenCalledOnce()
+    expect(memoryPt.viewMemory(8, 6)).toEqual(expected)
   })
 })

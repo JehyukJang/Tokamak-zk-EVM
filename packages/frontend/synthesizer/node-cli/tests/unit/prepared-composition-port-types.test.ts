@@ -36,7 +36,10 @@ const createDataPt = (
   value: bigint,
 ): DataPt => DataPtFactory.create({ dataPtType, source, wireIndex }, value);
 
-function createPlacementManager(): PlacementManager {
+function createPlacementManager(
+  selectorType: DataPtType = UINT32_DATA_PT_TYPE,
+  outputValues: readonly bigint[] = [5n],
+): PlacementManager {
   return Object.assign(Object.create(PlacementManager.prototype), {
     _placements: Array.from({ length: 6 }, () => ({
       name: 'ALU1',
@@ -66,73 +69,49 @@ function createPlacementManager(): PlacementManager {
       },
     }]]),
     _placementCompositionMapping: { ADD: composition },
+    subcircuitLibrary: {
+      calculateSubcircuitOutputValues: () => outputValues,
+    },
+    loadArbitraryStatic: (value: bigint) => createDataPt(selectorType, 5, 0, value),
   }) as PlacementManager;
 }
 
-function createPreparedComposition(selectorType = UINT32_DATA_PT_TYPE) {
-  const selector = createDataPt(selectorType, 5, 0, 1n)
-  const lhs = createDataPt(UINT256_DATA_PT_TYPE, 0, 0, 2n)
-  const rhs = createDataPt(UINT256_DATA_PT_TYPE, 1, 0, 3n)
-  const result = createDataPt(UINT256_DATA_PT_TYPE, 6, 0, 5n)
+const operands = (lhsType: DataPtType = UINT256_DATA_PT_TYPE): DataPt[] => [
+  createDataPt(lhsType, 0, 0, 2n),
+  createDataPt(UINT256_DATA_PT_TYPE, 1, 0, 3n),
+]
 
-  return {
-    operation: 'ADD' as const,
-    operands: [lhs, rhs],
-    resultPts: [result],
-    steps: [{ inPts: [selector, lhs, rhs], outPts: [result] }],
-  };
-}
-
-describe('prepared composition logical ports', () => {
+describe('atomic composition logical ports', () => {
   it('accepts DataPt types that match every qap logical port', () => {
     const placementManager = createPlacementManager()
 
-    expect(() => placementManager.placeComposition(createPreparedComposition())).not.toThrow()
+    expect(() => placementManager.placeComposition('ADD', operands())).not.toThrow()
     expect(placementManager.placements.at(-1)?.usage).toBe('ADD')
   })
 
   it('rejects a same-width DataPt whose logical port type differs', () => {
-    const placementManager = createPlacementManager()
+    const placementManager = createPlacementManager(UINT160_DATA_PT_TYPE)
 
-    expect(() => placementManager.placeComposition(createPreparedComposition(UINT160_DATA_PT_TYPE))).toThrow(
+    expect(() => placementManager.placeComposition('ADD', operands())).toThrow(
       'ADD ALU1 input port 0 (selector) expected uint32, but got uint160',
-    )
-  })
-
-  it('does not record a partial composition after a prepared wire is mutated', () => {
-    const placementManager = createPlacementManager()
-    const prepared = createPreparedComposition()
-    const mutated = {
-      ...prepared,
-      steps: [{
-        ...prepared.steps[0]!,
-        outPts: [createDataPt(UINT256_DATA_PT_TYPE, 5, 0, 5n)],
-      }],
-    }
-
-    expect(() => placementManager.placeComposition(mutated)).toThrow(
-      'ADD step 0 output 0 has an invalid placement source',
     )
     expect(placementManager.placements).toHaveLength(6)
   })
 
-  it('does not record a partial composition after a declared operand is replaced', () => {
+  it('rejects an operand whose physical wire count differs without recording a placement', () => {
     const placementManager = createPlacementManager()
-    const prepared = createPreparedComposition()
-    const mutated = {
-      ...prepared,
-      steps: [{
-        ...prepared.steps[0]!,
-        inPts: [
-          prepared.steps[0]!.inPts[0]!,
-          createDataPt(UINT256_DATA_PT_TYPE, 4, 0, 2n),
-          prepared.steps[0]!.inPts[2]!,
-        ],
-      }],
-    }
 
-    expect(() => placementManager.placeComposition(mutated)).toThrow(
-      'ADD step 0 input 1 is not connected to its declared source',
+    expect(() => placementManager.placeComposition('ADD', operands(UINT160_DATA_PT_TYPE))).toThrow(
+      'ADD ALU1 expected 5 input wires, but got 4',
+    )
+    expect(placementManager.placements).toHaveLength(6)
+  })
+
+  it('rejects an incomplete host result without recording a placement', () => {
+    const placementManager = createPlacementManager(UINT32_DATA_PT_TYPE, [])
+
+    expect(() => placementManager.placeComposition('ADD', operands())).toThrow(
+      'ALU1 produced 0 outputs, but its logical interface declares 1',
     )
     expect(placementManager.placements).toHaveLength(6)
   })

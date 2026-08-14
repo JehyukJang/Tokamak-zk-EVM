@@ -10,7 +10,7 @@ const wordPt = (value: bigint) => DataPtFactory.create({
   dataPtType: UINT256_DATA_PT_TYPE,
 }, value);
 
-describe('MemoryPt MemoryLoad geometry', () => {
+describe('MemoryPt MemoryView geometry', () => {
   it('derives the right-shifted partial-view contribution once', () => {
     const memoryPt = new MemoryPt();
     memoryPt.write(4, 4, wordPt(0x11223344n));

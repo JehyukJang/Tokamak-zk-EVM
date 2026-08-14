@@ -20,8 +20,8 @@ describe('placement composition assembly', () => {
       expect(definition.placementStrategy).toBe(
         operation === 'Poseidon'
           ? 'poseidon'
-          : operation === 'MemoryLoad'
-            ? 'memory-load'
+          : operation === 'MemoryView'
+            ? 'memory-view'
             : 'generic',
       );
     }
