@@ -6,7 +6,6 @@ import { bigIntToBytes, bigIntToHex, bytesToHex, createAddressFromBigInt, setLen
 import { EVMResult, InterpreterStep } from '@ethereumjs/evm';
 import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
 import {
-  BLS12_381_FR_DATA_PT_TYPE,
   Placements,
   type ReservedVariable,
   SynthesizerInterface,
@@ -180,10 +179,7 @@ export class Synthesizer implements SynthesizerInterface
     ]
     this._placementManager.placeComposition('TransactionSignatureVerify', operands)
 
-    const zeroFrPt = this._placementManager.loadArbitraryStatic(
-      0n,
-      BLS12_381_FR_DATA_PT_TYPE,
-    )
+    const zeroFrPt = this._placementManager.getReservedVariableFromBuffer('CIRCOM_CONST_ZERO')
     for (let inputIndex = 0; inputIndex < transactionInputPts.length; inputIndex += 2) {
       this._placementManager.placeComposition(
         'FrToLimbsPair',

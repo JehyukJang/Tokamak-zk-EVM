@@ -632,10 +632,7 @@ export class InstructionHandler {
         this._popStackPtAndCheckInputConsistency(opts.stackPt, [blockNumber]);
         const blockNumberDiff = this.placementManager.getReservedVariableFromBuffer('NUMBER').value - blockNumber;
         if (blockNumberDiff <= 0n || blockNumberDiff > 256n) {
-          dataPt = this.placementManager.loadArbitraryStatic(
-            0n,
-            UINT256_DATA_PT_TYPE,
-          )
+          dataPt = this.placementManager.getReservedVariableFromBuffer('EVM_CONST_ZERO')
           break
         }
         if (blockNumberDiff > BigInt(this.subcircuitLibrary.numberOfPrevBlockHashes)) {
@@ -1111,10 +1108,8 @@ export class InstructionHandler {
               `Synthesizer: ${op}: Return memory data mismatch`,
             )
           }
-          opts.stackPt.push(this.placementManager.loadArbitraryStatic(
-            out!,
-            UINT256_DATA_PT_TYPE,
-            `Call result of ${op} instruction at PC ${opts.pc} of code address ${opts.codeAddress} (depth: ${opts.callDepth})`,
+          opts.stackPt.push(this.placementManager.getReservedVariableFromBuffer(
+            out === 0n ? 'EVM_CONST_ZERO' : 'EVM_CONST_ONE',
           ))
         }
         break

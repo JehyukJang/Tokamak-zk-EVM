@@ -7,7 +7,10 @@ import {
   ReservedVariable,
   SynthesizerOpts,
   VARIABLE_DESCRIPTION,
+  BIT_DATA_PT_TYPE,
+  BLS12_381_FR_DATA_PT_TYPE,
   UINT32_DATA_PT_TYPE,
+  UINT256_DATA_PT_TYPE,
   type DataPt,
   type CompositionOperands,
   type PlacementEntry,
@@ -372,6 +375,21 @@ export class PlacementManager {
     return DataPtFactory.deepCopy(outPt)
   }
 
+  private _getReservedZero(dataPtType: DataPtType): DataPt {
+    switch (dataPtType) {
+      case BLS12_381_FR_DATA_PT_TYPE:
+        return this.getReservedVariableFromBuffer('CIRCOM_CONST_ZERO')
+      case BIT_DATA_PT_TYPE:
+        return this.getReservedVariableFromBuffer('BIT_CONST_ZERO')
+      case UINT32_DATA_PT_TYPE:
+        return this.getReservedVariableFromBuffer('UINT32_CONST_ZERO')
+      case UINT256_DATA_PT_TYPE:
+        return this.getReservedVariableFromBuffer('EVM_CONST_ZERO')
+      default:
+        throw new Error(`Synthesizer: no reserved zero exists for ${dataPtType}`)
+    }
+  }
+
   private _initBuffers(): void {
     for (const buffer of BUFFER_LIST) {
       this._placeBuffer(buffer, [], [], BUFFER_DESCRIPTION[buffer])
@@ -379,6 +397,10 @@ export class PlacementManager {
 
     this.addReservedVariableToBufferIn('CIRCOM_CONST_ONE', 1n)
     this.addReservedVariableToBufferIn('CIRCOM_CONST_ZERO', 0n)
+    this.addReservedVariableToBufferIn('BIT_CONST_ONE', 1n)
+    this.addReservedVariableToBufferIn('BIT_CONST_ZERO', 0n)
+    this.addReservedVariableToBufferIn('UINT32_CONST_ZERO', 0n)
+    this.addReservedVariableToBufferIn('EVM_CONST_ONE', 1n)
     this.addReservedVariableToBufferIn('EVM_CONST_ZERO', 0n)
     this.addReservedVariableToBufferIn('ADDRESS_MASK', (1n << 160n) - 1n)
     this.addReservedVariableToBufferIn('BYTE_MASK', 0xffn)
@@ -522,7 +544,7 @@ export class PlacementManager {
     const steps: PlacementEntry[] = []
     const resultPts: DataPt[] = []
     for (const [viewIndex, view] of views.entries()) {
-      const zeroWordPt = this.loadArbitraryStatic(0n, previousWordType)
+      const zeroWordPt = this._getReservedZero(previousWordType)
       if (view.length === 0) {
         resultPts.push(zeroWordPt)
         continue
@@ -530,7 +552,7 @@ export class PlacementManager {
       if (view.length % inputsPerFragment !== 0) {
         throw new Error(`Synthesizer: MemoryView view ${viewIndex} must contain three inputs per fragment`)
       }
-      const zeroOwnershipPt = this.loadArbitraryStatic(0n, previousOwnershipType)
+      const zeroOwnershipPt = this._getReservedZero(previousOwnershipType)
       let previousWordPt = zeroWordPt
       let previousOwnershipPt = zeroOwnershipPt
       const fragmentCount = view.length / inputsPerFragment
@@ -613,7 +635,13 @@ export class PlacementManager {
             if (constant === undefined) {
               throw new Error(`Synthesizer: ${operation} constant ${input.index} is unavailable`)
             }
-            inPts.push(this.loadArbitraryStatic(constant.value, constant.dataPtType))
+            if (constant.value === 0n) {
+              inPts.push(this._getReservedZero(constant.dataPtType))
+            } else if (constant.value === 1n && constant.dataPtType === BIT_DATA_PT_TYPE) {
+              inPts.push(this.getReservedVariableFromBuffer('BIT_CONST_ONE'))
+            } else {
+              inPts.push(this.loadArbitraryStatic(constant.value, constant.dataPtType))
+            }
             break
           }
           case 'selector':
@@ -699,7 +727,7 @@ export class PlacementManager {
     const selectorType = getDataPtTypeFromLogicalInterfaceType(selectorPort.logicalType)
     const valueType = getDataPtTypeFromLogicalInterfaceType(valuePort.logicalType)
     const resultType = getDataPtTypeFromLogicalInterfaceType(resultPort.logicalType)
-    const zeroPt = this.loadArbitraryStatic(0n, valueType)
+    const zeroPt = this._getReservedZero(valueType)
     const steps: PlacementEntry[] = []
     const prepareNormalized = (inputPts: readonly DataPt[]): DataPt => {
       if (inputPts.length < POSEIDON_INPUTS || inputPts.length > inputLimit) {
