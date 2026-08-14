@@ -1,4 +1,4 @@
-import { Operator, SubcircuitNames } from "../../subcircuit/configuredTypes.ts";
+import { SubcircuitNames } from "../../subcircuit/configuredTypes.ts";
 import { DataPt } from "./dataStructure.ts";
 
 
@@ -12,17 +12,7 @@ export type PlacementEntry = {
 
 export type Placements = PlacementEntry[];
 
-export type PreparedCompositionStep = Readonly<{
-  inPts: readonly DataPt[];
-  outPts: readonly DataPt[];
-}>;
-
-export type PreparedComposition = Readonly<{
-  operation: Operator;
-  operands: readonly DataPt[];
-  resultPts: readonly DataPt[];
-  steps: readonly PreparedCompositionStep[];
-}>;
+export type CompositionOperands = readonly DataPt[] | readonly (readonly DataPt[])[];
 
 export type PlacementVariableEntry = {
   subcircuitId: number;

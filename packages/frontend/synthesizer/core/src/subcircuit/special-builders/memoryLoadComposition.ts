@@ -8,28 +8,36 @@ import type {
  * Defines one logical memory view reconstruction. The memory-load placement
  * strategy receives its fragment inputs from InstructionHandler at placement time.
  */
-export const createMemoryLoadCompositionMapping = (): PlacementCompositionEntry =>
+const createMemoryCompositionMapping = (
+  operation: 'MemoryLoad' | 'MemoryStream',
+): PlacementCompositionEntry =>
   Object.freeze({
-    operation: 'MemoryLoad',
+    operation,
     composition: freezeComposition({
-      placementStrategy: 'memory-load',
+      placementStrategy: operation === 'MemoryLoad' ? 'memory-load' : 'memory-stream',
       constants: [],
       numSteps: 'dynamic',
       numOperands: 'dynamic',
-      numResults: 1,
+      numResults: operation === 'MemoryLoad' ? 1 : 'dynamic',
       steps: [
         {
           subcircuit: 'MemoryLoadStep',
           selector: null,
           inputs: Array.from(
-            { length: 8 },
+            { length: 7 },
             (_, index): InputReference => ({ kind: 'operand', index }),
           ),
           outputs: [
-            { kind: 'result', index: 0 },
+            { kind: 'result', index: operation === 'MemoryLoad' ? 0 : 'dynamic' },
             { kind: 'discard' },
           ]
         }
       ]
     })
   })
+
+export const createMemoryLoadCompositionMappings = (): readonly PlacementCompositionEntry[] =>
+  Object.freeze([
+    createMemoryCompositionMapping('MemoryLoad'),
+    createMemoryCompositionMapping('MemoryStream'),
+  ])

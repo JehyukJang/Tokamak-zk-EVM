@@ -726,7 +726,7 @@ const poseidon = (inVals: bigint[]): bigint => {
 };
 
 const memoryLoadStep = (values: readonly bigint[]): bigint[] => {
-  expectLength(values, 8, 'MemoryLoadStep');
+  expectLength(values, 7, 'MemoryLoadStep');
   const [
     sourceWord,
     shiftMagnitude,
@@ -734,8 +734,6 @@ const memoryLoadStep = (values: readonly bigint[]): bigint[] => {
     ownership,
     previousWord,
     previousOwnership,
-    expectedOwnership,
-    finalMode,
   ] = values;
   const shiftBits = shiftMagnitude! * 8n;
   const shiftedWord = direction === 0n ? sourceWord! << shiftBits : sourceWord! >> shiftBits;
@@ -749,7 +747,7 @@ const memoryLoadStep = (values: readonly bigint[]): bigint[] => {
   if (nextWord >= EVM_WORD_MODULUS) {
     throw new Error('MemoryLoadStep: fragment sum exceeds an EVM word');
   }
-  const nextOwnership = finalMode === 1n ? expectedOwnership! : previousOwnership! + ownership!;
+  const nextOwnership = previousOwnership! + ownership!;
   return [nextWord, nextOwnership];
 };
 

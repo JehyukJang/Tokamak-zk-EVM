@@ -178,25 +178,17 @@ export class Synthesizer implements SynthesizerInterface
       this._placementManager.getReservedVariableFromBuffer('JUBJUB_POI_X'),
       this._placementManager.getReservedVariableFromBuffer('JUBJUB_POI_Y'),
     ]
-    const preparedComposition = this._placementManager.prepareComposition(
-      { operation: 'TransactionSignatureVerify', operands },
-      this._placementManager.placements.length,
-    )
-    this._placementManager.placeComposition(preparedComposition)
+    this._placementManager.placeComposition('TransactionSignatureVerify', operands)
 
     const zeroFrPt = this._placementManager.loadArbitraryStatic(
       0n,
       BLS12_381_FR_DATA_PT_TYPE,
     )
     for (let inputIndex = 0; inputIndex < transactionInputPts.length; inputIndex += 2) {
-      const preparedConversion = this._placementManager.prepareComposition(
-        {
-          operation: 'FrToLimbsPair',
-          operands: [transactionInputPts[inputIndex]!, transactionInputPts[inputIndex + 1] ?? zeroFrPt],
-        },
-        this._placementManager.placements.length,
+      this._placementManager.placeComposition(
+        'FrToLimbsPair',
+        [transactionInputPts[inputIndex]!, transactionInputPts[inputIndex + 1] ?? zeroFrPt],
       )
-      this._placementManager.placeComposition(preparedConversion)
     }
   }
 

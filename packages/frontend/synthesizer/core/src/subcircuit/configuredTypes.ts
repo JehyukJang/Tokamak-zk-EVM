@@ -31,6 +31,7 @@ export const OPERATOR_LIST = [
   'Poseidon',
   // 'PrepareEdDsaScalars',
   'MemoryLoad',
+  'MemoryStream',
   'StorageAccess',
   'TransactionSignatureVerify',
   'FrToLimbsPair',

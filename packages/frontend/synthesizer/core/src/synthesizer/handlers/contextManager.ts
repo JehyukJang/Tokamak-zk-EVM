@@ -9,27 +9,40 @@ import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
 
 import { DataPtFactory } from '../dataStructure/dataPt.ts';
 import { MemoryPt, StackPt } from '../dataStructure/index.ts';
-import { UINT256_DATA_PT_TYPE } from '../types/index.ts';
+import {
+  BIT_DATA_PT_TYPE,
+  UINT32_DATA_PT_TYPE,
+  UINT256_DATA_PT_TYPE,
+} from '../types/index.ts';
 import type {
   DataPt,
   MemoryPts,
-  PreparedComposition,
   ReservedVariable,
   StorageCacheEntries,
   StorageCacheEntry,
 } from '../types/index.ts';
 import type { PlacementManager } from './placementManager.ts';
 
-export type PreparedMemoryRead = Readonly<{
-  compositions: readonly PreparedComposition[];
-  viewDataPts: DataPt[];
-  recoveredValue: bigint;
+export type MemoryCopyPlan = Readonly<{
+  operands: readonly (readonly DataPt[])[];
+  destinations: readonly Readonly<{
+    memByteOffset: number;
+    containerByteSize: number;
+  }>[];
 }>;
 
-export type PreparedMemoryCopy = Readonly<{
-  compositions: readonly PreparedComposition[];
-  destinationEntries: MemoryPts;
-}>;
+export const createMemoryCopyEntries = (
+  plan: MemoryCopyPlan,
+  dataPts: readonly DataPt[],
+): MemoryPts => {
+  if (plan.destinations.length !== dataPts.length) {
+    throw new Error('Synthesizer: MemoryStream result count does not match its copy destinations')
+  }
+  return plan.destinations.map((destination, index) => ({
+    ...destination,
+    dataPt: dataPts[index]!,
+  }))
+}
 
 const copyStorageCacheEntry = (entry: StorageCacheEntry): StorageCacheEntry => ({
   canonicalAddressPt: DataPtFactory.deepCopy(entry.canonicalAddressPt),
@@ -242,74 +255,79 @@ export class ContextManager {
     sourceOffset: bigint,
     length: bigint,
     destinationOffset: bigint = 0n,
-    basePlacementIndex: number,
-  ): PreparedMemoryCopy {
+  ): MemoryCopyPlan {
     if (length === BIGINT_0) {
-      return { compositions: [], destinationEntries: [] }
+      return { operands: [], destinations: [] }
     }
     const sourceOffsetNumber = Number(sourceOffset)
     const lengthNumber = Number(length)
     const sourceSnapshot = MemoryPt.simulateMemoryPt(
       sourceMemoryPt.read(sourceOffsetNumber, lengthNumber),
     )
-    const preparedMemoryRead = this.prepareMemoryRead(
+    const operands = this.createMemoryOperands(
       sourceSnapshot,
       sourceOffset,
       length,
-      basePlacementIndex,
     )
-    const destinationEntries = preparedMemoryRead.viewDataPts.map((dataPt, index) => ({
+    const destinations = operands.map((_, index) => ({
       memByteOffset: Number(destinationOffset) + 32 * index,
       containerByteSize: Math.min(32, lengthNumber - 32 * index),
-      dataPt,
     }))
-    return {
-      compositions: preparedMemoryRead.compositions,
-      destinationEntries,
-    }
+    return { operands, destinations }
   }
 
-  public prepareMemoryRead(
+  public createMemoryOperands(
     memoryPt: MemoryPt,
     offset: bigint,
     length: bigint,
-    basePlacementIndex: number,
-  ): PreparedMemoryRead {
+  ): readonly (readonly DataPt[])[] {
     const offsetNum = Number(offset)
     const lengthNum = Number(length)
-    const nViews = lengthNum > 32 ? Math.ceil(lengthNum / 32) : 1
-    const viewDataPts: DataPt[] = []
-    const compositions: PreparedComposition[] = []
-    let recoveredValue = 0n
+    if (lengthNum === 0) {
+      return []
+    }
+    const nViews = Math.ceil(lengthNum / 32)
+    const views: DataPt[][] = []
     let lengthLeft = lengthNum
-    let nextPlacementIndex = basePlacementIndex
 
     for (let i = 0; i < nViews; i++) {
       const viewOffset = offsetNum + 32 * i
       const viewLength = lengthLeft > 32 ? 32 : lengthLeft
       lengthLeft -= viewLength
       const dataAliasGeometries = memoryPt.getDataAlias(viewOffset, viewLength)
-      if (dataAliasGeometries.length > 0) {
-        const preparedComposition = this.placementManager.prepareComposition(
-          {
-            operation: 'MemoryLoad',
-            dataAliasGeometries,
-            viewByteLength: viewLength,
-          },
-          nextPlacementIndex,
-        )
-        compositions.push(preparedComposition)
-        nextPlacementIndex += preparedComposition.steps.length
-        viewDataPts[i] = preparedComposition.resultPts[0]!
-      } else {
-        viewDataPts[i] = this.placementManager.loadArbitraryStatic(
-          0n,
-          UINT256_DATA_PT_TYPE,
-        )
+      if (dataAliasGeometries.length === 0) {
+        views.push([])
+        continue
       }
-      recoveredValue += viewDataPts[i].value << BigInt(lengthLeft * 8)
+      const viewOperands: DataPt[] = []
+      let expectedCoverage = 0n
+      for (const geometry of dataAliasGeometries) {
+        const shiftPt = this.placementManager.loadArbitraryStatic(
+          BigInt(geometry.shiftMagnitude),
+          UINT32_DATA_PT_TYPE,
+          'Memory-load byte shift magnitude',
+        )
+        const directionPt = this.placementManager.loadArbitraryStatic(
+          BigInt(geometry.direction),
+          BIT_DATA_PT_TYPE,
+          'Memory-load shift direction',
+        )
+        const ownershipPt = this.placementManager.loadArbitraryStatic(
+          geometry.ownershipMask,
+          UINT32_DATA_PT_TYPE,
+          'Memory-load byte ownership mask',
+        )
+        viewOperands.push(geometry.dataPt, shiftPt, directionPt, ownershipPt)
+        expectedCoverage |= geometry.ownershipMask
+      }
+      viewOperands.push(this.placementManager.loadArbitraryStatic(
+        expectedCoverage,
+        UINT32_DATA_PT_TYPE,
+        'Memory-load final byte ownership',
+      ))
+      views.push(viewOperands)
     }
-    return { compositions, viewDataPts, recoveredValue }
+    return views
   }
 
   public initializeMessageContext(message: Message): void {
@@ -392,12 +410,10 @@ export class ContextManager {
         throw new Error('Debug: Raw address to call mismatch between EVM and Synthesizer')
       }
       const addressMaskPt = this.placementManager.getReservedVariableFromBuffer('ADDRESS_MASK')
-      const preparedTargetMask = this.placementManager.prepareComposition(
-        { operation: 'AND', operands: [rawCodeAddressPt, addressMaskPt] },
-        this.placementManager.placements.length,
-      )
-      this.placementManager.placeComposition(preparedTargetMask)
-      const maskedAddressPt = preparedTargetMask.resultPts[0]
+      const maskedAddressPt = this.placementManager.placeComposition(
+        'AND',
+        [rawCodeAddressPt, addressMaskPt],
+      )[0]
       if (maskedAddressPt === undefined) {
         throw new Error('Synthesizer: CALL target mask produced no address')
       }
@@ -426,17 +442,17 @@ export class ContextManager {
           break
       }
 
-      const preparedMemoryCopy = this.prepareMemoryCopy(
+      const memoryCopyPlan = this.prepareMemoryCopy(
         parentContext.memoryPt,
         inputOffset,
         inputLength,
         0n,
-        this.placementManager.placements.length,
       )
-      for (const preparedComposition of preparedMemoryCopy.compositions) {
-        this.placementManager.placeComposition(preparedComposition)
-      }
-      callDataMemoryPts = preparedMemoryCopy.destinationEntries
+      const callDataPts = this.placementManager.placeComposition(
+        'MemoryStream',
+        memoryCopyPlan.operands,
+      )
+      callDataMemoryPts = createMemoryCopyEntries(memoryCopyPlan, callDataPts)
       callDataByteLength = Number(inputLength)
       const simulatedCallDataMemoryPt = MemoryPt.simulateMemoryPt(callDataMemoryPts)
       const synthesizedCallData = simulatedCallDataMemoryPt.viewMemory(0, Number(inputLength))

@@ -141,7 +141,7 @@ export class MemoryPt {
 
   /**
    * Returns fully derived alias geometry for a specific memory range.
-   * DataPt creation and placement remain the instruction handler's responsibility.
+   * The context layer materializes the returned geometry into composition operands.
    * @param offset - Starting memory position to read
    * @param size - Number of bytes to read
    * @returns Byte geometry and derived MemoryLoadStep facts.

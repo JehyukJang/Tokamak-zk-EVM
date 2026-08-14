@@ -1,5 +1,5 @@
 
-import { BIT_DATA_PT_TYPE, MemoryPts, PreparedComposition, synthesizerOpcodeByName, SynthesizerOpts, SynthesizerSupportedArithOpcodes, SynthesizerSupportedBlkInfOpcodes, SynthesizerSupportedEnvInfOpcodes, SynthesizerSupportedLogOpcodes, SynthesizerSupportedSysFlowOpcodes, type DataPt, type ReservedVariable, type SynthesizerSupportedOpcodes, UINT256_DATA_PT_TYPE } from '../types/index.ts';
+import { BIT_DATA_PT_TYPE, MemoryPts, synthesizerOpcodeByName, SynthesizerOpts, SynthesizerSupportedArithOpcodes, SynthesizerSupportedBlkInfOpcodes, SynthesizerSupportedEnvInfOpcodes, SynthesizerSupportedLogOpcodes, SynthesizerSupportedSysFlowOpcodes, type DataPt, type ReservedVariable, type SynthesizerSupportedOpcodes, UINT256_DATA_PT_TYPE } from '../types/index.ts';
 
 import {
   Address,
@@ -12,7 +12,7 @@ import {
 import { InterpreterStep } from '@ethereumjs/evm'
 import { DataPtFactory, MemoryPt, StackPt } from '../dataStructure/index.ts';
 import type { PlacementManager } from './placementManager.ts';
-import type { ContextManager, MessageContext } from './contextManager.ts';
+import { createMemoryCopyEntries, type ContextManager, type MessageContext } from './contextManager.ts';
 import type { ResolvedSubcircuitLibrary } from '../../subcircuit/libraryTypes.ts';
 
 export interface HandlerOpts {
@@ -36,6 +36,19 @@ export interface SynthesizerOpHandler {
 
 const checkRequiredInput = (...input: unknown[]): void => {
   if (input.some(v => v === undefined)) throw new Error('Required inputs are missing')
+}
+
+const recoverMemoryValue = (
+  viewDataPts: readonly DataPt[],
+  byteLength: bigint,
+): bigint => {
+  let value = 0n
+  let lengthLeft = Number(byteLength)
+  for (const viewDataPt of viewDataPts) {
+    lengthLeft -= Math.min(32, lengthLeft)
+    value += viewDataPt.value << BigInt(lengthLeft * 8)
+  }
+  return value
 }
 
 export class InstructionHandler {
@@ -429,13 +442,7 @@ export class InstructionHandler {
       canonicalAddressPt,
       canonicalKeyPt,
     ]
-    const preparedComposition: PreparedComposition = {
-      operation: 'StorageAccess',
-      operands: inPts,
-      resultPts: [],
-      steps: [{ inPts, outPts: [] }],
-    }
-    this.placementManager.placeComposition(preparedComposition)
+    this.placementManager.placeComposition('StorageAccess', inPts)
   }
 
   private _getCachedStorageEntry(
@@ -568,53 +575,30 @@ export class InstructionHandler {
     opts: HandlerOpts,
   ): void => {
     const inPts = this._popStackPtAndCheckInputConsistency(opts.stackPt, ins)
-    let preparedComposition: PreparedComposition;
     const op = opts.op as SynthesizerSupportedArithOpcodes
+    let outPts: readonly DataPt[]
     switch (op) {
-      case 'DIV':
-      case 'SDIV':
-      case 'MOD':
-      case 'SMOD':
-      case 'ADDMOD':
-      case 'MULMOD':
-      case 'EXP':
-        preparedComposition = this.placementManager.prepareComposition(
-          { operation: op, operands: inPts },
-          this.placementManager.placements.length,
-        )
-        break
       case 'KECCAK256': {
           checkRequiredInput(opts.memOut)
           const memOffset = ins[0]
           const dataLength = ins[1]
-          const preparedMemoryRead = this.contextManager.prepareMemoryRead(
+          const memoryOperands = this.contextManager.createMemoryOperands(
             opts.memoryPt,
             memOffset,
             dataLength,
-            this.placementManager.placements.length,
           )
-          for (const preparedComposition of preparedMemoryRead.compositions) {
-            this.placementManager.placeComposition(preparedComposition)
-          }
-          const { viewDataPts, recoveredValue } = preparedMemoryRead
+          const viewDataPts = this.placementManager.placeComposition('MemoryStream', memoryOperands)
+          const recoveredValue = recoverMemoryValue(viewDataPts, dataLength)
           if (bytesToBigInt(opts.memOut!) !== recoveredValue) {
             throw new Error(`Synthesizer: ${op}: Memory data to load mismatch`)
           }
-          preparedComposition = this.placementManager.prepareComposition(
-            { operation: 'Poseidon', operands: viewDataPts },
-            this.placementManager.placements.length,
-          )
+          outPts = this.placementManager.placeComposition('Poseidon', viewDataPts)
         }
         break
       default:
-        preparedComposition = this.placementManager.prepareComposition(
-          { operation: op, operands: inPts },
-          this.placementManager.placements.length,
-        );
+        outPts = this.placementManager.placeComposition(op, inPts)
         break;
     }
-    this.placementManager.placeComposition(preparedComposition)
-    const outPts = preparedComposition.resultPts
     if (outPts.length !== 1 || outPts[0].value !== out) {
       throw new Error(`Synthesizer: ${op}: Output data mismatch`);
     }
@@ -752,28 +736,17 @@ export class InstructionHandler {
           const srcOffset = ins[0]
           const i = Number(srcOffset);
           const calldataMemoryPts = opts.thisContext.callDataMemoryPts;
-          if (calldataMemoryPts.length > 0) {
-            const calldataMemoryPt = MemoryPt.simulateMemoryPt(calldataMemoryPts);
-            const dataAliasInfos = calldataMemoryPt.getDataAlias(i, 32);
-            if (dataAliasInfos.length > 0) {
-              const preparedComposition = this.placementManager.prepareComposition(
-                { operation: 'MemoryLoad', dataAliasGeometries: dataAliasInfos, viewByteLength: 32 },
-                this.placementManager.placements.length,
-              )
-              this.placementManager.placeComposition(preparedComposition)
-              stackPt.push(preparedComposition.resultPts[0]!)
-            } else {
-              stackPt.push(this.placementManager.loadArbitraryStatic(
-                0n,
-                UINT256_DATA_PT_TYPE,
-              ))
-            }
-          } else {
-            stackPt.push(this.placementManager.loadArbitraryStatic(
-              0n,
-              UINT256_DATA_PT_TYPE,
-            ))
-          }   
+          const calldataMemoryPt = MemoryPt.simulateMemoryPt(calldataMemoryPts)
+          const memoryOperands = this.contextManager.createMemoryOperands(
+            calldataMemoryPt,
+            BigInt(i),
+            32n,
+          )[0] ?? []
+          const dataPt = this.placementManager.placeComposition('MemoryLoad', memoryOperands)[0]
+          if (dataPt === undefined) {
+            throw new Error('Synthesizer: CALLDATALOAD produced no result')
+          }
+          stackPt.push(dataPt)
         }
         break
       case 'CALLDATASIZE':
@@ -786,17 +759,17 @@ export class InstructionHandler {
           const dataLength = ins[2]
           checkRequiredInput(opts.memOut)
           if (dataLength !== BIGINT_0) {
-            const preparedMemoryCopy = this.contextManager.prepareMemoryCopy(
+            const memoryCopyPlan = this.contextManager.prepareMemoryCopy(
               MemoryPt.simulateMemoryPt(opts.thisContext.callDataMemoryPts),
               dataOffset,
               dataLength,
               memOffset,
-              this.placementManager.placements.length,
             )
-            for (const preparedComposition of preparedMemoryCopy.compositions) {
-              this.placementManager.placeComposition(preparedComposition)
-            }
-            memoryPt.writeBatch(preparedMemoryCopy.destinationEntries)
+            const resultPts = this.placementManager.placeComposition(
+              'MemoryStream',
+              memoryCopyPlan.operands,
+            )
+            memoryPt.writeBatch(createMemoryCopyEntries(memoryCopyPlan, resultPts))
           }
           const _outData = memoryPt.viewMemory(
             Number(memOffset),
@@ -884,17 +857,17 @@ export class InstructionHandler {
             throw new Error(`Synthesizer: ${op}: requested range exceeds return data`)
           }
           if (dataLength !== BIGINT_0) {
-            const preparedMemoryCopy = this.contextManager.prepareMemoryCopy(
+            const memoryCopyPlan = this.contextManager.prepareMemoryCopy(
               MemoryPt.simulateMemoryPt(opts.thisContext.returnDataMemoryPts),
               returnDataOffset,
               dataLength,
               memOffset,
-              this.placementManager.placements.length,
             )
-            for (const preparedComposition of preparedMemoryCopy.compositions) {
-              this.placementManager.placeComposition(preparedComposition)
-            }
-            memoryPt.writeBatch(preparedMemoryCopy.destinationEntries)
+            const resultPts = this.placementManager.placeComposition(
+              'MemoryStream',
+              memoryCopyPlan.operands,
+            )
+            memoryPt.writeBatch(createMemoryCopyEntries(memoryCopyPlan, resultPts))
           }
           const _outData = memoryPt.viewMemory(
             Number(memOffset),
@@ -950,16 +923,13 @@ export class InstructionHandler {
       )
     }
 
-    const preparedMemoryRead = this.contextManager.prepareMemoryRead(
+    const memoryOperands = this.contextManager.createMemoryOperands(
       opts.memoryPt,
       memOffset,
       dataLength,
-      this.placementManager.placements.length,
     )
-    for (const preparedComposition of preparedMemoryRead.compositions) {
-      this.placementManager.placeComposition(preparedComposition)
-    }
-    const { viewDataPts, recoveredValue } = preparedMemoryRead
+    const viewDataPts = this.placementManager.placeComposition('MemoryStream', memoryOperands)
+    const recoveredValue = recoverMemoryValue(viewDataPts, dataLength)
     const expectedLogData = bytesToBigInt(
       opts.prevStepResult.memory.subarray(Number(memOffset), Number(memOffset) + Number(dataLength)),
     )
@@ -1000,23 +970,14 @@ export class InstructionHandler {
       case 'MLOAD':
         {
           const pos = ins[0]
-          const dataAliasInfos = opts.memoryPt.getDataAlias(
-            Number(pos),
-            32,
-          )
-          let mutDataPt: DataPt
-          if (dataAliasInfos.length === 0) {
-            mutDataPt = this.placementManager.loadArbitraryStatic(
-              0n,
-              UINT256_DATA_PT_TYPE,
-            )
-          } else {
-            const preparedComposition = this.placementManager.prepareComposition(
-              { operation: 'MemoryLoad', dataAliasGeometries: dataAliasInfos, viewByteLength: 32 },
-              this.placementManager.placements.length,
-            )
-            this.placementManager.placeComposition(preparedComposition)
-            mutDataPt = preparedComposition.resultPts[0]!
+          const memoryOperands = this.contextManager.createMemoryOperands(
+            opts.memoryPt,
+            pos,
+            32n,
+          )[0] ?? []
+          const mutDataPt = this.placementManager.placeComposition('MemoryLoad', memoryOperands)[0]
+          if (mutDataPt === undefined) {
+            throw new Error('Synthesizer: MLOAD produced no result')
           }
           opts.stackPt.push(mutDataPt)
         }
@@ -1029,19 +990,21 @@ export class InstructionHandler {
           const originalDataPt = inPts[1]
           let dataPtToStore = originalDataPt
           if (op === 'MSTORE8') {
-            const preparedComposition = this.placementManager.prepareComposition(
-              { operation: 'AND', operands: [
+            const resultPt = this.placementManager.placeComposition(
+              'AND',
+              [
                 this.placementManager.loadArbitraryStatic(
                   0xffn,
                   UINT256_DATA_PT_TYPE,
                   'Masker for MSTORE8',
                 ),
                 originalDataPt,
-              ] },
-              this.placementManager.placements.length,
-            )
-            this.placementManager.placeComposition(preparedComposition)
-            dataPtToStore = preparedComposition.resultPts[0]!
+              ],
+            )[0]
+            if (resultPt === undefined) {
+              throw new Error('Synthesizer: MSTORE8 mask produced no result')
+            }
+            dataPtToStore = resultPt
           }
           const byteSize = op === 'MSTORE8' ? 1 : 32
           const _out = opts.memoryPt.write(offsetNum, byteSize, dataPtToStore)
@@ -1099,17 +1062,17 @@ export class InstructionHandler {
         {
           const [dstOffset, srcOffset, length] = ins
           checkRequiredInput(opts.memOut)
-          const preparedMemoryCopy = this.contextManager.prepareMemoryCopy(
+          const memoryCopyPlan = this.contextManager.prepareMemoryCopy(
             opts.memoryPt,
             srcOffset,
             length,
             dstOffset,
-            this.placementManager.placements.length,
           )
-          for (const preparedComposition of preparedMemoryCopy.compositions) {
-            this.placementManager.placeComposition(preparedComposition)
-          }
-          const _out = opts.memoryPt.writeBatch(preparedMemoryCopy.destinationEntries)
+          const resultPts = this.placementManager.placeComposition(
+            'MemoryStream',
+            memoryCopyPlan.operands,
+          )
+          const _out = opts.memoryPt.writeBatch(createMemoryCopyEntries(memoryCopyPlan, resultPts))
           if (bytesToBigInt(_out) !== bytesToBigInt(opts.memOut!)) {
             throw new Error(`Synthesizer: ${op}: Output memory data mismatch`)
           }
@@ -1134,17 +1097,17 @@ export class InstructionHandler {
             ? outLength
             : BigInt(opts.thisContext.returnDataByteLength)
           if (copiedLength !== BIGINT_0) {
-            const preparedMemoryCopy = this.contextManager.prepareMemoryCopy(
+            const memoryCopyPlan = this.contextManager.prepareMemoryCopy(
               MemoryPt.simulateMemoryPt(opts.thisContext.returnDataMemoryPts),
               0n,
               copiedLength,
               outOffset,
-              this.placementManager.placements.length,
             )
-            for (const preparedComposition of preparedMemoryCopy.compositions) {
-              this.placementManager.placeComposition(preparedComposition)
-            }
-            opts.memoryPt.writeBatch(preparedMemoryCopy.destinationEntries)
+            const resultPts = this.placementManager.placeComposition(
+              'MemoryStream',
+              memoryCopyPlan.operands,
+            )
+            opts.memoryPt.writeBatch(createMemoryCopyEntries(memoryCopyPlan, resultPts))
           }
           const _out = opts.memoryPt.viewMemory(Number(outOffset), Number(outLength))
           if (bytesToBigInt(_out) !== bytesToBigInt(opts.memOut!)) {
@@ -1164,17 +1127,17 @@ export class InstructionHandler {
         {
           checkRequiredInput(opts.memOut)
           const [offset, length] = ins;
-          const preparedMemoryCopy = this.contextManager.prepareMemoryCopy(
+          const memoryCopyPlan = this.contextManager.prepareMemoryCopy(
             opts.memoryPt,
             offset,
             length,
             0n,
-            this.placementManager.placements.length,
           )
-          for (const preparedComposition of preparedMemoryCopy.compositions) {
-            this.placementManager.placeComposition(preparedComposition)
-          }
-          opts.thisContext.resultMemoryPts = preparedMemoryCopy.destinationEntries
+          const resultPts = this.placementManager.placeComposition(
+            'MemoryStream',
+            memoryCopyPlan.operands,
+          )
+          opts.thisContext.resultMemoryPts = createMemoryCopyEntries(memoryCopyPlan, resultPts)
           opts.thisContext.resultDataByteLength = Number(length)
           
           const simMemoryPt = MemoryPt.simulateMemoryPt(opts.thisContext.resultMemoryPts);

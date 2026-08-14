@@ -4,13 +4,13 @@ import { isDataPtType, type DataPtType, UINT256_DATA_PT_TYPE } from '../synthesi
 import { createAddMulModCompositionMappings } from './special-builders/addMulModComposition.ts';
 import { createDivisionCompositionMappings } from './special-builders/divModComposition.ts';
 import { createExpCompositionMapping } from './special-builders/expComposition.ts';
-import { createMemoryLoadCompositionMapping } from './special-builders/memoryLoadComposition.ts';
+import { createMemoryLoadCompositionMappings } from './special-builders/memoryLoadComposition.ts';
 import { createPoseidonCompositionMapping } from './special-builders/poseidonComposition.ts';
 import { createTransactionSignatureVerifyCompositionMapping } from './special-builders/txSignVerifyComposition.ts';
 
 export type SelectorDefinition = bigint | null | 'dynamic';
 
-export type PlacementStrategy = 'generic' | 'poseidon' | 'memory-load';
+type PlacementStrategy = 'generic' | 'poseidon' | 'memory-load' | 'memory-stream';
 
 export type InputReference =
   | Readonly<{ kind: 'selector' }>
@@ -20,7 +20,7 @@ export type InputReference =
 
 export type OutputReference =
   | Readonly<{ kind: 'step-output'; index: number }>
-  | Readonly<{ kind: 'result'; index: number }>
+  | Readonly<{ kind: 'result'; index: number | 'dynamic' }>
   | Readonly<{ kind: 'discard' }>;
 
 export type CompositionStep = Readonly<{
@@ -40,7 +40,7 @@ export type PlacementComposition = Readonly<{
   constants: readonly ConstantDefinition[];
   numSteps: number | 'dynamic';
   numOperands: number | 'dynamic';
-  numResults: number;
+  numResults: number | 'dynamic';
   steps: readonly CompositionStep[];
 }>;
 
@@ -60,12 +60,11 @@ const assertIndex = (index: number, description: string): void => {
 const validatePlacementComposition = (operation: Operator, composition: PlacementComposition): void => {
   const hasDynamicSelector = composition.steps.some(({ selector }) => selector === 'dynamic');
   const isGeneric = composition.placementStrategy === 'generic';
-  const expectedSpecialOperator =
-    composition.placementStrategy === 'poseidon'
-      ? 'Poseidon'
-      : composition.placementStrategy === 'memory-load'
-        ? 'MemoryLoad'
-        : undefined;
+  const expectedSpecialOperator = {
+    poseidon: 'Poseidon',
+    'memory-load': 'MemoryLoad',
+    'memory-stream': 'MemoryStream',
+  }[composition.placementStrategy as Exclude<PlacementStrategy, 'generic'>];
   if (isGeneric && (composition.numSteps === 'dynamic' || hasDynamicSelector)) {
     throw new Error(
       `PlacementCompositionMapping: ${operation} cannot use generic placement with dynamic numSteps or selectors`,
@@ -88,7 +87,13 @@ const validatePlacementComposition = (operation: Operator, composition: Placemen
       throw new Error(`PlacementCompositionMapping: ${operation} numSteps must match its step count`);
     }
   }
-  assertIndex(composition.numResults, `${operation} numResults`);
+  if (composition.numResults === 'dynamic') {
+    if (composition.placementStrategy !== 'memory-stream') {
+      throw new Error(`PlacementCompositionMapping: ${operation} dynamic results require memory-stream placement`);
+    }
+  } else {
+    assertIndex(composition.numResults, `${operation} numResults`);
+  }
   if (composition.steps.length === 0) {
     throw new Error(`PlacementCompositionMapping: operation ${operation} requires at least one step`);
   }
@@ -97,6 +102,7 @@ const validatePlacementComposition = (operation: Operator, composition: Placemen
   const consumedIntermediates = new Set<number>();
   const consumedConstants = new Set<number>();
   const results = new Set<number>();
+  let dynamicResultCount = 0;
   let highestOperandIndex = -1;
 
   for (const [constantIndex, constant] of composition.constants.entries()) {
@@ -146,7 +152,21 @@ const validatePlacementComposition = (operation: Operator, composition: Placemen
         }
         intermediates.add(output.index);
       } else if (output.kind === 'result') {
+        if (output.index === 'dynamic') {
+          if (composition.placementStrategy !== 'memory-stream') {
+            throw new Error(
+              `PlacementCompositionMapping: ${operation} dynamic result routing requires memory-stream placement`,
+            );
+          }
+          dynamicResultCount++;
+          continue;
+        }
         assertIndex(output.index, `${operation} step ${stepIndex} result index`);
+        if (composition.numResults === 'dynamic') {
+          throw new Error(
+            `PlacementCompositionMapping: ${operation} must use dynamic result routing`,
+          );
+        }
         if (output.index >= composition.numResults) {
           throw new Error(`PlacementCompositionMapping: ${operation} step ${stepIndex} result index is out of range`);
         }
@@ -179,10 +199,16 @@ const validatePlacementComposition = (operation: Operator, composition: Placemen
     }
   }
 
-  for (let index = 0; index < composition.numResults; index++) {
-    if (!results.has(index)) {
-      throw new Error(`PlacementCompositionMapping: ${operation} result ${index} is not produced`);
+  if (composition.numResults !== 'dynamic') {
+    for (let index = 0; index < composition.numResults; index++) {
+      if (!results.has(index)) {
+        throw new Error(`PlacementCompositionMapping: ${operation} result ${index} is not produced`);
+      }
     }
+  } else if (dynamicResultCount !== 1) {
+    throw new Error(
+      `PlacementCompositionMapping: ${operation} requires exactly one dynamic result route`,
+    );
   }
 };
 
@@ -298,7 +324,7 @@ export const createPlacementCompositionMapping = (config: PlacementCompositionCo
     ...createAddMulModCompositionMappings(),
     ...createSelectorFreeCompositionMappings(config),
     createExpCompositionMapping(),
-    createMemoryLoadCompositionMapping(),
+    ...createMemoryLoadCompositionMappings(),
     createPoseidonCompositionMapping(config),
     createTransactionSignatureVerifyCompositionMapping(),
   ]);

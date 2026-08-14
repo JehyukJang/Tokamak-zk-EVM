@@ -4,15 +4,14 @@ import { DataPtFactory } from '../../synthesizer/dataStructure/dataPt.ts';
 import {
   DataPtDescription,
   DataPtType,
-  DataAliasGeometries,
   ReservedVariable,
   SynthesizerOpts,
   VARIABLE_DESCRIPTION,
   UINT32_DATA_PT_TYPE,
   type DataPt,
+  type CompositionOperands,
   type PlacementEntry,
   type Placements,
-  type PreparedComposition,
 } from '../types/index.ts';
 import {
   getDataPtTypeFromLogicalInterfaceType,
@@ -34,16 +33,17 @@ import type {
 import type { LogicalInterfacePort, ResolvedSubcircuitLibrary } from '../../subcircuit/libraryTypes.ts';
 import { FUNCTION_INPUT_LENGTH, POSEIDON_INPUTS } from 'tokamak-l2js';
 
-export type CompositionPreparationRequest =
-  | Readonly<{
-    operation: Exclude<Operator, 'MemoryLoad'>;
-    operands: DataPt[];
-  }>
-  | Readonly<{
-    operation: 'MemoryLoad';
-    dataAliasGeometries: DataAliasGeometries;
-    viewByteLength: number;
-  }>;
+type PlacementCandidate = Readonly<{
+  operation: Operator;
+  operands: CompositionOperands;
+  resultPts: readonly DataPt[];
+  placements: readonly PlacementEntry[];
+}>;
+
+const isNestedOperands = (
+  operands: CompositionOperands,
+): operands is readonly (readonly DataPt[])[] =>
+  operands.length > 0 && Array.isArray(operands[0]);
 
 export function placementEntryDeepCopy(placement: PlacementEntry): PlacementEntry {
   return {
@@ -61,30 +61,33 @@ export function placementsDeepCopy(placements: Placements): Placements {
   return copy
 }
 
-function _assertPreparedInput(
-  preparedComposition: PreparedComposition,
+function _assertCandidateInput(
+  candidate: PlacementCandidate,
   stepIndex: number,
   inputIndex: number,
   input: PlacementComposition['steps'][number]['inputs'][number],
-  preparedInput: DataPt,
+  candidateInput: DataPt,
   composition: PlacementComposition,
   intermediateOutPts: readonly (DataPt | undefined)[],
   basePlacementIndex: number,
 ): void {
   if (
-    !Number.isInteger(preparedInput.source)
-    || preparedInput.source < 0
-    || preparedInput.source >= basePlacementIndex + stepIndex
+    !Number.isInteger(candidateInput.source)
+    || candidateInput.source < 0
+    || candidateInput.source >= basePlacementIndex + stepIndex
   ) {
     throw new Error(
-      `Synthesizer: ${preparedComposition.operation} step ${stepIndex} input ${inputIndex} is not connected to an earlier placement output`,
+      `Synthesizer: ${candidate.operation} step ${stepIndex} input ${inputIndex} is not connected to an earlier placement output`,
     )
   }
 
   let expectedInput: DataPt | undefined
   switch (input.kind) {
     case 'operand':
-      expectedInput = preparedComposition.operands[input.index]
+      if (isNestedOperands(candidate.operands)) {
+        throw new Error(`Synthesizer: ${candidate.operation} generic operands must be flat`)
+      }
+      expectedInput = candidate.operands[input.index] as DataPt | undefined
       break
     case 'step-output':
       expectedInput = intermediateOutPts[input.index]
@@ -93,12 +96,12 @@ function _assertPreparedInput(
       const constant = composition.constants[input.index]
       if (
         constant === undefined
-        || preparedInput.source !== BUFFER_LIST.indexOf('EVM_IN')
-        || preparedInput.value !== constant.value
-        || !_hasSameDataPtType(preparedInput, constant.dataPtType)
+        || candidateInput.source !== BUFFER_LIST.indexOf('EVM_IN')
+        || candidateInput.value !== constant.value
+        || !_hasSameDataPtType(candidateInput, constant.dataPtType)
       ) {
         throw new Error(
-          `Synthesizer: ${preparedComposition.operation} step ${stepIndex} constant ${input.index} is invalid`,
+          `Synthesizer: ${candidate.operation} step ${stepIndex} constant ${input.index} is invalid`,
         )
       }
       return
@@ -106,29 +109,29 @@ function _assertPreparedInput(
     case 'selector':
       if (typeof composition.steps[stepIndex]!.selector !== 'bigint') {
         throw new Error(
-          `Synthesizer: ${preparedComposition.operation} step ${stepIndex} requires a static selector`,
+          `Synthesizer: ${candidate.operation} step ${stepIndex} requires a static selector`,
         )
       }
       if (
-        preparedInput.source !== BUFFER_LIST.indexOf('EVM_IN')
-        || preparedInput.value !== composition.steps[stepIndex]!.selector
+        candidateInput.source !== BUFFER_LIST.indexOf('EVM_IN')
+        || candidateInput.value !== composition.steps[stepIndex]!.selector
       ) {
         throw new Error(
-          `Synthesizer: ${preparedComposition.operation} step ${stepIndex} selector is invalid`,
+          `Synthesizer: ${candidate.operation} step ${stepIndex} selector is invalid`,
         )
       }
       return
   }
 
-  if (expectedInput === undefined || !_isSameWire(preparedInput, expectedInput)) {
+  if (expectedInput === undefined || !_isSameWire(candidateInput, expectedInput)) {
     throw new Error(
-      `Synthesizer: ${preparedComposition.operation} step ${stepIndex} input ${inputIndex} is not connected to its declared source`,
+      `Synthesizer: ${candidate.operation} step ${stepIndex} input ${inputIndex} is not connected to its declared source`,
     )
   }
 }
 
-function _assertPreparedWireCount(
-  operation: PreparedComposition['operation'],
+function _assertCandidateWireCount(
+  operation: Operator,
   subcircuit: SubcircuitNames,
   target: 'input' | 'output',
   dataPts: readonly DataPt[],
@@ -145,8 +148,8 @@ function _assertPreparedWireCount(
   }
 }
 
-function _assertPreparedPortTypes(
-  operation: PreparedComposition['operation'],
+function _assertCandidatePortTypes(
+  operation: Operator,
   subcircuit: SubcircuitNames,
   target: 'input' | 'output',
   dataPts: readonly DataPt[],
@@ -169,24 +172,31 @@ function _assertPreparedPortTypes(
   }
 }
 
-function _assertPreparedStepPorts(
-  operation: PreparedComposition['operation'],
+function _assertCandidateStepPorts(
+  operation: Operator,
   subcircuitName: SubcircuitNames,
-  preparedStep: PreparedComposition['steps'][number],
+  candidateStep: PlacementEntry,
   subcircuit: SubcircuitInfoByNameEntry,
 ): void {
-  _assertPreparedWireCount(
+  if (
+    candidateStep.name !== subcircuitName
+    || candidateStep.subcircuitId !== subcircuit.id
+    || candidateStep.usage !== operation
+  ) {
+    throw new Error(`Synthesizer: ${operation} has an invalid ${subcircuitName} candidate placement`)
+  }
+  _assertCandidateWireCount(
     operation,
     subcircuitName,
     'input',
-    preparedStep.inPts,
+    candidateStep.inPts,
     subcircuit.NInWires,
   )
-  _assertPreparedWireCount(
+  _assertCandidateWireCount(
     operation,
     subcircuitName,
     'output',
-    preparedStep.outPts,
+    candidateStep.outPts,
     subcircuit.NOutWires,
   )
   if (subcircuit.logicalInterface === undefined) {
@@ -194,18 +204,18 @@ function _assertPreparedStepPorts(
       `Synthesizer: ${subcircuitName} has no logical interface for ${operation}`,
     )
   }
-  _assertPreparedPortTypes(
+  _assertCandidatePortTypes(
     operation,
     subcircuitName,
     'input',
-    preparedStep.inPts,
+    candidateStep.inPts,
     subcircuit.logicalInterface.inputs,
   )
-  _assertPreparedPortTypes(
+  _assertCandidatePortTypes(
     operation,
     subcircuitName,
     'output',
-    preparedStep.outPts,
+    candidateStep.outPts,
     subcircuit.logicalInterface.outputs,
   )
 }
@@ -221,8 +231,8 @@ function _hasSameDataPtType(
   return dataPt.dataPtType === expectedType
 }
 
-function _assertStaticPreparedValue(
-  operation: PreparedComposition['operation'],
+function _assertStaticCandidateValue(
+  operation: Operator,
   description: string,
   dataPt: DataPt,
   expectedValue: bigint,
@@ -237,8 +247,8 @@ function _assertStaticPreparedValue(
   }
 }
 
-function _assertPreparedEarlierSource(
-  operation: PreparedComposition['operation'],
+function _assertCandidateEarlierSource(
+  operation: Operator,
   stepIndex: number,
   inputIndex: number,
   dataPt: DataPt,
@@ -427,53 +437,65 @@ export class PlacementManager {
     }
   }
 
-  public prepareComposition(
-    request: CompositionPreparationRequest,
-    basePlacementIndex: number,
-  ): PreparedComposition {
-    const composition = this._placementCompositionMapping[request.operation]
+  public placeComposition(
+    operation: Operator,
+    operands: CompositionOperands,
+  ): readonly DataPt[] {
+    const composition = this._placementCompositionMapping[operation]
+    const basePlacementIndex = this._placements.length
+    let candidate: PlacementCandidate
     switch (composition.placementStrategy) {
       case 'generic':
-        if (!('operands' in request)) {
-          throw new Error(`Synthesizer: ${request.operation} requires generic operands`)
-        }
-        return this._prepareGenericComposition(
-          request.operation,
-          request.operands,
-          basePlacementIndex,
-        )
+        candidate = this._buildGenericComposition(operation, operands, basePlacementIndex)
+        this._validateGenericCandidate(candidate, composition)
+        break
       case 'poseidon':
-        if (!('operands' in request)) {
-          throw new Error(`Synthesizer: ${request.operation} requires Poseidon operands`)
-        }
-        return this._preparePoseidonComposition(request.operands, basePlacementIndex)
+        candidate = this._buildPoseidonComposition(operands, basePlacementIndex)
+        this._validatePoseidonCandidate(candidate, composition)
+        break
       case 'memory-load':
-        if (!('dataAliasGeometries' in request)) {
-          throw new Error(`Synthesizer: ${request.operation} requires memory alias geometries`)
-        }
-        return this._prepareMemoryLoadComposition(
-          request.dataAliasGeometries,
-          request.viewByteLength,
-          basePlacementIndex,
-        )
+        candidate = this._buildMemoryLoadComposition(operands, basePlacementIndex)
+        this._validateMemoryCandidate(candidate, composition)
+        break
+      case 'memory-stream':
+        candidate = this._buildMemoryStreamComposition(operands, basePlacementIndex)
+        this._validateMemoryCandidate(candidate, composition)
+        break
+    }
+    for (const placement of candidate.placements) {
+      this._placements.push(placementEntryDeepCopy(placement))
+    }
+    return candidate.resultPts.map((dataPt) => DataPtFactory.deepCopy(dataPt))
+  }
+
+  private _createCandidateStep(
+    operation: Operator,
+    subcircuitName: SubcircuitNames,
+    inPts: readonly DataPt[],
+    outPts: readonly DataPt[],
+  ): PlacementEntry {
+    const subcircuit = this.subcircuitInfoByName.get(subcircuitName)
+    if (subcircuit === undefined) {
+      throw new Error(`Synthesizer: ${subcircuitName} subcircuit is not found for ${operation}. Check qap-compiler.`)
+    }
+    return {
+      name: subcircuitName,
+      usage: operation,
+      subcircuitId: subcircuit.id,
+      inPts: inPts.slice(),
+      outPts: outPts.slice(),
     }
   }
 
-  private _prepareMemoryLoadComposition(
-    dataAliasGeometries: DataAliasGeometries,
-    viewByteLength: number,
+  private _buildMemoryView(
+    operation: 'MemoryLoad' | 'MemoryStream',
+    operands: readonly DataPt[],
     basePlacementIndex: number,
-  ): PreparedComposition {
-    if (!Number.isInteger(viewByteLength) || viewByteLength < 1 || viewByteLength > 32) {
-      throw new Error(`Synthesizer: MemoryLoad has an invalid view byte length ${viewByteLength}`)
-    }
-    if (dataAliasGeometries.length === 0) {
-      throw new Error('Synthesizer: MemoryLoad requires at least one alias geometry')
-    }
-    const composition = this._placementCompositionMapping.MemoryLoad
+  ): readonly [readonly PlacementEntry[], DataPt] {
+    const composition = this._placementCompositionMapping[operation]
     const step = composition.steps[0]
-    if (step === undefined) {
-      throw new Error('Synthesizer: MemoryLoad composition has no placement step')
+    if (step === undefined || step.subcircuit !== 'MemoryLoadStep') {
+      throw new Error(`Synthesizer: ${operation} has no MemoryLoadStep template`)
     }
     const logicalInterface = this.subcircuitInfoByName.get(step.subcircuit)?.logicalInterface
     if (logicalInterface === undefined) {
@@ -485,78 +507,117 @@ export class PlacementManager {
     const outputTypes = logicalInterface.outputs.map(({ logicalType }) =>
       getDataPtTypeFromLogicalInterfaceType(logicalType),
     )
-    const [, shiftType, directionType, ownershipType, previousWordType,
-      previousOwnershipType, coverageType, finalModeType] = inputTypes
-    const [nextWordType, nextOwnershipType] = outputTypes
-    if (shiftType === undefined || directionType === undefined || ownershipType === undefined
+    const previousWordType = inputTypes[4]
+    const previousOwnershipType = inputTypes[5]
+    const nextWordType = outputTypes[0]
+    const nextOwnershipType = outputTypes[1]
+    if (logicalInterface.inputs.length !== 7 || logicalInterface.outputs.length !== 2
       || previousWordType === undefined || previousOwnershipType === undefined
-      || coverageType === undefined || finalModeType === undefined
       || nextWordType === undefined || nextOwnershipType === undefined) {
       throw new Error(`Synthesizer: ${step.subcircuit} logical interface is incomplete`)
     }
-    const dataAliasInfos = dataAliasGeometries.map((geometry) => Object.freeze({
-      dataPt: geometry.dataPt,
-      shiftPt: this.loadArbitraryStatic(BigInt(geometry.shiftMagnitude), shiftType, 'Memory-load byte shift magnitude'),
-      directionPt: this.loadArbitraryStatic(BigInt(geometry.direction), directionType, 'Memory-load shift direction'),
-      maskerPt: this.loadArbitraryStatic(geometry.ownershipMask, ownershipType, 'Memory-load byte ownership mask'),
-    }))
-    const expectedCoveragePt = this.loadArbitraryStatic(
-      dataAliasInfos.reduce((coverage, { maskerPt }) => coverage | maskerPt.value, 0n),
-      coverageType,
-      'Memory-load final byte ownership',
+    const zeroWordPt = this.loadArbitraryStatic(0n, previousWordType)
+    if (operands.length === 0) {
+      return [[], zeroWordPt]
+    }
+    const inputsPerFragment = 4
+    if (operands.length <= 1 || (operands.length - 1) % inputsPerFragment !== 0) {
+      throw new Error('Synthesizer: memory operands must contain four inputs per fragment and final coverage')
+    }
+    const expectedCoveragePt = operands.at(-1)!
+    const zeroOwnershipPt = this.loadArbitraryStatic(
+      0n,
+      previousOwnershipType,
     )
-    const zeroWordPt = this.loadArbitraryStatic(0n, previousWordType, 'Memory-load initial word')
-    const zeroOwnershipPt = this.loadArbitraryStatic(0n, previousOwnershipType, 'Memory-load initial byte ownership')
-    const operands: DataPt[] = []
-    const steps: PreparedComposition['steps'][number][] = []
+    const steps: PlacementEntry[] = []
     let previousWordPt = zeroWordPt
     let previousOwnershipPt = zeroOwnershipPt
-    for (const [stepIndex, info] of dataAliasInfos.entries()) {
-      const finalModePt = this.loadArbitraryStatic(
-        stepIndex === dataAliasInfos.length - 1 ? 1n : 0n,
-        finalModeType,
-        'Memory-load final-mode flag',
-      )
-      const inPts = [info.dataPt, info.shiftPt, info.directionPt, info.maskerPt,
-        previousWordPt, previousOwnershipPt, expectedCoveragePt, finalModePt]
+    const fragmentCount = (operands.length - 1) / inputsPerFragment
+    for (let stepIndex = 0; stepIndex < fragmentCount; stepIndex++) {
+      const operandOffset = stepIndex * inputsPerFragment
+      const fragmentPts = operands.slice(operandOffset, operandOffset + inputsPerFragment)
+      const inPts = [...fragmentPts, previousWordPt, previousOwnershipPt, expectedCoveragePt]
       const [nextWordValue, nextOwnershipValue] = this.subcircuitLibrary.calculateSubcircuitOutputValues(
-        'MemoryLoadStep', inPts.map(({ value }) => value),
+        'MemoryLoadStep',
+        inPts.map(({ value }) => value),
       )
       if (nextWordValue === undefined || nextOwnershipValue === undefined) {
         throw new Error('Synthesizer: MemoryLoadStep did not produce both outputs')
       }
+      const placementIndex = basePlacementIndex + steps.length
       const nextWordPt = DataPtFactory.create({
-        source: basePlacementIndex + stepIndex,
+        source: placementIndex,
         wireIndex: 0,
         dataPtType: nextWordType,
       }, nextWordValue)
       const nextOwnershipPt = DataPtFactory.create({
-        source: basePlacementIndex + stepIndex,
+        source: placementIndex,
         wireIndex: 1,
         dataPtType: nextOwnershipType,
       }, nextOwnershipValue)
-      steps.push({ inPts, outPts: [nextWordPt, nextOwnershipPt] })
-      operands.push(info.dataPt, info.shiftPt, info.directionPt, info.maskerPt)
+      steps.push(this._createCandidateStep(
+        operation,
+        step.subcircuit,
+        inPts,
+        [nextWordPt, nextOwnershipPt],
+      ))
       previousWordPt = nextWordPt
       previousOwnershipPt = nextOwnershipPt
     }
-    operands.push(expectedCoveragePt)
-    return { operation: 'MemoryLoad', operands, resultPts: [previousWordPt], steps }
+    return [steps, previousWordPt]
   }
 
-  private _prepareGenericComposition(
-    operation: Operator,
-    operands: DataPt[],
+  private _buildMemoryLoadComposition(
+    operands: CompositionOperands,
     basePlacementIndex: number,
-  ): PreparedComposition {
+  ): PlacementCandidate {
+    if (isNestedOperands(operands)) {
+      throw new Error('Synthesizer: MemoryLoad requires flat operands')
+    }
+    const [steps, resultPt] = this._buildMemoryView('MemoryLoad', operands, basePlacementIndex)
+    return { operation: 'MemoryLoad', operands, resultPts: [resultPt], placements: steps }
+  }
+
+  private _buildMemoryStreamComposition(
+    operands: CompositionOperands,
+    basePlacementIndex: number,
+  ): PlacementCandidate {
+    const views = operands as readonly (readonly DataPt[])[]
+    if (views.some((view) => !Array.isArray(view))) {
+      throw new Error('Synthesizer: MemoryStream requires view-grouped operands')
+    }
+    const steps: PlacementEntry[] = []
+    const resultPts: DataPt[] = []
+    for (const view of views) {
+      const [viewSteps, resultPt] = this._buildMemoryView(
+        'MemoryStream',
+        view,
+        basePlacementIndex + steps.length,
+      )
+      steps.push(...viewSteps)
+      resultPts.push(resultPt)
+    }
+    return { operation: 'MemoryStream', operands: views, resultPts, placements: steps }
+  }
+
+  private _buildGenericComposition(
+    operation: Operator,
+    compositionOperands: CompositionOperands,
+    basePlacementIndex: number,
+  ): PlacementCandidate {
+    if (isNestedOperands(compositionOperands)) {
+      throw new Error(`Synthesizer: ${operation} requires flat operands`)
+    }
+    const operands = compositionOperands as readonly DataPt[]
     const composition = this._placementCompositionMapping[operation]
     if (composition.placementStrategy !== 'generic' || composition.numSteps === 'dynamic'
-      || composition.numOperands === 'dynamic' || operands.length !== composition.numOperands) {
+      || composition.numOperands === 'dynamic' || composition.numResults === 'dynamic'
+      || operands.length !== composition.numOperands) {
       throw new Error(`Synthesizer: ${operation} has an invalid fixed generic composition`)
     }
     const intermediateOutPts: Array<DataPt | undefined> = []
     const resultPts: Array<DataPt | undefined> = Array(composition.numResults)
-    const steps: Array<PreparedComposition['steps'][number]> = []
+    const steps: PlacementEntry[] = []
     for (const [stepIndex, step] of composition.steps.entries()) {
       const inPts: DataPt[] = []
       for (const input of step.inputs) {
@@ -621,20 +682,29 @@ export class PlacementManager {
           throw new Error(`Synthesizer: ${operation} step ${stepIndex} output ${outputIndex} is unavailable`)
         }
         if (output.kind === 'step-output') intermediateOutPts[output.index] = outPt
-        else if (output.kind === 'result') resultPts[output.index] = outPt
+        else if (output.kind === 'result') {
+          if (output.index === 'dynamic') {
+            throw new Error(`Synthesizer: ${operation} generic composition has a dynamic result`)
+          }
+          resultPts[output.index] = outPt
+        }
       }
-      steps.push({ inPts, outPts })
+      steps.push(this._createCandidateStep(operation, step.subcircuit, inPts, outPts))
     }
     if (resultPts.some((resultPt) => resultPt === undefined)) {
       throw new Error(`Synthesizer: ${operation} did not produce every declared result`)
     }
-    return { operation, operands, resultPts: resultPts as DataPt[], steps }
+    return { operation, operands, resultPts: resultPts as DataPt[], placements: steps }
   }
 
-  private _preparePoseidonComposition(
-    operands: DataPt[],
+  private _buildPoseidonComposition(
+    compositionOperands: CompositionOperands,
     basePlacementIndex: number,
-  ): PreparedComposition {
+  ): PlacementCandidate {
+    if (isNestedOperands(compositionOperands)) {
+      throw new Error('Synthesizer: Poseidon requires flat operands')
+    }
+    const operands = compositionOperands as readonly DataPt[]
     const composition = this._placementCompositionMapping.Poseidon
     const step = composition.steps[0]
     if (composition.placementStrategy !== 'poseidon' || composition.numSteps !== 'dynamic'
@@ -660,8 +730,8 @@ export class PlacementManager {
     const valueType = getDataPtTypeFromLogicalInterfaceType(valuePort.logicalType)
     const resultType = getDataPtTypeFromLogicalInterfaceType(resultPort.logicalType)
     const zeroPt = this.loadArbitraryStatic(0n, valueType)
-    const steps: Array<PreparedComposition['steps'][number]> = []
-    const prepareNormalized = (inputPts: DataPt[]): DataPt => {
+    const steps: PlacementEntry[] = []
+    const prepareNormalized = (inputPts: readonly DataPt[]): DataPt => {
       if (inputPts.length < POSEIDON_INPUTS || inputPts.length > inputLimit) {
         throw new Error(`Synthesizer: Poseidon expected between ${POSEIDON_INPUTS} and ${inputLimit} inputs, but got ${inputPts.length}`)
       }
@@ -689,7 +759,7 @@ export class PlacementManager {
         wireIndex: 0,
         dataPtType: resultType,
       }, values[0]!)
-      steps.push({ inPts: finalInPts, outPts: [outPt] })
+      steps.push(this._createCandidateStep('Poseidon', step.subcircuit, finalInPts, [outPt]))
       return outPt
     }
     let chainInputs = operands.slice()
@@ -705,7 +775,7 @@ export class PlacementManager {
       ]
     }
     const resultPt = prepareNormalized(chainInputs)
-    return { operation: 'Poseidon', operands, resultPts: [resultPt], steps }
+    return { operation: 'Poseidon', operands, resultPts: [resultPt], placements: steps }
   }
 
   private _getLogOutPlacement(): PlacementEntry {
@@ -772,58 +842,16 @@ export class PlacementManager {
     this._place(subcircuit.name, inPts, outPts, usage)
   }
 
-  public placeComposition(preparedComposition: PreparedComposition): void {
-    const composition = this._placementCompositionMapping[preparedComposition.operation]
-    if (composition.placementStrategy === 'generic') {
-      this._validatePreparedGenericComposition(preparedComposition, composition)
-      for (const [stepIndex, step] of composition.steps.entries()) {
-        const preparedStep = preparedComposition.steps[stepIndex]!
-        this._place(
-          step.subcircuit,
-          preparedStep.inPts.slice(),
-          preparedStep.outPts.slice(),
-          preparedComposition.operation,
-        )
-      }
-      return
-    }
-    if (composition.placementStrategy === 'poseidon') {
-      this._validatePreparedPoseidonComposition(preparedComposition, composition)
-      const step = composition.steps[0]!
-      for (const preparedStep of preparedComposition.steps) {
-        this._place(
-          step.subcircuit,
-          preparedStep.inPts.slice(),
-          preparedStep.outPts.slice(),
-          preparedComposition.operation,
-        )
-      }
-      return
-    }
-    if (composition.placementStrategy === 'memory-load') {
-      this._validatePreparedMemoryLoadComposition(preparedComposition, composition)
-      const step = composition.steps[0]!
-      for (const preparedStep of preparedComposition.steps) {
-        this._place(
-          step.subcircuit,
-          preparedStep.inPts.slice(),
-          preparedStep.outPts.slice(),
-          preparedComposition.operation,
-        )
-      }
-      return
-    }
-    throw new Error(
-      `Synthesizer: ${preparedComposition.operation} requires ${composition.placementStrategy} placement preparation`,
-    )
-  }
-
-  private _validatePreparedPoseidonComposition(
-    preparedComposition: PreparedComposition,
+  private _validatePoseidonCandidate(
+    candidate: PlacementCandidate,
     composition: PlacementComposition,
   ): void {
+    if (isNestedOperands(candidate.operands)) {
+      throw new Error('Synthesizer: Poseidon operands must be flat')
+    }
+    const operands = candidate.operands as readonly DataPt[]
     const step = composition.steps[0]!
-    if (preparedComposition.resultPts.length !== 1) {
+    if (candidate.resultPts.length !== 1) {
       throw new Error('Synthesizer: Poseidon must produce exactly one result')
     }
     const subcircuit = this.subcircuitInfoByName.get(step.subcircuit)
@@ -833,7 +861,7 @@ export class PlacementManager {
     const inputLimit = step.inputs.length - 1
 
     const basePlacementIndex = this._placements.length
-    let chainInputs: Array<DataPt | undefined> = preparedComposition.operands.slice()
+    let chainInputs: Array<DataPt | undefined> = operands.slice()
     if (chainInputs.length === 0) {
       chainInputs = [undefined, undefined]
     } else if (chainInputs.length === 1) {
@@ -843,8 +871,8 @@ export class PlacementManager {
     let stepIndex = 0
     let resultPt: DataPt
     while (chainInputs.length > inputLimit) {
-      resultPt = this._validatePreparedPoseidonStep(
-        preparedComposition,
+      resultPt = this._validatePoseidonCandidateStep(
+        candidate,
         step,
         subcircuit,
         stepIndex,
@@ -854,8 +882,8 @@ export class PlacementManager {
       chainInputs = [resultPt, ...chainInputs.slice(inputLimit)]
       stepIndex++
     }
-    resultPt = this._validatePreparedPoseidonStep(
-      preparedComposition,
+    resultPt = this._validatePoseidonCandidateStep(
+      candidate,
       step,
       subcircuit,
       stepIndex,
@@ -863,35 +891,39 @@ export class PlacementManager {
       basePlacementIndex,
     )
     stepIndex++
-    if (preparedComposition.steps.length !== stepIndex) {
+    if (candidate.placements.length !== stepIndex) {
       throw new Error(
-        `Synthesizer: Poseidon expected ${stepIndex} placement steps, but got ${preparedComposition.steps.length}`,
+        `Synthesizer: Poseidon expected ${stepIndex} placement steps, but got ${candidate.placements.length}`,
       )
     }
-    if (!_isSameWire(preparedComposition.resultPts[0]!, resultPt)) {
+    if (!_isSameWire(candidate.resultPts[0]!, resultPt)) {
       throw new Error('Synthesizer: Poseidon result is not connected to its final placement')
     }
   }
 
-  private _validatePreparedMemoryLoadComposition(
-    preparedComposition: PreparedComposition,
+  private _validateMemoryCandidate(
+    candidate: PlacementCandidate,
     composition: PlacementComposition,
   ): void {
     const step = composition.steps[0]!
     const inputsPerFragment = 4
-    if (preparedComposition.resultPts.length !== 1) {
-      throw new Error('Synthesizer: MemoryLoad must produce exactly one result')
+    let views: readonly (readonly DataPt[])[]
+    if (candidate.operation === 'MemoryLoad') {
+      if (isNestedOperands(candidate.operands)) {
+        throw new Error('Synthesizer: MemoryLoad operands must be flat')
+      }
+      views = [candidate.operands as readonly DataPt[]]
+    } else if (candidate.operation === 'MemoryStream') {
+      views = candidate.operands as readonly (readonly DataPt[])[]
+      if (views.some((view) => !Array.isArray(view))) {
+        throw new Error('Synthesizer: MemoryStream operands must preserve view boundaries')
+      }
+    } else {
+      throw new Error(`Synthesizer: ${candidate.operation} is not a memory composition`)
     }
-    if (
-      preparedComposition.operands.length <= 1
-      || (preparedComposition.operands.length - 1) % inputsPerFragment !== 0
-    ) {
-      throw new Error('Synthesizer: MemoryLoad operands must contain one or more four-input fragments and final coverage')
-    }
-    const fragmentCount = (preparedComposition.operands.length - 1) / inputsPerFragment
-    if (preparedComposition.steps.length !== fragmentCount) {
+    if (candidate.resultPts.length !== views.length) {
       throw new Error(
-        `Synthesizer: MemoryLoad expected ${fragmentCount} placement steps, but got ${preparedComposition.steps.length}`,
+        `Synthesizer: ${candidate.operation} expected ${views.length} results, but got ${candidate.resultPts.length}`,
       )
     }
     const subcircuit = this.subcircuitInfoByName.get(step.subcircuit)
@@ -900,126 +932,140 @@ export class PlacementManager {
     }
 
     const basePlacementIndex = this._placements.length
-    const expectedCoveragePt = preparedComposition.operands.at(-1)!
-    let accumulatedCoverage = 0n
-    let previousWordPt: DataPt | undefined
-    let previousOwnershipPt: DataPt | undefined
-
-    for (let stepIndex = 0; stepIndex < fragmentCount; stepIndex++) {
-      const preparedStep = preparedComposition.steps[stepIndex]!
-      _assertPreparedStepPorts(
-        preparedComposition.operation,
-        step.subcircuit,
-        preparedStep,
-        subcircuit,
-      )
-      if (
-        preparedStep.inPts.length !== step.inputs.length
-        || preparedStep.outPts.length !== step.outputs.length
-      ) {
-        throw new Error(`Synthesizer: MemoryLoad step ${stepIndex} has an invalid port count`)
+    let candidateStepIndex = 0
+    for (const [viewIndex, view] of views.entries()) {
+      const resultPt = candidate.resultPts[viewIndex]!
+      if (view.length === 0) {
+        _assertStaticCandidateValue(candidate.operation, `view ${viewIndex} zero result`, resultPt, 0n)
+        continue
       }
+      if (view.length <= 1 || (view.length - 1) % inputsPerFragment !== 0) {
+        throw new Error(`Synthesizer: ${candidate.operation} view ${viewIndex} has invalid operands`)
+      }
+      const fragmentCount = (view.length - 1) / inputsPerFragment
+      const expectedCoveragePt = view.at(-1)!
+      let accumulatedCoverage = 0n
+      let previousWordPt: DataPt | undefined
+      let previousOwnershipPt: DataPt | undefined
 
-      const operandOffset = stepIndex * inputsPerFragment
-      for (let inputIndex = 0; inputIndex < inputsPerFragment; inputIndex++) {
-        const input = preparedStep.inPts[inputIndex]!
-        if (!_isSameWire(input, preparedComposition.operands[operandOffset + inputIndex]!)) {
-          throw new Error(
-            `Synthesizer: MemoryLoad step ${stepIndex} fragment input ${inputIndex} is not connected to its declared operand`,
+      for (let fragmentIndex = 0; fragmentIndex < fragmentCount; fragmentIndex++) {
+        const candidateStep = candidate.placements[candidateStepIndex]
+        if (candidateStep === undefined) {
+          throw new Error(`Synthesizer: ${candidate.operation} view ${viewIndex} is missing a step`)
+        }
+        _assertCandidateStepPorts(
+          candidate.operation,
+          step.subcircuit,
+          candidateStep,
+          subcircuit,
+        )
+        if (
+          candidateStep.inPts.length !== step.inputs.length
+          || candidateStep.outPts.length !== step.outputs.length
+        ) {
+          throw new Error(`Synthesizer: ${candidate.operation} step ${candidateStepIndex} has an invalid port count`)
+        }
+
+        const operandOffset = fragmentIndex * inputsPerFragment
+        for (let inputIndex = 0; inputIndex < inputsPerFragment; inputIndex++) {
+          const input = candidateStep.inPts[inputIndex]!
+          if (!_isSameWire(input, view[operandOffset + inputIndex]!)) {
+            throw new Error(
+              `Synthesizer: ${candidate.operation} step ${candidateStepIndex} fragment input ${inputIndex} is not connected to its declared operand`,
+            )
+          }
+          _assertCandidateEarlierSource(
+            candidate.operation,
+            candidateStepIndex,
+            inputIndex,
+            input,
+            basePlacementIndex,
           )
         }
-        _assertPreparedEarlierSource(
-          preparedComposition.operation,
-          stepIndex,
-          inputIndex,
-          input,
-          basePlacementIndex,
-        )
+
+        const [sourceWordPt, shiftPt, directionPt, ownershipPt] = candidateStep.inPts
+        if (sourceWordPt === undefined || shiftPt === undefined || directionPt === undefined || ownershipPt === undefined) {
+          throw new Error(`Synthesizer: ${candidate.operation} step ${candidateStepIndex} is missing fragment inputs`)
+        }
+        _assertStaticCandidateValue(candidate.operation, `step ${candidateStepIndex} byte shift`, shiftPt, shiftPt.value)
+        _assertStaticCandidateValue(candidate.operation, `step ${candidateStepIndex} shift direction`, directionPt, directionPt.value)
+        _assertStaticCandidateValue(candidate.operation, `step ${candidateStepIndex} byte ownership`, ownershipPt, ownershipPt.value)
+        accumulatedCoverage |= ownershipPt.value
+
+        const previousWordInput = candidateStep.inPts[4]!
+        const previousOwnershipInput = candidateStep.inPts[5]!
+        if (fragmentIndex === 0) {
+          _assertStaticCandidateValue(candidate.operation, `view ${viewIndex} initial word`, previousWordInput, 0n)
+          _assertStaticCandidateValue(candidate.operation, `view ${viewIndex} initial ownership`, previousOwnershipInput, 0n)
+        } else if (
+          previousWordPt === undefined
+          || previousOwnershipPt === undefined
+          || !_isSameWire(previousWordInput, previousWordPt)
+          || !_isSameWire(previousOwnershipInput, previousOwnershipPt)
+        ) {
+          throw new Error(`Synthesizer: ${candidate.operation} step ${candidateStepIndex} is not connected to the previous step`)
+        }
+        if (!_isSameWire(candidateStep.inPts[6]!, expectedCoveragePt)) {
+          throw new Error(`Synthesizer: ${candidate.operation} step ${candidateStepIndex} coverage is inconsistent`)
+        }
+
+        const nextWordPt = candidateStep.outPts[0]!
+        const nextOwnershipPt = candidateStep.outPts[1]!
+        if (
+          nextWordPt.source !== basePlacementIndex + candidateStepIndex
+          || nextWordPt.wireIndex !== 0
+          || nextOwnershipPt.source !== basePlacementIndex + candidateStepIndex
+          || nextOwnershipPt.wireIndex !== 1
+        ) {
+          throw new Error(`Synthesizer: ${candidate.operation} step ${candidateStepIndex} has invalid output sources`)
+        }
+        previousWordPt = nextWordPt
+        previousOwnershipPt = nextOwnershipPt
+        candidateStepIndex++
       }
 
-      const [sourceWordPt, shiftPt, directionPt, ownershipPt] = preparedStep.inPts
-      _assertStaticPreparedValue(preparedComposition.operation, `step ${stepIndex} byte shift`, shiftPt!, shiftPt!.value)
-      _assertStaticPreparedValue(preparedComposition.operation, `step ${stepIndex} shift direction`, directionPt!, directionPt!.value)
-      _assertStaticPreparedValue(preparedComposition.operation, `step ${stepIndex} byte ownership`, ownershipPt!, ownershipPt!.value)
-      if (sourceWordPt === undefined || shiftPt === undefined || directionPt === undefined || ownershipPt === undefined) {
-        throw new Error(`Synthesizer: MemoryLoad step ${stepIndex} is missing fragment inputs`)
-      }
-
-      accumulatedCoverage |= ownershipPt.value
-      const previousWordInput = preparedStep.inPts[4]!
-      const previousOwnershipInput = preparedStep.inPts[5]!
-      if (stepIndex === 0) {
-        _assertStaticPreparedValue(preparedComposition.operation, 'initial word', previousWordInput, 0n)
-        _assertStaticPreparedValue(preparedComposition.operation, 'initial byte ownership', previousOwnershipInput, 0n)
-      } else if (
-        previousWordPt === undefined
-        || previousOwnershipPt === undefined
-        || !_isSameWire(previousWordInput, previousWordPt)
-        || !_isSameWire(previousOwnershipInput, previousOwnershipPt)
-      ) {
-        throw new Error(`Synthesizer: MemoryLoad step ${stepIndex} is not connected to the previous step`)
-      }
-
-      if (!_isSameWire(preparedStep.inPts[6]!, expectedCoveragePt)) {
-        throw new Error(`Synthesizer: MemoryLoad step ${stepIndex} final coverage is inconsistent`)
-      }
-      _assertStaticPreparedValue(
-        preparedComposition.operation,
-        `step ${stepIndex} final-mode flag`,
-        preparedStep.inPts[7]!,
-        stepIndex === fragmentCount - 1 ? 1n : 0n,
+      _assertStaticCandidateValue(
+        candidate.operation,
+        `view ${viewIndex} final byte ownership`,
+        expectedCoveragePt,
+        accumulatedCoverage,
       )
-
-      const nextWordPt = preparedStep.outPts[0]!
-      const nextOwnershipPt = preparedStep.outPts[1]!
-      if (
-        nextWordPt.source !== basePlacementIndex + stepIndex
-        || nextWordPt.wireIndex !== 0
-        || nextOwnershipPt.source !== basePlacementIndex + stepIndex
-        || nextOwnershipPt.wireIndex !== 1
-      ) {
-        throw new Error(`Synthesizer: MemoryLoad step ${stepIndex} has invalid output sources`)
+      if (previousWordPt === undefined || !_isSameWire(resultPt, previousWordPt)) {
+        throw new Error(`Synthesizer: ${candidate.operation} view ${viewIndex} result is not connected to its final placement`)
       }
-      previousWordPt = nextWordPt
-      previousOwnershipPt = nextOwnershipPt
     }
-
-    _assertStaticPreparedValue(
-      preparedComposition.operation,
-      'final byte ownership',
-      expectedCoveragePt,
-      accumulatedCoverage,
-    )
-    if (previousWordPt === undefined || !_isSameWire(preparedComposition.resultPts[0]!, previousWordPt)) {
-      throw new Error('Synthesizer: MemoryLoad result is not connected to its final placement')
+    if (candidateStepIndex !== candidate.placements.length) {
+      throw new Error(
+        `Synthesizer: ${candidate.operation} has ${candidate.placements.length - candidateStepIndex} unexpected steps`,
+      )
     }
   }
 
-  private _validatePreparedPoseidonStep(
-    preparedComposition: PreparedComposition,
+  private _validatePoseidonCandidateStep(
+    candidate: PlacementCandidate,
     step: PlacementComposition['steps'][number],
     subcircuit: SubcircuitInfoByNameEntry,
     stepIndex: number,
     expectedPayload: readonly (DataPt | undefined)[],
     basePlacementIndex: number,
   ): DataPt {
-    const preparedStep = preparedComposition.steps[stepIndex]
-    if (preparedStep === undefined) {
+    const candidateStep = candidate.placements[stepIndex]
+    if (candidateStep === undefined) {
       throw new Error(`Synthesizer: Poseidon step ${stepIndex} is unavailable`)
     }
-    _assertPreparedStepPorts(
-      preparedComposition.operation,
+    _assertCandidateStepPorts(
+      candidate.operation,
       step.subcircuit,
-      preparedStep,
+      candidateStep,
       subcircuit,
     )
     if (
-      preparedStep.inPts.length !== step.inputs.length
-      || preparedStep.outPts.length !== step.outputs.length
+      candidateStep.inPts.length !== step.inputs.length
+      || candidateStep.outPts.length !== step.outputs.length
     ) {
       throw new Error(`Synthesizer: Poseidon step ${stepIndex} has an invalid port count`)
     }
-    const selector = preparedStep.inPts[0]!
+    const selector = candidateStep.inPts[0]!
     const expectedSelector = 1n << BigInt(expectedPayload.length - POSEIDON_INPUTS)
     if (
       selector.source !== BUFFER_LIST.indexOf('EVM_IN')
@@ -1029,7 +1075,7 @@ export class PlacementManager {
     }
 
     for (let payloadIndex = 0; payloadIndex < step.inputs.length - 1; payloadIndex++) {
-      const input = preparedStep.inPts[payloadIndex + 1]!
+      const input = candidateStep.inPts[payloadIndex + 1]!
       if (
         !Number.isInteger(input.source)
         || input.source < 0
@@ -1051,7 +1097,7 @@ export class PlacementManager {
       }
     }
 
-    const output = preparedStep.outPts[0]!
+    const output = candidateStep.outPts[0]!
     if (
       output.source !== basePlacementIndex + stepIndex
       || output.wireIndex !== 0
@@ -1061,31 +1107,33 @@ export class PlacementManager {
     return output
   }
 
-  private _validatePreparedGenericComposition(
-    preparedComposition: PreparedComposition,
+  private _validateGenericCandidate(
+    candidate: PlacementCandidate,
     composition: PlacementComposition,
   ): void {
     if (
       composition.numSteps === 'dynamic'
       || composition.numOperands === 'dynamic'
+      || composition.numResults === 'dynamic'
+      || isNestedOperands(candidate.operands)
     ) {
       throw new Error(
-        `Synthesizer: ${preparedComposition.operation} generic placement requires fixed composition sizes`,
+        `Synthesizer: ${candidate.operation} generic placement requires fixed composition sizes`,
       )
     }
-    if (preparedComposition.steps.length !== composition.numSteps) {
+    if (candidate.placements.length !== composition.numSteps) {
       throw new Error(
-        `Synthesizer: ${preparedComposition.operation} expected ${composition.numSteps} placement steps, but got ${preparedComposition.steps.length}`,
+        `Synthesizer: ${candidate.operation} expected ${composition.numSteps} placement steps, but got ${candidate.placements.length}`,
       )
     }
-    if (preparedComposition.operands.length !== composition.numOperands) {
+    if (candidate.operands.length !== composition.numOperands) {
       throw new Error(
-        `Synthesizer: ${preparedComposition.operation} expected ${composition.numOperands} operands, but got ${preparedComposition.operands.length}`,
+        `Synthesizer: ${candidate.operation} expected ${composition.numOperands} operands, but got ${candidate.operands.length}`,
       )
     }
-    if (preparedComposition.resultPts.length !== composition.numResults) {
+    if (candidate.resultPts.length !== composition.numResults) {
       throw new Error(
-        `Synthesizer: ${preparedComposition.operation} expected ${composition.numResults} results, but got ${preparedComposition.resultPts.length}`,
+        `Synthesizer: ${candidate.operation} expected ${composition.numResults} results, but got ${candidate.resultPts.length}`,
       )
     }
 
@@ -1094,37 +1142,37 @@ export class PlacementManager {
     const resultOutPts: Array<DataPt | undefined> = Array(composition.numResults)
 
     for (const [stepIndex, step] of composition.steps.entries()) {
-      const preparedStep = preparedComposition.steps[stepIndex]!
+      const candidateStep = candidate.placements[stepIndex]!
       const subcircuit = this.subcircuitInfoByName.get(step.subcircuit)
       if (subcircuit === undefined) {
         throw new Error(
-          `Synthesizer: ${step.subcircuit} subcircuit is not found for ${preparedComposition.operation}. Check qap-compiler.`,
+          `Synthesizer: ${step.subcircuit} subcircuit is not found for ${candidate.operation}. Check qap-compiler.`,
         )
       }
-      _assertPreparedStepPorts(
-        preparedComposition.operation,
+      _assertCandidateStepPorts(
+        candidate.operation,
         step.subcircuit,
-        preparedStep,
+        candidateStep,
         subcircuit,
       )
-      if (preparedStep.inPts.length !== step.inputs.length) {
+      if (candidateStep.inPts.length !== step.inputs.length) {
         throw new Error(
-          `Synthesizer: ${preparedComposition.operation} step ${stepIndex} expected ${step.inputs.length} inputs, but got ${preparedStep.inPts.length}`,
+          `Synthesizer: ${candidate.operation} step ${stepIndex} expected ${step.inputs.length} inputs, but got ${candidateStep.inPts.length}`,
         )
       }
-      if (preparedStep.outPts.length !== step.outputs.length) {
+      if (candidateStep.outPts.length !== step.outputs.length) {
         throw new Error(
-          `Synthesizer: ${preparedComposition.operation} step ${stepIndex} expected ${step.outputs.length} outputs, but got ${preparedStep.outPts.length}`,
+          `Synthesizer: ${candidate.operation} step ${stepIndex} expected ${step.outputs.length} outputs, but got ${candidateStep.outPts.length}`,
         )
       }
 
       for (const [inputIndex, input] of step.inputs.entries()) {
-        _assertPreparedInput(
-          preparedComposition,
+        _assertCandidateInput(
+          candidate,
           stepIndex,
           inputIndex,
           input,
-          preparedStep.inPts[inputIndex]!,
+          candidateStep.inPts[inputIndex]!,
           composition,
           intermediateOutPts,
           basePlacementIndex,
@@ -1132,28 +1180,31 @@ export class PlacementManager {
       }
 
       for (const [outputIndex, output] of step.outputs.entries()) {
-        const preparedOutput = preparedStep.outPts[outputIndex]!
+        const candidateOutput = candidateStep.outPts[outputIndex]!
         if (
-          preparedOutput.source !== basePlacementIndex + stepIndex
-          || preparedOutput.wireIndex !== outputIndex
+          candidateOutput.source !== basePlacementIndex + stepIndex
+          || candidateOutput.wireIndex !== outputIndex
         ) {
           throw new Error(
-            `Synthesizer: ${preparedComposition.operation} step ${stepIndex} output ${outputIndex} has an invalid placement source`,
+            `Synthesizer: ${candidate.operation} step ${stepIndex} output ${outputIndex} has an invalid placement source`,
           )
         }
         if (output.kind === 'step-output') {
-          intermediateOutPts[output.index] = preparedOutput
+          intermediateOutPts[output.index] = candidateOutput
         } else if (output.kind === 'result') {
-          resultOutPts[output.index] = preparedOutput
+          if (output.index === 'dynamic') {
+            throw new Error(`Synthesizer: ${candidate.operation} generic result cannot be dynamic`)
+          }
+          resultOutPts[output.index] = candidateOutput
         }
       }
     }
 
-    for (const [resultIndex, resultPt] of preparedComposition.resultPts.entries()) {
+    for (const [resultIndex, resultPt] of candidate.resultPts.entries()) {
       const producedResult = resultOutPts[resultIndex]
       if (producedResult === undefined || !_isSameWire(resultPt, producedResult)) {
         throw new Error(
-          `Synthesizer: ${preparedComposition.operation} result ${resultIndex} is not connected to its declared producer`,
+          `Synthesizer: ${candidate.operation} result ${resultIndex} is not connected to its declared producer`,
         )
       }
     }
