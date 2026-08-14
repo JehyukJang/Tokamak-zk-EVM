@@ -295,7 +295,7 @@ input and intermediate result as a separate public value.
 | `DecToBit` | Decomposes one canonical 256-bit word into 256 LSB-first bits | 256 + 2 = 258 | 2 inputs: one word; 256 bit outputs | Locally sound. It supplies exponent or scalar bits to composed exponentiation chains. |
 | `SubExp` | One LSB-first square-and-multiply step for EVM `EXP` | 794 + 0 = 794 | 5 inputs: accumulator word, base-power word, and one bit; 4 outputs: next accumulator and base-power words | Composition-dependent; never use independently. It canonicalizes both input words and constrains the conditional factor, truncated square, and truncated accumulator product modulo `2^256`. Its bit must be the exact corresponding output of `DecToBit`. Both output words must feed the exact next `SubExp`; after the last step, the accumulator must feed `CheckBus256`. The unused final base-power word is discarded. |
 | `CheckBus256` | Canonicalizes and passes through one 256-bit word | 256 + 2 = 258 | 2 inputs: one word; 2 outputs: the exact checked word | Locally sound. In the EVM `EXP` composition it is the mandatory terminal consumer of the final `SubExp` accumulator and supplies the operation result. |
-| `MemoryLoadStep` | Applies one byte-aligned fragment to a running 256-bit memory view and its packed byte-ownership state | 678 + 1 = 679 | 9 inputs: source word, byte shift, direction, incoming ownership, previous word, previous ownership, and expected coverage; 3 outputs: next word and ownership | Composition-dependent; never use independently. Source limbs, shift metadata, all ownership and coverage masks, byte shift, masking, disjointness, and the real-ownership subset relation are constrained locally. The first placement must receive an exact zero state, and every later placement must receive the previous placement's exact three outputs. |
+| `MemoryViewStep` | Applies one byte-aligned fragment to a running 256-bit memory view and its packed byte-ownership state | 614 + 1 = 615 | 7 inputs: source word, encoded byte shift, incoming ownership, previous word, and previous ownership; 3 outputs: next word and ownership | Composition-dependent; never use independently. Source limbs, the six-bit encoded shift, ownership masks, byte shifting, masking, and disjointness are constrained locally. The first placement must receive an exact zero state, and every later placement must receive the previous placement's exact three outputs. |
 | `Poseidon` | Selector-chosen chain of up to four two-input Poseidon compressions over `uint(256)` words; current batch size is 4 | 964 + 0 = 964 | 11 inputs: selector and five lower-first `uint(256)` words; 2 outputs: one lower-first `uint(256)` word | Composition-dependent for exact limb representation. The local hash relation is `PoseidonFr(x mod Fr)` for each input word and intentionally does not require `x < Fr`; connected producers or the public-boundary verifier must constrain each physical limb to its declared width. |
 | `FrToLimbsPair` | Converts two independent native BLS12-381 scalar-field values to lower-first two-limb EVM words | 1,022 + 2 = 1,024 | 2 native-field inputs; 4 outputs: two lower-first limb pairs | Locally sound as two canonical conversions. Each input is constrained to its unique integer representation `0 ≤ x < Fr`; the circuit is general-purpose and is not part of the TSV placement catalog. |
 | `TransactionSignaturePoseidonBatch4` | Performs either four consecutive native-field Poseidon compressions or one independent compression plus a three-compression chain | 950 + 0 = 950 | 7 inputs: mode and six native field wires; 2 native-field outputs | Composition-dependent. Mode is locally Boolean, but the composition must assign the approved structural mode and connect every chain state exactly. |
@@ -487,37 +487,39 @@ contract, two-limb selector, and two-limb origin views. These diagnostic
 composition counts describe qap-local testing, not the final public indices of
 an enabled Synthesizer build.
 
-### Memory-load composition
+### Memory-view composition
 
-A memory-to-stack reconstruction places one `MemoryLoadStep` for every source
+A memory-view reconstruction places one `MemoryViewStep` for every source
 fragment. The first placement receives the exact state `[wordLow = 0,
 wordHigh = 0, ownership = 0]`. Each later placement receives the preceding
 placement's two word limbs and packed ownership output without substitution or
 reordering. The final two word outputs form the reconstructed EVM word; the
 ownership output is composition state and is not an EVM result.
 
-Each placement receives the original, unshifted source word; a byte-shift
-magnitude in `0..31`; a Boolean direction where zero means left and one means
-right; and one packed ownership bit for every target byte supplied by that
-fragment. The circuit decomposes the source and ownership values, performs one
-five-stage byte barrel shift, masks unowned bytes, rejects ownership overlap,
-and adds only disjoint byte positions to the running word. Consequently the
-serial composition needs neither an addition carry witness nor a terminal word
-range-check placement.
+Each placement receives the original, unshifted source word; a six-bit encoded
+shift whose low five bits are the byte-shift magnitude and whose high bit is the
+direction (`0` left, `1` right); and one packed ownership bit for every target
+byte supplied by that fragment. One `Num2Bits(6)` decomposition supplies both
+shift controls directly. The circuit decomposes the source and ownership values,
+performs one five-stage byte barrel shift, masks unowned bytes, rejects ownership
+overlap, and adds only disjoint byte positions to the running word. Consequently
+the serial composition needs neither an addition carry witness nor a terminal
+word range-check placement.
 
-Every placement receives the same expected packed coverage value. The target
-decomposes that value and proves that the real accumulated ownership is a subset
-of it. Every placement returns the real ownership union. The composition layer
-must bind all three state wires exactly and selects the last placement's word as
-the reconstructed result. Any unowned byte remains zero by induction from the
-exact zero initial state and the rule that a step writes only bytes it owns.
+Every placement returns the real ownership union. The composition layer must
+bind all three state wires exactly and selects the last placement's word as the
+reconstructed result. Any unowned byte remains zero by induction from the exact
+zero initial state and the rule that a step writes only bytes it owns. There is
+no separate expected-coverage input: it was derived from the fragment ownership
+masks and provided no independent circuit information after terminal gap closure
+was removed.
 
 The composition layer must convert each selected memory byte from its existing
 `FF`/`00` value mask to the same-position ownership bit and reject malformed
 mask bytes and non-byte-aligned shifts. It must not add a synthetic zero-valued
 fragment for uninitialized gaps. A completely uninitialized view may
 use the exact static-zero route without placing this target. These producer,
-coverage, and state-wiring conditions are mandatory soundness dependencies
+ownership, and state-wiring conditions are mandatory soundness dependencies
 and require Synthesizer permutation tests before the source catalog can be
 enabled.
 

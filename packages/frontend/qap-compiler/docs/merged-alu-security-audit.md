@@ -7,7 +7,7 @@
 > the six-type native-field transaction-signature composition documented in
 > [Circuit Implementation and Composition Reference](./circuit-implementation-reference.md).
 > The `Accumulator` target described below was also retired and replaced by
-> the composition-dependent `MemoryLoadStep` target.
+> the composition-dependent `MemoryViewStep` target.
 > Current target identities, counts, and soundness dependencies are maintained
 > only in the linked circuit implementation reference. The original
 > merged-wrapper findings remain useful as audit history.
@@ -466,15 +466,14 @@ So this is not a confirmed top-level exploit from the local code alone, but it r
 #### Current resolution
 
 The production catalog replaces this target with
-[`MemoryLoadStep`](../subcircuits/circom/MemoryLoadStep_circuit.circom).
-`MemoryLoadStep` locally constrains source limbs, shift metadata, ownership,
-expected coverage, masking, disjointness, and the real-ownership subset
-relation. Every placement returns the real ownership union without adding a
+[`MemoryViewStep`](../subcircuits/circom/MemoryViewStep_circuit.circom).
+`MemoryViewStep` locally constrains source limbs, a six-bit encoded shift,
+ownership, masking, and disjointness. Every placement returns the real ownership union without adding a
 synthetic zero-gap fragment. It also exposes the complete running word and
 ownership state so the composition can enforce exact serial wiring and select
 the terminal word. The current target and its mandatory composition dependencies
 are documented in
-[Circuit Implementation and Composition Reference](./circuit-implementation-reference.md#memory-load-composition).
+[Circuit Implementation and Composition Reference](./circuit-implementation-reference.md#memory-view-composition).
 
 ### Finding 9: `SubExpBatch` accepts non-canonical hidden 256-bit state
 

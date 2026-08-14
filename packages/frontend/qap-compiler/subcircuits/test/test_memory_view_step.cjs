@@ -8,7 +8,7 @@ const { wasm } = require("circom_tester");
 const { split256BitInteger } = require("./helper_functions.js");
 
 const MAX_WORD = (1n << 256n) - 1n;
-const MAX_OWNERSHIP = (1n << 32n) - 1n;
+const encodeShift = (magnitude, direction) => BigInt(magnitude + 32 * direction);
 
 const shiftWord = (value, magnitude, direction) => {
   const bits = BigInt(magnitude * 8);
@@ -34,15 +34,12 @@ const inputFor = ({
   incomingOwnership,
   previousWord,
   previousOwnership,
-  expectedFinalCoverage,
 }) => [
   ...split256BitInteger(source),
-  BigInt(magnitude),
-  BigInt(direction),
+  encodeShift(magnitude, direction),
   incomingOwnership,
   ...split256BitInteger(previousWord),
   previousOwnership,
-  expectedFinalCoverage,
 ];
 
 const expectedStep = ({
@@ -71,12 +68,12 @@ const assertStep = async (circuit, vector, label) => {
 };
 
 const assertCompiledMetrics = (packageRoot) => {
-  const outputDirectory = mkdtempSync(path.join(tmpdir(), "memory-load-step-"));
+  const outputDirectory = mkdtempSync(path.join(tmpdir(), "memory-view-step-"));
   try {
     const compilation = spawnSync(
       process.env.CIRCOM_BIN || "circom",
       [
-        path.join(packageRoot, "subcircuits/circom/MemoryLoadStep_circuit.circom"),
+        path.join(packageRoot, "subcircuits/circom/MemoryViewStep_circuit.circom"),
         "--r1cs",
         "--json",
         "--inspect",
@@ -104,19 +101,19 @@ const assertCompiledMetrics = (packageRoot) => {
       return Number(match[1]);
     };
 
-    assert.equal(readMetric("non-linear constraints"), 678);
+    assert.equal(readMetric("non-linear constraints"), 614);
     assert.equal(readMetric("linear constraints"), 1);
-    assert.equal(readMetric("public inputs"), 9);
+    assert.equal(readMetric("public inputs"), 7);
     assert.equal(readMetric("public outputs"), 3);
-    assert.equal(readMetric("wires"), 618);
-    assert.equal(readMetric("labels"), 728);
+    assert.equal(readMetric("wires"), 586);
+    assert.equal(readMetric("labels"), 694);
 
     const constraintsFile = JSON.parse(readFileSync(path.join(
       outputDirectory,
-      "MemoryLoadStep_circuit_constraints.json",
+      "MemoryViewStep_circuit_constraints.json",
     )));
     const constraints = constraintsFile.constraints;
-    assert.equal(constraints.length, 679);
+    assert.equal(constraints.length, 615);
     const nonzeroCoefficients = constraints.reduce(
       (total, row) => total + row.reduce(
         (rowTotal, term) => rowTotal + Object.keys(term).length,
@@ -124,7 +121,7 @@ const assertCompiledMetrics = (packageRoot) => {
       ),
       0,
     );
-    assert.equal(nonzeroCoefficients, 3688);
+    assert.equal(nonzeroCoefficients, 3565);
   } finally {
     rmSync(outputDirectory, { recursive: true, force: true });
   }
@@ -134,7 +131,7 @@ const main = async () => {
   const packageRoot = path.join(__dirname, "../..");
   assertCompiledMetrics(packageRoot);
   const circuit = await wasm(
-    path.join(packageRoot, "subcircuits/circom/MemoryLoadStep_circuit.circom"),
+    path.join(packageRoot, "subcircuits/circom/MemoryViewStep_circuit.circom"),
     {
       include: path.join(packageRoot, "node_modules"),
       prime: "bls12381",
@@ -158,22 +155,9 @@ const main = async () => {
         incomingOwnership: ownership,
         previousWord: 0n,
         previousOwnership: 0n,
-        expectedFinalCoverage: ownership,
       }, `boundary shift ${magnitude}:${direction}`);
     }
   }
-
-  const partialCoverage = 0x0000ffffn;
-  const realCoverage = 0x0000000fn;
-  await assertStep(circuit, {
-    source: patterned,
-    magnitude: 0,
-    direction: 0,
-    incomingOwnership: realCoverage,
-    previousWord: 0n,
-    previousOwnership: 0n,
-    expectedFinalCoverage: partialCoverage,
-  }, "step retains real ownership");
 
   const first = {
     source: patterned,
@@ -182,7 +166,6 @@ const main = async () => {
     incomingOwnership: 0x0000ffffn,
     previousWord: 0n,
     previousOwnership: 0n,
-    expectedFinalCoverage: MAX_OWNERSHIP,
   };
   const firstExpected = expectedStep(first);
   const second = {
@@ -192,7 +175,6 @@ const main = async () => {
     incomingOwnership: 0xffff0000n,
     previousWord: firstExpected.nextWord,
     previousOwnership: firstExpected.nextOwnership,
-    expectedFinalCoverage: MAX_OWNERSHIP,
   };
   await assertStep(circuit, first, "first serial transition");
   const finalWitness = await assertStep(circuit, second, "final serial transition");
@@ -202,8 +184,7 @@ const main = async () => {
       label: "non-canonical source limb",
       input: inputFor(first).map((value, index) => index === 0 ? 1n << 128n : value),
     },
-    { label: "oversized shift", input: inputFor({ ...first, magnitude: 32 }) },
-    { label: "non-Boolean direction", input: inputFor({ ...first, direction: 2 }) },
+    { label: "oversized encoded shift", input: inputFor(first).map((value, index) => index === 2 ? 64n : value) },
     {
       label: "oversized incoming ownership",
       input: inputFor({ ...first, incomingOwnership: 1n << 32n }),
@@ -213,31 +194,11 @@ const main = async () => {
       input: inputFor({ ...first, previousOwnership: 1n << 32n }),
     },
     {
-      label: "oversized expected coverage",
-      input: inputFor({ ...first, expectedFinalCoverage: 1n << 32n }),
-    },
-    {
       label: "overlapping ownership",
       input: inputFor({
         ...first,
         incomingOwnership: 1n,
         previousOwnership: 1n,
-      }),
-    },
-    {
-      label: "real ownership outside expected coverage",
-      input: inputFor({
-        ...first,
-        expectedFinalCoverage: first.incomingOwnership ^ 1n,
-      }),
-    },
-    {
-      label: "previous ownership outside expected coverage",
-      input: inputFor({
-        ...first,
-        incomingOwnership: 0n,
-        previousOwnership: 1n,
-        expectedFinalCoverage: 0n,
       }),
     },
   ];
@@ -260,7 +221,7 @@ const main = async () => {
   );
 
   const composed = await wasm(
-    path.join(packageRoot, "subcircuits/test/circom/memory_load_step_composed.circom"),
+    path.join(packageRoot, "subcircuits/test/circom/memory_view_step_composed.circom"),
     {
       include: path.join(packageRoot, "node_modules"),
       prime: "bls12381",
@@ -269,14 +230,11 @@ const main = async () => {
   );
   const composedInput = [
     ...split256BitInteger(first.source),
-    BigInt(first.magnitude),
-    BigInt(first.direction),
+    encodeShift(first.magnitude, first.direction),
     first.incomingOwnership,
     ...split256BitInteger(second.source),
-    BigInt(second.magnitude),
-    BigInt(second.direction),
+    encodeShift(second.magnitude, second.direction),
     second.incomingOwnership,
-    MAX_OWNERSHIP,
   ];
   const composedWitness = await composed.calculateWitness({ in: composedInput }, true);
   await composed.checkConstraints(composedWitness);
@@ -288,7 +246,6 @@ const main = async () => {
   const gapFirst = {
     ...first,
     incomingOwnership: 0x0000000fn,
-    expectedFinalCoverage: 0x00ffffffn,
   };
   const gapFirstExpected = expectedStep(gapFirst);
   const gapSecond = {
@@ -296,18 +253,14 @@ const main = async () => {
     incomingOwnership: 0x00f00000n,
     previousWord: gapFirstExpected.nextWord,
     previousOwnership: gapFirstExpected.nextOwnership,
-    expectedFinalCoverage: 0x00ffffffn,
   };
   const gapComposedInput = [
     ...split256BitInteger(gapFirst.source),
-    BigInt(gapFirst.magnitude),
-    BigInt(gapFirst.direction),
+    encodeShift(gapFirst.magnitude, gapFirst.direction),
     gapFirst.incomingOwnership,
     ...split256BitInteger(gapSecond.source),
-    BigInt(gapSecond.magnitude),
-    BigInt(gapSecond.direction),
+    encodeShift(gapSecond.magnitude, gapSecond.direction),
     gapSecond.incomingOwnership,
-    gapSecond.expectedFinalCoverage,
   ];
   const gapComposedWitness = await composed.calculateWitness(
     { in: gapComposedInput },
@@ -336,7 +289,7 @@ const main = async () => {
   }
 
   console.log(
-    "MemoryLoadStep passed byte-shift boundaries, local and serial sparse coverage, exact state wiring, malformed-input rejection, overlap rejection, and output mutation rejection",
+    "MemoryViewStep passed encoded-shift boundaries, local and serial sparse ownership, exact state wiring, malformed-input rejection, overlap rejection, and output mutation rejection",
   );
 };
 

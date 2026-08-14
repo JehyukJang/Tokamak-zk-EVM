@@ -6,17 +6,15 @@ include "circomlib/circuits/bitify.circom";
 //
 // The running word is sound only in the approved serial composition: the first
 // step receives the exact zero state and every later step receives the previous
-// step's three outputs on the same physical wires. Source limbs and both packed
-// ownership and expected-coverage masks are checked locally.
-template MemoryLoadStep() {
+// step's three outputs on the same physical wires. Source limbs and packed
+// ownership masks are checked locally.
+template MemoryViewStep() {
     // in[0..1]: source word, lower 128-bit limb first
-    // in[2]: byte-shift magnitude
-    // in[3]: direction, 0 for left and 1 for right
-    // in[4]: incoming packed 32-bit byte ownership
-    // in[5..6]: previous accumulated word, lower limb first
-    // in[7]: previous packed 32-bit byte ownership
-    // in[8]: expected final packed byte ownership
-    signal input in[9];
+    // in[2]: encoded byte shift, low 5 bits are magnitude and bit 5 is direction
+    // in[3]: incoming packed 32-bit byte ownership
+    // in[4..5]: previous accumulated word, lower limb first
+    // in[6]: previous packed 32-bit byte ownership
+    signal input in[7];
 
     // out[0..1]: next accumulated word, lower limb first
     // out[2]: next packed byte ownership
@@ -28,19 +26,14 @@ template MemoryLoadStep() {
         sourceBits[limb].in <== in[limb];
     }
 
-    component shiftBits = Num2Bits(5);
+    component shiftBits = Num2Bits(6);
     shiftBits.in <== in[2];
 
-    in[3] * (in[3] - 1) === 0;
-
     component incomingOwnershipBits = Num2Bits(32);
-    incomingOwnershipBits.in <== in[4];
+    incomingOwnershipBits.in <== in[3];
 
     component previousOwnershipBits = Num2Bits(32);
-    previousOwnershipBits.in <== in[7];
-
-    component expectedOwnershipBits = Num2Bits(32);
-    expectedOwnershipBits.in <== in[8];
+    previousOwnershipBits.in <== in[6];
 
     signal sourceByte[32];
     signal directionOrientedByte[32];
@@ -65,7 +58,7 @@ template MemoryLoadStep() {
         // Reversing before and after one left barrel implements right shift
         // without a second barrel.
         directionOrientedByte[byte] <== sourceByte[byte]
-            + in[3] * (sourceByte[31 - byte] - sourceByte[byte]);
+            + shiftBits.out[5] * (sourceByte[31 - byte] - sourceByte[byte]);
         shiftStage[0][byte] <== directionOrientedByte[byte];
     }
 
@@ -85,13 +78,12 @@ template MemoryLoadStep() {
 
     for (var byte = 0; byte < 32; byte++) {
         shiftedByte[byte] <== shiftStage[5][byte]
-            + in[3] * (shiftStage[5][31 - byte] - shiftStage[5][byte]);
+            + shiftBits.out[5] * (shiftStage[5][31 - byte] - shiftStage[5][byte]);
         maskedByte[byte] <== shiftedByte[byte] * incomingOwnershipBits.out[byte];
 
         ownershipSum[byte] <== previousOwnershipBits.out[byte]
             + incomingOwnershipBits.out[byte];
         ownershipSum[byte] * (ownershipSum[byte] - 1) === 0;
-        ownershipSum[byte] * (1 - expectedOwnershipBits.out[byte]) === 0;
     }
 
     var lowAddition = 0;
@@ -100,7 +92,7 @@ template MemoryLoadStep() {
         lowAddition += maskedByte[byte] * (1 << (8 * byte));
         highAddition += maskedByte[byte + 16] * (1 << (8 * byte));
     }
-    out[0] <== in[5] + lowAddition;
-    out[1] <== in[6] + highAddition;
-    out[2] <== in[7] + in[4];
+    out[0] <== in[4] + lowAddition;
+    out[1] <== in[5] + highAddition;
+    out[2] <== in[6] + in[3];
 }
