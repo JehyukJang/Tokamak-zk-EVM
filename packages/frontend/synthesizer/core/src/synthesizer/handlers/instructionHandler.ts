@@ -993,11 +993,7 @@ export class InstructionHandler {
             const resultPt = this.placementManager.placeComposition(
               'AND',
               [
-                this.placementManager.loadArbitraryStatic(
-                  0xffn,
-                  UINT256_DATA_PT_TYPE,
-                  'Masker for MSTORE8',
-                ),
+                this.placementManager.getReservedVariableFromBuffer('BYTE_MASK'),
                 originalDataPt,
               ],
             )[0]

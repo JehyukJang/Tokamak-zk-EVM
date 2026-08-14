@@ -380,6 +380,7 @@ export class PlacementManager {
     this.addReservedVariableToBufferIn('CIRCOM_CONST_ONE', 1n)
     this.addReservedVariableToBufferIn('CIRCOM_CONST_ZERO', 0n)
     this.addReservedVariableToBufferIn('ADDRESS_MASK', (1n << 160n) - 1n)
+    this.addReservedVariableToBufferIn('BYTE_MASK', 0xffn)
     this.addReservedVariableToBufferIn('JUBJUB_BASE_X', jubjub.Point.BASE.toAffine().x)
     this.addReservedVariableToBufferIn('JUBJUB_BASE_Y', jubjub.Point.BASE.toAffine().y)
     this.addReservedVariableToBufferIn('JUBJUB_POI_X', jubjub.Point.ZERO.toAffine().x)
