@@ -10,10 +10,10 @@ const validConfig = {
   nBlockIn: 24,
   nPrvIn: 80,
   nEVMIn: 530,
+  nPrivateMessageInputs: 29,
   nPoseidonInputs: 2,
   nPoseidonBatch: 1,
   nPrevBlockHashes: 4,
-  nEqualBatch: 2,
 };
 
 describe('frontend configuration parsing', () => {

@@ -9,6 +9,5 @@
   "nPrivateMessageInputs": 29,
   "nPoseidonInputs": 2,
   "nPoseidonBatch": 4,
-  "nPrevBlockHashes": 4,
-  "nEqualBatch": 2
+  "nPrevBlockHashes": 4
 }

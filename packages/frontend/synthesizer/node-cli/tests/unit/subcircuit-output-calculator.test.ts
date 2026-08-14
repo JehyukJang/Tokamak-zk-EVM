@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { calculateSubcircuitOutputValues } from '../../../core/src/subcircuit/subcircuitOutputOperations.ts'
 
 describe('subcircuit output operations', () => {
-  it('returns no host outputs for EqualBatch', () => {
-    expect(calculateSubcircuitOutputValues('EqualBatch', [1n, 2n, 1n, 2n])).toEqual([])
+  it('returns no host outputs for StorageAccess', () => {
+    expect(calculateSubcircuitOutputValues('StorageAccess', [1n, 2n, 1n, 2n])).toEqual([])
   })
 
   it('calculates each MemoryViewStep output from its encoded inputs', () => {

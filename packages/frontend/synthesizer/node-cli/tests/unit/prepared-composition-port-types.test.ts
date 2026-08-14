@@ -107,6 +107,20 @@ describe('atomic composition logical ports', () => {
     expect(placementManager.placements).toHaveLength(6)
   })
 
+  it('accepts a narrower integer input for a native Fr port', () => {
+    const placementManager = createPlacementManager()
+    const subcircuit = placementManager.subcircuitInfoByName.get('ALU1')!
+    subcircuit.NInWires = 4
+    subcircuit.logicalInterface = {
+      ...subcircuit.logicalInterface!,
+      inputs: subcircuit.logicalInterface!.inputs.map((port, index) => index === 1
+        ? { name: 'lhs', logicalType: { kind: 'bls12-381-fr' } as const }
+        : port),
+    }
+
+    expect(() => placementManager.placeComposition('ADD', operands(UINT160_DATA_PT_TYPE))).not.toThrow()
+  })
+
   it('rejects an incomplete host result without recording a placement', () => {
     const placementManager = createPlacementManager(UINT32_DATA_PT_TYPE, [])
 

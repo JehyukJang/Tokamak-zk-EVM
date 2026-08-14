@@ -39,7 +39,7 @@ Most low-level structures live under `core/src/synthesizer/types/` and `core/src
 ## Storage access tracking
 
 - `StorageCache` indexes entries by concrete address and key while retaining canonical address/key `DataPt`s, the latest value `DataPt`, and a dirty flag
-- Repeated storage accesses place `EqualBatch` against the canonical address/key pair before reusing the cached value
+- Repeated storage accesses place `StorageAccess` against the canonical address/key pair before reusing the cached value
 - `InitialStorageReadList` retains the first address/key/value triple for each location, and frame snapshots roll back cache changes from reverted calls
 - After a successful transaction, dirty cache entries are emitted through `STORAGE_STORE`
 

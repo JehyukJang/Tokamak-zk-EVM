@@ -8,8 +8,11 @@ import {
   UINT256_DATA_PT_TYPE,
   UINT32_DATA_PT_TYPE,
 } from './dataStructure.ts'
-import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
-import { BUFFER_LIST, ReservedBuffer } from '../../subcircuit/configuredTypes.ts';
+import {
+  BUFFER_LIST,
+  ReservedBuffer,
+  TRANSACTION_INPUT_VARIABLES,
+} from '../../subcircuit/configuredTypes.ts';
 
 const LOG_OUT_VARIABLES_STATIC = [
   // Nothing
@@ -571,9 +574,8 @@ __setDataPtType('EDDSA_PUBLIC_KEY_X', BLS12_381_FR_DATA_PT_TYPE)
 
 VARIABLE_DESCRIPTION_INCOMPLETE.EDDSA_PUBLIC_KEY_Y.extSource = `EdDSA public key of caller (y coordinate)`;
 __setDataPtType('EDDSA_PUBLIC_KEY_Y', BLS12_381_FR_DATA_PT_TYPE)
-for (let i = 0; i < FUNCTION_INPUT_LENGTH; i++) {
-  const varName = `TRANSACTION_INPUT${i}` as ReservedVariable
-  if ( PRIVATE_IN_VARIABLES_STATIC.findIndex(staticVarName => staticVarName === varName) < 0 ) {
+for (const [i, varName] of TRANSACTION_INPUT_VARIABLES.entries()) {
+  if (PRIVATE_IN_VARIABLES_STATIC.findIndex(staticVarName => staticVarName === varName) < 0) {
     throw new Error(`${varName} is not a ReservedVariable`)
   }
   VARIABLE_DESCRIPTION_INCOMPLETE[varName].extSource = `The ${i}-th input to the selected function`;

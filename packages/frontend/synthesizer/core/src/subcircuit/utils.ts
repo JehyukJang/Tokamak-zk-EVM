@@ -129,10 +129,10 @@ export function parseFrontendConfig(value: unknown): FrontendConfig {
     nBlockIn: getRequiredNumber(value, 'nBlockIn'),
     nPrvIn: getRequiredNumber(value, 'nPrvIn'),
     nEVMIn: getRequiredNumber(value, 'nEVMIn'),
+    nPrivateMessageInputs: getRequiredNumber(value, 'nPrivateMessageInputs'),
     nPoseidonInputs: getRequiredNumber(value, 'nPoseidonInputs'),
     nPoseidonBatch: getRequiredNumber(value, 'nPoseidonBatch'),
     nPrevBlockHashes: getRequiredNumber(value, 'nPrevBlockHashes'),
-    nEqualBatch: getRequiredNumber(value, 'nEqualBatch'),
   };
 }
 

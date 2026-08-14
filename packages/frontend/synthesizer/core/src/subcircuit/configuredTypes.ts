@@ -1,4 +1,3 @@
-import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
 import type { LogicalInterface } from './libraryTypes.ts';
 
 export const OPERATOR_LIST = [
@@ -38,7 +37,7 @@ export const OPERATOR_LIST = [
 
 export type Operator = (typeof OPERATOR_LIST)[number]
 
-const TRANSACTION_INPUT_VARIABLES = [
+export const TRANSACTION_INPUT_VARIABLES = [
   'TRANSACTION_INPUT0', 'TRANSACTION_INPUT1', 'TRANSACTION_INPUT2', 'TRANSACTION_INPUT3',
   'TRANSACTION_INPUT4', 'TRANSACTION_INPUT5', 'TRANSACTION_INPUT6', 'TRANSACTION_INPUT7',
   'TRANSACTION_INPUT8', 'TRANSACTION_INPUT9', 'TRANSACTION_INPUT10', 'TRANSACTION_INPUT11',
@@ -48,10 +47,6 @@ const TRANSACTION_INPUT_VARIABLES = [
   'TRANSACTION_INPUT24', 'TRANSACTION_INPUT25', 'TRANSACTION_INPUT26', 'TRANSACTION_INPUT27',
   'TRANSACTION_INPUT28',
 ] as const;
-
-if (TRANSACTION_INPUT_VARIABLES.length !== FUNCTION_INPUT_LENGTH) {
-  throw new Error('TRANSACTION_INPUT_VARIABLES length must match FUNCTION_INPUT_LENGTH');
-}
 
 export const BUFFER_LIST = [
     // Public output, private input
@@ -82,15 +77,10 @@ export const COMPOSITION_SUBCIRCUIT_LIST = [
     'ALU1',
     'ALU2',
     'ALU3',
-    'AND',
-    'OR',
-    'XOR',
     'ALU4A',
     'ALU4B',
-    'SIGNEXTEND',
-    'BYTE',
     'SHL',
-    'ALU6',
+    'ALU5',
     'ADDMODPrepare',
     'ADDMODVerify',
     'MULMODPrepare',
@@ -101,7 +91,7 @@ export const COMPOSITION_SUBCIRCUIT_LIST = [
     'CheckBus256',
     'Poseidon',
     'MemoryViewStep',
-    'EqualBatch',
+    'StorageAccess',
     'TransactionSignaturePoseidonBatch4',
     'TransactionSignaturePointPolicy',
     'TransactionSignatureFixedPrefix70',

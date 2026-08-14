@@ -17,8 +17,8 @@ This document focuses on how opcodes are translated into placements while a tran
 - **Unsupported**: CREATE/CREATE2/SELFDESTRUCT, TLOAD/TSTORE, BLOB opcodes, and precompiles are not synthesized.
 
 ## Storage handling
-- **SLOAD**: The first access to an address/key pair records one `STORAGE_LOAD` triple. Address and key are emitted as public outputs; the value enters through the same buffer as a private input and its symbolic buffer output is cached and returned. Later accesses constrain address/key equality with `EqualBatch` and return the latest cached value.
-- **SSTORE**: Constrains repeated address/key identities with `EqualBatch`, then updates the location's latest cached value and dirty flag.
+- **SLOAD**: The first access to an address/key pair records one `STORAGE_LOAD` triple. Address and key are emitted as public outputs; the value enters through the same buffer as a private input and its symbolic buffer output is cached and returned. Later accesses constrain address/key equality with `StorageAccess` and return the latest cached value.
+- **SSTORE**: Constrains repeated address/key identities with `StorageAccess`, then updates the location's latest cached value and dirty flag.
 - **Finalization**: After `runTx` succeeds, `_finalizeStorageStore` emits one address/key/value triple for every dirty cache entry through `STORAGE_STORE`.
 
 ## Calls and context

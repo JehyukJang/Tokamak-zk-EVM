@@ -11,10 +11,10 @@ const frontendCfg = {
   nBlockIn: 24,
   nPrvIn: 80,
   nEVMIn: 500,
+  nPrivateMessageInputs: 29,
   nPoseidonInputs: 2,
   nPoseidonBatch: 1,
   nPrevBlockHashes: 4,
-  nEqualBatch: 2,
 } as const;
 
 const setupParams = {
@@ -42,7 +42,7 @@ function createLibraryData(
   return {
     setupParams,
     globalWireList: [],
-    frontendCfg,
+    frontendCfg: { ...frontendCfg },
     subcircuitInfo: [{
       id: 0,
       name: 'ALU1',
@@ -66,6 +66,14 @@ function createLibraryData(
 }
 
 describe('logical-interface resolution', () => {
+  it('rejects a private-message input count that differs from the reserved input boundary', () => {
+    const data = createLibraryData();
+    data.frontendCfg.nPrivateMessageInputs = 28;
+    expect(() => resolveSubcircuitLibraryData(data)).toThrow(
+      'qap-compiler declares 28 private message inputs, but Synthesizer reserves 29',
+    );
+  });
+
   it('rejects qap metadata whose input wire count disagrees with its interface', () => {
     expect(() => resolveSubcircuitLibraryData(createLibraryData(4))).toThrow(
       'ALU1 logical interface declares 5 input wires, but qap-compiler provides 4',

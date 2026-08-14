@@ -283,47 +283,44 @@ const FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS: readonly PlacementCompositionEntry[
   createSingleStepMapping('SUB', 'ALU1', 1n << 3n, 2, 1),
   createSingleStepMapping('LT', 'ALU2', 1n << 16n, 2, 1),
   createSingleStepMapping('GT', 'ALU2', 1n << 17n, 2, 1),
-  createSingleStepMapping('SLT', 'ALU3', 1n << 18n, 2, 1),
-  createSingleStepMapping('SGT', 'ALU3', 1n << 19n, 2, 1),
-  createSingleStepMapping('EQ', 'ALU1', 1n << 20n, 2, 1),
+  createSingleStepMapping('SLT', 'ALU2', 1n << 18n, 2, 1),
+  createSingleStepMapping('SGT', 'ALU2', 1n << 19n, 2, 1),
+  createSingleStepMapping('EQ', 'ALU2', 1n << 20n, 2, 1),
   createSingleStepMapping('ISZERO', 'ALU2', 1n << 21n, 1, 1, [ZERO_WORD_CONSTANT]),
-  createSingleStepMapping('AND', 'AND', 1n << 22n, 2, 1),
-  createSingleStepMapping('OR', 'OR', 1n << 23n, 2, 1),
-  createSingleStepMapping('XOR', 'XOR', 1n << 24n, 2, 1),
+  createSingleStepMapping('AND', 'ALU3', 1n << 22n, 2, 1),
+  createSingleStepMapping('OR', 'ALU3', 1n << 23n, 2, 1),
+  createSingleStepMapping('XOR', 'ALU3', 1n << 24n, 2, 1),
   createSingleStepMapping('NOT', 'ALU1', 1n << 25n, 1, 1, [ZERO_WORD_CONSTANT]),
-  createSingleStepMapping('BYTE', 'BYTE', 1n << 26n, 2, 1),
+  createSingleStepMapping('BYTE', 'ALU3', 1n << 26n, 2, 1),
   createSingleStepMapping('SHL', 'SHL', 1n << 27n, 2, 1),
-  createSingleStepMapping('SHR', 'ALU6', 1n << 28n, 2, 1),
-  createSingleStepMapping('SAR', 'ALU6', 1n << 29n, 2, 1),
-  createSingleStepMapping('SIGNEXTEND', 'SIGNEXTEND', 1n << 11n, 2, 1),
+  createSingleStepMapping('SHR', 'ALU5', 1n << 28n, 2, 1),
+  createSingleStepMapping('SAR', 'ALU5', 1n << 29n, 2, 1),
+  createSingleStepMapping('SIGNEXTEND', 'ALU3', 1n << 11n, 2, 1),
 ]);
 
-type SelectorFreeCompositionMappingConfig = Pick<PlacementCompositionConfig, 'nEqualBatch'>;
-
-const createSelectorFreeCompositionMappings = (
-  config: SelectorFreeCompositionMappingConfig,
-): readonly PlacementCompositionEntry[] => {
-  assertPositiveInteger(config.nEqualBatch, 'nEqualBatch');
-
-  return Object.freeze([
-    createSingleStepMapping('StorageAccess', 'EqualBatch', null, 2 * config.nEqualBatch, 0),
+const createSelectorFreeCompositionMappings = (): readonly PlacementCompositionEntry[] =>
+  Object.freeze([
+    createSingleStepMapping('StorageAccess', 'StorageAccess', null, 4, 0),
     createSingleStepMapping('FrToLimbsPair', 'FrToLimbsPair', null, 2, 2),
   ]);
-};
 
 export type PlacementCompositionConfig = Readonly<{
-  nEqualBatch: number;
+  nPrivateMessageInputs: number;
   nPoseidonBatch: number;
 }>;
 
-export const createPlacementCompositionMapping = (config: PlacementCompositionConfig): PlacementCompositionMapping =>
-  assemblePlacementCompositionMapping([
+export const createPlacementCompositionMapping = (
+  config: PlacementCompositionConfig,
+): PlacementCompositionMapping => {
+  assertPositiveInteger(config.nPrivateMessageInputs, 'nPrivateMessageInputs');
+  return assemblePlacementCompositionMapping([
     ...FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS,
     ...createDivisionCompositionMappings(),
     ...createAddMulModCompositionMappings(),
-    ...createSelectorFreeCompositionMappings(config),
+    ...createSelectorFreeCompositionMappings(),
     createExpCompositionMapping(),
     createMemoryViewCompositionMapping(),
     createPoseidonCompositionMapping(config),
-    createTransactionSignatureVerifyCompositionMapping(),
+    createTransactionSignatureVerifyCompositionMapping(config.nPrivateMessageInputs),
   ]);
+};

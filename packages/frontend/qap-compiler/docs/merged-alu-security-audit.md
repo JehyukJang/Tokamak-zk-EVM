@@ -55,7 +55,7 @@ The added compile-target review scope was the full set of circuits built by
 - `Poseidon`
 - `JubjubExpBatch`
 - `EdDsaVerify`
-- `EqualBatch`
+- `StorageAccess`
 
 The goal of the combined document is to preserve the merged-ALU audit history while also recording the current security posture of the compiled circuit library.
 

@@ -77,7 +77,7 @@ describe('transaction-signature host output calculations', () => {
       1n,
     ]
 
-    const { composition } = createTransactionSignatureVerifyCompositionMapping()
+    const { composition } = createTransactionSignatureVerifyCompositionMapping(29)
     const intermediates = new Map<number, bigint>()
     const results = new Map<number, bigint>()
     for (const step of composition.steps) {

@@ -4,7 +4,7 @@ import { BlockData, BlockOptions, createBlock, HeaderData } from '@ethereumjs/bl
 import { bigIntToBytes, bigIntToHex, bytesToHex, createAddressFromBigInt, setLengthLeft } from '@ethereumjs/util';
 
 import { EVMResult, InterpreterStep } from '@ethereumjs/evm';
-import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
+import { TRANSACTION_INPUT_VARIABLES } from '../subcircuit/configuredTypes.ts';
 import {
   Placements,
   type ReservedVariable,
@@ -159,10 +159,8 @@ export class Synthesizer implements SynthesizerInterface
 
   private async _prepareSynthesizeTransaction(): Promise<void> {
     this._contextManager.resetTransactionTracking()
-    const transactionInputPts = Array.from({ length: FUNCTION_INPUT_LENGTH }, (_, index) =>
-      this._placementManager.getReservedVariableFromBuffer(
-        `TRANSACTION_INPUT${index}` as ReservedVariable,
-      ),
+    const transactionInputPts = TRANSACTION_INPUT_VARIABLES.map((variable) =>
+      this._placementManager.getReservedVariableFromBuffer(variable),
     )
     const operands = [
       this._placementManager.getReservedVariableFromBuffer('EDDSA_RANDOMIZER_X'),
@@ -177,15 +175,39 @@ export class Synthesizer implements SynthesizerInterface
       this._placementManager.getReservedVariableFromBuffer('JUBJUB_POI_X'),
       this._placementManager.getReservedVariableFromBuffer('JUBJUB_POI_Y'),
     ]
-    this._placementManager.placeComposition('TransactionSignatureVerify', operands)
+    const verifiedTransactionPts = this._placementManager.placeComposition(
+      'TransactionSignatureVerify',
+      operands,
+    )
+    const verifiedContractAddressPt = verifiedTransactionPts[0]
+    const verifiedFunctionSelectorPt = verifiedTransactionPts[1]
+    const verifiedOriginPt = verifiedTransactionPts[2]
+    if (
+      verifiedContractAddressPt === undefined
+      || verifiedFunctionSelectorPt === undefined
+      || verifiedOriginPt === undefined
+    ) {
+      throw new Error('Synthesizer: TransactionSignatureVerify returned incomplete results')
+    }
 
     const zeroFrPt = this._placementManager.getReservedVariableFromBuffer('CIRCOM_CONST_ZERO')
+    const convertedTransactionInputPts = []
     for (let inputIndex = 0; inputIndex < transactionInputPts.length; inputIndex += 2) {
-      this._placementManager.placeComposition(
+      const convertedPair = this._placementManager.placeComposition(
         'FrToLimbsPair',
         [transactionInputPts[inputIndex]!, transactionInputPts[inputIndex + 1] ?? zeroFrPt],
       )
+      convertedTransactionInputPts.push(convertedPair[0]!)
+      if (inputIndex + 1 < transactionInputPts.length) {
+        convertedTransactionInputPts.push(convertedPair[1]!)
+      }
     }
+    this._contextManager.setVerifiedTransactionData(
+      verifiedContractAddressPt,
+      verifiedFunctionSelectorPt,
+      verifiedOriginPt,
+      convertedTransactionInputPts,
+    )
   }
 
   private _finalizeStorageStore(): void {

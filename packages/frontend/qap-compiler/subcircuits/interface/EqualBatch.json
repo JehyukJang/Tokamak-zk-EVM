@@ -1,7 +1,0 @@
-{
-  "inputs": [
-    { "name": "lhs", "length": { "constant": "nEqualBatch" }, "logicalType": { "kind": "uint", "bits": 256 } },
-    { "name": "rhs", "length": { "constant": "nEqualBatch" }, "logicalType": { "kind": "uint", "bits": 256 } }
-  ],
-  "outputs": []
-}

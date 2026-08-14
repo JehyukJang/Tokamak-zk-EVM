@@ -81,10 +81,10 @@ export const REQUIRED_CIRCOM_KEYS = [
   'nBlockIn',
   'nPrvIn',
   'nEVMIn',
+  'nPrivateMessageInputs',
   'nPoseidonInputs',
   'nPoseidonBatch',
   'nPrevBlockHashes',
-  'nEqualBatch',
 ] as const;
 export type CircomKey = typeof REQUIRED_CIRCOM_KEYS[number];
 

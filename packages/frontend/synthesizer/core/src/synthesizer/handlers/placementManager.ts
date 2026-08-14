@@ -9,6 +9,8 @@ import {
   VARIABLE_DESCRIPTION,
   BIT_DATA_PT_TYPE,
   BLS12_381_FR_DATA_PT_TYPE,
+  UINT128_DATA_PT_TYPE,
+  UINT160_DATA_PT_TYPE,
   UINT32_DATA_PT_TYPE,
   UINT256_DATA_PT_TYPE,
   type DataPt,
@@ -24,6 +26,7 @@ import {
   BUFFER_DESCRIPTION,
   BUFFER_LIST,
   ReservedBuffer,
+  TRANSACTION_INPUT_VARIABLES,
   SubcircuitInfoByName,
   SubcircuitInfoByNameEntry,
   SubcircuitNames,
@@ -34,7 +37,7 @@ import type {
   PlacementCompositionMapping,
 } from '../../subcircuit/placementCompositionMapping.ts';
 import type { LogicalInterfacePort, ResolvedSubcircuitLibrary } from '../../subcircuit/libraryTypes.ts';
-import { FUNCTION_INPUT_LENGTH, POSEIDON_INPUTS } from 'tokamak-l2js';
+import { POSEIDON_INPUTS } from 'tokamak-l2js';
 
 type PlacementCandidate = Readonly<{
   operation: Operator;
@@ -167,7 +170,15 @@ function _assertCandidatePortTypes(
   for (const [portIndex, port] of ports.entries()) {
     const expectedDataPtType = getDataPtTypeFromLogicalInterfaceType(port.logicalType)
     const dataPt = dataPts[portIndex]!
-    if (!_hasSameDataPtType(dataPt, expectedDataPtType)) {
+    const isNarrowIntegerAssignedToFr = target === 'input'
+      && expectedDataPtType === BLS12_381_FR_DATA_PT_TYPE
+      && (
+        dataPt.dataPtType === BIT_DATA_PT_TYPE
+        || dataPt.dataPtType === UINT32_DATA_PT_TYPE
+        || dataPt.dataPtType === UINT128_DATA_PT_TYPE
+        || dataPt.dataPtType === UINT160_DATA_PT_TYPE
+      )
+    if (!_hasSameDataPtType(dataPt, expectedDataPtType) && !isNarrowIntegerAssignedToFr) {
       throw new Error(
         `Synthesizer: ${operation} ${subcircuit} ${target} port ${portIndex} (${port.name}) expected ${expectedDataPtType}, but got ${dataPt.dataPtType}`,
       )
@@ -453,9 +464,9 @@ export class PlacementManager {
     this.addReservedVariableToBufferIn('CONTRACT_ADDRESS', bytesToBigInt(toBytes(l2Tx.to)))
     this.addReservedVariableToBufferIn('FUNCTION_SELECTOR', bytesToBigInt(l2Tx.getFunctionSelector()))
     this.addReservedVariableToBufferIn('TRANSACTION_NONCE', l2Tx.nonce)
-    for (let inputIndex = 0; inputIndex < FUNCTION_INPUT_LENGTH; inputIndex++) {
+    for (const [inputIndex, variable] of TRANSACTION_INPUT_VARIABLES.entries()) {
       this.addReservedVariableToBufferIn(
-        `TRANSACTION_INPUT${inputIndex}` as ReservedVariable,
+        variable,
         bytesToBigInt(l2Tx.getFunctionInput(inputIndex)),
       )
     }

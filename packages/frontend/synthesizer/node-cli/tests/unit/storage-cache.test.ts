@@ -26,11 +26,11 @@ const dataPt = (
   dataPtType: UINT256_DATA_PT_TYPE,
 }, value);
 
-const equalBatchInfo = {
+const storageAccessInfo = {
   id: 14,
-  name: 'EqualBatch' as const,
-  NWires: 9,
-  NInWires: 8,
+  name: 'StorageAccess' as const,
+  NWires: 7,
+  NInWires: 6,
   NOutWires: 0,
   inWireIndex: 1,
   outWireIndex: 1,
@@ -59,7 +59,7 @@ const createManagers = () => {
     }],
     subcircuitInfoByName: new Map([
       ['bufferLogOut', logOutInfo],
-      ['EqualBatch', equalBatchInfo],
+      ['StorageAccess', storageAccessInfo],
     ]),
   }) as PlacementManager;
   const contextManager = new ContextManager(placementManager);
@@ -78,7 +78,7 @@ const createStorageHarness = (initialValue: bigint) => {
   const cachedOpts = { stateManager };
   const parent: any = {
     subcircuitLibrary: {
-      subcircuitInfoByName: new Map([['EqualBatch', equalBatchInfo]]),
+      subcircuitInfoByName: new Map([['StorageAccess', storageAccessInfo]]),
     },
     placeComposition: vi.fn(),
     addReservedVariableToBufferIn: vi.fn((_name: string, value: bigint) =>
@@ -336,9 +336,9 @@ describe('InstructionHandler storage cache', () => {
       wireIndex: firstValuePt.wireIndex,
       value: firstValuePt.value,
     });
-    const equalBatchCalls = storageAccessCompositions(parent);
-    expect(equalBatchCalls).toHaveLength(1);
-    expect(equalBatchCalls[0]).toMatchObject([
+    const storageAccessCalls = storageAccessCompositions(parent);
+    expect(storageAccessCalls).toHaveLength(1);
+    expect(storageAccessCalls[0]).toMatchObject([
       expect.objectContaining({ source: 40, value: addressValue }),
       expect.objectContaining({ source: 41, value: 9n }),
       expect.objectContaining({ source: 30, value: addressValue }),

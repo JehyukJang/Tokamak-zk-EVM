@@ -22,9 +22,9 @@ The format is based on Keep a Changelog.
   policy, performs the fixed- and variable-base scalar multiplications, checks
   the cofactored signature equation, and returns the verified transaction data
   and origin through exact composition wires.
-- Added the input-only `EqualBatch` subcircuit to the qap-compiler circuit set.
-  It constrains equality between two batches of two 256-bit values, with
-  `nEqualBatch` fixed to `2`.
+- Added the input-only `StorageAccess` subcircuit to bind a repeated storage
+  access to its canonical address/key identity. Its six-wire interface keeps
+  each 160-bit address native and represents each 256-bit key as two limbs.
 - Removed `VerifyMerkleProof` from the compiled qap-compiler circuit set and
   the Synthesizer subcircuit inventory. Removed its remaining Circom template,
   wrapper, and test, together with the obsolete `nMtDepth` and `nMtLeaves`
@@ -80,7 +80,7 @@ The format is based on Keep a Changelog.
 
 - Removed internal storage Merkle-root tracking, proof construction, proof
   placements, and Merkle-specific reserved variables. Storage consistency is
-  now tracked through the transaction-scoped storage cache and `EqualBatch`.
+  now tracked through the transaction-scoped storage cache and `StorageAccess`.
 - Added public initial-storage-read output through `STORAGE_LOAD` and final
   committed storage-write output through `STORAGE_STORE`.
 - Made Poseidon selector generation, input padding, and long-chain chunking use

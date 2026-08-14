@@ -8,7 +8,7 @@ import {
 } from '../../../core/src/subcircuit/placementCompositionMapping.ts';
 
 const mapping = createPlacementCompositionMapping({
-  nEqualBatch: 2,
+  nPrivateMessageInputs: 29,
   nPoseidonBatch: 6,
 });
 
@@ -33,16 +33,9 @@ describe('placement composition assembly', () => {
     expect(mapping.EXP.numSteps).toBe(258);
   });
 
-  it('rejects a non-positive EqualBatch size', () => {
-    expect(() => createPlacementCompositionMapping({
-      nEqualBatch: 0,
-      nPoseidonBatch: 6,
-    })).toThrow('nEqualBatch must be a positive integer');
-  });
-
   it('rejects a non-positive Poseidon batch size', () => {
     expect(() => createPlacementCompositionMapping({
-      nEqualBatch: 2,
+      nPrivateMessageInputs: 29,
       nPoseidonBatch: 0,
     })).toThrow('nPoseidonBatch must be a positive integer');
   });

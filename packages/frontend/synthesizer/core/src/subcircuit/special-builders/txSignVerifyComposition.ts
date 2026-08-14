@@ -1,5 +1,3 @@
-import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js'
-
 import { freezeComposition } from '../utils.ts'
 import {
   BIT_DATA_PT_TYPE,
@@ -12,7 +10,6 @@ import type {
   PlacementCompositionEntry,
 } from '../placementCompositionMapping.ts'
 
-const NUM_CHALLENGE_INPUTS = FUNCTION_INPUT_LENGTH + 7
 const NUM_CHAIN_POSEIDON_BATCHES = 8
 const NUM_VARIABLE_BATCHES = 3
 const NUM_RUNTIME_TABLE_COORDINATES = 8
@@ -21,27 +18,32 @@ const NUM_REMAINING_RESPONSE_BITS = 42
 const NUM_REMAINING_CHALLENGE_BITS = 222
 const NUM_VARIABLE_BATCH_BITS = 68
 
-const CONTRACT_OPERAND_INDEX = FUNCTION_INPUT_LENGTH + 5
-const SELECTOR_OPERAND_INDEX = CONTRACT_OPERAND_INDEX + 1
-const RESPONSE_OPERAND_INDEX = SELECTOR_OPERAND_INDEX + 1
-const IDENTITY_X_OPERAND_INDEX = RESPONSE_OPERAND_INDEX + 1
-const IDENTITY_Y_OPERAND_INDEX = IDENTITY_X_OPERAND_INDEX + 1
-const NUM_OPERANDS = IDENTITY_Y_OPERAND_INDEX + 1
-
-const challengeInput = (index: number): InputReference => {
+const challengeInput = (
+  index: number,
+  contractOperandIndex: number,
+  selectorOperandIndex: number,
+): InputReference => {
   if (index < 5) {
     return { kind: 'operand', index }
   }
   if (index === 5) {
-    return { kind: 'operand', index: CONTRACT_OPERAND_INDEX }
+    return { kind: 'operand', index: contractOperandIndex }
   }
   if (index === 6) {
-    return { kind: 'operand', index: SELECTOR_OPERAND_INDEX }
+    return { kind: 'operand', index: selectorOperandIndex }
   }
   return { kind: 'operand', index: index - 2 }
 }
 
-export const createTransactionSignatureVerifyCompositionMapping = (): PlacementCompositionEntry => {
+export const createTransactionSignatureVerifyCompositionMapping = (
+  numberOfPrivateMessageInputs: number,
+): PlacementCompositionEntry => {
+  const contractOperandIndex = numberOfPrivateMessageInputs + 5
+  const selectorOperandIndex = contractOperandIndex + 1
+  const responseOperandIndex = selectorOperandIndex + 1
+  const identityXOperandIndex = responseOperandIndex + 1
+  const identityYOperandIndex = identityXOperandIndex + 1
+  const numberOfOperands = identityYOperandIndex + 1
   const steps: CompositionStep[] = []
   let nextIntermediateIndex = 0
   const allocateIntermediate = (): number => nextIntermediateIndex++
@@ -62,13 +64,13 @@ export const createTransactionSignatureVerifyCompositionMapping = (): PlacementC
       inputs: [
         { kind: 'constant', index: chainModeConstantIndex },
         previousChallengeHashIndex === undefined
-          ? challengeInput(0)
+          ? challengeInput(0, contractOperandIndex, selectorOperandIndex)
           : { kind: 'step-output', index: previousChallengeHashIndex },
-        challengeInput(challengeOffset + 1),
+        challengeInput(challengeOffset + 1, contractOperandIndex, selectorOperandIndex),
         { kind: 'constant', index: zeroFieldConstantIndex },
-        challengeInput(challengeOffset + 2),
-        challengeInput(challengeOffset + 3),
-        challengeInput(challengeOffset + 4),
+        challengeInput(challengeOffset + 2, contractOperandIndex, selectorOperandIndex),
+        challengeInput(challengeOffset + 3, contractOperandIndex, selectorOperandIndex),
+        challengeInput(challengeOffset + 4, contractOperandIndex, selectorOperandIndex),
       ],
       outputs: [
         { kind: 'discard' },
@@ -89,12 +91,12 @@ export const createTransactionSignatureVerifyCompositionMapping = (): PlacementC
     selector: null,
     inputs: [
       { kind: 'constant', index: independentModeConstantIndex },
-      challengeInput(2),
-      challengeInput(3),
+      challengeInput(2, contractOperandIndex, selectorOperandIndex),
+      challengeInput(3, contractOperandIndex, selectorOperandIndex),
       { kind: 'step-output', index: previousChallengeHashIndex },
-      challengeInput(33),
-      challengeInput(34),
-      challengeInput(35),
+      challengeInput(33, contractOperandIndex, selectorOperandIndex),
+      challengeInput(34, contractOperandIndex, selectorOperandIndex),
+      challengeInput(35, contractOperandIndex, selectorOperandIndex),
     ],
     outputs: [
       { kind: 'step-output', index: publicKeyHashIndex },
@@ -108,14 +110,14 @@ export const createTransactionSignatureVerifyCompositionMapping = (): PlacementC
     subcircuit: 'TransactionSignaturePointPolicy',
     selector: null,
     inputs: [
-      challengeInput(0),
-      challengeInput(1),
-      challengeInput(2),
-      challengeInput(3),
-      { kind: 'operand', index: CONTRACT_OPERAND_INDEX },
-      { kind: 'operand', index: SELECTOR_OPERAND_INDEX },
-      { kind: 'operand', index: IDENTITY_X_OPERAND_INDEX },
-      { kind: 'operand', index: IDENTITY_Y_OPERAND_INDEX },
+      challengeInput(0, contractOperandIndex, selectorOperandIndex),
+      challengeInput(1, contractOperandIndex, selectorOperandIndex),
+      challengeInput(2, contractOperandIndex, selectorOperandIndex),
+      challengeInput(3, contractOperandIndex, selectorOperandIndex),
+      { kind: 'operand', index: contractOperandIndex },
+      { kind: 'operand', index: selectorOperandIndex },
+      { kind: 'operand', index: identityXOperandIndex },
+      { kind: 'operand', index: identityYOperandIndex },
     ],
     outputs: [
       { kind: 'result', index: 0 },
@@ -136,7 +138,7 @@ export const createTransactionSignatureVerifyCompositionMapping = (): PlacementC
   steps.push({
     subcircuit: 'TransactionSignatureFixedPrefix70',
     selector: null,
-    inputs: [{ kind: 'operand', index: RESPONSE_OPERAND_INDEX }],
+    inputs: [{ kind: 'operand', index: responseOperandIndex }],
     outputs: [
       ...remainingResponseBitIndices.map((index): OutputReference => ({
         kind: 'step-output',
@@ -245,7 +247,7 @@ export const createTransactionSignatureVerifyCompositionMapping = (): PlacementC
         { value: 0n, dataPtType: BIT_DATA_PT_TYPE },
       ],
       numSteps: steps.length,
-      numOperands: NUM_OPERANDS,
+      numOperands: numberOfOperands,
       numResults: 3,
       steps,
     }),

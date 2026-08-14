@@ -5,9 +5,8 @@ import {
   bytesToBigInt,
   setLengthRight,
 } from '@ethereumjs/util';
-import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
-
 import { DataPtFactory } from '../dataStructure/dataPt.ts';
+import { TRANSACTION_INPUT_VARIABLES } from '../../subcircuit/configuredTypes.ts';
 import { MemoryPt, StackPt } from '../dataStructure/index.ts';
 import {
   UINT32_DATA_PT_TYPE,
@@ -200,8 +199,28 @@ export class ContextManager {
   public cachedOrigin: DataPt | undefined = undefined
   public contextByDepth: MessageContext[] = []
   private _messageCodeAddresses = new Set<string>()
+  private _verifiedContractAddressPt: DataPt | undefined
+  private _verifiedFunctionSelectorPt: DataPt | undefined
+  private _verifiedTransactionInputPts: DataPt[] = []
 
   constructor(private readonly placementManager: PlacementManager) {}
+
+  public setVerifiedTransactionData(
+    contractAddressPt: DataPt,
+    functionSelectorPt: DataPt,
+    originPt: DataPt,
+    transactionInputPts: readonly DataPt[],
+  ): void {
+    if (transactionInputPts.length !== TRANSACTION_INPUT_VARIABLES.length) {
+      throw new Error('Synthesizer: verified transaction input count is invalid')
+    }
+    this._verifiedContractAddressPt = DataPtFactory.deepCopy(contractAddressPt)
+    this._verifiedFunctionSelectorPt = DataPtFactory.deepCopy(functionSelectorPt)
+    this.cachedOrigin = DataPtFactory.deepCopy(originPt)
+    this._verifiedTransactionInputPts = transactionInputPts.map((dataPt) =>
+      DataPtFactory.deepCopy(dataPt),
+    )
+  }
 
   public prepareCodeMemoryEntries(
     code: Uint8Array<ArrayBufferLike>,
@@ -334,26 +353,26 @@ export class ContextManager {
     let callDataByteLength: number
 
     if (depth === 0) {
-      const selectorPt = this.placementManager.getReservedVariableFromBuffer('FUNCTION_SELECTOR')
-      const inputPts: DataPt[] = Array.from({ length: FUNCTION_INPUT_LENGTH }, (_, index) =>
-        this.placementManager.getReservedVariableFromBuffer(
-          `TRANSACTION_INPUT${index}` as ReservedVariable,
-        ),
-      )
+      const selectorPt = this._verifiedFunctionSelectorPt
+      const contractAddressPt = this._verifiedContractAddressPt
+      if (
+        selectorPt === undefined
+        || contractAddressPt === undefined
+        || this.cachedOrigin === undefined
+        || this._verifiedTransactionInputPts.length !== TRANSACTION_INPUT_VARIABLES.length
+      ) {
+        throw new Error('Synthesizer: verified transaction data is unavailable')
+      }
       callDataMemoryPts = [
         { memByteOffset: 0, containerByteSize: 4, dataPt: selectorPt },
-        ...inputPts.map((dataPt, index) => ({
+        ...this._verifiedTransactionInputPts.map((dataPt, index) => ({
           memByteOffset: 4 + 32 * index,
           containerByteSize: 32,
           dataPt,
         })),
       ]
       callDataByteLength = message.data.length
-      if (this.cachedOrigin === undefined) {
-        throw new Error('Sender address must be verified first')
-      }
       callerPt = DataPtFactory.deepCopy(this.cachedOrigin)
-      const contractAddressPt = this.placementManager.getReservedVariableFromBuffer('CONTRACT_ADDRESS')
       codeAddressPt = DataPtFactory.deepCopy(contractAddressPt)
       storageAddressPt = DataPtFactory.deepCopy(contractAddressPt)
     } else if (depth > 0) {
@@ -501,6 +520,9 @@ export class ContextManager {
     this.initialStorageReads.reset()
     this.logCache.reset()
     this.cachedOrigin = undefined
+    this._verifiedContractAddressPt = undefined
+    this._verifiedFunctionSelectorPt = undefined
+    this._verifiedTransactionInputPts = []
     this._messageCodeAddresses.clear()
   }
 

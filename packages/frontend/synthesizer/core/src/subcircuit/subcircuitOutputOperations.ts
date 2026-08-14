@@ -481,10 +481,6 @@ const alu1 = (inVals: bigint[]): bigint => {
       return evmMul(operands);
     case 1n << 3n:
       return evmSub(operands);
-    case 1n << 20n:
-      return evmEq(operands);
-    case 1n << 21n:
-      return evmIszero(operands.slice(0, 1));
     case 1n << 25n:
       return evmNot(operands.slice(0, 1));
     default:
@@ -500,6 +496,14 @@ const alu2 = (inVals: bigint[]): bigint => {
       return evmLt(operands);
     case 1n << 17n:
       return evmGt(operands);
+    case 1n << 18n:
+      return evmSlt(operands);
+    case 1n << 19n:
+      return evmSgt(operands);
+    case 1n << 20n:
+      return evmEq(operands);
+    case 1n << 21n:
+      return evmIszero(operands.slice(0, 1));
     default:
       throw new Error('ALU2 received an invalid selector');
   }
@@ -509,25 +513,19 @@ const alu3 = (inVals: bigint[]): bigint => {
   requireSubcircuitInputs(inVals, 3, 'ALU3');
   const operands = inVals.slice(1);
   switch (inVals[0]) {
-    case 1n << 18n:
-      return evmSlt(operands);
-    case 1n << 19n:
-      return evmSgt(operands);
+    case 1n << 11n:
+      return evmSignextend(operands);
+    case 1n << 22n:
+      return evmAnd(operands);
+    case 1n << 23n:
+      return evmOr(operands);
+    case 1n << 24n:
+      return evmXor(operands);
+    case 1n << 26n:
+      return evmByte(operands);
     default:
       throw new Error('ALU3 received an invalid selector');
   }
-};
-
-const andSubcircuit = (inVals: bigint[]): bigint => {
-  return evmAnd(requireSelector(inVals, 1n << 22n, 'AND', 2));
-};
-
-const orSubcircuit = (inVals: bigint[]): bigint => {
-  return evmOr(requireSelector(inVals, 1n << 23n, 'OR', 2));
-};
-
-const xorSubcircuit = (inVals: bigint[]): bigint => {
-  return evmXor(requireSelector(inVals, 1n << 24n, 'XOR', 2));
 };
 
 const alu4a = (inVals: bigint[]): bigint[] => {
@@ -584,20 +582,12 @@ const alu4b = (inVals: bigint[]): bigint => {
   return resultIsNegative === 1n ? BigInt.asUintN(256, -selectedMagnitude) : selectedMagnitude;
 };
 
-const signextendSubcircuit = (inVals: bigint[]): bigint => {
-  return evmSignextend(requireSelector(inVals, 1n << 11n, 'SIGNEXTEND', 2));
-};
-
-const byteSubcircuit = (inVals: bigint[]): bigint => {
-  return evmByte(requireSelector(inVals, 1n << 26n, 'BYTE', 2));
-};
-
 const shlSubcircuit = (inVals: bigint[]): bigint => {
   return evmShl(requireSelector(inVals, 1n << 27n, 'SHL', 2));
 };
 
-const alu6 = (inVals: bigint[]): bigint => {
-  requireSubcircuitInputs(inVals, 3, 'ALU6');
+const alu5 = (inVals: bigint[]): bigint => {
+  requireSubcircuitInputs(inVals, 3, 'ALU5');
   const operands = inVals.slice(1);
   switch (inVals[0]) {
     case 1n << 28n:
@@ -605,7 +595,7 @@ const alu6 = (inVals: bigint[]): bigint => {
     case 1n << 29n:
       return evmSar(operands);
     default:
-      throw new Error('ALU6 received an invalid selector');
+      throw new Error('ALU5 received an invalid selector');
   }
 };
 
@@ -835,15 +825,10 @@ const SUBCIRCUIT_OPERATION_MAPPING: Partial<Record<CompositionSubcircuit, Subcir
   ALU1: alu1,
   ALU2: alu2,
   ALU3: alu3,
-  AND: andSubcircuit,
-  OR: orSubcircuit,
-  XOR: xorSubcircuit,
   ALU4A: alu4a,
   ALU4B: alu4b,
-  SIGNEXTEND: signextendSubcircuit,
-  BYTE: byteSubcircuit,
   SHL: shlSubcircuit,
-  ALU6: alu6,
+  ALU5: alu5,
   ADDMODPrepare: addmodPrepare,
   ADDMODVerify: addmodVerify,
   MULMODPrepare: mulmodPrepare,
@@ -854,7 +839,7 @@ const SUBCIRCUIT_OPERATION_MAPPING: Partial<Record<CompositionSubcircuit, Subcir
   CheckBus256: checkBus256,
   Poseidon: poseidon,
   MemoryViewStep: memoryViewStep,
-  EqualBatch: () => [],
+  StorageAccess: () => [],
   TransactionSignaturePoseidonBatch4: poseidonBatch4,
   TransactionSignaturePointPolicy: pointPolicy,
   TransactionSignatureFixedPrefix70: fixedPrefix70,
