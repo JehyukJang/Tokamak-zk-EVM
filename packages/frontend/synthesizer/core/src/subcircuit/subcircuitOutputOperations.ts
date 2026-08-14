@@ -725,16 +725,17 @@ const poseidon = (inVals: bigint[]): bigint => {
   return poseidonChainCompress(inVals.slice(1, numInputs + 1));
 };
 
-const memoryLoadStep = (values: readonly bigint[]): bigint[] => {
-  expectLength(values, 7, 'MemoryLoadStep');
+const memoryViewStep = (values: readonly bigint[]): bigint[] => {
+  expectLength(values, 5, 'MemoryViewStep');
   const [
     sourceWord,
-    shiftMagnitude,
-    direction,
+    encodedShift,
     ownership,
     previousWord,
     previousOwnership,
   ] = values;
+  const shiftMagnitude = encodedShift! & 31n;
+  const direction = encodedShift! >> 5n;
   const shiftBits = shiftMagnitude! * 8n;
   const shiftedWord = direction === 0n ? sourceWord! << shiftBits : sourceWord! >> shiftBits;
   let ownershipWordMask = 0n;
@@ -745,7 +746,7 @@ const memoryLoadStep = (values: readonly bigint[]): bigint[] => {
   }
   const nextWord = previousWord! + (shiftedWord & ownershipWordMask);
   if (nextWord >= EVM_WORD_MODULUS) {
-    throw new Error('MemoryLoadStep: fragment sum exceeds an EVM word');
+    throw new Error('MemoryViewStep: fragment sum exceeds an EVM word');
   }
   const nextOwnership = previousOwnership! + ownership!;
   return [nextWord, nextOwnership];
@@ -852,7 +853,7 @@ const SUBCIRCUIT_OPERATION_MAPPING: Partial<Record<CompositionSubcircuit, Subcir
   SubExp: evmSubExp,
   CheckBus256: checkBus256,
   Poseidon: poseidon,
-  MemoryLoadStep: memoryLoadStep,
+  MemoryViewStep: memoryViewStep,
   EqualBatch: () => [],
   TransactionSignaturePoseidonBatch4: poseidonBatch4,
   TransactionSignaturePointPolicy: pointPolicy,

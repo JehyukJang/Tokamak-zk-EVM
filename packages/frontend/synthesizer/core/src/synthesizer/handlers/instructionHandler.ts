@@ -587,7 +587,7 @@ export class InstructionHandler {
             memOffset,
             dataLength,
           )
-          const viewDataPts = this.placementManager.placeComposition('MemoryStream', memoryOperands)
+          const viewDataPts = this.placementManager.placeComposition('MemoryView', memoryOperands)
           const recoveredValue = recoverMemoryValue(viewDataPts, dataLength)
           if (bytesToBigInt(opts.memOut!) !== recoveredValue) {
             throw new Error(`Synthesizer: ${op}: Memory data to load mismatch`)
@@ -741,8 +741,8 @@ export class InstructionHandler {
             calldataMemoryPt,
             BigInt(i),
             32n,
-          )[0] ?? []
-          const dataPt = this.placementManager.placeComposition('MemoryLoad', memoryOperands)[0]
+          )
+          const dataPt = this.placementManager.placeComposition('MemoryView', memoryOperands)[0]
           if (dataPt === undefined) {
             throw new Error('Synthesizer: CALLDATALOAD produced no result')
           }
@@ -766,7 +766,7 @@ export class InstructionHandler {
               memOffset,
             )
             const resultPts = this.placementManager.placeComposition(
-              'MemoryStream',
+              'MemoryView',
               memoryCopyPlan.operands,
             )
             memoryPt.writeBatch(createMemoryCopyEntries(memoryCopyPlan, resultPts))
@@ -864,7 +864,7 @@ export class InstructionHandler {
               memOffset,
             )
             const resultPts = this.placementManager.placeComposition(
-              'MemoryStream',
+              'MemoryView',
               memoryCopyPlan.operands,
             )
             memoryPt.writeBatch(createMemoryCopyEntries(memoryCopyPlan, resultPts))
@@ -928,7 +928,7 @@ export class InstructionHandler {
       memOffset,
       dataLength,
     )
-    const viewDataPts = this.placementManager.placeComposition('MemoryStream', memoryOperands)
+    const viewDataPts = this.placementManager.placeComposition('MemoryView', memoryOperands)
     const recoveredValue = recoverMemoryValue(viewDataPts, dataLength)
     const expectedLogData = bytesToBigInt(
       opts.prevStepResult.memory.subarray(Number(memOffset), Number(memOffset) + Number(dataLength)),
@@ -974,8 +974,8 @@ export class InstructionHandler {
             opts.memoryPt,
             pos,
             32n,
-          )[0] ?? []
-          const mutDataPt = this.placementManager.placeComposition('MemoryLoad', memoryOperands)[0]
+          )
+          const mutDataPt = this.placementManager.placeComposition('MemoryView', memoryOperands)[0]
           if (mutDataPt === undefined) {
             throw new Error('Synthesizer: MLOAD produced no result')
           }
@@ -1069,7 +1069,7 @@ export class InstructionHandler {
             dstOffset,
           )
           const resultPts = this.placementManager.placeComposition(
-            'MemoryStream',
+            'MemoryView',
             memoryCopyPlan.operands,
           )
           const _out = opts.memoryPt.writeBatch(createMemoryCopyEntries(memoryCopyPlan, resultPts))
@@ -1104,7 +1104,7 @@ export class InstructionHandler {
               outOffset,
             )
             const resultPts = this.placementManager.placeComposition(
-              'MemoryStream',
+              'MemoryView',
               memoryCopyPlan.operands,
             )
             opts.memoryPt.writeBatch(createMemoryCopyEntries(memoryCopyPlan, resultPts))
@@ -1134,7 +1134,7 @@ export class InstructionHandler {
             0n,
           )
           const resultPts = this.placementManager.placeComposition(
-            'MemoryStream',
+            'MemoryView',
             memoryCopyPlan.operands,
           )
           opts.thisContext.resultMemoryPts = createMemoryCopyEntries(memoryCopyPlan, resultPts)

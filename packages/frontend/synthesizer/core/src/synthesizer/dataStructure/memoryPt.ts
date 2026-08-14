@@ -144,7 +144,7 @@ export class MemoryPt {
    * The context layer materializes the returned geometry into composition operands.
    * @param offset - Starting memory position to read
    * @param size - Number of bytes to read
-   * @returns Byte geometry and derived MemoryLoadStep facts.
+   * @returns Byte geometry used to materialize MemoryViewStep inputs.
    */
   getDataAlias(offset: number, size: number): DataAliasGeometries {
     const dataAliasInfos: DataAliasGeometryEntry[] = []
@@ -159,7 +159,7 @@ export class MemoryPt {
       const dataPt = this._storePt.get(timeStamp)!.dataPt
       const shift = (viewEndOffset - dataEndOffset) * 8
       if (!Number.isInteger(shift) || shift % 8 !== 0 || Math.abs(shift) > 31 * 8) {
-        throw new Error('MemoryPt: memory-load shift must be a byte-aligned value from -248 to 248.')
+        throw new Error('MemoryPt: memory-view shift must be a byte-aligned value from -248 to 248.')
       }
       const masker = this._generateMasker(offset, size, _value.validRange)
       const ownershipMask = this._createOwnershipMask(masker)

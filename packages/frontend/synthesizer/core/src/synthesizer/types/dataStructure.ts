@@ -73,11 +73,11 @@ export type DataPt = DataPtDescription & { value: bigint; valueHex: string };
 /** Derived memory-view geometry reported by MemoryPt before symbolic inputs are created. */
 export type DataAliasGeometryEntry = Readonly<{
   dataPt: DataPt;
-  /** Absolute byte shift consumed by MemoryLoadStep. */
+  /** Absolute byte shift encoded for MemoryViewStep. */
   shiftMagnitude: number;
   /** Zero selects a left shift; one selects a right shift. */
   direction: 0 | 1;
-  /** One bit per output byte, consumed by MemoryLoadStep. */
+  /** One bit per output byte, consumed by MemoryViewStep. */
   ownershipMask: bigint;
 }>;
 export type DataAliasGeometries = readonly DataAliasGeometryEntry[];

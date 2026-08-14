@@ -453,13 +453,9 @@ export class PlacementManager {
         candidate = this._buildPoseidonComposition(operands, basePlacementIndex)
         this._validatePoseidonCandidate(candidate, composition)
         break
-      case 'memory-load':
-        candidate = this._buildMemoryLoadComposition(operands, basePlacementIndex)
-        this._validateMemoryCandidate(candidate, composition)
-        break
-      case 'memory-stream':
-        candidate = this._buildMemoryStreamComposition(operands, basePlacementIndex)
-        this._validateMemoryCandidate(candidate, composition)
+      case 'memory-view':
+        candidate = this._materializeMemoryViewComposition(operands, basePlacementIndex)
+        this._validateMemoryViewCandidate(candidate, composition)
         break
     }
     for (const placement of candidate.placements) {
@@ -487,15 +483,19 @@ export class PlacementManager {
     }
   }
 
-  private _buildMemoryView(
-    operation: 'MemoryLoad' | 'MemoryStream',
-    operands: readonly DataPt[],
+  private _materializeMemoryViewComposition(
+    operands: CompositionOperands,
     basePlacementIndex: number,
-  ): readonly [readonly PlacementEntry[], DataPt] {
+  ): PlacementCandidate {
+    const operation = 'MemoryView'
+    if (operands.some((view) => !Array.isArray(view))) {
+      throw new Error('Synthesizer: MemoryView requires view-grouped operands')
+    }
+    const views = operands as readonly (readonly DataPt[])[]
     const composition = this._placementCompositionMapping[operation]
     const step = composition.steps[0]
-    if (step === undefined || step.subcircuit !== 'MemoryLoadStep') {
-      throw new Error(`Synthesizer: ${operation} has no MemoryLoadStep template`)
+    if (step === undefined || step.subcircuit !== 'MemoryViewStep') {
+      throw new Error('Synthesizer: MemoryView has no MemoryViewStep template')
     }
     const logicalInterface = this.subcircuitInfoByName.get(step.subcircuit)?.logicalInterface
     if (logicalInterface === undefined) {
@@ -507,97 +507,65 @@ export class PlacementManager {
     const outputTypes = logicalInterface.outputs.map(({ logicalType }) =>
       getDataPtTypeFromLogicalInterfaceType(logicalType),
     )
-    const previousWordType = inputTypes[4]
-    const previousOwnershipType = inputTypes[5]
+    const previousWordType = inputTypes[3]
+    const previousOwnershipType = inputTypes[4]
     const nextWordType = outputTypes[0]
     const nextOwnershipType = outputTypes[1]
-    if (logicalInterface.inputs.length !== 7 || logicalInterface.outputs.length !== 2
+    if (logicalInterface.inputs.length !== 5 || logicalInterface.outputs.length !== 2
       || previousWordType === undefined || previousOwnershipType === undefined
       || nextWordType === undefined || nextOwnershipType === undefined) {
       throw new Error(`Synthesizer: ${step.subcircuit} logical interface is incomplete`)
     }
-    const zeroWordPt = this.loadArbitraryStatic(0n, previousWordType)
-    if (operands.length === 0) {
-      return [[], zeroWordPt]
-    }
-    const inputsPerFragment = 4
-    if (operands.length <= 1 || (operands.length - 1) % inputsPerFragment !== 0) {
-      throw new Error('Synthesizer: memory operands must contain four inputs per fragment and final coverage')
-    }
-    const expectedCoveragePt = operands.at(-1)!
-    const zeroOwnershipPt = this.loadArbitraryStatic(
-      0n,
-      previousOwnershipType,
-    )
-    const steps: PlacementEntry[] = []
-    let previousWordPt = zeroWordPt
-    let previousOwnershipPt = zeroOwnershipPt
-    const fragmentCount = (operands.length - 1) / inputsPerFragment
-    for (let stepIndex = 0; stepIndex < fragmentCount; stepIndex++) {
-      const operandOffset = stepIndex * inputsPerFragment
-      const fragmentPts = operands.slice(operandOffset, operandOffset + inputsPerFragment)
-      const inPts = [...fragmentPts, previousWordPt, previousOwnershipPt, expectedCoveragePt]
-      const [nextWordValue, nextOwnershipValue] = this.subcircuitLibrary.calculateSubcircuitOutputValues(
-        'MemoryLoadStep',
-        inPts.map(({ value }) => value),
-      )
-      if (nextWordValue === undefined || nextOwnershipValue === undefined) {
-        throw new Error('Synthesizer: MemoryLoadStep did not produce both outputs')
-      }
-      const placementIndex = basePlacementIndex + steps.length
-      const nextWordPt = DataPtFactory.create({
-        source: placementIndex,
-        wireIndex: 0,
-        dataPtType: nextWordType,
-      }, nextWordValue)
-      const nextOwnershipPt = DataPtFactory.create({
-        source: placementIndex,
-        wireIndex: 1,
-        dataPtType: nextOwnershipType,
-      }, nextOwnershipValue)
-      steps.push(this._createCandidateStep(
-        operation,
-        step.subcircuit,
-        inPts,
-        [nextWordPt, nextOwnershipPt],
-      ))
-      previousWordPt = nextWordPt
-      previousOwnershipPt = nextOwnershipPt
-    }
-    return [steps, previousWordPt]
-  }
-
-  private _buildMemoryLoadComposition(
-    operands: CompositionOperands,
-    basePlacementIndex: number,
-  ): PlacementCandidate {
-    if (isNestedOperands(operands)) {
-      throw new Error('Synthesizer: MemoryLoad requires flat operands')
-    }
-    const [steps, resultPt] = this._buildMemoryView('MemoryLoad', operands, basePlacementIndex)
-    return { operation: 'MemoryLoad', operands, resultPts: [resultPt], placements: steps }
-  }
-
-  private _buildMemoryStreamComposition(
-    operands: CompositionOperands,
-    basePlacementIndex: number,
-  ): PlacementCandidate {
-    const views = operands as readonly (readonly DataPt[])[]
-    if (views.some((view) => !Array.isArray(view))) {
-      throw new Error('Synthesizer: MemoryStream requires view-grouped operands')
-    }
+    const inputsPerFragment = 3
     const steps: PlacementEntry[] = []
     const resultPts: DataPt[] = []
-    for (const view of views) {
-      const [viewSteps, resultPt] = this._buildMemoryView(
-        'MemoryStream',
-        view,
-        basePlacementIndex + steps.length,
-      )
-      steps.push(...viewSteps)
-      resultPts.push(resultPt)
+    for (const [viewIndex, view] of views.entries()) {
+      const zeroWordPt = this.loadArbitraryStatic(0n, previousWordType)
+      if (view.length === 0) {
+        resultPts.push(zeroWordPt)
+        continue
+      }
+      if (view.length % inputsPerFragment !== 0) {
+        throw new Error(`Synthesizer: MemoryView view ${viewIndex} must contain three inputs per fragment`)
+      }
+      const zeroOwnershipPt = this.loadArbitraryStatic(0n, previousOwnershipType)
+      let previousWordPt = zeroWordPt
+      let previousOwnershipPt = zeroOwnershipPt
+      const fragmentCount = view.length / inputsPerFragment
+      for (let fragmentIndex = 0; fragmentIndex < fragmentCount; fragmentIndex++) {
+        const operandOffset = fragmentIndex * inputsPerFragment
+        const fragmentPts = view.slice(operandOffset, operandOffset + inputsPerFragment)
+        const inPts = [...fragmentPts, previousWordPt, previousOwnershipPt]
+        const [nextWordValue, nextOwnershipValue] = this.subcircuitLibrary.calculateSubcircuitOutputValues(
+          'MemoryViewStep',
+          inPts.map(({ value }) => value),
+        )
+        if (nextWordValue === undefined || nextOwnershipValue === undefined) {
+          throw new Error('Synthesizer: MemoryViewStep did not produce both outputs')
+        }
+        const placementIndex = basePlacementIndex + steps.length
+        const nextWordPt = DataPtFactory.create({
+          source: placementIndex,
+          wireIndex: 0,
+          dataPtType: nextWordType,
+        }, nextWordValue)
+        const nextOwnershipPt = DataPtFactory.create({
+          source: placementIndex,
+          wireIndex: 1,
+          dataPtType: nextOwnershipType,
+        }, nextOwnershipValue)
+        steps.push(this._createCandidateStep(
+          operation,
+          step.subcircuit,
+          inPts,
+          [nextWordPt, nextOwnershipPt],
+        ))
+        previousWordPt = nextWordPt
+        previousOwnershipPt = nextOwnershipPt
+      }
+      resultPts.push(previousWordPt)
     }
-    return { operation: 'MemoryStream', operands: views, resultPts, placements: steps }
+    return { operation, operands: views, resultPts, placements: steps }
   }
 
   private _buildGenericComposition(
@@ -901,26 +869,16 @@ export class PlacementManager {
     }
   }
 
-  private _validateMemoryCandidate(
+  private _validateMemoryViewCandidate(
     candidate: PlacementCandidate,
     composition: PlacementComposition,
   ): void {
     const step = composition.steps[0]!
-    const inputsPerFragment = 4
-    let views: readonly (readonly DataPt[])[]
-    if (candidate.operation === 'MemoryLoad') {
-      if (isNestedOperands(candidate.operands)) {
-        throw new Error('Synthesizer: MemoryLoad operands must be flat')
-      }
-      views = [candidate.operands as readonly DataPt[]]
-    } else if (candidate.operation === 'MemoryStream') {
-      views = candidate.operands as readonly (readonly DataPt[])[]
-      if (views.some((view) => !Array.isArray(view))) {
-        throw new Error('Synthesizer: MemoryStream operands must preserve view boundaries')
-      }
-    } else {
-      throw new Error(`Synthesizer: ${candidate.operation} is not a memory composition`)
+    const inputsPerFragment = 3
+    if (candidate.operation !== 'MemoryView' || candidate.operands.some((view) => !Array.isArray(view))) {
+      throw new Error('Synthesizer: MemoryView operands must preserve view boundaries')
     }
+    const views = candidate.operands as readonly (readonly DataPt[])[]
     if (candidate.resultPts.length !== views.length) {
       throw new Error(
         `Synthesizer: ${candidate.operation} expected ${views.length} results, but got ${candidate.resultPts.length}`,
@@ -928,7 +886,7 @@ export class PlacementManager {
     }
     const subcircuit = this.subcircuitInfoByName.get(step.subcircuit)
     if (subcircuit === undefined) {
-      throw new Error('Synthesizer: MemoryLoadStep subcircuit is not found. Check qap-compiler.')
+      throw new Error('Synthesizer: MemoryViewStep subcircuit is not found. Check qap-compiler.')
     }
 
     const basePlacementIndex = this._placements.length
@@ -939,12 +897,10 @@ export class PlacementManager {
         _assertStaticCandidateValue(candidate.operation, `view ${viewIndex} zero result`, resultPt, 0n)
         continue
       }
-      if (view.length <= 1 || (view.length - 1) % inputsPerFragment !== 0) {
+      if (view.length % inputsPerFragment !== 0) {
         throw new Error(`Synthesizer: ${candidate.operation} view ${viewIndex} has invalid operands`)
       }
-      const fragmentCount = (view.length - 1) / inputsPerFragment
-      const expectedCoveragePt = view.at(-1)!
-      let accumulatedCoverage = 0n
+      const fragmentCount = view.length / inputsPerFragment
       let previousWordPt: DataPt | undefined
       let previousOwnershipPt: DataPt | undefined
 
@@ -983,17 +939,15 @@ export class PlacementManager {
           )
         }
 
-        const [sourceWordPt, shiftPt, directionPt, ownershipPt] = candidateStep.inPts
-        if (sourceWordPt === undefined || shiftPt === undefined || directionPt === undefined || ownershipPt === undefined) {
+        const [sourceWordPt, encodedShiftPt, ownershipPt] = candidateStep.inPts
+        if (sourceWordPt === undefined || encodedShiftPt === undefined || ownershipPt === undefined) {
           throw new Error(`Synthesizer: ${candidate.operation} step ${candidateStepIndex} is missing fragment inputs`)
         }
-        _assertStaticCandidateValue(candidate.operation, `step ${candidateStepIndex} byte shift`, shiftPt, shiftPt.value)
-        _assertStaticCandidateValue(candidate.operation, `step ${candidateStepIndex} shift direction`, directionPt, directionPt.value)
+        _assertStaticCandidateValue(candidate.operation, `step ${candidateStepIndex} encoded byte shift`, encodedShiftPt, encodedShiftPt.value)
         _assertStaticCandidateValue(candidate.operation, `step ${candidateStepIndex} byte ownership`, ownershipPt, ownershipPt.value)
-        accumulatedCoverage |= ownershipPt.value
 
-        const previousWordInput = candidateStep.inPts[4]!
-        const previousOwnershipInput = candidateStep.inPts[5]!
+        const previousWordInput = candidateStep.inPts[3]!
+        const previousOwnershipInput = candidateStep.inPts[4]!
         if (fragmentIndex === 0) {
           _assertStaticCandidateValue(candidate.operation, `view ${viewIndex} initial word`, previousWordInput, 0n)
           _assertStaticCandidateValue(candidate.operation, `view ${viewIndex} initial ownership`, previousOwnershipInput, 0n)
@@ -1005,10 +959,6 @@ export class PlacementManager {
         ) {
           throw new Error(`Synthesizer: ${candidate.operation} step ${candidateStepIndex} is not connected to the previous step`)
         }
-        if (!_isSameWire(candidateStep.inPts[6]!, expectedCoveragePt)) {
-          throw new Error(`Synthesizer: ${candidate.operation} step ${candidateStepIndex} coverage is inconsistent`)
-        }
-
         const nextWordPt = candidateStep.outPts[0]!
         const nextOwnershipPt = candidateStep.outPts[1]!
         if (
@@ -1024,12 +974,6 @@ export class PlacementManager {
         candidateStepIndex++
       }
 
-      _assertStaticCandidateValue(
-        candidate.operation,
-        `view ${viewIndex} final byte ownership`,
-        expectedCoveragePt,
-        accumulatedCoverage,
-      )
       if (previousWordPt === undefined || !_isSameWire(resultPt, previousWordPt)) {
         throw new Error(`Synthesizer: ${candidate.operation} view ${viewIndex} result is not connected to its final placement`)
       }

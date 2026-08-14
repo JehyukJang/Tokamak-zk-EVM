@@ -10,7 +10,6 @@ import { FUNCTION_INPUT_LENGTH } from 'tokamak-l2js';
 import { DataPtFactory } from '../dataStructure/dataPt.ts';
 import { MemoryPt, StackPt } from '../dataStructure/index.ts';
 import {
-  BIT_DATA_PT_TYPE,
   UINT32_DATA_PT_TYPE,
   UINT256_DATA_PT_TYPE,
 } from '../types/index.ts';
@@ -36,7 +35,7 @@ export const createMemoryCopyEntries = (
   dataPts: readonly DataPt[],
 ): MemoryPts => {
   if (plan.destinations.length !== dataPts.length) {
-    throw new Error('Synthesizer: MemoryStream result count does not match its copy destinations')
+    throw new Error('Synthesizer: MemoryView result count does not match its copy destinations')
   }
   return plan.destinations.map((destination, index) => ({
     ...destination,
@@ -300,31 +299,19 @@ export class ContextManager {
         continue
       }
       const viewOperands: DataPt[] = []
-      let expectedCoverage = 0n
       for (const geometry of dataAliasGeometries) {
-        const shiftPt = this.placementManager.loadArbitraryStatic(
-          BigInt(geometry.shiftMagnitude),
+        const encodedShiftPt = this.placementManager.loadArbitraryStatic(
+          BigInt(geometry.shiftMagnitude + 32 * geometry.direction),
           UINT32_DATA_PT_TYPE,
-          'Memory-load byte shift magnitude',
-        )
-        const directionPt = this.placementManager.loadArbitraryStatic(
-          BigInt(geometry.direction),
-          BIT_DATA_PT_TYPE,
-          'Memory-load shift direction',
+          'Memory-view encoded byte shift',
         )
         const ownershipPt = this.placementManager.loadArbitraryStatic(
           geometry.ownershipMask,
           UINT32_DATA_PT_TYPE,
-          'Memory-load byte ownership mask',
+          'Memory-view byte ownership mask',
         )
-        viewOperands.push(geometry.dataPt, shiftPt, directionPt, ownershipPt)
-        expectedCoverage |= geometry.ownershipMask
+        viewOperands.push(geometry.dataPt, encodedShiftPt, ownershipPt)
       }
-      viewOperands.push(this.placementManager.loadArbitraryStatic(
-        expectedCoverage,
-        UINT32_DATA_PT_TYPE,
-        'Memory-load final byte ownership',
-      ))
       views.push(viewOperands)
     }
     return views
@@ -449,7 +436,7 @@ export class ContextManager {
         0n,
       )
       const callDataPts = this.placementManager.placeComposition(
-        'MemoryStream',
+        'MemoryView',
         memoryCopyPlan.operands,
       )
       callDataMemoryPts = createMemoryCopyEntries(memoryCopyPlan, callDataPts)
