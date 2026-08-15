@@ -23,9 +23,11 @@ import {
   getDataPtWireCount,
 } from '../types/dataStructure.ts';
 import {
+  BUFFER_DIRECTION,
   BUFFER_DESCRIPTION,
   BUFFER_LIST,
   ReservedBuffer,
+  ReservedBufferDirection,
   TRANSACTION_INPUT_VARIABLES,
   SubcircuitInfoByName,
   SubcircuitInfoByNameEntry,
@@ -308,6 +310,7 @@ export class PlacementManager {
     dynamic: boolean = false,
     message?: string,
   ): DataPt {
+    this._assertReservedVariableBufferDirection(varName, 'in')
     const placementIndex = VARIABLE_DESCRIPTION[varName].source
     const wireDesc: DataPtDescription = {
       ...VARIABLE_DESCRIPTION[varName],
@@ -330,6 +333,7 @@ export class PlacementManager {
     dynamic: boolean = false,
     message?: string,
   ): DataPt {
+    this._assertReservedVariableBufferDirection(varName, 'out')
     const placementIndex = VARIABLE_DESCRIPTION[varName].source
     const wireDesc: DataPtDescription = {
       ...VARIABLE_DESCRIPTION[varName],
@@ -1215,5 +1219,17 @@ export class PlacementManager {
     }
     
     return DataPtFactory.deepCopy(outPt)
+  }
+
+  private _assertReservedVariableBufferDirection(
+    varName: ReservedVariable,
+    expectedDirection: ReservedBufferDirection,
+  ): void {
+    const buffer = BUFFER_LIST[VARIABLE_DESCRIPTION[varName].source]
+    if (buffer === undefined || BUFFER_DIRECTION[buffer] !== expectedDirection) {
+      throw new Error(
+        `Synthesizer: ${varName} must be added through an ${expectedDirection === 'in' ? 'input' : 'output'} buffer`,
+      )
+    }
   }
 }

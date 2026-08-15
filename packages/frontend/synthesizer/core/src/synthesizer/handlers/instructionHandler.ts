@@ -522,8 +522,14 @@ export class InstructionHandler {
       ` of address: ${address}`,
     );
     const valuePt = this.placementManager.addReservedVariableToBufferIn(
-      'SLOAD_VALUE',
+      'STORAGE_READ',
       valueStored,
+      true,
+      ` of address: ${address}`,
+    );
+    this.placementManager.addReservedVariableToBufferOut(
+      'SLOAD_VALUE',
+      valuePt,
       true,
       ` of address: ${address}`,
     );

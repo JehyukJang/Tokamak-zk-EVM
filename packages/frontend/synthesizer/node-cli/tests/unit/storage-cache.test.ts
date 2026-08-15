@@ -135,16 +135,54 @@ describe('StateManager storage tracking', () => {
     expect(state.messageCodeAddresses).toEqual([]);
   });
 
-  it('uses a full 256-bit value for the STORAGE_LOAD private input', () => {
+  it('uses a full 256-bit value for the private initial storage input', () => {
     const value = (1n << 256n) - 1n;
 
-    expect(DataPtFactory.create(VARIABLE_DESCRIPTION.SLOAD_VALUE, value)).toMatchObject({
+    expect(DataPtFactory.create(VARIABLE_DESCRIPTION.STORAGE_READ, value)).toMatchObject({
       dataPtType: UINT256_DATA_PT_TYPE,
       value,
     });
+    expect(VARIABLE_DESCRIPTION.STORAGE_READ.source).toBe(
+      BUFFER_LIST.indexOf('PRIVATE_IN'),
+    );
     expect(VARIABLE_DESCRIPTION.SLOAD_VALUE.source).toBe(
       BUFFER_LIST.indexOf('STORAGE_LOAD'),
     );
+    expect(VARIABLE_DESCRIPTION.SLOAD_VALUE.extDest).toBe('Initial storage read value');
+  });
+
+  it('enforces reserved-buffer direction before appending wires', () => {
+    const placementManager = Object.assign(Object.create(PlacementManager.prototype), {
+      _placements: BUFFER_LIST.map((buffer) => ({
+        name: buffer,
+        usage: 'test buffer',
+        subcircuitId: 0,
+        inPts: [],
+        outPts: [],
+      })),
+    }) as PlacementManager;
+
+    expect(() => placementManager.addReservedVariableToBufferIn('SLOAD_VALUE', 1n, true))
+      .toThrow('SLOAD_VALUE must be added through an input buffer');
+    expect(() => placementManager.addReservedVariableToBufferOut(
+      'STORAGE_READ',
+      dataPt(1n, 1),
+      true,
+    )).toThrow('STORAGE_READ must be added through an output buffer');
+
+    const privateValuePt = placementManager.addReservedVariableToBufferIn(
+      'STORAGE_READ',
+      1n,
+      true,
+    );
+    const publicValuePt = placementManager.addReservedVariableToBufferOut(
+      'SLOAD_VALUE',
+      privateValuePt,
+      true,
+    );
+
+    expect(privateValuePt.source).toBe(BUFFER_LIST.indexOf('PRIVATE_IN'));
+    expect(publicValuePt.source).toBe(BUFFER_LIST.indexOf('STORAGE_LOAD'));
   });
 
   it('exposes only dirty entries for final storage output', () => {
@@ -319,12 +357,13 @@ describe('InstructionHandler storage cache', () => {
     expect(parent.state.initialStorageReads.entries).toHaveLength(1);
     expect(parent.addReservedVariableToBufferIn.mock.calls.map(
       ([name]: [string]) => name,
-    )).toEqual(['SLOAD_VALUE']);
+    )).toEqual(['STORAGE_READ']);
     expect(parent.addReservedVariableToBufferOut.mock.calls.map(
       ([name, valuePt]: [string, DataPt]) => [name, valuePt.source, valuePt.value],
     )).toEqual([
       ['SLOAD_ADDRESS', 30, addressValue],
       ['SLOAD_KEY', 31, 9n],
+      ['SLOAD_VALUE', 102, 5n],
     ]);
     expect(parent.state.initialStorageReads.entries[0]).toMatchObject({
       addressPt: { source: 30, value: addressValue },
@@ -366,7 +405,7 @@ describe('InstructionHandler storage cache', () => {
 
     expect(parent.state.initialStorageReads.entries).toHaveLength(1);
     expect(parent.addReservedVariableToBufferIn).toHaveBeenCalledTimes(1);
-    expect(parent.addReservedVariableToBufferOut).toHaveBeenCalledTimes(2);
+    expect(parent.addReservedVariableToBufferOut).toHaveBeenCalledTimes(3);
     expect(secondValuePt).toMatchObject({
       source: firstValuePt.source,
       wireIndex: firstValuePt.wireIndex,
@@ -471,7 +510,7 @@ describe('InstructionHandler storage cache', () => {
     ]);
     expect(storageAccessCompositions(parent)[0]?.map(({ source }) => source))
       .toEqual([82, 83, 80, 81]);
-    expect(parent.addReservedVariableToBufferOut).toHaveBeenCalledTimes(2);
+    expect(parent.addReservedVariableToBufferOut).toHaveBeenCalledTimes(3);
   });
 
   it('tracks distinct address and key pairs independently', async () => {
@@ -512,7 +551,7 @@ describe('InstructionHandler storage cache', () => {
       [addressValue, 2n, 4n],
     ]);
     expect(storageAccessCompositions(parent)).toHaveLength(1);
-    expect(parent.addReservedVariableToBufferOut).toHaveBeenCalledTimes(4);
+    expect(parent.addReservedVariableToBufferOut).toHaveBeenCalledTimes(6);
   });
 
   it('rejects a storageAddressPt that does not match the EVM storage address', async () => {
