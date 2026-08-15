@@ -583,7 +583,7 @@ const alu4b = (inVals: bigint[]): bigint => {
 };
 
 const shlSubcircuit = (inVals: bigint[]): bigint => {
-  return evmShl(requireSelector(inVals, 1n << 27n, 'SHL', 2));
+  return evmShl(inVals);
 };
 
 const alu5 = (inVals: bigint[]): bigint => {

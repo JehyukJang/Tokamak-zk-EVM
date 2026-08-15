@@ -1,6 +1,5 @@
 {
   "inputs": [
-    { "name": "selector", "logicalType": { "kind": "uint", "bits": 32 } },
     { "name": "shift", "logicalType": { "kind": "uint", "bits": 256 } },
     { "name": "value", "logicalType": { "kind": "uint", "bits": 256 } }
   ],

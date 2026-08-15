@@ -30,10 +30,9 @@ const loadShiftLeft = async () => {
   );
 };
 
-const calculate = (witnessCalculator, selector, shift, value) => {
+const calculate = (witnessCalculator, shift, value) => {
   return witnessCalculator.calculateWitness({
     in: [
-      selector,
       ...split256BitInteger(shift),
       ...split256BitInteger(value),
     ],
@@ -41,7 +40,7 @@ const calculate = (witnessCalculator, selector, shift, value) => {
 };
 
 const assertShiftLeft = async (witnessCalculator, shift, value, label) => {
-  const witness = await calculate(witnessCalculator, 1n << 27n, shift, value);
+  const witness = await calculate(witnessCalculator, shift, value);
   const [expectedLow, expectedHigh] = split256BitInteger(
     expectedShiftLeft(shift, value),
   );
@@ -100,8 +99,8 @@ const main = async () => {
   }
 
   const invalidLimb = 1n << 128n;
-  for (const limb of [1, 3, 4]) {
-    const input = [1n << 27n, 0n, 0n, 0n, 0n];
+  for (const limb of [0, 2, 3]) {
+    const input = [0n, 0n, 0n, 0n];
     input[limb] = invalidLimb;
     await assert.rejects(
       witnessCalculator.calculateWitness({ in: input }, true),
@@ -111,7 +110,6 @@ const main = async () => {
   }
   const nonCanonicalHighShiftWitness = await witnessCalculator.calculateWitness({
     in: [
-      1n << 27n,
       0n,
       1n << 128n,
       ...split256BitInteger(patternedValue),
@@ -119,12 +117,6 @@ const main = async () => {
   }, true);
   assert.equal(BigInt(nonCanonicalHighShiftWitness[1].toString()), 0n);
   assert.equal(BigInt(nonCanonicalHighShiftWitness[2].toString()), 0n);
-  await assert.rejects(
-    calculate(witnessCalculator, 1n << 28n, 1n, patternedValue),
-    undefined,
-    "unsupported selector must be rejected",
-  );
-
   const packageRoot = path.join(__dirname, "../..");
   const circuit = await wasm(
     path.join(packageRoot, "subcircuits/circom/SHL_circuit.circom"),
@@ -135,7 +127,7 @@ const main = async () => {
     },
   );
   const witness = await circuit.calculateWitness({
-    in: [1n << 27n, 1n, 0n, 1n, 0n],
+    in: [1n, 0n, 1n, 0n],
   }, true);
   await circuit.loadSymbols();
   const outputLowIndex = circuit.symbols["main.out[0]"]?.varIdx;
@@ -148,7 +140,7 @@ const main = async () => {
   );
 
   const oversizedWitness = await circuit.calculateWitness({
-    in: [1n << 27n, 0n, 1n << 128n, ...split256BitInteger(patternedValue)],
+    in: [0n, 1n << 128n, ...split256BitInteger(patternedValue)],
   }, true);
   assert.equal(BigInt(oversizedWitness[1].toString()), 0n);
   assert.equal(BigInt(oversizedWitness[2].toString()), 0n);
@@ -166,7 +158,7 @@ const main = async () => {
   );
 
   console.log(
-    `SHL passed ${boundaryShifts.length * boundaryValues.length} boundary cases, ${RANDOM_CASES} in-range and ${RANDOM_CASES} full-domain randomized cases, constrained-limb checks, high-shift zero detection, and wrong-claim rejection`,
+    `SHL passed ${boundaryShifts.length * boundaryValues.length} boundary cases, ${RANDOM_CASES} in-range and ${RANDOM_CASES} full-domain randomized cases, constrained-limb checks, high-shift zero detection, and output mutation rejection`,
   );
 };
 

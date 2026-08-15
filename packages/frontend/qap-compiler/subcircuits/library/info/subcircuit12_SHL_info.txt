@@ -1,11 +1,11 @@
 [32mtemplate instances[0m: 8
 non-linear constraints: 795
-linear constraints: 1
-public inputs: 5
+linear constraints: 0
+public inputs: 4
 private inputs: 0
 public outputs: 2
-wires: 796
-labels: 1624
+wires: 795
+labels: 1623
 [32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/SHL_circuit.r1cs
 [32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/SHL_circuit.sym
 [32mConstraints written in:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/SHL_circuit_constraints.json

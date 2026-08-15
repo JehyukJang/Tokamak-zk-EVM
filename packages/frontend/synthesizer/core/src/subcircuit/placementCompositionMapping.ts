@@ -292,7 +292,7 @@ const FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS: readonly PlacementCompositionEntry[
   createSingleStepMapping('XOR', 'ALU3', 1n << 24n, 2, 1),
   createSingleStepMapping('NOT', 'ALU1', 1n << 25n, 1, 1, [ZERO_WORD_CONSTANT]),
   createSingleStepMapping('BYTE', 'ALU3', 1n << 26n, 2, 1),
-  createSingleStepMapping('SHL', 'SHL', 1n << 27n, 2, 1),
+  createSingleStepMapping('SHL', 'SHL', null, 2, 1),
   createSingleStepMapping('SHR', 'ALU5', 1n << 28n, 2, 1),
   createSingleStepMapping('SAR', 'ALU5', 1n << 29n, 2, 1),
   createSingleStepMapping('SIGNEXTEND', 'ALU3', 1n << 11n, 2, 1),
