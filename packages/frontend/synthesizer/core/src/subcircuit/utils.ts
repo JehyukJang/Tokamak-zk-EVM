@@ -1,5 +1,6 @@
 import {
   FrontendConfig,
+  BufferDirection,
   GlobalWireList,
   LogicalInterface,
   LogicalInterfacePort,
@@ -154,6 +155,7 @@ export function parseSubcircuitInfo(value: unknown): SubcircuitInfo {
     const inIdx = entry.In_idx;
     const flattenMap = entry.flattenMap;
     const logicalInterface = entry.logicalInterface;
+    const bufferDirection = entry.bufferDirection;
 
     if (!isNumber(id)) throw new Error('Invalid field in subcircuitInfo.json: id');
     if (!isSubcircuitName(name)) throw new Error('Invalid field in subcircuitInfo.json: name');
@@ -168,8 +170,17 @@ export function parseSubcircuitInfo(value: unknown): SubcircuitInfo {
     if (isCompositionSubcircuit && logicalInterface === undefined) {
       throw new Error(`Invalid field in subcircuitInfo.json: ${name} logicalInterface is required`);
     }
-    if (!isCompositionSubcircuit && logicalInterface !== undefined) {
-      throw new Error(`Invalid field in subcircuitInfo.json: ${name} buffer must not define logicalInterface`);
+    if (isCompositionSubcircuit) {
+      if (bufferDirection !== undefined) {
+        throw new Error(`Invalid field in subcircuitInfo.json: ${name} subcircuit must not define bufferDirection`);
+      }
+    } else {
+      if (logicalInterface !== undefined) {
+        throw new Error(`Invalid field in subcircuitInfo.json: ${name} buffer must not define logicalInterface`);
+      }
+      if (bufferDirection !== 'in' && bufferDirection !== 'out') {
+        throw new Error(`Invalid field in subcircuitInfo.json: ${name} buffer must define bufferDirection`);
+      }
     }
 
     return {
@@ -183,6 +194,9 @@ export function parseSubcircuitInfo(value: unknown): SubcircuitInfo {
       ...(logicalInterface === undefined
         ? {}
         : { logicalInterface: parseLogicalInterface(logicalInterface) }),
+      ...(bufferDirection === undefined
+        ? {}
+        : { bufferDirection: bufferDirection as BufferDirection }),
     };
   });
 }
@@ -257,6 +271,7 @@ export function createInfoByName(subcircuitInfo: SubcircuitInfo): SubcircuitInfo
       outWireIndex: subcircuit.Out_idx[0],
       flattenMap: subcircuit.flattenMap,
       logicalInterface: subcircuit.logicalInterface,
+      bufferDirection: subcircuit.bufferDirection,
     };
 
     subcircuitInfoByName.set(subcircuit.name, entryObject);

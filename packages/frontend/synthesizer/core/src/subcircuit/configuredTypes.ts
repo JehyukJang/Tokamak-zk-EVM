@@ -1,4 +1,4 @@
-import type { LogicalInterface } from './libraryTypes.ts';
+import type { BufferDirection, LogicalInterface } from './libraryTypes.ts';
 
 export const OPERATOR_LIST = [
   'ADD',
@@ -138,6 +138,7 @@ export type SubcircuitInfoByNameEntry = {
   NOutWires: number;
   flattenMap: number[];
   logicalInterface?: LogicalInterface;
+  bufferDirection?: BufferDirection;
 };
 
 export type SubcircuitInfoByName = Map<

@@ -40,6 +40,8 @@ export type LogicalInterface = Readonly<{
   outputs: readonly LogicalInterfacePort[];
 }>;
 
+export type BufferDirection = 'in' | 'out';
+
 // Primitive validators
 export const isObjectRecord = (x: unknown): x is Record<string, unknown> =>
   typeof x === 'object' && x !== null;
@@ -67,6 +69,7 @@ type SubcircuitInfoItem = {
   [K in keyof ValidatorMap]: ValidatorMap[K] extends (x: unknown) => x is infer T ? T : never
 } & {
   logicalInterface?: LogicalInterface;
+  bufferDirection?: BufferDirection;
 };
 // Array of items
 export type SubcircuitInfo = SubcircuitInfoItem[];
