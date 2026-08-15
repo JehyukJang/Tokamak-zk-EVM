@@ -23,11 +23,9 @@ import {
   getDataPtWireCount,
 } from '../types/dataStructure.ts';
 import {
-  BUFFER_DIRECTION,
   BUFFER_DESCRIPTION,
   BUFFER_LIST,
   ReservedBuffer,
-  ReservedBufferDirection,
   TRANSACTION_INPUT_VARIABLES,
   SubcircuitInfoByName,
   SubcircuitInfoByNameEntry,
@@ -38,7 +36,11 @@ import type {
   PlacementComposition,
   PlacementCompositionMapping,
 } from '../../subcircuit/placementCompositionMapping.ts';
-import type { LogicalInterfacePort, ResolvedSubcircuitLibrary } from '../../subcircuit/libraryTypes.ts';
+import type {
+  BufferDirection,
+  LogicalInterfacePort,
+  ResolvedSubcircuitLibrary,
+} from '../../subcircuit/libraryTypes.ts';
 import { POSEIDON_INPUTS } from 'tokamak-l2js';
 
 type PlacementCandidate = Readonly<{
@@ -1223,10 +1225,19 @@ export class PlacementManager {
 
   private _assertReservedVariableBufferDirection(
     varName: ReservedVariable,
-    expectedDirection: ReservedBufferDirection,
+    expectedDirection: BufferDirection,
   ): void {
     const buffer = BUFFER_LIST[VARIABLE_DESCRIPTION[varName].source]
-    if (buffer === undefined || BUFFER_DIRECTION[buffer] !== expectedDirection) {
+    if (buffer === undefined) {
+      throw new Error(
+        `Synthesizer: ${varName} must be added through an ${expectedDirection === 'in' ? 'input' : 'output'} buffer`,
+      )
+    }
+    const subcircuit = this._bufferSubcircuitByBuffer[buffer]
+    if (subcircuit === undefined || subcircuit.bufferDirection === undefined) {
+      throw new Error(`Synthesizer: Buffer direction metadata is not found for ${buffer}`)
+    }
+    if (subcircuit.bufferDirection !== expectedDirection) {
       throw new Error(
         `Synthesizer: ${varName} must be added through an ${expectedDirection === 'in' ? 'input' : 'output'} buffer`,
       )

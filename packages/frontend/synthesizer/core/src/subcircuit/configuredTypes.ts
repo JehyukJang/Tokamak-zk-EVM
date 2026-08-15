@@ -63,18 +63,6 @@ export const BUFFER_LIST = [
 
 export type ReservedBuffer = (typeof BUFFER_LIST)[number]
 
-export type ReservedBufferDirection = 'in' | 'out'
-
-export const BUFFER_DIRECTION: Record<ReservedBuffer, ReservedBufferDirection> = {
-  LOG_OUT: 'out',
-  STORAGE_STORE: 'out',
-  STORAGE_LOAD: 'out',
-  TX_IN: 'in',
-  BLOCK_IN: 'in',
-  EVM_IN: 'in',
-  PRIVATE_IN: 'in',
-} as const
-
 export const BUFFER_DESCRIPTION: Record<ReservedBuffer, string> = {
   LOG_OUT: '[Public output & Private input] Buffer to emit committed EVM logs',
   STORAGE_STORE: '[Public output & Private input] Buffer to emit final storage writes',
