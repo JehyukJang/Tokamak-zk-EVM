@@ -160,6 +160,10 @@ describe('StateManager storage tracking', () => {
         inPts: [],
         outPts: [],
       })),
+      _bufferSubcircuitByBuffer: {
+        PRIVATE_IN: { bufferDirection: 'in' },
+        STORAGE_LOAD: { bufferDirection: 'out' },
+      },
     }) as PlacementManager;
 
     expect(() => placementManager.addReservedVariableToBufferIn('SLOAD_VALUE', 1n, true))
@@ -183,6 +187,26 @@ describe('StateManager storage tracking', () => {
 
     expect(privateValuePt.source).toBe(BUFFER_LIST.indexOf('PRIVATE_IN'));
     expect(publicValuePt.source).toBe(BUFFER_LIST.indexOf('STORAGE_LOAD'));
+  });
+
+  it('rejects absent qap buffer-direction metadata before appending wires', () => {
+    const placementManager = Object.assign(Object.create(PlacementManager.prototype), {
+      _placements: BUFFER_LIST.map((buffer) => ({
+        name: buffer,
+        usage: 'test buffer',
+        subcircuitId: 0,
+        inPts: [],
+        outPts: [],
+      })),
+      _bufferSubcircuitByBuffer: {
+        PRIVATE_IN: {},
+      },
+    }) as PlacementManager;
+
+    expect(() => placementManager.addReservedVariableToBufferIn('STORAGE_READ', 1n, true))
+      .toThrow('Buffer direction metadata is not found for PRIVATE_IN');
+    expect((placementManager as any)._placements[BUFFER_LIST.indexOf('PRIVATE_IN')]!.inPts)
+      .toHaveLength(0);
   });
 
   it('exposes only dirty entries for final storage output', () => {
