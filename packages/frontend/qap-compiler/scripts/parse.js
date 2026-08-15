@@ -2,8 +2,10 @@
 const {S_MAX} = require('./configure.js')
 const {LIST_PUBLIC} = require('./configure.js')
 const {PUBLIC_WIRE_SEGMENTS} = require('./configure.js')
+const {BUFFER_DECLARATIONS} = require('./configure.js')
 const listPublic = LIST_PUBLIC
 const publicWireSegments = PUBLIC_WIRE_SEGMENTS
+const bufferDeclarations = BUFFER_DECLARATIONS
 
 const fs = require('fs')
 const path = require('path')
@@ -78,6 +80,88 @@ function _recordPublicWireBoundary(boundaries, boundary, globalWireIndex) {
   boundaries[boundary] = globalWireIndex
 }
 
+function _assertCompiledPortRange(targetSubcircuit, name, direction) {
+  const wireIndex = direction === 'in'
+    ? targetSubcircuit.inWireIndex
+    : targetSubcircuit.outWireIndex
+  const wireCount = direction === 'in'
+    ? targetSubcircuit.NInWires
+    : targetSubcircuit.NOutWires
+
+  if (!Number.isInteger(wireIndex) || !Number.isInteger(wireCount)
+    || wireIndex < 1 || wireCount < 0
+    || wireIndex + wireCount > targetSubcircuit.NWires + 1) {
+    throw new Error(`parseWireList: Buffer '${name}' has an invalid compiled ${direction} port range.`)
+  }
+}
+
+function _validateBufferDeclarations(subcircuitInfos, subcircuitInfoByName) {
+  const directionByName = new Map()
+  const publicSegmentByName = new Map(publicWireSegments.map((segment) => [segment.name, segment]))
+
+  for (const declaration of bufferDeclarations) {
+    const { name, direction } = declaration
+    if (typeof name !== 'string' || name.length === 0) {
+      throw new Error('parseWireList: Buffer declaration has an invalid name.')
+    }
+    if (direction !== 'in' && direction !== 'out') {
+      throw new Error(`parseWireList: Buffer '${name}' has an invalid direction.`)
+    }
+    if (directionByName.has(name)) {
+      throw new Error(`parseWireList: Duplicate buffer declaration '${name}'.`)
+    }
+
+    const targetSubcircuit = subcircuitInfoByName.get(name)
+    if (targetSubcircuit === undefined) {
+      throw new Error(`parseWireList: Missing declared buffer '${name}'.`)
+    }
+    if (targetSubcircuit.logicalInterface !== undefined) {
+      throw new Error(`parseWireList: Buffer declaration '${name}' refers to a non-buffer subcircuit.`)
+    }
+    _assertCompiledPortRange(targetSubcircuit, name, 'in')
+    _assertCompiledPortRange(targetSubcircuit, name, 'out')
+
+    const publicSegment = publicSegmentByName.get(name)
+    if (publicSegment === undefined) {
+      if (direction !== 'in') {
+        throw new Error(`parseWireList: Private-only buffer '${name}' must have input direction.`)
+      }
+    } else {
+      const [actualWireIndex, actualWireCount] = _getPublicWireRange(
+        targetSubcircuit,
+        publicSegment.type,
+      )
+      const [expectedWireIndex, expectedWireCount] = direction === 'in'
+        ? [targetSubcircuit.inWireIndex, targetSubcircuit.NInWires]
+        : [targetSubcircuit.outWireIndex, targetSubcircuit.NOutWires]
+      const hasExpectedPublicType = direction === 'in'
+        ? publicSegment.type === 'inUser'
+          || publicSegment.type === 'inBlock'
+          || publicSegment.type === 'inFunction'
+        : publicSegment.type === 'outUser'
+      if (!hasExpectedPublicType) {
+        throw new Error(`parseWireList: Buffer '${name}' direction does not match its public wire type.`)
+      }
+      if (actualWireIndex !== expectedWireIndex || actualWireCount !== expectedWireCount) {
+        throw new Error(`parseWireList: Buffer '${name}' public wire range does not match its direction.`)
+      }
+    }
+
+    directionByName.set(name, direction)
+  }
+
+  for (const subcircuit of subcircuitInfos) {
+    if (subcircuit.logicalInterface !== undefined) continue
+    const direction = directionByName.get(subcircuit.name)
+    if (direction === undefined) {
+      throw new Error(`parseWireList: Buffer '${subcircuit.name}' is missing direction metadata.`)
+    }
+    subcircuit.bufferDirection = direction
+  }
+
+  return directionByName
+}
+
 function parseWireList(subcircuitInfos) {
   let numTotalWires = 0
   let numPubUserOutWires = 0
@@ -132,9 +216,12 @@ function parseWireList(subcircuitInfos) {
       NOutWires: subcircuit.Out_idx[1],
       inWireIndex: subcircuit.In_idx[0],
       outWireIndex: subcircuit.Out_idx[0],
+      logicalInterface: subcircuit.logicalInterface,
     }
     subcircuitInfoByName.set(subcircuit.name, entryObject)
   }
+
+  _validateBufferDeclarations(subcircuitInfos, subcircuitInfoByName)
 
   const configuredPublicNames = new Set()
   for (const { name, type, boundary } of publicWireSegments) {
@@ -418,7 +505,8 @@ function parseSubcircuitBlock(lines) {
   }
 }
 
-fs.readFile(compilerOutputPath, 'utf8', function(err, data) {
+function main() {
+  fs.readFile(compilerOutputPath, 'utf8', function(err, data) {
   if (err) throw err;
   
   const subcircuits = []
@@ -560,4 +648,14 @@ fs.readFile(compilerOutputPath, 'utf8', function(err, data) {
       console.log('Successfully wrote the JSON file');
     }
   })
-})
+  })
+}
+
+if (require.main === module) {
+  main()
+}
+
+module.exports = {
+  _validateBufferDeclarations,
+  parseWireList,
+}
