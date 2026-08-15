@@ -66,7 +66,7 @@ template TransactionSignatureProductionComposition(N) {
     component challengePrefix = TransactionSignatureChallengeVariablePrefix();
     challengePrefix.in[0] <== finalHashBatch.out[1];
     for (var coordinate = 0; coordinate < 8; coordinate++) {
-        challengePrefix.in[1 + coordinate] <== pointPolicy.out[3 + coordinate];
+        challengePrefix.in[1 + coordinate] <== pointPolicy.out[5 + coordinate];
     }
 
     component variableBatches[3];
@@ -79,7 +79,7 @@ template TransactionSignatureProductionComposition(N) {
         }
         for (var coordinate = 0; coordinate < 8; coordinate++) {
             variableBatches[batch].in[68 + coordinate] <==
-                pointPolicy.out[3 + coordinate];
+                pointPolicy.out[5 + coordinate];
         }
         for (var coordinate = 0; coordinate < 4; coordinate++) {
             if (batch == 0) {
@@ -106,10 +106,10 @@ template TransactionSignatureProductionComposition(N) {
         final.in[64 + coordinate] <== variableBatches[2].out[coordinate];
     }
     for (var coordinate = 0; coordinate < 8; coordinate++) {
-        final.in[68 + coordinate] <== pointPolicy.out[3 + coordinate];
+        final.in[68 + coordinate] <== pointPolicy.out[5 + coordinate];
     }
     for (var coordinate = 0; coordinate < 4; coordinate++) {
-        final.in[76 + coordinate] <== pointPolicy.out[11 + coordinate];
+        final.in[76 + coordinate] <== pointPolicy.out[13 + coordinate];
     }
     final.in[80] <== finalHashBatch.out[0];
     origin <== final.out;
