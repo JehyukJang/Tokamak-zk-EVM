@@ -1,11 +1,11 @@
 [32mtemplate instances[0m: 11
 non-linear constraints: 223
-linear constraints: 5
+linear constraints: 6
 public inputs: 8
 private inputs: 0
-public outputs: 15
-wires: 234
-labels: 312
+public outputs: 17
+wires: 235
+labels: 314
 [32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/TransactionSignaturePointPolicy_circuit.r1cs
 [32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/TransactionSignaturePointPolicy_circuit.sym
 [32mConstraints written in:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/TransactionSignaturePointPolicy_circuit_constraints.json

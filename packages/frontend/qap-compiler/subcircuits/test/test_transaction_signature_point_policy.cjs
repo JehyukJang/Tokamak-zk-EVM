@@ -102,11 +102,11 @@ const main = async () => {
   try {
     assert.deepEqual(compileAndMeasure(packageRoot, outputRoot), {
       nonlinear: 223,
-      linear: 5,
+      linear: 6,
       inputs: 8,
-      outputs: 15,
-      wires: 234,
-      nonzero: 1083,
+      outputs: 17,
+      wires: 235,
+      nonzero: 1086,
     });
 
     const pointPolicy = await wasm(
@@ -125,13 +125,15 @@ const main = async () => {
     }, true);
     const publicKey8 = vector.publicKey.multiply(8n);
     const randomizer8 = vector.randomizer.multiply(8n);
-    const randomizerZInverse = invert(witness[14]);
+    const randomizerZInverse = invert(witness[16]);
     assert.deepEqual(
-      witness.slice(1, 12).map(normalize),
+      witness.slice(1, 14).map(normalize),
       [
         vector.publicBoundary.contractAddress,
         vector.publicBoundary.functionSelector,
         0n,
+        vector.publicBoundary.contractAddress & ((1n << 128n) - 1n),
+        vector.publicBoundary.contractAddress >> 128n,
         ...vector.publicBoundary.O,
         ...affine(publicKey8),
         ...affine(publicKey8.multiply(2n)),
@@ -139,7 +141,7 @@ const main = async () => {
       ],
     );
     assert.deepEqual(
-      witness.slice(12, 14).map((coordinate) => (
+      witness.slice(14, 16).map((coordinate) => (
         normalize(coordinate) * randomizerZInverse % FIELD_PRIME
       )),
       affine(randomizer8),
@@ -151,8 +153,8 @@ const main = async () => {
     await pointPolicy.loadSymbols();
     for (const signalName of [
       "main.out[0]",
-      "main.out[3]",
-      "main.out[11]",
+      "main.out[5]",
+      "main.out[13]",
       "main.publicKeyAffine.point[0]",
     ]) {
       await assertMutatedSignalRejected(pointPolicy, witness, signalName);

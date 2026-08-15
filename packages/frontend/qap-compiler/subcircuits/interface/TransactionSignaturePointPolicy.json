@@ -12,6 +12,7 @@
   "outputs": [
     { "name": "contractAddress", "logicalType": { "kind": "uint", "bits": 160 } },
     { "name": "functionSelector", "logicalType": { "kind": "uint", "bits": 256 } },
+    { "name": "contractAddressWord", "logicalType": { "kind": "uint", "bits": 256 } },
     { "name": "runtimeTableCoordinate", "length": 8, "logicalType": { "kind": "bls12-381-fr" } },
     { "name": "randomizerCofactorCoordinate", "length": 4, "logicalType": { "kind": "bls12-381-fr" } }
   ]

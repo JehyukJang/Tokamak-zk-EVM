@@ -4,7 +4,7 @@
   "nLogOut": 50,
   "nStorageStore": 30,
   "nBlockIn": 24,
-  "nEVMIn": 500,
+  "nEVMIn": 570,
   "nPrvIn": 80,
   "nPrivateMessageInputs": 29,
   "nPoseidonInputs": 2,

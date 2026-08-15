@@ -16,7 +16,7 @@ const {
 
 const EXPECTED = Object.freeze([
   Object.freeze({ name: "TransactionSignaturePoseidonBatch4", nonlinear: 950, linear: 0, inputs: 7, outputs: 2, wires: 957, nonzero: 11380, warnings: 1, placements: 9 }),
-  Object.freeze({ name: "TransactionSignaturePointPolicy", nonlinear: 223, linear: 5, inputs: 8, outputs: 15, wires: 234, nonzero: 1083, warnings: 0, placements: 1 }),
+  Object.freeze({ name: "TransactionSignaturePointPolicy", nonlinear: 223, linear: 6, inputs: 8, outputs: 17, wires: 235, nonzero: 1086, warnings: 0, placements: 1 }),
   Object.freeze({ name: "TransactionSignatureFixedPrefix70", nonlinear: 1016, linear: 0, inputs: 1, outputs: 46, wires: 1017, nonzero: 6894, warnings: 0, placements: 1 }),
   Object.freeze({ name: "TransactionSignatureChallengeVariablePrefix", nonlinear: 982, linear: 0, inputs: 9, outputs: 226, wires: 989, nonzero: 6258, warnings: 2, placements: 1 }),
   Object.freeze({ name: "TransactionSignatureVariableBatch", nonlinear: 986, linear: 0, inputs: 80, outputs: 4, wires: 1067, nonzero: 4556, warnings: 0, placements: 3 }),
@@ -107,16 +107,16 @@ const main = () => {
 
     assert.equal(
       measurements.reduce((sum, item) => sum + item.nonlinear + item.linear, 0),
-      5097,
+      5098,
     );
-    assert.equal(measurements.reduce((sum, item) => sum + item.wires, 0), 5276);
+    assert.equal(measurements.reduce((sum, item) => sum + item.wires, 0), 5277);
     assert.equal(measurements.reduce((sum, item) => sum + item.placements, 0), 16);
     assert.equal(
       measurements.reduce(
         (sum, item) => sum + item.placements * (item.nonlinear + item.linear),
         0,
       ),
-      14669,
+      14670,
     );
 
     const compileScript = readFileSync(
@@ -132,7 +132,7 @@ const main = () => {
     );
 
     console.log(
-      "Transaction signature production catalog freezes six types, 16 placements, 5097 unique constraints, and 14669 placement-weighted constraints",
+      "Transaction signature production catalog freezes six types, 16 placements, 5098 unique constraints, and 14670 placement-weighted constraints",
     );
   } finally {
     rmSync(outputRoot, { recursive: true, force: true });

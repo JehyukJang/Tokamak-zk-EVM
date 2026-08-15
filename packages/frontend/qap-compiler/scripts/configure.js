@@ -1,4 +1,4 @@
-module.exports.S_MAX = 256
+module.exports.S_MAX = 512
 
 const bufferDeclarations = [
   { name: 'bufferLogOut', direction: 'out', publicType: 'outUser', boundary: 'l_log_out' },
