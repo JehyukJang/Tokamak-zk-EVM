@@ -770,7 +770,13 @@ const pointPolicy = (values: readonly bigint[]): bigint[] => {
   const table: Affine[] = [identity, publicKeyAffine];
   table.push(affineAdd(table[1]!, publicKeyAffine));
   table.push(affineAdd(table[2]!, publicKeyAffine));
-  return [values[4]!, values[5]!, ...table.flat(), ...cofactorEight(randomizer, true)];
+  return [
+    values[4]!,
+    values[5]!,
+    values[4]!,
+    ...table.flat(),
+    ...cofactorEight(randomizer, true),
+  ];
 };
 
 const fixedPrefix70 = (values: readonly bigint[]): bigint[] => {

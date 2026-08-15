@@ -59,7 +59,7 @@ describe('transaction-signature host output calculations', () => {
       0n,
       1n,
     ])
-    expect([policy[4], policy[5]]).toEqual(Object.values(jubjub.Point.BASE.multiply(8n * privateKey).toAffine()))
+    expect([policy[5], policy[6]]).toEqual(Object.values(jubjub.Point.BASE.multiply(8n * privateKey).toAffine()))
     expect(toAffine(prefix.slice(42))).toEqual(
       jubjub.Point.BASE.multiply(8n * (response & ((1n << 210n) - 1n))).toAffine(),
     )
@@ -105,7 +105,8 @@ describe('transaction-signature host output calculations', () => {
 
     expect(results.get(0)).toBe(contractAddress)
     expect(results.get(1)).toBe(functionSelector)
-    expect(results.get(2)).toBe(poseidonChainCompress([publicKey.x, publicKey.y]) & ((1n << 160n) - 1n))
+    expect(results.get(2)).toBe(contractAddress)
+    expect(results.get(3)).toBe(poseidonChainCompress([publicKey.x, publicKey.y]) & ((1n << 160n) - 1n))
   })
 
   it('rejects a non-canonical challenge hash before producing variable scalar bits', () => {

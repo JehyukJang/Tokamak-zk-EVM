@@ -122,6 +122,7 @@ export const createTransactionSignatureVerifyCompositionMapping = (
     outputs: [
       { kind: 'result', index: 0 },
       { kind: 'result', index: 1 },
+      { kind: 'result', index: 2 },
       ...runtimeTableIndices.map((index): OutputReference => ({
         kind: 'step-output',
         index,
@@ -234,7 +235,7 @@ export const createTransactionSignatureVerifyCompositionMapping = (
       })),
       { kind: 'step-output', index: publicKeyHashIndex },
     ],
-    outputs: [{ kind: 'result', index: 2 }],
+    outputs: [{ kind: 'result', index: 3 }],
   })
 
   return Object.freeze({
@@ -248,7 +249,7 @@ export const createTransactionSignatureVerifyCompositionMapping = (
       ],
       numSteps: steps.length,
       numOperands: numberOfOperands,
-      numResults: 3,
+      numResults: 4,
       steps,
     }),
   })
