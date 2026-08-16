@@ -1,15 +1,17 @@
 pragma circom 2.1.6;
 
 template StorageAccess() {
-    // currentAddress, currentKey[2], canonicalAddress, canonicalKey[2]
-    signal input in[6];
-
-    (in[0] - in[3]) * (in[0] - in[3]) === 0;
-    (in[0] + in[3]) * (in[0] - in[3]) === in[0] - in[3];
+    // currentAddress[2], currentKey[2], canonicalAddress[2], canonicalKey[2]
+    signal input in[8];
 
     for (var i = 0; i < 2; i++) {
-        (in[1 + i] - in[4 + i]) * (in[1 + i] - in[4 + i]) === 0;
-        (in[1 + i] + in[4 + i]) * (in[1 + i] - in[4 + i]) === in[1 + i] - in[4 + i];
+        (in[i] - in[4 + i]) * (in[i] - in[4 + i]) === 0;
+        (in[i] + in[4 + i]) * (in[i] - in[4 + i]) === in[i] - in[4 + i];
+    }
+
+    for (var i = 0; i < 2; i++) {
+        (in[2 + i] - in[6 + i]) * (in[2 + i] - in[6 + i]) === 0;
+        (in[2 + i] + in[6 + i]) * (in[2 + i] - in[6 + i]) === in[2 + i] - in[6 + i];
     }
 }
 

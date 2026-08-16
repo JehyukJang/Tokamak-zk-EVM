@@ -1,8 +1,8 @@
 {
   "inputs": [
-    { "name": "currentAddress", "logicalType": { "kind": "uint", "bits": 160 } },
+    { "name": "currentAddress", "logicalType": { "kind": "uint", "bits": 256 } },
     { "name": "currentKey", "logicalType": { "kind": "uint", "bits": 256 } },
-    { "name": "canonicalAddress", "logicalType": { "kind": "uint", "bits": 160 } },
+    { "name": "canonicalAddress", "logicalType": { "kind": "uint", "bits": 256 } },
     { "name": "canonicalKey", "logicalType": { "kind": "uint", "bits": 256 } }
   ],
   "outputs": []
