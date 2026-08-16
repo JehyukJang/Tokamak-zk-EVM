@@ -67,7 +67,7 @@ const packageRoot = path.resolve(__dirname, '..');
 const scriptsEnvPath = path.resolve(__dirname, '.env');
 const packageEnvPath = path.resolve(packageRoot, '.env');
 const defaultOutputPath = path.resolve(packageRoot, 'scripts', 'private-state-mint-config.json');
-const deploymentManifestPath = path.resolve(packageRoot, 'scripts', 'deployment', 'private-state', 'deployment.31337.latest.json');
+const defaultDeploymentManifestPath = path.resolve(packageRoot, 'scripts', 'deployment', 'private-state', 'deployment.31337.latest.json');
 const DEFAULT_ANVIL_RPC_URL = 'http://127.0.0.1:8545';
 const DEFAULT_ANVIL_MNEMONIC = 'test test test test test test test test test test test junk';
 const DEFAULT_PARTICIPANT_COUNT = 4;
@@ -114,6 +114,8 @@ type ParsedArgs = {
   rpcUrl?: string;
   mnemonic?: string;
   amount?: string;
+  deploymentManifestPath?: string;
+  storageLayoutPath?: string;
 };
 
 const parseArgs = (): ParsedArgs => {
@@ -183,6 +185,12 @@ const parseArgs = (): ParsedArgs => {
       case '-a':
         args.amount = consumeValue(current);
         break;
+      case '--deployment-manifest':
+        args.deploymentManifestPath = consumeValue(current);
+        break;
+      case '--storage-layout':
+        args.storageLayoutPath = consumeValue(current);
+        break;
       default:
         throw new Error(`Unknown argument: ${current}`);
     }
@@ -243,19 +251,19 @@ const writeConfig = async (targetPath: string, config: PrivateStateMintConfig) =
   await fs.writeFile(targetPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
 };
 
-const loadDeploymentManifest = async (): Promise<DeploymentManifest> => {
-  const contents = await fs.readFile(deploymentManifestPath, 'utf8');
+const loadDeploymentManifest = async (manifestPath: string): Promise<DeploymentManifest> => {
+  const contents = await fs.readFile(manifestPath, 'utf8');
   return JSON.parse(contents) as DeploymentManifest;
 };
 
-const ensurePrivateStateBootstrap = async () => {
+const ensurePrivateStateBootstrap = async (manifestPath: string) => {
   try {
-    await fs.access(deploymentManifestPath);
+    await fs.access(manifestPath);
   } catch {
     throw new Error(
       [
         'Missing private-state deployment manifest for anvil.',
-        `Expected: ${deploymentManifestPath}`,
+        `Expected: ${manifestPath}`,
         'Refresh the mirrored private-state deployment artifacts before running this script.',
       ].join('\n'),
     );
@@ -264,6 +272,8 @@ const ensurePrivateStateBootstrap = async () => {
 
 const main = async () => {
   const args = parseArgs();
+  const deploymentManifestPath = args.deploymentManifestPath ?? defaultDeploymentManifestPath;
+  const storageLayoutPath = args.storageLayoutPath;
   const outputPath = args.output
     ? path.resolve(process.cwd(), String(args.output))
     : defaultOutputPath;
@@ -300,9 +310,9 @@ const main = async () => {
     }
   }
 
-  await ensurePrivateStateBootstrap();
-  const manifest = await loadDeploymentManifest();
-  const storageLayoutManifest = await loadPrivateStateStorageLayoutManifest();
+  await ensurePrivateStateBootstrap(deploymentManifestPath);
+  const manifest = await loadDeploymentManifest(deploymentManifestPath);
+  const storageLayoutManifest = await loadPrivateStateStorageLayoutManifest(storageLayoutPath);
   const managedStorageAddresses = getPrivateStateManagedStorageAddresses(storageLayoutManifest);
   const provider = new ethers.JsonRpcProvider(rpcUrl);
   const baseParticipants = await buildParticipants(mnemonic, participantCount);
