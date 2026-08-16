@@ -19,7 +19,7 @@ const composition = {
   numOperands: 2,
   numResults: 1,
   steps: [{
-    subcircuit: 'ALU1',
+    subcircuit: 'ALU3',
     selector: 1n,
     inputs: [
       { kind: 'selector' },
@@ -43,15 +43,15 @@ function createPlacementManager(
 ): PlacementManager {
   return Object.assign(Object.create(PlacementManager.prototype), {
     _placements: Array.from({ length: 6 }, () => ({
-      name: 'ALU1',
+      name: 'ALU3',
       usage: 'test',
       subcircuitId: 0,
       inPts: [],
       outPts: [],
     })),
-    subcircuitInfoByName: new Map([['ALU1', {
+    subcircuitInfoByName: new Map([['ALU3', {
       id: 0,
-      name: 'ALU1',
+      name: 'ALU3',
       NWires: 8,
       NInWires: 5,
       NOutWires: 2,
@@ -94,7 +94,7 @@ describe('atomic composition logical ports', () => {
     const placementManager = createPlacementManager(UINT160_DATA_PT_TYPE)
 
     expect(() => placementManager.placeComposition('ADD', operands())).toThrow(
-      'ADD ALU1 input port 0 (selector) expected uint32, but got uint160',
+      'ADD ALU3 input port 0 (selector) expected uint32, but got uint160',
     )
     expect(placementManager.placements).toHaveLength(6)
   })
@@ -103,14 +103,14 @@ describe('atomic composition logical ports', () => {
     const placementManager = createPlacementManager()
 
     expect(() => placementManager.placeComposition('ADD', operands(UINT160_DATA_PT_TYPE))).toThrow(
-      'ADD ALU1 expected 5 input wires, but got 4',
+      'ADD ALU3 expected 5 input wires, but got 4',
     )
     expect(placementManager.placements).toHaveLength(6)
   })
 
   it('accepts a narrower integer input for a native Fr port', () => {
     const placementManager = createPlacementManager()
-    const subcircuit = placementManager.subcircuitInfoByName.get('ALU1')!
+    const subcircuit = placementManager.subcircuitInfoByName.get('ALU3')!
     subcircuit.NInWires = 4
     subcircuit.logicalInterface = {
       ...subcircuit.logicalInterface!,
@@ -126,7 +126,7 @@ describe('atomic composition logical ports', () => {
     const placementManager = createPlacementManager(UINT32_DATA_PT_TYPE, [])
 
     expect(() => placementManager.placeComposition('ADD', operands())).toThrow(
-      'ALU1 produced 0 outputs, but its logical interface declares 1',
+      'ALU3 produced 0 outputs, but its logical interface declares 1',
     )
     expect(placementManager.placements).toHaveLength(6)
   })

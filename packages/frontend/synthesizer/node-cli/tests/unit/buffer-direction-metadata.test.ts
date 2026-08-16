@@ -15,7 +15,7 @@ const bufferEntry = (bufferDirection: unknown = undefined) => ({
 
 const compositionEntry = (bufferDirection: unknown = undefined) => ({
   id: 1,
-  name: 'ALU1',
+  name: 'ALU3',
   Nwires: 8,
   Nconsts: 0,
   Out_idx: [1, 2],
@@ -53,7 +53,7 @@ describe('buffer direction metadata', () => {
 
   it('rejects buffer direction metadata on a composition subcircuit', () => {
     expect(() => parseSubcircuitInfo([compositionEntry('out')])).toThrow(
-      'ALU1 subcircuit must not define bufferDirection',
+      'ALU3 subcircuit must not define bufferDirection',
     );
   });
 });

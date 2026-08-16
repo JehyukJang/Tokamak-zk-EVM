@@ -72,8 +72,6 @@ export const BUFFER_DESCRIPTION: Record<ReservedBuffer, string> = {
 } as const
 
 export const COMPOSITION_SUBCIRCUIT_LIST = [
-    'ALU1',
-    'ALU2',
     'ALU3',
     'ALU4A',
     'ALU4B',

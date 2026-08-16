@@ -114,7 +114,7 @@ const submit = (
   let nextStaticWireIndex = 0
   const parent = Object.assign(Object.create(PlacementManager.prototype), {
     _placements: Array.from({ length: 6 }, () => ({
-      name: 'ALU1',
+      name: 'ALU3',
       usage: 'test',
       subcircuitId: 0,
       inPts: [],
@@ -154,7 +154,7 @@ describe('fixed generic atomic compositions', () => {
       numOperands: 1,
       numResults: 3,
       steps: [{
-        subcircuit: 'ALU1' as const,
+        subcircuit: 'ALU3' as const,
         selector: null,
         inputs: [{ kind: 'operand' as const, index: 0 }],
         outputs: [
@@ -166,10 +166,10 @@ describe('fixed generic atomic compositions', () => {
     }
     const parent = Object.assign(Object.create(PlacementManager.prototype), {
       _placements: Array.from({ length: 4 }, () => ({
-        name: 'ALU1', usage: 'test', subcircuitId: 0, inPts: [], outPts: [],
+        name: 'ALU3', usage: 'test', subcircuitId: 0, inPts: [], outPts: [],
       })),
       _placementCompositionMapping: { ADDMOD: composition },
-      subcircuitInfoByName: new Map([['ALU1', subcircuitInfo('ALU1', [256], [1, 32, 256])]]),
+      subcircuitInfoByName: new Map([['ALU3', subcircuitInfo('ALU3', [256], [1, 32, 256])]]),
       subcircuitLibrary: {
         calculateSubcircuitOutputValues: () => [1n, 2n, 3n],
       },

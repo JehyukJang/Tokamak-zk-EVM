@@ -126,10 +126,11 @@ not mistakenly attributed to an isolated artifact.
 
 ### A self-contained arithmetic operation
 
-For `ADD`, the composition layer places `ALU1` with the `ADD` selector and two EVM
-words. `ALU1` checks the limb ranges, constrains the addition, and returns one
-canonical EVM word. No second arithmetic subcircuit is required, so the row is
-marked locally sound.
+For `ADD`, the composition layer places the selector-free `ADD` subcircuit with
+two EVM words. `ADD` constrains the truncated EVM addition and canonicalizes
+its result. When an operand originates directly from a buffer, the composition
+also places the required `CheckBus256` before `ADD`; no selector wire or merged
+arithmetic wrapper is involved.
 
 ### An operation split across two subcircuits
 
@@ -280,8 +281,20 @@ input and intermediate result as a separate public value.
 
 | Subcircuit | Operation or role | Constraints (nonlinear + linear = total) | Private interface | Status |
 | --- | --- | ---: | --- | --- |
-| `ALU1` | `ADD`, `MUL`, `SUB`, and `NOT` | 922 + 0 = 922 | 5 inputs: selector, two words; 2 outputs: one word | Locally sound. Both words are canonical, multiplication is truncated to the EVM word width, the selected output is canonical, and the selector polynomial admits exactly the four supported operations. Unary `NOT` still receives and constrains the unused second word. |
-| `ALU2` | `LT`, `GT`, `SLT`, `SGT`, `EQ`, and `ISZERO` | 793 + 1 = 794 | 5 inputs: selector, two words; 2 outputs: one word | Locally sound. Both words are canonical, signed and unsigned comparisons share the same constrained ordering data, equality is reused by `EQ`, `ISZERO` is checked locally, and the selector is restricted to the six supported values. |
+| `ADD` | EVM `ADD` | 258 + 0 = 258 | 4 inputs: two words; 2 outputs: one word | Composition-dependent for operand canonicality. It constrains truncated addition and a canonical result; direct buffer operands require preceding `CheckBus256` placements. |
+| `MUL` | EVM `MUL` | 909 + 0 = 909 | 4 inputs: two words; 2 outputs: one word | Locally sound. It decomposes both operands into canonical limbs, constrains truncated multiplication, and canonicalizes the result. |
+| `SUB` | EVM `SUB` | 258 + 0 = 258 | 4 inputs: two words; 2 outputs: one word | Composition-dependent for operand canonicality. It constrains truncated subtraction and a canonical result; direct buffer operands require preceding `CheckBus256` placements. |
+| `NOT` | EVM `NOT` | 256 + 2 = 258 | 2 inputs: one word; 2 outputs: one word | Locally sound. The complement relation and canonical output constrain each input limb to its 128-bit range. |
+| `EQ` | EVM `EQ` | 5 + 1 = 6 | 4 inputs: two words; 2 outputs: a boolean word | Composition-dependent for EVM-word canonicality. It compares the physical limbs exactly; direct buffer operands require preceding `CheckBus256` placements. |
+| `ISZERO` | EVM `ISZERO` | 5 + 1 = 6 | 2 inputs: one word; 2 outputs: a boolean word | Composition-dependent for EVM-word canonicality. It tests the physical limbs for zero; direct buffer operands require a preceding `CheckBus256` placement. |
+| `LT` | EVM unsigned `LT` | 261 + 1 = 262 | 4 inputs: two words; 2 outputs: a boolean word | Locally sound. Both words are range-constrained by the two 128-bit comparisons. |
+| `GT` | EVM unsigned `GT` | 261 + 1 = 262 | 4 inputs: two words; 2 outputs: a boolean word | Locally sound. Both words are range-constrained by the two 128-bit comparisons. |
+| `SLT` | EVM signed `SLT` | 519 + 1 = 520 | 4 inputs: two words; 2 outputs: a boolean word | Locally sound. It range-constrains both words and combines unsigned ordering with the two sign bits. |
+| `SGT` | EVM signed `SGT` | 519 + 1 = 520 | 4 inputs: two words; 2 outputs: a boolean word | Locally sound. It range-constrains both words and combines unsigned ordering with the two sign bits. |
+| `AND` | EVM `AND` | 768 + 0 = 768 | 4 inputs: two words; 2 outputs: one word | Locally sound. It bit-decomposes both operands and reconstructs the canonical bitwise result. |
+| `OR` | EVM `OR` | 768 + 0 = 768 | 4 inputs: two words; 2 outputs: one word | Locally sound. It bit-decomposes both operands and reconstructs the canonical bitwise result. |
+| `XOR` | EVM `XOR` | 768 + 0 = 768 | 4 inputs: two words; 2 outputs: one word | Locally sound. It bit-decomposes both operands and reconstructs the canonical bitwise result. |
+| `SHR` | EVM logical `SHR` | 795 + 0 = 795 | 4 inputs: shift word, value word; 2 outputs: one word | Locally sound. It constrains the full 256-bit shift and value representations and applies the full-domain logical right-shift relation. |
 | `ALU3` | `SIGNEXTEND`, `AND`, `OR`, `XOR`, and `BYTE` | 944 + 0 = 944 | 5 inputs: selector, index-or-left word, value-or-right word; 2 outputs: one word | Locally sound. All four operand limbs are decomposed once; index operations share the constrained index and value bits, bitwise operations share one product per operand bit, and the selector is restricted to the five supported values. |
 | `ALU4A` | First half of `DIV`, `MOD`, `SDIV`, `SMOD` | 672 + 0 = 672 | 5 inputs: selector, dividend word, divisor word; 13 outputs | Composition-dependent; never use as an independent EVM operation. It constrains the selector to exactly the four supported operations and must be followed by `ALU4B` with all 13 outputs connected exactly. |
 | `ALU4B` | Second half of `DIV`, `MOD`, `SDIV`, `SMOD` | 802 + 0 = 802 | 13 inputs; 2 outputs: one word | Composition-dependent; never use independently. Its inputs must be the exact `ALU4A` outputs from the same operation. |

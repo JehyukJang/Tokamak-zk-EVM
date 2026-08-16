@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
 
-import builderModule from "./wasm/witness_calculator.js";
+import builderModule from "../library/witness_calculator.js";
 import { EvmArithmetic } from "./evm_arithmetic.ts";
 import { split256BitInteger } from "./helper_functions.js";
 
@@ -15,7 +15,7 @@ type WitnessCalculator = {
 
 type TestCase = {
   name: string;
-  selector: bigint;
+  subcircuit: "ADD" | "SUB";
   in1: bigint;
   in2: bigint;
   expected: bigint;
@@ -31,44 +31,44 @@ const RANDOM_CASES = 128;
 
 const randomWord = (): bigint => BigInt(`0x${crypto.randomBytes(32).toString("hex")}`);
 
-const loadAlu1 = async (): Promise<WitnessCalculator> => {
+const loadOperation = async (name: "ADD" | "SUB"): Promise<WitnessCalculator> => {
   const subcircuitInfo = JSON.parse(
     readFileSync(path.join(subcircuitLibraryDir, "subcircuitInfo.json"), "utf8"),
   ) as Array<{ id: number; name: string }>;
-  const alu1Info = subcircuitInfo.find((entry) => entry.name === "ALU1");
-  if (alu1Info === undefined) {
-    throw new Error("ALU1 subcircuit was not found in subcircuitInfo.json");
+  const subcircuit = subcircuitInfo.find((entry) => entry.name === name);
+  if (subcircuit === undefined) {
+    throw new Error(`${name} subcircuit was not found in subcircuitInfo.json`);
   }
-  return builder(readFileSync(path.join(subcircuitLibraryDir, `wasm/subcircuit${alu1Info.id}.wasm`)));
+  return builder(readFileSync(path.join(subcircuitLibraryDir, `wasm/subcircuit${subcircuit.id}.wasm`)));
 };
 
 const cases: TestCase[] = [
-  { name: "ADD zero", selector: 1n << 1n, in1: 0n, in2: 0n, expected: 0n },
+  { name: "ADD zero", subcircuit: "ADD", in1: 0n, in2: 0n, expected: 0n },
   {
     name: "ADD low-limb carry",
-    selector: 1n << 1n,
+    subcircuit: "ADD",
     in1: LOW_LIMB_MAX,
     in2: 1n,
     expected: EvmArithmetic.add([LOW_LIMB_MAX, 1n]),
   },
   {
     name: "ADD full-word overflow",
-    selector: 1n << 1n,
+    subcircuit: "ADD",
     in1: MAX_UINT256,
     in2: 1n,
     expected: EvmArithmetic.add([MAX_UINT256, 1n]),
   },
-  { name: "SUB zero", selector: 1n << 3n, in1: 0n, in2: 0n, expected: 0n },
+  { name: "SUB zero", subcircuit: "SUB", in1: 0n, in2: 0n, expected: 0n },
   {
     name: "SUB low-limb borrow",
-    selector: 1n << 3n,
+    subcircuit: "SUB",
     in1: 1n << 128n,
     in2: 1n,
     expected: EvmArithmetic.sub([1n << 128n, 1n]),
   },
   {
     name: "SUB full-word underflow",
-    selector: 1n << 3n,
+    subcircuit: "SUB",
     in1: 0n,
     in2: 1n,
     expected: EvmArithmetic.sub([0n, 1n]),
@@ -81,7 +81,6 @@ const assertCase = async (
 ): Promise<void> => {
   const witness = await witnessCalculator.calculateWitness({
     in: [
-      testCase.selector,
       ...split256BitInteger(testCase.in1),
       ...split256BitInteger(testCase.in2),
     ],
@@ -92,30 +91,33 @@ const assertCase = async (
 };
 
 const main = async (): Promise<void> => {
-  const witnessCalculator = await loadAlu1();
+  const witnessCalculators = {
+    ADD: await loadOperation("ADD"),
+    SUB: await loadOperation("SUB"),
+  };
   for (const testCase of cases) {
-    await assertCase(witnessCalculator, testCase);
+    await assertCase(witnessCalculators[testCase.subcircuit], testCase);
   }
   for (let index = 0; index < RANDOM_CASES; index++) {
     const in1 = randomWord();
     const in2 = randomWord();
-    await assertCase(witnessCalculator, {
+    await assertCase(witnessCalculators.ADD, {
       name: `ADD randomized case ${index}`,
-      selector: 1n << 1n,
+      subcircuit: "ADD",
       in1,
       in2,
       expected: EvmArithmetic.add([in1, in2]),
     });
-    await assertCase(witnessCalculator, {
+    await assertCase(witnessCalculators.SUB, {
       name: `SUB randomized case ${index}`,
-      selector: 1n << 3n,
+      subcircuit: "SUB",
       in1,
       in2,
       expected: EvmArithmetic.sub([in1, in2]),
     });
   }
   console.log(
-    `ALU1 ADD/SUB passed ${cases.length} boundary cases and ${RANDOM_CASES * 2} randomized cases`,
+    `ADD/SUB passed ${cases.length} boundary cases and ${RANDOM_CASES * 2} randomized cases`,
   );
 };
 

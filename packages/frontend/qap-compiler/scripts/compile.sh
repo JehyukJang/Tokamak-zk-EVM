@@ -5,7 +5,7 @@
 set -euo pipefail
 
 # Subcircuit library configuration
-names=("bufferLogOut" "bufferStorageStore" "bufferStorageLoad" "bufferTxIn" "bufferBlockIn" "bufferEVMIn" "bufferPrvIn" "ALU1" "ALU2" "ALU3" "ALU4A" "ALU4B" "SHL" "ALU5" "ADDMODPrepare" "ADDMODVerify" "MULMODPrepare" "MULMODCandidate" "MULMODVerify" "DecToBit" "SubExp" "CheckBus256" "MemoryViewStep" "Poseidon" "FrToLimbsPair" "TransactionSignaturePoseidonBatch4" "TransactionSignaturePointPolicy" "TransactionSignatureFixedPrefix70" "TransactionSignatureChallengeVariablePrefix" "TransactionSignatureVariableBatch" "TransactionSignatureFinal" "StorageAccess" "EQ" "ISZERO" "ADD" "MUL" "SUB" "NOT" "LT" "GT" "SLT" "SGT" "AND" "OR" "XOR" "SHR")
+names=("bufferLogOut" "bufferStorageStore" "bufferStorageLoad" "bufferTxIn" "bufferBlockIn" "bufferEVMIn" "bufferPrvIn" "ALU3" "ALU4A" "ALU4B" "SHL" "ALU5" "ADDMODPrepare" "ADDMODVerify" "MULMODPrepare" "MULMODCandidate" "MULMODVerify" "DecToBit" "SubExp" "CheckBus256" "MemoryViewStep" "Poseidon" "FrToLimbsPair" "TransactionSignaturePoseidonBatch4" "TransactionSignaturePointPolicy" "TransactionSignatureFixedPrefix70" "TransactionSignatureChallengeVariablePrefix" "TransactionSignatureVariableBatch" "TransactionSignatureFinal" "StorageAccess" "EQ" "ISZERO" "ADD" "MUL" "SUB" "NOT" "LT" "GT" "SLT" "SGT" "AND" "OR" "XOR" "SHR")
 CURVE_NAME="bls12381"
 
 original_cwd="$(pwd)"

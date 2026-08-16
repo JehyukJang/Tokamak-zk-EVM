@@ -46,8 +46,6 @@ import wasm40 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/
 import wasm41 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit41.wasm';
 import wasm42 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit42.wasm';
 import wasm43 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit43.wasm';
-import wasm44 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit44.wasm';
-import wasm45 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit45.wasm';
 
 export {
   setupParamsJson,
@@ -101,6 +99,4 @@ export const wasmFiles: Record<number, Uint8Array> = {
   41: wasm41,
   42: wasm42,
   43: wasm43,
-  44: wasm44,
-  45: wasm45,
 };

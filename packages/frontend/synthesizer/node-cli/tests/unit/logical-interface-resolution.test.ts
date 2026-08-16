@@ -45,7 +45,7 @@ function createLibraryData(
     frontendCfg: { ...frontendCfg },
     subcircuitInfo: [{
       id: 0,
-      name: 'ALU1',
+      name: 'ALU3',
       Nwires: 8,
       Nconsts: 0,
       In_idx: [3, inputWireCount],
@@ -76,7 +76,7 @@ describe('logical-interface resolution', () => {
 
   it('rejects qap metadata whose input wire count disagrees with its interface', () => {
     expect(() => resolveSubcircuitLibraryData(createLibraryData(4))).toThrow(
-      'ALU1 logical interface declares 5 input wires, but qap-compiler provides 4',
+      'ALU3 logical interface declares 5 input wires, but qap-compiler provides 4',
     );
   });
 
@@ -93,7 +93,7 @@ describe('logical-interface resolution', () => {
       ],
     };
     expect(() => resolveSubcircuitLibraryData(data)).toThrow(
-      'ALU1 logical interface declares 1 output wires, but qap-compiler provides 2',
+      'ALU3 logical interface declares 1 output wires, but qap-compiler provides 2',
     );
   });
 });
