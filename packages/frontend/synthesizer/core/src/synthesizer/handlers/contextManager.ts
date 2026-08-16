@@ -199,16 +199,14 @@ export class ContextManager {
   public cachedOrigin: DataPt | undefined = undefined
   public contextByDepth: MessageContext[] = []
   private _messageCodeAddresses = new Set<string>()
-  private _verifiedStorageAddressPt: DataPt | undefined
-  private _verifiedCodeAddressPt: DataPt | undefined
+  private _verifiedContractAddressPt: DataPt | undefined
   private _verifiedFunctionSelectorPt: DataPt | undefined
   private _verifiedTransactionInputPts: DataPt[] = []
 
   constructor(private readonly placementManager: PlacementManager) {}
 
   public setVerifiedTransactionData(
-    storageAddressPt: DataPt,
-    codeAddressPt: DataPt,
+    contractAddressPt: DataPt,
     functionSelectorPt: DataPt,
     originPt: DataPt,
     transactionInputPts: readonly DataPt[],
@@ -216,8 +214,7 @@ export class ContextManager {
     if (transactionInputPts.length !== TRANSACTION_INPUT_VARIABLES.length) {
       throw new Error('Synthesizer: verified transaction input count is invalid')
     }
-    this._verifiedStorageAddressPt = DataPtFactory.deepCopy(storageAddressPt)
-    this._verifiedCodeAddressPt = DataPtFactory.deepCopy(codeAddressPt)
+    this._verifiedContractAddressPt = DataPtFactory.deepCopy(contractAddressPt)
     this._verifiedFunctionSelectorPt = DataPtFactory.deepCopy(functionSelectorPt)
     this.cachedOrigin = DataPtFactory.deepCopy(originPt)
     this._verifiedTransactionInputPts = transactionInputPts.map((dataPt) =>
@@ -355,12 +352,10 @@ export class ContextManager {
 
     if (depth === 0) {
       const selectorPt = this._verifiedFunctionSelectorPt
-      const verifiedStorageAddressPt = this._verifiedStorageAddressPt
-      const verifiedCodeAddressPt = this._verifiedCodeAddressPt
+      const verifiedContractAddressPt = this._verifiedContractAddressPt
       if (
         selectorPt === undefined
-        || verifiedStorageAddressPt === undefined
-        || verifiedCodeAddressPt === undefined
+        || verifiedContractAddressPt === undefined
         || this.cachedOrigin === undefined
         || this._verifiedTransactionInputPts.length !== TRANSACTION_INPUT_VARIABLES.length
       ) {
@@ -376,8 +371,8 @@ export class ContextManager {
       ]
       callDataByteLength = message.data.length
       callerPt = DataPtFactory.deepCopy(this.cachedOrigin)
-      codeAddressPt = DataPtFactory.deepCopy(verifiedCodeAddressPt)
-      storageAddressPt = DataPtFactory.deepCopy(verifiedStorageAddressPt)
+      codeAddressPt = DataPtFactory.deepCopy(verifiedContractAddressPt)
+      storageAddressPt = DataPtFactory.deepCopy(verifiedContractAddressPt)
     } else if (depth > 0) {
       const parentContext = this.contextByDepth[depth - 1]
       if (parentContext === undefined) {
@@ -418,15 +413,7 @@ export class ContextManager {
       if (rawCodeAddress !== rawCodeAddressPt.value) {
         throw new Error('Debug: Raw address to call mismatch between EVM and Synthesizer')
       }
-      const addressMaskPt = this.placementManager.getReservedVariableFromBuffer('ADDRESS_MASK')
-      const maskedAddressPt = this.placementManager.placeComposition(
-        'AND',
-        [rawCodeAddressPt, addressMaskPt],
-      )[0]
-      if (maskedAddressPt === undefined) {
-        throw new Error('Synthesizer: CALL target mask produced no address')
-      }
-      codeAddressPt = maskedAddressPt
+      codeAddressPt = rawCodeAddressPt
       const codeAddress = BigInt(message.codeAddress.toString())
       if (codeAddress !== codeAddressPt.value) {
         throw new Error('Debug: Address to call mismatch between EVM and Synthesizer')
@@ -523,8 +510,7 @@ export class ContextManager {
     this.initialStorageReads.reset()
     this.logCache.reset()
     this.cachedOrigin = undefined
-    this._verifiedStorageAddressPt = undefined
-    this._verifiedCodeAddressPt = undefined
+    this._verifiedContractAddressPt = undefined
     this._verifiedFunctionSelectorPt = undefined
     this._verifiedTransactionInputPts = []
     this._messageCodeAddresses.clear()

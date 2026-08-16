@@ -218,13 +218,11 @@ export class Synthesizer implements SynthesizerInterface
       'TransactionSignatureVerify',
       operands,
     )
-    const verifiedStorageAddressPt = verifiedTransactionPts[0]
+    const verifiedContractAddressPt = verifiedTransactionPts[0]
     const verifiedFunctionSelectorPt = verifiedTransactionPts[1]
-    const verifiedContractAddressWordPt = verifiedTransactionPts[2]
-    const verifiedOriginPt = verifiedTransactionPts[3]
+    const verifiedOriginPt = verifiedTransactionPts[2]
     if (
-      verifiedStorageAddressPt === undefined
-      || verifiedContractAddressWordPt === undefined
+      verifiedContractAddressPt === undefined
       || verifiedFunctionSelectorPt === undefined
       || verifiedOriginPt === undefined
     ) {
@@ -244,8 +242,7 @@ export class Synthesizer implements SynthesizerInterface
       }
     }
     this._contextManager.setVerifiedTransactionData(
-      verifiedStorageAddressPt,
-      verifiedContractAddressWordPt,
+      verifiedContractAddressPt,
       verifiedFunctionSelectorPt,
       verifiedOriginPt,
       convertedTransactionInputPts,

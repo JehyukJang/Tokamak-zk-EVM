@@ -11,14 +11,9 @@ import {
   type DataPtType,
 } from '../../../core/src/synthesizer/types/dataStructure.ts';
 
-const ADDRESS_MASK = (1n << 160n) - 1n;
 const CALL_OPCODES = ['CALL', 'CALLCODE', 'DELEGATECALL', 'STATICCALL'] as const;
 
 type CallOpcode = typeof CALL_OPCODES[number];
-type ArithmeticCall = {
-  name: Operator;
-  inPts: DataPt[];
-};
 const dataPt = (
   value: bigint,
   source: number,
@@ -36,7 +31,7 @@ const createHarness = (
   rawTarget: bigint,
   options: {
     stackTarget?: bigint;
-    maskedResults?: DataPt[];
+    codeAddress?: bigint;
   } = {},
 ) => {
   const parentContext: MessageContext = {
@@ -64,24 +59,16 @@ const createHarness = (
     memory: new Uint8Array(0),
   } as InterpreterStep;
 
-  const maskPt = dataPt(ADDRESS_MASK, 5, 7, UINT256_DATA_PT_TYPE);
-  const normalizedTarget = rawTarget & ADDRESS_MASK;
-  const maskedResults = options.maskedResults ?? [dataPt(normalizedTarget, 99, 0)];
-  const arithmeticCalls: ArithmeticCall[] = [];
+  const compositionCalls: Operator[] = [];
   const placeComposition = vi.fn((name: Operator, inPts: DataPt[] | DataPt[][]) => {
-    if (name === 'AND') {
-      arithmeticCalls.push({ name, inPts: inPts as DataPt[] });
-      return maskedResults;
-    }
+    compositionCalls.push(name);
     if (name === 'MemoryView') {
       return (inPts as DataPt[][]).map((view) => view[0] ?? dataPt(0n, 5));
     }
     throw new Error(`Unexpected composition ${name}`)
   });
-  const getReservedVariableFromBuffer = vi.fn(() => maskPt);
   const placementManager = {
     placements: [],
-    getReservedVariableFromBuffer,
     placeComposition,
     getLogOutWireLength: vi.fn(() => 0),
   };
@@ -91,17 +78,14 @@ const createHarness = (
   const recordMessageCodeAddress = vi.spyOn(contextManager, 'recordMessageCodeAddress');
   const message = {
     depth: 1,
-    codeAddress: createAddressFromBigInt(normalizedTarget),
+    codeAddress: createAddressFromBigInt(options.codeAddress ?? rawTarget),
     isCreate: false,
     isCompiled: false,
   } as Message;
 
   return {
-    arithmeticCalls,
     beginFrame,
-    getReservedVariableFromBuffer,
-    maskPt,
-    maskedResults,
+    compositionCalls,
     message,
     parentContext,
     placeComposition,
@@ -110,23 +94,14 @@ const createHarness = (
   };
 };
 
-describe('CALL-family target-mask topology', () => {
-  it.each(CALL_OPCODES)('routes the masked %s target into the child context', (opcode) => {
-    const rawTarget = (1n << 200n) | 0x1234n;
+describe('CALL-family target-word topology', () => {
+  it.each(CALL_OPCODES)('routes the %s target word into the child context without a normalizer', (opcode) => {
+    const rawTarget = 0x1234n;
     const harness = createHarness(opcode, rawTarget);
 
     harness.contextManager.materializeMessageContext(harness.message);
 
-    expect(harness.arithmeticCalls).toHaveLength(1);
-    expect(harness.arithmeticCalls[0]).toMatchObject({ name: 'AND' });
-    expect(harness.arithmeticCalls[0].inPts[0]).toMatchObject({
-      value: rawTarget,
-      source: 10,
-      wireIndex: opcode === 'CALL' || opcode === 'CALLCODE' ? 5 : 4,
-    });
-    expect(harness.arithmeticCalls[0].inPts[1]).toEqual(harness.maskPt);
-    expect(harness.getReservedVariableFromBuffer).toHaveBeenCalledOnce();
-    expect(harness.getReservedVariableFromBuffer).toHaveBeenCalledWith('ADDRESS_MASK');
+    expect(harness.compositionCalls).not.toContain('AND');
     expect(harness.beginFrame).toHaveBeenCalledOnce();
     expect(harness.beginFrame).toHaveBeenCalledWith(1);
     expect(harness.recordMessageCodeAddress).toHaveBeenCalledOnce();
@@ -135,14 +110,16 @@ describe('CALL-family target-mask topology', () => {
     );
 
     const childContext = harness.contextManager.contextByDepth[1];
-    expect(childContext.codeAddressPt).toBe(harness.maskedResults[0]);
     expect(childContext.codeAddressPt).toMatchObject({
       value: 0x1234n,
-      source: 99,
-      wireIndex: 0,
+      source: 10,
+      wireIndex: opcode === 'CALL' || opcode === 'CALLCODE' ? 5 : 4,
     });
     if (opcode === 'CALL' || opcode === 'STATICCALL') {
-      expect(childContext.storageAddressPt).toMatchObject({ source: 99, wireIndex: 0 });
+      expect(childContext.storageAddressPt).toMatchObject({
+        source: 10,
+        wireIndex: opcode === 'CALL' || opcode === 'CALLCODE' ? 5 : 4,
+      });
     } else {
       expect(childContext.storageAddressPt).toMatchObject({
         source: harness.parentContext.storageAddressPt.source,
@@ -151,20 +128,18 @@ describe('CALL-family target-mask topology', () => {
     }
   });
 
-  it('uses the same single-placement shape with and without discarded high bits', () => {
-    const shape = (rawTarget: bigint) => {
-      const harness = createHarness('CALL', rawTarget);
-      harness.contextManager.materializeMessageContext(harness.message);
-      return harness.arithmeticCalls.map(({ name, inPts }) => ({
-        name,
-        inputs: inPts.map(({ source, wireIndex, dataPtType }) => ({ source, wireIndex, dataPtType })),
-      }));
-    };
+  it('rejects a child address that is not the exact parent stack target word', () => {
+    const rawTarget = (1n << 200n) | 0x1234n;
+    const harness = createHarness('CALL', rawTarget, { codeAddress: 0x1234n });
 
-    expect(shape(0x1234n)).toEqual(shape((1n << 200n) | 0x1234n));
+    expect(() => harness.contextManager.materializeMessageContext(harness.message)).toThrow(
+      'Address to call mismatch between EVM and Synthesizer',
+    );
+    expect(harness.compositionCalls).not.toContain('AND');
+    expect(harness.beginFrame).not.toHaveBeenCalled();
   });
 
-  it('rejects a substituted raw target before placing the mask', () => {
+  it('rejects a substituted raw target before materializing the child context', () => {
     const harness = createHarness('CALL', 0x1234n, { stackTarget: 0x5678n });
 
     expect(() => harness.contextManager.materializeMessageContext(harness.message)).toThrow(
@@ -174,25 +149,4 @@ describe('CALL-family target-mask topology', () => {
     expect(harness.beginFrame).not.toHaveBeenCalled();
   });
 
-  it('rejects an omitted mask output', () => {
-    const harness = createHarness('CALL', 0x1234n, { maskedResults: [] });
-
-    expect(() => harness.contextManager.materializeMessageContext(harness.message)).toThrow(
-      'CALL target mask produced no address',
-    );
-    expect(harness.placeComposition).toHaveBeenCalledOnce();
-    expect(harness.beginFrame).not.toHaveBeenCalled();
-  });
-
-  it('rejects a masked output that differs from the EthereumJS child address', () => {
-    const harness = createHarness('CALL', 0x1234n, {
-      maskedResults: [dataPt(0x5678n, 99)],
-    });
-
-    expect(() => harness.contextManager.materializeMessageContext(harness.message)).toThrow(
-      'Address to call mismatch between EVM and Synthesizer',
-    );
-    expect(harness.placeComposition).toHaveBeenCalledOnce();
-    expect(harness.beginFrame).not.toHaveBeenCalled();
-  });
 });
