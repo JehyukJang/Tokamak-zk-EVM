@@ -14,6 +14,7 @@ import type { PlacementComposition } from '../../../core/src/subcircuit/placemen
 const composition = {
   placementStrategy: 'generic',
   constants: [],
+  externalCheckRequiredOperandIndices: [],
   numSteps: 1,
   numOperands: 2,
   numResults: 1,

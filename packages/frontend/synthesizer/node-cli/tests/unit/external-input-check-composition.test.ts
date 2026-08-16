@@ -1,0 +1,88 @@
+import { describe, expect, it } from 'vitest';
+
+import { createPlacementCompositionMapping } from '../../../core/src/subcircuit/placementCompositionMapping.ts';
+import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
+import { PlacementManager } from '../../../core/src/synthesizer/handlers/placementManager.ts';
+import { UINT256_DATA_PT_TYPE, type DataPt } from '../../../core/src/synthesizer/types/dataStructure.ts';
+
+const word = (value: bigint, source: number, wireIndex = 0): DataPt => DataPtFactory.create({
+  source,
+  wireIndex,
+  dataPtType: UINT256_DATA_PT_TYPE,
+}, value);
+
+const subcircuitInfo = (name: 'ADD' | 'CheckBus256', id: number, inputCount: number) => ({
+  id,
+  name,
+  NWires: 1 + inputCount * 2 + 2,
+  NInWires: inputCount * 2,
+  NOutWires: 2,
+  inWireIndex: 3,
+  outWireIndex: 1,
+  flattenMap: [],
+  logicalInterface: {
+    inputs: Array.from({ length: inputCount }, (_, index) => ({
+      name: `in${index}`,
+      logicalType: { kind: 'uint' as const, bits: 256 },
+    })),
+    outputs: [{ name: 'result', logicalType: { kind: 'uint' as const, bits: 256 } }],
+  },
+});
+
+const createPlacementManager = (outputValues: readonly bigint[] = [7n]): PlacementManager => {
+  const mapping = createPlacementCompositionMapping({
+    nPrivateMessageInputs: 29,
+    nPoseidonBatch: 6,
+  });
+  return Object.assign(Object.create(PlacementManager.prototype), {
+    _placements: Array.from({ length: 7 }, () => ({
+      name: 'bufferEVMIn', usage: 'test', subcircuitId: 0, inPts: [], outPts: [],
+    })),
+    _placementCompositionMapping: { ADD: mapping.ADD },
+    subcircuitInfoByName: new Map([
+      ['CheckBus256', subcircuitInfo('CheckBus256', 1, 1)],
+      ['ADD', subcircuitInfo('ADD', 2, 2)],
+    ]),
+    subcircuitLibrary: {
+      calculateSubcircuitOutputValues: (name: string, values: readonly bigint[]) => {
+        if (name === 'CheckBus256') return [values[0]!];
+        return outputValues;
+      },
+    },
+  }) as PlacementManager;
+};
+
+describe('external input checks in generic compositions', () => {
+  it('places one CheckBus256 per required direct buffer operand before ADD', () => {
+    const placementManager = createPlacementManager([5n]);
+
+    const result = placementManager.placeComposition('ADD', [word(2n, 0), word(3n, 1)]);
+    const placements = placementManager.placements.slice(7);
+
+    expect(placements.map(({ name }) => name)).toEqual(['CheckBus256', 'CheckBus256', 'ADD']);
+    expect(placements[2]!.inPts.map(({ source }) => source)).toEqual([7, 8]);
+    expect(result).toMatchObject([{ source: 9, wireIndex: 0, value: 5n }]);
+  });
+
+  it('does not check an operand produced by an earlier non-buffer placement', () => {
+    const placementManager = createPlacementManager([5n]);
+    (placementManager as unknown as { _placements: unknown[] })._placements.push({
+      name: 'ADD', usage: 'test', subcircuitId: 2, inPts: [], outPts: [],
+    });
+
+    placementManager.placeComposition('ADD', [word(2n, 7), word(3n, 1)]);
+    const placements = placementManager.placements.slice(8);
+
+    expect(placements.map(({ name }) => name)).toEqual(['CheckBus256', 'ADD']);
+    expect(placements[1]!.inPts.map(({ source }) => source)).toEqual([7, 8]);
+  });
+
+  it('does not record input checks when the operation candidate is invalid', () => {
+    const placementManager = createPlacementManager([]);
+
+    expect(() => placementManager.placeComposition('ADD', [word(2n, 0), word(3n, 1)])).toThrow(
+      'ADD produced 0 outputs, but its logical interface declares 1',
+    );
+    expect(placementManager.placements).toHaveLength(7);
+  });
+});

@@ -99,6 +99,20 @@ export const COMPOSITION_SUBCIRCUIT_LIST = [
     'TransactionSignatureVariableBatch',
     'TransactionSignatureFinal',
     'FrToLimbsPair',
+    'ADD',
+    'MUL',
+    'SUB',
+    'NOT',
+    'EQ',
+    'ISZERO',
+    'LT',
+    'GT',
+    'SLT',
+    'SGT',
+    'AND',
+    'OR',
+    'XOR',
+    'SHR',
 ] as const
 
 export type CompositionSubcircuit = (typeof COMPOSITION_SUBCIRCUIT_LIST)[number]

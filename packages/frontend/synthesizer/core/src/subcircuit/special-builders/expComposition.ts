@@ -73,6 +73,7 @@ export const createExpCompositionMapping = (): PlacementCompositionEntry => {
     composition: freezeComposition({
       placementStrategy: 'generic',
       constants,
+      externalCheckRequiredOperandIndices: [],
       numSteps: steps.length,
       numOperands: 2,
       numResults: 1,

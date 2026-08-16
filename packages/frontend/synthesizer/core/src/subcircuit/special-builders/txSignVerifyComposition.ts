@@ -247,6 +247,7 @@ export const createTransactionSignatureVerifyCompositionMapping = (
         { value: 0n, dataPtType: BLS12_381_FR_DATA_PT_TYPE },
         { value: 0n, dataPtType: BIT_DATA_PT_TYPE },
       ],
+      externalCheckRequiredOperandIndices: [],
       numSteps: steps.length,
       numOperands: numberOfOperands,
       numResults: 4,

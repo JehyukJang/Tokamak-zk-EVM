@@ -465,62 +465,12 @@ const evmSignextend = (ins: bigint[]): bigint => {
   }
 };
 
-/**
- * Output calculations for arithmetic subcircuits.
- *
- * These methods consume logical DataPt values in the same order as each
- * subcircuit placement, including the selector when the circuit has one.
- */
-const alu1 = (inVals: bigint[]): bigint => {
-  requireSubcircuitInputs(inVals, 3, 'ALU1');
-  const operands = inVals.slice(1);
-  switch (inVals[0]) {
-    case 1n << 1n:
-      return evmAdd(operands);
-    case 1n << 2n:
-      return evmMul(operands);
-    case 1n << 3n:
-      return evmSub(operands);
-    case 1n << 25n:
-      return evmNot(operands.slice(0, 1));
-    default:
-      throw new Error('ALU1 received an invalid selector');
-  }
-};
-
-const alu2 = (inVals: bigint[]): bigint => {
-  requireSubcircuitInputs(inVals, 3, 'ALU2');
-  const operands = inVals.slice(1);
-  switch (inVals[0]) {
-    case 1n << 16n:
-      return evmLt(operands);
-    case 1n << 17n:
-      return evmGt(operands);
-    case 1n << 18n:
-      return evmSlt(operands);
-    case 1n << 19n:
-      return evmSgt(operands);
-    case 1n << 20n:
-      return evmEq(operands);
-    case 1n << 21n:
-      return evmIszero(operands.slice(0, 1));
-    default:
-      throw new Error('ALU2 received an invalid selector');
-  }
-};
-
 const alu3 = (inVals: bigint[]): bigint => {
   requireSubcircuitInputs(inVals, 3, 'ALU3');
   const operands = inVals.slice(1);
   switch (inVals[0]) {
     case 1n << 11n:
       return evmSignextend(operands);
-    case 1n << 22n:
-      return evmAnd(operands);
-    case 1n << 23n:
-      return evmOr(operands);
-    case 1n << 24n:
-      return evmXor(operands);
     case 1n << 26n:
       return evmByte(operands);
     default:
@@ -590,8 +540,6 @@ const alu5 = (inVals: bigint[]): bigint => {
   requireSubcircuitInputs(inVals, 3, 'ALU5');
   const operands = inVals.slice(1);
   switch (inVals[0]) {
-    case 1n << 28n:
-      return evmShr(operands);
     case 1n << 29n:
       return evmSar(operands);
     default:
@@ -828,8 +776,6 @@ const final = (values: readonly bigint[]): bigint[] => {
 type SubcircuitOperation = (values: bigint[]) => bigint | bigint[];
 
 const SUBCIRCUIT_OPERATION_MAPPING: Partial<Record<CompositionSubcircuit, SubcircuitOperation>> = {
-  ALU1: alu1,
-  ALU2: alu2,
   ALU3: alu3,
   ALU4A: alu4a,
   ALU4B: alu4b,
@@ -853,6 +799,20 @@ const SUBCIRCUIT_OPERATION_MAPPING: Partial<Record<CompositionSubcircuit, Subcir
   TransactionSignatureVariableBatch: transactionSignatureVariableBatch,
   TransactionSignatureFinal: final,
   FrToLimbsPair: (values) => values,
+  ADD: evmAdd,
+  MUL: evmMul,
+  SUB: evmSub,
+  NOT: evmNot,
+  EQ: evmEq,
+  ISZERO: evmIszero,
+  LT: evmLt,
+  GT: evmGt,
+  SLT: evmSlt,
+  SGT: evmSgt,
+  AND: evmAnd,
+  OR: evmOr,
+  XOR: evmXor,
+  SHR: evmShr,
 };
 
 export function calculateSubcircuitOutputValues(name: CompositionSubcircuit, values: bigint[]): bigint[] {

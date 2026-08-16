@@ -10,6 +10,7 @@ const createDivisionCompositionMapping = (
     composition: freezeComposition({
       placementStrategy: 'generic',
       constants: [],
+      externalCheckRequiredOperandIndices: [],
       numSteps: 2,
       numOperands: 2,
       numResults: 1,

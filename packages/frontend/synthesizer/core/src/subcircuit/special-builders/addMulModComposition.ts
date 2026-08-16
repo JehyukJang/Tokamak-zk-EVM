@@ -7,6 +7,7 @@ const createAddModCompositionMapping = (): PlacementCompositionEntry =>
     composition: freezeComposition({
       placementStrategy: 'generic',
       constants: [],
+      externalCheckRequiredOperandIndices: [],
       numSteps: 2,
       numOperands: 3,
       numResults: 1,
@@ -46,6 +47,7 @@ const createMulModCompositionMapping = (): PlacementCompositionEntry =>
     composition: freezeComposition({
       placementStrategy: 'generic',
       constants: [],
+      externalCheckRequiredOperandIndices: [],
       numSteps: 3,
       numOperands: 3,
       numResults: 1,

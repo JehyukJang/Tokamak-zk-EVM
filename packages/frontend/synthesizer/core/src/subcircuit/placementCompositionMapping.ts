@@ -1,6 +1,6 @@
 import { OPERATOR_LIST, type CompositionSubcircuit, type Operator } from './configuredTypes.ts';
 import { assertPositiveInteger, freezeComposition } from './utils.ts';
-import { isDataPtType, type DataPtType, UINT256_DATA_PT_TYPE } from '../synthesizer/types/dataStructure.ts';
+import { isDataPtType, type DataPtType } from '../synthesizer/types/dataStructure.ts';
 import { createAddMulModCompositionMappings } from './special-builders/addMulModComposition.ts';
 import { createDivisionCompositionMappings } from './special-builders/divModComposition.ts';
 import { createExpCompositionMapping } from './special-builders/expComposition.ts';
@@ -38,6 +38,7 @@ export type ConstantDefinition = Readonly<{
 export type PlacementComposition = Readonly<{
   placementStrategy: PlacementStrategy;
   constants: readonly ConstantDefinition[];
+  externalCheckRequiredOperandIndices: readonly number[];
   numSteps: number | 'dynamic';
   numOperands: number | 'dynamic';
   numResults: number | 'dynamic';
@@ -95,6 +96,26 @@ const validatePlacementComposition = (operation: Operator, composition: Placemen
   }
   if (composition.steps.length === 0) {
     throw new Error(`PlacementCompositionMapping: operation ${operation} requires at least one step`);
+  }
+  if (composition.numOperands === 'dynamic' && composition.externalCheckRequiredOperandIndices.length > 0) {
+    throw new Error(
+      `PlacementCompositionMapping: ${operation} dynamic operands cannot declare external input checks`,
+    );
+  }
+  const externalCheckOperandIndices = new Set<number>();
+  for (const index of composition.externalCheckRequiredOperandIndices) {
+    assertIndex(index, `${operation} external-check operand index`);
+    if (externalCheckOperandIndices.has(index)) {
+      throw new Error(
+        `PlacementCompositionMapping: ${operation} has a duplicate external-check operand index`,
+      );
+    }
+    externalCheckOperandIndices.add(index);
+    if (composition.numOperands !== 'dynamic' && index >= composition.numOperands) {
+      throw new Error(
+        `PlacementCompositionMapping: ${operation} external-check operand index is out of range`,
+      );
+    }
   }
 
   const intermediates = new Set<number>();
@@ -248,12 +269,14 @@ const createSingleStepMapping = (
   numOperands: number,
   numResults: number,
   constants: readonly ConstantDefinition[] = [],
+  externalCheckRequiredOperandIndices: readonly number[] = [],
 ): PlacementCompositionEntry =>
   Object.freeze({
     operation,
     composition: freezeComposition({
       placementStrategy: 'generic',
       constants,
+      externalCheckRequiredOperandIndices,
       numSteps: 1,
       numOperands,
       numResults,
@@ -272,29 +295,24 @@ const createSingleStepMapping = (
     }),
   });
 
-const ZERO_WORD_CONSTANT: ConstantDefinition = Object.freeze({
-  value: 0n,
-  dataPtType: UINT256_DATA_PT_TYPE,
-} satisfies ConstantDefinition);
-
 const FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS: readonly PlacementCompositionEntry[] = Object.freeze([
-  createSingleStepMapping('ADD', 'ALU1', 1n << 1n, 2, 1),
-  createSingleStepMapping('MUL', 'ALU1', 1n << 2n, 2, 1),
-  createSingleStepMapping('SUB', 'ALU1', 1n << 3n, 2, 1),
-  createSingleStepMapping('LT', 'ALU2', 1n << 16n, 2, 1),
-  createSingleStepMapping('GT', 'ALU2', 1n << 17n, 2, 1),
-  createSingleStepMapping('SLT', 'ALU2', 1n << 18n, 2, 1),
-  createSingleStepMapping('SGT', 'ALU2', 1n << 19n, 2, 1),
-  createSingleStepMapping('EQ', 'ALU2', 1n << 20n, 2, 1),
-  createSingleStepMapping('ISZERO', 'ALU2', 1n << 21n, 1, 1, [ZERO_WORD_CONSTANT]),
-  createSingleStepMapping('AND', 'ALU3', 1n << 22n, 2, 1),
-  createSingleStepMapping('OR', 'ALU3', 1n << 23n, 2, 1),
-  createSingleStepMapping('XOR', 'ALU3', 1n << 24n, 2, 1),
-  createSingleStepMapping('NOT', 'ALU1', 1n << 25n, 1, 1, [ZERO_WORD_CONSTANT]),
+  createSingleStepMapping('ADD', 'ADD', null, 2, 1, [], [0, 1]),
+  createSingleStepMapping('MUL', 'MUL', null, 2, 1),
+  createSingleStepMapping('SUB', 'SUB', null, 2, 1, [], [0, 1]),
+  createSingleStepMapping('LT', 'LT', null, 2, 1, [], [0, 1]),
+  createSingleStepMapping('GT', 'GT', null, 2, 1, [], [0, 1]),
+  createSingleStepMapping('SLT', 'SLT', null, 2, 1, [], [0, 1]),
+  createSingleStepMapping('SGT', 'SGT', null, 2, 1, [], [0, 1]),
+  createSingleStepMapping('EQ', 'EQ', null, 2, 1),
+  createSingleStepMapping('ISZERO', 'ISZERO', null, 1, 1),
+  createSingleStepMapping('AND', 'AND', null, 2, 1),
+  createSingleStepMapping('OR', 'OR', null, 2, 1),
+  createSingleStepMapping('XOR', 'XOR', null, 2, 1),
+  createSingleStepMapping('NOT', 'NOT', null, 1, 1),
   createSingleStepMapping('BYTE', 'ALU3', 1n << 26n, 2, 1),
-  createSingleStepMapping('SHL', 'SHL', null, 2, 1),
-  createSingleStepMapping('SHR', 'ALU5', 1n << 28n, 2, 1),
-  createSingleStepMapping('SAR', 'ALU5', 1n << 29n, 2, 1),
+  createSingleStepMapping('SHL', 'SHL', null, 2, 1, [], [0]),
+  createSingleStepMapping('SHR', 'SHR', null, 2, 1, [], [0]),
+  createSingleStepMapping('SAR', 'ALU5', 1n << 29n, 2, 1, [], [0]),
   createSingleStepMapping('SIGNEXTEND', 'ALU3', 1n << 11n, 2, 1),
 ]);
 

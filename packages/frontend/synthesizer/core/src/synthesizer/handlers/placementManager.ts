@@ -72,7 +72,8 @@ export function placementsDeepCopy(placements: Placements): Placements {
 }
 
 function _assertCandidateInput(
-  candidate: PlacementCandidate,
+  operation: Operator,
+  operands: readonly DataPt[],
   stepIndex: number,
   inputIndex: number,
   input: PlacementComposition['steps'][number]['inputs'][number],
@@ -87,17 +88,14 @@ function _assertCandidateInput(
     || candidateInput.source >= basePlacementIndex + stepIndex
   ) {
     throw new Error(
-      `Synthesizer: ${candidate.operation} step ${stepIndex} input ${inputIndex} is not connected to an earlier placement output`,
+      `Synthesizer: ${operation} step ${stepIndex} input ${inputIndex} is not connected to an earlier placement output`,
     )
   }
 
   let expectedInput: DataPt | undefined
   switch (input.kind) {
     case 'operand':
-      if (isNestedOperands(candidate.operands)) {
-        throw new Error(`Synthesizer: ${candidate.operation} generic operands must be flat`)
-      }
-      expectedInput = candidate.operands[input.index] as DataPt | undefined
+      expectedInput = operands[input.index]
       break
     case 'step-output':
       expectedInput = intermediateOutPts[input.index]
@@ -111,7 +109,7 @@ function _assertCandidateInput(
         || !_hasSameDataPtType(candidateInput, constant.dataPtType)
       ) {
         throw new Error(
-          `Synthesizer: ${candidate.operation} step ${stepIndex} constant ${input.index} is invalid`,
+          `Synthesizer: ${operation} step ${stepIndex} constant ${input.index} is invalid`,
         )
       }
       return
@@ -119,7 +117,7 @@ function _assertCandidateInput(
     case 'selector':
       if (typeof composition.steps[stepIndex]!.selector !== 'bigint') {
         throw new Error(
-          `Synthesizer: ${candidate.operation} step ${stepIndex} requires a static selector`,
+          `Synthesizer: ${operation} step ${stepIndex} requires a static selector`,
         )
       }
       if (
@@ -127,7 +125,7 @@ function _assertCandidateInput(
         || candidateInput.value !== composition.steps[stepIndex]!.selector
       ) {
         throw new Error(
-          `Synthesizer: ${candidate.operation} step ${stepIndex} selector is invalid`,
+          `Synthesizer: ${operation} step ${stepIndex} selector is invalid`,
         )
       }
       return
@@ -135,7 +133,7 @@ function _assertCandidateInput(
 
   if (expectedInput === undefined || !_isSameWire(candidateInput, expectedInput)) {
     throw new Error(
-      `Synthesizer: ${candidate.operation} step ${stepIndex} input ${inputIndex} is not connected to its declared source`,
+      `Synthesizer: ${operation} step ${stepIndex} input ${inputIndex} is not connected to its declared source`,
     )
   }
 }
@@ -624,6 +622,13 @@ export class PlacementManager {
       || operands.length !== composition.numOperands) {
       throw new Error(`Synthesizer: ${operation} has an invalid fixed generic composition`)
     }
+    const inputChecks = this._prepareExternalInputChecks(
+      operation,
+      composition,
+      operands,
+      basePlacementIndex,
+    )
+    const checkedOperands = inputChecks.operands
     const intermediateOutPts: Array<DataPt | undefined> = []
     const resultPts: Array<DataPt | undefined> = Array(composition.numResults)
     const steps: PlacementEntry[] = []
@@ -632,7 +637,7 @@ export class PlacementManager {
       for (const input of step.inputs) {
         switch (input.kind) {
           case 'operand': {
-            const operand = operands[input.index]
+            const operand = checkedOperands[input.index]
             if (operand === undefined) {
               throw new Error(`Synthesizer: ${operation} operand ${input.index} is unavailable`)
             }
@@ -685,7 +690,7 @@ export class PlacementManager {
         throw new Error(`Synthesizer: ${step.subcircuit} produced ${values.length} outputs, but its logical interface declares ${logicalInterface.outputs.length}`)
       }
       const outPts = values.map((value, outputIndex) => DataPtFactory.create({
-        source: basePlacementIndex + stepIndex,
+        source: basePlacementIndex + inputChecks.steps.length + stepIndex,
         wireIndex: outputIndex,
         dataPtType: getDataPtTypeFromLogicalInterfaceType(
           logicalInterface.outputs[outputIndex]!.logicalType,
@@ -709,7 +714,67 @@ export class PlacementManager {
     if (resultPts.some((resultPt) => resultPt === undefined)) {
       throw new Error(`Synthesizer: ${operation} did not produce every declared result`)
     }
-    return { operation, operands, resultPts: resultPts as DataPt[], placements: steps }
+    return {
+      operation,
+      operands,
+      resultPts: resultPts as DataPt[],
+      placements: [...inputChecks.steps, ...steps],
+    }
+  }
+
+  private _prepareExternalInputChecks(
+    operation: Operator,
+    composition: PlacementComposition,
+    operands: readonly DataPt[],
+    basePlacementIndex: number,
+  ): { operands: DataPt[]; steps: PlacementEntry[] } {
+    const checkedOperands = operands.slice()
+    const steps: PlacementEntry[] = []
+    if (composition.externalCheckRequiredOperandIndices.length === 0) {
+      return { operands: checkedOperands, steps }
+    }
+
+    const subcircuitName = 'CheckBus256'
+    const subcircuit = this.subcircuitInfoByName.get(subcircuitName)
+    const logicalInterface = subcircuit?.logicalInterface
+    if (
+      subcircuit === undefined
+      || logicalInterface === undefined
+      || logicalInterface.inputs.length !== 1
+      || logicalInterface.outputs.length !== 1
+      || getDataPtTypeFromLogicalInterfaceType(logicalInterface.inputs[0]!.logicalType) !== UINT256_DATA_PT_TYPE
+      || getDataPtTypeFromLogicalInterfaceType(logicalInterface.outputs[0]!.logicalType) !== UINT256_DATA_PT_TYPE
+    ) {
+      throw new Error('Synthesizer: CheckBus256 must expose one uint256 input and output')
+    }
+
+    for (const operandIndex of composition.externalCheckRequiredOperandIndices) {
+      const operand = operands[operandIndex]
+      if (operand === undefined) {
+        throw new Error(`Synthesizer: ${operation} external-check operand ${operandIndex} is unavailable`)
+      }
+      if (operand.source < 0 || operand.source >= BUFFER_LIST.length) continue
+      if (operand.dataPtType !== UINT256_DATA_PT_TYPE) {
+        throw new Error(
+          `Synthesizer: ${operation} external-check operand ${operandIndex} must be uint256`,
+        )
+      }
+      const values = this.subcircuitLibrary.calculateSubcircuitOutputValues(
+        subcircuitName,
+        [operand.value],
+      )
+      if (values.length !== 1) {
+        throw new Error('Synthesizer: CheckBus256 did not produce one output')
+      }
+      const output = DataPtFactory.create({
+        source: basePlacementIndex + steps.length,
+        wireIndex: 0,
+        dataPtType: UINT256_DATA_PT_TYPE,
+      }, values[0]!)
+      steps.push(this._createCandidateStep(operation, subcircuitName, [operand], [output]))
+      checkedOperands[operandIndex] = output
+    }
+    return { operands: checkedOperands, steps }
   }
 
   private _buildPoseidonComposition(
@@ -1112,9 +1177,15 @@ export class PlacementManager {
         `Synthesizer: ${candidate.operation} generic placement requires fixed composition sizes`,
       )
     }
-    if (candidate.placements.length !== composition.numSteps) {
+    const inputChecks = this._prepareExternalInputChecks(
+      candidate.operation,
+      composition,
+      candidate.operands as readonly DataPt[],
+      this._placements.length,
+    )
+    if (candidate.placements.length !== inputChecks.steps.length + composition.numSteps) {
       throw new Error(
-        `Synthesizer: ${candidate.operation} expected ${composition.numSteps} placement steps, but got ${candidate.placements.length}`,
+        `Synthesizer: ${candidate.operation} expected ${inputChecks.steps.length + composition.numSteps} placement steps, but got ${candidate.placements.length}`,
       )
     }
     if (candidate.operands.length !== composition.numOperands) {
@@ -1129,11 +1200,35 @@ export class PlacementManager {
     }
 
     const basePlacementIndex = this._placements.length
+    for (const [checkIndex, expectedStep] of inputChecks.steps.entries()) {
+      const candidateStep = candidate.placements[checkIndex]
+      const subcircuit = this.subcircuitInfoByName.get('CheckBus256')
+      if (candidateStep === undefined || subcircuit === undefined) {
+        throw new Error(`Synthesizer: ${candidate.operation} external input check ${checkIndex} is unavailable`)
+      }
+      _assertCandidateStepPorts(candidate.operation, 'CheckBus256', candidateStep, subcircuit)
+      if (
+        candidateStep.inPts.length !== 1
+        || candidateStep.outPts.length !== 1
+        || !_isSameWire(candidateStep.inPts[0]!, expectedStep.inPts[0]!)
+        || !_isSameWire(candidateStep.outPts[0]!, expectedStep.outPts[0]!)
+      ) {
+        throw new Error(`Synthesizer: ${candidate.operation} external input check ${checkIndex} is invalid`)
+      }
+      _assertCandidateEarlierSource(
+        candidate.operation,
+        checkIndex,
+        0,
+        candidateStep.inPts[0]!,
+        basePlacementIndex,
+      )
+    }
+    const genericBasePlacementIndex = basePlacementIndex + inputChecks.steps.length
     const intermediateOutPts: Array<DataPt | undefined> = []
     const resultOutPts: Array<DataPt | undefined> = Array(composition.numResults)
 
     for (const [stepIndex, step] of composition.steps.entries()) {
-      const candidateStep = candidate.placements[stepIndex]!
+      const candidateStep = candidate.placements[inputChecks.steps.length + stepIndex]!
       const subcircuit = this.subcircuitInfoByName.get(step.subcircuit)
       if (subcircuit === undefined) {
         throw new Error(
@@ -1159,21 +1254,22 @@ export class PlacementManager {
 
       for (const [inputIndex, input] of step.inputs.entries()) {
         _assertCandidateInput(
-          candidate,
+          candidate.operation,
+          inputChecks.operands,
           stepIndex,
           inputIndex,
           input,
           candidateStep.inPts[inputIndex]!,
           composition,
           intermediateOutPts,
-          basePlacementIndex,
+          genericBasePlacementIndex,
         )
       }
 
       for (const [outputIndex, output] of step.outputs.entries()) {
         const candidateOutput = candidateStep.outPts[outputIndex]!
         if (
-          candidateOutput.source !== basePlacementIndex + stepIndex
+          candidateOutput.source !== genericBasePlacementIndex + stepIndex
           || candidateOutput.wireIndex !== outputIndex
         ) {
           throw new Error(

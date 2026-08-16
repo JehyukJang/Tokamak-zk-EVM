@@ -149,6 +149,7 @@ describe('fixed generic atomic compositions', () => {
     const composition = {
       placementStrategy: 'generic' as const,
       constants: [],
+      externalCheckRequiredOperandIndices: [],
       numSteps: 1,
       numOperands: 1,
       numResults: 3,

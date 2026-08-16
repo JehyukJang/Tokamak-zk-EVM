@@ -43,6 +43,9 @@ export function freezeComposition(
       value: constant.value,
       dataPtType: constant.dataPtType,
     }))),
+    externalCheckRequiredOperandIndices: Object.freeze([
+      ...composition.externalCheckRequiredOperandIndices,
+    ]),
     numSteps: composition.numSteps,
     numOperands: composition.numOperands,
     numResults: composition.numResults,

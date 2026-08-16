@@ -11,6 +11,7 @@ export const createMemoryViewCompositionMapping = (): PlacementCompositionEntry 
     composition: freezeComposition({
       placementStrategy: 'memory-view',
       constants: [],
+      externalCheckRequiredOperandIndices: [],
       numSteps: 'dynamic',
       numOperands: 'dynamic',
       numResults: 'dynamic',

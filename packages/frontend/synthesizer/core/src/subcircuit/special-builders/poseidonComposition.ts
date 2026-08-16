@@ -17,6 +17,7 @@ export const createPoseidonCompositionMapping = (
     composition: freezeComposition({
       placementStrategy: 'poseidon',
       constants: [],
+      externalCheckRequiredOperandIndices: [],
       numSteps: 'dynamic',
       numOperands: 'dynamic',
       numResults: 1,
