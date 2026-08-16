@@ -176,7 +176,11 @@ export class MemoryPt {
     for (const memoryPtEntry of memoryPts) {
       const containerOffset = memoryPtEntry.memByteOffset
       const containerSize = memoryPtEntry.containerByteSize
-      const buf = setLengthLeft(bigIntToBytes(memoryPtEntry.dataPt.value), containerSize)
+      const buf = setLengthLeft(
+        bigIntToBytes(memoryPtEntry.dataPt.value),
+        containerSize,
+        { allowTruncate: true },
+      )
       simMem.write(containerOffset + BIAS, containerSize, buf)
 
     }

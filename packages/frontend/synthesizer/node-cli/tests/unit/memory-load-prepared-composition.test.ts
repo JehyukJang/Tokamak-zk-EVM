@@ -199,6 +199,24 @@ describe('atomic MemoryView compositions', () => {
     expect(firstView![2]).toMatchObject(secondView![2]!)
   })
 
+  it('reconstructs and copies the low byte of a wide one-byte memory entry', () => {
+    const { contextManager, placementManager } = createHarness()
+    const memoryPt = new MemoryPt()
+    const originalDataPt = wordPt(0x1234n, 1)
+    memoryPt.write(7, 1, originalDataPt)
+
+    const loadOperands = contextManager.materializeMemoryViewOperands(memoryPt, 0n, 32n)
+    expect(loadOperands[0]).toContain(originalDataPt)
+    const [loadedPt] = placementManager.placeComposition('MemoryView', loadOperands)
+    expect(loadedPt).toMatchObject({ value: 0x34n << 192n })
+
+    const copyPlan = contextManager.prepareMemoryCopy(memoryPt, 7n, 1n, 40n)
+    const copiedPts = placementManager.placeComposition('MemoryView', copyPlan.operands)
+    const copiedMemoryPt = new MemoryPt()
+    copiedMemoryPt.writeBatch(createMemoryCopyEntries(copyPlan, copiedPts))
+    expect(copiedMemoryPt.viewMemory(40, 1)).toEqual(new Uint8Array([0x34]))
+  })
+
   it('rejects a malformed view atomically', () => {
     const { placementManager } = createHarness()
     const malformedView = [[dataPt(1n, 0), dataPt(0n, 5, 0, UINT32_DATA_PT_TYPE)]]

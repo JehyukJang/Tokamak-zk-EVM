@@ -991,22 +991,8 @@ export class InstructionHandler {
           checkRequiredInput(opts.memOut)
           const offsetNum = Number(ins[0])
           const originalDataPt = inPts[1]
-          let dataPtToStore = originalDataPt
-          if (op === 'MSTORE8') {
-            const resultPt = this.placementManager.placeComposition(
-              'AND',
-              [
-                this.placementManager.getReservedVariableFromBuffer('BYTE_MASK'),
-                originalDataPt,
-              ],
-            )[0]
-            if (resultPt === undefined) {
-              throw new Error('Synthesizer: MSTORE8 mask produced no result')
-            }
-            dataPtToStore = resultPt
-          }
           const byteSize = op === 'MSTORE8' ? 1 : 32
-          const _out = opts.memoryPt.write(offsetNum, byteSize, dataPtToStore)
+          const _out = opts.memoryPt.write(offsetNum, byteSize, originalDataPt)
           if ( bytesToBigInt(_out) !== bytesToBigInt(opts.memOut!)) {
             throw new Error(`Synthesizer: ${op}: Output memory data mismatch`)
           } 
