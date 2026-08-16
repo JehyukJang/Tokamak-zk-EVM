@@ -2,10 +2,14 @@ import { createAddressFromBigInt } from '@ethereumjs/util';
 import type { InterpreterStep, Message } from '@ethereumjs/evm';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { Operator } from '../../../core/src/subcircuit/configuredTypes.ts';
+import {
+  TRANSACTION_INPUT_VARIABLES,
+  type Operator,
+} from '../../../core/src/subcircuit/configuredTypes.ts';
 import { DataPtFactory, MemoryPt, StackPt } from '../../../core/src/synthesizer/dataStructure/index.ts';
 import { ContextManager, type MessageContext } from '../../../core/src/synthesizer/handlers/contextManager.ts';
 import {
+  UINT32_DATA_PT_TYPE,
   UINT256_DATA_PT_TYPE,
   type DataPt,
   type DataPtType,
@@ -95,6 +99,48 @@ const createHarness = (
 };
 
 describe('CALL-family target-word topology', () => {
+  it('uses the verified uint256 contract address for both root context address roles', () => {
+    const placementManager = {
+      placements: [],
+      getLogOutWireLength: vi.fn(() => 0),
+    };
+    const contextManager = new ContextManager(placementManager as never);
+    const verifiedContractAddressPt = dataPt(0x1234n, 1);
+    const originPt = dataPt(0x5678n, 2);
+    const selectorPt = dataPt(0xabcdn, 3, 0, UINT32_DATA_PT_TYPE);
+    const transactionInputPts = TRANSACTION_INPUT_VARIABLES.map((_, index) =>
+      dataPt(BigInt(index), 4, index),
+    );
+
+    contextManager.setVerifiedTransactionData(
+      verifiedContractAddressPt,
+      selectorPt,
+      originPt,
+      transactionInputPts,
+    );
+    contextManager.materializeMessageContext({
+      depth: 0,
+      codeAddress: createAddressFromBigInt(verifiedContractAddressPt.value),
+      data: new Uint8Array(4 + 32 * TRANSACTION_INPUT_VARIABLES.length),
+      isCreate: false,
+      isCompiled: false,
+    } as Message);
+
+    const rootContext = contextManager.contextByDepth[0]!;
+    expect(rootContext.codeAddressPt).toMatchObject({
+      value: verifiedContractAddressPt.value,
+      dataPtType: UINT256_DATA_PT_TYPE,
+    });
+    expect(rootContext.storageAddressPt).toMatchObject({
+      value: verifiedContractAddressPt.value,
+      dataPtType: UINT256_DATA_PT_TYPE,
+    });
+    expect(rootContext.callerPt).toMatchObject({
+      value: originPt.value,
+      dataPtType: UINT256_DATA_PT_TYPE,
+    });
+  });
+
   it.each(CALL_OPCODES)('routes the %s target word into the child context without a normalizer', (opcode) => {
     const rawTarget = 0x1234n;
     const harness = createHarness(opcode, rawTarget);
