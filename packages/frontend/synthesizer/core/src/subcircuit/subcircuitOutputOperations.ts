@@ -710,7 +710,6 @@ const pointPolicy = (values: readonly bigint[]): bigint[] => {
   table.push(affineAdd(table[1]!, publicKeyAffine));
   table.push(affineAdd(table[2]!, publicKeyAffine));
   return [
-    values[4]!,
     values[5]!,
     values[4]!,
     ...table.flat(),

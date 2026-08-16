@@ -10,7 +10,7 @@ template TransactionSignatureProductionComposition(N) {
     signal input functionSelector;
     signal input S;
     signal input O[2];
-    signal output evmContractAddress;
+    signal output evmContractAddress[2];
     signal output evmFunctionSelector[2];
     signal output origin[2];
 
@@ -57,8 +57,8 @@ template TransactionSignatureProductionComposition(N) {
     pointPolicy.in[5] <== functionSelector;
     pointPolicy.in[6] <== O[0];
     pointPolicy.in[7] <== O[1];
-    evmContractAddress <== pointPolicy.out[0];
-    evmFunctionSelector <== [pointPolicy.out[1], pointPolicy.out[2]];
+    evmContractAddress <== [pointPolicy.out[2], pointPolicy.out[3]];
+    evmFunctionSelector <== [pointPolicy.out[0], pointPolicy.out[1]];
 
     component fixedPrefix = TransactionSignatureFixedPrefix70();
     fixedPrefix.in[0] <== S;
@@ -66,7 +66,7 @@ template TransactionSignatureProductionComposition(N) {
     component challengePrefix = TransactionSignatureChallengeVariablePrefix();
     challengePrefix.in[0] <== finalHashBatch.out[1];
     for (var coordinate = 0; coordinate < 8; coordinate++) {
-        challengePrefix.in[1 + coordinate] <== pointPolicy.out[5 + coordinate];
+        challengePrefix.in[1 + coordinate] <== pointPolicy.out[4 + coordinate];
     }
 
     component variableBatches[3];
@@ -79,7 +79,7 @@ template TransactionSignatureProductionComposition(N) {
         }
         for (var coordinate = 0; coordinate < 8; coordinate++) {
             variableBatches[batch].in[68 + coordinate] <==
-                pointPolicy.out[5 + coordinate];
+                pointPolicy.out[4 + coordinate];
         }
         for (var coordinate = 0; coordinate < 4; coordinate++) {
             if (batch == 0) {
@@ -106,10 +106,10 @@ template TransactionSignatureProductionComposition(N) {
         final.in[64 + coordinate] <== variableBatches[2].out[coordinate];
     }
     for (var coordinate = 0; coordinate < 8; coordinate++) {
-        final.in[68 + coordinate] <== pointPolicy.out[5 + coordinate];
+        final.in[68 + coordinate] <== pointPolicy.out[4 + coordinate];
     }
     for (var coordinate = 0; coordinate < 4; coordinate++) {
-        final.in[76 + coordinate] <== pointPolicy.out[13 + coordinate];
+        final.in[76 + coordinate] <== pointPolicy.out[12 + coordinate];
     }
     final.in[80] <== finalHashBatch.out[0];
     origin <== final.out;

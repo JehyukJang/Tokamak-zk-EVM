@@ -102,7 +102,7 @@ const toCircuitInput = (vector) => {
 };
 
 const expectedProductionOutput = (vector, oracle) => ({
-  evmContractAddress: vector.publicBoundary.contractAddress,
+  evmContractAddress: split(vector.publicBoundary.contractAddress),
   evmFunctionSelector: [vector.publicBoundary.functionSelector, 0n],
   origin: split(oracle.circuit.origin),
 });
@@ -121,9 +121,9 @@ const main = async () => {
     linear: 3,
     publicInputs: 5,
     privateInputs: 34,
-    outputs: 5,
+    outputs: 6,
     wires: 14677,
-    nonzero: 134925,
+    nonzero: 134924,
   });
   const circuit = await wasm(
     path.join(

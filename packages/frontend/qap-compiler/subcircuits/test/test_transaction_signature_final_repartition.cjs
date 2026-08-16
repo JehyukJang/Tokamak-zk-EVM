@@ -120,8 +120,8 @@ const main = async () => {
     const challengeInputs = getChallengeInputs(vector);
     const challenge = evaluateCompleteStatement(vector).circuit.challenge;
     const pointWitness = await calculateWitness(pointPolicy, toPointPolicyInput(vector));
-    const runtimeTable = pointWitness.slice(6, 14);
-    const randomizerCofactor = pointWitness.slice(14, 18);
+    const runtimeTable = pointWitness.slice(5, 13);
+    const randomizerCofactor = pointWitness.slice(13, 17);
     const fixedWitness = await calculateWitness(fixedPrefix, [vector.publicBoundary.S]);
     const fixedBits = fixedWitness.slice(1, 43);
     const fixedAccumulator = fixedWitness.slice(43, 47);

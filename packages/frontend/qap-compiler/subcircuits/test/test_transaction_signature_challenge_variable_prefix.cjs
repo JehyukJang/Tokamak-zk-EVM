@@ -112,7 +112,7 @@ const main = async () => {
     const pointWitness = await pointPolicy.calculateWitness({
       in: toPointPolicyInput(vector),
     }, true);
-    const runtimeTable = pointWitness.slice(6, 14).map(normalize);
+    const runtimeTable = pointWitness.slice(5, 13).map(normalize);
     const challenge = evaluateCompleteStatement(vector).circuit.challenge;
     const witness = await prefix.calculateWitness({
       in: [challenge, ...runtimeTable],

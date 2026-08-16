@@ -423,27 +423,22 @@ template TransactionSignaturePoseidonBatch4() {
 template TransactionSignaturePointPolicy() {
     assert(nPrivateMessageInputs() == 29);
     signal input in[8];
-    signal output out[17];
+    signal output out[16];
 
     component contractBits = Num2Bits(160);
     contractBits.in <== in[4];
-    var contractAddress = 0;
-    for (var bit = 0; bit < 160; bit++) {
-        contractAddress += contractBits.out[bit] * (1 << bit);
-    }
-    out[0] <== contractAddress;
-    out[1] <== in[5];
-    out[2] <== 0;
+    out[0] <== in[5];
+    out[1] <== 0;
     var contractAddressLow = 0;
     for (var limbBit = 0; limbBit < 128; limbBit++) {
         contractAddressLow += contractBits.out[limbBit] * (1 << limbBit);
     }
-    out[3] <== contractAddressLow;
+    out[2] <== contractAddressLow;
     var contractAddressHigh = 0;
     for (var limbBit = 128; limbBit < 160; limbBit++) {
         contractAddressHigh += contractBits.out[limbBit] * (1 << (limbBit - 128));
     }
-    out[4] <== contractAddressHigh;
+    out[3] <== contractAddressHigh;
 
     component checkA = jubjubCheck();
     checkA.in <== [in[2], in[3]];
@@ -467,11 +462,11 @@ template TransactionSignaturePointPolicy() {
     runtimeTable.base <== publicKeyAffine.affine;
     for (var digit = 0; digit < 4; digit++) {
         for (var coordinate = 0; coordinate < 2; coordinate++) {
-            out[5 + digit * 2 + coordinate] <== runtimeTable.table[digit][coordinate];
+            out[4 + digit * 2 + coordinate] <== runtimeTable.table[digit][coordinate];
         }
     }
     for (var coordinate = 0; coordinate < 4; coordinate++) {
-        out[13 + coordinate] <== randomizerCofactor.point8[coordinate];
+        out[12 + coordinate] <== randomizerCofactor.point8[coordinate];
     }
 }
 

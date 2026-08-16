@@ -119,9 +119,8 @@ export const createTransactionSignatureVerifyCompositionMapping = (
       { kind: 'operand', index: identityYOperandIndex },
     ],
     outputs: [
-      { kind: 'result', index: 0 },
       { kind: 'result', index: 1 },
-      { kind: 'result', index: 2 },
+      { kind: 'result', index: 0 },
       ...runtimeTableIndices.map((index): OutputReference => ({
         kind: 'step-output',
         index,
@@ -234,7 +233,7 @@ export const createTransactionSignatureVerifyCompositionMapping = (
       })),
       { kind: 'step-output', index: publicKeyHashIndex },
     ],
-    outputs: [{ kind: 'result', index: 3 }],
+    outputs: [{ kind: 'result', index: 2 }],
   })
 
   return {
@@ -249,7 +248,7 @@ export const createTransactionSignatureVerifyCompositionMapping = (
       externalCheckRequiredOperandIndices: [],
       numSteps: steps.length,
       numOperands: numberOfOperands,
-      numResults: 4,
+      numResults: 3,
       steps,
     },
   }
