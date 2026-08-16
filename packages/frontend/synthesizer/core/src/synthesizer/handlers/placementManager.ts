@@ -48,6 +48,14 @@ type PlacementCandidate = Readonly<{
   placements: readonly PlacementEntry[];
 }>;
 
+const FULL_MEMORY_VIEW_OWNERSHIP = 0xffffffffn
+
+function _isIdentityMemoryView(view: readonly DataPt[]): boolean {
+  return view.length === 3
+    && view[1]?.value === 0n
+    && view[2]?.value === FULL_MEMORY_VIEW_OWNERSHIP
+}
+
 const isNestedOperands = (
   operands: CompositionOperands,
 ): operands is readonly (readonly DataPt[])[] =>
@@ -555,6 +563,10 @@ export class PlacementManager {
       if (view.length % inputsPerFragment !== 0) {
         throw new Error(`Synthesizer: MemoryView view ${viewIndex} must contain three inputs per fragment`)
       }
+      if (_isIdentityMemoryView(view)) {
+        resultPts.push(view[0]!)
+        continue
+      }
       const zeroOwnershipPt = this._getReservedZero(previousOwnershipType)
       let previousWordPt = zeroWordPt
       let previousOwnershipPt = zeroOwnershipPt
@@ -988,6 +1000,10 @@ export class PlacementManager {
     if (subcircuit === undefined) {
       throw new Error('Synthesizer: MemoryViewStep subcircuit is not found. Check qap-compiler.')
     }
+    const logicalInterface = subcircuit.logicalInterface
+    if (logicalInterface === undefined) {
+      throw new Error('Synthesizer: MemoryViewStep logical interface is unavailable')
+    }
 
     const basePlacementIndex = this._placements.length
     let candidateStepIndex = 0
@@ -999,6 +1015,51 @@ export class PlacementManager {
       }
       if (view.length % inputsPerFragment !== 0) {
         throw new Error(`Synthesizer: ${candidate.operation} view ${viewIndex} has invalid operands`)
+      }
+      if (_isIdentityMemoryView(view)) {
+        const [sourceWordPt, encodedShiftPt, ownershipPt] = view
+        if (sourceWordPt === undefined || encodedShiftPt === undefined || ownershipPt === undefined) {
+          throw new Error(`Synthesizer: ${candidate.operation} view ${viewIndex} is missing identity inputs`)
+        }
+        _assertCandidatePortTypes(
+          candidate.operation,
+          step.subcircuit,
+          'input',
+          view,
+          logicalInterface.inputs.slice(0, inputsPerFragment),
+        )
+        _assertCandidateEarlierSource(
+          candidate.operation,
+          candidateStepIndex,
+          0,
+          sourceWordPt,
+          basePlacementIndex,
+        )
+        _assertCandidateEarlierSource(
+          candidate.operation,
+          candidateStepIndex,
+          1,
+          encodedShiftPt,
+          basePlacementIndex,
+        )
+        _assertCandidateEarlierSource(
+          candidate.operation,
+          candidateStepIndex,
+          2,
+          ownershipPt,
+          basePlacementIndex,
+        )
+        _assertStaticCandidateValue(candidate.operation, `view ${viewIndex} identity encoded byte shift`, encodedShiftPt, 0n)
+        _assertStaticCandidateValue(
+          candidate.operation,
+          `view ${viewIndex} identity byte ownership`,
+          ownershipPt,
+          FULL_MEMORY_VIEW_OWNERSHIP,
+        )
+        if (!_isSameWire(resultPt, sourceWordPt)) {
+          throw new Error(`Synthesizer: ${candidate.operation} identity view ${viewIndex} result is not its source word`)
+        }
+        continue
       }
       const fragmentCount = view.length / inputsPerFragment
       let previousWordPt: DataPt | undefined
