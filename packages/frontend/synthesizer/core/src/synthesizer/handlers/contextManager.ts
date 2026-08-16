@@ -325,12 +325,10 @@ export class ContextManager {
         const encodedShiftPt = this.placementManager.loadArbitraryStatic(
           BigInt(geometry.shiftMagnitude + 32 * geometry.direction),
           UINT32_DATA_PT_TYPE,
-          'Memory-view encoded byte shift',
         )
         const ownershipPt = this.placementManager.loadArbitraryStatic(
           geometry.ownershipMask,
           UINT32_DATA_PT_TYPE,
-          'Memory-view byte ownership mask',
         )
         viewOperands.push(geometry.dataPt, encodedShiftPt, ownershipPt)
       }
