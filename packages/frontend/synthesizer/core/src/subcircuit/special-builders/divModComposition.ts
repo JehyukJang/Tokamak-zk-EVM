@@ -1,13 +1,12 @@
-import { freezeComposition } from '../utils.ts'
 import type { PlacementCompositionEntry, InputReference, OutputReference } from '../placementCompositionMapping.ts'
 
 const createDivisionCompositionMapping = (
   operation: 'DIV' | 'SDIV' | 'MOD' | 'SMOD',
   selector: bigint
 ): PlacementCompositionEntry =>
-  Object.freeze({
+  ({
     operation,
-    composition: freezeComposition({
+    composition: {
       placementStrategy: 'generic',
       constants: [],
       externalCheckRequiredOperandIndices: [],
@@ -28,13 +27,13 @@ const createDivisionCompositionMapping = (
           outputs: [{ kind: 'result', index: 0 }]
         }
       ]
-    })
+    }
   })
 
 export const createDivisionCompositionMappings = (): readonly PlacementCompositionEntry[] =>
-  Object.freeze([
+  [
     createDivisionCompositionMapping('DIV', 1n << 4n),
     createDivisionCompositionMapping('SDIV', 1n << 5n),
     createDivisionCompositionMapping('MOD', 1n << 6n),
     createDivisionCompositionMapping('SMOD', 1n << 7n)
-  ])
+  ]

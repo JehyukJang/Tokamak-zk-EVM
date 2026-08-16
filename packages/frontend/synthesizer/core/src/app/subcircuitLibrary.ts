@@ -1,4 +1,4 @@
-import { BUFFER_LIST, TRANSACTION_INPUT_VARIABLES } from '../subcircuit/configuredTypes.ts';
+import { TRANSACTION_INPUT_VARIABLES } from '../subcircuit/configuredTypes.ts';
 import { createPlacementCompositionMapping } from '../subcircuit/placementCompositionMapping.ts';
 import { calculateSubcircuitOutputValues } from '../subcircuit/subcircuitOutputOperations.ts';
 import {
@@ -73,8 +73,6 @@ export function resolveSubcircuitLibraryData(
       PRIVATE_IN: subcircuitInfoByName.get('bufferPrvIn'),
     },
     numberOfPrevBlockHashes: data.frontendCfg.nPrevBlockHashes,
-    poseidonBatchSize: data.frontendCfg.nPoseidonBatch,
-    firstArithmeticPlacementIndex: BUFFER_LIST.length,
   };
 }
 

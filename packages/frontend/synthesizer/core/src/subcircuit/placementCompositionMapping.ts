@@ -271,9 +271,9 @@ const createSingleStepMapping = (
   constants: readonly ConstantDefinition[] = [],
   externalCheckRequiredOperandIndices: readonly number[] = [],
 ): PlacementCompositionEntry =>
-  Object.freeze({
+  ({
     operation,
-    composition: freezeComposition({
+    composition: {
       placementStrategy: 'generic',
       constants,
       externalCheckRequiredOperandIndices,
@@ -292,10 +292,10 @@ const createSingleStepMapping = (
           outputs: Array.from({ length: numResults }, (_, index): OutputReference => ({ kind: 'result', index })),
         },
       ],
-    }),
+    },
   });
 
-const FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS: readonly PlacementCompositionEntry[] = Object.freeze([
+const FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS: readonly PlacementCompositionEntry[] = [
   createSingleStepMapping('ADD', 'ADD', null, 2, 1, [], [0, 1]),
   createSingleStepMapping('MUL', 'MUL', null, 2, 1),
   createSingleStepMapping('SUB', 'SUB', null, 2, 1, [], [0, 1]),
@@ -314,13 +314,13 @@ const FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS: readonly PlacementCompositionEntry[
   createSingleStepMapping('SHR', 'SHR', null, 2, 1, [], [0]),
   createSingleStepMapping('SAR', 'ALU5', 1n << 29n, 2, 1, [], [0]),
   createSingleStepMapping('SIGNEXTEND', 'ALU3', 1n << 11n, 2, 1),
-]);
+];
 
 const createSelectorFreeCompositionMappings = (): readonly PlacementCompositionEntry[] =>
-  Object.freeze([
+  [
     createSingleStepMapping('StorageAccess', 'StorageAccess', null, 4, 0),
     createSingleStepMapping('FrToLimbsPair', 'FrToLimbsPair', null, 2, 2),
-  ]);
+  ];
 
 export type PlacementCompositionConfig = Readonly<{
   nPrivateMessageInputs: number;

@@ -113,9 +113,6 @@ export class VariableGenerator {
         if (this.subcircuitLibrary.subcircuitInfoByName.get(placement.name)!.flattenMap.length !== variables.length) {
           throw new Error(`Flatten map cannot be applied to the placement variables due to difference lengths`);
         }
-        // process.stdout.write('\r' + ' '.repeat(100) + '\r');
-        // process.stdout.write(`Synthesizer: Instances of the ${placementId}-th placement passed the ${placement.subcircuitId}-th subcircuit.`)
-
         return {
           subcircuitId: placement.subcircuitId, 
           variables,
@@ -134,31 +131,44 @@ export class VariableGenerator {
     return placementVariables;
   }
 
-  private _extractPublicInstance(placementVariables: PlacementVariables): PublicInstance {
+  private _extractPublicProjection<Value>(
+    placementVariables: PlacementVariables,
+    defaultValue: Value,
+    extractValue: (placement: PlacementVariables[number], localVariableIdx: number) => Value | undefined,
+  ): Value[] {
     const { globalWireList, setupParams } = this.subcircuitLibrary.data;
     const l = setupParams.l;
-    const l_user = setupParams.l_user;
-    const l_free = setupParams.l_free;
-
-    const a_pub: `0x${string}`[] = Array(l).fill('0x00');
-    for (var globalIdx = 0; globalIdx < l; globalIdx++) {
+    const projection: Value[] = Array(l).fill(defaultValue);
+    for (let globalIdx = 0; globalIdx < l; globalIdx++) {
       const [subcircuitId, localVariableIdx] = globalWireList[globalIdx];
       if (subcircuitId !== -1 && localVariableIdx !== -1) {
         const placementIndex = placementVariables.findIndex(entry => entry.subcircuitId === subcircuitId);
-        const localVal = placementVariables[placementIndex].variables[localVariableIdx];
-        if (localVal === undefined) {
+        const placement = placementVariables[placementIndex];
+        const value = placement === undefined
+          ? undefined
+          : extractValue(placement, localVariableIdx);
+        if (value === undefined) {
           throw new Error('Something wrong in the Global Wire List or local placement variables. Need to be debugged.');
         }
-        a_pub[globalIdx] = addHexPrefix(localVal);
+        projection[globalIdx] = value;
       }
     }
+    return projection;
+  }
+
+  private _extractPublicInstance(placementVariables: PlacementVariables): PublicInstance {
+    const { l_user, l_free } = this.subcircuitLibrary.data.setupParams;
+    const a_pub = this._extractPublicProjection(
+      placementVariables,
+      '0x00' as `0x${string}`,
+      (placement, localVariableIdx) => {
+        const value = placement.variables[localVariableIdx];
+        return value === undefined ? undefined : addHexPrefix(value);
+      },
+    );
 
     const a_pub_user = a_pub.slice(0, l_user);
-    // const pubBlockOffset = blockBufferInfo.flattenMap[blockBufferInfo.inWireIndex]
-    // const numBlockInstance = blockBufferInfo.NInWires
     const a_pub_block = a_pub.slice(l_user, l_free);
-    // const pubFunctionOffset = functionBufferInfo.flattenMap[functionBufferInfo.inWireIndex]
-    // const numFunctionInstance = functionBufferInfo.NInWires
     const a_pub_function = a_pub.slice(l_free);
     return {
       a_pub_user,
@@ -168,30 +178,15 @@ export class VariableGenerator {
   }
 
   private _extractPublicInstanceDescription(placementVariables: PlacementVariables): PublicInstanceDescription {
-    const { globalWireList, setupParams } = this.subcircuitLibrary.data;
-    const l = setupParams.l;
-    const l_user = setupParams.l_user;
-    const l_free = setupParams.l_free;
-
-    const a_pub_desc: string[] = Array(l).fill('');
-    for (let globalIdx = 0; globalIdx < l; globalIdx++) {
-      const [subcircuitId, localVariableIdx] = globalWireList[globalIdx];
-      if (subcircuitId !== -1 && localVariableIdx !== -1) {
-        const placementIndex = placementVariables.findIndex(entry => entry.subcircuitId === subcircuitId);
-        const localDesc = placementVariables[placementIndex].instanceList[localVariableIdx];
-        if (localDesc === undefined) {
-          throw new Error('Something wrong in the Global Wire List or local placement variables. Need to be debugged.');
-        }
-        a_pub_desc[globalIdx] = localDesc;
-      }
-    }
+    const { l_user, l_free } = this.subcircuitLibrary.data.setupParams;
+    const a_pub_desc = this._extractPublicProjection(
+      placementVariables,
+      '',
+      (placement, localVariableIdx) => placement.instanceList[localVariableIdx],
+    );
 
     const a_pub_user_description = a_pub_desc.slice(0, l_user);
-    // const pubBlockOffset = blockBufferInfo.flattenMap[blockBufferInfo.inWireIndex]
-    // const numBlockInstance = blockBufferInfo.NInWires
     const a_pub_block_description = a_pub_desc.slice(l_user, l_free);
-    // const pubFunctionOffset = functionBufferInfo.flattenMap[functionBufferInfo.inWireIndex]
-    // const numFunctionInstance = functionBufferInfo.NInWires
     const a_pub_function_description = a_pub_desc.slice(l_free);
     return {
       a_pub_user_description,

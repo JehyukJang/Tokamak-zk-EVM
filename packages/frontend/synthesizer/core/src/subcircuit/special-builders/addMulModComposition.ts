@@ -1,10 +1,9 @@
-import { freezeComposition } from '../utils.ts'
 import type { PlacementCompositionEntry } from '../placementCompositionMapping.ts'
 
 const createAddModCompositionMapping = (): PlacementCompositionEntry =>
-  Object.freeze({
+  ({
     operation: 'ADDMOD',
-    composition: freezeComposition({
+    composition: {
       placementStrategy: 'generic',
       constants: [],
       externalCheckRequiredOperandIndices: [],
@@ -38,13 +37,13 @@ const createAddModCompositionMapping = (): PlacementCompositionEntry =>
           outputs: [{ kind: 'result', index: 0 }]
         }
       ]
-    })
+    }
   })
 
 const createMulModCompositionMapping = (): PlacementCompositionEntry =>
-  Object.freeze({
+  ({
     operation: 'MULMOD',
-    composition: freezeComposition({
+    composition: {
       placementStrategy: 'generic',
       constants: [],
       externalCheckRequiredOperandIndices: [],
@@ -82,8 +81,8 @@ const createMulModCompositionMapping = (): PlacementCompositionEntry =>
           outputs: [{ kind: 'result', index: 0 }]
         }
       ]
-    })
+    }
   })
 
 export const createAddMulModCompositionMappings = (): readonly PlacementCompositionEntry[] =>
-  Object.freeze([createAddModCompositionMapping(), createMulModCompositionMapping()])
+  [createAddModCompositionMapping(), createMulModCompositionMapping()]

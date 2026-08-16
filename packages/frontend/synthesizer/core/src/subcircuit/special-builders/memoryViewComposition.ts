@@ -1,4 +1,3 @@
-import { freezeComposition } from '../utils.ts'
 import type {
   InputReference,
   PlacementCompositionEntry,
@@ -6,9 +5,9 @@ import type {
 
 /** Defines one or more logical memory-view reconstructions. */
 export const createMemoryViewCompositionMapping = (): PlacementCompositionEntry =>
-  Object.freeze({
+  ({
     operation: 'MemoryView',
-    composition: freezeComposition({
+    composition: {
       placementStrategy: 'memory-view',
       constants: [],
       externalCheckRequiredOperandIndices: [],
@@ -29,5 +28,5 @@ export const createMemoryViewCompositionMapping = (): PlacementCompositionEntry 
           ]
         }
       ]
-    })
+    }
   })

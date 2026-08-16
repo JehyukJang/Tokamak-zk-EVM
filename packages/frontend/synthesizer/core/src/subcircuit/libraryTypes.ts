@@ -52,22 +52,14 @@ export const isTupleNumber2 = (x: unknown): x is [number, number] =>
   Array.isArray(x) && x.length === 2 && isNumber(x[0]) && isNumber(x[1]);
 export const isNumberArray = (x: unknown): x is number[] => Array.isArray(x) && x.every(isNumber);
 
-// Validator map that also drives the SubcircuitInfo shape
-export const SUBCIRCUIT_INFO_VALIDATORS = {
-  id: isNumber,
-  name: isSubcircuitName,
-  Nwires: isNumber,
-  Nconsts: isNumber,
-  Out_idx: isTupleNumber2,
-  In_idx: isTupleNumber2,
-  flattenMap: isNumberArray,
-};
-
-export type ValidatorMap = typeof SUBCIRCUIT_INFO_VALIDATORS;
-// Derive the item shape from the validator map (no duplication)
 type SubcircuitInfoItem = {
-  [K in keyof ValidatorMap]: ValidatorMap[K] extends (x: unknown) => x is infer T ? T : never
-} & {
+  id: number;
+  name: SubcircuitNames;
+  Nwires: number;
+  Nconsts: number;
+  Out_idx: [number, number];
+  In_idx: [number, number];
+  flattenMap: number[];
   logicalInterface?: LogicalInterface;
   bufferDirection?: BufferDirection;
 };
@@ -112,6 +104,4 @@ export interface ResolvedSubcircuitLibrary {
   subcircuitInfoByName: SubcircuitInfoByName;
   subcircuitBufferMapping: Record<ReservedBuffer, SubcircuitInfoByNameEntry | undefined>;
   numberOfPrevBlockHashes: number;
-  poseidonBatchSize: number;
-  firstArithmeticPlacementIndex: number;
 }

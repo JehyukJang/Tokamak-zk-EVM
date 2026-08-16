@@ -104,54 +104,49 @@ export class Synthesizer implements SynthesizerInterface
     console.error(`Synthesizer: ${handlerName} error:`, err)
   }
 
+  private _executeVMEvent(
+    handlerName: string,
+    resolve: ((result?: any) => void) | undefined,
+    execute: () => Promise<void> | void,
+  ): void {
+    let result: Promise<void> | void
+    try {
+      result = this._hasEventHandlerError ? undefined : execute()
+    } catch (err) {
+      this._recordEventHandlerError(handlerName, err)
+      resolve?.()
+      return
+    }
+
+    if (result === undefined) {
+      resolve?.()
+      return
+    }
+    void result
+      .catch((err) => this._recordEventHandlerError(handlerName, err))
+      .finally(() => resolve?.())
+  }
+
   private _attachSynthesizerToVM(vm: VM): void {
     if (vm.evm.events === undefined ) {
       throw new Error("EVM event emitter is turned off.")
     }
     vm.events.on('beforeTx', (_data: TypedTransaction, resolve?: (result?: any) => void) => {
-      ; (async () => {
-        try {
-          if (!this._hasEventHandlerError) {
-            await this._prepareSynthesizeTransaction()
-            // TODO: BLOCKHASH preparation in state manager for EIP-7709
-          }
-        } catch (err) {
-          this._recordEventHandlerError('beforeTx', err)
-        } finally {
-          resolve?.()
-        }
-      })()
+      this._executeVMEvent('beforeTx', resolve, async () => {
+        await this._prepareSynthesizeTransaction()
+        // TODO: BLOCKHASH preparation in state manager for EIP-7709
+      })
     });
     vm.evm.events.on('beforeMessage', (data, resolve?: (result?: any) => void) => {
-      try {
-        if (!this._hasEventHandlerError) {
-          this._contextManager.materializeMessageContext(data);
-        }
-      } catch (err) {
-        this._recordEventHandlerError('beforeMessage', err)
-      } finally {
-        resolve?.()
-      }
+      this._executeVMEvent('beforeMessage', resolve, () => {
+        this._contextManager.materializeMessageContext(data)
+      })
     });
     vm.evm.events!.on('step', (data: InterpreterStep, resolve?: (result?: any) => void) => {
-      ; (async () => {
-        try {
-          if (!this._hasEventHandlerError) {
-            await this._applySynthesizerHandler(data);
-          }
-        } catch (err) {
-          this._recordEventHandlerError('step', err)
-        } finally {
-          resolve?.()
-        }
-      }) () 
+      this._executeVMEvent('step', resolve, () => this._applySynthesizerHandler(data))
     })
     vm.evm.events.on('afterMessage', (data: EVMResult, resolve?: (result?: any) => void) => {
-      ; (async () => {
-        try {
-          if (this._hasEventHandlerError) {
-            return
-          }
+      this._executeVMEvent('afterMessage', resolve, async () => {
           const _runState = data.execResult.runState
           if (_runState === undefined) {
             throw new Error('Failed to capture the final state')
@@ -196,12 +191,7 @@ export class Synthesizer implements SynthesizerInterface
             stepData.depth,
             data.execResult.exceptionError === undefined,
           )
-        } catch (err) {
-          this._recordEventHandlerError('afterMessage', err)
-        } finally {
-          resolve?.()
-        }
-      })()
+      })
     })
 
   }

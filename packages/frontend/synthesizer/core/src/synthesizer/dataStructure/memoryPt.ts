@@ -117,23 +117,19 @@ export class MemoryPt {
    * @param length - Number of bytes to read
    * @returns {returnMemroyPts}
    */
-  read(offset: number, length: number, avoidCopy?: boolean): MemoryPts {
+  read(offset: number, length: number): MemoryPts {
     const dataFragments = this._viewMemoryConflict(offset, length)
     const returnMemoryPts: MemoryPts = []
     if (dataFragments.size > 0) {
       const sortedKeys = Array.from(dataFragments.keys()).sort((a, b) => a - b)
       sortedKeys.forEach((key) => {
-        if (avoidCopy === true) {
-          returnMemoryPts.push(this._storePt.get(key)!)
-        } else {
-          const target = this._storePt.get(key)!
-          const copy: MemoryPtEntry = {
-            memByteOffset: target.memByteOffset,
-            containerByteSize: target.containerByteSize,
-            dataPt: target.dataPt,
-          }
-          returnMemoryPts.push(copy)
+        const target = this._storePt.get(key)!
+        const copy: MemoryPtEntry = {
+          memByteOffset: target.memByteOffset,
+          containerByteSize: target.containerByteSize,
+          dataPt: target.dataPt,
         }
+        returnMemoryPts.push(copy)
       })
     }
     return returnMemoryPts
@@ -391,15 +387,11 @@ export class Memory {
    * It fills up the difference between memory's length and `offset + size` with zeros.
    * @param offset - Starting position
    * @param size - How many bytes to read
-   * @param avoidCopy - Avoid memory copy if possible for performance reasons (optional)
    */
-  read(offset: number, size: number, avoidCopy?: boolean): Uint8Array<ArrayBuffer> {
+  read(offset: number, size: number): Uint8Array<ArrayBuffer> {
     this.extend(offset, size)
 
     const loaded = this._store.subarray(offset, offset + size) as Uint8Array<ArrayBuffer>
-    if (avoidCopy === true) {
-      return loaded
-    }
     const returnBytes = new Uint8Array(size)
     // Copy the stored "buffer" from memory into the return Uint8Array
     returnBytes.set(loaded)

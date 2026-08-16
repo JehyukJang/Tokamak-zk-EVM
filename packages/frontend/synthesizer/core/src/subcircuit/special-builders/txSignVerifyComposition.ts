@@ -1,4 +1,3 @@
-import { freezeComposition } from '../utils.ts'
 import {
   BIT_DATA_PT_TYPE,
   BLS12_381_FR_DATA_PT_TYPE,
@@ -238,9 +237,9 @@ export const createTransactionSignatureVerifyCompositionMapping = (
     outputs: [{ kind: 'result', index: 3 }],
   })
 
-  return Object.freeze({
+  return {
     operation: 'TransactionSignatureVerify',
-    composition: freezeComposition({
+    composition: {
       placementStrategy: 'generic',
       constants: [
         { value: 1n, dataPtType: BIT_DATA_PT_TYPE },
@@ -252,6 +251,6 @@ export const createTransactionSignatureVerifyCompositionMapping = (
       numOperands: numberOfOperands,
       numResults: 4,
       steps,
-    }),
-  })
+    },
+  }
 }

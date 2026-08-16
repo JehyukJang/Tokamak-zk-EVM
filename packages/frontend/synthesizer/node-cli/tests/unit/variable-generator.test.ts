@@ -172,7 +172,6 @@ describe('CircuitGenerator phase results', () => {
       { placements: [], subcircuitLibrary: {} } as never,
       variableGeneration,
       permutation,
-      [],
     );
 
     expect(circuitGenerator.circuitPlacements).toBe(circuitPlacements);

@@ -80,15 +80,13 @@ function _assertCandidateInput(
   intermediateOutPts: readonly (DataPt | undefined)[],
   basePlacementIndex: number,
 ): void {
-  if (
-    !Number.isInteger(candidateInput.source)
-    || candidateInput.source < 0
-    || candidateInput.source >= basePlacementIndex + stepIndex
-  ) {
-    throw new Error(
-      `Synthesizer: ${operation} step ${stepIndex} input ${inputIndex} is not connected to an earlier placement output`,
-    )
-  }
+  _assertCandidateEarlierSource(
+    operation,
+    stepIndex,
+    inputIndex,
+    candidateInput,
+    basePlacementIndex,
+  )
 
   let expectedInput: DataPt | undefined
   switch (input.kind) {
@@ -104,7 +102,7 @@ function _assertCandidateInput(
         constant === undefined
         || candidateInput.source !== BUFFER_LIST.indexOf('EVM_IN')
         || candidateInput.value !== constant.value
-        || !_hasSameDataPtType(candidateInput, constant.dataPtType)
+        || candidateInput.dataPtType !== constant.dataPtType
       ) {
         throw new Error(
           `Synthesizer: ${operation} step ${stepIndex} constant ${input.index} is invalid`,
@@ -178,7 +176,7 @@ function _assertCandidatePortTypes(
         || dataPt.dataPtType === UINT128_DATA_PT_TYPE
         || dataPt.dataPtType === UINT160_DATA_PT_TYPE
       )
-    if (!_hasSameDataPtType(dataPt, expectedDataPtType) && !isNarrowIntegerAssignedToFr) {
+    if (dataPt.dataPtType !== expectedDataPtType && !isNarrowIntegerAssignedToFr) {
       throw new Error(
         `Synthesizer: ${operation} ${subcircuit} ${target} port ${portIndex} (${port.name}) expected ${expectedDataPtType}, but got ${dataPt.dataPtType}`,
       )
@@ -236,13 +234,6 @@ function _assertCandidateStepPorts(
 
 function _isSameWire(left: DataPt, right: DataPt): boolean {
   return left.source === right.source && left.wireIndex === right.wireIndex
-}
-
-function _hasSameDataPtType(
-  dataPt: DataPt,
-  expectedType: DataPt['dataPtType'],
-): boolean {
-  return dataPt.dataPtType === expectedType
 }
 
 function _assertStaticCandidateValue(

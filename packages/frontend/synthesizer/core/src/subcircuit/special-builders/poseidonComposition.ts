@@ -1,4 +1,4 @@
-import { assertPositiveInteger, freezeComposition } from '../utils.ts'
+import { assertPositiveInteger } from '../utils.ts'
 import type {
   PlacementCompositionConfig,
   PlacementCompositionEntry,
@@ -12,9 +12,9 @@ export const createPoseidonCompositionMapping = (
 ): PlacementCompositionEntry => {
   assertPositiveInteger(config.nPoseidonBatch, 'nPoseidonBatch')
 
-  return Object.freeze({
+  return {
     operation: 'Poseidon',
-    composition: freezeComposition({
+    composition: {
       placementStrategy: 'poseidon',
       constants: [],
       externalCheckRequiredOperandIndices: [],
@@ -35,6 +35,6 @@ export const createPoseidonCompositionMapping = (
           outputs: [{ kind: 'result', index: 0 }]
         }
       ]
-    })
-  })
+    }
+  }
 }

@@ -1,4 +1,3 @@
-import { freezeComposition } from '../utils.ts'
 import { UINT256_DATA_PT_TYPE } from '../../synthesizer/types/dataStructure.ts'
 import type {
   PlacementCompositionEntry,
@@ -68,9 +67,9 @@ export const createExpCompositionMapping = (): PlacementCompositionEntry => {
     outputs: [{ kind: 'result', index: 0 }]
   })
 
-  return Object.freeze({
+  return {
     operation: 'EXP',
-    composition: freezeComposition({
+    composition: {
       placementStrategy: 'generic',
       constants,
       externalCheckRequiredOperandIndices: [],
@@ -78,6 +77,6 @@ export const createExpCompositionMapping = (): PlacementCompositionEntry => {
       numOperands: 2,
       numResults: 1,
       steps
-    })
-  })
+    }
+  }
 }
