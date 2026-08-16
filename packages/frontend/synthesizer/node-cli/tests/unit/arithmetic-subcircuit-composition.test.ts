@@ -35,27 +35,30 @@ describe('placement composition assembly', () => {
 
   it('maps selector-free operations directly and declares only required input checks', () => {
     const directMappings = {
-      ADD: { subcircuit: 'ADD', checked: [0, 1] },
-      MUL: { subcircuit: 'MUL', checked: [] },
-      SUB: { subcircuit: 'SUB', checked: [0, 1] },
-      NOT: { subcircuit: 'NOT', checked: [] },
-      EQ: { subcircuit: 'EQ', checked: [] },
-      ISZERO: { subcircuit: 'ISZERO', checked: [] },
-      LT: { subcircuit: 'LT', checked: [0, 1] },
-      GT: { subcircuit: 'GT', checked: [0, 1] },
-      SLT: { subcircuit: 'SLT', checked: [0, 1] },
-      SGT: { subcircuit: 'SGT', checked: [0, 1] },
-      AND: { subcircuit: 'AND', checked: [] },
-      OR: { subcircuit: 'OR', checked: [] },
-      XOR: { subcircuit: 'XOR', checked: [] },
-      SHR: { subcircuit: 'SHR', checked: [0] },
+      ADD: { subcircuit: 'ADD', selector: null, checked: [0, 1] },
+      MUL: { subcircuit: 'MUL', selector: null, checked: [] },
+      SUB: { subcircuit: 'SUB', selector: null, checked: [0, 1] },
+      NOT: { subcircuit: 'NOT', selector: null, checked: [] },
+      EQ: { subcircuit: 'EQ', selector: null, checked: [] },
+      ISZERO: { subcircuit: 'ISZERO', selector: null, checked: [] },
+      LT: { subcircuit: 'LT', selector: null, checked: [0, 1] },
+      GT: { subcircuit: 'GT', selector: null, checked: [0, 1] },
+      SLT: { subcircuit: 'SLT', selector: null, checked: [0, 1] },
+      SGT: { subcircuit: 'SGT', selector: null, checked: [0, 1] },
+      AND: { subcircuit: 'AND', selector: null, checked: [] },
+      OR: { subcircuit: 'OR', selector: null, checked: [] },
+      XOR: { subcircuit: 'XOR', selector: null, checked: [] },
+      SHR: { subcircuit: 'SHR', selector: null, checked: [0] },
+      BYTE: { subcircuit: 'ALU3', selector: 1n << 26n, checked: [0] },
+      SIGNEXTEND: { subcircuit: 'ALU3', selector: 1n << 11n, checked: [0] },
+      SAR: { subcircuit: 'ALU3', selector: 1n << 29n, checked: [0] },
     } as const;
 
     for (const [operation, expected] of Object.entries(directMappings)) {
       const composition = mapping[operation as keyof typeof directMappings];
       expect(composition.steps).toHaveLength(1);
       expect(composition.steps[0]!.subcircuit).toBe(expected.subcircuit);
-      expect(composition.steps[0]!.selector).toBeNull();
+      expect(composition.steps[0]!.selector).toBe(expected.selector);
       expect(composition.externalCheckRequiredOperandIndices).toEqual(expected.checked);
     }
   });

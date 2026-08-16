@@ -76,7 +76,6 @@ export const COMPOSITION_SUBCIRCUIT_LIST = [
     'ALU4A',
     'ALU4B',
     'SHL',
-    'ALU5',
     'ADDMODPrepare',
     'ADDMODVerify',
     'MULMODPrepare',

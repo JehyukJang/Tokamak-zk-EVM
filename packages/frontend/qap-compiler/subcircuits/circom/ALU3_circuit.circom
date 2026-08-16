@@ -3,37 +3,34 @@ pragma circom 2.1.6;
 include "../../templates/256bit/alu_safe.circom";
 
 template ALU3_() {
-    var NUM_OPERATIONS = 5;
-    var SELECTORS[NUM_OPERATIONS] = [
-        1 << 11,
-        1 << 22,
-        1 << 23,
-        1 << 24,
-        1 << 26
-    ];
-
     signal input in[5];
     signal output out[2];
-    signal indexOrLhs[2] <== [in[1], in[2]];
-    signal valueOrRhs[2] <== [in[3], in[4]];
+    signal indexOrShift[2] <== [in[1], in[2]];
+    signal value[2] <== [in[3], in[4]];
 
-    component lhsBits[2];
-    component rhsBits[2];
+    component valueBits[2];
     for (var limb = 0; limb < 2; limb++) {
-        lhsBits[limb] = Num2Bits(128);
-        rhsBits[limb] = Num2Bits(128);
-        lhsBits[limb].in <== indexOrLhs[limb];
-        rhsBits[limb].in <== valueOrRhs[limb];
+        valueBits[limb] = Num2Bits(128);
+        valueBits[limb].in <== value[limb];
     }
 
-    var oversizedIndexSum = 0;
-    for (var bit = 5; bit < 128; bit++) {
-        oversizedIndexSum += lhsBits[0].out[bit];
+    signal indexShiftBits[8];
+    var indexShiftLow = 0;
+    for (var bit = 0; bit < 8; bit++) {
+        indexShiftBits[bit] <-- (indexOrShift[0] >> bit) & 1;
+        indexShiftBits[bit] * (1 - indexShiftBits[bit]) === 0;
+        indexShiftLow += indexShiftBits[bit] * (1 << bit);
     }
-    for (var bit = 0; bit < 128; bit++) {
-        oversizedIndexSum += lhsBits[1].out[bit];
-    }
-    signal indexInRange <== IsZero()(oversizedIndexSum);
+    component lowPartMatches = IsZero();
+    component highLimbIsZero = IsZero();
+    lowPartMatches.in <== indexOrShift[0] - indexShiftLow;
+    highLimbIsZero.in <== indexOrShift[1];
+    signal shiftInRange <== lowPartMatches.out * highLimbIsZero.out;
+    signal byteIndexBitsFiveAndSixAreZero <== (1 - indexShiftBits[5])
+        * (1 - indexShiftBits[6]);
+    signal byteIndexHighBitsAreZero <== byteIndexBitsFiveAndSixAreZero
+        * (1 - indexShiftBits[7]);
+    signal indexInRange <== shiftInRange * byteIndexHighBitsAreZero;
 
     signal selectedByte[6][32];
     for (var byte = 0; byte < 32; byte++) {
@@ -41,9 +38,9 @@ template ALU3_() {
         var byteValue = 0;
         for (var bit = 0; bit < 8; bit++) {
             if (sourceByte < 16) {
-                byteValue += rhsBits[0].out[8 * sourceByte + bit] * (1 << bit);
+                byteValue += valueBits[0].out[8 * sourceByte + bit] * (1 << bit);
             } else {
-                byteValue += rhsBits[1].out[8 * (sourceByte - 16) + bit] * (1 << bit);
+                byteValue += valueBits[1].out[8 * (sourceByte - 16) + bit] * (1 << bit);
             }
         }
         selectedByte[0][byte] <== byteValue;
@@ -52,20 +49,15 @@ template ALU3_() {
         var active = 32 \ (1 << (step + 1));
         for (var candidate = 0; candidate < 32; candidate++) {
             if (candidate < active) {
-                selectedByte[step + 1][candidate]
-                    <== selectedByte[step][2 * candidate]
-                    + lhsBits[0].out[step]
-                    * (selectedByte[step][2 * candidate + 1]
+                selectedByte[step + 1][candidate] <== selectedByte[step][2 * candidate]
+                    + indexShiftBits[step] * (selectedByte[step][2 * candidate + 1]
                         - selectedByte[step][2 * candidate]);
             } else {
                 selectedByte[step + 1][candidate] <== 0;
             }
         }
     }
-    signal byteResult[2] <== [
-        indexInRange * selectedByte[5][0],
-        0
-    ];
+    signal byteResult[2] <== [indexInRange * selectedByte[5][0], 0];
 
     signal indexMatch[6][32];
     indexMatch[0][0] <== 1;
@@ -76,11 +68,8 @@ template ALU3_() {
         var active = 1 << step;
         for (var candidate = 0; candidate < 32; candidate++) {
             if (candidate < active) {
-                indexMatch[step + 1][candidate + active]
-                    <== indexMatch[step][candidate] * lhsBits[0].out[step];
-                indexMatch[step + 1][candidate]
-                    <== indexMatch[step][candidate]
-                    - indexMatch[step + 1][candidate + active];
+                indexMatch[step + 1][candidate + active] <== indexMatch[step][candidate] * indexShiftBits[step];
+                indexMatch[step + 1][candidate] <== indexMatch[step][candidate] - indexMatch[step + 1][candidate + active];
             } else if (candidate >= 2 * active) {
                 indexMatch[step + 1][candidate] <== 0;
             }
@@ -88,14 +77,12 @@ template ALU3_() {
     }
 
     signal signDifference[31];
-    var selectedSignValue = rhsBits[1].out[127];
+    var selectedSignValue = valueBits[1].out[127];
     for (var byte = 0; byte < 31; byte++) {
         if (byte < 16) {
-            signDifference[byte] <== indexMatch[5][byte]
-                * (rhsBits[0].out[8 * byte + 7] - rhsBits[1].out[127]);
+            signDifference[byte] <== indexMatch[5][byte] * (valueBits[0].out[8 * byte + 7] - valueBits[1].out[127]);
         } else {
-            signDifference[byte] <== indexMatch[5][byte]
-                * (rhsBits[1].out[8 * (byte - 16) + 7] - rhsBits[1].out[127]);
+            signDifference[byte] <== indexMatch[5][byte] * (valueBits[1].out[8 * (byte - 16) + 7] - valueBits[1].out[127]);
         }
         selectedSignValue += signDifference[byte];
     }
@@ -111,23 +98,19 @@ template ALU3_() {
         var byteValue = 0;
         for (var bit = 0; bit < 8; bit++) {
             if (byte < 16) {
-                byteValue += rhsBits[0].out[8 * byte + bit] * (1 << bit);
+                byteValue += valueBits[0].out[8 * byte + bit] * (1 << bit);
             } else {
-                byteValue += rhsBits[1].out[8 * (byte - 16) + bit] * (1 << bit);
+                byteValue += valueBits[1].out[8 * (byte - 16) + bit] * (1 << bit);
             }
         }
         originalByte[byte] <== byteValue;
-
         if (byte == 0) {
             signExtendedByte[byte] <== originalByte[byte];
         } else {
             lowerIndexSum += indexMatch[5][byte - 1];
             fillActive[byte - 1] <== indexInRange * lowerIndexSum;
-            signExtendedByte[byte] <== originalByte[byte]
-                + fillActive[byte - 1]
-                * (255 * selectedSign - originalByte[byte]);
+            signExtendedByte[byte] <== originalByte[byte] + fillActive[byte - 1] * (255 * selectedSign - originalByte[byte]);
         }
-
         if (byte < 16) {
             signExtendedLow += signExtendedByte[byte] * (1 << (8 * byte));
         } else {
@@ -136,60 +119,68 @@ template ALU3_() {
     }
     signal signExtendResult[2] <== [signExtendedLow, signExtendedHigh];
 
-    signal andResult[2];
-    signal orResult[2];
-    signal xorResult[2];
-    signal bitProduct[2][128];
-    for (var limb = 0; limb < 2; limb++) {
-        var andLimb = 0;
-        var orLimb = 0;
-        var xorLimb = 0;
-        for (var bit = 0; bit < 128; bit++) {
-            bitProduct[limb][bit]
-                <== lhsBits[limb].out[bit] * rhsBits[limb].out[bit];
-            andLimb += bitProduct[limb][bit] * (1 << bit);
-            orLimb += (
-                lhsBits[limb].out[bit]
-                + rhsBits[limb].out[bit]
-                - bitProduct[limb][bit]
-            ) * (1 << bit);
-            xorLimb += (
-                lhsBits[limb].out[bit]
-                + rhsBits[limb].out[bit]
-                - 2 * bitProduct[limb][bit]
-            ) * (1 << bit);
+    component shiftCore = ShiftLeft256FromBits_unsafe();
+    shiftCore.shiftHighContribution <== 1 - shiftInRange;
+    for (var bit = 0; bit < 128; bit++) {
+        if (bit < 8) {
+            shiftCore.shiftLowBits[bit] <== indexShiftBits[bit];
+        } else {
+            shiftCore.shiftLowBits[bit] <== 0;
         }
-        andResult[limb] <== andLimb;
-        orResult[limb] <== orLimb;
-        xorResult[limb] <== xorLimb;
+    }
+    for (var limb = 0; limb < 2; limb++) {
+        for (var bit = 0; bit < 128; bit++) {
+            var reversed = 255 - (128 * limb + bit);
+            var reversedLimb = reversed \ 128;
+            var reversedBit = reversed % 128;
+            shiftCore.valueBits[limb][bit] <== valueBits[reversedLimb].out[reversedBit];
+        }
     }
 
-    component selectorMatches[NUM_OPERATIONS];
-    signal selectorFlags[NUM_OPERATIONS];
-    for (var operation = 0; operation < NUM_OPERATIONS; operation++) {
-        selectorMatches[operation] = IsEqual();
-        selectorMatches[operation].in[0] <== in[0];
-        selectorMatches[operation].in[1] <== SELECTORS[operation];
-        selectorFlags[operation] <== selectorMatches[operation].out;
+    signal logicalShift[2];
+    for (var limb = 0; limb < 2; limb++) {
+        var logicalShiftLimb = 0;
+        for (var bit = 0; bit < 128; bit++) {
+            var reversed = 255 - (128 * limb + bit);
+            var reversedLimb = reversed \ 128;
+            var reversedBit = reversed % 128;
+            logicalShiftLimb += shiftCore.outBits[reversedLimb][reversedBit] * (1 << bit);
+        }
+        logicalShift[limb] <== logicalShiftLimb;
     }
-    selectorFlags[0]
-        + selectorFlags[1]
-        + selectorFlags[2]
-        + selectorFlags[3]
-        + selectorFlags[4]
-        === 1;
 
-    signal operationResults[NUM_OPERATIONS][2];
-    operationResults[0] <== signExtendResult;
-    operationResults[1] <== andResult;
-    operationResults[2] <== orResult;
-    operationResults[3] <== xorResult;
-    operationResults[4] <== byteResult;
+    component inversePower = InverseShiftPower256FromBits_unsafe();
+    for (var bit = 0; bit < 8; bit++) {
+        inversePower.shiftBits[bit] <== indexShiftBits[bit];
+    }
+    var MAX_LIMB = (1 << 128) - 1;
+    signal adjustedFiller[2];
+    for (var limb = 0; limb < 2; limb++) {
+        adjustedFiller[limb] <== inversePower.negativeFiller[limb]
+            + (1 - shiftCore.inRange) * (MAX_LIMB - inversePower.negativeFiller[limb]);
+    }
+    signal applySignFill <== valueBits[1].out[127];
+    signal sarResult[2];
+    for (var limb = 0; limb < 2; limb++) {
+        sarResult[limb] <== logicalShift[limb] + applySignFill * adjustedFiller[limb];
+    }
 
-    component resultMux = ComplexMux256_checked(NUM_OPERATIONS);
-    resultMux.selector <== selectorFlags;
-    resultMux.ins <== operationResults;
-    out <== resultMux.out;
+    var BYTE_SELECTOR = 1 << 26;
+    var SIGNEXTEND_SELECTOR = 1 << 11;
+    var SAR_SELECTOR = 1 << 29;
+    signal byteAndSignDifference <== (in[0] - BYTE_SELECTOR) * (in[0] - SIGNEXTEND_SELECTOR);
+    byteAndSignDifference * (in[0] - SAR_SELECTOR) === 0;
+    signal sarSelector <== byteAndSignDifference
+        / ((SAR_SELECTOR - BYTE_SELECTOR) * (SAR_SELECTOR - SIGNEXTEND_SELECTOR));
+    signal signExtendSelector <== (in[0] - BYTE_SELECTOR) * (in[0] - SAR_SELECTOR)
+        / ((SIGNEXTEND_SELECTOR - BYTE_SELECTOR) * (SIGNEXTEND_SELECTOR - SAR_SELECTOR));
+    signal byteOrSignExtend[2];
+    for (var limb = 0; limb < 2; limb++) {
+        byteOrSignExtend[limb] <== byteResult[limb]
+            + signExtendSelector * (signExtendResult[limb] - byteResult[limb]);
+        out[limb] <== byteOrSignExtend[limb]
+            + sarSelector * (sarResult[limb] - byteOrSignExtend[limb]);
+    }
 }
 
 component main {public [in]} = ALU3_();

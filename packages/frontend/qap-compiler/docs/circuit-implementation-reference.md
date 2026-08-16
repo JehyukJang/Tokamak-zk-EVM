@@ -168,8 +168,8 @@ The tables cover every production target in
 included. The values describe the current source tree, not necessarily the
 contents of an older installed package or the checked-in generated library.
 
-The production list currently contains 32 compiled subcircuit types: seven
-generic buffers, 19 general computational or support types, and six
+The production list currently contains 43 compiled subcircuit types: seven
+generic buffers, 30 general computational or support types, and six
 transaction-signature component types. This is a physical library catalog,
 not a count of EVM operations or transaction placements. A logical operation
 may select one type, compose several different types, or place the same type
@@ -182,12 +182,12 @@ excludes each wrapper's constant-one wire and declared input/output ports.
 
 | Catalog subset | Types | Constraints | R1CS wires | Internal wires | Input ports | Output ports | Nonzero coefficients |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Entire production catalog | 32 | 20,720 | 20,922 | 18,415 | 1,081 | 1,394 | 126,398 |
-| Generic buffers | 7 | 1,520 | 1,527 | 0 | 760 | 760 | 4,560 |
-| Computational and support types | 25 | 19,200 | 19,395 | 18,415 | 321 | 634 | 121,838 |
-| Transaction-signature types only | 6 | 5,097 | 5,276 | 4,788 | 186 | 296 | 34,848 |
+| Entire production catalog | 43 | 24,540 | 24,769 | 22,117 | 1,152 | 1,457 | 149,090 |
+| Generic buffers | 7 | 1,600 | 1,607 | 0 | 800 | 800 | 4,800 |
+| Computational and support types | 30 | 17,842 | 17,885 | 17,329 | 166 | 360 | 109,438 |
+| Transaction-signature types only | 6 | 5,098 | 5,277 | 4,788 | 186 | 297 | 34,852 |
 
-A hypothetical “one placement of every type” would contain 32 placements, but
+A hypothetical “one placement of every type” would contain 43 placements, but
 it is not an operation supported by the system. Actual placement multiplicity
 is defined by the composition contracts below. For example, most ALU opcodes
 use one placement, division uses the `ALU4A -> ALU4B` pair, and transaction
@@ -285,8 +285,8 @@ input and intermediate result as a separate public value.
 | `MUL` | EVM `MUL` | 909 + 0 = 909 | 4 inputs: two words; 2 outputs: one word | Locally sound. It decomposes both operands into canonical limbs, constrains truncated multiplication, and canonicalizes the result. |
 | `SUB` | EVM `SUB` | 258 + 0 = 258 | 4 inputs: two words; 2 outputs: one word | Composition-dependent for operand canonicality. It constrains truncated subtraction and a canonical result; direct buffer operands require preceding `CheckBus256` placements. |
 | `NOT` | EVM `NOT` | 256 + 2 = 258 | 2 inputs: one word; 2 outputs: one word | Locally sound. The complement relation and canonical output constrain each input limb to its 128-bit range. |
-| `EQ` | EVM `EQ` | 5 + 1 = 6 | 4 inputs: two words; 2 outputs: a boolean word | Composition-dependent for EVM-word canonicality. It compares the physical limbs exactly; direct buffer operands require preceding `CheckBus256` placements. |
-| `ISZERO` | EVM `ISZERO` | 5 + 1 = 6 | 2 inputs: one word; 2 outputs: a boolean word | Composition-dependent for EVM-word canonicality. It tests the physical limbs for zero; direct buffer operands require a preceding `CheckBus256` placement. |
+| `EQ` | EVM `EQ` | 5 + 1 = 6 | 4 inputs: two words; 2 outputs: a boolean word | Locally sound for exact physical-limb equality. The relation does not interpret operands as canonical EVM integers, so it needs no canonicality guard. |
+| `ISZERO` | EVM `ISZERO` | 5 + 1 = 6 | 2 inputs: one word; 2 outputs: a boolean word | Locally sound for exact physical-limb zero. The relation does not interpret its operand as a canonical EVM integer, so it needs no canonicality guard. |
 | `LT` | EVM unsigned `LT` | 261 + 1 = 262 | 4 inputs: two words; 2 outputs: a boolean word | Locally sound. Both words are range-constrained by the two 128-bit comparisons. |
 | `GT` | EVM unsigned `GT` | 261 + 1 = 262 | 4 inputs: two words; 2 outputs: a boolean word | Locally sound. Both words are range-constrained by the two 128-bit comparisons. |
 | `SLT` | EVM signed `SLT` | 519 + 1 = 520 | 4 inputs: two words; 2 outputs: a boolean word | Locally sound. It range-constrains both words and combines unsigned ordering with the two sign bits. |
@@ -295,11 +295,10 @@ input and intermediate result as a separate public value.
 | `OR` | EVM `OR` | 768 + 0 = 768 | 4 inputs: two words; 2 outputs: one word | Locally sound. It bit-decomposes both operands and reconstructs the canonical bitwise result. |
 | `XOR` | EVM `XOR` | 768 + 0 = 768 | 4 inputs: two words; 2 outputs: one word | Locally sound. It bit-decomposes both operands and reconstructs the canonical bitwise result. |
 | `SHR` | EVM logical `SHR` | 795 + 0 = 795 | 4 inputs: shift word, value word; 2 outputs: one word | Locally sound. It constrains the full 256-bit shift and value representations and applies the full-domain logical right-shift relation. |
-| `ALU3` | `SIGNEXTEND`, `AND`, `OR`, `XOR`, and `BYTE` | 944 + 0 = 944 | 5 inputs: selector, index-or-left word, value-or-right word; 2 outputs: one word | Locally sound. All four operand limbs are decomposed once; index operations share the constrained index and value bits, bitwise operations share one product per operand bit, and the selector is restricted to the five supported values. |
+| `ALU3` | `BYTE`, `SIGNEXTEND`, and `SAR` | 862 + 0 = 862 | 5 inputs: selector, index-or-shift word, value word; 2 outputs: one word | Composition-dependent for the first word only. It constrains eight low index/shift bits and classifies all remaining bits through zero relations, while fully decomposing the value word for each operation. A direct buffer-origin first word requires the declared preceding `CheckBus256`; a canonical producer output does not. Its cubic selector relation admits exactly the three supported selectors. |
 | `ALU4A` | First half of `DIV`, `MOD`, `SDIV`, `SMOD` | 672 + 0 = 672 | 5 inputs: selector, dividend word, divisor word; 13 outputs | Composition-dependent; never use as an independent EVM operation. It constrains the selector to exactly the four supported operations and must be followed by `ALU4B` with all 13 outputs connected exactly. |
 | `ALU4B` | Second half of `DIV`, `MOD`, `SDIV`, `SMOD` | 802 + 0 = 802 | 13 inputs; 2 outputs: one word | Composition-dependent; never use independently. Its inputs must be the exact `ALU4A` outputs from the same operation. |
 | `SHL` | Full-domain EVM logical left shift | 795 + 0 = 795 | 4 inputs: shift word, value word; 2 outputs: one word | Composition-dependent for exact limb representation. The low shift limb and both value limbs are canonical locally; the high shift limb is checked only for zero because every nonzero value yields the same zero result. Its producer must constrain that wire as a canonical 128-bit limb. |
-| `ALU5` | Full-domain EVM `SHR`, `SAR` | 816 + 0 = 816 | 5 inputs: selector, shift word, value word; 2 outputs: one word | Composition-dependent for exact limb representation. The low shift limb and both value limbs are canonical locally; the high shift limb is checked only for zero because all nonzero values select the same oversized-shift result. Its producer must constrain that wire as a canonical 128-bit limb. `SHR` and `SAR` share the shift core, and `SAR` constrains sign fill locally. |
 | `ADDMODPrepare` | Canonicalizes the addends and prepares the exact 257-bit numerator and bounded reduction candidates | 943 + 1 = 944 | 6 inputs: three words; 8 outputs: three numerator words, three quotient words, and one remainder word | Composition-dependent. It decomposes both addends into field-safe radix-86 words, proves their exact sum, bounds the complete quotient candidate, and emits the remainder candidate. The remainder becomes constrained only in `ADDMODVerify`. |
 | `ADDMODVerify` | Canonicalizes the modulus and remainder, verifies the 257-by-256 reduction, and returns the EVM result | 957 + 2 = 959 | 10 inputs: eight preparation wires plus the original modulus word; 2 outputs: one word | Composition-dependent. It must receive the exact `ADDMODPrepare` outputs and the exact original modulus operand. It proves `numerator = quotient * safeModulus + remainder` in radix 86, enforces `remainder < safeModulus`, and returns zero for an original zero modulus. |
 | `MULMODPrepare` | Canonicalizes the three EVM operands and generates the full-width quotient and remainder candidates | 768 + 6 = 774 | 6 inputs: three words; 18 outputs: twelve 64-bit operand words, four quotient limbs, and two remainder limbs | Composition-dependent; never use independently. The operand words are canonical, but the quotient and remainder outputs are witness candidates whose validity is established only by the following two stages. |

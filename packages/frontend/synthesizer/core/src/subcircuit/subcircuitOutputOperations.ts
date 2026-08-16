@@ -473,6 +473,8 @@ const alu3 = (inVals: bigint[]): bigint => {
       return evmSignextend(operands);
     case 1n << 26n:
       return evmByte(operands);
+    case 1n << 29n:
+      return evmSar(operands);
     default:
       throw new Error('ALU3 received an invalid selector');
   }
@@ -534,17 +536,6 @@ const alu4b = (inVals: bigint[]): bigint => {
 
 const shlSubcircuit = (inVals: bigint[]): bigint => {
   return evmShl(inVals);
-};
-
-const alu5 = (inVals: bigint[]): bigint => {
-  requireSubcircuitInputs(inVals, 3, 'ALU5');
-  const operands = inVals.slice(1);
-  switch (inVals[0]) {
-    case 1n << 29n:
-      return evmSar(operands);
-    default:
-      throw new Error('ALU5 received an invalid selector');
-  }
 };
 
 const addmodPrepare = (inVals: bigint[]): bigint[] => {
@@ -780,7 +771,6 @@ const SUBCIRCUIT_OPERATION_MAPPING: Partial<Record<CompositionSubcircuit, Subcir
   ALU4A: alu4a,
   ALU4B: alu4b,
   SHL: shlSubcircuit,
-  ALU5: alu5,
   ADDMODPrepare: addmodPrepare,
   ADDMODVerify: addmodVerify,
   MULMODPrepare: mulmodPrepare,
