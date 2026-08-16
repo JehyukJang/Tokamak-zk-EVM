@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { CircuitGenerator } from '../../../core/src/circuitGenerator/circuitGenerator.ts';
 import { VariableGenerator } from '../../../core/src/circuitGenerator/handlers/variableGenerator.ts';
+import type { VariableGenerationResult } from '../../../core/src/circuitGenerator/handlers/variableGenerator.ts';
 import { BUFFER_LIST } from '../../../core/src/subcircuit/configuredTypes.ts';
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
 import {
@@ -63,11 +65,15 @@ const createBufferGenerator = (privateBufferCapacity: number): VariableGenerator
   ]));
 
   return new VariableGenerator({
+    placements: [],
     subcircuitLibrary: {
       subcircuitBufferMapping,
       data: { setupParams: { s_max: 256 } },
     },
-  } as never);
+  } as never, {
+    subcircuitBufferMapping,
+    data: { setupParams: { s_max: 256 } },
+  } as never, []);
 };
 
 const convertAndValidateBuffers = (
@@ -96,7 +102,7 @@ describe('VariableGenerator word encoding', () => {
       },
       (upper << 128n) | lower,
     );
-    const generator = new VariableGenerator({} as never);
+    const generator = new VariableGenerator({} as never, {} as never, []);
 
     const limbs = expand(generator, word);
 
@@ -109,7 +115,7 @@ describe('VariableGenerator word encoding', () => {
   });
 
   it('keeps a one-limb integer as one physical wire', () => {
-    const generator = new VariableGenerator({} as never);
+    const generator = new VariableGenerator({} as never, {} as never, []);
     const original = dataPt(
       1n,
       BIT_DATA_PT_TYPE,
@@ -125,7 +131,7 @@ describe('VariableGenerator word encoding', () => {
   });
 
   it('keeps a native field value as one physical wire', () => {
-    const generator = new VariableGenerator({} as never);
+    const generator = new VariableGenerator({} as never, {} as never, []);
     const original = dataPt(
       123n,
       BLS12_381_FR_DATA_PT_TYPE,
@@ -138,6 +144,44 @@ describe('VariableGenerator word encoding', () => {
     expect(wires).toHaveLength(1);
     expect(wires[0]).toEqual(original);
     expect(wires[0]).not.toBe(original);
+  });
+});
+
+describe('CircuitGenerator phase results', () => {
+  it('retains completed variable-generation data and its permutation without child generators', () => {
+    const circuitPlacements: Placements = [];
+    const placementVariables = [];
+    const publicInstance = {
+      a_pub_user: [],
+      a_pub_block: [],
+      a_pub_function: [],
+    } as const;
+    const publicInstanceDescription = {
+      a_pub_user_description: [],
+      a_pub_block_description: [],
+      a_pub_function_description: [],
+    } as const;
+    const permutation = [];
+    const variableGeneration: VariableGenerationResult = {
+      circuitPlacements,
+      placementVariables,
+      publicInstance,
+      publicInstanceDescription,
+    };
+    const circuitGenerator = new CircuitGenerator(
+      { placements: [], subcircuitLibrary: {} } as never,
+      variableGeneration,
+      permutation,
+      [],
+    );
+
+    expect(circuitGenerator.circuitPlacements).toBe(circuitPlacements);
+    expect(circuitGenerator.getArtifacts()).toEqual({
+      placementVariables,
+      publicInstance,
+      publicInstanceDescription,
+      permutation,
+    });
   });
 });
 

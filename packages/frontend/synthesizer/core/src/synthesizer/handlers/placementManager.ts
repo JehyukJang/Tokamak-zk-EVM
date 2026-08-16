@@ -1,11 +1,9 @@
-import { bytesToBigInt, hexToBigInt, toBytes } from '@ethereumjs/util';
 import { jubjub } from '@noble/curves/misc.js';
 import { DataPtFactory } from '../../synthesizer/dataStructure/dataPt.ts';
 import {
   DataPtDescription,
   DataPtType,
   ReservedVariable,
-  SynthesizerOpts,
   VARIABLE_DESCRIPTION,
   BIT_DATA_PT_TYPE,
   BLS12_381_FR_DATA_PT_TYPE,
@@ -291,7 +289,7 @@ export class PlacementManager {
 
   constructor(
     private readonly subcircuitLibrary: ResolvedSubcircuitLibrary,
-    private readonly cachedOpts: SynthesizerOpts,
+    private readonly reservedInputValues: ReadonlyMap<ReservedVariable, bigint>,
   ) {
     this.subcircuitInfoByName = subcircuitLibrary.subcircuitInfoByName
     this._bufferSubcircuitByBuffer = subcircuitLibrary.subcircuitBufferMapping
@@ -423,19 +421,16 @@ export class PlacementManager {
     this.addReservedVariableToBufferIn('JUBJUB_BASE_Y', jubjub.Point.BASE.toAffine().y)
     this.addReservedVariableToBufferIn('JUBJUB_POI_X', jubjub.Point.ZERO.toAffine().x)
     this.addReservedVariableToBufferIn('JUBJUB_POI_Y', jubjub.Point.ZERO.toAffine().y)
-    this.addReservedVariableToBufferIn('COINBASE', hexToBigInt(this.cachedOpts.blockInfo.coinBase))
-    this.addReservedVariableToBufferIn('TIMESTAMP', hexToBigInt(this.cachedOpts.blockInfo.timeStamp))
-    this.addReservedVariableToBufferIn('NUMBER', hexToBigInt(this.cachedOpts.blockInfo.blockNumber))
-    this.addReservedVariableToBufferIn('PREVRANDAO', hexToBigInt(this.cachedOpts.blockInfo.prevRanDao))
-    this.addReservedVariableToBufferIn('GASLIMIT', hexToBigInt(this.cachedOpts.blockInfo.gasLimit))
-    this.addReservedVariableToBufferIn('CHAINID', hexToBigInt(this.cachedOpts.blockInfo.chainId))
-    this.addReservedVariableToBufferIn('SELFBALANCE', hexToBigInt(this.cachedOpts.blockInfo.selfBalance))
-    this.addReservedVariableToBufferIn('BASEFEE', hexToBigInt(this.cachedOpts.blockInfo.baseFee))
+    this._addReservedInputVariable('COINBASE')
+    this._addReservedInputVariable('TIMESTAMP')
+    this._addReservedInputVariable('NUMBER')
+    this._addReservedInputVariable('PREVRANDAO')
+    this._addReservedInputVariable('GASLIMIT')
+    this._addReservedInputVariable('CHAINID')
+    this._addReservedInputVariable('SELFBALANCE')
+    this._addReservedInputVariable('BASEFEE')
     for (let i = 1; i <= this.subcircuitLibrary.numberOfPrevBlockHashes; i++) {
-      this.addReservedVariableToBufferIn(
-        `BLOCKHASH_${i}` as ReservedVariable,
-        hexToBigInt(this.cachedOpts.blockInfo.prevBlockHashes[i - 1]),
-      )
+      this._addReservedInputVariable(`BLOCKHASH_${i}` as ReservedVariable)
     }
 
     this._initTransactionBuffer()
@@ -457,23 +452,25 @@ export class PlacementManager {
   }
 
   private _initTransactionBuffer(): void {
-    const l2Tx = this.cachedOpts.signedTransaction
-    const senderPublicKey = l2Tx.getUnsafeEddsaPubKey()
-    const randomizer = l2Tx.r === undefined ? undefined : l2Tx.getUnsafeEddsaRandomizer()
-    this.addReservedVariableToBufferIn('EDDSA_PUBLIC_KEY_X', senderPublicKey.toAffine().x)
-    this.addReservedVariableToBufferIn('EDDSA_PUBLIC_KEY_Y', senderPublicKey.toAffine().y)
-    this.addReservedVariableToBufferIn('EDDSA_RANDOMIZER_X', randomizer?.toAffine().x)
-    this.addReservedVariableToBufferIn('EDDSA_RANDOMIZER_Y', randomizer?.toAffine().y)
-    this.addReservedVariableToBufferIn('EDDSA_SIGNATURE', l2Tx.s)
-    this.addReservedVariableToBufferIn('CONTRACT_ADDRESS', bytesToBigInt(toBytes(l2Tx.to)))
-    this.addReservedVariableToBufferIn('FUNCTION_SELECTOR', bytesToBigInt(l2Tx.getFunctionSelector()))
-    this.addReservedVariableToBufferIn('TRANSACTION_NONCE', l2Tx.nonce)
-    for (const [inputIndex, variable] of TRANSACTION_INPUT_VARIABLES.entries()) {
-      this.addReservedVariableToBufferIn(
-        variable,
-        bytesToBigInt(l2Tx.getFunctionInput(inputIndex)),
-      )
+    this._addReservedInputVariable('EDDSA_PUBLIC_KEY_X')
+    this._addReservedInputVariable('EDDSA_PUBLIC_KEY_Y')
+    this._addReservedInputVariable('EDDSA_RANDOMIZER_X')
+    this._addReservedInputVariable('EDDSA_RANDOMIZER_Y')
+    this._addReservedInputVariable('EDDSA_SIGNATURE')
+    this._addReservedInputVariable('CONTRACT_ADDRESS')
+    this._addReservedInputVariable('FUNCTION_SELECTOR')
+    this._addReservedInputVariable('TRANSACTION_NONCE')
+    for (const variable of TRANSACTION_INPUT_VARIABLES) {
+      this._addReservedInputVariable(variable)
     }
+  }
+
+  private _addReservedInputVariable(varName: ReservedVariable): void {
+    const value = this.reservedInputValues.get(varName)
+    if (value === undefined) {
+      throw new Error(`Synthesizer: initial reserved input ${varName} is unavailable`)
+    }
+    this.addReservedVariableToBufferIn(varName, value)
   }
 
   public placeComposition(

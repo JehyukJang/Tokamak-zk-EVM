@@ -588,7 +588,7 @@ export class InstructionHandler {
           checkRequiredInput(opts.memOut)
           const memOffset = ins[0]
           const dataLength = ins[1]
-          const memoryOperands = this.contextManager.createMemoryOperands(
+          const memoryOperands = this.contextManager.materializeMemoryViewOperands(
             opts.memoryPt,
             memOffset,
             dataLength,
@@ -740,7 +740,7 @@ export class InstructionHandler {
           const i = Number(srcOffset);
           const calldataMemoryPts = opts.thisContext.callDataMemoryPts;
           const calldataMemoryPt = MemoryPt.simulateMemoryPt(calldataMemoryPts)
-          const memoryOperands = this.contextManager.createMemoryOperands(
+          const memoryOperands = this.contextManager.materializeMemoryViewOperands(
             calldataMemoryPt,
             BigInt(i),
             32n,
@@ -926,7 +926,7 @@ export class InstructionHandler {
       )
     }
 
-    const memoryOperands = this.contextManager.createMemoryOperands(
+    const memoryOperands = this.contextManager.materializeMemoryViewOperands(
       opts.memoryPt,
       memOffset,
       dataLength,
@@ -973,7 +973,7 @@ export class InstructionHandler {
       case 'MLOAD':
         {
           const pos = ins[0]
-          const memoryOperands = this.contextManager.createMemoryOperands(
+          const memoryOperands = this.contextManager.materializeMemoryViewOperands(
             opts.memoryPt,
             pos,
             32n,

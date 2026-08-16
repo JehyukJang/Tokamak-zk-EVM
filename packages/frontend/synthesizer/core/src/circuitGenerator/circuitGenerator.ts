@@ -1,5 +1,8 @@
 import { SynthesizerInterface } from '../synthesizer/types/index.ts';
-import { VariableGenerator } from './handlers/variableGenerator.ts';
+import {
+  VariableGenerator,
+  type VariableGenerationResult,
+} from './handlers/variableGenerator.ts';
 import { Placements } from '../synthesizer/types/placements.ts';
 import { PermutationGenerator } from './handlers/permutationGenerator.ts';
 import {
@@ -8,48 +11,54 @@ import {
 import type { ResolvedSubcircuitLibrary } from '../subcircuit/libraryTypes.ts';
 
 export async function createCircuitGenerator(synthesizer: SynthesizerInterface, subcircuitWasmBuffers: any[]): Promise<CircuitGenerator> {
-  const circuitGenerator = new CircuitGenerator(synthesizer, subcircuitWasmBuffers);
-  await circuitGenerator.variableGenerator.initVariableGenerator();
-  circuitGenerator.circuitPlacements = circuitGenerator.variableGenerator.placementsCompatibleWithSubcircuits;
-  circuitGenerator.permutationGenerator = new PermutationGenerator(circuitGenerator);
-  return circuitGenerator;
+  const variableGeneration = await new VariableGenerator(
+    synthesizer,
+    synthesizer.subcircuitLibrary,
+    subcircuitWasmBuffers,
+  ).generate();
+  const permutation = new PermutationGenerator(
+    variableGeneration,
+    synthesizer.subcircuitLibrary,
+  ).permutation;
+  return new CircuitGenerator(
+    synthesizer,
+    variableGeneration,
+    permutation,
+    subcircuitWasmBuffers,
+  );
 }
 
 export class CircuitGenerator {
   public pathToWrite?: string;
-  // public subcircuitIndicesByName: Map<SubcircuitNames, SubcircuitIndicesByNameEntry> = new Map()
-  public variableGenerator: VariableGenerator;
-  public permutationGenerator: PermutationGenerator | undefined = undefined;
-  public synthesizer: SynthesizerInterface;
+  public readonly synthesizer: SynthesizerInterface;
   public readonly subcircuitLibrary: ResolvedSubcircuitLibrary;
-  public EVMPlacements: Placements;
-  public circuitPlacements: Placements | undefined = undefined;
-  public subcircuitWasmBuffers: any[];
+  public readonly EVMPlacements: Placements;
+  public readonly circuitPlacements: Placements;
+  public readonly subcircuitWasmBuffers: any[];
+  private readonly artifacts: CircuitArtifacts;
+  // public subcircuitIndicesByName: Map<SubcircuitNames, SubcircuitIndicesByNameEntry> = new Map()
 
-  constructor(synthesizer: SynthesizerInterface, subcircuitWasmBuffers: any[]) {
+  constructor(
+    synthesizer: SynthesizerInterface,
+    variableGeneration: VariableGenerationResult,
+    permutation: CircuitArtifacts['permutation'],
+    subcircuitWasmBuffers: any[],
+  ) {
     this.synthesizer = synthesizer;
     this.subcircuitLibrary = synthesizer.subcircuitLibrary;
-    this.EVMPlacements = this.synthesizer.placements;
-    this.variableGenerator = new VariableGenerator(this);
+    this.EVMPlacements = synthesizer.placements;
+    this.circuitPlacements = variableGeneration.circuitPlacements;
     this.subcircuitWasmBuffers = subcircuitWasmBuffers;
+    this.artifacts = {
+      placementVariables: variableGeneration.placementVariables,
+      publicInstance: variableGeneration.publicInstance,
+      publicInstanceDescription: variableGeneration.publicInstanceDescription,
+      permutation,
+    };
   }
 
   public getArtifacts(): CircuitArtifacts {
-    if (
-      this.variableGenerator.placementVariables === undefined ||
-      this.variableGenerator.publicInstance === undefined ||
-      this.variableGenerator.publicInstanceDescription === undefined ||
-      this.permutationGenerator?.permutation === undefined
-    ) {
-      throw new Error('Circuit artifacts are not generated yet.');
-    }
-
-    return {
-      placementVariables: this.variableGenerator.placementVariables,
-      publicInstance: this.variableGenerator.publicInstance,
-      publicInstanceDescription: this.variableGenerator.publicInstanceDescription,
-      permutation: this.permutationGenerator.permutation,
-    };
+    return this.artifacts;
   }
 
   // public async writeCircuit(

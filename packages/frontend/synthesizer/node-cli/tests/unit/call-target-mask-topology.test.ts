@@ -115,7 +115,7 @@ describe('CALL-family target-mask topology', () => {
     const rawTarget = (1n << 200n) | 0x1234n;
     const harness = createHarness(opcode, rawTarget);
 
-    harness.contextManager.initializeMessageContext(harness.message);
+    harness.contextManager.materializeMessageContext(harness.message);
 
     expect(harness.arithmeticCalls).toHaveLength(1);
     expect(harness.arithmeticCalls[0]).toMatchObject({ name: 'AND' });
@@ -154,7 +154,7 @@ describe('CALL-family target-mask topology', () => {
   it('uses the same single-placement shape with and without discarded high bits', () => {
     const shape = (rawTarget: bigint) => {
       const harness = createHarness('CALL', rawTarget);
-      harness.contextManager.initializeMessageContext(harness.message);
+      harness.contextManager.materializeMessageContext(harness.message);
       return harness.arithmeticCalls.map(({ name, inPts }) => ({
         name,
         inputs: inPts.map(({ source, wireIndex, dataPtType }) => ({ source, wireIndex, dataPtType })),
@@ -167,7 +167,7 @@ describe('CALL-family target-mask topology', () => {
   it('rejects a substituted raw target before placing the mask', () => {
     const harness = createHarness('CALL', 0x1234n, { stackTarget: 0x5678n });
 
-    expect(() => harness.contextManager.initializeMessageContext(harness.message)).toThrow(
+    expect(() => harness.contextManager.materializeMessageContext(harness.message)).toThrow(
       'Raw address to call mismatch',
     );
     expect(harness.placeComposition).not.toHaveBeenCalled();
@@ -177,7 +177,7 @@ describe('CALL-family target-mask topology', () => {
   it('rejects an omitted mask output', () => {
     const harness = createHarness('CALL', 0x1234n, { maskedResults: [] });
 
-    expect(() => harness.contextManager.initializeMessageContext(harness.message)).toThrow(
+    expect(() => harness.contextManager.materializeMessageContext(harness.message)).toThrow(
       'CALL target mask produced no address',
     );
     expect(harness.placeComposition).toHaveBeenCalledOnce();
@@ -189,7 +189,7 @@ describe('CALL-family target-mask topology', () => {
       maskedResults: [dataPt(0x5678n, 99)],
     });
 
-    expect(() => harness.contextManager.initializeMessageContext(harness.message)).toThrow(
+    expect(() => harness.contextManager.materializeMessageContext(harness.message)).toThrow(
       'Address to call mismatch between EVM and Synthesizer',
     );
     expect(harness.placeComposition).toHaveBeenCalledOnce();

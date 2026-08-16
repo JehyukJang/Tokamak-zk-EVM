@@ -87,7 +87,7 @@ describe('atomic MemoryView compositions', () => {
     const memoryPt = new MemoryPt()
     memoryPt.write(0, 2, wordPt(0x1122n, 1))
     memoryPt.write(2, 2, wordPt(0x3344n, 2))
-    const operands = contextManager.createMemoryOperands(memoryPt, 0n, 4n)
+    const operands = contextManager.materializeMemoryViewOperands(memoryPt, 0n, 4n)
 
     const resultPts = placementManager.placeComposition('MemoryView', operands)
     const steps = placementManager.placements.slice(6)
@@ -129,7 +129,7 @@ describe('atomic MemoryView compositions', () => {
     const memoryPt = new MemoryPt()
     memoryPt.write(0, 32, wordPt(1n, 1))
     memoryPt.write(32, 32, wordPt(2n, 2))
-    const operands = contextManager.createMemoryOperands(memoryPt, 0n, 64n)
+    const operands = contextManager.materializeMemoryViewOperands(memoryPt, 0n, 64n)
 
     const resultPts = placementManager.placeComposition('MemoryView', operands)
     const steps = placementManager.placements.slice(6)

@@ -14,45 +14,40 @@ import {
   placementEntryDeepCopy,
   placementsDeepCopy,
 } from '../../synthesizer/handlers/placementManager.ts';
-import { CircuitGenerator } from '../circuitGenerator.ts';
 import { builder } from '../utils/witness_calculator.ts';
 import { VARIABLE_DESCRIPTION } from '../../synthesizer/types/buffers.ts';
-import { PublicInstance, PublicInstanceDescription } from '../types/types.ts';
+import type { ResolvedSubcircuitLibrary } from '../../subcircuit/libraryTypes.ts';
+import type { SynthesizerInterface } from '../../synthesizer/types/index.ts';
+import type { PublicInstance, PublicInstanceDescription } from '../types/types.ts';
+
+export type VariableGenerationResult = Readonly<{
+  circuitPlacements: Placements;
+  placementVariables: PlacementVariables;
+  publicInstance: PublicInstance;
+  publicInstanceDescription: PublicInstanceDescription;
+}>;
 
 export class VariableGenerator {
-  private parent: CircuitGenerator;
+  constructor(
+    private readonly synthesizer: SynthesizerInterface,
+    private readonly subcircuitLibrary: ResolvedSubcircuitLibrary,
+    private readonly subcircuitWasmBuffers: any[],
+  ) {}
 
-  placementsCompatibleWithSubcircuits: Placements | undefined = undefined;
-  placementVariables: PlacementVariables | undefined = undefined;
-  publicInstance: PublicInstance | undefined = undefined;
-  publicInstanceDescription: PublicInstanceDescription | undefined = undefined;
-
-  constructor(circuitGenerator: CircuitGenerator) {
-    this.parent = circuitGenerator;
-  }
-
-  private get _subcircuitLibrary() {
-    return this.parent.subcircuitLibrary;
-  }
-
-  async initVariableGenerator(): Promise<void> {
-    if (
-      this.placementsCompatibleWithSubcircuits !== undefined ||
-      this.publicInstance !== undefined ||
-      this.placementVariables !== undefined
-    ) {
-      throw new Error('Cannot overwrite existing initialization');
-    }
-    const oldPlacements = this.parent.synthesizer.placements;
+  public async generate(): Promise<VariableGenerationResult> {
+    const oldPlacements = this.synthesizer.placements;
     const newPlacements = placementsDeepCopy(oldPlacements);
     this._removeUnusedWiresFromEVMInBuffer(oldPlacements, newPlacements);
     this._convertEVMWiresIntoCircomWires(newPlacements);
     this._validateBufferSizes(newPlacements);
 
-    this.placementsCompatibleWithSubcircuits = newPlacements;
-    this.placementVariables = await this._generatePlacementVariables(this.placementsCompatibleWithSubcircuits);
-    this.publicInstance = this._extractPublicInstance(this.placementVariables);
-    this.publicInstanceDescription = this._extractPublicInstanceDescription(this.placementVariables);
+    const placementVariables = await this._generatePlacementVariables(newPlacements);
+    return {
+      circuitPlacements: newPlacements,
+      placementVariables,
+      publicInstance: this._extractPublicInstance(placementVariables),
+      publicInstanceDescription: this._extractPublicInstanceDescription(placementVariables),
+    };
   }
 
   private _prepareCircuitInstance(
@@ -71,8 +66,8 @@ export class VariableGenerator {
     // Preparing input values
     const expectedLen =
       target === 'In'
-        ? this._subcircuitLibrary.subcircuitInfoByName.get(placement.name)!.NInWires
-        : this._subcircuitLibrary.subcircuitInfoByName.get(placement.name)!.NOutWires;
+        ? this.subcircuitLibrary.subcircuitInfoByName.get(placement.name)!.NInWires
+        : this.subcircuitLibrary.subcircuitInfoByName.get(placement.name)!.NOutWires;
     if (expectedLen < origValues.length) {
       throw new Error(`Placement at index ${placement.name} has excessive number of ${target} wires`);
     }
@@ -115,7 +110,7 @@ export class VariableGenerator {
             );
           }
         }
-        if (this._subcircuitLibrary.subcircuitInfoByName.get(placement.name)!.flattenMap.length !== variables.length) {
+        if (this.subcircuitLibrary.subcircuitInfoByName.get(placement.name)!.flattenMap.length !== variables.length) {
           throw new Error(`Flatten map cannot be applied to the placement variables due to difference lengths`);
         }
         // process.stdout.write('\r' + ' '.repeat(100) + '\r');
@@ -140,7 +135,7 @@ export class VariableGenerator {
   }
 
   private _extractPublicInstance(placementVariables: PlacementVariables): PublicInstance {
-    const { globalWireList, setupParams } = this._subcircuitLibrary.data;
+    const { globalWireList, setupParams } = this.subcircuitLibrary.data;
     const l = setupParams.l;
     const l_user = setupParams.l_user;
     const l_free = setupParams.l_free;
@@ -173,7 +168,7 @@ export class VariableGenerator {
   }
 
   private _extractPublicInstanceDescription(placementVariables: PlacementVariables): PublicInstanceDescription {
-    const { globalWireList, setupParams } = this._subcircuitLibrary.data;
+    const { globalWireList, setupParams } = this.subcircuitLibrary.data;
     const l = setupParams.l;
     const l_user = setupParams.l_user;
     const l_free = setupParams.l_free;
@@ -336,7 +331,7 @@ export class VariableGenerator {
       if (bufferPlacement === undefined) {
         throw new Error(`Buffer ${bufferName} is not placed`);
       }
-      const subcircuitInfo = this._subcircuitLibrary.subcircuitBufferMapping[bufferName];
+      const subcircuitInfo = this.subcircuitLibrary.subcircuitBufferMapping[bufferName];
       if (subcircuitInfo === undefined) {
         throw new Error(`Subcircuit information for ${bufferName} is not loaded`);
       }
@@ -347,7 +342,7 @@ export class VariableGenerator {
         );
       }
     }
-    if (outPlacements.length > this._subcircuitLibrary.data.setupParams.s_max) {
+    if (outPlacements.length > this.subcircuitLibrary.data.setupParams.s_max) {
       flags.push(false);
       console.log(
         `Error: Synthesizer: Insufficient s_max. Ask the qap-compiler for increasing s_max (required s_max: ${outPlacements.length}).`,
@@ -362,7 +357,7 @@ export class VariableGenerator {
     let witnessHex: string[] = [];
     if (inValues.length > 0) {
       const id = subcircuitId;
-      const buffer = this.parent.subcircuitWasmBuffers[id];
+      const buffer = this.subcircuitWasmBuffers[id];
       const ins = { in: inValues };
       const witnessCalculator = await builder(buffer);
       const witness = await witnessCalculator.calculateWitness(ins, 0);

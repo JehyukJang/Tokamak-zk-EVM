@@ -285,7 +285,7 @@ export class ContextManager {
     const sourceSnapshot = MemoryPt.simulateMemoryPt(
       sourceMemoryPt.read(sourceOffsetNumber, lengthNumber),
     )
-    const operands = this.createMemoryOperands(
+    const operands = this.materializeMemoryViewOperands(
       sourceSnapshot,
       sourceOffset,
       length,
@@ -297,7 +297,7 @@ export class ContextManager {
     return { operands, destinations }
   }
 
-  public createMemoryOperands(
+  public materializeMemoryViewOperands(
     memoryPt: MemoryPt,
     offset: bigint,
     length: bigint,
@@ -339,7 +339,7 @@ export class ContextManager {
     return views
   }
 
-  public initializeMessageContext(message: Message): void {
+  public materializeMessageContext(message: Message): void {
     this.recordMessageCodeAddress(message.codeAddress.toString())
     if (message.isCreate) {
       throw new Error('CREATE is not supported.')

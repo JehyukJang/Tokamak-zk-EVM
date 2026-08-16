@@ -1,7 +1,16 @@
 import { createVM, runTx, RunTxOpts, RunTxResult, VM, VMOpts } from '@ethereumjs/vm';
 
 import { BlockData, BlockOptions, createBlock, HeaderData } from '@ethereumjs/block';
-import { bigIntToBytes, bigIntToHex, bytesToHex, createAddressFromBigInt, setLengthLeft } from '@ethereumjs/util';
+import {
+  bigIntToBytes,
+  bigIntToHex,
+  bytesToBigInt,
+  bytesToHex,
+  createAddressFromBigInt,
+  hexToBigInt,
+  setLengthLeft,
+  toBytes,
+} from '@ethereumjs/util';
 
 import { EVMResult, InterpreterStep } from '@ethereumjs/evm';
 import { TRANSACTION_INPUT_VARIABLES } from '../subcircuit/configuredTypes.ts';
@@ -34,7 +43,10 @@ export class Synthesizer implements SynthesizerInterface
   constructor(opts: SynthesizerOpts, subcircuitLibrary: ResolvedSubcircuitLibrary) {
     this._cachedOpts = opts
     this.subcircuitLibrary = subcircuitLibrary
-    this._placementManager = new PlacementManager(this.subcircuitLibrary, this._cachedOpts)
+    this._placementManager = new PlacementManager(
+      this.subcircuitLibrary,
+      this._resolveReservedInputValues(),
+    )
     this._contextManager = new ContextManager(this._placementManager)
     this._instructionHandlers = new InstructionHandler(
       this._contextManager,
@@ -45,6 +57,43 @@ export class Synthesizer implements SynthesizerInterface
     this._eventHandlerError = undefined
     this._hasEventHandlerError = false
     this._stepLogs = []
+  }
+
+  private _resolveReservedInputValues(): ReadonlyMap<ReservedVariable, bigint> {
+    const values = new Map<ReservedVariable, bigint>()
+    const { blockInfo, signedTransaction } = this._cachedOpts
+    const senderPublicKey = signedTransaction.getUnsafeEddsaPubKey().toAffine()
+    const randomizer = signedTransaction.r === undefined
+      ? undefined
+      : signedTransaction.getUnsafeEddsaRandomizer()?.toAffine()
+
+    values.set('EDDSA_PUBLIC_KEY_X', senderPublicKey.x)
+    values.set('EDDSA_PUBLIC_KEY_Y', senderPublicKey.y)
+    values.set('EDDSA_RANDOMIZER_X', randomizer?.x ?? 0n)
+    values.set('EDDSA_RANDOMIZER_Y', randomizer?.y ?? 0n)
+    values.set('EDDSA_SIGNATURE', signedTransaction.s ?? 0n)
+    values.set('CONTRACT_ADDRESS', bytesToBigInt(toBytes(signedTransaction.to)))
+    values.set('FUNCTION_SELECTOR', bytesToBigInt(signedTransaction.getFunctionSelector()))
+    values.set('TRANSACTION_NONCE', signedTransaction.nonce)
+    for (const [inputIndex, variable] of TRANSACTION_INPUT_VARIABLES.entries()) {
+      values.set(variable, bytesToBigInt(signedTransaction.getFunctionInput(inputIndex)))
+    }
+
+    values.set('COINBASE', hexToBigInt(blockInfo.coinBase))
+    values.set('TIMESTAMP', hexToBigInt(blockInfo.timeStamp))
+    values.set('NUMBER', hexToBigInt(blockInfo.blockNumber))
+    values.set('PREVRANDAO', hexToBigInt(blockInfo.prevRanDao))
+    values.set('GASLIMIT', hexToBigInt(blockInfo.gasLimit))
+    values.set('CHAINID', hexToBigInt(blockInfo.chainId))
+    values.set('SELFBALANCE', hexToBigInt(blockInfo.selfBalance))
+    values.set('BASEFEE', hexToBigInt(blockInfo.baseFee))
+    for (let i = 1; i <= this.subcircuitLibrary.numberOfPrevBlockHashes; i++) {
+      values.set(
+        `BLOCKHASH_${i}` as ReservedVariable,
+        hexToBigInt(blockInfo.prevBlockHashes[i - 1]),
+      )
+    }
+    return values
   }
 
   private _recordEventHandlerError(handlerName: string, err: unknown): void {
@@ -76,7 +125,7 @@ export class Synthesizer implements SynthesizerInterface
     vm.evm.events.on('beforeMessage', (data, resolve?: (result?: any) => void) => {
       try {
         if (!this._hasEventHandlerError) {
-          this._contextManager.initializeMessageContext(data);
+          this._contextManager.materializeMessageContext(data);
         }
       } catch (err) {
         this._recordEventHandlerError('beforeMessage', err)

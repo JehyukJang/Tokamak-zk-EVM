@@ -34,6 +34,20 @@ import wasm28 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/
 import wasm29 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit29.wasm';
 import wasm30 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit30.wasm';
 import wasm31 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit31.wasm';
+import wasm32 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit32.wasm';
+import wasm33 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit33.wasm';
+import wasm34 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit34.wasm';
+import wasm35 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit35.wasm';
+import wasm36 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit36.wasm';
+import wasm37 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit37.wasm';
+import wasm38 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit38.wasm';
+import wasm39 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit39.wasm';
+import wasm40 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit40.wasm';
+import wasm41 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit41.wasm';
+import wasm42 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit42.wasm';
+import wasm43 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit43.wasm';
+import wasm44 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit44.wasm';
+import wasm45 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit45.wasm';
 
 export {
   setupParamsJson,
@@ -75,4 +89,18 @@ export const wasmFiles: Record<number, Uint8Array> = {
   29: wasm29,
   30: wasm30,
   31: wasm31,
+  32: wasm32,
+  33: wasm33,
+  34: wasm34,
+  35: wasm35,
+  36: wasm36,
+  37: wasm37,
+  38: wasm38,
+  39: wasm39,
+  40: wasm40,
+  41: wasm41,
+  42: wasm42,
+  43: wasm43,
+  44: wasm44,
+  45: wasm45,
 };

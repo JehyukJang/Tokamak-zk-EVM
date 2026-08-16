@@ -1,16 +1,16 @@
 import { Placements, PlacementVariables } from '../../synthesizer/types/placements.ts';
 import { BUFFER_LIST, SubcircuitInfoByNameEntry } from '../../subcircuit/configuredTypes.ts';
-import { CircuitGenerator } from '../circuitGenerator.ts';
 import { VARIABLE_DESCRIPTION } from '../../synthesizer/types/buffers.ts';
 import { addHexPrefix, hexToBigInt } from '@ethereumjs/util';
-import { Permutation } from '../types/types.ts';
+import type { ResolvedSubcircuitLibrary } from '../../subcircuit/libraryTypes.ts';
+import type { Permutation } from '../types/types.ts';
+import type { VariableGenerationResult } from './variableGenerator.ts';
 
 
 type PlacementWireIndex = { globalWireId: number; placementId: number };
 
 // This class instantiates the compiler model in Section "3.1 Compilers" of the Tokamak zk-SNARK paper.
 export class PermutationGenerator {
-  private parent: CircuitGenerator
   private placementVariables: PlacementVariables;
   private circuitPlacements: Placements;
 
@@ -24,21 +24,17 @@ export class PermutationGenerator {
   private permutationX: number[][];
   public permutation: Permutation;
 
-  constructor(parent: CircuitGenerator) {
-    this.parent = parent
-    const circuitPlacements = this.parent.circuitPlacements
-    const placementVariables = this.parent.variableGenerator.placementVariables
-
-    if (circuitPlacements === undefined || placementVariables === undefined) {
-      throw new Error('Variable Genenrator is not run yet')
-    }
-    this.circuitPlacements = circuitPlacements
-    this.placementVariables = placementVariables
+  constructor(
+    variableGeneration: VariableGenerationResult,
+    private readonly subcircuitLibrary: ResolvedSubcircuitLibrary,
+  ) {
+    this.circuitPlacements = variableGeneration.circuitPlacements
+    this.placementVariables = variableGeneration.placementVariables
     // Construct permutation
     this.permGroup = this._buildPermGroup();
 
     // Initialization for the permutation polynomials in equation 8 of the paper
-    const { setupParams } = this.parent.subcircuitLibrary.data;
+    const { setupParams } = this.subcircuitLibrary.data;
     const numWires = setupParams.l_D - setupParams.l;
     const numPlacements = this.circuitPlacements.length;
 
@@ -74,7 +70,7 @@ export class PermutationGenerator {
     Y: number;
   }[] {
     let permutationFile = [];
-    const { setupParams } = this.parent.subcircuitLibrary.data;
+    const { setupParams } = this.subcircuitLibrary.data;
     for (const _group of this.permGroup) {
       const group = [..._group.keys()];
       const groupLength = group.length;
@@ -115,8 +111,8 @@ export class PermutationGenerator {
 
   private _buildPermGroup(): Map<string, boolean>[] {
     const permGroup: Map<string, boolean>[] = [];
-    const { setupParams } = this.parent.subcircuitLibrary.data;
-    const subcircuitInfoByName = this.parent.subcircuitLibrary.subcircuitInfoByName;
+    const { setupParams } = this.subcircuitLibrary.data;
+    const subcircuitInfoByName = this.subcircuitLibrary.subcircuitInfoByName;
 
     // Initialize group representatives.
     // Each output wire of every placement is picked as a representative and forms a new group, if it is not a public wire.
@@ -246,8 +242,8 @@ export class PermutationGenerator {
   }
 
   private _validatePermutation(): void {
-    const { setupParams } = this.parent.subcircuitLibrary.data;
-    const subcircuitInfoByName = this.parent.subcircuitLibrary.subcircuitInfoByName;
+    const { setupParams } = this.subcircuitLibrary.data;
+    const subcircuitInfoByName = this.subcircuitLibrary.subcircuitInfoByName;
     let permutationDetected = false;
     const circomConsts = Array(setupParams.l_D).fill('0x01');
     let b: string[][] = []; // ab.size = l_D \times s_max
