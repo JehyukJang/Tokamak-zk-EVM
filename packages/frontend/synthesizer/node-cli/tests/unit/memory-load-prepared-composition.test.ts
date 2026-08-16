@@ -53,6 +53,7 @@ const memoryViewInfo = {
 
 const createHarness = () => {
   let staticWireIndex = 0
+  const staticDataPtByValueAndType = new Map<string, DataPt>()
   const placementManager = Object.assign(Object.create(PlacementManager.prototype), {
     _placements: Array.from({ length: 6 }, () => ({
       name: 'MemoryViewStep',
@@ -64,8 +65,14 @@ const createHarness = () => {
     _placementCompositionMapping: { MemoryView: memoryViewComposition },
     subcircuitInfoByName: new Map([['MemoryViewStep', memoryViewInfo]]),
     subcircuitLibrary: { calculateSubcircuitOutputValues },
-    loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
-      dataPt(value, evmInSource, staticWireIndex++, dataPtType)),
+    loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) => {
+      const cacheKey = `${value}:${dataPtType}`
+      const cachedDataPt = staticDataPtByValueAndType.get(cacheKey)
+      if (cachedDataPt !== undefined) return DataPtFactory.deepCopy(cachedDataPt)
+      const staticDataPt = dataPt(value, evmInSource, staticWireIndex++, dataPtType)
+      staticDataPtByValueAndType.set(cacheKey, staticDataPt)
+      return DataPtFactory.deepCopy(staticDataPt)
+    }),
     getReservedVariableFromBuffer: vi.fn((name: string) => dataPt(
       0n,
       evmInSource,
@@ -124,7 +131,48 @@ describe('atomic MemoryView compositions', () => {
     expect(placementManager.placements).toHaveLength(6)
   })
 
-  it('keeps multiple views in source order with monotonically advancing outputs', () => {
+  it('returns one complete unshifted source word without a MemoryViewStep', () => {
+    const { placementManager } = createHarness()
+    const sourceWordPt = dataPt(0x1122n, 1)
+    const resultPts = placementManager.placeComposition('MemoryView', [[
+      sourceWordPt,
+      dataPt(0n, evmInSource, 0, UINT32_DATA_PT_TYPE),
+      dataPt(0xffffffffn, evmInSource, 1, UINT32_DATA_PT_TYPE),
+    ]])
+
+    expect(resultPts).toEqual([sourceWordPt])
+    expect(placementManager.placements).toHaveLength(6)
+  })
+
+  it('keeps near-identity views on the MemoryViewStep path', () => {
+    const { placementManager } = createHarness()
+    const sourceWordPt = dataPt(0x1122n, 1)
+    const results = placementManager.placeComposition('MemoryView', [
+      [
+        sourceWordPt,
+        dataPt(1n, evmInSource, 0, UINT32_DATA_PT_TYPE),
+        dataPt(0xffffffffn, evmInSource, 1, UINT32_DATA_PT_TYPE),
+      ],
+      [
+        sourceWordPt,
+        dataPt(0n, evmInSource, 0, UINT32_DATA_PT_TYPE),
+        dataPt(0x0000ffffn, evmInSource, 2, UINT32_DATA_PT_TYPE),
+      ],
+      [
+        sourceWordPt,
+        dataPt(0n, evmInSource, 0, UINT32_DATA_PT_TYPE),
+        dataPt(0x0000ffffn, evmInSource, 2, UINT32_DATA_PT_TYPE),
+        sourceWordPt,
+        dataPt(0n, evmInSource, 0, UINT32_DATA_PT_TYPE),
+        dataPt(0xffff0000n, evmInSource, 3, UINT32_DATA_PT_TYPE),
+      ],
+    ])
+
+    expect(results.map(({ source }) => source)).toEqual([6, 7, 9])
+    expect(placementManager.placements).toHaveLength(10)
+  })
+
+  it('reuses complete unshifted views in source order without placements', () => {
     const { contextManager, placementManager } = createHarness()
     const memoryPt = new MemoryPt()
     memoryPt.write(0, 32, wordPt(1n, 1))
@@ -132,11 +180,23 @@ describe('atomic MemoryView compositions', () => {
     const operands = contextManager.materializeMemoryViewOperands(memoryPt, 0n, 64n)
 
     const resultPts = placementManager.placeComposition('MemoryView', operands)
-    const steps = placementManager.placements.slice(6)
-
-    expect(steps.map(({ inPts }) => inPts[0]!.source)).toEqual([1, 2])
     expect(resultPts.map(({ source, wireIndex }) => [source, wireIndex]))
-      .toEqual([[6, 0], [7, 0]])
+      .toEqual([[1, 0], [2, 0]])
+    expect(placementManager.placements).toHaveLength(6)
+  })
+
+  it('reuses equal memory-view shifts and ownership masks from EVM_IN', () => {
+    const { contextManager } = createHarness()
+    const memoryPt = new MemoryPt()
+    memoryPt.write(0, 32, wordPt(1n, 1))
+    memoryPt.write(32, 32, wordPt(2n, 2))
+
+    const operands = contextManager.materializeMemoryViewOperands(memoryPt, 0n, 64n)
+    const [firstView, secondView] = operands
+    expect(firstView).toBeDefined()
+    expect(secondView).toBeDefined()
+    expect(firstView![1]).toMatchObject(secondView![1]!)
+    expect(firstView![2]).toMatchObject(secondView![2]!)
   })
 
   it('rejects a malformed view atomically', () => {
@@ -160,11 +220,9 @@ describe('atomic MemoryView compositions', () => {
     const resultPts = placementManager.placeComposition('MemoryView', copyPlan.operands)
     const destinationEntries = createMemoryCopyEntries(copyPlan, resultPts)
 
-    expect(placementManager.placements.slice(6).map(({ inPts }) => inPts[0]!.source))
-      .toEqual([1, 2])
     expect(destinationEntries).toMatchObject([
-      { memByteOffset: 96, containerByteSize: 32, dataPt: { source: 6, wireIndex: 0 } },
-      { memByteOffset: 128, containerByteSize: 8, dataPt: { source: 7, wireIndex: 0 } },
+      { memByteOffset: 96, containerByteSize: 32, dataPt: { source: 1, wireIndex: 0 } },
+      { memByteOffset: 128, containerByteSize: 8, dataPt: { source: 6, wireIndex: 0 } },
     ])
   })
 })
