@@ -162,6 +162,39 @@ function _validateBufferDeclarations(subcircuitInfos, subcircuitInfoByName) {
   return directionByName
 }
 
+function _assertInternalInterfacePortPrefixes(subcircuitInfos, l, l_D) {
+  for (const subcircuit of subcircuitInfos) {
+    const ports = [
+      ['output', subcircuit.Out_idx[0], subcircuit.Out_idx[1]],
+      ['input', subcircuit.In_idx[0], subcircuit.In_idx[1]],
+    ]
+
+    for (const [portName, start, count] of ports) {
+      let reachedNonInterfaceWire = false
+      for (let offset = 0; offset < count; offset++) {
+        const localWireIndex = start + offset
+        const globalWireIndex = subcircuit.flattenMap?.[localWireIndex]
+        if (globalWireIndex === undefined) {
+          throw new Error(
+            `parseWireList: Missing flattened ${portName} port wire ${localWireIndex} for '${subcircuit.name}'.`,
+          )
+        }
+
+        const isInternalInterfaceWire = globalWireIndex >= l && globalWireIndex < l_D
+        if (isInternalInterfaceWire) {
+          if (reachedNonInterfaceWire) {
+            throw new Error(
+              `parseWireList: '${subcircuit.name}' ${portName} port has an internal-interface wire after a non-interface wire.`,
+            )
+          }
+        } else {
+          reachedNonInterfaceWire = true
+        }
+      }
+    }
+  }
+}
+
 function parseWireList(subcircuitInfos) {
   let numTotalWires = 0
   let numPubUserOutWires = 0
@@ -442,6 +475,8 @@ function parseWireList(subcircuitInfos) {
     throw new Error(`parseWireList: Error during flattening internal wires`)
   }
 
+  _assertInternalInterfacePortPrefixes(subcircuitInfos, l, l_D)
+
   return {
     ...publicWireBoundaries,
     l_user_out,
@@ -656,6 +691,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  _assertInternalInterfacePortPrefixes,
   _validateBufferDeclarations,
   parseWireList,
 }

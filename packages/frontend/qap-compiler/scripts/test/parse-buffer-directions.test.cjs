@@ -2,7 +2,10 @@ const assert = require('node:assert/strict')
 const test = require('node:test')
 
 const { BUFFER_DECLARATIONS } = require('../configure.js')
-const { _validateBufferDeclarations } = require('../parse.js')
+const {
+  _assertInternalInterfacePortPrefixes,
+  _validateBufferDeclarations,
+} = require('../parse.js')
 
 function createBufferCatalog() {
   return BUFFER_DECLARATIONS.map((declaration, id) => ({
@@ -88,5 +91,30 @@ test('rejects a declared buffer with an invalid compiled port range', () => {
   assert.throws(
     () => _validateBufferDeclarations(catalog, createCatalogByName(catalog)),
     /invalid compiled in port range/,
+  )
+})
+
+test('accepts a port whose internal-interface wires form a prefix', () => {
+  const subcircuit = {
+    name: 'testCircuit',
+    Out_idx: [1, 2],
+    In_idx: [3, 2],
+    flattenMap: [0, 10, 11, 2, 3],
+  }
+
+  _assertInternalInterfacePortPrefixes([subcircuit], 10, 12)
+})
+
+test('rejects an internal-interface wire after a non-interface port wire', () => {
+  const subcircuit = {
+    name: 'testCircuit',
+    Out_idx: [1, 2],
+    In_idx: [3, 2],
+    flattenMap: [0, 2, 10, 3, 4],
+  }
+
+  assert.throws(
+    () => _assertInternalInterfacePortPrefixes([subcircuit], 10, 12),
+    /internal-interface wire after a non-interface wire/,
   )
 })
