@@ -12,7 +12,7 @@ describe('transaction-signature host output calculations', () => {
     const randomizerScalar = 61n
     const publicKey = jubjub.Point.BASE.multiply(privateKey).toAffine()
     const randomizer = jubjub.Point.BASE.multiply(randomizerScalar).toAffine()
-    const nonce = 19n
+    const channelTransactionIndex = 19n
     const contractAddress = 0x1234567890abcdef1234567890abcdef12345678n
     const functionSelector = 0xdeadbeefn
     const transactionInputs = Array.from({ length: 29 }, (_, index) => BigInt(index + 1))
@@ -21,7 +21,7 @@ describe('transaction-signature host output calculations', () => {
       randomizer.y,
       publicKey.x,
       publicKey.y,
-      nonce,
+      channelTransactionIndex,
       contractAddress,
       functionSelector,
       ...transactionInputs,
@@ -68,7 +68,7 @@ describe('transaction-signature host output calculations', () => {
       randomizer.y,
       publicKey.x,
       publicKey.y,
-      nonce,
+      channelTransactionIndex,
       ...transactionInputs,
       contractAddress,
       functionSelector,

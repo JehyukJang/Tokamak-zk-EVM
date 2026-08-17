@@ -74,7 +74,7 @@ export class Synthesizer implements SynthesizerInterface
     values.set('EDDSA_SIGNATURE', signedTransaction.s ?? 0n)
     values.set('CONTRACT_ADDRESS', bytesToBigInt(toBytes(signedTransaction.to)))
     values.set('FUNCTION_SELECTOR', bytesToBigInt(signedTransaction.getFunctionSelector()))
-    values.set('TRANSACTION_NONCE', signedTransaction.nonce)
+    values.set('CHANNEL_TX_INDEX', signedTransaction.channelTransactionIndex)
     for (const [inputIndex, variable] of TRANSACTION_INPUT_VARIABLES.entries()) {
       values.set(variable, bytesToBigInt(signedTransaction.getFunctionInput(inputIndex)))
     }
@@ -206,7 +206,7 @@ export class Synthesizer implements SynthesizerInterface
       this._placementManager.getReservedVariableFromBuffer('EDDSA_RANDOMIZER_Y'),
       this._placementManager.getReservedVariableFromBuffer('EDDSA_PUBLIC_KEY_X'),
       this._placementManager.getReservedVariableFromBuffer('EDDSA_PUBLIC_KEY_Y'),
-      this._placementManager.getReservedVariableFromBuffer('TRANSACTION_NONCE'),
+      this._placementManager.getReservedVariableFromBuffer('CHANNEL_TX_INDEX'),
       ...transactionInputPts,
       this._placementManager.getReservedVariableFromBuffer('CONTRACT_ADDRESS'),
       this._placementManager.getReservedVariableFromBuffer('FUNCTION_SELECTOR'),

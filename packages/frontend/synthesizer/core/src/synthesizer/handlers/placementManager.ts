@@ -442,7 +442,7 @@ export class PlacementManager {
     this._addReservedInputVariable('EDDSA_SIGNATURE')
     this._addReservedInputVariable('CONTRACT_ADDRESS')
     this._addReservedInputVariable('FUNCTION_SELECTOR')
-    this._addReservedInputVariable('TRANSACTION_NONCE')
+    this._addReservedInputVariable('CHANNEL_TX_INDEX')
     for (const variable of TRANSACTION_INPUT_VARIABLES) {
       this._addReservedInputVariable(variable)
     }

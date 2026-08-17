@@ -33,6 +33,7 @@ const TX_IN_VARIABLES_STATIC = [
   'EDDSA_SIGNATURE',  // For debugging. Can be moved to PRIVATE_IN buffer
   'CONTRACT_ADDRESS',    
   'FUNCTION_SELECTOR',   
+  'CHANNEL_TX_INDEX',
 ] as const
 const TX_IN_VARIABLES_DYNAMIC = [
   // Nothing
@@ -333,7 +334,6 @@ const EVM_IN_VARIABLES_DYNAMIC = [
 ] as const
 
 const PRIVATE_IN_VARIABLES_STATIC = [
-  'TRANSACTION_NONCE',
   'EDDSA_PUBLIC_KEY_X',
   'EDDSA_PUBLIC_KEY_Y',
   'TRANSACTION_INPUT0',
@@ -561,8 +561,8 @@ __setDataPtType('JUBJUB_POI_X', BLS12_381_FR_DATA_PT_TYPE)
 VARIABLE_DESCRIPTION_INCOMPLETE.JUBJUB_POI_Y.extSource = `Point at infinity of Jubjub curve (y coordinate)`;
 __setDataPtType('JUBJUB_POI_Y', BLS12_381_FR_DATA_PT_TYPE)
 
-VARIABLE_DESCRIPTION_INCOMPLETE.TRANSACTION_NONCE.extSource = `Transaction nonce`;
-__setDataPtType('TRANSACTION_NONCE', BLS12_381_FR_DATA_PT_TYPE)
+VARIABLE_DESCRIPTION_INCOMPLETE.CHANNEL_TX_INDEX.extSource = `Signed channel transaction index`;
+__setDataPtType('CHANNEL_TX_INDEX', BLS12_381_FR_DATA_PT_TYPE)
 
 VARIABLE_DESCRIPTION_INCOMPLETE.EDDSA_PUBLIC_KEY_X.extSource = `EdDSA public key of caller (x coordinate)`;
 __setDataPtType('EDDSA_PUBLIC_KEY_X', BLS12_381_FR_DATA_PT_TYPE)
