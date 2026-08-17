@@ -3,21 +3,46 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { spawn } from 'child_process';
-import { stopPrivateStateAnvil } from './private-state-anvil-fixture.ts';
+import { createPrivateStateAnvilFixture, stopPrivateStateAnvil } from './private-state-anvil-fixture.ts';
 
 type Family = 'mint' | 'transfer' | 'redeem';
 
 type FamilyDefinition = Readonly<{
   exampleType: 'private-state-mint' | 'private-state-transfer' | 'private-state-redeem';
-  prepFile: string;
+  generatorFile: string;
+}>;
+
+type HostOrdering = 'canonical' | 'reverse';
+
+type TopologyVariant = Readonly<{
+  label: string;
+  senderIndex: number;
+  amount: string;
+  txNonce: number;
+  hostOrdering: HostOrdering;
+  noteOwnerIndex?: number;
+  receiverIndex?: number;
+  extraBalanceAccounts?: readonly number[];
+  extraCommitments?: number;
+  saltLabel?: string;
+}>;
+
+type TopologyVariantManifest = Readonly<{
+  schemaVersion: 1;
+  variants: Readonly<Record<Family, readonly TopologyVariant[]>>;
 }>;
 
 type MatrixConfig = Readonly<{
   network?: string;
+  txNonce?: number;
   function?: Readonly<{
     entryContractAddress?: string;
     selector?: string;
   }>;
+  storageConfigs?: Array<{
+    preAllocatedKeys?: string[];
+  }>;
+  callCodeAddresses?: string[];
 }>;
 
 class CommandFailure extends Error {
@@ -33,51 +58,71 @@ class CommandFailure extends Error {
 const packageRoot = path.resolve(process.cwd());
 const configRunner = path.resolve(packageRoot, '..', 'examples', 'config-runner.ts');
 const outputDir = path.resolve(packageRoot, '..', 'outputs');
-const capacityFailurePattern = /Insufficient buffer.*length|sMax/iu;
 const errorLogPattern = /error:/iu;
+const topologyVariantManifestPath = path.resolve(
+  packageRoot,
+  'tests',
+  'fixtures',
+  'private-state-topology-variants.json',
+);
 
 const familyDefinitions: Readonly<Record<Family, FamilyDefinition>> = {
   mint: {
     exampleType: 'private-state-mint',
-    prepFile: 'run-private-state-mint-config-matrix.ts',
+    generatorFile: 'generate-private-state-mint-config.ts',
   },
   transfer: {
     exampleType: 'private-state-transfer',
-    prepFile: 'run-private-state-transfer-config-matrix.ts',
+    generatorFile: 'generate-private-state-transfer-config.ts',
   },
   redeem: {
     exampleType: 'private-state-redeem',
-    prepFile: 'run-private-state-redeem-config-matrix.ts',
+    generatorFile: 'generate-private-state-redeem-config.ts',
   },
 };
 
-const runCaptured = async (command: string, args: readonly string[]): Promise<string> => new Promise((resolve, reject) => {
-  const child = spawn(command, [...args], { cwd: packageRoot, stdio: ['ignore', 'pipe', 'pipe'] });
-  let output = '';
-  const appendOutput = (chunk: Buffer | string) => {
-    const text = chunk.toString();
-    output += text;
-    process.stdout.write(text);
-  };
-  child.stdout.on('data', appendOutput);
-  child.stderr.on('data', appendOutput);
-  child.on('error', reject);
-  child.on('close', (code) => {
-    if (code === 0) {
-      resolve(output);
-      return;
-    }
-    reject(new CommandFailure(output, command, code));
+const runCaptured = async (command: string, args: readonly string[]): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const child = spawn(command, [...args], { cwd: packageRoot, stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    const appendOutput = (chunk: Buffer | string) => {
+      const text = chunk.toString();
+      output += text;
+      process.stdout.write(text);
+    };
+    child.stdout.on('data', appendOutput);
+    child.stderr.on('data', appendOutput);
+    child.on('error', reject);
+    child.on('close', code => {
+      if (code === 0) {
+        resolve(output);
+        return;
+      }
+      reject(new CommandFailure(output, command, code));
+    });
   });
-});
 
 const normalize = (value: string | undefined): string => value?.trim().toLowerCase() ?? '';
 
-const groupKey = (config: MatrixConfig): string => [
-  normalize(config.network),
-  normalize(config.function?.entryContractAddress),
-  normalize(config.function?.selector),
-].join('|');
+const loadTopologyVariantManifest = async (): Promise<TopologyVariantManifest> => {
+  const manifest = JSON.parse(await fs.readFile(topologyVariantManifestPath, 'utf8')) as TopologyVariantManifest;
+  if (manifest.schemaVersion !== 1) {
+    throw new Error(`Unsupported private-state topology manifest schema: ${String(manifest.schemaVersion)}`);
+  }
+  for (const family of Object.keys(familyDefinitions) as Family[]) {
+    if (manifest.variants[family]?.length < 2) {
+      throw new Error(`Private-state topology manifest needs at least two ${family} variants`);
+    }
+  }
+  return manifest;
+};
+
+const groupKey = (config: MatrixConfig): string =>
+  [
+    normalize(config.network),
+    normalize(config.function?.entryContractAddress),
+    normalize(config.function?.selector),
+  ].join('|');
 
 const copyOutput = async (destination: string): Promise<void> => {
   await fs.mkdir(destination, { recursive: true });
@@ -86,8 +131,73 @@ const copyOutput = async (destination: string): Promise<void> => {
   }
 };
 
+const applyVariantToConfig = (config: MatrixConfig, variant: TopologyVariant): MatrixConfig => {
+  const mutableConfig = config as {
+    storageConfigs?: Array<{ preAllocatedKeys?: string[] }>;
+    callCodeAddresses?: string[];
+  };
+  if (config.txNonce !== variant.txNonce) {
+    throw new Error(`Topology fixture nonce mismatch for ${variant.label}`);
+  }
+  if (variant.hostOrdering === 'reverse') {
+    mutableConfig.storageConfigs?.reverse();
+    mutableConfig.callCodeAddresses?.reverse();
+    for (const storageConfig of mutableConfig.storageConfigs ?? []) {
+      storageConfig.preAllocatedKeys?.reverse();
+    }
+  }
+  return config;
+};
+
+const variantGeneratorArgs = (
+  family: Family,
+  familyArgs: readonly string[],
+  variant: TopologyVariant,
+  configPath: string,
+  deploymentManifestPath: string,
+  storageLayoutPath: string,
+): string[] => {
+  const args = [
+    '--output',
+    configPath,
+    '--participants',
+    '4',
+    '--sender',
+    String(variant.senderIndex),
+    '--tx-nonce',
+    String(variant.txNonce),
+    '--amount',
+    variant.amount,
+    '--deployment-manifest',
+    deploymentManifestPath,
+    '--storage-layout',
+    storageLayoutPath,
+    ...familyArgs,
+  ];
+  if (family === 'mint') {
+    args.push('--note-owner', String(variant.noteOwnerIndex ?? variant.senderIndex));
+    const extraBalanceAccounts = variant.extraBalanceAccounts ?? [];
+    if (extraBalanceAccounts.length > 0) {
+      args.push('--extra-balance-accounts', extraBalanceAccounts.join(','));
+    }
+  }
+  if (family === 'transfer') {
+    args.push('--extra-commitments', String(variant.extraCommitments ?? 0));
+    args.push('--salt-label', variant.saltLabel ?? variant.label);
+  }
+  if (family === 'redeem') {
+    args.push('--receiver', String(variant.receiverIndex ?? variant.senderIndex));
+    const extraBalanceAccounts = variant.extraBalanceAccounts ?? [];
+    if (extraBalanceAccounts.length > 0) {
+      args.push('--extra-balance-accounts', extraBalanceAccounts.join(','));
+    }
+    args.push('--extra-commitments', String(variant.extraCommitments ?? 0));
+  }
+  return args;
+};
+
 const assertNoOutputErrors = (output: string, configName: string): void => {
-  const errors = output.split(/\r?\n/u).filter((line) => errorLogPattern.test(line));
+  const errors = output.split(/\r?\n/u).filter(line => errorLogPattern.test(line));
   if (errors.length > 0) {
     throw new Error(`Final execution emitted error logs for ${configName}:\n${errors.join('\n')}`);
   }
@@ -108,84 +218,76 @@ const comparePermutations = async (
   for (const configName of configNames.slice(1)) {
     const candidate = await fs.readFile(path.join(archiveDir, configName, 'permutation.json'));
     if (!baseline.equals(candidate)) {
-      throw new Error(
-        `Permutation mismatch for ${key}: baseline=${baselineName} mismatch=${configName}`,
-      );
+      throw new Error(`Permutation mismatch for ${key}: baseline=${baselineName} mismatch=${configName}`);
     }
   }
   return true;
 };
 
-const runFamily = async (family: Family, familyArgs: readonly string[]): Promise<void> => {
+const runFamily = async (
+  family: Family,
+  familyArgs: readonly string[],
+  variants: readonly TopologyVariant[],
+): Promise<void> => {
   const definition = familyDefinitions[family];
   const workDir = await fs.mkdtemp(path.join(os.tmpdir(), `tokamak-${family}-topology-`));
-  const configDir = path.join(workDir, 'configs');
   const archiveDir = path.join(workDir, 'outputs');
-  let anvilMayBeRunning = false;
 
   try {
-    const prepFile = path.resolve(packageRoot, 'tests', 'scripts', definition.prepFile);
-    console.log(`[private-state-topology] Preparing ${family} matrix`);
-    anvilMayBeRunning = true;
-    await runCaptured('tsx', [
-      '--tsconfig', path.resolve(packageRoot, 'tsconfig.dev.json'),
-      prepFile,
-      ...familyArgs,
-      '--output-dir', configDir,
-    ]);
-
-    const configNames = (await fs.readdir(configDir))
-      .filter((entry) => entry.endsWith('.json'))
-      .sort((left, right) => left.localeCompare(right));
-    if (configNames.length !== 4) {
-      throw new Error(`Expected four ${family} matrix configurations, received ${configNames.length}`);
-    }
-
-    const configs = await Promise.all(configNames.map(async (name) => ({
-      name,
-      config: JSON.parse(await fs.readFile(path.join(configDir, name), 'utf8')) as MatrixConfig,
-    })));
-    const groups = new Set(configs.map(({ config }) => groupKey(config)));
-    if (groups.size !== 1) {
-      throw new Error(`Private-state ${family} matrix does not share one network/contract/selector group`);
-    }
-
-    const successfulConfigs: string[] = [];
-    const capacityConfigs: string[] = [];
-    for (const { name } of configs) {
-      const configPath = path.join(configDir, name);
-      console.log(`[private-state-topology] Running ${name}`);
+    const groups = new Set<string>();
+    const successfulVariants: string[] = [];
+    for (const variant of variants) {
+      const configName = `${family}-${variant.label}.json`;
+      const configPath = path.join(workDir, configName);
+      let anvilMayBeRunning = false;
       try {
+        console.log(`[private-state-topology] Preparing ${family}/${variant.label}`);
+        anvilMayBeRunning = true;
+        const fixture = await createPrivateStateAnvilFixture(packageRoot, `${family}-${variant.label}`);
+        await runCaptured('tsx', [
+          '--tsconfig',
+          path.resolve(packageRoot, 'tsconfig.dev.json'),
+          path.resolve(packageRoot, 'scripts', definition.generatorFile),
+          ...variantGeneratorArgs(
+            family,
+            familyArgs,
+            variant,
+            configPath,
+            fixture.deploymentManifestPath,
+            fixture.storageLayoutPath,
+          ),
+        ]);
+        const config = applyVariantToConfig(JSON.parse(await fs.readFile(configPath, 'utf8')) as MatrixConfig, variant);
+        await fs.writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
+        groups.add(groupKey(config));
+        console.log(`[private-state-topology] Running ${configName}`);
         const output = await runCaptured('tsx', [
-          '--tsconfig', path.resolve(packageRoot, 'tsconfig.dev.json'),
+          '--tsconfig',
+          path.resolve(packageRoot, 'tsconfig.dev.json'),
           configRunner,
           definition.exampleType,
           configPath,
         ]);
-        assertNoOutputErrors(output, name);
-        await copyOutput(path.join(archiveDir, path.parse(name).name));
-        successfulConfigs.push(path.parse(name).name);
-      } catch (error) {
-        if (error instanceof CommandFailure && capacityFailurePattern.test(error.output)) {
-          capacityConfigs.push(name);
-          console.log(`[private-state-topology] Accepted capacity result: ${name}`);
-          continue;
+        assertNoOutputErrors(output, configName);
+        const variantArchiveDir = path.join(archiveDir, path.parse(configName).name);
+        await copyOutput(variantArchiveDir);
+        await fs.copyFile(configPath, path.join(variantArchiveDir, 'config.json'));
+        successfulVariants.push(path.parse(configName).name);
+      } finally {
+        if (anvilMayBeRunning) {
+          await stopPrivateStateAnvil(packageRoot);
         }
-        throw error;
       }
     }
 
-    if (capacityConfigs.length > 0) {
-      console.log(`[private-state-topology] Unverified capacity members: ${capacityConfigs.join(', ')}`);
+    if (groups.size !== 1) {
+      throw new Error(`Private-state ${family} matrix does not share one network/contract/selector group`);
     }
     const key = groups.values().next().value as string;
-    if (await comparePermutations(archiveDir, successfulConfigs, key)) {
-      console.log(`[private-state-topology] Topology verified for ${family}: ${successfulConfigs.join(', ')}`);
+    if (await comparePermutations(archiveDir, successfulVariants, key)) {
+      console.log(`[private-state-topology] Topology verified for ${family}: ${successfulVariants.join(', ')}`);
     }
   } finally {
-    if (anvilMayBeRunning) {
-      await stopPrivateStateAnvil(packageRoot);
-    }
     await fs.rm(workDir, { recursive: true, force: true });
   }
 };
@@ -205,19 +307,20 @@ const fullMatrix: readonly Readonly<{ family: Family; args: readonly string[] }>
 
 const main = async (): Promise<void> => {
   const [requestedFamily, ...familyArgs] = process.argv.slice(2);
+  const manifest = await loadTopologyVariantManifest();
   if (requestedFamily === 'all') {
     for (const entry of fullMatrix) {
-      await runFamily(entry.family, entry.args);
+      await runFamily(entry.family, entry.args, manifest.variants[entry.family]);
     }
     return;
   }
   if (requestedFamily !== 'mint' && requestedFamily !== 'transfer' && requestedFamily !== 'redeem') {
     throw new Error('Usage: run-private-state-topology-matrix.ts <all|mint|transfer|redeem> [family options]');
   }
-  await runFamily(requestedFamily, familyArgs);
+  await runFamily(requestedFamily, familyArgs, manifest.variants[requestedFamily]);
 };
 
-void main().catch((error) => {
+void main().catch(error => {
   console.error(error);
   process.exit(1);
 });

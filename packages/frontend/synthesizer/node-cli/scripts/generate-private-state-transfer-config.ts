@@ -43,7 +43,13 @@ const packageRoot = path.resolve(__dirname, '..');
 const scriptsEnvPath = path.resolve(__dirname, '.env');
 const packageEnvPath = path.resolve(packageRoot, '.env');
 const defaultOutputPath = path.resolve(packageRoot, 'scripts', 'private-state-transfer-config.json');
-const defaultDeploymentManifestPath = path.resolve(packageRoot, 'scripts', 'deployment', 'private-state', 'deployment.31337.latest.json');
+const defaultDeploymentManifestPath = path.resolve(
+  packageRoot,
+  'scripts',
+  'deployment',
+  'private-state',
+  'deployment.31337.latest.json',
+);
 const DEFAULT_ANVIL_RPC_URL = 'http://127.0.0.1:8545';
 const DEFAULT_ANVIL_MNEMONIC = 'test test test test test test test test test test test junk';
 const DEFAULT_PARTICIPANT_COUNT = 4;
@@ -64,7 +70,10 @@ const applyEnvFileIfPresent = (targetPath: string) => {
         continue;
       }
       const key = line.slice(0, separatorIndex).trim();
-      const value = line.slice(separatorIndex + 1).trim().replace(/^['"]|['"]$/gu, '');
+      const value = line
+        .slice(separatorIndex + 1)
+        .trim()
+        .replace(/^['"]|['"]$/gu, '');
       if (!(key in process.env)) {
         process.env[key] = value;
       }
@@ -83,6 +92,7 @@ type ParsedArgs = {
   output?: string;
   participants: number;
   sender: number;
+  txNonce: number;
   toAccounts?: number[];
   extraCommitments: number;
   saltLabel?: string;
@@ -137,6 +147,7 @@ const parseArgs = (): ParsedArgs => {
   const args: ParsedArgs = {
     participants: DEFAULT_PARTICIPANT_COUNT,
     sender: 0,
+    txNonce: DEFAULT_L2_TX_NONCE,
     extraCommitments: 0,
     inputCount: 1,
     outputCount: 2,
@@ -171,9 +182,12 @@ const parseArgs = (): ParsedArgs => {
       case '-s':
         args.sender = parseInteger(consumeValue(current), 'sender');
         break;
+      case '--tx-nonce':
+        args.txNonce = parseInteger(consumeValue(current), 'tx-nonce');
+        break;
       case '--to-accounts': {
         const rawValue = consumeValue(current);
-        args.toAccounts = rawValue.split(',').map((value) => parseInteger(value.trim(), 'to-accounts'));
+        args.toAccounts = rawValue.split(',').map(value => parseInteger(value.trim(), 'to-accounts'));
         break;
       }
       case '--extra-commitments':
@@ -217,11 +231,7 @@ const parseArgs = (): ParsedArgs => {
 const buildParticipants = (mnemonic: string, participantCount: number): ParticipantEntry[] => {
   const participants: ParticipantEntry[] = [];
   for (let index = 0; index < participantCount; index += 1) {
-    const wallet = ethers.HDNodeWallet.fromPhrase(
-      mnemonic,
-      undefined,
-      `m/44'/60'/0'/0/${index}`,
-    );
+    const wallet = ethers.HDNodeWallet.fromPhrase(mnemonic, undefined, `m/44'/60'/0'/0/${index}`);
     participants.push({
       addressL1: wallet.address as `0x${string}`,
       prvSeedL2: `private-state participant ${index}`,
@@ -283,23 +293,29 @@ const main = async () => {
   const outputPath = args.output ? path.resolve(process.cwd(), String(args.output)) : defaultOutputPath;
   const participantCount = args.participants;
   const senderIndex = args.sender;
+  const txNonce = args.txNonce;
   const toAccounts = args.toAccounts;
   const extraCommitments = args.extraCommitments;
   const saltLabel = args.saltLabel?.trim() ?? '';
   const inputCount = args.inputCount;
   const outputCount = args.outputCount;
-  const rpcUrl = typeof args.rpcUrl === 'string' && args.rpcUrl.trim().length > 0
-    ? args.rpcUrl.trim()
-    : process.env.ANVIL_RPC_URL?.trim() || DEFAULT_ANVIL_RPC_URL;
-  const mnemonic = typeof args.mnemonic === 'string' && args.mnemonic.trim().length > 0
-    ? args.mnemonic.trim()
-    : process.env.APPS_ANVIL_MNEMONIC?.trim() || DEFAULT_ANVIL_MNEMONIC;
+  const rpcUrl =
+    typeof args.rpcUrl === 'string' && args.rpcUrl.trim().length > 0
+      ? args.rpcUrl.trim()
+      : process.env.ANVIL_RPC_URL?.trim() || DEFAULT_ANVIL_RPC_URL;
+  const mnemonic =
+    typeof args.mnemonic === 'string' && args.mnemonic.trim().length > 0
+      ? args.mnemonic.trim()
+      : process.env.APPS_ANVIL_MNEMONIC?.trim() || DEFAULT_ANVIL_MNEMONIC;
 
   if (participantCount < 2) {
     throw new Error('participants must be >= 2');
   }
   if (senderIndex < 0 || senderIndex >= participantCount) {
     throw new Error(`sender must be between 0 and ${participantCount - 1}`);
+  }
+  if (txNonce < 0) {
+    throw new Error('tx-nonce must be non-negative');
   }
   if (extraCommitments < 0) {
     throw new Error('extra-commitments must be >= 0');
@@ -367,22 +383,26 @@ const main = async () => {
   const inputNotes = Array.from({ length: inputCount }, (_, index) => ({
     owner: senderAddress,
     value: inputValueHex,
-    salt: toFieldValue(`private-state-transfer-input-sender-${senderIndex}-${inputCount}-${outputCount}-${saltLabel}-${index}`),
+    salt: toFieldValue(
+      `private-state-transfer-input-sender-${senderIndex}-${inputCount}-${outputCount}-${saltLabel}-${index}`,
+    ),
   })) as PrivateStateTransferConfig['inputNotes'];
-  const defaultOutputOwners = outputCount === 1
-    ? [recipientOneAddress]
-    : outputCount === 2
-      ? [recipientOneAddress, senderAddress]
-      : [recipientOneAddress, senderAddress, recipientTwoAddress];
-  const outputOwners = toAccounts === undefined
-    ? defaultOutputOwners
-    : toAccounts.map((accountIndex) => {
-      const accountAddress = participants[accountIndex]?.addressL1;
-      if (!accountAddress) {
-        throw new Error(`Could not resolve toAccount at index ${accountIndex}`);
-      }
-      return accountAddress;
-    });
+  const defaultOutputOwners =
+    outputCount === 1
+      ? [recipientOneAddress]
+      : outputCount === 2
+        ? [recipientOneAddress, senderAddress]
+        : [recipientOneAddress, senderAddress, recipientTwoAddress];
+  const outputOwners =
+    toAccounts === undefined
+      ? defaultOutputOwners
+      : toAccounts.map(accountIndex => {
+          const accountAddress = participants[accountIndex]?.addressL1;
+          if (!accountAddress) {
+            throw new Error(`Could not resolve toAccount at index ${accountIndex}`);
+          }
+          return accountAddress;
+        });
   const transferOutputs = outputOwners.map((owner, index) => ({
     owner,
     value: outputValueHex,
@@ -390,7 +410,7 @@ const main = async () => {
       `private-state-transfer-output-sender-${senderIndex}-${inputCount}-${outputCount}-${saltLabel}-${index}`,
     ),
   })) as PrivateStateTransferOutput[];
-  const outputNotes = transferOutputs.map((output) => ({
+  const outputNotes = transferOutputs.map(output => ({
     owner: output.owner,
     value: output.value,
     salt: computeReplayPrivateStateEncryptedNoteSalt(output.encryptedNoteValue),
@@ -403,7 +423,7 @@ const main = async () => {
     storageConfigs: [],
     callCodeAddresses: [],
     blockNumber: 0,
-    txNonce: DEFAULT_L2_TX_NONCE,
+    txNonce,
     calldata: '0x',
     senderIndex,
     functionName,
@@ -436,7 +456,9 @@ const main = async () => {
     const dormantNote: PrivateStateNote = {
       owner: senderAddress,
       value: inputValueHex,
-      salt: toFieldValue(`private-state-transfer-dormant-sender-${senderIndex}-${inputCount}-${outputCount}-${saltLabel}-${index}`),
+      salt: toFieldValue(
+        `private-state-transfer-dormant-sender-${senderIndex}-${inputCount}-${outputCount}-${saltLabel}-${index}`,
+      ),
     };
     const commitment = computeReplayPrivateStateNoteCommitment(dormantNote);
     inputCommitments.push(commitment);
@@ -444,19 +466,22 @@ const main = async () => {
     await provider.send('anvil_setStorageAt', [manifest.contracts.controller, noteRegistryKey, truthyValue]);
   }
 
+  await provider.send('anvil_setNonce', [senderAddress, ethers.toBeHex(txNonce)]);
   await provider.send('evm_mine', []);
   const blockNumber = await provider.getBlockNumber();
 
-  const noteRegistryKeys = inputCommitments.map((commitment) =>
-    computeReplayPrivateStateMappingKey(commitment, commitmentExistsSlot));
+  const noteRegistryKeys = inputCommitments.map(commitment =>
+    computeReplayPrivateStateMappingKey(commitment, commitmentExistsSlot),
+  );
 
   config.blockNumber = blockNumber;
-  config.storageConfigs = managedStorageAddresses.map((address) => ({
+  config.storageConfigs = managedStorageAddresses.map(address => ({
     address,
     userStorageSlots: [],
-    preAllocatedKeys: address.toLowerCase() === manifest.contracts.controller.toLowerCase()
-      ? mergeUniqueHexValues([], noteRegistryKeys)
-      : [],
+    preAllocatedKeys:
+      address.toLowerCase() === manifest.contracts.controller.toLowerCase()
+        ? mergeUniqueHexValues([], noteRegistryKeys)
+        : [],
   }));
   config.callCodeAddresses = managedStorageAddresses;
 
@@ -464,7 +489,7 @@ const main = async () => {
   console.log(`Saved private-state transfer config to ${outputPath}`);
 };
 
-void main().catch((err) => {
+void main().catch(err => {
   console.error(err);
   process.exit(1);
 });

@@ -102,7 +102,7 @@
     "ethereum-cryptography": "^3.0.0",
     "eventemitter3": "^5.0.1",
     "poseidon-bls12381": "^1.0.2",
-    "tokamak-l2js": "0.1.5",
+    "tokamak-l2js": "0.2.0",
     "verkle-cryptography-wasm": "^0.4.8",
     "vitest": "^2.1.8"
   },

@@ -67,7 +67,13 @@ const packageRoot = path.resolve(__dirname, '..');
 const scriptsEnvPath = path.resolve(__dirname, '.env');
 const packageEnvPath = path.resolve(packageRoot, '.env');
 const defaultOutputPath = path.resolve(packageRoot, 'scripts', 'private-state-mint-config.json');
-const defaultDeploymentManifestPath = path.resolve(packageRoot, 'scripts', 'deployment', 'private-state', 'deployment.31337.latest.json');
+const defaultDeploymentManifestPath = path.resolve(
+  packageRoot,
+  'scripts',
+  'deployment',
+  'private-state',
+  'deployment.31337.latest.json',
+);
 const DEFAULT_ANVIL_RPC_URL = 'http://127.0.0.1:8545';
 const DEFAULT_ANVIL_MNEMONIC = 'test test test test test test test test test test test junk';
 const DEFAULT_PARTICIPANT_COUNT = 4;
@@ -89,7 +95,10 @@ const applyEnvFileIfPresent = (targetPath: string) => {
         continue;
       }
       const key = line.slice(0, separatorIndex).trim();
-      const value = line.slice(separatorIndex + 1).trim().replace(/^['"]|['"]$/gu, '');
+      const value = line
+        .slice(separatorIndex + 1)
+        .trim()
+        .replace(/^['"]|['"]$/gu, '');
       if (!(key in process.env)) {
         process.env[key] = value;
       }
@@ -108,6 +117,7 @@ type ParsedArgs = {
   output?: string;
   participants: number;
   sender: number;
+  txNonce: number;
   noteOwner: number;
   outputs: 1 | 2 | 3 | 4 | 5 | 6;
   extraBalanceAccounts: number[];
@@ -122,6 +132,7 @@ const parseArgs = (): ParsedArgs => {
   const args: ParsedArgs = {
     participants: DEFAULT_PARTICIPANT_COUNT,
     sender: 0,
+    txNonce: DEFAULT_L2_TX_NONCE,
     noteOwner: DEFAULT_NOTE_OWNER_INDEX,
     outputs: 1,
     extraBalanceAccounts: [],
@@ -156,13 +167,23 @@ const parseArgs = (): ParsedArgs => {
       case '-s':
         args.sender = parseInteger(consumeValue(current), 'sender');
         break;
+      case '--tx-nonce':
+        args.txNonce = parseInteger(consumeValue(current), 'tx-nonce');
+        break;
       case '--note-owner':
         args.noteOwner = parseInteger(consumeValue(current), 'note-owner');
         break;
       case '--outputs':
       case '-m': {
         const outputCount = parseInteger(consumeValue(current), 'outputs');
-        if (outputCount !== 1 && outputCount !== 2 && outputCount !== 3 && outputCount !== 4 && outputCount !== 5 && outputCount !== 6) {
+        if (
+          outputCount !== 1 &&
+          outputCount !== 2 &&
+          outputCount !== 3 &&
+          outputCount !== 4 &&
+          outputCount !== 5 &&
+          outputCount !== 6
+        ) {
           throw new Error('outputs must be 1, 2, 3, 4, 5, or 6');
         }
         args.outputs = outputCount;
@@ -170,9 +191,10 @@ const parseArgs = (): ParsedArgs => {
       }
       case '--extra-balance-accounts': {
         const rawValue = consumeValue(current);
-        args.extraBalanceAccounts = rawValue.length === 0
-          ? []
-          : rawValue.split(',').map((value) => parseInteger(value.trim(), 'extra-balance-accounts'));
+        args.extraBalanceAccounts =
+          rawValue.length === 0
+            ? []
+            : rawValue.split(',').map(value => parseInteger(value.trim(), 'extra-balance-accounts'));
         break;
       }
       case '--rpc-url':
@@ -224,11 +246,7 @@ const parseAmount = (value: unknown): bigint => {
 const buildParticipants = async (mnemonic: string, participantCount: number): Promise<ParticipantEntry[]> => {
   const participants: ParticipantEntry[] = [];
   for (let index = 0; index < participantCount; index += 1) {
-    const wallet = ethers.HDNodeWallet.fromPhrase(
-      mnemonic,
-      undefined,
-      `m/44'/60'/0'/0/${index}`,
-    );
+    const wallet = ethers.HDNodeWallet.fromPhrase(mnemonic, undefined, `m/44'/60'/0'/0/${index}`);
     const noteReceive = await deriveNoteReceiveKeyMaterial({
       signer: wallet,
       chainId: 31337,
@@ -274,29 +292,33 @@ const main = async () => {
   const args = parseArgs();
   const deploymentManifestPath = args.deploymentManifestPath ?? defaultDeploymentManifestPath;
   const storageLayoutPath = args.storageLayoutPath;
-  const outputPath = args.output
-    ? path.resolve(process.cwd(), String(args.output))
-    : defaultOutputPath;
+  const outputPath = args.output ? path.resolve(process.cwd(), String(args.output)) : defaultOutputPath;
   const participantCount = args.participants;
   const senderIndex = args.sender;
+  const txNonce = args.txNonce;
   const rawNoteOwnerIndex = args.noteOwner;
   const noteOwnerIndex = rawNoteOwnerIndex === DEFAULT_NOTE_OWNER_INDEX ? senderIndex : rawNoteOwnerIndex;
   const outputCount = args.outputs;
   const extraBalanceAccounts = args.extraBalanceAccounts;
   const outputNoteValue = parseAmount(args.amount);
   const totalNoteValue = outputNoteValue * BigInt(outputCount);
-  const rpcUrl = typeof args.rpcUrl === 'string' && args.rpcUrl.trim().length > 0
-    ? args.rpcUrl.trim()
-    : process.env.ANVIL_RPC_URL?.trim() || DEFAULT_ANVIL_RPC_URL;
-  const mnemonic = typeof args.mnemonic === 'string' && args.mnemonic.trim().length > 0
-    ? args.mnemonic.trim()
-    : process.env.APPS_ANVIL_MNEMONIC?.trim() || DEFAULT_ANVIL_MNEMONIC;
+  const rpcUrl =
+    typeof args.rpcUrl === 'string' && args.rpcUrl.trim().length > 0
+      ? args.rpcUrl.trim()
+      : process.env.ANVIL_RPC_URL?.trim() || DEFAULT_ANVIL_RPC_URL;
+  const mnemonic =
+    typeof args.mnemonic === 'string' && args.mnemonic.trim().length > 0
+      ? args.mnemonic.trim()
+      : process.env.APPS_ANVIL_MNEMONIC?.trim() || DEFAULT_ANVIL_MNEMONIC;
 
   if (participantCount < 2) {
     throw new Error('participants must be >= 2');
   }
   if (senderIndex < 0 || senderIndex >= participantCount) {
     throw new Error(`sender must be between 0 and ${participantCount - 1}`);
+  }
+  if (txNonce < 0) {
+    throw new Error('tx-nonce must be non-negative');
   }
   if (noteOwnerIndex < 0 || noteOwnerIndex >= participantCount) {
     throw new Error(`note-owner must be between 0 and ${participantCount - 1}`);
@@ -342,9 +364,10 @@ const main = async () => {
     throw new Error(`Failed to resolve ${functionName} selector`);
   }
 
-  const noteValues = Array.from({ length: outputCount }, () =>
-    ethers.toBeHex(outputNoteValue) as `0x${string}`,
-  ) as [`0x${string}`, ...`0x${string}`[]];
+  const noteValues = Array.from({ length: outputCount }, () => ethers.toBeHex(outputNoteValue) as `0x${string}`) as [
+    `0x${string}`,
+    ...`0x${string}`[],
+  ];
   const noteSalts = Array.from({ length: outputCount }, (_, index) =>
     deriveReplayPrivateStateFieldValue(
       `private-state-mint-sender-${senderIndex}-owner-${noteOwnerIndex}-output-${index}`,
@@ -357,7 +380,7 @@ const main = async () => {
       storageConfigs: [],
       callCodeAddresses: [],
       blockNumber: 0,
-      txNonce: DEFAULT_L2_TX_NONCE,
+      txNonce,
       calldata: '0x',
       senderIndex,
       noteOwnerIndex,
@@ -389,6 +412,7 @@ const main = async () => {
       liquidBalanceStorageValue,
     ]);
   }
+  await provider.send('anvil_setNonce', [senderAddress, ethers.toBeHex(txNonce)]);
   await provider.send('evm_mine', []);
 
   const blockNumber = await provider.getBlockNumber();
@@ -396,16 +420,15 @@ const main = async () => {
   const config: PrivateStateMintConfig = {
     network: 'anvil',
     participants,
-    storageConfigs: managedStorageAddresses.map((address) => ({
+    storageConfigs: managedStorageAddresses.map(address => ({
       address,
       userStorageSlots: [],
-      preAllocatedKeys: address.toLowerCase() === manifest.contracts.l2AccountingVault.toLowerCase()
-        ? liquidBalanceStorageKeys
-        : [],
+      preAllocatedKeys:
+        address.toLowerCase() === manifest.contracts.l2AccountingVault.toLowerCase() ? liquidBalanceStorageKeys : [],
     })),
     callCodeAddresses: managedStorageAddresses,
     blockNumber,
-    txNonce: DEFAULT_L2_TX_NONCE,
+    txNonce,
     calldata,
     senderIndex,
     noteOwnerIndex,
@@ -423,7 +446,7 @@ const main = async () => {
   console.log(`Saved private-state mint config to ${outputPath}`);
 };
 
-void main().catch((err) => {
+void main().catch(err => {
   console.error(err);
   process.exit(1);
 });
