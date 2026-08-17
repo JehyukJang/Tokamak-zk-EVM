@@ -1,11 +1,16 @@
 import { Placements, PlacementVariables } from '../../synthesizer/types/placements.ts';
-import { BUFFER_LIST, SubcircuitInfoByNameEntry } from '../../subcircuit/configuredTypes.ts';
+import {
+  BUFFER_LIST,
+  type ReservedBuffer,
+  type SubcircuitInfoByNameEntry,
+  type SubcircuitNames,
+} from '../../subcircuit/configuredTypes.ts';
 import { VARIABLE_DESCRIPTION } from '../../synthesizer/types/buffers.ts';
+import type { DataPt } from '../../synthesizer/types/dataStructure.ts';
 import { addHexPrefix, hexToBigInt } from '@ethereumjs/util';
 import type { ResolvedSubcircuitLibrary } from '../../subcircuit/libraryTypes.ts';
 import type { Permutation } from '../types/types.ts';
 import type { VariableGenerationResult } from './variableGenerator.ts';
-
 
 type PlacementWireIndex = { globalWireId: number; placementId: number };
 
@@ -28,8 +33,8 @@ export class PermutationGenerator {
     variableGeneration: VariableGenerationResult,
     private readonly subcircuitLibrary: ResolvedSubcircuitLibrary,
   ) {
-    this.circuitPlacements = variableGeneration.circuitPlacements
-    this.placementVariables = variableGeneration.placementVariables
+    this.circuitPlacements = variableGeneration.circuitPlacements;
+    this.placementVariables = variableGeneration.placementVariables;
     // Construct permutation
     this.permGroup = this._buildPermGroup();
 
@@ -38,9 +43,7 @@ export class PermutationGenerator {
     const numWires = setupParams.l_D - setupParams.l;
     const numPlacements = this.circuitPlacements.length;
 
-    this.permutationY = Array.from({ length: numWires }, () =>
-      Array.from({ length: numPlacements }, (_, i) => i),
-    );
+    this.permutationY = Array.from({ length: numWires }, () => Array.from({ length: numPlacements }, (_, i) => i));
     // Example:
     // [
     //   [0, 1, 2, 3],
@@ -48,9 +51,7 @@ export class PermutationGenerator {
     //   [0, 1, 2, 3]
     // ]
 
-    this.permutationX = Array.from({ length: numWires }, (_, h) =>
-      Array.from({ length: numPlacements }, () => h),
-    );
+    this.permutationX = Array.from({ length: numWires }, (_, h) => Array.from({ length: numPlacements }, () => h));
     // Example:
     // [
     //   [0, 0, 0, 0],
@@ -60,7 +61,7 @@ export class PermutationGenerator {
     // "permutationY[i][h]=j and permutationX[i][h]=k" means that the i-th wire of the h-th placement is a copy of the k-th wire of the j-th placement.
 
     // Now finally correct permutationY and permutationX according to permGroup
-    this.permutation= this._correctPermutation();
+    this.permutation = this._correctPermutation();
   }
 
   private _correctPermutation(): {
@@ -71,15 +72,22 @@ export class PermutationGenerator {
   }[] {
     let permutationFile = [];
     const { setupParams } = this.subcircuitLibrary.data;
+    const expectedInterfaceCells = this._validatePermGroupOwnership();
+    const successorCount = new Map<string, number>();
+    const predecessorCount = new Map<string, number>();
     for (const _group of this.permGroup) {
       const group = [..._group.keys()];
       const groupLength = group.length;
-      if (groupLength > 1) {
-        for (let i = 0; i < groupLength; i++) {
-          const element: PlacementWireIndex = JSON.parse(group[i]);
-          const nextElement: PlacementWireIndex = JSON.parse(
-            group[(i + 1) % groupLength],
-          );
+      for (let i = 0; i < groupLength; i++) {
+        const element: PlacementWireIndex = JSON.parse(group[i]);
+        const nextElement: PlacementWireIndex = JSON.parse(group[(i + 1) % groupLength]);
+        this._assertPermutationCoordinate(element);
+        this._assertPermutationCoordinate(nextElement);
+        const elementKey = group[i]!;
+        const nextElementKey = group[(i + 1) % groupLength]!;
+        successorCount.set(elementKey, (successorCount.get(elementKey) ?? 0) + 1);
+        predecessorCount.set(nextElementKey, (predecessorCount.get(nextElementKey) ?? 0) + 1);
+        if (groupLength > 1) {
           permutationFile.push({
             // wire id
             row: element.globalWireId - setupParams.l,
@@ -92,20 +100,17 @@ export class PermutationGenerator {
           });
           const rowIdx = permutationFile[permutationFile.length - 1].row;
           const colIdx = permutationFile[permutationFile.length - 1].col;
-          if (
-            colIdx >= this.circuitPlacements.length ||
-            rowIdx >= setupParams.l_D - setupParams.l
-          ) {
-            throw new Error('permGroup needs to be debugged');
-          }
-          this.permutationX[rowIdx][colIdx] =
-            permutationFile[permutationFile.length - 1].X;
-          this.permutationY[rowIdx][colIdx] =
-            permutationFile[permutationFile.length - 1].Y;
+          this.permutationX[rowIdx][colIdx] = permutationFile[permutationFile.length - 1].X;
+          this.permutationY[rowIdx][colIdx] = permutationFile[permutationFile.length - 1].Y;
         }
       }
     }
-    this._validatePermutation()
+    for (const key of expectedInterfaceCells) {
+      if (successorCount.get(key) !== 1 || predecessorCount.get(key) !== 1) {
+        throw new Error('Permutation: Interface-cell relation is not bijective.');
+      }
+    }
+    this._validatePermutation();
     return permutationFile;
   }
 
@@ -154,7 +159,7 @@ export class PermutationGenerator {
           const pointedSubcircuitInfo = subcircuitInfoByName.get(pointedPlacement.name)!;
           // Looking for the parent of this wire
           const pointedOutputId = pointedPlacement.outPts.findIndex(
-            (candidateOutPt) => candidateOutPt.wireIndex! === thisInPt.wireIndex!,
+            candidateOutPt => candidateOutPt.wireIndex! === thisInPt.wireIndex!,
           );
           if (pointedOutputId === -1) {
             throw new Error(`Permutation: A wire is referring to nothing.`);
@@ -184,24 +189,8 @@ export class PermutationGenerator {
           }
         }
         if (!hasParent) {
-          // The input wire has no parent, meaning that it can form a group as a representative, only when it is in one of the following cases:
-          // 1) it is unused or
-          // 2) it is a private input wire of PRIVATE_IN or STORAGE_LOAD.
-          let isQualified = false;
-          if (
-            thisInPt === undefined ||
-            thisInPt.source === BUFFER_LIST.findIndex(buffer => buffer === 'PRIVATE_IN') ||
-            (
-              thisPlacement.name === 'bufferStorageLoad' &&
-              thisInPt.source === thisPlacementId
-            )
-          ) {
-            isQualified = true;
-          }
-          if (!isQualified) {
-            throw new Error(
-              'An input interface wire forms a group as a representative, although it is not qualified.',
-            );
+          if (!this._isPermittedUnparentedInput(thisPlacementId, thisPlacement.name, thisInPt)) {
+            throw new Error('An input interface wire forms a group as a representative, although it is not qualified.');
           }
           const groupEntry: Map<string, boolean> = new Map();
           groupEntry.set(thisKey, true);
@@ -219,26 +208,109 @@ export class PermutationGenerator {
 
     // Forcely adding special permutation for the constant wires of all library subcircuits
     // The representative is CIRCOM_CONST_ONE, which should be in the current permGroup already.
-    const repWirePlacementId = VARIABLE_DESCRIPTION.CIRCOM_CONST_ONE.source
-    const repWirePlacementWireIndex = VARIABLE_DESCRIPTION.CIRCOM_CONST_ONE.wireIndex
+    const repWirePlacementId = VARIABLE_DESCRIPTION.CIRCOM_CONST_ONE.source;
+    const repWirePlacementWireIndex = VARIABLE_DESCRIPTION.CIRCOM_CONST_ONE.wireIndex;
     if (this.circuitPlacements[repWirePlacementId].outPts[repWirePlacementWireIndex].value !== 1n) {
-      throw new Error(`Invalid pointer to CIRCOM_CONST_ONE wire`)
+      throw new Error(`Invalid pointer to CIRCOM_CONST_ONE wire`);
     }
-    const repWireSubcircuitInfo = subcircuitInfoByName.get(this.circuitPlacements[repWirePlacementId].name)!
-    const repWireLocalId = repWireSubcircuitInfo.outWireIndex + repWirePlacementWireIndex
-    const repPermGroupKey = this._keyOf({ placementId: VARIABLE_DESCRIPTION.CIRCOM_CONST_ONE.source, globalWireId: repWireSubcircuitInfo.flattenMap[repWireLocalId]})
-    const repContainingGroupIndices: number[] = []
-    permGroup.forEach( (m, i) => { if (m.has(repPermGroupKey)) repContainingGroupIndices.push(i)})
+    const repWireSubcircuitInfo = subcircuitInfoByName.get(this.circuitPlacements[repWirePlacementId].name)!;
+    const repWireLocalId = repWireSubcircuitInfo.outWireIndex + repWirePlacementWireIndex;
+    const repPermGroupKey = this._keyOf({
+      placementId: VARIABLE_DESCRIPTION.CIRCOM_CONST_ONE.source,
+      globalWireId: repWireSubcircuitInfo.flattenMap[repWireLocalId],
+    });
+    const repContainingGroupIndices: number[] = [];
+    permGroup.forEach((m, i) => {
+      if (m.has(repPermGroupKey)) repContainingGroupIndices.push(i);
+    });
     if (repContainingGroupIndices.length !== 1) {
-      throw new Error(`Something wrong with searching CIRCOM_CONST_ONE wire from the permutation group`)
+      throw new Error(`Something wrong with searching CIRCOM_CONST_ONE wire from the permutation group`);
     }
-    const circomConstPermGroup = permGroup[repContainingGroupIndices[0]]
+    const circomConstPermGroup = permGroup[repContainingGroupIndices[0]];
     for (const [placementId, placement] of this.circuitPlacements.entries()) {
-      const subcircuitInfo = subcircuitInfoByName.get(placement.name)!
-      const key = this._keyOf({ placementId, globalWireId: subcircuitInfo.flattenMap[0]})
-      circomConstPermGroup.set(key, true)
+      const subcircuitInfo = subcircuitInfoByName.get(placement.name)!;
+      const key = this._keyOf({ placementId, globalWireId: subcircuitInfo.flattenMap[0] });
+      circomConstPermGroup.set(key, true);
     }
     return permGroup;
+  }
+
+  private _isPermittedUnparentedInput(
+    placementId: number,
+    subcircuitName: SubcircuitNames,
+    input: DataPt | undefined,
+  ): boolean {
+    const buffer = this._getBufferForSubcircuit(subcircuitName);
+    if (buffer === undefined) return false;
+    if (input === undefined) return true;
+    if (input.source !== placementId) return false;
+    return this.subcircuitLibrary.subcircuitBufferMapping[buffer]?.bufferDirection === 'in';
+  }
+
+  private _getBufferForSubcircuit(subcircuitName: SubcircuitNames): ReservedBuffer | undefined {
+    const matches = BUFFER_LIST.filter(
+      buffer => this.subcircuitLibrary.subcircuitBufferMapping[buffer]?.name === subcircuitName,
+    );
+    if (matches.length > 1) {
+      throw new Error(`Permutation: ${subcircuitName} belongs to multiple buffers.`);
+    }
+    return matches[0];
+  }
+
+  private _validatePermGroupOwnership(): Set<string> {
+    const { setupParams } = this.subcircuitLibrary.data;
+    const expected = new Set<string>();
+    const subcircuitInfoByName = this.subcircuitLibrary.subcircuitInfoByName;
+    for (const [placementId, placement] of this.circuitPlacements.entries()) {
+      const subcircuit = subcircuitInfoByName.get(placement.name)!;
+      const localInterfaceWires = [
+        0,
+        ...Array.from({ length: subcircuit.NOutWires }, (_, index) => subcircuit.outWireIndex + index),
+        ...Array.from({ length: subcircuit.NInWires }, (_, index) => subcircuit.inWireIndex + index),
+      ];
+      for (const localWireId of localInterfaceWires) {
+        const globalWireId = subcircuit.flattenMap[localWireId];
+        if (globalWireId === undefined) {
+          throw new Error(`Permutation: ${placement.name} is missing an interface-wire map.`);
+        }
+        if (globalWireId >= setupParams.l && globalWireId < setupParams.l_D) {
+          expected.add(this._keyOf({ placementId, globalWireId }));
+        }
+      }
+    }
+
+    const ownerByCell = new Map<string, number>();
+    for (const [groupIndex, group] of this.permGroup.entries()) {
+      for (const key of group.keys()) {
+        if (!expected.has(key)) {
+          throw new Error('Permutation: A group contains a non-interface cell.');
+        }
+        if (ownerByCell.has(key)) {
+          throw new Error('Permutation: An interface cell belongs to multiple groups.');
+        }
+        ownerByCell.set(key, groupIndex);
+      }
+    }
+    for (const key of expected) {
+      if (!ownerByCell.has(key)) {
+        throw new Error('Permutation: An interface cell belongs to no group.');
+      }
+    }
+    return expected;
+  }
+
+  private _assertPermutationCoordinate(coordinate: PlacementWireIndex): void {
+    const { setupParams } = this.subcircuitLibrary.data;
+    if (
+      !Number.isInteger(coordinate.placementId) ||
+      !Number.isInteger(coordinate.globalWireId) ||
+      coordinate.placementId < 0 ||
+      coordinate.placementId >= this.circuitPlacements.length ||
+      coordinate.globalWireId < setupParams.l ||
+      coordinate.globalWireId >= setupParams.l_D
+    ) {
+      throw new Error('Permutation: Coordinate is outside the internal interface domain.');
+    }
   }
 
   private _validatePermutation(): void {
@@ -247,14 +319,9 @@ export class PermutationGenerator {
     let permutationDetected = false;
     const circomConsts = Array(setupParams.l_D).fill('0x01');
     let b: string[][] = []; // ab.size = l_D \times s_max
-    for (const [
-      placementId,
-      placementVariablesEntry,
-    ] of this.placementVariables.entries()) {
+    for (const [placementId, placementVariablesEntry] of this.placementVariables.entries()) {
       const variables = placementVariablesEntry.variables;
-      const subcircuitInfo = subcircuitInfoByName.get(
-        this.circuitPlacements[placementId]!.name,
-      )!;
+      const subcircuitInfo = subcircuitInfoByName.get(this.circuitPlacements[placementId]!.name)!;
       const idxSet = new IdxSet(subcircuitInfo);
       if (subcircuitInfo.flattenMap![idxSet.idxOut] >= setupParams.l_D) {
         throw new Error('Incorrect flatten map');
@@ -310,9 +377,7 @@ class IdxSet {
     this.idxPrv = this.idxIn + this.NInWires;
 
     if (!Array.isArray(subcircuitInfo.flattenMap) || subcircuitInfo.flattenMap.length == 0) {
-      throw new Error(
-        `IdxSet: SubcircuitInfo is missing required flattenMap for ${subcircuitInfo.id}`,
-      );
+      throw new Error(`IdxSet: SubcircuitInfo is missing required flattenMap for ${subcircuitInfo.id}`);
     }
     this.flattenMap = subcircuitInfo.flattenMap;
   }

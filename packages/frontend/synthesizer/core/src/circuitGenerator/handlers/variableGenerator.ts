@@ -1,19 +1,9 @@
 import { addHexPrefix, bigIntToHex } from '@ethereumjs/util';
 import { BUFFER_LIST } from '../../subcircuit/configuredTypes.ts';
 import { DataPtFactory } from '../../synthesizer/dataStructure/dataPt.ts';
-import {
-  getDataPtWireCount,
-  type DataPt,
-} from '../../synthesizer/types/dataStructure.ts';
-import {
-  PlacementEntry,
-  Placements,
-  PlacementVariables,
-} from '../../synthesizer/types/placements.ts';
-import {
-  placementEntryDeepCopy,
-  placementsDeepCopy,
-} from '../../synthesizer/handlers/placementManager.ts';
+import { getDataPtWireCount, type DataPt } from '../../synthesizer/types/dataStructure.ts';
+import { PlacementEntry, Placements, PlacementVariables } from '../../synthesizer/types/placements.ts';
+import { placementEntryDeepCopy, placementsDeepCopy } from '../../synthesizer/handlers/placementManager.ts';
 import { builder } from '../utils/witness_calculator.ts';
 import { VARIABLE_DESCRIPTION } from '../../synthesizer/types/buffers.ts';
 import type { ResolvedSubcircuitLibrary } from '../../subcircuit/libraryTypes.ts';
@@ -51,18 +41,25 @@ export class VariableGenerator {
   }
 
   private _prepareCircuitInstance(
-    placement: PlacementEntry, 
+    placement: PlacementEntry,
     target: 'In' | 'Out',
   ): {
-    values: `0x${string}`[],
-    descriptions: string[],
-   } {
+    values: `0x${string}`[];
+    descriptions: string[];
+  } {
     const origPts = target === 'In' ? placement.inPts : placement.outPts;
+    const materializedPts = Array.from({ length: origPts.length }, (_, index) => origPts[index]);
+    if (materializedPts.some(point => point === undefined)) {
+      throw new Error(`Placement ${placement.name} has a sparse ${target} wire list`);
+    }
+    const isBuffer = BUFFER_LIST.some(
+      buffer => this.subcircuitLibrary.subcircuitBufferMapping[buffer]?.name === placement.name,
+    );
     const origValues = origPts.map(pt => addHexPrefix(pt.valueHex));
     const origDescs = origPts.map(pt => {
-      const desc = target === 'In' ? pt.extSource : pt.extDest
-      return desc ?? ''
-    })
+      const desc = target === 'In' ? pt.extSource : pt.extDest;
+      return desc ?? '';
+    });
     // Preparing input values
     const expectedLen =
       target === 'In'
@@ -72,16 +69,20 @@ export class VariableGenerator {
       throw new Error(`Placement at index ${placement.name} has excessive number of ${target} wires`);
     }
     if (expectedLen > origValues.length) {
+      if (!isBuffer) {
+        throw new Error(
+          `Placement ${placement.name} has ${origValues.length} ${target} wires, expected ${expectedLen}`,
+        );
+      }
       return {
         values: origValues.concat(Array(expectedLen - origValues.length).fill('0x00')),
         descriptions: origDescs.concat(Array(expectedLen - origValues.length).fill('')),
-      }
+      };
     } else {
       return {
         values: origValues,
         descriptions: origDescs,
-      }
-      
+      };
     }
   }
 
@@ -114,13 +115,9 @@ export class VariableGenerator {
           throw new Error(`Flatten map cannot be applied to the placement variables due to difference lengths`);
         }
         return {
-          subcircuitId: placement.subcircuitId, 
+          subcircuitId: placement.subcircuitId,
           variables,
-          instanceList: [
-            '', 
-            ...outs.descriptions, 
-            ...ins.descriptions,
-          ]
+          instanceList: ['', ...outs.descriptions, ...ins.descriptions],
         };
       }),
     );
@@ -142,11 +139,18 @@ export class VariableGenerator {
     for (let globalIdx = 0; globalIdx < l; globalIdx++) {
       const [subcircuitId, localVariableIdx] = globalWireList[globalIdx];
       if (subcircuitId !== -1 && localVariableIdx !== -1) {
-        const placementIndex = placementVariables.findIndex(entry => entry.subcircuitId === subcircuitId);
-        const placement = placementVariables[placementIndex];
-        const value = placement === undefined
-          ? undefined
-          : extractValue(placement, localVariableIdx);
+        const publicBuffers = BUFFER_LIST.filter(
+          buffer =>
+            this.subcircuitLibrary.subcircuitBufferMapping[buffer]?.id === subcircuitId && buffer !== 'PRIVATE_IN',
+        );
+        if (publicBuffers.length !== 1) {
+          throw new Error(`Public wire ${globalIdx} does not belong to one declared public buffer`);
+        }
+        const placements = placementVariables.filter(entry => entry.subcircuitId === subcircuitId);
+        if (placements.length !== 1) {
+          throw new Error(`Public buffer ${publicBuffers[0]} must have exactly one runtime placement`);
+        }
+        const value = extractValue(placements[0]!, localVariableIdx);
         if (value === undefined) {
           throw new Error('Something wrong in the Global Wire List or local placement variables. Need to be debugged.');
         }

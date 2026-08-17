@@ -12,7 +12,7 @@ import {
   type DataPt,
   type DataPtType,
 } from '../../../core/src/synthesizer/types/dataStructure.ts';
-import type { Placements } from '../../../core/src/synthesizer/types/placements.ts';
+import type { PlacementEntry, Placements, PlacementVariables } from '../../../core/src/synthesizer/types/placements.ts';
 
 const expand = (generator: VariableGenerator, dataPt: DataPt): DataPt[] =>
   (
@@ -36,19 +36,16 @@ const BUFFER_SUBCIRCUITS = [
 
 const privateBufferIndex = BUFFER_LIST.indexOf('PRIVATE_IN');
 
-const createBufferPlacements = (): Placements => BUFFER_SUBCIRCUITS.map((name, subcircuitId) => ({
-  name,
-  usage: BUFFER_LIST[subcircuitId],
-  subcircuitId,
-  inPts: [],
-  outPts: [],
-}));
+const createBufferPlacements = (): Placements =>
+  BUFFER_SUBCIRCUITS.map((name, subcircuitId) => ({
+    name,
+    usage: BUFFER_LIST[subcircuitId],
+    subcircuitId,
+    inPts: [],
+    outPts: [],
+  }));
 
-const addPrivateBufferValue = (
-  placements: Placements,
-  value: bigint,
-  dataPtType: DataPtType,
-): void => {
+const addPrivateBufferValue = (placements: Placements, value: bigint, dataPtType: DataPtType): void => {
   const placement = placements[privateBufferIndex];
   const inPt = dataPt(value, dataPtType, privateBufferIndex, placement.inPts.length);
   placement.inPts.push(inPt);
@@ -56,36 +53,107 @@ const addPrivateBufferValue = (
 };
 
 const createBufferGenerator = (privateBufferCapacity: number): VariableGenerator => {
-  const subcircuitBufferMapping = Object.fromEntries(BUFFER_LIST.map((buffer, index) => [
-    buffer,
-    {
-      name: BUFFER_SUBCIRCUITS[index],
-      NInWires: buffer === 'PRIVATE_IN' ? privateBufferCapacity : 1024,
-    },
-  ]));
+  const subcircuitBufferMapping = Object.fromEntries(
+    BUFFER_LIST.map((buffer, index) => [
+      buffer,
+      {
+        name: BUFFER_SUBCIRCUITS[index],
+        NInWires: buffer === 'PRIVATE_IN' ? privateBufferCapacity : 1024,
+      },
+    ]),
+  );
 
-  return new VariableGenerator({
-    placements: [],
-    subcircuitLibrary: {
+  return new VariableGenerator(
+    {
+      placements: [],
+      subcircuitLibrary: {
+        subcircuitBufferMapping,
+        data: { setupParams: { s_max: 256 } },
+      },
+    } as never,
+    {
       subcircuitBufferMapping,
       data: { setupParams: { s_max: 256 } },
-    },
-  } as never, {
-    subcircuitBufferMapping,
-    data: { setupParams: { s_max: 256 } },
-  } as never, []);
+    } as never,
+    [],
+  );
 };
 
-const convertAndValidateBuffers = (
-  generator: VariableGenerator,
-  placements: Placements,
-): void => {
+const convertAndValidateBuffers = (generator: VariableGenerator, placements: Placements): void => {
   const privateGenerator = generator as unknown as {
     _convertEVMWiresIntoCircomWires(placements: Placements): void;
     _validateBufferSizes(placements: Placements): void;
   };
   privateGenerator._convertEVMWiresIntoCircomWires(placements);
   privateGenerator._validateBufferSizes(placements);
+};
+
+const prepareCircuitInstance = (
+  generator: VariableGenerator,
+  placement: PlacementEntry,
+  target: 'In' | 'Out',
+): { values: `0x${string}`[]; descriptions: string[] } =>
+  (
+    generator as unknown as {
+      _prepareCircuitInstance(
+        placement: PlacementEntry,
+        target: 'In' | 'Out',
+      ): { values: `0x${string}`[]; descriptions: string[] };
+    }
+  )._prepareCircuitInstance(placement, target);
+
+const extractPublicProjection = (generator: VariableGenerator, placementVariables: PlacementVariables): string[] =>
+  (
+    generator as unknown as {
+      _extractPublicProjection<Value>(
+        placementVariables: PlacementVariables,
+        defaultValue: Value,
+        extractValue: (placement: PlacementVariables[number], localVariableIdx: number) => Value | undefined,
+      ): Value[];
+    }
+  )._extractPublicProjection(
+    placementVariables,
+    '',
+    (placement, localVariableIdx) => placement.variables[localVariableIdx],
+  );
+
+const createGeneratorWithSubcircuits = (
+  subcircuits: readonly { name: string; id: number; NInWires: number; NOutWires: number }[],
+  globalWireList: readonly (readonly [number, number])[] = [],
+  bufferNames: readonly string[] = [],
+): VariableGenerator => {
+  const subcircuitInfoByName = new Map(
+    subcircuits.map(subcircuit => [
+      subcircuit.name,
+      {
+        ...subcircuit,
+        NWires: 1 + subcircuit.NOutWires + subcircuit.NInWires,
+        inWireIndex: 1 + subcircuit.NOutWires,
+        outWireIndex: 1,
+        flattenMap: [],
+      },
+    ]),
+  );
+  const subcircuitBufferMapping = Object.fromEntries(
+    BUFFER_LIST.map(buffer => [
+      buffer,
+      bufferNames.includes(buffer)
+        ? subcircuitInfoByName.get(BUFFER_SUBCIRCUITS[BUFFER_LIST.indexOf(buffer)])
+        : undefined,
+    ]),
+  );
+  return new VariableGenerator(
+    {} as never,
+    {
+      subcircuitInfoByName,
+      subcircuitBufferMapping,
+      data: {
+        globalWireList,
+        setupParams: { l: globalWireList.length, l_user: 0, l_free: 0, s_max: 256 },
+      },
+    } as never,
+    [],
+  );
 };
 
 describe('VariableGenerator word encoding', () => {
@@ -116,12 +184,7 @@ describe('VariableGenerator word encoding', () => {
 
   it('keeps a one-limb integer as one physical wire', () => {
     const generator = new VariableGenerator({} as never, {} as never, []);
-    const original = dataPt(
-      1n,
-      BIT_DATA_PT_TYPE,
-      7,
-      3,
-    );
+    const original = dataPt(1n, BIT_DATA_PT_TYPE, 7, 3);
 
     const wires = expand(generator, original);
 
@@ -132,18 +195,75 @@ describe('VariableGenerator word encoding', () => {
 
   it('keeps a native field value as one physical wire', () => {
     const generator = new VariableGenerator({} as never, {} as never, []);
-    const original = dataPt(
-      123n,
-      BLS12_381_FR_DATA_PT_TYPE,
-      8,
-      5,
-    );
+    const original = dataPt(123n, BLS12_381_FR_DATA_PT_TYPE, 8, 5);
 
     const wires = expand(generator, original);
 
     expect(wires).toHaveLength(1);
     expect(wires[0]).toEqual(original);
     expect(wires[0]).not.toBe(original);
+  });
+});
+
+describe('VariableGenerator interface materialization', () => {
+  it('rejects a missing non-buffer input instead of zero-padding it', () => {
+    const generator = createGeneratorWithSubcircuits([{ name: 'ADD', id: 10, NInWires: 1, NOutWires: 1 }]);
+    const placement: PlacementEntry = {
+      name: 'ADD',
+      usage: 'ADD',
+      subcircuitId: 10,
+      inPts: [],
+      outPts: [dataPt(0n, UINT256_DATA_PT_TYPE)],
+    };
+
+    expect(() => prepareCircuitInstance(generator, placement, 'In')).toThrow(
+      'Placement ADD has 0 In wires, expected 1',
+    );
+  });
+
+  it('continues to zero-pad unused declared buffer capacity', () => {
+    const generator = createGeneratorWithSubcircuits(
+      [{ name: 'bufferEVMIn', id: 10, NInWires: 2, NOutWires: 2 }],
+      [],
+      ['EVM_IN'],
+    );
+    const placement: PlacementEntry = {
+      name: 'bufferEVMIn',
+      usage: 'EVM_IN',
+      subcircuitId: 10,
+      inPts: [dataPt(1n, BIT_DATA_PT_TYPE)],
+      outPts: [dataPt(1n, BIT_DATA_PT_TYPE)],
+    };
+
+    expect(prepareCircuitInstance(generator, placement, 'In').values).toEqual(['0x1', '0x00']);
+  });
+
+  it('rejects a public wire that is not declared by a public buffer', () => {
+    const generator = createGeneratorWithSubcircuits([{ name: 'ADD', id: 10, NInWires: 1, NOutWires: 1 }], [[10, 1]]);
+
+    expect(() =>
+      extractPublicProjection(generator, [
+        {
+          subcircuitId: 10,
+          variables: ['0x01', '0x02'],
+          instanceList: ['', ''],
+        },
+      ]),
+    ).toThrow('does not belong to one declared public buffer');
+  });
+
+  it('rejects multiple runtime placements for one public buffer', () => {
+    const generator = createGeneratorWithSubcircuits(
+      [{ name: 'bufferEVMIn', id: 10, NInWires: 1, NOutWires: 1 }],
+      [[10, 1]],
+      ['EVM_IN'],
+    );
+    const placements: PlacementVariables = [
+      { subcircuitId: 10, variables: ['0x01', '0x02'], instanceList: ['', ''] },
+      { subcircuitId: 10, variables: ['0x01', '0x03'], instanceList: ['', ''] },
+    ];
+
+    expect(() => extractPublicProjection(generator, placements)).toThrow('must have exactly one runtime placement');
   });
 });
 
@@ -186,12 +306,7 @@ describe('CircuitGenerator phase results', () => {
 
 describe('VariableGenerator buffer wire capacity', () => {
   it('preserves a buffer twin data type', () => {
-    const original = dataPt(
-      123n,
-      BLS12_381_FR_DATA_PT_TYPE,
-      privateBufferIndex,
-      0,
-    );
+    const original = dataPt(123n, BLS12_381_FR_DATA_PT_TYPE, privateBufferIndex, 0);
 
     const twin = DataPtFactory.createBufferTwin(original);
 
@@ -219,9 +334,7 @@ describe('VariableGenerator buffer wire capacity', () => {
     addPrivateBufferValue(placements, 0n, BIT_DATA_PT_TYPE);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
-    expect(() => convertAndValidateBuffers(createBufferGenerator(4), placements)).toThrow(
-      'Resolve above errors.',
-    );
+    expect(() => convertAndValidateBuffers(createBufferGenerator(4), placements)).toThrow('Resolve above errors.');
     expect(placements[privateBufferIndex].inPts).toHaveLength(5);
     expect(placements[privateBufferIndex].outPts).toHaveLength(5);
     log.mockRestore();
