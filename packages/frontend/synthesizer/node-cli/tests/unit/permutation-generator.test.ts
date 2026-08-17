@@ -91,25 +91,19 @@ const variablesFor = (placements: Placements): PlacementVariables =>
     instanceList: ['', '', ''],
   }));
 
+const createPermutationGenerator = (
+  placements: Placements,
+  placementVariables = variablesFor(placements),
+): PermutationGenerator =>
+  new PermutationGenerator(placements, placementVariables, createLibrary());
+
 describe('PermutationGenerator structural hardening', () => {
   it('permits an internal no-parent root from an input buffer', () => {
     const placements = successfulPlacements();
 
     expect(
       () =>
-        new PermutationGenerator(
-          {
-            circuitPlacements: placements,
-            placementVariables: variablesFor(placements),
-            publicInstance: { a_pub_user: [], a_pub_block: [], a_pub_function: [] },
-            publicInstanceDescription: {
-              a_pub_user_description: [],
-              a_pub_block_description: [],
-              a_pub_function_description: [],
-            },
-          },
-          createLibrary(),
-        ),
+        createPermutationGenerator(placements),
     ).not.toThrow();
   });
 
@@ -127,37 +121,13 @@ describe('PermutationGenerator structural hardening', () => {
 
     expect(
       () =>
-        new PermutationGenerator(
-          {
-            circuitPlacements: placements,
-            placementVariables: variablesFor(placements),
-            publicInstance: { a_pub_user: [], a_pub_block: [], a_pub_function: [] },
-            publicInstanceDescription: {
-              a_pub_user_description: [],
-              a_pub_block_description: [],
-              a_pub_function_description: [],
-            },
-          },
-          createLibrary(),
-        ),
+        createPermutationGenerator(placements),
     ).toThrow('although it is not qualified');
   });
 
   it('rejects a mapped interface cell that belongs to two groups', () => {
     const placements = successfulPlacements();
-    const generator = new PermutationGenerator(
-      {
-        circuitPlacements: placements,
-        placementVariables: variablesFor(placements),
-        publicInstance: { a_pub_user: [], a_pub_block: [], a_pub_function: [] },
-        publicInstanceDescription: {
-          a_pub_user_description: [],
-          a_pub_block_description: [],
-          a_pub_function_description: [],
-        },
-      },
-      createLibrary(),
-    );
+    const generator = createPermutationGenerator(placements);
     const privateGenerator = generator as unknown as {
       permGroup: Map<string, boolean>[];
       _validatePermGroupOwnership(): Set<string>;
@@ -165,5 +135,15 @@ describe('PermutationGenerator structural hardening', () => {
     privateGenerator.permGroup.push(new Map(privateGenerator.permGroup[0]));
 
     expect(() => privateGenerator._validatePermGroupOwnership()).toThrow('belongs to multiple groups');
+  });
+
+  it('rejects placement variables that do not match placement order', () => {
+    const placements = successfulPlacements();
+    const variables = variablesFor(placements);
+    variables[0] = { ...variables[0]!, subcircuitId: evmInfo.id };
+
+    expect(() => createPermutationGenerator(placements, variables)).toThrow(
+      'does not match its variable entry subcircuit ID',
+    );
   });
 });

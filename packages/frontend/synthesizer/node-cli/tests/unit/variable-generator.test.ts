@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { CircuitGenerator } from '../../../core/src/circuitGenerator/circuitGenerator.ts';
 import { VariableGenerator } from '../../../core/src/circuitGenerator/handlers/variableGenerator.ts';
-import type { VariableGenerationResult } from '../../../core/src/circuitGenerator/handlers/variableGenerator.ts';
 import { BUFFER_LIST } from '../../../core/src/subcircuit/configuredTypes.ts';
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
 import {
@@ -75,7 +74,6 @@ const createBufferGenerator = (privateBufferCapacity: number): VariableGenerator
       subcircuitBufferMapping,
       data: { setupParams: { s_max: 256 } },
     } as never,
-    [],
   );
 };
 
@@ -152,7 +150,6 @@ const createGeneratorWithSubcircuits = (
         setupParams: { l: globalWireList.length, l_user: 0, l_free: 0, s_max: 256 },
       },
     } as never,
-    [],
   );
 };
 
@@ -170,7 +167,7 @@ describe('VariableGenerator word encoding', () => {
       },
       (upper << 128n) | lower,
     );
-    const generator = new VariableGenerator({} as never, {} as never, []);
+    const generator = new VariableGenerator({} as never, {} as never);
 
     const limbs = expand(generator, word);
 
@@ -183,7 +180,7 @@ describe('VariableGenerator word encoding', () => {
   });
 
   it('keeps a one-limb integer as one physical wire', () => {
-    const generator = new VariableGenerator({} as never, {} as never, []);
+    const generator = new VariableGenerator({} as never, {} as never);
     const original = dataPt(1n, BIT_DATA_PT_TYPE, 7, 3);
 
     const wires = expand(generator, original);
@@ -194,7 +191,7 @@ describe('VariableGenerator word encoding', () => {
   });
 
   it('keeps a native field value as one physical wire', () => {
-    const generator = new VariableGenerator({} as never, {} as never, []);
+    const generator = new VariableGenerator({} as never, {} as never);
     const original = dataPt(123n, BLS12_381_FR_DATA_PT_TYPE, 8, 5);
 
     const wires = expand(generator, original);
@@ -206,6 +203,59 @@ describe('VariableGenerator word encoding', () => {
 });
 
 describe('VariableGenerator interface materialization', () => {
+  it('uses declared physical port offsets when checking witness outputs and descriptions', async () => {
+    const subcircuitInfo = {
+      id: 10,
+      name: 'ADD',
+      NInWires: 1,
+      NOutWires: 1,
+      NWires: 5,
+      inWireIndex: 4,
+      outWireIndex: 2,
+      flattenMap: [0, 1, 2, 3, 4],
+    };
+    const generator = new VariableGenerator(
+      {} as never,
+      {
+        subcircuitInfoByName: new Map([[subcircuitInfo.name, subcircuitInfo]]),
+        subcircuitBufferMapping: {},
+        data: { setupParams: { s_max: 1 } },
+      } as never,
+    );
+    const privateGenerator = generator as unknown as {
+      _generateSubcircuitWitness(subcircuitId: number, inValues: string[]): Promise<string[]>;
+      _generatePlacementVariables(placements: Placements): Promise<PlacementVariables>;
+    };
+    privateGenerator._generateSubcircuitWitness = async () => ['0x1', '0x00', '0x05', '0x00', '0x07'];
+    const placement: PlacementEntry = {
+      name: 'ADD',
+      usage: 'ADD',
+      subcircuitId: 10,
+      inPts: [DataPtFactory.create({ source: 0, wireIndex: 0, dataPtType: UINT256_DATA_PT_TYPE, extSource: 'input' }, 7n)],
+      outPts: [DataPtFactory.create({ source: 0, wireIndex: 0, dataPtType: UINT256_DATA_PT_TYPE, extDest: 'output' }, 5n)],
+    };
+
+    await expect(privateGenerator._generatePlacementVariables([placement])).resolves.toEqual([{
+      subcircuitId: 10,
+      variables: ['0x1', '0x00', '0x05', '0x00', '0x07'],
+      instanceList: ['', '', 'output', '', 'input'],
+    }]);
+  });
+
+  it('rejects a missing WASM artifact before witness generation', async () => {
+    const generator = new VariableGenerator(
+      {} as never,
+      { loadWasm: async () => undefined } as never,
+    );
+    const privateGenerator = generator as unknown as {
+      _generateSubcircuitWitness(subcircuitId: number, inValues: string[]): Promise<string[]>;
+    };
+
+    await expect(privateGenerator._generateSubcircuitWitness(10, ['0x01'])).rejects.toThrow(
+      '10-th subcircuit WASM is unavailable',
+    );
+  });
+
   it('rejects a missing non-buffer input instead of zero-padding it', () => {
     const generator = createGeneratorWithSubcircuits([{ name: 'ADD', id: 10, NInWires: 1, NOutWires: 1 }]);
     const placement: PlacementEntry = {
@@ -282,20 +332,16 @@ describe('CircuitGenerator phase results', () => {
       a_pub_function_description: [],
     } as const;
     const permutation = [];
-    const variableGeneration: VariableGenerationResult = {
-      circuitPlacements,
+    const circuitGenerator = new CircuitGenerator({
+      placements: circuitPlacements,
       placementVariables,
       publicInstance,
       publicInstanceDescription,
-    };
-    const circuitGenerator = new CircuitGenerator(
-      { placements: [], subcircuitLibrary: {} } as never,
-      variableGeneration,
       permutation,
-    );
+    });
 
-    expect(circuitGenerator.circuitPlacements).toBe(circuitPlacements);
-    expect(circuitGenerator.getArtifacts()).toEqual({
+    expect(circuitGenerator.getResult()).toEqual({
+      placements: circuitPlacements,
       placementVariables,
       publicInstance,
       publicInstanceDescription,

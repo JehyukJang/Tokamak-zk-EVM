@@ -69,13 +69,13 @@ describe('logical-interface resolution', () => {
   it('rejects a private-message input count that differs from the reserved input boundary', () => {
     const data = createLibraryData();
     data.frontendCfg.nPrivateMessageInputs = 28;
-    expect(() => resolveSubcircuitLibraryData(data)).toThrow(
+    expect(() => resolveSubcircuitLibraryData(data, async () => new ArrayBuffer(0))).toThrow(
       'qap-compiler declares 28 private message inputs, but Synthesizer reserves 29',
     );
   });
 
   it('rejects qap metadata whose input wire count disagrees with its interface', () => {
-    expect(() => resolveSubcircuitLibraryData(createLibraryData(4))).toThrow(
+    expect(() => resolveSubcircuitLibraryData(createLibraryData(4), async () => new ArrayBuffer(0))).toThrow(
       'ALU3 logical interface declares 5 input wires, but qap-compiler provides 4',
     );
   });
@@ -92,7 +92,7 @@ describe('logical-interface resolution', () => {
         { name: 'contractAddress', logicalType: { kind: 'uint', bits: 160 } },
       ],
     };
-    expect(() => resolveSubcircuitLibraryData(data)).toThrow(
+    expect(() => resolveSubcircuitLibraryData(data, async () => new ArrayBuffer(0))).toThrow(
       'ALU3 logical interface declares 1 output wires, but qap-compiler provides 2',
     );
   });

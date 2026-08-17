@@ -99,6 +99,7 @@ export interface SubcircuitLibraryProvider {
 
 export interface ResolvedSubcircuitLibrary {
   data: SubcircuitLibraryData;
+  loadWasm(subcircuitId: number): Promise<ArrayBuffer>;
   placementCompositionMapping: PlacementCompositionMapping;
   calculateSubcircuitOutputValues: typeof calculateSubcircuitOutputValues;
   subcircuitInfoByName: SubcircuitInfoByName;

@@ -15,6 +15,8 @@ import {
   type CompositionOperands,
   type PlacementEntry,
   type Placements,
+  placementEntryDeepCopy,
+  placementsDeepCopy,
 } from '../types/index.ts';
 import {
   getDataPtTypeFromLogicalInterfaceType,
@@ -60,22 +62,6 @@ const isNestedOperands = (
   operands: CompositionOperands,
 ): operands is readonly (readonly DataPt[])[] =>
   operands.length > 0 && Array.isArray(operands[0]);
-
-export function placementEntryDeepCopy(placement: PlacementEntry): PlacementEntry {
-  return {
-    ...placement,
-    inPts: placement.inPts.slice(),
-    outPts: placement.outPts.slice(),
-  }
-}
-
-export function placementsDeepCopy(placements: Placements): Placements {
-  const copy: Placements = []
-  for (const placement of placements) {
-    copy.push(placementEntryDeepCopy(placement))
-  }
-  return copy
-}
 
 function _assertCandidateInput(
   operation: Operator,

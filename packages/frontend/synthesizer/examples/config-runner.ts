@@ -17,7 +17,6 @@ import type { BlockInfo } from '../core/src/synthesizer.ts';
 import { createSynthesizer } from '../node-cli/src/synthesizer/constructors.ts';
 import { writeSynthesisOutputJson } from '../node-cli/src/io/jsonWriter.ts';
 import { installedSubcircuitLibrary } from '../node-cli/src/subcircuit/installedLibrary.ts';
-import { loadSubcircuitWasm } from '../node-cli/src/subcircuit/wasmLoader.ts';
 import {
   buildErc20Calldata,
   deriveParticipantKeys as deriveErc20ParticipantKeys,
@@ -219,16 +218,9 @@ async function runConfigExample<TConfig>(
   });
   const runTxResult = await synthesizer.synthesizeTX();
   const finalStateSnapshot = await stateManager.captureStateSnapshot();
-  const subcircuitBuffers = loadSubcircuitWasm();
-  const circuitGenerator = await createCircuitGenerator(synthesizer, subcircuitBuffers);
-  const circuitArtifacts = circuitGenerator.getArtifacts();
-  const placements = circuitGenerator.circuitPlacements;
-  if (placements === undefined) {
-    throw new Error('Circuit placements are not generated yet.');
-  }
+  const circuitGeneration = (await createCircuitGenerator(synthesizer)).getResult();
   const output: SynthesisOutput = {
-    ...circuitArtifacts,
-    placements,
+    ...circuitGeneration,
     finalStateSnapshot,
     evmAnalysis: {
       stepLogs: synthesizer.stepLogs,

@@ -8,7 +8,6 @@ import {
 import type {
   LogicalInterfacePort,
   ResolvedSubcircuitLibrary,
-  SubcircuitInfo,
   SubcircuitLibraryData,
   SubcircuitLibraryProvider,
 } from '../subcircuit/libraryTypes.ts';
@@ -47,6 +46,7 @@ function assertLogicalInterfaceWireCounts(
 
 export function resolveSubcircuitLibraryData(
   data: SubcircuitLibraryData,
+  loadWasm: SubcircuitLibraryProvider['loadWasm'],
 ): ResolvedSubcircuitLibrary {
   if (data.frontendCfg.nPrivateMessageInputs !== TRANSACTION_INPUT_VARIABLES.length) {
     throw new Error(
@@ -58,6 +58,7 @@ export function resolveSubcircuitLibraryData(
 
   return {
     data,
+    loadWasm,
     placementCompositionMapping: createPlacementCompositionMapping(
       data.frontendCfg,
     ),
@@ -79,20 +80,8 @@ export function resolveSubcircuitLibraryData(
 export async function loadResolvedSubcircuitLibrary(
   provider: SubcircuitLibraryProvider,
 ): Promise<ResolvedSubcircuitLibrary> {
-  return resolveSubcircuitLibraryData(await provider.getData());
-}
-
-export async function loadSubcircuitWasmBuffers(
-  provider: SubcircuitLibraryProvider,
-  subcircuitInfo: SubcircuitInfo,
-): Promise<ArrayBuffer[]> {
-  const wasmBuffers: ArrayBuffer[] = [];
-
-  await Promise.all(
-    subcircuitInfo.map(async (subcircuit) => {
-      wasmBuffers[subcircuit.id] = await provider.loadWasm(subcircuit.id);
-    }),
+  return resolveSubcircuitLibraryData(
+    await provider.getData(),
+    provider.loadWasm.bind(provider),
   );
-
-  return wasmBuffers;
 }

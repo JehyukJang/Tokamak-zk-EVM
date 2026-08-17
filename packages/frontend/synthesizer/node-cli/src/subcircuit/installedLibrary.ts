@@ -8,6 +8,7 @@ import {
 import {
   resolveSubcircuitLibraryData,
 } from '../../../core/src/app.ts';
+import { loadSubcircuitWasmBuffer } from './wasmLoader.ts';
 import type {
   ResolvedSubcircuitLibrary,
   SubcircuitLibraryData,
@@ -21,4 +22,4 @@ export const installedSubcircuitLibraryData: SubcircuitLibraryData = parseSubcir
 });
 
 export const installedSubcircuitLibrary: ResolvedSubcircuitLibrary =
-  resolveSubcircuitLibraryData(installedSubcircuitLibraryData);
+  resolveSubcircuitLibraryData(installedSubcircuitLibraryData, loadSubcircuitWasmBuffer);

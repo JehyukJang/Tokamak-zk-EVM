@@ -2,7 +2,6 @@ import { Placements, PlacementVariables } from '../../synthesizer/types/placemen
 import {
   BUFFER_LIST,
   type ReservedBuffer,
-  type SubcircuitInfoByNameEntry,
   type SubcircuitNames,
 } from '../../subcircuit/configuredTypes.ts';
 import { VARIABLE_DESCRIPTION } from '../../synthesizer/types/buffers.ts';
@@ -10,7 +9,6 @@ import type { DataPt } from '../../synthesizer/types/dataStructure.ts';
 import { addHexPrefix, hexToBigInt } from '@ethereumjs/util';
 import type { ResolvedSubcircuitLibrary } from '../../subcircuit/libraryTypes.ts';
 import type { Permutation } from '../types/types.ts';
-import type { VariableGenerationResult } from './variableGenerator.ts';
 
 type PlacementWireIndex = { globalWireId: number; placementId: number };
 
@@ -30,11 +28,13 @@ export class PermutationGenerator {
   public permutation: Permutation;
 
   constructor(
-    variableGeneration: VariableGenerationResult,
+    circuitPlacements: Placements,
+    placementVariables: PlacementVariables,
     private readonly subcircuitLibrary: ResolvedSubcircuitLibrary,
   ) {
-    this.circuitPlacements = variableGeneration.circuitPlacements;
-    this.placementVariables = variableGeneration.placementVariables;
+    this.circuitPlacements = circuitPlacements;
+    this.placementVariables = placementVariables;
+    this._assertPlacementVariableAlignment();
     // Construct permutation
     this.permGroup = this._buildPermGroup();
 
@@ -322,15 +322,18 @@ export class PermutationGenerator {
     for (const [placementId, placementVariablesEntry] of this.placementVariables.entries()) {
       const variables = placementVariablesEntry.variables;
       const subcircuitInfo = subcircuitInfoByName.get(this.circuitPlacements[placementId]!.name)!;
-      const idxSet = new IdxSet(subcircuitInfo);
-      if (subcircuitInfo.flattenMap![idxSet.idxOut] >= setupParams.l_D) {
+      if (subcircuitInfo.flattenMap![subcircuitInfo.outWireIndex] >= setupParams.l_D) {
         throw new Error('Incorrect flatten map');
       }
       let ab = [...circomConsts];
-      //Iterating for all output and input (local) variables
-      for (let localIdx = idxSet.idxOut; localIdx < idxSet.idxPrv; localIdx++) {
-        const globalIdx = subcircuitInfo.flattenMap![localIdx];
-        ab[globalIdx] = variables[localIdx];
+      for (const [start, count] of [
+        [subcircuitInfo.outWireIndex, subcircuitInfo.NOutWires],
+        [subcircuitInfo.inWireIndex, subcircuitInfo.NInWires],
+      ] as const) {
+        for (let localIdx = start; localIdx < start + count; localIdx++) {
+          const globalIdx = subcircuitInfo.flattenMap![localIdx];
+          ab[globalIdx] = variables[localIdx];
+        }
       }
       b[placementId] = ab.slice(setupParams.l, setupParams.l_D);
     }
@@ -356,29 +359,17 @@ export class PermutationGenerator {
   private _keyOf(obj: PlacementWireIndex): string {
     return JSON.stringify(obj);
   }
-}
 
-// An auxiliary class
-class IdxSet {
-  NConstWires = 1;
-  NOutWires: number;
-  NInWires: number;
-  NWires: number;
-  idxOut: number;
-  idxIn: number;
-  idxPrv: number;
-  flattenMap: number[];
-  constructor(subcircuitInfo: SubcircuitInfoByNameEntry) {
-    this.NOutWires = subcircuitInfo.NOutWires;
-    this.NInWires = subcircuitInfo.NInWires;
-    this.NWires = subcircuitInfo.NWires;
-    this.idxOut = this.NConstWires;
-    this.idxIn = this.idxOut + this.NOutWires;
-    this.idxPrv = this.idxIn + this.NInWires;
-
-    if (!Array.isArray(subcircuitInfo.flattenMap) || subcircuitInfo.flattenMap.length == 0) {
-      throw new Error(`IdxSet: SubcircuitInfo is missing required flattenMap for ${subcircuitInfo.id}`);
+  private _assertPlacementVariableAlignment(): void {
+    if (this.circuitPlacements.length !== this.placementVariables.length) {
+      throw new Error(
+        `Permutation: ${this.circuitPlacements.length} placements do not match ${this.placementVariables.length} variable entries`,
+      );
     }
-    this.flattenMap = subcircuitInfo.flattenMap;
+    for (const [placementId, placement] of this.circuitPlacements.entries()) {
+      if (placement.subcircuitId !== this.placementVariables[placementId]!.subcircuitId) {
+        throw new Error(`Permutation: placement ${placementId} does not match its variable entry subcircuit ID`);
+      }
+    }
   }
 }

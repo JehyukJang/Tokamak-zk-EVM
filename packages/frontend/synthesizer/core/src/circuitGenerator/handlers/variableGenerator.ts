@@ -2,8 +2,13 @@ import { addHexPrefix, bigIntToHex } from '@ethereumjs/util';
 import { BUFFER_LIST } from '../../subcircuit/configuredTypes.ts';
 import { DataPtFactory } from '../../synthesizer/dataStructure/dataPt.ts';
 import { getDataPtWireCount, type DataPt } from '../../synthesizer/types/dataStructure.ts';
-import { PlacementEntry, Placements, PlacementVariables } from '../../synthesizer/types/placements.ts';
-import { placementEntryDeepCopy, placementsDeepCopy } from '../../synthesizer/handlers/placementManager.ts';
+import {
+  PlacementEntry,
+  Placements,
+  PlacementVariables,
+  placementEntryDeepCopy,
+  placementsDeepCopy,
+} from '../../synthesizer/types/placements.ts';
 import { builder } from '../utils/witness_calculator.ts';
 import { VARIABLE_DESCRIPTION } from '../../synthesizer/types/buffers.ts';
 import type { ResolvedSubcircuitLibrary } from '../../subcircuit/libraryTypes.ts';
@@ -21,7 +26,6 @@ export class VariableGenerator {
   constructor(
     private readonly synthesizer: SynthesizerInterface,
     private readonly subcircuitLibrary: ResolvedSubcircuitLibrary,
-    private readonly subcircuitWasmBuffers: any[],
   ) {}
 
   public async generate(): Promise<VariableGenerationResult> {
@@ -104,20 +108,28 @@ export class VariableGenerator {
           throw new Error(err as string);
         }
 
-        for (let i = 1; i <= outs.values.length; i++) {
-          if (BigInt(variables[i]) !== BigInt(outs.values[i - 1])) {
+        const subcircuitInfo = this.subcircuitLibrary.subcircuitInfoByName.get(placement.name)!;
+        for (let i = 0; i < outs.values.length; i++) {
+          if (BigInt(variables[subcircuitInfo.outWireIndex + i]!) !== BigInt(outs.values[i]!)) {
             throw new Error(
               `Instance check failed in the ${placementId}-th placement (subcircuit name: ${placement.name})`,
             );
           }
         }
-        if (this.subcircuitLibrary.subcircuitInfoByName.get(placement.name)!.flattenMap.length !== variables.length) {
+        if (subcircuitInfo.flattenMap.length !== variables.length) {
           throw new Error(`Flatten map cannot be applied to the placement variables due to difference lengths`);
         }
+        const instanceList = Array<string>(subcircuitInfo.NWires).fill('');
+        outs.descriptions.forEach((description, index) => {
+          instanceList[subcircuitInfo.outWireIndex + index] = description;
+        });
+        ins.descriptions.forEach((description, index) => {
+          instanceList[subcircuitInfo.inWireIndex + index] = description;
+        });
         return {
           subcircuitId: placement.subcircuitId,
           variables,
-          instanceList: ['', ...outs.descriptions, ...ins.descriptions],
+          instanceList,
         };
       }),
     );
@@ -356,7 +368,10 @@ export class VariableGenerator {
     let witnessHex: string[] = [];
     if (inValues.length > 0) {
       const id = subcircuitId;
-      const buffer = this.subcircuitWasmBuffers[id];
+      const buffer = await this.subcircuitLibrary.loadWasm(id);
+      if (!(buffer instanceof ArrayBuffer)) {
+        throw new Error(`Synthesizer: ${id}-th subcircuit WASM is unavailable`);
+      }
       const ins = { in: inValues };
       const witnessCalculator = await builder(buffer);
       const witness = await witnessCalculator.calculateWitness(ins, 0);

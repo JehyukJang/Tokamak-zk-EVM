@@ -12,6 +12,22 @@ export type PlacementEntry = {
 
 export type Placements = PlacementEntry[];
 
+export function placementEntryDeepCopy(placement: PlacementEntry): PlacementEntry {
+  return {
+    ...placement,
+    inPts: placement.inPts.slice(),
+    outPts: placement.outPts.slice(),
+  }
+}
+
+export function placementsDeepCopy(placements: Placements): Placements {
+  const copy: Placements = []
+  for (const placement of placements) {
+    copy.push(placementEntryDeepCopy(placement))
+  }
+  return copy
+}
+
 export type CompositionOperands = readonly DataPt[] | readonly (readonly DataPt[])[];
 
 export type PlacementVariableEntry = {

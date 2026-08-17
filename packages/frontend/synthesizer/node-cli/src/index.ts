@@ -21,6 +21,7 @@ export {
   CircuitGenerator,
   createCircuitGenerator,
   type CircuitArtifacts,
+  type CircuitGenerationResult,
 } from '../../core/src/circuit.ts';
 export {
   type SynthesizerInterface,
