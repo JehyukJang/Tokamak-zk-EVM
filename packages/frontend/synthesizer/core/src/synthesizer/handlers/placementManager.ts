@@ -48,6 +48,12 @@ type PlacementCandidate = Readonly<{
   operands: CompositionOperands;
   resultPts: readonly DataPt[];
   placements: readonly PlacementEntry[];
+  canonicalityGuardCacheEntries: readonly CanonicalityGuardCacheEntry[];
+}>;
+
+type CanonicalityGuardCacheEntry = Readonly<{
+  inputWireKey: string;
+  output: DataPt;
 }>;
 
 const FULL_MEMORY_VIEW_OWNERSHIP = 0xffffffffn
@@ -267,6 +273,7 @@ function _assertCandidateEarlierSource(
 export class PlacementManager {
   private _placements: Placements = []
   private _cachedEVMIn: Map<bigint, Map<string, DataPt>> = new Map()
+  private _canonicalityGuardOutputByInputWire: Map<string, DataPt> = new Map()
 
   public subcircuitInfoByName: SubcircuitInfoByName;
   private readonly _bufferSubcircuitByBuffer: Record<ReservedBuffer, SubcircuitInfoByNameEntry | undefined>;
@@ -480,6 +487,12 @@ export class PlacementManager {
     for (const placement of candidate.placements) {
       this._placements.push(placementEntryDeepCopy(placement))
     }
+    for (const entry of candidate.canonicalityGuardCacheEntries) {
+      this._canonicalityGuardOutputByInputWire.set(
+        entry.inputWireKey,
+        DataPtFactory.deepCopy(entry.output),
+      )
+    }
     return candidate.resultPts.map((dataPt) => DataPtFactory.deepCopy(dataPt))
   }
 
@@ -588,7 +601,13 @@ export class PlacementManager {
       }
       resultPts.push(previousWordPt)
     }
-    return { operation, operands: views, resultPts, placements: steps }
+    return {
+      operation,
+      operands: views,
+      resultPts,
+      placements: steps,
+      canonicalityGuardCacheEntries: [],
+    }
   }
 
   private _buildGenericComposition(
@@ -703,6 +722,7 @@ export class PlacementManager {
       operands,
       resultPts: resultPts as DataPt[],
       placements: [...inputChecks.steps, ...steps],
+      canonicalityGuardCacheEntries: inputChecks.canonicalityGuardCacheEntries,
     }
   }
 
@@ -711,11 +731,17 @@ export class PlacementManager {
     composition: PlacementComposition,
     operands: readonly DataPt[],
     basePlacementIndex: number,
-  ): { operands: DataPt[]; steps: PlacementEntry[] } {
+  ): {
+    operands: DataPt[];
+    steps: PlacementEntry[];
+    canonicalityGuardCacheEntries: CanonicalityGuardCacheEntry[];
+  } {
     const checkedOperands = operands.slice()
     const steps: PlacementEntry[] = []
+    const canonicalityGuardCacheEntries: CanonicalityGuardCacheEntry[] = []
+    const candidateOutputsByInputWire = new Map<string, DataPt>()
     if (composition.externalCheckRequiredOperandIndices.length === 0) {
-      return { operands: checkedOperands, steps }
+      return { operands: checkedOperands, steps, canonicalityGuardCacheEntries }
     }
 
     const subcircuitName = 'CheckBus256'
@@ -743,6 +769,13 @@ export class PlacementManager {
           `Synthesizer: ${operation} external-check operand ${operandIndex} must be uint256`,
         )
       }
+      const inputWireKey = `${operand.source}:${operand.wireIndex}:${operand.dataPtType}`
+      const cachedOutput = candidateOutputsByInputWire.get(inputWireKey)
+        ?? this._canonicalityGuardOutputByInputWire.get(inputWireKey)
+      if (cachedOutput !== undefined) {
+        checkedOperands[operandIndex] = DataPtFactory.deepCopy(cachedOutput)
+        continue
+      }
       const values = this.subcircuitLibrary.calculateSubcircuitOutputValues(
         subcircuitName,
         [operand.value],
@@ -757,8 +790,10 @@ export class PlacementManager {
       }, values[0]!)
       steps.push(this._createCandidateStep(operation, subcircuitName, [operand], [output]))
       checkedOperands[operandIndex] = output
+      candidateOutputsByInputWire.set(inputWireKey, output)
+      canonicalityGuardCacheEntries.push({ inputWireKey, output })
     }
-    return { operands: checkedOperands, steps }
+    return { operands: checkedOperands, steps, canonicalityGuardCacheEntries }
   }
 
   private _buildPoseidonComposition(
@@ -839,7 +874,13 @@ export class PlacementManager {
       ]
     }
     const resultPt = prepareNormalized(chainInputs)
-    return { operation: 'Poseidon', operands, resultPts: [resultPt], placements: steps }
+    return {
+      operation: 'Poseidon',
+      operands,
+      resultPts: [resultPt],
+      placements: steps,
+      canonicalityGuardCacheEntries: [],
+    }
   }
 
   private _getLogOutPlacement(): PlacementEntry {
