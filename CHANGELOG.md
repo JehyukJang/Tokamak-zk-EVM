@@ -8,137 +8,32 @@ The format is based on Keep a Changelog.
 
 ## Unreleased
 
-### Subcircuit Library
+### Compatibility and Upgrade Notes
 
-- Changed qap-compiler generation and circuit-test compilation to require
-  Circom O2 optimization explicitly. Compiled subcircuit inputs are retained
-  as standalone public inputs during generation so O2 cannot eliminate wires
-  required by the composition interface; final proof visibility remains
-  defined by the qap composition metadata.
-- Replaced the standalone `JubjubExpBatch` and `EdDsaVerify` targets with six
-  native-field transaction-signature composition targets. The 46-placement
-  topology batches four Poseidon compressions, canonicalizes the exact signed
-  transaction inputs used by later EVM execution, validates the Jubjub point
-  policy, performs the fixed- and variable-base scalar multiplications, checks
-  the cofactored signature equation, and returns the verified transaction data
-  and origin through exact composition wires.
-- Added the input-only `StorageAccess` subcircuit to bind a repeated storage
-  access to its canonical address/key identity. Its six-wire interface keeps
-  each 160-bit address native and represents each 256-bit key as two limbs.
-- Removed `VerifyMerkleProof` from the compiled qap-compiler circuit set and
-  the Synthesizer subcircuit inventory. Removed its remaining Circom template,
-  wrapper, and test, together with the obsolete `nMtDepth` and `nMtLeaves`
-  configuration and Synthesizer schema fields.
-- Replaced the compiled `bufferPubOut` circuit with `bufferLogOut`,
-  `bufferStorageStore`, and `bufferStorageLoad`, and replaced `bufferPubIn`
-  with `bufferTxIn`. All qap-compiler buffer capacities are now measured in
-  256-bit words. The capacities are 3 words for `bufferTxIn`, 48 provisional
-  words each for `bufferStorageLoad` and `bufferStorageStore`, and 32
-  provisional words for `bufferLogOut`.
-- Added cumulative `setupParams` boundaries for every public buffer. Public
-  wires are now grouped by their configured segment order instead of relying
-  on the subcircuit compilation order.
-- Replaced the six-step hardcoded general Poseidon chain with an
-  `nPoseidonBatch` parameter. The current general Poseidon batch size is `4`;
-  transaction-signature Poseidon uses its own fixed four-compression
-  production target.
-- Reorganized the arithmetic catalog around three shared selector targets:
-  `ALU1` handles `ADD`, `MUL`, `SUB`, and `NOT`; `ALU2` handles unsigned and
-  signed comparisons plus `EQ` and `ISZERO`; and `ALU3` handles `SIGNEXTEND`,
-  `AND`, `OR`, `XOR`, and `BYTE` with shared operand decomposition. Division
-  remains the paired `ALU4A`/`ALU4B` composition, while `ALU5` handles `SHR`
-  and `SAR`. Removed the five superseded standalone operation targets.
-- Reduced the SHL and ALU5 shift relations by treating the high shift limb as
-  a zero/nonzero condition while retaining canonical low-shift and value
-  decompositions. Their composition contract now requires the connected
-  producer to constrain that high wire as a 128-bit limb.
-- Replaced the oversized eight-bit `SubExpBatch` target with a 794-constraint
-  one-bit `SubExp` target. EVM exponentiation now composes `DecToBit`, exactly
-  256 serial `SubExp` placements, and a terminal 258-constraint
-  `CheckBus256`; every physical target remains within the 1,024-constraint
-  limit. Removed the obsolete `nSubExpBatch` library constant.
-- Replaced the oversized single ADDMOD target with the composition-only
-  `ADDMODPrepare` and `ADDMODVerify` targets. They use a field-safe radix-86
-  reduction boundary, contain 944 and 959 optimized constraints respectively,
-  and need only eight physical wires between the two placements.
-- Renamed the two-limb `CheckBus` template to `CheckBus256` and implemented it
-  by composing two `CheckBus128` limb checks.
-- Replaced the oversized standalone `MULMOD` target with the mandatory
-  `MULMODPrepare -> MULMODCandidate -> MULMODVerify` composition. The three
-  targets contain 774, 774, and 983 optimized constraints, use exactly three
-  placements and 30 intermediate wire connections, and require no selector or
-  external `CheckBus256` placement.
-- This circuit-set change requires regenerated subcircuit-library artifacts
-  and a compatible backend CRS before it can be used for proving.
+- The subcircuit library and Synthesizer packages must be upgraded together.
+  This release changes the generated circuit set and public-instance layout,
+  so applications must rebuild their circuit artifacts and use a newly
+  generated compatible backend CRS before proving.
+- Transaction inputs now include a public channel transaction index. Update
+  transaction producers and verifiers to supply and bind that value; the
+  Ethereum account nonce is no longer used as the transaction identity for
+  synthesis.
+- Storage reads and final storage writes are emitted as public
+  `(address, key, value)` records. Applications that update state must verify
+  storage membership and root transitions with the separate storage proof and
+  bind its public records to the Tokamak zk-EVM proof in their bridge or
+  orchestration protocol.
+- Reverted or exceptionally halted top-level transactions no longer produce a
+  synthesizable transaction proof. Callers must handle the returned synthesis
+  error rather than expect a proof for a failed transaction.
 
-### Native Backend
+### Correctness and Security
 
-- Added the per-buffer public-wire boundaries to the native `SetupParams`
-  schema.
-
-### Synthesizer
-
-- Removed internal storage Merkle-root tracking, proof construction, proof
-  placements, and Merkle-specific reserved variables. Storage consistency is
-  now tracked through the transaction-scoped storage cache and `StorageAccess`.
-- Added public initial-storage-read output through `STORAGE_LOAD` and final
-  committed storage-write output through `STORAGE_STORE`.
-- Made Poseidon selector generation, input padding, and long-chain chunking use
-  the subcircuit library's `nPoseidonBatch` value.
-- Replaced the 32-placement batched EVM exponentiation topology with the exact
-  258-placement `DecToBit -> SubExp x 256 -> CheckBus256` topology and removed
-  the obsolete exponent-batch configuration field.
-- Enabled the existing REVERT system-flow handler so failed frames reach the
-  coordinated storage-cache and committed-log rollback path.
-- Changed every unsuccessful top-level transaction result, including REVERT
-  and exceptional halts, to fail synthesis with the original EVM error.
-- Updated arithmetic dispatch for the final subcircuit set. Every `ADDMOD`
-  uses `ADDMODPrepare -> ADDMODVerify`, while every `MULMOD`
-  uses `MULMODPrepare -> MULMODCandidate -> MULMODVerify`. Each composition
-  connects every required operand and intermediate directly, without host
-  reconstruction.
-
-### Bug Fixes
-
-- Constrained both carry signals in the shared 256-bit addition relation to be
-  boolean. This removes non-boolean carry witnesses from ADD, SUB, and other
-  subcircuits that reuse the same addition template.
-- Replaced ALU1's truncated multiplication relation with a bounded 64-bit
-  schoolbook construction. Its operand decompositions are shared with the
-  wrapper's input canonicality checks, and both radix carries are range-bound.
-- Replaced ALU3's absolute-value-based signed comparison with a direct
-  two's-complement ordering relation that reuses constrained sign bits.
-- Replaced the truncated and under-constrained ADDMOD and MULMOD reductions
-  with full-width relations. ADDMOD proves its exact 257-bit sum through two
-  mandatory arithmetic targets. MULMOD proves its complete
-  512-bit product and reduction through three mandatory arithmetic targets.
-  Both constrain canonical modulus, quotient, and remainder words; reduction
-  by one handles a zero modulus.
-- Replaced the unsafe EVM exponentiation batch relation with canonical
-  square-and-multiply state transitions. Each eight-bit batch now proves its
-  entry limbs, Boolean exponent bits, conditional factor, truncated products,
-  and every carried accumulator and base-power word.
-- Extended BYTE to the full 256-bit EVM index domain, returning zero for every
-  index above 31 instead of rejecting it during synthesis.
-- Extended SIGNEXTEND to the full 256-bit EVM index domain, preserving the
-  original value for every index above 31 instead of rejecting it.
-- Extended SHL to the full 256-bit EVM shift domain, returning zero for every
-  shift above 255 instead of rejecting it during synthesis.
-- Extended SHR to the full 256-bit EVM shift domain, returning zero for every
-  shift above 255 instead of rejecting it during synthesis.
-- Fixed initial SLOAD rejecting valid 256-bit EVM storage values outside the
-  BLS12-381 scalar field range.
-- Fixed VM event handlers swallowing Synthesizer failures. The first
-  Synthesizer event-handler error is now retained while the VM finishes the
-  transaction and then rethrown unchanged, even if `runTx` also fails. This
-  allows host assertions and other consistency checks to fail synthesis.
-- Fixed Synthesizer calldata offset and length decoding for a normal `CALL`
-  executed within an inherited static context. CALL-family stack layouts are
-  now selected from the actual opcode, so such calls are no longer decoded as
-  six-argument `STATICCALL` operations.
-- Fixed MSTORE8 masking bypassing the arithmetic composition path and being
-  omitted when the input already fit in one byte. Every MSTORE8 execution now
-  places the existing 256-bit `AND` composition with the `0xff` word mask.
+- Updated circuit constraints and transaction-signature verification to remove
+  previously unsafe arithmetic and signature-validation paths.
+- Corrected synthesis of full-width storage values, byte stores, call data in
+  inherited static calls, and EVM `BYTE`, `SIGNEXTEND`, `SHL`, and `SHR`
+  boundary behavior.
 
 ## [2.1.5] - 2026-07-31
 
