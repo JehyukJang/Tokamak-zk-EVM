@@ -137,7 +137,7 @@ const applyVariantToConfig = (config: MatrixConfig, variant: TopologyVariant): M
     callCodeAddresses?: string[];
   };
   if (config.channelTransactionIndex !== variant.channelTransactionIndex) {
-    throw new Error(`Topology fixture nonce mismatch for ${variant.label}`);
+    throw new Error(`Topology fixture channel transaction index mismatch for ${variant.label}`);
   }
   if (variant.hostOrdering === 'reverse') {
     mutableConfig.storageConfigs?.reverse();

@@ -298,6 +298,7 @@ export class Synthesizer implements SynthesizerInterface
       block,
       tx: this._cachedOpts.signedTransaction,
       skipBalance: true,
+      skipNonce: true,
       skipBlockGasLimitValidation: true,
       skipHardForkValidation: true,
       reportPreimages: true,
