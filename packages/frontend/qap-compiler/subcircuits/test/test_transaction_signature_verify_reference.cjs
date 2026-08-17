@@ -288,12 +288,12 @@ const main = async () => {
   }
 
   for (const value of [FIELD_PRIME, FIELD_PRIME + 1n, (1n << 255n) - 1n]) {
-    const nonceBoundary = makeValues();
-    nonceBoundary[4] = value;
+    const channelTransactionIndexBoundary = makeValues();
+    channelTransactionIndexBoundary[4] = value;
     await assertReference(
       circuit,
-      nonceBoundary,
-      `native nonce ${value}`,
+      channelTransactionIndexBoundary,
+      `native channel transaction index ${value}`,
     );
 
     const firstInputBoundary = makeValues();

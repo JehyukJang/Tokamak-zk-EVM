@@ -337,8 +337,8 @@ const createTransactionSignatureCorpus = () => {
 
   const changedMessageWords = [...messageWords];
   changedMessageWords[3] += 1n;
-  const aliasedNonce = [...messageWords];
-  aliasedNonce[0] += FIELD_PRIME;
+  const aliasedChannelTransactionIndex = [...messageWords];
+  aliasedChannelTransactionIndex[0] += FIELD_PRIME;
   const oversizedContractWords = [...messageWords];
   oversizedContractWords[1] = CONTRACT_ADDRESS_LIMIT;
   const oversizedSelectorWords = [...messageWords];
@@ -412,9 +412,9 @@ const createTransactionSignatureCorpus = () => {
       signature: SCALAR_ORDER - 1n,
     }),
     vector(
-      "valid-native-private-nonce-alias",
+      "valid-native-private-channel-transaction-index-alias",
       DISPOSITIONS.VALID_COMPLETE_STATEMENT,
-      { messageWords: aliasedNonce },
+      { messageWords: aliasedChannelTransactionIndex },
     ),
     vector("delegate-s-plus-n-rejection", DISPOSITIONS.DELEGATED_PUBLIC_REJECTION, {
       randomizer: delegatedRandomizer,

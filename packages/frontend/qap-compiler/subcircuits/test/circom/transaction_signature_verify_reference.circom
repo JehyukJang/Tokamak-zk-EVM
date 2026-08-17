@@ -208,7 +208,7 @@ template JubjubScalarMulFromConstrainedBits_unsafe(N) {
 // Non-production monolithic TransactionSignatureVerify reference. Its private
 // inputs begin with the N + 7 word challenge prefix:
 //
-// R.x, R.y, A.x, A.y, nonce, contract, selector, input[0..N-1].
+// R.x, R.y, A.x, A.y, channel transaction index, contract, selector, input[0..N-1].
 //
 // S and O are declared separately to preserve their public boundary while all
 // N + 7 challenge inputs remain private. They are logical operands N + 7
