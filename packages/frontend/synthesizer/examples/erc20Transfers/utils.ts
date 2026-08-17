@@ -16,7 +16,7 @@ import {
 const DEFAULT_CHANNEL_ID =
   '108336797649051254585401751173864353497144788660297920004548699607442466523065';
 export type ExampleErc20TransferConfig = ChannelStateConfig & {
-  txNonce: number;
+  channelTransactionIndex: number;
   senderIndex: number;
   recipientIndex: number;
   amount: `0x${string}`;
@@ -146,7 +146,7 @@ export const loadConfig = async (configPath: string): Promise<ExampleErc20Transf
     storageConfigs,
     callCodeAddresses,
     blockNumber: parseNumberValue(configRaw.blockNumber, 'blockNumber'),
-    txNonce: parseNumberValue(configRaw.txNonce, 'txNonce'),
+    channelTransactionIndex: parseNumberValue(configRaw.channelTransactionIndex, 'channelTransactionIndex'),
     amount: parseHexString(configRaw.amount, 'amount'),
     senderIndex: parseNumberValue(configRaw.senderIndex, 'senderIndex'),
     recipientIndex: parseNumberValue(configRaw.recipientIndex, 'recipientIndex'),

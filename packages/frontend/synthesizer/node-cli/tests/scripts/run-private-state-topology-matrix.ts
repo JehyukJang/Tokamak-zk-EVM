@@ -18,7 +18,7 @@ type TopologyVariant = Readonly<{
   label: string;
   senderIndex: number;
   amount: string;
-  txNonce: number;
+  channelTransactionIndex: number;
   hostOrdering: HostOrdering;
   noteOwnerIndex?: number;
   receiverIndex?: number;
@@ -34,7 +34,7 @@ type TopologyVariantManifest = Readonly<{
 
 type MatrixConfig = Readonly<{
   network?: string;
-  txNonce?: number;
+  channelTransactionIndex?: number;
   function?: Readonly<{
     entryContractAddress?: string;
     selector?: string;
@@ -136,7 +136,7 @@ const applyVariantToConfig = (config: MatrixConfig, variant: TopologyVariant): M
     storageConfigs?: Array<{ preAllocatedKeys?: string[] }>;
     callCodeAddresses?: string[];
   };
-  if (config.txNonce !== variant.txNonce) {
+  if (config.channelTransactionIndex !== variant.channelTransactionIndex) {
     throw new Error(`Topology fixture nonce mismatch for ${variant.label}`);
   }
   if (variant.hostOrdering === 'reverse') {
@@ -164,8 +164,8 @@ const variantGeneratorArgs = (
     '4',
     '--sender',
     String(variant.senderIndex),
-    '--tx-nonce',
-    String(variant.txNonce),
+    '--channel-transaction-index',
+    String(variant.channelTransactionIndex),
     '--amount',
     variant.amount,
     '--deployment-manifest',

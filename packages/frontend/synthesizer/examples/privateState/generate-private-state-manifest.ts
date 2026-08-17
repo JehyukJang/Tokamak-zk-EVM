@@ -85,7 +85,7 @@ const defaultMintNoteValue = 1n * 10n ** 18n;
 const defaultRedeemNoteValue = 1n * 10n ** 18n;
 const defaultAmountUnit = 10n ** 18n;
 const defaultMnemonic = 'test test test test test test test test test test test junk';
-const defaultTxNonce = 0;
+const defaultChannelTransactionIndex = 0;
 
 type Address = `0x${string}`;
 type Hex = `0x${string}`;
@@ -336,7 +336,7 @@ const buildTransactionSnapshot = (
   }
 
   const txData: TokamakL2TxData = {
-    nonce: ethers.toBigInt(defaultTxNonce),
+    channelTransactionIndex: ethers.toBigInt(defaultChannelTransactionIndex),
     to: createAddressFromString(entryContractAddress),
     data: hexToBytes(addHexPrefix(calldata)),
     senderPubKey: senderPublicKey.toBytes(),
@@ -511,7 +511,7 @@ const buildMintManifest = async (context: ExampleContext, contractCodes: Contrac
         storageConfigs: [],
         callCodeAddresses: [],
         blockNumber: Number(staticBlockInfo.blockNumber),
-        txNonce: defaultTxNonce,
+        channelTransactionIndex: defaultChannelTransactionIndex,
         calldata: '0x',
         senderIndex,
         noteOwnerIndex,
@@ -622,7 +622,7 @@ const buildTransferManifest = async (context: ExampleContext, contractCodes: Con
         storageConfigs: [],
         callCodeAddresses: [],
         blockNumber: Number(staticBlockInfo.blockNumber),
-        txNonce: defaultTxNonce,
+        channelTransactionIndex: defaultChannelTransactionIndex,
         calldata: '0x',
         senderIndex,
         functionName,
@@ -697,7 +697,7 @@ const buildRedeemManifest = async (context: ExampleContext, contractCodes: Contr
         storageConfigs: [],
         callCodeAddresses: [],
         blockNumber: Number(staticBlockInfo.blockNumber),
-        txNonce: defaultTxNonce,
+        channelTransactionIndex: defaultChannelTransactionIndex,
         calldata: '0x',
         senderIndex,
         receiverIndex,

@@ -8,7 +8,7 @@
         "noteOwnerIndex": 0,
         "amount": "6000000000000000000",
         "extraBalanceAccounts": [],
-        "txNonce": 1,
+        "channelTransactionIndex": 1,
         "hostOrdering": "canonical"
       },
       {
@@ -17,7 +17,7 @@
         "noteOwnerIndex": 1,
         "amount": "12000000000000000000",
         "extraBalanceAccounts": [],
-        "txNonce": 2,
+        "channelTransactionIndex": 2,
         "hostOrdering": "canonical"
       },
       {
@@ -26,7 +26,7 @@
         "noteOwnerIndex": 2,
         "amount": "18000000000000000000",
         "extraBalanceAccounts": [0, 1],
-        "txNonce": 3,
+        "channelTransactionIndex": 3,
         "hostOrdering": "canonical"
       },
       {
@@ -35,7 +35,7 @@
         "noteOwnerIndex": 3,
         "amount": "24000000000000000000",
         "extraBalanceAccounts": [0, 1, 2],
-        "txNonce": 4,
+        "channelTransactionIndex": 4,
         "hostOrdering": "reverse"
       }
     ],
@@ -46,7 +46,7 @@
         "amount": "6000000000000000000",
         "extraCommitments": 0,
         "saltLabel": "baseline",
-        "txNonce": 1,
+        "channelTransactionIndex": 1,
         "hostOrdering": "canonical"
       },
       {
@@ -55,7 +55,7 @@
         "amount": "12000000000000000000",
         "extraCommitments": 0,
         "saltLabel": "calldata",
-        "txNonce": 2,
+        "channelTransactionIndex": 2,
         "hostOrdering": "canonical"
       },
       {
@@ -64,7 +64,7 @@
         "amount": "18000000000000000000",
         "extraCommitments": 2,
         "saltLabel": "state",
-        "txNonce": 3,
+        "channelTransactionIndex": 3,
         "hostOrdering": "canonical"
       },
       {
@@ -73,7 +73,7 @@
         "amount": "24000000000000000000",
         "extraCommitments": 3,
         "saltLabel": "ordering",
-        "txNonce": 4,
+        "channelTransactionIndex": 4,
         "hostOrdering": "reverse"
       }
     ],
@@ -85,7 +85,7 @@
         "amount": "6000000000000000000",
         "extraBalanceAccounts": [],
         "extraCommitments": 0,
-        "txNonce": 1,
+        "channelTransactionIndex": 1,
         "hostOrdering": "canonical"
       },
       {
@@ -95,7 +95,7 @@
         "amount": "12000000000000000000",
         "extraBalanceAccounts": [],
         "extraCommitments": 0,
-        "txNonce": 2,
+        "channelTransactionIndex": 2,
         "hostOrdering": "canonical"
       },
       {
@@ -105,7 +105,7 @@
         "amount": "18000000000000000000",
         "extraBalanceAccounts": [0, 1],
         "extraCommitments": 2,
-        "txNonce": 3,
+        "channelTransactionIndex": 3,
         "hostOrdering": "canonical"
       },
       {
@@ -115,7 +115,7 @@
         "amount": "24000000000000000000",
         "extraBalanceAccounts": [0, 1, 2],
         "extraCommitments": 3,
-        "txNonce": 4,
+        "channelTransactionIndex": 4,
         "hostOrdering": "reverse"
       }
     ]

@@ -45,7 +45,7 @@
     "0x7169D38820dfd117C3FA1f22a697dBA58d90BA06"
   ],
   "blockNumber": 10149362,
-  "txNonce": 0,
+  "channelTransactionIndex": 0,
   "senderIndex": 0,
   "recipientIndex": 1,
   "amount": "0x00000000000000000000000000000000000000000000000000000000000186a0",

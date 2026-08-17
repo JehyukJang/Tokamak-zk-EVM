@@ -54,7 +54,7 @@ const DEFAULT_ANVIL_RPC_URL = 'http://127.0.0.1:8545';
 const DEFAULT_ANVIL_MNEMONIC = 'test test test test test test test test test test test junk';
 const DEFAULT_PARTICIPANT_COUNT = 4;
 const DEFAULT_NOTE_VALUE = 1n * 10n ** 18n;
-const DEFAULT_L2_TX_NONCE = 0;
+const DEFAULT_CHANNEL_TRANSACTION_INDEX = 0;
 const DEFAULT_CHANNEL_ID = '4';
 
 const applyEnvFileIfPresent = (targetPath: string) => {
@@ -92,7 +92,7 @@ type ParsedArgs = {
   output?: string;
   participants: number;
   sender: number;
-  txNonce: number;
+  channelTransactionIndex: number;
   receiver?: number;
   extraBalanceAccounts: number[];
   extraCommitments: number;
@@ -130,7 +130,7 @@ const parseArgs = (): ParsedArgs => {
   const args: ParsedArgs = {
     participants: DEFAULT_PARTICIPANT_COUNT,
     sender: 0,
-    txNonce: DEFAULT_L2_TX_NONCE,
+    channelTransactionIndex: DEFAULT_CHANNEL_TRANSACTION_INDEX,
     extraBalanceAccounts: [],
     extraCommitments: 0,
     inputs: 4,
@@ -165,8 +165,8 @@ const parseArgs = (): ParsedArgs => {
       case '-s':
         args.sender = parseInteger(consumeValue(current), 'sender');
         break;
-      case '--tx-nonce':
-        args.txNonce = parseInteger(consumeValue(current), 'tx-nonce');
+      case '--channel-transaction-index':
+        args.channelTransactionIndex = parseInteger(consumeValue(current), 'channel-transaction-index');
         break;
       case '--receiver':
       case '-r':
@@ -275,7 +275,7 @@ const main = async () => {
   const outputPath = args.output ? path.resolve(process.cwd(), String(args.output)) : defaultOutputPath;
   const participantCount = args.participants;
   const senderIndex = args.sender;
-  const txNonce = args.txNonce;
+  const channelTransactionIndex = args.channelTransactionIndex;
   const receiverIndex = args.receiver ?? (senderIndex + 1) % participantCount;
   const extraBalanceAccounts = args.extraBalanceAccounts;
   const extraCommitments = args.extraCommitments;
@@ -296,8 +296,8 @@ const main = async () => {
   if (senderIndex < 0 || senderIndex >= participantCount) {
     throw new Error(`sender must be between 0 and ${participantCount - 1}`);
   }
-  if (txNonce < 0) {
-    throw new Error('tx-nonce must be non-negative');
+  if (channelTransactionIndex < 0) {
+    throw new Error('channel-transaction-index must be non-negative');
   }
   if (receiverIndex < 0 || receiverIndex >= participantCount) {
     throw new Error(`receiver must be between 0 and ${participantCount - 1}`);
@@ -351,7 +351,7 @@ const main = async () => {
     storageConfigs: [],
     callCodeAddresses: [],
     blockNumber: 0,
-    txNonce,
+    channelTransactionIndex,
     calldata: '0x',
     senderIndex,
     receiverIndex,
@@ -402,7 +402,6 @@ const main = async () => {
     ]);
   }
 
-  await provider.send('anvil_setNonce', [senderAddress, ethers.toBeHex(txNonce)]);
   await provider.send('evm_mine', []);
   const blockNumber = await provider.getBlockNumber();
   const noteRegistryKeys = inputCommitments.map(commitment =>

@@ -31,7 +31,7 @@ type Erc20TransferConfig = {
   storageConfigs: StorageConfigEntry[];
   callCodeAddresses: `0x${string}`[];
   blockNumber: number;
-  txNonce: number;
+  channelTransactionIndex: number;
   senderIndex: number;
   recipientIndex: number;
   amount: `0x${string}` | '';
@@ -90,7 +90,7 @@ const DEFAULT_CONFIG: Erc20TransferConfig = {
   storageConfigs: [],
   callCodeAddresses: [],
   blockNumber: 0,
-  txNonce: 0,
+  channelTransactionIndex: 0,
   senderIndex: 0,
   recipientIndex: 1,
   amount: '',

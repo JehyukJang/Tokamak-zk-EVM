@@ -40,7 +40,7 @@ type PrivateStateMintConfig = {
   storageConfigs: StorageConfigEntry[];
   callCodeAddresses: `0x${string}`[];
   blockNumber: number;
-  txNonce: number;
+  channelTransactionIndex: number;
   calldata: `0x${string}`;
   senderIndex: number;
   noteOwnerIndex: number;
@@ -79,7 +79,7 @@ const DEFAULT_ANVIL_MNEMONIC = 'test test test test test test test test test tes
 const DEFAULT_PARTICIPANT_COUNT = 4;
 const DEFAULT_NOTE_VALUE = 1n * 10n ** 18n;
 const DEFAULT_NOTE_OWNER_INDEX = -1;
-const DEFAULT_L2_TX_NONCE = 0;
+const DEFAULT_CHANNEL_TRANSACTION_INDEX = 0;
 const DEFAULT_CHANNEL_ID = '4';
 
 const applyEnvFileIfPresent = (targetPath: string) => {
@@ -117,7 +117,7 @@ type ParsedArgs = {
   output?: string;
   participants: number;
   sender: number;
-  txNonce: number;
+  channelTransactionIndex: number;
   noteOwner: number;
   outputs: 1 | 2 | 3 | 4 | 5 | 6;
   extraBalanceAccounts: number[];
@@ -132,7 +132,7 @@ const parseArgs = (): ParsedArgs => {
   const args: ParsedArgs = {
     participants: DEFAULT_PARTICIPANT_COUNT,
     sender: 0,
-    txNonce: DEFAULT_L2_TX_NONCE,
+    channelTransactionIndex: DEFAULT_CHANNEL_TRANSACTION_INDEX,
     noteOwner: DEFAULT_NOTE_OWNER_INDEX,
     outputs: 1,
     extraBalanceAccounts: [],
@@ -167,8 +167,8 @@ const parseArgs = (): ParsedArgs => {
       case '-s':
         args.sender = parseInteger(consumeValue(current), 'sender');
         break;
-      case '--tx-nonce':
-        args.txNonce = parseInteger(consumeValue(current), 'tx-nonce');
+      case '--channel-transaction-index':
+        args.channelTransactionIndex = parseInteger(consumeValue(current), 'channel-transaction-index');
         break;
       case '--note-owner':
         args.noteOwner = parseInteger(consumeValue(current), 'note-owner');
@@ -295,7 +295,7 @@ const main = async () => {
   const outputPath = args.output ? path.resolve(process.cwd(), String(args.output)) : defaultOutputPath;
   const participantCount = args.participants;
   const senderIndex = args.sender;
-  const txNonce = args.txNonce;
+  const channelTransactionIndex = args.channelTransactionIndex;
   const rawNoteOwnerIndex = args.noteOwner;
   const noteOwnerIndex = rawNoteOwnerIndex === DEFAULT_NOTE_OWNER_INDEX ? senderIndex : rawNoteOwnerIndex;
   const outputCount = args.outputs;
@@ -317,8 +317,8 @@ const main = async () => {
   if (senderIndex < 0 || senderIndex >= participantCount) {
     throw new Error(`sender must be between 0 and ${participantCount - 1}`);
   }
-  if (txNonce < 0) {
-    throw new Error('tx-nonce must be non-negative');
+  if (channelTransactionIndex < 0) {
+    throw new Error('channel-transaction-index must be non-negative');
   }
   if (noteOwnerIndex < 0 || noteOwnerIndex >= participantCount) {
     throw new Error(`note-owner must be between 0 and ${participantCount - 1}`);
@@ -380,7 +380,7 @@ const main = async () => {
       storageConfigs: [],
       callCodeAddresses: [],
       blockNumber: 0,
-      txNonce,
+      channelTransactionIndex,
       calldata: '0x',
       senderIndex,
       noteOwnerIndex,
@@ -412,7 +412,6 @@ const main = async () => {
       liquidBalanceStorageValue,
     ]);
   }
-  await provider.send('anvil_setNonce', [senderAddress, ethers.toBeHex(txNonce)]);
   await provider.send('evm_mine', []);
 
   const blockNumber = await provider.getBlockNumber();
@@ -428,7 +427,7 @@ const main = async () => {
     })),
     callCodeAddresses: managedStorageAddresses,
     blockNumber,
-    txNonce,
+    channelTransactionIndex,
     calldata,
     senderIndex,
     noteOwnerIndex,

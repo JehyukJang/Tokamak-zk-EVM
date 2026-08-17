@@ -54,7 +54,7 @@ export type MintExampleParticipant = ChannelParticipantConfig & {
 export type PrivateStateMintConfig = Omit<ChannelStateConfig, 'participants'> & {
   network: 'mainnet' | 'sepolia' | 'anvil';
   participants: MintExampleParticipant[];
-  txNonce: number;
+  channelTransactionIndex: number;
   calldata: `0x${string}`;
   senderIndex: number;
   noteOwnerIndex: number;
@@ -489,7 +489,7 @@ type ParsedBasePrivateStateConfig = {
   storageConfigs: ChannelStorageConfig[];
   callCodeAddresses: `0x${string}`[];
   blockNumber: number;
-  txNonce: number;
+  channelTransactionIndex: number;
   calldata: `0x${string}`;
   senderIndex: number;
   function: ChannelFunctionConfig;
@@ -514,7 +514,7 @@ const parseBasePrivateStateConfig = (
       (entry) => parseHexString(entry, 'callCodeAddresses'),
     ),
     blockNumber: parseNumberValue(configRaw.blockNumber, 'blockNumber'),
-    txNonce: parseNumberValue(configRaw.txNonce, 'txNonce'),
+    channelTransactionIndex: parseNumberValue(configRaw.channelTransactionIndex, 'channelTransactionIndex'),
     calldata: parseHexString(configRaw.calldata, 'calldata'),
     senderIndex: parseNumberValue(configRaw.senderIndex, 'senderIndex'),
     function: assertFunctionConfig(configRaw.function, 'function'),
@@ -658,7 +658,7 @@ export type PrivateStateNote = {
 
 export type PrivateStateRedeemConfig = ChannelStateConfig & {
   network: ExampleNetwork;
-  txNonce: number;
+  channelTransactionIndex: number;
   calldata: `0x${string}`;
   senderIndex: number;
   receiverIndex: number;
@@ -788,7 +788,7 @@ export type PrivateStateTransferOutput = {
 
 export type PrivateStateTransferConfig = ChannelStateConfig & {
   network: ExampleNetwork;
-  txNonce: number;
+  channelTransactionIndex: number;
   calldata: `0x${string}`;
   senderIndex: number;
   functionName: string;

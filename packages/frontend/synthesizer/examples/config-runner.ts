@@ -57,7 +57,7 @@ type ConfigAdapter<TConfig> = {
   getSenderIndex(config: TConfig): number;
   buildCalldata(config: TConfig, keyMaterial: SharedDerivedParticipantKeys): Uint8Array;
   toStateManagerChannelConfig(config: TConfig): ChannelStateConfig;
-  getTxNonce(config: TConfig): number;
+  getChannelTransactionIndex(config: TConfig): number;
   getEntryContractAddress(config: TConfig): `0x${string}`;
 };
 
@@ -139,7 +139,7 @@ const configAdapters: Record<ConfigExampleType, ConfigAdapter<any>> = {
     getSenderIndex: (config: ExampleErc20TransferConfig) => config.senderIndex,
     buildCalldata: (config: ExampleErc20TransferConfig, keyMaterial) => buildErc20Calldata(config, keyMaterial),
     toStateManagerChannelConfig: toErc20StateManagerChannelConfig,
-    getTxNonce: (config: ExampleErc20TransferConfig) => config.txNonce,
+    getChannelTransactionIndex: (config: ExampleErc20TransferConfig) => config.channelTransactionIndex,
     getEntryContractAddress: (config: ExampleErc20TransferConfig) => config.function.entryContractAddress,
   },
   'private-state-mint': {
@@ -149,7 +149,7 @@ const configAdapters: Record<ConfigExampleType, ConfigAdapter<any>> = {
     getSenderIndex: (config: PrivateStateMintConfig) => config.senderIndex,
     buildCalldata: (config: PrivateStateMintConfig) => hexToBytes(config.calldata),
     toStateManagerChannelConfig: toPrivateStateMintStateManagerChannelConfig,
-    getTxNonce: (config: PrivateStateMintConfig) => config.txNonce,
+    getChannelTransactionIndex: (config: PrivateStateMintConfig) => config.channelTransactionIndex,
     getEntryContractAddress: (config: PrivateStateMintConfig) => config.function.entryContractAddress,
   },
   'private-state-redeem': {
@@ -159,7 +159,7 @@ const configAdapters: Record<ConfigExampleType, ConfigAdapter<any>> = {
     getSenderIndex: (config: PrivateStateRedeemConfig) => config.senderIndex,
     buildCalldata: (config: PrivateStateRedeemConfig) => hexToBytes(config.calldata),
     toStateManagerChannelConfig: toPrivateStateRedeemStateManagerChannelConfig,
-    getTxNonce: (config: PrivateStateRedeemConfig) => config.txNonce,
+    getChannelTransactionIndex: (config: PrivateStateRedeemConfig) => config.channelTransactionIndex,
     getEntryContractAddress: (config: PrivateStateRedeemConfig) => config.function.entryContractAddress,
   },
   'private-state-transfer': {
@@ -169,7 +169,7 @@ const configAdapters: Record<ConfigExampleType, ConfigAdapter<any>> = {
     getSenderIndex: (config: PrivateStateTransferConfig) => config.senderIndex,
     buildCalldata: (config: PrivateStateTransferConfig) => hexToBytes(config.calldata),
     toStateManagerChannelConfig: toPrivateStateTransferStateManagerChannelConfig,
-    getTxNonce: (config: PrivateStateTransferConfig) => config.txNonce,
+    getChannelTransactionIndex: (config: PrivateStateTransferConfig) => config.channelTransactionIndex,
     getEntryContractAddress: (config: PrivateStateTransferConfig) => config.function.entryContractAddress,
   },
 };
@@ -203,7 +203,7 @@ async function runConfigExample<TConfig>(
   );
 
   const txData: TokamakL2TxData = {
-    nonce: BigInt(adapter.getTxNonce(config)),
+    channelTransactionIndex: BigInt(adapter.getChannelTransactionIndex(config)),
     to: createAddressFromString(adapter.getEntryContractAddress(config)),
     data: callData,
     senderPubKey: senderPubKey.toBytes(),
