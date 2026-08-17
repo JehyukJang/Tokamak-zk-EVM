@@ -56,7 +56,7 @@ export async function synthesizeFromSnapshotInput(
 
   await synthesizer.synthesizeTX();
   const finalStateSnapshot = await stateManager.captureStateSnapshot();
-  const circuitGeneration = (await createCircuitGenerator(synthesizer)).getResult();
+  const circuitGeneration = await createCircuitGenerator(synthesizer);
 
   return {
     ...circuitGeneration,

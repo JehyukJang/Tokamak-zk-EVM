@@ -14,13 +14,7 @@ type PlacementWireIndex = { globalWireId: number; placementId: number };
 
 // This class instantiates the compiler model in Section "3.1 Compilers" of the Tokamak zk-SNARK paper.
 export class PermutationGenerator {
-  private placementVariables: PlacementVariables;
-  private circuitPlacements: Placements;
-
-  // Each entry in permGroup represents a permutation subgroup.
-  // Each subgroup will be expressed in a Map to efficiently check whether it involves a wire or not.
-  // The key of each Map will be a stringified PlacementWireIndex.
-  private permGroup: Map<string, boolean>[];
+  private permGroup: Set<string>[];
   // permultationY: {0, 1, ..., s_{max}-1} \times {0, 1, ..., l_D-l-1} -> {0, 1, ..., s_{max}-1}
   private permutationY: number[][];
   // permutationZ: {0, 1, ..., s_{max}-1} \times {0, 1, ..., l_D-l-1} -> {0, 1, ..., l_D-l-1}
@@ -28,55 +22,31 @@ export class PermutationGenerator {
   public permutation: Permutation;
 
   constructor(
-    circuitPlacements: Placements,
-    placementVariables: PlacementVariables,
+    private readonly circuitPlacements: Placements,
+    private readonly placementVariables: PlacementVariables,
     private readonly subcircuitLibrary: ResolvedSubcircuitLibrary,
   ) {
-    this.circuitPlacements = circuitPlacements;
-    this.placementVariables = placementVariables;
     this._assertPlacementVariableAlignment();
-    // Construct permutation
     this.permGroup = this._buildPermGroup();
 
-    // Initialization for the permutation polynomials in equation 8 of the paper
     const { setupParams } = this.subcircuitLibrary.data;
     const numWires = setupParams.l_D - setupParams.l;
     const numPlacements = this.circuitPlacements.length;
 
     this.permutationY = Array.from({ length: numWires }, () => Array.from({ length: numPlacements }, (_, i) => i));
-    // Example:
-    // [
-    //   [0, 1, 2, 3],
-    //   [0, 1, 2, 3],
-    //   [0, 1, 2, 3]
-    // ]
 
     this.permutationX = Array.from({ length: numWires }, (_, h) => Array.from({ length: numPlacements }, () => h));
-    // Example:
-    // [
-    //   [0, 0, 0, 0],
-    //   [1, 1, 1, 1],
-    //   [2, 2, 2, 2]
-    // ]
-    // "permutationY[i][h]=j and permutationX[i][h]=k" means that the i-th wire of the h-th placement is a copy of the k-th wire of the j-th placement.
-
-    // Now finally correct permutationY and permutationX according to permGroup
     this.permutation = this._correctPermutation();
   }
 
-  private _correctPermutation(): {
-    row: number;
-    col: number;
-    X: number;
-    Y: number;
-  }[] {
-    let permutationFile = [];
+  private _correctPermutation(): Permutation {
+    const permutationFile: Permutation = [];
     const { setupParams } = this.subcircuitLibrary.data;
     const expectedInterfaceCells = this._validatePermGroupOwnership();
     const successorCount = new Map<string, number>();
     const predecessorCount = new Map<string, number>();
-    for (const _group of this.permGroup) {
-      const group = [..._group.keys()];
+    for (const groupSet of this.permGroup) {
+      const group = [...groupSet];
       const groupLength = group.length;
       for (let i = 0; i < groupLength; i++) {
         const element: PlacementWireIndex = JSON.parse(group[i]);
@@ -88,20 +58,15 @@ export class PermutationGenerator {
         successorCount.set(elementKey, (successorCount.get(elementKey) ?? 0) + 1);
         predecessorCount.set(nextElementKey, (predecessorCount.get(nextElementKey) ?? 0) + 1);
         if (groupLength > 1) {
-          permutationFile.push({
-            // wire id
+          const entry = {
             row: element.globalWireId - setupParams.l,
-            // placement id
             col: element.placementId,
-            // wire id
             X: nextElement.globalWireId - setupParams.l,
-            // placement id
             Y: nextElement.placementId,
-          });
-          const rowIdx = permutationFile[permutationFile.length - 1].row;
-          const colIdx = permutationFile[permutationFile.length - 1].col;
-          this.permutationX[rowIdx][colIdx] = permutationFile[permutationFile.length - 1].X;
-          this.permutationY[rowIdx][colIdx] = permutationFile[permutationFile.length - 1].Y;
+          };
+          permutationFile.push(entry);
+          this.permutationX[entry.row][entry.col] = entry.X;
+          this.permutationY[entry.row][entry.col] = entry.Y;
         }
       }
     }
@@ -114,8 +79,8 @@ export class PermutationGenerator {
     return permutationFile;
   }
 
-  private _buildPermGroup(): Map<string, boolean>[] {
-    const permGroup: Map<string, boolean>[] = [];
+  private _buildPermGroup(): Set<string>[] {
+    const permGroup: Set<string>[] = [];
     const { setupParams } = this.subcircuitLibrary.data;
     const subcircuitInfoByName = this.subcircuitLibrary.subcircuitInfoByName;
 
@@ -131,9 +96,7 @@ export class PermutationGenerator {
           break;
         }
         const entryKey = this._keyOf({ placementId: placeId, globalWireId });
-        const groupEntry: Map<string, boolean> = new Map();
-        groupEntry.set(entryKey, true);
-        permGroup.push(groupEntry);
+        permGroup.push(new Set([entryKey]));
       }
     }
 
@@ -179,7 +142,7 @@ export class PermutationGenerator {
           let inserted = false;
           for (const group of permGroup) {
             if (group.has(parentKey)) {
-              group.set(thisKey, true);
+              group.add(thisKey);
               inserted = true;
               break;
             }
@@ -192,18 +155,9 @@ export class PermutationGenerator {
           if (!this._isPermittedUnparentedInput(thisPlacementId, thisPlacement.name, thisInPt)) {
             throw new Error('An input interface wire forms a group as a representative, although it is not qualified.');
           }
-          const groupEntry: Map<string, boolean> = new Map();
-          groupEntry.set(thisKey, true);
-          permGroup.push(groupEntry);
+          permGroup.push(new Set([thisKey]));
         }
       }
-      // console.log(`Length inc: ${thisSubcircuitInfo.NInWires}`)
-      // let checksum = 0
-      // for (const group of permGroup){
-      //     checksum += group.size
-      // }
-      // console.log(`checksum: ${checksum}`)
-      // console.log(`a`)
     }
 
     // Forcely adding special permutation for the constant wires of all library subcircuits
@@ -220,8 +174,8 @@ export class PermutationGenerator {
       globalWireId: repWireSubcircuitInfo.flattenMap[repWireLocalId],
     });
     const repContainingGroupIndices: number[] = [];
-    permGroup.forEach((m, i) => {
-      if (m.has(repPermGroupKey)) repContainingGroupIndices.push(i);
+    permGroup.forEach((group, i) => {
+      if (group.has(repPermGroupKey)) repContainingGroupIndices.push(i);
     });
     if (repContainingGroupIndices.length !== 1) {
       throw new Error(`Something wrong with searching CIRCOM_CONST_ONE wire from the permutation group`);
@@ -230,7 +184,7 @@ export class PermutationGenerator {
     for (const [placementId, placement] of this.circuitPlacements.entries()) {
       const subcircuitInfo = subcircuitInfoByName.get(placement.name)!;
       const key = this._keyOf({ placementId, globalWireId: subcircuitInfo.flattenMap[0] });
-      circomConstPermGroup.set(key, true);
+      circomConstPermGroup.add(key);
     }
     return permGroup;
   }
@@ -281,7 +235,7 @@ export class PermutationGenerator {
 
     const ownerByCell = new Map<string, number>();
     for (const [groupIndex, group] of this.permGroup.entries()) {
-      for (const key of group.keys()) {
+      for (const key of group) {
         if (!expected.has(key)) {
           throw new Error('Permutation: A group contains a non-interface cell.');
         }

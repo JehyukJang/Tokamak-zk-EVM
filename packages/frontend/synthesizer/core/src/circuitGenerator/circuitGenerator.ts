@@ -7,7 +7,7 @@ import {
   CircuitGenerationResult,
 } from './types/types.ts';
 
-export async function createCircuitGenerator(synthesizer: SynthesizerInterface): Promise<CircuitGenerator> {
+export async function createCircuitGenerator(synthesizer: SynthesizerInterface): Promise<CircuitGenerationResult> {
   const variableGeneration = await new VariableGenerator(
     synthesizer,
     synthesizer.subcircuitLibrary,
@@ -17,19 +17,11 @@ export async function createCircuitGenerator(synthesizer: SynthesizerInterface):
     variableGeneration.placementVariables,
     synthesizer.subcircuitLibrary,
   ).permutation;
-  return new CircuitGenerator({
+  return {
     placements: variableGeneration.circuitPlacements,
     placementVariables: variableGeneration.placementVariables,
     publicInstance: variableGeneration.publicInstance,
     publicInstanceDescription: variableGeneration.publicInstanceDescription,
     permutation,
-  });
-}
-
-export class CircuitGenerator {
-  constructor(private readonly result: CircuitGenerationResult) {}
-
-  public getResult(): CircuitGenerationResult {
-    return this.result;
-  }
+  };
 }

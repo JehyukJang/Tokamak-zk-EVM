@@ -129,10 +129,10 @@ describe('PermutationGenerator structural hardening', () => {
     const placements = successfulPlacements();
     const generator = createPermutationGenerator(placements);
     const privateGenerator = generator as unknown as {
-      permGroup: Map<string, boolean>[];
+      permGroup: Set<string>[];
       _validatePermGroupOwnership(): Set<string>;
     };
-    privateGenerator.permGroup.push(new Map(privateGenerator.permGroup[0]));
+    privateGenerator.permGroup.push(new Set(privateGenerator.permGroup[0]));
 
     expect(() => privateGenerator._validatePermGroupOwnership()).toThrow('belongs to multiple groups');
   });

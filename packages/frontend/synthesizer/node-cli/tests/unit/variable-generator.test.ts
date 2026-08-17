@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { CircuitGenerator } from '../../../core/src/circuitGenerator/circuitGenerator.ts';
 import { VariableGenerator } from '../../../core/src/circuitGenerator/handlers/variableGenerator.ts';
 import { BUFFER_LIST } from '../../../core/src/subcircuit/configuredTypes.ts';
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
@@ -100,20 +99,14 @@ const prepareCircuitInstance = (
     }
   )._prepareCircuitInstance(placement, target);
 
-const extractPublicProjection = (generator: VariableGenerator, placementVariables: PlacementVariables): string[] =>
+const extractPublicProjection = (generator: VariableGenerator, placementVariables: PlacementVariables) =>
   (
     generator as unknown as {
-      _extractPublicProjection<Value>(
+      _extractPublicProjection(
         placementVariables: PlacementVariables,
-        defaultValue: Value,
-        extractValue: (placement: PlacementVariables[number], localVariableIdx: number) => Value | undefined,
-      ): Value[];
+      ): unknown;
     }
-  )._extractPublicProjection(
-    placementVariables,
-    '',
-    (placement, localVariableIdx) => placement.variables[localVariableIdx],
-  );
+  )._extractPublicProjection(placementVariables);
 
 const createGeneratorWithSubcircuits = (
   subcircuits: readonly { name: string; id: number; NInWires: number; NOutWires: number }[],
@@ -288,6 +281,31 @@ describe('VariableGenerator interface materialization', () => {
     expect(prepareCircuitInstance(generator, placement, 'In').values).toEqual(['0x1', '0x00']);
   });
 
+  it('projects public values and descriptions in one result', () => {
+    const generator = createGeneratorWithSubcircuits(
+      [{ name: 'bufferEVMIn', id: 10, NInWires: 1, NOutWires: 1 }],
+      [[10, 1]],
+      ['EVM_IN'],
+    );
+
+    expect(extractPublicProjection(generator, [{
+      subcircuitId: 10,
+      variables: ['0x01', '0x02'],
+      instanceList: ['', 'public value'],
+    }])).toEqual({
+      publicInstance: {
+        a_pub_user: [],
+        a_pub_block: [],
+        a_pub_function: ['0x02'],
+      },
+      publicInstanceDescription: {
+        a_pub_user_description: [],
+        a_pub_block_description: [],
+        a_pub_function_description: ['public value'],
+      },
+    });
+  });
+
   it('rejects a public wire that is not declared by a public buffer', () => {
     const generator = createGeneratorWithSubcircuits([{ name: 'ADD', id: 10, NInWires: 1, NOutWires: 1 }], [[10, 1]]);
 
@@ -314,39 +332,6 @@ describe('VariableGenerator interface materialization', () => {
     ];
 
     expect(() => extractPublicProjection(generator, placements)).toThrow('must have exactly one runtime placement');
-  });
-});
-
-describe('CircuitGenerator phase results', () => {
-  it('retains completed variable-generation data and its permutation without child generators', () => {
-    const circuitPlacements: Placements = [];
-    const placementVariables = [];
-    const publicInstance = {
-      a_pub_user: [],
-      a_pub_block: [],
-      a_pub_function: [],
-    } as const;
-    const publicInstanceDescription = {
-      a_pub_user_description: [],
-      a_pub_block_description: [],
-      a_pub_function_description: [],
-    } as const;
-    const permutation = [];
-    const circuitGenerator = new CircuitGenerator({
-      placements: circuitPlacements,
-      placementVariables,
-      publicInstance,
-      publicInstanceDescription,
-      permutation,
-    });
-
-    expect(circuitGenerator.getResult()).toEqual({
-      placements: circuitPlacements,
-      placementVariables,
-      publicInstance,
-      publicInstanceDescription,
-      permutation,
-    });
   });
 });
 

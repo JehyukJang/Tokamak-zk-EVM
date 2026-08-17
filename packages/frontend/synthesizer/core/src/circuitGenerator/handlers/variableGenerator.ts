@@ -36,11 +36,11 @@ export class VariableGenerator {
     this._validateBufferSizes(newPlacements);
 
     const placementVariables = await this._generatePlacementVariables(newPlacements);
+    const publicProjection = this._extractPublicProjection(placementVariables);
     return {
       circuitPlacements: newPlacements,
       placementVariables,
-      publicInstance: this._extractPublicInstance(placementVariables),
-      publicInstanceDescription: this._extractPublicInstanceDescription(placementVariables),
+      ...publicProjection,
     };
   }
 
@@ -140,15 +140,13 @@ export class VariableGenerator {
     return placementVariables;
   }
 
-  private _extractPublicProjection<Value>(
+  private _extractPublicProjection(
     placementVariables: PlacementVariables,
-    defaultValue: Value,
-    extractValue: (placement: PlacementVariables[number], localVariableIdx: number) => Value | undefined,
-  ): Value[] {
+  ): Pick<VariableGenerationResult, 'publicInstance' | 'publicInstanceDescription'> {
     const { globalWireList, setupParams } = this.subcircuitLibrary.data;
-    const l = setupParams.l;
-    const projection: Value[] = Array(l).fill(defaultValue);
-    for (let globalIdx = 0; globalIdx < l; globalIdx++) {
+    const values: `0x${string}`[] = Array(setupParams.l).fill('0x00');
+    const descriptions: string[] = Array(setupParams.l).fill('');
+    for (let globalIdx = 0; globalIdx < setupParams.l; globalIdx++) {
       const [subcircuitId, localVariableIdx] = globalWireList[globalIdx];
       if (subcircuitId !== -1 && localVariableIdx !== -1) {
         const publicBuffers = BUFFER_LIST.filter(
@@ -162,52 +160,28 @@ export class VariableGenerator {
         if (placements.length !== 1) {
           throw new Error(`Public buffer ${publicBuffers[0]} must have exactly one runtime placement`);
         }
-        const value = extractValue(placements[0]!, localVariableIdx);
-        if (value === undefined) {
+        const placement = placements[0]!;
+        const value = placement.variables[localVariableIdx];
+        const description = placement.instanceList[localVariableIdx];
+        if (value === undefined || description === undefined) {
           throw new Error('Something wrong in the Global Wire List or local placement variables. Need to be debugged.');
         }
-        projection[globalIdx] = value;
+        values[globalIdx] = addHexPrefix(value);
+        descriptions[globalIdx] = description;
       }
     }
-    return projection;
-  }
-
-  private _extractPublicInstance(placementVariables: PlacementVariables): PublicInstance {
     const { l_user, l_free } = this.subcircuitLibrary.data.setupParams;
-    const a_pub = this._extractPublicProjection(
-      placementVariables,
-      '0x00' as `0x${string}`,
-      (placement, localVariableIdx) => {
-        const value = placement.variables[localVariableIdx];
-        return value === undefined ? undefined : addHexPrefix(value);
+    return {
+      publicInstance: {
+        a_pub_user: values.slice(0, l_user),
+        a_pub_block: values.slice(l_user, l_free),
+        a_pub_function: values.slice(l_free),
       },
-    );
-
-    const a_pub_user = a_pub.slice(0, l_user);
-    const a_pub_block = a_pub.slice(l_user, l_free);
-    const a_pub_function = a_pub.slice(l_free);
-    return {
-      a_pub_user,
-      a_pub_block,
-      a_pub_function,
-    };
-  }
-
-  private _extractPublicInstanceDescription(placementVariables: PlacementVariables): PublicInstanceDescription {
-    const { l_user, l_free } = this.subcircuitLibrary.data.setupParams;
-    const a_pub_desc = this._extractPublicProjection(
-      placementVariables,
-      '',
-      (placement, localVariableIdx) => placement.instanceList[localVariableIdx],
-    );
-
-    const a_pub_user_description = a_pub_desc.slice(0, l_user);
-    const a_pub_block_description = a_pub_desc.slice(l_user, l_free);
-    const a_pub_function_description = a_pub_desc.slice(l_free);
-    return {
-      a_pub_user_description,
-      a_pub_block_description,
-      a_pub_function_description,
+      publicInstanceDescription: {
+        a_pub_user_description: descriptions.slice(0, l_user),
+        a_pub_block_description: descriptions.slice(l_user, l_free),
+        a_pub_function_description: descriptions.slice(l_free),
+      },
     };
   }
 
@@ -374,7 +348,7 @@ export class VariableGenerator {
       }
       const ins = { in: inValues };
       const witnessCalculator = await builder(buffer);
-      const witness = await witnessCalculator.calculateWitness(ins, 0);
+      const witness = await witnessCalculator.calculateWitness(ins);
       for (const [index, value] of witness.entries()) {
         let hex = bigIntToHex(value);
         witnessHex[index] = hex;

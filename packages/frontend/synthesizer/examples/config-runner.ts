@@ -218,7 +218,7 @@ async function runConfigExample<TConfig>(
   });
   const runTxResult = await synthesizer.synthesizeTX();
   const finalStateSnapshot = await stateManager.captureStateSnapshot();
-  const circuitGeneration = (await createCircuitGenerator(synthesizer)).getResult();
+  const circuitGeneration = await createCircuitGenerator(synthesizer);
   const output: SynthesisOutput = {
     ...circuitGeneration,
     finalStateSnapshot,
