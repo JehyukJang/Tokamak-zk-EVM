@@ -803,7 +803,7 @@ export class PlacementManager {
         this.loadArbitraryStatic(
           1n << BigInt(inputPts.length - POSEIDON_INPUTS),
           selectorType,
-          'ALU selector for Poseidon',
+          'Poseidon input-count selector',
         ),
         ...inputPts,
         ...Array.from(
