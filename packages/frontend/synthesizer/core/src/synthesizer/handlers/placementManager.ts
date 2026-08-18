@@ -61,8 +61,26 @@ export type TopologyFixedConstantUsage =
   | 'memory-view-ownership-mask'
   | 'codecopy-current-code-chunk';
 
+export type SemanticObservationCacheKeyPart =
+  | Readonly<{
+    dependency: 'transaction' | 'message' | 'code' | 'return-data-revision' | 'memory-size-revision' | 'balance-revision';
+    value: number;
+  }>
+  | Readonly<{
+    dependency: 'operand-wire';
+    source: number;
+    wireIndex: number;
+    dataPtType: DataPtType;
+  }>;
+
+export type SemanticObservationCacheKey = Readonly<{
+  observation: symbol;
+  parts: readonly SemanticObservationCacheKeyPart[];
+}>;
+
 export type ArbitraryStaticCachePolicy =
   | Readonly<{ kind: 'topology-fixed'; usage: TopologyFixedConstantUsage }>
+  | Readonly<{ kind: 'semantic-observation'; key: SemanticObservationCacheKey }>
   | Readonly<{ kind: 'uncached' }>;
 
 const FULL_MEMORY_VIEW_OWNERSHIP = 0xffffffffn

@@ -39,6 +39,9 @@ const createHarness = (
   } = {},
 ) => {
   const parentContext: MessageContext = {
+    messageContextIdentity: 0,
+    codeContextIdentity: 0,
+    returnDataRevision: 0,
     stackPt: new StackPt(),
     memoryPt: new MemoryPt(),
     callerPt: dataPt(0x1111n, 1),

@@ -23,6 +23,9 @@ const dataPt = (
 ): DataPt => DataPtFactory.create({ source, wireIndex, dataPtType }, value)
 
 const createContext = (): MessageContext => ({
+  messageContextIdentity: 0,
+  codeContextIdentity: 0,
+  returnDataRevision: 0,
   stackPt: new StackPt(),
   memoryPt: new MemoryPt(),
   callerPt: dataPt(1n, 1),

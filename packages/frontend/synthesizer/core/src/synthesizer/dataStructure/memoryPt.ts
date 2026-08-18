@@ -33,10 +33,29 @@ import type { DataAliasGeometries, DataAliasGeometryEntry, DataPt, MemoryPtEntry
 export class MemoryPt {
   _storePt: TMemoryPt
   private _timeStamp: number
+  private _byteLength: number
+  private _memorySizeRevision: number
 
   constructor() {
     this._storePt = new Map()
     this._timeStamp = 0
+    this._byteLength = 0
+    this._memorySizeRevision = 0
+  }
+
+  public get memorySizeRevision(): number {
+    return this._memorySizeRevision
+  }
+
+  private _observeMemoryRange(offset: number, byteSize: number): void {
+    if (byteSize === 0) {
+      return
+    }
+    const endOffsetExclusive = offset + byteSize
+    if (endOffsetExclusive > this._byteLength) {
+      this._byteLength = endOffsetExclusive
+      this._memorySizeRevision += 1
+    }
   }
 
   static simulateMemoryPt (memoryPts: MemoryPts): MemoryPt {
@@ -73,6 +92,8 @@ export class MemoryPt {
     if (byteSize === 0) {
       return this.viewMemory(offset, byteSize)
     }
+
+    this._observeMemoryRange(offset, byteSize)
 
     this._memPtCleanUp(offset, byteSize)
     this._storePt.set(this._timeStamp++, {
@@ -118,6 +139,7 @@ export class MemoryPt {
    * @returns {returnMemroyPts}
    */
   read(offset: number, length: number): MemoryPts {
+    this._observeMemoryRange(offset, length)
     const dataFragments = this._viewMemoryConflict(offset, length)
     const returnMemoryPts: MemoryPts = []
     if (dataFragments.size > 0) {
@@ -143,6 +165,7 @@ export class MemoryPt {
    * @returns Byte geometry used to materialize MemoryViewStep inputs.
    */
   getDataAlias(offset: number, size: number): DataAliasGeometries {
+    this._observeMemoryRange(offset, size)
     const dataAliasInfos: DataAliasGeometryEntry[] = []
     const dataFragments = this._viewMemoryConflict(offset, size)
 

@@ -19,7 +19,49 @@ import type {
   StorageCacheEntries,
   StorageCacheEntry,
 } from '../types/index.ts';
-import type { PlacementManager } from './placementManager.ts';
+import type {
+  ArbitraryStaticCachePolicy,
+  PlacementManager,
+  SemanticObservationCacheKeyPart,
+} from './placementManager.ts';
+
+export type ObservationDependency = SemanticObservationCacheKeyPart['dependency'];
+
+export type ObservationDefinition = Readonly<{
+  id: symbol;
+  name: string;
+  dependencies: readonly ObservationDependency[];
+}>;
+
+const createObservationDefinition = (
+  name: string,
+  dependencies: readonly ObservationDependency[],
+): ObservationDefinition => ({ id: Symbol(name), name, dependencies });
+
+export const OBSERVATION_DEFINITIONS = {
+  callValue: createObservationDefinition('CALLVALUE', ['message']),
+  callDataSize: createObservationDefinition('CALLDATASIZE', ['message']),
+  codeSize: createObservationDefinition('CODESIZE', ['code']),
+  gasPrice: createObservationDefinition('GASPRICE', ['transaction']),
+  returnDataSize: createObservationDefinition(
+    'RETURNDATASIZE',
+    ['message', 'return-data-revision'],
+  ),
+  memorySize: createObservationDefinition(
+    'MSIZE',
+    ['message', 'memory-size-revision'],
+  ),
+  balance: createObservationDefinition(
+    'BALANCE',
+    ['balance-revision', 'operand-wire'],
+  ),
+  extCodeSize: createObservationDefinition('EXTCODESIZE', ['operand-wire']),
+  extCodeHash: createObservationDefinition('EXTCODEHASH', ['operand-wire']),
+  extCodeCopyChunk: createObservationDefinition(
+    'EXTCODECOPY chunk',
+    ['operand-wire', 'operand-wire'],
+  ),
+} as const;
 
 export type MemoryCopyPlan = Readonly<{
   operands: readonly (readonly DataPt[])[];
@@ -150,6 +192,9 @@ export class InitialStorageReadList {
 }
 
 export type MessageContext = {
+  messageContextIdentity: number;
+  codeContextIdentity: number;
+  returnDataRevision: number;
   stackPt: StackPt;
   memoryPt: MemoryPt;
   callerPt: DataPt;
@@ -202,6 +247,11 @@ export class ContextManager {
   private _verifiedContractAddressPt: DataPt | undefined
   private _verifiedFunctionSelectorPt: DataPt | undefined
   private _verifiedTransactionInputPts: DataPt[] = []
+  private _nextMessageContextIdentity = 0
+  private _nextCodeContextIdentity = 0
+  private _transactionIdentity = 0
+  private _balanceRevision = 0
+  private _codeContextIdentityByAddress = new Map<string, number>()
 
   constructor(private readonly placementManager: PlacementManager) {}
 
@@ -220,6 +270,53 @@ export class ContextManager {
     this._verifiedTransactionInputPts = transactionInputPts.map((dataPt) =>
       DataPtFactory.deepCopy(dataPt),
     )
+  }
+
+  public createObservationCachePolicy(
+    definition: ObservationDefinition,
+    context: MessageContext,
+    operandPts: readonly DataPt[] = [],
+  ): ArbitraryStaticCachePolicy {
+    const expectedOperandCount = definition.dependencies.filter(
+      (dependency) => dependency === 'operand-wire',
+    ).length
+    if (operandPts.length !== expectedOperandCount) {
+      throw new Error(
+        `Synthesizer: ${definition.name} expects ${expectedOperandCount} observation operands, but got ${operandPts.length}`,
+      )
+    }
+
+    let operandIndex = 0
+    const parts: SemanticObservationCacheKeyPart[] = definition.dependencies.map((dependency) => {
+      switch (dependency) {
+        case 'transaction':
+          return { dependency, value: this._transactionIdentity }
+        case 'message':
+          return { dependency, value: context.messageContextIdentity }
+        case 'code':
+          return { dependency, value: context.codeContextIdentity }
+        case 'return-data-revision':
+          return { dependency, value: context.returnDataRevision }
+        case 'memory-size-revision':
+          return { dependency, value: context.memoryPt.memorySizeRevision }
+        case 'balance-revision':
+          return { dependency, value: this._balanceRevision }
+        case 'operand-wire': {
+          const operand = operandPts[operandIndex++]!
+          return {
+            dependency,
+            source: operand.source,
+            wireIndex: operand.wireIndex,
+            dataPtType: operand.dataPtType,
+          }
+        }
+      }
+    })
+
+    return {
+      kind: 'semantic-observation',
+      key: { observation: definition.id, parts },
+    }
   }
 
   public prepareCodeMemoryEntries(
@@ -353,6 +450,9 @@ export class ContextManager {
     }
 
     const depth = message.depth
+    if (depth > 0) {
+      this._balanceRevision += 1
+    }
     let callDataMemoryPts: MemoryPts
     let callerPt: DataPt
     let codeAddressPt: DataPt
@@ -473,6 +573,9 @@ export class ContextManager {
     }
 
     const context: MessageContext = {
+      messageContextIdentity: this._nextMessageContextIdentity++,
+      codeContextIdentity: this._getCodeContextIdentity(message.codeAddress.toString()),
+      returnDataRevision: 0,
       stackPt: new StackPt(),
       memoryPt: new MemoryPt(),
       callDataMemoryPts,
@@ -504,6 +607,7 @@ export class ContextManager {
       dataPt: DataPtFactory.deepCopy(entry.dataPt),
     }))
     parentContext.returnDataByteLength = childContext.resultDataByteLength
+    parentContext.returnDataRevision += 1
   }
 
   public get messageCodeAddresses(): readonly string[] {
@@ -523,6 +627,17 @@ export class ContextManager {
     this._verifiedFunctionSelectorPt = undefined
     this._verifiedTransactionInputPts = []
     this._messageCodeAddresses.clear()
+    this._transactionIdentity += 1
+  }
+
+  private _getCodeContextIdentity(codeAddress: string): number {
+    const existing = this._codeContextIdentityByAddress.get(codeAddress)
+    if (existing !== undefined) {
+      return existing
+    }
+    const identity = this._nextCodeContextIdentity++
+    this._codeContextIdentityByAddress.set(codeAddress, identity)
+    return identity
   }
 
   public beginFrame(depth: number): void {

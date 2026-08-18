@@ -11,6 +11,16 @@ const wordPt = (value: bigint) => DataPtFactory.create({
 }, value);
 
 describe('MemoryPt MemoryView geometry', () => {
+  it('advances its size revision only when an accessed range expands memory', () => {
+    const memoryPt = new MemoryPt();
+
+    memoryPt.write(0, 4, wordPt(0x11223344n));
+    memoryPt.getDataAlias(1, 2);
+    memoryPt.getDataAlias(8, 1);
+
+    expect(memoryPt.memorySizeRevision).toBe(2);
+  });
+
   it('derives the right-shifted partial-view contribution once', () => {
     const memoryPt = new MemoryPt();
     memoryPt.write(4, 4, wordPt(0x11223344n));
