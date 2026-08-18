@@ -48,12 +48,7 @@ type PlacementCandidate = Readonly<{
   operands: CompositionOperands;
   resultPts: readonly DataPt[];
   placements: readonly PlacementEntry[];
-  canonicalityGuardCacheEntries: readonly CanonicalityGuardCacheEntry[];
-}>;
-
-type CanonicalityGuardCacheEntry = Readonly<{
-  bufferPlacementIndex: number;
-  bufferOutputWireIndex: number;
+  leadingCanonicalityGuardCount: number;
 }>;
 
 const FULL_MEMORY_VIEW_OWNERSHIP = 0xffffffffn
@@ -273,7 +268,7 @@ function _assertCandidateEarlierSource(
 export class PlacementManager {
   private _placements: Placements = []
   private _cachedEVMIn: Map<bigint, Map<string, DataPt>> = new Map()
-  private _canonicalityGuardedBufferOutputs: Map<number, Set<number>> = new Map()
+  private _guardedBufferOutputWires: Map<number, Set<number>> = new Map()
 
   public subcircuitInfoByName: SubcircuitInfoByName;
   private readonly _bufferSubcircuitByBuffer: Record<ReservedBuffer, SubcircuitInfoByNameEntry | undefined>;
@@ -286,6 +281,7 @@ export class PlacementManager {
     this.subcircuitInfoByName = subcircuitLibrary.subcircuitInfoByName
     this._bufferSubcircuitByBuffer = subcircuitLibrary.subcircuitBufferMapping
     this._placementCompositionMapping = subcircuitLibrary.placementCompositionMapping
+    this._assertCanonicalityGuardInterface()
     this._initBuffers()
   }
 
@@ -485,13 +481,14 @@ export class PlacementManager {
         break
     }
     for (const placement of candidate.placements) {
-      this._placements.push(placementEntryDeepCopy(placement))
+      this._place(placement.name, placement.inPts, placement.outPts, placement.usage)
     }
-    for (const entry of candidate.canonicalityGuardCacheEntries) {
-      const outputs = this._canonicalityGuardedBufferOutputs.get(entry.bufferPlacementIndex)
+    for (const placement of candidate.placements.slice(0, candidate.leadingCanonicalityGuardCount)) {
+      const input = placement.inPts[0]!
+      const outputs = this._guardedBufferOutputWires.get(input.source)
         ?? new Set<number>()
-      outputs.add(entry.bufferOutputWireIndex)
-      this._canonicalityGuardedBufferOutputs.set(entry.bufferPlacementIndex, outputs)
+      outputs.add(input.wireIndex)
+      this._guardedBufferOutputWires.set(input.source, outputs)
     }
     return candidate.resultPts.map((dataPt) => DataPtFactory.deepCopy(dataPt))
   }
@@ -513,6 +510,27 @@ export class PlacementManager {
       inPts: inPts.slice(),
       outPts: outPts.slice(),
     }
+  }
+
+  private _assertCanonicalityGuardInterface(): void {
+    const subcircuit = this.subcircuitInfoByName.get('CheckBus256')
+    const logicalInterface = subcircuit?.logicalInterface
+    if (
+      subcircuit === undefined
+      || logicalInterface === undefined
+      || logicalInterface.inputs.length !== 1
+      || logicalInterface.outputs.length !== 0
+      || getDataPtTypeFromLogicalInterfaceType(logicalInterface.inputs[0]!.logicalType) !== UINT256_DATA_PT_TYPE
+    ) {
+      throw new Error('Synthesizer: CheckBus256 must expose one uint256 input and no outputs')
+    }
+  }
+
+  private _isDirectBufferOutput(dataPt: DataPt): boolean {
+    const sourcePlacement = this._placements[dataPt.source]
+    return sourcePlacement !== undefined && BUFFER_LIST.some(
+      buffer => this._bufferSubcircuitByBuffer[buffer]?.id === sourcePlacement.subcircuitId,
+    )
   }
 
   private _materializeMemoryViewComposition(
@@ -606,7 +624,7 @@ export class PlacementManager {
       operands: views,
       resultPts,
       placements: steps,
-      canonicalityGuardCacheEntries: [],
+      leadingCanonicalityGuardCount: 0,
     }
   }
 
@@ -625,13 +643,11 @@ export class PlacementManager {
       || operands.length !== composition.numOperands) {
       throw new Error(`Synthesizer: ${operation} has an invalid fixed generic composition`)
     }
-    const inputChecks = this._prepareCanonicalityGuards(
+    const canonicalityGuardSteps = this._buildCanonicalityGuardSteps(
       operation,
       composition,
       operands,
-      basePlacementIndex,
     )
-    const checkedOperands = inputChecks.operands
     const intermediateOutPts: Array<DataPt | undefined> = []
     const resultPts: Array<DataPt | undefined> = Array(composition.numResults)
     const steps: PlacementEntry[] = []
@@ -640,7 +656,7 @@ export class PlacementManager {
       for (const input of step.inputs) {
         switch (input.kind) {
           case 'operand': {
-            const operand = checkedOperands[input.index]
+            const operand = operands[input.index]
             if (operand === undefined) {
               throw new Error(`Synthesizer: ${operation} operand ${input.index} is unavailable`)
             }
@@ -693,7 +709,7 @@ export class PlacementManager {
         throw new Error(`Synthesizer: ${step.subcircuit} produced ${values.length} outputs, but its logical interface declares ${logicalInterface.outputs.length}`)
       }
       const outPts = values.map((value, outputIndex) => DataPtFactory.create({
-        source: basePlacementIndex + inputChecks.steps.length + stepIndex,
+        source: basePlacementIndex + canonicalityGuardSteps.length + stepIndex,
         wireIndex: outputIndex,
         dataPtType: getDataPtTypeFromLogicalInterfaceType(
           logicalInterface.outputs[outputIndex]!.logicalType,
@@ -724,40 +740,19 @@ export class PlacementManager {
       operation,
       operands,
       resultPts: resultPts as DataPt[],
-      placements: [...inputChecks.steps, ...steps],
-      canonicalityGuardCacheEntries: inputChecks.canonicalityGuardCacheEntries,
+      placements: [...canonicalityGuardSteps, ...steps],
+      leadingCanonicalityGuardCount: canonicalityGuardSteps.length,
     }
   }
 
-  private _prepareCanonicalityGuards(
+  private _buildCanonicalityGuardSteps(
     operation: Operator,
     composition: PlacementComposition,
     operands: readonly DataPt[],
-    basePlacementIndex: number,
-  ): {
-    operands: DataPt[];
-    steps: PlacementEntry[];
-    canonicalityGuardCacheEntries: CanonicalityGuardCacheEntry[];
-  } {
-    const checkedOperands = operands.slice()
+  ): PlacementEntry[] {
     const steps: PlacementEntry[] = []
-    const canonicalityGuardCacheEntries: CanonicalityGuardCacheEntry[] = []
-    const candidateGuardedBufferOutputs = new Map<number, Set<number>>()
     if (composition.externalCheckRequiredOperandIndices.length === 0) {
-      return { operands: checkedOperands, steps, canonicalityGuardCacheEntries }
-    }
-
-    const subcircuitName = 'CheckBus256'
-    const subcircuit = this.subcircuitInfoByName.get(subcircuitName)
-    const logicalInterface = subcircuit?.logicalInterface
-    if (
-      subcircuit === undefined
-      || logicalInterface === undefined
-      || logicalInterface.inputs.length !== 1
-      || logicalInterface.outputs.length !== 0
-      || getDataPtTypeFromLogicalInterfaceType(logicalInterface.inputs[0]!.logicalType) !== UINT256_DATA_PT_TYPE
-    ) {
-      throw new Error('Synthesizer: CheckBus256 must expose one uint256 input and no outputs')
+      return steps
     }
 
     for (const operandIndex of composition.externalCheckRequiredOperandIndices) {
@@ -765,32 +760,20 @@ export class PlacementManager {
       if (operand === undefined) {
         throw new Error(`Synthesizer: ${operation} external-check operand ${operandIndex} is unavailable`)
       }
-      const sourcePlacement = this._placements[operand.source]
-      const isBufferOutput = sourcePlacement !== undefined && BUFFER_LIST.some(
-        buffer => this._bufferSubcircuitByBuffer[buffer]?.id === sourcePlacement.subcircuitId,
-      )
-      if (!isBufferOutput) continue
+      if (!this._isDirectBufferOutput(operand)) continue
       if (operand.dataPtType !== UINT256_DATA_PT_TYPE) {
         throw new Error(
           `Synthesizer: ${operation} external-check operand ${operandIndex} must be uint256`,
         )
       }
-      const isGuarded = candidateGuardedBufferOutputs.get(operand.source)?.has(operand.wireIndex)
-        ?? this._canonicalityGuardedBufferOutputs.get(operand.source)?.has(operand.wireIndex)
-      if (isGuarded) {
+      const wasGuarded = this._guardedBufferOutputWires.get(operand.source)?.has(operand.wireIndex) === true
+      const isGuardedInCandidate = steps.some(({ inPts }) => _isSameWire(inPts[0]!, operand))
+      if (wasGuarded || isGuardedInCandidate) {
         continue
       }
-      steps.push(this._createCandidateStep(operation, subcircuitName, [operand], []))
-      const candidateGuardedOutputs = candidateGuardedBufferOutputs.get(operand.source)
-        ?? new Set<number>()
-      candidateGuardedOutputs.add(operand.wireIndex)
-      candidateGuardedBufferOutputs.set(operand.source, candidateGuardedOutputs)
-      canonicalityGuardCacheEntries.push({
-        bufferPlacementIndex: operand.source,
-        bufferOutputWireIndex: operand.wireIndex,
-      })
+      steps.push(this._createCandidateStep(operation, 'CheckBus256', [operand], []))
     }
-    return { operands: checkedOperands, steps, canonicalityGuardCacheEntries }
+    return steps
   }
 
   private _buildPoseidonComposition(
@@ -876,7 +859,7 @@ export class PlacementManager {
       operands,
       resultPts: [resultPt],
       placements: steps,
-      canonicalityGuardCacheEntries: [],
+      leadingCanonicalityGuardCount: 0,
     }
   }
 
@@ -928,7 +911,7 @@ export class PlacementManager {
       inPts,
       outPts,
     };
-    this._placements.push(placement);
+    this._placements.push(placementEntryDeepCopy(placement));
   }
 
   private _placeBuffer(
@@ -1248,15 +1231,9 @@ export class PlacementManager {
         `Synthesizer: ${candidate.operation} generic placement requires fixed composition sizes`,
       )
     }
-    const inputChecks = this._prepareCanonicalityGuards(
-      candidate.operation,
-      composition,
-      candidate.operands as readonly DataPt[],
-      this._placements.length,
-    )
-    if (candidate.placements.length !== inputChecks.steps.length + composition.numSteps) {
+    if (candidate.placements.length !== candidate.leadingCanonicalityGuardCount + composition.numSteps) {
       throw new Error(
-        `Synthesizer: ${candidate.operation} expected ${inputChecks.steps.length + composition.numSteps} placement steps, but got ${candidate.placements.length}`,
+        `Synthesizer: ${candidate.operation} expected ${candidate.leadingCanonicalityGuardCount + composition.numSteps} placement steps, but got ${candidate.placements.length}`,
       )
     }
     if (candidate.operands.length !== composition.numOperands) {
@@ -1271,7 +1248,8 @@ export class PlacementManager {
     }
 
     const basePlacementIndex = this._placements.length
-    for (const [checkIndex, expectedStep] of inputChecks.steps.entries()) {
+    const operands = candidate.operands as readonly DataPt[]
+    for (let checkIndex = 0; checkIndex < candidate.leadingCanonicalityGuardCount; checkIndex++) {
       const candidateStep = candidate.placements[checkIndex]
       const subcircuit = this.subcircuitInfoByName.get('CheckBus256')
       if (candidateStep === undefined || subcircuit === undefined) {
@@ -1281,7 +1259,11 @@ export class PlacementManager {
       if (
         candidateStep.inPts.length !== 1
         || candidateStep.outPts.length !== 0
-        || !_isSameWire(candidateStep.inPts[0]!, expectedStep.inPts[0]!)
+        || !this._isDirectBufferOutput(candidateStep.inPts[0]!)
+        || !composition.externalCheckRequiredOperandIndices.some((operandIndex) => {
+          const operand = operands[operandIndex]
+          return operand !== undefined && _isSameWire(candidateStep.inPts[0]!, operand)
+        })
       ) {
         throw new Error(`Synthesizer: ${candidate.operation} external input check ${checkIndex} is invalid`)
       }
@@ -1293,12 +1275,12 @@ export class PlacementManager {
         basePlacementIndex,
       )
     }
-    const genericBasePlacementIndex = basePlacementIndex + inputChecks.steps.length
+    const genericBasePlacementIndex = basePlacementIndex + candidate.leadingCanonicalityGuardCount
     const intermediateOutPts: Array<DataPt | undefined> = []
     const resultOutPts: Array<DataPt | undefined> = Array(composition.numResults)
 
     for (const [stepIndex, step] of composition.steps.entries()) {
-      const candidateStep = candidate.placements[inputChecks.steps.length + stepIndex]!
+      const candidateStep = candidate.placements[candidate.leadingCanonicalityGuardCount + stepIndex]!
       const subcircuit = this.subcircuitInfoByName.get(step.subcircuit)
       if (subcircuit === undefined) {
         throw new Error(
@@ -1325,7 +1307,7 @@ export class PlacementManager {
       for (const [inputIndex, input] of step.inputs.entries()) {
         _assertCandidateInput(
           candidate.operation,
-          inputChecks.operands,
+          operands,
           stepIndex,
           inputIndex,
           input,

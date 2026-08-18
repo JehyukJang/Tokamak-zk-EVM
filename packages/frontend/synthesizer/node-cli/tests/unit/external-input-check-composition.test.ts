@@ -42,7 +42,7 @@ const createPlacementManager = (outputValues: readonly bigint[] = [7n]): Placeme
     })),
     _placementCompositionMapping: { ADD: mapping.ADD },
     _bufferSubcircuitByBuffer: { EVM_IN: { id: 0 } },
-    _canonicalityGuardedBufferOutputs: new Map(),
+    _guardedBufferOutputWires: new Map(),
     subcircuitInfoByName: new Map([
       ['CheckBus256', subcircuitInfo('CheckBus256', 1, 1)],
       ['ADD', subcircuitInfo('ADD', 2, 2)],
@@ -79,6 +79,17 @@ describe('external input checks in generic compositions', () => {
 
     expect(placements.map(({ name }) => name)).toEqual(['CheckBus256', 'ADD']);
     expect(placements[1]!.inPts.map(({ source }) => source)).toEqual([7, 1]);
+  });
+
+  it('does not duplicate a committed guard when another wire from the same buffer is new', () => {
+    const placementManager = createPlacementManager([5n]);
+
+    placementManager.placeComposition('ADD', [word(2n, 0), word(3n, 1)]);
+    placementManager.placeComposition('ADD', [word(4n, 2), word(5n, 1)]);
+    const placements = placementManager.placements.slice(10);
+
+    expect(placements.map(({ name }) => name)).toEqual(['CheckBus256', 'ADD']);
+    expect(placements[0]!.inPts).toMatchObject([{ source: 2, wireIndex: 0 }]);
   });
 
   it('does not record input checks when the operation candidate is invalid', () => {
