@@ -626,7 +626,7 @@ export class PlacementManager {
       || operands.length !== composition.numOperands) {
       throw new Error(`Synthesizer: ${operation} has an invalid fixed generic composition`)
     }
-    const inputChecks = this._prepareExternalInputChecks(
+    const inputChecks = this._prepareCanonicalityGuards(
       operation,
       composition,
       operands,
@@ -727,7 +727,7 @@ export class PlacementManager {
     }
   }
 
-  private _prepareExternalInputChecks(
+  private _prepareCanonicalityGuards(
     operation: Operator,
     composition: PlacementComposition,
     operands: readonly DataPt[],
@@ -1258,7 +1258,7 @@ export class PlacementManager {
         `Synthesizer: ${candidate.operation} generic placement requires fixed composition sizes`,
       )
     }
-    const inputChecks = this._prepareExternalInputChecks(
+    const inputChecks = this._prepareCanonicalityGuards(
       candidate.operation,
       composition,
       candidate.operands as readonly DataPt[],
