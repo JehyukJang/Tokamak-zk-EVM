@@ -2,7 +2,5 @@
   "inputs": [
     { "name": "word", "logicalType": { "kind": "uint", "bits": 256 } }
   ],
-  "outputs": [
-    { "name": "checkedWord", "logicalType": { "kind": "uint", "bits": 256 } }
-  ]
+  "outputs": []
 }
