@@ -19,7 +19,10 @@ import type {
   StorageCacheEntries,
   StorageCacheEntry,
 } from '../types/index.ts';
-import type { PlacementManager } from './placementManager.ts';
+import type {
+  ArbitraryStaticCachePolicy,
+  PlacementManager,
+} from './placementManager.ts';
 
 export type MemoryCopyPlan = Readonly<{
   operands: readonly (readonly DataPt[])[];
@@ -228,6 +231,7 @@ export class ContextManager {
     memOffset: bigint,
     codeOffset: bigint = 0n,
     dataLength: bigint = BigInt(code.byteLength),
+    cachePolicy: ArbitraryStaticCachePolicy,
   ): MemoryPts {
     const getDataSlice = (data: Uint8Array, offset: bigint, length: bigint): Uint8Array => {
       const len = BigInt(data.length)
@@ -256,6 +260,7 @@ export class ContextManager {
         dataSlice,
         UINT256_DATA_PT_TYPE,
         desc,
+        cachePolicy,
       )
       memPts.push({
         memByteOffset: Number(memOffset + accOffsetShift),
@@ -322,10 +327,14 @@ export class ContextManager {
         const encodedShiftPt = this.placementManager.loadArbitraryStatic(
           BigInt(geometry.shiftMagnitude + 32 * geometry.direction),
           UINT32_DATA_PT_TYPE,
+          'Memory view encoded shift',
+          { kind: 'topology-fixed', usage: 'memory-view-encoded-shift' },
         )
         const ownershipPt = this.placementManager.loadArbitraryStatic(
           geometry.ownershipMask,
           UINT32_DATA_PT_TYPE,
+          'Memory view ownership mask',
+          { kind: 'topology-fixed', usage: 'memory-view-ownership-mask' },
         )
         viewOperands.push(geometry.dataPt, encodedShiftPt, ownershipPt)
       }

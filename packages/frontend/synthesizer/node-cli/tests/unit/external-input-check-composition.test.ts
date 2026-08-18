@@ -101,3 +101,36 @@ describe('external input checks in generic compositions', () => {
     expect(placementManager.placements).toHaveLength(7);
   });
 });
+
+describe('topology-fixed arbitrary statics', () => {
+  it('reuses only values with the same explicit fixed usage', () => {
+    const placementManager = Object.assign(Object.create(PlacementManager.prototype), {
+      _placements: Array.from({ length: 7 }, () => ({
+        name: 'bufferEVMIn', usage: 'test', subcircuitId: 0, inPts: [], outPts: [],
+      })),
+      _cachedTopologyFixedEVMIn: new Map(),
+    }) as PlacementManager;
+
+    const first = placementManager.loadArbitraryStatic(
+      3n,
+      UINT256_DATA_PT_TYPE,
+      'First PUSH immediate',
+      { kind: 'topology-fixed', usage: 'push-immediate' },
+    );
+    const reused = placementManager.loadArbitraryStatic(
+      3n,
+      UINT256_DATA_PT_TYPE,
+      'Second PUSH immediate',
+      { kind: 'topology-fixed', usage: 'push-immediate' },
+    );
+    const distinctUsage = placementManager.loadArbitraryStatic(
+      3n,
+      UINT256_DATA_PT_TYPE,
+      'Program counter',
+      { kind: 'topology-fixed', usage: 'program-counter' },
+    );
+
+    expect(reused).toMatchObject({ source: first.source, wireIndex: first.wireIndex });
+    expect(distinctUsage).not.toMatchObject({ source: first.source, wireIndex: first.wireIndex });
+  });
+});

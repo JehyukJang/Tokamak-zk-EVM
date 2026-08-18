@@ -51,6 +51,20 @@ type PlacementCandidate = Readonly<{
   leadingCanonicalityGuardCount: number;
 }>;
 
+export type TopologyFixedConstantUsage =
+  | 'push-immediate'
+  | 'program-counter'
+  | 'alu3-selector'
+  | 'alu4a-selector'
+  | 'poseidon-input-count'
+  | 'memory-view-encoded-shift'
+  | 'memory-view-ownership-mask'
+  | 'codecopy-current-code-chunk';
+
+export type ArbitraryStaticCachePolicy =
+  | Readonly<{ kind: 'topology-fixed'; usage: TopologyFixedConstantUsage }>
+  | Readonly<{ kind: 'uncached' }>;
+
 const FULL_MEMORY_VIEW_OWNERSHIP = 0xffffffffn
 
 function _isIdentityMemoryView(view: readonly DataPt[]): boolean {
@@ -267,7 +281,10 @@ function _assertCandidateEarlierSource(
 
 export class PlacementManager {
   private _placements: Placements = []
-  private _cachedEVMIn: Map<bigint, Map<string, DataPt>> = new Map()
+  private _cachedTopologyFixedEVMIn: Map<
+    TopologyFixedConstantUsage,
+    Map<DataPtType, Map<bigint, DataPt>>
+  > = new Map()
   private _guardedBufferOutputWires: Map<number, Set<number>> = new Map()
 
   public subcircuitInfoByName: SubcircuitInfoByName;
@@ -337,18 +354,21 @@ export class PlacementManager {
   public loadArbitraryStatic(
     value: bigint,
     dataPtType: DataPtType,
-    desc?: string,
+    description: string,
+    cachePolicy: ArbitraryStaticCachePolicy,
   ): DataPt {
-    const cacheKey = dataPtType
-    if (desc === undefined) {
-      const cachedDataPt = this._cachedEVMIn.get(value)?.get(cacheKey)
+    if (cachePolicy.kind === 'topology-fixed') {
+      const cachedDataPt = this._cachedTopologyFixedEVMIn
+        .get(cachePolicy.usage)
+        ?.get(dataPtType)
+        ?.get(value)
       if (cachedDataPt !== undefined) {
         return DataPtFactory.deepCopy(cachedDataPt)
       }
     }
     const placementIndex = BUFFER_LIST.indexOf('EVM_IN')
     const inPtRaw: DataPtDescription = {
-      extSource: desc ?? 'Arbitrary constant',
+      extSource: description,
       source: placementIndex,
       wireIndex: this._placements[placementIndex]!.inPts.length,
       dataPtType,
@@ -356,9 +376,14 @@ export class PlacementManager {
     const inPt = DataPtFactory.create(inPtRaw, value)
     const outPt = DataPtFactory.createBufferTwin(inPt)
     this._appendBufferWirePair(inPt, outPt, true)
-    const cachedByType = this._cachedEVMIn.get(value) ?? new Map<string, DataPt>()
-    cachedByType.set(cacheKey, outPt)
-    this._cachedEVMIn.set(value, cachedByType)
+    if (cachePolicy.kind === 'topology-fixed') {
+      const cachedByType = this._cachedTopologyFixedEVMIn.get(cachePolicy.usage)
+        ?? new Map<DataPtType, Map<bigint, DataPt>>()
+      const cachedByValue = cachedByType.get(dataPtType) ?? new Map<bigint, DataPt>()
+      cachedByValue.set(value, outPt)
+      cachedByType.set(dataPtType, cachedByValue)
+      this._cachedTopologyFixedEVMIn.set(cachePolicy.usage, cachedByType)
+    }
     return DataPtFactory.deepCopy(outPt)
   }
 
@@ -665,8 +690,12 @@ export class PlacementManager {
               inPts.push(this._getReservedZero(constant.dataPtType))
             } else if (constant.value === 1n && constant.dataPtType === BIT_DATA_PT_TYPE) {
               inPts.push(this.getReservedVariableFromBuffer('BIT_CONST_ONE'))
+            } else if (constant.value === 1n && constant.dataPtType === UINT256_DATA_PT_TYPE) {
+              inPts.push(this.getReservedVariableFromBuffer('EVM_CONST_ONE'))
             } else {
-              inPts.push(this.loadArbitraryStatic(constant.value, constant.dataPtType))
+              throw new Error(
+                `Synthesizer: ${operation} constant ${input.index} has no reserved input`,
+              )
             }
             break
           }
@@ -674,10 +703,21 @@ export class PlacementManager {
             if (typeof step.selector !== 'bigint') {
               throw new Error(`Synthesizer: ${operation} requires a static selector`)
             }
+            const usage = step.subcircuit === 'ALU3'
+              ? 'alu3-selector'
+              : step.subcircuit === 'ALU4A'
+                ? 'alu4a-selector'
+                : undefined
+            if (usage === undefined) {
+              throw new Error(
+                `Synthesizer: ${operation} selector has no topology-fixed cache usage`,
+              )
+            }
             inPts.push(this.loadArbitraryStatic(
               step.selector,
               UINT32_DATA_PT_TYPE,
               `ALU selector for ${operation} of ${step.subcircuit}`,
+              { kind: 'topology-fixed', usage },
             ))
             break
         }
@@ -804,6 +844,7 @@ export class PlacementManager {
           1n << BigInt(inputPts.length - POSEIDON_INPUTS),
           selectorType,
           'Poseidon input-count selector',
+          { kind: 'topology-fixed', usage: 'poseidon-input-count' },
         ),
         ...inputPts,
         ...Array.from(

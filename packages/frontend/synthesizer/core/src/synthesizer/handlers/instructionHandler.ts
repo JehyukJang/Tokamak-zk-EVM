@@ -376,6 +376,7 @@ export class InstructionHandler {
           out,
           UINT256_DATA_PT_TYPE,
           staticInDesc,
+          { kind: 'topology-fixed', usage: 'push-immediate' },
         ))
         if (opts.stackPt.peek(1)[0].value !== out) {
           throw new Error(`Synthesizer: PUSH${numToPush}: Output data mismatch`)
@@ -664,10 +665,14 @@ export class InstructionHandler {
     const value = output
     const staticInDesc = `Static input for ${opts.op} instruction at PC ${opts.pc} of code address ${opts.codeAddress} (depth : ${opts.callDepth})`
     let targetDesc = targetAddress === undefined ? `` : `(target: ${createAddressFromBigInt(targetAddress).toString()})`
+    const cachePolicy = opts.op === 'PC'
+      ? { kind: 'topology-fixed' as const, usage: 'program-counter' as const }
+      : { kind: 'uncached' as const }
     return this.placementManager.loadArbitraryStatic(
       value,
       UINT256_DATA_PT_TYPE,
       staticInDesc + targetDesc,
+      cachePolicy,
     )
   }
 
@@ -799,6 +804,7 @@ export class InstructionHandler {
               memOffset,
               0n,
               dataLength,
+              { kind: 'topology-fixed', usage: 'codecopy-current-code-chunk' },
             )
             memoryPt.writeBatch(memPts)
           }
@@ -834,6 +840,7 @@ export class InstructionHandler {
               memOffset,
               0n,
               dataLength,
+              { kind: 'uncached' },
             )
             memoryPt.writeBatch(memPts)
           }
@@ -1038,6 +1045,7 @@ export class InstructionHandler {
             out!,
             UINT256_DATA_PT_TYPE,
             staticInDesc,
+            { kind: 'uncached' },
           ))
         }
         break
