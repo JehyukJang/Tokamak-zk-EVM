@@ -60,15 +60,6 @@ export const OBSERVATION_DEFINITIONS = {
   extCodeCopyChunk: createObservationDefinition('EXTCODECOPY chunk', [], 2, 1),
 } as const;
 
-type CodeMemorySource =
-  | 'current-code'
-  | Readonly<{
-    kind: 'external-code';
-    context: MessageContext;
-    targetPt: DataPt;
-    codeOffsetPt: DataPt;
-  }>;
-
 export type MemoryCopyPlan = Readonly<{
   operands: readonly (readonly DataPt[])[];
   destinations: readonly Readonly<{
@@ -332,7 +323,6 @@ export class ContextManager {
     memOffset: bigint,
     codeOffset: bigint = 0n,
     dataLength: bigint = BigInt(code.byteLength),
-    codeSource: CodeMemorySource,
   ): MemoryPts {
     const getDataSlice = (data: Uint8Array, offset: bigint, length: bigint): Uint8Array => {
       const len = BigInt(data.length)
@@ -357,19 +347,11 @@ export class ContextManager {
         getDataSlice(code, codeOffset + accOffsetShift, BigInt(sliceLength)),
       )
       const desc = `Code of address: ${bigIntToHex(targetAddress)}, offset: ${Number(codeOffset)}, length: ${Number(dataLength)} bytes, chunk: ${i + 1} out of ${nChunks}.`
-      const cachePolicy = codeSource === 'current-code'
-        ? { kind: 'topology-fixed' as const, usage: 'codecopy-current-code-chunk' as const }
-        : this.createObservationCachePolicy(
-          OBSERVATION_DEFINITIONS.extCodeCopyChunk,
-          codeSource.context,
-          [codeSource.targetPt, codeSource.codeOffsetPt],
-          [i],
-        )
       const dataPt = this.placementManager.loadArbitraryStatic(
         dataSlice,
         UINT256_DATA_PT_TYPE,
         desc,
-        cachePolicy,
+        { kind: 'uncached' },
       )
       memPts.push({
         memByteOffset: Number(memOffset + accOffsetShift),

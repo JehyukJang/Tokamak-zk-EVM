@@ -793,7 +793,6 @@ export class InstructionHandler {
               memOffset,
               0n,
               dataLength,
-              'current-code',
             )
             memoryPt.writeBatch(memPts)
           }
@@ -828,12 +827,6 @@ export class InstructionHandler {
               memOffset,
               0n,
               dataLength,
-              {
-                kind: 'external-code',
-                context: opts.thisContext,
-                targetPt: inPts[0]!,
-                codeOffsetPt: inPts[2]!,
-              },
             )
             memoryPt.writeBatch(memPts)
           }
