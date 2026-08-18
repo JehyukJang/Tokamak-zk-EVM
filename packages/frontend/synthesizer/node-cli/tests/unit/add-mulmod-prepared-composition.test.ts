@@ -64,7 +64,7 @@ const subcircuitInfoByName = new Map([
   ['ALU4B', subcircuitInfo('ALU4B', [256, 256, 256, 64, 64, 64, 64, 1, 1, 1], [256])],
   ['DecToBit', subcircuitInfo('DecToBit', [256], Array(256).fill(1))],
   ['SubExp', subcircuitInfo('SubExp', [256, 256, 1], [256, 256])],
-  ['CheckBus256', subcircuitInfo('CheckBus256', [256], [256])],
+  ['CheckBus256', subcircuitInfo('CheckBus256', [256], [])],
 ])
 
 const dataPt = (
@@ -106,7 +106,7 @@ const submit = (
       case 'SubExp':
         return [17n, 19n]
       case 'CheckBus256':
-        return [23n]
+        return []
       default:
         throw new Error(`Unexpected subcircuit ${name}`)
     }
@@ -259,8 +259,8 @@ describe('fixed generic atomic compositions', () => {
       .toEqual([[7, 0], [7, 1], [6, 1]])
     expect(placements.at(-1)).toMatchObject({
       inPts: [{ source: 262, wireIndex: 0, value: 17n }],
-      outPts: [{ source: 263, wireIndex: 0, value: 23n, dataPtType: UINT256_DATA_PT_TYPE }],
+      outPts: [],
     })
-    expect(resultPts).toMatchObject([{ source: 263, wireIndex: 0, value: 23n }])
+    expect(resultPts).toMatchObject([{ source: 262, wireIndex: 0, value: 17n }])
   })
 })

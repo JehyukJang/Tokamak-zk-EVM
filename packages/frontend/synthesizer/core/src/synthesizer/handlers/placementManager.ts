@@ -54,7 +54,6 @@ type PlacementCandidate = Readonly<{
 type CanonicalityGuardCacheEntry = Readonly<{
   bufferPlacementIndex: number;
   bufferOutputWireIndex: number;
-  output: DataPt;
 }>;
 
 const FULL_MEMORY_VIEW_OWNERSHIP = 0xffffffffn
@@ -274,7 +273,7 @@ function _assertCandidateEarlierSource(
 export class PlacementManager {
   private _placements: Placements = []
   private _cachedEVMIn: Map<bigint, Map<string, DataPt>> = new Map()
-  private _canonicalityGuardOutputByBufferOutput: Map<number, Map<number, DataPt>> = new Map()
+  private _canonicalityGuardedBufferOutputs: Map<number, Set<number>> = new Map()
 
   public subcircuitInfoByName: SubcircuitInfoByName;
   private readonly _bufferSubcircuitByBuffer: Record<ReservedBuffer, SubcircuitInfoByNameEntry | undefined>;
@@ -489,10 +488,10 @@ export class PlacementManager {
       this._placements.push(placementEntryDeepCopy(placement))
     }
     for (const entry of candidate.canonicalityGuardCacheEntries) {
-      const outputs = this._canonicalityGuardOutputByBufferOutput.get(entry.bufferPlacementIndex)
-        ?? new Map<number, DataPt>()
-      outputs.set(entry.bufferOutputWireIndex, DataPtFactory.deepCopy(entry.output))
-      this._canonicalityGuardOutputByBufferOutput.set(entry.bufferPlacementIndex, outputs)
+      const outputs = this._canonicalityGuardedBufferOutputs.get(entry.bufferPlacementIndex)
+        ?? new Set<number>()
+      outputs.add(entry.bufferOutputWireIndex)
+      this._canonicalityGuardedBufferOutputs.set(entry.bufferPlacementIndex, outputs)
     }
     return candidate.resultPts.map((dataPt) => DataPtFactory.deepCopy(dataPt))
   }
@@ -705,7 +704,10 @@ export class PlacementManager {
         if (outPt === undefined) {
           throw new Error(`Synthesizer: ${operation} step ${stepIndex} output ${outputIndex} is unavailable`)
         }
-        if (output.kind === 'step-output') intermediateOutPts[output.index] = outPt
+        if (output.kind === 'step-output') {
+          intermediateOutPts[output.index] = outPt
+          if (output.resultIndex !== undefined) resultPts[output.resultIndex] = outPt
+        }
         else if (output.kind === 'result') {
           if (output.index === 'dynamic') {
             throw new Error(`Synthesizer: ${operation} generic composition has a dynamic result`)
@@ -740,7 +742,7 @@ export class PlacementManager {
     const checkedOperands = operands.slice()
     const steps: PlacementEntry[] = []
     const canonicalityGuardCacheEntries: CanonicalityGuardCacheEntry[] = []
-    const candidateOutputsByBufferOutput = new Map<number, Map<number, DataPt>>()
+    const candidateGuardedBufferOutputs = new Map<number, Set<number>>()
     if (composition.externalCheckRequiredOperandIndices.length === 0) {
       return { operands: checkedOperands, steps, canonicalityGuardCacheEntries }
     }
@@ -752,11 +754,10 @@ export class PlacementManager {
       subcircuit === undefined
       || logicalInterface === undefined
       || logicalInterface.inputs.length !== 1
-      || logicalInterface.outputs.length !== 1
+      || logicalInterface.outputs.length !== 0
       || getDataPtTypeFromLogicalInterfaceType(logicalInterface.inputs[0]!.logicalType) !== UINT256_DATA_PT_TYPE
-      || getDataPtTypeFromLogicalInterfaceType(logicalInterface.outputs[0]!.logicalType) !== UINT256_DATA_PT_TYPE
     ) {
-      throw new Error('Synthesizer: CheckBus256 must expose one uint256 input and output')
+      throw new Error('Synthesizer: CheckBus256 must expose one uint256 input and no outputs')
     }
 
     for (const operandIndex of composition.externalCheckRequiredOperandIndices) {
@@ -774,34 +775,19 @@ export class PlacementManager {
           `Synthesizer: ${operation} external-check operand ${operandIndex} must be uint256`,
         )
       }
-      const cachedOutput = candidateOutputsByBufferOutput.get(operand.source)?.get(operand.wireIndex)
-        ?? this._canonicalityGuardOutputByBufferOutput.get(operand.source)?.get(operand.wireIndex)
-      if (cachedOutput !== undefined) {
-        checkedOperands[operandIndex] = DataPtFactory.deepCopy(cachedOutput)
+      const isGuarded = candidateGuardedBufferOutputs.get(operand.source)?.has(operand.wireIndex)
+        ?? this._canonicalityGuardedBufferOutputs.get(operand.source)?.has(operand.wireIndex)
+      if (isGuarded) {
         continue
       }
-      const values = this.subcircuitLibrary.calculateSubcircuitOutputValues(
-        subcircuitName,
-        [operand.value],
-      )
-      if (values.length !== 1) {
-        throw new Error('Synthesizer: CheckBus256 did not produce one output')
-      }
-      const output = DataPtFactory.create({
-        source: basePlacementIndex + steps.length,
-        wireIndex: 0,
-        dataPtType: UINT256_DATA_PT_TYPE,
-      }, values[0]!)
-      steps.push(this._createCandidateStep(operation, subcircuitName, [operand], [output]))
-      checkedOperands[operandIndex] = output
-      const candidateOutputs = candidateOutputsByBufferOutput.get(operand.source)
-        ?? new Map<number, DataPt>()
-      candidateOutputs.set(operand.wireIndex, output)
-      candidateOutputsByBufferOutput.set(operand.source, candidateOutputs)
+      steps.push(this._createCandidateStep(operation, subcircuitName, [operand], []))
+      const candidateGuardedOutputs = candidateGuardedBufferOutputs.get(operand.source)
+        ?? new Set<number>()
+      candidateGuardedOutputs.add(operand.wireIndex)
+      candidateGuardedBufferOutputs.set(operand.source, candidateGuardedOutputs)
       canonicalityGuardCacheEntries.push({
         bufferPlacementIndex: operand.source,
         bufferOutputWireIndex: operand.wireIndex,
-        output,
       })
     }
     return { operands: checkedOperands, steps, canonicalityGuardCacheEntries }
@@ -1294,9 +1280,8 @@ export class PlacementManager {
       _assertCandidateStepPorts(candidate.operation, 'CheckBus256', candidateStep, subcircuit)
       if (
         candidateStep.inPts.length !== 1
-        || candidateStep.outPts.length !== 1
+        || candidateStep.outPts.length !== 0
         || !_isSameWire(candidateStep.inPts[0]!, expectedStep.inPts[0]!)
-        || !_isSameWire(candidateStep.outPts[0]!, expectedStep.outPts[0]!)
       ) {
         throw new Error(`Synthesizer: ${candidate.operation} external input check ${checkIndex} is invalid`)
       }
@@ -1363,6 +1348,9 @@ export class PlacementManager {
         }
         if (output.kind === 'step-output') {
           intermediateOutPts[output.index] = candidateOutput
+          if (output.resultIndex !== undefined) {
+            resultOutPts[output.resultIndex] = candidateOutput
+          }
         } else if (output.kind === 'result') {
           if (output.index === 'dynamic') {
             throw new Error(`Synthesizer: ${candidate.operation} generic result cannot be dynamic`)

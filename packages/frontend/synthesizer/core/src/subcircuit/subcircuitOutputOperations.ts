@@ -627,13 +627,6 @@ const evmSubExp = (in_vals: bigint[]): bigint[] => {
   ];
 };
 
-const checkBus256 = (in_vals: bigint[]): bigint => {
-  if (in_vals.length !== 1) {
-    throw new Error(`checkBus256 expected exactly 1 input value, but got ${in_vals.length} values`);
-  }
-  return in_vals[0];
-};
-
 const poseidon = (inVals: bigint[]): bigint => {
   if (inVals.length < 3) {
     throw new Error('Poseidon expected a selector and at least two inputs');
@@ -777,7 +770,7 @@ const SUBCIRCUIT_OPERATION_MAPPING: Partial<Record<CompositionSubcircuit, Subcir
   MULMODVerify: mulmodVerify,
   DecToBit: decToBit,
   SubExp: evmSubExp,
-  CheckBus256: checkBus256,
+  CheckBus256: () => [],
   Poseidon: poseidon,
   MemoryViewStep: memoryViewStep,
   StorageAccess: () => [],

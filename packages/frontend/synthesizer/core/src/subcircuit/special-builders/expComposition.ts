@@ -41,7 +41,11 @@ export const createExpCompositionMapping = (): PlacementCompositionEntry => {
           { kind: 'step-output', index: NUM_EXPONENT_BITS + 2 * (bitIndex - 1) + 1 }
         ]
     const outputs: OutputReference[] = isFinalStep
-      ? [{ kind: 'step-output', index: NUM_EXPONENT_BITS + 2 * bitIndex }, { kind: 'discard' }]
+      ? [{
+          kind: 'step-output',
+          index: NUM_EXPONENT_BITS + 2 * bitIndex,
+          resultIndex: 0,
+        }, { kind: 'discard' }]
       : [
           { kind: 'step-output', index: NUM_EXPONENT_BITS + 2 * bitIndex },
           { kind: 'step-output', index: NUM_EXPONENT_BITS + 2 * bitIndex + 1 }
@@ -64,7 +68,7 @@ export const createExpCompositionMapping = (): PlacementCompositionEntry => {
         index: NUM_EXPONENT_BITS + 2 * (NUM_EXPONENT_BITS - 1)
       }
     ],
-    outputs: [{ kind: 'result', index: 0 }]
+    outputs: []
   })
 
   return {

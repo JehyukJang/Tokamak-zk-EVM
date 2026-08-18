@@ -14,10 +14,10 @@ const word = (value: bigint, source: number, wireIndex = 0): DataPt => DataPtFac
 const subcircuitInfo = (name: 'ADD' | 'CheckBus256', id: number, inputCount: number) => ({
   id,
   name,
-  NWires: 1 + inputCount * 2 + 2,
+  NWires: 1 + inputCount * 2 + (name === 'CheckBus256' ? 0 : 2),
   NInWires: inputCount * 2,
-  NOutWires: 2,
-  inWireIndex: 3,
+  NOutWires: name === 'CheckBus256' ? 0 : 2,
+  inWireIndex: name === 'CheckBus256' ? 1 : 3,
   outWireIndex: 1,
   flattenMap: [],
   logicalInterface: {
@@ -25,7 +25,9 @@ const subcircuitInfo = (name: 'ADD' | 'CheckBus256', id: number, inputCount: num
       name: `in${index}`,
       logicalType: { kind: 'uint' as const, bits: 256 },
     })),
-    outputs: [{ name: 'result', logicalType: { kind: 'uint' as const, bits: 256 } }],
+    outputs: name === 'CheckBus256'
+      ? []
+      : [{ name: 'result', logicalType: { kind: 'uint' as const, bits: 256 } }],
   },
 });
 
@@ -39,13 +41,15 @@ const createPlacementManager = (outputValues: readonly bigint[] = [7n]): Placeme
       name: 'bufferEVMIn', usage: 'test', subcircuitId: 0, inPts: [], outPts: [],
     })),
     _placementCompositionMapping: { ADD: mapping.ADD },
+    _bufferSubcircuitByBuffer: { EVM_IN: { id: 0 } },
+    _canonicalityGuardedBufferOutputs: new Map(),
     subcircuitInfoByName: new Map([
       ['CheckBus256', subcircuitInfo('CheckBus256', 1, 1)],
       ['ADD', subcircuitInfo('ADD', 2, 2)],
     ]),
     subcircuitLibrary: {
       calculateSubcircuitOutputValues: (name: string, values: readonly bigint[]) => {
-        if (name === 'CheckBus256') return [values[0]!];
+        if (name === 'CheckBus256') return [];
         return outputValues;
       },
     },
@@ -60,7 +64,7 @@ describe('external input checks in generic compositions', () => {
     const placements = placementManager.placements.slice(7);
 
     expect(placements.map(({ name }) => name)).toEqual(['CheckBus256', 'CheckBus256', 'ADD']);
-    expect(placements[2]!.inPts.map(({ source }) => source)).toEqual([7, 8]);
+    expect(placements[2]!.inPts.map(({ source }) => source)).toEqual([0, 1]);
     expect(result).toMatchObject([{ source: 9, wireIndex: 0, value: 5n }]);
   });
 
@@ -74,7 +78,7 @@ describe('external input checks in generic compositions', () => {
     const placements = placementManager.placements.slice(8);
 
     expect(placements.map(({ name }) => name)).toEqual(['CheckBus256', 'ADD']);
-    expect(placements[1]!.inPts.map(({ source }) => source)).toEqual([7, 8]);
+    expect(placements[1]!.inPts.map(({ source }) => source)).toEqual([7, 1]);
   });
 
   it('does not record input checks when the operation candidate is invalid', () => {

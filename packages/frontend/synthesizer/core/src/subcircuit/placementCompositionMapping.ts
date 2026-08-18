@@ -19,7 +19,7 @@ export type InputReference =
   | Readonly<{ kind: 'constant'; index: number }>;
 
 export type OutputReference =
-  | Readonly<{ kind: 'step-output'; index: number }>
+  | Readonly<{ kind: 'step-output'; index: number; resultIndex?: number }>
   | Readonly<{ kind: 'result'; index: number | 'dynamic' }>
   | Readonly<{ kind: 'discard' }>;
 
@@ -171,6 +171,21 @@ const validatePlacementComposition = (operation: Operator, composition: Placemen
           );
         }
         intermediates.add(output.index);
+        if (output.resultIndex !== undefined) {
+          assertIndex(output.resultIndex, `${operation} step ${stepIndex} result index`);
+          if (composition.numResults === 'dynamic') {
+            throw new Error(
+              `PlacementCompositionMapping: ${operation} must use dynamic result routing`,
+            );
+          }
+          if (output.resultIndex >= composition.numResults) {
+            throw new Error(`PlacementCompositionMapping: ${operation} step ${stepIndex} result index is out of range`);
+          }
+          if (results.has(output.resultIndex)) {
+            throw new Error(`PlacementCompositionMapping: ${operation} result ${output.resultIndex} has multiple producers`);
+          }
+          results.add(output.resultIndex);
+        }
       } else if (output.kind === 'result') {
         if (output.index === 'dynamic') {
           if (composition.placementStrategy !== 'memory-view') {
