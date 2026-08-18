@@ -54,9 +54,6 @@ type PlacementCandidate = Readonly<{
 export type TopologyFixedConstantUsage =
   | 'push-immediate'
   | 'program-counter'
-  | 'alu3-selector'
-  | 'alu4a-selector'
-  | 'poseidon-input-count'
   | 'memory-view-encoded-shift'
   | 'memory-view-ownership-mask'
   | 'codecopy-current-code-chunk';
@@ -488,6 +485,23 @@ export class PlacementManager {
     return DataPtFactory.deepCopy(outPt)
   }
 
+  private _getReservedUint32PowerOfTwo(value: bigint): DataPt {
+    const exponent = value === 1n ? 0
+      : value === 2n ? 1
+        : value === 4n ? 2
+          : value === 8n ? 3
+            : value === 16n ? 4
+              : value === 32n ? 5
+                : value === 64n ? 6
+                  : undefined
+    if (exponent === undefined) {
+      throw new Error(`Synthesizer: ${value} has no reserved uint32 power-of-two input`)
+    }
+    return this.getReservedVariableFromBuffer(
+      `UINT32_POW2_${exponent}` as ReservedVariable,
+    )
+  }
+
   private _getReservedZero(dataPtType: DataPtType): DataPt {
     switch (dataPtType) {
       case BLS12_381_FR_DATA_PT_TYPE:
@@ -797,22 +811,7 @@ export class PlacementManager {
             if (typeof step.selector !== 'bigint') {
               throw new Error(`Synthesizer: ${operation} requires a static selector`)
             }
-            const usage = step.subcircuit === 'ALU3'
-              ? 'alu3-selector'
-              : step.subcircuit === 'ALU4A'
-                ? 'alu4a-selector'
-                : undefined
-            if (usage === undefined) {
-              throw new Error(
-                `Synthesizer: ${operation} selector has no topology-fixed cache usage`,
-              )
-            }
-            inPts.push(this.loadArbitraryStatic(
-              step.selector,
-              UINT32_DATA_PT_TYPE,
-              `ALU selector for ${operation} of ${step.subcircuit}`,
-              { kind: 'topology-fixed', usage },
-            ))
+            inPts.push(this._getReservedUint32PowerOfTwo(step.selector))
             break
         }
       }
@@ -912,11 +911,10 @@ export class PlacementManager {
       throw new Error('Synthesizer: Poseidon has an invalid placement composition')
     }
     const logicalInterface = this.subcircuitInfoByName.get(step.subcircuit)?.logicalInterface
-    const selectorPort = logicalInterface?.inputs[0]
     const valuePort = logicalInterface?.inputs[1]
     const resultPort = logicalInterface?.outputs[0]
     if (logicalInterface === undefined || logicalInterface.inputs.length !== step.inputs.length
-      || logicalInterface.outputs.length !== 1 || selectorPort === undefined
+      || logicalInterface.outputs.length !== 1
       || valuePort === undefined || resultPort === undefined) {
       throw new Error('Synthesizer: Poseidon logical interface is unavailable')
     }
@@ -924,7 +922,6 @@ export class PlacementManager {
     if (inputLimit < POSEIDON_INPUTS) {
       throw new Error('Synthesizer: Poseidon input capacity is too small')
     }
-    const selectorType = getDataPtTypeFromLogicalInterfaceType(selectorPort.logicalType)
     const valueType = getDataPtTypeFromLogicalInterfaceType(valuePort.logicalType)
     const resultType = getDataPtTypeFromLogicalInterfaceType(resultPort.logicalType)
     const zeroPt = this._getReservedZero(valueType)
@@ -934,11 +931,8 @@ export class PlacementManager {
         throw new Error(`Synthesizer: Poseidon expected between ${POSEIDON_INPUTS} and ${inputLimit} inputs, but got ${inputPts.length}`)
       }
       const finalInPts = [
-        this.loadArbitraryStatic(
+        this._getReservedUint32PowerOfTwo(
           1n << BigInt(inputPts.length - POSEIDON_INPUTS),
-          selectorType,
-          'Poseidon input-count selector',
-          { kind: 'topology-fixed', usage: 'poseidon-input-count' },
         ),
         ...inputPts,
         ...Array.from(
