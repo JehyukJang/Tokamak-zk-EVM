@@ -764,7 +764,11 @@ export class PlacementManager {
       if (operand === undefined) {
         throw new Error(`Synthesizer: ${operation} external-check operand ${operandIndex} is unavailable`)
       }
-      if (operand.source < 0 || operand.source >= BUFFER_LIST.length) continue
+      const sourcePlacement = this._placements[operand.source]
+      const isBufferOutput = sourcePlacement !== undefined && BUFFER_LIST.some(
+        buffer => this._bufferSubcircuitByBuffer[buffer]?.id === sourcePlacement.subcircuitId,
+      )
+      if (!isBufferOutput) continue
       if (operand.dataPtType !== UINT256_DATA_PT_TYPE) {
         throw new Error(
           `Synthesizer: ${operation} external-check operand ${operandIndex} must be uint256`,
