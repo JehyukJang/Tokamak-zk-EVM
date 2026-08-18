@@ -127,9 +127,17 @@ const submit = (
     },
     loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
       dataPt(value, 5, nextStaticWireIndex++, dataPtType)),
-    getReservedVariableFromBuffer: vi.fn((name: string) =>
-      dataPt(name === 'BIT_CONST_ONE' ? 1n : 0n, 5, nextStaticWireIndex++,
-        name.startsWith('BIT_') ? BIT_DATA_PT_TYPE : UINT256_DATA_PT_TYPE)),
+    getReservedVariableFromBuffer: vi.fn((name: string) => {
+      const exponent = /^UINT32_POW2_(\d)$/.exec(name)?.[1]
+      return dataPt(
+        name.endsWith('_ONE') ? 1n : exponent === undefined ? 0n : 1n << BigInt(exponent),
+        5,
+        nextStaticWireIndex++,
+        name.startsWith('BIT_')
+          ? BIT_DATA_PT_TYPE
+          : exponent === undefined ? UINT256_DATA_PT_TYPE : UINT32_DATA_PT_TYPE,
+      )
+    }),
   }) as PlacementManager
   const resultPts = parent.placeComposition(
     operation,
@@ -225,7 +233,7 @@ describe('fixed generic atomic compositions', () => {
       .toEqual([[3, 10], [10, 1]])
     expect(placements[0]!.inPts[0]).toMatchObject({
       source: 5,
-      value: 1n << 4n,
+      value: 1n << 3n,
       dataPtType: UINT32_DATA_PT_TYPE,
     })
     expect(placements[0]!.outPts.map(({ dataPtType }) => dataPtType)).toEqual([

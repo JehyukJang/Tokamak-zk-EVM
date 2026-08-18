@@ -59,8 +59,15 @@ const createPlacementManager = (): PlacementManager => {
     },
     loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
       dataPt(value, 5, nextStaticWireIndex++, dataPtType)),
-    getReservedVariableFromBuffer: vi.fn(() =>
-      dataPt(0n, 5, nextStaticWireIndex++, UINT256_DATA_PT_TYPE)),
+    getReservedVariableFromBuffer: vi.fn((name: string) => {
+      const exponent = /^UINT32_POW2_(\d)$/.exec(name)?.[1]
+      return dataPt(
+        exponent === undefined ? 0n : 1n << BigInt(exponent),
+        5,
+        nextStaticWireIndex++,
+        exponent === undefined ? UINT256_DATA_PT_TYPE : UINT32_DATA_PT_TYPE,
+      )
+    }),
   }) as PlacementManager
 }
 

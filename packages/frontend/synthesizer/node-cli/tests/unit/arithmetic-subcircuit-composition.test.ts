@@ -49,9 +49,9 @@ describe('placement composition assembly', () => {
       OR: { subcircuit: 'OR', selector: null, checked: [] },
       XOR: { subcircuit: 'XOR', selector: null, checked: [] },
       SHR: { subcircuit: 'SHR', selector: null, checked: [0] },
-      BYTE: { subcircuit: 'ALU3', selector: 1n << 26n, checked: [0] },
-      SIGNEXTEND: { subcircuit: 'ALU3', selector: 1n << 11n, checked: [0] },
-      SAR: { subcircuit: 'ALU3', selector: 1n << 29n, checked: [0] },
+      BYTE: { subcircuit: 'ALU3', selector: 1n << 1n, checked: [0] },
+      SIGNEXTEND: { subcircuit: 'ALU3', selector: 1n << 0n, checked: [0] },
+      SAR: { subcircuit: 'ALU3', selector: 1n << 2n, checked: [0] },
     } as const;
 
     for (const [operation, expected] of Object.entries(directMappings)) {
@@ -60,6 +60,19 @@ describe('placement composition assembly', () => {
       expect(composition.steps[0]!.subcircuit).toBe(expected.subcircuit);
       expect(composition.steps[0]!.selector).toBe(expected.selector);
       expect(composition.externalCheckRequiredOperandIndices).toEqual(expected.checked);
+    }
+  });
+
+  it('uses the reserved power-of-two selector range for the division family', () => {
+    const expectedSelectors = {
+      DIV: 1n << 3n,
+      SDIV: 1n << 4n,
+      MOD: 1n << 5n,
+      SMOD: 1n << 6n,
+    } as const;
+
+    for (const [operation, selector] of Object.entries(expectedSelectors)) {
+      expect(mapping[operation as keyof typeof expectedSelectors].steps[0]!.selector).toBe(selector);
     }
   });
 
