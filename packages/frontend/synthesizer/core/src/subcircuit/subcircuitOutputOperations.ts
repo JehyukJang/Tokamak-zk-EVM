@@ -631,13 +631,7 @@ const poseidon = (inVals: bigint[]): bigint => {
 
 const memoryViewStep = (values: readonly bigint[]): bigint[] => {
   expectLength(values, 5, 'MemoryViewStep');
-  const [
-    sourceWord,
-    encodedShift,
-    ownership,
-    previousWord,
-    previousOwnership,
-  ] = values;
+  const [sourceWord, encodedShift, ownership, previousWord, previousOwnership] = values;
   const shiftMagnitude = encodedShift! & 31n;
   const direction = encodedShift! >> 5n;
   const shiftBits = shiftMagnitude! * 8n;
@@ -684,58 +678,72 @@ const pointPolicy = (values: readonly bigint[]): bigint[] => {
   const table: Affine[] = [identity, publicKeyAffine];
   table.push(affineAdd(table[1]!, publicKeyAffine));
   table.push(affineAdd(table[2]!, publicKeyAffine));
-  return [
-    values[5]!,
-    values[4]!,
-    ...table.flat(),
-    ...cofactorEight(randomizer, true),
-  ];
+  return [values[5]!, values[4]!, ...table.flat(), ...cofactorEight(randomizer, true)];
 };
 
 const fixedPrefix70 = (values: readonly bigint[]): bigint[] => {
   expectLength(values, 1, 'TransactionSignatureFixedPrefix70');
   const signatureBits = toBits(values[0]!, 252, 'response scalar');
-  return [...signatureBits.slice(210), ...fixedBatch(signatureBits.slice(0, 210), [0n, 1n, 1n, 0n], 0, true)];
-};
-
-const challengeVariablePrefix = (values: readonly bigint[]): bigint[] => {
-  expectLength(values, 9, 'TransactionSignatureChallengeVariablePrefix');
-  expectFr(values[0]!, 'challenge hash');
-  const challengeBits = toBits(values[0]!, 255, 'challenge hash');
-  const table = Array.from({ length: 4 }, (_, index): Affine => [values[1 + 2 * index]!, values[2 + 2 * index]!]);
   return [
-    ...challengeBits.slice(0, 222),
-    ...variableBatch(challengeBits.slice(222), table, [table[0]![0], table[0]![1], 1n, 0n], true, true),
+    signatureBits.slice(210).reduce((value, bit, index) => value + (bit << BigInt(index)), 0n),
+    ...fixedBatch(signatureBits.slice(0, 210), [0n, 1n, 1n, 0n], 0, true),
   ];
 };
 
-const transactionSignatureVariableBatch = (values: readonly bigint[]): bigint[] => {
-  expectLength(values, 80, 'TransactionSignatureVariableBatch');
-  const table = Array.from({ length: 4 }, (_, index): Affine => [values[68 + 2 * index]!, values[69 + 2 * index]!]);
+const challengeChunks = (values: readonly bigint[]): bigint[] => {
+  expectLength(values, 1, 'TransactionSignatureChallengeChunks');
+  expectFr(values[0]!, 'challenge hash');
+  const challengeBits = toBits(values[0]!, 255, 'challenge hash');
   return [
-    ...variableBatch(values.slice(0, 68), table, [values[76]!, values[77]!, values[78]!, values[79]!], false, false),
+    challengeBits.slice(192, 255).reduce((value, bit, index) => value + (bit << BigInt(index)), 0n),
+    challengeBits.slice(128, 192).reduce((value, bit, index) => value + (bit << BigInt(index)), 0n),
+    challengeBits.slice(64, 128).reduce((value, bit, index) => value + (bit << BigInt(index)), 0n),
+    challengeBits.slice(0, 64).reduce((value, bit, index) => value + (bit << BigInt(index)), 0n),
+  ];
+};
+
+const variableFirstBatch32 = (values: readonly bigint[]): bigint[] => {
+  expectLength(values, 9, 'TransactionSignatureVariableFirstBatch32');
+  const table = Array.from({ length: 4 }, (_, index): Affine => [values[1 + 2 * index]!, values[2 + 2 * index]!]);
+  return [
+    ...variableBatch(
+      toBits(values[0]!, 63, 'leading challenge chunk'),
+      table,
+      [table[0]![0], table[0]![1], 1n, 0n],
+      true,
+      true,
+    ),
+  ];
+};
+
+const variableBatch32 = (values: readonly bigint[]): bigint[] => {
+  expectLength(values, 13, 'TransactionSignatureVariableBatch32');
+  const table = Array.from({ length: 4 }, (_, index): Affine => [values[1 + 2 * index]!, values[2 + 2 * index]!]);
+  return [
+    ...variableBatch(
+      toBits(values[0]!, 64, 'challenge chunk'),
+      table,
+      [values[9]!, values[10]!, values[11]!, values[12]!],
+      false,
+      false,
+    ),
   ];
 };
 
 const final = (values: readonly bigint[]): bigint[] => {
-  expectLength(values, 81, 'TransactionSignatureFinal');
+  expectLength(values, 14, 'TransactionSignatureFinal');
   const fixedTail = fixedBatch(
-    values.slice(0, 42),
-    [values[42]!, values[43]!, values[44]!, values[45]!],
+    toBits(values[0]!, 42, 'remaining response scalar'),
+    [values[1]!, values[2]!, values[3]!, values[4]!],
     70,
     false,
   ) as readonly [bigint, bigint, bigint];
-  const table = Array.from({ length: 4 }, (_, index): Affine => [values[68 + 2 * index]!, values[69 + 2 * index]!]);
-  const variableTail = variableBatch(
-    values.slice(46, 64),
-    table,
-    [values[64]!, values[65]!, values[66]!, values[67]!],
-    false,
-    false,
+  expectExtendedEqual(
+    fixedTail,
+    addExtended([values[5]!, values[6]!, values[7]!, values[8]!], [values[9]!, values[10]!, values[11]!, values[12]!]),
   );
-  expectExtendedEqual(fixedTail, addExtended(variableTail, [values[76]!, values[77]!, values[78]!, values[79]!]));
-  expectFr(values[80]!, 'public key hash');
-  return [values[80]! & ((1n << 160n) - 1n)];
+  expectFr(values[13]!, 'public key hash');
+  return [values[13]! & ((1n << 160n) - 1n)];
 };
 
 type SubcircuitOperation = (values: bigint[]) => bigint | bigint[];
@@ -759,10 +767,11 @@ const SUBCIRCUIT_OPERATION_MAPPING: Partial<Record<CompositionSubcircuit, Subcir
   TransactionSignaturePoseidonBatch4: poseidonBatch4,
   TransactionSignaturePointPolicy: pointPolicy,
   TransactionSignatureFixedPrefix70: fixedPrefix70,
-  TransactionSignatureChallengeVariablePrefix: challengeVariablePrefix,
-  TransactionSignatureVariableBatch: transactionSignatureVariableBatch,
+  TransactionSignatureChallengeChunks: challengeChunks,
+  TransactionSignatureVariableFirstBatch32: variableFirstBatch32,
+  TransactionSignatureVariableBatch32: variableBatch32,
   TransactionSignatureFinal: final,
-  FrToLimbsPair: (values) => values,
+  FrToLimbsPair: values => values,
   ADD: evmAdd,
   MUL: evmMul,
   SUB: evmSub,
