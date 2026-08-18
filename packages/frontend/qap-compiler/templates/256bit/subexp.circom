@@ -1,13 +1,12 @@
 pragma circom 2.1.6;
 include "arithmetic_unsafe_type1.circom";
 
-// Performs one LSB-first square-and-multiply step. The input state is
-// canonicalized locally. `in[4]` is the current exponent-limb remainder;
-// the Boolean low bit and next remainder are constrained locally so the
-// composition does not expose a 256-bit array between placements.
+// Performs one LSB-first square-and-multiply step. `in[4..5]` is the
+// complete current exponent remainder in two 128-bit limbs. The local
+// binary shift preserves the logical uint256 boundary between placements.
 template SubExp() {
-    signal input in[5];
-    signal output out[5];
+    signal input in[6];
+    signal output out[6];
 
     component accumulatorSplit[2];
     component basePowerSplit[2];
@@ -24,12 +23,20 @@ template SubExp() {
         basePowerWords[2 * limb + 1] <== basePowerSplit[limb].words[1];
     }
 
+    var LIMB_BASE = 1 << 128;
+    var HALF_LIMB_BASE = 1 << 127;
     signal bit;
-    signal nextRemainder;
+    signal carry;
+    signal nextRemainderLow;
+    signal nextRemainderHigh;
     bit <-- in[4] % 2;
-    nextRemainder <-- (in[4] - bit) \ 2;
+    carry <-- in[5] % 2;
+    nextRemainderLow <-- ((in[4] - bit) \ 2) + carry * HALF_LIMB_BASE;
+    nextRemainderHigh <-- (in[5] - carry) \ 2;
     bit * (bit - 1) === 0;
-    in[4] === 2 * nextRemainder + bit;
+    carry * (carry - 1) === 0;
+    in[4] + LIMB_BASE * carry === 2 * nextRemainderLow + bit;
+    in[5] === 2 * nextRemainderHigh + carry;
 
     signal factorWords[4];
     factorWords[0] <== 1 - bit + bit * basePowerWords[0];
@@ -49,11 +56,12 @@ template SubExp() {
         accumulate.out[1],
         square.out[0],
         square.out[1],
-        nextRemainder
+        nextRemainderLow,
+        nextRemainderHigh
     ];
 }
 
-template AssertZeroPair() {
+template AssertZeroWord() {
     signal input in[2];
     in[0] === 0;
     in[1] === 0;

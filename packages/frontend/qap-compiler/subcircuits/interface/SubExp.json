@@ -2,11 +2,11 @@
   "inputs": [
     { "name": "accumulator", "logicalType": { "kind": "uint", "bits": 256 } },
     { "name": "basePower", "logicalType": { "kind": "uint", "bits": 256 } },
-    { "name": "exponentRemainder", "logicalType": { "kind": "uint", "bits": 128 } }
+    { "name": "exponentRemainder", "logicalType": { "kind": "uint", "bits": 256 } }
   ],
   "outputs": [
     { "name": "nextAccumulator", "logicalType": { "kind": "uint", "bits": 256 } },
     { "name": "nextBasePower", "logicalType": { "kind": "uint", "bits": 256 } },
-    { "name": "nextExponentRemainder", "logicalType": { "kind": "uint", "bits": 128 } }
+    { "name": "nextExponentRemainder", "logicalType": { "kind": "uint", "bits": 256 } }
   ]
 }
