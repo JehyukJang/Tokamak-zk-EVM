@@ -81,11 +81,11 @@ describe('external input checks in generic compositions', () => {
     expect(placements[1]!.inPts.map(({ source }) => source)).toEqual([7, 1]);
   });
 
-  it('does not duplicate a committed guard when another wire from the same buffer is new', () => {
+  it('does not reuse a guard for an equal-valued distinct buffer wire', () => {
     const placementManager = createPlacementManager([5n]);
 
     placementManager.placeComposition('ADD', [word(2n, 0), word(3n, 1)]);
-    placementManager.placeComposition('ADD', [word(4n, 2), word(5n, 1)]);
+    placementManager.placeComposition('ADD', [word(2n, 2), word(3n, 1)]);
     const placements = placementManager.placements.slice(10);
 
     expect(placements.map(({ name }) => name)).toEqual(['CheckBus256', 'ADD']);
@@ -132,5 +132,29 @@ describe('topology-fixed arbitrary statics', () => {
 
     expect(reused).toMatchObject({ source: first.source, wireIndex: first.wireIndex });
     expect(distinctUsage).not.toMatchObject({ source: first.source, wireIndex: first.wireIndex });
+  });
+
+  it('allocates a fresh EVM_IN wire for every uncached static input', () => {
+    const placementManager = Object.assign(Object.create(PlacementManager.prototype), {
+      _placements: Array.from({ length: 7 }, () => ({
+        name: 'bufferEVMIn', usage: 'test', subcircuitId: 0, inPts: [], outPts: [],
+      })),
+      _cachedTopologyFixedEVMIn: new Map(),
+    }) as PlacementManager;
+
+    const first = placementManager.loadArbitraryStatic(
+      3n,
+      UINT256_DATA_PT_TYPE,
+      'First uncached input',
+      { kind: 'uncached' },
+    );
+    const second = placementManager.loadArbitraryStatic(
+      3n,
+      UINT256_DATA_PT_TYPE,
+      'Second uncached input',
+      { kind: 'uncached' },
+    );
+
+    expect(second).not.toMatchObject({ source: first.source, wireIndex: first.wireIndex });
   });
 });

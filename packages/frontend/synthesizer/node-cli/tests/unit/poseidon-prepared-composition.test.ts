@@ -32,6 +32,7 @@ const dataPt = (
 
 const createPlacementManager = (): PlacementManager => {
   let nextStaticWireIndex = 0
+  const reservedDataPts = new Map<string, DataPt>()
   return Object.assign(Object.create(PlacementManager.prototype), {
     _placements: Array.from({ length: 6 }, () => ({
       name: 'Poseidon',
@@ -60,13 +61,19 @@ const createPlacementManager = (): PlacementManager => {
     loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
       dataPt(value, 5, nextStaticWireIndex++, dataPtType)),
     getReservedVariableFromBuffer: vi.fn((name: string) => {
+      const existing = reservedDataPts.get(name)
+      if (existing !== undefined) {
+        return DataPtFactory.deepCopy(existing)
+      }
       const exponent = /^UINT32_POW2_(\d)$/.exec(name)?.[1]
-      return dataPt(
+      const reserved = dataPt(
         exponent === undefined ? 0n : 1n << BigInt(exponent),
         5,
         nextStaticWireIndex++,
         exponent === undefined ? UINT256_DATA_PT_TYPE : UINT32_DATA_PT_TYPE,
       )
+      reservedDataPts.set(name, reserved)
+      return DataPtFactory.deepCopy(reserved)
     }),
   }) as PlacementManager
 }
@@ -102,6 +109,23 @@ describe('atomic Poseidon composition', () => {
 
     expect(steps).toHaveLength(1)
     expect(steps[0]!.inPts.map(({ value }) => value)).toEqual([1n, 0n, 0n, 0n, 0n, 0n])
+  })
+
+  it('reuses one reserved input wire for equal Poseidon input counts', () => {
+    const placementManager = createPlacementManager()
+
+    placementManager.placeComposition('Poseidon', [dataPt(1n, 0, 0), dataPt(2n, 0, 1)])
+    placementManager.placeComposition('Poseidon', [dataPt(3n, 0, 2), dataPt(4n, 0, 3)])
+    const steps = placementManager.placements.slice(6)
+
+    expect(steps).toHaveLength(2)
+    expect(steps[0]!.inPts[0]).toMatchObject({ value: 1n, dataPtType: UINT32_DATA_PT_TYPE })
+    expect(steps[1]!.inPts[0]).toMatchObject({
+      source: steps[0]!.inPts[0]!.source,
+      wireIndex: steps[0]!.inPts[0]!.wireIndex,
+      value: 1n,
+      dataPtType: UINT32_DATA_PT_TYPE,
+    })
   })
 
   it('rejects view-grouped operands without recording a placement', () => {

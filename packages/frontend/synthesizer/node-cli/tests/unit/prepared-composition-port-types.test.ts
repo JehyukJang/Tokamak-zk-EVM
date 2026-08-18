@@ -73,7 +73,7 @@ function createPlacementManager(
     subcircuitLibrary: {
       calculateSubcircuitOutputValues: () => outputValues,
     },
-    loadArbitraryStatic: (value: bigint) => createDataPt(selectorType, 5, 0, value),
+    getReservedVariableFromBuffer: () => createDataPt(selectorType, 5, 0, 1n),
   }) as PlacementManager;
 }
 
