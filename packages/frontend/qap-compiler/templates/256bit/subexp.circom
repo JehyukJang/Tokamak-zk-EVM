@@ -32,9 +32,9 @@ template SubExp() {
     in[4] === 2 * nextRemainder + bit;
 
     signal factorWords[4];
-    factorWords[0] <== 1 - in[4] + in[4] * basePowerWords[0];
+    factorWords[0] <== 1 - bit + bit * basePowerWords[0];
     for (var word = 1; word < 4; word++) {
-        factorWords[word] <== in[4] * basePowerWords[word];
+        factorWords[word] <== bit * basePowerWords[word];
     }
 
     component square = Square256TruncatedFrom64_unsafe();
