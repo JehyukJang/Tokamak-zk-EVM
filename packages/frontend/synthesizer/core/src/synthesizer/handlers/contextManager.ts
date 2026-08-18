@@ -19,7 +19,55 @@ import type {
   StorageCacheEntries,
   StorageCacheEntry,
 } from '../types/index.ts';
-import type { PlacementManager } from './placementManager.ts';
+import type {
+  ArbitraryStaticCachePolicy,
+  ObservationContextDependency,
+  ObservationDefinition,
+  PlacementManager,
+} from './placementManager.ts';
+
+const createObservationDefinition = (
+  name: string,
+  contextDependencies: readonly ObservationContextDependency[],
+  operandCount: number,
+  numericArgumentCount: number = 0,
+): ObservationDefinition => ({
+  id: Symbol(name),
+  name,
+  contextDependencies,
+  operandCount,
+  numericArgumentCount,
+});
+
+export const OBSERVATION_DEFINITIONS = {
+  callValue: createObservationDefinition('CALLVALUE', ['message'], 0),
+  callDataSize: createObservationDefinition('CALLDATASIZE', ['message'], 0),
+  codeSize: createObservationDefinition('CODESIZE', ['code'], 0),
+  gasPrice: createObservationDefinition('GASPRICE', ['transaction'], 0),
+  returnDataSize: createObservationDefinition(
+    'RETURNDATASIZE',
+    ['message', 'return-data-revision'],
+    0,
+  ),
+  memorySize: createObservationDefinition(
+    'MSIZE',
+    ['message', 'memory-size-revision'],
+    0,
+  ),
+  balance: createObservationDefinition('BALANCE', ['balance-revision'], 1),
+  extCodeSize: createObservationDefinition('EXTCODESIZE', [], 1),
+  extCodeHash: createObservationDefinition('EXTCODEHASH', [], 1),
+  extCodeCopyChunk: createObservationDefinition('EXTCODECOPY chunk', [], 2, 1),
+} as const;
+
+type CodeMemorySource =
+  | 'current-code'
+  | Readonly<{
+    kind: 'external-code';
+    context: MessageContext;
+    targetPt: DataPt;
+    codeOffsetPt: DataPt;
+  }>;
 
 export type MemoryCopyPlan = Readonly<{
   operands: readonly (readonly DataPt[])[];
@@ -230,13 +278,61 @@ export class ContextManager {
     )
   }
 
+  public createObservationCachePolicy(
+    definition: ObservationDefinition,
+    context: MessageContext,
+    operandPts: readonly DataPt[] = [],
+    numericArguments: readonly number[] = [],
+  ): ArbitraryStaticCachePolicy {
+    if (operandPts.length !== definition.operandCount) {
+      throw new Error(
+        `Synthesizer: ${definition.name} expects ${definition.operandCount} observation operands, but got ${operandPts.length}`,
+      )
+    }
+    if (numericArguments.length !== definition.numericArgumentCount) {
+      throw new Error(
+        `Synthesizer: ${definition.name} expects ${definition.numericArgumentCount} observation numeric arguments, but got ${numericArguments.length}`,
+      )
+    }
+
+    const numericValues = definition.contextDependencies.map((dependency) => {
+      switch (dependency) {
+        case 'transaction':
+          return this._transactionIdentity
+        case 'message':
+          return context.messageContextIdentity
+        case 'code':
+          return context.codeContextIdentity
+        case 'return-data-revision':
+          return context.returnDataRevision
+        case 'memory-size-revision':
+          return context.memoryPt.memorySizeRevision
+        case 'balance-revision':
+          return this._balanceRevision
+      }
+    })
+
+    return {
+      kind: 'semantic-observation',
+      key: {
+        definition,
+        numericValues: [...numericValues, ...numericArguments],
+        operandWires: operandPts.map(({ source, wireIndex, dataPtType }) => ({
+          source,
+          wireIndex,
+          dataPtType,
+        })),
+      },
+    }
+  }
+
   public prepareCodeMemoryEntries(
     code: Uint8Array<ArrayBufferLike>,
     targetAddress: bigint,
     memOffset: bigint,
     codeOffset: bigint = 0n,
     dataLength: bigint = BigInt(code.byteLength),
-    codeSource: 'current-code' | 'external-code',
+    codeSource: CodeMemorySource,
   ): MemoryPts {
     const getDataSlice = (data: Uint8Array, offset: bigint, length: bigint): Uint8Array => {
       const len = BigInt(data.length)
@@ -252,9 +348,6 @@ export class ContextManager {
     }
 
     const memPts: MemoryPts = []
-    const cachePolicy = codeSource === 'current-code'
-      ? { kind: 'topology-fixed' as const, usage: 'codecopy-current-code-chunk' as const }
-      : { kind: 'uncached' as const }
     const nChunks = Math.ceil(Number(dataLength) / 32)
     let accOffsetShift = 0n
     let lengthLeft = Number(dataLength)
@@ -264,6 +357,14 @@ export class ContextManager {
         getDataSlice(code, codeOffset + accOffsetShift, BigInt(sliceLength)),
       )
       const desc = `Code of address: ${bigIntToHex(targetAddress)}, offset: ${Number(codeOffset)}, length: ${Number(dataLength)} bytes, chunk: ${i + 1} out of ${nChunks}.`
+      const cachePolicy = codeSource === 'current-code'
+        ? { kind: 'topology-fixed' as const, usage: 'codecopy-current-code-chunk' as const }
+        : this.createObservationCachePolicy(
+          OBSERVATION_DEFINITIONS.extCodeCopyChunk,
+          codeSource.context,
+          [codeSource.targetPt, codeSource.codeOffsetPt],
+          [i],
+        )
       const dataPt = this.placementManager.loadArbitraryStatic(
         dataSlice,
         UINT256_DATA_PT_TYPE,

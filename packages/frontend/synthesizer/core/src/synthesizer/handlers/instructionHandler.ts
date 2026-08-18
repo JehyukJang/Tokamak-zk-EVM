@@ -11,8 +11,13 @@ import {
 } from '@ethereumjs/util'
 import { InterpreterStep } from '@ethereumjs/evm'
 import { DataPtFactory, MemoryPt, StackPt } from '../dataStructure/index.ts';
-import type { PlacementManager } from './placementManager.ts';
-import { createMemoryCopyEntries, type ContextManager, type MessageContext } from './contextManager.ts';
+import type { ArbitraryStaticCachePolicy, PlacementManager } from './placementManager.ts';
+import {
+  createMemoryCopyEntries,
+  OBSERVATION_DEFINITIONS,
+  type ContextManager,
+  type MessageContext,
+} from './contextManager.ts';
 import type { ResolvedSubcircuitLibrary } from '../../subcircuit/libraryTypes.ts';
 
 export interface HandlerOpts {
@@ -661,17 +666,17 @@ export class InstructionHandler {
     }
   }
 
-  private _getStaticInDataPt = (output: bigint, opts: HandlerOpts, targetAddress?: bigint): DataPt => {
+  private _getStaticInDataPt = (
+    output: bigint,
+    opts: HandlerOpts,
+    cachePolicy: ArbitraryStaticCachePolicy,
+  ): DataPt => {
     const value = output
     const staticInDesc = `Static input for ${opts.op} instruction at PC ${opts.pc} of code address ${opts.codeAddress} (depth : ${opts.callDepth})`
-    let targetDesc = targetAddress === undefined ? `` : `(target: ${createAddressFromBigInt(targetAddress).toString()})`
-    const cachePolicy = opts.op === 'PC'
-      ? { kind: 'topology-fixed' as const, usage: 'program-counter' as const }
-      : { kind: 'uncached' as const }
     return this.placementManager.loadArbitraryStatic(
       value,
       UINT256_DATA_PT_TYPE,
-      staticInDesc + targetDesc,
+      staticInDesc,
       cachePolicy,
     )
   }
@@ -706,7 +711,7 @@ export class InstructionHandler {
     
     const stackPt = opts.stackPt;
     const memoryPt = opts.memoryPt;
-    this._popStackPtAndCheckInputConsistency(opts.stackPt, ins)
+    const inPts = this._popStackPtAndCheckInputConsistency(opts.stackPt, ins)
     const op = opts.op as SynthesizerSupportedEnvInfOpcodes
     switch (op) {
       case 'ADDRESS': 
@@ -720,8 +725,15 @@ export class InstructionHandler {
         break
       case 'BALANCE': 
         {
-          const targetAddress = ins[0]
-          stackPt.push(this._getStaticInDataPt(out!, opts, targetAddress))
+          stackPt.push(this._getStaticInDataPt(
+            out!,
+            opts,
+            this.contextManager.createObservationCachePolicy(
+              OBSERVATION_DEFINITIONS.balance,
+              opts.thisContext,
+              [inPts[0]!],
+            ),
+          ))
         }
         break
       case 'ORIGIN': 
@@ -737,7 +749,14 @@ export class InstructionHandler {
         }
         break
       case 'CALLVALUE': 
-        stackPt.push(this._getStaticInDataPt(out!, opts))
+        stackPt.push(this._getStaticInDataPt(
+          out!,
+          opts,
+          this.contextManager.createObservationCachePolicy(
+            OBSERVATION_DEFINITIONS.callValue,
+            opts.thisContext,
+          ),
+        ))
         break
       case 'CALLDATALOAD': 
         {
@@ -758,7 +777,14 @@ export class InstructionHandler {
         }
         break
       case 'CALLDATASIZE':
-        stackPt.push(this._getStaticInDataPt(out!, opts))
+        stackPt.push(this._getStaticInDataPt(
+          out!,
+          opts,
+          this.contextManager.createObservationCachePolicy(
+            OBSERVATION_DEFINITIONS.callDataSize,
+            opts.thisContext,
+          ),
+        ))
         break
       case 'CALLDATACOPY':
         {
@@ -789,7 +815,14 @@ export class InstructionHandler {
         }
         break
       case 'CODESIZE':
-        stackPt.push(this._getStaticInDataPt(out!, opts))
+        stackPt.push(this._getStaticInDataPt(
+          out!,
+          opts,
+          this.contextManager.createObservationCachePolicy(
+            OBSERVATION_DEFINITIONS.codeSize,
+            opts.thisContext,
+          ),
+        ))
         break
       case 'CODECOPY':
         {
@@ -819,12 +852,26 @@ export class InstructionHandler {
         }
         break
       case 'GASPRICE': 
-        stackPt.push(this._getStaticInDataPt(out!, opts))
-        break
+        stackPt.push(this._getStaticInDataPt(
+          out!,
+          opts,
+          this.contextManager.createObservationCachePolicy(
+            OBSERVATION_DEFINITIONS.gasPrice,
+            opts.thisContext,
+          ),
+        ))
+      break
       case 'EXTCODESIZE': 
         {
-          const targetAdderss = ins[0]
-          stackPt.push(this._getStaticInDataPt(out!, opts, targetAdderss))  
+          stackPt.push(this._getStaticInDataPt(
+            out!,
+            opts,
+            this.contextManager.createObservationCachePolicy(
+              OBSERVATION_DEFINITIONS.extCodeSize,
+              opts.thisContext,
+              [inPts[0]!],
+            ),
+          ))
         }
         break
       case 'EXTCODECOPY':
@@ -840,7 +887,12 @@ export class InstructionHandler {
               memOffset,
               0n,
               dataLength,
-              'external-code',
+              {
+                kind: 'external-code',
+                context: opts.thisContext,
+                targetPt: inPts[0]!,
+                codeOffsetPt: inPts[2]!,
+              },
             )
             memoryPt.writeBatch(memPts)
           }
@@ -855,7 +907,14 @@ export class InstructionHandler {
         }
         break
       case 'RETURNDATASIZE': 
-        stackPt.push(this._getStaticInDataPt(out!, opts))
+        stackPt.push(this._getStaticInDataPt(
+          out!,
+          opts,
+          this.contextManager.createObservationCachePolicy(
+            OBSERVATION_DEFINITIONS.returnDataSize,
+            opts.thisContext,
+          ),
+        ))
         break
       case 'RETURNDATACOPY':
         {
@@ -890,8 +949,15 @@ export class InstructionHandler {
         break
       case 'EXTCODEHASH': 
         {
-          const targetAdderss = ins[0]
-          stackPt.push(this._getStaticInDataPt(out!, opts, targetAdderss))
+          stackPt.push(this._getStaticInDataPt(
+            out!,
+            opts,
+            this.contextManager.createObservationCachePolicy(
+              OBSERVATION_DEFINITIONS.extCodeHash,
+              opts.thisContext,
+              [inPts[0]!],
+            ),
+          ))
         }
         break
       default:
@@ -1036,8 +1102,31 @@ export class InstructionHandler {
       case 'JUMP': 
       case 'JUMPI': 
         break
-      case 'PC': 
+      case 'PC':
+        {
+          const staticInDesc = `Static input for ${opts.op} instruction at PC ${opts.pc} of code address ${opts.codeAddress} (depth: ${opts.callDepth})`
+          opts.stackPt.push(this.placementManager.loadArbitraryStatic(
+            out!,
+            UINT256_DATA_PT_TYPE,
+            staticInDesc,
+            { kind: 'topology-fixed', usage: 'program-counter' },
+          ))
+        }
+        break
       case 'MSIZE':
+        {
+          const staticInDesc = `Static input for ${opts.op} instruction at PC ${opts.pc} of code address ${opts.codeAddress} (depth: ${opts.callDepth})`
+          opts.stackPt.push(this.placementManager.loadArbitraryStatic(
+            out!,
+            UINT256_DATA_PT_TYPE,
+            staticInDesc,
+            this.contextManager.createObservationCachePolicy(
+              OBSERVATION_DEFINITIONS.memorySize,
+              opts.thisContext,
+            ),
+          ))
+        }
+        break
       case 'GAS':
         {
           const staticInDesc = `Static input for ${opts.op} instruction at PC ${opts.pc} of code address ${opts.codeAddress} (depth: ${opts.callDepth})`
