@@ -165,9 +165,9 @@ template ALU3_() {
         sarResult[limb] <== logicalShift[limb] + applySignFill * adjustedFiller[limb];
     }
 
-    var BYTE_SELECTOR = 1 << 26;
-    var SIGNEXTEND_SELECTOR = 1 << 11;
-    var SAR_SELECTOR = 1 << 29;
+    var BYTE_SELECTOR = 1 << 1;
+    var SIGNEXTEND_SELECTOR = 1 << 0;
+    var SAR_SELECTOR = 1 << 2;
     signal byteAndSignDifference <== (in[0] - BYTE_SELECTOR) * (in[0] - SIGNEXTEND_SELECTOR);
     byteAndSignDifference * (in[0] - SAR_SELECTOR) === 0;
     signal sarSelector <== byteAndSignDifference

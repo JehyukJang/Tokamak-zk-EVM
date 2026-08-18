@@ -63,15 +63,15 @@ template DivisionFamilyPart1() {
     signal output useMod;
 
     signal isSigned
-        <-- selector == (1 << 5) || selector == (1 << 7) ? 1 : 0;
-    useMod <-- selector == (1 << 6) || selector == (1 << 7) ? 1 : 0;
+        <-- selector == (1 << 4) || selector == (1 << 6) ? 1 : 0;
+    useMod <-- selector == (1 << 5) || selector == (1 << 6) ? 1 : 0;
     isSigned * (1 - isSigned) === 0;
     useMod * (1 - useMod) === 0;
     selector
-        === 16
-        + 16 * isSigned
-        + 48 * useMod
-        + 48 * isSigned * useMod;
+        === 8
+        + 8 * isSigned
+        + 24 * useMod
+        + 24 * isSigned * useMod;
 
     component dividendBits[2];
     component divisorBits[2];
