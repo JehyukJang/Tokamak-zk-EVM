@@ -665,20 +665,6 @@ export class InstructionHandler {
     }
   }
 
-  private _getStaticInDataPt = (
-    output: bigint,
-    opts: HandlerOpts,
-  ): DataPt => {
-    const value = output
-    const staticInDesc = `Static input for ${opts.op} instruction at PC ${opts.pc} of code address ${opts.codeAddress} (depth : ${opts.callDepth})`
-    return this.placementManager.loadArbitraryStatic(
-      value,
-      UINT256_DATA_PT_TYPE,
-      staticInDesc,
-      { kind: 'uncached' },
-    )
-  }
-
   private _popStackPtAndCheckInputConsistency = (stackPt: StackPt, ins: bigint[]): DataPt[] => {
     const nIns = ins.length  
     const dataPts = stackPt.popN(nIns)
@@ -711,6 +697,7 @@ export class InstructionHandler {
     const memoryPt = opts.memoryPt;
     const inPts = this._popStackPtAndCheckInputConsistency(opts.stackPt, ins)
     const op = opts.op as SynthesizerSupportedEnvInfOpcodes
+    const staticInDesc = `Static input for ${opts.op} instruction at PC ${opts.pc} of code address ${opts.codeAddress} (depth : ${opts.callDepth})`
     switch (op) {
       case 'ADDRESS': 
         {
@@ -723,7 +710,7 @@ export class InstructionHandler {
         break
       case 'BALANCE': 
         {
-          stackPt.push(this._getStaticInDataPt(out!, opts))
+          stackPt.push(this.placementManager.loadArbitraryStatic(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
         }
         break
       case 'ORIGIN': 
@@ -739,7 +726,7 @@ export class InstructionHandler {
         }
         break
       case 'CALLVALUE': 
-        stackPt.push(this._getStaticInDataPt(out!, opts))
+        stackPt.push(this.placementManager.loadArbitraryStatic(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
         break
       case 'CALLDATALOAD': 
         {
@@ -760,7 +747,7 @@ export class InstructionHandler {
         }
         break
       case 'CALLDATASIZE':
-        stackPt.push(this._getStaticInDataPt(out!, opts))
+        stackPt.push(this.placementManager.loadArbitraryStatic(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
         break
       case 'CALLDATACOPY':
         {
@@ -791,7 +778,7 @@ export class InstructionHandler {
         }
         break
       case 'CODESIZE':
-        stackPt.push(this._getStaticInDataPt(out!, opts))
+        stackPt.push(this.placementManager.loadArbitraryStatic(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
         break
       case 'CODECOPY':
         {
@@ -821,11 +808,11 @@ export class InstructionHandler {
         }
         break
       case 'GASPRICE': 
-        stackPt.push(this._getStaticInDataPt(out!, opts))
+        stackPt.push(this.placementManager.loadArbitraryStatic(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
       break
       case 'EXTCODESIZE': 
         {
-          stackPt.push(this._getStaticInDataPt(out!, opts))
+          stackPt.push(this.placementManager.loadArbitraryStatic(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
         }
         break
       case 'EXTCODECOPY':
@@ -861,7 +848,7 @@ export class InstructionHandler {
         }
         break
       case 'RETURNDATASIZE': 
-        stackPt.push(this._getStaticInDataPt(out!, opts))
+        stackPt.push(this.placementManager.loadArbitraryStatic(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
         break
       case 'RETURNDATACOPY':
         {
@@ -896,7 +883,7 @@ export class InstructionHandler {
         break
       case 'EXTCODEHASH': 
         {
-          stackPt.push(this._getStaticInDataPt(out!, opts))
+          stackPt.push(this.placementManager.loadArbitraryStatic(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
         }
         break
       default:
