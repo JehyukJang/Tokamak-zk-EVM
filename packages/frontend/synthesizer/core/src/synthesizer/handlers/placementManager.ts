@@ -53,54 +53,12 @@ type PlacementCandidate = Readonly<{
 
 export type TopologyFixedConstantUsage =
   | 'push-immediate'
-  | 'program-counter'
   | 'memory-view-encoded-shift'
-  | 'memory-view-ownership-mask'
-  | 'codecopy-current-code-chunk';
-
-export type ObservationContextDependency =
-  | 'transaction'
-  | 'message'
-  | 'code'
-  | 'return-data-revision'
-  | 'memory-size-revision'
-  | 'balance-revision';
-
-export type ObservationDefinition = Readonly<{
-  id: symbol;
-  name: string;
-  contextDependencies: readonly ObservationContextDependency[];
-  operandCount: number;
-  numericArgumentCount: number;
-}>;
-
-export type ObservationWireIdentity = Readonly<{
-  source: number;
-  wireIndex: number;
-  dataPtType: DataPtType;
-}>;
-
-export type SemanticObservationCacheKey = Readonly<{
-  definition: ObservationDefinition;
-  numericValues: readonly number[];
-  operandWires: readonly ObservationWireIdentity[];
-}>;
+  | 'memory-view-ownership-mask';
 
 export type ArbitraryStaticCachePolicy =
   | Readonly<{ kind: 'topology-fixed'; usage: TopologyFixedConstantUsage }>
-  | Readonly<{ kind: 'semantic-observation'; key: SemanticObservationCacheKey }>
   | Readonly<{ kind: 'uncached' }>;
-
-type SemanticObservationCacheEntry = Readonly<{
-  value: bigint;
-  dataPtType: DataPtType;
-  dataPt: DataPt;
-}>;
-
-type SemanticObservationCacheNode = {
-  children: Map<number | DataPtType, SemanticObservationCacheNode>;
-  entry: SemanticObservationCacheEntry | undefined;
-};
 
 const FULL_MEMORY_VIEW_OWNERSHIP = 0xffffffffn
 
@@ -322,7 +280,6 @@ export class PlacementManager {
     TopologyFixedConstantUsage,
     Map<DataPtType, Map<bigint, DataPt>>
   > = new Map()
-  private _cachedSemanticEVMIn = new Map<symbol, SemanticObservationCacheNode>()
   private _guardedBufferOutputWires: Map<number, Set<number>> = new Map()
 
   public subcircuitInfoByName: SubcircuitInfoByName;
@@ -403,16 +360,6 @@ export class PlacementManager {
       if (cachedDataPt !== undefined) {
         return DataPtFactory.deepCopy(cachedDataPt)
       }
-    } else if (cachePolicy.kind === 'semantic-observation') {
-      const entry = this._getSemanticObservationCacheNode(cachePolicy.key, false)?.entry
-      if (entry !== undefined) {
-        if (entry.value !== value || entry.dataPtType !== dataPtType) {
-          throw new Error(
-            `Synthesizer: ${cachePolicy.key.definition.name} observation disagrees with its cached value or type`,
-          )
-        }
-        return DataPtFactory.deepCopy(entry.dataPt)
-      }
     }
     const placementIndex = BUFFER_LIST.indexOf('EVM_IN')
     const inPtRaw: DataPtDescription = {
@@ -431,45 +378,8 @@ export class PlacementManager {
       cachedByValue.set(value, outPt)
       cachedByType.set(dataPtType, cachedByValue)
       this._cachedTopologyFixedEVMIn.set(cachePolicy.usage, cachedByType)
-    } else if (cachePolicy.kind === 'semantic-observation') {
-      const node = this._getSemanticObservationCacheNode(cachePolicy.key, true)!
-      node.entry = { value, dataPtType, dataPt: outPt }
     }
     return DataPtFactory.deepCopy(outPt)
-  }
-
-  private _getSemanticObservationCacheNode(
-    key: SemanticObservationCacheKey,
-    create: boolean,
-  ): SemanticObservationCacheNode | undefined {
-    const existing = this._cachedSemanticEVMIn.get(key.definition.id)
-    let node: SemanticObservationCacheNode
-    if (existing === undefined) {
-      if (!create) {
-        return undefined
-      }
-      node = { children: new Map(), entry: undefined }
-      this._cachedSemanticEVMIn.set(key.definition.id, node)
-    } else {
-      node = existing
-    }
-
-    const values: Array<number | DataPtType> = [...key.numericValues]
-    for (const wire of key.operandWires) {
-      values.push(wire.source, wire.wireIndex, wire.dataPtType)
-    }
-    for (const value of values) {
-      let child: SemanticObservationCacheNode | undefined = node.children.get(value)
-      if (child === undefined) {
-        if (!create) {
-          return undefined
-        }
-        child = { children: new Map(), entry: undefined }
-        node.children.set(value, child)
-      }
-      node = child
-    }
-    return node
   }
 
   public getReservedVariableFromBuffer(varName: ReservedVariable): DataPt {

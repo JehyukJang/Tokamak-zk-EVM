@@ -11,14 +11,16 @@ const wordPt = (value: bigint) => DataPtFactory.create({
 }, value);
 
 describe('MemoryPt MemoryView geometry', () => {
-  it('advances its size revision only when an accessed range expands memory', () => {
+  it('tracks an accessed range without changing memory geometry', () => {
     const memoryPt = new MemoryPt();
 
     memoryPt.write(0, 4, wordPt(0x11223344n));
     memoryPt.getDataAlias(1, 2);
     memoryPt.getDataAlias(8, 1);
 
-    expect(memoryPt.memorySizeRevision).toBe(2);
+    expect(memoryPt.viewMemory(0, 9)).toEqual(
+      new Uint8Array([0x11, 0x22, 0x33, 0x44, 0x00, 0x00, 0x00, 0x00, 0x00]),
+    );
   });
 
   it('derives the right-shifted partial-view contribution once', () => {

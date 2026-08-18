@@ -34,17 +34,11 @@ export class MemoryPt {
   _storePt: TMemoryPt
   private _timeStamp: number
   private _byteLength: number
-  private _memorySizeRevision: number
 
   constructor() {
     this._storePt = new Map()
     this._timeStamp = 0
     this._byteLength = 0
-    this._memorySizeRevision = 0
-  }
-
-  public get memorySizeRevision(): number {
-    return this._memorySizeRevision
   }
 
   private _observeMemoryRange(offset: number, byteSize: number): void {
@@ -54,7 +48,6 @@ export class MemoryPt {
     const endOffsetExclusive = offset + byteSize
     if (endOffsetExclusive > this._byteLength) {
       this._byteLength = endOffsetExclusive
-      this._memorySizeRevision += 1
     }
   }
 

@@ -126,8 +126,8 @@ describe('topology-fixed arbitrary statics', () => {
     const distinctUsage = placementManager.loadArbitraryStatic(
       3n,
       UINT256_DATA_PT_TYPE,
-      'Program counter',
-      { kind: 'topology-fixed', usage: 'program-counter' },
+      'Memory ownership mask',
+      { kind: 'topology-fixed', usage: 'memory-view-ownership-mask' },
     );
 
     expect(reused).toMatchObject({ source: first.source, wireIndex: first.wireIndex });

@@ -61,9 +61,6 @@ const dataPt = (value: bigint, source: number) => DataPtFactory.create({
 }, value);
 
 const createContext = (): MessageContext => ({
-  messageContextIdentity: 0,
-  codeContextIdentity: 0,
-  returnDataRevision: 0,
   stackPt: new StackPt(),
   memoryPt: new MemoryPt(),
   callerPt: dataPt(1n, 1),
