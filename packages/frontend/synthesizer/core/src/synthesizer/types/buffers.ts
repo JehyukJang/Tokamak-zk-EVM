@@ -322,6 +322,13 @@ const EVM_IN_VARIABLES_STATIC = [
   'BIT_CONST_ONE',
   'BIT_CONST_ZERO',
   'UINT32_CONST_ZERO',
+  'UINT32_POW2_0',
+  'UINT32_POW2_1',
+  'UINT32_POW2_2',
+  'UINT32_POW2_3',
+  'UINT32_POW2_4',
+  'UINT32_POW2_5',
+  'UINT32_POW2_6',
   'EVM_CONST_ONE',
   'EVM_CONST_ZERO',
   'JUBJUB_BASE_X',
@@ -542,6 +549,12 @@ __setDataPtType('BIT_CONST_ZERO', BIT_DATA_PT_TYPE)
 
 VARIABLE_DESCRIPTION_INCOMPLETE.UINT32_CONST_ZERO.extSource = 'Zero uint32 value',
 __setDataPtType('UINT32_CONST_ZERO', UINT32_DATA_PT_TYPE)
+
+for (let exponent = 0; exponent <= 6; exponent++) {
+  const varName = `UINT32_POW2_${exponent}` as ReservedVariable
+  VARIABLE_DESCRIPTION_INCOMPLETE[varName].extSource = `Uint32 power of two: 2^${exponent}`
+  __setDataPtType(varName, UINT32_DATA_PT_TYPE)
+}
 
 VARIABLE_DESCRIPTION_INCOMPLETE.EVM_CONST_ONE.extSource = 'One EVM word',
 __setDataPtType('EVM_CONST_ONE', UINT256_DATA_PT_TYPE)

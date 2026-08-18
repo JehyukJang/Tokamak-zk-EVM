@@ -513,6 +513,12 @@ export class PlacementManager {
     this.addReservedVariableToBufferIn('BIT_CONST_ONE', 1n)
     this.addReservedVariableToBufferIn('BIT_CONST_ZERO', 0n)
     this.addReservedVariableToBufferIn('UINT32_CONST_ZERO', 0n)
+    for (let exponent = 0; exponent <= 6; exponent++) {
+      this.addReservedVariableToBufferIn(
+        `UINT32_POW2_${exponent}` as ReservedVariable,
+        1n << BigInt(exponent),
+      )
+    }
     this.addReservedVariableToBufferIn('EVM_CONST_ONE', 1n)
     this.addReservedVariableToBufferIn('EVM_CONST_ZERO', 0n)
     this.addReservedVariableToBufferIn('JUBJUB_BASE_X', jubjub.Point.BASE.toAffine().x)
