@@ -81,7 +81,7 @@ export const COMPOSITION_SUBCIRCUIT_LIST = [
     'MULMODPrepare',
     'MULMODCandidate',
     'MULMODVerify',
-    'DecToBit',
+    'AssertZeroWord',
     'SubExp',
     'CheckBus256',
     'Poseidon',

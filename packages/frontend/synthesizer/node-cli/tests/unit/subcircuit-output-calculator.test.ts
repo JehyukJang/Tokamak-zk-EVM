@@ -26,6 +26,16 @@ describe('subcircuit output operations', () => {
     expect(calculateSubcircuitOutputValues('StorageAccess', [1n, 2n, 1n, 2n])).toEqual([])
   })
 
+  it('calculates the full-word EXP remainder transition', () => {
+    const remainder = (1n << 128n) + 3n
+    expect(calculateSubcircuitOutputValues('SubExp', [1n, 7n, remainder])).toEqual([
+      7n,
+      49n,
+      remainder >> 1n,
+    ])
+    expect(calculateSubcircuitOutputValues('AssertZeroWord', [0n])).toEqual([])
+  })
+
   it('calculates each MemoryViewStep output from its encoded inputs', () => {
     expect(calculateSubcircuitOutputValues('MemoryViewStep', [
       0xdeadbeefn,

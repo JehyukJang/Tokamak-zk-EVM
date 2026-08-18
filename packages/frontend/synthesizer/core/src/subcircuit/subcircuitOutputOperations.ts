@@ -595,35 +595,17 @@ const mulmodVerify = (inVals: bigint[]): bigint => {
 };
 
 /**
- * Decimal to Bit
- */
-const decToBit = (ins: bigint[]): bigint[] => {
-  if (ins.length !== 1) {
-    throw new Error('decToBit expected one input');
-  }
-  const binaryString = ins[0].toString(2); // MSB-left
-  const paddedBinaryString = binaryString.padStart(256, '0'); // left-padding
-  const bits = Array.from(paddedBinaryString, bit => BigInt(bit)).reverse(); //LSB-left
-  if (bits.length > 256) {
-    throw new Error('Input value exceeds 256-bit word');
-  }
-  return bits;
-};
-
-/**
  * One LSB-first square-and-multiply step for EXP.
  */
-const evmSubExp = (in_vals: bigint[]): bigint[] => {
-  if (in_vals.length !== 3) {
-    throw new Error(`subExp expected exactly 3 input values, but got ${in_vals.length} values`);
+const evmSubExp = (inVals: bigint[]): bigint[] => {
+  if (inVals.length !== 3) {
+    throw new Error(`subExp expected exactly 3 input values, but got ${inVals.length} values`);
   }
-  const [accumulator, basePower, bit] = in_vals;
-  if (bit !== 0n && bit !== 1n) {
-    throw new Error('subExp: bit must be 0n or 1n');
-  }
+  const [accumulator, basePower, exponentRemainder] = inVals;
   return [
-    (accumulator * (bit === 1n ? basePower : 1n)) % EVM_WORD_MODULUS,
+    (accumulator * ((exponentRemainder & 1n) === 1n ? basePower : 1n)) % EVM_WORD_MODULUS,
     (basePower * basePower) % EVM_WORD_MODULUS,
+    exponentRemainder >> 1n,
   ];
 };
 
@@ -768,7 +750,7 @@ const SUBCIRCUIT_OPERATION_MAPPING: Partial<Record<CompositionSubcircuit, Subcir
   MULMODPrepare: mulmodPrepare,
   MULMODCandidate: mulmodCandidate,
   MULMODVerify: mulmodVerify,
-  DecToBit: decToBit,
+  AssertZeroWord: () => [],
   SubExp: evmSubExp,
   CheckBus256: () => [],
   Poseidon: poseidon,

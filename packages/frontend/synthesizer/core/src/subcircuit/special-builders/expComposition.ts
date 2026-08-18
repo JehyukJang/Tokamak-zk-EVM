@@ -7,7 +7,7 @@ import type {
   OutputReference
 } from '../placementCompositionMapping.ts'
 
-const NUM_EXPONENT_BITS = 256
+const NUM_EXPONENT_STEPS = 256
 
 export const createExpCompositionMapping = (): PlacementCompositionEntry => {
   const constants: readonly ConstantDefinition[] = [
@@ -16,48 +16,51 @@ export const createExpCompositionMapping = (): PlacementCompositionEntry => {
       dataPtType: UINT256_DATA_PT_TYPE,
     }
   ]
-  const steps: CompositionStep[] = [
-    {
-      subcircuit: 'DecToBit',
-      selector: null,
-      inputs: [{ kind: 'operand', index: 1 }],
-      outputs: Array.from(
-        { length: NUM_EXPONENT_BITS },
-        (_, index): OutputReference => ({ kind: 'step-output', index })
-      )
-    }
-  ]
+  const steps: CompositionStep[] = []
 
-  for (let bitIndex = 0; bitIndex < NUM_EXPONENT_BITS; bitIndex++) {
-    const isFirstStep = bitIndex === 0
-    const isFinalStep = bitIndex === NUM_EXPONENT_BITS - 1
+  for (let stepIndex = 0; stepIndex < NUM_EXPONENT_STEPS; stepIndex++) {
+    const isFirstStep = stepIndex === 0
+    const isFinalStep = stepIndex === NUM_EXPONENT_STEPS - 1
     const stateInputs: InputReference[] = isFirstStep
       ? [
           { kind: 'constant', index: 0 },
-          { kind: 'operand', index: 0 }
+          { kind: 'operand', index: 0 },
+          { kind: 'operand', index: 1 },
         ]
       : [
-          { kind: 'step-output', index: NUM_EXPONENT_BITS + 2 * (bitIndex - 1) },
-          { kind: 'step-output', index: NUM_EXPONENT_BITS + 2 * (bitIndex - 1) + 1 }
+          { kind: 'step-output', index: 3 * (stepIndex - 1) },
+          { kind: 'step-output', index: 3 * (stepIndex - 1) + 1 },
+          { kind: 'step-output', index: 3 * (stepIndex - 1) + 2 },
         ]
     const outputs: OutputReference[] = isFinalStep
       ? [{
           kind: 'step-output',
-          index: NUM_EXPONENT_BITS + 2 * bitIndex,
+          index: 3 * stepIndex,
           resultIndex: 0,
-        }, { kind: 'discard' }]
+        }, { kind: 'discard' }, {
+          kind: 'step-output',
+          index: 3 * stepIndex + 1,
+        }]
       : [
-          { kind: 'step-output', index: NUM_EXPONENT_BITS + 2 * bitIndex },
-          { kind: 'step-output', index: NUM_EXPONENT_BITS + 2 * bitIndex + 1 }
+          { kind: 'step-output', index: 3 * stepIndex },
+          { kind: 'step-output', index: 3 * stepIndex + 1 },
+          { kind: 'step-output', index: 3 * stepIndex + 2 },
         ]
 
     steps.push({
       subcircuit: 'SubExp',
       selector: null,
-      inputs: [...stateInputs, { kind: 'step-output', index: bitIndex }],
+      inputs: stateInputs,
       outputs
     })
   }
+
+  steps.push({
+    subcircuit: 'AssertZeroWord',
+    selector: null,
+    inputs: [{ kind: 'step-output', index: 3 * (NUM_EXPONENT_STEPS - 1) + 1 }],
+    outputs: []
+  })
 
   steps.push({
     subcircuit: 'CheckBus256',
@@ -65,7 +68,7 @@ export const createExpCompositionMapping = (): PlacementCompositionEntry => {
     inputs: [
       {
         kind: 'step-output',
-        index: NUM_EXPONENT_BITS + 2 * (NUM_EXPONENT_BITS - 1)
+        index: 3 * (NUM_EXPONENT_STEPS - 1)
       }
     ],
     outputs: []

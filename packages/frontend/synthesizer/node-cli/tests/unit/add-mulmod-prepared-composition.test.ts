@@ -62,8 +62,8 @@ const subcircuitInfoByName = new Map([
   ['MULMODVerify', subcircuitInfo('MULMODVerify', Array(24).fill(64), [256])],
   ['ALU4A', subcircuitInfo('ALU4A', [32, 256, 256], [256, 256, 256, 64, 64, 64, 64, 1, 1, 1])],
   ['ALU4B', subcircuitInfo('ALU4B', [256, 256, 256, 64, 64, 64, 64, 1, 1, 1], [256])],
-  ['DecToBit', subcircuitInfo('DecToBit', [256], Array(256).fill(1))],
-  ['SubExp', subcircuitInfo('SubExp', [256, 256, 1], [256, 256])],
+  ['AssertZeroWord', subcircuitInfo('AssertZeroWord', [256], [])],
+  ['SubExp', subcircuitInfo('SubExp', [256, 256, 256], [256, 256, 256])],
   ['CheckBus256', subcircuitInfo('CheckBus256', [256], [])],
 ])
 
@@ -101,10 +101,10 @@ const submit = (
         return [0n, 1n, 2n, 3n, 4n, 5n, 6n, 0n, 1n, 0n]
       case 'ALU4B':
         return [13n]
-      case 'DecToBit':
-        return Array.from({ length: 256 }, (_, index) => BigInt(index % 2))
       case 'SubExp':
-        return [17n, 19n]
+        return [17n, 19n, 23n]
+      case 'AssertZeroWord':
+        return []
       case 'CheckBus256':
         return []
       default:
@@ -257,18 +257,19 @@ describe('fixed generic atomic compositions', () => {
     const { placements, resultPts } = submit('EXP')
 
     expect(placements).toHaveLength(258)
-    expect(placements[0]!.inPts).toHaveLength(1)
-    expect(placements[0]!.outPts).toHaveLength(256)
-    expect(placements[0]!.outPts.every(
-      ({ dataPtType }) => dataPtType === BIT_DATA_PT_TYPE,
-    )).toBe(true)
-    expect(placements[1]!.inPts.map(({ value }) => value)).toEqual([1n, 3n, 0n])
-    expect(placements[2]!.inPts.map(({ source, wireIndex }) => [source, wireIndex]))
-      .toEqual([[7, 0], [7, 1], [6, 1]])
-    expect(placements.at(-1)).toMatchObject({
-      inPts: [{ source: 262, wireIndex: 0, value: 17n }],
+    expect(placements[0]!.inPts.map(({ value }) => value)).toEqual([1n, 3n, 4n])
+    expect(placements[0]!.outPts).toHaveLength(3)
+    expect(placements[1]!.inPts.map(({ source, wireIndex }) => [source, wireIndex]))
+      .toEqual([[6, 0], [6, 1], [6, 2]])
+    expect(placements[256]).toMatchObject({
+      name: 'AssertZeroWord',
+      inPts: [{ source: 261, wireIndex: 2, value: 23n }],
       outPts: [],
     })
-    expect(resultPts).toMatchObject([{ source: 262, wireIndex: 0, value: 17n }])
+    expect(placements.at(-1)).toMatchObject({
+      inPts: [{ source: 261, wireIndex: 0, value: 17n }],
+      outPts: [],
+    })
+    expect(resultPts).toMatchObject([{ source: 261, wireIndex: 0, value: 17n }])
   })
 })
