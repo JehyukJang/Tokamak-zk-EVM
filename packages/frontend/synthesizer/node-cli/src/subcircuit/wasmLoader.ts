@@ -1,10 +1,18 @@
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
-function getBaseURL(): URL {
+export function resolveSubcircuitLibraryDirectory(): string {
   if (typeof window !== "undefined") {
-    throw new Error("getBaseURL must run on the server");
+    throw new Error("resolveSubcircuitLibraryDirectory must run on the server");
+  }
+
+  const workspaceQapCompilerRoot = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '../../../../qap-compiler',
+  );
+  if (existsSync(workspaceQapCompilerRoot)) {
+    return path.join(workspaceQapCompilerRoot, 'subcircuits', 'library');
   }
 
   const subcircuitLibraryRoot = path.dirname(
@@ -16,16 +24,14 @@ function getBaseURL(): URL {
   const isBun = Reflect.get(process, 'isBun');
   if (isBun === true && process.execPath) {
     const execDir = path.dirname(process.execPath);
-    return pathToFileURL(path.resolve(execDir, "../resource/qap-compiler") + path.sep);
+    return path.resolve(execDir, '../resource/qap-compiler', 'subcircuits', 'library');
   }
 
-  return pathToFileURL(path.resolve(subcircuitLibraryRoot, "subcircuits") + path.sep);
+  return path.join(subcircuitLibraryRoot, 'subcircuits', 'library');
 }
 
-const BASE_URL = getBaseURL();
-
 // Derived path for WASM artifacts (filesystem path)
-export const wasmDir = fileURLToPath(new URL('library/wasm', BASE_URL));
+export const wasmDir = path.join(resolveSubcircuitLibraryDirectory(), 'wasm');
 
 export async function loadSubcircuitWasmBuffer(subcircuitId: number): Promise<ArrayBuffer> {
   const targetWasmPath = path.resolve(wasmDir, `subcircuit${subcircuitId}.wasm`);
