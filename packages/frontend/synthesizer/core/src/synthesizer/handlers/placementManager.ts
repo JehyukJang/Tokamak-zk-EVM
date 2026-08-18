@@ -281,7 +281,6 @@ export class PlacementManager {
     this.subcircuitInfoByName = subcircuitLibrary.subcircuitInfoByName
     this._bufferSubcircuitByBuffer = subcircuitLibrary.subcircuitBufferMapping
     this._placementCompositionMapping = subcircuitLibrary.placementCompositionMapping
-    this._assertCanonicalityGuardInterface()
     this._initBuffers()
   }
 
@@ -509,20 +508,6 @@ export class PlacementManager {
       subcircuitId: subcircuit.id,
       inPts: inPts.slice(),
       outPts: outPts.slice(),
-    }
-  }
-
-  private _assertCanonicalityGuardInterface(): void {
-    const subcircuit = this.subcircuitInfoByName.get('CheckBus256')
-    const logicalInterface = subcircuit?.logicalInterface
-    if (
-      subcircuit === undefined
-      || logicalInterface === undefined
-      || logicalInterface.inputs.length !== 1
-      || logicalInterface.outputs.length !== 0
-      || getDataPtTypeFromLogicalInterfaceType(logicalInterface.inputs[0]!.logicalType) !== UINT256_DATA_PT_TYPE
-    ) {
-      throw new Error('Synthesizer: CheckBus256 must expose one uint256 input and no outputs')
     }
   }
 
@@ -1247,34 +1232,8 @@ export class PlacementManager {
       )
     }
 
-    const basePlacementIndex = this._placements.length
     const operands = candidate.operands as readonly DataPt[]
-    for (let checkIndex = 0; checkIndex < candidate.leadingCanonicalityGuardCount; checkIndex++) {
-      const candidateStep = candidate.placements[checkIndex]
-      const subcircuit = this.subcircuitInfoByName.get('CheckBus256')
-      if (candidateStep === undefined || subcircuit === undefined) {
-        throw new Error(`Synthesizer: ${candidate.operation} external input check ${checkIndex} is unavailable`)
-      }
-      _assertCandidateStepPorts(candidate.operation, 'CheckBus256', candidateStep, subcircuit)
-      if (
-        candidateStep.inPts.length !== 1
-        || candidateStep.outPts.length !== 0
-        || !this._isDirectBufferOutput(candidateStep.inPts[0]!)
-        || !composition.externalCheckRequiredOperandIndices.some((operandIndex) => {
-          const operand = operands[operandIndex]
-          return operand !== undefined && _isSameWire(candidateStep.inPts[0]!, operand)
-        })
-      ) {
-        throw new Error(`Synthesizer: ${candidate.operation} external input check ${checkIndex} is invalid`)
-      }
-      _assertCandidateEarlierSource(
-        candidate.operation,
-        checkIndex,
-        0,
-        candidateStep.inPts[0]!,
-        basePlacementIndex,
-      )
-    }
+    const basePlacementIndex = this._placements.length
     const genericBasePlacementIndex = basePlacementIndex + candidate.leadingCanonicalityGuardCount
     const intermediateOutPts: Array<DataPt | undefined> = []
     const resultOutPts: Array<DataPt | undefined> = Array(composition.numResults)
