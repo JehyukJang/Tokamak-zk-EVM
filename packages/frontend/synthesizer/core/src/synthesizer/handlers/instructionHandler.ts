@@ -804,7 +804,7 @@ export class InstructionHandler {
               memOffset,
               0n,
               dataLength,
-              { kind: 'topology-fixed', usage: 'codecopy-current-code-chunk' },
+              'current-code',
             )
             memoryPt.writeBatch(memPts)
           }
@@ -840,7 +840,7 @@ export class InstructionHandler {
               memOffset,
               0n,
               dataLength,
-              { kind: 'uncached' },
+              'external-code',
             )
             memoryPt.writeBatch(memPts)
           }

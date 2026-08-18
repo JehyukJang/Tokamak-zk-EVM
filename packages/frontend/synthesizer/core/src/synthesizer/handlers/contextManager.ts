@@ -19,10 +19,7 @@ import type {
   StorageCacheEntries,
   StorageCacheEntry,
 } from '../types/index.ts';
-import type {
-  ArbitraryStaticCachePolicy,
-  PlacementManager,
-} from './placementManager.ts';
+import type { PlacementManager } from './placementManager.ts';
 
 export type MemoryCopyPlan = Readonly<{
   operands: readonly (readonly DataPt[])[];
@@ -231,7 +228,7 @@ export class ContextManager {
     memOffset: bigint,
     codeOffset: bigint = 0n,
     dataLength: bigint = BigInt(code.byteLength),
-    cachePolicy: ArbitraryStaticCachePolicy,
+    codeSource: 'current-code' | 'external-code',
   ): MemoryPts {
     const getDataSlice = (data: Uint8Array, offset: bigint, length: bigint): Uint8Array => {
       const len = BigInt(data.length)
@@ -247,6 +244,9 @@ export class ContextManager {
     }
 
     const memPts: MemoryPts = []
+    const cachePolicy = codeSource === 'current-code'
+      ? { kind: 'topology-fixed' as const, usage: 'codecopy-current-code-chunk' as const }
+      : { kind: 'uncached' as const }
     const nChunks = Math.ceil(Number(dataLength) / 32)
     let accOffsetShift = 0n
     let lengthLeft = Number(dataLength)
