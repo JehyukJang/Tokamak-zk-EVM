@@ -1,11 +1,11 @@
 [32mtemplate instances[0m: 1
-non-linear constraints: 570
-linear constraints: 570
-public inputs: 570
+non-linear constraints: 140
+linear constraints: 140
+public inputs: 140
 private inputs: 0
-public outputs: 570
-wires: 1141
-labels: 1141
+public outputs: 140
+wires: 281
+labels: 281
 [32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/bufferEVMIn_circuit.r1cs
 [32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/bufferEVMIn_circuit.sym
 [32mConstraints written in:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/bufferEVMIn_circuit_constraints.json
