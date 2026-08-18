@@ -19,49 +19,7 @@ import type {
   StorageCacheEntries,
   StorageCacheEntry,
 } from '../types/index.ts';
-import type {
-  ArbitraryStaticCachePolicy,
-  PlacementManager,
-  SemanticObservationCacheKeyPart,
-} from './placementManager.ts';
-
-export type ObservationDependency = SemanticObservationCacheKeyPart['dependency'];
-
-export type ObservationDefinition = Readonly<{
-  id: symbol;
-  name: string;
-  dependencies: readonly ObservationDependency[];
-}>;
-
-const createObservationDefinition = (
-  name: string,
-  dependencies: readonly ObservationDependency[],
-): ObservationDefinition => ({ id: Symbol(name), name, dependencies });
-
-export const OBSERVATION_DEFINITIONS = {
-  callValue: createObservationDefinition('CALLVALUE', ['message']),
-  callDataSize: createObservationDefinition('CALLDATASIZE', ['message']),
-  codeSize: createObservationDefinition('CODESIZE', ['code']),
-  gasPrice: createObservationDefinition('GASPRICE', ['transaction']),
-  returnDataSize: createObservationDefinition(
-    'RETURNDATASIZE',
-    ['message', 'return-data-revision'],
-  ),
-  memorySize: createObservationDefinition(
-    'MSIZE',
-    ['message', 'memory-size-revision'],
-  ),
-  balance: createObservationDefinition(
-    'BALANCE',
-    ['balance-revision', 'operand-wire'],
-  ),
-  extCodeSize: createObservationDefinition('EXTCODESIZE', ['operand-wire']),
-  extCodeHash: createObservationDefinition('EXTCODEHASH', ['operand-wire']),
-  extCodeCopyChunk: createObservationDefinition(
-    'EXTCODECOPY chunk',
-    ['operand-wire', 'operand-wire'],
-  ),
-} as const;
+import type { PlacementManager } from './placementManager.ts';
 
 export type MemoryCopyPlan = Readonly<{
   operands: readonly (readonly DataPt[])[];
@@ -270,53 +228,6 @@ export class ContextManager {
     this._verifiedTransactionInputPts = transactionInputPts.map((dataPt) =>
       DataPtFactory.deepCopy(dataPt),
     )
-  }
-
-  public createObservationCachePolicy(
-    definition: ObservationDefinition,
-    context: MessageContext,
-    operandPts: readonly DataPt[] = [],
-  ): ArbitraryStaticCachePolicy {
-    const expectedOperandCount = definition.dependencies.filter(
-      (dependency) => dependency === 'operand-wire',
-    ).length
-    if (operandPts.length !== expectedOperandCount) {
-      throw new Error(
-        `Synthesizer: ${definition.name} expects ${expectedOperandCount} observation operands, but got ${operandPts.length}`,
-      )
-    }
-
-    let operandIndex = 0
-    const parts: SemanticObservationCacheKeyPart[] = definition.dependencies.map((dependency) => {
-      switch (dependency) {
-        case 'transaction':
-          return { dependency, value: this._transactionIdentity }
-        case 'message':
-          return { dependency, value: context.messageContextIdentity }
-        case 'code':
-          return { dependency, value: context.codeContextIdentity }
-        case 'return-data-revision':
-          return { dependency, value: context.returnDataRevision }
-        case 'memory-size-revision':
-          return { dependency, value: context.memoryPt.memorySizeRevision }
-        case 'balance-revision':
-          return { dependency, value: this._balanceRevision }
-        case 'operand-wire': {
-          const operand = operandPts[operandIndex++]!
-          return {
-            dependency,
-            source: operand.source,
-            wireIndex: operand.wireIndex,
-            dataPtType: operand.dataPtType,
-          }
-        }
-      }
-    })
-
-    return {
-      kind: 'semantic-observation',
-      key: { observation: definition.id, parts },
-    }
   }
 
   public prepareCodeMemoryEntries(
