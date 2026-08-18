@@ -11,10 +11,9 @@ import {
 } from '@ethereumjs/util'
 import { InterpreterStep } from '@ethereumjs/evm'
 import { DataPtFactory, MemoryPt, StackPt } from '../dataStructure/index.ts';
-import type { ArbitraryStaticCachePolicy, PlacementManager } from './placementManager.ts';
+import type { PlacementManager } from './placementManager.ts';
 import {
   createMemoryCopyEntries,
-  OBSERVATION_DEFINITIONS,
   type ContextManager,
   type MessageContext,
 } from './contextManager.ts';
@@ -669,7 +668,6 @@ export class InstructionHandler {
   private _getStaticInDataPt = (
     output: bigint,
     opts: HandlerOpts,
-    cachePolicy: ArbitraryStaticCachePolicy,
   ): DataPt => {
     const value = output
     const staticInDesc = `Static input for ${opts.op} instruction at PC ${opts.pc} of code address ${opts.codeAddress} (depth : ${opts.callDepth})`
@@ -677,7 +675,7 @@ export class InstructionHandler {
       value,
       UINT256_DATA_PT_TYPE,
       staticInDesc,
-      cachePolicy,
+      { kind: 'uncached' },
     )
   }
 
@@ -725,15 +723,7 @@ export class InstructionHandler {
         break
       case 'BALANCE': 
         {
-          stackPt.push(this._getStaticInDataPt(
-            out!,
-            opts,
-            this.contextManager.createObservationCachePolicy(
-              OBSERVATION_DEFINITIONS.balance,
-              opts.thisContext,
-              [inPts[0]!],
-            ),
-          ))
+          stackPt.push(this._getStaticInDataPt(out!, opts))
         }
         break
       case 'ORIGIN': 
@@ -749,14 +739,7 @@ export class InstructionHandler {
         }
         break
       case 'CALLVALUE': 
-        stackPt.push(this._getStaticInDataPt(
-          out!,
-          opts,
-          this.contextManager.createObservationCachePolicy(
-            OBSERVATION_DEFINITIONS.callValue,
-            opts.thisContext,
-          ),
-        ))
+        stackPt.push(this._getStaticInDataPt(out!, opts))
         break
       case 'CALLDATALOAD': 
         {
@@ -777,14 +760,7 @@ export class InstructionHandler {
         }
         break
       case 'CALLDATASIZE':
-        stackPt.push(this._getStaticInDataPt(
-          out!,
-          opts,
-          this.contextManager.createObservationCachePolicy(
-            OBSERVATION_DEFINITIONS.callDataSize,
-            opts.thisContext,
-          ),
-        ))
+        stackPt.push(this._getStaticInDataPt(out!, opts))
         break
       case 'CALLDATACOPY':
         {
@@ -815,14 +791,7 @@ export class InstructionHandler {
         }
         break
       case 'CODESIZE':
-        stackPt.push(this._getStaticInDataPt(
-          out!,
-          opts,
-          this.contextManager.createObservationCachePolicy(
-            OBSERVATION_DEFINITIONS.codeSize,
-            opts.thisContext,
-          ),
-        ))
+        stackPt.push(this._getStaticInDataPt(out!, opts))
         break
       case 'CODECOPY':
         {
@@ -852,26 +821,11 @@ export class InstructionHandler {
         }
         break
       case 'GASPRICE': 
-        stackPt.push(this._getStaticInDataPt(
-          out!,
-          opts,
-          this.contextManager.createObservationCachePolicy(
-            OBSERVATION_DEFINITIONS.gasPrice,
-            opts.thisContext,
-          ),
-        ))
+        stackPt.push(this._getStaticInDataPt(out!, opts))
       break
       case 'EXTCODESIZE': 
         {
-          stackPt.push(this._getStaticInDataPt(
-            out!,
-            opts,
-            this.contextManager.createObservationCachePolicy(
-              OBSERVATION_DEFINITIONS.extCodeSize,
-              opts.thisContext,
-              [inPts[0]!],
-            ),
-          ))
+          stackPt.push(this._getStaticInDataPt(out!, opts))
         }
         break
       case 'EXTCODECOPY':
@@ -907,14 +861,7 @@ export class InstructionHandler {
         }
         break
       case 'RETURNDATASIZE': 
-        stackPt.push(this._getStaticInDataPt(
-          out!,
-          opts,
-          this.contextManager.createObservationCachePolicy(
-            OBSERVATION_DEFINITIONS.returnDataSize,
-            opts.thisContext,
-          ),
-        ))
+        stackPt.push(this._getStaticInDataPt(out!, opts))
         break
       case 'RETURNDATACOPY':
         {
@@ -949,15 +896,7 @@ export class InstructionHandler {
         break
       case 'EXTCODEHASH': 
         {
-          stackPt.push(this._getStaticInDataPt(
-            out!,
-            opts,
-            this.contextManager.createObservationCachePolicy(
-              OBSERVATION_DEFINITIONS.extCodeHash,
-              opts.thisContext,
-              [inPts[0]!],
-            ),
-          ))
+          stackPt.push(this._getStaticInDataPt(out!, opts))
         }
         break
       default:
@@ -1109,7 +1048,7 @@ export class InstructionHandler {
             out!,
             UINT256_DATA_PT_TYPE,
             staticInDesc,
-            { kind: 'topology-fixed', usage: 'program-counter' },
+            { kind: 'uncached' },
           ))
         }
         break
@@ -1120,10 +1059,7 @@ export class InstructionHandler {
             out!,
             UINT256_DATA_PT_TYPE,
             staticInDesc,
-            this.contextManager.createObservationCachePolicy(
-              OBSERVATION_DEFINITIONS.memorySize,
-              opts.thisContext,
-            ),
+            { kind: 'uncached' },
           ))
         }
         break
