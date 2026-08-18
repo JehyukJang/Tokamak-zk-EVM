@@ -1,8 +1,0 @@
-{
-  "inputs": [
-    { "name": "value", "logicalType": { "kind": "uint", "bits": 256 } }
-  ],
-  "outputs": [
-    { "name": "bit", "length": 256, "logicalType": { "kind": "uint", "bits": 1 } }
-  ]
-}

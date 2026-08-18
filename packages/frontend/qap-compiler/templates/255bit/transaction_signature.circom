@@ -473,7 +473,7 @@ template TransactionSignaturePointPolicy() {
 template TransactionSignatureFixedPrefix70() {
     assert(nPrivateMessageInputs() == 29);
     signal input in[1];
-    signal output out[46];
+    signal output out[5];
 
     component signatureBits = Num2Bits(252);
     signatureBits.in <== in[0];
@@ -482,103 +482,107 @@ template TransactionSignatureFixedPrefix70() {
     for (var bit = 0; bit < 210; bit++) {
         fixedPrefix.bits[bit] <== signatureBits.out[bit];
     }
-    for (var bit = 210; bit < 252; bit++) {
-        out[bit - 210] <== signatureBits.out[bit];
+    var responseTail = 0;
+    for (var bit = 0; bit < 42; bit++) {
+        responseTail += signatureBits.out[210 + bit] * (1 << bit);
     }
+    out[0] <== responseTail;
     for (var coordinate = 0; coordinate < 4; coordinate++) {
-        out[42 + coordinate] <== fixedPrefix.next[coordinate];
+        out[1 + coordinate] <== fixedPrefix.next[coordinate];
     }
 }
 
-template TransactionSignatureChallengeVariablePrefix() {
+template TransactionSignatureChallengeChunks() {
     assert(nPrivateMessageInputs() == 29);
-    signal input in[9];
-    signal output out[226];
+    signal input in[1];
+    signal output out[4];
 
     component challenge = TSVCanonicalFrBitsOnly();
     challenge.in <== in[0];
 
-    signal table[4][2];
-    for (var digit = 0; digit < 4; digit++) {
-        for (var coordinate = 0; coordinate < 2; coordinate++) {
-            table[digit][coordinate] <== in[1 + digit * 2 + coordinate];
+    var leadingChunk = 0;
+    for (var bit = 0; bit < 63; bit++) {
+        leadingChunk += challenge.bits[192 + bit] * (1 << bit);
+    }
+    out[0] <== leadingChunk;
+
+    for (var chunk = 0; chunk < 3; chunk++) {
+        var chunkValue = 0;
+        for (var bit = 0; bit < 64; bit++) {
+            chunkValue += challenge.bits[128 - 64 * chunk + bit] * (1 << bit);
         }
-    }
-
-    component variableStart = TSVVariableWindowBatch_unsafe(17, 1, 1);
-    for (var bit = 0; bit < 33; bit++) {
-        variableStart.bits[bit] <== challenge.bits[222 + bit];
-    }
-    variableStart.table <== table;
-    variableStart.previous <== [table[0][0], table[0][1], 1, 0];
-
-    for (var bit = 0; bit < 222; bit++) {
-        out[bit] <== challenge.bits[bit];
-    }
-    for (var coordinate = 0; coordinate < 4; coordinate++) {
-        out[222 + coordinate] <== variableStart.next[coordinate];
+        out[1 + chunk] <== chunkValue;
     }
 }
 
-template TransactionSignatureVariableBatch() {
+template TransactionSignatureVariableFirstBatch32() {
     assert(nPrivateMessageInputs() == 29);
-    signal input in[80];
+    signal input in[9];
     signal output out[4];
 
-    component batch = TSVVariableWindowBatch_unsafe(34, 0, 0);
-    for (var bit = 0; bit < 68; bit++) {
-        batch.bits[bit] <== in[bit];
+    component bits = Num2Bits(63);
+    bits.in <== in[0];
+    component batch = TSVVariableWindowBatch_unsafe(32, 1, 1);
+    for (var bit = 0; bit < 63; bit++) {
+        batch.bits[bit] <== bits.out[bit];
     }
     for (var digit = 0; digit < 4; digit++) {
         for (var coordinate = 0; coordinate < 2; coordinate++) {
-            batch.table[digit][coordinate] <== in[68 + digit * 2 + coordinate];
+            batch.table[digit][coordinate] <== in[1 + digit * 2 + coordinate];
+        }
+    }
+    batch.previous <== [in[1], in[2], 1, 0];
+    out <== batch.next;
+}
+
+template TransactionSignatureVariableBatch32() {
+    assert(nPrivateMessageInputs() == 29);
+    signal input in[13];
+    signal output out[4];
+
+    component bits = Num2Bits(64);
+    bits.in <== in[0];
+    component batch = TSVVariableWindowBatch_unsafe(32, 0, 0);
+    for (var bit = 0; bit < 64; bit++) {
+        batch.bits[bit] <== bits.out[bit];
+    }
+    for (var digit = 0; digit < 4; digit++) {
+        for (var coordinate = 0; coordinate < 2; coordinate++) {
+            batch.table[digit][coordinate] <== in[1 + digit * 2 + coordinate];
         }
     }
     for (var coordinate = 0; coordinate < 4; coordinate++) {
-        batch.previous[coordinate] <== in[76 + coordinate];
+        batch.previous[coordinate] <== in[9 + coordinate];
     }
-    for (var coordinate = 0; coordinate < 4; coordinate++) {
-        out[coordinate] <== batch.next[coordinate];
-    }
+    out <== batch.next;
 }
 
 template TransactionSignatureFinal() {
     assert(nPrivateMessageInputs() == 29);
-    signal input in[81];
+    signal input in[14];
     signal output out[2];
 
+    component responseBits = Num2Bits(42);
+    responseBits.in <== in[0];
     component fixedTail = TSVFixedWindowBatch_unsafe(70, 14, 0);
     for (var bit = 0; bit < 42; bit++) {
-        fixedTail.bits[bit] <== in[bit];
+        fixedTail.bits[bit] <== responseBits.out[bit];
     }
     for (var coordinate = 0; coordinate < 4; coordinate++) {
-        fixedTail.previous[coordinate] <== in[42 + coordinate];
-    }
-
-    component variableTail = TSVVariableWindowBatch_unsafe(9, 0, 0);
-    for (var bit = 0; bit < 18; bit++) {
-        variableTail.bits[bit] <== in[46 + bit];
-    }
-    for (var coordinate = 0; coordinate < 4; coordinate++) {
-        variableTail.previous[coordinate] <== in[64 + coordinate];
-    }
-    for (var digit = 0; digit < 4; digit++) {
-        for (var coordinate = 0; coordinate < 2; coordinate++) {
-            variableTail.table[digit][coordinate] <== in[68 + digit * 2 + coordinate];
-        }
+        fixedTail.previous[coordinate] <== in[1 + coordinate];
     }
 
     component terminalAddition = TSVExtendedAdd_unsafe();
-    terminalAddition.point1 <== variableTail.next;
+    terminalAddition.point1 <== [in[5], in[6], in[7], in[8]];
     for (var coordinate = 0; coordinate < 4; coordinate++) {
-        terminalAddition.point2[coordinate] <== in[76 + coordinate];
+        terminalAddition.point2[coordinate] <== in[9 + coordinate];
     }
     component terminalEquality = TSVAssertExtendedEqual_unsafe();
     terminalEquality.lhs <== fixedTail.next;
     terminalEquality.rhs <== terminalAddition.result;
 
     component publicKeyHash = TSVCanonicalFrBitsOnly();
-    publicKeyHash.in <== in[80];
+    publicKeyHash.in <== in[13];
 
     var originLow = 0;
     var originHigh = 0;

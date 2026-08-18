@@ -1,10 +1,8 @@
 {
   "inputs": [
-    { "name": "responseBit", "length": 42, "logicalType": { "kind": "uint", "bits": 1 } },
+    { "name": "remainingResponse", "logicalType": { "kind": "uint", "bits": 64 } },
     { "name": "fixedAccumulator", "length": 4, "logicalType": { "kind": "bls12-381-fr" } },
-    { "name": "challengeBit", "length": 18, "logicalType": { "kind": "uint", "bits": 1 } },
     { "name": "variableAccumulator", "length": 4, "logicalType": { "kind": "bls12-381-fr" } },
-    { "name": "runtimeTableCoordinate", "length": 8, "logicalType": { "kind": "bls12-381-fr" } },
     { "name": "randomizerCofactorCoordinate", "length": 4, "logicalType": { "kind": "bls12-381-fr" } },
     { "name": "publicKeyHash", "logicalType": { "kind": "bls12-381-fr" } }
   ],

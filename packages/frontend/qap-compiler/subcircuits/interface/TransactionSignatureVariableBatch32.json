@@ -1,6 +1,6 @@
 {
   "inputs": [
-    { "name": "challengeBit", "length": 68, "logicalType": { "kind": "uint", "bits": 1 } },
+    { "name": "challengeChunk", "logicalType": { "kind": "uint", "bits": 64 } },
     { "name": "runtimeTableCoordinate", "length": 8, "logicalType": { "kind": "bls12-381-fr" } },
     { "name": "variableAccumulator", "length": 4, "logicalType": { "kind": "bls12-381-fr" } }
   ],

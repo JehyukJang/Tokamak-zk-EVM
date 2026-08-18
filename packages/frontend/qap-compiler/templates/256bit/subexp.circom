@@ -2,11 +2,12 @@ pragma circom 2.1.6;
 include "arithmetic_unsafe_type1.circom";
 
 // Performs one LSB-first square-and-multiply step. The input state is
-// canonicalized locally. The exact next SubExp placement canonicalizes both
-// outputs; the terminal accumulator is canonicalized by CheckBus256.
+// canonicalized locally. `in[4]` is the current exponent-limb remainder;
+// the Boolean low bit and next remainder are constrained locally so the
+// composition does not expose a 256-bit array between placements.
 template SubExp() {
     signal input in[5];
-    signal output out[4];
+    signal output out[5];
 
     component accumulatorSplit[2];
     component basePowerSplit[2];
@@ -23,8 +24,13 @@ template SubExp() {
         basePowerWords[2 * limb + 1] <== basePowerSplit[limb].words[1];
     }
 
-    // The EXP composition connects this input to the corresponding DecToBit
-    // output, so Booleanity is owned by that exact producer.
+    signal bit;
+    signal nextRemainder;
+    bit <-- in[4] % 2;
+    nextRemainder <-- (in[4] - bit) \ 2;
+    bit * (bit - 1) === 0;
+    in[4] === 2 * nextRemainder + bit;
+
     signal factorWords[4];
     factorWords[0] <== 1 - in[4] + in[4] * basePowerWords[0];
     for (var word = 1; word < 4; word++) {
@@ -42,6 +48,13 @@ template SubExp() {
         accumulate.out[0],
         accumulate.out[1],
         square.out[0],
-        square.out[1]
+        square.out[1],
+        nextRemainder
     ];
+}
+
+template AssertZeroPair() {
+    signal input in[2];
+    in[0] === 0;
+    in[1] === 0;
 }
