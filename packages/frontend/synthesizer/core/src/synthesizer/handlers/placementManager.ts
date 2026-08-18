@@ -52,7 +52,8 @@ type PlacementCandidate = Readonly<{
 }>;
 
 type CanonicalityGuardCacheEntry = Readonly<{
-  inputWireKey: string;
+  bufferPlacementIndex: number;
+  bufferOutputWireIndex: number;
   output: DataPt;
 }>;
 
@@ -273,7 +274,7 @@ function _assertCandidateEarlierSource(
 export class PlacementManager {
   private _placements: Placements = []
   private _cachedEVMIn: Map<bigint, Map<string, DataPt>> = new Map()
-  private _canonicalityGuardOutputByInputWire: Map<string, DataPt> = new Map()
+  private _canonicalityGuardOutputByBufferOutput: Map<number, Map<number, DataPt>> = new Map()
 
   public subcircuitInfoByName: SubcircuitInfoByName;
   private readonly _bufferSubcircuitByBuffer: Record<ReservedBuffer, SubcircuitInfoByNameEntry | undefined>;
@@ -488,10 +489,10 @@ export class PlacementManager {
       this._placements.push(placementEntryDeepCopy(placement))
     }
     for (const entry of candidate.canonicalityGuardCacheEntries) {
-      this._canonicalityGuardOutputByInputWire.set(
-        entry.inputWireKey,
-        DataPtFactory.deepCopy(entry.output),
-      )
+      const outputs = this._canonicalityGuardOutputByBufferOutput.get(entry.bufferPlacementIndex)
+        ?? new Map<number, DataPt>()
+      outputs.set(entry.bufferOutputWireIndex, DataPtFactory.deepCopy(entry.output))
+      this._canonicalityGuardOutputByBufferOutput.set(entry.bufferPlacementIndex, outputs)
     }
     return candidate.resultPts.map((dataPt) => DataPtFactory.deepCopy(dataPt))
   }
@@ -739,7 +740,7 @@ export class PlacementManager {
     const checkedOperands = operands.slice()
     const steps: PlacementEntry[] = []
     const canonicalityGuardCacheEntries: CanonicalityGuardCacheEntry[] = []
-    const candidateOutputsByInputWire = new Map<string, DataPt>()
+    const candidateOutputsByBufferOutput = new Map<number, Map<number, DataPt>>()
     if (composition.externalCheckRequiredOperandIndices.length === 0) {
       return { operands: checkedOperands, steps, canonicalityGuardCacheEntries }
     }
@@ -769,9 +770,8 @@ export class PlacementManager {
           `Synthesizer: ${operation} external-check operand ${operandIndex} must be uint256`,
         )
       }
-      const inputWireKey = `${operand.source}:${operand.wireIndex}:${operand.dataPtType}`
-      const cachedOutput = candidateOutputsByInputWire.get(inputWireKey)
-        ?? this._canonicalityGuardOutputByInputWire.get(inputWireKey)
+      const cachedOutput = candidateOutputsByBufferOutput.get(operand.source)?.get(operand.wireIndex)
+        ?? this._canonicalityGuardOutputByBufferOutput.get(operand.source)?.get(operand.wireIndex)
       if (cachedOutput !== undefined) {
         checkedOperands[operandIndex] = DataPtFactory.deepCopy(cachedOutput)
         continue
@@ -790,8 +790,15 @@ export class PlacementManager {
       }, values[0]!)
       steps.push(this._createCandidateStep(operation, subcircuitName, [operand], [output]))
       checkedOperands[operandIndex] = output
-      candidateOutputsByInputWire.set(inputWireKey, output)
-      canonicalityGuardCacheEntries.push({ inputWireKey, output })
+      const candidateOutputs = candidateOutputsByBufferOutput.get(operand.source)
+        ?? new Map<number, DataPt>()
+      candidateOutputs.set(operand.wireIndex, output)
+      candidateOutputsByBufferOutput.set(operand.source, candidateOutputs)
+      canonicalityGuardCacheEntries.push({
+        bufferPlacementIndex: operand.source,
+        bufferOutputWireIndex: operand.wireIndex,
+        output,
+      })
     }
     return { operands: checkedOperands, steps, canonicalityGuardCacheEntries }
   }
