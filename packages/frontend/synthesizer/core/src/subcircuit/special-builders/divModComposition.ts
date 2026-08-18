@@ -32,8 +32,8 @@ const createDivisionCompositionMapping = (
 
 export const createDivisionCompositionMappings = (): readonly PlacementCompositionEntry[] =>
   [
-    createDivisionCompositionMapping('DIV', 1n << 4n),
-    createDivisionCompositionMapping('SDIV', 1n << 5n),
-    createDivisionCompositionMapping('MOD', 1n << 6n),
-    createDivisionCompositionMapping('SMOD', 1n << 7n)
+    createDivisionCompositionMapping('DIV', 1n << 3n),
+    createDivisionCompositionMapping('SDIV', 1n << 4n),
+    createDivisionCompositionMapping('MOD', 1n << 5n),
+    createDivisionCompositionMapping('SMOD', 1n << 6n)
   ]

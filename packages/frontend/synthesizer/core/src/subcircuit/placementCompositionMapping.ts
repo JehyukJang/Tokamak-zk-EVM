@@ -324,11 +324,11 @@ const FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS: readonly PlacementCompositionEntry[
   createSingleStepMapping('OR', 'OR', null, 2, 1),
   createSingleStepMapping('XOR', 'XOR', null, 2, 1),
   createSingleStepMapping('NOT', 'NOT', null, 1, 1),
-  createSingleStepMapping('BYTE', 'ALU3', 1n << 26n, 2, 1, [], [0]),
+  createSingleStepMapping('BYTE', 'ALU3', 1n << 1n, 2, 1, [], [0]),
   createSingleStepMapping('SHL', 'SHL', null, 2, 1, [], [0]),
   createSingleStepMapping('SHR', 'SHR', null, 2, 1, [], [0]),
-  createSingleStepMapping('SAR', 'ALU3', 1n << 29n, 2, 1, [], [0]),
-  createSingleStepMapping('SIGNEXTEND', 'ALU3', 1n << 11n, 2, 1, [], [0]),
+  createSingleStepMapping('SAR', 'ALU3', 1n << 2n, 2, 1, [], [0]),
+  createSingleStepMapping('SIGNEXTEND', 'ALU3', 1n << 0n, 2, 1, [], [0]),
 ];
 
 const createSelectorFreeCompositionMappings = (): readonly PlacementCompositionEntry[] =>

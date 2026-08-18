@@ -469,11 +469,11 @@ const alu3 = (inVals: bigint[]): bigint => {
   requireSubcircuitInputs(inVals, 3, 'ALU3');
   const operands = inVals.slice(1);
   switch (inVals[0]) {
-    case 1n << 11n:
+    case 1n << 0n:
       return evmSignextend(operands);
-    case 1n << 26n:
+    case 1n << 1n:
       return evmByte(operands);
-    case 1n << 29n:
+    case 1n << 2n:
       return evmSar(operands);
     default:
       throw new Error('ALU3 received an invalid selector');
@@ -483,9 +483,9 @@ const alu3 = (inVals: bigint[]): bigint => {
 const alu4a = (inVals: bigint[]): bigint[] => {
   requireSubcircuitInputs(inVals, 3, 'ALU4A');
   const selector = inVals[0];
-  const isSigned = selector === 1n << 5n || selector === 1n << 7n;
-  const useMod = selector === 1n << 6n || selector === 1n << 7n;
-  if (selector !== 1n << 4n && selector !== 1n << 5n && selector !== 1n << 6n && selector !== 1n << 7n) {
+  const isSigned = selector === 1n << 4n || selector === 1n << 6n;
+  const useMod = selector === 1n << 5n || selector === 1n << 6n;
+  if (selector !== 1n << 3n && selector !== 1n << 4n && selector !== 1n << 5n && selector !== 1n << 6n) {
     throw new Error('ALU4A received an invalid selector');
   }
 
@@ -497,7 +497,7 @@ const alu4a = (inVals: bigint[]): bigint[] => {
   const absQuotient = absDividend / safeDivisor;
   const absRemainder = absDividend % safeDivisor;
   const resultIsNegative =
-    selector === 1n << 5n ? Number(dividend < 0n !== divisor < 0n) : selector === 1n << 7n ? Number(dividend < 0n) : 0;
+    selector === 1n << 4n ? Number(dividend < 0n !== divisor < 0n) : selector === 1n << 6n ? Number(dividend < 0n) : 0;
   const wordMask = (1n << 64n) - 1n;
 
   return [
