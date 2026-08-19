@@ -2,27 +2,16 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 
-const findWorkspaceQapCompilerRoot = (moduleDirectory: string): string | undefined => {
-  let directory = moduleDirectory;
-  for (;;) {
-    const qapCompilerRoot = path.join(directory, 'qap-compiler');
-    if (existsSync(qapCompilerRoot)) return qapCompilerRoot;
-    const parentDirectory = path.dirname(directory);
-    if (parentDirectory === directory) return undefined;
-    directory = parentDirectory;
-  }
-};
-
 export function resolveSubcircuitLibraryDirectory(): string {
   if (typeof window !== "undefined") {
     throw new Error("resolveSubcircuitLibraryDirectory must run on the server");
   }
 
-  const moduleDirectory = typeof __dirname === 'string'
-    ? __dirname
-    : path.dirname(fileURLToPath(import.meta.url));
-  const workspaceQapCompilerRoot = findWorkspaceQapCompilerRoot(moduleDirectory);
-  if (workspaceQapCompilerRoot !== undefined) {
+  const workspaceQapCompilerRoot = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '../../../../qap-compiler',
+  );
+  if (existsSync(workspaceQapCompilerRoot)) {
     return path.join(workspaceQapCompilerRoot, 'subcircuits', 'library');
   }
 
