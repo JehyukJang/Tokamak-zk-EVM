@@ -24,6 +24,10 @@ const stripAnsi = (value) => value.replace(
 );
 
 const compileAndMeasure = (packageRoot) => {
+  const nodeModulesRoot = path.dirname(path.dirname(require.resolve(
+    "circomlib/package.json",
+    { paths: [packageRoot] },
+  )));
   const outputRoot = mkdtempSync(path.join(tmpdir(), "tokamak-tsv-composition-"));
   try {
     const result = spawnSync("circom", [
@@ -38,7 +42,7 @@ const compileAndMeasure = (packageRoot) => {
       "--prime",
       "bls12381",
       "-l",
-      path.join(packageRoot, "node_modules"),
+      nodeModulesRoot,
       "-o",
       outputRoot,
     ], { cwd: packageRoot, encoding: "utf8" });
@@ -116,14 +120,18 @@ const expectedReferenceOutput = (vector, oracle) => ({
 const main = async () => {
   assert.equal(FUNCTION_INPUT_LENGTH, 29);
   const packageRoot = path.join(__dirname, "../..");
+  const nodeModulesRoot = path.dirname(path.dirname(require.resolve(
+    "circomlib/package.json",
+    { paths: [packageRoot] },
+  )));
   assert.deepEqual(compileAndMeasure(packageRoot), {
-    nonlinear: 14646,
+    nonlinear: 14943,
     linear: 3,
     publicInputs: 5,
     privateInputs: 34,
     outputs: 6,
-    wires: 14677,
-    nonzero: 134924,
+    wires: 14969,
+    nonzero: 135500,
   });
   const circuit = await wasm(
     path.join(
@@ -131,7 +139,7 @@ const main = async () => {
       "subcircuits/test/circom/transaction_signature_production_composition_test.circom",
     ),
     {
-      include: path.join(packageRoot, "node_modules"),
+      include: nodeModulesRoot,
       prime: "bls12381",
       O: 2,
     },
@@ -142,7 +150,7 @@ const main = async () => {
       "subcircuits/test/circom/transaction_signature_verify_reference_test.circom",
     ),
     {
-      include: path.join(packageRoot, "node_modules"),
+      include: nodeModulesRoot,
       prime: "bls12381",
       O: 2,
     },
@@ -182,12 +190,14 @@ const main = async () => {
     "main.pointPolicy.runtimeTable.additions[0].coordinateProduct",
     "main.pointPolicy.randomizerCofactor.point4.result[0]",
     "main.fixedPrefix.fixedPrefix.accumulators[69][0]",
-    "main.challengePrefix.out[0]",
-    "main.challengePrefix.out[222]",
-    "main.variableBatches[0].out[0]",
-    "main.variableBatches[1].out[0]",
+    "main.challengeChunks.challenge.bits[0]",
+    "main.challengeChunks.challenge.fieldBound.lowBorrow",
+    "main.variableFirstBatch.batch.accumulators[15][0]",
+    "main.variableBatches[0].batch.accumulators[15][0]",
+    "main.variableBatches[1].batch.accumulators[15][0]",
+    "main.variableBatches[2].batch.accumulators[15][0]",
     "main.final.fixedTail.accumulators[13][0]",
-    "main.final.variableTail.accumulators[8][0]",
+    "main.final.terminalAddition.result[0]",
     "main.final.publicKeyHash.bits[0]",
     "main.origin[0]",
   ]) {

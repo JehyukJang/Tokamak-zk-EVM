@@ -63,55 +63,46 @@ template TransactionSignatureProductionComposition(N) {
     component fixedPrefix = TransactionSignatureFixedPrefix70();
     fixedPrefix.in[0] <== S;
 
-    component challengePrefix = TransactionSignatureChallengeVariablePrefix();
-    challengePrefix.in[0] <== finalHashBatch.out[1];
+    component challengeChunks = TransactionSignatureChallengeChunks();
+    challengeChunks.in[0] <== finalHashBatch.out[1];
+
+    component variableFirstBatch = TransactionSignatureVariableFirstBatch32();
+    variableFirstBatch.in[0] <== challengeChunks.out[0];
     for (var coordinate = 0; coordinate < 8; coordinate++) {
-        challengePrefix.in[1 + coordinate] <== pointPolicy.out[4 + coordinate];
+        variableFirstBatch.in[1 + coordinate] <== pointPolicy.out[4 + coordinate];
     }
 
     component variableBatches[3];
-    var challengeStarts[3] = [154, 86, 18];
     for (var batch = 0; batch < 3; batch++) {
-        variableBatches[batch] = TransactionSignatureVariableBatch();
-        for (var bit = 0; bit < 68; bit++) {
-            variableBatches[batch].in[bit] <==
-                challengePrefix.out[challengeStarts[batch] + bit];
-        }
+        variableBatches[batch] = TransactionSignatureVariableBatch32();
+        variableBatches[batch].in[0] <== challengeChunks.out[1 + batch];
         for (var coordinate = 0; coordinate < 8; coordinate++) {
-            variableBatches[batch].in[68 + coordinate] <==
+            variableBatches[batch].in[1 + coordinate] <==
                 pointPolicy.out[4 + coordinate];
         }
         for (var coordinate = 0; coordinate < 4; coordinate++) {
             if (batch == 0) {
-                variableBatches[batch].in[76 + coordinate] <==
-                    challengePrefix.out[222 + coordinate];
+                variableBatches[batch].in[9 + coordinate] <==
+                    variableFirstBatch.out[coordinate];
             } else {
-                variableBatches[batch].in[76 + coordinate] <==
+                variableBatches[batch].in[9 + coordinate] <==
                     variableBatches[batch - 1].out[coordinate];
             }
         }
     }
 
     component final = TransactionSignatureFinal();
-    for (var bit = 0; bit < 42; bit++) {
-        final.in[bit] <== fixedPrefix.out[bit];
+    final.in[0] <== fixedPrefix.out[0];
+    for (var coordinate = 0; coordinate < 4; coordinate++) {
+        final.in[1 + coordinate] <== fixedPrefix.out[1 + coordinate];
     }
     for (var coordinate = 0; coordinate < 4; coordinate++) {
-        final.in[42 + coordinate] <== fixedPrefix.out[42 + coordinate];
-    }
-    for (var bit = 0; bit < 18; bit++) {
-        final.in[46 + bit] <== challengePrefix.out[bit];
+        final.in[5 + coordinate] <== variableBatches[2].out[coordinate];
     }
     for (var coordinate = 0; coordinate < 4; coordinate++) {
-        final.in[64 + coordinate] <== variableBatches[2].out[coordinate];
+        final.in[9 + coordinate] <== pointPolicy.out[12 + coordinate];
     }
-    for (var coordinate = 0; coordinate < 8; coordinate++) {
-        final.in[68 + coordinate] <== pointPolicy.out[4 + coordinate];
-    }
-    for (var coordinate = 0; coordinate < 4; coordinate++) {
-        final.in[76 + coordinate] <== pointPolicy.out[12 + coordinate];
-    }
-    final.in[80] <== finalHashBatch.out[0];
+    final.in[13] <== finalHashBatch.out[0];
     origin <== final.out;
 }
 

@@ -168,8 +168,8 @@ The tables cover every production target in
 included. The values describe the current source tree, not necessarily the
 contents of an older installed package or the checked-in generated library.
 
-The production list currently contains 43 compiled subcircuit types: seven
-generic buffers, 30 general computational or support types, and six
+The production list currently contains 44 compiled subcircuit types: seven
+generic buffers, 30 general computational or support types, and seven
 transaction-signature component types. This is a physical library catalog,
 not a count of EVM operations or transaction placements. A logical operation
 may select one type, compose several different types, or place the same type
@@ -182,16 +182,16 @@ excludes each wrapper's constant-one wire and declared input/output ports.
 
 | Catalog subset | Types | Constraints | R1CS wires | Internal wires | Input ports | Output ports | Nonzero coefficients |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Entire production catalog | 43 | 24,540 | 24,769 | 22,117 | 1,152 | 1,457 | 149,090 |
-| Generic buffers | 7 | 1,600 | 1,607 | 0 | 800 | 800 | 4,800 |
-| Computational and support types | 30 | 17,842 | 17,885 | 17,329 | 166 | 360 | 109,438 |
-| Transaction-signature types only | 6 | 5,098 | 5,277 | 4,788 | 186 | 297 | 34,852 |
+| Entire production catalog | 44 | 23,667 | 23,762 | 22,659 | 570 | 489 | 145,605 |
+| Generic buffers | 7 | 696 | 703 | 0 | 348 | 348 | 2,088 |
+| Computational and support types | 30 | 17,588 | 17,632 | 17,329 | 169 | 104 | 108,449 |
+| Transaction-signature types only | 7 | 5,383 | 5,427 | 5,330 | 53 | 37 | 35,068 |
 
-A hypothetical “one placement of every type” would contain 43 placements, but
+A hypothetical “one placement of every type” would contain 44 placements, but
 it is not an operation supported by the system. Actual placement multiplicity
 is defined by the composition contracts below. For example, most ALU opcodes
 use one placement, division uses the `ALU4A -> ALU4B` pair, and transaction
-signature verification uses 16 placements of six distinct types.
+signature verification uses 17 placements of seven distinct types.
 
 > **Implementation and release status**
 >
@@ -311,11 +311,12 @@ input and intermediate result as a separate public value.
 | `Poseidon` | Selector-chosen chain of up to four two-input Poseidon compressions over `uint(256)` words; current batch size is 4 | 964 + 0 = 964 | 11 inputs: selector and five lower-first `uint(256)` words; 2 outputs: one lower-first `uint(256)` word | Composition-dependent for exact limb representation. The local hash relation is `PoseidonFr(x mod Fr)` for each input word and intentionally does not require `x < Fr`; connected producers or the public-boundary verifier must constrain each physical limb to its declared width. |
 | `FrToLimbsPair` | Converts two independent native BLS12-381 scalar-field values to lower-first two-limb EVM words | 1,022 + 2 = 1,024 | 2 native-field inputs; 4 outputs: two lower-first limb pairs | Locally sound as two canonical conversions. Each input is constrained to its unique integer representation `0 ≤ x < Fr`; the circuit is general-purpose and is not part of the TSV placement catalog. |
 | `TransactionSignaturePoseidonBatch4` | Performs either four consecutive native-field Poseidon compressions or one independent compression plus a three-compression chain | 950 + 0 = 950 | 7 inputs: mode and six native field wires; 2 native-field outputs | Composition-dependent. Mode is locally Boolean, but the composition must assign the approved structural mode and connect every chain state exactly. |
-| `TransactionSignaturePointPolicy` | Checks contract width, validates `A` and `R`, applies the public-key cofactor policy, rejects an identity randomizer, builds the variable-base table, and computes `R8` | 223 + 6 = 229 | 8 inputs; 17 outputs: one native `uint160` contract wire, two selector limbs, two lower-first contract-word limbs, 8 table coordinates, and 4 `R8` coordinates | Composition-dependent. Solidity must bind selector width and the identity point; later signature placements must consume the exact table and `R8` outputs. The contract word and native contract output are both derived from the same constrained 160-bit input. |
-| `TransactionSignatureFixedPrefix70` | Canonically decomposes `S` into 252 bits and processes fixed-base windows 0–69 | 1,016 + 0 = 1,016 | 1 native scalar input; 46 outputs: 42 remaining bits and 4 accumulator coordinates | Composition-dependent. Solidity must bind `S < n`, and `TransactionSignatureFinal` must consume its exact remaining bits and accumulator. |
-| `TransactionSignatureChallengeVariablePrefix` | Canonically decomposes the native challenge hash and processes variable-base windows 127–111 | 982 + 0 = 982 | 9 inputs: challenge plus 8 table coordinates; 226 outputs: 222 remaining bits and 4 accumulator coordinates | Composition-dependent. It must consume the exact final challenge hash and exact point-policy table; the table's first point must be the verifier-bound identity `(0, 1)`, and all later variable placements must consume its exact bits and accumulator. |
-| `TransactionSignatureVariableBatch` | Processes 34 two-bit variable-base windows while retaining the extended accumulator | 986 + 0 = 986 | 80 inputs; 4 extended-coordinate outputs | Composition-dependent. Exactly three serial placements consume disjoint descending challenge-bit ranges and the same exact runtime-table wires. |
-| `TransactionSignatureFinal` | Processes fixed-base windows 70–83 and variable-base windows 8–0, enforces the cofactored signature equation, canonically decomposes the public-key hash, and returns the origin as a two-limb `uint256` EVM word | 935 + 0 = 935 | 81 inputs; 2 outputs: origin limbs | Composition-dependent. It must receive the exact remaining response and challenge bits, both accumulator chains, runtime table, `R8`, and native public-key hash from the preceding placements. The circuit's origin relation remains narrower than the consumer type (`origin < 2^160`). |
+| `TransactionSignaturePointPolicy` | Checks contract width, validates `A` and `R`, applies the public-key cofactor policy, rejects an identity randomizer, builds the variable-base table, and computes `R8` | 223 + 5 = 228 | 8 inputs; 16 outputs: two selector limbs, two lower-first contract-word limbs, 8 table coordinates, and 4 `R8` coordinates | Composition-dependent. Solidity must bind selector width and the identity point; later signature placements must consume the exact table and `R8` outputs. The selector and contract word are derived from the constrained public inputs. |
+| `TransactionSignatureFixedPrefix70` | Canonically decomposes `S` into 252 bits and processes fixed-base windows 0–69 | 1,016 + 0 = 1,016 | 1 native scalar input; 5 outputs: one packed 42-bit response tail and 4 accumulator coordinates | Composition-dependent. Solidity must bind `S < n`, and `TransactionSignatureFinal` must consume the exact packed tail and accumulator. |
+| `TransactionSignatureChallengeChunks` | Canonically decomposes the native challenge hash and packs it into the first 63-bit chunk plus three 64-bit chunks | 511 + 1 = 512 | 1 native-field input; 4 packed integer outputs | Composition-dependent. It must consume the exact final challenge hash; the first variable batch must consume chunk 0, and the three later batches must consume chunks 1–3 in order. |
+| `TransactionSignatureVariableFirstBatch32` | Processes the padded first 32 two-bit variable-base windows and creates the initial extended accumulator | 969 + 0 = 969 | 9 inputs: the first packed challenge chunk and 8 table coordinates; 4 extended-coordinate outputs | Composition-dependent. It must consume the exact first challenge chunk and point-policy table. |
+| `TransactionSignatureVariableBatch32` | Processes one following 32-window packed challenge chunk | 992 + 0 = 992 | 13 inputs: one packed chunk, 8 table coordinates, and 4 prior accumulator coordinates; 4 extended-coordinate outputs | Composition-dependent. Exactly three serial placements consume chunks 1–3, the same exact runtime-table wires, and the preceding accumulator. |
+| `TransactionSignatureFinal` | Processes fixed-base windows 70–83, enforces the cofactored signature equation, canonically decomposes the public-key hash, and returns the origin as a two-limb `uint256` EVM word | 716 + 0 = 716 | 14 inputs: packed response tail, fixed accumulator, final variable accumulator, `R8`, and native public-key hash; 2 outputs: origin limbs | Composition-dependent. It must receive the exact packed response tail, both final accumulator chains, exact `R8`, and native public-key hash. The circuit's origin relation remains narrower than the consumer type (`origin < 2^160`). |
 | `StorageAccess` | Binds a repeated storage address/key pair to its canonical cached identity | 8 + 0 = 8 | Current 256-bit address, current 256-bit key, canonical 256-bit address, and canonical 256-bit key; no outputs | Locally sound as address and key equality. Storage consistency additionally depends on the composition layer routing the current and cached values to the corresponding positions. |
 
 ## Mandatory and conditional composition contracts
@@ -438,8 +439,8 @@ reconstructed 256-bit integer is greater than or equal to `Fr`.
 
 ### Transaction-signature composition
 
-Transaction signature verification is one operation implemented by six
-compiled subcircuit types and 16 placements. The types are not six independent
+Transaction signature verification is one operation implemented by seven
+compiled subcircuit types and 17 placements. The types are not seven independent
 signature schemes. Their exact ordered composition is the security boundary:
 
 1. Eight chain-mode `TransactionSignaturePoseidonBatch4` placements compute
@@ -454,28 +455,27 @@ signature schemes. Their exact ordered composition is the security boundary:
 3. One `TransactionSignatureFixedPrefix70` placement canonically decomposes
    `S`, consumes response bits 0–209 in fixed-base windows 0–69, and exposes
    only response bits 210–251 plus its four-coordinate accumulator.
-4. One `TransactionSignatureChallengeVariablePrefix` placement canonically
-   decomposes the exact final challenge hash, consumes challenge bits 222–254
-   in variable-base windows 127–111, and exposes only challenge bits 0–221 plus
-   its four-coordinate accumulator.
-5. Three serial `TransactionSignatureVariableBatch` placements consume
-   challenge-bit ranges 154–221, 86–153, and 18–85, respectively. Every
-   placement receives the same eight runtime-table wires and the exact previous
-   four-wire accumulator.
-6. One `TransactionSignatureFinal` placement consumes response bits 210–251,
-   challenge bits 0–17, both final accumulator chains, the exact runtime table,
-   exact four-wire `R8`, and exact native public-key hash. It processes the
-   remaining 14 fixed windows and 9 variable windows, enforces the cofactored
-   equation, canonically decomposes the hash internally, and exposes only the
-   lower-first two-limb origin result.
+4. One `TransactionSignatureChallengeChunks` placement canonically decomposes
+   the exact final challenge hash and emits one 63-bit leading chunk followed
+   by three 64-bit chunks.
+5. One `TransactionSignatureVariableFirstBatch32` placement consumes the
+   leading chunk and the runtime table. It handles the padded first 32 windows
+   and creates the extended accumulator internally. Three serial
+   `TransactionSignatureVariableBatch32` placements then consume chunks 1–3,
+   the same exact runtime-table wires, and the preceding four-wire accumulator.
+6. One `TransactionSignatureFinal` placement consumes the packed 42-bit
+   response tail, both final accumulator chains, exact four-wire `R8`, and the
+   exact native public-key hash. It processes the remaining 14 fixed windows,
+   enforces the cofactored equation, canonically decomposes the hash internally,
+   and exposes only the lower-first two-limb origin result.
 
-For 29 private transaction inputs, the six distinct types contain 5,097 O2
-constraints and 5,276 R1CS wires in total. The 16 placements contain 14,669
+For 29 private transaction inputs, the seven distinct types contain 5,383 O2
+constraints and 5,427 R1CS wires in total. The 17 placements contain 14,967
 constraints before final cross-placement permutation. Their declared
-interfaces contain 402 physical placement input wires and 320 physical
+interfaces contain 116 physical placement input wires and 66 physical
 placement output wires.
-A diagnostic direct composition compiles to 14,646 nonlinear plus 3 linear
-constraints, 14,677 wires, and 134,924 nonzero matrix entries. The direct
+A diagnostic direct composition compiles to 14,943 nonlinear plus 3 linear
+constraints, 14,969 wires, and 135,500 nonzero matrix entries. The direct
 composition and the monolithic reference accept and reject the same complete
 21-vector regression corpus and produce the same contract, selector, and
 origin outputs for every accepted vector.
@@ -487,7 +487,7 @@ Transaction inputs remain native field wires during signature verification.
 When later EVM execution needs 256-bit words, the composition layer must place
 general `FrToLimbsPair` conversions on those exact authenticated input wires
 and must route only the conversion outputs into the EVM path; those conversions
-are deliberately outside the 16 signature placements. The Solidity verifier
+are deliberately outside the 17 signature placements. The Solidity verifier
 must bind the exact public wires and enforce
 `S < n`, `selector < 2^32`, and `O = (0, 1)`. These delegated checks are part of
 the complete statement and cannot be omitted. All native field operands and

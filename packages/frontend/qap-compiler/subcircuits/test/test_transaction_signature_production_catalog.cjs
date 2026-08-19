@@ -17,10 +17,11 @@ const {
 const EXPECTED = Object.freeze([
   Object.freeze({ name: "TransactionSignaturePoseidonBatch4", nonlinear: 950, linear: 0, inputs: 7, outputs: 2, wires: 957, nonzero: 11380, warnings: 1, placements: 9 }),
   Object.freeze({ name: "TransactionSignaturePointPolicy", nonlinear: 223, linear: 5, inputs: 8, outputs: 16, wires: 234, nonzero: 1082, warnings: 0, placements: 1 }),
-  Object.freeze({ name: "TransactionSignatureFixedPrefix70", nonlinear: 1016, linear: 0, inputs: 1, outputs: 46, wires: 1017, nonzero: 6894, warnings: 0, placements: 1 }),
-  Object.freeze({ name: "TransactionSignatureChallengeVariablePrefix", nonlinear: 982, linear: 0, inputs: 9, outputs: 226, wires: 989, nonzero: 6258, warnings: 2, placements: 1 }),
-  Object.freeze({ name: "TransactionSignatureVariableBatch", nonlinear: 986, linear: 0, inputs: 80, outputs: 4, wires: 1067, nonzero: 4556, warnings: 0, placements: 3 }),
-  Object.freeze({ name: "TransactionSignatureFinal", nonlinear: 935, linear: 0, inputs: 81, outputs: 2, wires: 1012, nonzero: 4678, warnings: 3, placements: 1 }),
+  Object.freeze({ name: "TransactionSignatureFixedPrefix70", nonlinear: 1016, linear: 0, inputs: 1, outputs: 5, wires: 1017, nonzero: 6689, warnings: 0, placements: 1 }),
+  Object.freeze({ name: "TransactionSignatureChallengeChunks", nonlinear: 511, linear: 1, inputs: 1, outputs: 4, wires: 511, nonzero: 2556, warnings: 2, placements: 1 }),
+  Object.freeze({ name: "TransactionSignatureVariableFirstBatch32", nonlinear: 969, linear: 0, inputs: 9, outputs: 4, wires: 978, nonzero: 4750, warnings: 0, placements: 1 }),
+  Object.freeze({ name: "TransactionSignatureVariableBatch32", nonlinear: 992, linear: 0, inputs: 13, outputs: 4, wires: 1005, nonzero: 4732, warnings: 0, placements: 3 }),
+  Object.freeze({ name: "TransactionSignatureFinal", nonlinear: 716, linear: 0, inputs: 14, outputs: 2, wires: 725, nonzero: 3879, warnings: 3, placements: 1 }),
 ]);
 
 const stripAnsi = (value) => value.replace(
@@ -37,6 +38,10 @@ const readCount = (output, label) => {
 
 const main = () => {
   const packageRoot = path.join(__dirname, "../..");
+  const nodeModulesRoot = path.dirname(path.dirname(require.resolve(
+    "circomlib/package.json",
+    { paths: [packageRoot] },
+  )));
   const outputRoot = mkdtempSync(path.join(tmpdir(), "tokamak-tsv-production-"));
 
   try {
@@ -61,7 +66,7 @@ const main = () => {
         "--prime",
         "bls12381",
         "-l",
-        path.join(packageRoot, "node_modules"),
+        nodeModulesRoot,
         "-o",
         outputDirectory,
       ], {
@@ -107,32 +112,33 @@ const main = () => {
 
     assert.equal(
       measurements.reduce((sum, item) => sum + item.nonlinear + item.linear, 0),
-      5097,
+      5383,
     );
-    assert.equal(measurements.reduce((sum, item) => sum + item.wires, 0), 5276);
-    assert.equal(measurements.reduce((sum, item) => sum + item.placements, 0), 16);
+    assert.equal(measurements.reduce((sum, item) => sum + item.wires, 0), 5427);
+    assert.equal(measurements.reduce((sum, item) => sum + item.placements, 0), 17);
     assert.equal(
       measurements.reduce(
         (sum, item) => sum + item.placements * (item.nonlinear + item.linear),
         0,
       ),
-      14669,
+      14967,
     );
 
     const compileScript = readFileSync(
       path.join(packageRoot, "scripts/compile.sh"),
       "utf8",
     );
-    for (const { name } of EXPECTED) {
-      assert.match(compileScript, new RegExp(`\\"${name}\\"`));
-    }
-    assert.doesNotMatch(
-      compileScript,
-      /\"(?:JubjubExpBatch|EdDsaVerify|TransactionSignatureCanonicalFrView|TransactionSignaturePolicyFixedPrefix|TransactionSignatureFixedVariableBridge)\"/,
+    const productionNamesMatch = compileScript.match(/names=\(([^)]*)\)/s);
+    assert.notEqual(productionNamesMatch, null, "compile target list is missing");
+    const productionNames = [...productionNamesMatch[1].matchAll(/"([^"]+)"/g)]
+      .map((match) => match[1]);
+    assert.deepEqual(
+      productionNames.filter((name) => name.startsWith("TransactionSignature")),
+      EXPECTED.map(({ name }) => name),
     );
 
     console.log(
-      "Transaction signature production catalog freezes six types, 16 placements, 5097 unique constraints, and 14669 placement-weighted constraints",
+      "Transaction signature production catalog freezes seven types, 17 placements, 5383 unique constraints, and 14967 placement-weighted constraints",
     );
   } finally {
     rmSync(outputRoot, { recursive: true, force: true });
