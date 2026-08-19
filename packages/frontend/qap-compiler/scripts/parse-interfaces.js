@@ -1,17 +1,9 @@
 const fs = require('node:fs')
 const path = require('node:path')
+const { BUFFER_DECLARATIONS } = require('./configure.js')
 
 const CIRCOM_CONSTANT_PATTERN = /function\s+([A-Za-z_]\w*)\s*\(\)\s*{\s*return\s+(\d+)\s*;\s*}/g
 const PORT_KEYS = new Set(['name', 'logicalType', 'length'])
-const BUFFER_CAPACITY_CONSTANTS = new Map([
-  ['bufferLogOut', 'nLogOut'],
-  ['bufferStorageStore', 'nStorageStore'],
-  ['bufferStorageLoad', 'nStorageLoad'],
-  ['bufferTxIn', 'nTxIn'],
-  ['bufferBlockIn', 'nBlockIn'],
-  ['bufferEVMIn', 'nEVMIn'],
-  ['bufferPrvIn', 'nPrvIn'],
-])
 
 function assertObject(value, description) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
@@ -131,7 +123,10 @@ function countPhysicalWires(ports) {
 function validateBufferCapacities(subcircuits, constants) {
   const subcircuitByName = new Map(subcircuits.map((subcircuit) => [subcircuit.name, subcircuit]))
 
-  for (const [bufferName, constantName] of BUFFER_CAPACITY_CONSTANTS) {
+  for (const { name: bufferName, capacityConstant: constantName } of BUFFER_DECLARATIONS) {
+    if (typeof constantName !== 'string' || constantName.length === 0) {
+      throw new Error(`Buffer '${bufferName}' must declare a capacity constant.`)
+    }
     const subcircuit = subcircuitByName.get(bufferName)
     if (subcircuit === undefined) {
       throw new Error(`Buffer capacity validation is missing compiled subcircuit '${bufferName}'.`)

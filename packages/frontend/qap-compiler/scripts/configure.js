@@ -1,13 +1,53 @@
 module.exports.S_MAX = 512
 
 const bufferDeclarations = [
-  { name: 'bufferLogOut', direction: 'out', publicType: 'outUser', boundary: 'l_log_out' },
-  { name: 'bufferStorageStore', direction: 'out', publicType: 'outUser', boundary: 'l_storage_store' },
-  { name: 'bufferStorageLoad', direction: 'out', publicType: 'outUser', boundary: 'l_storage_load' },
-  { name: 'bufferTxIn', direction: 'in', publicType: 'inUser', boundary: 'l_tx_in' },
-  { name: 'bufferBlockIn', direction: 'in', publicType: 'inBlock', boundary: 'l_block_in' },
-  { name: 'bufferEVMIn', direction: 'in', publicType: 'inFunction', boundary: 'l_evm_in' },
-  { name: 'bufferPrvIn', direction: 'in' },
+  {
+    name: 'bufferLogOut',
+    direction: 'out',
+    publicType: 'outUser',
+    boundary: 'l_log_out',
+    capacityConstant: 'nLogOut',
+  },
+  {
+    name: 'bufferStorageStore',
+    direction: 'out',
+    publicType: 'outUser',
+    boundary: 'l_storage_store',
+    capacityConstant: 'nStorageStore',
+  },
+  {
+    name: 'bufferStorageLoad',
+    direction: 'out',
+    publicType: 'outUser',
+    boundary: 'l_storage_load',
+    capacityConstant: 'nStorageLoad',
+  },
+  {
+    name: 'bufferTxIn',
+    direction: 'in',
+    publicType: 'inUser',
+    boundary: 'l_tx_in',
+    capacityConstant: 'nTxIn',
+  },
+  {
+    name: 'bufferBlockIn',
+    direction: 'in',
+    publicType: 'inBlock',
+    boundary: 'l_block_in',
+    capacityConstant: 'nBlockIn',
+  },
+  {
+    name: 'bufferEVMIn',
+    direction: 'in',
+    publicType: 'inFunction',
+    boundary: 'l_evm_in',
+    capacityConstant: 'nEVMIn',
+  },
+  {
+    name: 'bufferPrvIn',
+    direction: 'in',
+    capacityConstant: 'nPrvIn',
+  },
 ]
 
 const publicWireSegments = bufferDeclarations
