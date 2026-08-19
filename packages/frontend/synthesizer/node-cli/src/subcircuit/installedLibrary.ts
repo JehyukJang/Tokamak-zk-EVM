@@ -1,32 +1,24 @@
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
+import setupParamsJson from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/setupParams.json' with { type: 'json' };
+import globalWireListJson from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/globalWireList.json' with { type: 'json' };
+import frontendCfgJson from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/frontendCfg.json' with { type: 'json' };
+import subcircuitInfoJson from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/subcircuitInfo.json' with { type: 'json' };
 import {
   parseSubcircuitLibraryData,
 } from '../../../core/src/subcircuit.ts';
 import {
   resolveSubcircuitLibraryData,
 } from '../../../core/src/app.ts';
-import {
-  loadSubcircuitWasmBuffer,
-  resolveSubcircuitLibraryDirectory,
-} from './wasmLoader.ts';
+import { loadSubcircuitWasmBuffer } from './wasmLoader.ts';
 import type {
   ResolvedSubcircuitLibrary,
   SubcircuitLibraryData,
 } from '../../../core/src/subcircuit.ts';
 
-const subcircuitLibraryDirectory = resolveSubcircuitLibraryDirectory();
-
-const readLibraryJson = (fileName: string): unknown => JSON.parse(readFileSync(
-  path.join(subcircuitLibraryDirectory, fileName),
-  'utf8',
-));
-
 export const installedSubcircuitLibraryData: SubcircuitLibraryData = parseSubcircuitLibraryData({
-  setupParams: readLibraryJson('setupParams.json'),
-  globalWireList: readLibraryJson('globalWireList.json'),
-  frontendCfg: readLibraryJson('frontendCfg.json'),
-  subcircuitInfo: readLibraryJson('subcircuitInfo.json'),
+  setupParams: setupParamsJson,
+  globalWireList: globalWireListJson,
+  frontendCfg: frontendCfgJson,
+  subcircuitInfo: subcircuitInfoJson,
 });
 
 export const installedSubcircuitLibrary: ResolvedSubcircuitLibrary =
