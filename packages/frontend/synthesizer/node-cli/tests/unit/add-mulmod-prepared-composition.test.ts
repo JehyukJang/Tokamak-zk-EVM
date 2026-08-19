@@ -84,7 +84,7 @@ const fixedMultiStepCompositions = new Map(
 
 const submit = (
   operation: FixedMultiStepOperation,
-): { placements: PlacementManager['placements']; resultPts: readonly DataPt[] } => {
+): { manager: PlacementManager; placements: PlacementManager['placements']; resultPts: readonly DataPt[] } => {
   const calculateSubcircuitOutputValues = vi.fn((name: string): bigint[] => {
     switch (name) {
       case 'ADDMODPrepare':
@@ -121,6 +121,8 @@ const submit = (
       outPts: [],
     })),
     _placementCompositionMapping: Object.fromEntries(fixedMultiStepCompositions),
+    _bufferSubcircuitByBuffer: { EVM_IN: { id: 0 } },
+    _guardedBufferOutputWires: new Map(),
     subcircuitInfoByName,
     subcircuitLibrary: {
       calculateSubcircuitOutputValues,
@@ -147,6 +149,7 @@ const submit = (
   )
 
   return {
+    manager: parent,
     placements: parent.placements.slice(6),
     resultPts,
   }
@@ -256,20 +259,38 @@ describe('fixed generic atomic compositions', () => {
   it('prepares every declared EXP step and preserves the serial state connections', () => {
     const { placements, resultPts } = submit('EXP')
 
-    expect(placements).toHaveLength(258)
-    expect(placements[0]!.inPts.map(({ value }) => value)).toEqual([1n, 3n, 4n])
-    expect(placements[0]!.outPts).toHaveLength(3)
-    expect(placements[1]!.inPts.map(({ source, wireIndex }) => [source, wireIndex]))
-      .toEqual([[6, 0], [6, 1], [6, 2]])
-    expect(placements[256]).toMatchObject({
+    expect(placements).toHaveLength(259)
+    expect(placements[0]).toMatchObject({
+      name: 'CheckBus256',
+      inPts: [{ source: 1, wireIndex: 0, value: 4n }],
+      outPts: [],
+    })
+    expect(placements[1]!.inPts.map(({ value }) => value)).toEqual([1n, 3n, 4n])
+    expect(placements[1]!.outPts).toHaveLength(3)
+    expect(placements[2]!.inPts.map(({ source, wireIndex }) => [source, wireIndex]))
+      .toEqual([[7, 0], [7, 1], [7, 2]])
+    expect(placements[257]).toMatchObject({
       name: 'AssertZeroWord',
-      inPts: [{ source: 261, wireIndex: 2, value: 23n }],
+      inPts: [{ source: 262, wireIndex: 2, value: 23n }],
       outPts: [],
     })
     expect(placements.at(-1)).toMatchObject({
-      inPts: [{ source: 261, wireIndex: 0, value: 17n }],
+      inPts: [{ source: 262, wireIndex: 0, value: 17n }],
       outPts: [],
     })
-    expect(resultPts).toMatchObject([{ source: 261, wireIndex: 0, value: 17n }])
+    expect(resultPts).toMatchObject([{ source: 262, wireIndex: 0, value: 17n }])
+  })
+
+  it('reuses the EXP exponent guard for the exact previously guarded buffer wire', () => {
+    const { manager } = submit('EXP')
+    const placementCountBeforeReuse = manager.placements.length
+
+    manager.placeComposition('EXP', [dataPt(3n, 0), dataPt(4n, 1)])
+
+    const reusedPlacements = manager.placements.slice(placementCountBeforeReuse)
+    expect(reusedPlacements).toHaveLength(258)
+    expect(reusedPlacements[0]).toMatchObject({ name: 'SubExp' })
+    expect(reusedPlacements.some(({ name }) => name === 'CheckBus256')).toBe(true)
+    expect(reusedPlacements.at(-1)).toMatchObject({ name: 'CheckBus256' })
   })
 })
