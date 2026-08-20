@@ -5,50 +5,24 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import fs from 'fs';
 import { CircomConstMap, CircomKey, REQUIRED_CIRCOM_KEYS } from './types.ts';
-// -----------------------------------------------------------------------------
-// Circom constants: extract simple `function NAME(){ return <int>; }` pairs
-// -----------------------------------------------------------------------------
+import { parseCircomConstants } from '../parse-interfaces.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const CIRCOM_PATH = path.resolve(__dirname, '../../subcircuits/circom/constants.circom')
 const DEFAULT_OUTPUT_DIR = path.resolve(__dirname, '../../subcircuits/library');
 
-// Remove line and block comments (coarse but adequate for constants file)
-const stripComments = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, '')  // block comments
-   .replace(/\/\/[^\n\r]*/g, '');   // line comments
-
-
-// Match: function <name>() { return <digits>; }
-const RE_FUNCTION_RETURN_INT = /function\s+([A-Za-z_]\w*)\s*\(\)\s*{\s*return\s+(\d+)\s*;\s*}/g;
-
 export async function loadCircomConstants(): Promise<CircomConstMap> {
   const src = await readFile(CIRCOM_PATH, 'utf8');
-  const text = stripComments(src);
-
-  // Collect only the required keys; ignore other functions
+  const constants = parseCircomConstants(src, CIRCOM_PATH);
   const found: Partial<Record<CircomKey, number>> = {};
-  let m: RegExpExecArray | null;
-  while ((m = RE_FUNCTION_RETURN_INT.exec(text)) !== null) {
-    const [, name, valueStr] = m;
-    if ((REQUIRED_CIRCOM_KEYS as readonly string[]).includes(name)) {
-      const k = name as CircomKey;
-      if (found[k] !== undefined) {
-        throw new Error(`Duplicate circom constant: ${k}`);
-      }
-      const v = Number(valueStr);
-      if (!Number.isFinite(v)) {
-        throw new Error(`Non-finite value for circom constant ${k}: ${valueStr}`);
-      }
-      found[k] = v;
-    }
-  }
 
-  // Ensure all required constants are present
   for (const k of REQUIRED_CIRCOM_KEYS) {
-    if (found[k] === undefined) {
+    const value = constants.get(k);
+    if (!Number.isFinite(value)) {
       throw new Error(`Missing circom constant: ${k}`);
     }
+    found[k] = value;
   }
 
   return found as CircomConstMap;
