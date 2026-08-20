@@ -4,11 +4,13 @@ const path = require("node:path");
 const { readFileSync } = require("node:fs");
 
 const { wasm } = require("circom_tester");
-const builder = require("./wasm/witness_calculator.js");
+const { resolveCircomIncludeRoot } = require("./helper_functions.js");
 const { split256BitInteger } = require("./helper_functions.js");
 
 const libraryDir = process.env.QAP_SUBCIRCUIT_LIBRARY_DIR
   ?? path.join(__dirname, "../library");
+const builder = require(path.join(libraryDir, "witness_calculator.js"));
+const include = resolveCircomIncludeRoot(path.join(__dirname, "../.."));
 const MAX_UINT256 = (1n << 256n) - 1n;
 const RANDOM_CASES = 128;
 
@@ -121,7 +123,7 @@ const main = async () => {
   const circuit = await wasm(
     path.join(packageRoot, "subcircuits/circom/SHL_circuit.circom"),
     {
-      include: path.join(packageRoot, "node_modules"),
+      include,
       prime: "bls12381",
       O: 2,
     },

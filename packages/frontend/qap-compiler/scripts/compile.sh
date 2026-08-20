@@ -1,11 +1,19 @@
 #!/usr/bin/env bash
 
-# parse.js determines public wire segment order independently of this list.
-
 set -euo pipefail
 
-# Subcircuit library configuration
-names=("bufferLogOut" "bufferStorageStore" "bufferStorageLoad" "bufferTxIn" "bufferBlockIn" "bufferEVMIn" "bufferPrvIn" "ALU3" "ALU4A" "ALU4B" "SHL" "ADDMODPrepare" "ADDMODVerify" "MULMODPrepare" "MULMODCandidate" "MULMODVerify" "AssertZeroWord" "SubExp" "CheckBus256" "MemoryViewStep" "Poseidon" "FrToLimbsPair" "TransactionSignaturePoseidonBatch4" "TransactionSignaturePointPolicy" "TransactionSignatureFixedPrefix70" "TransactionSignatureChallengeChunks" "TransactionSignatureVariableFirstBatch32" "TransactionSignatureVariableBatch32" "TransactionSignatureFinal" "StorageAccess" "EQ" "ISZERO" "ADD" "MUL" "SUB" "NOT" "LT" "GT" "SLT" "SGT" "AND" "OR" "XOR" "SHR")
+names=(
+  "bufferLogOut" "bufferStorageStore" "bufferStorageLoad" "bufferTxIn"
+  "bufferBlockIn" "bufferEVMIn" "bufferPrvIn" "ALU3" "ALU4A" "ALU4B"
+  "SHL" "ADDMODPrepare" "ADDMODVerify" "MULMODPrepare" "MULMODCandidate"
+  "MULMODVerify" "AssertZeroWord" "SubExp" "CheckBus256" "MemoryViewStep"
+  "Poseidon" "FrToLimbsPair" "TransactionSignaturePoseidonBatch4"
+  "TransactionSignaturePointPolicy" "TransactionSignatureFixedPrefix70"
+  "TransactionSignatureChallengeChunks" "TransactionSignatureVariableFirstBatch32"
+  "TransactionSignatureVariableBatch32" "TransactionSignatureFinal" "StorageAccess"
+  "EQ" "ISZERO" "ADD" "MUL" "SUB" "NOT" "LT" "GT" "SLT" "SGT"
+  "AND" "OR" "XOR" "SHR"
+)
 CURVE_NAME="bls12381"
 
 original_cwd="$(pwd)"
@@ -13,7 +21,6 @@ script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 package_root="${script_dir}/.."
 cd "$script_dir"
 
-circom_dir_path="${package_root}/subcircuits/circom"
 default_output_dir="${script_dir}/../subcircuits/library"
 
 if [[ $# -lt 1 || $# -gt 2 ]]; then
@@ -89,7 +96,7 @@ if [[ $# -eq 1 ]]; then
 
   mkdir -p "$(dirname "$output_dir_path")"
 else
-  echo "Warning: No output directory specified. Writing to the package internal path '$output_dir_path' for backward compatibility." >&2
+  echo "Warning: No output directory specified. Writing to the package internal library path '$output_dir_path'." >&2
   rm -rf "$output_dir_path"
 fi
 
@@ -120,5 +127,5 @@ cp "$package_root/scripts/runtime/witness-input-diagnostics.js" "$output_dir_pat
 
 node parse.js "$output_dir_path" "$compiler_output_file"
 rm -f "$output_dir_path"/*_circuit.sym
-node --import tsx ./exporter/exporter.ts "$output_dir_path"
+node --import tsx "$package_root/scripts/generate-frontend-config.ts" "$output_dir_path"
 rm -f "$compiler_output_file"

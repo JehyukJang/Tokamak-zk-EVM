@@ -1,11 +1,11 @@
 function _buildWireFlattenMap(globalWireList, subcircuitInfos, globalWireIndex, subcircuitId, subcircuitWireId) {
   if (subcircuitId >= 0 ){
     if ( globalWireList[globalWireIndex] !== undefined ) {
-      throw new Error(`parseWireList: The same mapping occurs twice.`)
+      throw new Error(`buildGlobalWireLayout: The same mapping occurs twice.`)
     }
     if ( subcircuitInfos[subcircuitId].flattenMap !== undefined ) {
       if ( subcircuitInfos[subcircuitId].flattenMap[subcircuitWireId] !== undefined ){
-        throw new Error(`parseWireList: The same mapping occurs twice.`)
+        throw new Error(`buildGlobalWireLayout: The same mapping occurs twice.`)
       }
     }
 
@@ -31,13 +31,13 @@ function _getPortRange(targetSubcircuit, direction) {
   if (direction === 'out') {
     return [targetSubcircuit.outWireIndex, targetSubcircuit.NOutWires]
   }
-  throw new Error(`parseWireList: Unsupported port direction '${direction}'.`)
+  throw new Error(`buildGlobalWireLayout: Unsupported port direction '${direction}'.`)
 }
 
 function _getOppositePortDirection(direction) {
   if (direction === 'in') return 'out'
   if (direction === 'out') return 'in'
-  throw new Error(`parseWireList: Unsupported port direction '${direction}'.`)
+  throw new Error(`buildGlobalWireLayout: Unsupported port direction '${direction}'.`)
 }
 
 function _appendPublicWireSegment(globalWireList, subcircuitInfos, globalWireIndex, targetSubcircuit, direction) {
@@ -57,7 +57,7 @@ function _appendPublicWireSegment(globalWireList, subcircuitInfos, globalWireInd
 
 function _recordPublicWireBoundary(boundaries, boundary, globalWireIndex) {
   if (boundaries[boundary] !== undefined) {
-    throw new Error(`parseWireList: Duplicate public wire boundary '${boundary}'.`)
+    throw new Error(`buildGlobalWireLayout: Duplicate public wire boundary '${boundary}'.`)
   }
   boundaries[boundary] = globalWireIndex
 }
@@ -73,7 +73,7 @@ function _assertCompiledPortRange(targetSubcircuit, name, direction) {
   if (!Number.isInteger(wireIndex) || !Number.isInteger(wireCount)
     || wireIndex < 1 || wireCount < 0
     || wireIndex + wireCount > targetSubcircuit.NWires + 1) {
-    throw new Error(`parseWireList: Buffer '${name}' has an invalid compiled ${direction} port range.`)
+    throw new Error(`buildGlobalWireLayout: Buffer '${name}' has an invalid compiled ${direction} port range.`)
   }
 }
 
@@ -97,19 +97,19 @@ function _validateBufferDeclarations(subcircuitInfos, subcircuitInfoByName, libr
       includeGenericBoundaryInSetup,
     } = phase
     if (typeof name !== 'string' || name.length === 0 || phaseByName.has(name)) {
-      throw new Error('parseWireList: Public wire phase names must be unique non-empty strings.')
+      throw new Error('buildGlobalWireLayout: Public wire phase names must be unique non-empty strings.')
     }
     if (region !== 'free' && region !== 'fixed') {
-      throw new Error(`parseWireList: Public wire phase '${name}' has an invalid region.`)
+      throw new Error(`buildGlobalWireLayout: Public wire phase '${name}' has an invalid region.`)
     }
     if (hasFixedPhase && region === 'free') {
-      throw new Error(`parseWireList: Public wire phase '${name}' cannot follow a fixed phase.`)
+      throw new Error(`buildGlobalWireLayout: Public wire phase '${name}' cannot follow a fixed phase.`)
     }
     hasFixedPhase ||= region === 'fixed'
     if (typeof genericBoundary !== 'string' || genericBoundary.length === 0
       || typeof terminalBoundary !== 'string' || terminalBoundary.length === 0
       || typeof includeGenericBoundaryInSetup !== 'boolean') {
-      throw new Error(`parseWireList: Public wire phase '${name}' has incomplete boundary metadata.`)
+      throw new Error(`buildGlobalWireLayout: Public wire phase '${name}' has incomplete boundary metadata.`)
     }
     phaseByName.set(name, phase)
   }
@@ -120,28 +120,28 @@ function _validateBufferDeclarations(subcircuitInfos, subcircuitInfoByName, libr
       || (direction !== 'in' && direction !== 'out')
       || typeof boundary !== 'string' || boundary.length === 0
       || !phaseByName.has(phase)) {
-      throw new Error('parseWireList: Public wire segment has incomplete layout metadata.')
+      throw new Error('buildGlobalWireLayout: Public wire segment has incomplete layout metadata.')
     }
   }
 
   for (const declaration of bufferDeclarations) {
     const { name, direction } = declaration
     if (typeof name !== 'string' || name.length === 0) {
-      throw new Error('parseWireList: Buffer declaration has an invalid name.')
+      throw new Error('buildGlobalWireLayout: Buffer declaration has an invalid name.')
     }
     if (direction !== 'in' && direction !== 'out') {
-      throw new Error(`parseWireList: Buffer '${name}' has an invalid direction.`)
+      throw new Error(`buildGlobalWireLayout: Buffer '${name}' has an invalid direction.`)
     }
     if (directionByName.has(name)) {
-      throw new Error(`parseWireList: Duplicate buffer declaration '${name}'.`)
+      throw new Error(`buildGlobalWireLayout: Duplicate buffer declaration '${name}'.`)
     }
 
     const targetSubcircuit = subcircuitInfoByName.get(name)
     if (targetSubcircuit === undefined) {
-      throw new Error(`parseWireList: Missing declared buffer '${name}'.`)
+      throw new Error(`buildGlobalWireLayout: Missing declared buffer '${name}'.`)
     }
     if (targetSubcircuit.logicalInterface !== undefined) {
-      throw new Error(`parseWireList: Buffer declaration '${name}' refers to a non-buffer subcircuit.`)
+      throw new Error(`buildGlobalWireLayout: Buffer declaration '${name}' refers to a non-buffer subcircuit.`)
     }
     _assertCompiledPortRange(targetSubcircuit, name, 'in')
     _assertCompiledPortRange(targetSubcircuit, name, 'out')
@@ -149,7 +149,7 @@ function _validateBufferDeclarations(subcircuitInfos, subcircuitInfoByName, libr
     const publicSegment = publicSegmentByName.get(name)
     if (publicSegment === undefined) {
       if (direction !== 'in') {
-        throw new Error(`parseWireList: Private-only buffer '${name}' must have input direction.`)
+        throw new Error(`buildGlobalWireLayout: Private-only buffer '${name}' must have input direction.`)
       }
     } else {
       const [actualWireIndex, actualWireCount] = _getPortRange(
@@ -160,10 +160,10 @@ function _validateBufferDeclarations(subcircuitInfos, subcircuitInfoByName, libr
         ? [targetSubcircuit.inWireIndex, targetSubcircuit.NInWires]
         : [targetSubcircuit.outWireIndex, targetSubcircuit.NOutWires]
       if (publicSegment.direction !== direction) {
-        throw new Error(`parseWireList: Buffer '${name}' direction does not match its public segment.`)
+        throw new Error(`buildGlobalWireLayout: Buffer '${name}' direction does not match its public segment.`)
       }
       if (actualWireIndex !== expectedWireIndex || actualWireCount !== expectedWireCount) {
-        throw new Error(`parseWireList: Buffer '${name}' public wire range does not match its direction.`)
+        throw new Error(`buildGlobalWireLayout: Buffer '${name}' public wire range does not match its direction.`)
       }
     }
 
@@ -174,7 +174,7 @@ function _validateBufferDeclarations(subcircuitInfos, subcircuitInfoByName, libr
     if (subcircuit.logicalInterface !== undefined) continue
     const direction = directionByName.get(subcircuit.name)
     if (direction === undefined) {
-      throw new Error(`parseWireList: Buffer '${subcircuit.name}' is missing direction metadata.`)
+      throw new Error(`buildGlobalWireLayout: Buffer '${subcircuit.name}' is missing direction metadata.`)
     }
     subcircuit.bufferDirection = direction
   }
@@ -199,7 +199,7 @@ function _assertInternalInterfacePortPrefixes(subcircuitInfos, l, l_D) {
         const globalWireIndex = subcircuit.flattenMap?.[localWireIndex]
         if (globalWireIndex === undefined) {
           throw new Error(
-            `parseWireList: Missing flattened ${portName} port wire ${localWireIndex} for '${subcircuit.name}'.`,
+            `buildGlobalWireLayout: Missing flattened ${portName} port wire ${localWireIndex} for '${subcircuit.name}'.`,
           )
         }
 
@@ -207,7 +207,7 @@ function _assertInternalInterfacePortPrefixes(subcircuitInfos, l, l_D) {
         if (isInternalInterfaceWire) {
           if (reachedNonInterfaceWire) {
             throw new Error(
-              `parseWireList: '${subcircuit.name}' ${portName} port has an internal-interface wire after a non-interface wire.`,
+              `buildGlobalWireLayout: '${subcircuit.name}' ${portName} port has an internal-interface wire after a non-interface wire.`,
             )
           }
         } else {
@@ -230,7 +230,7 @@ function buildGlobalWireLayout(subcircuitInfos, libraryLayout) {
     numTotalWires += subcircuit.Nwires
 
     if (subcircuitInfoByName.has(subcircuit.name)) {
-      throw new Error(`parseWireList: Duplicate subcircuit name '${subcircuit.name}'.`)
+      throw new Error(`buildGlobalWireLayout: Duplicate subcircuit name '${subcircuit.name}'.`)
     }
 
     const entryObject = {
@@ -276,11 +276,11 @@ function buildGlobalWireLayout(subcircuitInfos, libraryLayout) {
   const configuredPublicNames = new Set()
   for (const { name } of publicWireSegments) {
     if (configuredPublicNames.has(name)) {
-      throw new Error(`parseWireList: Duplicate configured public subcircuit '${name}'.`)
+      throw new Error(`buildGlobalWireLayout: Duplicate configured public subcircuit '${name}'.`)
     }
     configuredPublicNames.add(name)
     if (!subcircuitInfoByName.has(name)) {
-      throw new Error(`parseWireList: Missing configured public subcircuit '${name}'.`)
+      throw new Error(`buildGlobalWireLayout: Missing configured public subcircuit '${name}'.`)
     }
   }
 
@@ -340,7 +340,7 @@ function buildGlobalWireLayout(subcircuitInfos, libraryLayout) {
     genericBoundaries[phase.genericBoundary] = ind
     if (publicWireBoundaries[phase.terminalBoundary] !== ind) {
       throw new Error(
-        `parseWireList: Phase '${phase.name}' does not end at its configured terminal boundary.`,
+        `buildGlobalWireLayout: Phase '${phase.name}' does not end at its configured terminal boundary.`,
       )
     }
     return ind
@@ -354,7 +354,7 @@ function buildGlobalWireLayout(subcircuitInfos, libraryLayout) {
   }
 
   if (ind !== l_free_actual) {
-    throw new Error(`parseWireList: Free public wire count does not match flattened wire count.`)
+    throw new Error(`buildGlobalWireLayout: Free public wire count does not match flattened wire count.`)
   }
 
   for (let i = 0; i < numDiff_l_free; i++) {
@@ -368,7 +368,7 @@ function buildGlobalWireLayout(subcircuitInfos, libraryLayout) {
   }
 
   if (ind !== l_free) {
-    throw new Error(`parseWireList: Public-wire padding does not reach the configured free boundary.`)
+    throw new Error(`buildGlobalWireLayout: Public-wire padding does not reach the configured free boundary.`)
   }
 
   for (const phase of publicWirePhases) {
@@ -378,7 +378,7 @@ function buildGlobalWireLayout(subcircuitInfos, libraryLayout) {
   }
 
   if (ind !== l) {
-    throw new Error(`parseWireList: Fixed public wire count does not match flattened wire count.`)
+    throw new Error(`buildGlobalWireLayout: Fixed public wire count does not match flattened wire count.`)
   }
 
   // Processing internal interface wires
@@ -439,20 +439,12 @@ function buildGlobalWireLayout(subcircuitInfos, libraryLayout) {
   }
 
   if (ind !== l_D) {
-    throw new Error(`parseWireList: Error during flattening interface wires`)
+    throw new Error(`buildGlobalWireLayout: Error during flattening interface wires`)
   }
   // Processing internal private wires
   for (const targetSubcircuit of subcircuitInfos) {
-    // // The first wire is always for constant by Circom
-    // _buildWireFlattenMap(
-    //   globalWireList,
-    //   subcircuitInfos,
-    //   ind++,
-    //   targetSubcircuit.id,
-    //   0,
-    // )
-    const _numInterestWires = targetSubcircuit.Nwires - (targetSubcircuit.Out_idx[1] + targetSubcircuit.In_idx[1]) - 1
-    for (let i = 0; i < _numInterestWires; i++) {
+    const privateWireCount = targetSubcircuit.Nwires - (targetSubcircuit.Out_idx[1] + targetSubcircuit.In_idx[1]) - 1
+    for (let i = 0; i < privateWireCount; i++) {
       _buildWireFlattenMap(
         globalWireList,
         subcircuitInfos,
@@ -464,7 +456,7 @@ function buildGlobalWireLayout(subcircuitInfos, libraryLayout) {
   }
 
   if (ind !== m_D) {
-    throw new Error(`parseWireList: Error during flattening internal wires`)
+    throw new Error(`buildGlobalWireLayout: Error during flattening internal wires`)
   }
 
   _assertInternalInterfacePortPrefixes(subcircuitInfos, l, l_D)

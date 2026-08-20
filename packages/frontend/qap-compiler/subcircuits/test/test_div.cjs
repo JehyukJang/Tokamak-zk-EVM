@@ -4,10 +4,12 @@ const path = require("node:path");
 const { readFileSync } = require("node:fs");
 
 const { wasm } = require("circom_tester");
-const builder = require("./wasm/witness_calculator.js");
+const { resolveCircomIncludeRoot } = require("./helper_functions.js");
 
 const libraryDir = process.env.QAP_SUBCIRCUIT_LIBRARY_DIR
   ?? path.join(__dirname, "../library");
+const builder = require(path.join(libraryDir, "witness_calculator.js"));
+const include = resolveCircomIncludeRoot(path.join(__dirname, "../.."));
 const WORD_BASE = 1n << 256n;
 const SIGN_BIT = 1n << 255n;
 const WORD_MASK = WORD_BASE - 1n;
@@ -15,10 +17,10 @@ const LIMB_MASK = (1n << 128n) - 1n;
 const RANDOM_CASES_PER_OPERATION = 128;
 
 const selectors = {
-  DIV: 1n << 4n,
-  SDIV: 1n << 5n,
-  MOD: 1n << 6n,
-  SMOD: 1n << 7n,
+  DIV: 1n << 3n,
+  SDIV: 1n << 4n,
+  MOD: 1n << 5n,
+  SMOD: 1n << 6n,
 };
 
 const split128 = (value) => [value & LIMB_MASK, value >> 128n];
@@ -185,7 +187,7 @@ const main = async () => {
   const circuit = await wasm(
     path.join(__dirname, "circom/division_family_composed.circom"),
     {
-      include: path.join(packageRoot, "node_modules"),
+      include,
       prime: "bls12381",
       O: 2,
     },

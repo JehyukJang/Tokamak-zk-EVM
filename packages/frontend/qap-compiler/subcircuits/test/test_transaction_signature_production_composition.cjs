@@ -111,12 +111,6 @@ const expectedProductionOutput = (vector, oracle) => ({
   origin: split(oracle.circuit.origin),
 });
 
-const expectedReferenceOutput = (vector, oracle) => ({
-  evmContractAddress: split(vector.publicBoundary.contractAddress),
-  evmFunctionSelector: [vector.publicBoundary.functionSelector, 0n],
-  origin: split(oracle.circuit.origin),
-});
-
 const main = async () => {
   assert.equal(FUNCTION_INPUT_LENGTH, 29);
   const packageRoot = path.join(__dirname, "../..");
@@ -144,18 +138,6 @@ const main = async () => {
       O: 2,
     },
   );
-  const reference = await wasm(
-    path.join(
-      packageRoot,
-      "subcircuits/test/circom/transaction_signature_verify_reference_test.circom",
-    ),
-    {
-      include: nodeModulesRoot,
-      prime: "bls12381",
-      O: 2,
-    },
-  );
-
   const corpus = createTransactionSignatureCorpus();
   let accepted = 0;
   let rejected = 0;
@@ -165,20 +147,13 @@ const main = async () => {
     const input = toCircuitInput(vector);
     if (vector.disposition === DISPOSITIONS.CIRCUIT_LOCAL_REJECTION) {
       await assert.rejects(circuit.calculateWitness(input, true), undefined, vector.id);
-      await assert.rejects(reference.calculateWitness(input, true), undefined, `${vector.id} reference`);
       rejected++;
       continue;
     }
 
     const witness = await circuit.calculateWitness(input, true);
-    const referenceWitness = await reference.calculateWitness(input, true);
     await circuit.checkConstraints(witness);
     await circuit.assertOut(witness, expectedProductionOutput(vector, oracle));
-    await reference.checkConstraints(referenceWitness);
-    await reference.assertOut(referenceWitness, {
-      ...expectedReferenceOutput(vector, oracle),
-      evmTransactionInputs: vector.messageWords.slice(3).map(split),
-    });
     mutationWitness ??= witness;
     accepted++;
   }

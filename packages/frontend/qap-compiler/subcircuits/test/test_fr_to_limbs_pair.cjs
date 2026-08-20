@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 
 const { wasm } = require("circom_tester");
+const { resolveCircomIncludeRoot } = require("./helper_functions.js");
 
 const FIELD_PRIME = 52435875175126190479447740508185965837690552500527637822603658699938581184513n;
 const LIMB_BASE = 1n << 128n;
@@ -11,10 +12,11 @@ const split = (value) => [value & LIMB_MASK, value >> 128n];
 
 const main = async () => {
   const packageRoot = path.join(__dirname, "../..");
+  const include = resolveCircomIncludeRoot(packageRoot);
   const circuit = await wasm(
     path.join(packageRoot, "subcircuits/circom/FrToLimbsPair_circuit.circom"),
     {
-      include: path.join(packageRoot, "node_modules"),
+      include,
       prime: "bls12381",
       O: 2,
     },

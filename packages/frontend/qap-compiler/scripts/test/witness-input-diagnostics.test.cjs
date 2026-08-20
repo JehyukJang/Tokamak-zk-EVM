@@ -115,7 +115,7 @@ test('checks a uint160 native wire against its exact declared width', () => {
 
 test('covers every production physical input exactly once', () => {
   const compileSource = fs.readFileSync(path.join(packageRoot, 'scripts', 'compile.sh'), 'utf8')
-  const namesMatch = /^names=\(([^\n]+)\)$/m.exec(compileSource)
+  const namesMatch = /^names=\(\n([\s\S]*?)^\)$/m.exec(compileSource)
   assert.ok(namesMatch, 'compile.sh target list was not found')
   const names = [...namesMatch[1].matchAll(/"([^"]+)"/g)].map((match) => match[1])
   const bufferConstants = new Map([
@@ -224,7 +224,7 @@ test('the qap witness CLI uses the common diagnostic wrapper', (context) => {
   const inputPath = path.join(root, 'input.json')
   const witnessPath = path.join(root, 'output.wtns')
   fs.writeFileSync(inputPath, JSON.stringify({
-    in: [privateValue.toString(), '0', '0', '0', '0', '0'],
+    in: [privateValue.toString(), '0', '0', '0'],
   }))
   const result = spawnSync(
     process.execPath,

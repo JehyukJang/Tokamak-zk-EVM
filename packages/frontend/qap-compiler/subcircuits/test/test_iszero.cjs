@@ -2,15 +2,17 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 
 const { wasm } = require("circom_tester");
+const { resolveCircomIncludeRoot } = require("./helper_functions.js");
 
 const MAX_LIMB = (1n << 128n) - 1n;
 
 const main = async () => {
   const packageRoot = path.join(__dirname, "../..");
+  const include = resolveCircomIncludeRoot(packageRoot);
   const circuit = await wasm(
     path.join(packageRoot, "subcircuits/circom/ISZERO_circuit.circom"),
     {
-      include: path.join(packageRoot, "node_modules"),
+      include,
       prime: "bls12381",
       O: 2,
     },

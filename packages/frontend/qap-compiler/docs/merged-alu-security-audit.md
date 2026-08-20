@@ -141,7 +141,6 @@ Current status: Resolved
 Before the merge, the wrappers explicitly constrained the high limb of the shift or byte index:
 
 - [subcircuits/circom/ALU3_circuit.circom](../subcircuits/circom/unused/ALU3_circuit.circom)
-- [subcircuits/circom/ALU5_circuit.circom](../subcircuits/circom/unused/ALU5_circuit.circom)
 
 The parent-of-merge versions included:
 

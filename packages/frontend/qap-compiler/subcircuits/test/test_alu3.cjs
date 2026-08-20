@@ -4,7 +4,7 @@ const path = require("node:path");
 
 const { wasm } = require("circom_tester");
 
-const { split256BitInteger } = require("./helper_functions.js");
+const { resolveCircomIncludeRoot, split256BitInteger } = require("./helper_functions.js");
 
 const WORD_BASE = 1n << 256n;
 const MAX_UINT256 = WORD_BASE - 1n;
@@ -30,9 +30,9 @@ const expectedSar = (shift, value) => {
 };
 
 const operations = [
-  { name: "SIGNEXTEND", selector: 1n << 11n, evaluate: expectedSignExtend },
-  { name: "BYTE", selector: 1n << 26n, evaluate: expectedByte },
-  { name: "SAR", selector: 1n << 29n, evaluate: expectedSar },
+  { name: "SIGNEXTEND", selector: 1n, evaluate: expectedSignExtend },
+  { name: "BYTE", selector: 2n, evaluate: expectedByte },
+  { name: "SAR", selector: 4n, evaluate: expectedSar },
 ];
 
 const encodeInput = (selector, indexOrShift, value) => ({
@@ -53,9 +53,10 @@ const assertOperation = async (circuit, operation, indexOrShift, value, label) =
 
 const main = async () => {
   const packageRoot = path.join(__dirname, "../..");
+  const include = resolveCircomIncludeRoot(packageRoot);
   const circuit = await wasm(
     path.join(packageRoot, "subcircuits/circom/ALU3_circuit.circom"),
-    { include: path.join(packageRoot, "node_modules"), prime: "bls12381", O: 2 },
+    { include, prime: "bls12381", O: 2 },
   );
 
   const patternedValue = BigInt(
@@ -85,13 +86,13 @@ const main = async () => {
     await assert.rejects(circuit.calculateWitness({ in: input }, true), undefined,
       `non-canonical value limb ${limb} must be rejected`);
   }
-  for (const selector of [0n, 1n << 12n, 1n << 28n, MAX_UINT256]) {
+  for (const selector of [0n, 8n, 16n, MAX_UINT256]) {
     await assert.rejects(circuit.calculateWitness(encodeInput(selector, 0n, patternedValue), true), undefined,
       `unsupported selector ${selector} must be rejected`);
   }
 
   const witness = await circuit.calculateWitness(
-    encodeInput(1n << 29n, 13n, MAX_UINT256), true,
+    encodeInput(4n, 13n, MAX_UINT256), true,
   );
   await circuit.loadSymbols();
   for (const symbolName of [

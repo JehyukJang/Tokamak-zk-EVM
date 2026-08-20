@@ -4,7 +4,7 @@ const path = require("node:path");
 
 const { wasm } = require("circom_tester");
 
-const { split256BitInteger } = require("./helper_functions.js");
+const { resolveCircomIncludeRoot, split256BitInteger } = require("./helper_functions.js");
 
 const WORD_BASE = 1n << 256n;
 const WORD_MASK = WORD_BASE - 1n;
@@ -67,6 +67,7 @@ const findSurvivingWire = (circuit, suffix) => {
 
 const main = async () => {
   const packageRoot = path.join(__dirname, "../..");
+  const include = resolveCircomIncludeRoot(packageRoot);
   const boundaries = [
     [0n, 0n, 0n],
     [WORD_MASK, WORD_MASK, 1n],
@@ -85,7 +86,7 @@ const main = async () => {
         operation.circuit,
       ),
       {
-        include: path.join(packageRoot, "node_modules"),
+        include,
         prime: "bls12381",
         O: 2,
       },

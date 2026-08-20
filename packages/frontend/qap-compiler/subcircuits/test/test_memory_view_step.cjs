@@ -5,7 +5,7 @@ const { tmpdir } = require("node:os");
 const path = require("node:path");
 
 const { wasm } = require("circom_tester");
-const { split256BitInteger } = require("./helper_functions.js");
+const { resolveCircomIncludeRoot, split256BitInteger } = require("./helper_functions.js");
 
 const MAX_WORD = (1n << 256n) - 1n;
 const encodeShift = (magnitude, direction) => BigInt(magnitude + 32 * direction);
@@ -68,6 +68,7 @@ const assertStep = async (circuit, vector, label) => {
 };
 
 const assertCompiledMetrics = (packageRoot) => {
+  const include = resolveCircomIncludeRoot(packageRoot);
   const outputDirectory = mkdtempSync(path.join(tmpdir(), "memory-view-step-"));
   try {
     const compilation = spawnSync(
@@ -81,7 +82,7 @@ const assertCompiledMetrics = (packageRoot) => {
         "--prime",
         "bls12381",
         "-l",
-        path.join(packageRoot, "node_modules"),
+        include,
         "-o",
         outputDirectory,
       ],
@@ -129,11 +130,12 @@ const assertCompiledMetrics = (packageRoot) => {
 
 const main = async () => {
   const packageRoot = path.join(__dirname, "../..");
+  const include = resolveCircomIncludeRoot(packageRoot);
   assertCompiledMetrics(packageRoot);
   const circuit = await wasm(
     path.join(packageRoot, "subcircuits/circom/MemoryViewStep_circuit.circom"),
     {
-      include: path.join(packageRoot, "node_modules"),
+      include,
       prime: "bls12381",
       O: 2,
     },
@@ -223,7 +225,7 @@ const main = async () => {
   const composed = await wasm(
     path.join(packageRoot, "subcircuits/test/circom/memory_view_step_composed.circom"),
     {
-      include: path.join(packageRoot, "node_modules"),
+      include,
       prime: "bls12381",
       O: 2,
     },

@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 
 const { wasm } = require("circom_tester");
+const { resolveCircomIncludeRoot } = require("./helper_functions.js");
 
 const WORD_BITS = 256n;
 const WORD_BASE = 1n << WORD_BITS;
@@ -68,12 +69,13 @@ const assertResult = async (circuit, operation, lhs, rhs, label) => {
 
 const main = async () => {
   const packageRoot = path.join(__dirname, "../..");
+  const include = resolveCircomIncludeRoot(packageRoot);
 
   for (const operation of operations) {
     const circuit = await wasm(
       path.join(packageRoot, `subcircuits/circom/${operation.name}_circuit.circom`),
       {
-        include: path.join(packageRoot, "node_modules"),
+        include,
         prime: "bls12381",
         O: 2,
       },

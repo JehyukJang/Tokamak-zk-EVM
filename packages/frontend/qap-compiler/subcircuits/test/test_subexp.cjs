@@ -4,7 +4,7 @@ const path = require("node:path");
 
 const { wasm } = require("circom_tester");
 
-const { split256BitInteger } = require("./helper_functions.js");
+const { resolveCircomIncludeRoot, split256BitInteger } = require("./helper_functions.js");
 
 const WORD_MASK = (1n << 256n) - 1n;
 const RANDOM_CASES = 32;
@@ -56,7 +56,7 @@ const assertStep = async (circuit, accumulator, basePower, exponentRemainder, la
 
 const main = async () => {
   const packageRoot = path.join(__dirname, "../..");
-  const include = path.join(packageRoot, "../../..", "node_modules");
+  const include = resolveCircomIncludeRoot(packageRoot);
   const circuit = await wasm(
     path.join(packageRoot, "subcircuits/circom/SubExp_circuit.circom"),
     { include, prime: "bls12381", O: 2 },

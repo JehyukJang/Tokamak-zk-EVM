@@ -10,6 +10,7 @@ const {
   createTransactionSignatureCorpus,
   getChallengeInputs,
 } = require("./transaction_signature_verify_oracle.cjs");
+const { resolveCircomIncludeRoot } = require("./helper_functions.js");
 
 const FIELD_PRIME = 52435875175126190479447740508185965837690552500527637822603658699938581184513n;
 const LIMB_MASK = (1n << 128n) - 1n;
@@ -21,6 +22,7 @@ const stripAnsi = (value) => value.replace(
 );
 
 const compileAndMeasure = (packageRoot, outputRoot) => {
+  const include = resolveCircomIncludeRoot(packageRoot);
   const target = "TransactionSignaturePointPolicy";
   const outputDirectory = path.join(outputRoot, target);
   mkdirSync(outputDirectory);
@@ -34,7 +36,7 @@ const compileAndMeasure = (packageRoot, outputRoot) => {
     "--prime",
     "bls12381",
     "-l",
-    path.join(packageRoot, "node_modules"),
+    include,
     "-o",
     outputDirectory,
   ], { cwd: packageRoot, encoding: "utf8" });
@@ -98,6 +100,7 @@ const assertMutatedSignalRejected = async (circuit, witness, signalName) => {
 
 const main = async () => {
   const packageRoot = path.join(__dirname, "../..");
+  const include = resolveCircomIncludeRoot(packageRoot);
   const outputRoot = mkdtempSync(path.join(tmpdir(), "tokamak-tsv-point-policy-"));
   try {
     assert.deepEqual(compileAndMeasure(packageRoot, outputRoot), {
@@ -111,7 +114,7 @@ const main = async () => {
 
     const pointPolicy = await wasm(
       path.join(packageRoot, "subcircuits/circom/TransactionSignaturePointPolicy_circuit.circom"),
-      { include: path.join(packageRoot, "node_modules"), prime: "bls12381", O: 2 },
+      { include, prime: "bls12381", O: 2 },
     );
     const vector = createTransactionSignatureCorpus()[0];
     const challengeInputs = getChallengeInputs(vector);
