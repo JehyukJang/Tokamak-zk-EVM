@@ -14,6 +14,7 @@ const {
   buildGlobalWireLayout,
   buildSetupParams,
 } = require('./build-wire-layout.js')
+const { writeLibraryArtifacts } = require('./write-library-artifacts.js')
 
 const outputDir = process.argv[2]
   ? path.resolve(process.argv[2])
@@ -53,17 +54,10 @@ function main() {
       S_MAX,
     )
 
-    fs.writeFile(path.join(outputDir, 'subcircuitInfo.json'), JSON.stringify(subcircuits, null), (writeError) => {
-      if (writeError) throw writeError
-      console.log('Successfully wrote subcircuitInfo.json')
-    })
-    fs.writeFile(path.join(outputDir, 'globalWireList.json'), JSON.stringify(globalWireInfo.wireList, null), (writeError) => {
-      if (writeError) throw writeError
-      console.log('Successfully wrote globalWireList.json')
-    })
-    fs.writeFile(path.join(outputDir, 'setupParams.json'), JSON.stringify(setupParams, null, 2), (writeError) => {
-      if (writeError) throw writeError
-      console.log('Successfully wrote setupParams.json')
+    writeLibraryArtifacts(outputDir, {
+      subcircuits,
+      globalWireList: globalWireInfo.wireList,
+      setupParams,
     })
   })
 }
