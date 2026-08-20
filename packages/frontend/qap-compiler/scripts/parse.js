@@ -16,16 +16,21 @@ const {
 } = require('./build-wire-layout.js')
 const { writeLibraryArtifacts } = require('./write-library-artifacts.js')
 
-const outputDir = process.argv[2]
-  ? path.resolve(process.argv[2])
-  : path.resolve(__dirname, '../subcircuits/library')
-const compilerOutputPath = process.argv[3]
-  ? path.resolve(process.argv[3])
-  : path.resolve(__dirname, 'temp.txt')
 const interfaceDir = path.resolve(__dirname, '../subcircuits/interface')
 const constantsPath = path.resolve(__dirname, '../subcircuits/circom/constants.circom')
 
-function main() {
+function parseCliArguments(args) {
+  if (!Array.isArray(args) || args.length !== 2) {
+    throw new Error('Usage: node scripts/parse.js <output-dir> <compiler-output-path>')
+  }
+
+  return {
+    outputDir: path.resolve(args[0]),
+    compilerOutputPath: path.resolve(args[1]),
+  }
+}
+
+function main({ outputDir, compilerOutputPath }) {
   fs.readFile(compilerOutputPath, 'utf8', (error, compilerReport) => {
     if (error) throw error
 
@@ -63,5 +68,9 @@ function main() {
 }
 
 if (require.main === module) {
-  main()
+  main(parseCliArguments(process.argv.slice(2)))
+}
+
+module.exports = {
+  parseCliArguments,
 }
