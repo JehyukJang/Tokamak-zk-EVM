@@ -4,6 +4,7 @@ const test = require('node:test')
 const {
   collectInterfaceSignals,
   parseSymbolTable,
+  validateCompiledSymbolInterfaces,
 } = require('../parse-symbols.js')
 
 const subcircuit = {
@@ -68,5 +69,26 @@ test('rejects malformed symbol rows', () => {
   assert.throws(
     () => parseSymbolTable('1,1,main.in[0]', 'fixture.sym'),
     /fixture\.sym:1: Expected four comma-separated fields/,
+  )
+})
+
+test('validates all compiled symbol tables as one parser stage', () => {
+  const symbolTables = new Map([[
+    'Example',
+    {
+      entries: parseSymbolTable([
+        '1,1,0,main.out[0]',
+        '2,2,0,main.out[1]',
+        '3,3,0,main.in[0]',
+        '4,4,0,main.in[1]',
+      ].join('\n')),
+      source: 'Example.sym',
+    },
+  ]])
+
+  assert.doesNotThrow(() => validateCompiledSymbolInterfaces([subcircuit], symbolTables))
+  assert.throws(
+    () => validateCompiledSymbolInterfaces([subcircuit], new Map()),
+    /Missing compiled symbol table for 'Example'/,
   )
 })

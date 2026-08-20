@@ -101,7 +101,22 @@ function collectInterfaceSignals(entries, subcircuit, source = 'symbol table') {
   }
 }
 
+function validateCompiledSymbolInterfaces(subcircuits, symbolTables) {
+  if (!(symbolTables instanceof Map)) {
+    throw new Error('Compiled symbol tables must be provided as a Map.')
+  }
+
+  for (const subcircuit of subcircuits) {
+    const symbolTable = symbolTables.get(subcircuit.name)
+    if (symbolTable === undefined) {
+      throw new Error(`Missing compiled symbol table for '${subcircuit.name}'.`)
+    }
+    collectInterfaceSignals(symbolTable.entries, subcircuit, symbolTable.source)
+  }
+}
+
 module.exports = {
   collectInterfaceSignals,
   parseSymbolTable,
+  validateCompiledSymbolInterfaces,
 }

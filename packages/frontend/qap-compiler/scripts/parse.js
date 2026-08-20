@@ -7,7 +7,10 @@ const {
   parseCircomConstants,
   validateBufferCapacities,
 } = require('./parse-interfaces.js')
-const { collectInterfaceSignals, parseSymbolTable } = require('./parse-symbols.js')
+const {
+  parseSymbolTable,
+  validateCompiledSymbolInterfaces,
+} = require('./parse-symbols.js')
 const { parseCompilerReport } = require('./parse-compiler-report.js')
 
 const outputDir = process.argv[2] ? path.resolve(process.argv[2]) : path.resolve(__dirname, '../subcircuits/library')
@@ -505,12 +508,16 @@ function main() {
 
     const subcircuits = parseCompilerReport(data, compilerOutputPath)
 
+  const symbolTables = new Map()
   for (const subcircuit of subcircuits) {
     const symbolPath = path.join(outputDir, `${subcircuit.name}_circuit.sym`)
     const symbolSource = fs.readFileSync(symbolPath, 'utf8')
-    const symbolEntries = parseSymbolTable(symbolSource, symbolPath)
-    collectInterfaceSignals(symbolEntries, subcircuit, symbolPath)
+    symbolTables.set(subcircuit.name, {
+      entries: parseSymbolTable(symbolSource, symbolPath),
+      source: symbolPath,
+    })
   }
+  validateCompiledSymbolInterfaces(subcircuits, symbolTables)
 
   const circomConstants = parseCircomConstants(
     fs.readFileSync(constantsPath, 'utf8'),
