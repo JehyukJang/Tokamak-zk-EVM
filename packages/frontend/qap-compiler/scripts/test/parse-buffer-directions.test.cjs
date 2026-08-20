@@ -8,8 +8,9 @@ const {
 const {
   _assertInternalInterfacePortPrefixes,
   _validateBufferDeclarations,
-  parseWireList,
-} = require('../parse.js')
+  buildGlobalWireLayout,
+  buildSetupParams,
+} = require('../build-wire-layout.js')
 
 function createBufferCatalog() {
   return BUFFER_DECLARATIONS.map((declaration, id) => ({
@@ -115,7 +116,7 @@ test('rejects a declared buffer with an invalid compiled port range', () => {
 })
 
 test('derives public wire layout and boundary aliases from configuration', () => {
-  const wireInfo = parseWireList(createRawBufferCatalog(), LIBRARY_LAYOUT)
+  const wireInfo = buildGlobalWireLayout(createRawBufferCatalog(), LIBRARY_LAYOUT)
 
   assert.deepEqual(
     {
@@ -149,6 +150,37 @@ test('derives public wire layout and boundary aliases from configuration', () =>
   )
 })
 
+test('builds setup parameters from the wire layout and compiled constraints', () => {
+  const subcircuits = createRawBufferCatalog().map((subcircuit, index) => ({
+    ...subcircuit,
+    Nconsts: index === 0 ? 17 : 1,
+  }))
+  const setupParams = buildSetupParams(
+    buildGlobalWireLayout(subcircuits, LIBRARY_LAYOUT),
+    subcircuits,
+    LIBRARY_LAYOUT,
+    512,
+  )
+
+  assert.deepEqual(setupParams, {
+    l_log_out: 2,
+    l_storage_store: 4,
+    l_storage_load: 6,
+    l_tx_in: 8,
+    l_block_in: 10,
+    l_evm_in: 18,
+    l_free: 16,
+    l_user_out: 6,
+    l_user: 8,
+    l: 18,
+    l_D: 50,
+    m_D: 50,
+    n: 32,
+    s_D: 7,
+    s_max: 512,
+  })
+})
+
 test('rejects a public phase whose terminal boundary does not match its configured alias', () => {
   const publicWirePhases = LIBRARY_LAYOUT.publicWirePhases.map((phase) =>
     phase.name === 'user-output'
@@ -161,7 +193,7 @@ test('rejects a public phase whose terminal boundary does not match its configur
   }
 
   assert.throws(
-    () => parseWireList(createRawBufferCatalog(), invalidLayout),
+    () => buildGlobalWireLayout(createRawBufferCatalog(), invalidLayout),
     /does not end at its configured terminal boundary/,
   )
 })
