@@ -1,11 +1,4 @@
-//const {opcodeDictionary} = require('./opcode.js')
-const {S_MAX} = require('./configure.js')
-const {LIST_PUBLIC} = require('./configure.js')
-const {PUBLIC_WIRE_SEGMENTS} = require('./configure.js')
-const {BUFFER_DECLARATIONS} = require('./configure.js')
-const listPublic = LIST_PUBLIC
-const publicWireSegments = PUBLIC_WIRE_SEGMENTS
-const bufferDeclarations = BUFFER_DECLARATIONS
+const { S_MAX, LIBRARY_LAYOUT } = require('./configure.js')
 
 const fs = require('fs')
 const path = require('path')
@@ -48,18 +41,24 @@ function _buildWireFlattenMap(globalWireList, subcircuitInfos, globalWireIndex, 
   ]
 }
 
-function _getPublicWireRange(targetSubcircuit, type) {
-  if (type === 'outUser') {
-    return [targetSubcircuit.outWireIndex, targetSubcircuit.NOutWires]
-  }
-  if (type === 'inUser' || type === 'inBlock' || type === 'inFunction') {
+function _getPortRange(targetSubcircuit, direction) {
+  if (direction === 'in') {
     return [targetSubcircuit.inWireIndex, targetSubcircuit.NInWires]
   }
-  throw new Error(`parseWireList: Unsupported public wire type '${type}'.`)
+  if (direction === 'out') {
+    return [targetSubcircuit.outWireIndex, targetSubcircuit.NOutWires]
+  }
+  throw new Error(`parseWireList: Unsupported port direction '${direction}'.`)
 }
 
-function _appendPublicWireSegment(globalWireList, subcircuitInfos, globalWireIndex, targetSubcircuit, type) {
-  const [localWireIndex, numWires] = _getPublicWireRange(targetSubcircuit, type)
+function _getOppositePortDirection(direction) {
+  if (direction === 'in') return 'out'
+  if (direction === 'out') return 'in'
+  throw new Error(`parseWireList: Unsupported port direction '${direction}'.`)
+}
+
+function _appendPublicWireSegment(globalWireList, subcircuitInfos, globalWireIndex, targetSubcircuit, direction) {
+  const [localWireIndex, numWires] = _getPortRange(targetSubcircuit, direction)
   let ind = globalWireIndex
   for (let i = 0; i < numWires; i++) {
     _buildWireFlattenMap(
@@ -95,9 +94,52 @@ function _assertCompiledPortRange(targetSubcircuit, name, direction) {
   }
 }
 
-function _validateBufferDeclarations(subcircuitInfos, subcircuitInfoByName) {
+function _validateBufferDeclarations(subcircuitInfos, subcircuitInfoByName, libraryLayout) {
+  const {
+    bufferDeclarations,
+    publicWirePhases,
+    publicWireSegments,
+  } = libraryLayout
   const directionByName = new Map()
   const publicSegmentByName = new Map(publicWireSegments.map((segment) => [segment.name, segment]))
+  const phaseByName = new Map()
+  let hasFixedPhase = false
+
+  for (const phase of publicWirePhases) {
+    const {
+      name,
+      region,
+      genericBoundary,
+      terminalBoundary,
+      includeGenericBoundaryInSetup,
+    } = phase
+    if (typeof name !== 'string' || name.length === 0 || phaseByName.has(name)) {
+      throw new Error('parseWireList: Public wire phase names must be unique non-empty strings.')
+    }
+    if (region !== 'free' && region !== 'fixed') {
+      throw new Error(`parseWireList: Public wire phase '${name}' has an invalid region.`)
+    }
+    if (hasFixedPhase && region === 'free') {
+      throw new Error(`parseWireList: Public wire phase '${name}' cannot follow a fixed phase.`)
+    }
+    hasFixedPhase ||= region === 'fixed'
+    if (typeof genericBoundary !== 'string' || genericBoundary.length === 0
+      || typeof terminalBoundary !== 'string' || terminalBoundary.length === 0
+      || typeof includeGenericBoundaryInSetup !== 'boolean') {
+      throw new Error(`parseWireList: Public wire phase '${name}' has incomplete boundary metadata.`)
+    }
+    phaseByName.set(name, phase)
+  }
+
+  for (const segment of publicWireSegments) {
+    const { name, direction, phase, boundary } = segment
+    if (typeof name !== 'string' || name.length === 0
+      || (direction !== 'in' && direction !== 'out')
+      || typeof boundary !== 'string' || boundary.length === 0
+      || !phaseByName.has(phase)) {
+      throw new Error('parseWireList: Public wire segment has incomplete layout metadata.')
+    }
+  }
 
   for (const declaration of bufferDeclarations) {
     const { name, direction } = declaration
@@ -127,20 +169,15 @@ function _validateBufferDeclarations(subcircuitInfos, subcircuitInfoByName) {
         throw new Error(`parseWireList: Private-only buffer '${name}' must have input direction.`)
       }
     } else {
-      const [actualWireIndex, actualWireCount] = _getPublicWireRange(
+      const [actualWireIndex, actualWireCount] = _getPortRange(
         targetSubcircuit,
-        publicSegment.type,
+        publicSegment.direction,
       )
       const [expectedWireIndex, expectedWireCount] = direction === 'in'
         ? [targetSubcircuit.inWireIndex, targetSubcircuit.NInWires]
         : [targetSubcircuit.outWireIndex, targetSubcircuit.NOutWires]
-      const hasExpectedPublicType = direction === 'in'
-        ? publicSegment.type === 'inUser'
-          || publicSegment.type === 'inBlock'
-          || publicSegment.type === 'inFunction'
-        : publicSegment.type === 'outUser'
-      if (!hasExpectedPublicType) {
-        throw new Error(`parseWireList: Buffer '${name}' direction does not match its public wire type.`)
+      if (publicSegment.direction !== direction) {
+        throw new Error(`parseWireList: Buffer '${name}' direction does not match its public segment.`)
       }
       if (actualWireIndex !== expectedWireIndex || actualWireCount !== expectedWireCount) {
         throw new Error(`parseWireList: Buffer '${name}' public wire range does not match its direction.`)
@@ -159,7 +196,10 @@ function _validateBufferDeclarations(subcircuitInfos, subcircuitInfoByName) {
     subcircuit.bufferDirection = direction
   }
 
-  return directionByName
+  return {
+    directionByName,
+    publicSegmentByName,
+  }
 }
 
 function _assertInternalInterfacePortPrefixes(subcircuitInfos, l, l_D) {
@@ -195,48 +235,16 @@ function _assertInternalInterfacePortPrefixes(subcircuitInfos, l, l_D) {
   }
 }
 
-function parseWireList(subcircuitInfos) {
+function parseWireList(subcircuitInfos, libraryLayout) {
+  const {
+    publicWirePhases,
+    publicWireSegments,
+  } = libraryLayout
   let numTotalWires = 0
-  let numPubUserOutWires = 0
-  let numPubUserInWires = 0
-  let numPubBlockWires = 0
-  let numPubFunctinoWires = 0
   let numInterfaceWires = 0
   const subcircuitInfoByName = new Map()
   for (const subcircuit of subcircuitInfos) {
     numTotalWires += subcircuit.Nwires
-
-    if ( listPublic.has(subcircuit.name)) {
-      switch(listPublic.get(subcircuit.name)) {
-        case 'outUser': {
-          numPubUserOutWires += subcircuit.Out_idx[1]
-          numInterfaceWires += subcircuit.In_idx[1] + 1 // + 1 is for the constance wire
-          break;
-        }
-        case 'inUser': {
-          numPubUserInWires += subcircuit.In_idx[1]
-          numInterfaceWires += subcircuit.Out_idx[1] + 1 // + 1 is for the constance wire
-          break;
-        }
-        case 'inBlock': {
-          numPubBlockWires += subcircuit.In_idx[1]
-          numInterfaceWires += subcircuit.Out_idx[1] + 1 // + 1 is for the constance wire
-          break;
-        }
-        case 'inFunction': {
-          numPubFunctinoWires += subcircuit.In_idx[1]
-          numInterfaceWires += subcircuit.Out_idx[1] + 1 // + 1 is for the constance wire
-          break;
-        }
-        default: {
-          throw new Error("listPublic items must have either 'inUser', 'outUser', 'inBlock', 'inFunction'")
-        }
-      }
-    } else {
-      numInterfaceWires += subcircuit.Out_idx[1]
-      numInterfaceWires += subcircuit.In_idx[1]
-      numInterfaceWires += 1 // + 1 is for the constance wire
-    }
 
     if (subcircuitInfoByName.has(subcircuit.name)) {
       throw new Error(`parseWireList: Duplicate subcircuit name '${subcircuit.name}'.`)
@@ -254,45 +262,64 @@ function parseWireList(subcircuitInfos) {
     subcircuitInfoByName.set(subcircuit.name, entryObject)
   }
 
-  _validateBufferDeclarations(subcircuitInfos, subcircuitInfoByName)
+  const { publicSegmentByName } = _validateBufferDeclarations(
+    subcircuitInfos,
+    subcircuitInfoByName,
+    libraryLayout,
+  )
+  const publicWireCountByPhase = new Map(
+    publicWirePhases.map(({ name }) => [name, 0]),
+  )
+
+  for (const [subcircuitName, targetSubcircuit] of subcircuitInfoByName) {
+    const publicSegment = publicSegmentByName.get(subcircuitName)
+    if (publicSegment === undefined) {
+      numInterfaceWires += targetSubcircuit.NOutWires + targetSubcircuit.NInWires + 1
+      continue
+    }
+
+    const [, publicWireCount] = _getPortRange(targetSubcircuit, publicSegment.direction)
+    const [, internalWireCount] = _getPortRange(
+      targetSubcircuit,
+      _getOppositePortDirection(publicSegment.direction),
+    )
+    publicWireCountByPhase.set(
+      publicSegment.phase,
+      publicWireCountByPhase.get(publicSegment.phase) + publicWireCount,
+    )
+    numInterfaceWires += internalWireCount + 1
+  }
 
   const configuredPublicNames = new Set()
-  for (const { name, type, boundary } of publicWireSegments) {
+  for (const { name } of publicWireSegments) {
     if (configuredPublicNames.has(name)) {
       throw new Error(`parseWireList: Duplicate configured public subcircuit '${name}'.`)
     }
     configuredPublicNames.add(name)
-    if (listPublic.get(name) !== type) {
-      throw new Error(`parseWireList: Public wire segment type mismatch for '${name}'.`)
-    }
     if (!subcircuitInfoByName.has(name)) {
       throw new Error(`parseWireList: Missing configured public subcircuit '${name}'.`)
     }
-    if (typeof boundary !== 'string' || boundary.length === 0) {
-      throw new Error(`parseWireList: Missing public wire boundary for '${name}'.`)
+  }
+
+  let freePublicWireCount = 0
+  let fixedPublicWireCount = 0
+  for (const phase of publicWirePhases) {
+    const wireCount = publicWireCountByPhase.get(phase.name)
+    if (phase.region === 'free') {
+      freePublicWireCount += wireCount
+    } else {
+      fixedPublicWireCount += wireCount
     }
   }
 
-  const l_user_out = numPubUserOutWires
-  const l_user = l_user_out + numPubUserInWires
-  const l_free_actual = l_user + numPubBlockWires
-
-
-  console.log(`l_user actual: ${l_user}`)
-  console.log(`m block actual: ${l_free_actual - l_user}`)
-  console.log(`l_free actual: ${l_free_actual}`)
-
+  const l_free_actual = freePublicWireCount
   let twosPower = 1
-   while (twosPower < l_free_actual) {
+  while (twosPower < l_free_actual) {
     twosPower <<= 1
   }
   const numDiff_l_free = twosPower - l_free_actual
   const l_free = l_free_actual + numDiff_l_free
-   console.log(`l_free: ${l_free}`)
-
-  const l = l_free + numPubFunctinoWires
-  console.log(`m function actual: ${numPubFunctinoWires}`)
-  console.log(`l: ${l}`)
+  const l = l_free + fixedPublicWireCount
 
   twosPower = 1
   while (twosPower < numInterfaceWires) {
@@ -305,39 +332,46 @@ function parseWireList(subcircuitInfos) {
   const m_D = numTotalWires + numDiff_l_free + numDiff_m_I
   // numDiff_m_I makes the parameter m_I = l_D - l_free to be power of two.
 
-  console.log(`m_I actual: ${numInterfaceWires}`)
-  console.log(`m_I: ${l_D - l}`)
-
   const globalWireList = []
   const publicWireBoundaries = {}
+  const genericBoundaries = {}
+  const segmentsByPhase = new Map(
+    publicWirePhases.map(({ name }) => [name, []]),
+  )
+  for (const segment of publicWireSegments) {
+    segmentsByPhase.get(segment.phase).push(segment)
+  }
 
-  // Processing free public wires
-  let ind = 0  
-  for (const { name, type, boundary } of publicWireSegments) {
-    if (type === 'inFunction') {
-      continue
+  const appendPhase = (phase, globalWireIndex) => {
+    let ind = globalWireIndex
+    for (const { name, direction, boundary } of segmentsByPhase.get(phase.name)) {
+      ind = _appendPublicWireSegment(
+        globalWireList,
+        subcircuitInfos,
+        ind,
+        subcircuitInfoByName.get(name),
+        direction,
+      )
+      _recordPublicWireBoundary(publicWireBoundaries, boundary, ind)
     }
-    ind = _appendPublicWireSegment(
-      globalWireList,
-      subcircuitInfos,
-      ind,
-      subcircuitInfoByName.get(name),
-      type,
-    )
-    _recordPublicWireBoundary(publicWireBoundaries, boundary, ind)
+    genericBoundaries[phase.genericBoundary] = ind
+    if (publicWireBoundaries[phase.terminalBoundary] !== ind) {
+      throw new Error(
+        `parseWireList: Phase '${phase.name}' does not end at its configured terminal boundary.`,
+      )
+    }
+    return ind
+  }
+
+  let ind = 0
+  for (const phase of publicWirePhases) {
+    if (phase.region === 'free') {
+      ind = appendPhase(phase, ind)
+    }
   }
 
   if (ind !== l_free_actual) {
-    throw new Error(`parseWireList: Error during flattening public wires: ind = ${ind}, l_free_actual = ${l_free_actual}`)
-  }
-  if (publicWireBoundaries.l_storage_load !== l_user_out) {
-    throw new Error(`parseWireList: l_storage_load must equal l_user_out.`)
-  }
-  if (publicWireBoundaries.l_tx_in !== l_user) {
-    throw new Error(`parseWireList: l_tx_in must equal l_user.`)
-  }
-  if (publicWireBoundaries.l_block_in !== l_free_actual) {
-    throw new Error(`parseWireList: l_block_in must equal the unpadded free-public boundary.`)
+    throw new Error(`parseWireList: Free public wire count does not match flattened wire count.`)
   }
 
   for (let i = 0; i < numDiff_l_free; i++) {
@@ -351,35 +385,22 @@ function parseWireList(subcircuitInfos) {
   }
 
   if (ind !== l_free) {
-    throw new Error(`parseWireList: Error during flattening public wires: ind = ${ind}, l_free = ${l_free}`)
+    throw new Error(`parseWireList: Public-wire padding does not reach the configured free boundary.`)
   }
 
-  // Processing fixed public wires
-  for (const { name, type, boundary } of publicWireSegments) {
-    if (type !== 'inFunction') {
-      continue
+  for (const phase of publicWirePhases) {
+    if (phase.region === 'fixed') {
+      ind = appendPhase(phase, ind)
     }
-    ind = _appendPublicWireSegment(
-      globalWireList,
-      subcircuitInfos,
-      ind,
-      subcircuitInfoByName.get(name),
-      type,
-    )
-    _recordPublicWireBoundary(publicWireBoundaries, boundary, ind)
   }
 
   if (ind !== l) {
-    throw new Error(`parseWireList: Error during flattening public wires: ind = ${ind}, l_free = ${l_free}`)
-  }
-  if (publicWireBoundaries.l_evm_in !== l) {
-    throw new Error(`parseWireList: l_evm_in must equal l.`)
+    throw new Error(`parseWireList: Fixed public wire count does not match flattened wire count.`)
   }
 
   // Processing internal interface wires
-  for ( const subcircuitName of subcircuitInfoByName.keys() ){
-    const targetSubcircuit = subcircuitInfoByName.get(subcircuitName)
-    // Include the constance wire in the interface wire list
+  for (const [subcircuitName, targetSubcircuit] of subcircuitInfoByName) {
+    // Include the Circom constant wire in the interface wire list.
     _buildWireFlattenMap(
       globalWireList,
       subcircuitInfos,
@@ -387,34 +408,23 @@ function parseWireList(subcircuitInfos) {
       targetSubcircuit.id,
       0,
     )
-    if (listPublic.has(subcircuitName)) {
-      if (listPublic.get(subcircuitName) === 'outUser') {
-        const _numInterestWires = targetSubcircuit.NInWires
-        for (let i = 0; i < _numInterestWires; i++) {
-          _buildWireFlattenMap(
-            globalWireList,
-            subcircuitInfos,
-            ind++,
-            targetSubcircuit.id,
-            targetSubcircuit.inWireIndex + i,
-          )
-        }
-      } else if (listPublic.get(subcircuitName) === 'inUser' || listPublic.get(subcircuitName) === 'inBlock' || listPublic.get(subcircuitName) === 'inFunction') {
-        const _numInterestWires = targetSubcircuit.NOutWires
-        for (let i = 0; i < _numInterestWires; i++) {
-          _buildWireFlattenMap(
-            globalWireList,
-            subcircuitInfos,
-            ind++,
-            targetSubcircuit.id,
-            targetSubcircuit.outWireIndex + i,
-          )
-        }
-      } 
+    const publicSegment = publicSegmentByName.get(subcircuitName)
+    if (publicSegment !== undefined) {
+      const [internalWireIndex, internalWireCount] = _getPortRange(
+        targetSubcircuit,
+        _getOppositePortDirection(publicSegment.direction),
+      )
+      for (let i = 0; i < internalWireCount; i++) {
+        _buildWireFlattenMap(
+          globalWireList,
+          subcircuitInfos,
+          ind++,
+          targetSubcircuit.id,
+          internalWireIndex + i,
+        )
+      }
     } else {
-      let _numInterestWires
-      _numInterestWires = targetSubcircuit.NOutWires
-      for (let i = 0; i < _numInterestWires; i++) {
+      for (let i = 0; i < targetSubcircuit.NOutWires; i++) {
         _buildWireFlattenMap(
           globalWireList,
           subcircuitInfos,
@@ -423,8 +433,7 @@ function parseWireList(subcircuitInfos) {
           targetSubcircuit.outWireIndex + i,
         )
       }
-      _numInterestWires = targetSubcircuit.NInWires
-      for (let i = 0; i < _numInterestWires; i++) {
+      for (let i = 0; i < targetSubcircuit.NInWires; i++) {
         _buildWireFlattenMap(
           globalWireList,
           subcircuitInfos,
@@ -479,8 +488,7 @@ function parseWireList(subcircuitInfos) {
 
   return {
     ...publicWireBoundaries,
-    l_user_out,
-    l_user,
+    ...genericBoundaries,
     l_free,
     l,
     l_D,
@@ -596,30 +604,25 @@ function main() {
     }
   }
 
-  const globalWireInfo = parseWireList(subcircuits)
+  const globalWireInfo = parseWireList(subcircuits, LIBRARY_LAYOUT)
   const _n = Math.max(...numConstsVec)
   let n = 1;
   while (n < _n) {
       n <<= 1
   }
 
-  const setupParams = {
-    l_log_out: globalWireInfo.l_log_out,
-    l_storage_store: globalWireInfo.l_storage_store,
-    l_storage_load: globalWireInfo.l_storage_load,
-    l_tx_in: globalWireInfo.l_tx_in,
-    l_block_in: globalWireInfo.l_block_in,
-    l_evm_in: globalWireInfo.l_evm_in,
-    l_free: globalWireInfo.l_free,
-    l_user_out: globalWireInfo.l_user_out,
-    l_user: globalWireInfo.l_user,
-    l: globalWireInfo.l,
-    l_D: globalWireInfo.l_D,
-    m_D: globalWireInfo.m_D,
-    n,
-    s_D: subcircuits.length,
-    s_max: S_MAX,
-  }
+  const setupParams = Object.fromEntries(
+    LIBRARY_LAYOUT.setupWireParameterKeys.map((key) => {
+      const value = globalWireInfo[key]
+      if (!Number.isFinite(value)) {
+        throw new Error(`parse.js: Missing configured setup parameter '${key}'.`)
+      }
+      return [key, value]
+    }),
+  )
+  setupParams.n = n
+  setupParams.s_D = subcircuits.length
+  setupParams.s_max = S_MAX
   const globalWireList = globalWireInfo.wireList
 
   // const tsSubcircuitInfo = `// Out_idx[0] denotes the index of the first output wire.
