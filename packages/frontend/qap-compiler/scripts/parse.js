@@ -8,12 +8,12 @@ const {
   validateBufferCapacities,
 } = require('./parse-interfaces.js')
 const { collectInterfaceSignals, parseSymbolTable } = require('./parse-symbols.js')
+const { parseCompilerReport } = require('./parse-compiler-report.js')
 
 const outputDir = process.argv[2] ? path.resolve(process.argv[2]) : path.resolve(__dirname, '../subcircuits/library')
 const compilerOutputPath = process.argv[3] ? path.resolve(process.argv[3]) : path.resolve(__dirname, 'temp.txt')
 const interfaceDir = path.resolve(__dirname, '../subcircuits/interface')
 const constantsPath = path.resolve(__dirname, '../subcircuits/circom/constants.circom')
-const ansiEscapePattern = /\u001b\[[0-9;]*m/g
 
 function _buildWireFlattenMap(globalWireList, subcircuitInfos, globalWireIndex, subcircuitId, subcircuitWireId) {
   if (subcircuitId >= 0 ){
@@ -499,85 +499,11 @@ function parseWireList(subcircuitInfos, libraryLayout) {
 
 // Main script
 
-const numConstsVec= [];
-
-function getLineValue(lines, prefix) {
-  const targetLine = lines.find((line) => line.startsWith(prefix))
-  if (targetLine === undefined) {
-    throw new Error(`parse.js: Missing '${prefix}' in compiler output.`)
-  }
-
-  const matches = targetLine.match(/\d+/g)
-  if (matches === null || matches.length === 0) {
-    throw new Error(`parse.js: Missing numeric value for '${prefix}'.`)
-  }
-
-  return Number(matches[matches.length - 1])
-}
-
-function parseSubcircuitBlock(lines) {
-  const id = Number(lines[0].match(/\d+/)[0])
-
-  let name
-  const parts = lines[0].split(' = ')
-  if (parts.length > 1) {
-    const tempName = parts[1]
-    if (tempName.includes('_')) {
-      const index = tempName.indexOf('_')
-      name = tempName.substring(0, index) + '-' + tempName.substring(index + 1)
-    } else {
-      name = tempName
-    }
-  } else {
-    throw new Error(`parse.js: Failed to parse subcircuit name from '${lines[0]}'.`)
-  }
-
-  const numWires = getLineValue(lines, 'wires:')
-  const numOutput = getLineValue(lines, 'public outputs:')
-  const numInput = getLineValue(lines, 'public inputs:') + getLineValue(lines, 'private inputs:')
-  const numConsts = getLineValue(lines, 'non-linear constraints:') + getLineValue(lines, 'linear constraints:')
-  numConstsVec.push(numConsts)
-
-  return {
-    id,
-    name,
-    Nwires: numWires,
-    Nconsts: numConsts,
-    Out_idx: [1, numOutput],
-    In_idx: [numOutput + 1, numInput],
-  }
-}
-
 function main() {
   fs.readFile(compilerOutputPath, 'utf8', function(err, data) {
-  if (err) throw err;
-  
-  const subcircuits = []
+    if (err) throw err
 
-  const output = data
-    .replace(ansiEscapePattern, '')
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-
-  let currentBlock = []
-  for (const line of output) {
-    if (line.startsWith('id[')) {
-      if (currentBlock.length > 0) {
-        subcircuits.push(parseSubcircuitBlock(currentBlock))
-      }
-      currentBlock = [line]
-      continue
-    }
-
-    if (currentBlock.length > 0) {
-      currentBlock.push(line)
-    }
-  }
-
-  if (currentBlock.length > 0) {
-    subcircuits.push(parseSubcircuitBlock(currentBlock))
-  }
+    const subcircuits = parseCompilerReport(data, compilerOutputPath)
 
   for (const subcircuit of subcircuits) {
     const symbolPath = path.join(outputDir, `${subcircuit.name}_circuit.sym`)
@@ -605,7 +531,7 @@ function main() {
   }
 
   const globalWireInfo = parseWireList(subcircuits, LIBRARY_LAYOUT)
-  const _n = Math.max(...numConstsVec)
+  const _n = Math.max(...subcircuits.map(({ Nconsts }) => Nconsts))
   let n = 1;
   while (n < _n) {
       n <<= 1
