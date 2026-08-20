@@ -3,9 +3,7 @@ const { S_MAX, LIBRARY_LAYOUT } = require('./configure.js')
 const fs = require('fs')
 const path = require('path')
 const {
-  loadLogicalInterfaces,
-  parseCircomConstants,
-  validateBufferCapacities,
+  validateCompiledSubcircuitInterfaces,
 } = require('./parse-interfaces.js')
 const {
   parseSymbolTable,
@@ -506,7 +504,7 @@ function main() {
   fs.readFile(compilerOutputPath, 'utf8', function(err, data) {
     if (err) throw err
 
-    const subcircuits = parseCompilerReport(data, compilerOutputPath)
+    let subcircuits = parseCompilerReport(data, compilerOutputPath)
 
   const symbolTables = new Map()
   for (const subcircuit of subcircuits) {
@@ -519,23 +517,11 @@ function main() {
   }
   validateCompiledSymbolInterfaces(subcircuits, symbolTables)
 
-  const circomConstants = parseCircomConstants(
-    fs.readFileSync(constantsPath, 'utf8'),
-    constantsPath,
-  )
-  validateBufferCapacities(subcircuits, circomConstants)
-
-  const logicalInterfaces = loadLogicalInterfaces(
+  subcircuits = validateCompiledSubcircuitInterfaces(
     subcircuits,
     interfaceDir,
     constantsPath,
   )
-  for (const subcircuit of subcircuits) {
-    const logicalInterface = logicalInterfaces.get(subcircuit.name)
-    if (logicalInterface !== undefined) {
-      subcircuit.logicalInterface = logicalInterface
-    }
-  }
 
   const globalWireInfo = parseWireList(subcircuits, LIBRARY_LAYOUT)
   const _n = Math.max(...subcircuits.map(({ Nconsts }) => Nconsts))

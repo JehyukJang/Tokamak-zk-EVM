@@ -168,11 +168,7 @@ function parseLogicalInterface(sourceText, constants, source = 'logical interfac
   }
 }
 
-function loadLogicalInterfaces(subcircuits, interfaceDir, constantsPath) {
-  const constants = parseCircomConstants(
-    fs.readFileSync(constantsPath, 'utf8'),
-    constantsPath,
-  )
+function loadLogicalInterfaces(subcircuits, interfaceDir, constants) {
   const expectedNames = new Set(
     subcircuits
       .map(({ name }) => name)
@@ -228,10 +224,27 @@ function loadLogicalInterfaces(subcircuits, interfaceDir, constantsPath) {
   return interfaces
 }
 
+function validateCompiledSubcircuitInterfaces(subcircuits, interfaceDir, constantsPath) {
+  const constants = parseCircomConstants(
+    fs.readFileSync(constantsPath, 'utf8'),
+    constantsPath,
+  )
+  validateBufferCapacities(subcircuits, constants)
+  const logicalInterfaces = loadLogicalInterfaces(subcircuits, interfaceDir, constants)
+
+  return subcircuits.map((subcircuit) => {
+    const logicalInterface = logicalInterfaces.get(subcircuit.name)
+    return logicalInterface === undefined
+      ? subcircuit
+      : { ...subcircuit, logicalInterface }
+  })
+}
+
 module.exports = {
   countPhysicalWires,
   loadLogicalInterfaces,
   parseCircomConstants,
   parseLogicalInterface,
   validateBufferCapacities,
+  validateCompiledSubcircuitInterfaces,
 }

@@ -10,6 +10,7 @@ const {
   parseCircomConstants,
   parseLogicalInterface,
   validateBufferCapacities,
+  validateCompiledSubcircuitInterfaces,
 } = require('../parse-interfaces.js')
 
 const UINT256 = { kind: 'uint', bits: 256 }
@@ -118,11 +119,12 @@ test('requires exactly one JSON declaration for every non-buffer target', (conte
     { name: 'bufferTxIn', In_idx: [1, 6], Out_idx: [1, 0] },
     { name: 'Example', In_idx: [1, 2], Out_idx: [1, 0] },
   ]
-  assert.equal(loadLogicalInterfaces(subcircuits, interfaceDir, constantsPath).size, 1)
+  const constants = parseCircomConstants(fs.readFileSync(constantsPath, 'utf8'), constantsPath)
+  assert.equal(loadLogicalInterfaces(subcircuits, interfaceDir, constants).size, 1)
 
   fs.rmSync(path.join(interfaceDir, 'Example.json'))
   assert.throws(
-    () => loadLogicalInterfaces(subcircuits, interfaceDir, constantsPath),
+    () => loadLogicalInterfaces(subcircuits, interfaceDir, constants),
     /interface file is missing for subcircuit 'Example'/,
   )
 
@@ -132,7 +134,7 @@ test('requires exactly one JSON declaration for every non-buffer target', (conte
   }))
   fs.writeFileSync(path.join(interfaceDir, 'Extra.json'), JSON.stringify({ inputs: [], outputs: [] }))
   assert.throws(
-    () => loadLogicalInterfaces(subcircuits, interfaceDir, constantsPath),
+    () => loadLogicalInterfaces(subcircuits, interfaceDir, constants),
     /Extra\.json.*no compiled non-buffer subcircuit/,
   )
 })
@@ -153,10 +155,41 @@ test('rejects logical wire counts that disagree with compiled interfaces', (cont
     () => loadLogicalInterfaces(
       [{ name: 'Example', In_idx: [1, 3], Out_idx: [1, 0] }],
       interfaceDir,
-      constantsPath,
+      parseCircomConstants(fs.readFileSync(constantsPath, 'utf8'), constantsPath),
     ),
     /Logical inputs expand to 2 wires, but Example has 3 compiled input wires/,
   )
+})
+
+test('validates compiled buffers and attaches verified logical interfaces', (context) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qap-interface-stage-test-'))
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const interfaceDir = path.join(root, 'interface')
+  fs.mkdirSync(interfaceDir)
+  const constantsPath = path.join(root, 'constants.circom')
+  fs.writeFileSync(constantsPath, [
+    'function nLogOut(){ return 5; }',
+    'function nStorageStore(){ return 6; }',
+    'function nStorageLoad(){ return 7; }',
+    'function nTxIn(){ return 8; }',
+    'function nBlockIn(){ return 9; }',
+    'function nEVMIn(){ return 10; }',
+    'function nPrvIn(){ return 11; }',
+  ].join('\n'))
+  fs.writeFileSync(path.join(interfaceDir, 'Example.json'), JSON.stringify({
+    inputs: [{ name: 'word', logicalType: UINT256 }],
+    outputs: [],
+  }))
+
+  const validated = validateCompiledSubcircuitInterfaces([
+    ...BUFFER_SUBCIRCUITS,
+    { name: 'Example', In_idx: [1, 2], Out_idx: [1, 0] },
+  ], interfaceDir, constantsPath)
+
+  assert.deepEqual(validated.at(-1).logicalInterface, {
+    inputs: [{ name: 'word', logicalType: UINT256 }],
+    outputs: [],
+  })
 })
 
 test('validates buffer input and output wire counts independently', () => {
