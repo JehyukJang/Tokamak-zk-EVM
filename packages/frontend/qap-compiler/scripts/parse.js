@@ -31,39 +31,37 @@ function parseCliArguments(args) {
 }
 
 function main({ outputDir, compilerOutputPath }) {
-  fs.readFile(compilerOutputPath, 'utf8', (error, compilerReport) => {
-    if (error) throw error
-
-    let subcircuits = parseCompilerReport(compilerReport, compilerOutputPath)
-    const symbolTables = new Map()
-    for (const subcircuit of subcircuits) {
-      const symbolPath = path.join(outputDir, `${subcircuit.name}_circuit.sym`)
-      const symbolSource = fs.readFileSync(symbolPath, 'utf8')
-      symbolTables.set(subcircuit.name, {
-        entries: parseSymbolTable(symbolSource, symbolPath),
-        source: symbolPath,
-      })
-    }
-    validateCompiledSymbolInterfaces(subcircuits, symbolTables)
-
-    subcircuits = validateCompiledSubcircuitInterfaces(
-      subcircuits,
-      interfaceDir,
-      constantsPath,
-    )
-    const globalWireInfo = buildGlobalWireLayout(subcircuits, LIBRARY_LAYOUT)
-    const setupParams = buildSetupParams(
-      globalWireInfo,
-      subcircuits,
-      LIBRARY_LAYOUT,
-      S_MAX,
-    )
-
-    writeLibraryArtifacts(outputDir, {
-      subcircuits,
-      globalWireList: globalWireInfo.wireList,
-      setupParams,
+  const compilerReport = fs.readFileSync(compilerOutputPath, 'utf8')
+  let subcircuits = parseCompilerReport(compilerReport, compilerOutputPath)
+  const symbolTables = new Map()
+  for (const subcircuit of subcircuits) {
+    const symbolPath = path.join(outputDir, `${subcircuit.name}_circuit.sym`)
+    const symbolSource = fs.readFileSync(symbolPath, 'utf8')
+    symbolTables.set(subcircuit.name, {
+      entries: parseSymbolTable(symbolSource, symbolPath),
+      source: symbolPath,
     })
+  }
+  validateCompiledSymbolInterfaces(subcircuits, symbolTables)
+
+  subcircuits = validateCompiledSubcircuitInterfaces(
+    subcircuits,
+    interfaceDir,
+    constantsPath,
+  )
+  const globalWireInfo = buildGlobalWireLayout(subcircuits, LIBRARY_LAYOUT)
+  subcircuits = globalWireInfo.subcircuits
+  const setupParams = buildSetupParams(
+    globalWireInfo,
+    subcircuits,
+    LIBRARY_LAYOUT,
+    S_MAX,
+  )
+
+  writeLibraryArtifacts(outputDir, {
+    subcircuits,
+    globalWireList: globalWireInfo.wireList,
+    setupParams,
   })
 }
 

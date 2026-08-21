@@ -74,26 +74,6 @@ test('rejects a direction that conflicts with its public segment', () => {
   )
 })
 
-test('rejects a generic buffer without a declared direction', () => {
-  const catalog = [
-    ...createBufferCatalog(),
-    {
-      id: BUFFER_DECLARATIONS.length,
-      name: 'bufferUndeclared',
-      NWires: 5,
-      NInWires: 2,
-      NOutWires: 2,
-      inWireIndex: 1,
-      outWireIndex: 3,
-    },
-  ]
-
-  assert.throws(
-    () => _validateBufferDeclarations(catalog, createCatalogByName(catalog), LIBRARY_LAYOUT),
-    /missing direction metadata/,
-  )
-})
-
 test('rejects a declared buffer name that resolves to a logical interface', () => {
   const catalog = createBufferCatalog()
   catalog[0].logicalInterface = { inputs: [], outputs: [] }
@@ -150,14 +130,25 @@ test('derives public wire layout and boundary aliases from configuration', () =>
   )
 })
 
+test('returns a flattened catalog without mutating the compiled catalog', () => {
+  const catalog = createRawBufferCatalog()
+  const originalCatalog = JSON.parse(JSON.stringify(catalog))
+  const wireInfo = buildGlobalWireLayout(catalog, LIBRARY_LAYOUT)
+
+  assert.deepEqual(catalog, originalCatalog)
+  assert.equal(wireInfo.subcircuits.length, catalog.length)
+  assert.ok(Array.isArray(wireInfo.subcircuits[0].flattenMap))
+})
+
 test('builds setup parameters from the wire layout and compiled constraints', () => {
   const subcircuits = createRawBufferCatalog().map((subcircuit, index) => ({
     ...subcircuit,
     Nconsts: index === 0 ? 17 : 1,
   }))
+  const wireInfo = buildGlobalWireLayout(subcircuits, LIBRARY_LAYOUT)
   const setupParams = buildSetupParams(
-    buildGlobalWireLayout(subcircuits, LIBRARY_LAYOUT),
-    subcircuits,
+    wireInfo,
+    wireInfo.subcircuits,
     LIBRARY_LAYOUT,
     512,
   )

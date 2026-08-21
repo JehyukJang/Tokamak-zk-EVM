@@ -122,6 +122,14 @@ test('requires exactly one JSON declaration for every non-buffer target', (conte
   const constants = parseCircomConstants(fs.readFileSync(constantsPath, 'utf8'), constantsPath)
   assert.equal(loadLogicalInterfaces(subcircuits, interfaceDir, constants).size, 1)
 
+  assert.throws(
+    () => loadLogicalInterfaces([
+      ...subcircuits,
+      { name: 'bufferLikeOperation', In_idx: [1, 2], Out_idx: [1, 0] },
+    ], interfaceDir, constants),
+    /interface file is missing for subcircuit 'bufferLikeOperation'/,
+  )
+
   fs.rmSync(path.join(interfaceDir, 'Example.json'))
   assert.throws(
     () => loadLogicalInterfaces(subcircuits, interfaceDir, constants),

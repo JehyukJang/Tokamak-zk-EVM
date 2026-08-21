@@ -163,10 +163,9 @@ the surrounding protocol assigns meaning to the values.
 ## Scope and source snapshot
 
 The tables cover every production target in
-[`scripts/compile.sh`](../scripts/compile.sh). Files under
-`subcircuits/circom/unused/` are historical or experimental and are not
-included. The values describe the current source tree, not necessarily the
-contents of an older installed package or the checked-in generated library.
+[`scripts/compile.sh`](../scripts/compile.sh). The values describe the current
+source tree, not necessarily the contents of an older installed package or the
+checked-in generated library.
 
 The production list currently contains 44 compiled subcircuit types: seven
 generic buffers, 30 general computational or support types, and seven

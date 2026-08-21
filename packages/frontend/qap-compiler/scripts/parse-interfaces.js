@@ -4,6 +4,7 @@ const { BUFFER_DECLARATIONS } = require('./configure.js')
 
 const CIRCOM_CONSTANT_PATTERN = /function\s+([A-Za-z_]\w*)\s*\(\)\s*{\s*return\s+(\d+)\s*;\s*}/g
 const PORT_KEYS = new Set(['name', 'logicalType', 'length'])
+const BUFFER_NAMES = new Set(BUFFER_DECLARATIONS.map(({ name }) => name))
 
 function assertObject(value, description) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
@@ -172,7 +173,7 @@ function loadLogicalInterfaces(subcircuits, interfaceDir, constants) {
   const expectedNames = new Set(
     subcircuits
       .map(({ name }) => name)
-      .filter((name) => !name.startsWith('buffer')),
+      .filter((name) => !BUFFER_NAMES.has(name)),
   )
   const entries = fs.readdirSync(interfaceDir, { withFileTypes: true })
   for (const entry of entries) {

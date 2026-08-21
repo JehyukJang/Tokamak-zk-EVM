@@ -1,12 +1,11 @@
 import fs from 'fs';
-import { loadTokamakL2JsConstants } from './source.mjs';
+import { FUNCTION_INPUT_LENGTH, POSEIDON_INPUTS } from 'tokamak-l2js';
 
 const constantsPath = process.argv[2];
 if (typeof constantsPath !== 'string' || constantsPath.length === 0) {
   throw new Error('Expected constants.circom path as the first argument.');
 }
 
-const { FUNCTION_INPUT_LENGTH, POSEIDON_INPUTS } = loadTokamakL2JsConstants();
 if (!Number.isInteger(FUNCTION_INPUT_LENGTH) || FUNCTION_INPUT_LENGTH < 0) {
   throw new Error(
     `Invalid TokamakL2JS constant: FUNCTION_INPUT_LENGTH=${FUNCTION_INPUT_LENGTH}`,
