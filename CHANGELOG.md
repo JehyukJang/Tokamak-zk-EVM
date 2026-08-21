@@ -10,50 +10,133 @@ The format is based on Keep a Changelog.
 
 ### Compatibility and Upgrade Notes
 
-- The subcircuit library and Synthesizer packages must be upgraded together.
-  This release changes the generated circuit set and public-instance layout,
-  so applications must rebuild their circuit artifacts and use a newly
-  generated compatible backend CRS before proving.
-- Transaction inputs now include a public channel transaction index. Update
-  transaction producers and verifiers to supply and bind that value; the
-  Ethereum account nonce is no longer used as the transaction identity for
-  synthesis.
-- Storage reads and final storage writes are emitted as public
-  `(address, key, value)` records. Applications that update state must verify
-  storage membership and root transitions with the separate storage proof and
-  bind its public records to the Tokamak zk-EVM proof in their bridge or
-  orchestration protocol.
-- Reverted or exceptionally halted top-level transactions no longer produce a
-  synthesizable transaction proof. Callers must handle the returned synthesis
-  error rather than expect a proof for a failed transaction.
+- Upgrade the subcircuit library and both Synthesizer packages as one release
+  unit. The generated circuit catalog, logical interfaces, buffer capacities,
+  and public-instance layout have changed. Rebuild all circuit artifacts and
+  generate a new compatible backend CRS before proving; do not combine a new
+  Synthesizer with an older library, R1CS/WASM set, metadata, or CRS.
+- The public-instance boundary no longer uses the former `bufferPubIn` and
+  `bufferPubOut` layout. It now separates transaction, block, and EVM static
+  inputs from committed log, storage-read, and storage-write records.
+  Integrations that read an `instance.json` or describe public inputs must use
+  the generated metadata from this release rather than positional assumptions
+  from an earlier release.
+- Update transaction producers to the synchronized `tokamak-l2js` 0.2
+  transaction format. A public channel transaction index replaces the Ethereum
+  account nonce as the transaction identity supplied to synthesis. The
+  signature circuit also derives its private-message input arity from the
+  synchronized TokamakL2JS specification, so applications must regenerate
+  transaction snapshots after upgrading either dependency.
+- Storage handling is now split from EVM execution. The proof exposes the
+  first read and final committed write for each storage location as public
+  `(address, key, value)` records. The bridge or orchestration protocol must
+  verify storage membership and root transitions with the separate storage
+  proof, then bind those public records to the Tokamak zk-EVM proof.
+- Log output now contains committed EVM logs only: logs emitted in a reverted
+  child call are excluded. Fixed-capacity storage and log record buffers remain
+  zero-padded; the higher-level protocol filters zero-address storage records
+  and all-zero log records.
+- A reverted or exceptionally halted top-level transaction no longer produces
+  a synthesizable transaction proof. Callers must handle the synthesis error
+  rather than expect a proof for a failed transaction.
+- The supported contract class is deliberately restricted: every successful
+  call in the application's accepted input and state domain must retain one
+  fixed EVM execution and circuit topology. Review the
+  [Synthesizer transaction-support guide](./packages/frontend/synthesizer/README.md#transaction-support)
+  and validate the intended domain with its topology test matrix before
+  relying on a contract function.
+
+### Quantified Circuit and Setup Changes
+
+The following values compare the checked-in `2.1.5` library with the current
+generated library. They are circuit/setup dimensions, not a benchmark of
+end-to-end proving time. No CPU, GPU, or browser proving-time claim is made
+for this unreleased circuit set.
+
+| Generated catalog metric | `2.1.5` | Current | Change |
+| --- | ---: | ---: | ---: |
+| Distinct compiled subcircuit types | 14 | 44 | +30 |
+| Sum of constraints across one instance of every distinct type | 24,275 | 23,667 | -608 (-2.5%) |
+| Sum of R1CS wires across one instance of every distinct type | 25,893 | 23,762 | -2,131 (-8.2%) |
+| Largest single-subcircuit constraint count | 3,936 | 1,024 | -2,912 |
+| Declared subcircuit count (`s_D`) | 14 | 44 | +30 |
+| Maximum placements (`s_max`) | 256 | 512 | +256 |
+| Setup constraint-domain parameter (`n`) | 4,096 | 1,024 | -3,072 |
+| Total generated matrix dimension (`m_D`) | 26,591 | 24,079 | -2,512 (-9.4%) |
+| Total generated wire-domain boundary (`l_D`) | 4,824 | 1,420 | -3,404 (-70.6%) |
+
+The changed public-wire boundaries and static buffer capacities are:
+
+| Boundary or capacity | `2.1.5` | Current |
+| --- | ---: | ---: |
+| Free public-wire boundary (`l_free`) | 128 | 256 |
+| User-output boundary (`l_user_out`) | 65 | 130 |
+| User-input boundary (`l_user`) | 85 | 134 |
+| Final public boundary (`l`) | 728 | 396 |
+| Legacy public-output buffer capacity (`nPubOut`) | 65 input wires | Removed |
+| Legacy public-input buffer capacity (`nPubIn`) | 20 input wires | Removed |
+| Transaction input capacity (`nTxIn`) | Not separate | 4 input wires |
+| Block input capacity | 24 input wires | 24 input wires |
+| Fixed EVM input capacity (`nEVMIn`) | 600 input wires | 140 input wires |
+| Private input capacity (`nPrvIn`) | 1,060 input wires | 50 input wires |
+| Committed log capacity (`nLogOut`) | Not present | 50 input wires |
+| Initial storage-read capacity (`nStorageLoad`) | Not present | 50 input wires |
+| Final storage-write capacity (`nStorageStore`) | Not present | 30 input wires |
+
+The current public sections end at `l_log_out = 50`,
+`l_storage_store = 80`, `l_storage_load = 130`, `l_tx_in = 134`,
+`l_block_in = 158`, and `l_evm_in = 396`. The current signature circuit uses
+`nPrivateMessageInputs = 29`, `nPoseidonInputs = 2`, and a Poseidon batch size
+of `nPoseidonBatch = 4`; the message-input count is obtained from the
+synchronized TokamakL2JS specification. The former Merkle depth of 36
+(`2^36` leaves), accumulation batch of 32, Jubjub exponentiation batch of 128,
+and EVM exponentiation batch of 32 are removed rather than replaced by new
+capacity parameters.
 
 ### Correctness and Security
 
-- Updated circuit constraints and transaction-signature verification to remove
-  previously unsafe arithmetic and signature-validation paths.
-- Corrected synthesis of full-width storage values, byte stores, call data in
-  inherited static calls, and EVM `BYTE`, `SIGNEXTEND`, `SHL`, and `SHR`
-  boundary behavior.
+- Replaced transaction-signature verification with the current compact,
+  cofactor-aware transaction-signature composition and its synchronized
+  TokamakL2JS signing semantics. Verified transaction origin, contract address,
+  and function-selector values are routed into subsequent EVM execution using
+  the new circuit boundary.
+- Strengthened generated constraints for modular arithmetic, exponentiation,
+  division, signed comparisons, multiplication, shifts, and signature-point
+  validation. This removes unsafe arithmetic and signature-validation paths
+  present in the previous circuit set.
+- Corrected full-width storage values and addresses, byte-sized memory stores,
+  inherited static-call calldata, dynamic memory-view ownership, and EVM
+  `BYTE`, `SIGNEXTEND`, `SHL`, `SHR`, and `SAR` full-domain boundary behavior.
 
 ### Subcircuit Library
 
-- Rebuilt the generated circuit catalog around the current transaction-signature,
-  EVM-operation, memory-view, log, and storage-record boundaries. Deprecated
-  Merkle-tree circuit paths and their legacy public-buffer layout are no longer
-  part of the library.
-- Storage reads and final writes now use the library's public storage-record
-  buffers. Applications must use the synchronized storage-proof integration
-  described in the compatibility notes rather than rely on the prior
-  in-circuit Merkle proof behavior.
+- Rebuilt the generated catalog around the current transaction-signature,
+  selector-free EVM-operation, memory-view, committed-log, and storage-record
+  boundaries. The compiler now publishes the logical wire interfaces and
+  buffer directions consumed by the Synthesizer; consumers must treat these
+  artifacts as release-specific metadata.
+- Removed in-circuit Merkle-tree membership and root-transition circuits,
+  obsolete public-buffer layouts, legacy signature wrappers, and superseded
+  ALU wrappers. Storage proof verification is an external protocol
+  responsibility as described above.
+- Regenerated the optimized circuit artifacts, including packed interfaces for
+  signature and exponentiation compositions. The catalog now has 44 types, all
+  at or below 1,024 constraints, instead of the former 14-type catalog whose
+  largest type had 3,936 constraints. This changes setup dimensions and is one
+  of the reasons a compatible CRS must be regenerated.
 
 ### Synthesizer Packages
 
-- Removed the stale ERC20 example and test workflow from the Node Synthesizer
-  development surface. Private-state examples and topology checks are now the
-  supported Synthesizer validation path.
-- Internal Synthesizer cleanup removed unused helper APIs and duplicate memory
-  emulation without changing the supported synthesis input, output, or proof
-  interfaces.
+- Node and Web Synthesizers now consume the library's published interface and
+  buffer-direction metadata, reject incompatible artifacts earlier, and build
+  the revised transaction-signature, EVM-operation, memory-view, log, and
+  storage-record placements.
+- The Node Synthesizer development surface no longer includes the stale ERC20
+  example or test workflow. Private-state examples and topology checks are the
+  maintained validation path.
+- Removed obsolete internal runtime helpers, legacy storage/Merkle paths, and
+  duplicate memory emulation. These cleanup changes do not add a separate
+  application-facing API beyond the compatibility changes listed above.
 
 ## [2.1.5] - 2026-07-31
 
