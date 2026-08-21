@@ -64,6 +64,9 @@ for this unreleased circuit set.
 | Setup constraint-domain parameter (`n`) | 4,096 | 1,024 | -3,072 |
 | Total generated matrix dimension (`m_D`) | 26,591 | 24,079 | -2,512 (-9.4%) |
 | Total generated wire-domain boundary (`l_D`) | 4,824 | 1,420 | -3,404 (-70.6%) |
+| Internal placement-interface width (`m_I = l_D - l`) | 4,096 | 1,024 | -3,072 (-75.0%) |
+| Constraint grid size (`n × s_max`) | 1,048,576 | 524,288 | -524,288 (-50.0%) |
+| Interface grid size (`m_I × s_max`) | 1,048,576 | 524,288 | -524,288 (-50.0%) |
 
 The changed public-wire boundaries and static buffer capacities are:
 
