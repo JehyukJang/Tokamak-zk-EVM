@@ -2,7 +2,6 @@ pragma circom 2.1.6;
 
 include "./jubjub.circom";
 include "./fr_to_limbs.circom";
-include "../../subcircuits/circom/constants.circom";
 
 // This file owns the reusable relations used by the production transaction-
 // signature composition. Templates with an _unsafe suffix require the exact
@@ -401,7 +400,6 @@ template TSVAssertExtendedEqual_unsafe() {
 }
 
 template TransactionSignaturePoseidonBatch4() {
-    assert(nPrivateMessageInputs() == 29);
     signal input in[7];
     signal output out[2];
 
@@ -420,8 +418,31 @@ template TransactionSignaturePoseidonBatch4() {
     out <== [firstHash.out, fourthHash.out];
 }
 
+template TransactionSignaturePoseidonTail1() {
+    signal input in[4];
+    signal output out[2];
+
+    component publicKeyHash = Poseidon255(2);
+    publicKeyHash.in <== [in[0], in[1]];
+    component challengeHash = Poseidon255(2);
+    challengeHash.in <== [in[2], in[3]];
+    out <== [publicKeyHash.out, challengeHash.out];
+}
+
+template TransactionSignaturePoseidonTail2() {
+    signal input in[5];
+    signal output out[2];
+
+    component publicKeyHash = Poseidon255(2);
+    publicKeyHash.in <== [in[0], in[1]];
+    component firstChallengeHash = Poseidon255(2);
+    firstChallengeHash.in <== [in[2], in[3]];
+    component finalChallengeHash = Poseidon255(2);
+    finalChallengeHash.in <== [firstChallengeHash.out, in[4]];
+    out <== [publicKeyHash.out, finalChallengeHash.out];
+}
+
 template TransactionSignaturePointPolicy() {
-    assert(nPrivateMessageInputs() == 29);
     signal input in[8];
     signal output out[16];
 
@@ -470,8 +491,21 @@ template TransactionSignaturePointPolicy() {
     }
 }
 
+template TransactionSignaturePointPolicyWithHash() {
+    signal input in[8];
+    signal output out[17];
+
+    component pointPolicy = TransactionSignaturePointPolicy();
+    pointPolicy.in <== in;
+    for (var index = 0; index < 16; index++) {
+        out[index] <== pointPolicy.out[index];
+    }
+    component publicKeyHash = Poseidon255(2);
+    publicKeyHash.in <== [in[2], in[3]];
+    out[16] <== publicKeyHash.out;
+}
+
 template TransactionSignatureFixedPrefix70() {
-    assert(nPrivateMessageInputs() == 29);
     signal input in[1];
     signal output out[5];
 
@@ -493,7 +527,6 @@ template TransactionSignatureFixedPrefix70() {
 }
 
 template TransactionSignatureChallengeChunks() {
-    assert(nPrivateMessageInputs() == 29);
     signal input in[1];
     signal output out[4];
 
@@ -516,7 +549,6 @@ template TransactionSignatureChallengeChunks() {
 }
 
 template TransactionSignatureVariableFirstBatch32() {
-    assert(nPrivateMessageInputs() == 29);
     signal input in[9];
     signal output out[4];
 
@@ -536,7 +568,6 @@ template TransactionSignatureVariableFirstBatch32() {
 }
 
 template TransactionSignatureVariableBatch32() {
-    assert(nPrivateMessageInputs() == 29);
     signal input in[13];
     signal output out[4];
 
@@ -558,7 +589,6 @@ template TransactionSignatureVariableBatch32() {
 }
 
 template TransactionSignatureFinal() {
-    assert(nPrivateMessageInputs() == 29);
     signal input in[14];
     signal output out[2];
 

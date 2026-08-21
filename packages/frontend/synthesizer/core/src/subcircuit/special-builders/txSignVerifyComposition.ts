@@ -1,12 +1,12 @@
 import { BIT_DATA_PT_TYPE, BLS12_381_FR_DATA_PT_TYPE } from '../../synthesizer/types/dataStructure.ts';
 import type {
+  ConstantDefinition,
   CompositionStep,
   InputReference,
   OutputReference,
   PlacementCompositionEntry,
 } from '../placementCompositionMapping.ts';
 
-const NUM_CHAIN_POSEIDON_BATCHES = 8;
 const NUM_RUNTIME_TABLE_COORDINATES = 8;
 const NUM_EXTENDED_COORDINATES = 4;
 const NUM_CHALLENGE_CHUNKS = 4;
@@ -40,10 +40,16 @@ export const createTransactionSignatureVerifyCompositionMapping = (
 
   const chainModeConstantIndex = 0;
   const zeroFieldConstantIndex = 1;
-  const independentModeConstantIndex = 2;
+  const challengeLength = numberOfPrivateMessageInputs + 7;
+  const tailLength = (numberOfPrivateMessageInputs + 2) % 4 || 4;
+  const numberOfFullChainBatches = (challengeLength - tailLength - 1) / 4;
+  if (!Number.isInteger(numberOfFullChainBatches) || numberOfFullChainBatches < 1) {
+    throw new Error('TransactionSignatureVerify has an invalid Poseidon chain shape');
+  }
+  const independentModeConstantIndex = tailLength === 3 ? 2 : undefined;
 
   let previousChallengeHashIndex: number | undefined;
-  for (let batch = 0; batch < NUM_CHAIN_POSEIDON_BATCHES; batch++) {
+  for (let batch = 0; batch < numberOfFullChainBatches; batch++) {
     const finalHashIndex = allocateIntermediate();
     const challengeOffset = 4 * batch;
     steps.push({
@@ -69,30 +75,73 @@ export const createTransactionSignatureVerifyCompositionMapping = (
     throw new Error('TransactionSignatureVerify requires a challenge hash chain');
   }
 
-  const publicKeyHashIndex = allocateIntermediate();
-  const challengeHashIndex = allocateIntermediate();
-  steps.push({
-    subcircuit: 'TransactionSignaturePoseidonBatch4',
-    selector: null,
-    inputs: [
-      { kind: 'constant', index: independentModeConstantIndex },
-      challengeInput(2, contractOperandIndex, selectorOperandIndex),
-      challengeInput(3, contractOperandIndex, selectorOperandIndex),
-      { kind: 'step-output', index: previousChallengeHashIndex },
-      challengeInput(33, contractOperandIndex, selectorOperandIndex),
-      challengeInput(34, contractOperandIndex, selectorOperandIndex),
-      challengeInput(35, contractOperandIndex, selectorOperandIndex),
-    ],
-    outputs: [
-      { kind: 'step-output', index: publicKeyHashIndex },
-      { kind: 'step-output', index: challengeHashIndex },
-    ],
-  });
+  const tailStart = 4 * numberOfFullChainBatches + 1;
+  let publicKeyHashIndex = allocateIntermediate();
+  let challengeHashIndex: number;
+  if (tailLength === 3) {
+    challengeHashIndex = allocateIntermediate();
+    steps.push({
+      subcircuit: 'TransactionSignaturePoseidonBatch4',
+      selector: null,
+      inputs: [
+        { kind: 'constant', index: independentModeConstantIndex! },
+        challengeInput(2, contractOperandIndex, selectorOperandIndex),
+        challengeInput(3, contractOperandIndex, selectorOperandIndex),
+        { kind: 'step-output', index: previousChallengeHashIndex },
+        challengeInput(tailStart, contractOperandIndex, selectorOperandIndex),
+        challengeInput(tailStart + 1, contractOperandIndex, selectorOperandIndex),
+        challengeInput(tailStart + 2, contractOperandIndex, selectorOperandIndex),
+      ],
+      outputs: [
+        { kind: 'step-output', index: publicKeyHashIndex },
+        { kind: 'step-output', index: challengeHashIndex },
+      ],
+    });
+  } else if (tailLength === 1 || tailLength === 2) {
+    challengeHashIndex = allocateIntermediate();
+    steps.push({
+      subcircuit: tailLength === 1
+        ? 'TransactionSignaturePoseidonTail1'
+        : 'TransactionSignaturePoseidonTail2',
+      selector: null,
+      inputs: [
+        challengeInput(2, contractOperandIndex, selectorOperandIndex),
+        challengeInput(3, contractOperandIndex, selectorOperandIndex),
+        { kind: 'step-output', index: previousChallengeHashIndex },
+        ...Array.from({ length: tailLength }, (_, tailOffset): InputReference =>
+          challengeInput(tailStart + tailOffset, contractOperandIndex, selectorOperandIndex),
+        ),
+      ],
+      outputs: [
+        { kind: 'step-output', index: publicKeyHashIndex },
+        { kind: 'step-output', index: challengeHashIndex },
+      ],
+    });
+  } else {
+    const finalHashIndex = allocateIntermediate();
+    steps.push({
+      subcircuit: 'TransactionSignaturePoseidonBatch4',
+      selector: null,
+      inputs: [
+        { kind: 'constant', index: chainModeConstantIndex },
+        { kind: 'step-output', index: previousChallengeHashIndex },
+        challengeInput(tailStart, contractOperandIndex, selectorOperandIndex),
+        { kind: 'constant', index: zeroFieldConstantIndex },
+        challengeInput(tailStart + 1, contractOperandIndex, selectorOperandIndex),
+        challengeInput(tailStart + 2, contractOperandIndex, selectorOperandIndex),
+        challengeInput(tailStart + 3, contractOperandIndex, selectorOperandIndex),
+      ],
+      outputs: [{ kind: 'discard' }, { kind: 'step-output', index: finalHashIndex }],
+    });
+    challengeHashIndex = finalHashIndex;
+  }
 
   const runtimeTableIndices = allocateIntermediates(NUM_RUNTIME_TABLE_COORDINATES);
   const randomizerCofactorIndices = allocateIntermediates(NUM_EXTENDED_COORDINATES);
   steps.push({
-    subcircuit: 'TransactionSignaturePointPolicy',
+    subcircuit: tailLength === 4
+      ? 'TransactionSignaturePointPolicyWithHash'
+      : 'TransactionSignaturePointPolicy',
     selector: null,
     inputs: [
       challengeInput(0, contractOperandIndex, selectorOperandIndex),
@@ -115,6 +164,9 @@ export const createTransactionSignatureVerifyCompositionMapping = (
         kind: 'step-output',
         index,
       })),
+      ...(tailLength === 4
+        ? [{ kind: 'step-output', index: publicKeyHashIndex } satisfies OutputReference]
+        : []),
     ],
   });
 
@@ -207,15 +259,19 @@ export const createTransactionSignatureVerifyCompositionMapping = (
     outputs: [{ kind: 'result', index: 2 }],
   });
 
+  const constants: ConstantDefinition[] = [
+    { value: 1n, dataPtType: BIT_DATA_PT_TYPE },
+    { value: 0n, dataPtType: BLS12_381_FR_DATA_PT_TYPE },
+  ];
+  if (tailLength === 3) {
+    constants.push({ value: 0n, dataPtType: BIT_DATA_PT_TYPE });
+  }
+
   return {
     operation: 'TransactionSignatureVerify',
     composition: {
       placementStrategy: 'generic',
-      constants: [
-        { value: 1n, dataPtType: BIT_DATA_PT_TYPE },
-        { value: 0n, dataPtType: BLS12_381_FR_DATA_PT_TYPE },
-        { value: 0n, dataPtType: BIT_DATA_PT_TYPE },
-      ],
+      constants,
       externalCheckRequiredOperandIndices: [],
       numSteps: steps.length,
       numOperands: numberOfOperands,

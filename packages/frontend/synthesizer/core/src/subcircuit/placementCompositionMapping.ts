@@ -1,5 +1,5 @@
 import { OPERATOR_LIST, type CompositionSubcircuit, type Operator } from './configuredTypes.ts';
-import { assertPositiveInteger, freezeComposition } from './utils.ts';
+import { freezeComposition } from './utils.ts';
 import { isDataPtType, type DataPtType } from '../synthesizer/types/dataStructure.ts';
 import { createAddMulModCompositionMappings } from './special-builders/addMulModComposition.ts';
 import { createDivisionCompositionMappings } from './special-builders/divModComposition.ts';
@@ -345,7 +345,9 @@ export type PlacementCompositionConfig = Readonly<{
 export const createPlacementCompositionMapping = (
   config: PlacementCompositionConfig,
 ): PlacementCompositionMapping => {
-  assertPositiveInteger(config.nPrivateMessageInputs, 'nPrivateMessageInputs');
+  if (!Number.isSafeInteger(config.nPrivateMessageInputs) || config.nPrivateMessageInputs < 0) {
+    throw new Error('PlacementCompositionMapping: nPrivateMessageInputs must be a non-negative safe integer');
+  }
   return assemblePlacementCompositionMapping([
     ...FIXED_SINGLE_STEP_ARITHMETIC_MAPPINGS,
     ...createDivisionCompositionMappings(),

@@ -66,11 +66,12 @@ function createLibraryData(
 }
 
 describe('logical-interface resolution', () => {
-  it('rejects a private-message input count that differs from the reserved input boundary', () => {
+  it('derives the reserved transaction-input boundary from qap-compiler metadata', () => {
     const data = createLibraryData();
     data.frontendCfg.nPrivateMessageInputs = 28;
-    expect(() => resolveSubcircuitLibraryData(data, async () => new ArrayBuffer(0))).toThrow(
-      'qap-compiler declares 28 private message inputs, but Synthesizer reserves 29',
+    const library = resolveSubcircuitLibraryData(data, async () => new ArrayBuffer(0));
+    expect(library.transactionInputVariables).toEqual(
+      Array.from({ length: 28 }, (_, index) => `TRANSACTION_INPUT${index}`),
     );
   });
 

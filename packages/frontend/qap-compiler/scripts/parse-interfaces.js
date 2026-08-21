@@ -1,6 +1,6 @@
 const fs = require('node:fs')
 const path = require('node:path')
-const { LIBRARY_LAYOUT } = require('./configure.js')
+const { CONDITIONAL_SUBCIRCUIT_NAMES, LIBRARY_LAYOUT } = require('./configure.js')
 const {
   countPhysicalWires,
   parseCircomConstants,
@@ -159,16 +159,43 @@ function loadLogicalInterfaces(subcircuits, interfaceDir, constants) {
   )
   const entries = fs.readdirSync(interfaceDir, { withFileTypes: true })
   for (const entry of entries) {
+    if (entry.isDirectory() && entry.name === 'conditional') continue
     if (!entry.isFile() || !entry.name.endsWith('.json')) {
       throw new Error(`Logical interface directory has unsupported entry '${entry.name}'.`)
     }
   }
   const actualNames = new Set(
-    entries.map((entry) => entry.name.slice(0, -'.json'.length)),
+    entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+      .map((entry) => entry.name.slice(0, -'.json'.length)),
   )
 
+  const conditionalInterfaceDir = path.join(interfaceDir, 'conditional')
+  const conditionalEntries = fs.existsSync(conditionalInterfaceDir)
+    ? fs.readdirSync(conditionalInterfaceDir, { withFileTypes: true })
+    : []
+  for (const entry of conditionalEntries) {
+    if (!entry.isFile() || !entry.name.endsWith('.json')) {
+      throw new Error(`Conditional logical interface directory has unsupported entry '${entry.name}'.`)
+    }
+  }
+  const conditionalNames = new Set(conditionalEntries.map((entry) => entry.name.slice(0, -'.json'.length)))
+  const configuredConditionalNames = new Set(CONDITIONAL_SUBCIRCUIT_NAMES)
+  if (conditionalEntries.length > 0) {
+    for (const name of configuredConditionalNames) {
+      if (!conditionalNames.has(name)) {
+        throw new Error(`Conditional logical interface file '${name}.json' is missing.`)
+      }
+    }
+  }
+  for (const name of conditionalNames) {
+    if (!configuredConditionalNames.has(name)) {
+      throw new Error(`Conditional logical interface file '${name}.json' is not configured.`)
+    }
+  }
+
   for (const name of expectedNames) {
-    if (!actualNames.has(name)) {
+    if (!actualNames.has(name) && !conditionalNames.has(name)) {
       throw new Error(`Logical interface file is missing for subcircuit '${name}'.`)
     }
   }
@@ -183,7 +210,9 @@ function loadLogicalInterfaces(subcircuits, interfaceDir, constants) {
     if (!expectedNames.has(subcircuit.name)) {
       continue
     }
-    const source = path.join(interfaceDir, `${subcircuit.name}.json`)
+    const source = actualNames.has(subcircuit.name)
+      ? path.join(interfaceDir, `${subcircuit.name}.json`)
+      : path.join(conditionalInterfaceDir, `${subcircuit.name}.json`)
     const logicalInterface = parseLogicalInterface(
       fs.readFileSync(source, 'utf8'),
       constants,

@@ -6,7 +6,6 @@ import {
   setLengthRight,
 } from '@ethereumjs/util';
 import { DataPtFactory } from '../dataStructure/dataPt.ts';
-import { TRANSACTION_INPUT_VARIABLES } from '../../subcircuit/configuredTypes.ts';
 import { MemoryPt, StackPt } from '../dataStructure/index.ts';
 import {
   UINT32_DATA_PT_TYPE,
@@ -213,7 +212,7 @@ export class ContextManager {
     originPt: DataPt,
     transactionInputPts: readonly DataPt[],
   ): void {
-    if (transactionInputPts.length !== TRANSACTION_INPUT_VARIABLES.length) {
+    if (transactionInputPts.length !== this.placementManager.numberOfPrivateMessageInputs) {
       throw new Error('Synthesizer: verified transaction input count is invalid')
     }
     this._verifiedContractAddressPt = DataPtFactory.deepCopy(contractAddressPt)
@@ -364,7 +363,7 @@ export class ContextManager {
         selectorPt === undefined
         || verifiedContractAddressPt === undefined
         || this.cachedOrigin === undefined
-        || this._verifiedTransactionInputPts.length !== TRANSACTION_INPUT_VARIABLES.length
+        || this._verifiedTransactionInputPts.length !== this.placementManager.numberOfPrivateMessageInputs
       ) {
         throw new Error('Synthesizer: verified transaction data is unavailable')
       }

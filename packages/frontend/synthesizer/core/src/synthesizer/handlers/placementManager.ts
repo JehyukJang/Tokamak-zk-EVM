@@ -4,7 +4,7 @@ import {
   DataPtDescription,
   DataPtType,
   ReservedVariable,
-  VARIABLE_DESCRIPTION,
+  getReservedVariableDescription,
   BIT_DATA_PT_TYPE,
   BLS12_381_FR_DATA_PT_TYPE,
   UINT128_DATA_PT_TYPE,
@@ -26,7 +26,6 @@ import {
   BUFFER_DESCRIPTION,
   BUFFER_LIST,
   ReservedBuffer,
-  TRANSACTION_INPUT_VARIABLES,
   SubcircuitInfoByName,
   SubcircuitInfoByNameEntry,
   SubcircuitNames,
@@ -283,6 +282,7 @@ export class PlacementManager {
   private _guardedBufferOutputWires: Map<number, Set<number>> = new Map()
 
   public subcircuitInfoByName: SubcircuitInfoByName;
+  public readonly numberOfPrivateMessageInputs: number;
   private readonly _bufferSubcircuitByBuffer: Record<ReservedBuffer, SubcircuitInfoByNameEntry | undefined>;
   private readonly _placementCompositionMapping: PlacementCompositionMapping;
 
@@ -291,9 +291,17 @@ export class PlacementManager {
     private readonly reservedInputValues: ReadonlyMap<ReservedVariable, bigint>,
   ) {
     this.subcircuitInfoByName = subcircuitLibrary.subcircuitInfoByName
+    this.numberOfPrivateMessageInputs = subcircuitLibrary.transactionInputVariables.length
     this._bufferSubcircuitByBuffer = subcircuitLibrary.subcircuitBufferMapping
     this._placementCompositionMapping = subcircuitLibrary.placementCompositionMapping
     this._initBuffers()
+  }
+
+  private _getReservedVariableDescription(varName: ReservedVariable): DataPtDescription {
+    return getReservedVariableDescription(
+      varName,
+      this.numberOfPrivateMessageInputs,
+    )
   }
 
   public get placements(): Placements {
@@ -308,10 +316,11 @@ export class PlacementManager {
     message?: string,
   ): DataPt {
     this._assertReservedVariableBufferDirection(varName, 'in')
-    const placementIndex = VARIABLE_DESCRIPTION[varName].source
+    const variableDescription = this._getReservedVariableDescription(varName)
+    const placementIndex = variableDescription.source
     const wireDesc: DataPtDescription = {
-      ...VARIABLE_DESCRIPTION[varName],
-      extSource: VARIABLE_DESCRIPTION[varName].extSource + (message ?? ''),
+      ...variableDescription,
+      extSource: variableDescription.extSource + (message ?? ''),
     }
     const externalDataPt = DataPtFactory.create(wireDesc, value)
     if (dynamic) {
@@ -331,10 +340,11 @@ export class PlacementManager {
     message?: string,
   ): DataPt {
     this._assertReservedVariableBufferDirection(varName, 'out')
-    const placementIndex = VARIABLE_DESCRIPTION[varName].source
+    const variableDescription = this._getReservedVariableDescription(varName)
+    const placementIndex = variableDescription.source
     const wireDesc: DataPtDescription = {
-      ...VARIABLE_DESCRIPTION[varName],
-      extDest: VARIABLE_DESCRIPTION[varName].extDest + (message ?? ''),
+      ...variableDescription,
+      extDest: variableDescription.extDest + (message ?? ''),
     }
     const externalDataPt = DataPtFactory.create(wireDesc, symbolDataPt.value)
     if (dynamic) {
@@ -383,11 +393,12 @@ export class PlacementManager {
   }
 
   public getReservedVariableFromBuffer(varName: ReservedVariable): DataPt {
-    if (VARIABLE_DESCRIPTION[varName].extSource === undefined) {
+    const variableDescription = this._getReservedVariableDescription(varName)
+    if (variableDescription.extSource === undefined) {
       throw new Error('Usable only for reserved variables of input buffers')
     }
-    const placementIndex = VARIABLE_DESCRIPTION[varName].source
-    const wireIndex = VARIABLE_DESCRIPTION[varName].wireIndex
+    const placementIndex = variableDescription.source
+    const wireIndex = variableDescription.wireIndex
     const outPt = this._placements[placementIndex]!.outPts[wireIndex]!
     if (outPt.wireIndex !== wireIndex || outPt.source !== placementIndex) {
       throw new Error('Invalid wire information')
@@ -488,7 +499,7 @@ export class PlacementManager {
     this._addReservedInputVariable('CONTRACT_ADDRESS')
     this._addReservedInputVariable('FUNCTION_SELECTOR')
     this._addReservedInputVariable('CHANNEL_TX_INDEX')
-    for (const variable of TRANSACTION_INPUT_VARIABLES) {
+    for (const variable of this.subcircuitLibrary.transactionInputVariables) {
       this._addReservedInputVariable(variable)
     }
   }
@@ -1376,7 +1387,7 @@ export class PlacementManager {
     varName: ReservedVariable,
     expectedDirection: BufferDirection,
   ): void {
-    const buffer = BUFFER_LIST[VARIABLE_DESCRIPTION[varName].source]
+    const buffer = BUFFER_LIST[this._getReservedVariableDescription(varName).source]
     if (buffer === undefined) {
       throw new Error(
         `Synthesizer: ${varName} must be added through an ${expectedDirection === 'in' ? 'input' : 'output'} buffer`,

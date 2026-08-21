@@ -114,4 +114,61 @@ describe('transaction-signature host output calculations', () => {
       'challenge hash is not a canonical BLS12-381 Fr value',
     );
   });
+
+  it.each([28, 29, 30, 31])('uses the TokamakL2JS Poseidon chain for %i private inputs', (numberOfPrivateMessageInputs) => {
+    const privateKey = 37n;
+    const randomizerScalar = 61n;
+    const publicKey = jubjub.Point.BASE.multiply(privateKey).toAffine();
+    const randomizer = jubjub.Point.BASE.multiply(randomizerScalar).toAffine();
+    const channelTransactionIndex = 19n;
+    const contractAddress = 0x1234567890abcdef1234567890abcdef12345678n;
+    const functionSelector = 0xdeadbeefn;
+    const transactionInputs = Array.from(
+      { length: numberOfPrivateMessageInputs },
+      (_, index) => BigInt(index + 1),
+    );
+    const challenge = poseidonChainCompress([
+      randomizer.x,
+      randomizer.y,
+      publicKey.x,
+      publicKey.y,
+      channelTransactionIndex,
+      contractAddress,
+      functionSelector,
+      ...transactionInputs,
+    ]);
+    const response = (randomizerScalar + challenge * privateKey) % jubjub.Point.Fn.ORDER;
+    const operands = [
+      randomizer.x,
+      randomizer.y,
+      publicKey.x,
+      publicKey.y,
+      channelTransactionIndex,
+      ...transactionInputs,
+      contractAddress,
+      functionSelector,
+      response,
+      0n,
+      1n,
+    ];
+    const { composition } = createTransactionSignatureVerifyCompositionMapping(numberOfPrivateMessageInputs);
+    const intermediates = new Map<number, bigint>();
+    let challengeInput: bigint | undefined;
+
+    for (const step of composition.steps) {
+      const values = step.inputs.map((input) => {
+        if (input.kind === 'operand') return operands[input.index]!;
+        if (input.kind === 'constant') return composition.constants[input.index]!.value;
+        if (input.kind === 'step-output') return intermediates.get(input.index)!;
+        throw new Error('TSV does not use selector inputs');
+      });
+      if (step.subcircuit === 'TransactionSignatureChallengeChunks') challengeInput = values[0];
+      const calculated = calculateSubcircuitOutputValues(step.subcircuit as CompositionSubcircuit, values);
+      step.outputs.forEach((output, index) => {
+        if (output.kind === 'step-output') intermediates.set(output.index, calculated[index]!);
+      });
+    }
+
+    expect(challengeInput).toBe(challenge);
+  });
 });

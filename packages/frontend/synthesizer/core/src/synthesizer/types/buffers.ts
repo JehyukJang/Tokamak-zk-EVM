@@ -11,7 +11,7 @@ import {
 import {
   BUFFER_LIST,
   ReservedBuffer,
-  TRANSACTION_INPUT_VARIABLES,
+  type TransactionInputVariable,
 } from '../../subcircuit/configuredTypes.ts';
 
 const LOG_OUT_VARIABLES_STATIC = [
@@ -343,35 +343,6 @@ const EVM_IN_VARIABLES_DYNAMIC = [
 const PRIVATE_IN_VARIABLES_STATIC = [
   'EDDSA_PUBLIC_KEY_X',
   'EDDSA_PUBLIC_KEY_Y',
-  'TRANSACTION_INPUT0',
-  'TRANSACTION_INPUT1',
-  'TRANSACTION_INPUT2',
-  'TRANSACTION_INPUT3',
-  'TRANSACTION_INPUT4',
-  'TRANSACTION_INPUT5',
-  'TRANSACTION_INPUT6',
-  'TRANSACTION_INPUT7',
-  'TRANSACTION_INPUT8',
-  'TRANSACTION_INPUT9',
-  'TRANSACTION_INPUT10',
-  'TRANSACTION_INPUT11',
-  'TRANSACTION_INPUT12',
-  'TRANSACTION_INPUT13',
-  'TRANSACTION_INPUT14',
-  'TRANSACTION_INPUT15',
-  'TRANSACTION_INPUT16',
-  'TRANSACTION_INPUT17',
-  'TRANSACTION_INPUT18',
-  'TRANSACTION_INPUT19',
-  'TRANSACTION_INPUT20',
-  'TRANSACTION_INPUT21',
-  'TRANSACTION_INPUT22',
-  'TRANSACTION_INPUT23',
-  'TRANSACTION_INPUT24',
-  'TRANSACTION_INPUT25',
-  'TRANSACTION_INPUT26',
-  'TRANSACTION_INPUT27',
-  'TRANSACTION_INPUT28',
   'EDDSA_RANDOMIZER_X',
   'EDDSA_RANDOMIZER_Y',
 ] as const
@@ -399,6 +370,7 @@ type EVMInVariable =
 type PrivateInVariable =
   | (typeof PRIVATE_IN_VARIABLES_STATIC)[number]
   | (typeof PRIVATE_IN_VARIABLES_DYNAMIC)[number]
+  | TransactionInputVariable
 export type ReservedVariable =
   | LogOutVariable
   | StorageStoreVariable
@@ -480,7 +452,9 @@ const _PRIVATE_IN_DESCRIPTION_INCOMPLETE = __buildIncompleteDescription(
   'PRIVATE_IN',
 ) as Record<PrivateInVariable, DataPtDescription>;
 
-const VARIABLE_DESCRIPTION_INCOMPLETE: Record<ReservedVariable, DataPtDescription> = {
+type StaticReservedVariable = Exclude<ReservedVariable, TransactionInputVariable>
+
+const VARIABLE_DESCRIPTION_INCOMPLETE: Record<StaticReservedVariable, DataPtDescription> = {
   ..._LOG_OUT_DESCRIPTION_INCOMPLETE,
   ..._STORAGE_STORE_DESCRIPTION_INCOMPLETE,
   ..._TX_IN_DESCRIPTION_INCOMPLETE,
@@ -491,7 +465,7 @@ const VARIABLE_DESCRIPTION_INCOMPLETE: Record<ReservedVariable, DataPtDescriptio
 }
 
 const __setDataPtType = (
-  varName: ReservedVariable,
+  varName: StaticReservedVariable,
   dataPtType: DataPtType,
 ): void => {
   VARIABLE_DESCRIPTION_INCOMPLETE[varName] = {
@@ -528,7 +502,7 @@ VARIABLE_DESCRIPTION_INCOMPLETE.CHAINID.extSource = `CHAINID`;
 VARIABLE_DESCRIPTION_INCOMPLETE.SELFBALANCE.extSource = `SELFBALANCE`;
 VARIABLE_DESCRIPTION_INCOMPLETE.BASEFEE.extSource = `BASEFEE`;
 for (let i = 1; i <= 256; i++) {
-  const varName = `BLOCKHASH_${i}` as ReservedVariable
+  const varName = `BLOCKHASH_${i}` as StaticReservedVariable
   if ( BLOCK_IN_VARIABLES_STATIC.findIndex(staticVarName => staticVarName === varName) < 0 ) {
     throw new Error(`${varName} is not a ReservedVariable`)
   }
@@ -551,7 +525,7 @@ VARIABLE_DESCRIPTION_INCOMPLETE.UINT32_CONST_ZERO.extSource = 'Zero uint32 value
 __setDataPtType('UINT32_CONST_ZERO', UINT32_DATA_PT_TYPE)
 
 for (let exponent = 0; exponent <= 6; exponent++) {
-  const varName = `UINT32_POW2_${exponent}` as ReservedVariable
+  const varName = `UINT32_POW2_${exponent}` as StaticReservedVariable
   VARIABLE_DESCRIPTION_INCOMPLETE[varName].extSource = `Uint32 power of two: 2^${exponent}`
   __setDataPtType(varName, UINT32_DATA_PT_TYPE)
 }
@@ -582,13 +556,6 @@ __setDataPtType('EDDSA_PUBLIC_KEY_X', BLS12_381_FR_DATA_PT_TYPE)
 
 VARIABLE_DESCRIPTION_INCOMPLETE.EDDSA_PUBLIC_KEY_Y.extSource = `EdDSA public key of caller (y coordinate)`;
 __setDataPtType('EDDSA_PUBLIC_KEY_Y', BLS12_381_FR_DATA_PT_TYPE)
-for (const [i, varName] of TRANSACTION_INPUT_VARIABLES.entries()) {
-  if (PRIVATE_IN_VARIABLES_STATIC.findIndex(staticVarName => staticVarName === varName) < 0) {
-    throw new Error(`${varName} is not a ReservedVariable`)
-  }
-  VARIABLE_DESCRIPTION_INCOMPLETE[varName].extSource = `The ${i}-th input to the selected function`;
-  __setDataPtType(varName, BLS12_381_FR_DATA_PT_TYPE)
-}
 VARIABLE_DESCRIPTION_INCOMPLETE.EDDSA_RANDOMIZER_X.extSource = `EdDSA randomizer (x coordinate)`;
 __setDataPtType('EDDSA_RANDOMIZER_X', BLS12_381_FR_DATA_PT_TYPE)
 
@@ -596,7 +563,7 @@ VARIABLE_DESCRIPTION_INCOMPLETE.EDDSA_RANDOMIZER_Y.extSource = `EdDSA randomizer
 __setDataPtType('EDDSA_RANDOMIZER_Y', BLS12_381_FR_DATA_PT_TYPE)
 
 for (const _varName of _VARIABLES) {
-  const varName = _varName as ReservedVariable
+  const varName = _varName as StaticReservedVariable
   if (
     VARIABLE_DESCRIPTION_INCOMPLETE[varName].extDest === undefined && 
     VARIABLE_DESCRIPTION_INCOMPLETE[varName].extSource === undefined
@@ -606,3 +573,34 @@ for (const _varName of _VARIABLES) {
 }
 
 export const VARIABLE_DESCRIPTION = VARIABLE_DESCRIPTION_INCOMPLETE
+
+export const getReservedVariableDescription = (
+  variable: ReservedVariable,
+  numberOfPrivateMessageInputs: number,
+): DataPtDescription => {
+  const transactionInputMatch = /^TRANSACTION_INPUT(\d+)$/.exec(variable)
+  if (transactionInputMatch !== null) {
+    const inputIndex = Number(transactionInputMatch[1])
+    if (!Number.isSafeInteger(inputIndex) || inputIndex < 0 || inputIndex >= numberOfPrivateMessageInputs) {
+      throw new Error(`Synthesizer: ${variable} is outside the configured private transaction-input range`)
+    }
+    return {
+      source: BUFFER_LIST.indexOf('PRIVATE_IN'),
+      wireIndex: 2 + inputIndex,
+      dataPtType: BLS12_381_FR_DATA_PT_TYPE,
+      extSource: `The ${inputIndex}-th input to the selected function`,
+    }
+  }
+  if (variable === 'EDDSA_RANDOMIZER_X' || variable === 'EDDSA_RANDOMIZER_Y') {
+    const description = VARIABLE_DESCRIPTION[variable]
+    return {
+      ...description,
+      wireIndex: numberOfPrivateMessageInputs + (variable === 'EDDSA_RANDOMIZER_X' ? 2 : 3),
+    }
+  }
+  const description = VARIABLE_DESCRIPTION[variable as StaticReservedVariable]
+  if (description === undefined) {
+    throw new Error(`Synthesizer: unknown reserved variable ${variable}`)
+  }
+  return description
+}

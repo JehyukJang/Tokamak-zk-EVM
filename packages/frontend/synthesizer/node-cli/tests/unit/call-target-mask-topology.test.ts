@@ -3,7 +3,7 @@ import type { InterpreterStep, Message } from '@ethereumjs/evm';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  TRANSACTION_INPUT_VARIABLES,
+  createTransactionInputVariables,
   type Operator,
 } from '../../../core/src/subcircuit/configuredTypes.ts';
 import { DataPtFactory, MemoryPt, StackPt } from '../../../core/src/synthesizer/dataStructure/index.ts';
@@ -16,6 +16,7 @@ import {
 } from '../../../core/src/synthesizer/types/dataStructure.ts';
 
 const CALL_OPCODES = ['CALL', 'CALLCODE', 'DELEGATECALL', 'STATICCALL'] as const;
+const TRANSACTION_INPUT_VARIABLES = createTransactionInputVariables(29);
 
 type CallOpcode = typeof CALL_OPCODES[number];
 const dataPt = (
@@ -73,6 +74,7 @@ const createHarness = (
   });
   const placementManager = {
     placements: [],
+    numberOfPrivateMessageInputs: TRANSACTION_INPUT_VARIABLES.length,
     placeComposition,
     getLogOutWireLength: vi.fn(() => 0),
   };
@@ -102,6 +104,7 @@ describe('CALL-family target-word topology', () => {
   it('uses the verified uint256 contract address for both root context address roles', () => {
     const placementManager = {
       placements: [],
+      numberOfPrivateMessageInputs: TRANSACTION_INPUT_VARIABLES.length,
       getLogOutWireLength: vi.fn(() => 0),
     };
     const contextManager = new ContextManager(placementManager as never);

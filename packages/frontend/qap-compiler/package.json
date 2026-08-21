@@ -48,6 +48,7 @@
     "scripts/write-library-artifacts.js",
     "subcircuits/circom/*.circom",
     "subcircuits/interface/*.json",
+    "subcircuits/interface/conditional/*.json",
     "templates/*.circom",
     "templates/128bit/*.circom",
     "templates/255bit/*.circom",

@@ -15,6 +15,7 @@ const {
   countPhysicalWires,
   parseCircomConstants,
 } = require("../../scripts/runtime/logical-interface.js");
+const { getSubcircuitNames } = require("../../scripts/configure.js");
 
 const EXPECTED = Object.freeze([
   Object.freeze({ name: "TransactionSignaturePoseidonBatch4", nonlinear: 950, linear: 0, inputs: 7, outputs: 2, wires: 957, nonzero: 11380, warnings: 1, placements: 9 }),
@@ -103,10 +104,16 @@ const main = () => {
       assert.deepEqual(actual, expected);
       assert.ok(actual.nonlinear + actual.linear <= 1024, expected.name);
 
+      const interfacePath = path.join(
+        packageRoot,
+        "subcircuits/interface",
+        expected.name === "TransactionSignaturePointPolicy" ? "conditional" : "",
+        `${expected.name}.json`,
+      );
       const logicalInterface = parseLogicalInterface(readFileSync(
-        path.join(packageRoot, `subcircuits/interface/${expected.name}.json`),
+        interfacePath,
         "utf8",
-      ), constants, `${expected.name}.json`);
+      ), constants, interfacePath);
       assert.equal(countPhysicalWires(logicalInterface.inputs), actual.inputs);
       assert.equal(countPhysicalWires(logicalInterface.outputs), actual.outputs);
       measurements.push(actual);
@@ -126,14 +133,7 @@ const main = () => {
       14967,
     );
 
-    const compileScript = readFileSync(
-      path.join(packageRoot, "scripts/compile.sh"),
-      "utf8",
-    );
-    const productionNamesMatch = compileScript.match(/names=\(([^)]*)\)/s);
-    assert.notEqual(productionNamesMatch, null, "compile target list is missing");
-    const productionNames = [...productionNamesMatch[1].matchAll(/"([^"]+)"/g)]
-      .map((match) => match[1]);
+    const productionNames = getSubcircuitNames(constants.get("nPrivateMessageInputs"));
     assert.deepEqual(
       productionNames.filter((name) => name.startsWith("TransactionSignature")),
       EXPECTED.map(({ name }) => name),

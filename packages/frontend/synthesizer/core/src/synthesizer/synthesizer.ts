@@ -13,7 +13,6 @@ import {
 } from '@ethereumjs/util';
 
 import { EVMResult, InterpreterStep } from '@ethereumjs/evm';
-import { TRANSACTION_INPUT_VARIABLES } from '../subcircuit/configuredTypes.ts';
 import {
   Placements,
   type ReservedVariable,
@@ -75,7 +74,7 @@ export class Synthesizer implements SynthesizerInterface
     values.set('CONTRACT_ADDRESS', bytesToBigInt(toBytes(signedTransaction.to)))
     values.set('FUNCTION_SELECTOR', bytesToBigInt(signedTransaction.getFunctionSelector()))
     values.set('CHANNEL_TX_INDEX', signedTransaction.channelTransactionIndex)
-    for (const [inputIndex, variable] of TRANSACTION_INPUT_VARIABLES.entries()) {
+    for (const [inputIndex, variable] of this.subcircuitLibrary.transactionInputVariables.entries()) {
       values.set(variable, bytesToBigInt(signedTransaction.getFunctionInput(inputIndex)))
     }
 
@@ -198,7 +197,7 @@ export class Synthesizer implements SynthesizerInterface
 
   private async _prepareSynthesizeTransaction(): Promise<void> {
     this._contextManager.resetTransactionTracking()
-    const transactionInputPts = TRANSACTION_INPUT_VARIABLES.map((variable) =>
+    const transactionInputPts = this.subcircuitLibrary.transactionInputVariables.map((variable) =>
       this._placementManager.getReservedVariableFromBuffer(variable),
     )
     const operands = [

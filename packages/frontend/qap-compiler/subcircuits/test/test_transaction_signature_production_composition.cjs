@@ -125,7 +125,7 @@ const main = async () => {
     privateInputs: 34,
     outputs: 6,
     wires: 14969,
-    nonzero: 135500,
+    nonzero: 135511,
   });
   const circuit = await wasm(
     path.join(
@@ -161,9 +161,9 @@ const main = async () => {
   await circuit.loadSymbols();
   for (const signalName of [
     "main.challengeBatches[0].out[1]",
-    "main.finalHashBatch.firstHash.ark[0].out[0]",
-    "main.pointPolicy.runtimeTable.additions[0].coordinateProduct",
-    "main.pointPolicy.randomizerCofactor.point4.result[0]",
+    "main.tail3.firstHash.ark[0].out[0]",
+    "main.pointPolicyWithoutHash.runtimeTable.additions[0].coordinateProduct",
+    "main.pointPolicyWithoutHash.randomizerCofactor.point4.result[0]",
     "main.fixedPrefix.fixedPrefix.accumulators[69][0]",
     "main.challengeChunks.challenge.bits[0]",
     "main.challengeChunks.challenge.fieldBound.lowBorrow",

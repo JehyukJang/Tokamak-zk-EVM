@@ -1,5 +1,46 @@
 module.exports.S_MAX = 512
 
+const BASE_SUBCIRCUIT_NAMES = Object.freeze([
+  'bufferLogOut', 'bufferStorageStore', 'bufferStorageLoad', 'bufferTxIn',
+  'bufferBlockIn', 'bufferEVMIn', 'bufferPrvIn', 'ALU3', 'ALU4A', 'ALU4B',
+  'SHL', 'ADDMODPrepare', 'ADDMODVerify', 'MULMODPrepare', 'MULMODCandidate',
+  'MULMODVerify', 'AssertZeroWord', 'SubExp', 'CheckBus256', 'MemoryViewStep',
+  'Poseidon', 'FrToLimbsPair', 'TransactionSignaturePoseidonBatch4',
+  'TransactionSignaturePointPolicy', 'TransactionSignatureFixedPrefix70',
+  'TransactionSignatureChallengeChunks', 'TransactionSignatureVariableFirstBatch32',
+  'TransactionSignatureVariableBatch32', 'TransactionSignatureFinal', 'StorageAccess',
+  'EQ', 'ISZERO', 'ADD', 'MUL', 'SUB', 'NOT', 'LT', 'GT', 'SLT', 'SGT',
+  'AND', 'OR', 'XOR', 'SHR',
+])
+
+const CONDITIONAL_SUBCIRCUIT_NAMES = Object.freeze([
+  'TransactionSignaturePointPolicy',
+  'TransactionSignaturePoseidonTail1',
+  'TransactionSignaturePoseidonTail2',
+  'TransactionSignaturePointPolicyWithHash',
+])
+
+function getTransactionSignaturePoseidonTailLength(numberOfPrivateMessageInputs) {
+  if (!Number.isSafeInteger(numberOfPrivateMessageInputs) || numberOfPrivateMessageInputs < 0) {
+    throw new Error('nPrivateMessageInputs must be a non-negative safe integer.')
+  }
+  const remainder = (numberOfPrivateMessageInputs + 2) % 4
+  return remainder === 0 ? 4 : remainder
+}
+
+function getSubcircuitNames(numberOfPrivateMessageInputs) {
+  const names = [...BASE_SUBCIRCUIT_NAMES]
+  const tailLength = getTransactionSignaturePoseidonTailLength(numberOfPrivateMessageInputs)
+  if (tailLength === 1) {
+    names.splice(names.indexOf('TransactionSignaturePointPolicy') + 1, 0, 'TransactionSignaturePoseidonTail1')
+  } else if (tailLength === 2) {
+    names.splice(names.indexOf('TransactionSignaturePointPolicy') + 1, 0, 'TransactionSignaturePoseidonTail2')
+  } else if (tailLength === 4) {
+    names[names.indexOf('TransactionSignaturePointPolicy')] = 'TransactionSignaturePointPolicyWithHash'
+  }
+  return Object.freeze(names)
+}
+
 const bufferDeclarations = [
   {
     name: 'bufferLogOut',
@@ -108,3 +149,6 @@ const libraryLayout = Object.freeze({
 })
 
 module.exports.LIBRARY_LAYOUT = libraryLayout
+module.exports.getSubcircuitNames = getSubcircuitNames
+module.exports.getTransactionSignaturePoseidonTailLength = getTransactionSignaturePoseidonTailLength
+module.exports.CONDITIONAL_SUBCIRCUIT_NAMES = CONDITIONAL_SUBCIRCUIT_NAMES

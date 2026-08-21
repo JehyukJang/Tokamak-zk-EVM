@@ -3,7 +3,7 @@
 // Types (internal): keep these un-exported as requested
 // -----------------------------------------------------------------------------
 
-import { SUBCIRCUIT_LIST, SubcircuitNames } from "./configuredTypes.ts";
+import { SUBCIRCUIT_LIST, SubcircuitNames, type TransactionInputVariable } from "./configuredTypes.ts";
 import type { PlacementCompositionMapping } from './placementCompositionMapping.ts';
 import type { calculateSubcircuitOutputValues } from './subcircuitOutputOperations.ts';
 import type {
@@ -104,5 +104,6 @@ export interface ResolvedSubcircuitLibrary {
   calculateSubcircuitOutputValues: typeof calculateSubcircuitOutputValues;
   subcircuitInfoByName: SubcircuitInfoByName;
   subcircuitBufferMapping: Record<ReservedBuffer, SubcircuitInfoByNameEntry | undefined>;
+  transactionInputVariables: readonly TransactionInputVariable[];
   numberOfPrevBlockHashes: number;
 }

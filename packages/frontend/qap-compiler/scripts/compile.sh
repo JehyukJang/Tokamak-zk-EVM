@@ -2,24 +2,29 @@
 
 set -euo pipefail
 
-names=(
-  "bufferLogOut" "bufferStorageStore" "bufferStorageLoad" "bufferTxIn"
-  "bufferBlockIn" "bufferEVMIn" "bufferPrvIn" "ALU3" "ALU4A" "ALU4B"
-  "SHL" "ADDMODPrepare" "ADDMODVerify" "MULMODPrepare" "MULMODCandidate"
-  "MULMODVerify" "AssertZeroWord" "SubExp" "CheckBus256" "MemoryViewStep"
-  "Poseidon" "FrToLimbsPair" "TransactionSignaturePoseidonBatch4"
-  "TransactionSignaturePointPolicy" "TransactionSignatureFixedPrefix70"
-  "TransactionSignatureChallengeChunks" "TransactionSignatureVariableFirstBatch32"
-  "TransactionSignatureVariableBatch32" "TransactionSignatureFinal" "StorageAccess"
-  "EQ" "ISZERO" "ADD" "MUL" "SUB" "NOT" "LT" "GT" "SLT" "SGT"
-  "AND" "OR" "XOR" "SHR"
-)
 CURVE_NAME="bls12381"
 
 original_cwd="$(pwd)"
 script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 package_root="${script_dir}/.."
 cd "$script_dir"
+
+names=()
+while IFS= read -r name; do
+  names+=("$name")
+done < <(
+  node - "$package_root" <<'NODE'
+const fs = require('node:fs');
+const path = require('node:path');
+const packageRoot = path.resolve(process.argv[2]);
+const { getSubcircuitNames } = require(path.join(packageRoot, 'scripts/configure.js'));
+const { parseCircomConstants } = require(path.join(packageRoot, 'scripts/runtime/logical-interface.js'));
+const constantsPath = path.join(packageRoot, 'subcircuits/circom/constants.circom');
+const constants = parseCircomConstants(fs.readFileSync(constantsPath, 'utf8'), constantsPath);
+const numberOfPrivateMessageInputs = constants.get('nPrivateMessageInputs');
+for (const name of getSubcircuitNames(numberOfPrivateMessageInputs)) console.log(name);
+NODE
+)
 
 default_output_dir="${script_dir}/../subcircuits/library"
 

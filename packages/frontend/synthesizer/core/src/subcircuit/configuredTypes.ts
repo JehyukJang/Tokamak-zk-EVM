@@ -35,37 +35,19 @@ export const OPERATOR_LIST = [
 
 export type Operator = (typeof OPERATOR_LIST)[number];
 
-export const TRANSACTION_INPUT_VARIABLES = [
-  'TRANSACTION_INPUT0',
-  'TRANSACTION_INPUT1',
-  'TRANSACTION_INPUT2',
-  'TRANSACTION_INPUT3',
-  'TRANSACTION_INPUT4',
-  'TRANSACTION_INPUT5',
-  'TRANSACTION_INPUT6',
-  'TRANSACTION_INPUT7',
-  'TRANSACTION_INPUT8',
-  'TRANSACTION_INPUT9',
-  'TRANSACTION_INPUT10',
-  'TRANSACTION_INPUT11',
-  'TRANSACTION_INPUT12',
-  'TRANSACTION_INPUT13',
-  'TRANSACTION_INPUT14',
-  'TRANSACTION_INPUT15',
-  'TRANSACTION_INPUT16',
-  'TRANSACTION_INPUT17',
-  'TRANSACTION_INPUT18',
-  'TRANSACTION_INPUT19',
-  'TRANSACTION_INPUT20',
-  'TRANSACTION_INPUT21',
-  'TRANSACTION_INPUT22',
-  'TRANSACTION_INPUT23',
-  'TRANSACTION_INPUT24',
-  'TRANSACTION_INPUT25',
-  'TRANSACTION_INPUT26',
-  'TRANSACTION_INPUT27',
-  'TRANSACTION_INPUT28',
-] as const;
+export type TransactionInputVariable = `TRANSACTION_INPUT${number}`;
+
+export const createTransactionInputVariables = (
+  numberOfPrivateMessageInputs: number,
+): readonly TransactionInputVariable[] => {
+  if (!Number.isSafeInteger(numberOfPrivateMessageInputs) || numberOfPrivateMessageInputs < 0) {
+    throw new Error('nPrivateMessageInputs must be a non-negative safe integer');
+  }
+  return Object.freeze(Array.from(
+    { length: numberOfPrivateMessageInputs },
+    (_, index) => `TRANSACTION_INPUT${index}` as TransactionInputVariable,
+  ));
+};
 
 export const BUFFER_LIST = [
   // Public output, private input
@@ -111,7 +93,10 @@ export const COMPOSITION_SUBCIRCUIT_LIST = [
   'MemoryViewStep',
   'StorageAccess',
   'TransactionSignaturePoseidonBatch4',
+  'TransactionSignaturePoseidonTail1',
+  'TransactionSignaturePoseidonTail2',
   'TransactionSignaturePointPolicy',
+  'TransactionSignaturePointPolicyWithHash',
   'TransactionSignatureFixedPrefix70',
   'TransactionSignatureChallengeChunks',
   'TransactionSignatureVariableFirstBatch32',
@@ -164,9 +149,11 @@ export type SubcircuitInfoByNameEntry = {
 
 export type SubcircuitInfoByName = Map<SubcircuitNames, SubcircuitInfoByNameEntry>;
 
-export const TX_MESSAGE_TO_HASH = [
+export const createTransactionMessageToHash = (
+  transactionInputVariables: readonly TransactionInputVariable[],
+) => Object.freeze([
   'CHANNEL_TX_INDEX',
   'CONTRACT_ADDRESS',
   'FUNCTION_SELECTOR',
-  ...TRANSACTION_INPUT_VARIABLES,
-] as const;
+  ...transactionInputVariables,
+] as const);

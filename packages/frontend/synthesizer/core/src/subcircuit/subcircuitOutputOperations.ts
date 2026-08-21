@@ -660,6 +660,22 @@ const poseidonBatch4 = (values: readonly bigint[]): bigint[] => {
   return [firstHash, poseidon_raw([thirdHash, fourthRight!])];
 };
 
+const poseidonTail1 = (values: readonly bigint[]): bigint[] => {
+  expectLength(values, 4, 'TransactionSignaturePoseidonTail1');
+  return [
+    poseidon_raw([values[0]!, values[1]!]),
+    poseidon_raw([values[2]!, values[3]!]),
+  ];
+};
+
+const poseidonTail2 = (values: readonly bigint[]): bigint[] => {
+  expectLength(values, 5, 'TransactionSignaturePoseidonTail2');
+  return [
+    poseidon_raw([values[0]!, values[1]!]),
+    poseidon_raw([poseidon_raw([values[2]!, values[3]!]), values[4]!]),
+  ];
+};
+
 const pointPolicy = (values: readonly bigint[]): bigint[] => {
   expectLength(values, 8, 'TransactionSignaturePointPolicy');
   const randomizer: Affine = [values[0]!, values[1]!];
@@ -680,6 +696,11 @@ const pointPolicy = (values: readonly bigint[]): bigint[] => {
   table.push(affineAdd(table[2]!, publicKeyAffine));
   return [values[5]!, values[4]!, ...table.flat(), ...cofactorEight(randomizer, true)];
 };
+
+const pointPolicyWithHash = (values: readonly bigint[]): bigint[] => [
+  ...pointPolicy(values),
+  poseidon_raw([values[2]!, values[3]!]),
+];
 
 const fixedPrefix70 = (values: readonly bigint[]): bigint[] => {
   expectLength(values, 1, 'TransactionSignatureFixedPrefix70');
@@ -765,7 +786,10 @@ const SUBCIRCUIT_OPERATION_MAPPING: Partial<Record<CompositionSubcircuit, Subcir
   MemoryViewStep: memoryViewStep,
   StorageAccess: () => [],
   TransactionSignaturePoseidonBatch4: poseidonBatch4,
+  TransactionSignaturePoseidonTail1: poseidonTail1,
+  TransactionSignaturePoseidonTail2: poseidonTail2,
   TransactionSignaturePointPolicy: pointPolicy,
+  TransactionSignaturePointPolicyWithHash: pointPolicyWithHash,
   TransactionSignatureFixedPrefix70: fixedPrefix70,
   TransactionSignatureChallengeChunks: challengeChunks,
   TransactionSignatureVariableFirstBatch32: variableFirstBatch32,

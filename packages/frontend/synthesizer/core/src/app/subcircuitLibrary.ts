@@ -1,4 +1,4 @@
-import { TRANSACTION_INPUT_VARIABLES } from '../subcircuit/configuredTypes.ts';
+import { createTransactionInputVariables } from '../subcircuit/configuredTypes.ts';
 import { createPlacementCompositionMapping } from '../subcircuit/placementCompositionMapping.ts';
 import { calculateSubcircuitOutputValues } from '../subcircuit/subcircuitOutputOperations.ts';
 import {
@@ -48,11 +48,9 @@ export function resolveSubcircuitLibraryData(
   data: SubcircuitLibraryData,
   loadWasm: SubcircuitLibraryProvider['loadWasm'],
 ): ResolvedSubcircuitLibrary {
-  if (data.frontendCfg.nPrivateMessageInputs !== TRANSACTION_INPUT_VARIABLES.length) {
-    throw new Error(
-      `Synthesizer: qap-compiler declares ${data.frontendCfg.nPrivateMessageInputs} private message inputs, but Synthesizer reserves ${TRANSACTION_INPUT_VARIABLES.length}`,
-    )
-  }
+  const transactionInputVariables = createTransactionInputVariables(
+    data.frontendCfg.nPrivateMessageInputs,
+  )
   const subcircuitInfoByName = createInfoByName(data.subcircuitInfo);
   assertLogicalInterfaceWireCounts(subcircuitInfoByName)
 
@@ -73,6 +71,7 @@ export function resolveSubcircuitLibraryData(
       EVM_IN: subcircuitInfoByName.get('bufferEVMIn'),
       PRIVATE_IN: subcircuitInfoByName.get('bufferPrvIn'),
     },
+    transactionInputVariables,
     numberOfPrevBlockHashes: data.frontendCfg.nPrevBlockHashes,
   };
 }
