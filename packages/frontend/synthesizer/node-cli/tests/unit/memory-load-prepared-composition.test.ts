@@ -7,9 +7,9 @@ import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataP
 import { MemoryPt } from '../../../core/src/synthesizer/dataStructure/memoryPt.ts'
 import {
   ContextManager,
-  createMemoryCopyEntries,
-} from '../../../core/src/synthesizer/handlers/contextManager.ts'
-import { PlacementManager } from '../../../core/src/synthesizer/handlers/placementManager.ts'
+  createMemoryEntriesFromCopyResult,
+} from '../../../core/src/synthesizer/runtime/contextManager.ts'
+import { PlacementManager } from '../../../core/src/synthesizer/runtime/placementManager.ts'
 import {
   UINT256_DATA_PT_TYPE,
   UINT32_DATA_PT_TYPE,
@@ -65,7 +65,7 @@ const createHarness = () => {
     _placementCompositionMapping: { MemoryView: memoryViewComposition },
     subcircuitInfoByName: new Map([['MemoryViewStep', memoryViewInfo]]),
     subcircuitLibrary: { calculateSubcircuitOutputValues },
-    loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) => {
+    allocateEVMInDataPt: vi.fn((value: bigint, dataPtType: DataPtType) => {
       const cacheKey = `${value}:${dataPtType}`
       const cachedDataPt = staticDataPtByValueAndType.get(cacheKey)
       if (cachedDataPt !== undefined) return DataPtFactory.deepCopy(cachedDataPt)
@@ -73,7 +73,7 @@ const createHarness = () => {
       staticDataPtByValueAndType.set(cacheKey, staticDataPt)
       return DataPtFactory.deepCopy(staticDataPt)
     }),
-    getReservedVariableFromBuffer: vi.fn((name: string) => dataPt(
+    getReservedInputBufferDataPt: vi.fn((name: string) => dataPt(
       0n,
       evmInSource,
       staticWireIndex++,
@@ -211,9 +211,9 @@ describe('atomic MemoryView compositions', () => {
     expect(loadedPt).toMatchObject({ value: 0x34n << 192n })
 
     const copyPlan = contextManager.prepareMemoryCopy(memoryPt, 7n, 1n, 40n)
-    const copiedPts = placementManager.placeComposition('MemoryView', copyPlan.operands)
+    const copiedPts = placementManager.placeComposition('MemoryView', copyPlan.memoryViewOperands)
     const copiedMemoryPt = new MemoryPt()
-    copiedMemoryPt.writeBatch(createMemoryCopyEntries(copyPlan, copiedPts))
+    copiedMemoryPt.writeBatch(createMemoryEntriesFromCopyResult(copyPlan, copiedPts))
     expect(copiedMemoryPt.viewMemory(40, 1)).toEqual(new Uint8Array([0x34]))
   })
 
@@ -235,8 +235,8 @@ describe('atomic MemoryView compositions', () => {
     const copyPlan = contextManager.prepareMemoryCopy(memoryPt, 0n, 40n, 96n)
     memoryPt.write(0, 32, wordPt(3n, 3))
 
-    const resultPts = placementManager.placeComposition('MemoryView', copyPlan.operands)
-    const destinationEntries = createMemoryCopyEntries(copyPlan, resultPts)
+    const resultPts = placementManager.placeComposition('MemoryView', copyPlan.memoryViewOperands)
+    const destinationEntries = createMemoryEntriesFromCopyResult(copyPlan, resultPts)
 
     expect(destinationEntries).toMatchObject([
       { memByteOffset: 96, containerByteSize: 32, dataPt: { source: 1, wireIndex: 0 } },

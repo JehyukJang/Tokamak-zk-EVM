@@ -23,7 +23,7 @@ import type {
 } from './placementManager.ts';
 
 export type MemoryCopyPlan = Readonly<{
-  operands: readonly (readonly DataPt[])[];
+  memoryViewOperands: readonly (readonly DataPt[])[];
   destinations: readonly Readonly<{
     memByteOffset: number;
     containerByteSize: number;
@@ -38,7 +38,7 @@ type ChildMessageCall = Readonly<{
   inputLength: bigint;
 }>;
 
-export const createMemoryCopyEntries = (
+export const createMemoryEntriesFromCopyResult = (
   plan: MemoryCopyPlan,
   dataPts: readonly DataPt[],
 ): MemoryPts => {
@@ -129,7 +129,7 @@ const copyInitialStorageRead = (entry: InitialStorageRead): InitialStorageRead =
   valuePt: DataPtFactory.deepCopy(entry.valuePt),
 });
 
-export class InitialStorageReadList {
+export class InitialStorageReads {
   private _entries: InitialStorageRead[] = []
 
   public get entries(): InitialStorageRead[] {
@@ -173,7 +173,7 @@ export type MessageContext = {
   resultDataByteLength: number;
 }
 
-export class LogCache {
+export class LogFrameSnapshots {
   private _snapshotsByDepth: Map<number, number> = new Map()
 
   public reset(): void {
@@ -202,9 +202,9 @@ export class LogCache {
 }
 
 export class ContextManager {
-  public readonly logCache = new LogCache()
+  public readonly logCache = new LogFrameSnapshots()
   public readonly storageCache = new StorageCache()
-  public readonly initialStorageReads = new InitialStorageReadList()
+  public readonly initialStorageReads = new InitialStorageReads()
   public cachedOrigin: DataPt | undefined = undefined
   public contextByDepth: MessageContext[] = []
   private _messageCodeAddresses = new Set<string>()
@@ -231,7 +231,7 @@ export class ContextManager {
     )
   }
 
-  public prepareCodeMemoryEntries(
+  public materializeCodeMemoryEntries(
     code: Uint8Array<ArrayBufferLike>,
     targetAddress: bigint,
     memOffset: bigint,
@@ -261,7 +261,7 @@ export class ContextManager {
         getDataSlice(code, codeOffset + accOffsetShift, BigInt(sliceLength)),
       )
       const desc = `Code of address: ${bigIntToHex(targetAddress)}, offset: ${Number(codeOffset)}, length: ${Number(dataLength)} bytes, chunk: ${i + 1} out of ${nChunks}.`
-      const dataPt = this.placementManager.loadArbitraryStatic(
+      const dataPt = this.placementManager.allocateEVMInDataPt(
         dataSlice,
         UINT256_DATA_PT_TYPE,
         desc,
@@ -285,23 +285,23 @@ export class ContextManager {
     destinationOffset: bigint = 0n,
   ): MemoryCopyPlan {
     if (length === BIGINT_0) {
-      return { operands: [], destinations: [] }
+      return { memoryViewOperands: [], destinations: [] }
     }
     const sourceOffsetNumber = Number(sourceOffset)
     const lengthNumber = Number(length)
     const sourceSnapshot = MemoryPt.simulateMemoryPt(
       sourceMemoryPt.read(sourceOffsetNumber, lengthNumber),
     )
-    const operands = this.materializeMemoryViewOperands(
+    const memoryViewOperands = this.materializeMemoryViewOperands(
       sourceSnapshot,
       sourceOffset,
       length,
     )
-    const destinations = operands.map((_, index) => ({
+    const destinations = memoryViewOperands.map((_, index) => ({
       memByteOffset: Number(destinationOffset) + 32 * index,
       containerByteSize: Math.min(32, lengthNumber - 32 * index),
     }))
-    return { operands, destinations }
+    return { memoryViewOperands, destinations }
   }
 
   public materializeMemoryViewOperands(
@@ -329,13 +329,13 @@ export class ContextManager {
       }
       const viewOperands: DataPt[] = []
       for (const geometry of dataAliasGeometries) {
-        const encodedShiftPt = this.placementManager.loadArbitraryStatic(
+        const encodedShiftPt = this.placementManager.allocateEVMInDataPt(
           BigInt(geometry.shiftMagnitude + 32 * geometry.direction),
           UINT32_DATA_PT_TYPE,
           'Memory view encoded shift',
           { kind: 'topology-fixed', usage: 'memory-view-encoded-shift' },
         )
-        const ownershipPt = this.placementManager.loadArbitraryStatic(
+        const ownershipPt = this.placementManager.allocateEVMInDataPt(
           geometry.ownershipMask,
           UINT32_DATA_PT_TYPE,
           'Memory view ownership mask',
@@ -545,7 +545,7 @@ export class ContextManager {
     }
   }
 
-  public materializeMessageContext(
+  public initializeMessageContext(
     message: Message,
     childCallDataMemoryPts?: MemoryPts,
   ): void {

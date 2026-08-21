@@ -39,7 +39,7 @@ describe('EVM stack DataPt boundary', () => {
   it('copies an EVM-word view without changing its source or value', () => {
     const original = dataPt(0x1234n, UINT256_DATA_PT_TYPE)
 
-    const wordPt = DataPtFactory.createEVMWordView(original)
+    const wordPt = DataPtFactory.copyEvmWord(original)
 
     expect(wordPt).toMatchObject({
       source: original.source,
@@ -57,7 +57,7 @@ describe('EVM stack DataPt boundary', () => {
     ['address', UINT160_DATA_PT_TYPE],
     ['native field value', BLS12_381_FR_DATA_PT_TYPE],
   ] as const)('rejects a %s at the EVM-word boundary', (_label, dataPtType) => {
-    expect(() => DataPtFactory.createEVMWordView(dataPt(1n, dataPtType))).toThrow(
+    expect(() => DataPtFactory.copyEvmWord(dataPt(1n, dataPtType))).toThrow(
       'EVM word views require a uint256 data point',
     )
   })

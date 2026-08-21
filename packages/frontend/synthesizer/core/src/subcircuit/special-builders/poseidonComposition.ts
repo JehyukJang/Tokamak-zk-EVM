@@ -1,4 +1,4 @@
-import { assertPositiveInteger } from '../utils.ts'
+import { assertPositiveInteger } from '../placementCompositionMapping.ts'
 import type {
   PlacementCompositionConfig,
   PlacementCompositionEntry,
@@ -17,7 +17,7 @@ export const createPoseidonCompositionMapping = (
     composition: {
       placementStrategy: 'poseidon',
       constants: [],
-      externalCheckRequiredOperandIndices: [],
+      canonicalityGuardOperandIndices: [],
       numSteps: 'dynamic',
       numOperands: 'dynamic',
       numResults: 1,

@@ -22,10 +22,10 @@ import {
 } from './types/index.ts';
 import {
   ContextManager,
-  createMemoryCopyEntries,
+  createMemoryEntriesFromCopyResult,
   InstructionHandler,
   PlacementManager,
-} from './handlers/index.ts';
+} from './runtime/index.ts';
 import type { ResolvedSubcircuitLibrary } from '../subcircuit/libraryTypes.ts';
 import { TypedTransaction } from '@ethereumjs/tx';
 
@@ -144,17 +144,17 @@ export class Synthesizer implements SynthesizerInterface
     vm.evm.events.on('beforeMessage', (data, resolve?: (result?: any) => void) => {
       this._executeVMEvent('beforeMessage', resolve, () => {
         if (data.depth === 0) {
-          this._contextManager.materializeMessageContext(data)
+          this._contextManager.initializeMessageContext(data)
           return
         }
         const memoryCopyPlan = this._contextManager.prepareChildCallData(data)
         const callDataPts = this._placementManager.placeComposition(
           'MemoryView',
-          memoryCopyPlan.operands,
+          memoryCopyPlan.memoryViewOperands,
         )
-        this._contextManager.materializeMessageContext(
+        this._contextManager.initializeMessageContext(
           data,
-          createMemoryCopyEntries(memoryCopyPlan, callDataPts),
+          createMemoryEntriesFromCopyResult(memoryCopyPlan, callDataPts),
         )
       })
     });
@@ -215,20 +215,20 @@ export class Synthesizer implements SynthesizerInterface
   private async _prepareSynthesizeTransaction(): Promise<void> {
     this._contextManager.resetTransactionTracking()
     const transactionInputPts = this.subcircuitLibrary.transactionInputVariables.map((variable) =>
-      this._placementManager.getReservedVariableFromBuffer(variable),
+      this._placementManager.getReservedInputBufferDataPt(variable),
     )
     const operands = [
-      this._placementManager.getReservedVariableFromBuffer('EDDSA_RANDOMIZER_X'),
-      this._placementManager.getReservedVariableFromBuffer('EDDSA_RANDOMIZER_Y'),
-      this._placementManager.getReservedVariableFromBuffer('EDDSA_PUBLIC_KEY_X'),
-      this._placementManager.getReservedVariableFromBuffer('EDDSA_PUBLIC_KEY_Y'),
-      this._placementManager.getReservedVariableFromBuffer('CHANNEL_TX_INDEX'),
+      this._placementManager.getReservedInputBufferDataPt('EDDSA_RANDOMIZER_X'),
+      this._placementManager.getReservedInputBufferDataPt('EDDSA_RANDOMIZER_Y'),
+      this._placementManager.getReservedInputBufferDataPt('EDDSA_PUBLIC_KEY_X'),
+      this._placementManager.getReservedInputBufferDataPt('EDDSA_PUBLIC_KEY_Y'),
+      this._placementManager.getReservedInputBufferDataPt('CHANNEL_TX_INDEX'),
       ...transactionInputPts,
-      this._placementManager.getReservedVariableFromBuffer('CONTRACT_ADDRESS'),
-      this._placementManager.getReservedVariableFromBuffer('FUNCTION_SELECTOR'),
-      this._placementManager.getReservedVariableFromBuffer('EDDSA_SIGNATURE'),
-      this._placementManager.getReservedVariableFromBuffer('JUBJUB_POI_X'),
-      this._placementManager.getReservedVariableFromBuffer('JUBJUB_POI_Y'),
+      this._placementManager.getReservedInputBufferDataPt('CONTRACT_ADDRESS'),
+      this._placementManager.getReservedInputBufferDataPt('FUNCTION_SELECTOR'),
+      this._placementManager.getReservedInputBufferDataPt('EDDSA_SIGNATURE'),
+      this._placementManager.getReservedInputBufferDataPt('JUBJUB_POI_X'),
+      this._placementManager.getReservedInputBufferDataPt('JUBJUB_POI_Y'),
     ]
     const verifiedTransactionPts = this._placementManager.placeComposition(
       'TransactionSignatureVerify',
@@ -245,7 +245,7 @@ export class Synthesizer implements SynthesizerInterface
       throw new Error('Synthesizer: TransactionSignatureVerify returned incomplete results')
     }
 
-    const zeroFrPt = this._placementManager.getReservedVariableFromBuffer('CIRCOM_CONST_ZERO')
+    const zeroFrPt = this._placementManager.getReservedInputBufferDataPt('CIRCOM_CONST_ZERO')
     const convertedTransactionInputPts = []
     for (let inputIndex = 0; inputIndex < transactionInputPts.length; inputIndex += 2) {
       const convertedPair = this._placementManager.placeComposition(
@@ -273,15 +273,15 @@ export class Synthesizer implements SynthesizerInterface
 
     const headerData: HeaderData = {
       parentHash: setLengthLeft(
-        bigIntToBytes(this._placementManager.getReservedVariableFromBuffer('BLOCKHASH_1').value),
+        bigIntToBytes(this._placementManager.getReservedInputBufferDataPt('BLOCKHASH_1').value),
         32,
       ),
-      coinbase: createAddressFromBigInt(this._placementManager.getReservedVariableFromBuffer('COINBASE').value),
+      coinbase: createAddressFromBigInt(this._placementManager.getReservedInputBufferDataPt('COINBASE').value),
       // difficulty = 0 for PoS blocks
       difficulty: 0n,
-      number: this._placementManager.getReservedVariableFromBuffer('NUMBER').value,
-      gasLimit: this._placementManager.getReservedVariableFromBuffer('GASLIMIT').value,
-      timestamp: this._placementManager.getReservedVariableFromBuffer('TIMESTAMP').value,
+      number: this._placementManager.getReservedInputBufferDataPt('NUMBER').value,
+      gasLimit: this._placementManager.getReservedInputBufferDataPt('GASLIMIT').value,
+      timestamp: this._placementManager.getReservedInputBufferDataPt('TIMESTAMP').value,
 
       baseFeePerGas: undefined,
     };
@@ -342,7 +342,7 @@ export class Synthesizer implements SynthesizerInterface
     const prevStepResult = thisContext.prevInterpreterStep;
     if ( prevStepResult !== null) {
       const opcode = prevStepResult.opcode
-      const opHandler = this._instructionHandlers.synthesizerHandlers.get(opcode.code)
+      const opHandler = this._instructionHandlers.opcodeHandlers.get(opcode.code)
       if (opHandler === undefined) {
         throw new Error(`Undefined synthesizer handler for opcode ${opcode.name}`)
       }

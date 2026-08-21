@@ -91,7 +91,7 @@ export class DataPtFactory {
     };
   }
 
-  public static createEVMWordView(dataPt: DataPt): DataPt {
+  public static copyEvmWord(dataPt: DataPt): DataPt {
     if (dataPt.dataPtType !== UINT256_DATA_PT_TYPE) {
       throw new Error('DataPt EVM word views require a uint256 data point');
     }

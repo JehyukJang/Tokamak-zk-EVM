@@ -4,8 +4,8 @@ import { SynthesizerInterface } from '../synthesizer/types/index.ts';
 import type { PlacementVariables } from '../synthesizer/types/placements.ts';
 import {
   VariableGenerator,
-} from './handlers/variableGenerator.ts';
-import { PermutationGenerator } from './handlers/permutationGenerator.ts';
+} from './generators/variableGenerator.ts';
+import { PermutationGenerator } from './generators/permutationGenerator.ts';
 import {
   CircuitGenerationResult,
   PublicInstance,

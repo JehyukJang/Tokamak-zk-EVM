@@ -4,7 +4,7 @@ import { createAddMulModCompositionMappings } from '../../../core/src/subcircuit
 import { createDivisionCompositionMappings } from '../../../core/src/subcircuit/special-builders/divModComposition.ts';
 import { createExpCompositionMapping } from '../../../core/src/subcircuit/special-builders/expComposition.ts';
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
-import { PlacementManager } from '../../../core/src/synthesizer/handlers/placementManager.ts';
+import { PlacementManager } from '../../../core/src/synthesizer/runtime/placementManager.ts';
 import {
   BIT_DATA_PT_TYPE,
   UINT128_DATA_PT_TYPE,
@@ -127,9 +127,9 @@ const submit = (
     subcircuitLibrary: {
       calculateSubcircuitOutputValues,
     },
-    loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
+    allocateEVMInDataPt: vi.fn((value: bigint, dataPtType: DataPtType) =>
       dataPt(value, 5, nextStaticWireIndex++, dataPtType)),
-    getReservedVariableFromBuffer: vi.fn((name: string) => {
+    getReservedInputBufferDataPt: vi.fn((name: string) => {
       const exponent = /^UINT32_POW2_(\d)$/.exec(name)?.[1]
       return dataPt(
         name.endsWith('_ONE') ? 1n : exponent === undefined ? 0n : 1n << BigInt(exponent),
@@ -160,7 +160,7 @@ describe('fixed generic atomic compositions', () => {
     const composition = {
       placementStrategy: 'generic' as const,
       constants: [],
-      externalCheckRequiredOperandIndices: [],
+      canonicalityGuardOperandIndices: [],
       numSteps: 1,
       numOperands: 1,
       numResults: 3,
@@ -184,7 +184,7 @@ describe('fixed generic atomic compositions', () => {
       subcircuitLibrary: {
         calculateSubcircuitOutputValues: () => [1n, 2n, 3n],
       },
-      loadArbitraryStatic: vi.fn(),
+      allocateEVMInDataPt: vi.fn(),
     }) as PlacementManager
 
     const resultPts = parent.placeComposition('ADDMOD', [dataPt(7n, 0)])

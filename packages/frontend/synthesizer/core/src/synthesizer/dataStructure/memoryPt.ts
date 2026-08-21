@@ -31,7 +31,7 @@ import type { DataAliasGeometries, DataAliasGeometryEntry, DataPt, MemoryPtEntry
  */
 
 export class MemoryPt {
-  _storePt: TMemoryPt
+  private _storePt: MemoryEntriesByTimestamp
   private _timeStamp: number
   private _byteLength: number
 
@@ -210,8 +210,8 @@ export class MemoryPt {
    * @param size - Number of bytes to read
    * @returns {DataFragments}
    */
-  private _viewMemoryConflict(offset: number, size: number): _DataFragments {
-    const dataFragments: _DataFragments = new Map()
+  private _viewMemoryConflict(offset: number, size: number): MemoryRangeFragments {
+    const dataFragments: MemoryRangeFragments = new Map()
     const endOffset = offset + size - 1
     if (!(endOffset >= offset)) {
       return dataFragments
@@ -301,7 +301,7 @@ export class MemoryPt {
 /**
  * Map of memory information.
  */
-type TMemoryPt = Map<number, MemoryPtEntry>
+type MemoryEntriesByTimestamp = Map<number, MemoryPtEntry>
 
 /**
  * Map representing data fragment information.
@@ -309,7 +309,7 @@ type TMemoryPt = Map<number, MemoryPtEntry>
  * @property {Set<number>} originalRange - Original data range
  * @property {Set<number>} validRange - Valid data range
  */
-type _DataFragments = Map<number, { originalRange: Set<number>; validRange: Set<number> }>
+type MemoryRangeFragments = Map<number, { originalRange: Set<number>; validRange: Set<number> }>
 
 
 /**

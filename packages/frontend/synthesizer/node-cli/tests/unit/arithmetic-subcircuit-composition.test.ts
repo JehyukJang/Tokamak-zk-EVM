@@ -31,7 +31,7 @@ describe('placement composition assembly', () => {
     expect(mapping.StorageAccess.numOperands).toBe(4);
     expect(mapping.Poseidon.numOperands).toBe('dynamic');
     expect(mapping.EXP.numSteps).toBe(258);
-    expect(mapping.EXP.externalCheckRequiredOperandIndices).toEqual([1]);
+    expect(mapping.EXP.canonicalityGuardOperandIndices).toEqual([1]);
   });
 
   it('maps selector-free operations directly and declares only required input checks', () => {
@@ -60,7 +60,7 @@ describe('placement composition assembly', () => {
       expect(composition.steps).toHaveLength(1);
       expect(composition.steps[0]!.subcircuit).toBe(expected.subcircuit);
       expect(composition.steps[0]!.selector).toBe(expected.selector);
-      expect(composition.externalCheckRequiredOperandIndices).toEqual(expected.checked);
+      expect(composition.canonicalityGuardOperandIndices).toEqual(expected.checked);
     }
   });
 

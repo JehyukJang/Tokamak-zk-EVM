@@ -272,7 +272,7 @@ export const createTransactionSignatureVerifyCompositionMapping = (
     composition: {
       placementStrategy: 'generic',
       constants,
-      externalCheckRequiredOperandIndices: [],
+      canonicalityGuardOperandIndices: [],
       numSteps: steps.length,
       numOperands: numberOfOperands,
       numResults: 3,

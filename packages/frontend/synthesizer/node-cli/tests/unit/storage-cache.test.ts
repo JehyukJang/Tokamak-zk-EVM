@@ -1,14 +1,14 @@
 import { createAddressFromBigInt, bigIntToBytes, setLengthLeft } from '@ethereumjs/util';
 import { describe, expect, it, vi } from 'vitest';
 
-import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
+import { InstructionHandler } from '../../../core/src/synthesizer/runtime/instructionHandler.ts';
 import { BUFFER_LIST } from '../../../core/src/subcircuit/configuredTypes.ts';
 import { DataPtFactory, StackPt } from '../../../core/src/synthesizer/dataStructure/index.ts';
 import {
   ContextManager,
   type InitialStorageRead,
-} from '../../../core/src/synthesizer/handlers/contextManager.ts';
-import { PlacementManager } from '../../../core/src/synthesizer/handlers/placementManager.ts';
+} from '../../../core/src/synthesizer/runtime/contextManager.ts';
+import { PlacementManager } from '../../../core/src/synthesizer/runtime/placementManager.ts';
 import { VARIABLE_DESCRIPTION } from '../../../core/src/synthesizer/types/buffers.ts';
 import {
   type StorageCacheEntry,
@@ -93,7 +93,7 @@ const createStorageHarness = (initialValue: bigint) => {
     placeComposition: parent.placeComposition,
     addReservedVariableToBufferIn: parent.addReservedVariableToBufferIn,
     addReservedVariableToBufferOut: parent.addReservedVariableToBufferOut,
-    loadArbitraryStatic: vi.fn(),
+    allocateEVMInDataPt: vi.fn(),
   };
   parent.state = new ContextManager(placementManager as never);
 
@@ -369,7 +369,7 @@ describe('InstructionHandler opcode registration', () => {
   it('registers the existing REVERT handler at opcode 0xfd', () => {
     const { handler } = createStorageHarness(0n);
 
-    expect(handler.synthesizerHandlers.get(0xfd)).toBeTypeOf('function');
+    expect(handler.opcodeHandlers.get(0xfd)).toBeTypeOf('function');
   });
 });
 

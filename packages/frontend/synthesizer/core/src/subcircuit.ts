@@ -8,7 +8,7 @@ export {
   parseSetupParams,
   parseSubcircuitInfo,
   parseSubcircuitLibraryData,
-} from './subcircuit/utils.ts';
+} from './subcircuit/libraryData.ts';
 export {
   isNumber,
   isNumberArray,

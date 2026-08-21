@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { VariableGenerator } from '../../../core/src/circuitGenerator/handlers/variableGenerator.ts';
+import { VariableGenerator } from '../../../core/src/circuitGenerator/generators/variableGenerator.ts';
 import { BUFFER_LIST } from '../../../core/src/subcircuit/configuredTypes.ts';
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
 import {

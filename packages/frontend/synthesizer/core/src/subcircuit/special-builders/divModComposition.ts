@@ -9,7 +9,7 @@ const createDivisionCompositionMapping = (
     composition: {
       placementStrategy: 'generic',
       constants: [],
-      externalCheckRequiredOperandIndices: [],
+      canonicalityGuardOperandIndices: [],
       numSteps: 2,
       numOperands: 2,
       numResults: 1,

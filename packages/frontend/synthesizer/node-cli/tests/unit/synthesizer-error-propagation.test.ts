@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { Synthesizer } from '../../../core/src/synthesizer/synthesizer.ts';
 import { DataPtFactory, MemoryPt, StackPt } from '../../../core/src/synthesizer/dataStructure/index.ts';
-import { ContextManager, type MessageContext } from '../../../core/src/synthesizer/handlers/contextManager.ts';
+import { ContextManager, type MessageContext } from '../../../core/src/synthesizer/runtime/contextManager.ts';
 import { UINT256_DATA_PT_TYPE } from '../../../core/src/synthesizer/types/dataStructure.ts';
 
 type EventListener = (data: any, resolve?: () => void) => void;
@@ -40,7 +40,7 @@ const createBareSynthesizer = (): Synthesizer => {
   });
   Object.defineProperty(synthesizer, '_placementManager', {
     value: {
-      getReservedVariableFromBuffer: vi.fn(() => ({ value: 1n })),
+      getReservedInputBufferDataPt: vi.fn(() => ({ value: 1n })),
       addReservedVariableToBufferOut: vi.fn(),
     },
   });

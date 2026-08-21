@@ -1,5 +1,5 @@
 
-import { BIT_DATA_PT_TYPE, MemoryPts, synthesizerOpcodeByName, SynthesizerOpts, SynthesizerSupportedArithOpcodes, SynthesizerSupportedBlkInfOpcodes, SynthesizerSupportedEnvInfOpcodes, SynthesizerSupportedLogOpcodes, SynthesizerSupportedSysFlowOpcodes, type DataPt, type ReservedVariable, type SynthesizerSupportedOpcodes, UINT256_DATA_PT_TYPE } from '../types/index.ts';
+import { BIT_DATA_PT_TYPE, MemoryPts, synthesizerOpcodeByName, SynthesizerOpts, SynthesizerSupportedArithOpcodes, SynthesizerSupportedBlockOpcodes, SynthesizerSupportedEnvironmentOpcodes, SynthesizerSupportedLogOpcodes, SynthesizerSupportedSysFlowOpcodes, type DataPt, type ReservedVariable, type SynthesizerSupportedOpcodes, UINT256_DATA_PT_TYPE } from '../types/index.ts';
 
 import {
   Address,
@@ -13,13 +13,13 @@ import { InterpreterStep } from '@ethereumjs/evm'
 import { DataPtFactory, MemoryPt, StackPt } from '../dataStructure/index.ts';
 import type { PlacementManager } from './placementManager.ts';
 import {
-  createMemoryCopyEntries,
+  createMemoryEntriesFromCopyResult,
   type ContextManager,
   type MessageContext,
 } from './contextManager.ts';
 import type { ResolvedSubcircuitLibrary } from '../../subcircuit/libraryTypes.ts';
 
-export interface HandlerOpts {
+export interface OpcodeExecutionContext {
   op: SynthesizerSupportedOpcodes,
   pc: bigint,
   thisAddress: Address,
@@ -34,7 +34,7 @@ export interface HandlerOpts {
   memOut?: Uint8Array,
 }
 
-export interface SynthesizerOpHandler {
+export interface OpcodeHandler {
   (context: MessageContext, stepResult: InterpreterStep): void | Promise<void>
 }
 
@@ -56,17 +56,17 @@ const recoverMemoryValue = (
 }
 
 export class InstructionHandler {
-  public synthesizerHandlers!: Map<number, SynthesizerOpHandler>
+  public opcodeHandlers!: Map<number, OpcodeHandler>
   constructor(
     private readonly contextManager: ContextManager,
     private readonly placementManager: PlacementManager,
     private readonly subcircuitLibrary: ResolvedSubcircuitLibrary,
     private readonly cachedOpts: SynthesizerOpts,
   ) {
-    this._createSynthesizerHandlers()
+    this._createOpcodeHandlers()
   }
 
-  private _createHandlerOpts(opName: SynthesizerSupportedOpcodes, context: MessageContext): HandlerOpts {
+  private _createOpcodeExecutionContext(opName: SynthesizerSupportedOpcodes, context: MessageContext): OpcodeExecutionContext {
     const prevStepResult = context.prevInterpreterStep;
     if (prevStepResult === null) {
       throw new Error('Debug: previous interpreter step is not set')
@@ -92,15 +92,15 @@ export class InstructionHandler {
     }
   }
 
-  private _createSynthesizerHandlers(): void {
-    this.synthesizerHandlers = new Map<number, SynthesizerOpHandler>()
+  private _createOpcodeHandlers(): void {
+    this.opcodeHandlers = new Map<number, OpcodeHandler>()
     const __createArithHandler = (opName: SynthesizerSupportedArithOpcodes): void => {
       const op: number = synthesizerOpcodeByName[opName]
-      this.synthesizerHandlers.set(
+      this.opcodeHandlers.set(
         op,
         (context, stepResult) => {
           const out: bigint | null = stepResult.stack[0] ?? null
-          const opts = this._createHandlerOpts(opName, context)
+          const opts = this._createOpcodeExecutionContext(opName, context)
           let nIns: number
           // based on https://www.evm.codes/
           switch(opName){
@@ -131,13 +131,13 @@ export class InstructionHandler {
         },
       )
     }
-    const __createEnvInfHandler = (opName: SynthesizerSupportedEnvInfOpcodes): void => {
+    const createEnvironmentOpcodeHandler = (opName: SynthesizerSupportedEnvironmentOpcodes): void => {
       const op: number = synthesizerOpcodeByName[opName]
-      this.synthesizerHandlers.set(
+      this.opcodeHandlers.set(
         op,
         (context, stepResult) => {
           const out: bigint | null = stepResult.stack[0] ?? null
-          const opts = this._createHandlerOpts(opName, context);
+          const opts = this._createOpcodeExecutionContext(opName, context);
           // based on https://www.evm.codes/
           let nIns: number
           switch(opName) {
@@ -172,29 +172,29 @@ export class InstructionHandler {
               break
           }
           const ins = opts.prevStepResult.stack.slice(0, nIns)
-          this.handleEnvInf(ins, out, opts)
+          this.handleEnvironmentOpcode(ins, out, opts)
         },
       )
     }
-    const __createBlkInfHandler = (opName: SynthesizerSupportedBlkInfOpcodes): void => {
+    const createBlockOpcodeHandler = (opName: SynthesizerSupportedBlockOpcodes): void => {
       const op: number = synthesizerOpcodeByName[opName]
-      this.synthesizerHandlers.set(
+      this.opcodeHandlers.set(
         op,
         (context, stepResult) => {
-          const opts = this._createHandlerOpts(opName, context);
+          const opts = this._createOpcodeExecutionContext(opName, context);
           const inVal = opName === 'BLOCKHASH' ? opts.prevStepResult.stack[0] : undefined
           const outVal: bigint | null = stepResult.stack[0] ?? null
-          this.handleBlkInf(opName, inVal, outVal, opts)
+          this.handleBlockOpcode(opName, inVal, outVal, opts)
         },
       )
     }
     const __createSysFlowHandlers = (opName: SynthesizerSupportedSysFlowOpcodes): void => {
       const op: number = synthesizerOpcodeByName[opName]
-      this.synthesizerHandlers.set(
+      this.opcodeHandlers.set(
         op,
         async (context, stepResult) => {
           const out: bigint | null = stepResult.stack[0] ?? null
-          const opts = this._createHandlerOpts(opName, context)
+          const opts = this._createOpcodeExecutionContext(opName, context)
           // based on https://www.evm.codes/
           let nIns: number
           switch(opName) {
@@ -268,11 +268,11 @@ export class InstructionHandler {
     }
     const __createLoggerHandlers = (opName: SynthesizerSupportedLogOpcodes): void => {
       const op: number = synthesizerOpcodeByName[opName]
-      this.synthesizerHandlers.set(
+      this.opcodeHandlers.set(
         op,
         (context, stepResult) => {
           const out: bigint | null = stepResult.stack[0] ?? null
-          const opts = this._createHandlerOpts(opName, context)
+          const opts = this._createOpcodeExecutionContext(opName, context)
           const nTopics = opts.prevStepResult.opcode.code - 0xa0
           const ins = opts.prevStepResult.stack.slice(0, nTopics + 2)
 
@@ -282,7 +282,7 @@ export class InstructionHandler {
     }
 
     // Start creating handlers
-    this.synthesizerHandlers.set(synthesizerOpcodeByName['STOP'], function(){})
+    this.opcodeHandlers.set(synthesizerOpcodeByName['STOP'], function(){})
     ;([
       'ADD',
       'MUL',
@@ -328,7 +328,7 @@ export class InstructionHandler {
       'RETURNDATASIZE',
       'RETURNDATACOPY',
       'EXTCODEHASH',
-    ] satisfies SynthesizerSupportedOpcodes[]).forEach(__createEnvInfHandler)
+    ] satisfies SynthesizerSupportedOpcodes[]).forEach(createEnvironmentOpcodeHandler)
     ;([
       'BLOCKHASH',
       'COINBASE',
@@ -339,7 +339,7 @@ export class InstructionHandler {
       'CHAINID',
       'SELFBALANCE',
       'BASEFEE',
-    ] satisfies SynthesizerSupportedOpcodes[]).forEach(__createBlkInfHandler)
+    ] satisfies SynthesizerSupportedOpcodes[]).forEach(createBlockOpcodeHandler)
     ;(['POP'
       ,'MLOAD'
       , 'MSTORE'
@@ -369,14 +369,14 @@ export class InstructionHandler {
     ] satisfies SynthesizerSupportedOpcodes[]).forEach(__createLoggerHandlers)
 
     // PUSHs
-    this.synthesizerHandlers.set(
+    this.opcodeHandlers.set(
       synthesizerOpcodeByName['PUSH0'],
       (context, stepResult) => {
-        const opts = this._createHandlerOpts('PUSH0', context);
+        const opts = this._createOpcodeExecutionContext('PUSH0', context);
         const out: bigint = stepResult.stack[0]
         const numToPush = opts.prevStepResult.opcode.code - 0x5f
         const staticInDesc = `Static input for PUSH${numToPush} instruction at PC ${opts.pc} of code address ${opts.thisAddress} (depth: ${opts.callDepth})`
-        opts.stackPt.push(this.placementManager.loadArbitraryStatic(
+        opts.stackPt.push(this.placementManager.allocateEVMInDataPt(
           out,
           UINT256_DATA_PT_TYPE,
           staticInDesc,
@@ -387,15 +387,15 @@ export class InstructionHandler {
         }
       },
     )
-    const pushFn = this.synthesizerHandlers.get(synthesizerOpcodeByName['PUSH0'])!
+    const pushFn = this.opcodeHandlers.get(synthesizerOpcodeByName['PUSH0'])!
     for (let i = 0x60; i <= 0x7f; i++) {
-      this.synthesizerHandlers.set(i, pushFn);
+      this.opcodeHandlers.set(i, pushFn);
     }
     // DUPs
-    this.synthesizerHandlers.set(
+    this.opcodeHandlers.set(
       synthesizerOpcodeByName['DUP1'],
       (context, stepResult) => {
-        const opts = this._createHandlerOpts('DUP1', context);
+        const opts = this._createOpcodeExecutionContext('DUP1', context);
         const stackPos = opts.prevStepResult.opcode.code - 0x7f
         opts.stackPt.dup(stackPos)
         if (opts.stackPt.peek(1)[0].value !== stepResult.stack[0]) {
@@ -403,15 +403,15 @@ export class InstructionHandler {
         }
       },
     )
-    const dupFn = this.synthesizerHandlers.get(synthesizerOpcodeByName['DUP1'])!
+    const dupFn = this.opcodeHandlers.get(synthesizerOpcodeByName['DUP1'])!
     for (let i = 0x81; i <= 0x8f; i++) {
-      this.synthesizerHandlers.set(i, dupFn)
+      this.opcodeHandlers.set(i, dupFn)
     }
     // SWAPs
-    this.synthesizerHandlers.set(
+    this.opcodeHandlers.set(
       synthesizerOpcodeByName['SWAP1'],
       (context, stepResult) => {
-        const opts = this._createHandlerOpts('SWAP1', context);
+        const opts = this._createOpcodeExecutionContext('SWAP1', context);
         const stackPos = opts.prevStepResult.opcode.code - 0x8f
         opts.stackPt.swap(stackPos)
         if (opts.stackPt.peek(1)[0].value !== stepResult.stack[0]) {
@@ -419,9 +419,9 @@ export class InstructionHandler {
         }
       },
     )
-    const swapFn = this.synthesizerHandlers.get(synthesizerOpcodeByName['SWAP1'])!
+    const swapFn = this.opcodeHandlers.get(synthesizerOpcodeByName['SWAP1'])!
     for (let i = 0x91; i <= 0x9f; i++) {
-      this.synthesizerHandlers.set(i, swapFn)
+      this.opcodeHandlers.set(i, swapFn)
     }
 
   }
@@ -444,7 +444,7 @@ export class InstructionHandler {
   public handleArith = (
     ins: bigint[],
     out: bigint,
-    opts: HandlerOpts,
+    opts: OpcodeExecutionContext,
   ): void => {
     const inPts = this._popStackPtAndCheckInputConsistency(opts.stackPt, ins)
     const op = opts.op as SynthesizerSupportedArithOpcodes
@@ -477,11 +477,11 @@ export class InstructionHandler {
     opts.stackPt.push(outPts[0]);
   }
 
-  public handleBlkInf = (
-    op: SynthesizerSupportedBlkInfOpcodes,
+  public handleBlockOpcode = (
+    op: SynthesizerSupportedBlockOpcodes,
     inVal: bigint | undefined,
     out: bigint,
-    opts: HandlerOpts,
+    opts: OpcodeExecutionContext,
   ): void => {
     const stackPt = opts.stackPt
     let dataPt: DataPt;
@@ -493,7 +493,7 @@ export class InstructionHandler {
       case 'CHAINID':
       case 'SELFBALANCE':
       case 'BASEFEE': {
-        dataPt = this.placementManager.getReservedVariableFromBuffer(op)
+        dataPt = this.placementManager.getReservedInputBufferDataPt(op)
         break
       }
       case 'BLOCKHASH': {
@@ -502,9 +502,9 @@ export class InstructionHandler {
           throw new Error('Debug: BLOCKHASH requires an input block number')
         }
         this._popStackPtAndCheckInputConsistency(opts.stackPt, [blockNumber]);
-        const blockNumberDiff = this.placementManager.getReservedVariableFromBuffer('NUMBER').value - blockNumber;
+        const blockNumberDiff = this.placementManager.getReservedInputBufferDataPt('NUMBER').value - blockNumber;
         if (blockNumberDiff <= 0n || blockNumberDiff > 256n) {
-          dataPt = this.placementManager.getReservedVariableFromBuffer('EVM_CONST_ZERO')
+          dataPt = this.placementManager.getReservedInputBufferDataPt('EVM_CONST_ZERO')
           break
         }
         if (blockNumberDiff > BigInt(this.subcircuitLibrary.numberOfPrevBlockHashes)) {
@@ -512,7 +512,7 @@ export class InstructionHandler {
             `Synthesizer: BLOCKHASH requires ${blockNumberDiff.toString()} previous block hashes, but qap-compiler nPrevBlockHashes is ${this.subcircuitLibrary.numberOfPrevBlockHashes}. Increase qap-compiler nPrevBlockHashes.`,
           )
         }
-        dataPt = this.placementManager.getReservedVariableFromBuffer(`BLOCKHASH_${blockNumberDiff}` as ReservedVariable)
+        dataPt = this.placementManager.getReservedInputBufferDataPt(`BLOCKHASH_${blockNumberDiff}` as ReservedVariable)
         break
       }
       default:
@@ -537,10 +537,10 @@ export class InstructionHandler {
       return dataPts
     }
 
-  public handleEnvInf(
+  public handleEnvironmentOpcode(
     ins: bigint[],
     out: bigint | null,
-    opts: HandlerOpts,
+    opts: OpcodeExecutionContext,
   ): void {
     const _retrieveOriginAddressPt = (): DataPt => {
       checkRequiredInput(opts.originAddress)
@@ -557,7 +557,7 @@ export class InstructionHandler {
     const stackPt = opts.stackPt;
     const memoryPt = opts.memoryPt;
     const inPts = this._popStackPtAndCheckInputConsistency(opts.stackPt, ins)
-    const op = opts.op as SynthesizerSupportedEnvInfOpcodes
+    const op = opts.op as SynthesizerSupportedEnvironmentOpcodes
     const staticInDesc = `Static input for ${opts.op} instruction at PC ${opts.pc} of code address ${opts.codeAddress} (depth : ${opts.callDepth})`
     switch (op) {
       case 'ADDRESS': 
@@ -571,7 +571,7 @@ export class InstructionHandler {
         break
       case 'BALANCE': 
         {
-          stackPt.push(this.placementManager.loadArbitraryStatic(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
+          stackPt.push(this.placementManager.allocateEVMInDataPt(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
         }
         break
       case 'ORIGIN': 
@@ -587,7 +587,7 @@ export class InstructionHandler {
         }
         break
       case 'CALLVALUE': 
-        stackPt.push(this.placementManager.loadArbitraryStatic(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
+        stackPt.push(this.placementManager.allocateEVMInDataPt(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
         break
       case 'CALLDATALOAD': 
         {
@@ -608,7 +608,7 @@ export class InstructionHandler {
         }
         break
       case 'CALLDATASIZE':
-        stackPt.push(this.placementManager.loadArbitraryStatic(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
+        stackPt.push(this.placementManager.allocateEVMInDataPt(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
         break
       case 'CALLDATACOPY':
         {
@@ -625,9 +625,9 @@ export class InstructionHandler {
             )
             const resultPts = this.placementManager.placeComposition(
               'MemoryView',
-              memoryCopyPlan.operands,
+              memoryCopyPlan.memoryViewOperands,
             )
-            memoryPt.writeBatch(createMemoryCopyEntries(memoryCopyPlan, resultPts))
+            memoryPt.writeBatch(createMemoryEntriesFromCopyResult(memoryCopyPlan, resultPts))
           }
           const _outData = memoryPt.viewMemory(
             Number(memOffset),
@@ -639,7 +639,7 @@ export class InstructionHandler {
         }
         break
       case 'CODESIZE':
-        stackPt.push(this.placementManager.loadArbitraryStatic(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
+        stackPt.push(this.placementManager.allocateEVMInDataPt(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
         break
       case 'CODECOPY':
         {
@@ -648,7 +648,7 @@ export class InstructionHandler {
           checkRequiredInput(opts.memOut)
           const thisAddress = opts.thisAddress ?? this.cachedOpts.signedTransaction.to
           if (dataLength !== BIGINT_0) {
-            const memPts: MemoryPts = this.contextManager.prepareCodeMemoryEntries(
+            const memPts: MemoryPts = this.contextManager.materializeCodeMemoryEntries(
               opts.memOut!,
               bytesToBigInt(thisAddress.toBytes()),
               memOffset,
@@ -668,11 +668,11 @@ export class InstructionHandler {
         }
         break
       case 'GASPRICE': 
-        stackPt.push(this.placementManager.loadArbitraryStatic(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
+        stackPt.push(this.placementManager.allocateEVMInDataPt(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
       break
       case 'EXTCODESIZE': 
         {
-          stackPt.push(this.placementManager.loadArbitraryStatic(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
+          stackPt.push(this.placementManager.allocateEVMInDataPt(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
         }
         break
       case 'EXTCODECOPY':
@@ -682,7 +682,7 @@ export class InstructionHandler {
           const dataLength = ins[3]
           checkRequiredInput(opts.memOut)
           if (dataLength !== BIGINT_0) {
-            const memPts: MemoryPts = this.contextManager.prepareCodeMemoryEntries(
+            const memPts: MemoryPts = this.contextManager.materializeCodeMemoryEntries(
               opts.memOut!,
               addressBigInt,
               memOffset,
@@ -702,7 +702,7 @@ export class InstructionHandler {
         }
         break
       case 'RETURNDATASIZE': 
-        stackPt.push(this.placementManager.loadArbitraryStatic(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
+        stackPt.push(this.placementManager.allocateEVMInDataPt(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
         break
       case 'RETURNDATACOPY':
         {
@@ -722,9 +722,9 @@ export class InstructionHandler {
             )
             const resultPts = this.placementManager.placeComposition(
               'MemoryView',
-              memoryCopyPlan.operands,
+              memoryCopyPlan.memoryViewOperands,
             )
-            memoryPt.writeBatch(createMemoryCopyEntries(memoryCopyPlan, resultPts))
+            memoryPt.writeBatch(createMemoryEntriesFromCopyResult(memoryCopyPlan, resultPts))
           }
           const _outData = memoryPt.viewMemory(
             Number(memOffset),
@@ -737,7 +737,7 @@ export class InstructionHandler {
         break
       case 'EXTCODEHASH': 
         {
-          stackPt.push(this.placementManager.loadArbitraryStatic(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
+          stackPt.push(this.placementManager.allocateEVMInDataPt(out!, UINT256_DATA_PT_TYPE, staticInDesc, { kind: 'uncached' }))
         }
         break
       default:
@@ -759,7 +759,7 @@ export class InstructionHandler {
   public handleLoggers(
     ins: bigint[],
     out: bigint | null,
-    opts: HandlerOpts,
+    opts: OpcodeExecutionContext,
   ): void {
     const inPts = this._popStackPtAndCheckInputConsistency(opts.stackPt, ins)
     const op = opts.op as SynthesizerSupportedLogOpcodes
@@ -816,7 +816,7 @@ export class InstructionHandler {
   public async handleSysFlow(
     ins: bigint[],
     out: bigint | null,
-    opts: HandlerOpts,
+    opts: OpcodeExecutionContext,
   ): Promise<void> {
     const op = opts.op as SynthesizerSupportedSysFlowOpcodes;
     const inPts = this._popStackPtAndCheckInputConsistency(opts.stackPt, ins);
@@ -882,7 +882,7 @@ export class InstructionHandler {
       case 'PC':
         {
           const staticInDesc = `Static input for ${opts.op} instruction at PC ${opts.pc} of code address ${opts.codeAddress} (depth: ${opts.callDepth})`
-          opts.stackPt.push(this.placementManager.loadArbitraryStatic(
+          opts.stackPt.push(this.placementManager.allocateEVMInDataPt(
             out!,
             UINT256_DATA_PT_TYPE,
             staticInDesc,
@@ -893,7 +893,7 @@ export class InstructionHandler {
       case 'MSIZE':
         {
           const staticInDesc = `Static input for ${opts.op} instruction at PC ${opts.pc} of code address ${opts.codeAddress} (depth: ${opts.callDepth})`
-          opts.stackPt.push(this.placementManager.loadArbitraryStatic(
+          opts.stackPt.push(this.placementManager.allocateEVMInDataPt(
             out!,
             UINT256_DATA_PT_TYPE,
             staticInDesc,
@@ -904,7 +904,7 @@ export class InstructionHandler {
       case 'GAS':
         {
           const staticInDesc = `Static input for ${opts.op} instruction at PC ${opts.pc} of code address ${opts.codeAddress} (depth: ${opts.callDepth})`
-          opts.stackPt.push(this.placementManager.loadArbitraryStatic(
+          opts.stackPt.push(this.placementManager.allocateEVMInDataPt(
             out!,
             UINT256_DATA_PT_TYPE,
             staticInDesc,
@@ -926,9 +926,9 @@ export class InstructionHandler {
           )
           const resultPts = this.placementManager.placeComposition(
             'MemoryView',
-            memoryCopyPlan.operands,
+            memoryCopyPlan.memoryViewOperands,
           )
-          const _out = opts.memoryPt.writeBatch(createMemoryCopyEntries(memoryCopyPlan, resultPts))
+          const _out = opts.memoryPt.writeBatch(createMemoryEntriesFromCopyResult(memoryCopyPlan, resultPts))
           if (bytesToBigInt(_out) !== bytesToBigInt(opts.memOut!)) {
             throw new Error(`Synthesizer: ${op}: Output memory data mismatch`)
           }
@@ -961,9 +961,9 @@ export class InstructionHandler {
             )
             const resultPts = this.placementManager.placeComposition(
               'MemoryView',
-              memoryCopyPlan.operands,
+              memoryCopyPlan.memoryViewOperands,
             )
-            opts.memoryPt.writeBatch(createMemoryCopyEntries(memoryCopyPlan, resultPts))
+            opts.memoryPt.writeBatch(createMemoryEntriesFromCopyResult(memoryCopyPlan, resultPts))
           }
           const _out = opts.memoryPt.viewMemory(Number(outOffset), Number(outLength))
           if (bytesToBigInt(_out) !== bytesToBigInt(opts.memOut!)) {
@@ -971,7 +971,7 @@ export class InstructionHandler {
               `Synthesizer: ${op}: Return memory data mismatch`,
             )
           }
-          opts.stackPt.push(this.placementManager.getReservedVariableFromBuffer(
+          opts.stackPt.push(this.placementManager.getReservedInputBufferDataPt(
             out === 0n ? 'EVM_CONST_ZERO' : 'EVM_CONST_ONE',
           ))
         }
@@ -989,9 +989,9 @@ export class InstructionHandler {
           )
           const resultPts = this.placementManager.placeComposition(
             'MemoryView',
-            memoryCopyPlan.operands,
+            memoryCopyPlan.memoryViewOperands,
           )
-          opts.thisContext.resultMemoryPts = createMemoryCopyEntries(memoryCopyPlan, resultPts)
+          opts.thisContext.resultMemoryPts = createMemoryEntriesFromCopyResult(memoryCopyPlan, resultPts)
           opts.thisContext.resultDataByteLength = Number(length)
           
           const simMemoryPt = MemoryPt.simulateMemoryPt(opts.thisContext.resultMemoryPts);

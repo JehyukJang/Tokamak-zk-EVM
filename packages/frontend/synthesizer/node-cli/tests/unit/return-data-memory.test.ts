@@ -4,8 +4,8 @@ import { BUFFER_LIST } from '../../../core/src/subcircuit/configuredTypes.ts';
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
 import { MemoryPt } from '../../../core/src/synthesizer/dataStructure/memoryPt.ts';
 import { StackPt } from '../../../core/src/synthesizer/dataStructure/stackPt.ts';
-import { InstructionHandler } from '../../../core/src/synthesizer/handlers/instructionHandler.ts';
-import { ContextManager, type MessageContext } from '../../../core/src/synthesizer/handlers/contextManager.ts';
+import { InstructionHandler } from '../../../core/src/synthesizer/runtime/instructionHandler.ts';
+import { ContextManager, type MessageContext } from '../../../core/src/synthesizer/runtime/contextManager.ts';
 import { calculateSubcircuitOutputValues } from '../../../core/src/subcircuit/subcircuitOutputOperations.ts';
 import {
   UINT256_DATA_PT_TYPE,
@@ -40,7 +40,7 @@ const createContext = (): MessageContext => ({
 const createHarness = () => {
   let staticWireIndex = 0
   const placementManager = {
-    loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
+    allocateEVMInDataPt: vi.fn((value: bigint, dataPtType: DataPtType) =>
       dataPt(value, evmInSource, staticWireIndex++, dataPtType)),
     placeComposition: vi.fn((_operation: string, operands: readonly (readonly DataPt[])[]) =>
       operands.map((view, viewIndex) => {
@@ -93,7 +93,7 @@ describe('RETURNDATACOPY memory flow', () => {
     const memoryPt = new MemoryPt()
     const stackPt = stackFor([8n, 0n, 4n])
 
-    handler.handleEnvInf([8n, 0n, 4n], null, {
+    handler.handleEnvironmentOpcode([8n, 0n, 4n], null, {
       op: 'RETURNDATACOPY',
       pc: 0n,
       thisAddress: {} as never,
@@ -123,7 +123,7 @@ describe('RETURNDATACOPY memory flow', () => {
     context.returnDataByteLength = 4
     const memoryPt = new MemoryPt()
 
-    expect(() => handler.handleEnvInf([0n, 0n, 5n], null, {
+    expect(() => handler.handleEnvironmentOpcode([0n, 0n, 5n], null, {
       op: 'RETURNDATACOPY',
       pc: 0n,
       thisAddress: {} as never,
@@ -155,7 +155,7 @@ describe('CALLDATACOPY memory flow', () => {
     const memoryPt = new MemoryPt()
     const expected = new Uint8Array([0x33, 0x44, 0, 0, 0, 0])
 
-    handler.handleEnvInf([8n, 2n, 6n], null, {
+    handler.handleEnvironmentOpcode([8n, 2n, 6n], null, {
       op: 'CALLDATACOPY',
       pc: 0n,
       thisAddress: {} as never,

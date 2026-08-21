@@ -10,7 +10,7 @@ export const createMemoryViewCompositionMapping = (): PlacementCompositionEntry 
     composition: {
       placementStrategy: 'memory-view',
       constants: [],
-      externalCheckRequiredOperandIndices: [],
+      canonicalityGuardOperandIndices: [],
       numSteps: 'dynamic',
       numOperands: 'dynamic',
       numResults: 'dynamic',

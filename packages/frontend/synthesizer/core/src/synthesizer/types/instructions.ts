@@ -1,8 +1,8 @@
 export type SynthesizerSupportedOpcodes =
   | 'STOP'
   | SynthesizerSupportedArithOpcodes
-  | SynthesizerSupportedEnvInfOpcodes
-  | SynthesizerSupportedBlkInfOpcodes
+  | SynthesizerSupportedEnvironmentOpcodes
+  | SynthesizerSupportedBlockOpcodes
   | SynthesizerSupportedSysFlowOpcodes
   | 'PUSH1'
   | 'PUSH2'
@@ -98,7 +98,7 @@ export type SynthesizerSupportedArithOpcodes =
   | 'SAR'
   | 'KECCAK256'
   
-export type SynthesizerSupportedEnvInfOpcodes =
+export type SynthesizerSupportedEnvironmentOpcodes =
   | 'ADDRESS'
   | 'BALANCE'
   | 'ORIGIN'
@@ -116,7 +116,7 @@ export type SynthesizerSupportedEnvInfOpcodes =
   | 'RETURNDATACOPY'
   | 'EXTCODEHASH'
 
-export type SynthesizerSupportedBlkInfOpcodes =
+export type SynthesizerSupportedBlockOpcodes =
   | 'BLOCKHASH'
   | 'COINBASE'
   | 'TIMESTAMP'

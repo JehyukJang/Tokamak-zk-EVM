@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createPoseidonCompositionMapping } from '../../../core/src/subcircuit/special-builders/poseidonComposition.ts';
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
-import { PlacementManager } from '../../../core/src/synthesizer/handlers/placementManager.ts';
+import { PlacementManager } from '../../../core/src/synthesizer/runtime/placementManager.ts';
 import {
   UINT256_DATA_PT_TYPE,
   UINT32_DATA_PT_TYPE,
@@ -58,9 +58,9 @@ const createPlacementManager = (): PlacementManager => {
         values.reduce((sum, value) => sum + value, 0n),
       ]),
     },
-    loadArbitraryStatic: vi.fn((value: bigint, dataPtType: DataPtType) =>
+    allocateEVMInDataPt: vi.fn((value: bigint, dataPtType: DataPtType) =>
       dataPt(value, 5, nextStaticWireIndex++, dataPtType)),
-    getReservedVariableFromBuffer: vi.fn((name: string) => {
+    getReservedInputBufferDataPt: vi.fn((name: string) => {
       const existing = reservedDataPts.get(name)
       if (existing !== undefined) {
         return DataPtFactory.deepCopy(existing)

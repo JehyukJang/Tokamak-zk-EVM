@@ -9,9 +9,9 @@ import {
 import { DataPtFactory, MemoryPt, StackPt } from '../../../core/src/synthesizer/dataStructure/index.ts';
 import {
   ContextManager,
-  createMemoryCopyEntries,
+  createMemoryEntriesFromCopyResult,
   type MessageContext,
-} from '../../../core/src/synthesizer/handlers/contextManager.ts';
+} from '../../../core/src/synthesizer/runtime/contextManager.ts';
 import {
   UINT32_DATA_PT_TYPE,
   UINT256_DATA_PT_TYPE,
@@ -125,7 +125,7 @@ describe('CALL-family target-word topology', () => {
       originPt,
       transactionInputPts,
     );
-    contextManager.materializeMessageContext({
+    contextManager.initializeMessageContext({
       depth: 0,
       codeAddress: createAddressFromBigInt(verifiedContractAddressPt.value),
       data: new Uint8Array(4 + 32 * TRANSACTION_INPUT_VARIABLES.length),
@@ -153,10 +153,10 @@ describe('CALL-family target-word topology', () => {
     const harness = createHarness(opcode, rawTarget);
 
     const memoryCopyPlan = harness.contextManager.prepareChildCallData(harness.message);
-    const callDataPts = harness.placeComposition('MemoryView', memoryCopyPlan.operands);
-    harness.contextManager.materializeMessageContext(
+    const callDataPts = harness.placeComposition('MemoryView', memoryCopyPlan.memoryViewOperands);
+    harness.contextManager.initializeMessageContext(
       harness.message,
-      createMemoryCopyEntries(memoryCopyPlan, callDataPts),
+      createMemoryEntriesFromCopyResult(memoryCopyPlan, callDataPts),
     );
 
     expect(harness.compositionCalls).not.toContain('AND');
@@ -190,7 +190,7 @@ describe('CALL-family target-word topology', () => {
     const rawTarget = (1n << 200n) | 0x1234n;
     const harness = createHarness('CALL', rawTarget, { codeAddress: 0x1234n });
 
-    expect(() => harness.contextManager.materializeMessageContext(harness.message)).toThrow(
+    expect(() => harness.contextManager.initializeMessageContext(harness.message)).toThrow(
       'Address to call mismatch between EVM and Synthesizer',
     );
     expect(harness.compositionCalls).not.toContain('AND');
@@ -200,7 +200,7 @@ describe('CALL-family target-word topology', () => {
   it('rejects a substituted raw target before materializing the child context', () => {
     const harness = createHarness('CALL', 0x1234n, { stackTarget: 0x5678n });
 
-    expect(() => harness.contextManager.materializeMessageContext(harness.message)).toThrow(
+    expect(() => harness.contextManager.initializeMessageContext(harness.message)).toThrow(
       'Raw address to call mismatch',
     );
     expect(harness.placeComposition).not.toHaveBeenCalled();

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseFrontendConfig } from '../../../core/src/subcircuit/utils.ts';
+import { parseFrontendConfig } from '../../../core/src/subcircuit/libraryData.ts';
 
 const validConfig = {
   nTxIn: 6,

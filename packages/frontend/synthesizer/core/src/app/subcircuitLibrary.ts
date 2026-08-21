@@ -15,7 +15,7 @@ import type {
   CompositionStep,
   PlacementCompositionMapping,
 } from '../subcircuit/placementCompositionMapping.ts';
-import { createInfoByName } from '../subcircuit/utils.ts';
+import { createInfoByName } from '../subcircuit/libraryData.ts';
 
 function getLogicalPortWireCount(ports: readonly LogicalInterfacePort[]): number {
   return ports.reduce(

@@ -24,7 +24,7 @@ import { DataPtFactory } from './dataPt.ts'
  * but operate internally for different purposes.
  */
 
-export type TStackPt = DataPt[]
+export type StackDataPts = DataPt[]
 
 /**
  * Stack implementation for EVM symbolic execution
@@ -56,7 +56,7 @@ export type TStackPt = DataPt[]
 export class StackPt {
   // This array is initialized as an empty array. Once values are pushed, the array size will never decrease.
   // Internal array storing actual data. Size doesn't decrease after push 
-  private _storePt: TStackPt
+  private _storePt: StackDataPts
   // Maximum allowed stack height (default: 1024)
   private _maxHeight: number
   // Actual number of items currently in use in the stack
@@ -83,7 +83,7 @@ export class StackPt {
       )
     }
 
-    const evmWordPt = DataPtFactory.createEVMWordView(pt)
+    const evmWordPt = DataPtFactory.copyEvmWord(pt)
     // Read current length, set `_storePt` to value, and then increase the length
     this._storePt[this._len] = evmWordPt
     this._len++

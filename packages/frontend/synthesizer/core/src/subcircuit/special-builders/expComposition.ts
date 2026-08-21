@@ -79,7 +79,7 @@ export const createExpCompositionMapping = (): PlacementCompositionEntry => {
     composition: {
       placementStrategy: 'generic',
       constants,
-      externalCheckRequiredOperandIndices: [1],
+      canonicalityGuardOperandIndices: [1],
       numSteps: steps.length,
       numOperands: 2,
       numResults: 1,

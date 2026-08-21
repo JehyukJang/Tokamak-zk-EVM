@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { PermutationGenerator } from '../../../core/src/circuitGenerator/handlers/permutationGenerator.ts';
+import { PermutationGenerator } from '../../../core/src/circuitGenerator/generators/permutationGenerator.ts';
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
 import { BIT_DATA_PT_TYPE, type DataPt } from '../../../core/src/synthesizer/types/dataStructure.ts';
 import type { Placements, PlacementVariables } from '../../../core/src/synthesizer/types/placements.ts';

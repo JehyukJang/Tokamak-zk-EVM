@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseSubcircuitInfo } from '../../../core/src/subcircuit/utils.ts';
+import { parseSubcircuitInfo } from '../../../core/src/subcircuit/libraryData.ts';
 
 const bufferEntry = (bufferDirection: unknown = undefined) => ({
   id: 0,

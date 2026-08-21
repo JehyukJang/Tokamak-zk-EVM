@@ -6,9 +6,9 @@ import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataP
 import { MemoryPt } from '../../../core/src/synthesizer/dataStructure/memoryPt.ts'
 import { StackPt } from '../../../core/src/synthesizer/dataStructure/stackPt.ts'
 import type { ResolvedSubcircuitLibrary } from '../../../core/src/subcircuit/libraryTypes.ts'
-import { InstructionHandler, type HandlerOpts } from '../../../core/src/synthesizer/handlers/instructionHandler.ts'
-import type { ContextManager, MessageContext } from '../../../core/src/synthesizer/handlers/contextManager.ts'
-import type { PlacementManager } from '../../../core/src/synthesizer/handlers/placementManager.ts'
+import { InstructionHandler, type OpcodeExecutionContext } from '../../../core/src/synthesizer/runtime/instructionHandler.ts'
+import type { ContextManager, MessageContext } from '../../../core/src/synthesizer/runtime/contextManager.ts'
+import type { PlacementManager } from '../../../core/src/synthesizer/runtime/placementManager.ts'
 import type { SynthesizerOpts } from '../../../core/src/synthesizer/types/index.ts'
 import { UINT256_DATA_PT_TYPE, type DataPt } from '../../../core/src/synthesizer/types/dataStructure.ts'
 
@@ -35,7 +35,7 @@ describe('MSTORE8 byte writes', () => {
     stackPt.push(originalDataPt)
     stackPt.push(offsetPt)
     const memoryPt = new MemoryPt()
-    const opts: HandlerOpts = {
+    const opts: OpcodeExecutionContext = {
       op: 'MSTORE8',
       pc: 0n,
       thisAddress: createAddressFromBigInt(0n),

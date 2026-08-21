@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { PlacementManager } from '../../../core/src/synthesizer/handlers/placementManager.ts';
+import { PlacementManager } from '../../../core/src/synthesizer/runtime/placementManager.ts';
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
 import {
   UINT160_DATA_PT_TYPE,
@@ -14,7 +14,7 @@ import type { PlacementComposition } from '../../../core/src/subcircuit/placemen
 const composition = {
   placementStrategy: 'generic',
   constants: [],
-  externalCheckRequiredOperandIndices: [],
+  canonicalityGuardOperandIndices: [],
   numSteps: 1,
   numOperands: 2,
   numResults: 1,
@@ -73,7 +73,7 @@ function createPlacementManager(
     subcircuitLibrary: {
       calculateSubcircuitOutputValues: () => outputValues,
     },
-    getReservedVariableFromBuffer: () => createDataPt(selectorType, 5, 0, 1n),
+    getReservedInputBufferDataPt: () => createDataPt(selectorType, 5, 0, 1n),
   }) as PlacementManager;
 }
 

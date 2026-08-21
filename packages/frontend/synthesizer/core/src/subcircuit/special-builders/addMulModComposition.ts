@@ -6,7 +6,7 @@ const createAddModCompositionMapping = (): PlacementCompositionEntry =>
     composition: {
       placementStrategy: 'generic',
       constants: [],
-      externalCheckRequiredOperandIndices: [],
+      canonicalityGuardOperandIndices: [],
       numSteps: 2,
       numOperands: 3,
       numResults: 1,
@@ -46,7 +46,7 @@ const createMulModCompositionMapping = (): PlacementCompositionEntry =>
     composition: {
       placementStrategy: 'generic',
       constants: [],
-      externalCheckRequiredOperandIndices: [],
+      canonicalityGuardOperandIndices: [],
       numSteps: 3,
       numOperands: 3,
       numResults: 1,

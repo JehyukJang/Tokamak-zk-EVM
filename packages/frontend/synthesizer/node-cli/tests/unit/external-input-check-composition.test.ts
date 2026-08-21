@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createPlacementCompositionMapping } from '../../../core/src/subcircuit/placementCompositionMapping.ts';
 import { DataPtFactory } from '../../../core/src/synthesizer/dataStructure/dataPt.ts';
-import { PlacementManager } from '../../../core/src/synthesizer/handlers/placementManager.ts';
+import { PlacementManager } from '../../../core/src/synthesizer/runtime/placementManager.ts';
 import { UINT256_DATA_PT_TYPE, type DataPt } from '../../../core/src/synthesizer/types/dataStructure.ts';
 
 const word = (value: bigint, source: number, wireIndex = 0): DataPt => DataPtFactory.create({
@@ -111,19 +111,19 @@ describe('topology-fixed arbitrary statics', () => {
       _cachedTopologyFixedEVMIn: new Map(),
     }) as PlacementManager;
 
-    const first = placementManager.loadArbitraryStatic(
+    const first = placementManager.allocateEVMInDataPt(
       3n,
       UINT256_DATA_PT_TYPE,
       'First PUSH immediate',
       { kind: 'topology-fixed', usage: 'push-immediate' },
     );
-    const reused = placementManager.loadArbitraryStatic(
+    const reused = placementManager.allocateEVMInDataPt(
       3n,
       UINT256_DATA_PT_TYPE,
       'Second PUSH immediate',
       { kind: 'topology-fixed', usage: 'push-immediate' },
     );
-    const distinctUsage = placementManager.loadArbitraryStatic(
+    const distinctUsage = placementManager.allocateEVMInDataPt(
       3n,
       UINT256_DATA_PT_TYPE,
       'Memory ownership mask',
@@ -142,13 +142,13 @@ describe('topology-fixed arbitrary statics', () => {
       _cachedTopologyFixedEVMIn: new Map(),
     }) as PlacementManager;
 
-    const first = placementManager.loadArbitraryStatic(
+    const first = placementManager.allocateEVMInDataPt(
       3n,
       UINT256_DATA_PT_TYPE,
       'First uncached input',
       { kind: 'uncached' },
     );
-    const second = placementManager.loadArbitraryStatic(
+    const second = placementManager.allocateEVMInDataPt(
       3n,
       UINT256_DATA_PT_TYPE,
       'Second uncached input',

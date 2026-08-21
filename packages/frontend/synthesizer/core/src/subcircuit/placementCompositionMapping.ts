@@ -1,5 +1,4 @@
 import { OPERATOR_LIST, type CompositionSubcircuit, type Operator } from './configuredTypes.ts';
-import { freezeComposition } from './utils.ts';
 import { isDataPtType, type DataPtType } from '../synthesizer/types/dataStructure.ts';
 import { createAddMulModCompositionMappings } from './special-builders/addMulModComposition.ts';
 import { createDivisionCompositionMappings } from './special-builders/divModComposition.ts';
@@ -10,7 +9,7 @@ import { createTransactionSignatureVerifyCompositionMapping } from './special-bu
 
 export type SelectorDefinition = bigint | null | 'dynamic';
 
-type PlacementStrategy = 'generic' | 'poseidon' | 'memory-view';
+type CompositionMaterializationStrategy = 'generic' | 'poseidon' | 'memory-view';
 
 export type InputReference =
   | Readonly<{ kind: 'selector' }>
@@ -36,9 +35,9 @@ export type ConstantDefinition = Readonly<{
 }>;
 
 export type PlacementComposition = Readonly<{
-  placementStrategy: PlacementStrategy;
+  placementStrategy: CompositionMaterializationStrategy;
   constants: readonly ConstantDefinition[];
-  externalCheckRequiredOperandIndices: readonly number[];
+  canonicalityGuardOperandIndices: readonly number[];
   numSteps: number | 'dynamic';
   numOperands: number | 'dynamic';
   numResults: number | 'dynamic';
@@ -52,6 +51,38 @@ export type PlacementCompositionEntry = Readonly<{
 
 export type PlacementCompositionMapping = Readonly<Record<Operator, PlacementComposition>>;
 
+const freezeReference = <Reference extends InputReference | OutputReference>(
+  reference: Reference,
+): Reference => Object.freeze({ ...reference }) as Reference;
+
+const freezeComposition = (composition: PlacementComposition): PlacementComposition => Object.freeze({
+  placementStrategy: composition.placementStrategy,
+  constants: Object.freeze(composition.constants.map((constant) => Object.freeze({
+    value: constant.value,
+    dataPtType: constant.dataPtType,
+  }))),
+  canonicalityGuardOperandIndices: Object.freeze([
+    ...composition.canonicalityGuardOperandIndices,
+  ]),
+  numSteps: composition.numSteps,
+  numOperands: composition.numOperands,
+  numResults: composition.numResults,
+  steps: Object.freeze(composition.steps.map((step) => Object.freeze({
+    subcircuit: step.subcircuit,
+    selector: step.selector,
+    inputs: Object.freeze(step.inputs.map(freezeReference)),
+    outputs: Object.freeze(step.outputs.map(freezeReference)),
+  }))),
+});
+
+export const assertPositiveInteger = (value: number, description: string): void => {
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(
+      `PlacementCompositionMapping: ${description} must be a positive integer`,
+    );
+  }
+};
+
 const assertIndex = (index: number, description: string): void => {
   if (!Number.isInteger(index) || index < 0) {
     throw new Error(`PlacementCompositionMapping: ${description} must be a non-negative integer`);
@@ -64,7 +95,7 @@ const validatePlacementComposition = (operation: Operator, composition: Placemen
   const expectedSpecialOperator = {
     poseidon: 'Poseidon',
     'memory-view': 'MemoryView',
-  }[composition.placementStrategy as Exclude<PlacementStrategy, 'generic'>];
+  }[composition.placementStrategy as Exclude<CompositionMaterializationStrategy, 'generic'>];
   if (isGeneric && (composition.numSteps === 'dynamic' || hasDynamicSelector)) {
     throw new Error(
       `PlacementCompositionMapping: ${operation} cannot use generic placement with dynamic numSteps or selectors`,
@@ -97,13 +128,13 @@ const validatePlacementComposition = (operation: Operator, composition: Placemen
   if (composition.steps.length === 0) {
     throw new Error(`PlacementCompositionMapping: operation ${operation} requires at least one step`);
   }
-  if (composition.numOperands === 'dynamic' && composition.externalCheckRequiredOperandIndices.length > 0) {
+  if (composition.numOperands === 'dynamic' && composition.canonicalityGuardOperandIndices.length > 0) {
     throw new Error(
       `PlacementCompositionMapping: ${operation} dynamic operands cannot declare external input checks`,
     );
   }
   const externalCheckOperandIndices = new Set<number>();
-  for (const index of composition.externalCheckRequiredOperandIndices) {
+  for (const index of composition.canonicalityGuardOperandIndices) {
     assertIndex(index, `${operation} external-check operand index`);
     if (externalCheckOperandIndices.has(index)) {
       throw new Error(
@@ -284,14 +315,14 @@ const createSingleStepMapping = (
   numOperands: number,
   numResults: number,
   constants: readonly ConstantDefinition[] = [],
-  externalCheckRequiredOperandIndices: readonly number[] = [],
+  canonicalityGuardOperandIndices: readonly number[] = [],
 ): PlacementCompositionEntry =>
   ({
     operation,
     composition: {
       placementStrategy: 'generic',
       constants,
-      externalCheckRequiredOperandIndices,
+      canonicalityGuardOperandIndices,
       numSteps: 1,
       numOperands,
       numResults,

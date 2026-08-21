@@ -356,7 +356,7 @@ export class PlacementManager {
     return DataPtFactory.deepCopy(this._appendBufferWirePair(symbolDataPt, externalDataPt, dynamic))
   }
 
-  public loadArbitraryStatic(
+  public allocateEVMInDataPt(
     value: bigint,
     dataPtType: DataPtType,
     description: string,
@@ -392,7 +392,7 @@ export class PlacementManager {
     return DataPtFactory.deepCopy(outPt)
   }
 
-  public getReservedVariableFromBuffer(varName: ReservedVariable): DataPt {
+  public getReservedInputBufferDataPt(varName: ReservedVariable): DataPt {
     const variableDescription = this._getReservedVariableDescription(varName)
     if (variableDescription.extSource === undefined) {
       throw new Error('Usable only for reserved variables of input buffers')
@@ -418,7 +418,7 @@ export class PlacementManager {
     if (exponent === undefined) {
       throw new Error(`Synthesizer: ${value} has no reserved uint32 power-of-two input`)
     }
-    return this.getReservedVariableFromBuffer(
+    return this.getReservedInputBufferDataPt(
       `UINT32_POW2_${exponent}` as ReservedVariable,
     )
   }
@@ -426,13 +426,13 @@ export class PlacementManager {
   private _getReservedZero(dataPtType: DataPtType): DataPt {
     switch (dataPtType) {
       case BLS12_381_FR_DATA_PT_TYPE:
-        return this.getReservedVariableFromBuffer('CIRCOM_CONST_ZERO')
+        return this.getReservedInputBufferDataPt('CIRCOM_CONST_ZERO')
       case BIT_DATA_PT_TYPE:
-        return this.getReservedVariableFromBuffer('BIT_CONST_ZERO')
+        return this.getReservedInputBufferDataPt('BIT_CONST_ZERO')
       case UINT32_DATA_PT_TYPE:
-        return this.getReservedVariableFromBuffer('UINT32_CONST_ZERO')
+        return this.getReservedInputBufferDataPt('UINT32_CONST_ZERO')
       case UINT256_DATA_PT_TYPE:
-        return this.getReservedVariableFromBuffer('EVM_CONST_ZERO')
+        return this.getReservedInputBufferDataPt('EVM_CONST_ZERO')
       default:
         throw new Error(`Synthesizer: no reserved zero exists for ${dataPtType}`)
     }
@@ -718,9 +718,9 @@ export class PlacementManager {
             if (constant.value === 0n) {
               inPts.push(this._getReservedZero(constant.dataPtType))
             } else if (constant.value === 1n && constant.dataPtType === BIT_DATA_PT_TYPE) {
-              inPts.push(this.getReservedVariableFromBuffer('BIT_CONST_ONE'))
+              inPts.push(this.getReservedInputBufferDataPt('BIT_CONST_ONE'))
             } else if (constant.value === 1n && constant.dataPtType === UINT256_DATA_PT_TYPE) {
-              inPts.push(this.getReservedVariableFromBuffer('EVM_CONST_ONE'))
+              inPts.push(this.getReservedInputBufferDataPt('EVM_CONST_ONE'))
             } else {
               throw new Error(
                 `Synthesizer: ${operation} constant ${input.index} has no reserved input`,
@@ -790,11 +790,11 @@ export class PlacementManager {
     operands: readonly DataPt[],
   ): PlacementEntry[] {
     const steps: PlacementEntry[] = []
-    if (composition.externalCheckRequiredOperandIndices.length === 0) {
+    if (composition.canonicalityGuardOperandIndices.length === 0) {
       return steps
     }
 
-    for (const operandIndex of composition.externalCheckRequiredOperandIndices) {
+    for (const operandIndex of composition.canonicalityGuardOperandIndices) {
       const operand = operands[operandIndex]
       if (operand === undefined) {
         throw new Error(`Synthesizer: ${operation} external-check operand ${operandIndex} is unavailable`)
