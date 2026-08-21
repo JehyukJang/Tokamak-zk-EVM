@@ -99,15 +99,6 @@ const prepareCircuitInstance = (
     }
   )._prepareCircuitInstance(placement, target);
 
-const extractPublicProjection = (generator: VariableGenerator, placementVariables: PlacementVariables) =>
-  (
-    generator as unknown as {
-      _extractPublicProjection(
-        placementVariables: PlacementVariables,
-      ): unknown;
-    }
-  )._extractPublicProjection(placementVariables);
-
 const createGeneratorWithSubcircuits = (
   subcircuits: readonly { name: string; id: number; NInWires: number; NOutWires: number }[],
   globalWireList: readonly (readonly [number, number])[] = [],
@@ -281,58 +272,6 @@ describe('VariableGenerator interface materialization', () => {
     expect(prepareCircuitInstance(generator, placement, 'In').values).toEqual(['0x1', '0x00']);
   });
 
-  it('projects public values and descriptions in one result', () => {
-    const generator = createGeneratorWithSubcircuits(
-      [{ name: 'bufferEVMIn', id: 10, NInWires: 1, NOutWires: 1 }],
-      [[10, 1]],
-      ['EVM_IN'],
-    );
-
-    expect(extractPublicProjection(generator, [{
-      subcircuitId: 10,
-      variables: ['0x01', '0x02'],
-      instanceList: ['', 'public value'],
-    }])).toEqual({
-      publicInstance: {
-        a_pub_user: [],
-        a_pub_block: [],
-        a_pub_function: ['0x02'],
-      },
-      publicInstanceDescription: {
-        a_pub_user_description: [],
-        a_pub_block_description: [],
-        a_pub_function_description: ['public value'],
-      },
-    });
-  });
-
-  it('rejects a public wire that is not declared by a public buffer', () => {
-    const generator = createGeneratorWithSubcircuits([{ name: 'ADD', id: 10, NInWires: 1, NOutWires: 1 }], [[10, 1]]);
-
-    expect(() =>
-      extractPublicProjection(generator, [
-        {
-          subcircuitId: 10,
-          variables: ['0x01', '0x02'],
-          instanceList: ['', ''],
-        },
-      ]),
-    ).toThrow('does not belong to one declared public buffer');
-  });
-
-  it('rejects multiple runtime placements for one public buffer', () => {
-    const generator = createGeneratorWithSubcircuits(
-      [{ name: 'bufferEVMIn', id: 10, NInWires: 1, NOutWires: 1 }],
-      [[10, 1]],
-      ['EVM_IN'],
-    );
-    const placements: PlacementVariables = [
-      { subcircuitId: 10, variables: ['0x01', '0x02'], instanceList: ['', ''] },
-      { subcircuitId: 10, variables: ['0x01', '0x03'], instanceList: ['', ''] },
-    ];
-
-    expect(() => extractPublicProjection(generator, placements)).toThrow('must have exactly one runtime placement');
-  });
 });
 
 describe('VariableGenerator buffer wire capacity', () => {

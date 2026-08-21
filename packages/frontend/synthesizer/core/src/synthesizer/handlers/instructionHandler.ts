@@ -426,158 +426,19 @@ export class InstructionHandler {
 
   }
 
-  private _assertStorageAddress(
-    address: Address,
-    addressPt: DataPt,
-  ): void {
+  private async _readHostStorage(addressPt: DataPt, keyPt: DataPt): Promise<bigint> {
+    return bytesToBigInt(
+      await this.cachedOpts.stateManager.getStorage(
+        createAddressFromBigInt(addressPt.value),
+        setLengthLeft(bigIntToBytes(keyPt.value), 32),
+      ),
+    )
+  }
+
+  private _assertStorageAddress(address: Address, addressPt: DataPt): void {
     if (addressPt.value !== bytesToBigInt(address.bytes)) {
       throw new Error('Synthesizer: Storage address mismatch between EVM and storageAddressPt')
     }
-  }
-
-  private _constrainStorageLocationEquality(
-    currentAddressPt: DataPt,
-    currentKeyPt: DataPt,
-    canonicalAddressPt: DataPt,
-    canonicalKeyPt: DataPt,
-  ): void {
-    const inPts = [
-      currentAddressPt,
-      currentKeyPt,
-      canonicalAddressPt,
-      canonicalKeyPt,
-    ]
-    this.placementManager.placeComposition('StorageAccess', inPts)
-  }
-
-  private _getCachedStorageEntry(
-    addressValue: bigint,
-    keyValue: bigint,
-    addressPt: DataPt,
-    keyPt: DataPt,
-  ) {
-    // The cache-entry and retained-initial-read branches are mutually exclusive,
-    // so each lookup places StorageAccess at most once.
-    const cachedEntry = this.contextManager.storageCache.get(addressValue, keyValue)
-    if (cachedEntry !== undefined) {
-      this._constrainStorageLocationEquality(
-        addressPt,
-        keyPt,
-        cachedEntry.canonicalAddressPt,
-        cachedEntry.canonicalKeyPt,
-      )
-      return cachedEntry
-    }
-
-    const initialRead = this.contextManager.initialStorageReads.get(addressValue, keyValue)
-    if (initialRead === undefined) {
-      return undefined
-    }
-    this._constrainStorageLocationEquality(
-      addressPt,
-      keyPt,
-      initialRead.addressPt,
-      initialRead.keyPt,
-    )
-    return {
-      canonicalAddressPt: initialRead.addressPt,
-      canonicalKeyPt: initialRead.keyPt,
-      latestValuePt: initialRead.valuePt,
-      dirty: false,
-    }
-  }
-
-  private async loadStorage(
-    addressPt: DataPt,
-    keyPt: DataPt,
-    valueGiven?: bigint,
-  ): Promise<DataPt> {
-    const addressValue = addressPt.value
-    const keyValue = keyPt.value
-    const address = createAddressFromBigInt(addressValue)
-    const valueStored = bytesToBigInt(
-      await this.cachedOpts.stateManager.getStorage(
-        address,
-        setLengthLeft(bigIntToBytes(keyPt.value), 32),
-      ),
-    );
-    if (valueGiven !== undefined && valueGiven !== valueStored) {
-      throw new Error('Mismatch in storage values');
-    }
-
-    const cachedEntry = this._getCachedStorageEntry(addressValue, keyValue, addressPt, keyPt)
-    if (cachedEntry !== undefined) {
-      if (cachedEntry.latestValuePt.value !== valueStored) {
-        throw new Error('Synthesizer: Cached storage value does not match EVM storage')
-      }
-      this.contextManager.storageCache.set(addressValue, keyValue, cachedEntry)
-      return DataPtFactory.deepCopy(cachedEntry.latestValuePt)
-    }
-
-    this.placementManager.addReservedVariableToBufferOut(
-      'SLOAD_ADDRESS',
-      addressPt,
-      true,
-      ` of address: ${address}`,
-    );
-    this.placementManager.addReservedVariableToBufferOut(
-      'SLOAD_KEY',
-      keyPt,
-      true,
-      ` of address: ${address}`,
-    );
-    const valuePt = this.placementManager.addReservedVariableToBufferIn(
-      'STORAGE_READ',
-      valueStored,
-      true,
-      ` of address: ${address}`,
-    );
-    this.placementManager.addReservedVariableToBufferOut(
-      'SLOAD_VALUE',
-      valuePt,
-      true,
-      ` of address: ${address}`,
-    );
-    const initialRead = {
-      addressPt: DataPtFactory.deepCopy(addressPt),
-      keyPt: DataPtFactory.deepCopy(keyPt),
-      valuePt: DataPtFactory.deepCopy(valuePt),
-    }
-    this.contextManager.initialStorageReads.add(addressValue, keyValue, initialRead)
-    this.contextManager.storageCache.set(addressValue, keyValue, {
-      canonicalAddressPt: initialRead.addressPt,
-      canonicalKeyPt: initialRead.keyPt,
-      latestValuePt: initialRead.valuePt,
-      dirty: false,
-    })
-    return DataPtFactory.deepCopy(valuePt);
-  }
-
-  private async storeStorage(
-    addressPt: DataPt,
-    keyPt: DataPt,
-    symbolDataPt: DataPt,
-  ): Promise<void> {
-    const addressValue = addressPt.value
-    const keyValue = keyPt.value
-    const address = createAddressFromBigInt(addressValue)
-    const valueStored = bytesToBigInt(
-      await this.cachedOpts.stateManager.getStorage(
-        address,
-        setLengthLeft(bigIntToBytes(keyPt.value), 32),
-      ),
-    );
-    if (valueStored !== symbolDataPt.value) {
-      throw new Error('Mismatch in storage values between MPT and EVM stack');
-    }
-
-    const cachedEntry = this._getCachedStorageEntry(addressValue, keyValue, addressPt, keyPt)
-    this.contextManager.storageCache.set(addressValue, keyValue, {
-      canonicalAddressPt: cachedEntry?.canonicalAddressPt ?? addressPt,
-      canonicalKeyPt: cachedEntry?.canonicalKeyPt ?? keyPt,
-      latestValuePt: symbolDataPt,
-      dirty: true,
-    })
   }
 
   public handleArith = (
@@ -995,11 +856,11 @@ export class InstructionHandler {
           const keyPt = inPts[0]
           const addressPt = opts.thisContext.storageAddressPt
           this._assertStorageAddress(opts.thisAddress, addressPt)
-          opts.stackPt.push(await this.loadStorage(
-            addressPt,
-            keyPt,
-            out!,
-          ))
+          const observedValue = await this._readHostStorage(addressPt, keyPt)
+          if (observedValue !== out) {
+            throw new Error('Synthesizer: SLOAD result does not match EVM storage')
+          }
+          opts.stackPt.push(this.contextManager.readStorage(addressPt, keyPt, observedValue))
         }
         break
       case 'SSTORE': 
@@ -1008,11 +869,8 @@ export class InstructionHandler {
           const dataPt = inPts[1]
           const addressPt = opts.thisContext.storageAddressPt
           this._assertStorageAddress(opts.thisAddress, addressPt)
-          await this.storeStorage(
-            addressPt,
-            keyPt,
-            dataPt,
-          )
+          const observedValue = await this._readHostStorage(addressPt, keyPt)
+          this.contextManager.writeStorage(addressPt, keyPt, dataPt, observedValue)
           if ( dataPt.value !== ins[1] ) {
             throw new Error(`Synthesizer: ${op}: Output storage data mismatch`)
           } 

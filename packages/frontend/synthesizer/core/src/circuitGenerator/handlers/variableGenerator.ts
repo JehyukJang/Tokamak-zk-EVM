@@ -13,13 +13,9 @@ import { builder } from '../utils/witness_calculator.ts';
 import { VARIABLE_DESCRIPTION } from '../../synthesizer/types/buffers.ts';
 import type { ResolvedSubcircuitLibrary } from '../../subcircuit/libraryTypes.ts';
 import type { SynthesizerInterface } from '../../synthesizer/types/index.ts';
-import type { PublicInstance, PublicInstanceDescription } from '../types/types.ts';
-
 export type VariableGenerationResult = Readonly<{
   circuitPlacements: Placements;
   placementVariables: PlacementVariables;
-  publicInstance: PublicInstance;
-  publicInstanceDescription: PublicInstanceDescription;
 }>;
 
 export class VariableGenerator {
@@ -36,11 +32,9 @@ export class VariableGenerator {
     this._validateBufferSizes(newPlacements);
 
     const placementVariables = await this._generatePlacementVariables(newPlacements);
-    const publicProjection = this._extractPublicProjection(placementVariables);
     return {
       circuitPlacements: newPlacements,
       placementVariables,
-      ...publicProjection,
     };
   }
 
@@ -138,51 +132,6 @@ export class VariableGenerator {
     console.log(`Synthesizer: All ${placements.length} placement instances passed the subcircuits`);
 
     return placementVariables;
-  }
-
-  private _extractPublicProjection(
-    placementVariables: PlacementVariables,
-  ): Pick<VariableGenerationResult, 'publicInstance' | 'publicInstanceDescription'> {
-    const { globalWireList, setupParams } = this.subcircuitLibrary.data;
-    const values: `0x${string}`[] = Array(setupParams.l).fill('0x00');
-    const descriptions: string[] = Array(setupParams.l).fill('');
-    for (let globalIdx = 0; globalIdx < setupParams.l; globalIdx++) {
-      const [subcircuitId, localVariableIdx] = globalWireList[globalIdx];
-      if (subcircuitId !== -1 && localVariableIdx !== -1) {
-        const publicBuffers = BUFFER_LIST.filter(
-          buffer =>
-            this.subcircuitLibrary.subcircuitBufferMapping[buffer]?.id === subcircuitId && buffer !== 'PRIVATE_IN',
-        );
-        if (publicBuffers.length !== 1) {
-          throw new Error(`Public wire ${globalIdx} does not belong to one declared public buffer`);
-        }
-        const placements = placementVariables.filter(entry => entry.subcircuitId === subcircuitId);
-        if (placements.length !== 1) {
-          throw new Error(`Public buffer ${publicBuffers[0]} must have exactly one runtime placement`);
-        }
-        const placement = placements[0]!;
-        const value = placement.variables[localVariableIdx];
-        const description = placement.instanceList[localVariableIdx];
-        if (value === undefined || description === undefined) {
-          throw new Error('Something wrong in the Global Wire List or local placement variables. Need to be debugged.');
-        }
-        values[globalIdx] = addHexPrefix(value);
-        descriptions[globalIdx] = description;
-      }
-    }
-    const { l_user, l_free } = this.subcircuitLibrary.data.setupParams;
-    return {
-      publicInstance: {
-        a_pub_user: values.slice(0, l_user),
-        a_pub_block: values.slice(l_user, l_free),
-        a_pub_function: values.slice(l_free),
-      },
-      publicInstanceDescription: {
-        a_pub_user_description: descriptions.slice(0, l_user),
-        a_pub_block_description: descriptions.slice(l_user, l_free),
-        a_pub_function_description: descriptions.slice(l_free),
-      },
-    };
   }
 
   private _expandDataPtIntoCircomWires(origDataPt: DataPt): DataPt[] {

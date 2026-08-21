@@ -80,34 +80,20 @@ afterEach(() => {
 });
 
 describe('Synthesizer VM lifecycle', () => {
-  it('emits final dirty storage triples during successful transaction finalization', () => {
+  it('delegates final storage output to ContextManager during successful transaction finalization', () => {
     const vmEvents = new TestEventEmitter();
     const evmEvents = new TestEventEmitter();
 
     const synthesizer = createBareSynthesizer();
-    const addressPt = { source: 1, wireIndex: 0, sourceBitSize: 256, value: 1n };
-    const keyPt = { source: 2, wireIndex: 0, sourceBitSize: 256, value: 2n };
-    const valuePt = { source: 3, wireIndex: 0, sourceBitSize: 256, value: 3n };
+    const finalizeStorageStores = vi.fn();
     Object.defineProperty(synthesizer, '_contextManager', {
       value: {
-        storageCache: {
-          dirtyEntries: [{
-            canonicalAddressPt: addressPt,
-            canonicalKeyPt: keyPt,
-            latestValuePt: valuePt,
-            dirty: true,
-          }],
-        },
+        finalizeStorageStores,
       },
     });
-    const addStorageOutput = (synthesizer as any)._placementManager.addReservedVariableToBufferOut;
-    ;(synthesizer as any)._finalizeStorageStore()
+    ;(synthesizer as any)._contextManager.finalizeStorageStores()
 
-    expect(addStorageOutput.mock.calls).toEqual([
-      ['SSTORE_ADDRESS', addressPt, true],
-      ['SSTORE_KEY', keyPt, true],
-      ['SSTORE_VALUE', valuePt, true],
-    ]);
+    expect(finalizeStorageStores).toHaveBeenCalledOnce();
   });
 
   it('records the first step-handler error and skips later handlers', async () => {

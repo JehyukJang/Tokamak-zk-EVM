@@ -107,10 +107,18 @@ const createStorageHarness = (initialValue: bigint) => {
       cachedOpts as never,
     ),
     parent,
+    readStorage: (addressPt: DataPt, keyPt: DataPt, observedValue: bigint) =>
+      parent.state.readStorage(addressPt, keyPt, observedValue),
     stateManager,
     setStorageValue: (value: bigint) => {
       storageValue = value;
     },
+    writeStorage: (
+      addressPt: DataPt,
+      keyPt: DataPt,
+      valuePt: DataPt,
+      observedValue: bigint,
+    ) => parent.state.writeStorage(addressPt, keyPt, valuePt, observedValue),
   };
 };
 
@@ -365,14 +373,14 @@ describe('InstructionHandler opcode registration', () => {
   });
 });
 
-describe('InstructionHandler storage cache', () => {
-  it('registers one initial SLOAD and reuses its value DataPt on repeated reads', async () => {
-    const { addressValue, handler, parent } = createStorageHarness(5n);
+describe('ContextManager storage cache', () => {
+  it('registers one initial SLOAD and reuses its value DataPt on repeated reads', () => {
+    const { addressValue, parent, readStorage } = createStorageHarness(5n);
     const firstAddressPt = dataPt(addressValue, 30);
     const firstKeyPt = dataPt(9n, 31);
 
-    const firstValuePt = await handler.loadStorage(firstAddressPt, firstKeyPt, 5n);
-    const secondValuePt = await handler.loadStorage(
+    const firstValuePt = readStorage(firstAddressPt, firstKeyPt, 5n);
+    const secondValuePt = readStorage(
       dataPt(addressValue, 40),
       dataPt(9n, 41),
       5n,
@@ -409,10 +417,10 @@ describe('InstructionHandler storage cache', () => {
     ]);
   });
 
-  it('reuses a retained initial SLOAD after its frame is rolled back', async () => {
-    const { addressValue, handler, parent } = createStorageHarness(6n);
+  it('reuses a retained initial SLOAD after its frame is rolled back', () => {
+    const { addressValue, parent, readStorage } = createStorageHarness(6n);
     parent.state.storageCache.beginFrame(1);
-    const firstValuePt = await handler.loadStorage(
+    const firstValuePt = readStorage(
       dataPt(addressValue, 42),
       dataPt(10n, 43),
       6n,
@@ -421,7 +429,7 @@ describe('InstructionHandler storage cache', () => {
     parent.state.storageCache.completeFrame(1, false);
     expect(parent.state.storageCache.get(addressValue, 10n)).toBeUndefined();
 
-    const secondValuePt = await handler.loadStorage(
+    const secondValuePt = readStorage(
       dataPt(addressValue, 44),
       dataPt(10n, 45),
       6n,
@@ -438,14 +446,14 @@ describe('InstructionHandler storage cache', () => {
     expect(storageAccessCompositions(parent)).toHaveLength(1);
   });
 
-  it('updates the cached value on SSTORE and does not add an initial SLOAD afterward', async () => {
-    const { addressValue, handler, parent, setStorageValue } = createStorageHarness(11n);
+  it('updates the cached value on SSTORE and does not add an initial SLOAD afterward', () => {
+    const { addressValue, parent, readStorage, setStorageValue, writeStorage } = createStorageHarness(11n);
     const keyPt = dataPt(7n, 50);
     const writePt = dataPt(11n, 51);
 
-    await handler.storeStorage(dataPt(addressValue, 53), keyPt, writePt);
+    writeStorage(dataPt(addressValue, 53), keyPt, writePt, 11n);
     setStorageValue(11n);
-    const loadedPt = await handler.loadStorage(
+    const loadedPt = readStorage(
       dataPt(addressValue, 54),
       dataPt(7n, 55),
       11n,
@@ -462,25 +470,28 @@ describe('InstructionHandler storage cache', () => {
     expect(storageAccessCompositions(parent)).toHaveLength(1);
   });
 
-  it('keeps only the latest value DataPt across repeated SSTORE operations', async () => {
-    const { addressValue, handler, parent, setStorageValue } = createStorageHarness(10n);
+  it('keeps only the latest value DataPt across repeated SSTORE operations', () => {
+    const { addressValue, parent, setStorageValue, writeStorage } = createStorageHarness(10n);
 
-    await handler.storeStorage(
+    writeStorage(
       dataPt(addressValue, 70),
       dataPt(8n, 71),
       dataPt(10n, 72),
+      10n,
     );
     setStorageValue(20n);
-    await handler.storeStorage(
+    writeStorage(
       dataPt(addressValue, 73),
       dataPt(8n, 74),
       dataPt(20n, 75),
+      20n,
     );
     setStorageValue(30n);
-    await handler.storeStorage(
+    writeStorage(
       dataPt(addressValue, 76),
       dataPt(8n, 77),
       dataPt(30n, 78),
+      30n,
     );
 
     expect(parent.state.storageCache.dirtyEntries).toEqual([
@@ -499,19 +510,20 @@ describe('InstructionHandler storage cache', () => {
     expect(parent.addReservedVariableToBufferOut).not.toHaveBeenCalled();
   });
 
-  it('keeps the initial SLOAD record while replacing the cached value on SSTORE', async () => {
-    const { addressValue, handler, parent, setStorageValue } = createStorageHarness(12n);
-    const initialValuePt = await handler.loadStorage(
+  it('keeps the initial SLOAD record while replacing the cached value on SSTORE', () => {
+    const { addressValue, parent, readStorage, setStorageValue, writeStorage } = createStorageHarness(12n);
+    const initialValuePt = readStorage(
       dataPt(addressValue, 80),
       dataPt(9n, 81),
       12n,
     );
 
     setStorageValue(22n);
-    await handler.storeStorage(
+    writeStorage(
       dataPt(addressValue, 82),
       dataPt(9n, 83),
       dataPt(22n, 84),
+      22n,
     );
 
     expect(parent.state.initialStorageReads.entries).toEqual([
@@ -537,25 +549,27 @@ describe('InstructionHandler storage cache', () => {
     expect(parent.addReservedVariableToBufferOut).toHaveBeenCalledTimes(3);
   });
 
-  it('tracks distinct address and key pairs independently', async () => {
-    const { addressValue, handler, parent, setStorageValue } = createStorageHarness(1n);
-    await handler.loadStorage(dataPt(addressValue, 90), dataPt(1n, 91), 1n);
+  it('tracks distinct address and key pairs independently', () => {
+    const { addressValue, parent, readStorage, setStorageValue, writeStorage } = createStorageHarness(1n);
+    readStorage(dataPt(addressValue, 90), dataPt(1n, 91), 1n);
 
     setStorageValue(2n);
-    await handler.loadStorage(dataPt(addressValue + 1n, 92), dataPt(1n, 93), 2n);
+    readStorage(dataPt(addressValue + 1n, 92), dataPt(1n, 93), 2n);
 
     setStorageValue(3n);
-    await handler.storeStorage(
+    writeStorage(
       dataPt(addressValue, 94),
       dataPt(1n, 95),
       dataPt(3n, 96),
+      3n,
     );
 
     setStorageValue(4n);
-    await handler.storeStorage(
+    writeStorage(
       dataPt(addressValue, 97),
       dataPt(2n, 98),
       dataPt(4n, 99),
+      4n,
     );
 
     expect(parent.state.initialStorageReads.entries.map((entry: InitialStorageRead) => [

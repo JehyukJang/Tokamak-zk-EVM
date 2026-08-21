@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { resolveSubcircuitLibraryData } from '../../../core/src/app/subcircuitLibrary.ts';
+import { createTransactionInputVariables } from '../../../core/src/subcircuit/configuredTypes.ts';
 import type { SubcircuitLibraryData } from '../../../core/src/subcircuit/libraryTypes.ts';
+import { installedSubcircuitLibraryData } from '../../src/subcircuit/installedLibrary.ts';
 
 const frontendCfg = {
   nTxIn: 3,
@@ -66,11 +68,15 @@ function createLibraryData(
 }
 
 describe('logical-interface resolution', () => {
+  it('accepts every declared composition step in the installed qap catalog', () => {
+    expect(() => resolveSubcircuitLibraryData(
+      installedSubcircuitLibraryData,
+      async () => new ArrayBuffer(0),
+    )).not.toThrow();
+  });
+
   it('derives the reserved transaction-input boundary from qap-compiler metadata', () => {
-    const data = createLibraryData();
-    data.frontendCfg.nPrivateMessageInputs = 28;
-    const library = resolveSubcircuitLibraryData(data, async () => new ArrayBuffer(0));
-    expect(library.transactionInputVariables).toEqual(
+    expect(createTransactionInputVariables(28)).toEqual(
       Array.from({ length: 28 }, (_, index) => `TRANSACTION_INPUT${index}`),
     );
   });

@@ -11,6 +11,10 @@ import type {
   SubcircuitLibraryData,
   SubcircuitLibraryProvider,
 } from '../subcircuit/libraryTypes.ts';
+import type {
+  CompositionStep,
+  PlacementCompositionMapping,
+} from '../subcircuit/placementCompositionMapping.ts';
 import { createInfoByName } from '../subcircuit/utils.ts';
 
 function getLogicalPortWireCount(ports: readonly LogicalInterfacePort[]): number {
@@ -44,6 +48,47 @@ function assertLogicalInterfaceWireCounts(
   }
 }
 
+const assertCompositionStepInterface = (
+  operation: string,
+  stepIndex: number,
+  step: CompositionStep,
+  subcircuitInfoByName: ResolvedSubcircuitLibrary['subcircuitInfoByName'],
+): void => {
+  const subcircuit = subcircuitInfoByName.get(step.subcircuit)
+  if (subcircuit === undefined) {
+    throw new Error(
+      `Synthesizer: ${operation} step ${stepIndex} references unavailable subcircuit ${step.subcircuit}`,
+    )
+  }
+  const logicalInterface = subcircuit.logicalInterface
+  if (logicalInterface === undefined) {
+    throw new Error(
+      `Synthesizer: ${operation} step ${stepIndex} subcircuit ${step.subcircuit} has no logical interface`,
+    )
+  }
+  if (logicalInterface.inputs.length !== step.inputs.length) {
+    throw new Error(
+      `Synthesizer: ${operation} step ${stepIndex} declares ${step.inputs.length} inputs, but ${step.subcircuit} exposes ${logicalInterface.inputs.length}`,
+    )
+  }
+  if (logicalInterface.outputs.length !== step.outputs.length) {
+    throw new Error(
+      `Synthesizer: ${operation} step ${stepIndex} declares ${step.outputs.length} outputs, but ${step.subcircuit} exposes ${logicalInterface.outputs.length}`,
+    )
+  }
+}
+
+const assertPlacementCompositionInterfaces = (
+  placementCompositionMapping: PlacementCompositionMapping,
+  subcircuitInfoByName: ResolvedSubcircuitLibrary['subcircuitInfoByName'],
+): void => {
+  for (const [operation, composition] of Object.entries(placementCompositionMapping)) {
+    for (const [stepIndex, step] of composition.steps.entries()) {
+      assertCompositionStepInterface(operation, stepIndex, step, subcircuitInfoByName)
+    }
+  }
+}
+
 export function resolveSubcircuitLibraryData(
   data: SubcircuitLibraryData,
   loadWasm: SubcircuitLibraryProvider['loadWasm'],
@@ -53,13 +98,13 @@ export function resolveSubcircuitLibraryData(
   )
   const subcircuitInfoByName = createInfoByName(data.subcircuitInfo);
   assertLogicalInterfaceWireCounts(subcircuitInfoByName)
+  const placementCompositionMapping = createPlacementCompositionMapping(data.frontendCfg)
+  assertPlacementCompositionInterfaces(placementCompositionMapping, subcircuitInfoByName)
 
   return {
     data,
     loadWasm,
-    placementCompositionMapping: createPlacementCompositionMapping(
-      data.frontendCfg,
-    ),
+    placementCompositionMapping,
     calculateSubcircuitOutputValues,
     subcircuitInfoByName,
     subcircuitBufferMapping: {

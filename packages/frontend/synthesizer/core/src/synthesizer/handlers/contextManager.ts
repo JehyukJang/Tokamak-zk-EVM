@@ -30,6 +30,14 @@ export type MemoryCopyPlan = Readonly<{
   }>[];
 }>;
 
+type ChildMessageCall = Readonly<{
+  parentContext: MessageContext;
+  callingStep: InterpreterStep;
+  rawCodeAddressPt: DataPt;
+  inputOffset: bigint;
+  inputLength: bigint;
+}>;
+
 export const createMemoryCopyEntries = (
   plan: MemoryCopyPlan,
   dataPts: readonly DataPt[],
@@ -340,7 +348,207 @@ export class ContextManager {
     return views
   }
 
-  public materializeMessageContext(message: Message): void {
+  private _constrainStorageLocationEquality(
+    currentAddressPt: DataPt,
+    currentKeyPt: DataPt,
+    canonicalAddressPt: DataPt,
+    canonicalKeyPt: DataPt,
+  ): void {
+    this.placementManager.placeComposition('StorageAccess', [
+      currentAddressPt,
+      currentKeyPt,
+      canonicalAddressPt,
+      canonicalKeyPt,
+    ])
+  }
+
+  private _getCachedStorageEntry(
+    addressValue: bigint,
+    keyValue: bigint,
+    addressPt: DataPt,
+    keyPt: DataPt,
+  ): StorageCacheEntry | undefined {
+    const cachedEntry = this.storageCache.get(addressValue, keyValue)
+    if (cachedEntry !== undefined) {
+      this._constrainStorageLocationEquality(
+        addressPt,
+        keyPt,
+        cachedEntry.canonicalAddressPt,
+        cachedEntry.canonicalKeyPt,
+      )
+      return cachedEntry
+    }
+
+    const initialRead = this.initialStorageReads.get(addressValue, keyValue)
+    if (initialRead === undefined) {
+      return undefined
+    }
+    this._constrainStorageLocationEquality(
+      addressPt,
+      keyPt,
+      initialRead.addressPt,
+      initialRead.keyPt,
+    )
+    return {
+      canonicalAddressPt: initialRead.addressPt,
+      canonicalKeyPt: initialRead.keyPt,
+      latestValuePt: initialRead.valuePt,
+      dirty: false,
+    }
+  }
+
+  public readStorage(
+    addressPt: DataPt,
+    keyPt: DataPt,
+    observedValue: bigint,
+  ): DataPt {
+    const addressValue = addressPt.value
+    const keyValue = keyPt.value
+    const cachedEntry = this._getCachedStorageEntry(addressValue, keyValue, addressPt, keyPt)
+    if (cachedEntry !== undefined) {
+      if (cachedEntry.latestValuePt.value !== observedValue) {
+        throw new Error('Synthesizer: Cached storage value does not match EVM storage')
+      }
+      this.storageCache.set(addressValue, keyValue, cachedEntry)
+      return DataPtFactory.deepCopy(cachedEntry.latestValuePt)
+    }
+
+    const storageLocation = ` of address: ${bigIntToHex(addressValue)}`
+    this.placementManager.addReservedVariableToBufferOut(
+      'SLOAD_ADDRESS',
+      addressPt,
+      true,
+      storageLocation,
+    )
+    this.placementManager.addReservedVariableToBufferOut(
+      'SLOAD_KEY',
+      keyPt,
+      true,
+      storageLocation,
+    )
+    const valuePt = this.placementManager.addReservedVariableToBufferIn(
+      'STORAGE_READ',
+      observedValue,
+      true,
+      storageLocation,
+    )
+    this.placementManager.addReservedVariableToBufferOut(
+      'SLOAD_VALUE',
+      valuePt,
+      true,
+      storageLocation,
+    )
+    const initialRead = {
+      addressPt: DataPtFactory.deepCopy(addressPt),
+      keyPt: DataPtFactory.deepCopy(keyPt),
+      valuePt: DataPtFactory.deepCopy(valuePt),
+    }
+    this.initialStorageReads.add(addressValue, keyValue, initialRead)
+    this.storageCache.set(addressValue, keyValue, {
+      canonicalAddressPt: initialRead.addressPt,
+      canonicalKeyPt: initialRead.keyPt,
+      latestValuePt: initialRead.valuePt,
+      dirty: false,
+    })
+    return DataPtFactory.deepCopy(valuePt)
+  }
+
+  public writeStorage(
+    addressPt: DataPt,
+    keyPt: DataPt,
+    valuePt: DataPt,
+    observedValue: bigint,
+  ): void {
+    if (observedValue !== valuePt.value) {
+      throw new Error('Synthesizer: Storage value does not match EVM storage')
+    }
+    const cachedEntry = this._getCachedStorageEntry(
+      addressPt.value,
+      keyPt.value,
+      addressPt,
+      keyPt,
+    )
+    this.storageCache.set(addressPt.value, keyPt.value, {
+      canonicalAddressPt: cachedEntry?.canonicalAddressPt ?? addressPt,
+      canonicalKeyPt: cachedEntry?.canonicalKeyPt ?? keyPt,
+      latestValuePt: valuePt,
+      dirty: true,
+    })
+  }
+
+  public finalizeStorageStores(): void {
+    for (const entry of this.storageCache.dirtyEntries) {
+      this.placementManager.addReservedVariableToBufferOut('SSTORE_ADDRESS', entry.canonicalAddressPt, true)
+      this.placementManager.addReservedVariableToBufferOut('SSTORE_KEY', entry.canonicalKeyPt, true)
+      this.placementManager.addReservedVariableToBufferOut('SSTORE_VALUE', entry.latestValuePt, true)
+    }
+  }
+
+  public prepareChildCallData(message: Message): MemoryCopyPlan {
+    const childCall = this._getChildMessageCall(message)
+    return this.prepareMemoryCopy(
+      childCall.parentContext.memoryPt,
+      childCall.inputOffset,
+      childCall.inputLength,
+      0n,
+    )
+  }
+
+  private _getChildMessageCall(message: Message): ChildMessageCall {
+    if (message.depth <= 0) {
+      throw new Error('Synthesizer: root messages do not have a parent calldata source')
+    }
+    const parentContext = this.contextByDepth[message.depth - 1]
+    if (parentContext === undefined) {
+      throw new Error('Debug: No parent context')
+    }
+    const callingStep = parentContext.prevInterpreterStep
+    if (callingStep === null) {
+      throw new Error('Debug: A child context is called but no relevant interpreter step in the parent context')
+    }
+
+    let rawCodeAddress: bigint
+    let rawCodeAddressPt: DataPt
+    let inputOffset: bigint
+    let inputLength: bigint
+    switch (callingStep.opcode.name) {
+      case 'CALL':
+      case 'CALLCODE': {
+        const inputs = callingStep.stack.slice(0, 7)
+        rawCodeAddress = inputs[1]
+        rawCodeAddressPt = DataPtFactory.deepCopy(parentContext.stackPt.peek(7)[1])
+        inputOffset = inputs[3]
+        inputLength = inputs[4]
+        break
+      }
+      case 'DELEGATECALL':
+      case 'STATICCALL': {
+        const inputs = callingStep.stack.slice(0, 6)
+        rawCodeAddress = inputs[1]
+        rawCodeAddressPt = DataPtFactory.deepCopy(parentContext.stackPt.peek(6)[1])
+        inputOffset = inputs[2]
+        inputLength = inputs[3]
+        break
+      }
+      default:
+        throw new Error(`Debug: Unsupported message call opcode: ${callingStep.opcode.name}`)
+    }
+    if (rawCodeAddress !== rawCodeAddressPt.value) {
+      throw new Error('Debug: Raw address to call mismatch between EVM and Synthesizer')
+    }
+    return {
+      parentContext,
+      callingStep,
+      rawCodeAddressPt,
+      inputOffset,
+      inputLength,
+    }
+  }
+
+  public materializeMessageContext(
+    message: Message,
+    childCallDataMemoryPts?: MemoryPts,
+  ): void {
     this.recordMessageCodeAddress(message.codeAddress.toString())
     if (message.isCreate) {
       throw new Error('CREATE is not supported.')
@@ -380,45 +588,13 @@ export class ContextManager {
       codeAddressPt = DataPtFactory.deepCopy(verifiedContractAddressPt)
       storageAddressPt = DataPtFactory.deepCopy(verifiedContractAddressPt)
     } else if (depth > 0) {
-      const parentContext = this.contextByDepth[depth - 1]
-      if (parentContext === undefined) {
-        throw new Error('Debug: No parent context')
-      }
-      const callingStep = parentContext.prevInterpreterStep
-      if (callingStep === null) {
-        throw new Error('Debug: A child context is called but no relevant interpreter step in the parent context')
-      }
-
-      let rawCodeAddress: bigint
-      let rawCodeAddressPt: DataPt
-      let inputOffset: bigint
-      let inputLength: bigint
-      switch (callingStep.opcode.name) {
-        case 'CALL':
-        case 'CALLCODE': {
-          const inputs = callingStep.stack.slice(0, 7)
-          rawCodeAddress = inputs[1]
-          rawCodeAddressPt = DataPtFactory.deepCopy(parentContext.stackPt.peek(7)[1])
-          inputOffset = inputs[3]
-          inputLength = inputs[4]
-          break
-        }
-        case 'DELEGATECALL':
-        case 'STATICCALL': {
-          const inputs = callingStep.stack.slice(0, 6)
-          rawCodeAddress = inputs[1]
-          rawCodeAddressPt = DataPtFactory.deepCopy(parentContext.stackPt.peek(6)[1])
-          inputOffset = inputs[2]
-          inputLength = inputs[3]
-          break
-        }
-        default:
-          throw new Error(`Debug: Unsupported message call opcode: ${callingStep.opcode.name}`)
-      }
-
-      if (rawCodeAddress !== rawCodeAddressPt.value) {
-        throw new Error('Debug: Raw address to call mismatch between EVM and Synthesizer')
-      }
+      const childCall = this._getChildMessageCall(message)
+      const {
+        parentContext,
+        callingStep,
+        rawCodeAddressPt,
+        inputLength,
+      } = childCall
       codeAddressPt = rawCodeAddressPt
       const codeAddress = BigInt(message.codeAddress.toString())
       if (codeAddress !== codeAddressPt.value) {
@@ -442,25 +618,20 @@ export class ContextManager {
           callerPt = DataPtFactory.deepCopy(parentContext.callerPt)
           storageAddressPt = DataPtFactory.deepCopy(parentContext.storageAddressPt)
           break
+        default:
+          throw new Error(`Debug: Unsupported message call opcode: ${callingStep.opcode.name}`)
       }
 
-      const memoryCopyPlan = this.prepareMemoryCopy(
-        parentContext.memoryPt,
-        inputOffset,
-        inputLength,
-        0n,
-      )
-      const callDataPts = this.placementManager.placeComposition(
-        'MemoryView',
-        memoryCopyPlan.operands,
-      )
-      callDataMemoryPts = createMemoryCopyEntries(memoryCopyPlan, callDataPts)
+      if (childCallDataMemoryPts === undefined) {
+        throw new Error('Synthesizer: child calldata memory entries are unavailable')
+      }
+      callDataMemoryPts = childCallDataMemoryPts
       callDataByteLength = Number(inputLength)
       const simulatedCallDataMemoryPt = MemoryPt.simulateMemoryPt(callDataMemoryPts)
       const synthesizedCallData = simulatedCallDataMemoryPt.viewMemory(0, Number(inputLength))
       const actualCallData = callingStep.memory.subarray(
-        Number(inputOffset),
-        Number(inputOffset) + Number(inputLength),
+        Number(childCall.inputOffset),
+        Number(childCall.inputOffset) + Number(inputLength),
       )
       if (bytesToBigInt(synthesizedCallData) !== bytesToBigInt(actualCallData)) {
         throw new Error('Debug: Mismatch between calldata memory and memoryPt of the parent context')

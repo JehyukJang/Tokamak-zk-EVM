@@ -7,7 +7,11 @@ import {
   type Operator,
 } from '../../../core/src/subcircuit/configuredTypes.ts';
 import { DataPtFactory, MemoryPt, StackPt } from '../../../core/src/synthesizer/dataStructure/index.ts';
-import { ContextManager, type MessageContext } from '../../../core/src/synthesizer/handlers/contextManager.ts';
+import {
+  ContextManager,
+  createMemoryCopyEntries,
+  type MessageContext,
+} from '../../../core/src/synthesizer/handlers/contextManager.ts';
 import {
   UINT32_DATA_PT_TYPE,
   UINT256_DATA_PT_TYPE,
@@ -148,7 +152,12 @@ describe('CALL-family target-word topology', () => {
     const rawTarget = 0x1234n;
     const harness = createHarness(opcode, rawTarget);
 
-    harness.contextManager.materializeMessageContext(harness.message);
+    const memoryCopyPlan = harness.contextManager.prepareChildCallData(harness.message);
+    const callDataPts = harness.placeComposition('MemoryView', memoryCopyPlan.operands);
+    harness.contextManager.materializeMessageContext(
+      harness.message,
+      createMemoryCopyEntries(memoryCopyPlan, callDataPts),
+    );
 
     expect(harness.compositionCalls).not.toContain('AND');
     expect(harness.beginFrame).toHaveBeenCalledOnce();

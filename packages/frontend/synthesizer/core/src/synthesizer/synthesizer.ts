@@ -20,7 +20,12 @@ import {
   SynthesizerOpts,
   SynthesizerStepLogEntry,
 } from './types/index.ts';
-import { ContextManager, InstructionHandler, PlacementManager } from './handlers/index.ts';
+import {
+  ContextManager,
+  createMemoryCopyEntries,
+  InstructionHandler,
+  PlacementManager,
+} from './handlers/index.ts';
 import type { ResolvedSubcircuitLibrary } from '../subcircuit/libraryTypes.ts';
 import { TypedTransaction } from '@ethereumjs/tx';
 
@@ -138,7 +143,19 @@ export class Synthesizer implements SynthesizerInterface
     });
     vm.evm.events.on('beforeMessage', (data, resolve?: (result?: any) => void) => {
       this._executeVMEvent('beforeMessage', resolve, () => {
-        this._contextManager.materializeMessageContext(data)
+        if (data.depth === 0) {
+          this._contextManager.materializeMessageContext(data)
+          return
+        }
+        const memoryCopyPlan = this._contextManager.prepareChildCallData(data)
+        const callDataPts = this._placementManager.placeComposition(
+          'MemoryView',
+          memoryCopyPlan.operands,
+        )
+        this._contextManager.materializeMessageContext(
+          data,
+          createMemoryCopyEntries(memoryCopyPlan, callDataPts),
+        )
       })
     });
     vm.evm.events!.on('step', (data: InterpreterStep, resolve?: (result?: any) => void) => {
@@ -248,14 +265,6 @@ export class Synthesizer implements SynthesizerInterface
     )
   }
 
-  private _finalizeStorageStore(): void {
-    for (const entry of this._contextManager.storageCache.dirtyEntries) {
-      this._placementManager.addReservedVariableToBufferOut('SSTORE_ADDRESS', entry.canonicalAddressPt, true)
-      this._placementManager.addReservedVariableToBufferOut('SSTORE_KEY', entry.canonicalKeyPt, true)
-      this._placementManager.addReservedVariableToBufferOut('SSTORE_VALUE', entry.latestValuePt, true)
-    }
-  }
-
   public async synthesizeTX(): Promise<RunTxResult> {
     const common = this._cachedOpts.stateManager.common;
     this._eventHandlerError = undefined
@@ -317,7 +326,7 @@ export class Synthesizer implements SynthesizerInterface
     if (result.execResult.exceptionError !== undefined) {
       throw result.execResult.exceptionError
     }
-    this._finalizeStorageStore()
+    this._contextManager.finalizeStorageStores()
     return result
   }
 
