@@ -1,5 +1,5 @@
 pragma circom 2.1.6;
-include "../../templates/256bit/alu_safe.circom";
+include "../../templates/256bit/arithmetic_safe.circom";
 
 template SHL_() {
     signal input in[4];

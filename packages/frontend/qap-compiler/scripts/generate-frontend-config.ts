@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseCircomConstants } from './runtime/logical-interface.js';
@@ -26,8 +25,8 @@ const __dirname = path.dirname(__filename);
 const CIRCOM_PATH = path.resolve(__dirname, '../subcircuits/circom/constants.circom');
 const DEFAULT_OUTPUT_DIR = path.resolve(__dirname, '../subcircuits/library');
 
-async function loadFrontendConfig(): Promise<FrontendConfig> {
-  const source = await readFile(CIRCOM_PATH, 'utf8');
+function loadFrontendConfig(): FrontendConfig {
+  const source = fs.readFileSync(CIRCOM_PATH, 'utf8');
   const constants = parseCircomConstants(source, CIRCOM_PATH);
   const config: Partial<FrontendConfig> = {};
 
@@ -42,9 +41,9 @@ async function loadFrontendConfig(): Promise<FrontendConfig> {
   return config as FrontendConfig;
 }
 
-async function main() {
+function main() {
   const outputDir = process.argv[2] ? path.resolve(process.argv[2]) : DEFAULT_OUTPUT_DIR;
-  const frontendConfig = JSON.stringify(await loadFrontendConfig(), null, 2);
+  const frontendConfig = JSON.stringify(loadFrontendConfig(), null, 2);
   const outputPath = path.join(outputDir, 'frontendCfg.json');
 
   fs.mkdirSync(outputDir, { recursive: true });
@@ -52,4 +51,4 @@ async function main() {
   console.log(`Successfully wrote '${outputPath}'.`);
 }
 
-void main();
+main();

@@ -150,5 +150,4 @@ const libraryLayout = Object.freeze({
 
 module.exports.LIBRARY_LAYOUT = libraryLayout
 module.exports.getSubcircuitNames = getSubcircuitNames
-module.exports.getTransactionSignaturePoseidonTailLength = getTransactionSignaturePoseidonTailLength
 module.exports.CONDITIONAL_SUBCIRCUIT_NAMES = CONDITIONAL_SUBCIRCUIT_NAMES

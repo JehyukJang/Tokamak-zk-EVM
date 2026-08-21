@@ -1,12 +1,4 @@
 pragma circom 2.1.6;
-include "circomlib/circuits/comparators.circom";
-
-template Buffer (N) {
-    signal input in[N];
-    signal output out[N] <== in;
-    // NOTE: This code relies on "Something === 0", which can result in zero columns and break simulation-extractability of Groth16.
-
-}
 
 template Buffer2 (N) {
     // Consider the following code to prevent zero columns (resulting in triple constraints)
