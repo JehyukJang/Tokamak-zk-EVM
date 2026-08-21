@@ -65,11 +65,6 @@ function shouldIncludeArtifact(
   return artifact.kind === 'primary' || options?.outputSupplement === true;
 }
 
-export function getSynthesisOutputArtifactDefinitions():
-  readonly Pick<SynthesisOutputArtifactDefinition, 'path' | 'kind'>[] {
-  return synthesisOutputArtifactDefinitions.map(({ path, kind }) => ({ path, kind }));
-}
-
 export function createSynthesisOutputJsonFiles(
   output: SynthesisOutput,
   options: SynthesisOutputSelectionOptions = {},

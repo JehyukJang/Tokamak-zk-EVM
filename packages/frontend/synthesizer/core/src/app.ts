@@ -1,6 +1,5 @@
 export {
   createSynthesisOutputJsonFiles,
-  getSynthesisOutputArtifactDefinitions,
 } from './app/serialization.ts';
 export {
   loadResolvedSubcircuitLibrary,

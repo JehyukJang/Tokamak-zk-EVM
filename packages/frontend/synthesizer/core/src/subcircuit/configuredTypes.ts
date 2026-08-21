@@ -148,12 +148,3 @@ export type SubcircuitInfoByNameEntry = {
 };
 
 export type SubcircuitInfoByName = Map<SubcircuitNames, SubcircuitInfoByNameEntry>;
-
-export const createTransactionMessageToHash = (
-  transactionInputVariables: readonly TransactionInputVariable[],
-) => Object.freeze([
-  'CHANNEL_TX_INDEX',
-  'CONTRACT_ADDRESS',
-  'FUNCTION_SELECTOR',
-  ...transactionInputVariables,
-] as const);

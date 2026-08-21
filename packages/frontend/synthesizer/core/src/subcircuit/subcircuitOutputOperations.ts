@@ -206,19 +206,6 @@ const requireSubcircuitInputs = (inVals: bigint[], expectedLength: number, subci
   }
 };
 
-const requireSelector = (
-  inVals: bigint[],
-  expectedSelector: bigint,
-  subcircuit: string,
-  numOperands: number,
-): bigint[] => {
-  requireSubcircuitInputs(inVals, numOperands + 1, subcircuit);
-  if (inVals[0] !== expectedSelector) {
-    throw new Error(`${subcircuit} received an invalid selector`);
-  }
-  return inVals.slice(1);
-};
-
 /**
  * Basic arithmetic operations
  */
@@ -334,19 +321,6 @@ const evmEq = (ins: bigint[]): bigint => {
     throw new Error('eq expected two inputs');
   }
   return ins[0] === ins[1] ? 1n : 0n;
-};
-
-const equalBatch = (ins: bigint[]): bigint[] => {
-  if (ins.length === 0 || ins.length % 2 !== 0) {
-    throw new Error('equalBatch expected two equally sized input batches');
-  }
-  const batchSize = ins.length / 2;
-  for (let index = 0; index < batchSize; index++) {
-    if (ins[index] !== ins[batchSize + index]) {
-      throw new Error('equalBatch inputs are not equal');
-    }
-  }
-  return [];
 };
 
 const evmIszero = (ins: bigint[]): bigint => {
@@ -532,10 +506,6 @@ const alu4b = (inVals: bigint[]): bigint => {
   const evmQuotient = divisorIsZero === 1n ? 0n : absQuotient;
   const selectedMagnitude = useMod === 1n ? absRemainder : evmQuotient;
   return resultIsNegative === 1n ? BigInt.asUintN(256, -selectedMagnitude) : selectedMagnitude;
-};
-
-const shlSubcircuit = (inVals: bigint[]): bigint => {
-  return evmShl(inVals);
 };
 
 const addmodPrepare = (inVals: bigint[]): bigint[] => {
@@ -773,7 +743,7 @@ const SUBCIRCUIT_OPERATION_MAPPING: Partial<Record<CompositionSubcircuit, Subcir
   ALU3: alu3,
   ALU4A: alu4a,
   ALU4B: alu4b,
-  SHL: shlSubcircuit,
+  SHL: evmShl,
   ADDMODPrepare: addmodPrepare,
   ADDMODVerify: addmodVerify,
   MULMODPrepare: mulmodPrepare,

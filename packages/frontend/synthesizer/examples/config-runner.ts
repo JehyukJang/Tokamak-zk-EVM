@@ -18,14 +18,6 @@ import { createSynthesizer } from '../node-cli/src/synthesizer/constructors.ts';
 import { writeSynthesisOutputJson } from '../node-cli/src/io/jsonWriter.ts';
 import { installedSubcircuitLibrary } from '../node-cli/src/subcircuit/installedLibrary.ts';
 import {
-  buildErc20Calldata,
-  deriveParticipantKeys as deriveErc20ParticipantKeys,
-  loadConfig as loadErc20Config,
-  toStateManagerChannelConfig as toErc20StateManagerChannelConfig,
-  type ExampleErc20TransferConfig,
-  type ExampleNetwork as Erc20ExampleNetwork,
-} from './erc20Transfers/utils.ts';
-import {
   type DerivedParticipantKeys as SharedDerivedParticipantKeys,
   derivePrivateStateParticipantKeys,
   loadPrivateStateMintConfig,
@@ -45,7 +37,6 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
 
 type ConfigExampleType =
-  | 'erc20-transfer'
   | 'private-state-mint'
   | 'private-state-redeem'
   | 'private-state-transfer';
@@ -74,7 +65,7 @@ const ANVIL_RPC_URL_ENV_KEY = 'ANVIL_RPC_URL';
 const DEFAULT_ANVIL_RPC_URL = 'http://127.0.0.1:8545';
 
 function getRpcUrlFromEnv(
-  network: Erc20ExampleNetwork | PrivateStateExampleNetwork,
+  network: PrivateStateExampleNetwork,
   env: NodeJS.ProcessEnv,
 ): string {
   if (network === 'anvil') {
@@ -132,16 +123,6 @@ async function getBlockInfoFromRPC(
 }
 
 const configAdapters: Record<ConfigExampleType, ConfigAdapter<any>> = {
-  'erc20-transfer': {
-    loadConfig: loadErc20Config,
-    getRpcUrl: (config: ExampleErc20TransferConfig, env) => getRpcUrlFromEnv(config.network, env),
-    deriveParticipantKeys: (config: ExampleErc20TransferConfig) => deriveErc20ParticipantKeys(config.participants),
-    getSenderIndex: (config: ExampleErc20TransferConfig) => config.senderIndex,
-    buildCalldata: (config: ExampleErc20TransferConfig, keyMaterial) => buildErc20Calldata(config, keyMaterial),
-    toStateManagerChannelConfig: toErc20StateManagerChannelConfig,
-    getChannelTransactionIndex: (config: ExampleErc20TransferConfig) => config.channelTransactionIndex,
-    getEntryContractAddress: (config: ExampleErc20TransferConfig) => config.function.entryContractAddress,
-  },
   'private-state-mint': {
     loadConfig: loadPrivateStateMintConfig,
     getRpcUrl: (config: PrivateStateMintConfig, env) => getRpcUrlFromEnv(config.network, env),
@@ -262,7 +243,7 @@ async function main(): Promise<void> {
 
   if (exampleType === undefined || !(exampleType in configAdapters)) {
     throw new Error(
-      'Example type required. Usage: tsx examples/config-runner.ts <erc20-transfer|private-state-mint|private-state-redeem|private-state-transfer> <config.json> [--output-supplement]',
+      'Example type required. Usage: tsx examples/config-runner.ts <private-state-mint|private-state-redeem|private-state-transfer> <config.json> [--output-supplement]',
     );
   }
   if (configPath === undefined) {
