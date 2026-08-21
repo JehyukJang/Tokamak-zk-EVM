@@ -35,6 +35,17 @@ The format is based on Keep a Changelog.
   inherited static calls, and EVM `BYTE`, `SIGNEXTEND`, `SHL`, and `SHR`
   boundary behavior.
 
+### Subcircuit Library
+
+- Rebuilt the generated circuit catalog around the current transaction-signature,
+  EVM-operation, memory-view, log, and storage-record boundaries. Deprecated
+  Merkle-tree circuit paths and their legacy public-buffer layout are no longer
+  part of the library.
+- Storage reads and final writes now use the library's public storage-record
+  buffers. Applications must use the synchronized storage-proof integration
+  described in the compatibility notes rather than rely on the prior
+  in-circuit Merkle proof behavior.
+
 ### Synthesizer Packages
 
 - Removed the stale ERC20 example and test workflow from the Node Synthesizer
