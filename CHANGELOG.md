@@ -35,6 +35,15 @@ The format is based on Keep a Changelog.
   inherited static calls, and EVM `BYTE`, `SIGNEXTEND`, `SHL`, and `SHR`
   boundary behavior.
 
+### Synthesizer Packages
+
+- Removed the stale ERC20 example and test workflow from the Node Synthesizer
+  development surface. Private-state examples and topology checks are now the
+  supported Synthesizer validation path.
+- Internal Synthesizer cleanup removed unused helper APIs and duplicate memory
+  emulation without changing the supported synthesis input, output, or proof
+  interfaces.
+
 ## [2.1.5] - 2026-07-31
 
 ### Compatibility and Upgrade Notes
