@@ -32,11 +32,6 @@ template ALU1 () {
     // CheckBus256()(in3);
     */
 
-    // signal is_in1_1_zero <== IsZero()(in1[1]);
-    // signal is_in2_zero <== IsZero256()(in2);
-    // signal is_in3_zero <== IsZero256()(in3);
-    // signal is_in3_1_zero <== IsZero()(in3[1]);
-
     signal outs1[NUM_ALU_FUNCTIONS][2];
     signal flags[NUM_ALU_FUNCTIONS];
     var ind = 0;
@@ -64,16 +59,6 @@ template ALU1 () {
     outs1[ind] <== sub.out;
     flags[ind] <== b_selector[3];
     ind++;
-
-    // // operator 0x0A (10): EXP (SubExp)
-    // component subexp = SubExp_unsafe();
-    // subexp.c_prev <== in1;
-    // subexp.a_prev <== in2;
-    // subexp.b <== in3[0];
-    // outs1[ind] <== subexp.c_next;
-    // outs2[ind] <== subexp.a_next;
-    // flags[ind] <== b_selector[10];
-    // ind++;
 
     // operator 0x14 (20): eq
     component eq = IsEqual256();
@@ -506,11 +491,6 @@ template ALU_basic () {
     // CheckBus256()(in3);
     */
 
-    // signal is_in1_1_zero <== IsZero()(in1[1]);
-    // signal is_in2_zero <== IsZero256()(in2);
-    // signal is_in3_zero <== IsZero256()(in3);
-    // signal is_in3_1_zero <== IsZero()(in3[1]);
-
     signal outs1[NUM_ALU_FUNCTIONS][2];
     signal outs2[NUM_ALU_FUNCTIONS][2];
     signal flags[NUM_ALU_FUNCTIONS];
@@ -895,19 +875,12 @@ template ALU_bitwise () {
     // CheckBus256()(in3);
     */
 
-    // signal is_in1_1_zero <== IsZero()(in1[1]);
-    // signal is_in2_zero <== IsZero256()(in2);
-    // signal is_in3_zero <== IsZero256()(in3);
-    // signal is_in3_1_zero <== IsZero()(in3[1]);
-
     signal outs[NUM_ALU_FUNCTIONS][2];
     signal flags[NUM_ALU_FUNCTIONS];
     var ind = 0;
 
     // common process for AND, OR, and XOR
     var NUM_BITS = 128;
-    // signal in1_bin[NUM_BITS] <== Num2Bits(NUM_BITS)(in1);
-    // signal in2_bin[NUM_BITS] <== Num2Bits(NUM_BITS)(in2);
     component n2b[2][2];
     for (var i = 0; i < 2; i++) {
         for (var j = 0; j < 2; j++) {

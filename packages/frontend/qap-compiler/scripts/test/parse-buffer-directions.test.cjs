@@ -1,16 +1,15 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const {
-  BUFFER_DECLARATIONS,
-  LIBRARY_LAYOUT,
-} = require('../configure.js')
+const { LIBRARY_LAYOUT } = require('../configure.js')
 const {
   _assertInternalInterfacePortPrefixes,
-  _validateBufferDeclarations,
+  _validateBufferLayout,
   buildGlobalWireLayout,
   buildSetupParams,
 } = require('../build-wire-layout.js')
+
+const { bufferDeclarations: BUFFER_DECLARATIONS } = LIBRARY_LAYOUT
 
 function createBufferCatalog() {
   return BUFFER_DECLARATIONS.map((declaration, id) => ({
@@ -38,21 +37,17 @@ function createRawBufferCatalog(capacity = 2) {
   }))
 }
 
-test('assigns declared directions to all generic buffer entries', () => {
+test('returns declared directions without mutating normalized buffer entries', () => {
   const catalog = createBufferCatalog()
 
-  const { directionByName: directions } = _validateBufferDeclarations(
-    catalog,
+  const { directionByName: directions } = _validateBufferLayout(
     createCatalogByName(catalog),
     LIBRARY_LAYOUT,
   )
 
   for (const declaration of BUFFER_DECLARATIONS) {
     assert.equal(directions.get(declaration.name), declaration.direction)
-    assert.equal(
-      catalog.find(({ name }) => name === declaration.name).bufferDirection,
-      declaration.direction,
-    )
+    assert.equal(catalog.find(({ name }) => name === declaration.name).bufferDirection, undefined)
   }
 })
 
@@ -69,7 +64,7 @@ test('rejects a direction that conflicts with its public segment', () => {
   }
 
   assert.throws(
-    () => _validateBufferDeclarations(catalog, createCatalogByName(catalog), invalidLayout),
+    () => _validateBufferLayout(createCatalogByName(catalog), invalidLayout),
     /direction does not match its public segment/,
   )
 })
@@ -79,7 +74,7 @@ test('rejects a declared buffer name that resolves to a logical interface', () =
   catalog[0].logicalInterface = { inputs: [], outputs: [] }
 
   assert.throws(
-    () => _validateBufferDeclarations(catalog, createCatalogByName(catalog), LIBRARY_LAYOUT),
+    () => _validateBufferLayout(createCatalogByName(catalog), LIBRARY_LAYOUT),
     /refers to a non-buffer subcircuit/,
   )
 })
@@ -90,7 +85,7 @@ test('rejects a declared buffer with an invalid compiled port range', () => {
   catalog[0].inWireIndex = 2
 
   assert.throws(
-    () => _validateBufferDeclarations(catalog, createCatalogByName(catalog), LIBRARY_LAYOUT),
+    () => _validateBufferLayout(createCatalogByName(catalog), LIBRARY_LAYOUT),
     /invalid compiled in port range/,
   )
 })

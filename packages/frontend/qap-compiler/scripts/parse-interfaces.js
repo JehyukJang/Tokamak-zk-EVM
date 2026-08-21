@@ -1,9 +1,13 @@
 const fs = require('node:fs')
 const path = require('node:path')
-const { BUFFER_DECLARATIONS } = require('./configure.js')
+const { LIBRARY_LAYOUT } = require('./configure.js')
+const {
+  countPhysicalWires,
+  parseCircomConstants,
+} = require('./runtime/logical-interface.js')
 
-const CIRCOM_CONSTANT_PATTERN = /function\s+([A-Za-z_]\w*)\s*\(\)\s*{\s*return\s+(\d+)\s*;\s*}/g
 const PORT_KEYS = new Set(['name', 'logicalType', 'length'])
+const { bufferDeclarations: BUFFER_DECLARATIONS } = LIBRARY_LAYOUT
 const BUFFER_NAMES = new Set(BUFFER_DECLARATIONS.map(({ name }) => name))
 
 function assertObject(value, description) {
@@ -18,23 +22,6 @@ function assertOnlyKeys(value, allowedKeys, description) {
       throw new Error(`${description} has unsupported field '${key}'.`)
     }
   }
-}
-
-function parseCircomConstants(sourceText, source = 'constants.circom') {
-  const constants = new Map()
-  const text = sourceText
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/[^\n\r]*/g, '')
-
-  for (const match of text.matchAll(CIRCOM_CONSTANT_PATTERN)) {
-    const [, name, valueText] = match
-    if (constants.has(name)) {
-      throw new Error(`${source}: Duplicate Circom constant '${name}'.`)
-    }
-    constants.set(name, Number(valueText))
-  }
-
-  return constants
 }
 
 function validateLogicalType(value, description) {
@@ -114,11 +101,6 @@ function expandPorts(ports, constants, description) {
     }
   }
   return expanded
-}
-
-function countPhysicalWires(ports) {
-  return ports.reduce((count, { logicalType }) =>
-    count + (logicalType.kind === 'uint' && logicalType.bits > 160 ? 2 : 1), 0)
 }
 
 function validateBufferCapacities(subcircuits, constants) {
@@ -242,9 +224,7 @@ function validateCompiledSubcircuitInterfaces(subcircuits, interfaceDir, constan
 }
 
 module.exports = {
-  countPhysicalWires,
   loadLogicalInterfaces,
-  parseCircomConstants,
   parseLogicalInterface,
   validateBufferCapacities,
   validateCompiledSubcircuitInterfaces,

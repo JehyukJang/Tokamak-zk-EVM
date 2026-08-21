@@ -1,4 +1,4 @@
-function _buildWireFlattenMap(globalWireList, subcircuitInfos, globalWireIndex, subcircuitId, subcircuitWireId) {
+function _assignFlattenedWire(globalWireList, subcircuitInfos, globalWireIndex, subcircuitId, subcircuitWireId) {
   if (subcircuitId >= 0 ){
     if ( globalWireList[globalWireIndex] !== undefined ) {
       throw new Error(`buildGlobalWireLayout: The same mapping occurs twice.`)
@@ -44,7 +44,7 @@ function _appendPublicWireSegment(globalWireList, subcircuitInfos, globalWireInd
   const [localWireIndex, numWires] = _getPortRange(targetSubcircuit, direction)
   let nextGlobalWireIndex = globalWireIndex
   for (let i = 0; i < numWires; i++) {
-    _buildWireFlattenMap(
+    _assignFlattenedWire(
       globalWireList,
       subcircuitInfos,
       nextGlobalWireIndex++,
@@ -77,14 +77,13 @@ function _assertCompiledPortRange(targetSubcircuit, name, direction) {
   }
 }
 
-function _validateBufferDeclarations(subcircuitInfos, subcircuitInfoByName, libraryLayout) {
+function _validateBufferLayout(subcircuitInfoByName, libraryLayout) {
   const {
     bufferDeclarations,
     publicWirePhases,
     publicWireSegments,
   } = libraryLayout
   const directionByName = new Map()
-  const bufferNames = new Set()
   const publicSegmentByName = new Map(publicWireSegments.map((segment) => [segment.name, segment]))
   const phaseByName = new Map()
   let hasFixedPhase = false
@@ -169,17 +168,9 @@ function _validateBufferDeclarations(subcircuitInfos, subcircuitInfoByName, libr
     }
 
     directionByName.set(name, direction)
-    bufferNames.add(name)
-  }
-
-  for (const subcircuit of subcircuitInfos) {
-    if (!bufferNames.has(subcircuit.name)) continue
-    const direction = directionByName.get(subcircuit.name)
-    subcircuit.bufferDirection = direction
   }
 
   return {
-    bufferNames,
     directionByName,
     publicSegmentByName,
   }
@@ -227,30 +218,35 @@ function buildGlobalWireLayout(subcircuitInfos, libraryLayout) {
   let numTotalWires = 0
   let numInterfaceWires = 0
   const subcircuitInfoByName = new Map()
-  for (const subcircuit of layoutSubcircuits) {
-    numTotalWires += subcircuit.Nwires
+  for (const compiledSubcircuit of layoutSubcircuits) {
+    numTotalWires += compiledSubcircuit.Nwires
 
-    if (subcircuitInfoByName.has(subcircuit.name)) {
-      throw new Error(`buildGlobalWireLayout: Duplicate subcircuit name '${subcircuit.name}'.`)
+    if (subcircuitInfoByName.has(compiledSubcircuit.name)) {
+      throw new Error(`buildGlobalWireLayout: Duplicate subcircuit name '${compiledSubcircuit.name}'.`)
     }
 
-    const portLayout = {
-      id: subcircuit.id,
-      NWires: subcircuit.Nwires,
-      NInWires: subcircuit.In_idx[1],
-      NOutWires: subcircuit.Out_idx[1],
-      inWireIndex: subcircuit.In_idx[0],
-      outWireIndex: subcircuit.Out_idx[0],
-      logicalInterface: subcircuit.logicalInterface,
+    const normalizedPortLayout = {
+      id: compiledSubcircuit.id,
+      NWires: compiledSubcircuit.Nwires,
+      NInWires: compiledSubcircuit.In_idx[1],
+      NOutWires: compiledSubcircuit.Out_idx[1],
+      inWireIndex: compiledSubcircuit.In_idx[0],
+      outWireIndex: compiledSubcircuit.Out_idx[0],
+      logicalInterface: compiledSubcircuit.logicalInterface,
     }
-    subcircuitInfoByName.set(subcircuit.name, portLayout)
+    subcircuitInfoByName.set(compiledSubcircuit.name, normalizedPortLayout)
   }
 
-  const { publicSegmentByName } = _validateBufferDeclarations(
-    layoutSubcircuits,
+  const { directionByName, publicSegmentByName } = _validateBufferLayout(
     subcircuitInfoByName,
     libraryLayout,
   )
+  for (const compiledSubcircuit of layoutSubcircuits) {
+    const bufferDirection = directionByName.get(compiledSubcircuit.name)
+    if (bufferDirection !== undefined) {
+      compiledSubcircuit.bufferDirection = bufferDirection
+    }
+  }
   const publicWireCountByPhase = new Map(
     publicWirePhases.map(({ name }) => [name, 0]),
   )
@@ -358,7 +354,7 @@ function buildGlobalWireLayout(subcircuitInfos, libraryLayout) {
   }
 
   for (let i = 0; i < freePublicWirePadding; i++) {
-    _buildWireFlattenMap(
+    _assignFlattenedWire(
       globalWireList,
       layoutSubcircuits,
       globalWireIndex++,
@@ -384,7 +380,7 @@ function buildGlobalWireLayout(subcircuitInfos, libraryLayout) {
   // Processing internal interface wires
   for (const [subcircuitName, targetSubcircuit] of subcircuitInfoByName) {
     // Include the Circom constant wire in the interface wire list.
-    _buildWireFlattenMap(
+    _assignFlattenedWire(
       globalWireList,
       layoutSubcircuits,
       globalWireIndex++,
@@ -398,7 +394,7 @@ function buildGlobalWireLayout(subcircuitInfos, libraryLayout) {
         _getOppositePortDirection(publicSegment.direction),
       )
       for (let i = 0; i < internalWireCount; i++) {
-        _buildWireFlattenMap(
+        _assignFlattenedWire(
           globalWireList,
           layoutSubcircuits,
           globalWireIndex++,
@@ -408,7 +404,7 @@ function buildGlobalWireLayout(subcircuitInfos, libraryLayout) {
       }
     } else {
       for (let i = 0; i < targetSubcircuit.NOutWires; i++) {
-        _buildWireFlattenMap(
+        _assignFlattenedWire(
           globalWireList,
           layoutSubcircuits,
           globalWireIndex++,
@@ -417,7 +413,7 @@ function buildGlobalWireLayout(subcircuitInfos, libraryLayout) {
         )
       }
       for (let i = 0; i < targetSubcircuit.NInWires; i++) {
-        _buildWireFlattenMap(
+        _assignFlattenedWire(
           globalWireList,
           layoutSubcircuits,
           globalWireIndex++,
@@ -429,7 +425,7 @@ function buildGlobalWireLayout(subcircuitInfos, libraryLayout) {
   }
 
   for (let i = 0; i < interfaceWirePadding; i++) {
-    _buildWireFlattenMap(
+    _assignFlattenedWire(
       globalWireList,
       layoutSubcircuits,
       globalWireIndex++,
@@ -445,7 +441,7 @@ function buildGlobalWireLayout(subcircuitInfos, libraryLayout) {
   for (const targetSubcircuit of layoutSubcircuits) {
     const privateWireCount = targetSubcircuit.Nwires - (targetSubcircuit.Out_idx[1] + targetSubcircuit.In_idx[1]) - 1
     for (let i = 0; i < privateWireCount; i++) {
-      _buildWireFlattenMap(
+      _assignFlattenedWire(
         globalWireList,
         layoutSubcircuits,
         globalWireIndex++,
@@ -499,7 +495,7 @@ function buildSetupParams(globalWireInfo, subcircuits, libraryLayout, sMax) {
 
 module.exports = {
   _assertInternalInterfacePortPrefixes,
-  _validateBufferDeclarations,
+  _validateBufferLayout,
   buildGlobalWireLayout,
   buildSetupParams,
 }

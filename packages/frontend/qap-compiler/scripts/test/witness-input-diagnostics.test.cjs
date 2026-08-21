@@ -15,15 +15,9 @@ const {
 } = require('../runtime/witness-input-diagnostics.js')
 const {
   countPhysicalWires,
-  parseCircomConstants,
-  parseLogicalInterface,
-} = require('../parse-interfaces.js')
+} = require('../runtime/logical-interface.js')
 
 const packageRoot = path.resolve(__dirname, '..', '..')
-const interfaceDir = path.join(packageRoot, 'subcircuits', 'interface')
-const constants = parseCircomConstants(
-  fs.readFileSync(path.join(packageRoot, 'subcircuits', 'circom', 'constants.circom'), 'utf8'),
-)
 
 function target(name, inputs) {
   const physicalInputCount = countPhysicalWires(inputs)
@@ -113,47 +107,24 @@ test('checks a uint160 native wire against its exact declared width', () => {
   )
 })
 
-test('covers every production physical input exactly once', () => {
-  const compileSource = fs.readFileSync(path.join(packageRoot, 'scripts', 'compile.sh'), 'utf8')
-  const namesMatch = /^names=\(\n([\s\S]*?)^\)$/m.exec(compileSource)
-  assert.ok(namesMatch, 'compile.sh target list was not found')
-  const names = [...namesMatch[1].matchAll(/"([^"]+)"/g)].map((match) => match[1])
-  const bufferConstants = new Map([
-    ['bufferLogOut', 'nLogOut'],
-    ['bufferStorageStore', 'nStorageStore'],
-    ['bufferStorageLoad', 'nStorageLoad'],
-    ['bufferTxIn', 'nTxIn'],
-    ['bufferBlockIn', 'nBlockIn'],
-    ['bufferEVMIn', 'nEVMIn'],
-    ['bufferPrvIn', 'nPrvIn'],
-  ])
-  assert.deepEqual(names.filter((name) => name.startsWith('buffer')), [...bufferConstants.keys()])
+test('covers every generated production physical input exactly once', () => {
+  const catalog = JSON.parse(fs.readFileSync(
+    path.join(packageRoot, 'subcircuits', 'library', 'subcircuitInfo.json'),
+    'utf8',
+  ))
 
-  for (const name of names) {
-    let targetInfo
-    if (bufferConstants.has(name)) {
-      const physicalInputCount = constants.get(bufferConstants.get(name))
-      targetInfo = { name, In_idx: [1, physicalInputCount] }
-    } else {
-      const logicalInterface = parseLogicalInterface(
-        fs.readFileSync(path.join(interfaceDir, `${name}.json`), 'utf8'),
-        constants,
-        `${name}.json`,
-      )
-      targetInfo = {
-        name,
-        In_idx: [1, countPhysicalWires(logicalInterface.inputs)],
-        logicalInterface,
-      }
-    }
-
+  for (const targetInfo of catalog) {
     const descriptors = buildPhysicalInputDescriptors(targetInfo)
     assert.deepEqual(
       descriptors.map(({ physicalInputIndex }) => physicalInputIndex),
       Array.from({ length: targetInfo.In_idx[1] }, (_, index) => index),
-      name,
+      targetInfo.name,
     )
-    assert.deepEqual(warningsFor(targetInfo, Array(targetInfo.In_idx[1]).fill(0n)), [], name)
+    assert.deepEqual(
+      warningsFor(targetInfo, Array(targetInfo.In_idx[1]).fill(0n)),
+      [],
+      targetInfo.name,
+    )
   }
 })
 
@@ -214,7 +185,7 @@ test('the qap witness CLI uses the common diagnostic wrapper', (context) => {
   for (const file of ['subcircuitInfo.json', 'witness_calculator.js']) {
     fs.copyFileSync(path.join(checkedInLibrary, file), path.join(libraryDir, file))
   }
-  for (const file of ['generate_witness.js', 'witness-input-diagnostics.js']) {
+  for (const file of ['generate_witness.js', 'logical-interface.js', 'witness-input-diagnostics.js']) {
     fs.copyFileSync(path.join(packageRoot, 'scripts', 'runtime', file), path.join(libraryDir, file))
   }
   const wasmPath = path.join(wasmDir, 'subcircuit3.wasm')

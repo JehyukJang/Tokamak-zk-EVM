@@ -108,6 +108,3 @@ const libraryLayout = Object.freeze({
 })
 
 module.exports.LIBRARY_LAYOUT = libraryLayout
-module.exports.BUFFER_DECLARATIONS = libraryLayout.bufferDeclarations
-module.exports.PUBLIC_WIRE_PHASES = libraryLayout.publicWirePhases
-module.exports.PUBLIC_WIRE_SEGMENTS = libraryLayout.publicWireSegments

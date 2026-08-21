@@ -5,13 +5,15 @@ const path = require('node:path')
 const test = require('node:test')
 
 const {
-  countPhysicalWires,
   loadLogicalInterfaces,
-  parseCircomConstants,
   parseLogicalInterface,
   validateBufferCapacities,
   validateCompiledSubcircuitInterfaces,
 } = require('../parse-interfaces.js')
+const {
+  countPhysicalWires,
+  parseCircomConstants,
+} = require('../runtime/logical-interface.js')
 
 const UINT256 = { kind: 'uint', bits: 256 }
 
@@ -69,12 +71,12 @@ test('expands fixed and Circom-constant logical port lengths', () => {
 
 test('derives physical wire counts from closed logical types', () => {
   assert.equal(countPhysicalWires([
-    { logicalType: { kind: 'uint', bits: 128 } },
-    { logicalType: { kind: 'uint', bits: 129 } },
-    { logicalType: { kind: 'uint', bits: 160 } },
-    { logicalType: { kind: 'uint', bits: 161 } },
-    { logicalType: { kind: 'bls12-381-fr' } },
-    { logicalType: { kind: 'jubjub-scalar' } },
+    { name: 'uint128', logicalType: { kind: 'uint', bits: 128 } },
+    { name: 'uint129', logicalType: { kind: 'uint', bits: 129 } },
+    { name: 'uint160', logicalType: { kind: 'uint', bits: 160 } },
+    { name: 'uint161', logicalType: { kind: 'uint', bits: 161 } },
+    { name: 'field', logicalType: { kind: 'bls12-381-fr' } },
+    { name: 'scalar', logicalType: { kind: 'jubjub-scalar' } },
   ]), 7)
 })
 

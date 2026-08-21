@@ -1,5 +1,7 @@
 'use strict'
 
+const { expandPhysicalPorts } = require('./logical-interface.js')
+
 const BLS12_381_FR_MODULUS = 52435875175126190479447740508185965837690552500527637822603658699938581184513n
 const JUBJUB_SCALAR_ORDER = 6554484396890773809930967563523245729705921265872317281365359162392183254199n
 const WARNING_CODE = 'QAP_INPUT_OUT_OF_SPEC'
@@ -48,61 +50,53 @@ function buildPhysicalInputDescriptors(target) {
     throw new TypeError(`Target '${target.name}' has an invalid logical input interface.`)
   }
 
-  const descriptors = []
-  for (const port of target.logicalInterface.inputs) {
-    if (typeof port?.name !== 'string' || port.name.length === 0) {
-      throw new TypeError(`Target '${target.name}' has a logical input without a valid name.`)
-    }
-    const logicalType = port.logicalType
+  const physicalPorts = expandPhysicalPorts(
+    target.logicalInterface.inputs,
+    `Target '${target.name}' logical inputs`,
+  )
+  const descriptors = physicalPorts.map((port, physicalInputIndex) => {
     const portIdentity = splitPortName(port.name)
-
-    if (logicalType?.kind === 'uint') {
-      if (!Number.isInteger(logicalType.bits) || logicalType.bits < 1 || logicalType.bits > 256) {
-        throw new TypeError(`Target '${target.name}' input '${port.name}' has an invalid uint width.`)
-      }
-      if (logicalType.bits <= 160) {
-        descriptors.push({
+    if (port.logicalType.kind === 'uint') {
+      if (port.limb === 'low') {
+        return {
           ...portIdentity,
-          expectedDomain: `0 <= x < 2^${logicalType.bits}`,
-          limit: 1n << BigInt(logicalType.bits),
-          physicalInputIndex: descriptors.length,
-        })
-      } else {
-        descriptors.push({
-          ...portIdentity,
-          limb: 'low',
+          limb: port.limb,
           expectedDomain: '0 <= low limb < 2^128',
           limit: 1n << 128n,
-          physicalInputIndex: descriptors.length,
-        })
-        descriptors.push({
-          ...portIdentity,
-          limb: 'high',
-          expectedDomain: `0 <= high limb < 2^${logicalType.bits - 128}`,
-          limit: 1n << BigInt(logicalType.bits - 128),
-          physicalInputIndex: descriptors.length,
-        })
+          physicalInputIndex,
+        }
       }
-    } else if (logicalType?.kind === 'bls12-381-fr') {
-      descriptors.push({
+      if (port.limb === 'high') {
+        return {
+          ...portIdentity,
+          limb: port.limb,
+          expectedDomain: `0 <= high limb < 2^${port.logicalType.bits - 128}`,
+          limit: 1n << BigInt(port.logicalType.bits - 128),
+          physicalInputIndex,
+        }
+      }
+      return {
+        ...portIdentity,
+        expectedDomain: `0 <= x < 2^${port.logicalType.bits}`,
+        limit: 1n << BigInt(port.logicalType.bits),
+        physicalInputIndex,
+      }
+    }
+    if (port.logicalType.kind === 'bls12-381-fr') {
+      return {
         ...portIdentity,
         expectedDomain: '0 <= x < BLS12-381 Fr',
         limit: BLS12_381_FR_MODULUS,
-        physicalInputIndex: descriptors.length,
-      })
-    } else if (logicalType?.kind === 'jubjub-scalar') {
-      descriptors.push({
-        ...portIdentity,
-        expectedDomain: '0 <= x < Jubjub scalar order',
-        limit: JUBJUB_SCALAR_ORDER,
-        physicalInputIndex: descriptors.length,
-      })
-    } else {
-      throw new TypeError(
-        `Target '${target.name}' input '${port.name}' has unsupported logical type '${logicalType?.kind}'.`,
-      )
+        physicalInputIndex,
+      }
     }
-  }
+    return {
+      ...portIdentity,
+      expectedDomain: '0 <= x < Jubjub scalar order',
+      limit: JUBJUB_SCALAR_ORDER,
+      physicalInputIndex,
+    }
+  })
 
   if (descriptors.length !== physicalInputCount) {
     throw new Error(

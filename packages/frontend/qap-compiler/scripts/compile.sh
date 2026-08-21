@@ -123,6 +123,7 @@ for (( i = 0 ; i < ${#names[@]} ; i++ )) ; do
 done
 
 cp "$package_root/scripts/runtime/generate_witness.js" "$output_dir_path/generate_witness.js"
+cp "$package_root/scripts/runtime/logical-interface.js" "$output_dir_path/logical-interface.js"
 cp "$package_root/scripts/runtime/witness-input-diagnostics.js" "$output_dir_path/witness-input-diagnostics.js"
 
 node parse.js "$output_dir_path" "$compiler_output_file"

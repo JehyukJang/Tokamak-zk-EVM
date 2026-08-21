@@ -229,7 +229,7 @@ Visibility refers to the final composed proof interface constructed by
 [`scripts/configure.js`](../scripts/configure.js), not to the temporary
 standalone visibility used while Circom compiles one wrapper. All non-buffer
 interfaces are private internal wires. The public side of each buffer is
-selected explicitly by `PUBLIC_WIRE_SEGMENTS`.
+selected explicitly by `LIBRARY_LAYOUT.publicWireSegments`.
 
 Physical non-buffer privacy must not be confused with semantic disclosure.
 For transaction-signature verification, `contract`, `selector`, `S`, and the
@@ -264,7 +264,7 @@ layouts after expansion by the composition layer.
 | `bufferTxIn` | Transaction inputs; 6 input wires | 6 + 6 = 12 | 6 public inputs -> 6 private outputs | Local equality plus public-boundary format checking. |
 | `bufferBlockIn` | Block fields and previous block hashes; 24 input wires | 24 + 24 = 48 | 24 public inputs -> 24 private outputs | Local equality plus public-boundary format checking. |
 | `bufferEVMIn` | Fixed EVM inputs and constants; 530 input wires | 530 + 530 = 1,060 | 530 public inputs -> 530 private outputs | Local equality plus public-boundary format checking. |
-| `bufferPrvIn` | Private witness inputs; 80 input wires | 80 + 80 = 160 | 80 private inputs -> 80 private outputs | Local equality; it is intentionally absent from `PUBLIC_WIRE_SEGMENTS`. |
+| `bufferPrvIn` | Private witness inputs; 80 input wires | 80 + 80 = 160 | 80 private inputs -> 80 private outputs | Local equality; it is intentionally absent from `LIBRARY_LAYOUT.publicWireSegments`. |
 
 Public-output buffers are fixed-capacity and zero-padded. The higher-level
 protocol filters storage entries with a zero address and log entries whose

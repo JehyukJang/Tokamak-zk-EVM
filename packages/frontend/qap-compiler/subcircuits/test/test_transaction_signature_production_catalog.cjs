@@ -9,10 +9,12 @@ const { tmpdir } = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const {
-  countPhysicalWires,
-  parseCircomConstants,
   parseLogicalInterface,
 } = require("../../scripts/parse-interfaces.js");
+const {
+  countPhysicalWires,
+  parseCircomConstants,
+} = require("../../scripts/runtime/logical-interface.js");
 
 const EXPECTED = Object.freeze([
   Object.freeze({ name: "TransactionSignaturePoseidonBatch4", nonlinear: 950, linear: 0, inputs: 7, outputs: 2, wires: 957, nonzero: 11380, warnings: 1, placements: 9 }),

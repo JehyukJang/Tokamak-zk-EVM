@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseCircomConstants } from './parse-interfaces.js';
+import { parseCircomConstants } from './runtime/logical-interface.js';
 
 const REQUIRED_CIRCOM_KEYS = [
   'nTxIn',
