@@ -5,7 +5,8 @@ use std::path::PathBuf;
 use libs::iotools::SigmaPreprocessRkyv;
 use libs::iotools::{Instance, Permutation};
 use libs::subcircuit_library::{
-    resolve_subcircuit_library_path, validate_crs_compatibility, SubcircuitLibraryArg,
+    resolve_subcircuit_library_path, validate_operational_crs_compatibility,
+    DevelopmentCrsProvenanceArg, SubcircuitLibraryArg,
 };
 use libs::utils::{check_device, load_setup_params_from_qap_path};
 use memmap2::Mmap;
@@ -16,6 +17,9 @@ use preprocess::{Preprocess, PreprocessInputPaths};
 struct Config {
     #[command(flatten)]
     subcircuit_library: SubcircuitLibraryArg,
+
+    #[command(flatten)]
+    development_crs_provenance: DevelopmentCrsProvenanceArg,
 
     /// CRS output directory containing sigma_preprocess.rkyv
     #[arg(long, value_name = "PATH")]
@@ -33,7 +37,8 @@ struct Config {
 fn main() {
     let config = Config::parse();
     let qap_library_path = resolve_subcircuit_library_path(config.subcircuit_library.as_deref());
-    validate_crs_compatibility(
+    validate_operational_crs_compatibility(
+        &config.development_crs_provenance,
         PathBuf::from(&config.crs).as_path(),
         qap_library_path.as_path(),
     )

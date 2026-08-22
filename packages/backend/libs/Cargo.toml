@@ -37,6 +37,7 @@ harness = false
 default = []
 testing-mode = []
 timing = []
+development-crs-bypass = []
 
 [build-dependencies]
 serde_json = { workspace = true }

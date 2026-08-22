@@ -1,6 +1,7 @@
 use clap::Parser;
 use libs::subcircuit_library::{
-    resolve_subcircuit_library_path, validate_crs_compatibility, SubcircuitLibraryArg,
+    resolve_subcircuit_library_path, validate_operational_crs_compatibility,
+    DevelopmentCrsProvenanceArg, SubcircuitLibraryArg,
 };
 use libs::utils::check_device;
 use prove::{Proof, ProveInputPaths, Prover, TranscriptManager};
@@ -12,6 +13,9 @@ use std::time::Instant;
 struct Config {
     #[command(flatten)]
     subcircuit_library: SubcircuitLibraryArg,
+
+    #[command(flatten)]
+    development_crs_provenance: DevelopmentCrsProvenanceArg,
 
     /// CRS output directory containing proof setup artifacts
     #[arg(long, value_name = "PATH")]
@@ -30,7 +34,8 @@ fn main() {
     let total_start = Instant::now();
     let config = Config::parse();
     let qap_library_path = resolve_subcircuit_library_path(config.subcircuit_library.as_deref());
-    validate_crs_compatibility(
+    validate_operational_crs_compatibility(
+        &config.development_crs_provenance,
         PathBuf::from(&config.crs).as_path(),
         qap_library_path.as_path(),
     )

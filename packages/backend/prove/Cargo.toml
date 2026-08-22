@@ -26,6 +26,7 @@ serde_json = { workspace = true }
 default = []
 testing-mode = []
 timing = ["libs/timing"]
+development-crs-bypass = ["libs/development-crs-bypass"]
 
 [[test]]
 name = "timing"

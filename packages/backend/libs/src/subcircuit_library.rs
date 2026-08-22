@@ -11,6 +11,7 @@ use std::time::Duration;
 
 include!(concat!(env!("OUT_DIR"), "/embedded_subcircuit_library.rs"));
 
+#[cfg(not(tokamak_embedded_subcircuit_library))]
 const SUBCIRCUIT_LIBRARY_PACKAGE_NAME: &str = "@tokamak-zk-evm/subcircuit-library";
 
 #[cfg(tokamak_embedded_subcircuit_library)]
@@ -37,6 +38,44 @@ impl SubcircuitLibraryArg {
     #[cfg(tokamak_embedded_subcircuit_library)]
     pub fn as_deref(&self) -> Option<&str> {
         None
+    }
+}
+
+/// Development-only opt-in for running against a CRS that has not yet been paired with the
+/// local subcircuit-library compatibility class.
+#[cfg(all(
+    feature = "development-crs-bypass",
+    not(tokamak_embedded_subcircuit_library)
+))]
+#[derive(Args, Debug, Clone, Default)]
+pub struct DevelopmentCrsProvenanceArg {
+    /// Skip CRS provenance compatibility validation for local development only
+    #[arg(long)]
+    allow_unverified_crs: bool,
+}
+
+#[cfg(not(all(
+    feature = "development-crs-bypass",
+    not(tokamak_embedded_subcircuit_library)
+)))]
+#[derive(Args, Debug, Clone, Default)]
+pub struct DevelopmentCrsProvenanceArg {}
+
+impl DevelopmentCrsProvenanceArg {
+    pub fn allows_unverified_crs(&self) -> bool {
+        #[cfg(all(
+            feature = "development-crs-bypass",
+            not(tokamak_embedded_subcircuit_library)
+        ))]
+        {
+            return self.allow_unverified_crs;
+        }
+
+        #[cfg(not(all(
+            feature = "development-crs-bypass",
+            not(tokamak_embedded_subcircuit_library)
+        )))]
+        false
     }
 }
 
@@ -86,6 +125,21 @@ pub fn validate_crs_compatibility(crs_dir: &Path, library_dir: &Path) -> std::io
     }
 
     Ok(())
+}
+
+pub fn validate_operational_crs_compatibility(
+    development: &DevelopmentCrsProvenanceArg,
+    crs_dir: &Path,
+    library_dir: &Path,
+) -> std::io::Result<()> {
+    if development.allows_unverified_crs() {
+        eprintln!(
+            "WARNING: skipping CRS provenance compatibility validation for local development"
+        );
+        return Ok(());
+    }
+
+    validate_crs_compatibility(crs_dir, library_dir)
 }
 
 fn selected_library_package_version(library_dir: &Path) -> std::io::Result<String> {
@@ -298,7 +352,10 @@ fn sanitize_component(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_crs_compatibility;
+    use super::{
+        validate_crs_compatibility, validate_operational_crs_compatibility,
+        DevelopmentCrsProvenanceArg,
+    };
     use std::fs;
     use std::path::PathBuf;
 
@@ -344,6 +401,56 @@ mod tests {
 
         write_provenance(&crs_dir, "3.0");
         assert!(validate_crs_compatibility(&crs_dir, &library_dir).is_err());
+        fs::remove_dir_all(root).expect("must remove test directory");
+    }
+
+    #[test]
+    fn operational_validation_rejects_an_unmatched_crs_without_development_opt_in() {
+        let root = test_root();
+        let library_dir = root.join("subcircuits").join("library");
+        let crs_dir = root.join("crs");
+        fs::create_dir_all(&library_dir).expect("must create library directory");
+        fs::create_dir_all(&crs_dir).expect("must create CRS directory");
+        write_package_manifest(&root, "3.0.0");
+        write_provenance(&crs_dir, "2.1");
+
+        assert!(validate_operational_crs_compatibility(
+            &DevelopmentCrsProvenanceArg::default(),
+            &crs_dir,
+            &library_dir,
+        )
+        .is_err());
+        fs::remove_dir_all(root).expect("must remove test directory");
+    }
+
+    #[cfg(all(
+        feature = "development-crs-bypass",
+        not(tokamak_embedded_subcircuit_library)
+    ))]
+    #[test]
+    fn development_opt_in_allows_an_unmatched_crs() {
+        #[derive(clap::Parser)]
+        struct TestConfig {
+            #[command(flatten)]
+            development: DevelopmentCrsProvenanceArg,
+        }
+
+        let root = test_root();
+        let library_dir = root.join("subcircuits").join("library");
+        let crs_dir = root.join("crs");
+        fs::create_dir_all(&library_dir).expect("must create library directory");
+        fs::create_dir_all(&crs_dir).expect("must create CRS directory");
+        write_package_manifest(&root, "3.0.0");
+        write_provenance(&crs_dir, "2.1");
+
+        let config = <TestConfig as clap::Parser>::try_parse_from([
+            "test-command",
+            "--allow-unverified-crs",
+        ])
+        .expect("development opt-in must be accepted");
+        assert!(config.development.allows_unverified_crs());
+        validate_operational_crs_compatibility(&config.development, &crs_dir, &library_dir)
+            .expect("development opt-in must bypass provenance compatibility validation");
         fs::remove_dir_all(root).expect("must remove test directory");
     }
 }

@@ -149,13 +149,14 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["build", "-p", "preprocess"],
+        "args": ["build", "-p", "preprocess", "--features", "development-crs-bypass"],
         "filter": { "name": "preprocess", "kind": "bin" }
       },
       "program": "${cargo:program}",
       "args": [
         "--subcircuit-library",
         "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
+        "--allow-unverified-crs",
         "--crs",
         "${workspaceFolder}/setup/output",
         "--synthesizer-stat",
@@ -201,13 +202,14 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["build", "-p", "prove"],
+        "args": ["build", "-p", "prove", "--features", "development-crs-bypass"],
         "filter": { "name": "prove", "kind": "bin" }
       },
       "program": "${cargo:program}",
       "args": [
         "--subcircuit-library",
         "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
+        "--allow-unverified-crs",
         "--crs",
         "${workspaceFolder}/setup/output",
         "--synthesizer-stat",
@@ -228,13 +230,14 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["build", "-p", "prove", "--features", "testing-mode"],
+        "args": ["build", "-p", "prove", "--features", "testing-mode,development-crs-bypass"],
         "filter": { "name": "prove", "kind": "bin" }
       },
       "program": "${cargo:program}",
       "args": [
         "--subcircuit-library",
         "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
+        "--allow-unverified-crs",
         "--crs",
         "${workspaceFolder}/setup/output",
         "--synthesizer-stat",
@@ -306,13 +309,14 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["build", "-p", "verify"],
+        "args": ["build", "-p", "verify", "--features", "development-crs-bypass"],
         "filter": { "name": "verify", "kind": "bin" }
       },
       "program": "${cargo:program}",
       "args": [
         "--subcircuit-library",
         "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
+        "--allow-unverified-crs",
         "--crs",
         "${workspaceFolder}/setup/output",
         "--synthesizer-stat",
@@ -335,13 +339,14 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["build", "-p", "verify", "--features", "testing-mode"],
+        "args": ["build", "-p", "verify", "--features", "testing-mode,development-crs-bypass"],
         "filter": { "name": "verify", "kind": "bin" }
       },
       "program": "${cargo:program}",
       "args": [
         "--subcircuit-library",
         "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
+        "--allow-unverified-crs",
         "--crs",
         "${workspaceFolder}/setup/output",
         "--synthesizer-stat",

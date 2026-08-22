@@ -203,6 +203,12 @@ Release launchers for `trusted-setup`, `preprocess`, `prove`, and `verify` use t
 subcircuit library. Non-release and testing launchers pass `--subcircuit-library` explicitly. The
 mpc-setup launchers use the local subcircuit library path prepared during their Cargo build.
 
+The `coderun` and testing-mode preprocess, prove, and verify launchers use the local
+`qap-compiler/subcircuits/library` output. They compile the development-only
+`development-crs-bypass` feature and pass `--allow-unverified-crs`, which skips only the CRS
+provenance compatibility-class check while a matching CRS is not yet available. Release launchers
+do not compile or accept that option and always validate CRS provenance compatibility.
+
 ## Timing Report for `prove`
 
 The backend includes a human-readable timing report generated from raw timing data:
