@@ -1,34 +1,29 @@
 import { execFile } from "node:child_process";
 import { createServer, type ServerResponse } from "node:http";
-import {
-  mkdtemp,
-  mkdir,
-  readFile,
-  realpath,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
 import { chromium } from "playwright";
 import webpack, { type Configuration } from "webpack";
+import { SUBCIRCUIT_LIBRARY_PACKAGE_VERSION } from "../../../src/generated/setup.generated.js";
 
 const execFileAsync = promisify(execFile);
 const PACKAGE_NAME = "@tokamak-zk-evm/snark-browser-compat";
+const CRS_PROVENANCE = JSON.stringify({
+  compatibleBackendVersion: SUBCIRCUIT_LIBRARY_PACKAGE_VERSION.split(".").slice(0, 2).join("."),
+  subcircuitLibrary: {
+    packageName: "@tokamak-zk-evm/subcircuit-library",
+    packageVersion: SUBCIRCUIT_LIBRARY_PACKAGE_VERSION,
+  },
+});
 const APPLICATION_SOURCE = `
 import { convertCrs } from "@tokamak-zk-evm/snark-browser-compat/converter";
 
 const input = new Uint8Array([1, 2, 3, 4]);
 try {
-  await convertCrs(input, {
-    compatibleBackendVersion: "2.1",
-    subcircuitLibrary: {
-      packageName: "@tokamak-zk-evm/subcircuit-library",
-      packageVersion: "2.1.3",
-    },
-  });
+  await convertCrs(input, ${CRS_PROVENANCE});
   window.__webpackResult = { status: "unexpected-success" };
 } catch (error) {
   const cause = error && typeof error === "object" && "cause" in error
@@ -106,11 +101,9 @@ async function main(): Promise<void> {
       { cwd: applicationRoot },
     );
 
-    await assertFfjavascriptIsExternal(path.join(
-      applicationRoot,
-      "node_modules",
-      ...PACKAGE_NAME.split("/"),
-    ));
+    await assertFfjavascriptIsExternal(
+      path.join(applicationRoot, "node_modules", ...PACKAGE_NAME.split("/")),
+    );
     await buildApplication(applicationRoot, outputRoot);
     await checkBuiltApplication(outputRoot);
   } finally {
@@ -173,7 +166,11 @@ async function buildApplication(applicationRoot: string, outputRoot: string): Pr
           return;
         }
         if (stats === undefined || stats.hasErrors()) {
-          reject(new Error(stats?.toString({ all: false, errors: true }) ?? "Webpack returned no stats."));
+          reject(
+            new Error(
+              stats?.toString({ all: false, errors: true }) ?? "Webpack returned no stats.",
+            ),
+          );
           return;
         }
         resolve();
@@ -186,11 +183,12 @@ async function checkBuiltApplication(outputRoot: string): Promise<void> {
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? "/", "http://127.0.0.1");
-      const relativePath = url.pathname === "/" ? "index.html" : decodeURIComponent(url.pathname.slice(1));
+      const relativePath =
+        url.pathname === "/" ? "index.html" : decodeURIComponent(url.pathname.slice(1));
       await serveBuiltFile(response, outputRoot, relativePath);
     } catch (error) {
       response.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
-      response.end(error instanceof Error ? error.stack ?? error.message : String(error));
+      response.end(error instanceof Error ? (error.stack ?? error.message) : String(error));
     }
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -209,7 +207,7 @@ async function checkBuiltApplication(outputRoot: string): Promise<void> {
     const result = await page.waitForFunction(
       () => (window as unknown as { __webpackResult?: WebpackResult }).__webpackResult,
     );
-    const value = await result.jsonValue() as WebpackResult;
+    const value = (await result.jsonValue()) as WebpackResult;
 
     if (browserErrors.length > 0) {
       throw new Error(`Webpack consumer raised browser errors:\n${browserErrors.join("\n")}`);
@@ -221,8 +219,8 @@ async function checkBuiltApplication(outputRoot: string): Promise<void> {
       throw new Error(`Unexpected Webpack converter result: ${JSON.stringify(value)}.`);
     }
     if (
-      value.message !== "convertCrs could not process its input."
-      || !value.causeMessage?.includes("invalid archive shape")
+      value.message !== "convertCrs could not process its input." ||
+      !value.causeMessage?.includes("invalid archive shape")
     ) {
       throw new Error(`Unexpected Webpack converter failure: ${JSON.stringify(value)}.`);
     }
@@ -269,6 +267,6 @@ function contentTypeFor(filePath: string): string {
 }
 
 main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.stack ?? error.message : String(error));
+  console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
   process.exitCode = 1;
 });

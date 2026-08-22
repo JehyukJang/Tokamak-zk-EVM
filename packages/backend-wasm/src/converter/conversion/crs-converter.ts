@@ -1,5 +1,8 @@
 import type { ConvertedCrs } from "./types.js";
-import type { CrsProvenanceInput } from "../../artifacts/binary/compatibility.js";
+import {
+  assertRuntimeLibraryCompatibility,
+  type CrsProvenanceInput,
+} from "../../artifacts/binary/compatibility.js";
 
 interface CrsWorkerArtifact {
   readonly buffer: ArrayBuffer;
@@ -29,6 +32,7 @@ export async function convertCrs(
   rkyvBytes: Uint8Array,
   provenance: CrsProvenanceInput,
 ): Promise<ConvertedCrs> {
+  assertRuntimeLibraryCompatibility();
   if (!(rkyvBytes instanceof Uint8Array)) {
     throw new TypeError("convertCrs requires a Uint8Array.");
   }

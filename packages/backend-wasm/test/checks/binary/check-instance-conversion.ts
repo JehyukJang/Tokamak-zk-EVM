@@ -1,4 +1,7 @@
-import { createBinaryArtifactFile, decodeBinaryArtifactFile } from "../../../src/artifacts/binary/binary-artifact-file.js";
+import {
+  createBinaryArtifactFile,
+  decodeBinaryArtifactFile,
+} from "../../../src/artifacts/binary/binary-artifact-file.js";
 import {
   BinaryArtifactFileKind,
   BinarySectionEncoding,
@@ -7,6 +10,7 @@ import {
 import { convertInstance } from "../../../src/converter/conversion/instance-converter.js";
 import { validateBinary } from "../../../src/converter/index.js";
 import { GENERATED_SETUP_PARAMS } from "../../../src/generated/setup.generated.js";
+import { BACKEND_WASM_PACKAGE_VERSION } from "../../../src/version.js";
 import { createCurveRuntime } from "../../../src/runtime/curve/curve.js";
 import { assertEqual } from "../../support/assertions.js";
 import { assertBytesEqual, concatBytes } from "../../support/bytes.js";
@@ -30,10 +34,9 @@ async function main(): Promise<void> {
 
   const runtime = await createCurveRuntime();
   try {
-    const expectedPublic = [
-      ...source.a_pub_user,
-      ...source.a_pub_block,
-    ].map((value) => runtime.Fr.fromHex(value));
+    const expectedPublic = [...source.a_pub_user, ...source.a_pub_block].map((value) =>
+      runtime.Fr.fromHex(value),
+    );
     const expectedFunction = source.a_pub_function.map((value) => runtime.Fr.fromHex(value));
 
     assertBytesEqual(artifact.sections[0].data, concatBytes(expectedPublic), "instance.public");
@@ -43,10 +46,11 @@ async function main(): Promise<void> {
   }
 
   await assertRejects(
-    () => convertInstance({
-      ...source,
-      a_pub_function: source.a_pub_function.slice(1),
-    }),
+    () =>
+      convertInstance({
+        ...source,
+        a_pub_function: source.a_pub_function.slice(1),
+      }),
     "Function instance length must equal setupParams.l - setupParams.l_free (600).",
   );
   await assertOldInstanceRejected();
@@ -75,7 +79,7 @@ function assertSection(
 async function assertOldInstanceRejected(): Promise<void> {
   const oldBinary = await createBinaryArtifactFile({
     kind: BinaryArtifactFileKind.Instance,
-    sourcePackageVersion: "2.1.3",
+    sourcePackageVersion: BACKEND_WASM_PACKAGE_VERSION,
     sections: [
       {
         type: BinarySectionType.Instance,
@@ -101,7 +105,11 @@ async function assertSlicedInputAccepted(binary: Uint8Array): Promise<void> {
   const sliced = padded.subarray(5, 5 + binary.byteLength);
   const artifact = decodeBinaryArtifactFile(sliced);
   assertEqual(artifact.byteLength, binary.byteLength, "sliced instance byte length");
-  assertEqual(artifact.sections[0].data.byteLength, setup.l_free * 32, "sliced public section length");
+  assertEqual(
+    artifact.sections[0].data.byteLength,
+    setup.l_free * 32,
+    "sliced public section length",
+  );
   await validateBinary(sliced);
 }
 

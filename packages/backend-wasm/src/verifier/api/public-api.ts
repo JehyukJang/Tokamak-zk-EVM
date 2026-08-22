@@ -1,18 +1,13 @@
 import { BackendWasmError } from "../../backend-wasm-error.js";
-import {
-  assertNamedBinaryInput,
-  installCurveRuntime,
-} from "../../api/public-api-utils.js";
+import { assertNamedBinaryInput, installCurveRuntime } from "../../api/public-api-utils.js";
 import type { CurveRuntime } from "../../runtime/curve/curve.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
+import { assertRuntimeLibraryCompatibility } from "../../artifacts/binary/compatibility.js";
 import {
   NATIVE_BACKEND_VERSION,
   SUBCIRCUIT_LIBRARY_PACKAGE_VERSION,
 } from "../../generated/setup.generated.js";
-import {
-  loadVerifierInputFromBinaryInput,
-  type VerifierBinaryInput,
-} from "./binary-input.js";
+import { loadVerifierInputFromBinaryInput, type VerifierBinaryInput } from "./binary-input.js";
 import { verifySnark } from "../protocol/verify-snark.js";
 
 export interface VerifierInstallationInfo {
@@ -28,6 +23,7 @@ let installationPromise: Promise<CurveRuntime> | undefined;
 let busy = false;
 
 export async function install(): Promise<VerifierInstallationInfo> {
+  assertRuntimeLibraryCompatibility();
   runtime = await requireInstalledRuntime();
   return {
     packageVersion: BACKEND_WASM_PACKAGE_VERSION,

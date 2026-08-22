@@ -1,5 +1,6 @@
 import type { BinaryArtifactFileView } from "./binary-format.js";
 import { SUBCIRCUIT_LIBRARY_PACKAGE_VERSION } from "../../generated/setup.generated.js";
+import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
 
 export const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = "@tokamak-zk-evm/subcircuit-library";
 
@@ -38,6 +39,22 @@ export function validateCrsProvenanceCompatibility(provenance: CrsProvenanceInpu
   ) {
     throw new Error(
       `CRS provenance subcircuit-library version ${provenance.subcircuitLibrary.packageVersion} is not compatible with ${expectedCompatibleVersion}.`,
+    );
+  }
+}
+
+export function assertRuntimeLibraryCompatibility(): void {
+  const browserCompatibleVersion = packageCompatibleVersion(
+    BACKEND_WASM_PACKAGE_VERSION,
+    "snark-browser-compat package version",
+  );
+  const libraryCompatibleVersion = packageCompatibleVersion(
+    SUBCIRCUIT_LIBRARY_PACKAGE_VERSION,
+    "generated subcircuit-library package version",
+  );
+  if (browserCompatibleVersion !== libraryCompatibleVersion) {
+    throw new Error(
+      `snark-browser-compat compatibility class ${browserCompatibleVersion} does not match generated subcircuit-library compatibility class ${libraryCompatibleVersion}; regenerate browser artifacts from the synchronized published library.`,
     );
   }
 }

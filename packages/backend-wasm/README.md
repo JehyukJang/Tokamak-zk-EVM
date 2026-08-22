@@ -44,16 +44,16 @@ proving-system API and does not synthesize Tokamak L2 transactions.
 
 ## Package facts
 
-| Fact | Value |
-| --- | --- |
-| Scope | Tokamak zk-EVM browser preprocessing, proof generation, verification, and artifact conversion |
-| Public entry points | `./preprocess`, `./prover`, `./verifier`, and `./converter` |
-| Protocol | Tokamak zk-SNARK protocol, not a generic proving-system API |
-| Curve and runtime | BLS12-381 through ffjavascript |
-| Module format | ESM |
-| Runtime inputs | Independent named binary artifacts supplied by the application |
-| Network behavior | No package-owned artifact download or filesystem I/O |
-| Package license | `MIT OR Apache-2.0`; dependency licenses remain applicable |
+| Fact                | Value                                                                                         |
+| ------------------- | --------------------------------------------------------------------------------------------- |
+| Scope               | Tokamak zk-EVM browser preprocessing, proof generation, verification, and artifact conversion |
+| Public entry points | `./preprocess`, `./prover`, `./verifier`, and `./converter`                                   |
+| Protocol            | Tokamak zk-SNARK protocol, not a generic proving-system API                                   |
+| Curve and runtime   | BLS12-381 through ffjavascript                                                                |
+| Module format       | ESM                                                                                           |
+| Runtime inputs      | Independent named binary artifacts supplied by the application                                |
+| Network behavior    | No package-owned artifact download or filesystem I/O                                          |
+| Package license     | `MIT OR Apache-2.0`; dependency licenses remain applicable                                    |
 
 ## Install
 
@@ -66,10 +66,10 @@ npm install @tokamak-zk-evm/snark-browser-compat
 The package is ESM-only and exposes exactly four public subpaths:
 
 ```ts
-import("@tokamak-zk-evm/snark-browser-compat/preprocess");
-import("@tokamak-zk-evm/snark-browser-compat/prover");
-import("@tokamak-zk-evm/snark-browser-compat/verifier");
-import("@tokamak-zk-evm/snark-browser-compat/converter");
+import('@tokamak-zk-evm/snark-browser-compat/preprocess');
+import('@tokamak-zk-evm/snark-browser-compat/prover');
+import('@tokamak-zk-evm/snark-browser-compat/verifier');
+import('@tokamak-zk-evm/snark-browser-compat/converter');
 ```
 
 Do not import the package root, `dist/` files, runtime primitives, generated
@@ -85,15 +85,15 @@ Use `./preprocess` to produce verifier preprocessing commitments, `./prover`
 to create proofs, `./verifier` to check proofs, and `./converter` to prepare or
 examine binary artifacts.
 
-| Task | Import | Installation required | Result |
-| --- | --- | --- | --- |
-| Calculate verifier preprocessing | `./preprocess` `preprocess()` | Preprocess `install()` | Verifier-preprocess binary |
-| Generate one complete proof | `./prover` `prove()` | Prover `install()` | Proof binary |
-| Generate with phase boundaries | `./prover` `begin()` | Prover `install()` | Proof binary |
-| Verify a proof | `./verifier` `verify()` | Verifier `install()` | `boolean` |
-| Convert one source material | `./converter` material converter | No | Binary or proof JSON |
-| Read binary tables | `./converter` `inspectBinary()` | No | Inspection object |
-| Validate a binary | `./converter` `validateBinary()` | No | Validated artifact view |
+| Task                             | Import                           | Installation required  | Result                     |
+| -------------------------------- | -------------------------------- | ---------------------- | -------------------------- |
+| Calculate verifier preprocessing | `./preprocess` `preprocess()`    | Preprocess `install()` | Verifier-preprocess binary |
+| Generate one complete proof      | `./prover` `prove()`             | Prover `install()`     | Proof binary               |
+| Generate with phase boundaries   | `./prover` `begin()`             | Prover `install()`     | Proof binary               |
+| Verify a proof                   | `./verifier` `verify()`          | Verifier `install()`   | `boolean`                  |
+| Convert one source material      | `./converter` material converter | No                     | Binary or proof JSON       |
+| Read binary tables               | `./converter` `inspectBinary()`  | No                     | Inspection object          |
+| Validate a binary                | `./converter` `validateBinary()` | No                     | Validated artifact view    |
 
 `inspectBinary()`, `validateBinary()`, and `verify()` answer different
 questions. Inspection decodes metadata, validation checks the binary's
@@ -103,51 +103,51 @@ structure and self-digest, and verification checks the cryptographic proof.
 
 ### Prover API
 
-| Export | Purpose |
-| --- | --- |
-| `prover.install(options?)` | Create or reuse the prover runtime and return version and chunk-size information |
-| `prover.prove(input)` | Generate one complete verifier-proof binary |
-| `prover.begin(input)` | Start one staged, stateful proving session |
-| `ProverSession.proveArithmetic()` | Execute the arithmetic-constraints phase |
-| `ProverSession.proveCopy()` | Execute the copy-constraints phase |
-| `ProverSession.proveBinding()` | Execute the binding phase |
-| `ProverSession.finalize()` | Execute integrated finalization, return the proof binary, and release the session |
-| `ProverSession.dispose()` | Release an unfinished session; repeated calls are harmless |
+| Export                            | Purpose                                                                           |
+| --------------------------------- | --------------------------------------------------------------------------------- |
+| `prover.install(options?)`        | Create or reuse the prover runtime and return version and chunk-size information  |
+| `prover.prove(input)`             | Generate one complete verifier-proof binary                                       |
+| `prover.begin(input)`             | Start one staged, stateful proving session                                        |
+| `ProverSession.proveArithmetic()` | Execute the arithmetic-constraints phase                                          |
+| `ProverSession.proveCopy()`       | Execute the copy-constraints phase                                                |
+| `ProverSession.proveBinding()`    | Execute the binding phase                                                         |
+| `ProverSession.finalize()`        | Execute integrated finalization, return the proof binary, and release the session |
+| `ProverSession.dispose()`         | Release an unfinished session; repeated calls are harmless                        |
 
 Public prover types are `ProverInput`, `ProverInstallOptions`,
 `ProverInstallationInfo`, and `ProverSession`.
 
 ### Verifier API
 
-| Export | Purpose |
-| --- | --- |
-| `verifier.install()` | Create or reuse the verifier runtime and return version information |
-| `verifier.verify(input)` | Return the cryptographic validity of one proof |
+| Export                   | Purpose                                                             |
+| ------------------------ | ------------------------------------------------------------------- |
+| `verifier.install()`     | Create or reuse the verifier runtime and return version information |
+| `verifier.verify(input)` | Return the cryptographic validity of one proof                      |
 
 Public verifier types are `VerifierInput` and `VerifierInstallationInfo`.
 
 ### Preprocess API
 
-| Export | Purpose |
-| --- | --- |
+| Export                         | Purpose                                                                              |
+| ------------------------------ | ------------------------------------------------------------------------------------ |
 | `preprocess.install(options?)` | Create or reuse the preprocess runtime and return version and chunk-size information |
-| `preprocess.preprocess(input)` | Calculate `s0`, `s1`, and `O_pub_fix` and return one verifier-preprocess binary |
+| `preprocess.preprocess(input)` | Calculate `s0`, `s1`, and `O_pub_fix` and return one verifier-preprocess binary      |
 
 Public preprocess types are `PreprocessInput`, `PreprocessInstallOptions`, and
 `PreprocessInstallationInfo`.
 
 ### Converter API
 
-| Export | Input and result |
-| --- | --- |
-| `convertWitness(value)` | Parsed placement-variable JSON to witness binary |
-| `convertPermutation(value)` | Parsed permutation JSON to permutation binary |
-| `convertInstance(value)` | Parsed instance JSON to public and function instance sections |
-| `convertVerifierPreprocess(value)` | Parsed preprocess JSON to verifier-preprocess binary |
-| `convertProof(input)` | Convert native proof JSON to binary, or proof binary to a native proof JSON object, according to `sourceFormat` |
-| `convertCrs(bytes, provenance)` | `combined_sigma.rkyv` bytes and `crs_provenance.json` compatibility fields to named prover, preprocess, and verifier CRS binaries |
-| `inspectBinary(bytes)` | Binary header and section information without a validity claim |
-| `validateBinary(bytes)` | Validated decoded artifact after layout, digest, and spec checks |
+| Export                             | Input and result                                                                                                                  |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `convertWitness(value)`            | Parsed placement-variable JSON to witness binary                                                                                  |
+| `convertPermutation(value)`        | Parsed permutation JSON to permutation binary                                                                                     |
+| `convertInstance(value)`           | Parsed instance JSON to public and function instance sections                                                                     |
+| `convertVerifierPreprocess(value)` | Parsed preprocess JSON to verifier-preprocess binary                                                                              |
+| `convertProof(input)`              | Convert native proof JSON to binary, or proof binary to a native proof JSON object, according to `sourceFormat`                   |
+| `convertCrs(bytes, provenance)`    | `combined_sigma.rkyv` bytes and `crs_provenance.json` compatibility fields to named prover, preprocess, and verifier CRS binaries |
+| `inspectBinary(bytes)`             | Binary header and section information without a validity claim                                                                    |
+| `validateBinary(bytes)`            | Validated decoded artifact after layout, digest, and spec checks                                                                  |
 
 Public converter types are `BinaryArtifactInspection`,
 `BinarySectionInspection`, `ConvertedCrs`, `ConverterArtifactJson`,
@@ -180,19 +180,16 @@ Install the independent preprocess runtime once and pass its three named binary
 inputs:
 
 ```ts
-import {
-  install as installPreprocess,
-  preprocess,
-} from "@tokamak-zk-evm/snark-browser-compat/preprocess";
+import { install as installPreprocess, preprocess } from '@tokamak-zk-evm/snark-browser-compat/preprocess';
 
-import { loadBinary } from "./load-binary.js";
+import { loadBinary } from './load-binary.js';
 
 const installation = await installPreprocess();
 
 const [permutation, instance, preprocessCrs] = await Promise.all([
-  loadBinary("/artifacts/permutation.bin"),
-  loadBinary("/artifacts/instance.bin"),
-  loadBinary("/artifacts/preprocess-crs.bin"),
+  loadBinary('/artifacts/permutation.bin'),
+  loadBinary('/artifacts/instance.bin'),
+  loadBinary('/artifacts/preprocess-crs.bin'),
 ]);
 
 const verifierPreprocess = await preprocess({
@@ -218,19 +215,16 @@ Install the verifier once, retain it for the page lifetime, and pass the three
 named binaries:
 
 ```ts
-import {
-  install as installVerifier,
-  verify,
-} from "@tokamak-zk-evm/snark-browser-compat/verifier";
+import { install as installVerifier, verify } from '@tokamak-zk-evm/snark-browser-compat/verifier';
 
-import { loadBinary } from "./load-binary.js";
+import { loadBinary } from './load-binary.js';
 
 await installVerifier();
 
 const [proof, instance, verifierPreprocess] = await Promise.all([
-  loadBinary("/artifacts/proof.bin"),
-  loadBinary("/artifacts/instance.bin"),
-  loadBinary("/artifacts/verifier-preprocess.bin"),
+  loadBinary('/artifacts/proof.bin'),
+  loadBinary('/artifacts/instance.bin'),
+  loadBinary('/artifacts/verifier-preprocess.bin'),
 ]);
 
 const valid = await verify({
@@ -255,22 +249,19 @@ enabled; the optional exponent controls only the outer dense Sigma1 MSM chunk
 size:
 
 ```ts
-import {
-  install as installProver,
-  prove,
-} from "@tokamak-zk-evm/snark-browser-compat/prover";
+import { install as installProver, prove } from '@tokamak-zk-evm/snark-browser-compat/prover';
 
-import { loadBinary } from "./load-binary.js";
+import { loadBinary } from './load-binary.js';
 
 const installation = await installProver({
   chunkSizeExponent: 18,
 });
 
 const [witness, permutation, instance, proverCrs] = await Promise.all([
-  loadBinary("/artifacts/witness.bin"),
-  loadBinary("/artifacts/permutation.bin"),
-  loadBinary("/artifacts/instance.bin"),
-  loadBinary("/artifacts/prover-crs.bin"),
+  loadBinary('/artifacts/witness.bin'),
+  loadBinary('/artifacts/permutation.bin'),
+  loadBinary('/artifacts/instance.bin'),
+  loadBinary('/artifacts/prover-crs.bin'),
 ]);
 
 const proof = await prove({
@@ -290,12 +281,12 @@ prover is idle; a later explicit option takes precedence. The chunk size is
 
 The input artifacts are independent files:
 
-| Property | Content |
-| --- | --- |
-| `witness` | Placement subcircuit IDs, placement offsets, and field-valued placement variables |
-| `permutation` | Row, column, X, and Y permutation entries |
-| `instance` | Public instance field values shared with the verifier |
-| `proverCrs` | Prover CRS points and prepared Sigma1/Sigma2 commitment data |
+| Property      | Content                                                                           |
+| ------------- | --------------------------------------------------------------------------------- |
+| `witness`     | Placement subcircuit IDs, placement offsets, and field-valued placement variables |
+| `permutation` | Row, column, X, and Y permutation entries                                         |
+| `instance`    | Public instance field values shared with the verifier                             |
+| `proverCrs`   | Prover CRS points and prepared Sigma1/Sigma2 commitment data                      |
 
 `prove()` returns one verifier-proof binary. It is a convenience wrapper over
 the same stateful implementation exposed by `begin()`.
@@ -306,41 +297,31 @@ Use a staged prover session when the application needs coarse phase updates.
 The calls are ordered and share one in-memory transcript:
 
 ```ts
-import {
-  begin,
-  install as installProver,
-  type ProverInput,
-} from "@tokamak-zk-evm/snark-browser-compat/prover";
+import { begin, install as installProver, type ProverInput } from '@tokamak-zk-evm/snark-browser-compat/prover';
 
-type ProverPhase =
-  | "preparing"
-  | "arithmetic"
-  | "copy"
-  | "binding"
-  | "finalizing"
-  | "completed";
+type ProverPhase = 'preparing' | 'arithmetic' | 'copy' | 'binding' | 'finalizing' | 'completed';
 
 export async function proveWithProgress(
   input: ProverInput,
   setPhase: (phase: ProverPhase) => void,
 ): Promise<Uint8Array> {
   await installProver();
-  setPhase("preparing");
+  setPhase('preparing');
   const session = await begin(input);
 
   try {
-    setPhase("arithmetic");
+    setPhase('arithmetic');
     await session.proveArithmetic();
 
-    setPhase("copy");
+    setPhase('copy');
     await session.proveCopy();
 
-    setPhase("binding");
+    setPhase('binding');
     await session.proveBinding();
 
-    setPhase("finalizing");
+    setPhase('finalizing');
     const proof = await session.finalize();
-    setPhase("completed");
+    setPhase('completed');
     return proof;
   } finally {
     session.dispose();
@@ -359,15 +340,15 @@ retains large prover state.
 The application owns artifact acquisition, provenance verification, conversion,
 storage, caching, and invalidation.
 
-| Runtime artifact | Source material | Preparation |
-| --- | --- | --- |
-| `witness` | Tokamak synthesizer placement-variable JSON | Parse JSON, then call `convertWitness()` |
-| `permutation` | Tokamak synthesizer permutation JSON | Parse JSON, then call `convertPermutation()` |
-| `instance` | Tokamak synthesizer instance JSON | Parse JSON, then call `convertInstance()`; the result contains distinct public and function sections |
-| `proverCrs` | Release `combined_sigma.rkyv` and `crs_provenance.json` | Load both, then use `convertCrs(rkyvBytes, crsProvenance).proverCrs` |
-| `preprocessCrs` | Release `combined_sigma.rkyv` and `crs_provenance.json` | Load both, then use `convertCrs(rkyvBytes, crsProvenance).preprocessCrs` |
-| `verifierPreprocess` | Native verifier preprocess JSON | Parse JSON, then call `convertVerifierPreprocess()` |
-| `proof` | `prove()` output or native proof JSON | Use directly or call `convertProof()` |
+| Runtime artifact     | Source material                                         | Preparation                                                                                          |
+| -------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `witness`            | Tokamak synthesizer placement-variable JSON             | Parse JSON, then call `convertWitness()`                                                             |
+| `permutation`        | Tokamak synthesizer permutation JSON                    | Parse JSON, then call `convertPermutation()`                                                         |
+| `instance`           | Tokamak synthesizer instance JSON                       | Parse JSON, then call `convertInstance()`; the result contains distinct public and function sections |
+| `proverCrs`          | Release `combined_sigma.rkyv` and `crs_provenance.json` | Load both, then use `convertCrs(rkyvBytes, crsProvenance).proverCrs`                                 |
+| `preprocessCrs`      | Release `combined_sigma.rkyv` and `crs_provenance.json` | Load both, then use `convertCrs(rkyvBytes, crsProvenance).preprocessCrs`                             |
+| `verifierPreprocess` | Native verifier preprocess JSON                         | Parse JSON, then call `convertVerifierPreprocess()`                                                  |
+| `proof`              | `prove()` output or native proof JSON                   | Use directly or call `convertProof()`                                                                |
 
 The package pins `@tokamak-zk-evm/subcircuit-library` and generates setup
 parameters, packed R1CS data, and subcircuit metadata into the build. These are
@@ -393,16 +374,14 @@ import {
   convertWitness,
   inspectBinary,
   validateBinary,
-} from "@tokamak-zk-evm/snark-browser-compat/converter";
+} from '@tokamak-zk-evm/snark-browser-compat/converter';
 
-const witnessSource = await fetch("/sources/placementVariables.json").then(
-  (response) => response.json(),
-);
+const witnessSource = await fetch('/sources/placementVariables.json').then(response => response.json());
 const witness = await convertWitness(witnessSource);
 
-const rkyvResponse = await fetch("/sources/combined_sigma.rkyv");
+const rkyvResponse = await fetch('/sources/combined_sigma.rkyv');
 const rkyvBytes = new Uint8Array(await rkyvResponse.arrayBuffer());
-const crsProvenance = await fetch("/sources/crs_provenance.json").then((response) => response.json());
+const crsProvenance = await fetch('/sources/crs_provenance.json').then(response => response.json());
 const { proverCrs, preprocessCrs, verifierCrs } = await convertCrs(rkyvBytes, crsProvenance);
 
 const inspection = await inspectBinary(proverCrs);
@@ -435,12 +414,12 @@ application's trust boundary requires it.
 Vite and Webpack production builds running in Chromium are the currently
 verified browser-and-bundler combinations.
 
-| Capability | Status |
-| --- | --- |
-| Chromium with a Vite production build | Verified |
-| Chromium with a Webpack production build | Verified |
-| Firefox or Safari | Not yet verified |
-| Bundler-free static ESM | Unsupported |
+| Capability                                     | Status                            |
+| ---------------------------------------------- | --------------------------------- |
+| Chromium with a Vite production build          | Verified                          |
+| Chromium with a Webpack production build       | Verified                          |
+| Firefox or Safari                              | Not yet verified                  |
+| Bundler-free static ESM                        | Unsupported                       |
 | Cross-origin isolation and `SharedArrayBuffer` | Not required by the verified path |
 
 Deployment requirements:
@@ -469,39 +448,44 @@ duplicate WASM memories and temporary buffers.
 
 ## Compatibility and versioning
 
-Snark-browser-compat 2.1.3 is aligned with the Tokamak zk-EVM native backend and
-subcircuit-library 2.1.3 release line.
+The source tree targets Snark-browser-compat `3.0.0`, the Tokamak zk-EVM native
+backend `3.0.0`, and subcircuit-library compatibility class `3.0`. This source
+transition does not publish a package or regenerate package-derived artifacts.
+Until those artifacts are regenerated from the synchronized published library,
+every runtime installation and `convertCrs()` rejects the stale generated
+library version.
 
-| Boundary | Current value |
-| --- | --- |
-| Snark-browser-compat package | 2.1.3 |
-| Native backend release line | 2.1.3 |
-| `@tokamak-zk-evm/subcircuit-library` | 2.1.3 |
-| Binary `formatVersion` | 1 |
-| Package module format | ESM |
-| Curve runtime | ffjavascript BLS12-381 |
+| Boundary                                           | Current value          |
+| -------------------------------------------------- | ---------------------- |
+| Snark-browser-compat source package                | 3.0.0                  |
+| Native backend source release line                 | 3.0.0                  |
+| `@tokamak-zk-evm/subcircuit-library` source target | 3.0.0                  |
+| Compatibility class                                | 3.0                    |
+| Binary `formatVersion`                             | 1                      |
+| Package module format                              | ESM                    |
+| Curve runtime                                      | ffjavascript BLS12-381 |
 
 `install()` reports the package, native backend, and subcircuit-library
 versions. Every binary carries its independent `formatVersion` and
 `sourcePackageVersion`. The format version identifies the binary layout; the
 source package version identifies the producer release.
 
-The runtime does not perform a separate compatibility handshake or optional
-whole-file validation. Incompatible binary structure normally rejects with
+The runtime validates the CRS provenance and binary artifact compatibility class
+against its selected subcircuit-library. It does not compare library-content
+digests. Incompatible binary structure or compatibility class rejects with
 `INVALID_INPUT`; a structurally decodable but cryptographically incompatible
-proof may return `false`. Applications that manage multiple release lines
-should inspect or validate artifacts before selecting a runtime.
+proof may return `false`.
 
 ## How this package relates to Tokamak zk-EVM
 
-| Entity | Relationship |
-| --- | --- |
-| [Tokamak zk-EVM](https://github.com/tokamak-network/Tokamak-zk-EVM) | The owner repository and shared release line for this package |
-| [Tokamak zk-SNARK protocol paper](https://eprint.iacr.org/2024/507) | The protocol definition implemented by preprocess, the prover, and the verifier |
-| [Native backend](https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main/packages/backend) | The protocol reference and accelerated ICICLE/arkworks implementation; it owns setup, preprocess, native proof, and verifier artifacts |
-| [ffjavascript](https://github.com/iden3/ffjavascript) | The BLS12-381 field, group, MSM, FFT, pairing, WASM, and worker runtime used by browser execution |
-| [`@tokamak-zk-evm/subcircuit-library`](https://www.npmjs.com/package/@tokamak-zk-evm/subcircuit-library) | The pinned source of build-generated setup parameters, packed R1CS data, and subcircuit metadata |
-| [Immutable CRS release folder](https://drive.google.com/drive/folders/14xqCbLoyoVmUVTTlopiXtKnoHPBGL-Sv) | The application-acquired source of release CRS material, including `combined_sigma.rkyv` |
+| Entity                                                                                                   | Relationship                                                                                                                           |
+| -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| [Tokamak zk-EVM](https://github.com/tokamak-network/Tokamak-zk-EVM)                                      | The owner repository and shared release line for this package                                                                          |
+| [Tokamak zk-SNARK protocol paper](https://eprint.iacr.org/2024/507)                                      | The protocol definition implemented by preprocess, the prover, and the verifier                                                        |
+| [Native backend](https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main/packages/backend)           | The protocol reference and accelerated ICICLE/arkworks implementation; it owns setup, preprocess, native proof, and verifier artifacts |
+| [ffjavascript](https://github.com/iden3/ffjavascript)                                                    | The BLS12-381 field, group, MSM, FFT, pairing, WASM, and worker runtime used by browser execution                                      |
+| [`@tokamak-zk-evm/subcircuit-library`](https://www.npmjs.com/package/@tokamak-zk-evm/subcircuit-library) | The pinned source of build-generated setup parameters, packed R1CS data, and subcircuit metadata                                       |
+| [Immutable CRS release folder](https://drive.google.com/drive/folders/14xqCbLoyoVmUVTTlopiXtKnoHPBGL-Sv) | The application-acquired source of release CRS material, including `combined_sigma.rkyv`                                               |
 
 This package does not compile circuits, synthesize application inputs, run a
 trusted setup, download release artifacts, authenticate artifact provenance, or
@@ -518,14 +502,14 @@ does not revive or provide compatibility with those historical packages.
 Accepted reference measurements generated preprocess and a 2,328-byte proof
 and verified the proof in Chromium 149.0.7827.55:
 
-| Measurement | Observed value |
-| --- | ---: |
-| Preprocess, three-run mean | 10.942 s |
-| Preprocess population standard deviation | 8 ms |
-| Proof generation | 118.82 s |
-| Proof verification | 19 ms |
-| Peak total Chromium-process RSS | 10.03 GiB |
-| Peak largest-process RSS | 9.83 GiB |
+| Measurement                              | Observed value |
+| ---------------------------------------- | -------------: |
+| Preprocess, three-run mean               |       10.942 s |
+| Preprocess population standard deviation |           8 ms |
+| Proof generation                         |       118.82 s |
+| Proof verification                       |          19 ms |
+| Peak total Chromium-process RSS          |      10.03 GiB |
+| Peak largest-process RSS                 |       9.83 GiB |
 
 Environment: MacBook Pro with Apple M4 Pro, 14 CPU cores, 48 GB memory, macOS
 26.5.2, multithreaded ffjavascript, preprocess chunk exponent `17`, prover
@@ -544,14 +528,14 @@ or system load.
 All public subpaths export `BackendWasmError`. Branch on `error.code`, not the
 message:
 
-| Code | Meaning | Application action |
-| --- | --- | --- |
-| `INSTALL_REQUIRED` | Preprocess, prove, or verify was called before installation | Complete the matching `install()` call |
-| `INSTALL_FAILED` | Runtime construction failed | Report the cause and retry only through a later explicit install |
-| `BUSY` | The same runtime family is active | Disable duplicate actions and wait for the active operation |
-| `INVALID_OPTION` | An install option is unknown or out of range | Correct the option before retrying |
-| `INVALID_INPUT` | A binary or converter source could not be decoded | Check artifact kind, source, version, and conversion |
-| `RUNTIME_FAILED` | Installed runtime work failed | Report the cause and treat the operation as failed |
+| Code               | Meaning                                                     | Application action                                               |
+| ------------------ | ----------------------------------------------------------- | ---------------------------------------------------------------- |
+| `INSTALL_REQUIRED` | Preprocess, prove, or verify was called before installation | Complete the matching `install()` call                           |
+| `INSTALL_FAILED`   | Runtime construction failed                                 | Report the cause and retry only through a later explicit install |
+| `BUSY`             | The same runtime family is active                           | Disable duplicate actions and wait for the active operation      |
+| `INVALID_OPTION`   | An install option is unknown or out of range                | Correct the option before retrying                               |
+| `INVALID_INPUT`    | A binary or converter source could not be decoded           | Check artifact kind, source, version, and conversion             |
+| `RUNTIME_FAILED`   | Installed runtime work failed                               | Report the cause and treat the operation as failed               |
 
 Additional troubleshooting:
 

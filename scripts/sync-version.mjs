@@ -5,11 +5,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const targetVersion = process.argv[2] ?? process.env.TOKAMAK_ZK_EVM_VERSION;
+const argumentsList = process.argv.slice(2);
+const sourceOnly = argumentsList.includes('--source-only');
+const targetVersion =
+  argumentsList.find(argument => argument !== '--source-only') ?? process.env.TOKAMAK_ZK_EVM_VERSION;
 const strictSemverPattern = /^\d+\.\d+\.\d+$/u;
 
 if (!targetVersion || !strictSemverPattern.test(targetVersion)) {
-  console.error('Usage: node scripts/sync-version.mjs <X.Y.Z>');
+  console.error('Usage: node scripts/sync-version.mjs [--source-only] <X.Y.Z>');
   process.exit(1);
 }
 
@@ -210,24 +213,29 @@ updatePackageVersion('packages/frontend/synthesizer/web-app/package.json', {
 updatePackageVersion('packages/backend-wasm/package.json', {
   '@tokamak-zk-evm/subcircuit-library': targetVersion,
 });
+updateJson('packages/backend-wasm/examples/browser/package.json', manifest => {
+  manifest.dependencies['@tokamak-zk-evm/snark-browser-compat'] = targetVersion;
+});
 updatePackageVersion('packages/backend-wasm/tools/rkyv-decoder-wasm/package.json');
 updateBackendWorkspaceVersion();
-updateBackendCargoLock();
-updateRootPackageLock();
-updateQapCompilerPackageLock();
-updateSynthesizerPackageLock();
-updateBackendWasmPackageLock();
-replaceVersionConstant(
-  'packages/backend-wasm/src/version.ts',
-  'BACKEND_WASM_PACKAGE_VERSION',
-);
-replaceVersionConstant(
-  'packages/backend-wasm/src/generated/setup.generated.ts',
-  'NATIVE_BACKEND_VERSION',
-);
-replaceVersionConstant(
-  'packages/backend-wasm/src/generated/setup.generated.ts',
-  'SUBCIRCUIT_LIBRARY_PACKAGE_VERSION',
-);
+if (!sourceOnly) {
+  updateBackendCargoLock();
+  updateRootPackageLock();
+  updateQapCompilerPackageLock();
+  updateSynthesizerPackageLock();
+  updateBackendWasmPackageLock();
+}
+replaceVersionConstant('packages/backend-wasm/src/version.ts', 'BACKEND_WASM_PACKAGE_VERSION');
+if (!sourceOnly) {
+  replaceVersionConstant('packages/backend-wasm/src/generated/setup.generated.ts', 'NATIVE_BACKEND_VERSION');
+  replaceVersionConstant(
+    'packages/backend-wasm/src/generated/setup.generated.ts',
+    'SUBCIRCUIT_LIBRARY_PACKAGE_VERSION',
+  );
+}
 
-console.log(`[sync-version] Synchronized repository release version to ${targetVersion}.`);
+console.log(
+  sourceOnly
+    ? `[sync-version] Synchronized source version to ${targetVersion} without lockfiles or generated artifacts.`
+    : `[sync-version] Synchronized repository release version to ${targetVersion}.`,
+);

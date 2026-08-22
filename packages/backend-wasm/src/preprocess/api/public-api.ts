@@ -10,10 +10,8 @@ import {
 } from "../../generated/setup.generated.js";
 import type { CurveRuntime } from "../../runtime/curve/curve.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
-import {
-  loadPreprocessInputFromBinaryInput,
-  type PreprocessBinaryInput,
-} from "./binary-input.js";
+import { assertRuntimeLibraryCompatibility } from "../../artifacts/binary/compatibility.js";
+import { loadPreprocessInputFromBinaryInput, type PreprocessBinaryInput } from "./binary-input.js";
 import { preprocessSnark } from "../protocol/preprocess-snark.js";
 
 const DEFAULT_CHUNK_SIZE_EXPONENT = 17;
@@ -40,6 +38,7 @@ let chunkSizeExponent = DEFAULT_CHUNK_SIZE_EXPONENT;
 export async function install(
   options: PreprocessInstallOptions = {},
 ): Promise<PreprocessInstallationInfo> {
+  assertRuntimeLibraryCompatibility();
   const requestedExponent = parseChunkSizeExponent(options, "Preprocess");
   const installedRuntime = await requireInstalledRuntime();
   runtime = installedRuntime;

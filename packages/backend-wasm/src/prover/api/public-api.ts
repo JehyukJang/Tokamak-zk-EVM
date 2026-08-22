@@ -5,16 +5,14 @@ import {
   parseChunkSizeExponent,
 } from "../../api/public-api-utils.js";
 import type { CurveRuntime } from "../../runtime/curve/curve.js";
-import {
-  loadProverInputFromBinaryInput,
-  type ProverBinaryInput,
-} from "./binary-input.js";
+import { loadProverInputFromBinaryInput, type ProverBinaryInput } from "./binary-input.js";
 import { createVerifierProofArtifactFromProverOutput } from "./proof-output.js";
 import {
   createProverProtocolSession,
   type ProverProtocolSession,
 } from "../protocol/integrated-prover.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
+import { assertRuntimeLibraryCompatibility } from "../../artifacts/binary/compatibility.js";
 import {
   NATIVE_BACKEND_VERSION,
   SUBCIRCUIT_LIBRARY_PACKAGE_VERSION,
@@ -50,6 +48,7 @@ let busy = false;
 let chunkSizeExponent = DEFAULT_CHUNK_SIZE_EXPONENT;
 
 export async function install(options: ProverInstallOptions = {}): Promise<ProverInstallationInfo> {
+  assertRuntimeLibraryCompatibility();
   const requestedExponent = parseChunkSizeExponent(options, "Prover");
   const installedRuntime = await requireInstalledRuntime();
   runtime = installedRuntime;
