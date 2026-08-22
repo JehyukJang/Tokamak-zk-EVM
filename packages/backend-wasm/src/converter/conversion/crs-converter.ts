@@ -1,4 +1,5 @@
 import type { ConvertedCrs } from "./types.js";
+import type { CrsProvenanceInput } from "../../artifacts/binary/compatibility.js";
 
 interface CrsWorkerArtifact {
   readonly buffer: ArrayBuffer;
@@ -24,7 +25,10 @@ interface CrsWorkerFailure {
 
 type CrsWorkerResponse = CrsWorkerSuccess | CrsWorkerFailure;
 
-export async function convertCrs(rkyvBytes: Uint8Array): Promise<ConvertedCrs> {
+export async function convertCrs(
+  rkyvBytes: Uint8Array,
+  provenance: CrsProvenanceInput,
+): Promise<ConvertedCrs> {
   if (!(rkyvBytes instanceof Uint8Array)) {
     throw new TypeError("convertCrs requires a Uint8Array.");
   }
@@ -39,13 +43,17 @@ export async function convertCrs(rkyvBytes: Uint8Array): Promise<ConvertedCrs> {
   });
 
   try {
-    return await runConversion(worker, rkyvBytes);
+    return await runConversion(worker, rkyvBytes, provenance);
   } finally {
     worker.terminate();
   }
 }
 
-function runConversion(worker: Worker, rkyvBytes: Uint8Array): Promise<ConvertedCrs> {
+function runConversion(
+  worker: Worker,
+  rkyvBytes: Uint8Array,
+  provenance: CrsProvenanceInput,
+): Promise<ConvertedCrs> {
   return new Promise((resolve, reject) => {
     worker.onmessage = (event: MessageEvent<CrsWorkerResponse>): void => {
       const response = event.data;
@@ -79,6 +87,7 @@ function runConversion(worker: Worker, rkyvBytes: Uint8Array): Promise<Converted
         inputBuffer: rkyvBytes.buffer,
         byteOffset: rkyvBytes.byteOffset,
         byteLength: rkyvBytes.byteLength,
+        provenance,
       },
       [rkyvBytes.buffer],
     );

@@ -52,7 +52,7 @@ same-origin or CORS-enabled application URLs. The verifier CRS is compiled into
 the package and is not an application input.
 
 Prepare runtime binaries with the package converter APIs. In particular,
-`convertCrs(combinedSigmaRkyv)` returns the named `proverCrs` and
+`convertCrs(combinedSigmaRkyv, crsProvenance)` returns the named `proverCrs` and
 `preprocessCrs` files used here. Source artifacts and provenance remain the
 application's responsibility.
 

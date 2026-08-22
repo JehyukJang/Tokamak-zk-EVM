@@ -16,6 +16,7 @@ import type {
   ConvertProofInput,
   ConvertProofJsonInput,
 } from "./conversion/types.js";
+import type { CrsProvenanceInput } from "../artifacts/binary/compatibility.js";
 
 export { BackendWasmError } from "../backend-wasm-error.js";
 export type { BackendWasmErrorCode } from "../backend-wasm-error.js";
@@ -55,8 +56,11 @@ export function convertWitness(witness: unknown): Promise<Uint8Array> {
   return runConverter("convertWitness", () => convertWitnessInternal(witness));
 }
 
-export function convertCrs(rkyvBytes: Uint8Array): Promise<ConvertedCrs> {
-  return runConverter("convertCrs", () => convertCrsInternal(rkyvBytes));
+export function convertCrs(
+  rkyvBytes: Uint8Array,
+  provenance: CrsProvenanceInput,
+): Promise<ConvertedCrs> {
+  return runConverter("convertCrs", () => convertCrsInternal(rkyvBytes, provenance));
 }
 
 export function convertPermutation(permutation: unknown): Promise<Uint8Array> {
@@ -104,3 +108,4 @@ export type {
   ConvertProofInput,
   ConvertProofJsonInput,
 } from "./conversion/types.js";
+export type { CrsProvenanceInput } from "../artifacts/binary/compatibility.js";

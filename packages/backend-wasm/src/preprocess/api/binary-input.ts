@@ -8,6 +8,7 @@ import {
   type BinaryArtifactFileView,
   type BinarySectionView,
 } from "../../artifacts/binary/binary-format.js";
+import { assertBinaryArtifactCompatibility } from "../../artifacts/binary/compatibility.js";
 import type { SetupParams } from "../../artifacts/setup/setup-params.js";
 import { GENERATED_SETUP_PARAMS } from "../../generated/setup.generated.js";
 import type { CurveRuntime } from "../../runtime/curve/curve.js";
@@ -44,6 +45,9 @@ export async function loadPreprocessInputFromBinaryInput(
     decodeBinaryArtifactFile(input.preprocessCrs),
   ]);
   const setup = GENERATED_SETUP_PARAMS;
+  for (const artifact of [permutation, instance, crs]) {
+    assertBinaryArtifactCompatibility(artifact);
+  }
 
   return {
     setup,

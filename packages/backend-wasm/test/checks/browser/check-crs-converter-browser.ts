@@ -44,7 +44,14 @@ const OUTPUT_TEST_PAGE = `<!doctype html>
           throw new Error(\`CRS source request failed with \${sourceResponse.status}.\`);
         }
         const source = new Uint8Array(await sourceResponse.arrayBuffer());
-        const artifacts = await convertCrs(source);
+        const provenance = {
+          compatibleBackendVersion: "2.1",
+          subcircuitLibrary: {
+            packageName: "@tokamak-zk-evm/subcircuit-library",
+            packageVersion: "2.1.3",
+          },
+        };
+        const artifacts = await convertCrs(source, provenance);
         const [prover, preprocess, verifier] = await Promise.all([
           inspectBinary(artifacts.proverCrs),
           inspectBinary(artifacts.preprocessCrs),
@@ -54,7 +61,7 @@ const OUTPUT_TEST_PAGE = `<!doctype html>
         const invalidInput = new Uint8Array([1, 2, 3, 4]);
         let invalidResult;
         try {
-          await convertCrs(invalidInput);
+          await convertCrs(invalidInput, provenance);
           invalidResult = { status: "unexpected-success" };
         } catch (error) {
           const cause = error && typeof error === "object" && "cause" in error
@@ -97,9 +104,16 @@ const ERROR_TEST_PAGE = `<!doctype html>
       import { convertCrs } from "@tokamak-zk-evm/snark-browser-compat/converter";
 
       const invalidInput = new Uint8Array([1, 2, 3, 4]);
+      const provenance = {
+        compatibleBackendVersion: "2.1",
+        subcircuitLibrary: {
+          packageName: "@tokamak-zk-evm/subcircuit-library",
+          packageVersion: "2.1.3",
+        },
+      };
       let invalidResult;
       try {
-        await convertCrs(invalidInput);
+        await convertCrs(invalidInput, provenance);
         invalidResult = { status: "unexpected-success" };
       } catch (error) {
         const cause = error && typeof error === "object" && "cause" in error

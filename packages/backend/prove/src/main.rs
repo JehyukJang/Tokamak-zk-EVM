@@ -1,5 +1,7 @@
 use clap::Parser;
-use libs::subcircuit_library::{resolve_subcircuit_library_path, SubcircuitLibraryArg};
+use libs::subcircuit_library::{
+    resolve_subcircuit_library_path, validate_crs_compatibility, SubcircuitLibraryArg,
+};
 use libs::utils::check_device;
 use prove::{Proof, ProveInputPaths, Prover, TranscriptManager};
 use std::path::PathBuf;
@@ -27,9 +29,13 @@ struct Config {
 fn main() {
     let total_start = Instant::now();
     let config = Config::parse();
-    let qap_path = resolve_subcircuit_library_path(config.subcircuit_library.as_deref())
-        .to_string_lossy()
-        .into_owned();
+    let qap_library_path = resolve_subcircuit_library_path(config.subcircuit_library.as_deref());
+    validate_crs_compatibility(
+        PathBuf::from(&config.crs).as_path(),
+        qap_library_path.as_path(),
+    )
+    .expect("CRS and subcircuit-library compatibility validation failed");
+    let qap_path = qap_library_path.to_string_lossy().into_owned();
 
     let paths = ProveInputPaths {
         qap_path: &qap_path,

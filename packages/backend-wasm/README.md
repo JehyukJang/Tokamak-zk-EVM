@@ -145,7 +145,7 @@ Public preprocess types are `PreprocessInput`, `PreprocessInstallOptions`, and
 | `convertInstance(value)` | Parsed instance JSON to public and function instance sections |
 | `convertVerifierPreprocess(value)` | Parsed preprocess JSON to verifier-preprocess binary |
 | `convertProof(input)` | Convert native proof JSON to binary, or proof binary to a native proof JSON object, according to `sourceFormat` |
-| `convertCrs(bytes)` | `combined_sigma.rkyv` bytes to named prover, preprocess, and verifier CRS binaries |
+| `convertCrs(bytes, provenance)` | `combined_sigma.rkyv` bytes and `crs_provenance.json` compatibility fields to named prover, preprocess, and verifier CRS binaries |
 | `inspectBinary(bytes)` | Binary header and section information without a validity claim |
 | `validateBinary(bytes)` | Validated decoded artifact after layout, digest, and spec checks |
 
@@ -364,8 +364,8 @@ storage, caching, and invalidation.
 | `witness` | Tokamak synthesizer placement-variable JSON | Parse JSON, then call `convertWitness()` |
 | `permutation` | Tokamak synthesizer permutation JSON | Parse JSON, then call `convertPermutation()` |
 | `instance` | Tokamak synthesizer instance JSON | Parse JSON, then call `convertInstance()`; the result contains distinct public and function sections |
-| `proverCrs` | Release `combined_sigma.rkyv` | Load bytes, then use `convertCrs().proverCrs` |
-| `preprocessCrs` | Release `combined_sigma.rkyv` | Load bytes, then use `convertCrs().preprocessCrs` |
+| `proverCrs` | Release `combined_sigma.rkyv` and `crs_provenance.json` | Load both, then use `convertCrs(rkyvBytes, crsProvenance).proverCrs` |
+| `preprocessCrs` | Release `combined_sigma.rkyv` and `crs_provenance.json` | Load both, then use `convertCrs(rkyvBytes, crsProvenance).preprocessCrs` |
 | `verifierPreprocess` | Native verifier preprocess JSON | Parse JSON, then call `convertVerifierPreprocess()` |
 | `proof` | `prove()` output or native proof JSON | Use directly or call `convertProof()` |
 
@@ -402,13 +402,14 @@ const witness = await convertWitness(witnessSource);
 
 const rkyvResponse = await fetch("/sources/combined_sigma.rkyv");
 const rkyvBytes = new Uint8Array(await rkyvResponse.arrayBuffer());
-const { proverCrs, preprocessCrs, verifierCrs } = await convertCrs(rkyvBytes);
+const crsProvenance = await fetch("/sources/crs_provenance.json").then((response) => response.json());
+const { proverCrs, preprocessCrs, verifierCrs } = await convertCrs(rkyvBytes, crsProvenance);
 
 const inspection = await inspectBinary(proverCrs);
 const validated = await validateBinary(proverCrs);
 ```
 
-The application parses JSON before calling a converter. `convertCrs()`
+The application parses the CRS provenance JSON before calling `convertCrs()`. The converter requires its `compatibleBackendVersion` and `subcircuitLibrary` fields to match the installed subcircuit-library compatibility class, then
 transfers its input `ArrayBuffer` to a temporary module Worker, detaching the
 caller's buffer. Pass `rkyvBytes.slice()` when the original bytes must remain
 available.

@@ -8,6 +8,7 @@ import { PROVER_CRS_V1_SPEC } from "../../artifacts/specs/prover-crs.v1.generate
 import type { CurveRuntime } from "../../runtime/curve/curve.js";
 import type { FieldElement } from "../../runtime/field/field-runtime.js";
 import { BinarySectionEncoding, BinarySectionType } from "../../artifacts/binary/binary-format.js";
+import { assertBinaryArtifactCompatibility } from "../../artifacts/binary/compatibility.js";
 import type { SetupParams } from "../../artifacts/setup/setup-params.js";
 import {
   GENERATED_PROVER_PACKED_R1CS,
@@ -116,6 +117,9 @@ export async function loadProverInputFromBinaryInput(
     instance,
     crs,
   };
+  for (const artifact of Object.values(artifacts)) {
+    assertBinaryArtifactCompatibility(artifact);
+  }
 
   return buildProverInputFromBinaryArtifacts(runtime, artifacts);
 }

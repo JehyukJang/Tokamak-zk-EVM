@@ -95,16 +95,17 @@ pub fn publish_output_archive(
     let mut provenance = read_provenance(&output_path)?;
     let original_provenance = provenance.clone();
     let provenance_compatible_version = validate_canonical_compatible_version(
-        &provenance.backend_version,
-        "crs_provenance.json backend_version",
+        &provenance.compatible_backend_version,
+        "crs_provenance.json compatibleBackendVersion",
     )?;
     if provenance_compatible_version != compatible_backend_version() {
         return Err(DriveUploadError::Message(format!(
-            "crs_provenance.json backend_version {} does not match CLI compatible backend version {}",
+            "crs_provenance.json compatibleBackendVersion {} does not match CLI compatible backend version {}",
             provenance_compatible_version,
             compatible_backend_version()
         )));
     }
+    validate_provenance_subcircuit_library(&provenance, &provenance_compatible_version)?;
     let archive_name = build_archive_name(&provenance)?;
     provenance.published_folder_url = Some(config.folder_url.clone());
     provenance.published_archive_name = Some(archive_name.clone());
@@ -197,8 +198,8 @@ fn write_provenance(
 
 fn build_archive_name(provenance: &FinalCrsProvenance) -> Result<String, DriveUploadError> {
     validate_canonical_compatible_version(
-        &provenance.backend_version,
-        "crs_provenance.json backend_version",
+        &provenance.compatible_backend_version,
+        "crs_provenance.json compatibleBackendVersion",
     )?;
     let generated_at =
         chrono::DateTime::parse_from_rfc3339(&provenance.generated_at_utc).map_err(|err| {
@@ -206,7 +207,7 @@ fn build_archive_name(provenance: &FinalCrsProvenance) -> Result<String, DriveUp
         })?;
     Ok(format!(
         "tokamak-backend-crs-v{}-{}.zip",
-        provenance.backend_version,
+        provenance.compatible_backend_version,
         generated_at.format("%Y%m%dT%H%M%SZ")
     ))
 }
@@ -363,16 +364,105 @@ fn validate_build_metadata(path: &Path) -> Result<(), DriveUploadError> {
                 path.display()
             ))
         })?;
-    if subcircuit_version != env!("CARGO_PKG_VERSION") {
+    if subcircuit_version != env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION") {
         return Err(DriveUploadError::Message(format!(
-            "{} embeds subcircuit-library {}; expected backend workspace version {}",
+            "{} records subcircuit-library package version {}; expected {}",
             path.display(),
             subcircuit_version,
-            env!("CARGO_PKG_VERSION")
+            env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION")
+        )));
+    }
+
+    let subcircuit_package_name = value
+        .get("dependencies")
+        .and_then(|dependencies| dependencies.get("subcircuitLibrary"))
+        .and_then(|dependency| dependency.get("packageName"))
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            DriveUploadError::Message(format!(
+                "{} is missing dependencies.subcircuitLibrary.packageName",
+                path.display()
+            ))
+        })?;
+    if subcircuit_package_name != env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_NAME") {
+        return Err(DriveUploadError::Message(format!(
+            "{} records subcircuit-library package {}; expected {}",
+            path.display(),
+            subcircuit_package_name,
+            env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_NAME")
+        )));
+    }
+
+    if package_compatible_version(subcircuit_version, "subcircuit-library package version")?
+        != compatible_backend_version()
+    {
+        return Err(DriveUploadError::Message(format!(
+            "{} records subcircuit-library package version {} outside compatibility class {}",
+            path.display(),
+            subcircuit_version,
+            compatible_backend_version()
         )));
     }
 
     Ok(())
+}
+
+fn validate_provenance_subcircuit_library(
+    provenance: &FinalCrsProvenance,
+    compatible_version: &str,
+) -> Result<(), DriveUploadError> {
+    if provenance.subcircuit_library.package_name
+        != env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_NAME")
+    {
+        return Err(DriveUploadError::Message(format!(
+            "crs_provenance.json subcircuitLibrary packageName {} does not match the MPC build package {}",
+            provenance.subcircuit_library.package_name,
+            env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_NAME")
+        )));
+    }
+    if provenance.subcircuit_library.package_version
+        != env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION")
+    {
+        return Err(DriveUploadError::Message(format!(
+            "crs_provenance.json subcircuitLibrary packageVersion {} does not match the MPC build package version {}",
+            provenance.subcircuit_library.package_version,
+            env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION")
+        )));
+    }
+    if package_compatible_version(
+        &provenance.subcircuit_library.package_version,
+        "crs_provenance.json subcircuitLibrary packageVersion",
+    )? != compatible_version
+    {
+        return Err(DriveUploadError::Message(format!(
+            "crs_provenance.json subcircuitLibrary packageVersion {} is outside compatibility class {}",
+            provenance.subcircuit_library.package_version, compatible_version
+        )));
+    }
+    Ok(())
+}
+
+fn package_compatible_version(value: &str, label: &str) -> Result<String, DriveUploadError> {
+    let parts = value.split('.').collect::<Vec<_>>();
+    if parts.len() != 3
+        || parts
+            .iter()
+            .any(|part| part.is_empty() || !part.chars().all(|ch| ch.is_ascii_digit()))
+    {
+        return Err(DriveUploadError::Message(format!(
+            "{label} must be strict MAJOR.MINOR.PATCH, got {value:?}"
+        )));
+    }
+    let major = parts[0].parse::<u64>().map_err(|err| {
+        DriveUploadError::Message(format!("{label} major version is invalid: {err}"))
+    })?;
+    let minor = parts[1].parse::<u64>().map_err(|err| {
+        DriveUploadError::Message(format!("{label} minor version is invalid: {err}"))
+    })?;
+    parts[2].parse::<u64>().map_err(|err| {
+        DriveUploadError::Message(format!("{label} patch version is invalid: {err}"))
+    })?;
+    Ok(format!("{major}.{minor}"))
 }
 
 fn validate_canonical_compatible_version(

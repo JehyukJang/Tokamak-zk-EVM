@@ -22,7 +22,13 @@ import { convertCrs } from "@tokamak-zk-evm/snark-browser-compat/converter";
 
 const input = new Uint8Array([1, 2, 3, 4]);
 try {
-  await convertCrs(input);
+  await convertCrs(input, {
+    compatibleBackendVersion: "2.1",
+    subcircuitLibrary: {
+      packageName: "@tokamak-zk-evm/subcircuit-library",
+      packageVersion: "2.1.3",
+    },
+  });
   window.__webpackResult = { status: "unexpected-success" };
 } catch (error) {
   const cause = error && typeof error === "object" && "cause" in error

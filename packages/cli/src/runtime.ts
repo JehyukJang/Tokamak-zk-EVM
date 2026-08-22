@@ -76,14 +76,18 @@ interface BackendBuildMetadata {
   dependencies?: {
     subcircuitLibrary?: {
       buildVersion?: string;
-      sourceDigest?: string;
+      packageName?: string;
     };
   };
   packageVersion?: string;
 }
 
 interface CrsProvenance {
-  backend_version?: string;
+  compatibleBackendVersion?: string;
+  subcircuitLibrary?: {
+    packageName?: string;
+    packageVersion?: string;
+  };
   combined_sigma_sha256?: string;
   sigma_preprocess_sha256?: string;
   sigma_verify_sha256?: string;
@@ -110,6 +114,7 @@ interface CargoMetadata {
 }
 
 const BACKEND_BINARY_NAMES = ['preprocess', 'prove', 'verify'] as const;
+const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = '@tokamak-zk-evm/subcircuit-library';
 
 const CACHE_DIR_ENV = 'TOKAMAK_ZKEVM_CLI_CACHE_DIR';
 const DOCKER_ENVIRONMENT_ENV = 'TOKAMAK_ZKEVM_CLI_DOCKER_ENVIRONMENT';
@@ -1689,9 +1694,9 @@ async function validateDownloadedCrsVersions(
 }> {
   const provenancePath = await findNamedFile(extractedDir, 'crs_provenance.json');
   const provenance = await readJsonFile<CrsProvenance>(provenancePath);
-  if (provenance.backend_version !== compatibleBackendVersion) {
+  if (provenance.compatibleBackendVersion !== compatibleBackendVersion) {
     throw new Error(
-      `CRS archive ${archiveName} has backend_version ${provenance.backend_version ?? '<missing>'}, expected ${compatibleBackendVersion}.`,
+      `CRS archive ${archiveName} has compatibleBackendVersion ${provenance.compatibleBackendVersion ?? '<missing>'}, expected ${compatibleBackendVersion}.`,
     );
   }
   await validateCrsArtifactHashes(extractedDir, archiveName, provenance);
@@ -1699,10 +1704,10 @@ async function validateDownloadedCrsVersions(
   const mpcMetadataPath = await findNamedFile(extractedDir, 'build-metadata-mpc-setup.json');
   const mpcMetadata = await readJsonFile<BackendBuildMetadata>(mpcMetadataPath);
   const mpcSubcircuitVersion = mpcMetadata.dependencies?.subcircuitLibrary?.buildVersion;
-  const mpcSubcircuitSourceDigest = mpcMetadata.dependencies?.subcircuitLibrary?.sourceDigest;
+  const mpcSubcircuitPackageName = mpcMetadata.dependencies?.subcircuitLibrary?.packageName;
   const mpcVersion = mpcMetadata.packageVersion;
   const mpcCompatibleVersion = mpcMetadata.compatibleBackendVersion;
-  if (!mpcSubcircuitVersion || !mpcSubcircuitSourceDigest || !mpcVersion || !mpcCompatibleVersion) {
+  if (!mpcSubcircuitVersion || !mpcSubcircuitPackageName || !mpcVersion || !mpcCompatibleVersion) {
     throw new Error(`CRS archive ${archiveName} is missing required metadata.`);
   }
   if (mpcCompatibleVersion !== compatibleBackendVersion) {
@@ -1715,6 +1720,42 @@ async function validateDownloadedCrsVersions(
       `CRS archive ${archiveName} metadata packageVersion ${mpcVersion} is not compatible with ${compatibleBackendVersion}.`,
     );
   }
+  if (mpcSubcircuitPackageName !== SUBCIRCUIT_LIBRARY_PACKAGE_NAME) {
+    throw new Error(
+      `CRS archive ${archiveName} metadata subcircuit-library package ${mpcSubcircuitPackageName} does not match ${SUBCIRCUIT_LIBRARY_PACKAGE_NAME}.`,
+    );
+  }
+  if (
+    packageCompatibleVersion(mpcSubcircuitVersion, 'CRS metadata subcircuit-library buildVersion')
+    !== compatibleBackendVersion
+  ) {
+    throw new Error(
+      `CRS archive ${archiveName} metadata subcircuit-library version ${mpcSubcircuitVersion} is not compatible with ${compatibleBackendVersion}.`,
+    );
+  }
+  const provenanceSubcircuitPackageName = provenance.subcircuitLibrary?.packageName;
+  const provenanceSubcircuitPackageVersion = provenance.subcircuitLibrary?.packageVersion;
+  if (!provenanceSubcircuitPackageName || !provenanceSubcircuitPackageVersion) {
+    throw new Error(`CRS archive ${archiveName} provenance is missing subcircuit-library package information.`);
+  }
+  if (provenanceSubcircuitPackageName !== SUBCIRCUIT_LIBRARY_PACKAGE_NAME) {
+    throw new Error(
+      `CRS archive ${archiveName} provenance subcircuit-library package ${provenanceSubcircuitPackageName} does not match ${SUBCIRCUIT_LIBRARY_PACKAGE_NAME}.`,
+    );
+  }
+  if (provenanceSubcircuitPackageVersion !== mpcSubcircuitVersion) {
+    throw new Error(
+      `CRS archive ${archiveName} provenance subcircuit-library version ${provenanceSubcircuitPackageVersion} does not match MPC metadata version ${mpcSubcircuitVersion}.`,
+    );
+  }
+  if (
+    packageCompatibleVersion(provenanceSubcircuitPackageVersion, 'CRS provenance subcircuit-library packageVersion')
+    !== compatibleBackendVersion
+  ) {
+    throw new Error(
+      `CRS archive ${archiveName} provenance subcircuit-library version ${provenanceSubcircuitPackageVersion} is not compatible with ${compatibleBackendVersion}.`,
+    );
+  }
 
   for (const backendName of BACKEND_BINARY_NAMES) {
     const backendMetadataPath = path.join(backendReleaseDir, `build-metadata-${backendName}.json`);
@@ -1722,12 +1763,12 @@ async function validateDownloadedCrsVersions(
     const backendVersion = backendMetadata.packageVersion;
     const backendCompatibleVersion = backendMetadata.compatibleBackendVersion;
     const backendSubcircuitVersion = backendMetadata.dependencies?.subcircuitLibrary?.buildVersion;
-    const backendSubcircuitSourceDigest = backendMetadata.dependencies?.subcircuitLibrary?.sourceDigest;
+    const backendSubcircuitPackageName = backendMetadata.dependencies?.subcircuitLibrary?.packageName;
     if (
       !backendVersion ||
       !backendCompatibleVersion ||
       !backendSubcircuitVersion ||
-      !backendSubcircuitSourceDigest
+      !backendSubcircuitPackageName
     ) {
       throw new Error(`Backend package ${backendName} is missing required build metadata.`);
     }
@@ -1741,9 +1782,17 @@ async function validateDownloadedCrsVersions(
         `Backend package ${backendName} has version ${backendVersion}, which is not compatible with CRS version ${compatibleBackendVersion}.`,
       );
     }
-    if (backendSubcircuitSourceDigest !== mpcSubcircuitSourceDigest) {
+    if (backendSubcircuitPackageName !== SUBCIRCUIT_LIBRARY_PACKAGE_NAME) {
       throw new Error(
-        `Backend package ${backendName} embeds subcircuit-library source digest ${backendSubcircuitSourceDigest}, but CRS archive ${archiveName} expects ${mpcSubcircuitSourceDigest}.`,
+        `Backend package ${backendName} records subcircuit-library package ${backendSubcircuitPackageName}, expected ${SUBCIRCUIT_LIBRARY_PACKAGE_NAME}.`,
+      );
+    }
+    if (
+      packageCompatibleVersion(backendSubcircuitVersion, `${backendName} subcircuit-library buildVersion`)
+      !== compatibleBackendVersion
+    ) {
+      throw new Error(
+        `Backend package ${backendName} embeds subcircuit-library version ${backendSubcircuitVersion}, which is not compatible with CRS version ${compatibleBackendVersion}.`,
       );
     }
   }

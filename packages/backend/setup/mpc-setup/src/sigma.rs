@@ -52,9 +52,18 @@ pub enum Phase1SourceProvenance {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubcircuitLibraryProvenance {
+    pub package_name: String,
+    pub package_version: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FinalCrsProvenance {
     pub generated_at_utc: String,
-    pub backend_version: String,
+    pub compatible_backend_version: String,
+    pub subcircuit_library: SubcircuitLibraryProvenance,
     pub phase1_source_provenance: Option<Phase1SourceProvenance>,
     pub combined_sigma_sha256: String,
     pub sigma_preprocess_sha256: String,

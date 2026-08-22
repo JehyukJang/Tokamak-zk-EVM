@@ -68,7 +68,7 @@ verifier CRS artifacts, and terminates the Worker.
 import { convertCrs } from "@tokamak-zk-evm/snark-browser-compat/converter";
 
 const { proverCrs, preprocessCrs, verifierCrs } =
-  await convertCrs(combinedSigmaRkyv);
+  await convertCrs(combinedSigmaRkyv, crsProvenance);
 ```
 
 The transfer detaches `combinedSigmaRkyv`. Pass

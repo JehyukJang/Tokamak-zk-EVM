@@ -1,4 +1,3 @@
-import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
 import initRkyvDecoder, {
   decodeCombinedSigma,
 } from "./rkyv-decoder/backend_wasm_rkyv_decoder.js";
@@ -7,11 +6,16 @@ import {
   createCombinedSigmaRkyvPayloadDecoder,
 } from "../conversion/rkyv-to-binary.js";
 import { GENERATED_SETUP_PARAMS } from "../../generated/setup.generated.js";
+import {
+  type CrsProvenanceInput,
+  validateCrsProvenanceCompatibility,
+} from "../../artifacts/binary/compatibility.js";
 
 interface CrsWorkerRequest {
   readonly inputBuffer: ArrayBuffer;
   readonly byteOffset: number;
   readonly byteLength: number;
+  readonly provenance: CrsProvenanceInput;
 }
 
 interface CrsWorkerScope {
@@ -24,6 +28,7 @@ const worker = self as unknown as CrsWorkerScope;
 
 worker.onmessage = async (event: MessageEvent<CrsWorkerRequest>): Promise<void> => {
   try {
+    validateCrsProvenanceCompatibility(event.data.provenance);
     await initRkyvDecoder();
     const input = new Uint8Array(
       event.data.inputBuffer,
@@ -31,7 +36,7 @@ worker.onmessage = async (event: MessageEvent<CrsWorkerRequest>): Promise<void> 
       event.data.byteLength,
     );
     const artifacts = await convertCombinedSigmaRkyvToCrsBinaries(input, {
-      sourcePackageVersion: BACKEND_WASM_PACKAGE_VERSION,
+      sourcePackageVersion: event.data.provenance.subcircuitLibrary.packageVersion,
       decoder: createCombinedSigmaRkyvPayloadDecoder(decodeCombinedSigma),
       setup: GENERATED_SETUP_PARAMS,
     });

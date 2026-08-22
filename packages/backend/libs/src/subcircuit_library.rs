@@ -3,13 +3,15 @@ use std::env;
 use std::fs;
 #[cfg(tokamak_embedded_subcircuit_library)]
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 #[cfg(tokamak_embedded_subcircuit_library)]
 use std::sync::OnceLock;
 #[cfg(tokamak_embedded_subcircuit_library)]
 use std::time::Duration;
 
 include!(concat!(env!("OUT_DIR"), "/embedded_subcircuit_library.rs"));
+
+const SUBCIRCUIT_LIBRARY_PACKAGE_NAME: &str = "@tokamak-zk-evm/subcircuit-library";
 
 #[cfg(tokamak_embedded_subcircuit_library)]
 static MATERIALIZED_PATH: OnceLock<PathBuf> = OnceLock::new();
@@ -54,6 +56,138 @@ pub fn resolve_subcircuit_library_path(local_path: Option<&str>) -> PathBuf {
     {
         panic!("--subcircuit-library is required for non-release backend binaries");
     }
+}
+
+pub fn validate_crs_compatibility(crs_dir: &Path, library_dir: &Path) -> std::io::Result<()> {
+    let provenance_path = crs_dir.join("crs_provenance.json");
+    let provenance = read_json(&provenance_path, "CRS provenance")?;
+    let crs_compatible_version = provenance
+        .get("compatibleBackendVersion")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            std::io::Error::other(format!(
+                "{} is missing compatibleBackendVersion",
+                provenance_path.display()
+            ))
+        })?;
+    let crs_compatible_version = normalize_compatible_version(
+        crs_compatible_version,
+        "CRS provenance compatibleBackendVersion",
+    )?;
+    let library_version = selected_library_package_version(library_dir)?;
+    let library_compatible_version =
+        package_compatible_version(&library_version, "subcircuit-library package version")?;
+
+    if crs_compatible_version != library_compatible_version {
+        return Err(std::io::Error::other(format!(
+            "CRS compatibility version {} does not match subcircuit-library package version {} (compatibility class {})",
+            crs_compatible_version, library_version, library_compatible_version
+        )));
+    }
+
+    Ok(())
+}
+
+fn selected_library_package_version(library_dir: &Path) -> std::io::Result<String> {
+    #[cfg(tokamak_embedded_subcircuit_library)]
+    {
+        let _ = library_dir;
+        return Ok(SUBCIRCUIT_LIBRARY_BUILD_VERSION.to_string());
+    }
+
+    #[cfg(not(tokamak_embedded_subcircuit_library))]
+    {
+        let mut current = Some(library_dir);
+        while let Some(directory) = current {
+            let manifest_path = directory.join("package.json");
+            if manifest_path.is_file() {
+                let manifest = read_json(&manifest_path, "subcircuit-library package manifest")?;
+                let package_name = manifest
+                    .get("name")
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or_else(|| {
+                        std::io::Error::other(format!(
+                            "{} is missing package name",
+                            manifest_path.display()
+                        ))
+                    })?;
+                if package_name == SUBCIRCUIT_LIBRARY_PACKAGE_NAME {
+                    let package_version = manifest
+                        .get("version")
+                        .and_then(serde_json::Value::as_str)
+                        .ok_or_else(|| {
+                            std::io::Error::other(format!(
+                                "{} is missing package version",
+                                manifest_path.display()
+                            ))
+                        })?;
+                    return Ok(package_version.to_string());
+                }
+            }
+            current = directory.parent();
+        }
+
+        Err(std::io::Error::other(format!(
+            "cannot find a {} package manifest above subcircuit library {}",
+            SUBCIRCUIT_LIBRARY_PACKAGE_NAME,
+            library_dir.display()
+        )))
+    }
+}
+
+fn read_json(path: &Path, label: &str) -> std::io::Result<serde_json::Value> {
+    let bytes = fs::read(path).map_err(|err| {
+        std::io::Error::new(
+            err.kind(),
+            format!("cannot read {label} {}: {err}", path.display()),
+        )
+    })?;
+    serde_json::from_slice(&bytes).map_err(|err| {
+        std::io::Error::other(format!("cannot parse {label} {}: {err}", path.display()))
+    })
+}
+
+fn normalize_compatible_version(value: &str, label: &str) -> std::io::Result<String> {
+    let parts = value.split('.').collect::<Vec<_>>();
+    if parts.len() != 2
+        || parts
+            .iter()
+            .any(|part| part.is_empty() || !part.chars().all(|ch| ch.is_ascii_digit()))
+    {
+        return Err(std::io::Error::other(format!(
+            "{label} must be strict MAJOR.MINOR, got {value:?}"
+        )));
+    }
+    let major = parts[0]
+        .parse::<u64>()
+        .map_err(|err| std::io::Error::other(format!("{label} major version is invalid: {err}")))?;
+    let minor = parts[1]
+        .parse::<u64>()
+        .map_err(|err| std::io::Error::other(format!("{label} minor version is invalid: {err}")))?;
+    Ok(format!("{major}.{minor}"))
+}
+
+fn package_compatible_version(value: &str, label: &str) -> std::io::Result<String> {
+    let parts = value.split('.').collect::<Vec<_>>();
+    if parts.len() != 3
+        || parts
+            .iter()
+            .any(|part| part.is_empty() || !part.chars().all(|ch| ch.is_ascii_digit()))
+    {
+        return Err(std::io::Error::other(format!(
+            "{label} must be strict MAJOR.MINOR.PATCH, got {value:?}"
+        )));
+    }
+    let major = parts[0]
+        .parse::<u64>()
+        .map_err(|err| std::io::Error::other(format!("{label} major version is invalid: {err}")))?;
+    let minor = parts[1]
+        .parse::<u64>()
+        .map_err(|err| std::io::Error::other(format!("{label} minor version is invalid: {err}")))?;
+    parts[2]
+        .parse::<u64>()
+        .map_err(|err| std::io::Error::other(format!("{label} patch version is invalid: {err}")))?;
+    Ok(format!("{major}.{minor}"))
 }
 
 #[cfg(tokamak_embedded_subcircuit_library)]
@@ -160,4 +294,56 @@ fn sanitize_component(value: &str) -> String {
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_crs_compatibility;
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn test_root() -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "tokamak-zk-evm-crs-compatibility-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time must be after Unix epoch")
+                .as_nanos()
+        ))
+    }
+
+    fn write_package_manifest(root: &std::path::Path, version: &str) {
+        fs::write(
+            root.join("package.json"),
+            format!(r#"{{"name":"@tokamak-zk-evm/subcircuit-library","version":"{version}"}}"#),
+        )
+        .expect("must write package manifest");
+    }
+
+    fn write_provenance(crs_dir: &std::path::Path, compatible_version: &str) {
+        fs::write(
+            crs_dir.join("crs_provenance.json"),
+            format!(r#"{{"compatibleBackendVersion":"{compatible_version}"}}"#),
+        )
+        .expect("must write CRS provenance");
+    }
+
+    #[test]
+    fn validates_crs_against_library_compatibility_class() {
+        let root = test_root();
+        let library_dir = root.join("subcircuits").join("library");
+        let crs_dir = root.join("crs");
+        fs::create_dir_all(&library_dir).expect("must create library directory");
+        fs::create_dir_all(&crs_dir).expect("must create CRS directory");
+        write_package_manifest(&root, "2.1.7");
+        write_provenance(&crs_dir, "2.1");
+
+        validate_crs_compatibility(&crs_dir, &library_dir)
+            .expect("matching CRS and library compatibility classes must be accepted");
+
+        write_provenance(&crs_dir, "3.0");
+        assert!(validate_crs_compatibility(&crs_dir, &library_dir).is_err());
+        fs::remove_dir_all(root).expect("must remove test directory");
+    }
 }

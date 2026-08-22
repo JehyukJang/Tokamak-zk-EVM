@@ -1,4 +1,4 @@
-use crate::sigma::{FinalCrsProvenance, SigmaV2};
+use crate::sigma::{FinalCrsProvenance, SigmaV2, SubcircuitLibraryProvenance};
 use crate::utils::StepTimer;
 use crate::versioning::compatible_backend_version;
 use chrono::Utc;
@@ -28,7 +28,11 @@ pub fn run(config: &Phase2GenFilesConfig) {
 
     let provenance = FinalCrsProvenance {
         generated_at_utc: Utc::now().to_rfc3339(),
-        backend_version: compatible_backend_version().to_string(),
+        compatible_backend_version: compatible_backend_version().to_string(),
+        subcircuit_library: SubcircuitLibraryProvenance {
+            package_name: env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_NAME").to_string(),
+            package_version: env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION").to_string(),
+        },
         phase1_source_provenance: latest_acc.phase1_source_provenance,
         combined_sigma_sha256: digests.combined_sigma_sha256,
         sigma_preprocess_sha256: digests.sigma_preprocess_sha256,

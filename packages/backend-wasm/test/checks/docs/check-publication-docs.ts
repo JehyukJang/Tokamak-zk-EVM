@@ -202,7 +202,7 @@ function checkPublicApiReference(readme: string): void {
     "convertInstance(value)",
     "convertVerifierPreprocess(value)",
     "convertProof(input)",
-    "convertCrs(bytes)",
+    "convertCrs(bytes, provenance)",
     "inspectBinary(bytes)",
     "validateBinary(bytes)",
   ] as const;

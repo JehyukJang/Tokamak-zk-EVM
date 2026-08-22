@@ -6,6 +6,7 @@ import {
   convertVerifierPreprocess,
   convertWitness,
 } from "@tokamak-zk-evm/snark-browser-compat/converter";
+import type { CrsProvenanceInput } from "@tokamak-zk-evm/snark-browser-compat/converter";
 
 export interface ArtifactSources {
   readonly witness: unknown;
@@ -14,6 +15,7 @@ export interface ArtifactSources {
   readonly verifierPreprocess: unknown;
   readonly proof: unknown;
   readonly combinedSigmaRkyv: Uint8Array;
+  readonly crsProvenance: CrsProvenanceInput;
 }
 
 export async function prepareArtifacts(sources: ArtifactSources): Promise<{
@@ -33,7 +35,7 @@ export async function prepareArtifacts(sources: ArtifactSources): Promise<{
       convertInstance(sources.instance),
       convertVerifierPreprocess(sources.verifierPreprocess),
       convertProof({ sourceFormat: "json", proof: sources.proof }),
-      convertCrs(sources.combinedSigmaRkyv),
+      convertCrs(sources.combinedSigmaRkyv, sources.crsProvenance),
     ]);
 
   return {

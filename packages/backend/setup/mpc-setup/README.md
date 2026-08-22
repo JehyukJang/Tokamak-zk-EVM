@@ -188,7 +188,9 @@ unless this manifest matches both the pinned Dusk source and the exact final CRS
 For every CRS, the manifest also records:
 
 - `generated_at_utc`
-- `backend_version`
+- `compatibleBackendVersion`
+- `subcircuitLibrary.packageName`
+- `subcircuitLibrary.packageVersion`
 
 For dusk-backed mode, the manifest records:
 
@@ -220,7 +222,9 @@ Example checks:
 jq -r '.phase1_source_provenance.DuskGroth16.pinned_contribution' "$CRS_DIR/crs_provenance.json"
 jq -r '.phase1_source_provenance.DuskGroth16.expected_source_sha256' "$CRS_DIR/crs_provenance.json"
 jq -r '.generated_at_utc' "$CRS_DIR/crs_provenance.json"
-jq -r '.backend_version' "$CRS_DIR/crs_provenance.json"
+jq -r '.compatibleBackendVersion' "$CRS_DIR/crs_provenance.json"
+jq -r '.subcircuitLibrary.packageName' "$CRS_DIR/crs_provenance.json"
+jq -r '.subcircuitLibrary.packageVersion' "$CRS_DIR/crs_provenance.json"
 jq -r '.published_folder_url' "$CRS_DIR/crs_provenance.json"
 jq -r '.published_archive_name' "$CRS_DIR/crs_provenance.json"
 jq -r '.crs_download_url' "$CRS_DIR/crs_provenance.json"
