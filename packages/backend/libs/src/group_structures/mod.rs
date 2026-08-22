@@ -1,5 +1,6 @@
 use crate::bivariate_polynomial::{BivariatePolynomial, DensePolynomialExt};
 use crate::field_structures::{FieldSerde, Tau};
+use crate::iotools::public_wire_layout::PublicWireLayout;
 use crate::iotools::{
     from_coef_vec_to_g1serde_mat, from_coef_vec_to_g1serde_vec, scaled_outer_product_1d,
     scaled_outer_product_2d, HexString, PlacementVariables, SetupParams, SubcircuitInfo,
@@ -314,6 +315,7 @@ impl Sigma {
     /// Generate full CRS
     pub fn gen(
         params: &SetupParams,
+        public_wire_layout: &PublicWireLayout,
         tau: &Tau,
         o_vec: &[ScalarField],
         l_vec: &[ScalarField],
@@ -325,7 +327,16 @@ impl Sigma {
         println!("Generating a sigma (σ)...");
         let lagrange_KL =
             (l_vec[params.s_max - 1] * k_vec[params.l_D - params.l - 1]) * G1serde(*g1_gen);
-        let sigma_1 = Sigma1::gen(params, tau, o_vec, l_vec, k_vec, m_vec, g1_gen);
+        let sigma_1 = Sigma1::gen(
+            params,
+            public_wire_layout,
+            tau,
+            o_vec,
+            l_vec,
+            k_vec,
+            m_vec,
+            g1_gen,
+        );
         let sigma_2 = Sigma2::gen(tau, g2_gen);
         Self {
             G: G1serde(*g1_gen),
@@ -357,9 +368,61 @@ pub struct Sigma1 {
 
 impl_encode_poly!(Sigma1);
 
+fn public_lagrange_terms(
+    public_wire_layout: &PublicWireLayout,
+    l_vec: &[ScalarField],
+    o_inst_vec: &[ScalarField],
+) -> Box<[ScalarField]> {
+    if public_wire_layout.len() != o_inst_vec.len() {
+        panic!(
+            "public wire layout length mismatch: expected {}, got {}",
+            o_inst_vec.len(),
+            public_wire_layout.len()
+        );
+    }
+
+    o_inst_vec
+        .iter()
+        .enumerate()
+        .map(|(global_wire_index, value)| {
+            public_wire_layout
+                .phase_for_public_wire(global_wire_index)
+                .map(|phase| {
+                    let lagrange_value = l_vec.get(phase).unwrap_or_else(|| {
+                        panic!("public wire phase {phase} is outside the Lagrange basis vector")
+                    });
+                    *lagrange_value * *value
+                })
+                .unwrap_or_else(ScalarField::zero)
+        })
+        .collect()
+}
+
+fn public_instance_terms(
+    public_wire_layout: &PublicWireLayout,
+    l_vec: &[ScalarField],
+    o_inst_vec: &[ScalarField],
+    m_vec: &[ScalarField],
+) -> Box<[ScalarField]> {
+    if m_vec.len() != public_wire_layout.free_public_len() {
+        panic!(
+            "M basis length mismatch: expected {}, got {}",
+            public_wire_layout.free_public_len(),
+            m_vec.len()
+        );
+    }
+
+    let mut terms = public_lagrange_terms(public_wire_layout, l_vec, o_inst_vec);
+    for (global_wire_index, m_value) in m_vec.iter().enumerate() {
+        terms[global_wire_index] = terms[global_wire_index] + *m_value;
+    }
+    terms
+}
+
 impl Sigma1 {
     pub fn gen(
         params: &SetupParams,
+        public_wire_layout: &PublicWireLayout,
         tau: &Tau,
         o_vec: &[ScalarField],
         l_vec: &[ScalarField],
@@ -370,11 +433,7 @@ impl Sigma1 {
         let n = params.n;
         let m_d = params.m_D;
         let l = params.l;
-        let l_free = params.l_free;
-        let l_user = params.l_user;
         let s_max = params.s_max;
-        let m_block = l_free - l_user;
-        let m_function = l - l_free;
         let m_i = params.l_D - l;
 
         println!("Generating Sigma1 components...");
@@ -405,39 +464,12 @@ impl Sigma1 {
         let delta = G1serde(G1Affine::from((*g1_gen).to_projective() * tau.delta));
         let eta = G1serde(G1Affine::from((*g1_gen).to_projective() * tau.eta));
 
-        // Generate γ^(-1)(L_t(y)o_j(x) + M_j(x)) for public instance wires j∈[0,l_pub-1], t={0, 1} and γ^(-1)L_t(y)o_j(x) for private instance wires j∈[l_pub,l-1], t={2, 3}
+        // Generate γ^(-1)(L_phase(y)o_j(x) + M_j(x)) for public instance wires.
         println!("Generating gamma_inv_o_inst of size {}...", l);
         let mut gamma_inv_o_inst = vec![G1serde::zero(); l].into_boxed_slice();
         {
-            // For the order of indices of l_vec, see BUFFER_LIST of tokamak-zk-evm/packages/frontend/synthesizer/src/interface/qapCompiler/configuredTypes.ts
-            let user_vec = [
-                vec![l_vec[0]; params.l_user_out],
-                vec![l_vec[1]; params.l_user - params.l_user_out],
-                vec![l_vec[2]; m_block],
-                vec![l_vec[3]; m_function],
-            ]
-            .concat()
-            .into_boxed_slice();
-            if user_vec.len() != l {
-                panic!("user_vec length mismatch: expected l");
-            }
-
-            let mut l_o_inst_vec = vec![ScalarField::zero(); l].into_boxed_slice();
-            point_mul_two_vecs(&user_vec, o_inst_vec, &mut l_o_inst_vec);
-            drop(user_vec);
-
-            if m_vec.len() != l_free {
-                panic!("m_vec length mismatch: expected l_free");
-            }
-            let m_inst_vec = m_vec.to_vec().into_boxed_slice();
-            let mut l_o_inst_mj_vec = vec![ScalarField::zero(); l].into_boxed_slice();
-            point_add_two_vecs(
-                &l_o_inst_vec[..l_free],
-                &m_inst_vec,
-                &mut l_o_inst_mj_vec[..l_free],
-            );
-            l_o_inst_mj_vec[l_free..].copy_from_slice(&l_o_inst_vec[l_free..]);
-            drop(l_o_inst_vec);
+            let l_o_inst_mj_vec =
+                public_instance_terms(public_wire_layout, l_vec, o_inst_vec, m_vec);
 
             let mut gamma_inv_o_inst_vec = vec![ScalarField::zero(); l].into_boxed_slice();
             scale_vec(tau.gamma.inv(), &l_o_inst_mj_vec, &mut gamma_inv_o_inst_vec);
@@ -862,4 +894,100 @@ pub fn icicle_g2_affine_to_ark(g: &G2Affine) -> ArkG2Affine {
         .expect("failed to convert y from icicle to ark");
 
     ArkG2Affine::new_unchecked(x, y)
+}
+
+#[cfg(test)]
+mod public_phase_tests {
+    use super::*;
+    use crate::iotools::public_wire_layout::{GlobalWire, PublicWireLayout};
+    use crate::iotools::{BufferDirection, SetupParams, SubcircuitInfo};
+
+    #[test]
+    fn applies_each_buffer_phase_and_omits_the_padding_phase_term() {
+        let layout = test_public_wire_layout();
+        let lagrange_values = [
+            ScalarField::from_u32(2),
+            ScalarField::from_u32(3),
+            ScalarField::from_u32(5),
+            ScalarField::from_u32(7),
+        ];
+        let output_values = [
+            ScalarField::from_u32(11),
+            ScalarField::from_u32(13),
+            ScalarField::from_u32(17),
+        ];
+
+        let m_values = [ScalarField::from_u32(19), ScalarField::from_u32(23)];
+        let terms = public_instance_terms(&layout, &lagrange_values, &output_values, &m_values);
+
+        assert_eq!(terms[0], ScalarField::from_u32(41));
+        assert_eq!(terms[1], ScalarField::from_u32(23));
+        assert_eq!(terms[2], ScalarField::from_u32(51));
+    }
+
+    fn test_public_wire_layout() -> PublicWireLayout {
+        let mut output_buffer = buffer(0, BufferDirection::Out);
+        let mut input_buffer = buffer(1, BufferDirection::In);
+        output_buffer.flattenMap[1] = 0;
+        output_buffer.flattenMap[0] = 3;
+        output_buffer.flattenMap[2] = 4;
+        input_buffer.flattenMap[2] = 2;
+        input_buffer.flattenMap[0] = 5;
+        input_buffer.flattenMap[1] = 6;
+
+        let setup_params = SetupParams {
+            l_free: 2,
+            l: 3,
+            l_user_out: 0,
+            l_user: 0,
+            l_D: 3,
+            m_D: 7,
+            n: 1,
+            s_D: 2,
+            s_max: 4,
+        };
+        let global_wires = [
+            GlobalWire::Mapped {
+                subcircuit_id: 0,
+                local_wire_index: 1,
+            },
+            GlobalWire::Padding,
+            GlobalWire::Mapped {
+                subcircuit_id: 1,
+                local_wire_index: 2,
+            },
+            GlobalWire::Mapped {
+                subcircuit_id: 0,
+                local_wire_index: 0,
+            },
+            GlobalWire::Mapped {
+                subcircuit_id: 0,
+                local_wire_index: 2,
+            },
+            GlobalWire::Mapped {
+                subcircuit_id: 1,
+                local_wire_index: 0,
+            },
+            GlobalWire::Mapped {
+                subcircuit_id: 1,
+                local_wire_index: 1,
+            },
+        ];
+
+        PublicWireLayout::derive(&setup_params, &global_wires, &[output_buffer, input_buffer])
+            .unwrap()
+    }
+
+    fn buffer(id: usize, direction: BufferDirection) -> SubcircuitInfo {
+        SubcircuitInfo {
+            id,
+            name: format!("buffer{id}"),
+            Nwires: 3,
+            Nconsts: 0,
+            Out_idx: vec![1, 1].into_boxed_slice(),
+            In_idx: vec![2, 1].into_boxed_slice(),
+            flattenMap: vec![usize::MAX; 3].into_boxed_slice(),
+            bufferDirection: Some(direction),
+        }
+    }
 }

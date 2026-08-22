@@ -151,6 +151,10 @@ impl PublicWireLayout {
         self.sources.len()
     }
 
+    pub fn free_public_len(&self) -> usize {
+        self.l_free
+    }
+
     pub fn is_free_public_index(&self, global_wire_index: usize) -> bool {
         global_wire_index < self.l_free && global_wire_index < self.sources.len()
     }

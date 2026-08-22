@@ -7,7 +7,7 @@ use icicle_core::curve::Curve;
 use icicle_core::traits::FieldImpl;
 use libs::field_structures::{from_r1cs_to_evaled_qap_mixture, Tau};
 use libs::group_structures::Sigma;
-use libs::iotools::read_global_wire_list_as_boxed_boxed_numbers;
+use libs::iotools::public_wire_layout::{read_global_wires, GlobalWire, PublicWireLayout};
 use libs::iotools::{SetupParams, SubcircuitInfo, SubcircuitR1CS};
 use libs::subcircuit_library::{resolve_subcircuit_library_path, SubcircuitLibraryArg};
 #[cfg(not(feature = "testing-mode"))]
@@ -110,8 +110,9 @@ fn main() {
     let subcircuit_infos = SubcircuitInfo::read_box_from_json(subcircuit_infos_path).unwrap();
 
     let global_wire_list_path = PathBuf::from(paths.qap_path).join("globalWireList.json");
-    let global_wire_list =
-        read_global_wire_list_as_boxed_boxed_numbers(global_wire_list_path).unwrap();
+    let global_wire_list = read_global_wires(global_wire_list_path).unwrap();
+    let public_wire_layout =
+        PublicWireLayout::derive(&setup_params, &global_wire_list, &subcircuit_infos).unwrap();
 
     let start = Instant::now();
 
@@ -148,8 +149,11 @@ fn main() {
             for local_idx in 0..subcircuit_infos[i].Nwires {
                 let global_idx = flatten_map[local_idx];
 
-                if (global_wire_list[global_idx][0] != subcircuit_infos[i].id)
-                    || (global_wire_list[global_idx][1] != local_idx)
+                if global_wire_list[global_idx]
+                    != (GlobalWire::Mapped {
+                        subcircuit_id: subcircuit_infos[i].id,
+                        local_wire_index: local_idx,
+                    })
                 {
                     panic!("GlobalWireList is not the inverse of flattenMap.");
                 }
@@ -192,6 +196,7 @@ fn main() {
     let start = Instant::now();
     let sigma = Sigma::gen(
         &setup_params,
+        &public_wire_layout,
         &tau,
         &o_evaled_vec,
         &l_evaled_vec,

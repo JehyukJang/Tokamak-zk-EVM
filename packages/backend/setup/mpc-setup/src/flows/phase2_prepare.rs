@@ -14,6 +14,7 @@ use icicle_core::traits::{Arithmetic, FieldImpl};
 use icicle_runtime::memory::{DeviceVec, HostSlice};
 use icicle_runtime::stream::IcicleStream;
 use libs::group_structures::{G1serde, Sigma, Sigma1, Sigma2};
+use libs::iotools::public_wire_layout::{read_global_wires, PublicWireLayout};
 use libs::iotools::{scalar_to_hex, SetupParams, SubcircuitInfo, SubcircuitR1CS};
 use libs::utils::{
     init_ntt_domain, setup_shape, trusted_setup_ntt_domain_size, validate_public_wire_size,
@@ -185,32 +186,6 @@ impl NttWorkspace {
 impl Drop for NttWorkspace {
     fn drop(&mut self) {
         let _ = self.stream.destroy();
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-struct PublicWireSegments {
-    user_out_end: usize,
-    user_end: usize,
-    free_end: usize,
-    total_end: usize,
-}
-
-fn public_wire_segments(setup_params: &SetupParams) -> PublicWireSegments {
-    let user_out_end = setup_params.l_user_out;
-    let user_end = setup_params.l_user;
-    let free_end = setup_params.l_free;
-    let total_end = setup_params.l;
-
-    assert!(user_out_end <= user_end, "l_user_out must be <= l_user");
-    assert!(user_end <= free_end, "l_user must be <= l_free");
-    assert!(free_end <= total_end, "l_free must be <= l");
-
-    PublicWireSegments {
-        user_out_end,
-        user_end,
-        free_end,
-        total_end,
     }
 }
 
@@ -716,7 +691,6 @@ fn process_prepare(config: &Phase2PrepareConfig, _is_gpu_enabled: bool) -> Sigma
     validate_public_wire_size(shape.l_free);
     let ntt_domain_size = trusted_setup_ntt_domain_size(&shape);
     init_ntt_domain(ntt_domain_size);
-    let segments = public_wire_segments(&setup_params);
     let n = setup_params.n; // Number of constraints per subcircuit
     let s_max = setup_params.s_max;
     let m_d = setup_params.m_D; // Total number of wires
@@ -733,6 +707,9 @@ fn process_prepare(config: &Phase2PrepareConfig, _is_gpu_enabled: bool) -> Sigma
     let subcircuit_file_name = "subcircuitInfo.json";
     let subcircuit_infos =
         SubcircuitInfo::read_box_from_json(qap_path.join(&subcircuit_file_name)).unwrap();
+    let global_wires = read_global_wires(qap_path.join("globalWireList.json")).unwrap();
+    let public_wire_layout =
+        PublicWireLayout::derive(&setup_params, &global_wires, &subcircuit_infos).unwrap();
 
     let phase2_y = sample_phase2_y(
         &mode,
@@ -859,10 +836,11 @@ fn process_prepare(config: &Phase2PrepareConfig, _is_gpu_enabled: bool) -> Sigma
         .par_iter_mut()
         .enumerate()
         .for_each(|(global_idx, cell)| {
-            let segment_idx = public_segment_index(global_idx, &segments)
-                .expect("public wire must map to a segment");
-            let mut value = o_commitments[global_idx] * l_evaled_vec[segment_idx];
-            if global_idx < l_free {
+            let mut value = public_wire_layout
+                .phase_for_public_wire(global_idx)
+                .map(|phase| o_commitments[global_idx] * l_evaled_vec[phase])
+                .unwrap_or_else(G1serde::zero);
+            if public_wire_layout.is_free_public_index(global_idx) {
                 value = value + m_commitments[global_idx];
             }
             *cell = value;
@@ -1118,18 +1096,4 @@ fn load_coeff_view(
         ntt_workspace,
     );
     coeff_view
-}
-
-fn public_segment_index(global_idx: usize, segments: &PublicWireSegments) -> Option<usize> {
-    if global_idx < segments.user_out_end {
-        Some(0)
-    } else if global_idx < segments.user_end {
-        Some(1)
-    } else if global_idx < segments.free_end {
-        Some(2)
-    } else if global_idx < segments.total_end {
-        Some(3)
-    } else {
-        None
-    }
 }
