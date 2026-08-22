@@ -1,4 +1,4 @@
-import { PlacementVariables } from '../../synthesizer/types/placements.ts';
+import { PlacementVariables, Placements } from '../../synthesizer/types/placements.ts';
 
 export type PublicInstance = {
     a_pub_user: `0x${string}`[]
@@ -19,4 +19,8 @@ export interface CircuitArtifacts {
     publicInstance: PublicInstance
     publicInstanceDescription: PublicInstanceDescription
     permutation: Permutation
+}
+
+export interface CircuitGenerationResult extends CircuitArtifacts {
+    placements: Placements
 }

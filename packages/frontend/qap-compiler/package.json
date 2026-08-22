@@ -15,32 +15,40 @@
     "tokamak-zk-evm",
     "layer2",
     "tokamak-network",
+    "JehyukJang",
     "wasm",
     "zk-EVM",
     "zk-SNARK"
   ],
-  "homepage": "https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main/packages/frontend/qap-compiler#readme",
+  "homepage": "https://github.com/JehyukJang/Tokamak-zk-EVM/tree/main/packages/frontend/qap-compiler#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/JehyukJang/Tokamak-zk-EVM.git",
     "directory": "packages/frontend/qap-compiler"
   },
   "bugs": {
-    "url": "https://github.com/tokamak-network/Tokamak-zk-EVM/issues"
+    "url": "https://github.com/JehyukJang/Tokamak-zk-EVM/issues"
   },
   "files": [
     "functions/*.circom",
     "README.md",
     "LICENSE-MIT",
     "LICENSE-APACHE",
+    "scripts/build-wire-layout.js",
     "scripts/compile.sh",
     "scripts/configure.js",
-    "scripts/exporter/**/*",
+    "scripts/generate-frontend-config.ts",
+    "scripts/parse-compiler-report.js",
     "scripts/parse.js",
+    "scripts/parse-interfaces.js",
+    "scripts/parse-symbols.js",
     "scripts/qap-compiler.mjs",
     "scripts/reload-constants.sh",
     "scripts/tokamakL2js/**/*",
+    "scripts/write-library-artifacts.js",
     "subcircuits/circom/*.circom",
+    "subcircuits/interface/*.json",
+    "subcircuits/interface/conditional/*.json",
     "templates/*.circom",
     "templates/128bit/*.circom",
     "templates/255bit/*.circom",
@@ -83,7 +91,7 @@
     "ffjavascript": "^0.2.55",
     "mocha": "^11.0.1",
     "poseidon-bls12381-circom": "^1.0.0",
-    "tokamak-l2js": "^0.1.4",
+    "tokamak-l2js": "latest",
     "tsx": "^4.20.3"
   },
   "devDependencies": {

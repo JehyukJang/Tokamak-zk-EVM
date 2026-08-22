@@ -1,15 +1,11 @@
-# Documentation
+# Subcircuit library documentation
 
-This directory contains the detailed package documentation that sits behind the consumer-facing README.
+Background, integration, and maintainer references for the
+[subcircuit library](../README.md). Readers new to Tokamak zk-EVM should start
+with the circuit implementation reference.
 
-## Consumer Integration
-
-- [Consumer Integration](consumer-integration.md): how `tokamak-cli`, `synthesizer`, `backend`, and `Tokamak-zk-EVM-contracts` consume the published subcircuit library on the `main` branch.
-
-## Maintainer / Versioning / Release
-
-- [Subcircuit Library Generation and Release](subcircuit-library-generation-and-release.md): the relationship between `qap-compiler` and the published library, the generation flow, and package versioning and release rules.
-
-## Security Audit / Reference
-
-- [Merged ALU Security Audit](merged-alu-security-audit.md): preserved audit history and current-status revalidation notes for the compiled circuit library.
+| Need                                          | Document                                                                 |
+| --------------------------------------------- | ------------------------------------------------------------------------ |
+| Integrate the published artifacts             | [Consumer integration](./consumer-integration.md)                        |
+| Generate, version, or release the library     | [Generation and release](./subcircuit-library-generation-and-release.md) |
+| Understand the circuits and their composition | [Circuit implementation reference](./circuit-implementation-reference.md) |

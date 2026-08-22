@@ -3,7 +3,6 @@ import { synthesizeFromSnapshotInput } from '../../../core/src/app.ts';
 import type { BlockInfo } from '../../../core/src/synthesizer.ts';
 import { writeSynthesisOutputJson } from '../io/jsonWriter.ts';
 import { installedSubcircuitLibrary } from '../subcircuit/installedLibrary.ts';
-import { loadSubcircuitWasm } from '../subcircuit/wasmLoader.ts';
 import { readJson } from './utils/node.ts';
 
 export interface TokamakChannelTxFiles {
@@ -40,7 +39,6 @@ export async function runTokamakChannelTxFromFiles(
     blockInfo,
     contractCodes,
     subcircuitLibrary: installedSubcircuitLibrary,
-    wasmBuffers: loadSubcircuitWasm(),
   });
 
   writeSynthesisOutputJson(output, outputDir, {

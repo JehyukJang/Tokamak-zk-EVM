@@ -25,8 +25,15 @@ More concretely:
 
 The maintainer-side flow is:
 
-1. Sync `subcircuits/circom/constants.circom` from the published `tokamak-l2js` dependency.
-2. Build the generated subcircuit library into `subcircuits/library`.
+1. Run `npx qap-compiler --reload-constants`. The command resolves npm's current
+   `tokamak-l2js` `latest` release, installs that exact version locally, and updates
+   only `nPrivateMessageInputs` and `nPoseidonInputs` in
+   `subcircuits/circom/constants.circom`. A normal initial install also declares
+   the `latest` release line; the reload command is the explicit maintainer action
+   that synchronizes generated constants to the then-current npm release.
+2. Build the generated subcircuit library into `subcircuits/library`. The build
+   invokes Circom with explicit O2 optimization; compiler-default, O0, and O1
+   artifacts are not valid library outputs or constraint-measurement baselines.
 3. Assemble the publishable `dist` package from the generated library, synced constants, package metadata, and the consumer-facing README.
 4. Publish `dist` to npm.
 

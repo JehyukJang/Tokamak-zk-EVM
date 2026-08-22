@@ -13,11 +13,12 @@
     "tokamak",
     "tokamak-zk-evm",
     "layer2",
-    "tokamak-network"
+    "tokamak-network",
+    "JehyukJang"
   ],
-  "homepage": "https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main/packages/frontend/synthesizer/node-cli#readme",
+  "homepage": "https://github.com/JehyukJang/Tokamak-zk-EVM/tree/main/packages/frontend/synthesizer/node-cli#readme",
   "bugs": {
-    "url": "https://github.com/tokamak-network/Tokamak-zk-EVM/issues"
+    "url": "https://github.com/JehyukJang/Tokamak-zk-EVM/issues"
   },
   "repository": {
     "type": "git",
@@ -63,18 +64,15 @@
     "hooks:uninstall": "git config --unset core.hooksPath",
     "synthesize": "tsx --tsconfig tsconfig.dev.json src/cli/index.ts synthesize",
     "synthesizer": "tsx --tsconfig tsconfig.dev.json src/cli/index.ts run",
-    "erc20-transfer-l2": "tsx --tsconfig tsconfig.dev.json ../examples/config-runner.ts erc20-transfer",
     "private-state-mint-l2": "tsx --tsconfig tsconfig.dev.json ../examples/config-runner.ts private-state-mint",
     "private-state-transfer-l2": "tsx --tsconfig tsconfig.dev.json ../examples/config-runner.ts private-state-transfer",
     "private-state-redeem-l2": "tsx --tsconfig tsconfig.dev.json ../examples/config-runner.ts private-state-redeem",
-    "test": "tsx --tsconfig tsconfig.dev.json tests/scripts/run-erc20-main-from-configs.ts",
-    "test:prep": "tsx --tsconfig tsconfig.dev.json tests/scripts/run-erc20-config-matrix.ts",
-    "test:private-state": "tsx --tsconfig tsconfig.dev.json tests/scripts/run-private-state-mint-main-from-configs.ts",
-    "test:private-state:prep": "tsx --tsconfig tsconfig.dev.json tests/scripts/run-private-state-mint-config-matrix.ts",
-    "test:private-state-transfer": "tsx --tsconfig tsconfig.dev.json tests/scripts/run-private-state-transfer-main-from-configs.ts",
-    "test:private-state-transfer:prep": "tsx --tsconfig tsconfig.dev.json tests/scripts/run-private-state-transfer-config-matrix.ts",
-    "test:private-state-redeem": "tsx --tsconfig tsconfig.dev.json tests/scripts/run-private-state-redeem-main-from-configs.ts",
-    "test:private-state-redeem:prep": "tsx --tsconfig tsconfig.dev.json tests/scripts/run-private-state-redeem-config-matrix.ts",
+    "test": "npm run -s test:private-state-topology",
+    "test:unit": "vitest run tests/unit",
+    "test:private-state": "tsx --tsconfig tsconfig.dev.json tests/scripts/run-private-state-topology-matrix.ts mint",
+    "test:private-state-transfer": "tsx --tsconfig tsconfig.dev.json tests/scripts/run-private-state-topology-matrix.ts transfer",
+    "test:private-state-redeem": "tsx --tsconfig tsconfig.dev.json tests/scripts/run-private-state-topology-matrix.ts redeem",
+    "test:private-state-topology": "tsx --tsconfig tsconfig.dev.json tests/scripts/run-private-state-topology-matrix.ts all",
     "test:node": "npm run -s test",
     "tsc": "npm run typecheck",
     "typecheck": "tsc -p tsconfig.json --pretty false",
@@ -102,7 +100,7 @@
     "ethereum-cryptography": "^3.0.0",
     "eventemitter3": "^5.0.1",
     "poseidon-bls12381": "^1.0.2",
-    "tokamak-l2js": "^0.1.4",
+    "tokamak-l2js": "0.2.0",
     "verkle-cryptography-wasm": "^0.4.8",
     "vitest": "^2.1.8"
   },

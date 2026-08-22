@@ -13,11 +13,12 @@
     "tokamak",
     "tokamak-zk-evm",
     "layer2",
-    "tokamak-network"
+    "tokamak-network",
+    "JehyukJang"
   ],
-  "homepage": "https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main/packages/frontend/synthesizer/web-app#readme",
+  "homepage": "https://github.com/JehyukJang/Tokamak-zk-EVM/tree/main/packages/frontend/synthesizer/web-app#readme",
   "bugs": {
-    "url": "https://github.com/tokamak-network/Tokamak-zk-EVM/issues"
+    "url": "https://github.com/JehyukJang/Tokamak-zk-EVM/issues"
   },
   "repository": {
     "type": "git",
@@ -67,7 +68,7 @@
     "@noble/curves": "1.9.7",
     "@tokamak-zk-evm/subcircuit-library": "^3.0.0",
     "@zk-kit/imt": "2.0.0-beta.8",
-    "tokamak-l2js": "^0.1.4"
+    "tokamak-l2js": "0.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.14",
