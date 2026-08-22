@@ -4,6 +4,7 @@ use std::path::Path;
 use icicle_bls12_381::curve::G1Affine;
 use libs::bivariate_polynomial::DensePolynomialExt;
 use libs::group_structures::G1serde;
+use libs::iotools::public_wire_layout::PublicWireLayout;
 use libs::iotools::{
     ArchivedSigma1Rkyv, ArchivedSigmaRkyv, HexString, PlacementVariables, SetupParams, SigmaRkyv,
     SubcircuitInfo,
@@ -99,11 +100,10 @@ impl<'a> Sigma1Handle<'a> {
     pub fn encode_O_pub_free(
         &self,
         placement_variables: &[PlacementVariables],
-        subcircuit_infos: &[SubcircuitInfo],
-        setup_params: &SetupParams,
+        public_wire_layout: &PublicWireLayout,
     ) -> G1serde {
         self.archived
-            .encode_O_pub_free(placement_variables, subcircuit_infos, setup_params)
+            .encode_O_pub_free(placement_variables, public_wire_layout)
     }
 
     pub fn encode_O_pub_fix(

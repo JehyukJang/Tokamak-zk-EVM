@@ -26,7 +26,12 @@ import {
   computeArithmeticArgumentCommitments,
   computeCopyWitnessCommitment,
 } from "../../../src/prover/protocol/initial-relation.js";
-import { buildProverBinding } from "../../../src/prover/commitments/binding-commitments.js";
+import {
+  buildProverBinding,
+  countOMidVariables,
+  countOPrvVariables,
+} from "../../../src/prover/commitments/binding-commitments.js";
+import { PublicWireLayout } from "../../../src/prover/protocol/public-wire-layout.js";
 import {
   createSigma1CommitmentEncoder,
   encodePolynomialBufferWithSigma1,
@@ -71,6 +76,7 @@ interface ProverSparseSubcircuitR1cs {
 }
 
 async function main(): Promise<void> {
+  checkPublicWireLayout();
   const runtime = await createCurveRuntime();
 
   try {
@@ -295,12 +301,38 @@ async function main(): Promise<void> {
     assertEqual(smallProve4.commitments.M_Y.byteLength, 144, "prove4 M_Y byte length");
     assertEqual(smallProve4.commitments.N_X.byteLength, 144, "prove4 N_X byte length");
     assertEqual(smallProve4.commitments.N_Y.byteLength, 144, "prove4 N_Y byte length");
+    const smallBindingSubcircuitInfos: ProverSubcircuitInfo[] = [
+      {
+        id: 0,
+        name: "synthetic-output-buffer",
+        Nwires: 3,
+        Nconsts: 0,
+        Out_idx: [1, 1],
+        In_idx: [2, 1],
+        flattenMap: [6, 0, 7],
+        bufferDirection: "out",
+      },
+      {
+        id: 1,
+        name: "synthetic-input-buffer",
+        Nwires: 3,
+        Nconsts: 0,
+        Out_idx: [2, 1],
+        In_idx: [1, 1],
+        flattenMap: [8, 1, 9],
+        bufferDirection: "in",
+      },
+    ];
+    const smallBindingPlacements = packPlacementVariables(runtime.Fr.byteLength, [
+      { subcircuitId: 0, variables: [runtime.Fr.zero, runtime.Fr.zero, runtime.Fr.zero] },
+      { subcircuitId: 1, variables: [runtime.Fr.zero, runtime.Fr.zero, runtime.Fr.zero] },
+    ]);
     const smallBinding = await buildProverBinding(
       runtime,
       smallCrs,
       prove0Setup,
-      emptyPlacementVariables(runtime.Fr.byteLength),
-      [],
+      smallBindingPlacements,
+      smallBindingSubcircuitInfos,
       smallProverState.instance.aFreeX,
       smallProverState.mixer,
       smallEncoder,
@@ -648,6 +680,83 @@ async function main(): Promise<void> {
       elementByteLength: 96,
     };
   }
+}
+
+function checkPublicWireLayout(): void {
+  const setup: SetupParams = {
+    l_free: 5,
+    l: 6,
+    l_user_out: 0,
+    l_user: 0,
+    l_D: 8,
+    m_D: 10,
+    n: 1,
+    s_D: 3,
+    s_max: 3,
+  };
+  const subcircuitInfos: ProverSubcircuitInfo[] = [
+    {
+      id: 0,
+      name: "renamable-output-buffer",
+      Nwires: 3,
+      Nconsts: 0,
+      Out_idx: [1, 2],
+      In_idx: [0, 0],
+      flattenMap: [6, 0, 1],
+      bufferDirection: "out",
+    },
+    {
+      id: 1,
+      name: "renamable-input-buffer",
+      Nwires: 3,
+      Nconsts: 0,
+      Out_idx: [0, 0],
+      In_idx: [1, 2],
+      flattenMap: [7, 3, 4],
+      bufferDirection: "in",
+    },
+    {
+      id: 2,
+      name: "another-renamable-input-buffer",
+      Nwires: 3,
+      Nconsts: 0,
+      Out_idx: [0, 0],
+      In_idx: [1, 1],
+      flattenMap: [8, 5, 9],
+      bufferDirection: "in",
+    },
+  ];
+  const placements: ProverPlacementVariables = {
+    subcircuitIds: Uint32Array.from([0, 1, 2]),
+    variableOffsets: Uint32Array.from([0, 0, 0, 0]),
+    variables: new Uint8Array(),
+    fieldByteLength: 32,
+  };
+
+  const layout = PublicWireLayout.derive(setup, subcircuitInfos);
+  layout.validateRuntimeBufferPlacements(placements);
+  assertEqual(layout.sourceForPublicWire(2), undefined, "public free padding source");
+  assertEqual(layout.sourceForPublicWire(5)?.subcircuitId, 2, "post-free public buffer phase");
+  assertEqual(countOMidVariables(setup, placements, subcircuitInfos), 2, "generic O_mid count");
+  assertEqual(countOPrvVariables(setup, placements, subcircuitInfos), 2, "generic O_prv count");
+
+  const invalidPlacements: ProverPlacementVariables = {
+    ...placements,
+    subcircuitIds: Uint32Array.from([0, 2, 1]),
+  };
+  assertThrows(
+    () => layout.validateRuntimeBufferPlacements(invalidPlacements),
+    "runtime buffer placement phase validation",
+  );
+}
+
+function assertThrows(action: () => void, label: string): void {
+  try {
+    action();
+  } catch {
+    return;
+  }
+  throw new Error(`${label} did not reject.`);
 }
 
 function packSparseR1cs(

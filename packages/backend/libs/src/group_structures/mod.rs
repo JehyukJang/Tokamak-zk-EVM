@@ -1,6 +1,6 @@
 use crate::bivariate_polynomial::{BivariatePolynomial, DensePolynomialExt};
 use crate::field_structures::{FieldSerde, Tau};
-use crate::iotools::public_wire_layout::PublicWireLayout;
+use crate::iotools::public_wire_layout::{GlobalWire, PublicWireLayout};
 use crate::iotools::{
     from_coef_vec_to_g1serde_mat, from_coef_vec_to_g1serde_vec, scaled_outer_product_1d,
     scaled_outer_product_2d, HexString, PlacementVariables, SetupParams, SubcircuitInfo,
@@ -184,84 +184,49 @@ where
 
 pub(crate) fn encode_o_pub_free_common<F>(
     placement_variables: &[PlacementVariables],
-    subcircuit_infos: &[SubcircuitInfo],
-    setup_params: &SetupParams,
+    public_wire_layout: &PublicWireLayout,
     mut gamma_at: F,
 ) -> G1serde
 where
     F: FnMut(usize) -> G1Affine,
 {
-    let mut aligned_rs = Vec::with_capacity(setup_params.l);
-    let mut aligned_wtns = Vec::with_capacity(setup_params.l);
-    for placement in placement_variables {
-        let subcircuit_id = placement.subcircuitId;
-        let variables = &placement.variables;
-        let subcircuit_info = &subcircuit_infos[subcircuit_id];
-        if subcircuit_info.name == "bufferEVMIn" {
-            continue;
-        }
-        let flatten_map = &subcircuit_info.flattenMap;
-        let (start_idx, end_idx_exclusive) = if subcircuit_info.name == "bufferPubOut" {
-            (
-                subcircuit_info.Out_idx[0],
-                subcircuit_info.Out_idx[0] + subcircuit_info.Out_idx[1],
-            )
-        } else if subcircuit_info.name == "bufferPubIn" {
-            (
-                subcircuit_info.In_idx[0],
-                subcircuit_info.In_idx[0] + subcircuit_info.In_idx[1],
-            )
-        } else if subcircuit_info.name == "bufferBlockIn" {
-            (
-                subcircuit_info.In_idx[0],
-                subcircuit_info.In_idx[0] + subcircuit_info.In_idx[1],
-            )
-        } else {
+    let mut aligned_rs = Vec::with_capacity(public_wire_layout.free_public_len());
+    let mut aligned_wtns = Vec::with_capacity(public_wire_layout.free_public_len());
+    for global_wire_index in 0..public_wire_layout.free_public_len() {
+        let Some(GlobalWire::Mapped {
+            subcircuit_id,
+            local_wire_index,
+        }) = public_wire_layout.source_for_public_wire(global_wire_index)
+        else {
             continue;
         };
-
-        for j in start_idx..end_idx_exclusive {
-            aligned_wtns.push(ScalarField::from_hex(&variables[j]));
-            let global_idx = flatten_map[j];
-            aligned_rs.push(gamma_at(global_idx));
-        }
+        let placement = &placement_variables[subcircuit_id];
+        aligned_wtns.push(ScalarField::from_hex(
+            &placement.variables[local_wire_index],
+        ));
+        aligned_rs.push(gamma_at(global_wire_index));
     }
     msm_g1_bases(&aligned_wtns, &aligned_rs)
 }
 
-pub(crate) fn count_o_mid_nvar(
+pub(crate) fn count_statement_nvar(
+    global_wire_index_offset: usize,
+    global_wire_index_end: usize,
     placement_variables: &[PlacementVariables],
     subcircuit_infos: &[SubcircuitInfo],
 ) -> usize {
-    let mut nVar: usize = 0;
+    let mut variable_count = 0;
     for placement in placement_variables {
         let subcircuit_info = &subcircuit_infos[placement.subcircuitId];
-        if subcircuit_info.name == "bufferPubOut" {
-            nVar += subcircuit_info.In_idx[1];
-        } else if subcircuit_info.name == "bufferPubIn"
-            || subcircuit_info.name == "bufferBlockIn"
-            || subcircuit_info.name == "bufferEVMIn"
-        {
-            nVar += subcircuit_info.Out_idx[1];
-        } else {
-            nVar += subcircuit_info.Out_idx[1] + subcircuit_info.In_idx[1];
+        for global_wire_index in subcircuit_info.flattenMap.iter().copied() {
+            if global_wire_index >= global_wire_index_offset
+                && global_wire_index < global_wire_index_end
+            {
+                variable_count += 1;
+            }
         }
-        nVar += 1; // Include each constant wire
     }
-    nVar
-}
-
-pub(crate) fn count_o_prv_nvar(
-    placement_variables: &[PlacementVariables],
-    subcircuit_infos: &[SubcircuitInfo],
-) -> usize {
-    let mut nVar: usize = 0;
-    for placement in placement_variables {
-        let subcircuit_info = &subcircuit_infos[placement.subcircuitId];
-        nVar += subcircuit_info.Nwires - subcircuit_info.In_idx[1] - subcircuit_info.Out_idx[1];
-        nVar -= 1; // Exclude each constant wire
-    }
-    nVar
+    variable_count
 }
 
 pub(crate) fn encode_statement_common<F>(
@@ -585,15 +550,11 @@ impl Sigma1 {
     pub fn encode_O_pub_free(
         &self,
         placement_variables: &[PlacementVariables],
-        subcircuit_infos: &[SubcircuitInfo],
-        setup_params: &SetupParams,
+        public_wire_layout: &PublicWireLayout,
     ) -> G1serde {
-        encode_o_pub_free_common(
-            placement_variables,
-            subcircuit_infos,
-            setup_params,
-            |global_idx| self.gamma_inv_o_inst[global_idx].0,
-        )
+        encode_o_pub_free_common(placement_variables, public_wire_layout, |global_idx| {
+            self.gamma_inv_o_inst[global_idx].0
+        })
     }
 
     pub fn encode_O_pub_fix(
@@ -615,7 +576,12 @@ impl Sigma1 {
         subcircuit_infos: &[SubcircuitInfo],
         setup_params: &SetupParams,
     ) -> G1serde {
-        let nVar = count_o_mid_nvar(placement_variables, subcircuit_infos);
+        let nVar = count_statement_nvar(
+            setup_params.l,
+            setup_params.l_D,
+            placement_variables,
+            subcircuit_infos,
+        );
         encode_statement_common(
             setup_params.l,
             setup_params.l_D,
@@ -632,7 +598,12 @@ impl Sigma1 {
         subcircuit_infos: &[SubcircuitInfo],
         setup_params: &SetupParams,
     ) -> G1serde {
-        let nVar = count_o_prv_nvar(placement_variables, subcircuit_infos);
+        let nVar = count_statement_nvar(
+            setup_params.l_D,
+            setup_params.m_D,
+            placement_variables,
+            subcircuit_infos,
+        );
         encode_statement_common(
             setup_params.l_D,
             setup_params.m_D,

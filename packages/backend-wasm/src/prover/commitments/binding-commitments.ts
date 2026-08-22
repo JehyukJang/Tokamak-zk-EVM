@@ -17,6 +17,7 @@ import {
   type ProverPlacementVariables,
   type ProverSubcircuitInfo,
 } from "../protocol/witness.js";
+import { PublicWireLayout } from "../protocol/public-wire-layout.js";
 import {
   type ProverCommitmentEncoder,
 } from "./commitment-encoder.js";
@@ -38,8 +39,10 @@ export async function buildProverBinding(
   mixer: ProverMixer,
   commitmentEncoder: ProverCommitmentEncoder,
 ): Promise<ProverBinding> {
+  const publicWireLayout = PublicWireLayout.derive(setup, subcircuitInfos);
+  publicWireLayout.validateRuntimeBufferPlacements(placementVariables);
   const A_free = await commitmentEncoder(aFreeX);
-  const O_pub_free = await encodeOPubFree(runtime, crs, placementVariables, subcircuitInfos);
+  const O_pub_free = await encodeOPubFree(runtime, crs, placementVariables, publicWireLayout);
   const O_mid_core = await encodeOMidNoZk(runtime, crs, setup, placementVariables, subcircuitInfos);
   const O_mid = runtime.G1.add(O_mid_core, runtime.G1.mulAffineScalar(crs.sigma1.delta, mixer.rO_mid));
   const O_prv_core = await encodeOPrvNoZk(runtime, crs, setup, placementVariables, subcircuitInfos);
@@ -74,66 +77,54 @@ export async function encodeOPubFree(
   runtime: CurveRuntime,
   crs: ProverCrsRuntime,
   placementVariables: ProverPlacementVariables,
-  subcircuitInfos: readonly ProverSubcircuitInfo[],
+  publicWireLayout: PublicWireLayout,
 ): Promise<Uint8Array> {
   const bases: Uint8Array[] = [];
   const scalars: FieldElement[] = [];
 
-  for (let placementIndex = 0; placementIndex < placementCount(placementVariables); placementIndex += 1) {
-    const subcircuitInfo = subcircuitInfos[placementSubcircuitId(placementVariables, placementIndex)];
-    if (subcircuitInfo.name === "bufferEVMIn") {
+  for (let globalIndex = 0; globalIndex < publicWireLayout.freePublicLen(); globalIndex += 1) {
+    const source = publicWireLayout.sourceForPublicWire(globalIndex);
+    if (source === undefined) {
       continue;
     }
-
-    const range = publicFreeRange(subcircuitInfo);
-    if (range === undefined) {
-      continue;
-    }
-
-    for (let localIndex = range.start; localIndex < range.end; localIndex += 1) {
-      const globalIndex = subcircuitInfo.flattenMap[localIndex];
-      bases.push(proverCrsG1PointAt(crs.sigma1.gammaInvOInst, globalIndex));
-      scalars.push(placementVariableAt(placementVariables, placementIndex, localIndex));
-    }
+    bases.push(proverCrsG1PointAt(crs.sigma1.gammaInvOInst, globalIndex));
+    scalars.push(placementVariableAt(placementVariables, source.subcircuitId, source.localWireIndex));
   }
 
   return msmG1(runtime, bases, scalars);
 }
 
 export function countOMidVariables(
+  setup: SetupParams,
   placementVariables: ProverPlacementVariables,
   subcircuitInfos: readonly ProverSubcircuitInfo[],
 ): number {
-  let count = 0;
-  for (let placementIndex = 0; placementIndex < placementCount(placementVariables); placementIndex += 1) {
-    const subcircuitInfo = subcircuitInfos[placementSubcircuitId(placementVariables, placementIndex)];
-    if (subcircuitInfo.name === "bufferPubOut") {
-      count += subcircuitInfo.In_idx[1];
-    } else if (
-      subcircuitInfo.name === "bufferPubIn" ||
-      subcircuitInfo.name === "bufferBlockIn" ||
-      subcircuitInfo.name === "bufferEVMIn"
-    ) {
-      count += subcircuitInfo.Out_idx[1];
-    } else {
-      count += subcircuitInfo.Out_idx[1] + subcircuitInfo.In_idx[1];
-    }
-    count += 1;
-  }
-
-  return count;
+  return countStatementVariables(setup.l, setup.l_D, placementVariables, subcircuitInfos);
 }
 
 export function countOPrvVariables(
+  setup: SetupParams,
+  placementVariables: ProverPlacementVariables,
+  subcircuitInfos: readonly ProverSubcircuitInfo[],
+): number {
+  return countStatementVariables(setup.l_D, setup.m_D, placementVariables, subcircuitInfos);
+}
+
+export function countStatementVariables(
+  globalWireIndexOffset: number,
+  globalWireIndexEnd: number,
   placementVariables: ProverPlacementVariables,
   subcircuitInfos: readonly ProverSubcircuitInfo[],
 ): number {
   let count = 0;
   for (let placementIndex = 0; placementIndex < placementCount(placementVariables); placementIndex += 1) {
     const subcircuitInfo = subcircuitInfos[placementSubcircuitId(placementVariables, placementIndex)];
-    count += subcircuitInfo.Nwires - subcircuitInfo.In_idx[1] - subcircuitInfo.Out_idx[1] - 1;
+    for (const globalWireIndex of subcircuitInfo.flattenMap) {
+      if (globalWireIndex >= globalWireIndexOffset && globalWireIndex < globalWireIndexEnd) {
+        count += 1;
+      }
+    }
   }
-
   return count;
 }
 
@@ -148,7 +139,7 @@ export async function encodeOMidNoZk(
     runtime,
     setup.l,
     setup.l_D,
-    countOMidVariables(placementVariables, subcircuitInfos),
+    countOMidVariables(setup, placementVariables, subcircuitInfos),
     placementVariables,
     subcircuitInfos,
     (globalIndex, placementIndex) =>
@@ -167,7 +158,7 @@ export async function encodeOPrvNoZk(
     runtime,
     setup.l_D,
     setup.m_D,
-    countOPrvVariables(placementVariables, subcircuitInfos),
+    countOPrvVariables(setup, placementVariables, subcircuitInfos),
     placementVariables,
     subcircuitInfos,
     (globalIndex, placementIndex) =>
@@ -219,23 +210,6 @@ async function encodeStatement(
   const compactScalars = scalars.subarray(0, nonzeroCount * runtime.Fr.byteLength);
   const rawScalars = await runtime.Fr.batchFromMontgomeryBuffer(compactScalars);
   return runtime.G1.msmAffineRaw(compactBases, rawScalars);
-}
-
-function publicFreeRange(
-  subcircuitInfo: ProverSubcircuitInfo,
-): { readonly start: number; readonly end: number } | undefined {
-  if (subcircuitInfo.name === "bufferPubOut") {
-    return { start: subcircuitInfo.Out_idx[0], end: subcircuitInfo.Out_idx[0] + subcircuitInfo.Out_idx[1] };
-  }
-
-  if (
-    subcircuitInfo.name === "bufferPubIn" ||
-    subcircuitInfo.name === "bufferBlockIn"
-  ) {
-    return { start: subcircuitInfo.In_idx[0], end: subcircuitInfo.In_idx[0] + subcircuitInfo.In_idx[1] };
-  }
-
-  return undefined;
 }
 
 function matrixAt(section: ProverCrsG1Section, width: number, row: number, column: number): Uint8Array {

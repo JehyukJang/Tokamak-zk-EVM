@@ -11,6 +11,7 @@ export interface ProverSubcircuitInfo {
   readonly Out_idx: readonly number[];
   readonly In_idx: readonly number[];
   readonly flattenMap: readonly number[];
+  readonly bufferDirection?: "in" | "out";
 }
 
 export interface ProverPlacementVariables {

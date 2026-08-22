@@ -1,10 +1,11 @@
 use crate::bivariate_polynomial::{BivariatePolynomial, DensePolynomialExt};
 use crate::field_structures::FieldSerde;
 use crate::group_structures::{
-    count_o_mid_nvar, count_o_prv_nvar, encode_o_pub_fix_common, encode_o_pub_free_common,
+    count_statement_nvar, encode_o_pub_fix_common, encode_o_pub_free_common,
     encode_statement_common, G1serde, G2serde, PartialSigma1, PartialSigma1Verify, Sigma, Sigma2,
     SigmaPreprocess, SigmaVerify,
 };
+use crate::iotools::public_wire_layout::PublicWireLayout;
 use crate::polynomial_structures::{from_subcircuit_to_QAP, QAP};
 #[cfg(feature = "timing")]
 use crate::timing::{record as record_timing, SizeInfo};
@@ -2074,15 +2075,11 @@ impl ArchivedSigma1Rkyv {
     pub fn encode_O_pub_free(
         &self,
         placement_variables: &[PlacementVariables],
-        subcircuit_infos: &[SubcircuitInfo],
-        setup_params: &SetupParams,
+        public_wire_layout: &PublicWireLayout,
     ) -> G1serde {
-        encode_o_pub_free_common(
-            placement_variables,
-            subcircuit_infos,
-            setup_params,
-            |global_idx| self.gamma_inv_o_inst[global_idx].to_g1_affine(),
-        )
+        encode_o_pub_free_common(placement_variables, public_wire_layout, |global_idx| {
+            self.gamma_inv_o_inst[global_idx].to_g1_affine()
+        })
     }
 
     pub fn encode_O_mid_no_zk(
@@ -2091,7 +2088,12 @@ impl ArchivedSigma1Rkyv {
         subcircuit_infos: &[SubcircuitInfo],
         setup_params: &SetupParams,
     ) -> G1serde {
-        let nVar = count_o_mid_nvar(placement_variables, subcircuit_infos);
+        let nVar = count_statement_nvar(
+            setup_params.l,
+            setup_params.l_D,
+            placement_variables,
+            subcircuit_infos,
+        );
         encode_statement_common(
             setup_params.l,
             setup_params.l_D,
@@ -2108,7 +2110,12 @@ impl ArchivedSigma1Rkyv {
         subcircuit_infos: &[SubcircuitInfo],
         setup_params: &SetupParams,
     ) -> G1serde {
-        let nVar = count_o_prv_nvar(placement_variables, subcircuit_infos);
+        let nVar = count_statement_nvar(
+            setup_params.l_D,
+            setup_params.m_D,
+            placement_variables,
+            subcircuit_infos,
+        );
         encode_statement_common(
             setup_params.l_D,
             setup_params.m_D,

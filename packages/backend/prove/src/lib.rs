@@ -6,6 +6,7 @@ use icicle_runtime::memory::HostSlice;
 use libs::bivariate_polynomial::{BivariatePolynomial, DensePolynomialExt, PolyExpr};
 use libs::field_structures::FieldSerde;
 use libs::group_structures::G1serde;
+use libs::iotools::public_wire_layout::{read_global_wires, PublicWireLayout};
 use libs::iotools::*;
 use libs::polynomial_structures::gen_bXY;
 use libs::utils::{
@@ -531,6 +532,20 @@ impl Prover {
             { PlacementVariables::read_box_from_json(placement_variables_path).unwrap() }
         );
 
+        let public_wire_layout =
+            crate::time_block!("init.derive.public_wire_layout", "validate", vec![], {
+                let global_wires =
+                    read_global_wires(PathBuf::from(paths.qap_path).join("globalWireList.json"))
+                        .expect("failed to read globalWireList.json");
+                let layout =
+                    PublicWireLayout::derive(&setup_params, &global_wires, &subcircuit_infos)
+                        .expect("incompatible public wire layout artifacts");
+                layout
+                    .validate_runtime_buffer_placements(&placement_variables)
+                    .expect("runtime buffer placements do not match the public wire layout");
+                layout
+            });
+
         let witness: Witness = {
             // Parsing the variables
             let bXY = crate::time_block!(
@@ -902,11 +917,9 @@ impl Prover {
                     dims: vec![setup_params.l_free, 1]
                 },],
                 {
-                    sigma.sigma1().encode_O_pub_free(
-                        &placement_variables,
-                        &subcircuit_infos,
-                        &setup_params,
-                    )
+                    sigma
+                        .sigma1()
+                        .encode_O_pub_free(&placement_variables, &public_wire_layout)
                 }
             );
 

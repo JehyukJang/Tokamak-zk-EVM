@@ -273,10 +273,9 @@ fn main() {
         let u_encoding = sigma.sigma_1.encode_poly(&mut uXY, &setup_params);
         let v_encoding = sigma.sigma_1.encode_poly(&mut vXY, &setup_params);
         let w_encoding = sigma.sigma_1.encode_poly(&mut wXY, &setup_params);
-        let O_inst =
-            sigma
-                .sigma_1
-                .encode_O_pub_free(&placement_variables, &subcircuit_infos, &setup_params);
+        let O_inst = sigma
+            .sigma_1
+            .encode_O_pub_free(&placement_variables, &public_wire_layout);
         let O_mid = sigma.sigma_1.encode_O_mid_no_zk(
             &placement_variables,
             &subcircuit_infos,

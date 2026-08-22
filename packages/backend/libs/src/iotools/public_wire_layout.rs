@@ -1,4 +1,4 @@
-use super::{BufferDirection, SetupParams, SubcircuitInfo};
+use super::{BufferDirection, PlacementVariables, SetupParams, SubcircuitInfo};
 use serde_json::from_reader;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -172,6 +172,27 @@ impl PublicWireLayout {
 
     pub fn segments(&self) -> &[PublicWireSegment] {
         &self.segments
+    }
+
+    pub fn validate_runtime_buffer_placements(
+        &self,
+        placement_variables: &[PlacementVariables],
+    ) -> Result<(), PublicWireLayoutError> {
+        for segment in self.segments() {
+            let placement = placement_variables.get(segment.phase).ok_or_else(|| {
+                error(format!(
+                    "public buffer phase {} has no runtime placement",
+                    segment.phase
+                ))
+            })?;
+            if placement.subcircuitId != segment.subcircuit_id {
+                return Err(error(format!(
+                    "runtime placement {} has subcircuit {}, expected public buffer {}",
+                    segment.phase, placement.subcircuitId, segment.subcircuit_id
+                )));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -373,7 +394,7 @@ fn public_port(subcircuit: &SubcircuitInfo) -> Result<Range<usize>, PublicWireLa
             subcircuit.id
         ))
     })?;
-    if start == 0 || end > subcircuit.Nwires + 1 {
+    if start == 0 || end > subcircuit.Nwires {
         return Err(error(format!(
             "buffer {} has an invalid public port range",
             subcircuit.id
@@ -567,6 +588,28 @@ mod tests {
             PublicWireLayout::derive(&setup_params, &global_wires, &subcircuits),
             "outside s_max",
         );
+    }
+
+    #[test]
+    fn validates_runtime_buffer_placement_phases() {
+        let (setup_params, global_wires, subcircuits) = six_public_buffer_artifacts();
+        let layout = PublicWireLayout::derive(&setup_params, &global_wires, &subcircuits).unwrap();
+        let mut placements = (0..6)
+            .map(|subcircuit_id| PlacementVariables {
+                subcircuitId: subcircuit_id,
+                variables: Box::new([]),
+            })
+            .collect::<Vec<_>>();
+
+        layout
+            .validate_runtime_buffer_placements(&placements)
+            .unwrap();
+
+        placements[4].subcircuitId = 6;
+        let error = layout
+            .validate_runtime_buffer_placements(&placements)
+            .unwrap_err();
+        assert!(error.to_string().contains("expected public buffer 4"));
     }
 
     fn assert_error(
