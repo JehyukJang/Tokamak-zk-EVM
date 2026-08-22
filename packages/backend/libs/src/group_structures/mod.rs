@@ -200,7 +200,20 @@ where
         else {
             continue;
         };
-        let placement = &placement_variables[subcircuit_id];
+        let placement_phase = public_wire_layout
+            .placement_phase_for_subcircuit(subcircuit_id)
+            .unwrap_or_else(|| panic!("public buffer {subcircuit_id} has no placement phase"));
+        let placement = placement_variables.get(placement_phase).unwrap_or_else(|| {
+            panic!(
+                "public buffer {subcircuit_id} has no runtime placement at phase {placement_phase}"
+            )
+        });
+        if placement.subcircuitId != subcircuit_id {
+            panic!(
+                "runtime placement phase {placement_phase} has subcircuit {}, expected public buffer {subcircuit_id}",
+                placement.subcircuitId
+            );
+        }
         aligned_wtns.push(ScalarField::from_hex(
             &placement.variables[local_wire_index],
         ));
@@ -351,10 +364,12 @@ fn public_lagrange_terms(
         .enumerate()
         .map(|(global_wire_index, value)| {
             public_wire_layout
-                .phase_for_public_wire(global_wire_index)
-                .map(|phase| {
-                    let lagrange_value = l_vec.get(phase).unwrap_or_else(|| {
-                        panic!("public wire phase {phase} is outside the Lagrange basis vector")
+                .placement_phase_for_public_wire(global_wire_index)
+                .map(|placement_phase| {
+                    let lagrange_value = l_vec.get(placement_phase).unwrap_or_else(|| {
+                        panic!(
+                            "public wire placement phase {placement_phase} is outside the Lagrange basis vector"
+                        )
                     });
                     *lagrange_value * *value
                 })
@@ -896,9 +911,24 @@ mod public_phase_tests {
         assert_eq!(terms[2], ScalarField::from_u32(51));
     }
 
+    #[test]
+    fn encodes_free_public_wires_by_placement_phase_not_subcircuit_id() {
+        let layout = test_public_wire_layout();
+        let placement_variables = [
+            placement(17, &["0x01", "0x02", "0x03"]),
+            placement(42, &["0x04", "0x05", "0x06"]),
+        ];
+
+        // Non-contiguous identifiers would be invalid slice indices. This must instead
+        // resolve them through the compiler-derived placement phases 0 and 1.
+        let encoded = encode_o_pub_free_common(&placement_variables, &layout, |_| G1Affine::zero());
+
+        assert_eq!(encoded, G1serde::zero());
+    }
+
     fn test_public_wire_layout() -> PublicWireLayout {
-        let mut output_buffer = buffer(0, BufferDirection::Out);
-        let mut input_buffer = buffer(1, BufferDirection::In);
+        let mut output_buffer = buffer(17, BufferDirection::Out);
+        let mut input_buffer = buffer(42, BufferDirection::In);
         output_buffer.flattenMap[1] = 0;
         output_buffer.flattenMap[0] = 3;
         output_buffer.flattenMap[2] = 4;
@@ -919,28 +949,28 @@ mod public_phase_tests {
         };
         let global_wires = [
             GlobalWire::Mapped {
-                subcircuit_id: 0,
+                subcircuit_id: 17,
                 local_wire_index: 1,
             },
             GlobalWire::Padding,
             GlobalWire::Mapped {
-                subcircuit_id: 1,
+                subcircuit_id: 42,
                 local_wire_index: 2,
             },
             GlobalWire::Mapped {
-                subcircuit_id: 0,
+                subcircuit_id: 17,
                 local_wire_index: 0,
             },
             GlobalWire::Mapped {
-                subcircuit_id: 0,
+                subcircuit_id: 17,
                 local_wire_index: 2,
             },
             GlobalWire::Mapped {
-                subcircuit_id: 1,
+                subcircuit_id: 42,
                 local_wire_index: 0,
             },
             GlobalWire::Mapped {
-                subcircuit_id: 1,
+                subcircuit_id: 42,
                 local_wire_index: 1,
             },
         ];
@@ -959,6 +989,17 @@ mod public_phase_tests {
             In_idx: vec![2, 1].into_boxed_slice(),
             flattenMap: vec![usize::MAX; 3].into_boxed_slice(),
             bufferDirection: Some(direction),
+        }
+    }
+
+    fn placement(subcircuit_id: usize, variables: &[&str]) -> PlacementVariables {
+        PlacementVariables {
+            subcircuitId: subcircuit_id,
+            variables: variables
+                .iter()
+                .map(|value| HexString((*value).to_owned()))
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
         }
     }
 }

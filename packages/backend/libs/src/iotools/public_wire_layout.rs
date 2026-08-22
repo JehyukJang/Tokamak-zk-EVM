@@ -21,7 +21,7 @@ pub struct PublicWireSegment {
     pub start: usize,
     pub end: usize,
     pub subcircuit_id: usize,
-    pub phase: usize,
+    pub placement_phase: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -29,6 +29,7 @@ pub struct PublicWireLayout {
     l_free: usize,
     sources: Box<[GlobalWire]>,
     segments: Box<[PublicWireSegment]>,
+    placement_phase_by_subcircuit_id: HashMap<usize, usize>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -61,7 +62,8 @@ impl PublicWireLayout {
         validate_dimensions(setup_params, global_wires, subcircuit_infos)?;
         let infos_by_id = index_subcircuits(subcircuit_infos)?;
         validate_global_wire_inverse(global_wires, &infos_by_id)?;
-        validate_buffer_prefix(&infos_by_id, setup_params.s_max)?;
+        let placement_phase_by_subcircuit_id =
+            derive_buffer_placement_phases(subcircuit_infos, setup_params.s_max)?;
 
         let mut sources = Vec::with_capacity(setup_params.l);
         let mut segments = Vec::new();
@@ -78,7 +80,12 @@ impl PublicWireLayout {
                             "public padding at wire {global_wire_index} is outside the free region"
                         )));
                     }
-                    finish_segment(&mut active_segment, &mut seen_public_buffers, &mut segments)?;
+                    finish_segment(
+                        &mut active_segment,
+                        &mut seen_public_buffers,
+                        &mut segments,
+                        &placement_phase_by_subcircuit_id,
+                    )?;
                     sources.push(GlobalWire::Padding);
                 }
                 GlobalWire::Mapped {
@@ -119,6 +126,7 @@ impl PublicWireLayout {
                                 &mut active_segment,
                                 &mut seen_public_buffers,
                                 &mut segments,
+                                &placement_phase_by_subcircuit_id,
                             )?;
                             if local_wire_index != public_port.start {
                                 return Err(error(format!(
@@ -138,12 +146,18 @@ impl PublicWireLayout {
                 }
             }
         }
-        finish_segment(&mut active_segment, &mut seen_public_buffers, &mut segments)?;
+        finish_segment(
+            &mut active_segment,
+            &mut seen_public_buffers,
+            &mut segments,
+            &placement_phase_by_subcircuit_id,
+        )?;
 
         Ok(Self {
             l_free: setup_params.l_free,
             sources: sources.into_boxed_slice(),
             segments: segments.into_boxed_slice(),
+            placement_phase_by_subcircuit_id,
         })
     }
 
@@ -163,32 +177,64 @@ impl PublicWireLayout {
         self.sources.get(global_wire_index).copied()
     }
 
-    pub fn phase_for_public_wire(&self, global_wire_index: usize) -> Option<usize> {
+    pub fn placement_phase_for_public_wire(&self, global_wire_index: usize) -> Option<usize> {
         match self.source_for_public_wire(global_wire_index)? {
             GlobalWire::Padding => None,
-            GlobalWire::Mapped { subcircuit_id, .. } => Some(subcircuit_id),
+            GlobalWire::Mapped { subcircuit_id, .. } => {
+                self.placement_phase_for_subcircuit(subcircuit_id)
+            }
         }
+    }
+
+    pub fn placement_phase_for_subcircuit(&self, subcircuit_id: usize) -> Option<usize> {
+        self.placement_phase_by_subcircuit_id
+            .get(&subcircuit_id)
+            .copied()
     }
 
     pub fn segments(&self) -> &[PublicWireSegment] {
         &self.segments
     }
 
-    pub fn validate_runtime_buffer_placements(
+    pub fn validate_runtime_public_buffer_placements(
         &self,
         placement_variables: &[PlacementVariables],
     ) -> Result<(), PublicWireLayoutError> {
-        for segment in self.segments() {
-            let placement = placement_variables.get(segment.phase).ok_or_else(|| {
-                error(format!(
-                    "public buffer phase {} has no runtime placement",
-                    segment.phase
-                ))
-            })?;
-            if placement.subcircuitId != segment.subcircuit_id {
+        let public_buffer_ids = self
+            .segments()
+            .iter()
+            .map(|segment| segment.subcircuit_id)
+            .collect::<HashSet<_>>();
+        let mut runtime_placement_by_subcircuit_id = HashMap::new();
+
+        for (placement_phase, placement) in placement_variables.iter().enumerate() {
+            if !public_buffer_ids.contains(&placement.subcircuitId) {
+                continue;
+            }
+            if let Some(previous_phase) =
+                runtime_placement_by_subcircuit_id.insert(placement.subcircuitId, placement_phase)
+            {
                 return Err(error(format!(
-                    "runtime placement {} has subcircuit {}, expected public buffer {}",
-                    segment.phase, placement.subcircuitId, segment.subcircuit_id
+                    "public buffer {} appears at runtime placement phases {previous_phase} and {placement_phase}",
+                    placement.subcircuitId
+                )));
+            }
+        }
+
+        for segment in self.segments() {
+            let runtime_phase = runtime_placement_by_subcircuit_id
+                .get(&segment.subcircuit_id)
+                .copied()
+                .ok_or_else(|| {
+                    error(format!(
+                        "public buffer {} has no runtime placement",
+                        segment.subcircuit_id
+                    ))
+                })?;
+            if runtime_phase != segment.placement_phase {
+                return Err(error(format!(
+                    "public buffer {} is at runtime placement phase {runtime_phase}, expected {}",
+                    segment.subcircuit_id, segment.placement_phase
                 )));
             }
         }
@@ -284,31 +330,37 @@ fn index_subcircuits(
     Ok(infos_by_id)
 }
 
-fn validate_buffer_prefix(
-    infos_by_id: &HashMap<usize, &SubcircuitInfo>,
+fn derive_buffer_placement_phases(
+    subcircuit_infos: &[SubcircuitInfo],
     s_max: usize,
-) -> Result<(), PublicWireLayoutError> {
-    let buffer_ids = infos_by_id
-        .values()
-        .filter_map(|subcircuit| subcircuit.bufferDirection.map(|_| subcircuit.id))
-        .collect::<HashSet<_>>();
+) -> Result<HashMap<usize, usize>, PublicWireLayoutError> {
+    let buffer_ids = subcircuit_infos
+        .iter()
+        .filter(|subcircuit| subcircuit.bufferDirection.is_some())
+        .map(|subcircuit| subcircuit.id)
+        .collect::<Vec<_>>();
 
     if buffer_ids.is_empty() {
         return Err(error("subcircuitInfo does not declare any buffers"));
     }
-    if let Some(out_of_domain_id) = buffer_ids.iter().copied().find(|id| *id >= s_max) {
+    if buffer_ids.len() > s_max {
         return Err(error(format!(
-            "buffer phase {out_of_domain_id} is outside s_max {s_max}"
+            "buffer placement phase {} is outside s_max {s_max}",
+            buffer_ids.len() - 1
         )));
     }
-    for expected_id in 0..buffer_ids.len() {
-        if !buffer_ids.contains(&expected_id) {
+    let mut placement_phase_by_subcircuit_id = HashMap::with_capacity(buffer_ids.len());
+    for (placement_phase, subcircuit_id) in buffer_ids.into_iter().enumerate() {
+        if placement_phase_by_subcircuit_id
+            .insert(subcircuit_id, placement_phase)
+            .is_some()
+        {
             return Err(error(format!(
-                "buffer subcircuit ids must form a prefix; missing id {expected_id}"
+                "subcircuitInfo contains duplicate buffer id {subcircuit_id}"
             )));
         }
     }
-    Ok(())
+    Ok(placement_phase_by_subcircuit_id)
 }
 
 fn validate_global_wire_inverse(
@@ -407,6 +459,7 @@ fn finish_segment(
     active_segment: &mut Option<ActiveSegment>,
     seen_public_buffers: &mut HashSet<usize>,
     segments: &mut Vec<PublicWireSegment>,
+    placement_phase_by_subcircuit_id: &HashMap<usize, usize>,
 ) -> Result<(), PublicWireLayoutError> {
     let Some(segment) = active_segment.take() else {
         return Ok(());
@@ -429,7 +482,15 @@ fn finish_segment(
         start: segment.start,
         end: segment.end,
         subcircuit_id: segment.subcircuit_id,
-        phase: segment.subcircuit_id,
+        placement_phase: placement_phase_by_subcircuit_id
+            .get(&segment.subcircuit_id)
+            .copied()
+            .ok_or_else(|| {
+                error(format!(
+                    "public buffer {} has no placement phase",
+                    segment.subcircuit_id
+                ))
+            })?,
     });
     Ok(())
 }
@@ -452,24 +513,24 @@ mod tests {
         let layout = PublicWireLayout::derive(&setup_params, &global_wires, &subcircuits).unwrap();
 
         assert_eq!(layout.len(), L);
-        assert_eq!(layout.phase_for_public_wire(0), Some(0));
-        assert_eq!(layout.phase_for_public_wire(50), Some(1));
-        assert_eq!(layout.phase_for_public_wire(80), Some(2));
-        assert_eq!(layout.phase_for_public_wire(130), Some(3));
-        assert_eq!(layout.phase_for_public_wire(134), Some(4));
-        assert_eq!(layout.phase_for_public_wire(158), None);
-        assert_eq!(layout.phase_for_public_wire(256), Some(5));
+        assert_eq!(layout.placement_phase_for_public_wire(0), Some(0));
+        assert_eq!(layout.placement_phase_for_public_wire(50), Some(1));
+        assert_eq!(layout.placement_phase_for_public_wire(80), Some(2));
+        assert_eq!(layout.placement_phase_for_public_wire(130), Some(3));
+        assert_eq!(layout.placement_phase_for_public_wire(134), Some(4));
+        assert_eq!(layout.placement_phase_for_public_wire(158), None);
+        assert_eq!(layout.placement_phase_for_public_wire(256), Some(5));
         assert!(layout.is_free_public_index(255));
         assert!(!layout.is_free_public_index(256));
         assert_eq!(
             layout.segments(),
             &[
-                segment(0, 50, 0),
-                segment(50, 80, 1),
-                segment(80, 130, 2),
-                segment(130, 134, 3),
-                segment(134, 158, 4),
-                segment(256, 396, 5),
+                segment(0, 50, 0, 0),
+                segment(50, 80, 1, 1),
+                segment(80, 130, 2, 2),
+                segment(130, 134, 3, 3),
+                segment(134, 158, 4, 4),
+                segment(256, 396, 5, 5),
             ]
         );
     }
@@ -558,25 +619,25 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_non_prefix_buffer_id() {
+    fn derives_placement_phase_from_buffer_order_not_subcircuit_id() {
         let (setup_params, mut global_wires, mut subcircuits) = six_public_buffer_artifacts();
-        subcircuits[6].id = 7;
+        subcircuits[2].id = 17;
         for source in &mut global_wires {
             if let GlobalWire::Mapped {
                 subcircuit_id,
                 local_wire_index: _,
             } = source
             {
-                if *subcircuit_id == 6 {
-                    *subcircuit_id = 7;
+                if *subcircuit_id == 2 {
+                    *subcircuit_id = 17;
                 }
             }
         }
 
-        assert_error(
-            PublicWireLayout::derive(&setup_params, &global_wires, &subcircuits),
-            "must form a prefix",
-        );
+        let layout = PublicWireLayout::derive(&setup_params, &global_wires, &subcircuits).unwrap();
+        assert_eq!(layout.placement_phase_for_public_wire(80), Some(2));
+        assert_eq!(layout.placement_phase_for_subcircuit(17), Some(2));
+        assert_eq!(layout.segments()[2], segment(80, 130, 17, 2));
     }
 
     #[test]
@@ -591,8 +652,20 @@ mod tests {
     }
 
     #[test]
-    fn validates_runtime_buffer_placement_phases() {
-        let (setup_params, global_wires, subcircuits) = six_public_buffer_artifacts();
+    fn validates_runtime_public_buffer_placement_phases() {
+        let (setup_params, mut global_wires, mut subcircuits) = six_public_buffer_artifacts();
+        subcircuits[2].id = 17;
+        for source in &mut global_wires {
+            if let GlobalWire::Mapped {
+                subcircuit_id,
+                local_wire_index: _,
+            } = source
+            {
+                if *subcircuit_id == 2 {
+                    *subcircuit_id = 17;
+                }
+            }
+        }
         let layout = PublicWireLayout::derive(&setup_params, &global_wires, &subcircuits).unwrap();
         let mut placements = (0..6)
             .map(|subcircuit_id| PlacementVariables {
@@ -600,16 +673,31 @@ mod tests {
                 variables: Box::new([]),
             })
             .collect::<Vec<_>>();
+        placements[2].subcircuitId = 17;
 
         layout
-            .validate_runtime_buffer_placements(&placements)
+            .validate_runtime_public_buffer_placements(&placements)
             .unwrap();
 
         placements[4].subcircuitId = 6;
+        placements[5].subcircuitId = 4;
         let error = layout
-            .validate_runtime_buffer_placements(&placements)
+            .validate_runtime_public_buffer_placements(&placements)
             .unwrap_err();
-        assert!(error.to_string().contains("expected public buffer 4"));
+        assert!(error.to_string().contains("expected 4"));
+
+        placements[4].subcircuitId = 4;
+        placements[5].subcircuitId = 5;
+        placements.push(PlacementVariables {
+            subcircuitId: 17,
+            variables: Box::new([]),
+        });
+        let error = layout
+            .validate_runtime_public_buffer_placements(&placements)
+            .unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("appears at runtime placement phases"));
     }
 
     fn assert_error(
@@ -692,12 +780,17 @@ mod tests {
         }
     }
 
-    fn segment(start: usize, end: usize, phase: usize) -> PublicWireSegment {
+    fn segment(
+        start: usize,
+        end: usize,
+        subcircuit_id: usize,
+        placement_phase: usize,
+    ) -> PublicWireSegment {
         PublicWireSegment {
             start,
             end,
-            subcircuit_id: phase,
-            phase,
+            subcircuit_id,
+            placement_phase,
         }
     }
 

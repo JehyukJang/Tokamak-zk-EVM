@@ -837,8 +837,8 @@ fn process_prepare(config: &Phase2PrepareConfig, _is_gpu_enabled: bool) -> Sigma
         .enumerate()
         .for_each(|(global_idx, cell)| {
             let mut value = public_wire_layout
-                .phase_for_public_wire(global_idx)
-                .map(|phase| o_commitments[global_idx] * l_evaled_vec[phase])
+                .placement_phase_for_public_wire(global_idx)
+                .map(|placement_phase| o_commitments[global_idx] * l_evaled_vec[placement_phase])
                 .unwrap_or_else(G1serde::zero);
             if public_wire_layout.is_free_public_index(global_idx) {
                 value = value + m_commitments[global_idx];

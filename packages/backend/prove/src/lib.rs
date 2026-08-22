@@ -541,7 +541,7 @@ impl Prover {
                     PublicWireLayout::derive(&setup_params, &global_wires, &subcircuit_infos)
                         .expect("incompatible public wire layout artifacts");
                 layout
-                    .validate_runtime_buffer_placements(&placement_variables)
+                    .validate_runtime_public_buffer_placements(&placement_variables)
                     .expect("runtime buffer placements do not match the public wire layout");
                 layout
             });
