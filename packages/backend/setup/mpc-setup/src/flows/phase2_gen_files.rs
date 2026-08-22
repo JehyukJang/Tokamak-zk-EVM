@@ -27,6 +27,7 @@ pub fn run(config: &Phase2GenFilesConfig) {
     timer.log_step("write final CRS artifacts");
 
     let provenance = FinalCrsProvenance {
+        release_eligible: true,
         generated_at_utc: Utc::now().to_rfc3339(),
         compatible_backend_version: compatible_backend_version().to_string(),
         subcircuit_library: SubcircuitLibraryProvenance {

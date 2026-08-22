@@ -12,8 +12,9 @@ The backend is organized around six user-facing binaries:
 - `prove`
 - `verify`
 
-`trusted-setup` and `mpc-setup` generate CRS artifacts. `preprocess`, `prove`, and `verify`
-consume those artifacts together with transaction-specific data from the frontend synthesizer.
+`trusted-setup` generates development-only Sigma artifacts. `mpc-setup` generates
+release-eligible CRS artifacts. `preprocess`, `prove`, and `verify` consume those artifacts
+together with transaction-specific data from the frontend synthesizer.
 
 ## Prerequisites
 
@@ -64,7 +65,13 @@ still consumes only `r1cs/subcircuit*.r1cs` from that prepared library.
 
 ### `trusted-setup`
 
-Generates a CRS directly from the subcircuit library.
+Generates a Sigma directly from the subcircuit library for local development and testing. Its
+output is never release-eligible and must not be deployed or published. This holds even when the
+binary itself is built with Cargo's release profile.
+
+The generated `crs_provenance.json` records `releaseEligible: false`. Release preprocess, prove,
+verify, and publication paths reject it. Only the documented non-release development workflow may
+use it with the explicit `--allow-unverified-crs` option.
 
 Release example:
 
@@ -124,6 +131,7 @@ See [setup/mpc-setup/README.md](./setup/mpc-setup/README.md) for the full MPC op
 - `combined_sigma.rkyv`
 - `sigma_preprocess.rkyv`
 - `sigma_verify.json`
+- `crs_provenance.json` with `releaseEligible: false`
 
 `mpc-setup` final output:
 
@@ -132,9 +140,10 @@ See [setup/mpc-setup/README.md](./setup/mpc-setup/README.md) for the full MPC op
 - `sigma_verify.json`
 - `crs_provenance.json`
 
-`crs_provenance.json` binds the final CRS files to their SHA-256 digests. In dusk-backed mode it
-also records the pinned Dusk source metadata, the Dusk raw digest, publication metadata, the CRS
-generation timestamp, and the backend version.
+MPC provenance records `releaseEligible: true`; only this value is accepted by release and
+deployment consumers. `crs_provenance.json` also binds final CRS files to their SHA-256 digests.
+In dusk-backed mode it records the pinned Dusk source metadata, the Dusk raw digest, publication
+metadata, the CRS generation timestamp, and the backend version.
 
 ## Prove and Verify Inputs
 

@@ -11,7 +11,8 @@ instead of accepting a runtime path argument.
 
 ## Overview
 
-The final CRS output format is identical in both modes. Only the phase-1 source differs.
+The final CRS output format is identical in both modes. Only the phase-1 source differs. Both
+write provenance with `releaseEligible: true`.
 
 - `native_mpc_setup`
   - Runs the Tokamak x-only phase-1 flow and then the Tokamak phase-2 flow.
@@ -22,7 +23,7 @@ The final CRS output format is identical in both modes. Only the phase-1 source 
 Both wrappers write:
 
 - intermediate ceremony artifacts to `--intermediate`
-- final trusted-setup-compatible artifacts to `--output`
+- final release-eligible CRS artifacts to `--output`
 
 The mathematical formulas, trapdoor ownership, contribution checks, and known
 security limitation of the implemented phase-2 protocol are documented in the
@@ -170,7 +171,8 @@ The final output directory contains only:
 - `sigma_verify.json`
 - `crs_provenance.json`
 
-This matches the trusted-setup artifact set, with the additional provenance manifest.
+Trusted setup emits the same three Sigma files for local development, but its provenance records
+`releaseEligible: false`. It is not a release or deployment CRS and must not be published.
 
 For release builds, Cargo also emits `build-metadata-mpc-setup.json` into
 `packages/backend/target/release/`. The release-only Google Drive publication path refuses to
@@ -182,11 +184,13 @@ publish unless that metadata file exists and matches:
 
 ## CRS Provenance
 
-`crs_provenance.json` is a final output artifact. Service-side loaders should reject a CRS
-unless this manifest matches both the pinned Dusk source and the exact final CRS bytes.
+`crs_provenance.json` is a final output artifact. Service-side loaders must require
+`releaseEligible: true` before accepting a CRS for release or deployment, and should then verify
+the applicable provenance fields and exact final CRS bytes.
 
 For every CRS, the manifest also records:
 
+- `releaseEligible: true`
 - `generated_at_utc`
 - `compatibleBackendVersion`
 - `subcircuitLibrary.packageName`

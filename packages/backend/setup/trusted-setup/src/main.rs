@@ -480,9 +480,12 @@ fn main() {
     std::fs::create_dir_all(&output_dir_path).expect("Failed to create output directory");
     {
         use libs::iotools::write_final_crs_artifacts;
+        use libs::subcircuit_library::write_development_only_trusted_setup_provenance;
         println!("Writing final CRS artifacts...");
         write_final_crs_artifacts(&output_dir_path, &sigma)
             .expect("Failed to write final CRS artifacts");
+        write_development_only_trusted_setup_provenance(&output_dir_path)
+            .expect("Failed to write trusted-setup development provenance");
     }
     let lap = start.elapsed();
     println!("The sigma writing time: {:.6} seconds", lap.as_secs_f64());

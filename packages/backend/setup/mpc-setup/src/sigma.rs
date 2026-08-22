@@ -61,6 +61,7 @@ pub struct SubcircuitLibraryProvenance {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FinalCrsProvenance {
+    pub release_eligible: bool,
     pub generated_at_utc: String,
     pub compatible_backend_version: String,
     pub subcircuit_library: SubcircuitLibraryProvenance,

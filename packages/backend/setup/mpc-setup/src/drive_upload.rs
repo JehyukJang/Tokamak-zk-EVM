@@ -94,6 +94,7 @@ pub fn publish_output_archive(
 
     let mut provenance = read_provenance(&output_path)?;
     let original_provenance = provenance.clone();
+    ensure_release_eligible(provenance.release_eligible)?;
     let provenance_compatible_version = validate_canonical_compatible_version(
         &provenance.compatible_backend_version,
         "crs_provenance.json compatibleBackendVersion",
@@ -136,6 +137,15 @@ pub fn publish_output_archive(
         archive_name,
         crs_download_url: upload_result.crs_download_url,
     })
+}
+
+fn ensure_release_eligible(release_eligible: bool) -> Result<(), DriveUploadError> {
+    if release_eligible {
+        return Ok(());
+    }
+    Err(DriveUploadError::Message(
+        "only release-eligible CRS artifacts may be published".to_string(),
+    ))
 }
 
 fn read_drive_upload_config() -> Result<DriveUploadConfig, DriveUploadError> {
@@ -711,4 +721,15 @@ async fn build_drive_hub(
         .build();
     let client = Client::builder().build(https);
     Ok(DriveHub::new(client, auth))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ensure_release_eligible;
+
+    #[test]
+    fn rejects_publication_of_a_development_only_crs() {
+        assert!(ensure_release_eligible(false).is_err());
+        assert!(ensure_release_eligible(true).is_ok());
+    }
 }
