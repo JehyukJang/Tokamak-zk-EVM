@@ -41,6 +41,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 use std::{env, fmt};
 
+pub mod public_wire_layout;
+
 #[macro_export]
 macro_rules! impl_read_from_json {
     ($t:ty) => {
@@ -336,6 +338,13 @@ impl Permutation {
     }
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum BufferDirection {
+    In,
+    Out,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct SubcircuitInfo {
     pub id: usize,
@@ -345,6 +354,8 @@ pub struct SubcircuitInfo {
     pub Out_idx: Box<[usize]>,
     pub In_idx: Box<[usize]>,
     pub flattenMap: Box<[usize]>,
+    #[serde(default)]
+    pub bufferDirection: Option<BufferDirection>,
 }
 
 impl_read_box_from_json!(SubcircuitInfo);
