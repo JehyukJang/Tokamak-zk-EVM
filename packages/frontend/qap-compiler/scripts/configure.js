@@ -1,4 +1,4 @@
-module.exports.S_MAX = 512
+module.exports.S_MAX = 256
 
 const BASE_SUBCIRCUIT_NAMES = Object.freeze([
   'bufferLogOut', 'bufferStorageStore', 'bufferStorageLoad', 'bufferTxIn',

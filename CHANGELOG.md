@@ -60,13 +60,13 @@ for this unreleased circuit set.
 | Sum of R1CS wires across one instance of every distinct type | 25,893 | 23,762 | -2,131 (-8.2%) |
 | Largest single-subcircuit constraint count | 3,936 | 1,024 | -2,912 |
 | Declared subcircuit count (`s_D`) | 14 | 44 | +30 |
-| Maximum placements (`s_max`) | 256 | 512 | +256 |
+| Maximum placements (`s_max`) | 256 | 256 | Unchanged |
 | Setup constraint-domain parameter (`n`) | 4,096 | 1,024 | -3,072 |
 | Total generated matrix dimension (`m_D`) | 26,591 | 24,079 | -2,512 (-9.4%) |
 | Total generated wire-domain boundary (`l_D`) | 4,824 | 1,420 | -3,404 (-70.6%) |
 | Internal placement-interface width (`m_I = l_D - l`) | 4,096 | 1,024 | -3,072 (-75.0%) |
-| Constraint grid size (`n × s_max`) | 1,048,576 | 524,288 | -524,288 (-50.0%) |
-| Interface grid size (`m_I × s_max`) | 1,048,576 | 524,288 | -524,288 (-50.0%) |
+| Constraint grid size (`n × s_max`) | 1,048,576 | 262,144 | -786,432 (-75.0%) |
+| Interface grid size (`m_I × s_max`) | 1,048,576 | 262,144 | -786,432 (-75.0%) |
 
 The changed public-wire boundaries and static buffer capacities are:
 
