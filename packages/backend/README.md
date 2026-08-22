@@ -211,17 +211,18 @@ do not compile or accept that option and always validate CRS provenance compatib
 
 ## Timing Report for `prove`
 
-The backend includes a human-readable timing report generated from raw timing data:
+The backend includes a human-readable release timing report for the current local CPU baseline,
+generated from raw timing data:
 
-- report: [prove/optimization/timing.release.md](prove/optimization/timing.release.md)
-- raw data: [prove/optimization/timing.release.json](prove/optimization/timing.release.json)
+- report: [prove/optimization/timing.local.cpu.current.md](prove/optimization/timing.local.cpu.current.md)
+- raw data: [prove/optimization/timing.local.cpu.current.json](prove/optimization/timing.local.cpu.current.json)
 
 Regenerate the markdown report after updating the JSON:
 
 ```bash
 python3 prove/optimization/scripts/timing_to_md.py \
-  --input prove/optimization/timing.release.json \
-  --output prove/optimization/timing.release.md
+  --input prove/optimization/timing.local.cpu.current.json \
+  --output prove/optimization/timing.local.cpu.current.md
 ```
 
 ## Contributing
