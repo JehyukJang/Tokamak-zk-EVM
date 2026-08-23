@@ -641,6 +641,71 @@ mod tests {
     }
 
     #[test]
+    fn derives_phase_when_the_public_buffer_count_increases() {
+        let (mut setup_params, _, mut subcircuits) = six_public_buffer_artifacts();
+        let public_ranges = [
+            (0, 50, 0),
+            (50, 80, 1),
+            (80, 130, 2),
+            (130, 134, 3),
+            (134, 158, 4),
+            (158, 208, 6),
+            (256, 396, 5),
+        ];
+        let global_wires = rebuild_global_wires(&mut subcircuits, L, &public_ranges);
+        setup_params.m_D = global_wires.len();
+
+        let layout = PublicWireLayout::derive(&setup_params, &global_wires, &subcircuits).unwrap();
+        assert_eq!(layout.placement_phase_for_public_wire(158), Some(6));
+        assert_eq!(layout.placement_phase_for_subcircuit(6), Some(6));
+        assert!(layout.segments().contains(&segment(158, 208, 6, 6)));
+
+        let placements = (0..=6)
+            .map(|subcircuit_id| PlacementVariables {
+                subcircuitId: subcircuit_id,
+                variables: Box::new([]),
+            })
+            .collect::<Vec<_>>();
+        layout
+            .validate_runtime_public_buffer_placements(&placements)
+            .unwrap();
+    }
+
+    #[test]
+    fn ignores_reordered_non_buffer_subcircuits_when_deriving_phases() {
+        let (mut setup_params, mut global_wires, mut subcircuits) = six_public_buffer_artifacts();
+        subcircuits.insert(1, ordinary_subcircuit(19));
+        subcircuits.insert(5, ordinary_subcircuit(17));
+        populate_remaining_global_wires(&mut global_wires, &mut subcircuits);
+        setup_params.m_D = global_wires.len();
+        setup_params.s_D = subcircuits.len();
+
+        let layout = PublicWireLayout::derive(&setup_params, &global_wires, &subcircuits).unwrap();
+        assert_eq!(layout.placement_phase_for_subcircuit(0), Some(0));
+        assert_eq!(layout.placement_phase_for_subcircuit(1), Some(1));
+        assert_eq!(layout.placement_phase_for_subcircuit(2), Some(2));
+        assert_eq!(layout.placement_phase_for_subcircuit(5), Some(5));
+
+        let placements = (0..6)
+            .map(|subcircuit_id| PlacementVariables {
+                subcircuitId: subcircuit_id,
+                variables: Box::new([]),
+            })
+            .chain(
+                [19, 17]
+                    .into_iter()
+                    .map(|subcircuit_id| PlacementVariables {
+                        subcircuitId: subcircuit_id,
+                        variables: Box::new([]),
+                    }),
+            )
+            .collect::<Vec<_>>();
+        layout
+            .validate_runtime_public_buffer_placements(&placements)
+            .unwrap();
+    }
+
+    #[test]
     fn rejects_a_public_phase_outside_the_placement_domain() {
         let (mut setup_params, global_wires, subcircuits) = six_public_buffer_artifacts();
         setup_params.s_max = 5;
@@ -736,16 +801,12 @@ mod tests {
             (256, 396, 5),
         ];
         for (start, end, subcircuit_id) in public_ranges {
-            let subcircuit = &mut subcircuits[subcircuit_id];
-            let public_port = public_port(subcircuit).unwrap();
-            for (offset, global_wire_index) in (start..end).enumerate() {
-                let local_wire_index = public_port.start + offset;
-                subcircuit.flattenMap[local_wire_index] = global_wire_index;
-                global_wires[global_wire_index] = GlobalWire::Mapped {
-                    subcircuit_id,
-                    local_wire_index,
-                };
-            }
+            map_public_range(
+                &mut global_wires,
+                &mut subcircuits[subcircuit_id],
+                start,
+                end,
+            );
         }
         populate_remaining_global_wires(&mut global_wires, &mut subcircuits);
 
@@ -778,6 +839,61 @@ mod tests {
             flattenMap: vec![usize::MAX; n_wires].into_boxed_slice(),
             bufferDirection: Some(direction),
         }
+    }
+
+    fn ordinary_subcircuit(id: usize) -> SubcircuitInfo {
+        SubcircuitInfo {
+            id,
+            name: format!("ordinary{id}"),
+            Nwires: 1,
+            Nconsts: 0,
+            Out_idx: Box::new([]),
+            In_idx: Box::new([]),
+            flattenMap: vec![usize::MAX].into_boxed_slice(),
+            bufferDirection: None,
+        }
+    }
+
+    fn map_public_range(
+        global_wires: &mut [GlobalWire],
+        subcircuit: &mut SubcircuitInfo,
+        start: usize,
+        end: usize,
+    ) {
+        let public_port = public_port(subcircuit).expect("fixture must define a public buffer");
+        assert_eq!(
+            end - start,
+            public_port.end - public_port.start,
+            "fixture public range must match the buffer capacity"
+        );
+        for (offset, global_wire_index) in (start..end).enumerate() {
+            let local_wire_index = public_port.start + offset;
+            subcircuit.flattenMap[local_wire_index] = global_wire_index;
+            global_wires[global_wire_index] = GlobalWire::Mapped {
+                subcircuit_id: subcircuit.id,
+                local_wire_index,
+            };
+        }
+    }
+
+    fn rebuild_global_wires(
+        subcircuits: &mut [SubcircuitInfo],
+        public_wire_count: usize,
+        public_ranges: &[(usize, usize, usize)],
+    ) -> Vec<GlobalWire> {
+        for subcircuit in subcircuits.iter_mut() {
+            subcircuit.flattenMap.fill(usize::MAX);
+        }
+        let mut global_wires = vec![GlobalWire::Padding; public_wire_count];
+        for &(start, end, subcircuit_id) in public_ranges {
+            let subcircuit = subcircuits
+                .iter_mut()
+                .find(|subcircuit| subcircuit.id == subcircuit_id)
+                .expect("fixture range must reference a known subcircuit");
+            map_public_range(&mut global_wires, subcircuit, start, end);
+        }
+        populate_remaining_global_wires(&mut global_wires, subcircuits);
+        global_wires
     }
 
     fn segment(
