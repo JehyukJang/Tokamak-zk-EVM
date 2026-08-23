@@ -10,9 +10,11 @@ use std::path::PathBuf;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(feature = "timing")]
+use libs::proof_protocol::TranscriptManager;
+#[cfg(feature = "timing")]
 use libs::utils::check_device;
 #[cfg(feature = "timing")]
-use prove::{ProveInputPaths, Prover, TranscriptManager};
+use prove::{ProveInputPaths, Prover};
 
 #[cfg(feature = "timing")]
 use prove::timing;
@@ -112,7 +114,8 @@ fn timing_prove_stages() {
     timing::reset();
     let wall_start = Instant::now();
 
-    let (mut prover, _binding) = Prover::init(&paths);
+    let (mut prover, _binding) =
+        Prover::init(&paths).expect("prover initialization must succeed for a timing run");
     let setup_params = SetupParamsSummary {
         l_free: prover.setup_params.l_free,
         l: prover.setup_params.l,

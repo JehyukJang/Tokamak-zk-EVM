@@ -11,8 +11,6 @@ homepage = { workspace = true }
 icicle-core = { workspace = true }
 icicle-bls12-381 = { workspace = true }
 libs = { workspace = true }
-preprocess = { workspace = true }
-prove = { workspace = true }
 clap = { workspace = true }
 thiserror = { workspace = true }
 

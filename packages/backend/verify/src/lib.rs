@@ -8,12 +8,13 @@ use libs::errors::{ArtifactError, CrsError, DeviceError};
 use libs::group_structures::pairing;
 use libs::group_structures::{G1serde, SigmaVerify};
 use libs::iotools::{Instance, SetupParams};
+use libs::proof_protocol::{
+    FormattedPreprocess, FormattedProof, Preprocess, Proof, Proof4, Proof4Test, TranscriptManager,
+};
 use libs::utils::{
     prover_verifier_ntt_domain_size, try_init_ntt_domain, try_load_setup_params_from_qap_path,
     try_setup_shape, try_validate_setup_shape,
 };
-use preprocess::{FormattedPreprocess, Preprocess};
-use prove::*;
 use std::path::PathBuf;
 use thiserror::Error;
 

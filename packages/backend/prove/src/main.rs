@@ -1,11 +1,12 @@
 use clap::Parser;
 use libs::cli::render_error;
+use libs::proof_protocol::{Proof, TranscriptManager};
 use libs::subcircuit_library::{
     try_resolve_subcircuit_library_path, validate_operational_crs_compatibility,
     DevelopmentCrsProvenanceArg, SubcircuitLibraryArg,
 };
 use libs::utils::try_check_device;
-use prove::{Proof, ProveError, ProveInputPaths, Prover, TranscriptManager};
+use prove::{ProveError, ProveInputPaths, Prover};
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Instant;

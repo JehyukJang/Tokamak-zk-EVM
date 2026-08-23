@@ -2,13 +2,13 @@ use clap::Parser;
 use libs::cli::render_error;
 #[cfg(feature = "testing-mode")]
 use libs::errors::ArtifactError;
+#[cfg(feature = "testing-mode")]
+use libs::proof_protocol::Proof4Test;
 use libs::subcircuit_library::{
     try_resolve_subcircuit_library_path, validate_operational_crs_compatibility,
     DevelopmentCrsProvenanceArg, SubcircuitLibraryArg,
 };
 use libs::utils::try_check_device;
-#[cfg(feature = "testing-mode")]
-use prove::Proof4Test;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use verify::{Verifier, VerifyError, VerifyInputPaths};
