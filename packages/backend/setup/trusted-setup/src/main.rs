@@ -5,24 +5,27 @@ use icicle_bls12_381::curve::{
 };
 use icicle_core::curve::Curve;
 use icicle_core::traits::FieldImpl;
+use libs::cli::render_error;
+use libs::errors::ArtifactError;
 use libs::field_structures::{from_r1cs_to_evaled_qap_mixture, Tau};
 use libs::group_structures::Sigma;
 use libs::iotools::public_wire_layout::{read_global_wires, GlobalWire, PublicWireLayout};
 use libs::iotools::{SetupParams, SubcircuitInfo, SubcircuitR1CS};
-use libs::subcircuit_library::{resolve_subcircuit_library_path, SubcircuitLibraryArg};
+use libs::subcircuit_library::{try_resolve_subcircuit_library_path, SubcircuitLibraryArg};
 #[cfg(not(feature = "testing-mode"))]
 use libs::utils::trusted_setup_ntt_domain_size;
 #[cfg(feature = "testing-mode")]
 use libs::utils::trusted_setup_testing_ntt_domain_size;
 use libs::utils::{
-    check_device, init_ntt_domain, load_setup_params_from_qap_path, setup_shape,
-    validate_public_wire_size, validate_setup_shape,
+    try_check_device, try_init_ntt_domain, try_load_setup_params_from_qap_path, try_setup_shape,
+    try_validate_setup_shape, validate_public_wire_size,
 };
 use libs::vector_operations::gen_evaled_lagrange_bases;
 use std::path::PathBuf;
+use std::process::ExitCode;
 use std::time::Instant;
 use std::vec;
-use trusted_setup::SetupInputPaths;
+use trusted_setup::{SetupInputPaths, TrustedSetupError};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -44,9 +47,16 @@ struct Config {
     fixed_tau: bool,
 }
 
-fn main() {
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => render_error(&error),
+    }
+}
+
+fn run() -> Result<(), TrustedSetupError> {
     let config = Config::parse();
-    let qap_path = resolve_subcircuit_library_path(config.subcircuit_library.as_deref())
+    let qap_path = try_resolve_subcircuit_library_path(config.subcircuit_library.as_deref())?
         .to_string_lossy()
         .into_owned();
 
@@ -62,7 +72,7 @@ fn main() {
         synthesizer_path: &config.synthesizer_stat,
     };
 
-    check_device();
+    try_check_device()?;
     let start1 = Instant::now();
 
     let (g1_gen, g2_gen, tau) = if config.fixed_tau {
@@ -86,9 +96,10 @@ fn main() {
         )
     };
 
-    let setup_params: SetupParams = load_setup_params_from_qap_path(paths.qap_path);
-    let shape = setup_shape(&setup_params);
-    validate_setup_shape(&shape);
+    let setup_params_path = PathBuf::from(paths.qap_path).join("setupParams.json");
+    let setup_params: SetupParams = try_load_setup_params_from_qap_path(paths.qap_path)?;
+    let shape = try_setup_shape(&setup_params, &setup_params_path)?;
+    try_validate_setup_shape(&shape, &setup_params_path)?;
     validate_public_wire_size(shape.l_free);
 
     let m_d = setup_params.m_D;
@@ -104,15 +115,31 @@ fn main() {
     let ntt_domain_size = trusted_setup_testing_ntt_domain_size(&shape);
     #[cfg(not(feature = "testing-mode"))]
     let ntt_domain_size = trusted_setup_ntt_domain_size(&shape);
-    init_ntt_domain(ntt_domain_size);
+    try_init_ntt_domain(ntt_domain_size)?;
 
     let subcircuit_infos_path = PathBuf::from(paths.qap_path).join("subcircuitInfo.json");
-    let subcircuit_infos = SubcircuitInfo::read_box_from_json(subcircuit_infos_path).unwrap();
+    let subcircuit_infos = SubcircuitInfo::read_box_from_json(subcircuit_infos_path.clone())
+        .map_err(|source| ArtifactError::Read {
+            artifact: "subcircuit information",
+            path: subcircuit_infos_path,
+            source,
+        })?;
 
     let global_wire_list_path = PathBuf::from(paths.qap_path).join("globalWireList.json");
-    let global_wire_list = read_global_wires(global_wire_list_path).unwrap();
+    let global_wire_list =
+        read_global_wires(&global_wire_list_path).map_err(|source| ArtifactError::Read {
+            artifact: "global wire list",
+            path: global_wire_list_path.clone(),
+            source,
+        })?;
     let public_wire_layout =
-        PublicWireLayout::derive(&setup_params, &global_wire_list, &subcircuit_infos).unwrap();
+        PublicWireLayout::derive(&setup_params, &global_wire_list, &subcircuit_infos).map_err(
+            |error| ArtifactError::Invalid {
+                artifact: "public wire layout",
+                path: global_wire_list_path,
+                reason: error.to_string(),
+            },
+        )?;
 
     let start = Instant::now();
 
@@ -133,9 +160,16 @@ fn main() {
             println!("Processing subcircuit id {}", i);
             let r1cs_path = PathBuf::from(paths.qap_path).join(format!("r1cs/subcircuit{i}.r1cs"));
 
-            let compact_r1cs =
-                SubcircuitR1CS::from_r1cs_path(r1cs_path, &setup_params, &subcircuit_infos[i])
-                    .unwrap();
+            let compact_r1cs = SubcircuitR1CS::from_r1cs_path(
+                r1cs_path.clone(),
+                &setup_params,
+                &subcircuit_infos[i],
+            )
+            .map_err(|source| ArtifactError::Read {
+                artifact: "subcircuit R1CS",
+                path: r1cs_path,
+                source,
+            })?;
             let o_evaled = from_r1cs_to_evaled_qap_mixture(
                 &compact_r1cs,
                 &setup_params,
@@ -251,11 +285,24 @@ fn main() {
         println!("Checked: xy_powers");
         let placement_variables_path =
             PathBuf::from(paths.synthesizer_path).join("placementVariables.json");
-        let placement_variables =
-            PlacementVariables::read_box_from_json(placement_variables_path).unwrap();
+        let placement_variables = PlacementVariables::read_box_from_json(
+            placement_variables_path.clone(),
+        )
+        .map_err(|source| ArtifactError::Read {
+            artifact: "placement variables",
+            path: placement_variables_path,
+            source,
+        })?;
 
         let instance_path = PathBuf::from(paths.synthesizer_path).join("instance.json");
-        let public_instance = Instance::read_from_json(instance_path).unwrap();
+        let public_instance =
+            Instance::read_from_json(instance_path.clone()).map_err(|source| {
+                ArtifactError::Read {
+                    artifact: "public instance",
+                    path: instance_path,
+                    source,
+                }
+            })?;
         let mut a_free_X = public_instance.gen_a_free_X(&setup_params);
         let mut bXY = gen_bXY(&placement_variables, &subcircuit_infos, &setup_params);
         let (mut uXY, mut vXY, mut wXY) = read_R1CS_gen_uvwXY(
@@ -477,15 +524,26 @@ fn main() {
 
     let start = Instant::now();
     let output_dir_path = PathBuf::from(paths.output_path);
-    std::fs::create_dir_all(&output_dir_path).expect("Failed to create output directory");
+    std::fs::create_dir_all(&output_dir_path).map_err(|source| TrustedSetupError::WriteOutput {
+        path: output_dir_path.clone(),
+        source,
+    })?;
     {
         use libs::iotools::write_final_crs_artifacts;
         use libs::subcircuit_library::write_development_only_trusted_setup_provenance;
         println!("Writing final CRS artifacts...");
-        write_final_crs_artifacts(&output_dir_path, &sigma)
-            .expect("Failed to write final CRS artifacts");
-        write_development_only_trusted_setup_provenance(&output_dir_path)
-            .expect("Failed to write trusted-setup development provenance");
+        write_final_crs_artifacts(&output_dir_path, &sigma).map_err(|source| {
+            TrustedSetupError::WriteOutput {
+                path: output_dir_path.clone(),
+                source,
+            }
+        })?;
+        write_development_only_trusted_setup_provenance(&output_dir_path).map_err(|source| {
+            TrustedSetupError::WriteOutput {
+                path: output_dir_path.clone(),
+                source,
+            }
+        })?;
     }
     let lap = start.elapsed();
     println!("The sigma writing time: {:.6} seconds", lap.as_secs_f64());
@@ -495,4 +553,6 @@ fn main() {
         "Total setup time: {:.6} seconds",
         total_duration.as_secs_f64()
     );
+
+    Ok(())
 }
