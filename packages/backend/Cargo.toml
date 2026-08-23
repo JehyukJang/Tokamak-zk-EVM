@@ -36,3 +36,4 @@ hex = "0.4"
 memmap2 = "0.9"
 rkyv = { version = "0.7", features = ["alloc", "bytecheck", "validation"] }
 clap = { version = "4.4", features = ["derive"] }
+thiserror = "2.0.12"

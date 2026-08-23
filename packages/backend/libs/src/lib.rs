@@ -1,5 +1,7 @@
 #![allow(non_snake_case)]
 pub mod bivariate_polynomial;
+pub mod cli;
+pub mod errors;
 pub mod field_structures;
 pub mod group_structures;
 pub mod iotools;

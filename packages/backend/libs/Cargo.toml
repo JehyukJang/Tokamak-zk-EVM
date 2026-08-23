@@ -21,6 +21,7 @@ ark-ec = { workspace = true }
 ark-ff = { workspace = true }
 rkyv = { workspace = true, features = ["alloc", "bytecheck", "validation"] }
 clap = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 criterion = "0.3"

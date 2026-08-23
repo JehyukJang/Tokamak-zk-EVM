@@ -1,4 +1,6 @@
 #![allow(non_snake_case)]
+use libs::cli::CliDiagnostic;
+use libs::errors::{ArtifactError, CrsError, DeviceError};
 use libs::group_structures::G1serde;
 use libs::iotools::ArchivedSigmaPreprocessRkyv;
 use libs::iotools::*;
@@ -9,12 +11,46 @@ use libs::{impl_read_from_json, impl_write_into_json, pop_recover, split_push};
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use thiserror::Error;
 
 pub struct PreprocessInputPaths<'a> {
     pub qap_path: &'a str,
     pub synthesizer_path: &'a str,
     pub setup_path: &'a str,
     pub output_path: &'a str,
+}
+
+#[derive(Debug, Error)]
+pub enum PreprocessError {
+    #[error(transparent)]
+    Artifact(#[from] ArtifactError),
+    #[error(transparent)]
+    Crs(#[from] CrsError),
+    #[error(transparent)]
+    Device(#[from] DeviceError),
+    #[error("failed to write preprocess output at {}: {source}", path.display())]
+    WriteOutput {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+}
+
+impl CliDiagnostic for PreprocessError {
+    fn hint(&self) -> &'static str {
+        match self {
+            Self::Artifact(_) => {
+                "Regenerate the frontend artifacts and provide the matching synthesizer directory."
+            }
+            Self::Crs(_) => {
+                "Use a compatible release CRS, or use the explicit local development bypass only for local testing."
+            }
+            Self::Device(_) => "Check the ICICLE backend installation and the selected device.",
+            Self::WriteOutput { .. } => {
+                "Create or grant write access to the requested output directory, then retry."
+            }
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

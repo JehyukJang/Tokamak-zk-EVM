@@ -1,3 +1,4 @@
+use crate::errors::CrsError;
 use clap::Args;
 use std::env;
 use std::fs;
@@ -82,20 +83,30 @@ impl DevelopmentCrsProvenanceArg {
 }
 
 pub fn resolve_subcircuit_library_path(local_path: Option<&str>) -> PathBuf {
+    try_resolve_subcircuit_library_path(local_path).unwrap_or_else(|error| panic!("{error}"))
+}
+
+pub fn try_resolve_subcircuit_library_path(local_path: Option<&str>) -> Result<PathBuf, CrsError> {
     if let Some(path) = local_path {
-        return fs::canonicalize(path)
-            .unwrap_or_else(|_| panic!("cannot resolve subcircuit library path {path}"));
+        return fs::canonicalize(path).map_err(|source| CrsError::Read {
+            path: PathBuf::from(path),
+            source,
+        });
     }
 
     #[cfg(tokamak_embedded_subcircuit_library)]
     {
-        return materialize_embedded_subcircuit_library()
-            .expect("failed to materialize embedded subcircuit library");
+        return materialize_embedded_subcircuit_library().map_err(|source| CrsError::Read {
+            path: PathBuf::from("embedded subcircuit library"),
+            source,
+        });
     }
 
     #[cfg(not(tokamak_embedded_subcircuit_library))]
     {
-        panic!("--subcircuit-library is required for non-release backend binaries");
+        Err(CrsError::Compatibility(
+            "--subcircuit-library is required for non-release backend binaries".to_string(),
+        ))
     }
 }
 
@@ -157,7 +168,7 @@ pub fn validate_operational_crs_compatibility(
     development: &DevelopmentCrsProvenanceArg,
     crs_dir: &Path,
     library_dir: &Path,
-) -> std::io::Result<()> {
+) -> Result<(), CrsError> {
     if development.allows_unverified_crs() {
         eprintln!(
             "WARNING: skipping CRS provenance compatibility validation for local development"
@@ -166,6 +177,7 @@ pub fn validate_operational_crs_compatibility(
     }
 
     validate_crs_compatibility(crs_dir, library_dir)
+        .map_err(|error| CrsError::Compatibility(error.to_string()))
 }
 
 fn selected_library_package_version(library_dir: &Path) -> std::io::Result<String> {

@@ -1,11 +1,13 @@
 use clap::Parser;
+use libs::cli::render_error;
 use libs::subcircuit_library::{
-    resolve_subcircuit_library_path, validate_operational_crs_compatibility,
+    try_resolve_subcircuit_library_path, validate_operational_crs_compatibility,
     DevelopmentCrsProvenanceArg, SubcircuitLibraryArg,
 };
-use libs::utils::check_device;
-use prove::{Proof, ProveInputPaths, Prover, TranscriptManager};
+use libs::utils::try_check_device;
+use prove::{Proof, ProveError, ProveInputPaths, Prover, TranscriptManager};
 use std::path::PathBuf;
+use std::process::ExitCode;
 use std::time::Instant;
 
 #[derive(Parser, Debug)]
@@ -30,16 +32,23 @@ struct Config {
     output: String,
 }
 
-fn main() {
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => render_error(&error),
+    }
+}
+
+fn run() -> Result<(), ProveError> {
     let total_start = Instant::now();
     let config = Config::parse();
-    let qap_library_path = resolve_subcircuit_library_path(config.subcircuit_library.as_deref());
+    let qap_library_path =
+        try_resolve_subcircuit_library_path(config.subcircuit_library.as_deref())?;
     validate_operational_crs_compatibility(
         &config.development_crs_provenance,
         PathBuf::from(&config.crs).as_path(),
         qap_library_path.as_path(),
-    )
-    .expect("CRS and subcircuit-library compatibility validation failed");
+    )?;
     let qap_path = qap_library_path.to_string_lossy().into_owned();
 
     let paths = ProveInputPaths {
@@ -49,10 +58,10 @@ fn main() {
         output_path: &config.output,
     };
 
-    check_device();
+    try_check_device()?;
 
     println!("Prover initialization...");
-    let (mut prover, binding) = Prover::init(&paths);
+    let (mut prover, binding) = Prover::init(&paths)?;
 
     let mut manager = TranscriptManager::new();
 
@@ -89,12 +98,22 @@ fn main() {
     println!("Writing the proof into JSON (formatted for Solidity verifier)...");
     let formatted_proof = proof.convert_format_for_solidity_verifier();
     let output_path = PathBuf::from(paths.output_path).join("proof.json");
-    formatted_proof.write_into_json(output_path).unwrap();
+    formatted_proof
+        .write_into_json(output_path.clone())
+        .map_err(|source| ProveError::WriteOutput {
+            path: output_path,
+            source,
+        })?;
 
     #[cfg(feature = "testing-mode")]
     {
         let test_output_path = PathBuf::from(paths.output_path).join("proof4_test.json");
-        proof4_test.write_into_json(test_output_path).unwrap();
+        proof4_test
+            .write_into_json(test_output_path.clone())
+            .map_err(|source| ProveError::WriteOutput {
+                path: test_output_path,
+                source,
+            })?;
 
         println!("kappa1: {}", kappa1.to_string());
         println!("chi: {}", chi.to_string());
@@ -106,4 +125,6 @@ fn main() {
         total_elapsed_secs,
         total_elapsed_secs * 1000.0
     );
+
+    Ok(())
 }

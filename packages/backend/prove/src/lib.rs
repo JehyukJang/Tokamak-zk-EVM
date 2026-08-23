@@ -4,14 +4,16 @@ use icicle_core::ntt;
 use icicle_core::traits::{Arithmetic, FieldImpl, GenerateRandom};
 use icicle_runtime::memory::HostSlice;
 use libs::bivariate_polynomial::{BivariatePolynomial, DensePolynomialExt, PolyExpr};
+use libs::cli::CliDiagnostic;
+use libs::errors::{ArtifactError, CrsError, DeviceError};
 use libs::field_structures::FieldSerde;
 use libs::group_structures::G1serde;
 use libs::iotools::public_wire_layout::{read_global_wires, PublicWireLayout};
 use libs::iotools::*;
 use libs::polynomial_structures::gen_bXY;
 use libs::utils::{
-    init_ntt_domain, load_setup_params_from_qap_path, prover_verifier_ntt_domain_size, setup_shape,
-    validate_setup_shape,
+    prover_verifier_ntt_domain_size, try_init_ntt_domain, try_load_setup_params_from_qap_path,
+    try_setup_shape, try_validate_setup_shape,
 };
 #[cfg(feature = "testing-mode")]
 use libs::vector_operations::point_mul_two_vecs;
@@ -23,11 +25,45 @@ use std::time::Instant;
 
 use std::path::PathBuf;
 use std::vec;
+use thiserror::Error;
 
 mod sigma_source;
 mod transcript;
 use sigma_source::SigmaHolder;
 pub use transcript::TranscriptManager;
+
+#[derive(Debug, Error)]
+pub enum ProveError {
+    #[error(transparent)]
+    Artifact(#[from] ArtifactError),
+    #[error(transparent)]
+    Crs(#[from] CrsError),
+    #[error(transparent)]
+    Device(#[from] DeviceError),
+    #[error("failed to write proof output at {}: {source}", path.display())]
+    WriteOutput {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+}
+
+impl CliDiagnostic for ProveError {
+    fn hint(&self) -> &'static str {
+        match self {
+            Self::Artifact(_) => {
+                "Regenerate the frontend artifacts and provide the matching synthesizer directory."
+            }
+            Self::Crs(_) => {
+                "Use a compatible release CRS, or use the explicit local development bypass only for local testing."
+            }
+            Self::Device(_) => "Check the ICICLE backend installation and the selected device.",
+            Self::WriteOutput { .. } => {
+                "Create or grant write access to the requested output directory, then retry."
+            }
+        }
+    }
+}
 
 macro_rules! poly_comb {
         (($c:expr, $p:expr), $(($rest_c:expr, $rest_p:expr)),+ $(,)?) => {{
@@ -471,7 +507,7 @@ pub struct Proof4Test {
 }
 
 impl Prover {
-    pub fn init(paths: &ProveInputPaths) -> (Self, Binding) {
+    pub fn init(paths: &ProveInputPaths) -> Result<(Self, Binding), ProveError> {
         #[cfg(feature = "timing")]
         let init_start = Instant::now();
         // Load setup parameters from JSON file
@@ -486,11 +522,11 @@ impl Prover {
                 label: "file_bytes",
                 dims: vec![_setup_params_file_bytes]
             },],
-            { load_setup_params_from_qap_path(paths.qap_path) }
+            { try_load_setup_params_from_qap_path(paths.qap_path)? }
         );
 
-        let shape = setup_shape(&setup_params);
-        validate_setup_shape(&shape);
+        let shape = try_setup_shape(&setup_params, &setup_params_path)?;
+        try_validate_setup_shape(&shape, &setup_params_path)?;
         let _l = setup_params.l;
         let m_i = shape.m_i;
         let n = shape.n;
@@ -499,7 +535,7 @@ impl Prover {
         let s_d = setup_params.s_D;
 
         let ntt_domain_size = prover_verifier_ntt_domain_size(&shape);
-        init_ntt_domain(ntt_domain_size);
+        try_init_ntt_domain(ntt_domain_size)?;
 
         // Load subcircuit information
         let subcircuit_infos_path = PathBuf::from(paths.qap_path).join("subcircuitInfo.json");
@@ -513,7 +549,15 @@ impl Prover {
                 label: "file_bytes",
                 dims: vec![_subcircuit_infos_file_bytes]
             },],
-            { SubcircuitInfo::read_box_from_json(subcircuit_infos_path).unwrap() }
+            {
+                SubcircuitInfo::read_box_from_json(subcircuit_infos_path.clone()).map_err(
+                    |source| ArtifactError::Read {
+                        artifact: "subcircuit information",
+                        path: subcircuit_infos_path,
+                        source,
+                    },
+                )?
+            }
         );
 
         // Load local variables of placements (public instance + interface witness + internal witness)
@@ -529,20 +573,42 @@ impl Prover {
                 label: "file_bytes",
                 dims: vec![_placement_variables_file_bytes]
             },],
-            { PlacementVariables::read_box_from_json(placement_variables_path).unwrap() }
+            {
+                PlacementVariables::read_box_from_json(placement_variables_path.clone()).map_err(
+                    |source| ArtifactError::Read {
+                        artifact: "placement variables",
+                        path: placement_variables_path,
+                        source,
+                    },
+                )?
+            }
         );
 
         let public_wire_layout =
             crate::time_block!("init.derive.public_wire_layout", "validate", vec![], {
-                let global_wires =
-                    read_global_wires(PathBuf::from(paths.qap_path).join("globalWireList.json"))
-                        .expect("failed to read globalWireList.json");
+                let global_wire_list_path =
+                    PathBuf::from(paths.qap_path).join("globalWireList.json");
+                let global_wires = read_global_wires(&global_wire_list_path).map_err(|source| {
+                    ArtifactError::Read {
+                        artifact: "global wire list",
+                        path: global_wire_list_path.clone(),
+                        source,
+                    }
+                })?;
                 let layout =
                     PublicWireLayout::derive(&setup_params, &global_wires, &subcircuit_infos)
-                        .expect("incompatible public wire layout artifacts");
+                        .map_err(|error| ArtifactError::Invalid {
+                            artifact: "public wire layout",
+                            path: global_wire_list_path,
+                            reason: error.to_string(),
+                        })?;
                 layout
                     .validate_runtime_public_buffer_placements(&placement_variables)
-                    .expect("runtime buffer placements do not match the public wire layout");
+                    .map_err(|error| ArtifactError::Invalid {
+                        artifact: "placement variables",
+                        path: PathBuf::from(paths.synthesizer_path).join("placementVariables.json"),
+                        reason: error.to_string(),
+                    })?;
                 layout
             });
 
@@ -629,7 +695,15 @@ impl Prover {
                 label: "file_bytes",
                 dims: vec![_permutation_file_bytes]
             },],
-            { Permutation::read_box_from_json(permutation_path).unwrap() }
+            {
+                Permutation::read_box_from_json(permutation_path.clone()).map_err(|source| {
+                    ArtifactError::Read {
+                        artifact: "permutation",
+                        path: permutation_path,
+                        source,
+                    }
+                })?
+            }
         );
 
         let mut instance: InstancePolynomials = {
@@ -645,7 +719,15 @@ impl Prover {
                     label: "file_bytes",
                     dims: vec![_instance_file_bytes]
                 },],
-                { Instance::read_from_json(instance_path).unwrap() }
+                {
+                    Instance::read_from_json(instance_path.clone()).map_err(|source| {
+                        ArtifactError::Read {
+                            artifact: "public instance",
+                            path: instance_path,
+                            source,
+                        }
+                    })?
+                }
             );
 
             // Parsing the inputs
@@ -844,8 +926,10 @@ impl Prover {
                 dims: vec![_sigma_file_bytes]
             },],
             {
-                let sigma = SigmaHolder::load(&sigma_path)
-                        .expect("No reference string is found. Run the Setup first (expected combined_sigma.rkyv).");
+                let sigma = SigmaHolder::load(&sigma_path).map_err(|source| CrsError::Read {
+                    path: sigma_path,
+                    source,
+                })?;
                 sigma
             }
         );
@@ -1002,7 +1086,7 @@ impl Prover {
             ],
         );
 
-        return (
+        Ok((
             Self {
                 sigma,
                 setup_params,
@@ -1013,7 +1097,7 @@ impl Prover {
                 cache,
             },
             binding,
-        );
+        ))
     }
 
     pub fn prove0(&mut self) -> Proof0 {
