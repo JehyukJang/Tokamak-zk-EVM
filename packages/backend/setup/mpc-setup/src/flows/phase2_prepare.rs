@@ -2,6 +2,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 use crate::ensure_testing_mode;
+use crate::flows::MpcSetupError;
 use crate::phase1_source::{AccumulatorSource, DuskGroth16Source, Phase1Source, Phase1SrsSource};
 use crate::sigma::{save_contributor_info, SigmaV2, HASH_BYTES_LEN};
 use crate::utils::{
@@ -17,8 +18,8 @@ use libs::group_structures::{G1serde, Sigma, Sigma1, Sigma2};
 use libs::iotools::public_wire_layout::{read_global_wires, PublicWireLayout};
 use libs::iotools::{scalar_to_hex, SetupParams, SubcircuitInfo, SubcircuitR1CS};
 use libs::utils::{
-    init_ntt_domain, setup_shape, trusted_setup_ntt_domain_size, validate_public_wire_size,
-    validate_setup_shape,
+    trusted_setup_ntt_domain_size, try_init_ntt_domain, try_setup_shape,
+    try_validate_public_wire_size, try_validate_setup_shape,
 };
 use libs::vector_operations::gen_evaled_lagrange_bases;
 use rayon::prelude::*;
@@ -210,7 +211,7 @@ pub enum Phase1SourceMode {
     Native,
     DuskGroth16,
 }
-pub fn run(config: &Phase2PrepareConfig) {
+pub fn run(config: &Phase2PrepareConfig) -> Result<(), MpcSetupError> {
     let mut timer = StepTimer::new("phase2_prepare");
     let use_gpu: bool = env::var("USE_GPU")
         .ok()
@@ -226,31 +227,49 @@ pub fn run(config: &Phase2PrepareConfig) {
     let total_part = config.total_part;
     let is_merge = config.merge_parts;
     if is_merge {
-        let sigma: SigmaV2 = merge_all_parts(&outfolder, total_part);
+        let sigma: SigmaV2 = merge_all_parts(&outfolder, total_part)?;
+        let output_path = format!("{}/phase2_acc_0.rkyv", outfolder);
         sigma
-            .write_phase2_acc(&format!("{}/phase2_acc_0.rkyv", outfolder))
-            .expect("cannot write sigma into rkyv");
+            .write_phase2_acc(&output_path)
+            .map_err(|source| MpcSetupError::Io {
+                operation: "write merged phase-2 accumulator",
+                path: PathBuf::from(output_path),
+                source,
+            })?;
         timer.log_step("merge multipart accumulators");
         timer.log_total();
-        return;
+        return Ok(());
     }
     if total_part > 1 {
-        assert_eq!(part_no < total_part, true);
-        assert_eq!(is_power_of_two_bitwise(total_part), true);
+        if part_no >= total_part || !is_power_of_two_bitwise(total_part) {
+            return Err(MpcSetupError::State {
+                phase: "phase-2 prepare",
+                reason:
+                    "multipart preparation requires a valid power-of-two part count and part index"
+                        .to_string(),
+            });
+        }
     }
-    let sigma = process_prepare(config, is_gpu_enabled);
+    let sigma = process_prepare(config, is_gpu_enabled)?;
     timer.log_step("build phase-2 accumulator");
     if total_part > 1 {
+        let output_path = format!("{}/phase2_acc_0_{}_{}.rkyv", outfolder, total_part, part_no);
         sigma
-            .write_phase2_acc(&format!(
-                "{}/phase2_acc_0_{}_{}.rkyv",
-                outfolder, total_part, part_no
-            ))
-            .expect("cannot write sigma into rkyv");
+            .write_phase2_acc(&output_path)
+            .map_err(|source| MpcSetupError::Io {
+                operation: "write phase-2 accumulator",
+                path: PathBuf::from(output_path),
+                source,
+            })?;
     } else {
+        let output_path = format!("{}/phase2_acc_0.rkyv", outfolder);
         sigma
-            .write_phase2_acc(&format!("{}/phase2_acc_0.rkyv", outfolder))
-            .expect("cannot write sigma into rkyv");
+            .write_phase2_acc(&output_path)
+            .map_err(|source| MpcSetupError::Io {
+                operation: "write phase-2 accumulator",
+                path: PathBuf::from(output_path),
+                source,
+            })?;
     }
     timer.log_step("write phase-2 accumulator");
 
@@ -264,13 +283,18 @@ pub fn run(config: &Phase2PrepareConfig) {
         hex::encode([0u8; HASH_BYTES_LEN]),
         hex::encode([0u8; HASH_BYTES_LEN]),
     )
-    .expect("cannot write contributor info");
+    .map_err(|source| MpcSetupError::Io {
+        operation: "write phase-2 contributor information",
+        path: PathBuf::from(format!("{}/phase2_contributor_0.txt", outfolder)),
+        source,
+    })?;
     timer.log_step("write contributor info");
     println!(
         "The total time: {:.6} seconds",
         start1.elapsed().as_secs_f64()
     );
     timer.log_total();
+    Ok(())
 }
 
 fn ceremony_mode(beacon_mode: bool) -> Mode {
@@ -304,18 +328,20 @@ fn add_matrix(target: &mut Box<[Box<[G1serde]>]>, source: &Box<[Box<[G1serde]>]>
     }
 }
 
-fn merge_all_parts(outfolder: &str, total_part: usize) -> SigmaV2 {
-    let mut sigma = SigmaV2::read_phase2_acc(&format!(
-        "{}/phase2_acc_0_{}_{}.rkyv",
-        outfolder, total_part, 0
-    ))
-    .unwrap();
+fn merge_all_parts(outfolder: &str, total_part: usize) -> Result<SigmaV2, MpcSetupError> {
+    let first_path = format!("{}/phase2_acc_0_{}_{}.rkyv", outfolder, total_part, 0);
+    let mut sigma = SigmaV2::read_phase2_acc(&first_path).map_err(|source| MpcSetupError::Io {
+        operation: "read phase-2 accumulator part",
+        path: PathBuf::from(first_path),
+        source,
+    })?;
     for part_no in 1..total_part {
-        let next = SigmaV2::read_phase2_acc(&format!(
-            "{}/phase2_acc_0_{}_{}.rkyv",
-            outfolder, total_part, part_no
-        ))
-        .unwrap();
+        let next_path = format!("{}/phase2_acc_0_{}_{}.rkyv", outfolder, total_part, part_no);
+        let next = SigmaV2::read_phase2_acc(&next_path).map_err(|source| MpcSetupError::Io {
+            operation: "read phase-2 accumulator part",
+            path: PathBuf::from(next_path),
+            source,
+        })?;
         //check some conditions
         assert_eq!(sigma.gamma, next.gamma);
         assert_eq!(sigma.sigma.G, next.sigma.G);
@@ -389,7 +415,7 @@ fn merge_all_parts(outfolder: &str, total_part: usize) -> SigmaV2 {
             &next.sigma.sigma_1.delta_inv_li_o_prv,
         );
     }
-    sigma
+    Ok(sigma)
 }
 
 fn is_power_of_two_bitwise(n: usize) -> bool {
@@ -402,10 +428,13 @@ fn is_power_of_two_bitwise(n: usize) -> bool {
     }
 }
 
-fn parse_scalar_hex(input: &str) -> ScalarField {
+fn parse_scalar_hex(input: &str) -> Result<ScalarField, MpcSetupError> {
     let trimmed = input.trim().trim_start_matches("0x");
-    let bytes = hex::decode(trimmed).expect("invalid hex encoding for y");
-    ScalarField::from_bytes_le(&bytes)
+    let bytes = hex::decode(trimmed).map_err(|error| MpcSetupError::State {
+        phase: "phase-2 prepare",
+        reason: format!("invalid hex encoding for y: {error}"),
+    })?;
+    Ok(ScalarField::from_bytes_le(&bytes))
 }
 
 fn sample_phase2_y(
@@ -414,38 +443,51 @@ fn sample_phase2_y(
     total_part: usize,
     s_max: usize,
     random_seed_input: Option<&str>,
-) -> ScalarField {
+) -> Result<ScalarField, MpcSetupError> {
     let mut rng = (!crate::testing_mode_enabled() && y_hex.is_none())
         .then(|| initialize_random_generator_with_seed_input(mode, random_seed_input));
 
     let mut y = if let Some(hex_value) = y_hex {
-        parse_scalar_hex(hex_value)
+        parse_scalar_hex(hex_value)?
     } else {
         if total_part > 1 {
-            panic!("multipart phase2_prepare requires --y-hex so every part uses the same y");
+            return Err(MpcSetupError::State {
+                phase: "phase-2 prepare",
+                reason: "multipart preparation requires y_hex so every part uses the same y"
+                    .to_string(),
+            });
         }
         if crate::testing_mode_enabled() {
             ScalarField::from_u32(5)
         } else {
             rng.as_mut()
-                .expect("phase-2 y sampling must initialize a random generator")
+                .ok_or_else(|| MpcSetupError::State {
+                    phase: "phase-2 prepare",
+                    reason: "random phase-2 y generator was not initialized".to_string(),
+                })?
                 .next_random()
         }
     };
 
     while y.pow(s_max) == ScalarField::one() {
         if y_hex.is_some() {
-            panic!("the supplied phase-2 y is invalid because y^s_max = 1");
+            return Err(MpcSetupError::State {
+                phase: "phase-2 prepare",
+                reason: "the supplied y is invalid because y^s_max = 1".to_string(),
+            });
         }
         y = if crate::testing_mode_enabled() {
             ScalarField::from_u32(7)
         } else {
             rng.as_mut()
-                .expect("phase-2 y sampling must initialize a random generator")
+                .ok_or_else(|| MpcSetupError::State {
+                    phase: "phase-2 prepare",
+                    reason: "random phase-2 y generator was not initialized".to_string(),
+                })?
                 .next_random()
         };
     }
-    y
+    Ok(y)
 }
 
 fn build_x_basis<S: Phase1SrsSource>(source: &S, exp_alpha: usize, x_size: usize) -> Vec<G1Affine> {
@@ -674,7 +716,10 @@ fn build_xy_powers_from_x_basis<S: Phase1SrsSource>(
         });
     xy.into_boxed_slice()
 }
-fn process_prepare(config: &Phase2PrepareConfig, _is_gpu_enabled: bool) -> SigmaV2 {
+fn process_prepare(
+    config: &Phase2PrepareConfig,
+    _is_gpu_enabled: bool,
+) -> Result<SigmaV2, MpcSetupError> {
     let mut timer = StepTimer::new("phase2_prepare::process_prepare");
     let qap_path = config.qap_path.clone();
     let outfolder = &config.outfolder;
@@ -683,14 +728,18 @@ fn process_prepare(config: &Phase2PrepareConfig, _is_gpu_enabled: bool) -> Sigma
     let part_no = config.part_no;
     let mode = ceremony_mode(config.beacon_mode);
 
-    let setup_file_name = "setupParams.json";
-    let setup_params = SetupParams::read_from_json(qap_path.join(&setup_file_name))
-        .expect("cannot SetupParams read file");
-    let shape = setup_shape(&setup_params);
-    validate_setup_shape(&shape);
-    validate_public_wire_size(shape.l_free);
+    let setup_path = qap_path.join("setupParams.json");
+    let setup_params =
+        SetupParams::read_from_json(setup_path.clone()).map_err(|source| MpcSetupError::Io {
+            operation: "read setup parameters",
+            path: setup_path.clone(),
+            source,
+        })?;
+    let shape = try_setup_shape(&setup_params, &setup_path)?;
+    try_validate_setup_shape(&shape, &setup_path)?;
+    try_validate_public_wire_size(shape.l_free, &setup_path)?;
     let ntt_domain_size = trusted_setup_ntt_domain_size(&shape);
-    init_ntt_domain(ntt_domain_size);
+    try_init_ntt_domain(ntt_domain_size)?;
     let n = setup_params.n; // Number of constraints per subcircuit
     let s_max = setup_params.s_max;
     let m_d = setup_params.m_D; // Total number of wires
@@ -704,12 +753,29 @@ fn process_prepare(config: &Phase2PrepareConfig, _is_gpu_enabled: bool) -> Sigma
     );
     timer.log_step("load setup metadata and initialize domains");
 
-    let subcircuit_file_name = "subcircuitInfo.json";
+    let subcircuit_path = qap_path.join("subcircuitInfo.json");
     let subcircuit_infos =
-        SubcircuitInfo::read_box_from_json(qap_path.join(&subcircuit_file_name)).unwrap();
-    let global_wires = read_global_wires(qap_path.join("globalWireList.json")).unwrap();
+        SubcircuitInfo::read_box_from_json(subcircuit_path.clone()).map_err(|source| {
+            MpcSetupError::Io {
+                operation: "read subcircuit information",
+                path: subcircuit_path,
+                source,
+            }
+        })?;
+    let global_wires_path = qap_path.join("globalWireList.json");
+    let global_wires =
+        read_global_wires(&global_wires_path).map_err(|source| MpcSetupError::Io {
+            operation: "read global wire list",
+            path: global_wires_path.clone(),
+            source,
+        })?;
     let public_wire_layout =
-        PublicWireLayout::derive(&setup_params, &global_wires, &subcircuit_infos).unwrap();
+        PublicWireLayout::derive(&setup_params, &global_wires, &subcircuit_infos).map_err(
+            |error| MpcSetupError::State {
+                phase: "phase-2 prepare",
+                reason: format!("invalid public wire layout: {error}"),
+            },
+        )?;
 
     let phase2_y = sample_phase2_y(
         &mode,
@@ -717,7 +783,7 @@ fn process_prepare(config: &Phase2PrepareConfig, _is_gpu_enabled: bool) -> Sigma
         total_part,
         s_max,
         config.random_seed_input.as_deref(),
-    );
+    )?;
     let mut l_evaled_vec = vec![ScalarField::zero(); s_max].into_boxed_slice();
     gen_evaled_lagrange_bases(&phase2_y, s_max, &mut l_evaled_vec);
 
@@ -735,18 +801,31 @@ fn process_prepare(config: &Phase2PrepareConfig, _is_gpu_enabled: bool) -> Sigma
             let accumulator = format!("phase1_acc_{}.json", contributor_index);
             Phase1Source::Accumulator(
                 AccumulatorSource::read_from_json(&format!("{}/{}", outfolder, accumulator))
-                    .expect("cannot read from latest accumulator json"),
+                    .map_err(|source| MpcSetupError::Io {
+                        operation: "read phase-1 accumulator",
+                        path: PathBuf::from(format!("{}/{}", outfolder, accumulator)),
+                        source,
+                    })?,
             )
         }
         Phase1SourceMode::DuskGroth16 => {
-            let dusk_raw_file = config
-                .dusk_raw_file
-                .as_deref()
-                .expect("--dusk-raw-file is required in dusk-groth16 mode");
+            let dusk_raw_file =
+                config
+                    .dusk_raw_file
+                    .as_deref()
+                    .ok_or_else(|| MpcSetupError::State {
+                        phase: "phase-2 prepare",
+                        reason: "dusk_raw_file is required in dusk-groth16 mode".to_string(),
+                    })?;
             let tokamak_n = std::cmp::max(n, m_i);
             Phase1Source::DuskGroth16(
-                DuskGroth16Source::read_from_file(dusk_raw_file, tokamak_n)
-                    .expect("cannot read Dusk Groth16 raw PoT file"),
+                DuskGroth16Source::read_from_file(dusk_raw_file, tokamak_n).map_err(|source| {
+                    MpcSetupError::Io {
+                        operation: "read Dusk Groth16 raw PoT file",
+                        path: PathBuf::from(dusk_raw_file),
+                        source,
+                    }
+                })?,
             )
         }
     };
@@ -759,7 +838,15 @@ fn process_prepare(config: &Phase2PrepareConfig, _is_gpu_enabled: bool) -> Sigma
             "trusted-reference checking only supports a single-part run"
         );
         println!("Loading trusted reference sigma...");
-        Some(SigmaV2::read_phase2_acc("setup/mpc-setup/output/phase2_acc_0.rkyv").unwrap())
+        Some(
+            SigmaV2::read_phase2_acc("setup/mpc-setup/output/phase2_acc_0.rkyv").map_err(
+                |source| MpcSetupError::Io {
+                    operation: "read trusted reference phase-2 accumulator",
+                    path: PathBuf::from("setup/mpc-setup/output/phase2_acc_0.rkyv"),
+                    source,
+                },
+            )?,
+        )
     } else {
         None
     };
@@ -796,7 +883,7 @@ fn process_prepare(config: &Phase2PrepareConfig, _is_gpu_enabled: bool) -> Sigma
             &setup_params,
             subcircuit_info,
             &mut ntt_workspace,
-        );
+        )?;
         assigned_infos.push(subcircuit_info);
         coeff_views.push(coeff_view);
     }
@@ -952,7 +1039,7 @@ fn process_prepare(config: &Phase2PrepareConfig, _is_gpu_enabled: bool) -> Sigma
     timer.log_step("assemble and validate phase-2 sigma");
     timer.log_total();
 
-    SigmaV2 {
+    Ok(SigmaV2 {
         contributor_index: 0,
         gamma: g1,
         public_y_hex: Some(scalar_to_hex(&phase2_y)),
@@ -986,7 +1073,7 @@ fn process_prepare(config: &Phase2PrepareConfig, _is_gpu_enabled: bool) -> Sigma
             },
             lagrange_KL: lagrange_kl,
         },
-    }
+    })
 }
 struct ActiveCoeffMatrix {
     compact_by_local: Vec<usize>,
@@ -1085,15 +1172,29 @@ fn load_coeff_view(
     setup_params: &SetupParams,
     subcircuit_info: &SubcircuitInfo,
     ntt_workspace: &mut NttWorkspace,
-) -> SubcircuitCoeffView {
+) -> Result<SubcircuitCoeffView, MpcSetupError> {
     let compact_r1cs =
         SubcircuitR1CS::from_r1cs_path(source_path.to_path_buf(), setup_params, subcircuit_info)
-            .unwrap();
+            .map_err(|source| MpcSetupError::Io {
+                operation: "read subcircuit R1CS",
+                path: source_path.to_path_buf(),
+                source,
+            })?;
     let coeff_view = SubcircuitCoeffView::from_compact_r1cs(
         &compact_r1cs,
         subcircuit_info,
         setup_params.n,
         ntt_workspace,
     );
-    coeff_view
+    Ok(coeff_view)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{sample_phase2_y, Mode};
+
+    #[test]
+    fn invalid_phase2_y_hex_returns_an_error() {
+        assert!(sample_phase2_y(&Mode::Random, Some("not-hex"), 1, 8, None).is_err());
+    }
 }

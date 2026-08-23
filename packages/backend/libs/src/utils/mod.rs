@@ -79,9 +79,18 @@ fn invalid_setup_shape(path: &Path, reason: &str) -> ArtifactError {
 }
 
 pub fn validate_public_wire_size(l: usize) {
+    try_validate_public_wire_size(l, Path::new("setupParams.json"))
+        .unwrap_or_else(|error| panic!("{error}"));
+}
+
+pub fn try_validate_public_wire_size(l: usize, path: &Path) -> Result<(), ArtifactError> {
     if l != 0 && !l.is_power_of_two() {
-        panic!("l is not a power of two.");
+        return Err(invalid_setup_shape(
+            path,
+            "l must be zero or a power of two",
+        ));
     }
+    Ok(())
 }
 
 pub fn prover_verifier_ntt_domain_size(shape: &SetupShape) -> usize {

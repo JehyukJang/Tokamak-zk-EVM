@@ -8,7 +8,9 @@ use crate::drive_upload::{
 };
 use crate::flows::phase1_next_contributor::ContributorError;
 use libs::cli::CliDiagnostic;
+use libs::errors::ArtifactError;
 use libs::errors::CrsError;
+use libs::errors::DeviceError;
 
 #[derive(Debug, Error)]
 pub enum MpcSetupError {
@@ -24,7 +26,11 @@ pub enum MpcSetupError {
     #[error(transparent)]
     Contributor(#[from] ContributorError),
     #[error(transparent)]
+    Artifact(#[from] ArtifactError),
+    #[error(transparent)]
     Crs(#[from] CrsError),
+    #[error(transparent)]
+    Device(#[from] DeviceError),
     #[error(transparent)]
     Publication(#[from] DriveUploadError),
 }
@@ -41,7 +47,11 @@ impl CliDiagnostic for MpcSetupError {
             Self::Contributor(_) => {
                 "Inspect the previous ceremony contribution and its artifact files before retrying."
             }
+            Self::Artifact(_) => {
+                "Regenerate or select the matching QAP artifacts before restarting the ceremony."
+            }
             Self::Crs(_) => "Check the selected local subcircuit library path.",
+            Self::Device(_) => "Check the ICICLE backend installation and selected device.",
             Self::Publication(_) => {
                 "Check release metadata and Drive publication configuration before retrying publication."
             }
@@ -175,7 +185,7 @@ fn run_single_contributor_phase2(
         dusk_raw_file,
         y_hex: None,
         random_seed_input: derive_stage_seed_input(master_seed_input, "phase2-prepare"),
-    });
+    })?;
 
     phase2_next_contributor::run(&phase2_next_contributor::Phase2NextContributorConfig {
         outfolder: intermediate.to_string(),
