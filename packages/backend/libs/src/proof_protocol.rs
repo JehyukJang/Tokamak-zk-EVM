@@ -2,7 +2,7 @@
 
 use crate::field_structures::FieldSerde;
 use crate::group_structures::G1serde;
-use crate::iotools::{scalar_to_hex, split_g1, try_next_point};
+use crate::serialization::{scalar_to_hex, split_g1, try_next_point};
 use crate::{impl_read_from_json, impl_write_into_json, split_push};
 use icicle_bls12_381::curve::ScalarField;
 use icicle_core::traits::FieldImpl;

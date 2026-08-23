@@ -1,5 +1,6 @@
 use crate::bivariate_polynomial::{BivariatePolynomial, DensePolynomialExt};
-use crate::iotools::{Instance, PlacementVariables, SetupParams, SubcircuitInfo, SubcircuitR1CS};
+use crate::frontend_artifacts::{Instance, PlacementVariables, SetupParams, SubcircuitInfo};
+use crate::r1cs::SubcircuitR1CS;
 use crate::vector_operations::*;
 use icicle_bls12_381::curve::ScalarField;
 use icicle_core::traits::FieldImpl;

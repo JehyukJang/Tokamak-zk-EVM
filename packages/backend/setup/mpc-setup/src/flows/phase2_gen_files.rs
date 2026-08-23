@@ -3,7 +3,7 @@ use crate::sigma::{FinalCrsProvenance, SigmaV2, SubcircuitLibraryProvenance};
 use crate::utils::StepTimer;
 use crate::versioning::compatible_backend_version;
 use chrono::Utc;
-use libs::iotools::write_final_crs_artifacts;
+use libs::crs_artifacts::write_final_crs_artifacts;
 use std::env;
 use std::fs;
 use std::path::PathBuf;

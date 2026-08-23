@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use crate::bivariate_polynomial::init_ntt_domain_for_size;
 use crate::errors::{ArtifactError, DeviceError};
-use crate::iotools::SetupParams;
+use crate::frontend_artifacts::SetupParams;
 
 #[derive(Clone, Copy, Debug)]
 pub struct SetupShape {

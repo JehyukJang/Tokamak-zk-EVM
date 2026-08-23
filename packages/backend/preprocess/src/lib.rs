@@ -1,8 +1,8 @@
 #![allow(non_snake_case)]
 use libs::cli::CliDiagnostic;
+use libs::crs_artifacts::ArchivedSigmaPreprocessRkyv;
 use libs::errors::{ArtifactError, CrsError, DeviceError};
-use libs::iotools::ArchivedSigmaPreprocessRkyv;
-use libs::iotools::*;
+use libs::frontend_artifacts::{Instance, Permutation, SetupParams};
 use libs::proof_protocol::Preprocess;
 use libs::utils::{
     init_ntt_domain, prover_verifier_ntt_domain_size, setup_shape, validate_setup_shape,

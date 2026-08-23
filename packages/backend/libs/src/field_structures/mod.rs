@@ -1,5 +1,6 @@
 use super::vector_operations::*;
-use crate::iotools::{SetupParams, SubcircuitInfo, SubcircuitR1CS};
+use crate::frontend_artifacts::{SetupParams, SubcircuitInfo};
+use crate::r1cs::SubcircuitR1CS;
 use icicle_bls12_381::curve::{ScalarCfg, ScalarField};
 use icicle_core::traits::{Arithmetic, FieldImpl, GenerateRandom};
 use std::ops::{Add, Mul, Sub};

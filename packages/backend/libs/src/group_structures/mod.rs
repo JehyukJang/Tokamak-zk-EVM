@@ -1,10 +1,11 @@
 use crate::bivariate_polynomial::{BivariatePolynomial, DensePolynomialExt};
-use crate::field_structures::{FieldSerde, Tau};
-use crate::iotools::public_wire_layout::{GlobalWire, PublicWireLayout};
-use crate::iotools::{
+use crate::commitments::{
     from_coef_vec_to_g1serde_mat, from_coef_vec_to_g1serde_vec, scaled_outer_product_1d,
-    scaled_outer_product_2d, HexString, PlacementVariables, SetupParams, SubcircuitInfo,
+    scaled_outer_product_2d,
 };
+use crate::field_structures::{FieldSerde, Tau};
+use crate::frontend_artifacts::public_wire_layout::{GlobalWire, PublicWireLayout};
+use crate::frontend_artifacts::{HexString, PlacementVariables, SetupParams, SubcircuitInfo};
 use crate::vector_operations::*;
 use ark_bls12_381::{Bls12_381, G1Affine as ArkG1Affine, G2Affine as ArkG2Affine};
 use ark_ec::pairing::Pairing;
@@ -885,8 +886,8 @@ pub fn icicle_g2_affine_to_ark(g: &G2Affine) -> ArkG2Affine {
 #[cfg(test)]
 mod public_phase_tests {
     use super::*;
-    use crate::iotools::public_wire_layout::{GlobalWire, PublicWireLayout};
-    use crate::iotools::{BufferDirection, SetupParams, SubcircuitInfo};
+    use crate::frontend_artifacts::public_wire_layout::{GlobalWire, PublicWireLayout};
+    use crate::frontend_artifacts::{BufferDirection, SetupParams, SubcircuitInfo};
 
     #[test]
     fn applies_each_buffer_phase_and_omits_the_padding_phase_term() {

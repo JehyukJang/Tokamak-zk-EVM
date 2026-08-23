@@ -7,11 +7,14 @@ use libs::bivariate_polynomial::{BivariatePolynomial, DensePolynomialExt, PolyEx
 use libs::cli::CliDiagnostic;
 use libs::errors::{ArtifactError, CrsError, DeviceError};
 use libs::field_structures::FieldSerde;
+use libs::frontend_artifacts::public_wire_layout::{read_global_wires, PublicWireLayout};
+use libs::frontend_artifacts::{
+    Instance, Permutation, PlacementVariables, SetupParams, SubcircuitInfo,
+};
 use libs::group_structures::G1serde;
-use libs::iotools::public_wire_layout::{read_global_wires, PublicWireLayout};
-use libs::iotools::*;
 use libs::polynomial_structures::gen_bXY;
 use libs::proof_protocol::{Binding, Proof0, Proof1, Proof2, Proof3, Proof4, Proof4Test};
+use libs::r1cs::read_R1CS_gen_uvwXY;
 use libs::utils::{
     prover_verifier_ntt_domain_size, try_init_ntt_domain, try_load_setup_params_from_qap_path,
     try_setup_shape, try_validate_setup_shape,

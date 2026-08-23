@@ -8,7 +8,7 @@ use crate::utils::StepTimer;
 use chrono::Local;
 use icicle_bls12_381::curve::{ScalarCfg, ScalarField};
 use icicle_core::traits::{FieldImpl, GenerateRandom};
-use libs::iotools::SetupParams;
+use libs::frontend_artifacts::SetupParams;
 use std::cmp::max;
 use std::fs::File;
 use std::io::{BufWriter, Write};

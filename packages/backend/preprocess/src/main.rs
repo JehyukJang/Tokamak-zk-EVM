@@ -5,8 +5,8 @@ use std::fs::File;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use libs::iotools::SigmaPreprocessRkyv;
-use libs::iotools::{Instance, Permutation};
+use libs::crs_artifacts::SigmaPreprocessRkyv;
+use libs::frontend_artifacts::{Instance, Permutation};
 use libs::subcircuit_library::{
     validate_operational_crs_compatibility, DevelopmentCrsProvenanceArg, SubcircuitLibraryArg,
 };

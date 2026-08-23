@@ -11,8 +11,8 @@ use icicle_core::vec_ops::VecOps;
 #[cfg(test)]
 mod msm_vs_rayon_tests {
     use super::*;
+    use crate::commitments::{from_coef_vec_to_g1serde_vec, from_coef_vec_to_g1serde_vec_msm};
     use crate::group_structures::G1serde;
-    use crate::iotools::{from_coef_vec_to_g1serde_vec, from_coef_vec_to_g1serde_vec_msm};
     use icicle_bls12_381::curve::{CurveCfg, G1Affine, ScalarCfg, ScalarField};
     use icicle_core::curve::Curve;
 
@@ -1891,8 +1891,8 @@ mod tests_vectors {
 }
 
 mod tests_iotools {
+    use crate::commitments::{gen_g1serde_vec_of_xy_monomials, scaled_outer_product_1d};
     use crate::group_structures::G1serde;
-    use crate::iotools::{gen_g1serde_vec_of_xy_monomials, scaled_outer_product_1d};
     use crate::vector_operations::extend_monomial_vec;
     use icicle_bls12_381::curve::{CurveCfg, ScalarCfg, ScalarField};
     use icicle_core::curve::Curve;

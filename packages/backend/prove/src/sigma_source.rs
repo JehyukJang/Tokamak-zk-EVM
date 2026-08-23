@@ -3,12 +3,10 @@ use std::path::Path;
 
 use icicle_bls12_381::curve::G1Affine;
 use libs::bivariate_polynomial::DensePolynomialExt;
+use libs::crs_artifacts::{ArchivedSigma1Rkyv, ArchivedSigmaRkyv, SigmaRkyv};
+use libs::frontend_artifacts::public_wire_layout::PublicWireLayout;
+use libs::frontend_artifacts::{HexString, PlacementVariables, SetupParams, SubcircuitInfo};
 use libs::group_structures::G1serde;
-use libs::iotools::public_wire_layout::PublicWireLayout;
-use libs::iotools::{
-    ArchivedSigma1Rkyv, ArchivedSigmaRkyv, HexString, PlacementVariables, SetupParams, SigmaRkyv,
-    SubcircuitInfo,
-};
 use memmap2::Mmap;
 use std::fs::File;
 #[cfg(feature = "timing")]

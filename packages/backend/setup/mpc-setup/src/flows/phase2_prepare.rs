@@ -15,9 +15,11 @@ use icicle_core::traits::{Arithmetic, FieldImpl};
 use icicle_runtime::memory::{DeviceVec, HostSlice};
 use icicle_runtime::stream::IcicleStream;
 use libs::errors::DeviceError;
+use libs::frontend_artifacts::public_wire_layout::{read_global_wires, PublicWireLayout};
+use libs::frontend_artifacts::{SetupParams, SubcircuitInfo};
 use libs::group_structures::{G1serde, Sigma, Sigma1, Sigma2};
-use libs::iotools::public_wire_layout::{read_global_wires, PublicWireLayout};
-use libs::iotools::{scalar_to_hex, SetupParams, SubcircuitInfo, SubcircuitR1CS};
+use libs::r1cs::SubcircuitR1CS;
+use libs::serialization::scalar_to_hex;
 use libs::utils::{
     trusted_setup_ntt_domain_size, try_init_ntt_domain, try_setup_shape,
     try_validate_public_wire_size, try_validate_setup_shape,

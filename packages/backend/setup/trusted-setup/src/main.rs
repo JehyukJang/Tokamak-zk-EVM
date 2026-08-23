@@ -8,9 +8,12 @@ use icicle_core::traits::FieldImpl;
 use libs::cli::render_error;
 use libs::errors::ArtifactError;
 use libs::field_structures::{from_r1cs_to_evaled_qap_mixture, Tau};
+use libs::frontend_artifacts::public_wire_layout::{
+    read_global_wires, GlobalWire, PublicWireLayout,
+};
+use libs::frontend_artifacts::{SetupParams, SubcircuitInfo};
 use libs::group_structures::Sigma;
-use libs::iotools::public_wire_layout::{read_global_wires, GlobalWire, PublicWireLayout};
-use libs::iotools::{SetupParams, SubcircuitInfo, SubcircuitR1CS};
+use libs::r1cs::SubcircuitR1CS;
 use libs::subcircuit_library::{try_resolve_subcircuit_library_path, SubcircuitLibraryArg};
 #[cfg(not(feature = "testing-mode"))]
 use libs::utils::trusted_setup_ntt_domain_size;
@@ -253,9 +256,10 @@ fn run() -> Result<(), TrustedSetupError> {
         use icicle_core::traits::{Arithmetic, GenerateRandom};
         use icicle_runtime::memory::HostSlice;
         use libs::bivariate_polynomial::{BivariatePolynomial, DensePolynomialExt};
+        use libs::frontend_artifacts::{Instance, PlacementVariables};
         use libs::group_structures::{pairing, G1serde};
-        use libs::iotools::{read_R1CS_gen_uvwXY, Instance, PlacementVariables};
         use libs::polynomial_structures::gen_bXY;
+        use libs::r1cs::read_R1CS_gen_uvwXY;
         use libs::vector_operations::resize;
 
         let poly_coefs_opt = ScalarCfg::generate_random((n + 10) * (s_max + 10));
@@ -529,7 +533,7 @@ fn run() -> Result<(), TrustedSetupError> {
         source,
     })?;
     {
-        use libs::iotools::write_final_crs_artifacts;
+        use libs::crs_artifacts::write_final_crs_artifacts;
         use libs::subcircuit_library::write_development_only_trusted_setup_provenance;
         println!("Writing final CRS artifacts...");
         write_final_crs_artifacts(&output_dir_path, &sigma).map_err(|source| {

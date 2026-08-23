@@ -1,12 +1,16 @@
 #![allow(non_snake_case)]
 pub mod bivariate_polynomial;
 pub mod cli;
+pub mod commitments;
+pub mod crs_artifacts;
 pub mod errors;
 pub mod field_structures;
+pub mod frontend_artifacts;
 pub mod group_structures;
-pub mod iotools;
 pub mod polynomial_structures;
 pub mod proof_protocol;
+pub mod r1cs;
+pub mod serialization;
 pub mod subcircuit_library;
 pub mod utils;
 pub mod vector_operations;

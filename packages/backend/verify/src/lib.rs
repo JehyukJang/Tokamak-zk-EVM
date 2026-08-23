@@ -5,9 +5,9 @@ use icicle_core::traits::{Arithmetic, FieldImpl, GenerateRandom};
 use libs::bivariate_polynomial::{BivariatePolynomial, DensePolynomialExt};
 use libs::cli::CliDiagnostic;
 use libs::errors::{ArtifactError, CrsError, DeviceError};
+use libs::frontend_artifacts::{Instance, SetupParams};
 use libs::group_structures::pairing;
 use libs::group_structures::{G1serde, SigmaVerify};
-use libs::iotools::{Instance, SetupParams};
 use libs::proof_protocol::{
     FormattedPreprocess, FormattedProof, Preprocess, Proof, Proof4, Proof4Test, TranscriptManager,
 };
