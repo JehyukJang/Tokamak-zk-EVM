@@ -1,3 +1,4 @@
+use crate::flows::MpcSetupError;
 use crate::sigma::{FinalCrsProvenance, SigmaV2, SubcircuitLibraryProvenance};
 use crate::utils::StepTimer;
 use crate::versioning::compatible_backend_version;
@@ -5,6 +6,7 @@ use chrono::Utc;
 use libs::iotools::write_final_crs_artifacts;
 use std::env;
 use std::fs;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct Phase2GenFilesConfig {
@@ -13,17 +15,25 @@ pub struct Phase2GenFilesConfig {
     pub contributor_index: usize,
 }
 
-pub fn run(config: &Phase2GenFilesConfig) {
+pub fn run(config: &Phase2GenFilesConfig) -> Result<(), MpcSetupError> {
     let mut timer = StepTimer::new("phase2_gen_files");
-    let base_path = env::current_dir().unwrap();
+    let base_path = env::current_dir().map_err(|source| MpcSetupError::Io {
+        operation: "resolve current directory",
+        path: PathBuf::from("."),
+        source,
+    })?;
     let start = std::time::Instant::now();
-    let latest_acc = load_phase2_accumulator(&config.intermediate, config.contributor_index);
+    let latest_acc = load_phase2_accumulator(&config.intermediate, config.contributor_index)?;
     timer.log_step("load latest phase-2 accumulator");
 
     let sigma = latest_acc.sigma;
     let output_dir = base_path.join(&config.output);
     let digests =
-        write_final_crs_artifacts(&output_dir, &sigma).expect("cannot write final CRS artifacts");
+        write_final_crs_artifacts(&output_dir, &sigma).map_err(|source| MpcSetupError::Io {
+            operation: "write final CRS artifacts",
+            path: output_dir.clone(),
+            source,
+        })?;
     timer.log_step("write final CRS artifacts");
 
     let provenance = FinalCrsProvenance {
@@ -42,20 +52,35 @@ pub fn run(config: &Phase2GenFilesConfig) {
         published_archive_name: None,
         crs_download_url: None,
     };
-    let bytes = serde_json::to_vec_pretty(&provenance).expect("cannot serialize CRS provenance");
-    fs::write(output_dir.join("crs_provenance.json"), bytes)
-        .expect("cannot write crs_provenance.json");
+    let bytes = serde_json::to_vec_pretty(&provenance).map_err(|error| MpcSetupError::State {
+        phase: "phase-2 finalization",
+        reason: format!("cannot serialize CRS provenance: {error}"),
+    })?;
+    let provenance_path = output_dir.join("crs_provenance.json");
+    fs::write(&provenance_path, bytes).map_err(|source| MpcSetupError::Io {
+        operation: "write CRS provenance",
+        path: provenance_path,
+        source,
+    })?;
     timer.log_step("write CRS provenance");
 
     let lap = start.elapsed();
     println!("The sigma writing time: {:.6} seconds", lap.as_secs_f64());
     timer.log_total();
+    Ok(())
 }
 
-fn load_phase2_accumulator(outfolder: &str, contributor_index: usize) -> SigmaV2 {
-    SigmaV2::read_phase2_acc(&format!(
+fn load_phase2_accumulator(
+    outfolder: &str,
+    contributor_index: usize,
+) -> Result<SigmaV2, MpcSetupError> {
+    let path = PathBuf::from(format!(
         "{}/phase2_acc_{}.rkyv",
         outfolder, contributor_index
-    ))
-    .unwrap()
+    ));
+    SigmaV2::read_phase2_acc(path.to_string_lossy().as_ref()).map_err(|source| MpcSetupError::Io {
+        operation: "read phase-2 accumulator",
+        path,
+        source,
+    })
 }

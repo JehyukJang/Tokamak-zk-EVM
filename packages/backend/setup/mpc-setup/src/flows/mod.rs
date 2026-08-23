@@ -1,9 +1,53 @@
 use std::fs;
 use std::path::PathBuf;
+use thiserror::Error;
 
 use crate::drive_upload::{
     preflight_drive_upload, publish_output_archive, validate_release_build_metadata,
+    DriveUploadError,
 };
+use crate::flows::phase1_next_contributor::ContributorError;
+use libs::cli::CliDiagnostic;
+use libs::errors::CrsError;
+
+#[derive(Debug, Error)]
+pub enum MpcSetupError {
+    #[error("failed to {operation} at {}: {source}", path.display())]
+    Io {
+        operation: &'static str,
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("invalid MPC state during {phase}: {reason}")]
+    State { phase: &'static str, reason: String },
+    #[error(transparent)]
+    Contributor(#[from] ContributorError),
+    #[error(transparent)]
+    Crs(#[from] CrsError),
+    #[error(transparent)]
+    Publication(#[from] DriveUploadError),
+}
+
+impl CliDiagnostic for MpcSetupError {
+    fn hint(&self) -> &'static str {
+        match self {
+            Self::Io { .. } => {
+                "Check the QAP, intermediate, and output paths and their read/write permissions."
+            }
+            Self::State { .. } => {
+                "Use a complete, matching ceremony intermediate directory and retry from its required phase."
+            }
+            Self::Contributor(_) => {
+                "Inspect the previous ceremony contribution and its artifact files before retrying."
+            }
+            Self::Crs(_) => "Check the selected local subcircuit library path.",
+            Self::Publication(_) => {
+                "Check release metadata and Drive publication configuration before retrying publication."
+            }
+        }
+    }
+}
 
 pub mod phase1_initialize;
 pub mod phase1_next_contributor;
@@ -29,24 +73,23 @@ pub struct DuskBackedMpcSetupConfig {
     pub seed_input: Option<String>,
 }
 
-pub fn run_native_mpc_setup(config: &NativeMpcSetupConfig) {
-    ensure_directory(&config.output);
-    ensure_directory(&config.intermediate);
-    let qap_path = canonicalize_existing_path(&config.qap_path);
+pub fn run_native_mpc_setup(config: &NativeMpcSetupConfig) -> Result<(), MpcSetupError> {
+    let qap_path = canonicalize_existing_path(&config.qap_path)?;
+    ensure_directory(&config.output)?;
+    ensure_directory(&config.intermediate)?;
 
     phase1_initialize::run(&phase1_initialize::Phase1InitializeConfig {
         qap_path: qap_path.clone(),
         setup_params_file: "setupParams.json".to_string(),
         outfolder: config.intermediate.clone(),
-    });
+    })?;
 
     phase1_next_contributor::run(&phase1_next_contributor::Phase1NextContributorConfig {
         outfolder: config.intermediate.clone(),
         beacon_mode: config.beacon_mode,
         contributor_index: 1,
         random_seed_input: derive_stage_seed_input(config.seed_input.as_deref(), "phase1-next"),
-    })
-    .expect("phase1_next_contributor failed");
+    })?;
 
     run_single_contributor_phase2(
         &config.intermediate,
@@ -56,15 +99,15 @@ pub fn run_native_mpc_setup(config: &NativeMpcSetupConfig) {
             qap_path: qap_path.clone(),
         },
         config.seed_input.as_deref(),
-    );
+    )
 }
 
-pub fn run_dusk_backed_mpc_setup(config: &DuskBackedMpcSetupConfig) {
-    validate_release_build_metadata().expect("dusk-backed release metadata validation failed");
-    let upload_config = preflight_drive_upload().expect("dusk-backed upload preflight failed");
-    ensure_directory(&config.output);
-    ensure_directory(&config.intermediate);
-    let qap_path = canonicalize_existing_path(&config.qap_path);
+pub fn run_dusk_backed_mpc_setup(config: &DuskBackedMpcSetupConfig) -> Result<(), MpcSetupError> {
+    validate_release_build_metadata()?;
+    let upload_config = preflight_drive_upload()?;
+    let qap_path = canonicalize_existing_path(&config.qap_path)?;
+    ensure_directory(&config.output)?;
+    ensure_directory(&config.intermediate)?;
     let dusk_raw_file = format!("{}/dusk.response", config.intermediate);
 
     run_single_contributor_phase2(
@@ -76,15 +119,15 @@ pub fn run_dusk_backed_mpc_setup(config: &DuskBackedMpcSetupConfig) {
             dusk_raw_file,
         },
         config.seed_input.as_deref(),
-    );
+    )?;
 
     let upload_result =
-        publish_output_archive(&upload_config, &config.intermediate, &config.output)
-            .expect("cannot publish dusk-backed CRS archive");
+        publish_output_archive(&upload_config, &config.intermediate, &config.output)?;
     println!(
         "Uploaded dusk-backed CRS archive {} to {}",
         upload_result.archive_name, upload_result.folder_url
     );
+    Ok(())
 }
 
 enum Phase2SourceConfig {
@@ -103,7 +146,7 @@ fn run_single_contributor_phase2(
     beacon_mode: bool,
     source: Phase2SourceConfig,
     master_seed_input: Option<&str>,
-) {
+) -> Result<(), MpcSetupError> {
     let (qap_path, phase1_source_mode, dusk_raw_file, prepare_contributor_index) = match source {
         Phase2SourceConfig::Native { qap_path } => {
             (qap_path, phase2_prepare::Phase1SourceMode::Native, None, 1)
@@ -145,17 +188,50 @@ fn run_single_contributor_phase2(
         intermediate: intermediate.to_string(),
         output: output.to_string(),
         contributor_index: 1,
-    });
+    })
 }
 
 fn derive_stage_seed_input(master_seed_input: Option<&str>, stage: &str) -> Option<String> {
     master_seed_input.map(|seed| format!("{seed}:{stage}"))
 }
 
-fn canonicalize_existing_path(path: &str) -> PathBuf {
-    fs::canonicalize(path).unwrap_or_else(|_| panic!("cannot resolve path {}", path))
+fn canonicalize_existing_path(path: &str) -> Result<PathBuf, MpcSetupError> {
+    fs::canonicalize(path).map_err(|source| MpcSetupError::Io {
+        operation: "resolve QAP path",
+        path: PathBuf::from(path),
+        source,
+    })
 }
 
-fn ensure_directory(path: &str) {
-    fs::create_dir_all(path).expect("cannot create wrapper output directory");
+fn ensure_directory(path: &str) -> Result<(), MpcSetupError> {
+    fs::create_dir_all(path).map_err(|source| MpcSetupError::Io {
+        operation: "create directory",
+        path: PathBuf::from(path),
+        source,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{run_native_mpc_setup, MpcSetupError, NativeMpcSetupConfig};
+
+    #[test]
+    fn native_setup_rejects_an_absent_qap_path_before_creating_output() {
+        let workspace = tempfile::tempdir().expect("must create temporary workspace");
+        let output = workspace.path().join("output");
+        let intermediate = workspace.path().join("intermediate");
+        let missing_qap = workspace.path().join("missing-qap");
+        let config = NativeMpcSetupConfig {
+            qap_path: missing_qap.to_string_lossy().into_owned(),
+            intermediate: intermediate.to_string_lossy().into_owned(),
+            output: output.to_string_lossy().into_owned(),
+            beacon_mode: false,
+            seed_input: None,
+        };
+
+        let error = run_native_mpc_setup(&config).expect_err("missing QAP must fail");
+        assert!(matches!(error, MpcSetupError::Io { .. }));
+        assert!(!output.exists());
+        assert!(!intermediate.exists());
+    }
 }

@@ -33,5 +33,6 @@ mod sigma;
 mod versioning;
 
 pub use flows::{
-    run_dusk_backed_mpc_setup, run_native_mpc_setup, DuskBackedMpcSetupConfig, NativeMpcSetupConfig,
+    run_dusk_backed_mpc_setup, run_native_mpc_setup, DuskBackedMpcSetupConfig, MpcSetupError,
+    NativeMpcSetupConfig,
 };

@@ -1,8 +1,10 @@
 use clap::Parser;
-use libs::subcircuit_library::resolve_subcircuit_library_path;
+use libs::cli::render_error;
+use libs::subcircuit_library::try_resolve_subcircuit_library_path;
 use mpc_setup::{
     run_dusk_backed_mpc_setup, DuskBackedMpcSetupConfig, LOCAL_SUBCIRCUIT_LIBRARY_PATH,
 };
+use std::process::ExitCode;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -24,9 +26,16 @@ struct Config {
     beacon_mode: bool,
 }
 
-fn main() {
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => render_error(&error),
+    }
+}
+
+fn run() -> Result<(), mpc_setup::MpcSetupError> {
     let config = Config::parse();
-    let qap_path = resolve_subcircuit_library_path(Some(LOCAL_SUBCIRCUIT_LIBRARY_PATH))
+    let qap_path = try_resolve_subcircuit_library_path(Some(LOCAL_SUBCIRCUIT_LIBRARY_PATH))?
         .to_string_lossy()
         .into_owned();
     run_dusk_backed_mpc_setup(&DuskBackedMpcSetupConfig {
@@ -35,10 +44,11 @@ fn main() {
         output: config.output.clone(),
         beacon_mode: config.beacon_mode,
         seed_input: config.seed_input,
-    });
+    })?;
 
     println!(
         "Dusk-backed single-contributor MPC setup completed. Downstream preprocess/prove/verify can now use {}",
         config.output
     );
+    Ok(())
 }

@@ -1,6 +1,7 @@
 use crate::accumulator::Accumulator;
 use crate::contributor::{get_device_info, ContributorInfo};
 use crate::conversions::{icicle_g1_generator, icicle_g2_generator};
+use crate::flows::MpcSetupError;
 use crate::sigma::AaccExt;
 use crate::testing_mode_enabled;
 use crate::utils::StepTimer;
@@ -25,11 +26,18 @@ pub struct Phase1InitializeConfig {
     pub outfolder: String,
 }
 
-pub fn run(config: &Phase1InitializeConfig) {
+pub fn run(config: &Phase1InitializeConfig) -> Result<(), MpcSetupError> {
     let mut timer = StepTimer::new("phase1_initialize");
 
-    let setup_params = SetupParams::read_from_json(config.qap_path.join(&config.setup_params_file))
-        .expect("cannot SetupParams read file");
+    let setup_params_path = config.qap_path.join(&config.setup_params_file);
+    let setup_params =
+        SetupParams::read_from_json(setup_params_path.clone()).map_err(|source| {
+            MpcSetupError::Io {
+                operation: "read setup parameters",
+                path: setup_params_path,
+                source,
+            }
+        })?;
     timer.log_step("load setup params");
     let x_degree = 2 * max(setup_params.n, setup_params.l_D - setup_params.l);
     println!("Initializing phase-1 accumulator...");
@@ -53,18 +61,31 @@ pub fn run(config: &Phase1InitializeConfig) {
     );
     genesis_acc
         .write_into_json(&outfile)
-        .expect("cannot write to file");
+        .map_err(|source| MpcSetupError::Io {
+            operation: "write phase-1 accumulator",
+            path: PathBuf::from(&outfile),
+            source,
+        })?;
     genesis_acc
         .write_rkyv_sidecar_for_json_path(&outfile)
-        .expect("cannot write accumulator archive");
+        .map_err(|source| MpcSetupError::Io {
+            operation: "write phase-1 accumulator archive",
+            path: PathBuf::from(&outfile),
+            source,
+        })?;
     timer.log_step("write accumulator");
 
     let fpath = format!(
         "{}/phase1_contributor_{}.txt",
         config.outfolder, genesis_acc.contributor_index
     );
-    save_contributor_info(&genesis_acc, start.elapsed(), "", "", fpath)
-        .expect("cannot write to file");
+    save_contributor_info(&genesis_acc, start.elapsed(), "", "", fpath.clone()).map_err(
+        |source| MpcSetupError::Io {
+            operation: "write phase-1 contributor information",
+            path: PathBuf::from(fpath),
+            source,
+        },
+    )?;
     timer.log_step("write contributor info");
     println!(
         "Phase-1 initialization completed in {:.2} seconds",
@@ -72,6 +93,7 @@ pub fn run(config: &Phase1InitializeConfig) {
     );
     timer.log_total();
     println!("Thanks for your contribution.");
+    Ok(())
 }
 
 fn initialize_scalar() -> ScalarField {
