@@ -79,6 +79,47 @@ pub fn publish_output_archive(
     output_dir: &str,
 ) -> Result<DriveUploadResult, DriveUploadError> {
     ensure_release_publish_supported()?;
+    let build_metadata_path = resolve_build_metadata_path()?;
+    let publisher = GoogleDriveArchivePublisher;
+    publish_output_archive_with_publisher(
+        config,
+        intermediate_dir,
+        output_dir,
+        &build_metadata_path,
+        &publisher,
+    )
+}
+
+trait CrsArchivePublisher {
+    fn upload_archive(
+        &self,
+        config: &DriveUploadConfig,
+        archive_path: &Path,
+        archive_name: &str,
+    ) -> Result<DriveUploadResult, DriveUploadError>;
+}
+
+struct GoogleDriveArchivePublisher;
+
+impl CrsArchivePublisher for GoogleDriveArchivePublisher {
+    fn upload_archive(
+        &self,
+        config: &DriveUploadConfig,
+        archive_path: &Path,
+        archive_name: &str,
+    ) -> Result<DriveUploadResult, DriveUploadError> {
+        let runtime = new_runtime()?;
+        runtime.block_on(upload_archive(config, archive_path, archive_name))
+    }
+}
+
+fn publish_output_archive_with_publisher<P: CrsArchivePublisher>(
+    config: &DriveUploadConfig,
+    intermediate_dir: &str,
+    output_dir: &str,
+    build_metadata_path: &Path,
+    publisher: &P,
+) -> Result<DriveUploadResult, DriveUploadError> {
     let output_path = fs::canonicalize(output_dir).map_err(|err| {
         io::Error::new(
             err.kind(),
@@ -114,21 +155,12 @@ pub fn publish_output_archive(
     write_provenance(&output_path, &provenance)?;
 
     let archive_path = intermediate_path.join(&archive_name);
-    let build_metadata_path = resolve_build_metadata_path()?;
-    if let Err(err) = create_output_archive(&output_path, &archive_path, &build_metadata_path) {
+    if let Err(err) = create_output_archive(&output_path, &archive_path, build_metadata_path) {
         let _ = write_provenance(&output_path, &original_provenance);
         return Err(err.into());
     }
 
-    let runtime = match new_runtime() {
-        Ok(runtime) => runtime,
-        Err(err) => {
-            let _ = write_provenance(&output_path, &original_provenance);
-            return Err(err.into());
-        }
-    };
-    let upload_result = match runtime.block_on(upload_archive(config, &archive_path, &archive_name))
-    {
+    let upload_result = match publisher.upload_archive(config, &archive_path, &archive_name) {
         Ok(upload_result) => upload_result,
         Err(err) => {
             let _ = write_provenance(&output_path, &original_provenance);
@@ -734,11 +766,219 @@ async fn build_drive_hub(
 
 #[cfg(test)]
 mod tests {
-    use super::ensure_release_eligible;
+    use super::{
+        archive_version_prefix, publish_output_archive_with_publisher, CrsArchivePublisher,
+        DriveUploadConfig, DriveUploadError, DriveUploadResult, FINAL_OUTPUT_FILES,
+        PROVENANCE_FILE_NAME,
+    };
+    use crate::sigma::{FinalCrsProvenance, SubcircuitLibraryProvenance};
+    use crate::versioning::compatible_backend_version;
+    use std::cell::RefCell;
+    use std::fs;
+    use std::fs::File as StdFile;
+    use std::path::{Path, PathBuf};
+    use zip::ZipArchive;
+
+    struct MockArchivePublisher {
+        result: Result<DriveUploadResult, String>,
+        uploads: RefCell<Vec<(PathBuf, String)>>,
+    }
+
+    impl MockArchivePublisher {
+        fn succeeds() -> Self {
+            Self {
+                result: Ok(DriveUploadResult {
+                    folder_url: "https://drive.example.test/folders/folder-id".to_string(),
+                    archive_name: "ignored-by-mock".to_string(),
+                    crs_download_url: "https://drive.example.test/download/file-id".to_string(),
+                }),
+                uploads: RefCell::new(Vec::new()),
+            }
+        }
+
+        fn fails() -> Self {
+            Self {
+                result: Err("mock upload failure".to_string()),
+                uploads: RefCell::new(Vec::new()),
+            }
+        }
+    }
+
+    impl CrsArchivePublisher for MockArchivePublisher {
+        fn upload_archive(
+            &self,
+            _config: &DriveUploadConfig,
+            archive_path: &Path,
+            archive_name: &str,
+        ) -> Result<DriveUploadResult, DriveUploadError> {
+            self.uploads
+                .borrow_mut()
+                .push((archive_path.to_path_buf(), archive_name.to_string()));
+            self.result.clone().map_err(DriveUploadError::Message)
+        }
+    }
+
+    fn fixture() -> (
+        tempfile::TempDir,
+        DriveUploadConfig,
+        PathBuf,
+        PathBuf,
+        PathBuf,
+    ) {
+        let workspace = tempfile::tempdir().expect("must create temporary workspace");
+        let output = workspace.path().join("output");
+        let intermediate = workspace.path().join("intermediate");
+        fs::create_dir_all(&output).expect("must create output directory");
+        fs::create_dir_all(&intermediate).expect("must create intermediate directory");
+        for file_name in FINAL_OUTPUT_FILES[..3].iter() {
+            fs::write(output.join(file_name), file_name).expect("must write final CRS file");
+        }
+
+        let provenance = FinalCrsProvenance {
+            release_eligible: true,
+            generated_at_utc: "2026-08-23T12:34:56Z".to_string(),
+            compatible_backend_version: compatible_backend_version().to_string(),
+            subcircuit_library: SubcircuitLibraryProvenance {
+                package_name: env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_NAME").to_string(),
+                package_version: env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION")
+                    .to_string(),
+            },
+            phase1_source_provenance: None,
+            combined_sigma_sha256: "combined".to_string(),
+            sigma_preprocess_sha256: "preprocess".to_string(),
+            sigma_verify_sha256: "verify".to_string(),
+            published_folder_url: None,
+            published_archive_name: None,
+            crs_download_url: None,
+        };
+        fs::write(
+            output.join(PROVENANCE_FILE_NAME),
+            serde_json::to_vec_pretty(&provenance).expect("must serialize provenance"),
+        )
+        .expect("must write provenance");
+
+        let build_metadata = workspace.path().join("build-metadata-mpc-setup.json");
+        fs::write(&build_metadata, "{}").expect("must write build metadata");
+        let config = DriveUploadConfig {
+            folder_id: "folder-id".to_string(),
+            folder_url: "https://drive.example.test/folders/folder-id".to_string(),
+            oauth_client_json_path: workspace.path().join("unused-oauth.json"),
+            oauth_token_path: workspace.path().join("unused-token.json"),
+        };
+        (workspace, config, output, intermediate, build_metadata)
+    }
+
+    fn read_fixture_provenance(output: &Path) -> FinalCrsProvenance {
+        serde_json::from_slice(
+            &fs::read(output.join(PROVENANCE_FILE_NAME)).expect("must read provenance"),
+        )
+        .expect("must parse provenance")
+    }
 
     #[test]
     fn rejects_publication_of_a_development_only_crs() {
-        assert!(ensure_release_eligible(false).is_err());
-        assert!(ensure_release_eligible(true).is_ok());
+        let (_workspace, config, output, intermediate, build_metadata) = fixture();
+        let mut provenance = read_fixture_provenance(&output);
+        provenance.release_eligible = false;
+        fs::write(
+            output.join(PROVENANCE_FILE_NAME),
+            serde_json::to_vec_pretty(&provenance).expect("must serialize provenance"),
+        )
+        .expect("must write provenance");
+        let publisher = MockArchivePublisher::succeeds();
+
+        let error = publish_output_archive_with_publisher(
+            &config,
+            &intermediate.to_string_lossy(),
+            &output.to_string_lossy(),
+            &build_metadata,
+            &publisher,
+        )
+        .expect_err("development-only CRS must not be published");
+
+        assert!(error
+            .to_string()
+            .contains("only release-eligible CRS artifacts may be published"));
+        assert!(publisher.uploads.borrow().is_empty());
+    }
+
+    #[test]
+    fn publication_archives_and_records_a_finalized_crs() {
+        let (_workspace, config, output, intermediate, build_metadata) = fixture();
+        let publisher = MockArchivePublisher::succeeds();
+
+        let result = publish_output_archive_with_publisher(
+            &config,
+            &intermediate.to_string_lossy(),
+            &output.to_string_lossy(),
+            &build_metadata,
+            &publisher,
+        )
+        .expect("finalized CRS publication must succeed");
+
+        let uploads = publisher.uploads.borrow();
+        assert_eq!(uploads.len(), 1);
+        assert!(uploads[0].1.starts_with(&archive_version_prefix()));
+        assert_eq!(result.archive_name, uploads[0].1);
+        let mut archive = ZipArchive::new(
+            StdFile::open(&uploads[0].0).expect("mocked upload archive must exist"),
+        )
+        .expect("archive must be valid");
+        for file_name in FINAL_OUTPUT_FILES {
+            assert!(
+                archive.by_name(file_name).is_ok(),
+                "archive missing {file_name}"
+            );
+        }
+        assert!(archive.by_name("build-metadata-mpc-setup.json").is_ok());
+
+        let provenance = read_fixture_provenance(&output);
+        assert_eq!(provenance.published_folder_url, Some(config.folder_url));
+        assert_eq!(provenance.published_archive_name, Some(result.archive_name));
+        assert_eq!(
+            provenance.crs_download_url,
+            Some("https://drive.example.test/download/file-id".to_string())
+        );
+    }
+
+    #[test]
+    fn failed_publication_restores_local_provenance() {
+        let (_workspace, config, output, intermediate, build_metadata) = fixture();
+        let original_provenance = read_fixture_provenance(&output);
+        let publisher = MockArchivePublisher::fails();
+
+        let error = publish_output_archive_with_publisher(
+            &config,
+            &intermediate.to_string_lossy(),
+            &output.to_string_lossy(),
+            &build_metadata,
+            &publisher,
+        )
+        .expect_err("mock upload failure must be returned");
+
+        assert!(error.to_string().contains("mock upload failure"));
+        assert_eq!(publisher.uploads.borrow().len(), 1);
+        assert_eq!(read_fixture_provenance(&output), original_provenance);
+    }
+
+    #[test]
+    fn archive_construction_failure_restores_local_provenance() {
+        let (workspace, config, output, intermediate, _build_metadata) = fixture();
+        let original_provenance = read_fixture_provenance(&output);
+        let publisher = MockArchivePublisher::succeeds();
+        let missing_build_metadata = workspace.path().join("missing-build-metadata.json");
+
+        let error = publish_output_archive_with_publisher(
+            &config,
+            &intermediate.to_string_lossy(),
+            &output.to_string_lossy(),
+            &missing_build_metadata,
+            &publisher,
+        )
+        .expect_err("archive construction failure must be returned");
+
+        assert!(matches!(error, DriveUploadError::Io(_)));
+        assert!(publisher.uploads.borrow().is_empty());
+        assert_eq!(read_fixture_provenance(&output), original_provenance);
     }
 }
