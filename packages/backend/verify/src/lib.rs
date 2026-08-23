@@ -3,16 +3,19 @@ use icicle_bls12_381::curve::{ScalarCfg, ScalarField};
 use icicle_core::ntt;
 use icicle_core::traits::{Arithmetic, FieldImpl, GenerateRandom};
 use libs::bivariate_polynomial::{BivariatePolynomial, DensePolynomialExt};
+use libs::cli::CliDiagnostic;
+use libs::errors::{ArtifactError, CrsError, DeviceError};
 use libs::group_structures::pairing;
 use libs::group_structures::{G1serde, SigmaVerify};
 use libs::iotools::{Instance, SetupParams};
 use libs::utils::{
-    init_ntt_domain, load_setup_params_from_qap_path, prover_verifier_ntt_domain_size, setup_shape,
-    validate_setup_shape,
+    prover_verifier_ntt_domain_size, try_init_ntt_domain, try_load_setup_params_from_qap_path,
+    try_setup_shape, try_validate_setup_shape,
 };
 use preprocess::{FormattedPreprocess, Preprocess};
 use prove::*;
 use std::path::PathBuf;
+use thiserror::Error;
 
 pub struct VerifyInputPaths<'a> {
     pub qap_path: &'a str,
@@ -20,6 +23,36 @@ pub struct VerifyInputPaths<'a> {
     pub setup_path: &'a str,
     pub preprocess_path: &'a str,
     pub proof_path: &'a str,
+}
+
+#[derive(Debug, Error)]
+pub enum VerifyError {
+    #[error(transparent)]
+    Artifact(#[from] ArtifactError),
+    #[error(transparent)]
+    Crs(#[from] CrsError),
+    #[error(transparent)]
+    Device(#[from] DeviceError),
+    #[error("invalid {artifact} format at {}: {reason}", path.display())]
+    InvalidFormat {
+        artifact: &'static str,
+        path: PathBuf,
+        reason: String,
+    },
+}
+
+impl CliDiagnostic for VerifyError {
+    fn hint(&self) -> &'static str {
+        match self {
+            Self::Artifact(_) | Self::InvalidFormat { .. } => {
+                "Regenerate the matching frontend, preprocess, and proof artifacts, then retry."
+            }
+            Self::Crs(_) => {
+                "Use a compatible release CRS, or use the explicit local development bypass only for local testing."
+            }
+            Self::Device(_) => "Check the ICICLE backend installation and the selected device.",
+        }
+    }
 }
 
 pub struct Verifier {
@@ -49,44 +82,71 @@ struct VerificationDomainContext {
 }
 
 impl Verifier {
-    pub fn init(paths: &VerifyInputPaths) -> Self {
-        let setup_params = load_setup_params_from_qap_path(paths.qap_path);
-        let shape = setup_shape(&setup_params);
-        validate_setup_shape(&shape);
+    pub fn init(paths: &VerifyInputPaths) -> Result<Self, VerifyError> {
+        let setup_params_path = PathBuf::from(paths.qap_path).join("setupParams.json");
+        let setup_params = try_load_setup_params_from_qap_path(paths.qap_path)?;
+        let shape = try_setup_shape(&setup_params, &setup_params_path)?;
+        try_validate_setup_shape(&shape, &setup_params_path)?;
         let ntt_domain_size = prover_verifier_ntt_domain_size(&shape);
-        init_ntt_domain(ntt_domain_size);
+        try_init_ntt_domain(ntt_domain_size)?;
 
         // Load instance
         let instance_path = PathBuf::from(paths.synthesizer_path).join("instance.json");
-        let instance = Instance::read_from_json(instance_path).unwrap();
+        let instance = Instance::read_from_json(instance_path.clone()).map_err(|source| {
+            ArtifactError::Read {
+                artifact: "public instance",
+                path: instance_path,
+                source,
+            }
+        })?;
         // Parsing the inputs
         let a_pub_X = instance.gen_a_free_X(&setup_params);
 
         // Load Sigma (reference string)
         let sigma_path = PathBuf::from(paths.setup_path).join("sigma_verify.json");
-        let sigma = SigmaVerify::read_from_json(sigma_path).expect(
-            "No reference string is found. Run the Setup first (expected sigma_verify.json).",
-        );
+        let sigma =
+            SigmaVerify::read_from_json(sigma_path.clone()).map_err(|source| CrsError::Read {
+                path: sigma_path,
+                source,
+            })?;
 
         // Load Verifier preprocess
         let preprocess_path = PathBuf::from(paths.preprocess_path).join("preprocess.json");
-        let preprocess = FormattedPreprocess::read_from_json(preprocess_path)
-            .expect("No Verifier preprocess is found. Run the Preprocess first.")
-            .recover_proof_from_format();
+        let preprocess = FormattedPreprocess::read_from_json(preprocess_path.clone())
+            .map_err(|source| ArtifactError::Read {
+                artifact: "formatted preprocess",
+                path: preprocess_path.clone(),
+                source,
+            })?
+            .try_recover_proof_from_format()
+            .map_err(|reason| VerifyError::InvalidFormat {
+                artifact: "formatted preprocess",
+                path: preprocess_path,
+                reason,
+            })?;
 
         // Load Proof
         let proof_path = PathBuf::from(paths.proof_path).join("proof.json");
-        let proof = FormattedProof::read_from_json(proof_path)
-            .expect("No proof is found. Run the Prove first.")
-            .recover_proof_from_format();
+        let proof = FormattedProof::read_from_json(proof_path.clone())
+            .map_err(|source| ArtifactError::Read {
+                artifact: "formatted proof",
+                path: proof_path.clone(),
+                source,
+            })?
+            .try_recover_proof_from_format()
+            .map_err(|reason| VerifyError::InvalidFormat {
+                artifact: "formatted proof",
+                path: proof_path,
+                reason,
+            })?;
 
-        return Self {
+        Ok(Self {
             sigma,
             a_pub_X,
             setup_params,
             preprocess,
             proof,
-        };
+        })
     }
 
     fn collect_challenges(&self) -> VerificationChallenges {

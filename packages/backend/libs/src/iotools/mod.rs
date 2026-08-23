@@ -1536,22 +1536,42 @@ macro_rules! split_push {
 }
 
 // Helper function to recover a BaseField from part1 (16 bytes) and part2 (32 bytes)
-fn recover_basefield(part1: &String, part2: &String) -> BaseField {
+fn try_recover_basefield(part1: &str, part2: &str) -> Result<BaseField, String> {
     let mut bytes = [0u8; 48];
 
-    decode_to_slice(part1.trim_start_matches("0x"), &mut bytes[0..16]).expect("Invalid format");
+    decode_to_slice(part1.trim_start_matches("0x"), &mut bytes[0..16])
+        .map_err(|error| format!("invalid G1 coordinate prefix: {error}"))?;
 
-    decode_to_slice(part2.trim_start_matches("0x"), &mut bytes[16..48]).expect("Invalid format");
+    decode_to_slice(part2.trim_start_matches("0x"), &mut bytes[16..48])
+        .map_err(|error| format!("invalid G1 coordinate suffix: {error}"))?;
     bytes.reverse(); // to little Edian
 
-    return BaseField::from_bytes_le(&bytes);
+    Ok(BaseField::from_bytes_le(&bytes))
 }
 
 pub fn next_point(idx: usize, part1: &Vec<String>, part2: &Vec<String>) -> G1serde {
-    let bx = recover_basefield(&part1[idx], &part2[idx]);
-    let by = recover_basefield(&part1[idx + 1], &part2[idx + 1]);
+    try_next_point(idx, part1, part2).unwrap_or_else(|error| panic!("{error}"))
+}
 
-    return G1serde(G1Affine { x: bx, y: by });
+pub fn try_next_point(idx: usize, part1: &[String], part2: &[String]) -> Result<G1serde, String> {
+    let x_prefix = part1
+        .get(idx)
+        .ok_or_else(|| format!("missing G1 x prefix at entry {idx}"))?;
+    let x_suffix = part2
+        .get(idx)
+        .ok_or_else(|| format!("missing G1 x suffix at entry {idx}"))?;
+    let y_prefix = part1
+        .get(idx + 1)
+        .ok_or_else(|| format!("missing G1 y prefix at entry {}", idx + 1))?;
+    let y_suffix = part2
+        .get(idx + 1)
+        .ok_or_else(|| format!("missing G1 y suffix at entry {}", idx + 1))?;
+    let bx = try_recover_basefield(x_prefix, x_suffix)
+        .map_err(|error| format!("invalid G1 x coordinate at entry {idx}: {error}"))?;
+    let by = try_recover_basefield(y_prefix, y_suffix)
+        .map_err(|error| format!("invalid G1 y coordinate at entry {}: {error}", idx + 1))?;
+
+    Ok(G1serde(G1Affine { x: bx, y: by }))
 }
 
 #[macro_export]

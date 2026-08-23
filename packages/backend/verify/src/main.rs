@@ -1,13 +1,17 @@
 use clap::Parser;
+use libs::cli::render_error;
+#[cfg(feature = "testing-mode")]
+use libs::errors::ArtifactError;
 use libs::subcircuit_library::{
-    resolve_subcircuit_library_path, validate_operational_crs_compatibility,
+    try_resolve_subcircuit_library_path, validate_operational_crs_compatibility,
     DevelopmentCrsProvenanceArg, SubcircuitLibraryArg,
 };
-use libs::utils::check_device;
+use libs::utils::try_check_device;
 #[cfg(feature = "testing-mode")]
 use prove::Proof4Test;
 use std::path::PathBuf;
-use verify::{Verifier, VerifyInputPaths};
+use std::process::ExitCode;
+use verify::{Verifier, VerifyError, VerifyInputPaths};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -35,15 +39,22 @@ struct Config {
     proof: String,
 }
 
-fn main() {
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => render_error(&error),
+    }
+}
+
+fn run() -> Result<(), VerifyError> {
     let config = Config::parse();
-    let qap_library_path = resolve_subcircuit_library_path(config.subcircuit_library.as_deref());
+    let qap_library_path =
+        try_resolve_subcircuit_library_path(config.subcircuit_library.as_deref())?;
     validate_operational_crs_compatibility(
         &config.development_crs_provenance,
         PathBuf::from(&config.crs).as_path(),
         qap_library_path.as_path(),
-    )
-    .expect("CRS and subcircuit-library compatibility validation failed");
+    )?;
     let qap_path = qap_library_path.to_string_lossy().into_owned();
 
     let paths = VerifyInputPaths {
@@ -54,10 +65,10 @@ fn main() {
         proof_path: &config.proof,
     };
 
-    check_device();
+    try_check_device()?;
 
     println!("Verifier initialization...");
-    let verifier = Verifier::init(&paths);
+    let verifier = Verifier::init(&paths)?;
 
     println!("Verifying the proof...");
     let res_snark = verifier.verify_snark();
@@ -67,7 +78,14 @@ fn main() {
     {
         use std::path::PathBuf;
         let test_proof_path = PathBuf::from(paths.proof_path).join("proof4_test.json");
-        let proof4_test = Proof4Test::read_from_json(test_proof_path).unwrap();
+        let proof4_test =
+            Proof4Test::read_from_json(test_proof_path.clone()).map_err(|source| {
+                ArtifactError::Read {
+                    artifact: "proof arithmetic test data",
+                    path: test_proof_path,
+                    source,
+                }
+            })?;
         println!(
             "Verification arithmetic: {}",
             verifier.verify_arith(&proof4_test)
@@ -78,4 +96,6 @@ fn main() {
             verifier.verify_binding(&proof4_test)
         );
     }
+
+    Ok(())
 }

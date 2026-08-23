@@ -7,7 +7,7 @@ use libs::iotools::*;
 use libs::utils::{
     init_ntt_domain, prover_verifier_ntt_domain_size, setup_shape, validate_setup_shape,
 };
-use libs::{impl_read_from_json, impl_write_into_json, pop_recover, split_push};
+use libs::{impl_read_from_json, impl_write_into_json, split_push};
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -118,28 +118,55 @@ impl_write_into_json!(FormattedPreprocess);
 
 impl FormattedPreprocess {
     pub fn recover_proof_from_format(&self) -> Preprocess {
+        self.try_recover_proof_from_format()
+            .unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    pub fn try_recover_proof_from_format(&self) -> Result<Preprocess, String> {
         let p1 = &self.preprocess_entries_part1;
         let p2 = &self.preprocess_entries_part2;
 
         const G1_CNT: usize = 3; // The number of G1 points
-        assert_eq!(p1.len(), G1_CNT * 2);
-        assert_eq!(p2.len(), G1_CNT * 2);
+        if p1.len() != G1_CNT * 2 {
+            return Err(format!(
+                "expected {} G1 prefix entries, found {}",
+                G1_CNT * 2,
+                p1.len()
+            ));
+        }
+        if p2.len() != G1_CNT * 2 {
+            return Err(format!(
+                "expected {} G1 suffix entries, found {}",
+                G1_CNT * 2,
+                p2.len()
+            ));
+        }
 
-        let mut idx = 0;
+        let s0 = try_next_point(0, p1, p2)?;
+        let s1 = try_next_point(2, p1, p2)?;
+        let O_pub_fix = try_next_point(4, p1, p2)?;
 
-        // Must follow the same order of inputs as split_push!
-        pop_recover!(
-            idx, p1, p2, s0, s1, O_pub_fix,
-            // O_function_inst,
-            // O_block_inst,
-        );
-
-        return Preprocess {
+        Ok(Preprocess {
             s0,
             s1,
             O_pub_fix,
             // O_function_inst,
             // O_block_inst,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FormattedPreprocess;
+
+    #[test]
+    fn malformed_formatted_preprocess_returns_an_error() {
+        let formatted = FormattedPreprocess {
+            preprocess_entries_part1: vec!["0x".to_string(); 6],
+            preprocess_entries_part2: vec!["0x".to_string(); 6],
         };
+
+        assert!(formatted.try_recover_proof_from_format().is_err());
     }
 }

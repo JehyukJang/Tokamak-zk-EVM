@@ -18,7 +18,7 @@ use libs::utils::{
 #[cfg(feature = "testing-mode")]
 use libs::vector_operations::point_mul_two_vecs;
 use libs::vector_operations::{point_div_two_vecs, resize, transpose_inplace};
-use libs::{impl_read_from_json, impl_write_into_json, pop_recover, split_push};
+use libs::{impl_read_from_json, impl_write_into_json, split_push};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "timing")]
 use std::time::Instant;
@@ -357,22 +357,51 @@ impl_write_into_json!(FormattedProof);
 
 impl FormattedProof {
     pub fn recover_proof_from_format(&self) -> Proof {
+        self.try_recover_proof_from_format()
+            .unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    pub fn try_recover_proof_from_format(&self) -> Result<Proof, String> {
         let p1 = &self.proof_entries_part1;
         let p2 = &self.proof_entries_part2;
 
         const G1_CNT: usize = 19; // The number of G1 points
         const SCALAR_CNT: usize = 4; // The number of Scalars
 
-        assert_eq!(p1.len(), G1_CNT * 2);
-        assert_eq!(p2.len(), G1_CNT * 2 + SCALAR_CNT);
+        if p1.len() != G1_CNT * 2 {
+            return Err(format!(
+                "expected {} G1 prefix entries, found {}",
+                G1_CNT * 2,
+                p1.len()
+            ));
+        }
+        if p2.len() != G1_CNT * 2 + SCALAR_CNT {
+            return Err(format!(
+                "expected {} G1 suffix and scalar entries, found {}",
+                G1_CNT * 2 + SCALAR_CNT,
+                p2.len()
+            ));
+        }
 
-        let mut idx = 0;
-
-        // Must follow the same order of inputs as split_push!
-        pop_recover!(
-            idx, p1, p2, U, V, W, O_mid, O_prv, Q_AX, Q_AY, Q_CX, Q_CY, Pi_X, Pi_Y, B, R, M_Y, M_X,
-            N_Y, N_X, O_pub_free, A_free,
-        );
+        let U = try_next_point(0, p1, p2)?;
+        let V = try_next_point(2, p1, p2)?;
+        let W = try_next_point(4, p1, p2)?;
+        let O_mid = try_next_point(6, p1, p2)?;
+        let O_prv = try_next_point(8, p1, p2)?;
+        let Q_AX = try_next_point(10, p1, p2)?;
+        let Q_AY = try_next_point(12, p1, p2)?;
+        let Q_CX = try_next_point(14, p1, p2)?;
+        let Q_CY = try_next_point(16, p1, p2)?;
+        let Pi_X = try_next_point(18, p1, p2)?;
+        let Pi_Y = try_next_point(20, p1, p2)?;
+        let B = try_next_point(22, p1, p2)?;
+        let R = try_next_point(24, p1, p2)?;
+        let M_Y = try_next_point(26, p1, p2)?;
+        let M_X = try_next_point(28, p1, p2)?;
+        let N_Y = try_next_point(30, p1, p2)?;
+        let N_X = try_next_point(32, p1, p2)?;
+        let O_pub_free = try_next_point(34, p1, p2)?;
+        let A_free = try_next_point(36, p1, p2)?;
         let binding = Binding {
             A_free,
             O_pub_free,
@@ -398,21 +427,45 @@ impl FormattedProof {
             N_Y,
         };
         let scalar_slice = &p2[G1_CNT * 2..];
-        assert_eq!(scalar_slice.len(), SCALAR_CNT);
+        for (index, scalar) in scalar_slice.iter().enumerate() {
+            let bytes = hex::decode(scalar.trim_start_matches("0x"))
+                .map_err(|error| format!("invalid scalar at entry {index}: {error}"))?;
+            if bytes.len() != 32 {
+                return Err(format!(
+                    "invalid scalar at entry {index}: expected 32 bytes, found {}",
+                    bytes.len()
+                ));
+            }
+        }
         let proof3 = Proof3 {
             R_eval: FieldSerde(ScalarField::from_hex(&scalar_slice[0])),
             R_omegaX_eval: FieldSerde(ScalarField::from_hex(&scalar_slice[1])),
             R_omegaX_omegaY_eval: FieldSerde(ScalarField::from_hex(&scalar_slice[2])),
             V_eval: FieldSerde(ScalarField::from_hex(&scalar_slice[3])),
         };
-        return Proof {
+        Ok(Proof {
             binding,
             proof0,
             proof1,
             proof2,
             proof3,
             proof4,
+        })
+    }
+}
+
+#[cfg(test)]
+mod formatted_proof_tests {
+    use super::FormattedProof;
+
+    #[test]
+    fn malformed_formatted_proof_returns_an_error() {
+        let formatted = FormattedProof {
+            proof_entries_part1: vec!["0x".to_string(); 38],
+            proof_entries_part2: vec!["0x".to_string(); 42],
         };
+
+        assert!(formatted.try_recover_proof_from_format().is_err());
     }
 }
 
