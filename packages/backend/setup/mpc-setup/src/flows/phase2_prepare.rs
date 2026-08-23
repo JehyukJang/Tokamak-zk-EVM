@@ -14,6 +14,7 @@ use icicle_core::ntt::{self, NTTConfig, NTTDir};
 use icicle_core::traits::{Arithmetic, FieldImpl};
 use icicle_runtime::memory::{DeviceVec, HostSlice};
 use icicle_runtime::stream::IcicleStream;
+use libs::errors::DeviceError;
 use libs::group_structures::{G1serde, Sigma, Sigma1, Sigma2};
 use libs::iotools::public_wire_layout::{read_global_wires, PublicWireLayout};
 use libs::iotools::{scalar_to_hex, SetupParams, SubcircuitInfo, SubcircuitR1CS};
@@ -33,32 +34,48 @@ struct MsmWorkspace {
     capacity: usize,
 }
 
+fn device_error(
+    operation: &'static str,
+) -> impl FnOnce(icicle_runtime::errors::eIcicleError) -> MpcSetupError {
+    move |error| {
+        MpcSetupError::Device(DeviceError::Initialization {
+            device: "ICICLE phase-2 workspace",
+            reason: format!("{operation}: {error}"),
+        })
+    }
+}
+
 impl MsmWorkspace {
-    fn new(capacity: usize) -> Self {
+    fn new(capacity: usize) -> Result<Self, MpcSetupError> {
         let capacity = capacity.max(1);
-        Self {
-            stream: IcicleStream::create().expect("Stream creation failed"),
+        Ok(Self {
+            stream: IcicleStream::create().map_err(device_error("create MSM stream"))?,
             output: DeviceVec::<G1Projective>::device_malloc(capacity)
-                .expect("device_malloc failed"),
+                .map_err(device_error("allocate MSM output"))?,
             host: vec![G1Projective::zero(); capacity],
             capacity,
-        }
+        })
     }
 
-    fn ensure_capacity(&mut self, capacity: usize) {
+    fn ensure_capacity(&mut self, capacity: usize) -> Result<(), MpcSetupError> {
         if capacity <= self.capacity {
-            return;
+            return Ok(());
         }
         let new_capacity = capacity.next_power_of_two();
-        self.output =
-            DeviceVec::<G1Projective>::device_malloc(new_capacity).expect("device_malloc failed");
+        self.output = DeviceVec::<G1Projective>::device_malloc(new_capacity)
+            .map_err(device_error("grow MSM output"))?;
         self.host.resize(new_capacity, G1Projective::zero());
         self.capacity = new_capacity;
+        Ok(())
     }
 
-    fn msm(&mut self, scalars: &[ScalarField], bases: &[G1Affine]) -> G1serde {
+    fn msm(
+        &mut self,
+        scalars: &[ScalarField],
+        bases: &[G1Affine],
+    ) -> Result<G1serde, MpcSetupError> {
         assert_eq!(scalars.len(), bases.len());
-        self.ensure_capacity(1);
+        self.ensure_capacity(1)?;
 
         let mut cfg = MSMConfig::default();
         cfg.stream_handle = *self.stream;
@@ -69,12 +86,14 @@ impl MsmWorkspace {
             &cfg,
             &mut self.output[..1],
         )
-        .unwrap();
-        self.stream.synchronize().unwrap();
+        .map_err(device_error("run MSM"))?;
+        self.stream
+            .synchronize()
+            .map_err(device_error("synchronize MSM stream"))?;
         self.output[..1]
             .copy_to_host(HostSlice::from_mut_slice(&mut self.host[..1]))
-            .unwrap();
-        G1serde(G1Affine::from(self.host[0]))
+            .map_err(device_error("copy MSM output to host"))?;
+        Ok(G1serde(G1Affine::from(self.host[0])))
     }
 
     fn shared_bases_msm(
@@ -82,10 +101,10 @@ impl MsmWorkspace {
         bases: &[G1Affine],
         batched_scalars: &[ScalarField],
         output_size: usize,
-    ) -> &[G1Projective] {
+    ) -> Result<&[G1Projective], MpcSetupError> {
         assert!(output_size > 0);
         assert_eq!(batched_scalars.len(), bases.len() * output_size);
-        self.ensure_capacity(output_size);
+        self.ensure_capacity(output_size)?;
 
         let mut cfg = MSMConfig::default();
         cfg.stream_handle = *self.stream;
@@ -98,12 +117,14 @@ impl MsmWorkspace {
             &cfg,
             &mut self.output[..output_size],
         )
-        .unwrap();
-        self.stream.synchronize().unwrap();
+        .map_err(device_error("run batched MSM"))?;
+        self.stream
+            .synchronize()
+            .map_err(device_error("synchronize batched MSM stream"))?;
         self.output[..output_size]
             .copy_to_host(HostSlice::from_mut_slice(&mut self.host[..output_size]))
-            .unwrap();
-        &self.host[..output_size]
+            .map_err(device_error("copy batched MSM output to host"))?;
+        Ok(&self.host[..output_size])
     }
 }
 
@@ -121,26 +142,27 @@ struct NttWorkspace {
 }
 
 impl NttWorkspace {
-    fn new(capacity: usize) -> Self {
+    fn new(capacity: usize) -> Result<Self, MpcSetupError> {
         let capacity = capacity.max(1);
-        Self {
-            stream: IcicleStream::create().expect("Stream creation failed"),
+        Ok(Self {
+            stream: IcicleStream::create().map_err(device_error("create NTT stream"))?,
             device: DeviceVec::<ScalarField>::device_malloc(capacity)
-                .expect("device_malloc failed"),
+                .map_err(device_error("allocate NTT workspace"))?,
             host: vec![ScalarField::zero(); capacity],
             capacity,
-        }
+        })
     }
 
-    fn ensure_capacity(&mut self, capacity: usize) {
+    fn ensure_capacity(&mut self, capacity: usize) -> Result<(), MpcSetupError> {
         if capacity <= self.capacity {
-            return;
+            return Ok(());
         }
         let new_capacity = capacity.next_power_of_two();
-        self.device =
-            DeviceVec::<ScalarField>::device_malloc(new_capacity).expect("device_malloc failed");
+        self.device = DeviceVec::<ScalarField>::device_malloc(new_capacity)
+            .map_err(device_error("grow NTT workspace"))?;
         self.host.resize(new_capacity, ScalarField::zero());
         self.capacity = new_capacity;
+        Ok(())
     }
 
     fn inverse_rows_into(
@@ -149,15 +171,15 @@ impl NttWorkspace {
         row_count: usize,
         row_len: usize,
         out: &mut Vec<ScalarField>,
-    ) {
+    ) -> Result<(), MpcSetupError> {
         let size = row_count * row_len;
         assert_eq!(input.len(), size);
         if size == 0 {
             out.clear();
-            return;
+            return Ok(());
         }
 
-        self.ensure_capacity(size);
+        self.ensure_capacity(size)?;
         if out.len() != size {
             out.resize(size, ScalarField::zero());
         }
@@ -176,11 +198,14 @@ impl NttWorkspace {
             &cfg,
             &mut self.device[..size],
         )
-        .unwrap();
-        self.stream.synchronize().unwrap();
+        .map_err(device_error("run inverse NTT"))?;
+        self.stream
+            .synchronize()
+            .map_err(device_error("synchronize NTT stream"))?;
         self.device[..size]
             .copy_to_host(HostSlice::from_mut_slice(out))
-            .unwrap();
+            .map_err(device_error("copy NTT output to host"))?;
+        Ok(())
     }
 }
 
@@ -525,7 +550,7 @@ fn commit_component_x_only(
     row_len: usize,
     msm_workspace: &mut MsmWorkspace,
     dest: &mut [G1serde],
-) {
+) -> Result<(), MpcSetupError> {
     let gathered: Vec<(Vec<ScalarField>, Vec<usize>)> = coeff_views
         .par_iter()
         .zip(subcircuit_infos.par_iter())
@@ -543,7 +568,7 @@ fn commit_component_x_only(
         .map(|(_, indexes)| indexes.len())
         .sum::<usize>();
     if total_outputs == 0 {
-        return;
+        return Ok(());
     }
 
     let mut scalars = Vec::with_capacity(total_outputs * row_len);
@@ -553,10 +578,11 @@ fn commit_component_x_only(
         global_indexes.extend(subcircuit_indexes);
     }
 
-    let results = msm_workspace.shared_bases_msm(bases, &scalars, global_indexes.len());
+    let results = msm_workspace.shared_bases_msm(bases, &scalars, global_indexes.len())?;
     for (batch_idx, &global_idx) in global_indexes.iter().enumerate() {
         dest[global_idx] = dest[global_idx] + G1serde(G1Affine::from(results[batch_idx]));
     }
+    Ok(())
 }
 
 fn build_x_only_commitments<S: Phase1SrsSource>(
@@ -565,7 +591,7 @@ fn build_x_only_commitments<S: Phase1SrsSource>(
     source: &S,
     setup_params: &SetupParams,
     msm_workspace: &mut MsmWorkspace,
-) -> Box<[G1serde]> {
+) -> Result<Box<[G1serde]>, MpcSetupError> {
     let mut commitments = vec![G1serde::zero(); setup_params.m_D].into_boxed_slice();
     let a_bases = build_x_basis(source, 1, setup_params.n);
     let b_bases = build_x_basis(source, 2, setup_params.n);
@@ -579,7 +605,7 @@ fn build_x_only_commitments<S: Phase1SrsSource>(
         setup_params.n,
         msm_workspace,
         &mut commitments,
-    );
+    )?;
     commit_component_x_only(
         coeff_views,
         subcircuit_infos,
@@ -588,7 +614,7 @@ fn build_x_only_commitments<S: Phase1SrsSource>(
         setup_params.n,
         msm_workspace,
         &mut commitments,
-    );
+    )?;
     commit_component_x_only(
         coeff_views,
         subcircuit_infos,
@@ -597,9 +623,9 @@ fn build_x_only_commitments<S: Phase1SrsSource>(
         setup_params.n,
         msm_workspace,
         &mut commitments,
-    );
+    )?;
 
-    commitments
+    Ok(commitments)
 }
 
 fn scaled_inverse_root_powers(size: usize) -> Vec<ScalarField> {
@@ -640,9 +666,9 @@ fn build_plain_lagrange_commitments<S: Phase1SrsSource>(
     source: &S,
     size: usize,
     msm_workspace: &mut MsmWorkspace,
-) -> Box<[G1serde]> {
+) -> Result<Box<[G1serde]>, MpcSetupError> {
     if size == 0 {
-        return Vec::new().into_boxed_slice();
+        return Ok(Vec::new().into_boxed_slice());
     }
     let bases = build_x_basis(source, 0, size);
     let mut batched_scalars = vec![ScalarField::zero(); size * size];
@@ -653,21 +679,21 @@ fn build_plain_lagrange_commitments<S: Phase1SrsSource>(
         .for_each(|(row_idx, row)| {
             fill_lagrange_row_coeffs_from_root_table(&scaled_inv_root_pows, row_idx, row);
         });
-    let results = msm_workspace.shared_bases_msm(&bases, &batched_scalars, size);
-    results
+    let results = msm_workspace.shared_bases_msm(&bases, &batched_scalars, size)?;
+    Ok(results
         .iter()
         .map(|point| G1serde(G1Affine::from(*point)))
         .collect::<Vec<_>>()
-        .into_boxed_slice()
+        .into_boxed_slice())
 }
 
 fn build_alpha4_k_commitments<S: Phase1SrsSource>(
     source: &S,
     m_i: usize,
     msm_workspace: &mut MsmWorkspace,
-) -> Box<[G1serde]> {
+) -> Result<Box<[G1serde]>, MpcSetupError> {
     if m_i == 0 {
-        return Vec::new().into_boxed_slice();
+        return Ok(Vec::new().into_boxed_slice());
     }
     let bases = build_x_basis(source, 4, m_i);
     let mut batched_scalars = vec![ScalarField::zero(); m_i * m_i];
@@ -678,19 +704,19 @@ fn build_alpha4_k_commitments<S: Phase1SrsSource>(
         .for_each(|(row_idx, row)| {
             fill_lagrange_row_coeffs_from_root_table(&scaled_inv_root_pows, row_idx, row);
         });
-    let results = msm_workspace.shared_bases_msm(&bases, &batched_scalars, m_i);
-    results
+    let results = msm_workspace.shared_bases_msm(&bases, &batched_scalars, m_i)?;
+    Ok(results
         .iter()
         .map(|point| G1serde(G1Affine::from(*point)))
         .collect::<Vec<_>>()
-        .into_boxed_slice()
+        .into_boxed_slice())
 }
 
 fn build_plain_last_lagrange_commitment<S: Phase1SrsSource>(
     source: &S,
     size: usize,
     msm_workspace: &mut MsmWorkspace,
-) -> G1serde {
+) -> Result<G1serde, MpcSetupError> {
     let bases = build_x_basis(source, 0, size);
     let mut scalars = vec![ScalarField::zero(); size];
     let scaled_inv_root_pows = scaled_inverse_root_powers(size);
@@ -854,8 +880,8 @@ fn process_prepare(
 
     let g1 = phase1_source.g1();
     let g2 = phase1_source.g2();
-    let mut msm_workspace = MsmWorkspace::new(1);
-    let mut ntt_workspace = NttWorkspace::new(n.max(1));
+    let mut msm_workspace = MsmWorkspace::new(1)?;
+    let mut ntt_workspace = NttWorkspace::new(n.max(1))?;
 
     let subcircuit_start = part_no * subcircuit_infos.len() / total_part.max(1);
     let mut subcircuit_end = (part_no + 1) * subcircuit_infos.len() / total_part.max(1);
@@ -900,14 +926,14 @@ fn process_prepare(
         &phase1_source,
         &setup_params,
         &mut msm_workspace,
-    );
+    )?;
     let k_commitments = if compute_shared_terms {
-        build_alpha4_k_commitments(&phase1_source, m_i, &mut msm_workspace)
+        build_alpha4_k_commitments(&phase1_source, m_i, &mut msm_workspace)?
     } else {
         vec![G1serde::zero(); m_i].into_boxed_slice()
     };
     let m_commitments = if compute_shared_terms {
-        build_plain_lagrange_commitments(&phase1_source, l_free, &mut msm_workspace)
+        build_plain_lagrange_commitments(&phase1_source, l_free, &mut msm_workspace)?
     } else {
         Vec::new().into_boxed_slice()
     };
@@ -1002,7 +1028,7 @@ fn process_prepare(
         Vec::new().into_boxed_slice()
     };
     let lagrange_kl = if compute_shared_terms {
-        build_plain_last_lagrange_commitment(&phase1_source, m_i, &mut msm_workspace)
+        build_plain_last_lagrange_commitment(&phase1_source, m_i, &mut msm_workspace)?
             * l_evaled_vec[s_max - 1]
     } else {
         G1serde::zero()
@@ -1106,15 +1132,20 @@ impl ActiveCoeffMatrix {
         local_wire_count: usize,
         row_len: usize,
         ntt_workspace: &mut NttWorkspace,
-    ) -> Self {
+    ) -> Result<Self, MpcSetupError> {
         let mut coeffs = Vec::new();
         ntt_workspace.inverse_rows_into(
             compact_eval_rows,
             active_wires.len(),
             row_len,
             &mut coeffs,
-        );
-        Self::from_coeffs(active_wires, coeffs, local_wire_count, row_len)
+        )?;
+        Ok(Self::from_coeffs(
+            active_wires,
+            coeffs,
+            local_wire_count,
+            row_len,
+        ))
     }
 
     fn row(&self, local_idx: usize) -> Option<&[ScalarField]> {
@@ -1140,30 +1171,30 @@ impl SubcircuitCoeffView {
         subcircuit_info: &SubcircuitInfo,
         row_len: usize,
         ntt_workspace: &mut NttWorkspace,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, MpcSetupError> {
+        Ok(Self {
             a: ActiveCoeffMatrix::from_compact_eval_rows(
                 &compact_r1cs.A_compact_col_mat,
                 &compact_r1cs.A_active_wires,
                 subcircuit_info.Nwires,
                 row_len,
                 ntt_workspace,
-            ),
+            )?,
             b: ActiveCoeffMatrix::from_compact_eval_rows(
                 &compact_r1cs.B_compact_col_mat,
                 &compact_r1cs.B_active_wires,
                 subcircuit_info.Nwires,
                 row_len,
                 ntt_workspace,
-            ),
+            )?,
             c: ActiveCoeffMatrix::from_compact_eval_rows(
                 &compact_r1cs.C_compact_col_mat,
                 &compact_r1cs.C_active_wires,
                 subcircuit_info.Nwires,
                 row_len,
                 ntt_workspace,
-            ),
-        }
+            )?,
+        })
     }
 }
 
@@ -1185,7 +1216,7 @@ fn load_coeff_view(
         subcircuit_info,
         setup_params.n,
         ntt_workspace,
-    );
+    )?;
     Ok(coeff_view)
 }
 
