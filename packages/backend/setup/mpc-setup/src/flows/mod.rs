@@ -192,7 +192,7 @@ fn run_single_contributor_phase2(
         beacon_mode,
         contributor_index: 1,
         random_seed_input: derive_stage_seed_input(master_seed_input, "phase2-next"),
-    });
+    })?;
 
     phase2_gen_files::run(&phase2_gen_files::Phase2GenFilesConfig {
         intermediate: intermediate.to_string(),

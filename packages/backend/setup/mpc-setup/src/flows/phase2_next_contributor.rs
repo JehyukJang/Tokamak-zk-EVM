@@ -1,4 +1,5 @@
 use crate::contributor::{get_device_info, ContributorInfo};
+use crate::flows::MpcSetupError;
 use crate::sigma::{AaccExt, SigmaV2, HASH_BYTES_LEN};
 use crate::utils::{
     hash_sigma, initialize_random_generator_with_seed_input, pok, Mode, Phase2Proof,
@@ -13,6 +14,7 @@ use std::fs::File;
 use std::io;
 use std::io::{BufWriter, Write};
 use std::ops::Mul;
+use std::path::PathBuf;
 use std::time::Instant;
 
 const CONTRIBUTOR_FILE_FORMAT: &str = "phase2_contributor_{}.txt";
@@ -24,7 +26,7 @@ pub struct Phase2NextContributorConfig {
     pub contributor_index: usize,
     pub random_seed_input: Option<String>,
 }
-pub fn run(config: &Phase2NextContributorConfig) {
+pub fn run(config: &Phase2NextContributorConfig) -> Result<(), MpcSetupError> {
     let mut timer = StepTimer::new("phase2_next_contributor");
     let start = Instant::now();
     let mode = ceremony_mode(config.beacon_mode);
@@ -32,10 +34,21 @@ pub fn run(config: &Phase2NextContributorConfig) {
         initialize_random_generator_with_seed_input(&mode, config.random_seed_input.as_deref());
     timer.log_step("collect contributor metadata and initialize randomness");
 
-    let latest_acc = load_phase2_accumulator(&config.outfolder, config.contributor_index - 1);
+    let previous_index =
+        config
+            .contributor_index
+            .checked_sub(1)
+            .ok_or_else(|| MpcSetupError::State {
+                phase: "phase-2 next contributor",
+                reason: "contributor index must be greater than zero".to_string(),
+            })?;
+    let latest_acc = load_phase2_accumulator(&config.outfolder, previous_index)?;
     let latest_y = latest_acc
         .public_phase2_y()
-        .expect("phase-2 accumulator must disclose y");
+        .map_err(|reason| MpcSetupError::State {
+            phase: "phase-2 next contributor",
+            reason: format!("phase-2 accumulator must disclose y: {reason}"),
+        })?;
     let latest_s = latest_acc
         .sigma
         .sigma_1
@@ -52,13 +65,19 @@ pub fn run(config: &Phase2NextContributorConfig) {
                 .map(|row| row.len())
                 .filter(|len| *len > 0)
         })
-        .expect("phase-2 accumulator shape must reveal s_max");
-    assert_ne!(
-        latest_y.pow(latest_s),
-        icicle_bls12_381::curve::ScalarField::one()
-    );
-    assert_eq!(latest_acc.sigma.sigma_1.y, latest_acc.sigma.G * latest_y);
-    assert_eq!(latest_acc.sigma.sigma_2.y, latest_acc.sigma.H * latest_y);
+        .ok_or_else(|| MpcSetupError::State {
+            phase: "phase-2 next contributor",
+            reason: "phase-2 accumulator shape must reveal s_max".to_string(),
+        })?;
+    if latest_y.pow(latest_s) == icicle_bls12_381::curve::ScalarField::one()
+        || latest_acc.sigma.sigma_1.y != latest_acc.sigma.G * latest_y
+        || latest_acc.sigma.sigma_2.y != latest_acc.sigma.H * latest_y
+    {
+        return Err(MpcSetupError::State {
+            phase: "phase-2 next contributor",
+            reason: "phase-2 accumulator has inconsistent disclosed y state".to_string(),
+        });
+    }
     timer.log_step("load latest accumulator and validate disclosed y");
 
     println!("loading current challenge and proof...");
@@ -68,21 +87,28 @@ pub fn run(config: &Phase2NextContributorConfig) {
         latest_acc
             .public_y_hex
             .as_deref()
-            .expect("validated phase-2 y must be disclosed")
+            .ok_or_else(|| MpcSetupError::State {
+                phase: "phase-2 next contributor",
+                reason: "validated phase-2 y must be disclosed".to_string(),
+            })?
     );
 
     let mut previous_hashes = vec![];
     previous_hashes.push(latest_acc.blake2b_hash());
     if latest_acc.contributor_index > 1 {
-        verify_latest_contribution(&config.outfolder, &latest_acc);
+        verify_latest_contribution(&config.outfolder, &latest_acc)?;
 
         let proof_file_str = &format!(
             "{}/phase2_proof_{}.json",
             config.outfolder,
             latest_acc.contributor_index - 1
         );
-        let prev_proof = Phase2Proof::read_from_json(proof_file_str)
-            .expect(format!("cannot read proof file: {}", proof_file_str).as_str());
+        let prev_proof =
+            Phase2Proof::read_from_json(proof_file_str).map_err(|source| MpcSetupError::Io {
+                operation: "read previous phase-2 proof",
+                path: PathBuf::from(proof_file_str),
+                source,
+            })?;
         previous_hashes.push(prev_proof.blake2b_hash());
     } else {
         println!("previous contributor is genesis");
@@ -94,14 +120,23 @@ pub fn run(config: &Phase2NextContributorConfig) {
     let (new_acc, new_proof) = compute_new_sigma(&mut rng, &latest_acc);
     timer.log_step("compute new accumulator and proof");
 
-    verify_and_save_results(&config.outfolder, &latest_acc, &new_acc, &new_proof);
+    verify_and_save_results(&config.outfolder, &latest_acc, &new_acc, &new_proof)?;
     timer.log_step("verify new proof and save results");
-    save_contributor_info(&previous_hashes, &start, &config, &new_acc, &new_proof)
-        .expect("cannot contribution info into file");
+    save_contributor_info(&previous_hashes, &start, &config, &new_acc, &new_proof).map_err(
+        |source| MpcSetupError::Io {
+            operation: "write phase-2 contributor information",
+            path: PathBuf::from(format!(
+                "{}/phase2_contributor_{}.txt",
+                config.outfolder, new_acc.contributor_index
+            )),
+            source,
+        },
+    )?;
     timer.log_step("write contributor info");
     timer.log_total();
     println!("Time elapsed: {:?}", start.elapsed().as_secs_f64());
     println!("thanks for your contribution...");
+    Ok(())
 }
 
 fn ceremony_mode(beacon_mode: bool) -> Mode {
@@ -156,30 +191,51 @@ fn create_contributor_info(
     }
 }
 
-fn verify_latest_contribution(outfolder: &str, latest_sigma: &SigmaV2) {
-    let prev_sigma = load_phase2_accumulator(outfolder, latest_sigma.contributor_index - 1);
+fn verify_latest_contribution(
+    outfolder: &str,
+    latest_sigma: &SigmaV2,
+) -> Result<(), MpcSetupError> {
+    let previous_index = latest_sigma
+        .contributor_index
+        .checked_sub(1)
+        .ok_or_else(|| MpcSetupError::State {
+            phase: "phase-2 next contributor",
+            reason: "latest contributor index must be greater than zero".to_string(),
+        })?;
+    let prev_sigma = load_phase2_accumulator(outfolder, previous_index)?;
 
     let proof_file_str = &format!(
         "{}/phase2_proof_{}.json",
         outfolder, latest_sigma.contributor_index
     );
-    let latest_proof = Phase2Proof::read_from_json(proof_file_str)
-        .expect(format!("cannot read proof file: {}", proof_file_str).as_str());
+    let latest_proof =
+        Phase2Proof::read_from_json(proof_file_str).map_err(|source| MpcSetupError::Io {
+            operation: "read latest phase-2 proof",
+            path: PathBuf::from(proof_file_str),
+            source,
+        })?;
 
     println!("verification of latest proof is started...");
-    assert!(
-        latest_proof.verify(&prev_sigma, &latest_sigma),
-        "proof verification failed"
-    );
+    if !latest_proof.verify(&prev_sigma, &latest_sigma) {
+        return Err(MpcSetupError::State {
+            phase: "phase-2 next contributor",
+            reason: "latest phase-2 proof verification failed".to_string(),
+        });
+    }
     println!("verification of latest proof is succeeded...");
+    Ok(())
 }
 
-fn load_phase2_accumulator(outfolder: &str, contributor_index: usize) -> SigmaV2 {
-    SigmaV2::read_phase2_acc(&format!(
-        "{}/phase2_acc_{}.rkyv",
-        outfolder, contributor_index
-    ))
-    .unwrap()
+fn load_phase2_accumulator(
+    outfolder: &str,
+    contributor_index: usize,
+) -> Result<SigmaV2, MpcSetupError> {
+    let path = format!("{}/phase2_acc_{}.rkyv", outfolder, contributor_index);
+    SigmaV2::read_phase2_acc(&path).map_err(|source| MpcSetupError::Io {
+        operation: "read phase-2 accumulator",
+        path: PathBuf::from(path),
+        source,
+    })
 }
 
 fn verify_and_save_results(
@@ -187,27 +243,36 @@ fn verify_and_save_results(
     latest_sigma: &SigmaV2,
     new_sigma: &SigmaV2,
     new_proof: &Phase2Proof,
-) {
-    assert!(
-        new_proof.verify(latest_sigma, new_sigma),
-        "proof verification failed"
+) -> Result<(), MpcSetupError> {
+    if !new_proof.verify(latest_sigma, new_sigma) {
+        return Err(MpcSetupError::State {
+            phase: "phase-2 next contributor",
+            reason: "new phase-2 proof verification failed".to_string(),
+        });
+    }
+
+    let accumulator_path = format!(
+        "{}/phase2_acc_{}.rkyv",
+        outfolder, new_sigma.contributor_index
     );
-
     new_sigma
-        .write_phase2_acc(&format!(
-            "{}/phase2_acc_{}.rkyv",
-            outfolder, new_sigma.contributor_index
-        ))
-        .expect("cannot write new combined sigma to file");
+        .write_phase2_acc(&accumulator_path)
+        .map_err(|source| MpcSetupError::Io {
+            operation: "write new phase-2 accumulator",
+            path: PathBuf::from(accumulator_path),
+            source,
+        })?;
 
-    Phase2Proof::write_into_json(
-        new_proof,
-        &format!(
-            "{}/phase2_proof_{}.json",
-            outfolder, new_sigma.contributor_index
-        ),
-    )
-    .expect("cannot write new_proof to file");
+    let proof_path = format!(
+        "{}/phase2_proof_{}.json",
+        outfolder, new_sigma.contributor_index
+    );
+    Phase2Proof::write_into_json(new_proof, &proof_path).map_err(|source| MpcSetupError::Io {
+        operation: "write new phase-2 proof",
+        path: PathBuf::from(proof_path),
+        source,
+    })?;
+    Ok(())
 }
 
 fn scale_g1_slice(points: &[G1serde], scalar: ScalarField) -> Box<[G1serde]> {
@@ -361,4 +426,21 @@ fn compute_new_sigma(rng: &mut RandomGenerator, sigma_old: &SigmaV2) -> (SigmaV2
     };
 
     (sigma_new, phase2Proof)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{run, Phase2NextContributorConfig};
+
+    #[test]
+    fn zero_contributor_index_returns_an_error() {
+        let config = Phase2NextContributorConfig {
+            outfolder: "/unused".to_string(),
+            beacon_mode: false,
+            contributor_index: 0,
+            random_seed_input: None,
+        };
+
+        assert!(run(&config).is_err());
+    }
 }
