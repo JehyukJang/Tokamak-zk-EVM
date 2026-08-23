@@ -1,5 +1,5 @@
 use crate::group_structures::G1serde;
-use crate::utils::check_gpu;
+use crate::utils::cuda_msm_is_available;
 use crate::vector_operations::scaled_outer_product;
 use icicle_bls12_381::curve::{G1Affine, G1Projective, ScalarField};
 use icicle_core::msm::{self, MSMConfig};
@@ -91,7 +91,7 @@ pub fn from_coef_vec_to_g1serde_vec_msm(coef: &[ScalarField], gen: &G1Affine, re
 }
 
 pub fn from_coef_vec_to_g1serde_vec(coef: &[ScalarField], gen: &G1Affine, res: &mut [G1serde]) {
-    if check_gpu() {
+    if cuda_msm_is_available() {
         from_coef_vec_to_g1serde_vec_msm(&coef.to_vec().into_boxed_slice(), gen, res);
     } else {
         use rayon::prelude::*;

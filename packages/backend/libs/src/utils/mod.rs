@@ -126,17 +126,16 @@ pub fn try_init_ntt_domain(size: usize) -> Result<(), DeviceError> {
     })
 }
 
-/// Returns true if CUDA or METAL GPU is available.
-pub fn check_gpu() -> bool {
+/// Returns whether CUDA is available for MSM execution.
+///
+/// METAL is deliberately excluded because ICICLE 3.8.0 uses CPU as the safe
+/// fallback when CUDA is unavailable, including on hosts that report METAL.
+pub fn cuda_msm_is_available() -> bool {
     let device_cuda = Device::new("CUDA", 0);
-    // "METAL" is not working yet.
-    let device_metal = Device::new("CUDA", 0);
-
     icicle_runtime::is_device_available(&device_cuda)
-        || icicle_runtime::is_device_available(&device_metal)
 }
 
-/// Sets the best available device and returns the selected device name ("CUDA", "METAL", or "CPU").
+/// Selects CUDA when available; otherwise selects CPU and returns its name.
 pub fn check_device() -> &'static str {
     try_check_device().unwrap_or_else(|error| panic!("{error}"))
 }
@@ -152,29 +151,79 @@ pub fn try_check_device() -> Result<&'static str, DeviceError> {
     let device_cuda = Device::new("CUDA", 0);
     let device_metal = Device::new("METAL", 0);
 
-    if icicle_runtime::is_device_available(&device_cuda) {
-        println!("CUDA is available");
-        icicle_runtime::set_device(&device_cuda).map_err(|error| DeviceError::Initialization {
-            device: "CUDA",
-            reason: error.to_string(),
-        })?;
-        Ok("CUDA")
-    } else if icicle_runtime::is_device_available(&device_metal) {
-        println!("METAL is available");
-        // icicle_runtime::set_device(&device_metal).expect("Failed to set METAL device");
-        // "METAL"
-        println!( "METAL is not working properly in the ICICLE version 3.8.0, so falling back to CPU only.");
-        icicle_runtime::set_device(&device_cpu).map_err(|error| DeviceError::Initialization {
-            device: "CPU",
-            reason: error.to_string(),
-        })?;
-        Ok("CPU")
+    match select_execution_device(
+        icicle_runtime::is_device_available(&device_cuda),
+        icicle_runtime::is_device_available(&device_metal),
+    ) {
+        ExecutionDevice::Cuda => {
+            println!("CUDA is available");
+            icicle_runtime::set_device(&device_cuda).map_err(|error| {
+                DeviceError::Initialization {
+                    device: "CUDA",
+                    reason: error.to_string(),
+                }
+            })?;
+            Ok("CUDA")
+        }
+        ExecutionDevice::CpuAfterMetalFallback => {
+            println!("METAL is available but ICICLE 3.8.0 falls back to CPU");
+            icicle_runtime::set_device(&device_cpu).map_err(|error| {
+                DeviceError::Initialization {
+                    device: "CPU",
+                    reason: error.to_string(),
+                }
+            })?;
+            Ok("CPU")
+        }
+        ExecutionDevice::Cpu => {
+            println!("CUDA is not available, falling back to CPU");
+            icicle_runtime::set_device(&device_cpu).map_err(|error| {
+                DeviceError::Initialization {
+                    device: "CPU",
+                    reason: error.to_string(),
+                }
+            })?;
+            Ok("CPU")
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ExecutionDevice {
+    Cuda,
+    CpuAfterMetalFallback,
+    Cpu,
+}
+
+fn select_execution_device(cuda_available: bool, metal_available: bool) -> ExecutionDevice {
+    if cuda_available {
+        ExecutionDevice::Cuda
+    } else if metal_available {
+        ExecutionDevice::CpuAfterMetalFallback
     } else {
-        println!("GPU is not available, falling back to CPU only");
-        icicle_runtime::set_device(&device_cpu).map_err(|error| DeviceError::Initialization {
-            device: "CPU",
-            reason: error.to_string(),
-        })?;
-        Ok("CPU")
+        ExecutionDevice::Cpu
+    }
+}
+
+#[cfg(test)]
+mod execution_device_tests {
+    use super::{select_execution_device, ExecutionDevice};
+
+    #[test]
+    fn selects_cuda_when_available() {
+        assert_eq!(select_execution_device(true, true), ExecutionDevice::Cuda,);
+    }
+
+    #[test]
+    fn falls_back_to_cpu_when_only_metal_is_available() {
+        assert_eq!(
+            select_execution_device(false, true),
+            ExecutionDevice::CpuAfterMetalFallback,
+        );
+    }
+
+    #[test]
+    fn selects_cpu_when_no_gpu_is_available() {
+        assert_eq!(select_execution_device(false, false), ExecutionDevice::Cpu);
     }
 }

@@ -230,6 +230,11 @@ The `coderun` and testing-mode preprocess, prove, and verify launchers use the l
 provenance compatibility-class check while a matching CRS is not yet available. Release launchers
 do not compile or accept that option and always validate CRS provenance compatibility.
 
+The ICICLE device policy selects CUDA when it is available. ICICLE 3.8.0 METAL availability is
+reported but deliberately falls back to CPU; it is not treated as a GPU/MSM capability. Setting
+`USE_GPU=true` for MPC setup therefore selects CUDA or CPU through the same policy and reports a
+backend-initialization failure instead of silently continuing after one.
+
 ## Timing Report for `prove`
 
 The backend includes a human-readable release timing report for the current local CPU baseline,

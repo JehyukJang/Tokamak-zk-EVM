@@ -6,7 +6,7 @@ use crate::flows::MpcSetupError;
 use crate::phase1_source::{AccumulatorSource, DuskGroth16Source, Phase1Source, Phase1SrsSource};
 use crate::sigma::{save_contributor_info, SigmaV2, HASH_BYTES_LEN};
 use crate::utils::{
-    initialize_random_generator_with_seed_input, load_gpu_if_possible, Mode, StepTimer,
+    initialize_random_generator_with_seed_input, select_cuda_or_cpu, Mode, StepTimer,
 };
 use icicle_bls12_381::curve::{G1Affine, G1Projective, ScalarField};
 use icicle_core::msm::{self, MSMConfig};
@@ -246,7 +246,7 @@ pub fn run(config: &Phase2PrepareConfig) -> Result<(), MpcSetupError> {
         .unwrap_or(false); // default to false
     let mut is_gpu_enabled = false;
     if use_gpu {
-        is_gpu_enabled = load_gpu_if_possible()
+        is_gpu_enabled = select_cuda_or_cpu().map_err(MpcSetupError::Device)?;
     }
     let outfolder = config.outfolder.clone();
     let start1 = Instant::now();

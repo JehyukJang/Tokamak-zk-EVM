@@ -14,7 +14,6 @@ use blake3::Hasher;
 use clap::ValueEnum;
 use icicle_bls12_381::curve::{ScalarCfg, ScalarField};
 use icicle_core::traits::{Arithmetic, FieldImpl, GenerateRandom};
-use icicle_runtime::Device;
 #[cfg(test)]
 use libs::field_structures::Tau;
 use libs::group_structures::{pairing, G1serde, G2serde};
@@ -82,24 +81,8 @@ fn inferred_phase2_s_max(sigma: &SigmaV2) -> Option<usize> {
         })
 }
 
-pub fn load_gpu_if_possible() -> bool {
-    let mut is_gpu_enabled = false;
-
-    let _ = icicle_runtime::load_backend_from_env_or_default();
-    // Check if GPU is available
-    let device_metal_gpu = Device::new("METAL", 0);
-    let device_cuda_gpu = Device::new("CUDA", 0);
-
-    if icicle_runtime::is_device_available(&device_metal_gpu) {
-        println!("Using METAL GPU backend");
-        icicle_runtime::set_device(&device_metal_gpu).expect("Failed to set metal device");
-        is_gpu_enabled = true;
-    } else if icicle_runtime::is_device_available(&device_cuda_gpu) {
-        println!("Using CUDA GPU backend");
-        icicle_runtime::set_device(&device_cuda_gpu).expect("Failed to set cuda device");
-        is_gpu_enabled = true;
-    }
-    is_gpu_enabled
+pub fn select_cuda_or_cpu() -> Result<bool, libs::errors::DeviceError> {
+    Ok(libs::utils::try_check_device()? == "CUDA")
 }
 #[macro_export]
 macro_rules! impl_read_from_json {

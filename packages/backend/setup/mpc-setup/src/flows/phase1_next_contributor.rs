@@ -2,7 +2,7 @@ use crate::accumulator::Accumulator;
 use crate::contributor::{get_device_info, ContributorInfo};
 use crate::sigma::AaccExt;
 use crate::utils::{
-    initialize_random_generator_with_seed_input, load_gpu_if_possible, Mode, Phase1Proof, StepTimer,
+    initialize_random_generator_with_seed_input, select_cuda_or_cpu, Mode, Phase1Proof, StepTimer,
 };
 use chrono::Local;
 use std::env;
@@ -31,7 +31,7 @@ pub fn run(config: &Phase1NextContributorConfig) -> Result<(), ContributorError>
         .and_then(|v| v.parse::<bool>().ok())
         .unwrap_or(false); // default to false
     if use_gpu {
-        let _ = load_gpu_if_possible();
+        select_cuda_or_cpu()?;
     }
 
     verify_existence_of_contributor_files(config, config.contributor_index)?;
@@ -71,6 +71,8 @@ pub enum ContributorError {
     Verification(#[from] VerificationError),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Device(#[from] libs::errors::DeviceError),
     #[error("Accumulator validation failed: {0}")]
     AccumulatorValidation(String),
 }
