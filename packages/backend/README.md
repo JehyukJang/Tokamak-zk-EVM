@@ -104,19 +104,31 @@ cargo run --release -p mpc-setup --bin native_mpc_setup -- \
 ### `dusk_backed_mpc_setup`
 
 Skips Tokamak phase 1, derives the phase-2 source from a pinned Dusk Groth16 raw powers-of-tau
-artifact, and then runs Tokamak phase 2.
+artifact, and then runs Tokamak phase 2. Ceremony and Google Drive publication are separate
+operations; only `publish` and the composite `run` require publication credentials.
 
-Release example:
+Create a local CRS without Drive access:
 
 ```bash
 cargo run --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
+  ceremony \
   --intermediate ./setup/mpc-setup/output/dusk.intermediate \
   --output ./setup/mpc-setup/output/dusk.final
 ```
 
-The dusk-backed release flow also:
+Publish a completed local CRS:
 
-- validates the pinned Dusk source digest and used tau ranges
+```bash
+cargo run --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
+  publish \
+  --intermediate ./setup/mpc-setup/output/dusk.intermediate \
+  --output ./setup/mpc-setup/output/dusk.final
+```
+
+Use `run` in place of `ceremony` to retain the one-command ceremony-then-publication workflow.
+
+The ceremony validates the pinned Dusk source digest and used tau ranges. Publication:
+
 - validates `build-metadata-mpc-setup.json` before publication
 - rejects publication if the configured Google Drive folder already contains a CRS archive for the
   current backend version

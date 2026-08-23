@@ -1,14 +1,31 @@
-use clap::Parser;
+use clap::{Args, Parser, Subcommand};
 use libs::cli::render_error;
 use libs::subcircuit_library::try_resolve_subcircuit_library_path;
 use mpc_setup::{
-    run_dusk_backed_mpc_setup, DuskBackedMpcSetupConfig, LOCAL_SUBCIRCUIT_LIBRARY_PATH,
+    run_dusk_backed_ceremony, run_dusk_backed_mpc_setup, run_dusk_backed_publication,
+    DuskBackedMpcSetupConfig, DuskPublicationConfig, LOCAL_SUBCIRCUIT_LIBRARY_PATH,
 };
 use std::process::ExitCode;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Config {
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand, Debug)]
+enum Command {
+    /// Create a local release-eligible CRS from the pinned Dusk source.
+    Ceremony(CeremonyConfig),
+    /// Publish an existing local release-eligible CRS to the configured Drive folder.
+    Publish(PublicationConfig),
+    /// Create a local CRS and publish it after the ceremony succeeds.
+    Run(CeremonyConfig),
+}
+
+#[derive(Args, Debug)]
+struct CeremonyConfig {
     /// Intermediate ceremony artifact directory, also used for dusk.response
     #[arg(long, value_name = "PATH")]
     intermediate: String,
@@ -26,6 +43,17 @@ struct Config {
     beacon_mode: bool,
 }
 
+#[derive(Args, Debug)]
+struct PublicationConfig {
+    /// Intermediate directory used to create the published CRS archive
+    #[arg(long, value_name = "PATH")]
+    intermediate: String,
+
+    /// Existing final CRS directory produced by the ceremony command
+    #[arg(long, value_name = "PATH")]
+    output: String,
+}
+
 fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
@@ -35,20 +63,39 @@ fn main() -> ExitCode {
 
 fn run() -> Result<(), mpc_setup::MpcSetupError> {
     let config = Config::parse();
+    match config.command {
+        Command::Ceremony(config) => {
+            run_dusk_backed_ceremony(&ceremony_config(config)?)?;
+            println!("Dusk-backed ceremony completed. The local CRS is ready for publication.");
+        }
+        Command::Publish(config) => {
+            run_dusk_backed_publication(&DuskPublicationConfig {
+                intermediate: config.intermediate,
+                output: config.output,
+            })?;
+        }
+        Command::Run(config) => {
+            let output = config.output.clone();
+            run_dusk_backed_mpc_setup(&ceremony_config(config)?)?;
+            println!(
+                "Dusk-backed ceremony and publication completed. Downstream preprocess/prove/verify can now use {output}"
+            );
+        }
+    }
+    Ok(())
+}
+
+fn ceremony_config(
+    config: CeremonyConfig,
+) -> Result<DuskBackedMpcSetupConfig, mpc_setup::MpcSetupError> {
     let qap_path = try_resolve_subcircuit_library_path(Some(LOCAL_SUBCIRCUIT_LIBRARY_PATH))?
         .to_string_lossy()
         .into_owned();
-    run_dusk_backed_mpc_setup(&DuskBackedMpcSetupConfig {
+    Ok(DuskBackedMpcSetupConfig {
         qap_path,
         intermediate: config.intermediate,
-        output: config.output.clone(),
+        output: config.output,
         beacon_mode: config.beacon_mode,
         seed_input: config.seed_input,
-    })?;
-
-    println!(
-        "Dusk-backed single-contributor MPC setup completed. Downstream preprocess/prove/verify can now use {}",
-        config.output
-    );
-    Ok(())
+    })
 }

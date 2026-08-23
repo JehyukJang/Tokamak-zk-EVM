@@ -70,6 +70,7 @@ native phase-1 initialization scalar uses internal randomness when testing mode 
 
 ```bash
 cargo run --release --bin dusk_backed_mpc_setup -- \
+  ceremony \
   --intermediate ./setup/mpc-setup/output/dusk.intermediate \
   --output ./setup/mpc-setup/output/dusk.final
 ```
@@ -84,23 +85,42 @@ In dusk-backed mode:
 - if the file is missing, the wrapper downloads the pinned Dusk contribution
 - the downloaded or local file must match the pinned SHA-256 digest compiled into the binary
 - the used G1 and G2 tau ranges are verified before phase 2 begins
-- before setup starts, the wrapper checks that the Google Drive upload environment is valid
-- preflight fails if the target Drive folder already contains a CRS archive for the current backend version
-- after setup succeeds, the wrapper zips the final `--output` artifacts and uploads the archive to
-  the configured Google Drive folder
-- the uploaded zip also includes `build-metadata-mpc-setup.json`
-- after upload, the wrapper grants the uploaded archive `anyone with the link = viewer`
-- after upload, the wrapper explicitly allows viewers and commenters to download, print, and copy
-  the uploaded archive
-- upload is only allowed in release builds
-- before uploading, the wrapper validates that `build-metadata-mpc-setup.json` matches the running
-  `mpc-setup` binary version and uses `runtimeMode = bundled`
-- the output archive name always includes the backend version and CRS generation timestamp
+
+`ceremony` does not read Google Drive configuration, open a browser, or publish an artifact. It
+creates a local release-eligible CRS and records provenance. It may download the pinned public
+Dusk source when `<intermediate>/dusk.response` is absent.
+
+Publish an existing ceremony output separately:
+
+```bash
+cargo run --release --bin dusk_backed_mpc_setup -- \
+  publish \
+  --intermediate ./setup/mpc-setup/output/dusk.intermediate \
+  --output ./setup/mpc-setup/output/dusk.final
+```
+
+`publish` checks that the Google Drive upload environment is valid, rejects a target folder that
+already contains a CRS archive for the current backend version, creates an archive containing the
+final `--output` artifacts and `build-metadata-mpc-setup.json`, and uploads it to the configured
+Google Drive folder. It is only available in release builds. Before upload, it validates that
+`build-metadata-mpc-setup.json` matches the running `mpc-setup` binary version and uses
+`runtimeMode = bundled`. The archive name includes the backend version and CRS generation
+timestamp.
+
+Use `run` instead of `ceremony` to execute ceremony followed by publication in one command:
+
+```bash
+cargo run --release --bin dusk_backed_mpc_setup -- \
+  run \
+  --intermediate ./setup/mpc-setup/output/dusk.intermediate \
+  --output ./setup/mpc-setup/output/dusk.final
+```
 
 Non-release example:
 
 ```bash
 cargo run -p mpc-setup --bin dusk_backed_mpc_setup -- \
+  ceremony \
   --intermediate ./setup/mpc-setup/output/dusk.intermediate \
   --output ./setup/mpc-setup/output/dusk.final
 ```
@@ -114,7 +134,8 @@ The current pinned Dusk source is:
 
 ## Dusk Upload Environment
 
-`dusk_backed_mpc_setup` reads its publish configuration from `.env`.
+The `publish` and `run` subcommands read publication configuration from `.env`; `ceremony` does
+not read it.
 
 Required keys:
 
@@ -125,12 +146,13 @@ Required keys:
 The published folder URL recorded in provenance is derived automatically from
 `TOKAMAK_MPC_DRIVE_FOLDER_ID`.
 The OAuth client JSON file must be a Google desktop-app client credential file.
-On the first publication run, `dusk_backed_mpc_setup` opens a browser window for Google login and
-stores the OAuth token at `TOKAMAK_MPC_DRIVE_OAUTH_TOKEN_PATH`.
+On the first `publish` or `run`, `dusk_backed_mpc_setup` opens a browser window for Google login
+and stores the OAuth token at `TOKAMAK_MPC_DRIVE_OAUTH_TOKEN_PATH`.
 The authenticated Google account must be able to add children to the configured folder and must
 also be allowed to create file permissions and update file sharing restrictions on uploaded
 archives; otherwise the publication step fails after upload.
-If preflight fails or the upload fails, the whole dusk-backed setup run fails.
+If publication preflight or upload fails, the completed local CRS remains available and its
+publication fields remain unchanged.
 
 ## Testing-Mode Builds
 
@@ -149,6 +171,7 @@ Dusk-backed:
 
 ```bash
 cargo run --release --features testing-mode --bin dusk_backed_mpc_setup -- \
+  ceremony \
   --intermediate ./setup/mpc-setup/output/dusk-testing.intermediate \
   --output ./setup/mpc-setup/output/dusk-testing.final
 ```

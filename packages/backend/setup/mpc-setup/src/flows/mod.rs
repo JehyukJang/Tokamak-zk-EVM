@@ -83,6 +83,12 @@ pub struct DuskBackedMpcSetupConfig {
     pub seed_input: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct DuskPublicationConfig {
+    pub intermediate: String,
+    pub output: String,
+}
+
 pub fn run_native_mpc_setup(config: &NativeMpcSetupConfig) -> Result<(), MpcSetupError> {
     let qap_path = canonicalize_existing_path(&config.qap_path)?;
     ensure_directory(&config.output)?;
@@ -113,8 +119,14 @@ pub fn run_native_mpc_setup(config: &NativeMpcSetupConfig) -> Result<(), MpcSetu
 }
 
 pub fn run_dusk_backed_mpc_setup(config: &DuskBackedMpcSetupConfig) -> Result<(), MpcSetupError> {
-    validate_release_build_metadata()?;
-    let upload_config = preflight_drive_upload()?;
+    run_dusk_backed_ceremony(config)?;
+    run_dusk_backed_publication(&DuskPublicationConfig {
+        intermediate: config.intermediate.clone(),
+        output: config.output.clone(),
+    })
+}
+
+pub fn run_dusk_backed_ceremony(config: &DuskBackedMpcSetupConfig) -> Result<(), MpcSetupError> {
     let qap_path = canonicalize_existing_path(&config.qap_path)?;
     ensure_directory(&config.output)?;
     ensure_directory(&config.intermediate)?;
@@ -129,8 +141,12 @@ pub fn run_dusk_backed_mpc_setup(config: &DuskBackedMpcSetupConfig) -> Result<()
             dusk_raw_file,
         },
         config.seed_input.as_deref(),
-    )?;
+    )
+}
 
+pub fn run_dusk_backed_publication(config: &DuskPublicationConfig) -> Result<(), MpcSetupError> {
+    validate_release_build_metadata()?;
+    let upload_config = preflight_drive_upload()?;
     let upload_result =
         publish_output_archive(&upload_config, &config.intermediate, &config.output)?;
     println!(
@@ -223,7 +239,10 @@ fn ensure_directory(path: &str) -> Result<(), MpcSetupError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{run_native_mpc_setup, MpcSetupError, NativeMpcSetupConfig};
+    use super::{
+        run_dusk_backed_ceremony, run_dusk_backed_mpc_setup, run_native_mpc_setup,
+        DuskBackedMpcSetupConfig, MpcSetupError, NativeMpcSetupConfig,
+    };
 
     #[test]
     fn native_setup_rejects_an_absent_qap_path_before_creating_output() {
@@ -240,6 +259,50 @@ mod tests {
         };
 
         let error = run_native_mpc_setup(&config).expect_err("missing QAP must fail");
+        assert!(matches!(error, MpcSetupError::Io { .. }));
+        assert!(!output.exists());
+        assert!(!intermediate.exists());
+    }
+
+    #[test]
+    fn dusk_ceremony_rejects_an_absent_qap_path_before_creating_output() {
+        let workspace = tempfile::tempdir().expect("must create temporary workspace");
+        let output = workspace.path().join("output");
+        let intermediate = workspace.path().join("intermediate");
+        let missing_qap = workspace.path().join("missing-qap");
+        let config = DuskBackedMpcSetupConfig {
+            qap_path: missing_qap.to_string_lossy().into_owned(),
+            intermediate: intermediate.to_string_lossy().into_owned(),
+            output: output.to_string_lossy().into_owned(),
+            beacon_mode: false,
+            seed_input: None,
+        };
+
+        let error = run_dusk_backed_ceremony(&config).expect_err("missing QAP must fail");
+        assert!(matches!(error, MpcSetupError::Io { .. }));
+        assert!(!output.exists());
+        assert!(!intermediate.exists());
+    }
+
+    #[test]
+    fn dusk_composite_runs_ceremony_before_publication() {
+        let workspace = tempfile::tempdir().expect("must create temporary workspace");
+        let output = workspace.path().join("output");
+        let intermediate = workspace.path().join("intermediate");
+        let config = DuskBackedMpcSetupConfig {
+            qap_path: workspace
+                .path()
+                .join("missing-qap")
+                .to_string_lossy()
+                .into_owned(),
+            intermediate: intermediate.to_string_lossy().into_owned(),
+            output: output.to_string_lossy().into_owned(),
+            beacon_mode: false,
+            seed_input: None,
+        };
+
+        let error = run_dusk_backed_mpc_setup(&config)
+            .expect_err("the ceremony must reject the missing QAP before publication");
         assert!(matches!(error, MpcSetupError::Io { .. }));
         assert!(!output.exists());
         assert!(!intermediate.exists());

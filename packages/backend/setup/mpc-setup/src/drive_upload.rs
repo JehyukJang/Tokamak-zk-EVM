@@ -115,9 +115,18 @@ pub fn publish_output_archive(
 
     let archive_path = intermediate_path.join(&archive_name);
     let build_metadata_path = resolve_build_metadata_path()?;
-    create_output_archive(&output_path, &archive_path, &build_metadata_path)?;
+    if let Err(err) = create_output_archive(&output_path, &archive_path, &build_metadata_path) {
+        let _ = write_provenance(&output_path, &original_provenance);
+        return Err(err.into());
+    }
 
-    let runtime = new_runtime()?;
+    let runtime = match new_runtime() {
+        Ok(runtime) => runtime,
+        Err(err) => {
+            let _ = write_provenance(&output_path, &original_provenance);
+            return Err(err.into());
+        }
+    };
     let upload_result = match runtime.block_on(upload_archive(config, &archive_path, &archive_name))
     {
         Ok(upload_result) => upload_result,
