@@ -1,7 +1,7 @@
 use clap::Parser;
 use libs::cli::render_error;
 use libs::subcircuit_library::try_resolve_subcircuit_library_path;
-use mpc_setup::{run_native_mpc_setup, NativeMpcSetupConfig, LOCAL_SUBCIRCUIT_LIBRARY_PATH};
+use mpc_setup::{run_native_mpc_setup, NativeMpcSetupConfig, MPC_SUBCIRCUIT_LIBRARY_PATH};
 use std::process::ExitCode;
 
 #[derive(Parser, Debug)]
@@ -33,7 +33,7 @@ fn main() -> ExitCode {
 
 fn run() -> Result<(), mpc_setup::MpcSetupError> {
     let config = Config::parse();
-    let qap_path = try_resolve_subcircuit_library_path(Some(LOCAL_SUBCIRCUIT_LIBRARY_PATH))?
+    let qap_path = try_resolve_subcircuit_library_path(Some(MPC_SUBCIRCUIT_LIBRARY_PATH))?
         .to_string_lossy()
         .into_owned();
     run_native_mpc_setup(&NativeMpcSetupConfig {

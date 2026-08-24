@@ -3,7 +3,7 @@ use libs::cli::render_error;
 use libs::subcircuit_library::try_resolve_subcircuit_library_path;
 use mpc_setup::{
     run_dusk_backed_ceremony, run_dusk_backed_mpc_setup, run_dusk_backed_publication,
-    DuskBackedMpcSetupConfig, DuskPublicationConfig, LOCAL_SUBCIRCUIT_LIBRARY_PATH,
+    DuskBackedMpcSetupConfig, DuskPublicationConfig, MPC_SUBCIRCUIT_LIBRARY_PATH,
 };
 use std::process::ExitCode;
 
@@ -88,7 +88,7 @@ fn run() -> Result<(), mpc_setup::MpcSetupError> {
 fn ceremony_config(
     config: CeremonyConfig,
 ) -> Result<DuskBackedMpcSetupConfig, mpc_setup::MpcSetupError> {
-    let qap_path = try_resolve_subcircuit_library_path(Some(LOCAL_SUBCIRCUIT_LIBRARY_PATH))?
+    let qap_path = try_resolve_subcircuit_library_path(Some(MPC_SUBCIRCUIT_LIBRARY_PATH))?
         .to_string_lossy()
         .into_owned();
     Ok(DuskBackedMpcSetupConfig {

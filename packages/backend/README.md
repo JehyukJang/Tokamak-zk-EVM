@@ -57,10 +57,10 @@ The backend only reads binary R1CS constraint files from the selected library:
 
 JSON R1CS files are not accepted by backend binaries.
 
-`native_mpc_setup` and `dusk_backed_mpc_setup` use the local frontend QAP compiler output prepared
-by their Cargo build. That build records the prepared library in
-`build-metadata-mpc-setup.json`, and exposes that path to the mpc setup binary. The mpc setup flow
-still consumes only `r1cs/subcircuit*.r1cs` from that prepared library.
+Non-release `native_mpc_setup` and `dusk_backed_mpc_setup` builds use local frontend QAP compiler
+output. A release MPC build instead prepares the npm subcircuit-library snapshot, records it in
+`build-metadata-mpc-setup.json`, and exposes that path to the MPC setup binary. The MPC setup flow
+still consumes only `r1cs/subcircuit*.r1cs` from the selected library.
 
 ## Setup Flows
 
@@ -222,15 +222,23 @@ tokamak-cli --verify
 Use the `Run and Debug` panel in VS Code and select one of the backend launch configurations under
 `.vscode/launch.json`.
 
-Release launchers for `trusted-setup`, `preprocess`, `prove`, and `verify` use the embedded
-subcircuit library. Non-release and testing launchers pass `--subcircuit-library` explicitly. The
-mpc-setup launchers use the local subcircuit library path prepared during their Cargo build.
+The local `trusted-setup`, `preprocess`, `prove`, and `verify` launchers pass
+`--subcircuit-library` explicitly. The production Dusk launcher selects the release MPC build,
+which prepares the npm subcircuit-library snapshot.
 
-Every VS Code launcher is a local developer entry point. Run `Debug trusted-setup`, then `Debug
-preprocess`, `Debug prove`, and `Debug verify` in that order. The latter three read
+Every VS Code launcher except `Release Dusk-backed MPC to Google Drive` is a local developer entry
+point. Run `Debug trusted-setup`, then `Debug preprocess`, `Debug prove`, and `Debug verify` in
+that order. The latter three read
 `setup/trusted-setup/output/debug`, use the local QAP compiler output, and pass the explicit
 development bypass. The native and Dusk MPC launchers write separate final CRS directories and do
 not overwrite this trusted-setup output.
+
+`Release Dusk-backed MPC to Google Drive` is the sole production launcher. It builds
+`dusk_backed_mpc_setup` in Cargo's release profile, takes the `run` path that performs ceremony
+followed by Google Drive publication, and uses the npm subcircuit-library snapshot prepared by the
+release MPC build. The build fails before the ceremony when the npm package major.minor does not
+equal the backend compatibility class. It writes only to
+`setup/mpc-setup/output/dusk-release.*`.
 
 The preprocess, prove, and verify launchers use the local `qap-compiler/subcircuits/library`
 output. They compile the development-only `development-crs-bypass` feature and pass

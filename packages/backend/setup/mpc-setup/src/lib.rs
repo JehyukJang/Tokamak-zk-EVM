@@ -1,4 +1,4 @@
-include!(concat!(env!("OUT_DIR"), "/local_subcircuit_library.rs"));
+include!(concat!(env!("OUT_DIR"), "/mpc_subcircuit_library.rs"));
 
 pub const fn testing_mode_enabled() -> bool {
     cfg!(feature = "testing-mode")

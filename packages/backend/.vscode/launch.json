@@ -49,20 +49,20 @@
       "sourceLanguages": ["rust"]
     },
     {
-      "name": "Debug Dusk-backed MPC ceremony",
+      "name": "Release Dusk-backed MPC to Google Drive",
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["build", "-p", "mpc-setup", "--bin", "dusk_backed_mpc_setup"],
+        "args": ["build", "--release", "-p", "mpc-setup", "--bin", "dusk_backed_mpc_setup"],
         "filter": { "name": "dusk_backed_mpc_setup", "kind": "bin" }
       },
       "program": "${cargo:program}",
       "args": [
-        "ceremony",
+        "run",
         "--intermediate",
-        "${workspaceFolder}/setup/mpc-setup/output/dusk-debug.intermediate",
+        "${workspaceFolder}/setup/mpc-setup/output/dusk-release.intermediate",
         "--output",
-        "${workspaceFolder}/setup/mpc-setup/output/dusk-debug.final"
+        "${workspaceFolder}/setup/mpc-setup/output/dusk-release.final"
       ],
       "cwd": "${workspaceFolder}",
       "env": {

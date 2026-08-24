@@ -67,18 +67,32 @@ pub fn configure_release_subcircuit_library_metadata(
     Ok(())
 }
 
-pub fn configure_local_subcircuit_library_for_mpc_setup(
+pub fn configure_mpc_subcircuit_library(
     out_dir: &Path,
     package_name: &str,
     package_version: &str,
 ) -> io::Result<()> {
     emit_cli_package_rerun_rule();
-    emit_local_qap_rerun_rules();
     println!("cargo:rustc-check-cfg=cfg(tokamak_release_profile)");
+
     if env::var("PROFILE").ok().as_deref() == Some("release") {
         println!("cargo:rustc-cfg=tokamak_release_profile");
+        let compatible_backend_version = read_cli_compatible_backend_version(package_version)?;
+        let snapshot = prepare_release_subcircuit_library()?.ok_or_else(|| {
+            io::Error::other("release MPC setup requires an npm subcircuit-library snapshot")
+        })?;
+        validate_release_mpc_library_compatibility(&snapshot.version, &compatible_backend_version)?;
+        emit_subcircuit_library_build_env(&snapshot.version, &compatible_backend_version);
+        emit_build_metadata(
+            &snapshot,
+            package_name,
+            package_version,
+            &compatible_backend_version,
+        )?;
+        return write_mpc_subcircuit_library_path(out_dir, &snapshot.snapshot_dir);
     }
 
+    emit_local_qap_rerun_rules();
     let compatible_backend_version = read_cli_compatible_backend_version(package_version)?;
     let library = prepare_local_subcircuit_library()?;
     emit_subcircuit_library_build_env(&library.version, &compatible_backend_version);
@@ -88,11 +102,29 @@ pub fn configure_local_subcircuit_library_for_mpc_setup(
         package_version,
         &compatible_backend_version,
     )?;
+    write_mpc_subcircuit_library_path(out_dir, &library.library_dir)
+}
+
+fn validate_release_mpc_library_compatibility(
+    library_version: &str,
+    compatible_backend_version: &str,
+) -> io::Result<()> {
+    let library_compatible_version =
+        package_major_minor(library_version, "npm subcircuit-library package version")?;
+    if library_compatible_version != compatible_backend_version {
+        return Err(io::Error::other(format!(
+            "release MPC setup requires npm subcircuit-library compatibility class {compatible_backend_version}, but resolved {library_version} (class {library_compatible_version})"
+        )));
+    }
+    Ok(())
+}
+
+fn write_mpc_subcircuit_library_path(out_dir: &Path, library_dir: &Path) -> io::Result<()> {
     fs::write(
-        out_dir.join("local_subcircuit_library.rs"),
+        out_dir.join("mpc_subcircuit_library.rs"),
         format!(
-            "pub const LOCAL_SUBCIRCUIT_LIBRARY_PATH: &str = {:?};\n",
-            library.library_dir.to_string_lossy()
+            "pub const MPC_SUBCIRCUIT_LIBRARY_PATH: &str = {:?};\n",
+            library_dir.to_string_lossy()
         ),
     )
 }
