@@ -216,12 +216,12 @@ fn verify_latest_contribution(
         })?;
 
     println!("verification of latest proof is started...");
-    if !latest_proof.verify(&prev_sigma, &latest_sigma) {
-        return Err(MpcSetupError::State {
+    latest_proof
+        .verify(&prev_sigma, &latest_sigma)
+        .map_err(|error| MpcSetupError::State {
             phase: "phase-2 next contributor",
-            reason: "latest phase-2 proof verification failed".to_string(),
-        });
-    }
+            reason: format!("latest phase-2 proof verification failed: {error}"),
+        })?;
     println!("verification of latest proof is succeeded...");
     Ok(())
 }
@@ -244,12 +244,12 @@ fn verify_and_save_results(
     new_sigma: &SigmaV2,
     new_proof: &Phase2Proof,
 ) -> Result<(), MpcSetupError> {
-    if !new_proof.verify(latest_sigma, new_sigma) {
-        return Err(MpcSetupError::State {
+    new_proof
+        .verify(latest_sigma, new_sigma)
+        .map_err(|error| MpcSetupError::State {
             phase: "phase-2 next contributor",
-            reason: "new phase-2 proof verification failed".to_string(),
-        });
-    }
+            reason: format!("new phase-2 proof verification failed: {error}"),
+        })?;
 
     let accumulator_path = format!(
         "{}/phase2_acc_{}.rkyv",

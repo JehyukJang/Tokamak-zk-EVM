@@ -17,6 +17,8 @@ use icicle_core::traits::{Arithmetic, FieldImpl, GenerateRandom};
 #[cfg(test)]
 use libs::field_structures::Tau;
 use libs::group_structures::{pairing, G1serde, G2serde};
+#[cfg(test)]
+use libs::group_structures::{Sigma, Sigma1, Sigma2};
 use rayon::prelude::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::from_reader;
@@ -27,6 +29,7 @@ use std::io::{BufReader, BufWriter, Read, Write};
 use std::ops::Mul;
 use std::time::Instant;
 use std::{fs, io};
+use thiserror::Error;
 
 pub struct StepTimer {
     label: String,
@@ -295,6 +298,51 @@ pub struct Phase2Proof {
 }
 impl_read_from_json!(Phase2Proof);
 impl_write_into_json!(Phase2Proof);
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum Phase2VerificationError {
+    #[error("{accumulator} phase-2 accumulator is missing or has invalid disclosed y: {reason}")]
+    InvalidDisclosedY {
+        accumulator: &'static str,
+        reason: String,
+    },
+    #[error("{accumulator} phase-2 accumulator does not expose a valid s_max shape")]
+    MissingShape { accumulator: &'static str },
+    #[error(
+        "previous and current phase-2 accumulator s_max values differ: {previous} != {current}"
+    )]
+    SMaxMismatch { previous: usize, current: usize },
+    #[error("{accumulator} phase-2 accumulator has invalid disclosed y")]
+    InvalidYOrder { accumulator: &'static str },
+    #[error("phase-2 accumulator invariant failed: {invariant}")]
+    Invariant { invariant: &'static str },
+    #[error("phase-2 proof challenge does not match the previous accumulator")]
+    ChallengeMismatch,
+    #[error("phase-2 proof-of-knowledge check failed for {component}")]
+    ProofOfKnowledge { component: &'static str },
+    #[error("phase-2 consistency check failed for {component}")]
+    Consistency { component: &'static str },
+    #[error("phase-2 {component} length differs between accumulators: {previous} != {current}")]
+    LengthMismatch {
+        component: &'static str,
+        previous: usize,
+        current: usize,
+    },
+    #[error("phase-2 {component} row count differs between accumulators: {previous} != {current}")]
+    RowCountMismatch {
+        component: &'static str,
+        previous: usize,
+        current: usize,
+    },
+    #[error("phase-2 {component} row {row} length differs between accumulators: {previous} != {current}")]
+    RowLengthMismatch {
+        component: &'static str,
+        row: usize,
+        previous: usize,
+        current: usize,
+    },
+}
+
 impl Phase2Proof {
     pub fn blake2b_hash(&self) -> [u8; HASH_BYTES_LEN] {
         // Serialize without the hash field
@@ -306,186 +354,349 @@ impl Phase2Proof {
         result.copy_from_slice(&hash[..HASH_BYTES_LEN]);
         result
     }
-    pub fn verify(&self, sigma_old: &SigmaV2, sigma_cur: &SigmaV2) -> bool {
-        let old_y = sigma_old.public_phase2_y().expect(
-            "phase-2 proof verification requires a disclosed y in the previous accumulator",
-        );
-        let cur_y = sigma_cur
-            .public_phase2_y()
-            .expect("phase-2 proof verification requires a disclosed y in the current accumulator");
-        let old_s = inferred_phase2_s_max(sigma_old)
-            .expect("phase-2 proof verification cannot infer s_max from the previous accumulator");
-        let cur_s = inferred_phase2_s_max(sigma_cur)
-            .expect("phase-2 proof verification cannot infer s_max from the current accumulator");
-        assert_eq!(old_s, cur_s);
-        assert_ne!(old_y.pow(old_s), ScalarField::one(), "invalid disclosed y");
-        assert_ne!(cur_y.pow(cur_s), ScalarField::one(), "invalid disclosed y");
-        assert_eq!(old_y, cur_y);
-        assert_eq!(sigma_old.public_y_hex, sigma_cur.public_y_hex);
-        assert_eq!(sigma_old.sigma.sigma_1.y, sigma_old.sigma.G * old_y);
-        assert_eq!(sigma_cur.sigma.sigma_1.y, sigma_cur.sigma.G * cur_y);
-        assert_eq!(sigma_old.sigma.sigma_2.y, sigma_old.sigma.H * old_y);
-        assert_eq!(sigma_cur.sigma.sigma_2.y, sigma_cur.sigma.H * cur_y);
+    pub fn verify(
+        &self,
+        sigma_old: &SigmaV2,
+        sigma_cur: &SigmaV2,
+    ) -> Result<(), Phase2VerificationError> {
+        let old_y = phase2_y(sigma_old, "previous")?;
+        let cur_y = phase2_y(sigma_cur, "current")?;
+        let old_s = phase2_s_max(sigma_old, "previous")?;
+        let cur_s = phase2_s_max(sigma_cur, "current")?;
+        if old_s != cur_s {
+            return Err(Phase2VerificationError::SMaxMismatch {
+                previous: old_s,
+                current: cur_s,
+            });
+        }
+        if old_y.pow(old_s) == ScalarField::one() {
+            return Err(Phase2VerificationError::InvalidYOrder {
+                accumulator: "previous",
+            });
+        }
+        if cur_y.pow(cur_s) == ScalarField::one() {
+            return Err(Phase2VerificationError::InvalidYOrder {
+                accumulator: "current",
+            });
+        }
+        require_equal(old_y, cur_y, "disclosed y differs between accumulators")?;
+        require_equal(
+            &sigma_old.public_y_hex,
+            &sigma_cur.public_y_hex,
+            "public y encoding differs between accumulators",
+        )?;
+        require_equal(
+            sigma_old.sigma.sigma_1.y,
+            sigma_old.sigma.G * old_y,
+            "previous G1 y commitment does not match disclosed y",
+        )?;
+        require_equal(
+            sigma_cur.sigma.sigma_1.y,
+            sigma_cur.sigma.G * cur_y,
+            "current G1 y commitment does not match disclosed y",
+        )?;
+        require_equal(
+            sigma_old.sigma.sigma_2.y,
+            sigma_old.sigma.H * old_y,
+            "previous G2 y commitment does not match disclosed y",
+        )?;
+        require_equal(
+            sigma_cur.sigma.sigma_2.y,
+            sigma_cur.sigma.H * cur_y,
+            "current G2 y commitment does not match disclosed y",
+        )?;
 
-        let v = hash_sigma(&sigma_old);
+        let v = hash_sigma(sigma_old);
+        if self.v.as_slice() != v.as_slice() {
+            return Err(Phase2VerificationError::ChallengeMismatch);
+        }
+        require_equal(
+            sigma_old.sigma.G,
+            sigma_cur.sigma.G,
+            "G differs between accumulators",
+        )?;
+        require_equal(
+            sigma_old.sigma.H,
+            sigma_cur.sigma.H,
+            "H differs between accumulators",
+        )?;
+        validate_phase2_structure(sigma_old, sigma_cur)?;
 
-        assert_eq!(sigma_old.sigma.G, sigma_cur.sigma.G);
-        assert_eq!(sigma_old.sigma.H, sigma_cur.sigma.H);
-
-        assert_eq!(
+        require_pok(
             check_pok(&self.delta_t_g1, &sigma_cur.sigma.G, self.pok_delta, &v),
-            true
-        );
-        assert_eq!(
+            "delta",
+        )?;
+        require_pok(
             check_pok(&self.gamma_t_g1, &sigma_cur.sigma.G, self.pok_gamma, &v),
-            true
-        );
-        assert_eq!(
+            "gamma",
+        )?;
+        require_pok(
             check_pok(&self.eta_t_g1, &sigma_cur.sigma.G, self.pok_eta, &v),
-            true
-        );
+            "eta",
+        )?;
 
-        let ro_tGamma = ro(&self.gamma_t_g1, &v);
-        let ro_tEta = ro(&self.eta_t_g1, &v);
-        let ro_tDelta = ro(&self.delta_t_g1, &v);
+        let ro_t_gamma = ro(&self.gamma_t_g1, &v);
+        let ro_t_eta = ro(&self.eta_t_g1, &v);
+        let ro_t_delta = ro(&self.delta_t_g1, &v);
 
-        assert_eq!(
+        require_consistent(
             consistent(
                 &[sigma_old.gamma, sigma_cur.gamma],
                 &[],
-                &[ro_tGamma, self.pok_gamma]
+                &[ro_t_gamma, self.pok_gamma],
             ),
-            true
-        );
-        assert_eq!(
+            "gamma proof",
+        )?;
+        require_consistent(
             consistent(
                 &[sigma_old.sigma.sigma_1.eta, sigma_cur.sigma.sigma_1.eta],
                 &[],
-                &[ro_tEta, self.pok_eta]
+                &[ro_t_eta, self.pok_eta],
             ),
-            true
-        );
-        assert_eq!(
+            "eta proof",
+        )?;
+        require_consistent(
             consistent(
                 &[sigma_old.sigma.sigma_1.delta, sigma_cur.sigma.sigma_1.delta],
                 &[],
-                &[ro_tDelta, self.pok_delta]
+                &[ro_t_delta, self.pok_delta],
             ),
-            true
-        );
-
-        assert_eq!(
+            "delta proof",
+        )?;
+        require_consistent(
             consistent(
                 &[sigma_old.gamma, sigma_cur.gamma],
                 &[],
-                &[sigma_old.sigma.sigma_2.gamma, sigma_cur.sigma.sigma_2.gamma]
+                &[sigma_old.sigma.sigma_2.gamma, sigma_cur.sigma.sigma_2.gamma],
             ),
-            true
-        );
-        assert_eq!(
+            "gamma G2 commitment",
+        )?;
+        require_consistent(
             consistent(
                 &[sigma_old.sigma.sigma_1.eta, sigma_cur.sigma.sigma_1.eta],
                 &[],
-                &[sigma_old.sigma.sigma_2.eta, sigma_cur.sigma.sigma_2.eta]
+                &[sigma_old.sigma.sigma_2.eta, sigma_cur.sigma.sigma_2.eta],
             ),
-            true
-        );
-        assert_eq!(
+            "eta G2 commitment",
+        )?;
+        require_consistent(
             consistent(
                 &[sigma_old.sigma.sigma_1.delta, sigma_cur.sigma.sigma_1.delta],
                 &[],
-                &[sigma_old.sigma.sigma_2.delta, sigma_cur.sigma.sigma_2.delta]
+                &[sigma_old.sigma.sigma_2.delta, sigma_cur.sigma.sigma_2.delta],
             ),
-            true
-        );
+            "delta G2 commitment",
+        )?;
 
-        let consistent_all = sigma_cur
-            .sigma
-            .sigma_1
-            .gamma_inv_o_inst
-            .par_iter()
-            .zip(sigma_old.sigma.sigma_1.gamma_inv_o_inst.par_iter())
-            .all(|(cur, prev)| {
-                consistent(&[*cur, *prev], &[], &[sigma_cur.sigma.H, self.gamma_t_g2])
-            });
-        assert_eq!(consistent_all, true);
-        crate::testing_log!("Verified gamma_inv_o_inst consistency");
-
-        let consistent_all = sigma_cur
-            .sigma
-            .sigma_1
-            .delta_inv_alpha4_xj_tx
-            .par_iter()
-            .zip(sigma_old.sigma.sigma_1.delta_inv_alpha4_xj_tx.par_iter())
-            .all(|(cur, prev)| {
-                consistent(&[*cur, *prev], &[], &[sigma_cur.sigma.H, self.delta_t_g2])
-            });
-        assert_eq!(consistent_all, true);
-
-        crate::testing_log!("Verified delta_inv_alpha4_xj_tx consistency");
-        let consistent_all = sigma_cur
-            .sigma
-            .sigma_1
-            .delta_inv_alphak_xh_tx
-            .par_iter()
-            .zip(sigma_old.sigma.sigma_1.delta_inv_alphak_xh_tx.par_iter())
-            .all(|(cur_inner, old_inner)| {
-                cur_inner.iter().zip(old_inner.iter()).all(|(cur, prev)| {
-                    consistent(&[*cur, *prev], &[], &[sigma_cur.sigma.H, self.delta_t_g2])
-                })
-            });
-        assert_eq!(consistent_all, true);
-        crate::testing_log!("Verified delta_inv_alphak_xh_tx consistency");
-
-        let consistent_all = sigma_cur
-            .sigma
-            .sigma_1
-            .delta_inv_alphak_yi_ty
-            .par_iter()
-            .zip(sigma_old.sigma.sigma_1.delta_inv_alphak_yi_ty.par_iter())
-            .all(|(cur_inner, old_inner)| {
-                cur_inner.iter().zip(old_inner.iter()).all(|(cur, prev)| {
-                    consistent(&[*cur, *prev], &[], &[sigma_cur.sigma.H, self.delta_t_g2])
-                })
-            });
-        assert_eq!(consistent_all, true);
-        crate::testing_log!("Verified delta_inv_alphak_yi_ty consistency");
-
-        let consistent_all = sigma_cur
-            .sigma
-            .sigma_1
-            .eta_inv_li_o_inter_alpha4_kj
-            .par_iter()
-            .zip(
-                sigma_old
-                    .sigma
-                    .sigma_1
-                    .eta_inv_li_o_inter_alpha4_kj
-                    .par_iter(),
-            )
-            .all(|(cur_inner, old_inner)| {
-                cur_inner.iter().zip(old_inner.iter()).all(|(cur, prev)| {
-                    consistent(&[*cur, *prev], &[], &[sigma_cur.sigma.H, self.eta_t_g2])
-                })
-            });
-
-        assert_eq!(consistent_all, true);
-        crate::testing_log!("Verified eta_inv_li_o_inter_alpha4_kj consistency");
-
-        let consistent_all = sigma_cur
-            .sigma
-            .sigma_1
-            .delta_inv_li_o_prv
-            .par_iter()
-            .zip(sigma_old.sigma.sigma_1.delta_inv_li_o_prv.par_iter())
-            .all(|(cur_inner, old_inner)| {
-                cur_inner.iter().zip(old_inner.iter()).all(|(cur, prev)| {
-                    consistent(&[*cur, *prev], &[], &[sigma_cur.sigma.H, self.delta_t_g2])
-                })
-            });
-        assert_eq!(consistent_all, true);
-        true
+        verify_scaled_slice(
+            "gamma_inv_o_inst",
+            &sigma_old.sigma.sigma_1.gamma_inv_o_inst,
+            &sigma_cur.sigma.sigma_1.gamma_inv_o_inst,
+            sigma_cur.sigma.H,
+            self.gamma_t_g2,
+        )?;
+        verify_scaled_slice(
+            "delta_inv_alpha4_xj_tx",
+            &sigma_old.sigma.sigma_1.delta_inv_alpha4_xj_tx,
+            &sigma_cur.sigma.sigma_1.delta_inv_alpha4_xj_tx,
+            sigma_cur.sigma.H,
+            self.delta_t_g2,
+        )?;
+        verify_scaled_matrix(
+            "delta_inv_alphak_xh_tx",
+            &sigma_old.sigma.sigma_1.delta_inv_alphak_xh_tx,
+            &sigma_cur.sigma.sigma_1.delta_inv_alphak_xh_tx,
+            sigma_cur.sigma.H,
+            self.delta_t_g2,
+        )?;
+        verify_scaled_matrix(
+            "delta_inv_alphak_yi_ty",
+            &sigma_old.sigma.sigma_1.delta_inv_alphak_yi_ty,
+            &sigma_cur.sigma.sigma_1.delta_inv_alphak_yi_ty,
+            sigma_cur.sigma.H,
+            self.delta_t_g2,
+        )?;
+        verify_scaled_matrix(
+            "eta_inv_li_o_inter_alpha4_kj",
+            &sigma_old.sigma.sigma_1.eta_inv_li_o_inter_alpha4_kj,
+            &sigma_cur.sigma.sigma_1.eta_inv_li_o_inter_alpha4_kj,
+            sigma_cur.sigma.H,
+            self.eta_t_g2,
+        )?;
+        verify_scaled_matrix(
+            "delta_inv_li_o_prv",
+            &sigma_old.sigma.sigma_1.delta_inv_li_o_prv,
+            &sigma_cur.sigma.sigma_1.delta_inv_li_o_prv,
+            sigma_cur.sigma.H,
+            self.delta_t_g2,
+        )?;
+        Ok(())
     }
+}
+
+fn phase2_y(
+    sigma: &SigmaV2,
+    accumulator: &'static str,
+) -> Result<ScalarField, Phase2VerificationError> {
+    sigma
+        .public_phase2_y()
+        .map_err(|reason| Phase2VerificationError::InvalidDisclosedY {
+            accumulator,
+            reason,
+        })
+}
+
+fn phase2_s_max(
+    sigma: &SigmaV2,
+    accumulator: &'static str,
+) -> Result<usize, Phase2VerificationError> {
+    inferred_phase2_s_max(sigma).ok_or(Phase2VerificationError::MissingShape { accumulator })
+}
+
+fn require_equal<T: PartialEq>(
+    previous: T,
+    current: T,
+    invariant: &'static str,
+) -> Result<(), Phase2VerificationError> {
+    if previous == current {
+        Ok(())
+    } else {
+        Err(Phase2VerificationError::Invariant { invariant })
+    }
+}
+
+fn require_pok(valid: bool, component: &'static str) -> Result<(), Phase2VerificationError> {
+    if valid {
+        Ok(())
+    } else {
+        Err(Phase2VerificationError::ProofOfKnowledge { component })
+    }
+}
+
+fn require_consistent(valid: bool, component: &'static str) -> Result<(), Phase2VerificationError> {
+    if valid {
+        Ok(())
+    } else {
+        Err(Phase2VerificationError::Consistency { component })
+    }
+}
+
+fn validate_phase2_structure(
+    previous: &SigmaV2,
+    current: &SigmaV2,
+) -> Result<(), Phase2VerificationError> {
+    validate_scaled_slice_shape(
+        "gamma_inv_o_inst",
+        &previous.sigma.sigma_1.gamma_inv_o_inst,
+        &current.sigma.sigma_1.gamma_inv_o_inst,
+    )?;
+    validate_scaled_slice_shape(
+        "delta_inv_alpha4_xj_tx",
+        &previous.sigma.sigma_1.delta_inv_alpha4_xj_tx,
+        &current.sigma.sigma_1.delta_inv_alpha4_xj_tx,
+    )?;
+    validate_scaled_matrix_shape(
+        "delta_inv_alphak_xh_tx",
+        &previous.sigma.sigma_1.delta_inv_alphak_xh_tx,
+        &current.sigma.sigma_1.delta_inv_alphak_xh_tx,
+    )?;
+    validate_scaled_matrix_shape(
+        "delta_inv_alphak_yi_ty",
+        &previous.sigma.sigma_1.delta_inv_alphak_yi_ty,
+        &current.sigma.sigma_1.delta_inv_alphak_yi_ty,
+    )?;
+    validate_scaled_matrix_shape(
+        "eta_inv_li_o_inter_alpha4_kj",
+        &previous.sigma.sigma_1.eta_inv_li_o_inter_alpha4_kj,
+        &current.sigma.sigma_1.eta_inv_li_o_inter_alpha4_kj,
+    )?;
+    validate_scaled_matrix_shape(
+        "delta_inv_li_o_prv",
+        &previous.sigma.sigma_1.delta_inv_li_o_prv,
+        &current.sigma.sigma_1.delta_inv_li_o_prv,
+    )
+}
+
+fn validate_scaled_slice_shape(
+    component: &'static str,
+    previous: &[G1serde],
+    current: &[G1serde],
+) -> Result<(), Phase2VerificationError> {
+    if previous.len() == current.len() {
+        Ok(())
+    } else {
+        Err(Phase2VerificationError::LengthMismatch {
+            component,
+            previous: previous.len(),
+            current: current.len(),
+        })
+    }
+}
+
+fn validate_scaled_matrix_shape(
+    component: &'static str,
+    previous: &[Box<[G1serde]>],
+    current: &[Box<[G1serde]>],
+) -> Result<(), Phase2VerificationError> {
+    if previous.len() != current.len() {
+        return Err(Phase2VerificationError::RowCountMismatch {
+            component,
+            previous: previous.len(),
+            current: current.len(),
+        });
+    }
+    for (row, (previous, current)) in previous.iter().zip(current.iter()).enumerate() {
+        if previous.len() != current.len() {
+            return Err(Phase2VerificationError::RowLengthMismatch {
+                component,
+                row,
+                previous: previous.len(),
+                current: current.len(),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn verify_scaled_slice(
+    component: &'static str,
+    previous: &[G1serde],
+    current: &[G1serde],
+    h: G2serde,
+    contribution: G2serde,
+) -> Result<(), Phase2VerificationError> {
+    validate_scaled_slice_shape(component, previous, current)?;
+    require_consistent(
+        current
+            .par_iter()
+            .zip(previous.par_iter())
+            .all(|(current, previous)| consistent(&[*current, *previous], &[], &[h, contribution])),
+        component,
+    )
+}
+
+fn verify_scaled_matrix(
+    component: &'static str,
+    previous: &[Box<[G1serde]>],
+    current: &[Box<[G1serde]>],
+    h: G2serde,
+    contribution: G2serde,
+) -> Result<(), Phase2VerificationError> {
+    validate_scaled_matrix_shape(component, previous, current)?;
+    require_consistent(
+        current
+            .par_iter()
+            .zip(previous.par_iter())
+            .all(|(current_row, previous_row)| {
+                current_row
+                    .iter()
+                    .zip(previous_row.iter())
+                    .all(|(current, previous)| {
+                        consistent(&[*current, *previous], &[], &[h, contribution])
+                    })
+            }),
+        component,
+    )
 }
 
 //type 2: verify2
@@ -766,6 +977,119 @@ pub fn hash_sigma(sigma: &SigmaV2) -> [u8; 32] {
     result.copy_from_slice(&hash[..32]);
     result
 }
+
+#[cfg(test)]
+fn phase2_verification_fixture() -> (SigmaV2, Phase2Proof) {
+    let g1 = icicle_g1_generator();
+    let g2 = icicle_g2_generator();
+    let y = ScalarField::from_u32(2);
+    let point = g1;
+    let row = || vec![point].into_boxed_slice();
+    let sigma = SigmaV2 {
+        contributor_index: 1,
+        sigma: Sigma {
+            G: g1,
+            H: g2,
+            sigma_1: Sigma1 {
+                xy_powers: vec![point].into_boxed_slice(),
+                x: point,
+                y: g1.mul(y),
+                delta: point,
+                eta: point,
+                gamma_inv_o_inst: vec![point].into_boxed_slice(),
+                eta_inv_li_o_inter_alpha4_kj: vec![row()].into_boxed_slice(),
+                delta_inv_li_o_prv: vec![row()].into_boxed_slice(),
+                delta_inv_alphak_xh_tx: vec![row()].into_boxed_slice(),
+                delta_inv_alpha4_xj_tx: vec![point].into_boxed_slice(),
+                delta_inv_alphak_yi_ty: vec![row()].into_boxed_slice(),
+            },
+            sigma_2: Sigma2 {
+                alpha: g2,
+                alpha2: g2,
+                alpha3: g2,
+                alpha4: g2,
+                gamma: g2,
+                delta: g2,
+                eta: g2,
+                x: g2,
+                y: g2.mul(y),
+            },
+            lagrange_KL: point,
+        },
+        gamma: point,
+        public_y_hex: Some("0x02".to_string()),
+        phase1_source_provenance: None,
+    };
+    let challenge = hash_sigma(&sigma);
+    let one = ScalarField::from_u32(1);
+    let proof = Phase2Proof {
+        contributor_index: 2,
+        v: challenge.to_vec(),
+        delta_t_g1: g1.mul(one),
+        gamma_t_g1: g1.mul(one),
+        eta_t_g1: g1.mul(one),
+        pok_delta: pok(&g1, one, &challenge),
+        pok_gamma: pok(&g1, one, &challenge),
+        pok_eta: pok(&g1, one, &challenge),
+        delta_t_g2: g2.mul(one),
+        gamma_t_g2: g2.mul(one),
+        eta_t_g2: g2.mul(one),
+    };
+    (sigma, proof)
+}
+
+#[test]
+fn phase2_verification_accepts_a_well_formed_contribution() {
+    let (sigma, proof) = phase2_verification_fixture();
+
+    assert_eq!(proof.verify(&sigma, &sigma), Ok(()));
+}
+
+#[test]
+fn phase2_verification_rejects_a_tampered_challenge() {
+    let (sigma, mut proof) = phase2_verification_fixture();
+    proof.v[0] ^= 1;
+
+    assert_eq!(
+        proof.verify(&sigma, &sigma),
+        Err(Phase2VerificationError::ChallengeMismatch)
+    );
+}
+
+#[test]
+fn phase2_verification_rejects_shape_mismatch_without_panicking() {
+    let (sigma, proof) = phase2_verification_fixture();
+    let mut current = sigma.clone();
+    current.sigma.sigma_1.gamma_inv_o_inst = Vec::new().into_boxed_slice();
+
+    let result = std::panic::catch_unwind(|| proof.verify(&sigma, &current));
+    assert!(result.is_ok());
+    assert_eq!(
+        result.unwrap(),
+        Err(Phase2VerificationError::LengthMismatch {
+            component: "gamma_inv_o_inst",
+            previous: 1,
+            current: 0,
+        })
+    );
+}
+
+#[test]
+fn phase2_verification_rejects_missing_disclosed_y_without_panicking() {
+    let (mut sigma, proof) = phase2_verification_fixture();
+    sigma.public_y_hex = None;
+
+    let result = std::panic::catch_unwind(|| proof.verify(&sigma, &sigma));
+    assert!(result.is_ok());
+    assert!(matches!(
+        result.unwrap(),
+        Err(Phase2VerificationError::InvalidDisclosedY {
+            accumulator: "previous",
+            ..
+        })
+    ));
+}
+
 #[test]
 fn test_bilinear_map() {
     //initialize
