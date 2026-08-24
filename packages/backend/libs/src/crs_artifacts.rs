@@ -18,8 +18,8 @@ use icicle_runtime::memory::HostSlice;
 use serde_json::to_writer_pretty;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File};
-use std::io::{self, BufWriter};
-use std::path::PathBuf;
+use std::io::{self, BufReader, BufWriter, Read};
+use std::path::{Path, PathBuf};
 #[cfg(feature = "timing")]
 use std::time::Instant;
 
@@ -108,6 +108,63 @@ pub fn write_final_crs_artifacts(
         sigma_preprocess_sha256: sha256_hex(sigma_preprocess_bytes.as_ref()),
         sigma_verify_sha256: sha256_hex(&sigma_verify_bytes),
     })
+}
+
+/// Verify that final CRS artifacts still match the digests recorded when they
+/// were generated.
+///
+/// This is a publication-boundary integrity primitive. It deliberately does
+/// not define CRS compatibility and callers outside an artifact distribution
+/// boundary must not use it as an eligibility requirement.
+pub fn verify_final_crs_artifact_digests(
+    output_dir: &Path,
+    expected: &FinalCrsDigests,
+) -> io::Result<()> {
+    let checks = [
+        (
+            "combined_sigma.rkyv",
+            "combined_sigma_sha256",
+            expected.combined_sigma_sha256.as_str(),
+        ),
+        (
+            "sigma_preprocess.rkyv",
+            "sigma_preprocess_sha256",
+            expected.sigma_preprocess_sha256.as_str(),
+        ),
+        (
+            "sigma_verify.json",
+            "sigma_verify_sha256",
+            expected.sigma_verify_sha256.as_str(),
+        ),
+    ];
+
+    for (file_name, digest_field, expected_digest) in checks {
+        let artifact_path = output_dir.join(file_name);
+        let actual_digest = sha256_file_hex(&artifact_path)?;
+        if actual_digest != expected_digest {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "{file_name} SHA-256 does not match crs_provenance.json {digest_field}: expected={expected_digest} actual={actual_digest}"
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn sha256_file_hex(path: &Path) -> io::Result<String> {
+    let file = File::open(path)?;
+    let mut reader = BufReader::new(file);
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let count = reader.read(&mut buffer)?;
+        if count == 0 {
+            return Ok(hex::encode(hasher.finalize()));
+        }
+        hasher.update(&buffer[..count]);
+    }
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {

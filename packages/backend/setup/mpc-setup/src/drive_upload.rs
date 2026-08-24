@@ -6,6 +6,7 @@ use google_drive3::hyper::Client;
 use google_drive3::hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
 use google_drive3::{oauth2, DriveHub};
 use libs::compatibility::{compatibility_from_package_version, parse_compatible_backend_version};
+use libs::crs_artifacts::{verify_final_crs_artifact_digests, FinalCrsDigests};
 use oauth2::authenticator_delegate::{DefaultInstalledFlowDelegate, InstalledFlowDelegate};
 use serde_json::from_slice;
 use std::env;
@@ -135,6 +136,19 @@ fn publish_output_archive_with_publisher<P: CrsArchivePublisher>(
         )));
     }
     validate_provenance_subcircuit_library(&provenance, &provenance_compatible_version)?;
+    verify_final_crs_artifact_digests(
+        &output_path,
+        &FinalCrsDigests {
+            combined_sigma_sha256: provenance.combined_sigma_sha256.clone(),
+            sigma_preprocess_sha256: provenance.sigma_preprocess_sha256.clone(),
+            sigma_verify_sha256: provenance.sigma_verify_sha256.clone(),
+        },
+    )
+    .map_err(|error| {
+        DriveUploadError::Message(format!(
+            "cannot publish CRS whose artifacts fail provenance digest validation: {error}"
+        ))
+    })?;
     let archive_name = build_archive_name(&provenance)?;
     provenance.published_folder_url = Some(config.folder_url.clone());
     provenance.published_archive_name = Some(archive_name.clone());
@@ -579,6 +593,7 @@ mod tests {
         SubcircuitLibraryProvenance,
     };
     use crate::versioning::compatible_backend_version;
+    use sha2::{Digest, Sha256};
     use std::cell::RefCell;
     use std::fs;
     use std::fs::File as StdFile;
@@ -624,6 +639,10 @@ mod tests {
         }
     }
 
+    fn sha256(value: impl AsRef<[u8]>) -> String {
+        hex::encode(Sha256::digest(value.as_ref()))
+    }
+
     fn fixture() -> (tempfile::TempDir, DriveUploadConfig, PathBuf, PathBuf) {
         let workspace = tempfile::tempdir().expect("must create temporary workspace");
         let output = workspace.path().join("output");
@@ -663,9 +682,9 @@ mod tests {
                     transcript_consistency_verified: true,
                 },
             )),
-            combined_sigma_sha256: "combined".to_string(),
-            sigma_preprocess_sha256: "preprocess".to_string(),
-            sigma_verify_sha256: "verify".to_string(),
+            combined_sigma_sha256: sha256("combined_sigma.rkyv"),
+            sigma_preprocess_sha256: sha256("sigma_preprocess.rkyv"),
+            sigma_verify_sha256: sha256("sigma_verify.json"),
             published_folder_url: None,
             published_archive_name: None,
             crs_download_url: None,
@@ -799,6 +818,30 @@ mod tests {
     }
 
     #[test]
+    fn rejects_publication_when_any_final_crs_artifact_does_not_match_provenance() {
+        for file_name in FINAL_OUTPUT_FILES[..3].iter() {
+            let (_workspace, config, output, intermediate) = fixture();
+            let publisher = MockArchivePublisher::succeeds();
+            fs::write(output.join(file_name), "tampered CRS artifact")
+                .expect("must modify CRS artifact after provenance generation");
+
+            let error = publish_output_archive_with_publisher(
+                &config,
+                &intermediate.to_string_lossy(),
+                &output.to_string_lossy(),
+                &publisher,
+            )
+            .expect_err("tampered CRS artifact must not be published");
+
+            assert!(error.to_string().contains(file_name));
+            assert!(error
+                .to_string()
+                .contains("fail provenance digest validation"));
+            assert!(publisher.uploads.borrow().is_empty());
+        }
+    }
+
+    #[test]
     fn rejects_publication_with_a_noncanonical_compatibility_version() {
         let (_workspace, config, output, intermediate) = fixture();
         let mut provenance = read_fixture_provenance(&output);
@@ -886,8 +929,10 @@ mod tests {
         let (_workspace, config, output, intermediate) = fixture();
         let original_provenance = read_fixture_provenance(&output);
         let publisher = MockArchivePublisher::succeeds();
-        fs::remove_file(output.join("combined_sigma.rkyv"))
-            .expect("must remove final CRS file to make archive construction fail");
+        fs::create_dir(
+            intermediate.join(format!("{}20260823T123456Z.zip", archive_version_prefix())),
+        )
+        .expect("must reserve archive path with a directory to make archive construction fail");
 
         let error = publish_output_archive_with_publisher(
             &config,
