@@ -38,6 +38,10 @@ struct ResolvedSubcircuitLibrary {
 
 pub fn configure_embedded_release_subcircuit_library(out_dir: &Path) -> io::Result<()> {
     println!("cargo:rustc-check-cfg=cfg(tokamak_embedded_subcircuit_library)");
+    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_LOCAL_DEVELOPMENT_SUBCIRCUIT_LIBRARY");
+    if local_development_subcircuit_library_selected() {
+        return write_stub_embedded_module(out_dir);
+    }
     if let Some(snapshot) = prepare_release_subcircuit_library()? {
         println!("cargo:rustc-cfg=tokamak_embedded_subcircuit_library");
         generate_embedded_module(&snapshot, out_dir)?;
@@ -77,6 +81,11 @@ pub fn configure_mpc_subcircuit_library(
 
     if env::var("PROFILE").ok().as_deref() == Some("release") {
         println!("cargo:rustc-cfg=tokamak_release_profile");
+    }
+
+    if env::var("PROFILE").ok().as_deref() == Some("release")
+        && !local_development_subcircuit_library_selected()
+    {
         let compatible_backend_version = read_cli_compatible_backend_version(package_version)?;
         let snapshot = prepare_release_subcircuit_library()?.ok_or_else(|| {
             io::Error::other("release MPC setup requires an npm subcircuit-library snapshot")
@@ -103,6 +112,10 @@ pub fn configure_mpc_subcircuit_library(
         &compatible_backend_version,
     )?;
     write_mpc_subcircuit_library_path(out_dir, &library.library_dir)
+}
+
+fn local_development_subcircuit_library_selected() -> bool {
+    env::var_os("CARGO_FEATURE_LOCAL_DEVELOPMENT_SUBCIRCUIT_LIBRARY").is_some()
 }
 
 fn validate_release_mpc_library_compatibility(

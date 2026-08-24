@@ -40,6 +40,7 @@ default = []
 testing-mode = []
 timing = []
 development-crs-bypass = []
+local-development-subcircuit-library = []
 
 [build-dependencies]
 serde_json = { workspace = true }

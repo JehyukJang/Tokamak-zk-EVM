@@ -29,6 +29,7 @@ default = []
 testing-mode = []
 timing = ["libs/timing"]
 development-crs-bypass = ["libs/development-crs-bypass"]
+local-development-subcircuit-library = ["libs/local-development-subcircuit-library"]
 
 [[test]]
 name = "timing"

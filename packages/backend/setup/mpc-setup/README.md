@@ -6,9 +6,9 @@
 - `dusk_backed_mpc_setup`
 
 Both binaries are thin CLI wrappers. The ceremony logic lives in library flow modules under
-[`src/flows`](./src/flows). Non-release builds prepare the local qap-compiler subcircuit library;
-release builds prepare the npm subcircuit-library snapshot. Neither mode accepts a runtime library
-path argument.
+[`src/flows`](./src/flows). The `local-development-subcircuit-library` feature prepares the local
+qap-compiler subcircuit library; release builds without that feature prepare the npm
+subcircuit-library snapshot. Neither mode accepts a runtime library path argument.
 
 ## Overview
 
@@ -47,10 +47,11 @@ cd "$PWD/packages/backend"
 
 ## Native Mode
 
-Non-release `mpc-setup` builds build the local `../frontend/qap-compiler` package during the Cargo
-build. Release builds use the npm subcircuit-library snapshot prepared during the Cargo build.
-The release build rejects a snapshot whose package major.minor differs from the backend
-compatibility class. `mpc-setup` does not accept `--subcircuit-library`.
+`mpc-setup` builds with `local-development-subcircuit-library` build the local
+`../frontend/qap-compiler` package during the Cargo build, including when Cargo uses the release
+profile. Release builds without that feature use the npm subcircuit-library snapshot and reject a
+snapshot whose package major.minor differs from the backend compatibility class. `mpc-setup` does
+not accept `--subcircuit-library`.
 The setup flow consumes binary R1CS constraint files from the prepared library's `r1cs/` directory.
 
 ```bash

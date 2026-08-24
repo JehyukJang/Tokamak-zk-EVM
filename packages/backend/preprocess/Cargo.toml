@@ -21,3 +21,4 @@ serde_json = { workspace = true }
 default = []
 testing-mode = ["libs/testing-mode"]
 development-crs-bypass = ["libs/development-crs-bypass"]
+local-development-subcircuit-library = ["libs/local-development-subcircuit-library"]

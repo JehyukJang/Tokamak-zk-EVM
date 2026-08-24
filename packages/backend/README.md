@@ -57,10 +57,11 @@ The backend only reads binary R1CS constraint files from the selected library:
 
 JSON R1CS files are not accepted by backend binaries.
 
-Non-release `native_mpc_setup` and `dusk_backed_mpc_setup` builds use local frontend QAP compiler
-output. A release MPC build instead prepares the npm subcircuit-library snapshot, records it in
-`build-metadata-mpc-setup.json`, and exposes that path to the MPC setup binary. The MPC setup flow
-still consumes only `r1cs/subcircuit*.r1cs` from the selected library.
+MPC source selection is explicit and independent of Cargo optimization. The
+`local-development-subcircuit-library` feature selects local frontend QAP compiler output; without
+that feature, a release MPC build prepares the npm subcircuit-library snapshot. The build records
+the selected library in `build-metadata-mpc-setup.json`, and the MPC setup flow still consumes only
+`r1cs/subcircuit*.r1cs` from it.
 
 ## Setup Flows
 
@@ -226,9 +227,10 @@ The local `trusted-setup`, `preprocess`, `prove`, and `verify` launchers pass
 `--subcircuit-library` explicitly. The production Dusk launcher selects the release MPC build,
 which prepares the npm subcircuit-library snapshot.
 
-Every VS Code launcher except `Release Dusk-backed MPC to Google Drive` is a local developer entry
-point. Run `Debug trusted-setup`, then `Debug preprocess`, `Debug prove`, and `Debug verify` in
-that order. The latter three read
+Every VS Code launcher uses Cargo's release profile. Every launcher except `Release Dusk-backed
+MPC to Google Drive` is a local developer entry point and enables
+`local-development-subcircuit-library`. Run `Debug trusted-setup`, then `Debug preprocess`,
+`Debug prove`, and `Debug verify` in that order. The latter three read
 `setup/trusted-setup/output/debug`, use the local QAP compiler output, and pass the explicit
 development bypass. The native and Dusk MPC launchers write separate final CRS directories and do
 not overwrite this trusted-setup output.

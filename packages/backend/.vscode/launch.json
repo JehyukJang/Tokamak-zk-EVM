@@ -6,7 +6,7 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["build", "-p", "trusted-setup"],
+        "args": ["build", "--release", "-p", "trusted-setup", "--features", "local-development-subcircuit-library"],
         "filter": { "name": "trusted-setup", "kind": "bin" }
       },
       "program": "${cargo:program}",
@@ -30,7 +30,7 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["build", "-p", "mpc-setup"],
+        "args": ["build", "--release", "-p", "mpc-setup", "--features", "local-development-subcircuit-library"],
         "filter": { "name": "native_mpc_setup", "kind": "bin" }
       },
       "program": "${cargo:program}",
@@ -77,7 +77,7 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["build", "-p", "preprocess", "--features", "development-crs-bypass"],
+        "args": ["build", "--release", "-p", "preprocess", "--features", "development-crs-bypass,local-development-subcircuit-library"],
         "filter": { "name": "preprocess", "kind": "bin" }
       },
       "program": "${cargo:program}",
@@ -105,7 +105,7 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["build", "-p", "prove", "--features", "development-crs-bypass"],
+        "args": ["build", "--release", "-p", "prove", "--features", "development-crs-bypass,local-development-subcircuit-library"],
         "filter": { "name": "prove", "kind": "bin" }
       },
       "program": "${cargo:program}",
@@ -133,7 +133,7 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["build", "-p", "verify", "--features", "development-crs-bypass"],
+        "args": ["build", "--release", "-p", "verify", "--features", "development-crs-bypass,local-development-subcircuit-library"],
         "filter": { "name": "verify", "kind": "bin" }
       },
       "program": "${cargo:program}",
@@ -163,7 +163,7 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["test", "--release", "-p", "prove", "--features", "timing", "--test", "timing", "--", "--nocapture"],
+        "args": ["test", "--release", "-p", "prove", "--features", "timing,local-development-subcircuit-library", "--test", "timing", "--", "--nocapture"],
         "filter": { "name": "timing", "kind": "test" }
       },
       "program": "${cargo:program}",

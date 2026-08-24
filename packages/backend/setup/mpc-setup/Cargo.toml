@@ -45,6 +45,7 @@ webbrowser = "1.0"
 [features]
 default = []
 testing-mode = ["libs/testing-mode"]
+local-development-subcircuit-library = []
 
 [build-dependencies]
 serde_json = { workspace = true }
