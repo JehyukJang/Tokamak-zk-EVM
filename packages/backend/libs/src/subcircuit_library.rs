@@ -44,15 +44,14 @@ impl SubcircuitLibraryArg {
     }
 }
 
-/// Development-only opt-in for running against a CRS that is not release-eligible or has not
-/// yet been paired with the local subcircuit-library compatibility class.
+/// Development-only opt-in for skipping CRS compatibility validation.
 #[cfg(all(
     feature = "development-crs-bypass",
     not(tokamak_embedded_subcircuit_library)
 ))]
 #[derive(Args, Debug, Clone, Default)]
 pub struct DevelopmentCrsProvenanceArg {
-    /// Skip CRS provenance compatibility validation for local development only
+    /// Skip CRS compatibility validation for local development only
     #[arg(long)]
     allow_unverified_crs: bool,
 }
@@ -113,21 +112,6 @@ pub fn try_resolve_subcircuit_library_path(local_path: Option<&str>) -> Result<P
 pub fn validate_crs_compatibility(crs_dir: &Path, library_dir: &Path) -> std::io::Result<()> {
     let provenance_path = crs_dir.join(CRS_PROVENANCE_FILE_NAME);
     let provenance = read_json(&provenance_path, "CRS provenance")?;
-    let release_eligible = provenance
-        .get(RELEASE_ELIGIBLE_FIELD)
-        .and_then(serde_json::Value::as_bool)
-        .ok_or_else(|| {
-            std::io::Error::other(format!(
-                "{} is missing {RELEASE_ELIGIBLE_FIELD}",
-                provenance_path.display()
-            ))
-        })?;
-    if !release_eligible {
-        return Err(std::io::Error::other(format!(
-            "{} is development-only and cannot be used by release or deployment workflows",
-            provenance_path.display()
-        )));
-    }
     let crs_compatible_version = provenance
         .get("compatibleBackendVersion")
         .and_then(serde_json::Value::as_str)
@@ -416,18 +400,24 @@ mod tests {
         .expect("must write package manifest");
     }
 
-    fn write_provenance(crs_dir: &std::path::Path, compatible_version: &str) {
+    fn write_provenance(
+        crs_dir: &std::path::Path,
+        release_eligible: serde_json::Value,
+        compatible_version: &str,
+    ) {
         fs::write(
             crs_dir.join(super::CRS_PROVENANCE_FILE_NAME),
-            format!(
-                r#"{{"releaseEligible":true,"compatibleBackendVersion":"{compatible_version}"}}"#
-            ),
+            serde_json::json!({
+                "releaseEligible": release_eligible,
+                "compatibleBackendVersion": compatible_version,
+            })
+            .to_string(),
         )
         .expect("must write CRS provenance");
     }
 
     #[test]
-    fn rejects_trusted_setup_development_crs() {
+    fn rejects_crs_without_compatibility_version() {
         let root = test_root();
         let library_dir = root.join("subcircuits").join("library");
         let crs_dir = root.join("crs");
@@ -435,16 +425,16 @@ mod tests {
         fs::create_dir_all(&crs_dir).expect("must create CRS directory");
         write_package_manifest(&root, "3.0.0");
         write_development_only_trusted_setup_provenance(&crs_dir)
-            .expect("must write development-only trusted setup provenance");
+            .expect("must write trusted setup provenance");
 
         let error = validate_crs_compatibility(&crs_dir, &library_dir)
-            .expect_err("trusted setup CRS must be rejected outside development mode");
-        assert!(error.to_string().contains("development-only"));
+            .expect_err("CRS without a compatibility version must be rejected");
+        assert!(error.to_string().contains("compatibleBackendVersion"));
         fs::remove_dir_all(root).expect("must remove test directory");
     }
 
     #[test]
-    fn rejects_missing_or_malformed_release_eligibility() {
+    fn ignores_publication_eligibility_during_compatibility_validation() {
         let root = test_root();
         let library_dir = root.join("subcircuits").join("library");
         let crs_dir = root.join("crs");
@@ -452,23 +442,17 @@ mod tests {
         fs::create_dir_all(&crs_dir).expect("must create CRS directory");
         write_package_manifest(&root, "3.0.0");
 
-        fs::write(
-            crs_dir.join(super::CRS_PROVENANCE_FILE_NAME),
-            r#"{"compatibleBackendVersion":"3.0"}"#,
-        )
-        .expect("must write provenance without eligibility");
-        let missing = validate_crs_compatibility(&crs_dir, &library_dir)
-            .expect_err("missing release eligibility must be rejected");
-        assert!(missing.to_string().contains("releaseEligible"));
+        write_provenance(&crs_dir, serde_json::Value::Bool(false), "3.0");
+        validate_crs_compatibility(&crs_dir, &library_dir)
+            .expect("non-eligible CRS must be accepted by algorithm workflows");
 
-        fs::write(
-            crs_dir.join(super::CRS_PROVENANCE_FILE_NAME),
-            r#"{"releaseEligible":"true","compatibleBackendVersion":"3.0"}"#,
-        )
-        .expect("must write provenance with malformed eligibility");
-        let malformed = validate_crs_compatibility(&crs_dir, &library_dir)
-            .expect_err("non-boolean release eligibility must be rejected");
-        assert!(malformed.to_string().contains("releaseEligible"));
+        write_provenance(
+            &crs_dir,
+            serde_json::Value::String("not-a-publication-flag".to_string()),
+            "3.0",
+        );
+        validate_crs_compatibility(&crs_dir, &library_dir)
+            .expect("publication eligibility encoding must not affect compatibility");
         fs::remove_dir_all(root).expect("must remove test directory");
     }
 
@@ -480,32 +464,32 @@ mod tests {
         fs::create_dir_all(&library_dir).expect("must create library directory");
         fs::create_dir_all(&crs_dir).expect("must create CRS directory");
         write_package_manifest(&root, "2.1.7");
-        write_provenance(&crs_dir, "2.1");
+        write_provenance(&crs_dir, serde_json::Value::Bool(true), "2.1");
 
         validate_crs_compatibility(&crs_dir, &library_dir)
             .expect("matching CRS and library compatibility classes must be accepted");
 
-        write_provenance(&crs_dir, "3.0");
+        write_provenance(&crs_dir, serde_json::Value::Bool(true), "3.0");
         assert!(validate_crs_compatibility(&crs_dir, &library_dir).is_err());
         fs::remove_dir_all(root).expect("must remove test directory");
     }
 
     #[test]
-    fn operational_validation_rejects_a_development_only_crs_without_opt_in() {
+    fn operational_validation_accepts_a_noneligible_crs_with_matching_compatibility() {
         let root = test_root();
         let library_dir = root.join("subcircuits").join("library");
         let crs_dir = root.join("crs");
         fs::create_dir_all(&library_dir).expect("must create library directory");
         fs::create_dir_all(&crs_dir).expect("must create CRS directory");
-        write_development_only_trusted_setup_provenance(&crs_dir)
-            .expect("must write development-only trusted setup provenance");
+        write_package_manifest(&root, "3.0.0");
+        write_provenance(&crs_dir, serde_json::Value::Bool(false), "3.0");
 
-        assert!(validate_operational_crs_compatibility(
+        validate_operational_crs_compatibility(
             &DevelopmentCrsProvenanceArg::default(),
             &crs_dir,
             &library_dir,
         )
-        .is_err());
+        .expect("non-eligible CRS must be accepted without a bypass");
         fs::remove_dir_all(root).expect("must remove test directory");
     }
 
@@ -536,7 +520,7 @@ mod tests {
         .expect("development opt-in must be accepted");
         assert!(config.development.allows_unverified_crs());
         validate_operational_crs_compatibility(&config.development, &crs_dir, &library_dir)
-            .expect("development opt-in must bypass release eligibility validation");
+            .expect("development opt-in must bypass compatibility validation");
         fs::remove_dir_all(root).expect("must remove test directory");
     }
 }
