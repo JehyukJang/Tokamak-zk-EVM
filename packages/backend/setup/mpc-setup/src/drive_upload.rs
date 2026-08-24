@@ -5,6 +5,7 @@ use google_drive3::hyper::client::HttpConnector;
 use google_drive3::hyper::Client;
 use google_drive3::hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
 use google_drive3::{oauth2, DriveHub};
+use libs::compatibility::{compatibility_from_package_version, parse_compatible_backend_version};
 use oauth2::authenticator_delegate::{DefaultInstalledFlowDelegate, InstalledFlowDelegate};
 use serde_json::from_slice;
 use std::env;
@@ -122,7 +123,7 @@ fn publish_output_archive_with_publisher<P: CrsArchivePublisher>(
     let mut provenance = read_provenance(&output_path)?;
     let original_provenance = provenance.clone();
     validate_publication_provenance(&provenance)?;
-    let provenance_compatible_version = validate_canonical_compatible_version(
+    let provenance_compatible_version = canonical_compatible_version(
         &provenance.compatible_backend_version,
         "crs_provenance.json compatibleBackendVersion",
     )?;
@@ -250,7 +251,7 @@ fn write_provenance(
 }
 
 fn build_archive_name(provenance: &FinalCrsProvenance) -> Result<String, DriveUploadError> {
-    validate_canonical_compatible_version(
+    canonical_compatible_version(
         &provenance.compatible_backend_version,
         "crs_provenance.json compatibleBackendVersion",
     )?;
@@ -332,51 +333,15 @@ fn validate_provenance_subcircuit_library(
 }
 
 fn package_compatible_version(value: &str, label: &str) -> Result<String, DriveUploadError> {
-    let parts = value.split('.').collect::<Vec<_>>();
-    if parts.len() != 3
-        || parts
-            .iter()
-            .any(|part| part.is_empty() || !part.chars().all(|ch| ch.is_ascii_digit()))
-    {
-        return Err(DriveUploadError::Message(format!(
-            "{label} must be strict MAJOR.MINOR.PATCH, got {value:?}"
-        )));
-    }
-    let major = parts[0].parse::<u64>().map_err(|err| {
-        DriveUploadError::Message(format!("{label} major version is invalid: {err}"))
-    })?;
-    let minor = parts[1].parse::<u64>().map_err(|err| {
-        DriveUploadError::Message(format!("{label} minor version is invalid: {err}"))
-    })?;
-    parts[2].parse::<u64>().map_err(|err| {
-        DriveUploadError::Message(format!("{label} patch version is invalid: {err}"))
-    })?;
-    Ok(format!("{major}.{minor}"))
+    compatibility_from_package_version(value)
+        .map(|version| version.to_string())
+        .map_err(|error| DriveUploadError::Message(format!("{label} {error}")))
 }
 
-fn validate_canonical_compatible_version(
-    value: &str,
-    label: &str,
-) -> Result<String, DriveUploadError> {
-    let parts = value.split('.').collect::<Vec<_>>();
-    if parts.len() != 2
-        || parts
-            .iter()
-            .any(|part| part.is_empty() || !part.chars().all(|ch| ch.is_ascii_digit()))
-    {
-        return Err(DriveUploadError::Message(format!(
-            "{label} must be strict MAJOR.MINOR, got {value:?}"
-        )));
-    }
-    Ok(format!(
-        "{}.{}",
-        parts[0].parse::<u64>().map_err(|err| {
-            DriveUploadError::Message(format!("{label} major version is invalid: {err}"))
-        })?,
-        parts[1].parse::<u64>().map_err(|err| {
-            DriveUploadError::Message(format!("{label} minor version is invalid: {err}"))
-        })?
-    ))
+fn canonical_compatible_version(value: &str, label: &str) -> Result<String, DriveUploadError> {
+    parse_compatible_backend_version(value)
+        .map(|version| version.to_string())
+        .map_err(|error| DriveUploadError::Message(format!("{label} {error}")))
 }
 
 #[cfg(tokamak_release_profile)]
@@ -830,6 +795,32 @@ mod tests {
         .expect_err("CRS without a library origin must not be published");
 
         assert!(matches!(error, DriveUploadError::Json(_)));
+        assert!(publisher.uploads.borrow().is_empty());
+    }
+
+    #[test]
+    fn rejects_publication_with_a_noncanonical_compatibility_version() {
+        let (_workspace, config, output, intermediate) = fixture();
+        let mut provenance = read_fixture_provenance(&output);
+        provenance.compatible_backend_version = "02.01".to_string();
+        fs::write(
+            output.join(PROVENANCE_FILE_NAME),
+            serde_json::to_vec_pretty(&provenance).expect("must serialize provenance"),
+        )
+        .expect("must write provenance");
+        let publisher = MockArchivePublisher::succeeds();
+
+        let error = publish_output_archive_with_publisher(
+            &config,
+            &intermediate.to_string_lossy(),
+            &output.to_string_lossy(),
+            &publisher,
+        )
+        .expect_err("noncanonical compatibility version must not be published");
+
+        assert!(error
+            .to_string()
+            .contains("leading zeroes are not canonical"));
         assert!(publisher.uploads.borrow().is_empty());
     }
 

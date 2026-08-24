@@ -3,20 +3,26 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { compatibilityFromPackageVersion, parsePackageVersion } from './version-contract.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argumentsList = process.argv.slice(2);
 const sourceOnly = argumentsList.includes('--source-only');
 const targetVersion =
   argumentsList.find(argument => argument !== '--source-only') ?? process.env.TOKAMAK_ZK_EVM_VERSION;
-const strictSemverPattern = /^\d+\.\d+\.\d+$/u;
-
-if (!targetVersion || !strictSemverPattern.test(targetVersion)) {
+if (!targetVersion) {
   console.error('Usage: node scripts/sync-version.mjs [--source-only] <X.Y.Z>');
   process.exit(1);
 }
 
-const targetCompatibleBackendVersion = targetVersion.split('.').slice(0, 2).join('.');
+try {
+  parsePackageVersion(targetVersion);
+} catch (error) {
+  console.error(`Invalid target version: ${error.message}`);
+  process.exit(1);
+}
+
+const targetCompatibleBackendVersion = compatibilityFromPackageVersion(targetVersion);
 
 function readJson(relativePath) {
   return JSON.parse(fs.readFileSync(path.join(repoRoot, relativePath), 'utf8'));

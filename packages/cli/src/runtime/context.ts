@@ -6,6 +6,7 @@ import type { CliPlatform, RuntimeContext, RuntimeState } from './model.js';
 type DockerHostPlatform = 'linux' | 'windows';
 
 const CACHE_DIR_ENV = 'TOKAMAK_ZKEVM_CLI_CACHE_DIR';
+const MAX_U64 = 18_446_744_073_709_551_615n;
 
 export function detectPlatform(): CliPlatform {
   switch (process.platform) {
@@ -29,7 +30,9 @@ function detectDockerHostPlatform(): DockerHostPlatform {
     case 'darwin':
       throw new Error('`tokamak-cli --install --docker` is not supported on macOS hosts.');
     default:
-      throw new Error(`Unsupported Docker host platform: ${process.platform}. Use Linux or Windows with Docker Desktop.`);
+      throw new Error(
+        `Unsupported Docker host platform: ${process.platform}. Use Linux or Windows with Docker Desktop.`,
+      );
   }
 }
 
@@ -45,20 +48,47 @@ export function resolvePackageRoot(): string {
   return path.resolve(__dirname, '..', '..');
 }
 
-function normalizeCompatibleBackendVersion(value: string, label: string): string {
-  const match = /^(\d+)\.(\d+)$/u.exec(value.trim());
-  if (!match) {
-    throw new Error(`${label} must be strict MAJOR.MINOR, got ${JSON.stringify(value)}.`);
-  }
-  return `${Number(match[1])}.${Number(match[2])}`;
+export function normalizeCompatibleBackendVersion(value: string, label: string): string {
+  const [major, minor] = parseCanonicalVersion(value, label, 'MAJOR.MINOR', 2);
+  return `${major}.${minor}`;
 }
 
 export function packageCompatibleVersion(packageVersion: string, label: string): string {
-  const match = /^(\d+)\.(\d+)\.(\d+)$/u.exec(packageVersion.trim());
-  if (!match) {
-    throw new Error(`${label} must be strict MAJOR.MINOR.PATCH, got ${JSON.stringify(packageVersion)}.`);
+  const [major, minor] = parseCanonicalVersion(packageVersion, label, 'MAJOR.MINOR.PATCH', 3);
+  return `${major}.${minor}`;
+}
+
+function parseCanonicalVersion(
+  value: string,
+  label: string,
+  expected: 'MAJOR.MINOR' | 'MAJOR.MINOR.PATCH',
+  componentCount: number,
+): bigint[] {
+  const components = value.split('.');
+  if (components.length !== componentCount) {
+    throw new Error(`${label} must be canonical ${expected}, got ${JSON.stringify(value)} (wrong component count).`);
   }
-  return `${Number(match[1])}.${Number(match[2])}`;
+  return components.map(component => parseCanonicalComponent(component, label, expected, value));
+}
+
+function parseCanonicalComponent(component: string, label: string, expected: string, originalValue: string): bigint {
+  if (!/^[0-9]+$/u.test(component)) {
+    throw new Error(
+      `${label} must be canonical ${expected}, got ${JSON.stringify(originalValue)} (components must contain ASCII digits).`,
+    );
+  }
+  if (component.length > 1 && component.startsWith('0')) {
+    throw new Error(
+      `${label} must be canonical ${expected}, got ${JSON.stringify(originalValue)} (leading zeroes are not canonical).`,
+    );
+  }
+  const numeric = BigInt(component);
+  if (numeric > MAX_U64) {
+    throw new Error(
+      `${label} must be canonical ${expected}, got ${JSON.stringify(originalValue)} (numeric component is out of range).`,
+    );
+  }
+  return numeric;
 }
 
 async function resolvePackageMetadata(packageRoot: string): Promise<{

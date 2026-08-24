@@ -1,3 +1,4 @@
+use crate::compatibility::{compatibility_from_package_version, parse_compatible_backend_version};
 use crate::errors::CrsError;
 use clap::Args;
 use std::env;
@@ -121,13 +122,17 @@ pub fn validate_crs_compatibility(crs_dir: &Path, library_dir: &Path) -> std::io
                 provenance_path.display()
             ))
         })?;
-    let crs_compatible_version = normalize_compatible_version(
-        crs_compatible_version,
-        "CRS provenance compatibleBackendVersion",
-    )?;
+    let crs_compatible_version = parse_compatible_backend_version(crs_compatible_version)
+        .map(|version| version.to_string())
+        .map_err(|error| {
+            std::io::Error::other(format!("CRS provenance compatibleBackendVersion {error}"))
+        })?;
     let library_version = selected_library_package_version(library_dir)?;
-    let library_compatible_version =
-        package_compatible_version(&library_version, "subcircuit-library package version")?;
+    let library_compatible_version = compatibility_from_package_version(&library_version)
+        .map(|version| version.to_string())
+        .map_err(|error| {
+            std::io::Error::other(format!("subcircuit-library package version {error}"))
+        })?;
 
     if crs_compatible_version != library_compatible_version {
         return Err(std::io::Error::other(format!(
@@ -221,49 +226,6 @@ fn read_json(path: &Path, label: &str) -> std::io::Result<serde_json::Value> {
     serde_json::from_slice(&bytes).map_err(|err| {
         std::io::Error::other(format!("cannot parse {label} {}: {err}", path.display()))
     })
-}
-
-fn normalize_compatible_version(value: &str, label: &str) -> std::io::Result<String> {
-    let parts = value.split('.').collect::<Vec<_>>();
-    if parts.len() != 2
-        || parts
-            .iter()
-            .any(|part| part.is_empty() || !part.chars().all(|ch| ch.is_ascii_digit()))
-    {
-        return Err(std::io::Error::other(format!(
-            "{label} must be strict MAJOR.MINOR, got {value:?}"
-        )));
-    }
-    let major = parts[0]
-        .parse::<u64>()
-        .map_err(|err| std::io::Error::other(format!("{label} major version is invalid: {err}")))?;
-    let minor = parts[1]
-        .parse::<u64>()
-        .map_err(|err| std::io::Error::other(format!("{label} minor version is invalid: {err}")))?;
-    Ok(format!("{major}.{minor}"))
-}
-
-fn package_compatible_version(value: &str, label: &str) -> std::io::Result<String> {
-    let parts = value.split('.').collect::<Vec<_>>();
-    if parts.len() != 3
-        || parts
-            .iter()
-            .any(|part| part.is_empty() || !part.chars().all(|ch| ch.is_ascii_digit()))
-    {
-        return Err(std::io::Error::other(format!(
-            "{label} must be strict MAJOR.MINOR.PATCH, got {value:?}"
-        )));
-    }
-    let major = parts[0]
-        .parse::<u64>()
-        .map_err(|err| std::io::Error::other(format!("{label} major version is invalid: {err}")))?;
-    let minor = parts[1]
-        .parse::<u64>()
-        .map_err(|err| std::io::Error::other(format!("{label} minor version is invalid: {err}")))?;
-    parts[2]
-        .parse::<u64>()
-        .map_err(|err| std::io::Error::other(format!("{label} patch version is invalid: {err}")))?;
-    Ok(format!("{major}.{minor}"))
 }
 
 #[cfg(tokamak_embedded_subcircuit_library)]
@@ -471,6 +433,24 @@ mod tests {
 
         write_provenance(&crs_dir, serde_json::Value::Bool(true), "3.0");
         assert!(validate_crs_compatibility(&crs_dir, &library_dir).is_err());
+        fs::remove_dir_all(root).expect("must remove test directory");
+    }
+
+    #[test]
+    fn rejects_noncanonical_crs_compatibility_versions() {
+        let root = test_root();
+        let library_dir = root.join("subcircuits").join("library");
+        let crs_dir = root.join("crs");
+        fs::create_dir_all(&library_dir).expect("must create library directory");
+        fs::create_dir_all(&crs_dir).expect("must create CRS directory");
+        write_package_manifest(&root, "2.1.5");
+        write_provenance(&crs_dir, serde_json::Value::Bool(false), "02.01");
+
+        let error = validate_crs_compatibility(&crs_dir, &library_dir)
+            .expect_err("noncanonical compatibility versions must be rejected");
+        assert!(error
+            .to_string()
+            .contains("leading zeroes are not canonical"));
         fs::remove_dir_all(root).expect("must remove test directory");
     }
 

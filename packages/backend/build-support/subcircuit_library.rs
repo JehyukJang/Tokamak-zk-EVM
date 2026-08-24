@@ -1,5 +1,8 @@
 #![allow(dead_code)]
 
+#[path = "../../../versioning/compatibility.rs"]
+mod version_contract;
+
 use serde_json::Value;
 use std::env;
 use std::fs;
@@ -39,6 +42,7 @@ struct ResolvedSubcircuitLibrary {
 }
 
 pub fn configure_embedded_release_subcircuit_library(out_dir: &Path) -> io::Result<()> {
+    emit_version_contract_rerun_rule();
     println!("cargo:rustc-check-cfg=cfg(tokamak_embedded_subcircuit_library)");
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_LOCAL_DEVELOPMENT_SUBCIRCUIT_LIBRARY");
     if local_development_subcircuit_library_selected() {
@@ -57,6 +61,7 @@ pub fn configure_release_subcircuit_library_metadata(
     package_name: &str,
     package_version: &str,
 ) -> io::Result<()> {
+    emit_version_contract_rerun_rule();
     emit_cli_package_rerun_rule();
     println!("cargo:rustc-check-cfg=cfg(tokamak_embedded_subcircuit_library)");
     if let Some(snapshot) = prepare_release_subcircuit_library()? {
@@ -74,6 +79,7 @@ pub fn configure_release_subcircuit_library_metadata(
 }
 
 pub fn configure_mpc_subcircuit_library(out_dir: &Path, package_version: &str) -> io::Result<()> {
+    emit_version_contract_rerun_rule();
     emit_cli_package_rerun_rule();
     println!("cargo:rustc-check-cfg=cfg(tokamak_release_profile)");
 
@@ -432,40 +438,30 @@ fn emit_cli_package_rerun_rule() {
     }
 }
 
-fn strict_major_minor(value: &str, label: &str) -> io::Result<String> {
-    let parts = value.split('.').collect::<Vec<_>>();
-    if parts.len() != 2
-        || parts
-            .iter()
-            .any(|part| part.is_empty() || !part.chars().all(|ch| ch.is_ascii_digit()))
-    {
-        return Err(io::Error::other(format!(
-            "{label} must be strict MAJOR.MINOR, got {value:?}"
-        )));
+fn emit_version_contract_rerun_rule() {
+    if let Ok(backend_root) = backend_root_from_manifest_dir() {
+        if let Some(repository_root) = backend_root.parent().and_then(Path::parent) {
+            println!(
+                "cargo:rerun-if-changed={}",
+                repository_root
+                    .join("versioning")
+                    .join("compatibility.rs")
+                    .display()
+            );
+        }
     }
-    Ok(format!(
-        "{}.{}",
-        parts[0].parse::<u64>().map_err(io::Error::other)?,
-        parts[1].parse::<u64>().map_err(io::Error::other)?
-    ))
+}
+
+fn strict_major_minor(value: &str, label: &str) -> io::Result<String> {
+    version_contract::parse_compatible_backend_version(value)
+        .map(|version| version.to_string())
+        .map_err(|error| io::Error::other(format!("{label} {error}")))
 }
 
 fn package_major_minor(value: &str, label: &str) -> io::Result<String> {
-    let parts = value.split('.').collect::<Vec<_>>();
-    if parts.len() != 3
-        || parts
-            .iter()
-            .any(|part| part.is_empty() || !part.chars().all(|ch| ch.is_ascii_digit()))
-    {
-        return Err(io::Error::other(format!(
-            "{label} must be strict MAJOR.MINOR.PATCH, got {value:?}"
-        )));
-    }
-    Ok(format!(
-        "{}.{}",
-        parts[0].parse::<u64>().map_err(io::Error::other)?,
-        parts[1].parse::<u64>().map_err(io::Error::other)?
-    ))
+    version_contract::compatibility_from_package_version(value)
+        .map(|version| version.to_string())
+        .map_err(|error| io::Error::other(format!("{label} {error}")))
 }
 
 fn read_cli_compatible_backend_version(package_version: &str) -> io::Result<String> {

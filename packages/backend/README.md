@@ -19,14 +19,14 @@ subcircuit library, together with transaction-specific data from the frontend sy
 
 ## Components
 
-| Binary | Responsibility |
-| --- | --- |
-| `trusted-setup` | Generate a local-development Sigma artifact. |
-| `native_mpc_setup` | Run Tokamak phase 1 and phase 2 for a local CRS. |
+| Binary                  | Responsibility                                                                       |
+| ----------------------- | ------------------------------------------------------------------------------------ |
+| `trusted-setup`         | Generate a local-development Sigma artifact.                                         |
+| `native_mpc_setup`      | Run Tokamak phase 1 and phase 2 for a local CRS.                                     |
 | `dusk_backed_mpc_setup` | Derive phase 2 from the pinned Dusk source and optionally publish the resulting CRS. |
-| `preprocess` | Commit permutation and fixed function-instance data. |
-| `prove` | Generate a proof for one synthesized transaction. |
-| `verify` | Verify the proof, preprocess commitments, and public instance. |
+| `preprocess`            | Commit permutation and fixed function-instance data.                                 |
+| `prove`                 | Generate a proof for one synthesized transaction.                                    |
+| `verify`                | Verify the proof, preprocess commitments, and public instance.                       |
 
 ## Distribution
 
@@ -174,7 +174,10 @@ See [setup/mpc-setup/README.md](./setup/mpc-setup/README.md) for the full MPC op
 - `crs_provenance.json`
 
 Native MPC provenance records `releaseEligible: false`; Dusk-backed MPC records
-`releaseEligible: true`. Only the latter is accepted by release and deployment consumers.
+`releaseEligible: true`. This field is a Google Drive publisher gate only. The publisher additionally
+requires Dusk phase-1 provenance and npm-snapshot subcircuit-library origin. `preprocess`, `prove`,
+and `verify` do not consume `releaseEligible`; they validate only the CRS compatibility class against
+the selected subcircuit library.
 `crs_provenance.json` also binds final CRS files to their SHA-256 digests. In dusk-backed mode it
 records the pinned Dusk source metadata, the Dusk raw digest, publication metadata, the CRS
 generation timestamp, and the backend version.
@@ -265,8 +268,8 @@ The preprocess, prove, and verify launchers use the local `qap-compiler/subcircu
 output. They compile the development-only `development-crs-bypass` feature and pass
 `--allow-unverified-crs`, which skips only the CRS provenance compatibility-class check. This
 opt-in is limited to debugger launchers; normal CLI execution continues to validate CRS
-provenance compatibility. `Measure prove timing` is the single release-profile launcher and
-receives the local QAP path explicitly through its test environment.
+provenance compatibility. `Measure prove timing` also uses Cargo's release profile and receives the
+local QAP path explicitly through its test environment.
 
 The ICICLE device policy selects CUDA when it is available. ICICLE 3.8.0 METAL availability is
 reported but deliberately falls back to CPU; it is not treated as a GPU/MSM capability. Setting

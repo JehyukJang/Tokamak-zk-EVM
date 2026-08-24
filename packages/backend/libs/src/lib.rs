@@ -2,6 +2,8 @@
 pub mod bivariate_polynomial;
 pub mod cli;
 pub mod commitments;
+#[path = "../../../../versioning/compatibility.rs"]
+pub mod compatibility;
 pub mod crs_artifacts;
 pub mod errors;
 pub mod field_structures;

@@ -17,9 +17,10 @@ Release notes are in [CHANGELOG.md](../../../../CHANGELOG.md).
 
 ## Overview
 
-The final CRS output format is identical in both modes. Only the phase-1 source and release
-eligibility differ. Native mode writes `releaseEligible: false`; only Dusk-backed mode writes
-`releaseEligible: true`.
+The final CRS output format is identical in both modes. Only the phase-1 source and publisher
+eligibility differ. Native mode writes `releaseEligible: false`; Dusk-backed mode writes
+`releaseEligible: true`. This field is consumed only by the Google Drive publisher. It is not an
+algorithm compatibility requirement for preprocess, prove, verify, or Solidity verification.
 
 - `native_mpc_setup`
   - Runs the Tokamak x-only phase-1 flow and then the Tokamak phase-2 flow.
@@ -96,8 +97,10 @@ In dusk-backed mode:
 - the used G1 and G2 tau ranges are verified before phase 2 begins
 
 `ceremony` does not read Google Drive configuration, open a browser, or publish an artifact. It
-creates a local release-eligible CRS and records provenance. It may download the pinned public
-Dusk source when `<intermediate>/dusk.response` is absent.
+creates a local final CRS and records provenance. A true `releaseEligible` field alone does not
+authorize publication: the publisher also requires Dusk phase-1 provenance and npm-snapshot input
+origin. The ceremony may download the pinned public Dusk source when
+`<intermediate>/dusk.response` is absent.
 
 Publish an existing ceremony output separately:
 
@@ -209,17 +212,20 @@ may be published.
 
 ## CRS Provenance
 
-`crs_provenance.json` is a final output artifact. Service-side loaders must require
-`releaseEligible: true` before accepting a CRS for release or deployment, and should then verify
-the applicable provenance fields and exact final CRS bytes.
+`crs_provenance.json` is a final output artifact. Google Drive publication requires
+`releaseEligible: true`, Dusk phase-1 provenance, and npm-snapshot subcircuit-library origin.
+Preprocess, prove, verify, and Solidity verification do not check publication eligibility; they use
+the CRS/library compatibility class. Service wrappers may verify provenance and exact final CRS
+bytes according to their deployment policy.
 
 For every CRS, the manifest also records:
 
-- `releaseEligible`, which is true only for a Dusk-backed CRS
+- `releaseEligible`, a Google Drive publisher gate that is true only for a Dusk-backed CRS
 - `generated_at_utc`
 - `compatibleBackendVersion`
 - `subcircuitLibrary.packageName`
 - `subcircuitLibrary.packageVersion`
+- `subcircuitLibrary.origin`, either `npmSnapshot` or `localQapCompiler`
 
 For dusk-backed mode, the manifest records:
 

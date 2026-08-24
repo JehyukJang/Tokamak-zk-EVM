@@ -3,6 +3,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  compatibilityFromPackageVersion,
+  parseCompatibleBackendVersion,
+  parsePackageVersion,
+} from './version-contract.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sourceOnly = process.argv.slice(2).includes('--source-only');
@@ -52,10 +57,12 @@ function getCargoLockPackageVersions() {
 
 const rootManifest = readJson('package.json');
 const expectedVersion = rootManifest.version;
-const strictSemverPattern = /^\d+\.\d+\.\d+$/u;
+let expectedCompatibleBackendVersion = null;
 
-if (!strictSemverPattern.test(expectedVersion)) {
-  fail(`Root package.json version must be strict semver, got '${expectedVersion}'.`);
+try {
+  expectedCompatibleBackendVersion = compatibilityFromPackageVersion(expectedVersion);
+} catch (error) {
+  fail(`Root package.json version ${error.message}`);
 }
 
 const packageTargets = [
@@ -167,14 +174,13 @@ if (backendVersion !== expectedVersion) {
 
 const cliManifest = readJson('packages/cli/package.json');
 const compatibleBackendVersion = cliManifest.tokamakZkEvm?.compatibleBackendVersion;
-const compatibleVersionPattern = /^(\d+)\.(\d+)$/u;
-const expectedCompatibleBackendVersion = expectedVersion.split('.').slice(0, 2).join('.');
 
-if (!compatibleVersionPattern.test(String(compatibleBackendVersion ?? ''))) {
-  fail(
-    `packages/cli/package.json tokamakZkEvm.compatibleBackendVersion must be strict MAJOR.MINOR, got '${compatibleBackendVersion}'.`,
-  );
-} else if (compatibleBackendVersion !== expectedCompatibleBackendVersion) {
+try {
+  parseCompatibleBackendVersion(compatibleBackendVersion);
+} catch (error) {
+  fail(`packages/cli/package.json tokamakZkEvm.compatibleBackendVersion ${error.message}`);
+}
+if (compatibleBackendVersion !== expectedCompatibleBackendVersion) {
   fail(
     `packages/cli/package.json tokamakZkEvm.compatibleBackendVersion is '${compatibleBackendVersion}', expected '${expectedCompatibleBackendVersion}' from package version '${expectedVersion}'.`,
   );
