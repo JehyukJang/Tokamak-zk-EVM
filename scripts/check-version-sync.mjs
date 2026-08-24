@@ -130,6 +130,14 @@ if (!sourceOnly) {
       `packages/backend-wasm/package-lock.json dependency @tokamak-zk-evm/subcircuit-library is '${backendWasmLockDependency}', expected '${expectedVersion}'.`,
     );
   }
+
+  const backendWasmResolvedSubcircuitVersion =
+    backendWasmPackageLock.packages?.['node_modules/@tokamak-zk-evm/subcircuit-library']?.version;
+  if (backendWasmResolvedSubcircuitVersion !== expectedVersion) {
+    fail(
+      `packages/backend-wasm/package-lock.json resolved @tokamak-zk-evm/subcircuit-library is '${backendWasmResolvedSubcircuitVersion ?? 'missing'}', expected '${expectedVersion}'.`,
+    );
+  }
 }
 
 const backendWasmVersionModule = readText('packages/backend-wasm/src/version.ts');

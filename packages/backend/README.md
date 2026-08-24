@@ -17,6 +17,25 @@ final CRS artifacts; only Dusk-backed MPC generates a CRS eligible for Google Dr
 `preprocess`, `prove`, and `verify` accept any CRS whose compatibility version matches the selected
 subcircuit library, together with transaction-specific data from the frontend synthesizer.
 
+## Components
+
+| Binary | Responsibility |
+| --- | --- |
+| `trusted-setup` | Generate a local-development Sigma artifact. |
+| `native_mpc_setup` | Run Tokamak phase 1 and phase 2 for a local CRS. |
+| `dusk_backed_mpc_setup` | Derive phase 2 from the pinned Dusk source and optionally publish the resulting CRS. |
+| `preprocess` | Commit permutation and fixed function-instance data. |
+| `prove` | Generate a proof for one synthesized transaction. |
+| `verify` | Verify the proof, preprocess commitments, and public instance. |
+
+## Distribution
+
+The backend is not published as a standalone npm or crates.io package. Users
+obtain the supported native workflow through
+[`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli),
+which supplies compatible source and runtime resources. The direct Cargo
+commands in this document are for backend operators and repository contributors.
+
 ## Prerequisites
 
 - Node.js: https://nodejs.org/
@@ -281,4 +300,4 @@ See [../../CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 ## License
 
-[MPL-2.0]
+The native backend is dual-licensed under `MIT OR Apache-2.0`.

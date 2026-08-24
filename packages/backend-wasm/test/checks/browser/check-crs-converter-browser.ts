@@ -18,6 +18,8 @@ import { SUBCIRCUIT_LIBRARY_PACKAGE_VERSION } from "../../../src/generated/setup
 const execFileAsync = promisify(execFile);
 const PACKAGE_NAME = "@tokamak-zk-evm/snark-browser-compat";
 const CRS_SOURCE_PATH = path.resolve("tmp/fixtures/small/source/setup/combined_sigma.rkyv");
+const SUBCIRCUIT_LIBRARY_TARBALL =
+  process.env.BACKEND_WASM_SUBCIRCUIT_LIBRARY_TARBALL;
 const RUNTIME_FIXTURE_ROOT = path.resolve("fixtures/small/runtime");
 const CRS_PROVENANCE = JSON.stringify({
   compatibleBackendVersion: SUBCIRCUIT_LIBRARY_PACKAGE_VERSION.split(".").slice(0, 2).join("."),
@@ -185,6 +187,9 @@ async function main(): Promise<void> {
         "--no-audit",
         "--no-fund",
         "--no-package-lock",
+        ...(SUBCIRCUIT_LIBRARY_TARBALL === undefined
+          ? []
+          : [path.resolve(SUBCIRCUIT_LIBRARY_TARBALL)]),
         packageArchivePath,
       ],
       { cwd: applicationRoot },
@@ -425,8 +430,8 @@ async function checkBuiltApplication(
           throw new Error(`${name}Crs has unexpected kind ${artifact.inspection.kind}.`);
         }
         if (
-          artifact.inspection.formatVersion !== 1 ||
-          artifact.inspection.sourcePackageVersion !== SUBCIRCUIT_LIBRARY_PACKAGE_VERSION
+          artifact.inspection.formatVersion !== 1
+          || artifact.inspection.sourcePackageVersion !== SUBCIRCUIT_LIBRARY_PACKAGE_VERSION
         ) {
           throw new Error(`${name}Crs has unexpected version metadata.`);
         }

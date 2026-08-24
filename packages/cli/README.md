@@ -1,25 +1,21 @@
 # `@tokamak-zk-evm/cli`
 
-`@tokamak-zk-evm/cli` installs the Tokamak zk-EVM runtime on the local machine and runs the proof flow from the command line.
+The supported command-line entry point for installing the native Tokamak
+zk-EVM runtime and running synthesis, preprocessing, proving, verification, and
+proof export.
 
-Release notes are maintained in the [repository changelog](https://github.com/tokamak-network/Tokamak-zk-EVM/blob/main/CHANGELOG.md).
+## Install and run
 
-## When to use this package
+First prepare a directory containing the
+[four synthesis input files](#synthesis-inputs). The
+[`L2StateChannel` example](../frontend/synthesizer/examples/L2StateChannel)
+shows the expected layout and values.
 
-Use `@tokamak-zk-evm/cli` when you want the complete local Tokamak zk-EVM workflow from the command line: install the runtime, synthesize transaction inputs, preprocess circuit data, generate proofs, verify proofs, and extract proof bundles.
-
-Main commands:
-
-- `--install`
-- `--install --docker`
-- `--synthesize`
-- `--preprocess`
-- `--prove`
-- `--verify`
-- `--extract-proof`
-- `--doctor`
-
-## Quick Start
+The quick start below assumes that the
+[native requirements](#native-requirements) are already installed and
+downloads the compatible CRS. Use
+[`--include-prerequisite`](#automatic-prerequisite-installation) for a guided
+macOS or Ubuntu setup, or `--docker` on another Linux distribution or Windows.
 
 ```bash
 npm install -g @tokamak-zk-evm/cli
@@ -30,148 +26,143 @@ tokamak-cli --prove
 tokamak-cli --verify
 ```
 
-## What Do I Need Before `--install`?
+The npm package installs the launcher and compatible source. `--install`
+builds the native Rust backend on the target machine; there is no separate
+backend npm package.
 
-Before running `--install`, make sure the machine has:
+## Installation modes
 
-- Node.js 20 or newer
-- npm
-- Rust and Cargo
-- `cmake`
-- `tar`
-- `unzip`
-- a working C/C++ toolchain
-- outbound HTTPS access to npm, crates.io, GitHub, GitHub Releases, and Google Drive
+| Command                                        | Use                                                                              |
+| ---------------------------------------------- | -------------------------------------------------------------------------------- |
+| `tokamak-cli --install`                        | Build with prerequisites already installed and download compatible CRS artifacts |
+| `tokamak-cli --install --include-prerequisite` | Offer to install missing prerequisites on macOS or supported Ubuntu releases     |
+| `tokamak-cli --install --docker`               | Build and run in the packaged Linux container workflow                           |
+| `tokamak-cli --install --trusted-setup`        | Generate setup artifacts locally instead of downloading them                     |
+| `tokamak-cli --install --no-setup`             | Install without CRS artifacts; preprocess, prove, and verify remain unavailable  |
 
-For `--install --docker`, the Linux host or Windows host with Docker Desktop needs Docker installed and a running Docker daemon. CUDA is enabled only when a CUDA 12.2 Docker probe can run with `--gpus all`, report at least one NVIDIA GPU, and report driver version `525.60.13` or newer.
+### Native requirements
 
-### macOS
+- Node.js 20 or newer and npm
+- Rust and Cargo 1.85 or newer
+- CMake 3.18 or newer
+- `pkg-config`, `tar`, and `unzip`
+- C/C++ build tools
+- Git, Ninja, Clang, LLDB, and LLD on Ubuntu
+- outbound HTTPS to npm, crates.io, GitHub, GitHub Releases, and Google Drive
+
+Native targets are macOS, Ubuntu 20.04, and Ubuntu 22.04. Other Linux
+distributions should use Docker. Native Windows is unsupported; use WSL2 or
+Docker Desktop.
+
+Example host preparation:
 
 ```bash
+# macOS: install prerequisites yourself
 xcode-select --install
-brew install node cmake
+brew install node cmake pkg-config
 curl https://sh.rustup.rs -sSf | sh
-source "$HOME/.cargo/env"
+
+# Ubuntu 20.04 or 22.04: let the CLI propose missing prerequisites
 npm install -g @tokamak-zk-evm/cli
+tokamak-cli --install --include-prerequisite
 ```
 
-### Linux
+Docker hosts need Node.js 20+, the CLI package, Docker, and a running daemon.
+CUDA mode requires a successful CUDA 12.2 container probe, an NVIDIA GPU, and
+driver `525.60.13` or newer.
+
+### Automatic prerequisite installation
+
+`--include-prerequisite` requires a TTY, prints the complete change plan, and
+continues only after an explicit `y` or `yes`.
+
+| Scope                 | Behavior                                                                                                   |
+| --------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Ubuntu                | Uses targeted APT/LLVM commands and, on 20.04 when needed, a checksum-verified CMake 3.27.4 source archive |
+| macOS                 | Uses Xcode Command Line Tools and Homebrew                                                                 |
+| Rust                  | Uses the official rustup installer when missing or incompatible                                            |
+| Never installed       | Node.js, npm, Docker, GPU drivers, and network configuration                                               |
+| Privileged operations | Requests elevation only for the individual operation; do not run the complete CLI as root                  |
+| Uninstall             | Removes only the CLI runtime, not system packages, Xcode tools, Rust, Homebrew, or source-installed CMake  |
+
+Review external installer terms and organizational policy before approval. If
+an installer fails, resolve its error and rerun the command; prerequisite
+detection resumes without masking the failure.
+
+### What `--install` creates
+
+The installer:
+
+- builds the native backend;
+- downloads ICICLE runtime archives and verifies their packaged SHA-256
+  digests;
+- downloads the compatible CRS unless setup is skipped, validating version,
+  provenance, and artifact hashes; and
+- stores runtime resources under the CLI cache.
+
+Docker installation records its state in
+`~/.tokamak-zk-evm/linux/docker/bootstrap.json`. Linux falls back to a valid
+native runtime when Docker is unavailable. Windows requires Docker Desktop
+because native backend execution is unsupported.
+
+## Commands
+
+| Command                     | Input                                         | Result                                                |
+| --------------------------- | --------------------------------------------- | ----------------------------------------------------- |
+| `--install`                 | Installation options                          | Prepared local runtime                                |
+| `--synthesize <DIR>`        | Four transaction replay JSON files            | Placement, instance, permutation, and state artifacts |
+| `--preprocess [DIR_OR_ZIP]` | Matching permutation and instance             | Verifier preprocessing commitments                    |
+| `--prove [DIR_OR_ZIP]`      | Matching placement, permutation, and instance | Proof                                                 |
+| `--verify [DIR_OR_ZIP]`     | Matching proof, preprocess, and instance      | Verification result                                   |
+| `--extract-proof <ZIP>`     | Completed cached workflow                     | Portable proof bundle                                 |
+| `--doctor`                  | Installed runtime                             | Runtime path and installation status                  |
+| `--uninstall`               | CLI cache                                     | Removes the CLI-owned runtime                         |
+
+Relative paths are resolved from the current working directory.
+
+## Synthesis inputs
+
+`--synthesize <DIR>` expects these four files at the directory root:
+
+| File                           | Role                                                                      | Format and owner                                                                                                          | How to obtain it                                                     | Example                                                                              |
+| ------------------------------ | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `previous_state_snapshot.json` | State immediately before execution, including storage reconstruction data | [`tokamak-l2js` `StateSnapshot`](https://github.com/tokamak-network/TokamakL2JS/blob/main/src/interface/channel/types.ts) | Call `TokamakL2StateManager.captureStateSnapshot()` before execution | [File](../frontend/synthesizer/examples/L2StateChannel/previous_state_snapshot.json) |
+| `transaction.json`             | Signed Tokamak L2 transaction to replay                                   | [`tokamak-l2js` `TxSnapshot`](https://github.com/tokamak-network/TokamakL2JS/blob/main/src/interface/channel/types.ts)    | Call `TokamakL2Tx.captureTxSnapshot()`                               | [File](../frontend/synthesizer/examples/L2StateChannel/transaction.json)             |
+| `block_info.json`              | Block-opcode and execution-environment values                             | Synthesizer `BlockInfo` JSON                                                                                              | Normalize the trusted application or L2 RPC block context            | [File](../frontend/synthesizer/examples/L2StateChannel/block_info.json)              |
+| `contract_codes.json`          | Deployed bytecode reached by the supported call flow                      | Synthesizer `ContractCodeEntry[]` JSON                                                                                    | Export deployment/state data or query the trusted state source       | [File](../frontend/synthesizer/examples/L2StateChannel/contract_codes.json)          |
+
+`StateSnapshot` contains `stateRoots`, `storageAddresses`, `storageKeys`,
+`storageTrieRoots`, `storageTrieDb`, and `channelId`. Its address-indexed arrays
+must remain aligned. Storage-slot keys and trie database keys are not
+interchangeable.
+
+`TxSnapshot` contains `nonce`, `to`, hex calldata in `data`, `senderPubKey`,
+and optional signature strings `v`, `r`, and `s`.
+
+`block_info.json` contains `0x`-prefixed `coinBase`, `timeStamp`,
+`blockNumber`, `prevRanDao`, `gasLimit`, `chainId`, `selfBalance`, and
+`baseFee` values plus `prevBlockHashes`.
+
+`contract_codes.json` is an address/bytecode array:
+
+```json
+[
+  {
+    "address": "0x...",
+    "code": "0x..."
+  }
+]
+```
+
+Use the `StateSnapshot` and `TxSnapshot` exports from the compatible
+`tokamak-l2js` package rather than recreating them. All four files must
+describe one coherent pre-transaction state and block context.
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y build-essential curl cmake unzip tar pkg-config bash
-curl https://sh.rustup.rs -sSf | sh
-source "$HOME/.cargo/env"
-npm install -g @tokamak-zk-evm/cli
-```
-
-Docker installation is also available on Linux and Windows with Docker Desktop:
-
-```bash
-tokamak-cli --install --docker
-```
-
-### Windows
-
-Native Windows installation is not supported. Use WSL2, or install through Docker Desktop:
-
-```powershell
-npm install -g @tokamak-zk-evm/cli
-tokamak-cli --install --docker
-```
-
-## What Does `--install` Do?
-
-`--install`:
-
-- builds the local backend binaries
-- downloads the ICICLE runtime libraries, reusing cached tarballs only when their SHA-256 hashes match the packaged manifest
-- downloads CRS files, unless `--no-setup` is used, reusing cached CRS output only when `crs_provenance.json` version and artifact hashes match the latest CRS
-- retries the anonymous CRS download up to 5 times, then fails
-- writes everything into the CLI runtime cache
-
-`--install --docker` is supported on Linux hosts and Windows hosts with Docker Desktop. It uses the static Dockerfile shipped in the npm package, checks that Docker is running, probes CUDA with `docker run --rm --gpus all ... nvidia-smi`, then installs through either an `ubuntu22-cuda122` container environment or a CPU-only `ubuntu22` container environment. CUDA Docker installs re-check CUDA availability before each backend command and run without `--gpus all` if the GPU runtime is no longer available. Docker installs always write the Linux runtime cache and store Docker bootstrap files in:
-
-```text
-~/.tokamak-zk-evm/linux/docker
-```
-
-When `--preprocess`, `--prove`, or `--verify` runs later, the CLI uses that bootstrap to execute the backend command inside Docker if the bootstrap exists and Docker is running. On Linux, if Docker is not running, the CLI falls back to the native runtime path. On Windows, Docker Desktop must be running because native Windows backend execution is not supported.
-
-## What Does The Docker Install Image Include?
-
-The npm package ships the Dockerfile used by `--install --docker`.
-The host still needs only Node.js 20 or newer, the installed CLI package, Docker, and outbound HTTPS access.
-
-Inside the Docker image, the CLI installs the build and runtime tools needed to compile the vendored backend and provision local resources:
-
-- Ubuntu 22.04, or NVIDIA CUDA 12.2 on Ubuntu 22.04 when Docker CUDA probing succeeds
-- Node.js and npm for running the packaged CLI and backend build scripts
-- Rust and Cargo for building the backend binaries
-- C/C++ build tooling, `cmake`, `pkg-config`, `clang`, and `libclang-dev` for native Rust dependencies
-- `curl`, `git`, `tar`, `unzip`, and CA certificates for downloading, Git dependencies, and archive extraction
-
-The image is intentionally conservative rather than aggressively minimal. Removing packages such as `clang`, `libclang-dev`, `pkg-config`, or `bash` requires a clean Docker build test of the backend before release.
-
-## Which Working Directory Does The CLI Use?
-
-The CLI reads relative input paths from the directory where you run the command.
-
-Example:
-
-```bash
-cd /path/to/project
+# Conventional directory
 tokamak-cli --synthesize ./L2StateChannel
-```
 
-In that example, `./L2StateChannel` means `/path/to/project/L2StateChannel`.
-
-## Where Are Output Files Written?
-
-The CLI does not write synth, preprocess, or prove outputs into your current directory.
-It writes them into the runtime cache.
-
-Default cache root:
-
-```text
-~/.tokamak-zk-evm
-```
-
-You can change that location with `TOKAMAK_ZKEVM_CLI_CACHE_DIR`.
-
-Output locations under the cache:
-
-- `macos/runtime/resource/synthesizer/output`
-- `macos/runtime/resource/preprocess/output`
-- `macos/runtime/resource/prove/output`
-- `macos/runtime/resource/setup/output`
-- `linux/runtime/resource/synthesizer/output`
-- `linux/runtime/resource/preprocess/output`
-- `linux/runtime/resource/prove/output`
-- `linux/runtime/resource/setup/output`
-
-`--synthesize` clears the synth output directory before writing new files.
-
-`--extract-proof <OUTPUT_ZIP_PATH>` is different. It writes the zip file to the path you pass on the command line.
-
-## What Files Does `--synthesize` Need?
-
-If you pass a directory, it must contain:
-
-- `previous_state_snapshot.json`
-- `transaction.json`
-- `block_info.json`
-- `contract_codes.json`
-
-Example:
-
-```bash
-tokamak-cli --synthesize ./L2StateChannel
-```
-
-You can also pass the files one by one:
-
-```bash
+# Explicit files
 tokamak-cli --synthesize \
   --previous-state ./inputs/previous_state_snapshot.json \
   --transaction ./inputs/transaction.json \
@@ -179,22 +170,39 @@ tokamak-cli --synthesize \
   --contract-code ./inputs/contract_codes.json
 ```
 
-## What Do `--preprocess`, `--prove`, and `--verify` Read?
+## Backend inputs
 
-If you run them without an argument, they use the files already stored in the runtime cache.
+Without an argument, backend commands use the preceding outputs in the runtime
+cache. A supplied directory or ZIP contains only transaction-specific files;
+the compatible CRS remains in the installed cache.
 
-If you pass a directory or zip file:
+| Command        | External input            | Role and acquisition                                         |
+| -------------- | ------------------------- | ------------------------------------------------------------ |
+| `--preprocess` | `permutation.json`        | Synthesizer wire-equality cycles                             |
+| `--preprocess` | `instance.json`           | Public and function-instance values from the same synthesis  |
+| `--prove`      | `placementVariables.json` | Placement IDs, offsets, and witnesses from synthesis         |
+| `--prove`      | `permutation.json`        | Matching Synthesizer permutation                             |
+| `--prove`      | `instance.json`           | Matching Synthesizer instance                                |
+| `--verify`     | `proof.json`              | Output of the matching prove run or a trusted proof producer |
+| `--verify`     | `preprocess.json`         | Commitments from the matching preprocess run                 |
+| `--verify`     | `instance.json`           | Instance asserted by the proof                               |
 
-- `--preprocess` needs `permutation.json` and `instance.json`
-- `--prove` needs `placementVariables.json`, `permutation.json`, and `instance.json`
-- `--verify` needs `proof.json`, `preprocess.json`, and `instance.json`
+Installed setup files are:
 
-Examples:
+| Cache file              | Used by    | Format                                   |
+| ----------------------- | ---------- | ---------------------------------------- |
+| `sigma_preprocess.rkyv` | Preprocess | Opaque versioned Rust CRS archive        |
+| `combined_sigma.rkyv`   | Prove      | Opaque versioned Rust prover CRS archive |
+| `sigma_verify.json`     | Verify     | JSON verifier CRS                        |
 
-```bash
-tokamak-cli --preprocess
-tokamak-cli --prove
-tokamak-cli --verify
+Do not place setup files in an external transaction directory. Do not mix
+files from different synthesis runs or incompatible releases.
+
+```text
+preprocess-input/       prove-input/                 verify-input/
+├── instance.json       ├── instance.json            ├── instance.json
+└── permutation.json    ├── permutation.json         ├── preprocess.json
+                        └── placementVariables.json  └── proof.json
 ```
 
 ```bash
@@ -203,9 +211,25 @@ tokamak-cli --prove ./artifacts.zip
 tokamak-cli --verify ./proof-bundle.zip
 ```
 
-## What Does `--extract-proof` Produce?
+## Outputs and cache
 
-`--extract-proof <OUTPUT_ZIP_PATH>` writes a zip file that includes:
+The default cache root is `~/.tokamak-zk-evm`; override it with
+`TOKAMAK_ZKEVM_CLI_CACHE_DIR`.
+
+```text
+<cache>/<platform>/runtime/resource/
+├── setup/output
+├── synthesizer/output
+├── preprocess/output
+└── prove/output
+```
+
+Synthesis writes `placementVariables.json`, `instance.json`,
+`instance_description.json`, `permutation.json`, and `state_snapshot.json`.
+Preprocess writes `preprocess.json`; prove writes `proof.json`.
+`--synthesize` clears its previous output directory before writing.
+
+`--extract-proof <OUTPUT_ZIP_PATH>` writes to the requested path and includes:
 
 - `proof.json`
 - `preprocess.json`
@@ -213,42 +237,42 @@ tokamak-cli --verify ./proof-bundle.zip
 - `instance_description.json`
 - `benchmark.json` when available
 
-Example:
-
 ```bash
 tokamak-cli --extract-proof ./proof-bundle.zip
 tokamak-cli --verify ./proof-bundle.zip
 ```
 
-## What Does `--doctor` Check?
+`--doctor` prints the absolute runtime path and verifies that the current
+platform has an installed runtime.
 
-`--doctor` checks whether the CLI can find the installed runtime for the current platform and prints the absolute runtime workspace path.
+## npm publication
 
-```bash
-tokamak-cli --doctor
-```
+| Item              | Value                                                                      |
+| ----------------- | -------------------------------------------------------------------------- |
+| Package           | [`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli) |
+| Published version | `npm view @tokamak-zk-evm/cli version`                                     |
+| Distribution      | npm launcher plus locally built native backend                             |
+| Release notes     | [Repository `CHANGELOG.md`](../../CHANGELOG.md)                            |
 
-## Common Questions
+## Security and operational responsibilities
 
-### Why Is `--install` Slow?
+Authenticate external directories, ZIP files, CRS artifacts, and their release
+compatibility. Keep RPC credentials, signing keys, and wallet secrets out of
+inputs, command history, proof bundles, and source control. Snapshots,
+witnesses, logs, proofs, and cache contents may contain sensitive application
+data.
 
-`--install` builds native Rust binaries on the local machine. The first build is usually the slowest.
+Installation can invoke package managers, container tools, and network
+services. Proof operations can consume substantial CPU, GPU, memory, disk, and
+time. Apply appropriate authorization, resource limits, isolation, and
+monitoring. Successful proving or verification does not establish the
+security of the application, circuit library, setup, or surrounding protocol.
 
-### Why Are My Outputs Not In My Project Directory?
+## Project and license
 
-Because the CLI writes runtime artifacts into the cache directory, not next to the input files.
+- [Source](https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main/packages/cli)
+- [Issues](https://github.com/tokamak-network/Tokamak-zk-EVM/issues)
+- [Native backend](../backend/README.md)
 
-### How Do I Move The Cache Directory?
-
-Set `TOKAMAK_ZKEVM_CLI_CACHE_DIR` before running the CLI.
-
-Example:
-
-```bash
-export TOKAMAK_ZKEVM_CLI_CACHE_DIR="$HOME/tokamak-cli-cache"
-tokamak-cli --install
-```
-
-### How Do I Start From A Clean State?
-
-Delete the CLI cache directory and run `tokamak-cli --install` again.
+Dual-licensed under `MIT OR Apache-2.0`. Dependencies retain their own
+licenses.

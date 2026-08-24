@@ -10,6 +10,11 @@ Both binaries are thin CLI wrappers. The ceremony logic lives in library flow mo
 qap-compiler subcircuit library; release builds without that feature prepare the npm
 subcircuit-library snapshot. Neither mode accepts a runtime library path argument.
 
+Both binaries are part of the Rust backend workspace and are not published as
+standalone npm or crates.io packages. CLI users normally obtain compatible CRS
+artifacts through [`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli).
+Release notes are in [CHANGELOG.md](../../../../CHANGELOG.md).
+
 ## Overview
 
 The final CRS output format is identical in both modes. Only the phase-1 source and release
@@ -55,7 +60,7 @@ not accept `--subcircuit-library`.
 The setup flow consumes binary R1CS constraint files from the prepared library's `r1cs/` directory.
 
 ```bash
-cargo run --release --bin native_mpc_setup -- \
+cargo run --release -p mpc-setup --bin native_mpc_setup -- \
   --intermediate ./setup/mpc-setup/output/native.intermediate \
   --output ./setup/mpc-setup/output/native.final
 ```
@@ -73,7 +78,7 @@ native phase-1 initialization scalar uses internal randomness when testing mode 
 ## Dusk-Backed Mode
 
 ```bash
-cargo run --release --bin dusk_backed_mpc_setup -- \
+cargo run --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
   ceremony \
   --intermediate ./setup/mpc-setup/output/dusk.intermediate \
   --output ./setup/mpc-setup/output/dusk.final
@@ -97,7 +102,7 @@ Dusk source when `<intermediate>/dusk.response` is absent.
 Publish an existing ceremony output separately:
 
 ```bash
-cargo run --release --bin dusk_backed_mpc_setup -- \
+cargo run --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
   publish \
   --intermediate ./setup/mpc-setup/output/dusk.intermediate \
   --output ./setup/mpc-setup/output/dusk.final
@@ -114,16 +119,17 @@ timestamp.
 Use `run` instead of `ceremony` to execute ceremony followed by publication in one command:
 
 ```bash
-cargo run --release --bin dusk_backed_mpc_setup -- \
+cargo run --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
   run \
   --intermediate ./setup/mpc-setup/output/dusk.intermediate \
   --output ./setup/mpc-setup/output/dusk.final
 ```
 
-Non-release example:
+Local developer build example:
 
 ```bash
-cargo run -p mpc-setup --bin dusk_backed_mpc_setup -- \
+cargo run --release -p mpc-setup --features local-development-subcircuit-library \
+  --bin dusk_backed_mpc_setup -- \
   ceremony \
   --intermediate ./setup/mpc-setup/output/dusk.intermediate \
   --output ./setup/mpc-setup/output/dusk.final
@@ -166,7 +172,7 @@ runtime testing flag.
 Native:
 
 ```bash
-cargo run --release --features testing-mode --bin native_mpc_setup -- \
+cargo run --release -p mpc-setup --features testing-mode --bin native_mpc_setup -- \
   --intermediate ./setup/mpc-setup/output/native-testing.intermediate \
   --output ./setup/mpc-setup/output/native-testing.final
 ```
@@ -174,7 +180,7 @@ cargo run --release --features testing-mode --bin native_mpc_setup -- \
 Dusk-backed:
 
 ```bash
-cargo run --release --features testing-mode --bin dusk_backed_mpc_setup -- \
+cargo run --release -p mpc-setup --features testing-mode --bin dusk_backed_mpc_setup -- \
   ceremony \
   --intermediate ./setup/mpc-setup/output/dusk-testing.intermediate \
   --output ./setup/mpc-setup/output/dusk-testing.final

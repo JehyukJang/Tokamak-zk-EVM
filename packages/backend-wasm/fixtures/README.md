@@ -1,57 +1,49 @@
-# Backend WASM Runtime Fixtures
+# Backend WASM runtime fixtures
 
 This directory contains manifests for the controlled test-artifact
 copy-convert-store pipeline. Runtime fixture payloads are local test inputs and
 are excluded from Git and package publication.
 
-## Source Ownership
+## Workflow
 
 Backend-wasm must not generate missing test artifacts by running native scripts,
 Rust binaries, CLI proof flows, setup commands, or prover/verifier execution.
 Developers prepare artifacts in their owning packages first. The source paths are
-declared in `small/copy-manifest.json`.
+declared in [`small/copy-manifest.json`](./small/copy-manifest.json). See the
+[runtime artifact guide](../README.md#runtime-artifact-guide-and-acquisition)
+for the role and production source of each artifact kind.
 
-Run the copy stage with:
+1. Copy owner-package outputs:
 
-```sh
-npm run fixtures:copy
-```
+   ```sh
+   npm run fixtures:copy
+   ```
 
-When backend-wasm is developed in an independent Git worktree, ignored owner
-outputs may exist only in another worktree. Select that worktree explicitly;
-the script never searches for one:
+   In an independent worktree, select the worktree containing ignored owner
+   outputs explicitly:
 
-```sh
-npm run fixtures:copy -- \
-  --source-repository-root /absolute/path/to/Tokamak-zk-EVM
-```
+   ```sh
+   npm run fixtures:copy -- \
+     --source-repository-root /absolute/path/to/Tokamak-zk-EVM
+   ```
 
-The copy stage writes the owner-package artifacts to the ignored
-`tmp/fixtures/<suite>/source/` directory. It does not write final runtime
-fixtures. It also writes `source-metadata.json` with every copied file's source
-path, byte length, SHA-256 digest, and the synchronized backend, backend-wasm,
-and subcircuit-library versions.
+   This writes source files under ignored `tmp/fixtures/<suite>/source/` plus
+   `source-metadata.json` with paths, sizes, digests, and package versions.
 
-Run the conversion stage with:
+2. Convert the copied files:
 
-```sh
-npm run fixtures:prepare
-```
+   ```sh
+   npm run fixtures:prepare
+   ```
 
-The conversion stage invokes the browser-compatible converter APIs and writes
-independent binary runtime artifacts under the ignored `small/runtime/`
-directory.
+   This invokes the public converter APIs and writes independent binaries
+   under ignored `small/runtime/`.
 
-The prepared suite contains:
+## Prepared outputs
 
-- `witness.bin`;
-- `permutation.bin`;
-- `instance.bin`;
-- `prover-crs.bin`;
-- `preprocess-crs.bin`;
-- `verifier-crs.bin`;
-- `proof.bin`;
-- `verifier-preprocess.bin`.
+`witness.bin`, `permutation.bin`, `instance.bin`, `prover-crs.bin`,
+`preprocess-crs.bin`, `verifier-crs.bin`, `proof.bin`, and
+`verifier-preprocess.bin`.
 
 If an owner artifact is missing, the copy or conversion command must fail with
 the required source path. No fallback generation is permitted.

@@ -448,19 +448,16 @@ duplicate WASM memories and temporary buffers.
 
 ## Compatibility and versioning
 
-The source tree targets Snark-browser-compat `3.0.0`, the Tokamak zk-EVM native
-backend `3.0.0`, and subcircuit-library compatibility class `3.0`. This source
-transition does not publish a package or regenerate package-derived artifacts.
-Until those artifacts are regenerated from the synchronized published library,
-every runtime installation and `convertCrs()` rejects the stale generated
-library version.
+The source tree uses the published `2.1.5` package line and subcircuit-library
+compatibility class `2.1`. Current source changes are unreleased work on that
+line; they do not declare a new package version or binary format.
 
 | Boundary                                           | Current value          |
 | -------------------------------------------------- | ---------------------- |
-| Snark-browser-compat source package                | 3.0.0                  |
-| Native backend source release line                 | 3.0.0                  |
-| `@tokamak-zk-evm/subcircuit-library` source target | 3.0.0                  |
-| Compatibility class                                | 3.0                    |
+| Snark-browser-compat source package                | 2.1.5                  |
+| Native backend source release line                 | 2.1.5                  |
+| `@tokamak-zk-evm/subcircuit-library` source target | 2.1.5                  |
+| Compatibility class                                | 2.1                    |
 | Binary `formatVersion`                             | 1                      |
 | Package module format                              | ESM                    |
 | Curve runtime                                      | ffjavascript BLS12-381 |

@@ -92,15 +92,9 @@ function validateReleaseReadiness() {
   return {
     version,
     date: latest.date,
-    notes: latest.body.trim(),
   };
 }
 
 const release = validateReleaseReadiness();
-
-if (process.argv.includes('--print-current-notes')) {
-  process.stdout.write(`${release.notes}\n`);
-  process.exit(0);
-}
 
 console.log(`[release-check] OK for ${release.version} (${release.date})`);

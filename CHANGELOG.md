@@ -8,32 +8,91 @@ The format is based on Keep a Changelog.
 
 ## Unreleased
 
-### Browser-Compatible SNARK
+## [2.1.5] - 2026-07-31
 
-- Added the independent browser preprocess API with explicit installation,
-  named permutation, instance, and preprocess-CRS inputs, optimized
-  prover-compatible primitives, and Node/Chromium parity coverage.
-- Changed `convertCrs()` to emit named prover, preprocess, and verifier CRS
-  binaries from one `combined_sigma.rkyv` source.
-- Extended instance binaries with the function-instance section required by
-  preprocess and intentionally rejected the unreleased earlier layout.
-- Added the complete Vite preprocess, prove, and verify workflow, focused
-  converter and staged-prover recipes, and a verified Webpack converter
-  consumer.
-- Required an explicit verifier CRS source for every package build and
-  prevented accumulated or stale compiled output from entering release
-  tarballs.
-- Simplified binary inspection, package boundaries, retained diagnostics,
-  optimization documentation, examples, and embedded third-party license
-  material without changing the supported prover or verifier protocol.
+### Compatibility and Upgrade Notes
 
-### Backend Workspace
+- Released the CLI, subcircuit library, synthesizer packages,
+  browser-compatible SNARK package, and native backend as version `2.1.5`.
+- This package-metadata patch does not change public APIs, input schemas,
+  proving algorithms, verification semantics, or the binary format version.
+  Existing `2.1` CRS artifacts remain compatible, so applications do not need
+  a new trusted setup or CRS download.
+- Existing `2.1.4` installations continue to work. Applications adopting
+  `2.1.5` should upgrade the synchronized packages together.
 
-- Reduced prover work by combining final Pi openings, sharing the M/N X opening, batching related challenge evaluations through ICICLE, deriving difference-polynomial evaluations from existing values, avoiding materialized constant subtraction before Ruffini division, and decoding the complete CRS grid once for reuse.
-- Restored independent same-point evaluation submissions after benchmarking rejected the grouped implementation, retained ICICLE two-stage batch evaluation, and documented the rejected serial, Rayon, coefficient-rescaling, alternative CRS-cache, zero-compaction, native polynomial-flow, and device-resident recursion paths.
-- Published the consolidated CPU/CUDA rebenchmark record and corrected the individual optimization reports, including failed experiments, invalidated measurements, algebraic rationale, testing-mode parity checks, and fresh preprocess/prove/verify results.
-- Removed repository-dead raw serializers, legacy MPC ceremony and utility paths, unused polynomial/vector/matrix/hash helpers, retired candidate and `poly_detail` diagnostics, Rust CRS code generation, and unused direct dependencies while preserving the active CRS, formatted preprocess, and formatted proof contracts.
-- Consolidated timing and transcript implementations, moved phase-2 MPC workspaces and the prover transcript to their owning modules, reduced the internal Rust API surface, and renamed the verifier directory from `verify-rust` to `verify`.
+### CLI
+
+- Updated the npm package homepage and issue links to the active GitHub
+  publication repository.
+
+### Package Discovery and Support
+
+- Applied the same homepage and issue-link update to the subcircuit library,
+  Node and Web Synthesizers, and browser-compatible SNARK package.
+- Added `JehyukJang` to every npm package's search metadata while retaining the
+  existing Tokamak Network discovery terms.
+
+## [2.1.4] - 2026-07-31
+
+### Compatibility and Upgrade Notes
+
+- Released the CLI, subcircuit library, synthesizer packages,
+  browser-compatible SNARK package, and native backend as version `2.1.4`.
+  Applications that use more than one Tokamak zk-EVM package should upgrade
+  them together.
+- Kept compatibility with the existing `2.1` backend CRS. This release does
+  not require a new trusted setup or CRS download.
+- Preserved the native proof inputs, proof format, and verification semantics.
+
+### CLI
+
+- Added `tokamak-cli --install --include-prerequisite` for users who want the
+  CLI to detect and install missing native prerequisites on Ubuntu 20.04,
+  Ubuntu 22.04, or macOS.
+- The prerequisite flow shows the planned host changes and requires explicit
+  confirmation before installation. It is unavailable with `--docker`.
+- Fixed repeated macOS installations incorrectly reporting Homebrew-provided
+  CMake or `pkg-config` as missing.
+- Existing CLI commands and uninstall behavior are unchanged.
+
+### Browser-Compatible SNARK (WASM Backend)
+
+- `convertProverCrs()` has been replaced by `convertCrs()`. Update converter
+  calls to read the returned `proverCrs`, `preprocessCrs`, and `verifierCrs`
+  properties.
+- `convertInstance()` now requires `a_pub_function` and includes it as a
+  separate function-instance section. Regenerate instance binaries created
+  with version `2.1.3` before using them with version `2.1.4`.
+- `inspectBinary()` no longer accepts `includeSectionData` and no longer
+  returns section contents as `dataHex`. Applications that need section bytes
+  must retain the original binary and use the reported offsets and lengths.
+- Added browser preprocessing with an independent installation lifecycle and
+  explicit permutation, instance, and preprocess CRS inputs.
+- Added complete Vite examples for preprocessing, proving, and verification,
+  plus Webpack guidance for CRS conversion.
+- Tuned the browser preprocessing default introduced in this release. On the
+  Apple M4 Pro reference system, its three-run Chromium mean decreased from
+  `11.017 s` to `10.942 s` (`0.7%` faster). Every measured output matched the
+  native backend and passed browser verification. This result is a reference
+  measurement, not a performance guarantee for other systems.
+
+### Native Backend
+
+- Five-run benchmarks measured the following end-to-end first-proof
+  improvements from optimizations included in this release. Tests used an
+  Apple M4 Pro CPU backend and an NVIDIA A10 CUDA backend:
+
+  | Measured change | CPU mean | CUDA mean |
+  | --- | ---: | ---: |
+  | Reduced final proof construction work | `39.998 s` → `38.332 s` (`4.2%` faster) | `23.878 s` → `23.683 s` (`0.8%` faster) |
+  | Removed a repeated proof calculation | `38.465 s` → `37.157 s` (`3.4%` faster) | `24.760 s` → `23.758 s` (`4.0%` faster) |
+  | Shared work across related evaluations | `37.805 s` → `37.123 s` (`1.8%` faster) | `23.944 s` → `23.778 s` (`0.7%` faster) |
+  | Reused decoded CRS data during the first proof | `37.869 s` → `37.147 s` (`1.9%` faster) | `24.920 s` → `23.914 s` (`4.0%` faster) |
+
+- These separately measured improvements are not additive. All measured paths
+  used the same release fixture and preserved the supported proof protocol,
+  proof output, and verifier behavior.
 
 ## [2.1.3] - 2026-07-27
 

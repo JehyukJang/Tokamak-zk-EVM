@@ -1,6 +1,8 @@
 # Releasing `@tokamak-zk-evm/cli`
 
-This package is published automatically from `main`.
+The normal release path publishes this package automatically from `main`. A
+manual maintainer command remains available for an intentional direct
+publication or recovery.
 
 ## Before You Merge
 
@@ -19,7 +21,8 @@ npm run --workspace @tokamak-zk-evm/cli build
 
 ## What Happens On `main`
 
-When a commit reaches `main`, `.github/workflows/publish-cli.yml`:
+When a commit reaches `main`,
+`.github/workflows/publish-tokamak-zk-evm.yml`:
 
 1. Reads `packages/cli/package.json`
 2. Compares the local version with the version already published on npm
@@ -29,6 +32,29 @@ When a commit reaches `main`, `.github/workflows/publish-cli.yml`:
 6. Publishes to npm if the local version is newer
 
 If the local version is equal to the npm version, the workflow does not publish.
+
+## Manual Publishing
+
+Use the manual path only when publishing the current checkout directly is
+intentional:
+
+```bash
+npm run --workspace @tokamak-zk-evm/cli release:publish
+```
+
+The command validates release readiness, rebuilds the package, and runs
+`npm publish --access public --ignore-scripts`. It requires an npm identity
+authorized to publish `@tokamak-zk-evm/cli`. Additional npm publish arguments
+may be passed after `--`, for example:
+
+```bash
+npm run --workspace @tokamak-zk-evm/cli release:publish -- --dry-run
+```
+
+Unlike the normal workflow, this command publishes from the local checkout
+rather than the synchronized release tarball produced by GitHub Actions. The
+maintainer is responsible for confirming that the checkout, package version,
+root changelog, and intended commit are aligned before using it.
 
 ## Changelog Format
 

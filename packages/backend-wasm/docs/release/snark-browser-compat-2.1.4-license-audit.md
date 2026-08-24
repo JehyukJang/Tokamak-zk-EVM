@@ -1,22 +1,22 @@
-# Snark-browser-compat 2.1.3 License Audit
+# Snark-browser-compat 2.1.4 License Audit
 
 Audience: maintainers preparing the `@tokamak-zk-evm/snark-browser-compat` npm release.
 
-Audit date: 2026-07-29
+Audit date: 2026-07-31
 
 ## Publication candidate
 
 | Property | Value |
 | --- | --- |
-| Package | `@tokamak-zk-evm/snark-browser-compat@2.1.3` |
+| Package | `@tokamak-zk-evm/snark-browser-compat@2.1.4` |
 | Package license | `MIT OR Apache-2.0` |
-| Tarball | `tokamak-zk-evm-snark-browser-compat-2.1.3.tgz` |
-| Compressed size | 870,308 bytes |
-| Unpacked size | 10,203,085 bytes |
+| Tarball | `tokamak-zk-evm-snark-browser-compat-2.1.4.tgz` |
+| Compressed size | 870,352 bytes |
+| Unpacked size | 10,203,220 bytes |
 | Entry count | 417 |
-| SHA-1 reported by npm | `1b1b1f473f472221ee579915c1c808ffdb20cb49` |
-| SHA-256 | `6fb1459a4dab71931fa630c9c3aa8b1e6cec387bd68e181a80cfa909628c2cda` |
-| npm integrity | `sha512-/SEFuts6jZDOLSNlH61JZy2rpfPYWqeQPJxRuUKEBZwvCbxneUcbLr57o1K4+K81M597VZ2UVc115hCGnlTkTQ==` |
+| SHA-1 reported by npm | `3586cd3f08cc3ba9f1e86e0d251d2505bdb3debd` |
+| SHA-256 | `b69099fa21d868a5d89cda3d1bc0577ff12f51d916873e47fe5bed6d745f519a` |
+| npm integrity | `sha512-4iEQtbdOa7/THnPseK2SUyMciOH4ccfQRbS8vuLiX7vpzUwbV4lj0cOfdcdxA4zZQZ9mpKV0uYBj4C6vQ9UN1Q==` |
 
 The candidate was built and packed on Apple Silicon with Rust 1.95.0,
 `wasm-bindgen-cli` 0.2.126, Node.js 26.0.0, npm 11.12.1, Vite 8.1.5,
@@ -42,7 +42,7 @@ dependencies.
 | Package | Resolved version | Declared license | Distribution boundary |
 | --- | --- | --- | --- |
 | `@noble/hashes` | 1.8.0 | MIT | External npm import |
-| `@tokamak-zk-evm/subcircuit-library` | 2.1.3 | MIT OR Apache-2.0 | External dependency; selected data is generated into package output |
+| `@tokamak-zk-evm/subcircuit-library` | 2.1.4 | MIT OR Apache-2.0 | External dependency; selected data is generated into package output |
 | `ffjavascript` | 0.3.1 | GPL-3.0 | External npm import |
 | `wasmbuilder` | 0.0.16 | GPL-3.0 | External transitive dependency |
 | `wasmcurves` | 0.2.2 | GPL-3.0 | External transitive dependency |
