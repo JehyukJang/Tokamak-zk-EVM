@@ -243,13 +243,12 @@ async function extractZipArchive(zipPath: string, destinationDir: string, verbos
   });
 }
 
-async function validateDownloadedCrsVersions(
+export async function validateDownloadedCrsArchive(
   extractedDir: string,
   backendReleaseDir: string,
   archiveName: string,
   compatibleBackendVersion: string,
 ): Promise<{
-  mpcMetadataPath: string;
   provenancePath: string;
 }> {
   const provenancePath = await findNamedFile(extractedDir, 'crs_provenance.json');
@@ -261,38 +260,6 @@ async function validateDownloadedCrsVersions(
   }
   await validateCrsArtifactHashes(extractedDir, archiveName, provenance);
 
-  const mpcMetadataPath = await findNamedFile(extractedDir, 'build-metadata-mpc-setup.json');
-  const mpcMetadata = await readJsonFile<BackendBuildMetadata>(mpcMetadataPath);
-  const mpcSubcircuitVersion = mpcMetadata.dependencies?.subcircuitLibrary?.buildVersion;
-  const mpcSubcircuitPackageName = mpcMetadata.dependencies?.subcircuitLibrary?.packageName;
-  const mpcVersion = mpcMetadata.packageVersion;
-  const mpcCompatibleVersion = mpcMetadata.compatibleBackendVersion;
-  if (!mpcSubcircuitVersion || !mpcSubcircuitPackageName || !mpcVersion || !mpcCompatibleVersion) {
-    throw new Error(`CRS archive ${archiveName} is missing required metadata.`);
-  }
-  if (mpcCompatibleVersion !== compatibleBackendVersion) {
-    throw new Error(
-      `CRS archive ${archiveName} metadata compatibleBackendVersion ${mpcCompatibleVersion} does not match expected ${compatibleBackendVersion}.`,
-    );
-  }
-  if (packageCompatibleVersion(mpcVersion, 'CRS metadata packageVersion') !== compatibleBackendVersion) {
-    throw new Error(
-      `CRS archive ${archiveName} metadata packageVersion ${mpcVersion} is not compatible with ${compatibleBackendVersion}.`,
-    );
-  }
-  if (mpcSubcircuitPackageName !== SUBCIRCUIT_LIBRARY_PACKAGE_NAME) {
-    throw new Error(
-      `CRS archive ${archiveName} metadata subcircuit-library package ${mpcSubcircuitPackageName} does not match ${SUBCIRCUIT_LIBRARY_PACKAGE_NAME}.`,
-    );
-  }
-  if (
-    packageCompatibleVersion(mpcSubcircuitVersion, 'CRS metadata subcircuit-library buildVersion')
-    !== compatibleBackendVersion
-  ) {
-    throw new Error(
-      `CRS archive ${archiveName} metadata subcircuit-library version ${mpcSubcircuitVersion} is not compatible with ${compatibleBackendVersion}.`,
-    );
-  }
   const provenanceSubcircuitPackageName = provenance.subcircuitLibrary?.packageName;
   const provenanceSubcircuitPackageVersion = provenance.subcircuitLibrary?.packageVersion;
   if (!provenanceSubcircuitPackageName || !provenanceSubcircuitPackageVersion) {
@@ -301,11 +268,6 @@ async function validateDownloadedCrsVersions(
   if (provenanceSubcircuitPackageName !== SUBCIRCUIT_LIBRARY_PACKAGE_NAME) {
     throw new Error(
       `CRS archive ${archiveName} provenance subcircuit-library package ${provenanceSubcircuitPackageName} does not match ${SUBCIRCUIT_LIBRARY_PACKAGE_NAME}.`,
-    );
-  }
-  if (provenanceSubcircuitPackageVersion !== mpcSubcircuitVersion) {
-    throw new Error(
-      `CRS archive ${archiveName} provenance subcircuit-library version ${provenanceSubcircuitPackageVersion} does not match MPC metadata version ${mpcSubcircuitVersion}.`,
     );
   }
   if (
@@ -358,7 +320,6 @@ async function validateDownloadedCrsVersions(
   }
 
   return {
-    mpcMetadataPath,
     provenancePath,
   };
 }
@@ -401,7 +362,7 @@ export async function installDownloadedSetup(
   try {
     const { archivePath, archiveName } = await downloadLatestCrsArchive(context, selection, verbose);
     await extractZipArchive(archivePath, extractedDir, verbose);
-    const { mpcMetadataPath, provenancePath } = await validateDownloadedCrsVersions(
+    const { provenancePath } = await validateDownloadedCrsArchive(
       extractedDir,
       backendReleaseDir,
       archiveName,
@@ -420,10 +381,6 @@ export async function installDownloadedSetup(
     await fs.copyFile(
       await findNamedFile(extractedDir, 'sigma_verify.json'),
       path.join(paths.setupOutputDir, 'sigma_verify.json'),
-    );
-    await fs.copyFile(
-      mpcMetadataPath,
-      path.join(paths.setupOutputDir, 'build-metadata-mpc-setup.json'),
     );
     await fs.copyFile(provenancePath, path.join(paths.setupOutputDir, 'crs_provenance.json'));
   } finally {
