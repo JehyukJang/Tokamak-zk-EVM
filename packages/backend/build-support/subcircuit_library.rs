@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+#[path = "../../../versioning/input-origin.rs"]
+mod input_origin_contract;
 #[path = "../../../versioning/compatibility.rs"]
 mod version_contract;
 
@@ -15,8 +17,6 @@ use std::time::Duration;
 const PACKAGE_NAME: &str = "@tokamak-zk-evm/subcircuit-library";
 const DECLARED_RANGE: &str = "latest";
 const RUNTIME_MODE: &str = "bundled";
-const MPC_ORIGIN_NPM_SNAPSHOT: &str = "npmSnapshot";
-const MPC_ORIGIN_LOCAL_QAP_COMPILER: &str = "localQapCompiler";
 const SNAPSHOT_ROOT_DIR: &str = "embedded-subcircuit-library";
 const SNAPSHOT_INFO_FILE: &str = "resolved.json";
 const SNAPSHOT_CIRCOM_DIR: &str = "circom";
@@ -98,7 +98,7 @@ pub fn configure_mpc_subcircuit_library(out_dir: &Path, package_version: &str) -
         emit_mpc_subcircuit_library_build_env(
             &snapshot.version,
             &compatible_backend_version,
-            MPC_ORIGIN_NPM_SNAPSHOT,
+            input_origin_contract::SubcircuitLibraryOrigin::NpmSnapshot,
         );
         return write_mpc_subcircuit_library_path(out_dir, &snapshot.snapshot_dir);
     }
@@ -109,7 +109,7 @@ pub fn configure_mpc_subcircuit_library(out_dir: &Path, package_version: &str) -
     emit_mpc_subcircuit_library_build_env(
         &library.version,
         &compatible_backend_version,
-        MPC_ORIGIN_LOCAL_QAP_COMPILER,
+        input_origin_contract::SubcircuitLibraryOrigin::LocalQapCompiler,
     );
     write_mpc_subcircuit_library_path(out_dir, &library.library_dir)
 }
@@ -295,10 +295,13 @@ fn emit_subcircuit_library_build_env(version: &str, compatible_backend_version: 
 fn emit_mpc_subcircuit_library_build_env(
     version: &str,
     compatible_backend_version: &str,
-    origin: &str,
+    origin: input_origin_contract::SubcircuitLibraryOrigin,
 ) {
     emit_subcircuit_library_build_env(version, compatible_backend_version);
-    println!("cargo:rustc-env=TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_ORIGIN={origin}");
+    println!(
+        "cargo:rustc-env=TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_ORIGIN={}",
+        origin.as_str()
+    );
 }
 
 fn generate_embedded_module(
@@ -446,6 +449,13 @@ fn emit_version_contract_rerun_rule() {
                 repository_root
                     .join("versioning")
                     .join("compatibility.rs")
+                    .display()
+            );
+            println!(
+                "cargo:rerun-if-changed={}",
+                repository_root
+                    .join("versioning")
+                    .join("input-origin.rs")
                     .display()
             );
         }

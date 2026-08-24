@@ -9,6 +9,9 @@ pub mod errors;
 pub mod field_structures;
 pub mod frontend_artifacts;
 pub mod group_structures;
+#[path = "../../../../versioning/input-origin.rs"]
+pub mod input_origin;
+mod input_origin_serde;
 pub mod polynomial_structures;
 pub mod proof_protocol;
 pub mod r1cs;

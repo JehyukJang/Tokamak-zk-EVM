@@ -10,6 +10,7 @@ use libs::crs_artifacts::write_final_crs_artifacts;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 #[derive(Debug, Clone)]
 pub struct Phase2GenFilesConfig {
@@ -86,12 +87,12 @@ fn is_release_eligible(phase1_source_provenance: Option<&Phase1SourceProvenance>
 
 fn subcircuit_library_origin_from_build() -> Result<SubcircuitLibraryOrigin, MpcSetupError> {
     match option_env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_ORIGIN") {
-        Some("npmSnapshot") => Ok(SubcircuitLibraryOrigin::NpmSnapshot),
-        Some("localQapCompiler") => Ok(SubcircuitLibraryOrigin::LocalQapCompiler),
-        Some(origin) => Err(MpcSetupError::State {
-            phase: "phase-2 finalization",
-            reason: format!("unsupported subcircuit-library build origin {origin:?}"),
-        }),
+        Some(origin) => {
+            SubcircuitLibraryOrigin::from_str(origin).map_err(|error| MpcSetupError::State {
+                phase: "phase-2 finalization",
+                reason: error.to_string(),
+            })
+        }
         None => Err(MpcSetupError::State {
             phase: "phase-2 finalization",
             reason: "missing subcircuit-library build origin".to_string(),

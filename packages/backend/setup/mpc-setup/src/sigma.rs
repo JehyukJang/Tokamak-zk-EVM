@@ -5,6 +5,7 @@ use icicle_bls12_381::curve::ScalarField;
 use icicle_core::traits::FieldImpl;
 use libs::crs_artifacts::{ArchivedG1SerdeRkyv, ArchivedSigma1Rkyv, G1SerdeRkyv, SigmaRkyv};
 use libs::group_structures::{G1serde, Sigma};
+pub use libs::input_origin::SubcircuitLibraryOrigin;
 use rkyv::ser::Serializer as _;
 use rkyv::{
     check_archived_value, Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize,
@@ -49,13 +50,6 @@ pub struct DuskSourceProvenance {
 pub enum Phase1SourceProvenance {
     Native,
     DuskGroth16(DuskSourceProvenance),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum SubcircuitLibraryOrigin {
-    NpmSnapshot,
-    LocalQapCompiler,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]

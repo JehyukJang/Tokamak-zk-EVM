@@ -1,0 +1,11 @@
+{
+  "subcircuitLibraryOrigins": [
+    { "input": "npmSnapshot", "canonical": "npmSnapshot" },
+    { "input": "localQapCompiler", "canonical": "localQapCompiler" },
+    { "input": "npm-snapshot" },
+    { "input": "localQapCompiler " },
+    { "input": " localQapCompiler" },
+    { "input": "" },
+    { "input": "unknown" }
+  ]
+}
