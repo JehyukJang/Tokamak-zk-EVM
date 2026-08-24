@@ -6,9 +6,10 @@
 - `dusk_backed_mpc_setup`
 
 Both binaries are thin CLI wrappers. The ceremony logic lives in library flow modules under
-[`src/flows`](./src/flows). The `local-development-subcircuit-library` feature prepares the local
-qap-compiler subcircuit library; release builds without that feature prepare the npm
-subcircuit-library snapshot. Neither mode accepts a runtime library path argument.
+[`src/flows`](./src/flows). The `local-development-subcircuit-library` feature prepares local
+qap-compiler output, including in Cargo release builds; release builds without that feature
+prepare the npm subcircuit-library snapshot. Neither MPC mode accepts a runtime library path
+argument.
 
 Both binaries are part of the Rust backend workspace and are not published as
 standalone npm or crates.io packages. CLI users normally obtain compatible CRS
@@ -98,8 +99,8 @@ In dusk-backed mode:
 
 `ceremony` does not read Google Drive configuration, open a browser, or publish an artifact. It
 creates a local final CRS and records provenance. A true `releaseEligible` field alone does not
-authorize publication: the publisher also requires Dusk phase-1 provenance and npm-snapshot input
-origin. The ceremony may download the pinned public Dusk source when
+authorize publication: the publisher also requires Dusk phase-1 provenance, npm-snapshot input
+origin, and final CRS artifacts that match their recorded SHA-256 digests. The ceremony may download the pinned public Dusk source when
 `<intermediate>/dusk.response` is absent.
 
 Publish an existing ceremony output separately:
@@ -114,9 +115,9 @@ cargo run --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
 `publish` checks that the Google Drive upload environment is valid, rejects a target folder that
 already contains a CRS archive for the current backend version, creates an archive containing the
 final `--output` artifacts, and uploads it to the configured Google Drive folder. It is only
-available in release builds. Before upload, it requires Dusk phase-1 provenance and an npm
-subcircuit-library snapshot origin recorded in `crs_provenance.json`. The archive name includes
-the backend version and CRS generation timestamp.
+available in release builds. Before upload, it requires Dusk phase-1 provenance, an npm
+subcircuit-library snapshot origin, and final CRS artifact digests that match
+`crs_provenance.json`. The archive name includes the backend version and CRS generation timestamp.
 
 Use `run` instead of `ceremony` to execute ceremony followed by publication in one command:
 

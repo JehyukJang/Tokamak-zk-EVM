@@ -16,9 +16,9 @@ struct Config {
 
 #[derive(Subcommand, Debug)]
 enum Command {
-    /// Create a local release-eligible CRS from the pinned Dusk source.
+    /// Create a local final CRS from the pinned Dusk source.
     Ceremony(CeremonyConfig),
-    /// Publish an existing local release-eligible CRS to the configured Drive folder.
+    /// Publish an existing local CRS when it satisfies the publisher provenance requirements.
     Publish(PublicationConfig),
     /// Create a local CRS and publish it after the ceremony succeeds.
     Run(CeremonyConfig),
@@ -66,7 +66,9 @@ fn run() -> Result<(), mpc_setup::MpcSetupError> {
     match config.command {
         Command::Ceremony(config) => {
             run_dusk_backed_ceremony(&ceremony_config(config)?)?;
-            println!("Dusk-backed ceremony completed. The local CRS is ready for publication.");
+            println!(
+                "Dusk-backed ceremony completed. The local CRS is final; Google Drive publication additionally requires npm-snapshot input provenance."
+            );
         }
         Command::Publish(config) => {
             run_dusk_backed_publication(&DuskPublicationConfig {
