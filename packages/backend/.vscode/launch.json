@@ -2,29 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug trusted-setup (release)",
-      "type": "lldb",
-      "request": "launch",
-      "cargo": {
-        "args": ["build", "--release", "-p", "trusted-setup"],
-        "filter": { "name": "trusted-setup", "kind": "bin" }
-      },
-      "program": "${cargo:program}",
-      "args": [
-        "--output",
-        "${workspaceFolder}/setup/output",
-        "--fixed-tau"
-      ],
-      "cwd": "${workspaceFolder}",
-      "env": {
-        "ICICLE_BACKEND_INSTALL_DIR": "${workspaceFolder}/external-lib/mac/lib/backend",
-        "DYLD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib",
-        "LD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib:${env:LD_LIBRARY_PATH}"
-      },  
-      "sourceLanguages": ["rust"]
-    },
-    {
-      "name": "Debug trusted-setup (coderun)",
+      "name": "Debug trusted-setup",
       "type": "lldb",
       "request": "launch",
       "cargo": {
@@ -36,7 +14,7 @@
         "--subcircuit-library",
         "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
         "--output",
-        "${workspaceFolder}/setup/output",
+        "${workspaceFolder}/setup/trusted-setup/output/debug",
         "--fixed-tau"
       ],
       "cwd": "${workspaceFolder}",
@@ -44,41 +22,15 @@
         "ICICLE_BACKEND_INSTALL_DIR": "${workspaceFolder}/external-lib/mac/lib/backend",
         "DYLD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib",
         "LD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib:${env:LD_LIBRARY_PATH}"
-      },  
-      "sourceLanguages": ["rust"]
-    },
-    {
-      "name": "Debug trusted-setup (testing-mode)",
-      "type": "lldb",
-      "request": "launch",
-      "cargo": {
-        "args": ["build", "-p", "trusted-setup", "--features", "testing-mode"],
-        "filter": { "name": "trusted-setup", "kind": "bin" }
       },
-      "program": "${cargo:program}",
-      "args": [
-        "--subcircuit-library",
-        "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
-        "--synthesizer-stat",
-        "${workspaceFolder}/../frontend/synthesizer/outputs",
-        "--output",
-        "${workspaceFolder}/setup/output",
-        "--fixed-tau"
-      ],
-      "cwd": "${workspaceFolder}",
-      "env": {
-        "ICICLE_BACKEND_INSTALL_DIR": "${workspaceFolder}/external-lib/mac/lib/backend",
-        "DYLD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib",
-        "LD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib:${env:LD_LIBRARY_PATH}"
-      },  
       "sourceLanguages": ["rust"]
     },
     {
-      "name": "Debug native mpc-setup (release)",
+      "name": "Debug native MPC setup",
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["build", "--release", "-p", "mpc-setup"],
+        "args": ["build", "-p", "mpc-setup"],
         "filter": { "name": "native_mpc_setup", "kind": "bin" }
       },
       "program": "${cargo:program}",
@@ -86,7 +38,7 @@
         "--intermediate",
         "${workspaceFolder}/setup/mpc-setup/output/native-debug.intermediate",
         "--output",
-        "${workspaceFolder}/setup/output"
+        "${workspaceFolder}/setup/mpc-setup/output/native-debug.final"
       ],
       "cwd": "${workspaceFolder}",
       "env": {
@@ -97,19 +49,20 @@
       "sourceLanguages": ["rust"]
     },
     {
-      "name": "Debug Dusk-backed mpc-setup (release)",
+      "name": "Debug Dusk-backed MPC ceremony",
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["build", "--release", "-p", "mpc-setup", "--bin", "dusk_backed_mpc_setup"],
+        "args": ["build", "-p", "mpc-setup", "--bin", "dusk_backed_mpc_setup"],
         "filter": { "name": "dusk_backed_mpc_setup", "kind": "bin" }
       },
       "program": "${cargo:program}",
       "args": [
+        "ceremony",
         "--intermediate",
         "${workspaceFolder}/setup/mpc-setup/output/dusk-debug.intermediate",
         "--output",
-        "${workspaceFolder}/setup/output"
+        "${workspaceFolder}/setup/mpc-setup/output/dusk-debug.final"
       ],
       "cwd": "${workspaceFolder}",
       "env": {
@@ -120,32 +73,7 @@
       "sourceLanguages": ["rust"]
     },
     {
-      "name": "Debug preprocess (release)",
-      "type": "lldb",
-      "request": "launch",
-      "cargo": {
-        "args": ["build", "--release", "-p", "preprocess"],
-        "filter": { "name": "preprocess", "kind": "bin" }
-      },
-      "program": "${cargo:program}",
-      "args": [
-        "--crs",
-        "${workspaceFolder}/setup/output",
-        "--synthesizer-stat",
-        "${workspaceFolder}/../frontend/synthesizer/outputs",
-        "--output",
-        "${workspaceFolder}/preprocess/output"
-      ],
-      "cwd": "${workspaceFolder}",
-      "env": {
-        "ICICLE_BACKEND_INSTALL_DIR": "${workspaceFolder}/external-lib/mac/lib/backend",
-        "DYLD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib",
-        "LD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib:${env:LD_LIBRARY_PATH}"
-      },
-      "sourceLanguages": ["rust"]
-    },
-    {
-      "name": "Debug preprocess (coderun)",
+      "name": "Debug preprocess",
       "type": "lldb",
       "request": "launch",
       "cargo": {
@@ -158,7 +86,7 @@
         "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
         "--allow-unverified-crs",
         "--crs",
-        "${workspaceFolder}/setup/output",
+        "${workspaceFolder}/setup/trusted-setup/output/debug",
         "--synthesizer-stat",
         "${workspaceFolder}/../frontend/synthesizer/outputs",
         "--output",
@@ -173,32 +101,7 @@
       "sourceLanguages": ["rust"]
     },
     {
-      "name": "Debug prove (release)",
-      "type": "lldb",
-      "request": "launch",
-      "cargo": {
-        "args": ["build","--release", "-p", "prove"],
-        "filter": { "name": "prove", "kind": "bin" }
-      },
-      "program": "${cargo:program}",
-      "args": [
-        "--crs",
-        "${workspaceFolder}/setup/output",
-        "--synthesizer-stat",
-        "${workspaceFolder}/../frontend/synthesizer/outputs",
-        "--output",
-        "${workspaceFolder}/prove/output"
-      ],
-      "cwd": "${workspaceFolder}",
-      "env": {
-        "ICICLE_BACKEND_INSTALL_DIR": "${workspaceFolder}/external-lib/mac/lib/backend",
-        "DYLD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib",
-        "LD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib:${env:LD_LIBRARY_PATH}"
-      },
-      "sourceLanguages": ["rust"]
-    },
-    {
-      "name": "Debug prove (coderun)",
+      "name": "Debug prove",
       "type": "lldb",
       "request": "launch",
       "cargo": {
@@ -211,7 +114,7 @@
         "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
         "--allow-unverified-crs",
         "--crs",
-        "${workspaceFolder}/setup/output",
+        "${workspaceFolder}/setup/trusted-setup/output/debug",
         "--synthesizer-stat",
         "${workspaceFolder}/../frontend/synthesizer/outputs",
         "--output",
@@ -226,86 +129,7 @@
       "sourceLanguages": ["rust"]
     },
     {
-      "name": "Debug prove (testing-mode)",
-      "type": "lldb",
-      "request": "launch",
-      "cargo": {
-        "args": ["build", "-p", "prove", "--features", "testing-mode,development-crs-bypass"],
-        "filter": { "name": "prove", "kind": "bin" }
-      },
-      "program": "${cargo:program}",
-      "args": [
-        "--subcircuit-library",
-        "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
-        "--allow-unverified-crs",
-        "--crs",
-        "${workspaceFolder}/setup/output",
-        "--synthesizer-stat",
-        "${workspaceFolder}/../frontend/synthesizer/outputs",
-        "--output",
-        "${workspaceFolder}/prove/output"
-      ],
-      "cwd": "${workspaceFolder}",
-      "env": {
-        "ICICLE_BACKEND_INSTALL_DIR": "${workspaceFolder}/external-lib/mac/lib/backend",
-        "DYLD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib",
-        "LD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib:${env:LD_LIBRARY_PATH}"
-      },
-      "sourceLanguages": ["rust"]
-    },
-    {
-      "name": "Test prove timing (timing feature)",
-      "type": "lldb",
-      "request": "launch",
-      "cargo": {
-        "args": ["test", "--release", "-p", "prove", "--features", "timing", "--test", "timing", "--", "--nocapture"],
-        "filter": { "name": "timing", "kind": "test" }
-      },
-      "program": "${cargo:program}",
-      "args": [],
-      "cwd": "${workspaceFolder}",
-      "env": {
-        "PROVE_QAP_PATH": "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
-        "PROVE_SYNTHESIZER_PATH": "${workspaceFolder}/../frontend/synthesizer/outputs",
-        "PROVE_SETUP_PATH": "${workspaceFolder}/setup/output",
-        "PROVE_OUT_PATH": "${workspaceFolder}/prove/output",
-        "TIMING_OUT": "${workspaceFolder}/prove/optimization/timing.release.json",
-        "ICICLE_BACKEND_INSTALL_DIR": "${workspaceFolder}/external-lib/mac/lib/backend",
-        "DYLD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib",
-        "LD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib:${env:LD_LIBRARY_PATH}"
-      },
-      "postDebugTask": "timing:json-to-md",
-      "sourceLanguages": ["rust"]
-    },
-    {
-      "name": "Debug verify (release)",
-      "type": "lldb",
-      "request": "launch",
-      "cargo": {
-        "args": ["build", "--release", "-p", "verify"],
-        "filter": { "name": "verify", "kind": "bin" }
-      },
-      "program": "${cargo:program}",
-      "args": [
-        "--crs",
-        "${workspaceFolder}/setup/output",
-        "--synthesizer-stat",
-        "${workspaceFolder}/../frontend/synthesizer/outputs",
-        "--preprocess",
-        "${workspaceFolder}/preprocess/output",
-        "--proof",
-        "${workspaceFolder}/prove/output"
-      ],
-      "cwd": "${workspaceFolder}",
-      "env": {
-        "ICICLE_BACKEND_INSTALL_DIR": "${workspaceFolder}/external-lib/mac/lib/backend",
-        "DYLD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib",
-        "LD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib:${env:LD_LIBRARY_PATH}"
-      },
-      "sourceLanguages": ["rust"]
-    },
-    {
-      "name": "Debug verify (coderun)",
+      "name": "Debug verify",
       "type": "lldb",
       "request": "launch",
       "cargo": {
@@ -318,7 +142,7 @@
         "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
         "--allow-unverified-crs",
         "--crs",
-        "${workspaceFolder}/setup/output",
+        "${workspaceFolder}/setup/trusted-setup/output/debug",
         "--synthesizer-stat",
         "${workspaceFolder}/../frontend/synthesizer/outputs",
         "--preprocess",
@@ -335,33 +159,27 @@
       "sourceLanguages": ["rust"]
     },
     {
-      "name": "Debug verify (testing-mode)",
+      "name": "Measure prove timing",
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["build", "-p", "verify", "--features", "testing-mode,development-crs-bypass"],
-        "filter": { "name": "verify", "kind": "bin" }
+        "args": ["test", "--release", "-p", "prove", "--features", "timing", "--test", "timing", "--", "--nocapture"],
+        "filter": { "name": "timing", "kind": "test" }
       },
       "program": "${cargo:program}",
-      "args": [
-        "--subcircuit-library",
-        "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
-        "--allow-unverified-crs",
-        "--crs",
-        "${workspaceFolder}/setup/output",
-        "--synthesizer-stat",
-        "${workspaceFolder}/../frontend/synthesizer/outputs",
-        "--preprocess",
-        "${workspaceFolder}/preprocess/output",
-        "--proof",
-        "${workspaceFolder}/prove/output"
-      ],
+      "args": [],
       "cwd": "${workspaceFolder}",
       "env": {
+        "PROVE_QAP_PATH": "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
+        "PROVE_SYNTHESIZER_PATH": "${workspaceFolder}/../frontend/synthesizer/outputs",
+        "PROVE_SETUP_PATH": "${workspaceFolder}/setup/mpc-setup/output/native-debug.final",
+        "PROVE_OUT_PATH": "${workspaceFolder}/prove/output",
+        "TIMING_OUT": "${workspaceFolder}/prove/optimization/timing.release.json",
         "ICICLE_BACKEND_INSTALL_DIR": "${workspaceFolder}/external-lib/mac/lib/backend",
         "DYLD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib",
         "LD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib:${env:LD_LIBRARY_PATH}"
       },
+      "postDebugTask": "timing:json-to-md",
       "sourceLanguages": ["rust"]
     }
   ]

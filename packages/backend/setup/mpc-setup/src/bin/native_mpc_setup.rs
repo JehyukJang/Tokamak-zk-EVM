@@ -45,7 +45,7 @@ fn run() -> Result<(), mpc_setup::MpcSetupError> {
     })?;
 
     println!(
-        "Native single-contributor MPC setup completed. Its CRS is development-only; use a development CRS bypass for local downstream testing: {}",
+        "Native single-contributor MPC setup completed. Its CRS is not publication-eligible, but downstream preprocess, prove, and verify may use it when its compatibility metadata matches the selected subcircuit library: {}",
         config.output
     );
     Ok(())

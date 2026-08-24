@@ -55,7 +55,7 @@ impl CliDiagnostic for ProveError {
                 "Regenerate the frontend artifacts and provide the matching synthesizer directory."
             }
             Self::Crs(_) => {
-                "Use a compatible release CRS, or use the explicit local development bypass only for local testing."
+                "Use a CRS whose compatible backend version matches the selected subcircuit library, or use the explicit local development bypass only for local testing."
             }
             Self::Device(_) => "Check the ICICLE backend installation and the selected device.",
             Self::WriteOutput { .. } => {

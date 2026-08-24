@@ -12,9 +12,10 @@ The backend is organized around six user-facing binaries:
 - `prove`
 - `verify`
 
-`trusted-setup` and native MPC generate development-only Sigma artifacts. Only Dusk-backed MPC
-generates release-eligible CRS artifacts. `preprocess`, `prove`, and `verify` consume those artifacts
-together with transaction-specific data from the frontend synthesizer.
+`trusted-setup` generates local-development Sigma artifacts. Native and Dusk-backed MPC generate
+final CRS artifacts; only Dusk-backed MPC generates a CRS eligible for Google Drive publication.
+`preprocess`, `prove`, and `verify` accept any CRS whose compatibility version matches the selected
+subcircuit library, together with transaction-specific data from the frontend synthesizer.
 
 ## Prerequisites
 
@@ -69,9 +70,9 @@ Generates a Sigma directly from the subcircuit library for local development and
 output is never release-eligible and must not be deployed or published. This holds even when the
 binary itself is built with Cargo's release profile.
 
-The generated `crs_provenance.json` records `releaseEligible: false`. Release preprocess, prove,
-verify, and publication paths reject it. Only the documented non-release development workflow may
-use it with the explicit `--allow-unverified-crs` option.
+The generated `crs_provenance.json` records `releaseEligible: false`. Google Drive publication
+rejects it. The direct trusted-setup CRS has no compatibility-version metadata, so the documented
+local development workflow uses it with the explicit `--allow-unverified-crs` option.
 
 Release example:
 
@@ -225,11 +226,18 @@ Release launchers for `trusted-setup`, `preprocess`, `prove`, and `verify` use t
 subcircuit library. Non-release and testing launchers pass `--subcircuit-library` explicitly. The
 mpc-setup launchers use the local subcircuit library path prepared during their Cargo build.
 
-The `coderun` and testing-mode preprocess, prove, and verify launchers use the local
-`qap-compiler/subcircuits/library` output. They compile the development-only
-`development-crs-bypass` feature and pass `--allow-unverified-crs`, which skips only the CRS
-provenance compatibility-class check while a matching CRS is not yet available. Release launchers
-do not compile or accept that option and always validate CRS provenance compatibility.
+Every VS Code launcher is a local developer entry point. Run `Debug trusted-setup`, then `Debug
+preprocess`, `Debug prove`, and `Debug verify` in that order. The latter three read
+`setup/trusted-setup/output/debug`, use the local QAP compiler output, and pass the explicit
+development bypass. The native and Dusk MPC launchers write separate final CRS directories and do
+not overwrite this trusted-setup output.
+
+The preprocess, prove, and verify launchers use the local `qap-compiler/subcircuits/library`
+output. They compile the development-only `development-crs-bypass` feature and pass
+`--allow-unverified-crs`, which skips only the CRS provenance compatibility-class check. This
+opt-in is limited to debugger launchers; normal CLI execution continues to validate CRS
+provenance compatibility. `Measure prove timing` is the single release-profile launcher and
+receives the local QAP path explicitly through its test environment.
 
 The ICICLE device policy selects CUDA when it is available. ICICLE 3.8.0 METAL availability is
 reported but deliberately falls back to CPU; it is not treated as a GPU/MSM capability. Setting
