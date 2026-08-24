@@ -79,7 +79,7 @@ JSON R1CS files are not accepted by backend binaries.
 MPC source selection is explicit and independent of Cargo optimization. The
 `local-development-subcircuit-library` feature selects local frontend QAP compiler output; without
 that feature, a release MPC build prepares the npm subcircuit-library snapshot. The build records
-the selected library in `build-metadata-mpc-setup.json`, and the MPC setup flow still consumes only
+the selected input origin in final CRS provenance, and the MPC setup flow still consumes only
 `r1cs/subcircuit*.r1cs` from it.
 
 ## Setup Flows
@@ -150,10 +150,10 @@ Use `run` in place of `ceremony` to retain the one-command ceremony-then-publica
 
 The ceremony validates the pinned Dusk source digest and used tau ranges. Publication:
 
-- validates `build-metadata-mpc-setup.json` before publication
+- requires Dusk phase-1 provenance and npm-snapshot subcircuit-library origin
 - rejects publication if the configured Google Drive folder already contains a CRS archive for the
   current backend version
-- uploads a zip containing the final CRS artifacts and `build-metadata-mpc-setup.json`
+- uploads a zip containing the final CRS artifacts and `crs_provenance.json`
 
 See [setup/mpc-setup/README.md](./setup/mpc-setup/README.md) for the full MPC operator guide.
 

@@ -1,6 +1,7 @@
 use crate::flows::MpcSetupError;
 use crate::sigma::{
-    FinalCrsProvenance, Phase1SourceProvenance, SigmaV2, SubcircuitLibraryProvenance,
+    FinalCrsProvenance, Phase1SourceProvenance, SigmaV2, SubcircuitLibraryOrigin,
+    SubcircuitLibraryProvenance,
 };
 use crate::utils::StepTimer;
 use crate::versioning::compatible_backend_version;
@@ -30,6 +31,7 @@ pub fn run(config: &Phase2GenFilesConfig) -> Result<(), MpcSetupError> {
 
     let phase1_source_provenance = latest_acc.phase1_source_provenance.clone();
     let release_eligible = is_release_eligible(phase1_source_provenance.as_ref());
+    let subcircuit_library_origin = subcircuit_library_origin_from_build()?;
     let sigma = latest_acc.sigma;
     let output_dir = base_path.join(&config.output);
     let digests =
@@ -47,6 +49,7 @@ pub fn run(config: &Phase2GenFilesConfig) -> Result<(), MpcSetupError> {
         subcircuit_library: SubcircuitLibraryProvenance {
             package_name: env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_NAME").to_string(),
             package_version: env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION").to_string(),
+            origin: subcircuit_library_origin,
         },
         phase1_source_provenance,
         combined_sigma_sha256: digests.combined_sigma_sha256,
@@ -79,6 +82,21 @@ fn is_release_eligible(phase1_source_provenance: Option<&Phase1SourceProvenance>
         phase1_source_provenance,
         Some(Phase1SourceProvenance::DuskGroth16(_))
     )
+}
+
+fn subcircuit_library_origin_from_build() -> Result<SubcircuitLibraryOrigin, MpcSetupError> {
+    match option_env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_ORIGIN") {
+        Some("npmSnapshot") => Ok(SubcircuitLibraryOrigin::NpmSnapshot),
+        Some("localQapCompiler") => Ok(SubcircuitLibraryOrigin::LocalQapCompiler),
+        Some(origin) => Err(MpcSetupError::State {
+            phase: "phase-2 finalization",
+            reason: format!("unsupported subcircuit-library build origin {origin:?}"),
+        }),
+        None => Err(MpcSetupError::State {
+            phase: "phase-2 finalization",
+            reason: "missing subcircuit-library build origin".to_string(),
+        }),
+    }
 }
 
 fn load_phase2_accumulator(

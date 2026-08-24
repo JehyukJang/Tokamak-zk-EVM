@@ -12,6 +12,8 @@ use std::time::Duration;
 const PACKAGE_NAME: &str = "@tokamak-zk-evm/subcircuit-library";
 const DECLARED_RANGE: &str = "latest";
 const RUNTIME_MODE: &str = "bundled";
+const MPC_ORIGIN_NPM_SNAPSHOT: &str = "npmSnapshot";
+const MPC_ORIGIN_LOCAL_QAP_COMPILER: &str = "localQapCompiler";
 const SNAPSHOT_ROOT_DIR: &str = "embedded-subcircuit-library";
 const SNAPSHOT_INFO_FILE: &str = "resolved.json";
 const SNAPSHOT_CIRCOM_DIR: &str = "circom";
@@ -71,11 +73,7 @@ pub fn configure_release_subcircuit_library_metadata(
     Ok(())
 }
 
-pub fn configure_mpc_subcircuit_library(
-    out_dir: &Path,
-    package_name: &str,
-    package_version: &str,
-) -> io::Result<()> {
+pub fn configure_mpc_subcircuit_library(out_dir: &Path, package_version: &str) -> io::Result<()> {
     emit_cli_package_rerun_rule();
     println!("cargo:rustc-check-cfg=cfg(tokamak_release_profile)");
 
@@ -91,26 +89,22 @@ pub fn configure_mpc_subcircuit_library(
             io::Error::other("release MPC setup requires an npm subcircuit-library snapshot")
         })?;
         validate_release_mpc_library_compatibility(&snapshot.version, &compatible_backend_version)?;
-        emit_subcircuit_library_build_env(&snapshot.version, &compatible_backend_version);
-        emit_build_metadata(
-            &snapshot,
-            package_name,
-            package_version,
+        emit_mpc_subcircuit_library_build_env(
+            &snapshot.version,
             &compatible_backend_version,
-        )?;
+            MPC_ORIGIN_NPM_SNAPSHOT,
+        );
         return write_mpc_subcircuit_library_path(out_dir, &snapshot.snapshot_dir);
     }
 
     emit_local_qap_rerun_rules();
     let compatible_backend_version = read_cli_compatible_backend_version(package_version)?;
     let library = prepare_local_subcircuit_library()?;
-    emit_subcircuit_library_build_env(&library.version, &compatible_backend_version);
-    emit_local_build_metadata(
-        &library,
-        package_name,
-        package_version,
+    emit_mpc_subcircuit_library_build_env(
+        &library.version,
         &compatible_backend_version,
-    )?;
+        MPC_ORIGIN_LOCAL_QAP_COMPILER,
+    );
     write_mpc_subcircuit_library_path(out_dir, &library.library_dir)
 }
 
@@ -144,9 +138,7 @@ fn write_mpc_subcircuit_library_path(out_dir: &Path, library_dir: &Path) -> io::
 
 struct LocalSubcircuitLibrary {
     version: String,
-    source_digest: String,
     library_dir: PathBuf,
-    profile_dir: PathBuf,
 }
 
 fn prepare_local_subcircuit_library() -> io::Result<LocalSubcircuitLibrary> {
@@ -210,9 +202,7 @@ fn prepare_local_subcircuit_library() -> io::Result<LocalSubcircuitLibrary> {
 
     Ok(LocalSubcircuitLibrary {
         version,
-        source_digest,
         library_dir,
-        profile_dir,
     })
 }
 
@@ -296,35 +286,13 @@ fn emit_subcircuit_library_build_env(version: &str, compatible_backend_version: 
     println!("cargo:rustc-env=TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION={version}");
 }
 
-fn emit_local_build_metadata(
-    library: &LocalSubcircuitLibrary,
-    current_package_name: &str,
-    current_package_version: &str,
+fn emit_mpc_subcircuit_library_build_env(
+    version: &str,
     compatible_backend_version: &str,
-) -> io::Result<()> {
-    let metadata = serde_json::json!({
-        "dependencies": {
-            "subcircuitLibrary": {
-                "buildVersion": library.version,
-                "declaredRange": "local",
-                "packageName": PACKAGE_NAME,
-                "runtimeMode": RUNTIME_MODE,
-            }
-        },
-        "packageName": current_package_name,
-        "packageVersion": current_package_version,
-        "compatibleBackendVersion": compatible_backend_version,
-    });
-    let path = library
-        .profile_dir
-        .join(format!("build-metadata-{current_package_name}.json"));
-    fs::write(
-        path,
-        format!(
-            "{}\n",
-            serde_json::to_string_pretty(&metadata).map_err(io::Error::other)?
-        ),
-    )
+    origin: &str,
+) {
+    emit_subcircuit_library_build_env(version, compatible_backend_version);
+    println!("cargo:rustc-env=TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_ORIGIN={origin}");
 }
 
 fn generate_embedded_module(

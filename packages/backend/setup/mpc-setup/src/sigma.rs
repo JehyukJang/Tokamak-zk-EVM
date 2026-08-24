@@ -53,9 +53,17 @@ pub enum Phase1SourceProvenance {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub enum SubcircuitLibraryOrigin {
+    NpmSnapshot,
+    LocalQapCompiler,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SubcircuitLibraryProvenance {
     pub package_name: String,
     pub package_version: String,
+    pub origin: SubcircuitLibraryOrigin,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]

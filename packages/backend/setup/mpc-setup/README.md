@@ -110,11 +110,10 @@ cargo run --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
 
 `publish` checks that the Google Drive upload environment is valid, rejects a target folder that
 already contains a CRS archive for the current backend version, creates an archive containing the
-final `--output` artifacts and `build-metadata-mpc-setup.json`, and uploads it to the configured
-Google Drive folder. It is only available in release builds. Before upload, it validates that
-`build-metadata-mpc-setup.json` matches the running `mpc-setup` binary version and uses
-`runtimeMode = bundled`. The archive name includes the backend version and CRS generation
-timestamp.
+final `--output` artifacts, and uploads it to the configured Google Drive folder. It is only
+available in release builds. Before upload, it requires Dusk phase-1 provenance and an npm
+subcircuit-library snapshot origin recorded in `crs_provenance.json`. The archive name includes
+the backend version and CRS generation timestamp.
 
 Use `run` instead of `ceremony` to execute ceremony followed by publication in one command:
 
@@ -207,14 +206,6 @@ The final output directory contains only:
 Trusted setup and native MPC emit the same three Sigma files for local development, but their
 provenance records `releaseEligible: false`. Neither is a release or deployment CRS and neither
 may be published.
-
-For release builds, Cargo also emits `build-metadata-mpc-setup.json` into
-`packages/backend/target/release/`. The release-only Google Drive publication path refuses to
-publish unless that metadata file exists and matches:
-
-- `packageName == "mpc-setup"`
-- `packageVersion == env!("CARGO_PKG_VERSION")`
-- `dependencies.subcircuitLibrary.runtimeMode == "bundled"`
 
 ## CRS Provenance
 

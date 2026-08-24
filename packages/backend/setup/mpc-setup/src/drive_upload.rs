@@ -1,4 +1,4 @@
-use crate::sigma::FinalCrsProvenance;
+use crate::sigma::{FinalCrsProvenance, Phase1SourceProvenance, SubcircuitLibraryOrigin};
 use crate::versioning::compatible_backend_version;
 use google_drive3::api::{File, Permission, Scope};
 use google_drive3::hyper::client::HttpConnector;
@@ -19,7 +19,6 @@ use zip::write::{ExtendedFileOptions, FileOptions};
 
 const DRIVE_FOLDER_MIME_TYPE: &str = "application/vnd.google-apps.folder";
 const PROVENANCE_FILE_NAME: &str = "crs_provenance.json";
-const BUILD_METADATA_FILE_NAME: &str = "build-metadata-mpc-setup.json";
 const FINAL_OUTPUT_FILES: [&str; 4] = [
     "combined_sigma.rkyv",
     "sigma_preprocess.rkyv",
@@ -68,26 +67,14 @@ pub fn preflight_drive_upload() -> Result<DriveUploadConfig, DriveUploadError> {
     Ok(config)
 }
 
-pub fn validate_release_build_metadata() -> Result<PathBuf, DriveUploadError> {
-    ensure_release_publish_supported()?;
-    resolve_build_metadata_path()
-}
-
 pub fn publish_output_archive(
     config: &DriveUploadConfig,
     intermediate_dir: &str,
     output_dir: &str,
 ) -> Result<DriveUploadResult, DriveUploadError> {
     ensure_release_publish_supported()?;
-    let build_metadata_path = resolve_build_metadata_path()?;
     let publisher = GoogleDriveArchivePublisher;
-    publish_output_archive_with_publisher(
-        config,
-        intermediate_dir,
-        output_dir,
-        &build_metadata_path,
-        &publisher,
-    )
+    publish_output_archive_with_publisher(config, intermediate_dir, output_dir, &publisher)
 }
 
 trait CrsArchivePublisher {
@@ -117,7 +104,6 @@ fn publish_output_archive_with_publisher<P: CrsArchivePublisher>(
     config: &DriveUploadConfig,
     intermediate_dir: &str,
     output_dir: &str,
-    build_metadata_path: &Path,
     publisher: &P,
 ) -> Result<DriveUploadResult, DriveUploadError> {
     let output_path = fs::canonicalize(output_dir).map_err(|err| {
@@ -135,7 +121,7 @@ fn publish_output_archive_with_publisher<P: CrsArchivePublisher>(
 
     let mut provenance = read_provenance(&output_path)?;
     let original_provenance = provenance.clone();
-    ensure_release_eligible(provenance.release_eligible)?;
+    validate_publication_provenance(&provenance)?;
     let provenance_compatible_version = validate_canonical_compatible_version(
         &provenance.compatible_backend_version,
         "crs_provenance.json compatibleBackendVersion",
@@ -155,7 +141,7 @@ fn publish_output_archive_with_publisher<P: CrsArchivePublisher>(
     write_provenance(&output_path, &provenance)?;
 
     let archive_path = intermediate_path.join(&archive_name);
-    if let Err(err) = create_output_archive(&output_path, &archive_path, build_metadata_path) {
+    if let Err(err) = create_output_archive(&output_path, &archive_path) {
         let _ = write_provenance(&output_path, &original_provenance);
         return Err(err.into());
     }
@@ -180,13 +166,29 @@ fn publish_output_archive_with_publisher<P: CrsArchivePublisher>(
     })
 }
 
-fn ensure_release_eligible(release_eligible: bool) -> Result<(), DriveUploadError> {
-    if release_eligible {
-        return Ok(());
+fn validate_publication_provenance(
+    provenance: &FinalCrsProvenance,
+) -> Result<(), DriveUploadError> {
+    if !provenance.release_eligible {
+        return Err(DriveUploadError::Message(
+            "only release-eligible CRS artifacts may be published".to_string(),
+        ));
     }
-    Err(DriveUploadError::Message(
-        "only release-eligible CRS artifacts may be published".to_string(),
-    ))
+    if !matches!(
+        provenance.phase1_source_provenance,
+        Some(Phase1SourceProvenance::DuskGroth16(_))
+    ) {
+        return Err(DriveUploadError::Message(
+            "only Dusk-backed CRS artifacts may be published".to_string(),
+        ));
+    }
+    if provenance.subcircuit_library.origin != SubcircuitLibraryOrigin::NpmSnapshot {
+        return Err(DriveUploadError::Message(
+            "only CRS artifacts generated from an npm subcircuit-library snapshot may be published"
+                .to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn read_drive_upload_config() -> Result<DriveUploadConfig, DriveUploadError> {
@@ -263,11 +265,7 @@ fn build_archive_name(provenance: &FinalCrsProvenance) -> Result<String, DriveUp
     ))
 }
 
-fn create_output_archive(
-    output_path: &Path,
-    archive_path: &Path,
-    build_metadata_path: &Path,
-) -> Result<(), DriveUploadError> {
+fn create_output_archive(output_path: &Path, archive_path: &Path) -> Result<(), DriveUploadError> {
     if let Some(parent) = archive_path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -282,13 +280,6 @@ fn create_output_archive(
         add_file_to_archive(&mut archive, file_name, &file_path, options.clone())?;
     }
 
-    add_file_to_archive(
-        &mut archive,
-        BUILD_METADATA_FILE_NAME,
-        build_metadata_path,
-        options.clone(),
-    )?;
-
     archive.finish()?;
     Ok(())
 }
@@ -302,159 +293,6 @@ fn add_file_to_archive(
     let mut source = StdFile::open(source_path)?;
     archive.start_file(archive_name, options)?;
     io::copy(&mut source, archive)?;
-    Ok(())
-}
-
-fn resolve_build_metadata_path() -> Result<PathBuf, DriveUploadError> {
-    let mut candidates = Vec::new();
-
-    if let Ok(executable_path) = env::current_exe() {
-        if let Some(parent) = executable_path.parent() {
-            candidates.push(parent.join(BUILD_METADATA_FILE_NAME));
-        }
-    }
-
-    let manifest_candidate = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/release")
-        .join(BUILD_METADATA_FILE_NAME);
-    candidates.push(manifest_candidate);
-
-    for candidate in candidates {
-        if candidate.exists() {
-            validate_build_metadata(&candidate)?;
-            return Ok(candidate);
-        }
-    }
-
-    Err(DriveUploadError::Message(format!(
-        "cannot locate {}; expected it next to the executing binary or under packages/backend/target/release",
-        BUILD_METADATA_FILE_NAME
-    )))
-}
-
-fn validate_build_metadata(path: &Path) -> Result<(), DriveUploadError> {
-    let value: serde_json::Value = serde_json::from_slice(&fs::read(path)?)?;
-    let package_name = value
-        .get("packageName")
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| {
-            DriveUploadError::Message(format!("{} is missing packageName", path.display()))
-        })?;
-    if package_name != "mpc-setup" {
-        return Err(DriveUploadError::Message(format!(
-            "{} has unexpected packageName {}; expected mpc-setup",
-            path.display(),
-            package_name
-        )));
-    }
-
-    let package_version = value
-        .get("packageVersion")
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| {
-            DriveUploadError::Message(format!("{} is missing packageVersion", path.display()))
-        })?;
-    if package_version != env!("CARGO_PKG_VERSION") {
-        return Err(DriveUploadError::Message(format!(
-            "{} has stale packageVersion {}; expected {}",
-            path.display(),
-            package_version,
-            env!("CARGO_PKG_VERSION")
-        )));
-    }
-
-    let compatible_version = value
-        .get("compatibleBackendVersion")
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| {
-            DriveUploadError::Message(format!(
-                "{} is missing compatibleBackendVersion",
-                path.display()
-            ))
-        })?;
-    let normalized_compatible = validate_canonical_compatible_version(
-        compatible_version,
-        "build metadata compatibleBackendVersion",
-    )?;
-    if normalized_compatible != compatible_backend_version() {
-        return Err(DriveUploadError::Message(format!(
-            "{} has compatibleBackendVersion {}; expected {}",
-            path.display(),
-            normalized_compatible,
-            compatible_backend_version()
-        )));
-    }
-
-    let runtime_mode = value
-        .get("dependencies")
-        .and_then(|dependencies| dependencies.get("subcircuitLibrary"))
-        .and_then(|dependency| dependency.get("runtimeMode"))
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| {
-            DriveUploadError::Message(format!(
-                "{} is missing dependencies.subcircuitLibrary.runtimeMode",
-                path.display()
-            ))
-        })?;
-    if runtime_mode != "bundled" {
-        return Err(DriveUploadError::Message(format!(
-            "{} has unexpected subcircuitLibrary runtimeMode {}; expected bundled",
-            path.display(),
-            runtime_mode
-        )));
-    }
-
-    let subcircuit_version = value
-        .get("dependencies")
-        .and_then(|dependencies| dependencies.get("subcircuitLibrary"))
-        .and_then(|dependency| dependency.get("buildVersion"))
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| {
-            DriveUploadError::Message(format!(
-                "{} is missing dependencies.subcircuitLibrary.buildVersion",
-                path.display()
-            ))
-        })?;
-    if subcircuit_version != env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION") {
-        return Err(DriveUploadError::Message(format!(
-            "{} records subcircuit-library package version {}; expected {}",
-            path.display(),
-            subcircuit_version,
-            env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION")
-        )));
-    }
-
-    let subcircuit_package_name = value
-        .get("dependencies")
-        .and_then(|dependencies| dependencies.get("subcircuitLibrary"))
-        .and_then(|dependency| dependency.get("packageName"))
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| {
-            DriveUploadError::Message(format!(
-                "{} is missing dependencies.subcircuitLibrary.packageName",
-                path.display()
-            ))
-        })?;
-    if subcircuit_package_name != env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_NAME") {
-        return Err(DriveUploadError::Message(format!(
-            "{} records subcircuit-library package {}; expected {}",
-            path.display(),
-            subcircuit_package_name,
-            env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_NAME")
-        )));
-    }
-
-    if package_compatible_version(subcircuit_version, "subcircuit-library package version")?
-        != compatible_backend_version()
-    {
-        return Err(DriveUploadError::Message(format!(
-            "{} records subcircuit-library package version {} outside compatibility class {}",
-            path.display(),
-            subcircuit_version,
-            compatible_backend_version()
-        )));
-    }
-
     Ok(())
 }
 
@@ -771,7 +609,10 @@ mod tests {
         DriveUploadConfig, DriveUploadError, DriveUploadResult, FINAL_OUTPUT_FILES,
         PROVENANCE_FILE_NAME,
     };
-    use crate::sigma::{FinalCrsProvenance, SubcircuitLibraryProvenance};
+    use crate::sigma::{
+        DuskSourceProvenance, FinalCrsProvenance, Phase1SourceProvenance, SubcircuitLibraryOrigin,
+        SubcircuitLibraryProvenance,
+    };
     use crate::versioning::compatible_backend_version;
     use std::cell::RefCell;
     use std::fs;
@@ -818,13 +659,7 @@ mod tests {
         }
     }
 
-    fn fixture() -> (
-        tempfile::TempDir,
-        DriveUploadConfig,
-        PathBuf,
-        PathBuf,
-        PathBuf,
-    ) {
+    fn fixture() -> (tempfile::TempDir, DriveUploadConfig, PathBuf, PathBuf) {
         let workspace = tempfile::tempdir().expect("must create temporary workspace");
         let output = workspace.path().join("output");
         let intermediate = workspace.path().join("intermediate");
@@ -842,8 +677,27 @@ mod tests {
                 package_name: env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_NAME").to_string(),
                 package_version: env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION")
                     .to_string(),
+                origin: SubcircuitLibraryOrigin::NpmSnapshot,
             },
-            phase1_source_provenance: None,
+            phase1_source_provenance: Some(Phase1SourceProvenance::DuskGroth16(
+                DuskSourceProvenance {
+                    source_url: "https://example.invalid/dusk.response".to_string(),
+                    source_size_bytes: 0,
+                    raw_encoding: "test".to_string(),
+                    pinned_contribution: "test".to_string(),
+                    pinned_readme_url: "https://example.invalid/readme".to_string(),
+                    pinned_drive_file_id: "test".to_string(),
+                    expected_source_sha256: "test".to_string(),
+                    actual_source_sha256: "test".to_string(),
+                    auto_downloaded: false,
+                    downloaded_contribution: None,
+                    downloaded_readme_url: None,
+                    downloaded_drive_file_id: None,
+                    max_g1_exp_used: 0,
+                    max_g2_exp_used: 0,
+                    transcript_consistency_verified: true,
+                },
+            )),
             combined_sigma_sha256: "combined".to_string(),
             sigma_preprocess_sha256: "preprocess".to_string(),
             sigma_verify_sha256: "verify".to_string(),
@@ -857,15 +711,13 @@ mod tests {
         )
         .expect("must write provenance");
 
-        let build_metadata = workspace.path().join("build-metadata-mpc-setup.json");
-        fs::write(&build_metadata, "{}").expect("must write build metadata");
         let config = DriveUploadConfig {
             folder_id: "folder-id".to_string(),
             folder_url: "https://drive.example.test/folders/folder-id".to_string(),
             oauth_client_json_path: workspace.path().join("unused-oauth.json"),
             oauth_token_path: workspace.path().join("unused-token.json"),
         };
-        (workspace, config, output, intermediate, build_metadata)
+        (workspace, config, output, intermediate)
     }
 
     fn read_fixture_provenance(output: &Path) -> FinalCrsProvenance {
@@ -877,7 +729,7 @@ mod tests {
 
     #[test]
     fn rejects_publication_of_a_development_only_crs() {
-        let (_workspace, config, output, intermediate, build_metadata) = fixture();
+        let (_workspace, config, output, intermediate) = fixture();
         let mut provenance = read_fixture_provenance(&output);
         provenance.release_eligible = false;
         fs::write(
@@ -891,7 +743,6 @@ mod tests {
             &config,
             &intermediate.to_string_lossy(),
             &output.to_string_lossy(),
-            &build_metadata,
             &publisher,
         )
         .expect_err("development-only CRS must not be published");
@@ -903,15 +754,94 @@ mod tests {
     }
 
     #[test]
+    fn rejects_publication_of_a_local_qap_crs() {
+        let (_workspace, config, output, intermediate) = fixture();
+        let mut provenance = read_fixture_provenance(&output);
+        provenance.subcircuit_library.origin = SubcircuitLibraryOrigin::LocalQapCompiler;
+        fs::write(
+            output.join(PROVENANCE_FILE_NAME),
+            serde_json::to_vec_pretty(&provenance).expect("must serialize provenance"),
+        )
+        .expect("must write provenance");
+        let publisher = MockArchivePublisher::succeeds();
+
+        let error = publish_output_archive_with_publisher(
+            &config,
+            &intermediate.to_string_lossy(),
+            &output.to_string_lossy(),
+            &publisher,
+        )
+        .expect_err("local QAP CRS must not be published");
+
+        assert!(error
+            .to_string()
+            .contains("npm subcircuit-library snapshot"));
+        assert!(publisher.uploads.borrow().is_empty());
+    }
+
+    #[test]
+    fn rejects_publication_without_dusk_source_provenance() {
+        let (_workspace, config, output, intermediate) = fixture();
+        let mut provenance = read_fixture_provenance(&output);
+        provenance.phase1_source_provenance = Some(Phase1SourceProvenance::Native);
+        fs::write(
+            output.join(PROVENANCE_FILE_NAME),
+            serde_json::to_vec_pretty(&provenance).expect("must serialize provenance"),
+        )
+        .expect("must write provenance");
+        let publisher = MockArchivePublisher::succeeds();
+
+        let error = publish_output_archive_with_publisher(
+            &config,
+            &intermediate.to_string_lossy(),
+            &output.to_string_lossy(),
+            &publisher,
+        )
+        .expect_err("non-Dusk CRS must not be published");
+
+        assert!(error.to_string().contains("only Dusk-backed CRS artifacts"));
+        assert!(publisher.uploads.borrow().is_empty());
+    }
+
+    #[test]
+    fn rejects_publication_with_missing_library_origin() {
+        let (_workspace, config, output, intermediate) = fixture();
+        let mut provenance: serde_json::Value = serde_json::from_slice(
+            &fs::read(output.join(PROVENANCE_FILE_NAME)).expect("must read provenance"),
+        )
+        .expect("must parse fixture provenance");
+        provenance["subcircuitLibrary"]
+            .as_object_mut()
+            .expect("fixture library provenance must be an object")
+            .remove("origin");
+        fs::write(
+            output.join(PROVENANCE_FILE_NAME),
+            serde_json::to_vec_pretty(&provenance).expect("must serialize provenance"),
+        )
+        .expect("must write provenance");
+        let publisher = MockArchivePublisher::succeeds();
+
+        let error = publish_output_archive_with_publisher(
+            &config,
+            &intermediate.to_string_lossy(),
+            &output.to_string_lossy(),
+            &publisher,
+        )
+        .expect_err("CRS without a library origin must not be published");
+
+        assert!(matches!(error, DriveUploadError::Json(_)));
+        assert!(publisher.uploads.borrow().is_empty());
+    }
+
+    #[test]
     fn publication_archives_and_records_a_finalized_crs() {
-        let (_workspace, config, output, intermediate, build_metadata) = fixture();
+        let (_workspace, config, output, intermediate) = fixture();
         let publisher = MockArchivePublisher::succeeds();
 
         let result = publish_output_archive_with_publisher(
             &config,
             &intermediate.to_string_lossy(),
             &output.to_string_lossy(),
-            &build_metadata,
             &publisher,
         )
         .expect("finalized CRS publication must succeed");
@@ -930,7 +860,7 @@ mod tests {
                 "archive missing {file_name}"
             );
         }
-        assert!(archive.by_name("build-metadata-mpc-setup.json").is_ok());
+        assert!(archive.by_name("build-metadata-mpc-setup.json").is_err());
 
         let provenance = read_fixture_provenance(&output);
         assert_eq!(provenance.published_folder_url, Some(config.folder_url));
@@ -943,7 +873,7 @@ mod tests {
 
     #[test]
     fn failed_publication_restores_local_provenance() {
-        let (_workspace, config, output, intermediate, build_metadata) = fixture();
+        let (_workspace, config, output, intermediate) = fixture();
         let original_provenance = read_fixture_provenance(&output);
         let publisher = MockArchivePublisher::fails();
 
@@ -951,7 +881,6 @@ mod tests {
             &config,
             &intermediate.to_string_lossy(),
             &output.to_string_lossy(),
-            &build_metadata,
             &publisher,
         )
         .expect_err("mock upload failure must be returned");
@@ -963,16 +892,16 @@ mod tests {
 
     #[test]
     fn archive_construction_failure_restores_local_provenance() {
-        let (workspace, config, output, intermediate, _build_metadata) = fixture();
+        let (_workspace, config, output, intermediate) = fixture();
         let original_provenance = read_fixture_provenance(&output);
         let publisher = MockArchivePublisher::succeeds();
-        let missing_build_metadata = workspace.path().join("missing-build-metadata.json");
+        fs::remove_file(output.join("combined_sigma.rkyv"))
+            .expect("must remove final CRS file to make archive construction fail");
 
         let error = publish_output_archive_with_publisher(
             &config,
             &intermediate.to_string_lossy(),
             &output.to_string_lossy(),
-            &missing_build_metadata,
             &publisher,
         )
         .expect_err("archive construction failure must be returned");

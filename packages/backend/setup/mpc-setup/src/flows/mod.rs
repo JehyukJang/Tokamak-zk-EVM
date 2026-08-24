@@ -2,10 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use thiserror::Error;
 
-use crate::drive_upload::{
-    preflight_drive_upload, publish_output_archive, validate_release_build_metadata,
-    DriveUploadError,
-};
+use crate::drive_upload::{preflight_drive_upload, publish_output_archive, DriveUploadError};
 use crate::flows::phase1_next_contributor::ContributorError;
 use libs::cli::CliDiagnostic;
 use libs::errors::ArtifactError;
@@ -145,7 +142,6 @@ pub fn run_dusk_backed_ceremony(config: &DuskBackedMpcSetupConfig) -> Result<(),
 }
 
 pub fn run_dusk_backed_publication(config: &DuskPublicationConfig) -> Result<(), MpcSetupError> {
-    validate_release_build_metadata()?;
     let upload_config = preflight_drive_upload()?;
     let upload_result =
         publish_output_archive(&upload_config, &config.intermediate, &config.output)?;
