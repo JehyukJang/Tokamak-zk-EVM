@@ -11,8 +11,9 @@ instead of accepting a runtime path argument.
 
 ## Overview
 
-The final CRS output format is identical in both modes. Only the phase-1 source differs. Both
-write provenance with `releaseEligible: true`.
+The final CRS output format is identical in both modes. Only the phase-1 source and release
+eligibility differ. Native mode writes `releaseEligible: false`; only Dusk-backed mode writes
+`releaseEligible: true`.
 
 - `native_mpc_setup`
   - Runs the Tokamak x-only phase-1 flow and then the Tokamak phase-2 flow.
@@ -23,7 +24,7 @@ write provenance with `releaseEligible: true`.
 Both wrappers write:
 
 - intermediate ceremony artifacts to `--intermediate`
-- final release-eligible CRS artifacts to `--output`
+- final CRS artifacts to `--output`
 
 The mathematical formulas, trapdoor ownership, contribution checks, and known
 security limitation of the implemented phase-2 protocol are documented in the
@@ -194,8 +195,9 @@ The final output directory contains only:
 - `sigma_verify.json`
 - `crs_provenance.json`
 
-Trusted setup emits the same three Sigma files for local development, but its provenance records
-`releaseEligible: false`. It is not a release or deployment CRS and must not be published.
+Trusted setup and native MPC emit the same three Sigma files for local development, but their
+provenance records `releaseEligible: false`. Neither is a release or deployment CRS and neither
+may be published.
 
 For release builds, Cargo also emits `build-metadata-mpc-setup.json` into
 `packages/backend/target/release/`. The release-only Google Drive publication path refuses to
@@ -213,7 +215,7 @@ the applicable provenance fields and exact final CRS bytes.
 
 For every CRS, the manifest also records:
 
-- `releaseEligible: true`
+- `releaseEligible`, which is true only for a Dusk-backed CRS
 - `generated_at_utc`
 - `compatibleBackendVersion`
 - `subcircuitLibrary.packageName`

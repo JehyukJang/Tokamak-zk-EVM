@@ -12,8 +12,8 @@ The backend is organized around six user-facing binaries:
 - `prove`
 - `verify`
 
-`trusted-setup` generates development-only Sigma artifacts. `mpc-setup` generates
-release-eligible CRS artifacts. `preprocess`, `prove`, and `verify` consume those artifacts
+`trusted-setup` and native MPC generate development-only Sigma artifacts. Only Dusk-backed MPC
+generates release-eligible CRS artifacts. `preprocess`, `prove`, and `verify` consume those artifacts
 together with transaction-specific data from the frontend synthesizer.
 
 ## Prerequisites
@@ -152,10 +152,11 @@ See [setup/mpc-setup/README.md](./setup/mpc-setup/README.md) for the full MPC op
 - `sigma_verify.json`
 - `crs_provenance.json`
 
-MPC provenance records `releaseEligible: true`; only this value is accepted by release and
-deployment consumers. `crs_provenance.json` also binds final CRS files to their SHA-256 digests.
-In dusk-backed mode it records the pinned Dusk source metadata, the Dusk raw digest, publication
-metadata, the CRS generation timestamp, and the backend version.
+Native MPC provenance records `releaseEligible: false`; Dusk-backed MPC records
+`releaseEligible: true`. Only the latter is accepted by release and deployment consumers.
+`crs_provenance.json` also binds final CRS files to their SHA-256 digests. In dusk-backed mode it
+records the pinned Dusk source metadata, the Dusk raw digest, publication metadata, the CRS
+generation timestamp, and the backend version.
 
 ## Prove and Verify Inputs
 

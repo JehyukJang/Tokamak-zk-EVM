@@ -1,5 +1,7 @@
 use crate::flows::MpcSetupError;
-use crate::sigma::{FinalCrsProvenance, SigmaV2, SubcircuitLibraryProvenance};
+use crate::sigma::{
+    FinalCrsProvenance, Phase1SourceProvenance, SigmaV2, SubcircuitLibraryProvenance,
+};
 use crate::utils::StepTimer;
 use crate::versioning::compatible_backend_version;
 use chrono::Utc;
@@ -26,6 +28,8 @@ pub fn run(config: &Phase2GenFilesConfig) -> Result<(), MpcSetupError> {
     let latest_acc = load_phase2_accumulator(&config.intermediate, config.contributor_index)?;
     timer.log_step("load latest phase-2 accumulator");
 
+    let phase1_source_provenance = latest_acc.phase1_source_provenance.clone();
+    let release_eligible = is_release_eligible(phase1_source_provenance.as_ref());
     let sigma = latest_acc.sigma;
     let output_dir = base_path.join(&config.output);
     let digests =
@@ -37,14 +41,14 @@ pub fn run(config: &Phase2GenFilesConfig) -> Result<(), MpcSetupError> {
     timer.log_step("write final CRS artifacts");
 
     let provenance = FinalCrsProvenance {
-        release_eligible: true,
+        release_eligible,
         generated_at_utc: Utc::now().to_rfc3339(),
         compatible_backend_version: compatible_backend_version().to_string(),
         subcircuit_library: SubcircuitLibraryProvenance {
             package_name: env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_NAME").to_string(),
             package_version: env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION").to_string(),
         },
-        phase1_source_provenance: latest_acc.phase1_source_provenance,
+        phase1_source_provenance,
         combined_sigma_sha256: digests.combined_sigma_sha256,
         sigma_preprocess_sha256: digests.sigma_preprocess_sha256,
         sigma_verify_sha256: digests.sigma_verify_sha256,
@@ -70,6 +74,13 @@ pub fn run(config: &Phase2GenFilesConfig) -> Result<(), MpcSetupError> {
     Ok(())
 }
 
+fn is_release_eligible(phase1_source_provenance: Option<&Phase1SourceProvenance>) -> bool {
+    matches!(
+        phase1_source_provenance,
+        Some(Phase1SourceProvenance::DuskGroth16(_))
+    )
+}
+
 fn load_phase2_accumulator(
     outfolder: &str,
     contributor_index: usize,
@@ -83,4 +94,39 @@ fn load_phase2_accumulator(
         path,
         source,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_release_eligible;
+    use crate::sigma::{DuskSourceProvenance, Phase1SourceProvenance};
+
+    #[test]
+    fn release_eligibility_rejects_missing_and_native_sources() {
+        assert!(!is_release_eligible(None));
+        assert!(!is_release_eligible(Some(&Phase1SourceProvenance::Native)));
+    }
+
+    #[test]
+    fn release_eligibility_accepts_dusk_backed_sources() {
+        let dusk = Phase1SourceProvenance::DuskGroth16(DuskSourceProvenance {
+            source_url: "https://example.invalid/dusk.response".to_string(),
+            source_size_bytes: 0,
+            raw_encoding: "test".to_string(),
+            pinned_contribution: "test".to_string(),
+            pinned_readme_url: "https://example.invalid/readme".to_string(),
+            pinned_drive_file_id: "test".to_string(),
+            expected_source_sha256: "test".to_string(),
+            actual_source_sha256: "test".to_string(),
+            auto_downloaded: false,
+            downloaded_contribution: None,
+            downloaded_readme_url: None,
+            downloaded_drive_file_id: None,
+            max_g1_exp_used: 0,
+            max_g2_exp_used: 0,
+            transcript_consistency_verified: true,
+        });
+
+        assert!(is_release_eligible(Some(&dusk)));
+    }
 }

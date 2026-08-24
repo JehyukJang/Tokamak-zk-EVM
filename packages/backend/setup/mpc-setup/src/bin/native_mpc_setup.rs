@@ -45,7 +45,7 @@ fn run() -> Result<(), mpc_setup::MpcSetupError> {
     })?;
 
     println!(
-        "Native single-contributor MPC setup completed. Downstream preprocess/prove/verify can now use {}",
+        "Native single-contributor MPC setup completed. Its CRS is development-only; use a development CRS bypass for local downstream testing: {}",
         config.output
     );
     Ok(())
