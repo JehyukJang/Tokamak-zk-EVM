@@ -6,6 +6,7 @@ import { backendEnvironment, ensureDir, packageCompatibleVersion, runtimePaths }
 import { downloadFileWithResume, fileExists, normalizeSha256, sha256FileHex } from './download.js';
 import type { RuntimeContext } from './model.js';
 import { runCommand, logVerbose } from '../system.js';
+import { parseFinalMpcCrsProvenance } from '../generated/crs-provenance.generated.js';
 
 interface DriveArchiveSelection {
   compatibleBackendVersion: string;
