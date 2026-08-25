@@ -39,6 +39,12 @@ interface CrsProvenance {
 
 const BACKEND_BINARY_NAMES = ['preprocess', 'prove', 'verify'] as const;
 const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = '@tokamak-zk-evm/subcircuit-library';
+const FINAL_CRS_ARTIFACT_FILES = [
+  'combined_sigma.rkyv',
+  'sigma_preprocess.rkyv',
+  'sigma_verify.json',
+  'crs_provenance.json',
+] as const;
 
 const CRS_DRIVE_FOLDER_ID = '14xqCbLoyoVmUVTTlopiXtKnoHPBGL-Sv';
 
@@ -369,23 +375,145 @@ export async function installDownloadedSetup(
       context.compatibleBackendVersion,
     );
 
-    await ensureDir(paths.setupOutputDir);
-    await fs.copyFile(
-      await findNamedFile(extractedDir, 'combined_sigma.rkyv'),
-      path.join(paths.setupOutputDir, 'combined_sigma.rkyv'),
+    await installValidatedCrsGeneration(
+      extractedDir,
+      provenancePath,
+      paths.setupOutputDir,
+      archiveName,
     );
-    await fs.copyFile(
-      await findNamedFile(extractedDir, 'sigma_preprocess.rkyv'),
-      path.join(paths.setupOutputDir, 'sigma_preprocess.rkyv'),
-    );
-    await fs.copyFile(
-      await findNamedFile(extractedDir, 'sigma_verify.json'),
-      path.join(paths.setupOutputDir, 'sigma_verify.json'),
-    );
-    await fs.copyFile(provenancePath, path.join(paths.setupOutputDir, 'crs_provenance.json'));
   } finally {
     await fs.rm(extractedDir, { recursive: true, force: true });
   }
+}
+
+export async function installValidatedCrsGeneration(
+  extractedDir: string,
+  provenancePath: string,
+  setupOutputDir: string,
+  archiveName: string,
+  copyFile: typeof fs.copyFile = fs.copyFile,
+): Promise<void> {
+  const setupDirectory = path.dirname(setupOutputDir);
+  const generationsDirectory = path.join(setupDirectory, 'generations');
+  await ensureDir(generationsDirectory);
+
+  const stagingDirectory = await fs.mkdtemp(path.join(generationsDirectory, '.staging-'));
+  let generationDirectory: string | undefined;
+  let activated = false;
+  try {
+    for (const fileName of FINAL_CRS_ARTIFACT_FILES) {
+      const sourcePath = fileName === 'crs_provenance.json'
+        ? provenancePath
+        : await findNamedFile(extractedDir, fileName);
+      await copyFile(sourcePath, path.join(stagingDirectory, fileName));
+    }
+
+    const stagedProvenance = await readJsonFile<CrsProvenance>(
+      path.join(stagingDirectory, 'crs_provenance.json'),
+    );
+    await validateCrsArtifactHashes(stagingDirectory, archiveName, stagedProvenance);
+
+    generationDirectory = path.join(
+      generationsDirectory,
+      `generation-${path.basename(stagingDirectory).replace(/^\.staging-/u, '')}`,
+    );
+    await fs.rename(stagingDirectory, generationDirectory);
+    const previousGenerationDirectory = await activateCrsGeneration(
+      setupOutputDir,
+      generationsDirectory,
+      generationDirectory,
+    );
+    activated = true;
+    if (previousGenerationDirectory !== undefined && previousGenerationDirectory !== generationDirectory) {
+      await fs.rm(previousGenerationDirectory, { recursive: true, force: true });
+    }
+  } finally {
+    if (!activated && generationDirectory !== undefined) {
+      await fs.rm(generationDirectory, { recursive: true, force: true });
+    } else if (!activated) {
+      await fs.rm(stagingDirectory, { recursive: true, force: true });
+    }
+  }
+}
+
+async function activateCrsGeneration(
+  setupOutputDir: string,
+  generationsDirectory: string,
+  nextGenerationDirectory: string,
+): Promise<string | undefined> {
+  const outputState = await inspectSetupOutput(setupOutputDir, generationsDirectory);
+  const temporaryLink = `${setupOutputDir}.next`;
+  await fs.rm(temporaryLink, { recursive: true, force: true });
+  await fs.symlink(
+    path.relative(path.dirname(setupOutputDir), nextGenerationDirectory),
+    temporaryLink,
+    'dir',
+  );
+
+  let migratedLegacyDirectory: string | undefined;
+  if (outputState.kind === 'directory') {
+    migratedLegacyDirectory = path.join(
+      generationsDirectory,
+      `legacy-${Date.now()}-${process.pid}`,
+    );
+    await fs.rename(setupOutputDir, migratedLegacyDirectory);
+  }
+
+  try {
+    await fs.rename(temporaryLink, setupOutputDir);
+  } catch (error) {
+    await fs.rm(temporaryLink, { recursive: true, force: true });
+    if (migratedLegacyDirectory !== undefined) {
+      await fs.rename(migratedLegacyDirectory, setupOutputDir);
+    }
+    throw error;
+  }
+
+  return outputState.kind === 'symlink'
+    ? outputState.targetGenerationDirectory
+    : migratedLegacyDirectory;
+}
+
+type SetupOutputState =
+  | { kind: 'missing' }
+  | { kind: 'directory' }
+  | { kind: 'symlink'; targetGenerationDirectory?: string };
+
+async function inspectSetupOutput(
+  setupOutputDir: string,
+  generationsDirectory: string,
+): Promise<SetupOutputState> {
+  try {
+    const outputStat = await fs.lstat(setupOutputDir);
+    if (outputStat.isDirectory()) {
+      return { kind: 'directory' };
+    }
+    if (!outputStat.isSymbolicLink()) {
+      throw new Error(`Existing setup output path is neither a directory nor a symbolic link: ${setupOutputDir}`);
+    }
+    const target = await fs.readlink(setupOutputDir);
+    const resolvedTarget = path.resolve(path.dirname(setupOutputDir), target);
+    return {
+      kind: 'symlink',
+      targetGenerationDirectory: isPathInside(generationsDirectory, resolvedTarget)
+        ? resolvedTarget
+        : undefined,
+    };
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      return { kind: 'missing' };
+    }
+    throw error;
+  }
+}
+
+function isPathInside(directory: string, candidate: string): boolean {
+  const relative = path.relative(directory, candidate);
+  return relative.length > 0 && !relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative);
+}
+
+function isMissingPathError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT';
 }
 
 export async function writeSkippedSetupNotice(context: RuntimeContext): Promise<void> {
