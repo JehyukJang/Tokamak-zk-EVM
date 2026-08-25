@@ -192,6 +192,12 @@ the selected subcircuit library.
 records the pinned Dusk source metadata, the Dusk raw digest, publication metadata, the CRS
 generation timestamp, and the backend version.
 
+The planned 3.0 repository-managed Tokamak zk-EVM/CRS version pair uses the root-owned canonical
+provenance format: all nested names are camelCase and phase-1 provenance is `null`, `"native"`,
+or `{ "duskGroth16": ... }`. This unreleased 2.1.5 source tree prepares that format. It is
+intentionally incompatible with published 2.1.x snake_case Dusk provenance; do not combine CRS
+artifacts and backend binaries across that boundary.
+
 ## Prove and Verify Inputs
 
 ### `preprocess`

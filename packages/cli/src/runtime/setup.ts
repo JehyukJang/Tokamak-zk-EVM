@@ -26,16 +26,40 @@ interface BackendBuildMetadata {
   packageVersion?: string;
 }
 
-interface CrsProvenance {
-  documentKind?: string;
-  compatibleBackendVersion?: string;
-  subcircuitLibrary?: {
-    packageName?: string;
-    packageVersion?: string;
+type Phase1SourceProvenance = null | 'native' | { duskGroth16: DuskSourceProvenance };
+
+interface DuskSourceProvenance {
+  sourceUrl: string;
+  sourceSizeBytes: number;
+  rawEncoding: string;
+  pinnedContribution: string;
+  pinnedReadmeUrl: string;
+  pinnedDriveFileId: string;
+  expectedSourceSha256: string;
+  actualSourceSha256: string;
+  autoDownloaded: boolean;
+  downloadedContribution: string | null;
+  downloadedReadmeUrl: string | null;
+  downloadedDriveFileId: string | null;
+  maxG1ExpUsed: number;
+  maxG2ExpUsed: number;
+  transcriptConsistencyVerified: boolean;
+}
+
+interface FinalMpcCrsProvenance {
+  documentKind: typeof FINAL_MPC_CRS_DOCUMENT_KIND;
+  releaseEligible: boolean;
+  generatedAtUtc: string;
+  compatibleBackendVersion: string;
+  subcircuitLibrary: {
+    packageName: string;
+    packageVersion: string;
+    origin: 'npmSnapshot' | 'localQapCompiler';
   };
-  combinedSigmaSha256?: string;
-  sigmaPreprocessSha256?: string;
-  sigmaVerifySha256?: string;
+  phase1SourceProvenance: Phase1SourceProvenance;
+  combinedSigmaSha256: string;
+  sigmaPreprocessSha256: string;
+  sigmaVerifySha256: string;
 }
 
 interface CrsProvenanceDocumentContract {
@@ -93,7 +117,9 @@ async function findNamedFile(rootDir: string, filename: string): Promise<string>
   throw new Error(`Missing ${filename} under ${rootDir}`);
 }
 
-function parseDriveArchiveName(name: string): Pick<DriveArchiveSelection, 'compatibleBackendVersion' | 'generatedAt'> | null {
+function parseDriveArchiveName(
+  name: string,
+): Pick<DriveArchiveSelection, 'compatibleBackendVersion' | 'generatedAt'> | null {
   const parsed = name.match(/^tokamak-backend-crs-v(\d+)\.(\d+)-(\d{8}T\d{6}Z)\.zip$/iu);
   if (!parsed) {
     return null;
@@ -175,7 +201,10 @@ async function crsArchiveCacheMatches(
     const archiveName = path.basename(archivePath);
     const parsedName = parseDriveArchiveName(archiveName);
     if (parsedName === null) {
-      logVerbose(verbose, `Ignoring cached CRS archive ${archivePath}: archive name does not match the expected CRS naming convention.`);
+      logVerbose(
+        verbose,
+        `Ignoring cached CRS archive ${archivePath}: archive name does not match the expected CRS naming convention.`,
+      );
       return false;
     }
     if (
@@ -234,21 +263,16 @@ async function downloadLatestCrsArchive(
     fileId: selection.fileId,
   };
 
-  await downloadFileWithResume(
-    archivePath,
-    resumableState,
-    verbose,
-    {
-      describe: 'Anonymous CRS download',
-      maxRetries: CRS_DOWNLOAD_ANONYMOUS_MAX_RETRIES,
-      request: (offset, chunkEnd) => ({
-        url,
-        headers: {
-          Range: `bytes=${offset}-${chunkEnd}`,
-        },
-      }),
-    },
-  );
+  await downloadFileWithResume(archivePath, resumableState, verbose, {
+    describe: 'Anonymous CRS download',
+    maxRetries: CRS_DOWNLOAD_ANONYMOUS_MAX_RETRIES,
+    request: (offset, chunkEnd) => ({
+      url,
+      headers: {
+        Range: `bytes=${offset}-${chunkEnd}`,
+      },
+    }),
+  });
   if (!(await crsArchiveCacheMatches(archivePath, selection, verbose))) {
     await fs.rm(archivePath, { force: true });
     throw new Error(`Downloaded CRS archive ${selection.name} failed archive name and size validation.`);
@@ -275,8 +299,10 @@ export async function validateDownloadedCrsArchive(
   provenancePath: string;
 }> {
   const provenancePath = await findNamedFile(extractedDir, 'crs_provenance.json');
-  const provenance = await readJsonFile<CrsProvenance>(provenancePath);
-  await validateFinalMpcCrsProvenanceContract(provenance, archiveName);
+  const provenance = await validateFinalMpcCrsProvenanceContract(
+    await readJsonFile<unknown>(provenancePath),
+    archiveName,
+  );
   if (provenance.compatibleBackendVersion !== compatibleBackendVersion) {
     throw new Error(
       `CRS archive ${archiveName} has compatibleBackendVersion ${provenance.compatibleBackendVersion ?? '<missing>'}, expected ${compatibleBackendVersion}.`,
@@ -295,8 +321,8 @@ export async function validateDownloadedCrsArchive(
     );
   }
   if (
-    packageCompatibleVersion(provenanceSubcircuitPackageVersion, 'CRS provenance subcircuit-library packageVersion')
-    !== compatibleBackendVersion
+    packageCompatibleVersion(provenanceSubcircuitPackageVersion, 'CRS provenance subcircuit-library packageVersion') !==
+    compatibleBackendVersion
   ) {
     throw new Error(
       `CRS archive ${archiveName} provenance subcircuit-library version ${provenanceSubcircuitPackageVersion} is not compatible with ${compatibleBackendVersion}.`,
@@ -310,12 +336,7 @@ export async function validateDownloadedCrsArchive(
     const backendCompatibleVersion = backendMetadata.compatibleBackendVersion;
     const backendSubcircuitVersion = backendMetadata.dependencies?.subcircuitLibrary?.buildVersion;
     const backendSubcircuitPackageName = backendMetadata.dependencies?.subcircuitLibrary?.packageName;
-    if (
-      !backendVersion ||
-      !backendCompatibleVersion ||
-      !backendSubcircuitVersion ||
-      !backendSubcircuitPackageName
-    ) {
+    if (!backendVersion || !backendCompatibleVersion || !backendSubcircuitVersion || !backendSubcircuitPackageName) {
       throw new Error(`Backend package ${backendName} is missing required build metadata.`);
     }
     if (backendCompatibleVersion !== compatibleBackendVersion) {
@@ -334,8 +355,8 @@ export async function validateDownloadedCrsArchive(
       );
     }
     if (
-      packageCompatibleVersion(backendSubcircuitVersion, `${backendName} subcircuit-library buildVersion`)
-      !== compatibleBackendVersion
+      packageCompatibleVersion(backendSubcircuitVersion, `${backendName} subcircuit-library buildVersion`) !==
+      compatibleBackendVersion
     ) {
       throw new Error(
         `Backend package ${backendName} embeds subcircuit-library version ${backendSubcircuitVersion}, which is not compatible with CRS version ${compatibleBackendVersion}.`,
@@ -348,31 +369,232 @@ export async function validateDownloadedCrsArchive(
   };
 }
 
-async function validateFinalMpcCrsProvenanceContract(
-  provenance: CrsProvenance,
+export async function validateFinalMpcCrsProvenanceContract(
+  provenance: unknown,
   archiveName: string,
-): Promise<void> {
+): Promise<FinalMpcCrsProvenance> {
   const contract = await readCrsProvenanceContract();
   const finalMpcCrs = contract.documentKinds[FINAL_MPC_CRS_DOCUMENT_KIND];
   if (contract.fileName !== 'crs_provenance.json' || finalMpcCrs === undefined) {
     throw new Error('The packaged CRS provenance contract does not define finalMpcCrs.');
   }
-  if (provenance.documentKind !== FINAL_MPC_CRS_DOCUMENT_KIND) {
+  const record = requiredExactObject(
+    provenance,
+    `CRS archive ${archiveName} finalMpcCrs provenance`,
+    finalMpcCrs.requiredFields,
+  );
+  if (record.documentKind !== FINAL_MPC_CRS_DOCUMENT_KIND) {
     throw new Error(
-      `CRS archive ${archiveName} has documentKind ${provenance.documentKind ?? '<missing>'}, expected ${FINAL_MPC_CRS_DOCUMENT_KIND}.`,
+      `CRS archive ${archiveName} has documentKind ${describeValue(record.documentKind)}, expected ${FINAL_MPC_CRS_DOCUMENT_KIND}.`,
     );
   }
-  for (const field of finalMpcCrs.requiredFields) {
-    if (!Object.hasOwn(provenance, field)) {
-      throw new Error(`CRS archive ${archiveName} finalMpcCrs provenance is missing ${field}.`);
+  const generatedAtUtc = requiredDateTime(record.generatedAtUtc, 'generatedAtUtc', archiveName);
+  const compatibleBackendVersion = requiredString(
+    record.compatibleBackendVersion,
+    'compatibleBackendVersion',
+    archiveName,
+  );
+  const subcircuitLibrary = validateSubcircuitLibrary(record.subcircuitLibrary, archiveName);
+  const phase1SourceProvenance = validatePhase1SourceProvenance(record.phase1SourceProvenance, archiveName);
+
+  return {
+    documentKind: FINAL_MPC_CRS_DOCUMENT_KIND,
+    releaseEligible: requiredBoolean(record.releaseEligible, 'releaseEligible', archiveName),
+    generatedAtUtc,
+    compatibleBackendVersion,
+    subcircuitLibrary,
+    phase1SourceProvenance,
+    combinedSigmaSha256: requiredSha256(record.combinedSigmaSha256, 'combinedSigmaSha256', archiveName),
+    sigmaPreprocessSha256: requiredSha256(record.sigmaPreprocessSha256, 'sigmaPreprocessSha256', archiveName),
+    sigmaVerifySha256: requiredSha256(record.sigmaVerifySha256, 'sigmaVerifySha256', archiveName),
+  };
+}
+
+function requiredExactObject(
+  value: unknown,
+  label: string,
+  requiredFields: readonly string[],
+): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be an object.`);
+  }
+  const record = value as Record<string, unknown>;
+  const allowed = new Set(requiredFields);
+  for (const field of requiredFields) {
+    if (!Object.hasOwn(record, field)) {
+      throw new Error(`${label} is missing ${field}.`);
     }
   }
+  for (const field of Object.keys(record)) {
+    if (!allowed.has(field)) {
+      throw new Error(`${label} has an unsupported field ${field}.`);
+    }
+  }
+  return record;
+}
+
+function requiredString(value: unknown, field: string, archiveName: string): string {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error(`CRS archive ${archiveName} provenance ${field} must be a non-empty string.`);
+  }
+  return value;
+}
+
+function requiredDateTime(value: unknown, field: string, archiveName: string): string {
+  const dateTime = requiredString(value, field, archiveName);
+  if (Number.isNaN(Date.parse(dateTime))) {
+    throw new Error(`CRS archive ${archiveName} provenance ${field} must be an RFC 3339 date-time.`);
+  }
+  return dateTime;
+}
+
+function requiredBoolean(value: unknown, field: string, archiveName: string): boolean {
+  if (typeof value !== 'boolean') {
+    throw new Error(`CRS archive ${archiveName} provenance ${field} must be a boolean.`);
+  }
+  return value;
+}
+
+function requiredInteger(value: unknown, field: string, archiveName: string): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`CRS archive ${archiveName} provenance ${field} must be a non-negative integer.`);
+  }
+  return value;
+}
+
+function requiredNullableString(value: unknown, field: string, archiveName: string): string | null {
+  if (value === null) {
+    return null;
+  }
+  return requiredString(value, field, archiveName);
+}
+
+function requiredSha256(value: unknown, field: string, archiveName: string): string {
+  const digest = requiredString(value, field, archiveName);
+  if (!/^[0-9a-f]{64}$/u.test(digest)) {
+    throw new Error(`CRS archive ${archiveName} provenance ${field} must be a lowercase SHA-256 hex digest.`);
+  }
+  return digest;
+}
+
+function validateSubcircuitLibrary(value: unknown, archiveName: string): FinalMpcCrsProvenance['subcircuitLibrary'] {
+  const library = requiredExactObject(value, `CRS archive ${archiveName} provenance subcircuitLibrary`, [
+    'packageName',
+    'packageVersion',
+    'origin',
+  ]);
+  const origin = requiredString(library.origin, 'subcircuitLibrary.origin', archiveName);
+  if (origin !== 'npmSnapshot' && origin !== 'localQapCompiler') {
+    throw new Error(`CRS archive ${archiveName} provenance has unsupported subcircuitLibrary.origin ${origin}.`);
+  }
+  return {
+    packageName: requiredString(library.packageName, 'subcircuitLibrary.packageName', archiveName),
+    packageVersion: requiredString(library.packageVersion, 'subcircuitLibrary.packageVersion', archiveName),
+    origin,
+  };
+}
+
+function validatePhase1SourceProvenance(value: unknown, archiveName: string): Phase1SourceProvenance {
+  if (value === null || value === 'native') {
+    return value;
+  }
+  const phase1 = requiredExactObject(value, `CRS archive ${archiveName} provenance phase1SourceProvenance`, [
+    'duskGroth16',
+  ]);
+  const dusk = requiredExactObject(
+    phase1.duskGroth16,
+    `CRS archive ${archiveName} provenance phase1SourceProvenance.duskGroth16`,
+    [
+      'sourceUrl',
+      'sourceSizeBytes',
+      'rawEncoding',
+      'pinnedContribution',
+      'pinnedReadmeUrl',
+      'pinnedDriveFileId',
+      'expectedSourceSha256',
+      'actualSourceSha256',
+      'autoDownloaded',
+      'downloadedContribution',
+      'downloadedReadmeUrl',
+      'downloadedDriveFileId',
+      'maxG1ExpUsed',
+      'maxG2ExpUsed',
+      'transcriptConsistencyVerified',
+    ],
+  );
+  return {
+    duskGroth16: {
+      sourceUrl: requiredString(dusk.sourceUrl, 'phase1SourceProvenance.duskGroth16.sourceUrl', archiveName),
+      sourceSizeBytes: requiredInteger(
+        dusk.sourceSizeBytes,
+        'phase1SourceProvenance.duskGroth16.sourceSizeBytes',
+        archiveName,
+      ),
+      rawEncoding: requiredString(dusk.rawEncoding, 'phase1SourceProvenance.duskGroth16.rawEncoding', archiveName),
+      pinnedContribution: requiredString(
+        dusk.pinnedContribution,
+        'phase1SourceProvenance.duskGroth16.pinnedContribution',
+        archiveName,
+      ),
+      pinnedReadmeUrl: requiredString(
+        dusk.pinnedReadmeUrl,
+        'phase1SourceProvenance.duskGroth16.pinnedReadmeUrl',
+        archiveName,
+      ),
+      pinnedDriveFileId: requiredString(
+        dusk.pinnedDriveFileId,
+        'phase1SourceProvenance.duskGroth16.pinnedDriveFileId',
+        archiveName,
+      ),
+      expectedSourceSha256: requiredSha256(
+        dusk.expectedSourceSha256,
+        'phase1SourceProvenance.duskGroth16.expectedSourceSha256',
+        archiveName,
+      ),
+      actualSourceSha256: requiredSha256(
+        dusk.actualSourceSha256,
+        'phase1SourceProvenance.duskGroth16.actualSourceSha256',
+        archiveName,
+      ),
+      autoDownloaded: requiredBoolean(
+        dusk.autoDownloaded,
+        'phase1SourceProvenance.duskGroth16.autoDownloaded',
+        archiveName,
+      ),
+      downloadedContribution: requiredNullableString(
+        dusk.downloadedContribution,
+        'phase1SourceProvenance.duskGroth16.downloadedContribution',
+        archiveName,
+      ),
+      downloadedReadmeUrl: requiredNullableString(
+        dusk.downloadedReadmeUrl,
+        'phase1SourceProvenance.duskGroth16.downloadedReadmeUrl',
+        archiveName,
+      ),
+      downloadedDriveFileId: requiredNullableString(
+        dusk.downloadedDriveFileId,
+        'phase1SourceProvenance.duskGroth16.downloadedDriveFileId',
+        archiveName,
+      ),
+      maxG1ExpUsed: requiredInteger(dusk.maxG1ExpUsed, 'phase1SourceProvenance.duskGroth16.maxG1ExpUsed', archiveName),
+      maxG2ExpUsed: requiredInteger(dusk.maxG2ExpUsed, 'phase1SourceProvenance.duskGroth16.maxG2ExpUsed', archiveName),
+      transcriptConsistencyVerified: requiredBoolean(
+        dusk.transcriptConsistencyVerified,
+        'phase1SourceProvenance.duskGroth16.transcriptConsistencyVerified',
+        archiveName,
+      ),
+    },
+  };
+}
+
+function describeValue(value: unknown): string {
+  return typeof value === 'string' ? value : value === undefined ? '<missing>' : JSON.stringify(value);
 }
 
 async function validateCrsArtifactHashes(
   extractedDir: string,
   archiveName: string,
-  provenance: CrsProvenance,
+  provenance: FinalMpcCrsProvenance,
 ): Promise<void> {
   const checks = [
     ['combinedSigmaSha256', 'combined_sigma.rkyv'],
@@ -388,9 +610,7 @@ async function validateCrsArtifactHashes(
     const filePath = await findNamedFile(extractedDir, fileName);
     const actual = await sha256FileHex(filePath);
     if (actual !== expected) {
-      throw new Error(
-        `CRS archive ${archiveName} ${fileName} sha256 mismatch: expected=${expected} actual=${actual}.`,
-      );
+      throw new Error(`CRS archive ${archiveName} ${fileName} sha256 mismatch: expected=${expected} actual=${actual}.`);
     }
   }
 }
@@ -414,12 +634,7 @@ export async function installDownloadedSetup(
       context.compatibleBackendVersion,
     );
 
-    await installValidatedCrsGeneration(
-      extractedDir,
-      provenancePath,
-      paths.setupOutputDir,
-      archiveName,
-    );
+    await installValidatedCrsGeneration(extractedDir, provenancePath, paths.setupOutputDir, archiveName);
   } finally {
     await fs.rm(extractedDir, { recursive: true, force: true });
   }
@@ -441,14 +656,14 @@ export async function installValidatedCrsGeneration(
   let activated = false;
   try {
     for (const fileName of FINAL_CRS_ARTIFACT_FILES) {
-      const sourcePath = fileName === 'crs_provenance.json'
-        ? provenancePath
-        : await findNamedFile(extractedDir, fileName);
+      const sourcePath =
+        fileName === 'crs_provenance.json' ? provenancePath : await findNamedFile(extractedDir, fileName);
       await copyFile(sourcePath, path.join(stagingDirectory, fileName));
     }
 
-    const stagedProvenance = await readJsonFile<CrsProvenance>(
-      path.join(stagingDirectory, 'crs_provenance.json'),
+    const stagedProvenance = await validateFinalMpcCrsProvenanceContract(
+      await readJsonFile<unknown>(path.join(stagingDirectory, 'crs_provenance.json')),
+      archiveName,
     );
     await validateCrsArtifactHashes(stagingDirectory, archiveName, stagedProvenance);
 
@@ -483,18 +698,11 @@ async function activateCrsGeneration(
   const outputState = await inspectSetupOutput(setupOutputDir, generationsDirectory);
   const temporaryLink = `${setupOutputDir}.next`;
   await fs.rm(temporaryLink, { recursive: true, force: true });
-  await fs.symlink(
-    path.relative(path.dirname(setupOutputDir), nextGenerationDirectory),
-    temporaryLink,
-    'dir',
-  );
+  await fs.symlink(path.relative(path.dirname(setupOutputDir), nextGenerationDirectory), temporaryLink, 'dir');
 
   let migratedLegacyDirectory: string | undefined;
   if (outputState.kind === 'directory') {
-    migratedLegacyDirectory = path.join(
-      generationsDirectory,
-      `legacy-${Date.now()}-${process.pid}`,
-    );
+    migratedLegacyDirectory = path.join(generationsDirectory, `legacy-${Date.now()}-${process.pid}`);
     await fs.rename(setupOutputDir, migratedLegacyDirectory);
   }
 
@@ -508,20 +716,13 @@ async function activateCrsGeneration(
     throw error;
   }
 
-  return outputState.kind === 'symlink'
-    ? outputState.targetGenerationDirectory
-    : migratedLegacyDirectory;
+  return outputState.kind === 'symlink' ? outputState.targetGenerationDirectory : migratedLegacyDirectory;
 }
 
 type SetupOutputState =
-  | { kind: 'missing' }
-  | { kind: 'directory' }
-  | { kind: 'symlink'; targetGenerationDirectory?: string };
+  { kind: 'missing' } | { kind: 'directory' } | { kind: 'symlink'; targetGenerationDirectory?: string };
 
-async function inspectSetupOutput(
-  setupOutputDir: string,
-  generationsDirectory: string,
-): Promise<SetupOutputState> {
+async function inspectSetupOutput(setupOutputDir: string, generationsDirectory: string): Promise<SetupOutputState> {
   try {
     const outputStat = await fs.lstat(setupOutputDir);
     if (outputStat.isDirectory()) {
@@ -534,9 +735,7 @@ async function inspectSetupOutput(
     const resolvedTarget = path.resolve(path.dirname(setupOutputDir), target);
     return {
       kind: 'symlink',
-      targetGenerationDirectory: isPathInside(generationsDirectory, resolvedTarget)
-        ? resolvedTarget
-        : undefined,
+      targetGenerationDirectory: isPathInside(generationsDirectory, resolvedTarget) ? resolvedTarget : undefined,
     };
   } catch (error) {
     if (isMissingPathError(error)) {
@@ -548,7 +747,9 @@ async function inspectSetupOutput(
 
 function isPathInside(directory: string, candidate: string): boolean {
   const relative = path.relative(directory, candidate);
-  return relative.length > 0 && !relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative);
+  return (
+    relative.length > 0 && !relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative)
+  );
 }
 
 function isMissingPathError(error: unknown): boolean {
@@ -569,12 +770,8 @@ export async function runTrustedSetup(context: RuntimeContext, verbose: boolean)
   const paths = runtimePaths(context);
   await ensureDir(paths.setupOutputDir);
   await fs.access(paths.trustedSetupBinary);
-  await runCommand(
-    paths.trustedSetupBinary,
-    ['--output', paths.setupOutputDir, '--fixed-tau'],
-    {
-      env: backendEnvironment(context),
-      verbose,
-    },
-  );
+  await runCommand(paths.trustedSetupBinary, ['--output', paths.setupOutputDir, '--fixed-tau'], {
+    env: backendEnvironment(context),
+    verbose,
+  });
 }

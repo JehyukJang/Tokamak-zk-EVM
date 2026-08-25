@@ -57,6 +57,7 @@ impl<'de> Deserialize<'de> for DevelopmentOnlyReleaseEligibility {
     Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Archive, RkyvSerialize, RkyvDeserialize,
 )]
 #[archive(check_bytes)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DuskSourceProvenance {
     pub source_url: String,
     pub source_size_bytes: u64,
@@ -79,6 +80,7 @@ pub struct DuskSourceProvenance {
     Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Archive, RkyvSerialize, RkyvDeserialize,
 )]
 #[archive(check_bytes)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub enum Phase1SourceProvenance {
     Native,
     DuskGroth16(DuskSourceProvenance),
@@ -148,5 +150,35 @@ mod tests {
             "releaseEligible": true,
         }))
         .is_err());
+    }
+
+    #[test]
+    fn canonical_final_mpc_fixture_round_trips_through_the_rust_contract() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("fixtures/final-mpc-crs-provenance.json"))
+                .expect("canonical final MPC fixture must be valid JSON");
+        let provenance: CrsProvenance = serde_json::from_value(fixture.clone())
+            .expect("canonical final MPC fixture must satisfy the Rust contract");
+
+        assert_eq!(
+            serde_json::to_value(provenance).expect("fixture must serialize"),
+            fixture
+        );
+    }
+
+    #[test]
+    fn rejects_legacy_snake_case_dusk_provenance() {
+        let mut legacy: serde_json::Value =
+            serde_json::from_str(include_str!("fixtures/final-mpc-crs-provenance.json"))
+                .expect("canonical final MPC fixture must be valid JSON");
+        let phase1 = legacy["phase1SourceProvenance"]
+            .as_object_mut()
+            .expect("fixture phase-1 provenance must be an object");
+        let dusk = phase1
+            .remove("duskGroth16")
+            .expect("fixture must contain the canonical Dusk variant");
+        phase1.insert("DuskGroth16".to_string(), dusk);
+
+        assert!(serde_json::from_value::<CrsProvenance>(legacy).is_err());
     }
 }

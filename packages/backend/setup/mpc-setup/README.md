@@ -239,7 +239,7 @@ bytes according to their deployment policy.
 For every CRS, the manifest also records:
 
 - `releaseEligible`, a Google Drive publisher gate that is true only for a Dusk-backed CRS
-- `generated_at_utc`
+- `generatedAtUtc`
 - `compatibleBackendVersion`
 - `subcircuitLibrary.packageName`
 - `subcircuitLibrary.packageVersion`
@@ -258,6 +258,14 @@ For dusk-backed mode, the manifest records:
   - `sigma_preprocess.rkyv`
   - `sigma_verify.json`
 
+The canonical provenance format uses camelCase at every nesting level. Its
+phase-1 value is `null`, `"native"`, or a `{ "duskGroth16": ... }` object.
+It is intentionally incompatible with the prior snake_case Dusk provenance
+format. This unreleased source tree prepares the planned 3.0 Tokamak zk-EVM/CRS
+version pair; published 2.1.x provenance must not be reused with that pair.
+[`versioning/fixtures/final-mpc-crs-provenance.json`](../../../../versioning/fixtures/final-mpc-crs-provenance.json)
+is the canonical complete final-MPC reference document.
+
 ## Service-Side Provenance Verification
 
 When serving a dusk-backed CRS, the service wrapper should verify:
@@ -273,13 +281,13 @@ the archive name, Drive folder URL, and direct download URL to its terminal.
 Example checks:
 
 ```bash
-jq -r '.phase1_source_provenance.DuskGroth16.pinned_contribution' "$CRS_DIR/crs_provenance.json"
-jq -r '.phase1_source_provenance.DuskGroth16.expected_source_sha256' "$CRS_DIR/crs_provenance.json"
-jq -r '.generated_at_utc' "$CRS_DIR/crs_provenance.json"
+jq -r '.phase1SourceProvenance.duskGroth16.pinnedContribution' "$CRS_DIR/crs_provenance.json"
+jq -r '.phase1SourceProvenance.duskGroth16.expectedSourceSha256' "$CRS_DIR/crs_provenance.json"
+jq -r '.generatedAtUtc' "$CRS_DIR/crs_provenance.json"
 jq -r '.compatibleBackendVersion' "$CRS_DIR/crs_provenance.json"
 jq -r '.subcircuitLibrary.packageName' "$CRS_DIR/crs_provenance.json"
 jq -r '.subcircuitLibrary.packageVersion' "$CRS_DIR/crs_provenance.json"
-jq -r '.combined_sigma_sha256' "$CRS_DIR/crs_provenance.json"
+jq -r '.combinedSigmaSha256' "$CRS_DIR/crs_provenance.json"
 shasum -a 256 "$CRS_DIR/combined_sigma.rkyv"
 ```
 

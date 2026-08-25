@@ -469,6 +469,36 @@ mod tests {
     }
 
     #[test]
+    fn rejects_legacy_snake_case_dusk_provenance_at_the_algorithm_boundary() {
+        let root = test_root();
+        let library_dir = root.join("subcircuits").join("library");
+        let crs_dir = root.join("crs");
+        fs::create_dir_all(&library_dir).expect("must create library directory");
+        fs::create_dir_all(&crs_dir).expect("must create CRS directory");
+        write_package_manifest(&root, "2.1.5");
+
+        let mut legacy: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../versioning/fixtures/final-mpc-crs-provenance.json"
+        ))
+        .expect("canonical fixture must be valid JSON");
+        let phase1 = legacy["phase1SourceProvenance"]
+            .as_object_mut()
+            .expect("fixture phase-1 provenance must be an object");
+        let dusk = phase1
+            .remove("duskGroth16")
+            .expect("fixture must contain canonical Dusk provenance");
+        phase1.insert("DuskGroth16".to_string(), dusk);
+        fs::write(
+            crs_dir.join(super::CRS_PROVENANCE_FILE_NAME),
+            serde_json::to_vec(&legacy).expect("must serialize legacy fixture"),
+        )
+        .expect("must write legacy provenance");
+
+        assert!(validate_crs_compatibility(&crs_dir, &library_dir).is_err());
+        fs::remove_dir_all(root).expect("must remove test directory");
+    }
+
+    #[test]
     fn operational_validation_accepts_a_noneligible_crs_with_matching_compatibility() {
         let root = test_root();
         let library_dir = root.join("subcircuits").join("library");

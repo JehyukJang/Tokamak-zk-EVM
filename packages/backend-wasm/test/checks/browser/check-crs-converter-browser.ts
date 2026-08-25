@@ -1,32 +1,36 @@
-import { execFile } from "node:child_process";
-import { createReadStream } from "node:fs";
-import { createServer, type ServerResponse } from "node:http";
-import { mkdtemp, mkdir, open, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { promisify } from "node:util";
+import { execFile } from 'node:child_process';
+import { createReadStream } from 'node:fs';
+import { createServer, type ServerResponse } from 'node:http';
+import { mkdtemp, mkdir, open, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { promisify } from 'node:util';
 
-import { chromium } from "playwright";
-import { build } from "vite";
+import { chromium } from 'playwright';
+import { build } from 'vite';
 
-import {
-  BINARY_DIGEST_BYTES,
-  BINARY_HEADER_BYTES,
-} from "../../../src/artifacts/binary/binary-format.js";
-import { SUBCIRCUIT_LIBRARY_PACKAGE_VERSION } from "../../../src/generated/setup.generated.js";
+import { BINARY_DIGEST_BYTES, BINARY_HEADER_BYTES } from '../../../src/artifacts/binary/binary-format.js';
+import { SUBCIRCUIT_LIBRARY_PACKAGE_VERSION } from '../../../src/generated/setup.generated.js';
 
 const execFileAsync = promisify(execFile);
-const PACKAGE_NAME = "@tokamak-zk-evm/snark-browser-compat";
-const CRS_SOURCE_PATH = path.resolve("tmp/fixtures/small/source/setup/combined_sigma.rkyv");
-const SUBCIRCUIT_LIBRARY_TARBALL =
-  process.env.BACKEND_WASM_SUBCIRCUIT_LIBRARY_TARBALL;
-const RUNTIME_FIXTURE_ROOT = path.resolve("fixtures/small/runtime");
+const PACKAGE_NAME = '@tokamak-zk-evm/snark-browser-compat';
+const CRS_SOURCE_PATH = path.resolve('tmp/fixtures/small/source/setup/combined_sigma.rkyv');
+const SUBCIRCUIT_LIBRARY_TARBALL = process.env.BACKEND_WASM_SUBCIRCUIT_LIBRARY_TARBALL;
+const RUNTIME_FIXTURE_ROOT = path.resolve('fixtures/small/runtime');
 const CRS_PROVENANCE = JSON.stringify({
-  compatibleBackendVersion: SUBCIRCUIT_LIBRARY_PACKAGE_VERSION.split(".").slice(0, 2).join("."),
+  documentKind: 'finalMpcCrs',
+  releaseEligible: false,
+  generatedAtUtc: '2026-08-24T00:00:00Z',
+  compatibleBackendVersion: SUBCIRCUIT_LIBRARY_PACKAGE_VERSION.split('.').slice(0, 2).join('.'),
   subcircuitLibrary: {
-    packageName: "@tokamak-zk-evm/subcircuit-library",
+    packageName: '@tokamak-zk-evm/subcircuit-library',
     packageVersion: SUBCIRCUIT_LIBRARY_PACKAGE_VERSION,
+    origin: 'npmSnapshot',
   },
+  phase1SourceProvenance: null,
+  combinedSigmaSha256: '0'.repeat(64),
+  sigmaPreprocessSha256: '1'.repeat(64),
+  sigmaVerifySha256: '2'.repeat(64),
 });
 const OUTPUT_TEST_PAGE = `<!doctype html>
 <html lang="en">
@@ -122,11 +126,11 @@ const ERROR_TEST_PAGE = `<!doctype html>
 </html>`;
 
 interface ConverterResult {
-  readonly status: "ok" | "fatal";
+  readonly status: 'ok' | 'fatal';
   readonly sourceDetached?: boolean;
   readonly artifacts?: Readonly<
     Record<
-      "prover" | "preprocess" | "verifier",
+      'prover' | 'preprocess' | 'verifier',
       {
         readonly byteLength: number;
         readonly inspection: {
@@ -140,7 +144,7 @@ interface ConverterResult {
     >
   >;
   readonly invalidResult?: {
-    readonly status: "ok" | "unexpected-success";
+    readonly status: 'ok' | 'unexpected-success';
     readonly detached?: boolean;
     readonly code?: string;
     readonly message?: string;
@@ -155,61 +159,51 @@ interface NpmPackResult {
 
 async function main(): Promise<void> {
   const mode = parseMode(process.argv.slice(2));
-  const expectedArtifactIdentities =
-    mode === "outputs" ? await loadExpectedArtifactIdentities() : undefined;
-  const temporaryDirectory = await mkdtemp(path.join(tmpdir(), "backend-wasm-converter-vite-"));
+  const expectedArtifactIdentities = mode === 'outputs' ? await loadExpectedArtifactIdentities() : undefined;
+  const temporaryDirectory = await mkdtemp(path.join(tmpdir(), 'backend-wasm-converter-vite-'));
   const temporaryRoot = await realpath(temporaryDirectory);
 
   try {
-    const applicationRoot = path.join(temporaryRoot, "application");
-    const packageArchiveRoot = path.join(temporaryRoot, "package");
+    const applicationRoot = path.join(temporaryRoot, 'application');
+    const packageArchiveRoot = path.join(temporaryRoot, 'package');
     await mkdir(applicationRoot, { recursive: true });
     await mkdir(packageArchiveRoot, { recursive: true });
 
     const packageArchivePath = await packCurrentPackage(packageArchiveRoot);
     await writeFile(
-      path.join(applicationRoot, "package.json"),
+      path.join(applicationRoot, 'package.json'),
       JSON.stringify({
-        name: "backend-wasm-converter-vite-check",
+        name: 'backend-wasm-converter-vite-check',
         private: true,
-        type: "module",
+        type: 'module',
       }),
     );
-    await writeFile(
-      path.join(applicationRoot, "index.html"),
-      mode === "outputs" ? OUTPUT_TEST_PAGE : ERROR_TEST_PAGE,
-    );
+    await writeFile(path.join(applicationRoot, 'index.html'), mode === 'outputs' ? OUTPUT_TEST_PAGE : ERROR_TEST_PAGE);
     await execFileAsync(
-      "npm",
+      'npm',
       [
-        "install",
-        "--ignore-scripts",
-        "--no-audit",
-        "--no-fund",
-        "--no-package-lock",
-        ...(SUBCIRCUIT_LIBRARY_TARBALL === undefined
-          ? []
-          : [path.resolve(SUBCIRCUIT_LIBRARY_TARBALL)]),
+        'install',
+        '--ignore-scripts',
+        '--no-audit',
+        '--no-fund',
+        '--no-package-lock',
+        ...(SUBCIRCUIT_LIBRARY_TARBALL === undefined ? [] : [path.resolve(SUBCIRCUIT_LIBRARY_TARBALL)]),
         packageArchivePath,
       ],
       { cwd: applicationRoot },
     );
 
-    const installedPackageRoot = path.join(
-      applicationRoot,
-      "node_modules",
-      ...PACKAGE_NAME.split("/"),
-    );
+    const installedPackageRoot = path.join(applicationRoot, 'node_modules', ...PACKAGE_NAME.split('/'));
     await assertFfjavascriptIsExternal(installedPackageRoot);
 
-    const outputRoot = path.join(applicationRoot, "dist");
+    const outputRoot = path.join(applicationRoot, 'dist');
     await build({
       root: applicationRoot,
-      logLevel: "silent",
+      logLevel: 'silent',
       build: {
         emptyOutDir: true,
         outDir: outputRoot,
-        target: "es2022",
+        target: 'es2022',
       },
     });
     await checkBuiltApplication(outputRoot, expectedArtifactIdentities);
@@ -218,23 +212,23 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    mode === "outputs"
-      ? "Checked all packed CRS converter outputs in a production Vite browser build"
-      : "Checked packed converter error and Worker boundaries in a production Vite browser build",
+    mode === 'outputs'
+      ? 'Checked all packed CRS converter outputs in a production Vite browser build'
+      : 'Checked packed converter error and Worker boundaries in a production Vite browser build',
   );
 }
 
-function parseMode(argv: readonly string[]): "error" | "outputs" {
-  if (argv.length !== 1 || (argv[0] !== "--error" && argv[0] !== "--outputs")) {
-    throw new Error("CRS converter browser check requires exactly one of --error or --outputs.");
+function parseMode(argv: readonly string[]): 'error' | 'outputs' {
+  if (argv.length !== 1 || (argv[0] !== '--error' && argv[0] !== '--outputs')) {
+    throw new Error('CRS converter browser check requires exactly one of --error or --outputs.');
   }
-  return argv[0] === "--outputs" ? "outputs" : "error";
+  return argv[0] === '--outputs' ? 'outputs' : 'error';
 }
 
 async function loadExpectedArtifactIdentities(): Promise<
   Readonly<
     Record<
-      "prover" | "preprocess" | "verifier",
+      'prover' | 'preprocess' | 'verifier',
       {
         readonly byteLength: number;
         readonly selfDigestHex: string;
@@ -245,12 +239,12 @@ async function loadExpectedArtifactIdentities(): Promise<
   try {
     const [source, prover, preprocess, verifier] = await Promise.all([
       stat(CRS_SOURCE_PATH),
-      readArtifactIdentity(path.join(RUNTIME_FIXTURE_ROOT, "prover-crs.bin")),
-      readArtifactIdentity(path.join(RUNTIME_FIXTURE_ROOT, "preprocess-crs.bin")),
-      readArtifactIdentity(path.join(RUNTIME_FIXTURE_ROOT, "verifier-crs.bin")),
+      readArtifactIdentity(path.join(RUNTIME_FIXTURE_ROOT, 'prover-crs.bin')),
+      readArtifactIdentity(path.join(RUNTIME_FIXTURE_ROOT, 'preprocess-crs.bin')),
+      readArtifactIdentity(path.join(RUNTIME_FIXTURE_ROOT, 'verifier-crs.bin')),
     ]);
     if (!source.isFile()) {
-      throw new Error("one or more paths are not files");
+      throw new Error('one or more paths are not files');
     }
     return {
       prover,
@@ -260,8 +254,8 @@ async function loadExpectedArtifactIdentities(): Promise<
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
-      "CRS browser conversion fixtures are unavailable. Run " +
-        "`npm run fixtures:copy && npm run fixtures:prepare` after preparing " +
+      'CRS browser conversion fixtures are unavailable. Run ' +
+        '`npm run fixtures:copy && npm run fixtures:prepare` after preparing ' +
         `the owner artifacts: ${message}`,
     );
   }
@@ -270,7 +264,7 @@ async function loadExpectedArtifactIdentities(): Promise<
 async function readArtifactIdentity(
   filePath: string,
 ): Promise<{ readonly byteLength: number; readonly selfDigestHex: string }> {
-  const handle = await open(filePath, "r");
+  const handle = await open(filePath, 'r');
   try {
     const fileStat = await handle.stat();
     if (!fileStat.isFile()) {
@@ -297,7 +291,7 @@ async function readArtifactIdentity(
 
     return {
       byteLength: fileStat.size,
-      selfDigestHex: [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join(""),
+      selfDigestHex: [...digest].map(byte => byte.toString(16).padStart(2, '0')).join(''),
     };
   } finally {
     await handle.close();
@@ -306,8 +300,8 @@ async function readArtifactIdentity(
 
 async function packCurrentPackage(packageArchiveRoot: string): Promise<string> {
   const { stdout } = await execFileAsync(
-    "npm",
-    ["pack", "--ignore-scripts", "--json", "--pack-destination", packageArchiveRoot],
+    'npm',
+    ['pack', '--ignore-scripts', '--json', '--pack-destination', packageArchiveRoot],
     { cwd: process.cwd(), maxBuffer: 4 * 1024 * 1024 },
   );
   const result = JSON.parse(stdout) as readonly NpmPackResult[];
@@ -318,24 +312,18 @@ async function packCurrentPackage(packageArchiveRoot: string): Promise<string> {
 }
 
 async function assertFfjavascriptIsExternal(installedPackageRoot: string): Promise<void> {
-  const workerPath = path.join(
-    installedPackageRoot,
-    "dist",
-    "converter",
-    "worker",
-    "crs-converter-worker.js",
-  );
-  const workerSource = await readFile(workerPath, "utf8");
+  const workerPath = path.join(installedPackageRoot, 'dist', 'converter', 'worker', 'crs-converter-worker.js');
+  const workerSource = await readFile(workerPath, 'utf8');
   if (!/from\s+["']ffjavascript["']/.test(workerSource)) {
-    throw new Error("Packed converter Worker does not retain ffjavascript as an external import.");
+    throw new Error('Packed converter Worker does not retain ffjavascript as an external import.');
   }
 
-  const sourceMap = JSON.parse(await readFile(`${workerPath}.map`, "utf8")) as {
+  const sourceMap = JSON.parse(await readFile(`${workerPath}.map`, 'utf8')) as {
     readonly sources?: readonly string[];
   };
   for (const source of sourceMap.sources ?? []) {
-    const normalizedSource = source.split("\\").join("/");
-    for (const packageName of ["ffjavascript", "wasmbuilder", "wasmcurves"]) {
+    const normalizedSource = source.split('\\').join('/');
+    for (const packageName of ['ffjavascript', 'wasmbuilder', 'wasmcurves']) {
       if (normalizedSource.includes(`/node_modules/${packageName}/`)) {
         throw new Error(`Packed converter Worker source map contains bundled ${packageName}.`);
       }
@@ -348,7 +336,7 @@ async function checkBuiltApplication(
   expectedArtifactIdentities:
     | Readonly<
         Record<
-          "prover" | "preprocess" | "verifier",
+          'prover' | 'preprocess' | 'verifier',
           {
             readonly byteLength: number;
             readonly selfDigestHex: string;
@@ -359,27 +347,26 @@ async function checkBuiltApplication(
 ): Promise<void> {
   const server = createServer(async (request, response) => {
     try {
-      const url = new URL(request.url ?? "/", "http://127.0.0.1");
-      if (url.pathname === "/combined_sigma.rkyv" && expectedArtifactIdentities !== undefined) {
+      const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+      if (url.pathname === '/combined_sigma.rkyv' && expectedArtifactIdentities !== undefined) {
         response.writeHead(200, {
-          "content-length": String((await stat(CRS_SOURCE_PATH)).size),
-          "content-type": "application/octet-stream",
+          'content-length': String((await stat(CRS_SOURCE_PATH)).size),
+          'content-type': 'application/octet-stream',
         });
         createReadStream(CRS_SOURCE_PATH).pipe(response);
         return;
       }
-      const relativePath =
-        url.pathname === "/" ? "index.html" : decodeURIComponent(url.pathname.slice(1));
+      const relativePath = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname.slice(1));
       await serveBuiltFile(response, outputRoot, relativePath);
     } catch (error) {
-      response.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
+      response.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' });
       response.end(error instanceof Error ? (error.stack ?? error.message) : String(error));
     }
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
-  if (address === null || typeof address === "string") {
-    throw new Error("Converter Vite check failed to bind a local HTTP port.");
+  if (address === null || typeof address === 'string') {
+    throw new Error('Converter Vite check failed to bind a local HTTP port.');
   }
 
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
@@ -388,7 +375,7 @@ async function checkBuiltApplication(
     const page = await browser.newPage();
     page.setDefaultTimeout(10 * 60_000);
     const browserErrors: string[] = [];
-    page.on("pageerror", (error) => browserErrors.push(error.stack ?? error.message));
+    page.on('pageerror', error => browserErrors.push(error.stack ?? error.message));
     await page.goto(`http://127.0.0.1:${address.port}/`);
     const result = await page.waitForFunction(
       () => (window as unknown as { __converterResult?: ConverterResult }).__converterResult,
@@ -396,20 +383,18 @@ async function checkBuiltApplication(
     const value = (await result.jsonValue()) as ConverterResult;
 
     if (browserErrors.length > 0) {
-      throw new Error(
-        `Converter Vite application raised browser errors:\n${browserErrors.join("\n")}`,
-      );
+      throw new Error(`Converter Vite application raised browser errors:\n${browserErrors.join('\n')}`);
     }
-    if (value.status !== "ok") {
-      throw new Error(`CRS conversion failed: ${value.message ?? "missing error message"}.`);
+    if (value.status !== 'ok') {
+      throw new Error(`CRS conversion failed: ${value.message ?? 'missing error message'}.`);
     }
     if (expectedArtifactIdentities !== undefined) {
       if (value.sourceDetached !== true) {
-        throw new Error("convertCrs did not transfer and detach the valid source buffer.");
+        throw new Error('convertCrs did not transfer and detach the valid source buffer.');
       }
 
       const expectedKinds = { prover: 6, preprocess: 7, verifier: 3 } as const;
-      for (const name of ["prover", "preprocess", "verifier"] as const) {
+      for (const name of ['prover', 'preprocess', 'verifier'] as const) {
         const artifact = value.artifacts?.[name];
         if (artifact === undefined) {
           throw new Error(`convertCrs did not return ${name}Crs.`);
@@ -430,8 +415,8 @@ async function checkBuiltApplication(
           throw new Error(`${name}Crs has unexpected kind ${artifact.inspection.kind}.`);
         }
         if (
-          artifact.inspection.formatVersion !== 1
-          || artifact.inspection.sourcePackageVersion !== SUBCIRCUIT_LIBRARY_PACKAGE_VERSION
+          artifact.inspection.formatVersion !== 1 ||
+          artifact.inspection.sourcePackageVersion !== SUBCIRCUIT_LIBRARY_PACKAGE_VERSION
         ) {
           throw new Error(`${name}Crs has unexpected version metadata.`);
         }
@@ -439,24 +424,20 @@ async function checkBuiltApplication(
     }
 
     const invalid = value.invalidResult;
-    if (invalid?.status !== "ok") {
-      throw new Error("Invalid rkyv input unexpectedly converted successfully.");
+    if (invalid?.status !== 'ok') {
+      throw new Error('Invalid rkyv input unexpectedly converted successfully.');
     }
     if (invalid.detached !== true) {
-      throw new Error("convertCrs did not transfer and detach its invalid input buffer.");
+      throw new Error('convertCrs did not transfer and detach its invalid input buffer.');
     }
-    if (invalid.code !== "INVALID_INPUT") {
-      throw new Error(`Unexpected converter error code: ${invalid.code ?? "missing error code"}.`);
+    if (invalid.code !== 'INVALID_INPUT') {
+      throw new Error(`Unexpected converter error code: ${invalid.code ?? 'missing error code'}.`);
     }
-    if (invalid.message !== "convertCrs could not process its input.") {
-      throw new Error(
-        `Unexpected converter failure: ${invalid.message ?? "missing error message"}.`,
-      );
+    if (invalid.message !== 'convertCrs could not process its input.') {
+      throw new Error(`Unexpected converter failure: ${invalid.message ?? 'missing error message'}.`);
     }
-    if (!invalid.causeMessage?.includes("invalid archive shape")) {
-      throw new Error(
-        `Unexpected decoder cause: ${invalid.causeMessage ?? "missing cause message"}.`,
-      );
+    if (!invalid.causeMessage?.includes('invalid archive shape')) {
+      throw new Error(`Unexpected decoder cause: ${invalid.causeMessage ?? 'missing cause message'}.`);
     }
   } finally {
     await browser?.close();
@@ -464,14 +445,10 @@ async function checkBuiltApplication(
   }
 }
 
-async function serveBuiltFile(
-  response: ServerResponse,
-  outputRoot: string,
-  relativePath: string,
-): Promise<void> {
+async function serveBuiltFile(response: ServerResponse, outputRoot: string, relativePath: string): Promise<void> {
   const filePath = path.resolve(outputRoot, relativePath);
   const relativeResolvedPath = path.relative(outputRoot, filePath);
-  if (relativeResolvedPath.startsWith("..") || path.isAbsolute(relativeResolvedPath)) {
+  if (relativeResolvedPath.startsWith('..') || path.isAbsolute(relativeResolvedPath)) {
     response.writeHead(404);
     response.end();
     return;
@@ -479,7 +456,7 @@ async function serveBuiltFile(
 
   try {
     const bytes = await readFile(filePath);
-    response.writeHead(200, { "content-type": contentTypeFor(filePath) });
+    response.writeHead(200, { 'content-type': contentTypeFor(filePath) });
     response.end(bytes);
   } catch {
     response.writeHead(404);
@@ -488,19 +465,19 @@ async function serveBuiltFile(
 }
 
 function contentTypeFor(filePath: string): string {
-  if (filePath.endsWith(".wasm")) {
-    return "application/wasm";
+  if (filePath.endsWith('.wasm')) {
+    return 'application/wasm';
   }
-  if (filePath.endsWith(".js")) {
-    return "text/javascript; charset=utf-8";
+  if (filePath.endsWith('.js')) {
+    return 'text/javascript; charset=utf-8';
   }
-  if (filePath.endsWith(".css")) {
-    return "text/css; charset=utf-8";
+  if (filePath.endsWith('.css')) {
+    return 'text/css; charset=utf-8';
   }
-  if (filePath.endsWith(".html")) {
-    return "text/html; charset=utf-8";
+  if (filePath.endsWith('.html')) {
+    return 'text/html; charset=utf-8';
   }
-  return "application/octet-stream";
+  return 'application/octet-stream';
 }
 
 main().catch((error: unknown) => {

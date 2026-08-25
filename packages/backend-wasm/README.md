@@ -138,20 +138,20 @@ Public preprocess types are `PreprocessInput`, `PreprocessInstallOptions`, and
 
 ### Converter API
 
-| Export                             | Input and result                                                                                                                  |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `convertWitness(value)`            | Parsed placement-variable JSON to witness binary                                                                                  |
-| `convertPermutation(value)`        | Parsed permutation JSON to permutation binary                                                                                     |
-| `convertInstance(value)`           | Parsed instance JSON to public and function instance sections                                                                     |
-| `convertVerifierPreprocess(value)` | Parsed preprocess JSON to verifier-preprocess binary                                                                              |
-| `convertProof(input)`              | Convert native proof JSON to binary, or proof binary to a native proof JSON object, according to `sourceFormat`                   |
-| `convertCrs(bytes, provenance)`    | `combined_sigma.rkyv` bytes and `crs_provenance.json` compatibility fields to named prover, preprocess, and verifier CRS binaries |
-| `inspectBinary(bytes)`             | Binary header and section information without a validity claim                                                                    |
-| `validateBinary(bytes)`            | Validated decoded artifact after layout, digest, and spec checks                                                                  |
+| Export                             | Input and result                                                                                                                                |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `convertWitness(value)`            | Parsed placement-variable JSON to witness binary                                                                                                |
+| `convertPermutation(value)`        | Parsed permutation JSON to permutation binary                                                                                                   |
+| `convertInstance(value)`           | Parsed instance JSON to public and function instance sections                                                                                   |
+| `convertVerifierPreprocess(value)` | Parsed preprocess JSON to verifier-preprocess binary                                                                                            |
+| `convertProof(input)`              | Convert native proof JSON to binary, or proof binary to a native proof JSON object, according to `sourceFormat`                                 |
+| `convertCrs(bytes, provenance)`    | `combined_sigma.rkyv` bytes and a complete canonical `finalMpcCrs` `crs_provenance.json` to named prover, preprocess, and verifier CRS binaries |
+| `inspectBinary(bytes)`             | Binary header and section information without a validity claim                                                                                  |
+| `validateBinary(bytes)`            | Validated decoded artifact after layout, digest, and spec checks                                                                                |
 
 Public converter types are `BinaryArtifactInspection`,
 `BinarySectionInspection`, `ConvertedCrs`, `ConverterArtifactJson`,
-`ConvertProofBinaryInput`, `ConvertProofInput`, `ConvertProofJsonInput`, and
+`ConvertProofBinaryInput`, `ConvertProofInput`, `ConvertProofJsonInput`, `CrsProvenanceInput`, and
 `RuntimeArtifactFileValidationResult`.
 
 Every subpath exports `BackendWasmError` and `BackendWasmErrorCode`.
@@ -388,7 +388,12 @@ const inspection = await inspectBinary(proverCrs);
 const validated = await validateBinary(proverCrs);
 ```
 
-The application parses the CRS provenance JSON before calling `convertCrs()`. The converter requires its `compatibleBackendVersion` and `subcircuitLibrary` fields to match the installed subcircuit-library compatibility class, then
+The application parses the complete canonical final-MPC CRS provenance JSON before calling
+`convertCrs()`. The converter validates the document kind and nested camelCase
+shape, then requires its `compatibleBackendVersion` and `subcircuitLibrary`
+fields to match the installed subcircuit-library compatibility class. It does
+not apply Google Drive publication policy such as `releaseEligible`. The
+converter then
 transfers its input `ArrayBuffer` to a temporary module Worker, detaching the
 caller's buffer. Pass `rkyvBytes.slice()` when the original bytes must remain
 available.

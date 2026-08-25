@@ -5,13 +5,23 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { installValidatedCrsGeneration, validateDownloadedCrsArchive } = require('../dist/runtime/setup.js');
+const {
+  installValidatedCrsGeneration,
+  validateDownloadedCrsArchive,
+  validateFinalMpcCrsProvenanceContract,
+} = require('../dist/runtime/setup.js');
 
 const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = '@tokamak-zk-evm/subcircuit-library';
 const BACKEND_BINARY_NAMES = ['preprocess', 'prove', 'verify'];
 const CRS_PROVENANCE_CONTRACT = JSON.parse(
   require('node:fs').readFileSync(
     path.resolve(__dirname, '..', '..', '..', 'versioning', 'crs-provenance-contract.json'),
+    'utf8',
+  ),
+);
+const CANONICAL_FINAL_MPC_PROVENANCE = JSON.parse(
+  require('node:fs').readFileSync(
+    path.resolve(__dirname, '..', '..', '..', 'versioning', 'fixtures', 'final-mpc-crs-provenance.json'),
     'utf8',
   ),
 );
@@ -71,12 +81,23 @@ async function writeCrsArchiveFixture(extractedDir, subcircuitLibraryVersion = '
 
 test('packages the root CRS provenance contract unchanged for runtime validation', () => {
   const packagedContract = JSON.parse(
-    require('node:fs').readFileSync(
-      path.resolve(__dirname, '..', 'manifests', 'crs-provenance-contract.json'),
-      'utf8',
-    ),
+    require('node:fs').readFileSync(path.resolve(__dirname, '..', 'manifests', 'crs-provenance-contract.json'), 'utf8'),
   );
   assert.deepEqual(packagedContract, CRS_PROVENANCE_CONTRACT);
+});
+
+test('accepts the canonical root final-MPC provenance fixture and rejects the legacy Dusk shape', async () => {
+  const archiveName = 'tokamak-backend-crs-v2.1-20260824T000000Z.zip';
+  const validated = await validateFinalMpcCrsProvenanceContract(CANONICAL_FINAL_MPC_PROVENANCE, archiveName);
+  assert.deepEqual(validated, CANONICAL_FINAL_MPC_PROVENANCE);
+
+  const legacy = structuredClone(CANONICAL_FINAL_MPC_PROVENANCE);
+  legacy.phase1SourceProvenance.DuskGroth16 = legacy.phase1SourceProvenance.duskGroth16;
+  delete legacy.phase1SourceProvenance.duskGroth16;
+  await assert.rejects(
+    validateFinalMpcCrsProvenanceContract(legacy, archiveName),
+    /phase1SourceProvenance is missing duskGroth16/u,
+  );
 });
 
 async function generationTarget(setupOutputDir) {
@@ -255,10 +276,9 @@ test('atomically replaces the active CRS generation and immediately deletes the 
     assert.notEqual(secondGeneration, firstGeneration);
     assert.equal(await fs.readFile(path.join(setupOutputDir, 'combined_sigma.rkyv'), 'utf8'), 'second combined sigma');
     await assert.rejects(fs.access(firstGeneration));
-    assert.deepEqual(
-      await fs.readdir(path.join(tempDir, 'resource', 'setup', 'generations')),
-      [path.basename(secondGeneration)],
-    );
+    assert.deepEqual(await fs.readdir(path.join(tempDir, 'resource', 'setup', 'generations')), [
+      path.basename(secondGeneration),
+    ]);
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
