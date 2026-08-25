@@ -52,7 +52,8 @@
     "LICENSE-APACHE"
   ],
   "scripts": {
-    "prepare:package": "node scripts/prepare-package.mjs",
+    "prepare:package": "npm run provenance:generate && node scripts/prepare-package.mjs",
+    "provenance:generate": "node ../../scripts/generate-crs-provenance-typescript.mjs",
     "build": "npm run prepare:package && npm run clean && tsc -p tsconfig.json --pretty false",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "release:check": "node scripts/release-readiness.cjs",

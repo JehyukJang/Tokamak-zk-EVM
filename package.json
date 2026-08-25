@@ -12,6 +12,8 @@
     "packages/frontend/synthesizer/web-app"
   ],
   "scripts": {
+    "provenance:generate": "node scripts/generate-crs-provenance-typescript.mjs",
+    "provenance:check": "node scripts/generate-crs-provenance-typescript.mjs --check",
     "test": "lerna run test",
     "format": "prettier --write \"**/*.{ts,js,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,js,json,md}\"",
