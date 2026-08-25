@@ -71,9 +71,6 @@ pub struct FinalCrsProvenance {
     pub combined_sigma_sha256: String,
     pub sigma_preprocess_sha256: String,
     pub sigma_verify_sha256: String,
-    pub published_folder_url: Option<String>,
-    pub published_archive_name: Option<String>,
-    pub crs_download_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

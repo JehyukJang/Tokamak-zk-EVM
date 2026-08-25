@@ -56,9 +56,6 @@ pub fn run(config: &Phase2GenFilesConfig) -> Result<(), MpcSetupError> {
         combined_sigma_sha256: digests.combined_sigma_sha256,
         sigma_preprocess_sha256: digests.sigma_preprocess_sha256,
         sigma_verify_sha256: digests.sigma_verify_sha256,
-        published_folder_url: None,
-        published_archive_name: None,
-        crs_download_url: None,
     };
     let bytes = serde_json::to_vec_pretty(&provenance).map_err(|error| MpcSetupError::State {
         phase: "phase-2 finalization",

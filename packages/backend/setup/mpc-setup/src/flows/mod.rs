@@ -146,8 +146,8 @@ pub fn run_dusk_backed_publication(config: &DuskPublicationConfig) -> Result<(),
     let upload_result =
         publish_output_archive(&upload_config, &config.intermediate, &config.output)?;
     println!(
-        "Uploaded dusk-backed CRS archive {} to {}",
-        upload_result.archive_name, upload_result.folder_url
+        "Uploaded dusk-backed CRS archive {}\nDrive folder: {}\nDownload URL: {}",
+        upload_result.archive_name, upload_result.folder_url, upload_result.crs_download_url
     );
     Ok(())
 }

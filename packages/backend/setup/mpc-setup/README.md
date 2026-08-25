@@ -236,8 +236,6 @@ For dusk-backed mode, the manifest records:
 - whether the file was auto-downloaded
 - whether used-range tau verification succeeded
 - the maximum G1 and G2 exponents consumed by Tokamak phase 2
-- the Google Drive folder URL used for publication
-- the uploaded archive file name
 - the SHA-256 digests of:
   - `combined_sigma.rkyv`
   - `sigma_preprocess.rkyv`
@@ -250,7 +248,10 @@ When serving a dusk-backed CRS, the service wrapper should verify:
 1. the pinned Dusk source metadata
 2. the pinned Dusk raw SHA-256
 3. the final CRS file hashes
-4. the expected published folder URL, if the deployment relies on the automated upload path
+
+Google Drive publication does not modify this file. The local provenance and the
+copy inside the uploaded archive are identical. The publication command reports
+the archive name, Drive folder URL, and direct download URL to its terminal.
 
 Example checks:
 
@@ -261,9 +262,6 @@ jq -r '.generated_at_utc' "$CRS_DIR/crs_provenance.json"
 jq -r '.compatibleBackendVersion' "$CRS_DIR/crs_provenance.json"
 jq -r '.subcircuitLibrary.packageName' "$CRS_DIR/crs_provenance.json"
 jq -r '.subcircuitLibrary.packageVersion' "$CRS_DIR/crs_provenance.json"
-jq -r '.published_folder_url' "$CRS_DIR/crs_provenance.json"
-jq -r '.published_archive_name' "$CRS_DIR/crs_provenance.json"
-jq -r '.crs_download_url' "$CRS_DIR/crs_provenance.json"
 jq -r '.combined_sigma_sha256' "$CRS_DIR/crs_provenance.json"
 shasum -a 256 "$CRS_DIR/combined_sigma.rkyv"
 ```

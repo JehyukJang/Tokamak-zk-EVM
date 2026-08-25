@@ -121,8 +121,7 @@ fn publish_output_archive_with_publisher<P: CrsArchivePublisher>(
         )
     })?;
 
-    let mut provenance = read_provenance(&output_path)?;
-    let original_provenance = provenance.clone();
+    let provenance = read_provenance(&output_path)?;
     validate_publication_provenance(&provenance)?;
     let provenance_compatible_version = canonical_compatible_version(
         &provenance.compatible_backend_version,
@@ -150,29 +149,16 @@ fn publish_output_archive_with_publisher<P: CrsArchivePublisher>(
         ))
     })?;
     let archive_name = build_archive_name(&provenance)?;
-    provenance.published_folder_url = Some(config.folder_url.clone());
-    provenance.published_archive_name = Some(archive_name.clone());
-    provenance.crs_download_url = None;
-    write_provenance(&output_path, &provenance)?;
 
     let archive_path = intermediate_path.join(&archive_name);
-    if let Err(err) = create_output_archive(&output_path, &archive_path) {
-        let _ = write_provenance(&output_path, &original_provenance);
-        return Err(err.into());
-    }
+    create_output_archive(&output_path, &archive_path)?;
 
-    let upload_result = match publisher.upload_archive(config, &archive_path, &archive_name) {
-        Ok(upload_result) => upload_result,
-        Err(err) => {
-            let _ = write_provenance(&output_path, &original_provenance);
-            return Err(err);
-        }
-    };
-    provenance.crs_download_url = Some(upload_result.crs_download_url.clone());
-    if let Err(err) = write_provenance(&output_path, &provenance) {
-        let _ = write_provenance(&output_path, &original_provenance);
-        return Err(err.into());
-    }
+    let upload_result = publisher
+        .upload_archive(config, &archive_path, &archive_name)
+        .map_err(|error| DriveUploadError::Message(format!(
+            "Drive publication outcome for archive {archive_name} may be indeterminate: {error}. Query {} for this archive before retrying; local CRS provenance was not modified.",
+            config.folder_url
+        )))?;
 
     Ok(DriveUploadResult {
         folder_url: config.folder_url.clone(),
@@ -253,15 +239,6 @@ fn read_required_env(key: &str) -> Result<String, DriveUploadError> {
 fn read_provenance(output_path: &Path) -> Result<FinalCrsProvenance, DriveUploadError> {
     let bytes = fs::read(output_path.join(PROVENANCE_FILE_NAME))?;
     Ok(from_slice(&bytes)?)
-}
-
-fn write_provenance(
-    output_path: &Path,
-    provenance: &FinalCrsProvenance,
-) -> Result<(), DriveUploadError> {
-    let bytes = serde_json::to_vec_pretty(provenance)?;
-    fs::write(output_path.join(PROVENANCE_FILE_NAME), bytes)?;
-    Ok(())
 }
 
 fn build_archive_name(provenance: &FinalCrsProvenance) -> Result<String, DriveUploadError> {
@@ -685,9 +662,6 @@ mod tests {
             combined_sigma_sha256: sha256("combined_sigma.rkyv"),
             sigma_preprocess_sha256: sha256("sigma_preprocess.rkyv"),
             sigma_verify_sha256: sha256("sigma_verify.json"),
-            published_folder_url: None,
-            published_archive_name: None,
-            crs_download_url: None,
         };
         fs::write(
             output.join(PROVENANCE_FILE_NAME),
@@ -868,8 +842,10 @@ mod tests {
     }
 
     #[test]
-    fn publication_archives_and_records_a_finalized_crs() {
+    fn publication_preserves_identical_local_and_archived_provenance() {
         let (_workspace, config, output, intermediate) = fixture();
+        let local_provenance = fs::read(output.join(PROVENANCE_FILE_NAME))
+            .expect("must read local provenance before publication");
         let publisher = MockArchivePublisher::succeeds();
 
         let result = publish_output_archive_with_publisher(
@@ -895,20 +871,27 @@ mod tests {
             );
         }
         assert!(archive.by_name("build-metadata-mpc-setup.json").is_err());
-
-        let provenance = read_fixture_provenance(&output);
-        assert_eq!(provenance.published_folder_url, Some(config.folder_url));
-        assert_eq!(provenance.published_archive_name, Some(result.archive_name));
+        let mut archived_provenance = Vec::new();
+        std::io::Read::read_to_end(
+            &mut archive
+                .by_name(PROVENANCE_FILE_NAME)
+                .expect("archive must include CRS provenance"),
+            &mut archived_provenance,
+        )
+        .expect("must read archived provenance");
+        assert_eq!(archived_provenance, local_provenance);
         assert_eq!(
-            provenance.crs_download_url,
-            Some("https://drive.example.test/download/file-id".to_string())
+            fs::read(output.join(PROVENANCE_FILE_NAME))
+                .expect("must read local provenance after publication"),
+            local_provenance
         );
     }
 
     #[test]
-    fn failed_publication_restores_local_provenance() {
+    fn failed_publication_preserves_local_provenance_and_reports_archive_identity() {
         let (_workspace, config, output, intermediate) = fixture();
-        let original_provenance = read_fixture_provenance(&output);
+        let original_provenance = fs::read(output.join(PROVENANCE_FILE_NAME))
+            .expect("must read provenance before failed publication");
         let publisher = MockArchivePublisher::fails();
 
         let error = publish_output_archive_with_publisher(
@@ -920,14 +903,21 @@ mod tests {
         .expect_err("mock upload failure must be returned");
 
         assert!(error.to_string().contains("mock upload failure"));
+        assert!(error.to_string().contains("may be indeterminate"));
+        assert!(error.to_string().contains(&archive_version_prefix()));
         assert_eq!(publisher.uploads.borrow().len(), 1);
-        assert_eq!(read_fixture_provenance(&output), original_provenance);
+        assert_eq!(
+            fs::read(output.join(PROVENANCE_FILE_NAME))
+                .expect("must read provenance after failed publication"),
+            original_provenance
+        );
     }
 
     #[test]
-    fn archive_construction_failure_restores_local_provenance() {
+    fn archive_construction_failure_preserves_local_provenance() {
         let (_workspace, config, output, intermediate) = fixture();
-        let original_provenance = read_fixture_provenance(&output);
+        let original_provenance = fs::read(output.join(PROVENANCE_FILE_NAME))
+            .expect("must read provenance before archive construction");
         let publisher = MockArchivePublisher::succeeds();
         fs::create_dir(
             intermediate.join(format!("{}20260823T123456Z.zip", archive_version_prefix())),
@@ -944,6 +934,10 @@ mod tests {
 
         assert!(matches!(error, DriveUploadError::Io(_)));
         assert!(publisher.uploads.borrow().is_empty());
-        assert_eq!(read_fixture_provenance(&output), original_provenance);
+        assert_eq!(
+            fs::read(output.join(PROVENANCE_FILE_NAME))
+                .expect("must read provenance after archive construction failure"),
+            original_provenance
+        );
     }
 }
