@@ -97,6 +97,7 @@ mod tests {
         )
         .expect("must parse trusted-setup provenance");
 
+        assert_eq!(provenance["documentKind"], "developmentTrustedSetupSigma");
         assert_eq!(provenance["releaseEligible"], false);
     }
 }

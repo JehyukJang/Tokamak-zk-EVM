@@ -1,0 +1,25 @@
+{
+  "fileName": "crs_provenance.json",
+  "documentKinds": {
+    "developmentTrustedSetupSigma": {
+      "releaseEligible": false,
+      "requiredFields": [
+        "documentKind",
+        "releaseEligible"
+      ]
+    },
+    "finalMpcCrs": {
+      "requiredFields": [
+        "documentKind",
+        "releaseEligible",
+        "generatedAtUtc",
+        "compatibleBackendVersion",
+        "subcircuitLibrary",
+        "phase1SourceProvenance",
+        "combinedSigmaSha256",
+        "sigmaPreprocessSha256",
+        "sigmaVerifySha256"
+      ]
+    }
+  }
+}

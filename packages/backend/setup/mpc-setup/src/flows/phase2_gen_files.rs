@@ -1,12 +1,10 @@
 use crate::flows::MpcSetupError;
-use crate::sigma::{
-    FinalCrsProvenance, Phase1SourceProvenance, SigmaV2, SubcircuitLibraryOrigin,
-    SubcircuitLibraryProvenance,
-};
+use crate::sigma::{Phase1SourceProvenance, SigmaV2, SubcircuitLibraryOrigin};
 use crate::utils::StepTimer;
 use crate::versioning::compatible_backend_version;
 use chrono::Utc;
 use libs::crs_artifacts::write_final_crs_artifacts;
+use libs::crs_provenance::{CrsProvenance, FinalMpcCrsProvenance, SubcircuitLibraryProvenance};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -43,7 +41,7 @@ pub fn run(config: &Phase2GenFilesConfig) -> Result<(), MpcSetupError> {
         })?;
     timer.log_step("write final CRS artifacts");
 
-    let provenance = FinalCrsProvenance {
+    let provenance = CrsProvenance::FinalMpcCrs(FinalMpcCrsProvenance {
         release_eligible,
         generated_at_utc: Utc::now().to_rfc3339(),
         compatible_backend_version: compatible_backend_version().to_string(),
@@ -56,7 +54,7 @@ pub fn run(config: &Phase2GenFilesConfig) -> Result<(), MpcSetupError> {
         combined_sigma_sha256: digests.combined_sigma_sha256,
         sigma_preprocess_sha256: digests.sigma_preprocess_sha256,
         sigma_verify_sha256: digests.sigma_verify_sha256,
-    };
+    });
     let bytes = serde_json::to_vec_pretty(&provenance).map_err(|error| MpcSetupError::State {
         phase: "phase-2 finalization",
         reason: format!("cannot serialize CRS provenance: {error}"),

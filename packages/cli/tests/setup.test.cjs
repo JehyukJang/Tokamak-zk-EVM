@@ -9,6 +9,12 @@ const { installValidatedCrsGeneration, validateDownloadedCrsArchive } = require(
 
 const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = '@tokamak-zk-evm/subcircuit-library';
 const BACKEND_BINARY_NAMES = ['preprocess', 'prove', 'verify'];
+const CRS_PROVENANCE_CONTRACT = JSON.parse(
+  require('node:fs').readFileSync(
+    path.resolve(__dirname, '..', '..', '..', 'versioning', 'crs-provenance-contract.json'),
+    'utf8',
+  ),
+);
 
 function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
@@ -45,19 +51,33 @@ async function writeCrsArchiveFixture(extractedDir, subcircuitLibraryVersion = '
   await fs.writeFile(
     path.join(extractedDir, 'crs_provenance.json'),
     `${JSON.stringify({
+      documentKind: 'finalMpcCrs',
+      releaseEligible: false,
+      generatedAtUtc: '2026-08-24T00:00:00Z',
       compatibleBackendVersion: '2.1',
       subcircuitLibrary: {
         packageName: SUBCIRCUIT_LIBRARY_PACKAGE_NAME,
         packageVersion: subcircuitLibraryVersion,
         origin: 'npmSnapshot',
       },
-      combined_sigma_sha256: sha256(artifacts['combined_sigma.rkyv']),
-      sigma_preprocess_sha256: sha256(artifacts['sigma_preprocess.rkyv']),
-      sigma_verify_sha256: sha256(artifacts['sigma_verify.json']),
+      phase1SourceProvenance: null,
+      combinedSigmaSha256: sha256(artifacts['combined_sigma.rkyv']),
+      sigmaPreprocessSha256: sha256(artifacts['sigma_preprocess.rkyv']),
+      sigmaVerifySha256: sha256(artifacts['sigma_verify.json']),
     })}\n`,
     'utf8',
   );
 }
+
+test('packages the root CRS provenance contract unchanged for runtime validation', () => {
+  const packagedContract = JSON.parse(
+    require('node:fs').readFileSync(
+      path.resolve(__dirname, '..', 'manifests', 'crs-provenance-contract.json'),
+      'utf8',
+    ),
+  );
+  assert.deepEqual(packagedContract, CRS_PROVENANCE_CONTRACT);
+});
 
 async function generationTarget(setupOutputDir) {
   const target = await fs.readlink(setupOutputDir);
@@ -83,6 +103,33 @@ test('accepts a current CRS archive that contains provenance but no removed MPC 
 
     assert.equal(result.provenancePath, path.join(extractedDir, 'crs_provenance.json'));
     await assert.rejects(fs.access(path.join(extractedDir, 'build-metadata-mpc-setup.json')));
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('rejects a development trusted-setup provenance before CRS installation', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-'));
+  try {
+    const extractedDir = path.join(tempDir, 'archive');
+    const backendReleaseDir = path.join(tempDir, 'backend');
+    await fs.mkdir(extractedDir);
+    await fs.mkdir(backendReleaseDir);
+    await writeCrsArchiveFixture(extractedDir);
+    const provenancePath = path.join(extractedDir, 'crs_provenance.json');
+    const provenance = JSON.parse(await fs.readFile(provenancePath, 'utf8'));
+    provenance.documentKind = 'developmentTrustedSetupSigma';
+    await fs.writeFile(provenancePath, `${JSON.stringify(provenance)}\n`, 'utf8');
+
+    await assert.rejects(
+      validateDownloadedCrsArchive(
+        extractedDir,
+        backendReleaseDir,
+        'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
+        '2.1',
+      ),
+      /documentKind developmentTrustedSetupSigma, expected finalMpcCrs/u,
+    );
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }

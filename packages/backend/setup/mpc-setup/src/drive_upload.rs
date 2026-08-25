@@ -1,4 +1,3 @@
-use crate::sigma::{FinalCrsProvenance, Phase1SourceProvenance, SubcircuitLibraryOrigin};
 use crate::versioning::compatible_backend_version;
 use google_drive3::api::{File, Permission, Scope};
 use google_drive3::hyper::client::HttpConnector;
@@ -7,8 +6,11 @@ use google_drive3::hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
 use google_drive3::{oauth2, DriveHub};
 use libs::compatibility::{compatibility_from_package_version, parse_compatible_backend_version};
 use libs::crs_artifacts::{verify_final_crs_artifact_digests, FinalCrsDigests};
+use libs::crs_provenance::{
+    CrsProvenance, FinalMpcCrsProvenance, Phase1SourceProvenance, CRS_PROVENANCE_FILE_NAME,
+};
+use libs::input_origin::SubcircuitLibraryOrigin;
 use oauth2::authenticator_delegate::{DefaultInstalledFlowDelegate, InstalledFlowDelegate};
-use serde_json::from_slice;
 use std::env;
 use std::fs;
 use std::fs::File as StdFile;
@@ -20,7 +22,7 @@ use thiserror::Error;
 use zip::write::{ExtendedFileOptions, FileOptions};
 
 const DRIVE_FOLDER_MIME_TYPE: &str = "application/vnd.google-apps.folder";
-const PROVENANCE_FILE_NAME: &str = "crs_provenance.json";
+const PROVENANCE_FILE_NAME: &str = CRS_PROVENANCE_FILE_NAME;
 const FINAL_OUTPUT_FILES: [&str; 4] = [
     "combined_sigma.rkyv",
     "sigma_preprocess.rkyv",
@@ -168,7 +170,7 @@ fn publish_output_archive_with_publisher<P: CrsArchivePublisher>(
 }
 
 fn validate_publication_provenance(
-    provenance: &FinalCrsProvenance,
+    provenance: &FinalMpcCrsProvenance,
 ) -> Result<(), DriveUploadError> {
     if !provenance.release_eligible {
         return Err(DriveUploadError::Message(
@@ -236,12 +238,17 @@ fn read_required_env(key: &str) -> Result<String, DriveUploadError> {
     Ok(trimmed.to_string())
 }
 
-fn read_provenance(output_path: &Path) -> Result<FinalCrsProvenance, DriveUploadError> {
+fn read_provenance(output_path: &Path) -> Result<FinalMpcCrsProvenance, DriveUploadError> {
     let bytes = fs::read(output_path.join(PROVENANCE_FILE_NAME))?;
-    Ok(from_slice(&bytes)?)
+    match serde_json::from_slice(&bytes)? {
+        CrsProvenance::FinalMpcCrs(provenance) => Ok(provenance),
+        CrsProvenance::DevelopmentTrustedSetupSigma(_) => Err(DriveUploadError::Message(
+            "only finalMpcCrs provenance may be published".to_string(),
+        )),
+    }
 }
 
-fn build_archive_name(provenance: &FinalCrsProvenance) -> Result<String, DriveUploadError> {
+fn build_archive_name(provenance: &FinalMpcCrsProvenance) -> Result<String, DriveUploadError> {
     canonical_compatible_version(
         &provenance.compatible_backend_version,
         "crs_provenance.json compatibleBackendVersion",
@@ -289,7 +296,7 @@ fn add_file_to_archive(
 }
 
 fn validate_provenance_subcircuit_library(
-    provenance: &FinalCrsProvenance,
+    provenance: &FinalMpcCrsProvenance,
     compatible_version: &str,
 ) -> Result<(), DriveUploadError> {
     if provenance.subcircuit_library.package_name
@@ -565,11 +572,12 @@ mod tests {
         DriveUploadConfig, DriveUploadError, DriveUploadResult, FINAL_OUTPUT_FILES,
         PROVENANCE_FILE_NAME,
     };
-    use crate::sigma::{
-        DuskSourceProvenance, FinalCrsProvenance, Phase1SourceProvenance, SubcircuitLibraryOrigin,
-        SubcircuitLibraryProvenance,
-    };
+    use crate::sigma::{DuskSourceProvenance, Phase1SourceProvenance, SubcircuitLibraryOrigin};
     use crate::versioning::compatible_backend_version;
+    use libs::crs_provenance::{
+        CrsProvenance, DevelopmentOnlyReleaseEligibility, DevelopmentTrustedSetupSigmaProvenance,
+        FinalMpcCrsProvenance, SubcircuitLibraryProvenance,
+    };
     use sha2::{Digest, Sha256};
     use std::cell::RefCell;
     use std::fs;
@@ -630,7 +638,7 @@ mod tests {
             fs::write(output.join(file_name), file_name).expect("must write final CRS file");
         }
 
-        let provenance = FinalCrsProvenance {
+        let provenance = FinalMpcCrsProvenance {
             release_eligible: true,
             generated_at_utc: "2026-08-23T12:34:56Z".to_string(),
             compatible_backend_version: compatible_backend_version().to_string(),
@@ -665,7 +673,8 @@ mod tests {
         };
         fs::write(
             output.join(PROVENANCE_FILE_NAME),
-            serde_json::to_vec_pretty(&provenance).expect("must serialize provenance"),
+            serde_json::to_vec_pretty(&CrsProvenance::FinalMpcCrs(provenance))
+                .expect("must serialize provenance"),
         )
         .expect("must write provenance");
 
@@ -678,11 +687,26 @@ mod tests {
         (workspace, config, output, intermediate)
     }
 
-    fn read_fixture_provenance(output: &Path) -> FinalCrsProvenance {
-        serde_json::from_slice(
+    fn read_fixture_provenance(output: &Path) -> FinalMpcCrsProvenance {
+        match serde_json::from_slice(
             &fs::read(output.join(PROVENANCE_FILE_NAME)).expect("must read provenance"),
         )
         .expect("must parse provenance")
+        {
+            CrsProvenance::FinalMpcCrs(provenance) => provenance,
+            CrsProvenance::DevelopmentTrustedSetupSigma(_) => {
+                panic!("fixture must contain final MPC provenance")
+            }
+        }
+    }
+
+    fn write_fixture_provenance(output: &Path, provenance: FinalMpcCrsProvenance) {
+        fs::write(
+            output.join(PROVENANCE_FILE_NAME),
+            serde_json::to_vec_pretty(&CrsProvenance::FinalMpcCrs(provenance))
+                .expect("must serialize provenance"),
+        )
+        .expect("must write provenance");
     }
 
     #[test]
@@ -690,11 +714,7 @@ mod tests {
         let (_workspace, config, output, intermediate) = fixture();
         let mut provenance = read_fixture_provenance(&output);
         provenance.release_eligible = false;
-        fs::write(
-            output.join(PROVENANCE_FILE_NAME),
-            serde_json::to_vec_pretty(&provenance).expect("must serialize provenance"),
-        )
-        .expect("must write provenance");
+        write_fixture_provenance(&output, provenance);
         let publisher = MockArchivePublisher::succeeds();
 
         let error = publish_output_archive_with_publisher(
@@ -712,15 +732,40 @@ mod tests {
     }
 
     #[test]
+    fn rejects_a_trusted_setup_provenance_document() {
+        let (_workspace, config, output, intermediate) = fixture();
+        fs::write(
+            output.join(PROVENANCE_FILE_NAME),
+            serde_json::to_vec_pretty(&CrsProvenance::DevelopmentTrustedSetupSigma(
+                DevelopmentTrustedSetupSigmaProvenance {
+                    release_eligible: DevelopmentOnlyReleaseEligibility,
+                },
+            ))
+            .expect("must serialize trusted-setup provenance"),
+        )
+        .expect("must write trusted-setup provenance");
+        let publisher = MockArchivePublisher::succeeds();
+
+        let error = publish_output_archive_with_publisher(
+            &config,
+            &intermediate.to_string_lossy(),
+            &output.to_string_lossy(),
+            &publisher,
+        )
+        .expect_err("trusted setup provenance must not be published");
+
+        assert!(error
+            .to_string()
+            .contains("only finalMpcCrs provenance may be published"));
+        assert!(publisher.uploads.borrow().is_empty());
+    }
+
+    #[test]
     fn rejects_publication_of_a_local_qap_crs() {
         let (_workspace, config, output, intermediate) = fixture();
         let mut provenance = read_fixture_provenance(&output);
         provenance.subcircuit_library.origin = SubcircuitLibraryOrigin::LocalQapCompiler;
-        fs::write(
-            output.join(PROVENANCE_FILE_NAME),
-            serde_json::to_vec_pretty(&provenance).expect("must serialize provenance"),
-        )
-        .expect("must write provenance");
+        write_fixture_provenance(&output, provenance);
         let publisher = MockArchivePublisher::succeeds();
 
         let error = publish_output_archive_with_publisher(
@@ -742,11 +787,7 @@ mod tests {
         let (_workspace, config, output, intermediate) = fixture();
         let mut provenance = read_fixture_provenance(&output);
         provenance.phase1_source_provenance = Some(Phase1SourceProvenance::Native);
-        fs::write(
-            output.join(PROVENANCE_FILE_NAME),
-            serde_json::to_vec_pretty(&provenance).expect("must serialize provenance"),
-        )
-        .expect("must write provenance");
+        write_fixture_provenance(&output, provenance);
         let publisher = MockArchivePublisher::succeeds();
 
         let error = publish_output_archive_with_publisher(
@@ -820,11 +861,7 @@ mod tests {
         let (_workspace, config, output, intermediate) = fixture();
         let mut provenance = read_fixture_provenance(&output);
         provenance.compatible_backend_version = "02.01".to_string();
-        fs::write(
-            output.join(PROVENANCE_FILE_NAME),
-            serde_json::to_vec_pretty(&provenance).expect("must serialize provenance"),
-        )
-        .expect("must write provenance");
+        write_fixture_provenance(&output, provenance);
         let publisher = MockArchivePublisher::succeeds();
 
         let error = publish_output_archive_with_publisher(

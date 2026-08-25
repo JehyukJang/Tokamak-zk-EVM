@@ -1,4 +1,8 @@
 use crate::compatibility::{compatibility_from_package_version, parse_compatible_backend_version};
+use crate::crs_provenance::{
+    CrsProvenance, DevelopmentOnlyReleaseEligibility, DevelopmentTrustedSetupSigmaProvenance,
+    FinalMpcCrsProvenance, CRS_PROVENANCE_FILE_NAME,
+};
 use crate::errors::CrsError;
 use clap::Args;
 use std::env;
@@ -15,8 +19,6 @@ include!(concat!(env!("OUT_DIR"), "/embedded_subcircuit_library.rs"));
 
 #[cfg(not(tokamak_embedded_subcircuit_library))]
 const SUBCIRCUIT_LIBRARY_PACKAGE_NAME: &str = "@tokamak-zk-evm/subcircuit-library";
-const CRS_PROVENANCE_FILE_NAME: &str = "crs_provenance.json";
-const RELEASE_ELIGIBLE_FIELD: &str = "releaseEligible";
 
 #[cfg(tokamak_embedded_subcircuit_library)]
 static MATERIALIZED_PATH: OnceLock<PathBuf> = OnceLock::new();
@@ -112,17 +114,18 @@ pub fn try_resolve_subcircuit_library_path(local_path: Option<&str>) -> Result<P
 
 pub fn validate_crs_compatibility(crs_dir: &Path, library_dir: &Path) -> std::io::Result<()> {
     let provenance_path = crs_dir.join(CRS_PROVENANCE_FILE_NAME);
-    let provenance = read_json(&provenance_path, "CRS provenance")?;
-    let crs_compatible_version = provenance
-        .get("compatibleBackendVersion")
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| {
-            std::io::Error::other(format!(
-                "{} is missing compatibleBackendVersion",
-                provenance_path.display()
-            ))
-        })?;
-    let crs_compatible_version = parse_compatible_backend_version(crs_compatible_version)
+    let provenance: CrsProvenance = read_json(&provenance_path, "CRS provenance")?;
+    let CrsProvenance::FinalMpcCrs(FinalMpcCrsProvenance {
+        compatible_backend_version: crs_compatible_version,
+        ..
+    }) = provenance
+    else {
+        return Err(std::io::Error::other(format!(
+            "{} is a developmentTrustedSetupSigma provenance and has no final MPC compatibility class",
+            provenance_path.display()
+        )));
+    };
+    let crs_compatible_version = parse_compatible_backend_version(&crs_compatible_version)
         .map(|version| version.to_string())
         .map_err(|error| {
             std::io::Error::other(format!("CRS provenance compatibleBackendVersion {error}"))
@@ -145,10 +148,10 @@ pub fn validate_crs_compatibility(crs_dir: &Path, library_dir: &Path) -> std::io
 }
 
 pub fn write_development_only_trusted_setup_provenance(output_dir: &Path) -> std::io::Result<()> {
-    let provenance = serde_json::json!({
-        "producer": "trusted-setup",
-        RELEASE_ELIGIBLE_FIELD: false,
-    });
+    let provenance =
+        CrsProvenance::DevelopmentTrustedSetupSigma(DevelopmentTrustedSetupSigmaProvenance {
+            release_eligible: DevelopmentOnlyReleaseEligibility,
+        });
     let bytes = serde_json::to_vec_pretty(&provenance).map_err(std::io::Error::other)?;
     fs::write(output_dir.join(CRS_PROVENANCE_FILE_NAME), bytes)
 }
@@ -182,7 +185,8 @@ fn selected_library_package_version(library_dir: &Path) -> std::io::Result<Strin
         while let Some(directory) = current {
             let manifest_path = directory.join("package.json");
             if manifest_path.is_file() {
-                let manifest = read_json(&manifest_path, "subcircuit-library package manifest")?;
+                let manifest: serde_json::Value =
+                    read_json(&manifest_path, "subcircuit-library package manifest")?;
                 let package_name = manifest
                     .get("name")
                     .and_then(serde_json::Value::as_str)
@@ -216,7 +220,7 @@ fn selected_library_package_version(library_dir: &Path) -> std::io::Result<Strin
     }
 }
 
-fn read_json(path: &Path, label: &str) -> std::io::Result<serde_json::Value> {
+fn read_json<T: serde::de::DeserializeOwned>(path: &Path, label: &str) -> std::io::Result<T> {
     let bytes = fs::read(path).map_err(|err| {
         std::io::Error::new(
             err.kind(),
@@ -340,6 +344,10 @@ mod tests {
         validate_crs_compatibility, validate_operational_crs_compatibility,
         write_development_only_trusted_setup_provenance, DevelopmentCrsProvenanceArg,
     };
+    use crate::crs_provenance::{
+        CrsProvenance, FinalMpcCrsProvenance, SubcircuitLibraryProvenance,
+    };
+    use crate::input_origin::SubcircuitLibraryOrigin;
     use std::fs;
     use std::path::PathBuf;
 
@@ -364,16 +372,26 @@ mod tests {
 
     fn write_provenance(
         crs_dir: &std::path::Path,
-        release_eligible: serde_json::Value,
+        release_eligible: bool,
         compatible_version: &str,
     ) {
+        let provenance = CrsProvenance::FinalMpcCrs(FinalMpcCrsProvenance {
+            release_eligible,
+            generated_at_utc: "2026-08-24T00:00:00Z".to_string(),
+            compatible_backend_version: compatible_version.to_string(),
+            subcircuit_library: SubcircuitLibraryProvenance {
+                package_name: "@tokamak-zk-evm/subcircuit-library".to_string(),
+                package_version: format!("{compatible_version}.0"),
+                origin: SubcircuitLibraryOrigin::LocalQapCompiler,
+            },
+            phase1_source_provenance: None,
+            combined_sigma_sha256: "0".repeat(64),
+            sigma_preprocess_sha256: "0".repeat(64),
+            sigma_verify_sha256: "0".repeat(64),
+        });
         fs::write(
             crs_dir.join(super::CRS_PROVENANCE_FILE_NAME),
-            serde_json::json!({
-                "releaseEligible": release_eligible,
-                "compatibleBackendVersion": compatible_version,
-            })
-            .to_string(),
+            serde_json::to_vec(&provenance).expect("must serialize CRS provenance"),
         )
         .expect("must write CRS provenance");
     }
@@ -390,8 +408,8 @@ mod tests {
             .expect("must write trusted setup provenance");
 
         let error = validate_crs_compatibility(&crs_dir, &library_dir)
-            .expect_err("CRS without a compatibility version must be rejected");
-        assert!(error.to_string().contains("compatibleBackendVersion"));
+            .expect_err("development-only CRS must be rejected without the explicit bypass");
+        assert!(error.to_string().contains("developmentTrustedSetupSigma"));
         fs::remove_dir_all(root).expect("must remove test directory");
     }
 
@@ -404,17 +422,13 @@ mod tests {
         fs::create_dir_all(&crs_dir).expect("must create CRS directory");
         write_package_manifest(&root, "3.0.0");
 
-        write_provenance(&crs_dir, serde_json::Value::Bool(false), "3.0");
+        write_provenance(&crs_dir, false, "3.0");
         validate_crs_compatibility(&crs_dir, &library_dir)
             .expect("non-eligible CRS must be accepted by algorithm workflows");
 
-        write_provenance(
-            &crs_dir,
-            serde_json::Value::String("not-a-publication-flag".to_string()),
-            "3.0",
-        );
+        write_provenance(&crs_dir, true, "3.0");
         validate_crs_compatibility(&crs_dir, &library_dir)
-            .expect("publication eligibility encoding must not affect compatibility");
+            .expect("release eligibility must not affect compatibility");
         fs::remove_dir_all(root).expect("must remove test directory");
     }
 
@@ -426,12 +440,12 @@ mod tests {
         fs::create_dir_all(&library_dir).expect("must create library directory");
         fs::create_dir_all(&crs_dir).expect("must create CRS directory");
         write_package_manifest(&root, "2.1.7");
-        write_provenance(&crs_dir, serde_json::Value::Bool(true), "2.1");
+        write_provenance(&crs_dir, true, "2.1");
 
         validate_crs_compatibility(&crs_dir, &library_dir)
             .expect("matching CRS and library compatibility classes must be accepted");
 
-        write_provenance(&crs_dir, serde_json::Value::Bool(true), "3.0");
+        write_provenance(&crs_dir, true, "3.0");
         assert!(validate_crs_compatibility(&crs_dir, &library_dir).is_err());
         fs::remove_dir_all(root).expect("must remove test directory");
     }
@@ -444,7 +458,7 @@ mod tests {
         fs::create_dir_all(&library_dir).expect("must create library directory");
         fs::create_dir_all(&crs_dir).expect("must create CRS directory");
         write_package_manifest(&root, "2.1.5");
-        write_provenance(&crs_dir, serde_json::Value::Bool(false), "02.01");
+        write_provenance(&crs_dir, false, "02.01");
 
         let error = validate_crs_compatibility(&crs_dir, &library_dir)
             .expect_err("noncanonical compatibility versions must be rejected");
@@ -462,7 +476,7 @@ mod tests {
         fs::create_dir_all(&library_dir).expect("must create library directory");
         fs::create_dir_all(&crs_dir).expect("must create CRS directory");
         write_package_manifest(&root, "3.0.0");
-        write_provenance(&crs_dir, serde_json::Value::Bool(false), "3.0");
+        write_provenance(&crs_dir, false, "3.0");
 
         validate_operational_crs_compatibility(
             &DevelopmentCrsProvenanceArg::default(),

@@ -4,6 +4,7 @@ use chrono::Local;
 use icicle_bls12_381::curve::ScalarField;
 use icicle_core::traits::FieldImpl;
 use libs::crs_artifacts::{ArchivedG1SerdeRkyv, ArchivedSigma1Rkyv, G1SerdeRkyv, SigmaRkyv};
+pub use libs::crs_provenance::{DuskSourceProvenance, Phase1SourceProvenance};
 use libs::group_structures::{G1serde, Sigma};
 pub use libs::input_origin::SubcircuitLibraryOrigin;
 use rkyv::ser::Serializer as _;
@@ -20,58 +21,6 @@ use std::path::PathBuf;
 pub const HASH_BYTES_LEN: usize = 64;
 const PHASE2_ACC_MAGIC: &[u8; 8] = b"P2ACCRKY";
 const PHASE2_ACC_HEADER_LEN: usize = PHASE2_ACC_MAGIC.len() + std::mem::size_of::<u64>();
-
-#[derive(
-    Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Archive, RkyvSerialize, RkyvDeserialize,
-)]
-#[archive(check_bytes)]
-pub struct DuskSourceProvenance {
-    pub source_url: String,
-    pub source_size_bytes: u64,
-    pub raw_encoding: String,
-    pub pinned_contribution: String,
-    pub pinned_readme_url: String,
-    pub pinned_drive_file_id: String,
-    pub expected_source_sha256: String,
-    pub actual_source_sha256: String,
-    pub auto_downloaded: bool,
-    pub downloaded_contribution: Option<String>,
-    pub downloaded_readme_url: Option<String>,
-    pub downloaded_drive_file_id: Option<String>,
-    pub max_g1_exp_used: usize,
-    pub max_g2_exp_used: usize,
-    pub transcript_consistency_verified: bool,
-}
-
-#[derive(
-    Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Archive, RkyvSerialize, RkyvDeserialize,
-)]
-#[archive(check_bytes)]
-pub enum Phase1SourceProvenance {
-    Native,
-    DuskGroth16(DuskSourceProvenance),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SubcircuitLibraryProvenance {
-    pub package_name: String,
-    pub package_version: String,
-    pub origin: SubcircuitLibraryOrigin,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FinalCrsProvenance {
-    pub release_eligible: bool,
-    pub generated_at_utc: String,
-    pub compatible_backend_version: String,
-    pub subcircuit_library: SubcircuitLibraryProvenance,
-    pub phase1_source_provenance: Option<Phase1SourceProvenance>,
-    pub combined_sigma_sha256: String,
-    pub sigma_preprocess_sha256: String,
-    pub sigma_verify_sha256: String,
-}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SigmaV2 {

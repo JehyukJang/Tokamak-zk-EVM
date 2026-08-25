@@ -5,6 +5,8 @@ pub mod commitments;
 #[path = "../../../../versioning/compatibility.rs"]
 pub mod compatibility;
 pub mod crs_artifacts;
+#[path = "../../../../versioning/crs-provenance.rs"]
+pub mod crs_provenance;
 pub mod errors;
 pub mod field_structures;
 pub mod frontend_artifacts;

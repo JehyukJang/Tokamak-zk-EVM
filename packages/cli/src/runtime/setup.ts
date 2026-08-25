@@ -27,14 +27,24 @@ interface BackendBuildMetadata {
 }
 
 interface CrsProvenance {
+  documentKind?: string;
   compatibleBackendVersion?: string;
   subcircuitLibrary?: {
     packageName?: string;
     packageVersion?: string;
   };
-  combined_sigma_sha256?: string;
-  sigma_preprocess_sha256?: string;
-  sigma_verify_sha256?: string;
+  combinedSigmaSha256?: string;
+  sigmaPreprocessSha256?: string;
+  sigmaVerifySha256?: string;
+}
+
+interface CrsProvenanceDocumentContract {
+  requiredFields: string[];
+}
+
+interface CrsProvenanceContract {
+  fileName: string;
+  documentKinds: Record<string, CrsProvenanceDocumentContract>;
 }
 
 const BACKEND_BINARY_NAMES = ['preprocess', 'prove', 'verify'] as const;
@@ -45,6 +55,7 @@ const FINAL_CRS_ARTIFACT_FILES = [
   'sigma_verify.json',
   'crs_provenance.json',
 ] as const;
+const FINAL_MPC_CRS_DOCUMENT_KIND = 'finalMpcCrs';
 
 const CRS_DRIVE_FOLDER_ID = '14xqCbLoyoVmUVTTlopiXtKnoHPBGL-Sv';
 
@@ -56,6 +67,12 @@ const CRS_DOWNLOAD_ANONYMOUS_MAX_RETRIES = 5;
 
 async function readJsonFile<T>(filePath: string): Promise<T> {
   return JSON.parse(await fs.readFile(filePath, 'utf8')) as T;
+}
+
+async function readCrsProvenanceContract(): Promise<CrsProvenanceContract> {
+  return readJsonFile<CrsProvenanceContract>(
+    path.resolve(__dirname, '..', '..', 'manifests', 'crs-provenance-contract.json'),
+  );
 }
 
 async function findNamedFile(rootDir: string, filename: string): Promise<string> {
@@ -259,6 +276,7 @@ export async function validateDownloadedCrsArchive(
 }> {
   const provenancePath = await findNamedFile(extractedDir, 'crs_provenance.json');
   const provenance = await readJsonFile<CrsProvenance>(provenancePath);
+  await validateFinalMpcCrsProvenanceContract(provenance, archiveName);
   if (provenance.compatibleBackendVersion !== compatibleBackendVersion) {
     throw new Error(
       `CRS archive ${archiveName} has compatibleBackendVersion ${provenance.compatibleBackendVersion ?? '<missing>'}, expected ${compatibleBackendVersion}.`,
@@ -330,15 +348,36 @@ export async function validateDownloadedCrsArchive(
   };
 }
 
+async function validateFinalMpcCrsProvenanceContract(
+  provenance: CrsProvenance,
+  archiveName: string,
+): Promise<void> {
+  const contract = await readCrsProvenanceContract();
+  const finalMpcCrs = contract.documentKinds[FINAL_MPC_CRS_DOCUMENT_KIND];
+  if (contract.fileName !== 'crs_provenance.json' || finalMpcCrs === undefined) {
+    throw new Error('The packaged CRS provenance contract does not define finalMpcCrs.');
+  }
+  if (provenance.documentKind !== FINAL_MPC_CRS_DOCUMENT_KIND) {
+    throw new Error(
+      `CRS archive ${archiveName} has documentKind ${provenance.documentKind ?? '<missing>'}, expected ${FINAL_MPC_CRS_DOCUMENT_KIND}.`,
+    );
+  }
+  for (const field of finalMpcCrs.requiredFields) {
+    if (!Object.hasOwn(provenance, field)) {
+      throw new Error(`CRS archive ${archiveName} finalMpcCrs provenance is missing ${field}.`);
+    }
+  }
+}
+
 async function validateCrsArtifactHashes(
   extractedDir: string,
   archiveName: string,
   provenance: CrsProvenance,
 ): Promise<void> {
   const checks = [
-    ['combined_sigma_sha256', 'combined_sigma.rkyv'],
-    ['sigma_preprocess_sha256', 'sigma_preprocess.rkyv'],
-    ['sigma_verify_sha256', 'sigma_verify.json'],
+    ['combinedSigmaSha256', 'combined_sigma.rkyv'],
+    ['sigmaPreprocessSha256', 'sigma_preprocess.rkyv'],
+    ['sigmaVerifySha256', 'sigma_verify.json'],
   ] as const;
 
   for (const [field, fileName] of checks) {
