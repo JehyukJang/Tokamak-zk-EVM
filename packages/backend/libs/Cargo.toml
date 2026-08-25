@@ -44,4 +44,5 @@ local-development-subcircuit-library = []
 production-npm-subcircuit-library = []
 
 [build-dependencies]
+serde = { workspace = true }
 serde_json = { workspace = true }

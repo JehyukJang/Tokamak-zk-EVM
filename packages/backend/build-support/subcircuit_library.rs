@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+#[path = "../../../versioning/backend-build-metadata.rs"]
+mod backend_build_metadata_contract;
 #[path = "subcircuit_library/cargo_env.rs"]
 mod cargo_env;
 #[path = "subcircuit_library/generated.rs"]
@@ -76,8 +78,14 @@ pub fn configure_subcircuit_library_metadata(
     if source_selection::selected_input_origin()?
         == source_selection::SelectedInputOrigin::NpmSnapshot
     {
+        backend_build_metadata_contract::ensure_runtime_package(package_name)
+            .map_err(io::Error::other)?;
         let snapshot = prepare_production_npm_subcircuit_library()?;
         let compatible_backend_version = read_cli_compatible_backend_version(package_version)?;
+        integrity::validate_release_mpc_library_compatibility(
+            &snapshot.version,
+            &compatible_backend_version,
+        )?;
         println!("cargo:rustc-cfg=tokamak_embedded_subcircuit_library");
         cargo_env::emit_subcircuit_library_build_env(
             &snapshot.version,

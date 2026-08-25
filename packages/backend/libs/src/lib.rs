@@ -1,4 +1,6 @@
 #![allow(non_snake_case)]
+#[path = "../../../../versioning/backend-build-metadata.rs"]
+pub mod backend_build_metadata;
 pub mod bivariate_polynomial;
 pub mod cli;
 pub mod commitments;

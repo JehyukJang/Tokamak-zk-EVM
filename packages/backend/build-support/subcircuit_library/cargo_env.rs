@@ -1,5 +1,6 @@
+use super::backend_build_metadata_contract::{metadata_file_name, BackendBuildMetadata};
 use super::input_origin_contract::SubcircuitLibraryOrigin;
-use super::{ResolvedSubcircuitLibrary, DECLARED_RANGE, PACKAGE_NAME, RUNTIME_MODE};
+use super::{ResolvedSubcircuitLibrary, PACKAGE_NAME};
 use std::fs;
 use std::io;
 
@@ -9,23 +10,17 @@ pub(crate) fn emit_build_metadata(
     current_package_version: &str,
     compatible_backend_version: &str,
 ) -> io::Result<()> {
-    let metadata = serde_json::json!({
-        "dependencies": {
-            "subcircuitLibrary": {
-                "buildVersion": snapshot.version,
-                "declaredRange": DECLARED_RANGE,
-                "packageName": PACKAGE_NAME,
-                "runtimeMode": RUNTIME_MODE,
-            }
-        },
-        "packageName": current_package_name,
-        "packageVersion": current_package_version,
-        "compatibleBackendVersion": compatible_backend_version,
-    });
+    let metadata = BackendBuildMetadata::new(
+        current_package_name,
+        current_package_version,
+        compatible_backend_version,
+        &snapshot.version,
+    )
+    .map_err(io::Error::other)?;
     fs::write(
         snapshot
             .release_dir
-            .join(format!("build-metadata-{current_package_name}.json")),
+            .join(metadata_file_name(current_package_name).map_err(io::Error::other)?),
         format!(
             "{}\n",
             serde_json::to_string_pretty(&metadata).map_err(io::Error::other)?
