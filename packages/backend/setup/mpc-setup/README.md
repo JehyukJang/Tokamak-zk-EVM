@@ -132,6 +132,12 @@ cargo run --release -p mpc-setup --no-default-features \
   --output ./setup/mpc-setup/output/dusk.final
 ```
 
+`run` is a production-only command. Before it creates or downloads ceremony
+state, it requires the release build with
+`production-npm-subcircuit-library` and performs the same Google Drive
+configuration, authentication, and folder-permission preflight as `publish`.
+If that preflight fails, no ceremony output or intermediate state is created.
+
 Local developer build example:
 
 ```bash
@@ -163,7 +169,8 @@ The published folder URL recorded in provenance is derived automatically from
 `TOKAMAK_MPC_DRIVE_FOLDER_ID`.
 The OAuth client JSON file must be a Google desktop-app client credential file.
 On the first `publish` or `run`, `dusk_backed_mpc_setup` opens a browser window for Google login
-and stores the OAuth token at `TOKAMAK_MPC_DRIVE_OAUTH_TOKEN_PATH`.
+and stores the OAuth token at `TOKAMAK_MPC_DRIVE_OAUTH_TOKEN_PATH`. For `run`, this happens before
+the ceremony begins.
 The authenticated Google account must be able to add children to the configured folder and must
 also be allowed to create file permissions and update file sharing restrictions on uploaded
 archives; otherwise the publication step fails after upload.

@@ -20,6 +20,8 @@ pub enum MpcSetupError {
     },
     #[error("invalid MPC state during {phase}: {reason}")]
     State { phase: &'static str, reason: String },
+    #[error("production Dusk MPC preflight failed: {reason}")]
+    ProductionPreflight { reason: String },
     #[error(transparent)]
     Contributor(#[from] ContributorError),
     #[error(transparent)]
@@ -40,6 +42,9 @@ impl CliDiagnostic for MpcSetupError {
             }
             Self::State { .. } => {
                 "Use a complete, matching ceremony intermediate directory and retry from its required phase."
+            }
+            Self::ProductionPreflight { .. } => {
+                "Build the composite command with the production npm feature and configure Google Drive publication before retrying."
             }
             Self::Contributor(_) => {
                 "Inspect the previous ceremony contribution and its artifact files before retrying."
@@ -116,10 +121,29 @@ pub fn run_native_mpc_setup(config: &NativeMpcSetupConfig) -> Result<(), MpcSetu
 }
 
 pub fn run_dusk_backed_mpc_setup(config: &DuskBackedMpcSetupConfig) -> Result<(), MpcSetupError> {
+    preflight_composite_dusk_production()?;
     run_dusk_backed_ceremony(config)?;
     run_dusk_backed_publication(&DuskPublicationConfig {
         intermediate: config.intermediate.clone(),
         output: config.output.clone(),
+    })
+}
+
+fn preflight_composite_dusk_production() -> Result<(), MpcSetupError> {
+    ensure_composite_dusk_build_policy()?;
+    preflight_drive_upload()?;
+    Ok(())
+}
+
+#[cfg(all(tokamak_release_profile, tokamak_production_npm_subcircuit_library))]
+fn ensure_composite_dusk_build_policy() -> Result<(), MpcSetupError> {
+    Ok(())
+}
+
+#[cfg(not(all(tokamak_release_profile, tokamak_production_npm_subcircuit_library)))]
+fn ensure_composite_dusk_build_policy() -> Result<(), MpcSetupError> {
+    Err(MpcSetupError::ProductionPreflight {
+        reason: "the composite `run` command requires a release build with the production-npm-subcircuit-library feature".to_string(),
     })
 }
 
@@ -235,8 +259,10 @@ fn ensure_directory(path: &str) -> Result<(), MpcSetupError> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(all(tokamak_release_profile, tokamak_production_npm_subcircuit_library)))]
+    use super::run_dusk_backed_mpc_setup;
     use super::{
-        run_dusk_backed_ceremony, run_dusk_backed_mpc_setup, run_native_mpc_setup,
+        ensure_composite_dusk_build_policy, run_dusk_backed_ceremony, run_native_mpc_setup,
         DuskBackedMpcSetupConfig, MpcSetupError, NativeMpcSetupConfig,
     };
 
@@ -280,8 +306,9 @@ mod tests {
         assert!(!intermediate.exists());
     }
 
+    #[cfg(not(all(tokamak_release_profile, tokamak_production_npm_subcircuit_library)))]
     #[test]
-    fn dusk_composite_runs_ceremony_before_publication() {
+    fn dusk_composite_rejects_a_local_build_before_creating_ceremony_state() {
         let workspace = tempfile::tempdir().expect("must create temporary workspace");
         let output = workspace.path().join("output");
         let intermediate = workspace.path().join("intermediate");
@@ -298,9 +325,21 @@ mod tests {
         };
 
         let error = run_dusk_backed_mpc_setup(&config)
-            .expect_err("the ceremony must reject the missing QAP before publication");
-        assert!(matches!(error, MpcSetupError::Io { .. }));
+            .expect_err("the composite command must reject a local build before ceremony work");
+        assert!(matches!(error, MpcSetupError::ProductionPreflight { .. }));
         assert!(!output.exists());
         assert!(!intermediate.exists());
+    }
+
+    #[test]
+    fn composite_dusk_build_policy_matches_compilation_mode() {
+        #[cfg(all(tokamak_release_profile, tokamak_production_npm_subcircuit_library))]
+        assert!(ensure_composite_dusk_build_policy().is_ok());
+
+        #[cfg(not(all(tokamak_release_profile, tokamak_production_npm_subcircuit_library)))]
+        assert!(matches!(
+            ensure_composite_dusk_build_policy(),
+            Err(MpcSetupError::ProductionPreflight { .. })
+        ));
     }
 }

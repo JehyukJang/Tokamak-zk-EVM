@@ -148,6 +148,9 @@ cargo run --release -p mpc-setup --no-default-features \
 ```
 
 Use `run` in place of `ceremony` to retain the one-command ceremony-then-publication workflow.
+It is available only from the release build with
+`production-npm-subcircuit-library`; it validates the Google Drive publication
+environment before creating or downloading ceremony state.
 
 The ceremony validates the pinned Dusk source digest and used tau ranges. Publication:
 
