@@ -3,10 +3,7 @@
   "documentKinds": {
     "developmentTrustedSetupSigma": {
       "releaseEligible": false,
-      "requiredFields": [
-        "documentKind",
-        "releaseEligible"
-      ]
+      "requiredFields": ["documentKind", "releaseEligible"]
     },
     "finalMpcCrs": {
       "requiredFields": [
