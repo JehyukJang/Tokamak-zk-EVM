@@ -203,12 +203,19 @@ The intermediate directory contains ceremony state such as:
 - contributor metadata files
 - `dusk.response` in dusk-backed mode
 
-The final output directory contains only:
+The configured final output path is an active symlink to one complete CRS
+generation. It contains only:
 
 - `combined_sigma.rkyv`
 - `sigma_preprocess.rkyv`
 - `sigma_verify.json`
 - `crs_provenance.json`
+
+MPC setup stages those four files under the output path's parent
+`generations/.staging-*` directory, validates the staged artifact digests, and
+then atomically replaces the active output symlink. The previous generation is
+deleted immediately after activation. Continue passing the configured output
+path to downstream tools; they do not need to address generation directories.
 
 Trusted setup and native MPC emit the same three Sigma files for local development, but their
 provenance records `releaseEligible: false`. Neither is a release or deployment CRS and neither

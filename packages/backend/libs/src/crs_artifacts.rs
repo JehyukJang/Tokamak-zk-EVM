@@ -20,8 +20,10 @@ use sha2::{Digest, Sha256};
 use std::fs::{self, File};
 use std::io::{self, BufReader, BufWriter, Read};
 use std::path::{Path, PathBuf};
+use std::process;
 #[cfg(feature = "timing")]
 use std::time::Instant;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 impl Sigma {
     pub fn sigma_verify(&self) -> SigmaVerify {
@@ -78,36 +80,345 @@ pub struct FinalCrsDigests {
     pub sigma_verify_sha256: String,
 }
 
-pub fn write_final_crs_artifacts(
-    output_dir: &PathBuf,
-    sigma: &Sigma,
-) -> io::Result<FinalCrsDigests> {
+pub fn write_final_crs_artifacts(output_dir: &Path, sigma: &Sigma) -> io::Result<FinalCrsDigests> {
     fs::create_dir_all(output_dir)?;
 
     let sigma_rkyv = SigmaRkyv::from_sigma(sigma);
     let combined_sigma_bytes = rkyv::to_bytes::<_, 256>(&sigma_rkyv).map_err(io::Error::other)?;
-    fs::write(
-        output_dir.join("combined_sigma.rkyv"),
-        combined_sigma_bytes.as_ref(),
-    )?;
-
     let sigma_preprocess_rkyv = SigmaPreprocessRkyv::from_sigma(sigma);
     let sigma_preprocess_bytes =
         rkyv::to_bytes::<_, 256>(&sigma_preprocess_rkyv).map_err(io::Error::other)?;
-    fs::write(
-        output_dir.join("sigma_preprocess.rkyv"),
-        sigma_preprocess_bytes.as_ref(),
-    )?;
 
     let sigma_verify = sigma.sigma_verify();
     let sigma_verify_bytes = serde_json::to_vec_pretty(&sigma_verify).map_err(io::Error::other)?;
-    fs::write(output_dir.join("sigma_verify.json"), &sigma_verify_bytes)?;
+    write_final_crs_artifact_files(
+        output_dir,
+        &[
+            ("combined_sigma.rkyv", combined_sigma_bytes.as_ref()),
+            ("sigma_preprocess.rkyv", sigma_preprocess_bytes.as_ref()),
+            ("sigma_verify.json", &sigma_verify_bytes),
+        ],
+        |path, contents| fs::write(path, contents),
+    )?;
 
     Ok(FinalCrsDigests {
         combined_sigma_sha256: sha256_hex(combined_sigma_bytes.as_ref()),
         sigma_preprocess_sha256: sha256_hex(sigma_preprocess_bytes.as_ref()),
         sigma_verify_sha256: sha256_hex(&sigma_verify_bytes),
     })
+}
+
+fn write_final_crs_artifact_files<F>(
+    output_dir: &Path,
+    artifacts: &[(&str, &[u8])],
+    mut write_file: F,
+) -> io::Result<()>
+where
+    F: FnMut(&Path, &[u8]) -> io::Result<()>,
+{
+    for (file_name, contents) in artifacts {
+        write_file(&output_dir.join(file_name), contents)?;
+    }
+    Ok(())
+}
+
+/// A complete but inactive MPC CRS generation.
+///
+/// The finalization flow writes and validates every public CRS file here before
+/// replacing the caller's active output path. Dropping an inactive stage removes
+/// only its private staging directory.
+pub struct StagedFinalCrs {
+    active_output: PathBuf,
+    generations_directory: PathBuf,
+    staging_directory: Option<PathBuf>,
+}
+
+impl StagedFinalCrs {
+    pub fn staging_directory(&self) -> io::Result<&Path> {
+        self.staging_directory
+            .as_deref()
+            .ok_or_else(|| io::Error::other("CRS staging directory is no longer available"))
+    }
+
+    pub fn write_provenance(&self, provenance: &[u8]) -> io::Result<()> {
+        fs::write(
+            self.staging_directory()?.join("crs_provenance.json"),
+            provenance,
+        )
+    }
+
+    pub fn verify_artifact_digests(&self, expected: &FinalCrsDigests) -> io::Result<()> {
+        verify_final_crs_artifact_digests(self.staging_directory()?, expected)
+    }
+
+    /// Atomically make this complete generation available at the configured
+    /// output path. The former active generation is deleted immediately after
+    /// activation succeeds.
+    pub fn activate(mut self) -> io::Result<()> {
+        let staging_directory = self.staging_directory()?.to_path_buf();
+        activate_staged_final_crs_directory(
+            &self.active_output,
+            &self.generations_directory,
+            &staging_directory,
+        )?;
+        self.staging_directory = None;
+        Ok(())
+    }
+}
+
+impl Drop for StagedFinalCrs {
+    fn drop(&mut self) {
+        if let Some(staging_directory) = &self.staging_directory {
+            let _ = fs::remove_dir_all(staging_directory);
+        }
+    }
+}
+
+/// Create an inactive generation containing all three final Sigma artifacts.
+/// The caller must write and validate `crs_provenance.json` before activation.
+pub fn stage_final_crs_artifacts(
+    active_output: &Path,
+    sigma: &Sigma,
+) -> io::Result<(StagedFinalCrs, FinalCrsDigests)> {
+    let output_parent = active_output
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let generations_directory = output_parent.join("generations");
+    let staging_directory = create_staging_directory(&generations_directory)?;
+    let stage = StagedFinalCrs {
+        active_output: active_output.to_path_buf(),
+        generations_directory,
+        staging_directory: Some(staging_directory),
+    };
+    let digests = write_final_crs_artifacts(stage.staging_directory()?, sigma)?;
+    Ok((stage, digests))
+}
+
+fn create_staging_directory(generations_directory: &Path) -> io::Result<PathBuf> {
+    fs::create_dir_all(generations_directory)?;
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(io::Error::other)?
+        .as_nanos();
+    let process_id = process::id();
+    for attempt in 0..32 {
+        let staging_directory =
+            generations_directory.join(format!(".staging-{timestamp}-{process_id}-{attempt}"));
+        match fs::create_dir(&staging_directory) {
+            Ok(()) => return Ok(staging_directory),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        "could not allocate a unique CRS staging directory",
+    ))
+}
+
+fn activate_staged_final_crs_directory(
+    active_output: &Path,
+    generations_directory: &Path,
+    staging_directory: &Path,
+) -> io::Result<()> {
+    activate_staged_final_crs_directory_with_remove(
+        active_output,
+        generations_directory,
+        staging_directory,
+        |path| fs::remove_dir_all(path),
+    )
+}
+
+fn activate_staged_final_crs_directory_with_remove<F>(
+    active_output: &Path,
+    generations_directory: &Path,
+    staging_directory: &Path,
+    mut remove_directory: F,
+) -> io::Result<()>
+where
+    F: FnMut(&Path) -> io::Result<()>,
+{
+    let generation_directory = generation_directory_for(staging_directory)?;
+    fs::rename(staging_directory, &generation_directory)?;
+
+    let previous_generation =
+        match activate_generation(active_output, generations_directory, &generation_directory) {
+            Ok(previous_generation) => previous_generation,
+            Err(error) => {
+                let _ = fs::remove_dir_all(&generation_directory);
+                return Err(error);
+            }
+        };
+
+    if let Some(previous_generation) = previous_generation {
+        remove_directory(&previous_generation)?;
+    }
+    Ok(())
+}
+
+fn generation_directory_for(staging_directory: &Path) -> io::Result<PathBuf> {
+    let staging_name = staging_directory.file_name().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "CRS staging directory has no file name",
+        )
+    })?;
+    let staging_name = staging_name.to_string_lossy();
+    let generation_name = staging_name.strip_prefix(".staging-").ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "CRS staging directory does not use the expected name",
+        )
+    })?;
+    let parent = staging_directory.parent().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "CRS staging directory has no parent",
+        )
+    })?;
+    Ok(parent.join(format!("generation-{generation_name}")))
+}
+
+fn activate_generation(
+    active_output: &Path,
+    generations_directory: &Path,
+    next_generation: &Path,
+) -> io::Result<Option<PathBuf>> {
+    let output_state = inspect_active_output(active_output, generations_directory)?;
+    let temporary_link = temporary_link_path(active_output, next_generation)?;
+    create_directory_symlink(
+        next_generation
+            .strip_prefix(
+                active_output
+                    .parent()
+                    .filter(|path| !path.as_os_str().is_empty())
+                    .unwrap_or_else(|| Path::new(".")),
+            )
+            .map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "CRS generation is not located below the active output parent",
+                )
+            })?,
+        &temporary_link,
+    )?;
+
+    let migrated_legacy_directory = if output_state == ActiveOutput::Directory {
+        let legacy_directory = generations_directory.join(format!(
+            "legacy-{}-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(io::Error::other)?
+                .as_nanos(),
+            process::id()
+        ));
+        if let Err(error) = fs::rename(active_output, &legacy_directory) {
+            let _ = fs::remove_file(&temporary_link);
+            return Err(error);
+        }
+        Some(legacy_directory)
+    } else {
+        None
+    };
+
+    if let Err(error) = fs::rename(&temporary_link, active_output) {
+        let _ = fs::remove_file(&temporary_link);
+        if let Some(legacy_directory) = &migrated_legacy_directory {
+            let _ = fs::rename(legacy_directory, active_output);
+        }
+        return Err(error);
+    }
+
+    Ok(match output_state {
+        ActiveOutput::Missing => None,
+        ActiveOutput::Directory => migrated_legacy_directory,
+        ActiveOutput::ManagedSymlink(previous_generation) => Some(previous_generation),
+    })
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ActiveOutput {
+    Missing,
+    Directory,
+    ManagedSymlink(PathBuf),
+}
+
+fn inspect_active_output(
+    active_output: &Path,
+    generations_directory: &Path,
+) -> io::Result<ActiveOutput> {
+    match fs::symlink_metadata(active_output) {
+        Ok(metadata) if metadata.file_type().is_dir() => Ok(ActiveOutput::Directory),
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            let canonical_generations_directory = fs::canonicalize(generations_directory)?;
+            let canonical_target = fs::canonicalize(active_output).map_err(|error| {
+                io::Error::new(
+                    error.kind(),
+                    format!(
+                        "cannot resolve existing CRS output symlink {}: {error}",
+                        active_output.display()
+                    ),
+                )
+            })?;
+            if canonical_target.starts_with(&canonical_generations_directory)
+                && canonical_target != canonical_generations_directory
+                && fs::metadata(&canonical_target)?.is_dir()
+            {
+                Ok(ActiveOutput::ManagedSymlink(canonical_target))
+            } else {
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "existing CRS output symlink {} does not target a managed generation",
+                        active_output.display()
+                    ),
+                ))
+            }
+        }
+        Ok(_) => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "existing CRS output path is neither a directory nor a symbolic link: {}",
+                active_output.display()
+            ),
+        )),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(ActiveOutput::Missing),
+        Err(error) => Err(error),
+    }
+}
+
+fn temporary_link_path(active_output: &Path, next_generation: &Path) -> io::Result<PathBuf> {
+    let output_name = active_output.file_name().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "CRS output path has no file name",
+        )
+    })?;
+    let generation_name = next_generation.file_name().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "CRS generation path has no file name",
+        )
+    })?;
+    Ok(active_output.with_file_name(format!(
+        ".{}.next-{}",
+        output_name.to_string_lossy(),
+        generation_name.to_string_lossy()
+    )))
+}
+
+#[cfg(unix)]
+fn create_directory_symlink(target: &Path, link: &Path) -> io::Result<()> {
+    std::os::unix::fs::symlink(target, link)
+}
+
+#[cfg(not(unix))]
+fn create_directory_symlink(_target: &Path, _link: &Path) -> io::Result<()> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "atomic CRS activation requires Unix directory symlinks",
+    ))
 }
 
 /// Verify that final CRS artifacts still match the digests recorded when they
@@ -881,5 +1192,160 @@ mod decoded_xy_powers_tests {
             assert_eq!(cached_polynomial.x_degree, archived_polynomial.x_degree);
             assert_eq!(cached_polynomial.y_degree, archived_polynomial.y_degree);
         }
+    }
+}
+
+#[cfg(test)]
+mod final_crs_generation_tests {
+    use super::{
+        activate_staged_final_crs_directory_with_remove, create_staging_directory,
+        write_final_crs_artifact_files, StagedFinalCrs,
+    };
+    use std::fs;
+    use std::io;
+    use std::path::{Path, PathBuf};
+    use std::process;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn test_directory(name: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory =
+            std::env::temp_dir().join(format!("tokamak-crs-{name}-{nonce}-{}", process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        directory
+    }
+
+    fn staged_generation(root: &Path, output: &Path) -> StagedFinalCrs {
+        let generations_directory = root.join("generations");
+        let staging_directory = create_staging_directory(&generations_directory).unwrap();
+        fs::write(staging_directory.join("complete"), b"new CRS").unwrap();
+        StagedFinalCrs {
+            active_output: output.to_path_buf(),
+            generations_directory,
+            staging_directory: Some(staging_directory),
+        }
+    }
+
+    #[test]
+    fn artifact_write_failure_stops_at_the_failing_file() {
+        let artifacts = [
+            ("combined_sigma.rkyv", b"combined".as_slice()),
+            ("sigma_preprocess.rkyv", b"preprocess".as_slice()),
+            ("sigma_verify.json", b"verify".as_slice()),
+        ];
+
+        for (failing_index, (failing_name, _)) in artifacts.iter().enumerate() {
+            let root = test_directory(&format!("artifact-write-{failing_index}"));
+            let output = root.join("staging");
+            fs::create_dir_all(&output).unwrap();
+            let error = write_final_crs_artifact_files(&output, &artifacts, |path, bytes| {
+                if path.file_name().unwrap() == *failing_name {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "injected write failure",
+                    ));
+                }
+                fs::write(path, bytes)
+            })
+            .unwrap_err();
+
+            assert_eq!(error.kind(), io::ErrorKind::Other);
+            for (index, (file_name, _)) in artifacts.iter().enumerate() {
+                assert_eq!(output.join(file_name).exists(), index < failing_index);
+            }
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn provenance_write_failure_preserves_the_active_output() {
+        let root = test_directory("provenance-write");
+        let output = root.join("output");
+        fs::create_dir_all(&output).unwrap();
+        fs::write(output.join("complete"), b"old CRS").unwrap();
+        let stage = staged_generation(&root, &output);
+        fs::remove_dir_all(stage.staging_directory().unwrap()).unwrap();
+
+        assert!(stage.write_provenance(b"{}").is_err());
+        assert_eq!(fs::read(output.join("complete")).unwrap(), b"old CRS");
+        drop(stage);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn activation_migrates_legacy_output_and_immediately_deletes_prior_generation() {
+        let root = test_directory("activation");
+        let output = root.join("output");
+        fs::create_dir_all(&output).unwrap();
+        fs::write(output.join("complete"), b"legacy CRS").unwrap();
+
+        staged_generation(&root, &output).activate().unwrap();
+        assert!(fs::symlink_metadata(&output)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(fs::read(output.join("complete")).unwrap(), b"new CRS");
+        let first_generation = fs::canonicalize(&output).unwrap();
+        assert!(!root.join("generations").join("legacy").exists());
+
+        staged_generation(&root, &output).activate().unwrap();
+        assert_eq!(fs::read(output.join("complete")).unwrap(), b"new CRS");
+        assert!(!first_generation.exists());
+        let entries = fs::read_dir(root.join("generations")).unwrap().count();
+        assert_eq!(entries, 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn failed_prior_generation_deletion_keeps_the_new_generation_active() {
+        let root = test_directory("prior-delete");
+        let output = root.join("output");
+        staged_generation(&root, &output).activate().unwrap();
+        let prior_generation = fs::canonicalize(&output).unwrap();
+
+        let stage = staged_generation(&root, &output);
+        let staging_directory = stage.staging_directory().unwrap().to_path_buf();
+        let error = activate_staged_final_crs_directory_with_remove(
+            &output,
+            &root.join("generations"),
+            &staging_directory,
+            |_| {
+                Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "injected deletion failure",
+                ))
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert_eq!(fs::read(output.join("complete")).unwrap(), b"new CRS");
+        assert!(prior_generation.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn activation_rejects_an_unmanaged_active_symlink_without_replacing_it() {
+        let root = test_directory("unmanaged-symlink");
+        let output = root.join("output");
+        let unmanaged = root.join("unmanaged");
+        fs::create_dir_all(&unmanaged).unwrap();
+        fs::write(unmanaged.join("complete"), b"unmanaged CRS").unwrap();
+        std::os::unix::fs::symlink(&unmanaged, &output).unwrap();
+
+        let stage = staged_generation(&root, &output);
+        assert_eq!(
+            stage.activate().unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
+        assert_eq!(fs::read(output.join("complete")).unwrap(), b"unmanaged CRS");
+        assert_eq!(fs::read_dir(root.join("generations")).unwrap().count(), 0);
+        fs::remove_dir_all(root).unwrap();
     }
 }

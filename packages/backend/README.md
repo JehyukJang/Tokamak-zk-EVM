@@ -174,6 +174,12 @@ See [setup/mpc-setup/README.md](./setup/mpc-setup/README.md) for the full MPC op
 - `sigma_verify.json`
 - `crs_provenance.json`
 
+The configured MPC output is an active symlink to a complete generation below
+its parent `generations/` directory. MPC writes and validates all four files in
+a private staging generation before atomically replacing that symlink, then
+immediately deletes the preceding generation. Consumers continue to use the
+configured output path.
+
 Native MPC provenance records `releaseEligible: false`; Dusk-backed MPC records
 `releaseEligible: true`. This field is a Google Drive publisher gate only. The publisher additionally
 requires Dusk phase-1 provenance and npm-snapshot subcircuit-library origin. `preprocess`, `prove`,

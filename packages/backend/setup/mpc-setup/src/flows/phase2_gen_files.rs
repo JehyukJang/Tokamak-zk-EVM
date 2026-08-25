@@ -3,7 +3,7 @@ use crate::sigma::{Phase1SourceProvenance, SigmaV2, SubcircuitLibraryOrigin};
 use crate::utils::StepTimer;
 use crate::versioning::compatible_backend_version;
 use chrono::Utc;
-use libs::crs_artifacts::write_final_crs_artifacts;
+use libs::crs_artifacts::{stage_final_crs_artifacts, FinalCrsDigests};
 use libs::crs_provenance::{CrsProvenance, FinalMpcCrsProvenance, SubcircuitLibraryProvenance};
 use std::env;
 use std::fs;
@@ -33,13 +33,13 @@ pub fn run(config: &Phase2GenFilesConfig) -> Result<(), MpcSetupError> {
     let subcircuit_library_origin = subcircuit_library_origin_from_build()?;
     let sigma = latest_acc.sigma;
     let output_dir = base_path.join(&config.output);
-    let digests =
-        write_final_crs_artifacts(&output_dir, &sigma).map_err(|source| MpcSetupError::Io {
-            operation: "write final CRS artifacts",
+    let (staged_crs, digests) =
+        stage_final_crs_artifacts(&output_dir, &sigma).map_err(|source| MpcSetupError::Io {
+            operation: "stage final CRS artifacts",
             path: output_dir.clone(),
             source,
         })?;
-    timer.log_step("write final CRS artifacts");
+    timer.log_step("stage final CRS artifacts");
 
     let provenance = CrsProvenance::FinalMpcCrs(FinalMpcCrsProvenance {
         release_eligible,
@@ -59,13 +59,60 @@ pub fn run(config: &Phase2GenFilesConfig) -> Result<(), MpcSetupError> {
         phase: "phase-2 finalization",
         reason: format!("cannot serialize CRS provenance: {error}"),
     })?;
-    let provenance_path = output_dir.join("crs_provenance.json");
-    fs::write(&provenance_path, bytes).map_err(|source| MpcSetupError::Io {
-        operation: "write CRS provenance",
-        path: provenance_path,
+    staged_crs
+        .write_provenance(&bytes)
+        .map_err(|source| MpcSetupError::Io {
+            operation: "stage CRS provenance",
+            path: output_dir.clone(),
+            source,
+        })?;
+    timer.log_step("stage CRS provenance");
+    let staged_provenance_path = staged_crs
+        .staging_directory()
+        .map_err(|source| MpcSetupError::Io {
+            operation: "locate staged CRS provenance",
+            path: output_dir.clone(),
+            source,
+        })?
+        .join("crs_provenance.json");
+    let staged_provenance_bytes =
+        fs::read(&staged_provenance_path).map_err(|source| MpcSetupError::Io {
+            operation: "read staged CRS provenance",
+            path: staged_provenance_path,
+            source,
+        })?;
+    let staged_provenance: CrsProvenance = serde_json::from_slice(&staged_provenance_bytes)
+        .map_err(|error| MpcSetupError::State {
+            phase: "phase-2 finalization",
+            reason: format!("cannot parse staged CRS provenance: {error}"),
+        })?;
+    let staged_digests = match staged_provenance {
+        CrsProvenance::FinalMpcCrs(provenance) => FinalCrsDigests {
+            combined_sigma_sha256: provenance.combined_sigma_sha256,
+            sigma_preprocess_sha256: provenance.sigma_preprocess_sha256,
+            sigma_verify_sha256: provenance.sigma_verify_sha256,
+        },
+        CrsProvenance::DevelopmentTrustedSetupSigma(_) => {
+            return Err(MpcSetupError::State {
+                phase: "phase-2 finalization",
+                reason: "staged CRS provenance has the development trusted-setup kind".to_string(),
+            });
+        }
+    };
+    staged_crs
+        .verify_artifact_digests(&staged_digests)
+        .map_err(|source| MpcSetupError::Io {
+            operation: "validate staged final CRS artifacts",
+            path: output_dir.clone(),
+            source,
+        })?;
+    timer.log_step("validate staged final CRS artifacts");
+    staged_crs.activate().map_err(|source| MpcSetupError::Io {
+        operation: "activate final CRS generation",
+        path: output_dir.clone(),
         source,
     })?;
-    timer.log_step("write CRS provenance");
+    timer.log_step("activate final CRS generation");
 
     let lap = start.elapsed();
     println!("The sigma writing time: {:.6} seconds", lap.as_secs_f64());
