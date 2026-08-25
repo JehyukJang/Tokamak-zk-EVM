@@ -1,7 +1,21 @@
 #![allow(dead_code)]
 
+#[path = "subcircuit_library/cargo_env.rs"]
+mod cargo_env;
+#[path = "subcircuit_library/generated.rs"]
+mod generated;
 #[path = "../../../versioning/input-origin.rs"]
 mod input_origin_contract;
+#[path = "subcircuit_library/integrity.rs"]
+mod integrity;
+#[path = "subcircuit_library/local_qap.rs"]
+mod local_qap;
+#[path = "subcircuit_library/npm_snapshot.rs"]
+mod npm_snapshot;
+#[path = "subcircuit_library/source_selection.rs"]
+mod source_selection;
+#[path = "subcircuit_library/types.rs"]
+mod types;
 #[path = "../../../versioning/compatibility.rs"]
 mod version_contract;
 
@@ -33,13 +47,7 @@ const DIGEST_LIBRARY_FILES: &[&str] = &[
     "subcircuitInfo.json",
 ];
 
-struct ResolvedSubcircuitLibrary {
-    version: String,
-    integrity: String,
-    source_digest: String,
-    snapshot_dir: PathBuf,
-    release_dir: PathBuf,
-}
+use types::{LocalSubcircuitLibrary, ResolvedSubcircuitLibrary};
 
 pub fn configure_embedded_release_subcircuit_library(out_dir: &Path) -> io::Result<()> {
     emit_version_contract_rerun_rule();
@@ -67,8 +75,11 @@ pub fn configure_release_subcircuit_library_metadata(
     if let Some(snapshot) = prepare_release_subcircuit_library()? {
         let compatible_backend_version = read_cli_compatible_backend_version(package_version)?;
         println!("cargo:rustc-cfg=tokamak_embedded_subcircuit_library");
-        emit_subcircuit_library_build_env(&snapshot.version, &compatible_backend_version);
-        emit_build_metadata(
+        cargo_env::emit_subcircuit_library_build_env(
+            &snapshot.version,
+            &compatible_backend_version,
+        );
+        cargo_env::emit_build_metadata(
             &snapshot,
             package_name,
             package_version,
@@ -87,275 +98,52 @@ pub fn configure_mpc_subcircuit_library(out_dir: &Path, package_version: &str) -
         println!("cargo:rustc-cfg=tokamak_release_profile");
     }
 
-    if env::var("PROFILE").ok().as_deref() == Some("release")
-        && !local_development_subcircuit_library_selected()
-    {
-        let compatible_backend_version = read_cli_compatible_backend_version(package_version)?;
-        let snapshot = prepare_release_subcircuit_library()?.ok_or_else(|| {
-            io::Error::other("release MPC setup requires an npm subcircuit-library snapshot")
-        })?;
-        validate_release_mpc_library_compatibility(&snapshot.version, &compatible_backend_version)?;
-        emit_mpc_subcircuit_library_build_env(
-            &snapshot.version,
-            &compatible_backend_version,
-            input_origin_contract::SubcircuitLibraryOrigin::NpmSnapshot,
-        );
-        return write_mpc_subcircuit_library_path(out_dir, &snapshot.snapshot_dir);
+    let selection = source_selection::select_mpc_subcircuit_library(package_version)?;
+    match selection.source {
+        source_selection::MpcSubcircuitLibrary::NpmSnapshot(snapshot) => {
+            cargo_env::emit_mpc_subcircuit_library_build_env(
+                &snapshot.version,
+                &selection.compatible_backend_version,
+                input_origin_contract::SubcircuitLibraryOrigin::NpmSnapshot,
+            );
+            write_mpc_subcircuit_library_path(out_dir, &snapshot.snapshot_dir)
+        }
+        source_selection::MpcSubcircuitLibrary::LocalQapCompiler(library) => {
+            cargo_env::emit_mpc_subcircuit_library_build_env(
+                &library.version,
+                &selection.compatible_backend_version,
+                input_origin_contract::SubcircuitLibraryOrigin::LocalQapCompiler,
+            );
+            write_mpc_subcircuit_library_path(out_dir, &library.library_dir)
+        }
     }
-
-    emit_local_qap_rerun_rules();
-    let compatible_backend_version = read_cli_compatible_backend_version(package_version)?;
-    let library = prepare_local_subcircuit_library()?;
-    emit_mpc_subcircuit_library_build_env(
-        &library.version,
-        &compatible_backend_version,
-        input_origin_contract::SubcircuitLibraryOrigin::LocalQapCompiler,
-    );
-    write_mpc_subcircuit_library_path(out_dir, &library.library_dir)
 }
 
 fn local_development_subcircuit_library_selected() -> bool {
     env::var_os("CARGO_FEATURE_LOCAL_DEVELOPMENT_SUBCIRCUIT_LIBRARY").is_some()
 }
 
-fn validate_release_mpc_library_compatibility(
-    library_version: &str,
-    compatible_backend_version: &str,
-) -> io::Result<()> {
-    let library_compatible_version =
-        package_major_minor(library_version, "npm subcircuit-library package version")?;
-    if library_compatible_version != compatible_backend_version {
-        return Err(io::Error::other(format!(
-            "release MPC setup requires npm subcircuit-library compatibility class {compatible_backend_version}, but resolved {library_version} (class {library_compatible_version})"
-        )));
-    }
-    Ok(())
-}
-
 fn write_mpc_subcircuit_library_path(out_dir: &Path, library_dir: &Path) -> io::Result<()> {
-    fs::write(
-        out_dir.join("mpc_subcircuit_library.rs"),
-        format!(
-            "pub const MPC_SUBCIRCUIT_LIBRARY_PATH: &str = {:?};\n",
-            library_dir.to_string_lossy()
-        ),
-    )
-}
-
-struct LocalSubcircuitLibrary {
-    version: String,
-    library_dir: PathBuf,
+    generated::write_mpc_subcircuit_library_path(out_dir, library_dir)
 }
 
 fn prepare_local_subcircuit_library() -> io::Result<LocalSubcircuitLibrary> {
-    let profile_dir = release_dir_from_out_dir()?;
-    let build_root = profile_dir.join(LOCAL_BUILD_ROOT_DIR);
-    fs::create_dir_all(&build_root)?;
-    let lock_path = build_root.join(LOCAL_BUILD_LOCK_FILE);
-    let _guard = acquire_lock(&lock_path)?;
-
-    let qap_root = qap_compiler_root()?;
-    let version = read_qap_compiler_version(&qap_root)?;
-    ensure_qap_compiler_dependencies(&qap_root)?;
-
-    let staging_root = build_root.join(format!(
-        "staging-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or(Duration::from_secs(0))
-            .as_nanos()
-    ));
-    let staging_library_dir = staging_root.join("library");
-    if staging_root.exists() {
-        fs::remove_dir_all(&staging_root)?;
-    }
-    run_qap_compiler_build(&qap_root, &staging_library_dir)?;
-    let staging_constants_path = staging_root
-        .join(SNAPSHOT_CIRCOM_DIR)
-        .join(SNAPSHOT_CONSTANTS_FILE);
-    fs::create_dir_all(staging_root.join(SNAPSHOT_CIRCOM_DIR))?;
-    fs::copy(
-        qap_root
-            .join("subcircuits")
-            .join(SNAPSHOT_CIRCOM_DIR)
-            .join(SNAPSHOT_CONSTANTS_FILE),
-        &staging_constants_path,
-    )?;
-
-    if !staging_library_dir.join("setupParams.json").exists() {
-        return Err(io::Error::other(format!(
-            "local qap-compiler build did not produce {}",
-            staging_library_dir.join("setupParams.json").display()
-        )));
-    }
-
-    let source_digest = digest_subcircuit_source(&staging_constants_path, &staging_library_dir)?;
-    let snapshot_dir = build_root.join(format!(
-        "{}-{}",
-        sanitize(&version),
-        sanitize(&source_digest)
-    ));
-    let library_dir = snapshot_dir.join("library");
-    if !library_dir.exists() {
-        if snapshot_dir.exists() {
-            fs::remove_dir_all(&snapshot_dir)?;
-        }
-        fs::rename(&staging_root, &snapshot_dir)?;
-    } else {
-        let _ = fs::remove_dir_all(&staging_root);
-    }
-
-    Ok(LocalSubcircuitLibrary {
-        version,
-        library_dir,
-    })
+    local_qap::prepare_local_subcircuit_library()
 }
 
 fn prepare_release_subcircuit_library() -> io::Result<Option<ResolvedSubcircuitLibrary>> {
-    if env::var("PROFILE").ok().as_deref() != Some("release") {
-        return Ok(None);
-    }
-
-    let release_dir = release_dir_from_out_dir()?;
-    let snapshot_root = release_dir.join(SNAPSHOT_ROOT_DIR);
-    fs::create_dir_all(&snapshot_root)?;
-
-    let lock_path = snapshot_root.join(".lock");
-    let _guard = acquire_lock(&lock_path)?;
-    let info_path = snapshot_root.join(SNAPSHOT_INFO_FILE);
-    let npm_view = npm_view_latest()?;
-
-    if let Some(existing) = try_read_snapshot(&info_path, &release_dir, &npm_view)? {
-        return Ok(Some(existing));
-    }
-
-    let unpack_root = snapshot_root.join(format!(
-        "{}-{}",
-        sanitize(&npm_view.version),
-        short_hash(&npm_view.integrity)
-    ));
-    let snapshot_dir = unpack_root.join(SNAPSHOT_LIBRARY_DIR);
-    let constants_path = constants_path_for_library_dir(&snapshot_dir)?;
-
-    if !constants_path.exists() || !snapshot_dir.exists() {
-        fetch_and_unpack_snapshot(&snapshot_root, &unpack_root, &npm_view.version)?;
-    }
-
-    let snapshot = ResolvedSubcircuitLibrary {
-        version: npm_view.version,
-        integrity: npm_view.integrity,
-        source_digest: digest_subcircuit_source(&constants_path, &snapshot_dir)?,
-        snapshot_dir,
-        release_dir,
-    };
-    write_snapshot_info(&info_path, &snapshot)?;
-    Ok(Some(snapshot))
-}
-
-fn emit_build_metadata(
-    snapshot: &ResolvedSubcircuitLibrary,
-    current_package_name: &str,
-    current_package_version: &str,
-    compatible_backend_version: &str,
-) -> io::Result<()> {
-    let metadata = serde_json::json!({
-        "dependencies": {
-            "subcircuitLibrary": {
-                "buildVersion": snapshot.version,
-                "declaredRange": DECLARED_RANGE,
-                "packageName": PACKAGE_NAME,
-                "runtimeMode": RUNTIME_MODE,
-            }
-        },
-        "packageName": current_package_name,
-        "packageVersion": current_package_version,
-        "compatibleBackendVersion": compatible_backend_version,
-    });
-    let path = snapshot
-        .release_dir
-        .join(format!("build-metadata-{current_package_name}.json"));
-    fs::write(
-        path,
-        format!(
-            "{}\n",
-            serde_json::to_string_pretty(&metadata).map_err(io::Error::other)?
-        ),
-    )
-}
-
-fn emit_subcircuit_library_build_env(version: &str, compatible_backend_version: &str) {
-    println!(
-        "cargo:rustc-env=TOKAMAK_ZKEVM_COMPATIBLE_BACKEND_VERSION={compatible_backend_version}"
-    );
-    println!("cargo:rustc-env=TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_NAME={PACKAGE_NAME}");
-    println!("cargo:rustc-env=TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION={version}");
-}
-
-fn emit_mpc_subcircuit_library_build_env(
-    version: &str,
-    compatible_backend_version: &str,
-    origin: input_origin_contract::SubcircuitLibraryOrigin,
-) {
-    emit_subcircuit_library_build_env(version, compatible_backend_version);
-    println!(
-        "cargo:rustc-env=TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_ORIGIN={}",
-        origin.as_str()
-    );
+    npm_snapshot::prepare_release_subcircuit_library()
 }
 
 fn generate_embedded_module(
     snapshot: &ResolvedSubcircuitLibrary,
     out_dir: &Path,
 ) -> io::Result<()> {
-    let mut files = Vec::new();
-    collect_files(&snapshot.snapshot_dir, &snapshot.snapshot_dir, &mut files)?;
-    files.sort();
-
-    let mut generated = String::new();
-    generated.push_str("pub const SUBCIRCUIT_LIBRARY_BUILD_VERSION: &str = ");
-    generated.push_str(&format!("{:?};\n", snapshot.version));
-    generated.push_str("pub const SUBCIRCUIT_LIBRARY_INTEGRITY: &str = ");
-    generated.push_str(&format!("{:?};\n", snapshot.integrity));
-    generated.push_str(
-        "\n#[derive(Clone, Copy)]\n\
-         pub struct EmbeddedSubcircuitLibraryFile {\n\
-         \tpub relative_path: &'static str,\n\
-         \tpub bytes: &'static [u8],\n\
-         }\n\n\
-         pub static EMBEDDED_SUBCIRCUIT_LIBRARY_FILES: &[EmbeddedSubcircuitLibraryFile] = &[\n",
-    );
-
-    for file in files {
-        let absolute = snapshot.snapshot_dir.join(&file);
-        generated.push_str("    EmbeddedSubcircuitLibraryFile {\n");
-        generated.push_str(&format!(
-            "        relative_path: {:?},\n",
-            file.replace('\\', "/")
-        ));
-        generated.push_str(&format!(
-            "        bytes: include_bytes!({:?}),\n",
-            absolute.to_string_lossy()
-        ));
-        generated.push_str("    },\n");
-    }
-
-    generated.push_str("];\n");
-    fs::write(out_dir.join("embedded_subcircuit_library.rs"), generated)
+    generated::generate_embedded_module(snapshot, out_dir)
 }
 
 fn write_stub_embedded_module(out_dir: &Path) -> io::Result<()> {
-    fs::write(
-        out_dir.join("embedded_subcircuit_library.rs"),
-        "pub const SUBCIRCUIT_LIBRARY_BUILD_VERSION: &str = \"\";\n\
-         pub const SUBCIRCUIT_LIBRARY_INTEGRITY: &str = \"\";\n\
-         #[derive(Clone, Copy)]\n\
-         pub struct EmbeddedSubcircuitLibraryFile {\n\
-         \tpub relative_path: &'static str,\n\
-         \tpub bytes: &'static [u8],\n\
-         }\n\
-         pub static EMBEDDED_SUBCIRCUIT_LIBRARY_FILES: &[EmbeddedSubcircuitLibraryFile] = &[];\n",
-    )
+    generated::write_stub_embedded_module(out_dir)
 }
 
 fn release_dir_from_out_dir() -> io::Result<PathBuf> {
@@ -462,18 +250,6 @@ fn emit_version_contract_rerun_rule() {
     }
 }
 
-fn strict_major_minor(value: &str, label: &str) -> io::Result<String> {
-    version_contract::parse_compatible_backend_version(value)
-        .map(|version| version.to_string())
-        .map_err(|error| io::Error::other(format!("{label} {error}")))
-}
-
-fn package_major_minor(value: &str, label: &str) -> io::Result<String> {
-    version_contract::compatibility_from_package_version(value)
-        .map(|version| version.to_string())
-        .map_err(|error| io::Error::other(format!("{label} {error}")))
-}
-
 fn read_cli_compatible_backend_version(package_version: &str) -> io::Result<String> {
     let path = cli_package_json_path()?;
     let value: Value = serde_json::from_slice(&fs::read(&path)?).map_err(io::Error::other)?;
@@ -493,9 +269,10 @@ fn read_cli_compatible_backend_version(package_version: &str) -> io::Result<Stri
         })?;
 
     let normalized_compatible =
-        strict_major_minor(compatible_version, "tokamakZkEvm.compatibleBackendVersion")?;
-    let cli_major_minor = package_major_minor(cli_version, "CLI package version")?;
-    let backend_major_minor = package_major_minor(package_version, "backend package version")?;
+        integrity::strict_major_minor(compatible_version, "tokamakZkEvm.compatibleBackendVersion")?;
+    let cli_major_minor = integrity::package_major_minor(cli_version, "CLI package version")?;
+    let backend_major_minor =
+        integrity::package_major_minor(package_version, "backend package version")?;
 
     if normalized_compatible != cli_major_minor || normalized_compatible != backend_major_minor {
         return Err(io::Error::other(format!(
@@ -707,135 +484,6 @@ fn emit_local_qap_rerun_rules() {
     println!("cargo:rerun-if-env-changed=PATH");
 }
 
-fn push_digest_input(
-    files: &mut Vec<(String, PathBuf)>,
-    logical_path: impl Into<String>,
-    absolute_path: PathBuf,
-) -> io::Result<()> {
-    if !absolute_path.is_file() {
-        return Err(io::Error::other(format!(
-            "subcircuit source digest input is missing: {}",
-            absolute_path.display()
-        )));
-    }
-    files.push((logical_path.into(), absolute_path));
-    Ok(())
-}
-
-fn collect_digest_directory(
-    files: &mut Vec<(String, PathBuf)>,
-    logical_prefix: &str,
-    directory: &Path,
-) -> io::Result<()> {
-    if !directory.is_dir() {
-        return Err(io::Error::other(format!(
-            "subcircuit source digest directory is missing: {}",
-            directory.display()
-        )));
-    }
-    for entry in fs::read_dir(directory)? {
-        let entry = entry?;
-        let path = entry.path();
-        if !path.is_file() {
-            return Err(io::Error::other(format!(
-                "subcircuit source digest directory contains unexpected non-file entry: {}",
-                path.display()
-            )));
-        }
-        let name = entry.file_name();
-        let name = name.to_str().ok_or_else(|| {
-            io::Error::other(format!(
-                "subcircuit source digest input has non-UTF-8 file name: {}",
-                path.display()
-            ))
-        })?;
-        push_digest_input(files, format!("{logical_prefix}/{name}"), path)?;
-    }
-    Ok(())
-}
-
-fn constants_path_for_library_dir(library_dir: &Path) -> io::Result<PathBuf> {
-    Ok(library_dir
-        .parent()
-        .ok_or_else(|| {
-            io::Error::other(format!(
-                "cannot derive snapshot root from {}",
-                library_dir.display()
-            ))
-        })?
-        .join(SNAPSHOT_CIRCOM_DIR)
-        .join(SNAPSHOT_CONSTANTS_FILE))
-}
-
-fn digest_subcircuit_source(constants_path: &Path, library_dir: &Path) -> io::Result<String> {
-    let mut files = Vec::new();
-    push_digest_input(
-        &mut files,
-        "circom/constants.circom",
-        constants_path.to_path_buf(),
-    )?;
-    for file in DIGEST_LIBRARY_FILES {
-        push_digest_input(
-            &mut files,
-            format!("library/{file}"),
-            library_dir.join(file),
-        )?;
-    }
-    for directory in DIGEST_LIBRARY_DIRECTORIES {
-        collect_digest_directory(
-            &mut files,
-            &format!("library/{directory}"),
-            &library_dir.join(directory),
-        )?;
-    }
-    files.sort_by(|left, right| left.0.cmp(&right.0));
-
-    let mut hash = 0xcbf29ce484222325u64;
-    for (logical_path, absolute_path) in files {
-        digest_bytes(&mut hash, logical_path.as_bytes());
-        digest_bytes(&mut hash, &(logical_path.len() as u64).to_le_bytes());
-        digest_bytes(&mut hash, &fs::read(absolute_path)?);
-    }
-    Ok(format!("{hash:016x}"))
-}
-
-fn digest_bytes(hash: &mut u64, bytes: &[u8]) {
-    for byte in bytes {
-        *hash ^= u64::from(*byte);
-        *hash = hash.wrapping_mul(0x100000001b3);
-    }
-}
-
-fn sanitize(input: &str) -> String {
-    input
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || ch == '.' || ch == '-' {
-                ch
-            } else {
-                '_'
-            }
-        })
-        .collect()
-}
-
-fn short_hash(input: &str) -> String {
-    let mut out = String::new();
-    for ch in input.chars() {
-        if ch.is_ascii_alphanumeric() {
-            out.push(ch.to_ascii_lowercase());
-        }
-        if out.len() == 12 {
-            break;
-        }
-    }
-    if out.is_empty() {
-        "snapshot".to_string()
-    } else {
-        out
-    }
-}
-
 fn try_read_snapshot(
     path: &Path,
     release_dir: &Path,
@@ -851,7 +499,7 @@ fn try_read_snapshot(
             .and_then(Value::as_str)
             .ok_or_else(|| io::Error::other("resolved snapshot metadata missing snapshotDir"))?,
     );
-    let constants_path = constants_path_for_library_dir(&snapshot_dir)?;
+    let constants_path = integrity::constants_path_for_library_dir(&snapshot_dir)?;
     if !snapshot_dir.exists() {
         return Ok(None);
     }
@@ -882,7 +530,7 @@ fn try_read_snapshot(
     Ok(Some(ResolvedSubcircuitLibrary {
         version,
         integrity,
-        source_digest: digest_subcircuit_source(&constants_path, &snapshot_dir)?,
+        source_digest: integrity::digest_subcircuit_source(&constants_path, &snapshot_dir)?,
         snapshot_dir,
         release_dir: release_dir.to_path_buf(),
     }))
