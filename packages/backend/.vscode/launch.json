@@ -53,7 +53,7 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["build", "--release", "-p", "mpc-setup", "--bin", "dusk_backed_mpc_setup"],
+        "args": ["build", "--release", "-p", "mpc-setup", "--no-default-features", "--features", "production-npm-subcircuit-library", "--bin", "dusk_backed_mpc_setup"],
         "filter": { "name": "dusk_backed_mpc_setup", "kind": "bin" }
       },
       "program": "${cargo:program}",
