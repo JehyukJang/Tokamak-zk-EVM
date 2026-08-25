@@ -14,7 +14,7 @@ icicle-core = { workspace = true }
 icicle-bls12-381 = { workspace = true }
 icicle-runtime = { workspace = true }
 
-libs = { workspace = true }
+libs = { workspace = true, default-features = false }
 rkyv = { workspace = true }
 rayon = { workspace = true }
 ark-bls12-381 = { workspace = true }
@@ -43,9 +43,10 @@ sha2 = "0.10"
 dotenvy = "0.15"
 webbrowser = "1.0"
 [features]
-default = []
+default = ["local-development-subcircuit-library"]
 testing-mode = ["libs/testing-mode"]
-local-development-subcircuit-library = []
+local-development-subcircuit-library = ["libs/local-development-subcircuit-library"]
+production-npm-subcircuit-library = ["libs/production-npm-subcircuit-library"]
 
 [build-dependencies]
 serde_json = { workspace = true }

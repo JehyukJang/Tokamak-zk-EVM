@@ -11,7 +11,7 @@ homepage = { workspace = true }
 icicle-runtime = { workspace = true }
 icicle-core = { workspace = true }
 icicle-bls12-381 = { workspace = true }
-libs = { workspace = true }
+libs = { workspace = true, default-features = false }
 memmap2 = { workspace = true }
 rkyv = { workspace = true, features = ["alloc", "bytecheck", "validation"] }
 clap = { workspace = true }
@@ -25,11 +25,12 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 
 [features]
-default = []
+default = ["local-development-subcircuit-library"]
 testing-mode = []
 timing = ["libs/timing"]
 development-crs-bypass = ["libs/development-crs-bypass"]
 local-development-subcircuit-library = ["libs/local-development-subcircuit-library"]
+production-npm-subcircuit-library = ["libs/production-npm-subcircuit-library"]
 
 [[test]]
 name = "timing"

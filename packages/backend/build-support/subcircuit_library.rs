@@ -47,32 +47,36 @@ const DIGEST_LIBRARY_FILES: &[&str] = &[
     "subcircuitInfo.json",
 ];
 
-use types::{LocalSubcircuitLibrary, ResolvedSubcircuitLibrary};
+use types::ResolvedSubcircuitLibrary;
 
 pub fn configure_embedded_release_subcircuit_library(out_dir: &Path) -> io::Result<()> {
     emit_version_contract_rerun_rule();
     println!("cargo:rustc-check-cfg=cfg(tokamak_embedded_subcircuit_library)");
-    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_LOCAL_DEVELOPMENT_SUBCIRCUIT_LIBRARY");
-    if local_development_subcircuit_library_selected() {
-        return write_stub_embedded_module(out_dir);
+    source_selection::emit_input_origin_rerun_rules();
+    match source_selection::selected_input_origin()? {
+        source_selection::SelectedInputOrigin::LocalQapCompiler => {
+            write_stub_embedded_module(out_dir)
+        }
+        source_selection::SelectedInputOrigin::NpmSnapshot => {
+            let snapshot = prepare_production_npm_subcircuit_library()?;
+            println!("cargo:rustc-cfg=tokamak_embedded_subcircuit_library");
+            generate_embedded_module(&snapshot, out_dir)
+        }
     }
-    if let Some(snapshot) = prepare_release_subcircuit_library()? {
-        println!("cargo:rustc-cfg=tokamak_embedded_subcircuit_library");
-        generate_embedded_module(&snapshot, out_dir)?;
-    } else {
-        write_stub_embedded_module(out_dir)?;
-    }
-    Ok(())
 }
 
-pub fn configure_release_subcircuit_library_metadata(
+pub fn configure_subcircuit_library_metadata(
     package_name: &str,
     package_version: &str,
 ) -> io::Result<()> {
     emit_version_contract_rerun_rule();
     emit_cli_package_rerun_rule();
     println!("cargo:rustc-check-cfg=cfg(tokamak_embedded_subcircuit_library)");
-    if let Some(snapshot) = prepare_release_subcircuit_library()? {
+    source_selection::emit_input_origin_rerun_rules();
+    if source_selection::selected_input_origin()?
+        == source_selection::SelectedInputOrigin::NpmSnapshot
+    {
+        let snapshot = prepare_production_npm_subcircuit_library()?;
         let compatible_backend_version = read_cli_compatible_backend_version(package_version)?;
         println!("cargo:rustc-cfg=tokamak_embedded_subcircuit_library");
         cargo_env::emit_subcircuit_library_build_env(
@@ -93,6 +97,8 @@ pub fn configure_mpc_subcircuit_library(out_dir: &Path, package_version: &str) -
     emit_version_contract_rerun_rule();
     emit_cli_package_rerun_rule();
     println!("cargo:rustc-check-cfg=cfg(tokamak_release_profile)");
+    println!("cargo:rustc-check-cfg=cfg(tokamak_production_npm_subcircuit_library)");
+    source_selection::emit_input_origin_rerun_rules();
 
     if env::var("PROFILE").ok().as_deref() == Some("release") {
         println!("cargo:rustc-cfg=tokamak_release_profile");
@@ -119,20 +125,23 @@ pub fn configure_mpc_subcircuit_library(out_dir: &Path, package_version: &str) -
     }
 }
 
-fn local_development_subcircuit_library_selected() -> bool {
-    env::var_os("CARGO_FEATURE_LOCAL_DEVELOPMENT_SUBCIRCUIT_LIBRARY").is_some()
-}
-
 fn write_mpc_subcircuit_library_path(out_dir: &Path, library_dir: &Path) -> io::Result<()> {
     generated::write_mpc_subcircuit_library_path(out_dir, library_dir)
 }
 
-fn prepare_local_subcircuit_library() -> io::Result<LocalSubcircuitLibrary> {
-    local_qap::prepare_local_subcircuit_library()
-}
-
 fn prepare_release_subcircuit_library() -> io::Result<Option<ResolvedSubcircuitLibrary>> {
     npm_snapshot::prepare_release_subcircuit_library()
+}
+
+fn prepare_production_npm_subcircuit_library() -> io::Result<ResolvedSubcircuitLibrary> {
+    if env::var("PROFILE").ok().as_deref() != Some("release") {
+        return Err(io::Error::other(
+            "production-npm-subcircuit-library requires Cargo's release profile",
+        ));
+    }
+    prepare_release_subcircuit_library()?.ok_or_else(|| {
+        io::Error::other("production npm subcircuit-library snapshot was not resolved")
+    })
 }
 
 fn generate_embedded_module(

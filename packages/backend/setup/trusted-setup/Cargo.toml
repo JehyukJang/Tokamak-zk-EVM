@@ -10,15 +10,16 @@ homepage = { workspace = true }
 [dependencies]
 icicle-core = { workspace = true }
 icicle-bls12-381 = { workspace = true }
-libs = { workspace = true }
+libs = { workspace = true, default-features = false }
 icicle-runtime = { workspace = true }
 clap = { workspace = true }
 thiserror = { workspace = true }
 
 [features]
-default = []
+default = ["local-development-subcircuit-library"]
 testing-mode = ["libs/testing-mode"]
 local-development-subcircuit-library = ["libs/local-development-subcircuit-library"]
+production-npm-subcircuit-library = ["libs/production-npm-subcircuit-library"]
 
 [build-dependencies]
 serde_json = { workspace = true }

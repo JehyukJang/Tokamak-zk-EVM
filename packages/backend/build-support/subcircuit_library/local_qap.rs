@@ -1,8 +1,8 @@
+use super::types::LocalSubcircuitLibrary;
 use super::{
     acquire_lock, ensure_qap_compiler_dependencies, integrity, qap_compiler_root,
     read_qap_compiler_version, release_dir_from_out_dir, run_qap_compiler_build,
-    LocalSubcircuitLibrary, LOCAL_BUILD_LOCK_FILE, LOCAL_BUILD_ROOT_DIR, SNAPSHOT_CIRCOM_DIR,
-    SNAPSHOT_CONSTANTS_FILE,
+    LOCAL_BUILD_LOCK_FILE, LOCAL_BUILD_ROOT_DIR, SNAPSHOT_CIRCOM_DIR, SNAPSHOT_CONSTANTS_FILE,
 };
 use std::fs;
 use std::io;

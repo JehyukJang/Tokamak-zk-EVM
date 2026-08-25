@@ -6,10 +6,12 @@
 - `dusk_backed_mpc_setup`
 
 Both binaries are thin CLI wrappers. The ceremony logic lives in library flow modules under
-[`src/flows`](./src/flows). The `local-development-subcircuit-library` feature prepares local
-qap-compiler output, including in Cargo release builds; release builds without that feature
-prepare the npm subcircuit-library snapshot. Neither MPC mode accepts a runtime library path
-argument.
+[`src/flows`](./src/flows). The default
+`local-development-subcircuit-library` feature prepares local qap-compiler output, including in
+Cargo release builds. The explicit `production-npm-subcircuit-library` feature prepares the npm
+snapshot and requires Cargo's release profile. Production commands therefore use
+`--no-default-features --features production-npm-subcircuit-library`. Neither MPC mode accepts a
+runtime library path argument.
 
 Both binaries are part of the Rust backend workspace and are not published as
 standalone npm or crates.io packages. CLI users normally obtain compatible CRS
@@ -54,11 +56,11 @@ cd "$PWD/packages/backend"
 
 ## Native Mode
 
-`mpc-setup` builds with `local-development-subcircuit-library` build the local
-`../frontend/qap-compiler` package during the Cargo build, including when Cargo uses the release
-profile. Release builds without that feature use the npm subcircuit-library snapshot and reject a
-snapshot whose package major.minor differs from the backend compatibility class. `mpc-setup` does
-not accept `--subcircuit-library`.
+Default `mpc-setup` builds use `local-development-subcircuit-library` and build the local
+`../frontend/qap-compiler` package during Cargo compilation, including with the release profile.
+Production builds use `--no-default-features --features production-npm-subcircuit-library`; they
+use the npm snapshot and reject a snapshot whose package major.minor differs from the backend
+compatibility class. `mpc-setup` does not accept `--subcircuit-library`.
 The setup flow consumes binary R1CS constraint files from the prepared library's `r1cs/` directory.
 
 ```bash
@@ -106,7 +108,8 @@ origin, and final CRS artifacts that match their recorded SHA-256 digests. The c
 Publish an existing ceremony output separately:
 
 ```bash
-cargo run --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
+cargo run --release -p mpc-setup --no-default-features \
+  --features production-npm-subcircuit-library --bin dusk_backed_mpc_setup -- \
   publish \
   --intermediate ./setup/mpc-setup/output/dusk.intermediate \
   --output ./setup/mpc-setup/output/dusk.final
@@ -122,7 +125,8 @@ subcircuit-library snapshot origin, and final CRS artifact digests that match
 Use `run` instead of `ceremony` to execute ceremony followed by publication in one command:
 
 ```bash
-cargo run --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
+cargo run --release -p mpc-setup --no-default-features \
+  --features production-npm-subcircuit-library --bin dusk_backed_mpc_setup -- \
   run \
   --intermediate ./setup/mpc-setup/output/dusk.intermediate \
   --output ./setup/mpc-setup/output/dusk.final
@@ -131,8 +135,7 @@ cargo run --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
 Local developer build example:
 
 ```bash
-cargo run --release -p mpc-setup --features local-development-subcircuit-library \
-  --bin dusk_backed_mpc_setup -- \
+cargo run --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
   ceremony \
   --intermediate ./setup/mpc-setup/output/dusk.intermediate \
   --output ./setup/mpc-setup/output/dusk.final
