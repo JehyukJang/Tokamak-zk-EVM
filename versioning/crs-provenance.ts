@@ -1,6 +1,7 @@
 // Repository-owned TypeScript contract for final-MPC CRS provenance.
 
 export type SubcircuitLibraryOrigin = "npmSnapshot" | "localQapCompiler";
+export interface DuskSourceProvenance { readonly sourceUrl: string; readonly sourceSizeBytes: number; readonly rawEncoding: string; readonly pinnedContribution: string; readonly pinnedReadmeUrl: string; readonly pinnedDriveFileId: string; readonly expectedSourceSha256: string; readonly actualSourceSha256: string; readonly autoDownloaded: boolean; readonly downloadedContribution: string | null; readonly downloadedReadmeUrl: string | null; readonly downloadedDriveFileId: string | null; readonly maxG1ExpUsed: number; readonly maxG2ExpUsed: number; readonly transcriptConsistencyVerified: boolean; }
 
 export interface FinalMpcCrsProvenance {
   readonly documentKind: "finalMpcCrs";
@@ -8,7 +9,7 @@ export interface FinalMpcCrsProvenance {
   readonly generatedAtUtc: string;
   readonly compatibleBackendVersion: string;
   readonly subcircuitLibrary: { readonly packageName: string; readonly packageVersion: string; readonly origin: SubcircuitLibraryOrigin };
-  readonly phase1SourceProvenance: null | "native" | { readonly duskGroth16: Record<string, unknown> };
+  readonly phase1SourceProvenance: null | "native" | { readonly duskGroth16: DuskSourceProvenance };
   readonly combinedSigmaSha256: string;
   readonly sigmaPreprocessSha256: string;
   readonly sigmaVerifySha256: string;
@@ -37,7 +38,7 @@ function parsePhase1(value: unknown, subject: string): FinalMpcCrsProvenance["ph
   for (const field of ["sourceSizeBytes", "maxG1ExpUsed", "maxG2ExpUsed"]) integer(dusk[field], `${subject} duskGroth16.${field}`);
   for (const field of ["autoDownloaded", "transcriptConsistencyVerified"]) bool(dusk[field], `${subject} duskGroth16.${field}`);
   for (const field of ["downloadedContribution", "downloadedReadmeUrl", "downloadedDriveFileId"]) if (dusk[field] !== null) string(dusk[field], `${subject} duskGroth16.${field}`);
-  return { duskGroth16: dusk };
+  return { duskGroth16: dusk as unknown as DuskSourceProvenance };
 }
 
 function exactObject(value: unknown, label: string, fields: readonly string[]): Record<string, unknown> { if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(`${label} must be an object.`); const record = value as Record<string, unknown>; for (const field of fields) if (!Object.prototype.hasOwnProperty.call(record, field)) throw new Error(`${label} is missing ${field}.`); for (const field of Object.keys(record)) if (!fields.includes(field)) throw new Error(`${label} has unsupported field ${field}.`); return record; }

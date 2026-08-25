@@ -27,41 +27,8 @@ interface BackendBuildMetadata {
   packageVersion?: string;
 }
 
-type Phase1SourceProvenance = null | 'native' | { duskGroth16: DuskSourceProvenance };
-
-interface DuskSourceProvenance {
-  sourceUrl: string;
-  sourceSizeBytes: number;
-  rawEncoding: string;
-  pinnedContribution: string;
-  pinnedReadmeUrl: string;
-  pinnedDriveFileId: string;
-  expectedSourceSha256: string;
-  actualSourceSha256: string;
-  autoDownloaded: boolean;
-  downloadedContribution: string | null;
-  downloadedReadmeUrl: string | null;
-  downloadedDriveFileId: string | null;
-  maxG1ExpUsed: number;
-  maxG2ExpUsed: number;
-  transcriptConsistencyVerified: boolean;
-}
-
-interface FinalMpcCrsProvenance {
-  documentKind: typeof FINAL_MPC_CRS_DOCUMENT_KIND;
-  releaseEligible: boolean;
-  generatedAtUtc: string;
-  compatibleBackendVersion: string;
-  subcircuitLibrary: {
-    packageName: string;
-    packageVersion: string;
-    origin: 'npmSnapshot' | 'localQapCompiler';
-  };
-  phase1SourceProvenance: Phase1SourceProvenance;
-  combinedSigmaSha256: string;
-  sigmaPreprocessSha256: string;
-  sigmaVerifySha256: string;
-}
+type FinalMpcCrsProvenance = import("../generated/crs-provenance.generated.js").FinalMpcCrsProvenance;
+type Phase1SourceProvenance = FinalMpcCrsProvenance['phase1SourceProvenance'];
 
 interface CrsProvenanceDocumentContract {
   requiredFields: string[];

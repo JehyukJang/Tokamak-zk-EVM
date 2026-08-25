@@ -2,42 +2,10 @@ import type { BinaryArtifactFileView } from "./binary-format.js";
 import { SUBCIRCUIT_LIBRARY_PACKAGE_VERSION } from "../../generated/setup.generated.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
 import { parseFinalMpcCrsProvenance } from "../../generated/crs-provenance.generated.js";
+export type { FinalMpcCrsProvenance as CrsProvenanceInput } from "../../generated/crs-provenance.generated.js";
+import type { FinalMpcCrsProvenance as CrsProvenanceInput } from "../../generated/crs-provenance.generated.js";
 
 export const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = "@tokamak-zk-evm/subcircuit-library";
-
-export interface CrsProvenanceInput {
-  readonly documentKind: "finalMpcCrs";
-  readonly releaseEligible: boolean;
-  readonly generatedAtUtc: string;
-  readonly compatibleBackendVersion: string;
-  readonly subcircuitLibrary: {
-    readonly packageName: string;
-    readonly packageVersion: string;
-    readonly origin: "npmSnapshot" | "localQapCompiler";
-  };
-  readonly phase1SourceProvenance: null | "native" | {
-    readonly duskGroth16: {
-      readonly sourceUrl: string;
-      readonly sourceSizeBytes: number;
-      readonly rawEncoding: string;
-      readonly pinnedContribution: string;
-      readonly pinnedReadmeUrl: string;
-      readonly pinnedDriveFileId: string;
-      readonly expectedSourceSha256: string;
-      readonly actualSourceSha256: string;
-      readonly autoDownloaded: boolean;
-      readonly downloadedContribution: string | null;
-      readonly downloadedReadmeUrl: string | null;
-      readonly downloadedDriveFileId: string | null;
-      readonly maxG1ExpUsed: number;
-      readonly maxG2ExpUsed: number;
-      readonly transcriptConsistencyVerified: boolean;
-    };
-  };
-  readonly combinedSigmaSha256: string;
-  readonly sigmaPreprocessSha256: string;
-  readonly sigmaVerifySha256: string;
-}
 
 export function validateCrsProvenanceCompatibility(provenance: CrsProvenanceInput): void {
   parseFinalMpcCrsProvenance(provenance);
