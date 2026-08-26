@@ -439,6 +439,11 @@ async function activateCrsGeneration(
   nextGenerationDirectory: string,
 ): Promise<string | undefined> {
   const outputState = await inspectSetupOutput(setupOutputDir, generationsDirectory);
+  if (outputState.kind === 'unmanaged-symlink') {
+    throw new Error(
+      `Existing setup output symlink is not managed by this CLI installation: ${setupOutputDir} -> ${outputState.target}`,
+    );
+  }
   const temporaryLink = `${setupOutputDir}.next`;
   await fs.rm(temporaryLink, { recursive: true, force: true });
   await fs.symlink(path.relative(path.dirname(setupOutputDir), nextGenerationDirectory), temporaryLink, 'dir');
@@ -463,7 +468,10 @@ async function activateCrsGeneration(
 }
 
 type SetupOutputState =
-  { kind: 'missing' } | { kind: 'directory' } | { kind: 'symlink'; targetGenerationDirectory?: string };
+  | { kind: 'missing' }
+  | { kind: 'directory' }
+  | { kind: 'symlink'; targetGenerationDirectory: string }
+  | { kind: 'unmanaged-symlink'; target: string };
 
 async function inspectSetupOutput(setupOutputDir: string, generationsDirectory: string): Promise<SetupOutputState> {
   try {
@@ -476,9 +484,12 @@ async function inspectSetupOutput(setupOutputDir: string, generationsDirectory: 
     }
     const target = await fs.readlink(setupOutputDir);
     const resolvedTarget = path.resolve(path.dirname(setupOutputDir), target);
+    if (!isPathInside(generationsDirectory, resolvedTarget)) {
+      return { kind: 'unmanaged-symlink', target };
+    }
     return {
       kind: 'symlink',
-      targetGenerationDirectory: isPathInside(generationsDirectory, resolvedTarget) ? resolvedTarget : undefined,
+      targetGenerationDirectory: resolvedTarget,
     };
   } catch (error) {
     if (isMissingPathError(error)) {

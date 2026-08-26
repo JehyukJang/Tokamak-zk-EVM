@@ -19,6 +19,26 @@ npm run --workspace @tokamak-zk-evm/cli release:check
 npm run --workspace @tokamak-zk-evm/cli release:runtime:check
 ```
 
+## Runtime Installation Invariants
+
+The runtime cache is an implementation artifact of the exact published CLI
+version, not an independent compatibility authority. A CLI upgrade requires a
+new `--install` run before commands may use the cached backend runtime.
+
+Native installation stages backend binaries, ICICLE resources, and CRS data
+outside the active runtime directory. It promotes the staged runtime only after
+all preparation succeeds, and restores the prior runtime and installation state
+if promotion or state persistence fails. Maintain regression coverage for the
+following cases:
+
+```bash
+npm run --workspace @tokamak-zk-evm/cli test
+```
+
+The CRS installer may replace only its legacy setup directory or an active
+symbolic link whose target is under its `generations/` directory. An unmanaged
+symbolic link is an installation error and must remain unchanged.
+
 ## What Happens On `main`
 
 When a commit reaches `main`,

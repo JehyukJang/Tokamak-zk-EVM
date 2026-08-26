@@ -104,6 +104,19 @@ Docker installation records its state in
 native runtime when Docker is unavailable. Windows requires Docker Desktop
 because native backend execution is unsupported.
 
+### Runtime upgrades and ownership
+
+The cached runtime is valid only for the exact installed CLI package version.
+After upgrading or reinstalling `@tokamak-zk-evm/cli`, run `tokamak-cli
+--install` before running synthesis or backend commands. On Windows, use
+`tokamak-cli --install --docker` instead. The CLI does not reuse a runtime
+from a different package version.
+
+The installer manages CRS generations below its runtime cache and activates one
+generation through its own `setup/output` symbolic link. Do not replace that
+link with a path owned by another tool; the installer rejects an unmanaged
+active CRS link rather than replacing it.
+
 ## Commands
 
 | Command                     | Input                                         | Result                                                |
@@ -241,8 +254,8 @@ tokamak-cli --extract-proof ./proof-bundle.zip
 tokamak-cli --verify ./proof-bundle.zip
 ```
 
-`--doctor` prints the absolute runtime path and verifies that the current
-platform has an installed runtime.
+`--doctor` prints the absolute runtime path and verifies that the current CLI
+package version has a valid installed runtime for the current platform.
 
 ## npm publication
 

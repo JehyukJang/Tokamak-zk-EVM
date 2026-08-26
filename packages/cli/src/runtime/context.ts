@@ -5,7 +5,7 @@ import {
   compatibilityFromPackageVersion,
   parseCompatibleBackendVersion,
 } from '../generated/version-policy.generated.js';
-import type { CliPlatform, RuntimeContext, RuntimeState } from './model.js';
+import type { CliPlatform, DockerEnvironment, RuntimeContext, RuntimeState } from './model.js';
 
 type DockerHostPlatform = 'linux' | 'windows';
 
@@ -131,40 +131,135 @@ export async function createDockerRuntimeContext(): Promise<RuntimeContext> {
 
 export async function readInstalledState(platform: CliPlatform): Promise<RuntimeState | null> {
   const statePath = path.join(resolveCacheRoot(), platform, 'installation.json');
+  let contents: string;
   try {
-    const contents = await fs.readFile(statePath, 'utf8');
-    return JSON.parse(contents) as RuntimeState;
-  } catch {
-    return null;
+    contents = await fs.readFile(statePath, 'utf8');
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      return null;
+    }
+    throw new Error(`Unable to read installed runtime state at ${statePath}: ${errorMessage(error)}`);
   }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(contents) as unknown;
+  } catch (error) {
+    throw new Error(`Installed runtime state at ${statePath} is invalid JSON: ${errorMessage(error)}`);
+  }
+  return parseInstalledRuntimeState(parsed, statePath);
+}
+
+export function parseInstalledRuntimeState(value: unknown, label = 'installed runtime state'): RuntimeState {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be an object.`);
+  }
+  const candidate = value as Partial<RuntimeState>;
+  if (candidate.installMode !== 'native' && candidate.installMode !== 'docker') {
+    throw new Error(`${label} installMode must be "native" or "docker".`);
+  }
+  if (typeof candidate.packageVersion !== 'string' || candidate.packageVersion.length === 0) {
+    throw new Error(`${label} packageVersion must be a non-empty string.`);
+  }
+  packageCompatibleVersion(candidate.packageVersion, `${label} packageVersion`);
+  if (candidate.platform !== 'linux' && candidate.platform !== 'macos') {
+    throw new Error(`${label} platform must be "linux" or "macos".`);
+  }
+  if (typeof candidate.installedAt !== 'string' || Number.isNaN(Date.parse(candidate.installedAt))) {
+    throw new Error(`${label} installedAt must be an ISO-8601 timestamp.`);
+  }
+  if (candidate.installMode === 'native' && candidate.dockerEnvironment !== undefined) {
+    throw new Error(`${label} dockerEnvironment is only valid for a Docker runtime.`);
+  }
+  if (candidate.installMode === 'docker' && !isDockerEnvironment(candidate.dockerEnvironment)) {
+    throw new Error(`${label} Docker runtime must include a supported dockerEnvironment.`);
+  }
+  return candidate as RuntimeState;
+}
+
+export function assertInstalledRuntimeMatchesContext(
+  context: RuntimeContext,
+  state: RuntimeState,
+  acceptedInstallModes: readonly RuntimeState['installMode'][],
+): void {
+  if (state.packageVersion !== context.packageVersion) {
+    throw new Error(
+      `Installed runtime package version ${state.packageVersion} does not match current CLI package version ${context.packageVersion}.`,
+    );
+  }
+  if (state.platform !== context.platform) {
+    throw new Error(
+      `Installed runtime platform ${state.platform} does not match current CLI platform ${context.platform}.`,
+    );
+  }
+  if (!acceptedInstallModes.includes(state.installMode)) {
+    throw new Error(
+      `Installed runtime mode ${state.installMode} is not supported for the current CLI execution path.`,
+    );
+  }
+}
+
+function isDockerEnvironment(value: unknown): value is DockerEnvironment {
+  return value === 'ubuntu22' || value === 'ubuntu22-cuda122';
+}
+
+function isMissingPathError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT';
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function installedRuntimeInstallHint(docker: boolean): string {
+  return docker ? 'tokamak-cli --install --docker' : 'tokamak-cli --install';
+}
+
+function installedRuntimeError(docker: boolean, detail?: string): Error {
+  const suffix = detail === undefined ? '' : ` ${detail}`;
+  return new Error(
+    `Tokamak zk-EVM runtime is not installed for the current CLI package.${suffix} Run \`${installedRuntimeInstallHint(docker)}\` first.`,
+  );
+}
+
+function validateInstalledRuntime(
+  context: RuntimeContext,
+  state: RuntimeState | null,
+  acceptedInstallModes: readonly RuntimeState['installMode'][],
+  docker: boolean,
+): RuntimeState {
+  if (state === null) {
+    throw installedRuntimeError(docker);
+  }
+  try {
+    assertInstalledRuntimeMatchesContext(context, state, acceptedInstallModes);
+  } catch (error) {
+    throw installedRuntimeError(docker, errorMessage(error));
+  }
+  return state;
+}
+
+function nativeHostInstallModes(context: RuntimeContext): readonly RuntimeState['installMode'][] {
+  if (context.platform === 'macos') {
+    return ['native'];
+  }
+  return ['native', 'docker'];
 }
 
 export async function requireInstalledRuntime(): Promise<RuntimeContext> {
   if (process.platform === 'win32') {
     const context = await createDockerRuntimeContext();
     const state = await readInstalledState(context.platform);
-    if (state?.installMode !== 'docker') {
-      throw new Error('Tokamak zk-EVM Docker runtime is not installed. Run `tokamak-cli --install --docker` first.');
-    }
+    validateInstalledRuntime(context, state, ['docker'], true);
     await fs.access(context.runtimeDir);
-    return {
-      ...context,
-      compatibleBackendVersion: packageCompatibleVersion(state.packageVersion, 'installed package version'),
-      packageVersion: state.packageVersion,
-    };
+    return context;
   }
 
   const context = await createRuntimeContext();
   const state = await readInstalledState(context.platform);
-  if (state === null) {
-    throw new Error('Tokamak zk-EVM runtime is not installed. Run `tokamak-cli --install` first.');
-  }
+  validateInstalledRuntime(context, state, nativeHostInstallModes(context), false);
   await fs.access(context.runtimeDir);
-  return {
-    ...context,
-    compatibleBackendVersion: packageCompatibleVersion(state.packageVersion, 'installed package version'),
-    packageVersion: state.packageVersion,
-  };
+  return context;
 }
 
 export async function removeDirectoryIfEmpty(target: string): Promise<void> {

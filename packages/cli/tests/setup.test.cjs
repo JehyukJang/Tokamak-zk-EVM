@@ -522,6 +522,37 @@ test('migrates a legacy setup output directory to one active CRS generation', as
   }
 });
 
+test('rejects an unmanaged active CRS symlink without replacing it', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-'));
+  try {
+    const extractedDir = path.join(tempDir, 'archive');
+    const setupOutputDir = path.join(tempDir, 'resource', 'setup', 'output');
+    const unmanagedDirectory = path.join(tempDir, 'unmanaged');
+    await fs.mkdir(extractedDir, { recursive: true });
+    await fs.mkdir(unmanagedDirectory, { recursive: true });
+    await fs.writeFile(path.join(unmanagedDirectory, 'complete'), 'unmanaged CRS\n', 'utf8');
+    await fs.mkdir(path.dirname(setupOutputDir), { recursive: true });
+    await fs.symlink(unmanagedDirectory, setupOutputDir, 'dir');
+    await writeCrsArchiveFixture(extractedDir, '2.1.5', 'replacement');
+
+    await assert.rejects(
+      installValidatedCrsGeneration(
+        extractedDir,
+        path.join(extractedDir, 'crs_provenance.json'),
+        setupOutputDir,
+        'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
+      ),
+      /not managed by this CLI installation/u,
+    );
+
+    assert.equal((await fs.lstat(setupOutputDir)).isSymbolicLink(), true);
+    assert.equal(await fs.readFile(path.join(setupOutputDir, 'complete'), 'utf8'), 'unmanaged CRS\n');
+    assert.deepEqual(await fs.readdir(path.join(tempDir, 'resource', 'setup', 'generations')), []);
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test('keeps the prior setup output intact when any staged CRS copy fails', async () => {
   for (let failingCopy = 1; failingCopy <= 4; failingCopy += 1) {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-'));

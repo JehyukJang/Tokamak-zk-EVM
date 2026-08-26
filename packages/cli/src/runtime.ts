@@ -15,9 +15,7 @@ import {
 import {
   createDockerRuntimeContext,
   createRuntimeContext,
-  emptyDir,
   removeDirectoryIfEmpty,
-  writeRuntimeState,
 } from './runtime/context.js';
 import { installDockerRuntime } from './runtime/docker.js';
 import { installIcicleRuntime } from './runtime/icicle.js';
@@ -28,6 +26,7 @@ import {
   ensureVendoredBackendExists,
 } from './runtime/native.js';
 import { installDownloadedSetup, writeSkippedSetupNotice } from './runtime/setup.js';
+import { installStagedRuntime } from './runtime/transaction.js';
 import type { CliPlatform, InstallOptions, RuntimeContext, RuntimeState } from './runtime/model.js';
 
 interface PrerequisiteFailure {
@@ -203,26 +202,25 @@ export async function installRuntime(options: InstallOptions): Promise<RuntimeCo
   const backendRoot = await ensureVendoredBackendExists(context.packageRoot);
 
   logVerbose(options.verbose, `Using vendored backend ${backendRoot}`);
-  await emptyDir(context.runtimeDir);
-  const backendReleaseDir = await buildBackendReleaseBinaries(backendRoot, options);
-  logVerbose(options.verbose, `Using backend release output ${backendReleaseDir}`);
-  await copyBuiltBackendBinaries(context, backendReleaseDir);
-  await installIcicleRuntime(context, nativeOs, options.verbose);
-  await configureMacosRuntime(context, options.verbose);
-
-  if (options.noSetup) {
-    await writeSkippedSetupNotice(context);
-  } else {
-    await installDownloadedSetup(context, backendReleaseDir, options.verbose);
-  }
-
   const state: RuntimeState = {
     installMode: 'native',
     packageVersion: context.packageVersion,
     platform: context.platform,
     installedAt: new Date().toISOString(),
   };
-  await writeRuntimeState(context, state);
+  await installStagedRuntime(context, state, async (stagingContext) => {
+    const backendReleaseDir = await buildBackendReleaseBinaries(backendRoot, options);
+    logVerbose(options.verbose, `Using backend release output ${backendReleaseDir}`);
+    await copyBuiltBackendBinaries(stagingContext, backendReleaseDir);
+    await installIcicleRuntime(stagingContext, nativeOs, options.verbose);
+    await configureMacosRuntime(stagingContext, options.verbose);
+
+    if (options.noSetup) {
+      await writeSkippedSetupNotice(stagingContext);
+    } else {
+      await installDownloadedSetup(stagingContext, backendReleaseDir, options.verbose);
+    }
+  });
   return context;
 }
 

@@ -11,7 +11,7 @@ export interface InstallOptions {
 
 export interface RuntimeState {
   dockerEnvironment?: DockerEnvironment;
-  installMode?: 'native' | 'docker';
+  installMode: 'native' | 'docker';
   packageVersion: string;
   platform: CliPlatform;
   installedAt: string;

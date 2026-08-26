@@ -13,8 +13,9 @@ const requiredRuntimeModules = new Set([
   'model.ts',
   'native.ts',
   'setup.ts',
+  'transaction.ts',
 ]);
-const runtimeDomains = new Set(['docker.ts', 'icicle.ts', 'native.ts', 'setup.ts']);
+const runtimeDomains = new Set(['docker.ts', 'icicle.ts', 'native.ts', 'setup.ts', 'transaction.ts']);
 const runtimeFoundations = new Set(['context.ts', 'model.ts']);
 const allowedDownloadConsumers = new Set(['icicle.ts', 'setup.ts']);
 
