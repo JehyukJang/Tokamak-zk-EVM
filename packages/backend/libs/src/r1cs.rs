@@ -1,3 +1,6 @@
+// R1CS matrices and derived QAP terms retain their established protocol notation.
+#![allow(non_snake_case)]
+
 use crate::bivariate_polynomial::{BivariatePolynomial, DensePolynomialExt};
 use crate::frontend_artifacts::{
     read_global_wire_list_as_boxed_boxed_numbers, HexString, PlacementVariables, SetupParams,

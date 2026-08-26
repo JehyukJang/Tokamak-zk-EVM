@@ -1,4 +1,6 @@
+// Verifier expressions retain the proving protocol's mathematical notation.
 #![allow(non_snake_case)]
+
 use icicle_bls12_381::curve::{ScalarCfg, ScalarField};
 use icicle_core::ntt;
 use icicle_core::traits::{Arithmetic, FieldImpl, GenerateRandom};

@@ -797,7 +797,7 @@ fn compute2_temp(
 ) -> (SerialSerde, Proof2, Vec<ScalarField>) {
     let x_r = rng.next_random();
     let pok_x = pok(g1, x_r, v);
-    let x_rG1 = g1.mul(x_r);
+    let x_r_g1 = g1.mul(x_r);
     let len_x = prev_x.len_g1();
 
     // Precompute the powers of x_r efficiently
@@ -806,7 +806,7 @@ fn compute2_temp(
     (
         cur_x,
         Proof2 {
-            x_r_g1: x_rG1,
+            x_r_g1,
             pok_x,
             v: *v,
         },
@@ -821,7 +821,7 @@ fn compute2_tempi(
 ) -> (Vec<PairSerde>, Proof2, Vec<ScalarField>) {
     let x_r = rng.next_random();
     let pok_x = pok(g1, x_r, v);
-    let x_rG1 = g1.mul(x_r);
+    let x_r_g1 = g1.mul(x_r);
     let len_x = prev_x.len();
 
     // Precompute the powers of x_r efficiently
@@ -835,7 +835,7 @@ fn compute2_tempi(
     (
         cur_x,
         Proof2 {
-            x_r_g1: x_rG1,
+            x_r_g1,
             pok_x,
             v: *v,
         },
@@ -1096,9 +1096,9 @@ fn test_bilinear_map() {
     let g1 = icicle_g1_generator();
     let g2 = icicle_g2_generator();
 
-    let minusG2 = G2serde::zero() - g2;
+    let minus_g2 = G2serde::zero() - g2;
 
-    let pairing1 = pairing(&[g1, g1], &[g2, minusG2]);
+    let pairing1 = pairing(&[g1, g1], &[g2, minus_g2]);
     assert_eq!(pairing1.0.is_one(), true)
 }
 
@@ -1180,8 +1180,8 @@ pub fn check_pok(a: &G1serde, g1: &G1serde, b: G2serde, v: &[u8]) -> bool {
 }
 
 pub fn pok(g1: &G1serde, alpha: ScalarField, v: &[u8]) -> G2serde {
-    let alphaG1 = g1.mul(alpha);
-    let y = ro(&alphaG1, v);
+    let alpha_g1 = g1.mul(alpha);
+    let y = ro(&alpha_g1, v);
     y.mul(alpha)
 }
 
@@ -1227,13 +1227,13 @@ fn test_consistent_case1() {
     let c1 = rng.next_random();
     let c2 = b1 * c1 * a1.inv();
 
-    let a1G = g1_gen.mul(a1);
-    let b1G = g1_gen.mul(b1);
+    let a1_g = g1_gen.mul(a1);
+    let b1_g = g1_gen.mul(b1);
 
-    let c1G = g2_gen.mul(c1);
-    let c2G = g2_gen.mul(c2);
+    let c1_g = g2_gen.mul(c1);
+    let c2_g = g2_gen.mul(c2);
 
-    assert_eq!(consistent(&[a1G, b1G], &[], &[c1G, c2G]), true)
+    assert_eq!(consistent(&[a1_g, b1_g], &[], &[c1_g, c2_g]), true)
 }
 
 #[test]
@@ -1253,32 +1253,32 @@ fn test_consistent_case3() {
 
     let c1 = a.mul(three); //3a
 
-    let a1G = g1_gen.mul(a1);
-    let b1G = g1_gen.mul(b1);
+    let a1_g = g1_gen.mul(a1);
+    let b1_g = g1_gen.mul(b1);
 
-    let c1G = g2_gen; //G2
-    let c2G = g2_gen.mul(c1); //3a * G2
+    let c1_g = g2_gen; // G2
+    let c2_g = g2_gen.mul(c1); // 3a * G2
 
-    assert_eq!(consistent(&[a1G, b1G], &[], &[c1G, c2G]), true)
+    assert_eq!(consistent(&[a1_g, b1_g], &[], &[c1_g, c2_g]), true)
 }
 
 #[test]
 fn test_invs() {
     let g2 = &icicle_g2_generator();
     let sc = ScalarField::from_u32(3);
-    let scInv = sc.inv();
+    let sc_inv = sc.inv();
 
     println!("{}", sc);
-    println!("{}", scInv);
+    println!("{}", sc_inv);
 
     let x = g2.mul(sc);
     //multiplicative inverse
-    let xInvG2 = g2.mul(scInv);
+    let x_inv_g2 = g2.mul(sc_inv);
     //addition inverse
-    let minusX = G2serde::zero() - x;
+    let minus_x = G2serde::zero() - x;
 
-    assert_eq!(xInvG2.mul(sc), *g2);
-    assert_eq!(x + minusX, G2serde::zero());
+    assert_eq!(x_inv_g2.mul(sc), *g2);
+    assert_eq!(x + minus_x, G2serde::zero());
 }
 
 #[test]
@@ -1301,16 +1301,19 @@ fn test_consistent_case4() {
     let c1 = a1;
     let c2 = c1 * two;
 
-    let a1G = g1_gen.mul(a1);
-    let b1G = g1_gen.mul(b1);
+    let a1_g = g1_gen.mul(a1);
+    let b1_g = g1_gen.mul(b1);
 
-    let a2G = g2_gen.mul(a2);
-    let b2G = g2_gen.mul(b2);
+    let a2_g = g2_gen.mul(a2);
+    let b2_g = g2_gen.mul(b2);
 
-    let c1G = g2_gen.mul(c1);
-    let c2G = g2_gen.mul(c2);
+    let c1_g = g2_gen.mul(c1);
+    let c2_g = g2_gen.mul(c2);
 
-    assert_eq!(consistent(&[a1G, b1G], &[a2G, b2G], &[c1G, c2G]), true)
+    assert_eq!(
+        consistent(&[a1_g, b1_g], &[a2_g, b2_g], &[c1_g, c2_g]),
+        true
+    )
 }
 
 #[test]
@@ -1320,13 +1323,13 @@ fn test_same_ratio() {
 
     let tau = Tau::gen();
 
-    let x2G1 = g1_gen.mul(tau.x.pow(2));
-    let xyG1 = g1_gen.mul(tau.x).mul(tau.y);
+    let x2_g1 = g1_gen.mul(tau.x.pow(2));
+    let xy_g1 = g1_gen.mul(tau.x).mul(tau.y);
 
-    let y2G2 = g2_gen.mul(tau.y.pow(2));
-    let xyG2 = g2_gen.mul(tau.y).mul(tau.x);
+    let y2_g2 = g2_gen.mul(tau.y.pow(2));
+    let xy_g2 = g2_gen.mul(tau.y).mul(tau.x);
 
-    let result = same_ratio(x2G1, xyG1, xyG2, y2G2);
+    let result = same_ratio(x2_g1, xy_g1, xy_g2, y2_g2);
     assert_eq!(result, true)
 }
 #[test]
@@ -1335,10 +1338,10 @@ fn test_pok() {
 
     let tau = Tau::gen();
     let v = [72u8; 64];
-    let A = g1.mul(tau.alpha);
+    let a = g1.mul(tau.alpha);
     let cpok = pok(&g1, tau.alpha, &v);
 
-    let result = check_pok(&A, &g1, cpok, &v);
+    let result = check_pok(&a, &g1, cpok, &v);
     assert_eq!(result, true)
 }
 

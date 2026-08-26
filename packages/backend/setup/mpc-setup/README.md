@@ -309,3 +309,10 @@ the exact file it is about to load.
 generation and deployment preparation, but it is not a substitute for a real multi-party
 phase-2 ceremony. A production ceremony that requires distributed phase-2 trust must split
 the phase-2 contribution flow across multiple independent operators.
+
+Google Drive publication currently enforces manifest-level operational checks only. In
+particular, it requires a Dusk provenance record with matching expected and actual source digests
+and a recorded successful transcript-consistency check; it does not independently verify the
+cryptographic Dusk ceremony. Independent ceremony or transcript verification and a separately
+governed release-authorization mechanism remain future work. The current publisher must not be
+represented as providing either control.

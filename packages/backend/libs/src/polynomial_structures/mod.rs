@@ -1,3 +1,6 @@
+// QAP polynomial identifiers follow the notation shared with the manuscript.
+#![allow(non_snake_case)]
+
 use crate::bivariate_polynomial::{BivariatePolynomial, DensePolynomialExt};
 use crate::frontend_artifacts::{Instance, PlacementVariables, SetupParams, SubcircuitInfo};
 use crate::r1cs::SubcircuitR1CS;

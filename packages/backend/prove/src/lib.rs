@@ -1,4 +1,6 @@
+// Prover terms intentionally use the mathematical notation from the protocol.
 #![allow(non_snake_case)]
+
 use icicle_bls12_381::curve::{ScalarCfg, ScalarField};
 use icicle_core::ntt;
 use icicle_core::traits::{Arithmetic, FieldImpl, GenerateRandom};

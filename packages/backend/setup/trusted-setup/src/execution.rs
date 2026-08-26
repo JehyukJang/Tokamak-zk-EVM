@@ -1,4 +1,6 @@
+// Trusted-setup expressions retain the proving protocol's mathematical notation.
 #![allow(non_snake_case)]
+
 use super::{SetupInputPaths, TrustedSetupError};
 use icicle_bls12_381::curve::{
     BaseField, CurveCfg, G1Affine, G2Affine, G2BaseField, G2CurveCfg, ScalarField,

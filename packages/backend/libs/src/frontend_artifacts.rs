@@ -1,3 +1,6 @@
+// These data models mirror the frontend artifact field names exactly.
+#![allow(non_snake_case)]
+
 use crate::bivariate_polynomial::{BivariatePolynomial, DensePolynomialExt};
 use crate::group_structures::SigmaVerify;
 use crate::{impl_read_box_from_json, impl_read_from_json};

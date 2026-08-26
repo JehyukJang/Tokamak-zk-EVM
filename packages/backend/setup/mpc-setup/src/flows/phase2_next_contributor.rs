@@ -305,7 +305,7 @@ fn compute_new_sigma(rng: &mut RandomGenerator, sigma_old: &SigmaV2) -> (SigmaV2
     let eta_inv = eta.inv();
 
     let v = hash_sigma(&sigma_old);
-    let phase2Proof = Phase2Proof {
+    let phase2_proof = Phase2Proof {
         contributor_index: sigma_old.contributor_index + 1,
         v: v.to_vec(),
         delta_t_g1: sigma_old.sigma.G.mul(delta),
@@ -425,7 +425,7 @@ fn compute_new_sigma(rng: &mut RandomGenerator, sigma_old: &SigmaV2) -> (SigmaV2
         phase1_source_provenance: sigma_old.phase1_source_provenance.clone(),
     };
 
-    (sigma_new, phase2Proof)
+    (sigma_new, phase2_proof)
 }
 
 #[cfg(test)]

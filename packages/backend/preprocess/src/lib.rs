@@ -1,4 +1,6 @@
+// Preprocess expressions retain the proving protocol's mathematical notation.
 #![allow(non_snake_case)]
+
 use libs::cli::CliDiagnostic;
 use libs::crs_artifacts::ArchivedSigmaPreprocessRkyv;
 use libs::errors::{ArtifactError, CrsError, DeviceError};

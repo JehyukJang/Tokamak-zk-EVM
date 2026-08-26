@@ -1,3 +1,4 @@
+// Public proof fields retain the protocol notation used by serialized proof JSON.
 #![allow(non_snake_case)]
 
 use crate::field_structures::FieldSerde;

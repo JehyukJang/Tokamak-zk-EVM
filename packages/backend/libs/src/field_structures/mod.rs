@@ -1,3 +1,6 @@
+// QAP and R1CS identifiers preserve the notation of the underlying protocol matrices.
+#![allow(non_snake_case)]
+
 use super::vector_operations::*;
 use crate::frontend_artifacts::{SetupParams, SubcircuitInfo};
 use crate::r1cs::SubcircuitR1CS;

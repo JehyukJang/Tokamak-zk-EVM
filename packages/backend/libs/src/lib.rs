@@ -1,4 +1,3 @@
-#![allow(non_snake_case)]
 #[path = "../../contracts/rust/backend_build_metadata.rs"]
 pub mod backend_build_metadata;
 pub mod bivariate_polynomial;

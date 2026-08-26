@@ -1,3 +1,6 @@
+// CRS fields and encoders preserve protocol notation shared with archived artifacts.
+#![allow(non_snake_case)]
+
 use crate::bivariate_polynomial::{BivariatePolynomial, DensePolynomialExt};
 use crate::frontend_artifacts::public_wire_layout::PublicWireLayout;
 use crate::frontend_artifacts::{HexString, PlacementVariables, SetupParams, SubcircuitInfo};

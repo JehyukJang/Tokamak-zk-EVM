@@ -1,3 +1,6 @@
+// Names in this module follow the polynomial notation used by the proving protocol.
+#![allow(non_snake_case)]
+
 use super::vector_operations::*;
 use icicle_bls12_381::curve::{ScalarCfg, ScalarField};
 use icicle_bls12_381::polynomials::DensePolynomial;

@@ -178,12 +178,23 @@ fn validate_publication_provenance(
             "only release-eligible CRS artifacts may be published".to_string(),
         ));
     }
-    if !matches!(
-        provenance.phase1_source_provenance,
-        Some(Phase1SourceProvenance::DuskGroth16(_))
-    ) {
+    let Some(Phase1SourceProvenance::DuskGroth16(dusk)) =
+        provenance.phase1_source_provenance.as_ref()
+    else {
         return Err(DriveUploadError::Message(
             "only Dusk-backed CRS artifacts may be published".to_string(),
+        ));
+    };
+    if dusk.expected_source_sha256 != dusk.actual_source_sha256 {
+        return Err(DriveUploadError::Message(
+            "Dusk provenance expectedSourceSha256 must equal actualSourceSha256 for publication"
+                .to_string(),
+        ));
+    }
+    if !dusk.transcript_consistency_verified {
+        return Err(DriveUploadError::Message(
+            "Dusk provenance must record successful transcript consistency verification for publication"
+                .to_string(),
         ));
     }
     if provenance.subcircuit_library.origin != SubcircuitLibraryOrigin::NpmSnapshot {
@@ -652,8 +663,12 @@ mod tests {
                     pinned_contribution: "test".to_string(),
                     pinned_readme_url: "https://example.invalid/readme".to_string(),
                     pinned_drive_file_id: "test".to_string(),
-                    expected_source_sha256: "test".to_string(),
-                    actual_source_sha256: "test".to_string(),
+                    expected_source_sha256:
+                        "4444444444444444444444444444444444444444444444444444444444444444"
+                            .to_string(),
+                    actual_source_sha256:
+                        "4444444444444444444444444444444444444444444444444444444444444444"
+                            .to_string(),
                     auto_downloaded: false,
                     downloaded_contribution: None,
                     downloaded_readme_url: None,
@@ -752,7 +767,7 @@ mod tests {
 
         assert!(error
             .to_string()
-            .contains("only finalMpcCrs provenance may be published"));
+            .contains("documentKind must equal finalMpcCrs"));
         assert!(publisher.uploads.borrow().is_empty());
     }
 
@@ -799,6 +814,61 @@ mod tests {
     }
 
     #[test]
+    fn rejects_publication_when_dusk_source_digests_disagree() {
+        let (_workspace, config, output, intermediate) = fixture();
+        let mut provenance = read_fixture_provenance(&output);
+        let Some(Phase1SourceProvenance::DuskGroth16(dusk)) =
+            provenance.phase1_source_provenance.as_mut()
+        else {
+            panic!("fixture must contain Dusk provenance");
+        };
+        dusk.actual_source_sha256 =
+            "5555555555555555555555555555555555555555555555555555555555555555".to_string();
+        write_fixture_provenance(&output, provenance);
+        let publisher = MockArchivePublisher::succeeds();
+
+        let error = publish_output_archive_with_publisher(
+            &config,
+            &intermediate.to_string_lossy(),
+            &output.to_string_lossy(),
+            &publisher,
+        )
+        .expect_err("Dusk provenance with mismatched source digests must not be published");
+
+        assert!(error
+            .to_string()
+            .contains("expectedSourceSha256 must equal actualSourceSha256"));
+        assert!(publisher.uploads.borrow().is_empty());
+    }
+
+    #[test]
+    fn rejects_publication_when_dusk_transcript_consistency_is_not_verified() {
+        let (_workspace, config, output, intermediate) = fixture();
+        let mut provenance = read_fixture_provenance(&output);
+        let Some(Phase1SourceProvenance::DuskGroth16(dusk)) =
+            provenance.phase1_source_provenance.as_mut()
+        else {
+            panic!("fixture must contain Dusk provenance");
+        };
+        dusk.transcript_consistency_verified = false;
+        write_fixture_provenance(&output, provenance);
+        let publisher = MockArchivePublisher::succeeds();
+
+        let error = publish_output_archive_with_publisher(
+            &config,
+            &intermediate.to_string_lossy(),
+            &output.to_string_lossy(),
+            &publisher,
+        )
+        .expect_err("unverified Dusk transcript provenance must not be published");
+
+        assert!(error
+            .to_string()
+            .contains("successful transcript consistency verification"));
+        assert!(publisher.uploads.borrow().is_empty());
+    }
+
+    #[test]
     fn rejects_publication_with_missing_library_origin() {
         let (_workspace, config, output, intermediate) = fixture();
         let mut provenance: serde_json::Value = serde_json::from_slice(
@@ -824,7 +894,8 @@ mod tests {
         )
         .expect_err("CRS without a library origin must not be published");
 
-        assert!(matches!(error, DriveUploadError::Json(_)));
+        assert!(matches!(error, DriveUploadError::Message(_)));
+        assert!(error.to_string().contains("invalid JSON"));
         assert!(publisher.uploads.borrow().is_empty());
     }
 

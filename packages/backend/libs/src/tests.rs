@@ -1878,15 +1878,15 @@ mod tests_vectors {
     }
     #[test]
     fn test_resize() {
-        let rW_X_coeffs = ScalarCfg::generate_random(3);
-        let rW_X_coeffs_resized = resize(&rW_X_coeffs, 3, 1, 4, 1, ScalarField::zero());
-        let rW_Y_coeffs = ScalarCfg::generate_random(3);
-        let rW_Y_coeffs_resized = resize(&rW_Y_coeffs, 1, 3, 1, 4, ScalarField::zero());
+        let r_w_x_coeffs = ScalarCfg::generate_random(3);
+        let r_w_x_coeffs_resized = resize(&r_w_x_coeffs, 3, 1, 4, 1, ScalarField::zero());
+        let r_w_y_coeffs = ScalarCfg::generate_random(3);
+        let r_w_y_coeffs_resized = resize(&r_w_y_coeffs, 1, 3, 1, 4, ScalarField::zero());
 
-        println!("X_orig: {:?}", rW_X_coeffs);
-        println!("X_ext: {:?}", rW_X_coeffs_resized);
-        println!("Y_orig: {:?}", rW_Y_coeffs);
-        println!("Y_ext: {:?}", rW_Y_coeffs_resized);
+        println!("X_orig: {:?}", r_w_x_coeffs);
+        println!("X_ext: {:?}", r_w_x_coeffs_resized);
+        println!("Y_orig: {:?}", r_w_y_coeffs);
+        println!("Y_ext: {:?}", r_w_y_coeffs_resized);
     }
 }
 
@@ -1899,7 +1899,7 @@ mod tests_iotools {
     use icicle_core::traits::{FieldImpl, GenerateRandom};
 
     #[test]
-    fn test_scalar_to_G1_conversion() {
+    fn test_scalar_to_g1_conversion() {
         let x_size = 2usize.pow(5);
         let y_size = 2usize.pow(3);
         let x = ScalarCfg::generate_random(1)[0];

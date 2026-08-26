@@ -1,3 +1,6 @@
+// Sigma accessors retain the protocol names used by the CRS representation.
+#![allow(non_snake_case)]
+
 use std::io;
 use std::path::Path;
 

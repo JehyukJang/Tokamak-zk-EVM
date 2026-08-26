@@ -1,3 +1,6 @@
+// Group and Sigma identifiers preserve the proving protocol's mathematical notation.
+#![allow(non_snake_case)]
+
 use crate::bivariate_polynomial::{BivariatePolynomial, DensePolynomialExt};
 use crate::commitments::{
     from_coef_vec_to_g1serde_mat, from_coef_vec_to_g1serde_vec, scaled_outer_product_1d,

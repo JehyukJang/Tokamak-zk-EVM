@@ -108,8 +108,8 @@ pub fn ark_g2_affine_to_icicle(g2: &ArkG2Affine) -> IcicleG2Affine {
 pub fn deserialize_g1serde(string: &str, compress: Compress) -> G1serde {
     let buffer = hex::decode(string).unwrap();
     let mut cursor = Cursor::new(&buffer);
-    let recArk = ArkG1Affine::deserialize_with_mode(&mut cursor, compress, Validate::No).unwrap();
-    G1serde(ark_g1_affine_to_icicle(&recArk))
+    let rec_ark = ArkG1Affine::deserialize_with_mode(&mut cursor, compress, Validate::No).unwrap();
+    G1serde(ark_g1_affine_to_icicle(&rec_ark))
 }
 pub fn serialize_g1serde(point: &G1serde, compress: Compress) -> String {
     hex::encode(serialize_g1_affine(&point.0, compress))
@@ -117,8 +117,8 @@ pub fn serialize_g1serde(point: &G1serde, compress: Compress) -> String {
 pub fn deserialize_g2serde(string: &str, compress: Compress) -> G2serde {
     let buffer = hex::decode(string).unwrap();
     let mut cursor = Cursor::new(&buffer);
-    let recArk = ArkG2Affine::deserialize_with_mode(&mut cursor, compress, Validate::No).unwrap();
-    G2serde(ark_g2_affine_to_icicle(&recArk))
+    let rec_ark = ArkG2Affine::deserialize_with_mode(&mut cursor, compress, Validate::No).unwrap();
+    G2serde(ark_g2_affine_to_icicle(&rec_ark))
 }
 pub fn serialize_g2serde(point: &G2serde, compress: Compress) -> String {
     hex::encode(serialize_g2_affine(&point.0, compress))
@@ -136,8 +136,8 @@ pub fn serialize_g1_affine(point: &IcicleG1Affine, compress: Compress) -> Box<[u
 
 pub fn deserialize_g1_affine(buf: &Box<[u8]>, compress: Compress) -> IcicleG1Affine {
     let mut cursor = Cursor::new(&buf);
-    let recArk = ArkG1Affine::deserialize_with_mode(&mut cursor, compress, Validate::No).unwrap();
-    ark_g1_affine_to_icicle(&recArk)
+    let rec_ark = ArkG1Affine::deserialize_with_mode(&mut cursor, compress, Validate::No).unwrap();
+    ark_g1_affine_to_icicle(&rec_ark)
 }
 pub fn serialize_g2_affine(point: &IcicleG2Affine, compress: Compress) -> Box<[u8]> {
     let mut buf = Vec::new();
@@ -150,24 +150,24 @@ pub fn serialize_g2_affine(point: &IcicleG2Affine, compress: Compress) -> Box<[u
 }
 pub fn deserialize_g2_affine(buf: &Box<[u8]>, compress: Compress) -> IcicleG2Affine {
     let mut cursor = Cursor::new(&buf);
-    let recArk = ArkG2Affine::deserialize_with_mode(&mut cursor, compress, Validate::No).unwrap();
-    ark_g2_affine_to_icicle(&recArk)
+    let rec_ark = ArkG2Affine::deserialize_with_mode(&mut cursor, compress, Validate::No).unwrap();
+    ark_g2_affine_to_icicle(&rec_ark)
 }
 #[test]
 fn test_serialize_g1_compressed() {
     let g1 = icicle_g1_generator();
 
-    let serializedBytes = serialize_g1_affine(&g1.0, Compress::Yes);
-    let recIcicle = deserialize_g1_affine(&serializedBytes, Compress::Yes);
-    assert_eq!(g1.0, recIcicle);
+    let serialized_bytes = serialize_g1_affine(&g1.0, Compress::Yes);
+    let rec_icicle = deserialize_g1_affine(&serialized_bytes, Compress::Yes);
+    assert_eq!(g1.0, rec_icicle);
 }
 #[test]
 fn test_serialize_g2_compressed() {
     let g2 = icicle_g2_generator();
-    let serializedBytes = serialize_g2_affine(&g2.0, Compress::Yes);
+    let serialized_bytes = serialize_g2_affine(&g2.0, Compress::Yes);
 
-    let recIcicle = deserialize_g2_affine(&serializedBytes, Compress::Yes);
-    assert_eq!(g2.0, recIcicle);
+    let rec_icicle = deserialize_g2_affine(&serialized_bytes, Compress::Yes);
+    assert_eq!(g2.0, rec_icicle);
 }
 
 pub fn hash_to_g2(digest: &[u8]) -> G2serde {
@@ -185,19 +185,19 @@ pub fn hash_to_g2(digest: &[u8]) -> G2serde {
     G2serde(IcicleG2Affine::from(g2.0.to_projective().mul(scalar)))
 }
 #[test]
-fn testG2Generator() {
-    let g2Ice = icicle_g2_generator();
-    let res = icicle_g2_affine_to_ark(&g2Ice.0);
-    let arcG2 = ArkG2Affine::generator();
-    assert_eq!(res, arcG2);
+fn test_g2_generator() {
+    let g2_icicle = icicle_g2_generator();
+    let res = icicle_g2_affine_to_ark(&g2_icicle.0);
+    let ark_g2 = ArkG2Affine::generator();
+    assert_eq!(res, ark_g2);
 }
 #[test]
-fn testG1Generator() {
+fn test_g1_generator() {
     // Build the G1Affine point from limbs
-    let g1Ice = icicle_g1_generator();
-    let res = icicle_g1_affine_to_ark(&g1Ice.0);
-    let arcG1 = ArkG1Affine::generator();
-    assert_eq!(res, arcG1);
+    let g1_icicle = icicle_g1_generator();
+    let res = icicle_g1_affine_to_ark(&g1_icicle.0);
+    let ark_g1 = ArkG1Affine::generator();
+    assert_eq!(res, ark_g1);
 }
 
 #[test]
