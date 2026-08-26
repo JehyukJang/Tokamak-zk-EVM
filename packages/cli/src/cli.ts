@@ -34,7 +34,6 @@ export interface ParsedArgs {
   installOptions?: {
     docker: boolean;
     includePrerequisite: boolean;
-    trustedSetup: boolean;
     noSetup: boolean;
   };
   synthesizeArgs?: string[];
@@ -123,10 +122,9 @@ const PROOF_BUNDLE_OPTIONAL_FILES = [
 function printUsage(): void {
   console.log(`
 Commands:
-  --install [--trusted-setup] [--no-setup] [--include-prerequisite] [--docker]
+  --install [--no-setup] [--include-prerequisite] [--docker]
       Build the local Tokamak zk-EVM runtime from the packaged backend workspace and prepare local resources
       By default setup artifacts are installed from the published CRS archive
-      Use --trusted-setup to generate setup artifacts locally with the trusted-setup binary
       Use --no-setup to skip setup artifact provisioning
       Use --include-prerequisite to interactively install missing native build prerequisites
       Use --docker on Linux or Windows with Docker Desktop to install and run backend commands through an Ubuntu 22 container
@@ -167,7 +165,6 @@ Commands:
 
 Options:
   --verbose        Show detailed output
-  --trusted-setup  Build setup artifacts locally during --install
   --no-setup       Skip setup artifact provisioning during --install
   --include-prerequisite
                    Interactively install missing native build prerequisites during --install
@@ -317,7 +314,6 @@ export function parseArgs(argv: string[]): ParsedArgs {
   if (argv[0] === '--install') {
     let docker = false;
     let includePrerequisite = false;
-    let trustedSetup = false;
     let noSetup = false;
     for (const arg of argv.slice(1)) {
       if (arg === '--verbose') continue;
@@ -329,18 +325,11 @@ export function parseArgs(argv: string[]): ParsedArgs {
         includePrerequisite = true;
         continue;
       }
-      if (arg === '--trusted-setup') {
-        trustedSetup = true;
-        continue;
-      }
       if (arg === '--no-setup') {
         noSetup = true;
         continue;
       }
       err(`Unknown option for --install: ${arg}`);
-    }
-    if (trustedSetup && noSetup) {
-      err('--trusted-setup cannot be combined with --no-setup');
     }
     if (includePrerequisite && docker) {
       err('--include-prerequisite cannot be combined with --docker');
@@ -348,7 +337,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     return {
       command: 'install',
       verbose,
-      installOptions: { docker, includePrerequisite, trustedSetup, noSetup },
+      installOptions: { docker, includePrerequisite, noSetup },
     };
   }
   if (argv[0] === '--uninstall') {
@@ -681,7 +670,6 @@ async function main(): Promise<void> {
         includePrerequisite: parsed.installOptions?.includePrerequisite ?? false,
         verbose: parsed.verbose,
         noSetup: parsed.installOptions?.noSetup ?? false,
-        trustedSetup: parsed.installOptions?.trustedSetup ?? false,
       });
       ok(`Install complete for package ${context.packageVersion}`);
       return;

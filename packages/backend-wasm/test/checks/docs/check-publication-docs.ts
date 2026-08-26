@@ -33,6 +33,7 @@ interface PackageManifest {
   readonly version: string;
   readonly license: string;
   readonly exports: Record<string, unknown>;
+  readonly scripts: Readonly<Record<string, string>>;
 }
 
 async function main(): Promise<void> {
@@ -362,7 +363,7 @@ async function checkPackedPackage(): Promise<void> {
       "dist/converter/index.d.ts",
       "dist/converter/worker/crs-converter-worker.js",
       "dist/converter/worker/backend_wasm_rkyv_decoder_bg.wasm",
-      "dist/verifier/generated/sigma-verify.generated.js",
+      "dist/verifier/generated/active/sigma-verify.generated.js",
       "examples/browser/README.md",
       "examples/browser/index.html",
       "examples/browser/package.json",
@@ -429,6 +430,19 @@ async function checkPackedPackage(): Promise<void> {
     ) {
       throw new Error(`Packed package metadata is inconsistent: ${manifestSource}`);
     }
+    if (manifest.scripts.prepack !== "npm run clean && npm run build:production") {
+      throw new Error(
+        "Package prepack must clean and build with production-selected generated inputs.",
+      );
+    }
+    if (
+      manifest.scripts["build:production"]
+        !== "npm run contracts:prepare && npm run subcircuit-library:generate:production && npm run verifier-crs:generate:production && npm run rkyv-decoder:build && tsc -p tsconfig.json --pretty false && npm run converter-worker:build"
+    ) {
+      throw new Error(
+        "Package build:production must regenerate npm-snapshot and canonical-final-CRS inputs.",
+      );
+    }
     const exports = Object.keys(manifest.exports).sort();
     const expectedExports = ["./converter", "./preprocess", "./prover", "./verifier"];
     if (JSON.stringify(exports) !== JSON.stringify(expectedExports)) {
@@ -449,17 +463,19 @@ async function checkPackedDistMatchesTrackedSource(
   );
   const expected = new Set<string>([
     "dist/converter/worker/backend_wasm_rkyv_decoder_bg.wasm",
+    ...generatedActiveDistFiles(),
   ]);
 
   const sources = stdout
     .trim()
     .split("\n")
-    .filter((file) => file.endsWith(".ts"));
+    .filter((file) => file.endsWith(".ts") || file.endsWith(".js"));
   for (const source of sources) {
     if (source.endsWith(".d.ts")) {
       continue;
     }
-    const relative = source.slice("src/".length, -".ts".length);
+    const extension = source.endsWith(".ts") ? ".ts" : ".js";
+    const relative = source.slice("src/".length, -extension.length);
     expected.add(`dist/${relative}.js`);
     expected.add(`dist/${relative}.d.ts`);
     if (relative.includes("/")) {
@@ -484,6 +500,20 @@ async function checkPackedDistMatchesTrackedSource(
         .join("\n"),
     );
   }
+}
+
+function generatedActiveDistFiles(): readonly string[] {
+  const activeModules = [
+    "generated/active/setup.generated",
+    "prover/generated/active/subcircuit-library.generated",
+    "verifier/generated/active/sigma-verify.generated",
+  ] as const;
+  return activeModules.flatMap((module) => [
+    `dist/${module}.js`,
+    `dist/${module}.d.ts`,
+    `dist/${module}.js.map`,
+    `dist/${module}.d.ts.map`,
+  ]);
 }
 
 function section(source: string, heading: string): string {

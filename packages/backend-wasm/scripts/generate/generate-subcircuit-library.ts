@@ -13,6 +13,10 @@ import {
   readSelectedInputOrigin,
   type SubcircuitLibraryOrigin,
 } from "./input-origin.js";
+import {
+  parseProverSubcircuitInfos,
+  parseSetupParams,
+} from "./subcircuit-library-input.js";
 
 const require = createRequire(import.meta.url);
 const backendWasmRoot = path.resolve(import.meta.dirname, "../..");
@@ -67,11 +71,9 @@ interface PackedSparseSubcircuit {
 async function main(): Promise<void> {
   const library = resolveSubcircuitLibrary(selectedOrigin);
 
-  const setup = readJson<SetupParams>(
-    path.join(library.libraryRoot, "setupParams.json"),
-  );
-  const subcircuitInfos = readJson<ProverSubcircuitInfo[]>(
-    path.join(library.libraryRoot, "subcircuitInfo.json"),
+  const setup = parseSetupParams(readJson(path.join(library.libraryRoot, "setupParams.json")));
+  const subcircuitInfos = parseProverSubcircuitInfos(
+    readJson(path.join(library.libraryRoot, "subcircuitInfo.json")),
   );
   const nativeBackendVersion = readNativeBackendVersion(nativeBackendCargoPath);
 
@@ -499,7 +501,7 @@ function readNativeBackendVersion(cargoTomlPath: string): string {
   return workspacePackageMatch[1];
 }
 
-function readJson<T>(jsonPath: string): T {
+function readJson<T = unknown>(jsonPath: string): T {
   return JSON.parse(fs.readFileSync(jsonPath, "utf8")) as T;
 }
 

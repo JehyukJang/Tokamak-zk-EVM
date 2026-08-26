@@ -85,6 +85,9 @@ jobs:
       - name: Validate CLI release readiness
         run: npm run --workspace @tokamak-zk-evm/cli release:check
 
+      - name: Validate packaged CLI runtime compatibility
+        run: npm run --workspace @tokamak-zk-evm/cli release:runtime:check
+
       - name: Pack release tarballs
         run: |
           rm -rf package-tarballs

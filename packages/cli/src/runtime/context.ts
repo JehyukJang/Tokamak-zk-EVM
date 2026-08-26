@@ -197,7 +197,6 @@ export function runtimePaths(context: RuntimeContext) {
     preprocessBinary: path.join(binaryDir, 'preprocess'),
     proveBinary: path.join(binaryDir, 'prove'),
     verifyBinary: path.join(binaryDir, 'verify'),
-    trustedSetupBinary: path.join(binaryDir, 'trusted-setup'),
   };
 }
 

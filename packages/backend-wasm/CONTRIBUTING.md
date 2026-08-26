@@ -81,27 +81,38 @@ Check the Rust/WASM build prerequisites:
 npm run rkyv-decoder:check-tools
 ```
 
-## Generated production source
+## Generated build inputs
 
-Do not edit generated production files manually. Maintain them through:
+Do not edit generated inputs manually. The generators write ignored active
+outputs under `src/generated/active`, `src/prover/generated/active`, and
+`src/verifier/generated/active`; compilation consumes only those outputs.
+Both build modes compile the same optimized package output. Their only input
+selection difference is the subcircuit-library and verifier-CRS source.
+
+Development selects local qap-compiler output and an explicit trusted-setup
+debug Sigma:
 
 ```sh
-npm run specs:generate
-npm run subcircuit-library:generate
-export BACKEND_WASM_VERIFIER_CRS_DIR=/absolute/path/to/final-crs-directory
-npm run verifier-crs:generate
+export BACKEND_WASM_VERIFIER_CRS_DIR=../backend/setup/trusted-setup/output/debug
+npm run build:development
+npm run typecheck:development
 ```
 
-The subcircuit generator reads the pinned
-`@tokamak-zk-evm/subcircuit-library` dependency. The verifier CRS generator
-requires `BACKEND_WASM_VERIFIER_CRS_DIR` to identify an explicit final CRS
-directory. It requires the owner `sigma_verify.json` and `crs_provenance.json`
-together, validates the backend provenance contract and compatibility class,
-and verifies all final artifact digests before embedding the verifier CRS.
-`build`, `typecheck`, and `prepack` use the same required variable. They fail
-when it is missing, empty, or does not identify a complete final CRS directory.
-Every production build regenerates these inputs instead of reusing a stale
-verifier CRS.
+Production selects the pinned npm `@tokamak-zk-evm/subcircuit-library`
+snapshot and requires an explicit complete final CRS directory:
+
+```sh
+export BACKEND_WASM_VERIFIER_CRS_DIR=/absolute/path/to/final-crs-directory
+npm run build:production
+npm run typecheck:production
+```
+
+The production verifier generator requires `sigma_verify.json` and
+`crs_provenance.json`, validates the backend provenance contract and
+compatibility class, and verifies all final-artifact digests before embedding
+the verifier Sigma. `prepack` always runs the production build, so it cannot
+reuse locally generated active inputs. The development generator requires only
+the explicit debug Sigma; it does not treat a debug CRS as publishable.
 
 ## Test fixture policy
 
@@ -157,7 +168,8 @@ the repository's
    and private decoder package together with the other synchronized release
    surfaces.
 2. Run `npm run version:check` at the repository root.
-3. Regenerate production source and run the complete relevant check set.
+3. Regenerate production inputs with `npm run build:production` and run the
+   complete relevant production check set.
 4. Build the exact package candidate.
 5. Inspect the actual packlist and packed metadata:
 

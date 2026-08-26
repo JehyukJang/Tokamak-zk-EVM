@@ -350,9 +350,11 @@ storage, caching, and invalidation.
 | `verifierPreprocess` | Native verifier preprocess JSON                         | Parse JSON, then call `convertVerifierPreprocess()`                                                  |
 | `proof`              | `prove()` output or native proof JSON                   | Use directly or call `convertProof()`                                                                |
 
-The package pins `@tokamak-zk-evm/subcircuit-library` and generates setup
-parameters, packed R1CS data, and subcircuit metadata into the build. These are
-not runtime inputs.
+The build generates setup parameters, packed R1CS data, and subcircuit
+metadata into ignored active outputs; these are not runtime inputs. Development
+builds select local qap-compiler output. Production builds and package
+publication select the pinned npm `@tokamak-zk-evm/subcircuit-library`
+snapshot. In both modes, compilation consumes only the selected active output.
 
 Obtain the large combined CRS source from the immutable
 [Tokamak zk-EVM CRS release folder](https://drive.google.com/drive/folders/14xqCbLoyoVmUVTTlopiXtKnoHPBGL-Sv).
@@ -486,7 +488,7 @@ proof may return `false`.
 | [Tokamak zk-SNARK protocol paper](https://eprint.iacr.org/2024/507)                                      | The protocol definition implemented by preprocess, the prover, and the verifier                                                        |
 | [Native backend](https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main/packages/backend)           | The protocol reference and accelerated ICICLE/arkworks implementation; it owns setup, preprocess, native proof, and verifier artifacts |
 | [ffjavascript](https://github.com/iden3/ffjavascript)                                                    | The BLS12-381 field, group, MSM, FFT, pairing, WASM, and worker runtime used by browser execution                                      |
-| [`@tokamak-zk-evm/subcircuit-library`](https://www.npmjs.com/package/@tokamak-zk-evm/subcircuit-library) | The pinned source of build-generated setup parameters, packed R1CS data, and subcircuit metadata                                       |
+| [`@tokamak-zk-evm/subcircuit-library`](https://www.npmjs.com/package/@tokamak-zk-evm/subcircuit-library) | The pinned production source of build-generated setup parameters, packed R1CS data, and subcircuit metadata; development selects local qap-compiler output |
 | [Immutable CRS release folder](https://drive.google.com/drive/folders/14xqCbLoyoVmUVTTlopiXtKnoHPBGL-Sv) | The application-acquired source of release CRS material, including `combined_sigma.rkyv`                                               |
 
 This package does not compile circuits, synthesize application inputs, run a

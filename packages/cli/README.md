@@ -37,7 +37,6 @@ backend npm package.
 | `tokamak-cli --install`                        | Build with prerequisites already installed and download compatible CRS artifacts |
 | `tokamak-cli --install --include-prerequisite` | Offer to install missing prerequisites on macOS or supported Ubuntu releases     |
 | `tokamak-cli --install --docker`               | Build and run in the packaged Linux container workflow                           |
-| `tokamak-cli --install --trusted-setup`        | Generate setup artifacts locally instead of downloading them                     |
 | `tokamak-cli --install --no-setup`             | Install without CRS artifacts; preprocess, prove, and verify remain unavailable  |
 
 ### Native requirements

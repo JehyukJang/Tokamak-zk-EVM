@@ -15,6 +15,7 @@ import {
 } from "../../src/converter/conversion/rkyv-to-binary.js";
 import { GENERATED_SETUP_PARAMS } from "../../src/generated/active/setup.generated.js";
 import { GENERATED_PROVER_SUBCIRCUIT_INFOS } from "../../src/prover/generated/active/subcircuit-library.generated.js";
+import type { ProverSubcircuitInfo } from "../../src/prover/protocol/witness.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../src/version.js";
 import { loadCombinedSigmaPayloadDecoder } from "../../tools/rkyv-decoder-wasm/src/node.js";
 import { resolveFixtureWorkDirectory } from "./fixture-paths.js";
@@ -110,8 +111,10 @@ function validateFixtureStructure(
       `placementVariables length ${placementVariables.length} exceeds setupParams.s_max ${GENERATED_SETUP_PARAMS.s_max}.`,
     );
   }
-  const subcircuitsById = new Map(
-    GENERATED_PROVER_SUBCIRCUIT_INFOS.map((subcircuit) => [subcircuit.id, subcircuit]),
+  const subcircuitsById = new Map<number, ProverSubcircuitInfo>(
+    GENERATED_PROVER_SUBCIRCUIT_INFOS.map(
+      (subcircuit): [number, ProverSubcircuitInfo] => [subcircuit.id, subcircuit],
+    ),
   );
   placementVariables.forEach((rawPlacement, index) => {
     const placement = requireRecord(rawPlacement, `placementVariables[${index}]`);

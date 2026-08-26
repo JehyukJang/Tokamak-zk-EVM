@@ -47,6 +47,7 @@
     "dist",
     "manifests",
     "vendor",
+    "versioning",
     "README.md",
     "LICENSE-MIT",
     "LICENSE-APACHE"
@@ -58,6 +59,7 @@
     "build": "npm run prepare:package && npm run clean && tsc -p tsconfig.json --pretty false",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "release:check": "node scripts/release-readiness.cjs",
+    "release:runtime:check": "npm run build && node scripts/check-packaged-runtime.cjs",
     "test": "npm run contracts:check && npm run build && node --test tests/*.test.cjs",
     "typecheck": "npm run contracts:check && tsc -p tsconfig.json --pretty false --noEmit",
     "release:publish": "node scripts/publish-package.cjs",

@@ -3,7 +3,6 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
 import {
-  backendEnvironment,
   ensureDir,
   normalizeCompatibleBackendVersion,
   packageCompatibleVersion,
@@ -11,7 +10,7 @@ import {
 } from './context.js';
 import { downloadFileWithResume, fileExists, normalizeSha256, sha256FileHex } from './download.js';
 import type { RuntimeContext } from './model.js';
-import { runCommand, logVerbose } from '../system.js';
+import { logVerbose, runCommand } from '../system.js';
 import { crsProvenanceFileName, parseFinalMpcCrsProvenance } from '../generated/crs-provenance-validator.generated.js';
 import {
   backendBuildMetadataFileName,
@@ -508,14 +507,4 @@ export async function writeSkippedSetupNotice(context: RuntimeContext): Promise<
     'Setup artifacts were skipped during installation.\n',
     'utf8',
   );
-}
-
-export async function runTrustedSetup(context: RuntimeContext, verbose: boolean): Promise<void> {
-  const paths = runtimePaths(context);
-  await ensureDir(paths.setupOutputDir);
-  await fs.access(paths.trustedSetupBinary);
-  await runCommand(paths.trustedSetupBinary, ['--output', paths.setupOutputDir, '--fixed-tau'], {
-    env: backendEnvironment(context),
-    verbose,
-  });
 }

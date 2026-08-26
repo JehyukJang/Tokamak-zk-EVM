@@ -334,9 +334,6 @@ function dockerInstallArgs(context: RuntimeContext, bootstrap: DockerBootstrap, 
     bootstrap.imageName,
     '--install',
   ];
-  if (options.trustedSetup) {
-    args.push('--trusted-setup');
-  }
   if (options.noSetup) {
     args.push('--no-setup');
   }

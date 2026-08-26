@@ -242,8 +242,13 @@ function main(): void {
     () => validateCrsProvenanceCompatibility(LEADING_ZERO_FINAL_MPC_PROVENANCE),
     'Leading-zero CRS compatibility versions must be rejected by the root version policy.',
   );
-  const leadingZeroPackageVersion = structuredClone(expected);
-  leadingZeroPackageVersion.subcircuitLibrary.packageVersion = '02.01.5';
+  const leadingZeroPackageVersion = {
+    ...expected,
+    subcircuitLibrary: {
+      ...expected.subcircuitLibrary,
+      packageVersion: '02.01.5',
+    },
+  };
   expectFailure(
     () => validateCrsProvenanceCompatibility(leadingZeroPackageVersion),
     'Leading-zero subcircuit-library versions must be rejected by the root version policy.',

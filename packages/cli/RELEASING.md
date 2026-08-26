@@ -16,7 +16,7 @@ publication or recovery.
 npm run version:sync -- 2.0.12
 npm run version:check
 npm run --workspace @tokamak-zk-evm/cli release:check
-npm run --workspace @tokamak-zk-evm/cli build
+npm run --workspace @tokamak-zk-evm/cli release:runtime:check
 ```
 
 ## What Happens On `main`
@@ -42,7 +42,8 @@ intentional:
 npm run --workspace @tokamak-zk-evm/cli release:publish
 ```
 
-The command validates release readiness, rebuilds the package, and runs
+The command validates release readiness, verifies the packed runtime's
+production backend build and installer contracts, and runs
 `npm publish --access public --ignore-scripts`. It requires an npm identity
 authorized to publish `@tokamak-zk-evm/cli`. Additional npm publish arguments
 may be passed after `--`, for example:

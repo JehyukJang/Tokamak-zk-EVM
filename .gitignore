@@ -44,6 +44,7 @@ dist/
 dist-*/
 **/dist/
 packages/cli/vendor/
+packages/cli/versioning/
 
 #Package
 *.zip

@@ -3,7 +3,11 @@ import path from 'node:path';
 
 const packageRoot = path.resolve(import.meta.dirname, '..');
 const repoRoot = path.resolve(packageRoot, '..', '..');
+const rootVersionPolicyPath = path.join(repoRoot, 'versioning', 'compatibility.rs');
 const vendoredBackendRoot = path.join(packageRoot, 'vendor', 'backend');
+// Backend contract code resolves the root-owned policy with four parent
+// traversals from vendor/backend/contracts/rust, which lands at this package root.
+const packagedVersionPolicyPath = path.join(packageRoot, 'versioning', 'compatibility.rs');
 
 const directoryExclusions = new Set([
   'target',
@@ -97,9 +101,23 @@ async function assertPreparedBackendTree(directory = vendoredBackendRoot) {
   }
 }
 
+async function copyVersionPolicy() {
+  await ensureDir(path.dirname(packagedVersionPolicyPath));
+  await fs.copyFile(rootVersionPolicyPath, packagedVersionPolicyPath);
+
+  const [source, staged] = await Promise.all([
+    fs.readFile(rootVersionPolicyPath),
+    fs.readFile(packagedVersionPolicyPath),
+  ]);
+  if (!source.equals(staged)) {
+    throw new Error('Vendored version-policy source does not match the root-owned source.');
+  }
+}
+
 async function main() {
   await fs.rm(path.join(packageRoot, 'vendor'), { recursive: true, force: true });
   await ensureDir(vendoredBackendRoot);
+  await copyVersionPolicy();
   await copyDirectory(
     path.join(repoRoot, 'packages', 'backend'),
     vendoredBackendRoot,

@@ -6,7 +6,6 @@ export interface InstallOptions {
   docker: boolean;
   includePrerequisite: boolean;
   noSetup: boolean;
-  trustedSetup: boolean;
   verbose: boolean;
 }
 

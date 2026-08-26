@@ -27,7 +27,7 @@ import {
   copyBuiltBackendBinaries,
   ensureVendoredBackendExists,
 } from './runtime/native.js';
-import { installDownloadedSetup, runTrustedSetup, writeSkippedSetupNotice } from './runtime/setup.js';
+import { installDownloadedSetup, writeSkippedSetupNotice } from './runtime/setup.js';
 import type { CliPlatform, InstallOptions, RuntimeContext, RuntimeState } from './runtime/model.js';
 
 interface PrerequisiteFailure {
@@ -90,7 +90,7 @@ function collectPrerequisiteFailures(
   }
 
   const requiredCommands = ['npm', 'rustc', 'cargo', 'cmake', 'tar'];
-  if (!options.noSetup && !options.trustedSetup) {
+  if (!options.noSetup) {
     requiredCommands.push('unzip');
   }
 
@@ -206,14 +206,12 @@ export async function installRuntime(options: InstallOptions): Promise<RuntimeCo
   await emptyDir(context.runtimeDir);
   const backendReleaseDir = await buildBackendReleaseBinaries(backendRoot, options);
   logVerbose(options.verbose, `Using backend release output ${backendReleaseDir}`);
-  await copyBuiltBackendBinaries(context, backendReleaseDir, options);
+  await copyBuiltBackendBinaries(context, backendReleaseDir);
   await installIcicleRuntime(context, nativeOs, options.verbose);
   await configureMacosRuntime(context, options.verbose);
 
   if (options.noSetup) {
     await writeSkippedSetupNotice(context);
-  } else if (options.trustedSetup) {
-    await runTrustedSetup(context, options.verbose);
   } else {
     await installDownloadedSetup(context, backendReleaseDir, options.verbose);
   }

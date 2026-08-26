@@ -3,6 +3,11 @@ import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { ensureDir, runtimePaths } from './context.js';
+import {
+  backendBuildMetadataFileName,
+  parseBackendBuildMetadata,
+  type BackendPackageName,
+} from '../generated/backend-build-metadata-validator.generated.js';
 import type { InstallOptions, RuntimeContext } from './model.js';
 import { runCommand } from '../system.js';
 
@@ -10,7 +15,7 @@ interface CargoMetadata {
   target_directory?: string;
 }
 
-const BACKEND_BINARY_NAMES = ['preprocess', 'prove', 'verify'] as const;
+const BACKEND_BINARY_NAMES: readonly BackendPackageName[] = ['preprocess', 'prove', 'verify'];
 
 function resolveVendoredBackendRoot(packageRoot: string): string {
   return path.join(packageRoot, 'vendor', 'backend');
@@ -31,16 +36,41 @@ export async function buildBackendReleaseBinaries(
   backendRoot: string,
   options: InstallOptions,
 ): Promise<string> {
-  const packages = options.trustedSetup
-    ? ['trusted-setup', ...BACKEND_BINARY_NAMES]
-    : [...BACKEND_BINARY_NAMES];
-  for (const packageName of packages) {
-    await runCommand('cargo', ['build', '-p', packageName, '--release'], {
+  for (const packageName of BACKEND_BINARY_NAMES) {
+    await runCommand('cargo', backendProductionBuildArgs(packageName), {
       cwd: backendRoot,
       verbose: options.verbose,
     });
   }
-  return resolveCargoReleaseDir(backendRoot);
+  const backendReleaseDir = resolveCargoReleaseDir(backendRoot);
+  await validateProductionBuildMetadata(backendReleaseDir);
+  return backendReleaseDir;
+}
+
+export function backendProductionBuildArgs(packageName: BackendPackageName): string[] {
+  return [
+    'build',
+    '-p',
+    packageName,
+    '--release',
+    '--no-default-features',
+    '--features',
+    'production-npm-subcircuit-library',
+  ];
+}
+
+export async function validateProductionBuildMetadata(backendReleaseDir: string): Promise<void> {
+  for (const packageName of BACKEND_BINARY_NAMES) {
+    const metadataPath = path.join(backendReleaseDir, backendBuildMetadataFileName(packageName));
+    let metadata: unknown;
+    try {
+      metadata = JSON.parse(await fs.readFile(metadataPath, 'utf8'));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Missing or invalid ${packageName} production build metadata at ${metadataPath}: ${message}`);
+    }
+    parseBackendBuildMetadata(metadata, packageName, `${packageName} production build metadata`);
+  }
 }
 
 function resolveCargoReleaseDir(backendRoot: string): string {
@@ -67,15 +97,11 @@ function resolveCargoReleaseDir(backendRoot: string): string {
 export async function copyBuiltBackendBinaries(
   context: RuntimeContext,
   backendReleaseDir: string,
-  options: InstallOptions,
 ): Promise<void> {
   const paths = runtimePaths(context);
-  const builtBinaryNames = options.trustedSetup
-    ? ['trusted-setup', ...BACKEND_BINARY_NAMES]
-    : [...BACKEND_BINARY_NAMES];
 
   await ensureDir(paths.binaryDir);
-  for (const binaryName of builtBinaryNames) {
+  for (const binaryName of BACKEND_BINARY_NAMES) {
     const sourcePath = path.join(backendReleaseDir, binaryName);
     await fs.access(sourcePath);
     await fs.copyFile(sourcePath, path.join(paths.binaryDir, binaryName));
@@ -97,7 +123,7 @@ export async function configureMacosRuntime(context: RuntimeContext, verbose: bo
   }
   const paths = runtimePaths(context);
   const rpath = '@executable_path/../backend-lib/icicle/lib';
-  for (const binaryName of ['trusted-setup', 'preprocess', 'prove', 'verify']) {
+  for (const binaryName of BACKEND_BINARY_NAMES) {
     const binaryPath = path.join(paths.binaryDir, binaryName);
     if (fsSync.existsSync(binaryPath)) {
       applyInstallNameTool(binaryPath, rpath, verbose);

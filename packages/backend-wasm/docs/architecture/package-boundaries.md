@@ -65,8 +65,8 @@ preprocess, prove, or verify operations.
 
 ### `src/generated`
 
-- shared setup parameters and native/backend dependency versions generated from
-  the pinned subcircuit-library package and native backend manifest.
+- shared setup parameters and native/backend dependency versions. The ignored
+  `active` child is generated from the explicitly selected input origin.
 
 ### `src/runtime`
 
@@ -141,18 +141,24 @@ API. Runtime code performs no network or filesystem I/O and does not fetch
 Google Drive assets.
 
 Shared setup parameters and dependency versions are generated under
-`src/generated` at build time from the pinned
-`@tokamak-zk-evm/subcircuit-library` package and native backend manifest.
-Prover-only packed R1CS data and subcircuit metadata are generated separately
-under `src/prover/generated`. Verifier CRS is regenerated during every build
-from the explicit native owner artifact path. Verifier does not consume the
-standalone verifier CRS emitted by `convertCrs`. Prover and preprocess CRS
+`src/generated/active`; prover-only packed R1CS data and subcircuit metadata
+are generated under `src/prover/generated/active`; and verifier Sigma is
+generated under `src/verifier/generated/active`. These ignored active outputs
+are the only generated inputs that compilation imports.
+
+Development generation selects local qap-compiler data and an explicit
+trusted-setup debug Sigma. Production generation selects the pinned npm
+`@tokamak-zk-evm/subcircuit-library` snapshot and a complete canonical final
+CRS directory. The selection changes input provenance, not compiler
+optimization. `prepack` always selects production inputs, preventing local
+generated inputs from entering a publishable tarball. Verifier does not consume
+the standalone verifier CRS emitted by `convertCrs`. Prover and preprocess CRS
 remain runtime binary inputs prepared through `convertCrs`.
 
 ## Generated And Development Assets
 
-Generated production source is updated only through scripts under
-`scripts/generate` or `scripts/package`. Do not edit generated files manually.
+Generated inputs are updated only through scripts under `scripts/generate` or
+`scripts/package`. Do not edit generated files manually.
 
 Fixture preparation follows:
 

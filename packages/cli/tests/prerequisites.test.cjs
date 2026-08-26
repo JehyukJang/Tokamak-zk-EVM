@@ -387,7 +387,7 @@ function runCli(args) {
 test('rejects invalid options at the executable boundary', () => {
   for (const [args, error] of [
     [['--install', '--include-prerequisite', '--docker'], /cannot be combined with --docker/u],
-    [['--install', '--trusted-setup', '--no-setup'], /cannot be combined with --no-setup/u],
+    [['--install', '--trusted-setup'], /Unknown option for --install/u],
     [['--uninstall', '--include-prerequisite'], /Unknown option for --uninstall/u],
   ]) {
     const result = runCli(args);
@@ -398,9 +398,9 @@ test('rejects invalid options at the executable boundary', () => {
 
 test('parses every supported include-prerequisite combination', () => {
   for (const [options, expected] of [
-    [[], { verbose: false, trustedSetup: false, noSetup: false }],
-    [['--verbose', '--trusted-setup'], { verbose: true, trustedSetup: true, noSetup: false }],
-    [['--no-setup'], { verbose: false, trustedSetup: false, noSetup: true }],
+    [[], { verbose: false, noSetup: false }],
+    [['--verbose'], { verbose: true, noSetup: false }],
+    [['--no-setup'], { verbose: false, noSetup: true }],
   ]) {
     assert.deepEqual(parseArgs(['--install', '--include-prerequisite', ...options]), {
       command: 'install',
@@ -408,7 +408,6 @@ test('parses every supported include-prerequisite combination', () => {
       installOptions: {
         docker: false,
         includePrerequisite: true,
-        trustedSetup: expected.trustedSetup,
         noSetup: expected.noSetup,
       },
     });

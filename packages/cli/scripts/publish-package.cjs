@@ -27,5 +27,5 @@ const extraArgs = process.argv.slice(2);
 const npm = npmCommand();
 
 run(npm, ['run', 'release:check']);
-run(npm, ['run', 'build']);
+run(npm, ['run', 'release:runtime:check']);
 run(npm, ['publish', '--access', 'public', '--ignore-scripts', ...extraArgs]);

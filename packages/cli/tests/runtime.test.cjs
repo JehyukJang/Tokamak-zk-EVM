@@ -70,7 +70,6 @@ test('writes only Docker bootstrap state and removes the legacy launcher', async
       docker: true,
       includePrerequisite: false,
       noSetup: true,
-      trustedSetup: false,
       verbose: false,
     });
 
