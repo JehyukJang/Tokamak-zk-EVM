@@ -19,16 +19,13 @@ use libs::field_structures::Tau;
 use libs::group_structures::{pairing, G1serde, G2serde};
 #[cfg(test)]
 use libs::group_structures::{Sigma, Sigma1, Sigma2};
+use libs::{impl_read_from_json, impl_write_into_json};
 use rayon::prelude::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::from_reader;
-use serde_json::to_writer_pretty;
-use std::env;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::ops::Mul;
 use std::time::Instant;
-use std::{fs, io};
 use thiserror::Error;
 
 pub struct StepTimer {
@@ -87,39 +84,6 @@ fn inferred_phase2_s_max(sigma: &SigmaV2) -> Option<usize> {
 pub fn select_cuda_or_cpu() -> Result<bool, libs::errors::DeviceError> {
     Ok(libs::utils::try_check_device()? == "CUDA")
 }
-#[macro_export]
-macro_rules! impl_read_from_json {
-    ($t:ty) => {
-        impl $t {
-            pub fn read_from_json(path: &str) -> io::Result<Self> {
-                let abs_path = env::current_dir()?.join(path);
-                let file = File::open(abs_path)?;
-                let reader = BufReader::new(file);
-                let res: Self = from_reader(reader)?;
-                Ok(res)
-            }
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! impl_write_into_json {
-    ($t:ty) => {
-        impl $t {
-            pub fn write_into_json(&self, path: &str) -> io::Result<()> {
-                let abs_path = env::current_dir()?.join(path);
-                if let Some(parent) = abs_path.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-                let file = File::create(&abs_path)?;
-                let writer = BufWriter::new(file);
-                to_writer_pretty(writer, self)?;
-                Ok(())
-            }
-        }
-    };
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct SerialSerde {
     pub g1: Vec<G1serde>, //[xG1, x^2G1, x^3G1, ..., x^s_maxG1]

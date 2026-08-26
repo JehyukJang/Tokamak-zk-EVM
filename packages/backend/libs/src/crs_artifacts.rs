@@ -6,8 +6,7 @@ use crate::frontend_artifacts::public_wire_layout::PublicWireLayout;
 use crate::frontend_artifacts::{HexString, PlacementVariables, SetupParams, SubcircuitInfo};
 use crate::group_structures::{
     count_statement_nvar, encode_o_pub_fix_common, encode_o_pub_free_common,
-    encode_statement_common, G1serde, G2serde, PartialSigma1, PartialSigma1Verify, Sigma, Sigma2,
-    SigmaPreprocess, SigmaVerify,
+    encode_statement_common, G1serde, G2serde, PartialSigma1Verify, Sigma, Sigma2, SigmaVerify,
 };
 #[cfg(feature = "timing")]
 use crate::timing::{record as record_timing, SizeInfo};
@@ -18,10 +17,9 @@ use icicle_bls12_381::curve::{
 use icicle_core::msm::{self, MSMConfig};
 use icicle_core::traits::FieldImpl;
 use icicle_runtime::memory::HostSlice;
-use serde_json::to_writer_pretty;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File};
-use std::io::{self, BufReader, BufWriter, Read};
+use std::io::{self, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process;
 #[cfg(feature = "timing")]
@@ -41,38 +39,6 @@ impl Sigma {
             sigma_2: self.sigma_2,
             lagrange_KL: self.lagrange_KL,
         }
-    }
-
-    pub fn sigma_preprocess(&self) -> SigmaPreprocess {
-        let partial_sigma_1: PartialSigma1 = PartialSigma1 {
-            xy_powers: self.sigma_1.xy_powers.clone(),
-            gamma_inv_o_inst: self.sigma_1.gamma_inv_o_inst.clone(),
-        };
-        SigmaPreprocess {
-            sigma_1: partial_sigma_1,
-        }
-    }
-
-    /// Write verifier CRS into JSON
-    pub fn write_into_json_for_verify(&self, abs_path: PathBuf) -> io::Result<()> {
-        if let Some(parent) = abs_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let file = File::create(&abs_path)?;
-        let writer = BufWriter::new(file);
-        to_writer_pretty(writer, &self.sigma_verify())?;
-        Ok(())
-    }
-
-    /// Write preprocess CRS into JSON
-    pub fn write_into_json_for_preprocess(&self, abs_path: PathBuf) -> io::Result<()> {
-        if let Some(parent) = abs_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let file = File::create(&abs_path)?;
-        let writer = BufWriter::new(file);
-        to_writer_pretty(writer, &self.sigma_preprocess())?;
-        Ok(())
     }
 }
 

@@ -85,10 +85,6 @@ impl DevelopmentCrsProvenanceArg {
     }
 }
 
-pub fn resolve_subcircuit_library_path(local_path: Option<&str>) -> PathBuf {
-    try_resolve_subcircuit_library_path(local_path).unwrap_or_else(|error| panic!("{error}"))
-}
-
 pub fn try_resolve_subcircuit_library_path(local_path: Option<&str>) -> Result<PathBuf, CrsError> {
     if let Some(path) = local_path {
         return fs::canonicalize(path).map_err(|source| CrsError::Read {

@@ -12,11 +12,11 @@ use std::fmt;
 macro_rules! impl_read_from_json {
     ($t:ty) => {
         impl $t {
-            pub fn read_from_json(path: PathBuf) -> std::io::Result<Self> {
+            pub fn read_from_json(path: impl AsRef<std::path::Path>) -> std::io::Result<Self> {
                 use serde_json::from_reader;
                 use std::fs::File;
                 use std::io::BufReader;
-                let file = File::open(path)?;
+                let file = File::open(path.as_ref())?;
                 let reader = BufReader::new(file);
                 let res: Self = from_reader(reader)?;
                 Ok(res)
@@ -29,11 +29,13 @@ macro_rules! impl_read_from_json {
 macro_rules! impl_read_box_from_json {
     ($t:ty) => {
         impl $t {
-            pub fn read_box_from_json(path: PathBuf) -> io::Result<Box<[Self]>> {
+            pub fn read_box_from_json(
+                path: impl AsRef<std::path::Path>,
+            ) -> std::io::Result<Box<[Self]>> {
                 use serde_json::from_reader;
                 use std::fs::File;
                 use std::io::BufReader;
-                let file = File::open(path)?;
+                let file = File::open(path.as_ref())?;
                 let reader = BufReader::new(file);
                 let box_data: Box<[Self]> = from_reader(reader)?;
                 Ok(box_data)
@@ -46,14 +48,18 @@ macro_rules! impl_read_box_from_json {
 macro_rules! impl_write_into_json {
     ($t:ty) => {
         impl $t {
-            pub fn write_into_json(&self, path: PathBuf) -> std::io::Result<()> {
+            pub fn write_into_json(
+                &self,
+                path: impl AsRef<std::path::Path>,
+            ) -> std::io::Result<()> {
                 use serde_json::to_writer_pretty;
                 use std::fs::{self, File};
                 use std::io::BufWriter;
+                let path = path.as_ref();
                 if let Some(parent) = path.parent() {
                     fs::create_dir_all(parent)?;
                 }
-                let file = File::create(&path)?;
+                let file = File::create(path)?;
                 let writer = BufWriter::new(file);
                 to_writer_pretty(writer, self)?;
                 Ok(())
@@ -158,11 +164,6 @@ impl<'de> Deserialize<'de> for G2serde {
         Ok(G2serde(point))
     }
 }
-pub fn any_field_to_hex<T: FieldImpl>(field: &T) -> String {
-    let bytes = field.to_bytes_le();
-    format!("0x{}", hex_encode(&bytes))
-}
-
 // Helper function to encode bytes as hex string
 pub fn hex_encode(bytes: &[u8]) -> String {
     bytes
@@ -233,10 +234,6 @@ fn try_recover_basefield(part1: &str, part2: &str) -> Result<BaseField, String> 
     Ok(BaseField::from_bytes_le(&bytes))
 }
 
-pub fn next_point(idx: usize, part1: &Vec<String>, part2: &Vec<String>) -> G1serde {
-    try_next_point(idx, part1, part2).unwrap_or_else(|error| panic!("{error}"))
-}
-
 pub fn try_next_point(idx: usize, part1: &[String], part2: &[String]) -> Result<G1serde, String> {
     let x_prefix = part1
         .get(idx)
@@ -256,14 +253,4 @@ pub fn try_next_point(idx: usize, part1: &[String], part2: &[String]) -> Result<
         .map_err(|error| format!("invalid G1 y coordinate at entry {}: {error}", idx + 1))?;
 
     Ok(G1serde(G1Affine { x: bx, y: by }))
-}
-
-#[macro_export]
-macro_rules! pop_recover {
-    ($idx: ident, $part1: expr, $part2: expr, $( $point: ident),+ $(,)?) => {
-        $(
-            let $point = next_point($idx, $part1, $part2);
-            $idx += 2;
-        )+
-    };
 }

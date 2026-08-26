@@ -6,7 +6,6 @@ use crate::utils::{
     compute_phase1_x_only, verify_phase1_x_only, PairSerde, Phase1Proof, RandomGenerator,
     SerialSerde,
 };
-use crate::{impl_read_from_json, impl_write_into_json};
 use ark_serialize::Compress;
 use ark_std::env;
 use ark_std::fs;
@@ -14,13 +13,10 @@ use blake2::{Blake2b, Digest};
 use icicle_bls12_381::curve::G1Affine;
 use libs::crs_artifacts::{G1SerdeRkyv, G2SerdeRkyv};
 use libs::group_structures::{G1serde, G2serde};
+use libs::{impl_read_from_json, impl_write_into_json};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
-use serde_json::from_reader;
-use serde_json::to_writer_pretty;
-use std::fs::File;
 use std::io;
-use std::io::{BufReader, BufWriter};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq)]

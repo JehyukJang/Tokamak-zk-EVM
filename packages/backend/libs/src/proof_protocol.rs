@@ -8,7 +8,6 @@ use crate::{impl_read_from_json, impl_write_into_json, split_push};
 use icicle_bls12_381::curve::ScalarField;
 use icicle_core::traits::FieldImpl;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use tiny_keccak::Keccak;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -69,11 +68,6 @@ impl_read_from_json!(FormattedProof);
 impl_write_into_json!(FormattedProof);
 
 impl FormattedProof {
-    pub fn recover_proof_from_format(&self) -> Proof {
-        self.try_recover_proof_from_format()
-            .unwrap_or_else(|error| panic!("{error}"))
-    }
-
     pub fn try_recover_proof_from_format(&self) -> Result<Proof, String> {
         const G1_CNT: usize = 19;
         const SCALAR_CNT: usize = 4;
@@ -288,11 +282,6 @@ impl_read_from_json!(FormattedPreprocess);
 impl_write_into_json!(FormattedPreprocess);
 
 impl FormattedPreprocess {
-    pub fn recover_proof_from_format(&self) -> Preprocess {
-        self.try_recover_proof_from_format()
-            .unwrap_or_else(|error| panic!("{error}"))
-    }
-
     pub fn try_recover_proof_from_format(&self) -> Result<Preprocess, String> {
         const G1_CNT: usize = 3;
         let p1 = &self.preprocess_entries_part1;
