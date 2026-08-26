@@ -456,7 +456,6 @@ jobs:
           fi
 
           python <<'PY'
-          import hashlib
           import json
           import os
           import re
@@ -601,13 +600,6 @@ jobs:
               done = False
               while not done:
                   _, done = downloader.next_chunk()
-
-          def read_json_entry(zip_file, entry_name):
-              try:
-                  with zip_file.open(entry_name) as entry:
-                      return json.loads(entry.read().decode("utf-8"))
-              except KeyError:
-                  raise SystemExit(f"CRS archive {selected['name']} is missing {entry_name}")
 
           with ZipFile(archive_path) as archive:
               verified_crs_dir = Path("verified-final-crs")

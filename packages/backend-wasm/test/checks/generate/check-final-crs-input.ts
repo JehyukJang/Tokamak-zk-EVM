@@ -31,6 +31,24 @@ async function main(): Promise<void> {
       "Final CRS ingress must reject a Sigma digest mismatch.",
     );
 
+    await writeFinalCrsDirectory(directory, files);
+    await expectFailure(
+      async () => {
+        await writeFile(path.join(directory, "combined_sigma.rkyv"), Uint8Array.from([3, 2, 1]));
+        await loadVerifiedFinalCrsInput(directory);
+      },
+      "Final CRS ingress must reject a combined Sigma digest mismatch.",
+    );
+
+    await writeFinalCrsDirectory(directory, files);
+    await expectFailure(
+      async () => {
+        await writeFile(path.join(directory, "sigma_preprocess.rkyv"), Uint8Array.from([6, 5, 4]));
+        await loadVerifiedFinalCrsInput(directory);
+      },
+      "Final CRS ingress must reject a preprocess Sigma digest mismatch.",
+    );
+
     await writeFinalCrsDirectory(directory, files, {
       compatibleBackendVersion: "9.9",
       subcircuitLibraryVersion: "9.9.0",
