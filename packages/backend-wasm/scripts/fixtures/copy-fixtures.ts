@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   NATIVE_BACKEND_VERSION,
   SUBCIRCUIT_LIBRARY_PACKAGE_VERSION,
-} from "../../src/generated/setup.generated.js";
+} from "../../src/generated/active/setup.generated.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../src/version.js";
 import {
   isPathInside,

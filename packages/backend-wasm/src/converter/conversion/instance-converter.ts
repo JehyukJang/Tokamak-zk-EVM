@@ -5,7 +5,7 @@ import {
   BinarySectionType,
 } from "../../artifacts/binary/binary-format.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
-import { GENERATED_SETUP_PARAMS } from "../../generated/setup.generated.js";
+import { GENERATED_SETUP_PARAMS } from "../../generated/active/setup.generated.js";
 import { concatBytes } from "../../runtime/bytes.js";
 import type { CurveRuntime } from "../../runtime/curve/curve.js";
 import { isRecord, parseHexStringArray } from "./conversion-utils.js";

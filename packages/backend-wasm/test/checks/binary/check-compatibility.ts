@@ -7,7 +7,7 @@ import {
   validateCrsProvenanceCompatibility,
 } from '../../../src/artifacts/binary/compatibility.js';
 import { BinaryArtifactFileKind, type BinaryArtifactFileView } from '../../../src/artifacts/binary/binary-format.js';
-import { SUBCIRCUIT_LIBRARY_PACKAGE_VERSION } from '../../../src/generated/setup.generated.js';
+import { SUBCIRCUIT_LIBRARY_PACKAGE_VERSION } from '../../../src/generated/active/setup.generated.js';
 
 const PACKAGE_NAME = '@tokamak-zk-evm/subcircuit-library';
 const CANONICAL_FINAL_MPC_PROVENANCE = JSON.parse(

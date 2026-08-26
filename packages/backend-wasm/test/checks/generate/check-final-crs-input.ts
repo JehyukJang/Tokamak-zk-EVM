@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { loadVerifiedFinalCrsInput } from "../../../scripts/generate/final-crs-input.js";
-import { SUBCIRCUIT_LIBRARY_PACKAGE_VERSION } from "../../../src/generated/setup.generated.js";
+import {
+  SUBCIRCUIT_LIBRARY_ORIGIN,
+  SUBCIRCUIT_LIBRARY_PACKAGE_VERSION,
+} from "../../../src/generated/active/setup.generated.js";
 
 const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = "@tokamak-zk-evm/subcircuit-library";
 
@@ -96,7 +99,7 @@ async function writeFinalCrsDirectory(
     subcircuitLibrary: {
       packageName: SUBCIRCUIT_LIBRARY_PACKAGE_NAME,
       packageVersion: version,
-      origin: "npmSnapshot",
+      origin: SUBCIRCUIT_LIBRARY_ORIGIN,
     },
     phase1SourceProvenance: null,
     combinedSigmaSha256: sha256(files.combinedSigma),

@@ -696,12 +696,12 @@ jobs:
 
       - name: Build package
         working-directory: packages/backend-wasm
-        run: npm run build
+        run: npm run build:production
 
       - name: Check package types and generated inputs
         working-directory: packages/backend-wasm
         run: |
-          npm run typecheck
+          npm run typecheck:production
           npm run typecheck:scripts
 
       - name: Check converter browser boundaries

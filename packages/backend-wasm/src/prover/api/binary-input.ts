@@ -13,12 +13,12 @@ import type { SetupParams } from "../../artifacts/setup/setup-params.js";
 import {
   GENERATED_PROVER_PACKED_R1CS,
   GENERATED_PROVER_SUBCIRCUIT_INFOS,
-} from "../generated/subcircuit-library.generated.js";
+} from "../generated/active/subcircuit-library.generated.js";
 import {
   GENERATED_SETUP_PARAMS,
   NATIVE_BACKEND_VERSION,
   SUBCIRCUIT_LIBRARY_PACKAGE_VERSION,
-} from "../../generated/setup.generated.js";
+} from "../../generated/active/setup.generated.js";
 import type {
   ProverPermutationEntry,
   ProverPlacementVariables,

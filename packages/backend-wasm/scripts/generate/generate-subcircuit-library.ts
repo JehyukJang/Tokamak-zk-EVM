@@ -12,24 +12,40 @@ import type {
 
 const require = createRequire(import.meta.url);
 const backendWasmRoot = path.resolve(import.meta.dirname, "../..");
-const setupGeneratedPath = path.join(backendWasmRoot, "src", "generated", "setup.generated.ts");
-const proverGeneratedPath = path.join(
+const activeGeneratedRoot = path.join(backendWasmRoot, "src", "generated", "active");
+const activeProverGeneratedRoot = path.join(
   backendWasmRoot,
   "src",
   "prover",
   "generated",
+  "active",
+);
+const setupGeneratedPath = path.join(activeGeneratedRoot, "setup.generated.ts");
+const proverGeneratedPath = path.join(
+  activeProverGeneratedRoot,
   "subcircuit-library.generated.ts",
 );
 const nativeBackendCargoPath = path.resolve(backendWasmRoot, "..", "backend", "Cargo.toml");
 const checkMode = process.argv.includes("--check");
+const selectedOrigin = readSelectedOrigin(process.argv.slice(2));
+const localQapCompilerRoot = path.resolve(backendWasmRoot, "..", "frontend", "qap-compiler");
+
+type SubcircuitLibraryOrigin = "localQapCompiler" | "npmSnapshot";
 
 interface SubcircuitLibraryPackage {
+  readonly name: string;
   readonly version: string;
 }
 
 interface BuildMetadata {
   readonly packageName?: string;
   readonly packageVersion?: string;
+}
+
+interface ResolvedSubcircuitLibrary {
+  readonly origin: SubcircuitLibraryOrigin;
+  readonly packageVersion: string;
+  readonly libraryRoot: string;
 }
 
 interface PackedSparseMatrix {
@@ -47,21 +63,13 @@ interface PackedSparseSubcircuit {
 }
 
 async function main(): Promise<void> {
-  const packageJsonPath = require.resolve("@tokamak-zk-evm/subcircuit-library/package.json");
-  const packageRoot = path.dirname(packageJsonPath);
-  const packageJson = readJson<SubcircuitLibraryPackage>(packageJsonPath);
-  const buildMetadata = readJson<BuildMetadata>(path.join(packageRoot, "build-metadata.json"));
-  if (buildMetadata.packageVersion !== packageJson.version) {
-    throw new Error(
-      `subcircuit-library build metadata version ${String(buildMetadata.packageVersion)} does not match package version ${packageJson.version}.`,
-    );
-  }
+  const library = resolveSubcircuitLibrary(selectedOrigin);
 
   const setup = readJson<SetupParams>(
-    path.join(packageRoot, "subcircuits", "library", "setupParams.json"),
+    path.join(library.libraryRoot, "setupParams.json"),
   );
   const subcircuitInfos = readJson<ProverSubcircuitInfo[]>(
-    path.join(packageRoot, "subcircuits", "library", "subcircuitInfo.json"),
+    path.join(library.libraryRoot, "subcircuitInfo.json"),
   );
   const nativeBackendVersion = readNativeBackendVersion(nativeBackendCargoPath);
 
@@ -69,9 +77,7 @@ async function main(): Promise<void> {
   try {
     const packedR1cs = subcircuitInfos.map((subcircuitInfo) => {
       const r1csPath = path.join(
-        packageRoot,
-        "subcircuits",
-        "library",
+        library.libraryRoot,
         "r1cs",
         `subcircuit${subcircuitInfo.id}.r1cs`,
       );
@@ -80,7 +86,8 @@ async function main(): Promise<void> {
 
     const setupContent = renderSetupGeneratedModule({
       nativeBackendVersion,
-      subcircuitLibraryPackageVersion: packageJson.version,
+      subcircuitLibraryOrigin: library.origin,
+      subcircuitLibraryPackageVersion: library.packageVersion,
       setup,
     });
     const proverContent = renderProverGeneratedModule({
@@ -105,6 +112,72 @@ async function main(): Promise<void> {
   } finally {
     await runtime.terminate();
   }
+}
+
+function readSelectedOrigin(args: readonly string[]): SubcircuitLibraryOrigin {
+  const originFlags = args.filter((argument) => argument.startsWith("--origin="));
+  if (originFlags.length > 1) {
+    throw new Error("Specify subcircuit-library origin at most once.");
+  }
+  const origin = originFlags[0]?.slice("--origin=".length) ?? "localQapCompiler";
+  if (origin === "localQapCompiler" || origin === "npmSnapshot") {
+    return origin;
+  }
+  throw new Error(
+    `Unsupported subcircuit-library origin ${JSON.stringify(origin)}; expected localQapCompiler or npmSnapshot.`,
+  );
+}
+
+function resolveSubcircuitLibrary(origin: SubcircuitLibraryOrigin): ResolvedSubcircuitLibrary {
+  if (origin === "npmSnapshot") {
+    const packageJsonPath = require.resolve("@tokamak-zk-evm/subcircuit-library/package.json");
+    const packageRoot = path.dirname(packageJsonPath);
+    const packageJson = readJson<SubcircuitLibraryPackage>(packageJsonPath);
+    const buildMetadata = readJson<BuildMetadata>(path.join(packageRoot, "build-metadata.json"));
+    assertPackageIdentity(packageJsonPath, packageJson, buildMetadata);
+    return validateLibraryLayout({
+      origin,
+      packageVersion: packageJson.version,
+      libraryRoot: path.join(packageRoot, "subcircuits", "library"),
+    });
+  }
+
+  const packageJsonPath = path.join(localQapCompilerRoot, "package.json");
+  const packageJson = readJson<SubcircuitLibraryPackage>(packageJsonPath);
+  assertPackageIdentity(packageJsonPath, packageJson);
+  return validateLibraryLayout({
+    origin,
+    packageVersion: packageJson.version,
+    libraryRoot: path.join(localQapCompilerRoot, "subcircuits", "library"),
+  });
+}
+
+function assertPackageIdentity(
+  packageJsonPath: string,
+  packageJson: SubcircuitLibraryPackage,
+  buildMetadata?: BuildMetadata,
+): void {
+  if (packageJson.name !== "@tokamak-zk-evm/subcircuit-library" || packageJson.version.length === 0) {
+    throw new Error(`Invalid subcircuit-library package identity at ${packageJsonPath}.`);
+  }
+  if (buildMetadata !== undefined && (
+    buildMetadata.packageName !== packageJson.name
+    || buildMetadata.packageVersion !== packageJson.version
+  )) {
+    throw new Error(
+      `subcircuit-library build metadata does not match package identity at ${packageJsonPath}.`,
+    );
+  }
+}
+
+function validateLibraryLayout(library: ResolvedSubcircuitLibrary): ResolvedSubcircuitLibrary {
+  for (const fileName of ["setupParams.json", "subcircuitInfo.json"]) {
+    const filePath = path.join(library.libraryRoot, fileName);
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`${library.origin} subcircuit-library is missing ${filePath}.`);
+    }
+  }
+  return library;
 }
 
 function packSubcircuitR1cs(
@@ -314,13 +387,15 @@ function scanConstraints(
 
 function renderSetupGeneratedModule(input: {
   readonly nativeBackendVersion: string;
+  readonly subcircuitLibraryOrigin: SubcircuitLibraryOrigin;
   readonly subcircuitLibraryPackageVersion: string;
   readonly setup: SetupParams;
 }): string {
   return `// Generated by scripts/generate/generate-subcircuit-library.ts. Do not edit by hand.
-import type { SetupParams } from "../artifacts/setup/setup-params.js";
+import type { SetupParams } from "../../artifacts/setup/setup-params.js";
 
 export const NATIVE_BACKEND_VERSION = ${JSON.stringify(input.nativeBackendVersion)};
+export const SUBCIRCUIT_LIBRARY_ORIGIN = ${JSON.stringify(input.subcircuitLibraryOrigin)};
 export const SUBCIRCUIT_LIBRARY_PACKAGE_VERSION = ${JSON.stringify(input.subcircuitLibraryPackageVersion)};
 
 export const GENERATED_SETUP_PARAMS = ${JSON.stringify(input.setup, null, 2)} as const satisfies SetupParams;
@@ -336,7 +411,7 @@ import type {
   ProverPackedSparseMatrix,
   ProverPackedSparseSubcircuitR1cs,
   ProverSubcircuitInfo,
-} from "../protocol/witness.js";
+} from "../../protocol/witness.js";
 
 export const GENERATED_PROVER_SUBCIRCUIT_INFOS = ${JSON.stringify(input.subcircuitInfos, null, 2)} as const satisfies readonly ProverSubcircuitInfo[];
 

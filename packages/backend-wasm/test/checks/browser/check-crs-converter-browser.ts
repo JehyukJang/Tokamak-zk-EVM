@@ -10,7 +10,7 @@ import { chromium } from 'playwright';
 import { build } from 'vite';
 
 import { BINARY_DIGEST_BYTES, BINARY_HEADER_BYTES } from '../../../src/artifacts/binary/binary-format.js';
-import { SUBCIRCUIT_LIBRARY_PACKAGE_VERSION } from '../../../src/generated/setup.generated.js';
+import { SUBCIRCUIT_LIBRARY_PACKAGE_VERSION } from '../../../src/generated/active/setup.generated.js';
 
 const execFileAsync = promisify(execFile);
 const PACKAGE_NAME = '@tokamak-zk-evm/snark-browser-compat';

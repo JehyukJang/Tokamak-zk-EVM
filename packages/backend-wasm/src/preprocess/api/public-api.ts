@@ -7,7 +7,7 @@ import {
 import {
   NATIVE_BACKEND_VERSION,
   SUBCIRCUIT_LIBRARY_PACKAGE_VERSION,
-} from "../../generated/setup.generated.js";
+} from "../../generated/active/setup.generated.js";
 import type { CurveRuntime } from "../../runtime/curve/curve.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
 import { assertRuntimeLibraryCompatibility } from "../../artifacts/binary/compatibility.js";

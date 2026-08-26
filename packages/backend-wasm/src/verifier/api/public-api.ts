@@ -6,7 +6,7 @@ import { assertRuntimeLibraryCompatibility } from "../../artifacts/binary/compat
 import {
   NATIVE_BACKEND_VERSION,
   SUBCIRCUIT_LIBRARY_PACKAGE_VERSION,
-} from "../../generated/setup.generated.js";
+} from "../../generated/active/setup.generated.js";
 import { loadVerifierInputFromBinaryInput, type VerifierBinaryInput } from "./binary-input.js";
 import { verifySnark } from "../protocol/verify-snark.js";
 

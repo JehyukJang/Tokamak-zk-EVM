@@ -1,5 +1,8 @@
 import type { BinaryArtifactFileView } from "./binary-format.js";
-import { SUBCIRCUIT_LIBRARY_PACKAGE_VERSION } from "../../generated/setup.generated.js";
+import {
+  SUBCIRCUIT_LIBRARY_ORIGIN,
+  SUBCIRCUIT_LIBRARY_PACKAGE_VERSION,
+} from "../../generated/active/setup.generated.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
 import { parseFinalMpcCrsProvenance } from "../../generated/crs-provenance-validator.generated.js";
 import {
@@ -29,6 +32,11 @@ export function validateCrsProvenanceCompatibility(provenance: CrsProvenanceInpu
   if (provenance.subcircuitLibrary.packageName !== SUBCIRCUIT_LIBRARY_PACKAGE_NAME) {
     throw new Error(
       `CRS provenance subcircuit-library package ${provenance.subcircuitLibrary.packageName} does not match ${SUBCIRCUIT_LIBRARY_PACKAGE_NAME}.`,
+    );
+  }
+  if (provenance.subcircuitLibrary.origin !== SUBCIRCUIT_LIBRARY_ORIGIN) {
+    throw new Error(
+      `CRS provenance subcircuit-library origin ${provenance.subcircuitLibrary.origin} does not match selected origin ${SUBCIRCUIT_LIBRARY_ORIGIN}.`,
     );
   }
   if (

@@ -46,7 +46,7 @@ import {
 } from "../../../src/prover/protocol/opening-commitments.js";
 import { createVerifierProofArtifactFromProverOutput } from "../../../src/prover/api/proof-output.js";
 import { buildProverInstancePolynomials, createProverMixer, createProverState } from "../../../src/prover/protocol/state.js";
-import { GENERATED_SETUP_PARAMS } from "../../../src/generated/setup.generated.js";
+import { GENERATED_SETUP_PARAMS } from "../../../src/generated/active/setup.generated.js";
 import {
   buildWitnessPolynomials,
   placementCount,

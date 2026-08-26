@@ -10,7 +10,7 @@ import { VERIFIER_PROOF_V1_SPEC } from "../../artifacts/specs/verifier-proof.v1.
 import type { CurveRuntime } from "../../runtime/curve/curve.js";
 import type { FieldElement } from "../../runtime/field/field-runtime.js";
 import { BinarySectionEncoding, BinarySectionType } from "../../artifacts/binary/binary-format.js";
-import { GENERATED_SETUP_PARAMS } from "../../generated/setup.generated.js";
+import { GENERATED_SETUP_PARAMS } from "../../generated/active/setup.generated.js";
 import type { VerifierSetupParams } from "../protocol/domain-context.js";
 import { GENERATED_VERIFIER_SIGMA } from "../generated/sigma-verify.generated.js";
 import type { VerifierInput, VerifierProof } from "../protocol/verify-snark.js";

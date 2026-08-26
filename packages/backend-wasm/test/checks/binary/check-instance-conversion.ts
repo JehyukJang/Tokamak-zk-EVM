@@ -9,7 +9,7 @@ import {
 } from "../../../src/artifacts/binary/binary-format.js";
 import { convertInstance } from "../../../src/converter/conversion/instance-converter.js";
 import { validateBinary } from "../../../src/converter/index.js";
-import { GENERATED_SETUP_PARAMS } from "../../../src/generated/setup.generated.js";
+import { GENERATED_SETUP_PARAMS } from "../../../src/generated/active/setup.generated.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../../src/version.js";
 import { createCurveRuntime } from "../../../src/runtime/curve/curve.js";
 import { assertEqual } from "../../support/assertions.js";

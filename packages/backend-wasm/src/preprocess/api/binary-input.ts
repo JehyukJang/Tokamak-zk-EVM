@@ -10,7 +10,7 @@ import {
 } from "../../artifacts/binary/binary-format.js";
 import { assertBinaryArtifactCompatibility } from "../../artifacts/binary/compatibility.js";
 import type { SetupParams } from "../../artifacts/setup/setup-params.js";
-import { GENERATED_SETUP_PARAMS } from "../../generated/setup.generated.js";
+import { GENERATED_SETUP_PARAMS } from "../../generated/active/setup.generated.js";
 import type { CurveRuntime } from "../../runtime/curve/curve.js";
 import { G1_AFFINE_BYTES } from "../../runtime/group/group.js";
 import type { PermutationEntry } from "../../runtime/polynomial/permutation-polynomials.js";

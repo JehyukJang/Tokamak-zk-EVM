@@ -13,7 +13,7 @@ import {
   convertCombinedSigmaRkyvToCrsBinaries,
   createCombinedSigmaRkyvPayloadDecoder,
 } from "../../src/converter/conversion/rkyv-to-binary.js";
-import { GENERATED_SETUP_PARAMS } from "../../src/generated/setup.generated.js";
+import { GENERATED_SETUP_PARAMS } from "../../src/generated/active/setup.generated.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../src/version.js";
 import { loadCombinedSigmaPayloadDecoder } from "../../tools/rkyv-decoder-wasm/src/node.js";
 import { resolveFixtureWorkDirectory } from "./fixture-paths.js";

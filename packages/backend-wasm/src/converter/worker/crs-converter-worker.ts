@@ -5,7 +5,7 @@ import {
   convertCombinedSigmaRkyvToCrsBinaries,
   createCombinedSigmaRkyvPayloadDecoder,
 } from "../conversion/rkyv-to-binary.js";
-import { GENERATED_SETUP_PARAMS } from "../../generated/setup.generated.js";
+import { GENERATED_SETUP_PARAMS } from "../../generated/active/setup.generated.js";
 import {
   type CrsProvenanceInput,
   validateCrsProvenanceCompatibility,
