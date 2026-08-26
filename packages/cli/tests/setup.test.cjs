@@ -80,9 +80,7 @@ async function writeCrsArchiveFixture(extractedDir, subcircuitLibraryVersion = '
 }
 
 test('packages the backend CRS provenance contract unchanged for runtime validation', () => {
-  const packagedContract = JSON.parse(
-    require('node:fs').readFileSync(path.resolve(__dirname, '..', 'manifests', 'crs-provenance-contract.json'), 'utf8'),
-  );
+  const packagedContract = require('../dist/generated/crs-provenance-contract.generated.js').default;
   assert.deepEqual(packagedContract, CRS_PROVENANCE_CONTRACT);
 });
 
@@ -96,7 +94,7 @@ test('accepts the canonical backend final-MPC provenance fixture and rejects the
   delete legacy.phase1SourceProvenance.duskGroth16;
   await assert.rejects(
     validateFinalMpcCrsProvenanceContract(legacy, archiveName),
-    /phase1SourceProvenance is missing duskGroth16/u,
+    /does not match exactly one allowed contract shape/u,
   );
 });
 
@@ -149,10 +147,64 @@ test('rejects a development trusted-setup provenance before CRS installation', a
         'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
         '2.1',
       ),
-      /documentKind developmentTrustedSetupSigma, expected finalMpcCrs/u,
+      /documentKind must equal "finalMpcCrs"/u,
     );
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('installer ingress rejects malformed-version, unknown-field, and legacy provenance', async () => {
+  const cases = [
+    {
+      name: 'leading-zero compatibility version',
+      mutate(provenance) {
+        provenance.compatibleBackendVersion = '02.01';
+      },
+      expected: /compatibleBackendVersion.*leading zeroes are not canonical/u,
+    },
+    {
+      name: 'unknown provenance field',
+      mutate(provenance) {
+        provenance.unexpected = true;
+      },
+      expected: /has unsupported field unexpected/u,
+    },
+    {
+      name: 'legacy Dusk variant',
+      mutate(provenance) {
+        provenance.phase1SourceProvenance = { DuskGroth16: {} };
+      },
+      expected: /does not match exactly one allowed contract shape/u,
+    },
+  ];
+
+  for (const testCase of cases) {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-'));
+    try {
+      const extractedDir = path.join(tempDir, 'archive');
+      const backendReleaseDir = path.join(tempDir, 'backend');
+      await fs.mkdir(extractedDir);
+      await fs.mkdir(backendReleaseDir);
+      await writeCrsArchiveFixture(extractedDir);
+      const provenancePath = path.join(extractedDir, 'crs_provenance.json');
+      const provenance = JSON.parse(await fs.readFile(provenancePath, 'utf8'));
+      testCase.mutate(provenance);
+      await fs.writeFile(provenancePath, `${JSON.stringify(provenance)}\n`, 'utf8');
+
+      await assert.rejects(
+        validateDownloadedCrsArchive(
+          extractedDir,
+          backendReleaseDir,
+          'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
+          '2.1',
+        ),
+        testCase.expected,
+        testCase.name,
+      );
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
   }
 });
 

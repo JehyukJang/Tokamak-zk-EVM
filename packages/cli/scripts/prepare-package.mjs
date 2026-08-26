@@ -100,11 +100,6 @@ async function assertPreparedBackendTree(directory = vendoredBackendRoot) {
 async function main() {
   await fs.rm(path.join(packageRoot, 'vendor'), { recursive: true, force: true });
   await ensureDir(vendoredBackendRoot);
-  await ensureDir(path.join(packageRoot, 'manifests'));
-  await fs.copyFile(
-    path.join(repoRoot, 'packages', 'backend', 'contracts', 'crs-provenance-contract.json'),
-    path.join(packageRoot, 'manifests', 'crs-provenance-contract.json'),
-  );
   await copyDirectory(
     path.join(repoRoot, 'packages', 'backend'),
     vendoredBackendRoot,

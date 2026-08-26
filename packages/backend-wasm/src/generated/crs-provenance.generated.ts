@@ -73,9 +73,11 @@ export function parseFinalMpcCrsProvenance(
 
 function validateJsonSchema(schema: JsonSchema, value: unknown, subject: string): void {
   if (schema.oneOf !== undefined) {
-    const matches = schema.oneOf.filter(candidate => tryValidate(candidate, value, subject));
+    const results = schema.oneOf.map(candidate => tryValidate(candidate, value, subject));
+    const matches = results.filter(result => result.valid);
     if (matches.length !== 1) {
-      throw new Error(`${subject} does not match exactly one allowed contract shape.`);
+      const reasons = results.flatMap(result => (result.valid ? [] : [result.reason]));
+      throw new Error(`${subject} does not match exactly one allowed contract shape: ${reasons.join(" ")}`);
     }
     return;
   }
@@ -130,12 +132,16 @@ function validateJsonSchema(schema: JsonSchema, value: unknown, subject: string)
   }
 }
 
-function tryValidate(schema: JsonSchema, value: unknown, subject: string): boolean {
+function tryValidate(
+  schema: JsonSchema,
+  value: unknown,
+  subject: string,
+): { readonly valid: true } | { readonly valid: false; readonly reason: string } {
   try {
     validateJsonSchema(schema, value, subject);
-    return true;
-  } catch {
-    return false;
+    return { valid: true };
+  } catch (error) {
+    return { valid: false, reason: message(error) };
   }
 }
 

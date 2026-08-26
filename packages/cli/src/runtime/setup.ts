@@ -34,16 +34,6 @@ interface BackendBuildMetadata {
 }
 
 type FinalMpcCrsProvenance = import("../generated/crs-provenance.generated.js").FinalMpcCrsProvenance;
-type Phase1SourceProvenance = FinalMpcCrsProvenance['phase1SourceProvenance'];
-
-interface CrsProvenanceDocumentContract {
-  requiredFields: string[];
-}
-
-interface CrsProvenanceContract {
-  fileName: string;
-  documentKinds: Record<string, CrsProvenanceDocumentContract>;
-}
 
 const BACKEND_BINARY_NAMES = ['preprocess', 'prove', 'verify'] as const;
 const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = '@tokamak-zk-evm/subcircuit-library';
@@ -53,8 +43,6 @@ const FINAL_CRS_ARTIFACT_FILES = [
   'sigma_verify.json',
   'crs_provenance.json',
 ] as const;
-const FINAL_MPC_CRS_DOCUMENT_KIND = 'finalMpcCrs';
-
 const CRS_DRIVE_FOLDER_ID = '14xqCbLoyoVmUVTTlopiXtKnoHPBGL-Sv';
 
 const CRS_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/mobile/folders';
@@ -65,12 +53,6 @@ const CRS_DOWNLOAD_ANONYMOUS_MAX_RETRIES = 5;
 
 async function readJsonFile<T>(filePath: string): Promise<T> {
   return JSON.parse(await fs.readFile(filePath, 'utf8')) as T;
-}
-
-async function readCrsProvenanceContract(): Promise<CrsProvenanceContract> {
-  return readJsonFile<CrsProvenanceContract>(
-    path.resolve(__dirname, '..', '..', 'manifests', 'crs-provenance-contract.json'),
-  );
 }
 
 async function findNamedFile(rootDir: string, filename: string): Promise<string> {
@@ -354,222 +336,10 @@ export async function validateFinalMpcCrsProvenanceContract(
   provenance: unknown,
   archiveName: string,
 ): Promise<FinalMpcCrsProvenance> {
-  const contract = await readCrsProvenanceContract();
-  const finalMpcCrs = contract.documentKinds[FINAL_MPC_CRS_DOCUMENT_KIND];
-  if (contract.fileName !== 'crs_provenance.json' || finalMpcCrs === undefined) {
-    throw new Error('The packaged CRS provenance contract does not define finalMpcCrs.');
-  }
-  const record = requiredExactObject(
+  return parseFinalMpcCrsProvenance(
     provenance,
     `CRS archive ${archiveName} finalMpcCrs provenance`,
-    finalMpcCrs.requiredFields,
   );
-  if (record.documentKind !== FINAL_MPC_CRS_DOCUMENT_KIND) {
-    throw new Error(
-      `CRS archive ${archiveName} has documentKind ${describeValue(record.documentKind)}, expected ${FINAL_MPC_CRS_DOCUMENT_KIND}.`,
-    );
-  }
-  const generatedAtUtc = requiredDateTime(record.generatedAtUtc, 'generatedAtUtc', archiveName);
-  const compatibleBackendVersion = requiredString(
-    record.compatibleBackendVersion,
-    'compatibleBackendVersion',
-    archiveName,
-  );
-  const subcircuitLibrary = validateSubcircuitLibrary(record.subcircuitLibrary, archiveName);
-  const phase1SourceProvenance = validatePhase1SourceProvenance(record.phase1SourceProvenance, archiveName);
-
-  return {
-    documentKind: FINAL_MPC_CRS_DOCUMENT_KIND,
-    releaseEligible: requiredBoolean(record.releaseEligible, 'releaseEligible', archiveName),
-    generatedAtUtc,
-    compatibleBackendVersion,
-    subcircuitLibrary,
-    phase1SourceProvenance,
-    combinedSigmaSha256: requiredSha256(record.combinedSigmaSha256, 'combinedSigmaSha256', archiveName),
-    sigmaPreprocessSha256: requiredSha256(record.sigmaPreprocessSha256, 'sigmaPreprocessSha256', archiveName),
-    sigmaVerifySha256: requiredSha256(record.sigmaVerifySha256, 'sigmaVerifySha256', archiveName),
-  };
-}
-
-function requiredExactObject(
-  value: unknown,
-  label: string,
-  requiredFields: readonly string[],
-): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error(`${label} must be an object.`);
-  }
-  const record = value as Record<string, unknown>;
-  const allowed = new Set(requiredFields);
-  for (const field of requiredFields) {
-    if (!Object.hasOwn(record, field)) {
-      throw new Error(`${label} is missing ${field}.`);
-    }
-  }
-  for (const field of Object.keys(record)) {
-    if (!allowed.has(field)) {
-      throw new Error(`${label} has an unsupported field ${field}.`);
-    }
-  }
-  return record;
-}
-
-function requiredString(value: unknown, field: string, archiveName: string): string {
-  if (typeof value !== 'string' || value.length === 0) {
-    throw new Error(`CRS archive ${archiveName} provenance ${field} must be a non-empty string.`);
-  }
-  return value;
-}
-
-function requiredDateTime(value: unknown, field: string, archiveName: string): string {
-  const dateTime = requiredString(value, field, archiveName);
-  if (Number.isNaN(Date.parse(dateTime))) {
-    throw new Error(`CRS archive ${archiveName} provenance ${field} must be an RFC 3339 date-time.`);
-  }
-  return dateTime;
-}
-
-function requiredBoolean(value: unknown, field: string, archiveName: string): boolean {
-  if (typeof value !== 'boolean') {
-    throw new Error(`CRS archive ${archiveName} provenance ${field} must be a boolean.`);
-  }
-  return value;
-}
-
-function requiredInteger(value: unknown, field: string, archiveName: string): number {
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
-    throw new Error(`CRS archive ${archiveName} provenance ${field} must be a non-negative integer.`);
-  }
-  return value;
-}
-
-function requiredNullableString(value: unknown, field: string, archiveName: string): string | null {
-  if (value === null) {
-    return null;
-  }
-  return requiredString(value, field, archiveName);
-}
-
-function requiredSha256(value: unknown, field: string, archiveName: string): string {
-  const digest = requiredString(value, field, archiveName);
-  if (!/^[0-9a-f]{64}$/u.test(digest)) {
-    throw new Error(`CRS archive ${archiveName} provenance ${field} must be a lowercase SHA-256 hex digest.`);
-  }
-  return digest;
-}
-
-function validateSubcircuitLibrary(value: unknown, archiveName: string): FinalMpcCrsProvenance['subcircuitLibrary'] {
-  const library = requiredExactObject(value, `CRS archive ${archiveName} provenance subcircuitLibrary`, [
-    'packageName',
-    'packageVersion',
-    'origin',
-  ]);
-  const origin = requiredString(library.origin, 'subcircuitLibrary.origin', archiveName);
-  if (origin !== 'npmSnapshot' && origin !== 'localQapCompiler') {
-    throw new Error(`CRS archive ${archiveName} provenance has unsupported subcircuitLibrary.origin ${origin}.`);
-  }
-  return {
-    packageName: requiredString(library.packageName, 'subcircuitLibrary.packageName', archiveName),
-    packageVersion: requiredString(library.packageVersion, 'subcircuitLibrary.packageVersion', archiveName),
-    origin,
-  };
-}
-
-function validatePhase1SourceProvenance(value: unknown, archiveName: string): Phase1SourceProvenance {
-  if (value === null || value === 'native') {
-    return value;
-  }
-  const phase1 = requiredExactObject(value, `CRS archive ${archiveName} provenance phase1SourceProvenance`, [
-    'duskGroth16',
-  ]);
-  const dusk = requiredExactObject(
-    phase1.duskGroth16,
-    `CRS archive ${archiveName} provenance phase1SourceProvenance.duskGroth16`,
-    [
-      'sourceUrl',
-      'sourceSizeBytes',
-      'rawEncoding',
-      'pinnedContribution',
-      'pinnedReadmeUrl',
-      'pinnedDriveFileId',
-      'expectedSourceSha256',
-      'actualSourceSha256',
-      'autoDownloaded',
-      'downloadedContribution',
-      'downloadedReadmeUrl',
-      'downloadedDriveFileId',
-      'maxG1ExpUsed',
-      'maxG2ExpUsed',
-      'transcriptConsistencyVerified',
-    ],
-  );
-  return {
-    duskGroth16: {
-      sourceUrl: requiredString(dusk.sourceUrl, 'phase1SourceProvenance.duskGroth16.sourceUrl', archiveName),
-      sourceSizeBytes: requiredInteger(
-        dusk.sourceSizeBytes,
-        'phase1SourceProvenance.duskGroth16.sourceSizeBytes',
-        archiveName,
-      ),
-      rawEncoding: requiredString(dusk.rawEncoding, 'phase1SourceProvenance.duskGroth16.rawEncoding', archiveName),
-      pinnedContribution: requiredString(
-        dusk.pinnedContribution,
-        'phase1SourceProvenance.duskGroth16.pinnedContribution',
-        archiveName,
-      ),
-      pinnedReadmeUrl: requiredString(
-        dusk.pinnedReadmeUrl,
-        'phase1SourceProvenance.duskGroth16.pinnedReadmeUrl',
-        archiveName,
-      ),
-      pinnedDriveFileId: requiredString(
-        dusk.pinnedDriveFileId,
-        'phase1SourceProvenance.duskGroth16.pinnedDriveFileId',
-        archiveName,
-      ),
-      expectedSourceSha256: requiredSha256(
-        dusk.expectedSourceSha256,
-        'phase1SourceProvenance.duskGroth16.expectedSourceSha256',
-        archiveName,
-      ),
-      actualSourceSha256: requiredSha256(
-        dusk.actualSourceSha256,
-        'phase1SourceProvenance.duskGroth16.actualSourceSha256',
-        archiveName,
-      ),
-      autoDownloaded: requiredBoolean(
-        dusk.autoDownloaded,
-        'phase1SourceProvenance.duskGroth16.autoDownloaded',
-        archiveName,
-      ),
-      downloadedContribution: requiredNullableString(
-        dusk.downloadedContribution,
-        'phase1SourceProvenance.duskGroth16.downloadedContribution',
-        archiveName,
-      ),
-      downloadedReadmeUrl: requiredNullableString(
-        dusk.downloadedReadmeUrl,
-        'phase1SourceProvenance.duskGroth16.downloadedReadmeUrl',
-        archiveName,
-      ),
-      downloadedDriveFileId: requiredNullableString(
-        dusk.downloadedDriveFileId,
-        'phase1SourceProvenance.duskGroth16.downloadedDriveFileId',
-        archiveName,
-      ),
-      maxG1ExpUsed: requiredInteger(dusk.maxG1ExpUsed, 'phase1SourceProvenance.duskGroth16.maxG1ExpUsed', archiveName),
-      maxG2ExpUsed: requiredInteger(dusk.maxG2ExpUsed, 'phase1SourceProvenance.duskGroth16.maxG2ExpUsed', archiveName),
-      transcriptConsistencyVerified: requiredBoolean(
-        dusk.transcriptConsistencyVerified,
-        'phase1SourceProvenance.duskGroth16.transcriptConsistencyVerified',
-        archiveName,
-      ),
-    },
-  };
-}
-
-function describeValue(value: unknown): string {
-  return typeof value === 'string' ? value : value === undefined ? '<missing>' : JSON.stringify(value);
 }
 
 async function validateCrsArtifactHashes(
