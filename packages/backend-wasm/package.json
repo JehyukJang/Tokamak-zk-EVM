@@ -70,8 +70,8 @@
     "third-party-licenses"
   ],
   "scripts": {
-    "build": "npm run provenance:generate && npm run subcircuit-library:generate && npm run verifier-crs:generate && npm run rkyv-decoder:build && tsc -p tsconfig.json --pretty false && npm run converter-worker:build",
-    "provenance:generate": "node ../../scripts/generate-crs-provenance-typescript.mjs",
+    "build": "npm run contracts:prepare && npm run subcircuit-library:generate && npm run verifier-crs:generate && npm run rkyv-decoder:build && tsc -p tsconfig.json --pretty false && npm run converter-worker:build",
+    "contracts:prepare": "node ../backend/scripts/prepare-contract-consumers.mjs",
     "prepack": "npm run clean && npm run build",
     "typecheck": "npm run subcircuit-library:check && npm run verifier-crs:check && tsc -p tsconfig.json --pretty false --noEmit",
     "typecheck:scripts": "tsc -p tsconfig.dev.json --pretty false",

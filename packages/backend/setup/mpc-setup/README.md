@@ -263,7 +263,7 @@ phase-1 value is `null`, `"native"`, or a `{ "duskGroth16": ... }` object.
 It is intentionally incompatible with the prior snake_case Dusk provenance
 format. This unreleased source tree prepares the planned 3.0 Tokamak zk-EVM/CRS
 version pair; published 2.1.x provenance must not be reused with that pair.
-[`versioning/fixtures/final-mpc-crs-provenance.json`](../../../../versioning/fixtures/final-mpc-crs-provenance.json)
+[`contracts/fixtures/final-mpc-crs-provenance.json`](../../contracts/fixtures/final-mpc-crs-provenance.json)
 is the canonical complete final-MPC reference document.
 
 ## Service-Side Provenance Verification

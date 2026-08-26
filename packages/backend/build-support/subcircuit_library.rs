@@ -1,12 +1,12 @@
 #![allow(dead_code)]
 
-#[path = "../../../versioning/backend-build-metadata.rs"]
+#[path = "../contracts/rust/backend_build_metadata.rs"]
 mod backend_build_metadata_contract;
 #[path = "subcircuit_library/cargo_env.rs"]
 mod cargo_env;
 #[path = "subcircuit_library/generated.rs"]
 mod generated;
-#[path = "../../../versioning/input-origin.rs"]
+#[path = "../contracts/rust/input_origin.rs"]
 mod input_origin_contract;
 #[path = "subcircuit_library/integrity.rs"]
 mod integrity;
@@ -256,14 +256,23 @@ fn emit_version_contract_rerun_rule() {
                     .join("compatibility.rs")
                     .display()
             );
-            println!(
-                "cargo:rerun-if-changed={}",
-                repository_root
-                    .join("versioning")
-                    .join("input-origin.rs")
-                    .display()
-            );
         }
+        println!(
+            "cargo:rerun-if-changed={}",
+            backend_root
+                .join("contracts")
+                .join("rust")
+                .join("input_origin.rs")
+                .display()
+        );
+        println!(
+            "cargo:rerun-if-changed={}",
+            backend_root
+                .join("contracts")
+                .join("rust")
+                .join("backend_build_metadata.rs")
+                .display()
+        );
     }
 }
 

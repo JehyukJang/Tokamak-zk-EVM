@@ -1,0 +1,125 @@
+// Generated from packages/backend/contracts/crs-provenance-contract.json.
+const contract = {
+  "fileName": "crs_provenance.json",
+  "documentKinds": {
+    "developmentTrustedSetupSigma": {
+      "releaseEligible": false,
+      "requiredFields": ["documentKind", "releaseEligible"],
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["documentKind", "releaseEligible"],
+        "properties": {
+          "documentKind": { "const": "developmentTrustedSetupSigma" },
+          "releaseEligible": { "const": false }
+        }
+      }
+    },
+    "finalMpcCrs": {
+      "requiredFields": [
+        "documentKind",
+        "releaseEligible",
+        "generatedAtUtc",
+        "compatibleBackendVersion",
+        "subcircuitLibrary",
+        "phase1SourceProvenance",
+        "combinedSigmaSha256",
+        "sigmaPreprocessSha256",
+        "sigmaVerifySha256"
+      ],
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "documentKind",
+          "releaseEligible",
+          "generatedAtUtc",
+          "compatibleBackendVersion",
+          "subcircuitLibrary",
+          "phase1SourceProvenance",
+          "combinedSigmaSha256",
+          "sigmaPreprocessSha256",
+          "sigmaVerifySha256"
+        ],
+        "properties": {
+          "documentKind": { "const": "finalMpcCrs" },
+          "releaseEligible": { "type": "boolean" },
+          "generatedAtUtc": { "type": "string", "format": "date-time" },
+          "compatibleBackendVersion": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]+$"
+          },
+          "subcircuitLibrary": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["packageName", "packageVersion", "origin"],
+            "properties": {
+              "packageName": { "type": "string", "minLength": 1 },
+              "packageVersion": {
+                "type": "string",
+                "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+              },
+              "origin": { "enum": ["npmSnapshot", "localQapCompiler"] }
+            }
+          },
+          "phase1SourceProvenance": {
+            "oneOf": [
+              { "type": "null" },
+              { "const": "native" },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["duskGroth16"],
+                "properties": {
+                  "duskGroth16": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "sourceUrl",
+                      "sourceSizeBytes",
+                      "rawEncoding",
+                      "pinnedContribution",
+                      "pinnedReadmeUrl",
+                      "pinnedDriveFileId",
+                      "expectedSourceSha256",
+                      "actualSourceSha256",
+                      "autoDownloaded",
+                      "downloadedContribution",
+                      "downloadedReadmeUrl",
+                      "downloadedDriveFileId",
+                      "maxG1ExpUsed",
+                      "maxG2ExpUsed",
+                      "transcriptConsistencyVerified"
+                    ],
+                    "properties": {
+                      "sourceUrl": { "type": "string", "minLength": 1 },
+                      "sourceSizeBytes": { "type": "integer", "minimum": 0 },
+                      "rawEncoding": { "type": "string", "minLength": 1 },
+                      "pinnedContribution": { "type": "string", "minLength": 1 },
+                      "pinnedReadmeUrl": { "type": "string", "minLength": 1 },
+                      "pinnedDriveFileId": { "type": "string", "minLength": 1 },
+                      "expectedSourceSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                      "actualSourceSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                      "autoDownloaded": { "type": "boolean" },
+                      "downloadedContribution": { "type": ["string", "null"] },
+                      "downloadedReadmeUrl": { "type": ["string", "null"] },
+                      "downloadedDriveFileId": { "type": ["string", "null"] },
+                      "maxG1ExpUsed": { "type": "integer", "minimum": 0 },
+                      "maxG2ExpUsed": { "type": "integer", "minimum": 0 },
+                      "transcriptConsistencyVerified": { "type": "boolean" }
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "combinedSigmaSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "sigmaPreprocessSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "sigmaVerifySha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    }
+  }
+} as const;
+
+export default contract;

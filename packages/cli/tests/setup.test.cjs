@@ -15,13 +15,13 @@ const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = '@tokamak-zk-evm/subcircuit-library';
 const BACKEND_BINARY_NAMES = ['preprocess', 'prove', 'verify'];
 const CRS_PROVENANCE_CONTRACT = JSON.parse(
   require('node:fs').readFileSync(
-    path.resolve(__dirname, '..', '..', '..', 'versioning', 'crs-provenance-contract.json'),
+    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'crs-provenance-contract.json'),
     'utf8',
   ),
 );
 const CANONICAL_FINAL_MPC_PROVENANCE = JSON.parse(
   require('node:fs').readFileSync(
-    path.resolve(__dirname, '..', '..', '..', 'versioning', 'fixtures', 'final-mpc-crs-provenance.json'),
+    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', 'final-mpc-crs-provenance.json'),
     'utf8',
   ),
 );
@@ -79,14 +79,14 @@ async function writeCrsArchiveFixture(extractedDir, subcircuitLibraryVersion = '
   );
 }
 
-test('packages the root CRS provenance contract unchanged for runtime validation', () => {
+test('packages the backend CRS provenance contract unchanged for runtime validation', () => {
   const packagedContract = JSON.parse(
     require('node:fs').readFileSync(path.resolve(__dirname, '..', 'manifests', 'crs-provenance-contract.json'), 'utf8'),
   );
   assert.deepEqual(packagedContract, CRS_PROVENANCE_CONTRACT);
 });
 
-test('accepts the canonical root final-MPC provenance fixture and rejects the legacy Dusk shape', async () => {
+test('accepts the canonical backend final-MPC provenance fixture and rejects the legacy Dusk shape', async () => {
   const archiveName = 'tokamak-backend-crs-v2.1-20260824T000000Z.zip';
   const validated = await validateFinalMpcCrsProvenanceContract(CANONICAL_FINAL_MPC_PROVENANCE, archiveName);
   assert.deepEqual(validated, CANONICAL_FINAL_MPC_PROVENANCE);

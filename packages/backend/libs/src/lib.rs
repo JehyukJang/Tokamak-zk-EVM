@@ -1,5 +1,5 @@
 #![allow(non_snake_case)]
-#[path = "../../../../versioning/backend-build-metadata.rs"]
+#[path = "../../contracts/rust/backend_build_metadata.rs"]
 pub mod backend_build_metadata;
 pub mod bivariate_polynomial;
 pub mod cli;
@@ -7,13 +7,12 @@ pub mod commitments;
 #[path = "../../../../versioning/compatibility.rs"]
 pub mod compatibility;
 pub mod crs_artifacts;
-#[path = "../../../../versioning/crs-provenance.rs"]
 pub mod crs_provenance;
 pub mod errors;
 pub mod field_structures;
 pub mod frontend_artifacts;
 pub mod group_structures;
-#[path = "../../../../versioning/input-origin.rs"]
+#[path = "../../contracts/rust/input_origin.rs"]
 pub mod input_origin;
 mod input_origin_serde;
 pub mod polynomial_structures;

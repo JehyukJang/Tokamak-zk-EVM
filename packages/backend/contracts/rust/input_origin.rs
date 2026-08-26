@@ -1,4 +1,4 @@
-//! Repository-owned contract for subcircuit-library input origins.
+//! Backend-owned contract for subcircuit-library input origins.
 //!
 //! The serialized values are part of CRS provenance. This module deliberately
 //! has no crate dependencies so Cargo build scripts and backend runtime code
@@ -78,9 +78,9 @@ mod tests {
     }
 
     #[test]
-    fn conforms_to_the_repository_input_origin_contract() {
-        let contract: Contract = serde_json::from_str(include_str!("input-origin-contract.json"))
-            .expect("repository input-origin contract must be valid JSON");
+    fn conforms_to_the_backend_input_origin_contract() {
+        let contract: Contract = serde_json::from_str(include_str!("../input-origin-contract.json"))
+            .expect("backend input-origin contract must be valid JSON");
 
         for case in contract.subcircuit_library_origins {
             match case.canonical {

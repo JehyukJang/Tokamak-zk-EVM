@@ -1,4 +1,4 @@
-//! Repository-owned contract for backend runtime build metadata.
+//! Backend-owned contract for backend runtime build metadata.
 //!
 //! Only the production preprocess, prove, and verify binaries write this
 //! document. It is build identity metadata for the CLI installer, not CRS
@@ -104,10 +104,10 @@ mod tests {
     }
 
     #[test]
-    fn conforms_to_the_root_metadata_contract() {
+    fn conforms_to_the_backend_metadata_contract() {
         let contract: Contract =
-            serde_json::from_str(include_str!("backend-build-metadata-contract.json"))
-                .expect("root backend build metadata contract must be valid JSON");
+            serde_json::from_str(include_str!("../backend-build-metadata-contract.json"))
+                .expect("backend build metadata contract must be valid JSON");
         assert_eq!(
             contract.file_name_pattern,
             "build-metadata-{backendPackageName}.json"
@@ -122,11 +122,11 @@ mod tests {
     #[test]
     fn accepts_the_canonical_fixture_and_rejects_the_invalid_fixture() {
         let fixture: BackendBuildMetadata =
-            serde_json::from_str(include_str!("fixtures/backend-build-metadata-valid.json"))
+            serde_json::from_str(include_str!("../fixtures/backend-build-metadata-valid.json"))
                 .expect("canonical backend build metadata fixture must satisfy the contract");
         assert_eq!(fixture.package_name, "prove");
         assert!(serde_json::from_str::<BackendBuildMetadata>(include_str!(
-            "fixtures/backend-build-metadata-invalid.json"
+            "../fixtures/backend-build-metadata-invalid.json"
         ))
         .is_err());
     }

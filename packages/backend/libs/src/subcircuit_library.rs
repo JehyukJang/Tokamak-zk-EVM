@@ -478,7 +478,7 @@ mod tests {
         write_package_manifest(&root, "2.1.5");
 
         let mut legacy: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../versioning/fixtures/final-mpc-crs-provenance.json"
+            "../../contracts/fixtures/final-mpc-crs-provenance.json"
         ))
         .expect("canonical fixture must be valid JSON");
         let phase1 = legacy["phase1SourceProvenance"]

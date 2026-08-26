@@ -102,7 +102,7 @@ async function main() {
   await ensureDir(vendoredBackendRoot);
   await ensureDir(path.join(packageRoot, 'manifests'));
   await fs.copyFile(
-    path.join(repoRoot, 'versioning', 'crs-provenance-contract.json'),
+    path.join(repoRoot, 'packages', 'backend', 'contracts', 'crs-provenance-contract.json'),
     path.join(packageRoot, 'manifests', 'crs-provenance-contract.json'),
   );
   await copyDirectory(

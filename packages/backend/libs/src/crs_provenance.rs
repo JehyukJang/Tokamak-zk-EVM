@@ -1,4 +1,4 @@
-//! Repository-owned contract for `crs_provenance.json`.
+//! Backend-owned contract for `crs_provenance.json`.
 //!
 //! The same filename records either a development-only trusted-setup Sigma or
 //! a final MPC CRS. `documentKind` is therefore mandatory and consumers must
@@ -124,9 +124,9 @@ mod tests {
     }
 
     #[test]
-    fn conforms_to_the_repository_crs_provenance_contract() {
-        let contract: Contract = serde_json::from_str(include_str!("crs-provenance-contract.json"))
-            .expect("repository CRS provenance contract must be valid JSON");
+    fn conforms_to_the_backend_crs_provenance_contract() {
+        let contract: Contract = serde_json::from_str(include_str!("../../contracts/crs-provenance-contract.json"))
+            .expect("backend CRS provenance contract must be valid JSON");
         assert_eq!(contract.file_name, CRS_PROVENANCE_FILE_NAME);
         assert!(contract
             .document_kinds
@@ -155,7 +155,7 @@ mod tests {
     #[test]
     fn canonical_final_mpc_fixture_round_trips_through_the_rust_contract() {
         let fixture: serde_json::Value =
-            serde_json::from_str(include_str!("fixtures/final-mpc-crs-provenance.json"))
+            serde_json::from_str(include_str!("../../contracts/fixtures/final-mpc-crs-provenance.json"))
                 .expect("canonical final MPC fixture must be valid JSON");
         let provenance: CrsProvenance = serde_json::from_value(fixture.clone())
             .expect("canonical final MPC fixture must satisfy the Rust contract");
@@ -169,7 +169,7 @@ mod tests {
     #[test]
     fn rejects_legacy_snake_case_dusk_provenance() {
         let mut legacy: serde_json::Value =
-            serde_json::from_str(include_str!("fixtures/final-mpc-crs-provenance.json"))
+            serde_json::from_str(include_str!("../../contracts/fixtures/final-mpc-crs-provenance.json"))
                 .expect("canonical final MPC fixture must be valid JSON");
         let phase1 = legacy["phase1SourceProvenance"]
             .as_object_mut()
