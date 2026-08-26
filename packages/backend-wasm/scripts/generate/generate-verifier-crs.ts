@@ -1,4 +1,4 @@
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -7,11 +7,12 @@ import {
 } from "../../src/runtime/curve/curve.js";
 import type { AffinePointJson } from "../../src/runtime/group/group.js";
 import type { VerifierInput } from "../../src/verifier/protocol/verify-snark.js";
+import { loadVerifiedFinalCrsInput } from "./final-crs-input.js";
 
 const backendWasmRoot = path.resolve(import.meta.dirname, "../..");
 const generatedPath = path.join(backendWasmRoot, "src", "verifier", "generated", "sigma-verify.generated.ts");
 const checkMode = process.argv.includes("--check");
-const inputPath = resolveInputPath(process.env.BACKEND_WASM_VERIFIER_CRS_SOURCE);
+const inputDirectory = process.env.BACKEND_WASM_VERIFIER_CRS_DIR;
 
 interface SigmaVerifyJson {
   readonly G: AffinePointJson;
@@ -35,8 +36,8 @@ interface SigmaVerifyJson {
 }
 
 async function main(): Promise<void> {
-  await assertInputFile(inputPath);
-  const raw = JSON.parse(await readFile(inputPath, "utf8")) as unknown;
+  const input = await loadVerifiedFinalCrsInput(inputDirectory ?? "");
+  const raw = JSON.parse(new TextDecoder().decode(input.sigmaVerify)) as unknown;
   const sigma = parseSigmaVerifyJson(raw);
   const runtime = await createCurveRuntime();
 
@@ -55,29 +56,6 @@ async function main(): Promise<void> {
     await writeFile(generatedPath, content, "utf8");
   } finally {
     await runtime.terminate();
-  }
-}
-
-function resolveInputPath(value: string | undefined): string {
-  if (value === undefined || value.trim() === "") {
-    throw new Error(
-      "Verifier CRS generation requires BACKEND_WASM_VERIFIER_CRS_SOURCE "
-      + "to name the sigma_verify.json source file.",
-    );
-  }
-
-  return path.resolve(value);
-}
-
-async function assertInputFile(filePath: string): Promise<void> {
-  try {
-    const inputStat = await stat(filePath);
-    if (!inputStat.isFile()) {
-      throw new Error("not a file");
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Verifier CRS source artifact is not available at ${filePath}: ${message}`);
   }
 }
 
