@@ -1,18 +1,15 @@
-import contract from "./backend-build-metadata-contract.generated.js";
-import {
-  parseCompatibleBackendVersion,
-  parsePackageVersion,
-} from "./version-policy.generated.js";
+import contract from './backend-build-metadata-contract.generated.js';
+import { parseCompatibleBackendVersion, parsePackageVersion } from './version-policy.generated.js';
 
-export type BackendPackageName = "preprocess" | "prove" | "verify";
+export type BackendPackageName = 'preprocess' | 'prove' | 'verify';
 
 export interface BackendBuildMetadata {
   readonly dependencies: {
     readonly subcircuitLibrary: {
       readonly buildVersion: string;
-      readonly declaredRange: "latest";
-      readonly packageName: "@tokamak-zk-evm/subcircuit-library";
-      readonly runtimeMode: "bundled";
+      readonly declaredRange: 'latest';
+      readonly packageName: '@tokamak-zk-evm/subcircuit-library';
+      readonly runtimeMode: 'bundled';
     };
   };
   readonly packageName: BackendPackageName;
@@ -32,24 +29,25 @@ type JsonSchema = {
 
 type BuildMetadataContract = {
   readonly backendPackageNames?: readonly BackendPackageName[];
+  readonly fileNamePattern?: unknown;
   readonly schema?: JsonSchema;
 };
 
 const SUPPORTED_SCHEMA_KEYWORDS = new Set([
-  "additionalProperties",
-  "const",
-  "enum",
-  "pattern",
-  "properties",
-  "required",
-  "type",
+  'additionalProperties',
+  'const',
+  'enum',
+  'pattern',
+  'properties',
+  'required',
+  'type',
 ]);
 
 /** Validates backend build metadata against the backend-owned JSON contract. */
 export function parseBackendBuildMetadata(
   value: unknown,
   expectedPackageName: BackendPackageName,
-  subject = "Backend build metadata",
+  subject = 'Backend build metadata',
 ): BackendBuildMetadata {
   validateJsonSchema(buildMetadataSchema(), value, subject);
   const metadata = value as BackendBuildMetadata;
@@ -58,6 +56,16 @@ export function parseBackendBuildMetadata(
   }
   validateVersionPolicy(metadata, subject);
   return metadata;
+}
+
+/** Returns the metadata filename defined by the backend contract. */
+export function backendBuildMetadataFileName(packageName: BackendPackageName): string {
+  const pattern = (contract as BuildMetadataContract).fileNamePattern;
+  const placeholder = '{backendPackageName}';
+  if (typeof pattern !== 'string' || pattern.split(placeholder).length !== 2) {
+    throw new Error('Backend build-metadata contract must define one {backendPackageName} filename placeholder.');
+  }
+  return pattern.replace(placeholder, packageName);
 }
 
 function validateJsonSchema(schema: JsonSchema, value: unknown, subject: string): void {
@@ -70,7 +78,7 @@ function validateJsonSchema(schema: JsonSchema, value: unknown, subject: string)
   if (schema.enum !== undefined && !schema.enum.some(candidate => sameJsonValue(value, candidate))) {
     throw new Error(`${subject} has an unsupported value.`);
   }
-  if (typeof value === "string" && schema.pattern !== undefined && !new RegExp(schema.pattern, "u").test(value)) {
+  if (typeof value === 'string' && schema.pattern !== undefined && !new RegExp(schema.pattern, 'u').test(value)) {
     throw new Error(`${subject} does not match the contract pattern.`);
   }
   if (!isRecord(value)) {
@@ -100,7 +108,7 @@ function validateJsonSchema(schema: JsonSchema, value: unknown, subject: string)
 function buildMetadataSchema(): JsonSchema {
   const schema = (contract as BuildMetadataContract).schema;
   if (schema === undefined) {
-    throw new Error("Backend build-metadata contract does not define a schema.");
+    throw new Error('Backend build-metadata contract does not define a schema.');
   }
   assertSupportedBackendBuildMetadataSchema(schema);
   return schema;
@@ -108,7 +116,7 @@ function buildMetadataSchema(): JsonSchema {
 
 /** Rejects schema evolution that this boundary validator does not implement. */
 export function assertSupportedBackendBuildMetadataSchema(schema: unknown): void {
-  assertSupportedSchemaKeywords(schema, "build-metadata schema");
+  assertSupportedSchemaKeywords(schema, 'build-metadata schema');
 }
 
 function assertSupportedSchemaKeywords(schema: unknown, path: string): void {
@@ -137,8 +145,8 @@ function validateVersionPolicy(metadata: BackendBuildMetadata, subject: string):
     throw new Error(`${subject}.compatibleBackendVersion ${message(error)}`);
   }
   for (const [field, value] of [
-    ["packageVersion", metadata.packageVersion],
-    ["dependencies.subcircuitLibrary.buildVersion", metadata.dependencies.subcircuitLibrary.buildVersion],
+    ['packageVersion', metadata.packageVersion],
+    ['dependencies.subcircuitLibrary.buildVersion', metadata.dependencies.subcircuitLibrary.buildVersion],
   ] as const) {
     try {
       parsePackageVersion(value);
@@ -149,11 +157,11 @@ function validateVersionPolicy(metadata: BackendBuildMetadata, subject: string):
 }
 
 function hasJsonType(value: unknown, type: string): boolean {
-  return (type === "object" && isRecord(value)) || (type === "string" && typeof value === "string");
+  return (type === 'object' && isRecord(value)) || (type === 'string' && typeof value === 'string');
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function hasOwn(value: object, field: string): boolean {

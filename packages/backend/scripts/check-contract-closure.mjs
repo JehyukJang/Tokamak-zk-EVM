@@ -16,7 +16,7 @@ const requiredBoundaries = [
   ['Build metadata Rust representation', 'contracts/rust/backend_build_metadata.rs'],
   ['Build metadata production writer', 'build-support/subcircuit_library/cargo_env.rs'],
   ['Build metadata TypeScript validator', 'contracts/typescript/backend-build-metadata-validator.ts'],
-  ['Input-origin JSON authority', 'contracts/input-origin-contract.json'],
+  ['Input-origin provenance authority', 'contracts/crs-provenance-contract.json'],
   ['Input-origin Rust representation', 'contracts/rust/input_origin.rs'],
   ['Input-origin build selection', 'build-support/subcircuit_library/source_selection.rs'],
   ['Input-origin serde ingress', 'libs/src/input_origin_serde.rs'],

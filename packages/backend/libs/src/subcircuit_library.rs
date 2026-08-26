@@ -531,6 +531,7 @@ mod tests {
             include_str!("../../contracts/fixtures/final-mpc-crs-provenance-date-only.json"),
             include_str!("../../contracts/fixtures/final-mpc-crs-provenance-invalid-digest.json"),
             include_str!("../../contracts/fixtures/final-mpc-crs-provenance-empty-string.json"),
+            include_str!("../../contracts/fixtures/final-mpc-crs-provenance-invalid-origin.json"),
         ];
 
         for fixture in fixtures {

@@ -170,6 +170,22 @@ const INVALID_PHASE1_FINAL_MPC_PROVENANCE = JSON.parse(
     'utf8',
   ),
 ) as CrsProvenanceInput;
+const INVALID_ORIGIN_FINAL_MPC_PROVENANCE = JSON.parse(
+  readFileSync(
+    path.resolve(
+      import.meta.dirname,
+      '..',
+      '..',
+      '..',
+      '..',
+      'backend',
+      'contracts',
+      'fixtures',
+      'final-mpc-crs-provenance-invalid-origin.json',
+    ),
+    'utf8',
+  ),
+) as CrsProvenanceInput;
 
 function compatibleVersion(packageVersion: string): string {
   const [major, minor] = packageVersion.split('.');
@@ -260,6 +276,10 @@ function main(): void {
   expectFailure(
     () => validateCrsProvenanceCompatibility(INVALID_PHASE1_FINAL_MPC_PROVENANCE),
     'Unsupported phase-1 provenance variants must be rejected.',
+  );
+  expectFailure(
+    () => validateCrsProvenanceCompatibility(INVALID_ORIGIN_FINAL_MPC_PROVENANCE),
+    'Unsupported subcircuit-library origins must be rejected.',
   );
   expectFailure(
     () => assertBinaryArtifactCompatibility(artifact('9.9.0')),

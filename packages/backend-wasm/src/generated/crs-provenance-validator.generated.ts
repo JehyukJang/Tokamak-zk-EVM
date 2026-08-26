@@ -2,13 +2,10 @@
 // contract. Consumer preparation copies this source under a generated filename;
 // the JSON contract remains the shape authority.
 
-import contract from "./crs-provenance-contract.generated.js";
-import {
-  parseCompatibleBackendVersion,
-  parsePackageVersion,
-} from "./version-policy.generated.js";
+import contract from './crs-provenance-contract.generated.js';
+import { parseCompatibleBackendVersion, parsePackageVersion } from './version-policy.generated.js';
 
-export type SubcircuitLibraryOrigin = "npmSnapshot" | "localQapCompiler";
+export type SubcircuitLibraryOrigin = 'npmSnapshot' | 'localQapCompiler';
 
 export interface DuskSourceProvenance {
   readonly sourceUrl: string;
@@ -29,7 +26,7 @@ export interface DuskSourceProvenance {
 }
 
 export interface FinalMpcCrsProvenance {
-  readonly documentKind: "finalMpcCrs";
+  readonly documentKind: 'finalMpcCrs';
   readonly releaseEligible: boolean;
   readonly generatedAtUtc: string;
   readonly compatibleBackendVersion: string;
@@ -38,7 +35,7 @@ export interface FinalMpcCrsProvenance {
     readonly packageVersion: string;
     readonly origin: SubcircuitLibraryOrigin;
   };
-  readonly phase1SourceProvenance: null | "native" | { readonly duskGroth16: DuskSourceProvenance };
+  readonly phase1SourceProvenance: null | 'native' | { readonly duskGroth16: DuskSourceProvenance };
   readonly combinedSigmaSha256: string;
   readonly sigmaPreprocessSha256: string;
   readonly sigmaVerifySha256: string;
@@ -59,34 +56,41 @@ type JsonSchema = {
 };
 
 type ProvenanceContract = {
+  readonly fileName?: unknown;
   readonly documentKinds: {
     readonly finalMpcCrs?: { readonly schema?: JsonSchema };
   };
 };
 
 const SUPPORTED_SCHEMA_KEYWORDS = new Set([
-  "additionalProperties",
-  "const",
-  "enum",
-  "format",
-  "minLength",
-  "minimum",
-  "oneOf",
-  "pattern",
-  "properties",
-  "required",
-  "type",
+  'additionalProperties',
+  'const',
+  'enum',
+  'format',
+  'minLength',
+  'minimum',
+  'oneOf',
+  'pattern',
+  'properties',
+  'required',
+  'type',
 ]);
 
 /** Validates a final-MPC document against the backend-owned JSON contract. */
-export function parseFinalMpcCrsProvenance(
-  value: unknown,
-  subject = "CRS provenance",
-): FinalMpcCrsProvenance {
+export function parseFinalMpcCrsProvenance(value: unknown, subject = 'CRS provenance'): FinalMpcCrsProvenance {
   validateJsonSchema(finalMpcCrsSchema(), value, subject);
   const provenance = value as FinalMpcCrsProvenance;
   validateVersionPolicy(provenance, subject);
   return provenance;
+}
+
+/** Returns the final CRS provenance filename defined by the backend contract. */
+export function crsProvenanceFileName(): string {
+  const fileName = (contract as ProvenanceContract).fileName;
+  if (typeof fileName !== 'string' || fileName.length === 0) {
+    throw new Error('Backend CRS provenance contract does not define a non-empty fileName.');
+  }
+  return fileName;
 }
 
 function validateJsonSchema(schema: JsonSchema, value: unknown, subject: string): void {
@@ -95,7 +99,7 @@ function validateJsonSchema(schema: JsonSchema, value: unknown, subject: string)
     const matches = results.filter(result => result.valid);
     if (matches.length !== 1) {
       const reasons = results.flatMap(result => (result.valid ? [] : [result.reason]));
-      throw new Error(`${subject} does not match exactly one allowed contract shape: ${reasons.join(" ")}`);
+      throw new Error(`${subject} does not match exactly one allowed contract shape: ${reasons.join(' ')}`);
     }
     return;
   }
@@ -112,19 +116,19 @@ function validateJsonSchema(schema: JsonSchema, value: unknown, subject: string)
     throw new Error(`${subject} has an invalid type.`);
   }
 
-  if (typeof value === "string") {
+  if (typeof value === 'string') {
     if (schema.minLength !== undefined && value.length < schema.minLength) {
       throw new Error(`${subject} is shorter than the contract allows.`);
     }
-    if (schema.pattern !== undefined && !new RegExp(schema.pattern, "u").test(value)) {
+    if (schema.pattern !== undefined && !new RegExp(schema.pattern, 'u').test(value)) {
       throw new Error(`${subject} does not match the contract pattern.`);
     }
-    if (schema.format === "date-time" && !isRfc3339DateTime(value)) {
+    if (schema.format === 'date-time' && !isRfc3339DateTime(value)) {
       throw new Error(`${subject} must be an RFC 3339 date-time.`);
     }
   }
 
-  if (typeof value === "number" && schema.minimum !== undefined && value < schema.minimum) {
+  if (typeof value === 'number' && schema.minimum !== undefined && value < schema.minimum) {
     throw new Error(`${subject} is below the contract minimum.`);
   }
 
@@ -172,29 +176,29 @@ function tryValidate(
 
 function hasJsonType(value: unknown, type: string): boolean {
   switch (type) {
-    case "boolean":
-      return typeof value === "boolean";
-    case "integer":
-      return typeof value === "number" && Number.isSafeInteger(value);
-    case "null":
+    case 'boolean':
+      return typeof value === 'boolean';
+    case 'integer':
+      return typeof value === 'number' && Number.isSafeInteger(value);
+    case 'null':
       return value === null;
-    case "object":
+    case 'object':
       return isRecord(value);
-    case "string":
-      return typeof value === "string";
+    case 'string':
+      return typeof value === 'string';
     default:
       return false;
   }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function finalMpcCrsSchema(): JsonSchema {
   const schema = (contract as ProvenanceContract).documentKinds.finalMpcCrs?.schema;
   if (schema === undefined) {
-    throw new Error("Backend CRS provenance contract does not define finalMpcCrs.");
+    throw new Error('Backend CRS provenance contract does not define finalMpcCrs.');
   }
   assertSupportedCrsProvenanceSchema(schema);
   return schema;
@@ -202,7 +206,7 @@ function finalMpcCrsSchema(): JsonSchema {
 
 /** Rejects schema evolution that this boundary validator does not implement. */
 export function assertSupportedCrsProvenanceSchema(schema: unknown): void {
-  assertSupportedSchemaKeywords(schema, "finalMpcCrs schema");
+  assertSupportedSchemaKeywords(schema, 'finalMpcCrs schema');
 }
 
 function assertSupportedSchemaKeywords(schema: unknown, path: string): void {

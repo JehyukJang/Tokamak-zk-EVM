@@ -62,43 +62,41 @@ impl std::error::Error for InputOriginContractError {}
 #[cfg(test)]
 mod tests {
     use super::SubcircuitLibraryOrigin;
-    use serde::Deserialize;
     use std::str::FromStr;
 
-    #[derive(Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Contract {
-        subcircuit_library_origins: Vec<OriginCase>,
-    }
-
-    #[derive(Deserialize)]
-    struct OriginCase {
-        input: String,
-        canonical: Option<String>,
-    }
-
     #[test]
-    fn conforms_to_the_backend_input_origin_contract() {
-        let contract: Contract =
-            serde_json::from_str(include_str!("../input-origin-contract.json"))
-                .expect("backend input-origin contract must be valid JSON");
+    fn conforms_to_the_provenance_origin_enum() {
+        let contract: serde_json::Value =
+            serde_json::from_str(include_str!("../crs-provenance-contract.json"))
+                .expect("backend CRS provenance contract must be valid JSON");
+        let origins = contract
+            .pointer("/documentKinds/finalMpcCrs/schema/properties/subcircuitLibrary/properties/origin/enum")
+            .and_then(serde_json::Value::as_array)
+            .expect("provenance contract must define the origin enum")
+            .iter()
+            .map(|value| value.as_str().expect("origin enum values must be strings"))
+            .collect::<Vec<_>>();
 
-        for case in contract.subcircuit_library_origins {
-            match case.canonical {
-                Some(expected) => assert_eq!(
-                    SubcircuitLibraryOrigin::from_str(&case.input)
-                        .expect("accepted input origin must parse")
-                        .as_str(),
-                    expected,
-                    "input origin {:?}",
-                    case.input,
-                ),
-                None => assert!(
-                    SubcircuitLibraryOrigin::from_str(&case.input).is_err(),
-                    "input origin {:?} must be rejected",
-                    case.input,
-                ),
-            }
+        assert_eq!(origins, ["npmSnapshot", "localQapCompiler"]);
+        for origin in origins {
+            assert_eq!(
+                SubcircuitLibraryOrigin::from_str(origin)
+                    .expect("provenance origin must parse")
+                    .as_str(),
+                origin,
+            );
+        }
+        for invalid in [
+            "npm-snapshot",
+            "localQapCompiler ",
+            " localQapCompiler",
+            "",
+            "unknown",
+        ] {
+            assert!(
+                SubcircuitLibraryOrigin::from_str(invalid).is_err(),
+                "origin {invalid:?}"
+            );
         }
     }
 }

@@ -12,8 +12,9 @@ import {
 import { downloadFileWithResume, fileExists, normalizeSha256, sha256FileHex } from './download.js';
 import type { RuntimeContext } from './model.js';
 import { runCommand, logVerbose } from '../system.js';
-import { parseFinalMpcCrsProvenance } from '../generated/crs-provenance-validator.generated.js';
+import { crsProvenanceFileName, parseFinalMpcCrsProvenance } from '../generated/crs-provenance-validator.generated.js';
 import {
+  backendBuildMetadataFileName,
   parseBackendBuildMetadata,
   type BackendPackageName,
 } from '../generated/backend-build-metadata-validator.generated.js';
@@ -26,15 +27,16 @@ interface DriveArchiveSelection {
   sizeBytes: number;
 }
 
-type FinalMpcCrsProvenance = import("../generated/crs-provenance-validator.generated.js").FinalMpcCrsProvenance;
+type FinalMpcCrsProvenance = import('../generated/crs-provenance-validator.generated.js').FinalMpcCrsProvenance;
 
 const BACKEND_BINARY_NAMES: readonly BackendPackageName[] = ['preprocess', 'prove', 'verify'];
 const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = '@tokamak-zk-evm/subcircuit-library';
+const CRS_PROVENANCE_FILE_NAME = crsProvenanceFileName();
 const FINAL_CRS_ARTIFACT_FILES = [
   'combined_sigma.rkyv',
   'sigma_preprocess.rkyv',
   'sigma_verify.json',
-  'crs_provenance.json',
+  CRS_PROVENANCE_FILE_NAME,
 ] as const;
 const CRS_DRIVE_FOLDER_ID = '14xqCbLoyoVmUVTTlopiXtKnoHPBGL-Sv';
 
@@ -254,7 +256,7 @@ export async function validateDownloadedCrsArchive(
 ): Promise<{
   provenancePath: string;
 }> {
-  const provenancePath = await findNamedFile(extractedDir, 'crs_provenance.json');
+  const provenancePath = await findNamedFile(extractedDir, CRS_PROVENANCE_FILE_NAME);
   const provenance = await validateFinalMpcCrsProvenanceContract(
     await readJsonFile<unknown>(provenancePath),
     archiveName,
@@ -286,7 +288,7 @@ export async function validateDownloadedCrsArchive(
   }
 
   for (const backendName of BACKEND_BINARY_NAMES) {
-    const backendMetadataPath = path.join(backendReleaseDir, `build-metadata-${backendName}.json`);
+    const backendMetadataPath = path.join(backendReleaseDir, backendBuildMetadataFileName(backendName));
     const backendMetadata = parseBackendBuildMetadata(
       await readJsonFile<unknown>(backendMetadataPath),
       backendName,
@@ -330,10 +332,7 @@ export async function validateFinalMpcCrsProvenanceContract(
   provenance: unknown,
   archiveName: string,
 ): Promise<FinalMpcCrsProvenance> {
-  return parseFinalMpcCrsProvenance(
-    provenance,
-    `CRS archive ${archiveName} finalMpcCrs provenance`,
-  );
+  return parseFinalMpcCrsProvenance(provenance, `CRS archive ${archiveName} finalMpcCrs provenance`);
 }
 
 async function validateCrsArtifactHashes(
@@ -402,12 +401,12 @@ export async function installValidatedCrsGeneration(
   try {
     for (const fileName of FINAL_CRS_ARTIFACT_FILES) {
       const sourcePath =
-        fileName === 'crs_provenance.json' ? provenancePath : await findNamedFile(extractedDir, fileName);
+        fileName === CRS_PROVENANCE_FILE_NAME ? provenancePath : await findNamedFile(extractedDir, fileName);
       await copyFile(sourcePath, path.join(stagingDirectory, fileName));
     }
 
     const stagedProvenance = await validateFinalMpcCrsProvenanceContract(
-      await readJsonFile<unknown>(path.join(stagingDirectory, 'crs_provenance.json')),
+      await readJsonFile<unknown>(path.join(stagingDirectory, CRS_PROVENANCE_FILE_NAME)),
       archiveName,
     );
     await validateCrsArtifactHashes(stagingDirectory, archiveName, stagedProvenance);

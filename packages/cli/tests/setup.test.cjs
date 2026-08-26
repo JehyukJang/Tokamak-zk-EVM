@@ -11,9 +11,11 @@ const {
   validateFinalMpcCrsProvenanceContract,
 } = require('../dist/runtime/setup.js');
 const {
+  crsProvenanceFileName,
   assertSupportedCrsProvenanceSchema,
 } = require('../dist/generated/crs-provenance-validator.generated.js');
 const {
+  backendBuildMetadataFileName,
   assertSupportedBackendBuildMetadataSchema,
 } = require('../dist/generated/backend-build-metadata-validator.generated.js');
 
@@ -76,7 +78,15 @@ const LEGACY_FINAL_MPC_PROVENANCE = JSON.parse(
 );
 const LEADING_ZERO_FINAL_MPC_PROVENANCE = JSON.parse(
   require('node:fs').readFileSync(
-    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', 'final-mpc-crs-provenance-leading-zero.json'),
+    path.resolve(
+      __dirname,
+      '..',
+      '..',
+      'backend',
+      'contracts',
+      'fixtures',
+      'final-mpc-crs-provenance-leading-zero.json',
+    ),
     'utf8',
   ),
 );
@@ -88,13 +98,29 @@ const DATE_ONLY_FINAL_MPC_PROVENANCE = JSON.parse(
 );
 const INVALID_DIGEST_FINAL_MPC_PROVENANCE = JSON.parse(
   require('node:fs').readFileSync(
-    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', 'final-mpc-crs-provenance-invalid-digest.json'),
+    path.resolve(
+      __dirname,
+      '..',
+      '..',
+      'backend',
+      'contracts',
+      'fixtures',
+      'final-mpc-crs-provenance-invalid-digest.json',
+    ),
     'utf8',
   ),
 );
 const EMPTY_STRING_FINAL_MPC_PROVENANCE = JSON.parse(
   require('node:fs').readFileSync(
-    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', 'final-mpc-crs-provenance-empty-string.json'),
+    path.resolve(
+      __dirname,
+      '..',
+      '..',
+      'backend',
+      'contracts',
+      'fixtures',
+      'final-mpc-crs-provenance-empty-string.json',
+    ),
     'utf8',
   ),
 );
@@ -112,7 +138,29 @@ const NULL_FINAL_MPC_PROVENANCE = JSON.parse(
 );
 const INVALID_PHASE1_FINAL_MPC_PROVENANCE = JSON.parse(
   require('node:fs').readFileSync(
-    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', 'final-mpc-crs-provenance-invalid-phase1.json'),
+    path.resolve(
+      __dirname,
+      '..',
+      '..',
+      'backend',
+      'contracts',
+      'fixtures',
+      'final-mpc-crs-provenance-invalid-phase1.json',
+    ),
+    'utf8',
+  ),
+);
+const INVALID_ORIGIN_FINAL_MPC_PROVENANCE = JSON.parse(
+  require('node:fs').readFileSync(
+    path.resolve(
+      __dirname,
+      '..',
+      '..',
+      'backend',
+      'contracts',
+      'fixtures',
+      'final-mpc-crs-provenance-invalid-origin.json',
+    ),
     'utf8',
   ),
 );
@@ -160,21 +208,23 @@ async function writeCrsArchiveFixture(
   }
   await fs.writeFile(
     path.join(extractedDir, 'crs_provenance.json'),
-    `${JSON.stringify(provenance ?? {
-      documentKind: 'finalMpcCrs',
-      releaseEligible: false,
-      generatedAtUtc: '2026-08-24T00:00:00Z',
-      compatibleBackendVersion: '2.1',
-      subcircuitLibrary: {
-        packageName: SUBCIRCUIT_LIBRARY_PACKAGE_NAME,
-        packageVersion: subcircuitLibraryVersion,
-        origin: 'npmSnapshot',
+    `${JSON.stringify(
+      provenance ?? {
+        documentKind: 'finalMpcCrs',
+        releaseEligible: false,
+        generatedAtUtc: '2026-08-24T00:00:00Z',
+        compatibleBackendVersion: '2.1',
+        subcircuitLibrary: {
+          packageName: SUBCIRCUIT_LIBRARY_PACKAGE_NAME,
+          packageVersion: subcircuitLibraryVersion,
+          origin: 'npmSnapshot',
+        },
+        phase1SourceProvenance: null,
+        combinedSigmaSha256: sha256(artifacts['combined_sigma.rkyv']),
+        sigmaPreprocessSha256: sha256(artifacts['sigma_preprocess.rkyv']),
+        sigmaVerifySha256: sha256(artifacts['sigma_verify.json']),
       },
-      phase1SourceProvenance: null,
-      combinedSigmaSha256: sha256(artifacts['combined_sigma.rkyv']),
-      sigmaPreprocessSha256: sha256(artifacts['sigma_preprocess.rkyv']),
-      sigmaVerifySha256: sha256(artifacts['sigma_verify.json']),
-    })}\n`,
+    )}\n`,
     'utf8',
   );
 }
@@ -182,6 +232,7 @@ async function writeCrsArchiveFixture(
 test('packages the backend CRS provenance contract unchanged for runtime validation', () => {
   const packagedContract = require('../dist/generated/crs-provenance-contract.generated.js').default;
   assert.deepEqual(packagedContract, CRS_PROVENANCE_CONTRACT);
+  assert.equal(crsProvenanceFileName(), 'crs_provenance.json');
 });
 
 test('rejects unimplemented CRS provenance schema keywords before validation', () => {
@@ -201,6 +252,7 @@ test('rejects unimplemented build-metadata schema keywords before validation', (
 test('packages the backend build-metadata contract unchanged for runtime validation', () => {
   const packagedContract = require('../dist/generated/backend-build-metadata-contract.generated.js').default;
   assert.deepEqual(packagedContract, BACKEND_BUILD_METADATA_CONTRACT);
+  assert.equal(backendBuildMetadataFileName('prove'), 'build-metadata-prove.json');
 });
 
 test('validates canonical and legacy backend final-MPC provenance fixtures', async () => {
@@ -220,11 +272,7 @@ async function generationTarget(setupOutputDir) {
 }
 
 test('installer ingress accepts every canonical phase-1 provenance variant', async () => {
-  for (const provenance of [
-    CANONICAL_FINAL_MPC_PROVENANCE,
-    NATIVE_FINAL_MPC_PROVENANCE,
-    NULL_FINAL_MPC_PROVENANCE,
-  ]) {
+  for (const provenance of [CANONICAL_FINAL_MPC_PROVENANCE, NATIVE_FINAL_MPC_PROVENANCE, NULL_FINAL_MPC_PROVENANCE]) {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-'));
     try {
       const extractedDir = path.join(tempDir, 'archive');
@@ -312,6 +360,11 @@ test('installer ingress rejects malformed and semantically invalid provenance fi
       name: 'unsupported phase-1 variant',
       provenance: INVALID_PHASE1_FINAL_MPC_PROVENANCE,
       expected: /does not match exactly one allowed contract shape/u,
+    },
+    {
+      name: 'unsupported subcircuit-library origin',
+      provenance: INVALID_ORIGIN_FINAL_MPC_PROVENANCE,
+      expected: /subcircuitLibrary\.origin has an unsupported value/u,
     },
   ];
 

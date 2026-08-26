@@ -395,6 +395,7 @@ mod tests {
             include_bytes!("../../contracts/fixtures/final-mpc-crs-provenance-invalid-digest.json"),
             include_bytes!("../../contracts/fixtures/final-mpc-crs-provenance-empty-string.json"),
             include_bytes!("../../contracts/fixtures/final-mpc-crs-provenance-invalid-phase1.json"),
+            include_bytes!("../../contracts/fixtures/final-mpc-crs-provenance-invalid-origin.json"),
         ] {
             assert!(parse_final_mpc_crs_provenance(fixture).is_err());
         }
