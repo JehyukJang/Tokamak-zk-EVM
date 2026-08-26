@@ -122,6 +122,54 @@ const EMPTY_STRING_FINAL_MPC_PROVENANCE = JSON.parse(
     'utf8',
   ),
 ) as CrsProvenanceInput;
+const NATIVE_FINAL_MPC_PROVENANCE = JSON.parse(
+  readFileSync(
+    path.resolve(
+      import.meta.dirname,
+      '..',
+      '..',
+      '..',
+      '..',
+      'backend',
+      'contracts',
+      'fixtures',
+      'final-mpc-crs-provenance-native.json',
+    ),
+    'utf8',
+  ),
+) as CrsProvenanceInput;
+const NULL_FINAL_MPC_PROVENANCE = JSON.parse(
+  readFileSync(
+    path.resolve(
+      import.meta.dirname,
+      '..',
+      '..',
+      '..',
+      '..',
+      'backend',
+      'contracts',
+      'fixtures',
+      'final-mpc-crs-provenance-null.json',
+    ),
+    'utf8',
+  ),
+) as CrsProvenanceInput;
+const INVALID_PHASE1_FINAL_MPC_PROVENANCE = JSON.parse(
+  readFileSync(
+    path.resolve(
+      import.meta.dirname,
+      '..',
+      '..',
+      '..',
+      '..',
+      'backend',
+      'contracts',
+      'fixtures',
+      'final-mpc-crs-provenance-invalid-phase1.json',
+    ),
+    'utf8',
+  ),
+) as CrsProvenanceInput;
 
 function compatibleVersion(packageVersion: string): string {
   const [major, minor] = packageVersion.split('.');
@@ -170,6 +218,8 @@ function main(): void {
   const expected = provenance(SUBCIRCUIT_LIBRARY_PACKAGE_VERSION);
   validateCrsProvenanceCompatibility(expected);
   validateCrsProvenanceCompatibility(CANONICAL_FINAL_MPC_PROVENANCE);
+  validateCrsProvenanceCompatibility(NATIVE_FINAL_MPC_PROVENANCE);
+  validateCrsProvenanceCompatibility(NULL_FINAL_MPC_PROVENANCE);
   assertBinaryArtifactCompatibility(artifact(SUBCIRCUIT_LIBRARY_PACKAGE_VERSION));
 
   expectFailure(
@@ -206,6 +256,10 @@ function main(): void {
   expectFailure(
     () => validateCrsProvenanceCompatibility(EMPTY_STRING_FINAL_MPC_PROVENANCE),
     'Empty required provenance strings must be rejected.',
+  );
+  expectFailure(
+    () => validateCrsProvenanceCompatibility(INVALID_PHASE1_FINAL_MPC_PROVENANCE),
+    'Unsupported phase-1 provenance variants must be rejected.',
   );
   expectFailure(
     () => assertBinaryArtifactCompatibility(artifact('9.9.0')),

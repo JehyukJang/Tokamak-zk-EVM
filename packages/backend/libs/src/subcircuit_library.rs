@@ -1,7 +1,8 @@
 use crate::compatibility::{compatibility_from_package_version, parse_compatible_backend_version};
 use crate::crs_provenance::{
-    parse_final_mpc_crs_provenance, CrsProvenance, DevelopmentOnlyReleaseEligibility,
-    DevelopmentTrustedSetupSigmaProvenance, CRS_PROVENANCE_FILE_NAME,
+    ensure_crs_provenance_contract_definition, parse_final_mpc_crs_provenance, CrsProvenance,
+    DevelopmentOnlyReleaseEligibility, DevelopmentTrustedSetupSigmaProvenance,
+    CRS_PROVENANCE_FILE_NAME,
 };
 use crate::errors::CrsError;
 use clap::Args;
@@ -153,6 +154,7 @@ pub fn validate_crs_compatibility(crs_dir: &Path, library_dir: &Path) -> std::io
 }
 
 pub fn write_development_only_trusted_setup_provenance(output_dir: &Path) -> std::io::Result<()> {
+    ensure_crs_provenance_contract_definition().map_err(std::io::Error::other)?;
     let provenance =
         CrsProvenance::DevelopmentTrustedSetupSigma(DevelopmentTrustedSetupSigmaProvenance {
             release_eligible: DevelopmentOnlyReleaseEligibility,
@@ -462,22 +464,25 @@ mod tests {
     }
 
     #[test]
-    fn accepts_the_canonical_final_mpc_fixture_at_the_algorithm_boundary() {
-        let root = test_root();
-        let library_dir = root.join("subcircuits").join("library");
-        let crs_dir = root.join("crs");
-        fs::create_dir_all(&library_dir).expect("must create library directory");
-        fs::create_dir_all(&crs_dir).expect("must create CRS directory");
-        write_package_manifest(&root, "2.1.5");
-        fs::write(
-            crs_dir.join(super::CRS_PROVENANCE_FILE_NAME),
+    fn accepts_every_canonical_final_mpc_phase1_variant_at_the_algorithm_boundary() {
+        for fixture in [
             include_str!("../../contracts/fixtures/final-mpc-crs-provenance.json"),
-        )
-        .expect("must write canonical provenance fixture");
+            include_str!("../../contracts/fixtures/final-mpc-crs-provenance-native.json"),
+            include_str!("../../contracts/fixtures/final-mpc-crs-provenance-null.json"),
+        ] {
+            let root = test_root();
+            let library_dir = root.join("subcircuits").join("library");
+            let crs_dir = root.join("crs");
+            fs::create_dir_all(&library_dir).expect("must create library directory");
+            fs::create_dir_all(&crs_dir).expect("must create CRS directory");
+            write_package_manifest(&root, "2.1.5");
+            fs::write(crs_dir.join(super::CRS_PROVENANCE_FILE_NAME), fixture)
+                .expect("must write canonical provenance fixture");
 
-        validate_crs_compatibility(&crs_dir, &library_dir)
-            .expect("canonical final MPC fixture must be accepted");
-        fs::remove_dir_all(root).expect("must remove test directory");
+            validate_crs_compatibility(&crs_dir, &library_dir)
+                .expect("canonical final MPC fixture must be accepted");
+            fs::remove_dir_all(root).expect("must remove test directory");
+        }
     }
 
     #[test]

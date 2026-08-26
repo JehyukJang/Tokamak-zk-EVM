@@ -92,6 +92,24 @@ const EMPTY_STRING_FINAL_MPC_PROVENANCE = JSON.parse(
     'utf8',
   ),
 );
+const NATIVE_FINAL_MPC_PROVENANCE = JSON.parse(
+  require('node:fs').readFileSync(
+    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', 'final-mpc-crs-provenance-native.json'),
+    'utf8',
+  ),
+);
+const NULL_FINAL_MPC_PROVENANCE = JSON.parse(
+  require('node:fs').readFileSync(
+    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', 'final-mpc-crs-provenance-null.json'),
+    'utf8',
+  ),
+);
+const INVALID_PHASE1_FINAL_MPC_PROVENANCE = JSON.parse(
+  require('node:fs').readFileSync(
+    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', 'final-mpc-crs-provenance-invalid-phase1.json'),
+    'utf8',
+  ),
+);
 
 function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
@@ -188,27 +206,33 @@ async function generationTarget(setupOutputDir) {
   return path.resolve(path.dirname(setupOutputDir), target);
 }
 
-test('installer ingress accepts the canonical provenance fixture without removed MPC build metadata', async () => {
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-'));
-  try {
-    const extractedDir = path.join(tempDir, 'archive');
-    const backendReleaseDir = path.join(tempDir, 'backend');
-    await fs.mkdir(extractedDir);
-    await fs.mkdir(backendReleaseDir);
-    await writeCrsArchiveFixture(extractedDir, '2.1.5', 'canonical', CANONICAL_FINAL_MPC_PROVENANCE);
-    await writeBackendMetadata(backendReleaseDir);
+test('installer ingress accepts every canonical phase-1 provenance variant', async () => {
+  for (const provenance of [
+    CANONICAL_FINAL_MPC_PROVENANCE,
+    NATIVE_FINAL_MPC_PROVENANCE,
+    NULL_FINAL_MPC_PROVENANCE,
+  ]) {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-'));
+    try {
+      const extractedDir = path.join(tempDir, 'archive');
+      const backendReleaseDir = path.join(tempDir, 'backend');
+      await fs.mkdir(extractedDir);
+      await fs.mkdir(backendReleaseDir);
+      await writeCrsArchiveFixture(extractedDir, '2.1.5', 'canonical', provenance);
+      await writeBackendMetadata(backendReleaseDir);
 
-    const result = await validateDownloadedCrsArchive(
-      extractedDir,
-      backendReleaseDir,
-      'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
-      '2.1',
-    );
+      const result = await validateDownloadedCrsArchive(
+        extractedDir,
+        backendReleaseDir,
+        'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
+        '2.1',
+      );
 
-    assert.equal(result.provenancePath, path.join(extractedDir, 'crs_provenance.json'));
-    await assert.rejects(fs.access(path.join(extractedDir, 'build-metadata-mpc-setup.json')));
-  } finally {
-    await fs.rm(tempDir, { recursive: true, force: true });
+      assert.equal(result.provenancePath, path.join(extractedDir, 'crs_provenance.json'));
+      await assert.rejects(fs.access(path.join(extractedDir, 'build-metadata-mpc-setup.json')));
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
   }
 });
 
@@ -270,6 +294,11 @@ test('installer ingress rejects malformed and semantically invalid provenance fi
       name: 'empty required string',
       provenance: EMPTY_STRING_FINAL_MPC_PROVENANCE,
       expected: /subcircuitLibrary\.packageName is shorter than the contract allows/u,
+    },
+    {
+      name: 'unsupported phase-1 variant',
+      provenance: INVALID_PHASE1_FINAL_MPC_PROVENANCE,
+      expected: /does not match exactly one allowed contract shape/u,
     },
   ];
 
