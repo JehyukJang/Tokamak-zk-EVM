@@ -12,7 +12,7 @@ import type { FieldElement } from "../../runtime/field/field-runtime.js";
 import { BinarySectionEncoding, BinarySectionType } from "../../artifacts/binary/binary-format.js";
 import { GENERATED_SETUP_PARAMS } from "../../generated/active/setup.generated.js";
 import type { VerifierSetupParams } from "../protocol/domain-context.js";
-import { GENERATED_VERIFIER_SIGMA } from "../generated/sigma-verify.generated.js";
+import { GENERATED_VERIFIER_SIGMA } from "../generated/active/sigma-verify.generated.js";
 import type { VerifierInput, VerifierProof } from "../protocol/verify-snark.js";
 import { createVerifierPublicPolynomial } from "../protocol/public-instance-polynomial.js";
 

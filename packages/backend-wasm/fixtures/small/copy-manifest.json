@@ -17,11 +17,11 @@
       "destination": "synthesizer/placementVariables.json"
     },
     {
-      "source": "packages/backend/setup/output/sigma_verify.json",
+      "source": "packages/backend/setup/trusted-setup/output/debug/sigma_verify.json",
       "destination": "setup/sigma_verify.json"
     },
     {
-      "source": "packages/backend/setup/output/combined_sigma.rkyv",
+      "source": "packages/backend/setup/trusted-setup/output/debug/combined_sigma.rkyv",
       "destination": "setup/combined_sigma.rkyv"
     },
     {

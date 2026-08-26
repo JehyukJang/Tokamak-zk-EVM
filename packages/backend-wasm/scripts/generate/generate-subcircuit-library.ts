@@ -9,6 +9,10 @@ import type { SetupParams } from "../../src/artifacts/setup/setup-params.js";
 import type {
   ProverSubcircuitInfo,
 } from "../../src/prover/protocol/witness.js";
+import {
+  readSelectedInputOrigin,
+  type SubcircuitLibraryOrigin,
+} from "./input-origin.js";
 
 const require = createRequire(import.meta.url);
 const backendWasmRoot = path.resolve(import.meta.dirname, "../..");
@@ -27,10 +31,8 @@ const proverGeneratedPath = path.join(
 );
 const nativeBackendCargoPath = path.resolve(backendWasmRoot, "..", "backend", "Cargo.toml");
 const checkMode = process.argv.includes("--check");
-const selectedOrigin = readSelectedOrigin(process.argv.slice(2));
+const selectedOrigin = readSelectedInputOrigin(process.argv.slice(2));
 const localQapCompilerRoot = path.resolve(backendWasmRoot, "..", "frontend", "qap-compiler");
-
-type SubcircuitLibraryOrigin = "localQapCompiler" | "npmSnapshot";
 
 interface SubcircuitLibraryPackage {
   readonly name: string;
@@ -112,20 +114,6 @@ async function main(): Promise<void> {
   } finally {
     await runtime.terminate();
   }
-}
-
-function readSelectedOrigin(args: readonly string[]): SubcircuitLibraryOrigin {
-  const originFlags = args.filter((argument) => argument.startsWith("--origin="));
-  if (originFlags.length > 1) {
-    throw new Error("Specify subcircuit-library origin at most once.");
-  }
-  const origin = originFlags[0]?.slice("--origin=".length) ?? "localQapCompiler";
-  if (origin === "localQapCompiler" || origin === "npmSnapshot") {
-    return origin;
-  }
-  throw new Error(
-    `Unsupported subcircuit-library origin ${JSON.stringify(origin)}; expected localQapCompiler or npmSnapshot.`,
-  );
 }
 
 function resolveSubcircuitLibrary(origin: SubcircuitLibraryOrigin): ResolvedSubcircuitLibrary {
