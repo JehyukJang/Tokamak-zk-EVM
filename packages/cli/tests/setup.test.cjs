@@ -25,6 +25,24 @@ const CANONICAL_FINAL_MPC_PROVENANCE = JSON.parse(
     'utf8',
   ),
 );
+const MALFORMED_FINAL_MPC_PROVENANCE = JSON.parse(
+  require('node:fs').readFileSync(
+    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', 'final-mpc-crs-provenance-malformed.json'),
+    'utf8',
+  ),
+);
+const LEGACY_FINAL_MPC_PROVENANCE = JSON.parse(
+  require('node:fs').readFileSync(
+    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', 'final-mpc-crs-provenance-legacy.json'),
+    'utf8',
+  ),
+);
+const LEADING_ZERO_FINAL_MPC_PROVENANCE = JSON.parse(
+  require('node:fs').readFileSync(
+    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', 'final-mpc-crs-provenance-leading-zero.json'),
+    'utf8',
+  ),
+);
 
 function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
@@ -49,7 +67,12 @@ async function writeBackendMetadata(backendReleaseDir) {
   }
 }
 
-async function writeCrsArchiveFixture(extractedDir, subcircuitLibraryVersion = '2.1.5', label = 'fixture') {
+async function writeCrsArchiveFixture(
+  extractedDir,
+  subcircuitLibraryVersion = '2.1.5',
+  label = 'fixture',
+  provenance = undefined,
+) {
   const artifacts = {
     'combined_sigma.rkyv': `${label} combined sigma`,
     'sigma_preprocess.rkyv': `${label} preprocess sigma`,
@@ -60,7 +83,7 @@ async function writeCrsArchiveFixture(extractedDir, subcircuitLibraryVersion = '
   }
   await fs.writeFile(
     path.join(extractedDir, 'crs_provenance.json'),
-    `${JSON.stringify({
+    `${JSON.stringify(provenance ?? {
       documentKind: 'finalMpcCrs',
       releaseEligible: false,
       generatedAtUtc: '2026-08-24T00:00:00Z',
@@ -84,16 +107,13 @@ test('packages the backend CRS provenance contract unchanged for runtime validat
   assert.deepEqual(packagedContract, CRS_PROVENANCE_CONTRACT);
 });
 
-test('accepts the canonical backend final-MPC provenance fixture and rejects the legacy Dusk shape', async () => {
+test('validates canonical and legacy backend final-MPC provenance fixtures', async () => {
   const archiveName = 'tokamak-backend-crs-v2.1-20260824T000000Z.zip';
   const validated = await validateFinalMpcCrsProvenanceContract(CANONICAL_FINAL_MPC_PROVENANCE, archiveName);
   assert.deepEqual(validated, CANONICAL_FINAL_MPC_PROVENANCE);
 
-  const legacy = structuredClone(CANONICAL_FINAL_MPC_PROVENANCE);
-  legacy.phase1SourceProvenance.DuskGroth16 = legacy.phase1SourceProvenance.duskGroth16;
-  delete legacy.phase1SourceProvenance.duskGroth16;
   await assert.rejects(
-    validateFinalMpcCrsProvenanceContract(legacy, archiveName),
+    validateFinalMpcCrsProvenanceContract(LEGACY_FINAL_MPC_PROVENANCE, archiveName),
     /does not match exactly one allowed contract shape/u,
   );
 });
@@ -103,14 +123,14 @@ async function generationTarget(setupOutputDir) {
   return path.resolve(path.dirname(setupOutputDir), target);
 }
 
-test('accepts a current CRS archive that contains provenance but no removed MPC build metadata', async () => {
+test('installer ingress accepts the canonical provenance fixture without removed MPC build metadata', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-'));
   try {
     const extractedDir = path.join(tempDir, 'archive');
     const backendReleaseDir = path.join(tempDir, 'backend');
     await fs.mkdir(extractedDir);
     await fs.mkdir(backendReleaseDir);
-    await writeCrsArchiveFixture(extractedDir);
+    await writeCrsArchiveFixture(extractedDir, '2.1.5', 'canonical', CANONICAL_FINAL_MPC_PROVENANCE);
     await writeBackendMetadata(backendReleaseDir);
 
     const result = await validateDownloadedCrsArchive(
@@ -154,27 +174,21 @@ test('rejects a development trusted-setup provenance before CRS installation', a
   }
 });
 
-test('installer ingress rejects malformed-version, unknown-field, and legacy provenance', async () => {
+test('installer ingress rejects malformed, legacy, and leading-zero provenance fixtures', async () => {
   const cases = [
     {
       name: 'leading-zero compatibility version',
-      mutate(provenance) {
-        provenance.compatibleBackendVersion = '02.01';
-      },
+      provenance: LEADING_ZERO_FINAL_MPC_PROVENANCE,
       expected: /compatibleBackendVersion.*leading zeroes are not canonical/u,
     },
     {
       name: 'unknown provenance field',
-      mutate(provenance) {
-        provenance.unexpected = true;
-      },
+      provenance: MALFORMED_FINAL_MPC_PROVENANCE,
       expected: /has unsupported field unexpected/u,
     },
     {
       name: 'legacy Dusk variant',
-      mutate(provenance) {
-        provenance.phase1SourceProvenance = { DuskGroth16: {} };
-      },
+      provenance: LEGACY_FINAL_MPC_PROVENANCE,
       expected: /does not match exactly one allowed contract shape/u,
     },
   ];
@@ -186,11 +200,7 @@ test('installer ingress rejects malformed-version, unknown-field, and legacy pro
       const backendReleaseDir = path.join(tempDir, 'backend');
       await fs.mkdir(extractedDir);
       await fs.mkdir(backendReleaseDir);
-      await writeCrsArchiveFixture(extractedDir);
-      const provenancePath = path.join(extractedDir, 'crs_provenance.json');
-      const provenance = JSON.parse(await fs.readFile(provenancePath, 'utf8'));
-      testCase.mutate(provenance);
-      await fs.writeFile(provenancePath, `${JSON.stringify(provenance)}\n`, 'utf8');
+      await writeCrsArchiveFixture(extractedDir, '2.1.5', 'canonical', testCase.provenance);
 
       await assert.rejects(
         validateDownloadedCrsArchive(

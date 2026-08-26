@@ -9,7 +9,7 @@
     "origin": "npmSnapshot"
   },
   "phase1SourceProvenance": {
-    "duskGroth16": {
+    "DuskGroth16": {
       "sourceUrl": "https://example.invalid/dusk.response",
       "sourceSizeBytes": 1024,
       "rawEncoding": "dusk-groth16-raw",

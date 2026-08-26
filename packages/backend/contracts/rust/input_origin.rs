@@ -79,8 +79,9 @@ mod tests {
 
     #[test]
     fn conforms_to_the_backend_input_origin_contract() {
-        let contract: Contract = serde_json::from_str(include_str!("../input-origin-contract.json"))
-            .expect("backend input-origin contract must be valid JSON");
+        let contract: Contract =
+            serde_json::from_str(include_str!("../input-origin-contract.json"))
+                .expect("backend input-origin contract must be valid JSON");
 
         for case in contract.subcircuit_library_origins {
             match case.canonical {

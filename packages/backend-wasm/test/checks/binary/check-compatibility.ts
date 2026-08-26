@@ -26,6 +26,54 @@ const CANONICAL_FINAL_MPC_PROVENANCE = JSON.parse(
     'utf8',
   ),
 ) as CrsProvenanceInput;
+const MALFORMED_FINAL_MPC_PROVENANCE = JSON.parse(
+  readFileSync(
+    path.resolve(
+      import.meta.dirname,
+      '..',
+      '..',
+      '..',
+      '..',
+      'backend',
+      'contracts',
+      'fixtures',
+      'final-mpc-crs-provenance-malformed.json',
+    ),
+    'utf8',
+  ),
+) as CrsProvenanceInput;
+const LEGACY_FINAL_MPC_PROVENANCE = JSON.parse(
+  readFileSync(
+    path.resolve(
+      import.meta.dirname,
+      '..',
+      '..',
+      '..',
+      '..',
+      'backend',
+      'contracts',
+      'fixtures',
+      'final-mpc-crs-provenance-legacy.json',
+    ),
+    'utf8',
+  ),
+) as CrsProvenanceInput;
+const LEADING_ZERO_FINAL_MPC_PROVENANCE = JSON.parse(
+  readFileSync(
+    path.resolve(
+      import.meta.dirname,
+      '..',
+      '..',
+      '..',
+      '..',
+      'backend',
+      'contracts',
+      'fixtures',
+      'final-mpc-crs-provenance-leading-zero.json',
+    ),
+    'utf8',
+  ),
+) as CrsProvenanceInput;
 
 function compatibleVersion(packageVersion: string): string {
   const [major, minor] = packageVersion.split('.');
@@ -76,10 +124,8 @@ function main(): void {
   validateCrsProvenanceCompatibility(CANONICAL_FINAL_MPC_PROVENANCE);
   assertBinaryArtifactCompatibility(artifact(SUBCIRCUIT_LIBRARY_PACKAGE_VERSION));
 
-  const leadingZeroCompatibility = structuredClone(expected);
-  leadingZeroCompatibility.compatibleBackendVersion = '02.01';
   expectFailure(
-    () => validateCrsProvenanceCompatibility(leadingZeroCompatibility),
+    () => validateCrsProvenanceCompatibility(LEADING_ZERO_FINAL_MPC_PROVENANCE),
     'Leading-zero CRS compatibility versions must be rejected by the root version policy.',
   );
   const leadingZeroPackageVersion = structuredClone(expected);
@@ -93,12 +139,12 @@ function main(): void {
     () => validateCrsProvenanceCompatibility(provenance('9.9.0')),
     'CRS provenance from a distinct compatibility class must be rejected.',
   );
-  const legacyProvenance = JSON.parse(JSON.stringify(CANONICAL_FINAL_MPC_PROVENANCE)) as Record<string, unknown>;
-  const phase1 = legacyProvenance.phase1SourceProvenance as Record<string, unknown>;
-  phase1.DuskGroth16 = phase1.duskGroth16;
-  delete phase1.duskGroth16;
   expectFailure(
-    () => validateCrsProvenanceCompatibility(legacyProvenance as CrsProvenanceInput),
+    () => validateCrsProvenanceCompatibility(MALFORMED_FINAL_MPC_PROVENANCE),
+    'Malformed provenance must be rejected.',
+  );
+  expectFailure(
+    () => validateCrsProvenanceCompatibility(LEGACY_FINAL_MPC_PROVENANCE),
     'Legacy snake_case Dusk provenance must be rejected.',
   );
   expectFailure(

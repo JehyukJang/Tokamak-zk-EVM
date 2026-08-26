@@ -125,8 +125,9 @@ mod tests {
 
     #[test]
     fn conforms_to_the_backend_crs_provenance_contract() {
-        let contract: Contract = serde_json::from_str(include_str!("../../contracts/crs-provenance-contract.json"))
-            .expect("backend CRS provenance contract must be valid JSON");
+        let contract: Contract =
+            serde_json::from_str(include_str!("../../contracts/crs-provenance-contract.json"))
+                .expect("backend CRS provenance contract must be valid JSON");
         assert_eq!(contract.file_name, CRS_PROVENANCE_FILE_NAME);
         assert!(contract
             .document_kinds
@@ -154,9 +155,10 @@ mod tests {
 
     #[test]
     fn canonical_final_mpc_fixture_round_trips_through_the_rust_contract() {
-        let fixture: serde_json::Value =
-            serde_json::from_str(include_str!("../../contracts/fixtures/final-mpc-crs-provenance.json"))
-                .expect("canonical final MPC fixture must be valid JSON");
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../contracts/fixtures/final-mpc-crs-provenance.json"
+        ))
+        .expect("canonical final MPC fixture must be valid JSON");
         let provenance: CrsProvenance = serde_json::from_value(fixture.clone())
             .expect("canonical final MPC fixture must satisfy the Rust contract");
 
@@ -167,18 +169,14 @@ mod tests {
     }
 
     #[test]
-    fn rejects_legacy_snake_case_dusk_provenance() {
-        let mut legacy: serde_json::Value =
-            serde_json::from_str(include_str!("../../contracts/fixtures/final-mpc-crs-provenance.json"))
-                .expect("canonical final MPC fixture must be valid JSON");
-        let phase1 = legacy["phase1SourceProvenance"]
-            .as_object_mut()
-            .expect("fixture phase-1 provenance must be an object");
-        let dusk = phase1
-            .remove("duskGroth16")
-            .expect("fixture must contain the canonical Dusk variant");
-        phase1.insert("DuskGroth16".to_string(), dusk);
-
-        assert!(serde_json::from_value::<CrsProvenance>(legacy).is_err());
+    fn rejects_malformed_and_legacy_final_mpc_fixtures() {
+        for fixture in [
+            include_str!("../../contracts/fixtures/final-mpc-crs-provenance-malformed.json"),
+            include_str!("../../contracts/fixtures/final-mpc-crs-provenance-legacy.json"),
+        ] {
+            let provenance: serde_json::Value =
+                serde_json::from_str(fixture).expect("negative fixture must be valid JSON");
+            assert!(serde_json::from_value::<CrsProvenance>(provenance).is_err());
+        }
     }
 }

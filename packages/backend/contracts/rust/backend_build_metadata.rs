@@ -121,9 +121,10 @@ mod tests {
 
     #[test]
     fn accepts_the_canonical_fixture_and_rejects_the_invalid_fixture() {
-        let fixture: BackendBuildMetadata =
-            serde_json::from_str(include_str!("../fixtures/backend-build-metadata-valid.json"))
-                .expect("canonical backend build metadata fixture must satisfy the contract");
+        let fixture: BackendBuildMetadata = serde_json::from_str(include_str!(
+            "../fixtures/backend-build-metadata-valid.json"
+        ))
+        .expect("canonical backend build metadata fixture must satisfy the contract");
         assert_eq!(fixture.package_name, "prove");
         assert!(serde_json::from_str::<BackendBuildMetadata>(include_str!(
             "../fixtures/backend-build-metadata-invalid.json"
