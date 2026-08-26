@@ -1,3 +1,7 @@
+// Handwritten boundary validator for the backend-owned CRS provenance JSON
+// contract. Consumer preparation copies this source under a generated filename;
+// the JSON contract remains the shape authority.
+
 import contract from "./crs-provenance-contract.generated.js";
 import {
   parseCompatibleBackendVersion,
@@ -59,6 +63,20 @@ type ProvenanceContract = {
     readonly finalMpcCrs?: { readonly schema?: JsonSchema };
   };
 };
+
+const SUPPORTED_SCHEMA_KEYWORDS = new Set([
+  "additionalProperties",
+  "const",
+  "enum",
+  "format",
+  "minLength",
+  "minimum",
+  "oneOf",
+  "pattern",
+  "properties",
+  "required",
+  "type",
+]);
 
 /** Validates a final-MPC document against the backend-owned JSON contract. */
 export function parseFinalMpcCrsProvenance(
@@ -178,7 +196,40 @@ function finalMpcCrsSchema(): JsonSchema {
   if (schema === undefined) {
     throw new Error("Backend CRS provenance contract does not define finalMpcCrs.");
   }
+  assertSupportedCrsProvenanceSchema(schema);
   return schema;
+}
+
+/** Rejects schema evolution that this boundary validator does not implement. */
+export function assertSupportedCrsProvenanceSchema(schema: unknown): void {
+  assertSupportedSchemaKeywords(schema, "finalMpcCrs schema");
+}
+
+function assertSupportedSchemaKeywords(schema: unknown, path: string): void {
+  if (!isRecord(schema)) {
+    throw new Error(`Backend CRS provenance contract ${path} must be an object.`);
+  }
+  for (const key of Object.keys(schema)) {
+    if (!SUPPORTED_SCHEMA_KEYWORDS.has(key)) {
+      throw new Error(`Backend CRS provenance contract ${path} uses unsupported schema keyword ${key}.`);
+    }
+  }
+  if (schema.oneOf !== undefined) {
+    if (!Array.isArray(schema.oneOf)) {
+      throw new Error(`Backend CRS provenance contract ${path}.oneOf must be an array.`);
+    }
+    for (const [index, candidate] of schema.oneOf.entries()) {
+      assertSupportedSchemaKeywords(candidate, `${path}.oneOf[${index}]`);
+    }
+  }
+  if (schema.properties !== undefined) {
+    if (!isRecord(schema.properties)) {
+      throw new Error(`Backend CRS provenance contract ${path}.properties must be an object.`);
+    }
+    for (const [field, child] of Object.entries(schema.properties)) {
+      assertSupportedSchemaKeywords(child, `${path}.properties.${field}`);
+    }
+  }
 }
 
 function validateVersionPolicy(provenance: FinalMpcCrsProvenance, subject: string): void {

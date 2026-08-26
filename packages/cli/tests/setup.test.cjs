@@ -10,6 +10,9 @@ const {
   validateDownloadedCrsArchive,
   validateFinalMpcCrsProvenanceContract,
 } = require('../dist/runtime/setup.js');
+const {
+  assertSupportedCrsProvenanceSchema,
+} = require('../dist/generated/crs-provenance-validator.generated.js');
 
 const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = '@tokamak-zk-evm/subcircuit-library';
 const BACKEND_BINARY_NAMES = ['preprocess', 'prove', 'verify'];
@@ -155,6 +158,13 @@ async function writeCrsArchiveFixture(
 test('packages the backend CRS provenance contract unchanged for runtime validation', () => {
   const packagedContract = require('../dist/generated/crs-provenance-contract.generated.js').default;
   assert.deepEqual(packagedContract, CRS_PROVENANCE_CONTRACT);
+});
+
+test('rejects unimplemented CRS provenance schema keywords before validation', () => {
+  assert.throws(
+    () => assertSupportedCrsProvenanceSchema({ type: 'string', unsupportedKeyword: true }),
+    /uses unsupported schema keyword unsupportedKeyword/u,
+  );
 });
 
 test('packages the backend build-metadata contract unchanged for runtime validation', () => {

@@ -12,7 +12,7 @@ import {
 import { downloadFileWithResume, fileExists, normalizeSha256, sha256FileHex } from './download.js';
 import type { RuntimeContext } from './model.js';
 import { runCommand, logVerbose } from '../system.js';
-import { parseFinalMpcCrsProvenance } from '../generated/crs-provenance.generated.js';
+import { parseFinalMpcCrsProvenance } from '../generated/crs-provenance-validator.generated.js';
 import {
   parseBackendBuildMetadata,
   type BackendPackageName,
@@ -26,7 +26,7 @@ interface DriveArchiveSelection {
   sizeBytes: number;
 }
 
-type FinalMpcCrsProvenance = import("../generated/crs-provenance.generated.js").FinalMpcCrsProvenance;
+type FinalMpcCrsProvenance = import("../generated/crs-provenance-validator.generated.js").FinalMpcCrsProvenance;
 
 const BACKEND_BINARY_NAMES: readonly BackendPackageName[] = ['preprocess', 'prove', 'verify'];
 const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = '@tokamak-zk-evm/subcircuit-library';

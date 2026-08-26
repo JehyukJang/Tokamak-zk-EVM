@@ -4,7 +4,7 @@ import path from "node:path";
 const backendRoot = path.resolve(import.meta.dirname, "..");
 const contractRoot = path.join(backendRoot, "contracts");
 const repositoryRoot = path.resolve(backendRoot, "..", "..");
-const validatorSource = path.join(contractRoot, "typescript", "crs-provenance.generated.ts");
+const validatorSource = path.join(contractRoot, "typescript", "crs-provenance-validator.ts");
 const buildMetadataValidatorSource = path.join(contractRoot, "typescript", "backend-build-metadata-validator.ts");
 const provenanceContract = path.join(contractRoot, "crs-provenance-contract.json");
 const buildMetadataContract = path.join(contractRoot, "backend-build-metadata-contract.json");
@@ -18,7 +18,7 @@ const consumers = [
 ];
 
 for (const consumerDirectory of consumers) {
-  await synchronize(validatorSource, path.join(consumerDirectory, "crs-provenance.generated.ts"));
+  await synchronize(validatorSource, path.join(consumerDirectory, "crs-provenance-validator.generated.ts"));
   await synchronize(provenanceContract, path.join(consumerDirectory, "crs-provenance-contract.json"));
   await synchronize(versionPolicySource, path.join(consumerDirectory, "version-policy.generated.js"));
   await synchronizeContents(
