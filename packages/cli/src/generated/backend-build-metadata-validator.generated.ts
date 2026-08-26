@@ -35,6 +35,16 @@ type BuildMetadataContract = {
   readonly schema?: JsonSchema;
 };
 
+const SUPPORTED_SCHEMA_KEYWORDS = new Set([
+  "additionalProperties",
+  "const",
+  "enum",
+  "pattern",
+  "properties",
+  "required",
+  "type",
+]);
+
 /** Validates backend build metadata against the backend-owned JSON contract. */
 export function parseBackendBuildMetadata(
   value: unknown,
@@ -92,7 +102,32 @@ function buildMetadataSchema(): JsonSchema {
   if (schema === undefined) {
     throw new Error("Backend build-metadata contract does not define a schema.");
   }
+  assertSupportedBackendBuildMetadataSchema(schema);
   return schema;
+}
+
+/** Rejects schema evolution that this boundary validator does not implement. */
+export function assertSupportedBackendBuildMetadataSchema(schema: unknown): void {
+  assertSupportedSchemaKeywords(schema, "build-metadata schema");
+}
+
+function assertSupportedSchemaKeywords(schema: unknown, path: string): void {
+  if (!isRecord(schema)) {
+    throw new Error(`Backend build-metadata contract ${path} must be an object.`);
+  }
+  for (const key of Object.keys(schema)) {
+    if (!SUPPORTED_SCHEMA_KEYWORDS.has(key)) {
+      throw new Error(`Backend build-metadata contract ${path} uses unsupported schema keyword ${key}.`);
+    }
+  }
+  if (schema.properties !== undefined) {
+    if (!isRecord(schema.properties)) {
+      throw new Error(`Backend build-metadata contract ${path}.properties must be an object.`);
+    }
+    for (const [field, child] of Object.entries(schema.properties)) {
+      assertSupportedSchemaKeywords(child, `${path}.properties.${field}`);
+    }
+  }
 }
 
 function validateVersionPolicy(metadata: BackendBuildMetadata, subject: string): void {

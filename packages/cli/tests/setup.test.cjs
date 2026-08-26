@@ -13,6 +13,9 @@ const {
 const {
   assertSupportedCrsProvenanceSchema,
 } = require('../dist/generated/crs-provenance-validator.generated.js');
+const {
+  assertSupportedBackendBuildMetadataSchema,
+} = require('../dist/generated/backend-build-metadata-validator.generated.js');
 
 const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = '@tokamak-zk-evm/subcircuit-library';
 const BACKEND_BINARY_NAMES = ['preprocess', 'prove', 'verify'];
@@ -48,6 +51,9 @@ const INVALID_BUILD_METADATA_FIXTURES = {
   ),
   leadingZeroCompatibleVersion: readBackendBuildMetadataFixture(
     'backend-build-metadata-invalid-leading-zero-compatible-version.json',
+  ),
+  leadingZeroLibraryVersion: readBackendBuildMetadataFixture(
+    'backend-build-metadata-invalid-leading-zero-library-version.json',
   ),
 };
 const CANONICAL_FINAL_MPC_PROVENANCE = JSON.parse(
@@ -181,6 +187,13 @@ test('packages the backend CRS provenance contract unchanged for runtime validat
 test('rejects unimplemented CRS provenance schema keywords before validation', () => {
   assert.throws(
     () => assertSupportedCrsProvenanceSchema({ type: 'string', unsupportedKeyword: true }),
+    /uses unsupported schema keyword unsupportedKeyword/u,
+  );
+});
+
+test('rejects unimplemented build-metadata schema keywords before validation', () => {
+  assert.throws(
+    () => assertSupportedBackendBuildMetadataSchema({ type: 'string', unsupportedKeyword: true }),
     /uses unsupported schema keyword unsupportedKeyword/u,
   );
 });
@@ -392,6 +405,11 @@ test('installer ingress rejects every build-metadata contract violation', async 
       name: 'leading-zero backend compatibility version',
       metadata: INVALID_BUILD_METADATA_FIXTURES.leadingZeroCompatibleVersion,
       expected: /compatibleBackendVersion.*leading zeroes are not canonical/u,
+    },
+    {
+      name: 'leading-zero subcircuit-library build version',
+      metadata: INVALID_BUILD_METADATA_FIXTURES.leadingZeroLibraryVersion,
+      expected: /subcircuitLibrary\.buildVersion.*leading zeroes are not canonical/u,
     },
   ];
 
