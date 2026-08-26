@@ -1,12 +1,15 @@
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import {
+  compatibilityFromPackageVersion,
+  parseCompatibleBackendVersion,
+} from '../generated/version-policy.generated.js';
 import type { CliPlatform, RuntimeContext, RuntimeState } from './model.js';
 
 type DockerHostPlatform = 'linux' | 'windows';
 
 const CACHE_DIR_ENV = 'TOKAMAK_ZKEVM_CLI_CACHE_DIR';
-const MAX_U64 = 18_446_744_073_709_551_615n;
 
 export function detectPlatform(): CliPlatform {
   switch (process.platform) {
@@ -49,46 +52,23 @@ export function resolvePackageRoot(): string {
 }
 
 export function normalizeCompatibleBackendVersion(value: string, label: string): string {
-  const [major, minor] = parseCanonicalVersion(value, label, 'MAJOR.MINOR', 2);
-  return `${major}.${minor}`;
+  try {
+    return parseCompatibleBackendVersion(value);
+  } catch (error) {
+    throw new Error(`${label} ${versionPolicyMessage(error)}`);
+  }
 }
 
 export function packageCompatibleVersion(packageVersion: string, label: string): string {
-  const [major, minor] = parseCanonicalVersion(packageVersion, label, 'MAJOR.MINOR.PATCH', 3);
-  return `${major}.${minor}`;
+  try {
+    return compatibilityFromPackageVersion(packageVersion);
+  } catch (error) {
+    throw new Error(`${label} ${versionPolicyMessage(error)}`);
+  }
 }
 
-function parseCanonicalVersion(
-  value: string,
-  label: string,
-  expected: 'MAJOR.MINOR' | 'MAJOR.MINOR.PATCH',
-  componentCount: number,
-): bigint[] {
-  const components = value.split('.');
-  if (components.length !== componentCount) {
-    throw new Error(`${label} must be canonical ${expected}, got ${JSON.stringify(value)} (wrong component count).`);
-  }
-  return components.map(component => parseCanonicalComponent(component, label, expected, value));
-}
-
-function parseCanonicalComponent(component: string, label: string, expected: string, originalValue: string): bigint {
-  if (!/^[0-9]+$/u.test(component)) {
-    throw new Error(
-      `${label} must be canonical ${expected}, got ${JSON.stringify(originalValue)} (components must contain ASCII digits).`,
-    );
-  }
-  if (component.length > 1 && component.startsWith('0')) {
-    throw new Error(
-      `${label} must be canonical ${expected}, got ${JSON.stringify(originalValue)} (leading zeroes are not canonical).`,
-    );
-  }
-  const numeric = BigInt(component);
-  if (numeric > MAX_U64) {
-    throw new Error(
-      `${label} must be canonical ${expected}, got ${JSON.stringify(originalValue)} (numeric component is out of range).`,
-    );
-  }
-  return numeric;
+function versionPolicyMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function resolvePackageMetadata(packageRoot: string): Promise<{

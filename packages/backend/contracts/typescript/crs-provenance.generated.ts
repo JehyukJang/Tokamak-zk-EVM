@@ -1,4 +1,8 @@
 import contract from "./crs-provenance-contract.generated.js";
+import {
+  parseCompatibleBackendVersion,
+  parsePackageVersion,
+} from "./version-policy.generated.js";
 
 export type SubcircuitLibraryOrigin = "npmSnapshot" | "localQapCompiler";
 
@@ -62,7 +66,9 @@ export function parseFinalMpcCrsProvenance(
   subject = "CRS provenance",
 ): FinalMpcCrsProvenance {
   validateJsonSchema(finalMpcCrsSchema(), value, subject);
-  return value as FinalMpcCrsProvenance;
+  const provenance = value as FinalMpcCrsProvenance;
+  validateVersionPolicy(provenance, subject);
+  return provenance;
 }
 
 function validateJsonSchema(schema: JsonSchema, value: unknown, subject: string): void {
@@ -162,10 +168,27 @@ function finalMpcCrsSchema(): JsonSchema {
   return schema;
 }
 
+function validateVersionPolicy(provenance: FinalMpcCrsProvenance, subject: string): void {
+  try {
+    parseCompatibleBackendVersion(provenance.compatibleBackendVersion);
+  } catch (error) {
+    throw new Error(`${subject}.compatibleBackendVersion ${message(error)}`);
+  }
+  try {
+    parsePackageVersion(provenance.subcircuitLibrary.packageVersion);
+  } catch (error) {
+    throw new Error(`${subject}.subcircuitLibrary.packageVersion ${message(error)}`);
+  }
+}
+
 function hasOwn(value: object, field: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, field);
 }
 
 function sameJsonValue(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

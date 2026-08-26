@@ -76,6 +76,19 @@ function main(): void {
   validateCrsProvenanceCompatibility(CANONICAL_FINAL_MPC_PROVENANCE);
   assertBinaryArtifactCompatibility(artifact(SUBCIRCUIT_LIBRARY_PACKAGE_VERSION));
 
+  const leadingZeroCompatibility = structuredClone(expected);
+  leadingZeroCompatibility.compatibleBackendVersion = '02.01';
+  expectFailure(
+    () => validateCrsProvenanceCompatibility(leadingZeroCompatibility),
+    'Leading-zero CRS compatibility versions must be rejected by the root version policy.',
+  );
+  const leadingZeroPackageVersion = structuredClone(expected);
+  leadingZeroPackageVersion.subcircuitLibrary.packageVersion = '02.01.5';
+  expectFailure(
+    () => validateCrsProvenanceCompatibility(leadingZeroPackageVersion),
+    'Leading-zero subcircuit-library versions must be rejected by the root version policy.',
+  );
+
   expectFailure(
     () => validateCrsProvenanceCompatibility(provenance('9.9.0')),
     'CRS provenance from a distinct compatibility class must be rejected.',

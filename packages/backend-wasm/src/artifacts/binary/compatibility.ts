@@ -2,6 +2,10 @@ import type { BinaryArtifactFileView } from "./binary-format.js";
 import { SUBCIRCUIT_LIBRARY_PACKAGE_VERSION } from "../../generated/setup.generated.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
 import { parseFinalMpcCrsProvenance } from "../../generated/crs-provenance.generated.js";
+import {
+  compatibilityFromPackageVersion,
+  parseCompatibleBackendVersion,
+} from "../../generated/version-policy.generated.js";
 export type { FinalMpcCrsProvenance as CrsProvenanceInput } from "../../generated/crs-provenance.generated.js";
 import type { FinalMpcCrsProvenance as CrsProvenanceInput } from "../../generated/crs-provenance.generated.js";
 
@@ -73,17 +77,21 @@ export function assertBinaryArtifactCompatibility(artifact: BinaryArtifactFileVi
 }
 
 function normalizeCompatibleBackendVersion(value: string, label: string): string {
-  const match = /^(\d+)\.(\d+)$/u.exec(value);
-  if (match === null) {
-    throw new Error(`${label} must be strict MAJOR.MINOR, got ${JSON.stringify(value)}.`);
+  try {
+    return parseCompatibleBackendVersion(value);
+  } catch (error) {
+    throw new Error(`${label} ${versionPolicyMessage(error)}`);
   }
-  return `${Number(match[1])}.${Number(match[2])}`;
 }
 
 function packageCompatibleVersion(value: string, label: string): string {
-  const match = /^(\d+)\.(\d+)\.(\d+)$/u.exec(value);
-  if (match === null) {
-    throw new Error(`${label} must be strict MAJOR.MINOR.PATCH, got ${JSON.stringify(value)}.`);
+  try {
+    return compatibilityFromPackageVersion(value);
+  } catch (error) {
+    throw new Error(`${label} ${versionPolicyMessage(error)}`);
   }
-  return `${Number(match[1])}.${Number(match[2])}`;
+}
+
+function versionPolicyMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

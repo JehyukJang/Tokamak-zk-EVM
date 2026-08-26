@@ -2,7 +2,13 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
-import { backendEnvironment, ensureDir, packageCompatibleVersion, runtimePaths } from './context.js';
+import {
+  backendEnvironment,
+  ensureDir,
+  normalizeCompatibleBackendVersion,
+  packageCompatibleVersion,
+  runtimePaths,
+} from './context.js';
 import { downloadFileWithResume, fileExists, normalizeSha256, sha256FileHex } from './download.js';
 import type { RuntimeContext } from './model.js';
 import { runCommand, logVerbose } from '../system.js';
@@ -92,10 +98,17 @@ function parseDriveArchiveName(
   if (!parsed) {
     return null;
   }
-  return {
-    compatibleBackendVersion: `${Number(parsed[1])}.${Number(parsed[2])}`,
-    generatedAt: parsed[3],
-  };
+  try {
+    return {
+      compatibleBackendVersion: normalizeCompatibleBackendVersion(
+        `${parsed[1]}.${parsed[2]}`,
+        `CRS archive name ${JSON.stringify(name)} compatibility version`,
+      ),
+      generatedAt: parsed[3],
+    };
+  } catch {
+    return null;
+  }
 }
 
 function parseDriveArchiveSelection(html: string, expectedCompatibleVersion: string): DriveArchiveSelection {
