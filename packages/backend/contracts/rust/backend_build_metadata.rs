@@ -18,7 +18,6 @@ pub const BACKEND_BUILD_METADATA_FILE_PREFIX: &str = "build-metadata-";
 pub const BACKEND_BUILD_METADATA_FILE_SUFFIX: &str = ".json";
 pub const BACKEND_RUNTIME_PACKAGE_NAMES: [&str; 3] = ["preprocess", "prove", "verify"];
 pub const SUBCIRCUIT_LIBRARY_PACKAGE_NAME: &str = "@tokamak-zk-evm/subcircuit-library";
-pub const SUBCIRCUIT_LIBRARY_DECLARED_RANGE: &str = "latest";
 pub const SUBCIRCUIT_LIBRARY_RUNTIME_MODE: &str = "bundled";
 
 const SUPPORTED_SCHEMA_KEYWORDS: &[&str] = &[
@@ -85,7 +84,7 @@ impl BackendBuildMetadata {
             dependencies: BackendBuildMetadataDependencies {
                 subcircuit_library: SubcircuitLibraryBuildMetadata {
                     build_version: subcircuit_library_build_version.to_string(),
-                    declared_range: SUBCIRCUIT_LIBRARY_DECLARED_RANGE.to_string(),
+                    declared_range: subcircuit_library_build_version.to_string(),
                     package_name: SUBCIRCUIT_LIBRARY_PACKAGE_NAME.to_string(),
                     runtime_mode: SUBCIRCUIT_LIBRARY_RUNTIME_MODE.to_string(),
                 },
@@ -171,7 +170,7 @@ fn expected_schema() -> serde_json::Value {
                         "required": ["buildVersion", "declaredRange", "packageName", "runtimeMode"],
                         "properties": {
                             "buildVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
-                            "declaredRange": { "const": "latest" },
+                            "declaredRange": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
                             "packageName": { "const": "@tokamak-zk-evm/subcircuit-library" },
                             "runtimeMode": { "const": "bundled" }
                         }

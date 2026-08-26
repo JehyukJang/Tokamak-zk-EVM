@@ -710,12 +710,12 @@ jobs:
       - name: Check converter browser boundaries
         working-directory: packages/backend-wasm
         run: |
-          npm run converter:browser:check
-          npm run converter:webpack:check
+          npm run converter:browser:check:production
+          npm run converter:webpack:check:production
 
       - name: Check publication documentation and package boundary
         working-directory: packages/backend-wasm
-        run: npx tsx test/checks/docs/check-publication-docs.ts
+        run: npm run package:publication:check
 
       - name: Pack browser-compatible SNARK package
         working-directory: packages/backend-wasm

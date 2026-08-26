@@ -1,6 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { parsePackageVersion } from '../../../../scripts/version-contract.mjs';
+
+const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = '@tokamak-zk-evm/subcircuit-library';
 
 function resolveDependencyManifestPath(requireFromPackage, packageName, resolutionTarget) {
   const entryPath = requireFromPackage.resolve(resolutionTarget);
@@ -41,12 +44,22 @@ export function createPackageBuildMetadata(packageDir, runtimeModes) {
       resolutionTarget,
     );
     const dependencyManifest = JSON.parse(fs.readFileSync(dependencyManifestPath, 'utf8'));
+    const declaredRange = manifest.dependencies[packageName];
+
+    if (packageName === SUBCIRCUIT_LIBRARY_PACKAGE_NAME) {
+      assertExactReleaseLineDependency(
+        manifest.version,
+        declaredRange,
+        dependencyManifest.version,
+        packageDir,
+      );
+    }
 
     return [
       key,
       {
         buildVersion: dependencyManifest.version,
-        declaredRange: manifest.dependencies[packageName],
+        declaredRange,
         packageName,
         runtimeMode,
       },
@@ -58,6 +71,26 @@ export function createPackageBuildMetadata(packageDir, runtimeModes) {
     packageName: manifest.name,
     packageVersion: manifest.version,
   };
+}
+
+function assertExactReleaseLineDependency(packageVersion, declaredVersion, resolvedVersion, packageDir) {
+  try {
+    parsePackageVersion(packageVersion);
+    parsePackageVersion(declaredVersion);
+    parsePackageVersion(resolvedVersion);
+  } catch (error) {
+    throw new Error(`Invalid synchronized subcircuit-library version for ${packageDir}: ${error.message}`);
+  }
+  if (declaredVersion !== packageVersion) {
+    throw new Error(
+      `${packageDir} must declare ${SUBCIRCUIT_LIBRARY_PACKAGE_NAME}@${packageVersion} exactly; received ${JSON.stringify(declaredVersion)}.`,
+    );
+  }
+  if (resolvedVersion !== declaredVersion) {
+    throw new Error(
+      `${packageDir} resolved ${SUBCIRCUIT_LIBRARY_PACKAGE_NAME}@${resolvedVersion}, expected the declared exact version ${declaredVersion}.`,
+    );
+  }
 }
 
 export function createBuildMetadataDefines(buildMetadata) {

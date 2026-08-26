@@ -5,6 +5,10 @@ import {
   type ProverPlacementVariables,
   type ProverSubcircuitInfo,
 } from "./witness.js";
+import {
+  bufferPublicPort,
+  validateProverSubcircuitLibrary,
+} from "./subcircuit-library-validation.js";
 
 export interface PublicWireSource {
   readonly subcircuitId: number;
@@ -29,12 +33,11 @@ export class PublicWireLayout {
     setup: SetupParams,
     subcircuitInfos: readonly ProverSubcircuitInfo[],
   ): PublicWireLayout {
-    validateSetupDimensions(setup, subcircuitInfos);
+    validateProverSubcircuitLibrary(setup, subcircuitInfos);
 
     const globalSources: (PublicWireSource | undefined)[] = Array.from({ length: setup.m_D });
     for (let subcircuitId = 0; subcircuitId < subcircuitInfos.length; subcircuitId += 1) {
       const info = subcircuitInfos[subcircuitId];
-      validateSubcircuitInfo(info, subcircuitId, setup.m_D);
       for (let localWireIndex = 0; localWireIndex < info.flattenMap.length; localWireIndex += 1) {
         const globalWireIndex = info.flattenMap[localWireIndex];
         if (globalSources[globalWireIndex] !== undefined) {
@@ -43,8 +46,6 @@ export class PublicWireLayout {
         globalSources[globalWireIndex] = { subcircuitId, localWireIndex };
       }
     }
-
-    validateBufferPrefix(subcircuitInfos, setup.s_max);
 
     const sources = globalSources.slice(0, setup.l);
     const segments: PublicWireSegment[] = [];
@@ -136,83 +137,8 @@ interface WireRange {
   readonly end: number;
 }
 
-function validateSetupDimensions(
-  setup: SetupParams,
-  subcircuitInfos: readonly ProverSubcircuitInfo[],
-): void {
-  if (setup.l_free > setup.l) {
-    throw new Error("l_free must not exceed l.");
-  }
-  if (setup.l > setup.l_D || setup.l_D > setup.m_D) {
-    throw new Error("Setup public and interface boundaries are invalid.");
-  }
-  if (subcircuitInfos.length !== setup.s_D) {
-    throw new Error(`subcircuitInfo has ${subcircuitInfos.length} entries, expected s_D ${setup.s_D}.`);
-  }
-}
-
-function validateSubcircuitInfo(
-  info: ProverSubcircuitInfo,
-  expectedId: number,
-  globalWireCount: number,
-): void {
-  if (info.id !== expectedId) {
-    throw new Error(`Subcircuit info id ${info.id} does not match its index ${expectedId}.`);
-  }
-  if (!Number.isSafeInteger(info.Nwires) || info.Nwires < 0 || info.flattenMap.length !== info.Nwires) {
-    throw new Error(`Subcircuit ${info.id} has an invalid flattenMap length.`);
-  }
-  for (const globalWireIndex of info.flattenMap) {
-    if (!Number.isSafeInteger(globalWireIndex) || globalWireIndex < 0 || globalWireIndex >= globalWireCount) {
-      throw new Error(`Subcircuit ${info.id} maps outside the global-wire domain.`);
-    }
-  }
-}
-
-function validateBufferPrefix(
-  subcircuitInfos: readonly ProverSubcircuitInfo[],
-  sMax: number,
-): void {
-  const bufferIds = subcircuitInfos
-    .filter((info) => info.bufferDirection !== undefined)
-    .map((info) => info.id);
-  if (bufferIds.length === 0) {
-    throw new Error("subcircuitInfo does not declare any buffers.");
-  }
-  for (let expectedId = 0; expectedId < bufferIds.length; expectedId += 1) {
-    if (bufferIds[expectedId] !== expectedId) {
-      throw new Error(`Buffer subcircuit ids must form a prefix; missing id ${expectedId}.`);
-    }
-    if (expectedId >= sMax) {
-      throw new Error(`Buffer phase ${expectedId} is outside s_max ${sMax}.`);
-    }
-  }
-}
-
 function publicPortForBuffer(info: ProverSubcircuitInfo): WireRange {
-  if (info.bufferDirection === undefined) {
-    throw new Error(`Public wire references non-buffer subcircuit ${info.id}.`);
-  }
-  if (info.bufferDirection !== "in" && info.bufferDirection !== "out") {
-    throw new Error(`Buffer ${info.id} has an invalid direction.`);
-  }
-  const encodedRange = info.bufferDirection === "in" ? info.In_idx : info.Out_idx;
-  if (encodedRange.length !== 2) {
-    throw new Error(`Buffer ${info.id} has an invalid public port range.`);
-  }
-  const [start, count] = encodedRange;
-  const end = start + count;
-  if (
-    !Number.isSafeInteger(start)
-    || !Number.isSafeInteger(count)
-    || start <= 0
-    || count < 0
-    || !Number.isSafeInteger(end)
-    || end > info.Nwires
-  ) {
-    throw new Error(`Buffer ${info.id} has an invalid public port range.`);
-  }
-  return { start, end };
+  return bufferPublicPort(info);
 }
 
 function finishSegment(

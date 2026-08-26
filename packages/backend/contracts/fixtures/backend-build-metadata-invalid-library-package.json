@@ -2,7 +2,7 @@
   "dependencies": {
     "subcircuitLibrary": {
       "buildVersion": "2.1.5",
-      "declaredRange": "latest",
+      "declaredRange": "2.1.5",
       "packageName": "@invalid/subcircuit-library",
       "runtimeMode": "bundled"
     }

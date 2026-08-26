@@ -93,6 +93,15 @@ export function crsProvenanceFileName(): string {
   return fileName;
 }
 
+/** Parses an input origin using the enum in the backend-owned provenance contract. */
+export function parseSubcircuitLibraryOrigin(
+  value: unknown,
+  subject = 'subcircuit-library origin',
+): SubcircuitLibraryOrigin {
+  validateJsonSchema(subcircuitLibraryOriginSchema(), value, subject);
+  return value as SubcircuitLibraryOrigin;
+}
+
 function validateJsonSchema(schema: JsonSchema, value: unknown, subject: string): void {
   if (schema.oneOf !== undefined) {
     const results = schema.oneOf.map(candidate => tryValidate(candidate, value, subject));
@@ -202,6 +211,16 @@ function finalMpcCrsSchema(): JsonSchema {
   }
   assertSupportedCrsProvenanceSchema(schema);
   return schema;
+}
+
+function subcircuitLibraryOriginSchema(): JsonSchema {
+  const finalMpcSchema = finalMpcCrsSchema();
+  const subcircuitLibrarySchema = finalMpcSchema.properties?.subcircuitLibrary;
+  const originSchema = subcircuitLibrarySchema?.properties?.origin;
+  if (originSchema === undefined) {
+    throw new Error('Backend CRS provenance contract does not define subcircuitLibrary.origin.');
+  }
+  return originSchema;
 }
 
 /** Rejects schema evolution that this boundary validator does not implement. */

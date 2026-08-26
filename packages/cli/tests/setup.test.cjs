@@ -176,7 +176,7 @@ async function writeBackendMetadata(backendReleaseDir, mutate = undefined) {
       dependencies: {
         subcircuitLibrary: {
           buildVersion: '2.1.5',
-          declaredRange: 'latest',
+          declaredRange: '2.1.5',
           packageName: SUBCIRCUIT_LIBRARY_PACKAGE_NAME,
           runtimeMode: 'bundled',
         },
@@ -427,7 +427,7 @@ test('installer ingress rejects every build-metadata contract violation', async 
     {
       name: 'invalid declared range',
       metadata: INVALID_BUILD_METADATA_FIXTURES.declaredRange,
-      expected: /declaredRange must equal "latest"/u,
+      expected: /declaredRange does not match the contract pattern/u,
     },
     {
       name: 'invalid runtime mode',

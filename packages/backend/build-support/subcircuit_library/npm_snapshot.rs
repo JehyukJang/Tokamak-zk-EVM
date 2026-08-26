@@ -1,5 +1,5 @@
 use super::{
-    acquire_lock, fetch_and_unpack_snapshot, integrity, npm_view_latest, release_dir_from_out_dir,
+    acquire_lock, fetch_and_unpack_snapshot, integrity, npm_view_exact, release_dir_from_out_dir,
     try_read_snapshot, write_snapshot_info, ResolvedSubcircuitLibrary, SNAPSHOT_LIBRARY_DIR,
     SNAPSHOT_ROOT_DIR,
 };
@@ -7,8 +7,9 @@ use std::env;
 use std::fs;
 use std::io;
 
-pub(crate) fn prepare_release_subcircuit_library() -> io::Result<Option<ResolvedSubcircuitLibrary>>
-{
+pub(crate) fn prepare_release_subcircuit_library(
+    package_version: &str,
+) -> io::Result<Option<ResolvedSubcircuitLibrary>> {
     if env::var("PROFILE").ok().as_deref() != Some("release") {
         return Ok(None);
     }
@@ -18,7 +19,7 @@ pub(crate) fn prepare_release_subcircuit_library() -> io::Result<Option<Resolved
     fs::create_dir_all(&snapshot_root)?;
     let _guard = acquire_lock(&snapshot_root.join(".lock"))?;
     let info_path = snapshot_root.join(super::SNAPSHOT_INFO_FILE);
-    let npm_view = npm_view_latest()?;
+    let npm_view = npm_view_exact(package_version)?;
 
     if let Some(existing) = try_read_snapshot(&info_path, &release_dir, &npm_view)? {
         return Ok(Some(existing));

@@ -4,13 +4,15 @@ import {
   SUBCIRCUIT_LIBRARY_PACKAGE_VERSION,
 } from "../../generated/active/setup.generated.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
-import { parseFinalMpcCrsProvenance } from "../../generated/crs-provenance-validator.generated.js";
+import {
+  parseFinalMpcCrsProvenance,
+  type FinalMpcCrsProvenance,
+} from "../../generated/crs-provenance-validator.generated.js";
 import {
   compatibilityFromPackageVersion,
   parseCompatibleBackendVersion,
 } from "../../generated/version-policy.generated.js";
-export type { FinalMpcCrsProvenance as CrsProvenanceInput } from "../../generated/crs-provenance-validator.generated.js";
-import type { FinalMpcCrsProvenance as CrsProvenanceInput } from "../../generated/crs-provenance-validator.generated.js";
+export type CrsProvenanceInput = FinalMpcCrsProvenance;
 
 export const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = "@tokamak-zk-evm/subcircuit-library";
 

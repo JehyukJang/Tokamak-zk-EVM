@@ -18,7 +18,7 @@ const contract = {
             "required": ["buildVersion", "declaredRange", "packageName", "runtimeMode"],
             "properties": {
               "buildVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
-              "declaredRange": { "const": "latest" },
+              "declaredRange": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
               "packageName": { "const": "@tokamak-zk-evm/subcircuit-library" },
               "runtimeMode": { "const": "bundled" }
             }

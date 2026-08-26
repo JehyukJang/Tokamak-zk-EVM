@@ -47,7 +47,7 @@ pub(crate) fn select_mpc_subcircuit_library(
     let compatible_backend_version = read_cli_compatible_backend_version(package_version)?;
     match selected_input_origin()? {
         SelectedInputOrigin::NpmSnapshot => {
-            let snapshot = prepare_production_npm_subcircuit_library()?;
+            let snapshot = prepare_production_npm_subcircuit_library(package_version)?;
             integrity::validate_release_mpc_library_compatibility(
                 &snapshot.version,
                 &compatible_backend_version,

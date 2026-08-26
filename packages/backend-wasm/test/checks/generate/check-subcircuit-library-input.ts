@@ -2,16 +2,20 @@ import {
   parseProverSubcircuitInfos,
   parseSetupParams,
 } from "../../../scripts/generate/subcircuit-library-input.js";
+import { readSelectedInputOrigin } from "../../../scripts/generate/input-origin.js";
+import { parseSubcircuitLibraryOrigin } from "../../../src/generated/crs-provenance-validator.generated.js";
+import { PublicWireLayout } from "../../../src/prover/protocol/public-wire-layout.js";
+import { validateProverSubcircuitLibrary } from "../../../src/prover/protocol/subcircuit-library-validation.js";
 
 const setup = {
   l_free: 8,
   l: 12,
   l_user_out: 4,
   l_user: 5,
-  l_D: 32,
+  l_D: 28,
   m_D: 48,
   n: 16,
-  s_D: 4,
+  s_D: 1,
   s_max: 8,
   futureFrontendOnlyField: { enabled: true },
 };
@@ -19,11 +23,11 @@ const setup = {
 const subcircuit = {
   id: 0,
   name: "example",
-  Nwires: 3,
+  Nwires: 5,
   Nconsts: 2,
-  Out_idx: [1],
-  In_idx: [2],
-  flattenMap: [12, 0, 1],
+  Out_idx: [1, 4],
+  In_idx: [1, 4],
+  flattenMap: [12, 8, 9, 10, 11],
   bufferDirection: "out",
   logicalInterface: { inputs: [], outputs: [] },
 };
@@ -43,6 +47,8 @@ if (hasOwn(projectedSubcircuits[0], "logicalInterface")) {
 if (projectedSubcircuits[0].bufferDirection !== "out") {
   throw new Error("Subcircuit projection changed an owned optional field.");
 }
+validateProverSubcircuitLibrary(projectedSetup, projectedSubcircuits);
+PublicWireLayout.derive(projectedSetup, projectedSubcircuits);
 
 expectFailure(
   () => parseSetupParams({ ...setup, l_free: "8" }),
@@ -51,6 +57,41 @@ expectFailure(
 expectFailure(
   () => parseProverSubcircuitInfos([{ ...subcircuit, flattenMap: undefined }]),
   "Subcircuit decoder must reject missing required fields.",
+);
+expectFailure(
+  () => validateProverSubcircuitLibrary({ ...projectedSetup, n: 12 }, projectedSubcircuits),
+  "Semantic validation must reject a non-domain setup dimension.",
+);
+expectFailure(
+  () => validateProverSubcircuitLibrary(
+    projectedSetup,
+    [{ ...projectedSubcircuits[0], flattenMap: [12, 8, 9, 10, 48] }],
+  ),
+  "Semantic validation must reject a flatten map outside m_D.",
+);
+expectFailure(
+  () => validateProverSubcircuitLibrary(
+    projectedSetup,
+    [{ ...projectedSubcircuits[0], Out_idx: [0, 4] }],
+  ),
+  "Semantic validation must reject an invalid buffer public port.",
+);
+
+for (const origin of ["localQapCompiler", "npmSnapshot"] as const) {
+  if (parseSubcircuitLibraryOrigin(origin) !== origin) {
+    throw new Error(`Provenance parser changed accepted origin ${origin}.`);
+  }
+  if (readSelectedInputOrigin([`--origin=${origin}`]) !== origin) {
+    throw new Error(`Generator parser changed accepted origin ${origin}.`);
+  }
+}
+expectFailure(
+  () => parseSubcircuitLibraryOrigin("unsupported"),
+  "Provenance parser must reject unknown origins.",
+);
+expectFailure(
+  () => readSelectedInputOrigin(["--origin=unsupported"]),
+  "Generator parser must reject unknown origins.",
 );
 
 console.log("Checked active subcircuit-library input projection");

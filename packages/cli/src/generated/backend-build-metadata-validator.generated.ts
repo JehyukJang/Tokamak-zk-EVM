@@ -7,7 +7,7 @@ export interface BackendBuildMetadata {
   readonly dependencies: {
     readonly subcircuitLibrary: {
       readonly buildVersion: string;
-      readonly declaredRange: 'latest';
+      readonly declaredRange: string;
       readonly packageName: '@tokamak-zk-evm/subcircuit-library';
       readonly runtimeMode: 'bundled';
     };
@@ -147,12 +147,16 @@ function validateVersionPolicy(metadata: BackendBuildMetadata, subject: string):
   for (const [field, value] of [
     ['packageVersion', metadata.packageVersion],
     ['dependencies.subcircuitLibrary.buildVersion', metadata.dependencies.subcircuitLibrary.buildVersion],
+    ['dependencies.subcircuitLibrary.declaredRange', metadata.dependencies.subcircuitLibrary.declaredRange],
   ] as const) {
     try {
       parsePackageVersion(value);
     } catch (error) {
       throw new Error(`${subject}.${field} ${message(error)}`);
     }
+  }
+  if (metadata.dependencies.subcircuitLibrary.declaredRange !== metadata.dependencies.subcircuitLibrary.buildVersion) {
+    throw new Error(`${subject}.dependencies.subcircuitLibrary.declaredRange must equal buildVersion.`);
   }
 }
 

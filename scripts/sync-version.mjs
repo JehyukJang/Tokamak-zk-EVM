@@ -107,7 +107,7 @@ function updateRootPackageLock() {
       }
       if (lockfile.packages?.['packages/cli']) {
         lockfile.packages['packages/cli'].version = targetVersion;
-        lockfile.packages['packages/cli'].dependencies['@tokamak-zk-evm/synthesizer-node'] = `^${targetVersion}`;
+        lockfile.packages['packages/cli'].dependencies['@tokamak-zk-evm/synthesizer-node'] = targetVersion;
       }
       if (lockfile.packages?.['packages/frontend/qap-compiler']) {
         lockfile.packages['packages/frontend/qap-compiler'].version = targetVersion;
@@ -115,12 +115,12 @@ function updateRootPackageLock() {
       if (lockfile.packages?.['packages/frontend/synthesizer/node-cli']) {
         lockfile.packages['packages/frontend/synthesizer/node-cli'].version = targetVersion;
         lockfile.packages['packages/frontend/synthesizer/node-cli'].dependencies['@tokamak-zk-evm/subcircuit-library'] =
-          `^${targetVersion}`;
+          targetVersion;
       }
       if (lockfile.packages?.['packages/frontend/synthesizer/web-app']) {
         lockfile.packages['packages/frontend/synthesizer/web-app'].version = targetVersion;
         lockfile.packages['packages/frontend/synthesizer/web-app'].dependencies['@tokamak-zk-evm/subcircuit-library'] =
-          `^${targetVersion}`;
+          targetVersion;
       }
     },
     { optional: true },
@@ -149,7 +149,7 @@ function updateSynthesizerPackageLock() {
           continue;
         }
         lockfile.packages[packageKey].version = targetVersion;
-        lockfile.packages[packageKey].dependencies['@tokamak-zk-evm/subcircuit-library'] = `^${targetVersion}`;
+        lockfile.packages[packageKey].dependencies['@tokamak-zk-evm/subcircuit-library'] = targetVersion;
       }
     },
     { optional: true },
@@ -161,7 +161,7 @@ function updateSynthesizerPackageLock() {
       lockfile.version = targetVersion;
       if (lockfile.packages?.['']) {
         lockfile.packages[''].version = targetVersion;
-        lockfile.packages[''].dependencies['@tokamak-zk-evm/subcircuit-library'] = `^${targetVersion}`;
+        lockfile.packages[''].dependencies['@tokamak-zk-evm/subcircuit-library'] = targetVersion;
       }
     },
     { optional: true },
@@ -174,7 +174,7 @@ function updateSynthesizerPackageLock() {
       if (lockfile.packages?.['']) {
         lockfile.packages[''].version = targetVersion;
         lockfile.packages[''].dependencies ??= {};
-        lockfile.packages[''].dependencies['@tokamak-zk-evm/subcircuit-library'] = `^${targetVersion}`;
+        lockfile.packages[''].dependencies['@tokamak-zk-evm/subcircuit-library'] = targetVersion;
       }
     },
     { optional: true },
@@ -203,7 +203,7 @@ function replaceVersionConstant(relativePath, constantName) {
 
 updatePackageVersion('package.json');
 updatePackageVersion('packages/cli/package.json', {
-  '@tokamak-zk-evm/synthesizer-node': `^${targetVersion}`,
+  '@tokamak-zk-evm/synthesizer-node': targetVersion,
 });
 updateJson('packages/cli/package.json', manifest => {
   manifest.tokamakZkEvm ??= {};
@@ -211,10 +211,10 @@ updateJson('packages/cli/package.json', manifest => {
 });
 updatePackageVersion('packages/frontend/qap-compiler/package.json');
 updatePackageVersion('packages/frontend/synthesizer/node-cli/package.json', {
-  '@tokamak-zk-evm/subcircuit-library': `^${targetVersion}`,
+  '@tokamak-zk-evm/subcircuit-library': targetVersion,
 });
 updatePackageVersion('packages/frontend/synthesizer/web-app/package.json', {
-  '@tokamak-zk-evm/subcircuit-library': `^${targetVersion}`,
+  '@tokamak-zk-evm/subcircuit-library': targetVersion,
 });
 updatePackageVersion('packages/backend-wasm/package.json', {
   '@tokamak-zk-evm/subcircuit-library': targetVersion,

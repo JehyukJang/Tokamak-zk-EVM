@@ -186,9 +186,9 @@ the repository's
    publication:
 
    ```sh
-   npm run converter:browser:check
-   npm run converter:crs:browser:check
-   npm run converter:webpack:check
+npm run converter:browser:check
+npm run converter:crs:browser:check
+npm run converter:webpack:check
    ```
 
    `converter:crs:browser:check` requires the copied and prepared owner
@@ -199,6 +199,12 @@ the repository's
 The package intentionally remains outside the root npm workspace. Its release
 build resolves the exact synchronized `@tokamak-zk-evm/subcircuit-library`
 version from npm after the release workflow publishes that package.
+
+`docs:development-package:check` validates documentation and a package built
+from local QAP and the explicit debug Sigma. It is not a publication-candidate
+check. The release workflow runs `package:publication:check` only after
+`build:production`; that command requires packed active setup metadata to
+identify the npm snapshot.
 
 The repository release workflow validates the latest compatible public CRS,
 exports its verified `sigma_verify.json`, rebuilds the embedded verifier CRS,

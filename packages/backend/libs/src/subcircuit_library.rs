@@ -132,6 +132,19 @@ pub fn validate_crs_compatibility(crs_dir: &Path, library_dir: &Path) -> std::io
         .map_err(|error| {
             std::io::Error::other(format!("CRS provenance compatibleBackendVersion {error}"))
         })?;
+    let compiled_backend_version = compatibility_from_package_version(env!("CARGO_PKG_VERSION"))
+        .map(|version| version.to_string())
+        .map_err(|error| {
+            std::io::Error::other(format!("compiled backend package version {error}"))
+        })?;
+
+    if crs_compatible_version != compiled_backend_version {
+        return Err(std::io::Error::other(format!(
+            "CRS compatibility version {} does not match compiled backend compatibility class {}",
+            crs_compatible_version, compiled_backend_version
+        )));
+    }
+
     let library_version = selected_library_package_version(library_dir)?;
     let library_compatible_version = compatibility_from_package_version(&library_version)
         .map(|version| version.to_string())
@@ -403,6 +416,16 @@ mod tests {
         .expect("must write CRS provenance");
     }
 
+    fn compiled_backend_compatible_version() -> String {
+        crate::compatibility::compatibility_from_package_version(env!("CARGO_PKG_VERSION"))
+            .expect("the compiled backend package version must be canonical")
+            .to_string()
+    }
+
+    fn compiled_backend_package_version() -> &'static str {
+        env!("CARGO_PKG_VERSION")
+    }
+
     #[test]
     fn rejects_crs_without_compatibility_version() {
         let root = test_root();
@@ -410,7 +433,7 @@ mod tests {
         let crs_dir = root.join("crs");
         fs::create_dir_all(&library_dir).expect("must create library directory");
         fs::create_dir_all(&crs_dir).expect("must create CRS directory");
-        write_package_manifest(&root, "3.0.0");
+        write_package_manifest(&root, compiled_backend_package_version());
         write_development_only_trusted_setup_provenance(&crs_dir)
             .expect("must write trusted setup provenance");
 
@@ -429,33 +452,48 @@ mod tests {
         let crs_dir = root.join("crs");
         fs::create_dir_all(&library_dir).expect("must create library directory");
         fs::create_dir_all(&crs_dir).expect("must create CRS directory");
-        write_package_manifest(&root, "3.0.0");
+        write_package_manifest(&root, compiled_backend_package_version());
 
-        write_provenance(&crs_dir, false, "3.0");
+        write_provenance(&crs_dir, false, &compiled_backend_compatible_version());
         validate_crs_compatibility(&crs_dir, &library_dir)
             .expect("non-eligible CRS must be accepted by algorithm workflows");
 
-        write_provenance(&crs_dir, true, "3.0");
+        write_provenance(&crs_dir, true, &compiled_backend_compatible_version());
         validate_crs_compatibility(&crs_dir, &library_dir)
             .expect("release eligibility must not affect compatibility");
         fs::remove_dir_all(root).expect("must remove test directory");
     }
 
     #[test]
-    fn validates_crs_against_library_compatibility_class() {
+    fn validates_crs_against_the_compiled_backend_compatibility_class() {
         let root = test_root();
         let library_dir = root.join("subcircuits").join("library");
         let crs_dir = root.join("crs");
         fs::create_dir_all(&library_dir).expect("must create library directory");
         fs::create_dir_all(&crs_dir).expect("must create CRS directory");
-        write_package_manifest(&root, "2.1.7");
-        write_provenance(&crs_dir, true, "2.1");
+        write_package_manifest(&root, compiled_backend_package_version());
+        let compiled_version = compiled_backend_compatible_version();
+        write_provenance(&crs_dir, true, &compiled_version);
 
         validate_crs_compatibility(&crs_dir, &library_dir)
-            .expect("matching CRS and library compatibility classes must be accepted");
+            .expect("matching CRS and compiled backend compatibility classes must be accepted");
 
-        write_provenance(&crs_dir, true, "3.0");
-        assert!(validate_crs_compatibility(&crs_dir, &library_dir).is_err());
+        let mut components = compiled_version.split('.').map(|component| {
+            component
+                .parse::<u64>()
+                .expect("compatibility components are numeric")
+        });
+        let incompatible_version = format!(
+            "{}.{}",
+            components.next().expect("major component") + 1,
+            components.next().expect("minor component")
+        );
+        write_provenance(&crs_dir, true, &incompatible_version);
+        let error = validate_crs_compatibility(&crs_dir, &library_dir)
+            .expect_err("a CRS from another backend release line must be rejected");
+        assert!(error
+            .to_string()
+            .contains("compiled backend compatibility class"));
         fs::remove_dir_all(root).expect("must remove test directory");
     }
 
@@ -471,9 +509,16 @@ mod tests {
             let crs_dir = root.join("crs");
             fs::create_dir_all(&library_dir).expect("must create library directory");
             fs::create_dir_all(&crs_dir).expect("must create CRS directory");
-            write_package_manifest(&root, "2.1.5");
-            fs::write(crs_dir.join(super::CRS_PROVENANCE_FILE_NAME), fixture)
-                .expect("must write canonical provenance fixture");
+            write_package_manifest(&root, compiled_backend_package_version());
+            let mut provenance: serde_json::Value =
+                serde_json::from_str(fixture).expect("canonical fixture must be valid JSON");
+            provenance["compatibleBackendVersion"] =
+                serde_json::Value::String(compiled_backend_compatible_version());
+            fs::write(
+                crs_dir.join(super::CRS_PROVENANCE_FILE_NAME),
+                serde_json::to_vec(&provenance).expect("adjusted fixture must serialize"),
+            )
+            .expect("must write canonical provenance fixture");
 
             validate_crs_compatibility(&crs_dir, &library_dir)
                 .expect("canonical final MPC fixture must be accepted");
@@ -488,7 +533,7 @@ mod tests {
         let crs_dir = root.join("crs");
         fs::create_dir_all(&library_dir).expect("must create library directory");
         fs::create_dir_all(&crs_dir).expect("must create CRS directory");
-        write_package_manifest(&root, "2.1.5");
+        write_package_manifest(&root, compiled_backend_package_version());
         fs::write(
             crs_dir.join(super::CRS_PROVENANCE_FILE_NAME),
             include_str!("../../contracts/fixtures/final-mpc-crs-provenance-malformed.json"),
@@ -536,7 +581,7 @@ mod tests {
             let crs_dir = root.join("crs");
             fs::create_dir_all(&library_dir).expect("must create library directory");
             fs::create_dir_all(&crs_dir).expect("must create CRS directory");
-            write_package_manifest(&root, "2.1.5");
+            write_package_manifest(&root, compiled_backend_package_version());
             fs::write(crs_dir.join(super::CRS_PROVENANCE_FILE_NAME), fixture)
                 .expect("must write semantically invalid provenance fixture");
 
@@ -552,7 +597,7 @@ mod tests {
         let crs_dir = root.join("crs");
         fs::create_dir_all(&library_dir).expect("must create library directory");
         fs::create_dir_all(&crs_dir).expect("must create CRS directory");
-        write_package_manifest(&root, "2.1.5");
+        write_package_manifest(&root, compiled_backend_package_version());
 
         fs::write(
             crs_dir.join(super::CRS_PROVENANCE_FILE_NAME),
@@ -571,8 +616,8 @@ mod tests {
         let crs_dir = root.join("crs");
         fs::create_dir_all(&library_dir).expect("must create library directory");
         fs::create_dir_all(&crs_dir).expect("must create CRS directory");
-        write_package_manifest(&root, "3.0.0");
-        write_provenance(&crs_dir, false, "3.0");
+        write_package_manifest(&root, compiled_backend_package_version());
+        write_provenance(&crs_dir, false, &compiled_backend_compatible_version());
 
         validate_operational_crs_compatibility(
             &DevelopmentCrsProvenanceArg::default(),

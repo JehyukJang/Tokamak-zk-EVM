@@ -31,7 +31,6 @@ use std::thread::sleep;
 use std::time::Duration;
 
 const PACKAGE_NAME: &str = "@tokamak-zk-evm/subcircuit-library";
-const DECLARED_RANGE: &str = "latest";
 const RUNTIME_MODE: &str = "bundled";
 const SNAPSHOT_ROOT_DIR: &str = "embedded-subcircuit-library";
 const SNAPSHOT_INFO_FILE: &str = "resolved.json";
@@ -51,7 +50,10 @@ const DIGEST_LIBRARY_FILES: &[&str] = &[
 
 use types::ResolvedSubcircuitLibrary;
 
-pub fn configure_embedded_release_subcircuit_library(out_dir: &Path) -> io::Result<()> {
+pub fn configure_embedded_release_subcircuit_library(
+    out_dir: &Path,
+    package_version: &str,
+) -> io::Result<()> {
     emit_version_contract_rerun_rule();
     println!("cargo:rustc-check-cfg=cfg(tokamak_embedded_subcircuit_library)");
     source_selection::emit_input_origin_rerun_rules();
@@ -60,7 +62,7 @@ pub fn configure_embedded_release_subcircuit_library(out_dir: &Path) -> io::Resu
             write_stub_embedded_module(out_dir)
         }
         source_selection::SelectedInputOrigin::NpmSnapshot => {
-            let snapshot = prepare_production_npm_subcircuit_library()?;
+            let snapshot = prepare_production_npm_subcircuit_library(package_version)?;
             println!("cargo:rustc-cfg=tokamak_embedded_subcircuit_library");
             generate_embedded_module(&snapshot, out_dir)
         }
@@ -80,7 +82,7 @@ pub fn configure_subcircuit_library_metadata(
     {
         backend_build_metadata_contract::ensure_runtime_package(package_name)
             .map_err(io::Error::other)?;
-        let snapshot = prepare_production_npm_subcircuit_library()?;
+        let snapshot = prepare_production_npm_subcircuit_library(package_version)?;
         let compatible_backend_version = read_cli_compatible_backend_version(package_version)?;
         integrity::validate_release_mpc_library_compatibility(
             &snapshot.version,
@@ -137,17 +139,21 @@ fn write_mpc_subcircuit_library_path(out_dir: &Path, library_dir: &Path) -> io::
     generated::write_mpc_subcircuit_library_path(out_dir, library_dir)
 }
 
-fn prepare_release_subcircuit_library() -> io::Result<Option<ResolvedSubcircuitLibrary>> {
-    npm_snapshot::prepare_release_subcircuit_library()
+fn prepare_release_subcircuit_library(
+    package_version: &str,
+) -> io::Result<Option<ResolvedSubcircuitLibrary>> {
+    npm_snapshot::prepare_release_subcircuit_library(package_version)
 }
 
-fn prepare_production_npm_subcircuit_library() -> io::Result<ResolvedSubcircuitLibrary> {
+fn prepare_production_npm_subcircuit_library(
+    package_version: &str,
+) -> io::Result<ResolvedSubcircuitLibrary> {
     if env::var("PROFILE").ok().as_deref() != Some("release") {
         return Err(io::Error::other(
             "production-npm-subcircuit-library requires Cargo's release profile",
         ));
     }
-    prepare_release_subcircuit_library()?.ok_or_else(|| {
+    prepare_release_subcircuit_library(package_version)?.ok_or_else(|| {
         io::Error::other("production npm subcircuit-library snapshot was not resolved")
     })
 }
@@ -371,15 +377,17 @@ struct NpmView {
     integrity: String,
 }
 
-fn npm_view_latest() -> io::Result<NpmView> {
+fn npm_view_exact(package_version: &str) -> io::Result<NpmView> {
+    version_contract::parse_package_version(package_version).map_err(io::Error::other)?;
+    let package_spec = format!("{PACKAGE_NAME}@{package_version}");
     let output = Command::new("npm")
         .arg("view")
-        .arg(PACKAGE_NAME)
+        .arg(&package_spec)
         .args(["version", "dist.integrity", "--json"])
         .output()?;
     if !output.status.success() {
         return Err(io::Error::other(format!(
-            "npm view failed: {}",
+            "npm view {package_spec} failed: {}",
             String::from_utf8_lossy(&output.stderr)
         )));
     }
@@ -392,6 +400,11 @@ fn npm_view_latest() -> io::Result<NpmView> {
         .get("dist.integrity")
         .and_then(Value::as_str)
         .ok_or_else(|| io::Error::other("npm view output missing dist.integrity"))?;
+    if version != package_version {
+        return Err(io::Error::other(format!(
+            "npm view {package_spec} resolved version {version}, expected {package_version}"
+        )));
+    }
     Ok(NpmView {
         version: version.to_string(),
         integrity: integrity.to_string(),

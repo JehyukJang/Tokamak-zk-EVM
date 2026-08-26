@@ -85,10 +85,10 @@ for (const relativePath of packageTargets) {
 }
 
 const dependencyTargets = [
-  ['packages/cli/package.json', '@tokamak-zk-evm/synthesizer-node', `^${expectedVersion}`],
+  ['packages/cli/package.json', '@tokamak-zk-evm/synthesizer-node', expectedVersion],
   ['packages/backend-wasm/package.json', '@tokamak-zk-evm/subcircuit-library', expectedVersion],
-  ['packages/frontend/synthesizer/node-cli/package.json', '@tokamak-zk-evm/subcircuit-library', `^${expectedVersion}`],
-  ['packages/frontend/synthesizer/web-app/package.json', '@tokamak-zk-evm/subcircuit-library', `^${expectedVersion}`],
+  ['packages/frontend/synthesizer/node-cli/package.json', '@tokamak-zk-evm/subcircuit-library', expectedVersion],
+  ['packages/frontend/synthesizer/web-app/package.json', '@tokamak-zk-evm/subcircuit-library', expectedVersion],
   ['packages/backend-wasm/examples/browser/package.json', '@tokamak-zk-evm/snark-browser-compat', expectedVersion],
 ];
 

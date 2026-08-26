@@ -2,6 +2,8 @@ import { BivariatePolynomialBuffer } from "../../runtime/polynomial/bivariate-po
 import type { FieldElement, FieldRuntime } from "../../runtime/field/field-runtime.js";
 import type { PermutationEntry } from "../../runtime/polynomial/permutation-polynomials.js";
 import type { SetupParams } from "../../artifacts/setup/setup-params.js";
+import { validateSetupParams } from "../../artifacts/setup/validate-setup-params.js";
+import { validateProverSubcircuitLibrary } from "./subcircuit-library-validation.js";
 
 export interface ProverSubcircuitInfo {
   readonly id: number;
@@ -57,8 +59,7 @@ export async function buildWitnessPolynomials(
   field: FieldRuntime,
   input: ProverWitnessInput,
 ): Promise<WitnessPolynomials> {
-  validateSetupParams(input.setup);
-  validateSubcircuitInfos(input.subcircuitInfos);
+  validateProverSubcircuitLibrary(input.setup, input.subcircuitInfos);
   validatePlacements(input.placementVariables, input.subcircuitInfos, input.setup);
   const r1csBySubcircuit = indexPackedSparseR1cs(
     input.r1csBySubcircuit,
@@ -89,8 +90,7 @@ export async function genBXY(
   subcircuitInfos: readonly ProverSubcircuitInfo[],
   setup: SetupParams,
 ): Promise<BivariatePolynomialBuffer> {
-  validateSetupParams(setup);
-  validateSubcircuitInfos(subcircuitInfos);
+  validateProverSubcircuitLibrary(setup, subcircuitInfos);
   validatePlacements(placementVariables, subcircuitInfos, setup);
 
   const mI = setup.l_D - setup.l;
@@ -236,54 +236,6 @@ function indexPackedSparseR1cs(
   return indexed;
 }
 
-function validateSetupParams(setup: SetupParams): void {
-  const numericFields: readonly (keyof SetupParams)[] = [
-    "l_free",
-    "l",
-    "l_user_out",
-    "l_user",
-    "l_D",
-    "m_D",
-    "n",
-    "s_D",
-    "s_max",
-  ];
-
-  for (const field of numericFields) {
-    if (!Number.isSafeInteger(setup[field]) || setup[field] < 0) {
-      throw new Error(`Invalid prover setup parameter '${field}'.`);
-    }
-  }
-
-  if (setup.l_D <= setup.l) {
-    throw new Error("Prover setup requires l_D > l so m_i is positive.");
-  }
-
-  if (setup.n <= 0 || setup.s_max <= 0) {
-    throw new Error("Prover setup requires positive n and s_max.");
-  }
-
-  if (!isPowerOfTwo(setup.l_D - setup.l) || !isPowerOfTwo(setup.n) || !isPowerOfTwo(setup.s_max)) {
-    throw new Error("Prover witness domains m_i, n, and s_max must be powers of two.");
-  }
-}
-
-function validateSubcircuitInfos(subcircuitInfos: readonly ProverSubcircuitInfo[]): void {
-  for (let index = 0; index < subcircuitInfos.length; index += 1) {
-    const info = subcircuitInfos[index];
-    if (info.id !== index) {
-      throw new Error(`Subcircuit info id ${info.id} does not match its index ${index}.`);
-    }
-
-    if (!Number.isSafeInteger(info.Nwires) || info.Nwires < 0) {
-      throw new Error(`Invalid Nwires for subcircuit ${info.id}.`);
-    }
-
-    if (info.flattenMap.length !== info.Nwires) {
-      throw new Error(`Subcircuit ${info.id} flattenMap length does not match Nwires.`);
-    }
-  }
-}
 
 function validatePlacements(
   placementVariables: ProverPlacementVariables,
@@ -408,17 +360,4 @@ function validatePackedSparseMatrix(
   if (matrix.coefficients.byteLength !== (matrix.columns.byteLength / 4) * 32) {
     throw new Error(`${label} coefficient byte length does not match its columns.`);
   }
-}
-
-function isPowerOfTwo(value: number): boolean {
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    return false;
-  }
-
-  let remaining = value;
-  while (remaining % 2 === 0) {
-    remaining /= 2;
-  }
-
-  return remaining === 1;
 }

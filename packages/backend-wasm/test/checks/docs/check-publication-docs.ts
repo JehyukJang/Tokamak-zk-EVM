@@ -9,6 +9,10 @@ import { marked } from "marked";
 import { chromium } from "playwright";
 
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../../src/version.js";
+import {
+  parseSubcircuitLibraryOrigin,
+  type SubcircuitLibraryOrigin,
+} from "../../../src/generated/crs-provenance-validator.generated.js";
 
 const execFileAsync = promisify(execFile);
 const DOCUMENTS = [
@@ -37,6 +41,7 @@ interface PackageManifest {
 }
 
 async function main(): Promise<void> {
+  const expectedOrigin = parseExpectedOrigin(process.argv.slice(2));
   const sources = new Map<string, string>();
   for (const document of DOCUMENTS) {
     sources.set(document, await readFile(document, "utf8"));
@@ -54,7 +59,7 @@ async function main(): Promise<void> {
   checkPublicApiReference(readme);
   checkQualifiedClaims(readme);
   await checkRenderedReadme(readme);
-  await checkPackedPackage();
+  await checkPackedPackage(expectedOrigin);
 
   console.log("Checked publication documentation, links, rendering, API coverage, and package boundary");
 }
@@ -307,7 +312,7 @@ async function checkRenderedReadme(readme: string): Promise<void> {
   }
 }
 
-async function checkPackedPackage(): Promise<void> {
+async function checkPackedPackage(expectedOrigin: SubcircuitLibraryOrigin): Promise<void> {
   const temporaryDirectory = await realpath(
     await mkdtemp(path.join(tmpdir(), "backend-wasm-publication-check-")),
   );
@@ -417,6 +422,7 @@ async function checkPackedPackage(): Promise<void> {
     }
 
     const archive = path.join(temporaryDirectory, result.filename);
+    await assertPackedSetupOrigin(archive, expectedOrigin);
     const { stdout: manifestSource } = await execFileAsync(
       "tar",
       ["-xOf", archive, "package/package.json"],
@@ -450,6 +456,40 @@ async function checkPackedPackage(): Promise<void> {
     }
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+}
+
+function parseExpectedOrigin(args: readonly string[]): SubcircuitLibraryOrigin {
+  if (args.length !== 1 || !args[0].startsWith("--expected-origin=")) {
+    throw new Error("Usage: check-publication-docs --expected-origin=<origin>.");
+  }
+  return parseSubcircuitLibraryOrigin(
+    args[0].slice("--expected-origin=".length),
+    "Expected packed subcircuit-library origin",
+  );
+}
+
+async function assertPackedSetupOrigin(
+  archive: string,
+  expectedOrigin: SubcircuitLibraryOrigin,
+): Promise<void> {
+  const { stdout } = await execFileAsync(
+    "tar",
+    ["-xOf", archive, "package/dist/generated/active/setup.generated.js"],
+    { maxBuffer: 1024 * 1024 },
+  );
+  const match = /SUBCIRCUIT_LIBRARY_ORIGIN = "([^"]+)";/u.exec(stdout);
+  if (match === null) {
+    throw new Error("Packed active setup does not declare SUBCIRCUIT_LIBRARY_ORIGIN.");
+  }
+  const actualOrigin = parseSubcircuitLibraryOrigin(
+    match[1],
+    "Packed subcircuit-library origin",
+  );
+  if (actualOrigin !== expectedOrigin) {
+    throw new Error(
+      `Packed active setup origin ${actualOrigin} does not match expected ${expectedOrigin}.`,
+    );
   }
 }
 

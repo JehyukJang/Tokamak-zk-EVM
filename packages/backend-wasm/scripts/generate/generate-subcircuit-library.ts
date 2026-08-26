@@ -9,6 +9,8 @@ import type { SetupParams } from "../../src/artifacts/setup/setup-params.js";
 import type {
   ProverSubcircuitInfo,
 } from "../../src/prover/protocol/witness.js";
+import { PublicWireLayout } from "../../src/prover/protocol/public-wire-layout.js";
+import { validateProverSubcircuitLibrary } from "../../src/prover/protocol/subcircuit-library-validation.js";
 import {
   readSelectedInputOrigin,
   type SubcircuitLibraryOrigin,
@@ -75,6 +77,8 @@ async function main(): Promise<void> {
   const subcircuitInfos = parseProverSubcircuitInfos(
     readJson(path.join(library.libraryRoot, "subcircuitInfo.json")),
   );
+  validateProverSubcircuitLibrary(setup, subcircuitInfos);
+  PublicWireLayout.derive(setup, subcircuitInfos);
   const nativeBackendVersion = readNativeBackendVersion(nativeBackendCargoPath);
 
   const runtime = await createCurveRuntime();

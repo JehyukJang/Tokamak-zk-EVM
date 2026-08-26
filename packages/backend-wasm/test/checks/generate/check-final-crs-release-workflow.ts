@@ -23,6 +23,9 @@ for (const required of [
   "sigma_preprocess.rkyv",
   "sigma_verify.json",
   "crs_provenance.json",
+  "npm run converter:browser:check:production",
+  "npm run converter:webpack:check:production",
+  "npm run package:publication:check",
 ]) {
   if (!workflow.includes(required)) {
     throw new Error(`Browser release workflow must retain final CRS boundary ${required}.`);
