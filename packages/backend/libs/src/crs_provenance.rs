@@ -4,7 +4,9 @@
 //! a final MPC CRS. `documentKind` is therefore mandatory and consumers must
 //! select the representation appropriate to their boundary.
 
+use crate::compatibility::{parse_compatible_backend_version, parse_package_version};
 use crate::input_origin::SubcircuitLibraryOrigin;
+use chrono::DateTime;
 use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -107,12 +109,106 @@ pub struct FinalMpcCrsProvenance {
     pub sigma_verify_sha256: String,
 }
 
+/// Parses and validates a final-MPC CRS provenance document at a backend
+/// boundary. The JSON contract in `packages/backend/contracts` is the source
+/// of the accepted document shape and semantic constraints.
+pub fn parse_final_mpc_crs_provenance(bytes: &[u8]) -> Result<FinalMpcCrsProvenance, String> {
+    let provenance: CrsProvenance =
+        serde_json::from_slice(bytes).map_err(|error| format!("invalid JSON: {error}"))?;
+    let CrsProvenance::FinalMpcCrs(provenance) = provenance else {
+        return Err("documentKind must equal finalMpcCrs".to_string());
+    };
+    validate_final_mpc_crs_provenance(&provenance)?;
+    Ok(provenance)
+}
+
+/// Validates the semantic constraints that Serde types alone cannot express.
+pub fn validate_final_mpc_crs_provenance(provenance: &FinalMpcCrsProvenance) -> Result<(), String> {
+    validate_rfc3339(&provenance.generated_at_utc, "generatedAtUtc")?;
+    parse_compatible_backend_version(&provenance.compatible_backend_version)
+        .map_err(|error| format!("compatibleBackendVersion {error}"))?;
+    validate_non_empty(
+        &provenance.subcircuit_library.package_name,
+        "subcircuitLibrary.packageName",
+    )?;
+    parse_package_version(&provenance.subcircuit_library.package_version)
+        .map_err(|error| format!("subcircuitLibrary.packageVersion {error}"))?;
+    validate_sha256(&provenance.combined_sigma_sha256, "combinedSigmaSha256")?;
+    validate_sha256(&provenance.sigma_preprocess_sha256, "sigmaPreprocessSha256")?;
+    validate_sha256(&provenance.sigma_verify_sha256, "sigmaVerifySha256")?;
+
+    if let Some(Phase1SourceProvenance::DuskGroth16(dusk)) =
+        provenance.phase1_source_provenance.as_ref()
+    {
+        for (field, value) in [
+            (
+                "phase1SourceProvenance.duskGroth16.sourceUrl",
+                &dusk.source_url,
+            ),
+            (
+                "phase1SourceProvenance.duskGroth16.rawEncoding",
+                &dusk.raw_encoding,
+            ),
+            (
+                "phase1SourceProvenance.duskGroth16.pinnedContribution",
+                &dusk.pinned_contribution,
+            ),
+            (
+                "phase1SourceProvenance.duskGroth16.pinnedReadmeUrl",
+                &dusk.pinned_readme_url,
+            ),
+            (
+                "phase1SourceProvenance.duskGroth16.pinnedDriveFileId",
+                &dusk.pinned_drive_file_id,
+            ),
+        ] {
+            validate_non_empty(value, field)?;
+        }
+        validate_sha256(
+            &dusk.expected_source_sha256,
+            "phase1SourceProvenance.duskGroth16.expectedSourceSha256",
+        )?;
+        validate_sha256(
+            &dusk.actual_source_sha256,
+            "phase1SourceProvenance.duskGroth16.actualSourceSha256",
+        )?;
+    }
+
+    Ok(())
+}
+
+fn validate_rfc3339(value: &str, field: &str) -> Result<(), String> {
+    DateTime::parse_from_rfc3339(value)
+        .map(|_| ())
+        .map_err(|error| format!("{field} must be an RFC 3339 date-time: {error}"))
+}
+
+fn validate_non_empty(value: &str, field: &str) -> Result<(), String> {
+    if value.is_empty() {
+        return Err(format!("{field} must not be empty"));
+    }
+    Ok(())
+}
+
+fn validate_sha256(value: &str, field: &str) -> Result<(), String> {
+    if value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Ok(());
+    }
+    Err(format!(
+        "{field} must be a lower-case 64-character SHA-256 digest"
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        CrsProvenance, DevelopmentOnlyReleaseEligibility, DevelopmentTrustedSetupSigmaProvenance,
-        CRS_PROVENANCE_FILE_NAME, DEVELOPMENT_TRUSTED_SETUP_SIGMA_DOCUMENT_KIND,
-        FINAL_MPC_CRS_DOCUMENT_KIND,
+        parse_final_mpc_crs_provenance, CrsProvenance, DevelopmentOnlyReleaseEligibility,
+        DevelopmentTrustedSetupSigmaProvenance, CRS_PROVENANCE_FILE_NAME,
+        DEVELOPMENT_TRUSTED_SETUP_SIGMA_DOCUMENT_KIND, FINAL_MPC_CRS_DOCUMENT_KIND,
     };
     use serde::Deserialize;
 
@@ -159,11 +255,16 @@ mod tests {
             "../../contracts/fixtures/final-mpc-crs-provenance.json"
         ))
         .expect("canonical final MPC fixture must be valid JSON");
-        let provenance: CrsProvenance = serde_json::from_value(fixture.clone())
-            .expect("canonical final MPC fixture must satisfy the Rust contract");
+        let provenance = parse_final_mpc_crs_provenance(
+            serde_json::to_string(&fixture)
+                .expect("fixture must serialize")
+                .as_bytes(),
+        )
+        .expect("canonical final MPC fixture must satisfy the Rust contract");
 
         assert_eq!(
-            serde_json::to_value(provenance).expect("fixture must serialize"),
+            serde_json::to_value(CrsProvenance::FinalMpcCrs(provenance))
+                .expect("fixture must serialize"),
             fixture
         );
     }
@@ -177,6 +278,19 @@ mod tests {
             let provenance: serde_json::Value =
                 serde_json::from_str(fixture).expect("negative fixture must be valid JSON");
             assert!(serde_json::from_value::<CrsProvenance>(provenance).is_err());
+        }
+    }
+
+    #[test]
+    fn rejects_every_semantic_final_mpc_contract_violation_fixture() {
+        for fixture in [
+            include_bytes!("../../contracts/fixtures/final-mpc-crs-provenance-leading-zero.json")
+                as &[u8],
+            include_bytes!("../../contracts/fixtures/final-mpc-crs-provenance-date-only.json"),
+            include_bytes!("../../contracts/fixtures/final-mpc-crs-provenance-invalid-digest.json"),
+            include_bytes!("../../contracts/fixtures/final-mpc-crs-provenance-empty-string.json"),
+        ] {
+            assert!(parse_final_mpc_crs_provenance(fixture).is_err());
         }
     }
 }

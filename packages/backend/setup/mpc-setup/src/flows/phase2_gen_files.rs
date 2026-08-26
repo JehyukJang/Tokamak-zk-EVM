@@ -4,7 +4,10 @@ use crate::utils::StepTimer;
 use crate::versioning::compatible_backend_version;
 use chrono::Utc;
 use libs::crs_artifacts::{stage_final_crs_artifacts, FinalCrsDigests};
-use libs::crs_provenance::{CrsProvenance, FinalMpcCrsProvenance, SubcircuitLibraryProvenance};
+use libs::crs_provenance::{
+    parse_final_mpc_crs_provenance, validate_final_mpc_crs_provenance, CrsProvenance,
+    FinalMpcCrsProvenance, SubcircuitLibraryProvenance,
+};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -55,6 +58,13 @@ pub fn run(config: &Phase2GenFilesConfig) -> Result<(), MpcSetupError> {
         sigma_preprocess_sha256: digests.sigma_preprocess_sha256,
         sigma_verify_sha256: digests.sigma_verify_sha256,
     });
+    let CrsProvenance::FinalMpcCrs(final_provenance) = &provenance else {
+        unreachable!("phase-2 finalization always constructs finalMpcCrs provenance");
+    };
+    validate_final_mpc_crs_provenance(final_provenance).map_err(|reason| MpcSetupError::State {
+        phase: "phase-2 finalization",
+        reason: format!("generated CRS provenance violates its contract: {reason}"),
+    })?;
     let bytes = serde_json::to_vec_pretty(&provenance).map_err(|error| MpcSetupError::State {
         phase: "phase-2 finalization",
         reason: format!("cannot serialize CRS provenance: {error}"),
@@ -81,23 +91,17 @@ pub fn run(config: &Phase2GenFilesConfig) -> Result<(), MpcSetupError> {
             path: staged_provenance_path,
             source,
         })?;
-    let staged_provenance: CrsProvenance = serde_json::from_slice(&staged_provenance_bytes)
-        .map_err(|error| MpcSetupError::State {
-            phase: "phase-2 finalization",
-            reason: format!("cannot parse staged CRS provenance: {error}"),
-        })?;
-    let staged_digests = match staged_provenance {
-        CrsProvenance::FinalMpcCrs(provenance) => FinalCrsDigests {
-            combined_sigma_sha256: provenance.combined_sigma_sha256,
-            sigma_preprocess_sha256: provenance.sigma_preprocess_sha256,
-            sigma_verify_sha256: provenance.sigma_verify_sha256,
-        },
-        CrsProvenance::DevelopmentTrustedSetupSigma(_) => {
-            return Err(MpcSetupError::State {
+    let staged_provenance =
+        parse_final_mpc_crs_provenance(&staged_provenance_bytes).map_err(|reason| {
+            MpcSetupError::State {
                 phase: "phase-2 finalization",
-                reason: "staged CRS provenance has the development trusted-setup kind".to_string(),
-            });
-        }
+                reason: format!("cannot validate staged CRS provenance: {reason}"),
+            }
+        })?;
+    let staged_digests = FinalCrsDigests {
+        combined_sigma_sha256: staged_provenance.combined_sigma_sha256,
+        sigma_preprocess_sha256: staged_provenance.sigma_preprocess_sha256,
+        sigma_verify_sha256: staged_provenance.sigma_verify_sha256,
     };
     staged_crs
         .verify_artifact_digests(&staged_digests)

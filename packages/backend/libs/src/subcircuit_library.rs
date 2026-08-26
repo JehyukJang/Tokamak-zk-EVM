@@ -1,7 +1,7 @@
 use crate::compatibility::{compatibility_from_package_version, parse_compatible_backend_version};
 use crate::crs_provenance::{
-    CrsProvenance, DevelopmentOnlyReleaseEligibility, DevelopmentTrustedSetupSigmaProvenance,
-    FinalMpcCrsProvenance, CRS_PROVENANCE_FILE_NAME,
+    parse_final_mpc_crs_provenance, CrsProvenance, DevelopmentOnlyReleaseEligibility,
+    DevelopmentTrustedSetupSigmaProvenance, CRS_PROVENANCE_FILE_NAME,
 };
 use crate::errors::CrsError;
 use clap::Args;
@@ -114,17 +114,22 @@ pub fn try_resolve_subcircuit_library_path(local_path: Option<&str>) -> Result<P
 
 pub fn validate_crs_compatibility(crs_dir: &Path, library_dir: &Path) -> std::io::Result<()> {
     let provenance_path = crs_dir.join(CRS_PROVENANCE_FILE_NAME);
-    let provenance: CrsProvenance = read_json(&provenance_path, "CRS provenance")?;
-    let CrsProvenance::FinalMpcCrs(FinalMpcCrsProvenance {
-        compatible_backend_version: crs_compatible_version,
-        ..
-    }) = provenance
-    else {
-        return Err(std::io::Error::other(format!(
-            "{} is a developmentTrustedSetupSigma provenance and has no final MPC compatibility class",
+    let provenance_bytes = fs::read(&provenance_path).map_err(|source| {
+        std::io::Error::new(
+            source.kind(),
+            format!(
+                "cannot read CRS provenance {}: {source}",
+                provenance_path.display()
+            ),
+        )
+    })?;
+    let provenance = parse_final_mpc_crs_provenance(&provenance_bytes).map_err(|reason| {
+        std::io::Error::other(format!(
+            "cannot validate CRS provenance {}: {reason}",
             provenance_path.display()
-        )));
-    };
+        ))
+    })?;
+    let crs_compatible_version = provenance.compatible_backend_version;
     let crs_compatible_version = parse_compatible_backend_version(&crs_compatible_version)
         .map(|version| version.to_string())
         .map_err(|error| {
@@ -413,7 +418,9 @@ mod tests {
 
         let error = validate_crs_compatibility(&crs_dir, &library_dir)
             .expect_err("development-only CRS must be rejected without the explicit bypass");
-        assert!(error.to_string().contains("developmentTrustedSetupSigma"));
+        assert!(error
+            .to_string()
+            .contains("documentKind must equal finalMpcCrs"));
         fs::remove_dir_all(root).expect("must remove test directory");
     }
 
@@ -511,6 +518,29 @@ mod tests {
             .to_string()
             .contains("leading zeroes are not canonical"));
         fs::remove_dir_all(root).expect("must remove test directory");
+    }
+
+    #[test]
+    fn rejects_semantically_invalid_final_mpc_fixtures_at_the_algorithm_boundary() {
+        let fixtures = [
+            include_str!("../../contracts/fixtures/final-mpc-crs-provenance-date-only.json"),
+            include_str!("../../contracts/fixtures/final-mpc-crs-provenance-invalid-digest.json"),
+            include_str!("../../contracts/fixtures/final-mpc-crs-provenance-empty-string.json"),
+        ];
+
+        for fixture in fixtures {
+            let root = test_root();
+            let library_dir = root.join("subcircuits").join("library");
+            let crs_dir = root.join("crs");
+            fs::create_dir_all(&library_dir).expect("must create library directory");
+            fs::create_dir_all(&crs_dir).expect("must create CRS directory");
+            write_package_manifest(&root, "2.1.5");
+            fs::write(crs_dir.join(super::CRS_PROVENANCE_FILE_NAME), fixture)
+                .expect("must write semantically invalid provenance fixture");
+
+            assert!(validate_crs_compatibility(&crs_dir, &library_dir).is_err());
+            fs::remove_dir_all(root).expect("must remove test directory");
+        }
     }
 
     #[test]

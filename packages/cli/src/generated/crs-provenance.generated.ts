@@ -101,7 +101,7 @@ function validateJsonSchema(schema: JsonSchema, value: unknown, subject: string)
     if (schema.pattern !== undefined && !new RegExp(schema.pattern, "u").test(value)) {
       throw new Error(`${subject} does not match the contract pattern.`);
     }
-    if (schema.format === "date-time" && Number.isNaN(Date.parse(value))) {
+    if (schema.format === "date-time" && !isRfc3339DateTime(value)) {
       throw new Error(`${subject} must be an RFC 3339 date-time.`);
     }
   }
@@ -130,6 +130,13 @@ function validateJsonSchema(schema: JsonSchema, value: unknown, subject: string)
       }
     }
   }
+}
+
+function isRfc3339DateTime(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/u.test(value)) {
+    return false;
+  }
+  return !Number.isNaN(Date.parse(value));
 }
 
 function tryValidate(

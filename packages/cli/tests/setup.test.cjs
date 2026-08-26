@@ -43,6 +43,24 @@ const LEADING_ZERO_FINAL_MPC_PROVENANCE = JSON.parse(
     'utf8',
   ),
 );
+const DATE_ONLY_FINAL_MPC_PROVENANCE = JSON.parse(
+  require('node:fs').readFileSync(
+    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', 'final-mpc-crs-provenance-date-only.json'),
+    'utf8',
+  ),
+);
+const INVALID_DIGEST_FINAL_MPC_PROVENANCE = JSON.parse(
+  require('node:fs').readFileSync(
+    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', 'final-mpc-crs-provenance-invalid-digest.json'),
+    'utf8',
+  ),
+);
+const EMPTY_STRING_FINAL_MPC_PROVENANCE = JSON.parse(
+  require('node:fs').readFileSync(
+    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', 'final-mpc-crs-provenance-empty-string.json'),
+    'utf8',
+  ),
+);
 
 function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
@@ -174,7 +192,7 @@ test('rejects a development trusted-setup provenance before CRS installation', a
   }
 });
 
-test('installer ingress rejects malformed, legacy, and leading-zero provenance fixtures', async () => {
+test('installer ingress rejects malformed and semantically invalid provenance fixtures', async () => {
   const cases = [
     {
       name: 'leading-zero compatibility version',
@@ -190,6 +208,21 @@ test('installer ingress rejects malformed, legacy, and leading-zero provenance f
       name: 'legacy Dusk variant',
       provenance: LEGACY_FINAL_MPC_PROVENANCE,
       expected: /does not match exactly one allowed contract shape/u,
+    },
+    {
+      name: 'date-only timestamp',
+      provenance: DATE_ONLY_FINAL_MPC_PROVENANCE,
+      expected: /generatedAtUtc must be an RFC 3339 date-time/u,
+    },
+    {
+      name: 'invalid digest',
+      provenance: INVALID_DIGEST_FINAL_MPC_PROVENANCE,
+      expected: /combinedSigmaSha256 does not match the contract pattern/u,
+    },
+    {
+      name: 'empty required string',
+      provenance: EMPTY_STRING_FINAL_MPC_PROVENANCE,
+      expected: /subcircuitLibrary\.packageName is shorter than the contract allows/u,
     },
   ];
 

@@ -74,6 +74,54 @@ const LEADING_ZERO_FINAL_MPC_PROVENANCE = JSON.parse(
     'utf8',
   ),
 ) as CrsProvenanceInput;
+const DATE_ONLY_FINAL_MPC_PROVENANCE = JSON.parse(
+  readFileSync(
+    path.resolve(
+      import.meta.dirname,
+      '..',
+      '..',
+      '..',
+      '..',
+      'backend',
+      'contracts',
+      'fixtures',
+      'final-mpc-crs-provenance-date-only.json',
+    ),
+    'utf8',
+  ),
+) as CrsProvenanceInput;
+const INVALID_DIGEST_FINAL_MPC_PROVENANCE = JSON.parse(
+  readFileSync(
+    path.resolve(
+      import.meta.dirname,
+      '..',
+      '..',
+      '..',
+      '..',
+      'backend',
+      'contracts',
+      'fixtures',
+      'final-mpc-crs-provenance-invalid-digest.json',
+    ),
+    'utf8',
+  ),
+) as CrsProvenanceInput;
+const EMPTY_STRING_FINAL_MPC_PROVENANCE = JSON.parse(
+  readFileSync(
+    path.resolve(
+      import.meta.dirname,
+      '..',
+      '..',
+      '..',
+      '..',
+      'backend',
+      'contracts',
+      'fixtures',
+      'final-mpc-crs-provenance-empty-string.json',
+    ),
+    'utf8',
+  ),
+) as CrsProvenanceInput;
 
 function compatibleVersion(packageVersion: string): string {
   const [major, minor] = packageVersion.split('.');
@@ -146,6 +194,18 @@ function main(): void {
   expectFailure(
     () => validateCrsProvenanceCompatibility(LEGACY_FINAL_MPC_PROVENANCE),
     'Legacy snake_case Dusk provenance must be rejected.',
+  );
+  expectFailure(
+    () => validateCrsProvenanceCompatibility(DATE_ONLY_FINAL_MPC_PROVENANCE),
+    'Date-only provenance timestamps must be rejected.',
+  );
+  expectFailure(
+    () => validateCrsProvenanceCompatibility(INVALID_DIGEST_FINAL_MPC_PROVENANCE),
+    'Non-SHA-256 provenance digests must be rejected.',
+  );
+  expectFailure(
+    () => validateCrsProvenanceCompatibility(EMPTY_STRING_FINAL_MPC_PROVENANCE),
+    'Empty required provenance strings must be rejected.',
   );
   expectFailure(
     () => assertBinaryArtifactCompatibility(artifact('9.9.0')),

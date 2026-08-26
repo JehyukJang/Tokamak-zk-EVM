@@ -7,7 +7,8 @@ use google_drive3::{oauth2, DriveHub};
 use libs::compatibility::{compatibility_from_package_version, parse_compatible_backend_version};
 use libs::crs_artifacts::{verify_final_crs_artifact_digests, FinalCrsDigests};
 use libs::crs_provenance::{
-    CrsProvenance, FinalMpcCrsProvenance, Phase1SourceProvenance, CRS_PROVENANCE_FILE_NAME,
+    parse_final_mpc_crs_provenance, FinalMpcCrsProvenance, Phase1SourceProvenance,
+    CRS_PROVENANCE_FILE_NAME,
 };
 use libs::input_origin::SubcircuitLibraryOrigin;
 use oauth2::authenticator_delegate::{DefaultInstalledFlowDelegate, InstalledFlowDelegate};
@@ -240,12 +241,7 @@ fn read_required_env(key: &str) -> Result<String, DriveUploadError> {
 
 fn read_provenance(output_path: &Path) -> Result<FinalMpcCrsProvenance, DriveUploadError> {
     let bytes = fs::read(output_path.join(PROVENANCE_FILE_NAME))?;
-    match serde_json::from_slice(&bytes)? {
-        CrsProvenance::FinalMpcCrs(provenance) => Ok(provenance),
-        CrsProvenance::DevelopmentTrustedSetupSigma(_) => Err(DriveUploadError::Message(
-            "only finalMpcCrs provenance may be published".to_string(),
-        )),
-    }
+    parse_final_mpc_crs_provenance(&bytes).map_err(DriveUploadError::Message)
 }
 
 fn build_archive_name(provenance: &FinalMpcCrsProvenance) -> Result<String, DriveUploadError> {
