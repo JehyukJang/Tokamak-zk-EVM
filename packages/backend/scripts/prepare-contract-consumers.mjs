@@ -5,9 +5,12 @@ const backendRoot = path.resolve(import.meta.dirname, "..");
 const contractRoot = path.join(backendRoot, "contracts");
 const repositoryRoot = path.resolve(backendRoot, "..", "..");
 const validatorSource = path.join(contractRoot, "typescript", "crs-provenance.generated.ts");
+const buildMetadataValidatorSource = path.join(contractRoot, "typescript", "backend-build-metadata-validator.ts");
 const provenanceContract = path.join(contractRoot, "crs-provenance-contract.json");
+const buildMetadataContract = path.join(contractRoot, "backend-build-metadata-contract.json");
 const versionPolicySource = path.join(repositoryRoot, "scripts", "version-contract.mjs");
 const provenanceContractContents = (await fs.readFile(provenanceContract, "utf8")).trim();
+const buildMetadataContractContents = (await fs.readFile(buildMetadataContract, "utf8")).trim();
 const check = process.argv.includes("--check");
 const consumers = [
   path.join(backendRoot, "..", "cli", "src", "generated"),
@@ -23,6 +26,17 @@ for (const consumerDirectory of consumers) {
     path.join(consumerDirectory, "crs-provenance-contract.generated.ts"),
   );
 }
+
+const cliConsumerDirectory = path.join(backendRoot, "..", "cli", "src", "generated");
+await synchronize(
+  buildMetadataValidatorSource,
+  path.join(cliConsumerDirectory, "backend-build-metadata-validator.generated.ts"),
+);
+await synchronize(buildMetadataContract, path.join(cliConsumerDirectory, "backend-build-metadata-contract.json"));
+await synchronizeContents(
+  `// Generated from packages/backend/contracts/backend-build-metadata-contract.json.\nconst contract = ${buildMetadataContractContents} as const;\n\nexport default contract;\n`,
+  path.join(cliConsumerDirectory, "backend-build-metadata-contract.generated.ts"),
+);
 
 async function synchronize(source, target) {
   await synchronizeContents(await fs.readFile(source, "utf8"), target);

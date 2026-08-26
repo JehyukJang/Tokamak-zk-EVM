@@ -13,6 +13,10 @@ import { downloadFileWithResume, fileExists, normalizeSha256, sha256FileHex } fr
 import type { RuntimeContext } from './model.js';
 import { runCommand, logVerbose } from '../system.js';
 import { parseFinalMpcCrsProvenance } from '../generated/crs-provenance.generated.js';
+import {
+  parseBackendBuildMetadata,
+  type BackendPackageName,
+} from '../generated/backend-build-metadata-validator.generated.js';
 
 interface DriveArchiveSelection {
   compatibleBackendVersion: string;
@@ -22,20 +26,9 @@ interface DriveArchiveSelection {
   sizeBytes: number;
 }
 
-interface BackendBuildMetadata {
-  compatibleBackendVersion?: string;
-  dependencies?: {
-    subcircuitLibrary?: {
-      buildVersion?: string;
-      packageName?: string;
-    };
-  };
-  packageVersion?: string;
-}
-
 type FinalMpcCrsProvenance = import("../generated/crs-provenance.generated.js").FinalMpcCrsProvenance;
 
-const BACKEND_BINARY_NAMES = ['preprocess', 'prove', 'verify'] as const;
+const BACKEND_BINARY_NAMES: readonly BackendPackageName[] = ['preprocess', 'prove', 'verify'];
 const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = '@tokamak-zk-evm/subcircuit-library';
 const FINAL_CRS_ARTIFACT_FILES = [
   'combined_sigma.rkyv',
@@ -294,14 +287,15 @@ export async function validateDownloadedCrsArchive(
 
   for (const backendName of BACKEND_BINARY_NAMES) {
     const backendMetadataPath = path.join(backendReleaseDir, `build-metadata-${backendName}.json`);
-    const backendMetadata = await readJsonFile<BackendBuildMetadata>(backendMetadataPath);
+    const backendMetadata = parseBackendBuildMetadata(
+      await readJsonFile<unknown>(backendMetadataPath),
+      backendName,
+      `Backend package ${backendName} build metadata`,
+    );
     const backendVersion = backendMetadata.packageVersion;
     const backendCompatibleVersion = backendMetadata.compatibleBackendVersion;
-    const backendSubcircuitVersion = backendMetadata.dependencies?.subcircuitLibrary?.buildVersion;
-    const backendSubcircuitPackageName = backendMetadata.dependencies?.subcircuitLibrary?.packageName;
-    if (!backendVersion || !backendCompatibleVersion || !backendSubcircuitVersion || !backendSubcircuitPackageName) {
-      throw new Error(`Backend package ${backendName} is missing required build metadata.`);
-    }
+    const backendSubcircuitVersion = backendMetadata.dependencies.subcircuitLibrary.buildVersion;
+    const backendSubcircuitPackageName = backendMetadata.dependencies.subcircuitLibrary.packageName;
     if (backendCompatibleVersion !== compatibleBackendVersion) {
       throw new Error(
         `Backend package ${backendName} has compatibleBackendVersion ${backendCompatibleVersion}, but the downloaded CRS expects ${compatibleBackendVersion}.`,

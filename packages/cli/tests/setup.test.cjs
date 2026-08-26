@@ -19,6 +19,34 @@ const CRS_PROVENANCE_CONTRACT = JSON.parse(
     'utf8',
   ),
 );
+const BACKEND_BUILD_METADATA_CONTRACT = JSON.parse(
+  require('node:fs').readFileSync(
+    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'backend-build-metadata-contract.json'),
+    'utf8',
+  ),
+);
+function readBackendBuildMetadataFixture(filename) {
+  return JSON.parse(
+    require('node:fs').readFileSync(
+      path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', filename),
+      'utf8',
+    ),
+  );
+}
+const INVALID_BUILD_METADATA_FIXTURES = {
+  missingRuntimeMode: readBackendBuildMetadataFixture('backend-build-metadata-invalid.json'),
+  declaredRange: readBackendBuildMetadataFixture('backend-build-metadata-invalid-declared-range.json'),
+  runtimeMode: readBackendBuildMetadataFixture('backend-build-metadata-invalid-runtime-mode.json'),
+  libraryPackage: readBackendBuildMetadataFixture('backend-build-metadata-invalid-library-package.json'),
+  unexpectedField: readBackendBuildMetadataFixture('backend-build-metadata-invalid-unexpected-field.json'),
+  packageName: readBackendBuildMetadataFixture('backend-build-metadata-invalid-package-name.json'),
+  leadingZeroPackageVersion: readBackendBuildMetadataFixture(
+    'backend-build-metadata-invalid-leading-zero-package-version.json',
+  ),
+  leadingZeroCompatibleVersion: readBackendBuildMetadataFixture(
+    'backend-build-metadata-invalid-leading-zero-compatible-version.json',
+  ),
+};
 const CANONICAL_FINAL_MPC_PROVENANCE = JSON.parse(
   require('node:fs').readFileSync(
     path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', 'final-mpc-crs-provenance.json'),
@@ -66,20 +94,24 @@ function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
 }
 
-async function writeBackendMetadata(backendReleaseDir) {
+async function writeBackendMetadata(backendReleaseDir, mutate = undefined) {
   for (const name of BACKEND_BINARY_NAMES) {
+    const metadata = {
+      compatibleBackendVersion: '2.1',
+      dependencies: {
+        subcircuitLibrary: {
+          buildVersion: '2.1.5',
+          declaredRange: 'latest',
+          packageName: SUBCIRCUIT_LIBRARY_PACKAGE_NAME,
+          runtimeMode: 'bundled',
+        },
+      },
+      packageName: name,
+      packageVersion: '2.1.5',
+    };
     await fs.writeFile(
       path.join(backendReleaseDir, `build-metadata-${name}.json`),
-      `${JSON.stringify({
-        compatibleBackendVersion: '2.1',
-        packageVersion: '2.1.5',
-        dependencies: {
-          subcircuitLibrary: {
-            buildVersion: '2.1.5',
-            packageName: SUBCIRCUIT_LIBRARY_PACKAGE_NAME,
-          },
-        },
-      })}\n`,
+      `${JSON.stringify(mutate?.(structuredClone(metadata), name) ?? metadata)}\n`,
       'utf8',
     );
   }
@@ -123,6 +155,11 @@ async function writeCrsArchiveFixture(
 test('packages the backend CRS provenance contract unchanged for runtime validation', () => {
   const packagedContract = require('../dist/generated/crs-provenance-contract.generated.js').default;
   assert.deepEqual(packagedContract, CRS_PROVENANCE_CONTRACT);
+});
+
+test('packages the backend build-metadata contract unchanged for runtime validation', () => {
+  const packagedContract = require('../dist/generated/backend-build-metadata-contract.generated.js').default;
+  assert.deepEqual(packagedContract, BACKEND_BUILD_METADATA_CONTRACT);
 });
 
 test('validates canonical and legacy backend final-MPC provenance fixtures', async () => {
@@ -272,6 +309,78 @@ test('rejects CRS provenance with an incompatible subcircuit-library package ver
     );
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('installer ingress rejects every build-metadata contract violation', async () => {
+  const cases = [
+    {
+      name: 'missing runtime mode',
+      metadata: INVALID_BUILD_METADATA_FIXTURES.missingRuntimeMode,
+      expected: /subcircuitLibrary is missing runtimeMode/u,
+    },
+    {
+      name: 'invalid declared range',
+      metadata: INVALID_BUILD_METADATA_FIXTURES.declaredRange,
+      expected: /declaredRange must equal "latest"/u,
+    },
+    {
+      name: 'invalid runtime mode',
+      metadata: INVALID_BUILD_METADATA_FIXTURES.runtimeMode,
+      expected: /runtimeMode must equal "bundled"/u,
+    },
+    {
+      name: 'invalid subcircuit-library package name',
+      metadata: INVALID_BUILD_METADATA_FIXTURES.libraryPackage,
+      expected: /subcircuitLibrary\.packageName must equal/u,
+    },
+    {
+      name: 'unexpected metadata field',
+      metadata: INVALID_BUILD_METADATA_FIXTURES.unexpectedField,
+      expected: /has unsupported field unexpected/u,
+    },
+    {
+      name: 'wrong backend package',
+      metadata: INVALID_BUILD_METADATA_FIXTURES.packageName,
+      expected: /Backend package prove build metadata\.packageName must equal "prove"/u,
+    },
+    {
+      name: 'leading-zero backend package version',
+      metadata: INVALID_BUILD_METADATA_FIXTURES.leadingZeroPackageVersion,
+      expected: /packageVersion.*leading zeroes are not canonical/u,
+    },
+    {
+      name: 'leading-zero backend compatibility version',
+      metadata: INVALID_BUILD_METADATA_FIXTURES.leadingZeroCompatibleVersion,
+      expected: /compatibleBackendVersion.*leading zeroes are not canonical/u,
+    },
+  ];
+
+  for (const testCase of cases) {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-'));
+    try {
+      const extractedDir = path.join(tempDir, 'archive');
+      const backendReleaseDir = path.join(tempDir, 'backend');
+      await fs.mkdir(extractedDir);
+      await fs.mkdir(backendReleaseDir);
+      await writeCrsArchiveFixture(extractedDir, '2.1.5', 'canonical', CANONICAL_FINAL_MPC_PROVENANCE);
+      await writeBackendMetadata(backendReleaseDir, (metadata, backendName) =>
+        backendName === 'prove' ? testCase.metadata : metadata,
+      );
+
+      await assert.rejects(
+        validateDownloadedCrsArchive(
+          extractedDir,
+          backendReleaseDir,
+          'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
+          '2.1',
+        ),
+        testCase.expected,
+        testCase.name,
+      );
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
   }
 });
 
