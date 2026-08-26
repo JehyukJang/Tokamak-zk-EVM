@@ -9,6 +9,7 @@ const packageRoot = path.resolve(__dirname, '..');
 const vendoredBackendRoot = path.join(packageRoot, 'vendor', 'backend');
 const packagedVersionPolicyPath = path.join(packageRoot, 'versioning', 'compatibility.rs');
 const BACKEND_BINARY_NAMES = ['preprocess', 'prove', 'verify'];
+const staticOnly = process.argv.includes('--static-only');
 
 function fail(message) {
   throw new Error(`[packaged-runtime-check] ${message}`);
@@ -59,6 +60,9 @@ async function main() {
   assertPackagedVendorTree(packedFiles());
   if (!fs.existsSync(packagedVersionPolicyPath)) {
     fail(`Packaged version-policy source is missing: ${packagedVersionPolicyPath}`);
+  }
+  if (staticOnly) {
+    return;
   }
 
   const targetRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tokamak-cli-packaged-runtime-'));

@@ -85,8 +85,8 @@ jobs:
       - name: Validate CLI release readiness
         run: npm run --workspace @tokamak-zk-evm/cli release:check
 
-      - name: Validate packaged CLI runtime compatibility
-        run: npm run --workspace @tokamak-zk-evm/cli release:runtime:check
+      - name: Validate packaged CLI source boundary
+        run: npm run --workspace @tokamak-zk-evm/cli release:package:check
 
       - name: Pack release tarballs
         run: |
@@ -816,6 +816,36 @@ jobs:
         with:
           name: tokamak-zk-evm-release-tarballs
           path: package-tarballs
+
+      - name: Build and install Docker runtime with published dependencies
+        env:
+          TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          docker_context="$RUNNER_TEMP/tokamak-zk-evm-cli-docker"
+          node <<'EOF_NODE'
+          const { execFileSync } = require('node:child_process');
+          const fs = require('node:fs');
+          const path = require('node:path');
+
+          const tarballDir = path.resolve('package-tarballs');
+          const dockerContext = `${process.env.RUNNER_TEMP}/tokamak-zk-evm-cli-docker`;
+          const tarball = fs.readdirSync(tarballDir)
+            .filter((file) => file.endsWith('.tgz'))
+            .map((file) => path.join(tarballDir, file))
+            .find((file) => JSON.parse(execFileSync('tar', ['-xOf', file, 'package/package.json'], { encoding: 'utf8' })).name === '@tokamak-zk-evm/cli');
+          if (!tarball) throw new Error('Missing @tokamak-zk-evm/cli release tarball.');
+          fs.rmSync(dockerContext, { recursive: true, force: true });
+          fs.mkdirSync(dockerContext, { recursive: true });
+          execFileSync('tar', ['-xzf', tarball, '-C', dockerContext]);
+          EOF_NODE
+          docker build \
+            --build-arg BASE_IMAGE=ubuntu:22.04 \
+            --tag tokamak-zk-evm-cli-release-test \
+            --file "$docker_context/package/docker/Dockerfile" \
+            "$docker_context/package"
+          docker run --rm \
+            -e TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON \
+            tokamak-zk-evm-cli-release-test --install
 
       - name: Compare package version with npm
         id: version-check
