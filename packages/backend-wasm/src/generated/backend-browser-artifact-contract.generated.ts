@@ -2,6 +2,16 @@
 export const BACKEND_BROWSER_ARTIFACT_CONTRACT = {
   "contractVersion": 1,
   "owner": "backend",
+  "artifactKinds": {
+    "instance": 1,
+    "verifier_proof": 2,
+    "sigma_verify": 3,
+    "verifier_preprocess": 4,
+    "prover_placement_variables": 5,
+    "prover_crs": 6,
+    "preprocess_crs": 7,
+    "prover_permutation": 9
+  },
   "combinedSigmaPayload": {
     "magic": "TKCRS001",
     "sections": [

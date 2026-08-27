@@ -122,6 +122,9 @@ async function readJsonContract(source) {
 
 function renderBrowserArtifactContracts(synthesizer, backend) {
   const artifacts = [...synthesizer.artifacts, ...backend.artifacts];
+  if (!backend.artifactKinds || typeof backend.artifactKinds !== "object") {
+    throw new Error("Backend browser artifact contract is missing artifactKinds.");
+  }
   const names = new Set();
   const rendered = artifacts.map((artifact) => {
     if (!artifact || typeof artifact.name !== "string" || !Array.isArray(artifact.sections)) {
@@ -131,16 +134,21 @@ function renderBrowserArtifactContracts(synthesizer, backend) {
       throw new Error(`Duplicate browser artifact contract: ${artifact.name}`);
     }
     names.add(artifact.name);
-    return renderArtifact(artifact);
+    const kind = backend.artifactKinds[artifact.name];
+    if (!Number.isSafeInteger(kind) || kind <= 0 || kind > 0xffff) {
+      throw new Error(`Browser artifact '${artifact.name}' has no valid backend wire kind.`);
+    }
+    return renderArtifact(artifact, kind);
   });
-  return `// Generated from producer-owned browser artifact contracts. Do not edit.\nimport { BinarySectionEncoding, BinarySectionType } from "../artifacts/binary/binary-format.js";\nimport type { RuntimeArtifactFormatSpec } from "../artifacts/specs/types.js";\n\n${rendered.join("\n\n")}\n`;
+  const constants = artifacts.map((artifact) => artifact.name.toUpperCase().replaceAll("_", "_") + "_V1_SPEC");
+  return `// Generated from producer-owned browser artifact contracts. Do not edit.\nimport { BinarySectionEncoding, BinarySectionType } from "../artifacts/binary/binary-format.js";\nimport type { RuntimeArtifactFormatSpec } from "../artifacts/specs/types.js";\n\n${rendered.join("\n\n")}\n\nexport const RUNTIME_ARTIFACT_SPECS = [${constants.join(", ")}] as const;\n\nexport function requireRuntimeArtifactSpecForKind(kind: number): RuntimeArtifactFormatSpec {\n  const spec = RUNTIME_ARTIFACT_SPECS.find((candidate) => candidate.kind === kind);\n  if (spec === undefined) {\n    throw new Error(\`Unsupported binary artifact kind: \${kind}.\`);\n  }\n  return spec;\n}\n`;
 }
 
 function renderReadonlyContractModule(sourcePath, bindingName, contract) {
   return `// Generated from ${sourcePath}. Do not edit.\nexport const ${bindingName} = ${JSON.stringify(contract, null, 2)} as const;\n\nexport default ${bindingName};\n`;
 }
 
-function renderArtifact(artifact) {
+function renderArtifact(artifact, kind) {
   const constantName = artifact.name.toUpperCase().replaceAll("_", "_") + "_V1_SPEC";
   const sections = artifact.sections.map((section) => {
     if (!section || typeof section.label !== "string" || typeof section.type !== "string" || typeof section.encoding !== "string") {
@@ -148,7 +156,7 @@ function renderArtifact(artifact) {
     }
     return `{\n      label: ${JSON.stringify(section.label)},\n      type: BinarySectionType.${section.type},\n      encoding: BinarySectionEncoding.${encodingName(section.encoding)},\n      elementCount: ${JSON.stringify(section.elementCount ?? null)},\n      elementByteLength: ${JSON.stringify(section.elementByteLength ?? null)},\n      points: ${JSON.stringify(section.points ?? [], null, 2)},\n    }`;
   });
-  return `export const ${constantName} = {\n  schemaVersion: 1,\n  name: ${JSON.stringify(artifact.name)},\n  sections: [\n    ${sections.join(",\n    ")}\n  ],\n} as const satisfies RuntimeArtifactFormatSpec;`;
+  return `export const ${constantName} = {\n  schemaVersion: 1,\n  name: ${JSON.stringify(artifact.name)},\n  kind: ${kind},\n  sections: [\n    ${sections.join(",\n    ")}\n  ],\n} as const satisfies RuntimeArtifactFormatSpec;`;
 }
 
 function encodingName(value) {

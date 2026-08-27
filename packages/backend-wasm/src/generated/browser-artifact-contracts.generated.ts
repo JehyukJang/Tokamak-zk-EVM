@@ -5,6 +5,7 @@ import type { RuntimeArtifactFormatSpec } from "../artifacts/specs/types.js";
 export const INSTANCE_V1_SPEC = {
   schemaVersion: 1,
   name: "instance",
+  kind: 1,
   sections: [
     {
       label: "instance.public",
@@ -28,6 +29,7 @@ export const INSTANCE_V1_SPEC = {
 export const PROVER_PLACEMENT_VARIABLES_V1_SPEC = {
   schemaVersion: 1,
   name: "prover_placement_variables",
+  kind: 5,
   sections: [
     {
       label: "placement.subcircuit_ids",
@@ -59,6 +61,7 @@ export const PROVER_PLACEMENT_VARIABLES_V1_SPEC = {
 export const PROVER_PERMUTATION_V1_SPEC = {
   schemaVersion: 1,
   name: "prover_permutation",
+  kind: 9,
   sections: [
     {
       label: "permutation.entries",
@@ -74,6 +77,7 @@ export const PROVER_PERMUTATION_V1_SPEC = {
 export const SIGMA_VERIFY_V1_SPEC = {
   schemaVersion: 1,
   name: "sigma_verify",
+  kind: 3,
   sections: [
     {
       label: "sigma.g1",
@@ -155,6 +159,7 @@ export const SIGMA_VERIFY_V1_SPEC = {
 export const VERIFIER_PREPROCESS_V1_SPEC = {
   schemaVersion: 1,
   name: "verifier_preprocess",
+  kind: 4,
   sections: [
     {
       label: "preprocess.g1",
@@ -183,6 +188,7 @@ export const VERIFIER_PREPROCESS_V1_SPEC = {
 export const VERIFIER_PROOF_V1_SPEC = {
   schemaVersion: 1,
   name: "verifier_proof",
+  kind: 2,
   sections: [
     {
       label: "proof.g1",
@@ -300,6 +306,7 @@ export const VERIFIER_PROOF_V1_SPEC = {
 export const PROVER_CRS_V1_SPEC = {
   schemaVersion: 1,
   name: "prover_crs",
+  kind: 6,
   sections: [
     {
       label: "sigma.g1",
@@ -445,6 +452,7 @@ export const PROVER_CRS_V1_SPEC = {
 export const PREPROCESS_CRS_V1_SPEC = {
   schemaVersion: 1,
   name: "preprocess_crs",
+  kind: 7,
   sections: [
     {
       label: "sigma1.xy-powers",
@@ -464,3 +472,13 @@ export const PREPROCESS_CRS_V1_SPEC = {
     }
   ],
 } as const satisfies RuntimeArtifactFormatSpec;
+
+export const RUNTIME_ARTIFACT_SPECS = [INSTANCE_V1_SPEC, PROVER_PLACEMENT_VARIABLES_V1_SPEC, PROVER_PERMUTATION_V1_SPEC, SIGMA_VERIFY_V1_SPEC, VERIFIER_PREPROCESS_V1_SPEC, VERIFIER_PROOF_V1_SPEC, PROVER_CRS_V1_SPEC, PREPROCESS_CRS_V1_SPEC] as const;
+
+export function requireRuntimeArtifactSpecForKind(kind: number): RuntimeArtifactFormatSpec {
+  const spec = RUNTIME_ARTIFACT_SPECS.find((candidate) => candidate.kind === kind);
+  if (spec === undefined) {
+    throw new Error(`Unsupported binary artifact kind: ${kind}.`);
+  }
+  return spec;
+}

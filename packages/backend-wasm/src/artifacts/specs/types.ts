@@ -1,8 +1,9 @@
-import type { BinarySectionEncoding, BinarySectionType } from "../binary/binary-format.js";
+import type { BinaryArtifactFileKind, BinarySectionEncoding, BinarySectionType } from "../binary/binary-format.js";
 
 export interface RuntimeArtifactFormatSpec {
   readonly schemaVersion: 1;
   readonly name: RuntimeArtifactFormatSpecName;
+  readonly kind: BinaryArtifactFileKind;
   readonly sections: readonly RuntimeArtifactSectionSpec[];
 }
 

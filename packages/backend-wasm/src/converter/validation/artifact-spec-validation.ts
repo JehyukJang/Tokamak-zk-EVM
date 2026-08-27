@@ -1,40 +1,14 @@
 import {
-  BinaryArtifactFileKind,
+  type BinaryArtifactFileKind,
   type BinaryArtifactFileView,
   type BinarySectionView,
   expectedElementByteLength,
 } from "../../artifacts/binary/binary-format.js";
-import {
-  INSTANCE_V1_SPEC,
-  PREPROCESS_CRS_V1_SPEC,
-  PROVER_CRS_V1_SPEC,
-  PROVER_PERMUTATION_V1_SPEC,
-  PROVER_PLACEMENT_VARIABLES_V1_SPEC,
-  SIGMA_VERIFY_V1_SPEC,
-  VERIFIER_PREPROCESS_V1_SPEC,
-  VERIFIER_PROOF_V1_SPEC,
-} from "../../generated/browser-artifact-contracts.generated.js";
+import { requireRuntimeArtifactSpecForKind } from "../../generated/browser-artifact-contracts.generated.js";
 import type { RuntimeArtifactFormatSpec, RuntimeArtifactSectionSpec } from "../../artifacts/specs/types.js";
 
 export function specForKind(kind: BinaryArtifactFileKind): RuntimeArtifactFormatSpec {
-  switch (kind) {
-    case BinaryArtifactFileKind.Instance:
-      return INSTANCE_V1_SPEC;
-    case BinaryArtifactFileKind.VerifierProof:
-      return VERIFIER_PROOF_V1_SPEC;
-    case BinaryArtifactFileKind.VerifierPreprocess:
-      return VERIFIER_PREPROCESS_V1_SPEC;
-    case BinaryArtifactFileKind.ProverPlacementVariables:
-      return PROVER_PLACEMENT_VARIABLES_V1_SPEC;
-    case BinaryArtifactFileKind.ProverCrs:
-      return PROVER_CRS_V1_SPEC;
-    case BinaryArtifactFileKind.PreprocessCrs:
-      return PREPROCESS_CRS_V1_SPEC;
-    case BinaryArtifactFileKind.ProverPermutation:
-      return PROVER_PERMUTATION_V1_SPEC;
-    case BinaryArtifactFileKind.VerifierCrs:
-      return SIGMA_VERIFY_V1_SPEC;
-  }
+  return requireRuntimeArtifactSpecForKind(kind);
 }
 
 export function validateRuntimeArtifactBySpec(
