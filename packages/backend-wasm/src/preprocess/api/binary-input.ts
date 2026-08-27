@@ -1,8 +1,6 @@
 import { requireBinaryArtifactSection } from "../../artifacts/binary/binary-artifact-file.js";
 import {
   BinaryArtifactFileKind,
-  BinarySectionEncoding,
-  BinarySectionType,
   type BinaryArtifactFileView,
   type BinarySectionView,
 } from "../../artifacts/binary/binary-format.js";
@@ -20,6 +18,9 @@ import { G1_AFFINE_BYTES } from "../../runtime/group/group.js";
 import type { PermutationEntry } from "../../runtime/polynomial/permutation-polynomials.js";
 
 const PERMUTATION_ENTRY_BYTES = 16;
+const [permutationSectionSpec] = PROVER_PERMUTATION_V1_SPEC.sections;
+const [, functionInstanceSectionSpec] = INSTANCE_V1_SPEC.sections;
+const [xyPowersSectionSpec, gammaInvOInstSectionSpec] = PREPROCESS_CRS_V1_SPEC.sections;
 
 export interface PreprocessBinaryInput {
   readonly permutation: Uint8Array;
@@ -70,11 +71,7 @@ function parsePermutation(
   mI: number,
   sMax: number,
 ): readonly PermutationEntry[] {
-  const section = requireBinaryArtifactSection(file, {
-    type: BinarySectionType.Permutation,
-    encoding: BinarySectionEncoding.Bytes,
-    label: "permutation.entries",
-  });
+  const section = requireBinaryArtifactSection(file, permutationSectionSpec);
   if (section.data.byteLength % PERMUTATION_ENTRY_BYTES !== 0) {
     throw new Error("permutation.entries byte length must be divisible by 16.");
   }
@@ -112,11 +109,7 @@ function parseFunctionInstance(
   file: BinaryArtifactFileView,
   setup: SetupParams,
 ): Uint8Array {
-  const section = requireBinaryArtifactSection(file, {
-    type: BinarySectionType.Instance,
-    encoding: BinarySectionEncoding.FfjsFrMontgomeryLe32,
-    label: "instance.function",
-  });
+  const section = requireBinaryArtifactSection(file, functionInstanceSectionSpec);
   const expectedCount = setup.l - setup.l_free;
   assertSectionShape(section, expectedCount, runtime.Fr.byteLength, "instance.function");
   return section.data;
@@ -126,16 +119,8 @@ function parsePreprocessCrs(
   file: BinaryArtifactFileView,
   setup: SetupParams,
 ): PreprocessCrsRuntime {
-  const xyPowers = requireBinaryArtifactSection(file, {
-    type: BinarySectionType.CrsG1,
-    encoding: BinarySectionEncoding.FfjsG1Affine96,
-    label: "sigma1.xy-powers",
-  });
-  const gammaInvOInst = requireBinaryArtifactSection(file, {
-    type: BinarySectionType.CrsG1,
-    encoding: BinarySectionEncoding.FfjsG1Affine96,
-    label: "sigma1.gamma-inv-o-inst",
-  });
+  const xyPowers = requireBinaryArtifactSection(file, xyPowersSectionSpec);
+  const gammaInvOInst = requireBinaryArtifactSection(file, gammaInvOInstSectionSpec);
   const mI = setup.l_D - setup.l;
   const mFunction = setup.l - setup.l_free;
 
