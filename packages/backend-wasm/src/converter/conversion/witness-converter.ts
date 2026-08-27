@@ -1,16 +1,36 @@
 import { createBinaryArtifactFile } from "../../artifacts/binary/binary-artifact-file.js";
-import {
-  BinaryArtifactFileKind,
-  BinarySectionEncoding,
-  BinarySectionType,
-} from "../../artifacts/binary/binary-format.js";
+import { BinaryArtifactFileKind } from "../../artifacts/binary/binary-format.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
+import { SYNTHESIZER_BROWSER_ARTIFACT_CONTRACT } from "../../generated/synthesizer-browser-artifact-contract.generated.js";
+import { PROVER_PLACEMENT_VARIABLES_V1_SPEC } from "../../generated/browser-artifact-contracts.generated.js";
 import type { CurveRuntime } from "../../runtime/curve/curve.js";
 import {
   isRecord,
   parseU32,
 } from "./conversion-utils.js";
 import { withCurveRuntime } from "./conversion-runtime.js";
+import {
+  requireProducerSourceField,
+  requireProducerSourceFields,
+} from "./producer-artifact-contract.js";
+
+const PLACEMENT_ARTIFACT_NAME = "prover_placement_variables";
+const placementSourceFields = requireProducerSourceFields(
+  SYNTHESIZER_BROWSER_ARTIFACT_CONTRACT,
+  PLACEMENT_ARTIFACT_NAME,
+);
+const placementSubcircuitIdField = requireProducerSourceField(
+  placementSourceFields,
+  "subcircuitId",
+  PLACEMENT_ARTIFACT_NAME,
+);
+const placementVariablesField = requireProducerSourceField(
+  placementSourceFields,
+  "variables",
+  PLACEMENT_ARTIFACT_NAME,
+);
+const [subcircuitIdsSectionSpec, variableOffsetsSectionSpec, variablesSectionSpec] =
+  PROVER_PLACEMENT_VARIABLES_V1_SPEC.sections;
 
 interface NativePlacementVariablesSource {
   readonly subcircuitId: number;
@@ -58,25 +78,19 @@ async function createProverPlacementVariablesArtifact(
     sourcePackageVersion,
     sections: [
       {
-        type: BinarySectionType.Placement,
-        encoding: BinarySectionEncoding.Bytes,
-        label: "placement.subcircuit_ids",
+        ...subcircuitIdsSectionSpec,
         elementCount: subcircuitIds.length,
         elementByteLength: 4,
         data: bytesOf(subcircuitIds),
       },
       {
-        type: BinarySectionType.Placement,
-        encoding: BinarySectionEncoding.Bytes,
-        label: "placement.variable_offsets",
+        ...variableOffsetsSectionSpec,
         elementCount: variableOffsets.length,
         elementByteLength: 4,
         data: bytesOf(variableOffsets),
       },
       {
-        type: BinarySectionType.Placement,
-        encoding: BinarySectionEncoding.FfjsFrMontgomeryLe32,
-        label: "placement.variables",
+        ...variablesSectionSpec,
         elementCount: variableCount,
         elementByteLength: runtime.Fr.byteLength,
         data: variables,
@@ -95,13 +109,16 @@ function parseNativePlacementVariablesSource(raw: unknown): readonly NativePlace
       throw new Error(`Native placementVariables entry ${index} must be an object.`);
     }
 
-    if (!Array.isArray(entry.variables)) {
-      throw new Error(`placementVariables[${index}].variables must be an array.`);
+    if (!Array.isArray(entry[placementVariablesField])) {
+      throw new Error(`placementVariables[${index}].${placementVariablesField} must be an array.`);
     }
 
     return {
-      subcircuitId: parseU32(entry.subcircuitId, `placementVariables[${index}].subcircuitId`),
-      variables: entry.variables,
+      subcircuitId: parseU32(
+        entry[placementSubcircuitIdField],
+        `placementVariables[${index}].${placementSubcircuitIdField}`,
+      ),
+      variables: entry[placementVariablesField],
     };
   });
 }

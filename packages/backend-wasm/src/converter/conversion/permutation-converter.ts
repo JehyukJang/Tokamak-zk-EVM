@@ -1,11 +1,24 @@
 import { createBinaryArtifactFile } from "../../artifacts/binary/binary-artifact-file.js";
-import {
-  BinaryArtifactFileKind,
-  BinarySectionEncoding,
-  BinarySectionType,
-} from "../../artifacts/binary/binary-format.js";
+import { BinaryArtifactFileKind } from "../../artifacts/binary/binary-format.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
+import { SYNTHESIZER_BROWSER_ARTIFACT_CONTRACT } from "../../generated/synthesizer-browser-artifact-contract.generated.js";
+import { PROVER_PERMUTATION_V1_SPEC } from "../../generated/browser-artifact-contracts.generated.js";
 import { isRecord, parseU32 } from "./conversion-utils.js";
+import {
+  requireProducerSourceField,
+  requireProducerSourceFields,
+} from "./producer-artifact-contract.js";
+
+const PERMUTATION_ARTIFACT_NAME = "prover_permutation";
+const permutationSourceFields = requireProducerSourceFields(
+  SYNTHESIZER_BROWSER_ARTIFACT_CONTRACT,
+  PERMUTATION_ARTIFACT_NAME,
+);
+const permutationRowField = requireProducerSourceField(permutationSourceFields, "row", PERMUTATION_ARTIFACT_NAME);
+const permutationColumnField = requireProducerSourceField(permutationSourceFields, "column", PERMUTATION_ARTIFACT_NAME);
+const permutationXField = requireProducerSourceField(permutationSourceFields, "x", PERMUTATION_ARTIFACT_NAME);
+const permutationYField = requireProducerSourceField(permutationSourceFields, "y", PERMUTATION_ARTIFACT_NAME);
+const [permutationEntriesSectionSpec] = PROVER_PERMUTATION_V1_SPEC.sections;
 
 interface NativePermutationEntry {
   readonly row: number;
@@ -22,9 +35,7 @@ export async function convertPermutation(permutation: unknown): Promise<Uint8Arr
     sourcePackageVersion: BACKEND_WASM_PACKAGE_VERSION,
     sections: [
       {
-        type: BinarySectionType.Permutation,
-        encoding: BinarySectionEncoding.Bytes,
-        label: "permutation.entries",
+        ...permutationEntriesSectionSpec,
         elementCount: entries.length,
         elementByteLength: 16,
         data: encodePermutationEntries(entries),
@@ -44,10 +55,10 @@ function parseNativePermutationJson(raw: unknown): readonly NativePermutationEnt
     }
 
     return {
-      row: parseU32(entry.row, `permutation[${index}].row`),
-      col: parseU32(entry.col, `permutation[${index}].col`),
-      X: parseU32(entry.X, `permutation[${index}].X`),
-      Y: parseU32(entry.Y, `permutation[${index}].Y`),
+      row: parseU32(entry[permutationRowField], `permutation[${index}].${permutationRowField}`),
+      col: parseU32(entry[permutationColumnField], `permutation[${index}].${permutationColumnField}`),
+      X: parseU32(entry[permutationXField], `permutation[${index}].${permutationXField}`),
+      Y: parseU32(entry[permutationYField], `permutation[${index}].${permutationYField}`),
     };
   });
 }

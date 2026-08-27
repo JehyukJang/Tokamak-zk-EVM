@@ -1,15 +1,27 @@
 import { createBinaryArtifactFile } from "../../artifacts/binary/binary-artifact-file.js";
-import {
-  BinaryArtifactFileKind,
-  BinarySectionEncoding,
-  BinarySectionType,
-} from "../../artifacts/binary/binary-format.js";
+import { BinaryArtifactFileKind } from "../../artifacts/binary/binary-format.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
 import { GENERATED_SETUP_PARAMS } from "../../generated/active/setup.generated.js";
+import { INSTANCE_V1_SPEC } from "../../generated/browser-artifact-contracts.generated.js";
+import { SYNTHESIZER_BROWSER_ARTIFACT_CONTRACT } from "../../generated/synthesizer-browser-artifact-contract.generated.js";
 import { concatBytes } from "../../runtime/bytes.js";
 import type { CurveRuntime } from "../../runtime/curve/curve.js";
 import { isRecord, parseHexStringArray } from "./conversion-utils.js";
 import { withCurveRuntime } from "./conversion-runtime.js";
+import {
+  requireProducerSourceField,
+  requireProducerSourceFields,
+} from "./producer-artifact-contract.js";
+
+const INSTANCE_ARTIFACT_NAME = "instance";
+const instanceSourceFields = requireProducerSourceFields(
+  SYNTHESIZER_BROWSER_ARTIFACT_CONTRACT,
+  INSTANCE_ARTIFACT_NAME,
+);
+const userPublicField = requireProducerSourceField(instanceSourceFields, "userPublic", INSTANCE_ARTIFACT_NAME);
+const blockPublicField = requireProducerSourceField(instanceSourceFields, "blockPublic", INSTANCE_ARTIFACT_NAME);
+const functionPublicField = requireProducerSourceField(instanceSourceFields, "functionPublic", INSTANCE_ARTIFACT_NAME);
+const [publicInstanceSectionSpec, functionInstanceSectionSpec] = INSTANCE_V1_SPEC.sections;
 
 interface VerifierSetupParamsJson {
   readonly l_free: number;
@@ -46,17 +58,13 @@ async function createInstanceArtifact(
     sourcePackageVersion,
     sections: [
       {
-        type: BinarySectionType.Instance,
-        encoding: BinarySectionEncoding.FfjsFrMontgomeryLe32,
-        label: "instance.public",
+        ...publicInstanceSectionSpec,
         elementCount: publicInstance.length,
         elementByteLength: runtime.Fr.byteLength,
         data: concatBytes(publicInstance),
       },
       {
-        type: BinarySectionType.Instance,
-        encoding: BinarySectionEncoding.FfjsFrMontgomeryLe32,
-        label: "instance.function",
+        ...functionInstanceSectionSpec,
         elementCount: functionInstance.length,
         elementByteLength: runtime.Fr.byteLength,
         data: concatBytes(functionInstance),
@@ -103,8 +111,8 @@ function parseInstanceJson(raw: unknown): InstanceJson {
   }
 
   return {
-    a_pub_user: parseHexStringArray(raw.a_pub_user, "instance.a_pub_user"),
-    a_pub_block: parseHexStringArray(raw.a_pub_block, "instance.a_pub_block"),
-    a_pub_function: parseHexStringArray(raw.a_pub_function, "instance.a_pub_function"),
+    a_pub_user: parseHexStringArray(raw[userPublicField], `instance.${userPublicField}`),
+    a_pub_block: parseHexStringArray(raw[blockPublicField], `instance.${blockPublicField}`),
+    a_pub_function: parseHexStringArray(raw[functionPublicField], `instance.${functionPublicField}`),
   };
 }

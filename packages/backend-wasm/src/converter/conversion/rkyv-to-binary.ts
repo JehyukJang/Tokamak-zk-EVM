@@ -7,13 +7,19 @@ import {
   BinarySectionType,
   type BinarySectionInput,
 } from "../../artifacts/binary/binary-format.js";
+import { BACKEND_BROWSER_ARTIFACT_CONTRACT } from "../../generated/backend-browser-artifact-contract.generated.js";
+import {
+  PREPROCESS_CRS_V1_SPEC,
+  PROVER_CRS_V1_SPEC,
+  SIGMA_VERIFY_V1_SPEC,
+} from "../../generated/browser-artifact-contracts.generated.js";
 import { G1_AFFINE_BYTES } from "../../runtime/group/group.js";
+import type { RuntimeArtifactSectionSpec } from "../../artifacts/specs/types.js";
 
 const G2_AFFINE_BYTES = 192;
 const FQ_BYTES = 48;
 const FQ_BATCH_CONVERSION_CHUNK_ELEMENTS = 1 << 18;
-const COMBINED_SIGMA_PAYLOAD_MAGIC = "TKCRS001";
-const COMBINED_SIGMA_PAYLOAD_SECTION_COUNT = 9;
+const combinedSigmaPayloadContract = BACKEND_BROWSER_ARTIFACT_CONTRACT.combinedSigmaPayload;
 
 interface RawBaseField {
   batchToMontgomery(input: Uint8Array): Promise<Uint8Array>;
@@ -78,20 +84,8 @@ export async function convertCombinedSigmaRkyvToCrsBinaries(
   const curve = await getCurveFromName("bls12381") as ConverterCurve;
 
   try {
-    const sourceDefinitions: readonly PointSectionDefinition[] = [
-      g1Definition("sigma.g1", decoded.g1, 6),
-      g1Definition("sigma1.xy-powers", decoded.sigma1XyPowers),
-      g1Definition("sigma1.gamma-inv-o-inst", decoded.sigma1GammaInvOInst),
-      g1Definition(
-        "sigma1.eta-inv-li-o-inter-alpha4-kj",
-        decoded.sigma1EtaInvLiOInterAlpha4Kj,
-      ),
-      g1Definition("sigma1.delta-inv-li-o-prv", decoded.sigma1DeltaInvLiOPrv),
-      g1Definition("sigma1.delta-inv-alphak-xh-tx", decoded.sigma1DeltaInvAlphakXhTx),
-      g1Definition("sigma1.delta-inv-alpha4-xj-tx", decoded.sigma1DeltaInvAlpha4XjTx),
-      g1Definition("sigma1.delta-inv-alphak-yi-ty", decoded.sigma1DeltaInvAlphakYiTy),
-      g2Definition("sigma.g2", decoded.g2, 10),
-    ];
+    const sourceDefinitions = PROVER_CRS_V1_SPEC.sections.map((sectionSpec, index) =>
+      pointDefinition(sectionSpec, combinedSigmaDecodedSection(decoded, index)));
     const convertedDefinitions: PointSectionDefinition[] = [];
     for (const definition of sourceDefinitions) {
       assertPointSectionShape(definition);
@@ -109,14 +103,14 @@ export async function convertCombinedSigmaRkyvToCrsBinaries(
       sections: convertedDefinitions.map(toBinarySectionInput),
     });
     const preprocessCrs = await createPreprocessCrs(
-      convertedDefinitions[1].data,
-      convertedDefinitions[2].data,
+      requireConvertedDefinition(convertedDefinitions, "sigma1.xy-powers").data,
+      requireConvertedDefinition(convertedDefinitions, "sigma1.gamma-inv-o-inst").data,
       shape,
       sourcePackageVersion,
     );
     const verifierCrs = await createVerifierCrs(
-      convertedDefinitions[0].data,
-      convertedDefinitions[8].data,
+      requireConvertedDefinition(convertedDefinitions, "sigma.g1").data,
+      requireConvertedDefinition(convertedDefinitions, "sigma.g2").data,
       sourcePackageVersion,
     );
 
@@ -179,10 +173,8 @@ async function createPreprocessCrs(
     kind: BinaryArtifactFileKind.PreprocessCrs,
     sourcePackageVersion,
     sections: [
-      toBinarySectionInput(g1Definition("sigma1.xy-powers", compactXyPowers, mI * shape.s_max)),
-      toBinarySectionInput(
-        g1Definition("sigma1.gamma-inv-o-inst", compactGammaInvOInst, mFunction),
-      ),
+      toBinarySectionInput(pointDefinition(PREPROCESS_CRS_V1_SPEC.sections[0], compactXyPowers)),
+      toBinarySectionInput(pointDefinition(PREPROCESS_CRS_V1_SPEC.sections[1], compactGammaInvOInst)),
     ],
   });
 }
@@ -199,10 +191,8 @@ async function createVerifierCrs(
     kind: BinaryArtifactFileKind.VerifierCrs,
     sourcePackageVersion,
     sections: [
-      toBinarySectionInput(
-        g1Definition("sigma.g1", selectPoints(sigmaG1, [0, 1, 2, 5]), 4),
-      ),
-      toBinarySectionInput(g2Definition("sigma.g2", sigmaG2, 10)),
+      toBinarySectionInput(pointDefinition(SIGMA_VERIFY_V1_SPEC.sections[0], selectPoints(sigmaG1, [0, 1, 2, 5]))),
+      toBinarySectionInput(pointDefinition(SIGMA_VERIFY_V1_SPEC.sections[1], sigmaG2)),
     ],
   });
 }
@@ -285,46 +275,70 @@ export function decodeCombinedSigmaRkyvPayload(payload: Uint8Array): DecodedComb
   const sections = readCombinedSigmaPayloadSections(payload);
 
   return {
-    g1: sections[0],
-    sigma1XyPowers: sections[1],
-    sigma1GammaInvOInst: sections[2],
-    sigma1EtaInvLiOInterAlpha4Kj: sections[3],
-    sigma1DeltaInvLiOPrv: sections[4],
-    sigma1DeltaInvAlphakXhTx: sections[5],
-    sigma1DeltaInvAlpha4XjTx: sections[6],
-    sigma1DeltaInvAlphakYiTy: sections[7],
-    g2: sections[8],
+    g1: combinedSigmaPayloadSection(sections, "g1"),
+    sigma1XyPowers: combinedSigmaPayloadSection(sections, "sigma1XyPowers"),
+    sigma1GammaInvOInst: combinedSigmaPayloadSection(sections, "sigma1GammaInvOInst"),
+    sigma1EtaInvLiOInterAlpha4Kj: combinedSigmaPayloadSection(sections, "sigma1EtaInvLiOInterAlpha4Kj"),
+    sigma1DeltaInvLiOPrv: combinedSigmaPayloadSection(sections, "sigma1DeltaInvLiOPrv"),
+    sigma1DeltaInvAlphakXhTx: combinedSigmaPayloadSection(sections, "sigma1DeltaInvAlphakXhTx"),
+    sigma1DeltaInvAlpha4XjTx: combinedSigmaPayloadSection(sections, "sigma1DeltaInvAlpha4XjTx"),
+    sigma1DeltaInvAlphakYiTy: combinedSigmaPayloadSection(sections, "sigma1DeltaInvAlphakYiTy"),
+    g2: combinedSigmaPayloadSection(sections, "g2"),
   };
 }
 
-function g1Definition(
-  label: string,
-  data: Uint8Array,
-  expectedElementCount?: number,
-): PointSectionDefinition {
+function pointDefinition(sectionSpec: RuntimeArtifactSectionSpec, data: Uint8Array): PointSectionDefinition {
   return {
-    label,
+    label: sectionSpec.label,
     data,
-    expectedElementCount,
-    elementByteLength: G1_AFFINE_BYTES,
-    type: BinarySectionType.CrsG1,
-    encoding: BinarySectionEncoding.FfjsG1Affine96,
+    expectedElementCount: sectionSpec.elementCount ?? undefined,
+    elementByteLength: pointByteLength(sectionSpec),
+    type: sectionSpec.type,
+    encoding: sectionSpec.encoding,
   };
 }
 
-function g2Definition(
+function pointByteLength(sectionSpec: RuntimeArtifactSectionSpec): number {
+  if (sectionSpec.encoding === BinarySectionEncoding.FfjsG1Affine96) {
+    return G1_AFFINE_BYTES;
+  }
+  if (sectionSpec.encoding === BinarySectionEncoding.FfjsG2Affine192) {
+    return G2_AFFINE_BYTES;
+  }
+  throw new Error(`Combined-Sigma contract section '${sectionSpec.label}' must contain affine points.`);
+}
+
+function combinedSigmaDecodedSection(decoded: DecodedCombinedSigmaRkyv, index: number): Uint8Array {
+  const section = combinedSigmaPayloadContract.sections[index];
+  if (section === undefined) {
+    throw new Error(`Combined-Sigma contract does not define section ${index}.`);
+  }
+  return decoded[section.decoderField as keyof DecodedCombinedSigmaRkyv];
+}
+
+function combinedSigmaPayloadSection(sections: readonly Uint8Array[], decoderField: string): Uint8Array {
+  const section = combinedSigmaPayloadContract.sections.find(
+    (candidate) => candidate.decoderField === decoderField,
+  );
+  if (section === undefined) {
+    throw new Error(`Combined-Sigma contract does not define decoder field '${decoderField}'.`);
+  }
+  const data = sections[section.proverCrsSectionIndex];
+  if (data === undefined) {
+    throw new Error(`Combined-Sigma payload does not contain decoder field '${decoderField}'.`);
+  }
+  return data;
+}
+
+function requireConvertedDefinition(
+  definitions: readonly PointSectionDefinition[],
   label: string,
-  data: Uint8Array,
-  expectedElementCount?: number,
 ): PointSectionDefinition {
-  return {
-    label,
-    data,
-    expectedElementCount,
-    elementByteLength: G2_AFFINE_BYTES,
-    type: BinarySectionType.CrsG2,
-    encoding: BinarySectionEncoding.FfjsG2Affine192,
-  };
+  const definition = definitions.find((candidate) => candidate.label === label);
+  if (definition === undefined) {
+    throw new Error(`Combined-Sigma contract does not define CRS section '${label}'.`);
+  }
+  return definition;
 }
 
 function assertPointSectionShape(definition: PointSectionDefinition): void {
@@ -346,7 +360,7 @@ function assertPointSectionShape(definition: PointSectionDefinition): void {
 }
 
 function readCombinedSigmaPayloadSections(payload: Uint8Array): readonly Uint8Array[] {
-  const magicBytes = new TextEncoder().encode(COMBINED_SIGMA_PAYLOAD_MAGIC);
+  const magicBytes = new TextEncoder().encode(combinedSigmaPayloadContract.magic);
 
   if (payload.byteLength < 12) {
     throw new Error("combined_sigma decoder payload is shorter than the fixed header.");
@@ -360,8 +374,8 @@ function readCombinedSigmaPayloadSections(payload: Uint8Array): readonly Uint8Ar
 
   const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
   const sectionCount = view.getUint32(8, true);
-  if (sectionCount !== COMBINED_SIGMA_PAYLOAD_SECTION_COUNT) {
-    throw new Error(`combined_sigma decoder payload must contain ${COMBINED_SIGMA_PAYLOAD_SECTION_COUNT} sections.`);
+  if (sectionCount !== combinedSigmaPayloadContract.sections.length) {
+    throw new Error(`combined_sigma decoder payload must contain ${combinedSigmaPayloadContract.sections.length} sections.`);
   }
 
   const lengthsOffset = 12;

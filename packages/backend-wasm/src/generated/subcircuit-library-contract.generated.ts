@@ -1,10 +1,21 @@
 // Generated from packages/frontend/qap-compiler/contracts/subcircuit-library-contract.v1.json.
-const contract = {
+export const SUBCIRCUIT_LIBRARY_CONTRACT = {
   "contractVersion": 1,
   "owner": "qap-compiler",
   "libraryArtifacts": {
     "setupParams": {
       "fileName": "setupParams.json",
+      "fields": {
+        "freePublicLength": "l_free",
+        "publicLength": "l",
+        "userOutputLength": "l_user_out",
+        "userLength": "l_user",
+        "domainPublicLength": "l_D",
+        "domainWireLength": "m_D",
+        "constraintCount": "n",
+        "subcircuitCount": "s_D",
+        "placementCapacity": "s_max"
+      },
       "requiredFields": [
         "l_free",
         "l",
@@ -24,6 +35,16 @@ const contract = {
     },
     "subcircuitInfo": {
       "fileName": "subcircuitInfo.json",
+      "fields": {
+        "id": "id",
+        "name": "name",
+        "wireCount": "Nwires",
+        "constraintCount": "Nconsts",
+        "outputRange": "Out_idx",
+        "inputRange": "In_idx",
+        "globalWireMap": "flattenMap",
+        "bufferDirection": "bufferDirection"
+      },
       "requiredFields": [
         "id",
         "name",
@@ -41,4 +62,4 @@ const contract = {
   }
 } as const;
 
-export default contract;
+export default SUBCIRCUIT_LIBRARY_CONTRACT;
