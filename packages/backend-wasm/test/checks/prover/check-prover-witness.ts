@@ -673,37 +673,36 @@ function checkPublicWireLayout(): void {
   const subcircuitInfos: ProverSubcircuitInfo[] = [
     {
       id: 0,
-      name: "renamable-output-buffer",
+      name: "ordinary-subcircuit",
+      Nwires: 1,
+      Nconsts: 0,
+      Out_idx: [0, 0],
+      In_idx: [0, 0],
+      flattenMap: [6],
+    },
+    {
+      id: 1,
+      name: "output-buffer",
       Nwires: 3,
       Nconsts: 0,
       Out_idx: [1, 2],
       In_idx: [0, 0],
-      flattenMap: [6, 0, 1],
+      flattenMap: [7, 0, 1],
       bufferDirection: "out",
     },
     {
-      id: 1,
-      name: "renamable-input-buffer",
-      Nwires: 3,
-      Nconsts: 0,
-      Out_idx: [0, 0],
-      In_idx: [1, 2],
-      flattenMap: [7, 3, 4],
-      bufferDirection: "in",
-    },
-    {
       id: 2,
-      name: "another-renamable-input-buffer",
-      Nwires: 3,
+      name: "input-buffer",
+      Nwires: 4,
       Nconsts: 0,
       Out_idx: [0, 0],
-      In_idx: [1, 1],
-      flattenMap: [8, 5, 9],
+      In_idx: [1, 3],
+      flattenMap: [8, 3, 4, 5],
       bufferDirection: "in",
     },
   ];
   const placements: ProverPlacementVariables = {
-    subcircuitIds: Uint32Array.from([0, 1, 2]),
+    subcircuitIds: Uint32Array.from([1, 2, 0]),
     variableOffsets: Uint32Array.from([0, 0, 0, 0]),
     variables: new Uint8Array(),
     fieldByteLength: 32,
@@ -712,17 +711,30 @@ function checkPublicWireLayout(): void {
   const layout = PublicWireLayout.derive(setup, subcircuitInfos);
   layout.validateRuntimeBufferPlacements(placements);
   assertEqual(layout.sourceForPublicWire(2), undefined, "public free padding source");
-  assertEqual(layout.sourceForPublicWire(5)?.subcircuitId, 2, "post-free public buffer phase");
-  assertEqual(countOMidVariables(setup, placements, subcircuitInfos), 4, "generic O_mid count");
+  assertEqual(layout.sourceForPublicWire(5)?.subcircuitId, 2, "post-free public buffer source");
+  assertEqual(layout.placementPhaseForSubcircuit(1), 0, "output buffer placement phase");
+  assertEqual(layout.placementPhaseForSubcircuit(2), 1, "input buffer placement phase");
+  assertEqual(layout.placementPhaseForPublicWire(5), 1, "public wire placement phase");
+  assertEqual(countOMidVariables(setup, placements, subcircuitInfos), 3, "generic O_mid count");
   assertEqual(countOPrvVariables(setup, placements, subcircuitInfos), 0, "generic O_prv count");
 
   const invalidPlacements: ProverPlacementVariables = {
     ...placements,
-    subcircuitIds: Uint32Array.from([0, 2, 1]),
+    subcircuitIds: Uint32Array.from([2, 1, 0]),
   };
   assertThrows(
     () => layout.validateRuntimeBufferPlacements(invalidPlacements),
     "runtime buffer placement phase validation",
+  );
+
+  const duplicateBufferPlacements: ProverPlacementVariables = {
+    ...placements,
+    subcircuitIds: Uint32Array.from([1, 1, 2, 0]),
+    variableOffsets: Uint32Array.from([0, 0, 0, 0, 0]),
+  };
+  assertThrows(
+    () => layout.validateRuntimeBufferPlacements(duplicateBufferPlacements),
+    "duplicate runtime buffer placement validation",
   );
 }
 

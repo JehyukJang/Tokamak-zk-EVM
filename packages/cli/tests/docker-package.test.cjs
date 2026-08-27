@@ -14,3 +14,12 @@ test('Docker package context includes the root-owned version-policy source', () 
   assert.match(dockerfile, /^COPY versioning \.\/versioning$/mu);
   assert.match(dockerfile, /test -f versioning\/compatibility\.rs/u);
 });
+
+test('ICICLE CUDA selection uses the executing process probe rather than an ambient Docker variable', () => {
+  const icicle = fs.readFileSync(path.join(packageRoot, 'src', 'runtime', 'icicle.ts'), 'utf8');
+  const docker = fs.readFileSync(path.join(packageRoot, 'src', 'runtime', 'docker.ts'), 'utf8');
+
+  assert.doesNotMatch(icicle, /TOKAMAK_ZKEVM_CLI_DOCKER_ENVIRONMENT/u);
+  assert.doesNotMatch(docker, /TOKAMAK_ZKEVM_CLI_DOCKER_ENVIRONMENT/u);
+  assert.match(icicle, /const installCudaBackend = await linuxCudaBackendAvailable\(verbose\);/u);
+});

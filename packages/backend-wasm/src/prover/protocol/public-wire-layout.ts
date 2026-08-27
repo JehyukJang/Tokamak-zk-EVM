@@ -19,6 +19,8 @@ export interface PublicWireSegment {
   readonly start: number;
   readonly end: number;
   readonly subcircuitId: number;
+  /** Placement-list phase assigned by the ordered buffer declarations. */
+  readonly placementPhase: number;
 }
 
 export class PublicWireLayout {
@@ -26,6 +28,7 @@ export class PublicWireLayout {
     private readonly lFree: number,
     private readonly sources: readonly (PublicWireSource | undefined)[],
     private readonly publicSegments: readonly PublicWireSegment[],
+    private readonly placementPhaseBySubcircuitId: ReadonlyMap<number, number>,
   ) {}
 
   static derive(
@@ -33,6 +36,7 @@ export class PublicWireLayout {
     subcircuitInfos: readonly ProverSubcircuitInfo[],
   ): PublicWireLayout {
     validateProverSubcircuitLibrary(setup, subcircuitInfos);
+    const placementPhaseBySubcircuitId = deriveBufferPlacementPhases(subcircuitInfos, setup.s_max);
 
     const globalSources: (PublicWireSource | undefined)[] = Array.from({ length: setup.m_D });
     for (let subcircuitId = 0; subcircuitId < subcircuitInfos.length; subcircuitId += 1) {
@@ -57,7 +61,7 @@ export class PublicWireLayout {
         if (globalWireIndex >= setup.l_free) {
           throw new Error(`Public padding at wire ${globalWireIndex} is outside the free region.`);
         }
-        finishSegment(active, seenPublicBuffers, segments);
+        finishSegment(active, seenPublicBuffers, segments, placementPhaseBySubcircuitId);
         active = undefined;
         continue;
       }
@@ -75,7 +79,7 @@ export class PublicWireLayout {
         continue;
       }
 
-      finishSegment(active, seenPublicBuffers, segments);
+      finishSegment(active, seenPublicBuffers, segments, placementPhaseBySubcircuitId);
       if (source.localWireIndex !== publicPort.start) {
         throw new Error(
           `Public buffer ${source.subcircuitId} starts at local wire ${source.localWireIndex}, expected ${publicPort.start}.`,
@@ -88,9 +92,14 @@ export class PublicWireLayout {
         publicPort,
       };
     }
-    finishSegment(active, seenPublicBuffers, segments);
+    finishSegment(active, seenPublicBuffers, segments, placementPhaseBySubcircuitId);
 
-    return new PublicWireLayout(setup.l_free, sources, segments);
+    return new PublicWireLayout(
+      setup.l_free,
+      sources,
+      segments,
+      placementPhaseBySubcircuitId,
+    );
   }
 
   freePublicLen(): number {
@@ -105,24 +114,49 @@ export class PublicWireLayout {
     return this.sources[globalWireIndex];
   }
 
+  placementPhaseForPublicWire(globalWireIndex: number): number | undefined {
+    const source = this.sourceForPublicWire(globalWireIndex);
+    return source === undefined
+      ? undefined
+      : this.placementPhaseForSubcircuit(source.subcircuitId);
+  }
+
+  placementPhaseForSubcircuit(subcircuitId: number): number | undefined {
+    return this.placementPhaseBySubcircuitId.get(subcircuitId);
+  }
+
   segments(): readonly PublicWireSegment[] {
     return this.publicSegments;
   }
 
   validateRuntimeBufferPlacements(placements: ProverPlacementVariables): void {
-    let previousPlacementIndex = -1;
+    const publicBufferIds = new Set(this.publicSegments.map((segment) => segment.subcircuitId));
+    const runtimePhaseBySubcircuitId = new Map<number, number>();
+
+    for (let placementPhase = 0; placementPhase < placementCount(placements); placementPhase += 1) {
+      const subcircuitId = placementSubcircuitId(placements, placementPhase);
+      if (!publicBufferIds.has(subcircuitId)) {
+        continue;
+      }
+      const previousPhase = runtimePhaseBySubcircuitId.get(subcircuitId);
+      if (previousPhase !== undefined) {
+        throw new Error(
+          `Public buffer ${subcircuitId} appears at runtime placement phases ${previousPhase} and ${placementPhase}.`,
+        );
+      }
+      runtimePhaseBySubcircuitId.set(subcircuitId, placementPhase);
+    }
+
     for (const segment of this.publicSegments) {
-      let placementIndex = previousPlacementIndex + 1;
-      while (
-        placementIndex < placementCount(placements)
-        && placementSubcircuitId(placements, placementIndex) !== segment.subcircuitId
-      ) {
-        placementIndex += 1;
+      const runtimePhase = runtimePhaseBySubcircuitId.get(segment.subcircuitId);
+      if (runtimePhase === undefined) {
+        throw new Error(`Public buffer ${segment.subcircuitId} has no runtime placement.`);
       }
-      if (placementIndex === placementCount(placements)) {
-        throw new Error(`Public buffer ${segment.subcircuitId} has no runtime placement in public-buffer order.`);
+      if (runtimePhase !== segment.placementPhase) {
+        throw new Error(
+          `Public buffer ${segment.subcircuitId} is at runtime placement phase ${runtimePhase}, expected ${segment.placementPhase}.`,
+        );
       }
-      previousPlacementIndex = placementIndex;
     }
   }
 }
@@ -147,6 +181,7 @@ function finishSegment(
   active: ActiveSegment | undefined,
   seenPublicBuffers: Set<number>,
   segments: PublicWireSegment[],
+  placementPhaseBySubcircuitId: ReadonlyMap<number, number>,
 ): void {
   if (active === undefined) {
     return;
@@ -158,9 +193,41 @@ function finishSegment(
     throw new Error(`Public buffer ${active.subcircuitId} does not cover its complete public port.`);
   }
   seenPublicBuffers.add(active.subcircuitId);
+  const placementPhase = placementPhaseBySubcircuitId.get(active.subcircuitId);
+  if (placementPhase === undefined) {
+    throw new Error(`Public buffer ${active.subcircuitId} has no placement phase.`);
+  }
   segments.push({
     start: active.start,
     end: active.end,
     subcircuitId: active.subcircuitId,
+    placementPhase,
   });
+}
+
+function deriveBufferPlacementPhases(
+  subcircuitInfos: readonly ProverSubcircuitInfo[],
+  sMax: number,
+): ReadonlyMap<number, number> {
+  const placementPhaseBySubcircuitId = new Map<number, number>();
+
+  for (const info of subcircuitInfos) {
+    if (info.bufferDirection === undefined) {
+      continue;
+    }
+    const placementPhase = placementPhaseBySubcircuitId.size;
+    if (placementPhase >= sMax) {
+      throw new Error(`Buffer placement phase ${placementPhase} is outside s_max ${sMax}.`);
+    }
+    if (placementPhaseBySubcircuitId.has(info.id)) {
+      throw new Error(`Subcircuit library contains duplicate buffer id ${info.id}.`);
+    }
+    placementPhaseBySubcircuitId.set(info.id, placementPhase);
+  }
+
+  if (placementPhaseBySubcircuitId.size === 0) {
+    throw new Error("Subcircuit library does not declare any buffers.");
+  }
+
+  return placementPhaseBySubcircuitId;
 }

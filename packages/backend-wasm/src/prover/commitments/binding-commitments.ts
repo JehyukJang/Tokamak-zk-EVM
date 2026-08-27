@@ -87,8 +87,12 @@ export async function encodeOPubFree(
     if (source === undefined) {
       continue;
     }
+    const placementPhase = publicWireLayout.placementPhaseForPublicWire(globalIndex);
+    if (placementPhase === undefined) {
+      throw new Error(`Public wire ${globalIndex} has no buffer placement phase.`);
+    }
     bases.push(proverCrsG1PointAt(crs.sigma1.gammaInvOInst, globalIndex));
-    scalars.push(placementVariableAt(placementVariables, source.subcircuitId, source.localWireIndex));
+    scalars.push(placementVariableAt(placementVariables, placementPhase, source.localWireIndex));
   }
 
   return msmG1(runtime, bases, scalars);

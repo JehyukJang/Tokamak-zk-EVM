@@ -287,6 +287,7 @@ test('installer ingress accepts every canonical phase-1 provenance variant', asy
         backendReleaseDir,
         'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
         '2.1',
+        '2.1.5',
       );
 
       assert.equal(result.provenancePath, path.join(extractedDir, 'crs_provenance.json'));
@@ -316,6 +317,7 @@ test('rejects a development trusted-setup provenance before CRS installation', a
         backendReleaseDir,
         'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
         '2.1',
+        '2.1.5',
       ),
       /documentKind must equal "finalMpcCrs"/u,
     );
@@ -383,6 +385,7 @@ test('installer ingress rejects malformed and semantically invalid provenance fi
           backendReleaseDir,
           'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
           '2.1',
+          '2.1.5',
         ),
         testCase.expected,
         testCase.name,
@@ -409,11 +412,83 @@ test('rejects CRS provenance with an incompatible subcircuit-library package ver
         backendReleaseDir,
         'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
         '2.1',
+        '2.1.5',
       ),
       /provenance subcircuit-library version 2\.2\.0 is not compatible with 2\.1/u,
     );
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('keeps CRS provenance library version as a release-line check rather than an exact CLI pairing', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-'));
+  try {
+    const extractedDir = path.join(tempDir, 'archive');
+    const backendReleaseDir = path.join(tempDir, 'backend');
+    await fs.mkdir(extractedDir);
+    await fs.mkdir(backendReleaseDir);
+    await writeCrsArchiveFixture(extractedDir, '2.1.4');
+    await writeBackendMetadata(backendReleaseDir);
+
+    await assert.doesNotReject(
+      validateDownloadedCrsArchive(
+        extractedDir,
+        backendReleaseDir,
+        'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
+        '2.1',
+        '2.1.5',
+      ),
+    );
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('requires every backend package metadata version to match the current CLI package', async () => {
+  const cases = [
+    {
+      name: 'older backend patch version',
+      mutate: (metadata) => ({ ...metadata, packageVersion: '2.1.4' }),
+      expected: /has version 2\.1\.4, expected current CLI package version 2\.1\.5/u,
+    },
+    {
+      name: 'newer backend patch version',
+      mutate: (metadata) => ({ ...metadata, packageVersion: '2.1.6' }),
+      expected: /has version 2\.1\.6, expected current CLI package version 2\.1\.5/u,
+    },
+    {
+      name: 'inconsistent backend package version',
+      mutate: (metadata, backendName) =>
+        backendName === 'prove' ? { ...metadata, packageVersion: '2.1.6' } : metadata,
+      expected: /Backend package prove has version 2\.1\.6, expected current CLI package version 2\.1\.5/u,
+    },
+  ];
+
+  for (const testCase of cases) {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-'));
+    try {
+      const extractedDir = path.join(tempDir, 'archive');
+      const backendReleaseDir = path.join(tempDir, 'backend');
+      await fs.mkdir(extractedDir);
+      await fs.mkdir(backendReleaseDir);
+      await writeCrsArchiveFixture(extractedDir);
+      await writeBackendMetadata(backendReleaseDir, testCase.mutate);
+
+      await assert.rejects(
+        validateDownloadedCrsArchive(
+          extractedDir,
+          backendReleaseDir,
+          'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
+          '2.1',
+          '2.1.5',
+        ),
+        testCase.expected,
+        testCase.name,
+      );
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
   }
 });
 
@@ -484,6 +559,7 @@ test('installer ingress rejects every build-metadata contract violation', async 
           backendReleaseDir,
           'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
           '2.1',
+          '2.1.5',
         ),
         testCase.expected,
         testCase.name,
@@ -550,6 +626,73 @@ test('rejects an unmanaged active CRS symlink without replacing it', async () =>
     assert.deepEqual(await fs.readdir(path.join(tempDir, 'resource', 'setup', 'generations')), []);
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('rejects every unowned CRS activation temporary path without modifying it', async () => {
+  const cases = [
+    {
+      name: 'file',
+      prepare: async (temporaryLink) => {
+        await fs.writeFile(temporaryLink, 'do not remove\n', 'utf8');
+      },
+      assertUnchanged: async (temporaryLink) => {
+        assert.equal(await fs.readFile(temporaryLink, 'utf8'), 'do not remove\n');
+      },
+    },
+    {
+      name: 'directory',
+      prepare: async (temporaryLink) => {
+        await fs.mkdir(temporaryLink);
+        await fs.writeFile(path.join(temporaryLink, 'keep.txt'), 'do not remove\n', 'utf8');
+      },
+      assertUnchanged: async (temporaryLink) => {
+        assert.equal((await fs.lstat(temporaryLink)).isDirectory(), true);
+        assert.equal(await fs.readFile(path.join(temporaryLink, 'keep.txt'), 'utf8'), 'do not remove\n');
+      },
+    },
+    {
+      name: 'external symlink',
+      prepare: async (temporaryLink, tempDir) => {
+        const externalDirectory = path.join(tempDir, 'external');
+        await fs.mkdir(externalDirectory);
+        await fs.writeFile(path.join(externalDirectory, 'keep.txt'), 'do not remove\n', 'utf8');
+        await fs.symlink(externalDirectory, temporaryLink, 'dir');
+      },
+      assertUnchanged: async (temporaryLink) => {
+        assert.equal((await fs.lstat(temporaryLink)).isSymbolicLink(), true);
+        assert.equal(await fs.readFile(path.join(temporaryLink, 'keep.txt'), 'utf8'), 'do not remove\n');
+      },
+    },
+  ];
+
+  for (const testCase of cases) {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-'));
+    try {
+      const extractedDir = path.join(tempDir, 'archive');
+      const setupOutputDir = path.join(tempDir, 'resource', 'setup', 'output');
+      const temporaryLink = `${setupOutputDir}.next`;
+      await fs.mkdir(extractedDir, { recursive: true });
+      await fs.mkdir(path.dirname(setupOutputDir), { recursive: true });
+      await writeCrsArchiveFixture(extractedDir, '2.1.5', 'replacement');
+      await testCase.prepare(temporaryLink, tempDir);
+
+      await assert.rejects(
+        installValidatedCrsGeneration(
+          extractedDir,
+          path.join(extractedDir, 'crs_provenance.json'),
+          setupOutputDir,
+          'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
+        ),
+        /activation temporary.*not managed/u,
+        testCase.name,
+      );
+
+      await testCase.assertUnchanged(temporaryLink);
+      assert.deepEqual(await fs.readdir(path.join(tempDir, 'resource', 'setup', 'generations')), []);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
   }
 });
 

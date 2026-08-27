@@ -18,8 +18,6 @@ import type {
 } from './model.js';
 import { commandExists, commandSucceeds, logVerbose, runCommand } from '../system.js';
 
-const DOCKER_ENVIRONMENT_ENV = 'TOKAMAK_ZKEVM_CLI_DOCKER_ENVIRONMENT';
-
 const DOCKER_BOOTSTRAP_VERSION = 1;
 
 const DOCKER_CONTAINER_CACHE_ROOT = '/tokamak-cache';
@@ -370,8 +368,6 @@ function dockerInstallArgs(context: RuntimeContext, bootstrap: DockerBootstrap, 
     `${context.cacheRoot}:${DOCKER_CONTAINER_CACHE_ROOT}`,
     '-e',
     `TOKAMAK_ZKEVM_CLI_CACHE_DIR=${DOCKER_CONTAINER_CACHE_ROOT}`,
-    '-e',
-    `${DOCKER_ENVIRONMENT_ENV}=${bootstrap.dockerEnvironment}`,
     '-e',
     'HOME=/tmp',
     bootstrap.imageName,

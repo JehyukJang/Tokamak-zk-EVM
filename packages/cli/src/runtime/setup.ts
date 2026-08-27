@@ -252,6 +252,7 @@ export async function validateDownloadedCrsArchive(
   backendReleaseDir: string,
   archiveName: string,
   compatibleBackendVersion: string,
+  expectedBackendPackageVersion: string,
 ): Promise<{
   provenancePath: string;
 }> {
@@ -300,6 +301,11 @@ export async function validateDownloadedCrsArchive(
     if (backendCompatibleVersion !== compatibleBackendVersion) {
       throw new Error(
         `Backend package ${backendName} has compatibleBackendVersion ${backendCompatibleVersion}, but the downloaded CRS expects ${compatibleBackendVersion}.`,
+      );
+    }
+    if (backendVersion !== expectedBackendPackageVersion) {
+      throw new Error(
+        `Backend package ${backendName} has version ${backendVersion}, expected current CLI package version ${expectedBackendPackageVersion}.`,
       );
     }
     if (packageCompatibleVersion(backendVersion, `${backendName} packageVersion`) !== compatibleBackendVersion) {
@@ -375,6 +381,7 @@ export async function installDownloadedSetup(
       backendReleaseDir,
       archiveName,
       context.compatibleBackendVersion,
+      context.packageVersion,
     );
 
     await installValidatedCrsGeneration(extractedDir, provenancePath, paths.setupOutputDir, archiveName);
@@ -445,8 +452,9 @@ async function activateCrsGeneration(
     );
   }
   const temporaryLink = `${setupOutputDir}.next`;
-  await fs.rm(temporaryLink, { recursive: true, force: true });
+  await removeManagedTemporarySetupLink(temporaryLink, generationsDirectory);
   await fs.symlink(path.relative(path.dirname(setupOutputDir), nextGenerationDirectory), temporaryLink, 'dir');
+  let temporaryLinkCreated = true;
 
   let migratedLegacyDirectory: string | undefined;
   if (outputState.kind === 'directory') {
@@ -456,8 +464,11 @@ async function activateCrsGeneration(
 
   try {
     await fs.rename(temporaryLink, setupOutputDir);
+    temporaryLinkCreated = false;
   } catch (error) {
-    await fs.rm(temporaryLink, { recursive: true, force: true });
+    if (temporaryLinkCreated) {
+      await removeManagedTemporarySetupLink(temporaryLink, generationsDirectory);
+    }
     if (migratedLegacyDirectory !== undefined) {
       await fs.rename(migratedLegacyDirectory, setupOutputDir);
     }
@@ -465,6 +476,32 @@ async function activateCrsGeneration(
   }
 
   return outputState.kind === 'symlink' ? outputState.targetGenerationDirectory : migratedLegacyDirectory;
+}
+
+async function removeManagedTemporarySetupLink(
+  temporaryLink: string,
+  generationsDirectory: string,
+): Promise<void> {
+  let temporaryLinkStat: Awaited<ReturnType<typeof fs.lstat>>;
+  try {
+    temporaryLinkStat = await fs.lstat(temporaryLink);
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      return;
+    }
+    throw error;
+  }
+  if (!temporaryLinkStat.isSymbolicLink()) {
+    throw new Error(`Existing setup activation temporary path is not managed by this CLI installation: ${temporaryLink}`);
+  }
+  const target = await fs.readlink(temporaryLink);
+  const resolvedTarget = path.resolve(path.dirname(temporaryLink), target);
+  if (!isPathInside(generationsDirectory, resolvedTarget)) {
+    throw new Error(
+      `Existing setup activation temporary symlink is not managed by this CLI installation: ${temporaryLink} -> ${target}`,
+    );
+  }
+  await fs.rm(temporaryLink, { force: true });
 }
 
 type SetupOutputState =
