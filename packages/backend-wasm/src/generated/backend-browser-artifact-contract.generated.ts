@@ -344,7 +344,7 @@ export const BACKEND_BROWSER_ARTIFACT_CONTRACT = {
           "label": "sigma1.delta-inv-alphak-xh-tx",
           "type": "CrsG1",
           "encoding": "ffjs-g1-affine-96",
-          "elementCount": null,
+          "elementCount": 9,
           "elementByteLength": null,
           "points": []
         },
@@ -352,7 +352,7 @@ export const BACKEND_BROWSER_ARTIFACT_CONTRACT = {
           "label": "sigma1.delta-inv-alpha4-xj-tx",
           "type": "CrsG1",
           "encoding": "ffjs-g1-affine-96",
-          "elementCount": null,
+          "elementCount": 2,
           "elementByteLength": null,
           "points": []
         },
@@ -360,7 +360,7 @@ export const BACKEND_BROWSER_ARTIFACT_CONTRACT = {
           "label": "sigma1.delta-inv-alphak-yi-ty",
           "type": "CrsG1",
           "encoding": "ffjs-g1-affine-96",
-          "elementCount": null,
+          "elementCount": 12,
           "elementByteLength": null,
           "points": []
         },
