@@ -1,5 +1,4 @@
 import { createBinaryArtifactFile } from "../../artifacts/binary/binary-artifact-file.js";
-import { BinaryArtifactFileKind } from "../../artifacts/binary/binary-format.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
 import { GENERATED_SETUP_PARAMS } from "../../generated/active/setup.generated.js";
 import { INSTANCE_V1_SPEC } from "../../generated/browser-artifact-contracts.generated.js";
@@ -54,7 +53,7 @@ async function createInstanceArtifact(
   );
 
   return createBinaryArtifactFile({
-    kind: BinaryArtifactFileKind.Instance,
+    kind: INSTANCE_V1_SPEC.kind,
     sourcePackageVersion,
     sections: [
       {

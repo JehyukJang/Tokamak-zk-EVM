@@ -2,7 +2,6 @@ import { getCurveFromName } from "ffjavascript";
 
 import { createBinaryArtifactFile } from "../../artifacts/binary/binary-artifact-file.js";
 import {
-  BinaryArtifactFileKind,
   BinarySectionEncoding,
   BinarySectionType,
   type BinarySectionInput,
@@ -98,7 +97,7 @@ export async function convertCombinedSigmaRkyvToCrsBinaries(
 
     const sourcePackageVersion = requireSourcePackageVersion(options.sourcePackageVersion);
     const proverCrs = await createBinaryArtifactFile({
-      kind: BinaryArtifactFileKind.ProverCrs,
+      kind: PROVER_CRS_V1_SPEC.kind,
       sourcePackageVersion,
       sections: convertedDefinitions.map(toBinarySectionInput),
     });
@@ -170,7 +169,7 @@ async function createPreprocessCrs(
   const compactGammaInvOInst = pointTail(gammaInvOInst, mFunction);
 
   return createBinaryArtifactFile({
-    kind: BinaryArtifactFileKind.PreprocessCrs,
+    kind: PREPROCESS_CRS_V1_SPEC.kind,
     sourcePackageVersion,
     sections: [
       toBinarySectionInput(pointDefinition(PREPROCESS_CRS_V1_SPEC.sections[0], compactXyPowers)),
@@ -188,7 +187,7 @@ async function createVerifierCrs(
   assertPointCount(sigmaG2, 10, G2_AFFINE_BYTES, "sigma.g2");
 
   return createBinaryArtifactFile({
-    kind: BinaryArtifactFileKind.VerifierCrs,
+    kind: SIGMA_VERIFY_V1_SPEC.kind,
     sourcePackageVersion,
     sections: [
       toBinarySectionInput(pointDefinition(SIGMA_VERIFY_V1_SPEC.sections[0], selectPoints(sigmaG1, [0, 1, 2, 5]))),

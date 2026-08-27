@@ -1,5 +1,4 @@
 import { createBinaryArtifactFile } from "../../artifacts/binary/binary-artifact-file.js";
-import { BinaryArtifactFileKind } from "../../artifacts/binary/binary-format.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
 import { SYNTHESIZER_BROWSER_ARTIFACT_CONTRACT } from "../../generated/synthesizer-browser-artifact-contract.generated.js";
 import { PROVER_PERMUTATION_V1_SPEC } from "../../generated/browser-artifact-contracts.generated.js";
@@ -31,7 +30,7 @@ export async function convertPermutation(permutation: unknown): Promise<Uint8Arr
   const entries = parseNativePermutationJson(permutation);
 
   return createBinaryArtifactFile({
-    kind: BinaryArtifactFileKind.ProverPermutation,
+    kind: PROVER_PERMUTATION_V1_SPEC.kind,
     sourcePackageVersion: BACKEND_WASM_PACKAGE_VERSION,
     sections: [
       {

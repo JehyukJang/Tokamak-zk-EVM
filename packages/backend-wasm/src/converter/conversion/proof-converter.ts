@@ -105,7 +105,7 @@ async function createVerifierProofArtifact(
   }
 
   return createBinaryArtifactFile({
-    kind: BinaryArtifactFileKind.VerifierProof,
+    kind: VERIFIER_PROOF_V1_SPEC.kind,
     sourcePackageVersion,
     sections: [
       {

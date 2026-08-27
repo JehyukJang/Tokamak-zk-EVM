@@ -1,7 +1,4 @@
 import { createBinaryArtifactFile } from "../../artifacts/binary/binary-artifact-file.js";
-import {
-  BinaryArtifactFileKind,
-} from "../../artifacts/binary/binary-format.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
 import { BACKEND_BROWSER_ARTIFACT_CONTRACT } from "../../generated/backend-browser-artifact-contract.generated.js";
 import { VERIFIER_PREPROCESS_V1_SPEC } from "../../generated/browser-artifact-contracts.generated.js";
@@ -57,7 +54,7 @@ async function createVerifierPreprocessArtifact(
   );
 
   return createBinaryArtifactFile({
-    kind: BinaryArtifactFileKind.VerifierPreprocess,
+    kind: VERIFIER_PREPROCESS_V1_SPEC.kind,
     sourcePackageVersion,
     sections: [
       {
