@@ -155,17 +155,9 @@ if (backendWasmVersionMatch?.[1] !== expectedVersion) {
   );
 }
 
-if (!sourceOnly) {
-  const backendWasmGeneratedModule = readText('packages/backend-wasm/src/generated/setup.generated.ts');
-  for (const constantName of ['NATIVE_BACKEND_VERSION', 'SUBCIRCUIT_LIBRARY_PACKAGE_VERSION']) {
-    const match = new RegExp(`${constantName}\\s*=\\s*"([^"]+)"`, 'u').exec(backendWasmGeneratedModule);
-    if (match?.[1] !== expectedVersion) {
-      fail(
-        `packages/backend-wasm generated ${constantName} is '${match?.[1] ?? 'missing'}', expected '${expectedVersion}'.`,
-      );
-    }
-  }
-}
+// backend-wasm active generated inputs are ignored, mode-specific build
+// products. Its build and generated-input checks own their version validation;
+// the repository source policy must remain valid in a fresh checkout.
 
 const backendVersion = getBackendWorkspaceVersion();
 if (backendVersion !== expectedVersion) {
