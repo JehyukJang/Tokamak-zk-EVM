@@ -138,7 +138,7 @@ Run focused checks while developing:
 ```sh
 npm run typecheck
 npm run typecheck:scripts
-npm run specs:check
+npm run contracts:check
 npm run binary:check
 npm run prover:ops:check
 npm run prover:witness:check

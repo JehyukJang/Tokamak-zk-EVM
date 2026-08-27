@@ -19,7 +19,6 @@ export interface PublicWireSegment {
   readonly start: number;
   readonly end: number;
   readonly subcircuitId: number;
-  readonly phase: number;
 }
 
 export class PublicWireLayout {
@@ -111,16 +110,19 @@ export class PublicWireLayout {
   }
 
   validateRuntimeBufferPlacements(placements: ProverPlacementVariables): void {
+    let previousPlacementIndex = -1;
     for (const segment of this.publicSegments) {
-      if (segment.phase >= placementCount(placements)) {
-        throw new Error(`Public buffer phase ${segment.phase} has no runtime placement.`);
+      let placementIndex = previousPlacementIndex + 1;
+      while (
+        placementIndex < placementCount(placements)
+        && placementSubcircuitId(placements, placementIndex) !== segment.subcircuitId
+      ) {
+        placementIndex += 1;
       }
-      const subcircuitId = placementSubcircuitId(placements, segment.phase);
-      if (subcircuitId !== segment.subcircuitId) {
-        throw new Error(
-          `Runtime placement ${segment.phase} has subcircuit ${subcircuitId}, expected public buffer ${segment.subcircuitId}.`,
-        );
+      if (placementIndex === placementCount(placements)) {
+        throw new Error(`Public buffer ${segment.subcircuitId} has no runtime placement in public-buffer order.`);
       }
+      previousPlacementIndex = placementIndex;
     }
   }
 }
@@ -160,6 +162,5 @@ function finishSegment(
     start: active.start,
     end: active.end,
     subcircuitId: active.subcircuitId,
-    phase: active.subcircuitId,
   });
 }

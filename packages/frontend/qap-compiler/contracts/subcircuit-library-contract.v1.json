@@ -1,0 +1,21 @@
+{
+  "contractVersion": 1,
+  "owner": "qap-compiler",
+  "libraryArtifacts": {
+    "setupParams": {
+      "fileName": "setupParams.json",
+      "requiredFields": ["l_free", "l", "l_user_out", "l_user", "l_D", "m_D", "n", "s_D", "s_max"],
+      "derivedDimensions": {
+        "functionInstance": "l - l_free",
+        "intermediateRows": "l_D - l",
+        "preprocessXyPowers": "(l_D - l) * s_max"
+      }
+    },
+    "subcircuitInfo": {
+      "fileName": "subcircuitInfo.json",
+      "requiredFields": ["id", "name", "Nwires", "Nconsts", "Out_idx", "In_idx", "flattenMap"],
+      "optionalFields": ["bufferDirection"],
+      "r1csFileName": "subcircuit{id}.r1cs"
+    }
+  }
+}

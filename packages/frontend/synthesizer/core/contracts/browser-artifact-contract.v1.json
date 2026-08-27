@@ -1,0 +1,30 @@
+{
+  "contractVersion": 1,
+  "owner": "synthesizer",
+  "artifacts": [
+    {
+      "name": "instance",
+      "sourceFile": "instance.json",
+      "sections": [
+        {"label": "instance.public", "type": "Instance", "encoding": "ffjs-fr-montgomery-le-32", "elementCount": null, "elementByteLength": 32, "points": []},
+        {"label": "instance.function", "type": "Instance", "encoding": "ffjs-fr-montgomery-le-32", "elementCount": null, "elementByteLength": 32, "points": []}
+      ]
+    },
+    {
+      "name": "prover_placement_variables",
+      "sourceFile": "placementVariables.json",
+      "sections": [
+        {"label": "placement.subcircuit_ids", "type": "Placement", "encoding": "bytes", "elementCount": null, "elementByteLength": 4, "points": []},
+        {"label": "placement.variable_offsets", "type": "Placement", "encoding": "bytes", "elementCount": null, "elementByteLength": 4, "points": []},
+        {"label": "placement.variables", "type": "Placement", "encoding": "ffjs-fr-montgomery-le-32", "elementCount": null, "elementByteLength": 32, "points": []}
+      ]
+    },
+    {
+      "name": "prover_permutation",
+      "sourceFile": "permutation.json",
+      "sections": [
+        {"label": "permutation.entries", "type": "Permutation", "encoding": "bytes", "elementCount": null, "elementByteLength": 16, "points": []}
+      ]
+    }
+  ]
+}

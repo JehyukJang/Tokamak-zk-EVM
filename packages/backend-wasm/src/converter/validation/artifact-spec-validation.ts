@@ -4,15 +4,17 @@ import {
   type BinarySectionView,
   expectedElementByteLength,
 } from "../../artifacts/binary/binary-format.js";
-import { INSTANCE_V1_SPEC } from "../../artifacts/specs/instance.v1.generated.js";
-import { PREPROCESS_CRS_V1_SPEC } from "../../artifacts/specs/preprocess-crs.v1.generated.js";
-import { PROVER_CRS_V1_SPEC } from "../../artifacts/specs/prover-crs.v1.generated.js";
-import { PROVER_PERMUTATION_V1_SPEC } from "../../artifacts/specs/prover-permutation.v1.generated.js";
-import { PROVER_PLACEMENT_VARIABLES_V1_SPEC } from "../../artifacts/specs/prover-placement-variables.v1.generated.js";
+import {
+  INSTANCE_V1_SPEC,
+  PREPROCESS_CRS_V1_SPEC,
+  PROVER_CRS_V1_SPEC,
+  PROVER_PERMUTATION_V1_SPEC,
+  PROVER_PLACEMENT_VARIABLES_V1_SPEC,
+  SIGMA_VERIFY_V1_SPEC,
+  VERIFIER_PREPROCESS_V1_SPEC,
+  VERIFIER_PROOF_V1_SPEC,
+} from "../../generated/browser-artifact-contracts.generated.js";
 import type { RuntimeArtifactFormatSpec, RuntimeArtifactSectionSpec } from "../../artifacts/specs/types.js";
-import { SIGMA_VERIFY_V1_SPEC } from "../../artifacts/specs/sigma-verify.v1.generated.js";
-import { VERIFIER_PREPROCESS_V1_SPEC } from "../../artifacts/specs/verifier-preprocess.v1.generated.js";
-import { VERIFIER_PROOF_V1_SPEC } from "../../artifacts/specs/verifier-proof.v1.generated.js";
 
 export function specForKind(kind: BinaryArtifactFileKind): RuntimeArtifactFormatSpec {
   switch (kind) {

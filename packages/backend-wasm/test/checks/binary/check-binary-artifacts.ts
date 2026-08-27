@@ -1,9 +1,11 @@
 import { fileURLToPath } from "node:url";
 
-import { PROVER_CRS_V1_SPEC } from "../../../src/artifacts/specs/prover-crs.v1.generated.js";
-import { PREPROCESS_CRS_V1_SPEC } from "../../../src/artifacts/specs/preprocess-crs.v1.generated.js";
-import { SIGMA_VERIFY_V1_SPEC } from "../../../src/artifacts/specs/sigma-verify.v1.generated.js";
-import { VERIFIER_PREPROCESS_V1_SPEC } from "../../../src/artifacts/specs/verifier-preprocess.v1.generated.js";
+import {
+  PREPROCESS_CRS_V1_SPEC,
+  PROVER_CRS_V1_SPEC,
+  SIGMA_VERIFY_V1_SPEC,
+  VERIFIER_PREPROCESS_V1_SPEC,
+} from "../../../src/generated/browser-artifact-contracts.generated.js";
 import {
   BinaryArtifactFileKind,
   BinarySectionEncoding,

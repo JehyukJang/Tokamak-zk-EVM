@@ -109,8 +109,6 @@
     "docs:development-package:check": "npm run clean && npm run docs:examples:check && tsx test/checks/docs/check-publication-docs.ts --expected-origin=localQapCompiler",
     "package:publication:check": "tsx test/checks/docs/check-publication-docs.ts --expected-origin=npmSnapshot",
     "rkyv:payload:check": "tsx test/checks/binary/check-rkyv-decoder-payload.ts",
-    "specs:check": "tsx scripts/generate/generate-format-specs.ts --check",
-    "specs:generate": "tsx scripts/generate/generate-format-specs.ts",
     "subcircuit-library:check": "npm run subcircuit-library:check:development",
     "subcircuit-library:input:check": "tsx test/checks/generate/check-subcircuit-library-input.ts",
     "subcircuit-library:check:development": "npm run subcircuit-library:input:check && tsx scripts/generate/generate-subcircuit-library.ts --origin=localQapCompiler --check",

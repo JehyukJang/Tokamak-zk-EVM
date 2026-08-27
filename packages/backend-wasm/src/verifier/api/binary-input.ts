@@ -5,8 +5,10 @@ import {
 import type { BinaryArtifactFileView } from "../../artifacts/binary/binary-format.js";
 import { assertBinaryArtifactCompatibility } from "../../artifacts/binary/compatibility.js";
 import { loadNamedArtifactPoints } from "../../artifacts/specs/format-spec-loader.js";
-import { VERIFIER_PREPROCESS_V1_SPEC } from "../../artifacts/specs/verifier-preprocess.v1.generated.js";
-import { VERIFIER_PROOF_V1_SPEC } from "../../artifacts/specs/verifier-proof.v1.generated.js";
+import {
+  VERIFIER_PREPROCESS_V1_SPEC,
+  VERIFIER_PROOF_V1_SPEC,
+} from "../../generated/browser-artifact-contracts.generated.js";
 import type { CurveRuntime } from "../../runtime/curve/curve.js";
 import type { FieldElement } from "../../runtime/field/field-runtime.js";
 import { BinarySectionEncoding, BinarySectionType } from "../../artifacts/binary/binary-format.js";

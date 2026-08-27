@@ -7,7 +7,10 @@ import {
   validateCrsProvenanceCompatibility,
 } from '../../../src/artifacts/binary/compatibility.js';
 import { BinaryArtifactFileKind, type BinaryArtifactFileView } from '../../../src/artifacts/binary/binary-format.js';
-import { SUBCIRCUIT_LIBRARY_PACKAGE_VERSION } from '../../../src/generated/active/setup.generated.js';
+import {
+  SUBCIRCUIT_LIBRARY_ORIGIN,
+  SUBCIRCUIT_LIBRARY_PACKAGE_VERSION,
+} from '../../../src/generated/active/setup.generated.js';
 
 const PACKAGE_NAME = '@tokamak-zk-evm/subcircuit-library';
 const CANONICAL_FINAL_MPC_PROVENANCE = JSON.parse(
@@ -201,7 +204,7 @@ function provenance(version: string): CrsProvenanceInput {
     subcircuitLibrary: {
       packageName: PACKAGE_NAME,
       packageVersion: version,
-      origin: 'npmSnapshot',
+      origin: SUBCIRCUIT_LIBRARY_ORIGIN,
     },
     phase1SourceProvenance: null,
     combinedSigmaSha256: '0'.repeat(64),
@@ -233,9 +236,9 @@ function expectFailure(action: () => void, message: string): void {
 function main(): void {
   const expected = provenance(SUBCIRCUIT_LIBRARY_PACKAGE_VERSION);
   validateCrsProvenanceCompatibility(expected);
-  validateCrsProvenanceCompatibility(CANONICAL_FINAL_MPC_PROVENANCE);
-  validateCrsProvenanceCompatibility(NATIVE_FINAL_MPC_PROVENANCE);
-  validateCrsProvenanceCompatibility(NULL_FINAL_MPC_PROVENANCE);
+  validateCrsProvenanceCompatibility(withSelectedOrigin(CANONICAL_FINAL_MPC_PROVENANCE));
+  validateCrsProvenanceCompatibility(withSelectedOrigin(NATIVE_FINAL_MPC_PROVENANCE));
+  validateCrsProvenanceCompatibility(withSelectedOrigin(NULL_FINAL_MPC_PROVENANCE));
   assertBinaryArtifactCompatibility(artifact(SUBCIRCUIT_LIBRARY_PACKAGE_VERSION));
 
   expectFailure(
@@ -291,6 +294,16 @@ function main(): void {
     'Binary CRS from a distinct compatibility class must be rejected.',
   );
   console.log('Checked CRS and binary artifact compatibility-class rejection');
+}
+
+function withSelectedOrigin(provenance: CrsProvenanceInput): CrsProvenanceInput {
+  return {
+    ...provenance,
+    subcircuitLibrary: {
+      ...provenance.subcircuitLibrary,
+      origin: SUBCIRCUIT_LIBRARY_ORIGIN,
+    },
+  };
 }
 
 main();

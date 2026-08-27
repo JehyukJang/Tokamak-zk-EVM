@@ -4,7 +4,7 @@ import {
 } from "../../artifacts/binary/binary-artifact-file.js";
 import type { BinaryArtifactFileView } from "../../artifacts/binary/binary-format.js";
 import { loadNamedArtifactPoints } from "../../artifacts/specs/format-spec-loader.js";
-import { PROVER_CRS_V1_SPEC } from "../../artifacts/specs/prover-crs.v1.generated.js";
+import { PROVER_CRS_V1_SPEC } from "../../generated/browser-artifact-contracts.generated.js";
 import type { CurveRuntime } from "../../runtime/curve/curve.js";
 import type { FieldElement } from "../../runtime/field/field-runtime.js";
 import { BinarySectionEncoding, BinarySectionType } from "../../artifacts/binary/binary-format.js";

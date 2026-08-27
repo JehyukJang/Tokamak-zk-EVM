@@ -9,7 +9,7 @@ import {
   decodeBinaryArtifactFile,
 } from "../../../src/artifacts/binary/binary-artifact-file.js";
 import { loadNamedArtifactPoints } from "../../../src/artifacts/specs/format-spec-loader.js";
-import { VERIFIER_PROOF_V1_SPEC } from "../../../src/artifacts/specs/verifier-proof.v1.generated.js";
+import { VERIFIER_PROOF_V1_SPEC } from "../../../src/generated/browser-artifact-contracts.generated.js";
 import { createCurveRuntime } from "../../../src/runtime/curve/curve.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../../src/version.js";
 import type { FieldElement, FieldRuntime } from "../../../src/runtime/field/field-runtime.js";
@@ -365,7 +365,7 @@ async function main(): Promise<void> {
       placementVariables: await decodeBinaryArtifactFile(
         await createBinaryArtifactFile({
           kind: BinaryArtifactFileKind.ProverPlacementVariables,
-          sourcePackageVersion: "0.0.0",
+          sourcePackageVersion: BACKEND_WASM_PACKAGE_VERSION,
           sections: [
             {
               type: BinarySectionType.Placement,
@@ -397,7 +397,7 @@ async function main(): Promise<void> {
       permutation: await decodeBinaryArtifactFile(
         await createBinaryArtifactFile({
           kind: BinaryArtifactFileKind.ProverPermutation,
-          sourcePackageVersion: "0.0.0",
+          sourcePackageVersion: BACKEND_WASM_PACKAGE_VERSION,
           sections: [
             {
               type: BinarySectionType.Permutation,
@@ -413,7 +413,7 @@ async function main(): Promise<void> {
       instance: await decodeBinaryArtifactFile(
         await createBinaryArtifactFile({
           kind: BinaryArtifactFileKind.Instance,
-          sourcePackageVersion: "0.0.0",
+          sourcePackageVersion: BACKEND_WASM_PACKAGE_VERSION,
           sections: [
             {
               type: BinarySectionType.Instance,
@@ -446,7 +446,7 @@ async function main(): Promise<void> {
 
     const placementVariablesBytes = await createBinaryArtifactFile({
       kind: BinaryArtifactFileKind.ProverPlacementVariables,
-      sourcePackageVersion: "0.0.0",
+      sourcePackageVersion: BACKEND_WASM_PACKAGE_VERSION,
       sections: [
         {
           type: BinarySectionType.Placement,
@@ -476,7 +476,7 @@ async function main(): Promise<void> {
     });
     const permutationBytes = await createBinaryArtifactFile({
       kind: BinaryArtifactFileKind.ProverPermutation,
-      sourcePackageVersion: "0.0.0",
+      sourcePackageVersion: BACKEND_WASM_PACKAGE_VERSION,
       sections: [
         {
           type: BinarySectionType.Permutation,
@@ -490,7 +490,7 @@ async function main(): Promise<void> {
     });
     const instanceBytes = await createBinaryArtifactFile({
       kind: BinaryArtifactFileKind.Instance,
-      sourcePackageVersion: "0.0.0",
+      sourcePackageVersion: BACKEND_WASM_PACKAGE_VERSION,
       sections: [
         {
           type: BinarySectionType.Instance,
@@ -504,7 +504,7 @@ async function main(): Promise<void> {
     });
     const crsBytes = await createBinaryArtifactFile({
       kind: BinaryArtifactFileKind.ProverCrs,
-      sourcePackageVersion: "0.0.0",
+      sourcePackageVersion: BACKEND_WASM_PACKAGE_VERSION,
       sections: [
         createRepeatedG1Section("sigma.g1", 6),
         createRepeatedG1Section("sigma1.xy-powers", 2),
@@ -533,7 +533,11 @@ async function main(): Promise<void> {
         proverCrs: crsBytes,
       },
     );
-    assertEqual(proverInput.witness.subcircuitInfos.length, 14, "prover subcircuit info count");
+    assertEqual(
+      proverInput.witness.subcircuitInfos.length,
+      GENERATED_SETUP_PARAMS.s_D,
+      "prover subcircuit info count",
+    );
     assertEqual(proverInput.crs.sigma1.xyPowers.count, 2, "prover CRS xy powers length");
     assertEqual(
       proverCrsG1PointAt(proverInput.crs.sigma1.xyPowers, 1).byteLength,
@@ -573,7 +577,11 @@ async function main(): Promise<void> {
       runtime,
       proverInput.crs,
       GENERATED_SETUP_PARAMS,
-      emptyPlacementVariables(runtime.Fr.byteLength),
+      bufferPlacementVariables(
+        runtime.Fr.byteLength,
+        GENERATED_SETUP_PARAMS,
+        proverInput.witness.subcircuitInfos,
+      ),
       proverInput.witness.subcircuitInfos,
       generatedInstancePolynomials.aFreeX,
       generatedMixer,
@@ -688,11 +696,11 @@ function checkPublicWireLayout(): void {
     l: 6,
     l_user_out: 0,
     l_user: 0,
-    l_D: 8,
-    m_D: 10,
+    l_D: 10,
+    m_D: 12,
     n: 1,
     s_D: 3,
-    s_max: 3,
+    s_max: 4,
   };
   const subcircuitInfos: ProverSubcircuitInfo[] = [
     {
@@ -737,8 +745,8 @@ function checkPublicWireLayout(): void {
   layout.validateRuntimeBufferPlacements(placements);
   assertEqual(layout.sourceForPublicWire(2), undefined, "public free padding source");
   assertEqual(layout.sourceForPublicWire(5)?.subcircuitId, 2, "post-free public buffer phase");
-  assertEqual(countOMidVariables(setup, placements, subcircuitInfos), 2, "generic O_mid count");
-  assertEqual(countOPrvVariables(setup, placements, subcircuitInfos), 2, "generic O_prv count");
+  assertEqual(countOMidVariables(setup, placements, subcircuitInfos), 4, "generic O_mid count");
+  assertEqual(countOPrvVariables(setup, placements, subcircuitInfos), 0, "generic O_prv count");
 
   const invalidPlacements: ProverPlacementVariables = {
     ...placements,
@@ -827,11 +835,24 @@ function packPlacementVariables(
   };
 }
 
-function emptyPlacementVariables(fieldByteLength: number): ProverPlacementVariables {
+function bufferPlacementVariables(
+  fieldByteLength: number,
+  setup: SetupParams,
+  subcircuitInfos: readonly ProverSubcircuitInfo[],
+): ProverPlacementVariables {
+  const subcircuitIds = Uint32Array.from(
+    PublicWireLayout.derive(setup, subcircuitInfos)
+      .segments()
+      .map((segment) => segment.subcircuitId),
+  );
+  const variableOffsets = new Uint32Array(subcircuitIds.length + 1);
+  for (let index = 0; index < subcircuitIds.length; index += 1) {
+    variableOffsets[index + 1] = variableOffsets[index] + subcircuitInfos[subcircuitIds[index]].Nwires;
+  }
   return {
-    subcircuitIds: new Uint32Array(),
-    variableOffsets: Uint32Array.of(0),
-    variables: new Uint8Array(),
+    subcircuitIds,
+    variableOffsets,
+    variables: new Uint8Array(variableOffsets[variableOffsets.length - 1] * fieldByteLength),
     fieldByteLength,
   };
 }

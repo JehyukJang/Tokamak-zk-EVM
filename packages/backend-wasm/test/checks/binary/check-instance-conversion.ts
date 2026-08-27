@@ -51,7 +51,7 @@ async function main(): Promise<void> {
         ...source,
         a_pub_function: source.a_pub_function.slice(1),
       }),
-    "Function instance length must equal setupParams.l - setupParams.l_free (600).",
+    `Function instance length must equal setupParams.l - setupParams.l_free (${setup.l - setup.l_free}).`,
   );
   await assertOldInstanceRejected();
 

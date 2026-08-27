@@ -17,7 +17,6 @@ export function validateProverSubcircuitLibrary(
     throw new Error(`subcircuitInfo has ${subcircuitInfos.length} entries, expected s_D ${setup.s_D}.`);
   }
 
-  const bufferIds: number[] = [];
   for (let index = 0; index < subcircuitInfos.length; index += 1) {
     const info = subcircuitInfos[index];
     if (info.id !== index) {
@@ -38,20 +37,7 @@ export function validateProverSubcircuitLibrary(
       }
     }
     if (info.bufferDirection !== undefined) {
-      bufferIds.push(info.id);
       bufferPublicPort(info);
-    }
-  }
-
-  if (bufferIds.length === 0) {
-    throw new Error("subcircuitInfo does not declare any buffers.");
-  }
-  for (let phase = 0; phase < bufferIds.length; phase += 1) {
-    if (bufferIds[phase] !== phase) {
-      throw new Error(`Buffer subcircuit ids must form a prefix; missing id ${phase}.`);
-    }
-    if (phase >= setup.s_max) {
-      throw new Error(`Buffer phase ${phase} is outside s_max ${setup.s_max}.`);
     }
   }
 }
