@@ -153,9 +153,9 @@ async function checkProverCrsArtifact(runtime: CurveRuntime): Promise<void> {
       createRepeatedG1Section(runtime, "sigma1.gamma-inv-o-inst", BinarySectionType.CrsG1, 1),
       createRepeatedG1Section(runtime, "sigma1.eta-inv-li-o-inter-alpha4-kj", BinarySectionType.CrsG1, 1),
       createRepeatedG1Section(runtime, "sigma1.delta-inv-li-o-prv", BinarySectionType.CrsG1, 1),
-      createRepeatedG1Section(runtime, "sigma1.delta-inv-alphak-xh-tx", BinarySectionType.CrsG1, 1),
-      createRepeatedG1Section(runtime, "sigma1.delta-inv-alpha4-xj-tx", BinarySectionType.CrsG1, 1),
-      createRepeatedG1Section(runtime, "sigma1.delta-inv-alphak-yi-ty", BinarySectionType.CrsG1, 1),
+      createRepeatedG1Section(runtime, "sigma1.delta-inv-alphak-xh-tx", BinarySectionType.CrsG1, 9),
+      createRepeatedG1Section(runtime, "sigma1.delta-inv-alpha4-xj-tx", BinarySectionType.CrsG1, 2),
+      createRepeatedG1Section(runtime, "sigma1.delta-inv-alphak-yi-ty", BinarySectionType.CrsG1, 12),
       {
         type: BinarySectionType.CrsG2,
         encoding: BinarySectionEncoding.FfjsG2Affine192,
