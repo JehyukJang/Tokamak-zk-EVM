@@ -1,10 +1,12 @@
 import { fileURLToPath } from "node:url";
 
 import {
+  INSTANCE_V1_SPEC,
   PREPROCESS_CRS_V1_SPEC,
   PROVER_CRS_V1_SPEC,
   SIGMA_VERIFY_V1_SPEC,
   VERIFIER_PREPROCESS_V1_SPEC,
+  VERIFIER_PROOF_V1_SPEC,
 } from "../../../src/generated/browser-artifact-contracts.generated.js";
 import {
   BinaryArtifactFileKind,
@@ -16,6 +18,7 @@ import {
   createBinaryArtifactFile,
   decodeBinaryArtifactFile,
 } from "../../../src/artifacts/binary/binary-artifact-file.js";
+import { admitRuntimeBinaryArtifact } from "../../../src/artifacts/binary/runtime-admission.js";
 import { loadNamedArtifactPoints } from "../../../src/artifacts/specs/format-spec-loader.js";
 import {
   createCurveRuntime,
@@ -28,6 +31,7 @@ import { concatBytes } from "../../support/bytes.js";
 
 async function main(): Promise<void> {
   await checkSelfDigestPolicy();
+  await checkRuntimeStructuralAdmission();
   const runtime = await createCurveRuntime();
 
   try {
@@ -40,6 +44,71 @@ async function main(): Promise<void> {
   }
 
   console.log("Checked production runtime artifact formats");
+}
+
+async function checkRuntimeStructuralAdmission(): Promise<void> {
+  const validInstance = await createBinaryArtifactFile({
+    kind: BinaryArtifactFileKind.Instance,
+    sourcePackageVersion: "0.0.0",
+    sections: [
+      instanceSection("instance.public", 1),
+      instanceSection("instance.function", 1),
+    ],
+  });
+  admitRuntimeBinaryArtifact(validInstance, BinaryArtifactFileKind.Instance, INSTANCE_V1_SPEC);
+
+  const wrongMagic = validInstance.slice();
+  wrongMagic[0] ^= 1;
+  assertThrows(() => admitRuntimeBinaryArtifact(wrongMagic, BinaryArtifactFileKind.Instance, INSTANCE_V1_SPEC), "magic mismatch");
+
+  const wrongKind = await createBinaryArtifactFile({
+    kind: BinaryArtifactFileKind.VerifierProof,
+    sourcePackageVersion: "0.0.0",
+    sections: [instanceSection("instance.public", 1), instanceSection("instance.function", 1)],
+  });
+  assertThrows(() => admitRuntimeBinaryArtifact(wrongKind, BinaryArtifactFileKind.Instance, INSTANCE_V1_SPEC), "kind mismatch");
+
+  const duplicate = await createBinaryArtifactFile({
+    kind: BinaryArtifactFileKind.Instance,
+    sourcePackageVersion: "0.0.0",
+    sections: [instanceSection("instance.public", 1), instanceSection("instance.public", 1)],
+  });
+  assertThrows(() => admitRuntimeBinaryArtifact(duplicate, BinaryArtifactFileKind.Instance, INSTANCE_V1_SPEC), "exactly one");
+
+  const wrongProofShape = await createBinaryArtifactFile({
+    kind: BinaryArtifactFileKind.VerifierProof,
+    sourcePackageVersion: "0.0.0",
+    sections: [
+      {
+        type: BinarySectionType.Proof,
+        encoding: BinarySectionEncoding.FfjsG1Affine96,
+        label: "proof.g1",
+        elementCount: 18,
+        elementByteLength: 96,
+        data: new Uint8Array(18 * 96),
+      },
+      {
+        type: BinarySectionType.Proof,
+        encoding: BinarySectionEncoding.FfjsFrMontgomeryLe32,
+        label: "proof.evals",
+        elementCount: 4,
+        elementByteLength: 32,
+        data: new Uint8Array(4 * 32),
+      },
+    ],
+  });
+  assertThrows(() => admitRuntimeBinaryArtifact(wrongProofShape, BinaryArtifactFileKind.VerifierProof, VERIFIER_PROOF_V1_SPEC), "element count mismatch");
+}
+
+function instanceSection(label: string, elementCount: number): BinarySectionInput {
+  return {
+    type: BinarySectionType.Instance,
+    encoding: BinarySectionEncoding.FfjsFrMontgomeryLe32,
+    label,
+    elementCount,
+    elementByteLength: 32,
+    data: new Uint8Array(elementCount * 32),
+  };
 }
 
 async function checkSelfDigestPolicy(): Promise<void> {
@@ -256,6 +325,19 @@ async function assertRejects(
     );
   }
   throw new Error(`Expected operation to reject with '${expectedMessage}'.`);
+}
+
+function assertThrows(operation: () => unknown, expectedMessageFragment: string): void {
+  try {
+    operation();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes(expectedMessageFragment)) {
+      return;
+    }
+    throw new Error(`Expected an error containing '${expectedMessageFragment}', got '${message}'.`);
+  }
+  throw new Error(`Expected an error containing '${expectedMessageFragment}'.`);
 }
 
 const entrypoint = fileURLToPath(import.meta.url);

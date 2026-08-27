@@ -411,10 +411,12 @@ whole-file SHA-256 self-digest, and the versioned artifact specification. The
 self-digest detects accidental or malicious byte changes; it does not
 authenticate the producer or replace trusted provenance.
 
-Preprocess, the prover, and the verifier deliberately do not call
-`validateBinary()`. They decode and process their named binary inputs directly
-to keep the runtime algorithms focused. Call validation separately when the
-application's trust boundary requires it.
+Preprocess, the prover, and the verifier perform mandatory structural admission
+of each named binary input: container layout, artifact kind, exact required
+sections, encodings, and contract-fixed shapes. They do not call
+`validateBinary()` and do not verify its optional self digest. Call validation
+separately when the application's trust boundary requires whole-file integrity
+checking.
 
 ## Browser deployment and lifecycle
 
@@ -474,11 +476,12 @@ versions. Every binary carries its independent `formatVersion` and
 `sourcePackageVersion`. The format version identifies the binary layout; the
 source package version identifies the producer release.
 
-The runtime validates the CRS provenance and binary artifact compatibility class
-against its selected subcircuit-library. It does not compare library-content
-digests. Incompatible binary structure or compatibility class rejects with
-`INVALID_INPUT`; a structurally decodable but cryptographically incompatible
-proof may return `false`.
+The runtime validates the binary artifact compatibility class against its
+selected subcircuit-library and structurally admits the producer-defined binary
+container. It does not validate CRS provenance, `releaseEligible`, ceremony
+state, publication state, or library-content digests. Incompatible binary
+structure or compatibility class rejects with `INVALID_INPUT`; a structurally
+valid but cryptographically incompatible proof may return `false`.
 
 ## How this package relates to Tokamak zk-EVM
 

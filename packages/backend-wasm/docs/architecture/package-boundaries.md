@@ -51,14 +51,16 @@ validator implementation ─> artifact binary/spec modules
 ```
 
 Preprocess, prover, and verifier must not import converter or validator entry
-points. Converters and validators must not be called implicitly by runtime
-preprocess, prove, or verify operations.
+points. Each runtime binary loader performs the shared, producer-contract
+structural admission before setup-dependent parsing. It does not call the
+converter's optional self-digest validator or provenance policy.
 
 ## Directory Ownership
 
 ### `src/artifacts`
 
-- `binary`: binary header, table, digest, encoding, and decoding primitives.
+- `binary`: binary header, table, encoding, decoding, and mandatory runtime
+  structural-admission primitives.
 - `setup`: shared setup parameter types.
 - `specs`: one versioned JSON format specification per binary artifact kind and
   generated TypeScript spec constants.

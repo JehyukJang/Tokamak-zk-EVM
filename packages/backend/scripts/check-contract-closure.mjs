@@ -45,6 +45,26 @@ const requiredConsumerBoundaries = [
     'packages/cli/src/generated/backend-build-metadata-validator.generated.ts',
     'parseBackendBuildMetadata',
   ],
+  [
+    'backend-wasm qap contract adapter',
+    'packages/backend-wasm/scripts/generate/subcircuit-library-input.ts',
+    'SUBCIRCUIT_LIBRARY_CONTRACT',
+  ],
+  [
+    'backend-wasm synthesizer contract adapter',
+    'packages/backend-wasm/src/converter/conversion/instance-converter.ts',
+    'SYNTHESIZER_BROWSER_ARTIFACT_CONTRACT',
+  ],
+  [
+    'backend-wasm backend contract adapter',
+    'packages/backend-wasm/src/converter/conversion/rkyv-to-binary.ts',
+    'BACKEND_BROWSER_ARTIFACT_CONTRACT',
+  ],
+  [
+    'backend-wasm runtime artifact contract admission',
+    'packages/backend-wasm/src/artifacts/binary/runtime-admission.ts',
+    'RuntimeArtifactFormatSpec',
+  ],
 ];
 
 for (const [label, relativePath] of requiredBoundaries) {
