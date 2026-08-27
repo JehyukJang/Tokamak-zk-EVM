@@ -1,6 +1,5 @@
 import { requireBinaryArtifactSection } from "../../artifacts/binary/binary-artifact-file.js";
 import {
-  BinaryArtifactFileKind,
   type BinaryArtifactFileView,
   type BinarySectionView,
 } from "../../artifacts/binary/binary-format.js";
@@ -45,9 +44,9 @@ export async function loadPreprocessInputFromBinaryInput(
   input: PreprocessBinaryInput,
 ): Promise<PreprocessRuntimeInput> {
   const [permutation, instance, crs] = await Promise.all([
-    admitRuntimeBinaryArtifact(input.permutation, BinaryArtifactFileKind.ProverPermutation, PROVER_PERMUTATION_V1_SPEC),
-    admitRuntimeBinaryArtifact(input.instance, BinaryArtifactFileKind.Instance, INSTANCE_V1_SPEC),
-    admitRuntimeBinaryArtifact(input.preprocessCrs, BinaryArtifactFileKind.PreprocessCrs, PREPROCESS_CRS_V1_SPEC),
+    admitRuntimeBinaryArtifact(input.permutation, PROVER_PERMUTATION_V1_SPEC.kind, PROVER_PERMUTATION_V1_SPEC),
+    admitRuntimeBinaryArtifact(input.instance, INSTANCE_V1_SPEC.kind, INSTANCE_V1_SPEC),
+    admitRuntimeBinaryArtifact(input.preprocessCrs, PREPROCESS_CRS_V1_SPEC.kind, PREPROCESS_CRS_V1_SPEC),
   ]);
   const setup = GENERATED_SETUP_PARAMS;
   for (const artifact of [permutation, instance, crs]) {

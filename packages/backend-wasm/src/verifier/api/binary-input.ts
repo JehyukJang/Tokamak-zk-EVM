@@ -1,5 +1,5 @@
 import { requireBinaryArtifactSection } from "../../artifacts/binary/binary-artifact-file.js";
-import { BinaryArtifactFileKind, type BinaryArtifactFileView } from "../../artifacts/binary/binary-format.js";
+import { type BinaryArtifactFileView } from "../../artifacts/binary/binary-format.js";
 import { admitRuntimeBinaryArtifact } from "../../artifacts/binary/runtime-admission.js";
 import { assertBinaryArtifactCompatibility } from "../../artifacts/binary/compatibility.js";
 import { loadNamedArtifactPoints } from "../../artifacts/specs/format-spec-loader.js";
@@ -10,7 +10,6 @@ import {
 } from "../../generated/browser-artifact-contracts.generated.js";
 import type { CurveRuntime } from "../../runtime/curve/curve.js";
 import type { FieldElement } from "../../runtime/field/field-runtime.js";
-import { BinarySectionEncoding, BinarySectionType } from "../../artifacts/binary/binary-format.js";
 import { GENERATED_SETUP_PARAMS } from "../../generated/active/setup.generated.js";
 import type { VerifierSetupParams } from "../protocol/domain-context.js";
 import { GENERATED_VERIFIER_SIGMA } from "../generated/active/sigma-verify.generated.js";
@@ -29,14 +28,16 @@ export interface VerifierBinaryInput {
   readonly verifierPreprocess: Uint8Array;
 }
 
+const [publicInstanceSectionSpec] = INSTANCE_V1_SPEC.sections;
+
 export async function loadVerifierInputFromBinaryInput(
   runtime: CurveRuntime,
   input: VerifierBinaryInput,
 ): Promise<VerifierInput> {
   const [instance, proof, preprocess] = await Promise.all([
-    admitRuntimeBinaryArtifact(input.instance, BinaryArtifactFileKind.Instance, INSTANCE_V1_SPEC),
-    admitRuntimeBinaryArtifact(input.proof, BinaryArtifactFileKind.VerifierProof, VERIFIER_PROOF_V1_SPEC),
-    admitRuntimeBinaryArtifact(input.verifierPreprocess, BinaryArtifactFileKind.VerifierPreprocess, VERIFIER_PREPROCESS_V1_SPEC),
+    admitRuntimeBinaryArtifact(input.instance, INSTANCE_V1_SPEC.kind, INSTANCE_V1_SPEC),
+    admitRuntimeBinaryArtifact(input.proof, VERIFIER_PROOF_V1_SPEC.kind, VERIFIER_PROOF_V1_SPEC),
+    admitRuntimeBinaryArtifact(input.verifierPreprocess, VERIFIER_PREPROCESS_V1_SPEC.kind, VERIFIER_PREPROCESS_V1_SPEC),
   ]);
   const artifacts: VerifierBinaryArtifactFiles = {
     instance,
@@ -70,11 +71,7 @@ function parsePublicInstance(
   runtime: CurveRuntime,
   instanceFile: BinaryArtifactFileView,
 ): readonly FieldElement[] {
-  const section = requireBinaryArtifactSection(instanceFile, {
-    type: BinarySectionType.Instance,
-    encoding: BinarySectionEncoding.FfjsFrMontgomeryLe32,
-    label: "instance.public",
-  });
+  const section = requireBinaryArtifactSection(instanceFile, publicInstanceSectionSpec);
 
   return splitElements(section.data, runtime.Fr.byteLength);
 }

@@ -1,5 +1,5 @@
 import { requireBinaryArtifactSection } from "../../artifacts/binary/binary-artifact-file.js";
-import { BinaryArtifactFileKind, type BinaryArtifactFileView } from "../../artifacts/binary/binary-format.js";
+import { type BinaryArtifactFileView } from "../../artifacts/binary/binary-format.js";
 import { admitRuntimeBinaryArtifact } from "../../artifacts/binary/runtime-admission.js";
 import { loadNamedArtifactPoints } from "../../artifacts/specs/format-spec-loader.js";
 import {
@@ -110,10 +110,10 @@ export async function loadProverInputFromBinaryInput(
   input: ProverBinaryInput,
 ): Promise<ProverRuntimeInput> {
   const [placementVariables, permutation, instance, crs] = await Promise.all([
-    admitRuntimeBinaryArtifact(input.witness, BinaryArtifactFileKind.ProverPlacementVariables, PROVER_PLACEMENT_VARIABLES_V1_SPEC),
-    admitRuntimeBinaryArtifact(input.permutation, BinaryArtifactFileKind.ProverPermutation, PROVER_PERMUTATION_V1_SPEC),
-    admitRuntimeBinaryArtifact(input.instance, BinaryArtifactFileKind.Instance, INSTANCE_V1_SPEC),
-    admitRuntimeBinaryArtifact(input.proverCrs, BinaryArtifactFileKind.ProverCrs, PROVER_CRS_V1_SPEC),
+    admitRuntimeBinaryArtifact(input.witness, PROVER_PLACEMENT_VARIABLES_V1_SPEC.kind, PROVER_PLACEMENT_VARIABLES_V1_SPEC),
+    admitRuntimeBinaryArtifact(input.permutation, PROVER_PERMUTATION_V1_SPEC.kind, PROVER_PERMUTATION_V1_SPEC),
+    admitRuntimeBinaryArtifact(input.instance, INSTANCE_V1_SPEC.kind, INSTANCE_V1_SPEC),
+    admitRuntimeBinaryArtifact(input.proverCrs, PROVER_CRS_V1_SPEC.kind, PROVER_CRS_V1_SPEC),
   ]);
   const artifacts: ProverBinaryArtifactFiles = {
     placementVariables,
