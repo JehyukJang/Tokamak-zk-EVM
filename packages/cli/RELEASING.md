@@ -35,6 +35,16 @@ following cases:
 npm run --workspace @tokamak-zk-evm/cli test
 ```
 
+`installation.json` is the sole selector between native and Docker execution.
+Docker's `bootstrap.json` is a subordinate descriptor: the selected Docker
+state, descriptor package version, Docker environment, and deterministic image
+name must agree before a backend command can run in Docker. A native state must
+ignore residual Docker descriptors. Docker installation writes the descriptor
+before committing Docker state, so an interrupted install cannot select an
+unwritten descriptor. On Linux only, a valid Docker selection may run the
+installed native Linux runtime when the Docker daemon is unavailable; malformed
+or mismatched Docker descriptors and missing Docker images remain errors.
+
 The CRS installer may replace only its legacy setup directory or an active
 symbolic link whose target is under its `generations/` directory. An unmanaged
 symbolic link is an installation error and must remain unchanged.

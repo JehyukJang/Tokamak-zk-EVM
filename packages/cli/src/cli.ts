@@ -16,6 +16,7 @@ import {
   runtimePaths,
   uninstallRuntime,
   type RuntimeContext,
+  type RuntimeExecution,
 } from './runtime.js';
 
 type CommandName =
@@ -451,9 +452,10 @@ function normalizeSynthesizeArgs(args: string[]): TokamakChannelTxFiles {
   return parsed as TokamakChannelTxFiles;
 }
 
-async function runPreprocess(context: RuntimeContext, inputPath: string | undefined, verbose: boolean): Promise<void> {
+async function runPreprocess(execution: RuntimeExecution, inputPath: string | undefined, verbose: boolean): Promise<void> {
+  const { context } = execution;
   const paths = runtimePaths(context);
-  await runBackendStage(context, {
+  await runBackendStage(execution, {
     binaryPath: paths.preprocessBinary,
     inputPath,
     logMessage: `Preprocess: running backend preprocess (target=${context.platform})`,
@@ -470,9 +472,10 @@ async function runPreprocess(context: RuntimeContext, inputPath: string | undefi
   });
 }
 
-async function runProve(context: RuntimeContext, inputPath: string | undefined, verbose: boolean): Promise<void> {
+async function runProve(execution: RuntimeExecution, inputPath: string | undefined, verbose: boolean): Promise<void> {
+  const { context } = execution;
   const paths = runtimePaths(context);
-  await runBackendStage(context, {
+  await runBackendStage(execution, {
     binaryPath: paths.proveBinary,
     inputPath,
     logMessage: `Prove: running backend prove (target=${context.platform})`,
@@ -489,9 +492,10 @@ async function runProve(context: RuntimeContext, inputPath: string | undefined, 
   });
 }
 
-async function runVerify(context: RuntimeContext, inputPath: string | undefined, verbose: boolean): Promise<void> {
+async function runVerify(execution: RuntimeExecution, inputPath: string | undefined, verbose: boolean): Promise<void> {
+  const { context } = execution;
   const paths = runtimePaths(context);
-  await runBackendStage(context, {
+  await runBackendStage(execution, {
     binaryPath: paths.verifyBinary,
     inputPath,
     logMessage: `Verify: using artifacts in ${paths.resourceDir}`,
@@ -571,7 +575,7 @@ async function syncStageInputs(
   });
 }
 
-async function runBackendStage(context: RuntimeContext, options: BackendStageOptions): Promise<void> {
+async function runBackendStage(execution: RuntimeExecution, options: BackendStageOptions): Promise<void> {
   if (options.inputPath && options.syncInputs) {
     await options.syncInputs(options.inputPath);
   }
@@ -583,7 +587,7 @@ async function runBackendStage(context: RuntimeContext, options: BackendStageOpt
   }
 
   log(options.logMessage);
-  const result = await runBackendCommand(context, options.binaryPath, options.args, options.verbose);
+  const result = await runBackendCommand(execution, options.binaryPath, options.args, options.verbose);
   const successMessage = options.postProcessResult?.(result) ?? options.successMessage;
   if (!successMessage) {
     err(`Missing success message for backend stage ${path.basename(options.binaryPath)}`);
@@ -628,7 +632,7 @@ async function runDoctor(verbose: boolean): Promise<void> {
   const installCommand = process.platform === 'win32'
     ? 'tokamak-cli --install --docker'
     : 'tokamak-cli --install';
-  const context = await requireInstalledRuntime().catch((error: unknown) => {
+  const execution = await requireInstalledRuntime().catch((error: unknown) => {
     if (error instanceof Error && error.message.startsWith('Unsupported')) {
       throw error;
     }
@@ -640,13 +644,14 @@ async function runDoctor(verbose: boolean): Promise<void> {
   if (verbose) {
     info(verbose, `Node version: ${process.version}`);
     info(verbose, `Host platform: ${process.platform}`);
-    if (context !== null) {
-      info(verbose, `Runtime platform: ${context.platform}`);
+    if (execution !== null) {
+      info(verbose, `Runtime platform: ${execution.context.platform}`);
     }
   }
-  if (context === null) {
+  if (execution === null) {
     err(`Runtime not installed. Run \`${installCommand}\` first.`);
   }
+  const { context } = execution;
   const paths = runtimePaths(context);
   const backendBinaries = [
     ['preprocess', paths.preprocessBinary],
@@ -654,7 +659,7 @@ async function runDoctor(verbose: boolean): Promise<void> {
     ['verify', paths.verifyBinary],
   ] as const;
   for (const [binaryName, binaryPath] of backendBinaries) {
-    const result = await runBackendCommand(context, binaryPath, ['--version'], verbose, { quiet: true });
+    const result = await runBackendCommand(execution, binaryPath, ['--version'], verbose, { quiet: true });
     ok(`${binaryName} version: ${parseBackendVersion(binaryName, result.stdout, result.stderr)}`);
   }
   ok(`Runtime workspace: ${context.runtimeDir}`);
@@ -686,7 +691,8 @@ async function main(): Promise<void> {
       break;
   }
 
-  const context = await requireInstalledRuntime();
+  const execution = await requireInstalledRuntime();
+  const { context } = execution;
   const paths = runtimePaths(context);
   switch (parsed.command) {
     case 'synthesize': {
@@ -702,13 +708,13 @@ async function main(): Promise<void> {
       return;
     }
     case 'preprocess':
-      await runPreprocess(context, parsed.arg1, parsed.verbose);
+      await runPreprocess(execution, parsed.arg1, parsed.verbose);
       return;
     case 'prove':
-      await runProve(context, parsed.arg1, parsed.verbose);
+      await runProve(execution, parsed.arg1, parsed.verbose);
       return;
     case 'verify':
-      await runVerify(context, parsed.arg1, parsed.verbose);
+      await runVerify(execution, parsed.arg1, parsed.verbose);
       return;
     case 'extract-proof':
       await extractProofBundle(context, parsed.arg1 ?? '', parsed.verbose);

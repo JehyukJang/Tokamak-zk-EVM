@@ -5,7 +5,13 @@ import {
   compatibilityFromPackageVersion,
   parseCompatibleBackendVersion,
 } from '../generated/version-policy.generated.js';
-import type { CliPlatform, DockerEnvironment, RuntimeContext, RuntimeState } from './model.js';
+import type {
+  CliPlatform,
+  DockerEnvironment,
+  InstalledRuntime,
+  RuntimeContext,
+  RuntimeState,
+} from './model.js';
 
 type DockerHostPlatform = 'linux' | 'windows';
 
@@ -246,20 +252,20 @@ function nativeHostInstallModes(context: RuntimeContext): readonly RuntimeState[
   return ['native', 'docker'];
 }
 
-export async function requireInstalledRuntime(): Promise<RuntimeContext> {
+export async function requireInstalledRuntimeState(): Promise<InstalledRuntime> {
   if (process.platform === 'win32') {
     const context = await createDockerRuntimeContext();
     const state = await readInstalledState(context.platform);
-    validateInstalledRuntime(context, state, ['docker'], true);
+    const validatedState = validateInstalledRuntime(context, state, ['docker'], true);
     await fs.access(context.runtimeDir);
-    return context;
+    return { context, state: validatedState };
   }
 
   const context = await createRuntimeContext();
   const state = await readInstalledState(context.platform);
-  validateInstalledRuntime(context, state, nativeHostInstallModes(context), false);
+  const validatedState = validateInstalledRuntime(context, state, nativeHostInstallModes(context), false);
   await fs.access(context.runtimeDir);
-  return context;
+  return { context, state: validatedState };
 }
 
 export async function removeDirectoryIfEmpty(target: string): Promise<void> {

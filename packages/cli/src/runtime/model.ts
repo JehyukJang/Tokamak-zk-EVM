@@ -9,13 +9,25 @@ export interface InstallOptions {
   verbose: boolean;
 }
 
-export interface RuntimeState {
-  dockerEnvironment?: DockerEnvironment;
-  installMode: 'native' | 'docker';
+export type DockerEnvironment = 'ubuntu22' | 'ubuntu22-cuda122';
+
+interface RuntimeStateBase {
   packageVersion: string;
   platform: CliPlatform;
   installedAt: string;
 }
+
+export interface NativeRuntimeState extends RuntimeStateBase {
+  dockerEnvironment?: never;
+  installMode: 'native';
+}
+
+export interface DockerRuntimeState extends RuntimeStateBase {
+  dockerEnvironment: DockerEnvironment;
+  installMode: 'docker';
+}
+
+export type RuntimeState = NativeRuntimeState | DockerRuntimeState;
 
 export interface RuntimeContext {
   cacheRoot: string;
@@ -33,8 +45,6 @@ export interface CommandResult {
   stderr: string;
 }
 
-export type DockerEnvironment = 'ubuntu22' | 'ubuntu22-cuda122';
-
 export type NativeRuntimeOs =
   | { platform: 'macos' }
   | { platform: 'linux'; ubuntuVersion: '20.04' | '22.04' };
@@ -48,3 +58,21 @@ export interface DockerBootstrap {
   platform: 'linux';
   useGpus: boolean;
 }
+
+export interface InstalledRuntime {
+  context: RuntimeContext;
+  state: RuntimeState;
+}
+
+export type RuntimeExecution =
+  | {
+      mode: 'native';
+      context: RuntimeContext;
+      state: NativeRuntimeState;
+    }
+  | {
+      mode: 'docker';
+      bootstrap: DockerBootstrap;
+      context: RuntimeContext;
+      state: DockerRuntimeState;
+    };

@@ -10,6 +10,7 @@ import type { FieldElement } from "../../runtime/field/field-runtime.js";
 import { BinarySectionEncoding, BinarySectionType } from "../../artifacts/binary/binary-format.js";
 import { assertBinaryArtifactCompatibility } from "../../artifacts/binary/compatibility.js";
 import type { SetupParams } from "../../artifacts/setup/setup-params.js";
+import { validateSetupParams } from "../../artifacts/setup/validate-setup-params.js";
 import {
   GENERATED_PROVER_PACKED_R1CS,
   GENERATED_PROVER_SUBCIRCUIT_INFOS,
@@ -130,6 +131,9 @@ export function buildProverInputFromBinaryArtifacts(
 ): ProverRuntimeInput {
   const parts = loadProverRuntimeWitnessInputParts(runtime, artifacts);
 
+  const crs = parseProverCrs(artifacts.crs);
+  validateProverCrsForSetup(crs, parts.setup);
+
   return {
     witness: {
       setup: parts.setup,
@@ -139,7 +143,7 @@ export function buildProverInputFromBinaryArtifacts(
     },
     permutation: parts.permutation,
     publicInstance: parts.publicInstance,
-    crs: parseProverCrs(artifacts.crs),
+    crs,
   };
 }
 
@@ -280,6 +284,34 @@ export function parseProverCrs(crsFile: BinaryArtifactFileView): ProverCrsRuntim
   };
 }
 
+/** Validates the setup-dependent dimensions of a full prover CRS. */
+export function validateProverCrsForSetup(crs: ProverCrsRuntime, setup: SetupParams): void {
+  validateSetupParams(setup);
+
+  const intermediateWireCount = setup.l_D - setup.l;
+  const referenceStringXSize = Math.max(setup.n * 2, intermediateWireCount * 2);
+  const referenceStringYSize = setup.s_max * 2;
+  assertG1SectionCount(
+    crs.sigma1.xyPowers,
+    referenceStringXSize * referenceStringYSize,
+    "sigma1.xy-powers",
+  );
+  assertG1SectionCount(crs.sigma1.gammaInvOInst, setup.l, "sigma1.gamma-inv-o-inst");
+  assertG1SectionCount(
+    crs.sigma1.etaInvLiOInterAlpha4Kj,
+    intermediateWireCount * setup.s_max,
+    "sigma1.eta-inv-li-o-inter-alpha4-kj",
+  );
+  assertG1SectionCount(
+    crs.sigma1.deltaInvLiOPrv,
+    (setup.m_D - setup.l_D) * setup.s_max,
+    "sigma1.delta-inv-li-o-prv",
+  );
+  assertG1SectionCount(crs.sigma1.deltaInvAlphakXhTx, 9, "sigma1.delta-inv-alphak-xh-tx");
+  assertG1SectionCount(crs.sigma1.deltaInvAlpha4XjTx, 2, "sigma1.delta-inv-alpha4-xj-tx");
+  assertG1SectionCount(crs.sigma1.deltaInvAlphakYiTy, 12, "sigma1.delta-inv-alphak-yi-ty");
+}
+
 function readU32Array(data: Uint8Array, label: string): Uint32Array {
   if (data.byteLength % 4 !== 0) {
     throw new Error(`${label} byte length must be divisible by 4.`);
@@ -305,6 +337,12 @@ function describeG1Section(artifactFile: BinaryArtifactFileView, label: string):
     count: section.data.byteLength / section.elementByteLength,
     elementByteLength: section.elementByteLength,
   };
+}
+
+function assertG1SectionCount(section: ProverCrsG1Section, expectedCount: number, label: string): void {
+  if (section.count !== expectedCount) {
+    throw new Error(`${label} must contain exactly ${expectedCount} G1 points; received ${section.count}.`);
+  }
 }
 
 function requireG1Section(artifactFile: BinaryArtifactFileView, label: string) {

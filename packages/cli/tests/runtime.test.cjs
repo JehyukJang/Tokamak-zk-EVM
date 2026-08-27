@@ -9,6 +9,7 @@ const {
   assertInstalledRuntimeMatchesContext,
   parseInstalledRuntimeState,
 } = require('../dist/runtime/context.js');
+const { resolveRuntimeExecution, runBackendCommand } = require('../dist/runtime/docker.js');
 const { installStagedRuntime } = require('../dist/runtime/transaction.js');
 const { streamDownloadToFile } = require('../dist/runtime/download.js');
 
@@ -32,6 +33,48 @@ function runtimeState(packageVersion = '2.1.5') {
     platform: 'linux',
     installedAt: '2026-08-27T00:00:00.000Z',
   };
+}
+
+function dockerRuntimeState() {
+  return {
+    dockerEnvironment: 'ubuntu22',
+    installMode: 'docker',
+    packageVersion: '2.1.5',
+    platform: 'linux',
+    installedAt: '2026-08-27T00:00:00.000Z',
+  };
+}
+
+function dockerBootstrap(context, overrides = {}) {
+  return {
+    version: 1,
+    createdAt: '2026-08-27T00:00:00.000Z',
+    dockerEnvironment: 'ubuntu22',
+    imageName: `tokamak-zk-evm-cli:${context.packageVersion}-ubuntu22`,
+    packageVersion: context.packageVersion,
+    platform: 'linux',
+    useGpus: false,
+    ...overrides,
+  };
+}
+
+async function createRuntimeSelectionFixture() {
+  const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-runtime-selection-'));
+  const context = {
+    ...runtimeContext(),
+    cacheRoot: path.join(temporaryRoot, 'cache'),
+  };
+  context.platformDir = path.join(context.cacheRoot, context.platform);
+  context.runtimeDir = path.join(context.platformDir, 'runtime');
+  context.statePath = path.join(context.platformDir, 'installation.json');
+  await fs.mkdir(context.runtimeDir, { recursive: true });
+  return { context, temporaryRoot };
+}
+
+async function writeDockerBootstrap(context, bootstrap) {
+  const bootstrapPath = path.join(context.platformDir, 'docker', 'bootstrap.json');
+  await fs.mkdir(path.dirname(bootstrapPath), { recursive: true });
+  await fs.writeFile(bootstrapPath, `${JSON.stringify(bootstrap, null, 2)}\n`, 'utf8');
 }
 
 async function createInstalledRuntimeFixture() {
@@ -92,6 +135,118 @@ test('accepts only a structurally valid state for the current CLI runtime', () =
     () => parseInstalledRuntimeState({ ...native, installedAt: 'not-a-timestamp' }),
     /installedAt must be an ISO-8601 timestamp/u,
   );
+});
+
+test('uses installation state as the sole native-versus-Docker selector', async () => {
+  const { context, temporaryRoot } = await createRuntimeSelectionFixture();
+  try {
+    await writeDockerBootstrap(context, dockerBootstrap(context, { imageName: 'stale-bootstrap' }));
+    const execution = await resolveRuntimeExecution({ context, state: runtimeState() });
+    assert.deepEqual(execution, { mode: 'native', context, state: runtimeState() });
+  } finally {
+    await fs.rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test('requires a Docker bootstrap bound to the selected installed runtime', async () => {
+  const { context, temporaryRoot } = await createRuntimeSelectionFixture();
+  const installed = { context, state: dockerRuntimeState() };
+  try {
+    await assert.rejects(
+      resolveRuntimeExecution(installed),
+      /bootstrap is unavailable/u,
+    );
+
+    await writeDockerBootstrap(context, dockerBootstrap(context));
+    const execution = await resolveRuntimeExecution(installed);
+    assert.equal(execution.mode, 'docker');
+    if (execution.mode === 'docker') {
+      assert.equal(execution.bootstrap.imageName, 'tokamak-zk-evm-cli:2.1.5-ubuntu22');
+    }
+
+    await writeDockerBootstrap(context, dockerBootstrap(context, { packageVersion: '2.1.4' }));
+    await assert.rejects(
+      resolveRuntimeExecution(installed),
+      /does not match current CLI package version/u,
+    );
+
+    await writeDockerBootstrap(context, dockerBootstrap(context, {
+      dockerEnvironment: 'ubuntu22-cuda122',
+      imageName: 'tokamak-zk-evm-cli:2.1.5-ubuntu22-cuda122',
+      useGpus: true,
+    }));
+    await assert.rejects(
+      resolveRuntimeExecution(installed),
+      /does not match selected runtime environment/u,
+    );
+
+    await writeDockerBootstrap(context, dockerBootstrap(context, { imageName: 'unexpected-image' }));
+    await assert.rejects(
+      resolveRuntimeExecution(installed),
+      /does not match expected image/u,
+    );
+  } finally {
+    await fs.rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test('falls back to native execution only after a valid Docker selection loses its daemon', async () => {
+  const { context, temporaryRoot } = await createRuntimeSelectionFixture();
+  const fakeBin = path.join(temporaryRoot, 'bin');
+  const originalPath = process.env.PATH;
+  try {
+    await fs.mkdir(fakeBin);
+    const dockerPath = path.join(fakeBin, 'docker');
+    const backendPath = path.join(fakeBin, 'backend');
+    await fs.writeFile(dockerPath, '#!/usr/bin/env node\nprocess.exit(1);\n', 'utf8');
+    await fs.writeFile(backendPath, '#!/usr/bin/env node\nprocess.stdout.write("native fallback\\n");\n', 'utf8');
+    await fs.chmod(dockerPath, 0o755);
+    await fs.chmod(backendPath, 0o755);
+    process.env.PATH = `${fakeBin}${path.delimiter}${originalPath ?? ''}`;
+
+    const result = await runBackendCommand(
+      { mode: 'docker', context, state: dockerRuntimeState(), bootstrap: dockerBootstrap(context) },
+      backendPath,
+      [],
+      false,
+      { quiet: true },
+    );
+    assert.equal(result.stdout, 'native fallback\n');
+  } finally {
+    if (originalPath === undefined) {
+      delete process.env.PATH;
+    } else {
+      process.env.PATH = originalPath;
+    }
+    await fs.rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test('requires Docker Desktop for a selected Docker runtime on Windows', async () => {
+  const { context, temporaryRoot } = await createRuntimeSelectionFixture();
+  const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform');
+  const originalPath = process.env.PATH;
+  try {
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' });
+    process.env.PATH = '';
+    await assert.rejects(
+      runBackendCommand(
+        { mode: 'docker', context, state: dockerRuntimeState(), bootstrap: dockerBootstrap(context) },
+        path.join(context.runtimeDir, 'bin', 'prove'),
+        [],
+        false,
+      ),
+      /Docker Desktop is required/u,
+    );
+  } finally {
+    Object.defineProperty(process, 'platform', platformDescriptor);
+    if (originalPath === undefined) {
+      delete process.env.PATH;
+    } else {
+      process.env.PATH = originalPath;
+    }
+    await fs.rm(temporaryRoot, { recursive: true, force: true });
+  }
 });
 
 test('keeps the previous native runtime and state when staging fails before activation', async () => {
@@ -230,6 +385,10 @@ test('writes only Docker bootstrap state and removes the legacy launcher', async
     assert.equal(bootstrap.dockerEnvironment, 'ubuntu22');
     assert.equal(bootstrap.platform, 'linux');
     assert.equal(bootstrap.useGpus, false);
+    const state = JSON.parse(await fs.readFile(path.join(cacheRoot, 'linux', 'installation.json'), 'utf8'));
+    assert.equal(state.installMode, 'docker');
+    assert.equal(state.dockerEnvironment, bootstrap.dockerEnvironment);
+    assert.equal(state.packageVersion, bootstrap.packageVersion);
     await assert.rejects(fs.access(legacyLauncher));
   } finally {
     Object.defineProperty(process, 'platform', platformDescriptor);

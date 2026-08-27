@@ -99,10 +99,16 @@ The installer:
   provenance, and artifact hashes; and
 - stores runtime resources under the CLI cache.
 
-Docker installation records its state in
-`~/.tokamak-zk-evm/linux/docker/bootstrap.json`. Linux falls back to a valid
-native runtime when Docker is unavailable. Windows requires Docker Desktop
-because native backend execution is unsupported.
+Runtime mode is selected only by
+`~/.tokamak-zk-evm/<platform>/installation.json`. A Docker installation also
+stores its subordinate launch descriptor in
+`~/.tokamak-zk-evm/linux/docker/bootstrap.json`; the CLI validates that the
+descriptor's package version, Docker environment, and image name match the
+selected installation before invoking Docker. A residual descriptor cannot
+switch a native installation to Docker. After a valid Docker selection, Linux
+falls back to the installed native Linux runtime only when the Docker daemon is
+unavailable. Windows requires Docker Desktop because native backend execution
+is unsupported.
 
 ### Runtime upgrades and ownership
 

@@ -16,8 +16,9 @@ import {
   createDockerRuntimeContext,
   createRuntimeContext,
   removeDirectoryIfEmpty,
+  requireInstalledRuntimeState,
 } from './runtime/context.js';
-import { installDockerRuntime } from './runtime/docker.js';
+import { installDockerRuntime, resolveRuntimeExecution } from './runtime/docker.js';
 import { installIcicleRuntime } from './runtime/icicle.js';
 import {
   buildBackendReleaseBinaries,
@@ -27,7 +28,13 @@ import {
 } from './runtime/native.js';
 import { installDownloadedSetup, writeSkippedSetupNotice } from './runtime/setup.js';
 import { installStagedRuntime } from './runtime/transaction.js';
-import type { CliPlatform, InstallOptions, RuntimeContext, RuntimeState } from './runtime/model.js';
+import type {
+  CliPlatform,
+  InstallOptions,
+  RuntimeContext,
+  RuntimeExecution,
+  RuntimeState,
+} from './runtime/model.js';
 
 interface PrerequisiteFailure {
   name: string;
@@ -39,7 +46,6 @@ export {
   createRuntimeContext,
   detectPlatform,
   readInstalledState,
-  requireInstalledRuntime,
   resolveCacheRoot,
   resolvePackageRoot,
   runtimePaths,
@@ -50,9 +56,15 @@ export type {
   CommandResult,
   DockerEnvironment,
   InstallOptions,
+  InstalledRuntime,
   RuntimeContext,
+  RuntimeExecution,
   RuntimeState,
 } from './runtime/model.js';
+
+export async function requireInstalledRuntime(): Promise<RuntimeExecution> {
+  return await resolveRuntimeExecution(await requireInstalledRuntimeState());
+}
 
 function prerequisiteInstallHint(platform: CliPlatform): string {
   if (platform === 'macos') {

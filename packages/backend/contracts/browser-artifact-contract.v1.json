@@ -30,9 +30,9 @@
         {"label": "sigma1.gamma-inv-o-inst", "type": "CrsG1", "encoding": "ffjs-g1-affine-96", "elementCount": null, "elementByteLength": null, "points": []},
         {"label": "sigma1.eta-inv-li-o-inter-alpha4-kj", "type": "CrsG1", "encoding": "ffjs-g1-affine-96", "elementCount": null, "elementByteLength": null, "points": []},
         {"label": "sigma1.delta-inv-li-o-prv", "type": "CrsG1", "encoding": "ffjs-g1-affine-96", "elementCount": null, "elementByteLength": null, "points": []},
-        {"label": "sigma1.delta-inv-alphak-xh-tx", "type": "CrsG1", "encoding": "ffjs-g1-affine-96", "elementCount": null, "elementByteLength": null, "points": []},
-        {"label": "sigma1.delta-inv-alpha4-xj-tx", "type": "CrsG1", "encoding": "ffjs-g1-affine-96", "elementCount": null, "elementByteLength": null, "points": []},
-        {"label": "sigma1.delta-inv-alphak-yi-ty", "type": "CrsG1", "encoding": "ffjs-g1-affine-96", "elementCount": null, "elementByteLength": null, "points": []},
+        {"label": "sigma1.delta-inv-alphak-xh-tx", "type": "CrsG1", "encoding": "ffjs-g1-affine-96", "elementCount": 9, "elementByteLength": null, "points": []},
+        {"label": "sigma1.delta-inv-alpha4-xj-tx", "type": "CrsG1", "encoding": "ffjs-g1-affine-96", "elementCount": 2, "elementByteLength": null, "points": []},
+        {"label": "sigma1.delta-inv-alphak-yi-ty", "type": "CrsG1", "encoding": "ffjs-g1-affine-96", "elementCount": 12, "elementByteLength": null, "points": []},
         {"label": "sigma.g2", "type": "CrsG2", "encoding": "ffjs-g2-affine-192", "elementCount": 10, "elementByteLength": null, "points": [{"index": 0, "name": "H"}, {"index": 1, "name": "sigma2.alpha"}, {"index": 2, "name": "sigma2.alpha2"}, {"index": 3, "name": "sigma2.alpha3"}, {"index": 4, "name": "sigma2.alpha4"}, {"index": 5, "name": "sigma2.gamma"}, {"index": 6, "name": "sigma2.delta"}, {"index": 7, "name": "sigma2.eta"}, {"index": 8, "name": "sigma2.x"}, {"index": 9, "name": "sigma2.y"}]}
       ]
     },

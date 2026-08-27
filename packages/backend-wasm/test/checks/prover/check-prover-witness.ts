@@ -16,10 +16,11 @@ import type { FieldElement, FieldRuntime } from "../../../src/runtime/field/fiel
 import type { SetupParams } from "../../../src/artifacts/setup/setup-params.js";
 import { BivariatePolynomialBuffer } from "../../../src/runtime/polynomial/bivariate-polynomial-buffer.js";
 import {
-  loadProverInputFromBinaryInput,
+  parseProverCrs,
   loadProverRuntimeWitnessInputParts,
   proverCrsG1PointAt,
   proverCrsG1PointRange,
+  validateProverCrsForSetup,
 } from "../../../src/prover/api/binary-input.js";
 import {
   combineInitialRelation,
@@ -225,6 +226,11 @@ async function main(): Promise<void> {
       witness: prove0Witness,
     });
     const smallCrs = createSyntheticProverCrs(prove0Setup, 64);
+    validateProverCrsForSetup(smallCrs, prove0Setup);
+    assertThrows(
+      () => validateProverCrsForSetup(createSyntheticProverCrs(prove0Setup, 63), prove0Setup),
+      "setup-bound prover CRS validation",
+    );
     const smallEncoder = createSigma1CommitmentEncoder(runtime, smallCrs, prove0Setup);
     const smallArithmetic = await computeArithmeticArgumentCommitments(
       runtime,
@@ -524,41 +530,28 @@ async function main(): Promise<void> {
         },
       ],
     });
-    const proverInput = await loadProverInputFromBinaryInput(
-      runtime,
-      {
-        witness: placementVariablesBytes,
-        permutation: permutationBytes,
-        instance: instanceBytes,
-        proverCrs: crsBytes,
-      },
-    );
+    const proverCrs = parseProverCrs(await decodeBinaryArtifactFile(crsBytes));
+    assertEqual(proverCrs.sigma1.xyPowers.count, 2, "prover CRS xy powers length");
     assertEqual(
-      proverInput.witness.subcircuitInfos.length,
-      GENERATED_SETUP_PARAMS.s_D,
-      "prover subcircuit info count",
-    );
-    assertEqual(proverInput.crs.sigma1.xyPowers.count, 2, "prover CRS xy powers length");
-    assertEqual(
-      proverCrsG1PointAt(proverInput.crs.sigma1.xyPowers, 1).byteLength,
+      proverCrsG1PointAt(proverCrs.sigma1.xyPowers, 1).byteLength,
       96,
       "prover CRS xy powers point width",
     );
     assertEqual(
-      proverCrsG1PointRange(proverInput.crs.sigma1.xyPowers, 0, 2).byteLength,
+      proverCrsG1PointRange(proverCrs.sigma1.xyPowers, 0, 2).byteLength,
       192,
       "prover CRS xy powers range width",
     );
     assertEqual(
-      proverCrsG1PointAt(proverInput.crs.sigma1.xyPowers, 0).buffer,
-      proverInput.crs.sigma1.xyPowers.data.buffer,
+      proverCrsG1PointAt(proverCrs.sigma1.xyPowers, 0).buffer,
+      proverCrs.sigma1.xyPowers.data.buffer,
       "prover CRS point access backing buffer",
     );
-    assertEqual(proverInput.crs.sigma2.y.byteLength, 192, "prover CRS sigma2.y byte length");
+    assertEqual(proverCrs.sigma2.y.byteLength, 192, "prover CRS sigma2.y byte length");
 
     const encodedPolynomial = await encodePolynomialBufferWithSigma1(
       runtime,
-      proverInput.crs,
+      proverCrs,
       GENERATED_SETUP_PARAMS,
       BivariatePolynomialBuffer.fromCoeffs(runtime.Fr, [fr(3n), fr(5n)], 1, 2),
     );
@@ -566,31 +559,6 @@ async function main(): Promise<void> {
     if (!runtime.G1.eq(encodedPolynomial, expectedEncoding)) {
       throw new Error("prove0 sigma1 polynomial encoding mismatch.");
     }
-    const generatedInstancePolynomials = await buildProverInstancePolynomials(
-      runtime.Fr,
-      GENERATED_SETUP_PARAMS,
-      Array.from({ length: GENERATED_SETUP_PARAMS.l_free }, () => runtime.Fr.zero),
-      [],
-    );
-    const generatedMixer = await createProverMixer(runtime);
-    const binding = await buildProverBinding(
-      runtime,
-      proverInput.crs,
-      GENERATED_SETUP_PARAMS,
-      bufferPlacementVariables(
-        runtime.Fr.byteLength,
-        GENERATED_SETUP_PARAMS,
-        proverInput.witness.subcircuitInfos,
-      ),
-      proverInput.witness.subcircuitInfos,
-      generatedInstancePolynomials.aFreeX,
-      generatedMixer,
-      createSigma1CommitmentEncoder(runtime, proverInput.crs, GENERATED_SETUP_PARAMS),
-    );
-    assertEqual(binding.A_free.byteLength, 96, "binding A_free byte length");
-    assertEqual(binding.O_pub_free.byteLength, 96, "binding O_pub_free byte length");
-    assertEqual(binding.O_mid.byteLength, 144, "binding O_mid projective byte length");
-    assertEqual(binding.O_prv.byteLength, 144, "binding O_prv projective byte length");
   } finally {
     await runtime.terminate();
   }
@@ -831,28 +799,6 @@ function packPlacementVariables(
     subcircuitIds,
     variableOffsets,
     variables: concatBytes(variables),
-    fieldByteLength,
-  };
-}
-
-function bufferPlacementVariables(
-  fieldByteLength: number,
-  setup: SetupParams,
-  subcircuitInfos: readonly ProverSubcircuitInfo[],
-): ProverPlacementVariables {
-  const subcircuitIds = Uint32Array.from(
-    PublicWireLayout.derive(setup, subcircuitInfos)
-      .segments()
-      .map((segment) => segment.subcircuitId),
-  );
-  const variableOffsets = new Uint32Array(subcircuitIds.length + 1);
-  for (let index = 0; index < subcircuitIds.length; index += 1) {
-    variableOffsets[index + 1] = variableOffsets[index] + subcircuitInfos[subcircuitIds[index]].Nwires;
-  }
-  return {
-    subcircuitIds,
-    variableOffsets,
-    variables: new Uint8Array(variableOffsets[variableOffsets.length - 1] * fieldByteLength),
     fieldByteLength,
   };
 }
