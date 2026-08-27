@@ -1,13 +1,17 @@
+import { requireBinaryArtifactSection } from "../../artifacts/binary/binary-artifact-file.js";
 import {
-  decodeBinaryArtifactFile,
-  requireBinaryArtifactSection,
-} from "../../artifacts/binary/binary-artifact-file.js";
-import {
+  BinaryArtifactFileKind,
   BinarySectionEncoding,
   BinarySectionType,
   type BinaryArtifactFileView,
   type BinarySectionView,
 } from "../../artifacts/binary/binary-format.js";
+import { admitRuntimeBinaryArtifact } from "../../artifacts/binary/runtime-admission.js";
+import {
+  INSTANCE_V1_SPEC,
+  PREPROCESS_CRS_V1_SPEC,
+  PROVER_PERMUTATION_V1_SPEC,
+} from "../../generated/browser-artifact-contracts.generated.js";
 import { assertBinaryArtifactCompatibility } from "../../artifacts/binary/compatibility.js";
 import type { SetupParams } from "../../artifacts/setup/setup-params.js";
 import { GENERATED_SETUP_PARAMS } from "../../generated/active/setup.generated.js";
@@ -40,9 +44,9 @@ export async function loadPreprocessInputFromBinaryInput(
   input: PreprocessBinaryInput,
 ): Promise<PreprocessRuntimeInput> {
   const [permutation, instance, crs] = await Promise.all([
-    decodeBinaryArtifactFile(input.permutation),
-    decodeBinaryArtifactFile(input.instance),
-    decodeBinaryArtifactFile(input.preprocessCrs),
+    admitRuntimeBinaryArtifact(input.permutation, BinaryArtifactFileKind.ProverPermutation, PROVER_PERMUTATION_V1_SPEC),
+    admitRuntimeBinaryArtifact(input.instance, BinaryArtifactFileKind.Instance, INSTANCE_V1_SPEC),
+    admitRuntimeBinaryArtifact(input.preprocessCrs, BinaryArtifactFileKind.PreprocessCrs, PREPROCESS_CRS_V1_SPEC),
   ]);
   const setup = GENERATED_SETUP_PARAMS;
   for (const artifact of [permutation, instance, crs]) {

@@ -1,11 +1,10 @@
-import {
-  decodeBinaryArtifactFile,
-  requireBinaryArtifactSection,
-} from "../../artifacts/binary/binary-artifact-file.js";
-import type { BinaryArtifactFileView } from "../../artifacts/binary/binary-format.js";
+import { requireBinaryArtifactSection } from "../../artifacts/binary/binary-artifact-file.js";
+import { BinaryArtifactFileKind, type BinaryArtifactFileView } from "../../artifacts/binary/binary-format.js";
+import { admitRuntimeBinaryArtifact } from "../../artifacts/binary/runtime-admission.js";
 import { assertBinaryArtifactCompatibility } from "../../artifacts/binary/compatibility.js";
 import { loadNamedArtifactPoints } from "../../artifacts/specs/format-spec-loader.js";
 import {
+  INSTANCE_V1_SPEC,
   VERIFIER_PREPROCESS_V1_SPEC,
   VERIFIER_PROOF_V1_SPEC,
 } from "../../generated/browser-artifact-contracts.generated.js";
@@ -35,9 +34,9 @@ export async function loadVerifierInputFromBinaryInput(
   input: VerifierBinaryInput,
 ): Promise<VerifierInput> {
   const [instance, proof, preprocess] = await Promise.all([
-    decodeBinaryArtifactFile(input.instance),
-    decodeBinaryArtifactFile(input.proof),
-    decodeBinaryArtifactFile(input.verifierPreprocess),
+    admitRuntimeBinaryArtifact(input.instance, BinaryArtifactFileKind.Instance, INSTANCE_V1_SPEC),
+    admitRuntimeBinaryArtifact(input.proof, BinaryArtifactFileKind.VerifierProof, VERIFIER_PROOF_V1_SPEC),
+    admitRuntimeBinaryArtifact(input.verifierPreprocess, BinaryArtifactFileKind.VerifierPreprocess, VERIFIER_PREPROCESS_V1_SPEC),
   ]);
   const artifacts: VerifierBinaryArtifactFiles = {
     instance,

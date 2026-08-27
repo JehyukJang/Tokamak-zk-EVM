@@ -1,10 +1,13 @@
-import {
-  decodeBinaryArtifactFile,
-  requireBinaryArtifactSection,
-} from "../../artifacts/binary/binary-artifact-file.js";
-import type { BinaryArtifactFileView } from "../../artifacts/binary/binary-format.js";
+import { requireBinaryArtifactSection } from "../../artifacts/binary/binary-artifact-file.js";
+import { BinaryArtifactFileKind, type BinaryArtifactFileView } from "../../artifacts/binary/binary-format.js";
+import { admitRuntimeBinaryArtifact } from "../../artifacts/binary/runtime-admission.js";
 import { loadNamedArtifactPoints } from "../../artifacts/specs/format-spec-loader.js";
-import { PROVER_CRS_V1_SPEC } from "../../generated/browser-artifact-contracts.generated.js";
+import {
+  INSTANCE_V1_SPEC,
+  PROVER_CRS_V1_SPEC,
+  PROVER_PERMUTATION_V1_SPEC,
+  PROVER_PLACEMENT_VARIABLES_V1_SPEC,
+} from "../../generated/browser-artifact-contracts.generated.js";
 import type { CurveRuntime } from "../../runtime/curve/curve.js";
 import type { FieldElement } from "../../runtime/field/field-runtime.js";
 import { BinarySectionEncoding, BinarySectionType } from "../../artifacts/binary/binary-format.js";
@@ -107,10 +110,10 @@ export async function loadProverInputFromBinaryInput(
   input: ProverBinaryInput,
 ): Promise<ProverRuntimeInput> {
   const [placementVariables, permutation, instance, crs] = await Promise.all([
-    decodeBinaryArtifactFile(input.witness),
-    decodeBinaryArtifactFile(input.permutation),
-    decodeBinaryArtifactFile(input.instance),
-    decodeBinaryArtifactFile(input.proverCrs),
+    admitRuntimeBinaryArtifact(input.witness, BinaryArtifactFileKind.ProverPlacementVariables, PROVER_PLACEMENT_VARIABLES_V1_SPEC),
+    admitRuntimeBinaryArtifact(input.permutation, BinaryArtifactFileKind.ProverPermutation, PROVER_PERMUTATION_V1_SPEC),
+    admitRuntimeBinaryArtifact(input.instance, BinaryArtifactFileKind.Instance, INSTANCE_V1_SPEC),
+    admitRuntimeBinaryArtifact(input.proverCrs, BinaryArtifactFileKind.ProverCrs, PROVER_CRS_V1_SPEC),
   ]);
   const artifacts: ProverBinaryArtifactFiles = {
     placementVariables,
