@@ -72,7 +72,23 @@ await synchronizeContents(
   path.join(browserConsumerDirectory, "browser-artifact-contracts.generated.ts"),
 );
 await synchronizeContents(
-  `// Generated from packages/frontend/qap-compiler/contracts/subcircuit-library-contract.v1.json.\nconst contract = ${JSON.stringify(qapContract, null, 2)} as const;\n\nexport default contract;\n`,
+  renderReadonlyContractModule(
+    "packages/frontend/synthesizer/core/contracts/browser-artifact-contract.v1.json",
+    "SYNTHESIZER_BROWSER_ARTIFACT_CONTRACT",
+    synthesizerContract,
+  ),
+  path.join(browserConsumerDirectory, "synthesizer-browser-artifact-contract.generated.ts"),
+);
+await synchronizeContents(
+  renderReadonlyContractModule(
+    "packages/backend/contracts/browser-artifact-contract.v1.json",
+    "BACKEND_BROWSER_ARTIFACT_CONTRACT",
+    browserBackendContract,
+  ),
+  path.join(browserConsumerDirectory, "backend-browser-artifact-contract.generated.ts"),
+);
+await synchronizeContents(
+  `// Generated from packages/frontend/qap-compiler/contracts/subcircuit-library-contract.v1.json.\nexport const SUBCIRCUIT_LIBRARY_CONTRACT = ${JSON.stringify(qapContract, null, 2)} as const;\n\nexport default SUBCIRCUIT_LIBRARY_CONTRACT;\n`,
   path.join(browserConsumerDirectory, "subcircuit-library-contract.generated.ts"),
 );
 
@@ -118,6 +134,10 @@ function renderBrowserArtifactContracts(synthesizer, backend) {
     return renderArtifact(artifact);
   });
   return `// Generated from producer-owned browser artifact contracts. Do not edit.\nimport { BinarySectionEncoding, BinarySectionType } from "../artifacts/binary/binary-format.js";\nimport type { RuntimeArtifactFormatSpec } from "../artifacts/specs/types.js";\n\n${rendered.join("\n\n")}\n`;
+}
+
+function renderReadonlyContractModule(sourcePath, bindingName, contract) {
+  return `// Generated from ${sourcePath}. Do not edit.\nexport const ${bindingName} = ${JSON.stringify(contract, null, 2)} as const;\n\nexport default ${bindingName};\n`;
 }
 
 function renderArtifact(artifact) {

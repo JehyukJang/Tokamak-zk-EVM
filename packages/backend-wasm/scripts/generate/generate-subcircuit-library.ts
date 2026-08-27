@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import { createCurveRuntime } from "../../src/runtime/curve/curve.js";
 import type { FieldElement } from "../../src/runtime/field/field-runtime.js";
 import type { SetupParams } from "../../src/artifacts/setup/setup-params.js";
+import { SUBCIRCUIT_LIBRARY_CONTRACT } from "../../src/generated/subcircuit-library-contract.generated.js";
 import type {
   ProverSubcircuitInfo,
 } from "../../src/prover/protocol/witness.js";
@@ -39,6 +40,8 @@ const nativeBackendCargoPath = path.resolve(backendWasmRoot, "..", "backend", "C
 const checkMode = process.argv.includes("--check");
 const selectedOrigin = readSelectedInputOrigin(process.argv.slice(2));
 const localQapCompilerRoot = path.resolve(backendWasmRoot, "..", "frontend", "qap-compiler");
+const { setupParams: setupContract, subcircuitInfo: subcircuitContract } =
+  SUBCIRCUIT_LIBRARY_CONTRACT.libraryArtifacts;
 
 interface SubcircuitLibraryPackage {
   readonly name: string;
@@ -73,9 +76,9 @@ interface PackedSparseSubcircuit {
 async function main(): Promise<void> {
   const library = resolveSubcircuitLibrary(selectedOrigin);
 
-  const setup = parseSetupParams(readJson(path.join(library.libraryRoot, "setupParams.json")));
+  const setup = parseSetupParams(readJson(path.join(library.libraryRoot, setupContract.fileName)));
   const subcircuitInfos = parseProverSubcircuitInfos(
-    readJson(path.join(library.libraryRoot, "subcircuitInfo.json")),
+    readJson(path.join(library.libraryRoot, subcircuitContract.fileName)),
   );
   validateProverSubcircuitLibrary(setup, subcircuitInfos);
   PublicWireLayout.derive(setup, subcircuitInfos);
@@ -87,7 +90,7 @@ async function main(): Promise<void> {
       const r1csPath = path.join(
         library.libraryRoot,
         "r1cs",
-        `subcircuit${subcircuitInfo.id}.r1cs`,
+        subcircuitContract.r1csFileName.replace("{id}", String(subcircuitInfo.id)),
       );
       return packSubcircuitR1cs(runtime.Fr.fromBigInt, r1csPath, setup, subcircuitInfo);
     });
@@ -165,7 +168,7 @@ function assertPackageIdentity(
 }
 
 function validateLibraryLayout(library: ResolvedSubcircuitLibrary): ResolvedSubcircuitLibrary {
-  for (const fileName of ["setupParams.json", "subcircuitInfo.json"]) {
+  for (const fileName of [setupContract.fileName, subcircuitContract.fileName]) {
     const filePath = path.join(library.libraryRoot, fileName);
     if (!fs.existsSync(filePath)) {
       throw new Error(`${library.origin} subcircuit-library is missing ${filePath}.`);

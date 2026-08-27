@@ -72,11 +72,12 @@ intentional:
 npm run --workspace @tokamak-zk-evm/cli release:publish
 ```
 
-The command validates release readiness, verifies the packed runtime's
-production backend build and installer contracts, and runs
-`npm publish --access public --ignore-scripts`. It requires an npm identity
-authorized to publish `@tokamak-zk-evm/cli`. Additional npm publish arguments
-may be passed after `--`, for example:
+The command first runs the root repository version-policy check, then validates
+CLI release readiness, verifies the packed runtime's production backend build
+and installer contracts, and runs `npm publish --access public
+--ignore-scripts`. It requires an npm identity authorized to publish
+`@tokamak-zk-evm/cli`. Additional npm publish arguments may be passed after
+`--`, for example:
 
 ```bash
 npm run --workspace @tokamak-zk-evm/cli release:publish -- --dry-run
