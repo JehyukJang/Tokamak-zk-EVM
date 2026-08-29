@@ -1,18 +1,12 @@
-import { BackendWasmError } from "../../backend-wasm-error.js";
-import {
-  assertNamedBinaryInput,
-  installCurveRuntime,
-  parseChunkSizeExponent,
-} from "../../api/public-api-utils.js";
-import {
-  NATIVE_BACKEND_VERSION,
-  SUBCIRCUIT_LIBRARY_PACKAGE_VERSION,
-} from "../../generated/active/setup.generated.js";
-import type { CurveRuntime } from "../../runtime/curve/curve.js";
-import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
-import { assertRuntimeLibraryCompatibility } from "../../artifacts/binary/compatibility.js";
-import { loadPreprocessInputFromBinaryInput, type PreprocessBinaryInput } from "./binary-input.js";
-import { preprocessSnark } from "../protocol/preprocess-snark.js";
+import { BackendWasmError } from '../../backend-wasm-error.js';
+import { assertNamedBinaryInput, installCurveRuntime, parseChunkSizeExponent } from '../../api/public-api-utils.js';
+import { NATIVE_BACKEND_VERSION, SUBCIRCUIT_LIBRARY_PACKAGE_VERSION } from '../../generated/active/setup.generated.js';
+import type { CurveRuntime } from '../../runtime/curve/curve.js';
+import { BACKEND_WASM_PACKAGE_VERSION } from '../../version.js';
+import { assertRuntimeLibraryCompatibility } from '../../artifacts/binary/compatibility.js';
+import { loadPreprocessInputFromBinaryInput, type PreprocessBinaryInput } from './binary-input.js';
+import { createPreprocessOutput } from './output.js';
+import { preprocessSnark } from '../protocol/preprocess-snark.js';
 
 const DEFAULT_CHUNK_SIZE_EXPONENT = 17;
 
@@ -35,20 +29,15 @@ let installationPromise: Promise<CurveRuntime> | undefined;
 let busy = false;
 let chunkSizeExponent = DEFAULT_CHUNK_SIZE_EXPONENT;
 
-export async function install(
-  options: PreprocessInstallOptions = {},
-): Promise<PreprocessInstallationInfo> {
+export async function install(options: PreprocessInstallOptions = {}): Promise<PreprocessInstallationInfo> {
   assertRuntimeLibraryCompatibility();
-  const requestedExponent = parseChunkSizeExponent(options, "Preprocess");
+  const requestedExponent = parseChunkSizeExponent(options, 'Preprocess');
   const installedRuntime = await requireInstalledRuntime();
   runtime = installedRuntime;
 
   if (requestedExponent !== undefined && requestedExponent !== chunkSizeExponent) {
     if (busy) {
-      throw new BackendWasmError(
-        "BUSY",
-        "The preprocess chunk size cannot be changed while preprocess is running.",
-      );
+      throw new BackendWasmError('BUSY', 'The preprocess chunk size cannot be changed while preprocess is running.');
     }
     chunkSizeExponent = requestedExponent;
   }
@@ -59,16 +48,13 @@ export async function install(
 export async function preprocess(input: PreprocessInput): Promise<Uint8Array> {
   const installedRuntime = runtime;
   if (installedRuntime === undefined) {
-    throw new BackendWasmError(
-      "INSTALL_REQUIRED",
-      "Call preprocess.install() successfully before preprocess().",
-    );
+    throw new BackendWasmError('INSTALL_REQUIRED', 'Call preprocess.install() successfully before preprocess().');
   }
   if (busy) {
-    throw new BackendWasmError("BUSY", "Preprocess is already running.");
+    throw new BackendWasmError('BUSY', 'Preprocess is already running.');
   }
 
-  assertNamedBinaryInput(input, "Preprocess", ["permutation", "instance", "preprocessCrs"]);
+  assertNamedBinaryInput(input, 'Preprocess', ['permutation', 'instance', 'preprocessCrs']);
   busy = true;
 
   try {
@@ -76,19 +62,16 @@ export async function preprocess(input: PreprocessInput): Promise<Uint8Array> {
     try {
       runtimeInput = await loadPreprocessInputFromBinaryInput(installedRuntime, input);
     } catch (cause) {
-      throw new BackendWasmError(
-        "INVALID_INPUT",
-        "The preprocess input binaries could not be decoded.",
-        { cause },
-      );
+      throw new BackendWasmError('INVALID_INPUT', 'The preprocess input binaries could not be decoded.', { cause });
     }
 
     try {
-      return await preprocessSnark(installedRuntime, runtimeInput, {
+      const output = await preprocessSnark(installedRuntime, runtimeInput, {
         denseMsmChunkPoints: 2 ** chunkSizeExponent,
       });
+      return await createPreprocessOutput(installedRuntime, output.s0, output.s1, output.oPubFix);
     } catch (cause) {
-      throw new BackendWasmError("RUNTIME_FAILED", "The preprocess runtime failed.", {
+      throw new BackendWasmError('RUNTIME_FAILED', 'The preprocess runtime failed.', {
         cause,
       });
     }
@@ -105,7 +88,7 @@ async function requireInstalledRuntime(): Promise<CurveRuntime> {
     return installationPromise;
   }
 
-  const pending = installCurveRuntime("The preprocess runtime could not be installed.");
+  const pending = installCurveRuntime('The preprocess runtime could not be installed.');
   installationPromise = pending;
 
   try {

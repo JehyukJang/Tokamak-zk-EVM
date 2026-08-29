@@ -1,26 +1,20 @@
-import { BivariatePolynomialBuffer } from "../../runtime/polynomial/bivariate-polynomial-buffer.js";
-import type { CurveRuntime } from "../../runtime/curve/curve.js";
-import { concatBytes } from "../../runtime/bytes.js";
-import type { FieldElement } from "../../runtime/field/field-runtime.js";
-import { G1_AFFINE_BYTES } from "../../runtime/group/group.js";
-import type { SetupParams } from "../../artifacts/setup/setup-params.js";
-import {
-  proverCrsG1PointAt,
-  type ProverCrsG1Section,
-  type ProverCrsRuntime,
-} from "../api/binary-input.js";
-import type { ProverMixer } from "../protocol/state.js";
+import { BivariatePolynomialBuffer } from '../../runtime/polynomial/bivariate-polynomial-buffer.js';
+import type { CurveRuntime } from '../../runtime/curve/curve.js';
+import { concatBytes } from '../../runtime/bytes.js';
+import type { FieldElement } from '../../runtime/field/field-runtime.js';
+import { G1_AFFINE_BYTES } from '../../runtime/group/group.js';
+import type { SetupParams } from '../../artifacts/setup/setup-params.js';
+import { proverCrsG1PointAt, type ProverCrsG1Section, type ProverCrsRuntime } from '../protocol/runtime-input.js';
+import type { ProverMixer } from '../protocol/state.js';
 import {
   placementCount,
   placementSubcircuitId,
   placementVariableAt,
   type ProverPlacementVariables,
   type ProverSubcircuitInfo,
-} from "../protocol/witness.js";
-import { PublicWireLayout } from "../protocol/public-wire-layout.js";
-import {
-  type ProverCommitmentEncoder,
-} from "./commitment-encoder.js";
+} from '../protocol/witness.js';
+import { PublicWireLayout } from '../protocol/public-wire-layout.js';
+import { type ProverCommitmentEncoder } from './commitment-encoder.js';
 
 export interface ProverBinding {
   readonly A_free: Uint8Array;
@@ -165,8 +159,7 @@ export async function encodeOPrvNoZk(
     countOPrvVariables(setup, placementVariables, subcircuitInfos),
     placementVariables,
     subcircuitInfos,
-    (globalIndex, placementIndex) =>
-      matrixAt(crs.sigma1.deltaInvLiOPrv, setup.s_max, globalIndex, placementIndex),
+    (globalIndex, placementIndex) => matrixAt(crs.sigma1.deltaInvLiOPrv, setup.s_max, globalIndex, placementIndex),
   );
 }
 
@@ -203,7 +196,9 @@ async function encodeStatement(
   }
 
   if (variableCount !== expectedVariableCount) {
-    throw new Error(`Statement encoding variable count mismatch: expected ${expectedVariableCount}, got ${variableCount}.`);
+    throw new Error(
+      `Statement encoding variable count mismatch: expected ${expectedVariableCount}, got ${variableCount}.`,
+    );
   }
 
   if (nonzeroCount === 0) {
@@ -226,7 +221,7 @@ async function msmG1(
   scalars: readonly FieldElement[],
 ): Promise<Uint8Array> {
   if (bases.length !== scalars.length) {
-    throw new Error("G1 MSM bases and scalars must have the same length.");
+    throw new Error('G1 MSM bases and scalars must have the same length.');
   }
 
   if (bases.length === 0) {

@@ -1,17 +1,10 @@
-import type { CurveRuntime } from "../../runtime/curve/curve.js";
-import type { SetupParams } from "../../artifacts/setup/setup-params.js";
-import {
-  msmAffineMontgomeryChunks,
-  type AffineMontgomeryMsmChunk,
-} from "../../runtime/group/affine-msm.js";
-import { G1_AFFINE_BYTES } from "../../runtime/group/group.js";
-import { BivariatePolynomialBuffer } from "../../runtime/polynomial/bivariate-polynomial-buffer.js";
-import {
-  proverCrsG1PointAt,
-  proverCrsG1PointRange,
-  type ProverCrsRuntime,
-} from "../api/binary-input.js";
-import type { ProverCommitmentEncoder } from "./commitment-encoder.js";
+import type { CurveRuntime } from '../../runtime/curve/curve.js';
+import type { SetupParams } from '../../artifacts/setup/setup-params.js';
+import { msmAffineMontgomeryChunks, type AffineMontgomeryMsmChunk } from '../../runtime/group/affine-msm.js';
+import { G1_AFFINE_BYTES } from '../../runtime/group/group.js';
+import { BivariatePolynomialBuffer } from '../../runtime/polynomial/bivariate-polynomial-buffer.js';
+import { proverCrsG1PointAt, proverCrsG1PointRange, type ProverCrsRuntime } from '../protocol/runtime-input.js';
+import type { ProverCommitmentEncoder } from './commitment-encoder.js';
 
 const SIGMA1_DENSE_MSM_CHUNK_POINTS = 1 << 18;
 const SIGMA1_DENSE_MSM_MIN_DENSITY = 0.75;
@@ -24,7 +17,7 @@ export async function encodePolynomialBufferWithSigma1(
   denseMsmChunkPoints = SIGMA1_DENSE_MSM_CHUNK_POINTS,
 ): Promise<Uint8Array> {
   if (!Number.isSafeInteger(denseMsmChunkPoints) || denseMsmChunkPoints <= 0) {
-    throw new Error("Dense Sigma1 MSM chunk size must be a positive safe integer.");
+    throw new Error('Dense Sigma1 MSM chunk size must be a positive safe integer.');
   }
   const coefficientWords = fieldBufferWords(polynomial.coefficients);
   const { xDegree, yDegree } = findCoefficientDegree(polynomial, coefficientWords);
@@ -37,7 +30,7 @@ export async function encodePolynomialBufferWithSigma1(
   const referenceStringYSize = setup.s_max * 2;
   const referenceStringXSize = Math.max(setup.n * 2, (setup.l_D - setup.l) * 2);
   if (xSize > referenceStringXSize || ySize > referenceStringYSize) {
-    throw new Error("Insufficient prover CRS sigma1.xy-powers length for polynomial encoding.");
+    throw new Error('Insufficient prover CRS sigma1.xy-powers length for polynomial encoding.');
   }
 
   const nonzeroCount = countNonzeroCoefficients(polynomial, coefficientWords, xSize, ySize);
@@ -47,15 +40,7 @@ export async function encodePolynomialBufferWithSigma1(
 
   const densePointCount = xSize * ySize;
   if (shouldUseChunkedDenseSigma1Msm(densePointCount, nonzeroCount, denseMsmChunkPoints)) {
-    return encodeSigma1DenseChunks(
-      runtime,
-      crs,
-      referenceStringYSize,
-      polynomial,
-      xSize,
-      ySize,
-      denseMsmChunkPoints,
-    );
+    return encodeSigma1DenseChunks(runtime, crs, referenceStringYSize, polynomial, xSize, ySize, denseMsmChunkPoints);
   }
 
   return encodeSigma1Sparse(
@@ -93,10 +78,7 @@ function shouldUseChunkedDenseSigma1Msm(
   nonzeroCount: number,
   denseMsmChunkPoints: number,
 ): boolean {
-  return (
-    densePointCount > denseMsmChunkPoints &&
-    nonzeroCount / densePointCount >= SIGMA1_DENSE_MSM_MIN_DENSITY
-  );
+  return densePointCount > denseMsmChunkPoints && nonzeroCount / densePointCount >= SIGMA1_DENSE_MSM_MIN_DENSITY;
 }
 
 async function encodeSigma1Sparse(
@@ -163,7 +145,7 @@ function findCoefficientDegree(
 
 function fieldBufferWords(buffer: Uint8Array): Uint32Array {
   if (buffer.byteOffset % 4 !== 0 || buffer.byteLength % 4 !== 0) {
-    throw new Error("Prover field coefficient buffers must be four-byte aligned.");
+    throw new Error('Prover field coefficient buffers must be four-byte aligned.');
   }
   return new Uint32Array(buffer.buffer, buffer.byteOffset, buffer.byteLength / 4);
 }
@@ -171,9 +153,16 @@ function fieldBufferWords(buffer: Uint8Array): Uint32Array {
 function isZeroCoefficient(words: Uint32Array, coefficientIndex: number): boolean {
   const offset = coefficientIndex * 8;
   return (
-    words[offset] | words[offset + 1] | words[offset + 2] | words[offset + 3]
-    | words[offset + 4] | words[offset + 5] | words[offset + 6] | words[offset + 7]
-  ) === 0;
+    (words[offset] |
+      words[offset + 1] |
+      words[offset + 2] |
+      words[offset + 3] |
+      words[offset + 4] |
+      words[offset + 5] |
+      words[offset + 6] |
+      words[offset + 7]) ===
+    0
+  );
 }
 
 async function encodeSigma1DenseChunks(
@@ -187,15 +176,7 @@ async function encodeSigma1DenseChunks(
 ): Promise<Uint8Array> {
   return msmAffineMontgomeryChunks(
     runtime,
-    prepareSigma1DenseChunks(
-      runtime,
-      crs,
-      referenceStringYSize,
-      polynomial,
-      xSize,
-      ySize,
-      denseMsmChunkPoints,
-    ),
+    prepareSigma1DenseChunks(runtime, crs, referenceStringYSize, polynomial, xSize, ySize, denseMsmChunkPoints),
   );
 }
 
@@ -212,20 +193,8 @@ function* prepareSigma1DenseChunks(
   for (let xStart = 0; xStart < xSize; xStart += rowsPerChunk) {
     const rowCount = Math.min(rowsPerChunk, xSize - xStart);
     yield {
-      bases: prepareSigma1BaseChunk(
-        crs,
-        referenceStringYSize,
-        xStart,
-        rowCount,
-        ySize,
-      ),
-      montgomeryScalars: prepareSigma1ScalarChunk(
-        runtime,
-        polynomial,
-        xStart,
-        rowCount,
-        ySize,
-      ),
+      bases: prepareSigma1BaseChunk(crs, referenceStringYSize, xStart, rowCount, ySize),
+      montgomeryScalars: prepareSigma1ScalarChunk(runtime, polynomial, xStart, rowCount, ySize),
     };
   }
 }
@@ -236,13 +205,7 @@ export function createSigma1CommitmentEncoder(
   setup: SetupParams,
   denseMsmChunkPoints = SIGMA1_DENSE_MSM_CHUNK_POINTS,
 ): ProverCommitmentEncoder {
-  return (polynomial) => encodePolynomialBufferWithSigma1(
-    runtime,
-    crs,
-    setup,
-    polynomial,
-    denseMsmChunkPoints,
-  );
+  return polynomial => encodePolynomialBufferWithSigma1(runtime, crs, setup, polynomial, denseMsmChunkPoints);
 }
 
 function prepareSigma1BaseChunk(
@@ -253,21 +216,13 @@ function prepareSigma1BaseChunk(
   ySize: number,
 ): Uint8Array {
   if (ySize === referenceStringYSize) {
-    return proverCrsG1PointRange(
-      crs.sigma1.xyPowers,
-      xStart * referenceStringYSize,
-      rowCount * referenceStringYSize,
-    );
+    return proverCrsG1PointRange(crs.sigma1.xyPowers, xStart * referenceStringYSize, rowCount * referenceStringYSize);
   }
 
   const output = new Uint8Array(rowCount * ySize * G1_AFFINE_BYTES);
   for (let row = 0; row < rowCount; row += 1) {
     output.set(
-      proverCrsG1PointRange(
-        crs.sigma1.xyPowers,
-        (xStart + row) * referenceStringYSize,
-        ySize,
-      ),
+      proverCrsG1PointRange(crs.sigma1.xyPowers, (xStart + row) * referenceStringYSize, ySize),
       row * ySize * G1_AFFINE_BYTES,
     );
   }
@@ -289,7 +244,7 @@ function prepareSigma1ScalarChunk(
 
   const output = new Uint8Array(rowCount * ySize * runtime.Fr.byteLength);
   for (let row = 0; row < rowCount; row += 1) {
-    const sourceStart = ((xStart + row) * polynomial.ySize) * runtime.Fr.byteLength;
+    const sourceStart = (xStart + row) * polynomial.ySize * runtime.Fr.byteLength;
     const sourceEnd = sourceStart + ySize * runtime.Fr.byteLength;
     output.set(polynomial.coefficients.subarray(sourceStart, sourceEnd), row * ySize * runtime.Fr.byteLength);
   }
