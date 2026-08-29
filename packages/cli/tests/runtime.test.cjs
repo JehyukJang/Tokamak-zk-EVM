@@ -11,6 +11,7 @@ const {
   parseInstalledRuntimeState,
 } = require('../dist/runtime/context.js');
 const { resolveRuntimeExecution, runBackendCommand } = require('../dist/runtime/docker.js');
+const { configureMacosRuntime } = require('../dist/runtime/native.js');
 const { commitPreparedRuntime, installStagedRuntime } = require('../dist/runtime/transaction.js');
 const { streamDownloadToFile } = require('../dist/runtime/download.js');
 const { assertLiveBackendRuntimeIdentity } = require('../dist/runtime/identity.js');
@@ -387,6 +388,42 @@ test('keeps the previous native runtime and state when staging fails before acti
     } finally {
       await fs.rm(temporaryRoot, { recursive: true, force: true });
     }
+  }
+});
+
+test('keeps the previous runtime and state when macOS rpath configuration fails', async () => {
+  const { context, previousState, temporaryRoot } = await createInstalledRuntimeFixture();
+  const fakeBin = path.join(temporaryRoot, 'bin');
+  const originalPath = process.env.PATH;
+  try {
+    await fs.mkdir(fakeBin);
+    const installNameTool = path.join(fakeBin, 'install_name_tool');
+    await fs.writeFile(installNameTool, '#!/usr/bin/env node\nprocess.exit(17);\n', 'utf8');
+    await fs.chmod(installNameTool, 0o755);
+    process.env.PATH = `${fakeBin}${path.delimiter}${originalPath ?? ''}`;
+
+    const macosContext = { ...context, platform: 'macos' };
+    await assert.rejects(
+      installStagedRuntime(macosContext, runtimeState(), async (stagingContext) => {
+        const binaryDir = path.join(stagingContext.runtimeDir, 'bin');
+        await fs.mkdir(binaryDir, { recursive: true });
+        for (const packageName of ['preprocess', 'prove', 'verify']) {
+          await fs.writeFile(path.join(binaryDir, packageName), 'staged binary\n', 'utf8');
+        }
+        await configureMacosRuntime(stagingContext, false);
+      }),
+      /install_name_tool exited with code 17/u,
+    );
+    assert.equal(await fs.readFile(path.join(context.runtimeDir, 'marker.txt'), 'utf8'), 'previous runtime\n');
+    assert.deepEqual(JSON.parse(await fs.readFile(context.statePath, 'utf8')), previousState);
+    assert.deepEqual(await fs.readdir(context.platformDir), ['installation.json', 'runtime']);
+  } finally {
+    if (originalPath === undefined) {
+      delete process.env.PATH;
+    } else {
+      process.env.PATH = originalPath;
+    }
+    await fs.rm(temporaryRoot, { recursive: true, force: true });
   }
 });
 

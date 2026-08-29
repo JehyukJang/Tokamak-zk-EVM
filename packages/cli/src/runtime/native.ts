@@ -116,6 +116,9 @@ function applyInstallNameTool(binaryPath: string, rpath: string, verbose: boolea
   if (result.error) {
     throw result.error;
   }
+  if (result.status !== 0) {
+    throw new Error(`install_name_tool exited with code ${result.status ?? 'unknown'} while configuring ${binaryPath}.`);
+  }
 }
 
 export async function configureMacosRuntime(context: RuntimeContext, verbose: boolean): Promise<void> {

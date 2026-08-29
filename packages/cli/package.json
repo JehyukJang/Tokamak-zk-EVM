@@ -53,8 +53,8 @@
   ],
   "scripts": {
     "prepare:package": "npm run contracts:prepare && node scripts/prepare-package.mjs",
-    "contracts:prepare": "node ../common/scripts/prepare-contract-consumers.mjs",
-    "contracts:check": "node ../common/scripts/check-contract-closure.mjs && node ../common/scripts/prepare-contract-consumers.mjs --check",
+    "contracts:prepare": "node ../backend/common/scripts/prepare-contract-consumers.mjs",
+    "contracts:check": "node ../backend/common/scripts/check-contract-closure.mjs && node ../backend/common/scripts/prepare-contract-consumers.mjs --check",
     "build": "npm run prepare:package && npm run clean && tsc -p tsconfig.json --pretty false",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "release:check": "node scripts/release-readiness.cjs",

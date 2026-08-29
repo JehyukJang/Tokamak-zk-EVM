@@ -27,21 +27,21 @@ const {
 const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = '@tokamak-zk-evm/subcircuit-library';
 const CRS_PROVENANCE_CONTRACT = JSON.parse(
   require('node:fs').readFileSync(
-    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'crs-provenance-contract.json'),
+    path.resolve(__dirname, '..', '..', 'backend', 'common', 'contracts', 'crs-provenance-contract.json'),
     'utf8',
   ),
 );
 const FINAL_CRS_ARCHIVE_FILES = finalMpcCrsArchiveRootFileNames();
 const BACKEND_BUILD_METADATA_CONTRACT = JSON.parse(
   require('node:fs').readFileSync(
-    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'backend-build-metadata-contract.json'),
+    path.resolve(__dirname, '..', '..', 'backend', 'common', 'contracts', 'backend-build-metadata-contract.json'),
     'utf8',
   ),
 );
 function readBackendBuildMetadataFixture(filename) {
   return JSON.parse(
     require('node:fs').readFileSync(
-      path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', filename),
+      path.resolve(__dirname, '..', '..', 'backend', 'common', 'contracts', 'fixtures', filename),
       'utf8',
     ),
   );
@@ -90,19 +90,19 @@ function writeZipArchive(archivePath, entries) {
 }
 const CANONICAL_FINAL_MPC_PROVENANCE = JSON.parse(
   require('node:fs').readFileSync(
-    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', 'final-mpc-crs-provenance.json'),
+    path.resolve(__dirname, '..', '..', 'backend', 'common', 'contracts', 'fixtures', 'final-mpc-crs-provenance.json'),
     'utf8',
   ),
 );
 const MALFORMED_FINAL_MPC_PROVENANCE = JSON.parse(
   require('node:fs').readFileSync(
-    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', 'final-mpc-crs-provenance-malformed.json'),
+    path.resolve(__dirname, '..', '..', 'backend', 'common', 'contracts', 'fixtures', 'final-mpc-crs-provenance-malformed.json'),
     'utf8',
   ),
 );
 const LEGACY_FINAL_MPC_PROVENANCE = JSON.parse(
   require('node:fs').readFileSync(
-    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', 'final-mpc-crs-provenance-legacy.json'),
+    path.resolve(__dirname, '..', '..', 'backend', 'common', 'contracts', 'fixtures', 'final-mpc-crs-provenance-legacy.json'),
     'utf8',
   ),
 );
@@ -113,6 +113,7 @@ const LEADING_ZERO_FINAL_MPC_PROVENANCE = JSON.parse(
       '..',
       '..',
       'backend',
+      'common',
       'contracts',
       'fixtures',
       'final-mpc-crs-provenance-leading-zero.json',
@@ -122,7 +123,7 @@ const LEADING_ZERO_FINAL_MPC_PROVENANCE = JSON.parse(
 );
 const DATE_ONLY_FINAL_MPC_PROVENANCE = JSON.parse(
   require('node:fs').readFileSync(
-    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', 'final-mpc-crs-provenance-date-only.json'),
+    path.resolve(__dirname, '..', '..', 'backend', 'common', 'contracts', 'fixtures', 'final-mpc-crs-provenance-date-only.json'),
     'utf8',
   ),
 );
@@ -133,6 +134,7 @@ const INVALID_DIGEST_FINAL_MPC_PROVENANCE = JSON.parse(
       '..',
       '..',
       'backend',
+      'common',
       'contracts',
       'fixtures',
       'final-mpc-crs-provenance-invalid-digest.json',
@@ -147,6 +149,7 @@ const EMPTY_STRING_FINAL_MPC_PROVENANCE = JSON.parse(
       '..',
       '..',
       'backend',
+      'common',
       'contracts',
       'fixtures',
       'final-mpc-crs-provenance-empty-string.json',
@@ -156,13 +159,13 @@ const EMPTY_STRING_FINAL_MPC_PROVENANCE = JSON.parse(
 );
 const NATIVE_FINAL_MPC_PROVENANCE = JSON.parse(
   require('node:fs').readFileSync(
-    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', 'final-mpc-crs-provenance-native.json'),
+    path.resolve(__dirname, '..', '..', 'backend', 'common', 'contracts', 'fixtures', 'final-mpc-crs-provenance-native.json'),
     'utf8',
   ),
 );
 const NULL_FINAL_MPC_PROVENANCE = JSON.parse(
   require('node:fs').readFileSync(
-    path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', 'final-mpc-crs-provenance-null.json'),
+    path.resolve(__dirname, '..', '..', 'backend', 'common', 'contracts', 'fixtures', 'final-mpc-crs-provenance-null.json'),
     'utf8',
   ),
 );
@@ -173,6 +176,7 @@ const INVALID_PHASE1_FINAL_MPC_PROVENANCE = JSON.parse(
       '..',
       '..',
       'backend',
+      'common',
       'contracts',
       'fixtures',
       'final-mpc-crs-provenance-invalid-phase1.json',
@@ -187,6 +191,7 @@ const INVALID_ORIGIN_FINAL_MPC_PROVENANCE = JSON.parse(
       '..',
       '..',
       'backend',
+      'common',
       'contracts',
       'fixtures',
       'final-mpc-crs-provenance-invalid-origin.json',

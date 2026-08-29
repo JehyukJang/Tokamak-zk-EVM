@@ -12,7 +12,7 @@ const {
   BACKEND_PACKAGE_NAMES,
   backendBuildMetadataFileName,
 } = require('../dist/generated/backend-build-metadata-validator.generated.js');
-const VALID_METADATA = require('../../backend/contracts/fixtures/backend-build-metadata-valid.json');
+const VALID_METADATA = require('../../backend/common/contracts/fixtures/backend-build-metadata-valid.json');
 const BACKEND_BUILD_METADATA_CONTRACT = require('../dist/generated/backend-build-metadata-contract.generated.js').default;
 
 test('runtime package registry is supplied by the backend build-metadata contract', () => {

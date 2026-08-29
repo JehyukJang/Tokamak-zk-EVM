@@ -9,7 +9,7 @@ const repositoryRoot = path.resolve(packageRoot, '..', '..');
 const vendorRoot = path.join(packageRoot, 'vendor');
 const vendoredBackendRoot = path.join(vendorRoot, 'backend');
 const productManifestPath = path.join(vendoredBackendRoot, 'cli-vendor-product.json');
-const producer = path.join(repositoryRoot, 'packages', 'backend', 'scripts', 'prepare-cli-vendor.mjs');
+const producer = path.join(repositoryRoot, 'packages', 'backend', 'common', 'scripts', 'prepare-cli-vendor.mjs');
 
 async function listRegularFiles(root) {
   const entries = await fs.readdir(root, { withFileTypes: true });

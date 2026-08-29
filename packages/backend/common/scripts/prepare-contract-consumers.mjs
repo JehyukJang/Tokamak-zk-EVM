@@ -1,8 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-const backendRoot = path.resolve(import.meta.dirname, "..", "..");
-const contractRoot = path.join(backendRoot, "common", "contracts");
+const commonRoot = path.resolve(import.meta.dirname, "..");
+const backendRoot = path.resolve(commonRoot, "..");
+const contractRoot = path.join(commonRoot, "contracts");
 const repositoryRoot = path.resolve(backendRoot, "..", "..");
 const validatorSource = path.join(contractRoot, "typescript", "crs-provenance-validator.ts");
 const buildMetadataValidatorSource = path.join(contractRoot, "typescript", "backend-build-metadata-validator.ts");
@@ -32,7 +33,7 @@ const provenanceContractContents = (await fs.readFile(provenanceContract, "utf8"
 const buildMetadataContractContents = (await fs.readFile(buildMetadataContract, "utf8")).trim();
 const check = process.argv.includes("--check");
 const consumers = [
-  path.join(backendRoot, "..", "cli", "src", "generated"),
+  path.join(repositoryRoot, "packages", "cli", "src", "generated"),
   path.join(backendRoot, "wasm", "src", "generated"),
 ];
 
@@ -50,7 +51,7 @@ for (const consumerDirectory of consumers) {
   );
 }
 
-const cliConsumerDirectory = path.join(backendRoot, "..", "cli", "src", "generated");
+const cliConsumerDirectory = path.join(repositoryRoot, "packages", "cli", "src", "generated");
 await synchronize(
   buildMetadataValidatorSource,
   path.join(cliConsumerDirectory, "backend-build-metadata-validator.generated.ts"),

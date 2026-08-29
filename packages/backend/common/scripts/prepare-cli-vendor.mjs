@@ -3,7 +3,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-const backendRoot = path.resolve(import.meta.dirname, '..', '..');
+const commonRoot = path.resolve(import.meta.dirname, '..');
+const backendRoot = path.resolve(commonRoot, '..');
 const repositoryRoot = path.resolve(backendRoot, '..', '..');
 const cliVendorRoot = path.join(repositoryRoot, 'packages', 'cli', 'vendor', 'backend');
 const productManifestName = 'cli-vendor-product.json';
