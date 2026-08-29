@@ -1,33 +1,29 @@
-import { requireBinaryArtifactSection } from "../../artifacts/binary/binary-artifact-file.js";
-import { type BinaryArtifactFileView } from "../../artifacts/binary/binary-format.js";
-import { admitRuntimeBinaryArtifact } from "../../artifacts/binary/runtime-admission.js";
-import { loadNamedArtifactPoints } from "../../artifacts/specs/format-spec-loader.js";
+import { requireBinaryArtifactSection } from '../../artifacts/binary/binary-artifact-file.js';
+import { type BinaryArtifactFileView } from '../../artifacts/binary/binary-format.js';
+import { admitRuntimeBinaryArtifact } from '../../artifacts/binary/runtime-admission.js';
+import { loadNamedArtifactPoints } from '../../artifacts/specs/format-spec-loader.js';
+import type { RuntimeArtifactSectionSpec } from '../../artifacts/specs/types.js';
 import {
   INSTANCE_V1_SPEC,
   PROVER_CRS_V1_SPEC,
   PROVER_PERMUTATION_V1_SPEC,
   PROVER_PLACEMENT_VARIABLES_V1_SPEC,
-} from "../../generated/browser-artifact-contracts.generated.js";
-import type { CurveRuntime } from "../../runtime/curve/curve.js";
-import type { FieldElement } from "../../runtime/field/field-runtime.js";
-import { BinarySectionEncoding, BinarySectionType } from "../../artifacts/binary/binary-format.js";
-import { assertBinaryArtifactCompatibility } from "../../artifacts/binary/compatibility.js";
-import type { SetupParams } from "../../artifacts/setup/setup-params.js";
-import { validateSetupParams } from "../../artifacts/setup/validate-setup-params.js";
+} from '../../generated/browser-artifact-contracts.generated.js';
+import type { CurveRuntime } from '../../runtime/curve/curve.js';
+import type { FieldElement } from '../../runtime/field/field-runtime.js';
+import { assertBinaryArtifactCompatibility } from '../../artifacts/binary/compatibility.js';
+import type { SetupParams } from '../../artifacts/setup/setup-params.js';
+import { validateSetupParams } from '../../artifacts/setup/validate-setup-params.js';
 import {
   GENERATED_PROVER_PACKED_R1CS,
   GENERATED_PROVER_SUBCIRCUIT_INFOS,
-} from "../generated/active/subcircuit-library.generated.js";
+} from '../generated/active/subcircuit-library.generated.js';
 import {
   GENERATED_SETUP_PARAMS,
   NATIVE_BACKEND_VERSION,
   SUBCIRCUIT_LIBRARY_PACKAGE_VERSION,
-} from "../../generated/active/setup.generated.js";
-import type {
-  ProverPermutationEntry,
-  ProverPlacementVariables,
-  ProverWitnessInput,
-} from "../protocol/witness.js";
+} from '../../generated/active/setup.generated.js';
+import type { ProverPermutationEntry, ProverPlacementVariables, ProverWitnessInput } from '../protocol/witness.js';
 
 export interface ProverBinaryArtifactFiles {
   readonly placementVariables: BinaryArtifactFileView;
@@ -110,7 +106,11 @@ export async function loadProverInputFromBinaryInput(
   input: ProverBinaryInput,
 ): Promise<ProverRuntimeInput> {
   const [placementVariables, permutation, instance, crs] = await Promise.all([
-    admitRuntimeBinaryArtifact(input.witness, PROVER_PLACEMENT_VARIABLES_V1_SPEC.kind, PROVER_PLACEMENT_VARIABLES_V1_SPEC),
+    admitRuntimeBinaryArtifact(
+      input.witness,
+      PROVER_PLACEMENT_VARIABLES_V1_SPEC.kind,
+      PROVER_PLACEMENT_VARIABLES_V1_SPEC,
+    ),
     admitRuntimeBinaryArtifact(input.permutation, PROVER_PERMUTATION_V1_SPEC.kind, PROVER_PERMUTATION_V1_SPEC),
     admitRuntimeBinaryArtifact(input.instance, INSTANCE_V1_SPEC.kind, INSTANCE_V1_SPEC),
     admitRuntimeBinaryArtifact(input.proverCrs, PROVER_CRS_V1_SPEC.kind, PROVER_CRS_V1_SPEC),
@@ -166,44 +166,33 @@ export function parseProverPlacementVariables(
   runtime: CurveRuntime,
   placementFile: BinaryArtifactFileView,
 ): ProverPlacementVariables {
-  const idsSection = requireBinaryArtifactSection(placementFile, {
-    type: BinarySectionType.Placement,
-    encoding: BinarySectionEncoding.Bytes,
-    label: "placement.subcircuit_ids",
-  });
-  const offsetsSection = requireBinaryArtifactSection(placementFile, {
-    type: BinarySectionType.Placement,
-    encoding: BinarySectionEncoding.Bytes,
-    label: "placement.variable_offsets",
-  });
-  const variablesSection = requireBinaryArtifactSection(placementFile, {
-    type: BinarySectionType.Placement,
-    encoding: BinarySectionEncoding.FfjsFrMontgomeryLe32,
-    label: "placement.variables",
-  });
-  const subcircuitIds = readU32Array(idsSection.data, "placement.subcircuit_ids");
-  const variableOffsets = readU32Array(offsetsSection.data, "placement.variable_offsets");
+  const [idsSectionSpec, offsetsSectionSpec, variablesSectionSpec] = PROVER_PLACEMENT_VARIABLES_V1_SPEC.sections;
+  const idsSection = requireBinaryArtifactSection(placementFile, idsSectionSpec);
+  const offsetsSection = requireBinaryArtifactSection(placementFile, offsetsSectionSpec);
+  const variablesSection = requireBinaryArtifactSection(placementFile, variablesSectionSpec);
+  const subcircuitIds = readU32Array(idsSection.data, idsSectionSpec.label, idsSection.elementByteLength);
+  const variableOffsets = readU32Array(offsetsSection.data, offsetsSectionSpec.label, offsetsSection.elementByteLength);
   const variables = variablesSection.data;
 
   if (variables.byteLength % runtime.Fr.byteLength !== 0) {
-    throw new Error("placement.variables byte length is not divisible by the field element width.");
+    throw new Error(`${variablesSectionSpec.label} byte length is not divisible by the field element width.`);
   }
 
   if (variableOffsets.length !== subcircuitIds.length + 1) {
-    throw new Error("placement.variable_offsets length must be placement.subcircuit_ids length plus one.");
+    throw new Error(`${offsetsSectionSpec.label} length must be ${idsSectionSpec.label} length plus one.`);
   }
 
   if (variableOffsets[0] !== 0) {
-    throw new Error("placement.variable_offsets must start at zero.");
+    throw new Error(`${offsetsSectionSpec.label} must start at zero.`);
   }
 
   if (variableOffsets[variableOffsets.length - 1] !== variables.byteLength / runtime.Fr.byteLength) {
-    throw new Error("placement.variable_offsets final value must equal placement.variables element count.");
+    throw new Error(`${offsetsSectionSpec.label} final value must equal ${variablesSectionSpec.label} element count.`);
   }
 
   for (let index = 0; index < variableOffsets.length - 1; index += 1) {
     if (variableOffsets[index + 1] < variableOffsets[index]) {
-      throw new Error(`placement.variable_offsets must be monotonic at index ${index}.`);
+      throw new Error(`${offsetsSectionSpec.label} must be monotonic at index ${index}.`);
     }
   }
 
@@ -219,29 +208,23 @@ export function parseProverPublicInstance(
   runtime: CurveRuntime,
   instanceFile: BinaryArtifactFileView,
 ): readonly FieldElement[] {
-  const section = requireBinaryArtifactSection(instanceFile, {
-    type: BinarySectionType.Instance,
-    encoding: BinarySectionEncoding.FfjsFrMontgomeryLe32,
-    label: "instance.public",
-  });
+  const [publicInstanceSectionSpec] = INSTANCE_V1_SPEC.sections;
+  const section = requireBinaryArtifactSection(instanceFile, publicInstanceSectionSpec);
 
-  return splitFieldElements(runtime, section.data, "instance.public");
+  return splitFieldElements(runtime, section.data, publicInstanceSectionSpec.label);
 }
 
 export function parseProverPermutation(permutationFile: BinaryArtifactFileView): readonly ProverPermutationEntry[] {
-  const section = requireBinaryArtifactSection(permutationFile, {
-    type: BinarySectionType.Permutation,
-    encoding: BinarySectionEncoding.Bytes,
-    label: "permutation.entries",
-  });
+  const [permutationSectionSpec] = PROVER_PERMUTATION_V1_SPEC.sections;
+  const section = requireBinaryArtifactSection(permutationFile, permutationSectionSpec);
 
-  if (section.data.byteLength % 16 !== 0) {
-    throw new Error("permutation.entries byte length must be divisible by 16.");
+  if (section.data.byteLength % section.elementByteLength !== 0) {
+    throw new Error(`${permutationSectionSpec.label} byte length must be divisible by ${section.elementByteLength}.`);
   }
 
   const view = new DataView(section.data.buffer, section.data.byteOffset, section.data.byteLength);
   const entries: ProverPermutationEntry[] = [];
-  for (let offset = 0; offset < section.data.byteLength; offset += 16) {
+  for (let offset = 0; offset < section.data.byteLength; offset += section.elementByteLength) {
     entries.push({
       row: view.getUint32(offset, true),
       col: view.getUint32(offset + 4, true),
@@ -255,34 +238,47 @@ export function parseProverPermutation(permutationFile: BinaryArtifactFileView):
 
 export function parseProverCrs(crsFile: BinaryArtifactFileView): ProverCrsRuntime {
   const fixedPoints = loadNamedArtifactPoints(crsFile, PROVER_CRS_V1_SPEC);
+  const sectionsByLabel = new Map(PROVER_CRS_V1_SPEC.sections.map(section => [section.label, section]));
 
   return {
-    G: requireEntry(fixedPoints, "G"),
-    H: requireEntry(fixedPoints, "H"),
-    lagrangeKL: requireEntry(fixedPoints, "lagrangeKL"),
+    G: requireEntry(fixedPoints, 'G'),
+    H: requireEntry(fixedPoints, 'H'),
+    lagrangeKL: requireEntry(fixedPoints, 'lagrangeKL'),
     sigma1: {
-      x: requireEntry(fixedPoints, "sigma1.x"),
-      y: requireEntry(fixedPoints, "sigma1.y"),
-      delta: requireEntry(fixedPoints, "sigma1.delta"),
-      eta: requireEntry(fixedPoints, "sigma1.eta"),
-      xyPowers: describeG1Section(crsFile, "sigma1.xy-powers"),
-      gammaInvOInst: describeG1Section(crsFile, "sigma1.gamma-inv-o-inst"),
-      etaInvLiOInterAlpha4Kj: describeG1Section(crsFile, "sigma1.eta-inv-li-o-inter-alpha4-kj"),
-      deltaInvLiOPrv: describeG1Section(crsFile, "sigma1.delta-inv-li-o-prv"),
-      deltaInvAlphakXhTx: describeG1Section(crsFile, "sigma1.delta-inv-alphak-xh-tx"),
-      deltaInvAlpha4XjTx: describeG1Section(crsFile, "sigma1.delta-inv-alpha4-xj-tx"),
-      deltaInvAlphakYiTy: describeG1Section(crsFile, "sigma1.delta-inv-alphak-yi-ty"),
+      x: requireEntry(fixedPoints, 'sigma1.x'),
+      y: requireEntry(fixedPoints, 'sigma1.y'),
+      delta: requireEntry(fixedPoints, 'sigma1.delta'),
+      eta: requireEntry(fixedPoints, 'sigma1.eta'),
+      xyPowers: describeG1Section(crsFile, requireCrsSectionSpec(sectionsByLabel, 'sigma1.xy-powers')),
+      gammaInvOInst: describeG1Section(crsFile, requireCrsSectionSpec(sectionsByLabel, 'sigma1.gamma-inv-o-inst')),
+      etaInvLiOInterAlpha4Kj: describeG1Section(
+        crsFile,
+        requireCrsSectionSpec(sectionsByLabel, 'sigma1.eta-inv-li-o-inter-alpha4-kj'),
+      ),
+      deltaInvLiOPrv: describeG1Section(crsFile, requireCrsSectionSpec(sectionsByLabel, 'sigma1.delta-inv-li-o-prv')),
+      deltaInvAlphakXhTx: describeG1Section(
+        crsFile,
+        requireCrsSectionSpec(sectionsByLabel, 'sigma1.delta-inv-alphak-xh-tx'),
+      ),
+      deltaInvAlpha4XjTx: describeG1Section(
+        crsFile,
+        requireCrsSectionSpec(sectionsByLabel, 'sigma1.delta-inv-alpha4-xj-tx'),
+      ),
+      deltaInvAlphakYiTy: describeG1Section(
+        crsFile,
+        requireCrsSectionSpec(sectionsByLabel, 'sigma1.delta-inv-alphak-yi-ty'),
+      ),
     },
     sigma2: {
-      alpha: requireEntry(fixedPoints, "sigma2.alpha"),
-      alpha2: requireEntry(fixedPoints, "sigma2.alpha2"),
-      alpha3: requireEntry(fixedPoints, "sigma2.alpha3"),
-      alpha4: requireEntry(fixedPoints, "sigma2.alpha4"),
-      gamma: requireEntry(fixedPoints, "sigma2.gamma"),
-      delta: requireEntry(fixedPoints, "sigma2.delta"),
-      eta: requireEntry(fixedPoints, "sigma2.eta"),
-      x: requireEntry(fixedPoints, "sigma2.x"),
-      y: requireEntry(fixedPoints, "sigma2.y"),
+      alpha: requireEntry(fixedPoints, 'sigma2.alpha'),
+      alpha2: requireEntry(fixedPoints, 'sigma2.alpha2'),
+      alpha3: requireEntry(fixedPoints, 'sigma2.alpha3'),
+      alpha4: requireEntry(fixedPoints, 'sigma2.alpha4'),
+      gamma: requireEntry(fixedPoints, 'sigma2.gamma'),
+      delta: requireEntry(fixedPoints, 'sigma2.delta'),
+      eta: requireEntry(fixedPoints, 'sigma2.eta'),
+      x: requireEntry(fixedPoints, 'sigma2.x'),
+      y: requireEntry(fixedPoints, 'sigma2.y'),
     },
   };
 }
@@ -294,45 +290,37 @@ export function validateProverCrsForSetup(crs: ProverCrsRuntime, setup: SetupPar
   const intermediateWireCount = setup.l_D - setup.l;
   const referenceStringXSize = Math.max(setup.n * 2, intermediateWireCount * 2);
   const referenceStringYSize = setup.s_max * 2;
-  assertG1SectionCount(
-    crs.sigma1.xyPowers,
-    referenceStringXSize * referenceStringYSize,
-    "sigma1.xy-powers",
-  );
-  assertG1SectionCount(crs.sigma1.gammaInvOInst, setup.l, "sigma1.gamma-inv-o-inst");
+  assertG1SectionCount(crs.sigma1.xyPowers, referenceStringXSize * referenceStringYSize, 'sigma1.xy-powers');
+  assertG1SectionCount(crs.sigma1.gammaInvOInst, setup.l, 'sigma1.gamma-inv-o-inst');
   assertG1SectionCount(
     crs.sigma1.etaInvLiOInterAlpha4Kj,
     intermediateWireCount * setup.s_max,
-    "sigma1.eta-inv-li-o-inter-alpha4-kj",
+    'sigma1.eta-inv-li-o-inter-alpha4-kj',
   );
-  assertG1SectionCount(
-    crs.sigma1.deltaInvLiOPrv,
-    (setup.m_D - setup.l_D) * setup.s_max,
-    "sigma1.delta-inv-li-o-prv",
-  );
-  assertG1SectionCount(crs.sigma1.deltaInvAlphakXhTx, 9, "sigma1.delta-inv-alphak-xh-tx");
-  assertG1SectionCount(crs.sigma1.deltaInvAlpha4XjTx, 2, "sigma1.delta-inv-alpha4-xj-tx");
-  assertG1SectionCount(crs.sigma1.deltaInvAlphakYiTy, 12, "sigma1.delta-inv-alphak-yi-ty");
+  assertG1SectionCount(crs.sigma1.deltaInvLiOPrv, (setup.m_D - setup.l_D) * setup.s_max, 'sigma1.delta-inv-li-o-prv');
 }
 
-function readU32Array(data: Uint8Array, label: string): Uint32Array {
-  if (data.byteLength % 4 !== 0) {
-    throw new Error(`${label} byte length must be divisible by 4.`);
+function readU32Array(data: Uint8Array, label: string, elementByteLength: number): Uint32Array {
+  if (data.byteLength % elementByteLength !== 0) {
+    throw new Error(`${label} byte length must be divisible by ${elementByteLength}.`);
   }
 
-  const output = new Uint32Array(data.byteLength / 4);
+  const output = new Uint32Array(data.byteLength / elementByteLength);
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   for (let index = 0; index < output.length; index += 1) {
-    output[index] = view.getUint32(index * 4, true);
+    output[index] = view.getUint32(index * elementByteLength, true);
   }
 
   return output;
 }
 
-function describeG1Section(artifactFile: BinaryArtifactFileView, label: string): ProverCrsG1Section {
-  const section = requireG1Section(artifactFile, label);
+function describeG1Section(
+  artifactFile: BinaryArtifactFileView,
+  sectionSpec: RuntimeArtifactSectionSpec,
+): ProverCrsG1Section {
+  const section = requireBinaryArtifactSection(artifactFile, sectionSpec);
   if (section.data.byteLength % section.elementByteLength !== 0) {
-    throw new Error(`${label} section byte length is not divisible by its point width.`);
+    throw new Error(`${sectionSpec.label} section byte length is not divisible by its point width.`);
   }
 
   return {
@@ -348,12 +336,15 @@ function assertG1SectionCount(section: ProverCrsG1Section, expectedCount: number
   }
 }
 
-function requireG1Section(artifactFile: BinaryArtifactFileView, label: string) {
-  return requireBinaryArtifactSection(artifactFile, {
-    type: BinarySectionType.CrsG1,
-    encoding: BinarySectionEncoding.FfjsG1Affine96,
-    label,
-  });
+function requireCrsSectionSpec(
+  sectionsByLabel: ReadonlyMap<string, RuntimeArtifactSectionSpec>,
+  label: string,
+): RuntimeArtifactSectionSpec {
+  const sectionSpec = sectionsByLabel.get(label);
+  if (sectionSpec === undefined) {
+    throw new Error(`Prover CRS contract does not define section '${label}'.`);
+  }
+  return sectionSpec;
 }
 
 function splitFieldElements(runtime: CurveRuntime, data: Uint8Array, label: string): FieldElement[] {
@@ -387,17 +378,13 @@ export function proverCrsG1PointAt(section: ProverCrsG1Section, index: number): 
   return section.data.subarray(offset, offset + section.elementByteLength);
 }
 
-export function proverCrsG1PointRange(
-  section: ProverCrsG1Section,
-  start: number,
-  count: number,
-): Uint8Array {
+export function proverCrsG1PointRange(section: ProverCrsG1Section, start: number, count: number): Uint8Array {
   if (
-    !Number.isSafeInteger(start)
-    || !Number.isSafeInteger(count)
-    || start < 0
-    || count < 0
-    || start + count > section.count
+    !Number.isSafeInteger(start) ||
+    !Number.isSafeInteger(count) ||
+    start < 0 ||
+    count < 0 ||
+    start + count > section.count
   ) {
     throw new Error(`Prover CRS G1 point range [${start}, ${start + count}) is out of range.`);
   }

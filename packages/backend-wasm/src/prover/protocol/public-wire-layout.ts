@@ -1,14 +1,11 @@
-import type { SetupParams } from "../../artifacts/setup/setup-params.js";
+import type { SetupParams } from '../../artifacts/setup/setup-params.js';
 import {
   placementCount,
   placementSubcircuitId,
   type ProverPlacementVariables,
   type ProverSubcircuitInfo,
-} from "./witness.js";
-import {
-  bufferPublicPort,
-  validateProverSubcircuitLibrary,
-} from "./subcircuit-library-validation.js";
+} from './witness.js';
+import { bufferPublicPort, validateProverSubcircuitLibrary } from './subcircuit-library-validation.js';
 
 export interface PublicWireSource {
   readonly subcircuitId: number;
@@ -19,7 +16,7 @@ export interface PublicWireSegment {
   readonly start: number;
   readonly end: number;
   readonly subcircuitId: number;
-  /** Placement-list phase assigned by the ordered buffer declarations. */
+  /** Placement-list phase fixed by the compact CRS buffer-ID invariant. */
   readonly placementPhase: number;
 }
 
@@ -31,10 +28,7 @@ export class PublicWireLayout {
     private readonly placementPhaseBySubcircuitId: ReadonlyMap<number, number>,
   ) {}
 
-  static derive(
-    setup: SetupParams,
-    subcircuitInfos: readonly ProverSubcircuitInfo[],
-  ): PublicWireLayout {
+  static derive(setup: SetupParams, subcircuitInfos: readonly ProverSubcircuitInfo[]): PublicWireLayout {
     validateProverSubcircuitLibrary(setup, subcircuitInfos);
     const placementPhaseBySubcircuitId = deriveBufferPlacementPhases(subcircuitInfos, setup.s_max);
 
@@ -94,12 +88,7 @@ export class PublicWireLayout {
     }
     finishSegment(active, seenPublicBuffers, segments, placementPhaseBySubcircuitId);
 
-    return new PublicWireLayout(
-      setup.l_free,
-      sources,
-      segments,
-      placementPhaseBySubcircuitId,
-    );
+    return new PublicWireLayout(setup.l_free, sources, segments, placementPhaseBySubcircuitId);
   }
 
   freePublicLen(): number {
@@ -116,9 +105,7 @@ export class PublicWireLayout {
 
   placementPhaseForPublicWire(globalWireIndex: number): number | undefined {
     const source = this.sourceForPublicWire(globalWireIndex);
-    return source === undefined
-      ? undefined
-      : this.placementPhaseForSubcircuit(source.subcircuitId);
+    return source === undefined ? undefined : this.placementPhaseForSubcircuit(source.subcircuitId);
   }
 
   placementPhaseForSubcircuit(subcircuitId: number): number | undefined {
@@ -130,7 +117,7 @@ export class PublicWireLayout {
   }
 
   validateRuntimeBufferPlacements(placements: ProverPlacementVariables): void {
-    const publicBufferIds = new Set(this.publicSegments.map((segment) => segment.subcircuitId));
+    const publicBufferIds = new Set(this.publicSegments.map(segment => segment.subcircuitId));
     const runtimePhaseBySubcircuitId = new Map<number, number>();
 
     for (let placementPhase = 0; placementPhase < placementCount(placements); placementPhase += 1) {
@@ -209,24 +196,31 @@ function deriveBufferPlacementPhases(
   subcircuitInfos: readonly ProverSubcircuitInfo[],
   sMax: number,
 ): ReadonlyMap<number, number> {
-  const placementPhaseBySubcircuitId = new Map<number, number>();
+  const bufferIds = new Set<number>();
 
   for (const info of subcircuitInfos) {
     if (info.bufferDirection === undefined) {
       continue;
     }
-    const placementPhase = placementPhaseBySubcircuitId.size;
-    if (placementPhase >= sMax) {
-      throw new Error(`Buffer placement phase ${placementPhase} is outside s_max ${sMax}.`);
+    if (info.id >= sMax) {
+      throw new Error(`Buffer placement phase ${info.id} is outside s_max ${sMax}.`);
     }
-    if (placementPhaseBySubcircuitId.has(info.id)) {
+    if (bufferIds.has(info.id)) {
       throw new Error(`Subcircuit library contains duplicate buffer id ${info.id}.`);
     }
-    placementPhaseBySubcircuitId.set(info.id, placementPhase);
+    bufferIds.add(info.id);
   }
 
-  if (placementPhaseBySubcircuitId.size === 0) {
-    throw new Error("Subcircuit library does not declare any buffers.");
+  if (bufferIds.size === 0) {
+    throw new Error('Subcircuit library does not declare any buffers.');
+  }
+
+  const placementPhaseBySubcircuitId = new Map<number, number>();
+  for (let placementPhase = 0; placementPhase < bufferIds.size; placementPhase += 1) {
+    if (!bufferIds.has(placementPhase)) {
+      throw new Error(`Public buffer IDs must form the contiguous placement prefix 0..${bufferIds.size - 1}.`);
+    }
+    placementPhaseBySubcircuitId.set(placementPhase, placementPhase);
   }
 
   return placementPhaseBySubcircuitId;

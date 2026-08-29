@@ -338,27 +338,25 @@ fn derive_buffer_placement_phases(
         .iter()
         .filter(|subcircuit| subcircuit.bufferDirection.is_some())
         .map(|subcircuit| subcircuit.id)
-        .collect::<Vec<_>>();
+        .collect::<HashSet<_>>();
 
     if buffer_ids.is_empty() {
         return Err(error("subcircuitInfo does not declare any buffers"));
     }
-    if buffer_ids.len() > s_max {
-        return Err(error(format!(
-            "buffer placement phase {} is outside s_max {s_max}",
-            buffer_ids.len() - 1
-        )));
-    }
     let mut placement_phase_by_subcircuit_id = HashMap::with_capacity(buffer_ids.len());
-    for (placement_phase, subcircuit_id) in buffer_ids.into_iter().enumerate() {
-        if placement_phase_by_subcircuit_id
-            .insert(subcircuit_id, placement_phase)
-            .is_some()
-        {
+    for placement_phase in 0..buffer_ids.len() {
+        if placement_phase >= s_max {
             return Err(error(format!(
-                "subcircuitInfo contains duplicate buffer id {subcircuit_id}"
+                "buffer placement phase {placement_phase} is outside s_max {s_max}"
             )));
         }
+        if !buffer_ids.contains(&placement_phase) {
+            return Err(error(format!(
+                "public buffer IDs must form the contiguous placement prefix 0..{}",
+                buffer_ids.len() - 1
+            )));
+        }
+        placement_phase_by_subcircuit_id.insert(placement_phase, placement_phase);
     }
     Ok(placement_phase_by_subcircuit_id)
 }
@@ -619,7 +617,7 @@ mod tests {
     }
 
     #[test]
-    fn derives_placement_phase_from_buffer_order_not_subcircuit_id() {
+    fn rejects_gapped_public_buffer_ids() {
         let (setup_params, mut global_wires, mut subcircuits) = six_public_buffer_artifacts();
         subcircuits[2].id = 17;
         for source in &mut global_wires {
@@ -634,10 +632,10 @@ mod tests {
             }
         }
 
-        let layout = PublicWireLayout::derive(&setup_params, &global_wires, &subcircuits).unwrap();
-        assert_eq!(layout.placement_phase_for_public_wire(80), Some(2));
-        assert_eq!(layout.placement_phase_for_subcircuit(17), Some(2));
-        assert_eq!(layout.segments()[2], segment(80, 130, 17, 2));
+        assert_error(
+            PublicWireLayout::derive(&setup_params, &global_wires, &subcircuits),
+            "contiguous placement prefix",
+        );
     }
 
     #[test]
@@ -718,19 +716,7 @@ mod tests {
 
     #[test]
     fn validates_runtime_public_buffer_placement_phases() {
-        let (setup_params, mut global_wires, mut subcircuits) = six_public_buffer_artifacts();
-        subcircuits[2].id = 17;
-        for source in &mut global_wires {
-            if let GlobalWire::Mapped {
-                subcircuit_id,
-                local_wire_index: _,
-            } = source
-            {
-                if *subcircuit_id == 2 {
-                    *subcircuit_id = 17;
-                }
-            }
-        }
+        let (setup_params, global_wires, subcircuits) = six_public_buffer_artifacts();
         let layout = PublicWireLayout::derive(&setup_params, &global_wires, &subcircuits).unwrap();
         let mut placements = (0..6)
             .map(|subcircuit_id| PlacementVariables {
@@ -738,13 +724,12 @@ mod tests {
                 variables: Box::new([]),
             })
             .collect::<Vec<_>>();
-        placements[2].subcircuitId = 17;
 
         layout
             .validate_runtime_public_buffer_placements(&placements)
             .unwrap();
 
-        placements[4].subcircuitId = 6;
+        placements[4].subcircuitId = 5;
         placements[5].subcircuitId = 4;
         let error = layout
             .validate_runtime_public_buffer_placements(&placements)
@@ -754,7 +739,7 @@ mod tests {
         placements[4].subcircuitId = 4;
         placements[5].subcircuitId = 5;
         placements.push(PlacementVariables {
-            subcircuitId: 17,
+            subcircuitId: 2,
             variables: Box::new([]),
         });
         let error = layout
