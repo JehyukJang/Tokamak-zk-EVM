@@ -35,8 +35,21 @@
         "bufferDirection": "bufferDirection"
       },
       "requiredFields": ["id", "name", "Nwires", "Nconsts", "Out_idx", "In_idx", "flattenMap"],
-      "optionalFields": ["bufferDirection"],
-      "r1csFileName": "subcircuit{id}.r1cs"
+      "optionalFields": ["bufferDirection"]
+    },
+    "r1cs": {
+      "directoryName": "r1cs",
+      "fileNamePattern": "subcircuit{id}.r1cs",
+      "transport": {
+        "format": "circom-r1cs",
+        "magic": "r1cs",
+        "version": 1,
+        "endianness": "little",
+        "sections": {
+          "header": 1,
+          "constraints": 2
+        }
+      }
     }
   }
 }

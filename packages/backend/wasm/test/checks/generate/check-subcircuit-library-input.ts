@@ -2,6 +2,7 @@ import {
   parseProverSubcircuitInfos,
   parseSetupParams,
 } from "../../../scripts/generate/subcircuit-library-input.js";
+import { parseR1csTransport } from "../../../scripts/generate/generate-subcircuit-library.js";
 import { readSelectedInputOrigin } from "../../../scripts/generate/input-origin.js";
 import { parseSubcircuitLibraryOrigin } from "../../../src/generated/crs-provenance-validator.generated.js";
 import { PublicWireLayout } from "../../../src/prover/protocol/public-wire-layout.js";
@@ -49,6 +50,25 @@ if (projectedSubcircuits[0].bufferDirection !== "out") {
 }
 validateProverSubcircuitLibrary(projectedSetup, projectedSubcircuits);
 PublicWireLayout.derive(projectedSetup, projectedSubcircuits);
+
+const r1csTransport = {
+  format: "circom-r1cs",
+  magic: "r1cs",
+  version: 1,
+  endianness: "little",
+  sections: { header: 1, constraints: 2 },
+};
+if (parseR1csTransport(r1csTransport).version !== 1) {
+  throw new Error("R1CS transport projection changed its declared version.");
+}
+expectFailure(
+  () => parseR1csTransport({ ...r1csTransport, version: 2 }),
+  "Generator must reject an unsupported producer R1CS version.",
+);
+expectFailure(
+  () => parseR1csTransport({ ...r1csTransport, sections: { header: 1, constraints: 3 } }),
+  "Generator must reject stale producer R1CS section identifiers.",
+);
 
 expectFailure(
   () => parseSetupParams({ ...setup, l_free: "8" }),

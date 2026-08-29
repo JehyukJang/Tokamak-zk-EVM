@@ -60,7 +60,7 @@ export async function buildWitnessPolynomials(
   input: ProverWitnessInput,
 ): Promise<WitnessPolynomials> {
   validateProverSubcircuitLibrary(input.setup, input.subcircuitInfos);
-  validatePlacements(input.placementVariables, input.subcircuitInfos, input.setup);
+  validateProverPlacements(input.placementVariables, input.subcircuitInfos, input.setup);
   const r1csBySubcircuit = indexPackedSparseR1cs(
     input.r1csBySubcircuit,
     input.subcircuitInfos,
@@ -91,7 +91,7 @@ export async function genBXY(
   setup: SetupParams,
 ): Promise<BivariatePolynomialBuffer> {
   validateProverSubcircuitLibrary(setup, subcircuitInfos);
-  validatePlacements(placementVariables, subcircuitInfos, setup);
+  validateProverPlacements(placementVariables, subcircuitInfos, setup);
 
   const mI = setup.l_D - setup.l;
   const evals = field.createZeroBuffer(mI * setup.s_max);
@@ -237,7 +237,8 @@ function indexPackedSparseR1cs(
 }
 
 
-function validatePlacements(
+/** Validates selected-setup placement bounds after artifact decoding. */
+export function validateProverPlacements(
   placementVariables: ProverPlacementVariables,
   subcircuitInfos: readonly ProverSubcircuitInfo[],
   setup: SetupParams,

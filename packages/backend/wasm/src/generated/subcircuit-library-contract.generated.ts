@@ -56,8 +56,21 @@ export const SUBCIRCUIT_LIBRARY_CONTRACT = {
       ],
       "optionalFields": [
         "bufferDirection"
-      ],
-      "r1csFileName": "subcircuit{id}.r1cs"
+      ]
+    },
+    "r1cs": {
+      "directoryName": "r1cs",
+      "fileNamePattern": "subcircuit{id}.r1cs",
+      "transport": {
+        "format": "circom-r1cs",
+        "magic": "r1cs",
+        "version": 1,
+        "endianness": "little",
+        "sections": {
+          "header": 1,
+          "constraints": 2
+        }
+      }
     }
   }
 } as const;

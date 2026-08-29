@@ -37,10 +37,10 @@ async function main(argv: readonly string[]): Promise<void> {
     manifest.workDirectory,
   );
   const subcircuitLibrary = path.join(
-    backendWasmRoot,
-    "node_modules",
-    "@tokamak-zk-evm",
-    "subcircuit-library",
+    repositoryRoot,
+    "packages",
+    "frontend",
+    "qap-compiler",
     "subcircuits",
     "library",
   );
@@ -50,9 +50,12 @@ async function main(argv: readonly string[]): Promise<void> {
     path.join(backendRoot, "Cargo.toml"),
     "-p",
     "verify",
+    "--features",
+    "development-crs-bypass,local-development-subcircuit-library",
     "--",
     "--subcircuit-library",
     subcircuitLibrary,
+    "--allow-unverified-crs",
     "--crs",
     path.join(sourceRoot, "setup"),
     "--synthesizer-stat",

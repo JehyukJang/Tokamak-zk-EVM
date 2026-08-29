@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Buffer } from "node:buffer";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 
 import { createCurveRuntime } from "../../src/runtime/curve/curve.js";
 import type { FieldElement } from "../../src/runtime/field/field-runtime.js";
@@ -40,8 +41,17 @@ const nativeBackendCargoPath = path.resolve(backendWasmRoot, "..", "Cargo.toml")
 const checkMode = process.argv.includes("--check");
 const selectedOrigin = readSelectedInputOrigin(process.argv.slice(2));
 const localQapCompilerRoot = path.resolve(backendWasmRoot, "..", "..", "frontend", "qap-compiler");
-const { setupParams: setupContract, subcircuitInfo: subcircuitContract } =
+const { setupParams: setupContract, subcircuitInfo: subcircuitContract, r1cs: r1csContract } =
   SUBCIRCUIT_LIBRARY_CONTRACT.libraryArtifacts;
+
+interface R1csTransport {
+  readonly format: "circom-r1cs";
+  readonly magic: string;
+  readonly version: number;
+  readonly endianness: "little";
+  readonly headerSection: number;
+  readonly constraintsSection: number;
+}
 
 interface SubcircuitLibraryPackage {
   readonly name: string;
@@ -84,15 +94,16 @@ async function main(): Promise<void> {
   PublicWireLayout.derive(setup, subcircuitInfos);
   const nativeBackendVersion = readNativeBackendVersion(nativeBackendCargoPath);
 
+  const r1csTransport = parseR1csTransport(r1csContract.transport);
   const runtime = await createCurveRuntime();
   try {
     const packedR1cs = subcircuitInfos.map((subcircuitInfo) => {
       const r1csPath = path.join(
         library.libraryRoot,
-        "r1cs",
-        subcircuitContract.r1csFileName.replace("{id}", String(subcircuitInfo.id)),
+        r1csContract.directoryName,
+        r1csContract.fileNamePattern.replace("{id}", String(subcircuitInfo.id)),
       );
-      return packSubcircuitR1cs(runtime.Fr.fromBigInt, r1csPath, setup, subcircuitInfo);
+      return packSubcircuitR1cs(runtime.Fr.fromBigInt, r1csPath, r1csTransport, setup, subcircuitInfo);
     });
 
     const setupContent = renderSetupGeneratedModule({
@@ -180,10 +191,11 @@ function validateLibraryLayout(library: ResolvedSubcircuitLibrary): ResolvedSubc
 function packSubcircuitR1cs(
   toRuntimeFieldElement: (value: bigint) => FieldElement,
   r1csPath: string,
+  transport: R1csTransport,
   setup: SetupParams,
   subcircuitInfo: ProverSubcircuitInfo,
 ): PackedSparseSubcircuit {
-  const binary = readR1csBinary(r1csPath);
+  const binary = readR1csBinary(r1csPath, transport);
   if (binary.nWires !== subcircuitInfo.Nwires) {
     throw new Error(
       `R1CS nWires mismatch for subcircuit ${subcircuitInfo.id}: binary=${binary.nWires}, info=${subcircuitInfo.Nwires}.`,
@@ -274,17 +286,17 @@ interface R1csBinary {
   readonly nConstraints: number;
 }
 
-function readR1csBinary(r1csPath: string): R1csBinary {
+function readR1csBinary(r1csPath: string, transport: R1csTransport): R1csBinary {
   const data = fs.readFileSync(r1csPath);
   let offset = 0;
-  if (!bytesEqual(readBytes(data, offset, 4), Buffer.from("r1cs"))) {
+  if (!bytesEqual(readBytes(data, offset, 4), Buffer.from(transport.magic))) {
     throw new Error(`Invalid R1CS magic in ${r1csPath}.`);
   }
   offset += 4;
 
   const version = readU32Le(data, offset);
   offset += 4;
-  if (version !== 1) {
+  if (version !== transport.version) {
     throw new Error(`Unsupported R1CS version ${version} in ${r1csPath}.`);
   }
 
@@ -310,10 +322,10 @@ function readR1csBinary(r1csPath: string): R1csBinary {
       throw new Error(`R1CS section extends past the end of ${r1csPath}.`);
     }
 
-    if (sectionType === 1) {
+    if (sectionType === transport.headerSection) {
       headerOffset = sectionOffset;
       headerSize = Number(sectionSize);
-    } else if (sectionType === 2) {
+    } else if (sectionType === transport.constraintsSection) {
       constraintsOffset = sectionOffset;
       constraintsSize = Number(sectionSize);
     }
@@ -349,6 +361,36 @@ function readR1csBinary(r1csPath: string): R1csBinary {
     fieldSize,
     nWires,
     nConstraints,
+  };
+}
+
+export function parseR1csTransport(raw: unknown): R1csTransport {
+  if (!isRecord(raw)) {
+    throw new Error("qap-compiler R1CS transport must be an object.");
+  }
+  if (raw.format !== "circom-r1cs") {
+    throw new Error("Unsupported qap-compiler R1CS transport format.");
+  }
+  if (raw.magic !== "r1cs") {
+    throw new Error("qap-compiler R1CS transport magic must be 'r1cs'.");
+  }
+  if (raw.version !== 1) {
+    throw new Error("Unsupported qap-compiler R1CS transport version.");
+  }
+  if (raw.endianness !== "little") {
+    throw new Error("qap-compiler R1CS transport must use little-endian integers.");
+  }
+  const sections = raw.sections;
+  if (!isRecord(sections) || sections.header !== 1 || sections.constraints !== 2) {
+    throw new Error("Unsupported qap-compiler R1CS transport section identifiers.");
+  }
+  return {
+    format: raw.format,
+    magic: raw.magic,
+    version: raw.version,
+    endianness: raw.endianness,
+    headerSection: sections.header,
+    constraintsSection: sections.constraints,
   };
 }
 
@@ -512,6 +554,10 @@ function readJson<T = unknown>(jsonPath: string): T {
   return JSON.parse(fs.readFileSync(jsonPath, "utf8")) as T;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function readBytes(data: Uint8Array, offset: number, length: number): Uint8Array {
   const end = offset + length;
   if (end > data.byteLength) {
@@ -575,7 +621,9 @@ function compareNumbers(left: number, right: number): number {
   return left - right;
 }
 
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.stack ?? error.message : String(error));
-  process.exitCode = 1;
-});
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch((error: unknown) => {
+    console.error(error instanceof Error ? error.stack ?? error.message : String(error));
+    process.exitCode = 1;
+  });
+}

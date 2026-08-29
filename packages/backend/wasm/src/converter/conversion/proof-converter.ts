@@ -163,7 +163,8 @@ function requireBinarySection(
 
   if (
     section.elementCount !== requireFixedElementCount(sectionSpec)
-    || section.elementByteLength !== sectionSpec.elementByteLength
+    || (sectionSpec.elementByteLength !== null
+      && section.elementByteLength !== sectionSpec.elementByteLength)
   ) {
     throw new Error(`Binary artifact section '${sectionSpec.label}' shape mismatch.`);
   }
@@ -172,8 +173,8 @@ function requireBinarySection(
 }
 
 function requireFixedElementCount(section: RuntimeArtifactSectionSpec): number {
-  if (section.elementCount === null || section.elementByteLength === null) {
-    throw new Error(`Backend contract must define a fixed shape for '${section.label}'.`);
+  if (section.elementCount === null) {
+    throw new Error(`Backend contract must define a fixed element count for '${section.label}'.`);
   }
   return section.elementCount;
 }
