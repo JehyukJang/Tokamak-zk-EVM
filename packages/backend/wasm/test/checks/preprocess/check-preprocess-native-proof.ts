@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { loadPreprocessInputFromBinaryInput } from "../../../src/preprocess/api/binary-input.js";
+import { createPreprocessOutput } from "../../../src/preprocess/api/output.js";
 import { preprocessSnark } from "../../../src/preprocess/protocol/preprocess-snark.js";
 import { createCurveRuntime } from "../../../src/runtime/curve/curve.js";
 import {
@@ -26,7 +27,13 @@ async function main(): Promise<void> {
       instance,
       preprocessCrs,
     });
-    verifierPreprocess = await preprocessSnark(preprocessRuntime, input);
+    const computation = await preprocessSnark(preprocessRuntime, input);
+    verifierPreprocess = await createPreprocessOutput(
+      preprocessRuntime,
+      computation.s0,
+      computation.s1,
+      computation.oPubFix,
+    );
   } finally {
     await preprocessRuntime.terminate();
   }

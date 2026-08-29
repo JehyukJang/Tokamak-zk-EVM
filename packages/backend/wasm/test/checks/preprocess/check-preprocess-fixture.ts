@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { decodeBinaryArtifactFile } from "../../../src/artifacts/binary/binary-artifact-file.js";
 import { loadPreprocessInputFromBinaryInput } from "../../../src/preprocess/api/binary-input.js";
+import { createPreprocessOutput } from "../../../src/preprocess/api/output.js";
 import { preprocessSnark } from "../../../src/preprocess/protocol/preprocess-snark.js";
 import { createCurveRuntime } from "../../../src/runtime/curve/curve.js";
 import { assertBytesEqual } from "../../support/bytes.js";
@@ -24,7 +25,13 @@ async function main(): Promise<void> {
       preprocessCrs,
     });
     const started = performance.now();
-    const actual = await preprocessSnark(runtime, input);
+    const computation = await preprocessSnark(runtime, input);
+    const actual = await createPreprocessOutput(
+      runtime,
+      computation.s0,
+      computation.s1,
+      computation.oPubFix,
+    );
     const elapsedMs = performance.now() - started;
     const [actualFile, expectedFile] = await Promise.all([
       decodeBinaryArtifactFile(actual),

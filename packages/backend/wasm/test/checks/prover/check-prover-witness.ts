@@ -463,64 +463,6 @@ async function main(): Promise<void> {
     assertEqual(binaryParts.publicInstance.length, 2, 'binary public instance length');
     assertFieldEqual(binaryParts.publicInstance[1], fr(17n), 'binary public instance value');
 
-    const placementVariablesBytes = await createBinaryArtifactFile({
-      kind: BinaryArtifactFileKind.ProverPlacementVariables,
-      sourcePackageVersion: BACKEND_WASM_PACKAGE_VERSION,
-      sections: [
-        {
-          type: BinarySectionType.Placement,
-          encoding: BinarySectionEncoding.Bytes,
-          label: 'placement.subcircuit_ids',
-          elementCount: 0,
-          elementByteLength: 4,
-          data: new Uint8Array(),
-        },
-        {
-          type: BinarySectionType.Placement,
-          encoding: BinarySectionEncoding.Bytes,
-          label: 'placement.variable_offsets',
-          elementCount: 1,
-          elementByteLength: 4,
-          data: encodeU32List([0]),
-        },
-        {
-          type: BinarySectionType.Placement,
-          encoding: BinarySectionEncoding.FfjsFrMontgomeryLe32,
-          label: 'placement.variables',
-          elementCount: 0,
-          elementByteLength: runtime.Fr.byteLength,
-          data: new Uint8Array(),
-        },
-      ],
-    });
-    const permutationBytes = await createBinaryArtifactFile({
-      kind: BinaryArtifactFileKind.ProverPermutation,
-      sourcePackageVersion: BACKEND_WASM_PACKAGE_VERSION,
-      sections: [
-        {
-          type: BinarySectionType.Permutation,
-          encoding: BinarySectionEncoding.Bytes,
-          label: 'permutation.entries',
-          elementCount: 0,
-          elementByteLength: 16,
-          data: new Uint8Array(),
-        },
-      ],
-    });
-    const instanceBytes = await createBinaryArtifactFile({
-      kind: BinaryArtifactFileKind.Instance,
-      sourcePackageVersion: BACKEND_WASM_PACKAGE_VERSION,
-      sections: [
-        {
-          type: BinarySectionType.Instance,
-          encoding: BinarySectionEncoding.FfjsFrMontgomeryLe32,
-          label: 'instance.public',
-          elementCount: 0,
-          elementByteLength: runtime.Fr.byteLength,
-          data: new Uint8Array(),
-        },
-      ],
-    });
     const crsBytes = await createBinaryArtifactFile({
       kind: BinaryArtifactFileKind.ProverCrs,
       sourcePackageVersion: BACKEND_WASM_PACKAGE_VERSION,
