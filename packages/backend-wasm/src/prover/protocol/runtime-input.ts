@@ -1,5 +1,13 @@
 import type { FieldElement } from '../../runtime/field/field-runtime.js';
-import type { ProverPermutationEntry, ProverWitnessInput } from './witness.js';
+import type { SetupParams } from '../../artifacts/setup/setup-params.js';
+import type { ProverPermutationEntry, ProverPlacementVariables, ProverWitnessInput } from './witness.js';
+
+export interface ProverRuntimeWitnessInputParts {
+  readonly setup: SetupParams;
+  readonly placementVariables: ProverPlacementVariables;
+  readonly permutation: readonly ProverPermutationEntry[];
+  readonly publicInstance: readonly FieldElement[];
+}
 
 export interface ProverCrsG1Section {
   readonly data: Uint8Array;

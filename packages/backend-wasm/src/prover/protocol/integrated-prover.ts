@@ -2,7 +2,7 @@ import { RollingKeccakTranscript } from '../../runtime/crypto/transcript.js';
 import type { CurveRuntime } from '../../runtime/curve/curve.js';
 import type { FieldElement } from '../../runtime/field/field-runtime.js';
 import type { ProverRuntimeInput } from './runtime-input.js';
-import type { ProverVerifierProofOutputInput } from '../api/proof-output.js';
+import type { ProverVerifierProofOutputInput } from './proof-output.js';
 import type { ProverBinding } from '../commitments/binding-commitments.js';
 import type { ProverCommitmentEncoder } from '../commitments/commitment-encoder.js';
 import { createSigma1CommitmentEncoder } from '../commitments/sigma1-encoder.js';

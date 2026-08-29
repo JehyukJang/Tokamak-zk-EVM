@@ -23,7 +23,20 @@ import {
   NATIVE_BACKEND_VERSION,
   SUBCIRCUIT_LIBRARY_PACKAGE_VERSION,
 } from '../../generated/active/setup.generated.js';
-import type { ProverPermutationEntry, ProverPlacementVariables, ProverWitnessInput } from '../protocol/witness.js';
+import type { ProverPermutationEntry, ProverPlacementVariables } from '../protocol/witness.js';
+import type {
+  ProverCrsG1Section,
+  ProverCrsRuntime,
+  ProverRuntimeInput,
+  ProverRuntimeWitnessInputParts,
+} from '../protocol/runtime-input.js';
+export { proverCrsG1PointAt, proverCrsG1PointRange } from '../protocol/runtime-input.js';
+export type {
+  ProverCrsG1Section,
+  ProverCrsRuntime,
+  ProverRuntimeInput,
+  ProverRuntimeWitnessInputParts,
+} from '../protocol/runtime-input.js';
 
 export interface ProverBinaryArtifactFiles {
   readonly placementVariables: BinaryArtifactFileView;
@@ -43,60 +56,6 @@ export interface ProverWitnessBinaryArtifactFiles {
   readonly placementVariables: BinaryArtifactFileView;
   readonly permutation: BinaryArtifactFileView;
   readonly instance: BinaryArtifactFileView;
-}
-
-export interface ProverRuntimeWitnessInputParts {
-  readonly setup: SetupParams;
-  readonly placementVariables: ProverPlacementVariables;
-  readonly permutation: readonly ProverPermutationEntry[];
-  readonly publicInstance: readonly FieldElement[];
-}
-
-export interface ProverCrsRuntime {
-  readonly G: Uint8Array;
-  readonly H: Uint8Array;
-  readonly lagrangeKL: Uint8Array;
-  readonly sigma1: ProverSigma1Runtime;
-  readonly sigma2: ProverSigma2Runtime;
-}
-
-export interface ProverSigma1Runtime {
-  readonly x: Uint8Array;
-  readonly y: Uint8Array;
-  readonly delta: Uint8Array;
-  readonly eta: Uint8Array;
-  readonly xyPowers: ProverCrsG1Section;
-  readonly gammaInvOInst: ProverCrsG1Section;
-  readonly etaInvLiOInterAlpha4Kj: ProverCrsG1Section;
-  readonly deltaInvLiOPrv: ProverCrsG1Section;
-  readonly deltaInvAlphakXhTx: ProverCrsG1Section;
-  readonly deltaInvAlpha4XjTx: ProverCrsG1Section;
-  readonly deltaInvAlphakYiTy: ProverCrsG1Section;
-}
-
-export interface ProverCrsG1Section {
-  readonly data: Uint8Array;
-  readonly count: number;
-  readonly elementByteLength: number;
-}
-
-export interface ProverSigma2Runtime {
-  readonly alpha: Uint8Array;
-  readonly alpha2: Uint8Array;
-  readonly alpha3: Uint8Array;
-  readonly alpha4: Uint8Array;
-  readonly gamma: Uint8Array;
-  readonly delta: Uint8Array;
-  readonly eta: Uint8Array;
-  readonly x: Uint8Array;
-  readonly y: Uint8Array;
-}
-
-export interface ProverRuntimeInput {
-  readonly witness: ProverWitnessInput;
-  readonly permutation: readonly ProverPermutationEntry[];
-  readonly publicInstance: readonly FieldElement[];
-  readonly crs: ProverCrsRuntime;
 }
 
 export { NATIVE_BACKEND_VERSION, SUBCIRCUIT_LIBRARY_PACKAGE_VERSION };
@@ -367,28 +326,4 @@ function requireEntry(entries: Readonly<Record<string, Uint8Array>>, name: strin
   }
 
   return entry;
-}
-
-export function proverCrsG1PointAt(section: ProverCrsG1Section, index: number): Uint8Array {
-  if (!Number.isSafeInteger(index) || index < 0 || index >= section.count) {
-    throw new Error(`Prover CRS G1 point index ${index} is out of range.`);
-  }
-
-  const offset = index * section.elementByteLength;
-  return section.data.subarray(offset, offset + section.elementByteLength);
-}
-
-export function proverCrsG1PointRange(section: ProverCrsG1Section, start: number, count: number): Uint8Array {
-  if (
-    !Number.isSafeInteger(start) ||
-    !Number.isSafeInteger(count) ||
-    start < 0 ||
-    count < 0 ||
-    start + count > section.count
-  ) {
-    throw new Error(`Prover CRS G1 point range [${start}, ${start + count}) is out of range.`);
-  }
-
-  const byteStart = start * section.elementByteLength;
-  return section.data.subarray(byteStart, byteStart + count * section.elementByteLength);
 }
