@@ -5,14 +5,16 @@ const test = require('node:test');
 
 const packageRoot = path.resolve(__dirname, '..');
 
-test('Docker package context includes the root-owned version-policy source', () => {
+test('Docker package context includes the backend-owned vendor product', () => {
   const dockerIgnore = fs.readFileSync(path.join(packageRoot, '.dockerignore'), 'utf8');
-  assert.match(dockerIgnore, /^!versioning\/$/mu);
-  assert.match(dockerIgnore, /^!versioning\/\*\*$/mu);
+  assert.match(dockerIgnore, /^!vendor\/$/mu);
+  assert.match(dockerIgnore, /^!vendor\/\*\*$/mu);
+  assert.doesNotMatch(dockerIgnore, /^!versioning\/$/mu);
 
   const dockerfile = fs.readFileSync(path.join(packageRoot, 'docker', 'Dockerfile'), 'utf8');
-  assert.match(dockerfile, /^COPY versioning \.\/versioning$/mu);
-  assert.match(dockerfile, /test -f versioning\/compatibility\.rs/u);
+  assert.doesNotMatch(dockerfile, /^COPY versioning \.\/versioning$/mu);
+  assert.match(dockerfile, /test -f vendor\/backend\/cli-vendor-product\.json/u);
+  assert.match(dockerfile, /test -f vendor\/backend\/versioning\/compatibility\.rs/u);
 });
 
 test('ICICLE CUDA selection uses the executing process probe rather than an ambient Docker variable', () => {

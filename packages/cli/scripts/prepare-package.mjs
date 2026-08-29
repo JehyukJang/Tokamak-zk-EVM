@@ -1,132 +1,46 @@
+import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { promisify } from 'node:util';
 
+const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(import.meta.dirname, '..');
-const repoRoot = path.resolve(packageRoot, '..', '..');
-const rootVersionPolicyPath = path.join(repoRoot, 'versioning', 'compatibility.rs');
-const vendoredBackendRoot = path.join(packageRoot, 'vendor', 'backend');
-// Backend contract code resolves the root-owned policy with four parent
-// traversals from vendor/backend/contracts/rust, which lands at this package root.
-const packagedVersionPolicyPath = path.join(packageRoot, 'versioning', 'compatibility.rs');
+const repositoryRoot = path.resolve(packageRoot, '..', '..');
+const vendorRoot = path.join(packageRoot, 'vendor');
+const vendoredBackendRoot = path.join(vendorRoot, 'backend');
+const productManifestPath = path.join(vendoredBackendRoot, 'cli-vendor-product.json');
+const producer = path.join(repositoryRoot, 'packages', 'backend', 'scripts', 'prepare-cli-vendor.mjs');
 
-const directoryExclusions = new Set([
-  'target',
-  '.vscode',
-  'external-lib',
-  'output',
-  'output-mpc',
-  'output-mpc-general',
-  'benches',
-  'docs',
-  'optimization',
-  'tmp',
-]);
-
-const fileExclusions = [
-  '.env',
-  '.DS_Store',
-  '.gitignore',
-  'README.md',
-  'README_mpc.md',
-  'download-ICICLE-lib.sh',
-  'Dockerfile',
-  'google-drive-oauth-token.json',
-  /^client_secret_.*\.json$/u,
-  /^Dockerfile\..*/u,
-  /^gen-lang-client-.*\.json$/u,
-];
-
-const cargoManifestSanitizers = [
-  /\n\[\[bench\]\]\r?\nname = "outer_product_bench"\r?\nharness = false\r?\n?/gu,
-  /\n\[\[bench\]\]\r?\nname = "matrix_matrix_mul_bench"\r?\nharness = false\r?\n?/gu,
-  /\n\[\[test\]\]\r?\nname = "timing"\r?\npath = "optimization\/tests\/timing\.rs"\r?\n?/gu,
-  /\ncriterion = "0\.3"\r?\n/gu,
-];
-
-async function ensureDir(target) {
-  await fs.mkdir(target, { recursive: true });
+async function listRegularFiles(root) {
+  const entries = await fs.readdir(root, { withFileTypes: true });
+  const nested = await Promise.all(entries.map(async (entry) => {
+    const entryPath = path.join(root, entry.name);
+    if (entry.isDirectory()) return await listRegularFiles(entryPath);
+    if (!entry.isFile()) throw new Error(`Backend vendor product contains unsupported filesystem entry: ${entryPath}`);
+    return [entryPath];
+  }));
+  return nested.flat();
 }
 
-function shouldCopyBackendRelativePath(relative) {
-  if (!relative || relative.startsWith('..')) {
-    return true;
+async function validateBackendProduct() {
+  const manifest = JSON.parse(await fs.readFile(productManifestPath, 'utf8'));
+  if (manifest?.contractVersion !== 1 || !Array.isArray(manifest.files) || !manifest.files.every((file) => typeof file === 'string')) {
+    throw new Error('Backend vendor product manifest is invalid.');
   }
-
-  const parts = relative.split(path.sep);
-  for (const part of parts) {
-    if (directoryExclusions.has(part)) {
-      return false;
-    }
-  }
-  const leaf = parts.at(-1) ?? '';
-  for (const matcher of fileExclusions) {
-    if (typeof matcher === 'string' ? leaf === matcher : matcher.test(leaf)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function shouldCopyBackendPath(sourcePath) {
-  return shouldCopyBackendRelativePath(
-    path.relative(path.join(repoRoot, 'packages', 'backend'), sourcePath),
+  const expected = new Set([...manifest.files, 'cli-vendor-product.json']);
+  const actual = new Set(
+    (await listRegularFiles(vendoredBackendRoot))
+      .map((filePath) => path.relative(vendoredBackendRoot, filePath).split(path.sep).join('/')),
   );
-}
-
-async function copyDirectory(from, to, filter) {
-  await fs.cp(from, to, {
-    recursive: true,
-    filter: filter ?? (() => true),
-  });
-}
-
-async function sanitizeCargoManifest(filePath) {
-  let contents = await fs.readFile(filePath, 'utf8');
-  for (const sanitizer of cargoManifestSanitizers) {
-    contents = contents.replace(sanitizer, '\n');
-  }
-  await fs.writeFile(filePath, contents, 'utf8');
-}
-
-async function assertPreparedBackendTree(directory = vendoredBackendRoot) {
-  for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
-    const entryPath = path.join(directory, entry.name);
-    const relative = path.relative(vendoredBackendRoot, entryPath);
-    if (!shouldCopyBackendRelativePath(relative)) {
-      throw new Error(`Excluded backend path entered package staging: ${relative}`);
-    }
-    if (entry.isDirectory()) {
-      await assertPreparedBackendTree(entryPath);
-    }
-  }
-}
-
-async function copyVersionPolicy() {
-  await ensureDir(path.dirname(packagedVersionPolicyPath));
-  await fs.copyFile(rootVersionPolicyPath, packagedVersionPolicyPath);
-
-  const [source, staged] = await Promise.all([
-    fs.readFile(rootVersionPolicyPath),
-    fs.readFile(packagedVersionPolicyPath),
-  ]);
-  if (!source.equals(staged)) {
-    throw new Error('Vendored version-policy source does not match the root-owned source.');
+  if (expected.size !== actual.size || [...expected].some((file) => !actual.has(file))) {
+    throw new Error('Backend vendor product file closure does not match its manifest.');
   }
 }
 
 async function main() {
-  await fs.rm(path.join(packageRoot, 'vendor'), { recursive: true, force: true });
-  await ensureDir(vendoredBackendRoot);
-  await copyVersionPolicy();
-  await copyDirectory(
-    path.join(repoRoot, 'packages', 'backend'),
-    vendoredBackendRoot,
-    shouldCopyBackendPath,
-  );
-
-  await sanitizeCargoManifest(path.join(vendoredBackendRoot, 'libs', 'Cargo.toml'));
-  await sanitizeCargoManifest(path.join(vendoredBackendRoot, 'prove', 'Cargo.toml'));
-  await assertPreparedBackendTree();
+  await fs.rm(vendorRoot, { recursive: true, force: true });
+  await execFileAsync(process.execPath, [producer, '--output', vendoredBackendRoot]);
+  await validateBackendProduct();
 }
 
 await main();

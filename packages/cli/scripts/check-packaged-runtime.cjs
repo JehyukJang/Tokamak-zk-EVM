@@ -7,7 +7,6 @@ const path = require('node:path');
 
 const packageRoot = path.resolve(__dirname, '..');
 const vendoredBackendRoot = path.join(packageRoot, 'vendor', 'backend');
-const packagedVersionPolicyPath = path.join(packageRoot, 'versioning', 'compatibility.rs');
 const staticOnly = process.argv.includes('--static-only');
 
 function fail(message) {
@@ -44,7 +43,8 @@ function packedFiles() {
 function assertPackagedVendorTree(files) {
   for (const requiredPath of [
     'vendor/backend/Cargo.toml',
-    'versioning/compatibility.rs',
+    'vendor/backend/cli-vendor-product.json',
+    'vendor/backend/versioning/compatibility.rs',
   ]) {
     if (!fs.existsSync(path.join(packageRoot, requiredPath))) {
       fail(`Prepared package tree is missing ${requiredPath}.`);
@@ -53,13 +53,25 @@ function assertPackagedVendorTree(files) {
       fail(`npm package is missing ${requiredPath}.`);
     }
   }
+  const manifest = JSON.parse(fs.readFileSync(path.join(vendoredBackendRoot, 'cli-vendor-product.json'), 'utf8'));
+  if (manifest?.contractVersion !== 1 || !Array.isArray(manifest.files) || !manifest.files.every((file) => typeof file === 'string')) {
+    fail('Prepared backend vendor product manifest is invalid.');
+  }
+  const expected = new Set([
+    'vendor/backend/cli-vendor-product.json',
+    ...manifest.files.map((file) => `vendor/backend/${file}`),
+  ]);
+  const actual = new Set([...files].filter((file) => file.startsWith('vendor/backend/')));
+  if (expected.size !== actual.size || [...expected].some((file) => !actual.has(file))) {
+    fail('npm package backend vendor closure does not match the backend product manifest.');
+  }
+  if ([...files].some((file) => file === 'versioning' || file.startsWith('versioning/'))) {
+    fail('npm package must not contain a CLI-owned top-level versioning payload.');
+  }
 }
 
 async function main() {
   assertPackagedVendorTree(packedFiles());
-  if (!fs.existsSync(packagedVersionPolicyPath)) {
-    fail(`Packaged version-policy source is missing: ${packagedVersionPolicyPath}`);
-  }
   if (staticOnly) {
     return;
   }

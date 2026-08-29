@@ -47,7 +47,6 @@
     "dist",
     "manifests",
     "vendor",
-    "versioning",
     "README.md",
     "LICENSE-MIT",
     "LICENSE-APACHE"
