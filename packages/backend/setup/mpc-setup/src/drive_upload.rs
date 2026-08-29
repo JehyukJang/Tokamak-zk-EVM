@@ -7,8 +7,8 @@ use google_drive3::{oauth2, DriveHub};
 use libs::compatibility::{compatibility_from_package_version, parse_compatible_backend_version};
 use libs::crs_artifacts::{verify_final_crs_artifact_digests, FinalCrsDigests};
 use libs::crs_provenance::{
-    parse_final_mpc_crs_provenance, FinalMpcCrsProvenance, Phase1SourceProvenance,
-    CRS_PROVENANCE_FILE_NAME,
+    final_mpc_crs_archive_root_file_names, parse_final_mpc_crs_provenance, FinalMpcCrsProvenance,
+    Phase1SourceProvenance, CRS_PROVENANCE_FILE_NAME,
 };
 use libs::input_origin::SubcircuitLibraryOrigin;
 use oauth2::authenticator_delegate::{DefaultInstalledFlowDelegate, InstalledFlowDelegate};
@@ -24,12 +24,6 @@ use zip::write::{ExtendedFileOptions, FileOptions};
 
 const DRIVE_FOLDER_MIME_TYPE: &str = "application/vnd.google-apps.folder";
 const PROVENANCE_FILE_NAME: &str = CRS_PROVENANCE_FILE_NAME;
-const FINAL_OUTPUT_FILES: [&str; 4] = [
-    "combined_sigma.rkyv",
-    "sigma_preprocess.rkyv",
-    "sigma_verify.json",
-    PROVENANCE_FILE_NAME,
-];
 const DRIVE_FOLDER_ID_ENV: &str = "TOKAMAK_MPC_DRIVE_FOLDER_ID";
 const DRIVE_OAUTH_CLIENT_PATH_ENV: &str = "TOKAMAK_MPC_DRIVE_OAUTH_CLIENT_JSON_PATH";
 const DRIVE_OAUTH_TOKEN_PATH_ENV: &str = "TOKAMAK_MPC_DRIVE_OAUTH_TOKEN_PATH";
@@ -281,9 +275,9 @@ fn create_output_archive(output_path: &Path, archive_path: &Path) -> Result<(), 
         .compression_method(zip::CompressionMethod::Deflated)
         .unix_permissions(0o644);
 
-    for file_name in FINAL_OUTPUT_FILES {
-        let file_path = output_path.join(file_name);
-        add_file_to_archive(&mut archive, file_name, &file_path, options.clone())?;
+    for file_name in final_mpc_crs_archive_root_file_names().map_err(DriveUploadError::Message)? {
+        let file_path = output_path.join(&file_name);
+        add_file_to_archive(&mut archive, &file_name, &file_path, options.clone())?;
     }
 
     archive.finish()?;
@@ -575,9 +569,9 @@ async fn build_drive_hub(
 #[cfg(test)]
 mod tests {
     use super::{
-        archive_version_prefix, publish_output_archive_with_publisher, CrsArchivePublisher,
-        DriveUploadConfig, DriveUploadError, DriveUploadResult, FINAL_OUTPUT_FILES,
-        PROVENANCE_FILE_NAME,
+        archive_version_prefix, final_mpc_crs_archive_root_file_names,
+        publish_output_archive_with_publisher, CrsArchivePublisher, DriveUploadConfig,
+        DriveUploadError, DriveUploadResult, PROVENANCE_FILE_NAME,
     };
     use crate::sigma::{DuskSourceProvenance, Phase1SourceProvenance, SubcircuitLibraryOrigin};
     use crate::versioning::compatible_backend_version;
@@ -635,14 +629,26 @@ mod tests {
         hex::encode(Sha256::digest(value.as_ref()))
     }
 
+    fn final_output_files() -> Vec<String> {
+        final_mpc_crs_archive_root_file_names()
+            .expect("final MPC archive layout must satisfy the backend contract")
+    }
+
+    fn final_sigma_files() -> Vec<String> {
+        final_output_files()
+            .into_iter()
+            .filter(|file_name| file_name != PROVENANCE_FILE_NAME)
+            .collect()
+    }
+
     fn fixture() -> (tempfile::TempDir, DriveUploadConfig, PathBuf, PathBuf) {
         let workspace = tempfile::tempdir().expect("must create temporary workspace");
         let output = workspace.path().join("output");
         let intermediate = workspace.path().join("intermediate");
         fs::create_dir_all(&output).expect("must create output directory");
         fs::create_dir_all(&intermediate).expect("must create intermediate directory");
-        for file_name in FINAL_OUTPUT_FILES[..3].iter() {
-            fs::write(output.join(file_name), file_name).expect("must write final CRS file");
+        for file_name in final_sigma_files() {
+            fs::write(output.join(&file_name), &file_name).expect("must write final CRS file");
         }
 
         let provenance = FinalMpcCrsProvenance {
@@ -901,10 +907,10 @@ mod tests {
 
     #[test]
     fn rejects_publication_when_any_final_crs_artifact_does_not_match_provenance() {
-        for file_name in FINAL_OUTPUT_FILES[..3].iter() {
+        for file_name in final_sigma_files() {
             let (_workspace, config, output, intermediate) = fixture();
             let publisher = MockArchivePublisher::succeeds();
-            fs::write(output.join(file_name), "tampered CRS artifact")
+            fs::write(output.join(&file_name), "tampered CRS artifact")
                 .expect("must modify CRS artifact after provenance generation");
 
             let error = publish_output_archive_with_publisher(
@@ -915,7 +921,7 @@ mod tests {
             )
             .expect_err("tampered CRS artifact must not be published");
 
-            assert!(error.to_string().contains(file_name));
+            assert!(error.to_string().contains(&file_name));
             assert!(error
                 .to_string()
                 .contains("fail provenance digest validation"));
@@ -968,9 +974,9 @@ mod tests {
             StdFile::open(&uploads[0].0).expect("mocked upload archive must exist"),
         )
         .expect("archive must be valid");
-        for file_name in FINAL_OUTPUT_FILES {
+        for file_name in final_output_files() {
             assert!(
-                archive.by_name(file_name).is_ok(),
+                archive.by_name(&file_name).is_ok(),
                 "archive missing {file_name}"
             );
         }

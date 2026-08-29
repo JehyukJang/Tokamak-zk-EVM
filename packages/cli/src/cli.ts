@@ -9,6 +9,8 @@ import {
   type TokamakChannelTxFiles,
 } from '@tokamak-zk-evm/synthesizer-node';
 import {
+  createDockerRuntimeContext,
+  createRuntimeContext,
   type CommandResult,
   installRuntime,
   requireInstalledRuntime,
@@ -18,6 +20,9 @@ import {
   type RuntimeContext,
   type RuntimeExecution,
 } from './runtime.js';
+import { BACKEND_PACKAGE_NAMES } from './generated/backend-build-metadata-validator.generated.js';
+import { assertLiveBackendRuntimeIdentity } from './runtime/identity.js';
+import { acquireRuntimeOperationLock } from './runtime/operation-lock.js';
 
 type CommandName =
   | 'install'
@@ -389,22 +394,6 @@ function info(verbose: boolean, message: string): void {
   }
 }
 
-function parseBackendVersion(binaryName: string, stdout: string, stderr: string): string {
-  const output = `${stdout}\n${stderr}`;
-  const lines = output
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-  const versionPattern = /\b\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?\b/u;
-  const versionLine = lines.find((line) => line.startsWith(binaryName) && versionPattern.test(line))
-    ?? lines.find((line) => versionPattern.test(line));
-  const version = versionLine?.match(versionPattern)?.[0];
-  if (version === undefined) {
-    err(`Could not read ${binaryName} version from --version output.`);
-  }
-  return version;
-}
-
 function normalizeSynthesizeArgs(args: string[]): TokamakChannelTxFiles {
   if (args.length === 1 && !args[0].startsWith('-')) {
     const inputDir = resolveUserPath(args[0]);
@@ -653,14 +642,17 @@ async function runDoctor(verbose: boolean): Promise<void> {
   }
   const { context } = execution;
   const paths = runtimePaths(context);
-  const backendBinaries = [
-    ['preprocess', paths.preprocessBinary],
-    ['prove', paths.proveBinary],
-    ['verify', paths.verifyBinary],
-  ] as const;
-  for (const [binaryName, binaryPath] of backendBinaries) {
-    const result = await runBackendCommand(execution, binaryPath, ['--version'], verbose, { quiet: true });
-    ok(`${binaryName} version: ${parseBackendVersion(binaryName, result.stdout, result.stderr)}`);
+  for (const packageName of BACKEND_PACKAGE_NAMES) {
+    const binaryPath = path.join(paths.binaryDir, packageName);
+    const result = await runBackendCommand(execution, binaryPath, ['--build-identity-json'], verbose, { quiet: true });
+    let liveIdentity: unknown;
+    try {
+      liveIdentity = JSON.parse(result.stdout) as unknown;
+    } catch (error) {
+      err(`Could not read ${packageName} machine identity: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const metadata = assertLiveBackendRuntimeIdentity(execution.state.backendRuntimeIdentity, packageName, liveIdentity);
+    ok(`${packageName} identity: ${metadata.packageVersion} / subcircuit-library ${metadata.dependencies.subcircuitLibrary.buildVersion}`);
   }
   ok(`Runtime workspace: ${context.runtimeDir}`);
   ok('Runtime installation looks healthy');
@@ -668,6 +660,26 @@ async function runDoctor(verbose: boolean): Promise<void> {
 
 async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
+  const lockContext = await runtimeContextForOperation(parsed);
+  const operationLock = await acquireRuntimeOperationLock(lockContext, parsed.command);
+  try {
+    await runCommandWithRuntimeLock(parsed);
+  } finally {
+    await operationLock.release();
+  }
+}
+
+async function runtimeContextForOperation(parsed: ParsedArgs): Promise<RuntimeContext> {
+  if (parsed.command === 'install' && parsed.installOptions?.docker) {
+    return await createDockerRuntimeContext();
+  }
+  if (process.platform === 'win32') {
+    return await createDockerRuntimeContext();
+  }
+  return await createRuntimeContext();
+}
+
+async function runCommandWithRuntimeLock(parsed: ParsedArgs): Promise<void> {
   switch (parsed.command) {
     case 'install': {
       const context = await installRuntime({

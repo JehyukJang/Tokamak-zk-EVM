@@ -31,6 +31,7 @@ import { installStagedRuntime } from './runtime/transaction.js';
 import type {
   CliPlatform,
   InstallOptions,
+  NativeRuntimeOs,
   RuntimeContext,
   RuntimeExecution,
   RuntimeState,
@@ -43,6 +44,7 @@ interface PrerequisiteFailure {
 import { commandExists, createSystemCommandProbe, logVerbose } from './system.js';
 
 export {
+  createDockerRuntimeContext,
   createRuntimeContext,
   detectPlatform,
   readInstalledState,
@@ -214,26 +216,52 @@ export async function installRuntime(options: InstallOptions): Promise<RuntimeCo
   const backendRoot = await ensureVendoredBackendExists(context.packageRoot);
 
   logVerbose(options.verbose, `Using vendored backend ${backendRoot}`);
+  const builtBackend = await buildBackendReleaseBinaries(backendRoot, options, context);
+  logVerbose(options.verbose, `Using backend release output ${builtBackend.backendReleaseDir}`);
   const state: RuntimeState = {
+    backendRuntimeIdentity: builtBackend.runtimeIdentity,
     installMode: 'native',
     packageVersion: context.packageVersion,
     platform: context.platform,
     installedAt: new Date().toISOString(),
   };
   await installStagedRuntime(context, state, async (stagingContext) => {
-    const backendReleaseDir = await buildBackendReleaseBinaries(backendRoot, options);
-    logVerbose(options.verbose, `Using backend release output ${backendReleaseDir}`);
-    await copyBuiltBackendBinaries(stagingContext, backendReleaseDir);
-    await installIcicleRuntime(stagingContext, nativeOs, options.verbose);
-    await configureMacosRuntime(stagingContext, options.verbose);
-
-    if (options.noSetup) {
-      await writeSkippedSetupNotice(stagingContext);
-    } else {
-      await installDownloadedSetup(stagingContext, backendReleaseDir, options.verbose);
-    }
+    await populateNativeRuntime(stagingContext, nativeOs, options, builtBackend.backendReleaseDir);
   });
   return context;
+}
+
+/** Prepares a native runtime in a caller-provided staging directory without writing selector state. */
+export async function prepareNativeRuntime(
+  context: RuntimeContext,
+  nativeOs: NativeRuntimeOs,
+  options: InstallOptions,
+  stagingContext: RuntimeContext,
+): Promise<RuntimeState['backendRuntimeIdentity']> {
+  if (stagingContext.platformDir !== context.platformDir || stagingContext.runtimeDir === context.runtimeDir) {
+    throw new Error('Prepared native runtime must use a distinct staging directory for the selected platform.');
+  }
+  const backendRoot = await ensureVendoredBackendExists(context.packageRoot);
+  const builtBackend = await buildBackendReleaseBinaries(backendRoot, options, context);
+  await populateNativeRuntime(stagingContext, nativeOs, options, builtBackend.backendReleaseDir);
+  return builtBackend.runtimeIdentity;
+}
+
+async function populateNativeRuntime(
+  stagingContext: RuntimeContext,
+  nativeOs: NativeRuntimeOs,
+  options: InstallOptions,
+  backendReleaseDir: string,
+): Promise<void> {
+  await copyBuiltBackendBinaries(stagingContext, backendReleaseDir);
+  await installIcicleRuntime(stagingContext, nativeOs, options.verbose);
+  await configureMacosRuntime(stagingContext, options.verbose);
+
+  if (options.noSetup) {
+    await writeSkippedSetupNotice(stagingContext);
+  } else {
+    await installDownloadedSetup(stagingContext, backendReleaseDir, options.verbose);
+  }
 }
 
 export async function uninstallRuntime(): Promise<RuntimeContext> {

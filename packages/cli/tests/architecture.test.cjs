@@ -9,14 +9,16 @@ const requiredRuntimeModules = new Set([
   'context.ts',
   'docker.ts',
   'download.ts',
+  'identity.ts',
   'icicle.ts',
   'model.ts',
   'native.ts',
+  'operation-lock.ts',
   'setup.ts',
   'transaction.ts',
 ]);
-const runtimeDomains = new Set(['docker.ts', 'icicle.ts', 'native.ts', 'setup.ts', 'transaction.ts']);
-const runtimeFoundations = new Set(['context.ts', 'model.ts']);
+const runtimeDomains = new Set(['docker.ts', 'icicle.ts', 'native.ts', 'setup.ts']);
+const runtimeFoundations = new Set(['context.ts', 'identity.ts', 'model.ts', 'operation-lock.ts', 'transaction.ts']);
 const allowedDownloadConsumers = new Set(['icicle.ts', 'setup.ts']);
 
 function sourceFiles(root) {
@@ -58,7 +60,11 @@ test('runtime modules preserve the reviewed acyclic dependency boundaries', () =
   assert.deepEqual(actualRuntimeModules, requiredRuntimeModules);
 
   const modelPath = path.join(sourceRoot, 'runtime', 'model.ts');
-  assert.deepEqual(graph.get(modelPath), [], 'runtime/model.ts must contain types only');
+  assert.deepEqual(
+    (graph.get(modelPath) ?? []).filter((dependency) => path.dirname(dependency) === path.join(sourceRoot, 'runtime')),
+    [],
+    'runtime/model.ts must not depend on runtime behavior modules',
+  );
 
   for (const domainName of runtimeDomains) {
     const domainPath = path.join(sourceRoot, 'runtime', domainName);

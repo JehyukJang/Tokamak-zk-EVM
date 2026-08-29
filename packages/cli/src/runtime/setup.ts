@@ -2,6 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
+import AdmZip from 'adm-zip';
 import {
   ensureDir,
   normalizeCompatibleBackendVersion,
@@ -10,12 +11,16 @@ import {
 } from './context.js';
 import { downloadFileWithResume, fileExists, normalizeSha256, sha256FileHex } from './download.js';
 import type { RuntimeContext } from './model.js';
-import { logVerbose, runCommand } from '../system.js';
-import { crsProvenanceFileName, parseFinalMpcCrsProvenance } from '../generated/crs-provenance-validator.generated.js';
+import { logVerbose } from '../system.js';
 import {
+  crsProvenanceFileName,
+  finalMpcCrsArchiveRootFileNames,
+  parseFinalMpcCrsProvenance,
+} from '../generated/crs-provenance-validator.generated.js';
+import {
+  BACKEND_PACKAGE_NAMES,
   backendBuildMetadataFileName,
   parseBackendBuildMetadata,
-  type BackendPackageName,
 } from '../generated/backend-build-metadata-validator.generated.js';
 
 interface DriveArchiveSelection {
@@ -28,15 +33,9 @@ interface DriveArchiveSelection {
 
 type FinalMpcCrsProvenance = import('../generated/crs-provenance-validator.generated.js').FinalMpcCrsProvenance;
 
-const BACKEND_BINARY_NAMES: readonly BackendPackageName[] = ['preprocess', 'prove', 'verify'];
 const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = '@tokamak-zk-evm/subcircuit-library';
 const CRS_PROVENANCE_FILE_NAME = crsProvenanceFileName();
-const FINAL_CRS_ARTIFACT_FILES = [
-  'combined_sigma.rkyv',
-  'sigma_preprocess.rkyv',
-  'sigma_verify.json',
-  CRS_PROVENANCE_FILE_NAME,
-] as const;
+const FINAL_CRS_ARTIFACT_FILES = finalMpcCrsArchiveRootFileNames();
 const CRS_DRIVE_FOLDER_ID = '14xqCbLoyoVmUVTTlopiXtKnoHPBGL-Sv';
 
 const CRS_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/mobile/folders';
@@ -49,22 +48,8 @@ async function readJsonFile<T>(filePath: string): Promise<T> {
   return JSON.parse(await fs.readFile(filePath, 'utf8')) as T;
 }
 
-async function findNamedFile(rootDir: string, filename: string): Promise<string> {
-  const queue: string[] = [rootDir];
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    const entries = await fs.readdir(current, { withFileTypes: true });
-    for (const entry of entries) {
-      const entryPath = path.join(current, entry.name);
-      if (entry.isFile() && entry.name === filename) {
-        return entryPath;
-      }
-      if (entry.isDirectory()) {
-        queue.push(entryPath);
-      }
-    }
-  }
-  throw new Error(`Missing ${filename} under ${rootDir}`);
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function parseDriveArchiveName(
@@ -240,11 +225,97 @@ async function downloadLatestCrsArchive(
   };
 }
 
-async function extractZipArchive(zipPath: string, destinationDir: string, verbose: boolean): Promise<void> {
+type CrsZipEntry = {
+  readonly entryName: string;
+  readonly header: {
+    readonly attr: number;
+    readonly flags: number;
+  };
+  readonly isDirectory: boolean;
+  getData(): Buffer;
+};
+
+const ZIP_UNIX_FILE_TYPE_MASK = 0o170000;
+const ZIP_UNIX_SYMBOLIC_LINK_TYPE = 0o120000;
+
+/**
+ * Validates the complete central-directory entry set before any archive data
+ * is written to disk. The backend-owned contract defines the only accepted
+ * root-level filenames.
+ */
+export function validateFinalMpcCrsArchiveEntries(entries: readonly CrsZipEntry[]): Map<string, CrsZipEntry> {
+  const expectedFileNames = new Set(FINAL_CRS_ARTIFACT_FILES);
+  const accepted = new Map<string, CrsZipEntry>();
+
+  for (const entry of entries) {
+    const fileName = entry.entryName;
+    validateCrsArchiveEntryName(fileName);
+    if (entry.isDirectory) {
+      throw new Error(`CRS archive entry ${JSON.stringify(fileName)} must be a root-level file, not a directory.`);
+    }
+    if ((entry.header.flags & 0x1) !== 0) {
+      throw new Error(`CRS archive entry ${JSON.stringify(fileName)} must not be encrypted.`);
+    }
+    if (isSymbolicLink(entry)) {
+      throw new Error(`CRS archive entry ${JSON.stringify(fileName)} must not be a symbolic link.`);
+    }
+    if (!expectedFileNames.has(fileName)) {
+      throw new Error(`CRS archive contains unexpected entry ${JSON.stringify(fileName)}.`);
+    }
+    if (accepted.has(fileName)) {
+      throw new Error(`CRS archive repeats entry ${JSON.stringify(fileName)}.`);
+    }
+    accepted.set(fileName, entry);
+  }
+
+  for (const fileName of FINAL_CRS_ARTIFACT_FILES) {
+    if (!accepted.has(fileName)) {
+      throw new Error(`CRS archive is missing required entry ${JSON.stringify(fileName)}.`);
+    }
+  }
+  return accepted;
+}
+
+/** Extracts only a prevalidated final-MPC CRS archive into a caller-owned staging directory. */
+export async function extractApprovedFinalMpcCrsArchive(
+  archivePath: string,
+  destinationDir: string,
+): Promise<void> {
+  let archive: AdmZip;
+  try {
+    archive = new AdmZip(archivePath);
+  } catch (error) {
+    throw new Error(`Cannot read CRS ZIP archive ${archivePath}: ${errorMessage(error)}`);
+  }
+  const acceptedEntries = validateFinalMpcCrsArchiveEntries(archive.getEntries());
   await ensureDir(destinationDir);
-  await runCommand('unzip', ['-q', zipPath, '-d', destinationDir], {
-    verbose,
-  });
+  for (const fileName of FINAL_CRS_ARTIFACT_FILES) {
+    const contents = acceptedEntries.get(fileName)!.getData();
+    await fs.writeFile(path.join(destinationDir, fileName), contents, {
+      flag: 'wx',
+      mode: 0o600,
+    });
+  }
+}
+
+function validateCrsArchiveEntryName(fileName: string): void {
+  if (fileName.length === 0 || fileName.includes('\0')) {
+    throw new Error('CRS archive contains an empty or NUL-containing entry name.');
+  }
+  if (
+    fileName.startsWith('/') ||
+    fileName.startsWith('\\') ||
+    /^[A-Za-z]:/u.test(fileName) ||
+    fileName.includes('\\') ||
+    fileName.split('/').some(segment => segment.length === 0 || segment === '.' || segment === '..')
+  ) {
+    throw new Error(`CRS archive contains an unsafe entry path ${JSON.stringify(fileName)}.`);
+  }
+}
+
+function isSymbolicLink(entry: CrsZipEntry): boolean {
+  const unixMode = (entry.header.attr >>> 16) & 0xffff;
+  return (unixMode & ZIP_UNIX_FILE_TYPE_MASK) === ZIP_UNIX_SYMBOLIC_LINK_TYPE;
 }
 
 export async function validateDownloadedCrsArchive(
@@ -256,7 +327,7 @@ export async function validateDownloadedCrsArchive(
 ): Promise<{
   provenancePath: string;
 }> {
-  const provenancePath = await findNamedFile(extractedDir, CRS_PROVENANCE_FILE_NAME);
+  const provenancePath = path.join(extractedDir, CRS_PROVENANCE_FILE_NAME);
   const provenance = await validateFinalMpcCrsProvenanceContract(
     await readJsonFile<unknown>(provenancePath),
     archiveName,
@@ -287,7 +358,7 @@ export async function validateDownloadedCrsArchive(
     );
   }
 
-  for (const backendName of BACKEND_BINARY_NAMES) {
+  for (const backendName of BACKEND_PACKAGE_NAMES) {
     const backendMetadataPath = path.join(backendReleaseDir, backendBuildMetadataFileName(backendName));
     const backendMetadata = parseBackendBuildMetadata(
       await readJsonFile<unknown>(backendMetadataPath),
@@ -356,7 +427,7 @@ async function validateCrsArtifactHashes(
     if (expected === null) {
       throw new Error(`CRS archive ${archiveName} provenance is missing ${field}.`);
     }
-    const filePath = await findNamedFile(extractedDir, fileName);
+    const filePath = path.join(extractedDir, fileName);
     const actual = await sha256FileHex(filePath);
     if (actual !== expected) {
       throw new Error(`CRS archive ${archiveName} ${fileName} sha256 mismatch: expected=${expected} actual=${actual}.`);
@@ -375,7 +446,7 @@ export async function installDownloadedSetup(
   const extractedDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-crs-extract-'));
   try {
     const { archivePath, archiveName } = await downloadLatestCrsArchive(context, selection, verbose);
-    await extractZipArchive(archivePath, extractedDir, verbose);
+    await extractApprovedFinalMpcCrsArchive(archivePath, extractedDir);
     const { provenancePath } = await validateDownloadedCrsArchive(
       extractedDir,
       backendReleaseDir,
@@ -406,8 +477,9 @@ export async function installValidatedCrsGeneration(
   let activated = false;
   try {
     for (const fileName of FINAL_CRS_ARTIFACT_FILES) {
-      const sourcePath =
-        fileName === CRS_PROVENANCE_FILE_NAME ? provenancePath : await findNamedFile(extractedDir, fileName);
+      const sourcePath = fileName === CRS_PROVENANCE_FILE_NAME
+        ? provenancePath
+        : path.join(extractedDir, fileName);
       await copyFile(sourcePath, path.join(stagingDirectory, fileName));
     }
 

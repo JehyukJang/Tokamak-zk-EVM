@@ -18,7 +18,7 @@ pub const DEVELOPMENT_TRUSTED_SETUP_SIGMA_DOCUMENT_KIND: &str = "developmentTrus
 pub const FINAL_MPC_CRS_DOCUMENT_KIND: &str = "finalMpcCrs";
 
 const CRS_PROVENANCE_CONTRACT_SHA256: &str =
-    "4e3072e22cb712359ed2b994ba360666d59cb5c4e69c14552739e179d0d76188";
+    "33063e688a182941df76135d3cd9f835c07444a60f561b77be06be1c0e43fd6f";
 const SUPPORTED_SCHEMA_KEYWORDS: &[&str] = &[
     "additionalProperties",
     "const",
@@ -137,6 +137,17 @@ pub fn ensure_crs_provenance_contract_definition() -> Result<(), String> {
         .clone()
 }
 
+/// Returns the exact root-level payload files that a final MPC CRS archive may
+/// contain. The checked-in backend JSON contract is the single shape authority.
+pub fn final_mpc_crs_archive_root_file_names() -> Result<Vec<String>, String> {
+    ensure_crs_provenance_contract_definition()?;
+    let contract: serde_json::Value = serde_json::from_slice(include_bytes!(
+        "../../contracts/crs-provenance-contract.json"
+    ))
+    .map_err(|error| format!("CRS provenance contract is invalid JSON: {error}"))?;
+    final_mpc_crs_archive_root_file_names_from_contract(&contract)
+}
+
 fn validate_crs_provenance_contract_definition() -> Result<(), String> {
     let bytes = include_bytes!("../../contracts/crs-provenance-contract.json");
     let actual_digest = format!("{:x}", Sha256::digest(bytes));
@@ -162,7 +173,55 @@ fn validate_crs_provenance_contract_definition() -> Result<(), String> {
             .ok_or_else(|| format!("CRS provenance contract is missing {document_kind}.schema"))?;
         validate_supported_schema_keywords(schema, document_kind)?;
     }
+    final_mpc_crs_archive_root_file_names_from_contract(&contract)?;
     Ok(())
+}
+
+fn final_mpc_crs_archive_root_file_names_from_contract(
+    contract: &serde_json::Value,
+) -> Result<Vec<String>, String> {
+    let root_files = contract
+        .get("finalMpcCrsArchive")
+        .and_then(|archive| archive.get("rootFiles"))
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| {
+            "CRS provenance contract is missing finalMpcCrsArchive.rootFiles".to_string()
+        })?;
+    if root_files.is_empty() {
+        return Err(
+            "CRS provenance contract finalMpcCrsArchive.rootFiles must not be empty".to_string(),
+        );
+    }
+
+    let mut seen = std::collections::BTreeSet::new();
+    let mut names = Vec::with_capacity(root_files.len());
+    for value in root_files {
+        let name = value.as_str().ok_or_else(|| {
+            "CRS provenance contract finalMpcCrsArchive.rootFiles entries must be strings"
+                .to_string()
+        })?;
+        if !is_root_file_name(name) {
+            return Err(format!(
+                "CRS provenance contract finalMpcCrsArchive.rootFiles contains invalid root filename {name:?}"
+            ));
+        }
+        if !seen.insert(name) {
+            return Err(format!(
+                "CRS provenance contract finalMpcCrsArchive.rootFiles repeats {name:?}"
+            ));
+        }
+        names.push(name.to_string());
+    }
+    if !seen.contains(CRS_PROVENANCE_FILE_NAME) {
+        return Err(format!(
+            "CRS provenance contract finalMpcCrsArchive.rootFiles must include {CRS_PROVENANCE_FILE_NAME:?}"
+        ));
+    }
+    Ok(names)
+}
+
+fn is_root_file_name(name: &str) -> bool {
+    !name.is_empty() && name != "." && name != ".." && !name.contains(&['/', '\\', '\0'][..])
 }
 
 fn validate_supported_schema_keywords(
@@ -299,10 +358,11 @@ fn validate_sha256(value: &str, field: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ensure_crs_provenance_contract_definition, parse_final_mpc_crs_provenance,
-        validate_supported_schema_keywords, CrsProvenance, DevelopmentOnlyReleaseEligibility,
-        DevelopmentTrustedSetupSigmaProvenance, CRS_PROVENANCE_FILE_NAME,
-        DEVELOPMENT_TRUSTED_SETUP_SIGMA_DOCUMENT_KIND, FINAL_MPC_CRS_DOCUMENT_KIND,
+        ensure_crs_provenance_contract_definition, final_mpc_crs_archive_root_file_names,
+        parse_final_mpc_crs_provenance, validate_supported_schema_keywords, CrsProvenance,
+        DevelopmentOnlyReleaseEligibility, DevelopmentTrustedSetupSigmaProvenance,
+        CRS_PROVENANCE_FILE_NAME, DEVELOPMENT_TRUSTED_SETUP_SIGMA_DOCUMENT_KIND,
+        FINAL_MPC_CRS_DOCUMENT_KIND,
     };
     use serde::Deserialize;
 
@@ -327,6 +387,16 @@ mod tests {
             .contains_key(FINAL_MPC_CRS_DOCUMENT_KIND));
         ensure_crs_provenance_contract_definition()
             .expect("Rust provenance adapter must implement the checked-in contract");
+        assert_eq!(
+            final_mpc_crs_archive_root_file_names()
+                .expect("final MPC archive layout must satisfy the backend contract"),
+            vec![
+                "combined_sigma.rkyv".to_string(),
+                "sigma_preprocess.rkyv".to_string(),
+                "sigma_verify.json".to_string(),
+                CRS_PROVENANCE_FILE_NAME.to_string(),
+            ]
+        );
     }
 
     #[test]

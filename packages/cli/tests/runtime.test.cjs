@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { spawn } = require('node:child_process');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
@@ -10,8 +11,10 @@ const {
   parseInstalledRuntimeState,
 } = require('../dist/runtime/context.js');
 const { resolveRuntimeExecution, runBackendCommand } = require('../dist/runtime/docker.js');
-const { installStagedRuntime } = require('../dist/runtime/transaction.js');
+const { commitPreparedRuntime, installStagedRuntime } = require('../dist/runtime/transaction.js');
 const { streamDownloadToFile } = require('../dist/runtime/download.js');
+const { assertLiveBackendRuntimeIdentity } = require('../dist/runtime/identity.js');
+const { acquireRuntimeOperationLock } = require('../dist/runtime/operation-lock.js');
 
 function runtimeContext(platform = 'linux') {
   return {
@@ -28,6 +31,7 @@ function runtimeContext(platform = 'linux') {
 
 function runtimeState(packageVersion = '2.1.5') {
   return {
+    backendRuntimeIdentity: runtimeIdentity(packageVersion),
     installMode: 'native',
     packageVersion,
     platform: 'linux',
@@ -37,12 +41,29 @@ function runtimeState(packageVersion = '2.1.5') {
 
 function dockerRuntimeState() {
   return {
+    backendRuntimeIdentity: runtimeIdentity(),
     dockerEnvironment: 'ubuntu22',
     installMode: 'docker',
     packageVersion: '2.1.5',
     platform: 'linux',
     installedAt: '2026-08-27T00:00:00.000Z',
   };
+}
+
+function runtimeIdentity(packageVersion = '2.1.5') {
+  return ['preprocess', 'prove', 'verify'].map((packageName) => ({
+    compatibleBackendVersion: '2.1',
+    dependencies: {
+      subcircuitLibrary: {
+        buildVersion: packageVersion,
+        declaredRange: packageVersion,
+        packageName: '@tokamak-zk-evm/subcircuit-library',
+        runtimeMode: 'bundled',
+      },
+    },
+    packageName,
+    packageVersion,
+  }));
 }
 
 function dockerBootstrap(context, overrides = {}) {
@@ -95,6 +116,7 @@ async function createInstalledRuntimeFixture() {
 
 test('accepts only a structurally valid state for the current CLI runtime', () => {
   const native = parseInstalledRuntimeState({
+    backendRuntimeIdentity: runtimeIdentity(),
     installMode: 'native',
     packageVersion: '2.1.5',
     platform: 'linux',
@@ -105,6 +127,7 @@ test('accepts only a structurally valid state for the current CLI runtime', () =
   });
 
   const docker = parseInstalledRuntimeState({
+    backendRuntimeIdentity: runtimeIdentity(),
     installMode: 'docker',
     dockerEnvironment: 'ubuntu22',
     packageVersion: '2.1.5',
@@ -135,6 +158,76 @@ test('accepts only a structurally valid state for the current CLI runtime', () =
     () => parseInstalledRuntimeState({ ...native, installedAt: 'not-a-timestamp' }),
     /installedAt must be an ISO-8601 timestamp/u,
   );
+  assert.throws(
+    () => parseInstalledRuntimeState({ ...native, backendRuntimeIdentity: undefined }),
+    /must contain exactly the backend packages/u,
+  );
+  assert.throws(
+    () => assertInstalledRuntimeMatchesContext(runtimeContext(), {
+      ...native,
+      backendRuntimeIdentity: runtimeIdentity('2.1.4'),
+    }, ['native']),
+    /does not match current CLI package version/u,
+  );
+});
+
+test('requires every live backend binary to report its exact persisted identity', () => {
+  const persisted = runtimeIdentity();
+  assert.doesNotThrow(() => {
+    assertLiveBackendRuntimeIdentity(persisted, 'prove', persisted[1]);
+  });
+  assert.throws(
+    () => assertLiveBackendRuntimeIdentity(persisted, 'prove', { ...persisted[1], packageVersion: '2.1.4' }),
+    /does not match the installed runtime identity/u,
+  );
+});
+
+test('permits one live runtime operation and immediately rejects a contending process', async () => {
+  const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-operation-lock-'));
+  const context = { platformDir: path.join(temporaryRoot, 'linux') };
+  const modulePath = path.resolve(__dirname, '..', 'dist', 'runtime', 'operation-lock.js');
+  const worker = spawn(
+    process.execPath,
+    ['-e', `
+      const { acquireRuntimeOperationLock } = require(process.argv[1]);
+      const context = JSON.parse(process.argv[2]);
+      acquireRuntimeOperationLock(context, 'child-stage').then((lock) => {
+        process.stdout.write('ready\\n');
+        process.stdin.once('data', async () => { await lock.release(); process.exit(0); });
+      }).catch((error) => { console.error(error); process.exit(1); });
+    `, modulePath, JSON.stringify(context)],
+    { stdio: ['pipe', 'pipe', 'pipe'] },
+  );
+  let workerError = '';
+  worker.stderr.on('data', chunk => {
+    workerError += chunk.toString();
+  });
+  try {
+    await new Promise((resolve, reject) => {
+      const onData = (chunk) => {
+        if (chunk.toString() === 'ready\n') {
+          worker.stdout.off('data', onData);
+          resolve();
+        }
+      };
+      worker.stdout.on('data', onData);
+      worker.once('error', reject);
+      worker.once('exit', (code) => reject(new Error(`lock worker exited before ready: ${code}: ${workerError}`)));
+    });
+    await assert.rejects(
+      acquireRuntimeOperationLock(context, 'parent-stage'),
+      /busy with child-stage/u,
+    );
+    worker.stdin.write('release\n');
+    await new Promise((resolve, reject) => {
+      worker.once('exit', (code) => code === 0 ? resolve() : reject(new Error(`lock worker exited with ${code}`)));
+    });
+    const lock = await acquireRuntimeOperationLock(context, 'parent-stage');
+    await lock.release();
+  } finally {
+    worker.kill();
+    await fs.rm(temporaryRoot, { recursive: true, force: true });
+  }
 });
 
 test('uses installation state as the sole native-versus-Docker selector', async () => {
@@ -313,6 +406,94 @@ test('restores the previous native runtime and state after activation or state-w
   }
 });
 
+test('restores runtime state and Docker bootstrap when prepared Docker promotion fails', async () => {
+  const { context, previousState, temporaryRoot } = await createInstalledRuntimeFixture();
+  const stagingRoot = await fs.mkdtemp(path.join(context.platformDir, '.docker-runtime-staging-'));
+  const stagingContext = { ...context, runtimeDir: path.join(stagingRoot, 'runtime') };
+  const bootstrapPath = path.join(context.platformDir, 'docker', 'bootstrap.json');
+  try {
+    await fs.mkdir(stagingContext.runtimeDir, { recursive: true });
+    await fs.writeFile(path.join(stagingContext.runtimeDir, 'marker.txt'), 'new runtime\n', 'utf8');
+    await fs.mkdir(path.dirname(bootstrapPath), { recursive: true });
+    await fs.writeFile(bootstrapPath, 'previous bootstrap\n', 'utf8');
+
+    await assert.rejects(
+      commitPreparedRuntime(
+        context,
+        stagingContext,
+        runtimeState(),
+        [{ activePath: bootstrapPath, stagingPath: path.join(stagingRoot, 'missing-bootstrap.json') }],
+      ),
+      /ENOENT/u,
+    );
+    assert.equal(await fs.readFile(path.join(context.runtimeDir, 'marker.txt'), 'utf8'), 'previous runtime\n');
+    assert.deepEqual(JSON.parse(await fs.readFile(context.statePath, 'utf8')), previousState);
+    assert.equal(await fs.readFile(bootstrapPath, 'utf8'), 'previous bootstrap\n');
+  } finally {
+    await fs.rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test('keeps the committed runtime and Docker bootstrap when Docker preparation fails', async () => {
+  const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-docker-preparation-'));
+  const cacheRoot = path.join(temporaryRoot, 'cache');
+  const fakeBin = path.join(temporaryRoot, 'bin');
+  const originalPath = process.env.PATH;
+  const originalCacheRoot = process.env.TOKAMAK_ZKEVM_CLI_CACHE_DIR;
+  const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform');
+  try {
+    const platformDir = path.join(cacheRoot, 'linux');
+    const runtimeDir = path.join(platformDir, 'runtime');
+    const statePath = path.join(platformDir, 'installation.json');
+    const bootstrapPath = path.join(platformDir, 'docker', 'bootstrap.json');
+    const previousState = dockerRuntimeState();
+    await fs.mkdir(runtimeDir, { recursive: true });
+    await fs.writeFile(path.join(runtimeDir, 'marker.txt'), 'previous runtime\n', 'utf8');
+    await fs.writeFile(statePath, `${JSON.stringify(previousState)}\n`, 'utf8');
+    await fs.mkdir(path.dirname(bootstrapPath), { recursive: true });
+    await fs.writeFile(bootstrapPath, 'previous bootstrap\n', 'utf8');
+    await fs.mkdir(fakeBin);
+    const dockerPath = path.join(fakeBin, 'docker');
+    await fs.writeFile(
+      dockerPath,
+      `#!/usr/bin/env node
+const args = process.argv.slice(2);
+process.exit(args.some((argument) => argument.endsWith('/prepare-runtime.js')) ? 1 : 0);
+`,
+      'utf8',
+    );
+    await fs.chmod(dockerPath, 0o755);
+    process.env.PATH = `${fakeBin}${path.delimiter}${originalPath ?? ''}`;
+    process.env.TOKAMAK_ZKEVM_CLI_CACHE_DIR = cacheRoot;
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'linux' });
+
+    await assert.rejects(
+      installRuntime({ docker: true, includePrerequisite: false, noSetup: true, verbose: false }),
+      /docker exited with code 1/u,
+    );
+    assert.equal(await fs.readFile(path.join(runtimeDir, 'marker.txt'), 'utf8'), 'previous runtime\n');
+    assert.deepEqual(JSON.parse(await fs.readFile(statePath, 'utf8')), previousState);
+    assert.equal(await fs.readFile(bootstrapPath, 'utf8'), 'previous bootstrap\n');
+    assert.deepEqual(
+      (await fs.readdir(platformDir)).sort(),
+      ['docker', 'installation.json', 'runtime'],
+    );
+  } finally {
+    Object.defineProperty(process, 'platform', platformDescriptor);
+    if (originalPath === undefined) {
+      delete process.env.PATH;
+    } else {
+      process.env.PATH = originalPath;
+    }
+    if (originalCacheRoot === undefined) {
+      delete process.env.TOKAMAK_ZKEVM_CLI_CACHE_DIR;
+    } else {
+      process.env.TOKAMAK_ZKEVM_CLI_CACHE_DIR = originalCacheRoot;
+    }
+    await fs.rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
 test('streams downloads by overwriting and appending complete response bodies', async () => {
   const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-download-'));
   const destinationPath = path.join(temporaryRoot, 'download.bin');
@@ -361,7 +542,32 @@ test('writes only Docker bootstrap state and removes the legacy launcher', async
   try {
     await fs.mkdir(fakeBin);
     const dockerPath = path.join(fakeBin, 'docker');
-    await fs.writeFile(dockerPath, '#!/usr/bin/env node\nprocess.exit(0);\n', 'utf8');
+    const nestedIdentity = JSON.stringify(runtimeIdentity());
+    await fs.writeFile(
+      dockerPath,
+      `#!/usr/bin/env node
+const fs = require('node:fs');
+const path = require('node:path');
+const args = process.argv.slice(2);
+if (args.some((argument) => argument.endsWith('/prepare-runtime.js'))) {
+  const mount = args[args.indexOf('-v') + 1];
+  const cacheRoot = mount.slice(0, mount.indexOf(':'));
+  const containerStagingRoot = args[args.indexOf('--staging-root') + 1];
+  const stagingRoot = path.join(cacheRoot, containerStagingRoot.slice('/tokamak-cache/'.length));
+  const runtimeRoot = path.join(stagingRoot, 'runtime');
+  fs.mkdirSync(path.join(runtimeRoot, 'bin'), { recursive: true });
+  fs.mkdirSync(path.join(runtimeRoot, 'backend-lib', 'icicle', 'lib'), { recursive: true });
+  fs.mkdirSync(path.join(runtimeRoot, 'resource', 'setup', 'output'), { recursive: true });
+  for (const binary of ['preprocess', 'prove', 'verify']) {
+    fs.writeFileSync(path.join(runtimeRoot, 'bin', binary), 'binary');
+  }
+  fs.writeFileSync(path.join(runtimeRoot, 'resource', 'setup', 'output', 'README.txt'), 'Setup artifacts were skipped during installation.\\n');
+  fs.writeFileSync(path.join(stagingRoot, 'backend-runtime-identity.json'), JSON.stringify(${nestedIdentity}));
+}
+process.exit(0);
+`,
+      'utf8',
+    );
     await fs.chmod(dockerPath, 0o755);
     process.env.PATH = `${fakeBin}${path.delimiter}${originalPath ?? ''}`;
     process.env.TOKAMAK_ZKEVM_CLI_CACHE_DIR = cacheRoot;

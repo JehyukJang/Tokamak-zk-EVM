@@ -1,5 +1,13 @@
 {
   "fileName": "crs_provenance.json",
+  "finalMpcCrsArchive": {
+    "rootFiles": [
+      "combined_sigma.rkyv",
+      "sigma_preprocess.rkyv",
+      "sigma_verify.json",
+      "crs_provenance.json"
+    ]
+  },
   "documentKinds": {
     "developmentTrustedSetupSigma": {
       "releaseEligible": false,

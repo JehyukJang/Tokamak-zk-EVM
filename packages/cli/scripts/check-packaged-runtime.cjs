@@ -8,7 +8,6 @@ const path = require('node:path');
 const packageRoot = path.resolve(__dirname, '..');
 const vendoredBackendRoot = path.join(packageRoot, 'vendor', 'backend');
 const packagedVersionPolicyPath = path.join(packageRoot, 'versioning', 'compatibility.rs');
-const BACKEND_BINARY_NAMES = ['preprocess', 'prove', 'verify'];
 const staticOnly = process.argv.includes('--static-only');
 
 function fail(message) {
@@ -68,7 +67,8 @@ async function main() {
   const targetRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tokamak-cli-packaged-runtime-'));
   try {
     const { backendProductionBuildArgs, validateProductionBuildMetadata } = require('../dist/runtime/native.js');
-    for (const packageName of BACKEND_BINARY_NAMES) {
+    const { BACKEND_PACKAGE_NAMES } = require('../dist/generated/backend-build-metadata-validator.generated.js');
+    for (const packageName of BACKEND_PACKAGE_NAMES) {
       run('cargo', backendProductionBuildArgs(packageName), {
         cwd: vendoredBackendRoot,
         env: { ...process.env, CARGO_TARGET_DIR: targetRoot },

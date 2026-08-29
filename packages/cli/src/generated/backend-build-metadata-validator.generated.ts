@@ -1,7 +1,7 @@
 import contract from './backend-build-metadata-contract.generated.js';
 import { parseCompatibleBackendVersion, parsePackageVersion } from './version-policy.generated.js';
 
-export type BackendPackageName = 'preprocess' | 'prove' | 'verify';
+export type BackendPackageName = (typeof contract)['backendPackageNames'][number];
 
 export interface BackendBuildMetadata {
   readonly dependencies: {
@@ -28,7 +28,7 @@ type JsonSchema = {
 };
 
 type BuildMetadataContract = {
-  readonly backendPackageNames?: readonly BackendPackageName[];
+  readonly backendPackageNames?: unknown;
   readonly fileNamePattern?: unknown;
   readonly schema?: JsonSchema;
 };
@@ -42,6 +42,9 @@ const SUPPORTED_SCHEMA_KEYWORDS = new Set([
   'required',
   'type',
 ]);
+
+/** Ordered backend runtime package registry defined by the backend JSON contract. */
+export const BACKEND_PACKAGE_NAMES = readBackendPackageNames();
 
 /** Validates backend build metadata against the backend-owned JSON contract. */
 export function parseBackendBuildMetadata(
@@ -66,6 +69,24 @@ export function backendBuildMetadataFileName(packageName: BackendPackageName): s
     throw new Error('Backend build-metadata contract must define one {backendPackageName} filename placeholder.');
   }
   return pattern.replace(placeholder, packageName);
+}
+
+function readBackendPackageNames(): readonly BackendPackageName[] {
+  const packageNames = (contract as BuildMetadataContract).backendPackageNames;
+  if (!Array.isArray(packageNames) || packageNames.length === 0) {
+    throw new Error('Backend build-metadata contract must define non-empty backendPackageNames.');
+  }
+  const seen = new Set<string>();
+  for (const packageName of packageNames) {
+    if (typeof packageName !== 'string' || packageName.length === 0) {
+      throw new Error('Backend build-metadata contract backendPackageNames entries must be non-empty strings.');
+    }
+    if (seen.has(packageName)) {
+      throw new Error(`Backend build-metadata contract repeats package ${JSON.stringify(packageName)}.`);
+    }
+    seen.add(packageName);
+  }
+  return Object.freeze([...packageNames]) as readonly BackendPackageName[];
 }
 
 function validateJsonSchema(schema: JsonSchema, value: unknown, subject: string): void {

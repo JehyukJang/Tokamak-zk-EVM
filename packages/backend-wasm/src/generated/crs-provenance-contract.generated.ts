@@ -1,6 +1,14 @@
 // Generated from packages/backend/contracts/crs-provenance-contract.json.
 const contract = {
   "fileName": "crs_provenance.json",
+  "finalMpcCrsArchive": {
+    "rootFiles": [
+      "combined_sigma.rkyv",
+      "sigma_preprocess.rkyv",
+      "sigma_verify.json",
+      "crs_provenance.json"
+    ]
+  },
   "documentKinds": {
     "developmentTrustedSetupSigma": {
       "releaseEligible": false,

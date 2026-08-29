@@ -37,6 +37,19 @@ struct Config {
 }
 
 fn main() -> ExitCode {
+    match libs::cli::print_backend_build_identity_if_requested(
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+        option_env!("TOKAMAK_ZKEVM_COMPATIBLE_BACKEND_VERSION"),
+        option_env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION"),
+    ) {
+        Ok(true) => return ExitCode::SUCCESS,
+        Ok(false) => {}
+        Err(error) => {
+            eprintln!("error: {error}");
+            return ExitCode::FAILURE;
+        }
+    }
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => render_error(&error),

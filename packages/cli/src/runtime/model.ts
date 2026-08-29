@@ -11,7 +11,11 @@ export interface InstallOptions {
 
 export type DockerEnvironment = 'ubuntu22' | 'ubuntu22-cuda122';
 
+/** Exact production build metadata for every backend runtime package. */
+export type BackendRuntimeIdentity = readonly BackendBuildMetadata[];
+
 interface RuntimeStateBase {
+  backendRuntimeIdentity: BackendRuntimeIdentity;
   packageVersion: string;
   platform: CliPlatform;
   installedAt: string;
@@ -76,3 +80,4 @@ export type RuntimeExecution =
       context: RuntimeContext;
       state: DockerRuntimeState;
     };
+import type { BackendBuildMetadata } from '../generated/backend-build-metadata-validator.generated.js';

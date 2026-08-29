@@ -5,6 +5,10 @@ import {
   compatibilityFromPackageVersion,
   parseCompatibleBackendVersion,
 } from '../generated/version-policy.generated.js';
+import {
+  parseBackendRuntimeIdentity,
+  validateBackendRuntimeIdentityForContext,
+} from './identity.js';
 import type {
   CliPlatform,
   DockerEnvironment,
@@ -180,7 +184,11 @@ export function parseInstalledRuntimeState(value: unknown, label = 'installed ru
   if (candidate.installMode === 'docker' && !isDockerEnvironment(candidate.dockerEnvironment)) {
     throw new Error(`${label} Docker runtime must include a supported dockerEnvironment.`);
   }
-  return candidate as RuntimeState;
+  const backendRuntimeIdentity = parseBackendRuntimeIdentity(
+    candidate.backendRuntimeIdentity,
+    `${label}.backendRuntimeIdentity`,
+  );
+  return { ...candidate, backendRuntimeIdentity } as RuntimeState;
 }
 
 export function assertInstalledRuntimeMatchesContext(
@@ -203,6 +211,11 @@ export function assertInstalledRuntimeMatchesContext(
       `Installed runtime mode ${state.installMode} is not supported for the current CLI execution path.`,
     );
   }
+  validateBackendRuntimeIdentityForContext(
+    state.backendRuntimeIdentity,
+    context,
+    'Installed backend runtime identity',
+  );
 }
 
 function isDockerEnvironment(value: unknown): value is DockerEnvironment {

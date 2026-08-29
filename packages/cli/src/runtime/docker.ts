@@ -5,8 +5,10 @@ import {
   createDockerRuntimeContext,
   ensureDir,
   runtimePaths,
-  writeRuntimeState,
 } from './context.js';
+import { validateBackendRuntimeIdentityForContext } from './identity.js';
+import { BACKEND_PACKAGE_NAMES } from '../generated/backend-build-metadata-validator.generated.js';
+import { commitPreparedRuntime } from './transaction.js';
 import type {
   CommandResult,
   DockerBootstrap,
@@ -249,13 +251,6 @@ export async function resolveRuntimeExecution(installed: InstalledRuntime): Prom
   return { mode: 'docker', context: installed.context, state: installed.state, bootstrap };
 }
 
-async function writeDockerBootstrap(context: RuntimeContext, bootstrap: DockerBootstrap): Promise<void> {
-  const bootstrapDir = dockerBootstrapDir(context);
-  await ensureDir(bootstrapDir);
-  await fs.writeFile(dockerBootstrapPath(context), `${JSON.stringify(bootstrap, null, 2)}\n`, 'utf8');
-  await fs.rm(path.join(bootstrapDir, 'run.sh'), { force: true });
-}
-
 async function runDockerBootstrapCommand(
   context: RuntimeContext,
   bootstrap: DockerBootstrap,
@@ -360,7 +355,12 @@ async function buildDockerInstallImage(
   );
 }
 
-function dockerInstallArgs(context: RuntimeContext, bootstrap: DockerBootstrap, options: InstallOptions): string[] {
+function dockerPrepareArgs(
+  context: RuntimeContext,
+  bootstrap: DockerBootstrap,
+  stagingRoot: string,
+  options: InstallOptions,
+): string[] {
   const args = [
     ...dockerRunPrefix(bootstrap),
     ...dockerUserArgs(),
@@ -370,8 +370,12 @@ function dockerInstallArgs(context: RuntimeContext, bootstrap: DockerBootstrap, 
     `TOKAMAK_ZKEVM_CLI_CACHE_DIR=${DOCKER_CONTAINER_CACHE_ROOT}`,
     '-e',
     'HOME=/tmp',
+    '--entrypoint',
+    'node',
     bootstrap.imageName,
-    '--install',
+    '/opt/tokamak-cli/dist/prepare-runtime.js',
+    '--staging-root',
+    toContainerPath(stagingRoot, context),
   ];
   if (options.noSetup) {
     args.push('--no-setup');
@@ -401,16 +405,63 @@ export async function installDockerRuntime(options: InstallOptions): Promise<Run
   };
 
   await buildDockerInstallImage(context, dockerEnvironment, bootstrap.imageName, options.verbose);
-  await runCommand('docker', dockerInstallArgs(context, bootstrap, options), {
-    verbose: options.verbose,
-  });
-  await writeDockerBootstrap(context, bootstrap);
-  await writeRuntimeState(context, {
-    dockerEnvironment,
-    installMode: 'docker',
-    packageVersion: context.packageVersion,
-    platform: context.platform,
-    installedAt: bootstrap.createdAt,
-  });
+  const stagingRoot = await fs.mkdtemp(path.join(context.platformDir, '.docker-runtime-staging-'));
+  const stagingContext = { ...context, runtimeDir: path.join(stagingRoot, 'runtime') };
+  const stagingIdentityPath = path.join(stagingRoot, 'backend-runtime-identity.json');
+  const stagingBootstrapPath = path.join(stagingRoot, 'bootstrap.json');
+  try {
+    await runCommand('docker', dockerPrepareArgs(context, bootstrap, stagingRoot, options), {
+      verbose: options.verbose,
+    });
+    const backendRuntimeIdentity = validateBackendRuntimeIdentityForContext(
+      JSON.parse(await fs.readFile(stagingIdentityPath, 'utf8')) as unknown,
+      context,
+      'Docker backend runtime identity',
+    );
+    await validatePreparedDockerRuntime(stagingContext, options.noSetup);
+    await fs.writeFile(stagingBootstrapPath, `${JSON.stringify(bootstrap, null, 2)}\n`, {
+      encoding: 'utf8',
+      flag: 'wx',
+      mode: 0o600,
+    });
+    await commitPreparedRuntime(
+      context,
+      stagingContext,
+      {
+        backendRuntimeIdentity,
+        dockerEnvironment,
+        installMode: 'docker',
+        packageVersion: context.packageVersion,
+        platform: context.platform,
+        installedAt: bootstrap.createdAt,
+      },
+      [{ activePath: dockerBootstrapPath(context), stagingPath: stagingBootstrapPath }],
+    );
+    await fs.rm(path.join(dockerBootstrapDir(context), 'run.sh'), { force: true });
+  } finally {
+    await fs.rm(stagingRoot, { recursive: true, force: true });
+  }
   return context;
+}
+
+async function validatePreparedDockerRuntime(context: RuntimeContext, noSetup: boolean): Promise<void> {
+  const paths = runtimePaths(context);
+  const runtimeStat = await fs.stat(context.runtimeDir);
+  if (!runtimeStat.isDirectory()) {
+    throw new Error(`Docker-prepared runtime is not a directory: ${context.runtimeDir}`);
+  }
+  for (const packageName of BACKEND_PACKAGE_NAMES) {
+    const binaryStat = await fs.stat(path.join(paths.binaryDir, packageName));
+    if (!binaryStat.isFile()) {
+      throw new Error(`Docker-prepared runtime is missing backend binary ${packageName}.`);
+    }
+  }
+  const icicleStat = await fs.stat(paths.icicleLibDir);
+  if (!icicleStat.isDirectory()) {
+    throw new Error('Docker-prepared runtime is missing the ICICLE library directory.');
+  }
+  const setupMarker = noSetup
+    ? path.join(paths.setupOutputDir, 'README.txt')
+    : paths.setupOutputDir;
+  await fs.access(setupMarker);
 }

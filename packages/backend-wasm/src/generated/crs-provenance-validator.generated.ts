@@ -57,6 +57,9 @@ type JsonSchema = {
 
 type ProvenanceContract = {
   readonly fileName?: unknown;
+  readonly finalMpcCrsArchive?: {
+    readonly rootFiles?: unknown;
+  };
   readonly documentKinds: {
     readonly finalMpcCrs?: { readonly schema?: JsonSchema };
   };
@@ -91,6 +94,30 @@ export function crsProvenanceFileName(): string {
     throw new Error('Backend CRS provenance contract does not define a non-empty fileName.');
   }
   return fileName;
+}
+
+/** Returns the exact root-level payload files allowed in a final MPC CRS archive. */
+export function finalMpcCrsArchiveRootFileNames(): readonly string[] {
+  const rootFiles = (contract as ProvenanceContract).finalMpcCrsArchive?.rootFiles;
+  if (!Array.isArray(rootFiles) || rootFiles.length === 0) {
+    throw new Error('Backend CRS provenance contract must define non-empty finalMpcCrsArchive.rootFiles.');
+  }
+
+  const seen = new Set<string>();
+  for (const fileName of rootFiles) {
+    if (typeof fileName !== 'string' || !isRootFileName(fileName)) {
+      throw new Error('Backend CRS provenance contract contains an invalid final MPC archive root filename.');
+    }
+    if (seen.has(fileName)) {
+      throw new Error(`Backend CRS provenance contract repeats final MPC archive file ${JSON.stringify(fileName)}.`);
+    }
+    seen.add(fileName);
+  }
+
+  if (!seen.has(crsProvenanceFileName())) {
+    throw new Error('Backend CRS provenance contract final MPC archive must include its provenance filename.');
+  }
+  return rootFiles;
 }
 
 /** Parses an input origin using the enum in the backend-owned provenance contract. */
@@ -202,6 +229,17 @@ function hasJsonType(value: unknown, type: string): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isRootFileName(value: string): boolean {
+  return (
+    value.length > 0 &&
+    value !== '.' &&
+    value !== '..' &&
+    !value.includes('/') &&
+    !value.includes('\\') &&
+    !value.includes('\0')
+  );
 }
 
 function finalMpcCrsSchema(): JsonSchema {

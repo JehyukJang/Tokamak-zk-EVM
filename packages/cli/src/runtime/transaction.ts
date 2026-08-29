@@ -4,6 +4,11 @@ import path from 'node:path';
 import { ensureDir, writeRuntimeState } from './context.js';
 import type { RuntimeContext, RuntimeState } from './model.js';
 
+export interface RuntimeTransactionSidecar {
+  readonly activePath: string;
+  readonly stagingPath: string;
+}
+
 export async function installStagedRuntime(
   context: RuntimeContext,
   state: RuntimeState,
@@ -14,13 +19,24 @@ export async function installStagedRuntime(
   let committed = false;
   try {
     await populateStagingRuntime(stagingContext);
-    await commitStagedRuntime(context, stagingContext, state, writeState);
+    await commitPreparedRuntime(context, stagingContext, state, [], writeState);
     committed = true;
   } finally {
     if (!committed) {
       await fs.rm(stagingContext.runtimeDir, { recursive: true, force: true });
     }
   }
+}
+
+/** Atomically promotes a prepared runtime, state record, and declared sidecars. */
+export async function commitPreparedRuntime(
+  context: RuntimeContext,
+  stagingContext: RuntimeContext,
+  state: RuntimeState,
+  sidecars: readonly RuntimeTransactionSidecar[] = [],
+  writeState: typeof writeRuntimeState = writeRuntimeState,
+): Promise<void> {
+  await commitStagedRuntime(context, stagingContext, state, sidecars, writeState);
 }
 
 async function createStagingRuntimeContext(context: RuntimeContext): Promise<RuntimeContext> {
@@ -33,6 +49,7 @@ async function commitStagedRuntime(
   context: RuntimeContext,
   stagingContext: RuntimeContext,
   state: RuntimeState,
+  sidecars: readonly RuntimeTransactionSidecar[],
   writeState: typeof writeRuntimeState,
 ): Promise<void> {
   if (stagingContext.platformDir !== context.platformDir || stagingContext.statePath !== context.statePath) {
@@ -41,6 +58,7 @@ async function commitStagedRuntime(
   if (stagingContext.runtimeDir === context.runtimeDir) {
     throw new Error('Staged runtime directory must differ from the active runtime directory.');
   }
+  validateSidecars(context, stagingContext, sidecars);
 
   const runtimeBackupPath = path.join(context.platformDir, `.runtime-backup-${randomUUID()}`);
   const stateBackupPath = path.join(context.platformDir, `.installation-backup-${randomUUID()}.json`);
@@ -48,6 +66,15 @@ async function commitStagedRuntime(
   let stagedRuntimeActivated = false;
   let stateBackedUp = false;
   let stateWriteStarted = false;
+  const sidecarStates = sidecars.map(sidecar => ({
+    ...sidecar,
+    backupPath: path.join(
+      path.dirname(sidecar.activePath),
+      `.${path.basename(sidecar.activePath)}-backup-${randomUUID()}`,
+    ),
+    activeBackedUp: false,
+    stagingActivated: false,
+  }));
 
   try {
     if (await pathExists(context.runtimeDir)) {
@@ -63,6 +90,15 @@ async function commitStagedRuntime(
     }
     stateWriteStarted = true;
     await writeState(context, state);
+    for (const sidecar of sidecarStates) {
+      await ensureDir(path.dirname(sidecar.activePath));
+      if (await pathExists(sidecar.activePath)) {
+        await fs.rename(sidecar.activePath, sidecar.backupPath);
+        sidecar.activeBackedUp = true;
+      }
+      await fs.rename(sidecar.stagingPath, sidecar.activePath);
+      sidecar.stagingActivated = true;
+    }
   } catch (error) {
     const rollbackFailures = await rollbackStagedRuntime(
       context,
@@ -73,6 +109,7 @@ async function commitStagedRuntime(
       stagedRuntimeActivated,
       stateBackedUp,
       stateWriteStarted,
+      sidecarStates,
     );
     if (rollbackFailures.length > 0) {
       throw new Error(
@@ -84,6 +121,9 @@ async function commitStagedRuntime(
 
   await fs.rm(runtimeBackupPath, { recursive: true, force: true });
   await fs.rm(stateBackupPath, { force: true });
+  for (const sidecar of sidecarStates) {
+    await fs.rm(sidecar.backupPath, { recursive: true, force: true });
+  }
 }
 
 async function rollbackStagedRuntime(
@@ -95,8 +135,25 @@ async function rollbackStagedRuntime(
   stagedRuntimeActivated: boolean,
   stateBackedUp: boolean,
   stateWriteStarted: boolean,
+  sidecars: readonly (RuntimeTransactionSidecar & {
+    backupPath: string;
+    activeBackedUp: boolean;
+    stagingActivated: boolean;
+  })[],
 ): Promise<string[]> {
   const failures: string[] = [];
+  for (const sidecar of [...sidecars].reverse()) {
+    if (sidecar.stagingActivated) {
+      await recordRollbackFailure(failures, `remove new sidecar ${sidecar.activePath}`, async () => {
+        await fs.rm(sidecar.activePath, { recursive: true, force: true });
+      });
+    }
+    if (sidecar.activeBackedUp) {
+      await recordRollbackFailure(failures, `restore previous sidecar ${sidecar.activePath}`, async () => {
+        await fs.rename(sidecar.backupPath, sidecar.activePath);
+      });
+    }
+  }
   if (stateBackedUp) {
     await recordRollbackFailure(failures, 'remove new runtime state', async () => {
       await fs.rm(context.statePath, { force: true });
@@ -120,6 +177,28 @@ async function rollbackStagedRuntime(
     });
   }
   return failures;
+}
+
+function validateSidecars(
+  context: RuntimeContext,
+  stagingContext: RuntimeContext,
+  sidecars: readonly RuntimeTransactionSidecar[],
+): void {
+  const activePaths = new Set<string>();
+  const stagingPaths = new Set<string>();
+  for (const sidecar of sidecars) {
+    if (sidecar.activePath === context.runtimeDir || sidecar.stagingPath === stagingContext.runtimeDir) {
+      throw new Error('Runtime transaction sidecars must not replace the runtime directory itself.');
+    }
+    if (sidecar.activePath === sidecar.stagingPath) {
+      throw new Error(`Runtime transaction sidecar must use distinct active and staging paths: ${sidecar.activePath}`);
+    }
+    if (activePaths.has(sidecar.activePath) || stagingPaths.has(sidecar.stagingPath)) {
+      throw new Error('Runtime transaction sidecar paths must be unique.');
+    }
+    activePaths.add(sidecar.activePath);
+    stagingPaths.add(sidecar.stagingPath);
+  }
 }
 
 async function recordRollbackFailure(

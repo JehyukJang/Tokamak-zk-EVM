@@ -8,13 +8,19 @@ const {
   backendProductionBuildArgs,
   validateProductionBuildMetadata,
 } = require('../dist/runtime/native.js');
-const { backendBuildMetadataFileName } = require('../dist/generated/backend-build-metadata-validator.generated.js');
-
-const BACKEND_BINARY_NAMES = ['preprocess', 'prove', 'verify'];
+const {
+  BACKEND_PACKAGE_NAMES,
+  backendBuildMetadataFileName,
+} = require('../dist/generated/backend-build-metadata-validator.generated.js');
 const VALID_METADATA = require('../../backend/contracts/fixtures/backend-build-metadata-valid.json');
+const BACKEND_BUILD_METADATA_CONTRACT = require('../dist/generated/backend-build-metadata-contract.generated.js').default;
+
+test('runtime package registry is supplied by the backend build-metadata contract', () => {
+  assert.deepEqual(BACKEND_PACKAGE_NAMES, BACKEND_BUILD_METADATA_CONTRACT.backendPackageNames);
+});
 
 test('production backend builds select the npm subcircuit-library feature explicitly', () => {
-  for (const packageName of BACKEND_BINARY_NAMES) {
+  for (const packageName of BACKEND_PACKAGE_NAMES) {
     assert.deepEqual(backendProductionBuildArgs(packageName), [
       'build',
       '-p',
@@ -30,7 +36,7 @@ test('production backend builds select the npm subcircuit-library feature explic
 test('production backend builds require contract-valid metadata for every installed binary', async () => {
   const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-production-metadata-'));
   try {
-    for (const packageName of BACKEND_BINARY_NAMES) {
+    for (const packageName of BACKEND_PACKAGE_NAMES) {
       await fs.writeFile(
         path.join(temporaryRoot, backendBuildMetadataFileName(packageName)),
         `${JSON.stringify({ ...VALID_METADATA, packageName })}\n`,

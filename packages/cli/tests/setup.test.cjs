@@ -4,29 +4,34 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const AdmZip = require('adm-zip');
 
 const {
+  extractApprovedFinalMpcCrsArchive,
   installValidatedCrsGeneration,
+  validateFinalMpcCrsArchiveEntries,
   validateDownloadedCrsArchive,
   validateFinalMpcCrsProvenanceContract,
 } = require('../dist/runtime/setup.js');
 const {
   crsProvenanceFileName,
+  finalMpcCrsArchiveRootFileNames,
   assertSupportedCrsProvenanceSchema,
 } = require('../dist/generated/crs-provenance-validator.generated.js');
 const {
+  BACKEND_PACKAGE_NAMES,
   backendBuildMetadataFileName,
   assertSupportedBackendBuildMetadataSchema,
 } = require('../dist/generated/backend-build-metadata-validator.generated.js');
 
 const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = '@tokamak-zk-evm/subcircuit-library';
-const BACKEND_BINARY_NAMES = ['preprocess', 'prove', 'verify'];
 const CRS_PROVENANCE_CONTRACT = JSON.parse(
   require('node:fs').readFileSync(
     path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'crs-provenance-contract.json'),
     'utf8',
   ),
 );
+const FINAL_CRS_ARCHIVE_FILES = finalMpcCrsArchiveRootFileNames();
 const BACKEND_BUILD_METADATA_CONTRACT = JSON.parse(
   require('node:fs').readFileSync(
     path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'backend-build-metadata-contract.json'),
@@ -58,6 +63,31 @@ const INVALID_BUILD_METADATA_FIXTURES = {
     'backend-build-metadata-invalid-leading-zero-library-version.json',
   ),
 };
+
+function fakeCrsZipEntry(entryName, overrides = {}) {
+  return {
+    entryName,
+    header: {
+      attr: 0,
+      flags: 0,
+      ...(overrides.header ?? {}),
+    },
+    isDirectory: overrides.isDirectory ?? false,
+    getData: overrides.getData ?? (() => Buffer.from(`contents:${entryName}`)),
+  };
+}
+
+function validCrsZipEntries() {
+  return FINAL_CRS_ARCHIVE_FILES.map(fileName => fakeCrsZipEntry(fileName));
+}
+
+function writeZipArchive(archivePath, entries) {
+  const archive = new AdmZip();
+  for (const entry of entries) {
+    archive.addFile(entry.name, Buffer.from(entry.contents ?? `contents:${entry.name}`));
+  }
+  archive.writeZip(archivePath);
+}
 const CANONICAL_FINAL_MPC_PROVENANCE = JSON.parse(
   require('node:fs').readFileSync(
     path.resolve(__dirname, '..', '..', 'backend', 'contracts', 'fixtures', 'final-mpc-crs-provenance.json'),
@@ -170,7 +200,7 @@ function sha256(value) {
 }
 
 async function writeBackendMetadata(backendReleaseDir, mutate = undefined) {
-  for (const name of BACKEND_BINARY_NAMES) {
+  for (const name of BACKEND_PACKAGE_NAMES) {
     const metadata = {
       compatibleBackendVersion: '2.1',
       dependencies: {
@@ -233,6 +263,102 @@ test('packages the backend CRS provenance contract unchanged for runtime validat
   const packagedContract = require('../dist/generated/crs-provenance-contract.generated.js').default;
   assert.deepEqual(packagedContract, CRS_PROVENANCE_CONTRACT);
   assert.equal(crsProvenanceFileName(), 'crs_provenance.json');
+  assert.deepEqual(FINAL_CRS_ARCHIVE_FILES, CRS_PROVENANCE_CONTRACT.finalMpcCrsArchive.rootFiles);
+});
+
+test('accepts exactly the backend-declared root files before CRS archive extraction', () => {
+  const accepted = validateFinalMpcCrsArchiveEntries(validCrsZipEntries());
+  assert.deepEqual([...accepted.keys()], FINAL_CRS_ARCHIVE_FILES);
+});
+
+test('rejects unsafe, duplicate, encrypted, symlink, directory, unexpected, and incomplete CRS archive entries', () => {
+  const cases = [
+    {
+      entries: [fakeCrsZipEntry('../outside'), ...validCrsZipEntries().slice(1)],
+      expected: /unsafe entry path/u,
+    },
+    {
+      entries: [fakeCrsZipEntry('nested/combined_sigma.rkyv'), ...validCrsZipEntries().slice(1)],
+      expected: /unexpected entry/u,
+    },
+    {
+      entries: [...validCrsZipEntries(), fakeCrsZipEntry(FINAL_CRS_ARCHIVE_FILES[0])],
+      expected: /repeats entry/u,
+    },
+    {
+      entries: [
+        fakeCrsZipEntry(FINAL_CRS_ARCHIVE_FILES[0], { isDirectory: true }),
+        ...validCrsZipEntries().slice(1),
+      ],
+      expected: /not a directory/u,
+    },
+    {
+      entries: [
+        fakeCrsZipEntry(FINAL_CRS_ARCHIVE_FILES[0], {
+          header: { attr: (0o120000 << 16) >>> 0 },
+        }),
+        ...validCrsZipEntries().slice(1),
+      ],
+      expected: /symbolic link/u,
+    },
+    {
+      entries: [
+        fakeCrsZipEntry(FINAL_CRS_ARCHIVE_FILES[0], { header: { flags: 0x1 } }),
+        ...validCrsZipEntries().slice(1),
+      ],
+      expected: /must not be encrypted/u,
+    },
+    {
+      entries: validCrsZipEntries().slice(1),
+      expected: /missing required entry/u,
+    },
+  ];
+
+  for (const { entries, expected } of cases) {
+    assert.throws(() => validateFinalMpcCrsArchiveEntries(entries), expected);
+  }
+});
+
+test('rejects a malformed CRS ZIP before writing any entry outside the caller staging directory', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-zip-'));
+  try {
+    const archivePath = path.join(tempDir, 'malformed.zip');
+    const extractionDir = path.join(tempDir, 'staging');
+    await fs.mkdir(extractionDir);
+    writeZipArchive(archivePath, [
+      { name: FINAL_CRS_ARCHIVE_FILES[0] },
+      { name: 'unexpected.txt' },
+    ]);
+
+    await assert.rejects(
+      extractApprovedFinalMpcCrsArchive(archivePath, extractionDir),
+      /unexpected entry/u,
+    );
+    assert.deepEqual(await fs.readdir(extractionDir), []);
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('extracts exactly the backend-declared CRS ZIP payload into the caller staging directory', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-zip-'));
+  try {
+    const archivePath = path.join(tempDir, 'canonical.zip');
+    const extractionDir = path.join(tempDir, 'staging');
+    await fs.mkdir(extractionDir);
+    writeZipArchive(
+      archivePath,
+      FINAL_CRS_ARCHIVE_FILES.map(name => ({ name, contents: `archive:${name}` })),
+    );
+
+    await extractApprovedFinalMpcCrsArchive(archivePath, extractionDir);
+    assert.deepEqual((await fs.readdir(extractionDir)).sort(), [...FINAL_CRS_ARCHIVE_FILES].sort());
+    for (const fileName of FINAL_CRS_ARCHIVE_FILES) {
+      assert.equal(await fs.readFile(path.join(extractionDir, fileName), 'utf8'), `archive:${fileName}`);
+    }
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
 });
 
 test('rejects unimplemented CRS provenance schema keywords before validation', () => {
@@ -252,6 +378,7 @@ test('rejects unimplemented build-metadata schema keywords before validation', (
 test('packages the backend build-metadata contract unchanged for runtime validation', () => {
   const packagedContract = require('../dist/generated/backend-build-metadata-contract.generated.js').default;
   assert.deepEqual(packagedContract, BACKEND_BUILD_METADATA_CONTRACT);
+  assert.deepEqual(BACKEND_PACKAGE_NAMES, BACKEND_BUILD_METADATA_CONTRACT.backendPackageNames);
   assert.equal(backendBuildMetadataFileName('prove'), 'build-metadata-prove.json');
 });
 
