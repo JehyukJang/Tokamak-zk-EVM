@@ -15,7 +15,7 @@ import {
 import type { RuntimeArtifactFormatSpec, RuntimeArtifactSectionSpec } from '../specs/types.js';
 
 /**
- * Decodes a TZBWASM1 container after enforcing its policy-free structural
+ * Decodes the binary artifact container after enforcing its policy-free structural
  * invariants. This deliberately does not verify source-version policy, a self
  * digest, or CRS provenance.
  */
