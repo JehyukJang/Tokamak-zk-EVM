@@ -1,10 +1,19 @@
 use crate::backend_build_metadata::BackendBuildMetadata;
+use serde::Serialize;
 use std::env;
 use std::error::Error;
 use std::ffi::OsStr;
 use std::process::ExitCode;
 
 const BACKEND_BUILD_IDENTITY_ARGUMENT: &str = "--build-identity-json";
+
+/// The machine-readable outcome emitted by the verifier result mode.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VerificationResult {
+    pub contract_version: u8,
+    pub verified: bool,
+}
 
 /// A user-facing error emitted by a backend workflow binary.
 pub trait CliDiagnostic: Error {
@@ -68,4 +77,37 @@ pub fn print_backend_build_identity_if_requested(
             .map_err(|error| format!("failed to serialize backend build identity: {error}"))?
     );
     Ok(true)
+}
+
+/// Emits the verifier outcome as the sole standard-output record for the
+/// verifier's machine-result mode.
+pub fn print_verification_result(verified: bool) -> Result<(), String> {
+    let result = VerificationResult {
+        contract_version: 1,
+        verified,
+    };
+    println!(
+        "{}",
+        serde_json::to_string(&result)
+            .map_err(|error| format!("failed to serialize verification result: {error}"))?
+    );
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::VerificationResult;
+
+    #[test]
+    fn verification_result_has_a_minimal_versioned_shape() {
+        let result = serde_json::to_value(VerificationResult {
+            contract_version: 1,
+            verified: true,
+        })
+        .expect("verification result must serialize");
+        assert_eq!(
+            result,
+            serde_json::json!({ "contractVersion": 1, "verified": true })
+        );
+    }
 }

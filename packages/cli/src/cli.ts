@@ -25,6 +25,7 @@ import { BACKEND_PACKAGE_NAMES } from './generated/backend-build-metadata-valida
 import { assertLiveBackendRuntimeIdentity } from './runtime/identity.js';
 import { acquireRuntimeOperationLock } from './runtime/operation-lock.js';
 import { promoteStagedRuntimePaths } from './runtime/stage-transaction.js';
+import { parseBackendVerificationResult } from './runtime/verification-result.js';
 
 type CommandName =
   | 'install'
@@ -320,6 +321,7 @@ interface BackendStageOptions {
   outputDirectory?: RuntimeDirectoryKey;
   postProcessResult?: (result: CommandResult) => string;
   requiredFiles: (paths: RuntimePaths) => readonly string[];
+  quiet?: boolean;
   successMessage?: string;
   verbose: boolean;
 }
@@ -496,16 +498,17 @@ async function runVerify(execution: RuntimeExecution, inputPath: string | undefi
     inputPath,
     logMessage: `Verify: using artifacts in ${paths.resourceDir}`,
     postProcessResult: (result) => {
-      const lastLine = getLastNonEmptyLine(result.stdout);
-      if (lastLine !== 'true') {
-        err(`Verify: verify output => ${lastLine ?? '<empty>'}`);
+      const verification = parseBackendVerificationResult(result.stdout);
+      if (!verification.verified) {
+        err('Verify: verification failed');
       }
-      return `Verify: verify output => ${lastLine}`;
+      return 'Verify: verification succeeded';
     },
     requiredFiles: stagePaths => resolveRuntimeFiles(stagePaths, VERIFY_REQUIRED_FILES),
     inputRules: resolveStageInputRules(VERIFY_INPUT_RULES),
     verbose,
-    args: backendVerifyArgs,
+    args: stagePaths => [...backendVerifyArgs(stagePaths), '--verification-result-json'],
+    quiet: true,
   });
 }
 
@@ -637,7 +640,13 @@ async function runBackendStage(execution: RuntimeExecution, options: BackendStag
         await fs.mkdir(stagePaths[options.outputDirectory], { recursive: true });
       }
       log(options.logMessage);
-      const result = await runBackendCommand(execution, options.binaryPath, options.args(stagePaths), options.verbose);
+      const result = await runBackendCommand(
+        execution,
+        options.binaryPath,
+        options.args(stagePaths),
+        options.verbose,
+        { quiet: options.quiet },
+      );
       return options.postProcessResult?.(result) ?? options.successMessage;
     },
   );
@@ -645,14 +654,6 @@ async function runBackendStage(execution: RuntimeExecution, options: BackendStag
     err(`Missing success message for backend stage ${path.basename(options.binaryPath)}`);
   }
   ok(successMessage);
-}
-
-function getLastNonEmptyLine(content: string): string | undefined {
-  return content
-    .split(/\r?\n/u)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .at(-1);
 }
 
 async function extractProofBundle(context: RuntimeContext, outputPathRaw: string, verbose: boolean): Promise<void> {

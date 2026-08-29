@@ -42,12 +42,14 @@ pub enum VerifyError {
         path: PathBuf,
         reason: String,
     },
+    #[error("could not emit machine-readable verification result: {reason}")]
+    MachineResult { reason: String },
 }
 
 impl CliDiagnostic for VerifyError {
     fn hint(&self) -> &'static str {
         match self {
-            Self::Artifact(_) | Self::InvalidFormat { .. } => {
+            Self::Artifact(_) | Self::InvalidFormat { .. } | Self::MachineResult { .. } => {
                 "Regenerate the matching frontend, preprocess, and proof artifacts, then retry."
             }
             Self::Crs(_) => {

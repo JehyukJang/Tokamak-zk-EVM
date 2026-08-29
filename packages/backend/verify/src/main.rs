@@ -37,6 +37,10 @@ struct Config {
     /// Proof output directory containing proof.json
     #[arg(long, value_name = "PATH")]
     proof: String,
+
+    /// Emit only the versioned machine-readable verification result on stdout
+    #[arg(long, hide = true)]
+    verification_result_json: bool,
 }
 
 fn main() -> ExitCode {
@@ -61,6 +65,7 @@ fn main() -> ExitCode {
 
 fn run() -> Result<(), VerifyError> {
     let config = Config::parse();
+    let verification_result_json = config.verification_result_json;
     let qap_library_path =
         try_resolve_subcircuit_library_path(config.subcircuit_library.as_deref())?;
     validate_operational_crs_compatibility(
@@ -80,12 +85,21 @@ fn run() -> Result<(), VerifyError> {
 
     try_check_device()?;
 
-    println!("Verifier initialization...");
+    if !verification_result_json {
+        println!("Verifier initialization...");
+    }
     let verifier = Verifier::init(&paths)?;
 
-    println!("Verifying the proof...");
+    if !verification_result_json {
+        println!("Verifying the proof...");
+    }
     let res_snark = verifier.verify_snark();
-    println!("{}", res_snark);
+    if verification_result_json {
+        libs::cli::print_verification_result(res_snark)
+            .map_err(|reason| VerifyError::MachineResult { reason })?;
+    } else {
+        println!("{}", res_snark);
+    }
 
     #[cfg(feature = "testing-mode")]
     {

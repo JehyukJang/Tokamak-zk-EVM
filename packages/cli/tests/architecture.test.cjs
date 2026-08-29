@@ -17,6 +17,7 @@ const requiredRuntimeModules = new Set([
   'stage-transaction.ts',
   'setup.ts',
   'transaction.ts',
+  'verification-result.ts',
 ]);
 const runtimeDomains = new Set(['docker.ts', 'icicle.ts', 'native.ts', 'setup.ts']);
 const runtimeFoundations = new Set([
