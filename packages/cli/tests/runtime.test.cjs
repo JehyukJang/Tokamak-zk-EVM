@@ -15,6 +15,7 @@ const { commitPreparedRuntime, installStagedRuntime } = require('../dist/runtime
 const { streamDownloadToFile } = require('../dist/runtime/download.js');
 const { assertLiveBackendRuntimeIdentity } = require('../dist/runtime/identity.js');
 const { acquireRuntimeOperationLock } = require('../dist/runtime/operation-lock.js');
+const { promoteStagedRuntimePaths } = require('../dist/runtime/stage-transaction.js');
 
 function runtimeContext(platform = 'linux') {
   return {
@@ -226,6 +227,33 @@ test('permits one live runtime operation and immediately rejects a contending pr
     await lock.release();
   } finally {
     worker.kill();
+    await fs.rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test('restores every active stage path when a multi-path promotion fails', async () => {
+  const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-stage-transaction-'));
+  const firstActive = path.join(temporaryRoot, 'first-active');
+  const secondActive = path.join(temporaryRoot, 'second-active');
+  const firstStaging = path.join(temporaryRoot, 'first-staging');
+  try {
+    await fs.mkdir(firstActive);
+    await fs.mkdir(secondActive);
+    await fs.mkdir(firstStaging);
+    await fs.writeFile(path.join(firstActive, 'marker.txt'), 'first old\n', 'utf8');
+    await fs.writeFile(path.join(secondActive, 'marker.txt'), 'second old\n', 'utf8');
+    await fs.writeFile(path.join(firstStaging, 'marker.txt'), 'first new\n', 'utf8');
+
+    await assert.rejects(
+      promoteStagedRuntimePaths([
+        { activePath: firstActive, stagingPath: firstStaging },
+        { activePath: secondActive, stagingPath: path.join(temporaryRoot, 'missing-staging') },
+      ]),
+      /ENOENT/u,
+    );
+    assert.equal(await fs.readFile(path.join(firstActive, 'marker.txt'), 'utf8'), 'first old\n');
+    assert.equal(await fs.readFile(path.join(secondActive, 'marker.txt'), 'utf8'), 'second old\n');
+  } finally {
     await fs.rm(temporaryRoot, { recursive: true, force: true });
   }
 });

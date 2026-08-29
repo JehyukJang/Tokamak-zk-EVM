@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import fs from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
 import AdmZip from 'adm-zip';
@@ -23,6 +24,7 @@ import {
 import { BACKEND_PACKAGE_NAMES } from './generated/backend-build-metadata-validator.generated.js';
 import { assertLiveBackendRuntimeIdentity } from './runtime/identity.js';
 import { acquireRuntimeOperationLock } from './runtime/operation-lock.js';
+import { promoteStagedRuntimePaths } from './runtime/stage-transaction.js';
 
 type CommandName =
   | 'install'
@@ -223,6 +225,19 @@ async function copyNamedFilesFromDir(
   }
 }
 
+async function validateNamedFilesFromDir(
+  sourceDir: string,
+  filenames: readonly string[],
+  required: boolean,
+): Promise<void> {
+  for (const filename of filenames) {
+    const sourcePath = path.join(sourceDir, filename);
+    if (!(await fileExists(sourcePath)) && required) {
+      err(`Missing ${filename} under ${sourceDir}`);
+    }
+  }
+}
+
 async function extractZipToTemp(zipPath: string, prefix: string): Promise<string> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), `${prefix}-`));
   try {
@@ -291,21 +306,21 @@ async function withDirFromPath<T>(
 }
 
 interface StageInputSyncRule {
-  destinationDir: string;
+  destinationDir: RuntimeDirectoryKey;
   optionalFiles?: readonly string[];
   requiredFiles: readonly string[];
 }
 
 interface BackendStageOptions {
-  args: string[];
+  args: (paths: RuntimePaths) => string[];
   binaryPath: string;
   inputPath?: string;
+  inputRules?: readonly StageInputSyncRule[];
   logMessage: string;
-  outputDir?: string;
+  outputDirectory?: RuntimeDirectoryKey;
   postProcessResult?: (result: CommandResult) => string;
-  requiredFiles: readonly string[];
+  requiredFiles: (paths: RuntimePaths) => readonly string[];
   successMessage?: string;
-  syncInputs?: (inputPath: string) => Promise<void>;
   verbose: boolean;
 }
 
@@ -448,16 +463,12 @@ async function runPreprocess(execution: RuntimeExecution, inputPath: string | un
     binaryPath: paths.preprocessBinary,
     inputPath,
     logMessage: `Preprocess: running backend preprocess (target=${context.platform})`,
-    outputDir: paths.preprocessOutputDir,
-    requiredFiles: resolveRuntimeFiles(paths, PREPROCESS_REQUIRED_FILES),
+    outputDirectory: 'preprocessOutputDir',
+    requiredFiles: stagePaths => resolveRuntimeFiles(stagePaths, PREPROCESS_REQUIRED_FILES),
     successMessage: `Preprocess complete → ${paths.preprocessOutputDir}`,
-    syncInputs: async (resolvedInputPath) => syncStageInputs(
-      resolvedInputPath,
-      'tokamak-preprocess',
-      resolveStageInputRules(paths, PREPROCESS_INPUT_RULES),
-    ),
+    inputRules: resolveStageInputRules(PREPROCESS_INPUT_RULES),
     verbose,
-    args: backendOutputArgs(paths, paths.preprocessOutputDir),
+    args: stagePaths => backendOutputArgs(stagePaths, stagePaths.preprocessOutputDir),
   });
 }
 
@@ -468,16 +479,12 @@ async function runProve(execution: RuntimeExecution, inputPath: string | undefin
     binaryPath: paths.proveBinary,
     inputPath,
     logMessage: `Prove: running backend prove (target=${context.platform})`,
-    outputDir: paths.proveOutputDir,
-    requiredFiles: resolveRuntimeFiles(paths, PROVE_REQUIRED_FILES),
+    outputDirectory: 'proveOutputDir',
+    requiredFiles: stagePaths => resolveRuntimeFiles(stagePaths, PROVE_REQUIRED_FILES),
     successMessage: `Proof artifacts available in ${paths.proveOutputDir}`,
-    syncInputs: async (resolvedInputPath) => syncStageInputs(
-      resolvedInputPath,
-      'tokamak-prove',
-      resolveStageInputRules(paths, PROVE_INPUT_RULES),
-    ),
+    inputRules: resolveStageInputRules(PROVE_INPUT_RULES),
     verbose,
-    args: backendOutputArgs(paths, paths.proveOutputDir),
+    args: stagePaths => backendOutputArgs(stagePaths, stagePaths.proveOutputDir),
   });
 }
 
@@ -495,14 +502,10 @@ async function runVerify(execution: RuntimeExecution, inputPath: string | undefi
       }
       return `Verify: verify output => ${lastLine}`;
     },
-    requiredFiles: resolveRuntimeFiles(paths, VERIFY_REQUIRED_FILES),
-    syncInputs: async (resolvedInputPath) => syncStageInputs(
-      resolvedInputPath,
-      'tokamak-verify',
-      resolveStageInputRules(paths, VERIFY_INPUT_RULES),
-    ),
+    requiredFiles: stagePaths => resolveRuntimeFiles(stagePaths, VERIFY_REQUIRED_FILES),
+    inputRules: resolveStageInputRules(VERIFY_INPUT_RULES),
     verbose,
-    args: backendVerifyArgs(paths),
+    args: backendVerifyArgs,
   });
 }
 
@@ -514,12 +517,54 @@ function resolveRuntimeFiles(paths: RuntimePaths, files: readonly RuntimeFileRef
   return files.map((file) => runtimeFilePath(paths, file));
 }
 
-function resolveStageInputRules(
+async function withStagedRuntimePaths<T>(
   paths: RuntimePaths,
+  stageName: string,
+  inputDirectories: readonly RuntimeDirectoryKey[],
+  outputDirectory: RuntimeDirectoryKey | undefined,
+  work: (stagedPaths: RuntimePaths) => Promise<T>,
+): Promise<T> {
+  const stagedRoot = await fs.mkdtemp(path.join(paths.resourceDir, `.${stageName}-staging-`));
+  const stagedPaths = { ...paths };
+  const promotions: { activePath: string; stagingPath: string }[] = [];
+  try {
+    for (const directoryKey of inputDirectories) {
+      const activePath = paths[directoryKey];
+      const stagingPath = path.join(stagedRoot, directoryKey);
+      await copyDirectoryIfPresent(activePath, stagingPath);
+      stagedPaths[directoryKey] = stagingPath;
+      promotions.push({ activePath, stagingPath });
+    }
+    if (outputDirectory !== undefined) {
+      const activePath = paths[outputDirectory];
+      const stagingPath = path.join(stagedRoot, outputDirectory);
+      await fs.mkdir(stagingPath, { recursive: true });
+      stagedPaths[outputDirectory] = stagingPath;
+      promotions.push({ activePath, stagingPath });
+    }
+    const result = await work(stagedPaths);
+    if (promotions.length > 0) {
+      await promoteStagedRuntimePaths(promotions);
+    }
+    return result;
+  } finally {
+    await fs.rm(stagedRoot, { recursive: true, force: true });
+  }
+}
+
+async function copyDirectoryIfPresent(sourcePath: string, destinationPath: string): Promise<void> {
+  if (await fileExists(sourcePath)) {
+    await fs.cp(sourcePath, destinationPath, { recursive: true });
+    return;
+  }
+  await fs.mkdir(destinationPath, { recursive: true });
+}
+
+function resolveStageInputRules(
   rules: readonly StageInputSyncRuleTemplate[],
 ): StageInputSyncRule[] {
   return rules.map((rule) => ({
-    destinationDir: paths[rule.destinationDir],
+    destinationDir: rule.destinationDir,
     requiredFiles: rule.requiredFiles,
     optionalFiles: rule.optionalFiles,
   }));
@@ -552,32 +597,50 @@ function backendVerifyArgs(paths: RuntimePaths): string[] {
 async function syncStageInputs(
   inputPath: string,
   prefix: string,
-  rules: StageInputSyncRule[],
+  paths: RuntimePaths,
+  rules: readonly StageInputSyncRule[],
 ): Promise<void> {
   await withDirFromPath(inputPath, prefix, async (dirPath) => {
     for (const rule of rules) {
-      await copyNamedFilesFromDir(dirPath, rule.destinationDir, rule.requiredFiles, true);
+      await validateNamedFilesFromDir(dirPath, rule.requiredFiles, true);
       if (rule.optionalFiles?.length) {
-        await copyNamedFilesFromDir(dirPath, rule.destinationDir, rule.optionalFiles, false);
+        await validateNamedFilesFromDir(dirPath, rule.optionalFiles, false);
+      }
+    }
+    for (const rule of rules) {
+      await copyNamedFilesFromDir(dirPath, paths[rule.destinationDir], rule.requiredFiles, true);
+      if (rule.optionalFiles?.length) {
+        await copyNamedFilesFromDir(dirPath, paths[rule.destinationDir], rule.optionalFiles, false);
       }
     }
   });
 }
 
 async function runBackendStage(execution: RuntimeExecution, options: BackendStageOptions): Promise<void> {
-  if (options.inputPath && options.syncInputs) {
-    await options.syncInputs(options.inputPath);
-  }
-  for (const requiredFile of options.requiredFiles) {
-    await ensureFile(requiredFile);
-  }
-  if (options.outputDir) {
-    await fs.mkdir(options.outputDir, { recursive: true });
-  }
-
-  log(options.logMessage);
-  const result = await runBackendCommand(execution, options.binaryPath, options.args, options.verbose);
-  const successMessage = options.postProcessResult?.(result) ?? options.successMessage;
+  const paths = runtimePaths(execution.context);
+  const stagedInputDirectories = options.inputPath === undefined
+    ? []
+    : [...new Set((options.inputRules ?? []).map(rule => rule.destinationDir))];
+  const successMessage = await withStagedRuntimePaths(
+    paths,
+    path.basename(options.binaryPath),
+    stagedInputDirectories,
+    options.outputDirectory,
+    async stagePaths => {
+      if (options.inputPath !== undefined) {
+        await syncStageInputs(options.inputPath, `tokamak-${path.basename(options.binaryPath)}`, stagePaths, options.inputRules ?? []);
+      }
+      for (const requiredFile of options.requiredFiles(stagePaths)) {
+        await ensureFile(requiredFile);
+      }
+      if (options.outputDirectory !== undefined) {
+        await fs.mkdir(stagePaths[options.outputDirectory], { recursive: true });
+      }
+      log(options.logMessage);
+      const result = await runBackendCommand(execution, options.binaryPath, options.args(stagePaths), options.verbose);
+      return options.postProcessResult?.(result) ?? options.successMessage;
+    },
+  );
   if (!successMessage) {
     err(`Missing success message for backend stage ${path.basename(options.binaryPath)}`);
   }
@@ -613,8 +676,53 @@ async function extractProofBundle(context: RuntimeContext, outputPathRaw: string
     }
   }
   info(verbose, `Writing proof bundle archive: ${outputName}`);
-  archive.writeZip(outputPath);
+  const temporaryArchivePath = path.join(outputDir, `.${outputName}.staging-${randomUUID()}.zip`);
+  try {
+    archive.writeZip(temporaryArchivePath);
+    await replaceUserFileAtomically(temporaryArchivePath, outputPath);
+  } finally {
+    await fs.rm(temporaryArchivePath, { force: true });
+  }
   ok(`Proof bundle written → ${outputPath}`);
+}
+
+async function replaceUserFileAtomically(stagingPath: string, outputPath: string): Promise<void> {
+  const backupPath = path.join(path.dirname(outputPath), `.${path.basename(outputPath)}.backup-${randomUUID()}`);
+  let outputBackedUp = false;
+  let stagingActivated = false;
+  try {
+    if (await fileExists(outputPath)) {
+      await fs.rename(outputPath, backupPath);
+      outputBackedUp = true;
+    }
+    await fs.rename(stagingPath, outputPath);
+    stagingActivated = true;
+  } catch (error) {
+    const rollbackFailures: string[] = [];
+    if (stagingActivated) {
+      try {
+        await fs.rename(outputPath, stagingPath);
+      } catch (rollbackError) {
+        rollbackFailures.push(`restore staging archive: ${errorMessage(rollbackError)}`);
+      }
+    }
+    if (outputBackedUp) {
+      try {
+        await fs.rename(backupPath, outputPath);
+      } catch (rollbackError) {
+        rollbackFailures.push(`restore previous proof bundle: ${errorMessage(rollbackError)}`);
+      }
+    }
+    if (rollbackFailures.length > 0) {
+      throw new Error(`Proof bundle promotion failed: ${errorMessage(error)}. Rollback also failed: ${rollbackFailures.join('; ')}`);
+    }
+    throw error;
+  }
+  await fs.rm(backupPath, { force: true });
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function runDoctor(verbose: boolean): Promise<void> {
@@ -713,9 +821,10 @@ async function runCommandWithRuntimeLock(parsed: ParsedArgs): Promise<void> {
       await ensureFile(normalized.transaction);
       await ensureFile(normalized.blockInfo);
       await ensureFile(normalized.contractCode);
-      await emptyDir(paths.synthOutputDir);
-      log('Synthesize: executing synthesizer-node API...');
-      await runTokamakChannelTxFromFiles(normalized, paths.synthOutputDir);
+      await withStagedRuntimePaths(paths, 'synthesize', [], 'synthOutputDir', async stagePaths => {
+        log('Synthesize: executing synthesizer-node API...');
+        await runTokamakChannelTxFromFiles(normalized, stagePaths.synthOutputDir);
+      });
       ok(`Synth outputs written → ${paths.synthOutputDir}`);
       return;
     }

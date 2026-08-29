@@ -14,11 +14,19 @@ const requiredRuntimeModules = new Set([
   'model.ts',
   'native.ts',
   'operation-lock.ts',
+  'stage-transaction.ts',
   'setup.ts',
   'transaction.ts',
 ]);
 const runtimeDomains = new Set(['docker.ts', 'icicle.ts', 'native.ts', 'setup.ts']);
-const runtimeFoundations = new Set(['context.ts', 'identity.ts', 'model.ts', 'operation-lock.ts', 'transaction.ts']);
+const runtimeFoundations = new Set([
+  'context.ts',
+  'identity.ts',
+  'model.ts',
+  'operation-lock.ts',
+  'stage-transaction.ts',
+  'transaction.ts',
+]);
 const allowedDownloadConsumers = new Set(['icicle.ts', 'setup.ts']);
 
 function sourceFiles(root) {
