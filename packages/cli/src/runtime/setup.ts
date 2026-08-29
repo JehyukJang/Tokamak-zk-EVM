@@ -1,14 +1,17 @@
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import vm from 'node:vm';
 import AdmZip from 'adm-zip';
 import {
   ensureDir,
-  normalizeCompatibleBackendVersion,
   packageCompatibleVersion,
   runtimePaths,
 } from './context.js';
+import {
+  parseDriveArchiveName,
+  selectLatestDriveArchive as selectLatestDriveArchiveFromListing,
+  type DriveArchiveSelection,
+} from './drive-listing.js';
 import { downloadFileWithResume, fileExists, normalizeSha256, sha256FileHex } from './download.js';
 import type { RuntimeContext } from './model.js';
 import { logVerbose } from '../system.js';
@@ -22,14 +25,6 @@ import {
   backendBuildMetadataFileName,
   parseBackendBuildMetadata,
 } from '../generated/backend-build-metadata-validator.generated.js';
-
-interface DriveArchiveSelection {
-  compatibleBackendVersion: string;
-  fileId: string;
-  name: string;
-  generatedAt: string;
-  sizeBytes: number;
-}
 
 type FinalMpcCrsProvenance = import('../generated/crs-provenance-validator.generated.js').FinalMpcCrsProvenance;
 
@@ -52,86 +47,12 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function parseDriveArchiveName(
-  name: string,
-): Pick<DriveArchiveSelection, 'compatibleBackendVersion' | 'generatedAt'> | null {
-  const parsed = name.match(/^tokamak-backend-crs-v(\d+)\.(\d+)-(\d{8}T\d{6}Z)\.zip$/iu);
-  if (!parsed) {
-    return null;
-  }
-  try {
-    return {
-      compatibleBackendVersion: normalizeCompatibleBackendVersion(
-        `${parsed[1]}.${parsed[2]}`,
-        `CRS archive name ${JSON.stringify(name)} compatibility version`,
-      ),
-      generatedAt: parsed[3],
-    };
-  } catch {
-    return null;
-  }
-}
-
-function parseDriveArchiveSelection(html: string, expectedCompatibleVersion: string): DriveArchiveSelection {
-  const match = html.match(/window\['_DRIVE_ivd'\]\s*=\s*('(?:\\.|[^'])*')/u);
-  if (!match) {
-    throw new Error('Unable to locate Google Drive listing payload.');
-  }
-
-  const decoded = vm.runInNewContext(match[1]) as string;
-  const payload = JSON.parse(decoded) as unknown;
-  const entriesById = new Map<string, DriveArchiveSelection>();
-
-  const walk = (node: unknown): void => {
-    if (!Array.isArray(node)) {
-      return;
-    }
-
-    if (typeof node[0] === 'string' && typeof node[2] === 'string' && node[3] === 'application/zip') {
-      const parsedName = parseDriveArchiveName(node[2]);
-      const sizeBytes = typeof node[13] === 'number' && Number.isFinite(node[13]) ? node[13] : null;
-      if (
-        parsedName &&
-        parsedName.compatibleBackendVersion === expectedCompatibleVersion &&
-        sizeBytes !== null &&
-        sizeBytes > 0
-      ) {
-        entriesById.set(node[0], {
-          fileId: node[0],
-          name: node[2],
-          compatibleBackendVersion: parsedName.compatibleBackendVersion,
-          generatedAt: parsedName.generatedAt,
-          sizeBytes,
-        });
-      }
-    }
-
-    for (const child of node) {
-      walk(child);
-    }
-  };
-
-  walk(payload);
-
-  const entries = [...entriesById.values()];
-  if (entries.length === 0) {
-    throw new Error(
-      `No CRS archive matching compatibility version ${expectedCompatibleVersion} was found in Google Drive.`,
-    );
-  }
-
-  entries.sort((left, right) => {
-    return right.generatedAt.localeCompare(left.generatedAt);
-  });
-  return entries[0];
-}
-
 async function selectLatestDriveArchive(compatibleBackendVersion: string): Promise<DriveArchiveSelection> {
   const response = await fetch(`${CRS_DRIVE_FOLDER_URL}/${CRS_DRIVE_FOLDER_ID}`);
   if (!response.ok) {
     throw new Error(`Failed to read CRS listing: ${response.status} ${response.statusText}`);
   }
-  return parseDriveArchiveSelection(await response.text(), compatibleBackendVersion);
+  return selectLatestDriveArchiveFromListing(await response.text(), compatibleBackendVersion);
 }
 
 async function crsArchiveCacheMatches(

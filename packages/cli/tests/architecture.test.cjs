@@ -9,6 +9,7 @@ const requiredRuntimeModules = new Set([
   'context.ts',
   'docker.ts',
   'download.ts',
+  'drive-listing.ts',
   'identity.ts',
   'icicle.ts',
   'model.ts',
@@ -22,6 +23,7 @@ const requiredRuntimeModules = new Set([
 const runtimeDomains = new Set(['docker.ts', 'icicle.ts', 'native.ts', 'setup.ts']);
 const runtimeFoundations = new Set([
   'context.ts',
+  'drive-listing.ts',
   'identity.ts',
   'model.ts',
   'operation-lock.ts',
