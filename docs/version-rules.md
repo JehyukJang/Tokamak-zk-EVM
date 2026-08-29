@@ -24,15 +24,15 @@ The synchronized package version applies to:
 - `packages/frontend/qap-compiler/dist/package.json`.
 - `packages/frontend/synthesizer/node-cli/package.json`.
 - `packages/frontend/synthesizer/web-app/package.json`.
-- `packages/backend-wasm/package.json`.
-- `packages/backend-wasm/tools/rkyv-decoder-wasm/package.json`.
-- `packages/backend-wasm/src/version.ts`.
+- `packages/backend/wasm/package.json`.
+- `packages/backend/wasm/tools/rkyv-decoder-wasm/package.json`.
+- `packages/backend/wasm/src/version.ts`.
 - `packages/backend/Cargo.toml` workspace package version.
 - Backend workspace packages such as `libs`, `mpc-setup`, `preprocess`, `prove`, `trusted-setup`, and `verify`.
 
 This version changes for every published release, including patch-only changes that do not change the circuit or CRS.
 
-`packages/backend-wasm` remains outside the root npm workspace intentionally. Its build must resolve the exact
+`packages/backend/wasm` remains outside the root npm workspace intentionally. Its build must resolve the exact
 synchronized `@tokamak-zk-evm/subcircuit-library` version from npm after that package has been published, rather than
 substituting the qap-compiler source workspace. Root version tooling still updates and validates the package explicitly.
 

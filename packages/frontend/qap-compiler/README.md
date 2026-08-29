@@ -32,7 +32,7 @@ subcircuit.
 | ----------------------------------------------- | ------------------------------------------------------------- |
 | [Synthesizer](../synthesizer/README.md)         | Loads metadata and matching WASM witness generators           |
 | [Native backend](../../backend/README.md)       | Uses binary R1CS files during setup and proving               |
-| [Browser backend](../../backend-wasm/README.md) | Converts and validates compatible runtime artifacts           |
+| [Browser backend](../../backend/wasm/README.md) | Converts and validates compatible runtime artifacts           |
 | [CLI](../../cli/README.md)                      | Installs the synchronized library in the local proof workflow |
 
 The Node Synthesizer resolves installed assets at runtime. The Web Synthesizer

@@ -1,0 +1,589 @@
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile, realpath, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+
+import { marked } from "marked";
+import { chromium } from "playwright";
+
+import { BACKEND_WASM_PACKAGE_VERSION } from "../../../src/version.js";
+import {
+  parseSubcircuitLibraryOrigin,
+  type SubcircuitLibraryOrigin,
+} from "../../../src/generated/crs-provenance-validator.generated.js";
+
+const execFileAsync = promisify(execFile);
+const DOCUMENTS = [
+  "README.md",
+  "CONTRIBUTING.md",
+  "examples/browser/README.md",
+] as const;
+const EXPECTED_UNPUBLISHED_NPM_URL =
+  "https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat";
+
+interface PackageFile {
+  readonly path: string;
+}
+
+interface PackResult {
+  readonly filename: string;
+  readonly files: readonly PackageFile[];
+}
+
+interface PackageManifest {
+  readonly name: string;
+  readonly version: string;
+  readonly license: string;
+  readonly exports: Record<string, unknown>;
+  readonly scripts: Readonly<Record<string, string>>;
+}
+
+async function main(): Promise<void> {
+  const expectedOrigin = parseExpectedOrigin(process.argv.slice(2));
+  const sources = new Map<string, string>();
+  for (const document of DOCUMENTS) {
+    sources.set(document, await readFile(document, "utf8"));
+  }
+
+  for (const [document, source] of sources) {
+    checkMarkdownStructure(document, source);
+  }
+  await checkLinks(sources);
+
+  const readme = sources.get("README.md");
+  if (readme === undefined) {
+    throw new Error("README.md was not loaded.");
+  }
+  checkPublicApiReference(readme);
+  checkQualifiedClaims(readme);
+  await checkRenderedReadme(readme);
+  await checkPackedPackage(expectedOrigin);
+
+  console.log("Checked publication documentation, links, rendering, API coverage, and package boundary");
+}
+
+function checkMarkdownStructure(document: string, source: string): void {
+  const headings = [...source.matchAll(/^(#{1,6})\s+(.+)$/gm)].map((match) => ({
+    depth: match[1].length,
+    label: match[2].trim(),
+  }));
+  if (headings.length === 0 || headings[0].depth !== 1) {
+    throw new Error(`${document} must begin its heading hierarchy with one H1.`);
+  }
+  if (headings.filter(({ depth }) => depth === 1).length !== 1) {
+    throw new Error(`${document} must contain exactly one H1.`);
+  }
+  for (let index = 1; index < headings.length; index += 1) {
+    if (headings[index].depth > headings[index - 1].depth + 1) {
+      throw new Error(
+        `${document} skips a heading level before "${headings[index].label}".`,
+      );
+    }
+  }
+
+  const fences = [...source.matchAll(/^```/gm)];
+  if (fences.length % 2 !== 0) {
+    throw new Error(`${document} contains an unclosed code fence.`);
+  }
+
+  const anchors = new Set<string>();
+  for (const heading of headings) {
+    const anchor = githubAnchor(heading.label);
+    if (anchors.has(anchor)) {
+      throw new Error(`${document} contains the duplicate heading anchor #${anchor}.`);
+    }
+    anchors.add(anchor);
+  }
+
+  for (const match of source.matchAll(/\[[^\]]+\]\(#([^)]+)\)/g)) {
+    if (!anchors.has(match[1])) {
+      throw new Error(`${document} links to missing anchor #${match[1]}.`);
+    }
+  }
+}
+
+async function checkLinks(sources: ReadonlyMap<string, string>): Promise<void> {
+  const externalUrls = new Set<string>();
+  for (const [document, source] of sources) {
+    for (const match of source.matchAll(/\[([^\]]+)\]\(([^)]+)\)/g)) {
+      const label = match[1].trim();
+      const target = match[2].trim();
+      if (label.length === 0) {
+        throw new Error(`${document} contains a link without a label.`);
+      }
+      if (target.startsWith("#")) {
+        continue;
+      }
+      if (/^https?:\/\//.test(target)) {
+        externalUrls.add(target);
+        continue;
+      }
+      const localPath = target.split("#", 1)[0];
+      if (localPath.length === 0) {
+        continue;
+      }
+      const resolved = path.resolve(path.dirname(document), localPath);
+      try {
+        await stat(resolved);
+      } catch {
+        throw new Error(`${document} links to missing local file ${target}.`);
+      }
+    }
+  }
+
+  const failures: string[] = [];
+  for (const url of externalUrls) {
+    const status = await externalLinkStatus(url);
+    if (
+      status >= 400 &&
+      !(url === EXPECTED_UNPUBLISHED_NPM_URL && status === 404) &&
+      !(status === 404 && await isCurrentPackageMainLink(url))
+    ) {
+      failures.push(`${status} ${url}`);
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(`External link validation failed:\n${failures.join("\n")}`);
+  }
+}
+
+async function externalLinkStatus(url: string): Promise<number> {
+  const parsed = new URL(url);
+  if (parsed.hostname === "www.npmjs.com" && parsed.pathname.startsWith("/package/")) {
+    const packageName = decodeURIComponent(parsed.pathname.slice("/package/".length));
+    return fetchStatus(`https://registry.npmjs.org/${encodeURIComponent(packageName)}`);
+  }
+  return fetchStatus(url);
+}
+
+async function fetchStatus(url: string): Promise<number> {
+  const response = await fetch(url, {
+    headers: { "user-agent": "backend-wasm-publication-check/1.0" },
+    redirect: "follow",
+    signal: AbortSignal.timeout(30_000),
+  });
+  await response.body?.cancel();
+  return response.status;
+}
+
+async function isCurrentPackageMainLink(url: string): Promise<boolean> {
+  const prefix =
+    "https://github.com/tokamak-network/Tokamak-zk-EVM/";
+  if (!url.startsWith(prefix)) {
+    return false;
+  }
+  const repositoryPath = new URL(url).pathname;
+  const match = repositoryPath.match(
+    /^\/tokamak-network\/Tokamak-zk-EVM\/(?:blob|tree)\/main\/packages\/backend\/wasm(?:\/(.*))?$/,
+  );
+  if (match === null) {
+    return false;
+  }
+  const localPath = path.resolve(match[1] ?? ".");
+  try {
+    await stat(localPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function checkPublicApiReference(readme: string): void {
+  const reference = section(readme, "## Public API reference");
+  const exactEntries = [
+    "prover.install(options?)",
+    "prover.prove(input)",
+    "prover.begin(input)",
+    "ProverSession.proveArithmetic()",
+    "ProverSession.proveCopy()",
+    "ProverSession.proveBinding()",
+    "ProverSession.finalize()",
+    "ProverSession.dispose()",
+    "verifier.install()",
+    "verifier.verify(input)",
+    "preprocess.install(options?)",
+    "preprocess.preprocess(input)",
+    "convertWitness(value)",
+    "convertPermutation(value)",
+    "convertInstance(value)",
+    "convertVerifierPreprocess(value)",
+    "convertProof(input)",
+    "convertCrs(bytes, provenance)",
+    "inspectBinary(bytes)",
+    "validateBinary(bytes)",
+  ] as const;
+  for (const entry of exactEntries) {
+    const count = countLiteral(reference, `\`${entry}\``);
+    if (count !== 1) {
+      throw new Error(`Public API reference must document ${entry} exactly once; found ${count}.`);
+    }
+  }
+
+  const publicTypes = [
+    "ProverInput",
+    "ProverInstallOptions",
+    "ProverInstallationInfo",
+    "ProverSession",
+    "VerifierInput",
+    "VerifierInstallationInfo",
+    "PreprocessInput",
+    "PreprocessInstallOptions",
+    "PreprocessInstallationInfo",
+    "BinaryArtifactInspection",
+    "BinarySectionInspection",
+    "ConvertedCrs",
+    "ConverterArtifactJson",
+    "ConvertProofBinaryInput",
+    "ConvertProofInput",
+    "ConvertProofJsonInput",
+    "RuntimeArtifactFileValidationResult",
+    "BackendWasmError",
+    "BackendWasmErrorCode",
+  ] as const;
+  for (const type of publicTypes) {
+    if (!reference.includes(`\`${type}\``)) {
+      throw new Error(`Public API reference does not document ${type}.`);
+    }
+  }
+
+  const workflows = readme.slice(reference.length);
+  for (const entry of ["install(", "preprocess(", "verify(", "prove(", "begin(", "convert", "inspectBinary(", "validateBinary("]) {
+    if (!workflows.includes(entry)) {
+      throw new Error(`README workflows do not use or select ${entry}.`);
+    }
+  }
+}
+
+function checkQualifiedClaims(readme: string): void {
+  const normalized = readme.replace(/\s+/g, " ");
+  const requiredStatements = [
+    "Firefox or Safari | Not yet verified",
+    "Chromium with a Webpack production build | Verified",
+    "not minimum requirements",
+    "does not authenticate the producer",
+    "does not silently fall back",
+    "This information is not legal advice.",
+  ] as const;
+  for (const statement of requiredStatements) {
+    if (!normalized.includes(statement)) {
+      throw new Error(`README is missing required qualification: ${statement}`);
+    }
+  }
+}
+
+async function checkRenderedReadme(readme: string): Promise<void> {
+  const html = await marked.parse(readme, { gfm: true });
+  const renderedDocument = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      body { color: #1f2328; font: 16px/1.5 system-ui, sans-serif; margin: 0 auto; max-width: 980px; padding: 24px; }
+      img { max-width: 100%; }
+      pre, table { display: block; max-width: 100%; overflow-x: auto; }
+      code { overflow-wrap: anywhere; }
+      table { border-collapse: collapse; }
+      td, th { border: 1px solid #d0d7de; padding: 6px 13px; text-align: left; }
+    </style>
+  </head>
+  <body>${html}</body>
+</html>`;
+
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const width of [390, 1280]) {
+      const page = await browser.newPage({ viewport: { width, height: 900 } });
+      await page.setContent(renderedDocument);
+      const result = await page.evaluate(() => ({
+        h1: document.querySelectorAll("h1").length,
+        tables: document.querySelectorAll("table").length,
+        codeBlocks: document.querySelectorAll("pre").length,
+        overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      }));
+      if (result.h1 !== 1 || result.tables === 0 || result.codeBlocks === 0 || result.overflow) {
+        throw new Error(`README render check failed at ${width}px: ${JSON.stringify(result)}.`);
+      }
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+}
+
+async function checkPackedPackage(expectedOrigin: SubcircuitLibraryOrigin): Promise<void> {
+  const temporaryDirectory = await realpath(
+    await mkdtemp(path.join(tmpdir(), "backend-wasm-publication-check-")),
+  );
+  try {
+    const { stdout } = await execFileAsync(
+      "npm",
+      ["pack", "--ignore-scripts", "--json", "--pack-destination", temporaryDirectory],
+      { cwd: process.cwd(), maxBuffer: 8 * 1024 * 1024 },
+    );
+    const results = JSON.parse(stdout) as readonly PackResult[];
+    if (results.length !== 1) {
+      throw new Error(`Expected one npm package, received ${results.length}.`);
+    }
+    const result = results[0];
+    const files = new Set(result.files.map((file) => file.path));
+    const requiredThirdPartyLicenses = [
+      "third-party-licenses/rkyv-decoder-wasm/ahash-0.7.8/LICENSE-MIT",
+      "third-party-licenses/rkyv-decoder-wasm/bytecheck-0.6.12/LICENSE",
+      "third-party-licenses/rkyv-decoder-wasm/cfg-if-1.0.4/LICENSE-MIT",
+      "third-party-licenses/rkyv-decoder-wasm/hashbrown-0.12.3/LICENSE-MIT",
+      "third-party-licenses/rkyv-decoder-wasm/once_cell-1.21.4/LICENSE-MIT",
+      "third-party-licenses/rkyv-decoder-wasm/ptr_meta-0.1.4/LICENSE",
+      "third-party-licenses/rkyv-decoder-wasm/rend-0.4.2/LICENSE",
+      "third-party-licenses/rkyv-decoder-wasm/rkyv-0.7.46/LICENSE",
+      "third-party-licenses/rkyv-decoder-wasm/rust-1.95.0/COPYRIGHT",
+      "third-party-licenses/rkyv-decoder-wasm/rust-1.95.0/LICENSE-MIT",
+      "third-party-licenses/rkyv-decoder-wasm/seahash-4.1.0/LICENSE-MIT",
+      "third-party-licenses/rkyv-decoder-wasm/simdutf8-0.1.5/LICENSE-MIT",
+      "third-party-licenses/rkyv-decoder-wasm/unicode-ident-1.0.24/LICENSE-MIT",
+      "third-party-licenses/rkyv-decoder-wasm/unicode-ident-1.0.24/LICENSE-UNICODE",
+      "third-party-licenses/rkyv-decoder-wasm/wasm-bindgen-0.2.126/LICENSE-MIT",
+      "third-party-licenses/rkyv-decoder-wasm/wasm-bindgen-shared-0.2.126/LICENSE-MIT",
+    ] as const;
+    const required = [
+      "package.json",
+      "README.md",
+      "CONTRIBUTING.md",
+      "LICENSE-MIT",
+      "LICENSE-APACHE",
+      "THIRD_PARTY_NOTICES.md",
+      ...requiredThirdPartyLicenses,
+      "dist/prover/index.js",
+      "dist/prover/index.d.ts",
+      "dist/preprocess/index.js",
+      "dist/preprocess/index.d.ts",
+      "dist/api/public-api-utils.js",
+      "dist/api/public-api-utils.d.ts",
+      "dist/generated/active/setup.generated.js",
+      "dist/generated/active/setup.generated.d.ts",
+      "dist/verifier/index.js",
+      "dist/verifier/index.d.ts",
+      "dist/converter/index.js",
+      "dist/converter/index.d.ts",
+      "dist/converter/worker/crs-converter-worker.js",
+      "dist/converter/worker/backend_wasm_rkyv_decoder_bg.wasm",
+      "dist/verifier/generated/active/sigma-verify.generated.js",
+      "examples/browser/README.md",
+      "examples/browser/index.html",
+      "examples/browser/package.json",
+      "examples/browser/tsconfig.json",
+      "examples/browser/src/generate-proof.ts",
+      "examples/browser/src/global.d.ts",
+      "examples/browser/src/inspect-and-validate.ts",
+      "examples/browser/src/load-binary.ts",
+      "examples/browser/src/main.ts",
+      "examples/browser/src/prepare-artifacts.ts",
+      "examples/browser/src/run-preprocess.ts",
+      "examples/browser/src/staged-proof.ts",
+      "examples/browser/src/styles.css",
+      "examples/browser/src/verify-proof.ts",
+    ] as const;
+    for (const file of required) {
+      if (!files.has(file)) {
+        throw new Error(`Packed package is missing ${file}.`);
+      }
+    }
+    await checkPackedDistMatchesTrackedSource(files);
+    const packedThirdPartyLicenses = [...files]
+      .filter((file) => file.startsWith("third-party-licenses/"))
+      .sort();
+    const expectedThirdPartyLicenses = [...requiredThirdPartyLicenses].sort();
+    if (
+      packedThirdPartyLicenses.length !== expectedThirdPartyLicenses.length
+      || packedThirdPartyLicenses.some(
+        (file, index) => file !== expectedThirdPartyLicenses[index],
+      )
+    ) {
+      throw new Error(
+        `Packed third-party license set differs from the selected runtime license set: ${JSON.stringify(packedThirdPartyLicenses)}.`,
+      );
+    }
+
+    const excludedPrefixes = [
+      "test/",
+      "scripts/",
+      "fixtures/",
+      "tools/",
+      "tmp/",
+      "docs/",
+      "node_modules/",
+    ] as const;
+    for (const file of files) {
+      const prefix = excludedPrefixes.find((candidate) => file.startsWith(candidate));
+      if (prefix !== undefined) {
+        throw new Error(`Packed package unexpectedly contains ${file}.`);
+      }
+    }
+
+    const archive = path.join(temporaryDirectory, result.filename);
+    await assertPackedSetupOrigin(archive, expectedOrigin);
+    const { stdout: manifestSource } = await execFileAsync(
+      "tar",
+      ["-xOf", archive, "package/package.json"],
+      { maxBuffer: 1024 * 1024 },
+    );
+    const manifest = JSON.parse(manifestSource) as PackageManifest;
+    if (
+      manifest.name !== "@tokamak-zk-evm/snark-browser-compat" ||
+      manifest.version !== BACKEND_WASM_PACKAGE_VERSION ||
+      manifest.license !== "MIT OR Apache-2.0"
+    ) {
+      throw new Error(`Packed package metadata is inconsistent: ${manifestSource}`);
+    }
+    if (manifest.scripts.prepack !== "npm run clean && npm run build:production") {
+      throw new Error(
+        "Package prepack must clean and build with production-selected generated inputs.",
+      );
+    }
+    if (
+      manifest.scripts["build:production"]
+        !== "npm run contracts:prepare && npm run subcircuit-library:generate:production && npm run verifier-crs:generate:production && npm run rkyv-decoder:build && tsc -p tsconfig.json --pretty false && npm run converter-worker:build"
+    ) {
+      throw new Error(
+        "Package build:production must regenerate npm-snapshot and canonical-final-CRS inputs.",
+      );
+    }
+    const exports = Object.keys(manifest.exports).sort();
+    const expectedExports = ["./converter", "./preprocess", "./prover", "./verifier"];
+    if (JSON.stringify(exports) !== JSON.stringify(expectedExports)) {
+      throw new Error(`Packed public exports changed: ${exports.join(", ")}.`);
+    }
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+}
+
+function parseExpectedOrigin(args: readonly string[]): SubcircuitLibraryOrigin {
+  if (args.length !== 1 || !args[0].startsWith("--expected-origin=")) {
+    throw new Error("Usage: check-publication-docs --expected-origin=<origin>.");
+  }
+  return parseSubcircuitLibraryOrigin(
+    args[0].slice("--expected-origin=".length),
+    "Expected packed subcircuit-library origin",
+  );
+}
+
+async function assertPackedSetupOrigin(
+  archive: string,
+  expectedOrigin: SubcircuitLibraryOrigin,
+): Promise<void> {
+  const { stdout } = await execFileAsync(
+    "tar",
+    ["-xOf", archive, "package/dist/generated/active/setup.generated.js"],
+    { maxBuffer: 1024 * 1024 },
+  );
+  const match = /SUBCIRCUIT_LIBRARY_ORIGIN = "([^"]+)";/u.exec(stdout);
+  if (match === null) {
+    throw new Error("Packed active setup does not declare SUBCIRCUIT_LIBRARY_ORIGIN.");
+  }
+  const actualOrigin = parseSubcircuitLibraryOrigin(
+    match[1],
+    "Packed subcircuit-library origin",
+  );
+  if (actualOrigin !== expectedOrigin) {
+    throw new Error(
+      `Packed active setup origin ${actualOrigin} does not match expected ${expectedOrigin}.`,
+    );
+  }
+}
+
+async function checkPackedDistMatchesTrackedSource(
+  packedFiles: ReadonlySet<string>,
+): Promise<void> {
+  const { stdout } = await execFileAsync(
+    "git",
+    ["ls-files", "src"],
+    { cwd: process.cwd(), maxBuffer: 1024 * 1024 },
+  );
+  const expected = new Set<string>([
+    "dist/converter/worker/backend_wasm_rkyv_decoder_bg.wasm",
+    ...generatedActiveDistFiles(),
+  ]);
+
+  const sources = stdout
+    .trim()
+    .split("\n")
+    .filter((file) => file.endsWith(".ts") || file.endsWith(".js"));
+  for (const source of sources) {
+    if (source.endsWith(".d.ts")) {
+      continue;
+    }
+    const extension = source.endsWith(".ts") ? ".ts" : ".js";
+    const relative = source.slice("src/".length, -extension.length);
+    expected.add(`dist/${relative}.js`);
+    expected.add(`dist/${relative}.d.ts`);
+    if (relative.includes("/")) {
+      expected.add(`dist/${relative}.js.map`);
+      expected.add(`dist/${relative}.d.ts.map`);
+    }
+  }
+
+  const actual = new Set(
+    [...packedFiles].filter((file) => file.startsWith("dist/")),
+  );
+  const missing = [...expected].filter((file) => !actual.has(file)).sort();
+  const stale = [...actual].filter((file) => !expected.has(file)).sort();
+  if (missing.length > 0 || stale.length > 0) {
+    throw new Error(
+      [
+        "Packed dist does not match tracked production source.",
+        missing.length > 0 ? `Missing: ${missing.join(", ")}` : undefined,
+        stale.length > 0 ? `Stale: ${stale.join(", ")}` : undefined,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
+}
+
+function generatedActiveDistFiles(): readonly string[] {
+  const activeModules = [
+    "generated/active/setup.generated",
+    "prover/generated/active/subcircuit-library.generated",
+    "verifier/generated/active/sigma-verify.generated",
+  ] as const;
+  return activeModules.flatMap((module) => [
+    `dist/${module}.js`,
+    `dist/${module}.d.ts`,
+    `dist/${module}.js.map`,
+    `dist/${module}.d.ts.map`,
+  ]);
+}
+
+function section(source: string, heading: string): string {
+  const start = source.indexOf(heading);
+  if (start < 0) {
+    throw new Error(`README is missing ${heading}.`);
+  }
+  const rest = source.slice(start + heading.length);
+  const end = rest.search(/^##\s+/m);
+  return end < 0 ? source.slice(start) : source.slice(start, start + heading.length + end);
+}
+
+function countLiteral(source: string, value: string): number {
+  return source.split(value).length - 1;
+}
+
+function githubAnchor(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/<[^>]+>/g, "")
+    .replace(/[^\p{L}\p{N}\s-]/gu, "")
+    .trim()
+    .replace(/\s+/g, "-");
+}
+
+const entrypoint = fileURLToPath(import.meta.url);
+
+if (process.argv[1] === entrypoint) {
+  main().catch((error: unknown) => {
+    console.error(error instanceof Error ? error.stack ?? error.message : String(error));
+    process.exitCode = 1;
+  });
+}

@@ -1,4 +1,4 @@
-// Generated from packages/backend/contracts/backend-build-metadata-contract.json.
+// Generated from packages/backend/common/contracts/backend-build-metadata-contract.json.
 const contract = {
   "fileNamePattern": "build-metadata-{backendPackageName}.json",
   "backendPackageNames": ["preprocess", "prove", "verify"],

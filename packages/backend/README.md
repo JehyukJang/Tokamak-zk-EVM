@@ -98,7 +98,7 @@ Release example:
 
 ```bash
 cargo run --release -p trusted-setup -- \
-  --output ./setup/trusted-setup/output
+  --output ./rust/setup/trusted-setup/output
 ```
 
 Non-release example:
@@ -106,7 +106,7 @@ Non-release example:
 ```bash
 cargo run -p trusted-setup -- \
   --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
-  --output ./setup/trusted-setup/output
+  --output ./rust/setup/trusted-setup/output
 ```
 
 ### `native_mpc_setup`
@@ -118,8 +118,8 @@ Release example:
 
 ```bash
 cargo run --release -p mpc-setup --bin native_mpc_setup -- \
-  --intermediate ./setup/mpc-setup/output/native.intermediate \
-  --output ./setup/mpc-setup/output/native.final
+  --intermediate ./rust/setup/mpc-setup/output/native.intermediate \
+  --output ./rust/setup/mpc-setup/output/native.final
 ```
 
 ### `dusk_backed_mpc_setup`
@@ -133,8 +133,8 @@ Create a local CRS without Drive access:
 ```bash
 cargo run --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
   ceremony \
-  --intermediate ./setup/mpc-setup/output/dusk.intermediate \
-  --output ./setup/mpc-setup/output/dusk.final
+  --intermediate ./rust/setup/mpc-setup/output/dusk.intermediate \
+  --output ./rust/setup/mpc-setup/output/dusk.final
 ```
 
 Publish a completed local CRS:
@@ -143,8 +143,8 @@ Publish a completed local CRS:
 cargo run --release -p mpc-setup --no-default-features \
   --features production-npm-subcircuit-library --bin dusk_backed_mpc_setup -- \
   publish \
-  --intermediate ./setup/mpc-setup/output/dusk.intermediate \
-  --output ./setup/mpc-setup/output/dusk.final
+  --intermediate ./rust/setup/mpc-setup/output/dusk.intermediate \
+  --output ./rust/setup/mpc-setup/output/dusk.final
 ```
 
 Use `run` in place of `ceremony` to retain the one-command ceremony-then-publication workflow.
@@ -159,7 +159,7 @@ The ceremony validates the pinned Dusk source digest and used tau ranges. Public
   current backend version
 - uploads a zip containing the final CRS artifacts and `crs_provenance.json`
 
-See [setup/mpc-setup/README.md](./setup/mpc-setup/README.md) for the full MPC operator guide.
+See [rust/setup/mpc-setup/README.md](./rust/setup/mpc-setup/README.md) for the full MPC operator guide.
 
 ## Setup Outputs
 
@@ -269,7 +269,7 @@ Every VS Code launcher uses Cargo's release profile. Every launcher except `Rele
 MPC to Google Drive` is a local developer entry point and enables
 `local-development-subcircuit-library`. Run `Debug trusted-setup`, then `Debug preprocess`,
 `Debug prove`, and `Debug verify` in that order. The latter three read
-`setup/trusted-setup/output/debug`, use the local QAP compiler output, and pass the explicit
+`rust/setup/trusted-setup/output/debug`, use the local QAP compiler output, and pass the explicit
 development bypass. The native and Dusk MPC launchers write separate final CRS directories and do
 not overwrite this trusted-setup output.
 
@@ -279,7 +279,7 @@ not overwrite this trusted-setup output.
 Google Drive publication, and uses the npm subcircuit-library snapshot prepared by that explicit
 production build. The build fails before the ceremony when the npm package major.minor does not
 equal the backend compatibility class. It writes only to
-`setup/mpc-setup/output/dusk-release.*`.
+`rust/setup/mpc-setup/output/dusk-release.*`.
 
 The preprocess, prove, and verify launchers use the local `qap-compiler/subcircuits/library`
 output. They compile the development-only `development-crs-bypass` feature and pass
@@ -298,15 +298,15 @@ backend-initialization failure instead of silently continuing after one.
 The backend includes a human-readable release timing report for the current local CPU baseline,
 generated from raw timing data:
 
-- report: [prove/optimization/timing.local.cpu.current.md](prove/optimization/timing.local.cpu.current.md)
-- raw data: [prove/optimization/timing.local.cpu.current.json](prove/optimization/timing.local.cpu.current.json)
+- report: [rust/prove/optimization/timing.local.cpu.current.md](rust/prove/optimization/timing.local.cpu.current.md)
+- raw data: [rust/prove/optimization/timing.local.cpu.current.json](rust/prove/optimization/timing.local.cpu.current.json)
 
 Regenerate the markdown report after updating the JSON:
 
 ```bash
-python3 prove/optimization/scripts/timing_to_md.py \
-  --input prove/optimization/timing.local.cpu.current.json \
-  --output prove/optimization/timing.local.cpu.current.md
+python3 rust/prove/optimization/scripts/timing_to_md.py \
+  --input rust/prove/optimization/timing.local.cpu.current.json \
+  --output rust/prove/optimization/timing.local.cpu.current.md
 ```
 
 ## Contributing

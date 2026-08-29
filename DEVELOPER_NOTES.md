@@ -103,7 +103,7 @@ raw powers-of-tau artifact, runs Tokamak phase 2, writes the final CRS files, an
 archive when Google Drive publication is configured.
 
 Required `.env` keys for publication are documented in
-[`packages/backend/setup/mpc-setup/README.md`](./packages/backend/setup/mpc-setup/README.md):
+[`packages/backend/rust/setup/mpc-setup/README.md`](./packages/backend/rust/setup/mpc-setup/README.md):
 
 - `TOKAMAK_MPC_DRIVE_FOLDER_ID`
 - `TOKAMAK_MPC_DRIVE_OAUTH_CLIENT_JSON_PATH`

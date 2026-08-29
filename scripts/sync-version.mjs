@@ -182,7 +182,7 @@ function updateSynthesizerPackageLock() {
 }
 
 function updateBackendWasmPackageLock() {
-  updatePackageLock('packages/backend-wasm/package-lock.json', lockfile => {
+  updatePackageLock('packages/backend/wasm/package-lock.json', lockfile => {
     lockfile.version = targetVersion;
     if (lockfile.packages?.['']) {
       lockfile.packages[''].version = targetVersion;
@@ -216,13 +216,13 @@ updatePackageVersion('packages/frontend/synthesizer/node-cli/package.json', {
 updatePackageVersion('packages/frontend/synthesizer/web-app/package.json', {
   '@tokamak-zk-evm/subcircuit-library': targetVersion,
 });
-updatePackageVersion('packages/backend-wasm/package.json', {
+updatePackageVersion('packages/backend/wasm/package.json', {
   '@tokamak-zk-evm/subcircuit-library': targetVersion,
 });
-updateJson('packages/backend-wasm/examples/browser/package.json', manifest => {
+updateJson('packages/backend/wasm/examples/browser/package.json', manifest => {
   manifest.dependencies['@tokamak-zk-evm/snark-browser-compat'] = targetVersion;
 });
-updatePackageVersion('packages/backend-wasm/tools/rkyv-decoder-wasm/package.json');
+updatePackageVersion('packages/backend/wasm/tools/rkyv-decoder-wasm/package.json');
 updateBackendWorkspaceVersion();
 if (!sourceOnly) {
   updateBackendCargoLock();
@@ -231,11 +231,11 @@ if (!sourceOnly) {
   updateSynthesizerPackageLock();
   updateBackendWasmPackageLock();
 }
-replaceVersionConstant('packages/backend-wasm/src/version.ts', 'BACKEND_WASM_PACKAGE_VERSION');
+replaceVersionConstant('packages/backend/wasm/src/version.ts', 'BACKEND_WASM_PACKAGE_VERSION');
 if (!sourceOnly) {
-  replaceVersionConstant('packages/backend-wasm/src/generated/setup.generated.ts', 'NATIVE_BACKEND_VERSION');
+  replaceVersionConstant('packages/backend/wasm/src/generated/setup.generated.ts', 'NATIVE_BACKEND_VERSION');
   replaceVersionConstant(
-    'packages/backend-wasm/src/generated/setup.generated.ts',
+    'packages/backend/wasm/src/generated/setup.generated.ts',
     'SUBCIRCUIT_LIBRARY_PACKAGE_VERSION',
   );
 }

@@ -28,7 +28,7 @@ Use this file as the root LLM-readable map for the repository. It points to the 
     object, file, and URL inputs with formats, acquisition routes, and examples.
   - [npm publication](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-web)
 - `@tokamak-zk-evm/snark-browser-compat`: browser-compatible Tokamak zk-SNARK preprocessor, prover, verifier, and artifact converter for bundler-based applications.
-  - [Browser-Compatible SNARK README](packages/backend-wasm/README.md):
+  - [Browser-Compatible SNARK README](packages/backend/wasm/README.md):
     runtime artifact formats, sources, conversion examples, APIs, deployment,
     and operational responsibilities.
   - [npm publication](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat)

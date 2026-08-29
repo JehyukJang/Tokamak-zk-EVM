@@ -14,7 +14,7 @@
         "--subcircuit-library",
         "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
         "--output",
-        "${workspaceFolder}/setup/trusted-setup/output/debug",
+        "${workspaceFolder}/rust/setup/trusted-setup/output/debug",
         "--fixed-tau"
       ],
       "cwd": "${workspaceFolder}",
@@ -36,9 +36,9 @@
       "program": "${cargo:program}",
       "args": [
         "--intermediate",
-        "${workspaceFolder}/setup/mpc-setup/output/native-debug.intermediate",
+        "${workspaceFolder}/rust/setup/mpc-setup/output/native-debug.intermediate",
         "--output",
-        "${workspaceFolder}/setup/mpc-setup/output/native-debug.final"
+        "${workspaceFolder}/rust/setup/mpc-setup/output/native-debug.final"
       ],
       "cwd": "${workspaceFolder}",
       "env": {
@@ -60,9 +60,9 @@
       "args": [
         "run",
         "--intermediate",
-        "${workspaceFolder}/setup/mpc-setup/output/dusk-release.intermediate",
+        "${workspaceFolder}/rust/setup/mpc-setup/output/dusk-release.intermediate",
         "--output",
-        "${workspaceFolder}/setup/mpc-setup/output/dusk-release.final"
+        "${workspaceFolder}/rust/setup/mpc-setup/output/dusk-release.final"
       ],
       "cwd": "${workspaceFolder}",
       "env": {
@@ -86,11 +86,11 @@
         "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
         "--allow-unverified-crs",
         "--crs",
-        "${workspaceFolder}/setup/trusted-setup/output/debug",
+        "${workspaceFolder}/rust/setup/trusted-setup/output/debug",
         "--synthesizer-stat",
         "${workspaceFolder}/../frontend/synthesizer/outputs",
         "--output",
-        "${workspaceFolder}/preprocess/output"
+        "${workspaceFolder}/rust/preprocess/output"
       ],
       "cwd": "${workspaceFolder}",
       "env": {
@@ -114,11 +114,11 @@
         "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
         "--allow-unverified-crs",
         "--crs",
-        "${workspaceFolder}/setup/trusted-setup/output/debug",
+        "${workspaceFolder}/rust/setup/trusted-setup/output/debug",
         "--synthesizer-stat",
         "${workspaceFolder}/../frontend/synthesizer/outputs",
         "--output",
-        "${workspaceFolder}/prove/output"
+        "${workspaceFolder}/rust/prove/output"
       ],
       "cwd": "${workspaceFolder}",
       "env": {
@@ -142,13 +142,13 @@
         "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
         "--allow-unverified-crs",
         "--crs",
-        "${workspaceFolder}/setup/trusted-setup/output/debug",
+        "${workspaceFolder}/rust/setup/trusted-setup/output/debug",
         "--synthesizer-stat",
         "${workspaceFolder}/../frontend/synthesizer/outputs",
         "--preprocess",
-        "${workspaceFolder}/preprocess/output",
+        "${workspaceFolder}/rust/preprocess/output",
         "--proof",
-        "${workspaceFolder}/prove/output"
+        "${workspaceFolder}/rust/prove/output"
       ],
       "cwd": "${workspaceFolder}",
       "env": {
@@ -172,9 +172,9 @@
       "env": {
         "PROVE_QAP_PATH": "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
         "PROVE_SYNTHESIZER_PATH": "${workspaceFolder}/../frontend/synthesizer/outputs",
-        "PROVE_SETUP_PATH": "${workspaceFolder}/setup/mpc-setup/output/native-debug.final",
-        "PROVE_OUT_PATH": "${workspaceFolder}/prove/output",
-        "TIMING_OUT": "${workspaceFolder}/prove/optimization/timing.release.json",
+        "PROVE_SETUP_PATH": "${workspaceFolder}/rust/setup/mpc-setup/output/native-debug.final",
+        "PROVE_OUT_PATH": "${workspaceFolder}/rust/prove/output",
+        "TIMING_OUT": "${workspaceFolder}/rust/prove/optimization/timing.release.json",
         "ICICLE_BACKEND_INSTALL_DIR": "${workspaceFolder}/external-lib/mac/lib/backend",
         "DYLD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib",
         "LD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib:${env:LD_LIBRARY_PATH}"

@@ -43,7 +43,7 @@ system.
 | Complete local proof workflow                   | `@tokamak-zk-evm/cli`                       | [README](./packages/cli/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/cli)                                        |
 | File-based synthesis in Node.js                 | `@tokamak-zk-evm/synthesizer-node`          | [README](./packages/frontend/synthesizer/node-cli/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-node) |
 | Synthesis in a browser application              | `@tokamak-zk-evm/synthesizer-web`           | [README](./packages/frontend/synthesizer/web-app/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-web)   |
-| Browser preprocessing, proving, or verification | `@tokamak-zk-evm/snark-browser-compat`      | [README](./packages/backend-wasm/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat)              |
+| Browser preprocessing, proving, or verification | `@tokamak-zk-evm/snark-browser-compat`      | [README](./packages/backend/wasm/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat)              |
 | Prebuilt circuit artifacts                      | `@tokamak-zk-evm/subcircuit-library`        | [README](./packages/frontend/qap-compiler/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/subcircuit-library)       |
 | Direct Rust backend development                 | Backend workspace; not separately published | [README](./packages/backend/README.md)                                                                                               |
 
@@ -66,7 +66,7 @@ maintained in [CHANGELOG.md](./CHANGELOG.md).
 | [`packages/frontend/synthesizer`](./packages/frontend/synthesizer)   | TypeScript                     | Shared transaction-to-circuit runtime and Node/browser adapters       |
 | [`packages/frontend/qap-compiler`](./packages/frontend/qap-compiler) | Circom, TypeScript, JavaScript | Circuit source generation and the published subcircuit library        |
 | [`packages/backend`](./packages/backend)                             | Rust                           | Trusted/MPC setup, preprocessing, proving, and verification           |
-| [`packages/backend-wasm`](./packages/backend-wasm)                   | TypeScript, WebAssembly        | Browser preprocessing, proving, verification, and artifact conversion |
+| [`packages/backend/wasm`](./packages/backend/wasm)                   | TypeScript, WebAssembly        | Browser preprocessing, proving, verification, and artifact conversion |
 
 The on-chain Solidity verifier is maintained separately in
 [`Tokamak-zk-EVM-contracts`](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts/blob/main/bridge/src/verifiers/TokamakVerifier.sol).

@@ -67,8 +67,8 @@ try {
 
 const packageTargets = [
   'packages/cli/package.json',
-  'packages/backend-wasm/package.json',
-  'packages/backend-wasm/tools/rkyv-decoder-wasm/package.json',
+  'packages/backend/wasm/package.json',
+  'packages/backend/wasm/tools/rkyv-decoder-wasm/package.json',
   'packages/frontend/qap-compiler/package.json',
   'packages/frontend/synthesizer/node-cli/package.json',
   'packages/frontend/synthesizer/web-app/package.json',
@@ -86,10 +86,10 @@ for (const relativePath of packageTargets) {
 
 const dependencyTargets = [
   ['packages/cli/package.json', '@tokamak-zk-evm/synthesizer-node', expectedVersion],
-  ['packages/backend-wasm/package.json', '@tokamak-zk-evm/subcircuit-library', expectedVersion],
+  ['packages/backend/wasm/package.json', '@tokamak-zk-evm/subcircuit-library', expectedVersion],
   ['packages/frontend/synthesizer/node-cli/package.json', '@tokamak-zk-evm/subcircuit-library', expectedVersion],
   ['packages/frontend/synthesizer/web-app/package.json', '@tokamak-zk-evm/subcircuit-library', expectedVersion],
-  ['packages/backend-wasm/examples/browser/package.json', '@tokamak-zk-evm/snark-browser-compat', expectedVersion],
+  ['packages/backend/wasm/examples/browser/package.json', '@tokamak-zk-evm/snark-browser-compat', expectedVersion],
 ];
 
 for (const [relativePath, dependencyName, expectedRange] of dependencyTargets) {
@@ -106,7 +106,7 @@ const lockfileTargets = [
   ['package-lock.json', 'packages/frontend/qap-compiler', expectedVersion],
   ['package-lock.json', 'packages/frontend/synthesizer/node-cli', expectedVersion],
   ['package-lock.json', 'packages/frontend/synthesizer/web-app', expectedVersion],
-  ['packages/backend-wasm/package-lock.json', '', expectedVersion],
+  ['packages/backend/wasm/package-lock.json', '', expectedVersion],
   ['packages/frontend/qap-compiler/package-lock.json', '', expectedVersion],
   ['packages/frontend/synthesizer/package-lock.json', 'node-cli', expectedVersion],
   ['packages/frontend/synthesizer/package-lock.json', 'web-app', expectedVersion],
@@ -129,12 +129,12 @@ if (!sourceOnly) {
     }
   }
 
-  const backendWasmPackageLock = readJson('packages/backend-wasm/package-lock.json');
+  const backendWasmPackageLock = readJson('packages/backend/wasm/package-lock.json');
   const backendWasmLockDependency =
     backendWasmPackageLock.packages?.['']?.dependencies?.['@tokamak-zk-evm/subcircuit-library'];
   if (backendWasmLockDependency !== expectedVersion) {
     fail(
-      `packages/backend-wasm/package-lock.json dependency @tokamak-zk-evm/subcircuit-library is '${backendWasmLockDependency}', expected '${expectedVersion}'.`,
+      `packages/backend/wasm/package-lock.json dependency @tokamak-zk-evm/subcircuit-library is '${backendWasmLockDependency}', expected '${expectedVersion}'.`,
     );
   }
 
@@ -142,16 +142,16 @@ if (!sourceOnly) {
     backendWasmPackageLock.packages?.['node_modules/@tokamak-zk-evm/subcircuit-library']?.version;
   if (backendWasmResolvedSubcircuitVersion !== expectedVersion) {
     fail(
-      `packages/backend-wasm/package-lock.json resolved @tokamak-zk-evm/subcircuit-library is '${backendWasmResolvedSubcircuitVersion ?? 'missing'}', expected '${expectedVersion}'.`,
+      `packages/backend/wasm/package-lock.json resolved @tokamak-zk-evm/subcircuit-library is '${backendWasmResolvedSubcircuitVersion ?? 'missing'}', expected '${expectedVersion}'.`,
     );
   }
 }
 
-const backendWasmVersionModule = readText('packages/backend-wasm/src/version.ts');
+const backendWasmVersionModule = readText('packages/backend/wasm/src/version.ts');
 const backendWasmVersionMatch = /BACKEND_WASM_PACKAGE_VERSION\s*=\s*"([^"]+)"/u.exec(backendWasmVersionModule);
 if (backendWasmVersionMatch?.[1] !== expectedVersion) {
   fail(
-    `packages/backend-wasm/src/version.ts package version is '${backendWasmVersionMatch?.[1] ?? 'missing'}', expected '${expectedVersion}'.`,
+    `packages/backend/wasm/src/version.ts package version is '${backendWasmVersionMatch?.[1] ?? 'missing'}', expected '${expectedVersion}'.`,
   );
 }
 

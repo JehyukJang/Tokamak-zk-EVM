@@ -634,11 +634,11 @@ jobs:
           PY
 
       - name: Install browser-package dependencies for CRS validation
-        working-directory: packages/backend-wasm
+        working-directory: packages/backend/wasm
         run: npm install --package-lock=false --ignore-scripts
 
       - name: Validate canonical final CRS input
-        working-directory: packages/backend-wasm
+        working-directory: packages/backend/wasm
         env:
           BACKEND_WASM_VERIFIER_CRS_DIR: ../../verified-final-crs
         run: npm run verifier-crs:input:validate
@@ -657,7 +657,7 @@ jobs:
     needs: check-main-crs
     timeout-minutes: 45
     env:
-      BACKEND_WASM_VERIFIER_CRS_DIR: ../backend/setup/output
+      BACKEND_WASM_VERIFIER_CRS_DIR: ../rust/setup/output
 
     steps:
       - name: Checkout code
@@ -680,45 +680,45 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: verified-final-crs
-          path: packages/backend/setup/output
+          path: packages/backend/rust/setup/output
 
       - name: Validate final CRS input files
         run: |
-          test -s packages/backend/setup/output/combined_sigma.rkyv
-          test -s packages/backend/setup/output/sigma_preprocess.rkyv
-          test -s packages/backend/setup/output/sigma_verify.json
-          test -s packages/backend/setup/output/crs_provenance.json
+          test -s packages/backend/rust/setup/output/combined_sigma.rkyv
+          test -s packages/backend/rust/setup/output/sigma_preprocess.rkyv
+          test -s packages/backend/rust/setup/output/sigma_verify.json
+          test -s packages/backend/rust/setup/output/crs_provenance.json
 
       - name: Install package dependencies
-        working-directory: packages/backend-wasm
+        working-directory: packages/backend/wasm
         run: npm install --package-lock=false --ignore-scripts
 
       - name: Install Chromium
-        working-directory: packages/backend-wasm
+        working-directory: packages/backend/wasm
         run: npx playwright install --with-deps chromium
 
       - name: Build package
-        working-directory: packages/backend-wasm
+        working-directory: packages/backend/wasm
         run: npm run build:production
 
       - name: Check package types and generated inputs
-        working-directory: packages/backend-wasm
+        working-directory: packages/backend/wasm
         run: |
           npm run typecheck:production
           npm run typecheck:scripts
 
       - name: Check converter browser boundaries
-        working-directory: packages/backend-wasm
+        working-directory: packages/backend/wasm
         run: |
           npm run converter:browser:check:production
           npm run converter:webpack:check:production
 
       - name: Check publication documentation and package boundary
-        working-directory: packages/backend-wasm
+        working-directory: packages/backend/wasm
         run: npm run package:publication:check
 
       - name: Pack browser-compatible SNARK package
-        working-directory: packages/backend-wasm
+        working-directory: packages/backend/wasm
         run: |
           mkdir -p ../../snark-browser-compat-tarball
           npm pack --ignore-scripts --pack-destination ../../snark-browser-compat-tarball
