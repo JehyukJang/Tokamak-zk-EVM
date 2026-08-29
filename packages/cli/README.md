@@ -41,13 +41,26 @@ backend npm package.
 
 ### Native requirements
 
-- Node.js 20 or newer and npm
-- Rust and Cargo 1.85 or newer
-- CMake 3.18 or newer
-- `pkg-config`, `tar`, and `unzip`
-- C/C++ build tools
-- Git, Ninja, Clang, LLDB, and LLD on Ubuntu
-- outbound HTTPS to npm, crates.io, GitHub, GitHub Releases, and Google Drive
+Node.js 20 or newer and npm are bootstrap requirements. The CLI does not
+install either of them. Every native `--install` then checks the following
+managed prerequisite policy; `--include-prerequisite` uses the same policy to
+offer installation of missing or incompatible tools.
+
+| Managed requirement | macOS | Ubuntu 20.04 / 22.04 |
+| --- | --- | --- |
+| Rust | `rustc` 1.85 or newer | `rustc` 1.85 or newer |
+| Cargo | `cargo` 1.85 or newer | `cargo` 1.85 or newer |
+| CMake | 3.18 or newer | 3.18 or newer |
+| C/C++ toolchain | `cc`, `c++`, `install_name_tool` | `cc`, `c++`, `make` |
+| LLVM toolchain | Not required | `clang`, `lldb`, `ld.lld` |
+| Git | Not required | `git` |
+| Ninja | Not required | `ninja` |
+| pkg-config | `pkg-config` | `pkg-config` |
+| tar | `tar` | `tar` |
+| unzip | Required unless `--no-setup` is used | Required unless `--no-setup` is used |
+
+Native installation also requires outbound HTTPS to npm, crates.io, GitHub,
+GitHub Releases, and, unless setup is skipped, Google Drive.
 
 Native targets are macOS, Ubuntu 20.04, and Ubuntu 22.04. Other Linux
 distributions should use Docker. Native Windows is unsupported; use WSL2 or
