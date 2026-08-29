@@ -1,7 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
-import type { CommandResult } from './runtime/model.js';
+/** Captured output from a completed child process. */
+export interface CommandResult {
+  readonly stdout: string;
+  readonly stderr: string;
+}
 
 export interface CommandProbe {
   exists(command: string): boolean;

@@ -44,11 +44,6 @@ export interface RuntimeContext {
   packageVersion: string;
 }
 
-export interface CommandResult {
-  stdout: string;
-  stderr: string;
-}
-
 export type NativeRuntimeOs =
   | { platform: 'macos' }
   | { platform: 'linux'; ubuntuVersion: '20.04' | '22.04' };

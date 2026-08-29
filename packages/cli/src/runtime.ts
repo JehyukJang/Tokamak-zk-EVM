@@ -54,7 +54,6 @@ export {
 export { runBackendCommand } from './runtime/docker.js';
 export type {
   CliPlatform,
-  CommandResult,
   DockerEnvironment,
   InstallOptions,
   InstalledRuntime,

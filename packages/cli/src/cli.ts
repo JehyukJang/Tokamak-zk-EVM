@@ -12,7 +12,6 @@ import {
 import {
   createDockerRuntimeContext,
   createRuntimeContext,
-  type CommandResult,
   installRuntime,
   requireInstalledRuntime,
   runBackendCommand,
@@ -21,6 +20,7 @@ import {
   type RuntimeContext,
   type RuntimeExecution,
 } from './runtime.js';
+import type { CommandResult } from './system.js';
 import { BACKEND_PACKAGE_NAMES } from './generated/backend-build-metadata-validator.generated.js';
 import { assertLiveBackendRuntimeIdentity } from './runtime/identity.js';
 import { acquireRuntimeOperationLock } from './runtime/operation-lock.js';

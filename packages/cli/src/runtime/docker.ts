@@ -10,7 +10,6 @@ import { validateBackendRuntimeIdentityForContext } from './identity.js';
 import { BACKEND_PACKAGE_NAMES } from '../generated/backend-build-metadata-validator.generated.js';
 import { commitPreparedRuntime } from './transaction.js';
 import type {
-  CommandResult,
   DockerBootstrap,
   DockerEnvironment,
   InstalledRuntime,
@@ -18,7 +17,13 @@ import type {
   RuntimeContext,
   RuntimeExecution,
 } from './model.js';
-import { commandExists, commandSucceeds, logVerbose, runCommand } from '../system.js';
+import {
+  commandExists,
+  commandSucceeds,
+  logVerbose,
+  runCommand,
+  type CommandResult,
+} from '../system.js';
 
 const DOCKER_BOOTSTRAP_VERSION = 1;
 
