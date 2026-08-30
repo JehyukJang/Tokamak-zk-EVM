@@ -13,10 +13,6 @@ pub struct SetupShape {
     pub s_max: usize,
 }
 
-pub fn load_setup_params_from_qap_path(qap_path: &str) -> SetupParams {
-    try_load_setup_params_from_qap_path(qap_path).unwrap_or_else(|error| panic!("{error}"))
-}
-
 pub fn try_load_setup_params_from_qap_path(qap_path: &str) -> Result<SetupParams, ArtifactError> {
     let setup_path = PathBuf::from(qap_path).join("setupParams.json");
     let bytes = std::fs::read(&setup_path).map_err(|source| ArtifactError::Read {

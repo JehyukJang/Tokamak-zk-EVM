@@ -2,12 +2,17 @@ use crate::group_structures::G1serde;
 use crate::utils::cuda_msm_is_available;
 use crate::vector_operations::scaled_outer_product;
 use icicle_bls12_381::curve::{G1Affine, G1Projective, ScalarField};
-use icicle_core::msm::{self, MSMConfig};
-use icicle_core::traits::{Arithmetic, FieldImpl};
+use icicle_core::msm;
+use icicle_core::traits::FieldImpl;
 use icicle_runtime::memory::{DeviceVec, HostSlice};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
+
+#[cfg(test)]
+use icicle_core::msm::MSMConfig;
+#[cfg(test)]
+use icicle_core::traits::Arithmetic;
 
 pub fn scaled_outer_product_2d(
     col_vec: &[ScalarField],
@@ -142,7 +147,8 @@ pub fn from_coef_vec_to_g1serde_vec(coef: &[ScalarField], gen: &G1Affine, res: &
     }
 }
 
-pub fn gen_g1serde_vec_of_xy_monomials(
+#[cfg(test)]
+pub(crate) fn gen_g1serde_vec_of_xy_monomials(
     x: ScalarField,
     y: ScalarField,
     gen: &G1Affine,
@@ -160,7 +166,7 @@ pub fn gen_g1serde_vec_of_xy_monomials(
 
     let gen_proj = G1Projective::from(*gen);
 
-    let is_row_base = if x_size <= y_size { true } else { false };
+    let is_row_base = x_size <= y_size;
 
     let outer_loop_len = if is_row_base { x_size } else { y_size };
     let inner_loop_len = if is_row_base { y_size } else { x_size };
@@ -173,7 +179,6 @@ pub fn gen_g1serde_vec_of_xy_monomials(
     });
 
     res_projective[0..inner_loop_len].clone_from_slice(&base_vec);
-    drop(base_vec);
 
     let acc_multiplier = if is_row_base { x } else { y };
     let mut msm_cfg = MSMConfig::default();
@@ -181,7 +186,10 @@ pub fn gen_g1serde_vec_of_xy_monomials(
     for i in 1..outer_loop_len {
         let (head, tail) = res_projective.split_at_mut(i * inner_loop_len);
         let prev_vec = &head[(i - 1) * inner_loop_len..i * inner_loop_len];
-        let prev_vec_affine: Vec<G1Affine> = prev_vec.iter().map(|&x| G1Affine::from(x)).collect();
+        let prev_vec_affine: Vec<G1Affine> = prev_vec
+            .iter()
+            .map(|&point| G1Affine::from(point))
+            .collect();
         let curr_vec = &mut tail[0..inner_loop_len];
         msm::msm(
             HostSlice::from_slice(&vec![acc_multiplier; inner_loop_len]),
