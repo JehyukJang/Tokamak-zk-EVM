@@ -205,6 +205,7 @@ function provenance(version: string): CrsProvenanceInput {
       packageName: PACKAGE_NAME,
       packageVersion: version,
       origin: SUBCIRCUIT_LIBRARY_ORIGIN,
+      sourceDigest: `sha256:${'2'.repeat(64)}`,
     },
     phase1SourceProvenance: null,
     combinedSigmaSha256: '0'.repeat(64),

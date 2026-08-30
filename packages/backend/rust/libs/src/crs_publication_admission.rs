@@ -15,6 +15,7 @@ pub struct PublicationIdentity {
     pub compatible_backend_version: String,
     pub subcircuit_library_package_name: String,
     pub subcircuit_library_package_version: String,
+    pub subcircuit_library_source_digest: String,
 }
 
 impl PublicationIdentity {
@@ -22,11 +23,13 @@ impl PublicationIdentity {
         compatible_backend_version: impl Into<String>,
         subcircuit_library_package_name: impl Into<String>,
         subcircuit_library_package_version: impl Into<String>,
+        subcircuit_library_source_digest: impl Into<String>,
     ) -> Self {
         Self {
             compatible_backend_version: compatible_backend_version.into(),
             subcircuit_library_package_name: subcircuit_library_package_name.into(),
             subcircuit_library_package_version: subcircuit_library_package_version.into(),
+            subcircuit_library_source_digest: subcircuit_library_source_digest.into(),
         }
     }
 
@@ -39,6 +42,10 @@ impl PublicationIdentity {
             compatible_backend_version,
             SUBCIRCUIT_LIBRARY_PACKAGE_NAME,
             package_version,
+            option_env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_SOURCE_DIGEST").ok_or_else(|| {
+                "publication admission must be built with the production npm subcircuit-library snapshot"
+                    .to_string()
+            })?,
         ))
     }
 }
@@ -97,12 +104,11 @@ pub fn admit_final_crs_publication(
             provenance.subcircuit_library.package_name, expected.subcircuit_library_package_name
         ));
     }
-    if provenance.subcircuit_library.package_version != expected.subcircuit_library_package_version
-    {
+    if provenance.subcircuit_library.source_digest != expected.subcircuit_library_source_digest {
         return Err(format!(
-            "crs_provenance.json subcircuitLibrary packageVersion {} does not match expected package version {}",
-            provenance.subcircuit_library.package_version,
-            expected.subcircuit_library_package_version
+            "crs_provenance.json subcircuitLibrary sourceDigest {} does not match expected source digest {}",
+            provenance.subcircuit_library.source_digest,
+            expected.subcircuit_library_source_digest
         ));
     }
 
@@ -146,13 +152,43 @@ mod tests {
     }
 
     fn expected() -> PublicationIdentity {
-        PublicationIdentity::new("2.1", "@tokamak-zk-evm/subcircuit-library", "2.1.5")
+        PublicationIdentity::new(
+            "2.1",
+            "@tokamak-zk-evm/subcircuit-library",
+            "2.1.5",
+            "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        )
     }
 
     #[test]
     fn accepts_the_shared_canonical_publication_fixture() {
         admit_final_crs_publication(&fixture("accepted"), &expected())
             .expect("canonical Dusk-backed npm-snapshot fixture must be admitted");
+    }
+
+    #[test]
+    fn accepts_a_different_patch_identity_when_compatibility_and_digest_match() {
+        let expected = PublicationIdentity::new(
+            "2.1",
+            "@tokamak-zk-evm/subcircuit-library",
+            "2.1.6",
+            "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        );
+        admit_final_crs_publication(&fixture("accepted"), &expected)
+            .expect("patch package identity is diagnostic when compatibility and digest match");
+    }
+
+    #[test]
+    fn rejects_a_matching_patch_line_with_a_different_source_digest() {
+        let expected = PublicationIdentity::new(
+            "2.1",
+            "@tokamak-zk-evm/subcircuit-library",
+            "2.1.6",
+            "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        );
+        let error = admit_final_crs_publication(&fixture("accepted"), &expected)
+            .expect_err("source digest mismatch must reject patch reuse");
+        assert!(error.contains("sourceDigest"));
     }
 
     #[test]

@@ -60,14 +60,15 @@ const contract = {
           "subcircuitLibrary": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["packageName", "packageVersion", "origin"],
+            "required": ["packageName", "packageVersion", "origin", "sourceDigest"],
             "properties": {
               "packageName": { "type": "string", "minLength": 1 },
               "packageVersion": {
                 "type": "string",
                 "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
               },
-              "origin": { "enum": ["npmSnapshot", "localQapCompiler"] }
+              "origin": { "enum": ["npmSnapshot", "localQapCompiler"] },
+              "sourceDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
             }
           },
           "phase1SourceProvenance": {

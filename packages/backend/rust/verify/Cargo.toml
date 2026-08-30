@@ -17,6 +17,7 @@ thiserror = { workspace = true }
 [build-dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 
 [features]
 default = ["local-development-subcircuit-library"]

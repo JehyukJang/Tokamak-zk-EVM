@@ -61,6 +61,7 @@ function runtimeIdentity(packageVersion = '2.1.5') {
         declaredRange: packageVersion,
         packageName: '@tokamak-zk-evm/subcircuit-library',
         runtimeMode: 'bundled',
+        sourceDigest: 'sha256:2222222222222222222222222222222222222222222222222222222222222222',
       },
     },
     packageName,

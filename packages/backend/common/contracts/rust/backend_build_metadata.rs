@@ -52,6 +52,7 @@ pub struct SubcircuitLibraryBuildMetadata {
     pub declared_range: String,
     pub package_name: String,
     pub runtime_mode: String,
+    pub source_digest: String,
 }
 
 impl BackendBuildMetadata {
@@ -60,6 +61,7 @@ impl BackendBuildMetadata {
         package_version: &str,
         compatible_backend_version: &str,
         subcircuit_library_build_version: &str,
+        subcircuit_library_source_digest: &str,
     ) -> Result<Self, String> {
         ensure_backend_build_metadata_contract_definition()?;
         ensure_runtime_package(package_name)?;
@@ -80,6 +82,7 @@ impl BackendBuildMetadata {
             compatible_backend_version,
             subcircuit_library_build_version,
         )?;
+        super::subcircuit_source_digest::validate_source_digest(subcircuit_library_source_digest)?;
         Ok(Self {
             dependencies: BackendBuildMetadataDependencies {
                 subcircuit_library: SubcircuitLibraryBuildMetadata {
@@ -87,6 +90,7 @@ impl BackendBuildMetadata {
                     declared_range: subcircuit_library_build_version.to_string(),
                     package_name: SUBCIRCUIT_LIBRARY_PACKAGE_NAME.to_string(),
                     runtime_mode: SUBCIRCUIT_LIBRARY_RUNTIME_MODE.to_string(),
+                    source_digest: subcircuit_library_source_digest.to_string(),
                 },
             },
             package_name: package_name.to_string(),
@@ -167,12 +171,13 @@ fn expected_schema() -> serde_json::Value {
                     "subcircuitLibrary": {
                         "type": "object",
                         "additionalProperties": false,
-                        "required": ["buildVersion", "declaredRange", "packageName", "runtimeMode"],
+                        "required": ["buildVersion", "declaredRange", "packageName", "runtimeMode", "sourceDigest"],
                         "properties": {
                             "buildVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
                             "declaredRange": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
                             "packageName": { "const": "@tokamak-zk-evm/subcircuit-library" },
-                            "runtimeMode": { "const": "bundled" }
+                            "runtimeMode": { "const": "bundled" },
+                            "sourceDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
                         }
                     }
                 }
@@ -279,6 +284,22 @@ mod tests {
             "../fixtures/backend-build-metadata-invalid.json"
         ))
         .is_err());
+        assert!(serde_json::from_str::<BackendBuildMetadata>(include_str!(
+            "../fixtures/backend-build-metadata-missing-source-digest.json"
+        ))
+        .is_err());
+        let invalid_digest: BackendBuildMetadata = serde_json::from_str(include_str!(
+            "../fixtures/backend-build-metadata-invalid-source-digest.json"
+        ))
+        .expect("schema pattern semantics are validated by the producer constructor");
+        assert!(BackendBuildMetadata::new(
+            &invalid_digest.package_name,
+            &invalid_digest.package_version,
+            &invalid_digest.compatible_backend_version,
+            &invalid_digest.dependencies.subcircuit_library.build_version,
+            &invalid_digest.dependencies.subcircuit_library.source_digest,
+        )
+        .is_err());
     }
 
     #[test]
@@ -287,7 +308,13 @@ mod tests {
             "../fixtures/backend-build-metadata-valid.json"
         ))
         .expect("canonical metadata fixture must be valid JSON");
-        let metadata = BackendBuildMetadata::new("prove", "2.1.5", "2.1", "2.1.5")
+        let metadata = BackendBuildMetadata::new(
+            "prove",
+            "2.1.5",
+            "2.1",
+            "2.1.5",
+            "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        )
             .expect("canonical production metadata must be constructible");
         assert_eq!(
             serde_json::to_value(metadata).expect("metadata must serialize"),
@@ -297,9 +324,11 @@ mod tests {
 
     #[test]
     fn writer_reuses_the_repository_canonical_version_policy() {
-        assert!(BackendBuildMetadata::new("prove", "02.1.5", "2.1", "2.1.5").is_err());
-        assert!(BackendBuildMetadata::new("prove", "2.1.5", "02.1", "2.1.5").is_err());
-        assert!(BackendBuildMetadata::new("prove", "2.1.5", "2.1", "2.01.5").is_err());
+        let digest = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+        assert!(BackendBuildMetadata::new("prove", "02.1.5", "2.1", "2.1.5", digest).is_err());
+        assert!(BackendBuildMetadata::new("prove", "2.1.5", "02.1", "2.1.5", digest).is_err());
+        assert!(BackendBuildMetadata::new("prove", "2.1.5", "2.1", "2.01.5", digest).is_err());
+        assert!(BackendBuildMetadata::new("prove", "2.1.5", "2.1", "2.1.5", "1111").is_err());
     }
 
     #[test]
@@ -309,6 +338,13 @@ mod tests {
             "build-metadata-verify.json"
         );
         assert!(metadata_file_name("trusted-setup").is_err());
-        assert!(BackendBuildMetadata::new("trusted-setup", "2.1.5", "2.1", "2.1.5").is_err());
+        assert!(BackendBuildMetadata::new(
+            "trusted-setup",
+            "2.1.5",
+            "2.1",
+            "2.1.5",
+            "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        )
+        .is_err());
     }
 }

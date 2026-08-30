@@ -10,6 +10,7 @@ export interface BackendBuildMetadata {
       readonly declaredRange: string;
       readonly packageName: '@tokamak-zk-evm/subcircuit-library';
       readonly runtimeMode: 'bundled';
+      readonly sourceDigest: string;
     };
   };
   readonly packageName: BackendPackageName;

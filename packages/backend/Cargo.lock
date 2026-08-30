@@ -2147,6 +2147,7 @@ dependencies = [
  "rkyv",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
 ]
 
@@ -2172,6 +2173,7 @@ dependencies = [
  "rkyv",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
 ]
 
@@ -3229,6 +3231,7 @@ dependencies = [
  "libs",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "thiserror",
 ]
@@ -3333,6 +3336,7 @@ dependencies = [
  "libs",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
 ]
 

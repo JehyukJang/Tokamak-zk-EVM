@@ -262,7 +262,8 @@ export async function validateDownloadedCrsArchive(
 
   const provenanceSubcircuitPackageName = provenance.subcircuitLibrary?.packageName;
   const provenanceSubcircuitPackageVersion = provenance.subcircuitLibrary?.packageVersion;
-  if (!provenanceSubcircuitPackageName || !provenanceSubcircuitPackageVersion) {
+  const provenanceSubcircuitSourceDigest = provenance.subcircuitLibrary?.sourceDigest;
+  if (!provenanceSubcircuitPackageName || !provenanceSubcircuitPackageVersion || !provenanceSubcircuitSourceDigest) {
     throw new Error(`CRS archive ${archiveName} provenance is missing subcircuit-library package information.`);
   }
   if (provenanceSubcircuitPackageName !== SUBCIRCUIT_LIBRARY_PACKAGE_NAME) {
@@ -290,6 +291,7 @@ export async function validateDownloadedCrsArchive(
     const backendCompatibleVersion = backendMetadata.compatibleBackendVersion;
     const backendSubcircuitVersion = backendMetadata.dependencies.subcircuitLibrary.buildVersion;
     const backendSubcircuitPackageName = backendMetadata.dependencies.subcircuitLibrary.packageName;
+    const backendSubcircuitSourceDigest = backendMetadata.dependencies.subcircuitLibrary.sourceDigest;
     if (backendCompatibleVersion !== compatibleBackendVersion) {
       throw new Error(
         `Backend package ${backendName} has compatibleBackendVersion ${backendCompatibleVersion}, but the downloaded CRS expects ${compatibleBackendVersion}.`,
@@ -316,6 +318,11 @@ export async function validateDownloadedCrsArchive(
     ) {
       throw new Error(
         `Backend package ${backendName} embeds subcircuit-library version ${backendSubcircuitVersion}, which is not compatible with CRS version ${compatibleBackendVersion}.`,
+      );
+    }
+    if (backendSubcircuitSourceDigest !== provenanceSubcircuitSourceDigest) {
+      throw new Error(
+        `Backend package ${backendName} subcircuit-library sourceDigest ${backendSubcircuitSourceDigest} does not match CRS sourceDigest ${provenanceSubcircuitSourceDigest}.`,
       );
     }
   }

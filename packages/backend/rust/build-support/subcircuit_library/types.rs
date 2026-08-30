@@ -12,5 +12,6 @@ pub(crate) struct ResolvedSubcircuitLibrary {
 #[derive(Debug, Clone)]
 pub(crate) struct LocalSubcircuitLibrary {
     pub(crate) version: String,
+    pub(crate) source_digest: String,
     pub(crate) library_dir: PathBuf,
 }

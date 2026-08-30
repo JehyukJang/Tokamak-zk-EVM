@@ -403,6 +403,8 @@ mod tests {
                 package_name: "@tokamak-zk-evm/subcircuit-library".to_string(),
                 package_version: format!("{compatible_version}.0"),
                 origin: SubcircuitLibraryOrigin::LocalQapCompiler,
+                source_digest: "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+                    .to_string(),
             },
             phase1_source_provenance: None,
             combined_sigma_sha256: "0".repeat(64),

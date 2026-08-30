@@ -25,10 +25,11 @@ fn main() -> ExitCode {
     match admit_final_crs_publication(&output_directory, &expected) {
         Ok(provenance) => {
             println!(
-                "Final CRS publication admission passed: compatibility={} subcircuit-library={}@{}",
+                "Final CRS publication admission passed: compatibility={} subcircuit-library={}@{} source-digest={}",
                 provenance.compatible_backend_version,
                 provenance.subcircuit_library.package_name,
-                provenance.subcircuit_library.package_version
+                provenance.subcircuit_library.package_version,
+                provenance.subcircuit_library.source_digest
             );
             ExitCode::SUCCESS
         }

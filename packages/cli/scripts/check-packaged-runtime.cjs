@@ -108,6 +108,7 @@ async function runInstalledPackageFixture(installedRoot, targetRoot) {
         packageName: subcircuitLibrary.packageName,
         packageVersion: subcircuitLibrary.buildVersion,
         origin: 'npmSnapshot',
+        sourceDigest: subcircuitLibrary.sourceDigest,
       },
       phase1SourceProvenance: null,
       combinedSigmaSha256: sha256(artifacts['combined_sigma.rkyv']),

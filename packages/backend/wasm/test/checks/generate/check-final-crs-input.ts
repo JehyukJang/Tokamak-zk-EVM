@@ -100,6 +100,7 @@ async function writeFinalCrsDirectory(
       packageName: SUBCIRCUIT_LIBRARY_PACKAGE_NAME,
       packageVersion: version,
       origin: SUBCIRCUIT_LIBRARY_ORIGIN,
+      sourceDigest: `sha256:${"2".repeat(64)}`,
     },
     phase1SourceProvenance: null,
     combinedSigmaSha256: sha256(files.combinedSigma),

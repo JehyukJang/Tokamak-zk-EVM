@@ -8,6 +8,8 @@ mod cargo_env;
 mod generated;
 #[path = "../../common/contracts/rust/input_origin.rs"]
 mod input_origin_contract;
+#[path = "../../common/contracts/rust/subcircuit_source_digest.rs"]
+mod subcircuit_source_digest;
 #[path = "subcircuit_library/integrity.rs"]
 mod integrity;
 #[path = "subcircuit_library/local_qap.rs"]
@@ -63,6 +65,13 @@ pub fn configure_embedded_release_subcircuit_library(
         }
         source_selection::SelectedInputOrigin::NpmSnapshot => {
             let snapshot = prepare_production_npm_subcircuit_library(package_version)?;
+            let compatible_backend_version =
+                integrity::package_major_minor(package_version, "backend package version")?;
+            cargo_env::emit_subcircuit_library_build_env(
+                &snapshot.version,
+                &snapshot.source_digest,
+                &compatible_backend_version,
+            );
             println!("cargo:rustc-cfg=tokamak_embedded_subcircuit_library");
             generate_embedded_module(&snapshot, out_dir)
         }
@@ -91,6 +100,7 @@ pub fn configure_subcircuit_library_metadata(
         println!("cargo:rustc-cfg=tokamak_embedded_subcircuit_library");
         cargo_env::emit_subcircuit_library_build_env(
             &snapshot.version,
+            &snapshot.source_digest,
             &compatible_backend_version,
         );
         cargo_env::emit_build_metadata(
@@ -119,6 +129,7 @@ pub fn configure_mpc_subcircuit_library(out_dir: &Path, package_version: &str) -
         source_selection::MpcSubcircuitLibrary::NpmSnapshot(snapshot) => {
             cargo_env::emit_mpc_subcircuit_library_build_env(
                 &snapshot.version,
+                &snapshot.source_digest,
                 &selection.compatible_backend_version,
                 input_origin_contract::SubcircuitLibraryOrigin::NpmSnapshot,
             );
@@ -127,6 +138,7 @@ pub fn configure_mpc_subcircuit_library(out_dir: &Path, package_version: &str) -
         source_selection::MpcSubcircuitLibrary::LocalQapCompiler(library) => {
             cargo_env::emit_mpc_subcircuit_library_build_env(
                 &library.version,
+                &library.source_digest,
                 &selection.compatible_backend_version,
                 input_origin_contract::SubcircuitLibraryOrigin::LocalQapCompiler,
             );

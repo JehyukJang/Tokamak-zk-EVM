@@ -6,8 +6,7 @@
   "subcircuitLibrary": {
     "packageName": "@tokamak-zk-evm/subcircuit-library",
     "packageVersion": "2.1.5",
-    "origin": "npmSnapshot",
-    "sourceDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    "origin": "npmSnapshot"
   },
   "phase1SourceProvenance": {
     "duskGroth16": {

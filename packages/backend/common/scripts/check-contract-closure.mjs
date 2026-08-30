@@ -23,11 +23,16 @@ const requiredBoundaries = [
   ['Input-origin Rust representation', 'common/contracts/rust/input_origin.rs'],
   ['Input-origin build selection', 'rust/build-support/subcircuit_library/source_selection.rs'],
   ['Input-origin serde ingress', 'rust/libs/src/input_origin_serde.rs'],
+  ['Subcircuit source-digest Rust authority', 'common/contracts/rust/subcircuit_source_digest.rs'],
+  ['Subcircuit source-digest TypeScript authority', 'common/contracts/typescript/subcircuit-source-digest.ts'],
+  ['Subcircuit source-digest fixed vectors', 'common/contracts/fixtures/subcircuit-source-digest-vectors.json'],
+  ['Subcircuit source-digest build producer', 'rust/build-support/subcircuit_library/integrity.rs'],
 ];
 
 const requiredConsumerBoundaries = [
   ['CLI CRS provenance consumer', 'packages/cli/src/runtime/setup.ts', 'parseFinalMpcCrsProvenance'],
   ['CLI build metadata consumer', 'packages/cli/src/runtime/setup.ts', 'parseBackendBuildMetadata'],
+  ['CLI source-digest comparison', 'packages/cli/src/runtime/setup.ts', 'backendSubcircuitSourceDigest'],
   [
     'backend-wasm CRS provenance consumer',
     'packages/backend/wasm/src/artifacts/binary/compatibility.ts',

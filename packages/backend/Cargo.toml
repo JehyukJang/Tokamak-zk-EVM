@@ -32,6 +32,7 @@ verify = { path = "rust/verify" }
 preprocess = { path = "rust/preprocess" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+sha2 = "0.10"
 rayon = "1.7"
 rand = "0.8"
 bincode = "1.3"

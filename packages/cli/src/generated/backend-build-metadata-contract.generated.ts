@@ -15,12 +15,13 @@ const contract = {
           "subcircuitLibrary": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["buildVersion", "declaredRange", "packageName", "runtimeMode"],
+            "required": ["buildVersion", "declaredRange", "packageName", "runtimeMode", "sourceDigest"],
             "properties": {
               "buildVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
               "declaredRange": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
               "packageName": { "const": "@tokamak-zk-evm/subcircuit-library" },
-              "runtimeMode": { "const": "bundled" }
+              "runtimeMode": { "const": "bundled" },
+              "sourceDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
             }
           }
         }

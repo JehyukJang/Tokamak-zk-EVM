@@ -21,6 +21,7 @@ const CRS_PROVENANCE = JSON.stringify({
     packageName: '@tokamak-zk-evm/subcircuit-library',
     packageVersion: SUBCIRCUIT_LIBRARY_PACKAGE_VERSION,
     origin: 'npmSnapshot',
+    sourceDigest: `sha256:${'2'.repeat(64)}`,
   },
   phase1SourceProvenance: null,
   combinedSigmaSha256: '0'.repeat(64),

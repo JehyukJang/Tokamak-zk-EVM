@@ -20,6 +20,8 @@ pub mod proof_protocol;
 pub mod r1cs;
 pub mod serialization;
 pub mod subcircuit_library;
+#[path = "../../../common/contracts/rust/subcircuit_source_digest.rs"]
+pub mod subcircuit_source_digest;
 pub mod utils;
 pub mod vector_operations;
 

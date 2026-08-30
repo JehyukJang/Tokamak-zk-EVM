@@ -52,6 +52,7 @@ pub fn run(config: &Phase2GenFilesConfig) -> Result<(), MpcSetupError> {
             package_name: env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_NAME").to_string(),
             package_version: env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION").to_string(),
             origin: subcircuit_library_origin,
+            source_digest: env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_SOURCE_DIGEST").to_string(),
         },
         phase1_source_provenance,
         combined_sigma_sha256: digests.combined_sigma_sha256,

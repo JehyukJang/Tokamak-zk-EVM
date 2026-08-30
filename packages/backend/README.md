@@ -196,7 +196,8 @@ and `verify` do not consume `releaseEligible`; they validate only the CRS compat
 the selected subcircuit library.
 `crs_provenance.json` also binds final CRS files to their SHA-256 digests. In dusk-backed mode it
 records the pinned Dusk source metadata, the Dusk raw digest, publication metadata, the CRS
-generation timestamp, and the backend version.
+generation timestamp, the backend compatibility class, and the canonical
+subcircuit source digest used for patch-release CRS reuse checks.
 
 The backend-owned canonical provenance format uses camelCase names throughout,
 and phase-1 provenance is `null`, `"native"`, or `{ "duskGroth16": ... }`.

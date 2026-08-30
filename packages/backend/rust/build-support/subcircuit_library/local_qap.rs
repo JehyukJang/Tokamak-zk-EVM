@@ -66,6 +66,7 @@ pub(crate) fn prepare_local_subcircuit_library() -> io::Result<LocalSubcircuitLi
     }
     Ok(LocalSubcircuitLibrary {
         version,
+        source_digest,
         library_dir,
     })
 }

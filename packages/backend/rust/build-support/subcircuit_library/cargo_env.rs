@@ -15,6 +15,7 @@ pub(crate) fn emit_build_metadata(
         current_package_version,
         compatible_backend_version,
         &snapshot.version,
+        &snapshot.source_digest,
     )
     .map_err(io::Error::other)?;
     fs::write(
@@ -28,20 +29,26 @@ pub(crate) fn emit_build_metadata(
     )
 }
 
-pub(crate) fn emit_subcircuit_library_build_env(version: &str, compatible_backend_version: &str) {
+pub(crate) fn emit_subcircuit_library_build_env(
+    version: &str,
+    source_digest: &str,
+    compatible_backend_version: &str,
+) {
     println!(
         "cargo:rustc-env=TOKAMAK_ZKEVM_COMPATIBLE_BACKEND_VERSION={compatible_backend_version}"
     );
     println!("cargo:rustc-env=TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_NAME={PACKAGE_NAME}");
     println!("cargo:rustc-env=TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION={version}");
+    println!("cargo:rustc-env=TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_SOURCE_DIGEST={source_digest}");
 }
 
 pub(crate) fn emit_mpc_subcircuit_library_build_env(
     version: &str,
+    source_digest: &str,
     compatible_backend_version: &str,
     origin: SubcircuitLibraryOrigin,
 ) {
-    emit_subcircuit_library_build_env(version, compatible_backend_version);
+    emit_subcircuit_library_build_env(version, source_digest, compatible_backend_version);
     println!(
         "cargo:rustc-env=TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_ORIGIN={}",
         origin.as_str()

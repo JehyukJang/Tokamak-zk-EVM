@@ -34,6 +34,7 @@ export interface FinalMpcCrsProvenance {
     readonly packageName: string;
     readonly packageVersion: string;
     readonly origin: SubcircuitLibraryOrigin;
+    readonly sourceDigest: string;
   };
   readonly phase1SourceProvenance: null | 'native' | { readonly duskGroth16: DuskSourceProvenance };
   readonly combinedSigmaSha256: string;

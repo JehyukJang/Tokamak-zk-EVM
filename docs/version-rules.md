@@ -131,10 +131,17 @@ subcircuits/library/subcircuitInfo.json
 The source digest must not include package metadata, changelogs, generated witness helper JavaScript files, diagnostic
 `info` output, or other files that do not change the CRS-relevant circuit artifacts.
 
+The digest is SHA-256 and is encoded as `sha256:<64 lowercase hexadecimal
+characters>`. Each path is a qap-compiler package-relative POSIX path encoded
+as UTF-8. Entries are sorted lexicographically by those encoded path bytes.
+For each entry, the hash input appends an unsigned 64-bit big-endian path-byte
+length, the path bytes, an unsigned 64-bit big-endian content-byte length, and
+the content bytes. No prior FNV digest is accepted as a compatibility identity.
+
 The required rule is:
 
 ```text
-CRS build-metadata-mpc-setup.json dependencies.subcircuitLibrary.sourceDigest
+CRS crs_provenance.json subcircuitLibrary.sourceDigest
   ==
 backend build-metadata-{preprocess,prove,verify}.json dependencies.subcircuitLibrary.sourceDigest
 ```
@@ -280,13 +287,13 @@ The install flow must:
 3. Validate that the CLI package version normalizes to the same `MAJOR.MINOR`.
 4. Select only Google Drive CRS archive names matching `tokamak-backend-crs-vMAJOR.MINOR-YYYYMMDDTHHMMSSZ.zip`.
 5. Download the latest matching archive by timestamp.
-6. Validate `crs_provenance.json backend_version`.
+6. Validate `crs_provenance.json compatibleBackendVersion`.
 7. Validate CRS artifact hashes from `crs_provenance.json`.
-8. Validate `build-metadata-mpc-setup.json compatibleBackendVersion`.
-9. Validate `build-metadata-mpc-setup.json packageVersion` after normalizing to `MAJOR.MINOR`.
-10. Validate that each built backend binary metadata file reports the same compatible backend version.
-11. Validate that each built backend binary metadata file reports a package version whose `MAJOR.MINOR` matches the CRS.
-12. Validate that each built backend binary metadata file has the same subcircuit source digest as the CRS metadata.
+8. Validate the CRS subcircuit package name, package compatibility class, and
+   canonical source digest.
+9. Validate that each built backend binary metadata file reports the same compatible backend version.
+10. Validate that each built backend binary metadata file reports the exact current CLI package version.
+11. Validate that each built backend binary metadata file has the same subcircuit source digest as the CRS provenance.
 
 The Google Drive file name and file ID are not trusted by themselves. Selection is complete only after the downloaded
 archive's embedded provenance, metadata, and hashes pass validation.
@@ -305,10 +312,10 @@ The CRS check must:
 - Search Google Drive only for `tokamak-backend-crs-vMAJOR.MINOR-YYYYMMDDTHHMMSSZ.zip`.
 - Select the latest matching archive by timestamp.
 - Download that single selected archive.
-- Validate `crs_provenance.json backend_version`.
-- Validate `build-metadata-mpc-setup.json compatibleBackendVersion`.
-- Validate `build-metadata-mpc-setup.json packageVersion` after normalizing to `MAJOR.MINOR`.
-- Validate `build-metadata-mpc-setup.json dependencies.subcircuitLibrary.sourceDigest`.
+- Validate `crs_provenance.json compatibleBackendVersion`.
+- Validate `crs_provenance.json subcircuitLibrary.packageName`, the package
+  compatibility class, npm-snapshot origin, and `sourceDigest` against the exact
+  selected npm subcircuit snapshot.
 - Validate CRS artifact hashes against provenance.
 - Export the validated `sigma_verify.json` as a workflow artifact for the browser-compatible SNARK build.
 
@@ -349,8 +356,9 @@ Use this flow when CRS compatibility changes:
 1. Bump all synchronized package versions to the new `MAJOR.MINOR.0` line.
 2. Update `packages/cli/package.json tokamakZkEvm.compatibleBackendVersion` to the new `MAJOR.MINOR`.
 3. Run dusk-backed MPC setup.
-4. Confirm `crs_provenance.json backend_version` is the new `MAJOR.MINOR`.
-5. Confirm `build-metadata-mpc-setup.json compatibleBackendVersion` is the new `MAJOR.MINOR`.
+4. Confirm `crs_provenance.json compatibleBackendVersion` is the new `MAJOR.MINOR`.
+5. Confirm `crs_provenance.json subcircuitLibrary.sourceDigest` matches the
+   exact subcircuit snapshot used by the backend release.
 6. Upload a CRS archive named `tokamak-backend-crs-vMAJOR.MINOR-YYYYMMDDTHHMMSSZ.zip`.
 7. Publish npm packages only after the public CRS is available and CI can validate it.
 

@@ -629,7 +629,9 @@ jobs:
       - name: Enforce final CRS publication admission
         run: >-
           cargo run --manifest-path packages/backend/Cargo.toml --locked
-          -p libs --bin check_crs_publication -- verified-final-crs
+          --release -p libs --bin check_crs_publication
+          --no-default-features --features production-npm-subcircuit-library --
+          verified-final-crs
 
       - name: Install browser-package dependencies for CRS validation
         working-directory: packages/backend/wasm

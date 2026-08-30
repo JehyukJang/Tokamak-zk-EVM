@@ -6,7 +6,8 @@
   "subcircuitLibrary": {
     "packageName": "@tokamak-zk-evm/subcircuit-library",
     "packageVersion": "2.1.5",
-    "origin": "localQapCompiler"
+    "origin": "localQapCompiler",
+    "sourceDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
   },
   "phase1SourceProvenance": null,
   "combinedSigmaSha256": "7afc09d6cb52ac887cc570bc14c82bb8431f955992f57700cb82583e2b34d035",

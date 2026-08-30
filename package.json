@@ -25,6 +25,7 @@
     "version:contract:check": "node scripts/check-version-contract.mjs",
     "release:reproducibility:check": "node scripts/check-release-reproducibility.mjs",
     "release:reproducibility:test": "node scripts/test-release-reproducibility.mjs",
+    "source-digest:test": "tsx scripts/test-subcircuit-source-digest.ts",
     "synthesizer:build-tools:check": "tsc -p tsconfig.synthesizer-build-tools.json --pretty false && node scripts/check-synthesizer-build-tools.mjs"
   },
   "devDependencies": {

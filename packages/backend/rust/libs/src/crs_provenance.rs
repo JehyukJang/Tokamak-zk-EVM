@@ -18,7 +18,7 @@ pub const DEVELOPMENT_TRUSTED_SETUP_SIGMA_DOCUMENT_KIND: &str = "developmentTrus
 pub const FINAL_MPC_CRS_DOCUMENT_KIND: &str = "finalMpcCrs";
 
 const CRS_PROVENANCE_CONTRACT_SHA256: &str =
-    "33063e688a182941df76135d3cd9f835c07444a60f561b77be06be1c0e43fd6f";
+    "509d2bab339f9f6f701555ea402853e6fe12f10dbed87c156270228ebf693c8d";
 const SUPPORTED_SCHEMA_KEYWORDS: &[&str] = &[
     "additionalProperties",
     "const",
@@ -112,6 +112,7 @@ pub struct SubcircuitLibraryProvenance {
     pub package_name: String,
     pub package_version: String,
     pub origin: SubcircuitLibraryOrigin,
+    pub source_digest: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -285,6 +286,10 @@ pub fn validate_final_mpc_crs_provenance(provenance: &FinalMpcCrsProvenance) -> 
     )?;
     parse_package_version(&provenance.subcircuit_library.package_version)
         .map_err(|error| format!("subcircuitLibrary.packageVersion {error}"))?;
+    crate::subcircuit_source_digest::validate_source_digest(
+        &provenance.subcircuit_library.source_digest,
+    )
+    .map_err(|error| format!("subcircuitLibrary.sourceDigest {error}"))?;
     validate_sha256(&provenance.combined_sigma_sha256, "combinedSigmaSha256")?;
     validate_sha256(&provenance.sigma_preprocess_sha256, "sigmaPreprocessSha256")?;
     validate_sha256(&provenance.sigma_verify_sha256, "sigmaVerifySha256")?;
@@ -452,6 +457,9 @@ mod tests {
                 "../../../common/contracts/fixtures/final-mpc-crs-provenance-malformed.json"
             ),
             include_str!("../../../common/contracts/fixtures/final-mpc-crs-provenance-legacy.json"),
+            include_str!(
+                "../../../common/contracts/fixtures/final-mpc-crs-provenance-missing-source-digest.json"
+            ),
         ] {
             let provenance: serde_json::Value =
                 serde_json::from_str(fixture).expect("negative fixture must be valid JSON");
@@ -479,6 +487,9 @@ mod tests {
             ),
             include_bytes!(
                 "../../../common/contracts/fixtures/final-mpc-crs-provenance-invalid-origin.json"
+            ),
+            include_bytes!(
+                "../../../common/contracts/fixtures/final-mpc-crs-provenance-invalid-source-digest.json"
             ),
         ] {
             assert!(parse_final_mpc_crs_provenance(fixture).is_err());

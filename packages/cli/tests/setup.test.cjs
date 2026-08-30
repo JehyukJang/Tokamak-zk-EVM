@@ -25,6 +25,8 @@ const {
 } = require('../dist/generated/backend-build-metadata-validator.generated.js');
 
 const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = '@tokamak-zk-evm/subcircuit-library';
+const SUBCIRCUIT_LIBRARY_SOURCE_DIGEST =
+  'sha256:2222222222222222222222222222222222222222222222222222222222222222';
 const CRS_PROVENANCE_CONTRACT = JSON.parse(
   require('node:fs').readFileSync(
     path.resolve(__dirname, '..', '..', 'backend', 'common', 'contracts', 'crs-provenance-contract.json'),
@@ -62,6 +64,8 @@ const INVALID_BUILD_METADATA_FIXTURES = {
   leadingZeroLibraryVersion: readBackendBuildMetadataFixture(
     'backend-build-metadata-invalid-leading-zero-library-version.json',
   ),
+  missingSourceDigest: readBackendBuildMetadataFixture('backend-build-metadata-missing-source-digest.json'),
+  invalidSourceDigest: readBackendBuildMetadataFixture('backend-build-metadata-invalid-source-digest.json'),
 };
 
 function fakeCrsZipEntry(entryName, overrides = {}) {
@@ -199,6 +203,36 @@ const INVALID_ORIGIN_FINAL_MPC_PROVENANCE = JSON.parse(
     'utf8',
   ),
 );
+const MISSING_SOURCE_DIGEST_FINAL_MPC_PROVENANCE = JSON.parse(
+  require('node:fs').readFileSync(
+    path.resolve(
+      __dirname,
+      '..',
+      '..',
+      'backend',
+      'common',
+      'contracts',
+      'fixtures',
+      'final-mpc-crs-provenance-missing-source-digest.json',
+    ),
+    'utf8',
+  ),
+);
+const INVALID_SOURCE_DIGEST_FINAL_MPC_PROVENANCE = JSON.parse(
+  require('node:fs').readFileSync(
+    path.resolve(
+      __dirname,
+      '..',
+      '..',
+      'backend',
+      'common',
+      'contracts',
+      'fixtures',
+      'final-mpc-crs-provenance-invalid-source-digest.json',
+    ),
+    'utf8',
+  ),
+);
 
 function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
@@ -214,6 +248,7 @@ async function writeBackendMetadata(backendReleaseDir, mutate = undefined) {
           declaredRange: '2.1.5',
           packageName: SUBCIRCUIT_LIBRARY_PACKAGE_NAME,
           runtimeMode: 'bundled',
+          sourceDigest: SUBCIRCUIT_LIBRARY_SOURCE_DIGEST,
         },
       },
       packageName: name,
@@ -253,6 +288,7 @@ async function writeCrsArchiveFixture(
           packageName: SUBCIRCUIT_LIBRARY_PACKAGE_NAME,
           packageVersion: subcircuitLibraryVersion,
           origin: 'npmSnapshot',
+          sourceDigest: SUBCIRCUIT_LIBRARY_SOURCE_DIGEST,
         },
         phase1SourceProvenance: null,
         combinedSigmaSha256: sha256(artifacts['combined_sigma.rkyv']),
@@ -500,6 +536,16 @@ test('installer ingress rejects malformed and semantically invalid provenance fi
       provenance: INVALID_ORIGIN_FINAL_MPC_PROVENANCE,
       expected: /subcircuitLibrary\.origin has an unsupported value/u,
     },
+    {
+      name: 'missing subcircuit source digest',
+      provenance: MISSING_SOURCE_DIGEST_FINAL_MPC_PROVENANCE,
+      expected: /subcircuitLibrary is missing sourceDigest/u,
+    },
+    {
+      name: 'invalid subcircuit source digest',
+      provenance: INVALID_SOURCE_DIGEST_FINAL_MPC_PROVENANCE,
+      expected: /subcircuitLibrary\.sourceDigest does not match the contract pattern/u,
+    },
   ];
 
   for (const testCase of cases) {
@@ -571,6 +617,44 @@ test('keeps CRS provenance library version as a release-line check rather than a
         '2.1',
         '2.1.5',
       ),
+    );
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('rejects a CRS whose source digest differs from any installed backend package', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-'));
+  try {
+    const extractedDir = path.join(tempDir, 'archive');
+    const backendReleaseDir = path.join(tempDir, 'backend');
+    await fs.mkdir(extractedDir);
+    await fs.mkdir(backendReleaseDir);
+    await writeCrsArchiveFixture(extractedDir, '2.1.4');
+    await writeBackendMetadata(backendReleaseDir, (metadata, backendName) =>
+      backendName === 'prove'
+        ? {
+            ...metadata,
+            dependencies: {
+              subcircuitLibrary: {
+                ...metadata.dependencies.subcircuitLibrary,
+                sourceDigest:
+                  'sha256:3333333333333333333333333333333333333333333333333333333333333333',
+              },
+            },
+          }
+        : metadata,
+    );
+
+    await assert.rejects(
+      validateDownloadedCrsArchive(
+        extractedDir,
+        backendReleaseDir,
+        'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
+        '2.1',
+        '2.1.5',
+      ),
+      /Backend package prove subcircuit-library sourceDigest .* does not match CRS sourceDigest/u,
     );
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
@@ -670,6 +754,16 @@ test('installer ingress rejects every build-metadata contract violation', async 
       name: 'leading-zero subcircuit-library build version',
       metadata: INVALID_BUILD_METADATA_FIXTURES.leadingZeroLibraryVersion,
       expected: /subcircuitLibrary\.buildVersion.*leading zeroes are not canonical/u,
+    },
+    {
+      name: 'missing subcircuit source digest',
+      metadata: INVALID_BUILD_METADATA_FIXTURES.missingSourceDigest,
+      expected: /subcircuitLibrary is missing sourceDigest/u,
+    },
+    {
+      name: 'invalid subcircuit source digest',
+      metadata: INVALID_BUILD_METADATA_FIXTURES.invalidSourceDigest,
+      expected: /subcircuitLibrary\.sourceDigest does not match the contract pattern/u,
     },
   ];
 

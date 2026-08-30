@@ -1,4 +1,7 @@
-use super::{version_contract, DIGEST_LIBRARY_DIRECTORIES, DIGEST_LIBRARY_FILES};
+use super::{
+    subcircuit_source_digest, version_contract, DIGEST_LIBRARY_DIRECTORIES,
+    DIGEST_LIBRARY_FILES,
+};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -36,32 +39,35 @@ pub(crate) fn digest_subcircuit_source(
     let mut files = Vec::new();
     push_digest_input(
         &mut files,
-        "circom/constants.circom",
+        "subcircuits/circom/constants.circom",
         constants_path.to_path_buf(),
     )?;
     for file in DIGEST_LIBRARY_FILES {
         push_digest_input(
             &mut files,
-            format!("library/{file}"),
+            format!("subcircuits/library/{file}"),
             library_dir.join(file),
         )?;
     }
     for directory in DIGEST_LIBRARY_DIRECTORIES {
         collect_digest_directory(
             &mut files,
-            &format!("library/{directory}"),
+            &format!("subcircuits/library/{directory}"),
             &library_dir.join(directory),
         )?;
     }
-    files.sort_by(|left, right| left.0.cmp(&right.0));
-
-    let mut hash = 0xcbf29ce484222325u64;
-    for (logical_path, absolute_path) in files {
-        digest_bytes(&mut hash, logical_path.as_bytes());
-        digest_bytes(&mut hash, &(logical_path.len() as u64).to_le_bytes());
-        digest_bytes(&mut hash, &fs::read(absolute_path)?);
-    }
-    Ok(format!("{hash:016x}"))
+    let entries = files
+        .into_iter()
+        .map(|(logical_path, absolute_path)| {
+            fs::read(absolute_path).map(|content| (logical_path, content))
+        })
+        .collect::<io::Result<Vec<_>>>()?;
+    subcircuit_source_digest::digest_subcircuit_source_entries(
+        entries
+            .iter()
+            .map(|(logical_path, content)| (logical_path.as_str(), content.as_slice())),
+    )
+    .map_err(io::Error::other)
 }
 
 pub(crate) fn constants_path_for_library_dir(library_dir: &Path) -> io::Result<PathBuf> {
@@ -152,11 +158,4 @@ fn collect_digest_directory(
         push_digest_input(files, format!("{logical_prefix}/{name}"), path)?;
     }
     Ok(())
-}
-
-fn digest_bytes(hash: &mut u64, bytes: &[u8]) {
-    for byte in bytes {
-        *hash ^= u64::from(*byte);
-        *hash = hash.wrapping_mul(0x100000001b3);
-    }
 }

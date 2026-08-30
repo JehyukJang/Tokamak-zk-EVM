@@ -3,7 +3,8 @@
     "subcircuitLibrary": {
       "buildVersion": "2.1.5",
       "declaredRange": "2.1.5",
-      "packageName": "@tokamak-zk-evm/subcircuit-library"
+      "packageName": "@tokamak-zk-evm/subcircuit-library",
+      "sourceDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
     }
   },
   "packageName": "prove",

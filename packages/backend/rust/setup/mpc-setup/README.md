@@ -253,6 +253,8 @@ For every CRS, the manifest also records:
 - `subcircuitLibrary.packageName`
 - `subcircuitLibrary.packageVersion`
 - `subcircuitLibrary.origin`, either `npmSnapshot` or `localQapCompiler`
+- `subcircuitLibrary.sourceDigest`, the canonical `sha256:` digest of the
+  CRS-relevant subcircuit input set
 
 For dusk-backed mode, the manifest records:
 

@@ -116,10 +116,13 @@ The final output directory contains:
 - `sigma_verify.json`
 - `crs_provenance.json`
 
-The published archive also includes `build-metadata-mpc-setup.json`. Operators should preserve and
-publish the provenance and build metadata with the CRS. They bind the CRS to the backend-compatible
-version, the subcircuit-library source digest, the pinned Dusk source metadata, and SHA-256 hashes
-of the final CRS files.
+Operators should preserve and publish `crs_provenance.json` with the CRS. It
+binds the CRS to the backend compatibility class, the canonical
+`sha256:`-prefixed subcircuit-library source digest, the pinned Dusk source
+metadata, and SHA-256 hashes of the final CRS files. Runtime
+`build-metadata-{preprocess,prove,verify}.json` files independently record the
+same subcircuit source digest for CLI installation checks; they are not CRS
+archive members.
 
 ## CRS governance
 

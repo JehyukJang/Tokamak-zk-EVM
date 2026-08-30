@@ -132,6 +132,7 @@ fn publish_output_archive_with_publisher<P: CrsArchivePublisher>(
         compatible_backend_version(),
         env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_NAME"),
         env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION"),
+        env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_SOURCE_DIGEST"),
     );
     let provenance =
         admit_final_crs_publication(&output_path, &expected).map_err(DriveUploadError::Message)?;
@@ -664,6 +665,28 @@ mod tests {
         for file_name in final_output_files() {
             fs::copy(fixture.join(&file_name), output.join(&file_name))
                 .expect("must copy shared publication fixture");
+        }
+        let provenance_path = output.join(PROVENANCE_FILE_NAME);
+        let mut provenance: serde_json::Value = serde_json::from_slice(
+            &fs::read(&provenance_path).expect("must read copied publication provenance"),
+        )
+        .expect("must parse copied publication provenance");
+        if let Some(library) = provenance
+            .get_mut("subcircuitLibrary")
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            library.insert(
+                "sourceDigest".to_string(),
+                serde_json::Value::String(
+                    env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_SOURCE_DIGEST").to_string(),
+                ),
+            );
+            fs::write(
+                &provenance_path,
+                serde_json::to_vec_pretty(&provenance)
+                    .expect("must serialize current-build publication provenance"),
+            )
+            .expect("must write current-build publication provenance");
         }
 
         let config = DriveUploadConfig {

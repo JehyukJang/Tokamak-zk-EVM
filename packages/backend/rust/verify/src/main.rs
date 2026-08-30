@@ -49,6 +49,7 @@ fn main() -> ExitCode {
         env!("CARGO_PKG_VERSION"),
         option_env!("TOKAMAK_ZKEVM_COMPATIBLE_BACKEND_VERSION"),
         option_env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION"),
+        option_env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_SOURCE_DIGEST"),
     ) {
         Ok(true) => return ExitCode::SUCCESS,
         Ok(false) => {}
