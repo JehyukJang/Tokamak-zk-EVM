@@ -32,7 +32,7 @@ subcircuit.
 | ----------------------------------------------- | ------------------------------------------------------------- |
 | [Synthesizer](../synthesizer/README.md)         | Loads metadata and matching WASM witness generators           |
 | [Native backend](../../backend/README.md)       | Uses binary R1CS files during setup and proving               |
-| [Browser backend](../../backend-wasm/README.md) | Converts and validates compatible runtime artifacts           |
+| [Browser backend](../../backend/wasm/README.md) | Converts and validates compatible runtime artifacts           |
 | [CLI](../../cli/README.md)                      | Installs the synchronized library in the local proof workflow |
 
 The Node Synthesizer resolves installed assets at runtime. The Web Synthesizer
@@ -54,20 +54,20 @@ field. Consumers must not infer or override a separate wire layout.
 
 All files are acquired from the same installed npm package version:
 
-| Path                                          | Role                                                     | Format                      | Example            |
-| --------------------------------------------- | -------------------------------------------------------- | --------------------------- | ------------------ |
-| `subcircuits/library/r1cs/subcircuit<N>.r1cs` | Compiled constraints used by setup and proving           | Circom binary R1CS          | `subcircuit0.r1cs` |
-| `subcircuits/library/wasm/subcircuit<N>.wasm` | Witness generator for one subcircuit                     | WebAssembly                 | `subcircuit0.wasm` |
-| `subcircuits/library/json/subcircuit<N>.json` | Compiler metadata for one subcircuit                     | JSON                        | `subcircuit0.json` |
-| `subcircuits/library/setupParams.json`        | Circuit capacity and setup parameters                    | JSON numeric object         | Published file     |
-| `subcircuits/library/globalWireList.json`     | Global-to-local wire mapping                             | JSON two-number tuple array | Published file     |
-| `subcircuits/library/subcircuitInfo.json`     | Subcircuit catalog, wire ranges, and flattening metadata | JSON record array           | Published file     |
-| `subcircuits/library/frontendCfg.json`        | Frontend buffer and subcircuit configuration             | JSON                        | Published file     |
-| `subcircuits/library/generate_witness.js`     | Witness-generation entry point                           | JavaScript module           | Published file     |
-| `subcircuits/library/witness-input-diagnostics.js` | Original-input format diagnostics                  | JavaScript module           | Published file     |
-| `subcircuits/library/witness_calculator.js`   | Runtime witness calculator                               | JavaScript module           | Published file     |
-| `subcircuits/circom/constants.circom`         | Constants synchronized with the generated library        | Circom source               | Published file     |
-| `build-metadata.json`                         | Build identity and dependency versions                   | JSON                        | Package root       |
+| Path                                               | Role                                                     | Format                      | Example            |
+| -------------------------------------------------- | -------------------------------------------------------- | --------------------------- | ------------------ |
+| `subcircuits/library/r1cs/subcircuit<N>.r1cs`      | Compiled constraints used by setup and proving           | Circom binary R1CS          | `subcircuit0.r1cs` |
+| `subcircuits/library/wasm/subcircuit<N>.wasm`      | Witness generator for one subcircuit                     | WebAssembly                 | `subcircuit0.wasm` |
+| `subcircuits/library/json/subcircuit<N>.json`      | Compiler metadata for one subcircuit                     | JSON                        | `subcircuit0.json` |
+| `subcircuits/library/setupParams.json`             | Circuit capacity and setup parameters                    | JSON numeric object         | Published file     |
+| `subcircuits/library/globalWireList.json`          | Global-to-local wire mapping                             | JSON two-number tuple array | Published file     |
+| `subcircuits/library/subcircuitInfo.json`          | Subcircuit catalog, wire ranges, and flattening metadata | JSON record array           | Published file     |
+| `subcircuits/library/frontendCfg.json`             | Frontend buffer and subcircuit configuration             | JSON                        | Published file     |
+| `subcircuits/library/generate_witness.js`          | Witness-generation entry point                           | JavaScript module           | Published file     |
+| `subcircuits/library/witness-input-diagnostics.js` | Original-input format diagnostics                        | JavaScript module           | Published file     |
+| `subcircuits/library/witness_calculator.js`        | Runtime witness calculator                               | JavaScript module           | Published file     |
+| `subcircuits/circom/constants.circom`              | Constants synchronized with the generated library        | Circom source               | Published file     |
+| `build-metadata.json`                              | Build identity and dependency versions                   | JSON                        | Package root       |
 
 The supported acquisition path is npm. Keep R1CS, WASM, metadata, constants,
 and setup artifacts on one compatible release line.

@@ -54,7 +54,11 @@ package is built.
 
 ## Transaction support
 
-Tokamak zk-EVM does not support every EVM contract. A supported contract
+It supports contract calls when execution stays within the opcode sequence and
+topology boundary described below. It should not be described as supporting
+every arbitrary Ethereum transaction.
+
+A supported contract
 function is one whose successful calls have one fixed execution topology within
 the supported input and state domain. In practical terms, changing an accepted
 transaction input or state value must not change the successful EVM instruction

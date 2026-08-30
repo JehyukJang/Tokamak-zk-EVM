@@ -192,13 +192,14 @@ the selected subcircuit library.
 records the pinned Dusk source metadata, the Dusk raw digest, publication metadata, the CRS
 generation timestamp, and the backend version.
 
-The planned 3.0 repository-managed Tokamak zk-EVM/CRS version pair uses the backend-owned canonical
-provenance format and the root-owned package-version policy: all nested names are camelCase and
-phase-1 provenance is `null`, `"native"`, or `{ "duskGroth16": ... }`. This unreleased 2.1.5 source tree prepares that format. It is
-intentionally incompatible with published 2.1.x snake_case Dusk provenance; do not combine CRS
-artifacts and backend binaries across that boundary.
+The backend-owned canonical provenance format uses camelCase names throughout,
+and phase-1 provenance is `null`, `"native"`, or `{ "duskGroth16": ... }`.
+Backend binaries, subcircuit-library artifacts, and CRS provenance must remain
+on one synchronized release line. Provenance using the earlier snake_case Dusk
+shape is incompatible with the canonical format; see the root
+[Changelog](../../CHANGELOG.md) for release-specific migration boundaries.
 
-## Prove and Verify Inputs
+## Preprocess, prove, and verify
 
 ### `preprocess`
 
@@ -292,6 +293,21 @@ The ICICLE device policy selects CUDA when it is available. ICICLE 3.8.0 METAL a
 reported but deliberately falls back to CPU; it is not treated as a GPU/MSM capability. Setting
 `USE_GPU=true` for MPC setup therefore selects CUDA or CPU through the same policy and reports a
 backend-initialization failure instead of silently continuing after one.
+
+## Security and operator responsibilities
+
+Use only a CRS and subcircuit library whose release identities and
+compatibility class match the backend. Verify artifact digests and provenance
+before loading them, and keep OAuth credentials and tokens outside version
+control. A trusted-setup or native-MPC result is for local development only;
+only an admitted Dusk-backed CRS is eligible for the repository publication
+workflow.
+
+The operator remains responsible for securing ceremony state, authenticating
+the publication destination, reviewing the documented phase-2 trust
+limitations, and preserving the exact artifacts used by downstream proving and
+verification. A successful command does not by itself establish that a setup or
+deployment satisfies an application's security requirements.
 
 ## Timing Report for `prove`
 

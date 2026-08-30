@@ -25,6 +25,7 @@ proving-system API and does not synthesize Tokamak L2 transactions.
 
 - [When to use this package](#when-to-use-this-package)
 - [Install](#install)
+- [npm publication](#npm-publication)
 - [Package facts](#package-facts)
 - [Choose an API](#choose-an-api)
 - [Public API reference](#public-api-reference)
@@ -33,13 +34,14 @@ proving-system API and does not synthesize Tokamak L2 transactions.
 - [Verify a proof](#verify-a-proof)
 - [Generate a proof](#generate-a-proof)
 - [Track proving progress](#track-proving-progress)
-- [Prepare application artifacts](#prepare-application-artifacts)
+- [Runtime artifact guide and acquisition](#runtime-artifact-guide-and-acquisition)
 - [Convert, inspect, and validate binaries](#convert-inspect-and-validate-binaries)
 - [Browser deployment and lifecycle](#browser-deployment-and-lifecycle)
 - [Compatibility and versioning](#compatibility-and-versioning)
 - [How this package relates to Tokamak zk-EVM](#how-this-package-relates-to-tokamak-zk-evm)
 - [Measured browser performance](#measured-browser-performance)
 - [Errors and troubleshooting](#errors-and-troubleshooting)
+- [Security and application responsibilities](#security-and-application-responsibilities)
 - [Project and license](#project-and-license)
 
 ## Package facts
@@ -78,6 +80,15 @@ verified. Bundler-free direct serving of the package's compiled files is
 unsupported. Complete preprocess, prover, staged-progress, verifier, converter,
 inspection, and validation source is available in
 [`examples/browser`](./examples/browser).
+
+## npm publication
+
+The supported distribution is
+[`@tokamak-zk-evm/snark-browser-compat`](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat)
+on npm. Determine the published version from the registry, pin a compatible
+release in the application, and use the root [Changelog](../../../CHANGELOG.md)
+for release notes and migration boundaries. A repository manifest version is
+not evidence that the same version has been published.
 
 ## Choose an API
 
@@ -335,7 +346,7 @@ intermediate protocol state. The package does not estimate percentages or
 remaining time. Finalize or dispose every session; an unfinished session
 retains large prover state.
 
-## Prepare application artifacts
+## Runtime artifact guide and acquisition
 
 The application owns artifact acquisition, provenance verification, conversion,
 storage, caching, and invalidation.
@@ -361,6 +372,14 @@ Obtain the large combined CRS source from the immutable
 The package never downloads Google Drive artifacts. Keep provenance information
 from the release source and invalidate cached converted binaries when the
 application changes its compatible Tokamak release.
+
+Every runtime binary produced by this package uses the `TZBWASM1` container
+magic, a numeric `formatVersion`, a producer package version, a file kind, a
+section table, and a whole-file self-digest. The container version identifies
+the byte layout; it does not replace release compatibility checks or trusted
+artifact provenance. Applications should acquire source artifacts from their
+documented release location, convert them once, validate them at the trust
+boundary, and retain the resulting named binaries as one compatible set.
 
 ## Convert, inspect, and validate binaries
 
@@ -457,19 +476,18 @@ duplicate WASM memories and temporary buffers.
 
 ## Compatibility and versioning
 
-The source tree uses the published `2.1.5` package line and subcircuit-library
-compatibility class `2.1`. Current source changes are unreleased work on that
-line; they do not declare a new package version or binary format.
+The package, native backend, subcircuit library, generated runtime artifacts,
+and CRS must be selected from one synchronized release line. The compatibility
+class is the package version's major and minor components; matching an artifact
+type without matching that class is insufficient.
 
-| Boundary                                           | Current value          |
-| -------------------------------------------------- | ---------------------- |
-| Snark-browser-compat source package                | 2.1.5                  |
-| Native backend source release line                 | 2.1.5                  |
-| `@tokamak-zk-evm/subcircuit-library` source target | 2.1.5                  |
-| Compatibility class                                | 2.1                    |
-| Binary `formatVersion`                             | 1                      |
-| Package module format                              | ESM                    |
-| Curve runtime                                      | ffjavascript BLS12-381 |
+| Boundary                     | Stable rule                                |
+| ---------------------------- | ------------------------------------------ |
+| Package and backend identity | One synchronized release line              |
+| Compatibility class          | Package-version major and minor components |
+| Binary `formatVersion`       | Independent byte-layout version            |
+| Package module format        | ESM                                        |
+| Curve runtime                | ffjavascript BLS12-381                     |
 
 `install()` reports the package, native backend, and subcircuit-library
 versions. Every binary carries its independent `formatVersion` and
@@ -485,14 +503,14 @@ valid but cryptographically incompatible proof may return `false`.
 
 ## How this package relates to Tokamak zk-EVM
 
-| Entity                                                                                                   | Relationship                                                                                                                           |
-| -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| [Tokamak zk-EVM](https://github.com/tokamak-network/Tokamak-zk-EVM)                                      | The owner repository and shared release line for this package                                                                          |
-| [Tokamak zk-SNARK protocol paper](https://eprint.iacr.org/2024/507)                                      | The protocol definition implemented by preprocess, the prover, and the verifier                                                        |
-| [Native backend](https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main/packages/backend)           | The protocol reference and accelerated ICICLE/arkworks implementation; it owns setup, preprocess, native proof, and verifier artifacts |
-| [ffjavascript](https://github.com/iden3/ffjavascript)                                                    | The BLS12-381 field, group, MSM, FFT, pairing, WASM, and worker runtime used by browser execution                                      |
+| Entity                                                                                                   | Relationship                                                                                                                                               |
+| -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Tokamak zk-EVM](https://github.com/tokamak-network/Tokamak-zk-EVM)                                      | The owner repository and shared release line for this package                                                                                              |
+| [Tokamak zk-SNARK protocol paper](https://eprint.iacr.org/2024/507)                                      | The protocol definition implemented by preprocess, the prover, and the verifier                                                                            |
+| [Native backend](https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main/packages/backend)           | The protocol reference and accelerated ICICLE/arkworks implementation; it owns setup, preprocess, native proof, and verifier artifacts                     |
+| [ffjavascript](https://github.com/iden3/ffjavascript)                                                    | The BLS12-381 field, group, MSM, FFT, pairing, WASM, and worker runtime used by browser execution                                                          |
 | [`@tokamak-zk-evm/subcircuit-library`](https://www.npmjs.com/package/@tokamak-zk-evm/subcircuit-library) | The pinned production source of build-generated setup parameters, packed R1CS data, and subcircuit metadata; development selects local qap-compiler output |
-| [Immutable CRS release folder](https://drive.google.com/drive/folders/14xqCbLoyoVmUVTTlopiXtKnoHPBGL-Sv) | The application-acquired source of release CRS material, including `combined_sigma.rkyv`                                               |
+| [Immutable CRS release folder](https://drive.google.com/drive/folders/14xqCbLoyoVmUVTTlopiXtKnoHPBGL-Sv) | The application-acquired source of release CRS material, including `combined_sigma.rkyv`                                                                   |
 
 This package does not compile circuits, synthesize application inputs, run a
 trusted setup, download release artifacts, authenticate artifact provenance, or
@@ -558,6 +576,21 @@ Additional troubleshooting:
   error can be delivered. Avoid concurrent proving and large conversions.
   A lower chunk exponent reduces the maximum outer dense-MSM submission but is
   not a universal memory guarantee.
+
+## Security and application responsibilities
+
+Applications must authenticate the source of CRS and transaction artifacts,
+verify provenance and digests at their trust boundary, keep every runtime input
+on one compatible release line, and prevent untrusted callers from exhausting
+browser CPU or memory. Treat `inspectBinary()` as metadata inspection only;
+use validation for structural integrity and proof verification for the
+cryptographic claim.
+
+The package does not authorize a ceremony, validate Google Drive publication
+eligibility, secure application storage, or establish that a surrounding
+protocol is safe. Deployment owners remain responsible for dependency-license
+compliance, CSP and Worker policy, artifact access control, cache invalidation,
+and user-visible handling of failed or busy operations.
 
 ## Project and license
 

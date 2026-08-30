@@ -65,10 +65,9 @@ the generated decoder WASM there, produces standalone prover, preprocess, and
 verifier CRS artifacts, and terminates the Worker.
 
 ```js
-import { convertCrs } from "@tokamak-zk-evm/snark-browser-compat/converter";
+import { convertCrs } from '@tokamak-zk-evm/snark-browser-compat/converter';
 
-const { proverCrs, preprocessCrs, verifierCrs } =
-  await convertCrs(combinedSigmaRkyv, crsProvenance);
+const { proverCrs, preprocessCrs, verifierCrs } = await convertCrs(combinedSigmaRkyv, crsProvenance);
 ```
 
 The transfer detaches `combinedSigmaRkyv`. Pass
@@ -81,10 +80,8 @@ The Node.js wrapper is for local fixture preparation only. It reads the generate
 WASM file from `pkg/` and exposes the same payload decoder shape:
 
 ```js
-import {
-  createCombinedSigmaRkyvPayloadDecoder,
-} from "../../src/converter/conversion/rkyv-to-binary.js";
-import { loadCombinedSigmaPayloadDecoder } from "./tools/rkyv-decoder-wasm/src/node.js";
+import { createCombinedSigmaRkyvPayloadDecoder } from '../../src/converter/conversion/rkyv-to-binary.js';
+import { loadCombinedSigmaPayloadDecoder } from './tools/rkyv-decoder-wasm/src/node.js';
 
 const payloadDecoder = await loadCombinedSigmaPayloadDecoder();
 const decoder = createCombinedSigmaRkyvPayloadDecoder(payloadDecoder.decodeCombinedSigmaPayload);
@@ -92,3 +89,8 @@ const decoder = createCombinedSigmaRkyvPayloadDecoder(payloadDecoder.decodeCombi
 
 Run `npm run rkyv-decoder:build` before using the Node.js wrapper. The wrapper is
 still tooling-only and must not be imported by prover or verifier runtime modules.
+
+## License
+
+This decoder tool is dual-licensed under `MIT OR Apache-2.0`. Dependencies
+retain their own licenses.

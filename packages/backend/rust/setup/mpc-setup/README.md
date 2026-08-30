@@ -16,7 +16,7 @@ runtime library path argument.
 Both binaries are part of the Rust backend workspace and are not published as
 standalone npm or crates.io packages. CLI users normally obtain compatible CRS
 artifacts through [`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli).
-Release notes are in [CHANGELOG.md](../../../../CHANGELOG.md).
+Release notes are in [CHANGELOG.md](../../../../../CHANGELOG.md).
 
 ## Overview
 
@@ -316,3 +316,8 @@ and a recorded successful transcript-consistency check; it does not independentl
 cryptographic Dusk ceremony. Independent ceremony or transcript verification and a separately
 governed release-authorization mechanism remain future work. The current publisher must not be
 represented as providing either control.
+
+## License
+
+The MPC setup implementation and documentation are dual-licensed under
+`MIT OR Apache-2.0`. Dependencies retain their own licenses.

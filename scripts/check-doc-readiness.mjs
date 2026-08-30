@@ -340,12 +340,21 @@ function checkReadmeResponsibilities() {
     'packages/frontend/synthesizer/web-app/README.md',
   ];
 
+  const synchronizedSourceClaim =
+    /(?:\bcurrent\s+(?:package|release|repository|source|version)\b|\bunreleased\s+\d+\.\d+\.\d+\s+source\b|\bsource\s+(?:package|release\s+line|target|tree)\b).*\b\d+\.\d+\.\d+\b/iu;
+
   for (const relativePath of readmes) {
     checkMarkdownStructure(relativePath);
     checkLocalMarkdownLinks(relativePath);
     const repositoryVersion = readJson('package.json').version;
-    if (readText(relativePath).includes(repositoryVersion)) {
+    const text = readText(relativePath);
+    if (text.includes(repositoryVersion)) {
       fail(`${relativePath} must not hard-code the synchronized repository version.`);
+    }
+    for (const line of text.split('\n')) {
+      if (synchronizedSourceClaim.test(line)) {
+        fail(`${relativePath} must not hard-code a synchronized source-version claim: ${line.trim()}`);
+      }
     }
   }
 
@@ -448,14 +457,19 @@ function checkPackageMetadata() {
 
 function checkSynthesizerFaq() {
   const relativePath = 'packages/frontend/synthesizer/README.md';
-  for (const required of [
-    '<a id="transaction-support-faq"></a>',
-    '## Transaction support',
-    'It supports contract calls when execution stays within the opcode',
-    'It should not be described as supporting every arbitrary Ethereum transaction.',
-  ]) {
+  for (const required of ['<a id="transaction-support-faq"></a>', '## Transaction support']) {
     requireIncludes(relativePath, required);
   }
+  requirePattern(
+    relativePath,
+    /It supports contract calls when execution stays within the opcode/iu,
+    'the fixed-opcode support boundary',
+  );
+  requirePattern(
+    relativePath,
+    /It should not be described as supporting\s+every arbitrary Ethereum transaction\./iu,
+    'the arbitrary-Ethereum-transaction limitation',
+  );
 }
 
 checkLlmsTxt();

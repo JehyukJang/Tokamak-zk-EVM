@@ -39,13 +39,13 @@ defining separate API recipes.
 Create `public/artifacts/` and provide the binary files needed by the operations
 you intend to run:
 
-| File | Used by |
-| --- | --- |
-| `permutation.bin` | Preprocess and prover |
-| `instance.bin` | Preprocess, prover, and verifier |
-| `preprocess-crs.bin` | Preprocess |
-| `witness.bin` | Prover |
-| `prover-crs.bin` | Prover |
+| File                 | Used by                          |
+| -------------------- | -------------------------------- |
+| `permutation.bin`    | Preprocess and prover            |
+| `instance.bin`       | Preprocess, prover, and verifier |
+| `preprocess-crs.bin` | Preprocess                       |
+| `witness.bin`        | Prover                           |
+| `prover-crs.bin`     | Prover                           |
 
 The default URLs in the page point to these names. They can be replaced with
 same-origin or CORS-enabled application URLs. The verifier CRS is compiled into
@@ -70,3 +70,8 @@ with the example, but are not imported by the runnable page:
   metadata and independently validate the same artifact.
 - [`src/staged-proof.ts`](./src/staged-proof.ts): execute the ordered prover
   session API and report arithmetic, copy, binding, and finalization progress.
+
+## License
+
+This example is dual-licensed under `MIT OR Apache-2.0`. Dependencies retain
+their own licenses.
