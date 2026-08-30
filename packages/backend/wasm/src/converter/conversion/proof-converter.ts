@@ -1,12 +1,9 @@
 import {
   createBinaryArtifactFile,
-  decodeBinaryArtifactFile,
+  requireBinaryArtifactSection,
 } from "../../artifacts/binary/binary-artifact-file.js";
-import {
-  BinaryArtifactFileKind,
-  type BinaryArtifactFileView,
-  type BinarySectionView,
-} from "../../artifacts/binary/binary-format.js";
+import { admitRuntimeBinaryArtifact } from "../../artifacts/binary/runtime-admission.js";
+import type { RuntimeArtifactSectionSpec } from "../../artifacts/specs/types.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
 import { BACKEND_BROWSER_ARTIFACT_CONTRACT } from "../../generated/backend-browser-artifact-contract.generated.js";
 import { VERIFIER_PROOF_V1_SPEC } from "../../generated/browser-artifact-contracts.generated.js";
@@ -23,7 +20,6 @@ import type {
   ConverterArtifactJson,
   ConvertProofInput,
 } from "./types.js";
-import type { RuntimeArtifactSectionSpec } from "../../artifacts/specs/types.js";
 
 interface FormattedProofJson {
   readonly proof_entries_part1: readonly string[];
@@ -57,9 +53,13 @@ export async function convertProof(input: ConvertProofInput): Promise<Uint8Array
 }
 
 async function convertProofBinaryToNativeJson(proof: Uint8Array): Promise<ConverterArtifactJson> {
-  const artifactFile = await decodeBinaryArtifactFile(proof);
-  const proofG1 = requireBinarySection(artifactFile, BinaryArtifactFileKind.VerifierProof, proofG1SectionSpec);
-  const proofEvals = requireBinarySection(artifactFile, BinaryArtifactFileKind.VerifierProof, proofEvaluationsSectionSpec);
+  const artifactFile = admitRuntimeBinaryArtifact(
+    proof,
+    VERIFIER_PROOF_V1_SPEC.kind,
+    VERIFIER_PROOF_V1_SPEC,
+  );
+  const proofG1 = requireBinaryArtifactSection(artifactFile, proofG1SectionSpec);
+  const proofEvals = requireBinaryArtifactSection(artifactFile, proofEvaluationsSectionSpec);
   return withCurveRuntime(async (runtime) => {
     const proofEntriesPart1: string[] = [];
     const proofEntriesPart2: string[] = [];
@@ -139,37 +139,6 @@ function parseFormattedProofJson(raw: unknown): FormattedProofJson {
       `proof.${proofCoordinatesAndEvaluationsPart2Field}`,
     ),
   };
-}
-
-function requireBinarySection(
-  artifactFile: BinaryArtifactFileView,
-  kind: BinaryArtifactFileKind,
-  sectionSpec: RuntimeArtifactSectionSpec,
-): BinarySectionView {
-  if (artifactFile.kind !== kind) {
-    throw new Error(`Binary artifact kind mismatch: expected ${kind}, got ${artifactFile.kind}.`);
-  }
-
-  const section = artifactFile.sections.find(
-    (candidate) =>
-      candidate.type === sectionSpec.type &&
-      candidate.encoding === sectionSpec.encoding &&
-      candidate.label === sectionSpec.label,
-  );
-
-  if (section === undefined) {
-    throw new Error(`Missing binary artifact section '${sectionSpec.label}'.`);
-  }
-
-  if (
-    section.elementCount !== requireFixedElementCount(sectionSpec)
-    || (sectionSpec.elementByteLength !== null
-      && section.elementByteLength !== sectionSpec.elementByteLength)
-  ) {
-    throw new Error(`Binary artifact section '${sectionSpec.label}' shape mismatch.`);
-  }
-
-  return section;
 }
 
 function requireFixedElementCount(section: RuntimeArtifactSectionSpec): number {
