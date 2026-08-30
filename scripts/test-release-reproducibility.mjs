@@ -27,6 +27,16 @@ runTest('rejects a missing backend workspace lock', fixtureRoot => {
   assert.match(failures(fixtureRoot), /packages\/backend\/Cargo\.lock is required/u);
 });
 
+runTest('rejects an unsynchronized backend-interface lock entry', fixtureRoot => {
+  replace(
+    fixtureRoot,
+    'packages/backend/Cargo.lock',
+    'name = "backend-interface"\nversion = "2.1.5"',
+    'name = "backend-interface"\nversion = "2.1.4"',
+  );
+  assert.match(failures(fixtureRoot), /backend-interface@2\.1\.5/u);
+});
+
 runTest('rejects a floating Rust toolchain', fixtureRoot => {
   replace(fixtureRoot, 'rust-toolchain.toml', 'channel = "1.95.0"', 'channel = "stable"');
   assert.match(failures(fixtureRoot), /must pin channel 1\.95\.0/u);

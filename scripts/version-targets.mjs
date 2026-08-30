@@ -52,6 +52,7 @@ export const OPTIONAL_LOCKFILES = Object.freeze(
 );
 
 export const BACKEND_WORKSPACE_PACKAGE_NAMES = Object.freeze([
+  'backend-interface',
   'libs',
   'mpc-setup',
   'preprocess',

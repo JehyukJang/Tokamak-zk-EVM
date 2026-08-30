@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { BACKEND_WORKSPACE_PACKAGE_NAMES } from './version-targets.mjs';
 
 export const PINNED_RUST_VERSION = '1.95.0';
 export const REQUIRED_LOCKFILES = Object.freeze([
@@ -31,8 +32,6 @@ export const POLICY_SURFACES = Object.freeze([
 ]);
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const workspacePackageNames = ['libs', 'mpc-setup', 'preprocess', 'prove', 'trusted-setup', 'verify'];
-
 export function collectReleaseReproducibilityFailures(
   root,
   { rustcVersion = commandVersion('rustc'), cargoVersion = commandVersion('cargo') } = {},
@@ -67,7 +66,7 @@ export function collectReleaseReproducibilityFailures(
 
   const rootVersion = JSON.parse(read('package.json')).version;
   const backendLock = read('packages/backend/Cargo.lock');
-  for (const packageName of workspacePackageNames) {
+  for (const packageName of BACKEND_WORKSPACE_PACKAGE_NAMES) {
     const packageBlock = new RegExp(
       `\\[\\[package\\]\\]\\n(?:(?!\\n\\[\\[package\\]\\])[\\s\\S])*?^name = "${packageName}"$(?:(?!\\n\\[\\[package\\]\\])[\\s\\S])*?^version = "([^"]+)"$`,
       'mu',

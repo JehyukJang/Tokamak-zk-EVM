@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import {
   BACKEND_CARGO_LOCK,
   BACKEND_WORKSPACE_MANIFEST,
+  BACKEND_WORKSPACE_PACKAGE_NAMES,
   LOCKFILE_DEPENDENCY_TARGETS,
   LOCKFILE_PACKAGE_VERSION_TARGETS,
   SOURCE_PACKAGE_VERSION_TARGETS,
@@ -46,10 +47,35 @@ await runTest('complete synchronization excludes ignored generated inputs', fixt
   run(fixtureRoot, ['scripts/check-version-sync.mjs', '--pre-publication']);
   assert.equal(readJson(fixtureRoot, 'package.json').version, '3.0.0');
   assert.equal(readJson(fixtureRoot, 'packages/backend/wasm/package-lock.json').version, '3.0.0');
+  assert.equal(readCargoPackageVersion(fixtureRoot, 'backend-interface'), '3.0.0');
   assert.equal(fs.existsSync(path.join(fixtureRoot, 'packages/backend/wasm/src/generated/active')), false);
 
   const fullResult = runFailure(fixtureRoot, ['scripts/check-version-sync.mjs']);
   assert.match(fullResult.stderr, /dated release entry for 3\.0\.0/u);
+});
+
+await runTest('complete synchronization leaves real backend workspace metadata locked', fixtureRoot => {
+  copyTrackedBackendWorkspace(fixtureRoot);
+  copyFile(fixtureRoot, 'rust-toolchain.toml');
+  run(fixtureRoot, ['scripts/sync-version.mjs', '3.0.0']);
+
+  execFileSync(
+    'cargo',
+    [
+      'metadata',
+      '--locked',
+      '--no-deps',
+      '--format-version',
+      '1',
+      '--manifest-path',
+      'packages/backend/Cargo.toml',
+    ],
+    { cwd: fixtureRoot, encoding: 'utf8', stdio: 'pipe' },
+  );
+
+  for (const packageName of BACKEND_WORKSPACE_PACKAGE_NAMES) {
+    assert.equal(readCargoPackageVersion(fixtureRoot, packageName), '3.0.0');
+  }
 });
 
 await runTest('complete synchronization requires the backend workspace lock', fixtureRoot => {
@@ -119,12 +145,32 @@ async function runTest(name, testBody) {
 /** @param {string} fixtureRoot */
 function copyFixture(fixtureRoot) {
   for (const relativePath of fixtureFiles) {
-    const sourcePath = path.join(repositoryRoot, relativePath);
-    if (!fs.existsSync(sourcePath)) continue;
-    const destinationPath = path.join(fixtureRoot, relativePath);
-    fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
-    fs.copyFileSync(sourcePath, destinationPath);
+    copyFile(fixtureRoot, relativePath);
   }
+}
+
+/** @param {string} fixtureRoot */
+function copyTrackedBackendWorkspace(fixtureRoot) {
+  const result = spawnSync('git', ['ls-files', '-z', 'packages/backend'], {
+    cwd: repositoryRoot,
+    encoding: 'buffer',
+  });
+  assert.equal(result.status, 0, result.stderr.toString('utf8'));
+  for (const relativePath of result.stdout.toString('utf8').split('\0').filter(Boolean)) {
+    copyFile(fixtureRoot, relativePath);
+  }
+}
+
+/**
+ * @param {string} fixtureRoot
+ * @param {string} relativePath
+ */
+function copyFile(fixtureRoot, relativePath) {
+  const sourcePath = path.join(repositoryRoot, relativePath);
+  if (!fs.existsSync(sourcePath)) return;
+  const destinationPath = path.join(fixtureRoot, relativePath);
+  fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+  fs.copyFileSync(sourcePath, destinationPath);
 }
 
 /**
@@ -172,4 +218,19 @@ function snapshot(fixtureRoot) {
  */
 function readJson(fixtureRoot, relativePath) {
   return JSON.parse(fs.readFileSync(path.join(fixtureRoot, relativePath), 'utf8'));
+}
+
+/**
+ * @param {string} fixtureRoot
+ * @param {string} packageName
+ */
+function readCargoPackageVersion(fixtureRoot, packageName) {
+  const lockfile = fs.readFileSync(path.join(fixtureRoot, BACKEND_CARGO_LOCK), 'utf8');
+  const escapedName = packageName.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  const block = new RegExp(
+    `\\[\\[package\\]\\]\\n(?:(?!\\n\\[\\[package\\]\\])[\\s\\S])*?^name = "${escapedName}"$(?:(?!\\n\\[\\[package\\]\\])[\\s\\S])*?^version = "([^"]+)"$`,
+    'mu',
+  ).exec(lockfile);
+  assert.ok(block, `Expected ${packageName} in ${BACKEND_CARGO_LOCK}`);
+  return block[1];
 }
