@@ -334,6 +334,11 @@ fn derive_buffer_placement_phases(
     subcircuit_infos: &[SubcircuitInfo],
     s_max: usize,
 ) -> Result<HashMap<usize, usize>, PublicWireLayoutError> {
+    // A phase is always an index in the runtime placement list, not a
+    // subcircuit ID. The one-dimensional gamma_inv_o_inst CRS is intentionally
+    // compressed, so public buffers must use the canonical ID prefix 0..B and
+    // occupy the placement index with the same value. This ID/index equality is
+    // a CRS compression invariant; it is not the definition of a phase.
     let buffer_ids = subcircuit_infos
         .iter()
         .filter(|subcircuit| subcircuit.bufferDirection.is_some())
