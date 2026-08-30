@@ -170,11 +170,14 @@ capacity parameters.
 
 No comparative native proving-time claim is published for this unreleased
 release line. A final comparison, if published, will use the same host,
-toolchain, Cargo release profile, inputs, CRS/setup artifacts, timing harness,
+exact toolchain, Cargo release profile, logical workload, timing protocol,
 sample count, and aggregation method for both the `2.1.5` baseline and the
-`3.0.0` candidate. It will identify the retained raw evidence and calculation
-method; otherwise the release notes will provide only independently sourced
-absolute measurements with their provenance.
+`3.0.0` candidate. Each incompatible release line will use its own serialized
+inputs and CRS generated under the same documented setup procedure and security
+parameters. The comparison will identify circuit dimensions, input and CRS
+identities, retained raw evidence, and the calculation method; otherwise the
+release notes will provide only independently sourced absolute measurements
+with their provenance.
 
 ### Subcircuit Library
 

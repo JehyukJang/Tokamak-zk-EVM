@@ -195,10 +195,17 @@ if (!sourceOnly) {
     fail('Root CHANGELOG.md is missing.');
   } else {
     const changelog = readText('CHANGELOG.md');
-    if (
-      !new RegExp(`^## \\[${expectedVersion.replaceAll('.', '\\.')}\\] - \\d{4}-\\d{2}-\\d{2}$`, 'mu').test(changelog)
-    ) {
-      fail(`Root CHANGELOG.md must contain a release entry for ${expectedVersion}.`);
+    const hasDatedReleaseEntry = new RegExp(
+      `^## \\[${expectedVersion.replaceAll('.', '\\.')}\\] - \\d{4}-\\d{2}-\\d{2}$`,
+      'mu',
+    ).test(changelog);
+    const hasUnreleasedEntry = /^## Unreleased$/mu.test(changelog);
+    if (prePublication ? !hasDatedReleaseEntry && !hasUnreleasedEntry : !hasDatedReleaseEntry) {
+      fail(
+        prePublication
+          ? `Root CHANGELOG.md must contain either an Unreleased candidate entry or a dated release entry for ${expectedVersion}.`
+          : `Root CHANGELOG.md must contain a dated release entry for ${expectedVersion}.`,
+      );
     }
   }
 }

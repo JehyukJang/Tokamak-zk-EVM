@@ -43,9 +43,21 @@ await runTest('source-only synchronization succeeds in a fresh fixture', fixture
 
 await runTest('complete synchronization excludes ignored generated inputs', fixtureRoot => {
   run(fixtureRoot, ['scripts/sync-version.mjs', '3.0.0']);
+  run(fixtureRoot, ['scripts/check-version-sync.mjs', '--pre-publication']);
   assert.equal(readJson(fixtureRoot, 'package.json').version, '3.0.0');
   assert.equal(readJson(fixtureRoot, 'packages/backend/wasm/package-lock.json').version, '3.0.0');
   assert.equal(fs.existsSync(path.join(fixtureRoot, 'packages/backend/wasm/src/generated/active')), false);
+
+  const fullResult = runFailure(fixtureRoot, ['scripts/check-version-sync.mjs']);
+  assert.match(fullResult.stderr, /dated release entry for 3\.0\.0/u);
+});
+
+await runTest('pre-publication rejects a candidate without a changelog entry', fixtureRoot => {
+  run(fixtureRoot, ['scripts/sync-version.mjs', '3.0.0']);
+  const changelogPath = path.join(fixtureRoot, 'CHANGELOG.md');
+  fs.writeFileSync(changelogPath, fs.readFileSync(changelogPath, 'utf8').replace('## Unreleased', '## Pending'));
+  const result = runFailure(fixtureRoot, ['scripts/check-version-sync.mjs', '--pre-publication']);
+  assert.match(result.stderr, /either an Unreleased candidate entry or a dated release entry for 3\.0\.0/u);
 });
 
 await runTest('missing targets fail before any write', fixtureRoot => {

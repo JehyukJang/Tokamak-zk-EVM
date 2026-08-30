@@ -249,7 +249,8 @@ npm run version:prepublication:check
 
 This gate validates the synchronized source versions and exact internal dependency declarations. It validates the
 standalone browser lockfile declaration, but deliberately does not accept its resolved npm snapshot as evidence for an
-unpublished version.
+unpublished version. Before the foundation hold point, it accepts release content under `## Unreleased`; it also accepts
+the final dated entry after the hold-point source-lock commit is created.
 
 After the synchronized subcircuit library is available from npm, run:
 
@@ -266,6 +267,7 @@ with the published npm metadata. It restores the tracked lockfile if any refresh
 Commit the refreshed `packages/backend/wasm/package-lock.json` to the release branch as a distinct release-finalization
 change. The generated active setup module remains ignored and must not be committed. No dependent package may be packed
 or published until the production-snapshot check and the full repository version check pass on that lockfile commit.
+The full repository check requires the exact synchronized version to have a dated Changelog entry.
 
 ## CLI Install Compatibility Checks
 
