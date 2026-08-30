@@ -1,0 +1,13 @@
+[32mtemplate instances[0m: 6
+non-linear constraints: 511
+linear constraints: 1
+public inputs: 1
+private inputs: 0
+public outputs: 4
+wires: 511
+labels: 778
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/TransactionSignatureChallengeChunks_circuit.r1cs
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/TransactionSignatureChallengeChunks_circuit.sym
+[32mConstraints written in:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/TransactionSignatureChallengeChunks_circuit_constraints.json
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/TransactionSignatureChallengeChunks_circuit_js/TransactionSignatureChallengeChunks_circuit.wasm
+[32mEverything went okay[0m

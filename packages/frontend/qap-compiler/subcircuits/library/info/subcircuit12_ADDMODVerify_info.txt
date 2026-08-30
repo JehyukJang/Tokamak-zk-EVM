@@ -1,0 +1,13 @@
+[32mtemplate instances[0m: 10
+non-linear constraints: 957
+linear constraints: 2
+public inputs: 10
+private inputs: 0
+public outputs: 2
+wires: 958
+labels: 1029
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/ADDMODVerify_circuit.r1cs
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/ADDMODVerify_circuit.sym
+[32mConstraints written in:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/ADDMODVerify_circuit_constraints.json
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/ADDMODVerify_circuit_js/ADDMODVerify_circuit.wasm
+[32mEverything went okay[0m

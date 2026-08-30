@@ -137,6 +137,12 @@ pub struct PublicWireInfo {
 
 #[derive(Debug, Deserialize)]
 pub struct SetupParams {
+    pub l_log_out: usize,
+    pub l_storage_out: usize,
+    pub l_tx_in: usize,
+    pub l_storage_in: usize,
+    pub l_block_in: usize,
+    pub l_evm_in: usize,
     pub l_free: usize,
     pub l: usize,
     pub l_user_out: usize,
@@ -2175,6 +2181,12 @@ mod decoded_xy_powers_tests {
     fn cached_xy_powers_match_archived_commitments() {
         check_device();
         let params = SetupParams {
+            l_log_out: 0,
+            l_storage_out: 0,
+            l_tx_in: 0,
+            l_storage_in: 0,
+            l_block_in: 0,
+            l_evm_in: 2,
             l_free: 1,
             l: 2,
             l_user_out: 0,

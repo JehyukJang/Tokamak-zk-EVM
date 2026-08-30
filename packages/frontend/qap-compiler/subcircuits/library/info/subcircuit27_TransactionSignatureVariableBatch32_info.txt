@@ -1,0 +1,13 @@
+[32mtemplate instances[0m: 8
+non-linear constraints: 992
+linear constraints: 0
+public inputs: 13
+private inputs: 0
+public outputs: 4
+wires: 1005
+labels: 2599
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/TransactionSignatureVariableBatch32_circuit.r1cs
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/TransactionSignatureVariableBatch32_circuit.sym
+[32mConstraints written in:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/TransactionSignatureVariableBatch32_circuit_constraints.json
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/TransactionSignatureVariableBatch32_circuit_js/TransactionSignatureVariableBatch32_circuit.wasm
+[32mEverything went okay[0m

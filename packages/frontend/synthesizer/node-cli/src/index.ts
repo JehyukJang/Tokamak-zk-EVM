@@ -18,9 +18,9 @@ export type {
 } from '../../core/src/subcircuit.ts';
 export * from './synthesizer/constructors.ts';
 export {
-  CircuitGenerator,
   createCircuitGenerator,
   type CircuitArtifacts,
+  type CircuitGenerationResult,
 } from '../../core/src/circuit.ts';
 export {
   type SynthesizerInterface,

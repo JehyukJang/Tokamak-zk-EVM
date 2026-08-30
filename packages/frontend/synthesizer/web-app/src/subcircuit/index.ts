@@ -1,6 +1,5 @@
 import {
   loadResolvedSubcircuitLibrary,
-  loadSubcircuitWasmBuffers,
   type SynthesisInput,
   type SynthesisPayloadInput,
 } from '../../../core/src/app.ts';
@@ -35,23 +34,17 @@ const bundledSubcircuitLibraryProvider = {
 };
 
 let preparedRuntimePromise:
-  | Promise<Pick<SynthesisInput, 'subcircuitLibrary' | 'wasmBuffers'>>
+  | Promise<Pick<SynthesisInput, 'subcircuitLibrary'>>
   | undefined;
 
-async function getPreparedRuntime(): Promise<Pick<SynthesisInput, 'subcircuitLibrary' | 'wasmBuffers'>> {
+async function getPreparedRuntime(): Promise<Pick<SynthesisInput, 'subcircuitLibrary'>> {
   if (preparedRuntimePromise === undefined) {
     preparedRuntimePromise = (async () => {
       const subcircuitLibrary = await loadResolvedSubcircuitLibrary(
         bundledSubcircuitLibraryProvider,
       );
-      const wasmBuffers = await loadSubcircuitWasmBuffers(
-        bundledSubcircuitLibraryProvider,
-        subcircuitLibrary.data.subcircuitInfo,
-      );
-
       return {
         subcircuitLibrary,
-        wasmBuffers,
       };
     })();
   }

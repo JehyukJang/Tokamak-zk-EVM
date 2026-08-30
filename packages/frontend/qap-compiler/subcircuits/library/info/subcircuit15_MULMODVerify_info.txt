@@ -1,0 +1,13 @@
+[32mtemplate instances[0m: 7
+non-linear constraints: 981
+linear constraints: 2
+public inputs: 24
+private inputs: 0
+public outputs: 2
+wires: 994
+labels: 1077
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/MULMODVerify_circuit.r1cs
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/MULMODVerify_circuit.sym
+[32mConstraints written in:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/MULMODVerify_circuit_constraints.json
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/MULMODVerify_circuit_js/MULMODVerify_circuit.wasm
+[32mEverything went okay[0m

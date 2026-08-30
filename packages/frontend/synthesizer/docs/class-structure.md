@@ -19,11 +19,11 @@ This document summarizes the main classes and modules in the current split works
   - coordinates arithmetic, memory, and storage flows
 - **BufferManager** (`core/src/synthesizer/handlers/bufferManager.ts`)
   - initializes reserved buffer placements
-  - injects block, transaction, and Merkle-root inputs
-- **ArithmeticManager** (`core/src/synthesizer/handlers/arithmeticManager.ts`)
-  - maps arithmetic operations to subcircuits
-- **MemoryManager** (`core/src/synthesizer/handlers/memoryManager.ts`)
-  - resolves memory aliasing and copy semantics
+  - injects block, transaction, execution, and private witness inputs
+- **Subcircuit output operations** (`core/src/subcircuit/subcircuitOutputOperations.ts`)
+  - provides the library-owned host output calculation function for composition subcircuits
+- **ContextManager memory preparation** (`core/src/synthesizer/handlers/contextManager.ts`)
+  - resolves memory aliasing and copy semantics for context-owned memory
 
 ## Shared circuit generation
 

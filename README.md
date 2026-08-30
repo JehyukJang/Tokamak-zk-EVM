@@ -84,6 +84,14 @@ execution. Contract creation, precompiles, transient storage, blob opcodes,
 invalid/self-destruct paths, and other unvalidated execution combinations are
 outside the supported boundary.
 
+Tokamak zk-EVM also supports only contract functions whose successful calls
+preserve one fixed circuit topology across their supported transaction inputs
+and states. This excludes functions whose accepted inputs or state values can
+change the successful execution path, memory-view geometry, storage-access
+schedule, stack-access structure, or circuit-placement layout. See the
+[Synthesizer transaction-support guide](./packages/frontend/synthesizer/README.md#transaction-support)
+for the complete definition and validation guidance.
+
 Native proving uses ICICLE acceleration. The browser package supports
 bundler-based preprocessing, proving, and verification. Tokamak zk-EVM is also
 used by

@@ -1,0 +1,13 @@
+[32mtemplate instances[0m: 1
+non-linear constraints: 50
+linear constraints: 50
+public inputs: 50
+private inputs: 0
+public outputs: 50
+wires: 101
+labels: 101
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/bufferLogOut_circuit.r1cs
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/bufferLogOut_circuit.sym
+[32mConstraints written in:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/bufferLogOut_circuit_constraints.json
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/bufferLogOut_circuit_js/bufferLogOut_circuit.wasm
+[32mEverything went okay[0m

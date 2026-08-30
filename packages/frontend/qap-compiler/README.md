@@ -3,6 +3,9 @@
 Prebuilt circuit artifacts consumed by the Tokamak zk-EVM Synthesizer and
 proving backends. The repository directory retains the historical
 `qap-compiler` name because it also contains maintainer-side generation tools.
+The dependency direction is one-way: consumers interpret this package's
+qap-owned circuit metadata; this package does not import or model a consumer's
+internal data structures.
 
 ## Install
 
@@ -35,6 +38,18 @@ subcircuit.
 The Node Synthesizer resolves installed assets at runtime. The Web Synthesizer
 bundles the matching JSON and WASM assets at build time.
 
+Fixed-capacity public-output buffers are zero-padded. The higher-level protocol
+is responsible for filtering storage tuples with a zero address and log tuples
+whose fields are all zero. Generic buffers carry physical field wires without
+assigning one uniform value type to every slot.
+
+For non-buffer subcircuits, `subcircuitInfo.json` declares each logical input
+and output with one closed type. `uint` values of at most 160 bits use one wire;
+wider `uint` values use lower-then-upper 128-bit limbs. `bls12-381-fr` and
+`jubjub-scalar` values each use one native field wire. The scalar type records a
+distinct semantic bound even though its physical wire belongs to the circuit
+field. Consumers must not infer or override a separate wire layout.
+
 ## Published artifacts
 
 All files are acquired from the same installed npm package version:
@@ -49,12 +64,20 @@ All files are acquired from the same installed npm package version:
 | `subcircuits/library/subcircuitInfo.json`     | Subcircuit catalog, wire ranges, and flattening metadata | JSON record array           | Published file     |
 | `subcircuits/library/frontendCfg.json`        | Frontend buffer and subcircuit configuration             | JSON                        | Published file     |
 | `subcircuits/library/generate_witness.js`     | Witness-generation entry point                           | JavaScript module           | Published file     |
+| `subcircuits/library/witness-input-diagnostics.js` | Original-input format diagnostics                  | JavaScript module           | Published file     |
 | `subcircuits/library/witness_calculator.js`   | Runtime witness calculator                               | JavaScript module           | Published file     |
 | `subcircuits/circom/constants.circom`         | Constants synchronized with the generated library        | Circom source               | Published file     |
 | `build-metadata.json`                         | Build identity and dependency versions                   | JSON                        | Package root       |
 
 The supported acquisition path is npm. Keep R1CS, WASM, metadata, constants,
 and setup artifacts on one compatible release line.
+
+The published witness entry point validates the exact `{ in: [...] }` shape and
+lossless scalar syntax before calculation. Values outside the declared logical
+input range produce structured `QAP_INPUT_OUT_OF_SPEC` warnings without
+including the value itself. These warnings are diagnostic only: the unchanged
+value is still passed to the circuit, and only circuit constraints determine
+whether the witness is valid.
 
 Direct Node consumers can resolve a file without assuming an installation
 directory:
@@ -88,6 +111,12 @@ the application's supply-chain policy. Do not combine artifacts from different
 builds. Published constraints and witness generators do not by themselves
 establish that a circuit, setup ceremony, integration, or surrounding protocol
 is secure.
+
+For a plain-language overview and a complete technical table, see the
+[circuit implementation and composition reference](./docs/circuit-implementation-reference.md).
+It explains how subcircuits become one proof and records each production
+subcircuit's operation, interface, constraint count, visibility, and soundness
+dependencies.
 
 ## Project and license
 

@@ -1,0 +1,13 @@
+[32mtemplate instances[0m: 6
+non-linear constraints: 672
+linear constraints: 0
+public inputs: 5
+private inputs: 0
+public outputs: 13
+wires: 676
+labels: 1280
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/ALU4A_circuit.r1cs
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/ALU4A_circuit.sym
+[32mConstraints written in:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/ALU4A_circuit_constraints.json
+[32mWritten successfully:[0m /Users/jehyuk/repo/Tokamak-zk-EVM/packages/frontend/qap-compiler/scripts/../subcircuits/library/ALU4A_circuit_js/ALU4A_circuit.wasm
+[32mEverything went okay[0m

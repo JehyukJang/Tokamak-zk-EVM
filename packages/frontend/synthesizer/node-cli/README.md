@@ -51,7 +51,7 @@ capture methods instead of recreating compatibility interfaces.
 The address-indexed arrays must stay aligned. `storageKeys` values are storage
 slots; `storageTrieDb[*][*].key` values are trie database keys.
 
-`transaction.json` contains `nonce`, `to`, hex calldata in `data`,
+`transaction.json` contains `channelTransactionIndex`, `to`, hex calldata in `data`,
 `senderPubKey`, and optional signature strings `v`, `r`, and `s`.
 
 `block_info.json` contains `0x`-prefixed `coinBase`, `timeStamp`,

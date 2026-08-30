@@ -3,7 +3,9 @@
 // Types (internal): keep these un-exported as requested
 // -----------------------------------------------------------------------------
 
-import { SUBCIRCUIT_LIST, SubcircuitNames } from "./configuredTypes.ts";
+import { SUBCIRCUIT_LIST, SubcircuitNames, type TransactionInputVariable } from "./configuredTypes.ts";
+import type { PlacementCompositionMapping } from './placementCompositionMapping.ts';
+import type { calculateSubcircuitOutputValues } from './subcircuitOutputOperations.ts';
 import type {
   ReservedBuffer,
   SubcircuitInfoByName,
@@ -12,6 +14,8 @@ import type {
 
 // Single source of truth for SetupParams keys
 export const SETUP_PARAMS_KEYS = [
+  'l_log_out', 'l_storage_store', 'l_storage_load', 'l_tx_in',
+  'l_block_in', 'l_evm_in',
   'l_free', 'l_user_out', 'l_user', 'l',
   'l_D', 'm_D', 'n', 's_D', 's_max',
 ] as const;
@@ -20,6 +24,23 @@ export const SETUP_PARAMS_KEYS = [
 export type SetupParams = Record<typeof SETUP_PARAMS_KEYS[number], number>;
 export type GlobalWireEntry = readonly [subcircuitId: number, localWireIndex: number];
 export type GlobalWireList = GlobalWireEntry[];
+
+export type LogicalInterfaceType =
+  | Readonly<{ kind: 'uint'; bits: number }>
+  | Readonly<{ kind: 'bls12-381-fr' }>
+  | Readonly<{ kind: 'jubjub-scalar' }>;
+
+export type LogicalInterfacePort = Readonly<{
+  name: string;
+  logicalType: LogicalInterfaceType;
+}>;
+
+export type LogicalInterface = Readonly<{
+  inputs: readonly LogicalInterfacePort[];
+  outputs: readonly LogicalInterfacePort[];
+}>;
+
+export type BufferDirection = 'in' | 'out';
 
 // Primitive validators
 export const isObjectRecord = (x: unknown): x is Record<string, unknown> =>
@@ -31,35 +52,34 @@ export const isTupleNumber2 = (x: unknown): x is [number, number] =>
   Array.isArray(x) && x.length === 2 && isNumber(x[0]) && isNumber(x[1]);
 export const isNumberArray = (x: unknown): x is number[] => Array.isArray(x) && x.every(isNumber);
 
-// Validator map that also drives the SubcircuitInfo shape
-export const SUBCIRCUIT_INFO_VALIDATORS = {
-  id: isNumber,
-  name: isSubcircuitName,
-  Nwires: isNumber,
-  Nconsts: isNumber,
-  Out_idx: isTupleNumber2,
-  In_idx: isTupleNumber2,
-  flattenMap: isNumberArray,
+type SubcircuitInfoItem = {
+  id: number;
+  name: SubcircuitNames;
+  Nwires: number;
+  Nconsts: number;
+  Out_idx: [number, number];
+  In_idx: [number, number];
+  flattenMap: number[];
+  logicalInterface?: LogicalInterface;
+  bufferDirection?: BufferDirection;
 };
-
-export type ValidatorMap = typeof SUBCIRCUIT_INFO_VALIDATORS;
-// Derive the item shape from the validator map (no duplication)
-type SubcircuitInfoItem = { [K in keyof ValidatorMap]: ValidatorMap[K] extends (x: unknown) => x is infer T ? T : never };
 // Array of items
 export type SubcircuitInfo = SubcircuitInfoItem[];
 
-// Required Circom constants (qap-compiler/scripts/constants.circom)
+// Required Circom constants (qap-compiler/subcircuits/circom/constants.circom).
+// Every buffer n* constant is an input-wire capacity and requires no scaling.
 export const REQUIRED_CIRCOM_KEYS = [
-  'nPubIn',
-  'nPubOut',
+  'nTxIn',
+  'nStorageLoad',
+  'nLogOut',
+  'nStorageStore',
+  'nBlockIn',
   'nPrvIn',
   'nEVMIn',
+  'nPrivateMessageInputs',
   'nPoseidonInputs',
-  'nMtDepth',
-  'nAccumulation',
+  'nPoseidonBatch',
   'nPrevBlockHashes',
-  'nJubjubExpBatch',
-  'nSubExpBatch',
 ] as const;
 export type CircomKey = typeof REQUIRED_CIRCOM_KEYS[number];
 
@@ -79,11 +99,11 @@ export interface SubcircuitLibraryProvider {
 
 export interface ResolvedSubcircuitLibrary {
   data: SubcircuitLibraryData;
+  loadWasm(subcircuitId: number): Promise<ArrayBuffer>;
+  placementCompositionMapping: PlacementCompositionMapping;
+  calculateSubcircuitOutputValues: typeof calculateSubcircuitOutputValues;
   subcircuitInfoByName: SubcircuitInfoByName;
   subcircuitBufferMapping: Record<ReservedBuffer, SubcircuitInfoByNameEntry | undefined>;
-  accumulatorInputLimit: number;
+  transactionInputVariables: readonly TransactionInputVariable[];
   numberOfPrevBlockHashes: number;
-  jubjubExpBatchSize: number;
-  arithExpBatchSize: number;
-  firstArithmeticPlacementIndex: number;
 }
