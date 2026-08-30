@@ -706,6 +706,9 @@ jobs:
           npm run typecheck:production
           npm run typecheck:scripts
 
+      - name: Validate production subcircuit-library snapshot
+        run: npm run version:production-snapshot:check
+
       - name: Check converter browser boundaries
         working-directory: packages/backend/wasm
         run: |

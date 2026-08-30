@@ -164,37 +164,46 @@ the repository's
 ## Publication preparation
 
 1. Run `npm run version:sync -- X.Y.Z` at the repository root. This updates
-   the package manifest, lockfile declaration, generated version constants,
-   and private decoder package together with the other synchronized release
-   surfaces.
-2. Run `npm run version:check` at the repository root.
-3. Regenerate production inputs with `npm run build:production` and run the
+   the tracked package manifests, lockfile declarations, source version
+   constants, and private decoder package together with the other synchronized
+   release surfaces.
+2. Before foundation publication, run
+   `npm run version:prepublication:check` at the repository root. This check
+   does not require an npm resolution for the unpublished foundation package.
+3. Publish the exact synchronized `@tokamak-zk-evm/subcircuit-library`
+   foundation package through the release workflow.
+4. Run `npm run version:production-snapshot:refresh` at the repository root.
+   Commit the resulting `packages/backend/wasm/package-lock.json` change to the
+   release branch, then run `npm run version:production-snapshot:check` and
+   `node scripts/check-version-sync.mjs`. The active generated setup module is
+   ignored and is not part of this commit.
+5. Regenerate production inputs with `npm run build:production` and run the
    complete relevant production check set.
-4. Build the exact package candidate.
-5. Inspect the actual packlist and packed metadata:
+6. Build the exact package candidate.
+7. Inspect the actual packlist and packed metadata:
 
    ```sh
    export BACKEND_WASM_VERIFIER_CRS_DIR=/absolute/path/to/final-crs-directory
    npm pack --dry-run
    ```
 
-6. Confirm that `dist`, README, both package licenses, third-party notices, the
+8. Confirm that `dist`, README, both package licenses, third-party notices, the
    converter Worker, and decoder WASM are included.
-7. Confirm that `test`, `scripts`, `fixtures`, `tools`, `tmp`, diagnostics, and
+9. Confirm that `test`, `scripts`, `fixtures`, `tools`, `tmp`, diagnostics, and
    copied artifacts are excluded.
-8. Exercise the packed package through the browser consumer checks before
-   publication:
+10. Exercise the packed package through the browser consumer checks before
+    publication:
 
-   ```sh
-npm run converter:browser:check
-npm run converter:crs:browser:check
-npm run converter:webpack:check
-   ```
+    ```sh
+    npm run converter:browser:check
+    npm run converter:crs:browser:check
+    npm run converter:webpack:check
+    ```
 
-   `converter:crs:browser:check` requires the copied and prepared owner
-   fixtures described above. The release CI runs the converter error and
-   Worker-boundary check because it does not acquire or generate test CRS
-   fixtures.
+    `converter:crs:browser:check` requires the copied and prepared owner
+    fixtures described above. The release CI runs the converter error and
+    Worker-boundary check because it does not acquire or generate test CRS
+    fixtures.
 
 The package intentionally remains outside the root npm workspace. Its release
 build resolves the exact synchronized `@tokamak-zk-evm/subcircuit-library`

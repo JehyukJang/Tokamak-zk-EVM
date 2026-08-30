@@ -21,6 +21,12 @@ import {
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sourceOnly = process.argv.slice(2).includes('--source-only');
+const prePublication = process.argv.slice(2).includes('--pre-publication');
+
+if (sourceOnly && prePublication) {
+  console.error('[version-check] --source-only and --pre-publication are mutually exclusive.');
+  process.exit(1);
+}
 
 function fail(message) {
   console.error(`[version-check] ${message}`);
@@ -134,12 +140,14 @@ if (!sourceOnly) {
     }
   }
 
-  const backendWasmResolvedSubcircuitVersion =
-    backendWasmPackageLock.packages?.['node_modules/@tokamak-zk-evm/subcircuit-library']?.version;
-  if (backendWasmResolvedSubcircuitVersion !== expectedVersion) {
-    fail(
-      `packages/backend/wasm/package-lock.json resolved @tokamak-zk-evm/subcircuit-library is '${backendWasmResolvedSubcircuitVersion ?? 'missing'}', expected '${expectedVersion}'.`,
-    );
+  if (!prePublication) {
+    const backendWasmResolvedSubcircuitVersion =
+      backendWasmPackageLock.packages?.['node_modules/@tokamak-zk-evm/subcircuit-library']?.version;
+    if (backendWasmResolvedSubcircuitVersion !== expectedVersion) {
+      fail(
+        `packages/backend/wasm/package-lock.json resolved @tokamak-zk-evm/subcircuit-library is '${backendWasmResolvedSubcircuitVersion ?? 'missing'}', expected '${expectedVersion}'.`,
+      );
+    }
   }
 }
 
@@ -202,5 +210,7 @@ if (process.exitCode) {
 console.log(
   sourceOnly
     ? `[version-check] Source version is synchronized at ${expectedVersion}; lockfiles and generated artifacts are intentionally excluded.`
-    : `[version-check] Repository release version is synchronized at ${expectedVersion}.`,
+    : prePublication
+      ? `[version-check] Pre-publication source and declared lock versions are synchronized at ${expectedVersion}; the unpublished production snapshot is intentionally excluded.`
+      : `[version-check] Repository release version is synchronized at ${expectedVersion}.`,
 );

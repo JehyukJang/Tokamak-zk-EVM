@@ -215,7 +215,7 @@ binary. The metadata must include:
     "subcircuitLibrary": {
       "packageName": "@tokamak-zk-evm/subcircuit-library",
       "buildVersion": "MAJOR.MINOR.PATCH",
-      "declaredRange": "latest",
+      "declaredRange": "MAJOR.MINOR.PATCH",
       "runtimeMode": "bundled",
       "sourceDigest": "..."
     }
@@ -235,6 +235,37 @@ Metadata validation must fail when:
 - `packageVersion` is not strict `MAJOR.MINOR.PATCH`.
 - `packageVersion` does not normalize to the same `MAJOR.MINOR`.
 - `dependencies.subcircuitLibrary.sourceDigest` is missing.
+
+## Release Version Gates
+
+Version validation is split because a genuine npm resolution for a new
+`@tokamak-zk-evm/subcircuit-library` version cannot exist before that foundation package is published.
+
+Before foundation publication, run:
+
+```sh
+npm run version:prepublication:check
+```
+
+This gate validates the synchronized source versions and exact internal dependency declarations. It validates the
+standalone browser lockfile declaration, but deliberately does not accept its resolved npm snapshot as evidence for an
+unpublished version.
+
+After the synchronized subcircuit library is available from npm, run:
+
+```sh
+npm run version:production-snapshot:refresh
+npm run version:production-snapshot:check
+node scripts/check-version-sync.mjs
+```
+
+The refresh command regenerates the standalone browser lockfile from the exact manifest declaration, installs the
+locked dependency, regenerates the production subcircuit inputs, and compares the lockfile tarball URL and integrity
+with the published npm metadata. It restores the tracked lockfile if any refresh or validation step fails.
+
+Commit the refreshed `packages/backend/wasm/package-lock.json` to the release branch as a distinct release-finalization
+change. The generated active setup module remains ignored and must not be committed. No dependent package may be packed
+or published until the production-snapshot check and the full repository version check pass on that lockfile commit.
 
 ## CLI Install Compatibility Checks
 

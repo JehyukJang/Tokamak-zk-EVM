@@ -19,7 +19,11 @@
     "docs:check": "node scripts/check-doc-readiness.mjs",
     "version:sync": "node scripts/sync-version.mjs",
     "version:sync:test": "node scripts/test-sync-version.mjs",
-    "version:check": "node scripts/check-version-sync.mjs",
+    "version:check": "npm run version:prepublication:check",
+    "version:prepublication:check": "node scripts/check-version-sync.mjs --pre-publication",
+    "version:production-snapshot:check": "node scripts/check-production-snapshot.mjs",
+    "version:production-snapshot:refresh": "node scripts/refresh-production-snapshot.mjs",
+    "version:production-snapshot:test": "node scripts/test-production-snapshot.mjs",
     "version:contract:check": "node scripts/check-version-contract.mjs",
     "synthesizer:build-tools:check": "tsc -p tsconfig.synthesizer-build-tools.json --pretty false && node scripts/check-synthesizer-build-tools.mjs"
   },
