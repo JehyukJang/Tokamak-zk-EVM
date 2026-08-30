@@ -13,12 +13,12 @@ The fresh compile-target review was performed from code and witness behavior wit
 
 The original scope was the merged arithmetic circuits introduced by the two-circuit ALU consolidation.
 - Audited wrappers:
-  - [subcircuits/circom/ALU1_circuit.circom](../subcircuits/circom/ALU1_circuit.circom)
-  - [subcircuits/circom/ALU2_circuit.circom](../subcircuits/circom/ALU2_circuit.circom)
+  - [subcircuits/circom/ALU1_circuit.circom](../../subcircuits/circom/ALU1_circuit.circom)
+  - [subcircuits/circom/ALU2_circuit.circom](../../subcircuits/circom/ALU2_circuit.circom)
 
 The comparison baseline is the pre-merge implementation from the parent of commit `9b5b616b`, which used separate `ALU1` through `ALU5` wrappers and standalone `AND`, `OR`, and `XOR` circuits.
 
-The added compile-target review scope is the full set of circuits currently built by [scripts/compile.sh](../scripts/compile.sh):
+The added compile-target review scope is the full set of circuits currently built by [scripts/compile.sh](../../scripts/compile.sh):
 
 - `bufferPubOut`
 - `bufferPubIn`
@@ -117,8 +117,8 @@ Current status: Resolved
 
 Before the merge, the wrappers explicitly constrained the high limb of the shift or byte index:
 
-- [subcircuits/circom/ALU3_circuit.circom](../subcircuits/circom/unused/ALU3_circuit.circom)
-- [subcircuits/circom/ALU5_circuit.circom](../subcircuits/circom/unused/ALU5_circuit.circom)
+- [subcircuits/circom/ALU3_circuit.circom](../../subcircuits/circom/unused/ALU3_circuit.circom)
+- [subcircuits/circom/ALU5_circuit.circom](../../subcircuits/circom/unused/ALU5_circuit.circom)
 
 The parent-of-merge versions included:
 
@@ -129,13 +129,13 @@ This ensured that the shift amount or byte index was represented canonically in 
 
 #### Current behavior
 
-The merged wrapper [subcircuits/circom/ALU2_circuit.circom](../subcircuits/circom/ALU2_circuit.circom#L8) forwarded both limbs of `in1` without any wrapper-level canonicalization.
+The merged wrapper [subcircuits/circom/ALU2_circuit.circom](../../subcircuits/circom/ALU2_circuit.circom#L8) forwarded both limbs of `in1` without any wrapper-level canonicalization.
 
 Within the compiled `ALU2` implementation, only `in1[0]` was used for the shift and byte family:
 
-- `safe_byte_minus_one <== is_byte_family * in1[0]` at [templates/256bit/alu_safe.circom](../templates/256bit/alu_safe.circom#L739)
-- `safe_shift <== is_shift_family * in1[0]` at [templates/256bit/alu_safe.circom](../templates/256bit/alu_safe.circom#L769)
-- `sar.shift <== safe_shift` at [templates/256bit/alu_safe.circom](../templates/256bit/alu_safe.circom#L799)
+- `safe_byte_minus_one <== is_byte_family * in1[0]` at [templates/256bit/alu_safe.circom](../../templates/256bit/alu_safe.circom#L739)
+- `safe_shift <== is_shift_family * in1[0]` at [templates/256bit/alu_safe.circom](../../templates/256bit/alu_safe.circom#L769)
+- `sar.shift <== safe_shift` at [templates/256bit/alu_safe.circom](../../templates/256bit/alu_safe.circom#L799)
 
 As a result, `in1[1]` is now an unconstrained public input for these operations.
 
@@ -172,8 +172,8 @@ The current compiled `ALU2` path now gates the high limb of `in1` for the byte a
 
 Relevant implementation:
 
-- [`subcircuits/circom/ALU2_circuit.circom`](../subcircuits/circom/ALU2_circuit.circom)
-- [`templates/256bit/alu_safe.circom`](../templates/256bit/alu_safe.circom)
+- [`subcircuits/circom/ALU2_circuit.circom`](../../subcircuits/circom/ALU2_circuit.circom)
+- [`templates/256bit/alu_safe.circom`](../../templates/256bit/alu_safe.circom)
 
 This restores the missing canonicalization constraint for `SIGNEXTEND`, `BYTE`, `SHL`, `SHR`, and `SAR` in the merged ALU path.
 
@@ -185,13 +185,13 @@ Current status: Resolved
 
 The merged compiled `ALU1` / `ALU2` path bit-decomposed the full selector:
 
-- [subcircuits/circom/ALU1_circuit.circom](../subcircuits/circom/ALU1_circuit.circom#L17)
-- [templates/256bit/alu_safe.circom](../templates/256bit/alu_safe.circom#L659)
+- [subcircuits/circom/ALU1_circuit.circom](../../subcircuits/circom/ALU1_circuit.circom#L17)
+- [templates/256bit/alu_safe.circom](../../templates/256bit/alu_safe.circom#L659)
 
 But the mux circuits only require that the selected subset sums to exactly one:
 
-- [templates/256bit/mux.circom](../templates/256bit/mux.circom#L22)
-- [templates/128bit/mux.circom](../templates/128bit/mux.circom#L9)
+- [templates/256bit/mux.circom](../../templates/256bit/mux.circom#L22)
+- [templates/128bit/mux.circom](../../templates/128bit/mux.circom#L9)
 
 Unused selector bits are not forced to zero.
 
@@ -214,12 +214,12 @@ For the merged wrappers originally audited, selector canonicalization is now enf
 
 The current `ALU1` wrapper constrains the full selector weight to exactly one after bit-decomposition:
 
-- [`subcircuits/circom/ALU1_circuit.circom`](../subcircuits/circom/ALU1_circuit.circom)
+- [`subcircuits/circom/ALU1_circuit.circom`](../../subcircuits/circom/ALU1_circuit.circom)
 
 The current merged division-based compiled path also enforces the same selector-weight rule:
 
-- [`subcircuits/circom/ALU2_circuit.circom`](../subcircuits/circom/ALU2_circuit.circom)
-- [`templates/256bit/alu_safe.circom`](../templates/256bit/alu_safe.circom)
+- [`subcircuits/circom/ALU2_circuit.circom`](../../subcircuits/circom/ALU2_circuit.circom)
+- [`templates/256bit/alu_safe.circom`](../../templates/256bit/alu_safe.circom)
 
 This resolves the original merged-wrapper selector issue for the current compiled ALU targets.
 
@@ -245,8 +245,8 @@ This concern is now resolved for the merged wrappers reviewed in this report:
 
 Relevant code:
 
-- [`subcircuits/circom/ALU1_circuit.circom`](../subcircuits/circom/ALU1_circuit.circom)
-- [`subcircuits/circom/ALU2_circuit.circom`](../subcircuits/circom/ALU2_circuit.circom)
+- [`subcircuits/circom/ALU1_circuit.circom`](../../subcircuits/circom/ALU1_circuit.circom)
+- [`subcircuits/circom/ALU2_circuit.circom`](../../subcircuits/circom/ALU2_circuit.circom)
 
 The underlying implementation still relies on correct callers in some helper paths, but the merged wrappers covered by this document no longer expose the original bus-canonicalization gap.
 
@@ -266,10 +266,10 @@ when `in2 == 0`, the quotient term vanishes and the internal remainder witness c
 
 Relevant code:
 
-- `r <== Mux256()(is_zero_denom, [0, 0], r_temp)` in [`templates/256bit/arithmetic_unsafe_type2.circom`](../templates/256bit/arithmetic_unsafe_type2.circom)
+- `r <== Mux256()(is_zero_denom, [0, 0], r_temp)` in [`templates/256bit/arithmetic_unsafe_type2.circom`](../../templates/256bit/arithmetic_unsafe_type2.circom)
 - `outs[ind] <== div.q` for opcode `0x04`
 - `outs[ind] <== q` for opcode `0x05`
-- [`templates/256bit/alu_safe.circom`](../templates/256bit/alu_safe.circom)
+- [`templates/256bit/alu_safe.circom`](../../templates/256bit/alu_safe.circom)
 
 Security impact:
 
@@ -289,7 +289,7 @@ The current implementation explicitly constrains each quotient limb to zero when
 
 Relevant code:
 
-- [`templates/256bit/arithmetic_unsafe_type2.circom`](../templates/256bit/arithmetic_unsafe_type2.circom)
+- [`templates/256bit/arithmetic_unsafe_type2.circom`](../../templates/256bit/arithmetic_unsafe_type2.circom)
 
 Focused witness-generation checks against the current `ALU2` build show that `DIV` by zero now yields output `(0, 0)`.
 
@@ -303,9 +303,9 @@ The compiled `ALU2` shift-family path mapped shifts greater than `255` to a zero
 
 Relevant code:
 
-- [`templates/256bit/arithmetic_safe.circom`](../templates/256bit/arithmetic_safe.circom)
-- [`templates/256bit/arithmetic_unsafe_type2.circom`](../templates/256bit/arithmetic_unsafe_type2.circom)
-- [`templates/256bit/alu_safe.circom`](../templates/256bit/alu_safe.circom)
+- [`templates/256bit/arithmetic_safe.circom`](../../templates/256bit/arithmetic_safe.circom)
+- [`templates/256bit/arithmetic_unsafe_type2.circom`](../../templates/256bit/arithmetic_unsafe_type2.circom)
+- [`templates/256bit/alu_safe.circom`](../../templates/256bit/alu_safe.circom)
 
 Security impact:
 
@@ -364,10 +364,10 @@ Current status: Conditional
 
 At the compile-target level, the affected wrappers are:
 
-- [`subcircuits/circom/Poseidon_circuit.circom`](../subcircuits/circom/Poseidon_circuit.circom)
-- [`subcircuits/circom/JubjubExpBatch_circuit.circom`](../subcircuits/circom/JubjubExpBatch_circuit.circom)
-- [`subcircuits/circom/EdDsaVerify_circuit.circom`](../subcircuits/circom/EdDsaVerify_circuit.circom)
-- [`subcircuits/circom/VerifyMerkleProof_circuit.circom`](../subcircuits/circom/VerifyMerkleProof_circuit.circom)
+- [`subcircuits/circom/Poseidon_circuit.circom`](../../subcircuits/circom/Poseidon_circuit.circom)
+- [`subcircuits/circom/JubjubExpBatch_circuit.circom`](../../subcircuits/circom/JubjubExpBatch_circuit.circom)
+- [`subcircuits/circom/EdDsaVerify_circuit.circom`](../../subcircuits/circom/EdDsaVerify_circuit.circom)
+- [`subcircuits/circom/VerifyMerkleProof_circuit.circom`](../../subcircuits/circom/VerifyMerkleProof_circuit.circom)
 
 Those wrappers pass split limbs into 255-bit Poseidon, Merkle, and Jubjub logic without adding local `< Fr` or canonical-encoding checks at the wrapper boundary.
 
@@ -400,11 +400,11 @@ Current status: Conditional
 
 `Accumulator_circuit.circom` chains `Add256_unsafe()` over public split-limb inputs but only checks the final output bus:
 
-- [`subcircuits/circom/Accumulator_circuit.circom`](../subcircuits/circom/Accumulator_circuit.circom)
+- [`subcircuits/circom/Accumulator_circuit.circom`](../../subcircuits/circom/Accumulator_circuit.circom)
 
 The arithmetic implementation used by the compiled wrapper explicitly assumes that input and output well-formedness is guaranteed:
 
-- [`templates/256bit/arithmetic_unsafe_type1.circom`](../templates/256bit/arithmetic_unsafe_type1.circom)
+- [`templates/256bit/arithmetic_unsafe_type1.circom`](../../templates/256bit/arithmetic_unsafe_type1.circom)
 
 No `CheckBus()` or equivalent bit-decomposition is applied to the public input pairs before they are fed into the addition chain.
 
@@ -444,8 +444,8 @@ Current status: Conditional
 
 `SubExpBatch_circuit.circom` forwards `c_prev` and `a_prev` directly into the compiled exponentiation batch path without any bus-range checks, while the implementation underneath is built from `SubExp_unsafe()`, `Mul256_unsafe()`, and `Add256_unsafe()`:
 
-- [`subcircuits/circom/SubExpBatch_circuit.circom`](../subcircuits/circom/SubExpBatch_circuit.circom)
-- [`templates/256bit/arithmetic_unsafe_type1.circom`](../templates/256bit/arithmetic_unsafe_type1.circom)
+- [`subcircuits/circom/SubExpBatch_circuit.circom`](../../subcircuits/circom/SubExpBatch_circuit.circom)
+- [`templates/256bit/arithmetic_unsafe_type1.circom`](../../templates/256bit/arithmetic_unsafe_type1.circom)
 
 The wrapper also leaves its output bus checks commented out.
 
@@ -485,8 +485,8 @@ Current status: Resolved
 
 `JubjubExpBatch_circuit.circom` passes split-limb points into its exponentiation implementation, but it never performs local `jubjubCheck()` validation on those points:
 
-- [`subcircuits/circom/JubjubExpBatch_circuit.circom`](../subcircuits/circom/JubjubExpBatch_circuit.circom)
-- [`templates/255bit/jubjub.circom`](../templates/255bit/jubjub.circom)
+- [`subcircuits/circom/JubjubExpBatch_circuit.circom`](../../subcircuits/circom/JubjubExpBatch_circuit.circom)
+- [`templates/255bit/jubjub.circom`](../../templates/255bit/jubjub.circom)
 
 Unlike the compiled `EdDsaVerify` path, the compiled `JubjubExpBatch` path never calls `jubjubCheck()`.
 
@@ -525,11 +525,11 @@ Current status: Resolved
 
 The compiled `EdDsaVerify` wrapper exposes no public inputs and no public outputs:
 
-- [`subcircuits/circom/EdDsaVerify_circuit.circom`](../subcircuits/circom/EdDsaVerify_circuit.circom)
+- [`subcircuits/circom/EdDsaVerify_circuit.circom`](../../subcircuits/circom/EdDsaVerify_circuit.circom)
 
 Its implementation checks only that three private Jubjub points satisfy the curve equation and the relation `SG = R + eA`:
 
-- [`templates/255bit/jubjub.circom`](../templates/255bit/jubjub.circom)
+- [`templates/255bit/jubjub.circom`](../../templates/255bit/jubjub.circom)
 
 As a standalone proof artifact, this does not bind a proof to any message, signature, public key, or challenge.
 
