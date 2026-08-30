@@ -75,8 +75,9 @@ The format is based on Keep a Changelog.
 - Production CRS artifacts require canonical provenance and matching artifact
   hashes. Runtime and CRS updates are staged before activation so a failed
   update preserves the previous working generation.
-- Public technical documents are maintained under explicit `publication`
-  paths, while package and release checks enforce the shared compatibility and
+- Documents indexed by the Tonigma Publication Index are maintained under
+  explicit `publication` paths. Package READMEs remain package entry points,
+  while package and release checks enforce the shared compatibility and
   artifact contracts.
 
 #### Bug Fixes
@@ -167,17 +168,13 @@ capacity parameters.
 
 ### Native Prove Time
 
-- The retained local CPU release-profile timing artifacts record an
-  end-to-end first-proof time of `37.077365 s` for the `2.1.5` release circuit
-  set and `11.112068 s` for the current circuit set. Both measurements use the
-  Cargo `--release` timing harness and include prover initialization followed
-  by stages `prove0` through `prove4`.
-- The measured duration decreased by `25.965297 s`, or `70.0%`; the current
-  measurement is `30.0%` of the `2.1.5` baseline, a baseline-to-current ratio
-  of `3.34×`. This is a single retained local CPU comparison using each
-  release's corresponding circuit, setup, and proof inputs. It is not a
-  cross-platform performance guarantee or an isolated measurement of one
-  prover optimization.
+No comparative native proving-time claim is published for this unreleased
+release line. A final comparison, if published, will use the same host,
+toolchain, Cargo release profile, inputs, CRS/setup artifacts, timing harness,
+sample count, and aggregation method for both the `2.1.5` baseline and the
+`3.0.0` candidate. It will identify the retained raw evidence and calculation
+method; otherwise the release notes will provide only independently sourced
+absolute measurements with their provenance.
 
 ### Subcircuit Library
 
