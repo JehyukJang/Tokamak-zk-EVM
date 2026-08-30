@@ -8,7 +8,7 @@ use icicle_bls12_381::curve::ScalarField;
 use icicle_core::ntt;
 use icicle_core::traits::FieldImpl;
 use icicle_runtime::memory::HostSlice;
-use serde::de::Deserializer;
+use serde::de::{Deserializer, Error};
 use serde::Deserialize;
 use std::fs::File;
 use std::io::{self, BufReader};
@@ -33,6 +33,8 @@ impl<'de> Deserialize<'de> for HexString {
         } else if s.len() % 2 == 1 {
             s = format!("0{}", s);
         }
+
+        crate::serialization::try_scalar_from_hex(&s).map_err(D::Error::custom)?;
 
         Ok(HexString(s))
     }
@@ -229,8 +231,23 @@ pub fn read_global_wire_list_as_boxed_boxed_numbers(
 }
 
 #[cfg(test)]
-mod permutation_tests {
-    use super::Permutation;
+mod tests {
+    use super::{Instance, Permutation, PlacementVariables};
+    use std::fs;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static NEXT_FIXTURE_ID: AtomicUsize = AtomicUsize::new(0);
+
+    fn write_json_fixture(name: &str, contents: &str) -> PathBuf {
+        let fixture_id = NEXT_FIXTURE_ID.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "tokamak-zk-evm-{name}-{}-{fixture_id}.json",
+            std::process::id()
+        ));
+        fs::write(&path, contents).expect("must write JSON fixture");
+        path
+    }
 
     #[test]
     fn rejects_out_of_domain_source_before_polynomial_conversion() {
@@ -262,5 +279,57 @@ mod permutation_tests {
         );
 
         assert!(matches!(result, Err(error) if error.contains("X coordinate 2")));
+    }
+
+    #[test]
+    fn instance_reader_preserves_odd_width_scalar_normalization() {
+        let path = write_json_fixture(
+            "instance-odd-width-scalar",
+            r#"{
+                "a_pub_user": ["0x1"],
+                "a_pub_block": [],
+                "a_pub_function": []
+            }"#,
+        );
+
+        let instance = Instance::read_from_json(&path).expect("must read valid instance");
+        fs::remove_file(&path).expect("must remove JSON fixture");
+
+        assert_eq!(instance.a_pub_user[0].as_ref(), "0x01");
+    }
+
+    #[test]
+    fn instance_reader_rejects_non_hex_scalar() {
+        let path = write_json_fixture(
+            "instance-non-hex-scalar",
+            r#"{
+                "a_pub_user": ["0xnot-hex"],
+                "a_pub_block": [],
+                "a_pub_function": []
+            }"#,
+        );
+
+        let result = Instance::read_from_json(&path);
+        fs::remove_file(&path).expect("must remove JSON fixture");
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn placement_variable_reader_rejects_non_canonical_scalar() {
+        let path = write_json_fixture(
+            "placement-non-canonical-scalar",
+            r#"[
+                {
+                    "subcircuitId": 0,
+                    "variables": ["0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001"]
+                }
+            ]"#,
+        );
+
+        let result = PlacementVariables::read_box_from_json(&path);
+        fs::remove_file(&path).expect("must remove JSON fixture");
+
+        assert!(result.is_err());
     }
 }
