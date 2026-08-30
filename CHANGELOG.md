@@ -8,6 +8,32 @@ The format is based on Keep a Changelog.
 
 ## Unreleased
 
+### CLI
+
+- The CLI now installs and runs only a backend runtime whose package and
+  subcircuit-library identities match the installed CLI release line. After a
+  CLI upgrade, run `tokamak-cli --install` again before using an existing
+  runtime.
+- Added `tokamak-cli --doctor` to check the installed runtime and report the
+  identities of its `preprocess`, `prove`, and `verify` binaries.
+- Hardened CRS installation. Downloaded archives are admitted only when their
+  declared layout, provenance, release-line compatibility, backend metadata,
+  and artifact hashes agree. The active CRS is promoted atomically from a
+  managed generation; a failed update preserves the prior active CRS.
+- Native and Docker installation now stage a complete runtime before
+  activation, preserving a previously working runtime if installation fails.
+  Docker execution is selected only by the installed runtime state; on Linux,
+  a valid Docker installation can use its native fallback when the Docker
+  daemon is unavailable.
+- `preprocess`, `prove`, and `verify` stage their outputs before replacing
+  prior artifacts. Failed commands therefore do not leave a partially updated
+  workflow in the runtime cache.
+- `verify` and `doctor` keep their machine-readable backend output internal
+  while displaying backend error messages and recovery hints on stderr.
+- The published package now verifies its bundled backend runtime and contract
+  inputs during release checks, reducing installation failures caused by an
+  incomplete npm artifact.
+
 ## [2.1.5] - 2026-07-31
 
 ### Compatibility and Upgrade Notes
