@@ -5,13 +5,106 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Non-publishing continuation operation
+        required: true
+        type: choice
+        options:
+          - stage2-snapshot
+          - validate-pr
+      pull_request_number:
+        description: Existing pull request to validate when operation is validate-pr
+        required: false
+        type: string
+      expected_head_sha:
+        description: Exact pull-request head when operation is validate-pr
+        required: false
+        type: string
+      base_sha:
+        description: Exact main base when operation is validate-pr
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 jobs:
+  dispatch-pr-validation:
+    name: Dispatch pull-request validation
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'validate-pr'
+    runs-on: ubuntu-22.04
+    permissions:
+      actions: write
+      checks: read
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Checkout current main automation
+        uses: actions/checkout@v4
+
+      - name: Validate required dispatch inputs
+        env:
+          BASE_SHA: ${{ inputs.base_sha }}
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+          PR_NUMBER: ${{ inputs.pull_request_number }}
+        run: |
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_SHA" = "$BASE_SHA"
+          test -n "$EXPECTED_HEAD_SHA"
+          test -n "$PR_NUMBER"
+
+      - name: Dispatch exact-head Source build validation
+        env:
+          BASE_SHA: ${{ inputs.base_sha }}
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pull_request_number }}
+        run: |
+          node scripts/dispatch-pr-validation.mjs \
+            "--pull-request=$PR_NUMBER" \
+            "--head-sha=$EXPECTED_HEAD_SHA" \
+            "--base-sha=$BASE_SHA"
+
+  git-context:
+    name: Classify Git release context
+    if: github.event_name == 'push' || inputs.operation == 'stage2-snapshot'
+    runs-on: ubuntu-22.04
+    outputs:
+      change_kind: ${{ steps.change.outputs.change_kind }}
+
+    steps:
+      - name: Checkout release commit and first parent
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Classify tracked change
+        id: change
+        shell: bash
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            test "$GITHUB_REF" = "refs/heads/main"
+            echo "change_kind=manual-continuation" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          parent_sha="$(git rev-parse HEAD^1)"
+          current_version="$(jq -r '.version' package.json)"
+          parent_version="$(git show "${parent_sha}:package.json" | jq -r '.version')"
+          if [ "$current_version" != "$parent_version" ]; then
+            echo "change_kind=version-bump" >> "$GITHUB_OUTPUT"
+          elif [ "$(git diff --name-only "$parent_sha" HEAD)" = "packages/backend/wasm/package-lock.json" ]; then
+            echo "change_kind=snapshot-lock-only" >> "$GITHUB_OUTPUT"
+          else
+            echo "change_kind=unchanged-general" >> "$GITHUB_OUTPUT"
+          fi
+
   source-build:
     name: Source build
+    needs: git-context
+    if: needs.git-context.result == 'success'
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     env:
@@ -22,17 +115,27 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 2
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version: '24.20.0'
+
+      - name: Install and verify pinned npm
+        run: |
+          npm install --global npm@11.19.0
+          test "$(node --version)" = "v24.20.0"
+          test "$(npm --version)" = "11.19.0"
 
       - name: Install workspace dependencies
         run: npm ci
 
       - name: Check synchronized versions
         run: npm run version:check
+
+      - name: Check release-candidate date boundary
+        run: npm run release:candidate:check -- --base-ref="$(git rev-parse HEAD^1)"
 
       - name: Install Rust and Cargo
         uses: dtolnay/rust-toolchain@1.95.0
@@ -164,14 +267,29 @@ jobs:
   publish-subcircuit-library:
     name: Publish subcircuit-library to npm
     runs-on: ubuntu-22.04
-    needs: evm-compat-test
+    needs:
+      - classify-release
+      - evm-compat-test
+    if: needs.classify-release.outputs.state == 'foundation-publication'
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
+      - name: Checkout release automation
+        uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version: '24.20.0'
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Install and verify pinned npm
+        run: |
+          npm install --global npm@11.19.0
+          test "$(node --version)" = "v24.20.0"
+          test "$(npm --version)" = "11.19.0"
 
       - name: Download release tarballs
         uses: actions/download-artifact@v4
@@ -179,70 +297,17 @@ jobs:
           name: tokamak-zk-evm-release-tarballs
           path: package-tarballs
 
-      - name: Compare package version with npm
+      - name: Check exact npm package identity
         id: version-check
-        shell: bash
-        run: |
-          node <<'EOF_NODE' >> "$GITHUB_OUTPUT"
-          const { execFileSync, execSync } = require('node:child_process');
-          const fs = require('node:fs');
-          const path = require('node:path');
-
-          function compareSemver(left, right) {
-            const leftParts = left.split('.').map((value) => Number(value));
-            const rightParts = right.split('.').map((value) => Number(value));
-            const maxLength = Math.max(leftParts.length, rightParts.length);
-
-            for (let i = 0; i < maxLength; i += 1) {
-              const leftValue = leftParts[i] ?? 0;
-              const rightValue = rightParts[i] ?? 0;
-              if (leftValue > rightValue) return 1;
-              if (leftValue < rightValue) return -1;
-            }
-
-            return 0;
-          }
-
-          const packageName = '@tokamak-zk-evm/subcircuit-library';
-          const tarballDir = path.resolve('package-tarballs');
-          const tarball = fs
-            .readdirSync(tarballDir)
-            .filter((file) => file.endsWith('.tgz'))
-            .map((file) => path.join(tarballDir, file))
-            .find((file) => {
-              const manifest = JSON.parse(
-                execFileSync('tar', ['-xOf', file, 'package/package.json'], { encoding: 'utf8' }),
-              );
-              return manifest.name === packageName;
-            });
-          if (!tarball) {
-            throw new Error(`Missing tarball for ${packageName}`);
-          }
-          const pkg = JSON.parse(
-            execFileSync('tar', ['-xOf', tarball, 'package/package.json'], { encoding: 'utf8' }),
-          );
-
-          let publishedVersion = null;
-          try {
-            publishedVersion = execSync(`npm view "${pkg.name}" version`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-          } catch (error) {
-            publishedVersion = null;
-          }
-
-          const shouldPublish = publishedVersion === null || compareSemver(pkg.version, publishedVersion) > 0;
-
-          console.log(`package_name=${pkg.name}`);
-          console.log(`local_version=${pkg.version}`);
-          console.log(`published_version=${publishedVersion ?? 'none'}`);
-          console.log(`should_publish=${shouldPublish}`);
-          console.log(`tarball=${tarball}`);
-          EOF_NODE
-
+        run: >-
+          node scripts/check-release-package.mjs
+          --package-name=@tokamak-zk-evm/subcircuit-library
+          --tarball-dir=package-tarballs
       - name: Show version decision
         run: |
           echo "Package: ${{ steps.version-check.outputs.package_name }}"
           echo "Local version: ${{ steps.version-check.outputs.local_version }}"
-          echo "Published version: ${{ steps.version-check.outputs.published_version }}"
+          echo "Published state: ${{ steps.version-check.outputs.published_state }}"
           echo "Should publish: ${{ steps.version-check.outputs.should_publish }}"
           echo "Tarball: ${{ steps.version-check.outputs.tarball }}"
 
@@ -258,13 +323,25 @@ jobs:
     name: Publish synthesizer packages to npm
     runs-on: ubuntu-22.04
     needs: pre-publish-test-build
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
+      - name: Checkout release automation
+        uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version: '24.20.0'
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Install and verify pinned npm
+        run: |
+          npm install --global npm@11.19.0
+          test "$(node --version)" = "v24.20.0"
+          test "$(npm --version)" = "11.19.0"
 
       - name: Download release tarballs
         uses: actions/download-artifact@v4
@@ -272,124 +349,26 @@ jobs:
           name: tokamak-zk-evm-release-tarballs
           path: package-tarballs
 
-      - name: Compare package versions with npm
+      - name: Check exact npm package identities
         id: version-check
-        shell: bash
         run: |
-          node <<'EOF_NODE' >> "$GITHUB_OUTPUT"
-          const { execFileSync, execSync } = require('node:child_process');
-          const fs = require('node:fs');
-          const path = require('node:path');
-
-          const packageEntries = [
-            {
-              outputPrefix: 'node',
-              name: '@tokamak-zk-evm/synthesizer-node',
-            },
-            {
-              outputPrefix: 'web',
-              name: '@tokamak-zk-evm/synthesizer-web',
-            },
-          ];
-
-          function compareSemver(left, right) {
-            const leftParts = left.split('.').map((value) => Number(value));
-            const rightParts = right.split('.').map((value) => Number(value));
-            const maxLength = Math.max(leftParts.length, rightParts.length);
-
-            for (let i = 0; i < maxLength; i += 1) {
-              const leftValue = leftParts[i] ?? 0;
-              const rightValue = rightParts[i] ?? 0;
-              if (leftValue > rightValue) return 1;
-              if (leftValue < rightValue) return -1;
-            }
-
-            return 0;
-          }
-
-          const tarballDir = path.resolve('package-tarballs');
-          const tarballs = fs
-            .readdirSync(tarballDir)
-            .filter((file) => file.endsWith('.tgz'))
-            .map((file) => path.join(tarballDir, file));
-          const manifests = packageEntries.map((entry) => {
-            for (const tarball of tarballs) {
-              const manifest = JSON.parse(
-                execFileSync('tar', ['-xOf', tarball, 'package/package.json'], {
-                  encoding: 'utf8',
-                }),
-              );
-              if (manifest.name === entry.name) {
-                return {
-                  ...entry,
-                  version: manifest.version,
-                  tarball,
-                };
-              }
-            }
-            throw new Error(`Missing tarball for ${entry.name}`);
-          });
-
-          const localVersion = manifests[0].version;
-          for (const manifest of manifests) {
-            if (manifest.version !== localVersion) {
-              throw new Error(
-                `Synchronized release policy violation: ${manifests
-                  .map((value) => `${value.name}=${value.version}`)
-                  .join(', ')}`,
-              );
-            }
-          }
-
-          let publishCount = 0;
-          for (const manifest of manifests) {
-            let publishedVersion = null;
-            try {
-              publishedVersion = execSync(`npm view "${manifest.name}" version`, {
-                encoding: 'utf8',
-                stdio: ['ignore', 'pipe', 'pipe'],
-              }).trim();
-            } catch (error) {
-              publishedVersion = null;
-            }
-
-            const comparison =
-              publishedVersion === null ? 1 : compareSemver(manifest.version, publishedVersion);
-            if (comparison < 0) {
-              throw new Error(
-                `Local version ${manifest.version} is behind npm version ${publishedVersion} for ${manifest.name}.`,
-              );
-            }
-
-            const shouldPublish = publishedVersion === null || comparison > 0;
-            if (shouldPublish) {
-              publishCount += 1;
-            }
-
-            console.log(`${manifest.outputPrefix}_package_name=${manifest.name}`);
-            console.log(`${manifest.outputPrefix}_local_version=${manifest.version}`);
-            console.log(
-              `${manifest.outputPrefix}_published_version=${publishedVersion ?? 'none'}`,
-            );
-            console.log(`${manifest.outputPrefix}_should_publish=${shouldPublish}`);
-            console.log(`${manifest.outputPrefix}_tarball=${manifest.tarball}`);
-          }
-
-          console.log(`release_version=${localVersion}`);
-          console.log(`publish_count=${publishCount}`);
-          console.log(`should_publish_any=${publishCount > 0}`);
-          EOF_NODE
-
+          node scripts/check-release-package.mjs \
+            --package-name=@tokamak-zk-evm/synthesizer-node \
+            --tarball-dir=package-tarballs \
+            --output-prefix=node
+          node scripts/check-release-package.mjs \
+            --package-name=@tokamak-zk-evm/synthesizer-web \
+            --tarball-dir=package-tarballs \
+            --output-prefix=web
       - name: Show version decision
         run: |
-          echo "Release version: ${{ steps.version-check.outputs.release_version }}"
           echo "Node package: ${{ steps.version-check.outputs.node_package_name }}"
           echo "Node local version: ${{ steps.version-check.outputs.node_local_version }}"
-          echo "Node published version: ${{ steps.version-check.outputs.node_published_version }}"
+          echo "Node published state: ${{ steps.version-check.outputs.node_published_state }}"
           echo "Node should publish: ${{ steps.version-check.outputs.node_should_publish }}"
           echo "Web package: ${{ steps.version-check.outputs.web_package_name }}"
           echo "Web local version: ${{ steps.version-check.outputs.web_local_version }}"
-          echo "Web published version: ${{ steps.version-check.outputs.web_published_version }}"
+          echo "Web published state: ${{ steps.version-check.outputs.web_published_state }}"
           echo "Web should publish: ${{ steps.version-check.outputs.web_should_publish }}"
           echo "Node tarball: ${{ steps.version-check.outputs.node_tarball }}"
           echo "Web tarball: ${{ steps.version-check.outputs.web_tarball }}"
@@ -411,9 +390,14 @@ jobs:
         run: npm publish --ignore-scripts "${{ steps.version-check.outputs.web_tarball }}"
 
   check-main-crs:
-    name: Check published CRS for current backend version
+    name: Resolve published CRS for current backend version
     runs-on: ubuntu-22.04
-    needs: publish-subcircuit-library
+    needs:
+      - git-context
+      - source-build
+    if: needs.git-context.outputs.change_kind != 'unchanged-general'
+    outputs:
+      crs_state: ${{ steps.download-crs.outputs.found == 'true' && 'verified' || 'missing' }}
 
     steps:
       - name: Checkout code
@@ -422,7 +406,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version: '24.20.0'
+
+      - name: Install and verify pinned npm
+        run: |
+          npm install --global npm@11.19.0
+          test "$(node --version)" = "v24.20.0"
+          test "$(npm --version)" = "11.19.0"
 
       - name: Install Rust and Cargo
         uses: dtolnay/rust-toolchain@1.95.0
@@ -439,9 +429,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install Google API client
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install google-api-python-client google-auth
+        run: python -m pip install google-api-python-client==2.198.0 google-auth==2.50.0
 
       - name: Write Google service account key
         env:
@@ -453,180 +441,20 @@ jobs:
           fi
           printf '%s' "${TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON}" > "$RUNNER_TEMP/tokamak-mpc-drive-service-account.json"
 
-      - name: Check published CRS archive for current backend version
+      - name: Resolve canonical CRS archive from Google Drive
+        id: download-crs
         env:
-          TOKAMAK_MPC_DRIVE_FOLDER_ID: ${{ secrets.TOKAMAK_MPC_DRIVE_FOLDER_ID }}
+          TOKAMAK_MPC_DRIVE_FOLDER_ID: ${{ vars.TOKAMAK_MPC_DRIVE_FOLDER_ID }}
           TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON_PATH: ${{ runner.temp }}/tokamak-mpc-drive-service-account.json
         run: |
-          if [ -z "${TOKAMAK_MPC_DRIVE_FOLDER_ID}" ]; then
-            echo "Missing repository secret TOKAMAK_MPC_DRIVE_FOLDER_ID"
-            exit 1
-          fi
-
-          python <<'PY'
-          import json
-          import os
-          import re
-          import tarfile
-          import tempfile
-          from pathlib import Path
-          from zipfile import ZipFile
-
-          from google.oauth2 import service_account
-          from googleapiclient.discovery import build
-          from googleapiclient.http import MediaIoBaseDownload
-
-          def read_cli_tarball_entry(entry_name):
-              tarball_dir = Path("package-tarballs")
-              for tarball_path in sorted(tarball_dir.glob("*.tgz")):
-                  with tarfile.open(tarball_path, "r:gz") as tarball:
-                      try:
-                          package_json = json.loads(
-                              tarball.extractfile("package/package.json").read().decode("utf-8")
-                          )
-                      except KeyError:
-                          continue
-                      if package_json.get("name") != "@tokamak-zk-evm/cli":
-                          continue
-                      try:
-                          return (
-                              tarball_path.name,
-                              tarball.extractfile(entry_name).read().decode("utf-8"),
-                          )
-                      except KeyError:
-                          raise SystemExit(
-                              f"CLI tarball {tarball_path.name} is missing {entry_name}"
-                          )
-              raise SystemExit("Cannot find @tokamak-zk-evm/cli tarball in package-tarballs")
-
-          cli_tarball_name, cli_package_json_text = read_cli_tarball_entry("package/package.json")
-          cli_package_json = json.loads(cli_package_json_text)
-          cli_version = cli_package_json["version"]
-          compatible_version = cli_package_json.get("tokamakZkEvm", {}).get("compatibleBackendVersion")
-          if not re.fullmatch(r"\d+\.\d+", str(compatible_version)):
-              raise SystemExit(
-                  "CLI tarball package.json tokamakZkEvm.compatibleBackendVersion "
-                  f"must be canonical MAJOR.MINOR, got {compatible_version!r}"
-              )
-          cli_major_minor = ".".join(cli_version.split(".")[:2])
-          if compatible_version != cli_major_minor:
-              raise SystemExit(
-                  "CLI compatible backend version must match CLI package major.minor: "
-                  f"compatible={compatible_version} cli={cli_version}"
-              )
-
-          _, cargo_text = read_cli_tarball_entry("package/vendor/backend/Cargo.toml")
-          backend_version_match = re.search(
-              r"\[workspace\.package\][\s\S]*?\nversion\s*=\s*\"([^\"]+)\"",
-              cargo_text,
-          )
-          if not backend_version_match:
-              raise SystemExit("Cannot read backend workspace version from CLI tarball vendor/backend/Cargo.toml")
-          backend_version = backend_version_match.group(1)
-          backend_major_minor = ".".join(backend_version.split(".")[:2])
-          if backend_major_minor != compatible_version:
-              raise SystemExit(
-                  "Backend workspace major.minor must match CLI compatible backend version: "
-                  f"backend={backend_version} compatible={compatible_version}"
-              )
-
-          archive_pattern = re.compile(
-              rf"^tokamak-backend-crs-v{re.escape(compatible_version)}-(\d{{8}}T\d{{6}}Z)\.zip$"
-          )
-          archive_prefix = f"tokamak-backend-crs-v{compatible_version}-"
-          folder_id = os.environ["TOKAMAK_MPC_DRIVE_FOLDER_ID"].strip()
-          service_account_path = os.environ["TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON_PATH"].strip()
-
-          credentials = service_account.Credentials.from_service_account_file(
-              service_account_path,
-              scopes=["https://www.googleapis.com/auth/drive.readonly"],
-          )
-          service = build("drive", "v3", credentials=credentials, cache_discovery=False)
-
-          query = (
-              f"'{folder_id}' in parents and "
-              "trashed = false and "
-              "mimeType = 'application/zip'"
-          )
-
-          files = []
-          page_token = None
-          while True:
-              response = service.files().list(
-                  q=query,
-                  pageSize=100,
-                  pageToken=page_token,
-                  fields="nextPageToken,files(id,name,webViewLink)",
-                  supportsAllDrives=True,
-                  includeItemsFromAllDrives=True,
-              ).execute()
-
-              for file in response.get("files", []):
-                  name = file.get("name", "")
-                  match = archive_pattern.fullmatch(name)
-                  if match:
-                      files.append({**file, "timestamp": match.group(1)})
-
-              page_token = response.get("nextPageToken")
-              if not page_token:
-                  break
-
-          if not files:
-              print(
-                  json.dumps(
-                      {
-                          "archivePrefix": archive_prefix,
-                          "matchedCount": 0,
-                      },
-                      indent=2,
-                  )
-              )
-              raise SystemExit(
-                  "No published CRS archive found in Google Drive for "
-                  f"backend compatibility version {compatible_version}. Expected an archive whose "
-                  f"name starts with '{archive_prefix}'."
-              )
-
-          files.sort(key=lambda file: (file["timestamp"], file["name"], file["id"]), reverse=True)
-          selected = files[0]
-          archive_path = Path(tempfile.mkdtemp(prefix="tokamak-crs-check-")) / selected["name"]
-          request = service.files().get_media(fileId=selected["id"], supportsAllDrives=True)
-          with archive_path.open("wb") as output:
-              downloader = MediaIoBaseDownload(output, request, chunksize=64 * 1024 * 1024)
-              done = False
-              while not done:
-                  _, done = downloader.next_chunk()
-
-          with ZipFile(archive_path) as archive:
-              verified_crs_dir = Path("verified-final-crs")
-              verified_crs_dir.mkdir(parents=True, exist_ok=True)
-              for entry_name in (
-                  "combined_sigma.rkyv",
-                  "sigma_preprocess.rkyv",
-                  "sigma_verify.json",
-                  "crs_provenance.json",
-              ):
-                  try:
-                      (verified_crs_dir / entry_name).write_bytes(archive.read(entry_name))
-                  except KeyError:
-                      raise SystemExit(f"CRS archive {selected['name']} is missing {entry_name}")
-
-          print(
-              json.dumps(
-                  {
-                      "backendVersion": backend_version,
-                      "compatibleBackendVersion": compatible_version,
-                      "cliTarball": cli_tarball_name,
-                      "selectedArchive": selected,
-                      "archivePrefix": archive_prefix,
-                      "matchedCount": len(files),
-                  },
-                  indent=2,
-              )
-          )
-          PY
+          version="$(node -p "require('./package.json').version")"
+          python scripts/download-release-crs.py \
+            --version="$version" \
+            --output=verified-final-crs \
+            --allow-missing
 
       - name: Enforce final CRS publication admission
+        if: steps.download-crs.outputs.found == 'true'
         run: >-
           cargo run --manifest-path packages/backend/Cargo.toml --locked
           --release -p libs --bin check_crs_publication
@@ -634,24 +462,29 @@ jobs:
           verified-final-crs
 
       - name: Install browser-package dependencies for CRS validation
+        if: steps.download-crs.outputs.found == 'true'
         working-directory: packages/backend/wasm
         run: npm ci --ignore-scripts
 
       - name: Prepare production subcircuit input for CRS validation
+        if: steps.download-crs.outputs.found == 'true'
         working-directory: packages/backend/wasm
         run: npm run subcircuit-library:generate:production
 
       - name: Check final CRS release boundary
+        if: steps.download-crs.outputs.found == 'true'
         working-directory: packages/backend/wasm
         run: npm run verifier-crs:input:check
 
       - name: Validate canonical final CRS input
+        if: steps.download-crs.outputs.found == 'true'
         working-directory: packages/backend/wasm
         env:
           BACKEND_WASM_VERIFIER_CRS_DIR: ../../verified-final-crs
         run: npm run verifier-crs:input:validate
 
       - name: Upload verified final CRS
+        if: steps.download-crs.outputs.found == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: verified-final-crs
@@ -659,10 +492,159 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  classify-release:
+    name: Classify staged release state
+    runs-on: ubuntu-22.04
+    needs:
+      - git-context
+      - source-build
+      - check-main-crs
+    if: >-
+      always() &&
+      needs.source-build.result == 'success' &&
+      (needs.check-main-crs.result == 'success' || needs.check-main-crs.result == 'skipped')
+    outputs:
+      state: ${{ steps.classify.outputs.state }}
+      version: ${{ steps.classify.outputs.version }}
+
+    steps:
+      - name: Checkout release state
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Fetch current protected main identity
+        if: github.event_name == 'workflow_dispatch'
+        run: git fetch --no-tags origin main:refs/remotes/origin/main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.20.0'
+
+      - name: Install and verify pinned npm
+        run: |
+          npm install --global npm@11.19.0
+          test "$(node --version)" = "v24.20.0"
+          test "$(npm --version)" = "11.19.0"
+
+      - name: Download source-built release tarballs
+        uses: actions/download-artifact@v4
+        with:
+          name: tokamak-zk-evm-release-tarballs
+          path: package-tarballs
+
+      - name: Classify Git, npm, lock, and CRS facts
+        id: classify
+        env:
+          CRS_STATE: ${{ needs.check-main-crs.outputs.crs_state || 'missing' }}
+        run: >-
+          npm run release:state:classify --
+          --crs-state="$CRS_STATE"
+          --tarball-dir=package-tarballs
+
+  prepare-production-snapshot:
+    name: Prepare npm-backed production snapshot pull request
+    runs-on: ubuntu-22.04
+    needs: classify-release
+    if: needs.classify-release.outputs.state == 'production-snapshot'
+    permissions:
+      actions: write
+      checks: read
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout current protected main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Revalidate selected main commit
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.20.0'
+
+      - name: Install and verify pinned npm
+        run: |
+          npm install --global npm@11.19.0
+          test "$(node --version)" = "v24.20.0"
+          test "$(npm --version)" = "11.19.0"
+
+      - name: Refresh and validate genuine production snapshot
+        run: npm run version:production-snapshot:refresh
+
+      - name: Require the workflow-owned tracked diff
+        run: |
+          test "$(git diff --name-only)" = "packages/backend/wasm/package-lock.json"
+          test -z "$(git diff --cached --name-only)"
+          test -z "$(git ls-files --others --exclude-standard)"
+
+      - name: Create or reuse production-snapshot pull request
+        id: snapshot-pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.classify-release.outputs.version }}
+        shell: bash
+        run: |
+          base_sha="$(git rev-parse HEAD)"
+          branch="codex/production-snapshot-${RELEASE_VERSION}"
+          remote_ref="refs/remotes/origin/${branch}"
+
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            git fetch --no-tags origin "$branch:$remote_ref"
+            test "$(git diff --name-only "${base_sha}...${remote_ref}")" = "packages/backend/wasm/package-lock.json"
+            git show "${remote_ref}:packages/backend/wasm/package-lock.json" > "$RUNNER_TEMP/existing-package-lock.json"
+            cmp packages/backend/wasm/package-lock.json "$RUNNER_TEMP/existing-package-lock.json"
+            pr_number="$(gh pr list --state open --base main --head "$branch" --json number --jq '.[0].number')"
+            test -n "$pr_number"
+            head_sha="$(git rev-parse "$remote_ref")"
+          else
+            git switch -c "$branch"
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add packages/backend/wasm/package-lock.json
+            git commit -m "Record npm-backed production snapshot for ${RELEASE_VERSION}"
+            test "$(git diff --name-only "${base_sha}...HEAD")" = "packages/backend/wasm/package-lock.json"
+            git push origin "$branch"
+            gh pr create \
+              --base main \
+              --head "$branch" \
+              --title "Record npm-backed production snapshot for ${RELEASE_VERSION}" \
+              --body "Records the exact npm registry lock for @tokamak-zk-evm/subcircuit-library@${RELEASE_VERSION}. This pull request publishes nothing and changes only the workflow-owned browser lockfile."
+            pr_number="$(gh pr view "$branch" --json number --jq '.number')"
+            head_sha="$(git rev-parse HEAD)"
+          fi
+
+          echo "base_sha=$base_sha" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "pull_request_number=$pr_number" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch exact-head Source build validation
+        env:
+          BASE_SHA: ${{ steps.snapshot-pr.outputs.base_sha }}
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD_SHA: ${{ steps.snapshot-pr.outputs.head_sha }}
+          PR_NUMBER: ${{ steps.snapshot-pr.outputs.pull_request_number }}
+        run: |
+          node scripts/dispatch-pr-validation.mjs \
+            "--pull-request=$PR_NUMBER" \
+            "--head-sha=$EXPECTED_HEAD_SHA" \
+            "--base-sha=$BASE_SHA"
+
   build-snark-browser-compat:
     name: Build browser-compatible SNARK package
     runs-on: ubuntu-22.04
-    needs: check-main-crs
+    needs: classify-release
+    if: >-
+      needs.classify-release.outputs.state == 'dependent-publication' ||
+      needs.classify-release.outputs.state == 'complete'
     timeout-minutes: 45
     env:
       BACKEND_WASM_VERIFIER_CRS_DIR: ../rust/setup/output
@@ -674,7 +656,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version: '24.20.0'
+
+      - name: Install and verify pinned npm
+        run: |
+          npm install --global npm@11.19.0
+          test "$(node --version)" = "v24.20.0"
+          test "$(npm --version)" = "11.19.0"
 
       - name: Install Rust and Cargo
         uses: dtolnay/rust-toolchain@1.95.0
@@ -814,13 +802,25 @@ jobs:
     name: Publish @tokamak-zk-evm/cli to npm
     runs-on: ubuntu-22.04
     needs: publish-synthesizer
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
+      - name: Checkout release automation
+        uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version: '24.20.0'
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Install and verify pinned npm
+        run: |
+          npm install --global npm@11.19.0
+          test "$(node --version)" = "v24.20.0"
+          test "$(npm --version)" = "11.19.0"
 
       - name: Download release tarballs
         uses: actions/download-artifact@v4
@@ -858,80 +858,17 @@ jobs:
             -e TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON \
             tokamak-zk-evm-cli-release-test --install
 
-      - name: Compare package version with npm
+      - name: Check exact npm package identity
         id: version-check
-        shell: bash
-        run: |
-          node <<'EOF_NODE' >> "$GITHUB_OUTPUT"
-          const { execFileSync, execSync } = require('node:child_process');
-          const fs = require('node:fs');
-          const path = require('node:path');
-
-          function compareSemver(left, right) {
-            const leftParts = left.split('.').map((value) => Number(value));
-            const rightParts = right.split('.').map((value) => Number(value));
-            const maxLength = Math.max(leftParts.length, rightParts.length);
-
-            for (let index = 0; index < maxLength; index += 1) {
-              const leftValue = leftParts[index] ?? 0;
-              const rightValue = rightParts[index] ?? 0;
-              if (leftValue > rightValue) return 1;
-              if (leftValue < rightValue) return -1;
-            }
-
-            return 0;
-          }
-
-          const packageName = '@tokamak-zk-evm/cli';
-          const tarballDir = path.resolve('package-tarballs');
-          const tarball = fs
-            .readdirSync(tarballDir)
-            .filter((file) => file.endsWith('.tgz'))
-            .map((file) => path.join(tarballDir, file))
-            .find((file) => {
-              const manifest = JSON.parse(
-                execFileSync('tar', ['-xOf', file, 'package/package.json'], { encoding: 'utf8' }),
-              );
-              return manifest.name === packageName;
-            });
-          if (!tarball) {
-            throw new Error(`Missing tarball for ${packageName}`);
-          }
-          const pkg = JSON.parse(
-            execFileSync('tar', ['-xOf', tarball, 'package/package.json'], { encoding: 'utf8' }),
-          );
-
-          let publishedVersion = null;
-          try {
-            publishedVersion = execSync(`npm view "${pkg.name}" version`, {
-              encoding: 'utf8',
-              stdio: ['ignore', 'pipe', 'pipe'],
-            }).trim();
-          } catch (error) {
-            publishedVersion = null;
-          }
-
-          const comparison =
-            publishedVersion === null ? 1 : compareSemver(pkg.version, publishedVersion);
-          if (comparison < 0) {
-            throw new Error(
-              `Local version ${pkg.version} is behind npm version ${publishedVersion} for ${pkg.name}.`,
-            );
-          }
-
-          const shouldPublish = publishedVersion === null || comparison > 0;
-          console.log(`package_name=${pkg.name}`);
-          console.log(`local_version=${pkg.version}`);
-          console.log(`published_version=${publishedVersion ?? 'none'}`);
-          console.log(`should_publish=${shouldPublish}`);
-          console.log(`tarball=${tarball}`);
-          EOF_NODE
-
+        run: >-
+          node scripts/check-release-package.mjs
+          --package-name=@tokamak-zk-evm/cli
+          --tarball-dir=package-tarballs
       - name: Show version decision
         run: |
           echo "Package: ${{ steps.version-check.outputs.package_name }}"
           echo "Local version: ${{ steps.version-check.outputs.local_version }}"
-          echo "Published version: ${{ steps.version-check.outputs.published_version }}"
+          echo "Published state: ${{ steps.version-check.outputs.published_state }}"
           echo "Should publish: ${{ steps.version-check.outputs.should_publish }}"
           echo "Tarball: ${{ steps.version-check.outputs.tarball }}"
 
@@ -949,13 +886,26 @@ jobs:
     needs:
       - build-snark-browser-compat
       - pre-publish-test-build
+      - publish-cli
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
+      - name: Checkout release automation
+        uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version: '24.20.0'
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Install and verify pinned npm
+        run: |
+          npm install --global npm@11.19.0
+          test "$(node --version)" = "v24.20.0"
+          test "$(npm --version)" = "11.19.0"
 
       - name: Download browser-compatible SNARK tarball
         uses: actions/download-artifact@v4
@@ -963,95 +913,18 @@ jobs:
           name: snark-browser-compat-release-tarball
           path: snark-browser-compat-tarball
 
-      - name: Compare package version with npm
+      - name: Check exact npm package identity
         id: version-check
-        shell: bash
-        run: |
-          node <<'EOF_NODE' >> "$GITHUB_OUTPUT"
-          const { execFileSync } = require('node:child_process');
-          const fs = require('node:fs');
-          const path = require('node:path');
-
-          function compareSemver(left, right) {
-            const leftParts = left.split('.').map((value) => Number(value));
-            const rightParts = right.split('.').map((value) => Number(value));
-            const maxLength = Math.max(leftParts.length, rightParts.length);
-
-            for (let index = 0; index < maxLength; index += 1) {
-              const leftValue = leftParts[index] ?? 0;
-              const rightValue = rightParts[index] ?? 0;
-              if (leftValue > rightValue) return 1;
-              if (leftValue < rightValue) return -1;
-            }
-
-            return 0;
-          }
-
-          const packageName = '@tokamak-zk-evm/snark-browser-compat';
-          const tarballDir = path.resolve('snark-browser-compat-tarball');
-          const tarballs = fs
-            .readdirSync(tarballDir)
-            .filter((file) => file.endsWith('.tgz'))
-            .map((file) => path.join(tarballDir, file));
-          if (tarballs.length !== 1) {
-            throw new Error(`Expected one tarball for ${packageName}, found ${tarballs.length}.`);
-          }
-
-          const tarball = tarballs[0];
-          const pkg = JSON.parse(
-            execFileSync('tar', ['-xOf', tarball, 'package/package.json'], {
-              encoding: 'utf8',
-            }),
-          );
-          if (pkg.name !== packageName) {
-            throw new Error(`Unexpected package name ${pkg.name} in ${tarball}.`);
-          }
-
-          let publishedVersion;
-          try {
-            publishedVersion = execFileSync('npm', ['view', pkg.name, 'version'], {
-              encoding: 'utf8',
-              stdio: ['ignore', 'pipe', 'pipe'],
-            }).trim();
-          } catch (error) {
-            const stderr = String(error.stderr ?? '');
-            if (!/\bE404\b/u.test(stderr)) {
-              throw error;
-            }
-            publishedVersion = null;
-          }
-
-          if (publishedVersion === null) {
-            console.log(`package_name=${pkg.name}`);
-            console.log(`local_version=${pkg.version}`);
-            console.log('published_version=none');
-            console.log('bootstrap_required=true');
-            console.log('should_publish=false');
-            console.log(`tarball=${tarball}`);
-            process.exit(0);
-          }
-
-          const comparison = compareSemver(pkg.version, publishedVersion);
-          if (comparison < 0) {
-            throw new Error(
-              `Local version ${pkg.version} is behind npm version ${publishedVersion} for ${pkg.name}.`,
-            );
-          }
-
-          console.log(`package_name=${pkg.name}`);
-          console.log(`local_version=${pkg.version}`);
-          console.log(`published_version=${publishedVersion}`);
-          console.log('bootstrap_required=false');
-          console.log(`should_publish=${comparison > 0}`);
-          console.log(`tarball=${tarball}`);
-          EOF_NODE
+        run: >-
+          node scripts/check-release-package.mjs
+          --package-name=@tokamak-zk-evm/snark-browser-compat
+          --tarball-dir=snark-browser-compat-tarball
 
       - name: Show version decision
         run: |
           echo "Package: ${{ steps.version-check.outputs.package_name }}"
           echo "Local version: ${{ steps.version-check.outputs.local_version }}"
-          echo "Published version: ${{ steps.version-check.outputs.published_version }}"
-          echo "Bootstrap required: ${{ steps.version-check.outputs.bootstrap_required }}"
+          echo "Published state: ${{ steps.version-check.outputs.published_state }}"
           echo "Should publish: ${{ steps.version-check.outputs.should_publish }}"
           echo "Tarball: ${{ steps.version-check.outputs.tarball }}"
 
@@ -1059,12 +932,6 @@ jobs:
         run: |
           cd snark-browser-compat-tarball
           sha256sum --check SHA256SUMS
-
-      - name: Require manual first publication
-        if: steps.version-check.outputs.bootstrap_required == 'true'
-        run: |
-          echo "::notice::Download the verified snark-browser-compat-release-tarball artifact and publish it manually."
-          echo "::notice::After the package exists, configure npm Trusted Publisher for this workflow."
 
       - name: Validate npm package contents
         if: steps.version-check.outputs.should_publish == 'true'
@@ -1087,7 +954,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version: '24.20.0'
+
+      - name: Install and verify pinned npm
+        run: |
+          npm install --global npm@11.19.0
+          test "$(node --version)" = "v24.20.0"
+          test "$(npm --version)" = "11.19.0"
 
       - name: Download release tarballs
         uses: actions/download-artifact@v4
@@ -1181,7 +1054,10 @@ jobs:
   pre-publish-test-build:
     name: Pre-publish Test & Build
     runs-on: ubuntu-22.04
-    needs: check-main-crs
+    needs: classify-release
+    if: >-
+      needs.classify-release.outputs.state == 'dependent-publication' ||
+      needs.classify-release.outputs.state == 'complete'
     timeout-minutes: 90
     env:
       TOKAMAK_ZKEVM_CLI_CACHE_DIR: ${{ github.workspace }}/.tokamak-cli-cache
@@ -1194,7 +1070,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version: '24.20.0'
+
+      - name: Install and verify pinned npm
+        run: |
+          npm install --global npm@11.19.0
+          test "$(node --version)" = "v24.20.0"
+          test "$(npm --version)" = "11.19.0"
 
       - name: Download release tarballs
         uses: actions/download-artifact@v4

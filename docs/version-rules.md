@@ -256,10 +256,11 @@ npm run version:prepublication:check
 
 This gate validates the synchronized source versions and exact internal dependency declarations. It validates the
 standalone browser lockfile declaration, but deliberately does not accept its resolved npm snapshot as evidence for an
-unpublished version. Before the foundation hold point, it accepts release content under `## Unreleased`; it also accepts
-the final dated entry after the hold-point source-lock commit is created.
+unpublished version. An unchanged-version integration pull request may retain `## Unreleased`. A version-changing pull
+request must already contain its dated release entry, using the calendar date on which that pull request was prepared
+offline, and must not retain `## Unreleased`. That date may differ from GitHub creation, merge, and npm publication dates.
 
-After the synchronized subcircuit library is available from npm, run:
+After the synchronized subcircuit library is available from npm, Stage 2 Actions automation runs:
 
 ```sh
 npm run version:production-snapshot:refresh
@@ -271,10 +272,14 @@ The refresh command regenerates the standalone browser lockfile from the exact m
 locked dependency, regenerates the production subcircuit inputs, and compares the lockfile tarball URL and integrity
 with the published npm metadata. It restores the tracked lockfile if any refresh or validation step fails.
 
-Commit the refreshed `packages/backend/wasm/package-lock.json` to the release branch as a distinct release-finalization
-change. The generated active setup module remains ignored and must not be committed. No dependent package may be packed
-or published until the production-snapshot check and the full repository version check pass on that lockfile commit.
-The full repository check requires the exact synchronized version to have a dated Changelog entry.
+The automation commits only the refreshed `packages/backend/wasm/package-lock.json` to a dedicated pull-request branch.
+The generated active setup module remains ignored and must not be committed. The workflow explicitly dispatches the
+`Source build` pull-request check for the exact generated head; a repository owner reviews and merges the pull request.
+Lockfile-only pull requests are excluded from the ordinary `pull_request` trigger so the bot-authored event cannot leave
+an approval-gated duplicate check; the explicit dispatch is the sole validation run for that one-file change.
+No dependent package may be packed or published until the production-snapshot check and the full repository version
+check pass on that lockfile commit. The full repository check requires the exact synchronized version to have a dated
+Changelog entry.
 
 ## CLI Install Compatibility Checks
 
@@ -300,8 +305,9 @@ archive's embedded provenance, metadata, and hashes pass validation.
 
 ## Publish CI Checks
 
-The publish workflow must check the latest public CRS archive for the current CLI compatibility version before publishing
-the CLI package or building the browser-compatible SNARK package.
+The publish workflow is a restartable three-stage workflow. A version transition can publish only the foundation
+subcircuit package. A manual Stage 2 dispatch verifies the operator-owned CRS and creates the npm-backed production
+snapshot pull request without publishing. The snapshot merge can publish dependent packages after every gate passes.
 
 The CRS check must:
 
@@ -310,8 +316,9 @@ The CRS check must:
 - Ensure the value equals the CLI package `MAJOR.MINOR`.
 - Ensure the value equals the backend workspace package `MAJOR.MINOR`.
 - Search Google Drive only for `tokamak-backend-crs-vMAJOR.MINOR-YYYYMMDDTHHMMSSZ.zip`.
-- Select the latest matching archive by timestamp.
-- Download that single selected archive.
+- Require exactly one matching compatibility archive; zero archives is the expected Stage 1 waiting state, while
+  multiple matching archives are an invalid state.
+- Download the single matching archive and require exactly the canonical four members.
 - Validate `crs_provenance.json compatibleBackendVersion`.
 - Validate `crs_provenance.json subcircuitLibrary.packageName`, the package
   compatibility class, npm-snapshot origin, and `sourceDigest` against the exact
@@ -326,15 +333,44 @@ The browser-compatible SNARK release build must:
 - resolve the exact synchronized `@tokamak-zk-evm/subcircuit-library` version from npm;
 - build and validate the converter Worker without bundling `ffjavascript`, `wasmbuilder`, or `wasmcurves`;
 - pack and validate one `@tokamak-zk-evm/snark-browser-compat` tarball; and
-- compare the synchronized tarball version with npm, publishing it through the
-  configured npm Trusted Publisher only when it is strictly newer.
+- query the exact synchronized version, compare an existing package's registry
+  integrity with the source-built tarball, and publish an absent version through
+  the configured npm Trusted Publisher.
 
-The workflow must skip publication when npm already contains the synchronized
-version and fail when the repository version is older than npm. npm versions
-are immutable and must never be reused for changed package contents.
+Only a verified npm `E404` means that an exact version is absent. Authentication,
+authorization, network, and malformed-response failures stop the workflow. The
+workflow skips an existing exact version only when its source-built tarball
+integrity matches npm. npm versions are immutable and must never be reused for
+changed package contents.
 
-The check must not download every candidate archive in the Drive folder. It must first narrow candidates by strict file
-name and then download only the latest matching archive.
+The check must not download every candidate archive in the Drive folder. It first narrows candidates by strict file name,
+rejects duplicates, and downloads only the unique compatibility archive.
+
+### Staged workflow states and authorities
+
+- `validation-only`: a `main` merge that does not change the synchronized
+  version runs source validation and cannot reach an npm publication job.
+- `foundation-publication`: the version-changing merge may publish only the
+  subcircuit library, then stops in `waiting-for-crs-snapshot`.
+- `production-snapshot`: the Google Drive folder owner has supplied the unique
+  CRS, and a manual dispatch from the current `main` commit may create or reuse
+  the one-file production-snapshot pull request. It publishes no npm package.
+- `dependent-publication`: merging that pull request verifies the production
+  lock and CRS, then publishes Synthesizer Node and Web, the CLI, and the
+  browser package in dependency order.
+- `complete`: reruns rebuild and verify exact npm identities but publish
+  nothing.
+
+Every npm stage is restartable. A rerun verifies already-published exact
+tarballs and continues with only absent packages; an identity mismatch or any
+registry failure stops the run. The `JehyukJang` GitHub authority reviews and
+merges pull requests, the `jehyuk` npm authority owns package publication, and
+the Google Drive folder owner owns CRS mutation. Actions uses the built-in
+token for generated branches and validation dispatch, npm OIDC for publication,
+read-only check access to confirm exact-head association, and the active Drive
+read credential for CRS admission. No long-lived GitHub credential or local
+npm publication command is used by this staged Actions path; independently
+maintained local publication tools remain outside this `3.0.0` workflow.
 
 ## Operational Playbooks
 

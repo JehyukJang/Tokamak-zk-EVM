@@ -57,7 +57,7 @@ function checkFinalCrsReleaseWorkflow(value: string): void {
   }
 
   assertOrdered(value, [
-    "- name: Check published CRS archive for current backend version",
+    "- name: Resolve canonical CRS archive from Google Drive",
     "- name: Enforce final CRS publication admission",
     "- name: Install browser-package dependencies for CRS validation",
     "- name: Prepare production subcircuit input for CRS validation",

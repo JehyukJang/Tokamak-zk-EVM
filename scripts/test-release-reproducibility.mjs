@@ -7,6 +7,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   collectReleaseReproducibilityFailures,
+  PINNED_NODE_VERSION,
+  PINNED_NPM_VERSION,
   PINNED_RUST_VERSION,
   POLICY_SURFACES,
   REQUIRED_LOCKFILES,
@@ -16,6 +18,8 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 const validVersions = {
   rustcVersion: `rustc ${PINNED_RUST_VERSION} (test fixture)`,
   cargoVersion: `cargo ${PINNED_RUST_VERSION} (test fixture)`,
+  nodeVersion: `v${PINNED_NODE_VERSION}`,
+  npmVersion: PINNED_NPM_VERSION,
 };
 
 runTest('accepts the committed reproducibility policy', fixtureRoot => {
@@ -61,9 +65,22 @@ runTest('rejects a different compiler release', fixtureRoot => {
   const result = collectReleaseReproducibilityFailures(fixtureRoot, {
     rustcVersion: 'rustc 1.96.0 (test fixture)',
     cargoVersion: 'cargo 1.96.0 (test fixture)',
+    nodeVersion: `v${PINNED_NODE_VERSION}`,
+    npmVersion: PINNED_NPM_VERSION,
   });
   assert.match(result.join('\n'), /rustc must be 1\.95\.0/u);
   assert.match(result.join('\n'), /cargo must be 1\.95\.0/u);
+});
+
+runTest('rejects different Node.js and npm releases', fixtureRoot => {
+  const result = collectReleaseReproducibilityFailures(fixtureRoot, {
+    rustcVersion: `rustc ${PINNED_RUST_VERSION} (test fixture)`,
+    cargoVersion: `cargo ${PINNED_RUST_VERSION} (test fixture)`,
+    nodeVersion: 'v24.20.1',
+    npmVersion: '11.19.1',
+  });
+  assert.match(result.join('\n'), /Node\.js must be 24\.20\.0/u);
+  assert.match(result.join('\n'), /npm must be 11\.19\.0/u);
 });
 
 console.log('[release-reproducibility-test] Negative policy checks passed.');

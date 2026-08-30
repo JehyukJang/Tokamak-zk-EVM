@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { BACKEND_WORKSPACE_PACKAGE_NAMES } from './version-targets.mjs';
 
 export const PINNED_RUST_VERSION = '1.95.0';
+export const PINNED_NODE_VERSION = '24.20.0';
+export const PINNED_NPM_VERSION = '11.19.0';
 export const REQUIRED_LOCKFILES = Object.freeze([
   'package-lock.json',
   'packages/frontend/qap-compiler/package-lock.json',
@@ -34,7 +36,12 @@ export const POLICY_SURFACES = Object.freeze([
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export function collectReleaseReproducibilityFailures(
   root,
-  { rustcVersion = commandVersion('rustc'), cargoVersion = commandVersion('cargo') } = {},
+  {
+    rustcVersion = commandVersion('rustc'),
+    cargoVersion = commandVersion('cargo'),
+    nodeVersion = commandVersion('node'),
+    npmVersion = commandVersion('npm'),
+  } = {},
 ) {
   const failures = [];
   const fail = message => failures.push(message);
@@ -57,6 +64,12 @@ export function collectReleaseReproducibilityFailures(
   }
   if (!cargoVersion.startsWith(`cargo ${PINNED_RUST_VERSION} `)) {
     fail(`cargo must be ${PINNED_RUST_VERSION}, found ${cargoVersion || 'unavailable'}.`);
+  }
+  if (nodeVersion !== `v${PINNED_NODE_VERSION}`) {
+    fail(`Node.js must be ${PINNED_NODE_VERSION}, found ${nodeVersion || 'unavailable'}.`);
+  }
+  if (npmVersion !== PINNED_NPM_VERSION) {
+    fail(`npm must be ${PINNED_NPM_VERSION}, found ${npmVersion || 'unavailable'}.`);
   }
 
   const gitignore = read('.gitignore');
@@ -87,8 +100,15 @@ export function collectReleaseReproducibilityFailures(
     relativePath => [relativePath, read(relativePath)],
   );
   for (const [relativePath, workflow] of workflows) {
-    for (const match of workflow.matchAll(/node-version:\s*['"]?(\d+)/gu)) {
-      if (match[1] !== '24') fail(`${relativePath} must use Node.js 24, found ${match[1]}.`);
+    const nodeSetups = [...workflow.matchAll(/node-version:\s*['"]?([^'"\s]+)/gu)];
+    for (const match of nodeSetups) {
+      if (match[1] !== PINNED_NODE_VERSION) {
+        fail(`${relativePath} must use Node.js ${PINNED_NODE_VERSION}, found ${match[1]}.`);
+      }
+    }
+    const npmPins = workflow.match(new RegExp(`npm@${PINNED_NPM_VERSION.replaceAll('.', '\\.')}`, 'gu')) ?? [];
+    if (npmPins.length !== nodeSetups.length) {
+      fail(`${relativePath} must install npm ${PINNED_NPM_VERSION} after every Node.js setup.`);
     }
     if (!workflow.includes(`dtolnay/rust-toolchain@${PINNED_RUST_VERSION}`)) {
       fail(`${relativePath} must install Rust ${PINNED_RUST_VERSION}.`);
@@ -108,8 +128,12 @@ export function collectReleaseReproducibilityFailures(
       }
     }
   }
-  if (!workflows[0][1].includes("node-version: '24'") || !workflows[0][1].includes('run: npm ci')) {
-    fail('The pull-request source build must use Node.js 24 and npm ci.');
+  if (
+    !workflows[0][1].includes(`node-version: '${PINNED_NODE_VERSION}'`) ||
+    !workflows[0][1].includes(`npm@${PINNED_NPM_VERSION}`) ||
+    !workflows[0][1].includes('run: npm ci')
+  ) {
+    fail(`The pull-request source build must use Node.js ${PINNED_NODE_VERSION}, npm ${PINNED_NPM_VERSION}, and npm ci.`);
   }
   if (!workflows[1][1].includes('run: npm ci --ignore-scripts')) {
     fail('The browser production jobs must use the committed standalone npm lock with npm ci.');
@@ -153,7 +177,6 @@ export function collectReleaseReproducibilityFailures(
     '"publish": "npm ci --workspaces=false',
     'the subcircuit-library release script must use its committed lock',
   );
-
   return failures;
 
   function requireFragment(relativePath, fragment, description) {

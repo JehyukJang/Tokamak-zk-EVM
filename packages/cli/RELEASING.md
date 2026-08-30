@@ -54,14 +54,19 @@ symbolic link is an installation error and must remain unchanged.
 When a commit reaches `main`,
 `.github/workflows/publish-tokamak-zk-evm.yml`:
 
-1. Reads `packages/cli/package.json`
-2. Compares the local version with the version already published on npm
-3. Validates the root `CHANGELOG.md`
-4. Builds the CLI package
-5. Runs `npm publish --dry-run`
-6. Publishes to npm if the local version is newer
+1. Classifies the Git version transition and exact npm package state.
+2. Publishes only the foundation subcircuit package after a version bump.
+3. Waits for the operator-controlled CRS and npm-backed production-snapshot
+   pull request.
+4. After that pull request reaches `main`, validates the CRS, production lock,
+   packaged runtime, and source-built tarball identity.
+5. Publishes the Synthesizer packages, then the CLI, and finally the browser
+   package. An already-published exact tarball is verified and skipped.
 
-If the local version is equal to the npm version, the workflow does not publish.
+The staged Actions workflow is the selected path for the `3.0.0` release.
+Registry failures other than an exact `E404` stop that workflow. The separately
+maintained manual publishing command remains available outside that workflow;
+it is not invoked by this release plan.
 
 ## Manual Publishing
 
