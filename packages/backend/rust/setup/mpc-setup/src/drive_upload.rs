@@ -875,6 +875,7 @@ mod tests {
         assert!(error
             .to_string()
             .contains("npm subcircuit-library snapshot"));
+        assert_eq!(*publisher.duplicate_checks.borrow(), 0);
         assert!(publisher.uploads.borrow().is_empty());
     }
 
@@ -1053,6 +1054,7 @@ mod tests {
             StdFile::open(&uploads[0].0).expect("mocked upload archive must exist"),
         )
         .expect("archive must be valid");
+        assert_eq!(archive.len(), final_output_files().len());
         for file_name in final_output_files() {
             assert!(
                 archive.by_name(&file_name).is_ok(),

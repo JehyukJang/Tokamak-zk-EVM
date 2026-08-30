@@ -81,8 +81,11 @@ native phase-1 initialization scalar uses internal randomness when testing mode 
 
 ## Dusk-Backed Mode
 
+Create a publication-eligible ceremony output from the exact npm snapshot:
+
 ```bash
-cargo run --locked --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
+cargo run --locked --release -p mpc-setup --no-default-features \
+  --features production-npm-subcircuit-library --bin dusk_backed_mpc_setup -- \
   ceremony \
   --intermediate ./setup/mpc-setup/output/dusk.intermediate \
   --output ./setup/mpc-setup/output/dusk.final
@@ -138,7 +141,7 @@ state, it requires the release build with
 configuration, authentication, and folder-permission preflight as `publish`.
 If that preflight fails, no ceremony output or intermediate state is created.
 
-Local developer build example:
+Development-only local-source example:
 
 ```bash
 cargo run --locked --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
@@ -146,6 +149,12 @@ cargo run --locked --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
   --intermediate ./setup/mpc-setup/output/dusk.intermediate \
   --output ./setup/mpc-setup/output/dusk.final
 ```
+
+This default-feature command records `localQapCompiler` as the subcircuit
+origin. Its output is publication-ineligible even though Dusk-backed generation
+sets `releaseEligible: true`; the publisher requires both that gate and the
+`npmSnapshot` origin. Rebuilding only the later `publish` command with the
+production feature cannot make a local-source ceremony output eligible.
 
 The current pinned Dusk source is:
 

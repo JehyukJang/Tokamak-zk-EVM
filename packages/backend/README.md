@@ -128,10 +128,11 @@ Skips Tokamak phase 1, derives the phase-2 source from a pinned Dusk Groth16 raw
 artifact, and then runs Tokamak phase 2. Ceremony and Google Drive publication are separate
 operations; only `publish` and the composite `run` require publication credentials.
 
-Create a local CRS without Drive access:
+Create a publication-eligible CRS without opening or mutating Drive:
 
 ```bash
-cargo run --locked --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
+cargo run --locked --release -p mpc-setup --no-default-features \
+  --features production-npm-subcircuit-library --bin dusk_backed_mpc_setup -- \
   ceremony \
   --intermediate ./rust/setup/mpc-setup/output/dusk.intermediate \
   --output ./rust/setup/mpc-setup/output/dusk.final
@@ -158,6 +159,11 @@ The ceremony validates the pinned Dusk source digest and used tau ranges. Public
 - rejects publication if the configured Google Drive folder already contains a CRS archive for the
   current backend version
 - uploads a zip containing the final CRS artifacts and `crs_provenance.json`
+
+The default-feature ceremony uses the local qap-compiler source and is for
+development only. Its `localQapCompiler` provenance remains ineligible for
+publication even if `publish` is later invoked from a production-feature
+build.
 
 See [rust/setup/mpc-setup/README.md](./rust/setup/mpc-setup/README.md) for the full MPC operator guide.
 

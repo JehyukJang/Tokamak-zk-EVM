@@ -472,6 +472,50 @@ function checkSynthesizerFaq() {
   );
 }
 
+function checkDuskCeremonyCommandContract() {
+  const backendGuide = 'packages/backend/README.md';
+  const operatorGuide = 'packages/backend/rust/setup/mpc-setup/README.md';
+  const productionCeremony = [
+    'cargo run --locked --release -p mpc-setup --no-default-features \\',
+    '  --features production-npm-subcircuit-library --bin dusk_backed_mpc_setup -- \\',
+    '  ceremony \\',
+  ].join('\n');
+  const productionRun = [
+    'cargo run --locked --release -p mpc-setup --no-default-features \\',
+    '  --features production-npm-subcircuit-library --bin dusk_backed_mpc_setup -- \\',
+    '  run \\',
+  ].join('\n');
+  const localCeremony = [
+    'cargo run --locked --release -p mpc-setup --bin dusk_backed_mpc_setup -- \\',
+    '  ceremony \\',
+  ].join('\n');
+
+  for (const relativePath of [backendGuide, operatorGuide]) {
+    requireIncludes(
+      relativePath,
+      productionCeremony,
+      'a split Dusk ceremony command using the production npm snapshot feature',
+    );
+    requireIncludes(relativePath, 'localQapCompiler', 'the local-source publication boundary');
+    requirePattern(
+      relativePath,
+      /development(?:-only| only)[\s\S]{0,500}localQapCompiler|localQapCompiler[\s\S]{0,500}(?:development-only|development only)/iu,
+      'an explicit development-only label for localQapCompiler ceremony output',
+    );
+  }
+
+  requireIncludes(
+    operatorGuide,
+    productionRun,
+    'an integrated Dusk run command using the production npm snapshot feature',
+  );
+  requireIncludes(
+    operatorGuide,
+    localCeremony,
+    'a separate default-feature local development ceremony example',
+  );
+}
+
 checkLlmsTxt();
 checkRootReadme();
 checkPackageReadmes();
@@ -479,6 +523,7 @@ checkReadmeResponsibilities();
 checkLicensing();
 checkPackageMetadata();
 checkSynthesizerFaq();
+checkDuskCeremonyCommandContract();
 
 if (failures.length > 0) {
   for (const failure of failures) {
