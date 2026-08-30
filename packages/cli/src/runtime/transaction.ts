@@ -28,6 +28,12 @@ export async function installStagedRuntime(
   }
 }
 
+async function createStagingRuntimeContext(context: RuntimeContext): Promise<RuntimeContext> {
+  await ensureDir(context.platformDir);
+  const runtimeDir = await fs.mkdtemp(path.join(context.platformDir, '.runtime-staging-'));
+  return { ...context, runtimeDir };
+}
+
 /** Atomically promotes a prepared runtime, state record, and declared sidecars. */
 export async function commitPreparedRuntime(
   context: RuntimeContext,
@@ -35,22 +41,6 @@ export async function commitPreparedRuntime(
   state: RuntimeState,
   sidecars: readonly RuntimeTransactionSidecar[] = [],
   writeState: typeof writeRuntimeState = writeRuntimeState,
-): Promise<void> {
-  await commitStagedRuntime(context, stagingContext, state, sidecars, writeState);
-}
-
-async function createStagingRuntimeContext(context: RuntimeContext): Promise<RuntimeContext> {
-  await ensureDir(context.platformDir);
-  const runtimeDir = await fs.mkdtemp(path.join(context.platformDir, '.runtime-staging-'));
-  return { ...context, runtimeDir };
-}
-
-async function commitStagedRuntime(
-  context: RuntimeContext,
-  stagingContext: RuntimeContext,
-  state: RuntimeState,
-  sidecars: readonly RuntimeTransactionSidecar[],
-  writeState: typeof writeRuntimeState,
 ): Promise<void> {
   if (stagingContext.platformDir !== context.platformDir || stagingContext.statePath !== context.statePath) {
     throw new Error('Staged runtime context must use the active runtime platform and state paths.');

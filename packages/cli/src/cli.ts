@@ -61,7 +61,7 @@ interface RuntimeFileRef {
   filename: string;
 }
 
-interface StageInputSyncRuleTemplate {
+interface StageInputSyncRule {
   destinationDir: RuntimeDirectoryKey;
   optionalFiles?: readonly string[];
   requiredFiles: readonly string[];
@@ -72,7 +72,7 @@ const PREPROCESS_INPUT_RULES = [
     destinationDir: 'synthOutputDir',
     requiredFiles: ['permutation.json', 'instance.json'],
   },
-] as const satisfies readonly StageInputSyncRuleTemplate[];
+] as const satisfies readonly StageInputSyncRule[];
 
 const PROVE_INPUT_RULES = [
   {
@@ -80,7 +80,7 @@ const PROVE_INPUT_RULES = [
     requiredFiles: ['instance.json', 'permutation.json', 'placementVariables.json'],
     optionalFiles: ['instance_description.json', 'state_snapshot.json'],
   },
-] as const satisfies readonly StageInputSyncRuleTemplate[];
+] as const satisfies readonly StageInputSyncRule[];
 
 const VERIFY_INPUT_RULES = [
   {
@@ -95,7 +95,7 @@ const VERIFY_INPUT_RULES = [
     destinationDir: 'synthOutputDir',
     requiredFiles: ['instance.json'],
   },
-] as const satisfies readonly StageInputSyncRuleTemplate[];
+] as const satisfies readonly StageInputSyncRule[];
 
 const PREPROCESS_REQUIRED_FILES = [
   { directory: 'setupOutputDir', filename: 'sigma_preprocess.rkyv' },
@@ -202,11 +202,6 @@ async function fileExists(target: string): Promise<boolean> {
   }
 }
 
-async function emptyDir(target: string): Promise<void> {
-  await fs.rm(target, { recursive: true, force: true });
-  await fs.mkdir(target, { recursive: true });
-}
-
 async function copyNamedFilesFromDir(
   sourceDir: string,
   destinationDir: string,
@@ -304,12 +299,6 @@ async function withDirFromPath<T>(
     }
   }
   err(`Path not found: ${inputPath}`);
-}
-
-interface StageInputSyncRule {
-  destinationDir: RuntimeDirectoryKey;
-  optionalFiles?: readonly string[];
-  requiredFiles: readonly string[];
 }
 
 interface BackendStageOptions {
@@ -469,7 +458,7 @@ async function runPreprocess(execution: RuntimeExecution, inputPath: string | un
     outputDirectory: 'preprocessOutputDir',
     requiredFiles: stagePaths => resolveRuntimeFiles(stagePaths, PREPROCESS_REQUIRED_FILES),
     successMessage: `Preprocess complete → ${paths.preprocessOutputDir}`,
-    inputRules: resolveStageInputRules(PREPROCESS_INPUT_RULES),
+    inputRules: PREPROCESS_INPUT_RULES,
     verbose,
     args: stagePaths => backendOutputArgs(stagePaths, stagePaths.preprocessOutputDir),
   });
@@ -485,7 +474,7 @@ async function runProve(execution: RuntimeExecution, inputPath: string | undefin
     outputDirectory: 'proveOutputDir',
     requiredFiles: stagePaths => resolveRuntimeFiles(stagePaths, PROVE_REQUIRED_FILES),
     successMessage: `Proof artifacts available in ${paths.proveOutputDir}`,
-    inputRules: resolveStageInputRules(PROVE_INPUT_RULES),
+    inputRules: PROVE_INPUT_RULES,
     verbose,
     args: stagePaths => backendOutputArgs(stagePaths, stagePaths.proveOutputDir),
   });
@@ -506,7 +495,7 @@ async function runVerify(execution: RuntimeExecution, inputPath: string | undefi
       return 'Verify: verification succeeded';
     },
     requiredFiles: stagePaths => resolveRuntimeFiles(stagePaths, VERIFY_REQUIRED_FILES),
-    inputRules: resolveStageInputRules(VERIFY_INPUT_RULES),
+    inputRules: VERIFY_INPUT_RULES,
     verbose,
     args: stagePaths => [...backendVerifyArgs(stagePaths), '--verification-result-json'],
     suppressStdout: true,
@@ -562,16 +551,6 @@ async function copyDirectoryIfPresent(sourcePath: string, destinationPath: strin
     return;
   }
   await fs.mkdir(destinationPath, { recursive: true });
-}
-
-function resolveStageInputRules(
-  rules: readonly StageInputSyncRuleTemplate[],
-): StageInputSyncRule[] {
-  return rules.map((rule) => ({
-    destinationDir: rule.destinationDir,
-    requiredFiles: rule.requiredFiles,
-    optionalFiles: rule.optionalFiles,
-  }));
 }
 
 function backendOutputArgs(paths: RuntimePaths, outputDir: string): string[] {
@@ -681,50 +660,11 @@ async function extractProofBundle(context: RuntimeContext, outputPathRaw: string
   const temporaryArchivePath = path.join(outputDir, `.${outputName}.staging-${randomUUID()}.zip`);
   try {
     archive.writeZip(temporaryArchivePath);
-    await replaceUserFileAtomically(temporaryArchivePath, outputPath);
+    await promoteStagedRuntimePaths([{ activePath: outputPath, stagingPath: temporaryArchivePath }]);
   } finally {
     await fs.rm(temporaryArchivePath, { force: true });
   }
   ok(`Proof bundle written → ${outputPath}`);
-}
-
-async function replaceUserFileAtomically(stagingPath: string, outputPath: string): Promise<void> {
-  const backupPath = path.join(path.dirname(outputPath), `.${path.basename(outputPath)}.backup-${randomUUID()}`);
-  let outputBackedUp = false;
-  let stagingActivated = false;
-  try {
-    if (await fileExists(outputPath)) {
-      await fs.rename(outputPath, backupPath);
-      outputBackedUp = true;
-    }
-    await fs.rename(stagingPath, outputPath);
-    stagingActivated = true;
-  } catch (error) {
-    const rollbackFailures: string[] = [];
-    if (stagingActivated) {
-      try {
-        await fs.rename(outputPath, stagingPath);
-      } catch (rollbackError) {
-        rollbackFailures.push(`restore staging archive: ${errorMessage(rollbackError)}`);
-      }
-    }
-    if (outputBackedUp) {
-      try {
-        await fs.rename(backupPath, outputPath);
-      } catch (rollbackError) {
-        rollbackFailures.push(`restore previous proof bundle: ${errorMessage(rollbackError)}`);
-      }
-    }
-    if (rollbackFailures.length > 0) {
-      throw new Error(`Proof bundle promotion failed: ${errorMessage(error)}. Rollback also failed: ${rollbackFailures.join('; ')}`);
-    }
-    throw error;
-  }
-  await fs.rm(backupPath, { force: true });
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 async function runDoctor(verbose: boolean): Promise<void> {
