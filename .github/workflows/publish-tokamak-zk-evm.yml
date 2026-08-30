@@ -637,6 +637,14 @@ jobs:
         working-directory: packages/backend/wasm
         run: npm ci --ignore-scripts
 
+      - name: Prepare production subcircuit input for CRS validation
+        working-directory: packages/backend/wasm
+        run: npm run subcircuit-library:generate:production
+
+      - name: Check final CRS release boundary
+        working-directory: packages/backend/wasm
+        run: npm run verifier-crs:input:check
+
       - name: Validate canonical final CRS input
         working-directory: packages/backend/wasm
         env:
