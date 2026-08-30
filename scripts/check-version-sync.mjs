@@ -8,6 +8,16 @@ import {
   parseCompatibleBackendVersion,
   parsePackageVersion,
 } from './version-contract.mjs';
+import {
+  BACKEND_CARGO_LOCK,
+  BACKEND_WORKSPACE_MANIFEST,
+  BACKEND_WORKSPACE_PACKAGE_NAMES,
+  LOCKFILE_DEPENDENCY_TARGETS,
+  LOCKFILE_PACKAGE_VERSION_TARGETS,
+  SOURCE_PACKAGE_VERSION_TARGETS,
+  SYNCHRONIZED_DEPENDENCY_TARGETS,
+  VERSION_CONSTANT_TARGETS,
+} from './version-targets.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sourceOnly = process.argv.slice(2).includes('--source-only');
@@ -30,19 +40,19 @@ function fileExists(relativePath) {
 }
 
 function getBackendWorkspaceVersion() {
-  const manifest = readText('packages/backend/Cargo.toml');
+  const manifest = readText(BACKEND_WORKSPACE_MANIFEST);
   const match = /\[workspace\.package\][\s\S]*?\nversion\s*=\s*"([^"]+)"/u.exec(manifest);
   return match?.[1] ?? null;
 }
 
 function getCargoLockPackageVersions() {
-  if (!fileExists('packages/backend/Cargo.lock')) {
+  if (!fileExists(BACKEND_CARGO_LOCK)) {
     return new Map();
   }
 
-  const workspacePackages = new Set(['libs', 'mpc-setup', 'preprocess', 'prove', 'trusted-setup', 'verify']);
+  const workspacePackages = new Set(BACKEND_WORKSPACE_PACKAGE_NAMES);
   const versions = new Map();
-  const lockfile = readText('packages/backend/Cargo.lock');
+  const lockfile = readText(BACKEND_CARGO_LOCK);
 
   for (const block of lockfile.matchAll(/\[\[package\]\]\n([\s\S]*?)(?=\n\[\[package\]\]|\s*$)/gu)) {
     const name = /^name = "([^"]+)"/mu.exec(block[1])?.[1];
@@ -65,14 +75,7 @@ try {
   fail(`Root package.json version ${error.message}`);
 }
 
-const packageTargets = [
-  'packages/cli/package.json',
-  'packages/backend/wasm/package.json',
-  'packages/backend/wasm/tools/rkyv-decoder-wasm/package.json',
-  'packages/frontend/qap-compiler/package.json',
-  'packages/frontend/synthesizer/node-cli/package.json',
-  'packages/frontend/synthesizer/web-app/package.json',
-];
+const packageTargets = SOURCE_PACKAGE_VERSION_TARGETS.filter(relativePath => relativePath !== 'package.json');
 
 for (const relativePath of packageTargets) {
   if (!fileExists(relativePath)) {
@@ -84,13 +87,11 @@ for (const relativePath of packageTargets) {
   }
 }
 
-const dependencyTargets = [
-  ['packages/cli/package.json', '@tokamak-zk-evm/synthesizer-node', expectedVersion],
-  ['packages/backend/wasm/package.json', '@tokamak-zk-evm/subcircuit-library', expectedVersion],
-  ['packages/frontend/synthesizer/node-cli/package.json', '@tokamak-zk-evm/subcircuit-library', expectedVersion],
-  ['packages/frontend/synthesizer/web-app/package.json', '@tokamak-zk-evm/subcircuit-library', expectedVersion],
-  ['packages/backend/wasm/examples/browser/package.json', '@tokamak-zk-evm/snark-browser-compat', expectedVersion],
-];
+const dependencyTargets = SYNCHRONIZED_DEPENDENCY_TARGETS.map(([relativePath, dependencyName]) => [
+  relativePath,
+  dependencyName,
+  expectedVersion,
+]);
 
 for (const [relativePath, dependencyName, expectedRange] of dependencyTargets) {
   const manifest = readJson(relativePath);
@@ -100,19 +101,11 @@ for (const [relativePath, dependencyName, expectedRange] of dependencyTargets) {
   }
 }
 
-const lockfileTargets = [
-  ['package-lock.json', '', expectedVersion],
-  ['package-lock.json', 'packages/cli', expectedVersion],
-  ['package-lock.json', 'packages/frontend/qap-compiler', expectedVersion],
-  ['package-lock.json', 'packages/frontend/synthesizer/node-cli', expectedVersion],
-  ['package-lock.json', 'packages/frontend/synthesizer/web-app', expectedVersion],
-  ['packages/backend/wasm/package-lock.json', '', expectedVersion],
-  ['packages/frontend/qap-compiler/package-lock.json', '', expectedVersion],
-  ['packages/frontend/synthesizer/package-lock.json', 'node-cli', expectedVersion],
-  ['packages/frontend/synthesizer/package-lock.json', 'web-app', expectedVersion],
-  ['packages/frontend/synthesizer/node-cli/package-lock.json', '', expectedVersion],
-  ['packages/frontend/synthesizer/web-app/package-lock.json', '', expectedVersion],
-];
+const lockfileTargets = LOCKFILE_PACKAGE_VERSION_TARGETS.map(([relativePath, packageKey]) => [
+  relativePath,
+  packageKey,
+  expectedVersion,
+]);
 
 if (!sourceOnly) {
   for (const [relativePath, packageKey, expectedPackageVersion] of lockfileTargets) {
@@ -130,12 +123,15 @@ if (!sourceOnly) {
   }
 
   const backendWasmPackageLock = readJson('packages/backend/wasm/package-lock.json');
-  const backendWasmLockDependency =
-    backendWasmPackageLock.packages?.['']?.dependencies?.['@tokamak-zk-evm/subcircuit-library'];
-  if (backendWasmLockDependency !== expectedVersion) {
-    fail(
-      `packages/backend/wasm/package-lock.json dependency @tokamak-zk-evm/subcircuit-library is '${backendWasmLockDependency}', expected '${expectedVersion}'.`,
-    );
+  for (const [relativePath, packageKey, dependencyName] of LOCKFILE_DEPENDENCY_TARGETS) {
+    if (!fileExists(relativePath)) continue;
+    const lockfile = readJson(relativePath);
+    const actualRange = lockfile.packages?.[packageKey]?.dependencies?.[dependencyName];
+    if (actualRange !== expectedVersion) {
+      fail(
+        `${relativePath} package entry '${packageKey}' dependency ${dependencyName} is '${actualRange}', expected '${expectedVersion}'.`,
+      );
+    }
   }
 
   const backendWasmResolvedSubcircuitVersion =
@@ -147,12 +143,12 @@ if (!sourceOnly) {
   }
 }
 
-const backendWasmVersionModule = readText('packages/backend/wasm/src/version.ts');
-const backendWasmVersionMatch = /BACKEND_WASM_PACKAGE_VERSION\s*=\s*"([^"]+)"/u.exec(backendWasmVersionModule);
-if (backendWasmVersionMatch?.[1] !== expectedVersion) {
-  fail(
-    `packages/backend/wasm/src/version.ts package version is '${backendWasmVersionMatch?.[1] ?? 'missing'}', expected '${expectedVersion}'.`,
-  );
+for (const [relativePath, constantName] of VERSION_CONSTANT_TARGETS) {
+  const moduleContents = readText(relativePath);
+  const match = new RegExp(`${constantName}\\s*=\\s*"([^"]+)"`, 'u').exec(moduleContents);
+  if (match?.[1] !== expectedVersion) {
+    fail(`${relativePath} ${constantName} is '${match?.[1] ?? 'missing'}', expected '${expectedVersion}'.`);
+  }
 }
 
 // backend-wasm active generated inputs are ignored, mode-specific build
