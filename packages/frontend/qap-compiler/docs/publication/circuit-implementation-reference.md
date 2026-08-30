@@ -163,7 +163,7 @@ the surrounding protocol assigns meaning to the values.
 ## Scope and source snapshot
 
 The tables cover every production target in
-[`scripts/compile.sh`](../scripts/compile.sh). The values describe the current
+[`scripts/compile.sh`](../../scripts/compile.sh). The values describe the current
 source tree, not necessarily the contents of an older installed package or the
 checked-in generated library.
 
@@ -225,8 +225,8 @@ the local constant-one wire. Every 256-bit word uses this order:
 2. upper 128-bit limb
 
 Visibility refers to the final composed proof interface constructed by
-[`scripts/parse.js`](../scripts/parse.js) and
-[`scripts/configure.js`](../scripts/configure.js), not to the temporary
+[`scripts/parse.js`](../../scripts/parse.js) and
+[`scripts/configure.js`](../../scripts/configure.js), not to the temporary
 standalone visibility used while Circom compiles one wrapper. All non-buffer
 interfaces are private internal wires. The public side of each buffer is
 selected explicitly by `LIBRARY_LAYOUT.publicWireSegments`.

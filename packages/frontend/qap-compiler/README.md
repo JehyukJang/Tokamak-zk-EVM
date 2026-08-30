@@ -113,7 +113,7 @@ establish that a circuit, setup ceremony, integration, or surrounding protocol
 is secure.
 
 For a plain-language overview and a complete technical table, see the
-[circuit implementation and composition reference](./docs/circuit-implementation-reference.md).
+[circuit implementation and composition reference](./docs/publication/circuit-implementation-reference.md).
 It explains how subcircuits become one proof and records each production
 subcircuit's operation, interface, constraint count, visibility, and soundness
 dependencies.
