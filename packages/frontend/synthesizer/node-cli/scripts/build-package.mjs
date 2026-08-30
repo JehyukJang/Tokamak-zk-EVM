@@ -21,12 +21,11 @@ const entryPoints = {
   'cli/index': path.join(rootDir, 'src/cli/index.ts'),
 };
 
+/** @type {import('esbuild').BuildOptions} */
 const baseConfig = {
   absWorkingDir: rootDir,
   bundle: true,
-  external: [
-    '@tokamak-zk-evm/subcircuit-library/package.json',
-  ],
+  external: ['@tokamak-zk-evm/subcircuit-library/package.json'],
   entryPoints,
   define: createBuildMetadataDefines(buildMetadata),
   logLevel: 'info',
@@ -40,10 +39,7 @@ const baseConfig = {
 
 await fs.rm(path.join(distDir, 'cjs'), { force: true, recursive: true });
 await fs.rm(path.join(distDir, 'esm'), { force: true, recursive: true });
-await fs.writeFile(
-  path.join(rootDir, 'build-metadata.json'),
-  createBuildMetadataFileContents(buildMetadata),
-);
+await fs.writeFile(path.join(rootDir, 'build-metadata.json'), createBuildMetadataFileContents(buildMetadata));
 
 await build({
   ...baseConfig,
@@ -57,12 +53,6 @@ await build({
   outdir: path.join(distDir, 'esm'),
 });
 
-await fs.writeFile(
-  path.join(distDir, 'cjs', 'package.json'),
-  JSON.stringify({ type: 'commonjs' }, null, 2) + '\n',
-);
+await fs.writeFile(path.join(distDir, 'cjs', 'package.json'), JSON.stringify({ type: 'commonjs' }, null, 2) + '\n');
 
-await fs.writeFile(
-  path.join(distDir, 'esm', 'package.json'),
-  JSON.stringify({ type: 'module' }, null, 2) + '\n',
-);
+await fs.writeFile(path.join(distDir, 'esm', 'package.json'), JSON.stringify({ type: 'module' }, null, 2) + '\n');

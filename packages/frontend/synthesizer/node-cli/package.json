@@ -75,7 +75,7 @@
     "test:private-state-topology": "tsx --tsconfig tsconfig.dev.json tests/scripts/run-private-state-topology-matrix.ts all",
     "test:node": "npm run -s test",
     "tsc": "npm run typecheck",
-    "typecheck": "tsc -p tsconfig.json --pretty false",
+    "typecheck": "npm --prefix ../../../.. run synthesizer:build-tools:check && tsc -p tsconfig.json --pretty false",
     "prepack": "npm run build:package"
   },
   "dependencies": {
