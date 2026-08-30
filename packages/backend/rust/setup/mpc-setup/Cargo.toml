@@ -1,0 +1,53 @@
+[package]
+name = "mpc-setup"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+authors = { workspace = true }
+repository = { workspace = true }
+homepage = { workspace = true }
+
+[dependencies]
+serde = { workspace = true }
+
+icicle-core = { workspace = true }
+icicle-bls12-381 = { workspace = true }
+icicle-runtime = { workspace = true }
+
+libs = { workspace = true, default-features = false }
+rkyv = { workspace = true }
+rayon = { workspace = true }
+ark-bls12-381 = { workspace = true }
+ark-ec = { workspace = true }
+ark-ff = { workspace = true }
+rand = { workspace = true }
+blake2 = "0.8.1"
+rand_chacha = "0.3.1"
+bincode = { workspace = true }
+memmap = "0.7.0"
+serde_json = { workspace = true }
+hex = { workspace = true }
+ark-std = "0.5.0"
+ark-serialize = "0.5.0"
+blake3 = "1.8.2"
+clap = { workspace = true }
+chrono = "0.4"
+tokio = { version = "1", features = ["full"] }
+google-drive3 = "5.0.0"
+
+thiserror = "2.0.12"
+zip = "4.0.0"
+tempfile = "3.20.0"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+sha2 = "0.10"
+dotenvy = "0.15"
+webbrowser = "1.0"
+[features]
+default = ["local-development-subcircuit-library"]
+testing-mode = ["libs/testing-mode"]
+local-development-subcircuit-library = ["libs/local-development-subcircuit-library"]
+production-npm-subcircuit-library = ["libs/production-npm-subcircuit-library"]
+
+[build-dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }

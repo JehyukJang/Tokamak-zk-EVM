@@ -231,7 +231,7 @@ function checkPackageReadmes() {
     ['packages/frontend/qap-compiler/README.md', '@tokamak-zk-evm/subcircuit-library'],
     ['packages/frontend/synthesizer/node-cli/README.md', '@tokamak-zk-evm/synthesizer-node'],
     ['packages/frontend/synthesizer/web-app/README.md', '@tokamak-zk-evm/synthesizer-web'],
-    ['packages/backend-wasm/README.md', '@tokamak-zk-evm/snark-browser-compat'],
+    ['packages/backend/wasm/README.md', '@tokamak-zk-evm/snark-browser-compat'],
   ];
 
   for (const [relativePath, packageName] of packageReadmes) {
@@ -279,7 +279,7 @@ function checkPackageReadmes() {
       ],
     ],
     [
-      'packages/backend-wasm/README.md',
+      'packages/backend/wasm/README.md',
       [
         '## Runtime artifact guide and acquisition',
         'TZBWASM1',
@@ -325,12 +325,12 @@ function checkReadmeResponsibilities() {
   const readmes = [
     'README.md',
     'packages/backend/README.md',
-    'packages/backend/setup/mpc-setup/README.md',
-    'packages/backend-wasm/README.md',
-    'packages/backend-wasm/docs/optimization/README.md',
-    'packages/backend-wasm/examples/browser/README.md',
-    'packages/backend-wasm/fixtures/README.md',
-    'packages/backend-wasm/tools/rkyv-decoder-wasm/README.md',
+    'packages/backend/rust/setup/mpc-setup/README.md',
+    'packages/backend/wasm/README.md',
+    'packages/backend/wasm/docs/optimization/README.md',
+    'packages/backend/wasm/examples/browser/README.md',
+    'packages/backend/wasm/fixtures/README.md',
+    'packages/backend/wasm/tools/rkyv-decoder-wasm/README.md',
     'packages/cli/README.md',
     'packages/frontend/qap-compiler/README.md',
     'packages/frontend/qap-compiler/docs/README.md',
@@ -352,10 +352,10 @@ function checkReadmeResponsibilities() {
   for (const relativePath of [
     'README.md',
     'packages/backend/README.md',
-    'packages/backend/setup/mpc-setup/README.md',
-    'packages/backend-wasm/README.md',
-    'packages/backend-wasm/examples/browser/README.md',
-    'packages/backend-wasm/tools/rkyv-decoder-wasm/README.md',
+    'packages/backend/rust/setup/mpc-setup/README.md',
+    'packages/backend/wasm/README.md',
+    'packages/backend/wasm/examples/browser/README.md',
+    'packages/backend/wasm/tools/rkyv-decoder-wasm/README.md',
     'packages/cli/README.md',
     'packages/frontend/qap-compiler/README.md',
     'packages/frontend/synthesizer/README.md',
@@ -378,7 +378,7 @@ function checkLicensing() {
 
   const rootApacheLicense = readText('LICENSE-APACHE');
   for (const relativePath of [
-    'packages/backend-wasm/LICENSE-APACHE',
+    'packages/backend/wasm/LICENSE-APACHE',
     'packages/cli/LICENSE-APACHE',
     'packages/frontend/qap-compiler/LICENSE-APACHE',
     'packages/frontend/synthesizer/LICENSE-APACHE',
@@ -409,7 +409,7 @@ function checkPackageMetadata() {
     'packages/frontend/qap-compiler/package.json',
     'packages/frontend/synthesizer/node-cli/package.json',
     'packages/frontend/synthesizer/web-app/package.json',
-    'packages/backend-wasm/package.json',
+    'packages/backend/wasm/package.json',
   ];
 
   for (const relativePath of manifests) {

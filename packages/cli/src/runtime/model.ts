@@ -6,17 +6,32 @@ export interface InstallOptions {
   docker: boolean;
   includePrerequisite: boolean;
   noSetup: boolean;
-  trustedSetup: boolean;
   verbose: boolean;
 }
 
-export interface RuntimeState {
-  dockerEnvironment?: DockerEnvironment;
-  installMode?: 'native' | 'docker';
+export type DockerEnvironment = 'ubuntu22' | 'ubuntu22-cuda122';
+
+/** Exact production build metadata for every backend runtime package. */
+export type BackendRuntimeIdentity = readonly BackendBuildMetadata[];
+
+interface RuntimeStateBase {
+  backendRuntimeIdentity: BackendRuntimeIdentity;
   packageVersion: string;
   platform: CliPlatform;
   installedAt: string;
 }
+
+export interface NativeRuntimeState extends RuntimeStateBase {
+  dockerEnvironment?: never;
+  installMode: 'native';
+}
+
+export interface DockerRuntimeState extends RuntimeStateBase {
+  dockerEnvironment: DockerEnvironment;
+  installMode: 'docker';
+}
+
+export type RuntimeState = NativeRuntimeState | DockerRuntimeState;
 
 export interface RuntimeContext {
   cacheRoot: string;
@@ -28,13 +43,6 @@ export interface RuntimeContext {
   compatibleBackendVersion: string;
   packageVersion: string;
 }
-
-export interface CommandResult {
-  stdout: string;
-  stderr: string;
-}
-
-export type DockerEnvironment = 'ubuntu22' | 'ubuntu22-cuda122';
 
 export type NativeRuntimeOs =
   | { platform: 'macos' }
@@ -49,3 +57,22 @@ export interface DockerBootstrap {
   platform: 'linux';
   useGpus: boolean;
 }
+
+export interface InstalledRuntime {
+  context: RuntimeContext;
+  state: RuntimeState;
+}
+
+export type RuntimeExecution =
+  | {
+      mode: 'native';
+      context: RuntimeContext;
+      state: NativeRuntimeState;
+    }
+  | {
+      mode: 'docker';
+      bootstrap: DockerBootstrap;
+      context: RuntimeContext;
+      state: DockerRuntimeState;
+    };
+import type { BackendBuildMetadata } from '../generated/backend-build-metadata-validator.generated.js';

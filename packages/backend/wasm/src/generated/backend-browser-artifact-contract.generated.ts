@@ -1,0 +1,452 @@
+// Generated from packages/backend/common/contracts/browser-artifact-contract.v1.json. Do not edit.
+export const BACKEND_BROWSER_ARTIFACT_CONTRACT = {
+  "contractVersion": 1,
+  "owner": "backend",
+  "artifactKinds": {
+    "instance": 1,
+    "verifier_proof": 2,
+    "sigma_verify": 3,
+    "verifier_preprocess": 4,
+    "prover_placement_variables": 5,
+    "prover_crs": 6,
+    "preprocess_crs": 7,
+    "prover_permutation": 9
+  },
+  "combinedSigmaPayload": {
+    "magic": "TKCRS001",
+    "sections": [
+      {
+        "decoderField": "g1",
+        "proverCrsSectionIndex": 0
+      },
+      {
+        "decoderField": "sigma1XyPowers",
+        "proverCrsSectionIndex": 1
+      },
+      {
+        "decoderField": "sigma1GammaInvOInst",
+        "proverCrsSectionIndex": 2
+      },
+      {
+        "decoderField": "sigma1EtaInvLiOInterAlpha4Kj",
+        "proverCrsSectionIndex": 3
+      },
+      {
+        "decoderField": "sigma1DeltaInvLiOPrv",
+        "proverCrsSectionIndex": 4
+      },
+      {
+        "decoderField": "sigma1DeltaInvAlphakXhTx",
+        "proverCrsSectionIndex": 5
+      },
+      {
+        "decoderField": "sigma1DeltaInvAlpha4XjTx",
+        "proverCrsSectionIndex": 6
+      },
+      {
+        "decoderField": "sigma1DeltaInvAlphakYiTy",
+        "proverCrsSectionIndex": 7
+      },
+      {
+        "decoderField": "g2",
+        "proverCrsSectionIndex": 8
+      }
+    ]
+  },
+  "artifacts": [
+    {
+      "name": "sigma_verify",
+      "sections": [
+        {
+          "label": "sigma.g1",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": 4,
+          "elementByteLength": null,
+          "points": [
+            {
+              "index": 0,
+              "name": "G"
+            },
+            {
+              "index": 1,
+              "name": "sigma1.x"
+            },
+            {
+              "index": 2,
+              "name": "sigma1.y"
+            },
+            {
+              "index": 3,
+              "name": "lagrangeKL"
+            }
+          ]
+        },
+        {
+          "label": "sigma.g2",
+          "type": "CrsG2",
+          "encoding": "ffjs-g2-affine-192",
+          "elementCount": 10,
+          "elementByteLength": null,
+          "points": [
+            {
+              "index": 0,
+              "name": "H"
+            },
+            {
+              "index": 1,
+              "name": "sigma2.alpha"
+            },
+            {
+              "index": 2,
+              "name": "sigma2.alpha2"
+            },
+            {
+              "index": 3,
+              "name": "sigma2.alpha3"
+            },
+            {
+              "index": 4,
+              "name": "sigma2.alpha4"
+            },
+            {
+              "index": 5,
+              "name": "sigma2.gamma"
+            },
+            {
+              "index": 6,
+              "name": "sigma2.delta"
+            },
+            {
+              "index": 7,
+              "name": "sigma2.eta"
+            },
+            {
+              "index": 8,
+              "name": "sigma2.x"
+            },
+            {
+              "index": 9,
+              "name": "sigma2.y"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "verifier_preprocess",
+      "sourceFields": {
+        "coordinatesPart1": "preprocess_entries_part1",
+        "coordinatesPart2": "preprocess_entries_part2"
+      },
+      "sections": [
+        {
+          "label": "preprocess.g1",
+          "type": "Preprocess",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": 3,
+          "elementByteLength": null,
+          "points": [
+            {
+              "index": 0,
+              "name": "s0"
+            },
+            {
+              "index": 1,
+              "name": "s1"
+            },
+            {
+              "index": 2,
+              "name": "O_pub_fix"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "verifier_proof",
+      "sourceFields": {
+        "coordinatesPart1": "proof_entries_part1",
+        "coordinatesAndEvaluationsPart2": "proof_entries_part2"
+      },
+      "sections": [
+        {
+          "label": "proof.g1",
+          "type": "Proof",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": 19,
+          "elementByteLength": null,
+          "points": [
+            {
+              "index": 0,
+              "name": "proof0.U"
+            },
+            {
+              "index": 1,
+              "name": "proof0.V"
+            },
+            {
+              "index": 2,
+              "name": "proof0.W"
+            },
+            {
+              "index": 3,
+              "name": "binding.O_mid"
+            },
+            {
+              "index": 4,
+              "name": "binding.O_prv"
+            },
+            {
+              "index": 5,
+              "name": "proof0.Q_AX"
+            },
+            {
+              "index": 6,
+              "name": "proof0.Q_AY"
+            },
+            {
+              "index": 7,
+              "name": "proof2.Q_CX"
+            },
+            {
+              "index": 8,
+              "name": "proof2.Q_CY"
+            },
+            {
+              "index": 9,
+              "name": "proof4.Pi_X"
+            },
+            {
+              "index": 10,
+              "name": "proof4.Pi_Y"
+            },
+            {
+              "index": 11,
+              "name": "proof0.B"
+            },
+            {
+              "index": 12,
+              "name": "proof1.R"
+            },
+            {
+              "index": 13,
+              "name": "proof4.M_Y"
+            },
+            {
+              "index": 14,
+              "name": "proof4.M_X"
+            },
+            {
+              "index": 15,
+              "name": "proof4.N_Y"
+            },
+            {
+              "index": 16,
+              "name": "proof4.N_X"
+            },
+            {
+              "index": 17,
+              "name": "binding.O_pub_free"
+            },
+            {
+              "index": 18,
+              "name": "binding.A_free"
+            }
+          ]
+        },
+        {
+          "label": "proof.evals",
+          "type": "Proof",
+          "encoding": "ffjs-fr-montgomery-le-32",
+          "elementCount": 4,
+          "elementByteLength": null,
+          "points": [
+            {
+              "index": 0,
+              "name": "proof3.R_eval"
+            },
+            {
+              "index": 1,
+              "name": "proof3.R_omegaX_eval"
+            },
+            {
+              "index": 2,
+              "name": "proof3.R_omegaX_omegaY_eval"
+            },
+            {
+              "index": 3,
+              "name": "proof3.V_eval"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prover_crs",
+      "sections": [
+        {
+          "label": "sigma.g1",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": 6,
+          "elementByteLength": null,
+          "points": [
+            {
+              "index": 0,
+              "name": "G"
+            },
+            {
+              "index": 1,
+              "name": "sigma1.x"
+            },
+            {
+              "index": 2,
+              "name": "sigma1.y"
+            },
+            {
+              "index": 3,
+              "name": "sigma1.delta"
+            },
+            {
+              "index": 4,
+              "name": "sigma1.eta"
+            },
+            {
+              "index": 5,
+              "name": "lagrangeKL"
+            }
+          ]
+        },
+        {
+          "label": "sigma1.xy-powers",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": null,
+          "elementByteLength": null,
+          "points": []
+        },
+        {
+          "label": "sigma1.gamma-inv-o-inst",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": null,
+          "elementByteLength": null,
+          "points": []
+        },
+        {
+          "label": "sigma1.eta-inv-li-o-inter-alpha4-kj",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": null,
+          "elementByteLength": null,
+          "points": []
+        },
+        {
+          "label": "sigma1.delta-inv-li-o-prv",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": null,
+          "elementByteLength": null,
+          "points": []
+        },
+        {
+          "label": "sigma1.delta-inv-alphak-xh-tx",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": 9,
+          "elementByteLength": null,
+          "points": []
+        },
+        {
+          "label": "sigma1.delta-inv-alpha4-xj-tx",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": 2,
+          "elementByteLength": null,
+          "points": []
+        },
+        {
+          "label": "sigma1.delta-inv-alphak-yi-ty",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": 12,
+          "elementByteLength": null,
+          "points": []
+        },
+        {
+          "label": "sigma.g2",
+          "type": "CrsG2",
+          "encoding": "ffjs-g2-affine-192",
+          "elementCount": 10,
+          "elementByteLength": null,
+          "points": [
+            {
+              "index": 0,
+              "name": "H"
+            },
+            {
+              "index": 1,
+              "name": "sigma2.alpha"
+            },
+            {
+              "index": 2,
+              "name": "sigma2.alpha2"
+            },
+            {
+              "index": 3,
+              "name": "sigma2.alpha3"
+            },
+            {
+              "index": 4,
+              "name": "sigma2.alpha4"
+            },
+            {
+              "index": 5,
+              "name": "sigma2.gamma"
+            },
+            {
+              "index": 6,
+              "name": "sigma2.delta"
+            },
+            {
+              "index": 7,
+              "name": "sigma2.eta"
+            },
+            {
+              "index": 8,
+              "name": "sigma2.x"
+            },
+            {
+              "index": 9,
+              "name": "sigma2.y"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "preprocess_crs",
+      "sections": [
+        {
+          "label": "sigma1.xy-powers",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": null,
+          "elementByteLength": null,
+          "points": []
+        },
+        {
+          "label": "sigma1.gamma-inv-o-inst",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": null,
+          "elementByteLength": null,
+          "points": []
+        }
+      ]
+    }
+  ]
+} as const;
+
+export default BACKEND_BROWSER_ARTIFACT_CONTRACT;

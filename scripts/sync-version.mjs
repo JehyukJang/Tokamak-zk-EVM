@@ -3,17 +3,26 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { compatibilityFromPackageVersion, parsePackageVersion } from './version-contract.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const targetVersion = process.argv[2] ?? process.env.TOKAMAK_ZK_EVM_VERSION;
-const strictSemverPattern = /^\d+\.\d+\.\d+$/u;
-
-if (!targetVersion || !strictSemverPattern.test(targetVersion)) {
-  console.error('Usage: node scripts/sync-version.mjs <X.Y.Z>');
+const argumentsList = process.argv.slice(2);
+const sourceOnly = argumentsList.includes('--source-only');
+const targetVersion =
+  argumentsList.find(argument => argument !== '--source-only') ?? process.env.TOKAMAK_ZK_EVM_VERSION;
+if (!targetVersion) {
+  console.error('Usage: node scripts/sync-version.mjs [--source-only] <X.Y.Z>');
   process.exit(1);
 }
 
-const targetCompatibleBackendVersion = targetVersion.split('.').slice(0, 2).join('.');
+try {
+  parsePackageVersion(targetVersion);
+} catch (error) {
+  console.error(`Invalid target version: ${error.message}`);
+  process.exit(1);
+}
+
+const targetCompatibleBackendVersion = compatibilityFromPackageVersion(targetVersion);
 
 function readJson(relativePath) {
   return JSON.parse(fs.readFileSync(path.join(repoRoot, relativePath), 'utf8'));
@@ -98,7 +107,7 @@ function updateRootPackageLock() {
       }
       if (lockfile.packages?.['packages/cli']) {
         lockfile.packages['packages/cli'].version = targetVersion;
-        lockfile.packages['packages/cli'].dependencies['@tokamak-zk-evm/synthesizer-node'] = `^${targetVersion}`;
+        lockfile.packages['packages/cli'].dependencies['@tokamak-zk-evm/synthesizer-node'] = targetVersion;
       }
       if (lockfile.packages?.['packages/frontend/qap-compiler']) {
         lockfile.packages['packages/frontend/qap-compiler'].version = targetVersion;
@@ -106,12 +115,12 @@ function updateRootPackageLock() {
       if (lockfile.packages?.['packages/frontend/synthesizer/node-cli']) {
         lockfile.packages['packages/frontend/synthesizer/node-cli'].version = targetVersion;
         lockfile.packages['packages/frontend/synthesizer/node-cli'].dependencies['@tokamak-zk-evm/subcircuit-library'] =
-          `^${targetVersion}`;
+          targetVersion;
       }
       if (lockfile.packages?.['packages/frontend/synthesizer/web-app']) {
         lockfile.packages['packages/frontend/synthesizer/web-app'].version = targetVersion;
         lockfile.packages['packages/frontend/synthesizer/web-app'].dependencies['@tokamak-zk-evm/subcircuit-library'] =
-          `^${targetVersion}`;
+          targetVersion;
       }
     },
     { optional: true },
@@ -140,7 +149,7 @@ function updateSynthesizerPackageLock() {
           continue;
         }
         lockfile.packages[packageKey].version = targetVersion;
-        lockfile.packages[packageKey].dependencies['@tokamak-zk-evm/subcircuit-library'] = `^${targetVersion}`;
+        lockfile.packages[packageKey].dependencies['@tokamak-zk-evm/subcircuit-library'] = targetVersion;
       }
     },
     { optional: true },
@@ -152,7 +161,7 @@ function updateSynthesizerPackageLock() {
       lockfile.version = targetVersion;
       if (lockfile.packages?.['']) {
         lockfile.packages[''].version = targetVersion;
-        lockfile.packages[''].dependencies['@tokamak-zk-evm/subcircuit-library'] = `^${targetVersion}`;
+        lockfile.packages[''].dependencies['@tokamak-zk-evm/subcircuit-library'] = targetVersion;
       }
     },
     { optional: true },
@@ -165,7 +174,7 @@ function updateSynthesizerPackageLock() {
       if (lockfile.packages?.['']) {
         lockfile.packages[''].version = targetVersion;
         lockfile.packages[''].dependencies ??= {};
-        lockfile.packages[''].dependencies['@tokamak-zk-evm/subcircuit-library'] = `^${targetVersion}`;
+        lockfile.packages[''].dependencies['@tokamak-zk-evm/subcircuit-library'] = targetVersion;
       }
     },
     { optional: true },
@@ -173,7 +182,7 @@ function updateSynthesizerPackageLock() {
 }
 
 function updateBackendWasmPackageLock() {
-  updatePackageLock('packages/backend-wasm/package-lock.json', lockfile => {
+  updatePackageLock('packages/backend/wasm/package-lock.json', lockfile => {
     lockfile.version = targetVersion;
     if (lockfile.packages?.['']) {
       lockfile.packages[''].version = targetVersion;
@@ -194,7 +203,7 @@ function replaceVersionConstant(relativePath, constantName) {
 
 updatePackageVersion('package.json');
 updatePackageVersion('packages/cli/package.json', {
-  '@tokamak-zk-evm/synthesizer-node': `^${targetVersion}`,
+  '@tokamak-zk-evm/synthesizer-node': targetVersion,
 });
 updateJson('packages/cli/package.json', manifest => {
   manifest.tokamakZkEvm ??= {};
@@ -202,35 +211,37 @@ updateJson('packages/cli/package.json', manifest => {
 });
 updatePackageVersion('packages/frontend/qap-compiler/package.json');
 updatePackageVersion('packages/frontend/synthesizer/node-cli/package.json', {
-  '@tokamak-zk-evm/subcircuit-library': `^${targetVersion}`,
-});
-updatePackageVersion('packages/frontend/synthesizer/web-app/package.json', {
-  '@tokamak-zk-evm/subcircuit-library': `^${targetVersion}`,
-});
-updatePackageVersion('packages/backend-wasm/package.json', {
   '@tokamak-zk-evm/subcircuit-library': targetVersion,
 });
-updateJson('packages/backend-wasm/examples/browser/package.json', manifest => {
+updatePackageVersion('packages/frontend/synthesizer/web-app/package.json', {
+  '@tokamak-zk-evm/subcircuit-library': targetVersion,
+});
+updatePackageVersion('packages/backend/wasm/package.json', {
+  '@tokamak-zk-evm/subcircuit-library': targetVersion,
+});
+updateJson('packages/backend/wasm/examples/browser/package.json', manifest => {
   manifest.dependencies['@tokamak-zk-evm/snark-browser-compat'] = targetVersion;
 });
-updatePackageVersion('packages/backend-wasm/tools/rkyv-decoder-wasm/package.json');
+updatePackageVersion('packages/backend/wasm/tools/rkyv-decoder-wasm/package.json');
 updateBackendWorkspaceVersion();
-updateBackendCargoLock();
-updateRootPackageLock();
-updateQapCompilerPackageLock();
-updateSynthesizerPackageLock();
-updateBackendWasmPackageLock();
-replaceVersionConstant(
-  'packages/backend-wasm/src/version.ts',
-  'BACKEND_WASM_PACKAGE_VERSION',
-);
-replaceVersionConstant(
-  'packages/backend-wasm/src/generated/setup.generated.ts',
-  'NATIVE_BACKEND_VERSION',
-);
-replaceVersionConstant(
-  'packages/backend-wasm/src/generated/setup.generated.ts',
-  'SUBCIRCUIT_LIBRARY_PACKAGE_VERSION',
-);
+if (!sourceOnly) {
+  updateBackendCargoLock();
+  updateRootPackageLock();
+  updateQapCompilerPackageLock();
+  updateSynthesizerPackageLock();
+  updateBackendWasmPackageLock();
+}
+replaceVersionConstant('packages/backend/wasm/src/version.ts', 'BACKEND_WASM_PACKAGE_VERSION');
+if (!sourceOnly) {
+  replaceVersionConstant('packages/backend/wasm/src/generated/setup.generated.ts', 'NATIVE_BACKEND_VERSION');
+  replaceVersionConstant(
+    'packages/backend/wasm/src/generated/setup.generated.ts',
+    'SUBCIRCUIT_LIBRARY_PACKAGE_VERSION',
+  );
+}
 
-console.log(`[sync-version] Synchronized repository release version to ${targetVersion}.`);
+console.log(
+  sourceOnly
+    ? `[sync-version] Synchronized source version to ${targetVersion} without lockfiles or generated artifacts.`
+    : `[sync-version] Synchronized repository release version to ${targetVersion}.`,
+);

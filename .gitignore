@@ -3,9 +3,9 @@ target/
 Cargo.lock
 **/*.rs.bk
 **/output/
-!packages/backend/prove/output/
-packages/backend/prove/output/*
-!packages/backend/prove/output/timing.release.md
+!packages/backend/rust/prove/output/
+packages/backend/rust/prove/output/*
+!packages/backend/rust/prove/output/timing.release.md
 
 # Node
 node_modules/
@@ -44,6 +44,7 @@ dist/
 dist-*/
 **/dist/
 packages/cli/vendor/
+packages/cli/versioning/
 
 #Package
 *.zip

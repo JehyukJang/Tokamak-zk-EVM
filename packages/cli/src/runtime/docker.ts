@@ -5,18 +5,25 @@ import {
   createDockerRuntimeContext,
   ensureDir,
   runtimePaths,
-  writeRuntimeState,
 } from './context.js';
+import { validateBackendRuntimeIdentityForContext } from './identity.js';
+import { BACKEND_PACKAGE_NAMES } from '../generated/backend-build-metadata-validator.generated.js';
+import { commitPreparedRuntime } from './transaction.js';
 import type {
-  CommandResult,
   DockerBootstrap,
   DockerEnvironment,
+  InstalledRuntime,
   InstallOptions,
   RuntimeContext,
+  RuntimeExecution,
 } from './model.js';
-import { commandExists, commandSucceeds, logVerbose, runCommand } from '../system.js';
-
-const DOCKER_ENVIRONMENT_ENV = 'TOKAMAK_ZKEVM_CLI_DOCKER_ENVIRONMENT';
+import {
+  commandExists,
+  commandSucceeds,
+  logVerbose,
+  runCommand,
+  type CommandResult,
+} from '../system.js';
 
 const DOCKER_BOOTSTRAP_VERSION = 1;
 
@@ -193,39 +200,60 @@ function validateDockerBootstrap(value: unknown): DockerBootstrap | null {
   return candidate as DockerBootstrap;
 }
 
-async function readDockerBootstrap(context: RuntimeContext): Promise<DockerBootstrap | null> {
+async function readDockerBootstrap(context: RuntimeContext): Promise<DockerBootstrap> {
   if (context.platform !== 'linux') {
-    return null;
+    throw new Error('Docker execution requires a Linux runtime context.');
   }
+  const bootstrapPath = dockerBootstrapPath(context);
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(await fs.readFile(dockerBootstrapPath(context), 'utf8')) as unknown;
-    return validateDockerBootstrap(parsed);
-  } catch {
-    return null;
-  }
-}
-
-async function dockerBootstrapRunnable(context: RuntimeContext, verbose: boolean): Promise<DockerBootstrap | null> {
-  const bootstrap = await readDockerBootstrap(context);
-  if (bootstrap === null) {
-    return null;
-  }
-  if (!(await dockerDaemonAvailable(verbose))) {
-    return null;
-  }
-  if (!(await commandSucceeds('docker', ['image', 'inspect', bootstrap.imageName]))) {
+    parsed = JSON.parse(await fs.readFile(bootstrapPath, 'utf8')) as unknown;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     throw new Error(
-      `Tokamak zk-EVM Docker image ${bootstrap.imageName} is missing. Run \`tokamak-cli --install --docker\` again.`,
+      `Docker runtime is selected, but its bootstrap is unavailable at ${bootstrapPath}: ${message}. Run \`tokamak-cli --install --docker\` again.`,
+    );
+  }
+  const bootstrap = validateDockerBootstrap(parsed);
+  if (bootstrap === null) {
+    throw new Error(
+      `Docker runtime is selected, but its bootstrap at ${bootstrapPath} is invalid. Run \`tokamak-cli --install --docker\` again.`,
     );
   }
   return bootstrap;
 }
 
-async function writeDockerBootstrap(context: RuntimeContext, bootstrap: DockerBootstrap): Promise<void> {
-  const bootstrapDir = dockerBootstrapDir(context);
-  await ensureDir(bootstrapDir);
-  await fs.writeFile(dockerBootstrapPath(context), `${JSON.stringify(bootstrap, null, 2)}\n`, 'utf8');
-  await fs.rm(path.join(bootstrapDir, 'run.sh'), { force: true });
+function assertBootstrapMatchesInstalledRuntime(installed: InstalledRuntime, bootstrap: DockerBootstrap): void {
+  const { context, state } = installed;
+  if (state.installMode !== 'docker') {
+    throw new Error('Internal error: Docker bootstrap validation requires a Docker-selected runtime.');
+  }
+  const expectedEnvironment = state.dockerEnvironment;
+  const expectedImageName = dockerImageName(context.packageVersion, expectedEnvironment);
+  if (bootstrap.packageVersion !== context.packageVersion) {
+    throw new Error(
+      `Docker bootstrap package version ${bootstrap.packageVersion} does not match current CLI package version ${context.packageVersion}. Run \`tokamak-cli --install --docker\` again.`,
+    );
+  }
+  if (bootstrap.dockerEnvironment !== expectedEnvironment) {
+    throw new Error(
+      `Docker bootstrap environment ${bootstrap.dockerEnvironment} does not match selected runtime environment ${expectedEnvironment}. Run \`tokamak-cli --install --docker\` again.`,
+    );
+  }
+  if (bootstrap.imageName !== expectedImageName) {
+    throw new Error(
+      `Docker bootstrap image ${bootstrap.imageName} does not match expected image ${expectedImageName}. Run \`tokamak-cli --install --docker\` again.`,
+    );
+  }
+}
+
+export async function resolveRuntimeExecution(installed: InstalledRuntime): Promise<RuntimeExecution> {
+  if (installed.state.installMode === 'native') {
+    return { mode: 'native', context: installed.context, state: installed.state };
+  }
+  const bootstrap = await readDockerBootstrap(installed.context);
+  assertBootstrapMatchesInstalledRuntime(installed, bootstrap);
+  return { mode: 'docker', context: installed.context, state: installed.state, bootstrap };
 }
 
 async function runDockerBootstrapCommand(
@@ -235,6 +263,7 @@ async function runDockerBootstrapCommand(
   args: string[],
   verbose: boolean,
   quiet = false,
+  suppressStdout = false,
   useGpus = bootstrap.useGpus,
 ): Promise<CommandResult> {
   const env = dockerBackendEnvironment(context);
@@ -255,21 +284,40 @@ async function runDockerBootstrapCommand(
     bootstrap.imageName,
     ...args.map((arg) => toContainerArgument(arg, context)),
   ];
-  return await runCommand('docker', dockerArgs, { quiet, verbose });
+  return await runCommand('docker', dockerArgs, { quiet, suppressStdout, verbose });
 }
 
 export async function runBackendCommand(
-  context: RuntimeContext,
+  execution: RuntimeExecution,
   command: string,
   args: string[],
   verbose: boolean,
   options: {
     quiet?: boolean;
+    suppressStdout?: boolean;
   } = {},
 ): Promise<CommandResult> {
-  const { quiet = false } = options;
-  const bootstrap = await dockerBootstrapRunnable(context, verbose);
-  if (bootstrap !== null) {
+  const { quiet = false, suppressStdout = false } = options;
+  const { context } = execution;
+  if (execution.mode === 'docker') {
+    const { bootstrap } = execution;
+    if (!(await dockerDaemonAvailable(verbose))) {
+      if (process.platform === 'win32') {
+        throw new Error('Docker Desktop is required to run the selected Tokamak zk-EVM Docker runtime on Windows.');
+      }
+      logVerbose(verbose, 'Docker is unavailable; running the selected Docker runtime through its native Linux fallback.');
+      return await runCommand(command, args, {
+        env: backendEnvironment(context),
+        quiet,
+        suppressStdout,
+        verbose,
+      });
+    }
+    if (!(await commandSucceeds('docker', ['image', 'inspect', bootstrap.imageName]))) {
+      throw new Error(
+        `Tokamak zk-EVM Docker image ${bootstrap.imageName} is missing. Run \`tokamak-cli --install --docker\` again.`,
+      );
+    }
     let useGpus = bootstrap.useGpus;
     if (useGpus && !(await dockerCudaAvailable(verbose))) {
       logVerbose(verbose, 'Docker CUDA bootstrap is installed, but CUDA is not currently available; running without `--gpus all`.');
@@ -279,16 +327,13 @@ export async function runBackendCommand(
       verbose,
       `Running backend command in Docker bootstrap ${bootstrap.dockerEnvironment}${useGpus ? ' with CUDA' : ' without CUDA'}.`,
     );
-    return await runDockerBootstrapCommand(context, bootstrap, command, args, verbose, quiet, useGpus);
-  }
-
-  if (process.platform === 'win32' && context.platform === 'linux') {
-    throw new Error('Docker Desktop is required to run the installed Tokamak zk-EVM Docker runtime on Windows.');
+    return await runDockerBootstrapCommand(context, bootstrap, command, args, verbose, quiet, suppressStdout, useGpus);
   }
 
   return await runCommand(command, args, {
     env: backendEnvironment(context),
     quiet,
+    suppressStdout,
     verbose,
   });
 }
@@ -319,7 +364,12 @@ async function buildDockerInstallImage(
   );
 }
 
-function dockerInstallArgs(context: RuntimeContext, bootstrap: DockerBootstrap, options: InstallOptions): string[] {
+function dockerPrepareArgs(
+  context: RuntimeContext,
+  bootstrap: DockerBootstrap,
+  stagingRoot: string,
+  options: InstallOptions,
+): string[] {
   const args = [
     ...dockerRunPrefix(bootstrap),
     ...dockerUserArgs(),
@@ -328,15 +378,14 @@ function dockerInstallArgs(context: RuntimeContext, bootstrap: DockerBootstrap, 
     '-e',
     `TOKAMAK_ZKEVM_CLI_CACHE_DIR=${DOCKER_CONTAINER_CACHE_ROOT}`,
     '-e',
-    `${DOCKER_ENVIRONMENT_ENV}=${bootstrap.dockerEnvironment}`,
-    '-e',
     'HOME=/tmp',
+    '--entrypoint',
+    'node',
     bootstrap.imageName,
-    '--install',
+    '/opt/tokamak-cli/dist/prepare-runtime.js',
+    '--staging-root',
+    toContainerPath(stagingRoot, context),
   ];
-  if (options.trustedSetup) {
-    args.push('--trusted-setup');
-  }
   if (options.noSetup) {
     args.push('--no-setup');
   }
@@ -365,16 +414,63 @@ export async function installDockerRuntime(options: InstallOptions): Promise<Run
   };
 
   await buildDockerInstallImage(context, dockerEnvironment, bootstrap.imageName, options.verbose);
-  await runCommand('docker', dockerInstallArgs(context, bootstrap, options), {
-    verbose: options.verbose,
-  });
-  await writeDockerBootstrap(context, bootstrap);
-  await writeRuntimeState(context, {
-    dockerEnvironment,
-    installMode: 'docker',
-    packageVersion: context.packageVersion,
-    platform: context.platform,
-    installedAt: bootstrap.createdAt,
-  });
+  const stagingRoot = await fs.mkdtemp(path.join(context.platformDir, '.docker-runtime-staging-'));
+  const stagingContext = { ...context, runtimeDir: path.join(stagingRoot, 'runtime') };
+  const stagingIdentityPath = path.join(stagingRoot, 'backend-runtime-identity.json');
+  const stagingBootstrapPath = path.join(stagingRoot, 'bootstrap.json');
+  try {
+    await runCommand('docker', dockerPrepareArgs(context, bootstrap, stagingRoot, options), {
+      verbose: options.verbose,
+    });
+    const backendRuntimeIdentity = validateBackendRuntimeIdentityForContext(
+      JSON.parse(await fs.readFile(stagingIdentityPath, 'utf8')) as unknown,
+      context,
+      'Docker backend runtime identity',
+    );
+    await validatePreparedDockerRuntime(stagingContext, options.noSetup);
+    await fs.writeFile(stagingBootstrapPath, `${JSON.stringify(bootstrap, null, 2)}\n`, {
+      encoding: 'utf8',
+      flag: 'wx',
+      mode: 0o600,
+    });
+    await commitPreparedRuntime(
+      context,
+      stagingContext,
+      {
+        backendRuntimeIdentity,
+        dockerEnvironment,
+        installMode: 'docker',
+        packageVersion: context.packageVersion,
+        platform: context.platform,
+        installedAt: bootstrap.createdAt,
+      },
+      [{ activePath: dockerBootstrapPath(context), stagingPath: stagingBootstrapPath }],
+    );
+    await fs.rm(path.join(dockerBootstrapDir(context), 'run.sh'), { force: true });
+  } finally {
+    await fs.rm(stagingRoot, { recursive: true, force: true });
+  }
   return context;
+}
+
+async function validatePreparedDockerRuntime(context: RuntimeContext, noSetup: boolean): Promise<void> {
+  const paths = runtimePaths(context);
+  const runtimeStat = await fs.stat(context.runtimeDir);
+  if (!runtimeStat.isDirectory()) {
+    throw new Error(`Docker-prepared runtime is not a directory: ${context.runtimeDir}`);
+  }
+  for (const packageName of BACKEND_PACKAGE_NAMES) {
+    const binaryStat = await fs.stat(path.join(paths.binaryDir, packageName));
+    if (!binaryStat.isFile()) {
+      throw new Error(`Docker-prepared runtime is missing backend binary ${packageName}.`);
+    }
+  }
+  const icicleStat = await fs.stat(paths.icicleLibDir);
+  if (!icicleStat.isDirectory()) {
+    throw new Error('Docker-prepared runtime is missing the ICICLE library directory.');
+  }
+  const setupMarker = noSetup
+    ? path.join(paths.setupOutputDir, 'README.txt')
+    : paths.setupOutputDir;
+  await fs.access(setupMarker);
 }

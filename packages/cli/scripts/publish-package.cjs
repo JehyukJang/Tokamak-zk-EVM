@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
 const { spawnSync } = require('node:child_process');
+const path = require('node:path');
+
+const repositoryRoot = path.resolve(__dirname, '..', '..', '..');
 
 function npmCommand() {
   return process.platform === 'win32' ? 'npm.cmd' : 'npm';
@@ -26,6 +29,7 @@ function run(command, args) {
 const extraArgs = process.argv.slice(2);
 const npm = npmCommand();
 
+run(npm, ['--prefix', repositoryRoot, 'run', 'version:check']);
 run(npm, ['run', 'release:check']);
-run(npm, ['run', 'build']);
+run(npm, ['run', 'release:runtime:check']);
 run(npm, ['publish', '--access', 'public', '--ignore-scripts', ...extraArgs]);

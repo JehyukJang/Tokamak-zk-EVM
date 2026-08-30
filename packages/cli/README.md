@@ -37,18 +37,30 @@ backend npm package.
 | `tokamak-cli --install`                        | Build with prerequisites already installed and download compatible CRS artifacts |
 | `tokamak-cli --install --include-prerequisite` | Offer to install missing prerequisites on macOS or supported Ubuntu releases     |
 | `tokamak-cli --install --docker`               | Build and run in the packaged Linux container workflow                           |
-| `tokamak-cli --install --trusted-setup`        | Generate setup artifacts locally instead of downloading them                     |
 | `tokamak-cli --install --no-setup`             | Install without CRS artifacts; preprocess, prove, and verify remain unavailable  |
 
 ### Native requirements
 
-- Node.js 20 or newer and npm
-- Rust and Cargo 1.85 or newer
-- CMake 3.18 or newer
-- `pkg-config`, `tar`, and `unzip`
-- C/C++ build tools
-- Git, Ninja, Clang, LLDB, and LLD on Ubuntu
-- outbound HTTPS to npm, crates.io, GitHub, GitHub Releases, and Google Drive
+Node.js 20 or newer and npm are bootstrap requirements. The CLI does not
+install either of them. Every native `--install` then checks the following
+managed prerequisite policy; `--include-prerequisite` uses the same policy to
+offer installation of missing or incompatible tools.
+
+| Managed requirement | macOS | Ubuntu 20.04 / 22.04 |
+| --- | --- | --- |
+| Rust | `rustc` 1.85 or newer | `rustc` 1.85 or newer |
+| Cargo | `cargo` 1.85 or newer | `cargo` 1.85 or newer |
+| CMake | 3.18 or newer | 3.18 or newer |
+| C/C++ toolchain | `cc`, `c++`, `install_name_tool` | `cc`, `c++`, `make` |
+| LLVM toolchain | Not required | `clang`, `lldb`, `ld.lld` |
+| Git | Not required | `git` |
+| Ninja | Not required | `ninja` |
+| pkg-config | `pkg-config` | `pkg-config` |
+| tar | `tar` | `tar` |
+| unzip | Required unless `--no-setup` is used | Required unless `--no-setup` is used |
+
+Native installation also requires outbound HTTPS to npm, crates.io, GitHub,
+GitHub Releases, and, unless setup is skipped, Google Drive.
 
 Native targets are macOS, Ubuntu 20.04, and Ubuntu 22.04. Other Linux
 distributions should use Docker. Native Windows is unsupported; use WSL2 or
@@ -100,10 +112,29 @@ The installer:
   provenance, and artifact hashes; and
 - stores runtime resources under the CLI cache.
 
-Docker installation records its state in
-`~/.tokamak-zk-evm/linux/docker/bootstrap.json`. Linux falls back to a valid
-native runtime when Docker is unavailable. Windows requires Docker Desktop
-because native backend execution is unsupported.
+Runtime mode is selected only by
+`~/.tokamak-zk-evm/<platform>/installation.json`. A Docker installation also
+stores its subordinate launch descriptor in
+`~/.tokamak-zk-evm/linux/docker/bootstrap.json`; the CLI validates that the
+descriptor's package version, Docker environment, and image name match the
+selected installation before invoking Docker. A residual descriptor cannot
+switch a native installation to Docker. After a valid Docker selection, Linux
+falls back to the installed native Linux runtime only when the Docker daemon is
+unavailable. Windows requires Docker Desktop because native backend execution
+is unsupported.
+
+### Runtime upgrades and ownership
+
+The cached runtime is valid only for the exact installed CLI package version.
+After upgrading or reinstalling `@tokamak-zk-evm/cli`, run `tokamak-cli
+--install` before running synthesis or backend commands. On Windows, use
+`tokamak-cli --install --docker` instead. The CLI does not reuse a runtime
+from a different package version.
+
+The installer manages CRS generations below its runtime cache and activates one
+generation through its own `setup/output` symbolic link. Do not replace that
+link with a path owned by another tool; the installer rejects an unmanaged
+active CRS link rather than replacing it.
 
 ## Commands
 
@@ -242,8 +273,8 @@ tokamak-cli --extract-proof ./proof-bundle.zip
 tokamak-cli --verify ./proof-bundle.zip
 ```
 
-`--doctor` prints the absolute runtime path and verifies that the current
-platform has an installed runtime.
+`--doctor` prints the absolute runtime path and verifies that the current CLI
+package version has a valid installed runtime for the current platform.
 
 ## npm publication
 
@@ -270,8 +301,8 @@ security of the application, circuit library, setup, or surrounding protocol.
 
 ## Project and license
 
-- [Source](https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main/packages/cli)
-- [Issues](https://github.com/tokamak-network/Tokamak-zk-EVM/issues)
+- [Source](https://github.com/JehyukJang/Tokamak-zk-EVM/tree/main/packages/cli)
+- [Issues](https://github.com/JehyukJang/Tokamak-zk-EVM/issues)
 - [Native backend](../backend/README.md)
 
 Dual-licensed under `MIT OR Apache-2.0`. Dependencies retain their own

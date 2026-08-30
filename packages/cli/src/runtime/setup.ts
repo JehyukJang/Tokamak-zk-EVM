@@ -1,40 +1,36 @@
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import vm from 'node:vm';
-import { backendEnvironment, ensureDir, packageCompatibleVersion, runtimePaths } from './context.js';
+import AdmZip from 'adm-zip';
+import {
+  ensureDir,
+  packageCompatibleVersion,
+  runtimePaths,
+} from './context.js';
+import {
+  parseDriveArchiveName,
+  selectLatestDriveArchive as selectLatestDriveArchiveFromListing,
+  type DriveArchiveSelection,
+} from './drive-listing.js';
 import { downloadFileWithResume, fileExists, normalizeSha256, sha256FileHex } from './download.js';
 import type { RuntimeContext } from './model.js';
-import { runCommand, logVerbose } from '../system.js';
+import { logVerbose } from '../system.js';
+import {
+  crsProvenanceFileName,
+  finalMpcCrsArchiveRootFileNames,
+  parseFinalMpcCrsProvenance,
+} from '../generated/crs-provenance-validator.generated.js';
+import {
+  BACKEND_PACKAGE_NAMES,
+  backendBuildMetadataFileName,
+  parseBackendBuildMetadata,
+} from '../generated/backend-build-metadata-validator.generated.js';
 
-interface DriveArchiveSelection {
-  compatibleBackendVersion: string;
-  fileId: string;
-  name: string;
-  generatedAt: string;
-  sizeBytes: number;
-}
+type FinalMpcCrsProvenance = import('../generated/crs-provenance-validator.generated.js').FinalMpcCrsProvenance;
 
-interface BackendBuildMetadata {
-  compatibleBackendVersion?: string;
-  dependencies?: {
-    subcircuitLibrary?: {
-      buildVersion?: string;
-      sourceDigest?: string;
-    };
-  };
-  packageVersion?: string;
-}
-
-interface CrsProvenance {
-  backend_version?: string;
-  combined_sigma_sha256?: string;
-  sigma_preprocess_sha256?: string;
-  sigma_verify_sha256?: string;
-}
-
-const BACKEND_BINARY_NAMES = ['preprocess', 'prove', 'verify'] as const;
-
+const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = '@tokamak-zk-evm/subcircuit-library';
+const CRS_PROVENANCE_FILE_NAME = crsProvenanceFileName();
+const FINAL_CRS_ARTIFACT_FILES = finalMpcCrsArchiveRootFileNames();
 const CRS_DRIVE_FOLDER_ID = '14xqCbLoyoVmUVTTlopiXtKnoHPBGL-Sv';
 
 const CRS_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/mobile/folders';
@@ -47,87 +43,8 @@ async function readJsonFile<T>(filePath: string): Promise<T> {
   return JSON.parse(await fs.readFile(filePath, 'utf8')) as T;
 }
 
-async function findNamedFile(rootDir: string, filename: string): Promise<string> {
-  const queue: string[] = [rootDir];
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    const entries = await fs.readdir(current, { withFileTypes: true });
-    for (const entry of entries) {
-      const entryPath = path.join(current, entry.name);
-      if (entry.isFile() && entry.name === filename) {
-        return entryPath;
-      }
-      if (entry.isDirectory()) {
-        queue.push(entryPath);
-      }
-    }
-  }
-  throw new Error(`Missing ${filename} under ${rootDir}`);
-}
-
-function parseDriveArchiveName(name: string): Pick<DriveArchiveSelection, 'compatibleBackendVersion' | 'generatedAt'> | null {
-  const parsed = name.match(/^tokamak-backend-crs-v(\d+)\.(\d+)-(\d{8}T\d{6}Z)\.zip$/iu);
-  if (!parsed) {
-    return null;
-  }
-  return {
-    compatibleBackendVersion: `${Number(parsed[1])}.${Number(parsed[2])}`,
-    generatedAt: parsed[3],
-  };
-}
-
-function parseDriveArchiveSelection(html: string, expectedCompatibleVersion: string): DriveArchiveSelection {
-  const match = html.match(/window\['_DRIVE_ivd'\]\s*=\s*('(?:\\.|[^'])*')/u);
-  if (!match) {
-    throw new Error('Unable to locate Google Drive listing payload.');
-  }
-
-  const decoded = vm.runInNewContext(match[1]) as string;
-  const payload = JSON.parse(decoded) as unknown;
-  const entriesById = new Map<string, DriveArchiveSelection>();
-
-  const walk = (node: unknown): void => {
-    if (!Array.isArray(node)) {
-      return;
-    }
-
-    if (typeof node[0] === 'string' && typeof node[2] === 'string' && node[3] === 'application/zip') {
-      const parsedName = parseDriveArchiveName(node[2]);
-      const sizeBytes = typeof node[13] === 'number' && Number.isFinite(node[13]) ? node[13] : null;
-      if (
-        parsedName &&
-        parsedName.compatibleBackendVersion === expectedCompatibleVersion &&
-        sizeBytes !== null &&
-        sizeBytes > 0
-      ) {
-        entriesById.set(node[0], {
-          fileId: node[0],
-          name: node[2],
-          compatibleBackendVersion: parsedName.compatibleBackendVersion,
-          generatedAt: parsedName.generatedAt,
-          sizeBytes,
-        });
-      }
-    }
-
-    for (const child of node) {
-      walk(child);
-    }
-  };
-
-  walk(payload);
-
-  const entries = [...entriesById.values()];
-  if (entries.length === 0) {
-    throw new Error(
-      `No CRS archive matching compatibility version ${expectedCompatibleVersion} was found in Google Drive.`,
-    );
-  }
-
-  entries.sort((left, right) => {
-    return right.generatedAt.localeCompare(left.generatedAt);
-  });
-  return entries[0];
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function selectLatestDriveArchive(compatibleBackendVersion: string): Promise<DriveArchiveSelection> {
@@ -135,7 +52,7 @@ async function selectLatestDriveArchive(compatibleBackendVersion: string): Promi
   if (!response.ok) {
     throw new Error(`Failed to read CRS listing: ${response.status} ${response.statusText}`);
   }
-  return parseDriveArchiveSelection(await response.text(), compatibleBackendVersion);
+  return selectLatestDriveArchiveFromListing(await response.text(), compatibleBackendVersion);
 }
 
 async function crsArchiveCacheMatches(
@@ -147,7 +64,10 @@ async function crsArchiveCacheMatches(
     const archiveName = path.basename(archivePath);
     const parsedName = parseDriveArchiveName(archiveName);
     if (parsedName === null) {
-      logVerbose(verbose, `Ignoring cached CRS archive ${archivePath}: archive name does not match the expected CRS naming convention.`);
+      logVerbose(
+        verbose,
+        `Ignoring cached CRS archive ${archivePath}: archive name does not match the expected CRS naming convention.`,
+      );
       return false;
     }
     if (
@@ -206,21 +126,16 @@ async function downloadLatestCrsArchive(
     fileId: selection.fileId,
   };
 
-  await downloadFileWithResume(
-    archivePath,
-    resumableState,
-    verbose,
-    {
-      describe: 'Anonymous CRS download',
-      maxRetries: CRS_DOWNLOAD_ANONYMOUS_MAX_RETRIES,
-      request: (offset, chunkEnd) => ({
-        url,
-        headers: {
-          Range: `bytes=${offset}-${chunkEnd}`,
-        },
-      }),
-    },
-  );
+  await downloadFileWithResume(archivePath, resumableState, verbose, {
+    describe: 'Anonymous CRS download',
+    maxRetries: CRS_DOWNLOAD_ANONYMOUS_MAX_RETRIES,
+    request: (offset, chunkEnd) => ({
+      url,
+      headers: {
+        Range: `bytes=${offset}-${chunkEnd}`,
+      },
+    }),
+  });
   if (!(await crsArchiveCacheMatches(archivePath, selection, verbose))) {
     await fs.rm(archivePath, { force: true });
     throw new Error(`Downloaded CRS archive ${selection.name} failed archive name and size validation.`);
@@ -231,69 +146,158 @@ async function downloadLatestCrsArchive(
   };
 }
 
-async function extractZipArchive(zipPath: string, destinationDir: string, verbose: boolean): Promise<void> {
-  await ensureDir(destinationDir);
-  await runCommand('unzip', ['-q', zipPath, '-d', destinationDir], {
-    verbose,
-  });
+type CrsZipEntry = {
+  readonly entryName: string;
+  readonly header: {
+    readonly attr: number;
+    readonly flags: number;
+  };
+  readonly isDirectory: boolean;
+  getData(): Buffer;
+};
+
+const ZIP_UNIX_FILE_TYPE_MASK = 0o170000;
+const ZIP_UNIX_SYMBOLIC_LINK_TYPE = 0o120000;
+
+/**
+ * Validates the complete central-directory entry set before any archive data
+ * is written to disk. The backend-owned contract defines the only accepted
+ * root-level filenames.
+ */
+export function validateFinalMpcCrsArchiveEntries(entries: readonly CrsZipEntry[]): Map<string, CrsZipEntry> {
+  const expectedFileNames = new Set(FINAL_CRS_ARTIFACT_FILES);
+  const accepted = new Map<string, CrsZipEntry>();
+
+  for (const entry of entries) {
+    const fileName = entry.entryName;
+    validateCrsArchiveEntryName(fileName);
+    if (entry.isDirectory) {
+      throw new Error(`CRS archive entry ${JSON.stringify(fileName)} must be a root-level file, not a directory.`);
+    }
+    if ((entry.header.flags & 0x1) !== 0) {
+      throw new Error(`CRS archive entry ${JSON.stringify(fileName)} must not be encrypted.`);
+    }
+    if (isSymbolicLink(entry)) {
+      throw new Error(`CRS archive entry ${JSON.stringify(fileName)} must not be a symbolic link.`);
+    }
+    if (!expectedFileNames.has(fileName)) {
+      throw new Error(`CRS archive contains unexpected entry ${JSON.stringify(fileName)}.`);
+    }
+    if (accepted.has(fileName)) {
+      throw new Error(`CRS archive repeats entry ${JSON.stringify(fileName)}.`);
+    }
+    accepted.set(fileName, entry);
+  }
+
+  for (const fileName of FINAL_CRS_ARTIFACT_FILES) {
+    if (!accepted.has(fileName)) {
+      throw new Error(`CRS archive is missing required entry ${JSON.stringify(fileName)}.`);
+    }
+  }
+  return accepted;
 }
 
-async function validateDownloadedCrsVersions(
+/** Extracts only a prevalidated final-MPC CRS archive into a caller-owned staging directory. */
+export async function extractApprovedFinalMpcCrsArchive(
+  archivePath: string,
+  destinationDir: string,
+): Promise<void> {
+  let archive: AdmZip;
+  try {
+    archive = new AdmZip(archivePath);
+  } catch (error) {
+    throw new Error(`Cannot read CRS ZIP archive ${archivePath}: ${errorMessage(error)}`);
+  }
+  const acceptedEntries = validateFinalMpcCrsArchiveEntries(archive.getEntries());
+  await ensureDir(destinationDir);
+  for (const fileName of FINAL_CRS_ARTIFACT_FILES) {
+    const contents = acceptedEntries.get(fileName)!.getData();
+    await fs.writeFile(path.join(destinationDir, fileName), contents, {
+      flag: 'wx',
+      mode: 0o600,
+    });
+  }
+}
+
+function validateCrsArchiveEntryName(fileName: string): void {
+  if (fileName.length === 0 || fileName.includes('\0')) {
+    throw new Error('CRS archive contains an empty or NUL-containing entry name.');
+  }
+  if (
+    fileName.startsWith('/') ||
+    fileName.startsWith('\\') ||
+    /^[A-Za-z]:/u.test(fileName) ||
+    fileName.includes('\\') ||
+    fileName.split('/').some(segment => segment.length === 0 || segment === '.' || segment === '..')
+  ) {
+    throw new Error(`CRS archive contains an unsafe entry path ${JSON.stringify(fileName)}.`);
+  }
+}
+
+function isSymbolicLink(entry: CrsZipEntry): boolean {
+  const unixMode = (entry.header.attr >>> 16) & 0xffff;
+  return (unixMode & ZIP_UNIX_FILE_TYPE_MASK) === ZIP_UNIX_SYMBOLIC_LINK_TYPE;
+}
+
+export async function validateDownloadedCrsArchive(
   extractedDir: string,
   backendReleaseDir: string,
   archiveName: string,
   compatibleBackendVersion: string,
+  expectedBackendPackageVersion: string,
 ): Promise<{
-  mpcMetadataPath: string;
   provenancePath: string;
 }> {
-  const provenancePath = await findNamedFile(extractedDir, 'crs_provenance.json');
-  const provenance = await readJsonFile<CrsProvenance>(provenancePath);
-  if (provenance.backend_version !== compatibleBackendVersion) {
+  const provenancePath = path.join(extractedDir, CRS_PROVENANCE_FILE_NAME);
+  const provenance = await validateFinalMpcCrsProvenanceContract(
+    await readJsonFile<unknown>(provenancePath),
+    archiveName,
+  );
+  if (provenance.compatibleBackendVersion !== compatibleBackendVersion) {
     throw new Error(
-      `CRS archive ${archiveName} has backend_version ${provenance.backend_version ?? '<missing>'}, expected ${compatibleBackendVersion}.`,
+      `CRS archive ${archiveName} has compatibleBackendVersion ${provenance.compatibleBackendVersion ?? '<missing>'}, expected ${compatibleBackendVersion}.`,
     );
   }
   await validateCrsArtifactHashes(extractedDir, archiveName, provenance);
 
-  const mpcMetadataPath = await findNamedFile(extractedDir, 'build-metadata-mpc-setup.json');
-  const mpcMetadata = await readJsonFile<BackendBuildMetadata>(mpcMetadataPath);
-  const mpcSubcircuitVersion = mpcMetadata.dependencies?.subcircuitLibrary?.buildVersion;
-  const mpcSubcircuitSourceDigest = mpcMetadata.dependencies?.subcircuitLibrary?.sourceDigest;
-  const mpcVersion = mpcMetadata.packageVersion;
-  const mpcCompatibleVersion = mpcMetadata.compatibleBackendVersion;
-  if (!mpcSubcircuitVersion || !mpcSubcircuitSourceDigest || !mpcVersion || !mpcCompatibleVersion) {
-    throw new Error(`CRS archive ${archiveName} is missing required metadata.`);
+  const provenanceSubcircuitPackageName = provenance.subcircuitLibrary?.packageName;
+  const provenanceSubcircuitPackageVersion = provenance.subcircuitLibrary?.packageVersion;
+  if (!provenanceSubcircuitPackageName || !provenanceSubcircuitPackageVersion) {
+    throw new Error(`CRS archive ${archiveName} provenance is missing subcircuit-library package information.`);
   }
-  if (mpcCompatibleVersion !== compatibleBackendVersion) {
+  if (provenanceSubcircuitPackageName !== SUBCIRCUIT_LIBRARY_PACKAGE_NAME) {
     throw new Error(
-      `CRS archive ${archiveName} metadata compatibleBackendVersion ${mpcCompatibleVersion} does not match expected ${compatibleBackendVersion}.`,
+      `CRS archive ${archiveName} provenance subcircuit-library package ${provenanceSubcircuitPackageName} does not match ${SUBCIRCUIT_LIBRARY_PACKAGE_NAME}.`,
     );
   }
-  if (packageCompatibleVersion(mpcVersion, 'CRS metadata packageVersion') !== compatibleBackendVersion) {
+  if (
+    packageCompatibleVersion(provenanceSubcircuitPackageVersion, 'CRS provenance subcircuit-library packageVersion') !==
+    compatibleBackendVersion
+  ) {
     throw new Error(
-      `CRS archive ${archiveName} metadata packageVersion ${mpcVersion} is not compatible with ${compatibleBackendVersion}.`,
+      `CRS archive ${archiveName} provenance subcircuit-library version ${provenanceSubcircuitPackageVersion} is not compatible with ${compatibleBackendVersion}.`,
     );
   }
 
-  for (const backendName of BACKEND_BINARY_NAMES) {
-    const backendMetadataPath = path.join(backendReleaseDir, `build-metadata-${backendName}.json`);
-    const backendMetadata = await readJsonFile<BackendBuildMetadata>(backendMetadataPath);
+  for (const backendName of BACKEND_PACKAGE_NAMES) {
+    const backendMetadataPath = path.join(backendReleaseDir, backendBuildMetadataFileName(backendName));
+    const backendMetadata = parseBackendBuildMetadata(
+      await readJsonFile<unknown>(backendMetadataPath),
+      backendName,
+      `Backend package ${backendName} build metadata`,
+    );
     const backendVersion = backendMetadata.packageVersion;
     const backendCompatibleVersion = backendMetadata.compatibleBackendVersion;
-    const backendSubcircuitVersion = backendMetadata.dependencies?.subcircuitLibrary?.buildVersion;
-    const backendSubcircuitSourceDigest = backendMetadata.dependencies?.subcircuitLibrary?.sourceDigest;
-    if (
-      !backendVersion ||
-      !backendCompatibleVersion ||
-      !backendSubcircuitVersion ||
-      !backendSubcircuitSourceDigest
-    ) {
-      throw new Error(`Backend package ${backendName} is missing required build metadata.`);
-    }
+    const backendSubcircuitVersion = backendMetadata.dependencies.subcircuitLibrary.buildVersion;
+    const backendSubcircuitPackageName = backendMetadata.dependencies.subcircuitLibrary.packageName;
     if (backendCompatibleVersion !== compatibleBackendVersion) {
       throw new Error(
         `Backend package ${backendName} has compatibleBackendVersion ${backendCompatibleVersion}, but the downloaded CRS expects ${compatibleBackendVersion}.`,
+      );
+    }
+    if (backendVersion !== expectedBackendPackageVersion) {
+      throw new Error(
+        `Backend package ${backendName} has version ${backendVersion}, expected current CLI package version ${expectedBackendPackageVersion}.`,
       );
     }
     if (packageCompatibleVersion(backendVersion, `${backendName} packageVersion`) !== compatibleBackendVersion) {
@@ -301,28 +305,42 @@ async function validateDownloadedCrsVersions(
         `Backend package ${backendName} has version ${backendVersion}, which is not compatible with CRS version ${compatibleBackendVersion}.`,
       );
     }
-    if (backendSubcircuitSourceDigest !== mpcSubcircuitSourceDigest) {
+    if (backendSubcircuitPackageName !== SUBCIRCUIT_LIBRARY_PACKAGE_NAME) {
       throw new Error(
-        `Backend package ${backendName} embeds subcircuit-library source digest ${backendSubcircuitSourceDigest}, but CRS archive ${archiveName} expects ${mpcSubcircuitSourceDigest}.`,
+        `Backend package ${backendName} records subcircuit-library package ${backendSubcircuitPackageName}, expected ${SUBCIRCUIT_LIBRARY_PACKAGE_NAME}.`,
+      );
+    }
+    if (
+      packageCompatibleVersion(backendSubcircuitVersion, `${backendName} subcircuit-library buildVersion`) !==
+      compatibleBackendVersion
+    ) {
+      throw new Error(
+        `Backend package ${backendName} embeds subcircuit-library version ${backendSubcircuitVersion}, which is not compatible with CRS version ${compatibleBackendVersion}.`,
       );
     }
   }
 
   return {
-    mpcMetadataPath,
     provenancePath,
   };
+}
+
+export async function validateFinalMpcCrsProvenanceContract(
+  provenance: unknown,
+  archiveName: string,
+): Promise<FinalMpcCrsProvenance> {
+  return parseFinalMpcCrsProvenance(provenance, `CRS archive ${archiveName} finalMpcCrs provenance`);
 }
 
 async function validateCrsArtifactHashes(
   extractedDir: string,
   archiveName: string,
-  provenance: CrsProvenance,
+  provenance: FinalMpcCrsProvenance,
 ): Promise<void> {
   const checks = [
-    ['combined_sigma_sha256', 'combined_sigma.rkyv'],
-    ['sigma_preprocess_sha256', 'sigma_preprocess.rkyv'],
-    ['sigma_verify_sha256', 'sigma_verify.json'],
+    ['combinedSigmaSha256', 'combined_sigma.rkyv'],
+    ['sigmaPreprocessSha256', 'sigma_preprocess.rkyv'],
+    ['sigmaVerifySha256', 'sigma_verify.json'],
   ] as const;
 
   for (const [field, fileName] of checks) {
@@ -330,12 +348,10 @@ async function validateCrsArtifactHashes(
     if (expected === null) {
       throw new Error(`CRS archive ${archiveName} provenance is missing ${field}.`);
     }
-    const filePath = await findNamedFile(extractedDir, fileName);
+    const filePath = path.join(extractedDir, fileName);
     const actual = await sha256FileHex(filePath);
     if (actual !== expected) {
-      throw new Error(
-        `CRS archive ${archiveName} ${fileName} sha256 mismatch: expected=${expected} actual=${actual}.`,
-      );
+      throw new Error(`CRS archive ${archiveName} ${fileName} sha256 mismatch: expected=${expected} actual=${actual}.`);
     }
   }
 }
@@ -351,35 +367,177 @@ export async function installDownloadedSetup(
   const extractedDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-crs-extract-'));
   try {
     const { archivePath, archiveName } = await downloadLatestCrsArchive(context, selection, verbose);
-    await extractZipArchive(archivePath, extractedDir, verbose);
-    const { mpcMetadataPath, provenancePath } = await validateDownloadedCrsVersions(
+    await extractApprovedFinalMpcCrsArchive(archivePath, extractedDir);
+    const { provenancePath } = await validateDownloadedCrsArchive(
       extractedDir,
       backendReleaseDir,
       archiveName,
       context.compatibleBackendVersion,
+      context.packageVersion,
     );
 
-    await ensureDir(paths.setupOutputDir);
-    await fs.copyFile(
-      await findNamedFile(extractedDir, 'combined_sigma.rkyv'),
-      path.join(paths.setupOutputDir, 'combined_sigma.rkyv'),
-    );
-    await fs.copyFile(
-      await findNamedFile(extractedDir, 'sigma_preprocess.rkyv'),
-      path.join(paths.setupOutputDir, 'sigma_preprocess.rkyv'),
-    );
-    await fs.copyFile(
-      await findNamedFile(extractedDir, 'sigma_verify.json'),
-      path.join(paths.setupOutputDir, 'sigma_verify.json'),
-    );
-    await fs.copyFile(
-      mpcMetadataPath,
-      path.join(paths.setupOutputDir, 'build-metadata-mpc-setup.json'),
-    );
-    await fs.copyFile(provenancePath, path.join(paths.setupOutputDir, 'crs_provenance.json'));
+    await installValidatedCrsGeneration(extractedDir, provenancePath, paths.setupOutputDir, archiveName);
   } finally {
     await fs.rm(extractedDir, { recursive: true, force: true });
   }
+}
+
+export async function installValidatedCrsGeneration(
+  extractedDir: string,
+  provenancePath: string,
+  setupOutputDir: string,
+  archiveName: string,
+  copyFile: typeof fs.copyFile = fs.copyFile,
+): Promise<void> {
+  const setupDirectory = path.dirname(setupOutputDir);
+  const generationsDirectory = path.join(setupDirectory, 'generations');
+  await ensureDir(generationsDirectory);
+
+  const stagingDirectory = await fs.mkdtemp(path.join(generationsDirectory, '.staging-'));
+  let generationDirectory: string | undefined;
+  let activated = false;
+  try {
+    for (const fileName of FINAL_CRS_ARTIFACT_FILES) {
+      const sourcePath = fileName === CRS_PROVENANCE_FILE_NAME
+        ? provenancePath
+        : path.join(extractedDir, fileName);
+      await copyFile(sourcePath, path.join(stagingDirectory, fileName));
+    }
+
+    const stagedProvenance = await validateFinalMpcCrsProvenanceContract(
+      await readJsonFile<unknown>(path.join(stagingDirectory, CRS_PROVENANCE_FILE_NAME)),
+      archiveName,
+    );
+    await validateCrsArtifactHashes(stagingDirectory, archiveName, stagedProvenance);
+
+    generationDirectory = path.join(
+      generationsDirectory,
+      `generation-${path.basename(stagingDirectory).replace(/^\.staging-/u, '')}`,
+    );
+    await fs.rename(stagingDirectory, generationDirectory);
+    const previousGenerationDirectory = await activateCrsGeneration(
+      setupOutputDir,
+      generationsDirectory,
+      generationDirectory,
+    );
+    activated = true;
+    if (previousGenerationDirectory !== undefined && previousGenerationDirectory !== generationDirectory) {
+      await fs.rm(previousGenerationDirectory, { recursive: true, force: true });
+    }
+  } finally {
+    if (!activated && generationDirectory !== undefined) {
+      await fs.rm(generationDirectory, { recursive: true, force: true });
+    } else if (!activated) {
+      await fs.rm(stagingDirectory, { recursive: true, force: true });
+    }
+  }
+}
+
+async function activateCrsGeneration(
+  setupOutputDir: string,
+  generationsDirectory: string,
+  nextGenerationDirectory: string,
+): Promise<string | undefined> {
+  const outputState = await inspectSetupOutput(setupOutputDir, generationsDirectory);
+  if (outputState.kind === 'unmanaged-symlink') {
+    throw new Error(
+      `Existing setup output symlink is not managed by this CLI installation: ${setupOutputDir} -> ${outputState.target}`,
+    );
+  }
+  const temporaryLink = `${setupOutputDir}.next`;
+  await removeManagedTemporarySetupLink(temporaryLink, generationsDirectory);
+  await fs.symlink(path.relative(path.dirname(setupOutputDir), nextGenerationDirectory), temporaryLink, 'dir');
+  let temporaryLinkCreated = true;
+
+  let migratedLegacyDirectory: string | undefined;
+  if (outputState.kind === 'directory') {
+    migratedLegacyDirectory = path.join(generationsDirectory, `legacy-${Date.now()}-${process.pid}`);
+    await fs.rename(setupOutputDir, migratedLegacyDirectory);
+  }
+
+  try {
+    await fs.rename(temporaryLink, setupOutputDir);
+    temporaryLinkCreated = false;
+  } catch (error) {
+    if (temporaryLinkCreated) {
+      await removeManagedTemporarySetupLink(temporaryLink, generationsDirectory);
+    }
+    if (migratedLegacyDirectory !== undefined) {
+      await fs.rename(migratedLegacyDirectory, setupOutputDir);
+    }
+    throw error;
+  }
+
+  return outputState.kind === 'symlink' ? outputState.targetGenerationDirectory : migratedLegacyDirectory;
+}
+
+async function removeManagedTemporarySetupLink(
+  temporaryLink: string,
+  generationsDirectory: string,
+): Promise<void> {
+  let temporaryLinkStat: Awaited<ReturnType<typeof fs.lstat>>;
+  try {
+    temporaryLinkStat = await fs.lstat(temporaryLink);
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      return;
+    }
+    throw error;
+  }
+  if (!temporaryLinkStat.isSymbolicLink()) {
+    throw new Error(`Existing setup activation temporary path is not managed by this CLI installation: ${temporaryLink}`);
+  }
+  const target = await fs.readlink(temporaryLink);
+  const resolvedTarget = path.resolve(path.dirname(temporaryLink), target);
+  if (!isPathInside(generationsDirectory, resolvedTarget)) {
+    throw new Error(
+      `Existing setup activation temporary symlink is not managed by this CLI installation: ${temporaryLink} -> ${target}`,
+    );
+  }
+  await fs.rm(temporaryLink, { force: true });
+}
+
+type SetupOutputState =
+  | { kind: 'missing' }
+  | { kind: 'directory' }
+  | { kind: 'symlink'; targetGenerationDirectory: string }
+  | { kind: 'unmanaged-symlink'; target: string };
+
+async function inspectSetupOutput(setupOutputDir: string, generationsDirectory: string): Promise<SetupOutputState> {
+  try {
+    const outputStat = await fs.lstat(setupOutputDir);
+    if (outputStat.isDirectory()) {
+      return { kind: 'directory' };
+    }
+    if (!outputStat.isSymbolicLink()) {
+      throw new Error(`Existing setup output path is neither a directory nor a symbolic link: ${setupOutputDir}`);
+    }
+    const target = await fs.readlink(setupOutputDir);
+    const resolvedTarget = path.resolve(path.dirname(setupOutputDir), target);
+    if (!isPathInside(generationsDirectory, resolvedTarget)) {
+      return { kind: 'unmanaged-symlink', target };
+    }
+    return {
+      kind: 'symlink',
+      targetGenerationDirectory: resolvedTarget,
+    };
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      return { kind: 'missing' };
+    }
+    throw error;
+  }
+}
+
+function isPathInside(directory: string, candidate: string): boolean {
+  const relative = path.relative(directory, candidate);
+  return (
+    relative.length > 0 && !relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative)
+  );
+}
+
+function isMissingPathError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT';
 }
 
 export async function writeSkippedSetupNotice(context: RuntimeContext): Promise<void> {
@@ -389,19 +547,5 @@ export async function writeSkippedSetupNotice(context: RuntimeContext): Promise<
     path.join(paths.setupOutputDir, 'README.txt'),
     'Setup artifacts were skipped during installation.\n',
     'utf8',
-  );
-}
-
-export async function runTrustedSetup(context: RuntimeContext, verbose: boolean): Promise<void> {
-  const paths = runtimePaths(context);
-  await ensureDir(paths.setupOutputDir);
-  await fs.access(paths.trustedSetupBinary);
-  await runCommand(
-    paths.trustedSetupBinary,
-    ['--output', paths.setupOutputDir, '--fixed-tau'],
-    {
-      env: backendEnvironment(context),
-      verbose,
-    },
   );
 }

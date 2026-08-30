@@ -13,6 +13,7 @@ const {
   buildPrerequisiteInstallationPlan,
   confirmPrerequisiteInstallation,
   detectManagedPrerequisites,
+  detectNativeInstallPrerequisites,
   detectSupportedNativeOs,
   isPrerequisiteConfirmationAccepted,
   parseOsRelease,
@@ -134,6 +135,27 @@ test('detects all managed prerequisites and their representative versions', () =
     statuses.find((status) => status.id === 'llvm-toolchain').version,
     'clang version 18.0.0; lldb version 18.0.0; LLD 18.0.0',
   );
+});
+
+test('uses one managed prerequisite policy for ordinary installs and guided installation', () => {
+  const installed = new Set([
+    'rustc', 'cargo', 'cmake', 'cc', 'c++', 'make', 'clang', 'lldb', 'ld.lld',
+    'git', 'ninja', 'pkg-config', 'tar', 'unzip',
+  ]);
+  const withSetup = detectNativeInstallPrerequisites(linux, { includeSetup: true }, createProbe(installed));
+  const withoutSetup = detectNativeInstallPrerequisites(linux, { includeSetup: false }, createProbe(installed));
+  assert.deepEqual(withSetup.map((status) => status.id), detectManagedPrerequisites(linux, createProbe(installed)).map((status) => status.id));
+  assert.deepEqual(withoutSetup.map((status) => status.id), withSetup.filter((status) => status.id !== 'unzip').map((status) => status.id));
+  assert.deepEqual(prerequisiteVerificationFailures(withoutSetup), []);
+});
+
+test('README documents every managed native prerequisite and the no-setup unzip exception', () => {
+  const readme = fs.readFileSync(path.resolve(__dirname, '..', 'README.md'), 'utf8');
+  for (const label of ['Rust', 'Cargo', 'CMake', 'C/C++ toolchain', 'LLVM toolchain', 'Git', 'Ninja', 'pkg-config', 'tar', 'unzip']) {
+    assert.ok(readme.includes(`| ${label} |`), `README must document ${label}`);
+  }
+  assert.match(readme, /Required unless `--no-setup` is used/u);
+  assert.match(readme, /does not\ninstall either/u);
 });
 
 test('maps missing Ubuntu tools to apt packages and Rust to rustup', () => {
@@ -387,7 +409,7 @@ function runCli(args) {
 test('rejects invalid options at the executable boundary', () => {
   for (const [args, error] of [
     [['--install', '--include-prerequisite', '--docker'], /cannot be combined with --docker/u],
-    [['--install', '--trusted-setup', '--no-setup'], /cannot be combined with --no-setup/u],
+    [['--install', '--trusted-setup'], /Unknown option for --install/u],
     [['--uninstall', '--include-prerequisite'], /Unknown option for --uninstall/u],
   ]) {
     const result = runCli(args);
@@ -398,9 +420,9 @@ test('rejects invalid options at the executable boundary', () => {
 
 test('parses every supported include-prerequisite combination', () => {
   for (const [options, expected] of [
-    [[], { verbose: false, trustedSetup: false, noSetup: false }],
-    [['--verbose', '--trusted-setup'], { verbose: true, trustedSetup: true, noSetup: false }],
-    [['--no-setup'], { verbose: false, trustedSetup: false, noSetup: true }],
+    [[], { verbose: false, noSetup: false }],
+    [['--verbose'], { verbose: true, noSetup: false }],
+    [['--no-setup'], { verbose: false, noSetup: true }],
   ]) {
     assert.deepEqual(parseArgs(['--install', '--include-prerequisite', ...options]), {
       command: 'install',
@@ -408,7 +430,6 @@ test('parses every supported include-prerequisite combination', () => {
       installOptions: {
         docker: false,
         includePrerequisite: true,
-        trustedSetup: expected.trustedSetup,
         noSetup: expected.noSetup,
       },
     });

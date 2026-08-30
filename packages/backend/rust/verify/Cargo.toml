@@ -1,0 +1,26 @@
+[package]
+name = "verify"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+authors = { workspace = true }
+repository = { workspace = true }
+homepage = { workspace = true }
+
+[dependencies]
+icicle-core = { workspace = true }
+icicle-bls12-381 = { workspace = true }
+libs = { workspace = true, default-features = false }
+clap = { workspace = true }
+thiserror = { workspace = true }
+
+[build-dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[features]
+default = ["local-development-subcircuit-library"]
+testing-mode = []
+development-crs-bypass = ["libs/development-crs-bypass"]
+local-development-subcircuit-library = ["libs/local-development-subcircuit-library"]
+production-npm-subcircuit-library = ["libs/production-npm-subcircuit-library"]

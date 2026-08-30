@@ -1,0 +1,1835 @@
+{
+  "generated_at_unix_ms": 1787384900831,
+  "total_wall_ms": 11112.06775,
+  "setup_params": {
+    "l_free": 256,
+    "l": 396,
+    "l_user_out": 130,
+    "l_user": 134,
+    "l_D": 1420,
+    "m_D": 24079,
+    "n": 1024,
+    "s_D": 44,
+    "s_max": 256
+  },
+  "summary": {
+    "init": {
+      "total_ms": 1097.20975,
+      "poly_ms": 0.0,
+      "encode_ms": 1.886291
+    },
+    "prove0": {
+      "total_ms": 2534.277416,
+      "poly_ms": 288.99020800000005,
+      "encode_ms": 2219.785084
+    },
+    "prove1": {
+      "total_ms": 601.248958,
+      "poly_ms": 227.828042,
+      "encode_ms": 360.971959
+    },
+    "prove2": {
+      "total_ms": 3254.932542,
+      "poly_ms": 1459.324957,
+      "encode_ms": 1728.697292
+    },
+    "prove3": {
+      "total_ms": 342.265833,
+      "poly_ms": 59.181416,
+      "encode_ms": 0.0
+    },
+    "prove4": {
+      "total_ms": 3281.310666,
+      "poly_ms": 1766.792713,
+      "encode_ms": 1485.589999
+    },
+    "sigma": {
+      "total_ms": 0.0,
+      "poly_ms": 0.0,
+      "encode_ms": 0.0
+    }
+  },
+  "events": [
+    {
+      "name": "init.load.setup_params",
+      "category": "load",
+      "nanos": 38208,
+      "sizes": [
+        {
+          "label": "file_bytes",
+          "dims": [
+            269
+          ]
+        }
+      ]
+    },
+    {
+      "name": "init.load.subcircuit_infos",
+      "category": "load",
+      "nanos": 448958,
+      "sizes": [
+        {
+          "label": "file_bytes",
+          "dims": [
+            155559
+          ]
+        }
+      ]
+    },
+    {
+      "name": "init.load.placement_variables",
+      "category": "load",
+      "nanos": 10491542,
+      "sizes": [
+        {
+          "label": "file_bytes",
+          "dims": [
+            3553110
+          ]
+        }
+      ]
+    },
+    {
+      "name": "init.derive.public_wire_layout",
+      "category": "validate",
+      "nanos": 870583,
+      "sizes": []
+    },
+    {
+      "name": "init.build.witness.bXY",
+      "category": "build",
+      "nanos": 13072167,
+      "sizes": [
+        {
+          "label": "bXY",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "init.build.witness.uvwXY",
+      "category": "build",
+      "nanos": 53859459,
+      "sizes": [
+        {
+          "label": "uXY/vXY/wXY",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "init.load.permutation",
+      "category": "load",
+      "nanos": 268208,
+      "sizes": [
+        {
+          "label": "file_bytes",
+          "dims": [
+            96006
+          ]
+        }
+      ]
+    },
+    {
+      "name": "init.load.instance",
+      "category": "load",
+      "nanos": 55958,
+      "sizes": [
+        {
+          "label": "file_bytes",
+          "dims": [
+            6726
+          ]
+        }
+      ]
+    },
+    {
+      "name": "init.build.instance.a_free_X",
+      "category": "build",
+      "nanos": 88916,
+      "sizes": [
+        {
+          "label": "a_free_X",
+          "dims": [
+            256,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "init.build.instance.t_n",
+      "category": "build",
+      "nanos": 2917,
+      "sizes": [
+        {
+          "label": "t_n",
+          "dims": [
+            2048,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "init.build.instance.t_mi",
+      "category": "build",
+      "nanos": 2167,
+      "sizes": [
+        {
+          "label": "t_mi",
+          "dims": [
+            2048,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "init.build.instance.t_smax",
+      "category": "build",
+      "nanos": 1959,
+      "sizes": [
+        {
+          "label": "t_smax",
+          "dims": [
+            1,
+            512
+          ]
+        }
+      ]
+    },
+    {
+      "name": "init.build.instance.s0_s1",
+      "category": "build",
+      "nanos": 24460708,
+      "sizes": [
+        {
+          "label": "s0/s1",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "sigma.full_grid_decode",
+      "category": "encode_cache_build",
+      "nanos": 66781166,
+      "sizes": [
+        {
+          "label": "points",
+          "dims": [
+            1048576
+          ]
+        }
+      ]
+    },
+    {
+      "name": "init.load.sigma",
+      "category": "load",
+      "nanos": 66938375,
+      "sizes": [
+        {
+          "label": "file_bytes",
+          "dims": [
+            682929000
+          ]
+        }
+      ]
+    },
+    {
+      "name": "init.encode.A_free",
+      "category": "encode_crs_gather",
+      "nanos": 11458,
+      "sizes": [
+        {
+          "label": "active",
+          "dims": [
+            256,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "init.encode.A_free",
+      "category": "encode",
+      "nanos": 1886291,
+      "sizes": [
+        {
+          "label": "msm",
+          "dims": [
+            256,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "init.build.binding.A_free",
+      "category": "build",
+      "nanos": 2064959,
+      "sizes": [
+        {
+          "label": "A_free",
+          "dims": [
+            256,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "init.build.binding.O_pub_free",
+      "category": "build",
+      "nanos": 1117417,
+      "sizes": [
+        {
+          "label": "O_pub_free",
+          "dims": [
+            256,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "init.build.binding.O_mid_core",
+      "category": "build",
+      "nanos": 3185709,
+      "sizes": [
+        {
+          "label": "O_mid_core",
+          "dims": [
+            1420,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "init.build.binding.O_prv_core",
+      "category": "build",
+      "nanos": 107077250,
+      "sizes": [
+        {
+          "label": "O_prv_core",
+          "dims": [
+            1420,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "init.total",
+      "category": "init",
+      "nanos": 1097209750,
+      "sizes": [
+        {
+          "label": "n_s_max",
+          "dims": [
+            1024,
+            256
+          ]
+        },
+        {
+          "label": "m_i_s_max",
+          "dims": [
+            1024,
+            256
+          ]
+        },
+        {
+          "label": "l",
+          "dims": [
+            396
+          ]
+        },
+        {
+          "label": "s_D",
+          "dims": [
+            44
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.combine.prove0.p0XY",
+      "category": "poly",
+      "nanos": 189803750,
+      "sizes": [
+        {
+          "label": "p0XY",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.div_by_vanishing_opt.prove0.q0q1",
+      "category": "poly",
+      "nanos": 23049667,
+      "sizes": [
+        {
+          "label": "vanishing",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.combine.prove0.U",
+      "category": "poly",
+      "nanos": 9107916,
+      "sizes": [
+        {
+          "label": "U",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove0.encode.U",
+      "category": "encode_crs_gather",
+      "nanos": 1085167,
+      "sizes": [
+        {
+          "label": "active",
+          "dims": [
+            1025,
+            257
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove0.encode.U",
+      "category": "encode",
+      "nanos": 335184542,
+      "sizes": [
+        {
+          "label": "msm",
+          "dims": [
+            1025,
+            257
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove0.encode.U",
+      "category": "encode_call",
+      "nanos": 338960250,
+      "sizes": [
+        {
+          "label": "U",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.combine.prove0.V",
+      "category": "poly",
+      "nanos": 9543625,
+      "sizes": [
+        {
+          "label": "V",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove0.encode.V",
+      "category": "encode_crs_gather",
+      "nanos": 1135625,
+      "sizes": [
+        {
+          "label": "active",
+          "dims": [
+            1025,
+            257
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove0.encode.V",
+      "category": "encode",
+      "nanos": 320593958,
+      "sizes": [
+        {
+          "label": "msm",
+          "dims": [
+            1025,
+            257
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove0.encode.V",
+      "category": "encode_call",
+      "nanos": 324455959,
+      "sizes": [
+        {
+          "label": "V",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.combine.prove0.W",
+      "category": "poly",
+      "nanos": 7977833,
+      "sizes": [
+        {
+          "label": "W",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove0.encode.W",
+      "category": "encode_crs_gather",
+      "nanos": 1094750,
+      "sizes": [
+        {
+          "label": "active",
+          "dims": [
+            1027,
+            259
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove0.encode.W",
+      "category": "encode",
+      "nanos": 317680459,
+      "sizes": [
+        {
+          "label": "msm",
+          "dims": [
+            1027,
+            259
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove0.encode.W",
+      "category": "encode_call",
+      "nanos": 321606250,
+      "sizes": [
+        {
+          "label": "W",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.combine.prove0.Q_AX",
+      "category": "poly",
+      "nanos": 21623584,
+      "sizes": [
+        {
+          "label": "Q_AX",
+          "dims": [
+            2048,
+            512
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove0.encode.Q_AX",
+      "category": "encode_crs_gather",
+      "nanos": 3505708,
+      "sizes": [
+        {
+          "label": "active",
+          "dims": [
+            1025,
+            511
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove0.encode.Q_AX",
+      "category": "encode",
+      "nanos": 596234667,
+      "sizes": [
+        {
+          "label": "msm",
+          "dims": [
+            1025,
+            511
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove0.encode.Q_AX",
+      "category": "encode_call",
+      "nanos": 602222250,
+      "sizes": [
+        {
+          "label": "Q_AX",
+          "dims": [
+            2048,
+            512
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.combine.prove0.Q_AY",
+      "category": "poly",
+      "nanos": 19774333,
+      "sizes": [
+        {
+          "label": "Q_AY",
+          "dims": [
+            1024,
+            512
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove0.encode.Q_AY",
+      "category": "encode_crs_gather",
+      "nanos": 990875,
+      "sizes": [
+        {
+          "label": "active",
+          "dims": [
+            1025,
+            257
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove0.encode.Q_AY",
+      "category": "encode",
+      "nanos": 325693541,
+      "sizes": [
+        {
+          "label": "msm",
+          "dims": [
+            1025,
+            257
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove0.encode.Q_AY",
+      "category": "encode_call",
+      "nanos": 329605084,
+      "sizes": [
+        {
+          "label": "Q_AY",
+          "dims": [
+            1024,
+            512
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.combine.prove0.B",
+      "category": "poly",
+      "nanos": 8109500,
+      "sizes": [
+        {
+          "label": "B",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove0.encode.B",
+      "category": "encode_crs_gather",
+      "nanos": 1062208,
+      "sizes": [
+        {
+          "label": "active",
+          "dims": [
+            1026,
+            258
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove0.encode.B",
+      "category": "encode",
+      "nanos": 324397917,
+      "sizes": [
+        {
+          "label": "msm",
+          "dims": [
+            1026,
+            258
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove0.encode.B",
+      "category": "encode_call",
+      "nanos": 328386916,
+      "sizes": [
+        {
+          "label": "B",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove0.total",
+      "category": "prove",
+      "nanos": 2534277416,
+      "sizes": [
+        {
+          "label": "uXY",
+          "dims": [
+            1024,
+            256
+          ]
+        },
+        {
+          "label": "n_s_max",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.to_rou_evals.prove1.fXY",
+      "category": "poly",
+      "nanos": 11485292,
+      "sizes": [
+        {
+          "label": "fXY",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.to_rou_evals.prove1.gXY",
+      "category": "poly",
+      "nanos": 11294875,
+      "sizes": [
+        {
+          "label": "gXY",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.recursion_eval.prove1.rXY",
+      "category": "poly",
+      "nanos": 184310541,
+      "sizes": [
+        {
+          "label": "fXY_evals",
+          "dims": [
+            262144
+          ]
+        },
+        {
+          "label": "gXY_evals",
+          "dims": [
+            262144
+          ]
+        },
+        {
+          "label": "grid",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.from_rou_evals.prove1.rXY",
+      "category": "poly",
+      "nanos": 12331750,
+      "sizes": [
+        {
+          "label": "rXY_evals",
+          "dims": [
+            262144
+          ]
+        },
+        {
+          "label": "grid",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.combine.prove1.R",
+      "category": "poly",
+      "nanos": 8405584,
+      "sizes": [
+        {
+          "label": "R",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove1.encode.R",
+      "category": "encode_crs_gather",
+      "nanos": 1160458,
+      "sizes": [
+        {
+          "label": "active",
+          "dims": [
+            1025,
+            257
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove1.encode.R",
+      "category": "encode",
+      "nanos": 360971959,
+      "sizes": [
+        {
+          "label": "msm",
+          "dims": [
+            1025,
+            257
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove1.encode.R",
+      "category": "encode_call",
+      "nanos": 364790250,
+      "sizes": [
+        {
+          "label": "R",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove1.total",
+      "category": "prove",
+      "nanos": 601248958,
+      "sizes": [
+        {
+          "label": "m_i_s_max",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.scale_coeffs.prove2.r_omegaX",
+      "category": "poly",
+      "nanos": 1917458,
+      "sizes": [
+        {
+          "label": "rXY",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.scale_coeffs.prove2.r_omegaX_omegaY",
+      "category": "poly",
+      "nanos": 2385875,
+      "sizes": [
+        {
+          "label": "r_omegaX",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.from_rou_evals.prove2.K",
+      "category": "poly",
+      "nanos": 204166,
+      "sizes": [
+        {
+          "label": "k_evals",
+          "dims": [
+            1024
+          ]
+        },
+        {
+          "label": "grid",
+          "dims": [
+            1024,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.from_rou_evals.prove2.L",
+      "category": "poly",
+      "nanos": 31291,
+      "sizes": [
+        {
+          "label": "l_evals",
+          "dims": [
+            256
+          ]
+        },
+        {
+          "label": "grid",
+          "dims": [
+            1,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.from_rou_evals.prove2.K0",
+      "category": "poly",
+      "nanos": 215125,
+      "sizes": [
+        {
+          "label": "k0_evals",
+          "dims": [
+            1024
+          ]
+        },
+        {
+          "label": "grid",
+          "dims": [
+            1024,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.combine.prove2.p_comb",
+      "category": "poly",
+      "nanos": 1050737292,
+      "sizes": [
+        {
+          "label": "p_comb",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.div_by_vanishing_opt.prove2.qCXqCY",
+      "category": "poly",
+      "nanos": 36724542,
+      "sizes": [
+        {
+          "label": "vanishing",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.combine.prove2.Q_CX",
+      "category": "poly",
+      "nanos": 139341916,
+      "sizes": [
+        {
+          "label": "Q_CX",
+          "dims": [
+            4096,
+            512
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove2.encode.Q_CX",
+      "category": "encode_crs_gather",
+      "nanos": 7262792,
+      "sizes": [
+        {
+          "label": "active",
+          "dims": [
+            2048,
+            511
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove2.encode.Q_CX",
+      "category": "encode",
+      "nanos": 1116701542,
+      "sizes": [
+        {
+          "label": "msm",
+          "dims": [
+            2048,
+            511
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove2.encode.Q_CX",
+      "category": "encode_call",
+      "nanos": 1131415667,
+      "sizes": [
+        {
+          "label": "Q_CX",
+          "dims": [
+            4096,
+            512
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.combine.prove2.Q_CY",
+      "category": "poly",
+      "nanos": 227767292,
+      "sizes": [
+        {
+          "label": "Q_CY",
+          "dims": [
+            1024,
+            512
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove2.encode.Q_CY",
+      "category": "encode_crs_gather",
+      "nanos": 2086208,
+      "sizes": [
+        {
+          "label": "active",
+          "dims": [
+            2047,
+            257
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove2.encode.Q_CY",
+      "category": "encode",
+      "nanos": 611995750,
+      "sizes": [
+        {
+          "label": "msm",
+          "dims": [
+            2047,
+            257
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove2.encode.Q_CY",
+      "category": "encode_call",
+      "nanos": 617559000,
+      "sizes": [
+        {
+          "label": "Q_CY",
+          "dims": [
+            1024,
+            512
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove2.total",
+      "category": "prove",
+      "nanos": 3254932542,
+      "sizes": [
+        {
+          "label": "m_i_s_max",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.eval_three_batch.prove3.R",
+      "category": "poly",
+      "nanos": 59181416,
+      "sizes": [
+        {
+          "label": "R",
+          "dims": [
+            2048,
+            512
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove3.total",
+      "category": "prove",
+      "nanos": 342265833,
+      "sizes": [
+        {
+          "label": "m_i_s_max",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.eval.prove4.t_n",
+      "category": "poly",
+      "nanos": 1076125,
+      "sizes": [
+        {
+          "label": "t_n",
+          "dims": [
+            2048,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.eval.prove4.t_smax",
+      "category": "poly",
+      "nanos": 221779625,
+      "sizes": [
+        {
+          "label": "t_smax",
+          "dims": [
+            1,
+            512
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.eval.prove4.vXY",
+      "category": "poly",
+      "nanos": 122444584,
+      "sizes": [
+        {
+          "label": "vXY",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.combine.prove4.V",
+      "category": "poly",
+      "nanos": 8443167,
+      "sizes": [
+        {
+          "label": "vXY",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.combine.prove4.Pi_A",
+      "category": "poly",
+      "nanos": 53278667,
+      "sizes": [
+        {
+          "label": "uXY",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.mul.prove4.RXY_t_mi",
+      "category": "poly",
+      "nanos": 482541,
+      "sizes": [
+        {
+          "label": "t_mi",
+          "dims": [
+            2048,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.mul.prove4.RXY_t_smax",
+      "category": "poly",
+      "nanos": 451333,
+      "sizes": [
+        {
+          "label": "t_smax",
+          "dims": [
+            1,
+            512
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.add.prove4.RXY_terms",
+      "category": "poly",
+      "nanos": 3336667,
+      "sizes": [
+        {
+          "label": "m_i_s_max",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.add.prove4.RXY",
+      "category": "poly",
+      "nanos": 3720125,
+      "sizes": [
+        {
+          "label": "R",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.div_by_ruffini_shared_x.prove4.M_N",
+      "category": "poly",
+      "nanos": 263894292,
+      "sizes": [
+        {
+          "label": "R",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove4.encode.M_N_X",
+      "category": "encode_crs_gather",
+      "nanos": 1162250,
+      "sizes": [
+        {
+          "label": "active",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove4.encode.M_N_X",
+      "category": "encode",
+      "nanos": 336626833,
+      "sizes": [
+        {
+          "label": "msm",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove4.encode.M_N_X",
+      "category": "encode_call",
+      "nanos": 341980291,
+      "sizes": [
+        {
+          "label": "M_N_X",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove4.encode.M_Y",
+      "category": "encode_crs_gather",
+      "nanos": 1209,
+      "sizes": [
+        {
+          "label": "active",
+          "dims": [
+            1,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove4.encode.M_Y",
+      "category": "encode",
+      "nanos": 2259583,
+      "sizes": [
+        {
+          "label": "msm",
+          "dims": [
+            1,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove4.encode.M_Y",
+      "category": "encode_call",
+      "nanos": 2399583,
+      "sizes": [
+        {
+          "label": "M_Y",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove4.encode.N_Y",
+      "category": "encode_crs_gather",
+      "nanos": 1042,
+      "sizes": [
+        {
+          "label": "active",
+          "dims": [
+            1,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove4.encode.N_Y",
+      "category": "encode",
+      "nanos": 1488875,
+      "sizes": [
+        {
+          "label": "msm",
+          "dims": [
+            1,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove4.encode.N_Y",
+      "category": "encode_call",
+      "nanos": 1672625,
+      "sizes": [
+        {
+          "label": "N_Y",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.scale_coeffs.prove4.r_omegaX",
+      "category": "poly",
+      "nanos": 2222459,
+      "sizes": [
+        {
+          "label": "R",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.scale_coeffs.prove4.r_omegaX_omegaY",
+      "category": "poly",
+      "nanos": 8269917,
+      "sizes": [
+        {
+          "label": "R_omegaX",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.combine.prove4.fXY",
+      "category": "poly",
+      "nanos": 6209958,
+      "sizes": [
+        {
+          "label": "bXY",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.combine.prove4.gXY",
+      "category": "poly",
+      "nanos": 3568458,
+      "sizes": [
+        {
+          "label": "bXY",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.from_rou_evals.prove4.K0",
+      "category": "poly",
+      "nanos": 204917,
+      "sizes": [
+        {
+          "label": "k0_evals",
+          "dims": [
+            1024
+          ]
+        },
+        {
+          "label": "grid",
+          "dims": [
+            1024,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.eval.prove4.K0",
+      "category": "poly",
+      "nanos": 1025875,
+      "sizes": [
+        {
+          "label": "K0",
+          "dims": [
+            1024,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.eval.prove4.R",
+      "category": "poly",
+      "nanos": 123878625,
+      "sizes": [
+        {
+          "label": "R",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.eval.prove4.R_omegaX",
+      "category": "poly",
+      "nanos": 123450375,
+      "sizes": [
+        {
+          "label": "R_omegaX",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.eval.prove4.R_omegaX_omegaY",
+      "category": "poly",
+      "nanos": 124158000,
+      "sizes": [
+        {
+          "label": "R_omegaX_omegaY",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.combine.prove4.term5",
+      "category": "poly",
+      "nanos": 4715708,
+      "sizes": [
+        {
+          "label": "gXY",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.combine.prove4.term6",
+      "category": "poly",
+      "nanos": 4299500,
+      "sizes": [
+        {
+          "label": "gXY",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.combine.prove4.pC",
+      "category": "poly",
+      "nanos": 45328708,
+      "sizes": [
+        {
+          "label": "m_i_s_max",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.eval_derived.prove4.r_D1_r_D2",
+      "category": "poly",
+      "nanos": 584,
+      "sizes": [
+        {
+          "label": "evaluations",
+          "dims": [
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.add.prove4.g_minus_f",
+      "category": "poly",
+      "nanos": 1210334,
+      "sizes": [
+        {
+          "label": "gXY",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.mul.prove4.term10",
+      "category": "poly",
+      "nanos": 1647584,
+      "sizes": [
+        {
+          "label": "gXY",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.combine.prove4.LHS_zk1",
+      "category": "poly",
+      "nanos": 71395792,
+      "sizes": [
+        {
+          "label": "m_i_s_max",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.combine.prove4.LHS_zk2",
+      "category": "poly",
+      "nanos": 218394750,
+      "sizes": [
+        {
+          "label": "m_i_s_max",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.combine.prove4.LHS_for_copy",
+      "category": "poly",
+      "nanos": 43306958,
+      "sizes": [
+        {
+          "label": "m_i_s_max",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.eval.prove4.A_free",
+      "category": "poly",
+      "nanos": 1092084,
+      "sizes": [
+        {
+          "label": "a_free_X",
+          "dims": [
+            256,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.combine.prove4.Pi_combined_numerator",
+      "category": "poly",
+      "nanos": 15939709,
+      "sizes": [
+        {
+          "label": "m_i_s_max",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "poly.div_by_ruffini.prove4.Pi_combined",
+      "category": "poly",
+      "nanos": 287565292,
+      "sizes": [
+        {
+          "label": "m_i_s_max",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove4.encode.Pi_X",
+      "category": "encode_crs_gather",
+      "nanos": 7199375,
+      "sizes": [
+        {
+          "label": "active",
+          "dims": [
+            2047,
+            511
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove4.encode.Pi_X",
+      "category": "encode",
+      "nanos": 1142646458,
+      "sizes": [
+        {
+          "label": "msm",
+          "dims": [
+            2047,
+            511
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove4.encode.Pi_X",
+      "category": "encode_call",
+      "nanos": 1162017750,
+      "sizes": [
+        {
+          "label": "m_i_s_max",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove4.encode.Pi_Y",
+      "category": "encode_crs_gather",
+      "nanos": 8083,
+      "sizes": [
+        {
+          "label": "active",
+          "dims": [
+            1,
+            510
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove4.encode.Pi_Y",
+      "category": "encode",
+      "nanos": 2568250,
+      "sizes": [
+        {
+          "label": "msm",
+          "dims": [
+            1,
+            510
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove4.encode.Pi_Y",
+      "category": "encode_call",
+      "nanos": 2628500,
+      "sizes": [
+        {
+          "label": "m_i_s_max",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prove4.total",
+      "category": "prove",
+      "nanos": 3281310666,
+      "sizes": [
+        {
+          "label": "n_s_max",
+          "dims": [
+            1024,
+            256
+          ]
+        },
+        {
+          "label": "m_i_s_max",
+          "dims": [
+            1024,
+            256
+          ]
+        }
+      ]
+    }
+  ]
+}

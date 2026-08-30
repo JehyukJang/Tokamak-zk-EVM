@@ -1,0 +1,152 @@
+{
+  "name": "@tokamak-zk-evm/snark-browser-compat",
+  "version": "2.1.5",
+  "description": "@tokamak-zk-evm/snark-browser-compat provides browser-compatible Tokamak zk-EVM preprocessing, proof generation, verification, and artifact conversion.",
+  "license": "MIT OR Apache-2.0",
+  "author": "Tokamak Network",
+  "keywords": [
+    "tokamak-zk-evm",
+    "zero-knowledge-proofs",
+    "zk-snark",
+    "browser-preprocessing",
+    "browser-prover",
+    "proof-verification",
+    "artifact-conversion",
+    "webassembly",
+    "wasm",
+    "JehyukJang",
+    "bls12-381"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JehyukJang/Tokamak-zk-EVM.git",
+    "directory": "packages/backend/wasm"
+  },
+  "homepage": "https://github.com/JehyukJang/Tokamak-zk-EVM/tree/main/packages/backend/wasm#readme",
+  "bugs": {
+    "url": "https://github.com/JehyukJang/Tokamak-zk-EVM/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "exports": {
+    "./prover": {
+      "types": "./dist/prover/index.d.ts",
+      "import": "./dist/prover/index.js"
+    },
+    "./preprocess": {
+      "types": "./dist/preprocess/index.d.ts",
+      "import": "./dist/preprocess/index.js"
+    },
+    "./verifier": {
+      "types": "./dist/verifier/index.d.ts",
+      "import": "./dist/verifier/index.js"
+    },
+    "./converter": {
+      "types": "./dist/converter/index.d.ts",
+      "import": "./dist/converter/index.js"
+    }
+  },
+  "files": [
+    "dist/backend-wasm-error.js",
+    "dist/backend-wasm-error.d.ts",
+    "dist/version.js",
+    "dist/version.d.ts",
+    "dist/api",
+    "dist/artifacts",
+    "dist/generated",
+    "dist/runtime",
+    "dist/prover",
+    "dist/preprocess",
+    "dist/converter",
+    "dist/verifier",
+    "README.md",
+    "CONTRIBUTING.md",
+    "examples/browser",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "THIRD_PARTY_NOTICES.md",
+    "third-party-licenses"
+  ],
+  "scripts": {
+    "build": "npm run build:development",
+    "build:development": "npm run contracts:prepare && npm run subcircuit-library:generate:development && npm run verifier-crs:generate:development && npm run rkyv-decoder:build && tsc -p tsconfig.json --pretty false && npm run converter-worker:build",
+    "build:production": "npm run contracts:prepare && npm run subcircuit-library:generate:production && npm run verifier-crs:generate:production && npm run rkyv-decoder:build && tsc -p tsconfig.json --pretty false && npm run converter-worker:build",
+    "contracts:prepare": "node ../common/scripts/prepare-contract-consumers.mjs",
+    "contracts:check": "node ../common/scripts/check-contract-closure.mjs && node ../common/scripts/prepare-contract-consumers.mjs --check",
+    "prepack": "npm run clean && npm run build:production",
+    "typecheck": "npm run typecheck:development",
+    "typecheck:development": "npm run contracts:check && npm run subcircuit-library:check:development && npm run verifier-crs:check:development && tsc -p tsconfig.json --pretty false --noEmit",
+    "typecheck:production": "npm run contracts:check && npm run subcircuit-library:check:production && npm run verifier-crs:check:production && tsc -p tsconfig.json --pretty false --noEmit",
+    "typecheck:scripts": "tsc -p tsconfig.dev.json --pretty false",
+    "binary:check": "npm run contracts:check && tsx test/checks/binary/check-binary-artifacts.ts && tsx test/checks/binary/check-artifact-contract-closure.ts && tsx test/checks/binary/check-instance-conversion.ts && tsx test/checks/binary/check-proof-reverse-conversion.ts && tsx test/checks/binary/check-crs-conversion.ts && tsx test/checks/binary/check-compatibility.ts",
+    "architecture:check": "tsx test/checks/architecture/check-layering.ts",
+    "fixtures:copy": "npm run subcircuit-library:generate:development && tsx scripts/fixtures/copy-fixtures.ts fixtures/small/copy-manifest.json",
+    "fixtures:prepare": "npm run subcircuit-library:generate:development && BACKEND_WASM_VERIFIER_CRS_DIR=../rust/setup/trusted-setup/output/debug npm run verifier-crs:generate:development && tsx scripts/fixtures/prepare-runtime-fixtures.ts fixtures/small/copy-manifest.json",
+    "fixtures:check:native-verifier": "tsx test/checks/fixtures/check-native-verifier-fixture.ts fixtures/small/copy-manifest.json",
+    "polynomial:buffer:check": "tsx test/checks/polynomial/check-polynomial-buffer.ts",
+    "preprocess:check": "tsx test/checks/preprocess/check-preprocess-fixture.ts",
+    "preprocess:public-api:check": "tsx test/checks/preprocess/check-preprocess-public-api.ts",
+    "preprocess:verify:check": "tsx test/checks/preprocess/check-preprocess-native-proof.ts",
+    "preprocess:browser:check": "tsx test/checks/browser/check-preprocess-browser.ts",
+    "prover:ops:check": "npm run prover:ops:field && npm run polynomial:buffer:check && npm run prover:ops:polynomial && npm run prover:ops:commitment",
+    "prover:ops:commitment": "tsx test/checks/prover/check-prover-commitment-ops.ts",
+    "prover:ops:field": "tsx test/checks/prover/check-field-buffer-ops.ts",
+    "prover:ops:polynomial": "tsx test/checks/prover/check-prover-polynomial-ops.ts",
+    "prover:check": "tsx test/checks/prover/check-prover-fixture.ts",
+    "prover:browser:check": "tsx test/checks/browser/check-prover-browser.ts",
+    "prover:staged:browser:check": "BACKEND_WASM_BROWSER_PROVER_MODE=staged tsx test/checks/browser/check-prover-browser.ts",
+    "prover:witness:check": "tsx test/checks/prover/check-prover-witness.ts",
+    "rkyv-decoder:build": "npm --prefix tools/rkyv-decoder-wasm run build",
+    "rkyv-decoder:check-tools": "npm --prefix tools/rkyv-decoder-wasm run check:build-tools",
+    "converter-worker:build": "node scripts/package/build-converter-worker.mjs",
+    "converter:browser:check": "npm run build:development && tsx test/checks/browser/check-crs-converter-browser.ts --error",
+    "converter:browser:check:production": "tsx test/checks/browser/check-crs-converter-browser.ts --error",
+    "converter:crs:browser:check": "npm run build && tsx test/checks/browser/check-crs-converter-browser.ts --outputs",
+    "converter:webpack:check": "npm run build:development && tsx test/checks/browser/check-webpack-consumer.ts",
+    "converter:webpack:check:production": "tsx test/checks/browser/check-webpack-consumer.ts",
+    "docs:examples:check": "npm run build:development && tsx test/checks/docs/check-browser-example.ts",
+    "docs:development-package:check": "npm run clean && npm run docs:examples:check && tsx test/checks/docs/check-publication-docs.ts --expected-origin=localQapCompiler",
+    "package:publication:check": "tsx test/checks/docs/check-publication-docs.ts --expected-origin=npmSnapshot",
+    "rkyv:payload:check": "tsx test/checks/binary/check-rkyv-decoder-payload.ts",
+    "subcircuit-library:check": "npm run subcircuit-library:check:development",
+    "subcircuit-library:input:check": "tsx test/checks/generate/check-subcircuit-library-input.ts",
+    "subcircuit-library:check:development": "npm run subcircuit-library:input:check && tsx scripts/generate/generate-subcircuit-library.ts --origin=localQapCompiler --check",
+    "subcircuit-library:check:production": "npm run subcircuit-library:input:check && tsx scripts/generate/generate-subcircuit-library.ts --origin=npmSnapshot --check",
+    "subcircuit-library:generate": "npm run subcircuit-library:generate:development",
+    "subcircuit-library:generate:development": "tsx scripts/generate/generate-subcircuit-library.ts --origin=localQapCompiler",
+    "subcircuit-library:generate:production": "tsx scripts/generate/generate-subcircuit-library.ts --origin=npmSnapshot",
+    "verifier-crs:check": "npm run verifier-crs:check:development",
+    "verifier-crs:check:development": "tsx scripts/generate/generate-verifier-crs.ts --origin=localQapCompiler --check",
+    "verifier-crs:check:production": "tsx scripts/generate/generate-verifier-crs.ts --origin=npmSnapshot --check",
+    "verifier-crs:generate": "npm run verifier-crs:generate:development",
+    "verifier-crs:generate:development": "tsx scripts/generate/generate-verifier-crs.ts --origin=localQapCompiler",
+    "verifier-crs:generate:production": "tsx scripts/generate/generate-verifier-crs.ts --origin=npmSnapshot",
+    "verifier-crs:input:check": "tsx test/checks/generate/check-final-crs-input.ts && tsx test/checks/generate/check-final-crs-release-workflow.ts",
+    "verifier-crs:input:validate": "npm run subcircuit-library:generate:production && tsx scripts/generate/validate-final-crs-input.ts",
+    "verifier:browser:check": "tsx test/checks/browser/check-verifier-browser.ts",
+    "verifier:check": "tsx test/checks/verifier/check-verifier-fixture.ts",
+    "clean": "rm -rf dist",
+    "clean:temp": "node scripts/package/clean-temporary.mjs",
+    "prover:stage-timing:check": "tsx test/checks/prover/check-prover-stage-timing.ts"
+  },
+  "dependencies": {
+    "@noble/hashes": "^1.8.0",
+    "@tokamak-zk-evm/subcircuit-library": "2.1.5",
+    "ffjavascript": "^0.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.14",
+    "esbuild": "^0.28.1",
+    "marked": "^18.0.7",
+    "playwright": "^1.61.1",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.3",
+    "vite": "^8.1.5",
+    "webpack": "^5.109.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
