@@ -59,7 +59,7 @@ version recorded in `buildMetadata`.
 must stay aligned. Storage-slot keys and trie database keys are different
 values.
 
-`transaction` contains `nonce`, `to`, hex calldata in `data`,
+`transaction` contains `channelTransactionIndex`, `to`, hex calldata in `data`,
 `senderPubKey`, and optional signature strings `v`, `r`, and `s`.
 
 `blockInfo` contains `0x`-prefixed `coinBase`, `timeStamp`, `blockNumber`,

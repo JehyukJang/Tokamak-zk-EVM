@@ -54,23 +54,38 @@ package is built.
 
 ## Transaction support
 
-The Synthesizer is not limited to native transfers or a hardcoded ERC20
-template. It supports contract calls when execution stays within the opcode
-set, call flows, storage, memory, log handling, and runtime model implemented
-by Tokamak zk-EVM. Current validation is strongest for ERC20 transfers and the
-private-state mint, transfer, and redeem flows.
+Tokamak zk-EVM does not support every EVM contract. A supported contract
+function is one whose successful calls have one fixed execution topology within
+the supported input and state domain. In practical terms, changing an accepted
+transaction input or state value must not change the successful EVM instruction
+trace or the circuit layout derived from it.
 
-A supported contract function must also retain one fixed successful execution
-topology throughout its supported input and state domain. Its opcode sequence,
-call flow, memory geometry, storage and log order, and circuit placements may
-not vary with accepted inputs. A successful synthesis of one transaction does
-not establish that the function meets this requirement; validate the intended
-domain with the Synthesizer topology test matrix.
+The following properties must remain fixed for every successful call of that
+function:
 
-It should not be described as supporting every arbitrary Ethereum transaction.
+- The executed opcode sequence, including call and return flow.
+- The number, order, and circuit roles of stack values consumed and produced.
+- The geometry of every memory view: its byte range, contributing fragments,
+  shifts, and ownership masks.
+- The number and order of storage reads and writes, and the number and order
+  of emitted logs.
+- The number and wiring pattern of circuit placements and buffer entries.
+
+Transaction, calldata, memory, and storage values may vary when their variation
+does not alter any of those properties. For example, a private-state function
+may process different note values while retaining the same successful execution
+path and the same memory, storage, and stack access structure.
+
+A contract is outside this supported class when an accepted input or state can
+select a different successful branch, change a loop or call count, alter a
+memory-view geometry, or otherwise add, remove, reorder, or reconnect circuit
+placements. A successful synthesis of one transaction alone does not establish
+that a function belongs to the class; validate the intended input and state
+domain with the Synthesizer topology test matrix before relying on it.
+
 Contract creation, precompiles, transient storage, blob opcodes,
-invalid/self-destruct paths, and other unvalidated combinations are outside the
-supported Tokamak L2 boundary.
+invalid/self-destruct paths, and other unvalidated combinations are also outside
+the supported Tokamak L2 boundary.
 
 ## Project and license
 
