@@ -8,83 +8,151 @@ The format is based on Keep a Changelog.
 
 ## Unreleased
 
-### Compatibility and Upgrade Notes
+### Protocol Changes
 
-- Upgrade the subcircuit library and both Synthesizer packages as one release
-  unit. The generated circuit catalog, logical interfaces, buffer capacities,
-  and public-instance layout have changed. Rebuild all circuit artifacts and
-  generate a new compatible backend CRS before proving; do not combine a new
-  Synthesizer with an older library, R1CS/WASM set, metadata, or CRS.
-- The public-instance boundary no longer uses the former `bufferPubIn` and
-  `bufferPubOut` layout. It now separates transaction, block, and EVM static
-  inputs from committed log, storage-read, and storage-write records.
-  Integrations that read an `instance.json` or describe public inputs must use
-  the generated metadata from this release rather than positional assumptions
-  from an earlier release.
-- Update transaction producers to the synchronized `tokamak-l2js` 0.2
-  transaction format. A public channel transaction index replaces the Ethereum
-  account nonce as the transaction identity supplied to synthesis. The
-  signature circuit also derives its private-message input arity from the
-  synchronized TokamakL2JS specification, so applications must regenerate
-  transaction snapshots after upgrading either dependency.
-- Storage handling is now split from EVM execution. The proof exposes the
-  first read and final committed write for each storage location as public
-  `(address, key, value)` records. The bridge or orchestration protocol must
-  verify storage membership and root transitions with the separate storage
-  proof, then bind those public records to the Tokamak zk-EVM proof.
-- Log output now contains committed EVM logs only: logs emitted in a reverted
-  child call are excluded. Fixed-capacity storage and log record buffers remain
-  zero-padded; the higher-level protocol filters zero-address storage records
-  and all-zero log records.
-- A reverted or exceptionally halted top-level transaction no longer produces
-  a synthesizable transaction proof. Callers must handle the synthesis error
-  rather than expect a proof for a failed transaction.
-- The supported contract class is deliberately restricted: every successful
-  call in the application's accepted input and state domain must retain one
-  fixed EVM execution and circuit topology. Review the
+- The proof statement now separates transaction input, block context, static
+  EVM input, committed log output, initial storage reads, and final storage
+  writes. This replaces the former generic public-input and public-output
+  boundary and makes each value's protocol role explicit.
+- Transaction authorization now uses the signed channel transaction index as
+  the public transaction identity instead of the Ethereum account nonce. The
+  verified transaction origin, target contract, and function selector are
+  bound to the EVM execution represented by the proof.
+- Storage membership and root transitions are no longer proved inside the EVM
+  circuit. The Tokamak zk-EVM proof exposes the first read and final committed
+  write for each accessed storage location, while the surrounding bridge or
+  orchestration protocol verifies the separate storage proof and binds the two
+  proof statements together.
+- Proof output now represents committed execution only. Logs from reverted
+  child calls are excluded, and a reverted or exceptionally halted top-level
+  transaction does not produce a synthesizable transaction proof.
+- Supported contract calls must retain one fixed EVM execution and circuit
+  topology throughout the application's accepted input and state domain. Use
+  the
   [Synthesizer transaction-support guide](./packages/frontend/synthesizer/README.md#transaction-support)
-  and validate the intended domain with its topology test matrix before
-  relying on a contract function.
+  and its topology matrix before relying on a contract function.
+
+### Compatibility and Migration
+
+- Upgrade the CLI, subcircuit library, Node and Web Synthesizers,
+  browser-compatible SNARK package, native backend, and CRS as one synchronized
+  compatibility set. The `2.1.5` circuit artifacts, generated metadata, browser
+  binaries, and CRS are not compatible with this unreleased circuit set.
+- Regenerate transaction snapshots with `tokamak-l2js` `0.2.0`, rebuild the
+  subcircuit library artifacts, generate a matching CRS, and run
+  `tokamak-cli --install` again after upgrading. Do not combine artifacts or
+  packages from the two release lines.
+- Integrations that read `instance.json` or describe public inputs must use the
+  generated public-section and logical-interface metadata from this release.
+  The former `bufferPubIn` and `bufferPubOut` positions are no longer valid.
+- Node Synthesizer callers must replace the exported `CircuitGenerator` class
+  or `createCircuitGenerator(synthesizer, wasmBuffers)` call with
+  `await createCircuitGenerator(synthesizer)`. The factory no longer accepts
+  WASM buffers and returns a `CircuitGenerationResult` containing placements
+  and circuit artifacts directly.
+- Browser converter callers must replace `convertCrs(rkyvBytes)` with
+  `convertCrs(rkyvBytes, crsProvenance)`, where `crsProvenance` is the complete
+  canonical `finalMpcCrs` document loaded from the matching
+  `crs_provenance.json`. Legacy or mismatched provenance is rejected.
+
+### High-Level Implementation Summary
+
+#### Compatibility Improvements
+
+- Producers now publish versioned logical-interface, public-section, binary
+  artifact, and provenance contracts. Consumers validate those contracts and
+  the synchronized package identities before synthesis, proving, or
+  verification.
+- Every package that consumes TokamakL2JS now uses exactly version `0.2.0`, and
+  the signature circuit derives its private-message shape from that version's
+  transaction specification.
+
+#### Implementation Policy Maintenance
+
+- Development builds consume local circuit output, while production builds
+  consume the synchronized published library. Optimization settings do not
+  change the selected artifact origin.
+- Production CRS artifacts require canonical provenance and matching artifact
+  hashes. Runtime and CRS updates are staged before activation so a failed
+  update preserves the previous working generation.
+- Public technical documents are maintained under explicit `publication`
+  paths, while package and release checks enforce the shared compatibility and
+  artifact contracts.
+
+#### Bug Fixes
+
+- Corrected full-width arithmetic, shift, address, storage, and byte-sized
+  memory behavior across the circuit library and Synthesizer.
+- Corrected nested-call calldata ownership, dynamic memory views, committed-log
+  rollback, storage read/write tracking, and failed top-level transaction
+  handling.
+- Corrected transaction-signature composition and canonical point handling so
+  the verified identity and call target are routed consistently into EVM
+  execution.
+
+#### Validation Logic Strengthening
+
+- Strengthened arithmetic, exponentiation, division, comparison, shift, and
+  signature constraints and expanded composition-level topology checks.
+- Native and browser runtimes now reject malformed or incompatible scalars,
+  points, proofs, CRS data, generated metadata, and binary artifacts at their
+  input boundaries.
+- Release checks now validate packaged runtimes, dependency identities,
+  producer contracts, CRS provenance, and representative native/browser proof
+  interoperability before publication.
 
 ### Quantified Circuit and Setup Changes
 
-The following values compare the checked-in `2.1.5` library with the current
-generated library. They are circuit/setup dimensions, not a benchmark of
-end-to-end proving time. No CPU, GPU, or browser proving-time claim is made
-for this unreleased circuit set.
+The `2.1.5` values below come from release commit `7b9495379` and its checked-in
+`setupParams.json` and `subcircuitInfo.json`. The current values come from the
+same generated files in this unreleased tree. These are circuit and setup
+dimensions, not end-to-end proving benchmarks; no CPU, GPU, or browser proving
+time claim is made for this circuit set.
 
 | Generated catalog metric | `2.1.5` | Current | Change |
 | --- | ---: | ---: | ---: |
-| Distinct compiled subcircuit types | 14 | 44 | +30 |
+| Compiled and declared subcircuit types (`s_D`) | 14 | 44 | +30 (+214.3%) |
 | Sum of constraints across one instance of every distinct type | 24,275 | 23,667 | -608 (-2.5%) |
 | Sum of R1CS wires across one instance of every distinct type | 25,893 | 23,762 | -2,131 (-8.2%) |
-| Largest single-subcircuit constraint count | 3,936 | 1,024 | -2,912 |
-| Declared subcircuit count (`s_D`) | 14 | 44 | +30 |
+| Largest single-subcircuit constraint count | 3,936 | 1,024 | -2,912 (-74.0%) |
 | Maximum placements (`s_max`) | 256 | 256 | Unchanged |
-| Setup constraint-domain parameter (`n`) | 4,096 | 1,024 | -3,072 |
+| Setup constraint-domain parameter (`n`) | 4,096 | 1,024 | -3,072 (-75.0%) |
 | Total generated matrix dimension (`m_D`) | 26,591 | 24,079 | -2,512 (-9.4%) |
 | Total generated wire-domain boundary (`l_D`) | 4,824 | 1,420 | -3,404 (-70.6%) |
 | Internal placement-interface width (`m_I = l_D - l`) | 4,096 | 1,024 | -3,072 (-75.0%) |
 | Constraint grid size (`n × s_max`) | 1,048,576 | 262,144 | -786,432 (-75.0%) |
 | Interface grid size (`m_I × s_max`) | 1,048,576 | 262,144 | -786,432 (-75.0%) |
 
-The changed public-wire boundaries and static buffer capacities are:
+The public-wire boundaries and declared static buffer capacities changed as
+follows. Capacities are physical field wires, not logical record counts.
 
-| Boundary or capacity | `2.1.5` | Current |
-| --- | ---: | ---: |
-| Free public-wire boundary (`l_free`) | 128 | 256 |
-| User-output boundary (`l_user_out`) | 65 | 130 |
-| User-input boundary (`l_user`) | 85 | 134 |
-| Final public boundary (`l`) | 728 | 396 |
-| Legacy public-output buffer capacity (`nPubOut`) | 65 input wires | Removed |
-| Legacy public-input buffer capacity (`nPubIn`) | 20 input wires | Removed |
-| Transaction input capacity (`nTxIn`) | Not separate | 4 input wires |
-| Block input capacity | 24 input wires | 24 input wires |
-| Fixed EVM input capacity (`nEVMIn`) | 600 input wires | 140 input wires |
-| Private input capacity (`nPrvIn`) | 1,060 input wires | 50 input wires |
-| Committed log capacity (`nLogOut`) | Not present | 50 input wires |
-| Initial storage-read capacity (`nStorageLoad`) | Not present | 50 input wires |
-| Final storage-write capacity (`nStorageStore`) | Not present | 30 input wires |
+| Boundary or capacity | `2.1.5` | Current | Change |
+| --- | ---: | ---: | ---: |
+| Free public-wire boundary (`l_free`) | 128 | 256 | +128 (+100.0%) |
+| User-output boundary (`l_user_out`) | 65 | 130 | +65 (+100.0%) |
+| User-input boundary (`l_user`) | 85 | 134 | +49 (+57.6%) |
+| Final public boundary (`l`) | 728 | 396 | -332 (-45.6%) |
+| Legacy public-output buffer capacity (`nPubOut`) | 65 wires | Removed | Removed |
+| Legacy public-input buffer capacity (`nPubIn`) | 20 wires | Removed | Removed |
+| Transaction input capacity (`nTxIn`) | Not separate | 4 wires | Added |
+| Block input capacity | 24 wires | 24 wires | Unchanged |
+| Fixed EVM input capacity (`nEVMIn`) | 600 wires | 140 wires | -460 (-76.7%) |
+| Private input capacity (`nPrvIn`) | 1,060 wires | 50 wires | -1,010 (-95.3%) |
+| Committed log capacity (`nLogOut`) | Not present | 50 wires | Added |
+| Initial storage-read capacity (`nStorageLoad`) | Not present | 50 wires | Added |
+| Final storage-write capacity (`nStorageStore`) | Not present | 30 wires | Added |
+
+The current named public buffers account for 298 non-padding wires within the
+396-wire public boundary. The remaining 98 wires are free-boundary layout
+padding. In `2.1.5`, the named public buffers accounted for 709 of 728 public
+wires, leaving 19 padding wires.
+
+Each storage record contains three 256-bit values—address, key, and value—and
+therefore occupies six field wires. The 50-wire initial-read buffer supports
+eight complete records plus two padding wires; the 30-wire final-write buffer
+supports five complete records. The 50-wire log buffer holds at most 25
+256-bit topic or data elements. A log uses a variable number of those elements,
+so this is not a 25-log capacity.
 
 The current public sections end at `l_log_out = 50`,
 `l_storage_store = 80`, `l_storage_load = 130`, `l_tx_in = 134`,
@@ -93,116 +161,90 @@ The current public sections end at `l_log_out = 50`,
 of `nPoseidonBatch = 4`; the message-input count is obtained from the
 synchronized TokamakL2JS specification. The former Merkle depth of 36
 (`2^36` leaves), accumulation batch of 32, Jubjub exponentiation batch of 128,
-and EVM exponentiation batch of 32 are removed rather than replaced by new
+and EVM exponentiation batch of 32 were removed rather than replaced by new
 capacity parameters.
-
-### Correctness and Security
-
-- Replaced transaction-signature verification with the current compact,
-  cofactor-aware transaction-signature composition and its synchronized
-  TokamakL2JS signing semantics. Verified transaction origin, contract address,
-  and function-selector values are routed into subsequent EVM execution using
-  the new circuit boundary.
-- Strengthened generated constraints for modular arithmetic, exponentiation,
-  division, signed comparisons, multiplication, shifts, and signature-point
-  validation. This removes unsafe arithmetic and signature-validation paths
-  present in the previous circuit set.
-- Corrected full-width storage values and addresses, byte-sized memory stores,
-  inherited static-call calldata, dynamic memory-view ownership, and EVM
-  `BYTE`, `SIGNEXTEND`, `SHL`, `SHR`, and `SAR` full-domain boundary behavior.
 
 ### Subcircuit Library
 
-- Rebuilt the generated catalog around the current transaction-signature,
-  selector-free EVM-operation, memory-view, committed-log, and storage-record
-  boundaries. The compiler now publishes the logical wire interfaces and
-  buffer directions consumed by the Synthesizer; consumers must treat these
-  artifacts as release-specific metadata.
+- Rebuilt the generated catalog around the revised transaction, EVM, memory,
+  log, and storage boundaries. The package now publishes the logical wire
+  interfaces and buffer directions consumed by downstream packages.
 - Removed in-circuit Merkle-tree membership and root-transition circuits,
-  obsolete public-buffer layouts, legacy signature wrappers, and superseded
-  ALU wrappers. Storage proof verification is an external protocol
-  responsibility as described above.
-- Regenerated the optimized circuit artifacts, including packed interfaces for
-  signature and exponentiation compositions. The catalog now has 44 types, all
-  at or below 1,024 constraints, instead of the former 14-type catalog whose
-  largest type had 3,936 constraints. This changes setup dimensions and is one
-  of the reasons a compatible CRS must be regenerated.
+  obsolete public-buffer layouts, and superseded operation and signature
+  wrappers. Storage proof verification is now an external protocol
+  responsibility.
+- Pinned `tokamak-l2js` to `0.2.0` and regenerated the 44-type optimized
+  catalog. Every generated type is at or below 1,024 constraints.
 
 ### Synthesizer Packages
 
-- Node and Web Synthesizers now consume the library's published interface and
-  buffer-direction metadata, reject incompatible artifacts earlier, and build
-  the revised transaction-signature, EVM-operation, memory-view, log, and
-  storage-record placements.
-- The Node Synthesizer development surface no longer includes the stale ERC20
-  example or test workflow. Private-state examples and topology checks are the
-  maintained validation path.
-- Removed obsolete internal runtime helpers, legacy storage/Merkle paths, and
-  duplicate memory emulation. These cleanup changes do not add a separate
-  application-facing API beyond the compatibility changes listed above.
-
+- Node and Web now consume the library's published interfaces, buffer
+  directions, and exact `tokamak-l2js` `0.2.0` transaction contract. They
+  reject incompatible library artifacts before synthesis.
+- Updated circuit generation for the revised transaction signature, EVM
+  operations, memory views, committed logs, and public storage records.
+- Removed the public `CircuitGenerator` class export. Use the one-argument
+  `createCircuitGenerator()` factory and its direct `CircuitGenerationResult`
+  as described in the migration section.
+- Consolidated validation around maintained private-state topology scenarios
+  and removed obsolete runtime, Merkle, duplicate-memory, and stale ERC20
+  development paths.
 
 ### CLI
 
-- The CLI now installs and runs only a backend runtime whose package and
-  subcircuit-library identities match the installed CLI release line. After a
-  CLI upgrade, run `tokamak-cli --install` again before using an existing
-  runtime.
+- The CLI now installs and runs only a backend runtime whose package, library,
+  and compatibility identities match the installed CLI release line.
 - Added `tokamak-cli --doctor` to check the installed runtime and report the
   identities of its `preprocess`, `prove`, and `verify` binaries.
-- Hardened CRS installation. Downloaded archives are admitted only when their
-  declared layout, provenance, release-line compatibility, backend metadata,
-  and artifact hashes agree. The active CRS is promoted atomically from a
-  managed generation; a failed update preserves the prior active CRS.
-- Native and Docker installation now stage a complete runtime before
-  activation, preserving a previously working runtime if installation fails.
-  Docker execution is selected only by the installed runtime state; on Linux,
-  a valid Docker installation can use its native fallback when the Docker
-  daemon is unavailable.
-- `preprocess`, `prove`, and `verify` stage their outputs before replacing
-  prior artifacts. Failed commands therefore do not leave a partially updated
-  workflow in the runtime cache.
-- `verify` and `doctor` keep their machine-readable backend output internal
-  while displaying backend error messages and recovery hints on stderr.
-- The published package now verifies its bundled backend runtime and contract
-  inputs during release checks, reducing installation failures caused by an
-  incomplete npm artifact.
+- Native, Docker, CRS, preprocess, prove, and verify updates are staged before
+  activation. A failed operation preserves the previous working runtime or
+  output generation, and Linux can use the installed native fallback when its
+  Docker runtime is unavailable.
+- Improved backend diagnostics and recovery guidance while keeping
+  machine-readable backend results internal to the CLI integration.
+- Release checks now validate the packaged backend runtime and its contracts
+  before the CLI is published.
 
 ### Native Backend and CRS Operations
 
-- Backend build inputs now have an explicit origin. Local development uses the
-  local QAP compiler output, while production builds use the matching published
-  subcircuit-library snapshot. Build optimization level does not change this
-  selection.
-- Final CRS artifacts now carry a canonical provenance document that records
-  their backend compatibility class, subcircuit-library identity and origin,
-  and hashes for the final CRS files. New backend and CRS releases must be used
-  with their matching synchronized package line; legacy provenance is not
-  accepted as a substitute for the new release pair.
-- Trusted setup and native MPC output remain available for local development,
-  but are not publishable CRS artifacts. Google Drive publication accepts only
-  a final CRS produced from Dusk-backed MPC provenance and verifies the staged
-  artifact hashes before upload.
-- Final CRS activation now uses a staged generation and atomic active-path
-  switch. A failed setup or publication preparation leaves the previously active
-  CRS unchanged.
+- Backend builds now distinguish local development circuit output from the
+  matching published production snapshot.
+- Final CRS artifacts carry canonical provenance covering backend
+  compatibility, library identity and origin, and final artifact hashes.
+  Development setup output remains usable locally but is not accepted as a
+  production CRS artifact.
+- CRS generation, publication preparation, and activation use staged
+  generations and preserve the previous active CRS on failure.
 - Native preprocess, prove, and verify now reject malformed frontend scalars,
   points, and proof artifacts at their input boundary and return actionable
   workflow errors instead of continuing with invalid decoded data.
 
 ### Browser-Compatible SNARK
 
-- Browser development builds now use the local QAP compiler output, while
-  production builds use the published subcircuit-library snapshot. Both modes
-  require an explicit verifier CRS source during generation.
+- Browser development builds use local library output; production builds use
+  the synchronized published snapshot. Both require an explicit final CRS
+  source and matching provenance during generation.
+- `convertCrs()` now requires the matching canonical provenance document as its
+  second argument and validates it before producing named prover, preprocess,
+  and verifier CRS binaries.
 - Browser converters and runtimes now use the producer-defined binary artifact
   contract for CRS, instance, witness, permutation, preprocess, and proof
   inputs. Malformed or mismatched binary artifacts are rejected before proving
   or verification.
-- Browser preprocessing, proving, and verification were validated against a
-  fresh native trusted-setup CRS: preprocess output matched the native result,
-  and the browser verifier accepted both the matching native proof and a proof
-  generated by the browser prover.
+- Release fixtures validate browser preprocessing against native output and
+  verify both native-generated and browser-generated proofs with the matching
+  CRS.
+
+### Release and Documentation Policy
+
+- Shared version and compatibility contracts now govern the CLI, subcircuit
+  library, both Synthesizers, browser-compatible SNARK package, native backend,
+  and CRS release inputs.
+- Package release checks verify dependency versions, generated contract
+  freshness, source boundaries, and required runtime artifacts.
+- External technical publications now live under package-specific
+  `publication` paths; package READMEs and documentation indexes point to the
+  maintained locations.
 
 ## [2.1.5] - 2026-07-31
 
