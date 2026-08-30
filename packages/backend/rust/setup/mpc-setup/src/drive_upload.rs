@@ -74,6 +74,11 @@ pub fn publish_output_archive(
 }
 
 trait CrsArchivePublisher {
+    fn ensure_no_duplicate_archive(
+        &self,
+        config: &DriveUploadConfig,
+    ) -> Result<(), DriveUploadError>;
+
     fn upload_archive(
         &self,
         config: &DriveUploadConfig,
@@ -85,6 +90,14 @@ trait CrsArchivePublisher {
 struct GoogleDriveArchivePublisher;
 
 impl CrsArchivePublisher for GoogleDriveArchivePublisher {
+    fn ensure_no_duplicate_archive(
+        &self,
+        config: &DriveUploadConfig,
+    ) -> Result<(), DriveUploadError> {
+        let runtime = new_runtime()?;
+        runtime.block_on(ensure_no_duplicate_archive(config))
+    }
+
     fn upload_archive(
         &self,
         config: &DriveUploadConfig,
@@ -123,6 +136,7 @@ fn publish_output_archive_with_publisher<P: CrsArchivePublisher>(
     let provenance =
         admit_final_crs_publication(&output_path, &expected).map_err(DriveUploadError::Message)?;
     let archive_name = build_archive_name(&provenance)?;
+    publisher.ensure_no_duplicate_archive(config)?;
 
     let archive_path = intermediate_path.join(&archive_name);
     create_output_archive(&output_path, &archive_path)?;
@@ -250,6 +264,116 @@ fn ensure_release_publish_supported() -> Result<(), DriveUploadError> {
     ))
 }
 
+#[derive(Debug)]
+struct DriveArchivePage {
+    file_names: Vec<String>,
+    next_page_token: Option<String>,
+}
+
+#[derive(Debug)]
+struct DriveArchiveScan {
+    archive_prefix: String,
+    matching_archive_names: Vec<String>,
+    requested_page_tokens: std::collections::BTreeSet<String>,
+}
+
+impl DriveArchiveScan {
+    fn new(archive_prefix: String) -> Self {
+        Self {
+            archive_prefix,
+            matching_archive_names: Vec::new(),
+            requested_page_tokens: std::collections::BTreeSet::new(),
+        }
+    }
+
+    fn consume_page(&mut self, page: DriveArchivePage) -> Result<Option<String>, DriveUploadError> {
+        self.matching_archive_names.extend(
+            page.file_names
+                .into_iter()
+                .filter(|name| name.starts_with(&self.archive_prefix)),
+        );
+
+        let Some(next_page_token) = page
+            .next_page_token
+            .filter(|token| !token.trim().is_empty())
+        else {
+            return Ok(None);
+        };
+        if !self.requested_page_tokens.insert(next_page_token.clone()) {
+            return Err(DriveUploadError::Message(
+                "Google Drive archive listing repeated a page token; duplicate status is indeterminate"
+                    .to_string(),
+            ));
+        }
+        Ok(Some(next_page_token))
+    }
+
+    fn into_matches(self) -> Vec<String> {
+        self.matching_archive_names
+    }
+}
+
+async fn list_matching_archive_names(
+    hub: &DriveHub<HttpsConnector<HttpConnector>>,
+    folder_id: &str,
+    archive_prefix: &str,
+) -> Result<Vec<String>, DriveUploadError> {
+    let list_query =
+        format!("'{folder_id}' in parents and trashed = false and mimeType = 'application/zip'");
+    let mut scan = DriveArchiveScan::new(archive_prefix.to_string());
+    let mut page_token = None;
+    loop {
+        let mut request = hub
+            .files()
+            .list()
+            .q(&list_query)
+            .param("fields", "nextPageToken,files(id,name)")
+            .page_size(100)
+            .supports_all_drives(true)
+            .include_items_from_all_drives(true)
+            .add_scope(Scope::Full);
+        if let Some(token) = page_token.as_deref() {
+            request = request.page_token(token);
+        }
+        let (_, listing) = request.doit().await?;
+        let next_page_token = scan.consume_page(DriveArchivePage {
+            file_names: listing
+                .files
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|file| file.name)
+                .collect(),
+            next_page_token: listing.next_page_token,
+        })?;
+        let Some(next_page_token) = next_page_token else {
+            return Ok(scan.into_matches());
+        };
+        page_token = Some(next_page_token);
+    }
+}
+
+fn reject_matching_archives(
+    config: &DriveUploadConfig,
+    existing_names: Vec<String>,
+) -> Result<(), DriveUploadError> {
+    if existing_names.is_empty() {
+        return Ok(());
+    }
+    Err(DriveUploadError::Message(format!(
+        "drive folder {} already contains CRS archive(s) for backend compatibility version {}: {}; bump the backend compatible version before publishing again",
+        config.folder_id,
+        compatible_backend_version(),
+        existing_names.join(", ")
+    )))
+}
+
+async fn ensure_no_duplicate_archive(config: &DriveUploadConfig) -> Result<(), DriveUploadError> {
+    let hub = build_drive_hub(config).await?;
+    let existing_names =
+        list_matching_archive_names(&hub, &config.folder_id, &archive_version_prefix()).await?;
+    reject_matching_archives(config, existing_names)
+}
+
 async fn validate_drive_folder(config: &DriveUploadConfig) -> Result<(), DriveUploadError> {
     let hub = build_drive_hub(config).await?;
     let (_, folder) = hub
@@ -280,39 +404,9 @@ async fn validate_drive_folder(config: &DriveUploadConfig) -> Result<(), DriveUp
         )));
     }
 
-    let archive_prefix = archive_version_prefix();
-    let list_query = format!(
-        "'{}' in parents and trashed = false and mimeType = 'application/zip'",
-        config.folder_id
-    );
-    let (_, listing) = hub
-        .files()
-        .list()
-        .q(&list_query)
-        .param("fields", "files(id,name)")
-        .page_size(10)
-        .supports_all_drives(true)
-        .include_items_from_all_drives(true)
-        .add_scope(Scope::Full)
-        .doit()
-        .await?;
-    if let Some(existing_files) = listing.files {
-        let existing_names = existing_files
-            .into_iter()
-            .filter_map(|file| file.name)
-            .filter(|name| name.starts_with(&archive_prefix))
-            .collect::<Vec<_>>();
-        if !existing_names.is_empty() {
-            return Err(DriveUploadError::Message(format!(
-                "drive folder {} already contains CRS archive(s) for backend compatibility version {}: {}; bump the backend compatible version before publishing again",
-                config.folder_id,
-                compatible_backend_version(),
-                existing_names.join(", ")
-            )));
-        }
-    }
-
-    Ok(())
+    let existing_names =
+        list_matching_archive_names(&hub, &config.folder_id, &archive_version_prefix()).await?;
+    reject_matching_archives(config, existing_names)
 }
 
 fn archive_version_prefix() -> String {
@@ -465,8 +559,9 @@ async fn build_drive_hub(
 mod tests {
     use super::{
         archive_version_prefix, final_mpc_crs_archive_root_file_names,
-        publish_output_archive_with_publisher, CrsArchivePublisher, DriveUploadConfig,
-        DriveUploadError, DriveUploadResult, PROVENANCE_FILE_NAME,
+        publish_output_archive_with_publisher, CrsArchivePublisher, DriveArchivePage,
+        DriveArchiveScan, DriveUploadConfig, DriveUploadError, DriveUploadResult,
+        PROVENANCE_FILE_NAME,
     };
     use crate::sigma::{Phase1SourceProvenance, SubcircuitLibraryOrigin};
     use libs::crs_provenance::{
@@ -480,6 +575,8 @@ mod tests {
     use zip::ZipArchive;
 
     struct MockArchivePublisher {
+        duplicate_result: Result<(), String>,
+        duplicate_checks: RefCell<usize>,
         result: Result<DriveUploadResult, String>,
         uploads: RefCell<Vec<(PathBuf, String)>>,
     }
@@ -487,6 +584,8 @@ mod tests {
     impl MockArchivePublisher {
         fn succeeds() -> Self {
             Self {
+                duplicate_result: Ok(()),
+                duplicate_checks: RefCell::new(0),
                 result: Ok(DriveUploadResult {
                     folder_url: "https://drive.example.test/folders/folder-id".to_string(),
                     archive_name: "ignored-by-mock".to_string(),
@@ -498,13 +597,36 @@ mod tests {
 
         fn fails() -> Self {
             Self {
+                duplicate_result: Ok(()),
+                duplicate_checks: RefCell::new(0),
                 result: Err("mock upload failure".to_string()),
+                uploads: RefCell::new(Vec::new()),
+            }
+        }
+
+        fn duplicate_exists() -> Self {
+            Self {
+                duplicate_result: Err(
+                    "matching backend compatibility-class archive already exists".to_string(),
+                ),
+                duplicate_checks: RefCell::new(0),
+                result: Err("upload must not run".to_string()),
                 uploads: RefCell::new(Vec::new()),
             }
         }
     }
 
     impl CrsArchivePublisher for MockArchivePublisher {
+        fn ensure_no_duplicate_archive(
+            &self,
+            _config: &DriveUploadConfig,
+        ) -> Result<(), DriveUploadError> {
+            *self.duplicate_checks.borrow_mut() += 1;
+            self.duplicate_result
+                .clone()
+                .map_err(DriveUploadError::Message)
+        }
+
         fn upload_archive(
             &self,
             _config: &DriveUploadConfig,
@@ -555,6 +677,112 @@ mod tests {
 
     fn fixture() -> (tempfile::TempDir, DriveUploadConfig, PathBuf, PathBuf) {
         fixture_from("accepted")
+    }
+
+    fn scan_pages(pages: Vec<DriveArchivePage>) -> Result<Vec<String>, DriveUploadError> {
+        let mut scan = DriveArchiveScan::new(archive_version_prefix());
+        for (index, page) in pages.iter().enumerate() {
+            let next_page_token = scan.consume_page(DriveArchivePage {
+                file_names: page.file_names.clone(),
+                next_page_token: page.next_page_token.clone(),
+            })?;
+            if next_page_token.is_none() {
+                assert_eq!(index + 1, pages.len(), "terminal page must be final");
+                return Ok(scan.into_matches());
+            }
+        }
+        Err(DriveUploadError::Message(
+            "fake listing ended before pagination was exhausted".to_string(),
+        ))
+    }
+
+    fn page(file_names: Vec<String>, next_page_token: Option<&str>) -> DriveArchivePage {
+        DriveArchivePage {
+            file_names,
+            next_page_token: next_page_token.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn finds_a_matching_archive_on_the_second_page() {
+        let matching_name = format!("{}20260824T000000Z.zip", archive_version_prefix());
+        let matches = scan_pages(vec![
+            page(
+                (0..10)
+                    .map(|index| format!("unrelated-{index}.zip"))
+                    .collect(),
+                Some("page-2"),
+            ),
+            page(vec![matching_name.clone()], None),
+        ])
+        .expect("all pages must be scanned");
+
+        assert_eq!(matches, vec![matching_name]);
+    }
+
+    #[test]
+    fn ignores_more_than_ten_unrelated_archives() {
+        let matches = scan_pages(vec![
+            page(
+                (0..10)
+                    .map(|index| format!("unrelated-{index}.zip"))
+                    .collect(),
+                Some("page-2"),
+            ),
+            page(
+                (10..15)
+                    .map(|index| format!("unrelated-{index}.zip"))
+                    .collect(),
+                None,
+            ),
+        ])
+        .expect("unrelated archives must not make the listing indeterminate");
+
+        assert!(matches.is_empty());
+    }
+
+    #[test]
+    fn accepts_an_empty_final_page_after_following_its_token() {
+        let matches = scan_pages(vec![
+            page(vec!["unrelated.zip".to_string()], Some("empty-final-page")),
+            page(Vec::new(), None),
+        ])
+        .expect("an empty terminal page must finish pagination");
+
+        assert!(matches.is_empty());
+    }
+
+    #[test]
+    fn reports_no_match_only_after_exhausting_every_page() {
+        let matches = scan_pages(vec![
+            page(vec!["first.zip".to_string()], Some("page-2")),
+            page(vec!["second.zip".to_string()], Some("page-3")),
+            page(vec!["third.zip".to_string()], None),
+        ])
+        .expect("the no-match path must consume the terminal page");
+
+        assert!(matches.is_empty());
+    }
+
+    #[test]
+    fn duplicate_recheck_prevents_archive_construction_and_upload() {
+        let (_workspace, config, output, intermediate) = fixture();
+        let publisher = MockArchivePublisher::duplicate_exists();
+        let archive_path =
+            intermediate.join(format!("{}20260824T000000Z.zip", archive_version_prefix()));
+
+        let error = publish_output_archive_with_publisher(
+            &config,
+            &intermediate.to_string_lossy(),
+            &output.to_string_lossy(),
+            &publisher,
+        )
+        .expect_err("a duplicate archive must stop publication");
+
+        assert!(error.to_string().contains("already exists"));
+        assert_eq!(*publisher.duplicate_checks.borrow(), 1);
+        assert!(!archive_path.exists());
+        assert!(publisher.uploads.borrow().is_empty());
     }
 
     fn read_fixture_provenance(output: &Path) -> FinalMpcCrsProvenance {

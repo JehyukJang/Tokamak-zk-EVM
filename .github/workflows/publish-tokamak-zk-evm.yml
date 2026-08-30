@@ -543,20 +543,13 @@ jobs:
           )
           service = build("drive", "v3", credentials=credentials, cache_discovery=False)
 
-          folder = service.files().get(
-              fileId=folder_id,
-              fields="id,name,mimeType,driveId",
-              supportsAllDrives=True,
-          ).execute()
-
           query = (
               f"'{folder_id}' in parents and "
               "trashed = false and "
-              "mimeType != 'application/vnd.google-apps.folder'"
+              "mimeType = 'application/zip'"
           )
 
           files = []
-          visible_files = []
           page_token = None
           while True:
               response = service.files().list(
@@ -568,7 +561,6 @@ jobs:
                   includeItemsFromAllDrives=True,
               ).execute()
 
-              visible_files.extend(response.get("files", []))
               for file in response.get("files", []):
                   name = file.get("name", "")
                   match = archive_pattern.fullmatch(name)
@@ -580,15 +572,11 @@ jobs:
                   break
 
           if not files:
-              visible_sample = visible_files[:20]
               print(
                   json.dumps(
                       {
                           "archivePrefix": archive_prefix,
-                          "checkedFolder": folder,
                           "matchedCount": 0,
-                          "visibleFileCountBeforeStop": len(visible_files),
-                          "visibleFileSample": visible_sample,
                       },
                       indent=2,
                   )
