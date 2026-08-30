@@ -58,7 +58,7 @@ await assert.rejects(
         jsonResponse({ base: { ref: 'dev', sha: baseSha }, head: { ref: 'release/snapshot', sha: headSha } }),
     },
   ),
-  /protected main base/u,
+  /current main base/u,
 );
 
 console.log('[dispatch-pr-validation-test] Exact-head workflow dispatch contract passed.');

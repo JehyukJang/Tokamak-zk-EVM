@@ -513,7 +513,7 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Fetch current protected main identity
+      - name: Fetch current main identity
         if: github.event_name == 'workflow_dispatch'
         run: git fetch --no-tags origin main:refs/remotes/origin/main
 
@@ -555,7 +555,7 @@ jobs:
       pull-requests: write
 
     steps:
-      - name: Checkout current protected main
+      - name: Checkout current main
         uses: actions/checkout@v4
         with:
           fetch-depth: 0

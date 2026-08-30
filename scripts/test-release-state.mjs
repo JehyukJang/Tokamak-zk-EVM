@@ -73,7 +73,7 @@ for (const [name, input, expected] of [
   [
     'non-main dispatch commit',
     base({ eventName: 'workflow_dispatch', parentSha: null, mainSha: sha('c') }),
-    /current protected main/u,
+    /current main/u,
   ],
   [
     'registry error',

@@ -15,7 +15,7 @@ export async function dispatchPullRequestValidation(options, dependencies = {}) 
 
   const pullRequest = await request(`/pulls/${options.pullRequestNumber}`);
   if (pullRequest.base?.ref !== 'main' || pullRequest.base?.sha !== options.baseSha) {
-    throw new Error('Pull-request validation dispatch requires the exact protected main base.');
+    throw new Error('Pull-request validation dispatch requires the exact current main base.');
   }
   if (pullRequest.head?.sha !== options.headSha) {
     throw new Error('Pull-request head changed before validation dispatch.');

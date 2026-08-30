@@ -107,6 +107,6 @@ function assertCurrentMainDispatch(input) {
     throw new Error(`Manual continuation must select refs/heads/main, found ${JSON.stringify(input.ref)}.`);
   }
   if (!input.currentSha || input.currentSha !== input.mainSha) {
-    throw new Error('Manual continuation must resolve to the current protected main commit.');
+    throw new Error('Manual continuation must resolve to the current main commit.');
   }
 }
