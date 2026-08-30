@@ -64,7 +64,7 @@ compatibility class. `mpc-setup` does not accept `--subcircuit-library`.
 The setup flow consumes binary R1CS constraint files from the prepared library's `r1cs/` directory.
 
 ```bash
-cargo run --release -p mpc-setup --bin native_mpc_setup -- \
+cargo run --locked --release -p mpc-setup --bin native_mpc_setup -- \
   --intermediate ./setup/mpc-setup/output/native.intermediate \
   --output ./setup/mpc-setup/output/native.final
 ```
@@ -82,7 +82,7 @@ native phase-1 initialization scalar uses internal randomness when testing mode 
 ## Dusk-Backed Mode
 
 ```bash
-cargo run --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
+cargo run --locked --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
   ceremony \
   --intermediate ./setup/mpc-setup/output/dusk.intermediate \
   --output ./setup/mpc-setup/output/dusk.final
@@ -108,7 +108,7 @@ origin, and final CRS artifacts that match their recorded SHA-256 digests. The c
 Publish an existing ceremony output separately:
 
 ```bash
-cargo run --release -p mpc-setup --no-default-features \
+cargo run --locked --release -p mpc-setup --no-default-features \
   --features production-npm-subcircuit-library --bin dusk_backed_mpc_setup -- \
   publish \
   --intermediate ./setup/mpc-setup/output/dusk.intermediate \
@@ -125,7 +125,7 @@ subcircuit-library snapshot origin, and final CRS artifact digests that match
 Use `run` instead of `ceremony` to execute ceremony followed by publication in one command:
 
 ```bash
-cargo run --release -p mpc-setup --no-default-features \
+cargo run --locked --release -p mpc-setup --no-default-features \
   --features production-npm-subcircuit-library --bin dusk_backed_mpc_setup -- \
   run \
   --intermediate ./setup/mpc-setup/output/dusk.intermediate \
@@ -141,7 +141,7 @@ If that preflight fails, no ceremony output or intermediate state is created.
 Local developer build example:
 
 ```bash
-cargo run --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
+cargo run --locked --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
   ceremony \
   --intermediate ./setup/mpc-setup/output/dusk.intermediate \
   --output ./setup/mpc-setup/output/dusk.final
@@ -185,7 +185,7 @@ runtime testing flag.
 Native:
 
 ```bash
-cargo run --release -p mpc-setup --features testing-mode --bin native_mpc_setup -- \
+cargo run --locked --release -p mpc-setup --features testing-mode --bin native_mpc_setup -- \
   --intermediate ./setup/mpc-setup/output/native-testing.intermediate \
   --output ./setup/mpc-setup/output/native-testing.final
 ```
@@ -193,7 +193,7 @@ cargo run --release -p mpc-setup --features testing-mode --bin native_mpc_setup 
 Dusk-backed:
 
 ```bash
-cargo run --release -p mpc-setup --features testing-mode --bin dusk_backed_mpc_setup -- \
+cargo run --locked --release -p mpc-setup --features testing-mode --bin dusk_backed_mpc_setup -- \
   ceremony \
   --intermediate ./setup/mpc-setup/output/dusk-testing.intermediate \
   --output ./setup/mpc-setup/output/dusk-testing.final

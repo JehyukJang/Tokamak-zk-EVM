@@ -183,7 +183,16 @@ if (compatibleBackendVersion !== expectedCompatibleBackendVersion) {
 }
 
 if (!sourceOnly) {
-  for (const [name, version] of getCargoLockPackageVersions()) {
+  if (!fileExists(BACKEND_CARGO_LOCK)) {
+    fail(`${BACKEND_CARGO_LOCK} is missing.`);
+  }
+  const cargoLockPackageVersions = getCargoLockPackageVersions();
+  for (const name of BACKEND_WORKSPACE_PACKAGE_NAMES) {
+    if (!cargoLockPackageVersions.has(name)) {
+      fail(`${BACKEND_CARGO_LOCK} is missing workspace package ${name}.`);
+    }
+  }
+  for (const [name, version] of cargoLockPackageVersions) {
     if (version !== expectedVersion) {
       fail(`packages/backend/Cargo.lock package ${name} is '${version}', expected '${expectedVersion}'.`);
     }

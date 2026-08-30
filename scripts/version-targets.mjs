@@ -48,7 +48,6 @@ export const OPTIONAL_LOCKFILES = Object.freeze(
     'packages/frontend/synthesizer/package-lock.json',
     'packages/frontend/synthesizer/node-cli/package-lock.json',
     'packages/frontend/synthesizer/web-app/package-lock.json',
-    'packages/backend/Cargo.lock',
   ]),
 );
 

@@ -97,14 +97,14 @@ local development workflow uses it with the explicit `--allow-unverified-crs` op
 Release example:
 
 ```bash
-cargo run --release -p trusted-setup -- \
+cargo run --locked --release -p trusted-setup -- \
   --output ./rust/setup/trusted-setup/output
 ```
 
 Non-release example:
 
 ```bash
-cargo run -p trusted-setup -- \
+cargo run --locked -p trusted-setup -- \
   --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
   --output ./rust/setup/trusted-setup/output
 ```
@@ -117,7 +117,7 @@ Runs Tokamak native phase 1 and phase 2, then emits the same final CRS layout us
 Release example:
 
 ```bash
-cargo run --release -p mpc-setup --bin native_mpc_setup -- \
+cargo run --locked --release -p mpc-setup --bin native_mpc_setup -- \
   --intermediate ./rust/setup/mpc-setup/output/native.intermediate \
   --output ./rust/setup/mpc-setup/output/native.final
 ```
@@ -131,7 +131,7 @@ operations; only `publish` and the composite `run` require publication credentia
 Create a local CRS without Drive access:
 
 ```bash
-cargo run --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
+cargo run --locked --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
   ceremony \
   --intermediate ./rust/setup/mpc-setup/output/dusk.intermediate \
   --output ./rust/setup/mpc-setup/output/dusk.final
@@ -140,7 +140,7 @@ cargo run --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
 Publish a completed local CRS:
 
 ```bash
-cargo run --release -p mpc-setup --no-default-features \
+cargo run --locked --release -p mpc-setup --no-default-features \
   --features production-npm-subcircuit-library --bin dusk_backed_mpc_setup -- \
   publish \
   --intermediate ./rust/setup/mpc-setup/output/dusk.intermediate \

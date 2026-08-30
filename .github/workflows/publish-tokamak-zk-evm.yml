@@ -29,16 +29,19 @@ jobs:
           node-version: '24'
 
       - name: Install workspace dependencies
-        run: npm install --package-lock=false
+        run: npm ci
 
       - name: Check synchronized versions
         run: npm run version:check
 
       - name: Install Rust and Cargo
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Check release reproducibility policy
+        run: npm run release:reproducibility:check
 
       - name: Install Circom compiler
-        run: cargo install --git https://github.com/iden3/circom --tag v2.2.2 circom
+        run: cargo install --locked --git https://github.com/iden3/circom --tag v2.2.2 circom
 
       - name: Verify Circom compiler
         run: |
@@ -79,7 +82,7 @@ jobs:
 
       - name: Check backend workspace
         working-directory: packages/backend
-        run: cargo check --workspace
+        run: cargo check --workspace --locked
 
       - name: Validate CLI release readiness
         run: npm run --workspace @tokamak-zk-evm/cli release:check
@@ -634,7 +637,7 @@ jobs:
 
       - name: Install browser-package dependencies for CRS validation
         working-directory: packages/backend/wasm
-        run: npm install --package-lock=false --ignore-scripts
+        run: npm ci --ignore-scripts
 
       - name: Validate canonical final CRS input
         working-directory: packages/backend/wasm
@@ -668,7 +671,7 @@ jobs:
           node-version: '24'
 
       - name: Install Rust and Cargo
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: wasm32-unknown-unknown
 
@@ -690,7 +693,7 @@ jobs:
 
       - name: Install package dependencies
         working-directory: packages/backend/wasm
-        run: npm install --package-lock=false --ignore-scripts
+        run: npm ci --ignore-scripts
 
       - name: Install Chromium
         working-directory: packages/backend/wasm
@@ -1236,10 +1239,10 @@ jobs:
           sudo apt-get install -y build-essential cmake dos2unix pkg-config tar unzip zip
 
       - name: Install Rust and Cargo
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Install Circom compiler
-        run: cargo install --git https://github.com/iden3/circom --tag v2.2.2 circom
+        run: cargo install --locked --git https://github.com/iden3/circom --tag v2.2.2 circom
 
       - name: Verify Circom compiler
         run: |

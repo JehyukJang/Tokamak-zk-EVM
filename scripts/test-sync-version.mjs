@@ -52,6 +52,14 @@ await runTest('complete synchronization excludes ignored generated inputs', fixt
   assert.match(fullResult.stderr, /dated release entry for 3\.0\.0/u);
 });
 
+await runTest('complete synchronization requires the backend workspace lock', fixtureRoot => {
+  fs.rmSync(path.join(fixtureRoot, BACKEND_CARGO_LOCK));
+  const before = snapshot(fixtureRoot);
+  const result = runFailure(fixtureRoot, ['scripts/sync-version.mjs', '3.0.0']);
+  assert.match(result.stderr, /Missing version target: packages\/backend\/Cargo\.lock/u);
+  assert.deepEqual(snapshot(fixtureRoot), before);
+});
+
 await runTest('pre-publication rejects a candidate without a changelog entry', fixtureRoot => {
   run(fixtureRoot, ['scripts/sync-version.mjs', '3.0.0']);
   const changelogPath = path.join(fixtureRoot, 'CHANGELOG.md');

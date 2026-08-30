@@ -187,9 +187,7 @@ function createVersionTransaction(root, version, compatibleBackendVersion, onlyS
       });
     }
 
-    if (fs.existsSync(path.join(root, BACKEND_CARGO_LOCK))) {
-      stageText(BACKEND_CARGO_LOCK, contents => updateCargoLock(contents, version));
-    }
+    stageText(BACKEND_CARGO_LOCK, contents => updateCargoLock(contents, version));
   }
 
   return [...changes.values()].filter(change => change.updated !== change.original);

@@ -8,10 +8,7 @@ import {
   type BackendPackageName,
 } from '../generated/backend-build-metadata-validator.generated.js';
 import type { InstallOptions, RuntimeContext } from './model.js';
-import {
-  readProductionBackendRuntimeIdentity,
-  validateBackendRuntimeIdentityForContext,
-} from './identity.js';
+import { readProductionBackendRuntimeIdentity, validateBackendRuntimeIdentityForContext } from './identity.js';
 import { runCommand } from '../system.js';
 
 interface CargoMetadata {
@@ -28,7 +25,9 @@ export async function ensureVendoredBackendExists(packageRoot: string): Promise<
   try {
     await fs.access(cargoManifestPath);
   } catch {
-    throw new Error('The vendored backend workspace is missing. Rebuild the package so that vendor/backend is populated.');
+    throw new Error(
+      'The vendored backend workspace is missing. Rebuild the package so that vendor/backend is populated.',
+    );
   }
   return backendRoot;
 }
@@ -61,6 +60,7 @@ export async function buildBackendReleaseBinaries(
 export function backendProductionBuildArgs(packageName: BackendPackageName): string[] {
   return [
     'build',
+    '--locked',
     '-p',
     packageName,
     '--release',
@@ -70,7 +70,9 @@ export function backendProductionBuildArgs(packageName: BackendPackageName): str
   ];
 }
 
-export async function validateProductionBuildMetadata(backendReleaseDir: string): Promise<import('./model.js').BackendRuntimeIdentity> {
+export async function validateProductionBuildMetadata(
+  backendReleaseDir: string,
+): Promise<import('./model.js').BackendRuntimeIdentity> {
   return await readProductionBackendRuntimeIdentity(backendReleaseDir);
 }
 
@@ -95,10 +97,7 @@ function resolveCargoReleaseDir(backendRoot: string): string {
   return path.join(targetDirectory, 'release');
 }
 
-export async function copyBuiltBackendBinaries(
-  context: RuntimeContext,
-  backendReleaseDir: string,
-): Promise<void> {
+export async function copyBuiltBackendBinaries(context: RuntimeContext, backendReleaseDir: string): Promise<void> {
   const paths = runtimePaths(context);
 
   await ensureDir(paths.binaryDir);
@@ -117,7 +116,9 @@ function applyInstallNameTool(binaryPath: string, rpath: string, verbose: boolea
     throw result.error;
   }
   if (result.status !== 0) {
-    throw new Error(`install_name_tool exited with code ${result.status ?? 'unknown'} while configuring ${binaryPath}.`);
+    throw new Error(
+      `install_name_tool exited with code ${result.status ?? 'unknown'} while configuring ${binaryPath}.`,
+    );
   }
 }
 

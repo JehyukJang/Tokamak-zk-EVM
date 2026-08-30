@@ -23,21 +23,24 @@ jobs:
           submodules: recursive
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Install workspace dependencies
-        run: npm install --package-lock=false
+        run: npm ci
 
       - name: Check synchronized versions
         run: npm run version:check
 
       - name: Install Rust and Cargo
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Check release reproducibility policy
+        run: npm run release:reproducibility:check
 
       - name: Install Circom compiler
-        run: cargo install --git https://github.com/iden3/circom --tag v2.2.2 circom
+        run: cargo install --locked --git https://github.com/iden3/circom --tag v2.2.2 circom
 
       - name: Verify Circom compiler
         run: |
@@ -78,4 +81,4 @@ jobs:
 
       - name: Check backend workspace
         working-directory: packages/backend
-        run: cargo check --workspace
+        run: cargo check --workspace --locked
