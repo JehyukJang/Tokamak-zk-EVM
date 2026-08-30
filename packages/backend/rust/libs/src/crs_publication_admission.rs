@@ -34,6 +34,10 @@ impl PublicationIdentity {
     }
 
     pub fn current_package() -> Result<Self, String> {
+        #[cfg(all(feature = "testing-mode", debug_assertions))]
+        if let Some(identity) = test_publication_identity_override()? {
+            return Ok(identity);
+        }
         let package_version = env!("CARGO_PKG_VERSION");
         let compatible_backend_version = compatibility_from_package_version(package_version)
             .map_err(|error| format!("backend package version {error}"))?
@@ -48,6 +52,41 @@ impl PublicationIdentity {
             })?,
         ))
     }
+}
+
+#[cfg(all(feature = "testing-mode", debug_assertions))]
+fn test_publication_identity_override() -> Result<Option<PublicationIdentity>, String> {
+    const COMPATIBILITY: &str = "TOKAMAK_ZKEVM_TEST_PUBLICATION_COMPATIBILITY";
+    const PACKAGE_VERSION: &str = "TOKAMAK_ZKEVM_TEST_PUBLICATION_PACKAGE_VERSION";
+    const SOURCE_DIGEST: &str = "TOKAMAK_ZKEVM_TEST_PUBLICATION_SOURCE_DIGEST";
+    let values = [
+        std::env::var(COMPATIBILITY).ok(),
+        std::env::var(PACKAGE_VERSION).ok(),
+        std::env::var(SOURCE_DIGEST).ok(),
+    ];
+    if values.iter().all(Option::is_none) {
+        return Ok(None);
+    }
+    let [Some(compatibility), Some(package_version), Some(source_digest)] = values else {
+        return Err(format!(
+            "testing publication identity requires {COMPATIBILITY}, {PACKAGE_VERSION}, and {SOURCE_DIGEST} together"
+        ));
+    };
+    let derived = compatibility_from_package_version(&package_version)
+        .map_err(|error| format!("testing publication package version {error}"))?
+        .to_string();
+    if derived != compatibility {
+        return Err(format!(
+            "testing publication package version {package_version} belongs to {derived}, not {compatibility}"
+        ));
+    }
+    crate::subcircuit_source_digest::validate_source_digest(&source_digest)?;
+    Ok(Some(PublicationIdentity::new(
+        compatibility,
+        SUBCIRCUIT_LIBRARY_PACKAGE_NAME,
+        package_version,
+        source_digest,
+    )))
 }
 
 /// Admits a finalized CRS for public release without performing any Drive or
