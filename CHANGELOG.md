@@ -105,9 +105,10 @@ The format is based on Keep a Changelog.
 
 The `2.1.5` values below come from release commit `7b9495379` and its checked-in
 `setupParams.json` and `subcircuitInfo.json`. The current values come from the
-same generated files in this unreleased tree. These are circuit and setup
-dimensions, not end-to-end proving benchmarks; no CPU, GPU, or browser proving
-time claim is made for this circuit set.
+same generated files in this unreleased tree. These tables describe circuit and
+setup dimensions rather than end-to-end performance. The retained native CPU
+release-build measurement is reported separately below; no GPU or browser
+proving-time claim is made for this circuit set.
 
 | Generated catalog metric | `2.1.5` | Current | Change |
 | --- | ---: | ---: | ---: |
@@ -163,6 +164,20 @@ synchronized TokamakL2JS specification. The former Merkle depth of 36
 (`2^36` leaves), accumulation batch of 32, Jubjub exponentiation batch of 128,
 and EVM exponentiation batch of 32 were removed rather than replaced by new
 capacity parameters.
+
+### Native Prove Time
+
+- The retained local CPU release-profile timing artifacts record an
+  end-to-end first-proof time of `37.077365 s` for the `2.1.5` release circuit
+  set and `11.112068 s` for the current circuit set. Both measurements use the
+  Cargo `--release` timing harness and include prover initialization followed
+  by stages `prove0` through `prove4`.
+- The measured duration decreased by `25.965297 s`, or `70.0%`; the current
+  measurement is `30.0%` of the `2.1.5` baseline, a baseline-to-current ratio
+  of `3.34×`. This is a single retained local CPU comparison using each
+  release's corresponding circuit, setup, and proof inputs. It is not a
+  cross-platform performance guarantee or an isolated measurement of one
+  prover optimization.
 
 ### Subcircuit Library
 
