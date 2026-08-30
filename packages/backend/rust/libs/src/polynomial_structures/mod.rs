@@ -106,30 +106,42 @@ macro_rules! define_gen_qapXY {
 }
 
 impl Instance {
-    pub fn gen_a_free_X(&self, setup_params: &SetupParams) -> DensePolynomialExt {
+    pub fn gen_a_free_X(&self, setup_params: &SetupParams) -> Result<DensePolynomialExt, String> {
         let l_free = setup_params.l_free;
         let l_user = setup_params.l_user;
         let m_block = l_free - l_user;
 
         let mut user_instance = vec![ScalarField::zero(); l_user];
         for (i, value) in user_instance.iter_mut().enumerate().take(l_user) {
-            *value = ScalarField::from_hex(&self.a_pub_user[i]);
+            let input = self.a_pub_user.get(i).ok_or_else(|| {
+                format!(
+                    "a_pub_user has {} entries but requires entry {i}",
+                    self.a_pub_user.len()
+                )
+            })?;
+            *value = ScalarField::from_hex(input);
         }
 
         let mut block_instance = vec![ScalarField::zero(); m_block];
         for (i, value) in block_instance.iter_mut().enumerate().take(m_block) {
-            *value = ScalarField::from_hex(&self.a_pub_block[i]);
+            let input = self.a_pub_block.get(i).ok_or_else(|| {
+                format!(
+                    "a_pub_block has {} entries but requires entry {i}",
+                    self.a_pub_block.len()
+                )
+            })?;
+            *value = ScalarField::from_hex(input);
         }
 
         let public_instance = [user_instance, block_instance].concat().into_boxed_slice();
 
-        DensePolynomialExt::from_rou_evals(
+        Ok(DensePolynomialExt::from_rou_evals(
             HostSlice::from_slice(&public_instance),
             l_free,
             1,
             None,
             None,
-        )
+        ))
     }
 }
 
@@ -137,17 +149,41 @@ pub fn gen_bXY(
     placement_variables: &[PlacementVariables],
     subcircuit_infos: &[SubcircuitInfo],
     setup_params: &SetupParams,
-) -> DensePolynomialExt {
+) -> Result<DensePolynomialExt, String> {
     let l = setup_params.l;
     let l_d = setup_params.l_D;
     let s_max = setup_params.s_max;
     let m_i = l_d - l;
     let mut interface_witness = vec![ScalarField::zero(); m_i * s_max].into_boxed_slice();
     for (i, placement) in placement_variables.iter().enumerate() {
+        if i >= s_max {
+            return Err(format!(
+                "placement index {i} exceeds the configured placement capacity {s_max}"
+            ));
+        }
         let local_variables = &placement.variables;
-        let global_idx_set = &subcircuit_infos[placement.subcircuitId].flattenMap;
+        let subcircuit_info = subcircuit_infos
+            .get(placement.subcircuitId)
+            .ok_or_else(|| {
+                format!(
+                    "placement {i} references missing subcircuit id {}",
+                    placement.subcircuitId
+                )
+            })?;
+        if subcircuit_info.id != placement.subcircuitId {
+            return Err(format!(
+                "placement {i} references subcircuit id {}, but indexed metadata declares id {}",
+                placement.subcircuitId, subcircuit_info.id
+            ));
+        }
+        let global_idx_set = &subcircuit_info.flattenMap;
         if local_variables.len() != global_idx_set.len() {
-            panic!("Corrupted placement variables.")
+            return Err(format!(
+                "placement {i} has {} variables but subcircuit {} has {} flatten-map entries",
+                local_variables.len(),
+                placement.subcircuitId,
+                global_idx_set.len()
+            ));
         }
         for (&global_idx, val_str) in global_idx_set.iter().zip(local_variables.iter()) {
             if global_idx >= l && global_idx < l_d && val_str.as_ref() != "0x0" {
@@ -156,15 +192,68 @@ pub fn gen_bXY(
             }
         }
     }
-    DensePolynomialExt::from_rou_evals(
+    Ok(DensePolynomialExt::from_rou_evals(
         HostSlice::from_slice(&interface_witness),
         m_i,
         s_max,
         None,
         None,
-    )
+    ))
 }
 
 define_gen_qapXY!(gen_uXY, A_compact_col_mat, A_active_wires);
 define_gen_qapXY!(gen_vXY, B_compact_col_mat, B_active_wires);
 define_gen_qapXY!(gen_wXY, C_compact_col_mat, C_active_wires);
+
+#[cfg(test)]
+mod frontend_index_tests {
+    use super::{gen_bXY, Instance};
+    use crate::frontend_artifacts::{HexString, PlacementVariables, SetupParams, SubcircuitInfo};
+
+    fn setup_params() -> SetupParams {
+        SetupParams {
+            l_free: 2,
+            l: 3,
+            l_user_out: 0,
+            l_user: 1,
+            l_D: 4,
+            m_D: 4,
+            n: 2,
+            s_D: 1,
+            s_max: 1,
+        }
+    }
+
+    #[test]
+    fn rejects_short_public_instance_before_polynomial_conversion() {
+        let instance = Instance {
+            a_pub_user: vec![HexString("0x01".into())].into_boxed_slice(),
+            a_pub_block: Box::new([]),
+            a_pub_function: Box::new([]),
+        };
+
+        let result = instance.gen_a_free_X(&setup_params());
+        assert!(matches!(result, Err(error) if error.contains("a_pub_block has 0 entries")));
+    }
+
+    #[test]
+    fn rejects_missing_placement_subcircuit_before_polynomial_conversion() {
+        let placements = [PlacementVariables {
+            subcircuitId: 1,
+            variables: vec![HexString("0x01".into())].into_boxed_slice(),
+        }];
+        let infos = [SubcircuitInfo {
+            id: 0,
+            name: "only".into(),
+            Nwires: 1,
+            Nconsts: 0,
+            Out_idx: Box::new([]),
+            In_idx: Box::new([]),
+            flattenMap: vec![3].into_boxed_slice(),
+            bufferDirection: None,
+        }];
+
+        let result = gen_bXY(&placements, &infos, &setup_params());
+        assert!(matches!(result, Err(error) if error.contains("missing subcircuit id 1")));
+    }
+}

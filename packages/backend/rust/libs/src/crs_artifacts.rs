@@ -891,25 +891,28 @@ pub trait ArchivedSigma1RkyvExt {
         decoded_xy_powers: &[G1Affine],
         timing_name: &'static str,
     ) -> G1serde;
-    fn encode_O_pub_fix(&self, a_pub_function: &[HexString], setup_params: &SetupParams)
-        -> G1serde;
+    fn encode_O_pub_fix(
+        &self,
+        a_pub_function: &[HexString],
+        setup_params: &SetupParams,
+    ) -> Result<G1serde, String>;
     fn encode_O_pub_free(
         &self,
         placement_variables: &[PlacementVariables],
         public_wire_layout: &PublicWireLayout,
-    ) -> G1serde;
+    ) -> Result<G1serde, String>;
     fn encode_O_mid_no_zk(
         &self,
         placement_variables: &[PlacementVariables],
         subcircuit_infos: &[SubcircuitInfo],
         setup_params: &SetupParams,
-    ) -> G1serde;
+    ) -> Result<G1serde, String>;
     fn encode_O_prv_no_zk(
         &self,
         placement_variables: &[PlacementVariables],
         subcircuit_infos: &[SubcircuitInfo],
         setup_params: &SetupParams,
-    ) -> G1serde;
+    ) -> Result<G1serde, String>;
     fn delta(&self) -> G1serde;
     fn eta(&self) -> G1serde;
     fn delta_inv_alphak_xh_tx(&self, k: usize, h: usize) -> G1serde;
@@ -979,12 +982,17 @@ impl ArchivedSigma1RkyvExt for ArchivedSigma1Rkyv {
         &self,
         a_pub_function: &[HexString],
         setup_params: &SetupParams,
-    ) -> G1serde {
+    ) -> Result<G1serde, String> {
         encode_o_pub_fix_common(
             a_pub_function,
             setup_params,
             self.gamma_inv_o_inst.len(),
-            |idx| self.gamma_inv_o_inst[idx].to_g1_affine(),
+            |idx| {
+                self.gamma_inv_o_inst
+                    .get(idx)
+                    .map(ArchivedG1SerdeRkyv::to_g1_affine)
+                    .ok_or_else(|| format!("gamma_inv_o_inst has no fixed-public entry {idx}"))
+            },
         )
     }
 
@@ -992,9 +1000,12 @@ impl ArchivedSigma1RkyvExt for ArchivedSigma1Rkyv {
         &self,
         placement_variables: &[PlacementVariables],
         public_wire_layout: &PublicWireLayout,
-    ) -> G1serde {
+    ) -> Result<G1serde, String> {
         encode_o_pub_free_common(placement_variables, public_wire_layout, |global_idx| {
-            self.gamma_inv_o_inst[global_idx].to_g1_affine()
+            self.gamma_inv_o_inst
+                .get(global_idx)
+                .map(ArchivedG1SerdeRkyv::to_g1_affine)
+                .ok_or_else(|| format!("gamma_inv_o_inst has no public-wire entry {global_idx}"))
         })
     }
 
@@ -1003,20 +1014,26 @@ impl ArchivedSigma1RkyvExt for ArchivedSigma1Rkyv {
         placement_variables: &[PlacementVariables],
         subcircuit_infos: &[SubcircuitInfo],
         setup_params: &SetupParams,
-    ) -> G1serde {
+    ) -> Result<G1serde, String> {
         let nVar = count_statement_nvar(
             setup_params.l,
             setup_params.l_D,
             placement_variables,
             subcircuit_infos,
-        );
+        )?;
         encode_statement_common(
             setup_params.l,
             setup_params.l_D,
             nVar,
             placement_variables,
             subcircuit_infos,
-            |global_idx, i| self.eta_inv_li_o_inter_alpha4_kj[global_idx][i].to_g1_affine(),
+            |global_idx, i| {
+                self.eta_inv_li_o_inter_alpha4_kj
+                    .get(global_idx)
+                    .and_then(|row| row.get(i))
+                    .map(ArchivedG1SerdeRkyv::to_g1_affine)
+                    .ok_or_else(|| format!("eta statement CRS has no entry ({global_idx}, {i})"))
+            },
         )
     }
 
@@ -1025,20 +1042,26 @@ impl ArchivedSigma1RkyvExt for ArchivedSigma1Rkyv {
         placement_variables: &[PlacementVariables],
         subcircuit_infos: &[SubcircuitInfo],
         setup_params: &SetupParams,
-    ) -> G1serde {
+    ) -> Result<G1serde, String> {
         let nVar = count_statement_nvar(
             setup_params.l_D,
             setup_params.m_D,
             placement_variables,
             subcircuit_infos,
-        );
+        )?;
         encode_statement_common(
             setup_params.l_D,
             setup_params.m_D,
             nVar,
             placement_variables,
             subcircuit_infos,
-            |global_idx, i| self.delta_inv_li_o_prv[global_idx][i].to_g1_affine(),
+            |global_idx, i| {
+                self.delta_inv_li_o_prv
+                    .get(global_idx)
+                    .and_then(|row| row.get(i))
+                    .map(ArchivedG1SerdeRkyv::to_g1_affine)
+                    .ok_or_else(|| format!("delta statement CRS has no entry ({global_idx}, {i})"))
+            },
         )
     }
 
@@ -1071,8 +1094,11 @@ pub trait ArchivedPartialSigma1RkyvExt {
         params: &SetupParams,
         timing_name: &'static str,
     ) -> G1serde;
-    fn encode_O_pub_fix(&self, a_pub_function: &[HexString], setup_params: &SetupParams)
-        -> G1serde;
+    fn encode_O_pub_fix(
+        &self,
+        a_pub_function: &[HexString],
+        setup_params: &SetupParams,
+    ) -> Result<G1serde, String>;
 }
 
 impl ArchivedPartialSigma1RkyvExt for ArchivedPartialSigma1Rkyv {
@@ -1099,12 +1125,17 @@ impl ArchivedPartialSigma1RkyvExt for ArchivedPartialSigma1Rkyv {
         &self,
         a_pub_function: &[HexString],
         setup_params: &SetupParams,
-    ) -> G1serde {
+    ) -> Result<G1serde, String> {
         encode_o_pub_fix_common(
             a_pub_function,
             setup_params,
             self.gamma_inv_o_inst.len(),
-            |idx| self.gamma_inv_o_inst[idx].to_g1_affine(),
+            |idx| {
+                self.gamma_inv_o_inst
+                    .get(idx)
+                    .map(ArchivedG1SerdeRkyv::to_g1_affine)
+                    .ok_or_else(|| format!("gamma_inv_o_inst has no fixed-public entry {idx}"))
+            },
         )
     }
 }

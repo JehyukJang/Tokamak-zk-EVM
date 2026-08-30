@@ -322,6 +322,7 @@ interface BackendStageOptions {
   postProcessResult?: (result: CommandResult) => string;
   requiredFiles: (paths: RuntimePaths) => readonly string[];
   quiet?: boolean;
+  suppressStdout?: boolean;
   successMessage?: string;
   verbose: boolean;
 }
@@ -508,7 +509,7 @@ async function runVerify(execution: RuntimeExecution, inputPath: string | undefi
     inputRules: resolveStageInputRules(VERIFY_INPUT_RULES),
     verbose,
     args: stagePaths => [...backendVerifyArgs(stagePaths), '--verification-result-json'],
-    quiet: true,
+    suppressStdout: true,
   });
 }
 
@@ -645,7 +646,7 @@ async function runBackendStage(execution: RuntimeExecution, options: BackendStag
         options.binaryPath,
         options.args(stagePaths),
         options.verbose,
-        { quiet: options.quiet },
+        { quiet: options.quiet, suppressStdout: options.suppressStdout },
       );
       return options.postProcessResult?.(result) ?? options.successMessage;
     },
@@ -753,7 +754,13 @@ async function runDoctor(verbose: boolean): Promise<void> {
   const paths = runtimePaths(context);
   for (const packageName of BACKEND_PACKAGE_NAMES) {
     const binaryPath = path.join(paths.binaryDir, packageName);
-    const result = await runBackendCommand(execution, binaryPath, ['--build-identity-json'], verbose, { quiet: true });
+    const result = await runBackendCommand(
+      execution,
+      binaryPath,
+      ['--build-identity-json'],
+      verbose,
+      { suppressStdout: true },
+    );
     let liveIdentity: unknown;
     try {
       liveIdentity = JSON.parse(result.stdout) as unknown;

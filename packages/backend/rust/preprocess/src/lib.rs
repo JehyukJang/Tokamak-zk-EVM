@@ -57,7 +57,7 @@ pub fn generate_preprocess(
     permutation_raw: &[Permutation],
     instance: &Instance,
     setup_params: &SetupParams,
-) -> Preprocess {
+) -> Result<Preprocess, String> {
     let shape = setup_shape(setup_params);
     validate_setup_shape(&shape);
     let m_i = shape.m_i;
@@ -65,11 +65,11 @@ pub fn generate_preprocess(
     let ntt_domain_size = prover_verifier_ntt_domain_size(&shape);
     init_ntt_domain(ntt_domain_size);
     println!("Converting the permutation matrices into polynomials s^0 and s^1...");
-    let (mut s0XY, mut s1XY) = Permutation::to_poly(permutation_raw, m_i, s_max);
+    let (mut s0XY, mut s1XY) = Permutation::to_poly(permutation_raw, m_i, s_max)?;
     let s0 = sigma.sigma_1.encode_poly(&mut s0XY, setup_params);
     let s1 = sigma.sigma_1.encode_poly(&mut s1XY, setup_params);
     let O_pub_fix = sigma
         .sigma_1
-        .encode_O_pub_fix(&instance.a_pub_function, setup_params);
-    Preprocess { s0, s1, O_pub_fix }
+        .encode_O_pub_fix(&instance.a_pub_function, setup_params)?;
+    Ok(Preprocess { s0, s1, O_pub_fix })
 }

@@ -85,10 +85,11 @@ export async function runCommand(
     cwd?: string;
     env?: NodeJS.ProcessEnv;
     quiet?: boolean;
+    suppressStdout?: boolean;
     verbose?: boolean;
   } = {},
 ): Promise<CommandResult> {
-  const { cwd, env, quiet = false, verbose = false } = options;
+  const { cwd, env, quiet = false, suppressStdout = false, verbose = false } = options;
   logVerbose(verbose, `Command: ${command} ${args.join(' ')}`);
   return await new Promise<CommandResult>((resolve, reject) => {
     const child = spawn(command, args, {
@@ -103,7 +104,7 @@ export async function runCommand(
     child.stdout.on('data', (chunk: Buffer | string) => {
       const text = chunk.toString();
       stdout += text;
-      if (!quiet) {
+      if (!quiet && !suppressStdout) {
         process.stdout.write(text);
       }
     });

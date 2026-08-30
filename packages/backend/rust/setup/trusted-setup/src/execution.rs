@@ -136,43 +136,95 @@ pub fn run_trusted_setup(config: &TrustedSetupConfig<'_>) -> Result<(), TrustedS
         for i in 0..s_d {
             println!("Processing subcircuit id {}", i);
             let r1cs_path = PathBuf::from(paths.qap_path).join(format!("r1cs/subcircuit{i}.r1cs"));
-
-            let compact_r1cs = SubcircuitR1CS::from_r1cs_path(
-                r1cs_path.clone(),
-                &setup_params,
-                &subcircuit_infos[i],
-            )
-            .map_err(|source| ArtifactError::Read {
-                artifact: "subcircuit R1CS",
-                path: r1cs_path,
-                source,
+            let subcircuit_info = subcircuit_infos.get(i).ok_or_else(|| {
+                ArtifactError::Invalid {
+                    artifact: "subcircuit information",
+                    path: PathBuf::from(paths.qap_path).join("subcircuitInfo.json"),
+                    reason: format!(
+                        "setup parameters require subcircuit id {i}, but the metadata only has {} entries",
+                        subcircuit_infos.len()
+                    ),
+                }
             })?;
+            if subcircuit_info.id != i {
+                return Err(ArtifactError::Invalid {
+                    artifact: "subcircuit information",
+                    path: PathBuf::from(paths.qap_path).join("subcircuitInfo.json"),
+                    reason: format!(
+                        "setup parameter index {i} resolves metadata declaring subcircuit id {}",
+                        subcircuit_info.id
+                    ),
+                }
+                .into());
+            }
+
+            let compact_r1cs =
+                SubcircuitR1CS::from_r1cs_path(r1cs_path.clone(), &setup_params, subcircuit_info)
+                    .map_err(|source| ArtifactError::Read {
+                    artifact: "subcircuit R1CS",
+                    path: r1cs_path,
+                    source,
+                })?;
             let o_evaled = from_r1cs_to_evaled_qap_mixture(
                 &compact_r1cs,
                 &setup_params,
-                &subcircuit_infos[i],
+                subcircuit_info,
                 &tau,
                 &x_evaled_lagrange_vec,
             );
 
-            let flatten_map = &subcircuit_infos[i].flattenMap;
+            let flatten_map = &subcircuit_info.flattenMap;
 
-            for local_idx in 0..subcircuit_infos[i].Nwires {
-                let global_idx = flatten_map[local_idx];
+            for local_idx in 0..subcircuit_info.Nwires {
+                let global_idx = *flatten_map.get(local_idx).ok_or_else(|| {
+                    ArtifactError::Invalid {
+                        artifact: "subcircuit information",
+                        path: PathBuf::from(paths.qap_path).join("subcircuitInfo.json"),
+                        reason: format!(
+                            "subcircuit id {i} declares {} wires but flattenMap has no entry {local_idx}",
+                            subcircuit_info.Nwires
+                        ),
+                    }
+                })?;
 
-                if global_wire_list[global_idx]
-                    != (GlobalWire::Mapped {
-                        subcircuit_id: subcircuit_infos[i].id,
+                if global_wire_list.get(global_idx)
+                    != Some(&GlobalWire::Mapped {
+                        subcircuit_id: subcircuit_info.id,
                         local_wire_index: local_idx,
                     })
                 {
-                    panic!("GlobalWireList is not the inverse of flattenMap.");
+                    return Err(ArtifactError::Invalid {
+                        artifact: "global wire list",
+                        path: PathBuf::from(paths.qap_path).join("globalWireList.json"),
+                        reason: format!(
+                            "global wire {global_idx} is not the inverse mapping for subcircuit {} local wire {local_idx}",
+                            subcircuit_info.id
+                        ),
+                    }
+                    .into());
                 }
 
-                let wire_val = o_evaled[local_idx];
+                let wire_val = *o_evaled
+                    .get(local_idx)
+                    .ok_or_else(|| ArtifactError::Invalid {
+                        artifact: "subcircuit R1CS",
+                        path: PathBuf::from(paths.qap_path)
+                            .join(format!("r1cs/subcircuit{i}.r1cs")),
+                        reason: format!("missing evaluated local wire {local_idx}"),
+                    })?;
 
                 if !wire_val.eq(&ScalarField::zero()) {
-                    o_evaled_vec[global_idx] = wire_val;
+                    let target =
+                        o_evaled_vec
+                            .get_mut(global_idx)
+                            .ok_or_else(|| ArtifactError::Invalid {
+                                artifact: "global wire list",
+                                path: PathBuf::from(paths.qap_path).join("globalWireList.json"),
+                                reason: format!(
+                                "global wire index {global_idx} exceeds setup parameter m_D={m_d}"
+                            ),
+                            })?;
+                    *target = wire_val;
                 }
             }
         }
@@ -281,18 +333,41 @@ pub fn run_trusted_setup(config: &TrustedSetupConfig<'_>) -> Result<(), TrustedS
                     source,
                 }
             })?;
-        let mut a_free_X = public_instance.gen_a_free_X(&setup_params);
-        let mut bXY = gen_bXY(&placement_variables, &subcircuit_infos, &setup_params);
+        let mut a_free_X = public_instance
+            .gen_a_free_X(&setup_params)
+            .map_err(|reason| ArtifactError::Invalid {
+                artifact: "public instance",
+                path: instance_path.clone(),
+                reason,
+            })?;
+        let mut bXY =
+            gen_bXY(&placement_variables, &subcircuit_infos, &setup_params).map_err(|reason| {
+                ArtifactError::Invalid {
+                    artifact: "placement variables",
+                    path: placement_variables_path.clone(),
+                    reason,
+                }
+            })?;
         let (mut uXY, mut vXY, mut wXY) = read_R1CS_gen_uvwXY(
             &paths.qap_path,
             &placement_variables,
             &subcircuit_infos,
             &setup_params,
-        );
+        )
+        .map_err(|reason| ArtifactError::Invalid {
+            artifact: "placement variables",
+            path: placement_variables_path.clone(),
+            reason,
+        })?;
         let a_free_encoding = sigma.sigma_1.encode_poly(&mut a_free_X, &setup_params);
         let O_pub_fix = sigma
             .sigma_1
-            .encode_O_pub_fix(&public_instance.a_pub_function, &setup_params);
+            .encode_O_pub_fix(&public_instance.a_pub_function, &setup_params)
+            .map_err(|reason| ArtifactError::Invalid {
+                artifact: "public instance",
+                path: instance_path.clone(),
+                reason,
+            })?;
         let a_encoding = a_free_encoding;
         let b_encoding = sigma.sigma_1.encode_poly(&mut bXY, &setup_params);
         let u_encoding = sigma.sigma_1.encode_poly(&mut uXY, &setup_params);
@@ -300,17 +375,28 @@ pub fn run_trusted_setup(config: &TrustedSetupConfig<'_>) -> Result<(), TrustedS
         let w_encoding = sigma.sigma_1.encode_poly(&mut wXY, &setup_params);
         let O_inst = sigma
             .sigma_1
-            .encode_O_pub_free(&placement_variables, &public_wire_layout);
-        let O_mid = sigma.sigma_1.encode_O_mid_no_zk(
-            &placement_variables,
-            &subcircuit_infos,
-            &setup_params,
-        );
-        let O_prv = sigma.sigma_1.encode_O_prv_no_zk(
-            &placement_variables,
-            &subcircuit_infos,
-            &setup_params,
-        );
+            .encode_O_pub_free(&placement_variables, &public_wire_layout)
+            .map_err(|reason| ArtifactError::Invalid {
+                artifact: "placement variables",
+                path: placement_variables_path.clone(),
+                reason,
+            })?;
+        let O_mid = sigma
+            .sigma_1
+            .encode_O_mid_no_zk(&placement_variables, &subcircuit_infos, &setup_params)
+            .map_err(|reason| ArtifactError::Invalid {
+                artifact: "placement variables",
+                path: placement_variables_path.clone(),
+                reason,
+            })?;
+        let O_prv = sigma
+            .sigma_1
+            .encode_O_prv_no_zk(&placement_variables, &subcircuit_infos, &setup_params)
+            .map_err(|reason| ArtifactError::Invalid {
+                artifact: "placement variables",
+                path: placement_variables_path,
+                reason,
+            })?;
         let lhs = (O_pub_fix + O_inst) * tau.gamma + O_mid * tau.eta + O_prv * tau.delta;
         let rhs = a_encoding
             + u_encoding * tau.alpha

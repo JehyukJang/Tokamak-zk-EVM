@@ -152,27 +152,24 @@ pub(crate) fn encode_o_pub_fix_common<F>(
     setup_params: &SetupParams,
     gamma_inv_o_inst_len: usize,
     mut gamma_at: F,
-) -> G1serde
+) -> Result<G1serde, String>
 where
-    F: FnMut(usize) -> G1Affine,
+    F: FnMut(usize) -> Result<G1Affine, String>,
 {
     let m_function = setup_params.l - setup_params.l_free;
     if m_function == 0 {
-        return G1serde::zero();
+        return Ok(G1serde::zero());
     }
     if a_pub_function.len() != m_function {
-        panic!(
-            "a_pub_function length mismatch: expected m_function={}, got a_pub_function.len()={}",
-            m_function,
+        return Err(format!(
+            "a_pub_function length mismatch: expected {m_function}, got {}",
             a_pub_function.len()
-        );
+        ));
     }
     if gamma_inv_o_inst_len < m_function {
-        panic!(
-            "gamma_inv_o_inst length is smaller than m_function: gamma_inv_o_inst_len={}, m_function={}",
-            gamma_inv_o_inst_len,
-            m_function
-        );
+        return Err(format!(
+            "gamma_inv_o_inst length {gamma_inv_o_inst_len} is smaller than required fixed-public length {m_function}"
+        ));
     }
 
     let start = gamma_inv_o_inst_len - m_function;
@@ -182,17 +179,17 @@ where
         .collect::<Vec<_>>();
     let bases = (0..m_function)
         .map(|i| gamma_at(start + i))
-        .collect::<Vec<_>>();
-    msm_g1_bases(&scalars_field, &bases)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(msm_g1_bases(&scalars_field, &bases))
 }
 
 pub(crate) fn encode_o_pub_free_common<F>(
     placement_variables: &[PlacementVariables],
     public_wire_layout: &PublicWireLayout,
     mut gamma_at: F,
-) -> G1serde
+) -> Result<G1serde, String>
 where
-    F: FnMut(usize) -> G1Affine,
+    F: FnMut(usize) -> Result<G1Affine, String>,
 {
     let mut aligned_rs = Vec::with_capacity(public_wire_layout.free_public_len());
     let mut aligned_wtns = Vec::with_capacity(public_wire_layout.free_public_len());
@@ -206,24 +203,27 @@ where
         };
         let placement_phase = public_wire_layout
             .placement_phase_for_subcircuit(subcircuit_id)
-            .unwrap_or_else(|| panic!("public buffer {subcircuit_id} has no placement phase"));
-        let placement = placement_variables.get(placement_phase).unwrap_or_else(|| {
-            panic!(
+            .ok_or_else(|| format!("public buffer {subcircuit_id} has no placement phase"))?;
+        let placement = placement_variables.get(placement_phase).ok_or_else(|| {
+            format!(
                 "public buffer {subcircuit_id} has no runtime placement at phase {placement_phase}"
             )
-        });
+        })?;
         if placement.subcircuitId != subcircuit_id {
-            panic!(
+            return Err(format!(
                 "runtime placement phase {placement_phase} has subcircuit {}, expected public buffer {subcircuit_id}",
                 placement.subcircuitId
-            );
+            ));
         }
-        aligned_wtns.push(ScalarField::from_hex(
-            &placement.variables[local_wire_index],
-        ));
-        aligned_rs.push(gamma_at(global_wire_index));
+        let variable = placement.variables.get(local_wire_index).ok_or_else(|| {
+            format!(
+                "public buffer {subcircuit_id} placement phase {placement_phase} has no local wire {local_wire_index}"
+            )
+        })?;
+        aligned_wtns.push(ScalarField::from_hex(variable));
+        aligned_rs.push(gamma_at(global_wire_index)?);
     }
-    msm_g1_bases(&aligned_wtns, &aligned_rs)
+    Ok(msm_g1_bases(&aligned_wtns, &aligned_rs))
 }
 
 pub(crate) fn count_statement_nvar(
@@ -231,10 +231,23 @@ pub(crate) fn count_statement_nvar(
     global_wire_index_end: usize,
     placement_variables: &[PlacementVariables],
     subcircuit_infos: &[SubcircuitInfo],
-) -> usize {
+) -> Result<usize, String> {
     let mut variable_count = 0;
     for placement in placement_variables {
-        let subcircuit_info = &subcircuit_infos[placement.subcircuitId];
+        let subcircuit_info = subcircuit_infos
+            .get(placement.subcircuitId)
+            .ok_or_else(|| {
+                format!(
+                    "placement references missing subcircuit id {}",
+                    placement.subcircuitId
+                )
+            })?;
+        if subcircuit_info.id != placement.subcircuitId {
+            return Err(format!(
+                "placement references subcircuit id {}, but indexed metadata declares id {}",
+                placement.subcircuitId, subcircuit_info.id
+            ));
+        }
         for global_wire_index in subcircuit_info.flattenMap.iter().copied() {
             if global_wire_index >= global_wire_index_offset
                 && global_wire_index < global_wire_index_end
@@ -243,7 +256,7 @@ pub(crate) fn count_statement_nvar(
             }
         }
     }
-    variable_count
+    Ok(variable_count)
 }
 
 pub(crate) fn encode_statement_common<F>(
@@ -253,33 +266,56 @@ pub(crate) fn encode_statement_common<F>(
     placement_variables: &[PlacementVariables],
     subcircuit_infos: &[SubcircuitInfo],
     mut base_at: F,
-) -> G1serde
+) -> Result<G1serde, String>
 where
-    F: FnMut(usize, usize) -> G1Affine,
+    F: FnMut(usize, usize) -> Result<G1Affine, String>,
 {
     let mut aligned_rs = Vec::with_capacity(nVar);
     let mut aligned_variable = Vec::with_capacity(nVar);
     for (i, placement) in placement_variables.iter().enumerate() {
         let variables = &placement.variables;
-        let subcircuit_info = &subcircuit_infos[placement.subcircuitId];
+        let subcircuit_info = subcircuit_infos
+            .get(placement.subcircuitId)
+            .ok_or_else(|| {
+                format!(
+                    "placement {i} references missing subcircuit id {}",
+                    placement.subcircuitId
+                )
+            })?;
+        if subcircuit_info.id != placement.subcircuitId {
+            return Err(format!(
+                "placement {i} references subcircuit id {}, but indexed metadata declares id {}",
+                placement.subcircuitId, subcircuit_info.id
+            ));
+        }
         let flatten_map = &subcircuit_info.flattenMap;
         for j in 0..subcircuit_info.Nwires {
-            if flatten_map[j] >= global_wire_index_offset && flatten_map[j] < global_wire_index_end
-            {
-                let global_idx = flatten_map[j] - global_wire_index_offset;
-                aligned_variable.push(ScalarField::from_hex(&variables[j]));
-                aligned_rs.push(base_at(global_idx, i));
+            let global_wire = flatten_map.get(j).ok_or_else(|| {
+                format!(
+                    "subcircuit {} declares {} wires but flattenMap has no entry {j}",
+                    placement.subcircuitId, subcircuit_info.Nwires
+                )
+            })?;
+            if *global_wire >= global_wire_index_offset && *global_wire < global_wire_index_end {
+                let variable = variables.get(j).ok_or_else(|| {
+                    format!(
+                        "placement {i} for subcircuit {} has no local wire {j}",
+                        placement.subcircuitId
+                    )
+                })?;
+                let global_idx = *global_wire - global_wire_index_offset;
+                aligned_variable.push(ScalarField::from_hex(variable));
+                aligned_rs.push(base_at(global_idx, i)?);
             }
         }
     }
     if aligned_rs.len() != nVar {
-        panic!(
-            "nVar mismatch while encoding statement: aligned_rs.len()={}, nVar={}",
+        return Err(format!(
+            "statement variable count changed while encoding: expected {nVar}, got {}",
             aligned_rs.len(),
-            nVar,
-        );
+        ));
     }
-    msm_g1_bases(&aligned_variable, &aligned_rs)
+    Ok(msm_g1_bases(&aligned_variable, &aligned_rs))
 }
 
 /// CRS (Common Reference String) structure
@@ -570,9 +606,12 @@ impl Sigma1 {
         &self,
         placement_variables: &[PlacementVariables],
         public_wire_layout: &PublicWireLayout,
-    ) -> G1serde {
+    ) -> Result<G1serde, String> {
         encode_o_pub_free_common(placement_variables, public_wire_layout, |global_idx| {
-            self.gamma_inv_o_inst[global_idx].0
+            self.gamma_inv_o_inst
+                .get(global_idx)
+                .map(|point| point.0)
+                .ok_or_else(|| format!("gamma_inv_o_inst has no public-wire entry {global_idx}"))
         })
     }
 
@@ -580,12 +619,17 @@ impl Sigma1 {
         &self,
         a_pub_function: &[HexString],
         setup_params: &SetupParams,
-    ) -> G1serde {
+    ) -> Result<G1serde, String> {
         encode_o_pub_fix_common(
             a_pub_function,
             setup_params,
             self.gamma_inv_o_inst.len(),
-            |idx| self.gamma_inv_o_inst[idx].0,
+            |idx| {
+                self.gamma_inv_o_inst
+                    .get(idx)
+                    .map(|point| point.0)
+                    .ok_or_else(|| format!("gamma_inv_o_inst has no fixed-public entry {idx}"))
+            },
         )
     }
 
@@ -594,20 +638,26 @@ impl Sigma1 {
         placement_variables: &[PlacementVariables],
         subcircuit_infos: &[SubcircuitInfo],
         setup_params: &SetupParams,
-    ) -> G1serde {
+    ) -> Result<G1serde, String> {
         let nVar = count_statement_nvar(
             setup_params.l,
             setup_params.l_D,
             placement_variables,
             subcircuit_infos,
-        );
+        )?;
         encode_statement_common(
             setup_params.l,
             setup_params.l_D,
             nVar,
             placement_variables,
             subcircuit_infos,
-            |global_idx, i| self.eta_inv_li_o_inter_alpha4_kj[global_idx][i].0,
+            |global_idx, i| {
+                self.eta_inv_li_o_inter_alpha4_kj
+                    .get(global_idx)
+                    .and_then(|row| row.get(i))
+                    .map(|point| point.0)
+                    .ok_or_else(|| format!("eta statement CRS has no entry ({global_idx}, {i})"))
+            },
         )
     }
 
@@ -616,20 +666,26 @@ impl Sigma1 {
         placement_variables: &[PlacementVariables],
         subcircuit_infos: &[SubcircuitInfo],
         setup_params: &SetupParams,
-    ) -> G1serde {
+    ) -> Result<G1serde, String> {
         let nVar = count_statement_nvar(
             setup_params.l_D,
             setup_params.m_D,
             placement_variables,
             subcircuit_infos,
-        );
+        )?;
         encode_statement_common(
             setup_params.l_D,
             setup_params.m_D,
             nVar,
             placement_variables,
             subcircuit_infos,
-            |global_idx, i| self.delta_inv_li_o_prv[global_idx][i].0,
+            |global_idx, i| {
+                self.delta_inv_li_o_prv
+                    .get(global_idx)
+                    .and_then(|row| row.get(i))
+                    .map(|point| point.0)
+                    .ok_or_else(|| format!("delta statement CRS has no entry ({global_idx}, {i})"))
+            },
         )
     }
 }
@@ -692,12 +748,17 @@ impl PartialSigma1 {
         &self,
         a_pub_function: &[HexString],
         setup_params: &SetupParams,
-    ) -> G1serde {
+    ) -> Result<G1serde, String> {
         encode_o_pub_fix_common(
             a_pub_function,
             setup_params,
             self.gamma_inv_o_inst.len(),
-            |idx| self.gamma_inv_o_inst[idx].0,
+            |idx| {
+                self.gamma_inv_o_inst
+                    .get(idx)
+                    .map(|point| point.0)
+                    .ok_or_else(|| format!("gamma_inv_o_inst has no fixed-public entry {idx}"))
+            },
         )
     }
 }
@@ -916,23 +977,25 @@ mod public_phase_tests {
     }
 
     #[test]
-    fn encodes_free_public_wires_by_placement_phase_not_subcircuit_id() {
+    fn encodes_free_public_wires_for_the_front_buffer_placements() {
         let layout = test_public_wire_layout();
         let placement_variables = [
-            placement(17, &["0x01", "0x02", "0x03"]),
-            placement(42, &["0x04", "0x05", "0x06"]),
+            placement(0, &["0x01", "0x02", "0x03"]),
+            placement(1, &["0x04", "0x05", "0x06"]),
         ];
 
-        // Non-contiguous identifiers would be invalid slice indices. This must instead
-        // resolve them through the compiler-derived placement phases 0 and 1.
-        let encoded = encode_o_pub_free_common(&placement_variables, &layout, |_| G1Affine::zero());
+        // The frontend reserves the buffer prefix for IDs 0 and 1 and places
+        // those buffers at runtime placement phases 0 and 1.
+        let encoded =
+            encode_o_pub_free_common(&placement_variables, &layout, |_| Ok(G1Affine::zero()))
+                .unwrap();
 
         assert_eq!(encoded, G1serde::zero());
     }
 
     fn test_public_wire_layout() -> PublicWireLayout {
-        let mut output_buffer = buffer(17, BufferDirection::Out);
-        let mut input_buffer = buffer(42, BufferDirection::In);
+        let mut output_buffer = buffer(0, BufferDirection::Out);
+        let mut input_buffer = buffer(1, BufferDirection::In);
         output_buffer.flattenMap[1] = 0;
         output_buffer.flattenMap[0] = 3;
         output_buffer.flattenMap[2] = 4;
@@ -953,28 +1016,28 @@ mod public_phase_tests {
         };
         let global_wires = [
             GlobalWire::Mapped {
-                subcircuit_id: 17,
+                subcircuit_id: 0,
                 local_wire_index: 1,
             },
             GlobalWire::Padding,
             GlobalWire::Mapped {
-                subcircuit_id: 42,
+                subcircuit_id: 1,
                 local_wire_index: 2,
             },
             GlobalWire::Mapped {
-                subcircuit_id: 17,
+                subcircuit_id: 0,
                 local_wire_index: 0,
             },
             GlobalWire::Mapped {
-                subcircuit_id: 17,
+                subcircuit_id: 0,
                 local_wire_index: 2,
             },
             GlobalWire::Mapped {
-                subcircuit_id: 42,
+                subcircuit_id: 1,
                 local_wire_index: 0,
             },
             GlobalWire::Mapped {
-                subcircuit_id: 42,
+                subcircuit_id: 1,
                 local_wire_index: 1,
             },
         ];

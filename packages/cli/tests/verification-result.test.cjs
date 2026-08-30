@@ -1,4 +1,6 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
 
 const { parseBackendVerificationResult } = require('../dist/runtime/verification-result.js');
@@ -19,4 +21,16 @@ test('rejects stdout diagnostics and malformed verification results', () => {
   ]) {
     assert.throws(() => parseBackendVerificationResult(value));
   }
+});
+
+test('machine-result CLI commands suppress only stdout', () => {
+  const cliSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'cli.ts'), 'utf8');
+  assert.match(
+    cliSource,
+    /args: stagePaths => \[\.\.\.backendVerifyArgs\(stagePaths\), '--verification-result-json'\],[\s\S]*?suppressStdout: true,/u,
+  );
+  assert.match(
+    cliSource,
+    /\['--build-identity-json'\],[\s\S]*?\{ suppressStdout: true \}/u,
+  );
 });

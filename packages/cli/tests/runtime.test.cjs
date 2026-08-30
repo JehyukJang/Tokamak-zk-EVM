@@ -81,6 +81,28 @@ function dockerBootstrap(context, overrides = {}) {
   };
 }
 
+async function captureProcessOutput(action) {
+  const stdout = [];
+  const stderr = [];
+  const originalStdoutWrite = process.stdout.write;
+  const originalStderrWrite = process.stderr.write;
+  const capture = (output) => (chunk, encoding, callback) => {
+    output.push(Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk));
+    const completion = typeof encoding === 'function' ? encoding : callback;
+    completion?.();
+    return true;
+  };
+  process.stdout.write = capture(stdout);
+  process.stderr.write = capture(stderr);
+  try {
+    await action();
+  } finally {
+    process.stdout.write = originalStdoutWrite;
+    process.stderr.write = originalStderrWrite;
+  }
+  return { stdout: stdout.join(''), stderr: stderr.join('') };
+}
+
 async function createRuntimeSelectionFixture() {
   const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-runtime-selection-'));
   const context = {
@@ -334,6 +356,79 @@ test('falls back to native execution only after a valid Docker selection loses i
       { quiet: true },
     );
     assert.equal(result.stdout, 'native fallback\n');
+  } finally {
+    if (originalPath === undefined) {
+      delete process.env.PATH;
+    } else {
+      process.env.PATH = originalPath;
+    }
+    await fs.rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test('hides machine stdout but forwards native backend diagnostics', async () => {
+  const { context, temporaryRoot } = await createRuntimeSelectionFixture();
+  const backendPath = path.join(temporaryRoot, 'backend');
+  try {
+    await fs.writeFile(
+      backendPath,
+      '#!/usr/bin/env node\nprocess.stdout.write("{\\"contractVersion\\":1,\\"verified\\":false}\\n");\nprocess.stderr.write("native backend diagnostic\\n");\nprocess.exit(7);\n',
+      'utf8',
+    );
+    await fs.chmod(backendPath, 0o755);
+    const output = await captureProcessOutput(async () => {
+      await assert.rejects(
+        runBackendCommand(
+          { mode: 'native', context, state: runtimeState() },
+          backendPath,
+          [],
+          false,
+          { suppressStdout: true },
+        ),
+        /backend exited with code 7/u,
+      );
+    });
+    assert.equal(output.stdout, '');
+    assert.equal(output.stderr, 'native backend diagnostic\n');
+  } finally {
+    await fs.rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test('hides machine stdout but forwards Docker backend diagnostics', async () => {
+  const { context, temporaryRoot } = await createRuntimeSelectionFixture();
+  const fakeBin = path.join(temporaryRoot, 'bin');
+  const originalPath = process.env.PATH;
+  try {
+    await fs.mkdir(fakeBin);
+    const dockerPath = path.join(fakeBin, 'docker');
+    await fs.writeFile(
+      dockerPath,
+      `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args[0] === 'info' || (args[0] === 'image' && args[1] === 'inspect')) process.exit(0);
+process.stdout.write('{"contractVersion":1,"verified":false}\\n');
+process.stderr.write('Docker backend diagnostic\\n');
+process.exit(9);
+`,
+      'utf8',
+    );
+    await fs.chmod(dockerPath, 0o755);
+    process.env.PATH = `${fakeBin}${path.delimiter}${originalPath ?? ''}`;
+    const output = await captureProcessOutput(async () => {
+      await assert.rejects(
+        runBackendCommand(
+          { mode: 'docker', context, state: dockerRuntimeState(), bootstrap: dockerBootstrap(context) },
+          path.join(context.runtimeDir, 'bin', 'verify'),
+          [],
+          false,
+          { suppressStdout: true },
+        ),
+        /docker exited with code 9/u,
+      );
+    });
+    assert.equal(output.stdout, '');
+    assert.equal(output.stderr, 'Docker backend diagnostic\n');
   } finally {
     if (originalPath === undefined) {
       delete process.env.PATH;

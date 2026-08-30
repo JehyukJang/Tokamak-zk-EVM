@@ -110,7 +110,12 @@ fn run() -> Result<(), PreprocessError> {
             path: instance_path,
             source,
         })?;
-    let preprocess = generate_preprocess(&sigma, &permutation_raw, &instance, &setup_params);
+    let preprocess = generate_preprocess(&sigma, &permutation_raw, &instance, &setup_params)
+        .map_err(|reason| ArtifactError::Invalid {
+            artifact: "preprocess frontend input",
+            path: PathBuf::from(paths.synthesizer_path),
+            reason,
+        })?;
     let formatted_preprocess = preprocess.convert_format_for_solidity_verifier();
     let output_path = PathBuf::from(paths.output_path).join("preprocess.json");
     formatted_preprocess

@@ -391,7 +391,16 @@ impl Prover {
                     label: "bXY",
                     dims: vec![m_i, s_max]
                 },],
-                { gen_bXY(&placement_variables, &subcircuit_infos, &setup_params) }
+                {
+                    gen_bXY(&placement_variables, &subcircuit_infos, &setup_params).map_err(
+                        |reason| ArtifactError::Invalid {
+                            artifact: "placement variables",
+                            path: PathBuf::from(paths.synthesizer_path)
+                                .join("placementVariables.json"),
+                            reason,
+                        },
+                    )?
+                }
             );
             let (uXY, vXY, wXY) = crate::time_block!(
                 "init.build.witness.uvwXY",
@@ -407,6 +416,11 @@ impl Prover {
                         &subcircuit_infos,
                         &setup_params,
                     )
+                    .map_err(|reason| ArtifactError::Invalid {
+                        artifact: "placement variables",
+                        path: PathBuf::from(paths.synthesizer_path).join("placementVariables.json"),
+                        reason,
+                    })?
                 }
             );
             let rXY = DensePolynomialExt::from_coeffs(
@@ -508,7 +522,15 @@ impl Prover {
                     label: "a_free_X",
                     dims: vec![setup_params.l_free, 1]
                 },],
-                { _instance.gen_a_free_X(&setup_params) }
+                {
+                    _instance.gen_a_free_X(&setup_params).map_err(|reason| {
+                        ArtifactError::Invalid {
+                            artifact: "public instance",
+                            path: PathBuf::from(paths.synthesizer_path).join("instance.json"),
+                            reason,
+                        }
+                    })?
+                }
             );
             // Fixed polynomials
             let t_n = crate::time_block!(
@@ -565,7 +587,15 @@ impl Prover {
                     label: "s0/s1",
                     dims: vec![m_i, s_max]
                 },],
-                { Permutation::to_poly(&permutation_raw, m_i, s_max) }
+                {
+                    Permutation::to_poly(&permutation_raw, m_i, s_max).map_err(|reason| {
+                        ArtifactError::Invalid {
+                            artifact: "permutation",
+                            path: PathBuf::from(paths.synthesizer_path).join("permutation.json"),
+                            reason,
+                        }
+                    })?
+                }
             );
 
             InstancePolynomials {
@@ -774,6 +804,12 @@ impl Prover {
                     sigma
                         .sigma1()
                         .encode_O_pub_free(&placement_variables, &public_wire_layout)
+                        .map_err(|reason| ArtifactError::Invalid {
+                            artifact: "placement variables",
+                            path: PathBuf::from(paths.synthesizer_path)
+                                .join("placementVariables.json"),
+                            reason,
+                        })?
                 }
             );
 
@@ -785,11 +821,15 @@ impl Prover {
                     dims: vec![setup_params.l_D, 1]
                 },],
                 {
-                    sigma.sigma1().encode_O_mid_no_zk(
-                        &placement_variables,
-                        &subcircuit_infos,
-                        &setup_params,
-                    )
+                    sigma
+                        .sigma1()
+                        .encode_O_mid_no_zk(&placement_variables, &subcircuit_infos, &setup_params)
+                        .map_err(|reason| ArtifactError::Invalid {
+                            artifact: "placement variables",
+                            path: PathBuf::from(paths.synthesizer_path)
+                                .join("placementVariables.json"),
+                            reason,
+                        })?
                 }
             );
             let O_mid = O_mid_core + sigma.sigma1().delta() * mixer.rO_mid;
@@ -801,11 +841,15 @@ impl Prover {
                     dims: vec![setup_params.l_D, 1]
                 },],
                 {
-                    sigma.sigma1().encode_O_prv_no_zk(
-                        &placement_variables,
-                        &subcircuit_infos,
-                        &setup_params,
-                    )
+                    sigma
+                        .sigma1()
+                        .encode_O_prv_no_zk(&placement_variables, &subcircuit_infos, &setup_params)
+                        .map_err(|reason| ArtifactError::Invalid {
+                            artifact: "placement variables",
+                            path: PathBuf::from(paths.synthesizer_path)
+                                .join("placementVariables.json"),
+                            reason,
+                        })?
                 }
             );
             let O_prv = O_prv_core - sigma.sigma1().eta() * mixer.rO_mid

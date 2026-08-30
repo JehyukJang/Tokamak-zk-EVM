@@ -105,7 +105,14 @@ impl Verifier {
             }
         })?;
         // Parsing the inputs
-        let a_pub_X = instance.gen_a_free_X(&setup_params);
+        let a_pub_X =
+            instance
+                .gen_a_free_X(&setup_params)
+                .map_err(|reason| ArtifactError::Invalid {
+                    artifact: "public instance",
+                    path: PathBuf::from(paths.synthesizer_path).join("instance.json"),
+                    reason,
+                })?;
 
         // Load Sigma (reference string)
         let sigma_path = PathBuf::from(paths.setup_path).join("sigma_verify.json");

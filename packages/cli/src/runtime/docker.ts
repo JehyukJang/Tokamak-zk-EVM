@@ -263,6 +263,7 @@ async function runDockerBootstrapCommand(
   args: string[],
   verbose: boolean,
   quiet = false,
+  suppressStdout = false,
   useGpus = bootstrap.useGpus,
 ): Promise<CommandResult> {
   const env = dockerBackendEnvironment(context);
@@ -283,7 +284,7 @@ async function runDockerBootstrapCommand(
     bootstrap.imageName,
     ...args.map((arg) => toContainerArgument(arg, context)),
   ];
-  return await runCommand('docker', dockerArgs, { quiet, verbose });
+  return await runCommand('docker', dockerArgs, { quiet, suppressStdout, verbose });
 }
 
 export async function runBackendCommand(
@@ -293,9 +294,10 @@ export async function runBackendCommand(
   verbose: boolean,
   options: {
     quiet?: boolean;
+    suppressStdout?: boolean;
   } = {},
 ): Promise<CommandResult> {
-  const { quiet = false } = options;
+  const { quiet = false, suppressStdout = false } = options;
   const { context } = execution;
   if (execution.mode === 'docker') {
     const { bootstrap } = execution;
@@ -307,6 +309,7 @@ export async function runBackendCommand(
       return await runCommand(command, args, {
         env: backendEnvironment(context),
         quiet,
+        suppressStdout,
         verbose,
       });
     }
@@ -324,12 +327,13 @@ export async function runBackendCommand(
       verbose,
       `Running backend command in Docker bootstrap ${bootstrap.dockerEnvironment}${useGpus ? ' with CUDA' : ' without CUDA'}.`,
     );
-    return await runDockerBootstrapCommand(context, bootstrap, command, args, verbose, quiet, useGpus);
+    return await runDockerBootstrapCommand(context, bootstrap, command, args, verbose, quiet, suppressStdout, useGpus);
   }
 
   return await runCommand(command, args, {
     env: backendEnvironment(context),
     quiet,
+    suppressStdout,
     verbose,
   });
 }

@@ -129,7 +129,7 @@ impl Permutation {
         perm_raw: &[Self],
         m_i: usize,
         s_max: usize,
-    ) -> (DensePolynomialExt, DensePolynomialExt) {
+    ) -> Result<(DensePolynomialExt, DensePolynomialExt), String> {
         let omega_m_i = ntt::get_root_of_unity::<ScalarField>(m_i as u64);
         let omega_s_max = ntt::get_root_of_unity::<ScalarField>(s_max as u64);
         let mut x_powers = vec![ScalarField::one(); m_i];
@@ -151,16 +151,38 @@ impl Permutation {
             }
         }
         for perm in perm_raw.iter() {
-            let idx = perm.row * s_max + perm.col;
-            s0_evals_vec[idx] = x_powers[perm.X];
-            s1_evals_vec[idx] = y_powers[perm.Y];
+            let idx = perm
+                .row
+                .checked_mul(s_max)
+                .and_then(|row_start| row_start.checked_add(perm.col))
+                .filter(|idx| *idx < s0_evals_vec.len())
+                .ok_or_else(|| {
+                    format!(
+                        "permutation source ({}, {}) is outside the {} by {} placement domain",
+                        perm.row, perm.col, m_i, s_max
+                    )
+                })?;
+            let x = x_powers.get(perm.X).ok_or_else(|| {
+                format!(
+                    "permutation X coordinate {} is outside the {}-element row domain",
+                    perm.X, m_i
+                )
+            })?;
+            let y = y_powers.get(perm.Y).ok_or_else(|| {
+                format!(
+                    "permutation Y coordinate {} is outside the {}-element placement domain",
+                    perm.Y, s_max
+                )
+            })?;
+            s0_evals_vec[idx] = *x;
+            s1_evals_vec[idx] = *y;
         }
         let s0_evals = HostSlice::from_slice(&s0_evals_vec);
         let s1_evals = HostSlice::from_slice(&s1_evals_vec);
-        return (
+        Ok((
             DensePolynomialExt::from_rou_evals(s0_evals, m_i, s_max, None, None),
             DensePolynomialExt::from_rou_evals(s1_evals, m_i, s_max, None, None),
-        );
+        ))
     }
 }
 
@@ -204,4 +226,41 @@ pub fn read_global_wire_list_as_boxed_boxed_numbers(
         .collect::<Vec<_>>()
         .into_boxed_slice();
     Ok(boxed_matrix)
+}
+
+#[cfg(test)]
+mod permutation_tests {
+    use super::Permutation;
+
+    #[test]
+    fn rejects_out_of_domain_source_before_polynomial_conversion() {
+        let result = Permutation::to_poly(
+            &[Permutation {
+                row: 2,
+                col: 0,
+                X: 0,
+                Y: 0,
+            }],
+            2,
+            2,
+        );
+
+        assert!(matches!(result, Err(error) if error.contains("source (2, 0)")));
+    }
+
+    #[test]
+    fn rejects_out_of_domain_target_coordinates_before_polynomial_conversion() {
+        let result = Permutation::to_poly(
+            &[Permutation {
+                row: 0,
+                col: 0,
+                X: 2,
+                Y: 0,
+            }],
+            2,
+            2,
+        );
+
+        assert!(matches!(result, Err(error) if error.contains("X coordinate 2")));
+    }
 }

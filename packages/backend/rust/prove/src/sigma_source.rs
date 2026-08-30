@@ -104,7 +104,7 @@ impl<'a> Sigma1Handle<'a> {
         &self,
         placement_variables: &[PlacementVariables],
         public_wire_layout: &PublicWireLayout,
-    ) -> G1serde {
+    ) -> Result<G1serde, String> {
         self.archived
             .encode_O_pub_free(placement_variables, public_wire_layout)
     }
@@ -113,7 +113,7 @@ impl<'a> Sigma1Handle<'a> {
         &self,
         a_pub_function: &[HexString],
         setup_params: &SetupParams,
-    ) -> G1serde {
+    ) -> Result<G1serde, String> {
         self.archived.encode_O_pub_fix(a_pub_function, setup_params)
     }
 
@@ -122,7 +122,7 @@ impl<'a> Sigma1Handle<'a> {
         placement_variables: &[PlacementVariables],
         subcircuit_infos: &[SubcircuitInfo],
         setup_params: &SetupParams,
-    ) -> G1serde {
+    ) -> Result<G1serde, String> {
         self.archived
             .encode_O_mid_no_zk(placement_variables, subcircuit_infos, setup_params)
     }
@@ -132,7 +132,7 @@ impl<'a> Sigma1Handle<'a> {
         placement_variables: &[PlacementVariables],
         subcircuit_infos: &[SubcircuitInfo],
         setup_params: &SetupParams,
-    ) -> G1serde {
+    ) -> Result<G1serde, String> {
         self.archived
             .encode_O_prv_no_zk(placement_variables, subcircuit_infos, setup_params)
     }

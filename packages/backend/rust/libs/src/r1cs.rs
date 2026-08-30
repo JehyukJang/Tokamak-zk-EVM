@@ -481,7 +481,7 @@ pub fn read_R1CS_gen_uvwXY(
     placement_variables: &Box<[PlacementVariables]>,
     subcircuit_infos: &Box<[SubcircuitInfo]>,
     setup_params: &SetupParams,
-) -> (DensePolynomialExt, DensePolynomialExt, DensePolynomialExt) {
+) -> Result<(DensePolynomialExt, DensePolynomialExt, DensePolynomialExt), String> {
     let phase_profile = env::var("TOKAMAK_UVWXY_PHASE_PROFILE").ok().as_deref() == Some("1");
     let uvwxy_total_start = phase_profile.then(Instant::now);
 
@@ -498,7 +498,10 @@ pub fn read_R1CS_gen_uvwXY(
 
     let usage_scan_start = phase_profile.then(Instant::now);
     if placement_variables.len() > s_max {
-        panic!("placement_variables length exceeds s_max.");
+        return Err(format!(
+            "placement variable count {} exceeds configured placement capacity {s_max}",
+            placement_variables.len()
+        ));
     }
 
     // Collect usage stats and placement indices per subcircuit
@@ -508,7 +511,15 @@ pub fn read_R1CS_gen_uvwXY(
     for (i, placement) in placement_variables.iter().enumerate() {
         let subcircuit_id = placement.subcircuitId;
         if subcircuit_id >= subcircuit_infos.len() {
-            panic!("Invalid subcircuit id in placement_variables.");
+            return Err(format!(
+                "placement {i} references missing subcircuit id {subcircuit_id}"
+            ));
+        }
+        if subcircuit_infos[subcircuit_id].id != subcircuit_id {
+            return Err(format!(
+                "placement {i} references subcircuit id {subcircuit_id}, but indexed metadata declares id {}",
+                subcircuit_infos[subcircuit_id].id
+            ));
         }
         usage_counts[subcircuit_id] += 1;
         unique_ids.insert(subcircuit_id);
@@ -530,13 +541,37 @@ pub fn read_R1CS_gen_uvwXY(
             &setup_params,
             &subcircuit_infos[subcircuit_id],
         )
-        .unwrap_or_else(|err| {
-            panic!(
+        .map_err(|err| {
+            format!(
                 "failed to load required binary R1CS file {}: {err}",
                 binary_r1cs_path.display()
             )
-        });
+        })?;
         r1cs_by_id[subcircuit_id] = Some(loaded_r1cs);
+    }
+
+    for (placement_index, placement) in placement_variables.iter().enumerate() {
+        let compact_r1cs = r1cs_by_id[placement.subcircuitId].as_ref().ok_or_else(|| {
+            format!(
+                "placement {placement_index} has no loaded R1CS for subcircuit {}",
+                placement.subcircuitId
+            )
+        })?;
+        for (matrix, active_wires) in [
+            ("A", &compact_r1cs.A_active_wires),
+            ("B", &compact_r1cs.B_active_wires),
+            ("C", &compact_r1cs.C_active_wires),
+        ] {
+            if let Some(&wire_index) = active_wires
+                .iter()
+                .find(|&&wire_index| wire_index >= placement.variables.len())
+            {
+                return Err(format!(
+                    "placement {placement_index} for subcircuit {} has no local wire {wire_index} required by {matrix}",
+                    placement.subcircuitId
+                ));
+            }
+        }
     }
     if let Some(start) = r1cs_preload_start {
         print_uvwxy_phase("r1cs_preload_sparse", start.elapsed().as_nanos());
@@ -608,7 +643,7 @@ pub fn read_R1CS_gen_uvwXY(
         print_uvwxy_phase("uvwxy_total_function", start.elapsed().as_nanos());
     }
 
-    return (uXY, vXY, wXY);
+    Ok((uXY, vXY, wXY))
 }
 
 fn print_uvwxy_phase(name: &str, nanos: u128) {
