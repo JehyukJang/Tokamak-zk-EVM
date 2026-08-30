@@ -13,8 +13,6 @@
   ],
   "scripts": {
     "test": "lerna run test",
-    "format": "prettier --write \"**/*.{ts,js,json,md}\"",
-    "format:check": "prettier --check \"**/*.{ts,js,json,md}\"",
     "clean": "lerna run clean",
     "docs:check": "node scripts/check-doc-readiness.mjs",
     "version:sync": "node scripts/sync-version.mjs",
@@ -31,7 +29,6 @@
   },
   "devDependencies": {
     "lerna": "^8.0.0",
-    "prettier": "^3.5.3",
     "typescript": "^5.0.0"
   },
   "dependencies": {
