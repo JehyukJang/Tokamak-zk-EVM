@@ -424,6 +424,9 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Install Rust and Cargo
+        uses: dtolnay/rust-toolchain@1.95.0
+
       - name: Download release tarballs
         uses: actions/download-artifact@v4
         with:
@@ -634,6 +637,11 @@ jobs:
               )
           )
           PY
+
+      - name: Enforce final CRS publication admission
+        run: >-
+          cargo run --manifest-path packages/backend/Cargo.toml --locked
+          -p libs --bin check_crs_publication -- verified-final-crs
 
       - name: Install browser-package dependencies for CRS validation
         working-directory: packages/backend/wasm

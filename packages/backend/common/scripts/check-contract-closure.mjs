@@ -10,6 +10,8 @@ const requiredBoundaries = [
   ['CRS provenance Rust representation', 'rust/libs/src/crs_provenance.rs'],
   ['CRS provenance final writer', 'rust/setup/mpc-setup/src/flows/phase2_gen_files.rs'],
   ['CRS provenance algorithm ingress', 'rust/libs/src/subcircuit_library.rs'],
+  ['CRS provenance publication admission', 'rust/libs/src/crs_publication_admission.rs'],
+  ['CRS provenance workflow admission command', 'rust/libs/src/bin/check_crs_publication.rs'],
   ['CRS provenance publisher ingress', 'rust/setup/mpc-setup/src/drive_upload.rs'],
   ['CRS provenance TypeScript validator', 'common/contracts/typescript/crs-provenance-validator.ts'],
   ['CRS provenance closure inventory', 'common/contracts/CONTRACT_CLOSURE.md'],

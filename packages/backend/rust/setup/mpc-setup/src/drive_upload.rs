@@ -4,13 +4,9 @@ use google_drive3::hyper::client::HttpConnector;
 use google_drive3::hyper::Client;
 use google_drive3::hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
 use google_drive3::{oauth2, DriveHub};
-use libs::compatibility::{compatibility_from_package_version, parse_compatible_backend_version};
-use libs::crs_artifacts::{verify_final_crs_artifact_digests, FinalCrsDigests};
-use libs::crs_provenance::{
-    final_mpc_crs_archive_root_file_names, parse_final_mpc_crs_provenance, FinalMpcCrsProvenance,
-    Phase1SourceProvenance, CRS_PROVENANCE_FILE_NAME,
-};
-use libs::input_origin::SubcircuitLibraryOrigin;
+use libs::compatibility::parse_compatible_backend_version;
+use libs::crs_provenance::{final_mpc_crs_archive_root_file_names, FinalMpcCrsProvenance};
+use libs::crs_publication_admission::{admit_final_crs_publication, PublicationIdentity};
 use oauth2::authenticator_delegate::{DefaultInstalledFlowDelegate, InstalledFlowDelegate};
 use std::env;
 use std::fs;
@@ -23,7 +19,8 @@ use thiserror::Error;
 use zip::write::{ExtendedFileOptions, FileOptions};
 
 const DRIVE_FOLDER_MIME_TYPE: &str = "application/vnd.google-apps.folder";
-const PROVENANCE_FILE_NAME: &str = CRS_PROVENANCE_FILE_NAME;
+#[cfg(test)]
+const PROVENANCE_FILE_NAME: &str = libs::crs_provenance::CRS_PROVENANCE_FILE_NAME;
 const DRIVE_FOLDER_ID_ENV: &str = "TOKAMAK_MPC_DRIVE_FOLDER_ID";
 const DRIVE_OAUTH_CLIENT_PATH_ENV: &str = "TOKAMAK_MPC_DRIVE_OAUTH_CLIENT_JSON_PATH";
 const DRIVE_OAUTH_TOKEN_PATH_ENV: &str = "TOKAMAK_MPC_DRIVE_OAUTH_TOKEN_PATH";
@@ -118,33 +115,13 @@ fn publish_output_archive_with_publisher<P: CrsArchivePublisher>(
         )
     })?;
 
-    let provenance = read_provenance(&output_path)?;
-    validate_publication_provenance(&provenance)?;
-    let provenance_compatible_version = canonical_compatible_version(
-        &provenance.compatible_backend_version,
-        "crs_provenance.json compatibleBackendVersion",
-    )?;
-    if provenance_compatible_version != compatible_backend_version() {
-        return Err(DriveUploadError::Message(format!(
-            "crs_provenance.json compatibleBackendVersion {} does not match CLI compatible backend version {}",
-            provenance_compatible_version,
-            compatible_backend_version()
-        )));
-    }
-    validate_provenance_subcircuit_library(&provenance, &provenance_compatible_version)?;
-    verify_final_crs_artifact_digests(
-        &output_path,
-        &FinalCrsDigests {
-            combined_sigma_sha256: provenance.combined_sigma_sha256.clone(),
-            sigma_preprocess_sha256: provenance.sigma_preprocess_sha256.clone(),
-            sigma_verify_sha256: provenance.sigma_verify_sha256.clone(),
-        },
-    )
-    .map_err(|error| {
-        DriveUploadError::Message(format!(
-            "cannot publish CRS whose artifacts fail provenance digest validation: {error}"
-        ))
-    })?;
+    let expected = PublicationIdentity::new(
+        compatible_backend_version(),
+        env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_NAME"),
+        env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION"),
+    );
+    let provenance =
+        admit_final_crs_publication(&output_path, &expected).map_err(DriveUploadError::Message)?;
     let archive_name = build_archive_name(&provenance)?;
 
     let archive_path = intermediate_path.join(&archive_name);
@@ -162,42 +139,6 @@ fn publish_output_archive_with_publisher<P: CrsArchivePublisher>(
         archive_name,
         crs_download_url: upload_result.crs_download_url,
     })
-}
-
-fn validate_publication_provenance(
-    provenance: &FinalMpcCrsProvenance,
-) -> Result<(), DriveUploadError> {
-    if !provenance.release_eligible {
-        return Err(DriveUploadError::Message(
-            "only release-eligible CRS artifacts may be published".to_string(),
-        ));
-    }
-    let Some(Phase1SourceProvenance::DuskGroth16(dusk)) =
-        provenance.phase1_source_provenance.as_ref()
-    else {
-        return Err(DriveUploadError::Message(
-            "only Dusk-backed CRS artifacts may be published".to_string(),
-        ));
-    };
-    if dusk.expected_source_sha256 != dusk.actual_source_sha256 {
-        return Err(DriveUploadError::Message(
-            "Dusk provenance expectedSourceSha256 must equal actualSourceSha256 for publication"
-                .to_string(),
-        ));
-    }
-    if !dusk.transcript_consistency_verified {
-        return Err(DriveUploadError::Message(
-            "Dusk provenance must record successful transcript consistency verification for publication"
-                .to_string(),
-        ));
-    }
-    if provenance.subcircuit_library.origin != SubcircuitLibraryOrigin::NpmSnapshot {
-        return Err(DriveUploadError::Message(
-            "only CRS artifacts generated from an npm subcircuit-library snapshot may be published"
-                .to_string(),
-        ));
-    }
-    Ok(())
 }
 
 fn read_drive_upload_config() -> Result<DriveUploadConfig, DriveUploadError> {
@@ -242,11 +183,6 @@ fn read_required_env(key: &str) -> Result<String, DriveUploadError> {
         )));
     }
     Ok(trimmed.to_string())
-}
-
-fn read_provenance(output_path: &Path) -> Result<FinalMpcCrsProvenance, DriveUploadError> {
-    let bytes = fs::read(output_path.join(PROVENANCE_FILE_NAME))?;
-    parse_final_mpc_crs_provenance(&bytes).map_err(DriveUploadError::Message)
 }
 
 fn build_archive_name(provenance: &FinalMpcCrsProvenance) -> Result<String, DriveUploadError> {
@@ -294,47 +230,6 @@ fn add_file_to_archive(
     archive.start_file(archive_name, options)?;
     io::copy(&mut source, archive)?;
     Ok(())
-}
-
-fn validate_provenance_subcircuit_library(
-    provenance: &FinalMpcCrsProvenance,
-    compatible_version: &str,
-) -> Result<(), DriveUploadError> {
-    if provenance.subcircuit_library.package_name
-        != env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_NAME")
-    {
-        return Err(DriveUploadError::Message(format!(
-            "crs_provenance.json subcircuitLibrary packageName {} does not match the MPC build package {}",
-            provenance.subcircuit_library.package_name,
-            env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_NAME")
-        )));
-    }
-    if provenance.subcircuit_library.package_version
-        != env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION")
-    {
-        return Err(DriveUploadError::Message(format!(
-            "crs_provenance.json subcircuitLibrary packageVersion {} does not match the MPC build package version {}",
-            provenance.subcircuit_library.package_version,
-            env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION")
-        )));
-    }
-    if package_compatible_version(
-        &provenance.subcircuit_library.package_version,
-        "crs_provenance.json subcircuitLibrary packageVersion",
-    )? != compatible_version
-    {
-        return Err(DriveUploadError::Message(format!(
-            "crs_provenance.json subcircuitLibrary packageVersion {} is outside compatibility class {}",
-            provenance.subcircuit_library.package_version, compatible_version
-        )));
-    }
-    Ok(())
-}
-
-fn package_compatible_version(value: &str, label: &str) -> Result<String, DriveUploadError> {
-    compatibility_from_package_version(value)
-        .map(|version| version.to_string())
-        .map_err(|error| DriveUploadError::Message(format!("{label} {error}")))
 }
 
 fn canonical_compatible_version(value: &str, label: &str) -> Result<String, DriveUploadError> {
@@ -573,13 +468,11 @@ mod tests {
         publish_output_archive_with_publisher, CrsArchivePublisher, DriveUploadConfig,
         DriveUploadError, DriveUploadResult, PROVENANCE_FILE_NAME,
     };
-    use crate::sigma::{DuskSourceProvenance, Phase1SourceProvenance, SubcircuitLibraryOrigin};
-    use crate::versioning::compatible_backend_version;
+    use crate::sigma::{Phase1SourceProvenance, SubcircuitLibraryOrigin};
     use libs::crs_provenance::{
         CrsProvenance, DevelopmentOnlyReleaseEligibility, DevelopmentTrustedSetupSigmaProvenance,
-        FinalMpcCrsProvenance, SubcircuitLibraryProvenance,
+        FinalMpcCrsProvenance,
     };
-    use sha2::{Digest, Sha256};
     use std::cell::RefCell;
     use std::fs;
     use std::fs::File as StdFile;
@@ -625,10 +518,6 @@ mod tests {
         }
     }
 
-    fn sha256(value: impl AsRef<[u8]>) -> String {
-        hex::encode(Sha256::digest(value.as_ref()))
-    }
-
     fn final_output_files() -> Vec<String> {
         final_mpc_crs_archive_root_file_names()
             .expect("final MPC archive layout must satisfy the backend contract")
@@ -641,59 +530,19 @@ mod tests {
             .collect()
     }
 
-    fn fixture() -> (tempfile::TempDir, DriveUploadConfig, PathBuf, PathBuf) {
+    fn fixture_from(name: &str) -> (tempfile::TempDir, DriveUploadConfig, PathBuf, PathBuf) {
         let workspace = tempfile::tempdir().expect("must create temporary workspace");
         let output = workspace.path().join("output");
         let intermediate = workspace.path().join("intermediate");
         fs::create_dir_all(&output).expect("must create output directory");
         fs::create_dir_all(&intermediate).expect("must create intermediate directory");
-        for file_name in final_sigma_files() {
-            fs::write(output.join(&file_name), &file_name).expect("must write final CRS file");
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../common/contracts/fixtures/publication-admission")
+            .join(name);
+        for file_name in final_output_files() {
+            fs::copy(fixture.join(&file_name), output.join(&file_name))
+                .expect("must copy shared publication fixture");
         }
-
-        let provenance = FinalMpcCrsProvenance {
-            release_eligible: true,
-            generated_at_utc: "2026-08-23T12:34:56Z".to_string(),
-            compatible_backend_version: compatible_backend_version().to_string(),
-            subcircuit_library: SubcircuitLibraryProvenance {
-                package_name: env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_NAME").to_string(),
-                package_version: env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION")
-                    .to_string(),
-                origin: SubcircuitLibraryOrigin::NpmSnapshot,
-            },
-            phase1_source_provenance: Some(Phase1SourceProvenance::DuskGroth16(
-                DuskSourceProvenance {
-                    source_url: "https://example.invalid/dusk.response".to_string(),
-                    source_size_bytes: 0,
-                    raw_encoding: "test".to_string(),
-                    pinned_contribution: "test".to_string(),
-                    pinned_readme_url: "https://example.invalid/readme".to_string(),
-                    pinned_drive_file_id: "test".to_string(),
-                    expected_source_sha256:
-                        "4444444444444444444444444444444444444444444444444444444444444444"
-                            .to_string(),
-                    actual_source_sha256:
-                        "4444444444444444444444444444444444444444444444444444444444444444"
-                            .to_string(),
-                    auto_downloaded: false,
-                    downloaded_contribution: None,
-                    downloaded_readme_url: None,
-                    downloaded_drive_file_id: None,
-                    max_g1_exp_used: 0,
-                    max_g2_exp_used: 0,
-                    transcript_consistency_verified: true,
-                },
-            )),
-            combined_sigma_sha256: sha256("combined_sigma.rkyv"),
-            sigma_preprocess_sha256: sha256("sigma_preprocess.rkyv"),
-            sigma_verify_sha256: sha256("sigma_verify.json"),
-        };
-        fs::write(
-            output.join(PROVENANCE_FILE_NAME),
-            serde_json::to_vec_pretty(&CrsProvenance::FinalMpcCrs(provenance))
-                .expect("must serialize provenance"),
-        )
-        .expect("must write provenance");
 
         let config = DriveUploadConfig {
             folder_id: "folder-id".to_string(),
@@ -702,6 +551,10 @@ mod tests {
             oauth_token_path: workspace.path().join("unused-token.json"),
         };
         (workspace, config, output, intermediate)
+    }
+
+    fn fixture() -> (tempfile::TempDir, DriveUploadConfig, PathBuf, PathBuf) {
+        fixture_from("accepted")
     }
 
     fn read_fixture_provenance(output: &Path) -> FinalMpcCrsProvenance {
@@ -728,10 +581,8 @@ mod tests {
 
     #[test]
     fn rejects_publication_of_a_development_only_crs() {
-        let (_workspace, config, output, intermediate) = fixture();
-        let mut provenance = read_fixture_provenance(&output);
-        provenance.release_eligible = false;
-        write_fixture_provenance(&output, provenance);
+        let (_workspace, config, output, intermediate) =
+            fixture_from("consumer-compatible-ineligible");
         let publisher = MockArchivePublisher::succeeds();
 
         let error = publish_output_archive_with_publisher(
@@ -1030,7 +881,7 @@ mod tests {
             .expect("must read provenance before archive construction");
         let publisher = MockArchivePublisher::succeeds();
         fs::create_dir(
-            intermediate.join(format!("{}20260823T123456Z.zip", archive_version_prefix())),
+            intermediate.join(format!("{}20260824T000000Z.zip", archive_version_prefix())),
         )
         .expect("must reserve archive path with a directory to make archive construction fail");
 

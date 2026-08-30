@@ -1,0 +1,33 @@
+{
+  "documentKind": "finalMpcCrs",
+  "releaseEligible": false,
+  "generatedAtUtc": "2026-08-24T00:00:00Z",
+  "compatibleBackendVersion": "2.1",
+  "subcircuitLibrary": {
+    "packageName": "@tokamak-zk-evm/subcircuit-library",
+    "packageVersion": "2.1.5",
+    "origin": "npmSnapshot"
+  },
+  "phase1SourceProvenance": {
+    "duskGroth16": {
+      "sourceUrl": "https://example.invalid/dusk.response",
+      "sourceSizeBytes": 1024,
+      "rawEncoding": "dusk-groth16-raw",
+      "pinnedContribution": "0015",
+      "pinnedReadmeUrl": "https://example.invalid/README.md",
+      "pinnedDriveFileId": "example-drive-file-id",
+      "expectedSourceSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+      "actualSourceSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+      "autoDownloaded": true,
+      "downloadedContribution": "0015",
+      "downloadedReadmeUrl": "https://example.invalid/README.md",
+      "downloadedDriveFileId": "example-drive-file-id",
+      "maxG1ExpUsed": 1024,
+      "maxG2ExpUsed": 64,
+      "transcriptConsistencyVerified": true
+    }
+  },
+  "combinedSigmaSha256": "5acb5aef10dfabc19307ada35416bfa8ec7ec7a406b6a4eb1d27d689649701b8",
+  "sigmaPreprocessSha256": "980b1bf05d4894c5cac0c1eb3a146aaa332e3aac667461d16467abfaa25d3d6a",
+  "sigmaVerifySha256": "ac4ae914b5eed5e7bfbe318cdef12d3b2cb286bb8d395cb85fe67087e5035593"
+}
