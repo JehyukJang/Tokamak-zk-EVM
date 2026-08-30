@@ -6,6 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import AdmZip from 'adm-zip';
 import {
+  buildMetadata as synthesizerBuildMetadata,
   runTokamakChannelTxFromFiles,
   type TokamakChannelTxFiles,
 } from '@tokamak-zk-evm/synthesizer-node';
@@ -22,20 +23,13 @@ import {
 } from './runtime.js';
 import type { CommandResult } from './system.js';
 import { BACKEND_PACKAGE_NAMES } from './generated/backend-build-metadata-validator.generated.js';
-import { assertLiveBackendRuntimeIdentity } from './runtime/identity.js';
+import { assertLiveBackendRuntimeIdentity, validateSynthesizerBuildMetadataForContext } from './runtime/identity.js';
 import { acquireRuntimeOperationLock } from './runtime/operation-lock.js';
 import { promoteStagedRuntimePaths } from './runtime/stage-transaction.js';
 import { parseBackendVerificationResult } from './runtime/verification-result.js';
 
 type CommandName =
-  | 'install'
-  | 'uninstall'
-  | 'synthesize'
-  | 'preprocess'
-  | 'prove'
-  | 'verify'
-  | 'extract-proof'
-  | 'doctor';
+  'install' | 'uninstall' | 'synthesize' | 'preprocess' | 'prove' | 'verify' | 'extract-proof' | 'doctor';
 
 export interface ParsedArgs {
   command: CommandName;
@@ -50,11 +44,7 @@ export interface ParsedArgs {
 }
 
 type RuntimePaths = ReturnType<typeof runtimePaths>;
-type RuntimeDirectoryKey =
-  | 'setupOutputDir'
-  | 'synthOutputDir'
-  | 'preprocessOutputDir'
-  | 'proveOutputDir';
+type RuntimeDirectoryKey = 'setupOutputDir' | 'synthOutputDir' | 'preprocessOutputDir' | 'proveOutputDir';
 
 interface RuntimeFileRef {
   directory: RuntimeDirectoryKey;
@@ -260,7 +250,7 @@ async function extractZipToTemp(zipPath: string, prefix: string): Promise<string
 }
 
 function parseSinglePathArg(argv: string[], command: string, required: boolean): string | undefined {
-  const args = argv.slice(1).filter((arg) => arg !== '--verbose');
+  const args = argv.slice(1).filter(arg => arg !== '--verbose');
   if (args.length === 0) {
     if (required) {
       err(`${command} requires <OUTPUT_ZIP_PATH>`);
@@ -362,7 +352,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     return {
       command: 'synthesize',
       verbose,
-      synthesizeArgs: argv.slice(1).filter((arg) => arg !== '--verbose'),
+      synthesizeArgs: argv.slice(1).filter(arg => arg !== '--verbose'),
     };
   }
 
@@ -448,7 +438,11 @@ function normalizeSynthesizeArgs(args: string[]): TokamakChannelTxFiles {
   return parsed as TokamakChannelTxFiles;
 }
 
-async function runPreprocess(execution: RuntimeExecution, inputPath: string | undefined, verbose: boolean): Promise<void> {
+async function runPreprocess(
+  execution: RuntimeExecution,
+  inputPath: string | undefined,
+  verbose: boolean,
+): Promise<void> {
   const { context } = execution;
   const paths = runtimePaths(context);
   await runBackendStage(execution, {
@@ -487,7 +481,7 @@ async function runVerify(execution: RuntimeExecution, inputPath: string | undefi
     binaryPath: paths.verifyBinary,
     inputPath,
     logMessage: `Verify: using artifacts in ${paths.resourceDir}`,
-    postProcessResult: (result) => {
+    postProcessResult: result => {
       const verification = parseBackendVerificationResult(result.stdout);
       if (!verification.verified) {
         err('Verify: verification failed');
@@ -507,7 +501,7 @@ function runtimeFilePath(paths: RuntimePaths, file: RuntimeFileRef): string {
 }
 
 function resolveRuntimeFiles(paths: RuntimePaths, files: readonly RuntimeFileRef[]): string[] {
-  return files.map((file) => runtimeFilePath(paths, file));
+  return files.map(file => runtimeFilePath(paths, file));
 }
 
 async function withStagedRuntimePaths<T>(
@@ -554,14 +548,7 @@ async function copyDirectoryIfPresent(sourcePath: string, destinationPath: strin
 }
 
 function backendOutputArgs(paths: RuntimePaths, outputDir: string): string[] {
-  return [
-    '--crs',
-    paths.setupOutputDir,
-    '--synthesizer-stat',
-    paths.synthOutputDir,
-    '--output',
-    outputDir,
-  ];
+  return ['--crs', paths.setupOutputDir, '--synthesizer-stat', paths.synthOutputDir, '--output', outputDir];
 }
 
 function backendVerifyArgs(paths: RuntimePaths): string[] {
@@ -583,7 +570,7 @@ async function syncStageInputs(
   paths: RuntimePaths,
   rules: readonly StageInputSyncRule[],
 ): Promise<void> {
-  await withDirFromPath(inputPath, prefix, async (dirPath) => {
+  await withDirFromPath(inputPath, prefix, async dirPath => {
     for (const rule of rules) {
       await validateNamedFilesFromDir(dirPath, rule.requiredFiles, true);
       if (rule.optionalFiles?.length) {
@@ -601,9 +588,8 @@ async function syncStageInputs(
 
 async function runBackendStage(execution: RuntimeExecution, options: BackendStageOptions): Promise<void> {
   const paths = runtimePaths(execution.context);
-  const stagedInputDirectories = options.inputPath === undefined
-    ? []
-    : [...new Set((options.inputRules ?? []).map(rule => rule.destinationDir))];
+  const stagedInputDirectories =
+    options.inputPath === undefined ? [] : [...new Set((options.inputRules ?? []).map(rule => rule.destinationDir))];
   const successMessage = await withStagedRuntimePaths(
     paths,
     path.basename(options.binaryPath),
@@ -611,7 +597,12 @@ async function runBackendStage(execution: RuntimeExecution, options: BackendStag
     options.outputDirectory,
     async stagePaths => {
       if (options.inputPath !== undefined) {
-        await syncStageInputs(options.inputPath, `tokamak-${path.basename(options.binaryPath)}`, stagePaths, options.inputRules ?? []);
+        await syncStageInputs(
+          options.inputPath,
+          `tokamak-${path.basename(options.binaryPath)}`,
+          stagePaths,
+          options.inputRules ?? [],
+        );
       }
       for (const requiredFile of options.requiredFiles(stagePaths)) {
         await ensureFile(requiredFile);
@@ -620,13 +611,10 @@ async function runBackendStage(execution: RuntimeExecution, options: BackendStag
         await fs.mkdir(stagePaths[options.outputDirectory], { recursive: true });
       }
       log(options.logMessage);
-      const result = await runBackendCommand(
-        execution,
-        options.binaryPath,
-        options.args(stagePaths),
-        options.verbose,
-        { quiet: options.quiet, suppressStdout: options.suppressStdout },
-      );
+      const result = await runBackendCommand(execution, options.binaryPath, options.args(stagePaths), options.verbose, {
+        quiet: options.quiet,
+        suppressStdout: options.suppressStdout,
+      });
       return options.postProcessResult?.(result) ?? options.successMessage;
     },
   );
@@ -668,9 +656,7 @@ async function extractProofBundle(context: RuntimeContext, outputPathRaw: string
 }
 
 async function runDoctor(verbose: boolean): Promise<void> {
-  const installCommand = process.platform === 'win32'
-    ? 'tokamak-cli --install --docker'
-    : 'tokamak-cli --install';
+  const installCommand = process.platform === 'win32' ? 'tokamak-cli --install --docker' : 'tokamak-cli --install';
   const execution = await requireInstalledRuntime().catch((error: unknown) => {
     if (error instanceof Error && error.message.startsWith('Unsupported')) {
       throw error;
@@ -694,21 +680,23 @@ async function runDoctor(verbose: boolean): Promise<void> {
   const paths = runtimePaths(context);
   for (const packageName of BACKEND_PACKAGE_NAMES) {
     const binaryPath = path.join(paths.binaryDir, packageName);
-    const result = await runBackendCommand(
-      execution,
-      binaryPath,
-      ['--build-identity-json'],
-      verbose,
-      { suppressStdout: true },
-    );
+    const result = await runBackendCommand(execution, binaryPath, ['--build-identity-json'], verbose, {
+      suppressStdout: true,
+    });
     let liveIdentity: unknown;
     try {
       liveIdentity = JSON.parse(result.stdout) as unknown;
     } catch (error) {
       err(`Could not read ${packageName} machine identity: ${error instanceof Error ? error.message : String(error)}`);
     }
-    const metadata = assertLiveBackendRuntimeIdentity(execution.state.backendRuntimeIdentity, packageName, liveIdentity);
-    ok(`${packageName} identity: ${metadata.packageVersion} / subcircuit-library ${metadata.dependencies.subcircuitLibrary.buildVersion}`);
+    const metadata = assertLiveBackendRuntimeIdentity(
+      execution.state.backendRuntimeIdentity,
+      packageName,
+      liveIdentity,
+    );
+    ok(
+      `${packageName} identity: ${metadata.packageVersion} / subcircuit-library ${metadata.dependencies.subcircuitLibrary.buildVersion}`,
+    );
   }
   ok(`Runtime workspace: ${context.runtimeDir}`);
   ok('Runtime installation looks healthy');
@@ -717,12 +705,72 @@ async function runDoctor(verbose: boolean): Promise<void> {
 async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
   const lockContext = await runtimeContextForOperation(parsed);
+  await assertSynthesizerRuntimeMatchesContext(lockContext);
   const operationLock = await acquireRuntimeOperationLock(lockContext, parsed.command);
   try {
     await runCommandWithRuntimeLock(parsed);
   } finally {
     await operationLock.release();
   }
+}
+
+async function assertSynthesizerRuntimeMatchesContext(context: RuntimeContext): Promise<void> {
+  validateSynthesizerBuildMetadataForContext(synthesizerBuildMetadata, context);
+  const synthesizer = await readResolvedPackageManifest(
+    '@tokamak-zk-evm/synthesizer-node',
+    '@tokamak-zk-evm/synthesizer-node',
+  );
+  if (synthesizer.version !== context.packageVersion) {
+    throw new Error(
+      `Installed Node Synthesizer package version ${synthesizer.version} does not match current CLI package version ${context.packageVersion}. Reinstall matching ${context.packageVersion} packages.`,
+    );
+  }
+  const subcircuitLibrary = await readResolvedPackageManifest(
+    '@tokamak-zk-evm/subcircuit-library/package.json',
+    '@tokamak-zk-evm/subcircuit-library',
+  );
+  if (subcircuitLibrary.version !== context.packageVersion) {
+    throw new Error(
+      `Installed subcircuit-library package version ${subcircuitLibrary.version} does not match current CLI package version ${context.packageVersion}. Reinstall matching ${context.packageVersion} packages.`,
+    );
+  }
+}
+
+async function readResolvedPackageManifest(
+  request: string,
+  expectedName: string,
+): Promise<{ name: string; version: string }> {
+  const entryPath = require.resolve(request);
+  let directory = path.dirname(entryPath);
+  while (true) {
+    const manifestPath = path.join(directory, 'package.json');
+    try {
+      const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8')) as Partial<{
+        name: unknown;
+        version: unknown;
+      }>;
+      if (manifest.name === expectedName && typeof manifest.version === 'string') {
+        return { name: manifest.name, version: manifest.version };
+      }
+    } catch (error) {
+      if (!isMissingPathErrorForCli(error)) {
+        throw new Error(`Unable to read installed package metadata at ${manifestPath}: ${errorMessageForCli(error)}`);
+      }
+    }
+    const parent = path.dirname(directory);
+    if (parent === directory) {
+      throw new Error(`Unable to locate installed package metadata for ${expectedName} from ${request}.`);
+    }
+    directory = parent;
+  }
+}
+
+function isMissingPathErrorForCli(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT';
+}
+
+function errorMessageForCli(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function runtimeContextForOperation(parsed: ParsedArgs): Promise<RuntimeContext> {
@@ -792,7 +840,7 @@ async function runCommandWithRuntimeLock(parsed: ParsedArgs): Promise<void> {
 }
 
 if (require.main === module) {
-  void main().catch((error) => {
+  void main().catch(error => {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`\x1b[1;31m[error]\x1b[0m ${message}`);
     process.exit(1);

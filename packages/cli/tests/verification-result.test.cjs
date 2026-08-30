@@ -6,10 +6,10 @@ const test = require('node:test');
 const { parseBackendVerificationResult } = require('../dist/runtime/verification-result.js');
 
 test('accepts the versioned backend verification result', () => {
-  assert.deepEqual(
-    parseBackendVerificationResult('{"contractVersion":1,"verified":true}'),
-    { contractVersion: 1, verified: true },
-  );
+  assert.deepEqual(parseBackendVerificationResult('{"contractVersion":1,"verified":true}'), {
+    contractVersion: 1,
+    verified: true,
+  });
 });
 
 test('rejects stdout diagnostics and malformed verification results', () => {
@@ -29,8 +29,5 @@ test('machine-result CLI commands suppress only stdout', () => {
     cliSource,
     /args: stagePaths => \[\.\.\.backendVerifyArgs\(stagePaths\), '--verification-result-json'\],[\s\S]*?suppressStdout: true,/u,
   );
-  assert.match(
-    cliSource,
-    /\['--build-identity-json'\],[\s\S]*?\{ suppressStdout: true \}/u,
-  );
+  assert.match(cliSource, /\['--build-identity-json'\],[\s\S]*?suppressStdout: true,/u);
 });

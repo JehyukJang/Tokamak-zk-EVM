@@ -6,15 +6,15 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { installRuntime } = require('../dist/runtime.js');
-const {
-  assertInstalledRuntimeMatchesContext,
-  parseInstalledRuntimeState,
-} = require('../dist/runtime/context.js');
+const { assertInstalledRuntimeMatchesContext, parseInstalledRuntimeState } = require('../dist/runtime/context.js');
 const { resolveRuntimeExecution, runBackendCommand } = require('../dist/runtime/docker.js');
 const { configureMacosRuntime } = require('../dist/runtime/native.js');
 const { commitPreparedRuntime, installStagedRuntime } = require('../dist/runtime/transaction.js');
 const { streamDownloadToFile } = require('../dist/runtime/download.js');
-const { assertLiveBackendRuntimeIdentity } = require('../dist/runtime/identity.js');
+const {
+  assertLiveBackendRuntimeIdentity,
+  validateSynthesizerBuildMetadataForContext,
+} = require('../dist/runtime/identity.js');
 const { acquireRuntimeOperationLock } = require('../dist/runtime/operation-lock.js');
 const { promoteStagedRuntimePaths } = require('../dist/runtime/stage-transaction.js');
 
@@ -53,7 +53,7 @@ function dockerRuntimeState() {
 }
 
 function runtimeIdentity(packageVersion = '2.1.5') {
-  return ['preprocess', 'prove', 'verify'].map((packageName) => ({
+  return ['preprocess', 'prove', 'verify'].map(packageName => ({
     compatibleBackendVersion: '2.1',
     dependencies: {
       subcircuitLibrary: {
@@ -66,6 +66,20 @@ function runtimeIdentity(packageVersion = '2.1.5') {
     packageName,
     packageVersion,
   }));
+}
+
+function synthesizerBuildMetadata(packageVersion = '2.1.5') {
+  return {
+    dependencies: {
+      subcircuitLibrary: {
+        buildVersion: packageVersion,
+        declaredRange: packageVersion,
+        packageName: '@tokamak-zk-evm/subcircuit-library',
+      },
+    },
+    packageName: '@tokamak-zk-evm/synthesizer-node',
+    packageVersion,
+  };
 }
 
 function dockerBootstrap(context, overrides = {}) {
@@ -86,7 +100,7 @@ async function captureProcessOutput(action) {
   const stderr = [];
   const originalStdoutWrite = process.stdout.write;
   const originalStderrWrite = process.stderr.write;
-  const capture = (output) => (chunk, encoding, callback) => {
+  const capture = output => (chunk, encoding, callback) => {
     output.push(Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk));
     const completion = typeof encoding === 'function' ? encoding : callback;
     completion?.();
@@ -187,10 +201,15 @@ test('accepts only a structurally valid state for the current CLI runtime', () =
     /must contain exactly the backend packages/u,
   );
   assert.throws(
-    () => assertInstalledRuntimeMatchesContext(runtimeContext(), {
-      ...native,
-      backendRuntimeIdentity: runtimeIdentity('2.1.4'),
-    }, ['native']),
+    () =>
+      assertInstalledRuntimeMatchesContext(
+        runtimeContext(),
+        {
+          ...native,
+          backendRuntimeIdentity: runtimeIdentity('2.1.4'),
+        },
+        ['native'],
+      ),
     /does not match current CLI package version/u,
   );
 });
@@ -206,20 +225,41 @@ test('requires every live backend binary to report its exact persisted identity'
   );
 });
 
+test('rejects Node Synthesizer and subcircuit-library identities outside the CLI release', () => {
+  assert.doesNotThrow(() => {
+    validateSynthesizerBuildMetadataForContext(synthesizerBuildMetadata(), runtimeContext());
+  });
+  assert.throws(
+    () => validateSynthesizerBuildMetadataForContext(synthesizerBuildMetadata('2.1.4'), runtimeContext()),
+    /Node Synthesizer package version.*does not match current CLI package version/u,
+  );
+  const mismatchedLibrary = synthesizerBuildMetadata();
+  mismatchedLibrary.dependencies.subcircuitLibrary.buildVersion = '2.1.4';
+  assert.throws(
+    () => validateSynthesizerBuildMetadataForContext(mismatchedLibrary, runtimeContext()),
+    /must pin subcircuit-library buildVersion and declaredRange/u,
+  );
+});
+
 test('permits one live runtime operation and immediately rejects a contending process', async () => {
   const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-operation-lock-'));
   const context = { platformDir: path.join(temporaryRoot, 'linux') };
   const modulePath = path.resolve(__dirname, '..', 'dist', 'runtime', 'operation-lock.js');
   const worker = spawn(
     process.execPath,
-    ['-e', `
+    [
+      '-e',
+      `
       const { acquireRuntimeOperationLock } = require(process.argv[1]);
       const context = JSON.parse(process.argv[2]);
       acquireRuntimeOperationLock(context, 'child-stage').then((lock) => {
         process.stdout.write('ready\\n');
         process.stdin.once('data', async () => { await lock.release(); process.exit(0); });
       }).catch((error) => { console.error(error); process.exit(1); });
-    `, modulePath, JSON.stringify(context)],
+    `,
+      modulePath,
+      JSON.stringify(context),
+    ],
     { stdio: ['pipe', 'pipe', 'pipe'] },
   );
   let workerError = '';
@@ -228,7 +268,7 @@ test('permits one live runtime operation and immediately rejects a contending pr
   });
   try {
     await new Promise((resolve, reject) => {
-      const onData = (chunk) => {
+      const onData = chunk => {
         if (chunk.toString() === 'ready\n') {
           worker.stdout.off('data', onData);
           resolve();
@@ -236,15 +276,12 @@ test('permits one live runtime operation and immediately rejects a contending pr
       };
       worker.stdout.on('data', onData);
       worker.once('error', reject);
-      worker.once('exit', (code) => reject(new Error(`lock worker exited before ready: ${code}: ${workerError}`)));
+      worker.once('exit', code => reject(new Error(`lock worker exited before ready: ${code}: ${workerError}`)));
     });
-    await assert.rejects(
-      acquireRuntimeOperationLock(context, 'parent-stage'),
-      /busy with child-stage/u,
-    );
+    await assert.rejects(acquireRuntimeOperationLock(context, 'parent-stage'), /busy with child-stage/u);
     worker.stdin.write('release\n');
     await new Promise((resolve, reject) => {
-      worker.once('exit', (code) => code === 0 ? resolve() : reject(new Error(`lock worker exited with ${code}`)));
+      worker.once('exit', code => (code === 0 ? resolve() : reject(new Error(`lock worker exited with ${code}`))));
     });
     const lock = await acquireRuntimeOperationLock(context, 'parent-stage');
     await lock.release();
@@ -296,10 +333,7 @@ test('requires a Docker bootstrap bound to the selected installed runtime', asyn
   const { context, temporaryRoot } = await createRuntimeSelectionFixture();
   const installed = { context, state: dockerRuntimeState() };
   try {
-    await assert.rejects(
-      resolveRuntimeExecution(installed),
-      /bootstrap is unavailable/u,
-    );
+    await assert.rejects(resolveRuntimeExecution(installed), /bootstrap is unavailable/u);
 
     await writeDockerBootstrap(context, dockerBootstrap(context));
     const execution = await resolveRuntimeExecution(installed);
@@ -309,26 +343,20 @@ test('requires a Docker bootstrap bound to the selected installed runtime', asyn
     }
 
     await writeDockerBootstrap(context, dockerBootstrap(context, { packageVersion: '2.1.4' }));
-    await assert.rejects(
-      resolveRuntimeExecution(installed),
-      /does not match current CLI package version/u,
-    );
+    await assert.rejects(resolveRuntimeExecution(installed), /does not match current CLI package version/u);
 
-    await writeDockerBootstrap(context, dockerBootstrap(context, {
-      dockerEnvironment: 'ubuntu22-cuda122',
-      imageName: 'tokamak-zk-evm-cli:2.1.5-ubuntu22-cuda122',
-      useGpus: true,
-    }));
-    await assert.rejects(
-      resolveRuntimeExecution(installed),
-      /does not match selected runtime environment/u,
+    await writeDockerBootstrap(
+      context,
+      dockerBootstrap(context, {
+        dockerEnvironment: 'ubuntu22-cuda122',
+        imageName: 'tokamak-zk-evm-cli:2.1.5-ubuntu22-cuda122',
+        useGpus: true,
+      }),
     );
+    await assert.rejects(resolveRuntimeExecution(installed), /does not match selected runtime environment/u);
 
     await writeDockerBootstrap(context, dockerBootstrap(context, { imageName: 'unexpected-image' }));
-    await assert.rejects(
-      resolveRuntimeExecution(installed),
-      /does not match expected image/u,
-    );
+    await assert.rejects(resolveRuntimeExecution(installed), /does not match expected image/u);
   } finally {
     await fs.rm(temporaryRoot, { recursive: true, force: true });
   }
@@ -378,13 +406,9 @@ test('hides machine stdout but forwards native backend diagnostics', async () =>
     await fs.chmod(backendPath, 0o755);
     const output = await captureProcessOutput(async () => {
       await assert.rejects(
-        runBackendCommand(
-          { mode: 'native', context, state: runtimeState() },
-          backendPath,
-          [],
-          false,
-          { suppressStdout: true },
-        ),
+        runBackendCommand({ mode: 'native', context, state: runtimeState() }, backendPath, [], false, {
+          suppressStdout: true,
+        }),
         /backend exited with code 7/u,
       );
     });
@@ -471,7 +495,7 @@ test('keeps the previous native runtime and state when staging fails before acti
     const { context, previousState, temporaryRoot } = await createInstalledRuntimeFixture();
     try {
       await assert.rejects(
-        installStagedRuntime(context, runtimeState(), async (stagingContext) => {
+        installStagedRuntime(context, runtimeState(), async stagingContext => {
           await fs.writeFile(path.join(stagingContext.runtimeDir, 'marker.txt'), 'new runtime\n', 'utf8');
           throw new Error(`injected ${failingStep} failure`);
         }),
@@ -499,7 +523,7 @@ test('keeps the previous runtime and state when macOS rpath configuration fails'
 
     const macosContext = { ...context, platform: 'macos' };
     await assert.rejects(
-      installStagedRuntime(macosContext, runtimeState(), async (stagingContext) => {
+      installStagedRuntime(macosContext, runtimeState(), async stagingContext => {
         const binaryDir = path.join(stagingContext.runtimeDir, 'bin');
         await fs.mkdir(binaryDir, { recursive: true });
         for (const packageName of ['preprocess', 'prove', 'verify']) {
@@ -526,7 +550,7 @@ test('restores the previous native runtime and state after activation or state-w
   const promotionFixture = await createInstalledRuntimeFixture();
   try {
     await assert.rejects(
-      installStagedRuntime(promotionFixture.context, runtimeState(), async (stagingContext) => {
+      installStagedRuntime(promotionFixture.context, runtimeState(), async stagingContext => {
         await fs.rm(stagingContext.runtimeDir, { recursive: true, force: true });
       }),
       /ENOENT/u,
@@ -549,7 +573,7 @@ test('restores the previous native runtime and state after activation or state-w
       installStagedRuntime(
         stateFixture.context,
         runtimeState(),
-        async (stagingContext) => {
+        async stagingContext => {
           await fs.writeFile(path.join(stagingContext.runtimeDir, 'marker.txt'), 'new runtime\n', 'utf8');
         },
         async () => {
@@ -558,7 +582,10 @@ test('restores the previous native runtime and state after activation or state-w
       ),
       /injected state write failure/u,
     );
-    assert.equal(await fs.readFile(path.join(stateFixture.context.runtimeDir, 'marker.txt'), 'utf8'), 'previous runtime\n');
+    assert.equal(
+      await fs.readFile(path.join(stateFixture.context.runtimeDir, 'marker.txt'), 'utf8'),
+      'previous runtime\n',
+    );
     assert.deepEqual(JSON.parse(await fs.readFile(stateFixture.context.statePath, 'utf8')), stateFixture.previousState);
     assert.deepEqual(await fs.readdir(stateFixture.context.platformDir), ['installation.json', 'runtime']);
   } finally {
@@ -578,12 +605,9 @@ test('restores runtime state and Docker bootstrap when prepared Docker promotion
     await fs.writeFile(bootstrapPath, 'previous bootstrap\n', 'utf8');
 
     await assert.rejects(
-      commitPreparedRuntime(
-        context,
-        stagingContext,
-        runtimeState(),
-        [{ activePath: bootstrapPath, stagingPath: path.join(stagingRoot, 'missing-bootstrap.json') }],
-      ),
+      commitPreparedRuntime(context, stagingContext, runtimeState(), [
+        { activePath: bootstrapPath, stagingPath: path.join(stagingRoot, 'missing-bootstrap.json') },
+      ]),
       /ENOENT/u,
     );
     assert.equal(await fs.readFile(path.join(context.runtimeDir, 'marker.txt'), 'utf8'), 'previous runtime\n');
@@ -634,10 +658,7 @@ process.exit(args.some((argument) => argument.endsWith('/prepare-runtime.js')) ?
     assert.equal(await fs.readFile(path.join(runtimeDir, 'marker.txt'), 'utf8'), 'previous runtime\n');
     assert.deepEqual(JSON.parse(await fs.readFile(statePath, 'utf8')), previousState);
     assert.equal(await fs.readFile(bootstrapPath, 'utf8'), 'previous bootstrap\n');
-    assert.deepEqual(
-      (await fs.readdir(platformDir)).sort(),
-      ['docker', 'installation.json', 'runtime'],
-    );
+    assert.deepEqual((await fs.readdir(platformDir)).sort(), ['docker', 'installation.json', 'runtime']);
   } finally {
     Object.defineProperty(process, 'platform', platformDescriptor);
     if (originalPath === undefined) {
@@ -659,31 +680,22 @@ test('streams downloads by overwriting and appending complete response bodies', 
   const destinationPath = path.join(temporaryRoot, 'download.bin');
   try {
     await fs.writeFile(destinationPath, 'stale');
-    await streamDownloadToFile(
-      new Response(new Blob(['abc', 'def']).stream()),
-      destinationPath,
-      { label: 'download.bin', totalBytes: 6 },
-    );
+    await streamDownloadToFile(new Response(new Blob(['abc', 'def']).stream()), destinationPath, {
+      label: 'download.bin',
+      totalBytes: 6,
+    });
     assert.equal(await fs.readFile(destinationPath, 'utf8'), 'abcdef');
 
-    await streamDownloadToFile(
-      new Response(new Blob(['gh']).stream()),
-      destinationPath,
-      {
-        append: true,
-        initialBytes: 6,
-        label: 'download.bin',
-        totalBytes: 8,
-      },
-    );
+    await streamDownloadToFile(new Response(new Blob(['gh']).stream()), destinationPath, {
+      append: true,
+      initialBytes: 6,
+      label: 'download.bin',
+      totalBytes: 8,
+    });
     assert.equal(await fs.readFile(destinationPath, 'utf8'), 'abcdefgh');
 
     await assert.rejects(
-      streamDownloadToFile(
-        new Response(null),
-        destinationPath,
-        { label: 'empty.bin', totalBytes: null },
-      ),
+      streamDownloadToFile(new Response(null), destinationPath, { label: 'empty.bin', totalBytes: null }),
       /did not contain a body/u,
     );
   } finally {
@@ -745,9 +757,7 @@ process.exit(0);
       verbose: false,
     });
 
-    const bootstrap = JSON.parse(
-      await fs.readFile(path.join(dockerDir, 'bootstrap.json'), 'utf8'),
-    );
+    const bootstrap = JSON.parse(await fs.readFile(path.join(dockerDir, 'bootstrap.json'), 'utf8'));
     assert.equal(bootstrap.dockerEnvironment, 'ubuntu22');
     assert.equal(bootstrap.platform, 'linux');
     assert.equal(bootstrap.useGpus, false);
