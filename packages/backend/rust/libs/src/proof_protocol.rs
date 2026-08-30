@@ -3,7 +3,7 @@
 
 use crate::field_structures::FieldSerde;
 use crate::group_structures::G1serde;
-use crate::serialization::{scalar_to_hex, split_g1, try_next_point};
+use crate::serialization::{scalar_to_hex, split_g1, try_next_point, try_scalar_from_hex};
 use crate::{impl_read_from_json, impl_write_into_json, split_push};
 use icicle_bls12_381::curve::ScalarField;
 use icicle_core::traits::FieldImpl;
@@ -136,10 +136,22 @@ impl FormattedProof {
             proof1: Proof1 { R },
             proof2: Proof2 { Q_CX, Q_CY },
             proof3: Proof3 {
-                R_eval: FieldSerde(ScalarField::from_hex(&scalar_slice[0])),
-                R_omegaX_eval: FieldSerde(ScalarField::from_hex(&scalar_slice[1])),
-                R_omegaX_omegaY_eval: FieldSerde(ScalarField::from_hex(&scalar_slice[2])),
-                V_eval: FieldSerde(ScalarField::from_hex(&scalar_slice[3])),
+                R_eval: FieldSerde(
+                    try_scalar_from_hex(&scalar_slice[0])
+                        .map_err(|error| format!("invalid scalar at entry 0: {error}"))?,
+                ),
+                R_omegaX_eval: FieldSerde(
+                    try_scalar_from_hex(&scalar_slice[1])
+                        .map_err(|error| format!("invalid scalar at entry 1: {error}"))?,
+                ),
+                R_omegaX_omegaY_eval: FieldSerde(
+                    try_scalar_from_hex(&scalar_slice[2])
+                        .map_err(|error| format!("invalid scalar at entry 2: {error}"))?,
+                ),
+                V_eval: FieldSerde(
+                    try_scalar_from_hex(&scalar_slice[3])
+                        .map_err(|error| format!("invalid scalar at entry 3: {error}"))?,
+                ),
             },
             proof4: Proof4 {
                 Pi_X,
@@ -497,7 +509,12 @@ mod tests {
 
         let proof = FormattedProof {
             proof_entries_part1: vec!["0x00000000000000000000000000000000".to_string(); 38],
-            proof_entries_part2: (1..=42).map(scalar_hex).collect(),
+            proof_entries_part2: std::iter::repeat(
+                "0x0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+            )
+            .take(38)
+            .chain((1..=4).map(scalar_hex))
+            .collect(),
         };
         let recovered_proof = proof
             .try_recover_proof_from_format()
@@ -514,7 +531,11 @@ mod tests {
 
         let preprocess = FormattedPreprocess {
             preprocess_entries_part1: vec!["0x00000000000000000000000000000000".to_string(); 6],
-            preprocess_entries_part2: (1..=6).map(scalar_hex).collect(),
+            preprocess_entries_part2: vec![
+                "0x0000000000000000000000000000000000000000000000000000000000000000"
+                    .to_string();
+                6
+            ],
         };
         let recovered_preprocess = preprocess
             .try_recover_proof_from_format()

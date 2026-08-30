@@ -104,14 +104,14 @@ impl SerialSerde {
         g1_vec: Vec<String>,
         g2_str: String,
         compress: Compress,
-    ) -> Self {
-        SerialSerde {
+    ) -> Result<Self, String> {
+        Ok(SerialSerde {
             g1: g1_vec
                 .iter()
                 .map(|s| deserialize_g1serde(s, compress))
-                .collect(),
-            g2: deserialize_g2serde(&g2_str, compress),
-        }
+                .collect::<Result<_, _>>()?,
+            g2: deserialize_g2serde(&g2_str, compress)?,
+        })
     }
 }
 impl SerialSerde {
@@ -160,11 +160,15 @@ impl PairSerde {
         )
     }
 
-    pub fn deserialize_with_compress(g1: &str, g2: &str, compress: Compress) -> Self {
-        PairSerde {
-            g1: deserialize_g1serde(g1, compress),
-            g2: deserialize_g2serde(g2, compress),
-        }
+    pub fn deserialize_with_compress(
+        g1: &str,
+        g2: &str,
+        compress: Compress,
+    ) -> Result<Self, String> {
+        Ok(PairSerde {
+            g1: deserialize_g1serde(g1, compress)?,
+            g2: deserialize_g2serde(g2, compress)?,
+        })
     }
 }
 impl PairSerde {

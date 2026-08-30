@@ -215,7 +215,7 @@ impl DuskGroth16Source {
             tau_powers_g1.push(deserialize_g1_affine(
                 &bytes[start..end].to_vec().into_boxed_slice(),
                 compression,
-            ));
+            )?);
         }
 
         let mut tau_powers_g2 = Vec::with_capacity(max_g2_exp + 1);
@@ -225,7 +225,7 @@ impl DuskGroth16Source {
             tau_powers_g2.push(deserialize_g2_affine(
                 &bytes[start..end].to_vec().into_boxed_slice(),
                 compression,
-            ));
+            )?);
         }
 
         let g1 = G1serde(tau_powers_g1[0]);

@@ -13,6 +13,7 @@ use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 #[cfg(test)]
 use rayon::prelude::*;
+use std::io;
 use std::io::Cursor;
 use std::ops::Mul;
 
@@ -105,20 +106,28 @@ pub fn ark_g2_affine_to_icicle(g2: &ArkG2Affine) -> IcicleG2Affine {
     }
 }
 
-pub fn deserialize_g1serde(string: &str, compress: Compress) -> G1serde {
-    let buffer = hex::decode(string).unwrap();
+pub fn deserialize_g1serde(string: &str, compress: Compress) -> Result<G1serde, String> {
+    let buffer = hex::decode(string).map_err(|error| format!("invalid G1 hex: {error}"))?;
     let mut cursor = Cursor::new(&buffer);
-    let rec_ark = ArkG1Affine::deserialize_with_mode(&mut cursor, compress, Validate::No).unwrap();
-    G1serde(ark_g1_affine_to_icicle(&rec_ark))
+    let rec_ark = ArkG1Affine::deserialize_with_mode(&mut cursor, compress, Validate::Yes)
+        .map_err(|error| format!("invalid G1 point encoding: {error}"))?;
+    if cursor.position() != buffer.len() as u64 {
+        return Err("invalid G1 point encoding: trailing bytes".into());
+    }
+    Ok(G1serde(ark_g1_affine_to_icicle(&rec_ark)))
 }
 pub fn serialize_g1serde(point: &G1serde, compress: Compress) -> String {
     hex::encode(serialize_g1_affine(&point.0, compress))
 }
-pub fn deserialize_g2serde(string: &str, compress: Compress) -> G2serde {
-    let buffer = hex::decode(string).unwrap();
+pub fn deserialize_g2serde(string: &str, compress: Compress) -> Result<G2serde, String> {
+    let buffer = hex::decode(string).map_err(|error| format!("invalid G2 hex: {error}"))?;
     let mut cursor = Cursor::new(&buffer);
-    let rec_ark = ArkG2Affine::deserialize_with_mode(&mut cursor, compress, Validate::No).unwrap();
-    G2serde(ark_g2_affine_to_icicle(&rec_ark))
+    let rec_ark = ArkG2Affine::deserialize_with_mode(&mut cursor, compress, Validate::Yes)
+        .map_err(|error| format!("invalid G2 point encoding: {error}"))?;
+    if cursor.position() != buffer.len() as u64 {
+        return Err("invalid G2 point encoding: trailing bytes".into());
+    }
+    Ok(G2serde(ark_g2_affine_to_icicle(&rec_ark)))
 }
 pub fn serialize_g2serde(point: &G2serde, compress: Compress) -> String {
     hex::encode(serialize_g2_affine(&point.0, compress))
@@ -134,10 +143,17 @@ pub fn serialize_g1_affine(point: &IcicleG1Affine, compress: Compress) -> Box<[u
     buf.into_boxed_slice()
 }
 
-pub fn deserialize_g1_affine(buf: &Box<[u8]>, compress: Compress) -> IcicleG1Affine {
+pub fn deserialize_g1_affine(buf: &Box<[u8]>, compress: Compress) -> io::Result<IcicleG1Affine> {
     let mut cursor = Cursor::new(&buf);
-    let rec_ark = ArkG1Affine::deserialize_with_mode(&mut cursor, compress, Validate::No).unwrap();
-    ark_g1_affine_to_icicle(&rec_ark)
+    let rec_ark = ArkG1Affine::deserialize_with_mode(&mut cursor, compress, Validate::Yes)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    if cursor.position() != buf.len() as u64 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid G1 point encoding: trailing bytes",
+        ));
+    }
+    Ok(ark_g1_affine_to_icicle(&rec_ark))
 }
 pub fn serialize_g2_affine(point: &IcicleG2Affine, compress: Compress) -> Box<[u8]> {
     let mut buf = Vec::new();
@@ -148,17 +164,24 @@ pub fn serialize_g2_affine(point: &IcicleG2Affine, compress: Compress) -> Box<[u
 
     buf.into_boxed_slice()
 }
-pub fn deserialize_g2_affine(buf: &Box<[u8]>, compress: Compress) -> IcicleG2Affine {
+pub fn deserialize_g2_affine(buf: &Box<[u8]>, compress: Compress) -> io::Result<IcicleG2Affine> {
     let mut cursor = Cursor::new(&buf);
-    let rec_ark = ArkG2Affine::deserialize_with_mode(&mut cursor, compress, Validate::No).unwrap();
-    ark_g2_affine_to_icicle(&rec_ark)
+    let rec_ark = ArkG2Affine::deserialize_with_mode(&mut cursor, compress, Validate::Yes)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    if cursor.position() != buf.len() as u64 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid G2 point encoding: trailing bytes",
+        ));
+    }
+    Ok(ark_g2_affine_to_icicle(&rec_ark))
 }
 #[test]
 fn test_serialize_g1_compressed() {
     let g1 = icicle_g1_generator();
 
     let serialized_bytes = serialize_g1_affine(&g1.0, Compress::Yes);
-    let rec_icicle = deserialize_g1_affine(&serialized_bytes, Compress::Yes);
+    let rec_icicle = deserialize_g1_affine(&serialized_bytes, Compress::Yes).unwrap();
     assert_eq!(g1.0, rec_icicle);
 }
 #[test]
@@ -166,8 +189,16 @@ fn test_serialize_g2_compressed() {
     let g2 = icicle_g2_generator();
     let serialized_bytes = serialize_g2_affine(&g2.0, Compress::Yes);
 
-    let rec_icicle = deserialize_g2_affine(&serialized_bytes, Compress::Yes);
+    let rec_icicle = deserialize_g2_affine(&serialized_bytes, Compress::Yes).unwrap();
     assert_eq!(g2.0, rec_icicle);
+}
+
+#[test]
+fn rejects_invalid_or_truncated_serialized_points() {
+    assert!(deserialize_g1serde("not-hex", Compress::Yes).is_err());
+    assert!(deserialize_g1serde("00", Compress::Yes).is_err());
+    assert!(deserialize_g2serde("not-hex", Compress::Yes).is_err());
+    assert!(deserialize_g2serde("00", Compress::Yes).is_err());
 }
 
 pub fn hash_to_g2(digest: &[u8]) -> G2serde {

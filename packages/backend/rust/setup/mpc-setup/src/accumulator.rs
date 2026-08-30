@@ -101,22 +101,24 @@ impl<'de> Deserialize<'de> for Accumulator {
             _ => return Err(serde::de::Error::custom("Invalid compress flag")),
         };
 
-        let parse_vec = |v: Vec<String>| -> Vec<G1serde> {
+        let parse_vec = |v: Vec<String>| -> Result<Vec<G1serde>, String> {
             v.iter()
                 .map(|s| deserialize_g1serde(s, compress_mode))
-                .collect()
+                .collect::<Result<_, _>>()
         };
 
         Ok(Accumulator {
             contributor_index,
-            g1: deserialize_g1serde(&g1, compress_mode),
-            g2: deserialize_g2serde(&g2, compress_mode),
+            g1: deserialize_g1serde(&g1, compress_mode).map_err(serde::de::Error::custom)?,
+            g2: deserialize_g2serde(&g2, compress_mode).map_err(serde::de::Error::custom)?,
             alpha: alpha
                 .iter()
                 .map(|(a, b)| PairSerde::deserialize_with_compress(a, b, compress_mode))
-                .collect(),
-            x: SerialSerde::deserialize_with_compress(x_g1, x_g2, compress_mode),
-            alpha_x: parse_vec(alpha_x),
+                .collect::<Result<_, _>>()
+                .map_err(serde::de::Error::custom)?,
+            x: SerialSerde::deserialize_with_compress(x_g1, x_g2, compress_mode)
+                .map_err(serde::de::Error::custom)?,
+            alpha_x: parse_vec(alpha_x).map_err(serde::de::Error::custom)?,
             compress: compress_mode == Compress::Yes,
         })
     }
