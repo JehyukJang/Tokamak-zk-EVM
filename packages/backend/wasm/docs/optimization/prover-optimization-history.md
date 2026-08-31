@@ -21,7 +21,53 @@ measurements, implementation boundaries, and acceptance results. When a
 historical section conflicts with the current-state summary in this section,
 the current-state summary governs.
 
-## Current Production Snapshot
+## 3.0.0 Release Candidate Comparison
+
+The release comparison uses the private-state dapp's `transferNotes1To2`
+operation: one private input note is transferred into two output notes. Each
+release line used its compatible committed state and transaction snapshot,
+generated circuit library, native proof artifacts, and matching CRS.
+
+| release line | Chromium first-proof samples | arithmetic mean |
+| --- | --- | ---: |
+| `2.1.5` (`7b9495379`) | 123.808 s, 123.963 s, 127.097 s, 125.564 s, 124.846 s | **125.056 s** |
+| `3.0.0` candidate (`f8cd7f78c`) | 30.786 s, 30.705 s, 30.701 s, 31.041 s, 31.144 s | **30.875 s** |
+
+The observed decrease is **94.180 s (75.3%)**, or a **4.05x** speedup. Every
+run generated a 2,328-byte proof that the same Chromium session accepted with
+the matching verifier. One complete run per release line was discarded before
+the five retained fresh-browser samples, and no retained outlier was removed.
+
+The comparison ran on a MacBook Pro with Apple M4 Pro, 14 CPU cores, 48 GB
+memory, and macOS 26.5.2 (build 25F84). Both lines used Node 24.20.0, npm
+11.19.0, Chromium 149.0.7827.55, the public `dist` prover and verifier
+entrypoints, and an esbuild-minimized browser bundle. The rkyv decoder WASM was
+compiled with Cargo `--release`.
+
+The baseline used the `2.1.5` package build. Its checked-in package lock named
+subcircuit-library 2.1.5 but resolved 2.1.3, so the isolated reproduction
+refreshed that one inconsistent snapshot to the immutable 2.1.5 package; the
+resulting lock SHA-256 was
+`c77a840818a817ea62eea95e580fdcc9eb76f901cf3f9bbfad5ec740c094349f`.
+The candidate used the packaged local circuit output as an `npmSnapshot`
+production-origin input. Because the final operator-controlled `3.0` CRS does
+not yet exist, verifier data was generated from the matching development CRS.
+This preserves the release-optimized proving path and circuit shape but does
+not make the measured build a release-eligible production artifact.
+
+The principal structural cause is the 75.0% reduction in both the
+`n x s_max` constraint grid and the `m_I x s_max` interface grid, together
+with the 70.6% reduction in `l_D` and 45.6% reduction in the public boundary.
+The operation used 234 placements under `2.1.5` and 207 under the candidate.
+Other implementation differences and host variation remain in this
+release-level observation, so the result is not an exclusive attribution.
+
+All ten retained machine-readable samples are in
+[`evidence/3.0.0-release-comparison`](./evidence/3.0.0-release-comparison/).
+These measurements are a reference for one host and workload, not a portable
+performance guarantee.
+
+## 2.1.5 Production Snapshot
 
 The current production prover is one stateful binary-input prover.
 `prove(input)` is the complete wrapper over the same opaque session exposed by

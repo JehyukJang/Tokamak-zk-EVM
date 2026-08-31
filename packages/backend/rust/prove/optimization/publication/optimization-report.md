@@ -2,7 +2,7 @@
 
 > Status: live performance report. Update this document when a materially different proving implementation is measured or an accepted optimization changes the reference result.
 >
-> Last consolidated: 2026-07-30. The figures below preserve the historical measurements that were previously distributed across dated mini-reports and timing reports.
+> Last consolidated: 2026-09-01. The figures below preserve the historical measurements that were previously distributed across dated mini-reports and timing reports.
 
 ## How To Read This Report
 
@@ -14,14 +14,82 @@ This report separates three kinds of evidence:
 
 `total wall` is end-to-end proving elapsed time. Lower is better. Component timings are diagnostic only and must be compared only when their timing boundaries match.
 
-## Current Reference
+## 3.0 Release Candidate Comparison
+
+The controlled release comparison uses the private-state dapp's
+`transferNotes1To2` operation. The operation transfers one private note into
+two output notes. Each incompatible release line used the transaction and
+state snapshot committed with that release, its generated circuit library, and
+its matching CRS.
+
+| release line | release-profile proof samples | arithmetic mean |
+| --- | --- | ---: |
+| `2.1.5` (`7b9495379`) | 38.028825 s, 37.977969 s, 37.884700 s, 38.268852 s, 37.840041 s | **38.000077 s** |
+| `3.0.0` candidate (`f8cd7f78c`) | 11.042374 s, 11.089024 s, 10.995898 s, 11.060470 s, 11.104894 s | **11.058532 s** |
+
+The observed decrease is **26.941545 s (70.9%)**, or a **3.44x** speedup.
+One complete run per release line was discarded before the five retained
+first-proof samples. No retained outlier was removed. Every retained run wrote
+a proof after the timed boundary, and the matching release verifier accepted
+that proof.
+
+### Component evidence
+
+| compatible timing boundary | `2.1.5` mean | `3.0.0` candidate mean | decrease |
+| --- | ---: | ---: | ---: |
+| Initialization | 5.291987 s | 1.112987 s | 4.179000 s (79.0%) |
+| Polynomial work | 11.509614 s | 3.788643 s | 7.720971 s (67.1%) |
+| Encoding/MSM | 20.244714 s | 5.740524 s | 14.504190 s (71.6%) |
+
+The principal structural cause is the reduction of the constraint and
+interface boundaries. `n` and `m_I = l_D - l` both changed from 4,096 to 1,024,
+so the `n x s_max` and `m_I x s_max` grids changed from 1,048,576 to 262,144
+cells (-75.0%). `l_D` changed from 4,824 to 1,420 (-70.6%), and `l` changed
+from 728 to 396 (-45.6%). `s_max` remained 256. The same logical operation used
+234 placements under `2.1.5` and 207 under the candidate. The private wire
+region increased from 21,767 to 22,659 wires (+4.1%), so the report does not
+attribute every saved second to a uniformly smaller artifact.
+
+### Reproduction identity and limits
+
+- Host: MacBook Pro, Apple M4 Pro, 14 CPU cores, 48 GB memory, macOS 26.5.2
+  (build 25F84). Both lines used the ICICLE CPU fallback.
+- Toolchains: Rust and Cargo 1.95.0; Node 24.20.0 and npm 11.19.0 for the
+  release-specific Synthesizer inputs.
+- Native commands: `cargo test --release` for `2.1.5` and
+  `cargo test --locked --release` for the candidate, both with the timing
+  feature and matching release inputs. Proof serialization and verification
+  ran outside `total_wall_ms`.
+- The `2.1.5` release commit did not retain its backend Cargo lock. The
+  reproduction generated a compatible lock with SHA-256
+  `d32aa3270b8773893b7d54224ee17e7e978194043ce1c0587202342e50ed039c`.
+  The candidate used the tracked lock with SHA-256
+  `9a160426c3469fa3633f8f98320e5837f0a83d71a3b94c61b80efc3c291203b8`.
+- The baseline combined CRS SHA-256 is
+  `750c26922a39568a68101501668b496b32938349afc3faa221f6dc929fc6d9a9`.
+  The candidate combined development CRS SHA-256 is
+  `c40c3bab9bcf1568c8380958e0ac791ad9da9b5f42ebbe86251caa1baae048c4`.
+  The candidate CRS has the correct circuit shape but is not a final
+  release-eligible `3.0` ceremony artifact.
+- The representative current single-run record is
+  [`timing.local.cpu.current.json`](../timing.local.cpu.current.json). All ten
+  retained raw reports are in
+  [`evidence/3.0.0-release-comparison`](../evidence/3.0.0-release-comparison/).
+
+These are observations for one host and logical operation. They are not a
+portable performance guarantee, and they do not isolate other implementation
+differences or system variation from the circuit and boundary changes.
+
+## 2.1.5 Historical Reference
 
 | execution path | status | total wall | key observation |
 | --- | --- | ---: | --- |
-| Local CPU fallback | current accepted code | **37.077365 s** | `init` 4.982260 s, polynomial work 11.167150 s, and encode 20.031351 s. |
+| Local CPU fallback | final retained `2.1.5` snapshot | **37.077365 s** | `init` 4.982260 s, polynomial work 11.167150 s, and encode 20.031351 s. |
 | Remote CUDA | historical scale reference only | 23.758035 s | The latest retained CUDA comparison predates the final CPU-only production sequence; do not treat it as a current accepted CUDA baseline. |
 
-The next remote CUDA measurement must run the current accepted code before this report publishes a CUDA current reference. The CPU result above is the current-code reference.
+The next remote CUDA measurement must run the release candidate before this
+report publishes a current CUDA reference. The CPU row above remains a
+historical `2.1.5` snapshot and is not the controlled comparison aggregate.
 
 ## At-A-Glance CUDA Improvement History
 

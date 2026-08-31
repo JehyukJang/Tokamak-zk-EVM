@@ -193,16 +193,16 @@ fn run_single_contributor_phase2(
     source: Phase2SourceConfig,
     master_seed_input: Option<&str>,
 ) -> Result<(), MpcSetupError> {
-    let (qap_path, phase1_source_mode, dusk_raw_file, prepare_contributor_index) = match source {
+    let (qap_path, alpha_x_basis_mode, dusk_raw_file, prepare_contributor_index) = match source {
         Phase2SourceConfig::Native { qap_path } => {
-            (qap_path, phase2_prepare::Phase1SourceMode::Native, None, 1)
+            (qap_path, phase2_prepare::AlphaXBasisMode::Native, None, 1)
         }
         Phase2SourceConfig::DuskGroth16 {
             qap_path,
             dusk_raw_file,
         } => (
             qap_path,
-            phase2_prepare::Phase1SourceMode::DuskGroth16,
+            phase2_prepare::AlphaXBasisMode::DuskAdapted,
             Some(dusk_raw_file),
             0,
         ),
@@ -217,7 +217,7 @@ fn run_single_contributor_phase2(
         total_part: 1,
         merge_parts: false,
         beacon_mode,
-        phase1_source_mode,
+        alpha_x_basis_mode,
         dusk_raw_file,
         y_hex: None,
         random_seed_input: derive_stage_seed_input(master_seed_input, "phase2-prepare"),

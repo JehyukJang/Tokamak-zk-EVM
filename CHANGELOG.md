@@ -75,10 +75,9 @@ The format is based on Keep a Changelog.
 - Production CRS artifacts require canonical provenance and matching artifact
   hashes. Runtime and CRS updates are staged before activation so a failed
   update preserves the previous working generation.
-- Documents indexed by the Tonigma Publication Index are maintained under
-  explicit `publication` paths. Package READMEs remain package entry points,
-  while package and release checks enforce the shared compatibility and
-  artifact contracts.
+- This repository maintains its publication-document candidates under explicit
+  `publication` paths. Tonigma-docs independently decides which candidates to
+  index; package READMEs remain package entry points.
 
 #### Bug Fixes
 
@@ -107,8 +106,8 @@ The format is based on Keep a Changelog.
 The `2.1.5` values below come from release commit `7b9495379` and its checked-in
 `setupParams.json` and `subcircuitInfo.json`. The current values come from the
 same generated files in this unreleased tree. These tables describe circuit and
-setup dimensions rather than end-to-end performance. The retained native CPU
-release-build measurement is reported separately below; no GPU or browser
+setup dimensions rather than end-to-end performance. Controlled native CPU and
+browser proving comparisons are reported separately below; no GPU
 proving-time claim is made for this circuit set.
 
 | Generated catalog metric | `2.1.5` | Current | Change |
@@ -166,18 +165,38 @@ synchronized TokamakL2JS specification. The former Merkle depth of 36
 and EVM exponentiation batch of 32 were removed rather than replaced by new
 capacity parameters.
 
-### Native Prove Time
+### Release-Optimized Proof Generation
 
-No comparative native proving-time claim is published for this unreleased
-release line. A final comparison, if published, will use the same host,
-exact toolchain, Cargo release profile, logical workload, timing protocol,
-sample count, and aggregation method for both the `2.1.5` baseline and the
-`3.0.0` candidate. Each incompatible release line will use its own serialized
-inputs and CRS generated under the same documented setup procedure and security
-parameters. The comparison will identify circuit dimensions, input and CRS
-identities, retained raw evidence, and the calculation method; otherwise the
-release notes will provide only independently sourced absolute measurements
-with their provenance.
+The following measurements use the private-state dapp's `transferNotes1To2`
+operation on one Apple M4 Pro host. Each release line used its compatible
+serialized input and CRS, one discarded environment-preparation run, and five
+fresh first-proof samples. The table reports the arithmetic mean; every
+retained proof was accepted by the matching verifier.
+
+| Execution path | `2.1.5` | Current candidate | Absolute decrease | Decrease | Speedup | Evidence |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Native Rust, CPU, Cargo release profile | 38.000 s | 11.059 s | 26.942 s | 70.9% | 3.44x | [Native report](./packages/backend/rust/prove/optimization/publication/optimization-report.md#30-release-candidate-comparison) |
+| Browser WASM, release `dist`, Chromium | 125.056 s | 30.875 s | 94.180 s | 75.3% | 4.05x | [Browser report](./packages/backend/wasm/docs/optimization/prover-optimization-history.md#300-release-candidate-comparison) |
+
+The native comparison used the Cargo release profile. The browser comparison
+used the package's release-built `dist` entrypoints in Chromium
+149.0.7827.55, bundled and minimized for the browser. The candidate build used
+the packaged local circuit snapshot and matching development CRS because the
+final operator-controlled `3.0` CRS does not exist before the release
+checkpoint; it is performance evidence, not a release-eligibility claim.
+
+The principal structural explanation is the circuit and interface reduction:
+`n` and `m_I` fell from 4,096 to 1,024, both dominant `n x s_max` and
+`m_I x s_max` grids fell 75.0%, `l_D` fell 70.6%, and the public boundary
+fell 45.6%. On native CPU, mean initialization fell from 5.292 s to 1.113 s,
+polynomial work from 11.510 s to 3.789 s, and encoding from 20.245 s to
+5.741 s. Other implementation differences and host variation remain part of
+this release-level comparison, so the measurements do not assign every saved
+second exclusively to one change.
+
+These are reference observations from one machine and workload, not portable
+performance guarantees. The linked reports retain the exact samples, build
+and toolchain identities, circuit and CRS identities, method, and limitations.
 
 ### Subcircuit Library
 

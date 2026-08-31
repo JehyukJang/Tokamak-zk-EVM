@@ -24,10 +24,14 @@ mod conversions;
 mod utils;
 
 mod accumulator;
+pub mod alpha_x_basis;
+pub mod contribution_kernel;
 mod contributor;
 mod drive_upload;
 mod flows;
-mod phase1_source;
+pub mod phase1_contribution;
+pub mod protocol;
+pub mod universal_tau;
 
 mod sigma;
 mod versioning;

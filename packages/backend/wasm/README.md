@@ -524,29 +524,14 @@ does not revive or provide compatibility with those historical packages.
 
 ## Measured browser performance
 
-Accepted reference measurements generated preprocess and a 2,328-byte proof
-and verified the proof in Chromium 149.0.7827.55:
+Release-optimized browser measurements, including cross-release comparisons,
+raw samples, exact build and artifact identities, circuit dimensions,
+verification results, methodology, and limitations, are maintained in the
+[optimization history](./docs/optimization/prover-optimization-history.md).
 
-| Measurement                              | Observed value |
-| ---------------------------------------- | -------------: |
-| Preprocess, three-run mean               |       10.942 s |
-| Preprocess population standard deviation |           8 ms |
-| Proof generation                         |       118.82 s |
-| Proof verification                       |          19 ms |
-| Peak total Chromium-process RSS          |      10.03 GiB |
-| Peak largest-process RSS                 |       9.83 GiB |
-
-Environment: MacBook Pro with Apple M4 Pro, 14 CPU cores, 48 GB memory, macOS
-26.5.2, multithreaded ffjavascript, preprocess chunk exponent `17`, prover
-chunk exponent `18`, and the 4,096 by 256 domain with 234 placements and
-658,454 placement variables. Proof measurements were recorded on 2026-07-27
-by package commit `4cb2ad9b`; preprocess measurements were recorded after
-reboot on 2026-07-29 from benchmark source identity
-`802c5ef0e35b1d6226392179c8d97176deb06e5ca943b13840225ca32dd22ea8`.
-
-These are observations from one machine and fixture, not minimum requirements,
-portable guarantees, or predictions for another browser, input, thermal state,
-or system load.
+Those results are observations from their documented machine and fixture, not
+minimum requirements, portable guarantees, or predictions for another browser,
+input, thermal state, or implementation.
 
 ## Errors and troubleshooting
 

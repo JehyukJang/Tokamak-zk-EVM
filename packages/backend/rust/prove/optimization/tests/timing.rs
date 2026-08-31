@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(feature = "timing")]
-use libs::proof_protocol::TranscriptManager;
+use libs::proof_protocol::{Proof, TranscriptManager};
 #[cfg(feature = "timing")]
 use libs::utils::check_device;
 #[cfg(feature = "timing")]
@@ -114,7 +114,7 @@ fn timing_prove_stages() {
     timing::reset();
     let wall_start = Instant::now();
 
-    let (mut prover, _binding) =
+    let (mut prover, binding) =
         Prover::init(&paths).expect("prover initialization must succeed for a timing run");
     let setup_params = SetupParamsSummary {
         l_free: prover.setup_params.l_free,
@@ -141,10 +141,28 @@ fn timing_prove_stages() {
     let proof3 = prover.prove3(chi, zeta);
     let kappa1 = proof3.verify3_with_manager(&mut manager);
 
-    let (_proof4, _proof4_test) = prover.prove4(&proof3, &thetas, kappa0, chi, zeta, kappa1);
+    let (proof4, proof4_test) = prover.prove4(&proof3, &thetas, kappa0, chi, zeta, kappa1);
 
     let total_wall_ms = wall_start.elapsed().as_secs_f64() * 1000.0;
     let events = take_all_timing_events();
+
+    let proof = Proof {
+        binding,
+        proof0,
+        proof1,
+        proof2,
+        proof3,
+        proof4,
+    };
+    let proof_path = output_dir.join("proof.json");
+    proof
+        .convert_format_for_solidity_verifier()
+        .write_into_json(proof_path)
+        .expect("failed to write timing-run proof");
+    let proof4_test_path = output_dir.join("proof4_test.json");
+    proof4_test
+        .write_into_json(proof4_test_path)
+        .expect("failed to write timing-run arithmetic proof data");
 
     let mut summary: BTreeMap<String, StageSummary> = BTreeMap::new();
     for event in &events {

@@ -1,10 +1,13 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
+use crate::alpha_x_basis::{
+    AccumulatorAlphaXBasis, AlphaXBasis, AlphaXBasisSource, DuskTauAdaptor,
+};
 use crate::ensure_testing_mode;
 use crate::flows::MpcSetupError;
-use crate::phase1_source::{AccumulatorSource, DuskGroth16Source, Phase1Source, Phase1SrsSource};
 use crate::sigma::{save_contributor_info, SigmaV2, HASH_BYTES_LEN};
+use crate::universal_tau::MonomialLayout;
 use crate::utils::{
     initialize_random_generator_with_seed_input, select_cuda_or_cpu, Mode, StepTimer,
 };
@@ -227,16 +230,16 @@ pub struct Phase2PrepareConfig {
     pub total_part: usize,
     pub merge_parts: bool,
     pub beacon_mode: bool,
-    pub phase1_source_mode: Phase1SourceMode,
+    pub alpha_x_basis_mode: AlphaXBasisMode,
     pub dusk_raw_file: Option<String>,
     pub y_hex: Option<String>,
     pub random_seed_input: Option<String>,
 }
 
 #[derive(Clone, Debug)]
-pub enum Phase1SourceMode {
+pub enum AlphaXBasisMode {
     Native,
-    DuskGroth16,
+    DuskAdapted,
 }
 pub fn run(config: &Phase2PrepareConfig) -> Result<(), MpcSetupError> {
     let mut timer = StepTimer::new("phase2_prepare");
@@ -517,7 +520,7 @@ fn sample_phase2_y(
     Ok(y)
 }
 
-fn build_x_basis<S: Phase1SrsSource>(source: &S, exp_alpha: usize, x_size: usize) -> Vec<G1Affine> {
+fn build_x_basis<S: AlphaXBasis>(source: &S, exp_alpha: usize, x_size: usize) -> Vec<G1Affine> {
     if exp_alpha == 0 {
         return source.x_g1_range(0, x_size - 1);
     }
@@ -587,7 +590,7 @@ fn commit_component_x_only(
     Ok(())
 }
 
-fn build_x_only_commitments<S: Phase1SrsSource>(
+fn build_x_only_commitments<S: AlphaXBasis>(
     coeff_views: &[SubcircuitCoeffView],
     subcircuit_infos: &[&SubcircuitInfo],
     source: &S,
@@ -664,7 +667,7 @@ fn fill_lagrange_row_coeffs_from_root_table(
     }
 }
 
-fn build_plain_lagrange_commitments<S: Phase1SrsSource>(
+fn build_plain_lagrange_commitments<S: AlphaXBasis>(
     source: &S,
     size: usize,
     msm_workspace: &mut MsmWorkspace,
@@ -689,7 +692,7 @@ fn build_plain_lagrange_commitments<S: Phase1SrsSource>(
         .into_boxed_slice())
 }
 
-fn build_alpha4_k_commitments<S: Phase1SrsSource>(
+fn build_alpha4_k_commitments<S: AlphaXBasis>(
     source: &S,
     m_i: usize,
     msm_workspace: &mut MsmWorkspace,
@@ -714,7 +717,7 @@ fn build_alpha4_k_commitments<S: Phase1SrsSource>(
         .into_boxed_slice())
 }
 
-fn build_plain_last_lagrange_commitment<S: Phase1SrsSource>(
+fn build_plain_last_lagrange_commitment<S: AlphaXBasis>(
     source: &S,
     size: usize,
     msm_workspace: &mut MsmWorkspace,
@@ -726,7 +729,7 @@ fn build_plain_last_lagrange_commitment<S: Phase1SrsSource>(
     msm_workspace.msm(&scalars, &bases)
 }
 
-fn build_xy_powers_from_x_basis<S: Phase1SrsSource>(
+fn build_xy_powers_from_x_basis<S: AlphaXBasis>(
     source: &S,
     h_max: usize,
     y_pows: &[ScalarField],
@@ -823,41 +826,67 @@ fn process_prepare(
     }
     timer.log_step("sample y and prepare lagrange data");
 
-    println!("Loading phase-1 source...");
-    let phase1_source = match &config.phase1_source_mode {
-        Phase1SourceMode::Native => {
+    println!("Loading the alpha/X basis...");
+    let alpha_x_basis = match &config.alpha_x_basis_mode {
+        AlphaXBasisMode::Native => {
             let accumulator = format!("phase1_acc_{}.json", contributor_index);
-            Phase1Source::Accumulator(
-                AccumulatorSource::read_from_json(&format!("{}/{}", outfolder, accumulator))
+            AlphaXBasisSource::Accumulator(
+                AccumulatorAlphaXBasis::read_from_json(&format!("{}/{}", outfolder, accumulator))
                     .map_err(|source| MpcSetupError::Io {
-                        operation: "read phase-1 accumulator",
-                        path: PathBuf::from(format!("{}/{}", outfolder, accumulator)),
-                        source,
-                    })?,
+                    operation: "read native alpha/X accumulator",
+                    path: PathBuf::from(format!("{}/{}", outfolder, accumulator)),
+                    source,
+                })?,
             )
         }
-        Phase1SourceMode::DuskGroth16 => {
+        AlphaXBasisMode::DuskAdapted => {
             let dusk_raw_file =
                 config
                     .dusk_raw_file
                     .as_deref()
                     .ok_or_else(|| MpcSetupError::State {
                         phase: "phase-2 prepare",
-                        reason: "dusk_raw_file is required in dusk-groth16 mode".to_string(),
+                        reason: "dusk_raw_file is required for the Dusk adaptor".to_string(),
                     })?;
-            let tokamak_n = std::cmp::max(n, m_i);
-            Phase1Source::DuskGroth16(
-                DuskGroth16Source::read_from_file(dusk_raw_file, tokamak_n).map_err(|source| {
-                    MpcSetupError::Io {
-                        operation: "read Dusk Groth16 raw PoT file",
-                        path: PathBuf::from(dusk_raw_file),
-                        source,
-                    }
+            let monomial_layout =
+                MonomialLayout::derive(&shape).map_err(|error| MpcSetupError::State {
+                    phase: "phase-2 prepare",
+                    reason: error.to_string(),
+                })?;
+            let layout =
+                monomial_layout
+                    .dusk_adaptor_layout()
+                    .map_err(|error| MpcSetupError::State {
+                        phase: "phase-2 prepare",
+                        reason: error.to_string(),
+                    })?;
+            let capacity_digest =
+                MonomialLayout::capacity_digest(&shape).map_err(|error| MpcSetupError::State {
+                    phase: "phase-2 prepare",
+                    reason: error.to_string(),
+                })?;
+            let layout_digest = monomial_layout
+                .digest()
+                .map_err(|error| MpcSetupError::State {
+                    phase: "phase-2 prepare",
+                    reason: error.to_string(),
+                })?;
+            AlphaXBasisSource::DuskAdapted(
+                DuskTauAdaptor::adapt_pinned_file(
+                    dusk_raw_file,
+                    capacity_digest,
+                    layout_digest,
+                    layout,
+                )
+                .map_err(|source| MpcSetupError::Io {
+                    operation: "adapt pinned Dusk tau artifact",
+                    path: PathBuf::from(dusk_raw_file),
+                    source,
                 })?,
             )
         }
     };
-    timer.log_step("load phase-1 source");
+    timer.log_step("load alpha/X basis");
 
     let sigma_trusted = if config.is_checking {
         ensure_testing_mode("phase2_prepare --is-checking");
@@ -880,8 +909,8 @@ fn process_prepare(
     };
     timer.log_step("load trusted reference when checking");
 
-    let g1 = phase1_source.g1();
-    let g2 = phase1_source.g2();
+    let g1 = alpha_x_basis.g1();
+    let g2 = alpha_x_basis.g2();
     let mut msm_workspace = MsmWorkspace::new(1)?;
     let mut ntt_workspace = NttWorkspace::new(n.max(1))?;
 
@@ -925,17 +954,17 @@ fn process_prepare(
     let o_commitments = build_x_only_commitments(
         &coeff_views,
         &assigned_infos,
-        &phase1_source,
+        &alpha_x_basis,
         &setup_params,
         &mut msm_workspace,
     )?;
     let k_commitments = if compute_shared_terms {
-        build_alpha4_k_commitments(&phase1_source, m_i, &mut msm_workspace)?
+        build_alpha4_k_commitments(&alpha_x_basis, m_i, &mut msm_workspace)?
     } else {
         vec![G1serde::zero(); m_i].into_boxed_slice()
     };
     let m_commitments = if compute_shared_terms {
-        build_plain_lagrange_commitments(&phase1_source, l_free, &mut msm_workspace)?
+        build_plain_lagrange_commitments(&alpha_x_basis, l_free, &mut msm_workspace)?
     } else {
         Vec::new().into_boxed_slice()
     };
@@ -993,8 +1022,8 @@ fn process_prepare(
     if compute_shared_terms {
         for k in 1..=3 {
             for h in 0..=2 {
-                let alphak_xnh = phase1_source.alphax_g1(k, n + h);
-                let alphak_xh = phase1_source.alphax_g1(k, h);
+                let alphak_xnh = alpha_x_basis.alphax_g1(k, n + h);
+                let alphak_xh = alpha_x_basis.alphax_g1(k, h);
                 delta_inv_alphak_xh_tx[k - 1][h] = alphak_xnh.sub(alphak_xh);
             }
         }
@@ -1004,9 +1033,9 @@ fn process_prepare(
     let mut delta_inv_alpha4_xj_tx = vec![G1serde::zero(); 2].into_boxed_slice();
     if compute_shared_terms {
         for j in 0..=1 {
-            delta_inv_alpha4_xj_tx[j] = phase1_source.alphax_g1(4, m_i + j);
+            delta_inv_alpha4_xj_tx[j] = alpha_x_basis.alphax_g1(4, m_i + j);
             delta_inv_alpha4_xj_tx[j] =
-                delta_inv_alpha4_xj_tx[j].sub(phase1_source.alphax_g1(4, j));
+                delta_inv_alpha4_xj_tx[j].sub(alpha_x_basis.alphax_g1(4, j));
         }
     }
 
@@ -1016,7 +1045,7 @@ fn process_prepare(
     if compute_shared_terms {
         let t_y = phase2_y.pow(s_max) - ScalarField::one();
         for k in 1..=4 {
-            let alpha_k = phase1_source.alphax_g1(k, 0);
+            let alpha_k = alpha_x_basis.alphax_g1(k, 0);
             for i in 0..=2 {
                 delta_inv_alphak_yi_ty[k - 1][i] = alpha_k * (y_pows[i] * t_y);
             }
@@ -1025,12 +1054,12 @@ fn process_prepare(
 
     let h_max = std::cmp::max(2 * n, 2 * m_i);
     let xy_powers = if compute_shared_terms {
-        build_xy_powers_from_x_basis(&phase1_source, h_max, &y_pows)
+        build_xy_powers_from_x_basis(&alpha_x_basis, h_max, &y_pows)
     } else {
         Vec::new().into_boxed_slice()
     };
     let lagrange_kl = if compute_shared_terms {
-        build_plain_last_lagrange_commitment(&phase1_source, m_i, &mut msm_workspace)?
+        build_plain_last_lagrange_commitment(&alpha_x_basis, m_i, &mut msm_workspace)?
             * l_evaled_vec[s_max - 1]
     } else {
         G1serde::zero()
@@ -1071,13 +1100,13 @@ fn process_prepare(
         contributor_index: 0,
         gamma: g1,
         public_y_hex: Some(scalar_to_hex(&phase2_y)),
-        phase1_source_provenance: Some(phase1_source.provenance()),
+        phase1_source_provenance: Some(alpha_x_basis.provenance()),
         sigma: Sigma {
             G: g1,
             H: g2,
             sigma_1: Sigma1 {
                 xy_powers,
-                x: phase1_source.alphax_g1(0, 1),
+                x: alpha_x_basis.alphax_g1(0, 1),
                 y: g1 * phase2_y,
                 delta: g1,
                 eta: g1,
@@ -1089,14 +1118,14 @@ fn process_prepare(
                 delta_inv_alphak_yi_ty,
             },
             sigma_2: Sigma2 {
-                alpha: phase1_source.alpha_g2(1),
-                alpha2: phase1_source.alpha_g2(2),
-                alpha3: phase1_source.alpha_g2(3),
-                alpha4: phase1_source.alpha_g2(4),
+                alpha: alpha_x_basis.alpha_g2(1),
+                alpha2: alpha_x_basis.alpha_g2(2),
+                alpha3: alpha_x_basis.alpha_g2(3),
+                alpha4: alpha_x_basis.alpha_g2(4),
                 gamma: g2,
                 delta: g2,
                 eta: g2,
-                x: phase1_source.x_g2(1),
+                x: alpha_x_basis.x_g2(1),
                 y: g2 * phase2_y,
             },
             lagrange_KL: lagrange_kl,
