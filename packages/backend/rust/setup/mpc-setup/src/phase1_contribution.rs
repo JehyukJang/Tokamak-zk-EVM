@@ -128,10 +128,15 @@ pub fn verify_phase1_transition(
 ) -> Result<(), Phase1ContributionError> {
     validate_artifact(previous)?;
     validate_artifact(&current.artifact)?;
+    let expected_sequence = previous
+        .state
+        .sequence
+        .checked_add(1)
+        .ok_or(Phase1ContributionError::InvalidPreviousState)?;
     if current.artifact.layout != previous.layout
         || current.artifact.state.phase != Phase::Phase1
         || current.artifact.state.contribution_profile != previous.state.contribution_profile
-        || current.artifact.state.sequence != previous.state.sequence + 1
+        || current.artifact.state.sequence != expected_sequence
         || current.artifact.state.previous_state_digest.as_ref() != Some(&previous.state.digest()?)
         || current.artifact.state.status != StateStatus::Contributed
     {
@@ -180,11 +185,13 @@ pub fn verify_phase1_transition(
         &current_digest,
         b"tokamak-phase1-universal-tau-consistency-v1",
     );
-    if !verify_universal_tau_consistency(
-        &current.artifact.points,
-        &current.artifact.layout,
-        challenge,
-    ) {
+    if !verify_universal_tau_consistency(&previous.points, &previous.layout, challenge)
+        || !verify_universal_tau_consistency(
+            &current.artifact.points,
+            &current.artifact.layout,
+            challenge,
+        )
+    {
         return Err(Phase1ContributionError::AlgebraicConsistency);
     }
     Ok(())
@@ -573,11 +580,11 @@ fn coordinate(flat: usize, dimensions: &[usize], axis: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::validate_state_selection;
-    use libs::utils::SetupShape;
     use crate::accumulator::Accumulator;
+    use crate::protocol::validate_state_selection;
     use crate::protocol::SourceProvenance;
     use crate::utils::{icicle_g1_generator, icicle_g2_generator, RandomGenerator, RandomStrategy};
+    use libs::utils::SetupShape;
 
     fn shape() -> SetupShape {
         SetupShape {
@@ -697,15 +704,24 @@ mod tests {
             ContributionEntropyMode::Random,
         )
         .unwrap();
-        assert_eq!(contribution.artifact.points.alpha_g1, prepared.points.alpha_g1);
-        assert_eq!(contribution.artifact.points.alpha_g2, prepared.points.alpha_g2);
+        assert_eq!(
+            contribution.artifact.points.alpha_g1,
+            prepared.points.alpha_g1
+        );
+        assert_eq!(
+            contribution.artifact.points.alpha_g2,
+            prepared.points.alpha_g2
+        );
         assert_eq!(contribution.artifact.points.x_g1, prepared.points.x_g1);
         assert_eq!(contribution.artifact.points.x_g2, prepared.points.x_g2);
         assert_eq!(
             contribution.artifact.points.alpha_x_g1,
             prepared.points.alpha_x_g1
         );
-        assert_ne!(contribution.artifact.points.y_g1[1], prepared.points.y_g1[1]);
+        assert_ne!(
+            contribution.artifact.points.y_g1[1],
+            prepared.points.y_g1[1]
+        );
         verify_phase1_transition(&prepared, &contribution).unwrap();
     }
 
@@ -718,12 +734,7 @@ mod tests {
             vec![(TrapdoorParameter::Y, minus_one)],
         )
         .unwrap();
-        assert!(contribute_phase1(
-            &prepared,
-            &shares,
-            ContributionEntropyMode::Testing
-        )
-        .is_err());
+        assert!(contribute_phase1(&prepared, &shares, ContributionEntropyMode::Testing).is_err());
     }
 
     #[test]
@@ -762,10 +773,7 @@ mod tests {
             }
         }
         for a in 1..genesis.layout.x_grid_len {
-            assert_eq!(
-                current.artifact.points.x_g1[a],
-                legacy_current.get_x_g1(a)
-            );
+            assert_eq!(current.artifact.points.x_g1[a], legacy_current.get_x_g1(a));
         }
         assert_eq!(current.artifact.points.x_g2[1], legacy_current.get_x_g2(1));
     }
