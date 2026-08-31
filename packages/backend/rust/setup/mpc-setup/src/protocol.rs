@@ -569,6 +569,83 @@ impl CeremonyState {
         Ok(value)
     }
 
+    pub fn new_phase2_prepared(
+        selected_phase1: &Self,
+        circuit_digest: Sha256Digest,
+        payload: CircuitSigma,
+    ) -> Result<Self, ProtocolError> {
+        selected_phase1.validate()?;
+        if selected_phase1.phase != Phase::Phase1
+            || selected_phase1.status != StateStatus::Contributed
+        {
+            return invalid(
+                "state.previousPhaseDigest",
+                "Phase 2 preparation requires a contributed Phase 1 state",
+            );
+        }
+        let value = Self {
+            document_kind: CEREMONY_STATE_KIND.to_string(),
+            contract_version: CONTRACT_VERSION,
+            protocol_version: PROTOCOL_VERSION.to_string(),
+            ceremony_id: selected_phase1.ceremony_id.clone(),
+            phase: Phase::Phase2,
+            contribution_profile: ContributionProfile::CircuitGammaDeltaEta,
+            sequence: 0,
+            status: StateStatus::Prepared,
+            previous_state_digest: None,
+            previous_phase_digest: Some(selected_phase1.digest()?),
+            capacity_digest: selected_phase1.capacity_digest.clone(),
+            layout_digest: selected_phase1.layout_digest.clone(),
+            circuit_digest: Some(circuit_digest),
+            source_provenance: selected_phase1.source_provenance.clone(),
+            payload: PhasePayload::Phase2(payload),
+        };
+        value.validate()?;
+        Ok(value)
+    }
+
+    pub fn next_contributed_phase2(
+        previous: &Self,
+        payload: CircuitSigma,
+    ) -> Result<Self, ProtocolError> {
+        previous.validate()?;
+        if previous.phase != Phase::Phase2
+            || previous.contribution_profile != ContributionProfile::CircuitGammaDeltaEta
+        {
+            return invalid(
+                "state.phase",
+                "Phase 2 contribution requires a Phase 2 state",
+            );
+        }
+        let sequence =
+            previous
+                .sequence
+                .checked_add(1)
+                .ok_or_else(|| ProtocolError::InvalidField {
+                    field: "state.sequence",
+                    reason: "sequence overflow".to_string(),
+                })?;
+        let value = Self {
+            document_kind: CEREMONY_STATE_KIND.to_string(),
+            contract_version: CONTRACT_VERSION,
+            protocol_version: PROTOCOL_VERSION.to_string(),
+            ceremony_id: previous.ceremony_id.clone(),
+            phase: Phase::Phase2,
+            contribution_profile: ContributionProfile::CircuitGammaDeltaEta,
+            sequence,
+            status: StateStatus::Contributed,
+            previous_state_digest: Some(previous.digest()?),
+            previous_phase_digest: previous.previous_phase_digest.clone(),
+            capacity_digest: previous.capacity_digest.clone(),
+            layout_digest: previous.layout_digest.clone(),
+            circuit_digest: previous.circuit_digest.clone(),
+            source_provenance: previous.source_provenance.clone(),
+            payload: PhasePayload::Phase2(payload),
+        };
+        value.validate()?;
+        Ok(value)
+    }
+
     pub fn validate(&self) -> Result<(), ProtocolError> {
         document_header(
             &self.document_kind,

@@ -295,7 +295,10 @@ fn scale_g1_matrix(rows: &[Box<[G1serde]>], scalar: ScalarField) -> Box<[Box<[G1
         .into_boxed_slice()
 }
 
-fn compute_new_sigma(rng: &mut RandomGenerator, sigma_old: &SigmaV2) -> (SigmaV2, Phase2Proof) {
+pub(crate) fn compute_new_sigma(
+    rng: &mut RandomGenerator,
+    sigma_old: &SigmaV2,
+) -> (SigmaV2, Phase2Proof) {
     let delta = rng.next_random();
     let gamma = rng.next_random();
     let eta = rng.next_random();

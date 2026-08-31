@@ -6,8 +6,13 @@ use crate::alpha_x_basis::{
 };
 use crate::ensure_testing_mode;
 use crate::flows::MpcSetupError;
+use crate::phase2_circuit::{
+    lagrange_coefficients, prepare_phase2_circuit, CircuitPreparationInput, CircuitSigmaArtifact,
+    WirePolynomial,
+};
+use crate::protocol::{ContributionReceipt, Sha256Digest};
 use crate::sigma::{save_contributor_info, SigmaV2, HASH_BYTES_LEN};
-use crate::universal_tau::MonomialLayout;
+use crate::universal_tau::{MonomialLayout, UniversalTauArtifact};
 use crate::utils::{
     initialize_random_generator_with_seed_input, select_cuda_or_cpu, Mode, StepTimer,
 };
@@ -1249,6 +1254,171 @@ fn load_coeff_view(
         ntt_workspace,
     )?;
     Ok(coeff_view)
+}
+
+pub fn prepare_selected_phase1_from_qap(
+    selected_phase1: &UniversalTauArtifact,
+    phase1_receipts: &[ContributionReceipt],
+    qap_path: &Path,
+    circuit_digest: Sha256Digest,
+) -> Result<CircuitSigmaArtifact, MpcSetupError> {
+    let setup_path = qap_path.join("setupParams.json");
+    let setup_params =
+        SetupParams::read_from_json(setup_path.clone()).map_err(|source| MpcSetupError::Io {
+            operation: "read setup parameters",
+            path: setup_path.clone(),
+            source,
+        })?;
+    let shape = try_setup_shape(&setup_params, &setup_path)?;
+    try_validate_setup_shape(&shape, &setup_path)?;
+    try_validate_public_wire_size(shape.l_free, &setup_path)?;
+    let layout = MonomialLayout::derive(&shape).map_err(|error| MpcSetupError::State {
+        phase: "phase-2 circuit preparation",
+        reason: error.to_string(),
+    })?;
+    if layout != selected_phase1.layout {
+        return Err(MpcSetupError::State {
+            phase: "phase-2 circuit preparation",
+            reason: "QAP setup shape differs from the selected Phase 1 layout".to_string(),
+        });
+    }
+    try_init_ntt_domain(trusted_setup_ntt_domain_size(&shape))?;
+
+    let subcircuit_path = qap_path.join("subcircuitInfo.json");
+    let subcircuit_infos =
+        SubcircuitInfo::read_box_from_json(subcircuit_path.clone()).map_err(|source| {
+            MpcSetupError::Io {
+                operation: "read subcircuit information",
+                path: subcircuit_path,
+                source,
+            }
+        })?;
+    let global_wires_path = qap_path.join("globalWireList.json");
+    let global_wires =
+        read_global_wires(&global_wires_path).map_err(|source| MpcSetupError::Io {
+            operation: "read global wire list",
+            path: global_wires_path,
+            source,
+        })?;
+    let public_layout = PublicWireLayout::derive(&setup_params, &global_wires, &subcircuit_infos)
+        .map_err(|error| MpcSetupError::State {
+        phase: "phase-2 circuit preparation",
+        reason: format!("invalid public wire layout: {error}"),
+    })?;
+
+    let mut ntt_workspace = NttWorkspace::new(setup_params.n.max(1))?;
+    let mut coefficient_views = Vec::with_capacity(subcircuit_infos.len());
+    for (index, subcircuit_info) in subcircuit_infos.iter().enumerate() {
+        coefficient_views.push(load_coeff_view(
+            &qap_path.join(format!("r1cs/subcircuit{index}.r1cs")),
+            &setup_params,
+            subcircuit_info,
+            &mut ntt_workspace,
+        )?);
+    }
+
+    let mut wire_polynomials = (0..setup_params.m_D)
+        .map(|_| WirePolynomial {
+            alpha_abc_x_coefficients: std::array::from_fn(|_| {
+                vec![ScalarField::zero(); setup_params.n]
+            }),
+        })
+        .collect::<Vec<_>>();
+    for (view, subcircuit_info) in coefficient_views.iter().zip(subcircuit_infos.iter()) {
+        accumulate_component_rows(
+            &view.a,
+            &subcircuit_info.flattenMap,
+            &mut wire_polynomials,
+            0,
+        )?;
+        accumulate_component_rows(
+            &view.b,
+            &subcircuit_info.flattenMap,
+            &mut wire_polynomials,
+            1,
+        )?;
+        accumulate_component_rows(
+            &view.c,
+            &subcircuit_info.flattenMap,
+            &mut wire_polynomials,
+            2,
+        )?;
+    }
+
+    let public_placement_phases = (0..setup_params.l)
+        .map(|index| public_layout.placement_phase_for_public_wire(index))
+        .collect::<Vec<_>>();
+    let free_lagrange = if setup_params.l_free == 0 {
+        Vec::new()
+    } else {
+        lagrange_coefficients(setup_params.l_free).map_err(|error| MpcSetupError::State {
+            phase: "phase-2 circuit preparation",
+            reason: error.to_string(),
+        })?
+    };
+    let public_m_x_coefficients = (0..setup_params.l)
+        .map(|index| {
+            if public_layout.is_free_public_index(index) {
+                free_lagrange[index].clone()
+            } else {
+                Vec::new()
+            }
+        })
+        .collect::<Vec<_>>();
+    let intermediate_k_x_coefficients =
+        lagrange_coefficients(shape.m_i).map_err(|error| MpcSetupError::State {
+            phase: "phase-2 circuit preparation",
+            reason: error.to_string(),
+        })?;
+
+    prepare_phase2_circuit(
+        selected_phase1,
+        phase1_receipts,
+        &CircuitPreparationInput {
+            circuit_digest,
+            wire_polynomials,
+            public_placement_phases,
+            public_m_x_coefficients,
+            intermediate_k_x_coefficients,
+        },
+    )
+    .map_err(|error| MpcSetupError::State {
+        phase: "phase-2 circuit preparation",
+        reason: error.to_string(),
+    })
+}
+
+fn accumulate_component_rows(
+    matrix: &ActiveCoeffMatrix,
+    flatten_map: &[usize],
+    wire_polynomials: &mut [WirePolynomial],
+    component: usize,
+) -> Result<(), MpcSetupError> {
+    for (local_index, global_index) in flatten_map.iter().copied().enumerate() {
+        let Some(coefficients) = matrix.row(local_index) else {
+            continue;
+        };
+        let target =
+            wire_polynomials
+                .get_mut(global_index)
+                .ok_or_else(|| MpcSetupError::State {
+                    phase: "phase-2 circuit preparation",
+                    reason: format!("flattenMap references absent global wire {global_index}"),
+                })?;
+        if coefficients.len() != target.alpha_abc_x_coefficients[component].len() {
+            return Err(MpcSetupError::State {
+                phase: "phase-2 circuit preparation",
+                reason: "R1CS coefficient row length differs from n".to_string(),
+            });
+        }
+        for (slot, coefficient) in target.alpha_abc_x_coefficients[component]
+            .iter_mut()
+            .zip(coefficients)
+        {
+            *slot = *slot + *coefficient;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

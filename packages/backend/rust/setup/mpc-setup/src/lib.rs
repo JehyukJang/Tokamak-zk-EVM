@@ -30,6 +30,8 @@ mod contributor;
 mod drive_upload;
 mod flows;
 pub mod phase1_contribution;
+pub mod phase2_circuit;
+pub mod phase2_contribution;
 pub mod protocol;
 pub mod universal_tau;
 
@@ -37,7 +39,7 @@ mod sigma;
 mod versioning;
 
 pub use flows::{
-    run_dusk_backed_ceremony, run_dusk_backed_mpc_setup, run_dusk_backed_publication,
-    run_native_mpc_setup, DuskBackedMpcSetupConfig, DuskPublicationConfig, MpcSetupError,
-    NativeMpcSetupConfig,
+    phase2_prepare::prepare_selected_phase1_from_qap, run_dusk_backed_ceremony,
+    run_dusk_backed_mpc_setup, run_dusk_backed_publication, run_native_mpc_setup,
+    DuskBackedMpcSetupConfig, DuskPublicationConfig, MpcSetupError, NativeMpcSetupConfig,
 };
