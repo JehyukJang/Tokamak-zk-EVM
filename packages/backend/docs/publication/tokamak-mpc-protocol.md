@@ -31,10 +31,11 @@ claims below are limited accordingly.
 
 A succinct non-interactive argument of knowledge (SNARK) allows a prover to
 convince a verifier that a computation has a valid witness while sending a proof
-much smaller than the computation itself. Preprocessing SNARKs such as Groth16 obtain
-particularly small proofs and efficient verification by generating a reference
-string before proving begins [1]. Correct setup is therefore part of the system's
-security and efficiency foundation, rather than an incidental deployment step.
+much smaller than the computation itself. Groth's 2016 pairing-based construction,
+commonly called Groth16 [1], is a preprocessing SNARK that obtains particularly
+small proofs and efficient verification from a reference string generated before
+proving begins. Correct setup is therefore part of the system's security and
+efficiency foundation, rather than an incidental deployment step.
 
 The trusted-setup challenge is that reference-string generation may evaluate
 structured expressions at hidden values. Malicious selection or later recovery
