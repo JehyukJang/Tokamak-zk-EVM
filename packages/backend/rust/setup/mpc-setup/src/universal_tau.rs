@@ -434,6 +434,10 @@ impl UniversalTauPoints {
         }
         if self.g1 == G1serde::zero()
             || self.g2 == G2serde::zero()
+            || self.all_g1_points().any(|point| point == G1serde::zero())
+            || self.alpha_g2.iter().any(|point| *point == G2serde::zero())
+            || self.x_g2.iter().any(|point| *point == G2serde::zero())
+            || self.y_g2.iter().any(|point| *point == G2serde::zero())
             || self.alpha_g1[0] != self.g1
             || self.alpha_g2[0] != self.g2
             || self.x_g1[0] != self.g1
@@ -442,7 +446,8 @@ impl UniversalTauPoints {
             || self.y_g2[0] != self.g2
         {
             return Err(UniversalTauError::InvalidPayload(
-                "generator boundaries are inconsistent or at infinity".to_string(),
+                "universal tau contains an inconsistent generator boundary or point at infinity"
+                    .to_string(),
             ));
         }
         Ok(())
@@ -776,8 +781,8 @@ mod tests {
     use super::*;
     use crate::protocol::{validate_state_selection, StateStatus};
     use crate::protocol::{DuskExponentMapping, PointChunkDescriptor};
-    use crate::sigma::DuskSourceProvenance;
     use icicle_bls12_381::curve::G1Affine;
+    use libs::crs_provenance::DuskSourceProvenance;
 
     struct ConstantAlphaXBasis;
 

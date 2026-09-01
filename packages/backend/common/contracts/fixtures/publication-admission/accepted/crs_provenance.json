@@ -28,6 +28,8 @@
       "transcriptConsistencyVerified": true
     }
   },
+  "ceremonyProtocolVersion": "tokamak-mpc-2phase-v1",
+  "ceremonyTranscriptSha256": "6666666666666666666666666666666666666666666666666666666666666666",
   "combinedSigmaSha256": "5acb5aef10dfabc19307ada35416bfa8ec7ec7a406b6a4eb1d27d689649701b8",
   "sigmaPreprocessSha256": "980b1bf05d4894c5cac0c1eb3a146aaa332e3aac667461d16467abfaa25d3d6a",
   "sigmaVerifySha256": "ac4ae914b5eed5e7bfbe318cdef12d3b2cb286bb8d395cb85fe67087e5035593"

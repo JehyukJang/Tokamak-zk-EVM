@@ -51,7 +51,7 @@ impl Sha256Digest {
         &self.0
     }
 
-    fn validate(&self, field: &'static str) -> Result<(), ProtocolError> {
+    pub(crate) fn validate(&self, field: &'static str) -> Result<(), ProtocolError> {
         let Some(hex) = self.0.strip_prefix("sha256:") else {
             return invalid(field, "must start with sha256:");
         };

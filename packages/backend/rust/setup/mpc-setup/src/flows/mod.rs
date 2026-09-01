@@ -1,9 +1,8 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 use crate::drive_upload::{preflight_drive_upload, publish_output_archive, DriveUploadError};
-use crate::flows::phase1_next_contributor::ContributorError;
 use libs::cli::CliDiagnostic;
 use libs::errors::ArtifactError;
 use libs::errors::CrsError;
@@ -23,8 +22,6 @@ pub enum MpcSetupError {
     #[error("production Dusk MPC preflight failed: {reason}")]
     ProductionPreflight { reason: String },
     #[error(transparent)]
-    Contributor(#[from] ContributorError),
-    #[error(transparent)]
     Artifact(#[from] ArtifactError),
     #[error(transparent)]
     Crs(#[from] CrsError),
@@ -32,6 +29,14 @@ pub enum MpcSetupError {
     Device(#[from] DeviceError),
     #[error(transparent)]
     Publication(#[from] DriveUploadError),
+    #[error(transparent)]
+    CeremonyWorkspace(#[from] crate::ceremony_workspace::CeremonyWorkspaceError),
+    #[error(transparent)]
+    Transcript(#[from] crate::transcript::TranscriptError),
+    #[error(transparent)]
+    StateBundle(#[from] crate::state_bundle::StateBundleError),
+    #[error(transparent)]
+    Protocol(#[from] crate::protocol::ProtocolError),
 }
 
 impl CliDiagnostic for MpcSetupError {
@@ -46,9 +51,6 @@ impl CliDiagnostic for MpcSetupError {
             Self::ProductionPreflight { .. } => {
                 "Build the composite command with the production npm feature and configure Google Drive publication before retrying."
             }
-            Self::Contributor(_) => {
-                "Inspect the previous ceremony contribution and its artifact files before retrying."
-            }
             Self::Artifact(_) => {
                 "Regenerate or select the matching QAP artifacts before restarting the ceremony."
             }
@@ -57,15 +59,18 @@ impl CliDiagnostic for MpcSetupError {
             Self::Publication(_) => {
                 "Check release metadata and Drive publication configuration before retrying publication."
             }
+            Self::CeremonyWorkspace(_)
+            | Self::Transcript(_)
+            | Self::StateBundle(_)
+            | Self::Protocol(_) => {
+                "Use a complete verified two-phase ceremony workspace and reject legacy intermediates."
+            }
         }
     }
 }
 
-pub mod phase1_initialize;
-pub mod phase1_next_contributor;
-pub mod phase2_gen_files;
-pub mod phase2_next_contributor;
-pub mod phase2_prepare;
+pub mod final_artifacts;
+pub mod qap_circuit;
 
 #[derive(Debug, Clone)]
 pub struct NativeMpcSetupConfig {
@@ -93,30 +98,13 @@ pub struct DuskPublicationConfig {
 
 pub fn run_native_mpc_setup(config: &NativeMpcSetupConfig) -> Result<(), MpcSetupError> {
     let qap_path = canonicalize_existing_path(&config.qap_path)?;
-    ensure_directory(&config.output)?;
-    ensure_directory(&config.intermediate)?;
-
-    phase1_initialize::run(&phase1_initialize::Phase1InitializeConfig {
-        qap_path: qap_path.clone(),
-        setup_params_file: "setupParams.json".to_string(),
-        outfolder: config.intermediate.clone(),
-    })?;
-
-    phase1_next_contributor::run(&phase1_next_contributor::Phase1NextContributorConfig {
-        outfolder: config.intermediate.clone(),
-        beacon_mode: config.beacon_mode,
-        contributor_index: 1,
-        random_seed_input: derive_stage_seed_input(config.seed_input.as_deref(), "phase1-next"),
-    })?;
-
-    run_single_contributor_phase2(
-        &config.intermediate,
-        &config.output,
+    run_two_phase_single_contributor(
+        &qap_path,
+        Path::new(&config.intermediate),
+        Path::new(&config.output),
         config.beacon_mode,
-        Phase2SourceConfig::Native {
-            qap_path: qap_path.clone(),
-        },
         config.seed_input.as_deref(),
+        CeremonyRoute::Native,
     )
 }
 
@@ -149,19 +137,13 @@ fn ensure_composite_dusk_build_policy() -> Result<(), MpcSetupError> {
 
 pub fn run_dusk_backed_ceremony(config: &DuskBackedMpcSetupConfig) -> Result<(), MpcSetupError> {
     let qap_path = canonicalize_existing_path(&config.qap_path)?;
-    ensure_directory(&config.output)?;
-    ensure_directory(&config.intermediate)?;
-    let dusk_raw_file = format!("{}/dusk.response", config.intermediate);
-
-    run_single_contributor_phase2(
-        &config.intermediate,
-        &config.output,
+    run_two_phase_single_contributor(
+        &qap_path,
+        Path::new(&config.intermediate),
+        Path::new(&config.output),
         config.beacon_mode,
-        Phase2SourceConfig::DuskGroth16 {
-            qap_path,
-            dusk_raw_file,
-        },
         config.seed_input.as_deref(),
+        CeremonyRoute::Dusk,
     )
 }
 
@@ -176,65 +158,113 @@ pub fn run_dusk_backed_publication(config: &DuskPublicationConfig) -> Result<(),
     Ok(())
 }
 
-enum Phase2SourceConfig {
-    Native {
-        qap_path: PathBuf,
-    },
-    DuskGroth16 {
-        qap_path: PathBuf,
-        dusk_raw_file: String,
-    },
+#[derive(Clone, Copy)]
+enum CeremonyRoute {
+    Native,
+    Dusk,
 }
 
-fn run_single_contributor_phase2(
-    intermediate: &str,
-    output: &str,
+fn run_two_phase_single_contributor(
+    qap_path: &Path,
+    intermediate: &Path,
+    output: &Path,
     beacon_mode: bool,
-    source: Phase2SourceConfig,
     master_seed_input: Option<&str>,
+    route: CeremonyRoute,
 ) -> Result<(), MpcSetupError> {
-    let (qap_path, alpha_x_basis_mode, dusk_raw_file, prepare_contributor_index) = match source {
-        Phase2SourceConfig::Native { qap_path } => {
-            (qap_path, phase2_prepare::AlphaXBasisMode::Native, None, 1)
+    if beacon_mode && master_seed_input.is_none() {
+        return Err(MpcSetupError::State {
+            phase: "two-phase ceremony preflight",
+            reason: "beacon mode requires seed input and remains non-qualifying".to_string(),
+        });
+    }
+    fs::create_dir_all(intermediate).map_err(|source| MpcSetupError::Io {
+        operation: "create intermediate directory",
+        path: intermediate.to_path_buf(),
+        source,
+    })?;
+    let workspace = intermediate.join("ceremony-workspace");
+    let staging = tempfile::Builder::new()
+        .prefix(".two-phase-staging-")
+        .tempdir_in(intermediate)
+        .map_err(|source| MpcSetupError::Io {
+            operation: "create ceremony staging directory",
+            path: intermediate.to_path_buf(),
+            source,
+        })?;
+    let ceremony_id = format!(
+        "tokamak-{}-{}-{}",
+        match route {
+            CeremonyRoute::Native => "native",
+            CeremonyRoute::Dusk => "dusk",
+        },
+        chrono::Utc::now().timestamp_micros(),
+        std::process::id()
+    );
+    let initial = staging.path().join("phase1-initial");
+    let adapted_tau = match route {
+        CeremonyRoute::Native => {
+            crate::operator::initialize_native(&ceremony_id, qap_path, &initial)
+                .map_err(operator_state_error)?;
+            None
         }
-        Phase2SourceConfig::DuskGroth16 {
-            qap_path,
-            dusk_raw_file,
-        } => (
-            qap_path,
-            phase2_prepare::AlphaXBasisMode::DuskAdapted,
-            Some(dusk_raw_file),
-            0,
-        ),
+        CeremonyRoute::Dusk => {
+            let adapted = intermediate.join("adapted-tau");
+            let raw = intermediate.join("dusk.response");
+            crate::operator::adapt_dusk(qap_path, &raw, &adapted).map_err(operator_state_error)?;
+            crate::operator::prepare_dusk_phase1(&ceremony_id, qap_path, &adapted, &initial)
+                .map_err(operator_state_error)?;
+            Some(adapted)
+        }
     };
+    crate::ceremony_workspace::initialize_workspace(&workspace, &initial)?;
 
-    phase2_prepare::run(&phase2_prepare::Phase2PrepareConfig {
-        qap_path,
-        outfolder: intermediate.to_string(),
-        contributor_index: prepare_contributor_index,
-        is_checking: false,
-        part_no: 0,
-        total_part: 1,
-        merge_parts: false,
+    let phase1_contributed = staging.path().join("phase1-contributed");
+    crate::participant::run_contribute(&crate::participant::ContributeConfig {
+        expected_phase: crate::protocol::Phase::Phase1,
+        input: initial,
+        output: phase1_contributed.clone(),
+        seed_input: derive_stage_seed_input(master_seed_input, "phase1-contribution"),
         beacon_mode,
-        alpha_x_basis_mode,
-        dusk_raw_file,
-        y_hex: None,
-        random_seed_input: derive_stage_seed_input(master_seed_input, "phase2-prepare"),
-    })?;
-
-    phase2_next_contributor::run(&phase2_next_contributor::Phase2NextContributorConfig {
-        outfolder: intermediate.to_string(),
-        beacon_mode,
-        contributor_index: 1,
-        random_seed_input: derive_stage_seed_input(master_seed_input, "phase2-next"),
-    })?;
-
-    phase2_gen_files::run(&phase2_gen_files::Phase2GenFilesConfig {
-        intermediate: intermediate.to_string(),
-        output: output.to_string(),
-        contributor_index: 1,
     })
+    .map_err(participant_state_error)?;
+    crate::ceremony_workspace::append_bundle(&workspace, &phase1_contributed)?;
+
+    let phase2_prepared = staging.path().join("phase2-prepared");
+    crate::operator::prepare_circuit(&workspace, qap_path, &phase2_prepared)
+        .map_err(operator_state_error)?;
+    crate::ceremony_workspace::append_bundle(&workspace, &phase2_prepared)?;
+
+    let phase2_contributed = staging.path().join("phase2-contributed");
+    crate::participant::run_contribute(&crate::participant::ContributeConfig {
+        expected_phase: crate::protocol::Phase::Phase2,
+        input: phase2_prepared,
+        output: phase2_contributed.clone(),
+        seed_input: derive_stage_seed_input(master_seed_input, "phase2-contribution"),
+        beacon_mode,
+    })
+    .map_err(participant_state_error)?;
+    crate::ceremony_workspace::append_bundle(&workspace, &phase2_contributed)?;
+
+    final_artifacts::run_two_phase(&final_artifacts::TwoPhaseFinalConfig {
+        workspace,
+        output: output.to_path_buf(),
+        adapted_tau,
+    })
+}
+
+fn operator_state_error(error: crate::operator::OperatorError) -> MpcSetupError {
+    MpcSetupError::State {
+        phase: "two-phase operator action",
+        reason: error.to_string(),
+    }
+}
+
+fn participant_state_error(error: crate::participant::ParticipantError) -> MpcSetupError {
+    MpcSetupError::State {
+        phase: "two-phase participant action",
+        reason: error.to_string(),
+    }
 }
 
 fn derive_stage_seed_input(master_seed_input: Option<&str>, stage: &str) -> Option<String> {
@@ -244,14 +274,6 @@ fn derive_stage_seed_input(master_seed_input: Option<&str>, stage: &str) -> Opti
 fn canonicalize_existing_path(path: &str) -> Result<PathBuf, MpcSetupError> {
     fs::canonicalize(path).map_err(|source| MpcSetupError::Io {
         operation: "resolve QAP path",
-        path: PathBuf::from(path),
-        source,
-    })
-}
-
-fn ensure_directory(path: &str) -> Result<(), MpcSetupError> {
-    fs::create_dir_all(path).map_err(|source| MpcSetupError::Io {
-        operation: "create directory",
         path: PathBuf::from(path),
         source,
     })

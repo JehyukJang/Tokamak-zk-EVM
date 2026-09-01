@@ -8,7 +8,7 @@ const repositoryRoot = path.resolve(backendRoot, '..', '..');
 const requiredBoundaries = [
   ['CRS provenance JSON authority', 'common/contracts/crs-provenance-contract.json'],
   ['CRS provenance Rust representation', 'rust/libs/src/crs_provenance.rs'],
-  ['CRS provenance final writer', 'rust/setup/mpc-setup/src/flows/phase2_gen_files.rs'],
+  ['CRS provenance final writer', 'rust/setup/mpc-setup/src/flows/final_artifacts.rs'],
   ['CRS provenance algorithm ingress', 'rust/libs/src/subcircuit_library.rs'],
   ['CRS provenance publication admission', 'rust/libs/src/crs_publication_admission.rs'],
   ['CRS provenance workflow admission command', 'rust/libs/src/bin/check_crs_publication.rs'],

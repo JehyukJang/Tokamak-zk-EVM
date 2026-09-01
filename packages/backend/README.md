@@ -111,8 +111,9 @@ cargo run --locked -p trusted-setup -- \
 
 ### `native_mpc_setup`
 
-Runs Tokamak native phase 1 and phase 2, then emits the same final CRS layout used by
-`trusted-setup`.
+Runs Tokamak native Phase 1 contributions over alpha, X, and Y, fixes the
+circuit, runs the common Phase 2 gamma/delta/eta contribution, and emits the
+same final CRS layout used by `trusted-setup`.
 
 Release example:
 
@@ -124,9 +125,12 @@ cargo run --locked --release -p mpc-setup --bin native_mpc_setup -- \
 
 ### `dusk_backed_mpc_setup`
 
-Skips Tokamak phase 1, derives the phase-2 source from a pinned Dusk Groth16 raw powers-of-tau
-artifact, and then runs Tokamak phase 2. Ceremony and Google Drive publication are separate
-operations; only `publish` and the composite `run` require publication credentials.
+Verifies and adapts a pinned Dusk Groth16 powers-of-tau artifact into the
+Tokamak alpha/X basis. The adaptor is not a ceremony phase. Tokamak Phase 1
+then contributes Y, after which the route uses the same circuit-bound Phase 2
+gamma/delta/eta implementation as native mode. Ceremony and Google Drive
+publication are separate operations; only `publish` and the composite `run`
+require publication credentials.
 
 Create a publication-eligible CRS without opening or mutating Drive:
 

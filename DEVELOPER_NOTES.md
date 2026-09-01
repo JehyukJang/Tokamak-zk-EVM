@@ -93,14 +93,19 @@ dusk-backed setup flow is:
 
 ```bash
 cd packages/backend
-cargo run --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
+cargo run --locked --release -p mpc-setup --no-default-features \
+  --features production-npm-subcircuit-library --bin dusk_backed_mpc_setup -- \
+  ceremony \
   --intermediate ./setup/mpc-setup/output/dusk.intermediate \
   --output ./setup/mpc-setup/output/dusk.final
 ```
 
-The dusk-backed flow skips Tokamak phase 1, derives the phase-2 source from the pinned Dusk Groth16
-raw powers-of-tau artifact, runs Tokamak phase 2, writes the final CRS files, and publishes a zip
-archive when Google Drive publication is configured.
+The Dusk adaptor verifies the pinned Groth16 powers-of-tau artifact and reindexes
+its alpha/X basis. Tokamak Phase 1 then requires a Y contribution. After the
+circuit is fixed, Tokamak Phase 2 requires a gamma/delta/eta contribution. The
+`ceremony` command writes and verifies the local CRS without publishing it;
+`publish` uploads an existing eligible CRS, while `run` performs those two
+operations in order.
 
 Required `.env` keys for publication are documented in
 [`packages/backend/rust/setup/mpc-setup/README.md`](./packages/backend/rust/setup/mpc-setup/README.md):
@@ -119,7 +124,9 @@ The final output directory contains:
 Operators should preserve and publish `crs_provenance.json` with the CRS. It
 binds the CRS to the backend compatibility class, the canonical
 `sha256:`-prefixed subcircuit-library source digest, the pinned Dusk source
-metadata, and SHA-256 hashes of the final CRS files. Runtime
+metadata, the two-phase ceremony protocol, the SHA-256 of the canonical
+ceremony transcript retained with the intermediate workspace, and SHA-256
+hashes of the final CRS files. Runtime
 `build-metadata-{preprocess,prove,verify}.json` files independently record the
 same subcircuit source digest for CLI installation checks; they are not CRS
 archive members.

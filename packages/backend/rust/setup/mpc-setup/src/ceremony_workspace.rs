@@ -207,6 +207,15 @@ pub fn selected_phase1(
     }
 }
 
+pub fn verified_bundles(workspace: &Path) -> Result<Vec<StateBundle>, CeremonyWorkspaceError> {
+    let chain = verify_workspace(workspace)?;
+    chain
+        .entries
+        .iter()
+        .map(|entry| load_entry_bundle(workspace, entry))
+        .collect()
+}
+
 fn verify_append_transition(
     workspace: &Path,
     chain: &CeremonyChain,

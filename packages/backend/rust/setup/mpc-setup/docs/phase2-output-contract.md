@@ -1,12 +1,12 @@
-# Target Two-Phase MPC Protocol Contract
+# Two-Phase MPC Protocol Contract
 
 ## Status and audience
 
 This is the normative implementation contract for maintainers and reviewers of
-the Tokamak zk-EVM MPC setup. It describes the target two-phase protocol. Code
-that still samples or serializes a public scalar `y`, treats the Dusk source as
-a completed Tokamak phase, or uses the legacy `SigmaV2` accumulator does not
-yet implement this contract.
+the Tokamak zk-EVM MPC setup. It describes the implemented two-phase protocol.
+No production path samples or serializes a public scalar `y`, treats the Dusk
+source as a completed Tokamak phase, or consumes the legacy `SigmaV2`
+accumulator.
 
 The final `Sigma` formulas and the four-file final CRS archive remain stable.
 The ceremony state, receipt, and provenance formats are intentionally new and
@@ -176,6 +176,11 @@ Preparation binds the canonical `subcircuitLibrary.sourceDigest`, reads the
 concrete R1CS/QAP inputs, and constructs circuit-specific points with group
 MSMs. It never obtains scalar `alpha`, `x`, or `y`.
 
+Circuit preparation is one deterministic state transition. The current
+protocol does not expose multipart Phase 1 or Phase 2 preparation artifacts;
+an interrupted preparation is discarded and rerun from the selected verified
+Phase 1 state.
+
 For wire polynomial `o_j(X)`, helper `K_j(X)`, and Y-domain Lagrange polynomial
 `L_i(Y)`, representative constructions are:
 
@@ -287,6 +292,27 @@ Chunk files are content-addressed. Their file name is the lowercase hexadecimal
 part of the descriptor's `sha256` value followed by `.points`; file paths are
 therefore derived from authenticated content and are not a second manifest
 authority.
+
+## Immutable bundles and workspace recovery
+
+Each participant-facing state is a directory containing canonical `state.json`
+and `layout.json`, optional incoming `receipt.json`, and content-addressed
+`chunks/*.points`. Writers stage the complete directory beside its destination,
+self-verify it, synchronize it, and rename it into place. An existing output is
+never replaced.
+
+The ceremony workspace stores immutable bundles under
+`states/<state-sha256>/` and keeps `chain.json` only as a reproducible index.
+The index is not an independent authority: every verification reloads each
+digest-named bundle and checks the full sequence, receipt, transition, phase
+boundary, capacity/layout identity, and selected Phase 1 qualification.
+
+The common participant operations are `mpc contribute` and
+`mpc verify-transition`. Operator operations initialize or adapt the source,
+initialize and append the workspace, prepare the circuit, reverify the complete
+workspace, and generate the final CRS. Recovery resumes only from a bundle
+already present in a fully verified workspace. Temporary directories and
+unappended candidate bundles are not recovery checkpoints.
 
 The state digest is SHA-256 over the canonical state manifest bytes. The
 receipt digest is SHA-256 over the canonical receipt bytes. Chunk digests are

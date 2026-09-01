@@ -107,7 +107,14 @@ pub fn write_phase2_bundle(
 }
 
 pub fn read_state_bundle(directory: &Path) -> Result<StateBundle, StateBundleError> {
-    let state_bytes = read_file(&directory.join(STATE_FILE), "read state manifest")?;
+    let state_path = directory.join(STATE_FILE);
+    if !state_path.exists() && contains_legacy_intermediate(directory)? {
+        return invalid(
+            "legacy phase1_acc_*/phase2_acc_*/SigmaV2 intermediates are incompatible with \
+             tokamak-mpc-2phase-v1; restart the native ceremony or rerun the Dusk adaptor",
+        );
+    }
+    let state_bytes = read_file(&state_path, "read state manifest")?;
     let state = CeremonyState::from_canonical_json(&state_bytes)?;
     let layout_bytes = read_file(&directory.join(LAYOUT_FILE), "read monomial layout")?;
     let layout = MonomialLayout::from_canonical_json(&layout_bytes)?;
@@ -159,6 +166,35 @@ pub fn read_state_bundle(directory: &Path) -> Result<StateBundle, StateBundleErr
         artifact,
         incoming_receipt,
     })
+}
+
+fn contains_legacy_intermediate(directory: &Path) -> Result<bool, StateBundleError> {
+    let entries = match fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(source) if source.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(source) => {
+            return Err(io_error(
+                "inspect state bundle directory",
+                directory,
+                source,
+            ))
+        }
+    };
+    for entry in entries {
+        let entry = entry.map_err(|source| {
+            io_error("inspect state bundle directory entry", directory, source)
+        })?;
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with("phase1_acc_")
+            || name.starts_with("phase2_acc_")
+            || name.eq_ignore_ascii_case("sigma_v2.json")
+            || name.eq_ignore_ascii_case("sigma_v2.rkyv")
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 pub fn verify_bundle_transition(
@@ -1190,5 +1226,96 @@ mod tests {
         bytes[0] ^= 1;
         fs::write(chunk, bytes).unwrap();
         assert!(read_state_bundle(&path).is_err());
+    }
+
+    #[test]
+    fn reader_rejects_legacy_intermediates_with_restart_diagnostic() {
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("phase2_acc_1.rkyv"), b"legacy").unwrap();
+
+        let error = read_state_bundle(root.path()).unwrap_err().to_string();
+        assert!(error.contains("legacy"));
+        assert!(error.contains("restart"));
+        assert!(error.contains("Dusk adaptor"));
+    }
+
+    #[test]
+    fn reader_rejects_adversarial_chunk_manifests_and_point_data() {
+        fn bundle(root: &Path, name: &str) -> (PathBuf, CeremonyState) {
+            let path = root.join(name);
+            let artifact = UniversalTauArtifact::initialize_native(name, &shape()).unwrap();
+            write_phase1_bundle(&path, &artifact, None).unwrap();
+            (path, artifact.state)
+        }
+
+        fn chunks_mut(state: &mut CeremonyState) -> &mut Vec<PointChunkDescriptor> {
+            match &mut state.payload {
+                PhasePayload::Phase1(payload) => &mut payload.chunks,
+                PhasePayload::Phase2(_) => unreachable!(),
+            }
+        }
+
+        fn rewrite_state(path: &Path, state: &CeremonyState) {
+            fs::write(path.join(STATE_FILE), serde_json::to_vec(state).unwrap()).unwrap();
+        }
+
+        let root = tempfile::tempdir().unwrap();
+
+        let (truncated_path, truncated_state) = bundle(root.path(), "truncated");
+        let truncated_descriptor = phase1_descriptors(&truncated_state).unwrap()[0].clone();
+        let truncated_chunk = truncated_path
+            .join(CHUNKS_DIRECTORY)
+            .join(truncated_descriptor.content_addressed_file_name());
+        let mut truncated = fs::read(&truncated_chunk).unwrap();
+        truncated.pop();
+        fs::write(&truncated_chunk, truncated).unwrap();
+        assert!(read_state_bundle(&truncated_path).is_err());
+
+        let (reordered_path, mut reordered) = bundle(root.path(), "reordered");
+        chunks_mut(&mut reordered).swap(0, 1);
+        rewrite_state(&reordered_path, &reordered);
+        assert!(read_state_bundle(&reordered_path).is_err());
+
+        let (duplicate_path, mut duplicate) = bundle(root.path(), "duplicate");
+        let duplicate_descriptor = chunks_mut(&mut duplicate)[0].clone();
+        chunks_mut(&mut duplicate).push(duplicate_descriptor);
+        rewrite_state(&duplicate_path, &duplicate);
+        assert!(read_state_bundle(&duplicate_path).is_err());
+
+        let (shape_path, mut wrong_shape) = bundle(root.path(), "wrong-shape");
+        chunks_mut(&mut wrong_shape)[0].shape[0] += 1;
+        rewrite_state(&shape_path, &wrong_shape);
+        assert!(read_state_bundle(&shape_path).is_err());
+
+        let (encoding_path, mut wrong_encoding) = bundle(root.path(), "wrong-encoding");
+        chunks_mut(&mut wrong_encoding)[0].encoding = "unsupported".into();
+        rewrite_state(&encoding_path, &wrong_encoding);
+        assert!(read_state_bundle(&encoding_path).is_err());
+
+        let (group_path, mut wrong_group) = bundle(root.path(), "wrong-group");
+        chunks_mut(&mut wrong_group)[0].group = CurveGroup::G2;
+        rewrite_state(&group_path, &wrong_group);
+        assert!(read_state_bundle(&group_path).is_err());
+
+        let (infinity_path, mut infinity) = bundle(root.path(), "infinity");
+        let chunks = chunks_mut(&mut infinity);
+        let index = chunks
+            .iter()
+            .position(|descriptor| {
+                descriptor.family == "generator" && descriptor.group == CurveGroup::G1
+            })
+            .unwrap();
+        let old_name = chunks[index].content_addressed_file_name();
+        let infinity_bytes = serialize_g1_affine(&G1serde::zero().0, Compress::Yes).into_vec();
+        chunks[index].sha256 = Sha256Digest::from_bytes(&infinity_bytes);
+        let new_name = chunks[index].content_addressed_file_name();
+        fs::remove_file(infinity_path.join(CHUNKS_DIRECTORY).join(old_name)).unwrap();
+        fs::write(
+            infinity_path.join(CHUNKS_DIRECTORY).join(new_name),
+            infinity_bytes,
+        )
+        .unwrap();
+        rewrite_state(&infinity_path, &infinity);
+        assert!(read_state_bundle(&infinity_path).is_err());
     }
 }

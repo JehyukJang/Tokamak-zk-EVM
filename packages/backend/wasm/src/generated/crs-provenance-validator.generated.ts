@@ -37,6 +37,8 @@ export interface FinalMpcCrsProvenance {
     readonly sourceDigest: string;
   };
   readonly phase1SourceProvenance: null | 'native' | { readonly duskGroth16: DuskSourceProvenance };
+  readonly ceremonyProtocolVersion: 'tokamak-mpc-2phase-v1';
+  readonly ceremonyTranscriptSha256: string;
   readonly combinedSigmaSha256: string;
   readonly sigmaPreprocessSha256: string;
   readonly sigmaVerifySha256: string;

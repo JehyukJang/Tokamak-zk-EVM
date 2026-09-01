@@ -291,6 +291,8 @@ async function writeCrsArchiveFixture(
           sourceDigest: SUBCIRCUIT_LIBRARY_SOURCE_DIGEST,
         },
         phase1SourceProvenance: null,
+        ceremonyProtocolVersion: 'tokamak-mpc-2phase-v1',
+        ceremonyTranscriptSha256: '6'.repeat(64),
         combinedSigmaSha256: sha256(artifacts['combined_sigma.rkyv']),
         sigmaPreprocessSha256: sha256(artifacts['sigma_preprocess.rkyv']),
         sigmaVerifySha256: sha256(artifacts['sigma_verify.json']),

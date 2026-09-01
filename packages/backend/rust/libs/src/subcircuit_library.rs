@@ -403,10 +403,13 @@ mod tests {
                 package_name: "@tokamak-zk-evm/subcircuit-library".to_string(),
                 package_version: format!("{compatible_version}.0"),
                 origin: SubcircuitLibraryOrigin::LocalQapCompiler,
-                source_digest: "sha256:1111111111111111111111111111111111111111111111111111111111111111"
-                    .to_string(),
+                source_digest:
+                    "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+                        .to_string(),
             },
             phase1_source_provenance: None,
+            ceremony_protocol_version: crate::crs_provenance::CEREMONY_PROTOCOL_VERSION.to_string(),
+            ceremony_transcript_sha256: "6".repeat(64),
             combined_sigma_sha256: "0".repeat(64),
             sigma_preprocess_sha256: "0".repeat(64),
             sigma_verify_sha256: "0".repeat(64),

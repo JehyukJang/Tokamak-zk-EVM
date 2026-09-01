@@ -208,6 +208,8 @@ function provenance(version: string): CrsProvenanceInput {
       sourceDigest: `sha256:${'2'.repeat(64)}`,
     },
     phase1SourceProvenance: null,
+    ceremonyProtocolVersion: 'tokamak-mpc-2phase-v1',
+    ceremonyTranscriptSha256: '3'.repeat(64),
     combinedSigmaSha256: '0'.repeat(64),
     sigmaPreprocessSha256: '1'.repeat(64),
     sigmaVerifySha256: '2'.repeat(64),

@@ -15,7 +15,6 @@ icicle-bls12-381 = { workspace = true }
 icicle-runtime = { workspace = true }
 
 libs = { workspace = true, default-features = false }
-rkyv = { workspace = true }
 rayon = { workspace = true }
 ark-bls12-381 = { workspace = true }
 ark-ec = { workspace = true }
@@ -23,12 +22,10 @@ ark-ff = { workspace = true }
 rand = { workspace = true }
 blake2 = "0.8.1"
 rand_chacha = "0.3.1"
-bincode = { workspace = true }
-memmap = "0.7.0"
 serde_json = { workspace = true }
 hex = { workspace = true }
-ark-std = "0.5.0"
 ark-serialize = "0.5.0"
+ark-std = "0.5.0"
 blake3 = "1.8.2"
 clap = { workspace = true }
 chrono = "0.4"

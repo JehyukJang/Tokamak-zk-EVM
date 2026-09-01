@@ -503,15 +503,11 @@ fn decode_proof(proof: &SecretContributionProof) -> Result<KernelProof, Phase2Co
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::flows::phase2_next_contributor::compute_new_sigma;
     use crate::phase1_contribution::contribute_phase1;
     use crate::phase2_circuit::{prepare_phase2_circuit, CircuitPreparationInput, WirePolynomial};
     use crate::protocol::validate_state_selection;
-    use crate::sigma::SigmaV2;
     use crate::universal_tau::UniversalTauArtifact;
-    use crate::utils::{RandomGenerator, RandomStrategy};
     use icicle_core::traits::Arithmetic;
-    use libs::group_structures::{Sigma, Sigma1, Sigma2};
     use libs::utils::{try_init_ntt_domain, SetupShape};
 
     fn setup_shape() -> SetupShape {
@@ -696,111 +692,5 @@ mod tests {
         )
         .unwrap();
         assert!(validate_state_selection(&beacon.artifact.state, &[beacon.receipt]).is_err());
-    }
-
-    #[test]
-    fn shared_kernel_matches_legacy_inverse_parameter_transition() {
-        let initial = prepared('1');
-        let legacy_input = to_legacy(&initial);
-        let mut rng = RandomGenerator::new(RandomStrategy::Testing, [0u8; 32]);
-        let (legacy, _) = compute_new_sigma(&mut rng, &legacy_input);
-        let current = scale_points(
-            &initial.points,
-            &ContributionSpec::for_profile(ContributionProfile::CircuitGammaDeltaEta),
-            &shares([5, 3, 7]),
-        )
-        .unwrap();
-        assert_points_match_legacy(&current, &legacy);
-    }
-
-    fn rows(points: &[G1serde], width: usize) -> Box<[Box<[G1serde]>]> {
-        points
-            .chunks(width)
-            .map(|row| row.to_vec().into_boxed_slice())
-            .collect::<Vec<_>>()
-            .into_boxed_slice()
-    }
-
-    fn to_legacy(artifact: &CircuitSigmaArtifact) -> SigmaV2 {
-        let points = &artifact.points;
-        let layout = &artifact.layout;
-        SigmaV2 {
-            contributor_index: 0,
-            sigma: Sigma {
-                G: points.g1,
-                H: points.g2,
-                sigma_1: Sigma1 {
-                    xy_powers: points.xy_powers.clone().into_boxed_slice(),
-                    x: points.x_g1,
-                    y: points.y_g1,
-                    delta: points.delta_g1,
-                    eta: points.eta_g1,
-                    gamma_inv_o_inst: points.gamma_inv_o_inst.clone().into_boxed_slice(),
-                    eta_inv_li_o_inter_alpha4_kj: rows(
-                        &points.eta_inv_li_o_inter_alpha4_kj,
-                        layout.s,
-                    ),
-                    delta_inv_li_o_prv: rows(&points.delta_inv_li_o_prv, layout.s),
-                    delta_inv_alphak_xh_tx: rows(&points.delta_inv_alphak_xh_tx, 3),
-                    delta_inv_alpha4_xj_tx: points
-                        .delta_inv_alpha4_xj_tx
-                        .clone()
-                        .into_boxed_slice(),
-                    delta_inv_alphak_yi_ty: rows(&points.delta_inv_alphak_yi_ty, 3),
-                },
-                sigma_2: Sigma2 {
-                    alpha: points.alpha_g2[0],
-                    alpha2: points.alpha_g2[1],
-                    alpha3: points.alpha_g2[2],
-                    alpha4: points.alpha_g2[3],
-                    gamma: points.gamma_g2,
-                    delta: points.delta_g2,
-                    eta: points.eta_g2,
-                    x: points.x_g2,
-                    y: points.y_g2,
-                },
-                lagrange_KL: points.lagrange_kl,
-            },
-            gamma: points.gamma_g1,
-            public_y_hex: None,
-            phase1_source_provenance: None,
-        }
-    }
-
-    fn flatten(rows: &[Box<[G1serde]>]) -> Vec<G1serde> {
-        rows.iter().flat_map(|row| row.iter().copied()).collect()
-    }
-
-    fn assert_points_match_legacy(points: &CircuitSigmaPoints, legacy: &SigmaV2) {
-        assert_eq!(points.gamma_g1, legacy.gamma);
-        assert_eq!(points.gamma_g2, legacy.sigma.sigma_2.gamma);
-        assert_eq!(points.delta_g1, legacy.sigma.sigma_1.delta);
-        assert_eq!(points.delta_g2, legacy.sigma.sigma_2.delta);
-        assert_eq!(points.eta_g1, legacy.sigma.sigma_1.eta);
-        assert_eq!(points.eta_g2, legacy.sigma.sigma_2.eta);
-        assert_eq!(
-            points.gamma_inv_o_inst.as_slice(),
-            legacy.sigma.sigma_1.gamma_inv_o_inst.as_ref()
-        );
-        assert_eq!(
-            points.eta_inv_li_o_inter_alpha4_kj,
-            flatten(&legacy.sigma.sigma_1.eta_inv_li_o_inter_alpha4_kj)
-        );
-        assert_eq!(
-            points.delta_inv_li_o_prv,
-            flatten(&legacy.sigma.sigma_1.delta_inv_li_o_prv)
-        );
-        assert_eq!(
-            points.delta_inv_alphak_xh_tx,
-            flatten(&legacy.sigma.sigma_1.delta_inv_alphak_xh_tx)
-        );
-        assert_eq!(
-            points.delta_inv_alpha4_xj_tx.as_slice(),
-            legacy.sigma.sigma_1.delta_inv_alpha4_xj_tx.as_ref()
-        );
-        assert_eq!(
-            points.delta_inv_alphak_yi_ty,
-            flatten(&legacy.sigma.sigma_1.delta_inv_alphak_yi_ty)
-        );
     }
 }

@@ -564,11 +564,12 @@ mod tests {
         DriveArchiveScan, DriveUploadConfig, DriveUploadError, DriveUploadResult,
         PROVENANCE_FILE_NAME,
     };
-    use crate::sigma::{Phase1SourceProvenance, SubcircuitLibraryOrigin};
+    use libs::crs_provenance::Phase1SourceProvenance;
     use libs::crs_provenance::{
         CrsProvenance, DevelopmentOnlyReleaseEligibility, DevelopmentTrustedSetupSigmaProvenance,
         FinalMpcCrsProvenance,
     };
+    use libs::input_origin::SubcircuitLibraryOrigin;
     use std::cell::RefCell;
     use std::fs;
     use std::fs::File as StdFile;

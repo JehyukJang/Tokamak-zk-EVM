@@ -23,11 +23,9 @@ macro_rules! testing_log {
 mod conversions;
 mod utils;
 
-mod accumulator;
 pub mod alpha_x_basis;
 pub mod ceremony_workspace;
 pub mod contribution_kernel;
-mod contributor;
 mod drive_upload;
 mod flows;
 pub mod operator;
@@ -37,13 +35,13 @@ pub mod phase2_circuit;
 pub mod phase2_contribution;
 pub mod protocol;
 pub mod state_bundle;
+pub mod transcript;
 pub mod universal_tau;
 
-mod sigma;
 mod versioning;
 
 pub use flows::{
-    phase2_prepare::prepare_selected_phase1_from_qap, run_dusk_backed_ceremony,
+    qap_circuit::prepare_selected_phase1_from_qap, run_dusk_backed_ceremony,
     run_dusk_backed_mpc_setup, run_dusk_backed_publication, run_native_mpc_setup,
     DuskBackedMpcSetupConfig, DuskPublicationConfig, MpcSetupError, NativeMpcSetupConfig,
 };

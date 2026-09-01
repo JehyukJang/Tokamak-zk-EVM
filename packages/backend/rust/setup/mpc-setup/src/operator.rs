@@ -2,7 +2,7 @@ use crate::alpha_x_basis::{read_adapted_tau_bundle, DuskTauAdaptor};
 use crate::ceremony_workspace::{
     append_bundle, initialize_workspace, selected_phase1, verify_workspace, CeremonyWorkspaceError,
 };
-use crate::flows::{phase2_prepare::prepare_selected_phase1_from_qap, MpcSetupError};
+use crate::flows::{qap_circuit::prepare_selected_phase1_from_qap, MpcSetupError};
 use crate::protocol::Sha256Digest;
 use crate::state_bundle::{write_phase1_bundle, write_phase2_bundle, StateBundleError};
 use crate::universal_tau::{MonomialLayout, UniversalTauArtifact, UniversalTauError};
@@ -148,6 +148,22 @@ pub fn prepare_circuit(
         "Circuit-bound Phase 2 preparation committed: {}",
         artifact.state.digest()?.as_str()
     );
+    Ok(())
+}
+
+pub fn generate_final_artifacts(
+    workspace: &Path,
+    output: &Path,
+    adapted_tau: Option<&Path>,
+) -> Result<(), OperatorError> {
+    crate::flows::final_artifacts::run_two_phase(
+        &crate::flows::final_artifacts::TwoPhaseFinalConfig {
+            workspace: workspace.to_path_buf(),
+            output: output.to_path_buf(),
+            adapted_tau: adapted_tau.map(Path::to_path_buf),
+        },
+    )?;
+    println!("Verified local final CRS committed at {}", output.display());
     Ok(())
 }
 

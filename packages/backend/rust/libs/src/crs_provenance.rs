@@ -16,9 +16,10 @@ use std::sync::OnceLock;
 pub const CRS_PROVENANCE_FILE_NAME: &str = "crs_provenance.json";
 pub const DEVELOPMENT_TRUSTED_SETUP_SIGMA_DOCUMENT_KIND: &str = "developmentTrustedSetupSigma";
 pub const FINAL_MPC_CRS_DOCUMENT_KIND: &str = "finalMpcCrs";
+pub const CEREMONY_PROTOCOL_VERSION: &str = "tokamak-mpc-2phase-v1";
 
 const CRS_PROVENANCE_CONTRACT_SHA256: &str =
-    "509d2bab339f9f6f701555ea402853e6fe12f10dbed87c156270228ebf693c8d";
+    "a43c7506c20c3050235bcc4d6f6d5b49993470d21b2b5af158aebf233d92b122";
 const SUPPORTED_SCHEMA_KEYWORDS: &[&str] = &[
     "additionalProperties",
     "const",
@@ -123,6 +124,8 @@ pub struct FinalMpcCrsProvenance {
     pub compatible_backend_version: String,
     pub subcircuit_library: SubcircuitLibraryProvenance,
     pub phase1_source_provenance: Option<Phase1SourceProvenance>,
+    pub ceremony_protocol_version: String,
+    pub ceremony_transcript_sha256: String,
     pub combined_sigma_sha256: String,
     pub sigma_preprocess_sha256: String,
     pub sigma_verify_sha256: String,
@@ -290,6 +293,15 @@ pub fn validate_final_mpc_crs_provenance(provenance: &FinalMpcCrsProvenance) -> 
         &provenance.subcircuit_library.source_digest,
     )
     .map_err(|error| format!("subcircuitLibrary.sourceDigest {error}"))?;
+    if provenance.ceremony_protocol_version != CEREMONY_PROTOCOL_VERSION {
+        return Err(format!(
+            "ceremonyProtocolVersion must equal {CEREMONY_PROTOCOL_VERSION}"
+        ));
+    }
+    validate_sha256(
+        &provenance.ceremony_transcript_sha256,
+        "ceremonyTranscriptSha256",
+    )?;
     validate_sha256(&provenance.combined_sigma_sha256, "combinedSigmaSha256")?;
     validate_sha256(&provenance.sigma_preprocess_sha256, "sigmaPreprocessSha256")?;
     validate_sha256(&provenance.sigma_verify_sha256, "sigmaVerifySha256")?;

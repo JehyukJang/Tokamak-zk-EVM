@@ -31,6 +31,8 @@ const contract = {
         "compatibleBackendVersion",
         "subcircuitLibrary",
         "phase1SourceProvenance",
+        "ceremonyProtocolVersion",
+        "ceremonyTranscriptSha256",
         "combinedSigmaSha256",
         "sigmaPreprocessSha256",
         "sigmaVerifySha256"
@@ -45,6 +47,8 @@ const contract = {
           "compatibleBackendVersion",
           "subcircuitLibrary",
           "phase1SourceProvenance",
+          "ceremonyProtocolVersion",
+          "ceremonyTranscriptSha256",
           "combinedSigmaSha256",
           "sigmaPreprocessSha256",
           "sigmaVerifySha256"
@@ -122,6 +126,8 @@ const contract = {
               }
             ]
           },
+          "ceremonyProtocolVersion": { "const": "tokamak-mpc-2phase-v1" },
+          "ceremonyTranscriptSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
           "combinedSigmaSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
           "sigmaPreprocessSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
           "sigmaVerifySha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }

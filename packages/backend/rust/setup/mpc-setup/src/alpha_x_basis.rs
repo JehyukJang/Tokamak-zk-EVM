@@ -1,4 +1,3 @@
-use crate::accumulator::{Accumulator, AccumulatorRkyv};
 use crate::conversions::{
     deserialize_g1_affine, deserialize_g1_bytes, deserialize_g2_affine, deserialize_g2_bytes,
     serialize_g1_affine, serialize_g2_affine,
@@ -6,22 +5,18 @@ use crate::conversions::{
 use crate::protocol::{
     AdaptedTau, CurveGroup, DuskExponentMapping, PointChunkDescriptor, ProtocolError, Sha256Digest,
 };
-use crate::sigma::{DuskSourceProvenance, Phase1SourceProvenance};
 use crate::utils::same_ratio;
 use crate::utils::{icicle_g1_generator, icicle_g2_generator};
 use ark_serialize::Compress;
 use icicle_bls12_381::curve::{G1Affine, G2Affine};
-use libs::crs_artifacts::{ArchivedG1SerdeRkyvExt, ArchivedG2SerdeRkyvExt};
+use libs::crs_provenance::DuskSourceProvenance;
 use libs::group_structures::{G1serde, G2serde};
-use memmap::{Mmap, MmapOptions};
 use rayon::prelude::*;
 use reqwest::blocking::Client;
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as ShaDigest, Sha256};
 use std::cmp::max;
-use std::env;
-use std::fs::File;
 use std::io;
 use std::io::Read;
 use std::io::Write;
@@ -35,63 +30,6 @@ pub trait AlphaXBasis {
     fn x_g2(&self, exp_x: usize) -> G2serde;
     fn x_g1_range(&self, exp_min: usize, exp_max: usize) -> Vec<G1Affine>;
     fn alphax_g1(&self, exp_alpha: usize, exp_x: usize) -> G1serde;
-}
-
-struct AccumulatorZeroCopy {
-    mmap: Mmap,
-}
-
-impl AccumulatorZeroCopy {
-    fn load(path: &Path) -> io::Result<Self> {
-        let file = File::open(path)?;
-        let mmap = unsafe { MmapOptions::new().map(&file)? };
-        rkyv::check_archived_root::<AccumulatorRkyv>(&mmap).map_err(|err| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("Invalid accumulator archive: {err:?}"),
-            )
-        })?;
-        Ok(Self { mmap })
-    }
-
-    fn accumulator(&self) -> &rkyv::Archived<AccumulatorRkyv> {
-        unsafe { rkyv::archived_root::<AccumulatorRkyv>(&self.mmap) }
-    }
-}
-
-enum AccumulatorAlphaXBasisInner {
-    Owned(Accumulator),
-    Mapped(AccumulatorZeroCopy),
-}
-
-pub struct AccumulatorAlphaXBasis {
-    inner: AccumulatorAlphaXBasisInner,
-}
-
-impl AccumulatorAlphaXBasis {
-    pub fn read_from_json(path: &str) -> io::Result<Self> {
-        let abs_json_path = env::current_dir()?.join(path);
-        let rkyv_path = Accumulator::rkyv_path_for_json_path(&abs_json_path);
-        if cache_is_fresh(&rkyv_path, &abs_json_path) {
-            if let Ok(mapped) = AccumulatorZeroCopy::load(&rkyv_path) {
-                return Ok(Self {
-                    inner: AccumulatorAlphaXBasisInner::Mapped(mapped),
-                });
-            }
-        }
-
-        let accumulator = Accumulator::read_from_json(path)?;
-        let _ = accumulator.write_rkyv_sidecar_for_json_path(path);
-        if let Ok(mapped) = AccumulatorZeroCopy::load(&rkyv_path) {
-            return Ok(Self {
-                inner: AccumulatorAlphaXBasisInner::Mapped(mapped),
-            });
-        }
-
-        Ok(Self {
-            inner: AccumulatorAlphaXBasisInner::Owned(accumulator),
-        })
-    }
 }
 
 const DUSK_HASH_BYTES: usize = 64;
@@ -441,6 +379,32 @@ impl DuskAdaptedAlphaXBasis {
             .to_canonical_json()
             .map_err(protocol_io_error)?;
         persist_named_file(directory, "adapted_tau.json", &manifest_bytes)
+    }
+}
+
+impl AlphaXBasis for DuskAdaptedAlphaXBasis {
+    fn g1(&self) -> G1serde {
+        self.g1()
+    }
+
+    fn g2(&self) -> G2serde {
+        self.g2()
+    }
+
+    fn alpha_g2(&self, exp_alpha: usize) -> G2serde {
+        self.alpha_g2(exp_alpha)
+    }
+
+    fn x_g2(&self, exp_x: usize) -> G2serde {
+        self.x_g2(exp_x)
+    }
+
+    fn x_g1_range(&self, exp_min: usize, exp_max: usize) -> Vec<G1Affine> {
+        self.x_g1_range(exp_min, exp_max)
+    }
+
+    fn alphax_g1(&self, exp_alpha: usize, exp_x: usize) -> G1serde {
+        self.alphax_g1(exp_alpha, exp_x)
     }
 }
 
@@ -1042,149 +1006,29 @@ fn ensure_dusk_raw_response_available(path: &Path) -> io::Result<Option<DuskResp
     download_dusk_response(path).map(Some)
 }
 
-pub enum AlphaXBasisSource {
-    Accumulator(AccumulatorAlphaXBasis),
-    DuskAdapted(DuskAdaptedAlphaXBasis),
-}
-
-impl AlphaXBasisSource {
-    pub fn provenance(&self) -> Phase1SourceProvenance {
-        match self {
-            AlphaXBasisSource::Accumulator(_) => Phase1SourceProvenance::Native,
-            AlphaXBasisSource::DuskAdapted(source) => {
-                Phase1SourceProvenance::DuskGroth16(source.provenance())
-            }
-        }
-    }
-}
-
-fn cache_is_fresh(cache_path: &Path, source_path: &Path) -> bool {
-    let Ok(cache_meta) = std::fs::metadata(cache_path) else {
-        return false;
-    };
-    let Ok(cache_modified) = cache_meta.modified() else {
-        return false;
-    };
-    let Ok(source_meta) = std::fs::metadata(source_path) else {
-        return true;
-    };
-    let Ok(source_modified) = source_meta.modified() else {
-        return true;
-    };
-    cache_modified >= source_modified
-}
-
-fn archived_x_g1_range(
-    archived: &rkyv::Archived<AccumulatorRkyv>,
-    exp_min: usize,
-    exp_max: usize,
-) -> Vec<G1Affine> {
-    if exp_min > 0 {
-        return archived.x.g1[exp_min - 1..exp_max]
-            .iter()
-            .map(|value| value.to_g1_affine())
-            .collect();
-    }
-
-    let mut out = Vec::with_capacity(exp_max + 1);
-    out.push(archived.g1.to_g1_affine());
-    out.extend(
-        archived.x.g1[..exp_max]
-            .iter()
-            .map(|value| value.to_g1_affine()),
-    );
-    out
-}
-
-impl AlphaXBasis for AccumulatorAlphaXBasis {
-    fn g1(&self) -> G1serde {
-        match &self.inner {
-            AccumulatorAlphaXBasisInner::Owned(acc) => acc.g1,
-            AccumulatorAlphaXBasisInner::Mapped(acc) => acc.accumulator().g1.to_g1serde(),
-        }
-    }
-
-    fn g2(&self) -> G2serde {
-        match &self.inner {
-            AccumulatorAlphaXBasisInner::Owned(acc) => acc.g2,
-            AccumulatorAlphaXBasisInner::Mapped(acc) => acc.accumulator().g2.to_g2serde(),
-        }
-    }
-
-    fn alpha_g2(&self, exp_alpha: usize) -> G2serde {
-        match &self.inner {
-            AccumulatorAlphaXBasisInner::Owned(acc) => acc.alpha[exp_alpha - 1].g2,
-            AccumulatorAlphaXBasisInner::Mapped(acc) => {
-                acc.accumulator().alpha[exp_alpha - 1].g2.to_g2serde()
-            }
-        }
-    }
-
-    fn x_g2(&self, exp_x: usize) -> G2serde {
-        assert_eq!(exp_x, 1, "the native alpha/X basis stores only x^1 in G2");
-        match &self.inner {
-            AccumulatorAlphaXBasisInner::Owned(acc) => acc.get_x_g2(exp_x),
-            AccumulatorAlphaXBasisInner::Mapped(acc) => acc.accumulator().x.g2.to_g2serde(),
-        }
-    }
-
-    fn x_g1_range(&self, exp_min: usize, exp_max: usize) -> Vec<G1Affine> {
-        match &self.inner {
-            AccumulatorAlphaXBasisInner::Owned(acc) => acc.get_x_g1_range(exp_min, exp_max),
-            AccumulatorAlphaXBasisInner::Mapped(acc) => {
-                archived_x_g1_range(acc.accumulator(), exp_min, exp_max)
-            }
-        }
-    }
-
-    fn alphax_g1(&self, exp_alpha: usize, exp_x: usize) -> G1serde {
-        match &self.inner {
-            AccumulatorAlphaXBasisInner::Owned(acc) => acc.get_alphax_g1(exp_alpha, exp_x),
-            AccumulatorAlphaXBasisInner::Mapped(acc) => {
-                let archived = acc.accumulator();
-                assert!(exp_alpha <= 4);
-                assert!(exp_x <= archived.x.g1.len());
-                if exp_alpha == 0 && exp_x == 0 {
-                    archived.g1.to_g1serde()
-                } else if exp_alpha == 0 {
-                    if exp_x == 0 {
-                        archived.g1.to_g1serde()
-                    } else {
-                        archived.x.g1[exp_x - 1].to_g1serde()
-                    }
-                } else if exp_x == 0 {
-                    archived.alpha[exp_alpha - 1].g1.to_g1serde()
-                } else {
-                    archived.alpha_x[(exp_alpha - 1) * archived.x.g1.len() + exp_x - 1].to_g1serde()
-                }
-            }
-        }
-    }
-}
-
-impl AlphaXBasis for DuskAdaptedAlphaXBasis {
-    fn g1(&self) -> G1serde {
+impl DuskAdaptedAlphaXBasis {
+    pub fn g1(&self) -> G1serde {
         self.g1
     }
 
-    fn g2(&self) -> G2serde {
+    pub fn g2(&self) -> G2serde {
         self.g2
     }
 
-    fn alpha_g2(&self, exp_alpha: usize) -> G2serde {
+    pub fn alpha_g2(&self, exp_alpha: usize) -> G2serde {
         self.tau_g2(self.omega_exp(exp_alpha))
     }
 
-    fn x_g2(&self, exp_x: usize) -> G2serde {
+    pub fn x_g2(&self, exp_x: usize) -> G2serde {
         assert_eq!(exp_x, 1, "the adapted Dusk basis stores only x^1 in G2");
         self.tau_g2(1)
     }
 
-    fn x_g1_range(&self, exp_min: usize, exp_max: usize) -> Vec<G1Affine> {
+    pub fn x_g1_range(&self, exp_min: usize, exp_max: usize) -> Vec<G1Affine> {
         self.tau_powers_g1[exp_min..=exp_max].to_vec()
     }
 
-    fn alphax_g1(&self, exp_alpha: usize, exp_x: usize) -> G1serde {
+    pub fn alphax_g1(&self, exp_alpha: usize, exp_x: usize) -> G1serde {
         if exp_alpha == 0 {
             return self.tau_g1(exp_x);
         }
@@ -1192,63 +1036,20 @@ impl AlphaXBasis for DuskAdaptedAlphaXBasis {
     }
 }
 
-impl AlphaXBasis for AlphaXBasisSource {
-    fn g1(&self) -> G1serde {
-        match self {
-            AlphaXBasisSource::Accumulator(source) => source.g1(),
-            AlphaXBasisSource::DuskAdapted(source) => source.g1(),
-        }
-    }
-
-    fn g2(&self) -> G2serde {
-        match self {
-            AlphaXBasisSource::Accumulator(source) => source.g2(),
-            AlphaXBasisSource::DuskAdapted(source) => source.g2(),
-        }
-    }
-
-    fn alpha_g2(&self, exp_alpha: usize) -> G2serde {
-        match self {
-            AlphaXBasisSource::Accumulator(source) => source.alpha_g2(exp_alpha),
-            AlphaXBasisSource::DuskAdapted(source) => source.alpha_g2(exp_alpha),
-        }
-    }
-
-    fn x_g2(&self, exp_x: usize) -> G2serde {
-        match self {
-            AlphaXBasisSource::Accumulator(source) => source.x_g2(exp_x),
-            AlphaXBasisSource::DuskAdapted(source) => source.x_g2(exp_x),
-        }
-    }
-
-    fn x_g1_range(&self, exp_min: usize, exp_max: usize) -> Vec<G1Affine> {
-        match self {
-            AlphaXBasisSource::Accumulator(source) => source.x_g1_range(exp_min, exp_max),
-            AlphaXBasisSource::DuskAdapted(source) => source.x_g1_range(exp_min, exp_max),
-        }
-    }
-
-    fn alphax_g1(&self, exp_alpha: usize, exp_x: usize) -> G1serde {
-        match self {
-            AlphaXBasisSource::Accumulator(source) => source.alphax_g1(exp_alpha, exp_x),
-            AlphaXBasisSource::DuskAdapted(source) => source.alphax_g1(exp_alpha, exp_x),
-        }
-    }
-}
-
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::{
         dusk_raw_encoding, finish_adaptation, read_adapted_tau_bundle, verify_adapted_tau_bundle,
-        verify_dusk_tau_consistency, verify_pinned_source_digest, AlphaXBasis, DuskAdaptorLayout,
+        verify_dusk_tau_consistency, verify_pinned_source_digest, DuskAdaptorLayout,
         DUSK_PINNED_CONTRIBUTION, DUSK_PINNED_DRIVE_FILE_ID, DUSK_PINNED_README_URL,
         DUSK_PINNED_SOURCE_SHA256,
     };
     use crate::protocol::Sha256Digest;
-    use crate::sigma::DuskSourceProvenance;
+    use crate::universal_tau::MonomialLayout;
     use crate::utils::{icicle_g1_generator, icicle_g2_generator};
     use icicle_bls12_381::curve::{G1Affine, G2Affine, ScalarField};
     use icicle_core::traits::FieldImpl;
+    use libs::crs_provenance::DuskSourceProvenance;
     use tempfile::tempdir;
 
     fn synthetic_tau_sequences(len: usize, tau: ScalarField) -> (Vec<G1Affine>, Vec<G2Affine>) {
@@ -1283,6 +1084,31 @@ mod tests {
             max_g2_exp_used: max_g2,
             transcript_consistency_verified: true,
         }
+    }
+
+    pub(crate) fn synthetic_bundle(
+        directory: &std::path::Path,
+        shape: &libs::utils::SetupShape,
+    ) -> super::DuskAdaptedAlphaXBasis {
+        let layout = MonomialLayout::derive(shape).unwrap();
+        let adaptor_layout = layout.dusk_adaptor_layout().unwrap();
+        let mapping = adaptor_layout.mapping().unwrap();
+        let len = mapping.max_source_g1_exponent as usize + 1;
+        let (g1_powers, g2_powers) = synthetic_tau_sequences(len, ScalarField::from_u32(5));
+        let adapted = finish_adaptation(
+            g1_powers,
+            g2_powers,
+            synthetic_provenance(
+                mapping.max_source_g1_exponent as usize,
+                mapping.max_source_g2_exponent as usize,
+            ),
+            MonomialLayout::capacity_digest(shape).unwrap(),
+            layout.digest().unwrap(),
+            adaptor_layout,
+        )
+        .unwrap();
+        adapted.write_bundle(directory).unwrap();
+        adapted
     }
 
     #[test]

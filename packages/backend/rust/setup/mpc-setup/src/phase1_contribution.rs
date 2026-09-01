@@ -580,10 +580,8 @@ fn coordinate(flat: usize, dimensions: &[usize], axis: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::accumulator::Accumulator;
     use crate::protocol::validate_state_selection;
     use crate::protocol::SourceProvenance;
-    use crate::utils::{icicle_g1_generator, icicle_g2_generator, RandomGenerator, RandomStrategy};
     use libs::utils::SetupShape;
 
     fn shape() -> SetupShape {
@@ -735,46 +733,5 @@ mod tests {
         )
         .unwrap();
         assert!(contribute_phase1(&prepared, &shares, ContributionEntropyMode::Testing).is_err());
-    }
-
-    #[test]
-    fn native_alpha_x_slices_match_the_legacy_contribution_semantics() {
-        let genesis = UniversalTauArtifact::initialize_native("ceremony", &shape()).unwrap();
-        let mut legacy_rng = RandomGenerator::new(RandomStrategy::Testing, [0u8; 32]);
-        let legacy = Accumulator::new(
-            icicle_g1_generator(),
-            icicle_g2_generator(),
-            genesis.layout.alpha_max,
-            genesis.layout.alpha_x_max,
-            true,
-        );
-        let (legacy_current, _) = legacy.compute(&mut legacy_rng);
-        let current = contribute_phase1(
-            &genesis,
-            &shares(ContributionProfile::NativeAlphaXY, &[3, 5, 7]),
-            ContributionEntropyMode::Testing,
-        )
-        .unwrap();
-        for k in 1..=genesis.layout.alpha_max {
-            assert_eq!(
-                current.artifact.points.alpha_g1[k],
-                legacy_current.get_alpha_g1(k)
-            );
-            assert_eq!(
-                current.artifact.points.alpha_g2[k],
-                legacy_current.alpha[k - 1].g2
-            );
-            for a in 1..=genesis.layout.alpha_x_max {
-                assert_eq!(
-                    current.artifact.points.alpha_x_g1
-                        [(k - 1) * (genesis.layout.alpha_x_max + 1) + a],
-                    legacy_current.get_alphax_g1(k, a)
-                );
-            }
-        }
-        for a in 1..genesis.layout.x_grid_len {
-            assert_eq!(current.artifact.points.x_g1[a], legacy_current.get_x_g1(a));
-        }
-        assert_eq!(current.artifact.points.x_g2[1], legacy_current.get_x_g2(1));
     }
 }

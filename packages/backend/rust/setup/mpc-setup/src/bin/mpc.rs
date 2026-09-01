@@ -1,8 +1,8 @@
 use clap::{Args, Parser, Subcommand};
 use libs::cli::render_error;
 use mpc_setup::operator::{
-    adapt_dusk, append_chain, initialize_chain, initialize_native, prepare_circuit,
-    prepare_dusk_phase1, verify_chain, OperatorError,
+    adapt_dusk, append_chain, generate_final_artifacts, initialize_chain, initialize_native,
+    prepare_circuit, prepare_dusk_phase1, verify_chain, OperatorError,
 };
 use mpc_setup::participant::{
     run_contribute, run_verify_transition, ContributeConfig, VerifyTransitionConfig,
@@ -38,6 +38,8 @@ enum Command {
     WorkspaceVerify(WorkspaceVerifyArgs),
     /// Select a qualifying Phase 1 chain and prepare the circuit-bound Phase 2 state.
     PrepareCircuit(PrepareCircuitArgs),
+    /// Generate the local four-file CRS from a qualifying Phase 2 workspace.
+    GenerateFinal(GenerateFinalArgs),
 }
 
 #[derive(Args, Debug)]
@@ -136,6 +138,17 @@ struct PrepareCircuitArgs {
     output: PathBuf,
 }
 
+#[derive(Args, Debug)]
+struct GenerateFinalArgs {
+    #[arg(long, value_name = "PATH")]
+    workspace: PathBuf,
+    #[arg(long, value_name = "PATH")]
+    output: PathBuf,
+    /// Required for a Dusk-backed workspace and forbidden for a native workspace.
+    #[arg(long, value_name = "PATH")]
+    adapted_tau: Option<PathBuf>,
+}
+
 fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
@@ -194,5 +207,9 @@ fn run() -> Result<(), CommandError> {
         }
         Command::PrepareCircuit(args) => prepare_circuit(&args.workspace, &args.qap, &args.output)
             .map_err(CommandError::Operator),
+        Command::GenerateFinal(args) => {
+            generate_final_artifacts(&args.workspace, &args.output, args.adapted_tau.as_deref())
+                .map_err(CommandError::Operator)
+        }
     }
 }
