@@ -2,8 +2,8 @@
 
 ## Abstract
 
-Preprocessing succinct non-interactive arguments of knowledge (SNARKs) obtain
-small proofs and efficient verification from a structured reference string
+Preprocessing succinct non-interactive arguments of knowledge (SNARK) systems
+obtain small proofs and efficient verification from a structured reference string
 (SRS), but the hidden values used to construct that string create a trusted-setup
 problem. This document defines the multi-party computation (MPC) implemented by
 the Tokamak zk-EVM backend for the setup of Jang's SNARK. The design separates a
@@ -29,9 +29,9 @@ claims below are limited accordingly.
 
 ## 1. Introduction
 
-A succinct non-interactive argument of knowledge allows a prover to convince a
-verifier that a computation has a valid witness while sending a proof much
-smaller than the computation itself. Preprocessing SNARKs such as Groth16 obtain
+A succinct non-interactive argument of knowledge (SNARK) allows a prover to
+convince a verifier that a computation has a valid witness while sending a proof
+much smaller than the computation itself. Preprocessing SNARKs such as Groth16 obtain
 particularly small proofs and efficient verification by generating a reference
 string before proving begins [1]. Correct setup is therefore part of the system's
 security and efficiency foundation, rather than an incidental deployment step.
