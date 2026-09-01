@@ -524,7 +524,7 @@ does not revive or provide compatibility with those historical packages.
 
 ## Measured browser performance
 
-Release-optimized browser measurements, including cross-release comparisons,
+Browser proof-generation measurements, including cross-release comparisons,
 raw samples, exact build and artifact identities, circuit dimensions,
 verification results, methodology, and limitations, are maintained in the
 [optimization history](./docs/optimization/prover-optimization-history.md).

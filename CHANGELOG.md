@@ -165,7 +165,7 @@ synchronized TokamakL2JS specification. The former Merkle depth of 36
 and EVM exponentiation batch of 32 were removed rather than replaced by new
 capacity parameters.
 
-### Release-Optimized Proof Generation
+### Proof Generation Comparison
 
 The following measurements use the private-state dapp's `transferNotes1To2`
 operation on one Apple M4 Pro host. Each release line used its compatible
@@ -176,14 +176,16 @@ retained proof was accepted by the matching verifier.
 | Execution path | `2.1.5` | Current candidate | Absolute decrease | Decrease | Speedup | Evidence |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | Native Rust, CPU, Cargo release profile | 38.000 s | 11.059 s | 26.942 s | 70.9% | 3.44x | [Native report](./packages/backend/rust/prove/optimization/publication/optimization-report.md#30-release-candidate-comparison) |
-| Browser WASM, release `dist`, Chromium | 125.056 s | 30.875 s | 94.180 s | 75.3% | 4.05x | [Browser report](./packages/backend/wasm/docs/optimization/prover-optimization-history.md#300-release-candidate-comparison) |
+| Browser WASM, Chromium | 125.056 s | 30.875 s | 94.180 s | 75.3% | 4.05x | [Browser report](./packages/backend/wasm/docs/optimization/prover-optimization-history.md#300-release-candidate-comparison) |
 
 The native comparison used the Cargo release profile. The browser comparison
-used the package's release-built `dist` entrypoints in Chromium
-149.0.7827.55, bundled and minimized for the browser. The candidate build used
-the packaged local circuit snapshot and matching development CRS because the
-final operator-controlled `3.0` CRS does not exist before the release
-checkpoint; it is performance evidence, not a release-eligibility claim.
+used one fixed browser harness and bundle configuration in Chromium
+149.0.7827.55. Browser source-versus-`dist` packaging and minification are not
+separate proving-performance modes because they do not change the measured
+proof-generation implementation or timing boundary. The candidate used the
+packaged local circuit snapshot and matching development CRS because the final
+operator-controlled `3.0` CRS does not exist before the release checkpoint; it
+is performance evidence, not a release-eligibility claim.
 
 The principal structural explanation is the circuit and interface reduction:
 `n` and `m_I` fell from 4,096 to 1,024, both dominant `n x s_max` and

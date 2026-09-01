@@ -23,7 +23,7 @@ the current-state summary governs.
 
 ## 3.0.0 Release Candidate Comparison
 
-The release comparison uses the private-state dapp's `transferNotes1To2`
+The controlled comparison uses the private-state dapp's `transferNotes1To2`
 operation: one private input note is transferred into two output notes. Each
 release line used its compatible committed state and transaction snapshot,
 generated circuit library, native proof artifacts, and matching CRS.
@@ -40,9 +40,12 @@ the five retained fresh-browser samples, and no retained outlier was removed.
 
 The comparison ran on a MacBook Pro with Apple M4 Pro, 14 CPU cores, 48 GB
 memory, and macOS 26.5.2 (build 25F84). Both lines used Node 24.20.0, npm
-11.19.0, Chromium 149.0.7827.55, the public `dist` prover and verifier
-entrypoints, and an esbuild-minimized browser bundle. The rkyv decoder WASM was
-compiled with Cargo `--release`.
+11.19.0, Chromium 149.0.7827.55, public `dist` entrypoints, and the same
+esbuild-minimized browser bundle configuration. The rkyv decoder WASM was
+compiled with Cargo `--release`. These details identify the recorded run;
+source-versus-`dist` packaging and minification are not distinct
+proving-performance modes because the proof timer excludes loading and
+installation and the same proving implementation runs in either packaging.
 
 The baseline used the `2.1.5` package build. Its checked-in package lock named
 subcircuit-library 2.1.5 but resolved 2.1.3, so the isolated reproduction
@@ -52,8 +55,8 @@ resulting lock SHA-256 was
 The candidate used the packaged local circuit output as an `npmSnapshot`
 production-origin input. Because the final operator-controlled `3.0` CRS does
 not yet exist, verifier data was generated from the matching development CRS.
-This preserves the release-optimized proving path and circuit shape but does
-not make the measured build a release-eligible production artifact.
+This preserves the measured circuit shape and proving implementation but does
+not make the candidate a release-eligible production artifact.
 
 The principal structural cause is the 75.0% reduction in both the
 `n x s_max` constraint grid and the `m_I x s_max` interface grid, together

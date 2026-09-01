@@ -1,8 +1,8 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { build, type Plugin } from "esbuild";
+import { build } from "esbuild";
 import { chromium } from "playwright";
 import { startIsolatedFileServer } from "../../support/browser/static-file-server.js";
 
@@ -27,7 +27,6 @@ const EXPECTED_STAGED_PHASES: readonly ProverPhase[] = [
 ];
 
 async function main(): Promise<void> {
-  const releaseBuild = process.env.BACKEND_WASM_BROWSER_RELEASE_BUILD === "true";
   await rm(OUTPUT_DIR, { recursive: true, force: true });
   await build({
     entryPoints: ["test/browser/prover-entry.ts"],
@@ -37,8 +36,6 @@ async function main(): Promise<void> {
     target: "es2022",
     outfile: BUNDLE_PATH,
     sourcemap: false,
-    minify: releaseBuild,
-    plugins: releaseBuild ? [releaseEntrypointPlugin()] : [],
   });
 
   const timeoutMs = parseTimeoutMs(process.env.BACKEND_WASM_BROWSER_PROVER_TIMEOUT_MS);
@@ -81,57 +78,21 @@ async function main(): Promise<void> {
     }
     assertObservedPhases(value, mode);
     printTimings(value);
-    await writeBenchmarkResult(value, releaseBuild, browser.version());
+    const resultPath = process.env.BACKEND_WASM_BROWSER_RESULT_PATH?.trim();
+    if (resultPath) {
+      await writeFile(path.resolve(resultPath), `${JSON.stringify({
+        generatedAt: new Date().toISOString(),
+        nodeVersion: process.version,
+        browserVersion: browser.version(),
+        result: value,
+      }, null, 2)}\n`);
+    }
   } finally {
     await browser?.close();
     await server.close();
   }
 
   console.log(`Checked ${mode} prover proof generation and verifier acceptance in Chromium`);
-}
-
-function releaseEntrypointPlugin(): Plugin {
-  return {
-    name: "release-entrypoints",
-    setup(buildContext) {
-      buildContext.onResolve(
-        { filter: /^\.\.\/\.\.\/src\/(prover|verifier)\/index\.js$/ },
-        (args) => ({
-          path: path.resolve(
-            path.dirname(args.importer),
-            "../../dist",
-            args.path.includes("/prover/") ? "prover" : "verifier",
-            "index.js",
-          ),
-        }),
-      );
-    },
-  };
-}
-
-async function writeBenchmarkResult(
-  result: BrowserProverResult,
-  releaseBuild: boolean,
-  browserVersion: string,
-): Promise<void> {
-  const outputPath = process.env.BACKEND_WASM_BROWSER_RESULT_PATH;
-  if (outputPath === undefined || outputPath.trim() === "") {
-    return;
-  }
-
-  const resolvedOutputPath = path.resolve(outputPath);
-  await mkdir(path.dirname(resolvedOutputPath), { recursive: true });
-  await writeFile(
-    resolvedOutputPath,
-    `${JSON.stringify({
-      schemaVersion: 1,
-      generatedAt: new Date().toISOString(),
-      nodeVersion: process.version,
-      browserVersion,
-      releaseBuild,
-      result,
-    }, null, 2)}\n`,
-  );
 }
 
 interface BrowserProverResult {
