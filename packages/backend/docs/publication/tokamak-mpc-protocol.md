@@ -31,11 +31,11 @@ claims below are limited accordingly.
 
 A succinct non-interactive argument of knowledge (SNARK) allows a prover to
 convince a verifier that a computation has a valid witness while sending a proof
-much smaller than the computation itself. Groth's 2016 pairing-based construction,
-commonly called Groth16 [1], is a preprocessing SNARK that obtains particularly
-small proofs and efficient verification from a reference string generated before
-proving begins. Correct setup is therefore part of the system's security and
-efficiency foundation, rather than an incidental deployment step.
+much smaller than the computation itself. Preprocessing SNARKs can move
+circuit-dependent cryptographic work into an earlier setup that generates a
+reference string, enabling small proofs and efficient verification [1, 6].
+Correct setup is therefore part of the system's security and efficiency
+foundation, rather than an incidental deployment step.
 
 The trusted-setup challenge is that reference-string generation may evaluate
 structured expressions at hidden values. Malicious selection or later recovery
@@ -114,7 +114,9 @@ vocabulary but does not claim an identical SRS construction.
 
 ### 2.2 Jang's setup
 
-Jang's setup samples
+Jang and Judd state that their arithmetic-constraint argument is based on
+Groth's 2016 pairing-based SNARK, commonly called Groth16 [1, 6]. Their setup
+samples
 
 ```text
 (alpha, x, y, gamma, delta, eta)
