@@ -35,15 +35,16 @@ much smaller than the computation itself. Preprocessing SNARKs can move
 circuit-dependent cryptographic work into an earlier setup that generates a
 reference string, enabling small proofs and efficient verification [1, 6].
 Correct setup is therefore part of the system's security and efficiency
-foundation, rather than an incidental deployment step.
-
-The trusted-setup challenge is that reference-string generation may evaluate
-structured expressions at hidden values. Malicious selection or later recovery
-of those values can place the resulting string outside the distribution assumed
-by the proof system. Public artifacts may be internally well formed while the
-party that generated them still retains information that verification cannot
-detect. Deletion of ordinary digital data is not generally publicly provable
-[20].
+foundation, rather than an incidental deployment step. In systems whose setup
+evaluates structured expressions at hidden values, correctness requires both a
+well-formed public reference string and hidden values that are sampled as
+specified and not retained. Malicious selection or later recovery of those
+values can place the reference string outside the distribution assumed by the
+proof system even when the public artifact appears well formed. Users must
+therefore trust the setup party for properties that public verification cannot
+fully establish; for this reason, the process is called a trusted setup. This
+reliance creates the trusted-setup challenge, because deletion of ordinary
+digital data is not generally publicly provable [20].
 
 Two-phase MPC replaces one setup party with sequential public updates. A reusable
 first phase produces universal powers, public computation specializes them to a
