@@ -37,17 +37,19 @@ computed from secret setup values, conventionally called trapdoors [1, 6]. A
 structurally well-formed reference string is not sufficient: the trapdoors must
 be sampled as specified and remain unknown after generation, which in a
 single-party setup requires the generator to delete every copy. Because public
-verification cannot establish that deletion, users must trust the generator;
-this is the trusted-setup challenge [20].
+verification cannot establish that deletion, users must trust the generator
+[20].
 
-Two-phase MPC replaces one setup party with sequential public updates. A reusable
-first phase produces universal powers, public computation specializes them to a
-circuit, and a second phase updates the specialized parameters [3, 5]. Each
-participant multiplies the preceding hidden value by a private share while
-publishing evidence that the public state was updated consistently. The standard
-security objective requires at least one honest participant in each phase to use
-unpredictable randomness and erase the corresponding share; the phases may have
-different contributors.
+Multi-party computation (MPC) replaces a single setup generator with a sequence
+of contributors. In the constructions considered here, the MPC has two phases:
+the first phase produces encoded powers reusable across supported circuits,
+public computation then specializes those powers to one circuit, and a
+circuit-dependent second phase updates the remaining specialized parameters
+[3, 5]. Each participant uses a private share to update the public state as if
+its hidden value had been multiplied by that share, while publishing evidence
+that the update was consistent. The standard security objective requires at
+least one honest participant in each phase to use unpredictable randomness and
+erase the corresponding share; the phases may have different contributors.
 
 Jang and Judd's *An Efficient SNARK for Field-Programmable and RAM Circuits*,
 called Jang's SNARK hereafter, commits a library of subcircuits while allowing
