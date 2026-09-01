@@ -358,7 +358,7 @@ from a new genesis. Dusk-backed ceremonies rerun the adaptor and Phase 1.
 ## Security-claim boundary
 
 This contract defines mechanics and validation, not the final public statement
-of the trust model. Public claims about retained toxic waste, malicious
-parameter selection, and the exact guarantee supplied by an honest contributor
-remain gated on the separate literature-backed security review. No such claim
-may be inferred solely from a transition passing this contract's checks.
+of the trust model. The literature-backed [protocol publication](../../../../docs/publication/tokamak-mpc-protocol.md)
+analyzes retained toxic waste, malicious parameter selection, and the exact
+claim boundary of an honest contribution. No complete trust or SNARK-security
+claim may be inferred solely from a transition passing this contract's checks.

@@ -231,10 +231,15 @@ per phase. They are convenience wrappers, not a different protocol.
 cargo run --locked --release -p mpc-setup --bin native_mpc_setup -- \
   --intermediate ./setup/mpc-setup/output/native.intermediate \
   --output ./setup/mpc-setup/output/native.final
+```
 
-cargo run --locked --release -p mpc-setup \
-  --no-default-features --features production-npm-subcircuit-library \
-  --bin dusk_backed_mpc_setup -- ceremony \
+Create a Dusk-backed CRS from the production npm snapshot without publishing
+it:
+
+```bash
+cargo run --locked --release -p mpc-setup --no-default-features \
+  --features production-npm-subcircuit-library --bin dusk_backed_mpc_setup -- \
+  ceremony \
   --intermediate ./setup/mpc-setup/output/dusk.intermediate \
   --output ./setup/mpc-setup/output/dusk.final
 ```
@@ -247,6 +252,29 @@ contains `adapted-tau` and the pinned raw `dusk.response`.
 meanings are unchanged; `ceremony` alone never publishes. Publication also
 requires the production npm subcircuit-library origin, verified artifact
 digests, configured Drive credentials, and folder permissions.
+
+The integrated production command is:
+
+```bash
+cargo run --locked --release -p mpc-setup --no-default-features \
+  --features production-npm-subcircuit-library --bin dusk_backed_mpc_setup -- \
+  run \
+  --intermediate ./setup/mpc-setup/output/dusk.intermediate \
+  --output ./setup/mpc-setup/output/dusk.final
+```
+
+The default-feature command is a development-only local-source ceremony:
+
+```bash
+cargo run --locked --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
+  ceremony \
+  --intermediate ./setup/mpc-setup/output/dusk-local.intermediate \
+  --output ./setup/mpc-setup/output/dusk-local.final
+```
+
+It records `localQapCompiler` provenance and remains publication-ineligible.
+Rebuilding a later `publish` command with the production feature cannot convert
+that local-source artifact into an npm-snapshot artifact.
 
 ## Recovery and compatibility
 
@@ -268,8 +296,13 @@ protocol version, the transcript SHA-256, and the three final artifact digests.
 `releaseEligible` is a publication gate, not an algorithm compatibility test.
 
 The implemented checks establish artifact integrity, transition consistency,
-proof binding, source mapping, and qualifying-contribution policy. The final
-public description of which security guarantees depend on each trapdoor
-remaining unknown is intentionally deferred to the literature-backed security
-review. Do not infer a complete trust or toxic-waste claim solely from a
-successful transition check.
+proof binding, source mapping, and qualifying-contribution policy. The
+literature-backed [protocol publication](../../../docs/publication/tokamak-mpc-protocol.md)
+describes which claims depend on each trapdoor family remaining unknown and
+which integrity properties remain independently verifiable. Do not infer a
+complete trust or toxic-waste claim solely from a successful transition check.
+
+## License
+
+The MPC setup implementation and documentation are dual-licensed under
+`MIT OR Apache-2.0`.
