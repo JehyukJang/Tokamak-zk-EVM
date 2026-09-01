@@ -1,9 +1,6 @@
-use crate::alpha_x_basis::{
-    read_adapted_tau_bundle, DuskTauAdaptor,
-};
+use crate::alpha_x_basis::{read_adapted_tau_bundle, DuskTauAdaptor};
 use crate::ceremony_workspace::{
-    append_bundle, initialize_workspace, selected_phase1, verify_workspace,
-    CeremonyWorkspaceError,
+    append_bundle, initialize_workspace, selected_phase1, verify_workspace, CeremonyWorkspaceError,
 };
 use crate::flows::{phase2_prepare::prepare_selected_phase1_from_qap, MpcSetupError};
 use crate::protocol::Sha256Digest;
@@ -65,15 +62,14 @@ pub fn initialize_native(
     let shape = load_shape(qap_path)?;
     let artifact = UniversalTauArtifact::initialize_native(ceremony_id, &shape)?;
     write_phase1_bundle(output, &artifact, None)?;
-    println!("Native Phase 1 genesis committed: {}", artifact.state.digest()?.as_str());
+    println!(
+        "Native Phase 1 genesis committed: {}",
+        artifact.state.digest()?.as_str()
+    );
     Ok(())
 }
 
-pub fn adapt_dusk(
-    qap_path: &Path,
-    raw_path: &Path,
-    output: &Path,
-) -> Result<(), OperatorError> {
+pub fn adapt_dusk(qap_path: &Path, raw_path: &Path, output: &Path) -> Result<(), OperatorError> {
     if output.exists() {
         return Err(OperatorError::InvalidCommand(format!(
             "refusing to overwrite existing adaptor output {}",
@@ -91,8 +87,12 @@ pub fn adapt_dusk(
         layout.dusk_adaptor_layout()?,
     )
     .map_err(|source| io_error("adapt pinned Dusk tau", raw_path, source))?;
-    let parent = output.parent().filter(|value| !value.as_os_str().is_empty()).unwrap_or(Path::new("."));
-    fs::create_dir_all(parent).map_err(|source| io_error("create adaptor output parent", parent, source))?;
+    let parent = output
+        .parent()
+        .filter(|value| !value.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    fs::create_dir_all(parent)
+        .map_err(|source| io_error("create adaptor output parent", parent, source))?;
     let temporary = Builder::new()
         .prefix(".adapted-tau-")
         .tempdir_in(parent)
@@ -107,7 +107,10 @@ pub fn adapt_dusk(
         let _ = fs::remove_dir_all(&temporary_path);
         return Err(io_error("commit adapted tau bundle", output, source));
     }
-    println!("Dusk tau adaptation committed: {}", adapted.manifest().digest()?.as_str());
+    println!(
+        "Dusk tau adaptation committed: {}",
+        adapted.manifest().digest()?.as_str()
+    );
     Ok(())
 }
 
@@ -123,7 +126,10 @@ pub fn prepare_dusk_phase1(
         .map_err(|source| io_error("read adapted tau bundle", adapted_tau, source))?;
     let artifact = UniversalTauArtifact::prepare_from_adapted_tau(ceremony_id, &shape, &adapted)?;
     write_phase1_bundle(output, &artifact, None)?;
-    println!("Dusk-backed Phase 1 preparation committed: {}", artifact.state.digest()?.as_str());
+    println!(
+        "Dusk-backed Phase 1 preparation committed: {}",
+        artifact.state.digest()?.as_str()
+    );
     Ok(())
 }
 
@@ -133,45 +139,53 @@ pub fn prepare_circuit(
     output: &Path,
 ) -> Result<(), OperatorError> {
     let (selected, receipts) = selected_phase1(workspace)?;
-    let circuit_digest = Sha256Digest::parse(
-        env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_SOURCE_DIGEST").to_string(),
-    )?;
-    let artifact = prepare_selected_phase1_from_qap(
-        &selected,
-        &receipts,
-        qap_path,
-        circuit_digest,
-    )?;
+    let circuit_digest =
+        Sha256Digest::parse(env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_SOURCE_DIGEST").to_string())?;
+    let artifact =
+        prepare_selected_phase1_from_qap(&selected, &receipts, qap_path, circuit_digest)?;
     write_phase2_bundle(output, &artifact, None)?;
-    println!("Circuit-bound Phase 2 preparation committed: {}", artifact.state.digest()?.as_str());
+    println!(
+        "Circuit-bound Phase 2 preparation committed: {}",
+        artifact.state.digest()?.as_str()
+    );
     Ok(())
 }
 
 pub fn initialize_chain(workspace: &Path, initial: &Path) -> Result<(), OperatorError> {
     let chain = initialize_workspace(workspace, initial)?;
-    println!("Ceremony workspace initialized with {} state", chain.entries.len());
+    println!(
+        "Ceremony workspace initialized with {} state",
+        chain.entries.len()
+    );
     Ok(())
 }
 
 pub fn append_chain(workspace: &Path, bundle: &Path) -> Result<(), OperatorError> {
     let chain = append_bundle(workspace, bundle)?;
-    println!("Verified state appended; workspace now contains {} states", chain.entries.len());
+    println!(
+        "Verified state appended; workspace now contains {} states",
+        chain.entries.len()
+    );
     Ok(())
 }
 
 pub fn verify_chain(workspace: &Path) -> Result<(), OperatorError> {
     let chain = verify_workspace(workspace)?;
-    println!("Verified ceremony workspace with {} immutable states", chain.entries.len());
+    println!(
+        "Verified ceremony workspace with {} immutable states",
+        chain.entries.len()
+    );
     Ok(())
 }
 
 fn load_shape(qap_path: &Path) -> Result<SetupShape, OperatorError> {
     let setup_path = qap_path.join("setupParams.json");
-    let setup = SetupParams::read_from_json(setup_path.clone()).map_err(|source| OperatorError::Io {
-        operation: "read setup parameters",
-        path: setup_path.clone(),
-        source,
-    })?;
+    let setup =
+        SetupParams::read_from_json(setup_path.clone()).map_err(|source| OperatorError::Io {
+            operation: "read setup parameters",
+            path: setup_path.clone(),
+            source,
+        })?;
     let shape = try_setup_shape(&setup, &setup_path)?;
     try_validate_setup_shape(&shape, &setup_path)?;
     Ok(shape)

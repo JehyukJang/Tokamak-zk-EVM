@@ -182,15 +182,22 @@ pub fn state_bundle_path(workspace: &Path, digest: &Sha256Digest) -> PathBuf {
 
 pub fn selected_phase1(
     workspace: &Path,
-) -> Result<(crate::universal_tau::UniversalTauArtifact, Vec<ContributionReceipt>), CeremonyWorkspaceError>
-{
+) -> Result<
+    (
+        crate::universal_tau::UniversalTauArtifact,
+        Vec<ContributionReceipt>,
+    ),
+    CeremonyWorkspaceError,
+> {
     let chain = verify_workspace(workspace)?;
     let selected_entry = chain
         .entries
         .iter()
         .rev()
         .find(|entry| entry.phase == Phase::Phase1)
-        .ok_or_else(|| CeremonyWorkspaceError::Invalid("workspace contains no Phase 1 state".into()))?;
+        .ok_or_else(|| {
+            CeremonyWorkspaceError::Invalid("workspace contains no Phase 1 state".into())
+        })?;
     let selected = load_entry_bundle(workspace, selected_entry)?;
     let receipts = phase_receipts(workspace, &chain, Phase::Phase1)?;
     validate_state_selection(selected.state(), &receipts)?;

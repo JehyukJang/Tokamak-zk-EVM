@@ -1,18 +1,18 @@
 use clap::{Args, Parser, Subcommand};
 use libs::cli::render_error;
-use mpc_setup::participant::{
-    run_contribute, run_verify_transition, ContributeConfig, VerifyTransitionConfig,
-};
 use mpc_setup::operator::{
     adapt_dusk, append_chain, initialize_chain, initialize_native, prepare_circuit,
     prepare_dusk_phase1, verify_chain, OperatorError,
+};
+use mpc_setup::participant::{
+    run_contribute, run_verify_transition, ContributeConfig, VerifyTransitionConfig,
 };
 use mpc_setup::protocol::Phase;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 #[derive(Parser, Debug)]
-#[command(author, version, about = "Tokamak MPC participant commands")]
+#[command(author, version, about = "Tokamak two-phase MPC commands")]
 struct Config {
     #[command(subcommand)]
     command: Command,
@@ -183,10 +183,12 @@ fn run() -> Result<(), CommandError> {
             &args.output,
         )
         .map_err(CommandError::Operator),
-        Command::WorkspaceInit(args) => initialize_chain(&args.workspace, &args.initial)
-            .map_err(CommandError::Operator),
-        Command::WorkspaceAppend(args) => append_chain(&args.workspace, &args.bundle)
-            .map_err(CommandError::Operator),
+        Command::WorkspaceInit(args) => {
+            initialize_chain(&args.workspace, &args.initial).map_err(CommandError::Operator)
+        }
+        Command::WorkspaceAppend(args) => {
+            append_chain(&args.workspace, &args.bundle).map_err(CommandError::Operator)
+        }
         Command::WorkspaceVerify(args) => {
             verify_chain(&args.workspace).map_err(CommandError::Operator)
         }
