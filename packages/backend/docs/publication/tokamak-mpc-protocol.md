@@ -31,20 +31,13 @@ claims below are limited accordingly.
 
 A succinct non-interactive argument of knowledge (SNARK) allows a prover to
 convince a verifier that a computation has a valid witness while sending a proof
-much smaller than the computation itself. Preprocessing SNARKs can move
-circuit-dependent cryptographic work into an earlier setup that generates a
-reference string, enabling small proofs and efficient verification [1, 6].
-Correct setup is therefore part of the system's security and efficiency
-foundation, rather than an incidental deployment step. In systems whose setup
-evaluates structured expressions at hidden values, correctness requires both a
-well-formed public reference string and hidden values that are sampled as
-specified and not retained. Malicious selection or later recovery of those
-values can place the reference string outside the distribution assumed by the
-proof system even when the public artifact appears well formed. Users must
-therefore trust the setup party for properties that public verification cannot
-fully establish; for this reason, the process is called a trusted setup. This
-reliance creates the trusted-setup challenge, because deletion of ordinary
-digital data is not generally publicly provable [20].
+much smaller than the computation itself. The preprocessing SNARKs considered
+here obtain their proof and verification efficiency from a reference string
+generated during setup [1, 6]. When that setup depends on hidden values, a
+correct setup requires both a well-formed reference string and honest sampling
+and erasure of those values. Because public verification cannot establish
+erasure, users must trust the setup party; this is the trusted-setup challenge
+[20].
 
 Two-phase MPC replaces one setup party with sequential public updates. A reusable
 first phase produces universal powers, public computation specializes them to a
