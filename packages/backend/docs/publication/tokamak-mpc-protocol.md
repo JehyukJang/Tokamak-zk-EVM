@@ -41,10 +41,10 @@ verification cannot establish that deletion, users must trust the generator
 [20].
 
 Multi-party computation (MPC) replaces a single setup generator with a sequence
-of contributors. In the constructions considered here, the MPC has two phases:
-Phase 1 generates reusable setup material; Phase 2 derives circuit-specific
-setup material from it [3, 5]. Each participant uses a private share to update
-the public state as if its hidden value had been
+of contributors. The cited constructions divide setup into a universal phase
+that produces circuit-independent material and a circuit-specific phase that
+produces material for one circuit [3, 5, 20]. Each participant uses a private
+share to update the public state as if its hidden value had been
 multiplied by that share, while publishing evidence that the update was
 consistent. The standard security objective requires at least one honest
 participant in each phase to use unpredictable randomness and erase the
