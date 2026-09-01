@@ -25,14 +25,18 @@ mod utils;
 
 mod accumulator;
 pub mod alpha_x_basis;
+pub mod ceremony_workspace;
 pub mod contribution_kernel;
 mod contributor;
 mod drive_upload;
 mod flows;
+pub mod participant;
+pub mod operator;
 pub mod phase1_contribution;
 pub mod phase2_circuit;
 pub mod phase2_contribution;
 pub mod protocol;
+pub mod state_bundle;
 pub mod universal_tau;
 
 mod sigma;

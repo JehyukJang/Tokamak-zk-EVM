@@ -1,6 +1,7 @@
 use crate::accumulator::{Accumulator, AccumulatorRkyv};
 use crate::conversions::{
-    deserialize_g1_affine, deserialize_g2_affine, serialize_g1_affine, serialize_g2_affine,
+    deserialize_g1_affine, deserialize_g1_bytes, deserialize_g2_affine, deserialize_g2_bytes,
+    serialize_g1_affine, serialize_g2_affine,
 };
 use crate::protocol::{
     AdaptedTau, CurveGroup, DuskExponentMapping, PointChunkDescriptor, ProtocolError, Sha256Digest,
@@ -461,6 +462,113 @@ pub fn verify_adapted_tau_bundle(directory: &Path) -> io::Result<AdaptedTau> {
             .map_err(protocol_io_error)?;
     }
     Ok(manifest)
+}
+
+pub fn read_adapted_tau_bundle(directory: &Path) -> io::Result<DuskAdaptedAlphaXBasis> {
+    let manifest = verify_adapted_tau_bundle(directory)?;
+    let layout = layout_from_mapping(&manifest.mapping)?;
+    let stride = usize::try_from(manifest.mapping.omega_stride).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "omega stride does not fit usize",
+        )
+    })?;
+    let g1_len = usize::try_from(manifest.mapping.max_source_g1_exponent)
+        .ok()
+        .and_then(|value| value.checked_add(1))
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "G1 basis length overflow"))?;
+    let g2_len = usize::try_from(manifest.mapping.max_source_g2_exponent)
+        .ok()
+        .and_then(|value| value.checked_add(1))
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "G2 basis length overflow"))?;
+    let mut tau_powers_g1 = vec![G1Affine::zero(); g1_len];
+    let mut tau_powers_g2 = vec![G2Affine::zero(); g2_len];
+    for descriptor in &manifest.alpha_x_chunks {
+        let path = directory.join(descriptor.content_addressed_file_name());
+        let bytes = std::fs::read(&path)?;
+        descriptor
+            .validate_bytes(&bytes)
+            .map_err(protocol_io_error)?;
+        match (descriptor.family.as_str(), descriptor.group) {
+            ("alpha", CurveGroup::G1) => {
+                for (offset, encoding) in bytes.chunks_exact(DUSK_G1_COMPRESSED_BYTES).enumerate() {
+                    let alpha = offset + 1;
+                    tau_powers_g1[stride * alpha] = deserialize_g1_bytes(encoding, Compress::Yes)
+                        .map_err(invalid_point_io)?
+                        .0;
+                }
+            }
+            ("alpha", CurveGroup::G2) => {
+                for (offset, encoding) in bytes.chunks_exact(DUSK_G2_COMPRESSED_BYTES).enumerate() {
+                    let alpha = offset + 1;
+                    tau_powers_g2[stride * alpha] = deserialize_g2_bytes(encoding, Compress::Yes)
+                        .map_err(invalid_point_io)?
+                        .0;
+                }
+            }
+            ("x", CurveGroup::G1) => {
+                let start = descriptor_start(descriptor, 0)?;
+                for (offset, encoding) in bytes.chunks_exact(DUSK_G1_COMPRESSED_BYTES).enumerate() {
+                    tau_powers_g1[start + offset] = deserialize_g1_bytes(encoding, Compress::Yes)
+                        .map_err(invalid_point_io)?
+                        .0;
+                }
+            }
+            ("x", CurveGroup::G2) => {
+                for (offset, encoding) in bytes.chunks_exact(DUSK_G2_COMPRESSED_BYTES).enumerate() {
+                    tau_powers_g2[offset] = deserialize_g2_bytes(encoding, Compress::Yes)
+                        .map_err(invalid_point_io)?
+                        .0;
+                }
+            }
+            ("alphaX", CurveGroup::G1) => {
+                let alpha = descriptor_start(descriptor, 0)? + 1;
+                let start = descriptor_start(descriptor, 1)?;
+                for (offset, encoding) in bytes.chunks_exact(DUSK_G1_COMPRESSED_BYTES).enumerate() {
+                    tau_powers_g1[stride * alpha + start + offset] =
+                        deserialize_g1_bytes(encoding, Compress::Yes)
+                            .map_err(invalid_point_io)?
+                            .0;
+                }
+            }
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "adapted tau contains an unsupported point family",
+                ))
+            }
+        }
+    }
+    let g1 = G1serde(tau_powers_g1[0]);
+    let g2 = G2serde(tau_powers_g2[0]);
+    if g1 != icicle_g1_generator() || g2 != icicle_g2_generator() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "adapted tau bundle has noncanonical generators",
+        ));
+    }
+    Ok(DuskAdaptedAlphaXBasis {
+        g1,
+        g2,
+        tau_powers_g1,
+        tau_powers_g2,
+        tokamak_n: layout.tokamak_n,
+        provenance: manifest.source_provenance.clone(),
+        manifest,
+    })
+}
+
+fn descriptor_start(descriptor: &PointChunkDescriptor, axis: usize) -> io::Result<usize> {
+    descriptor
+        .start_indices
+        .get(axis)
+        .copied()
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid chunk start index"))
+}
+
+fn invalid_point_io(reason: String) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, reason)
 }
 
 fn validate_pinned_provenance(provenance: &DuskSourceProvenance) -> io::Result<()> {
@@ -1131,8 +1239,8 @@ impl AlphaXBasis for AlphaXBasisSource {
 #[cfg(test)]
 mod tests {
     use super::{
-        dusk_raw_encoding, finish_adaptation, verify_adapted_tau_bundle,
-        verify_dusk_tau_consistency, verify_pinned_source_digest, DuskAdaptorLayout,
+        dusk_raw_encoding, finish_adaptation, read_adapted_tau_bundle, verify_adapted_tau_bundle,
+        verify_dusk_tau_consistency, verify_pinned_source_digest, AlphaXBasis, DuskAdaptorLayout,
         DUSK_PINNED_CONTRIBUTION, DUSK_PINNED_DRIVE_FILE_ID, DUSK_PINNED_README_URL,
         DUSK_PINNED_SOURCE_SHA256,
     };
@@ -1228,6 +1336,12 @@ mod tests {
         adapted.write_bundle(directory.path()).unwrap();
         let verified = verify_adapted_tau_bundle(directory.path()).unwrap();
         assert_eq!(&verified, adapted.manifest());
+        let loaded = read_adapted_tau_bundle(directory.path()).unwrap();
+        assert_eq!(loaded.g1(), adapted.g1());
+        assert_eq!(loaded.g2(), adapted.g2());
+        assert_eq!(loaded.alpha_g2(4), adapted.alpha_g2(4));
+        assert_eq!(loaded.x_g2(1), adapted.x_g2(1));
+        assert_eq!(loaded.alphax_g1(3, 2), adapted.alphax_g1(3, 2));
         assert!(!verified.alpha_x_chunks.is_empty());
         assert!(directory.path().join("adapted_tau.json").is_file());
     }

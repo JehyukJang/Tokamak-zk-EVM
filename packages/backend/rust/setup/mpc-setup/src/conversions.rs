@@ -108,6 +108,10 @@ pub fn ark_g2_affine_to_icicle(g2: &ArkG2Affine) -> IcicleG2Affine {
 
 pub fn deserialize_g1serde(string: &str, compress: Compress) -> Result<G1serde, String> {
     let buffer = hex::decode(string).map_err(|error| format!("invalid G1 hex: {error}"))?;
+    deserialize_g1_bytes(&buffer, compress)
+}
+
+pub(crate) fn deserialize_g1_bytes(buffer: &[u8], compress: Compress) -> Result<G1serde, String> {
     let mut cursor = Cursor::new(&buffer);
     let rec_ark = ArkG1Affine::deserialize_with_mode(&mut cursor, compress, Validate::Yes)
         .map_err(|error| format!("invalid G1 point encoding: {error}"))?;
@@ -121,6 +125,10 @@ pub fn serialize_g1serde(point: &G1serde, compress: Compress) -> String {
 }
 pub fn deserialize_g2serde(string: &str, compress: Compress) -> Result<G2serde, String> {
     let buffer = hex::decode(string).map_err(|error| format!("invalid G2 hex: {error}"))?;
+    deserialize_g2_bytes(&buffer, compress)
+}
+
+pub(crate) fn deserialize_g2_bytes(buffer: &[u8], compress: Compress) -> Result<G2serde, String> {
     let mut cursor = Cursor::new(&buffer);
     let rec_ark = ArkG2Affine::deserialize_with_mode(&mut cursor, compress, Validate::Yes)
         .map_err(|error| format!("invalid G2 point encoding: {error}"))?;

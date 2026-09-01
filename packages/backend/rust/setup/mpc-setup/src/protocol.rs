@@ -443,6 +443,7 @@ pub struct UniversalTau {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CircuitSigma {
+    pub private_wire_count: u64,
     pub chunks: Vec<PointChunkDescriptor>,
 }
 
@@ -1204,6 +1205,7 @@ mod tests {
                 chunks: vec![chunk("xy")],
             }),
             Phase::Phase2 => PhasePayload::Phase2(CircuitSigma {
+                private_wire_count: 1,
                 chunks: vec![chunk("sigma")],
             }),
         };

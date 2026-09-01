@@ -106,6 +106,70 @@ impl MonomialLayout {
         canonical_digest(self)
     }
 
+    pub fn to_canonical_json(&self) -> Result<Vec<u8>, UniversalTauError> {
+        self.validate()?;
+        serde_json::to_vec(self)
+            .map_err(|error| UniversalTauError::InvalidLayout(error.to_string()))
+    }
+
+    pub fn from_canonical_json(bytes: &[u8]) -> Result<Self, UniversalTauError> {
+        let value: Self = serde_json::from_slice(bytes)
+            .map_err(|error| UniversalTauError::InvalidLayout(error.to_string()))?;
+        value.validate()?;
+        if value.to_canonical_json()? != bytes {
+            return Err(UniversalTauError::InvalidLayout(
+                "layout JSON is not in canonical form".to_string(),
+            ));
+        }
+        Ok(value)
+    }
+
+    pub fn validate(&self) -> Result<(), UniversalTauError> {
+        if self.contract_version != 1 {
+            return Err(UniversalTauError::InvalidLayout(
+                "unsupported layout contract version".to_string(),
+            ));
+        }
+        if !self.n.is_power_of_two() || !self.m_i.is_power_of_two() || !self.s.is_power_of_two() {
+            return Err(UniversalTauError::InvalidLayout(
+                "n, m_i, and s must be nonzero powers of two".to_string(),
+            ));
+        }
+        let expected_n_max = self.n.max(self.m_i);
+        let expected_x_grid_len = expected_n_max
+            .checked_mul(2)
+            .ok_or_else(|| UniversalTauError::InvalidLayout("x grid overflow".to_string()))?;
+        let expected_y_grid_len = self
+            .s
+            .checked_mul(2)
+            .ok_or_else(|| UniversalTauError::InvalidLayout("y grid overflow".to_string()))?;
+        let expected_alpha_x_max = expected_x_grid_len
+            .max(self.n.checked_add(2).ok_or_else(|| {
+                UniversalTauError::InvalidLayout("alpha-X n bound overflow".to_string())
+            })?)
+            .max(self.m_i.checked_add(1).ok_or_else(|| {
+                UniversalTauError::InvalidLayout("alpha-X m_i bound overflow".to_string())
+            })?);
+        let expected_alpha_y_max = expected_y_grid_len
+            .checked_sub(1)
+            .ok_or_else(|| UniversalTauError::InvalidLayout("Y grid is empty".to_string()))?
+            .max(self.s.checked_add(2).ok_or_else(|| {
+                UniversalTauError::InvalidLayout("alpha-Y bound overflow".to_string())
+            })?);
+        if self.n_max != expected_n_max
+            || self.x_grid_len != expected_x_grid_len
+            || self.y_grid_len != expected_y_grid_len
+            || self.alpha_max != 4
+            || self.alpha_x_max != expected_alpha_x_max
+            || self.alpha_y_max != expected_alpha_y_max
+        {
+            return Err(UniversalTauError::InvalidLayout(
+                "stored dimensions do not match the authoritative layout formulas".to_string(),
+            ));
+        }
+        self.validate_allocations()
+    }
+
     pub fn capacity_digest(shape: &SetupShape) -> Result<Sha256Digest, UniversalTauError> {
         canonical_digest(&CapacityIdentity {
             contract_version: 1,

@@ -445,7 +445,14 @@ impl CircuitSigmaPoints {
             vec![4, 3],
         )?;
         push_g1(&mut chunks, "lagrangeKL", &[self.lagrange_kl], vec![1])?;
-        Ok(CircuitSigma { chunks })
+        Ok(CircuitSigma {
+            private_wire_count: u64::try_from(self.private_wire_count).map_err(|_| {
+                CircuitPreparationError::InvalidInput(
+                    "private wire count exceeds the protocol range".to_string(),
+                )
+            })?,
+            chunks,
+        })
     }
 }
 
