@@ -33,11 +33,12 @@ A succinct non-interactive argument of knowledge (SNARK) allows a prover to
 convince a verifier that a computation has a valid witness while sending a proof
 much smaller than the computation itself. The preprocessing SNARKs considered
 here obtain their proof and verification efficiency from a reference string
-generated during setup [1, 6]. When that setup depends on hidden values, a
-correct setup requires both a well-formed reference string and honest sampling
-and erasure of those values. Because public verification cannot establish
-erasure, users must trust the setup party; this is the trusted-setup challenge
-[20].
+computed from secret setup values, conventionally called trapdoors [1, 6]. A
+structurally well-formed reference string is not sufficient: the trapdoors must
+be sampled as specified and remain unknown after generation, which in a
+single-party setup requires the generator to delete every copy. Because public
+verification cannot establish that deletion, users must trust the generator;
+this is the trusted-setup challenge [20].
 
 Two-phase MPC replaces one setup party with sequential public updates. A reusable
 first phase produces universal powers, public computation specializes them to a
