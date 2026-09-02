@@ -35,43 +35,47 @@ limited accordingly.
 
 A succinct non-interactive argument of knowledge (SNARK) allows a prover to
 convince a verifier that a computation has a valid witness while sending a proof
-much smaller than the computation itself. The preprocessing SNARKs considered
-here obtain their proof and verification efficiency from a reference string
-computed from secret setup values, conventionally called trapdoors [1, 6]. A
-structurally well-formed reference string is not sufficient: the trapdoors must
-be sampled as specified and remain unknown after generation, which in a
-single-party setup requires the generator to delete every copy. Because public
-verification cannot establish that deletion, users must trust the generator
-[20].
+much smaller than the computation itself. A preprocessing SNARK runs a setup
+before proofs are generated and uses the resulting reference string for later
+proving and verification. This structure supports small proofs and efficient
+verification across repeated uses of the setup. Examples include Pinocchio [2],
+Groth16 [1], and Tokamak's SNARK [6].
 
-Jang and Judd have proposed a SNARK that commits a library of subcircuits while
-allowing larger circuits to be derived by placement and wiring [6]. This
-document calls that construction Tokamak's SNARK. Its setup samples six hidden
-scalars and produces a common reference string (CRS) containing the group
-elements required by the subcircuit library and by circuits derived from it.
-Reusing the library material is valuable when computations change, but the setup
-described in [6] does not allow later participants to replace its hidden values
-and assumes the six scalars are sampled by the setup algorithm.
+Jang and Judd have proposed a preprocessing SNARK in which a setup commits a
+library of subcircuits and larger circuits are derived by placement and wiring
+[6]. This document calls that construction Tokamak's SNARK. Its setup samples
+six scalars and produces a common reference string (CRS) containing the group
+elements required by the library and by circuits derived from it. Unlike
+circuit-specific preprocessing SNARKs, the CRS is tied to the reusable library
+rather than to each derived circuit, so supported computations can change
+without a new setup.
 
-Multi-party computation (MPC) replaces a single setup generator with a sequence
-of contributors. In the setup protocols considered here, the work is divided
-into two phases. The first phase generates material that can be reused for
+Despite this difference, Tokamak's SNARK shares a limitation with the other
+preprocessing SNARKs considered here: their reference strings are computed from
+secret setup values, conventionally called trapdoors [1, 2, 6]. A structurally
+well-formed reference string is not sufficient. In a single-party setup, the
+generator must sample the trapdoors as specified and delete every copy after
+generating the reference string. Because public verification cannot establish
+that the trapdoors were sampled unpredictably or erased, users must trust the
+generator [20].
+
+One way to avoid relying on a single trusted generator is multi-party
+computation (MPC), which distributes setup generation across a sequence of
+contributors. Each participant uses a private share to update the public data
+and publishes evidence that the update is consistent. In the two-phase setup
+protocols of [3, 5], the first phase generates material that can be reused for
 multiple circuits. After a public computation derives the material for one
-circuit, the second phase updates the remaining circuit-dependent parameters
-[3, 5]. Each participant uses a private share to update the public data and
-publishes evidence that the update is consistent. The security analyses require
-at least one participant in each phase to use unpredictable randomness and
-erase the corresponding share; the phases may have different contributors.
+circuit, the second phase updates the remaining circuit-dependent parameters.
+The security analyses require at least one participant in each phase to use
+unpredictable randomness and erase the corresponding share; the phases may have
+different contributors.
 
-Several prior protocols and completed ceremonies provide
-circuit-independent setup material. Bowe, Gabizon, and Miers separate powers of
-tau from the computation that specializes them to a circuit [3], and *Snarky
-Ceremonies* analyzes the updates made before and after that computation [5].
-Public artifacts include the Zcash Powers of Tau, the Dusk extension over
-BLS12-381, the Ethereum ceremony for Kate-Zaverucha-Goldberg (KZG) polynomial
-commitments, and Privacy & Scaling Explorations' Perpetual Powers of Tau [9–12].
-These ceremonies show that large structured reference strings can be generated
-and independently checked by many participants.
+Related MPC ceremonies have produced public powers-of-tau artifacts, including
+the Zcash Powers of Tau, the Dusk extension over BLS12-381, the Ethereum
+ceremony for Kate-Zaverucha-Goldberg (KZG) polynomial commitments, and Privacy &
+Scaling Explorations' Perpetual Powers of Tau [9–12]. These ceremonies show that
+large structured reference strings can be generated and independently checked
+by many participants.
 
 Completed ceremony artifacts nevertheless cannot generally be used unchanged
 by Tokamak's SNARK. The source and target may use different pairing curves, the
