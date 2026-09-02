@@ -39,20 +39,31 @@ much smaller than the computation itself. A preprocessing SNARK runs a setup
 before proofs are generated and uses the resulting reference string for later
 proving and verification. This structure supports small proofs and efficient
 verification across repeated uses of the setup. Examples include Pinocchio [30],
-Groth16 [1], and later constructions such as Sonic [8] and Tokamak's SNARK
-[6]; further examples appear in [4, 21–29, 31, 32].
+Groth16 [1], and later constructions such as Sonic [8], PLONK [21], and
+Tokamak's SNARK [6]; further examples appear in [4, 22–29, 31, 32].
 
-Jang and Judd have proposed a preprocessing SNARK in which a setup commits a
-library of subcircuits and larger circuits are derived by placement and wiring
-[6]. This document calls that construction Tokamak's SNARK. Its setup samples
-six scalars and produces a common reference string (CRS) containing the group
-elements required by the library and by circuits derived from it. Unlike
-circuit-specific preprocessing SNARKs, the CRS is tied to the reusable library
-rather than to each derived circuit, so supported computations can change
-without a new setup.
+Jang and Judd combine Groth16's arithmetic argument with PLONK's use of a
+permutation argument [1, 6, 21]. Tokamak's SNARK adapts the former to check
+computation inside copies of predefined subcircuits and the latter to check
+equality between values on wires that connect those copies. It also proves that
+the two checks use the same wire values. The setup commits a reusable library
+of subcircuits, and each supported circuit is then specified by selecting and
+placing copies from that library and describing their interconnections.
+Compared with Groth16, one common reference string (CRS) therefore supports
+many such circuits rather than one fixed circuit. Compared with PLONK, verifier
+preprocessing describes only connections between already committed subcircuits
+rather than the constraints and wiring of the entire circuit; the reduction is
+greatest when the subcircuits contain substantially more internal computation
+than interface wiring. The proofs remain constant in size. The tradeoffs are
+that the CRS supports only circuits constructible from the committed library
+and is not updatable. The paper also reports a proof of 19 group elements and 4
+field elements with 10 pairings in verification, compared with 3 group elements
+and 3 pairings for Groth16 and 9 group elements, 6 field elements, and 2 pairings
+for PLONK [6, Fig. 1]. This document calls the construction Tokamak's SNARK.
 
-Despite this difference, Tokamak's SNARK shares a limitation with preprocessing
-SNARK instantiations that use secret-dependent structured reference strings:
+These design choices do not remove the setup trust requirement. Tokamak's SNARK
+shares a limitation with preprocessing SNARK instantiations that use
+secret-dependent structured reference strings:
 their reference strings are computed from secret setup values, conventionally
 called trapdoors [1, 2, 6]. A structurally well-formed reference string is not
 sufficient. In a single-party setup, the generator must sample the trapdoors as
