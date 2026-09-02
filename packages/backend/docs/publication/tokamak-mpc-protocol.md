@@ -86,11 +86,11 @@ ceremony for Kate-Zaverucha-Goldberg (KZG) polynomial commitments, and Privacy
 & Scaling Explorations' Perpetual Powers of Tau, as well as Filecoin's
 BLS12-381 first-phase result [9–13].
 
-This document explains how Tokamak reuses the Dusk powers-of-tau result while
-generating the CRS for Tokamak's SNARK. It first separates the part that can be
-reused from the independent setup values that Tokamak still requires. It then
-describes how contributors add those values, how the subcircuit library is
-incorporated, and what the resulting public records can and cannot verify.
+This document focuses on the MPC implemented by the Tokamak zk-EVM backend to
+generate the CRS for Tokamak's SNARK by reusing an existing powers-of-tau
+result. Its purpose is to explain what prevents direct reuse, define the
+protocol that addresses this problem, and state its verification guarantees,
+security assumptions, and limitations.
 
 Reusing the output of an existing MPC ceremony is important because it can
 preserve the protection provided by prior contributions and avoid repeating the
