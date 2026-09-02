@@ -61,10 +61,13 @@ For preprocessing SNARKs that use secret-dependent structured reference
 strings, including Tokamak's SNARK, the setup computes the reference string from
 secret values conventionally called trapdoors [1, 2, 6]. In a single-party
 setup, the generator must sample those trapdoors as specified and delete every
-copy after generating the reference string. A structurally well-formed reference
-string alone does not show that either condition was met. Because public
-verification cannot determine whether the trapdoors were sampled unpredictably
-or erased, users must therefore trust the generator [20].
+copy after generating the reference string. If sufficient trapdoor information
+is retained or exposed, its holder may be able to generate an accepting proof
+for a public input for which no valid witness exists, breaking soundness [2, 20].
+A structurally well-formed reference string alone does not show that either
+condition was met. Because public verification cannot determine whether the
+trapdoors were sampled unpredictably or erased, users must trust the generator
+[20].
 
 One way to avoid relying on a single trusted generator is multi-party
 computation (MPC), which distributes setup generation across a sequence of
