@@ -34,27 +34,28 @@ limited accordingly.
 ## 1. Introduction
 
 A succinct non-interactive argument of knowledge (SNARK) allows a prover to
-convince a verifier that a computation has a valid witness while sending a proof
-much smaller than the computation itself. A preprocessing SNARK runs a setup
-before proofs are generated and uses the resulting reference string for later
-proving and verification. This structure supports small proofs and efficient
-verification across repeated uses of the setup. Examples include Pinocchio [30],
-Groth16 [1], and later constructions such as Sonic [8] and PLONK [21]; further
-examples, including Tokamak's SNARK, appear in [4, 6, 22–29, 31, 32].
+convince a verifier that the prover knows a valid witness for a proving
+statement, with a proof that is small relative to the computation required to
+check the witness directly. A preprocessing SNARK runs a setup before proofs are
+generated and uses the resulting reference string for later proving and
+verification. This structure supports small proofs and efficient verification
+across repeated uses of the setup. Examples include Pinocchio [30], Groth16 [1],
+and later constructions such as Sonic [8] and PLONK [21]; further examples,
+including Tokamak's SNARK, appear in [4, 6, 22–29, 31, 32].
 
 Jang and Judd have proposed Tokamak's SNARK [6], which combines Groth16's
 arithmetic argument with PLONK's use of a permutation argument [1, 21]. In their
-construction, the setup commits a reusable library of subcircuits, and each
-supported circuit is formed by placing and wiring copies from that library while
-the proof checks their internal computation and interconnections.
+construction, a proving statement is expressed by a circuit formed by placing
+and wiring copies from a subcircuit library committed by the setup, while the
+proof checks their internal computation and interconnections.
 Compared with Groth16, one common reference string (CRS) therefore supports
 many such circuits rather than one fixed circuit. Compared with PLONK, verifier
-preprocessing describes only connections between already committed subcircuits
-rather than the constraints and wiring of the entire circuit; the reduction is
-greatest when the subcircuits contain substantially more internal computation
-than interface wiring. This reduction may also lower the cost for verifiers and
-users to audit the preprocessing information generated for each new proving
-statement.
+preprocessing for a proving statement that requires a new circuit describes only
+connections between already committed subcircuits rather than the constraints
+and wiring of the entire circuit; the reduction is greatest when the subcircuits
+contain substantially more internal computation than interface wiring. This
+reduction may also lower the cost for verifiers and users to audit that
+preprocessing information.
 
 These design choices do not remove the setup trust requirement. Tokamak's SNARK
 shares a limitation with preprocessing SNARK instantiations that use
