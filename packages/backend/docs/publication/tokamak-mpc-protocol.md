@@ -93,22 +93,17 @@ and the conditions under which reuse is possible, define the protocol that
 addresses those challenges, and state its verification guarantees and trust
 assumptions.
 
-Reusing the output of an existing MPC ceremony is important because it can
-preserve the protection provided by prior contributions and avoid repeating the
-work already completed in that ceremony's first phase. Exponent capacity is not
-the principal obstacle: Filecoin published BLS12-381 first-phase material with
-enough powers to encode the bounded monomial families required by the current
-Tokamak parameters [13–15]. The obstacle is algebraic. A powers-of-tau sequence
-encodes univariate polynomials in one hidden value, whereas Tokamak's SNARK
-commits to and opens bivariate polynomials in independently sampled `x` and `y`
-[6]. Assigning both variables to powers of the same value, for example
-`x=tau` and `y=tau^e_y`, may avoid exponent collisions within fixed degree
-bounds, but it also imposes the public relation `y=x^e_y`. That relation changes
-the polynomial-opening argument used by Tokamak's SNARK: with sufficiently many
-public powers, the resulting univariate quotient terms can satisfy the
-opening equation after this substitution without establishing the original
-bivariate claim. A sufficiently long powers-of-tau sequence is therefore not
-directly compatible with the setup required by Tokamak's SNARK.
+Reusing the output of an existing MPC ceremony requires evaluating candidate
+sequences along three dimensions. Exponent capacity asks whether a published
+sequence contains the range of powers needed to construct the target setup.
+Curve compatibility asks whether the sequence and the target proof system use
+the same scalar field and pairing groups, so that the published group elements
+can be reused without changing the cryptographic setting. Algebraic
+compatibility asks whether the relationships encoded by the sequence match
+those required by the target proof system. Capacity and curve compatibility
+alone are insufficient: a sequence may be large enough and use the required
+curve while still imposing algebraic relationships that are incompatible with
+Tokamak's SNARK.
 
 We define an MPC protocol that uses the Dusk powers-of-tau sequence for
 encodings involving `alpha` and `x`, adds `y` through an independent sequence of
