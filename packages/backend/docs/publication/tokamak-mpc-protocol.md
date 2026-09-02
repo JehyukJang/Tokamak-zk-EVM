@@ -88,14 +88,10 @@ Scaling Explorations' Perpetual Powers of Tau [9–12].
 
 In this document, we focus on the MPC implemented by the Tokamak zk-EVM backend
 to generate the CRS for Tokamak's SNARK, either independently or by reusing
-compatible material from a completed ceremony. Our purpose is to define the
-protocol, identify the conditions for such reuse, and make its verification
-guarantees and trust assumptions explicit. The scope is limited to CRS
-preparation, sequential contributions, verification of contributions and
-artifacts, and correspondence with the implementation; it does not analyze the
-SNARK protocol itself, provide a formal security proof for Tokamak's exact setup
-construction, or claim that public checks establish contributor randomness or
-secret erasure.
+compatible material from a completed ceremony. Our purpose is to identify the
+challenges to reusing such material and the conditions under which reuse is
+possible, define the protocol that addresses those challenges, and make its
+verification guarantees and trust assumptions explicit.
 
 Completed ceremony artifacts nevertheless cannot generally be used unchanged
 by Tokamak's SNARK. The source and target may use different pairing curves, the
