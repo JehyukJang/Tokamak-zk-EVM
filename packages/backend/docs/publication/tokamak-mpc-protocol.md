@@ -79,12 +79,17 @@ the remaining circuit-dependent parameters. The security analyses require at
 least one contributor in each phase to use unpredictable randomness and erase
 that randomness; the phases may have different contributors.
 
-Known MPC ceremonies have published powers-of-tau sequences that compatible
-two-phase setup protocols can use as the output of the first phase. Examples
-include the Zcash Powers of Tau, the Dusk extension over BLS12-381, the Ethereum
-ceremony for Kate-Zaverucha-Goldberg (KZG) polynomial commitments, and Privacy
-& Scaling Explorations' Perpetual Powers of Tau, as well as Filecoin's
-BLS12-381 first-phase result [9–13].
+Running an MPC setup ceremony is operationally demanding because it requires
+coordinating multiple contributors and distributing, updating, and verifying
+large public data sets. Nevertheless, several ceremonies have published
+powers-of-tau sequences as reusable first-phase results. Examples include the
+Zcash Powers of Tau, the Dusk extension over BLS12-381, the Ethereum ceremony
+for Kate-Zaverucha-Goldberg (KZG) polynomial commitments, Privacy & Scaling
+Explorations' Perpetual Powers of Tau, and Filecoin's BLS12-381 first-phase
+result [9–13]. By separating circuit-independent work from circuit-dependent
+setup, two-phase protocols allow compatible preprocessing SNARKs to reuse the
+same ceremony result instead of conducting a new first phase for each
+construction [3, 5].
 
 In this document, we focus on reusing a powers-of-tau sequence produced by an
 existing ceremony to generate the CRS for Tokamak's SNARK. Our purpose is to
