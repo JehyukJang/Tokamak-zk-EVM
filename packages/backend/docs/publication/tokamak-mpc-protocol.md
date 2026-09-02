@@ -8,23 +8,27 @@ obtain small proofs and efficient verification from a structured reference strin
 This document defines the multi-party computation (MPC) implemented by
 the Tokamak zk-EVM backend for the setup of Jang's SNARK. The design separates
 circuit-independent setup material from the material derived for a particular
-circuit so that no single setup process must know all of the hidden values.
+subcircuit library and allows contributors to update the hidden values in two
+stages. This document uses SRS for generic structured setup material and common
+reference string (CRS) for the Jang-specific output.
 
 Tokamak provides two ways to prepare the circuit-independent material. The
 native route constructs it through sequential contributions to `alpha`, `x`,
 and `y`. The Dusk-backed route verifies and reindexes a completed BLS12-381
 powers-of-tau artifact, then adds sequential contributions to the missing `y`
-dimension. Both routes produce the same public data. After a public computation
-binds that data to a circuit, contributors update `gamma`, `delta`, and `eta`.
+dimension. Both routes expose the same public-data layout and monomial families
+to the next computation. After a public computation binds that material to the
+canonical subcircuit library, contributors update `gamma`, `delta`, and `eta`.
 
 The implementation verifies source artifacts, contribution equations, data
-that a contribution must not change, the selected circuit, links between
-successive states, and final artifacts. Those checks do not prove the quality of
-participant randomness or deletion of participant secrets. The security
-analyses in [3, 5] require at least one contributor in each phase to choose an
-unpredictable secret and erase it. Those analyses do not cover Tokamak's exact
-six-parameter construction or the algebraically related `alpha` and `x` used by
-the Dusk-backed route, so the security claims below are limited accordingly.
+that a contribution must not change, the canonical subcircuit library, links
+between successive states, and final artifacts. Those checks do not prove the
+quality of participant randomness or deletion of participant secrets. The
+security analyses in [3, 5] require at least one contributor in each phase to
+choose an unpredictable secret and erase it. Those analyses do not cover
+Tokamak's exact six-parameter construction or the algebraically related
+`alpha` and `x` used by the Dusk-backed route, so the security claims below are
+limited accordingly.
 
 ## 1. Introduction
 
@@ -52,13 +56,14 @@ erase the corresponding share; the phases may have different contributors.
 Jang and Judd's *An Efficient SNARK for Field-Programmable and RAM Circuits*,
 called Jang's SNARK hereafter, commits a library of subcircuits while allowing
 larger circuits to be derived by placement and wiring [6]. Its setup samples six
-hidden scalars and produces a common reference string (CRS) containing the group
-elements required by the subcircuit library and by circuits derived from it.
+hidden scalars and produces a common reference string (CRS), the Jang-specific
+structured setup output containing the group elements required by the
+subcircuit library and by circuits derived from it.
 Reusing the library material is valuable when computations change, but the
 setup described in the paper does not allow later participants to replace its
 hidden values and assumes the six scalars are sampled by the setup algorithm.
 
-Several published protocols and completed ceremonies provide
+Several prior protocols and completed ceremonies provide
 circuit-independent setup material. Bowe, Gabizon, and Miers separate powers of
 tau from the computation that specializes them to a circuit [3], and *Snarky
 Ceremonies* analyzes the updates made before and after that computation [5].
@@ -85,15 +90,17 @@ Tokamak addresses the problem with a native route and a Dusk-backed route. The
 native route constructs all circuit-independent material through Tokamak
 contributions. The Dusk-backed route verifies and adapts a compatible Dusk
 ceremony result before contributors add the missing `y` dimension. In both
-routes, the first phase ends with the same public data, a deterministic public
-computation binds that data to the circuit, and the second phase updates the
-remaining parameters. The final CRS is bound to the verified record of those
-steps.
+routes, the first phase exposes the same public-data layout and monomial
+families, a deterministic public computation binds that material to the
+canonical subcircuit library, and the second phase updates the remaining
+parameters. The final CRS is bound to the verified record of those steps.
 
 ## 2. Background
 
 ### 2.1 Structured setup and powers of tau
 
+This document uses SRS for structured setup material in the general protocols
+and ceremonies discussed below, and CRS for the Jang-specific setup output.
 Let `G1` and `G2` be prime-order groups with a non-degenerate bilinear pairing,
 and write `[z]_1` and `[z]_2` for encodings of scalar expression `z` in `G1`
 and `G2`, respectively.
@@ -138,13 +145,16 @@ limits the security claims made in this document.
 ## 3. System Model and Notation
 
 Tokamak follows the order described in [3, 5]: contributions before circuit
-specialization, public specialization to a circuit, and contributions after
-specialization. The implementation labels these contribution periods as
-`Phase 1` and `Phase 2`. The native and Dusk-backed routes differ before and
-during `Phase 1`, but they produce the same public data. Both then use the same
-specialization computation and `Phase 2` implementation. This comparison does
-not assert that Tokamak has the same SRS or inherits the security proofs in
-[3, 5].
+specialization, public specialization, and contributions after specialization.
+When comparing the protocol with that literature, this document calls the two
+contribution periods the first and second phases. The serialized implementation
+uses a slightly different boundary: `Phase 1` contains the first contribution
+period, while `Phase 2` begins with deterministic circuit preparation and
+continues through the second contribution period. The native and Dusk-backed
+routes differ before and during `Phase 1`, but expose the same public-data layout
+and accessors to `Phase 2`. Both then use the same circuit-preparation and
+contribution implementation. This comparison does not assert that Tokamak has
+the same SRS or inherits the security proofs in [3, 5].
 
 ### 3.1 Roles and verification responsibilities
 
@@ -154,8 +164,9 @@ transformations and passes states between contributors. A **contributor** applie
 a private multiplicative share. A **verifier** checks sources, transitions,
 selection, and the ordered ceremony record, called the transcript. Downstream
 proving and verification tools consume the final Jang CRS and its recorded
-origin. The Dusk ceremony is an external SRS source rather than a Tokamak
-participant.
+origin. The final CRS commits the canonical subcircuit library from which later
+circuits are derived. The Dusk ceremony is an external SRS source rather than a
+Tokamak participant.
 
 An operator controls the workflow and can censor a contributor, delay a
 ceremony, or withhold an artifact, but cannot make an inconsistent transition
@@ -184,28 +195,29 @@ replace `z` by `z * product_i r_z,i`. Public group elements are updated directly
 the scalar is never serialized. Circuit specialization is the deterministic
 group computation that combines the selected `Phase 1` output with the
 canonical subcircuit-library description to construct circuit-dependent group
-elements.
+elements. It fixes that library, not one circuit later derived from the library.
 
 ### 3.3 Setup parameters and stages
 
 The division shown below follows the order in [3, 5]; the assignment of the six
 parameters follows Jang's CRS and the implementation [6, 14].
 
-| Parameter | Role in Jang's setup | Tokamak stage | Erasure requirement |
-|---|---|---|---|
-| `alpha` | Powers mixed with wire and correction encodings | Native `Phase 1`, or Dusk-derived encodings involving `alpha` and `x` | After a native `Phase 1` contribution; for Dusk-backed setup, at least one source contributor's share must remain unknown and erased |
-| `x` | Evaluation dimension for subcircuit and wire polynomials | Native `Phase 1`, or Dusk-derived encodings involving `alpha` and `x` | Same boundary as `alpha` for the selected route |
-| `y` | Placement dimension and bivariate mixing | `Phase 1` on both routes | Each contributor must erase its share after completing the contribution |
-| `gamma` | Direct encodings and public-instance elements divided by `gamma` | `Phase 2` | Each contributor must erase its share after completing the contribution |
-| `delta` | Direct encodings and private and correction elements divided by `delta` | `Phase 2` | Each contributor must erase its share after completing the contribution |
-| `eta` | Direct encodings and intermediate elements divided by `eta` | `Phase 2` | Each contributor must erase its share after completing the contribution |
+| Parameter | Role in Jang's setup | Tokamak stage | Participant procedure | Security assumption |
+|---|---|---|---|---|
+| `alpha` | Powers mixed with wire and correction encodings | Native `Phase 1`, or Dusk-derived encodings involving `alpha` and `x` | A native contributor erases its `alpha` share after contributing; the Dusk adaptor creates no new `alpha` share | At least one native `alpha` share, or one source share protecting Dusk scalar `t`, was unpredictable, remained undisclosed, and was erased |
+| `x` | Evaluation dimension for subcircuit and wire polynomials | Native `Phase 1`, or Dusk-derived encodings involving `alpha` and `x` | A native contributor erases its `x` share after contributing; the Dusk adaptor creates no new `x` share | The corresponding native or Dusk-source condition stated for `alpha` holds |
+| `y` | Placement dimension and bivariate mixing | `Phase 1` on both routes | Each contributor erases its `y` share after completing the contribution | At least one accepted `y` share was unpredictable, remained undisclosed, and was erased |
+| `gamma` | Direct encodings and public-instance elements divided by `gamma` | `Phase 2` | Each contributor erases its `gamma` share after completing the contribution | At least one accepted `gamma` share was unpredictable, remained undisclosed, and was erased |
+| `delta` | Direct encodings and private and correction elements divided by `delta` | `Phase 2` | Each contributor erases its `delta` share after completing the contribution | At least one accepted `delta` share was unpredictable, remained undisclosed, and was erased |
+| `eta` | Direct encodings and intermediate elements divided by `eta` | `Phase 2` | Each contributor erases its `eta` share after completing the contribution | At least one accepted `eta` share was unpredictable, remained undisclosed, and was erased |
 
-`Phase 1` finishes the circuit-independent monomial encodings. Specialization is
-the first step that reads the concrete rank-1 constraint system (R1CS) and
-quadratic arithmetic program (QAP) coefficients and binds the canonical digest
-of the subcircuit library. `Phase 2` then updates only the three scalars used by
-the circuit-dependent elements. Reading only the degree and placement limits
-before this point does not fix a circuit.
+`Phase 1` finishes the circuit-independent monomial encodings. `Phase 2`
+preparation is the first step that reads the concrete rank-1 constraint system
+(R1CS) and quadratic arithmetic program (QAP) coefficients and binds the
+canonical digest of the subcircuit library. Contributions in `Phase 2` then
+update only the three scalars used by the circuit-dependent elements. Reading
+only the degree and placement limits before this point does not fix the
+subcircuit library.
 
 ### 3.4 Ceremony states and contributions
 
@@ -217,12 +229,14 @@ states and allows verification to resume from the last accepted state. The
 public metadata and proof for an accepted contribution are stored in a receipt.
 
 A phase output can be selected only after its complete chain verifies and
-contains at least one contribution generated from fresh secret randomness. An
-update derived only from a public deterministic value may be checked and
-recorded, but does not supply an unknown share. Updates made only for testing
-cannot satisfy this requirement. Selection designates one verified final state
-as the input to the next stage and records its digest; it adds no signer or
-secret.
+contains at least one receipt marked `random` or `hybrid`, the two implementation
+labels accepted by the selection policy. This requirement does not establish
+that the contribution used unpredictable secret randomness or that its share was
+erased. An update derived only from a public deterministic value may be checked
+and recorded, but does not satisfy the selection requirement or supply an
+unknown share. Updates made only for testing also cannot satisfy the requirement.
+Selection designates one verified final state as the input to the next stage and
+records its digest; it adds no signer or secret.
 
 ### 3.5 Security assumptions and properties
 
@@ -234,9 +248,9 @@ redundancy against that person's compromise or failure to erase the shares.
 Using multiple independent contributors provides that redundancy; it is not a
 condition that the verifier can establish from participant identities.
 
-The implementation directly checks source artifacts, circuit selection,
-contribution equations, links between states, transcripts, and final artifact
-digests. Security additionally depends on unpredictable secrets,
+The implementation directly checks source artifacts, subcircuit-library
+binding, contribution equations, links between states, transcripts, and final
+artifact digests. Security additionally depends on unpredictable secrets,
 non-disclosure, erasure, discrete logarithm hardness, and the external ceremony.
 References [3, 5] do not prove knowledge soundness for this exact MPC, and
 Jang's paper [6] does not analyze the parameter mapping used by the Dusk-backed
@@ -302,9 +316,12 @@ not add a participant's secret randomness.
 Native contributors in the first phase update `alpha`, `x`, and `y` and every
 affected mixed monomial. Dusk-backed contributors update `y` and every encoding
 that contains it while leaving the adapted `alpha` and `x` elements unchanged.
-Each route requires at least one contribution generated from fresh randomness.
-Both produce the same set of public group elements, so subsequent computation
-is identical for the two routes.
+Selection on each route requires at least one receipt marked `random` or
+`hybrid`. Security separately assumes that at least one accepted share was
+unpredictable, remained undisclosed, and was erased. Both routes expose the same
+required monomial families through the same public-data interface, so the
+subsequent computation is identical even though the group-element values depend
+on the accepted contributions.
 
 ### 5.3 Circuit specialization and the second phase
 
@@ -321,30 +338,31 @@ to the unchanged Jang CRS layout.
 
 Proofs, pairing equations, checks that fixed elements remain unchanged,
 canonical digests, and the complete transcript establish that an accepted final
-artifact follows the recorded source, layout, circuit, and contribution
-sequence. They do not establish secret deletion. If every share protecting one
-phase is known, the requirement
-that at least one contributor kept and erased an unpredictable share is not
-satisfied. The security proofs in [3, 5] then do not apply to that execution.
-This does not invalidate evidence that the public computations were performed
-consistently or by itself disclose the scalars updated in the other phase.
+artifact follows the recorded source, layout, canonical subcircuit library, and
+contribution sequence. The checks do not establish secret deletion. If every
+share protecting one phase is known, the requirement that at least one
+contributor kept and erased an unpredictable share is not satisfied. The
+security proofs in [3, 5] then do not apply to that execution. This does not
+invalidate evidence that the public computations were performed consistently or
+by itself disclose the scalars updated in the other phase.
 
 ### 5.5 Comparison with prior two-phase protocols
 
 | Prior protocols [3, 5] | Tokamak implementation | Comparison |
 |---|---|---|
 | Circuit-independent setup in the first phase | `Phase 1` constructs the required `alpha`, `x`, and `y` monomials | The order is the same, but the parameters and group elements differ. |
-| Public specialization to one circuit | Deterministic specialization from selected `Phase 1` points and the QAP/R1CS description | The public computation has the same role. |
+| Public specialization to one circuit | Deterministic specialization from selected `Phase 1` points and the canonical subcircuit-library QAP/R1CS description | The public computation has the same role, but Tokamak fixes a reusable subcircuit library rather than one later-derived circuit. |
 | Circuit-dependent updates in the second phase | `Phase 2` updates direct and divided elements involving `gamma`, `delta`, and `eta` | The purpose is the same, but Tokamak uses different parameters and equations. |
 | Sequential updates and public verification | Proofs of the contributor's shares, pairing checks, checks that fixed elements did not change, and verification of the complete sequence | The verification purpose is the same; Tokamak defines its own stored states and receipts. |
-| At least one honest contribution in each phase | At least one contribution generated from fresh randomness in each Tokamak phase; Dusk-derived `alpha` and `x` additionally require an unknown and erased share from a Dusk or Zcash contributor | The trust requirement is the same at a high level, but the proofs in [3, 5] do not cover Tokamak's exact construction. |
+| At least one honest contribution in each phase | Selection requires a `random` or `hybrid` receipt in each Tokamak phase; security additionally assumes an unpredictable, undisclosed, and erased share in each phase, and a corresponding Dusk or Zcash source share for Dusk-derived `alpha` and `x` | The trust structure is analogous at a high level, but the verifier cannot establish these secrecy assumptions and the proofs in [3, 5] do not cover Tokamak's exact construction. |
 | One method for producing the first-phase input | Native initialization or a verified and reindexed Dusk artifact | Tokamak adds two input paths and public reindexing. |
 
 In both Tokamak routes, the verified output of the first phase is specialized to
-the circuit, only the remaining hidden parameters are updated in the second
-phase, and the final CRS is derived from the selected states. The implementation
-checks the public computations and stored data. Its security still depends on
-secret erasure and is limited by the proof gaps stated above.
+the canonical subcircuit library, only the remaining hidden parameters are
+updated in the second phase, and the final CRS is derived from the selected
+states. The implementation checks the public computations and stored data. Its
+security still depends on secret erasure and is limited by the proof gaps stated
+above.
 
 ## 6. Route Preparation
 
@@ -404,18 +422,20 @@ rejects a contributed state whose `y^s` encoding still equals its initial value.
 The scalar `y` is neither generated by an operator nor disclosed in a state.
 
 The selected state from the first phase must terminate a complete verified chain
-and include at least one update generated from fresh randomness. Native and
-Dusk-backed states then provide the same mathematical group elements to the
-specialization computation, while the final record identifies which route
-produced them.
+and include at least one receipt marked `random` or `hybrid`. Native and
+Dusk-backed states then provide the same required monomial families through the
+same interface to the specialization computation, while their group-element
+values and the final record retain the effects and origin of the accepted
+contributions.
 
-## 8. The Second Phase: Circuit Specialization and Contributions
+## 8. Circuit Specialization and the Second Phase
 
-Given the selected points from the first phase and the canonical circuit
-description, deterministic specialization constructs circuit-dependent
-encodings by linear group operations. For a wire polynomial `o_j(X)`, helper
-polynomial `K_j(X)`, and Lagrange polynomial `L_i(Y)` over the placement
-variable, representative identities are
+Given the selected points from the first phase and the canonical subcircuit-
+library description, deterministic specialization constructs circuit-dependent
+encodings by linear group operations. For a wire polynomial `o_j(X)`, the
+polynomial `K_j(X)` from Jang's intermediate-wire construction [6], and a
+Lagrange polynomial `L_i(Y)` over the placement variable, representative
+identities are
 
 ```text
 [L_i(y)o_j(x)]_1
@@ -454,19 +474,20 @@ multiplication by its inverse where required.
 
 Each proof is bound to the protocol and contract versions, ceremony identifier,
 phase, required parameter updates, sequence number, previous and new state
-digests, capacity and layout identifiers, the circuit identifier when present,
-and the parameter label. These bindings prevent an otherwise valid proof from
-being replayed for another state, route, phase, parameter set, or circuit.
+digests, capacity and layout identifiers, the subcircuit-library digest when
+present, and the parameter label. These bindings prevent an otherwise valid
+proof from being replayed for another state, route, phase, parameter set, or
+subcircuit library.
 
 The workspace stores immutable states under digests of their contents and
 re-verifies every transition and the selected output of each phase when it
 reloads them. Its index does not determine whether a state is valid. The
-transcript records the selected sequence from each phase, receipt digests, how
-each contribution generated its randomness, the number of contributions that
-used fresh randomness, the source artifact, and the circuit. Finalization
-reconstructs that transcript, accepts only a selected second-phase state with
-the required contribution generated from fresh randomness, and records the
-SHA-256 digests of the transcript and final artifacts [14].
+transcript records the selected sequence from each phase, receipt digests, each
+contribution's recorded randomness label, the number of `random` or `hybrid`
+receipts, the source artifact, and the canonical subcircuit library.
+Finalization reconstructs that transcript, accepts only a selected second-phase
+state with a `random` or `hybrid` receipt, and records the SHA-256 digests of the
+transcript and final artifacts [14].
 
 Hashes and pairing checks establish integrity within their assumptions. They do
 not show that a participant's local entropy was unpredictable, that no copy of a
@@ -501,26 +522,27 @@ failed erasure by that person can remove this protection from both phases.
 | `gamma`, `delta`, `eta` | At least one corresponding share from the second phase remains unknown and was erased | The affected scalar is known and the CRS no longer satisfies Jang's assumption of six independently sampled hidden scalars. The literature does not prove the exact forgery consequence of exposing each parameter separately. |
 
 Disclosure of `gamma`, `delta`, and `eta` does not compute `alpha`, `x`, or `y`
-through the implemented update and does not change whether the source, circuit,
-transitions, transcript, or artifact digests verify. It does mean that the
-second phase no longer contains an unknown contribution. The security proofs in
-[3, 5] and Jang's analysis of a setup with six hidden scalars therefore cannot be
-applied to that CRS. Current evidence does not justify saying either that such
-disclosure is harmless or that it automatically compromises every property of
-the CRS.
+through the implemented update and does not change whether the source,
+subcircuit library, transitions, transcript, or artifact digests verify. It does
+mean that the second phase no longer contains an unknown contribution. The
+security proofs in [3, 5] and Jang's analysis of a setup with six hidden scalars
+therefore cannot be applied to that CRS. Current evidence does not justify
+saying either that such disclosure is harmless or that it automatically
+compromises every property of the CRS.
 
 ### 10.3 Malicious behavior and operational limits
 
 The implementation detects malformed points, inconsistent powers, partial
 updates, multiplication in the wrong direction, replay for a different type of
-contribution, changes to fixed elements, replacement of the source or circuit,
-and changes to accepted artifacts. A successfully verified transcript is
-evidence that those public equations and identifiers are consistent.
+contribution, changes to fixed elements, replacement of the source or
+subcircuit library, and changes to accepted artifacts. A successfully verified
+transcript is evidence that those public equations and identifiers are
+consistent.
 
 A contributor can still choose predictable nonzero randomness or retain a
 secret. An operator can censor, delay, withhold, or choose among otherwise valid
-chains that contain the required fresh-randomness contribution. Contributors
-and the operator can collude. Identity metadata and algebraic checks cannot
+chains that contain a `random` or `hybrid` receipt. Contributors and the operator
+can collude. Identity metadata, the receipt label, and algebraic checks cannot
 disprove these actions. If a coalition learns every share protecting a phase,
 that phase has no unknown contribution.
 
@@ -531,26 +553,28 @@ source contributor's non-disclosure and erasure [9, 10].
 
 ## 11. Limitations
 
-No formal reduction currently proves that the Tokamak contribution equations
-produce the exact setup distribution required by Jang's knowledge-soundness
-analysis. The largest explicit gap is the Dusk mapping: `alpha=t^(2N)` and
-`x=t` are algebraically related, whereas Jang's setup samples them independently.
-The mapping provides and verifies all powers through the required finite degree,
-but those facts do not show that its parameters have the same distribution as
-independent samples.
+References [3, 5, 6] do not provide a formal reduction showing that the Tokamak
+contribution equations produce the exact setup distribution required by Jang's
+knowledge-soundness analysis. The largest explicit gap is the Dusk mapping:
+`alpha=t^(2N)` and `x=t` are algebraically related, whereas Jang's setup samples
+them independently. The mapping provides and verifies all powers through the
+required finite degree, but those facts do not show that its parameters have the
+same distribution as independent samples.
 
-The available literature also does not isolate the precise forgery power gained
-by learning only one of `alpha`, `x`, `y`, `gamma`, `delta`, or `eta` in Jang's
+References [3, 5, 6] also do not isolate the precise forgery power gained by
+learning only one of `alpha`, `x`, `y`, `gamma`, `delta`, or `eta` in Jang's
 SNARK. This document therefore reports which assumption about hidden values
 fails and which public checks still pass. It does not claim a specific attack or
 claim that any remaining security property is preserved.
 
-Tokamak requires at least one contribution generated from fresh randomness in
-each phase, but it does not require multiple identities, independent
-organizations, hardware isolation, or public attestations. The native route is
-implemented and algebraically validated, but the current release policy permits
-only artifacts produced through the Dusk-backed route [14]. That policy is not
-a comparative security proof.
+Tokamak requires at least one `random` or `hybrid` receipt in each phase before
+selection. Security separately assumes that at least one accepted share in each
+phase was unpredictable, remained undisclosed, and was erased. The protocol does
+not require multiple identities, independent organizations, hardware isolation,
+or public attestations. The native route is implemented and algebraically
+validated, but the current release policy permits only artifacts produced
+through the Dusk-backed route [14]. That policy is not a comparative security
+proof.
 
 Finally, storing data under SHA-256 digests of its contents, using a specified
 byte encoding, checking pairing equations, and rechecking the transcript all
@@ -561,12 +585,13 @@ fairness, censorship resistance, or long-term availability.
 ## 12. Implementation Correspondence
 
 The protocol is identified as `tokamak-mpc-2phase-v1`. The implementation uses
-`Phase 1` and `Phase 2` as serialized phase identifiers. It records the
-parameters that each contribution must update as a contribution profile:
-`NativeAlphaXY` for native `Phase 1`, `DuskY` for Dusk-backed `Phase 1`, and
-`CircuitGammaDeltaEta` for the shared `Phase 2`. Both first-phase routes produce
-the same `UniversalTau` data structure, and both call the same specialization
-and second-phase implementation [14].
+`Phase 1` and `Phase 2` as serialized phase identifiers. `Phase 2` covers both
+deterministic circuit preparation and the contribution period that follows it.
+The implementation records the parameters that each contribution must update as
+a contribution profile: `NativeAlphaXY` for native `Phase 1`, `DuskY` for
+Dusk-backed `Phase 1`, and `CircuitGammaDeltaEta` for the shared `Phase 2`.
+Both first-phase routes produce the same `UniversalTau` data structure, and both
+call the same specialization and second-phase contribution implementation [14].
 
 The participant follows the same steps for every contribution profile: verify
 the previous state, display the phase and required parameter updates, generate
@@ -593,8 +618,8 @@ scalable powers-of-tau phase from circuit specialization and a second update
 phase [3]. *Snarky Ceremonies* gives a general framework for update and
 verification algorithms before and after circuit specialization and analyzes
 security against malicious setup algorithms when each phase has at least one
-honest contribution [5]. These works provide the closest published
-constructions and security analyses for comparison with Tokamak.
+honest contribution [5]. These works provide the closest prior constructions
+and security analyses for comparison with Tokamak.
 
 Other work designs a CRS that supports a class of circuits and can be updated
 after its initial generation; these properties are called universal and
@@ -622,15 +647,16 @@ Section 4.
 Tokamak implements a two-phase MPC for Jang's SNARK with two input routes. The
 native route contributes `alpha`, `x`, and `y`; the Dusk-backed route verifies
 and reindexes an external BLS12-381 powers-of-tau sequence before contributors
-add the missing `y`. Both routes produce the same data before deterministic
-circuit specialization and use the same second phase for contributions to
-`gamma`, `delta`, and `eta`.
+add the missing `y`. Both routes expose the same public-data layout and required
+monomial families before deterministic specialization to the canonical
+subcircuit library, and use the same second phase for contributions to `gamma`,
+`delta`, and `eta`.
 
 The implementation provides independently repeatable evidence about the source
-artifact, contribution equations, the selected circuit, links between states,
-and final artifacts. Security still requires at least one unpredictable share
-in each phase to remain unknown and be erased. Failure of that condition means
-that the security proofs in [3, 5] do not apply, but it does not invalidate
+artifact, contribution equations, the canonical subcircuit library, links between
+states, and final artifacts. Security still requires at least one unpredictable
+share in each phase to remain unknown and be erased. Failure of that condition
+means that the security proofs in [3, 5] do not apply, but it does not invalidate
 verification of unrelated public data or automatically reveal every other
 trapdoor.
 
