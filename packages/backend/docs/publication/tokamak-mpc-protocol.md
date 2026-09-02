@@ -48,8 +48,7 @@ arithmetic argument with PLONK's use of a permutation argument [1, 21]. In their
 construction, a proving statement is expressed by a circuit formed by placing
 and wiring copies from a subcircuit library committed by the setup, while the
 proof checks their internal computation and interconnections.
-Compared with Groth16, one common reference string (CRS) therefore supports
-many such circuits rather than one fixed circuit. Compared with PLONK, verifier
+Compared with Groth16, one common reference string (CRS) therefore supports a specific family of proving statements rather than one fixed proving statement. Compared with PLONK, verifier
 preprocessing for a proving statement that requires a new circuit describes only
 connections between already committed subcircuits rather than the constraints
 and wiring of the entire circuit; the reduction is greatest when the subcircuits
