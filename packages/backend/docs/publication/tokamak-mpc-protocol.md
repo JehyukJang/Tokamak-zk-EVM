@@ -80,12 +80,11 @@ The security analyses require at least one participant in each phase to use
 unpredictable randomness and erase the corresponding share; the phases may have
 different contributors.
 
-Related MPC ceremonies have produced public powers-of-tau artifacts, including
-the Zcash Powers of Tau, the Dusk extension over BLS12-381, the Ethereum
+Known MPC ceremonies have produced public powers-of-tau artifacts that can
+serve as first-phase outputs for compatible two-phase setup protocols. Examples
+include the Zcash Powers of Tau, the Dusk extension over BLS12-381, the Ethereum
 ceremony for Kate-Zaverucha-Goldberg (KZG) polynomial commitments, and Privacy &
-Scaling Explorations' Perpetual Powers of Tau [9–12]. These ceremonies show that
-large structured reference strings can be generated and independently checked
-by many participants.
+Scaling Explorations' Perpetual Powers of Tau [9–12].
 
 In this document, we focus on the MPC implemented by the Tokamak zk-EVM backend
 to generate the CRS for Tokamak's SNARK, either independently or by reusing
