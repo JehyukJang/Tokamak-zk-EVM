@@ -52,9 +52,9 @@ many such circuits rather than one fixed circuit. Compared with PLONK, verifier
 preprocessing describes only connections between already committed subcircuits
 rather than the constraints and wiring of the entire circuit; the reduction is
 greatest when the subcircuits contain substantially more internal computation
-than interface wiring. As an informal implication, the smaller amount of
-preprocessing information generated for each new proving problem is expected to
-reduce the cost for verifiers and users to audit that information.
+than interface wiring. This reduction may also lower the cost for verifiers and
+users to audit the preprocessing information generated for each new proving
+problem.
 
 These design choices do not remove the setup trust requirement. Tokamak's SNARK
 shares a limitation with preprocessing SNARK instantiations that use
