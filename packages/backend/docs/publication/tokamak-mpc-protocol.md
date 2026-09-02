@@ -108,13 +108,6 @@ alone are insufficient: a sequence may be large enough and use the required
 curve while still imposing algebraic relationships that are incompatible with
 Tokamak's SNARK.
 
-We define an MPC protocol that uses the Dusk powers-of-tau sequence for
-encodings involving `alpha` and `x`, adds `y` through an independent sequence of
-Tokamak contributions, and generates the CRS after fixing the canonical
-subcircuit library. We then analyze the security of the protocol, including its
-trust assumptions and the limits of the guarantees supported by existing
-proofs.
-
 ## 2. Background
 
 ### 2.1 Structured setup and powers of tau
