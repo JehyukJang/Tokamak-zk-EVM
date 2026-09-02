@@ -87,8 +87,8 @@ Zcash Powers of Tau, the Dusk extension over BLS12-381, the Ethereum ceremony
 for Kate-Zaverucha-Goldberg (KZG) polynomial commitments, Privacy & Scaling
 Explorations' Perpetual Powers of Tau, and Filecoin's BLS12-381 first-phase
 result [9–13]. By separating circuit-independent work from circuit-dependent
-setup, two-phase protocols allow compatible preprocessing SNARKs to reuse the
-same ceremony result instead of conducting a new first phase for each
+setup, the two-phase setup protocols allow compatible preprocessing SNARKs to
+reuse the same ceremony result instead of conducting a new first phase for each
 construction [3, 5].
 
 In this document, we focus on reusing a powers-of-tau sequence produced by an
