@@ -39,10 +39,8 @@ much smaller than the computation itself. A preprocessing SNARK runs a setup
 before proofs are generated and uses the resulting reference string for later
 proving and verification. This structure supports small proofs and efficient
 verification across repeated uses of the setup. Examples include Pinocchio [30],
-Groth16 [1], the universal and updatable construction of Groth et al. [4],
-LegoSNARK [22], Sonic [8], PLONK [21], Marlin [23], MIRAGE [24], Lunar [25],
-Basilisk [26], FFLONK [27], VOProof [28], HyperPlonk [29], UniPlonK [31],
-SublonK [32], and Tokamak's SNARK [6].
+Groth16 [1], and later constructions such as Sonic [8] and Tokamak's SNARK
+[6]; further examples appear in [4, 21–29, 31, 32].
 
 Jang and Judd have proposed a preprocessing SNARK in which a setup commits a
 library of subcircuits and larger circuits are derived by placement and wiring
