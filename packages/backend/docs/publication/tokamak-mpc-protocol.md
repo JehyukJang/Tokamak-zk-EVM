@@ -94,24 +94,23 @@ that prevent direct reuse and the conditions under which reuse is possible,
 define the protocol that addresses those challenges, and state the protocol's
 verification guarantees and trust assumptions.
 
-Reusing the output of an existing MPC ceremony is valuable because it can carry
-forward the protection provided by prior contributions and avoid discarding the
-work represented by a completed first phase. The challenge is that a
-powers-of-tau sequence generated for another construction may not meet
-Tokamak's setup requirements. The reuse question therefore has two parts:
-whether the sequence is compatible with Tokamak's setup and whether its prior
-contributions still protect the reused part of that setup. These questions are
-distinct from whether the existing ceremony itself was performed correctly.
+Reusing the output of an existing MPC ceremony is important because it can
+preserve the protection provided by prior contributions and avoid repeating the
+work already completed in that ceremony's first phase. For the current Tokamak
+parameters, representing all required circuit-independent expressions in
+`alpha`, `x`, and `y` as powers of one hidden scalar in the scalar field of
+BLS12-381 would require G1 powers through exponent 5,242,879 and G2 powers
+through exponent 4,194,304 [6, 14, 15]. The Dusk BLS12-381 powers-of-tau sequence
+selected by the current implementation ends at G1 exponent 4,194,302 and G2
+exponent 2,097,151 [9]. The challenge is therefore to extend that sequence to
+the full structure required by Tokamak's SNARK while retaining the protection
+provided by its prior contributions.
 
-Tokamak addresses this challenge with a native route and a Dusk-backed route.
-The native route constructs all circuit-independent elements through Tokamak
-contributions. The Dusk-backed route verifies and adapts the Dusk powers-of-tau
-sequence before Tokamak contributors update the additional setup parameter `y`.
-In both routes, Tokamak's first phase produces circuit-independent elements in
-the same format, a deterministic public computation binds those elements to the
-subcircuit library, and the second phase updates the remaining circuit-dependent
-parameters. The final CRS is accepted only after the contributions and public
-computation have been verified.
+We define an MPC protocol that extends the Dusk powers-of-tau sequence with the
+additional dimension required by Tokamak's SNARK and generates its CRS from the
+extended sequence. We then analyze the security of the protocol, including its
+trust assumptions and the limits of the guarantees supported by existing
+proofs.
 
 ## 2. Background
 
