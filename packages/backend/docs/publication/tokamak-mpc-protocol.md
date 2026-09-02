@@ -94,17 +94,17 @@ that prevent direct reuse and the conditions under which reuse is possible,
 define the protocol that addresses those challenges, and state the protocol's
 verification guarantees and trust assumptions.
 
-The challenge is that a powers-of-tau sequence published by an existing
-ceremony is not itself a CRS for Tokamak's SNARK. Differences in pairing curves,
-insufficient tau degree, or elements required by the Tokamak setup but absent
-from a conventional powers-of-tau sequence can each prevent direct reuse. These
-differences concern compatibility with the Tokamak setup, not whether the
-ceremony that produced the sequence was performed correctly. The protocol must
-therefore preserve the security benefit of the contributions incorporated into
-a compatible powers-of-tau sequence while constructing the elements required by
-Tokamak's SNARK without publishing the hidden values from which those elements
-are generated. The protocol must also support independent generation when no
-powers-of-tau sequence is used.
+An existing powers-of-tau sequence can be reused only if it uses the pairing
+curve required by Tokamak's SNARK and provides sufficient tau degree to derive
+the required circuit-independent elements. Compatibility at this level is not
+sufficient: a conventional powers-of-tau sequence encodes powers of one hidden
+scalar, whereas Tokamak's circuit-independent setup also requires an
+independently contributed `y` [3, 6]. The challenge is therefore to derive the
+required elements from a compatible sequence without learning its hidden
+scalar, add `y` through Tokamak contributions, and produce the same form of
+circuit-independent output as independent generation. These requirements
+concern compatibility with Tokamak's setup, not whether the existing ceremony
+was performed correctly.
 
 Tokamak addresses this challenge with a native route and a Dusk-backed route.
 The native route constructs all circuit-independent elements through Tokamak
