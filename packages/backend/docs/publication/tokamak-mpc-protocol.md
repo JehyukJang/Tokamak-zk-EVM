@@ -94,11 +94,11 @@ that prevent direct reuse and the conditions under which reuse is possible,
 define the protocol that addresses those challenges, and state the protocol's
 verification guarantees and trust assumptions.
 
-The challenge is that a powers-of-tau sequence cannot generally be used
-unchanged to generate the CRS for Tokamak's SNARK. Differences in pairing
-curves, insufficient tau degree, or elements required by the Tokamak setup but
-absent from a conventional powers-of-tau sequence can each prevent direct reuse
-even when the ceremony that produced the sequence is valid. The protocol must
+The challenge is that a powers-of-tau sequence published by an existing
+ceremony is not itself a CRS for Tokamak's SNARK. Differences in pairing curves,
+insufficient tau degree, or elements required by the Tokamak setup but absent
+from a conventional powers-of-tau sequence can each prevent direct reuse even
+when the ceremony that produced the sequence is valid. The protocol must
 therefore preserve the security benefit of the contributions incorporated into
 a compatible powers-of-tau sequence while constructing the elements required
 by Tokamak's SNARK without publishing the hidden values from which those
