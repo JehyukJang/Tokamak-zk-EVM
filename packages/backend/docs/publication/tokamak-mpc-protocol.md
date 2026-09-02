@@ -38,8 +38,11 @@ convince a verifier that a computation has a valid witness while sending a proof
 much smaller than the computation itself. A preprocessing SNARK runs a setup
 before proofs are generated and uses the resulting reference string for later
 proving and verification. This structure supports small proofs and efficient
-verification across repeated uses of the setup. Examples include Pinocchio [2],
-Groth16 [1], and Tokamak's SNARK [6].
+verification across repeated uses of the setup. Examples include Pinocchio [30],
+Groth16 [1], the universal and updatable construction of Groth et al. [4],
+LegoSNARK [22], Sonic [8], PLONK [21], Marlin [23], MIRAGE [24], Lunar [25],
+Basilisk [26], FFLONK [27], VOProof [28], HyperPlonk [29], UniPlonK [31],
+SublonK [32], and Tokamak's SNARK [6].
 
 Jang and Judd have proposed a preprocessing SNARK in which a setup commits a
 library of subcircuits and larger circuits are derived by placement and wiring
@@ -50,14 +53,14 @@ circuit-specific preprocessing SNARKs, the CRS is tied to the reusable library
 rather than to each derived circuit, so supported computations can change
 without a new setup.
 
-Despite this difference, Tokamak's SNARK shares a limitation with the other
-preprocessing SNARKs considered here: their reference strings are computed from
-secret setup values, conventionally called trapdoors [1, 2, 6]. A structurally
-well-formed reference string is not sufficient. In a single-party setup, the
-generator must sample the trapdoors as specified and delete every copy after
-generating the reference string. Because public verification cannot establish
-that the trapdoors were sampled unpredictably or erased, users must trust the
-generator [20].
+Despite this difference, Tokamak's SNARK shares a limitation with preprocessing
+SNARK instantiations that use secret-dependent structured reference strings:
+their reference strings are computed from secret setup values, conventionally
+called trapdoors [1, 2, 6]. A structurally well-formed reference string is not
+sufficient. In a single-party setup, the generator must sample the trapdoors as
+specified and delete every copy after generating the reference string. Because
+public verification cannot establish that the trapdoors were sampled
+unpredictably or erased, users must trust the generator [20].
 
 One way to avoid relying on a single trusted generator is multi-party
 computation (MPC), which distributes setup generation across a sequence of
@@ -693,3 +696,15 @@ rather than by assuming that an existing ceremony proof applies unchanged.
 18. Sourav Das, Zhuolun Xiang, and Ling Ren, [*Powers of Tau in Asynchrony*](https://doi.org/10.14722/ndss.2024.24733), NDSS 2024.
 19. Lucien K. L. Ng, Pedro Moreno-Sanchez, Mohsen Minaei, Panagiotis Chatzigiannis, Adithya Bhat, and Duc V. Le, [*Lite-PoT: Practical Powers-of-Tau Setup Ceremony*](https://doi.org/10.1145/3719027.3765182), ACM CCS 2025.
 20. Faxing Wang, Shaanan Cohney, and Joseph Bonneau, [*SoK: Trusted Setups for Powers-of-Tau Strings*](https://doi.org/10.1007/978-3-032-07024-1_12), presented at Financial Cryptography 2025 and published in its proceedings.
+21. Ariel Gabizon, Zachary J. Williamson, and Oana Ciobotaru, [*PLONK: Permutations over Lagrange-bases for Oecumenical Noninteractive Arguments of Knowledge*](https://eprint.iacr.org/2019/953), IACR ePrint 2019/953.
+22. Matteo Campanelli, Dario Fiore, and Anaïs Querol, [*LegoSNARK: Modular Design and Composition of Succinct Zero-Knowledge Proofs*](https://doi.org/10.1145/3319535.3339820), ACM CCS 2019.
+23. Alessandro Chiesa, Yuncong Hu, Mary Maller, Pratyush Mishra, Psi Vesely, and Nicholas P. Ward, [*Marlin: Preprocessing zkSNARKs with Universal and Updatable SRS*](https://doi.org/10.1007/978-3-030-45721-1_26), EUROCRYPT 2020.
+24. Ahmed Kosba, Dimitrios Papadopoulos, Charalampos Papamanthou, and Dawn Song, [*MIRAGE: Succinct Arguments for Randomized Algorithms with Applications to Universal zk-SNARKs*](https://www.usenix.org/conference/usenixsecurity20/presentation/kosba), USENIX Security 2020.
+25. Matteo Campanelli, Antonio Faonio, Dario Fiore, Anaïs Querol, and Hadrián Rodríguez, [*Lunar: A Toolbox for More Efficient Universal and Updatable zkSNARKs and Commit-and-Prove Extensions*](https://doi.org/10.1007/978-3-030-92078-4_1), ASIACRYPT 2021.
+26. Carla Ràfols and Arantxa Zapico, [*An Algebraic Framework for Universal and Updatable SNARKs*](https://doi.org/10.1007/978-3-030-84242-0_27), CRYPTO 2021. The paper calls its most efficient construction Basilisk.
+27. Ariel Gabizon and Zachary J. Williamson, [*FFLONK: a Fast-Fourier Inspired Verifier Efficient Version of PLONK*](https://eprint.iacr.org/2021/1167), IACR ePrint 2021/1167.
+28. Yuncong Zhang, Alan Szepieniec, Ren Zhang, Shi-Feng Sun, Geng Wang, and Dawu Gu, [*VOProof: Efficient zkSNARKs from Vector Oracle Compilers*](https://doi.org/10.1145/3548606.3559387), ACM CCS 2022.
+29. Binyi Chen, Benedikt Bünz, Dan Boneh, and Zhenfei Zhang, [*HyperPlonk: Plonk with Linear-Time Prover and High-Degree Custom Gates*](https://doi.org/10.1007/978-3-031-30617-4_17), EUROCRYPT 2023.
+30. Bryan Parno, Jon Howell, Craig Gentry, and Mariana Raykova, [*Pinocchio: Nearly Practical Verifiable Computation*](https://doi.org/10.1109/SP.2013.47), IEEE Symposium on Security and Privacy 2013.
+31. Shumo Chu, Brandon H. Gomes, Francisco Hernández Iglesias, Todd Norton, and Duncan Tebbs, [*UniPlonK: PlonK with Universal Verifier*](https://eprint.iacr.org/2023/869), IACR ePrint 2023/869.
+32. Arka Rai Choudhuri, Sanjam Garg, Aarushi Goel, Sruthi Sekar, and Rohit Sinha, [*SublonK: Sublinear Prover PlonK*](https://doi.org/10.56553/popets-2024-0080), Proceedings on Privacy Enhancing Technologies 2024(3).
