@@ -94,17 +94,14 @@ that prevent direct reuse and the conditions under which reuse is possible,
 define the protocol that addresses those challenges, and state the protocol's
 verification guarantees and trust assumptions.
 
-An existing powers-of-tau sequence can be reused only if it uses the pairing
-curve required by Tokamak's SNARK and provides sufficient tau degree to derive
-the required circuit-independent elements. Compatibility at this level is not
-sufficient: a conventional powers-of-tau sequence encodes powers of one hidden
-scalar, whereas Tokamak's circuit-independent setup also requires an
-independently contributed `y` [3, 6]. The challenge is therefore to derive the
-required elements from a compatible sequence without learning its hidden
-scalar, add `y` through Tokamak contributions, and produce the same form of
-circuit-independent output as independent generation. These requirements
-concern compatibility with Tokamak's setup, not whether the existing ceremony
-was performed correctly.
+Reusing the output of an existing MPC ceremony is valuable because it can carry
+forward the protection provided by prior contributions and avoid discarding the
+work represented by a completed first phase. The challenge is that a
+powers-of-tau sequence generated for another construction may not meet
+Tokamak's setup requirements. The reuse question therefore has two parts:
+whether the sequence is compatible with Tokamak's setup and whether its prior
+contributions still protect the reused part of that setup. These questions are
+distinct from whether the existing ceremony itself was performed correctly.
 
 Tokamak addresses this challenge with a native route and a Dusk-backed route.
 The native route constructs all circuit-independent elements through Tokamak
