@@ -1,4 +1,4 @@
-# The Tokamak Two-Phase Multi-Party Computation Protocol
+# The Tokamak Dusk-Backed Two-Phase Multi-Party Computation Protocol
 
 ## Abstract
 
@@ -13,13 +13,11 @@ to update the hidden values in two stages. This document uses SRS for generic
 structured setup material and common reference string (CRS) for the output
 specific to Tokamak's SNARK.
 
-Tokamak provides two ways to prepare the circuit-independent material. The
-native route constructs it through sequential contributions to `alpha`, `x`,
-and `y`. The Dusk-backed route verifies and reindexes a completed BLS12-381
-powers-of-tau artifact, then adds sequential contributions to the missing `y`
-dimension. Both routes expose the same public-data layout and monomial families
-to the next computation. After a public computation binds that material to the
-canonical subcircuit library, contributors update `gamma`, `delta`, and `eta`.
+The Dusk-backed protocol verifies and reindexes a completed BLS12-381
+powers-of-tau artifact to obtain encodings involving `alpha` and `x`, then adds
+sequential contributions to an independent `y` dimension. After a public
+computation binds that material to the canonical subcircuit library,
+contributors update `gamma`, `delta`, and `eta`.
 
 The implementation verifies source artifacts, contribution equations, data
 that a contribution must not change, the canonical subcircuit library, links
@@ -85,30 +83,36 @@ Known MPC ceremonies have published powers-of-tau sequences that compatible
 two-phase setup protocols can use as the output of the first phase. Examples
 include the Zcash Powers of Tau, the Dusk extension over BLS12-381, the Ethereum
 ceremony for Kate-Zaverucha-Goldberg (KZG) polynomial commitments, and Privacy
-& Scaling Explorations' Perpetual Powers of Tau [9–12].
+& Scaling Explorations' Perpetual Powers of Tau, as well as Filecoin's
+BLS12-381 first-phase result [9–13].
 
-In this document, we focus on the MPC implemented by the Tokamak zk-EVM backend
-to generate the CRS for Tokamak's SNARK, either independently or by reusing
-a compatible powers-of-tau sequence. Our purpose is to identify the challenges
-that prevent direct reuse and the conditions under which reuse is possible,
-define the protocol that addresses those challenges, and state the protocol's
-verification guarantees and trust assumptions.
+In this document, we focus on the Dusk-backed MPC implemented by the Tokamak
+zk-EVM backend to generate the CRS for Tokamak's SNARK. Our purpose is to
+identify the challenge that prevents direct use of an existing powers-of-tau
+sequence, define how the protocol adapts the Dusk sequence, and state the
+protocol's verification guarantees and trust assumptions.
 
 Reusing the output of an existing MPC ceremony is important because it can
 preserve the protection provided by prior contributions and avoid repeating the
-work already completed in that ceremony's first phase. For the current Tokamak
-parameters, representing all required circuit-independent expressions in
-`alpha`, `x`, and `y` as powers of one hidden scalar in the scalar field of
-BLS12-381 would require G1 powers through exponent 5,242,879 and G2 powers
-through exponent 4,194,304 [6, 14, 15]. The Dusk BLS12-381 powers-of-tau sequence
-selected by the current implementation ends at G1 exponent 4,194,302 and G2
-exponent 2,097,151 [9]. The challenge is therefore to extend that sequence to
-the full structure required by Tokamak's SNARK while retaining the protection
-provided by its prior contributions.
+work already completed in that ceremony's first phase. Exponent capacity is not
+the principal obstacle: Filecoin published BLS12-381 first-phase material with
+enough powers to encode the bounded monomial families required by the current
+Tokamak parameters [13–15]. The obstacle is algebraic. A powers-of-tau sequence
+encodes univariate polynomials in one hidden value, whereas Tokamak's SNARK
+commits to and opens bivariate polynomials in independently sampled `x` and `y`
+[6]. Assigning both variables to powers of the same value, for example
+`x=tau` and `y=tau^e_y`, may avoid exponent collisions within fixed degree
+bounds, but it also imposes the public relation `y=x^e_y`. That relation changes
+the polynomial-opening argument used by Tokamak's SNARK: with sufficiently many
+public powers, the resulting univariate quotient terms can satisfy the
+opening equation after this substitution without establishing the original
+bivariate claim. A sufficiently long powers-of-tau sequence is therefore not
+directly compatible with the setup required by Tokamak's SNARK.
 
-We define an MPC protocol that extends the Dusk powers-of-tau sequence with the
-additional dimension required by Tokamak's SNARK and generates its CRS from the
-extended sequence. We then analyze the security of the protocol, including its
+We define an MPC protocol that uses the Dusk powers-of-tau sequence for
+encodings involving `alpha` and `x`, adds `y` through an independent sequence of
+Tokamak contributions, and generates the CRS after fixing the canonical
+subcircuit library. We then analyze the security of the protocol, including its
 trust assumptions and the limits of the guarantees supported by existing
 proofs.
 
@@ -167,11 +171,10 @@ When comparing the protocol with that literature, this document calls the two
 contribution periods the first and second phases. The serialized implementation
 uses a slightly different boundary: `Phase 1` contains the first contribution
 period, while `Phase 2` begins with deterministic circuit preparation and
-continues through the second contribution period. The native and Dusk-backed
-routes differ before and during `Phase 1`, but expose the same public-data layout
-and accessors to `Phase 2`. Both then use the same circuit-preparation and
-contribution implementation. This comparison does not assert that Tokamak has
-the same SRS or inherits the security proofs in [3, 5].
+continues through the second contribution period. Before `Phase 1`, the Dusk
+adaptor produces the public-data layout consumed by the first contribution.
+This comparison does not assert that Tokamak has the same SRS or inherits the
+security proofs in [3, 5].
 
 ### 3.1 Roles and verification responsibilities
 
@@ -219,11 +222,11 @@ elements. It fixes that library, not one circuit later derived from the library.
 The division shown below follows the order in [3, 5]; the assignment of the six
 parameters follows the CRS defined in [6] and the implementation [14].
 
-| Parameter | Role in the setup of Tokamak's SNARK | Tokamak stage | Participant procedure | Security assumption |
+| Parameter | Role in the setup of Tokamak's SNARK | Source or Tokamak stage | Participant procedure | Security assumption |
 |---|---|---|---|---|
-| `alpha` | Powers mixed with wire and correction encodings | Native `Phase 1`, or Dusk-derived encodings involving `alpha` and `x` | A native contributor erases its `alpha` share after contributing; the Dusk adaptor creates no new `alpha` share | At least one native `alpha` share, or one source share protecting Dusk scalar `t`, was unpredictable, remained undisclosed, and was erased |
-| `x` | Evaluation dimension for subcircuit and wire polynomials | Native `Phase 1`, or Dusk-derived encodings involving `alpha` and `x` | A native contributor erases its `x` share after contributing; the Dusk adaptor creates no new `x` share | The corresponding native or Dusk-source condition stated for `alpha` holds |
-| `y` | Placement dimension and bivariate mixing | `Phase 1` on both routes | Each contributor erases its `y` share after completing the contribution | At least one accepted `y` share was unpredictable, remained undisclosed, and was erased |
+| `alpha` | Powers mixed with wire and correction encodings | Dusk adaptor | The adaptor creates no new `alpha` share | At least one source share protecting Dusk scalar `t` was unpredictable, remained undisclosed, and was erased |
+| `x` | Evaluation dimension for subcircuit and wire polynomials | Dusk adaptor | The adaptor creates no new `x` share | The Dusk-source condition stated for `alpha` holds |
+| `y` | Placement dimension and bivariate mixing | `Phase 1` | Each contributor erases its `y` share after completing the contribution | At least one accepted `y` share was unpredictable, remained undisclosed, and was erased |
 | `gamma` | Direct encodings and public-instance elements divided by `gamma` | `Phase 2` | Each contributor erases its `gamma` share after completing the contribution | At least one accepted `gamma` share was unpredictable, remained undisclosed, and was erased |
 | `delta` | Direct encodings and private and correction elements divided by `delta` | `Phase 2` | Each contributor erases its `delta` share after completing the contribution | At least one accepted `delta` share was unpredictable, remained undisclosed, and was erased |
 | `eta` | Direct encodings and intermediate elements divided by `eta` | `Phase 2` | Each contributor erases its `eta` share after completing the contribution | At least one accepted `eta` share was unpredictable, remained undisclosed, and was erased |
@@ -279,7 +282,7 @@ An existing powers-of-tau result can be used only when it employs the target
 groups, supplies both group sequences through every exponent consumed by the
 public transformation, and contains enough information to derive the required
 elements. These requirements follow directly from the source specifications
-[3, 7, 9–12].
+[3, 7, 9–13].
 
 For the current tracked setup, the public-wire count is `l=396`, the
 interface-wire count is `l_D=1420`, the number of constraints per subcircuit is
@@ -289,11 +292,19 @@ checked Dusk mapping requires source G1 exponents through 10,240 and G2
 exponents through 8,192 [14].
 These are formula-derived repository values, not performance measurements.
 
+For comparison, a simple collision-free exponent assignment that maps all
+bounded `alpha`, `x`, and `y` monomials to one scalar can use `e_y=2,048` and
+`e_alpha=1,048,576`. With `0<=a<2,048`, `0<=b<512`, and `0<=k<=4`, the
+largest mapped exponent is 5,242,879 in G1; the corresponding G2 requirement
+reaches exponent 4,194,304 [6, 14, 15]. These bounds describe a hypothetical
+single-scalar assignment, not the Dusk mapping or the protocol defined here.
+
 | Public artifact | Curve | Published capacity relevant here | Practical conclusion |
 |---|---|---|---|
 | Privacy & Scaling Explorations' Perpetual Powers of Tau [12] | BN254 | Up to `2^28` constraints and `2 * 2^28 - 1` powers | Degree is ample, but the curve is incompatible. |
 | Ethereum KZG ceremony [11] | BLS12-381 | Largest sequence ends at G1 exponent `2^15-1`; every G2 sequence ends at exponent 64 | The curve and G1 capacity fit, but the G2 sequence is too short for the current mapping. |
 | Dusk trusted setup [9] | BLS12-381 | Documents powers through `2^21`, extending the verified Zcash result with 15 listed contributions | The pinned artifact supplies the curve and degree required as input. |
+| Filecoin phase 1 [13] | BLS12-381 | Supports circuits through `2^27` constraints and generates `2 * 2^27 - 1` powers | The available degree exceeds the hypothetical single-scalar bounds above, but degree alone does not make one hidden scalar compatible with Tokamak's bivariate setup. |
 
 Curve mismatch prevents reuse because encodings cannot be transferred between
 different prime-order pairing groups. Degree must be checked independently in
@@ -302,10 +313,26 @@ Dusk range covers the current checked bounds, whereas the Ethereum G2 sequence
 does not.
 
 Capacity alone is insufficient. A conventional powers-of-tau string provides
-univariate encodings of one hidden scalar. The setup of Tokamak's SNARK requires
-several hidden scalars, mixed `x`/`y` monomials, and circuit-dependent families
-[6]. Public linear combinations can derive encodings from available powers, but
-cannot manufacture an independent missing secret.
+univariate encodings of one hidden scalar. Tokamak's SNARK commits to
+bivariate polynomials in independently sampled `x` and `y` [6]. A mapping such
+as `x=tau` and `y=tau^e_y` can assign distinct powers of `tau` to all required
+monomials within fixed degree bounds, but this injective exponent assignment
+does not preserve independence: it imposes `y=x^e_y`.
+
+This relation affects the opening argument rather than merely the serialized
+layout. Before substitution, a bivariate opening residual has the form
+
+```text
+p(X,Y) - v = q_x(X,Y)(X-a) + q_y(X,Y)(Y-b).
+```
+
+After substituting `X=Z` and `Y=Z^e_y`, the two divisors are `Z-a` and
+`Z^e_y-b`. Unless `a^e_y=b`, these divisors are relatively prime. Their
+polynomial combinations can therefore represent an arbitrary residual. If the
+public powers cover the required quotient degrees, a prover can encode those
+combinations without establishing the original bivariate opening. Avoiding
+exponent collisions is consequently necessary for representing the CRS, but it
+is not sufficient for preserving the soundness argument.
 
 The selected Dusk result is therefore usable only as input to the Tokamak
 transformation. Its published sequence and ceremony records identify the source
@@ -314,31 +341,27 @@ depends on at least one Dusk or Zcash contributor having kept and erased an
 unpredictable share. Tokamak derives `x=t` and `alpha=t^(2N)` from that same
 scalar `t`; this relationship differs from the independent sampling used by
 the setup in [6]. The security analyses in [3, 5, 6] do not cover this mapping.
-The source also contains no Tokamak contribution to `y`, `gamma`, `delta`, or
-`eta`, so both Tokamak phases remain necessary.
+The source also contains no independent value for Tokamak's `y` and no Tokamak
+contribution to `gamma`, `delta`, or `eta`, so both Tokamak phases remain
+necessary.
 
 ## 5. Protocol Overview
 
-### 5.1 Route preparation
+### 5.1 Dusk adaptation
 
-The native route initializes every encoding required before circuit
-specialization at conceptual `alpha=x=y=1`. The Dusk-backed route authenticates
-and verifies the pinned powers-of-tau artifact, reindexes its powers into the
-required encodings involving `alpha` and `x`, and expands the encodings that
-involve `y` at conceptual `y=1`. These deterministic preparation operations do
-not add a participant's secret randomness.
+The Dusk adaptor authenticates and verifies the pinned powers-of-tau artifact,
+reindexes its powers into the required encodings involving `alpha` and `x`, and
+expands the encodings that involve `y` at conceptual `y=1`. These deterministic
+preparation operations do not add a participant's secret randomness.
 
 ### 5.2 The first phase
 
-Native contributors in the first phase update `alpha`, `x`, and `y` and every
-affected mixed monomial. Dusk-backed contributors update `y` and every encoding
-that contains it while leaving the adapted `alpha` and `x` elements unchanged.
-Selection on each route requires at least one receipt marked `random` or
-`hybrid`. Security separately assumes that at least one accepted share was
-unpredictable, remained undisclosed, and was erased. Both routes expose the same
-required monomial families through the same public-data interface, so the
-subsequent computation is identical even though the group-element values depend
-on the accepted contributions.
+Contributors in the first phase update `y` and every encoding that contains it
+while leaving the adapted `alpha` and `x` elements unchanged. Selection requires
+at least one receipt marked `random` or `hybrid`. Security separately assumes
+that at least one accepted share was unpredictable, remained undisclosed, and
+was erased. The selected state exposes the complete monomial families required
+by the subsequent computation.
 
 ### 5.3 Circuit specialization and the second phase
 
@@ -367,31 +390,20 @@ by itself disclose the scalars updated in the other phase.
 
 | Prior protocols [3, 5] | Tokamak implementation | Comparison |
 |---|---|---|
-| Circuit-independent setup in the first phase | `Phase 1` constructs the required `alpha`, `x`, and `y` monomials | The order is the same, but the parameters and group elements differ. |
+| Circuit-independent setup in the first phase | The Dusk adaptor supplies the `alpha` and `x` encodings, and `Phase 1` adds independent contributions to `y` | All circuit-independent material is complete before specialization, but Tokamak combines an external result with a Tokamak-specific contribution period. |
 | Public specialization to one circuit | Deterministic specialization from selected `Phase 1` points and the canonical subcircuit-library QAP/R1CS description | The public computation has the same role, but Tokamak fixes a reusable subcircuit library rather than one later-derived circuit. |
 | Circuit-dependent updates in the second phase | `Phase 2` updates direct and divided elements involving `gamma`, `delta`, and `eta` | The purpose is the same, but Tokamak uses different parameters and equations. |
 | Sequential updates and public verification | Proofs of the contributor's shares, pairing checks, checks that fixed elements did not change, and verification of the complete sequence | The verification purpose is the same; Tokamak defines its own stored states and receipts. |
 | At least one honest contribution in each phase | Selection requires a `random` or `hybrid` receipt in each Tokamak phase; security additionally assumes an unpredictable, undisclosed, and erased share in each phase, and a corresponding Dusk or Zcash source share for Dusk-derived `alpha` and `x` | The trust structure is analogous at a high level, but the verifier cannot establish these secrecy assumptions and the proofs in [3, 5] do not cover Tokamak's exact construction. |
-| One method for producing the first-phase input | Native initialization or a verified and reindexed Dusk artifact | Tokamak adds two input paths and public reindexing. |
+| Reusable first-phase material | A verified and reindexed Dusk artifact supplies the `alpha` and `x` encodings before Tokamak contributions to `y` | Tokamak reuses one part of the external result and adds an independent dimension required by its bivariate setup. |
 
-In both Tokamak routes, the verified output of the first phase is specialized to
-the canonical subcircuit library, only the remaining hidden parameters are
-updated in the second phase, and the final CRS is derived from the selected
-states. The implementation checks the public computations and stored data. Its
-security still depends on secret erasure and is limited by the proof gaps stated
-above.
+The verified output of the first phase is specialized to the canonical
+subcircuit library, only the remaining hidden parameters are updated in the
+second phase, and the final CRS is derived from the selected states. The
+implementation checks the public computations and stored data. Its security
+still depends on secret erasure and is limited by the proof gaps stated above.
 
-## 6. Route Preparation
-
-### 6.1 Native initialization
-
-Native initialization constructs the complete monomial layout with each hidden
-scalar conceptually equal to one. The resulting initial state contains no
-participant randomness and cannot be selected. Its purpose is to give the first
-contributor a well-formed input whose pure and mixed elements can all be updated
-and checked.
-
-### 6.2 Dusk adaptation
+## 6. Dusk Adaptation
 
 Let `t` be the hidden scalar behind the pinned Dusk sequence and
 `N=max(n,m_i)`. Mapping version 1 uses
@@ -415,35 +427,17 @@ selected until a Tokamak contributor changes those elements.
 
 ## 7. The First Phase: Contributions Before Circuit Specialization
 
-For native contribution `i`, the contributor samples independent nonzero shares
-`r_alpha,i`, `r_x,i`, and `r_y,i`. Every point is multiplied by the powers
-implied by its monomial. Representative updates are
-
-```text
-[alpha^k]             <- r_alpha,i^k [alpha^k]
-[x^a y^b]             <- r_x,i^a r_y,i^b [x^a y^b]
-[alpha^k x^a y^b]     <- r_alpha,i^k r_x,i^a r_y,i^b
-                          [alpha^k x^a y^b].
-```
-
-After accepted native contributions, each hidden scalar is the product of its
-corresponding shares. Pure powers, products involving multiple scalars, and the
-elements at the edges of the required exponent ranges are checked together so
-that a participant cannot update one dependent element while leaving another
-inconsistent.
-
-For Dusk-backed contribution `i`, the only new share is `r_y,i`. Every monomial
+For contribution `i`, the only new share is `r_y,i`. Every monomial
 with exponent `b` in `y` is multiplied by `r_y,i^b`; all elements containing
 only `alpha` and `x` must remain byte-for-byte unchanged. The implementation
 rejects a contributed state whose `y^s` encoding still equals its initial value.
 The scalar `y` is neither generated by an operator nor disclosed in a state.
 
 The selected state from the first phase must terminate a complete verified chain
-and include at least one receipt marked `random` or `hybrid`. Native and
-Dusk-backed states then provide the same required monomial families through the
-same interface to the specialization computation, while their group-element
-values and the final record retain the effects and origin of the accepted
-contributions.
+and include at least one receipt marked `random` or `hybrid`. It provides the
+required monomial families to the specialization computation, while its
+group-element values and the final record retain the effects and origin of the
+accepted contributions.
 
 ## 8. Circuit Specialization and the Second Phase
 
@@ -533,7 +527,6 @@ failed erasure by that person can remove this protection from both phases.
 
 | Protected values | Required secrecy | What current evidence supports if the values are exposed |
 |---|---|---|
-| Native `alpha`, `x`, `y` | At least one corresponding share from the native first phase remains unknown and was erased | The affected scalar is known and the independent-sampling assumption in [6] no longer applies to encodings that use it. Exposure of one scalar is not shown to reveal the others. |
 | Dusk-backed `alpha`, `x` | At least one Dusk or Zcash source share remains unknown and was erased | Exposure of source `t` reveals both `x=t` and `alpha=t^(2N)`. Even without exposure, this related pair is not proved to have the same security as independent sampling. |
 | Dusk-backed `y` | At least one Tokamak share for `y` remains unknown and was erased | Exposure reveals `y` but does not by itself reveal Dusk `t`. The source ceremony never replaces this contribution. |
 | `gamma`, `delta`, `eta` | At least one corresponding share from the second phase remains unknown and was erased | The affected scalar is known and the CRS no longer satisfies the independent-sampling assumption in [6]. The literature does not prove the exact forgery consequence of exposing each parameter separately. |
@@ -570,6 +563,11 @@ source contributor's non-disclosure and erasure [9, 10].
 
 ## 11. Limitations
 
+The independent Tokamak contributions to `y` avoid the `y=x^e_y` relation and
+the resulting collapse of the bivariate opening conditions described in Section
+4. This does not resolve the distinct relationship between `alpha` and `x` in
+the Dusk mapping.
+
 References [3, 5, 6] do not provide a formal reduction showing that the Tokamak
 contribution equations produce the exact setup distribution required by the
 knowledge-soundness analysis in [6]. The largest explicit gap is the Dusk
@@ -588,9 +586,8 @@ Tokamak requires at least one `random` or `hybrid` receipt in each phase before
 selection. Security separately assumes that at least one accepted share in each
 phase was unpredictable, remained undisclosed, and was erased. The protocol does
 not require multiple identities, independent organizations, hardware isolation,
-or public attestations. The native route is implemented and algebraically
-validated, but the current release policy permits only artifacts produced
-through the Dusk-backed route [14]. That policy is not a comparative security
+or public attestations. The current release policy permits only artifacts
+produced through the Dusk-backed protocol [14]. That policy is not a security
 proof.
 
 Finally, storing data under SHA-256 digests of its contents, using a specified
@@ -605,10 +602,9 @@ The protocol is identified as `tokamak-mpc-2phase-v1`. The implementation uses
 `Phase 1` and `Phase 2` as serialized phase identifiers. `Phase 2` covers both
 deterministic circuit preparation and the contribution period that follows it.
 The implementation records the parameters that each contribution must update as
-a contribution profile: `NativeAlphaXY` for native `Phase 1`, `DuskY` for
-Dusk-backed `Phase 1`, and `CircuitGammaDeltaEta` for the shared `Phase 2`.
-Both first-phase routes produce the same `UniversalTau` data structure, and both
-call the same specialization and second-phase contribution implementation [14].
+contribution profiles: `DuskY` for `Phase 1` and `CircuitGammaDeltaEta` for
+`Phase 2`. The selected first-phase `UniversalTau` state is consumed by the
+specialization and second-phase contribution implementation [14].
 
 The participant follows the same steps for every contribution profile: verify
 the previous state, display the phase and required parameter updates, generate
@@ -656,18 +652,21 @@ Privacy & Scaling Explorations' Perpetual Powers of Tau targets a much larger
 BN254 degree [12]. More recent research explores decentralized, asynchronous,
 and lower-cost powers-of-tau execution [17–19]. These works improve participation
 and ceremony operation; they do not by themselves supply the parameters required
-by the setup of Tokamak's SNARK or resolve the curve and degree differences
-described in Section 4.
+by the setup of Tokamak's SNARK or resolve the curve, degree, and algebraic
+compatibility requirements described in Section 4.
 
 ## 14. Conclusion
 
-Tokamak implements a two-phase MPC for Tokamak's SNARK with two input routes.
-The native route contributes `alpha`, `x`, and `y`; the Dusk-backed route
+Tokamak implements a Dusk-backed two-phase MPC for Tokamak's SNARK. The protocol
 verifies and reindexes an external BLS12-381 powers-of-tau sequence before
-contributors add the missing `y`. Both routes expose the same public-data layout
-and required monomial families before deterministic specialization to the
-canonical subcircuit library, and use the same second phase for contributions to
-`gamma`, `delta`, and `eta`.
+contributors add the independent `y` dimension. It then specializes the
+resulting monomial families to the canonical subcircuit library and uses the
+second phase for contributions to `gamma`, `delta`, and `eta`.
+
+A longer univariate powers-of-tau sequence cannot replace the independent `y`
+contributions merely by assigning `x` and `y` to different powers of the same
+hidden value. Such an assignment changes the bivariate opening argument even
+when its exponent range is sufficient and its bounded monomials do not collide.
 
 The implementation provides independently repeatable evidence about the source
 artifact, contribution equations, the canonical subcircuit library, links between
@@ -698,7 +697,7 @@ rather than by assuming that an existing ceremony proof applies unchanged.
 10. Zcash Foundation, [*Powers of Tau attestations*](https://github.com/ZcashFoundation/powersoftau-attestations), official ceremony repository.
 11. Ethereum Foundation, [*KZG Powers of Tau ceremony specifications*](https://github.com/ethereum/kzg-ceremony-specs) and [public transcript](https://github.com/ethereum/kzg-ceremony), official repositories.
 12. Privacy & Scaling Explorations, [*Perpetual Powers of Tau*](https://github.com/privacy-ethereum/perpetualpowersoftau), official ceremony repository.
-13. Filecoin Project, [*Phase 2 attestations*](https://github.com/filecoin-project/phase2-attestations), official ceremony repository.
+13. Filecoin Project, [*Phase 2 attestations*](https://github.com/filecoin-project/phase2-attestations), official ceremony repository, and Ariel Gabizon, [*Perpetual Powers of Tau for BLS12-381*](https://github.com/arielgabizon/perpetualpowersoftau), phase-one ceremony records linked by the Filecoin repository.
 14. Tokamak zk-EVM, [*Two-Phase MPC Protocol Contract*](../../rust/setup/mpc-setup/docs/phase2-output-contract.md), normative implementation contract.
 15. Tokamak zk-EVM, [tracked setup parameters](../../../frontend/qap-compiler/subcircuits/library/setupParams.json), repository record.
 16. Tokamak zk-EVM, [*MPC Setup Guide*](../../rust/setup/mpc-setup/README.md), participant and operator guide.
