@@ -86,10 +86,12 @@ ceremony for Kate-Zaverucha-Goldberg (KZG) polynomial commitments, and Privacy
 & Scaling Explorations' Perpetual Powers of Tau, as well as Filecoin's
 BLS12-381 first-phase result [9–13].
 
-This document defines and analyzes an MPC protocol for generating the CRS for
-Tokamak's SNARK by reusing an existing powers-of-tau result. Its purpose is to
-explain what prevents direct reuse and to state the protocol's verification
-guarantees, security assumptions, and limitations.
+In this document, we focus on reusing a powers-of-tau sequence produced by an
+existing ceremony to generate the CRS for Tokamak's SNARK. Our purpose is to
+evaluate candidate sequences, identify the challenges that prevent direct reuse
+and the conditions under which reuse is possible, define the protocol that
+addresses those challenges, and state its verification guarantees and trust
+assumptions.
 
 Reusing the output of an existing MPC ceremony is important because it can
 preserve the protection provided by prior contributions and avoid repeating the
