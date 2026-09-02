@@ -93,21 +93,17 @@ challenges to reusing such material and the conditions under which reuse is
 possible, define the protocol that addresses those challenges, and make its
 verification guarantees and trust assumptions explicit.
 
-Completed ceremony artifacts nevertheless cannot generally be used unchanged
-by Tokamak's SNARK. The source and target may use different pairing curves, the
-published tau sequence may not cover the required degree in both groups, and a
-conventional powers-of-tau string does not supply all of the elements required
-by the setup of Tokamak's SNARK. Any one of these differences can prevent direct
-reuse even when the source ceremony itself is valid.
+The challenge is that a completed ceremony artifact cannot generally be used
+unchanged by Tokamak's SNARK. Differences in pairing curves, insufficient tau
+degree in either group, or elements required by the Tokamak setup but absent
+from a conventional powers-of-tau string can each prevent direct reuse even when
+the source ceremony itself is valid. The protocol must therefore retain the
+protection supplied by compatible ceremony material while constructing the
+additional elements without publishing the missing hidden values, and it must
+also support independent generation when no external ceremony is used.
 
-The problem is therefore to retain the protection supplied by a compatible
-completed ceremony where possible while constructing the additional elements
-required by Tokamak's SNARK without publishing the missing hidden values. The
-same protocol must also support independent generation when no external
-ceremony is used.
-
-Tokamak addresses the problem with a native route and a Dusk-backed route. The
-native route constructs all circuit-independent material through Tokamak
+Tokamak addresses this challenge with a native route and a Dusk-backed route.
+The native route constructs all circuit-independent material through Tokamak
 contributions. The Dusk-backed route verifies and adapts a compatible Dusk
 ceremony result before contributors add the missing `y` dimension. In both
 routes, the first phase exposes the same public-data layout and monomial
