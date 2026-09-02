@@ -5,11 +5,11 @@
 Preprocessing succinct non-interactive arguments of knowledge (SNARK) systems
 obtain small proofs and efficient verification from a structured reference string
 (SRS), but the hidden values used to construct that string must remain unknown.
-This document defines the multi-party computation (MPC) implemented by
-the Tokamak zk-EVM backend for the setup of Tokamak's SNARK, the construction
-proposed in [6]. The design separates circuit-independent setup material from
-the material derived for a particular subcircuit library and allows contributors
-to update the hidden values in two stages. This document uses SRS for generic
+This document defines the multi-party computation (MPC) used to generate the
+CRS for Tokamak's SNARK, the construction proposed in [6]. The design separates
+circuit-independent setup material from the material derived for a particular
+subcircuit library and allows contributors to update the hidden values in two
+stages. This document uses SRS for generic
 structured setup material and common reference string (CRS) for the output
 specific to Tokamak's SNARK.
 
@@ -86,11 +86,10 @@ ceremony for Kate-Zaverucha-Goldberg (KZG) polynomial commitments, and Privacy
 & Scaling Explorations' Perpetual Powers of Tau, as well as Filecoin's
 BLS12-381 first-phase result [9–13].
 
-This document focuses on the MPC implemented by the Tokamak zk-EVM backend to
-generate the CRS for Tokamak's SNARK by reusing an existing powers-of-tau
-result. Its purpose is to explain what prevents direct reuse, define the
-protocol that addresses this problem, and state its verification guarantees,
-security assumptions, and limitations.
+This document defines and analyzes an MPC protocol for generating the CRS for
+Tokamak's SNARK by reusing an existing powers-of-tau result. Its purpose is to
+explain what prevents direct reuse and to state the protocol's verification
+guarantees, security assumptions, and limitations.
 
 Reusing the output of an existing MPC ceremony is important because it can
 preserve the protection provided by prior contributions and avoid repeating the
