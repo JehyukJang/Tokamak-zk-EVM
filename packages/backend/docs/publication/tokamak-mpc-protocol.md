@@ -39,27 +39,22 @@ much smaller than the computation itself. A preprocessing SNARK runs a setup
 before proofs are generated and uses the resulting reference string for later
 proving and verification. This structure supports small proofs and efficient
 verification across repeated uses of the setup. Examples include Pinocchio [30],
-Groth16 [1], and later constructions such as Sonic [8], PLONK [21], and
-Tokamak's SNARK [6]; further examples appear in [4, 22–29, 31, 32].
+Groth16 [1], and later constructions such as Sonic [8] and PLONK [21]; further
+examples, including Tokamak's SNARK, appear in [4, 6, 22–29, 31, 32].
 
-Jang and Judd combine Groth16's arithmetic argument with PLONK's use of a
-permutation argument [1, 6, 21]. Tokamak's SNARK adapts the former to check
-computation inside copies of predefined subcircuits and the latter to check
-equality between values on wires that connect those copies. It also proves that
-the two checks use the same wire values. The setup commits a reusable library
-of subcircuits, and each supported circuit is then specified by selecting and
-placing copies from that library and describing their interconnections.
+Jang and Judd have proposed Tokamak's SNARK [6], which combines Groth16's
+arithmetic argument with PLONK's use of a permutation argument [1, 21]. In their
+construction, the setup commits a reusable library of subcircuits, and each
+supported circuit is formed by placing and wiring copies from that library while
+the proof checks their internal computation and interconnections.
 Compared with Groth16, one common reference string (CRS) therefore supports
 many such circuits rather than one fixed circuit. Compared with PLONK, verifier
 preprocessing describes only connections between already committed subcircuits
 rather than the constraints and wiring of the entire circuit; the reduction is
 greatest when the subcircuits contain substantially more internal computation
-than interface wiring. The proofs remain constant in size. The tradeoffs are
-that the CRS supports only circuits constructible from the committed library
-and is not updatable. The paper also reports a proof of 19 group elements and 4
-field elements with 10 pairings in verification, compared with 3 group elements
-and 3 pairings for Groth16 and 9 group elements, 6 field elements, and 2 pairings
-for PLONK [6, Fig. 1]. This document calls the construction Tokamak's SNARK.
+than interface wiring. As an informal implication, the smaller amount of
+preprocessing information generated for each new proving problem is expected to
+reduce the cost for verifiers and users to audit that information.
 
 These design choices do not remove the setup trust requirement. Tokamak's SNARK
 shares a limitation with preprocessing SNARK instantiations that use
