@@ -54,7 +54,7 @@ rather than the constraints and wiring of the entire circuit; the reduction is
 greatest when the subcircuits contain substantially more internal computation
 than interface wiring. This reduction may also lower the cost for verifiers and
 users to audit the preprocessing information generated for each new proving
-problem.
+statement.
 
 These design choices do not remove the setup trust requirement. Tokamak's SNARK
 shares a limitation with preprocessing SNARK instantiations that use
