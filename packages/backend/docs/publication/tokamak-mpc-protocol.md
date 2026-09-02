@@ -38,78 +38,82 @@ convince a verifier that the prover knows a witness that, together with the
 public input, satisfies a circuit relation, with a proof that is small relative
 to checking the relation directly. A preprocessing SNARK runs a setup before
 proofs are generated and uses the resulting reference string for later proving
-and verification. This structure supports small proofs and efficient
-verification across repeated uses of the setup. Examples include Pinocchio [30],
-Groth16 [1], and later constructions such as Sonic [8] and PLONK [21]; further
-examples, including Tokamak's SNARK, appear in [4, 6, 22–29, 31, 32].
+and verification. The resulting reference string supports small proofs and
+efficient verification across repeated uses of the setup. Examples include
+Pinocchio [30], Groth16 [1], and later constructions such as Sonic [8] and PLONK
+[21]; further examples, including Tokamak's SNARK, appear in [4, 6, 22–29, 31,
+32].
 
 Jang and Judd have proposed Tokamak's SNARK [6], which combines Groth16's
 arithmetic argument with PLONK's use of a permutation argument [1, 21]. In their
 construction, each supported circuit relation is defined by placing and wiring
 copies from a subcircuit library committed by the setup, while the proof checks
-their internal computation and interconnections. Compared with Groth16, one
-common reference string (CRS) therefore supports a specific family of circuit
-relations rather than one circuit relation fixed during setup. Compared with
-PLONK, verifier preprocessing for a new circuit relation describes only
-connections between already committed subcircuits rather than the constraints
-and wiring of the entire circuit; the reduction is greatest when the subcircuits
-contain substantially more internal computation than interface wiring. This
-reduction may also lower the cost for verifiers and users to audit that
-preprocessing information.
+the internal computation of those copies and the connections between them.
+Compared with Groth16, one common reference string (CRS) therefore supports a
+specific family of circuit relations rather than one circuit relation fixed
+during setup. Compared with PLONK, verifier preprocessing for a new circuit
+relation describes only connections between already committed subcircuits
+rather than the constraints and wiring of the entire circuit; the reduction is
+greatest when the subcircuits contain substantially more internal computation
+than interface wiring. This reduction may also lower the cost for verifiers and
+users to audit the information supplied during verifier preprocessing.
 
 For preprocessing SNARKs that use secret-dependent structured reference
 strings, including Tokamak's SNARK, the setup computes the reference string from
 secret values conventionally called trapdoors [1, 2, 6]. In a single-party
-setup, the generator must sample those trapdoors as specified and delete every
+setup, the generator must sample those trapdoors as specified and erase every
 copy after generating the reference string. If sufficient trapdoor information
-is retained or exposed, its holder may be able to generate an accepting proof
-for a public input for which no valid witness exists, breaking soundness [2, 20].
-A structurally well-formed reference string alone does not show that either
-condition was met. Because public verification cannot determine whether the
-trapdoors were sampled unpredictably or erased, users must trust the generator
-[20].
+is retained or exposed, a party that obtains it may be able to generate an
+accepting proof for a public input for which no valid witness exists, breaking
+soundness [2, 20]. A structurally well-formed reference string alone does not
+show that the trapdoors were sampled as specified and erased. Because public
+verification cannot establish that the trapdoors were sampled unpredictably and
+erased, users must trust the generator [20].
 
 One way to avoid relying on a single trusted generator is multi-party
 computation (MPC), which distributes setup generation across a sequence of
-contributors. Each participant uses a private share to update the public data
-and publishes evidence that the update is consistent. In the two-phase setup
-protocols of [3, 5], the first phase generates material that can be reused for
-multiple circuits. After a public computation derives the material for one
-circuit, the second phase updates the remaining circuit-dependent parameters.
-The security analyses require at least one participant in each phase to use
-unpredictable randomness and erase the corresponding share; the phases may have
-different contributors.
+contributors. Each contributor uses private randomness to update the public
+setup elements and publishes evidence that the update is consistent. In the
+two-phase setup protocols of [3, 5], the first phase generates
+circuit-independent elements that can be reused for multiple circuits. A public
+computation then derives elements for one circuit, and the second phase updates
+the remaining circuit-dependent parameters. The security analyses require at
+least one contributor in each phase to use unpredictable randomness and erase
+that randomness; the phases may have different contributors.
 
-Known MPC ceremonies have produced public powers-of-tau artifacts that can
-serve as first-phase outputs for compatible two-phase setup protocols. Examples
+Known MPC ceremonies have published powers-of-tau sequences that compatible
+two-phase setup protocols can use as the output of the first phase. Examples
 include the Zcash Powers of Tau, the Dusk extension over BLS12-381, the Ethereum
-ceremony for Kate-Zaverucha-Goldberg (KZG) polynomial commitments, and Privacy &
-Scaling Explorations' Perpetual Powers of Tau [9–12].
+ceremony for Kate-Zaverucha-Goldberg (KZG) polynomial commitments, and Privacy
+& Scaling Explorations' Perpetual Powers of Tau [9–12].
 
 In this document, we focus on the MPC implemented by the Tokamak zk-EVM backend
 to generate the CRS for Tokamak's SNARK, either independently or by reusing
-compatible material from a completed ceremony. Our purpose is to identify the
-challenges to reusing such material and the conditions under which reuse is
-possible, define the protocol that addresses those challenges, and make its
-verification guarantees and trust assumptions explicit.
+a compatible powers-of-tau sequence. Our purpose is to identify the challenges
+that prevent direct reuse and the conditions under which reuse is possible,
+define the protocol that addresses those challenges, and state the protocol's
+verification guarantees and trust assumptions.
 
-The challenge is that a completed ceremony artifact cannot generally be used
-unchanged by Tokamak's SNARK. Differences in pairing curves, insufficient tau
-degree in either group, or elements required by the Tokamak setup but absent
-from a conventional powers-of-tau string can each prevent direct reuse even when
-the source ceremony itself is valid. The protocol must therefore retain the
-protection supplied by compatible ceremony material while constructing the
-additional elements without publishing the missing hidden values, and it must
-also support independent generation when no external ceremony is used.
+The challenge is that a powers-of-tau sequence cannot generally be used
+unchanged to generate the CRS for Tokamak's SNARK. Differences in pairing
+curves, insufficient tau degree, or elements required by the Tokamak setup but
+absent from a conventional powers-of-tau sequence can each prevent direct reuse
+even when the ceremony that produced the sequence is valid. The protocol must
+therefore preserve the security benefit of the contributions incorporated into
+a compatible powers-of-tau sequence while constructing the elements required
+by Tokamak's SNARK without publishing the hidden values from which those
+elements are generated. The protocol must also support independent generation
+when no powers-of-tau sequence is used.
 
 Tokamak addresses this challenge with a native route and a Dusk-backed route.
-The native route constructs all circuit-independent material through Tokamak
-contributions. The Dusk-backed route verifies and adapts a compatible Dusk
-ceremony result before contributors add the missing `y` dimension. In both
-routes, the first phase exposes the same public-data layout and monomial
-families, a deterministic public computation binds that material to the
-canonical subcircuit library, and the second phase updates the remaining
-parameters. The final CRS is bound to the verified record of those steps.
+The native route constructs all circuit-independent elements through Tokamak
+contributions. The Dusk-backed route verifies and adapts the Dusk powers-of-tau
+sequence before Tokamak contributors update the additional setup parameter `y`.
+In both routes, Tokamak's first phase produces circuit-independent elements in
+the same format, a deterministic public computation binds those elements to the
+subcircuit library, and the second phase updates the remaining circuit-dependent
+parameters. The final CRS is accepted only after the contributions and public
+computation have been verified.
 
 ## 2. Background
 
