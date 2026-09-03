@@ -161,15 +161,13 @@ limits the security claims made in this document.
 
 ## 3. System Model and Notation
 
-Tokamak follows the order described in [3, 5]: contributions before circuit
-specialization, public specialization, and contributions after specialization.
-When comparing the protocol with that literature, this document calls the two
-contribution periods the first and second phases. The serialized implementation
-uses a slightly different boundary: `Phase 1` contains the first contribution
-period, while `Phase 2` begins with deterministic circuit preparation and
-continues through the second contribution period. Before `Phase 1`, powers from
-the selected univariate sequence are placed in the public encodings required by
-the first contribution.
+Tokamak follows the order described in [3, 5]: contributions complete the
+circuit-independent setup material, public computation specializes that
+material to the committed subcircuit library, and further contributions
+complete the circuit-dependent material. This document calls the two
+contribution periods the first and second phases. Before the first phase, powers
+from the selected univariate sequence are placed in the public encodings
+required by the first contribution.
 This comparison does not assert that Tokamak has the same SRS or inherits the
 security proofs in [3, 5].
 
@@ -210,7 +208,7 @@ that contract [14].
 A participant's share for scalar `z` is written `r_z`. Sequential contributions
 replace `z` by `z * product_i r_z,i`. Public group elements are updated directly;
 the scalar is never serialized. Circuit specialization is the deterministic
-group computation that combines the selected `Phase 1` output with the
+group computation that combines the selected first-phase output with the
 canonical subcircuit-library description to construct circuit-dependent group
 elements. It fixes that library, not one circuit later derived from the library.
 
@@ -223,17 +221,17 @@ parameters follows the CRS defined in [6] and the implementation [14].
 |---|---|---|---|---|
 | `alpha` | Powers mixed with wire and correction encodings | Selected univariate sequence | Selecting the required powers introduces no new `alpha` share | At least one source contribution protecting $\tau$ was unpredictable, remained undisclosed, and was erased |
 | `x` | Evaluation dimension for subcircuit and wire polynomials | Selected univariate sequence | Selecting the required powers introduces no new `x` share | The source condition stated for `alpha` holds |
-| `y` | Placement dimension and bivariate mixing | `Phase 1` | Each contributor erases its `y` share after completing the contribution | At least one accepted `y` share was unpredictable, remained undisclosed, and was erased |
-| `gamma` | Direct encodings and public-instance elements divided by `gamma` | `Phase 2` | Each contributor erases its `gamma` share after completing the contribution | At least one accepted `gamma` share was unpredictable, remained undisclosed, and was erased |
-| `delta` | Direct encodings and private and correction elements divided by `delta` | `Phase 2` | Each contributor erases its `delta` share after completing the contribution | At least one accepted `delta` share was unpredictable, remained undisclosed, and was erased |
-| `eta` | Direct encodings and intermediate elements divided by `eta` | `Phase 2` | Each contributor erases its `eta` share after completing the contribution | At least one accepted `eta` share was unpredictable, remained undisclosed, and was erased |
+| `y` | Placement dimension and bivariate mixing | First phase | Each contributor erases its `y` share after completing the contribution | At least one accepted `y` share was unpredictable, remained undisclosed, and was erased |
+| `gamma` | Direct encodings and public-instance elements divided by `gamma` | Second phase | Each contributor erases its `gamma` share after completing the contribution | At least one accepted `gamma` share was unpredictable, remained undisclosed, and was erased |
+| `delta` | Direct encodings and private and correction elements divided by `delta` | Second phase | Each contributor erases its `delta` share after completing the contribution | At least one accepted `delta` share was unpredictable, remained undisclosed, and was erased |
+| `eta` | Direct encodings and intermediate elements divided by `eta` | Second phase | Each contributor erases its `eta` share after completing the contribution | At least one accepted `eta` share was unpredictable, remained undisclosed, and was erased |
 
-`Phase 1` finishes the circuit-independent monomial encodings. `Phase 2`
-preparation is the first step that reads the concrete rank-1 constraint system
-(R1CS) and quadratic arithmetic program (QAP) coefficients and binds the
-canonical digest of the subcircuit library. Contributions in `Phase 2` then
-update only the three scalars used by the circuit-dependent elements. Reading
-only the degree and placement limits before this point does not fix the
+The first phase finishes the circuit-independent monomial encodings. Preparation
+for the second phase is the first step that reads the concrete rank-1 constraint
+system (R1CS) and quadratic arithmetic program (QAP) coefficients and binds the
+canonical digest of the subcircuit library. Contributions in the second phase
+then update only the three scalars used by the circuit-dependent elements.
+Reading only the degree and placement limits before this point does not fix the
 subcircuit library.
 
 ### 3.4 Ceremony states and contributions
@@ -402,17 +400,19 @@ artifact follows the recorded source, layout, canonical subcircuit library, and
 contribution sequence. The checks do not establish secret deletion. If every
 share protecting one phase is known, the requirement that at least one
 contributor kept and erased an unpredictable share is not satisfied. The
-security proofs in [3, 5] then do not apply to that execution. This does not
-invalidate evidence that the public computations were performed consistently or
-by itself disclose the scalars updated in the other phase.
+honest-contributor premise used by [3, 5] is then absent. Those references do
+not establish security for Tokamak's exact construction even when the premise
+holds. Failure of the premise does not invalidate evidence that the public
+computations were performed consistently or by itself disclose the scalars
+updated in the other phase.
 
 ### 5.5 Comparison with prior two-phase protocols
 
 | Prior protocols [3, 5] | Tokamak protocol | Comparison |
 |---|---|---|
-| Circuit-independent setup in the first phase | A selected univariate sequence supplies the `alpha` and `x` encodings, and `Phase 1` adds independent contributions to `y` | All circuit-independent material is complete before specialization, but Tokamak combines an external result with a Tokamak-specific contribution period. |
-| Public specialization to one circuit | Deterministic specialization from selected `Phase 1` points and the canonical subcircuit-library QAP/R1CS description | The public computation has the same role, but Tokamak fixes a reusable subcircuit library rather than one later-derived circuit. |
-| Circuit-dependent updates in the second phase | `Phase 2` updates direct and divided elements involving `gamma`, `delta`, and `eta` | The purpose is the same, but Tokamak uses different parameters and equations. |
+| Circuit-independent setup in the first phase | A selected univariate sequence supplies the `alpha` and `x` encodings, and the first phase adds independent contributions to `y` | All circuit-independent material is complete before specialization, but Tokamak combines an external result with a Tokamak-specific contribution period. |
+| Public specialization to one circuit | Deterministic specialization from selected first-phase points and the canonical subcircuit-library QAP/R1CS description | The public computation has the same role, but Tokamak fixes a reusable subcircuit library rather than one later-derived circuit. |
+| Circuit-dependent updates in the second phase | The second phase updates direct and divided elements involving `gamma`, `delta`, and `eta` | The purpose is the same, but Tokamak uses different parameters and equations. |
 | Sequential updates and public verification | Proofs of the contributor's shares, pairing checks, checks that fixed elements did not change, and verification of the complete sequence | The verification purpose is the same; Tokamak defines its own stored states and receipts. |
 | At least one honest contribution in each phase | Selection requires a `random` or `hybrid` receipt in each Tokamak phase; security additionally assumes an unpredictable, undisclosed, and erased share in each phase and in the source sequence | The trust structure is analogous at a high level, but the verifier cannot establish these secrecy assumptions and the proofs in [3, 5] do not cover Tokamak's exact construction. |
 | Reusable first-phase material | A verified source sequence supplies the `alpha` and `x` encodings before Tokamak contributions to `y` | Tokamak reuses one part of an external result and adds an independent dimension required by its bivariate setup. |
