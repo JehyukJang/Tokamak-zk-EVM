@@ -275,80 +275,95 @@ source scalar.
 
 ## 4. Requirements for Reusing Existing Ceremony Results
 
-An existing powers-of-tau result can be used only when it employs the target
-groups, supplies both group sequences through every exponent consumed by the
-public transformation, and contains enough information to derive the required
-elements. These requirements follow directly from the source specifications
-[3, 7, 9–13].
+Reusing an existing powers-of-tau result requires three independent checks:
+exponent capacity, curve compatibility, and algebraic compatibility. Capacity
+and curve compatibility determine whether a sequence can supply encoded source
+elements. Algebraic compatibility determines whether those elements can be
+used directly or require an additional construction and security analysis. The
+criteria below follow from the target setup and the published source
+specifications [3, 6, 7, 9–15].
 
-For the current tracked setup, the public-wire count is `l=396`, the
-interface-wire count is `l_D=1420`, the number of constraints per subcircuit is
-`n=1024`, and the maximum placement count is `s=s_max=256`. The resulting
-intermediate-wire count is `m_i=l_D-l=1024`, and `N=max(n,m_i)=1024` [15]. The
-checked source mapping requires G1 exponents through 10,240 and G2
-exponents through 8,192 [14].
+### 4.1 Exponent capacity
+
+Exponent capacity asks whether each source group contains every encoded power
+consumed by the target construction. The two groups must be checked separately;
+a longer sequence in $G_1$ cannot replace a missing power in $G_2$.
+
+For the current tracked setup, the public-wire count is $l=396$, the
+interface-wire count is $l_D=1{,}420$, the number of constraints per subcircuit
+is $n=1{,}024$, and the maximum placement count is
+$s=s_{\max}=256$. Therefore, $m_i=l_D-l=1{,}024$ and
+$N=\max(n,m_i)=1{,}024$ [15]. The checked source mapping requires powers
+through exponent $10{,}240$ in $G_1$ and exponent $8{,}192$ in $G_2$ [14].
 These are formula-derived repository values, not performance measurements.
 
-For comparison, a simple collision-free exponent assignment that maps all
-bounded `alpha`, `x`, and `y` monomials to one scalar can use `e_y=2,048` and
-`e_alpha=1,048,576`. With `0<=a<2,048`, `0<=b<512`, and `0<=k<=4`, the
-largest mapped exponent is 5,242,879 in G1; the corresponding G2 requirement
-reaches exponent 4,194,304 [6, 14, 15]. These bounds describe a hypothetical
-single-scalar assignment, not the source mapping used by the protocol.
+Capacity can also be evaluated for a construction that is not algebraically
+valid. For comparison, a collision-free assignment of the bounded
+$\alpha$-, $x$-, and $y$-monomials to one scalar can use
+$e_y=2{,}048$ and $e_\alpha=1{,}048{,}576$. For
+$0\leq a<2{,}048$, $0\leq b<512$, and $0\leq k\leq4$, the largest mapped
+exponent is $5{,}242{,}879$ in $G_1$, while the corresponding $G_2$ requirement
+reaches exponent $4{,}194{,}304$ [6, 14, 15]. These bounds show only that the
+monomials fit within a finite univariate sequence; they do not establish
+algebraic compatibility.
 
-The following ceremony survey classifies the encoded-power sequence evaluated
-for reuse, rather than every auxiliary element that may accompany a complete
-ceremony artifact.
+### 4.2 Curve compatibility
 
-| Public result | Curve | Sequence dimension | Published capacity relevant here | Practical conclusion |
-|---|---|---|---|---|
-| Privacy & Scaling Explorations' Perpetual Powers of Tau [12] | BN254 | Univariate sequence $[\tau^i]$ | Up to `2^28` constraints and `2 * 2^28 - 1` powers | Degree is ample, but the curve is incompatible. |
-| Ethereum KZG ceremony [11] | BLS12-381 | Four separate univariate sequences $[\tau_j^i]$; no mixed terms between them | Largest sequence ends at G1 exponent `2^15-1`; every G2 sequence ends at exponent 64 | The curve and G1 capacity fit, but the G2 sequence is too short for the current mapping. |
-| Dusk trusted setup [9] | BLS12-381 | Univariate sequence $[\tau^i]$ | Documents powers through `2^21`, extending the verified Zcash result with 15 listed contributions | The published result supplies the curve and degree required as input. |
-| Filecoin phase 1 [13] | BLS12-381 | Univariate sequence $[\tau^i]$ | Supports circuits through `2^27` constraints and generates `2 * 2^27 - 1` powers | The available degree exceeds the hypothetical single-scalar bounds above, but degree alone does not make one hidden scalar compatible with Tokamak's bivariate setup. |
+Curve compatibility requires the source sequence and Tokamak's SNARK to use the
+same scalar field and pairing groups. Encodings over another curve cannot be
+transferred into the BLS12-381 groups used here without changing the
+cryptographic setting [6, 14]. A curve match does not establish exponent
+capacity: both $G_1$ and $G_2$ must still contain the required ranges.
 
-Several independent univariate sequences do not form a multivariate encoded
-basis unless the published result also contains the required mixed powers.
+### 4.3 Algebraic compatibility
 
-Curve mismatch prevents reuse because encodings cannot be transferred between
-different prime-order pairing groups. Degree must be checked independently in
-G1 and G2: a long G1 sequence does not compensate for missing G2 powers. The
-selected candidate covers the current checked bounds. Another candidate uses
-the required curve but has an insufficient G2 range, showing why curve and
-capacity must be evaluated separately.
+Algebraic compatibility asks whether the relations exposed by the source
+sequence preserve the multivariate relations required by the target proof
+system. A conventional powers-of-tau sequence contains univariate encodings of
+one hidden scalar, whereas Tokamak's SNARK commits to bivariate polynomials in
+independently sampled $x$ and $y$ [6]. Assigning
+$x=\tau$ and $y=\tau^{e_y}$ may give every bounded monomial a distinct source
+exponent, but it also imposes $y=x^{e_y}$.
 
-Capacity alone is insufficient. A conventional powers-of-tau string provides
-univariate encodings of one hidden scalar. Tokamak's SNARK commits to
-bivariate polynomials in independently sampled $x$ and $y$ [6]. A mapping such
-as $x=\tau$ and $y=\tau^{e_y}$ can assign distinct powers of $\tau$ to all
-required monomials within fixed degree bounds, but this injective exponent
-assignment does not preserve independence: it imposes $y=x^{e_y}$.
-
-This relation affects the opening argument rather than merely the serialized
-layout. Before substitution, a bivariate opening residual has the form
+This relation changes the opening argument. Before substitution, a bivariate
+opening residual has the form
 
 $$
 p(X,Y)-v=q_x(X,Y)(X-a)+q_y(X,Y)(Y-b).
 $$
 
-After substituting $X=Z$ and $Y=Z^{e_y}$, the two divisors are $Z-a$ and
-$Z^{e_y}-b$. Unless $a^{e_y}=b$, these divisors are relatively prime. Their
-polynomial combinations can therefore represent an arbitrary residual. If the
-public powers cover the required quotient degrees, a prover can encode those
-combinations without establishing the original bivariate opening. Avoiding
-exponent collisions is consequently necessary for representing the CRS, but it
-is not sufficient for preserving the soundness argument.
+After substituting $X=Z$ and $Y=Z^{e_y}$, the two divisors become $Z-a$ and
+$Z^{e_y}-b$. Unless $a^{e_y}=b$, they are relatively prime, so their polynomial
+combinations can represent an arbitrary residual. If the public powers cover
+the required quotient degrees, a prover can encode such combinations without
+establishing the original bivariate opening. A collision-free exponent map is
+therefore necessary for representing the CRS, but it is not sufficient for
+preserving the soundness argument.
 
-The selected result is therefore only an input to the Tokamak protocol. Its
-published sequence and ceremony records identify its origin and support
-verification of its powers. Secrecy of the source scalar still depends on at
-least one contributor to the source ceremony or an inherited ceremony having
-kept and erased an unpredictable share. Tokamak derives $x=\tau$ and
-$\alpha=\tau^{2N}$ from that scalar; this relationship differs from the
-independent sampling used by the setup in [6]. The security analyses in
-[3, 5, 6] do not cover this mapping. The source sequence also contains no
-independent value for Tokamak's `y` and no Tokamak contribution to `gamma`,
-`delta`, or `eta`, so both Tokamak phases remain necessary.
+Several independent univariate sequences do not solve this problem by
+themselves. Without encoded mixed powers across their independent hidden
+scalars, they remain separate univariate bases rather than one multivariate
+encoded basis.
+
+### 4.4 Ceremony survey
+
+The survey classifies the encoded-power sequence evaluated for reuse, rather
+than every auxiliary element that may accompany a complete ceremony artifact.
+
+| Public result | Curve | Sequence dimension | Published capacity relevant here | Practical conclusion |
+|---|---|---|---|---|
+| Privacy & Scaling Explorations' Perpetual Powers of Tau [12] | BN254 | Univariate sequence $[\tau^i]$ | Up to $2^{28}$ constraints and $2\cdot2^{28}-1$ powers | Degree is ample, but the curve is incompatible. |
+| Ethereum KZG ceremony [11] | BLS12-381 | Four separate univariate sequences $[\tau_j^i]$; no mixed terms between them | The largest sequence ends at $G_1$ exponent $2^{15}-1$; every $G_2$ sequence ends at exponent $64$ | The curve and $G_1$ capacity fit, but the $G_2$ sequence is too short for the current mapping. |
+| Dusk trusted setup [9] | BLS12-381 | Univariate sequence $[\tau^i]$ | Powers through $2^{21}$, extending the verified Zcash result with 15 listed contributions | Selected as the current source: the curve and both group ranges meet the current requirements. |
+| Filecoin phase 1 [13] | BLS12-381 | Univariate sequence $[\tau^i]$ | Supports circuits through $2^{27}$ constraints and generates $2\cdot2^{27}-1$ powers | Curve and capacity do not exclude it, but its univariate sequence cannot directly encode Tokamak's bivariate relation. |
+
+The survey separates source selection from algebraic security. The selected
+input meets the current curve and exponent requirements, but the survey does
+not make a univariate sequence into a Tokamak CRS or prove that a parameter
+mapping preserves soundness. Section 6 defines how the protocol uses the
+selected sequence while retaining an independently contributed polynomial
+variable. Sections 10 and 11 state the remaining trust assumptions and proof
+limitation.
 
 ## 5. Protocol Overview
 
