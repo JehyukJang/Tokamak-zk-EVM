@@ -352,7 +352,7 @@ and curve compatibility determine whether a sequence can supply encoded source
 elements. Algebraic compatibility determines whether those elements can be
 used directly or require an additional construction and security analysis. The
 criteria below follow from the target setup and the published source
-specifications [3, 6, 7, 9–15].
+specifications [3, 6, 7, 9–13].
 
 ### 4.1 Exponent capacity
 
@@ -380,6 +380,39 @@ $$
 These conditions are symbolic until $\Lambda$ is fixed. They determine whether
 the transformation can select every required encoded power; they do not
 establish algebraic compatibility or a security property.
+
+The CRS in [6, Section 3.3] makes these bounds explicit. Its largest required
+source exponent in $G_1$ occurs in the family containing
+$\alpha^4x^j t_{m_{\mathrm I}}(x)$, where
+$0\leq j\leq m_{\mathrm I}-1$ and
+$\deg t_{m_{\mathrm I}}=m_{\mathrm I}$. Under the source transformation
+$\alpha=\tau^{2N}$ and $x=\tau$, this gives
+
+$$
+d_1^\star=8N+2m_{\mathrm I}-1.
+$$
+
+Every other $G_1$ family in that CRS has a smaller source exponent under
+$N=\max(n,m_{\mathrm I})$.
+
+The largest required source exponent in $G_2$ is contributed by
+$\alpha^4$, so
+
+$$
+d_2^\star=8N.
+$$
+
+Because $m_{\mathrm I}\leq N$, a bound that is uniform over all permitted
+$m_{\mathrm I}$ is
+
+$$
+D_1\geq 10N-1
+\qquad\text{and}\qquad
+D_2\geq 8N.
+$$
+
+The survey below applies these publication-derived bounds without fixing a
+numerical protocol instance.
 
 ### 4.2 Curve compatibility
 
@@ -414,21 +447,20 @@ than every auxiliary element that may accompany a complete ceremony artifact.
 Passing this source screening is necessary but does not establish update
 knowledge soundness for the completed Tokamak construction.
 
-| Public result | Curve compatibility | Exponent capacity | Algebraic compatibility | Screening result |
-|---|---|---|---|---|
-| Privacy & Scaling Explorations' Perpetual Powers of Tau [12] | Fails: BN254 rather than BLS12-381 | Passes: up to $2^{28}$ constraints and $2\cdot2^{28}-1$ powers | Not evaluated after the curve mismatch | Excluded by the curve requirement |
-| Ethereum KZG ceremony [11] | Passes: BLS12-381 | Fails: the largest sequence ends at $G_1$ exponent $2^{15}-1$, and each $G_2$ sequence ends at exponent $64$ | Its four sequences are separately univariate and contain no mixed terms | Excluded by the $G_2$ requirement |
-| Dusk trusted setup [9] | Passes: BLS12-381 | Passes: powers through $2^{21}$ cover the current requirements | Conditional: the proposed first phase supplies the missing independent dimension, but the remaining source-derived relation requires a security argument for the completed construction | Selected source; security admission remains pending |
-| Filecoin phase 1 [13] | Passes: BLS12-381 | Passes: supports circuits through $2^{27}$ constraints and generates $2\cdot2^{27}-1$ powers | Conditional: its univariate structure does not by itself supply Tokamak's bivariate setup | Not excluded by source screening, but not selected or added as a protocol route |
+| Public result | Curve | Sequence form | Exponent capacity | Algebraic compatibility | Screening result |
+|---|---|---|---|---|---|
+| Privacy & Scaling Explorations' Perpetual Powers of Tau [12] | BN254 (`bn128` in its tooling) | Univariate | Not evaluated after the curve mismatch | Not evaluated after the curve mismatch | Excluded because the curve differs from BLS12-381 |
+| Ethereum KZG ceremony [11] | BLS12-381 | Four independent univariate sequences | The largest sequence has $D_1=2^{15}-1$ and $D_2=64$; it meets this protocol's bounds exactly when $N\leq8$ | The separate sequences contain no encoded mixed powers across their hidden scalars | Conditionally eligible only for $N\leq8$; not selected |
+| Dusk trusted setup [9] | BLS12-381 | Univariate | $D_1=2^{22}-2$ and $D_2=2^{21}-1$; these bounds meet this protocol's requirements exactly when $N\leq2^{18}-1$ | The first phase supplies the independent polynomial dimension, while security of the remaining source-derived relation requires the analysis in Section 10 | Conditionally selected for instances with $N\leq2^{18}-1$; security admission remains pending |
+| Filecoin phase 1 [13] | BLS12-381 | Univariate | $D_1=2^{28}-2$ and $D_2=2^{27}-1$; these bounds meet this protocol's requirements exactly when $N\leq2^{24}-1$ | Its univariate sequence does not itself supply Tokamak's bivariate setup | Conditionally eligible at the source-screening level; not selected |
 
-The survey leaves two sequences conditionally eligible at the source-screening
-level. The implementation selects the Dusk result; this policy choice is not a
-claim that the other sequence fails algebraically or that the selected mapping
-is secure. Section 6 defines how the protocol uses the selected sequence while
-retaining an independently contributed polynomial variable. Section 10 decides
-whether the completed construction meets the security objective in Section 3.5.
-For the current construction, it identifies an unresolved proof obligation and
-retains an explicit limitation.
+Because this document leaves $\Lambda$ symbolic, these are conditional
+decisions rather than measurements of one deployed instance. The protocol
+selects the Dusk result only when the declared instance satisfies
+$N\leq2^{18}-1$. This scope choice does not imply that every other
+source-level candidate fails. Section 6 defines how the protocol completes the
+required bivariate material, and Section 10 evaluates whether the resulting
+construction meets the security objective in Section 3.5.
 
 ## 5. Protocol Overview
 
@@ -974,11 +1006,11 @@ not by assuming that an existing ceremony proof applies unchanged.
 6. Jehyuk Jang and Jamie Judd, [*An Efficient SNARK for Field-Programmable and RAM Circuits*](https://eprint.iacr.org/2024/507), IACR ePrint 2024/507, revised 2025.
 7. Aniket Kate, Gregory M. Zaverucha, and Ian Goldberg, [*Constant-Size Commitments to Polynomials and Their Applications*](https://doi.org/10.1007/978-3-642-17373-8_11), ASIACRYPT 2010.
 8. Mary Maller, Sean Bowe, Markulf Kohlweiss, and Sarah Meiklejohn, [*Sonic: Zero-Knowledge SNARKs from Linear-Size Universal and Updateable Structured Reference Strings*](https://doi.org/10.1145/3319535.3339817), ACM CCS 2019.
-9. Dusk Network, [*Trusted setup for BLS12-381*](https://github.com/dusk-network/trusted-setup), official ceremony repository.
+9. Dusk Network, [*Trusted setup for BLS12-381*](https://github.com/dusk-network/trusted-setup), official ceremony repository, and [the ceremony's powers-of-tau implementation](https://github.com/dusk-network/powersoftau/blob/5429415959175082207fd61c10319e47a6b56e87/src/lib.rs#L56-L64), which fixes the group-specific sequence lengths.
 10. Zcash Foundation, [*Powers of Tau attestations*](https://github.com/ZcashFoundation/powersoftau-attestations), official ceremony repository.
 11. Ethereum Foundation, [*KZG Powers of Tau ceremony specifications*](https://github.com/ethereum/kzg-ceremony-specs) and [public transcript](https://github.com/ethereum/kzg-ceremony), official repositories.
-12. Privacy & Scaling Explorations, [*Perpetual Powers of Tau*](https://github.com/privacy-ethereum/perpetualpowersoftau), official ceremony repository.
-13. Filecoin Project, [*Phase 2 attestations*](https://github.com/filecoin-project/phase2-attestations), official ceremony repository, and Ariel Gabizon, [*Perpetual Powers of Tau for BLS12-381*](https://github.com/arielgabizon/perpetualpowersoftau), phase-one ceremony records linked by the Filecoin repository.
+12. Privacy & Scaling Explorations, [*Perpetual Powers of Tau*](https://github.com/privacy-ethereum/perpetualpowersoftau), official ceremony repository, including [the official contribution command over `bn128`](https://github.com/privacy-ethereum/perpetualpowersoftau/blob/b077232729db7c9eb65b63c4aaaa0ac4a1b0bba2/snarkjs_instructions.md#L39-L47).
+13. Filecoin Project, [*Phase 2 attestations*](https://github.com/filecoin-project/phase2-attestations), official ceremony repository; Ariel Gabizon, [*Perpetual Powers of Tau for BLS12-381*](https://github.com/arielgabizon/perpetualpowersoftau), phase-one ceremony records linked by the Filecoin repository; and the ceremony implementation defining [the BLS12-381 exponent](https://github.com/arielgabizon/powersoftau/blob/2bd49903bac07485fe23e5ef1a2d5fa19561977b/src/small_bls12_381/mod.rs#L27-L39) and [the corresponding group-specific sequence lengths](https://github.com/arielgabizon/powersoftau/blob/2bd49903bac07485fe23e5ef1a2d5fa19561977b/src/parameters.rs#L25-L40).
 14. Tokamak zk-EVM, [*Two-Phase MPC Protocol Contract*](../../rust/setup/mpc-setup/docs/phase2-output-contract.md), normative implementation contract.
 15. Tokamak zk-EVM, [tracked setup parameters](../../../frontend/qap-compiler/subcircuits/library/setupParams.json), repository record.
 16. Tokamak zk-EVM, [*MPC Setup Guide*](../../rust/setup/mpc-setup/README.md), participant and operator guide.
