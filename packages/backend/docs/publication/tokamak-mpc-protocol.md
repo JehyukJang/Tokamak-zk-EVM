@@ -16,10 +16,10 @@ structured setup material and common reference string (CRS) for the output
 specific to Tokamak's SNARK.
 
 The protocol starts from a verified BLS12-381 sequence of univariate encoded
-powers and selects the powers needed to obtain encodings involving `alpha` and
-`x`. Contributors then add an independent `y` dimension. After a public
+powers and selects the powers needed to obtain encodings involving $\alpha$ and
+$x$. Contributors then add an independent $y$ dimension. After a public
 computation binds that material to the canonical subcircuit library,
-contributors update `gamma`, `delta`, and `eta`.
+contributors update $\gamma$, $\delta$, and $\eta$.
 
 The implementation verifies source artifacts, contribution equations, data
 that a contribution must not change, the canonical subcircuit library, links
@@ -28,7 +28,7 @@ quality of participant randomness or deletion of participant secrets. The
 security analyses in [3, 5] require at least one contributor in each phase to
 choose an unpredictable secret and erase it. Those analyses do not cover
 Tokamak's exact six-parameter construction or the algebraically related
-`alpha` and `x` derived from one source scalar, so the security claims below
+$\alpha$ and $x$ derived from one source scalar, so the security claims below
 are limited accordingly.
 
 ## 1. Introduction
@@ -123,12 +123,13 @@ claim knowledge soundness for the exact source-derived construction.
 This document uses SRS for structured setup material in the general protocols
 and ceremonies discussed below, and CRS for the setup output specific to
 Tokamak's SNARK.
-Let `G1` and `G2` be prime-order groups with a non-degenerate bilinear pairing,
-and write `[z]_1` and `[z]_2` for encodings of scalar expression `z` in `G1`
-and `G2`, respectively.
+Let $G_1$ and $G_2$ be prime-order groups with a non-degenerate bilinear pairing,
+and write $[z]_1$ and $[z]_2$ for encodings of the scalar expression $z$ in
+$G_1$ and $G_2$, respectively.
 Powers-of-tau ceremonies publish sequences such as
-`[1], [tau], [tau^2], ...` without publishing `tau`. A contributor with secret
-share `r` transforms the sequence so that its hidden scalar becomes `tau*r`,
+$[1],[\tau],[\tau^2],\ldots$ without publishing $\tau$. A contributor with
+secret share $r$ transforms the sequence so that its hidden scalar becomes
+$\tau r$,
 and pairing relations make consistent updates publicly checkable [2, 3]. These
 sequences underlie KZG polynomial commitments and several SNARK setup systems
 [7].
@@ -150,14 +151,14 @@ copies of those subcircuits. The proof checks the internal computation of the
 copies and the connections between them [6]. To construct the required CRS, the
 setup samples
 
-```text
-(alpha, x, y, gamma, delta, eta)
-```
+$$
+(\alpha,x,y,\gamma,\delta,\eta)
+$$
 
 and encodes expressions needed to commit a subcircuit library, placement in a
-`y` domain, wire polynomials in `x`, and the proof system's public,
+$y$ domain, wire polynomials in $x$, and the proof system's public,
 intermediate, private, and vanishing-polynomial relations [6]. The implementation
-retains those meanings. In particular, `gamma`, `delta`, and `eta` are scalars
+retains those meanings. In particular, $\gamma$, $\delta$, and $\eta$ are scalars
 with both direct encodings and circuit-dependent elements divided by the
 corresponding scalar; they are not “inverse-only” parameters.
 
@@ -199,26 +200,29 @@ it. Contributor names and device metadata do not make a contribution valid.
 
 ### 3.2 Algebraic setting and notation
 
-The circuit-independent setup material contains the required G1 and G2
+The circuit-independent setup material contains the required $G_1$ and $G_2$
 encodings of the following pure and mixed monomials:
 
-```text
-[alpha^k], [x^a], [y^b],
-[alpha^k x^a], [alpha^k y^b], [x^a y^b],
-[alpha^k x^a y^b].
-```
+$$
+\begin{aligned}
+&[\alpha^k],\ [x^a],\ [y^b], \\
+&[\alpha^k x^a],\ [\alpha^k y^b],\ [x^a y^b], \\
+&[\alpha^k x^a y^b].
+\end{aligned}
+$$
 
 The index ranges are those required by the CRS for Tokamak's SNARK and the
 monomial layout specified by the implementation contract. Not every group
 contains every monomial. The detailed ranges and serialized order remain in
 that contract [14].
 
-A participant's share for scalar `z` is written `r_z`. Sequential contributions
-replace `z` by `z * product_i r_z,i`. Public group elements are updated directly;
-the scalar is never serialized. Circuit specialization is the deterministic
-group computation that combines the selected first-phase output with the
-canonical subcircuit-library description to construct circuit-dependent group
-elements. It fixes that library, not one circuit later derived from the library.
+A participant's share for a scalar $z$ is written $r_z$. Sequential
+contributions replace $z$ by $z\prod_i r_{z,i}$. Public group elements are
+updated directly; the scalar is never serialized. Circuit specialization is the
+deterministic group computation that combines the selected first-phase output
+with the canonical subcircuit-library description to construct
+circuit-dependent group elements. It fixes that library, not one circuit later
+derived from the library.
 
 ### 3.3 Setup parameters and stages
 
@@ -227,12 +231,12 @@ parameters follows the CRS defined in [6] and the implementation [14].
 
 | Parameter | Role in the setup of Tokamak's SNARK | Source or Tokamak stage | Participant procedure | Security assumption |
 |---|---|---|---|---|
-| `alpha` | Powers mixed with wire and correction encodings | Selected univariate sequence | Selecting the required powers introduces no new `alpha` share | At least one source contribution protecting $\tau$ was unpredictable, remained undisclosed, and was erased |
-| `x` | Evaluation dimension for subcircuit and wire polynomials | Selected univariate sequence | Selecting the required powers introduces no new `x` share | The source condition stated for `alpha` holds |
-| `y` | Placement dimension and bivariate mixing | First phase | Each contributor erases its `y` share after completing the contribution | At least one accepted `y` share was unpredictable, remained undisclosed, and was erased |
-| `gamma` | Direct encodings and public-instance elements divided by `gamma` | Second phase | Each contributor erases its `gamma` share after completing the contribution | At least one accepted `gamma` share was unpredictable, remained undisclosed, and was erased |
-| `delta` | Direct encodings and private and correction elements divided by `delta` | Second phase | Each contributor erases its `delta` share after completing the contribution | At least one accepted `delta` share was unpredictable, remained undisclosed, and was erased |
-| `eta` | Direct encodings and intermediate elements divided by `eta` | Second phase | Each contributor erases its `eta` share after completing the contribution | At least one accepted `eta` share was unpredictable, remained undisclosed, and was erased |
+| $\alpha$ | Powers mixed with wire and correction encodings | Selected univariate sequence | Selecting the required powers introduces no new $\alpha$ share | At least one source contribution protecting $\tau$ was unpredictable, remained undisclosed, and was erased |
+| $x$ | Evaluation dimension for subcircuit and wire polynomials | Selected univariate sequence | Selecting the required powers introduces no new $x$ share | The source condition stated for $\alpha$ holds |
+| $y$ | Placement dimension and bivariate mixing | First phase | Each contributor erases its $y$ share after completing the contribution | At least one accepted $y$ share was unpredictable, remained undisclosed, and was erased |
+| $\gamma$ | Direct encodings and public-instance elements divided by $\gamma$ | Second phase | Each contributor erases its $\gamma$ share after completing the contribution | At least one accepted $\gamma$ share was unpredictable, remained undisclosed, and was erased |
+| $\delta$ | Direct encodings and private and correction elements divided by $\delta$ | Second phase | Each contributor erases its $\delta$ share after completing the contribution | At least one accepted $\delta$ share was unpredictable, remained undisclosed, and was erased |
+| $\eta$ | Direct encodings and intermediate elements divided by $\eta$ | Second phase | Each contributor erases its $\eta$ share after completing the contribution | At least one accepted $\eta$ share was unpredictable, remained undisclosed, and was erased |
 
 The first phase finishes the circuit-independent monomial encodings. Preparation
 for the second phase is the first step that reads the concrete rank-1 constraint
@@ -382,8 +386,8 @@ operations introduce no participant randomness.
 
 ### 5.2 The first phase
 
-Contributors in the first phase update `y` and every encoding that contains it
-while leaving the source-derived `alpha` and `x` elements unchanged. Selection
+Contributors in the first phase update $y$ and every encoding that contains it
+while leaving the source-derived $\alpha$ and $x$ elements unchanged. Selection
 requires at least one receipt marked `random` or `hybrid`. Security separately assumes
 that at least one accepted share was unpredictable, remained undisclosed, and
 was erased. The selected state exposes the complete monomial families required
@@ -393,8 +397,8 @@ by the subsequent computation.
 
 Public deterministic specialization binds the canonical subcircuit library by
 forming public linear combinations of the group elements produced in the first
-phase; it never recovers `alpha`, `x`, or `y`. It initializes direct encodings
-of `gamma`, `delta`, and `eta` and
+phase; it never recovers $\alpha$, $x$, or $y$. It initializes direct encodings
+of $\gamma$, $\delta$, and $\eta$ and
 the circuit-dependent elements that will be divided by those scalars.
 Contributors in the second phase multiply the direct encodings by their shares
 and the divided elements by the inverse shares. The selected result is converted
@@ -418,12 +422,12 @@ updated in the other phase.
 
 | Prior protocols [3, 5] | Tokamak protocol | Comparison |
 |---|---|---|
-| Circuit-independent setup in the first phase | A selected univariate sequence supplies the `alpha` and `x` encodings, and the first phase adds independent contributions to `y` | All circuit-independent material is complete before specialization, but Tokamak combines an external result with a Tokamak-specific contribution period. |
+| Circuit-independent setup in the first phase | A selected univariate sequence supplies the $\alpha$ and $x$ encodings, and the first phase adds independent contributions to $y$ | All circuit-independent material is complete before specialization, but Tokamak combines an external result with a Tokamak-specific contribution period. |
 | Public specialization to one circuit | Deterministic specialization from selected first-phase points and the canonical subcircuit-library QAP/R1CS description | The public computation has the same role, but Tokamak fixes a reusable subcircuit library rather than one later-derived circuit. |
-| Circuit-dependent updates in the second phase | The second phase updates direct and divided elements involving `gamma`, `delta`, and `eta` | The purpose is the same, but Tokamak uses different parameters and equations. |
+| Circuit-dependent updates in the second phase | The second phase updates direct and divided elements involving $\gamma$, $\delta$, and $\eta$ | The purpose is the same, but Tokamak uses different parameters and equations. |
 | Sequential updates and public verification | Proofs of the contributor's shares, pairing checks, checks that fixed elements did not change, and verification of the complete sequence | The verification purpose is the same; Tokamak defines its own stored states and receipts. |
 | At least one honest contribution in each phase | Selection requires a `random` or `hybrid` receipt in each Tokamak phase; security additionally assumes an unpredictable, undisclosed, and erased share in each phase and in the source sequence | The trust structure is analogous at a high level, but the verifier cannot establish these secrecy assumptions and the proofs in [3, 5] do not cover Tokamak's exact construction. |
-| Reusable first-phase material | A verified source sequence supplies the `alpha` and `x` encodings before Tokamak contributions to `y` | Tokamak reuses one part of an external result and adds an independent dimension required by its bivariate setup. |
+| Reusable first-phase material | A verified source sequence supplies the $\alpha$ and $x$ encodings before Tokamak contributions to $y$ | Tokamak reuses one part of an external result and adds an independent dimension required by its bivariate setup. |
 
 The verified output of the first phase is specialized to the canonical
 subcircuit library, only the remaining hidden parameters are updated in the
@@ -537,43 +541,43 @@ accepted contributions.
 
 Given the selected points from the first phase and the canonical subcircuit-
 library description, deterministic specialization constructs circuit-dependent
-encodings by linear group operations. For a wire polynomial `o_j(X)`, the
-polynomial `K_j(X)` from the intermediate-wire construction in [6], and a
-Lagrange polynomial `L_i(Y)` over the placement variable, representative
+encodings by linear group operations. For a wire polynomial $o_j(X)$, the
+polynomial $K_j(X)$ from the intermediate-wire construction in [6], and a
+Lagrange polynomial $L_i(Y)$ over the placement variable, representative
 identities are
 
-```text
+$$
+\begin{aligned}
 [L_i(y)o_j(x)]_1
-  = sum_(a,b) l_(i,b)o_(j,a)[x^a y^b]_1,
-
-[L_i(y)alpha^4 K_j(x)]_1
-  = sum_(a,b) l_(i,b)k_(j,a)[alpha^4 x^a y^b]_1,
-
-[alpha^k y^i(y^s-1)]_1
-  = [alpha^k y^(i+s)]_1 - [alpha^k y^i]_1.
-```
+  &= \sum_{a,b} l_{i,b}o_{j,a}[x^a y^b]_1, \\
+[L_i(y)\alpha^4 K_j(x)]_1
+  &= \sum_{a,b} l_{i,b}k_{j,a}[\alpha^4 x^a y^b]_1, \\
+[\alpha^k y^i(y^s-1)]_1
+  &= [\alpha^k y^{i+s}]_1-[\alpha^k y^i]_1.
+\end{aligned}
+$$
 
 Because all coefficients are public, these computations need no scalar
 trapdoor. The initial state for contributions in the second phase binds the
 digest of the selected first-phase state and the canonical digest of the
 subcircuit library. It initializes direct encodings at
-`gamma=delta=eta=1` and leaves the circuit-dependent elements that contain
+$\gamma=\delta=\eta=1$ and leaves the circuit-dependent elements that contain
 their inverses unscaled.
 
 Each contributor in the second phase samples independent nonzero shares
-`r_gamma,i`, `r_delta,i`, and `r_eta,i`. A direct encoding `[z]` is multiplied
-by `r_z,i`, while every encoding of the form `[F/z]` is multiplied by
-`r_z,i^-1`. Elements fixed in the first phase or by circuit specialization must
-not change. After the sequence, each hidden scalar updated in the second phase
-is the product of its accepted shares.
+$r_{\gamma,i}$, $r_{\delta,i}$, and $r_{\eta,i}$. A direct encoding $[z]$ is
+multiplied by $r_{z,i}$, while every encoding of the form $[F/z]$ is multiplied
+by $r_{z,i}^{-1}$. Elements fixed in the first phase or by circuit specialization
+must not change. After the sequence, each hidden scalar updated in the second
+phase is the product of its accepted shares.
 
 ## 9. Verification, Transcript, and Final CRS
 
-Each secret share has public G1 and G2 encodings and a proof, bound to the
+Each secret share has public $G_1$ and $G_2$ encodings and a proof, bound to the
 transcript, that the contributor knows the share. Direct checks tie the first
 powers to those encodings. Batched pairing equations check the remaining powers
 and elements that contain multiple scalars. Verification of the first phase also
-checks that every element containing only `alpha` and `x` remains unchanged. The
+checks that every element containing only $\alpha$ and $x$ remains unchanged. The
 second-phase check verifies both direct multiplication by a share and
 multiplication by its inverse where required.
 
@@ -621,11 +625,11 @@ failed erasure by that person can remove this protection from both phases.
 
 | Protected values | Required secrecy | What current evidence supports if the values are exposed |
 |---|---|---|
-| `alpha`, `x` derived from the source sequence | At least one contribution to the source sequence remains unknown and was erased | Exposure of source $\tau$ reveals both $x=\tau$ and $\alpha=\tau^{2N}$. Even without exposure, this related pair is not proved to have the same security as independent sampling. |
-| `y` added by Tokamak contributors | At least one Tokamak share for `y` remains unknown and was erased | Exposure reveals `y` but does not by itself reveal source $\tau$. The source ceremony never replaces this contribution. |
-| `gamma`, `delta`, `eta` | At least one corresponding share from the second phase remains unknown and was erased | The affected scalar is known and the CRS no longer satisfies the independent-sampling assumption in [6]. The literature does not prove the exact forgery consequence of exposing each parameter separately. |
+| $\alpha$, $x$ derived from the source sequence | At least one contribution to the source sequence remains unknown and was erased | Exposure of source $\tau$ reveals both $x=\tau$ and $\alpha=\tau^{2N}$. Even without exposure, this related pair is not proved to have the same security as independent sampling. |
+| $y$ added by Tokamak contributors | At least one Tokamak share for $y$ remains unknown and was erased | Exposure reveals $y$ but does not by itself reveal source $\tau$. The source ceremony never replaces this contribution. |
+| $\gamma$, $\delta$, $\eta$ | At least one corresponding share from the second phase remains unknown and was erased | The affected scalar is known and the CRS no longer satisfies the independent-sampling assumption in [6]. The literature does not prove the exact forgery consequence of exposing each parameter separately. |
 
-Disclosure of `gamma`, `delta`, and `eta` does not compute `alpha`, `x`, or `y`
+Disclosure of $\gamma$, $\delta$, and $\eta$ does not compute $\alpha$, $x$, or $y$
 through the implemented update and does not change whether the source,
 subcircuit library, transitions, transcript, or artifact digests verify. It does
 mean that the second phase no longer contains an unknown contribution. The
@@ -658,9 +662,9 @@ erasure [3, 5, 9, 10].
 
 ## 11. Limitations
 
-The independent Tokamak contributions to `y` avoid the `y=x^e_y` relation and
+The independent Tokamak contributions to $y$ avoid the $y=x^{e_y}$ relation and
 the resulting collapse of the bivariate opening conditions described in Section
-4. This does not resolve the distinct relationship between `alpha` and `x` in
+4. This does not resolve the distinct relationship between $\alpha$ and $x$ in
 the source mapping.
 
 References [3, 5, 6] do not provide a formal reduction showing that the Tokamak
@@ -672,7 +676,7 @@ powers through the required finite degree, but those facts do not show that its
 parameters have the same distribution as independent samples.
 
 References [3, 5, 6] also do not isolate the precise forgery power gained by
-learning only one of `alpha`, `x`, `y`, `gamma`, `delta`, or `eta` in Tokamak's
+learning only one of $\alpha$, $x$, $y$, $\gamma$, $\delta$, or $\eta$ in Tokamak's
 SNARK. This document therefore reports which assumption about hidden values
 fails and which public checks still pass. It does not claim a specific attack or
 claim that any remaining security property is preserved.
