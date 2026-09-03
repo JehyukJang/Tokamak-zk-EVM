@@ -1,5 +1,7 @@
 # The Tokamak Two-Phase Multi-Party Computation Protocol
 
+*Last updated: 2026-09-03*
+
 ## Abstract
 
 Preprocessing succinct non-interactive arguments of knowledge (SNARK) systems
