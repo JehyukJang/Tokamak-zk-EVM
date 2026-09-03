@@ -135,8 +135,12 @@ SRS construction.
 
 ### 2.2 Setup of Tokamak's SNARK
 
-Tokamak's SNARK for arithmetic constraints is based on Groth's 2016
-pairing-based SNARK, commonly called Groth16 [1, 6]. Its setup samples
+Tokamak's SNARK combines Groth16's arithmetic argument with PLONK's use of a
+permutation argument [1, 6, 21]. Its setup commits a reusable subcircuit
+library, and each supported circuit relation is defined by placing and wiring
+copies of those subcircuits. The proof checks the internal computation of the
+copies and the connections between them [6]. To construct the required CRS, the
+setup samples
 
 ```text
 (alpha, x, y, gamma, delta, eta)
