@@ -16,20 +16,21 @@ structured setup material and common reference string (CRS) for the output
 specific to Tokamak's SNARK.
 
 The protocol starts from a verified BLS12-381 sequence of univariate encoded
-powers and selects the powers needed to obtain encodings involving $\alpha$ and
-$x$. Contributors then add an independent $y$ dimension. After a public
-computation binds that material to the canonical subcircuit library,
-contributors update $\gamma$, $\delta$, and $\eta$.
+powers and selects the powers needed for part of the reusable,
+circuit-independent setup. Contributors then add the independent polynomial
+dimension required by Tokamak's bivariate relations. After a public computation
+binds that material to the canonical subcircuit library, contributors update the
+remaining circuit-dependent parameters.
 
 The implementation verifies source artifacts, contribution equations, data
 that a contribution must not change, the canonical subcircuit library, links
-between successive states, and final artifacts. Those checks do not prove the
+between successive states, and final artifacts [14]. Those checks do not prove the
 quality of participant randomness or deletion of participant secrets. The
 security analyses in [3, 5] require at least one contributor in each phase to
 choose an unpredictable secret and erase it. Those analyses do not cover
-Tokamak's exact six-parameter construction or the algebraically related
-$\alpha$ and $x$ derived from one source scalar, so the security claims below
-are limited accordingly.
+Tokamak's exact six-parameter construction or the algebraic relation between
+two parameters derived from one source scalar, so the security claims below are
+limited accordingly.
 
 ## 1. Introduction
 
@@ -123,16 +124,16 @@ claim knowledge soundness for the exact source-derived construction.
 This document uses SRS for structured setup material in the general protocols
 and ceremonies discussed below, and CRS for the setup output specific to
 Tokamak's SNARK.
-Let $G_1$ and $G_2$ be prime-order groups with a non-degenerate bilinear pairing,
-and write $[z]_1$ and $[z]_2$ for encodings of the scalar expression $z$ in
-$G_1$ and $G_2$, respectively.
-Powers-of-tau ceremonies publish sequences such as
-$[1],[\tau],[\tau^2],\ldots$ without publishing $\tau$. A contributor with
-secret share $r$ transforms the sequence so that its hidden scalar becomes
-$\tau r$,
+Let $G_1$ and $G_2$ be prime-order groups with a non-degenerate bilinear pairing.
+For $g\in\{1,2\}$, write $[z]_g$ for the encoding of the scalar expression $z$
+in $G_g$.
+For a degree bound $d$, powers-of-tau ceremonies publish sequences
+$([\tau^i]_g)_{i=0}^{d}$ in $G_g$, for $g\in\{1,2\}$, while the scalar $\tau$
+remains hidden. A contributor with secret share $r$ transforms the sequence so
+that its hidden scalar becomes $\tau r$,
 and pairing relations make consistent updates publicly checkable [2, 3]. These
-sequences underlie KZG polynomial commitments and several SNARK setup systems
-[7].
+sequences underlie Kate--Zaverucha--Goldberg (KZG) polynomial commitments and
+several SNARK setup systems [7].
 
 In the construction of Bowe, Gabizon, and Miers, the output of the first phase
 can be reused up to a degree bound. A public computation combines it with a
@@ -196,7 +197,8 @@ An operator controls the workflow and can censor a contributor, delay a
 ceremony, or withhold an artifact, but cannot make an inconsistent transition
 satisfy the implemented public checks. Conversely, those checks cannot establish
 that a contributor used unpredictable randomness, kept it private, or erased
-it. Contributor names and device metadata do not make a contribution valid.
+it. Contributor names and device metadata do not make a contribution valid
+[14].
 
 ### 3.2 Algebraic setting and notation
 
@@ -211,10 +213,10 @@ $$
 \end{aligned}
 $$
 
-The index ranges are those required by the CRS for Tokamak's SNARK and the
-monomial layout specified by the implementation contract. Not every group
-contains every monomial. The detailed ranges and serialized order remain in
-that contract [14].
+The group subscript is omitted in this display. The index ranges are those
+required by the CRS for Tokamak's SNARK and the monomial layout specified by
+the implementation contract; not every group contains every monomial. The
+detailed ranges and serialized order remain in that contract [14].
 
 A participant's share for a scalar $z$ is written $r_z$. Sequential
 contributions replace $z$ by $z\prod_i r_{z,i}$. Public group elements are
@@ -263,7 +265,7 @@ erased. An update derived only from a public deterministic value may be checked
 and recorded, but does not satisfy the selection requirement or supply an
 unknown share. Updates made only for testing also cannot satisfy the requirement.
 Selection designates one verified final state as the input to the next stage and
-records its digest; it adds no signer or secret.
+records its digest; it adds no signer or secret [14].
 
 ### 3.5 Security assumptions and properties
 
@@ -273,7 +275,7 @@ Tokamak permits one contributor and permits the same person in both phases. Such
 an execution can leave an unknown share in each parameter, but it has no
 redundancy against that person's compromise or failure to erase the shares.
 Using multiple independent contributors provides that redundancy; it is not a
-condition that the verifier can establish from participant identities.
+condition that the verifier can establish from participant identities [14].
 
 The implementation directly checks source artifacts, subcircuit-library
 binding, contribution equations, links between states, transcripts, and final
@@ -335,7 +337,9 @@ independently sampled $x$ and $y$ [6]. Assigning
 $x=\tau$ and $y=\tau^{e_y}$ may give every bounded monomial a distinct source
 exponent, but it also imposes $y=x^{e_y}$.
 
-This relation changes the opening argument. Before substitution, a bivariate
+This relation changes the opening argument. Let $p(X,Y)$ be a bivariate
+polynomial, let $v=p(a,b)$ be its claimed value at $(a,b)$, and let
+$q_x(X,Y)$ and $q_y(X,Y)$ be the quotient polynomials. Before substitution, the
 opening residual has the form
 
 $$
@@ -409,7 +413,7 @@ to the unchanged CRS layout of Tokamak's SNARK.
 Proofs, pairing equations, checks that fixed elements remain unchanged,
 canonical digests, and the complete transcript establish that an accepted final
 artifact follows the recorded source, layout, canonical subcircuit library, and
-contribution sequence. The checks do not establish secret deletion. If every
+contribution sequence [14]. The checks do not establish secret deletion. If every
 share protecting one phase is known, the requirement that at least one
 contributor kept and erased an unpredictable share is not satisfied. The
 honest-contributor premise used by [3, 5] is then absent. Those references do
@@ -527,15 +531,15 @@ resulting proof limitation.
 For contribution $i$, the only new share is $r_{y,i}$. Every encoded monomial
 of degree $b$ in $y$ is multiplied by $r_{y,i}^b$, while elements containing
 only $\alpha$ and $x$ remain unchanged. Public verification checks both
-conditions and rejects a purported contribution whose designated positive
-power of $y$ remains at its initial encoding. No operator generates or learns
-the resulting scalar $y$.
+conditions and rejects a purported contribution if $[y^s]_1=[1]_1$, where $s$
+is the placement bound defined in Section 4.1. No operator generates or learns
+the resulting scalar $y$ [14].
 
 The selected state from the first phase must terminate a complete verified chain
 and include at least one receipt marked `random` or `hybrid`. It provides the
 required monomial families to the specialization computation, while its
 group-element values and the final record retain the effects and origin of the
-accepted contributions.
+accepted contributions [14].
 
 ## 8. Circuit Specialization and the Second Phase
 
@@ -544,14 +548,15 @@ library description, deterministic specialization constructs circuit-dependent
 encodings by linear group operations. For a wire polynomial $o_j(X)$, the
 polynomial $K_j(X)$ from the intermediate-wire construction in [6], and a
 Lagrange polynomial $L_i(Y)$ over the placement variable, representative
-identities are
+identities are as follows [6, 14]. Write $o_{j,a}$, $k_{j,a}$, and
+$\ell_{i,b}$ for the corresponding polynomial coefficients.
 
 $$
 \begin{aligned}
 [L_i(y)o_j(x)]_1
-  &= \sum_{a,b} l_{i,b}o_{j,a}[x^a y^b]_1, \\
+  &= \sum_{a,b} \ell_{i,b}o_{j,a}[x^a y^b]_1, \\
 [L_i(y)\alpha^4 K_j(x)]_1
-  &= \sum_{a,b} l_{i,b}k_{j,a}[\alpha^4 x^a y^b]_1, \\
+  &= \sum_{a,b} \ell_{i,b}k_{j,a}[\alpha^4 x^a y^b]_1, \\
 [\alpha^k y^i(y^s-1)]_1
   &= [\alpha^k y^{i+s}]_1-[\alpha^k y^i]_1.
 \end{aligned}
@@ -565,11 +570,12 @@ $\gamma=\delta=\eta=1$ and leaves the circuit-dependent elements that contain
 their inverses unscaled.
 
 Each contributor in the second phase samples independent nonzero shares
-$r_{\gamma,i}$, $r_{\delta,i}$, and $r_{\eta,i}$. A direct encoding $[z]$ is
-multiplied by $r_{z,i}$, while every encoding of the form $[F/z]$ is multiplied
-by $r_{z,i}^{-1}$. Elements fixed in the first phase or by circuit specialization
+$r_{\gamma,i}$, $r_{\delta,i}$, and $r_{\eta,i}$. For each group $G_g$ in which
+it occurs, a direct encoding $[z]_g$ is multiplied by $r_{z,i}$, while every
+encoding $[F/z]_g$ of a circuit-dependent scalar expression is multiplied by
+$r_{z,i}^{-1}$. Elements fixed in the first phase or by circuit specialization
 must not change. After the sequence, each hidden scalar updated in the second
-phase is the product of its accepted shares.
+phase is the product of its accepted shares [14].
 
 ## 9. Verification, Transcript, and Final CRS
 
@@ -579,7 +585,7 @@ powers to those encodings. Batched pairing equations check the remaining powers
 and elements that contain multiple scalars. Verification of the first phase also
 checks that every element containing only $\alpha$ and $x$ remains unchanged. The
 second-phase check verifies both direct multiplication by a share and
-multiplication by its inverse where required.
+multiplication by its inverse where required [14].
 
 Each proof is bound to the protocol and contract versions, ceremony identifier,
 phase, required parameter updates, sequence number, previous and new state
@@ -645,7 +651,7 @@ inconsistent powers, partial updates, multiplication in the wrong direction,
 replay for a different type of contribution, changes to fixed elements,
 replacement of the source or subcircuit library, and changes to accepted
 artifacts. A successfully verified transcript is evidence that those public
-equations and identifiers are consistent.
+equations and identifiers are consistent [14].
 
 A contributor can still choose predictable nonzero randomness or retain a
 secret. An operator can censor, delay, withhold, or choose among otherwise valid
