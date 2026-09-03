@@ -167,8 +167,9 @@ When comparing the protocol with that literature, this document calls the two
 contribution periods the first and second phases. The serialized implementation
 uses a slightly different boundary: `Phase 1` contains the first contribution
 period, while `Phase 2` begins with deterministic circuit preparation and
-continues through the second contribution period. Before `Phase 1`, the Dusk
-adaptor produces the public-data layout consumed by the first contribution.
+continues through the second contribution period. Before `Phase 1`, powers from
+the Dusk sequence are selected and reindexed to form the public encodings
+required by the first contribution.
 This comparison does not assert that Tokamak has the same SRS or inherits the
 security proofs in [3, 5].
 
@@ -220,8 +221,8 @@ parameters follows the CRS defined in [6] and the implementation [14].
 
 | Parameter | Role in the setup of Tokamak's SNARK | Source or Tokamak stage | Participant procedure | Security assumption |
 |---|---|---|---|---|
-| `alpha` | Powers mixed with wire and correction encodings | Dusk adaptor | The adaptor creates no new `alpha` share | At least one source share protecting Dusk scalar `t` was unpredictable, remained undisclosed, and was erased |
-| `x` | Evaluation dimension for subcircuit and wire polynomials | Dusk adaptor | The adaptor creates no new `x` share | The Dusk-source condition stated for `alpha` holds |
+| `alpha` | Powers mixed with wire and correction encodings | Dusk sequence | Transforming the sequence introduces no new `alpha` share | At least one source share protecting the Dusk scalar $\tau$ was unpredictable, remained undisclosed, and was erased |
+| `x` | Evaluation dimension for subcircuit and wire polynomials | Dusk sequence | Transforming the sequence introduces no new `x` share | The Dusk-source condition stated for `alpha` holds |
 | `y` | Placement dimension and bivariate mixing | `Phase 1` | Each contributor erases its `y` share after completing the contribution | At least one accepted `y` share was unpredictable, remained undisclosed, and was erased |
 | `gamma` | Direct encodings and public-instance elements divided by `gamma` | `Phase 2` | Each contributor erases its `gamma` share after completing the contribution | At least one accepted `gamma` share was unpredictable, remained undisclosed, and was erased |
 | `delta` | Direct encodings and private and correction elements divided by `delta` | `Phase 2` | Each contributor erases its `delta` share after completing the contribution | At least one accepted `delta` share was unpredictable, remained undisclosed, and was erased |
@@ -310,20 +311,20 @@ does not.
 
 Capacity alone is insufficient. A conventional powers-of-tau string provides
 univariate encodings of one hidden scalar. Tokamak's SNARK commits to
-bivariate polynomials in independently sampled `x` and `y` [6]. A mapping such
-as `x=tau` and `y=tau^e_y` can assign distinct powers of `tau` to all required
-monomials within fixed degree bounds, but this injective exponent assignment
-does not preserve independence: it imposes `y=x^e_y`.
+bivariate polynomials in independently sampled $x$ and $y$ [6]. A mapping such
+as $x=\tau$ and $y=\tau^{e_y}$ can assign distinct powers of $\tau$ to all
+required monomials within fixed degree bounds, but this injective exponent
+assignment does not preserve independence: it imposes $y=x^{e_y}$.
 
 This relation affects the opening argument rather than merely the serialized
 layout. Before substitution, a bivariate opening residual has the form
 
-```text
-p(X,Y) - v = q_x(X,Y)(X-a) + q_y(X,Y)(Y-b).
-```
+$$
+p(X,Y)-v=q_x(X,Y)(X-a)+q_y(X,Y)(Y-b).
+$$
 
-After substituting `X=Z` and `Y=Z^e_y`, the two divisors are `Z-a` and
-`Z^e_y-b`. Unless `a^e_y=b`, these divisors are relatively prime. Their
+After substituting $X=Z$ and $Y=Z^{e_y}$, the two divisors are $Z-a$ and
+$Z^{e_y}-b$. Unless $a^{e_y}=b$, these divisors are relatively prime. Their
 polynomial combinations can therefore represent an arbitrary residual. If the
 public powers cover the required quotient degrees, a prover can encode those
 combinations without establishing the original bivariate opening. Avoiding
@@ -334,27 +335,28 @@ The selected Dusk result is therefore usable only as input to the Tokamak
 transformation. Its published sequence and ceremony records identify the source
 and support verification of its powers. The secrecy of the Dusk scalar still
 depends on at least one Dusk or Zcash contributor having kept and erased an
-unpredictable share. Tokamak derives `x=t` and `alpha=t^(2N)` from that same
-scalar `t`; this relationship differs from the independent sampling used by
-the setup in [6]. The security analyses in [3, 5, 6] do not cover this mapping.
+unpredictable share. Tokamak derives $x=\tau$ and $\alpha=\tau^{2N}$ from that
+same scalar $\tau$; this relationship differs from the independent sampling
+used by the setup in [6]. The security analyses in [3, 5, 6] do not cover this
+mapping.
 The source also contains no independent value for Tokamak's `y` and no Tokamak
 contribution to `gamma`, `delta`, or `eta`, so both Tokamak phases remain
 necessary.
 
 ## 5. Protocol Overview
 
-### 5.1 Dusk adaptation
+### 5.1 From the Dusk sequence to Tokamak's setup
 
-The Dusk adaptor authenticates and verifies the pinned powers-of-tau artifact,
-reindexes its powers into the required encodings involving `alpha` and `x`, and
-expands the encodings that involve `y` at conceptual `y=1`. These deterministic
-preparation operations do not add a participant's secret randomness.
+Tokamak starts from the encoded powers published by the Dusk ceremony and
+selects the powers needed for the setup elements involving $\alpha$ and $x$.
+It also forms the initial encodings for elements involving $y$ at $y=1$. These
+public operations introduce no participant randomness.
 
 ### 5.2 The first phase
 
 Contributors in the first phase update `y` and every encoding that contains it
-while leaving the adapted `alpha` and `x` elements unchanged. Selection requires
-at least one receipt marked `random` or `hybrid`. Security separately assumes
+while leaving the Dusk-derived `alpha` and `x` elements unchanged. Selection
+requires at least one receipt marked `random` or `hybrid`. Security separately assumes
 that at least one accepted share was unpredictable, remained undisclosed, and
 was erased. The selected state exposes the complete monomial families required
 by the subsequent computation.
@@ -384,9 +386,9 @@ by itself disclose the scalars updated in the other phase.
 
 ### 5.5 Comparison with prior two-phase protocols
 
-| Prior protocols [3, 5] | Tokamak implementation | Comparison |
+| Prior protocols [3, 5] | Tokamak protocol | Comparison |
 |---|---|---|
-| Circuit-independent setup in the first phase | The Dusk adaptor supplies the `alpha` and `x` encodings, and `Phase 1` adds independent contributions to `y` | All circuit-independent material is complete before specialization, but Tokamak combines an external result with a Tokamak-specific contribution period. |
+| Circuit-independent setup in the first phase | Selected powers from the Dusk sequence supply the `alpha` and `x` encodings, and `Phase 1` adds independent contributions to `y` | All circuit-independent material is complete before specialization, but Tokamak combines an external result with a Tokamak-specific contribution period. |
 | Public specialization to one circuit | Deterministic specialization from selected `Phase 1` points and the canonical subcircuit-library QAP/R1CS description | The public computation has the same role, but Tokamak fixes a reusable subcircuit library rather than one later-derived circuit. |
 | Circuit-dependent updates in the second phase | `Phase 2` updates direct and divided elements involving `gamma`, `delta`, and `eta` | The purpose is the same, but Tokamak uses different parameters and equations. |
 | Sequential updates and public verification | Proofs of the contributor's shares, pairing checks, checks that fixed elements did not change, and verification of the complete sequence | The verification purpose is the same; Tokamak defines its own stored states and receipts. |
@@ -399,27 +401,91 @@ second phase, and the final CRS is derived from the selected states. The
 implementation checks the public computations and stored data. Its security
 still depends on secret erasure and is limited by the proof gaps stated above.
 
-## 6. Dusk Adaptation
+## 6. Algebraic Compatibility and the Dusk Sequence
 
-Let `t` be the hidden scalar behind the pinned Dusk sequence and
-`N=max(n,m_i)`. Mapping version 1 uses
+Let $\tau$ be the hidden scalar of the Dusk sequence. The ceremony publishes
+group encodings $[\tau^d]_1$ and $[\tau^d]_2$ over stated exponent ranges while
+leaving $\tau$ unknown [9]. This is a univariate sequence of encoded powers.
+Tokamak's circuit-independent setup instead requires encodings of monomials in
+three parameters. For index sets $I_1$ and $I_2$ determined by the setup, the
+required families have the form
 
-```text
-x                 = t
-alpha             = t^(2N)
-alpha^k x^a       = t^(2Nk+a)
-```
+$$
+\mathcal{T}_g
+=
+\left\{[\alpha^k x^a y^b]_g:(k,a,b)\in I_g\right\},
+\qquad g\in\{1,2\}.
+$$
 
-for the checked exponent ranges. The implementation calls this transformation
-the Dusk adaptor. Before applying the public index map, the adaptor validates the
-exact source digest and encoding, the standard group generators, the required
-G1 and G2 ranges, and the pairing equations between consecutive powers. It
-consumes only the Dusk tau sequences, not Dusk's Groth16 alpha or beta elements.
+Let $\mathbb{F}$ be the scalar field, let $\mathcal{H}$ be the polynomial ring
+generated by the hidden scalars used in a candidate construction, and let
+$\Phi:\mathbb{F}[\alpha,x,y]\rightarrow\mathcal{H}$ be the corresponding
+substitution. For every polynomial $V$ in the bounded relation space used by the
+verifier, algebraic compatibility requires that
 
-The adapted output is not a Tokamak ceremony state and has no Tokamak
-contribution receipt. Preparation for the first contribution adds the required
-elements containing powers of `y`, initially with `y=1`. This state also cannot
-be selected until a Tokamak contributor changes those elements.
+$$
+\Phi(V)=0 \quad\Longrightarrow\quad V=0.
+$$
+
+This condition is stronger than assigning a distinct source exponent to each
+target monomial. If the source exposes additional encodings outside the image
+of the target basis, their effect on the prover's relation space must also be
+analyzed. As shown in Section 4, deriving both $x$ and $y$ as fixed powers of
+$\tau$ gives $\mathcal{H}=\mathbb{F}[\tau]$, turns the bivariate opening
+relation into a univariate relation, and does not preserve the required
+implication.
+
+Let $N=\max(n,m_i)$. The current construction instead assigns [14]
+
+$$
+\Phi(x)=\tau, \qquad \Phi(\alpha)=\tau^{2N}, \qquad \Phi(y)=y.
+$$
+
+Thus $\mathcal{H}=\mathbb{F}[\tau,y]$, rather than
+$\mathbb{F}[\tau]$. Consequently, for each required exponent pair $(k,a)$ and
+each available source group $G_g$,
+
+$$
+[\alpha^k x^a]_g=[\tau^{2Nk+a}]_g, \qquad g\in\{1,2\}.
+$$
+
+The source sequence can therefore supply the slice with $b=0$ by selecting the
+encoded power at exponent $2Nk+a$. The remaining slices initially repeat that
+encoding, which represents $y=1$:
+
+$$
+E_{g,k,a,b}^{(0)}=[\tau^{2Nk+a}]_g.
+$$
+
+If the first-phase contributors provide secret shares
+$r_1,\ldots,r_c$, write $E_{g,k,a,b}^{(i)}$ for the encoded group element after
+contributor $i$. That contributor updates an element with $y$-degree $b$
+according to
+
+$$
+E_{g,k,a,b}^{(i)}=r_i^b E_{g,k,a,b}^{(i-1)}.
+$$
+
+After all contributions, the element is
+
+$$
+E_{g,k,a,b}^{(c)}
+=
+\left[\tau^{2Nk+a}\left(\prod_{i=1}^{c}r_i\right)^b\right]_g
+=
+[\alpha^k x^a y^b]_g,
+\qquad
+y=\prod_{i=1}^{c}r_i.
+$$
+
+Thus $y$ is contributed independently of $\tau$, rather than being assigned a
+fixed relation $y=x^{e_y}$. This resolves the incompatibility that would arise
+from deriving both polynomial variables from one powers-of-tau scalar. It does
+not establish complete algebraic compatibility with the independently sampled
+setup in [6]: the assignment still imposes $\alpha=x^{2N}$. The cited analyses
+do not establish whether this remaining relation can create an accepting
+relation outside the independently sampled model. Sections 10 and 11 state the
+resulting proof limitation.
 
 ## 7. The First Phase: Contributions Before Circuit Specialization
 
@@ -523,8 +589,8 @@ failed erasure by that person can remove this protection from both phases.
 
 | Protected values | Required secrecy | What current evidence supports if the values are exposed |
 |---|---|---|
-| `alpha`, `x` derived from the Dusk result | At least one Dusk or Zcash source share remains unknown and was erased | Exposure of source `t` reveals both `x=t` and `alpha=t^(2N)`. Even without exposure, this related pair is not proved to have the same security as independent sampling. |
-| `y` added by Tokamak contributors | At least one Tokamak share for `y` remains unknown and was erased | Exposure reveals `y` but does not by itself reveal Dusk `t`. The source ceremony never replaces this contribution. |
+| `alpha`, `x` derived from the Dusk result | At least one Dusk or Zcash source share remains unknown and was erased | Exposure of source $\tau$ reveals both $x=\tau$ and $\alpha=\tau^{2N}$. Even without exposure, this related pair is not proved to have the same security as independent sampling. |
+| `y` added by Tokamak contributors | At least one Tokamak share for `y` remains unknown and was erased | Exposure reveals `y` but does not by itself reveal Dusk $\tau$. The source ceremony never replaces this contribution. |
 | `gamma`, `delta`, `eta` | At least one corresponding share from the second phase remains unknown and was erased | The affected scalar is known and the CRS no longer satisfies the independent-sampling assumption in [6]. The literature does not prove the exact forgery consequence of exposing each parameter separately. |
 
 Disclosure of `gamma`, `delta`, and `eta` does not compute `alpha`, `x`, or `y`
@@ -552,10 +618,10 @@ can collude. Identity metadata, the receipt label, and algebraic checks cannot
 disprove these actions. If a coalition learns every share protecting a phase,
 that phase has no unknown contribution.
 
-Verifying the Dusk source artifact does not establish that its hidden scalar
-remains unknown. The adaptor checks the pinned artifact and its powers, while
-secrecy of the scalar depends on the Zcash and Dusk ceremonies and at least one
-source contributor's non-disclosure and erasure [9, 10].
+Public checks can establish consistency among the encoded powers selected from
+the Dusk sequence, but they do not establish that its hidden scalar remains
+unknown. Secrecy of that scalar depends on the Zcash and Dusk ceremonies and at
+least one source contributor's non-disclosure and erasure [9, 10].
 
 ## 11. Limitations
 
@@ -567,9 +633,9 @@ the Dusk mapping.
 References [3, 5, 6] do not provide a formal reduction showing that the Tokamak
 contribution equations produce the exact setup distribution required by the
 knowledge-soundness analysis in [6]. The largest explicit gap is the Dusk
-mapping: `alpha=t^(2N)` and `x=t` are algebraically related, whereas the setup in
-[6] samples them independently. The mapping provides and verifies all powers
-through the required finite degree, but those facts do not show that its
+mapping: $\alpha=\tau^{2N}$ and $x=\tau$ are algebraically related, whereas the
+setup in [6] samples them independently. The mapping provides and verifies all
+powers through the required finite degree, but those facts do not show that its
 parameters have the same distribution as independent samples.
 
 References [3, 5, 6] also do not isolate the precise forgery power gained by
