@@ -854,21 +854,31 @@ randomness, non-disclosure, or erasure assumptions.
 
 ### 10.2 Result of applying the cited model
 
-The reviewed results do not establish update knowledge soundness for the
-completed Tokamak CRS. Jang and Judd's setup samples the six trapdoors
-independently, and their generic-group extraction argument separates the
-corresponding formal variables [6, Equation 21 and Appendix D]. The source
-transformation used here instead sets $x=\tau$ and $\alpha=\tau^{2N}$. It
-therefore imposes an algebraic relation between variables that the cited
-extraction argument treats as independent, while the adversary also retains the
-complete public source sequence in its view.
+The attempted application of the cited model stops before witness extraction.
+Jang and Judd's affine prover strategy restricts every prover-supplied $G_1$
+element to the span of their CRS [6, Definition 6 and Equation 79]. In the
+protocol considered here, the adversary additionally retains the complete
+public source sequence. That sequence is polynomially bounded, but it enlarges
+the affine span; polynomial size bounds the generic-group collision event only
+after the resulting formal identities have been shown to imply witness
+extraction.
 
-No theorem in [3, 5, 6] shows that this related-parameter setup can be reduced to
-the independently sampled setup analyzed in [6], nor does the Groth16 result in
-[5, Theorem 5] cover Tokamak's verifier equations. Distinct source exponents
-and valid public transitions establish representation and consistency, but do
-not supply the missing extraction argument. This is an unresolved proof
-obligation, not a demonstrated attack: the available evidence proves neither
+The obstruction can be located in the binding step of the extractor. The
+source transformation sets $x=\tau$ and $\alpha=\tau^{2N}$, so public source
+powers can supply additional $\alpha$- and $x$-dependent components. Some
+paired changes to the prover's $U$ and $B$ components cancel in the binding
+polynomial of [6, Equations 81 and 84], while $U$ and $B$ do not have the same
+role in the arithmetic identity. The binding identity therefore no longer
+separates those components in the manner assumed by the subsequent extraction
+steps. This demonstrates a failure of the direct proof transfer, not an
+accepting proof for a false statement.
+
+No theorem in [3, 5, 6] proves that the remaining verifier identities eliminate
+every additional solution introduced by this public affine basis, and [5,
+Theorem 5] concerns Groth16 rather than Tokamak's verifier equations. Honest
+updates and successful $\mathsf{VerifySRS}$ checks establish the stated setup
+history and transition relations, but they do not remove public source elements
+from the adversary's view. The available evidence therefore proves neither
 update knowledge soundness nor its failure for the completed construction.
 
 ### 10.3 Honest updates and public verification
