@@ -267,23 +267,40 @@ unknown share. Updates made only for testing also cannot satisfy the requirement
 Selection designates one verified final state as the input to the next stage and
 records its digest; it adds no signer or secret [14].
 
-### 3.5 Security assumptions and properties
+### 3.5 Adversary model and security objective
 
-The conventional ceremony goal is that at least one independently unpredictable
-share affecting each protected parameter remains unknown and is erased [3, 5].
-Tokamak permits one contributor and permits the same person in both phases. Such
-an execution can leave an unknown share in each parameter, but it has no
-redundancy against that person's compromise or failure to erase the shares.
-Using multiple independent contributors provides that redundancy; it is not a
-condition that the verifier can establish from participant identities [14].
+The security analysis uses the multi-phase ceremony model of *Snarky
+Ceremonies* [5, Section 3]. In that model, an adversary may choose a starting
+SRS, make malicious updates, request honest updates, and observe all
+intermediate states and update proofs. A component of the SRS is finalized only
+after its update record contains an honest update. After all components have
+been finalized, the adversary attempts to produce an accepted proof for which
+no valid witness can be extracted.
 
-The implementation directly checks source artifacts, subcircuit-library
-binding, contribution equations, links between states, transcripts, and final
-artifact digests. Security additionally depends on unpredictable secrets,
-non-disclosure, erasure, discrete logarithm hardness, and the external ceremony.
-References [3, 5] do not prove knowledge soundness for this exact MPC, and the
-analysis in [6] does not cover the parameter mapping derived from a single
-source scalar.
+For this analysis, the selected source sequence and its update history form an
+inherited, already finalized component. The first and second Tokamak phases
+form the subsequent components. This analytical decomposition does not rename
+the source ceremony as a Tokamak phase: the implemented protocol still has the
+two contribution periods defined above. The honest-update premise applies to
+the inherited source component as well as to each Tokamak component that
+introduces hidden values into the final CRS.
+
+The principal security objective is update knowledge soundness as defined in
+[5, Definition 5]. Informally, for every efficient adversary in the stated group
+model, there must be an efficient extractor that obtains a valid witness from
+the adversary's complete view whenever the final SRS and proof verify, except
+with negligible probability. Public SRS verification is a premise of that game;
+it does not establish that honest randomness was unpredictable, remained
+private, or was erased.
+
+The final knowledge-soundness claim is restricted to the generic group model
+used by Jang and Judd [6]. All public group elements received from the source,
+the update records, and the Tokamak protocol are part of the adversary's view.
+The algebraic group model gives a broader standard abstraction in which an
+adversary represents each output group element using all group elements it has
+previously received [33, Definition 1]; this document does not claim security
+against that broader class. In particular, the Groth16 theorem proved in [5,
+Theorem 5] does not prove update knowledge soundness for Tokamak's SNARK.
 
 ## 4. Requirements for Reusing Existing Ceremony Results
 
@@ -335,24 +352,10 @@ system. A conventional powers-of-tau sequence contains univariate encodings of
 one hidden scalar, whereas Tokamak's SNARK commits to bivariate polynomials in
 independently sampled $x$ and $y$ [6]. Assigning
 $x=\tau$ and $y=\tau^{e_y}$ may give every bounded monomial a distinct source
-exponent, but it also imposes $y=x^{e_y}$.
-
-This relation changes the opening argument. Let $p(X,Y)$ be a bivariate
-polynomial, let $v=p(a,b)$ be its claimed value at $(a,b)$, and let
-$q_x(X,Y)$ and $q_y(X,Y)$ be the quotient polynomials. Before substitution, the
-opening residual has the form
-
-$$
-p(X,Y)-v=q_x(X,Y)(X-a)+q_y(X,Y)(Y-b).
-$$
-
-After substituting $X=Z$ and $Y=Z^{e_y}$, the two divisors become $Z-a$ and
-$Z^{e_y}-b$. Unless $a^{e_y}=b$, they are relatively prime, so their polynomial
-combinations can represent an arbitrary residual. If the public powers cover
-the required quotient degrees, a prover can encode such combinations without
-establishing the original bivariate opening. A collision-free exponent map is
-therefore necessary for representing the CRS, but it is not sufficient for
-preserving the soundness argument.
+exponent, but it also imposes $y=x^{e_y}$. The substitution therefore changes
+the independent-variable structure used by the opening and extraction
+arguments. A collision-free exponent map is necessary for representing the
+required monomials, but it is not sufficient to preserve those arguments.
 
 Several independent univariate sequences do not solve this problem by
 themselves. Without encoded mixed powers across their independent hidden
@@ -363,39 +366,47 @@ encoded basis.
 
 The survey classifies the encoded-power sequence evaluated for reuse, rather
 than every auxiliary element that may accompany a complete ceremony artifact.
+Passing this source screening is necessary but does not establish update
+knowledge soundness for the completed Tokamak construction.
 
-| Public result | Curve | Sequence dimension | Published capacity relevant here | Practical conclusion |
+| Public result | Curve compatibility | Exponent capacity | Algebraic compatibility | Screening result |
 |---|---|---|---|---|
-| Privacy & Scaling Explorations' Perpetual Powers of Tau [12] | BN254 | Univariate sequence $[\tau^i]$ | Up to $2^{28}$ constraints and $2\cdot2^{28}-1$ powers | Degree is ample, but the curve is incompatible. |
-| Ethereum KZG ceremony [11] | BLS12-381 | Four separate univariate sequences $[\tau_j^i]$; no mixed terms between them | The largest sequence ends at $G_1$ exponent $2^{15}-1$; every $G_2$ sequence ends at exponent $64$ | The curve and $G_1$ capacity fit, but the $G_2$ sequence is too short for the current mapping. |
-| Dusk trusted setup [9] | BLS12-381 | Univariate sequence $[\tau^i]$ | Powers through $2^{21}$, extending the verified Zcash result with 15 listed contributions | Selected as the current source: the curve and both group ranges meet the current requirements. |
-| Filecoin phase 1 [13] | BLS12-381 | Univariate sequence $[\tau^i]$ | Supports circuits through $2^{27}$ constraints and generates $2\cdot2^{27}-1$ powers | Curve and capacity do not exclude it, but its univariate sequence cannot directly encode Tokamak's bivariate relation. |
+| Privacy & Scaling Explorations' Perpetual Powers of Tau [12] | Fails: BN254 rather than BLS12-381 | Passes: up to $2^{28}$ constraints and $2\cdot2^{28}-1$ powers | Not evaluated after the curve mismatch | Excluded by the curve requirement |
+| Ethereum KZG ceremony [11] | Passes: BLS12-381 | Fails: the largest sequence ends at $G_1$ exponent $2^{15}-1$, and each $G_2$ sequence ends at exponent $64$ | Its four sequences are separately univariate and contain no mixed terms | Excluded by the $G_2$ requirement |
+| Dusk trusted setup [9] | Passes: BLS12-381 | Passes: powers through $2^{21}$ cover the current requirements | Conditional: the proposed first phase supplies the missing independent dimension, but the remaining source-derived relation requires a security argument for the completed construction | Selected source; security admission remains pending |
+| Filecoin phase 1 [13] | Passes: BLS12-381 | Passes: supports circuits through $2^{27}$ constraints and generates $2\cdot2^{27}-1$ powers | Conditional: its univariate structure does not by itself supply Tokamak's bivariate setup | Not excluded by source screening, but not selected or added as a protocol route |
 
-The survey separates source selection from algebraic security. The selected
-input meets the current curve and exponent requirements, but the survey does
-not make a univariate sequence into a Tokamak CRS or prove that a parameter
-mapping preserves soundness. Section 6 defines how the protocol uses the
-selected sequence while retaining an independently contributed polynomial
-variable. Sections 10 and 11 state the remaining trust assumptions and proof
-limitation.
+The survey leaves two sequences conditionally eligible at the source-screening
+level. The implementation selects the Dusk result; this policy choice is not a
+claim that the other sequence fails algebraically or that the selected mapping
+is secure. Section 6 defines how the protocol uses the selected sequence while
+retaining an independently contributed polynomial variable. Section 10 decides
+whether the completed construction meets the security objective in Section 3.5.
+For the current construction, it identifies an unresolved proof obligation and
+retains an explicit limitation.
 
 ## 5. Protocol Overview
 
 ### 5.1 From univariate encoded powers to Tokamak's setup
 
-Tokamak starts from a selected sequence of univariate encoded powers and uses
-the powers needed for the setup elements involving $\alpha$ and $x$. It also
-forms the initial encodings for elements involving $y$ at $y=1$. These public
-operations introduce no participant randomness.
+The protocol takes a selected sequence of univariate encoded powers, the public
+bounds that determine Tokamak's required monomials, and the canonical
+subcircuit-library description. Before contributions begin, public computation
+selects the source powers needed for the $\alpha$- and $x$-dependent terms and
+forms the initial $y$-dependent terms at $y=1$. This prepared state contains no
+new participant randomness and cannot be selected as the first-phase output.
 
 ### 5.2 The first phase
 
 Contributors in the first phase update $y$ and every encoding that contains it
-while leaving the source-derived $\alpha$ and $x$ elements unchanged. Selection
-requires at least one receipt marked `random` or `hybrid`. Security separately assumes
-that at least one accepted share was unpredictable, remained undisclosed, and
-was erased. The selected state exposes the complete monomial families required
-by the subsequent computation.
+while leaving the source-derived $\alpha$ and $x$ elements unchanged. The public
+state consists of the resulting encoded elements and their ordered update
+record; it never contains a contributor's scalar share. The first-phase output
+is selected only from a complete verified update chain containing a qualifying
+participant contribution. Security separately assumes that at least one update
+to this component was honest in the sense required by Section 3.5. The selected
+output is the circuit-independent encoded setup material in Tokamak's required
+monomial layout.
 
 ### 5.3 Circuit specialization and the second phase
 
@@ -405,22 +416,21 @@ phase; it never recovers $\alpha$, $x$, or $y$. It initializes direct encodings
 of $\gamma$, $\delta$, and $\eta$ and
 the circuit-dependent elements that will be divided by those scalars.
 Contributors in the second phase multiply the direct encodings by their shares
-and the divided elements by the inverse shares. The selected result is converted
-to the unchanged CRS layout of Tokamak's SNARK.
+and the divided elements by the inverse shares. The public specialization state
+cannot be selected as the final output. Selection requires a complete verified
+second-phase chain containing a qualifying participant contribution, while the
+security objective separately requires an honest update to this component. The
+selected result is converted to the unchanged CRS layout of Tokamak's SNARK.
 
 ### 5.4 What verification establishes
 
-Proofs, pairing equations, checks that fixed elements remain unchanged,
-canonical digests, and the complete transcript establish that an accepted final
-artifact follows the recorded source, layout, canonical subcircuit library, and
-contribution sequence [14]. The checks do not establish secret deletion. If every
-share protecting one phase is known, the requirement that at least one
-contributor kept and erased an unpredictable share is not satisfied. The
-honest-contributor premise used by [3, 5] is then absent. Those references do
-not establish security for Tokamak's exact construction even when the premise
-holds. Failure of the premise does not invalidate evidence that the public
-computations were performed consistently or by itself disclose the scalars
-updated in the other phase.
+Public verification establishes that each accepted state is a valid update of
+its predecessor, that material outside the declared update remains unchanged,
+that the transition is bound to the relevant source or subcircuit-library
+input, and that the selected states belong to one complete ordered record [14].
+These checks establish transition consistency, not the unpredictability,
+secrecy, or erasure required by an honest update. They also do not by themselves
+establish update knowledge soundness for Tokamak's exact construction.
 
 ### 5.5 Comparison with prior two-phase protocols
 
@@ -430,7 +440,7 @@ updated in the other phase.
 | Public specialization to one circuit | Deterministic specialization from selected first-phase points and the canonical subcircuit-library QAP/R1CS description | The public computation has the same role, but Tokamak fixes a reusable subcircuit library rather than one later-derived circuit. |
 | Circuit-dependent updates in the second phase | The second phase updates direct and divided elements involving $\gamma$, $\delta$, and $\eta$ | The purpose is the same, but Tokamak uses different parameters and equations. |
 | Sequential updates and public verification | Proofs of the contributor's shares, pairing checks, checks that fixed elements did not change, and verification of the complete sequence | The verification purpose is the same; Tokamak defines its own stored states and receipts. |
-| At least one honest contribution in each phase | Selection requires a `random` or `hybrid` receipt in each Tokamak phase; security additionally assumes an unpredictable, undisclosed, and erased share in each phase and in the source sequence | The trust structure is analogous at a high level, but the verifier cannot establish these secrecy assumptions and the proofs in [3, 5] do not cover Tokamak's exact construction. |
+| At least one honest contribution in each phase | Selection requires a qualifying receipt in each Tokamak phase; security additionally assumes an honest update in each protected component, including the source history | The trust structure is analogous at a high level, but the verifier cannot establish these secrecy assumptions and the proofs in [3, 5] do not cover Tokamak's exact construction. |
 | Reusable first-phase material | A verified source sequence supplies the $\alpha$ and $x$ encodings before Tokamak contributions to $y$ | Tokamak reuses one part of an external result and adds an independent dimension required by its bivariate setup. |
 
 The verified output of the first phase is specialized to the canonical
@@ -456,112 +466,16 @@ $$
 \qquad g\in\{1,2\}.
 $$
 
-The required relation space must be fixed before evaluating a source
-substitution. Following [6, Definition 6], write
-
-$$
-\mathbf{T}=(A,\Gamma,\Delta,H,X,Y),
-$$
-
-where $A$, $X$, and $Y$ represent $\alpha$, $x$, and $y$, and $H$ represents
-$\eta$. Let $\mathcal{B}^{\mathrm{JJ}}_1$ be the scalar labels of all $G_1$
-entries in $(\sigma_{A,C},\sigma_B)$ in [6, Equation (21)], with the index
-bounds stated there. Let $\mathcal{B}^{\mathrm{JJ}}_2$ contain the labels of
-$\sigma_V$ together with the public group generator:
-
-$$
-\mathcal{B}^{\mathrm{JJ}}_2
-=
-\{1,A,A^2,A^3,A^4,\Gamma,\Delta,H,X,Y\}.
-$$
-
-The original affine label spaces are
-
-$$
-\mathcal{L}^{\mathrm{JJ}}_g
-=
-\operatorname{span}_{\mathbb{F}}
-\mathcal{B}^{\mathrm{JJ}}_g,
-\qquad g\in\{1,2\}.
-$$
-
-Equation (79) of [6] gives the exact degree-bounded Laurent-polynomial form of
-$\mathcal{L}^{\mathrm{JJ}}_1$. It covers every $G_1$ proof element in the
-interactive transcript. Equation (80) gives the polynomial residual of the
-integrated pairing equation. These two equations fix both the proof-element
-support and all products introduced by verifier pairings.
-
-A source sequence can expose more public elements than the subset selected for
-the target basis. For each group, let $\mathcal{C}_g$ contain every public point
-in the source sequence, its public contribution record, and any public
-predecessor ceremony from which it was derived. Let $\lambda_g(P)$ be the
-formal generic-group scalar label of $P$. Define the complete public source
-spans by
-
-$$
-\mathcal{S}_g
-=
-\operatorname{span}_{\mathbb{F}}
-\{\lambda_g(P):P\in\mathcal{C}_g\},
-\qquad g\in\{1,2\}.
-$$
-
-Thus $\mathcal{S}_g$ includes unused powers and public auxiliary encodings, not
-only the powers consumed by the construction. The pairing-query space available
-to a generic adversary is bounded by
-
-$$
-\mathcal{Q}_{12}
-=
-\operatorname{span}_{\mathbb{F}}
-\{fg:f\in\mathcal{L}^{\mathrm{JJ}}_1+\mathcal{S}_1,
-       g\in\mathcal{L}^{\mathrm{JJ}}_2+\mathcal{S}_2\}.
-$$
-
-The order of proof messages and verifier challenges in [6, Equation (22)] is
-
-$$
-\mathsf{M}_0
-\prec\boldsymbol{\theta}
-\prec\mathsf{M}_1
-\prec\kappa_0
-\prec\mathsf{M}_2
-\prec(\chi,\zeta)
-\prec\mathsf{M}_3
-\prec\kappa_1
-\prec\mathsf{M}_4
-\prec\kappa_2.
-$$
-
-The affine label of a proof message may depend on public data and challenges to
-its left, but not on a challenge to its right. Let
-$\mathcal{R}_{\mathrm{ver}}(\mathcal{S}_1,\mathcal{S}_2)$ be the finite
-$\mathbb{F}$-span of the formal residuals obtained by substituting all such
-causal affine labels into [6, Equation (80)] and separating the verifier
-challenges in the order used by its Appendix D. In particular, no proof message
-depends on $\kappa_2$, whose degree in the integrated equation is at most three.
-Field-valued prover messages enter the residual as scalar coefficients and obey
-the same information order.
-This definition includes every proof-element label, every pairing product, the
-complete public source span, and the challenge separations used by the
-extractor.
-
-Let $\Psi$ be the actual substitution from the joint target-and-source label
-ring to the labels generated by a candidate construction. Algebraic
-compatibility requires
-
-$$
-\ker(\Psi)
-\cap
-\mathcal{R}_{\mathrm{ver}}(\mathcal{S}_1,\mathcal{S}_2)
-=
-\{0\}.
-$$
-
-This condition is stronger than assigning a distinct source exponent to each
-target monomial. As shown in Section 4, deriving both $x$ and $y$ as fixed
-powers of $\tau$ reduces the bivariate opening relation to a univariate one and
-does not preserve the required condition.
+Compatibility must be evaluated against the complete public view in the
+ceremonial game adopted in Section 3.5, rather than only against the powers
+selected for the target basis. Jang and Judd's extractor distinguishes the
+independent polynomial variables that occur in its verifier equations [6,
+Appendix D]. A source transformation is therefore admissible only if those
+distinctions, and hence the extraction argument, remain valid in the presence of
+all public source and ceremony data. Assigning a distinct source exponent to
+each required monomial establishes representation capacity, but not this
+security condition. Section 4.3 gives the corresponding failure when both
+polynomial variables are derived as fixed powers of one source scalar.
 
 Let $N=\max(n,m_i)$. For the current construction, the substitution includes
 [14]
@@ -621,44 +535,35 @@ resulting proof limitation.
 
 For contribution $i$, the only new share is $r_{y,i}$. Every encoded monomial
 of degree $b$ in $y$ is multiplied by $r_{y,i}^b$, while elements containing
-only $\alpha$ and $x$ remain unchanged. Public verification checks both
-conditions and rejects a purported contribution if $[y^s]_1=[1]_1$, where $s$
-is the placement bound defined in Section 4.1. No operator generates or learns
-the resulting scalar $y$ [14].
+only $\alpha$ and $x$ remain unchanged. Public verification checks both the
+declared update and preservation of the source-derived material. No operator
+generates or learns the resulting scalar $y$ [14].
 
 The selected state from the first phase must terminate a complete verified chain
-and include at least one receipt marked `random` or `hybrid`. It provides the
-required monomial families to the specialization computation, while its
-group-element values and the final record retain the effects and origin of the
-accepted contributions [14].
+and include a qualifying participant contribution. It provides the required
+monomial families to the specialization computation, while its group-element
+values and ordered record retain the effects and origin of the accepted
+contributions [14].
 
 ## 8. Circuit Specialization and the Second Phase
 
 Given the selected points from the first phase and the canonical subcircuit-
 library description, deterministic specialization constructs circuit-dependent
-encodings by linear group operations. For a wire polynomial $o_j(X)$, the
-polynomial $K_j(X)$ from the intermediate-wire construction in [6], and a
-Lagrange polynomial $L_i(Y)$ over the placement variable, representative
-identities are as follows [6, 14]. Write $o_{j,a}$, $k_{j,a}$, and
-$\ell_{i,b}$ for the corresponding polynomial coefficients.
+encodings by linear group operations. For
+$f(X)=\sum_a f_aX^a$ and a Lagrange polynomial
+$L_i(Y)=\sum_b\ell_{i,b}Y^b$ over the placement variable, one representative
+identity is [6, 14]
 
 $$
-\begin{aligned}
-[L_i(y)o_j(x)]_1
-  &= \sum_{a,b} \ell_{i,b}o_{j,a}[x^a y^b]_1, \\
-[L_i(y)\alpha^4 K_j(x)]_1
-  &= \sum_{a,b} \ell_{i,b}k_{j,a}[\alpha^4 x^a y^b]_1, \\
-[\alpha^k y^i(y^s-1)]_1
-  &= [\alpha^k y^{i+s}]_1-[\alpha^k y^i]_1.
-\end{aligned}
+[L_i(y)f(x)]_1
+  = \sum_{a,b} \ell_{i,b}f_a[x^a y^b]_1,
 $$
 
-Because all coefficients are public, these computations need no scalar
-trapdoor. The initial state for contributions in the second phase binds the
-digest of the selected first-phase state and the canonical digest of the
-subcircuit library. It initializes direct encodings at
-$\gamma=\delta=\eta=1$ and leaves the circuit-dependent elements that contain
-their inverses unscaled.
+where $f_a$ and $\ell_{i,b}$ are public coefficients. Because the coefficients
+are public, specialization needs no scalar trapdoor. The resulting state is
+bound to the selected first-phase output and the canonical subcircuit library.
+It initializes the circuit-dependent component before any contributor supplies
+the hidden values updated in the second phase.
 
 Each contributor in the second phase samples independent nonzero shares
 $r_{\gamma,i}$, $r_{\delta,i}$, and $r_{\eta,i}$. For each group $G_g$ in which
@@ -678,22 +583,18 @@ checks that every element containing only $\alpha$ and $x$ remains unchanged. Th
 second-phase check verifies both direct multiplication by a share and
 multiplication by its inverse where required [14].
 
-Each proof is bound to the protocol and contract versions, ceremony identifier,
-phase, required parameter updates, sequence number, previous and new state
-digests, capacity and layout identifiers, the subcircuit-library digest when
-present, and the parameter label. These bindings prevent an otherwise valid
-proof from being replayed for another state, source binding, phase, parameter
-set, or subcircuit library.
+Each proof is bound to its phase, predecessor and successor states, declared
+update, and relevant public inputs. These bindings prevent an otherwise valid
+proof from being replayed in a different state chain, phase, or specialization
+context. The implementation contract defines the exact bound fields [14].
 
-Each state is authenticated by a digest of its contents, and each transition
-names its predecessor. Verification recomputes every transition and phase
-selection rather than treating an external index as authority. The transcript
-records the selected sequence from each phase, receipt digests, each
-contribution's recorded randomness classification, the number of qualifying
-receipts, the source artifact, and the canonical subcircuit library.
-Finalization reconstructs that transcript, accepts only a selected second-phase
-state with a `random` or `hybrid` receipt, and records the SHA-256 digests of the
-transcript and final artifacts [14].
+Each state is authenticated by its contents, and each transition names its
+predecessor. Verification recomputes every transition and phase selection rather
+than treating an external index as authority. The transcript records the source,
+the ordered updates and selected state in each phase, and the canonical
+subcircuit library. Finalization reconstructs that record, accepts only a
+qualifying selected second-phase state, and binds the final artifacts to the
+transcript [14].
 
 Hashes and pairing checks establish integrity within their assumptions. They do
 not show that a participant's local entropy was unpredictable, that no copy of a
@@ -701,88 +602,81 @@ share exists, or that an artifact will remain available.
 
 ## 10. Trust and Security Analysis
 
-### 10.1 What an honest contribution provides
+### 10.1 Security objective and assumptions
 
-At the algebraic level, a product remains unknown to observers who know every
-other factor when at least one nonzero factor is independently unpredictable and
-not disclosed, assuming discrete logarithms remain hard. This is the purpose of
-sequential contribution. The stronger statement that this condition proves
-knowledge soundness for the exact combination of Tokamak's SNARK and this MPC is
-not available: the proofs in [3, 5] apply to the constructions specified in
-those papers, and the analysis in [6] begins with a CRS generated from six
-independently sampled secrets.
+The target property is update knowledge soundness in the ceremonial game
+described in Section 3.5 [5, Definition 5]. The source history, the first phase,
+and the second phase are the protected setup components in this instantiation.
+The desired conclusion is that, after an honest update in each component, an
+efficient generic-group adversary that observes and participates in the entire
+ceremony cannot produce an accepted final proof without enabling extraction of
+a valid witness, except with negligible probability.
 
-One contributor in a phase can supply its unknown factors if that person uses
-unpredictable randomness, discloses nothing, and erases every share. Multiple
-contributors provide redundancy against compromise. The same person may
-contribute to both phases and leave an unknown share in both, but compromise or
-failed erasure by that person can remove this protection from both phases.
+This objective assumes that the source satisfies its stated group and update
+conditions, that at least one update in every protected component uses an
+independently unpredictable nonzero share that remains undisclosed and is
+erased, and that the group and hash primitives meet their stated security
+assumptions. The update-proof arguments cited from [5] operate in the
+random-oracle model. Public transition verification establishes none of the
+randomness, non-disclosure, or erasure assumptions.
 
-### 10.2 Effect of disclosed parameters
+### 10.2 Result of applying the cited model
 
-| Protected values | Required secrecy | What current evidence supports if the values are exposed |
-|---|---|---|
-| $\alpha$, $x$ derived from the source sequence | At least one contribution to the source sequence remains unknown and was erased | Exposure of source $\tau$ reveals both $x=\tau$ and $\alpha=\tau^{2N}$. Even without exposure, this related pair is not proved to have the same security as independent sampling. |
-| $y$ added by Tokamak contributors | At least one Tokamak share for $y$ remains unknown and was erased | Exposure reveals $y$ but does not by itself reveal source $\tau$. The source ceremony never replaces this contribution. |
-| $\gamma$, $\delta$, $\eta$ | At least one corresponding share from the second phase remains unknown and was erased | The affected scalar is known and the CRS no longer satisfies the independent-sampling assumption in [6]. The literature does not prove the exact forgery consequence of exposing each parameter separately. |
+The reviewed results do not establish update knowledge soundness for the
+completed Tokamak CRS. Jang and Judd's setup samples the six trapdoors
+independently, and their generic-group extraction argument separates the
+corresponding formal variables [6, Equation 21 and Appendix D]. The source
+transformation used here instead sets $x=\tau$ and $\alpha=\tau^{2N}$. It
+therefore imposes an algebraic relation between variables that the cited
+extraction argument treats as independent, while the adversary also retains the
+complete public source sequence in its view.
 
-Disclosure of $\gamma$, $\delta$, and $\eta$ does not compute $\alpha$, $x$, or $y$
-through the implemented update and does not change whether the source,
-subcircuit library, transitions, transcript, or artifact digests verify. It does
-mean that the second phase no longer contains an unknown contribution. The
-security proofs in [3, 5] and the analysis in [6] of a setup with six hidden
-scalars therefore cannot be applied to that CRS. Current evidence does not
-justify saying either that such disclosure is harmless or that it automatically
-compromises every property of the CRS.
+No theorem in [3, 5, 6] shows that this related-parameter setup can be reduced to
+the independently sampled setup analyzed in [6], nor does the Groth16 result in
+[5, Theorem 5] cover Tokamak's verifier equations. Distinct source exponents
+and valid public transitions establish representation and consistency, but do
+not supply the missing extraction argument. This is an unresolved proof
+obligation, not a demonstrated attack: the available evidence proves neither
+update knowledge soundness nor its failure for the completed construction.
 
-### 10.3 Malicious behavior and operational limits
+### 10.3 Honest updates and public verification
 
-Public transition and transcript verification reject malformed points,
-inconsistent powers, partial updates, multiplication in the wrong direction,
-replay for a different type of contribution, changes to fixed elements,
-replacement of the source or subcircuit library, and changes to accepted
-artifacts. A successfully verified transcript is evidence that those public
-equations and identifiers are consistent [14].
+An honest update in each protected component is the trust premise of the
+adopted game. One contributor can supply such an update if its share meets the
+required randomness, secrecy, and erasure conditions. Additional contributors
+provide redundancy against compromise, while use of the same contributor in
+multiple components concentrates the operational risk. If every share
+protecting any component is known, the honest-update premise for that component
+is absent and the target security conclusion cannot be invoked.
 
-A contributor can still choose predictable nonzero randomness or retain a
-secret. An operator can censor, delay, withhold, or choose among otherwise valid
-chains that contain a `random` or `hybrid` receipt. Contributors and the operator
-can collude. Identity metadata, the receipt label, and algebraic checks cannot
-disprove these actions. If a coalition learns every share protecting a phase,
-that phase has no unknown contribution.
-
-Public checks can establish consistency among the selected encoded powers, but
-they do not establish that the hidden source scalar remains unknown. Secrecy of
-that scalar depends on the source ceremony, every inherited ceremony on which
-its result relies, and at least one source contributor's non-disclosure and
-erasure [3, 5, 9, 10].
+Public transition and transcript verification establish that accepted updates,
+fixed material, public inputs, and the ordered ceremony record are mutually
+consistent [14]. A malicious contributor may nevertheless use predictable
+randomness or retain a share, and an operator may censor, delay, withhold, or
+choose among otherwise valid chains. These actions are not disproved by
+identity metadata, receipt labels, hashes, or pairing checks. The checks retain
+their integrity and provenance meaning even when the honest-update premise is
+not satisfied; they do not replace that premise or resolve the extraction gap in
+Section 10.2.
 
 ## 11. Limitations
 
-The independent Tokamak contributions to $y$ avoid the $y=x^{e_y}$ relation and
-the resulting collapse of the bivariate opening conditions described in Section
-4. This does not resolve the distinct relationship between $\alpha$ and $x$ in
-the source mapping.
+The first phase supplies a polynomial dimension independently of the source and
+therefore avoids deriving both polynomial variables from one source scalar.
+However, the source transformation still relates two setup parameters that [6]
+samples independently. The cited extraction proof has not been extended to
+this distribution and the reviewed ceremonial results do not provide the
+missing reduction. Consequently, this document does not claim update knowledge
+soundness or production security for the completed source-derived CRS, and it
+does not claim that an attack has been established.
 
-References [3, 5, 6] do not provide a formal reduction showing that the Tokamak
-contribution equations produce the exact setup distribution required by the
-knowledge-soundness analysis in [6]. The largest explicit gap is the source
-mapping: $\alpha=\tau^{2N}$ and $x=\tau$ are algebraically related, whereas the
-setup in [6] samples them independently. The mapping provides and verifies all
-powers through the required finite degree, but those facts do not show that its
-parameters have the same distribution as independent samples.
-
-References [3, 5, 6] also do not isolate the precise forgery power gained by
-learning only one of $\alpha$, $x$, $y$, $\gamma$, $\delta$, or $\eta$ in Tokamak's
-SNARK. This document therefore reports which assumption about hidden values
-fails and which public checks still pass. It does not claim a specific attack or
-claim that any remaining security property is preserved.
-
-Tokamak requires at least one `random` or `hybrid` receipt in each phase before
-selection. Security separately assumes that at least one accepted share in each
-phase was unpredictable, remained undisclosed, and was erased. The protocol does
-not require multiple identities, independent organizations, hardware isolation,
-or public attestations.
+The analysis also does not characterize security after the honest-update
+premise fails. It makes no component-specific forgery claim and does not infer
+that any unproved security property is preserved. The protocol's selection
+policy requires a qualifying receipt in each Tokamak phase, but a receipt label
+does not prove unpredictable sampling, non-disclosure, or erasure. Multiple
+identities, independent organizations, hardware isolation, and public
+attestations are not protocol requirements.
 
 Finally, storing data under SHA-256 digests of its contents, using a specified
 byte encoding, checking pairing equations, and rechecking the transcript all
@@ -904,3 +798,4 @@ not by assuming that an existing ceremony proof applies unchanged.
 30. Bryan Parno, Jon Howell, Craig Gentry, and Mariana Raykova, [*Pinocchio: Nearly Practical Verifiable Computation*](https://doi.org/10.1109/SP.2013.47), IEEE Symposium on Security and Privacy 2013.
 31. Shumo Chu, Brandon H. Gomes, Francisco Hernández Iglesias, Todd Norton, and Duncan Tebbs, [*UniPlonK: PlonK with Universal Verifier*](https://eprint.iacr.org/2023/869), IACR ePrint 2023/869.
 32. Arka Rai Choudhuri, Sanjam Garg, Aarushi Goel, Sruthi Sekar, and Rohit Sinha, [*SublonK: Sublinear Prover PlonK*](https://doi.org/10.56553/popets-2024-0080), Proceedings on Privacy Enhancing Technologies 2024(3).
+33. Georg Fuchsbauer, Eike Kiltz, and Julian Loss, [*The Algebraic Group Model and its Applications*](https://doi.org/10.1007/978-3-319-96881-0_2), CRYPTO 2018.
