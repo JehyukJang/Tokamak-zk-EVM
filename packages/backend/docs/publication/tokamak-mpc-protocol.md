@@ -108,6 +108,14 @@ alone are insufficient: a sequence may be large enough and use the required
 curve while still imposing algebraic relationships that are incompatible with
 Tokamak's SNARK.
 
+We therefore define a two-phase protocol that begins with a selected univariate
+encoded-power sequence satisfying the required curve and exponent conditions.
+The first phase completes the reusable circuit-independent setup material; after
+public specialization to the committed subcircuit library, the second phase
+completes the CRS. This document analyzes the protocol's public verification
+guarantees, trust assumptions, and unresolved proof limitation; it does not
+claim knowledge soundness for the exact source-derived construction.
+
 ## 2. Background
 
 ### 2.1 Structured setup and powers of tau
