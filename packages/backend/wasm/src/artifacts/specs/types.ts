@@ -16,7 +16,10 @@ export type RuntimeArtifactFormatSpecName =
   | "prover_crs"
   | "prover_placement_variables"
   | "prover_selector"
-  | "prover_permutation";
+  | "prover_permutation"
+  | "univariate_preprocess_crs"
+  | "univariate_prover_crs"
+  | "univariate_verifier_crs";
 
 export interface RuntimeArtifactSectionSpec {
   readonly label: string;

@@ -1,6 +1,7 @@
 import { BackendWasmError } from "../backend-wasm-error.js";
 import { inspectBinary as inspectBinaryInternal } from "./conversion/binary-inspection.js";
 import { convertCrs as convertCrsInternal } from "./conversion/crs-converter.js";
+import { convertUnivariateCrs as convertUnivariateCrsInternal } from "./conversion/univariate-crs-converter.js";
 import { convertInstance as convertInstanceInternal } from "./conversion/instance-converter.js";
 import { convertPermutation as convertPermutationInternal } from "./conversion/permutation-converter.js";
 import { convertProof as convertProofInternal } from "./conversion/proof-converter.js";
@@ -62,6 +63,11 @@ export function convertCrs(
   provenance: CrsProvenanceInput,
 ): Promise<ConvertedCrs> {
   return runConverter("convertCrs", () => convertCrsInternal(rkyvBytes, provenance));
+}
+
+/** Converts the new native U18--U21 CRS JSON projection into browser artifacts. */
+export function convertUnivariateCrs(crs: unknown): Promise<ConvertedCrs> {
+  return runConverter("convertUnivariateCrs", () => convertUnivariateCrsInternal(crs));
 }
 
 export function convertPermutation(permutation: unknown): Promise<Uint8Array> {

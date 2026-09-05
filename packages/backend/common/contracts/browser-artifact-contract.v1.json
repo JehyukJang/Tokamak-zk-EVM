@@ -10,7 +10,10 @@
     "prover_crs": 6,
     "preprocess_crs": 7,
     "prover_selector": 8,
-    "prover_permutation": 9
+    "prover_permutation": 9,
+    "univariate_preprocess_crs": 10,
+    "univariate_prover_crs": 11,
+    "univariate_verifier_crs": 12
   },
   "combinedSigmaPayload": {
     "magic": "TKCRS001",
@@ -74,6 +77,36 @@
       "sections": [
         {"label": "sigma1.xy-powers", "type": "CrsG1", "encoding": "ffjs-g1-affine-96", "elementCount": null, "elementByteLength": null, "points": []},
         {"label": "sigma1.gamma-inv-o-inst", "type": "CrsG1", "encoding": "ffjs-g1-affine-96", "elementCount": null, "elementByteLength": null, "points": []}
+      ]
+    },
+    {
+      "name": "univariate_preprocess_crs",
+      "sections": [
+        {"label": "crs.kzg-powers", "type": "CrsG1", "encoding": "ffjs-g1-affine-96", "elementCount": null, "elementByteLength": null, "points": []}
+      ]
+    },
+    {
+      "name": "univariate_prover_crs",
+      "sections": [
+        {"label": "crs.kzg-powers", "type": "CrsG1", "encoding": "ffjs-g1-affine-96", "elementCount": null, "elementByteLength": null, "points": []},
+        {"label": "crs.interface-query-keys", "type": "CrsMetadata", "encoding": "bytes", "elementCount": null, "elementByteLength": 12, "points": []},
+        {"label": "crs.interface-queries", "type": "CrsG1", "encoding": "ffjs-g1-affine-96", "elementCount": null, "elementByteLength": null, "points": []},
+        {"label": "crs.internal-query-keys", "type": "CrsMetadata", "encoding": "bytes", "elementCount": null, "elementByteLength": 12, "points": []},
+        {"label": "crs.internal-queries", "type": "CrsG1", "encoding": "ffjs-g1-affine-96", "elementCount": null, "elementByteLength": null, "points": []},
+        {"label": "crs.arithmetic-mask-1", "type": "CrsG1", "encoding": "ffjs-g1-affine-96", "elementCount": null, "elementByteLength": null, "points": []},
+        {"label": "crs.arithmetic-mask-2", "type": "CrsG1", "encoding": "ffjs-g1-affine-96", "elementCount": null, "elementByteLength": null, "points": []},
+        {"label": "crs.arithmetic-mask-3", "type": "CrsG1", "encoding": "ffjs-g1-affine-96", "elementCount": null, "elementByteLength": null, "points": []},
+        {"label": "crs.connection-mask", "type": "CrsG1", "encoding": "ffjs-g1-affine-96", "elementCount": null, "elementByteLength": null, "points": []},
+        {"label": "crs.binding-sources", "type": "CrsG1", "encoding": "ffjs-g1-affine-96", "elementCount": 2, "elementByteLength": null, "points": [{"index": 0, "name": "delta"}, {"index": 1, "name": "eta"}]}
+      ]
+    },
+    {
+      "name": "univariate_verifier_crs",
+      "sections": [
+        {"label": "crs.g1-generator", "type": "CrsG1", "encoding": "ffjs-g1-affine-96", "elementCount": 1, "elementByteLength": null, "points": [{"index": 0, "name": "one"}]},
+        {"label": "crs.public-query-keys", "type": "CrsMetadata", "encoding": "bytes", "elementCount": null, "elementByteLength": 8, "points": []},
+        {"label": "crs.public-queries", "type": "CrsG1", "encoding": "ffjs-g1-affine-96", "elementCount": null, "elementByteLength": null, "points": []},
+        {"label": "crs.g2", "type": "CrsG2", "encoding": "ffjs-g2-affine-192", "elementCount": 9, "elementByteLength": null, "points": [{"index": 0, "name": "one"}, {"index": 1, "name": "tau"}, {"index": 2, "name": "alpha"}, {"index": 3, "name": "alpha2"}, {"index": 4, "name": "alpha3"}, {"index": 5, "name": "alpha4"}, {"index": 6, "name": "gamma"}, {"index": 7, "name": "eta"}, {"index": 8, "name": "delta"}]}
       ]
     }
   ]

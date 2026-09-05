@@ -80,7 +80,7 @@
     "typecheck:development": "npm run contracts:check && npm run subcircuit-library:check:development && npm run verifier-crs:check:development && tsc -p tsconfig.json --pretty false --noEmit",
     "typecheck:production": "npm run contracts:check && npm run subcircuit-library:check:production && npm run verifier-crs:check:production && tsc -p tsconfig.json --pretty false --noEmit",
     "typecheck:scripts": "tsc -p tsconfig.dev.json --pretty false",
-    "binary:check": "npm run contracts:check && tsx test/checks/binary/check-binary-artifacts.ts && tsx test/checks/binary/check-artifact-contract-closure.ts && tsx test/checks/binary/check-instance-conversion.ts && tsx test/checks/binary/check-selector-conversion.ts && tsx test/checks/binary/check-proof-reverse-conversion.ts && tsx test/checks/binary/check-crs-conversion.ts && tsx test/checks/binary/check-compatibility.ts",
+    "binary:check": "npm run contracts:check && tsx test/checks/binary/check-binary-artifacts.ts && tsx test/checks/binary/check-artifact-contract-closure.ts && tsx test/checks/binary/check-instance-conversion.ts && tsx test/checks/binary/check-selector-conversion.ts && tsx test/checks/binary/check-proof-reverse-conversion.ts && tsx test/checks/binary/check-crs-conversion.ts && tsx test/checks/binary/check-univariate-crs-conversion.ts && tsx test/checks/binary/check-compatibility.ts",
     "univariate:domain:check": "npm run contracts:check && tsx test/checks/univariate/check-univariate-domain.ts",
     "univariate:relation:check": "npm run contracts:check && tsx test/checks/univariate/check-univariate-relation.ts",
     "architecture:check": "tsx test/checks/architecture/check-layering.ts",

@@ -19,6 +19,9 @@ export enum BinaryArtifactFileKind {
   PreprocessCrs = 7,
   ProverSelector = 8,
   ProverPermutation = 9,
+  UnivariatePreprocessCrs = 10,
+  UnivariateProverCrs = 11,
+  UnivariateVerifierCrs = 12,
 }
 
 export const BINARY_SELF_DIGEST_ENTRY_TYPE = 1;
@@ -38,6 +41,7 @@ export enum BinarySectionType {
   Permutation = 9,
   CrsG1 = 11,
   CrsG2 = 12,
+  CrsMetadata = 13,
 }
 
 export interface BinarySectionInput {
