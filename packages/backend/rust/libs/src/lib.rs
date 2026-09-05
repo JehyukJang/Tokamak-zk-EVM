@@ -24,6 +24,7 @@ pub mod subcircuit_library;
 #[path = "../../../common/contracts/rust/subcircuit_source_digest.rs"]
 pub mod subcircuit_source_digest;
 pub mod univariate_crs;
+pub mod univariate_preprocess;
 pub mod univariate_relation;
 pub mod utils;
 pub mod vector_operations;

@@ -1,18 +1,17 @@
 use clap::Parser;
 use libs::cli::render_error;
 use libs::errors::{ArtifactError, CrsError};
-use std::fs::File;
+use std::fs::{self, File};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use libs::crs_artifacts::SigmaPreprocessRkyv;
-use libs::frontend_artifacts::{Instance, Permutation};
-use libs::subcircuit_library::{
-    validate_operational_crs_compatibility, DevelopmentCrsProvenanceArg, SubcircuitLibraryArg,
-};
+use libs::crs_artifacts::{read_univariate_crs_artifact, UNIVARIATE_CRS_RKYV_FILE_NAME};
+use libs::frontend_artifacts::public_wire_layout::{read_global_wires, PublicWireLayout};
+use libs::frontend_artifacts::{Permutation, SubcircuitInfo};
+use libs::r1cs::SubcircuitR1CS;
+use libs::subcircuit_library::SubcircuitLibraryArg;
 use libs::utils::{try_check_device, try_load_setup_params_from_qap_path};
-use memmap2::Mmap;
-use preprocess::{generate_preprocess, PreprocessError, PreprocessInputPaths};
+use preprocess::{generate_univariate_preprocess, PreprocessError, PreprocessInputPaths};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -20,14 +19,11 @@ struct Config {
     #[command(flatten)]
     subcircuit_library: SubcircuitLibraryArg,
 
-    #[command(flatten)]
-    development_crs_provenance: DevelopmentCrsProvenanceArg,
-
-    /// CRS output directory containing sigma_preprocess.rkyv
+    /// CRS output directory containing univariate_crs.rkyv
     #[arg(long, value_name = "PATH")]
     crs: String,
 
-    /// Synthesizer output directory containing instance and permutation JSON files
+    /// Synthesizer output directory containing selector.json and permutation.json
     #[arg(long, value_name = "PATH")]
     synthesizer_stat: String,
 
@@ -62,11 +58,6 @@ fn run() -> Result<(), PreprocessError> {
     let qap_library_path = libs::subcircuit_library::try_resolve_subcircuit_library_path(
         config.subcircuit_library.as_deref(),
     )?;
-    validate_operational_crs_compatibility(
-        &config.development_crs_provenance,
-        PathBuf::from(&config.crs).as_path(),
-        qap_library_path.as_path(),
-    )?;
     let qap_path = qap_library_path.to_string_lossy().into_owned();
 
     let paths = PreprocessInputPaths {
@@ -79,21 +70,61 @@ fn run() -> Result<(), PreprocessError> {
     try_check_device()?;
 
     let setup_params = try_load_setup_params_from_qap_path(paths.qap_path)?;
-    let sigma_path = PathBuf::from(paths.setup_path).join("sigma_preprocess.rkyv");
-    let file = File::open(&sigma_path).map_err(|source| CrsError::Read {
-        path: sigma_path.clone(),
-        source,
-    })?;
-    let mmap = unsafe { Mmap::map(&file) }.map_err(|error| CrsError::Invalid {
-        path: sigma_path.clone(),
-        reason: format!("failed to memory-map archive: {error}"),
-    })?;
-    let sigma = rkyv::check_archived_root::<SigmaPreprocessRkyv>(&mmap).map_err(|error| {
-        CrsError::Invalid {
-            path: sigma_path,
-            reason: format!("invalid rkyv archive: {error}"),
-        }
-    })?;
+    let subcircuit_infos_path = PathBuf::from(paths.qap_path).join("subcircuitInfo.json");
+    let subcircuit_infos = SubcircuitInfo::read_box_from_json(subcircuit_infos_path.clone())
+        .map_err(|source| ArtifactError::Read {
+            artifact: "subcircuit information",
+            path: subcircuit_infos_path,
+            source,
+        })?;
+    let global_wire_list_path = PathBuf::from(paths.qap_path).join("globalWireList.json");
+    let global_wires =
+        read_global_wires(&global_wire_list_path).map_err(|source| ArtifactError::Read {
+            artifact: "global wire list",
+            path: global_wire_list_path.clone(),
+            source,
+        })?;
+    let public_wire_layout =
+        PublicWireLayout::derive(&setup_params, &global_wires, &subcircuit_infos).map_err(
+            |error| ArtifactError::Invalid {
+                artifact: "public wire layout",
+                path: global_wire_list_path,
+                reason: error.to_string(),
+            },
+        )?;
+    let r1cs = subcircuit_infos
+        .iter()
+        .enumerate()
+        .map(|(index, info)| {
+            if info.id != index {
+                return Err(ArtifactError::Invalid {
+                    artifact: "subcircuit information",
+                    path: PathBuf::from(paths.qap_path).join("subcircuitInfo.json"),
+                    reason: format!("catalog entry {index} declares subcircuit ID {}", info.id),
+                });
+            }
+            let path = PathBuf::from(paths.qap_path).join(format!("r1cs/subcircuit{index}.r1cs"));
+            SubcircuitR1CS::from_r1cs_sparse_only(path.clone(), &setup_params, info).map_err(
+                |source| ArtifactError::Read {
+                    artifact: "subcircuit R1CS",
+                    path,
+                    source,
+                },
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let subcircuits = r1cs
+        .iter()
+        .zip(subcircuit_infos.iter())
+        .map(|(r1cs, info)| r1cs.as_univariate_subcircuit(info))
+        .collect::<Vec<_>>();
+    let crs_path = PathBuf::from(paths.setup_path).join(UNIVARIATE_CRS_RKYV_FILE_NAME);
+    let crs =
+        read_univariate_crs_artifact(&crs_path, &setup_params, &public_wire_layout, &subcircuits)
+            .map_err(|source| CrsError::Read {
+            path: crs_path,
+            source,
+        })?;
 
     let permutation_path = PathBuf::from(paths.synthesizer_path).join("permutation.json");
     let permutation_raw =
@@ -104,27 +135,60 @@ fn run() -> Result<(), PreprocessError> {
                 source,
             }
         })?;
-    let instance_path = PathBuf::from(paths.synthesizer_path).join("instance.json");
-    let instance =
-        Instance::read_from_json(instance_path.clone()).map_err(|source| ArtifactError::Read {
-            artifact: "public instance",
-            path: instance_path,
+    let selector_path = PathBuf::from(paths.synthesizer_path).join("selector.json");
+    let selector =
+        read_selector(&selector_path, setup_params.s_D).map_err(|source| ArtifactError::Read {
+            artifact: "placement selector",
+            path: selector_path,
             source,
         })?;
-    let preprocess = generate_preprocess(&sigma, &permutation_raw, &instance, &setup_params)
-        .map_err(|reason| ArtifactError::Invalid {
-            artifact: "preprocess frontend input",
-            path: PathBuf::from(paths.synthesizer_path),
-            reason,
-        })?;
-    let formatted_preprocess = preprocess.convert_format_for_solidity_verifier();
+    let preprocess =
+        generate_univariate_preprocess(&crs, &selector, &permutation_raw, &setup_params).map_err(
+            |reason| ArtifactError::Invalid {
+                artifact: "preprocess frontend input",
+                path: PathBuf::from(paths.synthesizer_path),
+                reason: reason.to_string(),
+            },
+        )?;
     let output_path = PathBuf::from(paths.output_path).join("preprocess.json");
-    formatted_preprocess
-        .write_into_json(output_path.clone())
-        .map_err(|source| PreprocessError::WriteOutput {
-            path: output_path,
-            source,
+    let output =
+        serde_json::to_vec_pretty(&preprocess).map_err(|source| PreprocessError::WriteOutput {
+            path: output_path.clone(),
+            source: std::io::Error::other(source),
         })?;
+    fs::create_dir_all(PathBuf::from(paths.output_path)).map_err(|source| {
+        PreprocessError::WriteOutput {
+            path: PathBuf::from(paths.output_path),
+            source,
+        }
+    })?;
+    fs::write(&output_path, output).map_err(|source| PreprocessError::WriteOutput {
+        path: output_path,
+        source,
+    })?;
 
     Ok(())
+}
+
+fn read_selector(
+    path: &std::path::Path,
+    subcircuit_count: usize,
+) -> std::io::Result<Vec<Option<usize>>> {
+    const INACTIVE_SELECTOR_ENTRY: u32 = u32::MAX;
+    let values: Vec<u32> = serde_json::from_reader(File::open(path)?)?;
+    values
+        .into_iter()
+        .map(|value| {
+            if value == INACTIVE_SELECTOR_ENTRY {
+                return Ok(None);
+            }
+            let subcircuit_id = value as usize;
+            if subcircuit_id >= subcircuit_count {
+                return Err(std::io::Error::other(format!(
+                    "selector entry {value} is outside the {subcircuit_count}-entry subcircuit catalog"
+                )));
+            }
+            Ok(Some(subcircuit_id))
+        })
+        .collect()
 }

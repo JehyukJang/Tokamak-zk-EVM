@@ -2121,6 +2121,8 @@ name = "preprocess"
 version = "2.1.5"
 dependencies = [
  "clap 4.5.53",
+ "icicle-bls12-381",
+ "icicle-core",
  "libs",
  "memmap2",
  "rkyv",

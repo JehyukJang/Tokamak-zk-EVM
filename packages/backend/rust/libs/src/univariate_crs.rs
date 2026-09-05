@@ -45,6 +45,8 @@ pub enum UnivariateCrsError {
     TauSamplingExhausted,
     #[error("failed to allocate {length} ordinary KZG powers")]
     PowerAllocation { length: usize },
+    #[error("polynomial commitment needs {actual} KZG powers, but the CRS has {available}")]
+    CommitmentDegree { actual: usize, available: usize },
     #[error("subcircuit catalog has {actual} entries, expected {expected}")]
     SubcircuitCatalog { actual: usize, expected: usize },
     #[error("subcircuit catalog entry {index} declares ID {actual}")]
@@ -646,6 +648,61 @@ impl UnivariateCrs {
             delta_g1: self.delta_g1,
             eta_g1: self.eta_g1,
         }
+    }
+
+    /// Commits a dense univariate polynomial with the ordinary U18 KZG
+    /// powers.  The temporary affine-base vector is bounded by the supplied
+    /// polynomial, not by the complete CRS degree capacity.
+    pub fn commit_dense_polynomial(
+        &self,
+        coefficients: &[ScalarField],
+    ) -> Result<G1serde, UnivariateCrsError> {
+        self.commit_indexed_coefficients(coefficients.iter().copied().enumerate())
+    }
+
+    /// Commits a strided selector without expanding its zero coefficients.
+    pub fn commit_strided_polynomial(
+        &self,
+        polynomial: &crate::univariate_relation::StridedPolynomial,
+    ) -> Result<G1serde, UnivariateCrsError> {
+        self.commit_indexed_coefficients(
+            polynomial
+                .coefficients
+                .iter()
+                .copied()
+                .enumerate()
+                .map(|(index, coefficient)| {
+                    index
+                        .checked_mul(polynomial.stride)
+                        .ok_or(UnivariateCrsError::CapacityOverflow {
+                            name: "strided KZG commitment index",
+                        })
+                        .map(|power| (power, coefficient))
+                })
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter(),
+        )
+    }
+
+    fn commit_indexed_coefficients(
+        &self,
+        coefficients: impl IntoIterator<Item = (usize, ScalarField)>,
+    ) -> Result<G1serde, UnivariateCrsError> {
+        let pairs = coefficients.into_iter().collect::<Vec<_>>();
+        let available = self.foundation.tau_powers_g1.len();
+        let highest_power = pairs.iter().map(|(power, _)| *power).max();
+        if highest_power.is_some_and(|power| power >= available) {
+            return Err(UnivariateCrsError::CommitmentDegree {
+                actual: highest_power.unwrap_or_default().saturating_add(1),
+                available,
+            });
+        }
+        let scalars = pairs.iter().map(|(_, scalar)| *scalar).collect::<Vec<_>>();
+        let bases = pairs
+            .iter()
+            .map(|(power, _)| self.foundation.tau_powers_g1[*power].0)
+            .collect::<Vec<_>>();
+        Ok(crate::group_structures::msm_g1_bases(&scalars, &bases))
     }
 }
 
