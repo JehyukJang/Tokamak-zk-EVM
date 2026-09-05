@@ -144,7 +144,6 @@ npm run prover:ops:check
 npm run prover:witness:check
 npm run verifier:check
 npm run preprocess:public-api:check
-npm run preprocess:browser:check
 npm run prover:check
 npm run verifier:browser:check
 npm run prover:browser:check

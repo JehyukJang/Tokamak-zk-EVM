@@ -1,16 +1,15 @@
 import { createBinaryArtifactFile } from "../../artifacts/binary/binary-artifact-file.js";
-import { VERIFIER_PREPROCESS_V1_SPEC } from "../../generated/browser-artifact-contracts.generated.js";
+import { UNIVARIATE_VERIFIER_PREPROCESS_V1_SPEC } from "../../generated/browser-artifact-contracts.generated.js";
 import type { CurveRuntime } from "../../runtime/curve/curve.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
 
 export async function createPreprocessOutput(
   runtime: CurveRuntime,
-  s0: Uint8Array,
-  s1: Uint8Array,
-  oPubFix: Uint8Array,
+  sKappa: Uint8Array,
+  sC: Uint8Array,
 ): Promise<Uint8Array> {
-  const [section] = VERIFIER_PREPROCESS_V1_SPEC.sections;
-  const pointsByName: Readonly<Record<string, Uint8Array>> = { s0, s1, O_pub_fix: oPubFix };
+  const [section] = UNIVARIATE_VERIFIER_PREPROCESS_V1_SPEC.sections;
+  const pointsByName: Readonly<Record<string, Uint8Array>> = { S_kappa: sKappa, S_C: sC };
   const points = section.points.map((point) => {
     const value = pointsByName[point.name];
     if (value === undefined) {
@@ -27,7 +26,7 @@ export async function createPreprocessOutput(
   }
 
   return createBinaryArtifactFile({
-    kind: VERIFIER_PREPROCESS_V1_SPEC.kind,
+    kind: UNIVARIATE_VERIFIER_PREPROCESS_V1_SPEC.kind,
     sourcePackageVersion: BACKEND_WASM_PACKAGE_VERSION,
     sections: [
       {

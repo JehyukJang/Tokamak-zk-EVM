@@ -54,13 +54,13 @@ export async function preprocess(input: PreprocessInput): Promise<Uint8Array> {
     throw new BackendWasmError('BUSY', 'Preprocess is already running.');
   }
 
-  assertNamedBinaryInput(input, 'Preprocess', ['permutation', 'instance', 'preprocessCrs']);
+  assertNamedBinaryInput(input, 'Preprocess', ['selector', 'permutation', 'preprocessCrs']);
   busy = true;
 
   try {
     let runtimeInput;
     try {
-      runtimeInput = await loadPreprocessInputFromBinaryInput(installedRuntime, input);
+      runtimeInput = await loadPreprocessInputFromBinaryInput(input);
     } catch (cause) {
       throw new BackendWasmError('INVALID_INPUT', 'The preprocess input binaries could not be decoded.', { cause });
     }
@@ -69,7 +69,7 @@ export async function preprocess(input: PreprocessInput): Promise<Uint8Array> {
       const output = await preprocessSnark(installedRuntime, runtimeInput, {
         denseMsmChunkPoints: 2 ** chunkSizeExponent,
       });
-      return await createPreprocessOutput(installedRuntime, output.s0, output.s1, output.oPubFix);
+      return await createPreprocessOutput(installedRuntime, output.sKappa, output.sC);
     } catch (cause) {
       throw new BackendWasmError('RUNTIME_FAILED', 'The preprocess runtime failed.', {
         cause,
