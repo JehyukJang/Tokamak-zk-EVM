@@ -38,7 +38,11 @@ pub fn validate_source_digest(value: &str) -> Result<(), String> {
             "subcircuit source digest must use {SOURCE_DIGEST_PREFIX}<64 lowercase hexadecimal characters>"
         ));
     };
-    if hex.len() != 64 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()) {
+    if hex.len() != 64
+        || !hex
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
         return Err(format!(
             "subcircuit source digest must use {SOURCE_DIGEST_PREFIX}<64 lowercase hexadecimal characters>"
         ));
@@ -51,7 +55,9 @@ fn validate_path(path: &[u8]) -> Result<(), String> {
         .map_err(|_| "subcircuit source digest path must be valid UTF-8".to_string())?;
     if !path.starts_with("subcircuits/")
         || path.contains('\\')
-        || path.split('/').any(|segment| segment.is_empty() || segment == "." || segment == "..")
+        || path
+            .split('/')
+            .any(|segment| segment.is_empty() || segment == "." || segment == "..")
     {
         return Err(format!(
             "subcircuit source digest path must be a package-relative POSIX path below subcircuits/: {path:?}"
@@ -85,14 +91,19 @@ mod tests {
         let expected = vector["expected"].as_str().unwrap();
         assert_eq!(
             digest_subcircuit_source_entries(
-                entries.iter().map(|(path, content)| (path.as_str(), content.as_slice()))
+                entries
+                    .iter()
+                    .map(|(path, content)| (path.as_str(), content.as_slice()))
             )
             .unwrap(),
             expected
         );
         assert_eq!(
             digest_subcircuit_source_entries(
-                entries.iter().rev().map(|(path, content)| (path.as_str(), content.as_slice()))
+                entries
+                    .iter()
+                    .rev()
+                    .map(|(path, content)| (path.as_str(), content.as_slice()))
             )
             .unwrap(),
             expected

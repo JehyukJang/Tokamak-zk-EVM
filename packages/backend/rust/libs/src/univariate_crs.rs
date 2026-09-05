@@ -744,7 +744,7 @@ mod tests {
         UnivariateSubcircuit, UnivariateTrapdoor, UNIVARIATE_CRS_SCHEMA_ID,
     };
     use crate::crs_artifacts::{
-        read_univariate_crs_artifact, write_univariate_crs_artifacts,
+        read_univariate_crs_artifact, write_univariate_crs_artifacts, UnivariateCrsRkyvExt,
         UNIVARIATE_CRS_JSON_FILE_NAME, UNIVARIATE_CRS_RKYV_FILE_NAME,
     };
     use crate::frontend_artifacts::public_wire_layout::{GlobalWire, PublicWireLayout};
@@ -992,9 +992,21 @@ mod tests {
             &output.path().join(UNIVARIATE_CRS_RKYV_FILE_NAME),
             &setup,
             &public_layout,
+            &subcircuits,
         )
         .expect("a matching univariate CRS archive must load");
         assert_eq!(loaded, crs);
+        let mut archive = UnivariateCrsRkyv::from_univariate_crs(&crs);
+        archive.eta_inv_interface_queries[0].placement_index = 1;
+        let bytes = rkyv::to_bytes::<_, 256>(&archive).expect("archive must serialize");
+        let path = output.path().join(UNIVARIATE_CRS_RKYV_FILE_NAME);
+        std::fs::write(&path, bytes.as_ref()).expect("must write malformed CRS archive");
+
+        let error = read_univariate_crs_artifact(&path, &setup, &public_layout, &subcircuits)
+            .expect_err("the reader must reject an altered query label");
+        assert!(error
+            .to_string()
+            .contains("interface-query range does not match"));
     }
 
     #[test]

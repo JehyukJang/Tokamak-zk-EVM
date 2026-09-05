@@ -40,17 +40,14 @@ fn prepare_fixture(
     }
 
     let provenance_path = workspace.path().join("crs_provenance.json");
-    let mut provenance: Value = serde_json::from_slice(
-        &fs::read(&provenance_path).expect("must read copied provenance"),
-    )
-    .expect("must parse copied provenance");
+    let mut provenance: Value =
+        serde_json::from_slice(&fs::read(&provenance_path).expect("must read copied provenance"))
+            .expect("must parse copied provenance");
     provenance["compatibleBackendVersion"] = Value::String(compatible_version.to_string());
     provenance["subcircuitLibrary"]["packageName"] =
         Value::String("@tokamak-zk-evm/subcircuit-library".to_string());
-    provenance["subcircuitLibrary"]["packageVersion"] =
-        Value::String(package_version.to_string());
-    provenance["subcircuitLibrary"]["sourceDigest"] =
-        Value::String(source_digest.to_string());
+    provenance["subcircuitLibrary"]["packageVersion"] = Value::String(package_version.to_string());
+    provenance["subcircuitLibrary"]["sourceDigest"] = Value::String(source_digest.to_string());
     fs::write(
         provenance_path,
         serde_json::to_vec_pretty(&provenance).expect("must serialize current identity fixture"),

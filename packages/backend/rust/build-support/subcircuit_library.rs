@@ -8,8 +8,6 @@ mod cargo_env;
 mod generated;
 #[path = "../../common/contracts/rust/input_origin.rs"]
 mod input_origin_contract;
-#[path = "../../common/contracts/rust/subcircuit_source_digest.rs"]
-mod subcircuit_source_digest;
 #[path = "subcircuit_library/integrity.rs"]
 mod integrity;
 #[path = "subcircuit_library/local_qap.rs"]
@@ -18,6 +16,8 @@ mod local_qap;
 mod npm_snapshot;
 #[path = "subcircuit_library/source_selection.rs"]
 mod source_selection;
+#[path = "../../common/contracts/rust/subcircuit_source_digest.rs"]
+mod subcircuit_source_digest;
 #[path = "subcircuit_library/types.rs"]
 mod types;
 #[path = "../../../../versioning/compatibility.rs"]

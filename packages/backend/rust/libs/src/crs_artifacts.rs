@@ -13,6 +13,7 @@ use crate::timing::{record as record_timing, SizeInfo};
 use crate::univariate_crs::{
     UnivariateCrs, UnivariateCrsShape, UnivariatePublicQuery, UnivariateTaggedQuery,
 };
+use crate::univariate_relation::UnivariateSubcircuit;
 use crate::vector_operations::resize;
 pub use backend_interface::{
     ArchivedG1SerdeRkyv, ArchivedG2SerdeRkyv, ArchivedPartialSigma1Rkyv, ArchivedSigma1Rkyv,
@@ -101,6 +102,7 @@ pub fn read_univariate_crs_artifact(
     path: &Path,
     setup: &SetupParams,
     public_wire_layout: &PublicWireLayout,
+    subcircuits: &[UnivariateSubcircuit<'_>],
 ) -> io::Result<UnivariateCrs> {
     let bytes = fs::read(path)?;
     let archive = rkyv::check_archived_root::<UnivariateCrsRkyv>(&bytes).map_err(|error| {
@@ -110,7 +112,13 @@ pub fn read_univariate_crs_artifact(
         )
     })?;
     let expected_shape = UnivariateCrsShape::from_setup_params(setup).map_err(io::Error::other)?;
-    validate_univariate_archive_metadata(archive, &expected_shape, public_wire_layout)?;
+    validate_univariate_archive_metadata(
+        archive,
+        setup,
+        &expected_shape,
+        public_wire_layout,
+        subcircuits,
+    )?;
 
     let public_queries = archive
         .gamma_inv_public_queries
@@ -183,8 +191,10 @@ pub fn read_univariate_crs_artifact(
 
 fn validate_univariate_archive_metadata(
     archive: &ArchivedUnivariateCrsRkyv,
+    setup: &SetupParams,
     expected_shape: &UnivariateCrsShape,
     public_wire_layout: &PublicWireLayout,
+    subcircuits: &[UnivariateSubcircuit<'_>],
 ) -> io::Result<()> {
     if archive.schema_id.as_str() != crate::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID {
         return Err(io::Error::new(
@@ -245,6 +255,81 @@ fn validate_univariate_archive_metadata(
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "univariate CRS masking-query counts do not match its shape",
+        ));
+    }
+    validate_tagged_query_layout(
+        archive,
+        setup,
+        subcircuits,
+        |global_wire_index| global_wire_index >= setup.l && global_wire_index < setup.l_D,
+        |archive| &archive.eta_inv_interface_queries,
+        "interface",
+    )?;
+    validate_tagged_query_layout(
+        archive,
+        setup,
+        subcircuits,
+        |global_wire_index| global_wire_index >= setup.l_D,
+        |archive| &archive.delta_inv_internal_queries,
+        "internal",
+    )?;
+    Ok(())
+}
+
+/// Validates the canonical U20 tagged-query order without decoding a curve
+/// coordinate.  The query family is determined solely by the global-wire
+/// range; public wires deliberately belong only to the compressed gamma range.
+fn validate_tagged_query_layout<'a>(
+    archive: &'a ArchivedUnivariateCrsRkyv,
+    setup: &SetupParams,
+    subcircuits: &[UnivariateSubcircuit<'_>],
+    belongs_to_family: impl Fn(usize) -> bool,
+    archived_queries: impl Fn(
+        &'a ArchivedUnivariateCrsRkyv,
+    ) -> &'a [backend_interface::ArchivedUnivariateTaggedQueryRkyv],
+    family_name: &str,
+) -> io::Result<()> {
+    if subcircuits.len() != setup.s_D
+        || subcircuits
+            .iter()
+            .enumerate()
+            .any(|(index, subcircuit)| subcircuit.id != index)
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "univariate CRS reader received a noncanonical subcircuit catalog",
+        ));
+    }
+
+    let mut expected = Vec::new();
+    for placement_index in 0..setup.s_max {
+        for subcircuit in subcircuits {
+            for (local_wire_index, global_wire_index) in
+                subcircuit.flatten_map.iter().copied().enumerate()
+            {
+                if belongs_to_family(global_wire_index) {
+                    expected.push((
+                        placement_index as u64,
+                        subcircuit.id as u64,
+                        local_wire_index as u64,
+                    ));
+                }
+            }
+        }
+    }
+    let queries = archived_queries(archive);
+    if queries.len() != expected.len()
+        || queries.iter().zip(expected).any(|(query, expected)| {
+            (
+                query.placement_index,
+                query.subcircuit_id,
+                query.local_wire_index,
+            ) != expected
+        })
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("univariate CRS {family_name}-query range does not match the selected library"),
         ));
     }
     Ok(())

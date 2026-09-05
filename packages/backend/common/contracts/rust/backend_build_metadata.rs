@@ -315,7 +315,7 @@ mod tests {
             "2.1.5",
             "sha256:1111111111111111111111111111111111111111111111111111111111111111",
         )
-            .expect("canonical production metadata must be constructible");
+        .expect("canonical production metadata must be constructible");
         assert_eq!(
             serde_json::to_value(metadata).expect("metadata must serialize"),
             fixture

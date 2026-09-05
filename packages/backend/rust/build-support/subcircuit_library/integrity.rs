@@ -1,6 +1,5 @@
 use super::{
-    subcircuit_source_digest, version_contract, DIGEST_LIBRARY_DIRECTORIES,
-    DIGEST_LIBRARY_FILES,
+    subcircuit_source_digest, version_contract, DIGEST_LIBRARY_DIRECTORIES, DIGEST_LIBRARY_FILES,
 };
 use std::fs;
 use std::io;
