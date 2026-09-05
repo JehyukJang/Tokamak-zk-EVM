@@ -1,0 +1,56 @@
+{
+  "setup": {
+    "l_free": 0,
+    "l": 2,
+    "l_user_out": 0,
+    "l_user": 0,
+    "l_D": 4,
+    "m_D": 4,
+    "n": 2,
+    "s_D": 3,
+    "s_max": 2
+  },
+  "selector": [0, null],
+  "subcircuits": [
+    {
+      "id": 0,
+      "flattenMap": [0, 2],
+      "aRows": [[[0, 1]], [[1, 1]]],
+      "bRows": [[[1, 1]], [[0, 1]]],
+      "cRows": [[[0, 1]], [[1, 1]]]
+    },
+    {
+      "id": 1,
+      "flattenMap": [],
+      "aRows": [],
+      "bRows": [],
+      "cRows": []
+    },
+    {
+      "id": 2,
+      "flattenMap": [],
+      "aRows": [],
+      "bRows": [],
+      "cRows": []
+    }
+  ],
+  "witnessesBySlot": [
+    {
+      "subcircuitId": 0,
+      "values": [3, 5]
+    },
+    null
+  ],
+  "permutation": [
+    { "row": 0, "col": 0, "X": 1, "Y": 1 },
+    { "row": 1, "col": 1, "X": 0, "Y": 0 }
+  ],
+  "expected": {
+    "uA": [3, 5],
+    "vA": [5, 3],
+    "wA": [3, 5],
+    "bC": 5,
+    "u6LocalWire": 1,
+    "connectionLocalWire": 1
+  }
+}

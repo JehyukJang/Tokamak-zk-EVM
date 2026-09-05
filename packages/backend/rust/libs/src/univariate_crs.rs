@@ -21,6 +21,8 @@ pub const UNIVARIATE_CRS_SCHEMA_ID: &str = "tokamak-zk-evm-univariate-v1";
 pub enum UnivariateCrsError {
     #[error("{name} must be greater than one")]
     DomainTooSmall { name: &'static str },
+    #[error("{name} must be a nonzero power of two for the selected transform provider")]
+    DomainNotPowerOfTwo { name: &'static str },
     #[error("{name} exceeds the supported u64 domain size")]
     DomainTooLarge { name: &'static str },
     #[error("{name} has no primitive root of the required order")]
@@ -68,6 +70,9 @@ impl UnivariateCrsShape {
                 .ok_or(UnivariateCrsError::CapacityOverflow {
                     name: "m_I = l_D - l",
                 })?;
+        if !interface_wire_count.is_power_of_two() {
+            return Err(UnivariateCrsError::DomainNotPowerOfTwo { name: "m_I" });
+        }
         let arithmetic_domain_size = params
             .n
             .checked_mul(params.s_max)

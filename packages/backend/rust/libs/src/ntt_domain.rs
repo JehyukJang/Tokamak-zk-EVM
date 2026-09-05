@@ -7,10 +7,9 @@
 use icicle_bls12_381::curve::ScalarField;
 use icicle_core::ntt;
 use icicle_runtime::errors::eIcicleError;
-use std::{
-    cmp,
-    sync::{Mutex, OnceLock},
-};
+#[cfg(test)]
+use std::cmp;
+use std::sync::{Mutex, OnceLock};
 
 static NTT_DOMAIN_SIZE: OnceLock<Mutex<Option<usize>>> = OnceLock::new();
 
