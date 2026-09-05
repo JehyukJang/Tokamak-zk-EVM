@@ -61,6 +61,10 @@ pub enum UnivariateRelationError {
     PermutationNotBijective { index: usize },
     #[error("ICICLE NTT failed: {0:?}")]
     Ntt(eIcicleError),
+    #[error("{name} is too large to convert into the scalar field")]
+    DomainSizeTooLarge { name: &'static str },
+    #[error("evaluation point belongs to the {domain} domain")]
+    EvaluationPointInsideDomain { domain: &'static str },
 }
 
 /// A polynomial containing only powers whose exponents are multiples of
@@ -294,6 +298,196 @@ pub fn connection_wire_lift(
         evaluations[index] = ScalarField::one();
     }
     interpolate_dense(evaluations)
+}
+
+/// Evaluates the three arithmetic components of U19 for one tagged local
+/// wire at a point outside `D_A`.
+///
+/// Trusted setup needs these values only at `tau`.  Materializing an
+/// `N_A`-element evaluation vector and running an inverse NTT for every U20
+/// query would turn CRS construction into a per-wire dense transform.  This
+/// evaluates the sparse R1CS rows directly and applies the canonical U1
+/// Lagrange basis at the requested coordinate instead.
+pub fn arithmetic_wire_lifts_at(
+    shape: &UnivariateCrsShape,
+    setup: &SetupParams,
+    placement_index: usize,
+    subcircuit: &UnivariateSubcircuit<'_>,
+    local_wire_index: usize,
+    point: ScalarField,
+) -> Result<[ScalarField; 3], UnivariateRelationError> {
+    if point.pow(shape.arithmetic_domain_size) == ScalarField::one() {
+        return Err(UnivariateRelationError::EvaluationPointInsideDomain {
+            domain: "arithmetic",
+        });
+    }
+
+    Ok([
+        arithmetic_wire_lift_at(
+            shape,
+            setup,
+            placement_index,
+            subcircuit,
+            local_wire_index,
+            R1csMatrix::A,
+            point,
+        )?,
+        arithmetic_wire_lift_at(
+            shape,
+            setup,
+            placement_index,
+            subcircuit,
+            local_wire_index,
+            R1csMatrix::B,
+            point,
+        )?,
+        arithmetic_wire_lift_at(
+            shape,
+            setup,
+            placement_index,
+            subcircuit,
+            local_wire_index,
+            R1csMatrix::C,
+            point,
+        )?,
+    ])
+}
+
+/// Evaluates U7 for one tagged local wire at a point outside `D_C`.
+/// A non-interface wire has the required zero connection lift.
+pub fn connection_wire_lift_at(
+    shape: &UnivariateCrsShape,
+    setup: &SetupParams,
+    placement_index: usize,
+    subcircuit: &UnivariateSubcircuit<'_>,
+    local_wire_index: usize,
+    point: ScalarField,
+) -> Result<ScalarField, UnivariateRelationError> {
+    if point.pow(shape.connection_domain_size) == ScalarField::one() {
+        return Err(UnivariateRelationError::EvaluationPointInsideDomain {
+            domain: "connection",
+        });
+    }
+    if placement_index >= setup.s_max {
+        return Err(UnivariateRelationError::PlacementIndex {
+            value: placement_index,
+        });
+    }
+    let global_index = *subcircuit.flatten_map.get(local_wire_index).ok_or(
+        UnivariateRelationError::LocalWireIndex {
+            subcircuit_id: subcircuit.id,
+            wire_index: local_wire_index,
+        },
+    )?;
+    if global_index < setup.l || global_index >= setup.l_D {
+        return Ok(ScalarField::zero());
+    }
+    let coordinate = shape
+        .connection_index(placement_index, global_index - setup.l, setup)
+        .map_err(|_| UnivariateRelationError::PlacementIndex {
+            value: placement_index,
+        })?;
+    lagrange_basis_at(
+        point,
+        shape.connection_domain_size,
+        shape.connection_root,
+        coordinate,
+        "connection",
+    )
+}
+
+fn arithmetic_wire_lift_at(
+    shape: &UnivariateCrsShape,
+    setup: &SetupParams,
+    placement_index: usize,
+    subcircuit: &UnivariateSubcircuit<'_>,
+    local_wire_index: usize,
+    matrix: R1csMatrix,
+    point: ScalarField,
+) -> Result<ScalarField, UnivariateRelationError> {
+    if placement_index >= setup.s_max {
+        return Err(UnivariateRelationError::PlacementIndex {
+            value: placement_index,
+        });
+    }
+    if subcircuit.id >= setup.s_D || local_wire_index >= subcircuit.flatten_map.len() {
+        return Err(UnivariateRelationError::LocalWireIndex {
+            subcircuit_id: subcircuit.id,
+            wire_index: local_wire_index,
+        });
+    }
+    let (active_wires, rows, name) = match matrix {
+        R1csMatrix::A => (subcircuit.a_active_wires, subcircuit.a_rows, "A"),
+        R1csMatrix::B => (subcircuit.b_active_wires, subcircuit.b_rows, "B"),
+        R1csMatrix::C => (subcircuit.c_active_wires, subcircuit.c_rows, "C"),
+    };
+    if rows.len() > setup.n {
+        return Err(UnivariateRelationError::MatrixRows {
+            subcircuit_id: subcircuit.id,
+            matrix: name,
+            actual: rows.len(),
+            expected: setup.n,
+        });
+    }
+
+    rows.iter()
+        .enumerate()
+        .try_fold(ScalarField::zero(), |sum, (row_index, row)| {
+            let coefficient =
+                row.iter()
+                    .try_fold(ScalarField::zero(), |row_sum, (compact_index, value)| {
+                        let active_wire = active_wires.get(*compact_index).ok_or(
+                            UnivariateRelationError::LocalWireIndex {
+                                subcircuit_id: subcircuit.id,
+                                wire_index: *compact_index,
+                            },
+                        )?;
+                        Ok::<_, UnivariateRelationError>(if *active_wire == local_wire_index {
+                            row_sum + *value
+                        } else {
+                            row_sum
+                        })
+                    })?;
+            if coefficient == ScalarField::zero() {
+                return Ok(sum);
+            }
+            let coordinate = shape
+                .arithmetic_index(placement_index, subcircuit.id, row_index, setup)
+                .map_err(|_| UnivariateRelationError::PlacementIndex {
+                    value: placement_index,
+                })?;
+            Ok(sum
+                + coefficient
+                    * lagrange_basis_at(
+                        point,
+                        shape.arithmetic_domain_size,
+                        shape.arithmetic_root,
+                        coordinate,
+                        "arithmetic",
+                    )?)
+        })
+}
+
+fn lagrange_basis_at(
+    point: ScalarField,
+    domain_size: usize,
+    root: ScalarField,
+    coordinate: usize,
+    domain: &'static str,
+) -> Result<ScalarField, UnivariateRelationError> {
+    if coordinate >= domain_size {
+        return Err(UnivariateRelationError::PlacementIndex { value: coordinate });
+    }
+    let root_at_coordinate = root.pow(coordinate);
+    let denominator = point - root_at_coordinate;
+    if denominator == ScalarField::zero() {
+        return Err(UnivariateRelationError::EvaluationPointInsideDomain { domain });
+    }
+    let scalar_size = u32::try_from(domain_size)
+        .map_err(|_| UnivariateRelationError::DomainSizeTooLarge { name: domain })?;
+    Ok((point.pow(domain_size) - ScalarField::one())
+        * root_at_coordinate
+        * (ScalarField::from_u32(scalar_size) * denominator).inv())
 }
 
 /// Builds U8 directly on the two canonical evaluation domains and interpolates
@@ -654,9 +848,10 @@ fn interpolate_selector(
 #[cfg(test)]
 mod tests {
     use super::{
-        arithmetic_coset_selector, arithmetic_wire_lift, connection_copy_factors,
-        connection_coset_selector, connection_permutation_polynomial, connection_wire_lift,
-        placement_selector_polynomial, witness_maps, R1csMatrix, SlotWitness, UnivariateSubcircuit,
+        arithmetic_coset_selector, arithmetic_wire_lift, arithmetic_wire_lifts_at,
+        connection_copy_factors, connection_coset_selector, connection_permutation_polynomial,
+        connection_wire_lift, connection_wire_lift_at, placement_selector_polynomial, witness_maps,
+        R1csMatrix, SlotWitness, UnivariateSubcircuit,
     };
     use crate::frontend_artifacts::{Permutation, SetupParams};
     use crate::univariate_crs::UnivariateCrsShape;
@@ -1025,5 +1220,137 @@ mod tests {
         setup.l_D = 5;
         assert!(UnivariateCrsShape::from_setup_params(&setup).is_err());
         assert!(connection_coset_selector(&setup, 0).is_err());
+    }
+
+    #[test]
+    fn direct_tagged_wire_evaluation_matches_dense_interpolation() {
+        let fixture = relation_fixture();
+        let setup = fixture_setup(&fixture.setup);
+        let shape = UnivariateCrsShape::from_setup_params(&setup).unwrap();
+        let a_rows: Vec<Vec<Vec<(usize, ScalarField)>>> = fixture
+            .subcircuits
+            .iter()
+            .map(|subcircuit| field_rows(&subcircuit.a_rows))
+            .collect();
+        let b_rows: Vec<Vec<Vec<(usize, ScalarField)>>> = fixture
+            .subcircuits
+            .iter()
+            .map(|subcircuit| field_rows(&subcircuit.b_rows))
+            .collect();
+        let c_rows: Vec<Vec<Vec<(usize, ScalarField)>>> = fixture
+            .subcircuits
+            .iter()
+            .map(|subcircuit| field_rows(&subcircuit.c_rows))
+            .collect();
+        let subcircuits: Vec<UnivariateSubcircuit<'_>> = fixture
+            .subcircuits
+            .iter()
+            .enumerate()
+            .map(|(index, subcircuit)| UnivariateSubcircuit {
+                id: subcircuit.id,
+                flatten_map: &subcircuit.flatten_map,
+                a_active_wires: &subcircuit.a_active_wires,
+                b_active_wires: &subcircuit.b_active_wires,
+                c_active_wires: &subcircuit.c_active_wires,
+                a_rows: &a_rows[index],
+                b_rows: &b_rows[index],
+                c_rows: &c_rows[index],
+            })
+            .collect();
+        let point = test_point_outside_domains(&shape);
+        let local_wire = fixture.expected.u6_local_wire;
+
+        let dense_u = arithmetic_wire_lift(
+            &shape,
+            &setup,
+            0,
+            &subcircuits[0],
+            local_wire,
+            R1csMatrix::A,
+        )
+        .unwrap();
+        let dense_v = arithmetic_wire_lift(
+            &shape,
+            &setup,
+            0,
+            &subcircuits[0],
+            local_wire,
+            R1csMatrix::B,
+        )
+        .unwrap();
+        let dense_w = arithmetic_wire_lift(
+            &shape,
+            &setup,
+            0,
+            &subcircuits[0],
+            local_wire,
+            R1csMatrix::C,
+        )
+        .unwrap();
+        let direct =
+            arithmetic_wire_lifts_at(&shape, &setup, 0, &subcircuits[0], local_wire, point)
+                .unwrap();
+        assert_eq!(
+            direct[0],
+            evaluate_coefficients(&dense_u.coefficients, point)
+        );
+        assert_eq!(
+            direct[1],
+            evaluate_coefficients(&dense_v.coefficients, point)
+        );
+        assert_eq!(
+            direct[2],
+            evaluate_coefficients(&dense_w.coefficients, point)
+        );
+
+        let dense_b = connection_wire_lift(
+            &shape,
+            &setup,
+            0,
+            &subcircuits[0],
+            fixture.expected.connection_local_wire,
+        )
+        .unwrap();
+        assert_eq!(
+            connection_wire_lift_at(
+                &shape,
+                &setup,
+                0,
+                &subcircuits[0],
+                fixture.expected.connection_local_wire,
+                point,
+            )
+            .unwrap(),
+            evaluate_coefficients(&dense_b.coefficients, point)
+        );
+    }
+
+    fn evaluate_coefficients(coefficients: &[ScalarField], point: ScalarField) -> ScalarField {
+        coefficients
+            .iter()
+            .rev()
+            .fold(ScalarField::zero(), |value, coefficient| {
+                value * point + *coefficient
+            })
+    }
+
+    fn test_point_outside_domains(shape: &UnivariateCrsShape) -> ScalarField {
+        let mut point = ScalarField::from_u32(2);
+        while point.pow(shape.arithmetic_domain_size) == ScalarField::one()
+            || point.pow(shape.connection_domain_size) == ScalarField::one()
+        {
+            point = point + ScalarField::one();
+        }
+        point
+    }
+
+    fn field_rows(rows: &[Vec<(usize, u32)>]) -> Vec<Vec<(usize, ScalarField)>> {
+        rows.iter()
+            .map(|row| {
+                row.iter()
+                    .map(|(wire, coefficient)| (*wire, ScalarField::from_u32(*coefficient)))
+                    .collect()
+            })
+            .collect()
     }
 }

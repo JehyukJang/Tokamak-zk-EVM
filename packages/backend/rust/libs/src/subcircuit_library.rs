@@ -1,10 +1,12 @@
 use crate::compatibility::{compatibility_from_package_version, parse_compatible_backend_version};
+use crate::crs_artifacts::UnivariateCrsDigests;
 use crate::crs_provenance::{
     ensure_crs_provenance_contract_definition, parse_final_mpc_crs_provenance, CrsProvenance,
     DevelopmentOnlyReleaseEligibility, DevelopmentTrustedSetupSigmaProvenance,
-    CRS_PROVENANCE_FILE_NAME,
+    DevelopmentTrustedSetupUnivariateCrsProvenance, CRS_PROVENANCE_FILE_NAME,
 };
 use crate::errors::CrsError;
+use crate::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID;
 use clap::Args;
 use std::env;
 use std::fs;
@@ -168,6 +170,26 @@ pub fn write_development_only_trusted_setup_provenance(output_dir: &Path) -> std
         CrsProvenance::DevelopmentTrustedSetupSigma(DevelopmentTrustedSetupSigmaProvenance {
             release_eligible: DevelopmentOnlyReleaseEligibility,
         });
+    let bytes = serde_json::to_vec_pretty(&provenance).map_err(std::io::Error::other)?;
+    fs::write(output_dir.join(CRS_PROVENANCE_FILE_NAME), bytes)
+}
+
+/// Records a locally generated U18--U21 CRS as development-only.  Unlike the
+/// legacy Sigma marker, this provenance binds the artifact family and both
+/// canonical projections so it cannot be mistaken for a publishable CRS.
+pub fn write_development_only_univariate_crs_provenance(
+    output_dir: &Path,
+    digests: &UnivariateCrsDigests,
+) -> std::io::Result<()> {
+    ensure_crs_provenance_contract_definition().map_err(std::io::Error::other)?;
+    let provenance = CrsProvenance::DevelopmentTrustedSetupUnivariateCrs(
+        DevelopmentTrustedSetupUnivariateCrsProvenance {
+            release_eligible: DevelopmentOnlyReleaseEligibility,
+            protocol_schema_id: UNIVARIATE_CRS_SCHEMA_ID.to_string(),
+            univariate_crs_rkyv_sha256: digests.rkyv_sha256.clone(),
+            univariate_crs_json_sha256: digests.json_sha256.clone(),
+        },
+    );
     let bytes = serde_json::to_vec_pretty(&provenance).map_err(std::io::Error::other)?;
     fs::write(output_dir.join(CRS_PROVENANCE_FILE_NAME), bytes)
 }

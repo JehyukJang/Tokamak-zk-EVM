@@ -22,6 +22,34 @@
         }
       }
     },
+    "developmentTrustedSetupUnivariateCrs": {
+      "releaseEligible": false,
+      "requiredFields": [
+        "documentKind",
+        "releaseEligible",
+        "protocolSchemaId",
+        "univariateCrsRkyvSha256",
+        "univariateCrsJsonSha256"
+      ],
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "documentKind",
+          "releaseEligible",
+          "protocolSchemaId",
+          "univariateCrsRkyvSha256",
+          "univariateCrsJsonSha256"
+        ],
+        "properties": {
+          "documentKind": { "const": "developmentTrustedSetupUnivariateCrs" },
+          "releaseEligible": { "const": false },
+          "protocolSchemaId": { "const": "tokamak-zk-evm-univariate-v1" },
+          "univariateCrsRkyvSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "univariateCrsJsonSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
     "finalMpcCrs": {
       "requiredFields": [
         "documentKind",

@@ -819,6 +819,9 @@ mod tests {
             CrsProvenance::DevelopmentTrustedSetupSigma(_) => {
                 panic!("fixture must contain final MPC provenance")
             }
+            CrsProvenance::DevelopmentTrustedSetupUnivariateCrs(_) => {
+                panic!("fixture must contain final MPC provenance")
+            }
         }
     }
 

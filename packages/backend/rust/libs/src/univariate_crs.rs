@@ -1,23 +1,26 @@
-//! Private construction primitives for the univariate CRS foundation.
-//!
-//! This module intentionally has no serializer, artifact reader, or runtime
-//! admission path. Until PM0-B adds the U20 and U21 query families, the U18
-//! basis is not a usable CRS artifact.
+//! Construction primitives and in-memory representation for the univariate
+//! U18--U21 CRS. Artifact projections and admission live in
+//! `crate::crs_artifacts` so this module remains independent of filesystem and
+//! archive concerns.
 
+use crate::frontend_artifacts::public_wire_layout::{PublicQueryKey, PublicWireLayout};
 use crate::frontend_artifacts::SetupParams;
 use crate::group_structures::{G1serde, G2serde};
+use crate::univariate_relation::{
+    arithmetic_wire_lifts_at, connection_wire_lift_at, UnivariateRelationError,
+    UnivariateSubcircuit,
+};
 use icicle_bls12_381::curve::{G1Affine, G2Affine, ScalarCfg, ScalarField};
 use icicle_core::ntt;
 use icicle_core::traits::{Arithmetic, FieldImpl, GenerateRandom};
+use serde::Serialize;
 use thiserror::Error;
 
 /// The sole schema identifier for the new univariate artifact family.
-///
-/// Its public-query layout is fixed by the resolved library's public-buffer
-/// metadata. PM0-B will add its serialization and ingress validation.
+/// Its public-query layout is fixed by resolved public-buffer metadata.
 pub const UNIVARIATE_CRS_SCHEMA_ID: &str = "tokamak-zk-evm-univariate-v1";
 
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Error)]
 pub enum UnivariateCrsError {
     #[error("{name} must be greater than one")]
     DomainTooSmall { name: &'static str },
@@ -42,6 +45,22 @@ pub enum UnivariateCrsError {
     TauSamplingExhausted,
     #[error("failed to allocate {length} ordinary KZG powers")]
     PowerAllocation { length: usize },
+    #[error("subcircuit catalog has {actual} entries, expected {expected}")]
+    SubcircuitCatalog { actual: usize, expected: usize },
+    #[error("subcircuit catalog entry {index} declares ID {actual}")]
+    SubcircuitId { index: usize, actual: usize },
+    #[error("public query key ({subcircuit_id}, {local_wire_index}) is invalid")]
+    InvalidPublicQueryKey {
+        subcircuit_id: usize,
+        local_wire_index: usize,
+    },
+    #[error("duplicate compressed public query key ({subcircuit_id}, {local_wire_index})")]
+    DuplicatePublicQueryKey {
+        subcircuit_id: usize,
+        local_wire_index: usize,
+    },
+    #[error(transparent)]
+    Relation(#[from] UnivariateRelationError),
 }
 
 /// Capacity and domain information fixed by the library and placement bound.
@@ -291,7 +310,7 @@ impl UnivariateTrapdoor {
     }
 }
 
-/// The non-serializable U18 ordinary KZG basis.
+/// The U18 ordinary KZG basis carried by the complete in-memory CRS.
 #[derive(Clone, Debug, PartialEq)]
 pub struct UnivariateCrsFoundation {
     pub schema_id: &'static str,
@@ -305,8 +324,95 @@ pub struct UnivariateCrsFoundation {
     pub delta_g2: G2serde,
 }
 
+/// The canonical compressed key for one U20 public binding query.  It is
+/// deliberately independent of the runtime placement: the only admitted
+/// public-buffer placement is the fixed `(b, b)` coordinate.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct UnivariatePublicQuery {
+    pub key: PublicQueryKey,
+    pub point: G1serde,
+}
+
+/// A full U20 key used for interface and internal wires.  Unlike public
+/// buffers, non-public wires retain their independent placement coordinate.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct UnivariateTaggedQuery {
+    pub placement_index: usize,
+    pub subcircuit_id: usize,
+    pub local_wire_index: usize,
+    pub point: G1serde,
+}
+
+/// The complete, in-memory U18--U21 CRS.  This is intentionally distinct
+/// from legacy `Sigma`: it has no bivariate fields and is not accepted by any
+/// legacy/MPC reader.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnivariateCrs {
+    pub foundation: UnivariateCrsFoundation,
+    pub gamma_inv_public_queries: Box<[UnivariatePublicQuery]>,
+    pub eta_inv_interface_queries: Box<[UnivariateTaggedQuery]>,
+    pub delta_inv_internal_queries: Box<[UnivariateTaggedQuery]>,
+    pub delta_inv_arithmetic_masking_queries: [Box<[G1serde]>; 3],
+    pub delta_inv_connection_masking_queries: Box<[G1serde]>,
+    pub delta_g1: G1serde,
+    pub eta_g1: G1serde,
+}
+
+/// JSON projection used at the native/browser conversion boundary.  The RKYV
+/// projection is the native loading format; this form deliberately exposes
+/// the same groups and keys for canonical cross-runtime conversion.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnivariateCrsJson<'a> {
+    pub schema_id: &'a str,
+    pub shape: UnivariateCrsShapeJson,
+    pub tau_powers_g1: &'a [G1serde],
+    pub one_g2: G2serde,
+    pub tau_g2: G2serde,
+    pub alpha_g2: [G2serde; 4],
+    pub gamma_g2: G2serde,
+    pub eta_g2: G2serde,
+    pub delta_g2: G2serde,
+    pub gamma_inv_public_queries: Vec<UnivariatePublicQueryJson>,
+    pub eta_inv_interface_queries: Vec<UnivariateTaggedQueryJson>,
+    pub delta_inv_internal_queries: Vec<UnivariateTaggedQueryJson>,
+    pub delta_inv_arithmetic_masking_queries: [&'a [G1serde]; 3],
+    pub delta_inv_connection_masking_queries: &'a [G1serde],
+    pub delta_g1: G1serde,
+    pub eta_g1: G1serde,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnivariateCrsShapeJson {
+    pub subcircuit_capacity: usize,
+    pub arithmetic_domain_size: usize,
+    pub connection_domain_size: usize,
+    pub intersection_domain_size: usize,
+    pub union_domain_size: usize,
+    pub degree_bound: usize,
+    pub blinding_bounds: [usize; 4],
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnivariatePublicQueryJson {
+    pub buffer_subcircuit_id: usize,
+    pub local_public_wire_index: usize,
+    pub point: G1serde,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnivariateTaggedQueryJson {
+    pub placement_index: usize,
+    pub subcircuit_id: usize,
+    pub local_wire_index: usize,
+    pub point: G1serde,
+}
+
 impl UnivariateCrsFoundation {
-    /// Generates only U18. PM0-B appends the U20 and U21 query families.
+    /// Generates the U18 ordinary KZG basis used by complete CRS construction.
     pub fn generate(
         shape: UnivariateCrsShape,
         trapdoor: &UnivariateTrapdoor,
@@ -349,6 +455,239 @@ impl UnivariateCrsFoundation {
             delta_g2: G2serde(G2Affine::from(g2.to_projective() * trapdoor.delta)),
         })
     }
+}
+
+impl UnivariateCrs {
+    /// Builds all U18--U21 groups from the sparse relation and the resolved
+    /// library.  The public-query range is intentionally compressed to the
+    /// fixed public-buffer coordinates validated by `PublicWireLayout`.
+    pub fn generate(
+        setup: &SetupParams,
+        public_wire_layout: &PublicWireLayout,
+        subcircuits: &[UnivariateSubcircuit<'_>],
+        trapdoor: &UnivariateTrapdoor,
+        g1: G1Affine,
+        g2: G2Affine,
+    ) -> Result<Self, UnivariateCrsError> {
+        let shape = UnivariateCrsShape::from_setup_params(setup)?;
+        if subcircuits.len() != setup.s_D {
+            return Err(UnivariateCrsError::SubcircuitCatalog {
+                actual: subcircuits.len(),
+                expected: setup.s_D,
+            });
+        }
+        for (index, subcircuit) in subcircuits.iter().enumerate() {
+            if subcircuit.id != index {
+                return Err(UnivariateCrsError::SubcircuitId {
+                    index,
+                    actual: subcircuit.id,
+                });
+            }
+        }
+
+        let foundation = UnivariateCrsFoundation::generate(shape.clone(), trapdoor, g1, g2)?;
+        let base_g1 = foundation.tau_powers_g1[0];
+        let mut seen_public_keys = std::collections::HashSet::new();
+        let mut gamma_inv_public_queries = Vec::new();
+        for key in public_wire_layout.public_query_keys() {
+            if !seen_public_keys.insert((key.buffer_subcircuit_id, key.local_public_wire_index)) {
+                return Err(UnivariateCrsError::DuplicatePublicQueryKey {
+                    subcircuit_id: key.buffer_subcircuit_id,
+                    local_wire_index: key.local_public_wire_index,
+                });
+            }
+            let subcircuit = subcircuits
+                .get(key.buffer_subcircuit_id)
+                .filter(|subcircuit| key.local_public_wire_index < subcircuit.flatten_map.len())
+                .ok_or(UnivariateCrsError::InvalidPublicQueryKey {
+                    subcircuit_id: key.buffer_subcircuit_id,
+                    local_wire_index: key.local_public_wire_index,
+                })?;
+            let query = tagged_query_at(
+                &shape,
+                setup,
+                key.buffer_subcircuit_id,
+                subcircuit,
+                key.local_public_wire_index,
+                trapdoor,
+            )?;
+            gamma_inv_public_queries.push(UnivariatePublicQuery {
+                key,
+                point: base_g1 * (trapdoor.gamma.inv() * query),
+            });
+        }
+
+        let mut eta_inv_interface_queries = Vec::new();
+        let mut delta_inv_internal_queries = Vec::new();
+        for placement_index in 0..setup.s_max {
+            for subcircuit in subcircuits {
+                for (local_wire_index, global_wire_index) in
+                    subcircuit.flatten_map.iter().copied().enumerate()
+                {
+                    let query = match global_wire_index {
+                        value if value < setup.l => continue,
+                        value if value < setup.l_D => tagged_query_at(
+                            &shape,
+                            setup,
+                            placement_index,
+                            subcircuit,
+                            local_wire_index,
+                            trapdoor,
+                        )?,
+                        _ => tagged_query_at(
+                            &shape,
+                            setup,
+                            placement_index,
+                            subcircuit,
+                            local_wire_index,
+                            trapdoor,
+                        )?,
+                    };
+                    let tagged = UnivariateTaggedQuery {
+                        placement_index,
+                        subcircuit_id: subcircuit.id,
+                        local_wire_index,
+                        point: if global_wire_index < setup.l_D {
+                            base_g1 * (trapdoor.eta.inv() * query)
+                        } else {
+                            base_g1 * (trapdoor.delta.inv() * query)
+                        },
+                    };
+                    if global_wire_index < setup.l_D {
+                        eta_inv_interface_queries.push(tagged);
+                    } else {
+                        delta_inv_internal_queries.push(tagged);
+                    }
+                }
+            }
+        }
+
+        let z_a = trapdoor.tau.pow(shape.arithmetic_domain_size) - ScalarField::one();
+        let z_c = trapdoor.tau.pow(shape.connection_domain_size) - ScalarField::one();
+        let delta_inverse = trapdoor.delta.inv();
+        let delta_inv_arithmetic_masking_queries = std::array::from_fn(|index| {
+            let alpha_power = trapdoor.alpha.pow(index + 1);
+            let mut tau_power = ScalarField::one();
+            (0..shape.blinding_bounds[index])
+                .map(|_| {
+                    let point = base_g1 * (delta_inverse * alpha_power * tau_power * z_a);
+                    tau_power = tau_power * trapdoor.tau;
+                    point
+                })
+                .collect::<Vec<_>>()
+                .into_boxed_slice()
+        });
+        let mut tau_power = ScalarField::one();
+        let delta_inv_connection_masking_queries = (0..shape.blinding_bounds[3])
+            .map(|_| {
+                let point = base_g1 * (delta_inverse * trapdoor.alpha.pow(4) * tau_power * z_c);
+                tau_power = tau_power * trapdoor.tau;
+                point
+            })
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+
+        Ok(Self {
+            foundation,
+            gamma_inv_public_queries: gamma_inv_public_queries.into_boxed_slice(),
+            eta_inv_interface_queries: eta_inv_interface_queries.into_boxed_slice(),
+            delta_inv_internal_queries: delta_inv_internal_queries.into_boxed_slice(),
+            delta_inv_arithmetic_masking_queries,
+            delta_inv_connection_masking_queries,
+            delta_g1: base_g1 * trapdoor.delta,
+            eta_g1: base_g1 * trapdoor.eta,
+        })
+    }
+
+    pub fn json_projection(&self) -> UnivariateCrsJson<'_> {
+        let foundation = &self.foundation;
+        UnivariateCrsJson {
+            schema_id: foundation.schema_id,
+            shape: UnivariateCrsShapeJson {
+                subcircuit_capacity: foundation.shape.subcircuit_capacity,
+                arithmetic_domain_size: foundation.shape.arithmetic_domain_size,
+                connection_domain_size: foundation.shape.connection_domain_size,
+                intersection_domain_size: foundation.shape.intersection_domain_size,
+                union_domain_size: foundation.shape.union_domain_size,
+                degree_bound: foundation.shape.degree_bound,
+                blinding_bounds: foundation.shape.blinding_bounds,
+            },
+            tau_powers_g1: &foundation.tau_powers_g1,
+            one_g2: foundation.one_g2,
+            tau_g2: foundation.tau_g2,
+            alpha_g2: foundation.alpha_g2,
+            gamma_g2: foundation.gamma_g2,
+            eta_g2: foundation.eta_g2,
+            delta_g2: foundation.delta_g2,
+            gamma_inv_public_queries: self
+                .gamma_inv_public_queries
+                .iter()
+                .map(|query| UnivariatePublicQueryJson {
+                    buffer_subcircuit_id: query.key.buffer_subcircuit_id,
+                    local_public_wire_index: query.key.local_public_wire_index,
+                    point: query.point,
+                })
+                .collect(),
+            eta_inv_interface_queries: self
+                .eta_inv_interface_queries
+                .iter()
+                .map(UnivariateTaggedQueryJson::from_query)
+                .collect(),
+            delta_inv_internal_queries: self
+                .delta_inv_internal_queries
+                .iter()
+                .map(UnivariateTaggedQueryJson::from_query)
+                .collect(),
+            delta_inv_arithmetic_masking_queries: self
+                .delta_inv_arithmetic_masking_queries
+                .each_ref()
+                .map(|queries| queries.as_ref()),
+            delta_inv_connection_masking_queries: &self.delta_inv_connection_masking_queries,
+            delta_g1: self.delta_g1,
+            eta_g1: self.eta_g1,
+        }
+    }
+}
+
+impl UnivariateTaggedQueryJson {
+    fn from_query(query: &UnivariateTaggedQuery) -> Self {
+        Self {
+            placement_index: query.placement_index,
+            subcircuit_id: query.subcircuit_id,
+            local_wire_index: query.local_wire_index,
+            point: query.point,
+        }
+    }
+}
+
+fn tagged_query_at(
+    shape: &UnivariateCrsShape,
+    setup: &SetupParams,
+    placement_index: usize,
+    subcircuit: &UnivariateSubcircuit<'_>,
+    local_wire_index: usize,
+    trapdoor: &UnivariateTrapdoor,
+) -> Result<ScalarField, UnivariateCrsError> {
+    let [u, v, w] = arithmetic_wire_lifts_at(
+        shape,
+        setup,
+        placement_index,
+        subcircuit,
+        local_wire_index,
+        trapdoor.tau,
+    )?;
+    let b = connection_wire_lift_at(
+        shape,
+        setup,
+        placement_index,
+        subcircuit,
+        local_wire_index,
+        trapdoor.tau,
+    )?;
+    Ok(trapdoor.alpha * u
+        + trapdoor.alpha.pow(2) * v
+        + trapdoor.alpha.pow(3) * w
+        + trapdoor.alpha.pow(4) * b)
 }
 
 fn primitive_root(
@@ -401,11 +740,17 @@ fn nonzero_scalar() -> ScalarField {
 #[cfg(test)]
 mod tests {
     use super::{
-        UnivariateCrsError, UnivariateCrsFoundation, UnivariateCrsShape, UnivariateTrapdoor,
-        UNIVARIATE_CRS_SCHEMA_ID,
+        UnivariateCrs, UnivariateCrsError, UnivariateCrsFoundation, UnivariateCrsShape,
+        UnivariateSubcircuit, UnivariateTrapdoor, UNIVARIATE_CRS_SCHEMA_ID,
     };
-    use crate::frontend_artifacts::SetupParams;
+    use crate::crs_artifacts::{
+        read_univariate_crs_artifact, write_univariate_crs_artifacts,
+        UNIVARIATE_CRS_JSON_FILE_NAME, UNIVARIATE_CRS_RKYV_FILE_NAME,
+    };
+    use crate::frontend_artifacts::public_wire_layout::{GlobalWire, PublicWireLayout};
+    use crate::frontend_artifacts::{BufferDirection, SetupParams, SubcircuitInfo};
     use crate::group_structures::{G1serde, G2serde};
+    use backend_interface::UnivariateCrsRkyv;
     use icicle_bls12_381::curve::{CurveCfg, G2CurveCfg, ScalarField};
     use icicle_core::curve::Curve;
     use icicle_core::traits::{Arithmetic, FieldImpl};
@@ -530,12 +875,126 @@ mod tests {
             ScalarField::from_u32(11),
         )
         .expect_err("a domain root cannot be used as tau");
-        assert_eq!(
+        assert!(matches!(
             error,
             UnivariateCrsError::TauInsideDomain {
                 domain: "arithmetic"
             }
+        ));
+    }
+
+    #[test]
+    fn builds_the_complete_u20_and_u21_query_families_without_public_grid_expansion() {
+        let setup = SetupParams {
+            l_free: 0,
+            l: 1,
+            l_user_out: 0,
+            l_user: 0,
+            l_D: 3,
+            m_D: 3,
+            n: 2,
+            s_D: 1,
+            s_max: 2,
+        };
+        let infos = [SubcircuitInfo {
+            id: 0,
+            name: "public-buffer".to_string(),
+            Nwires: 3,
+            Nconsts: 0,
+            Out_idx: Box::new([]),
+            In_idx: Box::new([1, 1]),
+            flattenMap: Box::new([2, 0, 1]),
+            bufferDirection: Some(BufferDirection::In),
+        }];
+        let public_layout = PublicWireLayout::derive(
+            &setup,
+            &[
+                GlobalWire::Mapped {
+                    subcircuit_id: 0,
+                    local_wire_index: 1,
+                },
+                GlobalWire::Mapped {
+                    subcircuit_id: 0,
+                    local_wire_index: 2,
+                },
+                GlobalWire::Mapped {
+                    subcircuit_id: 0,
+                    local_wire_index: 0,
+                },
+            ],
+            &infos,
+        )
+        .expect("the fixed public buffer must define a compressed query key");
+        let a_active_wires = [1usize];
+        let b_active_wires = [1usize];
+        let c_active_wires = [1usize];
+        let a_rows = [vec![(0usize, ScalarField::one())]];
+        let b_rows = [vec![(0usize, ScalarField::one())]];
+        let c_rows = [vec![(0usize, ScalarField::one())]];
+        let subcircuits = [UnivariateSubcircuit {
+            id: 0,
+            flatten_map: &infos[0].flattenMap,
+            a_active_wires: &a_active_wires,
+            b_active_wires: &b_active_wires,
+            c_active_wires: &c_active_wires,
+            a_rows: &a_rows,
+            b_rows: &b_rows,
+            c_rows: &c_rows,
+        }];
+        let shape = UnivariateCrsShape::from_setup_params(&setup).unwrap();
+        let trapdoor = test_trapdoor(&shape);
+        let crs = UnivariateCrs::generate(
+            &setup,
+            &public_layout,
+            &subcircuits,
+            &trapdoor,
+            CurveCfg::generate_random_affine_points(1)[0],
+            G2CurveCfg::generate_random_affine_points(1)[0],
+        )
+        .expect("the complete univariate CRS must be constructible");
+
+        // The sole public buffer contributes one reachable `(b, (b, j))`
+        // query, not the generic two-placement public table.
+        assert_eq!(crs.gamma_inv_public_queries.len(), 1);
+        assert_eq!(crs.gamma_inv_public_queries[0].key.buffer_subcircuit_id, 0);
+        assert_eq!(
+            crs.gamma_inv_public_queries[0].key.local_public_wire_index,
+            1
         );
+        // The interface wire remains placement-indexed for both slots.
+        assert_eq!(crs.eta_inv_interface_queries.len(), 2 * setup.s_max);
+        assert!(crs.delta_inv_internal_queries.is_empty());
+        assert_eq!(
+            crs.delta_inv_arithmetic_masking_queries
+                .iter()
+                .map(|queries| queries.len())
+                .collect::<Vec<_>>(),
+            vec![2, 2, 2]
+        );
+        assert_eq!(crs.delta_inv_connection_masking_queries.len(), 2);
+
+        let output = tempfile::tempdir().expect("must create a temporary CRS output");
+        let digests = write_univariate_crs_artifacts(output.path(), &crs)
+            .expect("complete CRS projections must be writable");
+        let rkyv = std::fs::read(output.path().join(UNIVARIATE_CRS_RKYV_FILE_NAME))
+            .expect("must read the RKYV projection");
+        rkyv::check_archived_root::<UnivariateCrsRkyv>(&rkyv)
+            .expect("the RKYV projection must be structurally valid");
+        let json: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(output.path().join(UNIVARIATE_CRS_JSON_FILE_NAME))
+                .expect("must read the JSON projection"),
+        )
+        .expect("the JSON projection must be valid");
+        assert_eq!(json["schemaId"], UNIVARIATE_CRS_SCHEMA_ID);
+        assert_eq!(digests.rkyv_sha256.len(), 64);
+        assert_eq!(digests.json_sha256.len(), 64);
+        let loaded = read_univariate_crs_artifact(
+            &output.path().join(UNIVARIATE_CRS_RKYV_FILE_NAME),
+            &setup,
+            &public_layout,
+        )
+        .expect("a matching univariate CRS archive must load");
+        assert_eq!(loaded, crs);
     }
 
     #[test]
@@ -544,7 +1003,10 @@ mod tests {
         params.s_D = 0;
         let error = UnivariateCrsShape::from_setup_params(&params)
             .expect_err("zero subcircuit count cannot define t");
-        assert_eq!(error, UnivariateCrsError::DomainTooSmall { name: "s_D" });
+        assert!(matches!(
+            error,
+            UnivariateCrsError::DomainTooSmall { name: "s_D" }
+        ));
     }
 
     #[test]

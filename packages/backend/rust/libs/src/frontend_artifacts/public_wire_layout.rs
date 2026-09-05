@@ -212,6 +212,14 @@ impl PublicWireLayout {
         })
     }
 
+    /// Iterates over the compressed U20 public-query keys in canonical global
+    /// public-wire order. Free-public padding has no corresponding query.
+    pub fn public_query_keys(&self) -> impl Iterator<Item = PublicQueryKey> + '_ {
+        (0..self.len()).filter_map(|global_wire_index| {
+            self.public_query_key_for_public_wire(global_wire_index)
+        })
+    }
+
     pub fn placement_phase_for_public_wire(&self, global_wire_index: usize) -> Option<usize> {
         match self.source_for_public_wire(global_wire_index)? {
             GlobalWire::Padding => None,

@@ -37,6 +37,11 @@ pub struct TrustedSetupConfig<'a> {
 }
 
 pub fn run_trusted_setup(config: &TrustedSetupConfig<'_>) -> Result<(), TrustedSetupError> {
+    crate::univariate::run_univariate_trusted_setup(config)
+}
+
+#[allow(dead_code)]
+fn run_legacy_trusted_setup(config: &TrustedSetupConfig<'_>) -> Result<(), TrustedSetupError> {
     #[cfg(not(feature = "testing-mode"))]
     let paths = SetupInputPaths {
         qap_path: config.qap_path,
@@ -320,7 +325,7 @@ pub fn run_trusted_setup(config: &TrustedSetupConfig<'_>) -> Result<(), TrustedS
         )
         .map_err(|source| ArtifactError::Read {
             artifact: "placement variables",
-            path: placement_variables_path,
+            path: placement_variables_path.clone(),
             source,
         })?;
 
@@ -329,7 +334,7 @@ pub fn run_trusted_setup(config: &TrustedSetupConfig<'_>) -> Result<(), TrustedS
             Instance::read_from_json(instance_path.clone()).map_err(|source| {
                 ArtifactError::Read {
                     artifact: "public instance",
-                    path: instance_path,
+                    path: instance_path.clone(),
                     source,
                 }
             })?;
