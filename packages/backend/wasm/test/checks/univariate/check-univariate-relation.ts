@@ -28,6 +28,9 @@ interface RelationFixture {
   readonly subcircuits: readonly {
     readonly id: number;
     readonly flattenMap: readonly number[];
+    readonly aActiveWires: readonly number[];
+    readonly bActiveWires: readonly number[];
+    readonly cActiveWires: readonly number[];
     readonly aRows: readonly (readonly (readonly [number, number])[])[];
     readonly bRows: readonly (readonly (readonly [number, number])[])[];
     readonly cRows: readonly (readonly (readonly [number, number])[])[];
@@ -56,15 +59,16 @@ function u32(values: readonly number[]): Uint8Array {
   return new Uint8Array(Uint32Array.from(values).buffer);
 }
 
-function matrix(rows: readonly (readonly (readonly [number, number])[])[]): UnivariateSparseMatrix {
+function matrix(
+  activeWires: readonly number[],
+  rows: readonly (readonly (readonly [number, number])[])[],
+): UnivariateSparseMatrix {
   const rowOffsets = [0];
   const columns: number[] = [];
-  const activeWires: number[] = [];
-  const coefficients = [];
+  const coefficients: ReturnType<typeof field.fromBigInt>[] = [];
   for (const row of rows) {
-    for (const [wire, coefficient] of row) {
-      columns.push(activeWires.length);
-      activeWires.push(wire);
+    for (const [compactIndex, coefficient] of row) {
+      columns.push(compactIndex);
       coefficients.push(field.fromBigInt(BigInt(coefficient)));
     }
     rowOffsets.push(columns.length);
@@ -81,9 +85,9 @@ function matrix(rows: readonly (readonly (readonly [number, number])[])[]): Univ
 const subcircuits: readonly UnivariateSubcircuit[] = fixture.subcircuits.map((subcircuit) => ({
   id: subcircuit.id,
   flattenMap: subcircuit.flattenMap,
-  A: matrix(subcircuit.aRows),
-  B: matrix(subcircuit.bRows),
-  C: matrix(subcircuit.cRows),
+  A: matrix(subcircuit.aActiveWires, subcircuit.aRows),
+  B: matrix(subcircuit.bActiveWires, subcircuit.bRows),
+  C: matrix(subcircuit.cActiveWires, subcircuit.cRows),
 }));
 const witnessesBySlot = fixture.witnessesBySlot.map((witness) => witness === null
   ? null

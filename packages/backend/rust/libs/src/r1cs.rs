@@ -7,6 +7,7 @@ use crate::frontend_artifacts::{
     SubcircuitInfo,
 };
 use crate::polynomial_structures::{from_subcircuit_to_QAP, QAP};
+use crate::univariate_relation::UnivariateSubcircuit;
 use crate::vector_operations::{matrix_matrix_mul, transpose_inplace};
 use icicle_bls12_381::curve::ScalarField;
 use icicle_core::traits::FieldImpl;
@@ -205,6 +206,25 @@ fn read_u64_le(data: &[u8], offset: &mut usize) -> io::Result<u64> {
 }
 
 impl SubcircuitR1CS {
+    /// Borrows the existing compact sparse R1CS representation for the
+    /// univariate relation. The rows retain compact-column indices; no dense
+    /// matrix or legacy QAP polynomial is constructed.
+    pub fn as_univariate_subcircuit<'a>(
+        &'a self,
+        subcircuit_info: &'a SubcircuitInfo,
+    ) -> UnivariateSubcircuit<'a> {
+        UnivariateSubcircuit {
+            id: subcircuit_info.id,
+            flatten_map: &subcircuit_info.flattenMap,
+            a_active_wires: &self.A_active_wires,
+            b_active_wires: &self.B_active_wires,
+            c_active_wires: &self.C_active_wires,
+            a_rows: &self.A_sparse_rows,
+            b_rows: &self.B_sparse_rows,
+            c_rows: &self.C_sparse_rows,
+        }
+    }
+
     pub fn from_r1cs_path(
         path: PathBuf,
         setup_params: &SetupParams,

@@ -83,11 +83,14 @@ pub struct DenseDomainPolynomial {
 }
 
 /// The sparse R1CS data needed by U6 and U8 for one fixed library subcircuit.
-/// Rows use local-wire indices and intentionally retain the packed sparse form
-/// supplied by the existing R1CS reader.
+/// Every row stores compact-column indices. `*_active_wires` resolves such an
+/// index to the local wire index without expanding the R1CS matrix.
 pub struct UnivariateSubcircuit<'a> {
     pub id: usize,
     pub flatten_map: &'a [usize],
+    pub a_active_wires: &'a [usize],
+    pub b_active_wires: &'a [usize],
+    pub c_active_wires: &'a [usize],
     pub a_rows: &'a [Vec<(usize, ScalarField)>],
     pub b_rows: &'a [Vec<(usize, ScalarField)>],
     pub c_rows: &'a [Vec<(usize, ScalarField)>],
@@ -220,10 +223,10 @@ pub fn arithmetic_wire_lift(
             wire_index: local_wire_index,
         });
     }
-    let (rows, name) = match matrix {
-        R1csMatrix::A => (subcircuit.a_rows, "A"),
-        R1csMatrix::B => (subcircuit.b_rows, "B"),
-        R1csMatrix::C => (subcircuit.c_rows, "C"),
+    let (active_wires, rows, name) = match matrix {
+        R1csMatrix::A => (subcircuit.a_active_wires, subcircuit.a_rows, "A"),
+        R1csMatrix::B => (subcircuit.b_active_wires, subcircuit.b_rows, "B"),
+        R1csMatrix::C => (subcircuit.c_active_wires, subcircuit.c_rows, "C"),
     };
     if rows.len() > setup.n {
         return Err(UnivariateRelationError::MatrixRows {
@@ -235,15 +238,21 @@ pub fn arithmetic_wire_lift(
     }
     let mut evaluations = vec![ScalarField::zero(); shape.arithmetic_domain_size];
     for (row_index, row) in rows.iter().enumerate() {
-        let coefficient = row
-            .iter()
-            .fold(ScalarField::zero(), |sum, (wire_index, value)| {
-                if *wire_index == local_wire_index {
-                    sum + *value
-                } else {
-                    sum
-                }
-            });
+        let coefficient =
+            row.iter()
+                .try_fold(ScalarField::zero(), |sum, (compact_index, value)| {
+                    let active_wire = active_wires.get(*compact_index).ok_or(
+                        UnivariateRelationError::LocalWireIndex {
+                            subcircuit_id: subcircuit.id,
+                            wire_index: *compact_index,
+                        },
+                    )?;
+                    Ok::<_, UnivariateRelationError>(if *active_wire == local_wire_index {
+                        sum + *value
+                    } else {
+                        sum
+                    })
+                })?;
         let index = shape
             .arithmetic_index(placement_index, subcircuit.id, row_index, setup)
             .map_err(|_| UnivariateRelationError::PlacementIndex {
@@ -361,6 +370,7 @@ pub fn witness_maps(
             setup,
             placement_index,
             subcircuit_id,
+            subcircuit.a_active_wires,
             subcircuit.a_rows,
             witness.values,
             "A",
@@ -371,6 +381,7 @@ pub fn witness_maps(
             setup,
             placement_index,
             subcircuit_id,
+            subcircuit.b_active_wires,
             subcircuit.b_rows,
             witness.values,
             "B",
@@ -381,6 +392,7 @@ pub fn witness_maps(
             setup,
             placement_index,
             subcircuit_id,
+            subcircuit.c_active_wires,
             subcircuit.c_rows,
             witness.values,
             "C",
@@ -491,6 +503,7 @@ fn write_matrix_evaluations(
     setup: &SetupParams,
     placement_index: usize,
     subcircuit_id: usize,
+    active_wires: &[usize],
     rows: &[Vec<(usize, ScalarField)>],
     witness: &[ScalarField],
     matrix: &'static str,
@@ -505,7 +518,13 @@ fn write_matrix_evaluations(
     }
     for (row_index, row) in rows.iter().enumerate() {
         let mut value = ScalarField::zero();
-        for (wire_index, coefficient) in row {
+        for (compact_index, coefficient) in row {
+            let wire_index = active_wires.get(*compact_index).ok_or(
+                UnivariateRelationError::LocalWireIndex {
+                    subcircuit_id,
+                    wire_index: *compact_index,
+                },
+            )?;
             let wire_value =
                 witness
                     .get(*wire_index)
@@ -677,6 +696,12 @@ mod tests {
         id: usize,
         #[serde(rename = "flattenMap")]
         flatten_map: Vec<usize>,
+        #[serde(rename = "aActiveWires")]
+        a_active_wires: Vec<usize>,
+        #[serde(rename = "bActiveWires")]
+        b_active_wires: Vec<usize>,
+        #[serde(rename = "cActiveWires")]
+        c_active_wires: Vec<usize>,
         #[serde(rename = "aRows")]
         a_rows: Vec<Vec<(usize, u32)>>,
         #[serde(rename = "bRows")]
@@ -870,6 +895,9 @@ mod tests {
             .map(|(index, subcircuit)| UnivariateSubcircuit {
                 id: subcircuit.id,
                 flatten_map: &subcircuit.flatten_map,
+                a_active_wires: &subcircuit.a_active_wires,
+                b_active_wires: &subcircuit.b_active_wires,
+                c_active_wires: &subcircuit.c_active_wires,
                 a_rows: &a_rows[index],
                 b_rows: &b_rows[index],
                 c_rows: &c_rows[index],

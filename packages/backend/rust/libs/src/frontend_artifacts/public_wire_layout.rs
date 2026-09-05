@@ -24,6 +24,16 @@ pub struct PublicWireSegment {
     pub placement_phase: usize,
 }
 
+/// The compressed U20 lookup key for one designated public-buffer wire.
+/// `local_public_wire_index` is the physical local wire index `j` in the
+/// tagged position `(buffer_subcircuit_id, j)`; it is not renumbered within a
+/// buffer port.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PublicQueryKey {
+    pub buffer_subcircuit_id: usize,
+    pub local_public_wire_index: usize,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PublicWireLayout {
     l_free: usize,
@@ -175,6 +185,31 @@ impl PublicWireLayout {
 
     pub fn source_for_public_wire(&self, global_wire_index: usize) -> Option<GlobalWire> {
         self.sources.get(global_wire_index).copied()
+    }
+
+    /// Returns the only U20 public-query key reachable for this public global
+    /// wire in the backend's fixed public-buffer specialization. Padding has
+    /// no query key.
+    pub fn public_query_key_for_public_wire(
+        &self,
+        global_wire_index: usize,
+    ) -> Option<PublicQueryKey> {
+        let GlobalWire::Mapped {
+            subcircuit_id,
+            local_wire_index,
+        } = self.source_for_public_wire(global_wire_index)?
+        else {
+            return None;
+        };
+        debug_assert_eq!(
+            self.placement_phase_for_subcircuit(subcircuit_id),
+            Some(subcircuit_id),
+            "PublicWireLayout only admits equal-ID public buffer placements"
+        );
+        Some(PublicQueryKey {
+            buffer_subcircuit_id: subcircuit_id,
+            local_public_wire_index: local_wire_index,
+        })
     }
 
     pub fn placement_phase_for_public_wire(&self, global_wire_index: usize) -> Option<usize> {
@@ -523,6 +558,14 @@ mod tests {
         assert_eq!(layout.placement_phase_for_public_wire(134), Some(4));
         assert_eq!(layout.placement_phase_for_public_wire(158), None);
         assert_eq!(layout.placement_phase_for_public_wire(256), Some(5));
+        assert_eq!(
+            layout.public_query_key_for_public_wire(50),
+            Some(PublicQueryKey {
+                buffer_subcircuit_id: 1,
+                local_public_wire_index: 1,
+            })
+        );
+        assert_eq!(layout.public_query_key_for_public_wire(158), None);
         assert!(layout.is_free_public_index(255));
         assert!(!layout.is_free_public_index(256));
         assert_eq!(

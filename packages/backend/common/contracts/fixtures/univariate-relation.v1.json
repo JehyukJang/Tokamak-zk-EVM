@@ -15,6 +15,9 @@
     {
       "id": 0,
       "flattenMap": [0, 2],
+      "aActiveWires": [0, 1],
+      "bActiveWires": [0, 1],
+      "cActiveWires": [0, 1],
       "aRows": [[[0, 1]], [[1, 1]]],
       "bRows": [[[1, 1]], [[0, 1]]],
       "cRows": [[[0, 1]], [[1, 1]]]
@@ -22,6 +25,9 @@
     {
       "id": 1,
       "flattenMap": [],
+      "aActiveWires": [],
+      "bActiveWires": [],
+      "cActiveWires": [],
       "aRows": [],
       "bRows": [],
       "cRows": []
@@ -29,6 +35,9 @@
     {
       "id": 2,
       "flattenMap": [],
+      "aActiveWires": [],
+      "bActiveWires": [],
+      "cActiveWires": [],
       "aRows": [],
       "bRows": [],
       "cRows": []

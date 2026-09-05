@@ -666,6 +666,10 @@ function checkPublicWireLayout(): void {
   assertEqual(layout.placementPhaseForSubcircuit(0), 0, 'output buffer placement phase');
   assertEqual(layout.placementPhaseForSubcircuit(1), 1, 'input buffer placement phase');
   assertEqual(layout.placementPhaseForPublicWire(5), 1, 'public wire placement phase');
+  const publicQueryKey = layout.publicQueryKeyForPublicWire(5);
+  assertEqual(publicQueryKey?.bufferSubcircuitId, 1, 'compressed public query buffer id');
+  assertEqual(publicQueryKey?.localPublicWireIndex, 3, 'compressed public query local wire');
+  assertEqual(layout.publicQueryKeyForPublicWire(2), undefined, 'public padding has no query key');
   assertEqual(countOMidVariables(setup, placements, subcircuitInfos), 3, 'generic O_mid count');
   assertEqual(countOPrvVariables(setup, placements, subcircuitInfos), 0, 'generic O_prv count');
 

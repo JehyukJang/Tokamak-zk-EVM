@@ -20,6 +20,13 @@ export interface PublicWireSegment {
   readonly placementPhase: number;
 }
 
+/** The compressed U20 key for a fixed public-buffer local wire. */
+export interface PublicQueryKey {
+  readonly bufferSubcircuitId: number;
+  /** Physical local wire index `j`, not a port-relative ordinal. */
+  readonly localPublicWireIndex: number;
+}
+
 export class PublicWireLayout {
   private constructor(
     private readonly lFree: number,
@@ -101,6 +108,25 @@ export class PublicWireLayout {
 
   sourceForPublicWire(globalWireIndex: number): PublicWireSource | undefined {
     return this.sources[globalWireIndex];
+  }
+
+  /**
+   * Returns the only U20 public-query key reachable for this public global
+   * wire in the fixed public-buffer specialization. Public padding has none.
+   */
+  publicQueryKeyForPublicWire(globalWireIndex: number): PublicQueryKey | undefined {
+    const source = this.sourceForPublicWire(globalWireIndex);
+    if (source === undefined) {
+      return undefined;
+    }
+    const placementPhase = this.placementPhaseForSubcircuit(source.subcircuitId);
+    if (placementPhase !== source.subcircuitId) {
+      throw new Error(`Public buffer ${source.subcircuitId} violates the equal-ID placement invariant.`);
+    }
+    return {
+      bufferSubcircuitId: source.subcircuitId,
+      localPublicWireIndex: source.localWireIndex,
+    };
   }
 
   placementPhaseForPublicWire(globalWireIndex: number): number | undefined {
