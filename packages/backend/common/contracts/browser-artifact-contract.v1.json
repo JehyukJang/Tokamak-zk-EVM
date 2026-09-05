@@ -13,7 +13,8 @@
     "prover_permutation": 9,
     "univariate_preprocess_crs": 10,
     "univariate_prover_crs": 11,
-    "univariate_verifier_crs": 12
+    "univariate_verifier_crs": 12,
+    "univariate_verifier_preprocess": 13
   },
   "combinedSigmaPayload": {
     "magic": "TKCRS001",
@@ -107,6 +108,12 @@
         {"label": "crs.public-query-keys", "type": "CrsMetadata", "encoding": "bytes", "elementCount": null, "elementByteLength": 8, "points": []},
         {"label": "crs.public-queries", "type": "CrsG1", "encoding": "ffjs-g1-affine-96", "elementCount": null, "elementByteLength": null, "points": []},
         {"label": "crs.g2", "type": "CrsG2", "encoding": "ffjs-g2-affine-192", "elementCount": 9, "elementByteLength": null, "points": [{"index": 0, "name": "one"}, {"index": 1, "name": "tau"}, {"index": 2, "name": "alpha"}, {"index": 3, "name": "alpha2"}, {"index": 4, "name": "alpha3"}, {"index": 5, "name": "alpha4"}, {"index": 6, "name": "gamma"}, {"index": 7, "name": "eta"}, {"index": 8, "name": "delta"}]}
+      ]
+    },
+    {
+      "name": "univariate_verifier_preprocess",
+      "sections": [
+        {"label": "preprocess.g1", "type": "Preprocess", "encoding": "ffjs-g1-affine-96", "elementCount": 2, "elementByteLength": null, "points": [{"index": 0, "name": "S_kappa"}, {"index": 1, "name": "S_C"}]}
       ]
     }
   ]

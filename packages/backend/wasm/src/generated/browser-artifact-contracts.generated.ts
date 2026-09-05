@@ -684,7 +684,32 @@ export const UNIVARIATE_VERIFIER_CRS_V1_SPEC = {
   ],
 } as const satisfies RuntimeArtifactFormatSpec;
 
-export const RUNTIME_ARTIFACT_SPECS = [INSTANCE_V1_SPEC, PROVER_PLACEMENT_VARIABLES_V1_SPEC, PROVER_SELECTOR_V1_SPEC, PROVER_PERMUTATION_V1_SPEC, SIGMA_VERIFY_V1_SPEC, VERIFIER_PREPROCESS_V1_SPEC, VERIFIER_PROOF_V1_SPEC, PROVER_CRS_V1_SPEC, PREPROCESS_CRS_V1_SPEC, UNIVARIATE_PREPROCESS_CRS_V1_SPEC, UNIVARIATE_PROVER_CRS_V1_SPEC, UNIVARIATE_VERIFIER_CRS_V1_SPEC] as const;
+export const UNIVARIATE_VERIFIER_PREPROCESS_V1_SPEC = {
+  schemaVersion: 1,
+  name: "univariate_verifier_preprocess",
+  kind: 13,
+  sections: [
+    {
+      label: "preprocess.g1",
+      type: BinarySectionType.Preprocess,
+      encoding: BinarySectionEncoding.FfjsG1Affine96,
+      elementCount: 2,
+      elementByteLength: null,
+      points: [
+  {
+    "index": 0,
+    "name": "S_kappa"
+  },
+  {
+    "index": 1,
+    "name": "S_C"
+  }
+],
+    }
+  ],
+} as const satisfies RuntimeArtifactFormatSpec;
+
+export const RUNTIME_ARTIFACT_SPECS = [INSTANCE_V1_SPEC, PROVER_PLACEMENT_VARIABLES_V1_SPEC, PROVER_SELECTOR_V1_SPEC, PROVER_PERMUTATION_V1_SPEC, SIGMA_VERIFY_V1_SPEC, VERIFIER_PREPROCESS_V1_SPEC, VERIFIER_PROOF_V1_SPEC, PROVER_CRS_V1_SPEC, PREPROCESS_CRS_V1_SPEC, UNIVARIATE_PREPROCESS_CRS_V1_SPEC, UNIVARIATE_PROVER_CRS_V1_SPEC, UNIVARIATE_VERIFIER_CRS_V1_SPEC, UNIVARIATE_VERIFIER_PREPROCESS_V1_SPEC] as const;
 
 export function requireRuntimeArtifactSpecForKind(kind: number): RuntimeArtifactFormatSpec {
   const spec = RUNTIME_ARTIFACT_SPECS.find((candidate) => candidate.kind === kind);

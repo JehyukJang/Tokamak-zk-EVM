@@ -14,7 +14,8 @@ export const BACKEND_BROWSER_ARTIFACT_CONTRACT = {
     "prover_permutation": 9,
     "univariate_preprocess_crs": 10,
     "univariate_prover_crs": 11,
-    "univariate_verifier_crs": 12
+    "univariate_verifier_crs": 12,
+    "univariate_verifier_preprocess": 13
   },
   "combinedSigmaPayload": {
     "magic": "TKCRS001",
@@ -631,6 +632,28 @@ export const BACKEND_BROWSER_ARTIFACT_CONTRACT = {
             {
               "index": 8,
               "name": "delta"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "univariate_verifier_preprocess",
+      "sections": [
+        {
+          "label": "preprocess.g1",
+          "type": "Preprocess",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": 2,
+          "elementByteLength": null,
+          "points": [
+            {
+              "index": 0,
+              "name": "S_kappa"
+            },
+            {
+              "index": 1,
+              "name": "S_C"
             }
           ]
         }
