@@ -9,6 +9,7 @@ const validatorSource = path.join(contractRoot, "typescript", "crs-provenance-va
 const buildMetadataValidatorSource = path.join(contractRoot, "typescript", "backend-build-metadata-validator.ts");
 const provenanceContract = path.join(contractRoot, "crs-provenance-contract.json");
 const buildMetadataContract = path.join(contractRoot, "backend-build-metadata-contract.json");
+const univariateDomainContract = path.join(contractRoot, "univariate-domain-contract.v1.json");
 const versionPolicySource = path.join(repositoryRoot, "scripts", "version-contract.mjs");
 const versionPolicyDeclarationSource = path.join(repositoryRoot, "scripts", "version-contract.d.ts");
 const qapLibraryContract = path.join(
@@ -31,6 +32,7 @@ const synthesizerArtifactContract = path.join(
 const backendArtifactContract = path.join(contractRoot, "browser-artifact-contract.v1.json");
 const provenanceContractContents = (await fs.readFile(provenanceContract, "utf8")).trim();
 const buildMetadataContractContents = (await fs.readFile(buildMetadataContract, "utf8")).trim();
+const univariateDomainContractContents = (await fs.readFile(univariateDomainContract, "utf8")).trim();
 const check = process.argv.includes("--check");
 const consumers = [
   path.join(repositoryRoot, "packages", "cli", "src", "generated"),
@@ -91,6 +93,10 @@ await synchronizeContents(
 await synchronizeContents(
   `// Generated from packages/frontend/qap-compiler/contracts/subcircuit-library-contract.v1.json.\nexport const SUBCIRCUIT_LIBRARY_CONTRACT = ${JSON.stringify(qapContract, null, 2)} as const;\n\nexport default SUBCIRCUIT_LIBRARY_CONTRACT;\n`,
   path.join(browserConsumerDirectory, "subcircuit-library-contract.generated.ts"),
+);
+await synchronizeContents(
+  `// Generated from packages/backend/common/contracts/univariate-domain-contract.v1.json.\nexport const UNIVARIATE_DOMAIN_CONTRACT = ${univariateDomainContractContents} as const;\n\nexport default UNIVARIATE_DOMAIN_CONTRACT;\n`,
+  path.join(browserConsumerDirectory, "univariate-domain-contract.generated.ts"),
 );
 
 async function synchronize(source, target) {

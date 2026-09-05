@@ -27,6 +27,11 @@ pub enum UnivariateCrsError {
     InvalidDomainRoot { name: &'static str },
     #[error("{name} overflows while deriving univariate CRS capacity")]
     CapacityOverflow { name: &'static str },
+    #[error("{coordinate} index {value} is outside its admitted range")]
+    IndexOutOfRange {
+        coordinate: &'static str,
+        value: usize,
+    },
     #[error("{name} must be nonzero")]
     ZeroTrapdoor { name: &'static str },
     #[error("tau belongs to the {domain} evaluation domain")]
@@ -40,8 +45,12 @@ pub enum UnivariateCrsError {
 /// Capacity and domain information fixed by the library and placement bound.
 #[derive(Clone, Debug, PartialEq)]
 pub struct UnivariateCrsShape {
+    /// The power-of-two arithmetic type capacity `t`, strictly above `s_D`.
+    pub subcircuit_capacity: usize,
     pub arithmetic_domain_size: usize,
     pub connection_domain_size: usize,
+    pub intersection_domain_size: usize,
+    pub union_domain_size: usize,
     pub degree_bound: usize,
     pub arithmetic_root: ScalarField,
     pub connection_root: ScalarField,
@@ -51,6 +60,7 @@ pub struct UnivariateCrsShape {
 impl UnivariateCrsShape {
     /// Derives U18/U22/U59 capacities from the existing library metadata.
     pub fn from_setup_params(params: &SetupParams) -> Result<Self, UnivariateCrsError> {
+        let subcircuit_capacity = strict_power_of_two_capacity(params.s_D)?;
         let interface_wire_count =
             params
                 .l_D
@@ -61,9 +71,9 @@ impl UnivariateCrsShape {
         let arithmetic_domain_size = params
             .n
             .checked_mul(params.s_max)
-            .and_then(|value| value.checked_mul(params.s_D))
+            .and_then(|value| value.checked_mul(subcircuit_capacity))
             .ok_or(UnivariateCrsError::CapacityOverflow {
-                name: "N_A = n * s_max * s_D",
+                name: "N_A = n * s_max * t",
             })?;
         let connection_domain_size = interface_wire_count.checked_mul(params.s_max).ok_or(
             UnivariateCrsError::CapacityOverflow {
@@ -76,6 +86,10 @@ impl UnivariateCrsShape {
         if connection_domain_size <= 1 {
             return Err(UnivariateCrsError::DomainTooSmall { name: "N_C" });
         }
+        let intersection_domain_size =
+            greatest_common_divisor(arithmetic_domain_size, connection_domain_size);
+        let union_domain_size =
+            least_common_multiple(arithmetic_domain_size, connection_domain_size)?;
         let arithmetic_bound = arithmetic_domain_size
             .checked_mul(2)
             .and_then(|value| value.checked_sub(params.n))
@@ -88,14 +102,121 @@ impl UnivariateCrsShape {
             .ok_or(UnivariateCrsError::CapacityOverflow { name: "N_C + 4" })?;
 
         Ok(Self {
+            subcircuit_capacity,
             arithmetic_domain_size,
             connection_domain_size,
+            intersection_domain_size,
+            union_domain_size,
             degree_bound: arithmetic_bound.max(connection_bound),
             arithmetic_root: primitive_root("N_A", arithmetic_domain_size)?,
             connection_root: primitive_root("N_C", connection_domain_size)?,
             blinding_bounds: [2; 4],
         })
     }
+
+    /// U1's canonical flat index for an arithmetic-domain coordinate.
+    pub fn arithmetic_index(
+        &self,
+        placement_index: usize,
+        subcircuit_id: usize,
+        constraint_row: usize,
+        setup: &SetupParams,
+    ) -> Result<usize, UnivariateCrsError> {
+        if placement_index >= setup.s_max {
+            return Err(UnivariateCrsError::IndexOutOfRange {
+                coordinate: "placement",
+                value: placement_index,
+            });
+        }
+        if subcircuit_id >= self.subcircuit_capacity {
+            return Err(UnivariateCrsError::IndexOutOfRange {
+                coordinate: "subcircuit",
+                value: subcircuit_id,
+            });
+        }
+        if constraint_row >= setup.n {
+            return Err(UnivariateCrsError::IndexOutOfRange {
+                coordinate: "constraint row",
+                value: constraint_row,
+            });
+        }
+
+        setup
+            .s_max
+            .checked_mul(subcircuit_id)
+            .and_then(|subcircuit_offset| placement_index.checked_add(subcircuit_offset))
+            .and_then(|prefix| {
+                setup
+                    .s_max
+                    .checked_mul(self.subcircuit_capacity)
+                    .and_then(|stride| stride.checked_mul(constraint_row))
+                    .and_then(|row_offset| prefix.checked_add(row_offset))
+            })
+            .ok_or(UnivariateCrsError::CapacityOverflow { name: "U1 index" })
+    }
+
+    /// U4's canonical flat index for a connection-domain coordinate.
+    pub fn connection_index(
+        &self,
+        placement_index: usize,
+        interface_wire_index: usize,
+        setup: &SetupParams,
+    ) -> Result<usize, UnivariateCrsError> {
+        let interface_wire_count =
+            setup
+                .l_D
+                .checked_sub(setup.l)
+                .ok_or(UnivariateCrsError::CapacityOverflow {
+                    name: "m_I = l_D - l",
+                })?;
+        if placement_index >= setup.s_max {
+            return Err(UnivariateCrsError::IndexOutOfRange {
+                coordinate: "placement",
+                value: placement_index,
+            });
+        }
+        if interface_wire_index >= interface_wire_count {
+            return Err(UnivariateCrsError::IndexOutOfRange {
+                coordinate: "interface wire",
+                value: interface_wire_index,
+            });
+        }
+
+        setup
+            .s_max
+            .checked_mul(interface_wire_index)
+            .and_then(|wire_offset| placement_index.checked_add(wire_offset))
+            .ok_or(UnivariateCrsError::CapacityOverflow { name: "U4 index" })
+    }
+}
+
+/// Returns the smallest power of two strictly greater than the library's
+/// subcircuit catalog size. This is the new protocol's arithmetic type capacity
+/// `t`; IDs in `[s_D, t)` are permanently inactive padding coordinates.
+fn strict_power_of_two_capacity(subcircuit_count: usize) -> Result<usize, UnivariateCrsError> {
+    if subcircuit_count == 0 {
+        return Err(UnivariateCrsError::DomainTooSmall { name: "s_D" });
+    }
+
+    let capacity = if subcircuit_count.is_power_of_two() {
+        subcircuit_count.checked_mul(2)
+    } else {
+        subcircuit_count.checked_next_power_of_two()
+    };
+    capacity.ok_or(UnivariateCrsError::CapacityOverflow { name: "t" })
+}
+
+fn greatest_common_divisor(mut left: usize, mut right: usize) -> usize {
+    while right != 0 {
+        (left, right) = (right, left % right);
+    }
+    left
+}
+
+fn least_common_multiple(left: usize, right: usize) -> Result<usize, UnivariateCrsError> {
+    (left / greatest_common_divisor(left, right))
+        .checked_mul(right)
+        .ok_or(UnivariateCrsError::CapacityOverflow { name: "N_union" })
 }
 
 /// Analysis-only trapdoors required to construct the U18 basis.
@@ -283,6 +404,48 @@ mod tests {
     use icicle_bls12_381::curve::{CurveCfg, G2CurveCfg, ScalarField};
     use icicle_core::curve::Curve;
     use icicle_core::traits::{Arithmetic, FieldImpl};
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    struct DomainFixture {
+        cases: Vec<DomainFixtureCase>,
+    }
+
+    #[derive(Deserialize)]
+    struct DomainFixtureCase {
+        setup: DomainFixtureSetup,
+        expected: DomainFixtureExpected,
+    }
+
+    #[derive(Deserialize)]
+    struct DomainFixtureSetup {
+        l: usize,
+        #[serde(rename = "l_D")]
+        l_d: usize,
+        n: usize,
+        #[serde(rename = "s_D")]
+        s_d: usize,
+        s_max: usize,
+    }
+
+    #[derive(Deserialize)]
+    struct DomainFixtureExpected {
+        t: usize,
+        #[serde(rename = "N_A")]
+        n_a: usize,
+        #[serde(rename = "N_C")]
+        n_c: usize,
+        #[serde(rename = "N_G")]
+        n_g: usize,
+        #[serde(rename = "N_union")]
+        n_union: usize,
+        #[serde(rename = "D")]
+        d: usize,
+        #[serde(rename = "arithmeticIndex")]
+        arithmetic_index: usize,
+        #[serde(rename = "connectionIndex")]
+        connection_index: usize,
+    }
 
     fn setup_params() -> SetupParams {
         SetupParams {
@@ -320,9 +483,12 @@ mod tests {
     fn derives_u59_capacity_and_generates_the_u18_basis() {
         let shape = UnivariateCrsShape::from_setup_params(&setup_params())
             .expect("test setup parameters must define supported domains");
-        assert_eq!(shape.arithmetic_domain_size, 8);
+        assert_eq!(shape.subcircuit_capacity, 4);
+        assert_eq!(shape.arithmetic_domain_size, 16);
         assert_eq!(shape.connection_domain_size, 4);
-        assert_eq!(shape.degree_bound, 16);
+        assert_eq!(shape.intersection_domain_size, 4);
+        assert_eq!(shape.union_domain_size, 16);
+        assert_eq!(shape.degree_bound, 32);
         assert_eq!(shape.blinding_bounds, [2; 4]);
 
         let g1 = CurveCfg::generate_random_affine_points(1)[0];
@@ -332,7 +498,7 @@ mod tests {
             .expect("U18 basis generation must succeed");
 
         assert_eq!(foundation.schema_id, UNIVARIATE_CRS_SCHEMA_ID);
-        assert_eq!(foundation.tau_powers_g1.len(), 17);
+        assert_eq!(foundation.tau_powers_g1.len(), 33);
         assert_eq!(foundation.tau_powers_g1[0], G1serde(g1));
         assert_eq!(
             foundation.tau_powers_g1[3],
@@ -372,7 +538,103 @@ mod tests {
         let mut params = setup_params();
         params.s_D = 0;
         let error = UnivariateCrsShape::from_setup_params(&params)
-            .expect_err("zero subcircuit count cannot define N_A");
-        assert_eq!(error, UnivariateCrsError::DomainTooSmall { name: "N_A" });
+            .expect_err("zero subcircuit count cannot define t");
+        assert_eq!(error, UnivariateCrsError::DomainTooSmall { name: "s_D" });
+    }
+
+    #[test]
+    fn derives_a_strictly_larger_power_of_two_type_capacity() {
+        let mut params = setup_params();
+        params.s_D = 3;
+        assert_eq!(
+            UnivariateCrsShape::from_setup_params(&params)
+                .expect("non-power-of-two catalog must be padded")
+                .subcircuit_capacity,
+            4
+        );
+
+        params.s_D = 4;
+        assert_eq!(
+            UnivariateCrsShape::from_setup_params(&params)
+                .expect("power-of-two catalog must still use a strictly larger capacity")
+                .subcircuit_capacity,
+            8
+        );
+    }
+
+    #[test]
+    fn current_library_type_padding_produces_a_radix_two_arithmetic_domain() {
+        let mut params = setup_params();
+        params.n = 1024;
+        params.s_D = 44;
+        params.s_max = 256;
+        params.l = 396;
+        params.l_D = 1420;
+
+        let shape = UnivariateCrsShape::from_setup_params(&params)
+            .expect("current library dimensions must define supported domains");
+        assert_eq!(shape.subcircuit_capacity, 64);
+        assert_eq!(shape.arithmetic_domain_size, 1 << 24);
+        assert_eq!(shape.connection_domain_size, 1 << 18);
+        assert_eq!(shape.intersection_domain_size, 1 << 18);
+        assert_eq!(shape.union_domain_size, 1 << 24);
+    }
+
+    #[test]
+    fn matches_the_backend_owned_univariate_domain_fixtures() {
+        let fixture: DomainFixture = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../common/contracts/fixtures/univariate-domain-shape.v1.json"
+        )))
+        .expect("univariate domain fixture must be valid JSON");
+
+        for case in fixture.cases {
+            let shape = UnivariateCrsShape::from_setup_params(&SetupParams {
+                l_free: 0,
+                l: case.setup.l,
+                l_user_out: 0,
+                l_user: 0,
+                l_D: case.setup.l_d,
+                m_D: case.setup.l_d,
+                n: case.setup.n,
+                s_D: case.setup.s_d,
+                s_max: case.setup.s_max,
+            })
+            .expect("fixture must describe a supported univariate domain");
+            assert_eq!(shape.subcircuit_capacity, case.expected.t);
+            assert_eq!(shape.arithmetic_domain_size, case.expected.n_a);
+            assert_eq!(shape.connection_domain_size, case.expected.n_c);
+            assert_eq!(shape.intersection_domain_size, case.expected.n_g);
+            assert_eq!(shape.union_domain_size, case.expected.n_union);
+            assert_eq!(shape.degree_bound, case.expected.d);
+            let setup = SetupParams {
+                l_free: 0,
+                l: case.setup.l,
+                l_user_out: 0,
+                l_user: 0,
+                l_D: case.setup.l_d,
+                m_D: case.setup.l_d,
+                n: case.setup.n,
+                s_D: case.setup.s_d,
+                s_max: case.setup.s_max,
+            };
+            assert_eq!(
+                shape
+                    .arithmetic_index(
+                        setup.s_max - 1,
+                        shape.subcircuit_capacity - 1,
+                        setup.n - 1,
+                        &setup,
+                    )
+                    .expect("maximum U1 coordinate must be admitted"),
+                case.expected.arithmetic_index
+            );
+            assert_eq!(
+                shape
+                    .connection_index(setup.s_max - 1, setup.l_D - setup.l - 1, &setup)
+                    .expect("maximum U4 coordinate must be admitted"),
+                case.expected.connection_index
+            );
+        }
     }
 }

@@ -2,6 +2,8 @@
 #![allow(non_snake_case)]
 
 use super::vector_operations::*;
+pub use crate::ntt_domain::init_ntt_domain_for_size;
+use crate::ntt_domain::initialized_ntt_domain_size;
 use icicle_bls12_381::curve::{ScalarCfg, ScalarField};
 use icicle_bls12_381::polynomials::DensePolynomial;
 use icicle_core::ntt::{self, NTTDir};
@@ -15,7 +17,6 @@ use std::{
     cmp,
     collections::HashMap,
     ops::{Add, AddAssign, Mul, Neg, Sub},
-    sync::{Mutex, OnceLock},
 };
 
 extern "C" {
@@ -82,51 +83,6 @@ pub(crate) fn polynomial_eval_batch<
         )
         .wrap()
     }
-}
-
-static NTT_DOMAIN_SIZE: OnceLock<Mutex<Option<usize>>> = OnceLock::new();
-
-fn ntt_domain_size_cell() -> &'static Mutex<Option<usize>> {
-    NTT_DOMAIN_SIZE.get_or_init(|| Mutex::new(None))
-}
-
-pub fn init_ntt_domain_for_size(size: usize) -> Result<(), icicle_runtime::errors::eIcicleError> {
-    let domain_size = requested_ntt_domain_size(size);
-    if domain_size == 0 {
-        panic!("NTT domain size must be non-zero.");
-    }
-    if !domain_size.is_power_of_two() {
-        panic!("NTT domain size must be a power of two.");
-    }
-
-    let mut guard = ntt_domain_size_cell().lock().unwrap();
-    if let Some(current) = *guard {
-        if current >= domain_size {
-            return Ok(());
-        }
-        ntt::release_domain::<ScalarField>()?;
-    }
-    ntt::initialize_domain::<ScalarField>(
-        ntt::get_root_of_unity::<ScalarField>(domain_size as u64),
-        &ntt::NTTInitDomainConfig::default(),
-    )?;
-    *guard = Some(domain_size);
-    Ok(())
-}
-
-fn requested_ntt_domain_size(size: usize) -> usize {
-    #[cfg(test)]
-    {
-        cmp::max(size, 1 << 22)
-    }
-    #[cfg(not(test))]
-    {
-        size
-    }
-}
-
-fn get_ntt_domain_size() -> Option<usize> {
-    *ntt_domain_size_cell().lock().unwrap()
 }
 
 fn _find_size_as_twopower(target_x_size: usize, target_y_size: usize) -> (usize, usize) {
@@ -838,7 +794,7 @@ impl BivariatePolynomial for DensePolynomialExt {
         let size = x_size
             .checked_mul(y_size)
             .expect("x_size * y_size overflow in _biNTT");
-        let expected_size = get_ntt_domain_size().expect(
+        let expected_size = initialized_ntt_domain_size().expect(
             "NTT domain is not initialized. Call init_ntt_domain_for_size before using _biNTT.",
         );
         if size > expected_size {

@@ -1,0 +1,20 @@
+{
+  "contractVersion": 1,
+  "cases": [
+    {
+      "name": "non-power-of-two-catalog",
+      "setup": {"l": 2, "l_D": 4, "n": 2, "s_D": 3, "s_max": 2},
+      "expected": {"t": 4, "N_A": 16, "N_C": 4, "N_G": 4, "N_union": 16, "D": 32, "arithmeticIndex": 15, "connectionIndex": 3}
+    },
+    {
+      "name": "power-of-two-catalog-is-strictly-padded",
+      "setup": {"l": 2, "l_D": 4, "n": 2, "s_D": 4, "s_max": 2},
+      "expected": {"t": 8, "N_A": 32, "N_C": 4, "N_G": 4, "N_union": 32, "D": 64, "arithmeticIndex": 31, "connectionIndex": 3}
+    },
+    {
+      "name": "current-library",
+      "setup": {"l": 396, "l_D": 1420, "n": 1024, "s_D": 44, "s_max": 256},
+      "expected": {"t": 64, "N_A": 16777216, "N_C": 262144, "N_G": 262144, "N_union": 16777216, "D": 33553410, "arithmeticIndex": 16777215, "connectionIndex": 262143}
+    }
+  ]
+}

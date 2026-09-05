@@ -27,6 +27,10 @@ const requiredBoundaries = [
   ['Subcircuit source-digest TypeScript authority', 'common/contracts/typescript/subcircuit-source-digest.ts'],
   ['Subcircuit source-digest fixed vectors', 'common/contracts/fixtures/subcircuit-source-digest-vectors.json'],
   ['Subcircuit source-digest build producer', 'rust/build-support/subcircuit_library/integrity.rs'],
+  ['Univariate domain JSON authority', 'common/contracts/univariate-domain-contract.v1.json'],
+  ['Univariate domain fixed vectors', 'common/contracts/fixtures/univariate-domain-shape.v1.json'],
+  ['Univariate domain Rust implementation', 'rust/libs/src/univariate_crs.rs'],
+  ['Univariate domain WASM implementation', 'wasm/src/univariate/domain.ts'],
 ];
 
 const requiredConsumerBoundaries = [
@@ -72,6 +76,11 @@ const requiredConsumerBoundaries = [
     'backend-wasm runtime artifact contract admission',
     'packages/backend/wasm/src/artifacts/binary/runtime-admission.ts',
     'RuntimeArtifactFormatSpec',
+  ],
+  [
+    'backend-wasm generated univariate domain contract',
+    'packages/backend/wasm/src/generated/univariate-domain-contract.generated.ts',
+    'UNIVARIATE_DOMAIN_CONTRACT',
   ],
 ];
 
