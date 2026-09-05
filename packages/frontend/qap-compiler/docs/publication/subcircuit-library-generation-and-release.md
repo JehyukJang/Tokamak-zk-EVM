@@ -1,5 +1,7 @@
 # Subcircuit Library Generation and Release
 
+Last updated: 2026-09-05
+
 This document describes how the maintainer-side `qap-compiler` workflow relates to the published Tokamak zk-EVM Subcircuit Library package.
 
 ## Overview

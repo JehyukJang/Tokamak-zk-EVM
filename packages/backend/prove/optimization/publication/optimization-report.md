@@ -1,5 +1,7 @@
 # Tokamak zk-EVM Proving Performance History
 
+Last updated: 2026-09-05
+
 > Status: live performance report. Update this document when a materially different proving implementation is measured or an accepted optimization changes the reference result.
 >
 > Last consolidated: 2026-07-30. The figures below preserve the historical measurements that were previously distributed across dated mini-reports and timing reports.
