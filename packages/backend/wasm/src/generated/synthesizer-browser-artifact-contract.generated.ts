@@ -65,6 +65,20 @@ export const SYNTHESIZER_BROWSER_ARTIFACT_CONTRACT = {
       ]
     },
     {
+      "name": "prover_selector",
+      "sourceFile": "selector.json",
+      "sections": [
+        {
+          "label": "selector.entries",
+          "type": "Placement",
+          "encoding": "bytes",
+          "elementCount": null,
+          "elementByteLength": 4,
+          "points": []
+        }
+      ]
+    },
+    {
       "name": "prover_permutation",
       "sourceFile": "permutation.json",
       "sourceFields": {

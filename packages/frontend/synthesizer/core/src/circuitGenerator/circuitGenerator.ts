@@ -5,6 +5,7 @@ import type { PlacementVariables } from '../synthesizer/types/placements.ts';
 import {
   VariableGenerator,
 } from './generators/variableGenerator.ts';
+import { derivePlacementSelector } from './generators/placementSelector.ts';
 import { PermutationGenerator } from './generators/permutationGenerator.ts';
 import {
   CircuitGenerationResult,
@@ -76,9 +77,15 @@ export async function createCircuitGenerator(synthesizer: SynthesizerInterface):
     variableGeneration.placementVariables,
     synthesizer.subcircuitLibrary,
   ).permutation;
+  const selector = derivePlacementSelector(
+    variableGeneration.circuitPlacements,
+    variableGeneration.placementVariables,
+    synthesizer.subcircuitLibrary,
+  );
   return {
     placements: variableGeneration.circuitPlacements,
     placementVariables: variableGeneration.placementVariables,
+    selector,
     ...publicProjection,
     permutation,
   };

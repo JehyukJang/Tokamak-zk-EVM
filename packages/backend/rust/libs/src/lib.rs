@@ -22,6 +22,7 @@ pub mod serialization;
 pub mod subcircuit_library;
 #[path = "../../../common/contracts/rust/subcircuit_source_digest.rs"]
 pub mod subcircuit_source_digest;
+pub mod univariate_crs;
 pub mod utils;
 pub mod vector_operations;
 

@@ -10,6 +10,7 @@ export const BACKEND_BROWSER_ARTIFACT_CONTRACT = {
     "prover_placement_variables": 5,
     "prover_crs": 6,
     "preprocess_crs": 7,
+    "prover_selector": 8,
     "prover_permutation": 9
   },
   "combinedSigmaPayload": {

@@ -58,6 +58,22 @@ export const PROVER_PLACEMENT_VARIABLES_V1_SPEC = {
   ],
 } as const satisfies RuntimeArtifactFormatSpec;
 
+export const PROVER_SELECTOR_V1_SPEC = {
+  schemaVersion: 1,
+  name: "prover_selector",
+  kind: 8,
+  sections: [
+    {
+      label: "selector.entries",
+      type: BinarySectionType.Placement,
+      encoding: BinarySectionEncoding.Bytes,
+      elementCount: null,
+      elementByteLength: 4,
+      points: [],
+    }
+  ],
+} as const satisfies RuntimeArtifactFormatSpec;
+
 export const PROVER_PERMUTATION_V1_SPEC = {
   schemaVersion: 1,
   name: "prover_permutation",
@@ -473,7 +489,7 @@ export const PREPROCESS_CRS_V1_SPEC = {
   ],
 } as const satisfies RuntimeArtifactFormatSpec;
 
-export const RUNTIME_ARTIFACT_SPECS = [INSTANCE_V1_SPEC, PROVER_PLACEMENT_VARIABLES_V1_SPEC, PROVER_PERMUTATION_V1_SPEC, SIGMA_VERIFY_V1_SPEC, VERIFIER_PREPROCESS_V1_SPEC, VERIFIER_PROOF_V1_SPEC, PROVER_CRS_V1_SPEC, PREPROCESS_CRS_V1_SPEC] as const;
+export const RUNTIME_ARTIFACT_SPECS = [INSTANCE_V1_SPEC, PROVER_PLACEMENT_VARIABLES_V1_SPEC, PROVER_SELECTOR_V1_SPEC, PROVER_PERMUTATION_V1_SPEC, SIGMA_VERIFY_V1_SPEC, VERIFIER_PREPROCESS_V1_SPEC, VERIFIER_PROOF_V1_SPEC, PROVER_CRS_V1_SPEC, PREPROCESS_CRS_V1_SPEC] as const;
 
 export function requireRuntimeArtifactSpecForKind(kind: number): RuntimeArtifactFormatSpec {
   const spec = RUNTIME_ARTIFACT_SPECS.find((candidate) => candidate.kind === kind);

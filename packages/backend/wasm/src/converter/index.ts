@@ -4,6 +4,7 @@ import { convertCrs as convertCrsInternal } from "./conversion/crs-converter.js"
 import { convertInstance as convertInstanceInternal } from "./conversion/instance-converter.js";
 import { convertPermutation as convertPermutationInternal } from "./conversion/permutation-converter.js";
 import { convertProof as convertProofInternal } from "./conversion/proof-converter.js";
+import { convertSelector as convertSelectorInternal } from "./conversion/selector-converter.js";
 import { convertVerifierPreprocess as convertVerifierPreprocessInternal } from "./conversion/verifier-preprocess-converter.js";
 import { convertWitness as convertWitnessInternal } from "./conversion/witness-converter.js";
 import { validateBinary as validateBinaryInternal } from "./validation/validators.js";
@@ -65,6 +66,10 @@ export function convertCrs(
 
 export function convertPermutation(permutation: unknown): Promise<Uint8Array> {
   return runConverter("convertPermutation", () => convertPermutationInternal(permutation));
+}
+
+export function convertSelector(selector: unknown): Promise<Uint8Array> {
+  return runConverter("convertSelector", () => convertSelectorInternal(selector));
 }
 
 export function inspectBinary(

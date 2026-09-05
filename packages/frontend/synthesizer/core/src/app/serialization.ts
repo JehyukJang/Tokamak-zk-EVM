@@ -22,6 +22,11 @@ const synthesisOutputArtifactDefinitions: readonly SynthesisOutputArtifactDefini
     serialize: (output) => JSON.stringify(output.placementVariables, null, 2),
   },
   {
+    path: 'selector.json',
+    kind: 'primary',
+    serialize: (output) => JSON.stringify(output.selector, null, 2),
+  },
+  {
     path: 'instance.json',
     kind: 'primary',
     serialize: (output) => JSON.stringify(output.publicInstance, null, 2),

@@ -37,6 +37,7 @@ Primary outputs are:
 | File                        | Purpose                                                |
 | --------------------------- | ------------------------------------------------------ |
 | `placementVariables.json`   | Placement IDs, offsets, and witness values for proving |
+| `selector.json`             | Capacity-length placement selector for the univariate protocol |
 | `instance.json`             | Public and function-instance field values              |
 | `instance_description.json` | Human-readable descriptions aligned with the instance  |
 | `permutation.json`          | Wire-equality cycles used by preprocessing and proving |

@@ -15,6 +15,7 @@ export type RuntimeArtifactFormatSpecName =
   | "preprocess_crs"
   | "prover_crs"
   | "prover_placement_variables"
+  | "prover_selector"
   | "prover_permutation";
 
 export interface RuntimeArtifactSectionSpec {

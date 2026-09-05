@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use thiserror::Error;
 
 mod execution;
+mod univariate;
 
 pub use execution::{run_trusted_setup, TrustedSetupConfig};
 

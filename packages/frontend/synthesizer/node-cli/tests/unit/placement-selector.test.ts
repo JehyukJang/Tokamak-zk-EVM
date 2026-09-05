@@ -1,0 +1,77 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  derivePlacementSelector,
+  INACTIVE_PLACEMENT_SELECTOR_ENTRY,
+} from '../../../core/src/circuitGenerator/generators/placementSelector.ts';
+import { createSynthesisOutputJsonFiles } from '../../../core/src/app/serialization.ts';
+import type { Placements, PlacementVariables } from '../../../core/src/synthesizer/types/placements.ts';
+
+const placement = (subcircuitId: number) => ({ subcircuitId }) as Placements[number];
+const variables = (subcircuitId: number) => ({
+  subcircuitId,
+  variables: [],
+  instanceList: [],
+});
+
+const library = (
+  sMax: number,
+  globalWireList: readonly (readonly [number, number])[],
+  ids: readonly number[],
+) => ({
+  data: {
+    setupParams: { s_max: sMax },
+    globalWireList,
+    subcircuitInfo: ids.map((id) => ({ id })),
+  },
+}) as never;
+
+describe('placement selector', () => {
+  it('uses capacity length and preserves an inactive non-buffer slot', () => {
+    const placements = [placement(0), placement(1), placement(2), placement(9)];
+    const placementVariables = placements.map(({ subcircuitId }) => variables(subcircuitId));
+
+    expect(derivePlacementSelector(
+      placements,
+      placementVariables,
+      library(6, [[0, 0], [1, 0], [2, 0]], [0, 1, 2, 9]),
+    )).toEqual([
+      0,
+      1,
+      2,
+      9,
+      INACTIVE_PLACEMENT_SELECTOR_ENTRY,
+      INACTIVE_PLACEMENT_SELECTOR_ENTRY,
+    ]);
+  });
+
+  it('rejects a placement-variable mismatch', () => {
+    const placements = [placement(0), placement(1), placement(2), placement(9)];
+    const placementVariables: PlacementVariables = [variables(0), variables(1), variables(2), variables(8)];
+
+    expect(() => derivePlacementSelector(
+      placements,
+      placementVariables,
+      library(4, [[0, 0], [1, 0], [2, 0]], [0, 1, 2, 8, 9]),
+    )).toThrow('does not match its placement-variable subcircuit ID');
+  });
+
+  it('rejects a public buffer outside its matching canonical slot', () => {
+    const placements = [placement(0), placement(9), placement(2), placement(1)];
+    const placementVariables = placements.map(({ subcircuitId }) => variables(subcircuitId));
+
+    expect(() => derivePlacementSelector(
+      placements,
+      placementVariables,
+      library(4, [[0, 0], [1, 0], [2, 0]], [0, 1, 2, 9]),
+    )).toThrow('Public buffer 1 must occupy its matching placement index 1');
+  });
+
+  it('serializes the selector as a primary JSON array', () => {
+    const files = createSynthesisOutputJsonFiles({
+      selector: [0, INACTIVE_PLACEMENT_SELECTOR_ENTRY],
+    } as never);
+
+    expect(JSON.parse(files['selector.json']!)).toEqual([0, INACTIVE_PLACEMENT_SELECTOR_ENTRY]);
+  });
+});
