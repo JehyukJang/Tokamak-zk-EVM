@@ -4,7 +4,8 @@ use icicle_bls12_381::curve::ScalarField;
 use icicle_core::ntt::{self, NTTConfig, NTTDir};
 use icicle_core::traits::{Arithmetic, FieldImpl};
 use icicle_runtime::memory::HostSlice;
-use libs::frontend_artifacts::{PlacementVariables, SetupParams};
+use libs::frontend_artifacts::public_wire_layout::{PublicQueryKey, PublicWireLayout};
+use libs::frontend_artifacts::{Instance, PlacementVariables, SetupParams};
 use libs::group_structures::G1serde;
 use libs::ntt_domain::init_ntt_domain_for_size;
 use libs::univariate_crs::{
@@ -30,6 +31,13 @@ pub enum UnivariateProverError {
     InvalidOpeningPoint,
     #[error("selector and compact placement artifacts do not describe the same active slots")]
     SelectorPlacementMismatch,
+    #[error("public instance has {actual} values, expected {expected}")]
+    PublicInstanceLength { actual: usize, expected: usize },
+    #[error("public binding query ({subcircuit_id}, {local_wire_index}) is absent or duplicated")]
+    InvalidPublicBindingQuery {
+        subcircuit_id: usize,
+        local_wire_index: usize,
+    },
     #[error(
         "missing {role} U20 query for ({placement_index}, {subcircuit_id}, {local_wire_index})"
     )]
@@ -97,6 +105,13 @@ pub struct SelectedWitnessValues {
     pub slot_values: Vec<Option<Box<[ScalarField]>>>,
     pub interface_values: Vec<TaggedWitnessValue>,
     pub internal_values: Vec<TaggedWitnessValue>,
+}
+
+/// One public statement coordinate projected to the compressed U20 key.
+#[derive(Clone, Copy)]
+pub struct PublicWitnessValue {
+    pub key: PublicQueryKey,
+    pub value: ScalarField,
 }
 
 /// The two private binding commitments sent in the first prover message.
@@ -190,6 +205,65 @@ pub fn build_private_binding_commitments(
         }
     }
     Ok(PrivateBindingCommitments { o_if, o_int })
+}
+
+/// Uses the synthesizer's global-wire public projection: user values, block
+/// values, then function values. Padding has no U20 query and is retained only
+/// in the statement encoding, not in the binding MSM.
+pub fn project_public_binding_values(
+    instance: &Instance,
+    setup: &SetupParams,
+    layout: &PublicWireLayout,
+) -> Result<Vec<PublicWitnessValue>, UnivariateProverError> {
+    let values = instance
+        .a_pub_user
+        .iter()
+        .chain(instance.a_pub_block.iter())
+        .chain(instance.a_pub_function.iter())
+        .map(|value| ScalarField::from_hex(value.as_ref()))
+        .collect::<Vec<_>>();
+    if values.len() != setup.l || layout.len() != setup.l {
+        return Err(UnivariateProverError::PublicInstanceLength {
+            actual: values.len(),
+            expected: setup.l,
+        });
+    }
+    Ok(values
+        .into_iter()
+        .enumerate()
+        .filter_map(|(global_wire_index, value)| {
+            layout
+                .public_query_key_for_public_wire(global_wire_index)
+                .map(|key| PublicWitnessValue { key, value })
+        })
+        .collect())
+}
+
+/// Computes U26 from the already-admitted public projection.
+pub fn build_public_binding_commitment(
+    crs: &UnivariateCrs,
+    query_index: &UnivariateQueryIndex,
+    values: &[PublicWitnessValue],
+) -> Result<G1serde, UnivariateProverError> {
+    let mut seen = std::collections::HashSet::with_capacity(values.len());
+    let mut result = G1serde::zero();
+    for value in values {
+        if !seen.insert(value.key) {
+            return Err(UnivariateProverError::InvalidPublicBindingQuery {
+                subcircuit_id: value.key.buffer_subcircuit_id,
+                local_wire_index: value.key.local_public_wire_index,
+            });
+        }
+        let query = query_index
+            .public_index(value.key)
+            .and_then(|index| crs.gamma_inv_public_queries.get(index))
+            .ok_or(UnivariateProverError::InvalidPublicBindingQuery {
+                subcircuit_id: value.key.buffer_subcircuit_id,
+                local_wire_index: value.key.local_public_wire_index,
+            })?;
+        result = result + query.point * value.value;
+    }
+    Ok(result)
 }
 
 /// Aligns the compact synthesizer placement list with the capacity-length
