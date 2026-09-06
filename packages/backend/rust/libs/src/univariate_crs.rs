@@ -345,6 +345,29 @@ pub struct UnivariateTaggedQuery {
     pub point: G1serde,
 }
 
+/// Read-only indices over a validated U20 query layout.  They contain only
+/// positions into the decoded CRS, so repeated proof generation avoids both
+/// linear query scans and a second copy of the curve points.
+pub struct UnivariateQueryIndex {
+    public: std::collections::HashMap<PublicQueryKey, usize>,
+    interface: std::collections::HashMap<(usize, usize, usize), usize>,
+    internal: std::collections::HashMap<(usize, usize, usize), usize>,
+}
+
+impl UnivariateQueryIndex {
+    pub fn public_index(&self, key: PublicQueryKey) -> Option<usize> {
+        self.public.get(&key).copied()
+    }
+
+    pub fn interface_index(&self, key: (usize, usize, usize)) -> Option<usize> {
+        self.interface.get(&key).copied()
+    }
+
+    pub fn internal_index(&self, key: (usize, usize, usize)) -> Option<usize> {
+        self.internal.get(&key).copied()
+    }
+}
+
 /// The complete, in-memory U18--U21 CRS.  This is intentionally distinct
 /// from legacy `Sigma`: it has no bivariate fields and is not accepted by any
 /// legacy/MPC reader.
@@ -647,6 +670,49 @@ impl UnivariateCrs {
             delta_inv_connection_masking_queries: &self.delta_inv_connection_masking_queries,
             delta_g1: self.delta_g1,
             eta_g1: self.eta_g1,
+        }
+    }
+
+    /// Builds reusable indices after native CRS admission. The serialized CRS
+    /// is already required to have a canonical, duplicate-free query layout.
+    pub fn query_index(&self) -> UnivariateQueryIndex {
+        UnivariateQueryIndex {
+            public: self
+                .gamma_inv_public_queries
+                .iter()
+                .enumerate()
+                .map(|(index, query)| (query.key, index))
+                .collect(),
+            interface: self
+                .eta_inv_interface_queries
+                .iter()
+                .enumerate()
+                .map(|(index, query)| {
+                    (
+                        (
+                            query.placement_index,
+                            query.subcircuit_id,
+                            query.local_wire_index,
+                        ),
+                        index,
+                    )
+                })
+                .collect(),
+            internal: self
+                .delta_inv_internal_queries
+                .iter()
+                .enumerate()
+                .map(|(index, query)| {
+                    (
+                        (
+                            query.placement_index,
+                            query.subcircuit_id,
+                            query.local_wire_index,
+                        ),
+                        index,
+                    )
+                })
+                .collect(),
         }
     }
 
@@ -1029,6 +1095,13 @@ mod tests {
             vec![2, 2, 2]
         );
         assert_eq!(crs.delta_inv_connection_masking_queries.len(), 2);
+        let query_index = crs.query_index();
+        assert_eq!(
+            query_index.public_index(crs.gamma_inv_public_queries[0].key),
+            Some(0)
+        );
+        assert_eq!(query_index.interface_index((1, 0, 0)), Some(2));
+        assert_eq!(query_index.internal_index((0, 0, 0)), None);
 
         let output = tempfile::tempdir().expect("must create a temporary CRS output");
         let digests = write_univariate_crs_artifacts(output.path(), &crs)

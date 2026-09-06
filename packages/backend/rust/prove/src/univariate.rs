@@ -4,8 +4,11 @@ use icicle_bls12_381::curve::ScalarField;
 use icicle_core::ntt::{self, NTTConfig, NTTDir};
 use icicle_core::traits::{Arithmetic, FieldImpl};
 use icicle_runtime::memory::HostSlice;
+use libs::group_structures::G1serde;
 use libs::ntt_domain::init_ntt_domain_for_size;
-use libs::univariate_crs::UnivariateCrsShape;
+use libs::univariate_crs::{
+    UnivariateCrs, UnivariateCrsShape, UnivariateQueryIndex, UnivariateTaggedQuery,
+};
 use libs::univariate_polynomial::{DenseUnivariatePolynomial, UnivariatePolynomialError};
 use libs::univariate_relation::{DenseDomainPolynomial, StridedPolynomial, WitnessMaps};
 use thiserror::Error;
@@ -22,6 +25,30 @@ pub enum UnivariateProverError {
     CopyRecurrenceDoesNotClose,
     #[error("ICICLE NTT failed while constructing the copy relation: {0:?}")]
     Ntt(icicle_runtime::errors::eIcicleError),
+    #[error("the U28 opening point is zero or belongs to an evaluation domain")]
+    InvalidOpeningPoint,
+    #[error(
+        "missing {role} U20 query for ({placement_index}, {subcircuit_id}, {local_wire_index})"
+    )]
+    MissingBindingQuery {
+        role: &'static str,
+        placement_index: usize,
+        subcircuit_id: usize,
+        local_wire_index: usize,
+    },
+    #[error("duplicate {role} witness-binding coordinate ({placement_index}, {subcircuit_id}, {local_wire_index})")]
+    DuplicateBindingCoordinate {
+        role: &'static str,
+        placement_index: usize,
+        subcircuit_id: usize,
+        local_wire_index: usize,
+    },
+    #[error("{role} randomizer has {actual} coefficients, exceeding its U22 bound {bound}")]
+    BlindingDegree {
+        role: &'static str,
+        actual: usize,
+        bound: usize,
+    },
 }
 
 /// U22 prover masks.  The caller samples these independently; this structure
@@ -49,6 +76,45 @@ pub struct MaskedCopyRelation {
     pub q_c_1: DenseUnivariatePolynomial,
 }
 
+/// One active, non-public wire value with the U20 coordinate that authenticates
+/// it. The frontend-to-prover adapter constructs these only from the selected
+/// local witness positions; this primitive deliberately does not infer roles
+/// from placement order.
+#[derive(Clone, Copy)]
+pub struct TaggedWitnessValue {
+    pub placement_index: usize,
+    pub subcircuit_id: usize,
+    pub local_wire_index: usize,
+    pub value: ScalarField,
+}
+
+/// The two private binding commitments sent in the first prover message.
+pub struct PrivateBindingCommitments {
+    pub o_if: G1serde,
+    pub o_int: G1serde,
+}
+
+/// U28 values sampled after the U25 quotient commitment is fixed.
+pub struct UnivariateEvaluations {
+    pub s_a: ScalarField,
+    pub v: ScalarField,
+    pub r: ScalarField,
+    pub r_plus: ScalarField,
+    pub p: ScalarField,
+}
+
+/// U29 and U30's quotient inputs.  These are ordinary coefficient
+/// polynomials and can therefore be committed with the U18 KZG powers without
+/// any bivariate compatibility conversion.
+pub struct UnivariateOpeningPolynomials {
+    pub p_nu: DenseUnivariatePolynomial,
+    pub linearization: DenseUnivariatePolynomial,
+    pub h_zeta_varpi: DenseUnivariatePolynomial,
+    pub pi_zeta: DenseUnivariatePolynomial,
+    pub pi_plus: DenseUnivariatePolynomial,
+    pub evaluations: UnivariateEvaluations,
+}
+
 /// U25's single quotient.  The complementary vanishing factors belong to
 /// the verifier's combined identity; the quotient itself is the theta-linear
 /// combination of the three exact per-domain quotients.
@@ -59,6 +125,146 @@ pub fn combine_quotients(
 ) -> DenseUnivariatePolynomial {
     q_a.add(&copy.q_c_0.scale(theta))
         .add(&copy.q_c_1.scale(theta * theta))
+}
+
+/// Builds U27 from explicitly classified active wire values. Query lookup is
+/// exact in all three coordinates, so a value cannot be rebound to another
+/// placement or library entry. The later frontend adapter owns the conversion
+/// from selector-bearing synthesis output to these terms.
+pub fn build_private_binding_commitments(
+    crs: &UnivariateCrs,
+    query_index: &UnivariateQueryIndex,
+    interface_values: &[TaggedWitnessValue],
+    internal_values: &[TaggedWitnessValue],
+    randomizers: &ArithmeticMaskRandomizers,
+    r_o: ScalarField,
+) -> Result<PrivateBindingCommitments, UnivariateProverError> {
+    let o_if = combine_tagged_queries(
+        "interface",
+        interface_values,
+        &crs.eta_inv_interface_queries,
+        |key| query_index.interface_index(key),
+    )? + crs.delta_g1 * r_o;
+    let mut o_int = combine_tagged_queries(
+        "internal",
+        internal_values,
+        &crs.delta_inv_internal_queries,
+        |key| query_index.internal_index(key),
+    )? - crs.eta_g1 * r_o;
+    let masks = [
+        &randomizers.u,
+        &randomizers.v,
+        &randomizers.w,
+        &randomizers.b,
+    ];
+    for (index, randomizer) in masks.into_iter().enumerate() {
+        let queries = if index < 3 {
+            &crs.delta_inv_arithmetic_masking_queries[index]
+        } else {
+            &crs.delta_inv_connection_masking_queries
+        };
+        if randomizer.coefficients().len() > queries.len() {
+            return Err(UnivariateProverError::BlindingDegree {
+                role: if index < 3 {
+                    "arithmetic"
+                } else {
+                    "connection"
+                },
+                actual: randomizer.coefficients().len(),
+                bound: queries.len(),
+            });
+        }
+        for (coefficient, query) in randomizer.coefficients().iter().zip(queries.iter()) {
+            o_int = o_int + *query * *coefficient;
+        }
+    }
+    Ok(PrivateBindingCommitments { o_if, o_int })
+}
+
+/// Builds U28--U30 after all five witness-polynomial commitments and the
+/// circuit-specific preprocessing commitments have been fixed.
+#[allow(clippy::too_many_arguments)]
+pub fn build_opening_polynomials(
+    shape: &UnivariateCrsShape,
+    selector: &StridedPolynomial,
+    s_c: &DenseDomainPolynomial,
+    u_hat: &DenseUnivariatePolynomial,
+    v_hat: &DenseUnivariatePolynomial,
+    w_hat: &DenseUnivariatePolynomial,
+    b_hat: &DenseUnivariatePolynomial,
+    r_hat: &DenseUnivariatePolynomial,
+    q_hat: &DenseUnivariatePolynomial,
+    beta: ScalarField,
+    gamma_c: ScalarField,
+    theta: ScalarField,
+    nu: ScalarField,
+    zeta: ScalarField,
+    varpi: ScalarField,
+) -> Result<UnivariateOpeningPolynomials, UnivariateProverError> {
+    validate_opening_point(shape, zeta)?;
+    let selector = dense_selector(selector, shape.arithmetic_domain_size)?;
+    let s_c = domain_polynomial(s_c)?;
+    let p_nu = u_hat
+        .add(&w_hat.scale(nu))
+        .add(&b_hat.scale(nu * nu))
+        .add(&q_hat.scale(nu * nu * nu));
+    let evaluations = UnivariateEvaluations {
+        s_a: selector.evaluate(zeta),
+        v: v_hat.evaluate(zeta),
+        r: r_hat.evaluate(zeta),
+        r_plus: r_hat.evaluate(shape.connection_root * zeta),
+        p: p_nu.evaluate(zeta),
+    };
+    let m_a = complementary_factor(shape.connection_domain_size, shape.intersection_domain_size)?;
+    let m_c = complementary_factor(shape.arithmetic_domain_size, shape.intersection_domain_size)?;
+    let l_zero = lagrange_zero(shape.connection_domain_size)?;
+    let linearization = u_hat
+        .scale(m_a.evaluate(zeta) * evaluations.s_a * evaluations.v)
+        .sub(&w_hat.scale(m_a.evaluate(zeta) * evaluations.s_a))
+        .add(
+            &r_hat
+                .sub(&constant(ScalarField::one()))
+                .scale(theta * m_c.evaluate(zeta) * l_zero.evaluate(zeta)),
+        )
+        .add(
+            &b_hat.scale(theta * theta * m_c.evaluate(zeta) * (evaluations.r_plus - evaluations.r)),
+        )
+        .add(
+            &linear(
+                gamma_c * (evaluations.r_plus - evaluations.r),
+                beta * evaluations.r_plus,
+            )
+            .scale(theta * theta * m_c.evaluate(zeta)),
+        )
+        .sub(&s_c.scale(theta * theta * m_c.evaluate(zeta) * beta * evaluations.r))
+        .sub(&q_hat.scale(vanishing(shape.union_domain_size).evaluate(zeta)));
+    let h_zeta_varpi = linearization
+        .add(&v_hat.sub(&constant(evaluations.v)).scale(varpi))
+        .add(&r_hat.sub(&constant(evaluations.r)).scale(varpi * varpi))
+        .add(
+            &p_nu
+                .sub(&constant(evaluations.p))
+                .scale(varpi * varpi * varpi),
+        )
+        .add(
+            &selector
+                .sub(&constant(evaluations.s_a))
+                .scale(varpi * varpi * varpi * varpi),
+        );
+    let (pi_zeta, h_value) = h_zeta_varpi.ruffini(zeta);
+    debug_assert_eq!(h_value, ScalarField::zero());
+    let (pi_plus, r_plus_value) = r_hat
+        .sub(&constant(evaluations.r_plus))
+        .ruffini(shape.connection_root * zeta);
+    debug_assert_eq!(r_plus_value, ScalarField::zero());
+    Ok(UnivariateOpeningPolynomials {
+        p_nu,
+        linearization,
+        h_zeta_varpi,
+        pi_zeta,
+        pi_plus,
+        evaluations,
+    })
 }
 
 /// Builds U23 and U24.  Exact vanishing division is an admission boundary:
@@ -172,6 +378,78 @@ fn domain_polynomial(
     )?)
 }
 
+fn combine_tagged_queries(
+    role: &'static str,
+    values: &[TaggedWitnessValue],
+    queries: &[UnivariateTaggedQuery],
+    query_index: impl Fn((usize, usize, usize)) -> Option<usize>,
+) -> Result<G1serde, UnivariateProverError> {
+    let mut seen = std::collections::HashSet::with_capacity(values.len());
+    let mut combined = G1serde::zero();
+    for value in values {
+        let key = (
+            value.placement_index,
+            value.subcircuit_id,
+            value.local_wire_index,
+        );
+        if !seen.insert(key) {
+            return Err(UnivariateProverError::DuplicateBindingCoordinate {
+                role,
+                placement_index: value.placement_index,
+                subcircuit_id: value.subcircuit_id,
+                local_wire_index: value.local_wire_index,
+            });
+        }
+        let query = query_index(key)
+            .and_then(|index| queries.get(index))
+            .ok_or(UnivariateProverError::MissingBindingQuery {
+                role,
+                placement_index: value.placement_index,
+                subcircuit_id: value.subcircuit_id,
+                local_wire_index: value.local_wire_index,
+            })?;
+        combined = combined + query.point * value.value;
+    }
+    Ok(combined)
+}
+
+/// `(Z^large - 1) / (Z^small - 1)` for `small | large`.  The domains are
+/// radix-two, so this is the sparse geometric series required by U10/U25.
+fn complementary_factor(
+    large_domain_size: usize,
+    small_domain_size: usize,
+) -> Result<DenseUnivariatePolynomial, UnivariateProverError> {
+    if small_domain_size == 0 || large_domain_size % small_domain_size != 0 {
+        return Err(UnivariateProverError::InvalidOpeningPoint);
+    }
+    let mut coefficients = vec![ScalarField::zero(); large_domain_size];
+    for index in (0..large_domain_size).step_by(small_domain_size) {
+        coefficients[index] = ScalarField::one();
+    }
+    DenseUnivariatePolynomial::new(coefficients.into_boxed_slice()).map_err(Into::into)
+}
+
+fn vanishing(domain_size: usize) -> DenseUnivariatePolynomial {
+    let mut coefficients = vec![ScalarField::zero(); domain_size + 1];
+    coefficients[0] = ScalarField::zero() - ScalarField::one();
+    coefficients[domain_size] = ScalarField::one();
+    DenseUnivariatePolynomial::new(coefficients.into_boxed_slice())
+        .expect("a positive-domain vanishing polynomial is nonempty")
+}
+
+fn validate_opening_point(
+    shape: &UnivariateCrsShape,
+    zeta: ScalarField,
+) -> Result<(), UnivariateProverError> {
+    if zeta == ScalarField::zero()
+        || zeta.pow(shape.arithmetic_domain_size) == ScalarField::one()
+        || zeta.pow(shape.connection_domain_size) == ScalarField::one()
+    {
+        return Err(UnivariateProverError::InvalidOpeningPoint);
+    }
+    Ok(())
+}
+
 fn blind(
     base: DenseUnivariatePolynomial,
     randomizer: &DenseUnivariatePolynomial,
@@ -255,8 +533,8 @@ fn interpolate(evaluations: &[ScalarField]) -> Result<Vec<ScalarField>, Univaria
 #[cfg(test)]
 mod tests {
     use super::{
-        build_masked_arithmetic_witness, build_masked_copy_relation, combine_quotients,
-        domain_polynomial, linear, scale_argument, ArithmeticMaskRandomizers,
+        build_masked_arithmetic_witness, build_masked_copy_relation, build_opening_polynomials,
+        combine_quotients, domain_polynomial, linear, scale_argument, ArithmeticMaskRandomizers,
     };
     use icicle_bls12_381::curve::ScalarField;
     use icicle_core::traits::FieldImpl;
@@ -426,6 +704,57 @@ mod tests {
             combine_quotients(&q_a, &relation, theta),
             q_a.add(&relation.q_c_0.scale(theta))
                 .add(&relation.q_c_1.scale(theta * theta))
+        );
+
+        let q_hat = combine_quotients(&polynomial(&[0]), &relation, theta);
+        let selector = StridedPolynomial {
+            stride: 2,
+            coefficients: vec![ScalarField::one()].into_boxed_slice(),
+        };
+        let openings = build_opening_polynomials(
+            &shape,
+            &selector,
+            &s_c,
+            &polynomial(&[0]),
+            &polynomial(&[0]),
+            &polynomial(&[0]),
+            &b_hat,
+            &relation.r_hat,
+            &q_hat,
+            ScalarField::zero(),
+            ScalarField::one(),
+            theta,
+            ScalarField::from_u32(5),
+            ScalarField::from_u32(2),
+            ScalarField::from_u32(3),
+        )
+        .unwrap();
+        assert_eq!(
+            openings.h_zeta_varpi.evaluate(ScalarField::from_u32(2)),
+            ScalarField::zero()
+        );
+        assert_eq!(
+            openings.h_zeta_varpi,
+            openings
+                .pi_zeta
+                .multiply(&linear(
+                    ScalarField::zero() - ScalarField::from_u32(2),
+                    ScalarField::one()
+                ))
+                .unwrap()
+        );
+        let plus_point = shape.connection_root * ScalarField::from_u32(2);
+        assert_eq!(
+            relation
+                .r_hat
+                .sub(&polynomial(&[1]).scale(openings.evaluations.r_plus)),
+            openings
+                .pi_plus
+                .multiply(&linear(
+                    ScalarField::zero() - plus_point,
+                    ScalarField::one()
+                ))
+                .unwrap()
         );
     }
 }

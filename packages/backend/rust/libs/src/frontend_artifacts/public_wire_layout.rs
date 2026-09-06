@@ -28,7 +28,7 @@ pub struct PublicWireSegment {
 /// `local_public_wire_index` is the physical local wire index `j` in the
 /// tagged position `(buffer_subcircuit_id, j)`; it is not renumbered within a
 /// buffer port.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PublicQueryKey {
     pub buffer_subcircuit_id: usize,
     pub local_public_wire_index: usize,
