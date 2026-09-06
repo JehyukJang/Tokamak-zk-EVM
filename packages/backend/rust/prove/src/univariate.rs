@@ -4,6 +4,7 @@ use icicle_bls12_381::curve::ScalarField;
 use icicle_core::ntt::{self, NTTConfig, NTTDir};
 use icicle_core::traits::{Arithmetic, FieldImpl};
 use icicle_runtime::memory::HostSlice;
+use libs::field_structures::FieldSerde;
 use libs::frontend_artifacts::public_wire_layout::{PublicQueryKey, PublicWireLayout};
 use libs::frontend_artifacts::{Instance, PlacementVariables, SetupParams};
 use libs::group_structures::G1serde;
@@ -12,6 +13,7 @@ use libs::univariate_crs::{
     UnivariateCrs, UnivariateCrsShape, UnivariateQueryIndex, UnivariateTaggedQuery,
 };
 use libs::univariate_polynomial::{DenseUnivariatePolynomial, UnivariatePolynomialError};
+use libs::univariate_proof::UnivariateProof;
 use libs::univariate_relation::{DenseDomainPolynomial, StridedPolynomial, WitnessMaps};
 use thiserror::Error;
 
@@ -139,6 +141,40 @@ pub struct UnivariateOpeningPolynomials {
     pub pi_zeta: DenseUnivariatePolynomial,
     pub pi_plus: DenseUnivariatePolynomial,
     pub evaluations: UnivariateEvaluations,
+}
+
+/// Serializes the U52 messages produced by the native polynomial stages into
+/// the separate U54 proof family. No legacy Solidity proof field is reused.
+pub fn assemble_univariate_proof(
+    crs: &UnivariateCrs,
+    masked: &MaskedArithmeticWitness,
+    private_binding: &PrivateBindingCommitments,
+    copy: &MaskedCopyRelation,
+    q_hat: &DenseUnivariatePolynomial,
+    openings: &UnivariateOpeningPolynomials,
+) -> Result<UnivariateProof, UnivariateProverError> {
+    let commit = |polynomial: &DenseUnivariatePolynomial| {
+        crs.commit_dense_polynomial(polynomial.coefficients())
+            .map_err(|_| UnivariateProverError::SelectorDegree)
+    };
+    Ok(UnivariateProof {
+        protocol_schema_id: libs::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID.to_string(),
+        u_hat: commit(&masked.u_hat)?,
+        v_hat: commit(&masked.v_hat)?,
+        w_hat: commit(&masked.w_hat)?,
+        b_hat: commit(&masked.b_hat)?,
+        o_if: private_binding.o_if,
+        o_int: private_binding.o_int,
+        r_hat: commit(&copy.r_hat)?,
+        q_hat: commit(q_hat)?,
+        s_a: FieldSerde(openings.evaluations.s_a),
+        v: FieldSerde(openings.evaluations.v),
+        r: FieldSerde(openings.evaluations.r),
+        r_plus: FieldSerde(openings.evaluations.r_plus),
+        p: FieldSerde(openings.evaluations.p),
+        pi_zeta: commit(&openings.pi_zeta)?,
+        pi_plus: commit(&openings.pi_plus)?,
+    })
 }
 
 /// U25's single quotient.  The complementary vanishing factors belong to
