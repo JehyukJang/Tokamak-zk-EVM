@@ -4,6 +4,7 @@ use icicle_bls12_381::curve::ScalarField;
 use icicle_core::ntt::{self, NTTConfig, NTTDir};
 use icicle_core::traits::{Arithmetic, FieldImpl};
 use icicle_runtime::memory::HostSlice;
+use libs::frontend_artifacts::{PlacementVariables, SetupParams};
 use libs::group_structures::G1serde;
 use libs::ntt_domain::init_ntt_domain_for_size;
 use libs::univariate_crs::{
@@ -27,6 +28,8 @@ pub enum UnivariateProverError {
     Ntt(icicle_runtime::errors::eIcicleError),
     #[error("the U28 opening point is zero or belongs to an evaluation domain")]
     InvalidOpeningPoint,
+    #[error("selector and compact placement artifacts do not describe the same active slots")]
+    SelectorPlacementMismatch,
     #[error(
         "missing {role} U20 query for ({placement_index}, {subcircuit_id}, {local_wire_index})"
     )]
@@ -86,6 +89,14 @@ pub struct TaggedWitnessValue {
     pub subcircuit_id: usize,
     pub local_wire_index: usize,
     pub value: ScalarField,
+}
+
+/// Selector-aligned active witness values and their non-public U20 terms.
+/// Inactive selector slots remain `None` rather than being erased.
+pub struct SelectedWitnessValues {
+    pub slot_values: Vec<Option<Box<[ScalarField]>>>,
+    pub interface_values: Vec<TaggedWitnessValue>,
+    pub internal_values: Vec<TaggedWitnessValue>,
 }
 
 /// The two private binding commitments sent in the first prover message.
@@ -179,6 +190,73 @@ pub fn build_private_binding_commitments(
         }
     }
     Ok(PrivateBindingCommitments { o_if, o_int })
+}
+
+/// Aligns the compact synthesizer placement list with the capacity-length
+/// selector before U8 and U27 consume it. The compact list is read only in
+/// active-selector order; no prefix-placement convention is assumed.
+pub fn select_witness_values(
+    selector: &[Option<usize>],
+    placements: &[PlacementVariables],
+    setup: &SetupParams,
+    subcircuits: &[libs::univariate_relation::UnivariateSubcircuit<'_>],
+) -> Result<SelectedWitnessValues, UnivariateProverError> {
+    if selector.len() != setup.s_max {
+        return Err(UnivariateProverError::SelectorPlacementMismatch);
+    }
+    let mut cursor = 0usize;
+    let mut slots = Vec::with_capacity(selector.len());
+    let mut interface_values = Vec::new();
+    let mut internal_values = Vec::new();
+    for (placement_index, selected) in selector.iter().copied().enumerate() {
+        let Some(subcircuit_id) = selected else {
+            slots.push(None);
+            continue;
+        };
+        let placement = placements
+            .get(cursor)
+            .ok_or(UnivariateProverError::SelectorPlacementMismatch)?;
+        cursor += 1;
+        if placement.subcircuitId != subcircuit_id {
+            return Err(UnivariateProverError::SelectorPlacementMismatch);
+        }
+        let subcircuit = subcircuits
+            .get(subcircuit_id)
+            .ok_or(UnivariateProverError::SelectorPlacementMismatch)?;
+        if placement.variables.len() != subcircuit.flatten_map.len() {
+            return Err(UnivariateProverError::SelectorPlacementMismatch);
+        }
+        let values = placement
+            .variables
+            .iter()
+            .map(|value| ScalarField::from_hex(value.as_ref()))
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        for (local_wire_index, global_wire_index) in
+            subcircuit.flatten_map.iter().copied().enumerate()
+        {
+            let term = TaggedWitnessValue {
+                placement_index,
+                subcircuit_id,
+                local_wire_index,
+                value: values[local_wire_index],
+            };
+            if global_wire_index >= setup.l && global_wire_index < setup.l_D {
+                interface_values.push(term);
+            } else if global_wire_index >= setup.l_D {
+                internal_values.push(term);
+            }
+        }
+        slots.push(Some(values));
+    }
+    if cursor != placements.len() {
+        return Err(UnivariateProverError::SelectorPlacementMismatch);
+    }
+    Ok(SelectedWitnessValues {
+        slot_values: slots,
+        interface_values,
+        internal_values,
+    })
 }
 
 /// Builds U28--U30 after all five witness-polynomial commitments and the
@@ -534,14 +612,17 @@ fn interpolate(evaluations: &[ScalarField]) -> Result<Vec<ScalarField>, Univaria
 mod tests {
     use super::{
         build_masked_arithmetic_witness, build_masked_copy_relation, build_opening_polynomials,
-        combine_quotients, domain_polynomial, linear, scale_argument, ArithmeticMaskRandomizers,
+        combine_quotients, domain_polynomial, linear, scale_argument, select_witness_values,
+        ArithmeticMaskRandomizers,
     };
     use icicle_bls12_381::curve::ScalarField;
     use icicle_core::traits::FieldImpl;
-    use libs::frontend_artifacts::SetupParams;
+    use libs::frontend_artifacts::{HexString, PlacementVariables, SetupParams};
     use libs::univariate_crs::UnivariateCrsShape;
     use libs::univariate_polynomial::DenseUnivariatePolynomial;
-    use libs::univariate_relation::{DenseDomainPolynomial, StridedPolynomial, WitnessMaps};
+    use libs::univariate_relation::{
+        DenseDomainPolynomial, StridedPolynomial, UnivariateSubcircuit, WitnessMaps,
+    };
 
     fn polynomial(values: &[u32]) -> DenseUnivariatePolynomial {
         DenseUnivariatePolynomial::new(
@@ -610,6 +691,49 @@ mod tests {
             .multiply_vanishing(shape.arithmetic_domain_size)
             .unwrap();
         assert_eq!(relation, reconstructed);
+    }
+
+    #[test]
+    fn selector_alignment_keeps_inactive_slots_explicit() {
+        let setup = SetupParams {
+            l_free: 0,
+            l: 1,
+            l_user_out: 0,
+            l_user: 0,
+            l_D: 2,
+            m_D: 3,
+            n: 1,
+            s_D: 1,
+            s_max: 2,
+        };
+        let wires = [0usize];
+        let rows: [Vec<(usize, ScalarField)>; 0] = [];
+        let flatten = [0usize, 1, 2];
+        let subcircuits = [UnivariateSubcircuit {
+            id: 0,
+            flatten_map: &flatten,
+            a_active_wires: &wires,
+            b_active_wires: &wires,
+            c_active_wires: &wires,
+            a_rows: &rows,
+            b_rows: &rows,
+            c_rows: &rows,
+        }];
+        let placements = [PlacementVariables {
+            subcircuitId: 0,
+            variables: ["0x01", "0x02", "0x03"]
+                .into_iter()
+                .map(|value| HexString(value.to_string()))
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        }];
+        let selected =
+            select_witness_values(&[Some(0), None], &placements, &setup, &subcircuits).unwrap();
+        assert!(selected.slot_values[0].is_some());
+        assert!(selected.slot_values[1].is_none());
+        assert_eq!(selected.interface_values.len(), 1);
+        assert_eq!(selected.internal_values.len(), 1);
+        assert_eq!(selected.internal_values[0].value, ScalarField::from_u32(3));
     }
 
     #[test]
