@@ -33,6 +33,7 @@ use thiserror::Error;
 
 mod sigma_source;
 use sigma_source::SigmaHolder;
+pub mod univariate;
 
 #[derive(Debug, Error)]
 pub enum ProveError {
