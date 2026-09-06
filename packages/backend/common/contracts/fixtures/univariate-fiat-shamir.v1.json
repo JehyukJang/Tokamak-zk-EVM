@@ -1,0 +1,16 @@
+{
+  "schemaId": "tokamak-zk-evm-univariate-fs-v1",
+  "context": {
+    "library": "small-library",
+    "instance": 7
+  },
+  "messageBlocks": [
+    { "index": 1, "value": "a1" },
+    { "index": 2, "value": "a2" }
+  ],
+  "challenges": {
+    "beta": "0x55c5279967477632ac4b78faccb41727127cfcd882ed97fb006696828a6e8ed1",
+    "gammaC": "0x5080a946bbadba751350b33d353c41bce3e52e8331521caf4c0c4151659d1dfc",
+    "theta": "0x38920220a543e04c6ec1a8be9d821534da602bf6ff07d7491ca54bd2e8d28e0f"
+  }
+}
