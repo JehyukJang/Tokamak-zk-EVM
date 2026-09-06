@@ -83,6 +83,7 @@
     "binary:check": "npm run contracts:check && tsx test/checks/binary/check-binary-artifacts.ts && tsx test/checks/binary/check-artifact-contract-closure.ts && tsx test/checks/binary/check-instance-conversion.ts && tsx test/checks/binary/check-selector-conversion.ts && tsx test/checks/binary/check-proof-reverse-conversion.ts && tsx test/checks/binary/check-crs-conversion.ts && tsx test/checks/binary/check-univariate-crs-conversion.ts && tsx test/checks/binary/check-compatibility.ts",
     "univariate:domain:check": "npm run contracts:check && tsx test/checks/univariate/check-univariate-domain.ts",
     "univariate:relation:check": "npm run contracts:check && tsx test/checks/univariate/check-univariate-relation.ts",
+    "univariate:polynomial:check": "tsx test/checks/univariate/check-univariate-polynomial.ts",
     "univariate:transcript:check": "tsx test/checks/univariate/check-univariate-transcript.ts",
     "architecture:check": "tsx test/checks/architecture/check-layering.ts",
     "fixtures:copy": "npm run subcircuit-library:generate:development && tsx scripts/fixtures/copy-fixtures.ts fixtures/small/copy-manifest.json",

@@ -25,6 +25,7 @@ pub mod subcircuit_library;
 pub mod subcircuit_source_digest;
 pub mod univariate_crs;
 pub mod univariate_preprocess;
+pub mod univariate_polynomial;
 pub mod univariate_proof;
 pub mod univariate_relation;
 pub mod univariate_transcript;
