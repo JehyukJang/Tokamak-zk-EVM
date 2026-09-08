@@ -17,24 +17,12 @@
       "destination": "synthesizer/placementVariables.json"
     },
     {
-      "source": "packages/backend/rust/setup/trusted-setup/output/debug/sigma_verify.json",
-      "destination": "setup/sigma_verify.json"
+      "source": "packages/frontend/synthesizer/outputs/selector.json",
+      "destination": "synthesizer/selector.json"
     },
     {
-      "source": "packages/backend/rust/setup/trusted-setup/output/debug/combined_sigma.rkyv",
-      "destination": "setup/combined_sigma.rkyv"
-    },
-    {
-      "source": "packages/backend/rust/preprocess/output/preprocess.json",
-      "destination": "preprocess/preprocess.json"
-    },
-    {
-      "source": "packages/backend/rust/prove/output/proof.json",
-      "destination": "prove/proof.json"
-    },
-    {
-      "source": "packages/backend/rust/prove/output/proof4_test.json",
-      "destination": "prove/proof4_test.json"
+      "source": "packages/backend/rust/setup/trusted-setup/output/debug/univariate_crs.json",
+      "destination": "setup/univariate_crs.json"
     }
   ]
 }

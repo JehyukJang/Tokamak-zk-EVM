@@ -15,7 +15,7 @@ import {
 } from "../../../src/univariate/crs.js";
 
 async function main(): Promise<void> {
-  const fixture = await withCurveRuntime((runtime) => {
+  const fixture = await withCurveRuntime(async (runtime) => {
     const g1 = runtime.G1.formatAffine(runtime.G1.generator);
     const g2 = runtime.G2.formatAffine(runtime.G2.generator);
     return {

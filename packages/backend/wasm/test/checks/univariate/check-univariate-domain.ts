@@ -36,6 +36,8 @@ interface DomainFixture {
     readonly N_G: number;
     readonly N_union: number;
     readonly D: number;
+    readonly arithmeticIndex: number;
+    readonly connectionIndex: number;
   };
 }
 

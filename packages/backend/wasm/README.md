@@ -1,71 +1,17 @@
 # @tokamak-zk-evm/snark-browser-compat
 
-`@tokamak-zk-evm/snark-browser-compat` provides browser-compatible preprocessing,
-proof generation, proof verification, and artifact conversion for the Tokamak
-zk-EVM protocol.
-It is intended for application developers integrating Tokamak-specific proving
-workflows, not as a generic Groth16 or PLONK backend.
+`@tokamak-zk-evm/snark-browser-compat` provides browser-compatible
+preprocessing, proving, verification, and artifact conversion for the current
+Tokamak zk-EVM univariate proving protocol. It is not a generic proving-system
+API and does not synthesize transactions.
 
-Browser proving is a long-running, memory-intensive operation. Applications
-must prepare and retain the required binary artifacts, install each required
-preprocess, prover, or verifier runtime explicitly, and use a bundler that
-supports ESM, Web Workers, WebAssembly, and bare npm imports inside Worker
-graphs.
+## Audience and scope
 
-## When to use this package
+This package is for browser application developers who already have the
+artifacts produced by the Tokamak synthesizer and backend trusted setup. Use the
+Tokamak CLI for the complete local synthesis and native backend workflow.
 
-Use this package when a bundler-based browser application must generate or
-verify Tokamak zk-SNARK proofs, compute the verifier preprocessing commitments
-for those proofs, or convert application artifacts into the binary formats
-consumed by those operations. Use `@tokamak-zk-evm/cli` instead for the complete
-local Node.js and native-backend workflow. This package is not a generic
-proving-system API and does not synthesize Tokamak L2 transactions.
-
-## Contents
-
-- [When to use this package](#when-to-use-this-package)
-- [Install](#install)
-- [npm publication](#npm-publication)
-- [Package facts](#package-facts)
-- [Choose an API](#choose-an-api)
-- [Public API reference](#public-api-reference)
-- [Load binary artifacts](#load-binary-artifacts)
-- [Run preprocess](#run-preprocess)
-- [Verify a proof](#verify-a-proof)
-- [Generate a proof](#generate-a-proof)
-- [Track proving progress](#track-proving-progress)
-- [Runtime artifact guide and acquisition](#runtime-artifact-guide-and-acquisition)
-- [Convert, inspect, and validate binaries](#convert-inspect-and-validate-binaries)
-- [Browser deployment and lifecycle](#browser-deployment-and-lifecycle)
-- [Compatibility and versioning](#compatibility-and-versioning)
-- [How this package relates to Tokamak zk-EVM](#how-this-package-relates-to-tokamak-zk-evm)
-- [Measured browser performance](#measured-browser-performance)
-- [Errors and troubleshooting](#errors-and-troubleshooting)
-- [Security and application responsibilities](#security-and-application-responsibilities)
-- [Project and license](#project-and-license)
-
-## Package facts
-
-| Fact                | Value                                                                                         |
-| ------------------- | --------------------------------------------------------------------------------------------- |
-| Scope               | Tokamak zk-EVM browser preprocessing, proof generation, verification, and artifact conversion |
-| Public entry points | `./preprocess`, `./prover`, `./verifier`, and `./converter`                                   |
-| Protocol            | Tokamak zk-SNARK protocol, not a generic proving-system API                                   |
-| Curve and runtime   | BLS12-381 through ffjavascript                                                                |
-| Module format       | ESM                                                                                           |
-| Runtime inputs      | Independent named binary artifacts supplied by the application                                |
-| Network behavior    | No package-owned artifact download or filesystem I/O                                          |
-| Package license     | `MIT OR Apache-2.0`; dependency licenses remain applicable                                    |
-
-## Install
-
-Install the package and its runtime dependencies from npm:
-
-```sh
-npm install @tokamak-zk-evm/snark-browser-compat
-```
-
-The package is ESM-only and exposes exactly four public subpaths:
+The package exposes four ESM subpaths:
 
 ```ts
 import('@tokamak-zk-evm/snark-browser-compat/preprocess');
@@ -74,202 +20,161 @@ import('@tokamak-zk-evm/snark-browser-compat/verifier');
 import('@tokamak-zk-evm/snark-browser-compat/converter');
 ```
 
-Do not import the package root, `dist/` files, runtime primitives, generated
-constants, or protocol internals. Vite and Webpack production consumers are
-verified. Bundler-free direct serving of the package's compiled files is
-unsupported. Complete preprocess, prover, staged-progress, verifier, converter,
-inspection, and validation source is available in
-[`examples/browser`](./examples/browser).
+Do not import the package root, `dist/` files, generated constants, or runtime
+internals. The package performs no network or filesystem I/O.
 
-## npm publication
+## Install
 
-The supported distribution is
-[`@tokamak-zk-evm/snark-browser-compat`](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat)
-on npm. Determine the published version from the registry, pin a compatible
-release in the application, and use the root [Changelog](../../../CHANGELOG.md)
-for release notes and migration boundaries. A repository manifest version is
-not evidence that the same version has been published.
+```sh
+npm install @tokamak-zk-evm/snark-browser-compat
+```
 
-## Choose an API
+The browser runtime uses BLS12-381 through ffjavascript. Vite and Webpack ESM
+consumers are supported. Applications must serve WebAssembly and emitted worker
+assets with appropriate MIME types and content-security policy.
 
-Use `./preprocess` to produce verifier preprocessing commitments, `./prover`
-to create proofs, `./verifier` to check proofs, and `./converter` to prepare or
-examine binary artifacts.
+## Artifact model
 
-| Task                             | Import                           | Installation required  | Result                     |
-| -------------------------------- | -------------------------------- | ---------------------- | -------------------------- |
-| Calculate verifier preprocessing | `./preprocess` `preprocess()`    | Preprocess `install()` | Verifier-preprocess binary |
-| Generate one complete proof      | `./prover` `prove()`             | Prover `install()`     | Proof binary               |
-| Generate with phase boundaries   | `./prover` `begin()`             | Prover `install()`     | Proof binary               |
-| Verify a proof                   | `./verifier` `verify()`          | Verifier `install()`   | `boolean`                  |
-| Convert one source material      | `./converter` material converter | No                     | Binary or proof JSON       |
-| Read binary tables               | `./converter` `inspectBinary()`  | No                     | Inspection object          |
-| Validate a binary                | `./converter` `validateBinary()` | No                     | Validated artifact view    |
+The current protocol accepts the following independent binary artifacts:
 
-`inspectBinary()`, `validateBinary()`, and `verify()` answer different
-questions. Inspection decodes metadata, validation checks the binary's
-structure and self-digest, and verification checks the cryptographic proof.
+| Artifact | Owner | Consumer |
+| --- | --- | --- |
+| `selector` | Synthesizer | Preprocess, prover, verifier configuration |
+| `permutation` | Synthesizer | Preprocess, prover, verifier configuration |
+| `witness` | Synthesizer | Prover |
+| `instance` | Synthesizer | Prover and verifier |
+| `proverCrs` | Backend trusted setup | Prover |
+| `preprocessCrs` | Backend trusted setup | Preprocess and verifier configuration |
+| `verifierCrs` | Backend trusted setup | Verifier |
+| `verifierPreprocess` | `preprocess()` | Verifier |
+| `proof` | `prove()` | Verifier |
+
+`proof` contains exactly the current protocol's eleven affine G1 values and
+nine scalar evaluations. The selector, transcript state, configuration, and
+provenance are not duplicated inside the proof.
+
+All binaries use the backend-owned `TZBWASM1` container. The container records
+the artifact kind, producer package version, section table, and self-digest.
+Its layout version is not a protocol-version compatibility layer.
 
 ## Public API reference
 
-### Prover API
+| Export | Purpose |
+| --- | --- |
+| `prover.install(options?)` | Install or reconfigure the prover runtime while idle |
+| `prover.prove(input)` | Produce one complete proof binary |
+| `preprocess.install(options?)` | Install or reconfigure the preprocessing runtime while idle |
+| `preprocess.preprocess(input)` | Produce the two verifier preprocessing commitments |
+| `verifier.install()` | Install the verifier runtime |
+| `verifier.verify(input)` | Check one current-protocol proof |
+| `convertWitness(value)` | Convert synthesizer placement variables |
+| `convertSelector(value)` | Convert the synthesizer placement selector |
+| `convertPermutation(value)` | Convert the synthesizer permutation |
+| `convertInstance(value)` | Convert the synthesizer public instance |
+| `convertUnivariateCrs(value)` | Split the native univariate CRS JSON projection by runtime role |
+| `inspectBinary(bytes)` | Inspect a binary container without a validity claim |
+| `validateBinary(bytes)` | Validate binary layout, shape, and self-digest |
 
-| Export                            | Purpose                                                                           |
-| --------------------------------- | --------------------------------------------------------------------------------- |
-| `prover.install(options?)`        | Create or reuse the prover runtime and return version and chunk-size information  |
-| `prover.prove(input)`             | Generate one complete verifier-proof binary                                       |
-| `prover.begin(input)`             | Start one staged, stateful proving session                                        |
-| `ProverSession.proveArithmetic()` | Execute the arithmetic-constraints phase                                          |
-| `ProverSession.proveCopy()`       | Execute the copy-constraints phase                                                |
-| `ProverSession.proveBinding()`    | Execute the binding phase                                                         |
-| `ProverSession.finalize()`        | Execute integrated finalization, return the proof binary, and release the session |
-| `ProverSession.dispose()`         | Release an unfinished session; repeated calls are harmless                        |
+Public operation types are `ProverInput`, `ProverInstallOptions`,
+`ProverInstallationInfo`, `PreprocessInput`, `PreprocessInstallOptions`,
+`PreprocessInstallationInfo`, `VerifierInput`, and
+`VerifierInstallationInfo`. Converter types are `BinaryArtifactInspection`,
+`BinarySectionInspection`, `ConvertedCrs`, and
+`RuntimeArtifactFileValidationResult`. Every public subpath exports
+`BackendWasmError` and `BackendWasmErrorCode`.
 
-Public prover types are `ProverInput`, `ProverInstallOptions`,
-`ProverInstallationInfo`, and `ProverSession`.
+## Convert source artifacts
 
-### Verifier API
-
-| Export                   | Purpose                                                             |
-| ------------------------ | ------------------------------------------------------------------- |
-| `verifier.install()`     | Create or reuse the verifier runtime and return version information |
-| `verifier.verify(input)` | Return the cryptographic validity of one proof                      |
-
-Public verifier types are `VerifierInput` and `VerifierInstallationInfo`.
-
-### Preprocess API
-
-| Export                         | Purpose                                                                              |
-| ------------------------------ | ------------------------------------------------------------------------------------ |
-| `preprocess.install(options?)` | Create or reuse the preprocess runtime and return version and chunk-size information |
-| `preprocess.preprocess(input)` | Calculate `s0`, `s1`, and `O_pub_fix` and return one verifier-preprocess binary      |
-
-Public preprocess types are `PreprocessInput`, `PreprocessInstallOptions`, and
-`PreprocessInstallationInfo`.
-
-### Converter API
-
-| Export                             | Input and result                                                                                                                                |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `convertWitness(value)`            | Parsed placement-variable JSON to witness binary                                                                                                |
-| `convertPermutation(value)`        | Parsed permutation JSON to permutation binary                                                                                                   |
-| `convertInstance(value)`           | Parsed instance JSON to public and function instance sections                                                                                   |
-| `convertVerifierPreprocess(value)` | Parsed preprocess JSON to verifier-preprocess binary                                                                                            |
-| `convertProof(input)`              | Convert native proof JSON to binary, or proof binary to a native proof JSON object, according to `sourceFormat`                                 |
-| `convertCrs(bytes, provenance)`    | `combined_sigma.rkyv` bytes and a complete canonical `finalMpcCrs` `crs_provenance.json` to named prover, preprocess, and verifier CRS binaries |
-| `inspectBinary(bytes)`             | Binary header and section information without a validity claim                                                                                  |
-| `validateBinary(bytes)`            | Validated decoded artifact after layout, digest, and spec checks                                                                                |
-
-Public converter types are `BinaryArtifactInspection`,
-`BinarySectionInspection`, `ConvertedCrs`, `ConverterArtifactJson`,
-`ConvertProofBinaryInput`, `ConvertProofInput`, `ConvertProofJsonInput`, `CrsProvenanceInput`, and
-`RuntimeArtifactFileValidationResult`.
-
-Every subpath exports `BackendWasmError` and `BackendWasmErrorCode`.
-
-## Load binary artifacts
-
-All runtime inputs are non-empty `Uint8Array` values. Complete network or
-storage I/O before calling preprocess, the prover, or the verifier:
+Converters accept the producer-owned JSON shapes and return browser binary
+artifacts. They require no runtime installation.
 
 ```ts
-export async function loadBinary(url: string | URL): Promise<Uint8Array> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to load ${url}: ${response.status}`);
-  }
-  return new Uint8Array(await response.arrayBuffer());
-}
+import {
+  convertInstance,
+  convertPermutation,
+  convertSelector,
+  convertUnivariateCrs,
+  convertWitness,
+  inspectBinary,
+  validateBinary,
+} from '@tokamak-zk-evm/snark-browser-compat/converter';
+
+const [witnessSource, selectorSource, permutationSource, instanceSource, crsSource] =
+  await Promise.all([
+    fetch('/sources/placementVariables.json').then(response => response.json()),
+    fetch('/sources/selector.json').then(response => response.json()),
+    fetch('/sources/permutation.json').then(response => response.json()),
+    fetch('/sources/instance.json').then(response => response.json()),
+    fetch('/sources/univariate_crs.json').then(response => response.json()),
+  ]);
+
+const [witness, selector, permutation, instance, crs] = await Promise.all([
+  convertWitness(witnessSource),
+  convertSelector(selectorSource),
+  convertPermutation(permutationSource),
+  convertInstance(instanceSource),
+  convertUnivariateCrs(crsSource),
+]);
+
+await validateBinary(crs.proverCrs);
+console.log(await inspectBinary(crs.proverCrs));
 ```
 
-The package does not fetch, cache, refresh, or authenticate application
-artifacts.
+`inspectBinary()` reports container metadata without making a validity claim.
+`validateBinary()` checks the container structure, artifact specification, and
+self-digest. Neither function authenticates the producer.
 
-## Run preprocess
+Development builds generate embedded circuit metadata from the local
+qap-compiler output. Production builds select the pinned npm
+`@tokamak-zk-evm/subcircuit-library` snapshot. Both modes use the same runtime
+artifact interfaces.
 
-Install the independent preprocess runtime once and pass its three named binary
-inputs:
+## Preprocess
+
+Install the preprocessing runtime once, then commit the admitted selector and
+permutation using the preprocessing CRS.
 
 ```ts
-import { install as installPreprocess, preprocess } from '@tokamak-zk-evm/snark-browser-compat/preprocess';
-
+import {
+  install as installPreprocess,
+  preprocess,
+} from '@tokamak-zk-evm/snark-browser-compat/preprocess';
 import { loadBinary } from './load-binary.js';
 
-const installation = await installPreprocess();
+await installPreprocess({ chunkSizeExponent: 17 });
 
-const [permutation, instance, preprocessCrs] = await Promise.all([
+const [selector, permutation, preprocessCrs] = await Promise.all([
+  loadBinary('/artifacts/selector.bin'),
   loadBinary('/artifacts/permutation.bin'),
-  loadBinary('/artifacts/instance.bin'),
   loadBinary('/artifacts/preprocess-crs.bin'),
 ]);
 
 const verifierPreprocess = await preprocess({
+  selector,
   permutation,
-  instance,
   preprocessCrs,
 });
-
-console.log(installation.chunkSize, verifierPreprocess.byteLength);
 ```
 
-The current default chunk exponent is `17`. An application may explicitly select an
-integer from `10` through `19`. A later explicit option takes precedence while
-preprocess is idle; omitting the option preserves the installed value.
+`preprocess()` returns the two G1 commitments required by the current verifier.
+It does not consume the witness or public instance.
 
-Preprocess and prover are independent. Preprocess consumes
-`instance.function`, produces the `s0`, `s1`, and `O_pub_fix` commitments, and
-does not call or prepare the prover.
+## Prove
 
-## Verify a proof
-
-Install the verifier once, retain it for the page lifetime, and pass the three
-named binaries:
+Install the prover once and generate a complete proof in one call.
 
 ```ts
-import { install as installVerifier, verify } from '@tokamak-zk-evm/snark-browser-compat/verifier';
-
+import {
+  install as installProver,
+  prove,
+} from '@tokamak-zk-evm/snark-browser-compat/prover';
 import { loadBinary } from './load-binary.js';
 
-await installVerifier();
+await installProver({ chunkSizeExponent: 18 });
 
-const [proof, instance, verifierPreprocess] = await Promise.all([
-  loadBinary('/artifacts/proof.bin'),
-  loadBinary('/artifacts/instance.bin'),
-  loadBinary('/artifacts/verifier-preprocess.bin'),
-]);
-
-const valid = await verify({
-  proof,
-  instance,
-  verifierPreprocess,
-});
-```
-
-`verify()` returns `false` when a well-formed proof fails the cryptographic
-verification equations. Installation, concurrency, binary decoding, and
-runtime failures reject the Promise with `BackendWasmError`.
-
-The verifier CRS is regenerated from the native owner artifact during every
-package build and compiled into the verifier. Applications do not provide a
-verifier CRS at runtime.
-
-## Generate a proof
-
-Install the prover once. Multithreaded ffjavascript primitives are always
-enabled; the optional exponent controls only the outer dense Sigma1 MSM chunk
-size:
-
-```ts
-import { install as installProver, prove } from '@tokamak-zk-evm/snark-browser-compat/prover';
-
-import { loadBinary } from './load-binary.js';
-
-const installation = await installProver({
-  chunkSizeExponent: 18,
-});
-
-const [witness, permutation, instance, proverCrs] = await Promise.all([
+const [witness, selector, permutation, instance, proverCrs] = await Promise.all([
   loadBinary('/artifacts/witness.bin'),
+  loadBinary('/artifacts/selector.bin'),
   loadBinary('/artifacts/permutation.bin'),
   loadBinary('/artifacts/instance.bin'),
   loadBinary('/artifacts/prover-crs.bin'),
@@ -277,326 +182,116 @@ const [witness, permutation, instance, proverCrs] = await Promise.all([
 
 const proof = await prove({
   witness,
+  selector,
   permutation,
   instance,
   proverCrs,
 });
-
-console.log(installation.chunkSize, proof.byteLength);
 ```
 
-The exponent must be an integer from `10` through `19`. Omitting it uses `18`
-on the first installation. A later `install()` call may change it while the
-prover is idle; a later explicit option takes precedence. The chunk size is
-`2 ** chunkSizeExponent`.
+Only one proof operation may use the installed runtime at a time. Concurrent
+calls reject with `BackendWasmError` code `BUSY`. The chunk exponent must be an
+integer from 10 through 19 and may be changed while the runtime is idle.
 
-The input artifacts are independent files:
+## Verify
 
-| Property      | Content                                                                           |
-| ------------- | --------------------------------------------------------------------------------- |
-| `witness`     | Placement subcircuit IDs, placement offsets, and field-valued placement variables |
-| `permutation` | Row, column, X, and Y permutation entries                                         |
-| `instance`    | Public instance field values shared with the verifier                             |
-| `proverCrs`   | Prover CRS points and prepared Sigma1/Sigma2 commitment data                      |
-
-`prove()` returns one verifier-proof binary. It is a convenience wrapper over
-the same stateful implementation exposed by `begin()`.
-
-## Track proving progress
-
-Use a staged prover session when the application needs coarse phase updates.
-The calls are ordered and share one in-memory transcript:
-
-```ts
-import { begin, install as installProver, type ProverInput } from '@tokamak-zk-evm/snark-browser-compat/prover';
-
-type ProverPhase = 'preparing' | 'arithmetic' | 'copy' | 'binding' | 'finalizing' | 'completed';
-
-export async function proveWithProgress(
-  input: ProverInput,
-  setPhase: (phase: ProverPhase) => void,
-): Promise<Uint8Array> {
-  await installProver();
-  setPhase('preparing');
-  const session = await begin(input);
-
-  try {
-    setPhase('arithmetic');
-    await session.proveArithmetic();
-
-    setPhase('copy');
-    await session.proveCopy();
-
-    setPhase('binding');
-    await session.proveBinding();
-
-    setPhase('finalizing');
-    const proof = await session.finalize();
-    setPhase('completed');
-    return proof;
-  } finally {
-    session.dispose();
-  }
-}
-```
-
-These boundaries expose the arithmetic constraints, copy constraints, binding,
-and integrated-finalization work. They do not serialize or validate
-intermediate protocol state. The package does not estimate percentages or
-remaining time. Finalize or dispose every session; an unfinished session
-retains large prover state.
-
-## Runtime artifact guide and acquisition
-
-The application owns artifact acquisition, provenance verification, conversion,
-storage, caching, and invalidation.
-
-| Runtime artifact     | Source material                                         | Preparation                                                                                          |
-| -------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `witness`            | Tokamak synthesizer placement-variable JSON             | Parse JSON, then call `convertWitness()`                                                             |
-| `permutation`        | Tokamak synthesizer permutation JSON                    | Parse JSON, then call `convertPermutation()`                                                         |
-| `instance`           | Tokamak synthesizer instance JSON                       | Parse JSON, then call `convertInstance()`; the result contains distinct public and function sections |
-| `proverCrs`          | Release `combined_sigma.rkyv` and `crs_provenance.json` | Load both, then use `convertCrs(rkyvBytes, crsProvenance).proverCrs`                                 |
-| `preprocessCrs`      | Release `combined_sigma.rkyv` and `crs_provenance.json` | Load both, then use `convertCrs(rkyvBytes, crsProvenance).preprocessCrs`                             |
-| `verifierPreprocess` | Native verifier preprocess JSON                         | Parse JSON, then call `convertVerifierPreprocess()`                                                  |
-| `proof`              | `prove()` output or native proof JSON                   | Use directly or call `convertProof()`                                                                |
-
-The build generates setup parameters, packed R1CS data, and subcircuit
-metadata into ignored active outputs; these are not runtime inputs. Development
-builds select local qap-compiler output. Production builds and package
-publication select the pinned npm `@tokamak-zk-evm/subcircuit-library`
-snapshot. In both modes, compilation consumes only the selected active output.
-
-Obtain the large combined CRS source from the immutable
-[Tokamak zk-EVM CRS release folder](https://drive.google.com/drive/folders/14xqCbLoyoVmUVTTlopiXtKnoHPBGL-Sv).
-The package never downloads Google Drive artifacts. Keep provenance information
-from the release source and invalidate cached converted binaries when the
-application changes its compatible Tokamak release.
-
-Every runtime binary produced by this package uses the `TZBWASM1` container
-magic, a numeric `formatVersion`, a producer package version, a file kind, a
-section table, and a whole-file self-digest. The container version identifies
-the byte layout; it does not replace release compatibility checks or trusted
-artifact provenance. Applications should acquire source artifacts from their
-documented release location, convert them once, validate them at the trust
-boundary, and retain the resulting named binaries as one compatible set.
-
-## Convert, inspect, and validate binaries
-
-Converters handle one material per call and require no installation:
+The verifier admits the fixed selector, permutation, preprocessing CRS,
+preprocessing commitments, and verifier CRS before checking the proof and
+public instance.
 
 ```ts
 import {
-  convertInstance,
-  convertPermutation,
-  convertProof,
-  convertCrs,
-  convertVerifierPreprocess,
-  convertWitness,
-  inspectBinary,
-  validateBinary,
-} from '@tokamak-zk-evm/snark-browser-compat/converter';
+  install as installVerifier,
+  verify,
+} from '@tokamak-zk-evm/snark-browser-compat/verifier';
+import { loadBinary } from './load-binary.js';
 
-const witnessSource = await fetch('/sources/placementVariables.json').then(response => response.json());
-const witness = await convertWitness(witnessSource);
+await installVerifier();
 
-const rkyvResponse = await fetch('/sources/combined_sigma.rkyv');
-const rkyvBytes = new Uint8Array(await rkyvResponse.arrayBuffer());
-const crsProvenance = await fetch('/sources/crs_provenance.json').then(response => response.json());
-const { proverCrs, preprocessCrs, verifierCrs } = await convertCrs(rkyvBytes, crsProvenance);
+const [proof, instance, selector, permutation, preprocessCrs, verifierPreprocess, verifierCrs] =
+  await Promise.all([
+    loadBinary('/artifacts/proof.bin'),
+    loadBinary('/artifacts/instance.bin'),
+    loadBinary('/artifacts/selector.bin'),
+    loadBinary('/artifacts/permutation.bin'),
+    loadBinary('/artifacts/preprocess-crs.bin'),
+    loadBinary('/artifacts/verifier-preprocess.bin'),
+    loadBinary('/artifacts/verifier-crs.bin'),
+  ]);
 
-const inspection = await inspectBinary(proverCrs);
-const validated = await validateBinary(proverCrs);
+const valid = await verify({
+  proof,
+  instance,
+  selector,
+  permutation,
+  preprocessCrs,
+  verifierPreprocess,
+  verifierCrs,
+});
 ```
 
-The application parses the complete canonical final-MPC CRS provenance JSON before calling
-`convertCrs()`. The converter validates the document kind and nested camelCase
-shape, then requires its `compatibleBackendVersion` and `subcircuitLibrary`
-fields to match the installed subcircuit-library compatibility class. It does
-not apply Google Drive publication policy such as `releaseEligible`. The
-converter then
-transfers its input `ArrayBuffer` to a temporary module Worker, detaching the
-caller's buffer. Pass `rkyvBytes.slice()` when the original bytes must remain
-available.
+`verify()` returns `false` for a well-formed proof that fails the protocol
+equations. Installation, concurrency, malformed artifacts, and runtime failures
+reject with `BackendWasmError`.
 
-`proverCrs` and `preprocessCrs` are application-owned runtime inputs for their
-respective APIs. `verifierCrs` is an independently inspectable and validatable
-converter output, but the current verifier continues using its build-generated
-hardcoded CRS and does not accept it as an input.
+## Loading binaries
 
-`inspectBinary()` reads the file kind, versions, self-digest, and section table.
-It does not establish validity. `validateBinary()` checks the fixed layout,
-whole-file SHA-256 self-digest, and the versioned artifact specification. The
-self-digest detects accidental or malicious byte changes; it does not
-authenticate the producer or replace trusted provenance.
+Applications own artifact acquisition, authentication, caching, and
+invalidation. Complete I/O before calling a runtime operation:
 
-Preprocess, the prover, and the verifier perform mandatory structural admission
-of each named binary input: container layout, artifact kind, exact required
-sections, encodings, and contract-fixed shapes. They do not call
-`validateBinary()` and do not verify its optional self digest. Call validation
-separately when the application's trust boundary requires whole-file integrity
-checking.
+```ts
+export async function loadBinary(url: string | URL): Promise<Uint8Array> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Failed to load ${url}: ${response.status}`);
+  return new Uint8Array(await response.arrayBuffer());
+}
+```
 
-## Browser deployment and lifecycle
+Source provenance remains an application trust-boundary concern. Runtime
+admission checks the exact binary kind and required sections but does not use
+`releaseEligible` as a preprocess, prove, or verify gate.
 
-Vite and Webpack production builds running in Chromium are the currently
-verified browser-and-bundler combinations.
+## Development workflow
 
-| Capability                                     | Status                            |
-| ---------------------------------------------- | --------------------------------- |
-| Chromium with a Vite production build          | Verified                          |
-| Chromium with a Webpack production build       | Verified                          |
-| Firefox or Safari                              | Not yet verified                  |
-| Bundler-free static ESM                        | Unsupported                       |
-| Cross-origin isolation and `SharedArrayBuffer` | Not required by the verified path |
+From `packages/backend/wasm`:
 
-Deployment requirements:
+```sh
+npm run build:development
+npm run typecheck:development
+npm run typecheck:scripts
+npm run binary:check
+npm run univariate:domain:check
+npm run univariate:relation:check
+npm run univariate:polynomial:check
+npm run univariate:transcript:check
+```
 
-- serve emitted JavaScript and Worker assets with JavaScript-compatible MIME
-  types;
-- serve the decoder with `Content-Type: application/wasm`;
-- allow WebAssembly evaluation, including `script-src 'wasm-unsafe-eval'` under
-  a restrictive Chromium CSP;
-- allow same-origin and Blob workers, including `worker-src 'self' blob:`;
-- let the bundler resolve the converter Worker's bare `ffjavascript` import.
+To prepare local browser E2E inputs, first generate `selector.json` with the
+synthesizer and `univariate_crs.json` with native trusted setup. Then run:
 
-Preprocess, prover, and verifier installations are independent and each creates
-one reusable curve runtime. Concurrent first installs for one runtime family
-share the same attempt. A failed install is not retried automatically, but a
-later explicit `install()` may retry.
+```sh
+npm run fixtures:copy
+npm run fixtures:prepare
+npm run prover:browser:check
+```
 
-Only one operation may use each runtime family at a time. A second operation
-rejects with `BUSY`; requests are not queued. Preprocess, prover, and verifier
-may run concurrently, but the application owns the resulting CPU and memory
-contention. There is no public terminate API. Keep each installed runtime until
-the page or host process ends.
+The fixture preparation step converts owner-package outputs; it does not invoke
+native setup, preprocessing, proving, or verification on behalf of the owner.
 
-Avoid concurrent large converter calls unless the application has budgeted for
-duplicate WASM memories and temporary buffers.
+See [`examples/browser`](./examples/browser) for a runnable Vite workflow.
 
-## Compatibility and versioning
+## Security and lifecycle
 
-The package, native backend, subcircuit library, generated runtime artifacts,
-and CRS must be selected from one synchronized release line. The compatibility
-class is the package version's major and minor components; matching an artifact
-type without matching that class is insufficient.
-
-| Boundary                     | Stable rule                                |
-| ---------------------------- | ------------------------------------------ |
-| Package and backend identity | One synchronized release line              |
-| Compatibility class          | Package-version major and minor components |
-| Binary `formatVersion`       | Independent byte-layout version            |
-| Package module format        | ESM                                        |
-| Curve runtime                | ffjavascript BLS12-381                     |
-
-`install()` reports the package, native backend, and subcircuit-library
-versions. Every binary carries its independent `formatVersion` and
-`sourcePackageVersion`. The format version identifies the binary layout; the
-source package version identifies the producer release.
-
-The runtime validates the binary artifact compatibility class against its
-selected subcircuit-library and structurally admits the producer-defined binary
-container. It does not validate CRS provenance, `releaseEligible`, ceremony
-state, publication state, or library-content digests. Incompatible binary
-structure or compatibility class rejects with `INVALID_INPUT`; a structurally
-valid but cryptographically incompatible proof may return `false`.
-
-## How this package relates to Tokamak zk-EVM
-
-| Entity                                                                                                   | Relationship                                                                                                                                               |
-| -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Tokamak zk-EVM](https://github.com/tokamak-network/Tokamak-zk-EVM)                                      | The owner repository and shared release line for this package                                                                                              |
-| [Tokamak zk-SNARK protocol paper](https://eprint.iacr.org/2024/507)                                      | The protocol definition implemented by preprocess, the prover, and the verifier                                                                            |
-| [Native backend](https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main/packages/backend)           | The protocol reference and accelerated ICICLE/arkworks implementation; it owns setup, preprocess, native proof, and verifier artifacts                     |
-| [ffjavascript](https://github.com/iden3/ffjavascript)                                                    | The BLS12-381 field, group, MSM, FFT, pairing, WASM, and worker runtime used by browser execution                                                          |
-| [`@tokamak-zk-evm/subcircuit-library`](https://www.npmjs.com/package/@tokamak-zk-evm/subcircuit-library) | The pinned production source of build-generated setup parameters, packed R1CS data, and subcircuit metadata; development selects local qap-compiler output |
-| [Immutable CRS release folder](https://drive.google.com/drive/folders/14xqCbLoyoVmUVTTlopiXtKnoHPBGL-Sv) | The application-acquired source of release CRS material, including `combined_sigma.rkyv`                                                                   |
-
-This package does not compile circuits, synthesize application inputs, run a
-trusted setup, download release artifacts, authenticate artifact provenance, or
-provide a generic proving-system abstraction.
-
-The repository root separately deprecates historical WASM verifier packages.
-That notice concerns the older verifier package surfaces. This README describes
-the supported `@tokamak-zk-evm/snark-browser-compat` package with the explicit
-`./preprocess`, `./prover`, `./verifier`, and `./converter` entry points; it
-does not revive or provide compatibility with those historical packages.
-
-## Measured browser performance
-
-Browser proof-generation measurements, including cross-release comparisons,
-raw samples, exact build and artifact identities, circuit dimensions,
-verification results, methodology, and limitations, are maintained in the
-[optimization history](./docs/optimization/prover-optimization-history.md).
-
-Those results are observations from their documented machine and fixture, not
-minimum requirements, portable guarantees, or predictions for another browser,
-input, thermal state, or implementation.
-
-## Errors and troubleshooting
-
-All public subpaths export `BackendWasmError`. Branch on `error.code`, not the
-message:
-
-| Code               | Meaning                                                     | Application action                                               |
-| ------------------ | ----------------------------------------------------------- | ---------------------------------------------------------------- |
-| `INSTALL_REQUIRED` | Preprocess, prove, or verify was called before installation | Complete the matching `install()` call                           |
-| `INSTALL_FAILED`   | Runtime construction failed                                 | Report the cause and retry only through a later explicit install |
-| `BUSY`             | The same runtime family is active                           | Disable duplicate actions and wait for the active operation      |
-| `INVALID_OPTION`   | An install option is unknown or out of range                | Correct the option before retrying                               |
-| `INVALID_INPUT`    | A binary or converter source could not be decoded           | Check artifact kind, source, version, and conversion             |
-| `RUNTIME_FAILED`   | Installed runtime work failed                               | Report the cause and treat the operation as failed               |
-
-Additional troubleshooting:
-
-- `verify()` returning `false` is a cryptographic invalid-proof result, not an
-  exception or installation failure.
-- A validation self-digest mismatch means the binary bytes changed. Replace the
-  complete artifact from its trusted source.
-- Worker-load failures usually indicate an unsupported bundler output, CSP
-  restriction, incorrect asset URL, or MIME type.
-- A version mismatch requires selecting and converting artifacts from the
-  compatible release line; the package does not silently fall back.
-- Browser memory exhaustion may terminate the operation or renderer before an
-  error can be delivered. Avoid concurrent proving and large conversions.
-  A lower chunk exponent reduces the maximum outer dense-MSM submission but is
-  not a universal memory guarantee.
-
-## Security and application responsibilities
-
-Applications must authenticate the source of CRS and transaction artifacts,
-verify provenance and digests at their trust boundary, keep every runtime input
-on one compatible release line, and prevent untrusted callers from exhausting
-browser CPU or memory. Treat `inspectBinary()` as metadata inspection only;
-use validation for structural integrity and proof verification for the
-cryptographic claim.
-
-The package does not authorize a ceremony, validate Google Drive publication
-eligibility, secure application storage, or establish that a surrounding
-protocol is safe. Deployment owners remain responsible for dependency-license
-compliance, CSP and Worker policy, artifact access control, cache invalidation,
-and user-visible handling of failed or busy operations.
+- Treat witness and proof-generation state as sensitive application data.
+- Do not run two operations concurrently through the same installed subpath.
+- Retain one mutually compatible selector, permutation, circuit library, CRS,
+  preprocess output, instance, and proof set.
+- Validate and authenticate source artifacts at the application's trust
+  boundary; a binary self-digest is not producer authentication.
+- Development trusted-setup output is not release or deployment material.
 
 ## Project and license
 
-- [Tokamak zk-EVM repository](https://github.com/tokamak-network/Tokamak-zk-EVM)
-- [Snark-browser-compat package source](https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main/packages/backend/wasm)
-- [Issue tracker](https://github.com/tokamak-network/Tokamak-zk-EVM/issues)
-- [Repository changelog](https://github.com/tokamak-network/Tokamak-zk-EVM/blob/main/CHANGELOG.md)
-- [Tokamak zk-SNARK protocol paper](https://eprint.iacr.org/2024/507)
-- [`@tokamak-zk-evm/subcircuit-library` on npm](https://www.npmjs.com/package/@tokamak-zk-evm/subcircuit-library)
-- [`@tokamak-zk-evm/snark-browser-compat` on npm](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat)
-
-This package's own code follows the repository's `MIT OR Apache-2.0` policy.
-See [LICENSE-MIT](./LICENSE-MIT), [LICENSE-APACHE](./LICENSE-APACHE), and
-[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
-
-This package license does not override dependency licenses. `ffjavascript` is
-GPL-licensed. An application distribution that imports, links, or bundles
-backend-wasm with `ffjavascript` must comply with the applicable GPL obligations
-for the resulting combination. Externalizing dependencies from the converter
-Worker changes where code is bundled; it does not remove those obligations.
-This information is not legal advice.
-
-Repository development and publication instructions are in
-[CONTRIBUTING.md](./CONTRIBUTING.md).
+The package is dual-licensed under `MIT OR Apache-2.0`. Dependencies retain
+their own licenses. Repository-level release notes are maintained in
+[`CHANGELOG.md`](../../../CHANGELOG.md).

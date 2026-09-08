@@ -41,8 +41,8 @@ controls.installPreprocess.addEventListener("click", () => {
 controls.runPreprocess.addEventListener("click", () => {
   void runAction("Calculating verifier preprocess", async () => {
     const output = await generateVerifierPreprocess({
+      selector: urlInput("selector-url"),
       permutation: urlInput("permutation-url"),
-      instance: urlInput("instance-url"),
       preprocessCrs: urlInput("preprocess-crs-url"),
     });
     generated.verifierPreprocess = output;
@@ -66,6 +66,7 @@ controls.runProver.addEventListener("click", () => {
   void runAction("Generating proof", async () => {
     const proof = await generateProof({
       witness: urlInput("witness-url"),
+      selector: urlInput("selector-url"),
       permutation: urlInput("permutation-url"),
       instance: urlInput("instance-url"),
       proverCrs: urlInput("prover-crs-url"),
@@ -97,7 +98,11 @@ controls.runVerifier.addEventListener("click", () => {
     const valid = await verifyProof({
       proof,
       instance: urlInput("instance-url"),
+      selector: urlInput("selector-url"),
+      permutation: urlInput("permutation-url"),
+      preprocessCrs: urlInput("preprocess-crs-url"),
       verifierPreprocess,
+      verifierCrs: urlInput("verifier-crs-url"),
     });
     text("verifier-status", valid ? "Valid proof" : "Invalid proof");
     text("result-source", "Generated proof · generated preprocess");

@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 
-import { createBinaryArtifactFile, decodeBinaryArtifactFile } from "../../../src/artifacts/binary/binary-artifact-file.js";
+import { decodeBinaryArtifactFile } from "../../../src/artifacts/binary/binary-artifact-file.js";
 import { BinaryArtifactFileKind, BinarySectionEncoding, BinarySectionType, type BinarySectionView } from "../../../src/artifacts/binary/binary-format.js";
-import { UNIVARIATE_VERIFIER_PREPROCESS_V1_SPEC } from "../../../src/generated/browser-artifact-contracts.generated.js";
 import { createPreprocessOutput } from "../../../src/preprocess/api/output.js";
 import { preprocessSnark } from "../../../src/preprocess/protocol/preprocess-snark.js";
 import { createCurveRuntime } from "../../../src/runtime/curve/curve.js";
@@ -36,7 +35,7 @@ try {
     setup,
     selector,
     permutation,
-    crs: { kzgPowers },
+    crs: { s0: kzgPowers },
   }, { denseMsmChunkPoints: 2 });
 
   const domain = deriveUnivariateDomainShape(runtime.Fr, setup);
@@ -63,7 +62,7 @@ try {
   assert.equal(decoded.sections[0]?.label, "preprocess.g1");
 
   await assert.rejects(
-    preprocessSnark(runtime, { setup, selector: [1, null], permutation, crs: { kzgPowers } }),
+    preprocessSnark(runtime, { setup, selector: [1, null], permutation, crs: { s0: kzgPowers } }),
     /subcircuit index is outside its admitted range/,
   );
   await assert.rejects(
@@ -71,7 +70,7 @@ try {
       setup,
       selector,
       permutation: [{ row: 0, col: 0, X: 1, Y: 1 }],
-      crs: { kzgPowers },
+      crs: { s0: kzgPowers },
     }),
     /more than one source/,
   );

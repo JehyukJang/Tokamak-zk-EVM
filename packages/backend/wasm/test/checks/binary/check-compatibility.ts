@@ -218,7 +218,7 @@ function provenance(version: string): CrsProvenanceInput {
 
 function artifact(sourcePackageVersion: string): BinaryArtifactFileView {
   return {
-    kind: BinaryArtifactFileKind.ProverCrs,
+    kind: BinaryArtifactFileKind.UnivariateProverCrs,
     formatVersion: 1,
     sourcePackageVersion,
     byteLength: 0,

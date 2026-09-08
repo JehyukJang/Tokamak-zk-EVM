@@ -22,11 +22,13 @@ The page entry point is [`src/main.ts`](./src/main.ts). It coordinates these
 operation-specific modules:
 
 - [`src/run-preprocess.ts`](./src/run-preprocess.ts): install preprocess, load
-  its three binary inputs, and generate verifier preprocess bytes.
+  selector, permutation, and preprocess CRS binaries, and generate verifier
+  preprocess bytes.
 - [`src/generate-proof.ts`](./src/generate-proof.ts): install the prover, load
-  its four binary inputs, and generate proof bytes.
-- [`src/verify-proof.ts`](./src/verify-proof.ts): install the verifier, load the
-  instance, and verify the generated proof and preprocess bytes.
+  its five binary inputs, and generate proof bytes.
+- [`src/verify-proof.ts`](./src/verify-proof.ts): install the verifier, admit
+  its fixed configuration binaries, and verify the generated proof and
+  preprocess bytes.
 - [`src/load-binary.ts`](./src/load-binary.ts): fetch one binary artifact and
   reject unsuccessful responses.
 
@@ -41,20 +43,22 @@ you intend to run:
 
 | File                 | Used by                          |
 | -------------------- | -------------------------------- |
-| `permutation.bin`    | Preprocess and prover            |
-| `instance.bin`       | Preprocess, prover, and verifier |
-| `preprocess-crs.bin` | Preprocess                       |
+| `selector.bin`       | Preprocess, prover, and verifier |
+| `permutation.bin`    | Preprocess, prover, and verifier |
+| `instance.bin`       | Prover and verifier              |
+| `preprocess-crs.bin` | Preprocess and verifier          |
 | `witness.bin`        | Prover                           |
 | `prover-crs.bin`     | Prover                           |
+| `verifier-crs.bin`   | Verifier                         |
 
 The default URLs in the page point to these names. They can be replaced with
 same-origin or CORS-enabled application URLs. The verifier CRS is compiled into
 the package and is not an application input.
 
 Prepare runtime binaries with the package converter APIs. In particular,
-`convertCrs(combinedSigmaRkyv, crsProvenance)` returns the named `proverCrs` and
-`preprocessCrs` files used here. Source artifacts and provenance remain the
-application's responsibility.
+`convertUnivariateCrs(univariateCrsJson)` returns the named `proverCrs`,
+`preprocessCrs`, and `verifierCrs` files used here. Source artifact
+authentication remains the application's responsibility.
 
 The CRS and witness files are intentionally not included in this example or in
 the npm package.
@@ -68,8 +72,6 @@ with the example, but are not imported by the runnable page:
   materials and `combined_sigma.rkyv` into the separate runtime binaries.
 - [`src/inspect-and-validate.ts`](./src/inspect-and-validate.ts): inspect binary
   metadata and independently validate the same artifact.
-- [`src/staged-proof.ts`](./src/staged-proof.ts): execute the ordered prover
-  session API and report arithmetic, copy, binding, and finalization progress.
 
 ## License
 

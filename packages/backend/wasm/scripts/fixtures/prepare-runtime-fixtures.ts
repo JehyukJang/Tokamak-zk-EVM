@@ -5,23 +5,13 @@ import { fileURLToPath } from "node:url";
 import {
   convertInstance,
   convertPermutation,
-  convertProof,
-  convertVerifierPreprocess,
+  convertSelector,
+  convertUnivariateCrs,
   convertWitness,
 } from "../../src/converter/index.js";
-import {
-  convertCombinedSigmaRkyvToCrsBinaries,
-  createCombinedSigmaRkyvPayloadDecoder,
-} from "../../src/converter/conversion/rkyv-to-binary.js";
-import { decodeBinaryArtifactFile } from "../../src/artifacts/binary/binary-artifact-file.js";
-import { GENERATED_SETUP_PARAMS } from "../../src/generated/active/setup.generated.js";
-import { GENERATED_PROVER_SUBCIRCUIT_INFOS } from "../../src/prover/generated/active/subcircuit-library.generated.js";
-import { loadProverRuntimeWitnessInputParts } from "../../src/prover/api/binary-input.js";
+import { loadProverInputFromBinaryInput } from "../../src/prover/api/binary-input.js";
 import { loadPreprocessInputFromBinaryInput } from "../../src/preprocess/api/binary-input.js";
-import { validateProverPlacements } from "../../src/prover/protocol/witness.js";
 import { createCurveRuntime } from "../../src/runtime/curve/curve.js";
-import { BACKEND_WASM_PACKAGE_VERSION } from "../../src/version.js";
-import { loadCombinedSigmaPayloadDecoder } from "../../tools/rkyv-decoder-wasm/src/node.js";
 import { resolveFixtureWorkDirectory } from "./fixture-paths.js";
 
 interface CopyManifest {
@@ -47,42 +37,34 @@ async function main(argv: readonly string[]): Promise<void> {
   );
   const runtimeRoot = path.join(backendWasmRoot, "fixtures", manifest.suite, "runtime");
   const instance = await readJson(path.join(sourceRoot, "synthesizer", "instance.json"));
+  const selector = await readJson(path.join(sourceRoot, "synthesizer", "selector.json"));
   const placementVariables = await readJson(
     path.join(sourceRoot, "synthesizer", "placementVariables.json"),
   );
   const permutation = await readJson(path.join(sourceRoot, "synthesizer", "permutation.json"));
-  const payloadDecoder = await loadCombinedSigmaPayloadDecoder();
-  const crs = await convertCombinedSigmaRkyvToCrsBinaries(
-    await readBinary(path.join(sourceRoot, "setup", "combined_sigma.rkyv")),
-    {
-      sourcePackageVersion: BACKEND_WASM_PACKAGE_VERSION,
-      decoder: createCombinedSigmaRkyvPayloadDecoder(payloadDecoder.decodeCombinedSigmaPayload),
-      setup: GENERATED_SETUP_PARAMS,
-    },
+  const crs = await convertUnivariateCrs(
+    await readJson(path.join(sourceRoot, "setup", "univariate_crs.json")),
   );
   const witness = await convertWitness(placementVariables);
+  const selectorArtifact = await convertSelector(selector);
   const permutationArtifact = await convertPermutation(permutation);
   const instanceArtifact = await convertInstance(instance);
   await validateFixtureRuntimeInputs({
     witness,
+    selector: selectorArtifact,
     permutation: permutationArtifact,
     instance: instanceArtifact,
+    proverCrs: crs.proverCrs,
     preprocessCrs: crs.preprocessCrs,
   });
   const outputs: Readonly<Record<string, Uint8Array>> = {
     "witness.bin": witness,
+    "selector.bin": selectorArtifact,
     "permutation.bin": permutationArtifact,
     "instance.bin": instanceArtifact,
     "prover-crs.bin": crs.proverCrs,
     "preprocess-crs.bin": crs.preprocessCrs,
     "verifier-crs.bin": crs.verifierCrs,
-    "proof.bin": await convertProof({
-      sourceFormat: "json",
-      proof: await readJson(path.join(sourceRoot, "prove", "proof.json")),
-    }),
-    "verifier-preprocess.bin": await convertVerifierPreprocess(
-      await readJson(path.join(sourceRoot, "preprocess", "preprocess.json")),
-    ),
   };
 
   await rm(runtimeRoot, { recursive: true, force: true });
@@ -94,32 +76,26 @@ async function main(argv: readonly string[]): Promise<void> {
 
 async function validateFixtureRuntimeInputs(input: {
   readonly witness: Uint8Array;
+  readonly selector: Uint8Array;
   readonly permutation: Uint8Array;
   readonly instance: Uint8Array;
+  readonly proverCrs: Uint8Array;
   readonly preprocessCrs: Uint8Array;
 }): Promise<void> {
   const runtime = await createCurveRuntime();
   try {
-    await loadPreprocessInputFromBinaryInput(runtime, {
+    await loadPreprocessInputFromBinaryInput({
+      selector: input.selector,
       permutation: input.permutation,
-      instance: input.instance,
       preprocessCrs: input.preprocessCrs,
     });
-    const [placementVariables, permutation, instance] = await Promise.all([
-      decodeBinaryArtifactFile(input.witness),
-      decodeBinaryArtifactFile(input.permutation),
-      decodeBinaryArtifactFile(input.instance),
-    ]);
-    const witnessParts = loadProverRuntimeWitnessInputParts(runtime, {
-      placementVariables,
-      permutation,
-      instance,
+    await loadProverInputFromBinaryInput(runtime, {
+      witness: input.witness,
+      selector: input.selector,
+      permutation: input.permutation,
+      instance: input.instance,
+      proverCrs: input.proverCrs,
     });
-    validateProverPlacements(
-      witnessParts.placementVariables,
-      GENERATED_PROVER_SUBCIRCUIT_INFOS,
-      GENERATED_SETUP_PARAMS,
-    );
   } finally {
     await runtime.terminate();
   }
@@ -152,15 +128,6 @@ function parseCopyManifest(raw: unknown): CopyManifest {
 async function readJson(filePath: string): Promise<unknown> {
   try {
     return JSON.parse(await readFile(filePath, "utf8")) as unknown;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to read copied fixture source ${filePath}: ${message}`);
-  }
-}
-
-async function readBinary(filePath: string): Promise<Uint8Array> {
-  try {
-    return new Uint8Array(await readFile(filePath));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to read copied fixture source ${filePath}: ${message}`);
