@@ -31,7 +31,9 @@ pub struct DenseUnivariatePolynomial {
 }
 
 impl DenseUnivariatePolynomial {
-    pub fn new(coefficients: impl Into<Box<[ScalarField]>>) -> Result<Self, UnivariatePolynomialError> {
+    pub fn new(
+        coefficients: impl Into<Box<[ScalarField]>>,
+    ) -> Result<Self, UnivariatePolynomialError> {
         let mut coefficients = coefficients.into().into_vec();
         trim(&mut coefficients);
         if coefficients.is_empty() {
@@ -66,7 +68,8 @@ impl DenseUnivariatePolynomial {
     }
 
     pub fn add(&self, rhs: &Self) -> Self {
-        let mut out = vec![ScalarField::zero(); self.coefficients.len().max(rhs.coefficients.len())];
+        let mut out =
+            vec![ScalarField::zero(); self.coefficients.len().max(rhs.coefficients.len())];
         for (index, coefficient) in self.coefficients.iter().enumerate() {
             out[index] = out[index] + *coefficient;
         }
@@ -77,14 +80,16 @@ impl DenseUnivariatePolynomial {
     }
 
     pub fn sub(&self, rhs: &Self) -> Self {
-        let mut out = vec![ScalarField::zero(); self.coefficients.len().max(rhs.coefficients.len())];
+        let mut out =
+            vec![ScalarField::zero(); self.coefficients.len().max(rhs.coefficients.len())];
         for (index, coefficient) in self.coefficients.iter().enumerate() {
             out[index] = out[index] + *coefficient;
         }
         for (index, coefficient) in rhs.coefficients.iter().enumerate() {
             out[index] = out[index] - *coefficient;
         }
-        Self::new(out.into_boxed_slice()).expect("difference of nonempty polynomials is representable")
+        Self::new(out.into_boxed_slice())
+            .expect("difference of nonempty polynomials is representable")
     }
 
     pub fn scale(&self, scalar: ScalarField) -> Self {
@@ -117,7 +122,9 @@ impl DenseUnivariatePolynomial {
             .and_then(|length| length.checked_sub(1))
             .ok_or(UnivariatePolynomialError::LengthOverflow)?;
         if product_len <= 64 {
-            return Ok(Self::new(naive_product(&self.coefficients, &rhs.coefficients)?.into_boxed_slice())?);
+            return Ok(Self::new(
+                naive_product(&self.coefficients, &rhs.coefficients)?.into_boxed_slice(),
+            )?);
         }
         let transform_size = product_len.next_power_of_two();
         init_ntt_domain_for_size(transform_size).map_err(UnivariatePolynomialError::Ntt)?;
@@ -142,7 +149,11 @@ impl DenseUnivariatePolynomial {
         )
         .map_err(UnivariatePolynomialError::Ntt)?;
         let mut product_evaluations = vec![ScalarField::zero(); transform_size];
-        point_mul_two_vecs(&left_evaluations, &right_evaluations, &mut product_evaluations);
+        point_mul_two_vecs(
+            &left_evaluations,
+            &right_evaluations,
+            &mut product_evaluations,
+        );
         let mut coefficients = vec![ScalarField::zero(); transform_size];
         ntt::ntt(
             HostSlice::from_slice(&product_evaluations),
@@ -155,7 +166,10 @@ impl DenseUnivariatePolynomial {
         Self::new(coefficients.into_boxed_slice())
     }
 
-    pub fn multiply_vanishing(&self, domain_size: usize) -> Result<Self, UnivariatePolynomialError> {
+    pub fn multiply_vanishing(
+        &self,
+        domain_size: usize,
+    ) -> Result<Self, UnivariatePolynomialError> {
         let shifted = self.shift(domain_size)?;
         Ok(shifted.sub(self))
     }
@@ -170,7 +184,11 @@ impl DenseUnivariatePolynomial {
             return Err(UnivariatePolynomialError::LengthOverflow);
         }
         if self.coefficients.len() <= domain_size {
-            return if self.coefficients.iter().all(|value| *value == ScalarField::zero()) {
+            return if self
+                .coefficients
+                .iter()
+                .all(|value| *value == ScalarField::zero())
+            {
                 Ok(Self::zero())
             } else {
                 Err(UnivariatePolynomialError::NonzeroVanishingRemainder)
@@ -223,7 +241,8 @@ fn naive_product(
     let mut result = vec![ScalarField::zero(); length];
     for (left_index, left_value) in left.iter().enumerate() {
         for (right_index, right_value) in right.iter().enumerate() {
-            result[left_index + right_index] = result[left_index + right_index] + *left_value * *right_value;
+            result[left_index + right_index] =
+                result[left_index + right_index] + *left_value * *right_value;
         }
     }
     Ok(result)
@@ -258,11 +277,22 @@ mod tests {
         let left = polynomial(&[1, 2, 3]);
         let right = polynomial(&[4, 5]);
         let product = left.multiply(&right).unwrap();
-        assert_eq!(product.coefficients(), &[ScalarField::from_u32(4), ScalarField::from_u32(13), ScalarField::from_u32(22), ScalarField::from_u32(15)]);
+        assert_eq!(
+            product.coefficients(),
+            &[
+                ScalarField::from_u32(4),
+                ScalarField::from_u32(13),
+                ScalarField::from_u32(22),
+                ScalarField::from_u32(15)
+            ]
+        );
         let vanishing_product = left.multiply_vanishing(4).unwrap();
         assert_eq!(vanishing_product.divide_vanishing_exact(4).unwrap(), left);
         let (quotient, value) = left.ruffini(ScalarField::from_u32(2));
         assert_eq!(value, ScalarField::from_u32(17));
-        assert_eq!(quotient.coefficients(), &[ScalarField::from_u32(8), ScalarField::from_u32(3)]);
+        assert_eq!(
+            quotient.coefficients(),
+            &[ScalarField::from_u32(8), ScalarField::from_u32(3)]
+        );
     }
 }

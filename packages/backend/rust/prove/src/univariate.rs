@@ -10,11 +10,16 @@ use libs::frontend_artifacts::{Instance, PlacementVariables, SetupParams};
 use libs::group_structures::G1serde;
 use libs::ntt_domain::init_ntt_domain_for_size;
 use libs::univariate_crs::{
-    UnivariateCrs, UnivariateCrsShape, UnivariateQueryIndex, UnivariateTaggedQuery,
+    UnivariateCommitmentSource, UnivariateCrs, UnivariateCrsShape, UnivariateQueryIndex,
+    UnivariateTaggedQuery,
 };
 use libs::univariate_polynomial::{DenseUnivariatePolynomial, UnivariatePolynomialError};
 use libs::univariate_proof::UnivariateProof;
 use libs::univariate_relation::{DenseDomainPolynomial, StridedPolynomial, WitnessMaps};
+use libs::univariate_transcript::{
+    CanonicalTranscriptEncoder, UnivariateChallenges, UnivariateFiatShamirInput,
+    UnivariateTranscript,
+};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -66,6 +71,7 @@ pub enum UnivariateProverError {
 
 /// U22 prover masks.  The caller samples these independently; this structure
 /// keeps the deterministic polynomial stage separate from randomness source.
+#[derive(Clone)]
 pub struct ArithmeticMaskRandomizers {
     pub u: DenseUnivariatePolynomial,
     pub v: DenseUnivariatePolynomial,
@@ -125,22 +131,37 @@ pub struct PrivateBindingCommitments {
 /// U28 values sampled after the U25 quotient commitment is fixed.
 pub struct UnivariateEvaluations {
     pub s_a: ScalarField,
+    pub s_c: ScalarField,
+    pub u: ScalarField,
     pub v: ScalarField,
+    pub w: ScalarField,
+    pub b: ScalarField,
+    pub q_zeta: ScalarField,
     pub r: ScalarField,
     pub r_plus: ScalarField,
-    pub p: ScalarField,
 }
 
-/// U29 and U30's quotient inputs.  These are ordinary coefficient
-/// polynomials and can therefore be committed with the U18 KZG powers without
-/// any bivariate compatibility conversion.
+/// F5's eight mixed-source opening quotients and the shifted `R` quotient.
 pub struct UnivariateOpeningPolynomials {
-    pub p_nu: DenseUnivariatePolynomial,
-    pub linearization: DenseUnivariatePolynomial,
-    pub h_zeta_varpi: DenseUnivariatePolynomial,
-    pub pi_zeta: DenseUnivariatePolynomial,
+    pub pi_zeta_terms: [DenseUnivariatePolynomial; 8],
     pub pi_plus: DenseUnivariatePolynomial,
     pub evaluations: UnivariateEvaluations,
+}
+
+/// All deterministic inputs and sampled masks required by the correctness-
+/// first F1--F5 prover. Artifact readers construct this only after their own
+/// selector, permutation, witness, and CRS admission checks succeed.
+pub struct UnivariateReferenceProvingInput<'a> {
+    pub crs: &'a UnivariateCrs,
+    pub selector: &'a StridedPolynomial,
+    pub s_c: &'a DenseDomainPolynomial,
+    pub maps: &'a WitnessMaps,
+    pub interface_values: &'a [TaggedWitnessValue],
+    pub internal_values: &'a [TaggedWitnessValue],
+    pub randomizers: ArithmeticMaskRandomizers,
+    pub recursion_randomizer: &'a DenseUnivariatePolynomial,
+    pub binding_randomizer: ScalarField,
+    pub fiat_shamir: UnivariateFiatShamirInput,
 }
 
 /// Serializes the U52 messages produced by the native polynomial stages into
@@ -152,41 +173,205 @@ pub fn assemble_univariate_proof(
     copy: &MaskedCopyRelation,
     q_hat: &DenseUnivariatePolynomial,
     openings: &UnivariateOpeningPolynomials,
+    upsilon: ScalarField,
+    varpi: ScalarField,
 ) -> Result<UnivariateProof, UnivariateProverError> {
-    let commit = |polynomial: &DenseUnivariatePolynomial| {
-        crs.commit_dense_polynomial(polynomial.coefficients())
+    let commit = |source, polynomial: &DenseUnivariatePolynomial, offset| {
+        crs.commit_tagged_dense_polynomial(source, polynomial.coefficients(), offset)
             .map_err(|_| UnivariateProverError::SelectorDegree)
     };
+    let c_u = commit(UnivariateCommitmentSource::S0, &masked.u_hat, 0)?;
+    let c_v = commit(UnivariateCommitmentSource::Sxi, &masked.v_hat, 0)?;
+    let c_w = commit(UnivariateCommitmentSource::Spsi, &masked.w_hat, 0)?;
+    let c_b = commit(
+        UnivariateCommitmentSource::Spsi,
+        &masked.b_hat,
+        crs.foundation.shape.k,
+    )?;
+    let c_r = commit(UnivariateCommitmentSource::S0, &copy.r_hat, 0)?;
+    let c_q = commit(UnivariateCommitmentSource::S0, q_hat, 0)?;
+    let factors = [
+        ScalarField::one(),
+        varpi,
+        varpi * varpi,
+        varpi.pow(3),
+        varpi.pow(4),
+        varpi.pow(5),
+        varpi.pow(6),
+        varpi.pow(7),
+    ];
+    let sources = [
+        UnivariateCommitmentSource::S0,
+        UnivariateCommitmentSource::Sxi,
+        UnivariateCommitmentSource::Spsi,
+        UnivariateCommitmentSource::Spsi,
+        UnivariateCommitmentSource::S0,
+        UnivariateCommitmentSource::S0,
+        UnivariateCommitmentSource::S0,
+        UnivariateCommitmentSource::S0,
+    ];
+    let offsets = [0, 0, 0, crs.foundation.shape.k, 0, 0, 0, 0];
+    let mut pi_zeta = G1serde::zero();
+    for index in 0..8 {
+        pi_zeta = pi_zeta
+            + commit(
+                sources[index],
+                &openings.pi_zeta_terms[index],
+                offsets[index],
+            )? * factors[index];
+    }
     Ok(UnivariateProof {
         protocol_schema_id: libs::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID.to_string(),
-        u_hat: commit(&masked.u_hat)?,
-        v_hat: commit(&masked.v_hat)?,
-        w_hat: commit(&masked.w_hat)?,
-        b_hat: commit(&masked.b_hat)?,
+        c_u,
+        c_v,
+        c_w,
+        c_b,
         o_if: private_binding.o_if,
         o_int: private_binding.o_int,
-        r_hat: commit(&copy.r_hat)?,
-        q_hat: commit(q_hat)?,
+        c_d: c_w + c_b * upsilon,
+        c_r,
+        c_q,
         s_a: FieldSerde(openings.evaluations.s_a),
+        s_c: FieldSerde(openings.evaluations.s_c),
+        u: FieldSerde(openings.evaluations.u),
         v: FieldSerde(openings.evaluations.v),
+        w: FieldSerde(openings.evaluations.w),
+        b: FieldSerde(openings.evaluations.b),
+        q_zeta: FieldSerde(openings.evaluations.q_zeta),
         r: FieldSerde(openings.evaluations.r),
         r_plus: FieldSerde(openings.evaluations.r_plus),
-        p: FieldSerde(openings.evaluations.p),
-        pi_zeta: commit(&openings.pi_zeta)?,
-        pi_plus: commit(&openings.pi_plus)?,
+        pi_zeta,
+        pi_plus: commit(UnivariateCommitmentSource::S0, &openings.pi_plus, 0)?,
     })
+}
+
+/// Runs the complete F1--F5 native reference schedule. The caller supplies
+/// canonical F1 bytes; this function owns only protocol message framing and
+/// the algebra that follows successful artifact admission.
+pub fn prove_univariate_reference(
+    input: UnivariateReferenceProvingInput<'_>,
+) -> Result<(UnivariateProof, UnivariateChallenges), UnivariateProverError> {
+    let shape = &input.crs.foundation.shape;
+    let randomizers = input.randomizers;
+    let masked =
+        build_masked_arithmetic_witness(shape, input.selector, input.maps, randomizers.clone())?;
+    let private = build_private_binding_commitments(
+        input.crs,
+        &input.crs.query_index(),
+        input.interface_values,
+        input.internal_values,
+        &randomizers,
+        input.binding_randomizer,
+    )?;
+    let commit = |source, polynomial: &DenseUnivariatePolynomial, offset| {
+        input
+            .crs
+            .commit_tagged_dense_polynomial(source, polynomial.coefficients(), offset)
+            .map_err(|_| UnivariateProverError::SelectorDegree)
+    };
+    let c_u = commit(UnivariateCommitmentSource::S0, &masked.u_hat, 0)?;
+    let c_v = commit(UnivariateCommitmentSource::Sxi, &masked.v_hat, 0)?;
+    let c_w = commit(UnivariateCommitmentSource::Spsi, &masked.w_hat, 0)?;
+    let c_b = commit(UnivariateCommitmentSource::Spsi, &masked.b_hat, shape.k)?;
+    let mut transcript = UnivariateTranscript::from_f1(input.fiat_shamir);
+    transcript.append_message_block(
+        1,
+        &encode_g1_block("F2.a1", &[c_u, c_v, c_w, c_b, private.o_if, private.o_int]),
+    );
+    let upsilon = transcript.challenge(1, 0);
+    let c_d = c_w + c_b * upsilon;
+    transcript.append_message_block(2, &encode_g1_block("F2.a2", &[c_d]));
+    let beta = transcript.challenge(2, 0);
+    let gamma_c = transcript.challenge(2, 1);
+    let copy = build_masked_copy_relation(
+        shape,
+        input.maps,
+        input.s_c,
+        &masked.b_hat,
+        beta,
+        gamma_c,
+        input.recursion_randomizer,
+    )?;
+    let c_r = commit(UnivariateCommitmentSource::S0, &copy.r_hat, 0)?;
+    transcript.append_message_block(3, &encode_g1_block("F2.a3", &[c_r]));
+    let theta = transcript.challenge(3, 0);
+    let q_hat = combine_quotients(shape, &masked.q_a, &copy, theta)?;
+    let c_q = commit(UnivariateCommitmentSource::S0, &q_hat, 0)?;
+    transcript.append_message_block(4, &encode_g1_block("F2.a4", &[c_q]));
+    let zeta = transcript.zeta(shape.arithmetic_domain_size, shape.connection_domain_size);
+    let openings = build_opening_polynomials(
+        shape,
+        input.selector,
+        input.s_c,
+        &masked.u_hat,
+        &masked.v_hat,
+        &masked.w_hat,
+        &masked.b_hat,
+        &copy.r_hat,
+        &q_hat,
+        zeta,
+    )?;
+    transcript.append_message_block(5, &encode_evaluations(&openings.evaluations));
+    let varpi = transcript.challenge(5, 0);
+    let proof = assemble_univariate_proof(
+        input.crs, &masked, &private, &copy, &q_hat, &openings, upsilon, varpi,
+    )?;
+    transcript.append_message_block(
+        6,
+        &encode_g1_block("F2.a6", &[proof.pi_zeta, proof.pi_plus]),
+    );
+    let mu = transcript.nonzero_challenge(6, 0);
+    Ok((
+        proof,
+        UnivariateChallenges {
+            upsilon,
+            beta,
+            gamma_c,
+            theta,
+            zeta,
+            varpi,
+            mu,
+        },
+    ))
+}
+
+fn encode_g1_block(label: &str, points: &[G1serde]) -> Vec<u8> {
+    let mut encoder = CanonicalTranscriptEncoder::new().u32("count", points.len() as u32);
+    for (index, point) in points.iter().enumerate() {
+        encoder = encoder.g1(&format!("{label}.{index}"), point);
+    }
+    encoder.finish()
+}
+
+fn encode_evaluations(evaluations: &UnivariateEvaluations) -> Vec<u8> {
+    CanonicalTranscriptEncoder::new()
+        .scalar("sA", &evaluations.s_a)
+        .scalar("sC", &evaluations.s_c)
+        .scalar("u", &evaluations.u)
+        .scalar("v", &evaluations.v)
+        .scalar("w", &evaluations.w)
+        .scalar("b", &evaluations.b)
+        .scalar("qZeta", &evaluations.q_zeta)
+        .scalar("r", &evaluations.r)
+        .scalar("rPlus", &evaluations.r_plus)
+        .finish()
 }
 
 /// U25's single quotient.  The complementary vanishing factors belong to
 /// the verifier's combined identity; the quotient itself is the theta-linear
 /// combination of the three exact per-domain quotients.
 pub fn combine_quotients(
+    shape: &UnivariateCrsShape,
     q_a: &DenseUnivariatePolynomial,
     copy: &MaskedCopyRelation,
     theta: ScalarField,
-) -> DenseUnivariatePolynomial {
-    q_a.add(&copy.q_c_0.scale(theta))
-        .add(&copy.q_c_1.scale(theta * theta))
+) -> Result<DenseUnivariatePolynomial, UnivariateProverError> {
+    let m_a = complementary_factor(shape.connection_domain_size, shape.intersection_domain_size)?;
+    let m_c = complementary_factor(shape.arithmetic_domain_size, shape.intersection_domain_size)?;
+    Ok(q_a
+        .multiply(&m_a)?
+        .add(&copy.q_c_0.multiply(&m_c)?.scale(theta))
+        .add(&copy.q_c_1.multiply(&m_c)?.scale(theta * theta)))
 }
 
 /// Builds U27 from explicitly classified active wire values. Query lookup is
@@ -219,19 +404,16 @@ pub fn build_private_binding_commitments(
         &randomizers.w,
         &randomizers.b,
     ];
-    for (index, randomizer) in masks.into_iter().enumerate() {
-        let queries = if index < 3 {
-            &crs.delta_inv_arithmetic_masking_queries[index]
-        } else {
-            &crs.delta_inv_connection_masking_queries
-        };
+    let masking_queries = [
+        &crs.delta_inv_u_masking_queries,
+        &crs.delta_inv_v_masking_queries,
+        &crs.delta_inv_w_masking_queries,
+        &crs.delta_inv_b_masking_queries,
+    ];
+    for (index, (randomizer, queries)) in masks.into_iter().zip(masking_queries).enumerate() {
         if randomizer.coefficients().len() > queries.len() {
             return Err(UnivariateProverError::BlindingDegree {
-                role: if index < 3 {
-                    "arithmetic"
-                } else {
-                    "connection"
-                },
+                role: ["U", "V", "W", "B"][index],
                 actual: randomizer.coefficients().len(),
                 bound: queries.len(),
             });
@@ -369,8 +551,8 @@ pub fn select_witness_values(
     })
 }
 
-/// Builds U28--U30 after all five witness-polynomial commitments and the
-/// circuit-specific preprocessing commitments have been fixed.
+/// Builds F4's nine evaluations and F5's two opening quotients after all
+/// witness and preprocessing commitments have been fixed.
 #[allow(clippy::too_many_arguments)]
 pub fn build_opening_polynomials(
     shape: &UnivariateCrsShape,
@@ -382,74 +564,38 @@ pub fn build_opening_polynomials(
     b_hat: &DenseUnivariatePolynomial,
     r_hat: &DenseUnivariatePolynomial,
     q_hat: &DenseUnivariatePolynomial,
-    beta: ScalarField,
-    gamma_c: ScalarField,
-    theta: ScalarField,
-    nu: ScalarField,
     zeta: ScalarField,
-    varpi: ScalarField,
 ) -> Result<UnivariateOpeningPolynomials, UnivariateProverError> {
     validate_opening_point(shape, zeta)?;
     let selector = dense_selector(selector, shape.arithmetic_domain_size)?;
     let s_c = domain_polynomial(s_c)?;
-    let p_nu = u_hat
-        .add(&w_hat.scale(nu))
-        .add(&b_hat.scale(nu * nu))
-        .add(&q_hat.scale(nu * nu * nu));
     let evaluations = UnivariateEvaluations {
         s_a: selector.evaluate(zeta),
+        s_c: s_c.evaluate(zeta),
+        u: u_hat.evaluate(zeta),
         v: v_hat.evaluate(zeta),
+        w: w_hat.evaluate(zeta),
+        b: b_hat.evaluate(zeta),
+        q_zeta: q_hat.evaluate(zeta),
         r: r_hat.evaluate(zeta),
         r_plus: r_hat.evaluate(shape.connection_root * zeta),
-        p: p_nu.evaluate(zeta),
     };
-    let m_a = complementary_factor(shape.connection_domain_size, shape.intersection_domain_size)?;
-    let m_c = complementary_factor(shape.arithmetic_domain_size, shape.intersection_domain_size)?;
-    let l_zero = lagrange_zero(shape.connection_domain_size)?;
-    let linearization = u_hat
-        .scale(m_a.evaluate(zeta) * evaluations.s_a * evaluations.v)
-        .sub(&w_hat.scale(m_a.evaluate(zeta) * evaluations.s_a))
-        .add(
-            &r_hat
-                .sub(&constant(ScalarField::one()))
-                .scale(theta * m_c.evaluate(zeta) * l_zero.evaluate(zeta)),
-        )
-        .add(
-            &b_hat.scale(theta * theta * m_c.evaluate(zeta) * (evaluations.r_plus - evaluations.r)),
-        )
-        .add(
-            &linear(
-                gamma_c * (evaluations.r_plus - evaluations.r),
-                beta * evaluations.r_plus,
-            )
-            .scale(theta * theta * m_c.evaluate(zeta)),
-        )
-        .sub(&s_c.scale(theta * theta * m_c.evaluate(zeta) * beta * evaluations.r))
-        .sub(&q_hat.scale(vanishing(shape.union_domain_size).evaluate(zeta)));
-    let h_zeta_varpi = linearization
-        .add(&v_hat.sub(&constant(evaluations.v)).scale(varpi))
-        .add(&r_hat.sub(&constant(evaluations.r)).scale(varpi * varpi))
-        .add(
-            &p_nu
-                .sub(&constant(evaluations.p))
-                .scale(varpi * varpi * varpi),
-        )
-        .add(
-            &selector
-                .sub(&constant(evaluations.s_a))
-                .scale(varpi * varpi * varpi * varpi),
-        );
-    let (pi_zeta, h_value) = h_zeta_varpi.ruffini(zeta);
-    debug_assert_eq!(h_value, ScalarField::zero());
+    let pi_zeta_terms = [
+        u_hat.ruffini(zeta).0,
+        v_hat.ruffini(zeta).0,
+        w_hat.ruffini(zeta).0,
+        b_hat.ruffini(zeta).0,
+        r_hat.ruffini(zeta).0,
+        q_hat.ruffini(zeta).0,
+        selector.ruffini(zeta).0,
+        s_c.ruffini(zeta).0,
+    ];
     let (pi_plus, r_plus_value) = r_hat
         .sub(&constant(evaluations.r_plus))
         .ruffini(shape.connection_root * zeta);
     debug_assert_eq!(r_plus_value, ScalarField::zero());
     Ok(UnivariateOpeningPolynomials {
-        p_nu,
-        linearization,
-        h_zeta_varpi,
-        pi_zeta,
+        pi_zeta_terms,
         pi_plus,
         evaluations,
     })
@@ -615,14 +761,6 @@ fn complementary_factor(
         coefficients[index] = ScalarField::one();
     }
     DenseUnivariatePolynomial::new(coefficients.into_boxed_slice()).map_err(Into::into)
-}
-
-fn vanishing(domain_size: usize) -> DenseUnivariatePolynomial {
-    let mut coefficients = vec![ScalarField::zero(); domain_size + 1];
-    coefficients[0] = ScalarField::zero() - ScalarField::one();
-    coefficients[domain_size] = ScalarField::one();
-    DenseUnivariatePolynomial::new(coefficients.into_boxed_slice())
-        .expect("a positive-domain vanishing polynomial is nonempty")
 }
 
 fn validate_opening_point(
@@ -934,13 +1072,24 @@ mod tests {
         );
         let theta = ScalarField::from_u32(7);
         let q_a = polynomial(&[11, 12]);
+        let q_hat = combine_quotients(&shape, &q_a, &relation, theta).unwrap();
+        let m_a = super::complementary_factor(
+            shape.connection_domain_size,
+            shape.intersection_domain_size,
+        )
+        .unwrap();
+        let m_c = super::complementary_factor(
+            shape.arithmetic_domain_size,
+            shape.intersection_domain_size,
+        )
+        .unwrap();
         assert_eq!(
-            combine_quotients(&q_a, &relation, theta),
-            q_a.add(&relation.q_c_0.scale(theta))
-                .add(&relation.q_c_1.scale(theta * theta))
+            q_hat,
+            q_a.multiply(&m_a)
+                .unwrap()
+                .add(&relation.q_c_0.multiply(&m_c).unwrap().scale(theta))
+                .add(&relation.q_c_1.multiply(&m_c).unwrap().scale(theta * theta))
         );
-
-        let q_hat = combine_quotients(&polynomial(&[0]), &relation, theta);
         let selector = StridedPolynomial {
             stride: 2,
             coefficients: vec![ScalarField::one()].into_boxed_slice(),
@@ -955,28 +1104,12 @@ mod tests {
             &b_hat,
             &relation.r_hat,
             &q_hat,
-            ScalarField::zero(),
-            ScalarField::one(),
-            theta,
-            ScalarField::from_u32(5),
             ScalarField::from_u32(2),
-            ScalarField::from_u32(3),
         )
         .unwrap();
-        assert_eq!(
-            openings.h_zeta_varpi.evaluate(ScalarField::from_u32(2)),
-            ScalarField::zero()
-        );
-        assert_eq!(
-            openings.h_zeta_varpi,
-            openings
-                .pi_zeta
-                .multiply(&linear(
-                    ScalarField::zero() - ScalarField::from_u32(2),
-                    ScalarField::one()
-                ))
-                .unwrap()
-        );
+        assert_eq!(openings.pi_zeta_terms.len(), 8);
+        assert_eq!(openings.evaluations.u, ScalarField::zero());
+        assert_eq!(openings.evaluations.s_a, ScalarField::one());
         let plus_point = shape.connection_root * ScalarField::from_u32(2);
         assert_eq!(
             relation

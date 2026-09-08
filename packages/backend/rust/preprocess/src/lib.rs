@@ -57,7 +57,7 @@ pub fn generate_univariate_preprocess(
 ) -> Result<UnivariatePreprocess, PreprocessError> {
     let expected_shape = UnivariateCrsShape::from_setup_params(setup_params)?;
     if crs.foundation.schema_id != libs::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID
-        || crs.foundation.shape != expected_shape
+        || !crs.foundation.shape.admits_setup(&expected_shape)
     {
         return Err(PreprocessError::UnivariateCrsMismatch);
     }
@@ -158,6 +158,7 @@ mod tests {
             ScalarField::from_u32(5),
             ScalarField::from_u32(7),
             ScalarField::from_u32(11),
+            ScalarField::from_u32(13),
         )
         .unwrap();
         let foundation = UnivariateCrsFoundation::generate(
@@ -172,10 +173,10 @@ mod tests {
             gamma_inv_public_queries: Box::new([]),
             eta_inv_interface_queries: Box::new([]),
             delta_inv_internal_queries: Box::new([]),
-            delta_inv_arithmetic_masking_queries: std::array::from_fn(|_| {
-                Vec::<G1serde>::new().into_boxed_slice()
-            }),
-            delta_inv_connection_masking_queries: Box::new([]),
+            delta_inv_u_masking_queries: Box::new([]),
+            delta_inv_v_masking_queries: Box::new([]),
+            delta_inv_w_masking_queries: Box::new([]),
+            delta_inv_b_masking_queries: Box::new([]),
             delta_g1: G1serde::zero(),
             eta_g1: G1serde::zero(),
         };

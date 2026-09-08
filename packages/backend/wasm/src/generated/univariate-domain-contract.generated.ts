@@ -2,7 +2,7 @@
 export const UNIVARIATE_DOMAIN_CONTRACT = {
   "contractVersion": 1,
   "owner": "backend",
-  "protocolSchema": "tokamak-zk-evm-univariate-v1",
+  "protocolSchema": "tokamak-zk-evm-univariate-v2",
   "arithmeticDomain": {
     "size": "n * s_max * t",
     "index": "i + s_max * k + s_max * t * r",

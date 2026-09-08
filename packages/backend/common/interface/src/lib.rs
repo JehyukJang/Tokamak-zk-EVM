@@ -142,18 +142,22 @@ pub struct Sigma2Rkyv {
 pub struct UnivariateCrsRkyv {
     pub schema_id: String,
     pub shape: UnivariateCrsShapeRkyv,
-    pub tau_powers_g1: Vec<G1SerdeRkyv>,
+    pub s0_g1: Vec<G1SerdeRkyv>,
+    pub sxi_g1: Vec<G1SerdeRkyv>,
+    pub spsi_g1: Vec<G1SerdeRkyv>,
     pub one_g2: G2SerdeRkyv,
     pub tau_g2: G2SerdeRkyv,
-    pub alpha_g2: [G2SerdeRkyv; 4],
+    pub tau_k_g2: G2SerdeRkyv,
     pub gamma_g2: G2SerdeRkyv,
     pub eta_g2: G2SerdeRkyv,
     pub delta_g2: G2SerdeRkyv,
     pub gamma_inv_public_queries: Vec<UnivariatePublicQueryRkyv>,
     pub eta_inv_interface_queries: Vec<UnivariateTaggedQueryRkyv>,
     pub delta_inv_internal_queries: Vec<UnivariateTaggedQueryRkyv>,
-    pub delta_inv_arithmetic_masking_queries: [Vec<G1SerdeRkyv>; 3],
-    pub delta_inv_connection_masking_queries: Vec<G1SerdeRkyv>,
+    pub delta_inv_u_masking_queries: Vec<G1SerdeRkyv>,
+    pub delta_inv_v_masking_queries: Vec<G1SerdeRkyv>,
+    pub delta_inv_w_masking_queries: Vec<G1SerdeRkyv>,
+    pub delta_inv_b_masking_queries: Vec<G1SerdeRkyv>,
     pub delta_g1: G1SerdeRkyv,
     pub eta_g1: G1SerdeRkyv,
 }
@@ -168,8 +172,9 @@ pub struct UnivariateCrsShapeRkyv {
     pub connection_domain_size: u64,
     pub intersection_domain_size: u64,
     pub union_domain_size: u64,
-    pub degree_bound: u64,
-    pub blinding_bounds: [u64; 4],
+    pub minimum_capacity: [u64; 3],
+    pub declared_capacity: [u64; 3],
+    pub k: u64,
 }
 
 #[derive(Debug, Clone, Copy, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]

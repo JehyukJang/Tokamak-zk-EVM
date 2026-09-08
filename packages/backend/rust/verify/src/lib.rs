@@ -13,6 +13,10 @@ use libs::group_structures::{G1serde, SigmaVerify};
 use libs::proof_protocol::{
     FormattedPreprocess, FormattedProof, Preprocess, Proof, Proof4, Proof4Test, TranscriptManager,
 };
+use libs::univariate_crs::UnivariateCrs;
+use libs::univariate_preprocess::UnivariatePreprocess;
+use libs::univariate_proof::UnivariateProof;
+use libs::univariate_transcript::UnivariateChallenges;
 use libs::utils::{
     prover_verifier_ntt_domain_size, try_init_ntt_domain, try_load_setup_params_from_qap_path,
     try_setup_shape, try_validate_setup_shape,
@@ -26,6 +30,116 @@ pub struct VerifyInputPaths<'a> {
     pub setup_path: &'a str,
     pub preprocess_path: &'a str,
     pub proof_path: &'a str,
+}
+
+/// Verifies U32 and U35 for an already-admitted latest-protocol proof. The
+/// caller owns artifact decoding and F1--F4 construction; this function never
+/// falls back to the legacy Sigma verifier.
+pub fn verify_univariate_proof(
+    crs: &UnivariateCrs,
+    preprocess: &UnivariatePreprocess,
+    public_binding: G1serde,
+    proof: &UnivariateProof,
+    challenges: UnivariateChallenges,
+) -> bool {
+    if crs.foundation.schema_id != libs::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID
+        || !preprocess.validates_protocol_schema()
+        || !proof.has_protocol_schema()
+    {
+        return false;
+    }
+    let shape = &crs.foundation.shape;
+    let zeta = challenges.zeta;
+    if zeta == ScalarField::zero()
+        || zeta.pow(shape.arithmetic_domain_size) == ScalarField::one()
+        || zeta.pow(shape.connection_domain_size) == ScalarField::one()
+    {
+        return false;
+    }
+    let m_a = complementary_factor_value(
+        zeta,
+        shape.connection_domain_size,
+        shape.intersection_domain_size,
+    );
+    let m_c = complementary_factor_value(
+        zeta,
+        shape.arithmetic_domain_size,
+        shape.intersection_domain_size,
+    );
+    let l0_c = lagrange_zero_value(zeta, shape.connection_domain_size);
+    let values = (
+        proof.s_a.0,
+        proof.s_c.0,
+        proof.u.0,
+        proof.v.0,
+        proof.w.0,
+        proof.b.0,
+        proof.q_zeta.0,
+        proof.r.0,
+        proof.r_plus.0,
+    );
+    let (s_a, s_c, u, v, w, b, q_zeta, r, r_plus) = values;
+    let quotient_identity = m_a * s_a * (u * v - w)
+        + challenges.theta * m_c * (r - ScalarField::one()) * l0_c
+        + challenges.theta.pow(2)
+            * m_c
+            * (r_plus * (b + challenges.beta * zeta + challenges.gamma_c)
+                - r * (b + challenges.beta * s_c + challenges.gamma_c));
+    if quotient_identity != q_zeta * (zeta.pow(shape.union_domain_size) - ScalarField::one()) {
+        return false;
+    }
+
+    let varpi = challenges.varpi;
+    let one = crs.foundation.s0_g1[0];
+    let xi = crs.foundation.sxi_g1[0];
+    let psi = crs.foundation.spsi_g1[0];
+    let a_zeta = proof.c_u - one * u
+        + (proof.c_v - xi * v) * varpi
+        + (proof.c_w - psi * w) * varpi.pow(2)
+        + (proof.c_b - psi * b) * varpi.pow(3)
+        + (proof.c_r - one * r) * varpi.pow(4)
+        + (proof.c_q - one * q_zeta) * varpi.pow(5)
+        + (preprocess.s_kappa - one * s_a) * varpi.pow(6)
+        + (preprocess.s_c - one * s_c) * varpi.pow(7);
+    let a_plus = proof.c_r - one * r_plus;
+    let mu = challenges.mu;
+    let lhs_first = proof.c_u + proof.c_v + proof.c_w - proof.c_d * mu
+        + (a_zeta + proof.pi_zeta * zeta) * mu.pow(2)
+        + (a_plus + proof.pi_plus * (shape.connection_root * zeta)) * mu.pow(3);
+    let lhs_second = proof.c_b + (proof.c_w + proof.c_b * challenges.upsilon) * mu;
+    let rhs_openings = proof.pi_zeta * mu.pow(2) + proof.pi_plus * mu.pow(3);
+    pairing(
+        &[lhs_first, lhs_second],
+        &[crs.foundation.one_g2, crs.foundation.tau_k_g2],
+    )
+    .eq(&pairing(
+        &[public_binding, proof.o_if, proof.o_int, rhs_openings],
+        &[
+            crs.foundation.gamma_g2,
+            crs.foundation.eta_g2,
+            crs.foundation.delta_g2,
+            crs.foundation.tau_g2,
+        ],
+    ))
+}
+
+fn complementary_factor_value(point: ScalarField, large: usize, small: usize) -> ScalarField {
+    let mut result = ScalarField::zero();
+    for exponent in (0..large).step_by(small) {
+        result = result + point.pow(exponent);
+    }
+    result
+}
+
+fn lagrange_zero_value(point: ScalarField, domain_size: usize) -> ScalarField {
+    let inverse = ScalarField::from_u32(u32::try_from(domain_size).expect("domain fits u32")).inv();
+    let mut sum = ScalarField::zero();
+    let mut power = ScalarField::one();
+    for _ in 0..domain_size {
+        sum = sum + power;
+        power = power * point;
+    }
+    sum * inverse
 }
 
 #[derive(Debug, Error)]

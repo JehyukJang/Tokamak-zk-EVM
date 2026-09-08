@@ -3,7 +3,7 @@
 use crate::{TrustedSetupConfig, TrustedSetupError};
 use icicle_bls12_381::curve::{BaseField, CurveCfg, G1Affine, G2Affine, G2BaseField, G2CurveCfg};
 use icicle_core::curve::Curve;
-use icicle_core::traits::FieldImpl;
+use icicle_core::traits::{Arithmetic, FieldImpl};
 use libs::crs_artifacts::stage_univariate_crs_artifacts;
 use libs::errors::ArtifactError;
 use libs::field_structures::Tau;
@@ -157,8 +157,18 @@ fn sample_trusted_setup_inputs(
             G2BaseField::from_hex("0x15bf297a4b9842fb1a3a6f2dbf6b94de06997b11b2f72436c22efbb48d2f74b0de7239ea182a2ee50c23ae3d0be6fdee09459611409874fe4b04b1a7e42cb84eb4ae01728dc55dbd1343fda8d0fe94a299fc757acc1d2602a49a005b4ff90190").into(),
         );
         let tau = Tau::gen_fixed();
-        let trapdoor =
-            UnivariateTrapdoor::new(shape, tau.x, tau.alpha, tau.gamma, tau.eta, tau.delta)?;
+        // This route is development-only. Reuse the fixed test trapdoor to
+        // derive deterministic nonzero xi and psi values without treating the
+        // resulting CRS as ceremony output.
+        let trapdoor = UnivariateTrapdoor::new(
+            shape,
+            tau.x,
+            tau.alpha,
+            tau.alpha.pow(2),
+            tau.gamma,
+            tau.eta,
+            tau.delta,
+        )?;
         return Ok((g1, g2, trapdoor));
     }
     Ok((
@@ -205,6 +215,8 @@ mod tests {
         )
         .expect("trusted setup must construct the private U18 foundation");
 
-        assert_eq!(foundation.tau_powers_g1.len(), shape.degree_bound + 1);
+        assert_eq!(foundation.s0_g1.len(), shape.declared_capacity[0] + 1);
+        assert_eq!(foundation.sxi_g1.len(), shape.declared_capacity[1] + 1);
+        assert_eq!(foundation.spsi_g1.len(), shape.declared_capacity[2] + 1);
     }
 }

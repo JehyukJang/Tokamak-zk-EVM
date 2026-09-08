@@ -4,7 +4,7 @@ import { admitRuntimeBinaryArtifact } from '../../artifacts/binary/runtime-admis
 import {
   PROVER_PERMUTATION_V1_SPEC,
   PROVER_SELECTOR_V1_SPEC,
-  UNIVARIATE_PREPROCESS_CRS_V1_SPEC,
+  UNIVARIATE_V2_PREPROCESS_CRS_V1_SPEC,
 } from '../../generated/browser-artifact-contracts.generated.js';
 import { assertBinaryArtifactCompatibility } from '../../artifacts/binary/compatibility.js';
 import { GENERATED_SETUP_PARAMS } from '../../generated/active/setup.generated.js';
@@ -29,8 +29,8 @@ export async function loadPreprocessInputFromBinaryInput(input: PreprocessBinary
     admitRuntimeBinaryArtifact(input.permutation, PROVER_PERMUTATION_V1_SPEC.kind, PROVER_PERMUTATION_V1_SPEC),
     admitRuntimeBinaryArtifact(
       input.preprocessCrs,
-      UNIVARIATE_PREPROCESS_CRS_V1_SPEC.kind,
-      UNIVARIATE_PREPROCESS_CRS_V1_SPEC,
+      UNIVARIATE_V2_PREPROCESS_CRS_V1_SPEC.kind,
+      UNIVARIATE_V2_PREPROCESS_CRS_V1_SPEC,
     ),
   ]);
   const setup = GENERATED_SETUP_PARAMS;

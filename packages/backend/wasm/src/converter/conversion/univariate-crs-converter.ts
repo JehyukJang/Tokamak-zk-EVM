@@ -1,9 +1,9 @@
 import { createBinaryArtifactFile } from "../../artifacts/binary/binary-artifact-file.js";
 import type { BinarySectionInput } from "../../artifacts/binary/binary-format.js";
 import {
-  UNIVARIATE_PREPROCESS_CRS_V1_SPEC,
-  UNIVARIATE_PROVER_CRS_V1_SPEC,
-  UNIVARIATE_VERIFIER_CRS_V1_SPEC,
+  UNIVARIATE_V2_PREPROCESS_CRS_V1_SPEC,
+  UNIVARIATE_V2_PROVER_CRS_V1_SPEC,
+  UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC,
 } from "../../generated/browser-artifact-contracts.generated.js";
 import { concatBytes } from "../../runtime/bytes.js";
 import type { CurveRuntime } from "../../runtime/curve/curve.js";
@@ -13,7 +13,7 @@ import { withCurveRuntime } from "./conversion-runtime.js";
 import { isRecord, parseU32 } from "./conversion-utils.js";
 import type { ConvertedCrs } from "./types.js";
 
-const UNIVARIATE_CRS_SCHEMA_ID = "tokamak-zk-evm-univariate-v1";
+const UNIVARIATE_CRS_SCHEMA_ID = "tokamak-zk-evm-univariate-v2";
 const G2_AFFINE_BYTES = 192;
 
 interface TaggedQuery {
@@ -31,19 +31,24 @@ interface PublicQuery {
 
 interface UnivariateCrsJson {
   readonly schemaId: string;
-  readonly degreeBound: number;
-  readonly tauPowersG1: readonly unknown[];
+  readonly declaredCapacity: readonly number[];
+  readonly k: number;
+  readonly s0G1: readonly unknown[];
+  readonly sxiG1: readonly unknown[];
+  readonly spsiG1: readonly unknown[];
   readonly oneG2: unknown;
   readonly tauG2: unknown;
-  readonly alphaG2: readonly unknown[];
+  readonly tauKG2: unknown;
   readonly gammaG2: unknown;
   readonly etaG2: unknown;
   readonly deltaG2: unknown;
   readonly gammaInvPublicQueries: readonly PublicQuery[];
   readonly etaInvInterfaceQueries: readonly TaggedQuery[];
   readonly deltaInvInternalQueries: readonly TaggedQuery[];
-  readonly deltaInvArithmeticMaskingQueries: readonly (readonly unknown[])[];
-  readonly deltaInvConnectionMaskingQueries: readonly unknown[];
+  readonly deltaInvUMaskingQueries: readonly unknown[];
+  readonly deltaInvVMaskingQueries: readonly unknown[];
+  readonly deltaInvWMaskingQueries: readonly unknown[];
+  readonly deltaInvBMaskingQueries: readonly unknown[];
   readonly deltaG1: unknown;
   readonly etaG1: unknown;
 }
@@ -57,9 +62,17 @@ interface UnivariateCrsJson {
 export async function convertUnivariateCrs(crs: unknown): Promise<ConvertedCrs> {
   return withCurveRuntime(async (runtime) => {
     const parsed = parseUnivariateCrsJson(crs);
-    const kzgPowers = parseG1Points(runtime, parsed.tauPowersG1, "tauPowersG1");
-    if (kzgPowers.length !== parsed.degreeBound + 1) {
-      throw new Error("univariate CRS KZG power count does not match degreeBound.");
+    const s0 = parseG1Points(runtime, parsed.s0G1, "s0G1");
+    const sxi = parseG1Points(runtime, parsed.sxiG1, "sxiG1");
+    const spsi = parseG1Points(runtime, parsed.spsiG1, "spsiG1");
+    for (const [name, sequence, capacity] of [
+      ["S0", s0, parsed.declaredCapacity[0]],
+      ["Sxi", sxi, parsed.declaredCapacity[1]],
+      ["Spsi", spsi, parsed.declaredCapacity[2]],
+    ] as const) {
+      if (sequence.length !== capacity + 1) {
+        throw new Error(`${name} power count does not match declared CRS capacity.`);
+      }
     }
 
     const publicQueries = parseG1Points(
@@ -77,72 +90,77 @@ export async function convertUnivariateCrs(crs: unknown): Promise<ConvertedCrs> 
       parsed.deltaInvInternalQueries.map((query) => query.point),
       "deltaInvInternalQueries",
     );
-    const arithmeticMasks = parsed.deltaInvArithmeticMaskingQueries.map((queries, index) =>
-      parseG1Points(runtime, queries, `deltaInvArithmeticMaskingQueries[${index}]`),
-    );
-    const connectionMasks = parseG1Points(
-      runtime,
-      parsed.deltaInvConnectionMaskingQueries,
-      "deltaInvConnectionMaskingQueries",
-    );
+    const masks = [
+      parseG1Points(runtime, parsed.deltaInvUMaskingQueries, "deltaInvUMaskingQueries"),
+      parseG1Points(runtime, parsed.deltaInvVMaskingQueries, "deltaInvVMaskingQueries"),
+      parseG1Points(runtime, parsed.deltaInvWMaskingQueries, "deltaInvWMaskingQueries"),
+      parseG1Points(runtime, parsed.deltaInvBMaskingQueries, "deltaInvBMaskingQueries"),
+    ] as const;
+    if (masks.some((mask) => mask.length !== 2)) {
+      throw new Error("univariate CRS must contain exactly two U22 mask points per polynomial.");
+    }
     const bindingSources = parseG1Points(runtime, [parsed.deltaG1, parsed.etaG1], "binding sources");
     const verifierG2 = parseG2Points(runtime, [
       parsed.oneG2,
       parsed.tauG2,
-      ...parsed.alphaG2,
+      parsed.tauKG2,
       parsed.gammaG2,
       parsed.etaG2,
       parsed.deltaG2,
     ], "verifier G2 points");
-    if (verifierG2.length !== 9) {
-      throw new Error("univariate CRS must contain exactly four alpha G2 powers.");
+    if (verifierG2.length !== 6) {
+      throw new Error("univariate CRS must contain exactly six U18 verifier G2 points.");
     }
 
     const sourcePackageVersion = BACKEND_WASM_PACKAGE_VERSION;
     const preprocessCrs = await createBinaryArtifactFile({
-      kind: UNIVARIATE_PREPROCESS_CRS_V1_SPEC.kind,
+      kind: UNIVARIATE_V2_PREPROCESS_CRS_V1_SPEC.kind,
       sourcePackageVersion,
-      sections: [pointSection(UNIVARIATE_PREPROCESS_CRS_V1_SPEC.sections[0], kzgPowers, G1_AFFINE_BYTES)],
+      sections: [pointSection(UNIVARIATE_V2_PREPROCESS_CRS_V1_SPEC.sections[0], s0, G1_AFFINE_BYTES)],
     });
     const proverCrs = await createBinaryArtifactFile({
-      kind: UNIVARIATE_PROVER_CRS_V1_SPEC.kind,
+      kind: UNIVARIATE_V2_PROVER_CRS_V1_SPEC.kind,
       sourcePackageVersion,
       sections: [
-        pointSection(UNIVARIATE_PROVER_CRS_V1_SPEC.sections[0], kzgPowers, G1_AFFINE_BYTES),
+        metadataSection(UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[0], encodeCapacity(parsed), 4, 8),
+        pointSection(UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[1], s0, G1_AFFINE_BYTES),
+        pointSection(UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[2], sxi, G1_AFFINE_BYTES),
+        pointSection(UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[3], spsi, G1_AFFINE_BYTES),
         metadataSection(
-          UNIVARIATE_PROVER_CRS_V1_SPEC.sections[1],
+          UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[4],
           encodeTaggedQueryKeys(parsed.etaInvInterfaceQueries),
           parsed.etaInvInterfaceQueries.length,
           12,
         ),
-        pointSection(UNIVARIATE_PROVER_CRS_V1_SPEC.sections[2], interfaceQueries, G1_AFFINE_BYTES),
+        pointSection(UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[5], interfaceQueries, G1_AFFINE_BYTES),
         metadataSection(
-          UNIVARIATE_PROVER_CRS_V1_SPEC.sections[3],
+          UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[6],
           encodeTaggedQueryKeys(parsed.deltaInvInternalQueries),
           parsed.deltaInvInternalQueries.length,
           12,
         ),
-        pointSection(UNIVARIATE_PROVER_CRS_V1_SPEC.sections[4], internalQueries, G1_AFFINE_BYTES),
-        pointSection(UNIVARIATE_PROVER_CRS_V1_SPEC.sections[5], arithmeticMasks[0], G1_AFFINE_BYTES),
-        pointSection(UNIVARIATE_PROVER_CRS_V1_SPEC.sections[6], arithmeticMasks[1], G1_AFFINE_BYTES),
-        pointSection(UNIVARIATE_PROVER_CRS_V1_SPEC.sections[7], arithmeticMasks[2], G1_AFFINE_BYTES),
-        pointSection(UNIVARIATE_PROVER_CRS_V1_SPEC.sections[8], connectionMasks, G1_AFFINE_BYTES),
-        pointSection(UNIVARIATE_PROVER_CRS_V1_SPEC.sections[9], bindingSources, G1_AFFINE_BYTES),
+        pointSection(UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[7], internalQueries, G1_AFFINE_BYTES),
+        pointSection(UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[8], masks[0], G1_AFFINE_BYTES),
+        pointSection(UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[9], masks[1], G1_AFFINE_BYTES),
+        pointSection(UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[10], masks[2], G1_AFFINE_BYTES),
+        pointSection(UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[11], masks[3], G1_AFFINE_BYTES),
+        pointSection(UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[12], bindingSources, G1_AFFINE_BYTES),
       ],
     });
     const verifierCrs = await createBinaryArtifactFile({
-      kind: UNIVARIATE_VERIFIER_CRS_V1_SPEC.kind,
+      kind: UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC.kind,
       sourcePackageVersion,
       sections: [
-        pointSection(UNIVARIATE_VERIFIER_CRS_V1_SPEC.sections[0], [kzgPowers[0]], G1_AFFINE_BYTES),
+        metadataSection(UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC.sections[0], encodeCapacity(parsed), 4, 8),
+        pointSection(UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC.sections[1], [s0[0], sxi[0], spsi[0]], G1_AFFINE_BYTES),
         metadataSection(
-          UNIVARIATE_VERIFIER_CRS_V1_SPEC.sections[1],
+          UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC.sections[2],
           encodePublicQueryKeys(parsed.gammaInvPublicQueries),
           parsed.gammaInvPublicQueries.length,
           8,
         ),
-        pointSection(UNIVARIATE_VERIFIER_CRS_V1_SPEC.sections[2], publicQueries, G1_AFFINE_BYTES),
-        pointSection(UNIVARIATE_VERIFIER_CRS_V1_SPEC.sections[3], verifierG2, G2_AFFINE_BYTES),
+        pointSection(UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC.sections[3], publicQueries, G1_AFFINE_BYTES),
+        pointSection(UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC.sections[4], verifierG2, G2_AFFINE_BYTES),
       ],
     });
 
@@ -158,33 +176,44 @@ function parseUnivariateCrsJson(raw: unknown): UnivariateCrsJson {
     throw new Error("CRS does not use the supported univariate schema.");
   }
   const shape = requireRecord(raw.shape, "shape");
-  const arithmeticMasks = requireArray(raw.deltaInvArithmeticMaskingQueries, "deltaInvArithmeticMaskingQueries");
-  if (arithmeticMasks.length !== 3) {
-    throw new Error("univariate CRS must contain exactly three arithmetic mask ranges.");
+  const declaredCapacity = requireArray(shape.declaredCapacity, "shape.declaredCapacity").map((value, index) =>
+    parseU32(value, `shape.declaredCapacity[${index}]`),
+  );
+  if (declaredCapacity.length !== 3) {
+    throw new Error("univariate CRS declaredCapacity must contain exactly M0, Mxi, and Mpsi.");
   }
   return {
     schemaId: UNIVARIATE_CRS_SCHEMA_ID,
-    degreeBound: parseU32(shape.degreeBound, "shape.degreeBound"),
-    tauPowersG1: requireArray(raw.tauPowersG1, "tauPowersG1"),
+    declaredCapacity,
+    k: parseU32(shape.k, "shape.k"),
+    s0G1: requireArray(raw.s0G1, "s0G1"),
+    sxiG1: requireArray(raw.sxiG1, "sxiG1"),
+    spsiG1: requireArray(raw.spsiG1, "spsiG1"),
     oneG2: raw.oneG2,
     tauG2: raw.tauG2,
-    alphaG2: requireArray(raw.alphaG2, "alphaG2"),
+    tauKG2: raw.tauKG2,
     gammaG2: raw.gammaG2,
     etaG2: raw.etaG2,
     deltaG2: raw.deltaG2,
     gammaInvPublicQueries: parsePublicQueries(raw.gammaInvPublicQueries),
     etaInvInterfaceQueries: parseTaggedQueries(raw.etaInvInterfaceQueries, "etaInvInterfaceQueries"),
     deltaInvInternalQueries: parseTaggedQueries(raw.deltaInvInternalQueries, "deltaInvInternalQueries"),
-    deltaInvArithmeticMaskingQueries: arithmeticMasks.map((value, index) =>
-      requireArray(value, `deltaInvArithmeticMaskingQueries[${index}]`),
-    ),
-    deltaInvConnectionMaskingQueries: requireArray(
-      raw.deltaInvConnectionMaskingQueries,
-      "deltaInvConnectionMaskingQueries",
-    ),
+    deltaInvUMaskingQueries: requireArray(raw.deltaInvUMaskingQueries, "deltaInvUMaskingQueries"),
+    deltaInvVMaskingQueries: requireArray(raw.deltaInvVMaskingQueries, "deltaInvVMaskingQueries"),
+    deltaInvWMaskingQueries: requireArray(raw.deltaInvWMaskingQueries, "deltaInvWMaskingQueries"),
+    deltaInvBMaskingQueries: requireArray(raw.deltaInvBMaskingQueries, "deltaInvBMaskingQueries"),
     deltaG1: raw.deltaG1,
     etaG1: raw.etaG1,
   };
+}
+
+function encodeCapacity(crs: UnivariateCrsJson): Uint8Array {
+  const output = new Uint8Array(32);
+  const view = new DataView(output.buffer);
+  for (const [index, value] of [...crs.declaredCapacity, crs.k].entries()) {
+    view.setBigUint64(index * 8, BigInt(value), true);
+  }
+  return output;
 }
 
 function parsePublicQueries(raw: unknown): readonly PublicQuery[] {

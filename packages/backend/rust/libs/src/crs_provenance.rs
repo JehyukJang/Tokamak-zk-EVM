@@ -21,7 +21,7 @@ pub const FINAL_MPC_CRS_DOCUMENT_KIND: &str = "finalMpcCrs";
 pub const CEREMONY_PROTOCOL_VERSION: &str = "tokamak-mpc-2phase-v1";
 
 const CRS_PROVENANCE_CONTRACT_SHA256: &str =
-    "cdcde0469579def0cd29525189de3280bb8c552b03945eabfc3646431fbb002e";
+    "5c77e84d86c47a4f6ac3078ce70ddd3c553d3b4a842b41aefd9b7ebba1d3202c";
 const SUPPORTED_SCHEMA_KEYWORDS: &[&str] = &[
     "additionalProperties",
     "const",
@@ -461,7 +461,7 @@ mod tests {
         let univariate = CrsProvenance::DevelopmentTrustedSetupUnivariateCrs(
             DevelopmentTrustedSetupUnivariateCrsProvenance {
                 release_eligible: DevelopmentOnlyReleaseEligibility,
-                protocol_schema_id: "tokamak-zk-evm-univariate-v1".to_string(),
+                protocol_schema_id: "tokamak-zk-evm-univariate-v2".to_string(),
                 univariate_crs_rkyv_sha256: "0".repeat(64),
                 univariate_crs_json_sha256: "1".repeat(64),
             },

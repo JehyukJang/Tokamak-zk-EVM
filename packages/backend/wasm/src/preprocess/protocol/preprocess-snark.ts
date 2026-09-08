@@ -23,8 +23,8 @@ export async function preprocessSnark(
     buildConnectionPermutationPolynomial(runtime.Fr, domain, input.setup, input.permutation),
   ]);
   const [sKappa, sC] = await Promise.all([
-    commitStridedUnivariatePolynomial(runtime, input.crs.kzgPowers, selector, chunkPoints),
-    commitDenseUnivariatePolynomial(runtime, input.crs.kzgPowers, permutation.coefficients, chunkPoints),
+    commitStridedUnivariatePolynomial(runtime, input.crs.s0, selector, chunkPoints),
+    commitDenseUnivariatePolynomial(runtime, input.crs.s0, permutation.coefficients, chunkPoints),
   ]);
 
   return { sKappa, sC };

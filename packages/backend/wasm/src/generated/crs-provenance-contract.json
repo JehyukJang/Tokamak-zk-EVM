@@ -44,7 +44,7 @@
         "properties": {
           "documentKind": { "const": "developmentTrustedSetupUnivariateCrs" },
           "releaseEligible": { "const": false },
-          "protocolSchemaId": { "const": "tokamak-zk-evm-univariate-v1" },
+          "protocolSchemaId": { "const": "tokamak-zk-evm-univariate-v2" },
           "univariateCrsRkyvSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
           "univariateCrsJsonSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
         }

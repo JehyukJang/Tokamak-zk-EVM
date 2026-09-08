@@ -18,7 +18,7 @@ use thiserror::Error;
 
 /// The sole schema identifier for the new univariate artifact family.
 /// Its public-query layout is fixed by resolved public-buffer metadata.
-pub const UNIVARIATE_CRS_SCHEMA_ID: &str = "tokamak-zk-evm-univariate-v1";
+pub const UNIVARIATE_CRS_SCHEMA_ID: &str = "tokamak-zk-evm-univariate-v2";
 
 #[derive(Debug, Error)]
 pub enum UnivariateCrsError {
@@ -43,9 +43,9 @@ pub enum UnivariateCrsError {
     TauInsideDomain { domain: &'static str },
     #[error("failed to sample tau outside both evaluation domains")]
     TauSamplingExhausted,
-    #[error("failed to allocate {length} ordinary KZG powers")]
+    #[error("failed to allocate {length} CRS powers")]
     PowerAllocation { length: usize },
-    #[error("polynomial commitment needs {actual} KZG powers, but the CRS has {available}")]
+    #[error("polynomial commitment needs {actual} CRS powers, but the selected CRS sequence has {available}")]
     CommitmentDegree { actual: usize, available: usize },
     #[error("subcircuit catalog has {actual} entries, expected {expected}")]
     SubcircuitCatalog { actual: usize, expected: usize },
@@ -74,10 +74,14 @@ pub struct UnivariateCrsShape {
     pub connection_domain_size: usize,
     pub intersection_domain_size: usize,
     pub union_domain_size: usize,
-    pub degree_bound: usize,
+    /// The U18 minimum `(M_0, M_xi, M_psi)` capacity vector.
+    pub minimum_capacity: [usize; 3],
+    /// The declared CRS capacity. It may exceed `minimum_capacity` componentwise.
+    pub declared_capacity: [usize; 3],
+    /// `K = M_psi - d`, where `d = max(N_A + 1, N_C + 1)`.
+    pub k: usize,
     pub arithmetic_root: ScalarField,
     pub connection_root: ScalarField,
-    pub blinding_bounds: [usize; 4],
 }
 
 impl UnivariateCrsShape {
@@ -127,17 +131,86 @@ impl UnivariateCrsShape {
             .checked_add(4)
             .ok_or(UnivariateCrsError::CapacityOverflow { name: "N_C + 4" })?;
 
+        let d = arithmetic_domain_size
+            .checked_add(1)
+            .map(|arithmetic| arithmetic.max(connection_domain_size.saturating_add(1)))
+            .ok_or(UnivariateCrsError::CapacityOverflow { name: "d" })?;
+        let minimum_capacity = [
+            arithmetic_bound.max(connection_bound),
+            arithmetic_domain_size
+                .checked_add(1)
+                .ok_or(UnivariateCrsError::CapacityOverflow { name: "N_A + 1" })?,
+            d.checked_mul(2)
+                .and_then(|value| value.checked_add(1))
+                .ok_or(UnivariateCrsError::CapacityOverflow { name: "2d + 1" })?,
+        ];
+        let k = minimum_capacity[2]
+            .checked_sub(d)
+            .ok_or(UnivariateCrsError::CapacityOverflow { name: "K" })?;
+
         Ok(Self {
             subcircuit_capacity,
             arithmetic_domain_size,
             connection_domain_size,
             intersection_domain_size,
             union_domain_size,
-            degree_bound: arithmetic_bound.max(connection_bound),
+            minimum_capacity,
+            declared_capacity: minimum_capacity,
+            k,
             arithmetic_root: primitive_root("N_A", arithmetic_domain_size)?,
             connection_root: primitive_root("N_C", connection_domain_size)?,
-            blinding_bounds: [2; 4],
         })
+    }
+
+    /// Uses a declared U18 capacity vector after checking the componentwise
+    /// lower bound and the derived `K` relation. This deliberately admits
+    /// larger reusable CRS artifacts.
+    pub fn with_declared_capacity(
+        mut self,
+        declared_capacity: [usize; 3],
+    ) -> Result<Self, UnivariateCrsError> {
+        if declared_capacity
+            .iter()
+            .zip(self.minimum_capacity)
+            .any(|(declared, minimum)| *declared < minimum)
+        {
+            return Err(UnivariateCrsError::CommitmentDegree {
+                actual: self
+                    .minimum_capacity
+                    .iter()
+                    .copied()
+                    .max()
+                    .unwrap_or_default(),
+                available: declared_capacity.iter().copied().max().unwrap_or_default(),
+            });
+        }
+        let d = self
+            .arithmetic_domain_size
+            .checked_add(1)
+            .map(|arithmetic| arithmetic.max(self.connection_domain_size.saturating_add(1)))
+            .ok_or(UnivariateCrsError::CapacityOverflow { name: "d" })?;
+        self.k = declared_capacity[2]
+            .checked_sub(d)
+            .ok_or(UnivariateCrsError::CapacityOverflow { name: "K" })?;
+        self.declared_capacity = declared_capacity;
+        Ok(self)
+    }
+
+    /// Returns whether this declared CRS shape can serve the selected setup.
+    /// Domain geometry and the protocol minimum must agree exactly; only the
+    /// three reusable source ranges may be larger than the minimum.
+    pub fn admits_setup(&self, setup_shape: &Self) -> bool {
+        self.subcircuit_capacity == setup_shape.subcircuit_capacity
+            && self.arithmetic_domain_size == setup_shape.arithmetic_domain_size
+            && self.connection_domain_size == setup_shape.connection_domain_size
+            && self.intersection_domain_size == setup_shape.intersection_domain_size
+            && self.union_domain_size == setup_shape.union_domain_size
+            && self.minimum_capacity == setup_shape.minimum_capacity
+            && self
+                .declared_capacity
+                .iter()
+                .zip(setup_shape.minimum_capacity)
+                .all(|(declared, minimum)| *declared >= minimum)
     }
 
     /// U1's canonical flat index for an arithmetic-domain coordinate.
@@ -249,7 +322,8 @@ fn least_common_multiple(left: usize, right: usize) -> Result<usize, UnivariateC
 #[derive(Clone, Debug, PartialEq)]
 pub struct UnivariateTrapdoor {
     tau: ScalarField,
-    alpha: ScalarField,
+    xi: ScalarField,
+    psi: ScalarField,
     gamma: ScalarField,
     eta: ScalarField,
     delta: ScalarField,
@@ -259,14 +333,16 @@ impl UnivariateTrapdoor {
     pub fn new(
         shape: &UnivariateCrsShape,
         tau: ScalarField,
-        alpha: ScalarField,
+        xi: ScalarField,
+        psi: ScalarField,
         gamma: ScalarField,
         eta: ScalarField,
         delta: ScalarField,
     ) -> Result<Self, UnivariateCrsError> {
         for (name, value) in [
             ("tau", tau),
-            ("alpha", alpha),
+            ("xi", xi),
+            ("psi", psi),
             ("gamma", gamma),
             ("eta", eta),
             ("delta", delta),
@@ -287,7 +363,8 @@ impl UnivariateTrapdoor {
         }
         Ok(Self {
             tau,
-            alpha,
+            xi,
+            psi,
             gamma,
             eta,
             delta,
@@ -304,6 +381,7 @@ impl UnivariateTrapdoor {
                 nonzero_scalar(),
                 nonzero_scalar(),
                 nonzero_scalar(),
+                nonzero_scalar(),
             ) {
                 return Ok(trapdoor);
             }
@@ -312,15 +390,17 @@ impl UnivariateTrapdoor {
     }
 }
 
-/// The U18 ordinary KZG basis carried by the complete in-memory CRS.
+/// The U18 source sequences carried by the complete in-memory CRS.
 #[derive(Clone, Debug, PartialEq)]
 pub struct UnivariateCrsFoundation {
     pub schema_id: &'static str,
     pub shape: UnivariateCrsShape,
-    pub tau_powers_g1: Box<[G1serde]>,
+    pub s0_g1: Box<[G1serde]>,
+    pub sxi_g1: Box<[G1serde]>,
+    pub spsi_g1: Box<[G1serde]>,
     pub one_g2: G2serde,
     pub tau_g2: G2serde,
-    pub alpha_g2: [G2serde; 4],
+    pub tau_k_g2: G2serde,
     pub gamma_g2: G2serde,
     pub eta_g2: G2serde,
     pub delta_g2: G2serde,
@@ -343,6 +423,14 @@ pub struct UnivariateTaggedQuery {
     pub subcircuit_id: usize,
     pub local_wire_index: usize,
     pub point: G1serde,
+}
+
+/// U19 sequence selected by a commitment or opening source term.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UnivariateCommitmentSource {
+    S0,
+    Sxi,
+    Spsi,
 }
 
 /// Read-only indices over a validated U20 query layout.  They contain only
@@ -377,8 +465,10 @@ pub struct UnivariateCrs {
     pub gamma_inv_public_queries: Box<[UnivariatePublicQuery]>,
     pub eta_inv_interface_queries: Box<[UnivariateTaggedQuery]>,
     pub delta_inv_internal_queries: Box<[UnivariateTaggedQuery]>,
-    pub delta_inv_arithmetic_masking_queries: [Box<[G1serde]>; 3],
-    pub delta_inv_connection_masking_queries: Box<[G1serde]>,
+    pub delta_inv_u_masking_queries: Box<[G1serde]>,
+    pub delta_inv_v_masking_queries: Box<[G1serde]>,
+    pub delta_inv_w_masking_queries: Box<[G1serde]>,
+    pub delta_inv_b_masking_queries: Box<[G1serde]>,
     pub delta_g1: G1serde,
     pub eta_g1: G1serde,
 }
@@ -391,18 +481,22 @@ pub struct UnivariateCrs {
 pub struct UnivariateCrsJson<'a> {
     pub schema_id: &'a str,
     pub shape: UnivariateCrsShapeJson,
-    pub tau_powers_g1: &'a [G1serde],
+    pub s0_g1: &'a [G1serde],
+    pub sxi_g1: &'a [G1serde],
+    pub spsi_g1: &'a [G1serde],
     pub one_g2: G2serde,
     pub tau_g2: G2serde,
-    pub alpha_g2: [G2serde; 4],
+    pub tau_k_g2: G2serde,
     pub gamma_g2: G2serde,
     pub eta_g2: G2serde,
     pub delta_g2: G2serde,
     pub gamma_inv_public_queries: Vec<UnivariatePublicQueryJson>,
     pub eta_inv_interface_queries: Vec<UnivariateTaggedQueryJson>,
     pub delta_inv_internal_queries: Vec<UnivariateTaggedQueryJson>,
-    pub delta_inv_arithmetic_masking_queries: [&'a [G1serde]; 3],
-    pub delta_inv_connection_masking_queries: &'a [G1serde],
+    pub delta_inv_u_masking_queries: &'a [G1serde],
+    pub delta_inv_v_masking_queries: &'a [G1serde],
+    pub delta_inv_w_masking_queries: &'a [G1serde],
+    pub delta_inv_b_masking_queries: &'a [G1serde],
     pub delta_g1: G1serde,
     pub eta_g1: G1serde,
 }
@@ -415,8 +509,9 @@ pub struct UnivariateCrsShapeJson {
     pub connection_domain_size: usize,
     pub intersection_domain_size: usize,
     pub union_domain_size: usize,
-    pub degree_bound: usize,
-    pub blinding_bounds: [usize; 4],
+    pub minimum_capacity: [usize; 3],
+    pub declared_capacity: [usize; 3],
+    pub k: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -437,44 +532,57 @@ pub struct UnivariateTaggedQueryJson {
 }
 
 impl UnivariateCrsFoundation {
-    /// Generates the U18 ordinary KZG basis used by complete CRS construction.
+    /// Generates U19's three source sequences and the U18 verifier basis.
     pub fn generate(
         shape: UnivariateCrsShape,
         trapdoor: &UnivariateTrapdoor,
         g1: G1Affine,
         g2: G2Affine,
     ) -> Result<Self, UnivariateCrsError> {
-        let power_count = shape
-            .degree_bound
-            .checked_add(1)
-            .ok_or(UnivariateCrsError::CapacityOverflow { name: "D + 1" })?;
-        let mut tau_powers_g1 = Vec::new();
-        tau_powers_g1.try_reserve_exact(power_count).map_err(|_| {
-            UnivariateCrsError::PowerAllocation {
-                length: power_count,
-            }
-        })?;
+        let powers =
+            |length: usize, tag: ScalarField| -> Result<Box<[G1serde]>, UnivariateCrsError> {
+                let mut points = Vec::new();
+                points
+                    .try_reserve_exact(length)
+                    .map_err(|_| UnivariateCrsError::PowerAllocation { length })?;
+                let mut tau_power = ScalarField::one();
+                for _ in 0..length {
+                    points.push(G1serde(G1Affine::from(
+                        g1.to_projective() * tag * tau_power,
+                    )));
+                    tau_power = tau_power * trapdoor.tau;
+                }
+                Ok(points.into_boxed_slice())
+            };
+        let s0_g1 = powers(
+            shape.declared_capacity[0]
+                .checked_add(1)
+                .ok_or(UnivariateCrsError::CapacityOverflow { name: "M_0 + 1" })?,
+            ScalarField::one(),
+        )?;
+        let sxi_g1 = powers(
+            shape.declared_capacity[1]
+                .checked_add(1)
+                .ok_or(UnivariateCrsError::CapacityOverflow { name: "M_xi + 1" })?,
+            trapdoor.xi,
+        )?;
+        let spsi_g1 = powers(
+            shape.declared_capacity[2]
+                .checked_add(1)
+                .ok_or(UnivariateCrsError::CapacityOverflow { name: "M_psi + 1" })?,
+            trapdoor.psi,
+        )?;
 
-        let mut tau_power = ScalarField::one();
-        for _ in 0..power_count {
-            tau_powers_g1.push(G1serde(G1Affine::from(g1.to_projective() * tau_power)));
-            tau_power = tau_power * trapdoor.tau;
-        }
-
-        let alpha_g2 = std::array::from_fn(|index| {
-            let exponent = index + 1;
-            G2serde(G2Affine::from(
-                g2.to_projective() * trapdoor.alpha.pow(exponent),
-            ))
-        });
-
+        let k = shape.k;
         Ok(Self {
             schema_id: UNIVARIATE_CRS_SCHEMA_ID,
             shape,
-            tau_powers_g1: tau_powers_g1.into_boxed_slice(),
+            s0_g1,
+            sxi_g1,
+            spsi_g1,
             one_g2: G2serde(g2),
             tau_g2: G2serde(G2Affine::from(g2.to_projective() * trapdoor.tau)),
-            alpha_g2,
+            tau_k_g2: G2serde(G2Affine::from(g2.to_projective() * trapdoor.tau.pow(k))),
             gamma_g2: G2serde(G2Affine::from(g2.to_projective() * trapdoor.gamma)),
             eta_g2: G2serde(G2Affine::from(g2.to_projective() * trapdoor.eta)),
             delta_g2: G2serde(G2Affine::from(g2.to_projective() * trapdoor.delta)),
@@ -511,7 +619,7 @@ impl UnivariateCrs {
         }
 
         let foundation = UnivariateCrsFoundation::generate(shape.clone(), trapdoor, g1, g2)?;
-        let base_g1 = foundation.tau_powers_g1[0];
+        let base_g1 = foundation.s0_g1[0];
         let mut seen_public_keys = std::collections::HashSet::new();
         let mut gamma_inv_public_queries = Vec::new();
         for key in public_wire_layout.public_query_keys() {
@@ -590,35 +698,28 @@ impl UnivariateCrs {
         let z_a = trapdoor.tau.pow(shape.arithmetic_domain_size) - ScalarField::one();
         let z_c = trapdoor.tau.pow(shape.connection_domain_size) - ScalarField::one();
         let delta_inverse = trapdoor.delta.inv();
-        let delta_inv_arithmetic_masking_queries = std::array::from_fn(|index| {
-            let alpha_power = trapdoor.alpha.pow(index + 1);
-            let mut tau_power = ScalarField::one();
-            (0..shape.blinding_bounds[index])
-                .map(|_| {
-                    let point = base_g1 * (delta_inverse * alpha_power * tau_power * z_a);
-                    tau_power = tau_power * trapdoor.tau;
-                    point
-                })
+        let masking_range = |tag: ScalarField, offset: usize, z: ScalarField| {
+            (0..2)
+                .map(|h| base_g1 * (delta_inverse * tag * trapdoor.tau.pow(offset + h) * z))
                 .collect::<Vec<_>>()
                 .into_boxed_slice()
-        });
-        let mut tau_power = ScalarField::one();
-        let delta_inv_connection_masking_queries = (0..shape.blinding_bounds[3])
-            .map(|_| {
-                let point = base_g1 * (delta_inverse * trapdoor.alpha.pow(4) * tau_power * z_c);
-                tau_power = tau_power * trapdoor.tau;
-                point
-            })
-            .collect::<Vec<_>>()
-            .into_boxed_slice();
+        };
+        // U22 has two masks per polynomial. The B masks begin at K so their
+        // basis is identical to U20's psi*tau^K B term.
+        let delta_inv_u_masking_queries = masking_range(ScalarField::one(), 0, z_a);
+        let delta_inv_v_masking_queries = masking_range(trapdoor.xi, 0, z_a);
+        let delta_inv_w_masking_queries = masking_range(trapdoor.psi, 0, z_a);
+        let delta_inv_b_masking_queries = masking_range(trapdoor.psi, shape.k, z_c);
 
         Ok(Self {
             foundation,
             gamma_inv_public_queries: gamma_inv_public_queries.into_boxed_slice(),
             eta_inv_interface_queries: eta_inv_interface_queries.into_boxed_slice(),
             delta_inv_internal_queries: delta_inv_internal_queries.into_boxed_slice(),
-            delta_inv_arithmetic_masking_queries,
-            delta_inv_connection_masking_queries,
+            delta_inv_u_masking_queries,
+            delta_inv_v_masking_queries,
+            delta_inv_w_masking_queries,
+            delta_inv_b_masking_queries,
             delta_g1: base_g1 * trapdoor.delta,
             eta_g1: base_g1 * trapdoor.eta,
         })
@@ -634,13 +735,16 @@ impl UnivariateCrs {
                 connection_domain_size: foundation.shape.connection_domain_size,
                 intersection_domain_size: foundation.shape.intersection_domain_size,
                 union_domain_size: foundation.shape.union_domain_size,
-                degree_bound: foundation.shape.degree_bound,
-                blinding_bounds: foundation.shape.blinding_bounds,
+                minimum_capacity: foundation.shape.minimum_capacity,
+                declared_capacity: foundation.shape.declared_capacity,
+                k: foundation.shape.k,
             },
-            tau_powers_g1: &foundation.tau_powers_g1,
+            s0_g1: &foundation.s0_g1,
+            sxi_g1: &foundation.sxi_g1,
+            spsi_g1: &foundation.spsi_g1,
             one_g2: foundation.one_g2,
             tau_g2: foundation.tau_g2,
-            alpha_g2: foundation.alpha_g2,
+            tau_k_g2: foundation.tau_k_g2,
             gamma_g2: foundation.gamma_g2,
             eta_g2: foundation.eta_g2,
             delta_g2: foundation.delta_g2,
@@ -663,11 +767,10 @@ impl UnivariateCrs {
                 .iter()
                 .map(UnivariateTaggedQueryJson::from_query)
                 .collect(),
-            delta_inv_arithmetic_masking_queries: self
-                .delta_inv_arithmetic_masking_queries
-                .each_ref()
-                .map(|queries| queries.as_ref()),
-            delta_inv_connection_masking_queries: &self.delta_inv_connection_masking_queries,
+            delta_inv_u_masking_queries: &self.delta_inv_u_masking_queries,
+            delta_inv_v_masking_queries: &self.delta_inv_v_masking_queries,
+            delta_inv_w_masking_queries: &self.delta_inv_w_masking_queries,
+            delta_inv_b_masking_queries: &self.delta_inv_b_masking_queries,
             delta_g1: self.delta_g1,
             eta_g1: self.eta_g1,
         }
@@ -716,14 +819,17 @@ impl UnivariateCrs {
         }
     }
 
-    /// Commits a dense univariate polynomial with the ordinary U18 KZG
+    /// Commits a dense univariate polynomial with U19's ordinary `S_0`
     /// powers.  The temporary affine-base vector is bounded by the supplied
     /// polynomial, not by the complete CRS degree capacity.
     pub fn commit_dense_polynomial(
         &self,
         coefficients: &[ScalarField],
     ) -> Result<G1serde, UnivariateCrsError> {
-        self.commit_indexed_coefficients(coefficients.iter().copied().enumerate())
+        self.commit_indexed_coefficients(
+            &self.foundation.s0_g1,
+            coefficients.iter().copied().enumerate(),
+        )
     }
 
     /// Commits a strided selector without expanding its zero coefficients.
@@ -732,6 +838,7 @@ impl UnivariateCrs {
         polynomial: &crate::univariate_relation::StridedPolynomial,
     ) -> Result<G1serde, UnivariateCrsError> {
         self.commit_indexed_coefficients(
+            &self.foundation.s0_g1,
             polynomial
                 .coefficients
                 .iter()
@@ -750,12 +857,40 @@ impl UnivariateCrs {
         )
     }
 
+    pub fn commit_tagged_dense_polynomial(
+        &self,
+        source: UnivariateCommitmentSource,
+        coefficients: &[ScalarField],
+        offset: usize,
+    ) -> Result<G1serde, UnivariateCrsError> {
+        let sequence = match source {
+            UnivariateCommitmentSource::S0 => &self.foundation.s0_g1,
+            UnivariateCommitmentSource::Sxi => &self.foundation.sxi_g1,
+            UnivariateCommitmentSource::Spsi => &self.foundation.spsi_g1,
+        };
+        let indexed = coefficients
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(index, value)| {
+                index
+                    .checked_add(offset)
+                    .ok_or(UnivariateCrsError::CapacityOverflow {
+                        name: "tagged commitment index",
+                    })
+                    .map(|power| (power, value))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        self.commit_indexed_coefficients(sequence, indexed)
+    }
+
     fn commit_indexed_coefficients(
         &self,
+        sequence: &[G1serde],
         coefficients: impl IntoIterator<Item = (usize, ScalarField)>,
     ) -> Result<G1serde, UnivariateCrsError> {
         let pairs = coefficients.into_iter().collect::<Vec<_>>();
-        let available = self.foundation.tau_powers_g1.len();
+        let available = sequence.len();
         let highest_power = pairs.iter().map(|(power, _)| *power).max();
         if highest_power.is_some_and(|power| power >= available) {
             return Err(UnivariateCrsError::CommitmentDegree {
@@ -766,7 +901,7 @@ impl UnivariateCrs {
         let scalars = pairs.iter().map(|(_, scalar)| *scalar).collect::<Vec<_>>();
         let bases = pairs
             .iter()
-            .map(|(power, _)| self.foundation.tau_powers_g1[*power].0)
+            .map(|(power, _)| sequence[*power].0)
             .collect::<Vec<_>>();
         Ok(crate::group_structures::msm_g1_bases(&scalars, &bases))
     }
@@ -807,10 +942,7 @@ fn tagged_query_at(
         local_wire_index,
         trapdoor.tau,
     )?;
-    Ok(trapdoor.alpha * u
-        + trapdoor.alpha.pow(2) * v
-        + trapdoor.alpha.pow(3) * w
-        + trapdoor.alpha.pow(4) * b)
+    Ok(u + trapdoor.xi * v + trapdoor.psi * w + trapdoor.psi * trapdoor.tau.pow(shape.k) * b)
 }
 
 fn primitive_root(
@@ -948,6 +1080,7 @@ mod tests {
             ScalarField::from_u32(5),
             ScalarField::from_u32(7),
             ScalarField::from_u32(11),
+            ScalarField::from_u32(13),
         )
         .expect("test trapdoor must satisfy the domain exclusion")
     }
@@ -961,28 +1094,41 @@ mod tests {
         assert_eq!(shape.connection_domain_size, 4);
         assert_eq!(shape.intersection_domain_size, 4);
         assert_eq!(shape.union_domain_size, 16);
-        assert_eq!(shape.degree_bound, 32);
-        assert_eq!(shape.blinding_bounds, [2; 4]);
+        assert_eq!(shape.minimum_capacity, [32, 17, 35]);
+        assert_eq!(shape.declared_capacity, [32, 17, 35]);
+        assert_eq!(shape.k, 18);
 
         let g1 = CurveCfg::generate_random_affine_points(1)[0];
         let g2 = G2CurveCfg::generate_random_affine_points(1)[0];
         let trapdoor = test_trapdoor(&shape);
-        let foundation = UnivariateCrsFoundation::generate(shape, &trapdoor, g1, g2)
+        let foundation = UnivariateCrsFoundation::generate(shape.clone(), &trapdoor, g1, g2)
             .expect("U18 basis generation must succeed");
 
         assert_eq!(foundation.schema_id, UNIVARIATE_CRS_SCHEMA_ID);
-        assert_eq!(foundation.tau_powers_g1.len(), 33);
-        assert_eq!(foundation.tau_powers_g1[0], G1serde(g1));
-        assert_eq!(
-            foundation.tau_powers_g1[3],
-            foundation.tau_powers_g1[2] * trapdoor.tau
-        );
+        assert_eq!(foundation.s0_g1.len(), 33);
+        assert_eq!(foundation.sxi_g1.len(), 18);
+        assert_eq!(foundation.spsi_g1.len(), 36);
+        assert_eq!(foundation.s0_g1[0], G1serde(g1));
+        assert_eq!(foundation.s0_g1[3], foundation.s0_g1[2] * trapdoor.tau);
         assert_eq!(foundation.one_g2, G2serde(g2));
         assert_eq!(foundation.tau_g2, foundation.one_g2 * trapdoor.tau);
         assert_eq!(
-            foundation.alpha_g2[3],
-            foundation.one_g2 * trapdoor.alpha.pow(4)
+            foundation.tau_k_g2,
+            foundation.one_g2 * trapdoor.tau.pow(shape.k)
         );
+    }
+
+    #[test]
+    fn admits_a_larger_declared_capacity_without_changing_domain_geometry() {
+        let minimum = UnivariateCrsShape::from_setup_params(&setup_params()).unwrap();
+        let larger = minimum
+            .clone()
+            .with_declared_capacity([48, 24, 48])
+            .expect("componentwise larger capacities must be admitted");
+        assert!(larger.admits_setup(&minimum));
+        assert_eq!(larger.k, 31);
+        let too_small = minimum.clone().with_declared_capacity([31, 17, 35]);
+        assert!(too_small.is_err());
     }
 
     #[test]
@@ -996,6 +1142,7 @@ mod tests {
             ScalarField::from_u32(5),
             ScalarField::from_u32(7),
             ScalarField::from_u32(11),
+            ScalarField::from_u32(13),
         )
         .expect_err("a domain root cannot be used as tau");
         assert!(matches!(
@@ -1087,14 +1234,10 @@ mod tests {
         // The interface wire remains placement-indexed for both slots.
         assert_eq!(crs.eta_inv_interface_queries.len(), 2 * setup.s_max);
         assert!(crs.delta_inv_internal_queries.is_empty());
-        assert_eq!(
-            crs.delta_inv_arithmetic_masking_queries
-                .iter()
-                .map(|queries| queries.len())
-                .collect::<Vec<_>>(),
-            vec![2, 2, 2]
-        );
-        assert_eq!(crs.delta_inv_connection_masking_queries.len(), 2);
+        assert_eq!(crs.delta_inv_u_masking_queries.len(), 2);
+        assert_eq!(crs.delta_inv_v_masking_queries.len(), 2);
+        assert_eq!(crs.delta_inv_w_masking_queries.len(), 2);
+        assert_eq!(crs.delta_inv_b_masking_queries.len(), 2);
         let query_index = crs.query_index();
         assert_eq!(
             query_index.public_index(crs.gamma_inv_public_queries[0].key),
@@ -1126,10 +1269,20 @@ mod tests {
         )
         .expect("a matching univariate CRS archive must load");
         assert_eq!(loaded, crs);
+        let mut legacy_schema = UnivariateCrsRkyv::from_univariate_crs(&crs);
+        legacy_schema.schema_id = "tokamak-zk-evm-univariate-v1".to_string();
+        let bytes = rkyv::to_bytes::<_, 256>(&legacy_schema).expect("archive must serialize");
+        let path = output.path().join(UNIVARIATE_CRS_RKYV_FILE_NAME);
+        std::fs::write(&path, bytes.as_ref()).expect("must write legacy CRS archive");
+        assert!(
+            read_univariate_crs_artifact(&path, &setup, &public_layout, &subcircuits)
+                .expect_err("the reader must reject the old schema")
+                .to_string()
+                .contains("supported univariate schema")
+        );
         let mut archive = UnivariateCrsRkyv::from_univariate_crs(&crs);
         archive.eta_inv_interface_queries[0].placement_index = 1;
         let bytes = rkyv::to_bytes::<_, 256>(&archive).expect("archive must serialize");
-        let path = output.path().join(UNIVARIATE_CRS_RKYV_FILE_NAME);
         std::fs::write(&path, bytes.as_ref()).expect("must write malformed CRS archive");
 
         let error = read_univariate_crs_artifact(&path, &setup, &public_layout, &subcircuits)
@@ -1215,7 +1368,7 @@ mod tests {
             assert_eq!(shape.connection_domain_size, case.expected.n_c);
             assert_eq!(shape.intersection_domain_size, case.expected.n_g);
             assert_eq!(shape.union_domain_size, case.expected.n_union);
-            assert_eq!(shape.degree_bound, case.expected.d);
+            assert_eq!(shape.minimum_capacity[0], case.expected.d);
             let setup = SetupParams {
                 l_free: 0,
                 l: case.setup.l,

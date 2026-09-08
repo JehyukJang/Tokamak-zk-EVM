@@ -111,7 +111,22 @@ pub fn read_univariate_crs_artifact(
             format!("invalid univariate CRS archive: {error:?}"),
         )
     })?;
-    let expected_shape = UnivariateCrsShape::from_setup_params(setup).map_err(io::Error::other)?;
+    let declared_capacity = archive
+        .shape
+        .declared_capacity
+        .map(|value| archived_usize(value, "declared univariate CRS capacity"))
+        .into_iter()
+        .collect::<io::Result<Vec<_>>>()?
+        .try_into()
+        .map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "invalid declared CRS capacity vector",
+            )
+        })?;
+    let expected_shape = UnivariateCrsShape::from_setup_params(setup)
+        .and_then(|shape| shape.with_declared_capacity(declared_capacity))
+        .map_err(io::Error::other)?;
     validate_univariate_archive_metadata(
         archive,
         setup,
@@ -149,27 +164,31 @@ pub fn read_univariate_crs_artifact(
         .iter()
         .map(archived_tagged_query)
         .collect::<io::Result<Vec<_>>>()?;
-    let arithmetic_masking = std::array::from_fn(|index| {
-        archive.delta_inv_arithmetic_masking_queries[index]
-            .iter()
-            .map(|point| point.to_g1serde())
-            .collect::<Vec<_>>()
-            .into_boxed_slice()
-    });
-
     Ok(UnivariateCrs {
         foundation: crate::univariate_crs::UnivariateCrsFoundation {
             schema_id: crate::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID,
             shape: expected_shape,
-            tau_powers_g1: archive
-                .tau_powers_g1
+            s0_g1: archive
+                .s0_g1
+                .iter()
+                .map(|point| point.to_g1serde())
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            sxi_g1: archive
+                .sxi_g1
+                .iter()
+                .map(|point| point.to_g1serde())
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            spsi_g1: archive
+                .spsi_g1
                 .iter()
                 .map(|point| point.to_g1serde())
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
             one_g2: archive.one_g2.to_g2serde(),
             tau_g2: archive.tau_g2.to_g2serde(),
-            alpha_g2: std::array::from_fn(|index| archive.alpha_g2[index].to_g2serde()),
+            tau_k_g2: archive.tau_k_g2.to_g2serde(),
             gamma_g2: archive.gamma_g2.to_g2serde(),
             eta_g2: archive.eta_g2.to_g2serde(),
             delta_g2: archive.delta_g2.to_g2serde(),
@@ -177,9 +196,26 @@ pub fn read_univariate_crs_artifact(
         gamma_inv_public_queries: public_queries.into_boxed_slice(),
         eta_inv_interface_queries: interface_queries.into_boxed_slice(),
         delta_inv_internal_queries: internal_queries.into_boxed_slice(),
-        delta_inv_arithmetic_masking_queries: arithmetic_masking,
-        delta_inv_connection_masking_queries: archive
-            .delta_inv_connection_masking_queries
+        delta_inv_u_masking_queries: archive
+            .delta_inv_u_masking_queries
+            .iter()
+            .map(|point| point.to_g1serde())
+            .collect::<Vec<_>>()
+            .into_boxed_slice(),
+        delta_inv_v_masking_queries: archive
+            .delta_inv_v_masking_queries
+            .iter()
+            .map(|point| point.to_g1serde())
+            .collect::<Vec<_>>()
+            .into_boxed_slice(),
+        delta_inv_w_masking_queries: archive
+            .delta_inv_w_masking_queries
+            .iter()
+            .map(|point| point.to_g1serde())
+            .collect::<Vec<_>>()
+            .into_boxed_slice(),
+        delta_inv_b_masking_queries: archive
+            .delta_inv_b_masking_queries
             .iter()
             .map(|point| point.to_g1serde())
             .collect::<Vec<_>>()
@@ -208,18 +244,22 @@ fn validate_univariate_archive_metadata(
         && shape.connection_domain_size == expected_shape.connection_domain_size as u64
         && shape.intersection_domain_size == expected_shape.intersection_domain_size as u64
         && shape.union_domain_size == expected_shape.union_domain_size as u64
-        && shape.degree_bound == expected_shape.degree_bound as u64
-        && shape.blinding_bounds == expected_shape.blinding_bounds.map(|bound| bound as u64);
+        && shape.minimum_capacity == expected_shape.minimum_capacity.map(|value| value as u64)
+        && shape.declared_capacity == expected_shape.declared_capacity.map(|value| value as u64)
+        && shape.k == expected_shape.k as u64;
     if !matches_shape {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "univariate CRS shape does not match the selected subcircuit library",
         ));
     }
-    if archive.tau_powers_g1.len() != expected_shape.degree_bound + 1 {
+    if archive.s0_g1.len() != expected_shape.declared_capacity[0] + 1
+        || archive.sxi_g1.len() != expected_shape.declared_capacity[1] + 1
+        || archive.spsi_g1.len() != expected_shape.declared_capacity[2] + 1
+    {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "univariate CRS ordinary KZG power count does not match its shape",
+            "univariate CRS source-sequence counts do not match its declared capacity",
         ));
     }
     let expected_keys = public_wire_layout
@@ -245,12 +285,10 @@ fn validate_univariate_archive_metadata(
             "univariate CRS compressed public-query range does not match the selected library",
         ));
     }
-    if archive
-        .delta_inv_arithmetic_masking_queries
-        .iter()
-        .zip(expected_shape.blinding_bounds[..3].iter())
-        .any(|(queries, expected_len)| queries.len() != *expected_len)
-        || archive.delta_inv_connection_masking_queries.len() != expected_shape.blinding_bounds[3]
+    if archive.delta_inv_u_masking_queries.len() != 2
+        || archive.delta_inv_v_masking_queries.len() != 2
+        || archive.delta_inv_w_masking_queries.len() != 2
+        || archive.delta_inv_b_masking_queries.len() != 2
     {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -918,16 +956,24 @@ impl UnivariateCrsRkyvExt for UnivariateCrsRkyv {
         Self {
             schema_id: foundation.schema_id.to_string(),
             shape: UnivariateCrsShapeRkyv::from_shape(&foundation.shape),
-            tau_powers_g1: foundation
-                .tau_powers_g1
+            s0_g1: foundation
+                .s0_g1
+                .iter()
+                .map(G1SerdeRkyv::from_g1serde)
+                .collect(),
+            sxi_g1: foundation
+                .sxi_g1
+                .iter()
+                .map(G1SerdeRkyv::from_g1serde)
+                .collect(),
+            spsi_g1: foundation
+                .spsi_g1
                 .iter()
                 .map(G1SerdeRkyv::from_g1serde)
                 .collect(),
             one_g2: G2SerdeRkyv::from_g2serde(&foundation.one_g2),
             tau_g2: G2SerdeRkyv::from_g2serde(&foundation.tau_g2),
-            alpha_g2: foundation
-                .alpha_g2
-                .map(|point| G2SerdeRkyv::from_g2serde(&point)),
+            tau_k_g2: G2SerdeRkyv::from_g2serde(&foundation.tau_k_g2),
             gamma_g2: G2SerdeRkyv::from_g2serde(&foundation.gamma_g2),
             eta_g2: G2SerdeRkyv::from_g2serde(&foundation.eta_g2),
             delta_g2: G2SerdeRkyv::from_g2serde(&foundation.delta_g2),
@@ -946,12 +992,23 @@ impl UnivariateCrsRkyvExt for UnivariateCrsRkyv {
                 .iter()
                 .map(UnivariateTaggedQueryRkyv::from_query)
                 .collect(),
-            delta_inv_arithmetic_masking_queries: crs
-                .delta_inv_arithmetic_masking_queries
-                .each_ref()
-                .map(|queries| queries.iter().map(G1SerdeRkyv::from_g1serde).collect()),
-            delta_inv_connection_masking_queries: crs
-                .delta_inv_connection_masking_queries
+            delta_inv_u_masking_queries: crs
+                .delta_inv_u_masking_queries
+                .iter()
+                .map(G1SerdeRkyv::from_g1serde)
+                .collect(),
+            delta_inv_v_masking_queries: crs
+                .delta_inv_v_masking_queries
+                .iter()
+                .map(G1SerdeRkyv::from_g1serde)
+                .collect(),
+            delta_inv_w_masking_queries: crs
+                .delta_inv_w_masking_queries
+                .iter()
+                .map(G1SerdeRkyv::from_g1serde)
+                .collect(),
+            delta_inv_b_masking_queries: crs
+                .delta_inv_b_masking_queries
                 .iter()
                 .map(G1SerdeRkyv::from_g1serde)
                 .collect(),
@@ -973,8 +1030,9 @@ impl UnivariateCrsShapeRkyvExt for UnivariateCrsShapeRkyv {
             connection_domain_size: shape.connection_domain_size as u64,
             intersection_domain_size: shape.intersection_domain_size as u64,
             union_domain_size: shape.union_domain_size as u64,
-            degree_bound: shape.degree_bound as u64,
-            blinding_bounds: shape.blinding_bounds.map(|bound| bound as u64),
+            minimum_capacity: shape.minimum_capacity.map(|value| value as u64),
+            declared_capacity: shape.declared_capacity.map(|value| value as u64),
+            k: shape.k as u64,
         }
     }
 }

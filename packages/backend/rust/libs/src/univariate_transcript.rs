@@ -11,7 +11,28 @@ use icicle_bls12_381::curve::ScalarField;
 use icicle_core::traits::{Arithmetic, FieldImpl};
 use tiny_keccak::Keccak;
 
-const TRANSCRIPT_DOMAIN: &[u8] = b"tokamak-zk-evm-univariate-fs-v1";
+const TRANSCRIPT_DOMAIN: &[u8] = b"tokamak-zk-evm-univariate-fs-v2";
+
+/// The F1 context and statement are intentionally supplied as canonical
+/// producer-owned encodings. This module adds the backend's typed transcript
+/// framing; it does not reinterpret frontend metadata.
+#[derive(Clone, Debug)]
+pub struct UnivariateFiatShamirInput {
+    pub context: Vec<u8>,
+    pub statement: Vec<u8>,
+}
+
+/// The six F3 challenges in their protocol order.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct UnivariateChallenges {
+    pub upsilon: ScalarField,
+    pub beta: ScalarField,
+    pub gamma_c: ScalarField,
+    pub theta: ScalarField,
+    pub zeta: ScalarField,
+    pub varpi: ScalarField,
+    pub mu: ScalarField,
+}
 
 /// Builds an injective type-tagged, length-prefixed encoding for U51--U53.
 #[derive(Clone, Debug, Default)]
@@ -67,6 +88,14 @@ pub struct UnivariateTranscript {
 }
 
 impl UnivariateTranscript {
+    pub fn from_f1(input: UnivariateFiatShamirInput) -> Self {
+        Self::new(
+            CanonicalTranscriptEncoder::new()
+                .bytes("F1.context", &input.context)
+                .bytes("F1.statement", &input.statement)
+                .finish(),
+        )
+    }
     pub fn new(context: Vec<u8>) -> Self {
         Self {
             context,
@@ -101,6 +130,43 @@ impl UnivariateTranscript {
     /// Derives U53's nonzero `mu`.
     pub fn nonzero_challenge(&mut self, round: u8, output_index: u8) -> ScalarField {
         self.sample(round, output_index, |value| *value != ScalarField::zero())
+    }
+
+    /// Runs F2--F4 after callers append each prover message block exactly
+    /// once. The message encodings are caller-owned typed encodings.
+    pub fn derive_challenges(
+        &mut self,
+        a1: &[u8],
+        a2: &[u8],
+        a3: &[u8],
+        a4: &[u8],
+        a5: &[u8],
+        a6: &[u8],
+        arithmetic_size: usize,
+        connection_size: usize,
+    ) -> UnivariateChallenges {
+        self.append_message_block(1, a1);
+        let upsilon = self.challenge(1, 0);
+        self.append_message_block(2, a2);
+        let beta = self.challenge(2, 0);
+        let gamma_c = self.challenge(2, 1);
+        self.append_message_block(3, a3);
+        let theta = self.challenge(3, 0);
+        self.append_message_block(4, a4);
+        let zeta = self.zeta(arithmetic_size, connection_size);
+        self.append_message_block(5, a5);
+        let varpi = self.challenge(5, 0);
+        self.append_message_block(6, a6);
+        let mu = self.nonzero_challenge(6, 0);
+        UnivariateChallenges {
+            upsilon,
+            beta,
+            gamma_c,
+            theta,
+            zeta,
+            varpi,
+            mu,
+        }
     }
 
     fn sample<F>(&mut self, round: u8, output_index: u8, accepts: F) -> ScalarField
@@ -184,63 +250,18 @@ mod tests {
     use super::{CanonicalTranscriptEncoder, UnivariateTranscript};
     use icicle_bls12_381::curve::ScalarField;
     use icicle_core::traits::FieldImpl;
-    use serde::Deserialize;
-
-    #[derive(Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Fixture {
-        schema_id: String,
-        context: Context,
-        message_blocks: Vec<MessageBlock>,
-        challenges: Challenges,
-    }
-
-    #[derive(Deserialize)]
-    struct Context {
-        library: String,
-        instance: u32,
-    }
-
-    #[derive(Deserialize)]
-    struct MessageBlock {
-        index: u8,
-        value: String,
-    }
-
-    #[derive(Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Challenges {
-        beta: String,
-        gamma_c: String,
-        theta: String,
-    }
-
     #[test]
     fn transcript_is_deterministic_and_context_bound() {
-        let fixture: Fixture = serde_json::from_str(include_str!(
-            "../../../common/contracts/fixtures/univariate-fiat-shamir.v1.json"
-        ))
-        .expect("Fiat--Shamir fixture must be valid JSON");
-        assert_eq!(fixture.schema_id, "tokamak-zk-evm-univariate-fs-v1");
         let context = CanonicalTranscriptEncoder::new()
-            .bytes("library", fixture.context.library.as_bytes())
-            .scalar("instance", &ScalarField::from_u32(fixture.context.instance))
+            .bytes("library", b"fixture-library")
+            .scalar("instance", &ScalarField::from_u32(7))
             .finish();
         let mut left = UnivariateTranscript::new(context.clone());
-        left.append_message_block(
-            fixture.message_blocks[0].index,
-            fixture.message_blocks[0].value.as_bytes(),
-        );
+        left.append_message_block(1, b"a1");
         let beta = left.challenge(1, 0);
         let gamma = left.challenge(1, 1);
-        left.append_message_block(
-            fixture.message_blocks[1].index,
-            fixture.message_blocks[1].value.as_bytes(),
-        );
+        left.append_message_block(2, b"a2");
         let theta = left.challenge(2, 0);
-        assert_eq!(format!("0x{}", hex::encode(beta.to_bytes_le().into_iter().rev().collect::<Vec<_>>())), fixture.challenges.beta);
-        assert_eq!(format!("0x{}", hex::encode(gamma.to_bytes_le().into_iter().rev().collect::<Vec<_>>())), fixture.challenges.gamma_c);
-        assert_eq!(format!("0x{}", hex::encode(theta.to_bytes_le().into_iter().rev().collect::<Vec<_>>())), fixture.challenges.theta);
 
         let mut same = UnivariateTranscript::new(context);
         same.append_message_block(1, b"a1");
@@ -250,7 +271,9 @@ mod tests {
         assert_eq!(theta, same.challenge(2, 0));
 
         let mut changed = UnivariateTranscript::new(
-            CanonicalTranscriptEncoder::new().bytes("library", b"other-library").finish(),
+            CanonicalTranscriptEncoder::new()
+                .bytes("library", b"other-library")
+                .finish(),
         );
         changed.append_message_block(1, b"a1");
         assert_ne!(beta, changed.challenge(1, 0));

@@ -23,6 +23,10 @@ export enum BinaryArtifactFileKind {
   UnivariateProverCrs = 11,
   UnivariateVerifierCrs = 12,
   UnivariateVerifierPreprocess = 13,
+  UnivariateV2PreprocessCrs = 14,
+  UnivariateV2ProverCrs = 15,
+  UnivariateV2VerifierCrs = 16,
+  UnivariateV2VerifierPreprocess = 17,
 }
 
 export const BINARY_SELF_DIGEST_ENTRY_TYPE = 1;

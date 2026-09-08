@@ -2,9 +2,9 @@ import { decodeBinaryArtifactFile } from "../../../src/artifacts/binary/binary-a
 import { BinaryArtifactFileKind } from "../../../src/artifacts/binary/binary-format.js";
 import { assertBinaryArtifactShape } from "../../../src/artifacts/binary/structural-validation.js";
 import {
-  UNIVARIATE_PREPROCESS_CRS_V1_SPEC,
-  UNIVARIATE_PROVER_CRS_V1_SPEC,
-  UNIVARIATE_VERIFIER_CRS_V1_SPEC,
+  UNIVARIATE_V2_PREPROCESS_CRS_V1_SPEC,
+  UNIVARIATE_V2_PROVER_CRS_V1_SPEC,
+  UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC,
 } from "../../../src/generated/browser-artifact-contracts.generated.js";
 import { convertUnivariateCrs } from "../../../src/converter/conversion/univariate-crs-converter.js";
 import { withCurveRuntime } from "../../../src/converter/conversion/conversion-runtime.js";
@@ -19,12 +19,14 @@ async function main(): Promise<void> {
     const g1 = runtime.G1.formatAffine(runtime.G1.generator);
     const g2 = runtime.G2.formatAffine(runtime.G2.generator);
     return {
-      schemaId: "tokamak-zk-evm-univariate-v1",
-      shape: { degreeBound: 1 },
-      tauPowersG1: [g1, g1],
+      schemaId: "tokamak-zk-evm-univariate-v2",
+      shape: { declaredCapacity: [1, 1, 1], k: 1 },
+      s0G1: [g1, g1],
+      sxiG1: [g1, g1],
+      spsiG1: [g1, g1],
       oneG2: g2,
       tauG2: g2,
-      alphaG2: [g2, g2, g2, g2],
+      tauKG2: g2,
       gammaG2: g2,
       etaG2: g2,
       deltaG2: g2,
@@ -37,8 +39,10 @@ async function main(): Promise<void> {
       deltaInvInternalQueries: [
         { placementIndex: 1, subcircuitId: 0, localWireIndex: 3, point: g1 },
       ],
-      deltaInvArithmeticMaskingQueries: [[g1, g1], [g1, g1], [g1, g1]],
-      deltaInvConnectionMaskingQueries: [g1, g1],
+      deltaInvUMaskingQueries: [g1, g1],
+      deltaInvVMaskingQueries: [g1, g1],
+      deltaInvWMaskingQueries: [g1, g1],
+      deltaInvBMaskingQueries: [g1, g1],
       deltaG1: g1,
       etaG1: g1,
     };
@@ -47,22 +51,22 @@ async function main(): Promise<void> {
 
   checkArtifact(
     artifacts.preprocessCrs,
-    BinaryArtifactFileKind.UnivariatePreprocessCrs,
-    UNIVARIATE_PREPROCESS_CRS_V1_SPEC,
+    BinaryArtifactFileKind.UnivariateV2PreprocessCrs,
+    UNIVARIATE_V2_PREPROCESS_CRS_V1_SPEC,
   );
   checkArtifact(
     artifacts.proverCrs,
-    BinaryArtifactFileKind.UnivariateProverCrs,
-    UNIVARIATE_PROVER_CRS_V1_SPEC,
+    BinaryArtifactFileKind.UnivariateV2ProverCrs,
+    UNIVARIATE_V2_PROVER_CRS_V1_SPEC,
   );
   checkArtifact(
     artifacts.verifierCrs,
-    BinaryArtifactFileKind.UnivariateVerifierCrs,
-    UNIVARIATE_VERIFIER_CRS_V1_SPEC,
+    BinaryArtifactFileKind.UnivariateV2VerifierCrs,
+    UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC,
   );
 
-  if (parseUnivariatePreprocessCrs(artifacts.preprocessCrs).kzgPowers.elementCount !== 2) {
-    throw new Error("Univariate preprocess CRS reader lost the KZG range.");
+  if (parseUnivariatePreprocessCrs(artifacts.preprocessCrs).s0.elementCount !== 2) {
+    throw new Error("Univariate preprocess CRS reader lost the S0 range.");
   }
   const proverRuntime = parseUnivariateProverCrs(artifacts.proverCrs);
   if (proverRuntime.interfaceQueries.keyAt(0).localWireIndex !== 2) {
@@ -92,7 +96,7 @@ async function main(): Promise<void> {
     () => convertUnivariateCrs({ ...fixture, schemaId: "legacy-sigma" }),
     "supported univariate schema",
   );
-  console.log("Checked role-specific U18--U21 browser CRS conversion and legacy-schema rejection");
+  console.log("Checked role-specific U18--U22 browser CRS conversion and legacy-schema rejection");
 }
 
 function checkArtifact(

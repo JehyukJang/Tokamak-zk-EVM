@@ -709,7 +709,289 @@ export const UNIVARIATE_VERIFIER_PREPROCESS_V1_SPEC = {
   ],
 } as const satisfies RuntimeArtifactFormatSpec;
 
-export const RUNTIME_ARTIFACT_SPECS = [INSTANCE_V1_SPEC, PROVER_PLACEMENT_VARIABLES_V1_SPEC, PROVER_SELECTOR_V1_SPEC, PROVER_PERMUTATION_V1_SPEC, SIGMA_VERIFY_V1_SPEC, VERIFIER_PREPROCESS_V1_SPEC, VERIFIER_PROOF_V1_SPEC, PROVER_CRS_V1_SPEC, PREPROCESS_CRS_V1_SPEC, UNIVARIATE_PREPROCESS_CRS_V1_SPEC, UNIVARIATE_PROVER_CRS_V1_SPEC, UNIVARIATE_VERIFIER_CRS_V1_SPEC, UNIVARIATE_VERIFIER_PREPROCESS_V1_SPEC] as const;
+export const UNIVARIATE_V2_PREPROCESS_CRS_V1_SPEC = {
+  schemaVersion: 1,
+  name: "univariate_v2_preprocess_crs",
+  kind: 14,
+  sections: [
+    {
+      label: "crs.s0",
+      type: BinarySectionType.CrsG1,
+      encoding: BinarySectionEncoding.FfjsG1Affine96,
+      elementCount: null,
+      elementByteLength: null,
+      points: [],
+    }
+  ],
+} as const satisfies RuntimeArtifactFormatSpec;
+
+export const UNIVARIATE_V2_PROVER_CRS_V1_SPEC = {
+  schemaVersion: 1,
+  name: "univariate_v2_prover_crs",
+  kind: 15,
+  sections: [
+    {
+      label: "crs.capacity",
+      type: BinarySectionType.CrsMetadata,
+      encoding: BinarySectionEncoding.Bytes,
+      elementCount: 4,
+      elementByteLength: 8,
+      points: [
+  {
+    "index": 0,
+    "name": "M0"
+  },
+  {
+    "index": 1,
+    "name": "Mxi"
+  },
+  {
+    "index": 2,
+    "name": "Mpsi"
+  },
+  {
+    "index": 3,
+    "name": "K"
+  }
+],
+    },
+    {
+      label: "crs.s0",
+      type: BinarySectionType.CrsG1,
+      encoding: BinarySectionEncoding.FfjsG1Affine96,
+      elementCount: null,
+      elementByteLength: null,
+      points: [],
+    },
+    {
+      label: "crs.sxi",
+      type: BinarySectionType.CrsG1,
+      encoding: BinarySectionEncoding.FfjsG1Affine96,
+      elementCount: null,
+      elementByteLength: null,
+      points: [],
+    },
+    {
+      label: "crs.spsi",
+      type: BinarySectionType.CrsG1,
+      encoding: BinarySectionEncoding.FfjsG1Affine96,
+      elementCount: null,
+      elementByteLength: null,
+      points: [],
+    },
+    {
+      label: "crs.interface-query-keys",
+      type: BinarySectionType.CrsMetadata,
+      encoding: BinarySectionEncoding.Bytes,
+      elementCount: null,
+      elementByteLength: 12,
+      points: [],
+    },
+    {
+      label: "crs.interface-queries",
+      type: BinarySectionType.CrsG1,
+      encoding: BinarySectionEncoding.FfjsG1Affine96,
+      elementCount: null,
+      elementByteLength: null,
+      points: [],
+    },
+    {
+      label: "crs.internal-query-keys",
+      type: BinarySectionType.CrsMetadata,
+      encoding: BinarySectionEncoding.Bytes,
+      elementCount: null,
+      elementByteLength: 12,
+      points: [],
+    },
+    {
+      label: "crs.internal-queries",
+      type: BinarySectionType.CrsG1,
+      encoding: BinarySectionEncoding.FfjsG1Affine96,
+      elementCount: null,
+      elementByteLength: null,
+      points: [],
+    },
+    {
+      label: "crs.mask-u",
+      type: BinarySectionType.CrsG1,
+      encoding: BinarySectionEncoding.FfjsG1Affine96,
+      elementCount: 2,
+      elementByteLength: null,
+      points: [],
+    },
+    {
+      label: "crs.mask-v",
+      type: BinarySectionType.CrsG1,
+      encoding: BinarySectionEncoding.FfjsG1Affine96,
+      elementCount: 2,
+      elementByteLength: null,
+      points: [],
+    },
+    {
+      label: "crs.mask-w",
+      type: BinarySectionType.CrsG1,
+      encoding: BinarySectionEncoding.FfjsG1Affine96,
+      elementCount: 2,
+      elementByteLength: null,
+      points: [],
+    },
+    {
+      label: "crs.mask-b",
+      type: BinarySectionType.CrsG1,
+      encoding: BinarySectionEncoding.FfjsG1Affine96,
+      elementCount: 2,
+      elementByteLength: null,
+      points: [],
+    },
+    {
+      label: "crs.binding-sources",
+      type: BinarySectionType.CrsG1,
+      encoding: BinarySectionEncoding.FfjsG1Affine96,
+      elementCount: 2,
+      elementByteLength: null,
+      points: [
+  {
+    "index": 0,
+    "name": "delta"
+  },
+  {
+    "index": 1,
+    "name": "eta"
+  }
+],
+    }
+  ],
+} as const satisfies RuntimeArtifactFormatSpec;
+
+export const UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC = {
+  schemaVersion: 1,
+  name: "univariate_v2_verifier_crs",
+  kind: 16,
+  sections: [
+    {
+      label: "crs.capacity",
+      type: BinarySectionType.CrsMetadata,
+      encoding: BinarySectionEncoding.Bytes,
+      elementCount: 4,
+      elementByteLength: 8,
+      points: [
+  {
+    "index": 0,
+    "name": "M0"
+  },
+  {
+    "index": 1,
+    "name": "Mxi"
+  },
+  {
+    "index": 2,
+    "name": "Mpsi"
+  },
+  {
+    "index": 3,
+    "name": "K"
+  }
+],
+    },
+    {
+      label: "crs.g1-handles",
+      type: BinarySectionType.CrsG1,
+      encoding: BinarySectionEncoding.FfjsG1Affine96,
+      elementCount: 3,
+      elementByteLength: null,
+      points: [
+  {
+    "index": 0,
+    "name": "one"
+  },
+  {
+    "index": 1,
+    "name": "xi"
+  },
+  {
+    "index": 2,
+    "name": "psi"
+  }
+],
+    },
+    {
+      label: "crs.public-query-keys",
+      type: BinarySectionType.CrsMetadata,
+      encoding: BinarySectionEncoding.Bytes,
+      elementCount: null,
+      elementByteLength: 8,
+      points: [],
+    },
+    {
+      label: "crs.public-queries",
+      type: BinarySectionType.CrsG1,
+      encoding: BinarySectionEncoding.FfjsG1Affine96,
+      elementCount: null,
+      elementByteLength: null,
+      points: [],
+    },
+    {
+      label: "crs.g2",
+      type: BinarySectionType.CrsG2,
+      encoding: BinarySectionEncoding.FfjsG2Affine192,
+      elementCount: 6,
+      elementByteLength: null,
+      points: [
+  {
+    "index": 0,
+    "name": "one"
+  },
+  {
+    "index": 1,
+    "name": "tau"
+  },
+  {
+    "index": 2,
+    "name": "tauK"
+  },
+  {
+    "index": 3,
+    "name": "gamma"
+  },
+  {
+    "index": 4,
+    "name": "eta"
+  },
+  {
+    "index": 5,
+    "name": "delta"
+  }
+],
+    }
+  ],
+} as const satisfies RuntimeArtifactFormatSpec;
+
+export const UNIVARIATE_V2_VERIFIER_PREPROCESS_V1_SPEC = {
+  schemaVersion: 1,
+  name: "univariate_v2_verifier_preprocess",
+  kind: 17,
+  sections: [
+    {
+      label: "preprocess.g1",
+      type: BinarySectionType.Preprocess,
+      encoding: BinarySectionEncoding.FfjsG1Affine96,
+      elementCount: 2,
+      elementByteLength: null,
+      points: [
+  {
+    "index": 0,
+    "name": "S_kappa"
+  },
+  {
+    "index": 1,
+    "name": "S_C"
+  }
+],
+    }
+  ],
+} as const satisfies RuntimeArtifactFormatSpec;
+
+export const RUNTIME_ARTIFACT_SPECS = [INSTANCE_V1_SPEC, PROVER_PLACEMENT_VARIABLES_V1_SPEC, PROVER_SELECTOR_V1_SPEC, PROVER_PERMUTATION_V1_SPEC, SIGMA_VERIFY_V1_SPEC, VERIFIER_PREPROCESS_V1_SPEC, VERIFIER_PROOF_V1_SPEC, PROVER_CRS_V1_SPEC, PREPROCESS_CRS_V1_SPEC, UNIVARIATE_PREPROCESS_CRS_V1_SPEC, UNIVARIATE_PROVER_CRS_V1_SPEC, UNIVARIATE_VERIFIER_CRS_V1_SPEC, UNIVARIATE_VERIFIER_PREPROCESS_V1_SPEC, UNIVARIATE_V2_PREPROCESS_CRS_V1_SPEC, UNIVARIATE_V2_PROVER_CRS_V1_SPEC, UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC, UNIVARIATE_V2_VERIFIER_PREPROCESS_V1_SPEC] as const;
 
 export function requireRuntimeArtifactSpecForKind(kind: number): RuntimeArtifactFormatSpec {
   const spec = RUNTIME_ARTIFACT_SPECS.find((candidate) => candidate.kind === kind);

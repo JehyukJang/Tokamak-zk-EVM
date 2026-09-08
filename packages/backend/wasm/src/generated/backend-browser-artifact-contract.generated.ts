@@ -15,7 +15,11 @@ export const BACKEND_BROWSER_ARTIFACT_CONTRACT = {
     "univariate_preprocess_crs": 10,
     "univariate_prover_crs": 11,
     "univariate_verifier_crs": 12,
-    "univariate_verifier_preprocess": 13
+    "univariate_verifier_preprocess": 13,
+    "univariate_v2_preprocess_crs": 14,
+    "univariate_v2_prover_crs": 15,
+    "univariate_v2_verifier_crs": 16,
+    "univariate_v2_verifier_preprocess": 17
   },
   "combinedSigmaPayload": {
     "magic": "TKCRS001",
@@ -639,6 +643,276 @@ export const BACKEND_BROWSER_ARTIFACT_CONTRACT = {
     },
     {
       "name": "univariate_verifier_preprocess",
+      "sections": [
+        {
+          "label": "preprocess.g1",
+          "type": "Preprocess",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": 2,
+          "elementByteLength": null,
+          "points": [
+            {
+              "index": 0,
+              "name": "S_kappa"
+            },
+            {
+              "index": 1,
+              "name": "S_C"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "univariate_v2_preprocess_crs",
+      "sections": [
+        {
+          "label": "crs.s0",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": null,
+          "elementByteLength": null,
+          "points": []
+        }
+      ]
+    },
+    {
+      "name": "univariate_v2_prover_crs",
+      "sections": [
+        {
+          "label": "crs.capacity",
+          "type": "CrsMetadata",
+          "encoding": "bytes",
+          "elementCount": 4,
+          "elementByteLength": 8,
+          "points": [
+            {
+              "index": 0,
+              "name": "M0"
+            },
+            {
+              "index": 1,
+              "name": "Mxi"
+            },
+            {
+              "index": 2,
+              "name": "Mpsi"
+            },
+            {
+              "index": 3,
+              "name": "K"
+            }
+          ]
+        },
+        {
+          "label": "crs.s0",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": null,
+          "elementByteLength": null,
+          "points": []
+        },
+        {
+          "label": "crs.sxi",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": null,
+          "elementByteLength": null,
+          "points": []
+        },
+        {
+          "label": "crs.spsi",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": null,
+          "elementByteLength": null,
+          "points": []
+        },
+        {
+          "label": "crs.interface-query-keys",
+          "type": "CrsMetadata",
+          "encoding": "bytes",
+          "elementCount": null,
+          "elementByteLength": 12,
+          "points": []
+        },
+        {
+          "label": "crs.interface-queries",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": null,
+          "elementByteLength": null,
+          "points": []
+        },
+        {
+          "label": "crs.internal-query-keys",
+          "type": "CrsMetadata",
+          "encoding": "bytes",
+          "elementCount": null,
+          "elementByteLength": 12,
+          "points": []
+        },
+        {
+          "label": "crs.internal-queries",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": null,
+          "elementByteLength": null,
+          "points": []
+        },
+        {
+          "label": "crs.mask-u",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": 2,
+          "elementByteLength": null,
+          "points": []
+        },
+        {
+          "label": "crs.mask-v",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": 2,
+          "elementByteLength": null,
+          "points": []
+        },
+        {
+          "label": "crs.mask-w",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": 2,
+          "elementByteLength": null,
+          "points": []
+        },
+        {
+          "label": "crs.mask-b",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": 2,
+          "elementByteLength": null,
+          "points": []
+        },
+        {
+          "label": "crs.binding-sources",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": 2,
+          "elementByteLength": null,
+          "points": [
+            {
+              "index": 0,
+              "name": "delta"
+            },
+            {
+              "index": 1,
+              "name": "eta"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "univariate_v2_verifier_crs",
+      "sections": [
+        {
+          "label": "crs.capacity",
+          "type": "CrsMetadata",
+          "encoding": "bytes",
+          "elementCount": 4,
+          "elementByteLength": 8,
+          "points": [
+            {
+              "index": 0,
+              "name": "M0"
+            },
+            {
+              "index": 1,
+              "name": "Mxi"
+            },
+            {
+              "index": 2,
+              "name": "Mpsi"
+            },
+            {
+              "index": 3,
+              "name": "K"
+            }
+          ]
+        },
+        {
+          "label": "crs.g1-handles",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": 3,
+          "elementByteLength": null,
+          "points": [
+            {
+              "index": 0,
+              "name": "one"
+            },
+            {
+              "index": 1,
+              "name": "xi"
+            },
+            {
+              "index": 2,
+              "name": "psi"
+            }
+          ]
+        },
+        {
+          "label": "crs.public-query-keys",
+          "type": "CrsMetadata",
+          "encoding": "bytes",
+          "elementCount": null,
+          "elementByteLength": 8,
+          "points": []
+        },
+        {
+          "label": "crs.public-queries",
+          "type": "CrsG1",
+          "encoding": "ffjs-g1-affine-96",
+          "elementCount": null,
+          "elementByteLength": null,
+          "points": []
+        },
+        {
+          "label": "crs.g2",
+          "type": "CrsG2",
+          "encoding": "ffjs-g2-affine-192",
+          "elementCount": 6,
+          "elementByteLength": null,
+          "points": [
+            {
+              "index": 0,
+              "name": "one"
+            },
+            {
+              "index": 1,
+              "name": "tau"
+            },
+            {
+              "index": 2,
+              "name": "tauK"
+            },
+            {
+              "index": 3,
+              "name": "gamma"
+            },
+            {
+              "index": 4,
+              "name": "eta"
+            },
+            {
+              "index": 5,
+              "name": "delta"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "univariate_v2_verifier_preprocess",
       "sections": [
         {
           "label": "preprocess.g1",

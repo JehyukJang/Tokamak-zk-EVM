@@ -131,7 +131,7 @@ mod tests {
         );
         assert_eq!(
             provenance["protocolSchemaId"],
-            "tokamak-zk-evm-univariate-v1"
+            "tokamak-zk-evm-univariate-v2"
         );
         assert_eq!(provenance["releaseEligible"], false);
     }

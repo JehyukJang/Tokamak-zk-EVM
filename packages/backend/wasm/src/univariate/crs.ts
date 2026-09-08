@@ -3,9 +3,9 @@ import type { BinarySectionView } from "../artifacts/binary/binary-format.js";
 import { BinaryArtifactFileKind } from "../artifacts/binary/binary-format.js";
 import { admitRuntimeBinaryArtifact } from "../artifacts/binary/runtime-admission.js";
 import {
-  UNIVARIATE_PREPROCESS_CRS_V1_SPEC,
-  UNIVARIATE_PROVER_CRS_V1_SPEC,
-  UNIVARIATE_VERIFIER_CRS_V1_SPEC,
+  UNIVARIATE_V2_PREPROCESS_CRS_V1_SPEC,
+  UNIVARIATE_V2_PROVER_CRS_V1_SPEC,
+  UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC,
 } from "../generated/browser-artifact-contracts.generated.js";
 
 export interface TaggedQueryKey {
@@ -31,25 +31,32 @@ export interface UnivariateQueryRange<Key> {
 }
 
 export interface UnivariatePreprocessCrsRuntime {
-  readonly kzgPowers: BinarySectionView;
+  readonly s0: BinarySectionView;
 }
 
 export interface UnivariateProverCrsRuntime {
-  readonly kzgPowers: BinarySectionView;
+  readonly declaredCapacity: readonly [bigint, bigint, bigint];
+  readonly k: bigint;
+  readonly s0: BinarySectionView;
+  readonly sxi: BinarySectionView;
+  readonly spsi: BinarySectionView;
   readonly interfaceQueries: UnivariateQueryRange<TaggedQueryKey>;
   readonly internalQueries: UnivariateQueryRange<TaggedQueryKey>;
-  readonly arithmeticMasks: readonly [BinarySectionView, BinarySectionView, BinarySectionView];
-  readonly connectionMask: BinarySectionView;
+  readonly masks: readonly [BinarySectionView, BinarySectionView, BinarySectionView, BinarySectionView];
   readonly deltaG1: Uint8Array;
   readonly etaG1: Uint8Array;
 }
 
 export interface UnivariateVerifierCrsRuntime {
+  readonly declaredCapacity: readonly [bigint, bigint, bigint];
+  readonly k: bigint;
   readonly oneG1: Uint8Array;
+  readonly xiG1: Uint8Array;
+  readonly psiG1: Uint8Array;
   readonly publicQueries: UnivariateQueryRange<PublicQueryKey>;
   readonly oneG2: Uint8Array;
   readonly tauG2: Uint8Array;
-  readonly alphaG2: readonly [Uint8Array, Uint8Array, Uint8Array, Uint8Array];
+  readonly tauKG2: Uint8Array;
   readonly gammaG2: Uint8Array;
   readonly etaG2: Uint8Array;
   readonly deltaG2: Uint8Array;
@@ -59,40 +66,45 @@ export interface UnivariateVerifierCrsRuntime {
 export function parseUnivariatePreprocessCrs(bytes: Uint8Array): UnivariatePreprocessCrsRuntime {
   const artifact = admitRuntimeBinaryArtifact(
     bytes,
-    BinaryArtifactFileKind.UnivariatePreprocessCrs,
-    UNIVARIATE_PREPROCESS_CRS_V1_SPEC,
+    BinaryArtifactFileKind.UnivariateV2PreprocessCrs,
+    UNIVARIATE_V2_PREPROCESS_CRS_V1_SPEC,
   );
-  return { kzgPowers: requireSection(artifact, UNIVARIATE_PREPROCESS_CRS_V1_SPEC.sections[0]) };
+  return { s0: requireSection(artifact, UNIVARIATE_V2_PREPROCESS_CRS_V1_SPEC.sections[0]) };
 }
 
 /** Admits only the new prover CRS artifact kind and preserves query ranges zero-copy. */
 export function parseUnivariateProverCrs(bytes: Uint8Array): UnivariateProverCrsRuntime {
   const artifact = admitRuntimeBinaryArtifact(
     bytes,
-    BinaryArtifactFileKind.UnivariateProverCrs,
-    UNIVARIATE_PROVER_CRS_V1_SPEC,
+    BinaryArtifactFileKind.UnivariateV2ProverCrs,
+    UNIVARIATE_V2_PROVER_CRS_V1_SPEC,
   );
-  const sections = UNIVARIATE_PROVER_CRS_V1_SPEC.sections;
+  const sections = UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections;
   const interfaceQueries = taggedQueryRange(
-    requireSection(artifact, sections[1]),
-    requireSection(artifact, sections[2]),
+    requireSection(artifact, sections[4]),
+    requireSection(artifact, sections[5]),
   );
   const internalQueries = taggedQueryRange(
-    requireSection(artifact, sections[3]),
-    requireSection(artifact, sections[4]),
+    requireSection(artifact, sections[6]),
+    requireSection(artifact, sections[7]),
   );
-  const bindingSources = requireSection(artifact, sections[9]);
+  const bindingSources = requireSection(artifact, sections[12]);
+  const capacity = parseCapacity(requireSection(artifact, sections[0]));
 
   return {
-    kzgPowers: requireSection(artifact, sections[0]),
+    declaredCapacity: capacity.declaredCapacity,
+    k: capacity.k,
+    s0: requireSection(artifact, sections[1]),
+    sxi: requireSection(artifact, sections[2]),
+    spsi: requireSection(artifact, sections[3]),
     interfaceQueries,
     internalQueries,
-    arithmeticMasks: [
-      requireSection(artifact, sections[5]),
-      requireSection(artifact, sections[6]),
-      requireSection(artifact, sections[7]),
+    masks: [
+      requireSection(artifact, sections[8]),
+      requireSection(artifact, sections[9]),
+      requireSection(artifact, sections[10]),
+      requireSection(artifact, sections[11]),
     ],
-    connectionMask: requireSection(artifact, sections[8]),
     deltaG1: pointAt(bindingSources, 0),
     etaG1: pointAt(bindingSources, 1),
   };
@@ -102,25 +114,43 @@ export function parseUnivariateProverCrs(bytes: Uint8Array): UnivariateProverCrs
 export function parseUnivariateVerifierCrs(bytes: Uint8Array): UnivariateVerifierCrsRuntime {
   const artifact = admitRuntimeBinaryArtifact(
     bytes,
-    BinaryArtifactFileKind.UnivariateVerifierCrs,
-    UNIVARIATE_VERIFIER_CRS_V1_SPEC,
+    BinaryArtifactFileKind.UnivariateV2VerifierCrs,
+    UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC,
   );
-  const sections = UNIVARIATE_VERIFIER_CRS_V1_SPEC.sections;
-  const g2 = requireSection(artifact, sections[3]);
+  const sections = UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC.sections;
+  const g1 = requireSection(artifact, sections[1]);
+  const g2 = requireSection(artifact, sections[4]);
+  const capacity = parseCapacity(requireSection(artifact, sections[0]));
 
   return {
-    oneG1: pointAt(requireSection(artifact, sections[0]), 0),
+    declaredCapacity: capacity.declaredCapacity,
+    k: capacity.k,
+    oneG1: pointAt(g1, 0),
+    xiG1: pointAt(g1, 1),
+    psiG1: pointAt(g1, 2),
     publicQueries: publicQueryRange(
-      requireSection(artifact, sections[1]),
       requireSection(artifact, sections[2]),
+      requireSection(artifact, sections[3]),
     ),
     oneG2: pointAt(g2, 0),
     tauG2: pointAt(g2, 1),
-    alphaG2: [pointAt(g2, 2), pointAt(g2, 3), pointAt(g2, 4), pointAt(g2, 5)],
-    gammaG2: pointAt(g2, 6),
-    etaG2: pointAt(g2, 7),
-    deltaG2: pointAt(g2, 8),
+    tauKG2: pointAt(g2, 2),
+    gammaG2: pointAt(g2, 3),
+    etaG2: pointAt(g2, 4),
+    deltaG2: pointAt(g2, 5),
   };
+}
+
+function parseCapacity(section: BinarySectionView): {
+  readonly declaredCapacity: readonly [bigint, bigint, bigint];
+  readonly k: bigint;
+} {
+  if (section.elementCount !== 4 || section.elementByteLength !== 8 || section.byteLength !== 32) {
+    throw new Error("univariate CRS capacity metadata has an invalid layout.");
+  }
+  const view = new DataView(section.data.buffer, section.data.byteOffset, section.data.byteLength);
+  const declaredCapacity = [view.getBigUint64(0, true), view.getBigUint64(8, true), view.getBigUint64(16, true)] as const;
+  return { declaredCapacity, k: view.getBigUint64(24, true) };
 }
 
 function taggedQueryRange(keys: BinarySectionView, points: BinarySectionView): UnivariateQueryRange<TaggedQueryKey> {
