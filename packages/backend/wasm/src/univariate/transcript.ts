@@ -2,7 +2,7 @@ import { keccak256 } from "../runtime/crypto/keccak.js";
 import type { FieldElement, FieldRuntime } from "../runtime/field/field-types.js";
 
 const TEXT_ENCODER = new TextEncoder();
-export const UNIVARIATE_FIAT_SHAMIR_SCHEMA_ID = "tokamak-zk-evm-univariate-fs-v3";
+export const UNIVARIATE_FIAT_SHAMIR_SCHEMA_ID = "tokamak-zk-evm-univariate-fs";
 const TRANSCRIPT_DOMAIN = TEXT_ENCODER.encode(UNIVARIATE_FIAT_SHAMIR_SCHEMA_ID);
 
 /** Builds the type-tagged, length-prefixed F2--F4 encoding. */

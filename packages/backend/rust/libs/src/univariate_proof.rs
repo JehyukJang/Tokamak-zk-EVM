@@ -8,15 +8,10 @@ use crate::field_structures::FieldSerde;
 use crate::group_structures::G1serde;
 use serde::{Deserialize, Serialize};
 
-/// Serialization identifier for proofs using F1's fixed-verifier-configuration
-/// Fiat--Shamir schedule. The U18--U35 CRS retains its independent V2 schema.
-pub const UNIVARIATE_PROOF_SCHEMA_ID: &str = "tokamak-zk-evm-univariate-proof-v3";
-
 /// The six prover-message blocks serialized by F5.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UnivariateProof {
-    pub proof_schema_id: String,
     /// F1 `a_1`: typed witness commitments and two private bindings.
     pub c_u: G1serde,
     pub c_v: G1serde,
@@ -44,10 +39,6 @@ pub struct UnivariateProof {
 }
 
 impl UnivariateProof {
-    pub fn has_proof_schema(&self) -> bool {
-        self.proof_schema_id == UNIVARIATE_PROOF_SCHEMA_ID
-    }
-
     pub fn g1_element_count(&self) -> usize {
         11
     }
@@ -62,7 +53,6 @@ mod tests {
     use super::UnivariateProof;
     use crate::field_structures::FieldSerde;
     use crate::group_structures::G1serde;
-    use crate::univariate_proof::UNIVARIATE_PROOF_SCHEMA_ID;
     use icicle_bls12_381::curve::ScalarField;
     use icicle_core::traits::FieldImpl;
 
@@ -70,7 +60,6 @@ mod tests {
     fn f5_wire_object_has_exact_protocol_cardinality() {
         let scalar = FieldSerde(ScalarField::one());
         let proof = UnivariateProof {
-            proof_schema_id: UNIVARIATE_PROOF_SCHEMA_ID.to_string(),
             c_u: G1serde::zero(),
             c_v: G1serde::zero(),
             c_w: G1serde::zero(),
@@ -92,13 +81,9 @@ mod tests {
             pi_zeta: G1serde::zero(),
             pi_plus: G1serde::zero(),
         };
-        assert!(proof.has_proof_schema());
-        let mut legacy = proof.clone();
-        legacy.proof_schema_id = "tokamak-zk-evm-univariate-v2".to_string();
-        assert!(!legacy.has_proof_schema());
         assert_eq!(proof.g1_element_count(), 11);
         assert_eq!(proof.scalar_element_count(), 9);
         let encoded = serde_json::to_value(&proof).expect("U54 proof must serialize");
-        assert_eq!(encoded.as_object().expect("proof JSON object").len(), 21);
+        assert_eq!(encoded.as_object().expect("proof JSON object").len(), 20);
     }
 }

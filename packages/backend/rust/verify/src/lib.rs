@@ -44,10 +44,7 @@ pub fn verify_univariate_proof(
     public_inputs: &[ScalarField],
     proof: &UnivariateProof,
 ) -> bool {
-    if crs.foundation.schema_id != libs::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID
-        || !preprocess.validates_protocol_schema()
-        || !proof.has_proof_schema()
-    {
+    if crs.foundation.schema_id != libs::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID {
         return false;
     }
     let shape = &crs.foundation.shape;

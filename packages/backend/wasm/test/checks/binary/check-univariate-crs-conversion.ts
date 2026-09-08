@@ -2,9 +2,9 @@ import { decodeBinaryArtifactFile } from "../../../src/artifacts/binary/binary-a
 import { BinaryArtifactFileKind } from "../../../src/artifacts/binary/binary-format.js";
 import { assertBinaryArtifactShape } from "../../../src/artifacts/binary/structural-validation.js";
 import {
-  UNIVARIATE_V2_PREPROCESS_CRS_V1_SPEC,
-  UNIVARIATE_V2_PROVER_CRS_V1_SPEC,
-  UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC,
+  UNIVARIATE_PREPROCESS_CRS_V1_SPEC,
+  UNIVARIATE_PROVER_CRS_V1_SPEC,
+  UNIVARIATE_VERIFIER_CRS_V1_SPEC,
 } from "../../../src/generated/browser-artifact-contracts.generated.js";
 import { convertUnivariateCrs } from "../../../src/converter/conversion/univariate-crs-converter.js";
 import { withCurveRuntime } from "../../../src/converter/conversion/conversion-runtime.js";
@@ -19,7 +19,7 @@ async function main(): Promise<void> {
     const g1 = runtime.G1.formatAffine(runtime.G1.generator);
     const g2 = runtime.G2.formatAffine(runtime.G2.generator);
     return {
-      schemaId: "tokamak-zk-evm-univariate-v2",
+      schemaId: "tokamak-zk-evm-univariate",
       shape: { declaredCapacity: [1, 1, 1], k: 1 },
       s0G1: [g1, g1],
       sxiG1: [g1, g1],
@@ -51,18 +51,18 @@ async function main(): Promise<void> {
 
   checkArtifact(
     artifacts.preprocessCrs,
-    BinaryArtifactFileKind.UnivariateV2PreprocessCrs,
-    UNIVARIATE_V2_PREPROCESS_CRS_V1_SPEC,
+    BinaryArtifactFileKind.UnivariatePreprocessCrs,
+    UNIVARIATE_PREPROCESS_CRS_V1_SPEC,
   );
   checkArtifact(
     artifacts.proverCrs,
-    BinaryArtifactFileKind.UnivariateV2ProverCrs,
-    UNIVARIATE_V2_PROVER_CRS_V1_SPEC,
+    BinaryArtifactFileKind.UnivariateProverCrs,
+    UNIVARIATE_PROVER_CRS_V1_SPEC,
   );
   checkArtifact(
     artifacts.verifierCrs,
-    BinaryArtifactFileKind.UnivariateV2VerifierCrs,
-    UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC,
+    BinaryArtifactFileKind.UnivariateVerifierCrs,
+    UNIVARIATE_VERIFIER_CRS_V1_SPEC,
   );
 
   if (parseUnivariatePreprocessCrs(artifacts.preprocessCrs).s0.elementCount !== 2) {
@@ -96,7 +96,7 @@ async function main(): Promise<void> {
     () => convertUnivariateCrs({ ...fixture, schemaId: "legacy-sigma" }),
     "supported univariate schema",
   );
-  console.log("Checked role-specific U18--U22 browser CRS conversion and legacy-schema rejection");
+  console.log("Checked role-specific U18--U22 browser CRS conversion");
 }
 
 function checkArtifact(

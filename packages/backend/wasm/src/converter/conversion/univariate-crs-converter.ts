@@ -1,9 +1,9 @@
 import { createBinaryArtifactFile } from "../../artifacts/binary/binary-artifact-file.js";
 import type { BinarySectionInput } from "../../artifacts/binary/binary-format.js";
 import {
-  UNIVARIATE_V2_PREPROCESS_CRS_V1_SPEC,
-  UNIVARIATE_V2_PROVER_CRS_V1_SPEC,
-  UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC,
+  UNIVARIATE_PREPROCESS_CRS_V1_SPEC,
+  UNIVARIATE_PROVER_CRS_V1_SPEC,
+  UNIVARIATE_VERIFIER_CRS_V1_SPEC,
 } from "../../generated/browser-artifact-contracts.generated.js";
 import { concatBytes } from "../../runtime/bytes.js";
 import type { CurveRuntime } from "../../runtime/curve/curve.js";
@@ -13,7 +13,7 @@ import { withCurveRuntime } from "./conversion-runtime.js";
 import { isRecord, parseU32 } from "./conversion-utils.js";
 import type { ConvertedCrs } from "./types.js";
 
-const UNIVARIATE_CRS_SCHEMA_ID = "tokamak-zk-evm-univariate-v2";
+const UNIVARIATE_CRS_SCHEMA_ID = "tokamak-zk-evm-univariate";
 const G2_AFFINE_BYTES = 192;
 
 interface TaggedQuery {
@@ -114,53 +114,53 @@ export async function convertUnivariateCrs(crs: unknown): Promise<ConvertedCrs> 
 
     const sourcePackageVersion = BACKEND_WASM_PACKAGE_VERSION;
     const preprocessCrs = await createBinaryArtifactFile({
-      kind: UNIVARIATE_V2_PREPROCESS_CRS_V1_SPEC.kind,
+      kind: UNIVARIATE_PREPROCESS_CRS_V1_SPEC.kind,
       sourcePackageVersion,
-      sections: [pointSection(UNIVARIATE_V2_PREPROCESS_CRS_V1_SPEC.sections[0], s0, G1_AFFINE_BYTES)],
+      sections: [pointSection(UNIVARIATE_PREPROCESS_CRS_V1_SPEC.sections[0], s0, G1_AFFINE_BYTES)],
     });
     const proverCrs = await createBinaryArtifactFile({
-      kind: UNIVARIATE_V2_PROVER_CRS_V1_SPEC.kind,
+      kind: UNIVARIATE_PROVER_CRS_V1_SPEC.kind,
       sourcePackageVersion,
       sections: [
-        metadataSection(UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[0], encodeCapacity(parsed), 4, 8),
-        pointSection(UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[1], s0, G1_AFFINE_BYTES),
-        pointSection(UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[2], sxi, G1_AFFINE_BYTES),
-        pointSection(UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[3], spsi, G1_AFFINE_BYTES),
+        metadataSection(UNIVARIATE_PROVER_CRS_V1_SPEC.sections[0], encodeCapacity(parsed), 4, 8),
+        pointSection(UNIVARIATE_PROVER_CRS_V1_SPEC.sections[1], s0, G1_AFFINE_BYTES),
+        pointSection(UNIVARIATE_PROVER_CRS_V1_SPEC.sections[2], sxi, G1_AFFINE_BYTES),
+        pointSection(UNIVARIATE_PROVER_CRS_V1_SPEC.sections[3], spsi, G1_AFFINE_BYTES),
         metadataSection(
-          UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[4],
+          UNIVARIATE_PROVER_CRS_V1_SPEC.sections[4],
           encodeTaggedQueryKeys(parsed.etaInvInterfaceQueries),
           parsed.etaInvInterfaceQueries.length,
           12,
         ),
-        pointSection(UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[5], interfaceQueries, G1_AFFINE_BYTES),
+        pointSection(UNIVARIATE_PROVER_CRS_V1_SPEC.sections[5], interfaceQueries, G1_AFFINE_BYTES),
         metadataSection(
-          UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[6],
+          UNIVARIATE_PROVER_CRS_V1_SPEC.sections[6],
           encodeTaggedQueryKeys(parsed.deltaInvInternalQueries),
           parsed.deltaInvInternalQueries.length,
           12,
         ),
-        pointSection(UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[7], internalQueries, G1_AFFINE_BYTES),
-        pointSection(UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[8], masks[0], G1_AFFINE_BYTES),
-        pointSection(UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[9], masks[1], G1_AFFINE_BYTES),
-        pointSection(UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[10], masks[2], G1_AFFINE_BYTES),
-        pointSection(UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[11], masks[3], G1_AFFINE_BYTES),
-        pointSection(UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections[12], bindingSources, G1_AFFINE_BYTES),
+        pointSection(UNIVARIATE_PROVER_CRS_V1_SPEC.sections[7], internalQueries, G1_AFFINE_BYTES),
+        pointSection(UNIVARIATE_PROVER_CRS_V1_SPEC.sections[8], masks[0], G1_AFFINE_BYTES),
+        pointSection(UNIVARIATE_PROVER_CRS_V1_SPEC.sections[9], masks[1], G1_AFFINE_BYTES),
+        pointSection(UNIVARIATE_PROVER_CRS_V1_SPEC.sections[10], masks[2], G1_AFFINE_BYTES),
+        pointSection(UNIVARIATE_PROVER_CRS_V1_SPEC.sections[11], masks[3], G1_AFFINE_BYTES),
+        pointSection(UNIVARIATE_PROVER_CRS_V1_SPEC.sections[12], bindingSources, G1_AFFINE_BYTES),
       ],
     });
     const verifierCrs = await createBinaryArtifactFile({
-      kind: UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC.kind,
+      kind: UNIVARIATE_VERIFIER_CRS_V1_SPEC.kind,
       sourcePackageVersion,
       sections: [
-        metadataSection(UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC.sections[0], encodeCapacity(parsed), 4, 8),
-        pointSection(UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC.sections[1], [s0[0], sxi[0], spsi[0]], G1_AFFINE_BYTES),
+        metadataSection(UNIVARIATE_VERIFIER_CRS_V1_SPEC.sections[0], encodeCapacity(parsed), 4, 8),
+        pointSection(UNIVARIATE_VERIFIER_CRS_V1_SPEC.sections[1], [s0[0], sxi[0], spsi[0]], G1_AFFINE_BYTES),
         metadataSection(
-          UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC.sections[2],
+          UNIVARIATE_VERIFIER_CRS_V1_SPEC.sections[2],
           encodePublicQueryKeys(parsed.gammaInvPublicQueries),
           parsed.gammaInvPublicQueries.length,
           8,
         ),
-        pointSection(UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC.sections[3], publicQueries, G1_AFFINE_BYTES),
-        pointSection(UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC.sections[4], verifierG2, G2_AFFINE_BYTES),
+        pointSection(UNIVARIATE_VERIFIER_CRS_V1_SPEC.sections[3], publicQueries, G1_AFFINE_BYTES),
+        pointSection(UNIVARIATE_VERIFIER_CRS_V1_SPEC.sections[4], verifierG2, G2_AFFINE_BYTES),
       ],
     });
 

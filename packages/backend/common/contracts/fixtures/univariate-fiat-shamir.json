@@ -1,0 +1,14 @@
+{
+  "schemaId": "tokamak-zk-evm-univariate-fs",
+  "publicInputs": ["7", "11"],
+  "messageBlocks": [
+    { "index": 1, "value": "a1" },
+    { "index": 2, "value": "a2" }
+  ],
+  "challenges": {
+    "upsilon": "0x6401c3969c7d338b4d3e653d7adedb87d8369416f35d308ae204972fcb7739c0",
+    "beta": "0x23899a4b637ed5b46306e7e40449685f94ea0c0e71f01ec0784449b20f9b128d",
+    "gammaC": "0x432512a7c368feb025aca58cb2b22f9279fedda08520a0f392f84bf6570ca481",
+    "theta": "0x6f4e0f089febf03dacaf03dc5a8ea0e1933e1f40a726bb1019c7cbc912d5e561"
+  }
+}

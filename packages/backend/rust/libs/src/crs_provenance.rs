@@ -461,7 +461,7 @@ mod tests {
         let univariate = CrsProvenance::DevelopmentTrustedSetupUnivariateCrs(
             DevelopmentTrustedSetupUnivariateCrsProvenance {
                 release_eligible: DevelopmentOnlyReleaseEligibility,
-                protocol_schema_id: "tokamak-zk-evm-univariate-v2".to_string(),
+                protocol_schema_id: "tokamak-zk-evm-univariate".to_string(),
                 univariate_crs_rkyv_sha256: "0".repeat(64),
                 univariate_crs_json_sha256: "1".repeat(64),
             },

@@ -14,7 +14,7 @@ use libs::univariate_crs::{
     UnivariateTaggedQuery,
 };
 use libs::univariate_polynomial::{DenseUnivariatePolynomial, UnivariatePolynomialError};
-use libs::univariate_proof::{UnivariateProof, UNIVARIATE_PROOF_SCHEMA_ID};
+use libs::univariate_proof::UnivariateProof;
 use libs::univariate_relation::{DenseDomainPolynomial, StridedPolynomial, WitnessMaps};
 use libs::univariate_transcript::{
     encode_evaluation_message_block, encode_g1_message_block, UnivariateChallenges,
@@ -223,7 +223,6 @@ pub fn assemble_univariate_proof(
             )? * factors[index];
     }
     Ok(UnivariateProof {
-        proof_schema_id: UNIVARIATE_PROOF_SCHEMA_ID.to_string(),
         c_u,
         c_v,
         c_w,
@@ -312,7 +311,6 @@ pub fn prove_univariate_reference(
         zeta,
     )?;
     let provisional_proof = UnivariateProof {
-        proof_schema_id: UNIVARIATE_PROOF_SCHEMA_ID.to_string(),
         c_u,
         c_v,
         c_w,

@@ -129,10 +129,7 @@ mod tests {
             provenance["documentKind"],
             "developmentTrustedSetupUnivariateCrs"
         );
-        assert_eq!(
-            provenance["protocolSchemaId"],
-            "tokamak-zk-evm-univariate-v2"
-        );
+        assert_eq!(provenance["protocolSchemaId"], "tokamak-zk-evm-univariate");
         assert_eq!(provenance["releaseEligible"], false);
     }
 }

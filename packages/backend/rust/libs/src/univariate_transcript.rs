@@ -12,7 +12,7 @@ use icicle_bls12_381::curve::ScalarField;
 use icicle_core::traits::{Arithmetic, FieldImpl};
 use tiny_keccak::Keccak;
 
-pub const UNIVARIATE_FIAT_SHAMIR_SCHEMA_ID: &str = "tokamak-zk-evm-univariate-fs-v3";
+pub const UNIVARIATE_FIAT_SHAMIR_SCHEMA_ID: &str = "tokamak-zk-evm-univariate-fs";
 const TRANSCRIPT_DOMAIN: &[u8] = UNIVARIATE_FIAT_SHAMIR_SCHEMA_ID.as_bytes();
 
 /// The six F3 challenges in their protocol order.

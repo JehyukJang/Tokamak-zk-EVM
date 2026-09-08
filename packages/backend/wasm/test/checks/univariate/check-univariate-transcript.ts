@@ -20,7 +20,7 @@ interface Fixture {
 }
 
 const fixture = JSON.parse(
-  await readFile(new URL("../../../../common/contracts/fixtures/univariate-fiat-shamir.v3.json", import.meta.url), "utf8"),
+  await readFile(new URL("../../../../common/contracts/fixtures/univariate-fiat-shamir.json", import.meta.url), "utf8"),
 ) as Fixture;
 assert.equal(fixture.schemaId, UNIVARIATE_FIAT_SHAMIR_SCHEMA_ID);
 

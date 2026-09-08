@@ -45,7 +45,7 @@ const contract = {
         "properties": {
           "documentKind": { "const": "developmentTrustedSetupUnivariateCrs" },
           "releaseEligible": { "const": false },
-          "protocolSchemaId": { "const": "tokamak-zk-evm-univariate-v2" },
+          "protocolSchemaId": { "const": "tokamak-zk-evm-univariate" },
           "univariateCrsRkyvSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
           "univariateCrsJsonSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
         }

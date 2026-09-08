@@ -196,6 +196,5 @@ mod tests {
             .unwrap(),
         );
         assert_eq!(actual, expected);
-        assert!(actual.validates_protocol_schema());
     }
 }

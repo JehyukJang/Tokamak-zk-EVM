@@ -3,9 +3,9 @@ import type { BinarySectionView } from "../artifacts/binary/binary-format.js";
 import { BinaryArtifactFileKind } from "../artifacts/binary/binary-format.js";
 import { admitRuntimeBinaryArtifact } from "../artifacts/binary/runtime-admission.js";
 import {
-  UNIVARIATE_V2_PREPROCESS_CRS_V1_SPEC,
-  UNIVARIATE_V2_PROVER_CRS_V1_SPEC,
-  UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC,
+  UNIVARIATE_PREPROCESS_CRS_V1_SPEC,
+  UNIVARIATE_PROVER_CRS_V1_SPEC,
+  UNIVARIATE_VERIFIER_CRS_V1_SPEC,
 } from "../generated/browser-artifact-contracts.generated.js";
 
 export interface TaggedQueryKey {
@@ -66,20 +66,20 @@ export interface UnivariateVerifierCrsRuntime {
 export function parseUnivariatePreprocessCrs(bytes: Uint8Array): UnivariatePreprocessCrsRuntime {
   const artifact = admitRuntimeBinaryArtifact(
     bytes,
-    BinaryArtifactFileKind.UnivariateV2PreprocessCrs,
-    UNIVARIATE_V2_PREPROCESS_CRS_V1_SPEC,
+    BinaryArtifactFileKind.UnivariatePreprocessCrs,
+    UNIVARIATE_PREPROCESS_CRS_V1_SPEC,
   );
-  return { s0: requireSection(artifact, UNIVARIATE_V2_PREPROCESS_CRS_V1_SPEC.sections[0]) };
+  return { s0: requireSection(artifact, UNIVARIATE_PREPROCESS_CRS_V1_SPEC.sections[0]) };
 }
 
 /** Admits only the new prover CRS artifact kind and preserves query ranges zero-copy. */
 export function parseUnivariateProverCrs(bytes: Uint8Array): UnivariateProverCrsRuntime {
   const artifact = admitRuntimeBinaryArtifact(
     bytes,
-    BinaryArtifactFileKind.UnivariateV2ProverCrs,
-    UNIVARIATE_V2_PROVER_CRS_V1_SPEC,
+    BinaryArtifactFileKind.UnivariateProverCrs,
+    UNIVARIATE_PROVER_CRS_V1_SPEC,
   );
-  const sections = UNIVARIATE_V2_PROVER_CRS_V1_SPEC.sections;
+  const sections = UNIVARIATE_PROVER_CRS_V1_SPEC.sections;
   const interfaceQueries = taggedQueryRange(
     requireSection(artifact, sections[4]),
     requireSection(artifact, sections[5]),
@@ -114,10 +114,10 @@ export function parseUnivariateProverCrs(bytes: Uint8Array): UnivariateProverCrs
 export function parseUnivariateVerifierCrs(bytes: Uint8Array): UnivariateVerifierCrsRuntime {
   const artifact = admitRuntimeBinaryArtifact(
     bytes,
-    BinaryArtifactFileKind.UnivariateV2VerifierCrs,
-    UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC,
+    BinaryArtifactFileKind.UnivariateVerifierCrs,
+    UNIVARIATE_VERIFIER_CRS_V1_SPEC,
   );
-  const sections = UNIVARIATE_V2_VERIFIER_CRS_V1_SPEC.sections;
+  const sections = UNIVARIATE_VERIFIER_CRS_V1_SPEC.sections;
   const g1 = requireSection(artifact, sections[1]);
   const g2 = requireSection(artifact, sections[4]);
   const capacity = parseCapacity(requireSection(artifact, sections[0]));

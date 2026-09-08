@@ -18,7 +18,7 @@ use thiserror::Error;
 
 /// The sole schema identifier for the new univariate artifact family.
 /// Its public-query layout is fixed by resolved public-buffer metadata.
-pub const UNIVARIATE_CRS_SCHEMA_ID: &str = "tokamak-zk-evm-univariate-v2";
+pub const UNIVARIATE_CRS_SCHEMA_ID: &str = "tokamak-zk-evm-univariate";
 
 #[derive(Debug, Error)]
 pub enum UnivariateCrsError {
@@ -1269,17 +1269,7 @@ mod tests {
         )
         .expect("a matching univariate CRS archive must load");
         assert_eq!(loaded, crs);
-        let mut legacy_schema = UnivariateCrsRkyv::from_univariate_crs(&crs);
-        legacy_schema.schema_id = "tokamak-zk-evm-univariate-v1".to_string();
-        let bytes = rkyv::to_bytes::<_, 256>(&legacy_schema).expect("archive must serialize");
         let path = output.path().join(UNIVARIATE_CRS_RKYV_FILE_NAME);
-        std::fs::write(&path, bytes.as_ref()).expect("must write legacy CRS archive");
-        assert!(
-            read_univariate_crs_artifact(&path, &setup, &public_layout, &subcircuits)
-                .expect_err("the reader must reject the old schema")
-                .to_string()
-                .contains("supported univariate schema")
-        );
         let mut archive = UnivariateCrsRkyv::from_univariate_crs(&crs);
         archive.eta_inv_interface_queries[0].placement_index = 1;
         let bytes = rkyv::to_bytes::<_, 256>(&archive).expect("archive must serialize");
