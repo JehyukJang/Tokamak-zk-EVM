@@ -18,9 +18,10 @@ const library = (
   sMax: number,
   globalWireList: readonly (readonly [number, number])[],
   ids: readonly number[],
+  publicWireCount = globalWireList.length,
 ) => ({
   data: {
-    setupParams: { s_max: sMax },
+    setupParams: { s_max: sMax, l: publicWireCount },
     globalWireList,
     subcircuitInfo: ids.map((id) => ({ id })),
   },
@@ -65,6 +66,17 @@ describe('placement selector', () => {
       placementVariables,
       library(4, [[0, 0], [1, 0], [2, 0]], [0, 1, 2, 9]),
     )).toThrow('Public buffer 1 must occupy its matching placement index 1');
+  });
+
+  it('does not impose the public-buffer placement rule on non-public wires', () => {
+    const placements = [placement(0), placement(9), placement(2), placement(1)];
+    const placementVariables = placements.map(({ subcircuitId }) => variables(subcircuitId));
+
+    expect(derivePlacementSelector(
+      placements,
+      placementVariables,
+      library(4, [[0, 0], [1, 0], [2, 0]], [0, 1, 2, 9], 1),
+    )).toEqual([0, 9, 2, 1]);
   });
 
   it('serializes the selector as a primary JSON array', () => {

@@ -64,7 +64,9 @@ export function derivePlacementSelector(
   }
 
   const publicBufferIds = [...new Set(
-    globalWireList.flatMap(([subcircuitId]) => subcircuitId < 0 ? [] : [subcircuitId]),
+    globalWireList
+      .slice(0, setupParams.l)
+      .flatMap(([subcircuitId]) => subcircuitId < 0 ? [] : [subcircuitId]),
   )].sort((left, right) => left - right);
   for (const [bufferIndex, subcircuitId] of publicBufferIds.entries()) {
     if (subcircuitId !== bufferIndex) {
