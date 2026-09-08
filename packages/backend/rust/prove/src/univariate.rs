@@ -17,7 +17,8 @@ use libs::univariate_polynomial::{DenseUnivariatePolynomial, UnivariatePolynomia
 use libs::univariate_proof::{UnivariateProof, UNIVARIATE_PROOF_SCHEMA_ID};
 use libs::univariate_relation::{DenseDomainPolynomial, StridedPolynomial, WitnessMaps};
 use libs::univariate_transcript::{
-    CanonicalTranscriptEncoder, UnivariateChallenges, UnivariateTranscript,
+    encode_evaluation_message_block, encode_g1_message_block, UnivariateChallenges,
+    UnivariateTranscript,
 };
 use thiserror::Error;
 
@@ -276,11 +277,11 @@ pub fn prove_univariate_reference(
     let mut transcript = UnivariateTranscript::from_public_inputs(input.public_inputs);
     transcript.append_message_block(
         1,
-        &encode_g1_block("F2.a1", &[c_u, c_v, c_w, c_b, private.o_if, private.o_int]),
+        &encode_g1_message_block("F2.a1", &[c_u, c_v, c_w, c_b, private.o_if, private.o_int]),
     );
     let upsilon = transcript.challenge(1, 0);
     let c_d = c_w + c_b * upsilon;
-    transcript.append_message_block(2, &encode_g1_block("F2.a2", &[c_d]));
+    transcript.append_message_block(2, &encode_g1_message_block("F2.a2", &[c_d]));
     let (beta, gamma_c) = transcript.challenge_pair(2);
     let copy = build_masked_copy_relation(
         shape,
@@ -292,11 +293,11 @@ pub fn prove_univariate_reference(
         input.recursion_randomizer,
     )?;
     let c_r = commit(UnivariateCommitmentSource::S0, &copy.r_hat, 0)?;
-    transcript.append_message_block(3, &encode_g1_block("F2.a3", &[c_r]));
+    transcript.append_message_block(3, &encode_g1_message_block("F2.a3", &[c_r]));
     let theta = transcript.challenge(3, 0);
     let q_hat = combine_quotients(shape, &masked.q_a, &copy, theta)?;
     let c_q = commit(UnivariateCommitmentSource::S0, &q_hat, 0)?;
-    transcript.append_message_block(4, &encode_g1_block("F2.a4", &[c_q]));
+    transcript.append_message_block(4, &encode_g1_message_block("F2.a4", &[c_q]));
     let zeta = transcript.zeta(shape.arithmetic_domain_size, shape.connection_domain_size);
     let openings = build_opening_polynomials(
         shape,
@@ -310,14 +311,37 @@ pub fn prove_univariate_reference(
         &q_hat,
         zeta,
     )?;
-    transcript.append_message_block(5, &encode_evaluations(&openings.evaluations));
+    let provisional_proof = UnivariateProof {
+        proof_schema_id: UNIVARIATE_PROOF_SCHEMA_ID.to_string(),
+        c_u,
+        c_v,
+        c_w,
+        c_b,
+        o_if: private.o_if,
+        o_int: private.o_int,
+        c_d,
+        c_r,
+        c_q,
+        s_a: FieldSerde(openings.evaluations.s_a),
+        s_c: FieldSerde(openings.evaluations.s_c),
+        u: FieldSerde(openings.evaluations.u),
+        v: FieldSerde(openings.evaluations.v),
+        w: FieldSerde(openings.evaluations.w),
+        b: FieldSerde(openings.evaluations.b),
+        q_zeta: FieldSerde(openings.evaluations.q_zeta),
+        r: FieldSerde(openings.evaluations.r),
+        r_plus: FieldSerde(openings.evaluations.r_plus),
+        pi_zeta: G1serde::zero(),
+        pi_plus: G1serde::zero(),
+    };
+    transcript.append_message_block(5, &encode_evaluation_message_block(&provisional_proof));
     let varpi = transcript.challenge(5, 0);
     let proof = assemble_univariate_proof(
         input.crs, &masked, &private, &copy, &q_hat, &openings, upsilon, varpi,
     )?;
     transcript.append_message_block(
         6,
-        &encode_g1_block("F2.a6", &[proof.pi_zeta, proof.pi_plus]),
+        &encode_g1_message_block("F2.a6", &[proof.pi_zeta, proof.pi_plus]),
     );
     let mu = transcript.nonzero_challenge(6, 0);
     Ok((
@@ -332,28 +356,6 @@ pub fn prove_univariate_reference(
             mu,
         },
     ))
-}
-
-fn encode_g1_block(label: &str, points: &[G1serde]) -> Vec<u8> {
-    let mut encoder = CanonicalTranscriptEncoder::new().u32("count", points.len() as u32);
-    for (index, point) in points.iter().enumerate() {
-        encoder = encoder.g1(&format!("{label}.{index}"), point);
-    }
-    encoder.finish()
-}
-
-fn encode_evaluations(evaluations: &UnivariateEvaluations) -> Vec<u8> {
-    CanonicalTranscriptEncoder::new()
-        .scalar("sA", &evaluations.s_a)
-        .scalar("sC", &evaluations.s_c)
-        .scalar("u", &evaluations.u)
-        .scalar("v", &evaluations.v)
-        .scalar("w", &evaluations.w)
-        .scalar("b", &evaluations.b)
-        .scalar("qZeta", &evaluations.q_zeta)
-        .scalar("r", &evaluations.r)
-        .scalar("rPlus", &evaluations.r_plus)
-        .finish()
 }
 
 /// U25's single quotient.  The complementary vanishing factors belong to
@@ -432,16 +434,10 @@ pub fn project_public_binding_values(
     setup: &SetupParams,
     layout: &PublicWireLayout,
 ) -> Result<Vec<PublicWitnessValue>, UnivariateProverError> {
-    let values = instance
-        .a_pub_user
-        .iter()
-        .chain(instance.a_pub_block.iter())
-        .chain(instance.a_pub_function.iter())
-        .map(|value| ScalarField::from_hex(value.as_ref()))
-        .collect::<Vec<_>>();
-    if values.len() != setup.l || layout.len() != setup.l {
+    let values = collect_public_inputs(instance, setup)?;
+    if layout.len() != setup.l {
         return Err(UnivariateProverError::PublicInstanceLength {
-            actual: values.len(),
+            actual: layout.len(),
             expected: setup.l,
         });
     }
@@ -454,6 +450,29 @@ pub fn project_public_binding_values(
                 .map(|key| PublicWitnessValue { key, value })
         })
         .collect())
+}
+
+/// Returns F1's complete adaptive public statement in the synthesizer's
+/// canonical global-wire order. Free-public padding remains part of this
+/// vector even though it has no compressed U20 query.
+pub fn collect_public_inputs(
+    instance: &Instance,
+    setup: &SetupParams,
+) -> Result<Vec<ScalarField>, UnivariateProverError> {
+    let values = instance
+        .a_pub_user
+        .iter()
+        .chain(instance.a_pub_block.iter())
+        .chain(instance.a_pub_function.iter())
+        .map(|value| ScalarField::from_hex(value.as_ref()))
+        .collect::<Vec<_>>();
+    if values.len() != setup.l {
+        return Err(UnivariateProverError::PublicInstanceLength {
+            actual: values.len(),
+            expected: setup.l,
+        });
+    }
+    Ok(values)
 }
 
 /// Computes U26 from the already-admitted public projection.

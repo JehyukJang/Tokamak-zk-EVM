@@ -1,13 +1,13 @@
 use clap::Parser;
 use libs::cli::render_error;
 use libs::errors::{ArtifactError, CrsError};
-use std::fs::{self, File};
+use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use libs::crs_artifacts::{read_univariate_crs_artifact, UNIVARIATE_CRS_RKYV_FILE_NAME};
 use libs::frontend_artifacts::public_wire_layout::{read_global_wires, PublicWireLayout};
-use libs::frontend_artifacts::{Permutation, SubcircuitInfo};
+use libs::frontend_artifacts::{read_placement_selector, Permutation, SubcircuitInfo};
 use libs::r1cs::SubcircuitR1CS;
 use libs::subcircuit_library::SubcircuitLibraryArg;
 use libs::utils::{try_check_device, try_load_setup_params_from_qap_path};
@@ -136,8 +136,8 @@ fn run() -> Result<(), PreprocessError> {
             }
         })?;
     let selector_path = PathBuf::from(paths.synthesizer_path).join("selector.json");
-    let selector =
-        read_selector(&selector_path, setup_params.s_D).map_err(|source| ArtifactError::Read {
+    let selector = read_placement_selector(&selector_path, setup_params.s_max, setup_params.s_D)
+        .map_err(|source| ArtifactError::Read {
             artifact: "placement selector",
             path: selector_path,
             source,
@@ -168,27 +168,4 @@ fn run() -> Result<(), PreprocessError> {
     })?;
 
     Ok(())
-}
-
-fn read_selector(
-    path: &std::path::Path,
-    subcircuit_count: usize,
-) -> std::io::Result<Vec<Option<usize>>> {
-    const INACTIVE_SELECTOR_ENTRY: u32 = u32::MAX;
-    let values: Vec<u32> = serde_json::from_reader(File::open(path)?)?;
-    values
-        .into_iter()
-        .map(|value| {
-            if value == INACTIVE_SELECTOR_ENTRY {
-                return Ok(None);
-            }
-            let subcircuit_id = value as usize;
-            if subcircuit_id >= subcircuit_count {
-                return Err(std::io::Error::other(format!(
-                    "selector entry {value} is outside the {subcircuit_count}-entry subcircuit catalog"
-                )));
-            }
-            Ok(Some(subcircuit_id))
-        })
-        .collect()
 }

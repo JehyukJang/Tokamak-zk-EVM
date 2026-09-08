@@ -16,13 +16,15 @@ use libs::proof_protocol::{
 use libs::univariate_crs::UnivariateCrs;
 use libs::univariate_preprocess::UnivariatePreprocess;
 use libs::univariate_proof::UnivariateProof;
-use libs::univariate_transcript::UnivariateChallenges;
+use libs::univariate_transcript::derive_proof_challenges;
 use libs::utils::{
     prover_verifier_ntt_domain_size, try_init_ntt_domain, try_load_setup_params_from_qap_path,
     try_setup_shape, try_validate_setup_shape,
 };
 use std::path::PathBuf;
 use thiserror::Error;
+
+pub mod univariate_cli;
 
 pub struct VerifyInputPaths<'a> {
     pub qap_path: &'a str,
@@ -39,8 +41,8 @@ pub fn verify_univariate_proof(
     crs: &UnivariateCrs,
     preprocess: &UnivariatePreprocess,
     public_binding: G1serde,
+    public_inputs: &[ScalarField],
     proof: &UnivariateProof,
-    challenges: UnivariateChallenges,
 ) -> bool {
     if crs.foundation.schema_id != libs::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID
         || !preprocess.validates_protocol_schema()
@@ -49,6 +51,12 @@ pub fn verify_univariate_proof(
         return false;
     }
     let shape = &crs.foundation.shape;
+    let challenges = derive_proof_challenges(
+        public_inputs,
+        proof,
+        shape.arithmetic_domain_size,
+        shape.connection_domain_size,
+    );
     let zeta = challenges.zeta;
     if zeta == ScalarField::zero()
         || zeta.pow(shape.arithmetic_domain_size) == ScalarField::one()
@@ -150,6 +158,10 @@ pub enum VerifyError {
     Crs(#[from] CrsError),
     #[error(transparent)]
     Device(#[from] DeviceError),
+    #[error(transparent)]
+    UnivariateRelation(#[from] libs::univariate_relation::UnivariateRelationError),
+    #[error(transparent)]
+    UnivariateCrs(#[from] libs::univariate_crs::UnivariateCrsError),
     #[error("invalid {artifact} format at {}: {reason}", path.display())]
     InvalidFormat {
         artifact: &'static str,
@@ -163,7 +175,11 @@ pub enum VerifyError {
 impl CliDiagnostic for VerifyError {
     fn hint(&self) -> &'static str {
         match self {
-            Self::Artifact(_) | Self::InvalidFormat { .. } | Self::MachineResult { .. } => {
+            Self::Artifact(_)
+            | Self::InvalidFormat { .. }
+            | Self::MachineResult { .. }
+            | Self::UnivariateRelation(_)
+            | Self::UnivariateCrs(_) => {
                 "Regenerate the matching frontend, preprocess, and proof artifacts, then retry."
             }
             Self::Crs(_) => {

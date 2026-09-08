@@ -5,6 +5,7 @@
 //! prover messages, and preceding challenges described by F2--F4.
 
 use crate::group_structures::G1serde;
+use crate::univariate_proof::UnivariateProof;
 use ark_bls12_381::Fr;
 use ark_ff::{BigInteger, PrimeField};
 use icicle_bls12_381::curve::ScalarField;
@@ -217,6 +218,66 @@ pub fn encode_public_inputs(public_inputs: &[ScalarField]) -> Vec<u8> {
         encoder = encoder.scalar(&format!("public-input.{index}"), value);
     }
     encoder.finish()
+}
+
+/// Encodes one F2--F4 affine-point message block.  Both prover construction
+/// and verifier replay use this function so the proof wire object is the only
+/// source of the message sequence.
+pub fn encode_g1_message_block(label: &str, points: &[G1serde]) -> Vec<u8> {
+    let mut encoder = CanonicalTranscriptEncoder::new().u32(
+        "count",
+        u32::try_from(points.len()).expect("point-message count exceeds u32"),
+    );
+    for (index, point) in points.iter().enumerate() {
+        encoder = encoder.g1(&format!("{label}.{index}"), point);
+    }
+    encoder.finish()
+}
+
+/// Encodes F4's nine field evaluations in their protocol order.
+pub fn encode_evaluation_message_block(proof: &UnivariateProof) -> Vec<u8> {
+    CanonicalTranscriptEncoder::new()
+        .scalar("sA", &proof.s_a.0)
+        .scalar("sC", &proof.s_c.0)
+        .scalar("u", &proof.u.0)
+        .scalar("v", &proof.v.0)
+        .scalar("w", &proof.w.0)
+        .scalar("b", &proof.b.0)
+        .scalar("qZeta", &proof.q_zeta.0)
+        .scalar("r", &proof.r.0)
+        .scalar("rPlus", &proof.r_plus.0)
+        .finish()
+}
+
+/// Replays F2--F4 from F5's canonical proof messages.  The fixed verifier
+/// configuration is deliberately not an argument: F1 admits it before this
+/// proof-time transcript is constructed.
+pub fn derive_proof_challenges(
+    public_inputs: &[ScalarField],
+    proof: &UnivariateProof,
+    arithmetic_size: usize,
+    connection_size: usize,
+) -> UnivariateChallenges {
+    UnivariateTranscript::from_public_inputs(public_inputs).derive_challenges(
+        &encode_g1_message_block(
+            "F2.a1",
+            &[
+                proof.c_u,
+                proof.c_v,
+                proof.c_w,
+                proof.c_b,
+                proof.o_if,
+                proof.o_int,
+            ],
+        ),
+        &encode_g1_message_block("F2.a2", &[proof.c_d]),
+        &encode_g1_message_block("F2.a3", &[proof.c_r]),
+        &encode_g1_message_block("F2.a4", &[proof.c_q]),
+        &encode_evaluation_message_block(proof),
+        &encode_g1_message_block("F2.a6", &[proof.pi_zeta, proof.pi_plus]),
+        arithmetic_size,
+        connection_size,
+    )
 }
 
 fn keccak256(input: &[u8]) -> [u8; 32] {

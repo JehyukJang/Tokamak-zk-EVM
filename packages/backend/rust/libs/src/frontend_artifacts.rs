@@ -126,6 +126,46 @@ pub struct Permutation {
 
 impl_read_box_from_json!(Permutation);
 
+/// Reads the synthesizer-owned, capacity-length placement selector. The
+/// all-ones u32 sentinel denotes an inactive placement slot; all other values
+/// are fixed subcircuit-library IDs.
+pub fn read_placement_selector(
+    path: impl AsRef<std::path::Path>,
+    placement_capacity: usize,
+    subcircuit_count: usize,
+) -> io::Result<Vec<Option<usize>>> {
+    const INACTIVE_SELECTOR_ENTRY: u32 = u32::MAX;
+    let file = File::open(path)?;
+    let values: Vec<u32> = serde_json::from_reader(BufReader::new(file))?;
+    if values.len() != placement_capacity {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "selector has {} entries, expected placement capacity {placement_capacity}",
+                values.len()
+            ),
+        ));
+    }
+    values
+        .into_iter()
+        .map(|value| {
+            if value == INACTIVE_SELECTOR_ENTRY {
+                return Ok(None);
+            }
+            let subcircuit_id = value as usize;
+            if subcircuit_id >= subcircuit_count {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "selector entry {value} is outside the {subcircuit_count}-entry subcircuit catalog"
+                    ),
+                ));
+            }
+            Ok(Some(subcircuit_id))
+        })
+        .collect()
+}
+
 impl Permutation {
     pub fn to_poly(
         perm_raw: &[Self],

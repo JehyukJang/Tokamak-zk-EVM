@@ -34,6 +34,7 @@ use thiserror::Error;
 mod sigma_source;
 use sigma_source::SigmaHolder;
 pub mod univariate;
+pub mod univariate_cli;
 
 #[derive(Debug, Error)]
 pub enum ProveError {
@@ -43,6 +44,10 @@ pub enum ProveError {
     Crs(#[from] CrsError),
     #[error(transparent)]
     Device(#[from] DeviceError),
+    #[error(transparent)]
+    Univariate(#[from] univariate::UnivariateProverError),
+    #[error(transparent)]
+    UnivariateRelation(#[from] libs::univariate_relation::UnivariateRelationError),
     #[error("failed to write proof output at {}: {source}", path.display())]
     WriteOutput {
         path: PathBuf,
@@ -54,7 +59,7 @@ pub enum ProveError {
 impl CliDiagnostic for ProveError {
     fn hint(&self) -> &'static str {
         match self {
-            Self::Artifact(_) => {
+            Self::Artifact(_) | Self::Univariate(_) | Self::UnivariateRelation(_) => {
                 "Regenerate the frontend artifacts and provide the matching synthesizer directory."
             }
             Self::Crs(_) => {

@@ -1,9 +1,5 @@
 use clap::Parser;
 use libs::cli::render_error;
-#[cfg(feature = "testing-mode")]
-use libs::errors::ArtifactError;
-#[cfg(feature = "testing-mode")]
-use libs::proof_protocol::Proof4Test;
 use libs::subcircuit_library::{
     try_resolve_subcircuit_library_path, validate_operational_crs_compatibility,
     DevelopmentCrsProvenanceArg, SubcircuitLibraryArg,
@@ -11,7 +7,7 @@ use libs::subcircuit_library::{
 use libs::utils::try_check_device;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use verify::{Verifier, VerifyError, VerifyInputPaths};
+use verify::{univariate_cli, VerifyError, VerifyInputPaths};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -22,11 +18,11 @@ struct Config {
     #[command(flatten)]
     development_crs_provenance: DevelopmentCrsProvenanceArg,
 
-    /// CRS output directory containing sigma_verify.json
+    /// CRS output directory containing univariate_crs.rkyv
     #[arg(long, value_name = "PATH")]
     crs: String,
 
-    /// Synthesizer output directory containing verification inputs
+    /// Synthesizer output directory containing selector, permutation, and instance
     #[arg(long, value_name = "PATH")]
     synthesizer_stat: String,
 
@@ -34,7 +30,7 @@ struct Config {
     #[arg(long, value_name = "PATH")]
     preprocess: String,
 
-    /// Proof output directory containing proof.json
+    /// Proof output directory containing univariate_proof.json
     #[arg(long, value_name = "PATH")]
     proof: String,
 
@@ -87,42 +83,17 @@ fn run() -> Result<(), VerifyError> {
     try_check_device()?;
 
     if !verification_result_json {
-        println!("Verifier initialization...");
+        println!("Univariate verifier configuration admission...");
     }
-    let verifier = Verifier::init(&paths)?;
-
     if !verification_result_json {
         println!("Verifying the proof...");
     }
-    let res_snark = verifier.verify_snark();
+    let res_snark = univariate_cli::verify(&paths)?;
     if verification_result_json {
         libs::cli::print_verification_result(res_snark)
             .map_err(|reason| VerifyError::MachineResult { reason })?;
     } else {
         println!("{}", res_snark);
-    }
-
-    #[cfg(feature = "testing-mode")]
-    {
-        use std::path::PathBuf;
-        let test_proof_path = PathBuf::from(paths.proof_path).join("proof4_test.json");
-        let proof4_test =
-            Proof4Test::read_from_json(test_proof_path.clone()).map_err(|source| {
-                ArtifactError::Read {
-                    artifact: "proof arithmetic test data",
-                    path: test_proof_path,
-                    source,
-                }
-            })?;
-        println!(
-            "Verification arithmetic: {}",
-            verifier.verify_arith(&proof4_test)
-        );
-        println!("Verification copy: {}", verifier.verify_copy(&proof4_test));
-        println!(
-            "Verification binding: {}",
-            verifier.verify_binding(&proof4_test)
-        );
     }
 
     Ok(())
