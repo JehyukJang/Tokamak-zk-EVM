@@ -55,6 +55,32 @@ export class DenseUnivariatePolynomial {
     return DenseUnivariatePolynomial.fromCoefficients(this.field, coefficients);
   }
 
+  scale(factor: FieldElement): DenseUnivariatePolynomial {
+    const coefficients = this.field.createZeroBuffer(this.degree + 1);
+    for (let index = 0; index <= this.degree; index += 1) {
+      this.field.writeBufferElement(
+        coefficients,
+        index,
+        this.field.mul(this.field.readBufferElement(this.coefficients, index), factor),
+      );
+    }
+    return DenseUnivariatePolynomial.fromCoefficients(this.field, coefficients);
+  }
+
+  scaleArgument(factor: FieldElement): DenseUnivariatePolynomial {
+    const coefficients = this.field.createZeroBuffer(this.degree + 1);
+    let power = this.field.one;
+    for (let index = 0; index <= this.degree; index += 1) {
+      this.field.writeBufferElement(
+        coefficients,
+        index,
+        this.field.mul(this.field.readBufferElement(this.coefficients, index), power),
+      );
+      power = this.field.mul(power, factor);
+    }
+    return DenseUnivariatePolynomial.fromCoefficients(this.field, coefficients);
+  }
+
   shift(exponent: number): DenseUnivariatePolynomial {
     if (!Number.isSafeInteger(exponent) || exponent < 0) {
       throw new Error("Polynomial shift must be a non-negative safe integer.");

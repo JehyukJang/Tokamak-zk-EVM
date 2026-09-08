@@ -1,4 +1,5 @@
 import { keccak256 } from "../runtime/crypto/keccak.js";
+import type { G1Point, G1Runtime } from "../runtime/group/group.js";
 import type { FieldElement, FieldRuntime } from "../runtime/field/field-types.js";
 
 const TEXT_ENCODER = new TextEncoder();
@@ -149,11 +150,71 @@ export function encodePublicInputs(field: FieldRuntime, publicInputs: readonly F
   return encoder.finish();
 }
 
+/** Encodes one affine G1 message block in the F2/F4 order. */
+export function encodeG1MessageBlock(
+  label: string,
+  g1: G1Runtime,
+  points: readonly G1Point[],
+): Uint8Array {
+  let encoder = new CanonicalTranscriptEncoder().u32("count", points.length);
+  for (const [index, point] of points.entries()) {
+    encoder = encoder.bytes(`${label}.${index}`, canonicalG1Bytes(g1, point));
+  }
+  return encoder.finish();
+}
+
+/** Encodes F4's nine scalar evaluation values in their fixed protocol order. */
+export function encodeEvaluationMessageBlock(
+  field: FieldRuntime,
+  evaluations: readonly FieldElement[],
+): Uint8Array {
+  if (evaluations.length !== 9) {
+    throw new Error("F4 evaluation message must contain exactly nine field elements.");
+  }
+  const labels = ["sA", "sC", "u", "v", "w", "b", "qZeta", "r", "rPlus"];
+  let encoder = new CanonicalTranscriptEncoder();
+  for (const [index, value] of evaluations.entries()) {
+    encoder = encoder.scalar(labels[index]!, field, value);
+  }
+  return encoder.finish();
+}
+
 function bigEndianFieldBytes(field: FieldRuntime, value: FieldElement): Uint8Array {
   const littleEndian = field.toRawLittleEndian(value);
   const output = littleEndian.slice();
   output.reverse();
   return output;
+}
+
+function canonicalG1Bytes(g1: G1Runtime, point: G1Point): Uint8Array {
+  const coordinates = g1.formatAffine(point);
+  return concatBytes([
+    bigEndianHexBytes(coordinates.x, 48),
+    bigEndianHexBytes(coordinates.y, 48),
+  ]);
+}
+
+function bigEndianHexBytes(value: string, width: number): Uint8Array {
+  const body = value.startsWith("0x") ? value.slice(2) : value;
+  if (!/^[0-9a-fA-F]*$/.test(body) || body.length > width * 2) {
+    throw new Error("Affine coordinate is not a fixed-width hexadecimal value.");
+  }
+  const padded = body.padStart(width * 2, "0");
+  const result = new Uint8Array(width);
+  for (let index = 0; index < width; index += 1) {
+    result[index] = Number.parseInt(padded.slice(index * 2, index * 2 + 2), 16);
+  }
+  return result;
+}
+
+function concatBytes(chunks: readonly Uint8Array[]): Uint8Array {
+  const result = new Uint8Array(chunks.reduce((length, chunk) => length + chunk.byteLength, 0));
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return result;
 }
 
 function bytesToBigInt(bytes: Uint8Array): bigint {

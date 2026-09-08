@@ -8,7 +8,7 @@ import {
   SUBCIRCUIT_LIBRARY_PACKAGE_VERSION,
 } from "../../generated/active/setup.generated.js";
 import { loadVerifierInputFromBinaryInput, type VerifierBinaryInput } from "./binary-input.js";
-import { verifySnark } from "../protocol/verify-snark.js";
+import { verifyUnivariateReference } from "../../univariate/reference-verifier.js";
 
 export interface VerifierInstallationInfo {
   readonly packageVersion: string;
@@ -44,7 +44,15 @@ export async function verify(input: VerifierInput): Promise<boolean> {
     throw new BackendWasmError("BUSY", "The verifier is already running.");
   }
 
-  assertNamedBinaryInput(input, "Verifier", ["proof", "instance", "verifierPreprocess"]);
+  assertNamedBinaryInput(input, "Verifier", [
+    "proof",
+    "instance",
+    "selector",
+    "permutation",
+    "preprocessCrs",
+    "verifierPreprocess",
+    "verifierCrs",
+  ]);
   busy = true;
 
   try {
@@ -60,7 +68,7 @@ export async function verify(input: VerifierInput): Promise<boolean> {
     }
 
     try {
-      return await verifySnark(installedRuntime, runtimeInput);
+      return await verifyUnivariateReference(installedRuntime, runtimeInput);
     } catch (cause) {
       throw new BackendWasmError("RUNTIME_FAILED", "The verifier runtime failed.", {
         cause,

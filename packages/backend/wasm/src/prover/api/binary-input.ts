@@ -1,329 +1,138 @@
-import { requireBinaryArtifactSection } from '../../artifacts/binary/binary-artifact-file.js';
-import { type BinaryArtifactFileView } from '../../artifacts/binary/binary-format.js';
-import { admitRuntimeBinaryArtifact } from '../../artifacts/binary/runtime-admission.js';
-import { loadNamedArtifactPoints } from '../../artifacts/specs/format-spec-loader.js';
-import type { RuntimeArtifactSectionSpec } from '../../artifacts/specs/types.js';
+import { requireBinaryArtifactSection } from "../../artifacts/binary/binary-artifact-file.js";
+import type { BinaryArtifactFileView } from "../../artifacts/binary/binary-format.js";
+import { assertBinaryArtifactCompatibility } from "../../artifacts/binary/compatibility.js";
+import { admitRuntimeBinaryArtifact } from "../../artifacts/binary/runtime-admission.js";
 import {
   INSTANCE_V1_SPEC,
-  PROVER_CRS_V1_SPEC,
   PROVER_PERMUTATION_V1_SPEC,
   PROVER_PLACEMENT_VARIABLES_V1_SPEC,
-} from '../../generated/browser-artifact-contracts.generated.js';
-import type { CurveRuntime } from '../../runtime/curve/curve.js';
-import type { FieldElement } from '../../runtime/field/field-runtime.js';
-import { assertBinaryArtifactCompatibility } from '../../artifacts/binary/compatibility.js';
-import type { SetupParams } from '../../artifacts/setup/setup-params.js';
-import { validateSetupParams } from '../../artifacts/setup/validate-setup-params.js';
+  PROVER_SELECTOR_V1_SPEC,
+  UNIVARIATE_PROVER_CRS_V1_SPEC,
+} from "../../generated/browser-artifact-contracts.generated.js";
+import { GENERATED_SETUP_PARAMS } from "../../generated/active/setup.generated.js";
+import type { CurveRuntime } from "../../runtime/curve/curve.js";
+import type { FieldElement } from "../../runtime/field/field-types.js";
+import { parseUnivariateProverCrs, type UnivariateProverCrsRuntime } from "../../univariate/crs.js";
+import type { UnivariateSubcircuit } from "../../univariate/relation.js";
 import {
   GENERATED_PROVER_PACKED_R1CS,
   GENERATED_PROVER_SUBCIRCUIT_INFOS,
-} from '../generated/active/subcircuit-library.generated.js';
-import {
-  GENERATED_SETUP_PARAMS,
-  NATIVE_BACKEND_VERSION,
-  SUBCIRCUIT_LIBRARY_PACKAGE_VERSION,
-} from '../../generated/active/setup.generated.js';
-import type { ProverPermutationEntry, ProverPlacementVariables } from '../protocol/witness.js';
-import type {
-  ProverCrsG1Section,
-  ProverCrsRuntime,
-  ProverRuntimeInput,
-  ProverRuntimeWitnessInputParts,
-} from '../protocol/runtime-input.js';
-export { proverCrsG1PointAt, proverCrsG1PointRange } from '../protocol/runtime-input.js';
-export type {
-  ProverCrsG1Section,
-  ProverCrsRuntime,
-  ProverRuntimeInput,
-  ProverRuntimeWitnessInputParts,
-} from '../protocol/runtime-input.js';
-
-export interface ProverBinaryArtifactFiles {
-  readonly placementVariables: BinaryArtifactFileView;
-  readonly permutation: BinaryArtifactFileView;
-  readonly instance: BinaryArtifactFileView;
-  readonly crs: BinaryArtifactFileView;
-}
+} from "../generated/active/subcircuit-library.generated.js";
+import type { ProverPlacementVariables } from "../protocol/witness.js";
+import type { ProverSubcircuitInfo } from "../protocol/witness.js";
 
 export interface ProverBinaryInput {
   readonly witness: Uint8Array;
+  readonly selector: Uint8Array;
   readonly permutation: Uint8Array;
   readonly instance: Uint8Array;
   readonly proverCrs: Uint8Array;
 }
 
-export interface ProverWitnessBinaryArtifactFiles {
-  readonly placementVariables: BinaryArtifactFileView;
-  readonly permutation: BinaryArtifactFileView;
-  readonly instance: BinaryArtifactFileView;
+export interface UnivariateProverRuntimeInput {
+  readonly selector: readonly (number | null)[];
+  readonly permutation: readonly { readonly row: number; readonly col: number; readonly X: number; readonly Y: number }[];
+  readonly placements: ProverPlacementVariables;
+  readonly publicInputs: readonly FieldElement[];
+  readonly subcircuitInfos: readonly ProverSubcircuitInfo[];
+  readonly subcircuits: readonly UnivariateSubcircuit[];
+  readonly crs: UnivariateProverCrsRuntime;
 }
-
-export { NATIVE_BACKEND_VERSION, SUBCIRCUIT_LIBRARY_PACKAGE_VERSION };
 
 export async function loadProverInputFromBinaryInput(
   runtime: CurveRuntime,
   input: ProverBinaryInput,
-): Promise<ProverRuntimeInput> {
-  const [placementVariables, permutation, instance, crs] = await Promise.all([
-    admitRuntimeBinaryArtifact(
-      input.witness,
-      PROVER_PLACEMENT_VARIABLES_V1_SPEC.kind,
-      PROVER_PLACEMENT_VARIABLES_V1_SPEC,
-    ),
+): Promise<UnivariateProverRuntimeInput> {
+  const [witness, selector, permutation, instance, crs] = await Promise.all([
+    admitRuntimeBinaryArtifact(input.witness, PROVER_PLACEMENT_VARIABLES_V1_SPEC.kind, PROVER_PLACEMENT_VARIABLES_V1_SPEC),
+    admitRuntimeBinaryArtifact(input.selector, PROVER_SELECTOR_V1_SPEC.kind, PROVER_SELECTOR_V1_SPEC),
     admitRuntimeBinaryArtifact(input.permutation, PROVER_PERMUTATION_V1_SPEC.kind, PROVER_PERMUTATION_V1_SPEC),
     admitRuntimeBinaryArtifact(input.instance, INSTANCE_V1_SPEC.kind, INSTANCE_V1_SPEC),
-    admitRuntimeBinaryArtifact(input.proverCrs, PROVER_CRS_V1_SPEC.kind, PROVER_CRS_V1_SPEC),
+    admitRuntimeBinaryArtifact(input.proverCrs, UNIVARIATE_PROVER_CRS_V1_SPEC.kind, UNIVARIATE_PROVER_CRS_V1_SPEC),
   ]);
-  const artifacts: ProverBinaryArtifactFiles = {
-    placementVariables,
-    permutation,
-    instance,
-    crs,
-  };
-  for (const artifact of Object.values(artifacts)) {
+  for (const artifact of [witness, selector, permutation, instance, crs]) {
     assertBinaryArtifactCompatibility(artifact);
   }
-
-  return buildProverInputFromBinaryArtifacts(runtime, artifacts);
-}
-
-export function buildProverInputFromBinaryArtifacts(
-  runtime: CurveRuntime,
-  artifacts: ProverBinaryArtifactFiles,
-): ProverRuntimeInput {
-  const parts = loadProverRuntimeWitnessInputParts(runtime, artifacts);
-
-  const crs = parseProverCrs(artifacts.crs);
-  validateProverCrsForSetup(crs, parts.setup);
-
   return {
-    witness: {
-      setup: parts.setup,
-      placementVariables: parts.placementVariables,
-      subcircuitInfos: GENERATED_PROVER_SUBCIRCUIT_INFOS,
-      r1csBySubcircuit: GENERATED_PROVER_PACKED_R1CS,
-    },
-    permutation: parts.permutation,
-    publicInstance: parts.publicInstance,
-    crs,
+    selector: parseSelector(selector),
+    permutation: parsePermutation(permutation),
+    placements: parsePlacements(runtime, witness),
+    publicInputs: parsePublicInputs(runtime, instance),
+    subcircuitInfos: GENERATED_PROVER_SUBCIRCUIT_INFOS,
+    subcircuits: currentSubcircuits(),
+    crs: parseUnivariateProverCrs(input.proverCrs),
   };
 }
 
-export function loadProverRuntimeWitnessInputParts(
-  runtime: CurveRuntime,
-  artifacts: ProverWitnessBinaryArtifactFiles,
-): ProverRuntimeWitnessInputParts {
-  return {
-    setup: GENERATED_SETUP_PARAMS,
-    placementVariables: parseProverPlacementVariables(runtime, artifacts.placementVariables),
-    permutation: parseProverPermutation(artifacts.permutation),
-    publicInstance: parseProverPublicInstance(runtime, artifacts.instance),
-  };
-}
-
-export function parseProverPlacementVariables(
-  runtime: CurveRuntime,
-  placementFile: BinaryArtifactFileView,
-): ProverPlacementVariables {
-  const [idsSectionSpec, offsetsSectionSpec, variablesSectionSpec] = PROVER_PLACEMENT_VARIABLES_V1_SPEC.sections;
-  const idsSection = requireBinaryArtifactSection(placementFile, idsSectionSpec);
-  const offsetsSection = requireBinaryArtifactSection(placementFile, offsetsSectionSpec);
-  const variablesSection = requireBinaryArtifactSection(placementFile, variablesSectionSpec);
-  const subcircuitIds = readU32Array(idsSection.data, idsSectionSpec.label, idsSection.elementByteLength);
-  const variableOffsets = readU32Array(offsetsSection.data, offsetsSectionSpec.label, offsetsSection.elementByteLength);
-  const variables = variablesSection.data;
-
-  if (variables.byteLength % runtime.Fr.byteLength !== 0) {
-    throw new Error(`${variablesSectionSpec.label} byte length is not divisible by the field element width.`);
+function parseSelector(file: BinaryArtifactFileView): readonly (number | null)[] {
+  const [spec] = PROVER_SELECTOR_V1_SPEC.sections;
+  const section = requireBinaryArtifactSection(file, spec);
+  if (section.elementCount !== GENERATED_SETUP_PARAMS.s_max || section.elementByteLength !== 4) {
+    throw new Error("Selector section does not match the active setup capacity.");
   }
-
-  if (variableOffsets.length !== subcircuitIds.length + 1) {
-    throw new Error(`${offsetsSectionSpec.label} length must be ${idsSectionSpec.label} length plus one.`);
-  }
-
-  if (variableOffsets[0] !== 0) {
-    throw new Error(`${offsetsSectionSpec.label} must start at zero.`);
-  }
-
-  if (variableOffsets[variableOffsets.length - 1] !== variables.byteLength / runtime.Fr.byteLength) {
-    throw new Error(`${offsetsSectionSpec.label} final value must equal ${variablesSectionSpec.label} element count.`);
-  }
-
-  for (let index = 0; index < variableOffsets.length - 1; index += 1) {
-    if (variableOffsets[index + 1] < variableOffsets[index]) {
-      throw new Error(`${offsetsSectionSpec.label} must be monotonic at index ${index}.`);
-    }
-  }
-
-  return {
-    subcircuitIds,
-    variableOffsets,
-    variables,
-    fieldByteLength: runtime.Fr.byteLength,
-  };
-}
-
-export function parseProverPublicInstance(
-  runtime: CurveRuntime,
-  instanceFile: BinaryArtifactFileView,
-): readonly FieldElement[] {
-  const [publicInstanceSectionSpec] = INSTANCE_V1_SPEC.sections;
-  const section = requireBinaryArtifactSection(instanceFile, publicInstanceSectionSpec);
-
-  return splitFieldElements(runtime, section.data, publicInstanceSectionSpec.label);
-}
-
-export function parseProverPermutation(permutationFile: BinaryArtifactFileView): readonly ProverPermutationEntry[] {
-  const [permutationSectionSpec] = PROVER_PERMUTATION_V1_SPEC.sections;
-  const section = requireBinaryArtifactSection(permutationFile, permutationSectionSpec);
-
-  if (section.data.byteLength % section.elementByteLength !== 0) {
-    throw new Error(`${permutationSectionSpec.label} byte length must be divisible by ${section.elementByteLength}.`);
-  }
-
   const view = new DataView(section.data.buffer, section.data.byteOffset, section.data.byteLength);
-  const entries: ProverPermutationEntry[] = [];
-  for (let offset = 0; offset < section.data.byteLength; offset += section.elementByteLength) {
-    entries.push({
-      row: view.getUint32(offset, true),
-      col: view.getUint32(offset + 4, true),
-      X: view.getUint32(offset + 8, true),
-      Y: view.getUint32(offset + 12, true),
-    });
+  return Array.from({ length: section.elementCount }, (_, index) => {
+    const id = view.getUint32(index * 4, true);
+    if (id === 0xffff_ffff) return null;
+    if (id >= GENERATED_SETUP_PARAMS.s_D) throw new Error(`Selector subcircuit ID ${id} is outside the active library.`);
+    return id;
+  });
+}
+
+function parsePermutation(file: BinaryArtifactFileView): readonly { readonly row: number; readonly col: number; readonly X: number; readonly Y: number }[] {
+  const [spec] = PROVER_PERMUTATION_V1_SPEC.sections;
+  const section = requireBinaryArtifactSection(file, spec);
+  if (section.elementByteLength !== 16 || section.data.byteLength !== section.elementCount * 16) {
+    throw new Error("Permutation section has an invalid entry layout.");
   }
-
-  return entries;
+  const view = new DataView(section.data.buffer, section.data.byteOffset, section.data.byteLength);
+  return Array.from({ length: section.elementCount }, (_, index) => ({
+    row: view.getUint32(index * 16, true),
+    col: view.getUint32(index * 16 + 4, true),
+    X: view.getUint32(index * 16 + 8, true),
+    Y: view.getUint32(index * 16 + 12, true),
+  }));
 }
 
-export function parseProverCrs(crsFile: BinaryArtifactFileView): ProverCrsRuntime {
-  const fixedPoints = loadNamedArtifactPoints(crsFile, PROVER_CRS_V1_SPEC);
-  const sectionsByLabel = new Map(PROVER_CRS_V1_SPEC.sections.map(section => [section.label, section]));
-
-  return {
-    G: requireEntry(fixedPoints, 'G'),
-    H: requireEntry(fixedPoints, 'H'),
-    lagrangeKL: requireEntry(fixedPoints, 'lagrangeKL'),
-    sigma1: {
-      x: requireEntry(fixedPoints, 'sigma1.x'),
-      y: requireEntry(fixedPoints, 'sigma1.y'),
-      delta: requireEntry(fixedPoints, 'sigma1.delta'),
-      eta: requireEntry(fixedPoints, 'sigma1.eta'),
-      xyPowers: describeG1Section(crsFile, requireCrsSectionSpec(sectionsByLabel, 'sigma1.xy-powers')),
-      gammaInvOInst: describeG1Section(crsFile, requireCrsSectionSpec(sectionsByLabel, 'sigma1.gamma-inv-o-inst')),
-      etaInvLiOInterAlpha4Kj: describeG1Section(
-        crsFile,
-        requireCrsSectionSpec(sectionsByLabel, 'sigma1.eta-inv-li-o-inter-alpha4-kj'),
-      ),
-      deltaInvLiOPrv: describeG1Section(crsFile, requireCrsSectionSpec(sectionsByLabel, 'sigma1.delta-inv-li-o-prv')),
-      deltaInvAlphakXhTx: describeG1Section(
-        crsFile,
-        requireCrsSectionSpec(sectionsByLabel, 'sigma1.delta-inv-alphak-xh-tx'),
-      ),
-      deltaInvAlpha4XjTx: describeG1Section(
-        crsFile,
-        requireCrsSectionSpec(sectionsByLabel, 'sigma1.delta-inv-alpha4-xj-tx'),
-      ),
-      deltaInvAlphakYiTy: describeG1Section(
-        crsFile,
-        requireCrsSectionSpec(sectionsByLabel, 'sigma1.delta-inv-alphak-yi-ty'),
-      ),
-    },
-    sigma2: {
-      alpha: requireEntry(fixedPoints, 'sigma2.alpha'),
-      alpha2: requireEntry(fixedPoints, 'sigma2.alpha2'),
-      alpha3: requireEntry(fixedPoints, 'sigma2.alpha3'),
-      alpha4: requireEntry(fixedPoints, 'sigma2.alpha4'),
-      gamma: requireEntry(fixedPoints, 'sigma2.gamma'),
-      delta: requireEntry(fixedPoints, 'sigma2.delta'),
-      eta: requireEntry(fixedPoints, 'sigma2.eta'),
-      x: requireEntry(fixedPoints, 'sigma2.x'),
-      y: requireEntry(fixedPoints, 'sigma2.y'),
-    },
-  };
-}
-
-/** Validates the setup-dependent dimensions of a full prover CRS. */
-export function validateProverCrsForSetup(crs: ProverCrsRuntime, setup: SetupParams): void {
-  validateSetupParams(setup);
-
-  const intermediateWireCount = setup.l_D - setup.l;
-  const referenceStringXSize = Math.max(setup.n * 2, intermediateWireCount * 2);
-  const referenceStringYSize = setup.s_max * 2;
-  assertG1SectionCount(crs.sigma1.xyPowers, referenceStringXSize * referenceStringYSize, 'sigma1.xy-powers');
-  assertG1SectionCount(crs.sigma1.gammaInvOInst, setup.l, 'sigma1.gamma-inv-o-inst');
-  assertG1SectionCount(
-    crs.sigma1.etaInvLiOInterAlpha4Kj,
-    intermediateWireCount * setup.s_max,
-    'sigma1.eta-inv-li-o-inter-alpha4-kj',
-  );
-  assertG1SectionCount(crs.sigma1.deltaInvLiOPrv, (setup.m_D - setup.l_D) * setup.s_max, 'sigma1.delta-inv-li-o-prv');
-}
-
-function readU32Array(data: Uint8Array, label: string, elementByteLength: number): Uint32Array {
-  if (data.byteLength % elementByteLength !== 0) {
-    throw new Error(`${label} byte length must be divisible by ${elementByteLength}.`);
+function parsePlacements(runtime: CurveRuntime, file: BinaryArtifactFileView): ProverPlacementVariables {
+  const [idsSpec, offsetsSpec, valuesSpec] = PROVER_PLACEMENT_VARIABLES_V1_SPEC.sections;
+  const ids = readU32(requireBinaryArtifactSection(file, idsSpec).data, idsSpec.label);
+  const offsets = readU32(requireBinaryArtifactSection(file, offsetsSpec).data, offsetsSpec.label);
+  const values = requireBinaryArtifactSection(file, valuesSpec).data;
+  if (offsets.length !== ids.length + 1 || offsets[0] !== 0 || offsets[offsets.length - 1] !== runtime.Fr.bufferElementCount(values)) {
+    throw new Error("Placement variable offsets do not describe the witness value section.");
   }
+  for (let index = 1; index < offsets.length; index += 1) {
+    if (offsets[index]! < offsets[index - 1]!) throw new Error("Placement variable offsets are not monotonic.");
+  }
+  return { subcircuitIds: ids, variableOffsets: offsets, variables: values, fieldByteLength: runtime.Fr.byteLength };
+}
 
-  const output = new Uint32Array(data.byteLength / elementByteLength);
+function parsePublicInputs(runtime: CurveRuntime, file: BinaryArtifactFileView): readonly FieldElement[] {
+  const [publicSpec, functionSpec] = INSTANCE_V1_SPEC.sections;
+  const values = [
+    ...runtime.Fr.split(requireBinaryArtifactSection(file, publicSpec).data),
+    ...runtime.Fr.split(requireBinaryArtifactSection(file, functionSpec).data),
+  ];
+  if (values.length !== GENERATED_SETUP_PARAMS.l) {
+    throw new Error(`Public instance length is ${values.length}, expected ${GENERATED_SETUP_PARAMS.l}.`);
+  }
+  return values;
+}
+
+function currentSubcircuits(): readonly UnivariateSubcircuit[] {
+  const r1csById = new Map(GENERATED_PROVER_PACKED_R1CS.map(r1cs => [r1cs.subcircuitId, r1cs]));
+  return GENERATED_PROVER_SUBCIRCUIT_INFOS.map(info => {
+    const r1cs = r1csById.get(info.id);
+    if (r1cs === undefined) throw new Error(`Active library is missing R1CS for subcircuit ${info.id}.`);
+    return { id: info.id, flattenMap: info.flattenMap, A: r1cs.A, B: r1cs.B, C: r1cs.C };
+  });
+}
+
+function readU32(data: Uint8Array, label: string): Uint32Array {
+  if (data.byteLength % 4 !== 0) throw new Error(`${label} is not a u32 array.`);
+  const values = new Uint32Array(data.byteLength / 4);
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  for (let index = 0; index < output.length; index += 1) {
-    output[index] = view.getUint32(index * elementByteLength, true);
-  }
-
-  return output;
-}
-
-function describeG1Section(
-  artifactFile: BinaryArtifactFileView,
-  sectionSpec: RuntimeArtifactSectionSpec,
-): ProverCrsG1Section {
-  const section = requireBinaryArtifactSection(artifactFile, sectionSpec);
-  if (section.data.byteLength % section.elementByteLength !== 0) {
-    throw new Error(`${sectionSpec.label} section byte length is not divisible by its point width.`);
-  }
-
-  return {
-    data: section.data,
-    count: section.data.byteLength / section.elementByteLength,
-    elementByteLength: section.elementByteLength,
-  };
-}
-
-function assertG1SectionCount(section: ProverCrsG1Section, expectedCount: number, label: string): void {
-  if (section.count !== expectedCount) {
-    throw new Error(`${label} must contain exactly ${expectedCount} G1 points; received ${section.count}.`);
-  }
-}
-
-function requireCrsSectionSpec(
-  sectionsByLabel: ReadonlyMap<string, RuntimeArtifactSectionSpec>,
-  label: string,
-): RuntimeArtifactSectionSpec {
-  const sectionSpec = sectionsByLabel.get(label);
-  if (sectionSpec === undefined) {
-    throw new Error(`Prover CRS contract does not define section '${label}'.`);
-  }
-  return sectionSpec;
-}
-
-function splitFieldElements(runtime: CurveRuntime, data: Uint8Array, label: string): FieldElement[] {
-  if (data.byteLength % runtime.Fr.byteLength !== 0) {
-    throw new Error(`${label} byte length is not divisible by the field element width.`);
-  }
-
-  const output: FieldElement[] = [];
-  for (let offset = 0; offset < data.byteLength; offset += runtime.Fr.byteLength) {
-    output.push(data.subarray(offset, offset + runtime.Fr.byteLength));
-  }
-
-  return output;
-}
-
-function requireEntry(entries: Readonly<Record<string, Uint8Array>>, name: string): Uint8Array {
-  const entry = entries[name];
-  if (entry === undefined) {
-    throw new Error(`Missing prover CRS entry '${name}'.`);
-  }
-
-  return entry;
+  for (let index = 0; index < values.length; index += 1) values[index] = view.getUint32(index * 4, true);
+  return values;
 }

@@ -93,7 +93,7 @@ async function main(): Promise<void> {
   }
 
   await expectRejects(
-    () => convertUnivariateCrs({ ...fixture, schemaId: "legacy-sigma" }),
+    () => convertUnivariateCrs({ ...fixture, schemaId: "unsupported-univariate-crs" }),
     "supported univariate schema",
   );
   console.log("Checked role-specific U18--U22 browser CRS conversion");
