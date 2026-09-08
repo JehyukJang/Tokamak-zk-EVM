@@ -1,8 +1,8 @@
 //! Canonical Keccak-256 Fiat--Shamir transcript for the univariate protocol.
 //!
-//! This module intentionally does not share the legacy rolling transcript:
-//! U51--U53 require a complete, length-prefixed statement context and six
-//! domain-separated challenge rounds.
+//! F1 fixes the verifier configuration before every random-oracle query. The
+//! proof-time transcript therefore contains only the public-input vector,
+//! prover messages, and preceding challenges described by F2--F4.
 
 use crate::group_structures::G1serde;
 use ark_bls12_381::Fr;
@@ -11,16 +11,8 @@ use icicle_bls12_381::curve::ScalarField;
 use icicle_core::traits::{Arithmetic, FieldImpl};
 use tiny_keccak::Keccak;
 
-const TRANSCRIPT_DOMAIN: &[u8] = b"tokamak-zk-evm-univariate-fs-v2";
-
-/// The F1 context and statement are intentionally supplied as canonical
-/// producer-owned encodings. This module adds the backend's typed transcript
-/// framing; it does not reinterpret frontend metadata.
-#[derive(Clone, Debug)]
-pub struct UnivariateFiatShamirInput {
-    pub context: Vec<u8>,
-    pub statement: Vec<u8>,
-}
+pub const UNIVARIATE_FIAT_SHAMIR_SCHEMA_ID: &str = "tokamak-zk-evm-univariate-fs-v3";
+const TRANSCRIPT_DOMAIN: &[u8] = UNIVARIATE_FIAT_SHAMIR_SCHEMA_ID.as_bytes();
 
 /// The six F3 challenges in their protocol order.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -34,7 +26,7 @@ pub struct UnivariateChallenges {
     pub mu: ScalarField,
 }
 
-/// Builds an injective type-tagged, length-prefixed encoding for U51--U53.
+/// Builds an injective type-tagged, length-prefixed encoding for F2--F4.
 #[derive(Clone, Debug, Default)]
 pub struct CanonicalTranscriptEncoder {
     bytes: Vec<u8>,
@@ -80,25 +72,20 @@ impl CanonicalTranscriptEncoder {
     }
 }
 
-/// State for the U53 challenge schedule after canonical U51 context encoding.
+/// State for the F4 challenge schedule after canonical public-input encoding.
 #[derive(Clone, Debug)]
 pub struct UnivariateTranscript {
-    context: Vec<u8>,
+    statement: Vec<u8>,
     history: Vec<u8>,
 }
 
 impl UnivariateTranscript {
-    pub fn from_f1(input: UnivariateFiatShamirInput) -> Self {
-        Self::new(
-            CanonicalTranscriptEncoder::new()
-                .bytes("F1.context", &input.context)
-                .bytes("F1.statement", &input.statement)
-                .finish(),
-        )
-    }
-    pub fn new(context: Vec<u8>) -> Self {
+    /// Creates F4 state for one validated fixed verifier configuration and its
+    /// adaptive public-input statement. The configuration itself is excluded
+    /// by F1 and must have been admitted by the caller before this method.
+    pub fn from_public_inputs(public_inputs: &[ScalarField]) -> Self {
         Self {
-            context,
+            statement: encode_public_inputs(public_inputs),
             history: Vec::new(),
         }
     }
@@ -115,21 +102,37 @@ impl UnivariateTranscript {
 
     /// Derives one ordinary field challenge and records it for later rounds.
     pub fn challenge(&mut self, round: u8, output_index: u8) -> ScalarField {
-        self.sample(round, output_index, |_| true)
+        let value = self.sample_value(round, output_index, |_| true);
+        self.record_challenge(round, output_index, &value);
+        value
+    }
+
+    /// Samples F3's paired `(beta, gamma_C)` output from one F4 state. Neither
+    /// coordinate may influence the other coordinate's oracle input.
+    pub fn challenge_pair(&mut self, round: u8) -> (ScalarField, ScalarField) {
+        let first = self.sample_value(round, 0, |_| true);
+        let second = self.sample_value(round, 1, |_| true);
+        self.record_challenge(round, 0, &first);
+        self.record_challenge(round, 1, &second);
+        (first, second)
     }
 
     /// Derives U53's `zeta`, excluding zero and both protocol domains.
     pub fn zeta(&mut self, arithmetic_size: usize, connection_size: usize) -> ScalarField {
-        self.sample(4, 0, |value| {
+        let value = self.sample_value(4, 0, |value| {
             *value != ScalarField::zero()
                 && value.pow(arithmetic_size) != ScalarField::one()
                 && value.pow(connection_size) != ScalarField::one()
-        })
+        });
+        self.record_challenge(4, 0, &value);
+        value
     }
 
     /// Derives U53's nonzero `mu`.
     pub fn nonzero_challenge(&mut self, round: u8, output_index: u8) -> ScalarField {
-        self.sample(round, output_index, |value| *value != ScalarField::zero())
+        let value = self.sample_value(round, output_index, |value| *value != ScalarField::zero());
+        self.record_challenge(round, output_index, &value);
+        value
     }
 
     /// Runs F2--F4 after callers append each prover message block exactly
@@ -148,8 +151,7 @@ impl UnivariateTranscript {
         self.append_message_block(1, a1);
         let upsilon = self.challenge(1, 0);
         self.append_message_block(2, a2);
-        let beta = self.challenge(2, 0);
-        let gamma_c = self.challenge(2, 1);
+        let (beta, gamma_c) = self.challenge_pair(2);
         self.append_message_block(3, a3);
         let theta = self.challenge(3, 0);
         self.append_message_block(4, a4);
@@ -169,7 +171,7 @@ impl UnivariateTranscript {
         }
     }
 
-    fn sample<F>(&mut self, round: u8, output_index: u8, accepts: F) -> ScalarField
+    fn sample_value<F>(&self, round: u8, output_index: u8, accepts: F) -> ScalarField
     where
         F: Fn(&ScalarField) -> bool,
     {
@@ -178,7 +180,7 @@ impl UnivariateTranscript {
                 .bytes("protocol", TRANSCRIPT_DOMAIN)
                 .u32("round", u32::from(round))
                 .u32("output-index", u32::from(output_index))
-                .bytes("context", &self.context)
+                .bytes("statement", &self.statement)
                 .bytes("history", &self.history)
                 .u32("rejection-counter", counter)
                 .finish();
@@ -188,17 +190,33 @@ impl UnivariateTranscript {
             if !accepts(&value) {
                 continue;
             }
-            self.history.extend_from_slice(
-                &CanonicalTranscriptEncoder::new()
-                    .u32("challenge-round", u32::from(round))
-                    .u32("challenge-output-index", u32::from(output_index))
-                    .scalar("challenge", &value)
-                    .finish(),
-            );
             return value;
         }
         unreachable!("u32 rejection counter exhausted")
     }
+
+    fn record_challenge(&mut self, round: u8, output_index: u8, value: &ScalarField) {
+        self.history.extend_from_slice(
+            &CanonicalTranscriptEncoder::new()
+                .u32("challenge-round", u32::from(round))
+                .u32("challenge-output-index", u32::from(output_index))
+                .scalar("challenge", value)
+                .finish(),
+        );
+    }
+}
+
+/// Canonically encodes F1's adaptive statement `a` without any fixed verifier
+/// configuration field.
+pub fn encode_public_inputs(public_inputs: &[ScalarField]) -> Vec<u8> {
+    let mut encoder = CanonicalTranscriptEncoder::new().u32(
+        "public-input-count",
+        u32::try_from(public_inputs.len()).expect("public-input count exceeds u32"),
+    );
+    for (index, value) in public_inputs.iter().enumerate() {
+        encoder = encoder.scalar(&format!("public-input.{index}"), value);
+    }
+    encoder.finish()
 }
 
 fn keccak256(input: &[u8]) -> [u8; 32] {
@@ -247,35 +265,28 @@ fn g1_bytes(value: &G1serde) -> [u8; 96] {
 
 #[cfg(test)]
 mod tests {
-    use super::{CanonicalTranscriptEncoder, UnivariateTranscript};
+    use super::UnivariateTranscript;
     use icicle_bls12_381::curve::ScalarField;
     use icicle_core::traits::FieldImpl;
     #[test]
-    fn transcript_is_deterministic_and_context_bound() {
-        let context = CanonicalTranscriptEncoder::new()
-            .bytes("library", b"fixture-library")
-            .scalar("instance", &ScalarField::from_u32(7))
-            .finish();
-        let mut left = UnivariateTranscript::new(context.clone());
+    fn transcript_is_deterministic_and_binds_only_the_public_statement() {
+        let public_inputs = [ScalarField::from_u32(7), ScalarField::from_u32(11)];
+        let mut left = UnivariateTranscript::from_public_inputs(&public_inputs);
         left.append_message_block(1, b"a1");
-        let beta = left.challenge(1, 0);
-        let gamma = left.challenge(1, 1);
+        let upsilon = left.challenge(1, 0);
+        let (beta, gamma) = left.challenge_pair(2);
         left.append_message_block(2, b"a2");
-        let theta = left.challenge(2, 0);
+        let theta = left.challenge(3, 0);
 
-        let mut same = UnivariateTranscript::new(context);
+        let mut same = UnivariateTranscript::from_public_inputs(&public_inputs);
         same.append_message_block(1, b"a1");
-        assert_eq!(beta, same.challenge(1, 0));
-        assert_eq!(gamma, same.challenge(1, 1));
+        assert_eq!(upsilon, same.challenge(1, 0));
+        assert_eq!((beta, gamma), same.challenge_pair(2));
         same.append_message_block(2, b"a2");
-        assert_eq!(theta, same.challenge(2, 0));
+        assert_eq!(theta, same.challenge(3, 0));
 
-        let mut changed = UnivariateTranscript::new(
-            CanonicalTranscriptEncoder::new()
-                .bytes("library", b"other-library")
-                .finish(),
-        );
+        let mut changed = UnivariateTranscript::from_public_inputs(&[ScalarField::from_u32(8)]);
         changed.append_message_block(1, b"a1");
-        assert_ne!(beta, changed.challenge(1, 0));
+        assert_ne!(upsilon, changed.challenge(1, 0));
     }
 }

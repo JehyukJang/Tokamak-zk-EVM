@@ -14,11 +14,10 @@ use libs::univariate_crs::{
     UnivariateTaggedQuery,
 };
 use libs::univariate_polynomial::{DenseUnivariatePolynomial, UnivariatePolynomialError};
-use libs::univariate_proof::UnivariateProof;
+use libs::univariate_proof::{UnivariateProof, UNIVARIATE_PROOF_SCHEMA_ID};
 use libs::univariate_relation::{DenseDomainPolynomial, StridedPolynomial, WitnessMaps};
 use libs::univariate_transcript::{
-    CanonicalTranscriptEncoder, UnivariateChallenges, UnivariateFiatShamirInput,
-    UnivariateTranscript,
+    CanonicalTranscriptEncoder, UnivariateChallenges, UnivariateTranscript,
 };
 use thiserror::Error;
 
@@ -161,7 +160,9 @@ pub struct UnivariateReferenceProvingInput<'a> {
     pub randomizers: ArithmeticMaskRandomizers,
     pub recursion_randomizer: &'a DenseUnivariatePolynomial,
     pub binding_randomizer: ScalarField,
-    pub fiat_shamir: UnivariateFiatShamirInput,
+    /// F1's adaptive public statement. The fixed verifier configuration has
+    /// already been admitted by the artifact reader.
+    pub public_inputs: &'a [ScalarField],
 }
 
 /// Serializes the U52 messages produced by the native polynomial stages into
@@ -221,7 +222,7 @@ pub fn assemble_univariate_proof(
             )? * factors[index];
     }
     Ok(UnivariateProof {
-        protocol_schema_id: libs::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID.to_string(),
+        proof_schema_id: UNIVARIATE_PROOF_SCHEMA_ID.to_string(),
         c_u,
         c_v,
         c_w,
@@ -245,9 +246,8 @@ pub fn assemble_univariate_proof(
     })
 }
 
-/// Runs the complete F1--F5 native reference schedule. The caller supplies
-/// canonical F1 bytes; this function owns only protocol message framing and
-/// the algebra that follows successful artifact admission.
+/// Runs the complete F1--F5 native reference schedule after fixed verifier
+/// configuration admission. Only the public-input vector enters F4.
 pub fn prove_univariate_reference(
     input: UnivariateReferenceProvingInput<'_>,
 ) -> Result<(UnivariateProof, UnivariateChallenges), UnivariateProverError> {
@@ -273,7 +273,7 @@ pub fn prove_univariate_reference(
     let c_v = commit(UnivariateCommitmentSource::Sxi, &masked.v_hat, 0)?;
     let c_w = commit(UnivariateCommitmentSource::Spsi, &masked.w_hat, 0)?;
     let c_b = commit(UnivariateCommitmentSource::Spsi, &masked.b_hat, shape.k)?;
-    let mut transcript = UnivariateTranscript::from_f1(input.fiat_shamir);
+    let mut transcript = UnivariateTranscript::from_public_inputs(input.public_inputs);
     transcript.append_message_block(
         1,
         &encode_g1_block("F2.a1", &[c_u, c_v, c_w, c_b, private.o_if, private.o_int]),
@@ -281,8 +281,7 @@ pub fn prove_univariate_reference(
     let upsilon = transcript.challenge(1, 0);
     let c_d = c_w + c_b * upsilon;
     transcript.append_message_block(2, &encode_g1_block("F2.a2", &[c_d]));
-    let beta = transcript.challenge(2, 0);
-    let gamma_c = transcript.challenge(2, 1);
+    let (beta, gamma_c) = transcript.challenge_pair(2);
     let copy = build_masked_copy_relation(
         shape,
         input.maps,

@@ -2,9 +2,10 @@ import { keccak256 } from "../runtime/crypto/keccak.js";
 import type { FieldElement, FieldRuntime } from "../runtime/field/field-types.js";
 
 const TEXT_ENCODER = new TextEncoder();
-const TRANSCRIPT_DOMAIN = TEXT_ENCODER.encode("tokamak-zk-evm-univariate-fs-v1");
+export const UNIVARIATE_FIAT_SHAMIR_SCHEMA_ID = "tokamak-zk-evm-univariate-fs-v3";
+const TRANSCRIPT_DOMAIN = TEXT_ENCODER.encode(UNIVARIATE_FIAT_SHAMIR_SCHEMA_ID);
 
-/** Builds the type-tagged, length-prefixed U51--U53 encoding. */
+/** Builds the type-tagged, length-prefixed F2--F4 encoding. */
 export class CanonicalTranscriptEncoder {
   private readonly chunks: Uint8Array[] = [];
 
@@ -46,14 +47,17 @@ export class CanonicalTranscriptEncoder {
   }
 }
 
-/** U53 Keccak-256 challenge state for the new univariate protocol only. */
+/** F4 Keccak-256 challenge state for the univariate protocol. */
 export class UnivariateTranscript {
   private history = new Uint8Array();
+  private readonly statement: Uint8Array;
 
   constructor(
     private readonly field: FieldRuntime,
-    private readonly context: Uint8Array,
-  ) {}
+    publicInputs: readonly FieldElement[],
+  ) {
+    this.statement = encodePublicInputs(field, publicInputs);
+  }
 
   appendMessageBlock(block: number, encodedMessage: Uint8Array): void {
     this.append(
@@ -65,28 +69,43 @@ export class UnivariateTranscript {
   }
 
   challenge(round: number, outputIndex: number): FieldElement {
-    return this.sample(round, outputIndex, () => true);
+    const value = this.sampleValue(round, outputIndex, () => true);
+    this.recordChallenge(round, outputIndex, value);
+    return value;
+  }
+
+  /** Samples F3's `(beta, gamma_C)` from the same F4 transcript state. */
+  challengePair(round: number): readonly [FieldElement, FieldElement] {
+    const first = this.sampleValue(round, 0, () => true);
+    const second = this.sampleValue(round, 1, () => true);
+    this.recordChallenge(round, 0, first);
+    this.recordChallenge(round, 1, second);
+    return [first, second];
   }
 
   zeta(arithmeticSize: number, connectionSize: number): FieldElement {
-    return this.sample(4, 0, (value) => (
-      !this.field.eq(value, this.field.zero)
-      && !this.field.eq(this.field.pow(value, arithmeticSize), this.field.one)
-      && !this.field.eq(this.field.pow(value, connectionSize), this.field.one)
+    const value = this.sampleValue(4, 0, (candidate) => (
+      !this.field.eq(candidate, this.field.zero)
+      && !this.field.eq(this.field.pow(candidate, arithmeticSize), this.field.one)
+      && !this.field.eq(this.field.pow(candidate, connectionSize), this.field.one)
     ));
+    this.recordChallenge(4, 0, value);
+    return value;
   }
 
   nonzeroChallenge(round: number, outputIndex: number): FieldElement {
-    return this.sample(round, outputIndex, (value) => !this.field.eq(value, this.field.zero));
+    const value = this.sampleValue(round, outputIndex, (candidate) => !this.field.eq(candidate, this.field.zero));
+    this.recordChallenge(round, outputIndex, value);
+    return value;
   }
 
-  private sample(round: number, outputIndex: number, accepts: (value: FieldElement) => boolean): FieldElement {
+  private sampleValue(round: number, outputIndex: number, accepts: (value: FieldElement) => boolean): FieldElement {
     for (let counter = 0; counter <= 0xffffffff; counter += 1) {
       const input = new CanonicalTranscriptEncoder()
         .bytes("protocol", TRANSCRIPT_DOMAIN)
         .u32("round", round)
         .u32("output-index", outputIndex)
-        .bytes("context", this.context)
+        .bytes("statement", this.statement)
         .bytes("history", this.history)
         .u32("rejection-counter", counter)
         .finish();
@@ -98,16 +117,19 @@ export class UnivariateTranscript {
       if (!accepts(value)) {
         continue;
       }
-      this.append(
-        new CanonicalTranscriptEncoder()
-          .u32("challenge-round", round)
-          .u32("challenge-output-index", outputIndex)
-          .scalar("challenge", this.field, value)
-          .finish(),
-      );
       return value;
     }
     throw new Error("Fiat--Shamir rejection counter overflow.");
+  }
+
+  private recordChallenge(round: number, outputIndex: number, value: FieldElement): void {
+    this.append(
+      new CanonicalTranscriptEncoder()
+        .u32("challenge-round", round)
+        .u32("challenge-output-index", outputIndex)
+        .scalar("challenge", this.field, value)
+        .finish(),
+    );
   }
 
   private append(value: Uint8Array): void {
@@ -116,6 +138,15 @@ export class UnivariateTranscript {
     next.set(value, this.history.byteLength);
     this.history = next;
   }
+}
+
+/** Encodes F1's adaptive public statement and no fixed verifier parameter. */
+export function encodePublicInputs(field: FieldRuntime, publicInputs: readonly FieldElement[]): Uint8Array {
+  let encoder = new CanonicalTranscriptEncoder().u32("public-input-count", publicInputs.length);
+  for (let index = 0; index < publicInputs.length; index += 1) {
+    encoder = encoder.scalar(`public-input.${index}`, field, publicInputs[index]!);
+  }
+  return encoder.finish();
 }
 
 function bigEndianFieldBytes(field: FieldRuntime, value: FieldElement): Uint8Array {
