@@ -13,6 +13,7 @@ use crate::univariate_relation::{
 use icicle_bls12_381::curve::{G1Affine, G2Affine, ScalarCfg, ScalarField};
 use icicle_core::ntt;
 use icicle_core::traits::{Arithmetic, FieldImpl, GenerateRandom};
+use rayon::prelude::*;
 use serde::Serialize;
 use std::time::Instant;
 use thiserror::Error;
@@ -540,60 +541,54 @@ impl UnivariateCrsFoundation {
         g1: G1Affine,
         g2: G2Affine,
     ) -> Result<Self, UnivariateCrsError> {
-        let powers = |label: &str,
-                      length: usize,
-                      tag: ScalarField|
-         -> Result<Box<[G1serde]>, UnivariateCrsError> {
-            let started = Instant::now();
-            let mut points = Vec::new();
-            points
-                .try_reserve_exact(length)
-                .map_err(|_| UnivariateCrsError::PowerAllocation { length })?;
-            let mut tau_power = ScalarField::one();
-            let first_progress = (length / 100).max(1);
-            let progress_step = (length / 10).max(1);
-            for index in 0..length {
-                points.push(G1serde(G1Affine::from(
-                    g1.to_projective() * tag * tau_power,
-                )));
-                tau_power = tau_power * trapdoor.tau;
-                if index + 1 == first_progress
-                    || (index + 1) % progress_step == 0
-                    || index + 1 == length
-                {
-                    println!(
-                        "Generated {label} powers: {}/{} in {:.6} seconds",
-                        index + 1,
-                        length,
-                        started.elapsed().as_secs_f64(),
-                    );
-                }
-            }
-            Ok(points.into_boxed_slice())
-        };
-        let s0_g1 = powers(
+        let s0_g1 = generate_tagged_powers_parallel(
             "S0",
             shape.declared_capacity[0]
                 .checked_add(1)
                 .ok_or(UnivariateCrsError::CapacityOverflow { name: "M_0 + 1" })?,
             ScalarField::one(),
+            trapdoor.tau,
+            g1,
         )?;
-        let sxi_g1 = powers(
+        let sxi_g1 = generate_tagged_powers_parallel(
             "Sxi",
             shape.declared_capacity[1]
                 .checked_add(1)
                 .ok_or(UnivariateCrsError::CapacityOverflow { name: "M_xi + 1" })?,
             trapdoor.xi,
+            trapdoor.tau,
+            g1,
         )?;
-        let spsi_g1 = powers(
+        let spsi_g1 = generate_tagged_powers_parallel(
             "Spsi",
             shape.declared_capacity[2]
                 .checked_add(1)
                 .ok_or(UnivariateCrsError::CapacityOverflow { name: "M_psi + 1" })?,
             trapdoor.psi,
+            trapdoor.tau,
+            g1,
         )?;
 
         let k = shape.k;
+        let ((tau_g2, tau_k_g2), (gamma_g2, (eta_g2, delta_g2))) = rayon::join(
+            || {
+                rayon::join(
+                    || G2serde(G2Affine::from(g2.to_projective() * trapdoor.tau)),
+                    || G2serde(G2Affine::from(g2.to_projective() * trapdoor.tau.pow(k))),
+                )
+            },
+            || {
+                rayon::join(
+                    || G2serde(G2Affine::from(g2.to_projective() * trapdoor.gamma)),
+                    || {
+                        rayon::join(
+                            || G2serde(G2Affine::from(g2.to_projective() * trapdoor.eta)),
+                            || G2serde(G2Affine::from(g2.to_projective() * trapdoor.delta)),
+                        )
+                    },
+                )
+            },
+        );
         Ok(Self {
             schema_id: UNIVARIATE_CRS_SCHEMA_ID,
             shape,
@@ -601,13 +596,99 @@ impl UnivariateCrsFoundation {
             sxi_g1,
             spsi_g1,
             one_g2: G2serde(g2),
-            tau_g2: G2serde(G2Affine::from(g2.to_projective() * trapdoor.tau)),
-            tau_k_g2: G2serde(G2Affine::from(g2.to_projective() * trapdoor.tau.pow(k))),
-            gamma_g2: G2serde(G2Affine::from(g2.to_projective() * trapdoor.gamma)),
-            eta_g2: G2serde(G2Affine::from(g2.to_projective() * trapdoor.eta)),
-            delta_g2: G2serde(G2Affine::from(g2.to_projective() * trapdoor.delta)),
+            tau_g2,
+            tau_k_g2,
+            gamma_g2,
+            eta_g2,
+            delta_g2,
         })
     }
+}
+
+const MAX_POWER_GENERATION_CHUNK_SIZE: usize = 16_384;
+const POWER_CHUNKS_PER_WORKER: usize = 4;
+
+/// Generate independent single-point scalar multiplications in parallel.
+/// This does not wrap a bulk ICICLE operation: the multiplication operator
+/// computes one point and provides no cross-element parallelism of its own.
+fn generate_tagged_powers_parallel(
+    label: &str,
+    length: usize,
+    tag: ScalarField,
+    tau: ScalarField,
+    g1: G1Affine,
+) -> Result<Box<[G1serde]>, UnivariateCrsError> {
+    let started = Instant::now();
+    let mut points = Vec::new();
+    points
+        .try_reserve_exact(length)
+        .map_err(|_| UnivariateCrsError::PowerAllocation { length })?;
+    points.resize(length, G1serde::zero());
+    let tagged_generator = g1.to_projective() * tag;
+    let target_chunks = rayon::current_num_threads()
+        .saturating_mul(POWER_CHUNKS_PER_WORKER)
+        .max(1);
+    let chunk_size = length
+        .div_ceil(target_chunks)
+        .clamp(1, MAX_POWER_GENERATION_CHUNK_SIZE);
+    points
+        .par_chunks_mut(chunk_size)
+        .enumerate()
+        .for_each(|(chunk_index, chunk)| {
+            let start = chunk_index * chunk_size;
+            let mut tau_power = tau.pow(start);
+            for point in chunk {
+                *point = G1serde(G1Affine::from(tagged_generator * tau_power));
+                tau_power = tau_power * tau;
+            }
+        });
+    println!(
+        "Generated {label} powers: {length} in {:.6} seconds",
+        started.elapsed().as_secs_f64(),
+    );
+    Ok(points.into_boxed_slice())
+}
+
+fn generate_tagged_queries_parallel(
+    shape: &UnivariateCrsShape,
+    setup: &SetupParams,
+    descriptors: &[(&UnivariateSubcircuit<'_>, usize)],
+    trapdoor: &UnivariateTrapdoor,
+    base_g1: G1serde,
+    inverse_tag: ScalarField,
+) -> Result<Box<[UnivariateTaggedQuery]>, UnivariateCrsError> {
+    if descriptors.is_empty() {
+        return Ok(Vec::new().into_boxed_slice());
+    }
+    let query_count =
+        setup
+            .s_max
+            .checked_mul(descriptors.len())
+            .ok_or(UnivariateCrsError::CapacityOverflow {
+                name: "specialized query count",
+            })?;
+    let queries = (0..query_count)
+        .into_par_iter()
+        .map(|query_index| {
+            let placement_index = query_index / descriptors.len();
+            let (subcircuit, local_wire_index) = descriptors[query_index % descriptors.len()];
+            let query = tagged_query_at(
+                shape,
+                setup,
+                placement_index,
+                subcircuit,
+                local_wire_index,
+                trapdoor,
+            )?;
+            Ok(UnivariateTaggedQuery {
+                placement_index,
+                subcircuit_id: subcircuit.id,
+                local_wire_index,
+                point: base_g1 * (inverse_tag * query),
+            })
+        })
+        .collect::<Result<Vec<_>, UnivariateCrsError>>()?;
+    Ok(queries.into_boxed_slice())
 }
 
 impl UnivariateCrs {
@@ -647,34 +728,40 @@ impl UnivariateCrs {
         let base_g1 = foundation.s0_g1[0];
         let public_queries_started = Instant::now();
         let mut seen_public_keys = std::collections::HashSet::new();
-        let mut gamma_inv_public_queries = Vec::new();
-        for key in public_wire_layout.public_query_keys() {
+        let public_query_keys = public_wire_layout.public_query_keys().collect::<Vec<_>>();
+        for key in &public_query_keys {
             if !seen_public_keys.insert((key.buffer_subcircuit_id, key.local_public_wire_index)) {
                 return Err(UnivariateCrsError::DuplicatePublicQueryKey {
                     subcircuit_id: key.buffer_subcircuit_id,
                     local_wire_index: key.local_public_wire_index,
                 });
             }
-            let subcircuit = subcircuits
-                .get(key.buffer_subcircuit_id)
-                .filter(|subcircuit| key.local_public_wire_index < subcircuit.flatten_map.len())
-                .ok_or(UnivariateCrsError::InvalidPublicQueryKey {
-                    subcircuit_id: key.buffer_subcircuit_id,
-                    local_wire_index: key.local_public_wire_index,
-                })?;
-            let query = tagged_query_at(
-                &shape,
-                setup,
-                key.buffer_subcircuit_id,
-                subcircuit,
-                key.local_public_wire_index,
-                trapdoor,
-            )?;
-            gamma_inv_public_queries.push(UnivariatePublicQuery {
-                key,
-                point: base_g1 * (trapdoor.gamma.inv() * query),
-            });
         }
+        let gamma_inverse = trapdoor.gamma.inv();
+        let gamma_inv_public_queries = public_query_keys
+            .par_iter()
+            .map(|key| {
+                let subcircuit = subcircuits
+                    .get(key.buffer_subcircuit_id)
+                    .filter(|subcircuit| key.local_public_wire_index < subcircuit.flatten_map.len())
+                    .ok_or(UnivariateCrsError::InvalidPublicQueryKey {
+                        subcircuit_id: key.buffer_subcircuit_id,
+                        local_wire_index: key.local_public_wire_index,
+                    })?;
+                let query = tagged_query_at(
+                    &shape,
+                    setup,
+                    key.buffer_subcircuit_id,
+                    subcircuit,
+                    key.local_public_wire_index,
+                    trapdoor,
+                )?;
+                Ok(UnivariatePublicQuery {
+                    key: *key,
+                    point: base_g1 * (gamma_inverse * query),
+                })
+            })
+            .collect::<Result<Vec<_>, UnivariateCrsError>>()?;
         println!(
             "Generated {} public queries in {:.6} seconds",
             gamma_inv_public_queries.len(),
@@ -682,50 +769,56 @@ impl UnivariateCrs {
         );
 
         let non_public_queries_started = Instant::now();
-        let mut eta_inv_interface_queries = Vec::new();
-        let mut delta_inv_internal_queries = Vec::new();
-        for placement_index in 0..setup.s_max {
-            for subcircuit in subcircuits {
+        let descriptor_groups = subcircuits
+            .par_iter()
+            .map(|subcircuit| {
+                let mut interface = Vec::new();
+                let mut internal = Vec::new();
                 for (local_wire_index, global_wire_index) in
                     subcircuit.flatten_map.iter().copied().enumerate()
                 {
-                    let query = match global_wire_index {
-                        value if value < setup.l => continue,
-                        value if value < setup.l_D => tagged_query_at(
-                            &shape,
-                            setup,
-                            placement_index,
-                            subcircuit,
-                            local_wire_index,
-                            trapdoor,
-                        )?,
-                        _ => tagged_query_at(
-                            &shape,
-                            setup,
-                            placement_index,
-                            subcircuit,
-                            local_wire_index,
-                            trapdoor,
-                        )?,
-                    };
-                    let tagged = UnivariateTaggedQuery {
-                        placement_index,
-                        subcircuit_id: subcircuit.id,
-                        local_wire_index,
-                        point: if global_wire_index < setup.l_D {
-                            base_g1 * (trapdoor.eta.inv() * query)
-                        } else {
-                            base_g1 * (trapdoor.delta.inv() * query)
-                        },
-                    };
+                    if global_wire_index < setup.l {
+                        continue;
+                    }
                     if global_wire_index < setup.l_D {
-                        eta_inv_interface_queries.push(tagged);
+                        interface.push((subcircuit, local_wire_index));
                     } else {
-                        delta_inv_internal_queries.push(tagged);
+                        internal.push((subcircuit, local_wire_index));
                     }
                 }
-            }
+                (interface, internal)
+            })
+            .collect::<Vec<_>>();
+        let mut interface_descriptors = Vec::new();
+        let mut internal_descriptors = Vec::new();
+        for (interface, internal) in descriptor_groups {
+            interface_descriptors.extend(interface);
+            internal_descriptors.extend(internal);
         }
+        let (eta_inv_interface_queries, delta_inv_internal_queries) = rayon::join(
+            || {
+                generate_tagged_queries_parallel(
+                    &shape,
+                    setup,
+                    &interface_descriptors,
+                    trapdoor,
+                    base_g1,
+                    trapdoor.eta.inv(),
+                )
+            },
+            || {
+                generate_tagged_queries_parallel(
+                    &shape,
+                    setup,
+                    &internal_descriptors,
+                    trapdoor,
+                    base_g1,
+                    trapdoor.delta.inv(),
+                )
+            },
+        );
+        let eta_inv_interface_queries = eta_inv_interface_queries?;
+        let delta_inv_internal_queries = delta_inv_internal_queries?;
         println!(
             "Generated {} interface and {} internal queries in {:.6} seconds",
             eta_inv_interface_queries.len(),
@@ -745,26 +838,41 @@ impl UnivariateCrs {
         };
         // U22 has two masks per polynomial. The B masks begin at K so their
         // basis is identical to U20's psi*tau^K B term.
-        let delta_inv_u_masking_queries = masking_range(ScalarField::one(), 0, z_a);
-        let delta_inv_v_masking_queries = masking_range(trapdoor.xi, 0, z_a);
-        let delta_inv_w_masking_queries = masking_range(trapdoor.psi, 0, z_a);
-        let delta_inv_b_masking_queries = masking_range(trapdoor.psi, shape.k, z_c);
+        let (
+            (delta_inv_u_masking_queries, delta_inv_v_masking_queries),
+            (delta_inv_w_masking_queries, delta_inv_b_masking_queries),
+        ) = rayon::join(
+            || {
+                rayon::join(
+                    || masking_range(ScalarField::one(), 0, z_a),
+                    || masking_range(trapdoor.xi, 0, z_a),
+                )
+            },
+            || {
+                rayon::join(
+                    || masking_range(trapdoor.psi, 0, z_a),
+                    || masking_range(trapdoor.psi, shape.k, z_c),
+                )
+            },
+        );
         println!(
             "Generated univariate masking queries in {:.6} seconds",
             masking_started.elapsed().as_secs_f64(),
         );
 
+        let (delta_g1, eta_g1) =
+            rayon::join(|| base_g1 * trapdoor.delta, || base_g1 * trapdoor.eta);
         Ok(Self {
             foundation,
             gamma_inv_public_queries: gamma_inv_public_queries.into_boxed_slice(),
-            eta_inv_interface_queries: eta_inv_interface_queries.into_boxed_slice(),
-            delta_inv_internal_queries: delta_inv_internal_queries.into_boxed_slice(),
+            eta_inv_interface_queries,
+            delta_inv_internal_queries,
             delta_inv_u_masking_queries,
             delta_inv_v_masking_queries,
             delta_inv_w_masking_queries,
             delta_inv_b_masking_queries,
-            delta_g1: base_g1 * trapdoor.delta,
-            eta_g1: base_g1 * trapdoor.eta,
+            delta_g1,
+            eta_g1,
         })
     }
 
@@ -793,7 +901,7 @@ impl UnivariateCrs {
             delta_g2: foundation.delta_g2,
             gamma_inv_public_queries: self
                 .gamma_inv_public_queries
-                .iter()
+                .par_iter()
                 .map(|query| UnivariatePublicQueryJson {
                     buffer_subcircuit_id: query.key.buffer_subcircuit_id,
                     local_public_wire_index: query.key.local_public_wire_index,
@@ -802,12 +910,12 @@ impl UnivariateCrs {
                 .collect(),
             eta_inv_interface_queries: self
                 .eta_inv_interface_queries
-                .iter()
+                .par_iter()
                 .map(UnivariateTaggedQueryJson::from_query)
                 .collect(),
             delta_inv_internal_queries: self
                 .delta_inv_internal_queries
-                .iter()
+                .par_iter()
                 .map(UnivariateTaggedQueryJson::from_query)
                 .collect(),
             delta_inv_u_masking_queries: &self.delta_inv_u_masking_queries,
@@ -1038,8 +1146,9 @@ fn nonzero_scalar() -> ScalarField {
 #[cfg(test)]
 mod tests {
     use super::{
-        UnivariateCrs, UnivariateCrsError, UnivariateCrsFoundation, UnivariateCrsShape,
-        UnivariateSubcircuit, UnivariateTrapdoor, UNIVARIATE_CRS_SCHEMA_ID,
+        generate_tagged_powers_parallel, UnivariateCrs, UnivariateCrsError,
+        UnivariateCrsFoundation, UnivariateCrsShape, UnivariateSubcircuit, UnivariateTrapdoor,
+        UNIVARIATE_CRS_SCHEMA_ID,
     };
     use crate::crs_artifacts::{
         read_univariate_crs_artifact, write_univariate_crs_artifacts, UnivariateCrsRkyvExt,
@@ -1159,6 +1268,27 @@ mod tests {
             foundation.tau_k_g2,
             foundation.one_g2 * trapdoor.tau.pow(shape.k)
         );
+    }
+
+    #[test]
+    fn parallel_power_generation_is_independent_of_worker_count() {
+        let g1 = CurveCfg::generate_random_affine_points(1)[0];
+        let tau = ScalarField::from_u32(17);
+        let tag = ScalarField::from_u32(19);
+        // Fixed worker counts belong only to this determinism test. Production
+        // always uses Rayon's process-global, host-adaptive worker pool.
+        let generate = |threads| {
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .expect("test Rayon pool must be constructible")
+                .install(|| {
+                    generate_tagged_powers_parallel("test", 16_385, tag, tau, g1)
+                        .expect("parallel power generation must succeed")
+                })
+        };
+
+        assert_eq!(generate(1), generate(4));
     }
 
     #[test]

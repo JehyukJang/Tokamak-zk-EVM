@@ -14,6 +14,7 @@ use libs::subcircuit_library::write_development_only_univariate_crs_provenance;
 use libs::univariate_crs::{
     UnivariateCrs, UnivariateCrsError, UnivariateCrsShape, UnivariateTrapdoor,
 };
+use rayon::prelude::*;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -49,19 +50,27 @@ pub(crate) fn run_univariate_trusted_setup(
     let shape = UnivariateCrsShape::from_setup_params(&setup_params)?;
 
     let subcircuit_infos_path = qap_path.join("subcircuitInfo.json");
-    let subcircuit_infos = SubcircuitInfo::read_box_from_json(subcircuit_infos_path.clone())
-        .map_err(|source| ArtifactError::Read {
-            artifact: "subcircuit information",
-            path: subcircuit_infos_path,
-            source,
-        })?;
     let global_wire_list_path = qap_path.join("globalWireList.json");
-    let global_wires =
-        read_global_wires(&global_wire_list_path).map_err(|source| ArtifactError::Read {
-            artifact: "global wire list",
-            path: global_wire_list_path.clone(),
-            source,
-        })?;
+    let (subcircuit_infos, global_wires) = rayon::join(
+        || {
+            SubcircuitInfo::read_box_from_json(subcircuit_infos_path.clone()).map_err(|source| {
+                ArtifactError::Read {
+                    artifact: "subcircuit information",
+                    path: subcircuit_infos_path,
+                    source,
+                }
+            })
+        },
+        || {
+            read_global_wires(&global_wire_list_path).map_err(|source| ArtifactError::Read {
+                artifact: "global wire list",
+                path: global_wire_list_path.clone(),
+                source,
+            })
+        },
+    );
+    let subcircuit_infos = subcircuit_infos?;
+    let global_wires = global_wires?;
     let public_wire_layout =
         PublicWireLayout::derive(&setup_params, &global_wires, &subcircuit_infos).map_err(
             |error| ArtifactError::Invalid {
@@ -72,7 +81,7 @@ pub(crate) fn run_univariate_trusted_setup(
         )?;
 
     let r1cs = subcircuit_infos
-        .iter()
+        .par_iter()
         .enumerate()
         .map(|(index, subcircuit_info)| {
             if subcircuit_info.id != index {

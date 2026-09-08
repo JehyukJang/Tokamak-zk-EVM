@@ -29,6 +29,7 @@ use icicle_bls12_381::curve::{
 use icicle_core::msm::{self, MSMConfig};
 use icicle_core::traits::FieldImpl;
 use icicle_runtime::memory::HostSlice;
+use rayon::prelude::*;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File};
 use std::io::{self, BufReader, Read};
@@ -78,20 +79,33 @@ pub fn write_univariate_crs_artifacts(
     crs: &UnivariateCrs,
 ) -> io::Result<UnivariateCrsDigests> {
     fs::create_dir_all(output_dir)?;
-    let rkyv = UnivariateCrsRkyv::from_univariate_crs(crs);
-    let rkyv_bytes = rkyv::to_bytes::<_, 256>(&rkyv).map_err(io::Error::other)?;
-    let json_bytes = serde_json::to_vec_pretty(&crs.json_projection()).map_err(io::Error::other)?;
-    write_final_crs_artifact_files(
-        output_dir,
-        &[
-            (UNIVARIATE_CRS_RKYV_FILE_NAME, rkyv_bytes.as_ref()),
-            (UNIVARIATE_CRS_JSON_FILE_NAME, &json_bytes),
-        ],
-        |path, contents| fs::write(path, contents),
-    )?;
+    let (rkyv_bytes, json_bytes) = rayon::join(
+        || {
+            let rkyv = UnivariateCrsRkyv::from_univariate_crs(crs);
+            rkyv::to_bytes::<_, 256>(&rkyv).map_err(io::Error::other)
+        },
+        || serde_json::to_vec_pretty(&crs.json_projection()).map_err(io::Error::other),
+    );
+    let rkyv_bytes = rkyv_bytes?;
+    let json_bytes = json_bytes?;
+    let (rkyv_sha256, json_sha256) = rayon::join(
+        || sha256_hex(rkyv_bytes.as_ref()),
+        || sha256_hex(&json_bytes),
+    );
+    let (rkyv_write, json_write) = rayon::join(
+        || {
+            fs::write(
+                output_dir.join(UNIVARIATE_CRS_RKYV_FILE_NAME),
+                rkyv_bytes.as_ref(),
+            )
+        },
+        || fs::write(output_dir.join(UNIVARIATE_CRS_JSON_FILE_NAME), &json_bytes),
+    );
+    rkyv_write?;
+    json_write?;
     Ok(UnivariateCrsDigests {
-        rkyv_sha256: sha256_hex(rkyv_bytes.as_ref()),
-        json_sha256: sha256_hex(&json_bytes),
+        rkyv_sha256,
+        json_sha256,
     })
 }
 
@@ -958,17 +972,17 @@ impl UnivariateCrsRkyvExt for UnivariateCrsRkyv {
             shape: UnivariateCrsShapeRkyv::from_shape(&foundation.shape),
             s0_g1: foundation
                 .s0_g1
-                .iter()
+                .par_iter()
                 .map(G1SerdeRkyv::from_g1serde)
                 .collect(),
             sxi_g1: foundation
                 .sxi_g1
-                .iter()
+                .par_iter()
                 .map(G1SerdeRkyv::from_g1serde)
                 .collect(),
             spsi_g1: foundation
                 .spsi_g1
-                .iter()
+                .par_iter()
                 .map(G1SerdeRkyv::from_g1serde)
                 .collect(),
             one_g2: G2SerdeRkyv::from_g2serde(&foundation.one_g2),
@@ -979,37 +993,37 @@ impl UnivariateCrsRkyvExt for UnivariateCrsRkyv {
             delta_g2: G2SerdeRkyv::from_g2serde(&foundation.delta_g2),
             gamma_inv_public_queries: crs
                 .gamma_inv_public_queries
-                .iter()
+                .par_iter()
                 .map(UnivariatePublicQueryRkyv::from_query)
                 .collect(),
             eta_inv_interface_queries: crs
                 .eta_inv_interface_queries
-                .iter()
+                .par_iter()
                 .map(UnivariateTaggedQueryRkyv::from_query)
                 .collect(),
             delta_inv_internal_queries: crs
                 .delta_inv_internal_queries
-                .iter()
+                .par_iter()
                 .map(UnivariateTaggedQueryRkyv::from_query)
                 .collect(),
             delta_inv_u_masking_queries: crs
                 .delta_inv_u_masking_queries
-                .iter()
+                .par_iter()
                 .map(G1SerdeRkyv::from_g1serde)
                 .collect(),
             delta_inv_v_masking_queries: crs
                 .delta_inv_v_masking_queries
-                .iter()
+                .par_iter()
                 .map(G1SerdeRkyv::from_g1serde)
                 .collect(),
             delta_inv_w_masking_queries: crs
                 .delta_inv_w_masking_queries
-                .iter()
+                .par_iter()
                 .map(G1SerdeRkyv::from_g1serde)
                 .collect(),
             delta_inv_b_masking_queries: crs
                 .delta_inv_b_masking_queries
-                .iter()
+                .par_iter()
                 .map(G1SerdeRkyv::from_g1serde)
                 .collect(),
             delta_g1: G1SerdeRkyv::from_g1serde(&crs.delta_g1),

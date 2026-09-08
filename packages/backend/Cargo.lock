@@ -3210,6 +3210,7 @@ dependencies = [
  "icicle-core",
  "icicle-runtime",
  "libs",
+ "rayon",
  "serde",
  "serde_json",
  "sha2",
