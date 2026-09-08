@@ -14,6 +14,7 @@ use icicle_bls12_381::curve::{G1Affine, G2Affine, ScalarCfg, ScalarField};
 use icicle_core::ntt;
 use icicle_core::traits::{Arithmetic, FieldImpl, GenerateRandom};
 use serde::Serialize;
+use std::time::Instant;
 use thiserror::Error;
 
 /// The sole schema identifier for the new univariate artifact family.
@@ -539,34 +540,53 @@ impl UnivariateCrsFoundation {
         g1: G1Affine,
         g2: G2Affine,
     ) -> Result<Self, UnivariateCrsError> {
-        let powers =
-            |length: usize, tag: ScalarField| -> Result<Box<[G1serde]>, UnivariateCrsError> {
-                let mut points = Vec::new();
-                points
-                    .try_reserve_exact(length)
-                    .map_err(|_| UnivariateCrsError::PowerAllocation { length })?;
-                let mut tau_power = ScalarField::one();
-                for _ in 0..length {
-                    points.push(G1serde(G1Affine::from(
-                        g1.to_projective() * tag * tau_power,
-                    )));
-                    tau_power = tau_power * trapdoor.tau;
+        let powers = |label: &str,
+                      length: usize,
+                      tag: ScalarField|
+         -> Result<Box<[G1serde]>, UnivariateCrsError> {
+            let started = Instant::now();
+            let mut points = Vec::new();
+            points
+                .try_reserve_exact(length)
+                .map_err(|_| UnivariateCrsError::PowerAllocation { length })?;
+            let mut tau_power = ScalarField::one();
+            let first_progress = (length / 100).max(1);
+            let progress_step = (length / 10).max(1);
+            for index in 0..length {
+                points.push(G1serde(G1Affine::from(
+                    g1.to_projective() * tag * tau_power,
+                )));
+                tau_power = tau_power * trapdoor.tau;
+                if index + 1 == first_progress
+                    || (index + 1) % progress_step == 0
+                    || index + 1 == length
+                {
+                    println!(
+                        "Generated {label} powers: {}/{} in {:.6} seconds",
+                        index + 1,
+                        length,
+                        started.elapsed().as_secs_f64(),
+                    );
                 }
-                Ok(points.into_boxed_slice())
-            };
+            }
+            Ok(points.into_boxed_slice())
+        };
         let s0_g1 = powers(
+            "S0",
             shape.declared_capacity[0]
                 .checked_add(1)
                 .ok_or(UnivariateCrsError::CapacityOverflow { name: "M_0 + 1" })?,
             ScalarField::one(),
         )?;
         let sxi_g1 = powers(
+            "Sxi",
             shape.declared_capacity[1]
                 .checked_add(1)
                 .ok_or(UnivariateCrsError::CapacityOverflow { name: "M_xi + 1" })?,
             trapdoor.xi,
         )?;
         let spsi_g1 = powers(
+            "Spsi",
             shape.declared_capacity[2]
                 .checked_add(1)
                 .ok_or(UnivariateCrsError::CapacityOverflow { name: "M_psi + 1" })?,
@@ -618,8 +638,14 @@ impl UnivariateCrs {
             }
         }
 
+        let foundation_started = Instant::now();
         let foundation = UnivariateCrsFoundation::generate(shape.clone(), trapdoor, g1, g2)?;
+        println!(
+            "Generated univariate CRS foundation in {:.6} seconds",
+            foundation_started.elapsed().as_secs_f64(),
+        );
         let base_g1 = foundation.s0_g1[0];
+        let public_queries_started = Instant::now();
         let mut seen_public_keys = std::collections::HashSet::new();
         let mut gamma_inv_public_queries = Vec::new();
         for key in public_wire_layout.public_query_keys() {
@@ -649,7 +675,13 @@ impl UnivariateCrs {
                 point: base_g1 * (trapdoor.gamma.inv() * query),
             });
         }
+        println!(
+            "Generated {} public queries in {:.6} seconds",
+            gamma_inv_public_queries.len(),
+            public_queries_started.elapsed().as_secs_f64(),
+        );
 
+        let non_public_queries_started = Instant::now();
         let mut eta_inv_interface_queries = Vec::new();
         let mut delta_inv_internal_queries = Vec::new();
         for placement_index in 0..setup.s_max {
@@ -694,7 +726,14 @@ impl UnivariateCrs {
                 }
             }
         }
+        println!(
+            "Generated {} interface and {} internal queries in {:.6} seconds",
+            eta_inv_interface_queries.len(),
+            delta_inv_internal_queries.len(),
+            non_public_queries_started.elapsed().as_secs_f64(),
+        );
 
+        let masking_started = Instant::now();
         let z_a = trapdoor.tau.pow(shape.arithmetic_domain_size) - ScalarField::one();
         let z_c = trapdoor.tau.pow(shape.connection_domain_size) - ScalarField::one();
         let delta_inverse = trapdoor.delta.inv();
@@ -710,6 +749,10 @@ impl UnivariateCrs {
         let delta_inv_v_masking_queries = masking_range(trapdoor.xi, 0, z_a);
         let delta_inv_w_masking_queries = masking_range(trapdoor.psi, 0, z_a);
         let delta_inv_b_masking_queries = masking_range(trapdoor.psi, shape.k, z_c);
+        println!(
+            "Generated univariate masking queries in {:.6} seconds",
+            masking_started.elapsed().as_secs_f64(),
+        );
 
         Ok(Self {
             foundation,

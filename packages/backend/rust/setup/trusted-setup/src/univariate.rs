@@ -35,6 +35,7 @@ pub(crate) fn run_univariate_trusted_setup(
     config: &TrustedSetupConfig<'_>,
 ) -> Result<(), TrustedSetupError> {
     let started = Instant::now();
+    let input_started = Instant::now();
     let qap_path = PathBuf::from(config.qap_path);
     let setup_params_path = qap_path.join("setupParams.json");
     let setup_params =
@@ -98,7 +99,12 @@ pub(crate) fn run_univariate_trusted_setup(
         .zip(subcircuit_infos.iter())
         .map(|(r1cs, subcircuit_info)| r1cs.as_univariate_subcircuit(subcircuit_info))
         .collect::<Vec<_>>();
+    println!(
+        "Loaded and validated univariate setup inputs in {:.6} seconds",
+        input_started.elapsed().as_secs_f64(),
+    );
 
+    let generation_started = Instant::now();
     let (g1, g2, trapdoor) = sample_trusted_setup_inputs(&shape, config.fixed_tau)?;
     let crs = UnivariateCrs::generate(
         &setup_params,
@@ -108,7 +114,12 @@ pub(crate) fn run_univariate_trusted_setup(
         g1,
         g2,
     )?;
+    println!(
+        "Generated in-memory univariate CRS in {:.6} seconds",
+        generation_started.elapsed().as_secs_f64(),
+    );
     let output_path = PathBuf::from(config.output_path);
+    let artifact_started = Instant::now();
     let (stage, digests) =
         stage_univariate_crs_artifacts(&output_path, &crs).map_err(|source| {
             TrustedSetupError::WriteOutput {
@@ -135,6 +146,10 @@ pub(crate) fn run_univariate_trusted_setup(
             path: output_path,
             source,
         })?;
+    println!(
+        "Serialized and activated univariate CRS artifacts in {:.6} seconds",
+        artifact_started.elapsed().as_secs_f64(),
+    );
     println!(
         "Generated development-only univariate CRS in {:.6} seconds",
         started.elapsed().as_secs_f64()
