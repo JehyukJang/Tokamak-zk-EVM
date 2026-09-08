@@ -11,12 +11,7 @@ export const BINARY_DIGEST_BYTES = 32;
 
 export enum BinaryArtifactFileKind {
   Instance = 1,
-  VerifierProof = 2,
-  VerifierCrs = 3,
-  VerifierPreprocess = 4,
   ProverPlacementVariables = 5,
-  ProverCrs = 6,
-  PreprocessCrs = 7,
   ProverSelector = 8,
   ProverPermutation = 9,
   UnivariatePreprocessCrs = 10,

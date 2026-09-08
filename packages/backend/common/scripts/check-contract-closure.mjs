@@ -68,9 +68,9 @@ const requiredConsumerBoundaries = [
     'SYNTHESIZER_BROWSER_ARTIFACT_CONTRACT',
   ],
   [
-    'backend-wasm backend contract adapter',
-    'packages/backend/wasm/src/converter/conversion/rkyv-to-binary.ts',
-    'BACKEND_BROWSER_ARTIFACT_CONTRACT',
+    'backend-wasm univariate CRS adapter',
+    'packages/backend/wasm/src/converter/conversion/univariate-crs-converter.ts',
+    'UNIVARIATE_CRS_SCHEMA_ID',
   ],
   [
     'backend-wasm runtime artifact contract admission',
