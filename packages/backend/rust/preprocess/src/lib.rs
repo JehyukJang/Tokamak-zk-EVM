@@ -20,7 +20,8 @@ use thiserror::Error;
 pub struct PreprocessInputPaths<'a> {
     pub qap_path: &'a str,
     pub synthesizer_path: &'a str,
-    pub setup_path: &'a str,
+    pub tau_sequence_path: &'a str,
+    pub keys_path: &'a str,
     pub output_path: &'a str,
 }
 
@@ -57,13 +58,14 @@ pub fn generate_univariate_preprocess(
 ) -> Result<UnivariatePreprocess, PreprocessError> {
     let expected_shape = UnivariateCrsShape::from_setup_params(setup_params)?;
     if crs.schema_id != libs::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID
-        || !crs.shape.admits_setup(&expected_shape)
+        || crs.capacity.admits(&expected_shape).is_err()
     {
         return Err(PreprocessError::UnivariateCrsMismatch);
     }
 
     let s_kappa = placement_selector_polynomial(&expected_shape, setup_params, selector)?;
-    let s_c = connection_permutation_polynomial(&expected_shape, setup_params, permutation)?;
+    let s_c =
+        connection_permutation_polynomial(&expected_shape, setup_params, selector, permutation)?;
     Ok(UnivariatePreprocess::new(
         crs.commit_strided_polynomial(&s_kappa)?,
         crs.commit_dense_polynomial(&s_c.coefficients)?,
@@ -169,13 +171,11 @@ mod tests {
         .unwrap();
         let crs = UnivariateTauSequence {
             schema_id: foundation.schema_id,
-            shape: foundation.shape,
+            capacity: libs::univariate_crs::UnivariateTauCapacity::from_shape(&foundation.shape),
             s0_g1: foundation.s0_g1,
             sxi_g1: foundation.sxi_g1,
             spsi_g1: foundation.spsi_g1,
-            one_g2: foundation.one_g2,
-            tau_g2: foundation.tau_g2,
-            tau_k_g2: foundation.tau_k_g2,
+            tau_powers_g2: foundation.tau_powers_g2,
         };
         let selector = [Some(0), None];
         let permutation = [];
@@ -186,7 +186,7 @@ mod tests {
             )
             .unwrap(),
             crs.commit_dense_polynomial(
-                &connection_permutation_polynomial(&shape, &setup, &permutation)
+                &connection_permutation_polynomial(&shape, &setup, &selector, &permutation)
                     .unwrap()
                     .coefficients,
             )

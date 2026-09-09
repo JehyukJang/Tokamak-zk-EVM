@@ -1,20 +1,33 @@
 //! U18--U21 construction entry point for the migrated trusted setup.
 
-use crate::{TrustedSetupConfig, TrustedSetupError};
-use icicle_bls12_381::curve::{BaseField, CurveCfg, G1Affine, G2Affine, G2BaseField, G2CurveCfg};
+use crate::TrustedSetupError;
+use icicle_bls12_381::curve::{
+    BaseField, CurveCfg, G1Affine, G2Affine, G2BaseField, G2CurveCfg, ScalarField,
+};
 use icicle_core::curve::Curve;
-use icicle_core::traits::{Arithmetic, FieldImpl};
-use libs::crs_artifacts::stage_univariate_crs_artifacts;
+use icicle_core::traits::{Arithmetic, FieldImpl, GenerateRandom};
+use libs::crs_artifacts::{
+    read_univariate_tau_sequence_with_digest, stage_univariate_specialized_key_artifacts,
+    stage_univariate_tau_sequence_artifact,
+};
+use libs::crs_provenance::parse_development_univariate_tau_provenance;
 use libs::errors::ArtifactError;
 use libs::field_structures::Tau;
 use libs::frontend_artifacts::public_wire_layout::{read_global_wires, PublicWireLayout};
 use libs::frontend_artifacts::{SetupParams, SubcircuitInfo};
 use libs::r1cs::SubcircuitR1CS;
-use libs::subcircuit_library::write_development_only_univariate_crs_provenance;
-use libs::univariate_crs::{
-    UnivariateCrs, UnivariateCrsError, UnivariateCrsShape, UnivariateTrapdoor,
+use libs::subcircuit_library::{
+    selected_subcircuit_library_provenance, write_development_only_univariate_keys_provenance,
+    write_development_only_univariate_tau_provenance,
 };
+use libs::univariate_crs::{
+    specialize_univariate_keys, UnivariateCrsShape, UnivariateRoleTrapdoor, UnivariateTauCapacity,
+    UnivariateTauSequence,
+};
+#[cfg(test)]
+use libs::univariate_crs::{UnivariateCrsError, UnivariateTrapdoor};
 use rayon::prelude::*;
+use std::fs;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -29,13 +42,105 @@ pub(crate) fn build_u18_foundation(
     libs::univariate_crs::UnivariateCrsFoundation::generate(shape, trapdoor, g1, g2)
 }
 
-/// Generates the complete development-only U18--U21 CRS.  This route is
-/// intentionally independent of legacy `Sigma` construction: MPC continues
-/// to own that bivariate artifact family and cannot overwrite this output.
-pub(crate) fn run_univariate_trusted_setup(
-    config: &TrustedSetupConfig<'_>,
+pub struct GenerateTauSequenceConfig<'a> {
+    pub capacity: UnivariateTauCapacity,
+    pub output_path: &'a str,
+    pub fixed_tau: bool,
+}
+
+pub struct SpecializeLibraryConfig<'a> {
+    pub qap_path: &'a str,
+    pub tau_sequence_path: &'a str,
+    pub tau_provenance_path: &'a str,
+    pub output_path: &'a str,
+    pub fixed_role_scalars: bool,
+}
+
+/// Standalone stage 1: generates only the library-independent U22c terminal
+/// sequences and commits them atomically.
+pub fn run_generate_tau_sequence(
+    config: &GenerateTauSequenceConfig<'_>,
 ) -> Result<(), TrustedSetupError> {
     let started = Instant::now();
+    let (g1, g2, tau, xi, psi) = sample_tau_sequence_inputs(config.fixed_tau);
+    let sequence = UnivariateTauSequence::generate(config.capacity, tau, xi, psi, g1, g2)?;
+    let output_path = PathBuf::from(config.output_path);
+    let (stage, digest) =
+        stage_univariate_tau_sequence_artifact(&output_path, &sequence).map_err(|source| {
+            TrustedSetupError::WriteOutput {
+                path: output_path.clone(),
+                source,
+            }
+        })?;
+    write_development_only_univariate_tau_provenance(
+        stage
+            .staging_directory()
+            .map_err(|source| TrustedSetupError::WriteOutput {
+                path: output_path.clone(),
+                source,
+            })?,
+        config.capacity,
+        &digest,
+    )
+    .map_err(|source| TrustedSetupError::WriteOutput {
+        path: output_path.clone(),
+        source,
+    })?;
+    stage
+        .activate()
+        .map_err(|source| TrustedSetupError::WriteOutput {
+            path: output_path,
+            source,
+        })?;
+    println!(
+        "Generated development-only tau sequence in {:.6} seconds",
+        started.elapsed().as_secs_f64()
+    );
+    Ok(())
+}
+
+/// Standalone stage 2: specializes an already persisted terminal sequence for
+/// one selected subcircuit library and never regenerates stage 1.
+pub fn run_specialize_library(
+    config: &SpecializeLibraryConfig<'_>,
+) -> Result<(), TrustedSetupError> {
+    let started = Instant::now();
+    let tau_path = PathBuf::from(config.tau_sequence_path);
+    let provenance_path = PathBuf::from(config.tau_provenance_path);
+    let provenance_bytes = fs::read(&provenance_path).map_err(|source| ArtifactError::Read {
+        artifact: "tau-sequence provenance",
+        path: provenance_path.clone(),
+        source,
+    })?;
+    let provenance =
+        parse_development_univariate_tau_provenance(&provenance_bytes).map_err(|reason| {
+            ArtifactError::Invalid {
+                artifact: "tau-sequence provenance",
+                path: provenance_path.clone(),
+                reason,
+            }
+        })?;
+    let (tau_sequence, tau_digest) =
+        read_univariate_tau_sequence_with_digest(&tau_path).map_err(|source| {
+            libs::errors::CrsError::Read {
+                path: tau_path.clone(),
+                source,
+            }
+        })?;
+    if hex::encode(tau_digest) != provenance.tau_sequence_rkyv_sha256
+        || provenance.terminal_capacity.l0 != tau_sequence.capacity.l0
+        || provenance.terminal_capacity.l_xi != tau_sequence.capacity.l_xi
+        || provenance.terminal_capacity.l_psi != tau_sequence.capacity.l_psi
+        || provenance.terminal_capacity.l2 != tau_sequence.capacity.l2
+    {
+        return Err(ArtifactError::Invalid {
+            artifact: "tau-sequence provenance",
+            path: provenance_path,
+            reason: "does not describe the selected tau_sequence.rkyv".to_string(),
+        }
+        .into());
+    }
+
     let input_started = Instant::now();
     let qap_path = PathBuf::from(config.qap_path);
     let setup_params_path = qap_path.join("setupParams.json");
@@ -113,15 +218,20 @@ pub(crate) fn run_univariate_trusted_setup(
         input_started.elapsed().as_secs_f64(),
     );
 
+    tau_sequence.admits_shape(&shape)?;
+    let role_trapdoor = if config.fixed_role_scalars {
+        let fixed = Tau::gen_fixed();
+        UnivariateRoleTrapdoor::new(fixed.gamma, fixed.eta, fixed.delta)?
+    } else {
+        UnivariateRoleTrapdoor::sample()
+    };
     let generation_started = Instant::now();
-    let (g1, g2, trapdoor) = sample_trusted_setup_inputs(&shape, config.fixed_tau)?;
-    let crs = UnivariateCrs::generate(
+    let (prover_keys, verifier_keys) = specialize_univariate_keys(
         &setup_params,
         &public_wire_layout,
         &subcircuits,
-        &trapdoor,
-        g1,
-        g2,
+        &tau_sequence,
+        &role_trapdoor,
     )?;
     println!(
         "Generated in-memory univariate CRS in {:.6} seconds",
@@ -129,20 +239,32 @@ pub(crate) fn run_univariate_trusted_setup(
     );
     let output_path = PathBuf::from(config.output_path);
     let artifact_started = Instant::now();
-    let (stage, digests) =
-        stage_univariate_crs_artifacts(&output_path, &crs).map_err(|source| {
+    let (stage, digests) = stage_univariate_specialized_key_artifacts(
+        &output_path,
+        &prover_keys,
+        &verifier_keys,
+        tau_digest,
+    )
+    .map_err(|source| TrustedSetupError::WriteOutput {
+        path: output_path.clone(),
+        source,
+    })?;
+    let library_provenance =
+        selected_subcircuit_library_provenance(&qap_path).map_err(|source| {
             TrustedSetupError::WriteOutput {
                 path: output_path.clone(),
                 source,
             }
         })?;
-    write_development_only_univariate_crs_provenance(
+    write_development_only_univariate_keys_provenance(
         stage
             .staging_directory()
             .map_err(|source| TrustedSetupError::WriteOutput {
                 path: output_path.clone(),
                 source,
             })?,
+        &hex::encode(tau_digest),
+        library_provenance,
         &digests,
     )
     .map_err(|source| TrustedSetupError::WriteOutput {
@@ -160,16 +282,15 @@ pub(crate) fn run_univariate_trusted_setup(
         artifact_started.elapsed().as_secs_f64(),
     );
     println!(
-        "Generated development-only univariate CRS in {:.6} seconds",
+        "Generated development-only library-specialized keys in {:.6} seconds",
         started.elapsed().as_secs_f64()
     );
     Ok(())
 }
 
-fn sample_trusted_setup_inputs(
-    shape: &UnivariateCrsShape,
+fn sample_tau_sequence_inputs(
     fixed_tau: bool,
-) -> Result<(G1Affine, G2Affine, UnivariateTrapdoor), UnivariateCrsError> {
+) -> (G1Affine, G2Affine, ScalarField, ScalarField, ScalarField) {
     if fixed_tau {
         println!("Using hardcoded generators and development trapdoor");
         let g1 = G1Affine::from_limbs(
@@ -184,22 +305,24 @@ fn sample_trusted_setup_inputs(
         // This route is development-only. Reuse the fixed test trapdoor to
         // derive deterministic nonzero xi and psi values without treating the
         // resulting CRS as ceremony output.
-        let trapdoor = UnivariateTrapdoor::new(
-            shape,
-            tau.x,
-            tau.alpha,
-            tau.alpha.pow(2),
-            tau.gamma,
-            tau.eta,
-            tau.delta,
-        )?;
-        return Ok((g1, g2, trapdoor));
+        return (g1, g2, tau.x, tau.alpha, tau.alpha.pow(2));
     }
-    Ok((
+    (
         CurveCfg::generate_random_affine_points(1)[0],
         G2CurveCfg::generate_random_affine_points(1)[0],
-        UnivariateTrapdoor::sample(shape)?,
-    ))
+        nonzero_scalar(),
+        nonzero_scalar(),
+        nonzero_scalar(),
+    )
+}
+
+fn nonzero_scalar() -> ScalarField {
+    loop {
+        let value = icicle_bls12_381::curve::ScalarCfg::generate_random(1)[0];
+        if value != ScalarField::zero() {
+            return value;
+        }
+    }
 }
 
 #[cfg(test)]

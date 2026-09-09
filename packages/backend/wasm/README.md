@@ -127,7 +127,8 @@ Convert the native CRS offline from `packages/backend/wasm`:
 
 ```sh
 npm run univariate-crs:convert -- \
-  --input ../rust/setup/trusted-setup/output/debug \
+  --tau-sequence ../rust/setup/trusted-setup/output/tau-active/tau_sequence.rkyv \
+  --keys ../rust/setup/trusted-setup/output/keys-active \
   --output ./tmp/browser-crs
 ```
 

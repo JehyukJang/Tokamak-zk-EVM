@@ -1,7 +1,7 @@
 use clap::Parser;
 use libs::cli::render_error;
 use libs::subcircuit_library::{
-    try_resolve_subcircuit_library_path, validate_operational_crs_compatibility,
+    try_resolve_subcircuit_library_path, validate_operational_univariate_crs_compatibility,
     DevelopmentCrsProvenanceArg, SubcircuitLibraryArg,
 };
 use libs::utils::try_check_device;
@@ -19,9 +19,13 @@ struct Config {
     #[command(flatten)]
     development_crs_provenance: DevelopmentCrsProvenanceArg,
 
-    /// CRS output directory containing tau_sequence.rkyv and prover_keys.rkyv
+    /// Stage-1 tau_sequence.rkyv file
+    #[arg(long, value_name = "FILE")]
+    tau_sequence: String,
+
+    /// Stage-2 output directory containing prover_keys.rkyv
     #[arg(long, value_name = "PATH")]
-    crs: String,
+    keys: String,
 
     /// Synthesizer output directory containing selector, permutation, instance, and witnesses
     #[arg(long, value_name = "PATH")]
@@ -58,9 +62,10 @@ fn run() -> Result<(), ProveError> {
     let config = Config::parse();
     let qap_library_path =
         try_resolve_subcircuit_library_path(config.subcircuit_library.as_deref())?;
-    validate_operational_crs_compatibility(
+    validate_operational_univariate_crs_compatibility(
         &config.development_crs_provenance,
-        PathBuf::from(&config.crs).as_path(),
+        PathBuf::from(&config.tau_sequence).as_path(),
+        PathBuf::from(&config.keys).as_path(),
         qap_library_path.as_path(),
     )?;
     let qap_path = qap_library_path.to_string_lossy().into_owned();
@@ -68,7 +73,8 @@ fn run() -> Result<(), ProveError> {
     let paths = ProveInputPaths {
         qap_path: &qap_path,
         synthesizer_path: &config.synthesizer_stat,
-        setup_path: &config.crs,
+        tau_sequence_path: &config.tau_sequence,
+        keys_path: &config.keys,
         output_path: &config.output,
     };
 

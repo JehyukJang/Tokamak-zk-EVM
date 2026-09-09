@@ -86,6 +86,7 @@
     "univariate:relation:check": "npm run contracts:check && tsx test/checks/univariate/check-univariate-relation.ts",
     "univariate:polynomial:check": "tsx test/checks/univariate/check-univariate-polynomial.ts",
     "univariate:transcript:check": "tsx test/checks/univariate/check-univariate-transcript.ts",
+    "univariate:reference-browser:check": "tsx test/checks/browser/check-univariate-reference-browser.ts",
     "architecture:check": "tsx test/checks/architecture/check-layering.ts",
     "fixtures:copy": "npm run subcircuit-library:generate:development && tsx scripts/fixtures/copy-fixtures.ts fixtures/small/copy-manifest.json",
     "fixtures:prepare": "npm run subcircuit-library:generate:development && tsx scripts/fixtures/prepare-runtime-fixtures.ts fixtures/small/copy-manifest.json",

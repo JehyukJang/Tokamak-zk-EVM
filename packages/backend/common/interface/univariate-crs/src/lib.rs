@@ -23,13 +23,21 @@ pub struct UnivariateG2Rkyv {
 #[derive(Debug, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct UnivariateTauSequenceRkyv {
     pub schema_id: String,
-    pub shape: UnivariateCrsShapeRkyv,
+    pub capacity: UnivariateTauCapacityRkyv,
     pub s0_g1: Vec<UnivariateG1Rkyv>,
     pub sxi_g1: Vec<UnivariateG1Rkyv>,
     pub spsi_g1: Vec<UnivariateG1Rkyv>,
-    pub one_g2: UnivariateG2Rkyv,
-    pub tau_g2: UnivariateG2Rkyv,
-    pub tau_k_g2: UnivariateG2Rkyv,
+    pub tau_powers_g2: Vec<UnivariateG2Rkyv>,
+}
+
+/// Terminal U22c capacities. These values are independent of any selected
+/// subcircuit library; stage 2 checks them against its derived U18 shape.
+#[derive(Debug, Clone, Copy, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+pub struct UnivariateTauCapacityRkyv {
+    pub l0: u64,
+    pub l_xi: u64,
+    pub l_psi: u64,
+    pub l2: u64,
 }
 
 #[derive(Debug, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]

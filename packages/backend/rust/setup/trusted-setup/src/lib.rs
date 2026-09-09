@@ -7,7 +7,10 @@ use thiserror::Error;
 mod execution;
 mod univariate;
 
-pub use execution::{run_trusted_setup, TrustedSetupConfig};
+pub use univariate::{
+    run_generate_tau_sequence, run_specialize_library, GenerateTauSequenceConfig,
+    SpecializeLibraryConfig,
+};
 
 pub struct SetupInputPaths<'a> {
     pub qap_path: &'a str,
@@ -55,30 +58,34 @@ impl CliDiagnostic for TrustedSetupError {
 #[cfg(test)]
 mod tests {
     use super::{
-        execution::ensure_output_directory, run_trusted_setup, TrustedSetupConfig,
+        execution::ensure_output_directory, run_generate_tau_sequence, GenerateTauSequenceConfig,
         TrustedSetupError,
     };
+    use libs::univariate_crs::UnivariateTauCapacity;
     use std::fs;
 
     #[test]
-    fn library_api_rejects_a_missing_qap_before_device_initialization() {
+    fn stage_one_runs_without_a_subcircuit_library() {
         let workspace = tempfile::tempdir().expect("must create temporary workspace");
-        let missing_qap = workspace.path().join("missing-qap");
         let output = workspace.path().join("output");
-        let qap_path = missing_qap.to_string_lossy();
         let output_path = output.to_string_lossy();
-        let config = TrustedSetupConfig {
-            qap_path: &qap_path,
+        let config = GenerateTauSequenceConfig {
+            capacity: UnivariateTauCapacity {
+                l0: 4,
+                l_xi: 4,
+                l_psi: 4,
+                l2: 4,
+            },
             output_path: &output_path,
-            fixed_tau: false,
-            #[cfg(feature = "testing-mode")]
-            synthesizer_path: &qap_path,
+            fixed_tau: true,
         };
 
-        let error = run_trusted_setup(&config).expect_err("missing QAP must fail");
+        run_generate_tau_sequence(&config).expect("stage one must run independently");
 
-        assert!(matches!(error, TrustedSetupError::Artifact(_)));
-        assert!(!output.exists());
+        assert!(output.join("tau_sequence.rkyv").is_file());
+        assert!(output.join("crs_provenance.json").is_file());
+        assert!(!output.join("prover_keys.rkyv").exists());
+        assert!(!output.join("verifier_keys.rkyv").exists());
     }
 
     #[test]
@@ -111,13 +118,15 @@ mod tests {
     #[test]
     fn univariate_trusted_setup_provenance_identifies_its_artifact_family() {
         let workspace = tempfile::tempdir().expect("must create temporary workspace");
-        libs::subcircuit_library::write_development_only_univariate_crs_provenance(
+        libs::subcircuit_library::write_development_only_univariate_tau_provenance(
             workspace.path(),
-            &libs::crs_artifacts::UnivariateCrsDigests {
-                tau_sequence_sha256: "0".repeat(64),
-                prover_keys_sha256: "1".repeat(64),
-                verifier_keys_sha256: "2".repeat(64),
+            UnivariateTauCapacity {
+                l0: 1,
+                l_xi: 2,
+                l_psi: 3,
+                l2: 4,
             },
+            &"0".repeat(64),
         )
         .expect("must write univariate trusted-setup provenance");
         let provenance: serde_json::Value = serde_json::from_slice(
@@ -128,11 +137,13 @@ mod tests {
 
         assert_eq!(
             provenance["documentKind"],
-            "developmentTrustedSetupUnivariateCrs"
+            "developmentTrustedSetupUnivariateTauSequence"
         );
         assert_eq!(provenance["tauSequenceRkyvSha256"], "0".repeat(64));
-        assert_eq!(provenance["proverKeysRkyvSha256"], "1".repeat(64));
-        assert_eq!(provenance["verifierKeysRkyvSha256"], "2".repeat(64));
+        assert_eq!(provenance["terminalCapacity"]["l0"], 1);
+        assert_eq!(provenance["terminalCapacity"]["lXi"], 2);
+        assert_eq!(provenance["terminalCapacity"]["lPsi"], 3);
+        assert_eq!(provenance["terminalCapacity"]["l2"], 4);
         assert_eq!(provenance["protocolSchemaId"], "tokamak-zk-evm-univariate");
         assert_eq!(provenance["releaseEligible"], false);
     }

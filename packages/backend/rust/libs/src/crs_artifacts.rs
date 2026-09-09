@@ -12,7 +12,8 @@ use crate::group_structures::{
 use crate::timing::{record as record_timing, SizeInfo};
 use crate::univariate_crs::{
     UnivariateCrs, UnivariateCrsShape, UnivariateProverCrs, UnivariateProverKeys,
-    UnivariatePublicQuery, UnivariateTaggedQuery, UnivariateTauSequence, UnivariateVerifierKeys,
+    UnivariatePublicQuery, UnivariateTaggedQuery, UnivariateTauCapacity, UnivariateTauSequence,
+    UnivariateVerifierKeys,
 };
 use crate::univariate_relation::UnivariateSubcircuit;
 use crate::vector_operations::resize;
@@ -24,7 +25,8 @@ pub use backend_interface::{
     G2SerdeRkyv, PartialSigma1Rkyv, PartialSigma1VerifyRkyv, Sigma1Rkyv, Sigma2Rkyv,
     SigmaPreprocessRkyv, SigmaRkyv, SigmaVerifyRkyv, UnivariateCrsShapeRkyv, UnivariateG1Rkyv,
     UnivariateG2Rkyv, UnivariateProverKeysRkyv, UnivariatePublicQueryRkyv,
-    UnivariateTaggedQueryRkyv, UnivariateTauSequenceRkyv, UnivariateVerifierKeysRkyv,
+    UnivariateTaggedQueryRkyv, UnivariateTauCapacityRkyv, UnivariateTauSequenceRkyv,
+    UnivariateVerifierKeysRkyv,
 };
 use icicle_bls12_381::curve::{
     BaseField, G1Affine, G1Projective, G2Affine, G2BaseField, ScalarField,
@@ -74,6 +76,62 @@ pub struct UnivariateCrsDigests {
     pub tau_sequence_sha256: String,
     pub prover_keys_sha256: String,
     pub verifier_keys_sha256: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct UnivariateSpecializedKeyDigests {
+    pub prover_keys_sha256: String,
+    pub verifier_keys_sha256: String,
+}
+
+pub fn write_univariate_tau_sequence_artifact(
+    output_dir: &Path,
+    sequence: &UnivariateTauSequence,
+) -> io::Result<String> {
+    fs::create_dir_all(output_dir)?;
+    let archive = UnivariateTauSequenceRkyv::from_tau_sequence(sequence);
+    let bytes = backend_univariate_crs_interface::archive::to_bytes::<
+        backend_univariate_crs_interface::archive::rancor::Error,
+    >(&archive)
+    .map_err(io::Error::other)?;
+    let digest = sha256_hex(bytes.as_ref());
+    fs::write(output_dir.join(TAU_SEQUENCE_RKYV_FILE_NAME), bytes.as_ref())?;
+    Ok(digest)
+}
+
+pub fn write_univariate_specialized_key_artifacts(
+    output_dir: &Path,
+    prover: &UnivariateProverKeys,
+    verifier: &UnivariateVerifierKeys,
+    tau_sequence_sha256: [u8; 32],
+) -> io::Result<UnivariateSpecializedKeyDigests> {
+    fs::create_dir_all(output_dir)?;
+    let prover_archive = UnivariateProverKeysRkyv::from_prover_keys(prover, tau_sequence_sha256);
+    let prover_bytes = backend_univariate_crs_interface::archive::to_bytes::<
+        backend_univariate_crs_interface::archive::rancor::Error,
+    >(&prover_archive)
+    .map_err(io::Error::other)?;
+    let prover_keys_sha256 = sha256_hex(prover_bytes.as_ref());
+    fs::write(
+        output_dir.join(PROVER_KEYS_RKYV_FILE_NAME),
+        prover_bytes.as_ref(),
+    )?;
+
+    let verifier_archive =
+        UnivariateVerifierKeysRkyv::from_verifier_keys(verifier, tau_sequence_sha256);
+    let verifier_bytes = backend_univariate_crs_interface::archive::to_bytes::<
+        backend_univariate_crs_interface::archive::rancor::Error,
+    >(&verifier_archive)
+    .map_err(io::Error::other)?;
+    let verifier_keys_sha256 = sha256_hex(verifier_bytes.as_ref());
+    fs::write(
+        output_dir.join(VERIFIER_KEYS_RKYV_FILE_NAME),
+        verifier_bytes.as_ref(),
+    )?;
+    Ok(UnivariateSpecializedKeyDigests {
+        prover_keys_sha256,
+        verifier_keys_sha256,
+    })
 }
 
 /// Writes the three canonical role-separated RKYV archives of a U18--U21 CRS.
@@ -133,16 +191,12 @@ pub fn write_univariate_crs_artifacts(
     Ok(digests)
 }
 
-pub fn read_univariate_tau_sequence(
-    path: &Path,
-    setup: &SetupParams,
-) -> io::Result<UnivariateTauSequence> {
-    read_univariate_tau_sequence_with_digest(path, setup).map(|(sequence, _)| sequence)
+pub fn read_univariate_tau_sequence(path: &Path) -> io::Result<UnivariateTauSequence> {
+    read_univariate_tau_sequence_with_digest(path).map(|(sequence, _)| sequence)
 }
 
 pub fn read_univariate_tau_sequence_with_digest(
     path: &Path,
-    setup: &SetupParams,
 ) -> io::Result<(UnivariateTauSequence, [u8; 32])> {
     let bytes = fs::read(path)?;
     let digest = Sha256::digest(&bytes).into();
@@ -151,10 +205,11 @@ pub fn read_univariate_tau_sequence_with_digest(
         backend_univariate_crs_interface::archive::rancor::Error,
     >(&bytes)
     .map_err(|error| invalid_crs(&format!("invalid tau sequence archive: {error:?}")))?;
-    let shape = admitted_shape(archive.schema_id.as_str(), &archive.shape, setup)?;
-    if archive.s0_g1.len() != shape.declared_capacity[0] + 1
-        || archive.sxi_g1.len() != shape.declared_capacity[1] + 1
-        || archive.spsi_g1.len() != shape.declared_capacity[2] + 1
+    let capacity = admitted_tau_capacity(archive.schema_id.as_str(), &archive.capacity)?;
+    if archive.s0_g1.len() != capacity.l0 + 1
+        || archive.sxi_g1.len() != capacity.l_xi + 1
+        || archive.spsi_g1.len() != capacity.l_psi + 1
+        || archive.tau_powers_g2.len() != capacity.l2 + 1
     {
         return Err(invalid_crs(
             "tau-sequence counts do not match the declared capacity",
@@ -163,28 +218,25 @@ pub fn read_univariate_tau_sequence_with_digest(
     Ok((
         UnivariateTauSequence {
             schema_id: crate::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID,
-            shape,
+            capacity,
             s0_g1: decode_g1_slice(&archive.s0_g1),
             sxi_g1: decode_g1_slice(&archive.sxi_g1),
             spsi_g1: decode_g1_slice(&archive.spsi_g1),
-            one_g2: archived_univariate_g2(&archive.one_g2),
-            tau_g2: archived_univariate_g2(&archive.tau_g2),
-            tau_k_g2: archived_univariate_g2(&archive.tau_k_g2),
+            tau_powers_g2: decode_g2_slice(&archive.tau_powers_g2),
         },
         digest,
     ))
 }
 
 pub fn read_univariate_prover_crs(
-    directory: &Path,
+    tau_sequence_path: &Path,
+    keys_directory: &Path,
     setup: &SetupParams,
     subcircuits: &[UnivariateSubcircuit<'_>],
 ) -> io::Result<UnivariateProverCrs> {
-    let (tau_sequence, actual_tau_digest) = read_univariate_tau_sequence_with_digest(
-        &directory.join(TAU_SEQUENCE_RKYV_FILE_NAME),
-        setup,
-    )?;
-    let bytes = fs::read(directory.join(PROVER_KEYS_RKYV_FILE_NAME))?;
+    let (tau_sequence, actual_tau_digest) =
+        read_univariate_tau_sequence_with_digest(tau_sequence_path)?;
+    let bytes = fs::read(keys_directory.join(PROVER_KEYS_RKYV_FILE_NAME))?;
     let archive = backend_univariate_crs_interface::archive::access::<
         ArchivedUnivariateProverKeysRkyv,
         backend_univariate_crs_interface::archive::rancor::Error,
@@ -196,11 +248,10 @@ pub fn read_univariate_prover_crs(
         ));
     }
     let shape = admitted_shape(archive.schema_id.as_str(), &archive.shape, setup)?;
-    if shape != tau_sequence.shape {
-        return Err(invalid_crs(
-            "tau sequence and prover keys have different shapes",
-        ));
-    }
+    tau_sequence
+        .capacity
+        .admits(&shape)
+        .map_err(io::Error::other)?;
     if archive.delta_inv_u_masking_queries.len() != 2
         || archive.delta_inv_v_masking_queries.len() != 2
         || archive.delta_inv_w_masking_queries.len() != 2
@@ -242,12 +293,12 @@ pub fn read_univariate_prover_crs(
 }
 
 pub fn read_univariate_verifier_keys(
-    directory: &Path,
+    keys_directory: &Path,
     setup: &SetupParams,
     public_wire_layout: &PublicWireLayout,
     expected_tau_digest: [u8; 32],
 ) -> io::Result<UnivariateVerifierKeys> {
-    let bytes = fs::read(directory.join(VERIFIER_KEYS_RKYV_FILE_NAME))?;
+    let bytes = fs::read(keys_directory.join(VERIFIER_KEYS_RKYV_FILE_NAME))?;
     let archive = backend_univariate_crs_interface::archive::access::<
         ArchivedUnivariateVerifierKeysRkyv,
         backend_univariate_crs_interface::archive::rancor::Error,
@@ -354,10 +405,33 @@ fn admitted_shape(
     Ok(shape)
 }
 
+fn admitted_tau_capacity(
+    schema_id: &str,
+    archived: &backend_univariate_crs_interface::ArchivedUnivariateTauCapacityRkyv,
+) -> io::Result<UnivariateTauCapacity> {
+    if schema_id != crate::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID {
+        return Err(invalid_crs("unsupported schema"));
+    }
+    Ok(UnivariateTauCapacity {
+        l0: archived_usize(archived.l0.into(), "L_0")?,
+        l_xi: archived_usize(archived.l_xi.into(), "L_xi")?,
+        l_psi: archived_usize(archived.l_psi.into(), "L_psi")?,
+        l2: archived_usize(archived.l2.into(), "L_2")?,
+    })
+}
+
 fn decode_g1_slice(values: &[ArchivedUnivariateG1Rkyv]) -> Box<[G1serde]> {
     values
         .iter()
         .map(archived_univariate_g1)
+        .collect::<Vec<_>>()
+        .into_boxed_slice()
+}
+
+fn decode_g2_slice(values: &[ArchivedUnivariateG2Rkyv]) -> Box<[G2serde]> {
+    values
+        .iter()
+        .map(archived_univariate_g2)
         .collect::<Vec<_>>()
         .into_boxed_slice()
 }
@@ -605,6 +679,45 @@ pub fn stage_univariate_crs_artifacts(
     };
     let digests = write_univariate_crs_artifacts(stage.staging_directory()?, crs)?;
     Ok((stage, digests))
+}
+
+pub fn stage_univariate_tau_sequence_artifact(
+    active_output: &Path,
+    sequence: &UnivariateTauSequence,
+) -> io::Result<(StagedUnivariateCrs, String)> {
+    let stage = create_univariate_stage(active_output)?;
+    let digest = write_univariate_tau_sequence_artifact(stage.staging_directory()?, sequence)?;
+    Ok((stage, digest))
+}
+
+pub fn stage_univariate_specialized_key_artifacts(
+    active_output: &Path,
+    prover: &UnivariateProverKeys,
+    verifier: &UnivariateVerifierKeys,
+    tau_sequence_sha256: [u8; 32],
+) -> io::Result<(StagedUnivariateCrs, UnivariateSpecializedKeyDigests)> {
+    let stage = create_univariate_stage(active_output)?;
+    let digests = write_univariate_specialized_key_artifacts(
+        stage.staging_directory()?,
+        prover,
+        verifier,
+        tau_sequence_sha256,
+    )?;
+    Ok((stage, digests))
+}
+
+fn create_univariate_stage(active_output: &Path) -> io::Result<StagedUnivariateCrs> {
+    let output_parent = active_output
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let generations_directory = output_parent.join("generations");
+    let staging_directory = create_staging_directory(&generations_directory)?;
+    Ok(StagedUnivariateCrs {
+        active_output: active_output.to_path_buf(),
+        generations_directory,
+        staging_directory: Some(staging_directory),
+    })
 }
 
 /// Create an inactive generation containing all three final Sigma artifacts.
@@ -1006,6 +1119,7 @@ impl SigmaRkyvExt for SigmaRkyv {
 
 trait UnivariateTauSequenceRkyvExt: Sized {
     fn from_univariate_crs(crs: &UnivariateCrs) -> Self;
+    fn from_tau_sequence(sequence: &UnivariateTauSequence) -> Self;
 }
 
 pub trait UnivariateBoundCrsRkyvExt: Sized {
@@ -1015,15 +1129,34 @@ pub trait UnivariateBoundCrsRkyvExt: Sized {
 impl UnivariateTauSequenceRkyvExt for UnivariateTauSequenceRkyv {
     fn from_univariate_crs(crs: &UnivariateCrs) -> Self {
         let foundation = &crs.foundation;
+        let sequence = UnivariateTauSequence {
+            schema_id: foundation.schema_id,
+            capacity: UnivariateTauCapacity::from_shape(&foundation.shape),
+            s0_g1: foundation.s0_g1.clone(),
+            sxi_g1: foundation.sxi_g1.clone(),
+            spsi_g1: foundation.spsi_g1.clone(),
+            tau_powers_g2: foundation.tau_powers_g2.clone(),
+        };
+        Self::from_tau_sequence(&sequence)
+    }
+
+    fn from_tau_sequence(sequence: &UnivariateTauSequence) -> Self {
         Self {
-            schema_id: foundation.schema_id.to_string(),
-            shape: UnivariateCrsShapeRkyv::from_shape(&foundation.shape),
-            s0_g1: foundation.s0_g1.par_iter().map(univariate_g1).collect(),
-            sxi_g1: foundation.sxi_g1.par_iter().map(univariate_g1).collect(),
-            spsi_g1: foundation.spsi_g1.par_iter().map(univariate_g1).collect(),
-            one_g2: univariate_g2(&foundation.one_g2),
-            tau_g2: univariate_g2(&foundation.tau_g2),
-            tau_k_g2: univariate_g2(&foundation.tau_k_g2),
+            schema_id: sequence.schema_id.to_string(),
+            capacity: UnivariateTauCapacityRkyv {
+                l0: sequence.capacity.l0 as u64,
+                l_xi: sequence.capacity.l_xi as u64,
+                l_psi: sequence.capacity.l_psi as u64,
+                l2: sequence.capacity.l2 as u64,
+            },
+            s0_g1: sequence.s0_g1.par_iter().map(univariate_g1).collect(),
+            sxi_g1: sequence.sxi_g1.par_iter().map(univariate_g1).collect(),
+            spsi_g1: sequence.spsi_g1.par_iter().map(univariate_g1).collect(),
+            tau_powers_g2: sequence
+                .tau_powers_g2
+                .par_iter()
+                .map(univariate_g2)
+                .collect(),
         }
     }
 }
@@ -1071,6 +1204,52 @@ impl UnivariateBoundCrsRkyvExt for UnivariateProverKeysRkyv {
     }
 }
 
+trait UnivariateProverKeysRkyvExt: Sized {
+    fn from_prover_keys(keys: &UnivariateProverKeys, tau_sequence_sha256: [u8; 32]) -> Self;
+}
+
+impl UnivariateProverKeysRkyvExt for UnivariateProverKeysRkyv {
+    fn from_prover_keys(keys: &UnivariateProverKeys, tau_sequence_sha256: [u8; 32]) -> Self {
+        Self {
+            schema_id: keys.schema_id.to_string(),
+            shape: UnivariateCrsShapeRkyv::from_shape(&keys.shape),
+            tau_sequence_sha256,
+            eta_inv_interface_queries: keys
+                .eta_inv_interface_queries
+                .par_iter()
+                .map(UnivariateTaggedQueryRkyv::from_query)
+                .collect(),
+            delta_inv_internal_queries: keys
+                .delta_inv_internal_queries
+                .par_iter()
+                .map(UnivariateTaggedQueryRkyv::from_query)
+                .collect(),
+            delta_inv_u_masking_queries: keys
+                .delta_inv_u_masking_queries
+                .par_iter()
+                .map(univariate_g1)
+                .collect(),
+            delta_inv_v_masking_queries: keys
+                .delta_inv_v_masking_queries
+                .par_iter()
+                .map(univariate_g1)
+                .collect(),
+            delta_inv_w_masking_queries: keys
+                .delta_inv_w_masking_queries
+                .par_iter()
+                .map(univariate_g1)
+                .collect(),
+            delta_inv_b_masking_queries: keys
+                .delta_inv_b_masking_queries
+                .par_iter()
+                .map(univariate_g1)
+                .collect(),
+            delta_g1: univariate_g1(&keys.delta_g1),
+            eta_g1: univariate_g1(&keys.eta_g1),
+        }
+    }
+}
+
 impl UnivariateBoundCrsRkyvExt for UnivariateVerifierKeysRkyv {
     fn from_univariate_crs(crs: &UnivariateCrs, tau_sequence_sha256: [u8; 32]) -> Self {
         let foundation = &crs.foundation;
@@ -1081,13 +1260,41 @@ impl UnivariateBoundCrsRkyvExt for UnivariateVerifierKeysRkyv {
             one_g1: univariate_g1(&foundation.s0_g1[0]),
             xi_g1: univariate_g1(&foundation.sxi_g1[0]),
             psi_g1: univariate_g1(&foundation.spsi_g1[0]),
-            one_g2: univariate_g2(&foundation.one_g2),
-            tau_g2: univariate_g2(&foundation.tau_g2),
-            tau_k_g2: univariate_g2(&foundation.tau_k_g2),
+            one_g2: univariate_g2(&foundation.tau_powers_g2[0]),
+            tau_g2: univariate_g2(&foundation.tau_powers_g2[1]),
+            tau_k_g2: univariate_g2(&foundation.tau_powers_g2[foundation.shape.k]),
             gamma_g2: univariate_g2(&foundation.gamma_g2),
             eta_g2: univariate_g2(&foundation.eta_g2),
             delta_g2: univariate_g2(&foundation.delta_g2),
             gamma_inv_public_queries: crs
+                .gamma_inv_public_queries
+                .par_iter()
+                .map(UnivariatePublicQueryRkyv::from_query)
+                .collect(),
+        }
+    }
+}
+
+trait UnivariateVerifierKeysRkyvExt: Sized {
+    fn from_verifier_keys(keys: &UnivariateVerifierKeys, tau_sequence_sha256: [u8; 32]) -> Self;
+}
+
+impl UnivariateVerifierKeysRkyvExt for UnivariateVerifierKeysRkyv {
+    fn from_verifier_keys(keys: &UnivariateVerifierKeys, tau_sequence_sha256: [u8; 32]) -> Self {
+        Self {
+            schema_id: keys.schema_id.to_string(),
+            shape: UnivariateCrsShapeRkyv::from_shape(&keys.shape),
+            tau_sequence_sha256,
+            one_g1: univariate_g1(&keys.one_g1),
+            xi_g1: univariate_g1(&keys.xi_g1),
+            psi_g1: univariate_g1(&keys.psi_g1),
+            gamma_g2: univariate_g2(&keys.gamma_g2),
+            eta_g2: univariate_g2(&keys.eta_g2),
+            delta_g2: univariate_g2(&keys.delta_g2),
+            one_g2: univariate_g2(&keys.one_g2),
+            tau_g2: univariate_g2(&keys.tau_g2),
+            tau_k_g2: univariate_g2(&keys.tau_k_g2),
+            gamma_inv_public_queries: keys
                 .gamma_inv_public_queries
                 .par_iter()
                 .map(UnivariatePublicQueryRkyv::from_query)

@@ -24,8 +24,8 @@ const setup = {
 } as const;
 const selector = [0, null] as const;
 const permutation = [
-  { row: 0, col: 0, X: 1, Y: 1 },
-  { row: 1, col: 1, X: 0, Y: 0 },
+  { row: 0, col: 0, X: 1, Y: 0 },
+  { row: 1, col: 0, X: 0, Y: 0 },
 ] as const;
 
 const runtime = await createCurveRuntime();
@@ -42,7 +42,7 @@ try {
   const domain = deriveUnivariateDomainShape(runtime.Fr, setup);
   const [selectorPolynomial, permutationPolynomial] = await Promise.all([
     placementSelectorPolynomial(runtime.Fr, domain, setup, selector),
-    buildConnectionPermutationPolynomial(runtime.Fr, domain, setup, permutation),
+    buildConnectionPermutationPolynomial(runtime.Fr, domain, setup, selector, permutation),
   ]);
   const expectedSelector = runtime.G1.mulAffineScalar(
     runtime.G1.generator,
@@ -70,10 +70,19 @@ try {
     preprocessSnark(runtime, {
       setup,
       selector,
-      permutation: [{ row: 0, col: 0, X: 1, Y: 1 }],
+      permutation: [{ row: 0, col: 0, X: 1, Y: 0 }],
       crs: { s0: kzgPowers },
     }),
     /more than one source/,
+  );
+  await assert.rejects(
+    preprocessSnark(runtime, {
+      setup,
+      selector,
+      permutation: [{ row: 0, col: 1, X: 0, Y: 1 }],
+      crs: { s0: kzgPowers },
+    }),
+    /inactive placement slot/,
   );
 } finally {
   await runtime.terminate();

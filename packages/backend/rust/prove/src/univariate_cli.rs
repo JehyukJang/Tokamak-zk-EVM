@@ -76,13 +76,14 @@ pub fn prove(paths: &ProveInputPaths<'_>) -> Result<(), ProveError> {
         .zip(infos.iter())
         .map(|(r1cs, info)| r1cs.as_univariate_subcircuit(info))
         .collect::<Vec<_>>();
-    let crs_path = PathBuf::from(paths.setup_path);
-    let crs = read_univariate_prover_crs(&crs_path, &setup, &subcircuits).map_err(|source| {
-        CrsError::Read {
-            path: crs_path,
+    let tau_path = PathBuf::from(paths.tau_sequence_path);
+    let keys_path = PathBuf::from(paths.keys_path);
+    let crs = read_univariate_prover_crs(&tau_path, &keys_path, &setup, &subcircuits).map_err(
+        |source| CrsError::Read {
+            path: keys_path,
             source,
-        }
-    })?;
+        },
+    )?;
 
     let selector_path = PathBuf::from(paths.synthesizer_path).join("selector.json");
     let selector =
@@ -126,8 +127,9 @@ pub fn prove(paths: &ProveInputPaths<'_>) -> Result<(), ProveError> {
             source,
         })?;
 
-    let s_kappa = placement_selector_polynomial(&crs.tau_sequence.shape, &setup, &selector)?;
-    let s_c = connection_permutation_polynomial(&crs.tau_sequence.shape, &setup, &permutation)?;
+    let s_kappa = placement_selector_polynomial(&crs.prover_keys.shape, &setup, &selector)?;
+    let s_c =
+        connection_permutation_polynomial(&crs.prover_keys.shape, &setup, &selector, &permutation)?;
     let selected = select_witness_values(&selector, &placements, &setup, &subcircuits)?;
     let slots = selected
         .slot_values
@@ -142,7 +144,7 @@ pub fn prove(paths: &ProveInputPaths<'_>) -> Result<(), ProveError> {
         })
         .collect::<Vec<_>>();
     let maps = witness_maps(
-        &crs.tau_sequence.shape,
+        &crs.prover_keys.shape,
         &setup,
         &selector,
         &slots,
@@ -170,19 +172,22 @@ pub fn prove(paths: &ProveInputPaths<'_>) -> Result<(), ProveError> {
     })?;
 
     let output_dir = PathBuf::from(paths.output_path);
-    fs::create_dir_all(&output_dir).map_err(|source| ProveError::WriteOutput {
-        path: output_dir.clone(),
-        source,
-    })?;
-    let output_path = output_dir.join("univariate_proof.json");
-    let output = serde_json::to_vec_pretty(&proof).map_err(|source| ProveError::WriteOutput {
-        path: output_path.clone(),
-        source: std::io::Error::other(source),
-    })?;
-    fs::write(&output_path, output).map_err(|source| ProveError::WriteOutput {
-        path: output_path,
-        source,
-    })?;
+    crate::time_block!("univariate.output", "output", {
+        fs::create_dir_all(&output_dir).map_err(|source| ProveError::WriteOutput {
+            path: output_dir.clone(),
+            source,
+        })?;
+        let output_path = output_dir.join("univariate_proof.json");
+        let output =
+            serde_json::to_vec_pretty(&proof).map_err(|source| ProveError::WriteOutput {
+                path: output_path.clone(),
+                source: std::io::Error::other(source),
+            })?;
+        fs::write(&output_path, output).map_err(|source| ProveError::WriteOutput {
+            path: output_path,
+            source,
+        })?;
+    });
     Ok(())
 }
 

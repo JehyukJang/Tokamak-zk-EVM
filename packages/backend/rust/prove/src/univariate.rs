@@ -172,11 +172,7 @@ pub fn assemble_univariate_proof(
     let c_u = commit(UnivariateCommitmentSource::S0, &masked.u_hat, 0)?;
     let c_v = commit(UnivariateCommitmentSource::Sxi, &masked.v_hat, 0)?;
     let c_w = commit(UnivariateCommitmentSource::Spsi, &masked.w_hat, 0)?;
-    let c_b = commit(
-        UnivariateCommitmentSource::Spsi,
-        &masked.b_hat,
-        crs.tau_sequence.shape.k,
-    )?;
+    let c_b = commit(UnivariateCommitmentSource::Spsi, &masked.b_hat, 0)?;
     let c_r = commit(UnivariateCommitmentSource::S0, &copy.r_hat, 0)?;
     let c_q = commit(UnivariateCommitmentSource::S0, q_hat, 0)?;
     let factors = [
@@ -199,7 +195,7 @@ pub fn assemble_univariate_proof(
         UnivariateCommitmentSource::S0,
         UnivariateCommitmentSource::S0,
     ];
-    let offsets = [0, 0, 0, crs.tau_sequence.shape.k, 0, 0, 0, 0];
+    let offsets = [0; 8];
     let mut pi_zeta = G1serde::zero();
     for index in 0..8 {
         pi_zeta = pi_zeta
@@ -216,7 +212,11 @@ pub fn assemble_univariate_proof(
         c_b,
         o_if: private_binding.o_if,
         o_int: private_binding.o_int,
-        c_d: c_w + c_b * upsilon,
+        c_d: commit(
+            UnivariateCommitmentSource::Spsi,
+            &masked.w_hat.add(&masked.b_hat.scale(upsilon)),
+            crs.prover_keys.shape.k,
+        )?,
         c_r,
         c_q,
         s_a: FieldSerde(openings.evaluations.s_a),
@@ -238,65 +238,89 @@ pub fn assemble_univariate_proof(
 pub fn prove_univariate_reference(
     input: UnivariateReferenceProvingInput<'_>,
 ) -> Result<(UnivariateProof, UnivariateChallenges), UnivariateProverError> {
-    let shape = &input.crs.tau_sequence.shape;
+    let shape = &input.crs.prover_keys.shape;
     let randomizers = input.randomizers;
-    let masked =
-        build_masked_arithmetic_witness(shape, input.selector, input.maps, randomizers.clone())?;
-    let private = build_private_binding_commitments(
-        input.crs,
-        &input.crs.query_index(),
-        input.interface_values,
-        input.internal_values,
-        &randomizers,
-        input.binding_randomizer,
-    )?;
+    let masked = crate::time_block!("univariate.masked_arithmetic", "poly", {
+        build_masked_arithmetic_witness(shape, input.selector, input.maps, randomizers.clone())?
+    });
+    let private = crate::time_block!("univariate.private_binding", "commitment", {
+        build_private_binding_commitments(
+            input.crs,
+            &input.crs.query_index(),
+            input.interface_values,
+            input.internal_values,
+            &randomizers,
+            input.binding_randomizer,
+        )?
+    });
     let commit = |source, polynomial: &DenseUnivariatePolynomial, offset| {
         input
             .crs
             .commit_tagged_dense_polynomial(source, polynomial.coefficients(), offset)
             .map_err(|_| UnivariateProverError::SelectorDegree)
     };
-    let c_u = commit(UnivariateCommitmentSource::S0, &masked.u_hat, 0)?;
-    let c_v = commit(UnivariateCommitmentSource::Sxi, &masked.v_hat, 0)?;
-    let c_w = commit(UnivariateCommitmentSource::Spsi, &masked.w_hat, 0)?;
-    let c_b = commit(UnivariateCommitmentSource::Spsi, &masked.b_hat, shape.k)?;
+    let (c_u, c_v, c_w, c_b) =
+        crate::time_block!("univariate.witness_commitments", "commitment", {
+            (
+                commit(UnivariateCommitmentSource::S0, &masked.u_hat, 0)?,
+                commit(UnivariateCommitmentSource::Sxi, &masked.v_hat, 0)?,
+                commit(UnivariateCommitmentSource::Spsi, &masked.w_hat, 0)?,
+                commit(UnivariateCommitmentSource::Spsi, &masked.b_hat, 0)?,
+            )
+        });
     let mut transcript = UnivariateTranscript::from_public_inputs(input.public_inputs);
     transcript.append_message_block(
         1,
         &encode_g1_message_block("F2.a1", &[c_u, c_v, c_w, c_b, private.o_if, private.o_int]),
     );
     let upsilon = transcript.challenge(1, 0);
-    let c_d = c_w + c_b * upsilon;
+    let c_d = crate::time_block!("univariate.shifted_commitment", "commitment", {
+        commit(
+            UnivariateCommitmentSource::Spsi,
+            &masked.w_hat.add(&masked.b_hat.scale(upsilon)),
+            shape.k,
+        )?
+    });
     transcript.append_message_block(2, &encode_g1_message_block("F2.a2", &[c_d]));
     let (beta, gamma_c) = transcript.challenge_pair(2);
-    let copy = build_masked_copy_relation(
-        shape,
-        input.maps,
-        input.s_c,
-        &masked.b_hat,
-        beta,
-        gamma_c,
-        input.recursion_randomizer,
-    )?;
-    let c_r = commit(UnivariateCommitmentSource::S0, &copy.r_hat, 0)?;
+    let copy = crate::time_block!("univariate.copy_relation", "poly", {
+        build_masked_copy_relation(
+            shape,
+            input.maps,
+            input.s_c,
+            &masked.b_hat,
+            beta,
+            gamma_c,
+            input.recursion_randomizer,
+        )?
+    });
+    let c_r = crate::time_block!("univariate.copy_commitment", "commitment", {
+        commit(UnivariateCommitmentSource::S0, &copy.r_hat, 0)?
+    });
     transcript.append_message_block(3, &encode_g1_message_block("F2.a3", &[c_r]));
     let theta = transcript.challenge(3, 0);
-    let q_hat = combine_quotients(shape, &masked.q_a, &copy, theta)?;
-    let c_q = commit(UnivariateCommitmentSource::S0, &q_hat, 0)?;
+    let q_hat = crate::time_block!("univariate.combine_quotients", "poly", {
+        combine_quotients(shape, &masked.q_a, &copy, theta)?
+    });
+    let c_q = crate::time_block!("univariate.quotient_commitment", "commitment", {
+        commit(UnivariateCommitmentSource::S0, &q_hat, 0)?
+    });
     transcript.append_message_block(4, &encode_g1_message_block("F2.a4", &[c_q]));
     let zeta = transcript.zeta(shape.arithmetic_domain_size, shape.connection_domain_size);
-    let openings = build_opening_polynomials(
-        shape,
-        input.selector,
-        input.s_c,
-        &masked.u_hat,
-        &masked.v_hat,
-        &masked.w_hat,
-        &masked.b_hat,
-        &copy.r_hat,
-        &q_hat,
-        zeta,
-    )?;
+    let openings = crate::time_block!("univariate.opening_polynomials", "poly", {
+        build_opening_polynomials(
+            shape,
+            input.selector,
+            input.s_c,
+            &masked.u_hat,
+            &masked.v_hat,
+            &masked.w_hat,
+            &masked.b_hat,
+            &copy.r_hat,
+            &q_hat,
+            zeta,
+        )?
+    });
     let provisional_proof = UnivariateProof {
         c_u,
         c_v,
@@ -321,9 +345,11 @@ pub fn prove_univariate_reference(
     };
     transcript.append_message_block(5, &encode_evaluation_message_block(&provisional_proof));
     let varpi = transcript.challenge(5, 0);
-    let proof = assemble_univariate_proof(
-        input.crs, &masked, &private, &copy, &q_hat, &openings, upsilon, varpi,
-    )?;
+    let proof = crate::time_block!("univariate.opening_commitments", "commitment", {
+        assemble_univariate_proof(
+            input.crs, &masked, &private, &copy, &q_hat, &openings, upsilon, varpi,
+        )?
+    });
     transcript.append_message_block(
         6,
         &encode_g1_message_block("F2.a6", &[proof.pi_zeta, proof.pi_plus]),
@@ -343,21 +369,18 @@ pub fn prove_univariate_reference(
     ))
 }
 
-/// U25's single quotient.  The complementary vanishing factors belong to
-/// the verifier's combined identity; the quotient itself is the theta-linear
-/// combination of the three exact per-domain quotients.
+/// U25's single quotient. The verifier multiplies each per-domain numerator
+/// by its complementary vanishing factor, so the committed quotient is only
+/// the theta-linear combination of the three exact quotients.
 pub fn combine_quotients(
-    shape: &UnivariateCrsShape,
+    _shape: &UnivariateCrsShape,
     q_a: &DenseUnivariatePolynomial,
     copy: &MaskedCopyRelation,
     theta: ScalarField,
 ) -> Result<DenseUnivariatePolynomial, UnivariateProverError> {
-    let m_a = complementary_factor(shape.connection_domain_size, shape.intersection_domain_size)?;
-    let m_c = complementary_factor(shape.arithmetic_domain_size, shape.intersection_domain_size)?;
     Ok(q_a
-        .multiply(&m_a)?
-        .add(&copy.q_c_0.multiply(&m_c)?.scale(theta))
-        .add(&copy.q_c_1.multiply(&m_c)?.scale(theta * theta)))
+        .add(&copy.q_c_0.scale(theta))
+        .add(&copy.q_c_1.scale(theta * theta)))
 }
 
 /// Builds U27 from explicitly classified active wire values. Query lookup is
@@ -699,20 +722,6 @@ fn combine_tagged_queries(
 
 /// `(Z^large - 1) / (Z^small - 1)` for `small | large`.  The domains are
 /// radix-two, so this is the sparse geometric series required by U10/U25.
-fn complementary_factor(
-    large_domain_size: usize,
-    small_domain_size: usize,
-) -> Result<DenseUnivariatePolynomial, UnivariateProverError> {
-    if small_domain_size == 0 || large_domain_size % small_domain_size != 0 {
-        return Err(UnivariateProverError::InvalidOpeningPoint);
-    }
-    let mut coefficients = vec![ScalarField::zero(); large_domain_size];
-    for index in (0..large_domain_size).step_by(small_domain_size) {
-        coefficients[index] = ScalarField::one();
-    }
-    DenseUnivariatePolynomial::new(coefficients.into_boxed_slice()).map_err(Into::into)
-}
-
 fn validate_opening_point(
     shape: &UnivariateCrsShape,
     zeta: ScalarField,
@@ -1023,22 +1032,10 @@ mod tests {
         let theta = ScalarField::from_u32(7);
         let q_a = polynomial(&[11, 12]);
         let q_hat = combine_quotients(&shape, &q_a, &relation, theta).unwrap();
-        let m_a = super::complementary_factor(
-            shape.connection_domain_size,
-            shape.intersection_domain_size,
-        )
-        .unwrap();
-        let m_c = super::complementary_factor(
-            shape.arithmetic_domain_size,
-            shape.intersection_domain_size,
-        )
-        .unwrap();
         assert_eq!(
             q_hat,
-            q_a.multiply(&m_a)
-                .unwrap()
-                .add(&relation.q_c_0.multiply(&m_c).unwrap().scale(theta))
-                .add(&relation.q_c_1.multiply(&m_c).unwrap().scale(theta * theta))
+            q_a.add(&relation.q_c_0.scale(theta))
+                .add(&relation.q_c_1.scale(theta * theta))
         );
         let selector = StridedPolynomial {
             stride: 2,

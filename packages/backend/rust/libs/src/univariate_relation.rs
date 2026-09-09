@@ -57,6 +57,8 @@ pub enum UnivariateRelationError {
     },
     #[error("permutation coordinate ({row}, {col}) is outside the connection domain")]
     PermutationCoordinate { row: usize, col: usize },
+    #[error("permutation explicitly maps inactive placement slot {placement_index}")]
+    PermutationInactivePlacement { placement_index: usize },
     #[error("permutation maps more than one source to connection coordinate {index}")]
     PermutationNotBijective { index: usize },
     #[error("ICICLE NTT failed: {0:?}")]
@@ -168,21 +170,11 @@ pub fn placement_selector_polynomial(
     setup: &SetupParams,
     selector: &[Option<usize>],
 ) -> Result<StridedPolynomial, UnivariateRelationError> {
-    if selector.len() != setup.s_max {
-        return Err(UnivariateRelationError::SelectorCapacity {
-            actual: selector.len(),
-            expected: setup.s_max,
-        });
-    }
+    validate_placement_selector(selector, setup)?;
     let label_count = arithmetic_label_count(shape, setup)?;
     let mut evaluations = vec![ScalarField::zero(); label_count];
     for (placement_index, subcircuit_id) in selector.iter().enumerate() {
         if let Some(subcircuit_id) = subcircuit_id {
-            if *subcircuit_id >= setup.s_D {
-                return Err(UnivariateRelationError::SubcircuitId {
-                    value: *subcircuit_id,
-                });
-            }
             evaluations[placement_index + setup.s_max * *subcircuit_id] = ScalarField::one();
         }
     }
@@ -616,8 +608,10 @@ pub fn witness_maps(
 pub fn connection_permutation_polynomial(
     shape: &UnivariateCrsShape,
     setup: &SetupParams,
+    selector: &[Option<usize>],
     permutation: &[Permutation],
 ) -> Result<DenseDomainPolynomial, UnivariateRelationError> {
+    validate_placement_selector(selector, setup)?;
     let interface_count = interface_wire_count(setup)?;
     let domain_size = shape.connection_domain_size;
     let mut targets: Vec<usize> = (0..domain_size).collect();
@@ -632,6 +626,16 @@ pub fn connection_permutation_polynomial(
             return Err(UnivariateRelationError::PermutationCoordinate {
                 row: entry.row,
                 col: entry.col,
+            });
+        }
+        if selector[entry.col].is_none() {
+            return Err(UnivariateRelationError::PermutationInactivePlacement {
+                placement_index: entry.col,
+            });
+        }
+        if selector[entry.Y].is_none() {
+            return Err(UnivariateRelationError::PermutationInactivePlacement {
+                placement_index: entry.Y,
             });
         }
         let source = shape
@@ -666,6 +670,22 @@ pub fn connection_permutation_polynomial(
         evaluations[source] = shape.connection_root.pow(target);
     }
     interpolate_dense(evaluations)
+}
+
+fn validate_placement_selector(
+    selector: &[Option<usize>],
+    setup: &SetupParams,
+) -> Result<(), UnivariateRelationError> {
+    if selector.len() != setup.s_max {
+        return Err(UnivariateRelationError::SelectorCapacity {
+            actual: selector.len(),
+            expected: setup.s_max,
+        });
+    }
+    if let Some(value) = selector.iter().flatten().find(|value| **value >= setup.s_D) {
+        return Err(UnivariateRelationError::SubcircuitId { value: *value });
+    }
+    Ok(())
 }
 
 /// Builds U13's copy factors from U8 and U12 coefficient representations.
@@ -851,7 +871,7 @@ mod tests {
         arithmetic_coset_selector, arithmetic_wire_lift, arithmetic_wire_lifts_at,
         connection_copy_factors, connection_coset_selector, connection_permutation_polynomial,
         connection_wire_lift, connection_wire_lift_at, placement_selector_polynomial, witness_maps,
-        R1csMatrix, SlotWitness, UnivariateSubcircuit,
+        R1csMatrix, SlotWitness, UnivariateRelationError, UnivariateSubcircuit,
     };
     use crate::frontend_artifacts::{Permutation, SetupParams};
     use crate::univariate_crs::UnivariateCrsShape;
@@ -1191,7 +1211,13 @@ mod tests {
             .iter()
             .all(|value| *value == ScalarField::zero()));
 
-        let s_c = connection_permutation_polynomial(&shape, &setup, &fixture.permutation).unwrap();
+        let s_c = connection_permutation_polynomial(
+            &shape,
+            &setup,
+            &fixture.selector,
+            &fixture.permutation,
+        )
+        .unwrap();
         assert_eq!(
             s_c.evaluations[shape.connection_index(0, 0, &setup).unwrap()],
             shape
@@ -1220,6 +1246,59 @@ mod tests {
         setup.l_D = 5;
         assert!(UnivariateCrsShape::from_setup_params(&setup).is_err());
         assert!(connection_coset_selector(&setup, 0).is_err());
+    }
+
+    #[test]
+    fn permutation_admission_rejects_invalid_selector_and_mapping_shapes() {
+        let setup = setup();
+        let shape = UnivariateCrsShape::from_setup_params(&setup).unwrap();
+
+        assert!(matches!(
+            connection_permutation_polynomial(&shape, &setup, &[Some(setup.s_D), None], &[],),
+            Err(UnivariateRelationError::SubcircuitId { .. })
+        ));
+        assert!(matches!(
+            connection_permutation_polynomial(
+                &shape,
+                &setup,
+                &[Some(0), None],
+                &[Permutation {
+                    row: 0,
+                    col: 0,
+                    X: 0,
+                    Y: 1,
+                }],
+            ),
+            Err(UnivariateRelationError::PermutationInactivePlacement { .. })
+        ));
+        assert!(matches!(
+            connection_permutation_polynomial(
+                &shape,
+                &setup,
+                &[Some(0), Some(0)],
+                &[Permutation {
+                    row: setup.l_D - setup.l,
+                    col: 0,
+                    X: 0,
+                    Y: 1,
+                }],
+            ),
+            Err(UnivariateRelationError::PermutationCoordinate { .. })
+        ));
+        assert!(matches!(
+            connection_permutation_polynomial(
+                &shape,
+                &setup,
+                &[Some(0), Some(0)],
+                &[Permutation {
+                    row: 0,
+                    col: 0,
+                    X: 0,
+                    Y: 1,
+                }],
+            ),
+            Err(UnivariateRelationError::PermutationNotBijective { .. })
+        ));
     }
 
     #[test]

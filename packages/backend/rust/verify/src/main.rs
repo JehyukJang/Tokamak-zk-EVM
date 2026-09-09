@@ -1,37 +1,22 @@
 use clap::Parser;
 use libs::cli::render_error;
-use libs::subcircuit_library::{
-    try_resolve_subcircuit_library_path, validate_operational_crs_compatibility,
-    DevelopmentCrsProvenanceArg, SubcircuitLibraryArg,
-};
 use libs::utils::try_check_device;
-use std::path::PathBuf;
 use std::process::ExitCode;
-use verify::{univariate_cli, VerifyError, VerifyInputPaths};
+use verify::{univariate_cli, OnlineVerifyInputPaths, VerifyError};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Config {
-    #[command(flatten)]
-    subcircuit_library: SubcircuitLibraryArg,
+    /// Admitted verifier_config.json emitted by preprocess
+    #[arg(long, value_name = "FILE")]
+    verifier_config: String,
 
-    #[command(flatten)]
-    development_crs_provenance: DevelopmentCrsProvenanceArg,
+    /// Public instance.json emitted by the synthesizer
+    #[arg(long, value_name = "FILE")]
+    instance: String,
 
-    /// CRS output directory containing tau_sequence.rkyv and verifier_keys.rkyv
-    #[arg(long, value_name = "PATH")]
-    crs: String,
-
-    /// Synthesizer output directory containing selector, permutation, and instance
-    #[arg(long, value_name = "PATH")]
-    synthesizer_stat: String,
-
-    /// Preprocess output directory containing preprocess.json
-    #[arg(long, value_name = "PATH")]
-    preprocess: String,
-
-    /// Proof output directory containing univariate_proof.json
-    #[arg(long, value_name = "PATH")]
+    /// univariate_proof.json emitted by prove
+    #[arg(long, value_name = "FILE")]
     proof: String,
 
     /// Emit only the versioned machine-readable verification result on stdout
@@ -63,28 +48,14 @@ fn main() -> ExitCode {
 fn run() -> Result<(), VerifyError> {
     let config = Config::parse();
     let verification_result_json = config.verification_result_json;
-    let qap_library_path =
-        try_resolve_subcircuit_library_path(config.subcircuit_library.as_deref())?;
-    validate_operational_crs_compatibility(
-        &config.development_crs_provenance,
-        PathBuf::from(&config.crs).as_path(),
-        qap_library_path.as_path(),
-    )?;
-    let qap_path = qap_library_path.to_string_lossy().into_owned();
-
-    let paths = VerifyInputPaths {
-        qap_path: &qap_path,
-        synthesizer_path: &config.synthesizer_stat,
-        setup_path: &config.crs,
-        preprocess_path: &config.preprocess,
+    let paths = OnlineVerifyInputPaths {
+        verifier_config_path: &config.verifier_config,
+        instance_path: &config.instance,
         proof_path: &config.proof,
     };
 
     try_check_device()?;
 
-    if !verification_result_json {
-        println!("Univariate verifier configuration admission...");
-    }
     if !verification_result_json {
         println!("Verifying the proof...");
     }

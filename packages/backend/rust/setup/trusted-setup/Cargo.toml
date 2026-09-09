@@ -15,6 +15,7 @@ icicle-runtime = { workspace = true }
 clap = { workspace = true }
 thiserror = { workspace = true }
 rayon = { workspace = true }
+hex = { workspace = true }
 
 [features]
 default = ["local-development-subcircuit-library"]

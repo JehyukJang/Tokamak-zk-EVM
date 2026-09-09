@@ -1,13 +1,16 @@
 use crate::compatibility::{compatibility_from_package_version, parse_compatible_backend_version};
-use crate::crs_artifacts::UnivariateCrsDigests;
+use crate::crs_artifacts::UnivariateSpecializedKeyDigests;
 use crate::crs_provenance::{
     ensure_crs_provenance_contract_definition, parse_final_mpc_crs_provenance, CrsProvenance,
     DevelopmentOnlyReleaseEligibility, DevelopmentTrustedSetupSigmaProvenance,
-    DevelopmentTrustedSetupUnivariateCrsProvenance, CRS_PROVENANCE_FILE_NAME,
+    DevelopmentTrustedSetupUnivariateKeysProvenance,
+    DevelopmentTrustedSetupUnivariateTauSequenceProvenance, SubcircuitLibraryProvenance,
+    UnivariateTerminalCapacityProvenance, CRS_PROVENANCE_FILE_NAME,
 };
 use crate::errors::CrsError;
-use crate::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID;
+use crate::univariate_crs::{UnivariateTauCapacity, UNIVARIATE_CRS_SCHEMA_ID};
 use clap::Args;
+use sha2::{Digest, Sha256};
 use std::env;
 use std::fs;
 #[cfg(tokamak_embedded_subcircuit_library)]
@@ -20,7 +23,6 @@ use std::time::Duration;
 
 include!(concat!(env!("OUT_DIR"), "/embedded_subcircuit_library.rs"));
 
-#[cfg(not(tokamak_embedded_subcircuit_library))]
 const SUBCIRCUIT_LIBRARY_PACKAGE_NAME: &str = "@tokamak-zk-evm/subcircuit-library";
 
 #[cfg(tokamak_embedded_subcircuit_library)]
@@ -174,24 +176,50 @@ pub fn write_development_only_trusted_setup_provenance(output_dir: &Path) -> std
     fs::write(output_dir.join(CRS_PROVENANCE_FILE_NAME), bytes)
 }
 
-/// Records a locally generated U18--U21 CRS as development-only. Unlike the
-/// legacy Sigma marker, this provenance binds all three role-separated RKYV
-/// archives so none can be substituted independently.
-pub fn write_development_only_univariate_crs_provenance(
+pub fn write_development_only_univariate_tau_provenance(
     output_dir: &Path,
-    digests: &UnivariateCrsDigests,
+    capacity: UnivariateTauCapacity,
+    tau_sequence_sha256: &str,
 ) -> std::io::Result<()> {
     ensure_crs_provenance_contract_definition().map_err(std::io::Error::other)?;
-    let provenance = CrsProvenance::DevelopmentTrustedSetupUnivariateCrs(
-        DevelopmentTrustedSetupUnivariateCrsProvenance {
+    let provenance = CrsProvenance::DevelopmentTrustedSetupUnivariateTauSequence(
+        DevelopmentTrustedSetupUnivariateTauSequenceProvenance {
             release_eligible: DevelopmentOnlyReleaseEligibility,
             protocol_schema_id: UNIVARIATE_CRS_SCHEMA_ID.to_string(),
-            tau_sequence_rkyv_sha256: digests.tau_sequence_sha256.clone(),
-            prover_keys_rkyv_sha256: digests.prover_keys_sha256.clone(),
-            verifier_keys_rkyv_sha256: digests.verifier_keys_sha256.clone(),
+            terminal_capacity: UnivariateTerminalCapacityProvenance {
+                l0: capacity.l0,
+                l_xi: capacity.l_xi,
+                l_psi: capacity.l_psi,
+                l2: capacity.l2,
+            },
+            tau_sequence_rkyv_sha256: tau_sequence_sha256.to_string(),
         },
     );
     let bytes = serde_json::to_vec_pretty(&provenance).map_err(std::io::Error::other)?;
+    fs::write(output_dir.join(CRS_PROVENANCE_FILE_NAME), bytes)
+}
+
+pub fn write_development_only_univariate_keys_provenance(
+    output_dir: &Path,
+    tau_sequence_sha256: &str,
+    library: SubcircuitLibraryProvenance,
+    digests: &UnivariateSpecializedKeyDigests,
+) -> std::io::Result<()> {
+    ensure_crs_provenance_contract_definition().map_err(std::io::Error::other)?;
+    let provenance = DevelopmentTrustedSetupUnivariateKeysProvenance {
+        release_eligible: DevelopmentOnlyReleaseEligibility,
+        protocol_schema_id: UNIVARIATE_CRS_SCHEMA_ID.to_string(),
+        tau_sequence_rkyv_sha256: tau_sequence_sha256.to_string(),
+        subcircuit_library: library,
+        prover_keys_rkyv_sha256: digests.prover_keys_sha256.clone(),
+        verifier_keys_rkyv_sha256: digests.verifier_keys_sha256.clone(),
+    };
+    crate::crs_provenance::validate_development_univariate_keys_provenance(&provenance)
+        .map_err(std::io::Error::other)?;
+    let bytes = serde_json::to_vec_pretty(&CrsProvenance::DevelopmentTrustedSetupUnivariateKeys(
+        provenance,
+    ))
+    .map_err(std::io::Error::other)?;
     fs::write(output_dir.join(CRS_PROVENANCE_FILE_NAME), bytes)
 }
 
@@ -209,6 +237,56 @@ pub fn validate_operational_crs_compatibility(
 
     validate_crs_compatibility(crs_dir, library_dir)
         .map_err(|error| CrsError::Compatibility(error.to_string()))
+}
+
+pub fn validate_operational_univariate_crs_compatibility(
+    development: &DevelopmentCrsProvenanceArg,
+    tau_sequence_path: &Path,
+    keys_dir: &Path,
+    library_dir: &Path,
+) -> Result<(), CrsError> {
+    if development.allows_unverified_crs() {
+        eprintln!(
+            "WARNING: skipping CRS provenance compatibility validation for local development"
+        );
+        return Ok(());
+    }
+    let provenance_path = keys_dir.join(CRS_PROVENANCE_FILE_NAME);
+    let bytes = fs::read(&provenance_path).map_err(|source| {
+        CrsError::Compatibility(format!(
+            "cannot read CRS provenance {}: {source}",
+            provenance_path.display()
+        ))
+    })?;
+    let provenance = crate::crs_provenance::parse_development_univariate_keys_provenance(&bytes)
+        .map_err(CrsError::Compatibility)?;
+    let digest_file = |path: &Path| -> Result<String, CrsError> {
+        fs::read(path)
+            .map(|bytes| format!("{:x}", Sha256::digest(bytes)))
+            .map_err(|source| CrsError::Read {
+                path: path.to_path_buf(),
+                source,
+            })
+    };
+    if digest_file(tau_sequence_path)? != provenance.tau_sequence_rkyv_sha256
+        || digest_file(&keys_dir.join(crate::crs_artifacts::PROVER_KEYS_RKYV_FILE_NAME))?
+            != provenance.prover_keys_rkyv_sha256
+        || digest_file(&keys_dir.join(crate::crs_artifacts::VERIFIER_KEYS_RKYV_FILE_NAME))?
+            != provenance.verifier_keys_rkyv_sha256
+    {
+        return Err(CrsError::Compatibility(
+            "univariate CRS file digest does not match crs_provenance.json".to_string(),
+        ));
+    }
+    let expected = selected_subcircuit_library_provenance(library_dir)
+        .map_err(|error| CrsError::Compatibility(error.to_string()))?;
+    if provenance.subcircuit_library != expected {
+        return Err(CrsError::Compatibility(
+            "univariate CRS subcircuit-library identity does not match the selected library"
+                .to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn selected_library_package_version(library_dir: &Path) -> std::io::Result<String> {
@@ -257,6 +335,87 @@ fn selected_library_package_version(library_dir: &Path) -> std::io::Result<Strin
             library_dir.display()
         )))
     }
+}
+
+pub fn selected_subcircuit_library_provenance(
+    library_dir: &Path,
+) -> std::io::Result<SubcircuitLibraryProvenance> {
+    #[cfg(tokamak_embedded_subcircuit_library)]
+    let origin = crate::input_origin::SubcircuitLibraryOrigin::NpmSnapshot;
+    #[cfg(not(tokamak_embedded_subcircuit_library))]
+    let origin = crate::input_origin::SubcircuitLibraryOrigin::LocalQapCompiler;
+
+    let package_version = option_env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION")
+        .map(str::to_string)
+        .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
+    let source_digest = match option_env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_SOURCE_DIGEST") {
+        Some(digest) => digest.to_string(),
+        None => digest_runtime_subcircuit_library(library_dir)?,
+    };
+    Ok(SubcircuitLibraryProvenance {
+        package_name: SUBCIRCUIT_LIBRARY_PACKAGE_NAME.to_string(),
+        package_version,
+        origin,
+        source_digest,
+    })
+}
+
+fn digest_runtime_subcircuit_library(library_dir: &Path) -> std::io::Result<String> {
+    let snapshot_root = library_dir.parent().ok_or_else(|| {
+        std::io::Error::other(format!(
+            "cannot derive subcircuit snapshot root from {}",
+            library_dir.display()
+        ))
+    })?;
+    let mut inputs = vec![(
+        "subcircuits/circom/constants.circom".to_string(),
+        snapshot_root.join("circom/constants.circom"),
+    )];
+    for file in [
+        "frontendCfg.json",
+        "globalWireList.json",
+        "setupParams.json",
+        "subcircuitInfo.json",
+    ] {
+        inputs.push((
+            format!("subcircuits/library/{file}"),
+            library_dir.join(file),
+        ));
+    }
+    for directory in ["json", "r1cs", "wasm"] {
+        let absolute = library_dir.join(directory);
+        for entry in fs::read_dir(&absolute).map_err(|error| {
+            std::io::Error::new(
+                error.kind(),
+                format!("cannot read {}: {error}", absolute.display()),
+            )
+        })? {
+            let entry = entry?;
+            if !entry.file_type()?.is_file() {
+                return Err(std::io::Error::other(format!(
+                    "subcircuit source directory contains non-file entry {}",
+                    entry.path().display()
+                )));
+            }
+            let name = entry.file_name().into_string().map_err(|_| {
+                std::io::Error::other("subcircuit source filename is not valid UTF-8")
+            })?;
+            inputs.push((
+                format!("subcircuits/library/{directory}/{name}"),
+                entry.path(),
+            ));
+        }
+    }
+    let contents = inputs
+        .into_iter()
+        .map(|(logical, path)| fs::read(&path).map(|bytes| (logical, bytes)))
+        .collect::<std::io::Result<Vec<_>>>()?;
+    crate::subcircuit_source_digest::digest_subcircuit_source_entries(
+        contents
+            .iter()
+            .map(|(logical, bytes)| (logical.as_str(), bytes.as_slice())),
+    )
+    .map_err(std::io::Error::other)
 }
 
 fn read_json<T: serde::de::DeserializeOwned>(path: &Path, label: &str) -> std::io::Result<T> {

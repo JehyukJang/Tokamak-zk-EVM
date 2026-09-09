@@ -15,13 +15,15 @@ use std::sync::OnceLock;
 
 pub const CRS_PROVENANCE_FILE_NAME: &str = "crs_provenance.json";
 pub const DEVELOPMENT_TRUSTED_SETUP_SIGMA_DOCUMENT_KIND: &str = "developmentTrustedSetupSigma";
-pub const DEVELOPMENT_TRUSTED_SETUP_UNIVARIATE_CRS_DOCUMENT_KIND: &str =
-    "developmentTrustedSetupUnivariateCrs";
+pub const DEVELOPMENT_TRUSTED_SETUP_UNIVARIATE_TAU_DOCUMENT_KIND: &str =
+    "developmentTrustedSetupUnivariateTauSequence";
+pub const DEVELOPMENT_TRUSTED_SETUP_UNIVARIATE_KEYS_DOCUMENT_KIND: &str =
+    "developmentTrustedSetupUnivariateKeys";
 pub const FINAL_MPC_CRS_DOCUMENT_KIND: &str = "finalMpcCrs";
 pub const CEREMONY_PROTOCOL_VERSION: &str = "tokamak-mpc-2phase-v1";
 
 const CRS_PROVENANCE_CONTRACT_SHA256: &str =
-    "bbad4c4e4ceba8c23e7e36d07af5e2b69362bea62c7221e193e54843eab4f9da";
+    "e7ea078e9d5755c5e6fed26867442b4d713c9c781b8d66abd3081168d4394976";
 const SUPPORTED_SCHEMA_KEYWORDS: &[&str] = &[
     "additionalProperties",
     "const",
@@ -40,7 +42,10 @@ const SUPPORTED_SCHEMA_KEYWORDS: &[&str] = &[
 #[serde(tag = "documentKind", rename_all = "camelCase")]
 pub enum CrsProvenance {
     DevelopmentTrustedSetupSigma(DevelopmentTrustedSetupSigmaProvenance),
-    DevelopmentTrustedSetupUnivariateCrs(DevelopmentTrustedSetupUnivariateCrsProvenance),
+    DevelopmentTrustedSetupUnivariateTauSequence(
+        DevelopmentTrustedSetupUnivariateTauSequenceProvenance,
+    ),
+    DevelopmentTrustedSetupUnivariateKeys(DevelopmentTrustedSetupUnivariateKeysProvenance),
     FinalMpcCrs(FinalMpcCrsProvenance),
 }
 
@@ -52,10 +57,29 @@ pub struct DevelopmentTrustedSetupSigmaProvenance {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct DevelopmentTrustedSetupUnivariateCrsProvenance {
+pub struct DevelopmentTrustedSetupUnivariateTauSequenceProvenance {
+    pub release_eligible: DevelopmentOnlyReleaseEligibility,
+    pub protocol_schema_id: String,
+    pub terminal_capacity: UnivariateTerminalCapacityProvenance,
+    pub tau_sequence_rkyv_sha256: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UnivariateTerminalCapacityProvenance {
+    pub l0: usize,
+    pub l_xi: usize,
+    pub l_psi: usize,
+    pub l2: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DevelopmentTrustedSetupUnivariateKeysProvenance {
     pub release_eligible: DevelopmentOnlyReleaseEligibility,
     pub protocol_schema_id: String,
     pub tau_sequence_rkyv_sha256: String,
+    pub subcircuit_library: SubcircuitLibraryProvenance,
     pub prover_keys_rkyv_sha256: String,
     pub verifier_keys_rkyv_sha256: String,
 }
@@ -182,7 +206,8 @@ fn validate_crs_provenance_contract_definition() -> Result<(), String> {
         .ok_or_else(|| "CRS provenance contract is missing documentKinds".to_string())?;
     for document_kind in [
         DEVELOPMENT_TRUSTED_SETUP_SIGMA_DOCUMENT_KIND,
-        DEVELOPMENT_TRUSTED_SETUP_UNIVARIATE_CRS_DOCUMENT_KIND,
+        DEVELOPMENT_TRUSTED_SETUP_UNIVARIATE_TAU_DOCUMENT_KIND,
+        DEVELOPMENT_TRUSTED_SETUP_UNIVARIATE_KEYS_DOCUMENT_KIND,
         FINAL_MPC_CRS_DOCUMENT_KIND,
     ] {
         let schema = document_kinds
@@ -291,6 +316,70 @@ pub fn parse_final_mpc_crs_provenance(bytes: &[u8]) -> Result<FinalMpcCrsProvena
     Ok(provenance)
 }
 
+pub fn parse_development_univariate_tau_provenance(
+    bytes: &[u8],
+) -> Result<DevelopmentTrustedSetupUnivariateTauSequenceProvenance, String> {
+    ensure_crs_provenance_contract_definition()?;
+    let provenance: CrsProvenance =
+        serde_json::from_slice(bytes).map_err(|error| format!("invalid JSON: {error}"))?;
+    let CrsProvenance::DevelopmentTrustedSetupUnivariateTauSequence(provenance) = provenance else {
+        return Err(format!(
+            "documentKind must equal {DEVELOPMENT_TRUSTED_SETUP_UNIVARIATE_TAU_DOCUMENT_KIND}"
+        ));
+    };
+    if provenance.protocol_schema_id != crate::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID {
+        return Err("unsupported univariate protocolSchemaId".to_string());
+    }
+    validate_sha256(
+        &provenance.tau_sequence_rkyv_sha256,
+        "tauSequenceRkyvSha256",
+    )?;
+    Ok(provenance)
+}
+
+pub fn validate_development_univariate_keys_provenance(
+    provenance: &DevelopmentTrustedSetupUnivariateKeysProvenance,
+) -> Result<(), String> {
+    ensure_crs_provenance_contract_definition()?;
+    if provenance.protocol_schema_id != crate::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID {
+        return Err("unsupported univariate protocolSchemaId".to_string());
+    }
+    validate_sha256(
+        &provenance.tau_sequence_rkyv_sha256,
+        "tauSequenceRkyvSha256",
+    )?;
+    validate_sha256(&provenance.prover_keys_rkyv_sha256, "proverKeysRkyvSha256")?;
+    validate_sha256(
+        &provenance.verifier_keys_rkyv_sha256,
+        "verifierKeysRkyvSha256",
+    )?;
+    validate_non_empty(
+        &provenance.subcircuit_library.package_name,
+        "subcircuitLibrary.packageName",
+    )?;
+    parse_package_version(&provenance.subcircuit_library.package_version)
+        .map_err(|error| format!("subcircuitLibrary.packageVersion {error}"))?;
+    crate::subcircuit_source_digest::validate_source_digest(
+        &provenance.subcircuit_library.source_digest,
+    )
+    .map_err(|error| format!("subcircuitLibrary.sourceDigest {error}"))
+}
+
+pub fn parse_development_univariate_keys_provenance(
+    bytes: &[u8],
+) -> Result<DevelopmentTrustedSetupUnivariateKeysProvenance, String> {
+    ensure_crs_provenance_contract_definition()?;
+    let provenance: CrsProvenance =
+        serde_json::from_slice(bytes).map_err(|error| format!("invalid JSON: {error}"))?;
+    let CrsProvenance::DevelopmentTrustedSetupUnivariateKeys(provenance) = provenance else {
+        return Err(format!(
+            "documentKind must equal {DEVELOPMENT_TRUSTED_SETUP_UNIVARIATE_KEYS_DOCUMENT_KIND}"
+        ));
+    };
+    validate_development_univariate_keys_provenance(&provenance)?;
+    Ok(provenance)
+}
+
 /// Validates the semantic constraints that Serde types alone cannot express.
 pub fn validate_final_mpc_crs_provenance(provenance: &FinalMpcCrsProvenance) -> Result<(), String> {
     ensure_crs_provenance_contract_definition()?;
@@ -392,9 +481,11 @@ mod tests {
         ensure_crs_provenance_contract_definition, final_mpc_crs_archive_root_file_names,
         parse_final_mpc_crs_provenance, validate_supported_schema_keywords, CrsProvenance,
         DevelopmentOnlyReleaseEligibility, DevelopmentTrustedSetupSigmaProvenance,
-        DevelopmentTrustedSetupUnivariateCrsProvenance, CRS_PROVENANCE_FILE_NAME,
+        DevelopmentTrustedSetupUnivariateTauSequenceProvenance,
+        UnivariateTerminalCapacityProvenance, CRS_PROVENANCE_FILE_NAME,
         DEVELOPMENT_TRUSTED_SETUP_SIGMA_DOCUMENT_KIND,
-        DEVELOPMENT_TRUSTED_SETUP_UNIVARIATE_CRS_DOCUMENT_KIND, FINAL_MPC_CRS_DOCUMENT_KIND,
+        DEVELOPMENT_TRUSTED_SETUP_UNIVARIATE_KEYS_DOCUMENT_KIND,
+        DEVELOPMENT_TRUSTED_SETUP_UNIVARIATE_TAU_DOCUMENT_KIND, FINAL_MPC_CRS_DOCUMENT_KIND,
     };
     use serde::Deserialize;
 
@@ -417,7 +508,10 @@ mod tests {
             .contains_key(DEVELOPMENT_TRUSTED_SETUP_SIGMA_DOCUMENT_KIND));
         assert!(contract
             .document_kinds
-            .contains_key(DEVELOPMENT_TRUSTED_SETUP_UNIVARIATE_CRS_DOCUMENT_KIND));
+            .contains_key(DEVELOPMENT_TRUSTED_SETUP_UNIVARIATE_TAU_DOCUMENT_KIND));
+        assert!(contract
+            .document_kinds
+            .contains_key(DEVELOPMENT_TRUSTED_SETUP_UNIVARIATE_KEYS_DOCUMENT_KIND));
         assert!(contract
             .document_kinds
             .contains_key(FINAL_MPC_CRS_DOCUMENT_KIND));
@@ -459,19 +553,23 @@ mod tests {
         }))
         .is_err());
 
-        let univariate = CrsProvenance::DevelopmentTrustedSetupUnivariateCrs(
-            DevelopmentTrustedSetupUnivariateCrsProvenance {
+        let univariate = CrsProvenance::DevelopmentTrustedSetupUnivariateTauSequence(
+            DevelopmentTrustedSetupUnivariateTauSequenceProvenance {
                 release_eligible: DevelopmentOnlyReleaseEligibility,
                 protocol_schema_id: "tokamak-zk-evm-univariate".to_string(),
+                terminal_capacity: UnivariateTerminalCapacityProvenance {
+                    l0: 1,
+                    l_xi: 2,
+                    l_psi: 3,
+                    l2: 4,
+                },
                 tau_sequence_rkyv_sha256: "0".repeat(64),
-                prover_keys_rkyv_sha256: "1".repeat(64),
-                verifier_keys_rkyv_sha256: "2".repeat(64),
             },
         );
         let encoded = serde_json::to_value(univariate).expect("must serialize provenance");
         assert_eq!(
             encoded["documentKind"],
-            DEVELOPMENT_TRUSTED_SETUP_UNIVARIATE_CRS_DOCUMENT_KIND
+            DEVELOPMENT_TRUSTED_SETUP_UNIVARIATE_TAU_DOCUMENT_KIND
         );
         assert_eq!(encoded["releaseEligible"], false);
     }

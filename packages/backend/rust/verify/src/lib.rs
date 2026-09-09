@@ -13,8 +13,7 @@ use libs::group_structures::{G1serde, SigmaVerify};
 use libs::proof_protocol::{
     FormattedPreprocess, FormattedProof, Preprocess, Proof, Proof4, Proof4Test, TranscriptManager,
 };
-use libs::univariate_crs::UnivariateVerifierKeys;
-use libs::univariate_preprocess::UnivariatePreprocess;
+use libs::univariate_preprocess::AdmittedUnivariateVerifierConfig;
 use libs::univariate_proof::UnivariateProof;
 use libs::univariate_transcript::derive_proof_challenges;
 use libs::utils::{
@@ -34,44 +33,57 @@ pub struct VerifyInputPaths<'a> {
     pub proof_path: &'a str,
 }
 
+pub struct OnlineVerifyInputPaths<'a> {
+    pub verifier_config_path: &'a str,
+    pub instance_path: &'a str,
+    pub proof_path: &'a str,
+}
+
 /// Verifies U32 and U35 for an already-admitted latest-protocol proof. The
 /// caller owns artifact decoding and F1--F4 construction; this function never
 /// falls back to the legacy Sigma verifier.
 pub fn verify_univariate_proof(
-    crs: &UnivariateVerifierKeys,
-    preprocess: &UnivariatePreprocess,
-    public_binding: G1serde,
+    config: &AdmittedUnivariateVerifierConfig,
     public_inputs: &[ScalarField],
     proof: &UnivariateProof,
 ) -> bool {
-    if crs.schema_id != libs::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID {
-        return false;
+    let trace_failure = |reason: &str| {
+        if std::env::var_os("TOKAMAK_VERIFY_TRACE").is_some() {
+            eprintln!("univariate verification rejected: {reason}");
+        }
+        false
+    };
+    if config
+        .validate_for_online_verification(public_inputs.len())
+        .is_err()
+    {
+        return trace_failure("invalid admitted verifier configuration");
     }
-    let shape = &crs.shape;
+    let public_binding = config.public_binding(public_inputs);
     let challenges = derive_proof_challenges(
         public_inputs,
         proof,
-        shape.arithmetic_domain_size,
-        shape.connection_domain_size,
+        config.arithmetic_domain_size,
+        config.connection_domain_size,
     );
     let zeta = challenges.zeta;
     if zeta == ScalarField::zero()
-        || zeta.pow(shape.arithmetic_domain_size) == ScalarField::one()
-        || zeta.pow(shape.connection_domain_size) == ScalarField::one()
+        || zeta.pow(config.arithmetic_domain_size) == ScalarField::one()
+        || zeta.pow(config.connection_domain_size) == ScalarField::one()
     {
-        return false;
+        return trace_failure("zeta belongs to an excluded evaluation domain");
     }
     let m_a = complementary_factor_value(
         zeta,
-        shape.connection_domain_size,
-        shape.intersection_domain_size,
+        config.connection_domain_size,
+        config.intersection_domain_size,
     );
     let m_c = complementary_factor_value(
         zeta,
-        shape.arithmetic_domain_size,
-        shape.intersection_domain_size,
+        config.arithmetic_domain_size,
+        config.intersection_domain_size,
     );
-    let l0_c = lagrange_zero_value(zeta, shape.connection_domain_size);
+    let l0_c = lagrange_zero_value(zeta, config.connection_domain_size);
     let values = (
         proof.s_a.0,
         proof.s_c.0,
@@ -90,33 +102,43 @@ pub fn verify_univariate_proof(
             * m_c
             * (r_plus * (b + challenges.beta * zeta + challenges.gamma_c)
                 - r * (b + challenges.beta * s_c + challenges.gamma_c));
-    if quotient_identity != q_zeta * (zeta.pow(shape.union_domain_size) - ScalarField::one()) {
-        return false;
+    if quotient_identity != q_zeta * (zeta.pow(config.union_domain_size) - ScalarField::one()) {
+        return trace_failure("quotient identity failed");
     }
 
     let varpi = challenges.varpi;
-    let one = crs.one_g1;
-    let xi = crs.xi_g1;
-    let psi = crs.psi_g1;
+    let one = config.one_g1;
+    let xi = config.xi_g1;
+    let psi = config.psi_g1;
     let a_zeta = proof.c_u - one * u
         + (proof.c_v - xi * v) * varpi
         + (proof.c_w - psi * w) * varpi.pow(2)
         + (proof.c_b - psi * b) * varpi.pow(3)
         + (proof.c_r - one * r) * varpi.pow(4)
         + (proof.c_q - one * q_zeta) * varpi.pow(5)
-        + (preprocess.s_kappa - one * s_a) * varpi.pow(6)
-        + (preprocess.s_c - one * s_c) * varpi.pow(7);
+        + (config.preprocess.s_kappa - one * s_a) * varpi.pow(6)
+        + (config.preprocess.s_c - one * s_c) * varpi.pow(7);
     let a_plus = proof.c_r - one * r_plus;
     let mu = challenges.mu;
     let lhs_first = proof.c_u + proof.c_v + proof.c_w - proof.c_d * mu
         + (a_zeta + proof.pi_zeta * zeta) * mu.pow(2)
-        + (a_plus + proof.pi_plus * (shape.connection_root * zeta)) * mu.pow(3);
+        + (a_plus + proof.pi_plus * (config.connection_root.0 * zeta)) * mu.pow(3);
     let lhs_second = proof.c_b + (proof.c_w + proof.c_b * challenges.upsilon) * mu;
     let rhs_openings = proof.pi_zeta * mu.pow(2) + proof.pi_plus * mu.pow(3);
-    pairing(&[lhs_first, lhs_second], &[crs.one_g2, crs.tau_k_g2]).eq(&pairing(
-        &[public_binding, proof.o_if, proof.o_int, rhs_openings],
-        &[crs.gamma_g2, crs.eta_g2, crs.delta_g2, crs.tau_g2],
-    ))
+    let pairing_identity =
+        pairing(&[lhs_first, lhs_second], &[config.one_g2, config.tau_k_g2]).eq(&pairing(
+            &[public_binding, proof.o_if, proof.o_int, rhs_openings],
+            &[
+                config.gamma_g2,
+                config.eta_g2,
+                config.delta_g2,
+                config.tau_g2,
+            ],
+        ));
+    if !pairing_identity {
+        return trace_failure("pairing identity failed");
+    }
+    true
 }
 
 fn complementary_factor_value(point: ScalarField, large: usize, small: usize) -> ScalarField {

@@ -55,8 +55,8 @@ The default URLs in the page point to these names. They can be replaced with
 same-origin or CORS-enabled application URLs.
 
 Prepare ordinary runtime binaries with the package converter APIs. Convert the
-native trusted-setup output directory containing `tau_sequence.rkyv`,
-`prover_keys.rkyv`, and `verifier_keys.rkyv` with
+native stage-1 `tau_sequence.rkyv` and stage-2 directory containing
+`prover_keys.rkyv` and `verifier_keys.rkyv` with
 `npm run univariate-crs:convert`, then copy its complete output directory to
 `public/artifacts/crs/`. Source artifact
 authentication remains the application's responsibility.

@@ -56,7 +56,8 @@ interface SourceRkyvDigests {
 }
 
 export interface UnivariateCrsConversionOptions {
-  readonly input: string;
+  readonly tauSequence: string;
+  readonly keys: string;
   readonly output: string;
   readonly chunkBytes: number;
 }
@@ -66,9 +67,11 @@ async function main(argv: readonly string[]): Promise<void> {
 }
 
 export async function convertUnivariateCrsDirectory(args: UnivariateCrsConversionOptions): Promise<void> {
-  const input = path.resolve(args.input);
+  const tauSequence = path.resolve(args.tauSequence);
+  const keys = path.resolve(args.keys);
   const output = path.resolve(args.output);
-  await requireDirectory(input);
+  await requireFile(tauSequence);
+  await requireDirectory(keys);
   await rejectExistingOutput(output);
   await mkdir(path.dirname(output), { recursive: true });
 
@@ -86,8 +89,10 @@ export async function convertUnivariateCrsDirectory(args: UnivariateCrsConversio
         "-p",
         "backend-wasm-univariate-crs-chunker",
         "--",
-        "--input",
-        input,
+        "--tau-sequence",
+        tauSequence,
+        "--keys",
+        keys,
         "--output",
         canonicalRoot,
         "--chunk-bytes",
@@ -259,25 +264,27 @@ function validateCanonicalManifest(manifest: CanonicalManifest): void {
 }
 
 function parseArguments(argv: readonly string[]): UnivariateCrsConversionOptions {
-  let input: string | undefined;
+  let tauSequence: string | undefined;
+  let keys: string | undefined;
   let output: string | undefined;
   let chunkBytes = DEFAULT_CHUNK_BYTES;
   for (let index = 0; index < argv.length; index += 2) {
     const name = argv[index];
     const value = argv[index + 1];
     if (value === undefined) throw new Error(`Missing value for ${name}.`);
-    if (name === "--input") input = value;
+    if (name === "--tau-sequence") tauSequence = value;
+    else if (name === "--keys") keys = value;
     else if (name === "--output") output = value;
     else if (name === "--chunk-bytes") chunkBytes = Number(value);
     else throw new Error(`Unsupported argument: ${name}.`);
   }
-  if (input === undefined || output === undefined) {
-    throw new Error("Usage: convert-univariate-crs --input <CRS directory> --output <directory> [--chunk-bytes <bytes>]");
+  if (tauSequence === undefined || keys === undefined || output === undefined) {
+    throw new Error("Usage: convert-univariate-crs --tau-sequence <file> --keys <directory> --output <directory> [--chunk-bytes <bytes>]");
   }
   if (!Number.isSafeInteger(chunkBytes) || chunkBytes < 192) {
     throw new Error("--chunk-bytes must be a safe integer of at least 192 bytes.");
   }
-  return { input, output, chunkBytes };
+  return { tauSequence, keys, output, chunkBytes };
 }
 
 function resolveChunkPath(root: string, relative: string): string {
@@ -292,6 +299,11 @@ function resolveChunkPath(root: string, relative: string): string {
 async function requireDirectory(directoryPath: string): Promise<void> {
   const info = await stat(directoryPath).catch(() => undefined);
   if (!info?.isDirectory()) throw new Error(`Input CRS is not a directory: ${directoryPath}.`);
+}
+
+async function requireFile(filePath: string): Promise<void> {
+  const info = await stat(filePath).catch(() => undefined);
+  if (!info?.isFile()) throw new Error(`Input CRS artifact is not a file: ${filePath}.`);
 }
 
 async function rejectExistingOutput(output: string): Promise<void> {

@@ -151,7 +151,7 @@ assert.ok(field.eq(
   field.fromBigInt(BigInt(fixture.expected.bC)),
 ));
 
-const sC = await buildConnectionPermutationPolynomial(field, domain, setup, fixture.permutation);
+const sC = await buildConnectionPermutationPolynomial(field, domain, setup, fixture.selector, fixture.permutation);
 assert.ok(field.eq(
   field.readBufferElement(sC.evaluations, connectionIndex(setup, 0, 0)),
   field.pow(domain.connectionRoot, connectionIndex(setup, 1, 1)),
@@ -172,7 +172,7 @@ assert.equal(field.bufferElementCount(fC), domain.connectionSize);
 assert.equal(field.bufferElementCount(gC), domain.connectionSize);
 
 await assert.rejects(
-  buildConnectionPermutationPolynomial(field, domain, setup, [
+  buildConnectionPermutationPolynomial(field, domain, setup, fixture.selector, [
     { row: 0, col: 0, X: 0, Y: 1 },
   ]),
   /more than one source/,

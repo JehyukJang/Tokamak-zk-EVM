@@ -43,7 +43,7 @@ export async function proveUnivariateReference(
   const domain = deriveUnivariateDomainShape(field, setup);
   assertCrsCapacity(crs, domain.arithmeticSize, domain.connectionSize);
   const selector = await placementSelectorPolynomial(field, domain, setup, input.selector);
-  const sC = await buildConnectionPermutationPolynomial(field, domain, setup, input.permutation);
+  const sC = await buildConnectionPermutationPolynomial(field, domain, setup, input.selector, input.permutation);
   const slots = selectWitnessSlots(field, input.selector, input.placements, input.subcircuits, setup);
   const maps = await buildWitnessMaps(field, domain, setup, input.selector, slots, input.subcircuits);
   validatePublicStatementLayout(input.publicInputs, setup, input.subcircuitInfos, input.placements);
@@ -59,14 +59,20 @@ export async function proveUnivariateReference(
   const cU = await commit(runtime, crs.s0, 0, uHat, input.chunkPoints);
   const cV = await commit(runtime, crs.sxi, 0, vHat, input.chunkPoints);
   const cW = await commit(runtime, crs.spsi, 0, wHat, input.chunkPoints);
-  const cB = await commit(runtime, crs.spsi, bigintToSafeNumber(crs.k, "K"), bHat, input.chunkPoints);
+  const cB = await commit(runtime, crs.spsi, 0, bHat, input.chunkPoints);
   const bindingRandomizer = await runtime.randomScalar();
   const [oIf, oInt] = await buildPrivateBindings(runtime, input, slots, masks, bindingRandomizer);
 
   const transcript = new UnivariateTranscript(field, input.publicInputs);
   transcript.appendMessageBlock(1, encodeG1MessageBlock("F2.a1", runtime.G1, [cU, cV, cW, cB, oIf, oInt]));
   const upsilon = transcript.challenge(1, 0);
-  const cD = runtime.G1.add(cW, runtime.G1.mulScalar(cB, upsilon));
+  const cD = await commit(
+    runtime,
+    crs.spsi,
+    bigintToSafeNumber(crs.k, "K"),
+    wHat.add(bHat.scale(upsilon)),
+    input.chunkPoints,
+  );
   transcript.appendMessageBlock(2, encodeG1MessageBlock("F2.a2", runtime.G1, [cD]));
   const [beta, gammaC] = transcript.challengePair(2);
 
@@ -74,7 +80,7 @@ export async function proveUnivariateReference(
   const cR = await commit(runtime, crs.s0, 0, copy.rHat, input.chunkPoints);
   transcript.appendMessageBlock(3, encodeG1MessageBlock("F2.a3", runtime.G1, [cR]));
   const theta = transcript.challenge(3, 0);
-  const qHat = await combineQuotients(field, domain.arithmeticSize, domain.connectionSize, domain.intersectionSize, qA, copy.qC0, copy.qC1, theta);
+  const qHat = combineQuotients(field, qA, copy.qC0, copy.qC1, theta);
   const cQ = await commit(runtime, crs.s0, 0, qHat, input.chunkPoints);
   transcript.appendMessageBlock(4, encodeG1MessageBlock("F2.a4", runtime.G1, [cQ]));
   const zeta = transcript.zeta(domain.arithmeticSize, domain.connectionSize);
@@ -91,7 +97,7 @@ export async function proveUnivariateReference(
   const openingTerms = [uHat, vHat, wHat, bHat, copy.rHat, qHat, sAPoly, sCPoly]
     .map(polynomial => polynomial.ruffini(zeta).quotient);
   const sources: readonly [UnivariateCrsChunkSection, number][] = [
-    [crs.s0, 0], [crs.sxi, 0], [crs.spsi, 0], [crs.spsi, bigintToSafeNumber(crs.k, "K")],
+    [crs.s0, 0], [crs.sxi, 0], [crs.spsi, 0], [crs.spsi, 0],
     [crs.s0, 0], [crs.s0, 0], [crs.s0, 0], [crs.s0, 0],
   ];
   let piZeta = runtime.G1.zero;
@@ -217,28 +223,14 @@ async function buildCopyRelation(
   return { rHat, qC0, qC1 };
 }
 
-async function combineQuotients(
+function combineQuotients(
   field: CurveRuntime["Fr"],
-  arithmeticSize: number,
-  connectionSize: number,
-  intersectionSize: number,
   qA: DenseUnivariatePolynomial,
   qC0: DenseUnivariatePolynomial,
   qC1: DenseUnivariatePolynomial,
   theta: FieldElement,
-): Promise<DenseUnivariatePolynomial> {
-  const mA = complementaryFactor(field, connectionSize, intersectionSize);
-  const mC = complementaryFactor(field, arithmeticSize, intersectionSize);
-  return (await qA.multiply(mA))
-    .add((await qC0.multiply(mC)).scale(theta))
-    .add((await qC1.multiply(mC)).scale(field.mul(theta, theta)));
-}
-
-function complementaryFactor(field: CurveRuntime["Fr"], large: number, small: number): DenseUnivariatePolynomial {
-  if (small <= 0 || large % small !== 0) throw new Error("Univariate domains do not have an exact complement.");
-  const coefficients = field.createZeroBuffer(large);
-  for (let index = 0; index < large; index += small) field.writeBufferElement(coefficients, index, field.one);
-  return DenseUnivariatePolynomial.fromCoefficients(field, coefficients);
+): DenseUnivariatePolynomial {
+  return qA.add(qC0.scale(theta)).add(qC1.scale(field.mul(theta, theta)));
 }
 
 async function buildPrivateBindings(

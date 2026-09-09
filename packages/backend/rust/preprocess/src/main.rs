@@ -5,9 +5,17 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use libs::crs_artifacts::{read_univariate_tau_sequence, TAU_SEQUENCE_RKYV_FILE_NAME};
-use libs::frontend_artifacts::{read_placement_selector, Permutation};
-use libs::subcircuit_library::SubcircuitLibraryArg;
+use libs::crs_artifacts::{
+    read_univariate_tau_sequence_with_digest, read_univariate_verifier_keys,
+    VERIFIER_KEYS_RKYV_FILE_NAME,
+};
+use libs::frontend_artifacts::public_wire_layout::{read_global_wires, PublicWireLayout};
+use libs::frontend_artifacts::{read_placement_selector, Permutation, SubcircuitInfo};
+use libs::subcircuit_library::{
+    validate_operational_univariate_crs_compatibility, DevelopmentCrsProvenanceArg,
+    SubcircuitLibraryArg,
+};
+use libs::univariate_preprocess::AdmittedUnivariateVerifierConfig;
 use libs::utils::{try_check_device, try_load_setup_params_from_qap_path};
 use preprocess::{generate_univariate_preprocess, PreprocessError, PreprocessInputPaths};
 
@@ -17,15 +25,22 @@ struct Config {
     #[command(flatten)]
     subcircuit_library: SubcircuitLibraryArg,
 
-    /// CRS output directory containing tau_sequence.rkyv
+    #[command(flatten)]
+    development_crs_provenance: DevelopmentCrsProvenanceArg,
+
+    /// Stage-1 tau_sequence.rkyv file
+    #[arg(long, value_name = "FILE")]
+    tau_sequence: String,
+
+    /// Stage-2 output directory containing verifier_keys.rkyv
     #[arg(long, value_name = "PATH")]
-    crs: String,
+    keys: String,
 
     /// Synthesizer output directory containing selector.json and permutation.json
     #[arg(long, value_name = "PATH")]
     synthesizer_stat: String,
 
-    /// Output directory for preprocess.json
+    /// Output directory for verifier_config.json
     #[arg(long, value_name = "PATH")]
     output: String,
 }
@@ -56,25 +71,62 @@ fn run() -> Result<(), PreprocessError> {
     let qap_library_path = libs::subcircuit_library::try_resolve_subcircuit_library_path(
         config.subcircuit_library.as_deref(),
     )?;
+    validate_operational_univariate_crs_compatibility(
+        &config.development_crs_provenance,
+        PathBuf::from(&config.tau_sequence).as_path(),
+        PathBuf::from(&config.keys).as_path(),
+        qap_library_path.as_path(),
+    )?;
     let qap_path = qap_library_path.to_string_lossy().into_owned();
 
     let paths = PreprocessInputPaths {
         qap_path: &qap_path,
         synthesizer_path: &config.synthesizer_stat,
-        setup_path: &config.crs,
+        tau_sequence_path: &config.tau_sequence,
+        keys_path: &config.keys,
         output_path: &config.output,
     };
 
     try_check_device()?;
 
     let setup_params = try_load_setup_params_from_qap_path(paths.qap_path)?;
-    let crs_path = PathBuf::from(paths.setup_path).join(TAU_SEQUENCE_RKYV_FILE_NAME);
-    let crs = read_univariate_tau_sequence(&crs_path, &setup_params).map_err(|source| {
-        CrsError::Read {
-            path: crs_path,
+    let tau_path = PathBuf::from(paths.tau_sequence_path);
+    let (crs, tau_digest) =
+        read_univariate_tau_sequence_with_digest(&tau_path).map_err(|source| CrsError::Read {
+            path: tau_path,
+            source,
+        })?;
+
+    let info_path = PathBuf::from(paths.qap_path).join("subcircuitInfo.json");
+    let infos = SubcircuitInfo::read_box_from_json(info_path.clone()).map_err(|source| {
+        ArtifactError::Read {
+            artifact: "subcircuit information",
+            path: info_path,
             source,
         }
     })?;
+    let global_wire_path = PathBuf::from(paths.qap_path).join("globalWireList.json");
+    let global_wires =
+        read_global_wires(&global_wire_path).map_err(|source| ArtifactError::Read {
+            artifact: "global wire list",
+            path: global_wire_path.clone(),
+            source,
+        })?;
+    let public_layout =
+        PublicWireLayout::derive(&setup_params, &global_wires, &infos).map_err(|error| {
+            ArtifactError::Invalid {
+                artifact: "public wire layout",
+                path: global_wire_path,
+                reason: error.to_string(),
+            }
+        })?;
+    let keys_dir = PathBuf::from(paths.keys_path);
+    let verifier_keys =
+        read_univariate_verifier_keys(&keys_dir, &setup_params, &public_layout, tau_digest)
+            .map_err(|source| CrsError::Read {
+                path: keys_dir.join(VERIFIER_KEYS_RKYV_FILE_NAME),
+                source,
+            })?;
 
     let permutation_path = PathBuf::from(paths.synthesizer_path).join("permutation.json");
     let permutation_raw =
@@ -100,9 +152,19 @@ fn run() -> Result<(), PreprocessError> {
                 reason: reason.to_string(),
             },
         )?;
-    let output_path = PathBuf::from(paths.output_path).join("preprocess.json");
+    let admitted = AdmittedUnivariateVerifierConfig::from_admitted_circuit(
+        &verifier_keys,
+        preprocess,
+        &public_layout,
+    )
+    .map_err(|reason| ArtifactError::Invalid {
+        artifact: "univariate verifier keys",
+        path: keys_dir.join(VERIFIER_KEYS_RKYV_FILE_NAME),
+        reason,
+    })?;
+    let output_path = PathBuf::from(paths.output_path).join("verifier_config.json");
     let output =
-        serde_json::to_vec_pretty(&preprocess).map_err(|source| PreprocessError::WriteOutput {
+        serde_json::to_vec_pretty(&admitted).map_err(|source| PreprocessError::WriteOutput {
             path: output_path.clone(),
             source: std::io::Error::other(source),
         })?;
@@ -112,7 +174,12 @@ fn run() -> Result<(), PreprocessError> {
             source,
         }
     })?;
-    fs::write(&output_path, output).map_err(|source| PreprocessError::WriteOutput {
+    let temporary_path = output_path.with_extension(format!("json.tmp-{}", std::process::id()));
+    fs::write(&temporary_path, output).map_err(|source| PreprocessError::WriteOutput {
+        path: temporary_path.clone(),
+        source,
+    })?;
+    fs::rename(&temporary_path, &output_path).map_err(|source| PreprocessError::WriteOutput {
         path: output_path,
         source,
     })?;

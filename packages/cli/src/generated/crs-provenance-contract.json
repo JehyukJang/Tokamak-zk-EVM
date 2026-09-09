@@ -22,13 +22,52 @@
         }
       }
     },
-    "developmentTrustedSetupUnivariateCrs": {
+    "developmentTrustedSetupUnivariateTauSequence": {
+      "releaseEligible": false,
+      "requiredFields": [
+        "documentKind",
+        "releaseEligible",
+        "protocolSchemaId",
+        "terminalCapacity",
+        "tauSequenceRkyvSha256"
+      ],
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "documentKind",
+          "releaseEligible",
+          "protocolSchemaId",
+          "terminalCapacity",
+          "tauSequenceRkyvSha256"
+        ],
+        "properties": {
+          "documentKind": { "const": "developmentTrustedSetupUnivariateTauSequence" },
+          "releaseEligible": { "const": false },
+          "protocolSchemaId": { "const": "tokamak-zk-evm-univariate" },
+          "terminalCapacity": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["l0", "lXi", "lPsi", "l2"],
+            "properties": {
+              "l0": { "type": "integer", "minimum": 0 },
+              "lXi": { "type": "integer", "minimum": 0 },
+              "lPsi": { "type": "integer", "minimum": 0 },
+              "l2": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "tauSequenceRkyvSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "developmentTrustedSetupUnivariateKeys": {
       "releaseEligible": false,
       "requiredFields": [
         "documentKind",
         "releaseEligible",
         "protocolSchemaId",
         "tauSequenceRkyvSha256",
+        "subcircuitLibrary",
         "proverKeysRkyvSha256",
         "verifierKeysRkyvSha256"
       ],
@@ -40,14 +79,26 @@
           "releaseEligible",
           "protocolSchemaId",
           "tauSequenceRkyvSha256",
+          "subcircuitLibrary",
           "proverKeysRkyvSha256",
           "verifierKeysRkyvSha256"
         ],
         "properties": {
-          "documentKind": { "const": "developmentTrustedSetupUnivariateCrs" },
+          "documentKind": { "const": "developmentTrustedSetupUnivariateKeys" },
           "releaseEligible": { "const": false },
           "protocolSchemaId": { "const": "tokamak-zk-evm-univariate" },
           "tauSequenceRkyvSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "subcircuitLibrary": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["packageName", "packageVersion", "origin", "sourceDigest"],
+            "properties": {
+              "packageName": { "type": "string", "minLength": 1 },
+              "packageVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+              "origin": { "enum": ["npmSnapshot", "localQapCompiler"] },
+              "sourceDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+            }
+          },
           "proverKeysRkyvSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
           "verifierKeysRkyvSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
         }

@@ -7,12 +7,21 @@ use crate::frontend_artifacts::public_wire_layout::{PublicQueryKey, PublicWireLa
 use crate::frontend_artifacts::SetupParams;
 use crate::group_structures::{G1serde, G2serde};
 use crate::univariate_relation::{
-    arithmetic_wire_lifts_at, connection_wire_lift_at, UnivariateRelationError,
+    arithmetic_wire_lifts_at, connection_wire_lift_at, R1csMatrix, UnivariateRelationError,
     UnivariateSubcircuit,
 };
+#[cfg(not(test))]
+use icicle_bls12_381::curve::{CurveCfg, G1Projective};
 use icicle_bls12_381::curve::{G1Affine, G2Affine, ScalarCfg, ScalarField};
+#[cfg(not(test))]
+use icicle_core::ecntt::ecntt_inplace;
 use icicle_core::ntt;
+#[cfg(not(test))]
+use icicle_core::ntt::{NTTConfig, NTTDir};
 use icicle_core::traits::{Arithmetic, FieldImpl, GenerateRandom};
+use icicle_runtime::errors::eIcicleError;
+#[cfg(not(test))]
+use icicle_runtime::memory::HostSlice;
 use rayon::prelude::*;
 use std::time::Instant;
 use thiserror::Error;
@@ -46,6 +55,16 @@ pub enum UnivariateCrsError {
     TauSamplingExhausted,
     #[error("failed to allocate {length} CRS powers")]
     PowerAllocation { length: usize },
+    #[error("ICICLE ECNTT failed while deriving public query bases: {0:?}")]
+    Ecntt(eIcicleError),
+    #[error(
+        "terminal tau sequence capacity {name}={available} is smaller than required {required}"
+    )]
+    InsufficientTauCapacity {
+        name: &'static str,
+        available: usize,
+        required: usize,
+    },
     #[error("polynomial commitment needs {actual} CRS powers, but the selected CRS sequence has {available}")]
     CommitmentDegree { actual: usize, available: usize },
     #[error("subcircuit catalog has {actual} entries, expected {expected}")]
@@ -64,6 +83,44 @@ pub enum UnivariateCrsError {
     },
     #[error(transparent)]
     Relation(#[from] UnivariateRelationError),
+}
+
+/// Library-independent exponent bounds of the U22c terminal sequences.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UnivariateTauCapacity {
+    pub l0: usize,
+    pub l_xi: usize,
+    pub l_psi: usize,
+    pub l2: usize,
+}
+
+impl UnivariateTauCapacity {
+    pub fn from_shape(shape: &UnivariateCrsShape) -> Self {
+        Self {
+            l0: shape.declared_capacity[0],
+            l_xi: shape.declared_capacity[1],
+            l_psi: shape.declared_capacity[2],
+            l2: shape.k,
+        }
+    }
+
+    pub fn admits(self, shape: &UnivariateCrsShape) -> Result<(), UnivariateCrsError> {
+        for (name, available, required) in [
+            ("L_0", self.l0, shape.declared_capacity[0]),
+            ("L_xi", self.l_xi, shape.declared_capacity[1]),
+            ("L_psi", self.l_psi, shape.declared_capacity[2]),
+            ("L_2", self.l2, shape.k),
+        ] {
+            if available < required {
+                return Err(UnivariateCrsError::InsufficientTauCapacity {
+                    name,
+                    available,
+                    required,
+                });
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Capacity and domain information fixed by the library and placement bound.
@@ -330,6 +387,37 @@ pub struct UnivariateTrapdoor {
     delta: ScalarField,
 }
 
+/// Role scalars generated only by the library-specialization stage.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnivariateRoleTrapdoor {
+    gamma: ScalarField,
+    eta: ScalarField,
+    delta: ScalarField,
+}
+
+impl UnivariateRoleTrapdoor {
+    pub fn new(
+        gamma: ScalarField,
+        eta: ScalarField,
+        delta: ScalarField,
+    ) -> Result<Self, UnivariateCrsError> {
+        for (name, value) in [("gamma", gamma), ("eta", eta), ("delta", delta)] {
+            if value == ScalarField::zero() {
+                return Err(UnivariateCrsError::ZeroTrapdoor { name });
+            }
+        }
+        Ok(Self { gamma, eta, delta })
+    }
+
+    pub fn sample() -> Self {
+        Self {
+            gamma: nonzero_scalar(),
+            eta: nonzero_scalar(),
+            delta: nonzero_scalar(),
+        }
+    }
+}
+
 impl UnivariateTrapdoor {
     pub fn new(
         shape: &UnivariateCrsShape,
@@ -399,9 +487,7 @@ pub struct UnivariateCrsFoundation {
     pub s0_g1: Box<[G1serde]>,
     pub sxi_g1: Box<[G1serde]>,
     pub spsi_g1: Box<[G1serde]>,
-    pub one_g2: G2serde,
-    pub tau_g2: G2serde,
-    pub tau_k_g2: G2serde,
+    pub tau_powers_g2: Box<[G2serde]>,
     pub gamma_g2: G2serde,
     pub eta_g2: G2serde,
     pub delta_g2: G2serde,
@@ -480,13 +566,11 @@ pub struct UnivariateCrs {
 #[derive(Clone, Debug, PartialEq)]
 pub struct UnivariateTauSequence {
     pub schema_id: &'static str,
-    pub shape: UnivariateCrsShape,
+    pub capacity: UnivariateTauCapacity,
     pub s0_g1: Box<[G1serde]>,
     pub sxi_g1: Box<[G1serde]>,
     pub spsi_g1: Box<[G1serde]>,
-    pub one_g2: G2serde,
-    pub tau_g2: G2serde,
-    pub tau_k_g2: G2serde,
+    pub tau_powers_g2: Box<[G2serde]>,
 }
 
 /// Circuit-specialized keys consumed only by the prover. Group elements in
@@ -566,14 +650,8 @@ impl UnivariateCrsFoundation {
             g1,
         )?;
 
-        let k = shape.k;
-        let ((tau_g2, tau_k_g2), (gamma_g2, (eta_g2, delta_g2))) = rayon::join(
-            || {
-                rayon::join(
-                    || G2serde(G2Affine::from(g2.to_projective() * trapdoor.tau)),
-                    || G2serde(G2Affine::from(g2.to_projective() * trapdoor.tau.pow(k))),
-                )
-            },
+        let (tau_powers_g2, (gamma_g2, (eta_g2, delta_g2))) = rayon::join(
+            || generate_g2_powers_parallel(shape.k + 1, trapdoor.tau, g2),
             || {
                 rayon::join(
                     || G2serde(G2Affine::from(g2.to_projective() * trapdoor.gamma)),
@@ -586,20 +664,49 @@ impl UnivariateCrsFoundation {
                 )
             },
         );
+        let tau_powers_g2 = tau_powers_g2?;
         Ok(Self {
             schema_id: UNIVARIATE_CRS_SCHEMA_ID,
             shape,
             s0_g1,
             sxi_g1,
             spsi_g1,
-            one_g2: G2serde(g2),
-            tau_g2,
-            tau_k_g2,
+            tau_powers_g2,
             gamma_g2,
             eta_g2,
             delta_g2,
         })
     }
+}
+
+fn generate_g2_powers_parallel(
+    length: usize,
+    tau: ScalarField,
+    g2: G2Affine,
+) -> Result<Box<[G2serde]>, UnivariateCrsError> {
+    let mut points = Vec::new();
+    points
+        .try_reserve_exact(length)
+        .map_err(|_| UnivariateCrsError::PowerAllocation { length })?;
+    points.resize(length, G2serde::zero());
+    let target_chunks = rayon::current_num_threads()
+        .saturating_mul(POWER_CHUNKS_PER_WORKER)
+        .max(1);
+    let chunk_size = length
+        .div_ceil(target_chunks)
+        .clamp(1, MAX_POWER_GENERATION_CHUNK_SIZE);
+    points
+        .par_chunks_mut(chunk_size)
+        .enumerate()
+        .for_each(|(chunk_index, chunk)| {
+            let start = chunk_index * chunk_size;
+            let mut tau_power = tau.pow(start);
+            for point in chunk {
+                *point = G2serde(G2Affine::from(g2.to_projective() * tau_power));
+                tau_power = tau_power * tau;
+            }
+        });
+    Ok(points.into_boxed_slice())
 }
 
 const MAX_POWER_GENERATION_CHUNK_SIZE: usize = 16_384;
@@ -1005,6 +1112,76 @@ impl UnivariateCrs {
 }
 
 impl UnivariateTauSequence {
+    /// Generates the library-independent U22c terminal families. No
+    /// subcircuit-library shape is consulted at this stage.
+    pub fn generate(
+        capacity: UnivariateTauCapacity,
+        tau: ScalarField,
+        xi: ScalarField,
+        psi: ScalarField,
+        g1: G1Affine,
+        g2: G2Affine,
+    ) -> Result<Self, UnivariateCrsError> {
+        for (name, value) in [("tau", tau), ("xi", xi), ("psi", psi)] {
+            if value == ScalarField::zero() {
+                return Err(UnivariateCrsError::ZeroTrapdoor { name });
+            }
+        }
+        let ((s0_g1, sxi_g1), (spsi_g1, tau_powers_g2)) = rayon::join(
+            || {
+                rayon::join(
+                    || {
+                        generate_tagged_powers_parallel(
+                            "P0",
+                            capacity.l0 + 1,
+                            ScalarField::one(),
+                            tau,
+                            g1,
+                        )
+                    },
+                    || generate_tagged_powers_parallel("Pxi", capacity.l_xi + 1, xi, tau, g1),
+                )
+            },
+            || {
+                rayon::join(
+                    || generate_tagged_powers_parallel("Ppsi", capacity.l_psi + 1, psi, tau, g1),
+                    || generate_g2_powers_parallel(capacity.l2 + 1, tau, g2),
+                )
+            },
+        );
+        Ok(Self {
+            schema_id: UNIVARIATE_CRS_SCHEMA_ID,
+            capacity,
+            s0_g1: s0_g1?,
+            sxi_g1: sxi_g1?,
+            spsi_g1: spsi_g1?,
+            tau_powers_g2: tau_powers_g2?,
+        })
+    }
+
+    pub fn admits_shape(&self, shape: &UnivariateCrsShape) -> Result<(), UnivariateCrsError> {
+        self.capacity.admits(shape)?;
+        let one_g2 =
+            self.tau_powers_g2
+                .first()
+                .ok_or(UnivariateCrsError::InsufficientTauCapacity {
+                    name: "L_2",
+                    available: 0,
+                    required: 1,
+                })?;
+        if self.tau_powers_g2[shape.arithmetic_domain_size] == *one_g2 {
+            return Err(UnivariateCrsError::TauInsideDomain {
+                domain: "arithmetic",
+            });
+        }
+        if self.tau_powers_g2[shape.connection_domain_size] == *one_g2 {
+            return Err(UnivariateCrsError::TauInsideDomain {
+                domain: "connection",
+            });
+        }
+        Ok(())
+    }
+
     pub fn commit_dense_polynomial(
         &self,
         coefficients: &[ScalarField],
@@ -1110,6 +1287,364 @@ impl UnivariateProverCrs {
     ) -> Result<G1serde, UnivariateCrsError> {
         self.tau_sequence
             .commit_tagged_dense_polynomial(source, coefficients, offset)
+    }
+}
+
+/// Specializes one persisted U22c terminal output for a fixed library without
+/// access to the stage-1 trapdoor scalars.
+pub fn specialize_univariate_keys(
+    setup: &SetupParams,
+    public_wire_layout: &PublicWireLayout,
+    subcircuits: &[UnivariateSubcircuit<'_>],
+    tau_sequence: &UnivariateTauSequence,
+    role_trapdoor: &UnivariateRoleTrapdoor,
+) -> Result<(UnivariateProverKeys, UnivariateVerifierKeys), UnivariateCrsError> {
+    let shape = UnivariateCrsShape::from_setup_params(setup)?;
+    tau_sequence.admits_shape(&shape)?;
+    if subcircuits.len() != setup.s_D {
+        return Err(UnivariateCrsError::SubcircuitCatalog {
+            actual: subcircuits.len(),
+            expected: setup.s_D,
+        });
+    }
+    for (index, subcircuit) in subcircuits.iter().enumerate() {
+        if subcircuit.id != index {
+            return Err(UnivariateCrsError::SubcircuitId {
+                index,
+                actual: subcircuit.id,
+            });
+        }
+    }
+
+    let bases = QueryCommitmentBases::new(tau_sequence, &shape)?;
+    let base_g1 = tau_sequence.s0_g1[0];
+    let gamma_inverse = role_trapdoor.gamma.inv();
+    let public_keys = public_wire_layout.public_query_keys().collect::<Vec<_>>();
+    let gamma_inv_public_queries = public_keys
+        .par_iter()
+        .map(|key| {
+            let subcircuit = subcircuits
+                .get(key.buffer_subcircuit_id)
+                .filter(|subcircuit| key.local_public_wire_index < subcircuit.flatten_map.len())
+                .ok_or(UnivariateCrsError::InvalidPublicQueryKey {
+                    subcircuit_id: key.buffer_subcircuit_id,
+                    local_wire_index: key.local_public_wire_index,
+                })?;
+            Ok(UnivariatePublicQuery {
+                key: *key,
+                point: bases.query_at(
+                    &shape,
+                    setup,
+                    key.buffer_subcircuit_id,
+                    subcircuit,
+                    key.local_public_wire_index,
+                )? * gamma_inverse,
+            })
+        })
+        .collect::<Result<Vec<_>, UnivariateCrsError>>()?;
+
+    let descriptor_groups = subcircuits
+        .par_iter()
+        .map(|subcircuit| {
+            let mut interface = Vec::new();
+            let mut internal = Vec::new();
+            for (local_wire_index, global_wire_index) in
+                subcircuit.flatten_map.iter().copied().enumerate()
+            {
+                if global_wire_index < setup.l {
+                    continue;
+                }
+                if global_wire_index < setup.l_D {
+                    interface.push((subcircuit, local_wire_index));
+                } else {
+                    internal.push((subcircuit, local_wire_index));
+                }
+            }
+            (interface, internal)
+        })
+        .collect::<Vec<_>>();
+    let mut interface_descriptors = Vec::new();
+    let mut internal_descriptors = Vec::new();
+    for (interface, internal) in descriptor_groups {
+        interface_descriptors.extend(interface);
+        internal_descriptors.extend(internal);
+    }
+    let generate_queries = |descriptors: &[(&UnivariateSubcircuit<'_>, usize)],
+                            inverse: ScalarField| {
+        let query_count = setup.s_max.checked_mul(descriptors.len()).ok_or(
+            UnivariateCrsError::CapacityOverflow {
+                name: "specialized query count",
+            },
+        )?;
+        (0..query_count)
+            .into_par_iter()
+            .map(|query_index| {
+                let placement_index = query_index / descriptors.len();
+                let (subcircuit, local_wire_index) = descriptors[query_index % descriptors.len()];
+                Ok(UnivariateTaggedQuery {
+                    placement_index,
+                    subcircuit_id: subcircuit.id,
+                    local_wire_index,
+                    point: bases.query_at(
+                        &shape,
+                        setup,
+                        placement_index,
+                        subcircuit,
+                        local_wire_index,
+                    )? * inverse,
+                })
+            })
+            .collect::<Result<Vec<_>, UnivariateCrsError>>()
+            .map(Vec::into_boxed_slice)
+    };
+    let (eta_inv_interface_queries, delta_inv_internal_queries) = rayon::join(
+        || generate_queries(&interface_descriptors, role_trapdoor.eta.inv()),
+        || generate_queries(&internal_descriptors, role_trapdoor.delta.inv()),
+    );
+
+    let delta_inverse = role_trapdoor.delta.inv();
+    let masking_pair = |sequence: &[G1serde], offset: usize, domain_size: usize| {
+        (0..2)
+            .map(|h| (sequence[offset + h + domain_size] - sequence[offset + h]) * delta_inverse)
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+    };
+    let prover = UnivariateProverKeys {
+        schema_id: UNIVARIATE_CRS_SCHEMA_ID,
+        shape: shape.clone(),
+        eta_inv_interface_queries: eta_inv_interface_queries?,
+        delta_inv_internal_queries: delta_inv_internal_queries?,
+        delta_inv_u_masking_queries: masking_pair(
+            &tau_sequence.s0_g1,
+            0,
+            shape.arithmetic_domain_size,
+        ),
+        delta_inv_v_masking_queries: masking_pair(
+            &tau_sequence.sxi_g1,
+            0,
+            shape.arithmetic_domain_size,
+        ),
+        delta_inv_w_masking_queries: masking_pair(
+            &tau_sequence.spsi_g1,
+            0,
+            shape.arithmetic_domain_size,
+        ),
+        delta_inv_b_masking_queries: masking_pair(
+            &tau_sequence.spsi_g1,
+            shape.k,
+            shape.connection_domain_size,
+        ),
+        delta_g1: base_g1 * role_trapdoor.delta,
+        eta_g1: base_g1 * role_trapdoor.eta,
+    };
+    let verifier = UnivariateVerifierKeys {
+        schema_id: UNIVARIATE_CRS_SCHEMA_ID,
+        shape: shape.clone(),
+        one_g1: tau_sequence.s0_g1[0],
+        xi_g1: tau_sequence.sxi_g1[0],
+        psi_g1: tau_sequence.spsi_g1[0],
+        one_g2: tau_sequence.tau_powers_g2[0],
+        tau_g2: tau_sequence.tau_powers_g2[1],
+        tau_k_g2: tau_sequence.tau_powers_g2[shape.k],
+        gamma_g2: tau_sequence.tau_powers_g2[0] * role_trapdoor.gamma,
+        eta_g2: tau_sequence.tau_powers_g2[0] * role_trapdoor.eta,
+        delta_g2: tau_sequence.tau_powers_g2[0] * role_trapdoor.delta,
+        gamma_inv_public_queries: gamma_inv_public_queries.into_boxed_slice(),
+    };
+    Ok((prover, verifier))
+}
+
+struct QueryCommitmentBases {
+    u: Box<[G1serde]>,
+    v: Box<[G1serde]>,
+    w: Box<[G1serde]>,
+    b: Box<[G1serde]>,
+}
+
+fn lagrange_basis_commitments(
+    monomial_powers: &[G1serde],
+    root: ScalarField,
+) -> Result<Box<[G1serde]>, UnivariateCrsError> {
+    #[cfg(not(test))]
+    {
+        let _ = root;
+        crate::ntt_domain::init_ntt_domain_for_size(monomial_powers.len())
+            .map_err(UnivariateCrsError::Ecntt)?;
+        let mut points = monomial_powers
+            .iter()
+            .map(|point| point.0.to_projective())
+            .collect::<Vec<G1Projective>>();
+        ecntt_inplace::<CurveCfg>(
+            HostSlice::from_mut_slice(&mut points),
+            NTTDir::kInverse,
+            &NTTConfig::default(),
+        )
+        .map_err(UnivariateCrsError::Ecntt)?;
+        return Ok(points
+            .into_iter()
+            .map(|point| G1serde(G1Affine::from(point)))
+            .collect::<Vec<_>>()
+            .into_boxed_slice());
+    }
+
+    #[cfg(test)]
+    {
+        let domain_size = monomial_powers.len();
+        let scale = ScalarField::from_u32(u32::try_from(domain_size).map_err(|_| {
+            UnivariateCrsError::DomainTooLarge {
+                name: "Lagrange commitment domain",
+            }
+        })?)
+        .inv();
+        let mut result = Vec::with_capacity(domain_size);
+        for evaluation_index in 0..domain_size {
+            let mut point = G1serde::zero();
+            for (power, monomial) in monomial_powers.iter().enumerate() {
+                point = point + *monomial * (root.pow(evaluation_index).inv().pow(power) * scale);
+            }
+            result.push(point);
+        }
+        Ok(result.into_boxed_slice())
+    }
+}
+
+fn arithmetic_wire_commitment(
+    lagrange: &[G1serde],
+    shape: &UnivariateCrsShape,
+    setup: &SetupParams,
+    placement_index: usize,
+    subcircuit: &UnivariateSubcircuit<'_>,
+    local_wire_index: usize,
+    matrix: R1csMatrix,
+) -> Result<G1serde, UnivariateCrsError> {
+    if local_wire_index >= subcircuit.flatten_map.len() {
+        return Err(UnivariateCrsError::Relation(
+            UnivariateRelationError::LocalWireIndex {
+                subcircuit_id: subcircuit.id,
+                wire_index: local_wire_index,
+            },
+        ));
+    }
+    let (active_wires, rows) = match matrix {
+        R1csMatrix::A => (subcircuit.a_active_wires, subcircuit.a_rows),
+        R1csMatrix::B => (subcircuit.b_active_wires, subcircuit.b_rows),
+        R1csMatrix::C => (subcircuit.c_active_wires, subcircuit.c_rows),
+    };
+    let mut commitment = G1serde::zero();
+    for (row_index, row) in rows.iter().enumerate() {
+        let mut coefficient = ScalarField::zero();
+        for (compact_index, value) in row {
+            let active_wire = active_wires.get(*compact_index).ok_or_else(|| {
+                UnivariateCrsError::Relation(UnivariateRelationError::LocalWireIndex {
+                    subcircuit_id: subcircuit.id,
+                    wire_index: *compact_index,
+                })
+            })?;
+            if *active_wire == local_wire_index {
+                coefficient = coefficient + *value;
+            }
+        }
+        if coefficient != ScalarField::zero() {
+            let index = shape.arithmetic_index(placement_index, subcircuit.id, row_index, setup)?;
+            commitment = commitment + lagrange[index] * coefficient;
+        }
+    }
+    Ok(commitment)
+}
+
+fn connection_wire_commitment(
+    lagrange: &[G1serde],
+    shape: &UnivariateCrsShape,
+    setup: &SetupParams,
+    placement_index: usize,
+    subcircuit: &UnivariateSubcircuit<'_>,
+    local_wire_index: usize,
+) -> Result<G1serde, UnivariateCrsError> {
+    let global_index = *subcircuit
+        .flatten_map
+        .get(local_wire_index)
+        .ok_or_else(|| {
+            UnivariateCrsError::Relation(UnivariateRelationError::LocalWireIndex {
+                subcircuit_id: subcircuit.id,
+                wire_index: local_wire_index,
+            })
+        })?;
+    if global_index < setup.l || global_index >= setup.l_D {
+        return Ok(G1serde::zero());
+    }
+    let index = shape.connection_index(placement_index, global_index - setup.l, setup)?;
+    Ok(lagrange[index])
+}
+
+impl QueryCommitmentBases {
+    fn new(
+        sequence: &UnivariateTauSequence,
+        shape: &UnivariateCrsShape,
+    ) -> Result<Self, UnivariateCrsError> {
+        Ok(Self {
+            u: lagrange_basis_commitments(
+                &sequence.s0_g1[..shape.arithmetic_domain_size],
+                shape.arithmetic_root,
+            )?,
+            v: lagrange_basis_commitments(
+                &sequence.sxi_g1[..shape.arithmetic_domain_size],
+                shape.arithmetic_root,
+            )?,
+            w: lagrange_basis_commitments(
+                &sequence.spsi_g1[..shape.arithmetic_domain_size],
+                shape.arithmetic_root,
+            )?,
+            b: lagrange_basis_commitments(
+                &sequence.spsi_g1[shape.k..shape.k + shape.connection_domain_size],
+                shape.connection_root,
+            )?,
+        })
+    }
+
+    fn query_at(
+        &self,
+        shape: &UnivariateCrsShape,
+        setup: &SetupParams,
+        placement_index: usize,
+        subcircuit: &UnivariateSubcircuit<'_>,
+        local_wire_index: usize,
+    ) -> Result<G1serde, UnivariateCrsError> {
+        let u = arithmetic_wire_commitment(
+            &self.u,
+            shape,
+            setup,
+            placement_index,
+            subcircuit,
+            local_wire_index,
+            R1csMatrix::A,
+        )?;
+        let v = arithmetic_wire_commitment(
+            &self.v,
+            shape,
+            setup,
+            placement_index,
+            subcircuit,
+            local_wire_index,
+            R1csMatrix::B,
+        )?;
+        let w = arithmetic_wire_commitment(
+            &self.w,
+            shape,
+            setup,
+            placement_index,
+            subcircuit,
+            local_wire_index,
+            R1csMatrix::C,
+        )?;
+        let b = connection_wire_commitment(
+            &self.b,
+            shape,
+            setup,
+            placement_index,
+            subcircuit,
+            local_wire_index,
+        )?;
+        Ok(u + v + w + b)
     }
 }
 
@@ -1226,8 +1761,9 @@ fn nonzero_scalar() -> ScalarField {
 #[cfg(test)]
 mod tests {
     use super::{
-        generate_tagged_powers_parallel, UnivariateCrs, UnivariateCrsError,
-        UnivariateCrsFoundation, UnivariateCrsShape, UnivariateSubcircuit, UnivariateTrapdoor,
+        generate_tagged_powers_parallel, specialize_univariate_keys, UnivariateCrs,
+        UnivariateCrsError, UnivariateCrsFoundation, UnivariateCrsShape, UnivariateRoleTrapdoor,
+        UnivariateSubcircuit, UnivariateTauCapacity, UnivariateTauSequence, UnivariateTrapdoor,
         UNIVARIATE_CRS_SCHEMA_ID,
     };
     use crate::crs_artifacts::{
@@ -1344,11 +1880,14 @@ mod tests {
         assert_eq!(foundation.spsi_g1.len(), 36);
         assert_eq!(foundation.s0_g1[0], G1serde(g1));
         assert_eq!(foundation.s0_g1[3], foundation.s0_g1[2] * trapdoor.tau);
-        assert_eq!(foundation.one_g2, G2serde(g2));
-        assert_eq!(foundation.tau_g2, foundation.one_g2 * trapdoor.tau);
+        assert_eq!(foundation.tau_powers_g2[0], G2serde(g2));
         assert_eq!(
-            foundation.tau_k_g2,
-            foundation.one_g2 * trapdoor.tau.pow(shape.k)
+            foundation.tau_powers_g2[1],
+            foundation.tau_powers_g2[0] * trapdoor.tau
+        );
+        assert_eq!(
+            foundation.tau_powers_g2[shape.k],
+            foundation.tau_powers_g2[0] * trapdoor.tau.pow(shape.k)
         );
     }
 
@@ -1468,15 +2007,36 @@ mod tests {
         }];
         let shape = UnivariateCrsShape::from_setup_params(&setup).unwrap();
         let trapdoor = test_trapdoor(&shape);
-        let crs = UnivariateCrs::generate(
-            &setup,
-            &public_layout,
-            &subcircuits,
-            &trapdoor,
-            CurveCfg::generate_random_affine_points(1)[0],
-            G2CurveCfg::generate_random_affine_points(1)[0],
+        let g1 = CurveCfg::generate_random_affine_points(1)[0];
+        let g2 = G2CurveCfg::generate_random_affine_points(1)[0];
+        let crs = UnivariateCrs::generate(&setup, &public_layout, &subcircuits, &trapdoor, g1, g2)
+            .expect("the complete univariate CRS must be constructible");
+        let sequence = UnivariateTauSequence::generate(
+            UnivariateTauCapacity::from_shape(&shape),
+            trapdoor.tau,
+            trapdoor.xi,
+            trapdoor.psi,
+            g1,
+            g2,
         )
-        .expect("the complete univariate CRS must be constructible");
+        .expect("stage 1 must generate the same terminal sequences");
+        let role =
+            UnivariateRoleTrapdoor::new(trapdoor.gamma, trapdoor.eta, trapdoor.delta).unwrap();
+        let (specialized_prover, specialized_verifier) =
+            specialize_univariate_keys(&setup, &public_layout, &subcircuits, &sequence, &role)
+                .expect("stage 2 must specialize persisted terminal sequences");
+        assert_eq!(
+            specialized_prover.eta_inv_interface_queries,
+            crs.eta_inv_interface_queries
+        );
+        assert_eq!(
+            specialized_prover.delta_inv_internal_queries,
+            crs.delta_inv_internal_queries
+        );
+        assert_eq!(
+            specialized_verifier.gamma_inv_public_queries,
+            crs.gamma_inv_public_queries
+        );
 
         // The sole public buffer contributes one reachable `(b, (b, j))`
         // query, not the generic two-placement public table.
@@ -1515,12 +2075,16 @@ mod tests {
         ] {
             assert_eq!(digest.len(), 64);
         }
-        let tau =
-            read_univariate_tau_sequence(&output.path().join(TAU_SEQUENCE_RKYV_FILE_NAME), &setup)
-                .expect("a matching tau sequence must load");
+        let tau = read_univariate_tau_sequence(&output.path().join(TAU_SEQUENCE_RKYV_FILE_NAME))
+            .expect("a matching tau sequence must load");
         assert_eq!(tau.s0_g1, crs.foundation.s0_g1);
-        let prover = read_univariate_prover_crs(output.path(), &setup, &subcircuits)
-            .expect("matching prover material must load");
+        let prover = read_univariate_prover_crs(
+            &output.path().join(TAU_SEQUENCE_RKYV_FILE_NAME),
+            output.path(),
+            &setup,
+            &subcircuits,
+        )
+        .expect("matching prover material must load");
         assert_eq!(
             prover.prover_keys.eta_inv_interface_queries,
             crs.eta_inv_interface_queries
@@ -1542,8 +2106,13 @@ mod tests {
         >(&archive)
         .expect("archive must serialize");
         std::fs::write(&path, bytes.as_ref()).expect("must write mismatched prover keys");
-        let error = read_univariate_prover_crs(output.path(), &setup, &subcircuits)
-            .expect_err("the reader must reject prover keys bound to another tau sequence");
+        let error = read_univariate_prover_crs(
+            &output.path().join(TAU_SEQUENCE_RKYV_FILE_NAME),
+            output.path(),
+            &setup,
+            &subcircuits,
+        )
+        .expect_err("the reader must reject prover keys bound to another tau sequence");
         assert!(error
             .to_string()
             .contains("prover keys belong to a different tau sequence"));
@@ -1556,8 +2125,13 @@ mod tests {
         .expect("archive must serialize");
         std::fs::write(&path, bytes.as_ref()).expect("must write malformed CRS archive");
 
-        let error = read_univariate_prover_crs(output.path(), &setup, &subcircuits)
-            .expect_err("the reader must reject an altered query label");
+        let error = read_univariate_prover_crs(
+            &output.path().join(TAU_SEQUENCE_RKYV_FILE_NAME),
+            output.path(),
+            &setup,
+            &subcircuits,
+        )
+        .expect_err("the reader must reject an altered query label");
         assert!(error
             .to_string()
             .contains("interface-query range does not match"));

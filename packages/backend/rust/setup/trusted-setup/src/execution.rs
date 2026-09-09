@@ -36,10 +36,6 @@ pub struct TrustedSetupConfig<'a> {
     pub synthesizer_path: &'a str,
 }
 
-pub fn run_trusted_setup(config: &TrustedSetupConfig<'_>) -> Result<(), TrustedSetupError> {
-    crate::univariate::run_univariate_trusted_setup(config)
-}
-
 #[allow(dead_code)]
 fn run_legacy_trusted_setup(config: &TrustedSetupConfig<'_>) -> Result<(), TrustedSetupError> {
     #[cfg(not(feature = "testing-mode"))]

@@ -1,9 +1,10 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "suite": "small",
   "description": "Copy source artifacts from existing owner package outputs into backend-wasm's ignored fixture work area. This manifest does not write final test fixtures.",
   "workDirectory": "packages/backend/wasm/tmp/fixtures/small/source",
-  "univariateCrsSourceDirectory": "packages/backend/rust/setup/trusted-setup/output/debug",
+  "univariateTauSequence": "packages/backend/rust/setup/trusted-setup/output/tau-active/tau_sequence.rkyv",
+  "univariateKeysDirectory": "packages/backend/rust/setup/trusted-setup/output/keys-active",
   "sources": [
     {
       "source": "packages/frontend/synthesizer/outputs/instance.json",

@@ -226,8 +226,17 @@ export async function buildConnectionPermutationPolynomial(
   field: FieldRuntime,
   domain: UnivariateDomainShape,
   setup: SetupParams,
+  selector: readonly (number | null)[],
   permutation: readonly UnivariatePermutationEntry[],
 ): Promise<DenseDomainPolynomial> {
+  if (selector.length !== setup.s_max) {
+    throw new Error(`Selector capacity is ${selector.length}, expected ${setup.s_max}.`);
+  }
+  for (const [placementIndex, subcircuitId] of selector.entries()) {
+    if (subcircuitId !== null && (subcircuitId < 0 || subcircuitId >= setup.s_D)) {
+      throw new Error(`Selector placement ${placementIndex} subcircuit index is outside its admitted range.`);
+    }
+  }
   const mI = interfaceWireCount(setup);
   const targets = new Uint32Array(domain.connectionSize);
   const explicitlyMapped = new Uint8Array(domain.connectionSize);
@@ -238,6 +247,12 @@ export async function buildConnectionPermutationPolynomial(
   for (const entry of permutation) {
     assertPermutationCoordinate(entry.row, entry.col, mI, setup.s_max);
     assertPermutationCoordinate(entry.X, entry.Y, mI, setup.s_max);
+    if (selector[entry.col] === null) {
+      throw new Error(`Permutation explicitly maps inactive placement slot ${entry.col}.`);
+    }
+    if (selector[entry.Y] === null) {
+      throw new Error(`Permutation explicitly maps inactive placement slot ${entry.Y}.`);
+    }
     const source = connectionIndex(setup, entry.col, entry.row);
     const target = connectionIndex(setup, entry.Y, entry.X);
     if (explicitlyMapped[source] !== 0) {

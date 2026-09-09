@@ -3356,6 +3356,7 @@ name = "trusted-setup"
 version = "2.1.5"
 dependencies = [
  "clap 4.5.53",
+ "hex",
  "icicle-bls12-381",
  "icicle-core",
  "icicle-runtime",

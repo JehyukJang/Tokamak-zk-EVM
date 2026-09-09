@@ -20,7 +20,7 @@ export async function preprocessSnark(
   const domain = deriveUnivariateDomainShape(runtime.Fr, input.setup);
   const [selector, permutation] = await Promise.all([
     placementSelectorPolynomial(runtime.Fr, domain, input.setup, input.selector),
-    buildConnectionPermutationPolynomial(runtime.Fr, domain, input.setup, input.permutation),
+    buildConnectionPermutationPolynomial(runtime.Fr, domain, input.setup, input.selector, input.permutation),
   ]);
   const [sKappa, sC] = await Promise.all([
     commitStridedUnivariatePolynomial(runtime, input.crs.s0, selector, chunkPoints),

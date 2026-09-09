@@ -10,7 +10,7 @@
     "s_D": 3,
     "s_max": 2
   },
-  "selector": [0, null],
+  "selector": [0, 1],
   "subcircuits": [
     {
       "id": 0,
@@ -48,7 +48,10 @@
       "subcircuitId": 0,
       "values": [3, 5]
     },
-    null
+    {
+      "subcircuitId": 1,
+      "values": []
+    }
   ],
   "permutation": [
     { "row": 0, "col": 0, "X": 1, "Y": 1 },

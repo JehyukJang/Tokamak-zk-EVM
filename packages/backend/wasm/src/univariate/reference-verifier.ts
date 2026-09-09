@@ -40,7 +40,6 @@ export async function verifyUnivariateReference(
   const transcript = new UnivariateTranscript(field, input.publicInputs);
   transcript.appendMessageBlock(1, encodeG1MessageBlock("F2.a1", runtime.G1, [cU, cV, cW, cB, oIf, oInt]));
   const upsilon = transcript.challenge(1, 0);
-  if (!runtime.G1.eq(cD, runtime.G1.add(cW, runtime.G1.mulScalar(cB, upsilon)))) return false;
   transcript.appendMessageBlock(2, encodeG1MessageBlock("F2.a2", runtime.G1, [cD]));
   const [beta, gammaC] = transcript.challengePair(2);
   transcript.appendMessageBlock(3, encodeG1MessageBlock("F2.a3", runtime.G1, [cR]));

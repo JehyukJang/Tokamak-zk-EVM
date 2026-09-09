@@ -14,14 +14,15 @@ use std::path::{Path, PathBuf};
 const DEFAULT_CHUNK_BYTES: usize = 64 * 1024 * 1024;
 const CANONICAL_MANIFEST_FILE: &str = "canonical-manifest.json";
 const UNIVARIATE_CRS_SCHEMA_ID: &str = "tokamak-zk-evm-univariate";
-const TAU_SEQUENCE_FILE: &str = "tau_sequence.rkyv";
 const PROVER_KEYS_FILE: &str = "prover_keys.rkyv";
 const VERIFIER_KEYS_FILE: &str = "verifier_keys.rkyv";
 
 #[derive(Debug, Parser)]
 struct Config {
-    #[arg(long, value_name = "CRS_DIRECTORY")]
-    input: PathBuf,
+    #[arg(long, value_name = "FILE")]
+    tau_sequence: PathBuf,
+    #[arg(long, value_name = "DIRECTORY")]
+    keys: PathBuf,
     #[arg(long, value_name = "DIRECTORY")]
     output: PathBuf,
     #[arg(long, default_value_t = DEFAULT_CHUNK_BYTES)]
@@ -79,9 +80,9 @@ fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("output path already exists: {}", config.output.display()).into());
     }
 
-    let tau_file = File::open(config.input.join(TAU_SEQUENCE_FILE))?;
-    let prover_file = File::open(config.input.join(PROVER_KEYS_FILE))?;
-    let verifier_file = File::open(config.input.join(VERIFIER_KEYS_FILE))?;
+    let tau_file = File::open(&config.tau_sequence)?;
+    let prover_file = File::open(config.keys.join(PROVER_KEYS_FILE))?;
+    let verifier_file = File::open(config.keys.join(VERIFIER_KEYS_FILE))?;
     // SAFETY: these mappings are read-only and each source file remains open
     // and unmodified for the lifetime of its mapping.
     let tau_bytes = unsafe { Mmap::map(&tau_file)? };
@@ -240,8 +241,8 @@ fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
             prover_keys: hex_digest(&prover_bytes),
             verifier_keys: hex_digest(&verifier_bytes),
         },
-        declared_capacity: tau.shape.declared_capacity.map(Into::into),
-        k: tau.shape.k.into(),
+        declared_capacity: prover.shape.declared_capacity.map(Into::into),
+        k: prover.shape.k.into(),
         sections,
     };
     fs::write(
@@ -256,21 +257,37 @@ fn validate_matching_archives(
     prover: &ArchivedUnivariateProverKeysRkyv,
     verifier: &ArchivedUnivariateVerifierKeysRkyv,
 ) -> io::Result<()> {
-    let shape_matches =
-        |other: &backend_univariate_crs_interface::ArchivedUnivariateCrsShapeRkyv| {
-            other.subcircuit_capacity == tau.shape.subcircuit_capacity
-                && other.arithmetic_domain_size == tau.shape.arithmetic_domain_size
-                && other.connection_domain_size == tau.shape.connection_domain_size
-                && other.intersection_domain_size == tau.shape.intersection_domain_size
-                && other.union_domain_size == tau.shape.union_domain_size
-                && other.minimum_capacity == tau.shape.minimum_capacity
-                && other.declared_capacity == tau.shape.declared_capacity
-                && other.k == tau.shape.k
-        };
-    if !shape_matches(&prover.shape) || !shape_matches(&verifier.shape) {
+    let shapes_match = prover.shape.subcircuit_capacity == verifier.shape.subcircuit_capacity
+        && prover.shape.arithmetic_domain_size == verifier.shape.arithmetic_domain_size
+        && prover.shape.connection_domain_size == verifier.shape.connection_domain_size
+        && prover.shape.intersection_domain_size == verifier.shape.intersection_domain_size
+        && prover.shape.union_domain_size == verifier.shape.union_domain_size
+        && prover.shape.minimum_capacity == verifier.shape.minimum_capacity
+        && prover.shape.declared_capacity == verifier.shape.declared_capacity
+        && prover.shape.k == verifier.shape.k;
+    if !shapes_match {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "univariate CRS source archives have different shapes",
+            "univariate prover and verifier key archives have different shapes",
+        ));
+    }
+    let required = [
+        ("L_0", tau.capacity.l0, prover.shape.declared_capacity[0]),
+        ("L_xi", tau.capacity.l_xi, prover.shape.declared_capacity[1]),
+        (
+            "L_psi",
+            tau.capacity.l_psi,
+            prover.shape.declared_capacity[2],
+        ),
+        ("L_2", tau.capacity.l2, prover.shape.k),
+    ];
+    if required
+        .iter()
+        .any(|(_, available, needed)| available < needed)
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "tau sequence capacity is insufficient for the specialized keys",
         ));
     }
     let g1_matches = |left: &ArchivedUnivariateG1Rkyv, right: &ArchivedUnivariateG1Rkyv| {
@@ -282,9 +299,14 @@ fn validate_matching_archives(
     if !g1_matches(&tau.s0_g1[0], &verifier.one_g1)
         || !g1_matches(&tau.sxi_g1[0], &verifier.xi_g1)
         || !g1_matches(&tau.spsi_g1[0], &verifier.psi_g1)
-        || !g2_matches(&tau.one_g2, &verifier.one_g2)
-        || !g2_matches(&tau.tau_g2, &verifier.tau_g2)
-        || !g2_matches(&tau.tau_k_g2, &verifier.tau_k_g2)
+        || !g2_matches(&tau.tau_powers_g2[0], &verifier.one_g2)
+        || !g2_matches(&tau.tau_powers_g2[1], &verifier.tau_g2)
+        || !g2_matches(
+            &tau.tau_powers_g2[usize::try_from(prover.shape.k).map_err(|_| {
+                io::Error::new(io::ErrorKind::InvalidData, "K exceeds native index range")
+            })?],
+            &verifier.tau_k_g2,
+        )
     {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,

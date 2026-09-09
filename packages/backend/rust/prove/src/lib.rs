@@ -216,7 +216,8 @@ pub use libs::timing;
 pub struct ProveInputPaths<'a> {
     pub qap_path: &'a str,
     pub synthesizer_path: &'a str,
-    pub setup_path: &'a str,
+    pub tau_sequence_path: &'a str,
+    pub keys_path: &'a str,
     pub output_path: &'a str,
 }
 
@@ -720,7 +721,7 @@ impl Prover {
         }
 
         // Load Sigma (reference string)
-        let sigma_path = PathBuf::from(paths.setup_path).join("combined_sigma.rkyv");
+        let sigma_path = PathBuf::from(paths.keys_path).join("combined_sigma.rkyv");
         let _sigma_file_bytes = std::fs::metadata(&sigma_path)
             .map(|m| m.len() as usize)
             .unwrap_or(0);

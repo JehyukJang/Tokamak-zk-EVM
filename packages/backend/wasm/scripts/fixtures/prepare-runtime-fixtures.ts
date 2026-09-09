@@ -17,10 +17,11 @@ import { resolveFixtureWorkDirectory } from "./fixture-paths.js";
 import { convertUnivariateCrsDirectory } from "../converter/convert-univariate-crs.js";
 
 interface CopyManifest {
-  readonly schemaVersion: 2;
+  readonly schemaVersion: 3;
   readonly suite: string;
   readonly workDirectory: string;
-  readonly univariateCrsSourceDirectory: string;
+  readonly univariateTauSequence: string;
+  readonly univariateKeysDirectory: string;
 }
 
 async function main(argv: readonly string[]): Promise<void> {
@@ -49,7 +50,8 @@ async function main(argv: readonly string[]): Promise<void> {
   await mkdir(runtimeRoot, { recursive: true });
   const crsRoot = path.join(runtimeRoot, "crs");
   await convertUnivariateCrsDirectory({
-    input: path.resolve(repositoryRoot, manifest.univariateCrsSourceDirectory),
+    tauSequence: path.resolve(repositoryRoot, manifest.univariateTauSequence),
+    keys: path.resolve(repositoryRoot, manifest.univariateKeysDirectory),
     output: crsRoot,
     chunkBytes: 64 * 1024 * 1024,
   });
@@ -110,8 +112,8 @@ function parseCopyManifest(raw: unknown): CopyManifest {
     throw new Error("Copy manifest must be a JSON object.");
   }
 
-  if (raw.schemaVersion !== 2) {
-    throw new Error("Copy manifest schemaVersion must be 2.");
+  if (raw.schemaVersion !== 3) {
+    throw new Error("Copy manifest schemaVersion must be 3.");
   }
 
   if (typeof raw.suite !== "string" || raw.suite.trim() === "") {
@@ -121,15 +123,19 @@ function parseCopyManifest(raw: unknown): CopyManifest {
   if (typeof raw.workDirectory !== "string" || raw.workDirectory.trim() === "" || path.isAbsolute(raw.workDirectory)) {
     throw new Error("Copy manifest workDirectory must be a non-empty relative path.");
   }
-  if (typeof raw.univariateCrsSourceDirectory !== "string" || raw.univariateCrsSourceDirectory.trim() === "" || path.isAbsolute(raw.univariateCrsSourceDirectory)) {
-    throw new Error("Copy manifest univariateCrsSourceDirectory must be a non-empty relative path.");
+  if (typeof raw.univariateTauSequence !== "string" || raw.univariateTauSequence.trim() === "" || path.isAbsolute(raw.univariateTauSequence)) {
+    throw new Error("Copy manifest univariateTauSequence must be a non-empty relative path.");
+  }
+  if (typeof raw.univariateKeysDirectory !== "string" || raw.univariateKeysDirectory.trim() === "" || path.isAbsolute(raw.univariateKeysDirectory)) {
+    throw new Error("Copy manifest univariateKeysDirectory must be a non-empty relative path.");
   }
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     suite: raw.suite,
     workDirectory: path.normalize(raw.workDirectory),
-    univariateCrsSourceDirectory: path.normalize(raw.univariateCrsSourceDirectory),
+    univariateTauSequence: path.normalize(raw.univariateTauSequence),
+    univariateKeysDirectory: path.normalize(raw.univariateKeysDirectory),
   };
 }
 
