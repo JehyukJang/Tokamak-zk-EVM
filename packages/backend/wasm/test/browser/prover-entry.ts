@@ -45,9 +45,16 @@ window.__tokamakProverResult = { status: "pending" };
 main().catch((error: unknown) => {
   window.__tokamakProverResult = {
     status: "error",
-    error: error instanceof Error ? error.stack ?? error.message : String(error),
+    error: formatError(error),
   };
 });
+
+function formatError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const summary = error.stack ?? error.message;
+  const cause = (error as Error & { readonly cause?: unknown }).cause;
+  return cause === undefined ? summary : `${summary}\nCaused by: ${formatError(cause)}`;
+}
 
 async function main(): Promise<void> {
   const timings: BrowserTiming[] = [];

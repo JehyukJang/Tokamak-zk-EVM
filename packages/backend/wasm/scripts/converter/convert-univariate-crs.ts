@@ -131,10 +131,12 @@ export async function convertCanonicalCrsChunks(canonicalRoot: string, runtimeRo
         const converted = section.encoding === "canonical-g1-affine-le" || section.encoding === "canonical-g2-affine-le"
           ? await batchToMontgomeryInChunks(curve.F1, source)
           : source;
+        const convertedSha256 = digestHex(converted);
         const destinationPath = resolveChunkPath(runtimeRoot, chunk.path);
         await mkdir(path.dirname(destinationPath), { recursive: true });
         await writeFile(destinationPath, converted);
-        chunks.push({ ...chunk, byteLength: converted.byteLength, sha256: digestHex(converted) });
+        await rm(sourcePath);
+        chunks.push({ ...chunk, byteLength: converted.byteLength, sha256: convertedSha256 });
       }
       sections.push({
         label: section.label,

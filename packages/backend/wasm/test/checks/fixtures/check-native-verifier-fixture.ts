@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { resolveFixtureWorkDirectory } from '../../../scripts/fixtures/fixture-paths.js';
 
 interface CopyManifest {
-  readonly schemaVersion: 2;
+  readonly schemaVersion: 3;
   readonly suite: string;
   readonly workDirectory: string;
 }
@@ -82,8 +82,8 @@ function parseCopyManifest(raw: unknown): CopyManifest {
     throw new Error('Copy manifest must be a JSON object.');
   }
 
-  if (raw.schemaVersion !== 2) {
-    throw new Error('Copy manifest schemaVersion must be 2.');
+  if (raw.schemaVersion !== 3) {
+    throw new Error('Copy manifest schemaVersion must be 3.');
   }
 
   if (typeof raw.suite !== 'string' || raw.suite.trim() === '') {
@@ -95,7 +95,7 @@ function parseCopyManifest(raw: unknown): CopyManifest {
   }
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     suite: raw.suite,
     workDirectory: path.normalize(raw.workDirectory),
   };
