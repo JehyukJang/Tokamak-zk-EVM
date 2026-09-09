@@ -25,6 +25,32 @@ export function assertNamedBinaryInput(
   }
 }
 
+export function assertNamedCrsInput(
+  input: unknown,
+  owner: string,
+  names: readonly string[],
+): void {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    throw new BackendWasmError("INVALID_INPUT", `${owner} input must be an object.`);
+  }
+  const entries = input as Record<string, unknown>;
+  for (const name of names) {
+    const value = entries[name];
+    if (
+      typeof value !== "object"
+      || value === null
+      || Array.isArray(value)
+      || typeof (value as Record<string, unknown>).loadChunk !== "function"
+      || !("manifest" in value)
+    ) {
+      throw new BackendWasmError(
+        "INVALID_INPUT",
+        `${owner} input '${name}' must provide a CRS manifest and loadChunk function.`,
+      );
+    }
+  }
+}
+
 export function parseChunkSizeExponent(
   options: unknown,
   owner: string,

@@ -1,0 +1,51 @@
+// Generated from packages/backend/common/contracts/univariate-crs-chunk-contract.json.
+export const UNIVARIATE_CRS_CHUNK_CONTRACT = {
+  "owner": "backend",
+  "schemaId": "tokamak-zk-evm-univariate-crs-chunks",
+  "sourceSchemaId": "tokamak-zk-evm-univariate",
+  "manifestFileName": "univariate-crs-manifest.json",
+  "digest": "sha256",
+  "sections": [
+    {"label": "crs.s0", "encoding": "ffjs-g1-affine-96", "elementByteLength": 96},
+    {"label": "crs.sxi", "encoding": "ffjs-g1-affine-96", "elementByteLength": 96},
+    {"label": "crs.spsi", "encoding": "ffjs-g1-affine-96", "elementByteLength": 96},
+    {"label": "crs.public-query-keys", "encoding": "u32-le", "elementByteLength": 8},
+    {"label": "crs.public-queries", "encoding": "ffjs-g1-affine-96", "elementByteLength": 96},
+    {"label": "crs.interface-query-keys", "encoding": "u32-le", "elementByteLength": 12},
+    {"label": "crs.interface-queries", "encoding": "ffjs-g1-affine-96", "elementByteLength": 96},
+    {"label": "crs.internal-query-keys", "encoding": "u32-le", "elementByteLength": 12},
+    {"label": "crs.internal-queries", "encoding": "ffjs-g1-affine-96", "elementByteLength": 96},
+    {"label": "crs.mask-u", "encoding": "ffjs-g1-affine-96", "elementByteLength": 96, "elementCount": 2},
+    {"label": "crs.mask-v", "encoding": "ffjs-g1-affine-96", "elementByteLength": 96, "elementCount": 2},
+    {"label": "crs.mask-w", "encoding": "ffjs-g1-affine-96", "elementByteLength": 96, "elementCount": 2},
+    {"label": "crs.mask-b", "encoding": "ffjs-g1-affine-96", "elementByteLength": 96, "elementCount": 2},
+    {"label": "crs.binding-sources", "encoding": "ffjs-g1-affine-96", "elementByteLength": 96, "elementCount": 2},
+    {"label": "crs.g1-handles", "encoding": "ffjs-g1-affine-96", "elementByteLength": 96, "elementCount": 3},
+    {"label": "crs.g2", "encoding": "ffjs-g2-affine-192", "elementByteLength": 192, "elementCount": 6}
+  ],
+  "roles": {
+    "preprocess": ["crs.s0"],
+    "prover": [
+      "crs.s0",
+      "crs.sxi",
+      "crs.spsi",
+      "crs.interface-query-keys",
+      "crs.interface-queries",
+      "crs.internal-query-keys",
+      "crs.internal-queries",
+      "crs.mask-u",
+      "crs.mask-v",
+      "crs.mask-w",
+      "crs.mask-b",
+      "crs.binding-sources"
+    ],
+    "verifier": [
+      "crs.public-query-keys",
+      "crs.public-queries",
+      "crs.g1-handles",
+      "crs.g2"
+    ]
+  }
+} as const;
+
+export default UNIVARIATE_CRS_CHUNK_CONTRACT;

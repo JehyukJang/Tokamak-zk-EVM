@@ -18,10 +18,10 @@ use crate::vector_operations::resize;
 pub use backend_interface::{
     ArchivedG1SerdeRkyv, ArchivedG2SerdeRkyv, ArchivedPartialSigma1Rkyv, ArchivedSigma1Rkyv,
     ArchivedSigma2Rkyv, ArchivedSigmaPreprocessRkyv, ArchivedSigmaRkyv, ArchivedSigmaVerifyRkyv,
-    ArchivedUnivariateCrsRkyv, G1SerdeRkyv, G2SerdeRkyv, PartialSigma1Rkyv,
-    PartialSigma1VerifyRkyv, Sigma1Rkyv, Sigma2Rkyv, SigmaPreprocessRkyv, SigmaRkyv,
-    SigmaVerifyRkyv, UnivariateCrsRkyv, UnivariateCrsShapeRkyv, UnivariatePublicQueryRkyv,
-    UnivariateTaggedQueryRkyv,
+    ArchivedUnivariateCrsRkyv, ArchivedUnivariateG1Rkyv, ArchivedUnivariateG2Rkyv, G1SerdeRkyv,
+    G2SerdeRkyv, PartialSigma1Rkyv, PartialSigma1VerifyRkyv, Sigma1Rkyv, Sigma2Rkyv,
+    SigmaPreprocessRkyv, SigmaRkyv, SigmaVerifyRkyv, UnivariateCrsRkyv, UnivariateCrsShapeRkyv,
+    UnivariateG1Rkyv, UnivariateG2Rkyv, UnivariatePublicQueryRkyv, UnivariateTaggedQueryRkyv,
 };
 use icicle_bls12_381::curve::{
     BaseField, G1Affine, G1Projective, G2Affine, G2BaseField, ScalarField,
@@ -63,50 +63,36 @@ pub struct FinalCrsDigests {
 }
 
 pub const UNIVARIATE_CRS_RKYV_FILE_NAME: &str = "univariate_crs.rkyv";
-pub const UNIVARIATE_CRS_JSON_FILE_NAME: &str = "univariate_crs.json";
 
 #[derive(Debug, Clone)]
 pub struct UnivariateCrsDigests {
     pub rkyv_sha256: String,
-    pub json_sha256: String,
 }
 
-/// Writes both canonical projections of a complete U18--U21 CRS.  These
-/// filenames intentionally differ from the legacy Sigma files so a caller
-/// cannot overwrite a bivariate/MPC CRS in place.
+/// Writes the canonical RKYV archive of a complete U18--U21 CRS.  Its filename
+/// intentionally differs from the legacy Sigma files so a caller cannot
+/// overwrite a bivariate/MPC CRS in place.
 pub fn write_univariate_crs_artifacts(
     output_dir: &Path,
     crs: &UnivariateCrs,
 ) -> io::Result<UnivariateCrsDigests> {
     fs::create_dir_all(output_dir)?;
-    let (rkyv_bytes, json_bytes) = rayon::join(
-        || {
-            let rkyv = UnivariateCrsRkyv::from_univariate_crs(crs);
-            rkyv::to_bytes::<_, 256>(&rkyv).map_err(io::Error::other)
-        },
-        || serde_json::to_vec_pretty(&crs.json_projection()).map_err(io::Error::other),
-    );
-    let rkyv_bytes = rkyv_bytes?;
-    let json_bytes = json_bytes?;
-    let (rkyv_sha256, json_sha256) = rayon::join(
-        || sha256_hex(rkyv_bytes.as_ref()),
-        || sha256_hex(&json_bytes),
-    );
-    let (rkyv_write, json_write) = rayon::join(
-        || {
-            fs::write(
-                output_dir.join(UNIVARIATE_CRS_RKYV_FILE_NAME),
-                rkyv_bytes.as_ref(),
-            )
-        },
-        || fs::write(output_dir.join(UNIVARIATE_CRS_JSON_FILE_NAME), &json_bytes),
-    );
-    rkyv_write?;
-    json_write?;
-    Ok(UnivariateCrsDigests {
-        rkyv_sha256,
-        json_sha256,
-    })
+    let rkyv = UnivariateCrsRkyv::from_univariate_crs(crs);
+    let rkyv_bytes = backend_univariate_crs_interface::archive::to_bytes::<
+        backend_univariate_crs_interface::archive::rancor::Error,
+    >(&rkyv)
+    .map_err(io::Error::other)?;
+    let rkyv_sha256 = sha256_hex(rkyv_bytes.as_ref());
+    fs::write(
+        output_dir.join(UNIVARIATE_CRS_RKYV_FILE_NAME),
+        rkyv_bytes.as_ref(),
+    )?;
+    match fs::remove_file(output_dir.join("univariate_crs.json")) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    Ok(UnivariateCrsDigests { rkyv_sha256 })
 }
 
 /// Reads a univariate CRS only after checking its schema, dimensions, and
@@ -119,7 +105,11 @@ pub fn read_univariate_crs_artifact(
     subcircuits: &[UnivariateSubcircuit<'_>],
 ) -> io::Result<UnivariateCrs> {
     let bytes = fs::read(path)?;
-    let archive = rkyv::check_archived_root::<UnivariateCrsRkyv>(&bytes).map_err(|error| {
+    let archive = backend_univariate_crs_interface::archive::access::<
+        ArchivedUnivariateCrsRkyv,
+        backend_univariate_crs_interface::archive::rancor::Error,
+    >(&bytes)
+    .map_err(|error| {
         io::Error::new(
             io::ErrorKind::InvalidData,
             format!("invalid univariate CRS archive: {error:?}"),
@@ -128,7 +118,7 @@ pub fn read_univariate_crs_artifact(
     let declared_capacity = archive
         .shape
         .declared_capacity
-        .map(|value| archived_usize(value, "declared univariate CRS capacity"))
+        .map(|value| archived_usize(value.into(), "declared univariate CRS capacity"))
         .into_iter()
         .collect::<io::Result<Vec<_>>>()?
         .try_into()
@@ -156,15 +146,15 @@ pub fn read_univariate_crs_artifact(
             Ok(UnivariatePublicQuery {
                 key: crate::frontend_artifacts::public_wire_layout::PublicQueryKey {
                     buffer_subcircuit_id: archived_usize(
-                        query.buffer_subcircuit_id,
+                        query.buffer_subcircuit_id.into(),
                         "public buffer subcircuit ID",
                     )?,
                     local_public_wire_index: archived_usize(
-                        query.local_public_wire_index,
+                        query.local_public_wire_index.into(),
                         "public local wire index",
                     )?,
                 },
-                point: query.point.to_g1serde(),
+                point: archived_univariate_g1(&query.point),
             })
         })
         .collect::<io::Result<Vec<_>>>()?;
@@ -185,27 +175,27 @@ pub fn read_univariate_crs_artifact(
             s0_g1: archive
                 .s0_g1
                 .iter()
-                .map(|point| point.to_g1serde())
+                .map(archived_univariate_g1)
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
             sxi_g1: archive
                 .sxi_g1
                 .iter()
-                .map(|point| point.to_g1serde())
+                .map(archived_univariate_g1)
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
             spsi_g1: archive
                 .spsi_g1
                 .iter()
-                .map(|point| point.to_g1serde())
+                .map(archived_univariate_g1)
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
-            one_g2: archive.one_g2.to_g2serde(),
-            tau_g2: archive.tau_g2.to_g2serde(),
-            tau_k_g2: archive.tau_k_g2.to_g2serde(),
-            gamma_g2: archive.gamma_g2.to_g2serde(),
-            eta_g2: archive.eta_g2.to_g2serde(),
-            delta_g2: archive.delta_g2.to_g2serde(),
+            one_g2: archived_univariate_g2(&archive.one_g2),
+            tau_g2: archived_univariate_g2(&archive.tau_g2),
+            tau_k_g2: archived_univariate_g2(&archive.tau_k_g2),
+            gamma_g2: archived_univariate_g2(&archive.gamma_g2),
+            eta_g2: archived_univariate_g2(&archive.eta_g2),
+            delta_g2: archived_univariate_g2(&archive.delta_g2),
         },
         gamma_inv_public_queries: public_queries.into_boxed_slice(),
         eta_inv_interface_queries: interface_queries.into_boxed_slice(),
@@ -213,29 +203,29 @@ pub fn read_univariate_crs_artifact(
         delta_inv_u_masking_queries: archive
             .delta_inv_u_masking_queries
             .iter()
-            .map(|point| point.to_g1serde())
+            .map(archived_univariate_g1)
             .collect::<Vec<_>>()
             .into_boxed_slice(),
         delta_inv_v_masking_queries: archive
             .delta_inv_v_masking_queries
             .iter()
-            .map(|point| point.to_g1serde())
+            .map(archived_univariate_g1)
             .collect::<Vec<_>>()
             .into_boxed_slice(),
         delta_inv_w_masking_queries: archive
             .delta_inv_w_masking_queries
             .iter()
-            .map(|point| point.to_g1serde())
+            .map(archived_univariate_g1)
             .collect::<Vec<_>>()
             .into_boxed_slice(),
         delta_inv_b_masking_queries: archive
             .delta_inv_b_masking_queries
             .iter()
-            .map(|point| point.to_g1serde())
+            .map(archived_univariate_g1)
             .collect::<Vec<_>>()
             .into_boxed_slice(),
-        delta_g1: archive.delta_g1.to_g1serde(),
-        eta_g1: archive.eta_g1.to_g1serde(),
+        delta_g1: archived_univariate_g1(&archive.delta_g1),
+        eta_g1: archived_univariate_g1(&archive.eta_g1),
     })
 }
 
@@ -291,7 +281,10 @@ fn validate_univariate_archive_metadata(
             .iter()
             .zip(expected_keys)
             .any(|(query, expected)| {
-                (query.buffer_subcircuit_id, query.local_public_wire_index) != expected
+                (
+                    query.buffer_subcircuit_id.into(),
+                    query.local_public_wire_index.into(),
+                ) != expected
             })
     {
         return Err(io::Error::new(
@@ -373,9 +366,9 @@ fn validate_tagged_query_layout<'a>(
     if queries.len() != expected.len()
         || queries.iter().zip(expected).any(|(query, expected)| {
             (
-                query.placement_index,
-                query.subcircuit_id,
-                query.local_wire_index,
+                query.placement_index.into(),
+                query.subcircuit_id.into(),
+                query.local_wire_index.into(),
             ) != expected
         })
     {
@@ -391,10 +384,10 @@ fn archived_tagged_query(
     query: &backend_interface::ArchivedUnivariateTaggedQueryRkyv,
 ) -> io::Result<UnivariateTaggedQuery> {
     Ok(UnivariateTaggedQuery {
-        placement_index: archived_usize(query.placement_index, "query placement index")?,
-        subcircuit_id: archived_usize(query.subcircuit_id, "query subcircuit ID")?,
-        local_wire_index: archived_usize(query.local_wire_index, "query local wire index")?,
-        point: query.point.to_g1serde(),
+        placement_index: archived_usize(query.placement_index.into(), "query placement index")?,
+        subcircuit_id: archived_usize(query.subcircuit_id.into(), "query subcircuit ID")?,
+        local_wire_index: archived_usize(query.local_wire_index.into(), "query local wire index")?,
+        point: archived_univariate_g1(&query.point),
     })
 }
 
@@ -970,27 +963,15 @@ impl UnivariateCrsRkyvExt for UnivariateCrsRkyv {
         Self {
             schema_id: foundation.schema_id.to_string(),
             shape: UnivariateCrsShapeRkyv::from_shape(&foundation.shape),
-            s0_g1: foundation
-                .s0_g1
-                .par_iter()
-                .map(G1SerdeRkyv::from_g1serde)
-                .collect(),
-            sxi_g1: foundation
-                .sxi_g1
-                .par_iter()
-                .map(G1SerdeRkyv::from_g1serde)
-                .collect(),
-            spsi_g1: foundation
-                .spsi_g1
-                .par_iter()
-                .map(G1SerdeRkyv::from_g1serde)
-                .collect(),
-            one_g2: G2SerdeRkyv::from_g2serde(&foundation.one_g2),
-            tau_g2: G2SerdeRkyv::from_g2serde(&foundation.tau_g2),
-            tau_k_g2: G2SerdeRkyv::from_g2serde(&foundation.tau_k_g2),
-            gamma_g2: G2SerdeRkyv::from_g2serde(&foundation.gamma_g2),
-            eta_g2: G2SerdeRkyv::from_g2serde(&foundation.eta_g2),
-            delta_g2: G2SerdeRkyv::from_g2serde(&foundation.delta_g2),
+            s0_g1: foundation.s0_g1.par_iter().map(univariate_g1).collect(),
+            sxi_g1: foundation.sxi_g1.par_iter().map(univariate_g1).collect(),
+            spsi_g1: foundation.spsi_g1.par_iter().map(univariate_g1).collect(),
+            one_g2: univariate_g2(&foundation.one_g2),
+            tau_g2: univariate_g2(&foundation.tau_g2),
+            tau_k_g2: univariate_g2(&foundation.tau_k_g2),
+            gamma_g2: univariate_g2(&foundation.gamma_g2),
+            eta_g2: univariate_g2(&foundation.eta_g2),
+            delta_g2: univariate_g2(&foundation.delta_g2),
             gamma_inv_public_queries: crs
                 .gamma_inv_public_queries
                 .par_iter()
@@ -1009,25 +990,25 @@ impl UnivariateCrsRkyvExt for UnivariateCrsRkyv {
             delta_inv_u_masking_queries: crs
                 .delta_inv_u_masking_queries
                 .par_iter()
-                .map(G1SerdeRkyv::from_g1serde)
+                .map(univariate_g1)
                 .collect(),
             delta_inv_v_masking_queries: crs
                 .delta_inv_v_masking_queries
                 .par_iter()
-                .map(G1SerdeRkyv::from_g1serde)
+                .map(univariate_g1)
                 .collect(),
             delta_inv_w_masking_queries: crs
                 .delta_inv_w_masking_queries
                 .par_iter()
-                .map(G1SerdeRkyv::from_g1serde)
+                .map(univariate_g1)
                 .collect(),
             delta_inv_b_masking_queries: crs
                 .delta_inv_b_masking_queries
                 .par_iter()
-                .map(G1SerdeRkyv::from_g1serde)
+                .map(univariate_g1)
                 .collect(),
-            delta_g1: G1SerdeRkyv::from_g1serde(&crs.delta_g1),
-            eta_g1: G1SerdeRkyv::from_g1serde(&crs.eta_g1),
+            delta_g1: univariate_g1(&crs.delta_g1),
+            eta_g1: univariate_g1(&crs.eta_g1),
         }
     }
 }
@@ -1060,7 +1041,7 @@ impl UnivariatePublicQueryRkyvExt for UnivariatePublicQueryRkyv {
         Self {
             buffer_subcircuit_id: query.key.buffer_subcircuit_id as u64,
             local_public_wire_index: query.key.local_public_wire_index as u64,
-            point: G1SerdeRkyv::from_g1serde(&query.point),
+            point: univariate_g1(&query.point),
         }
     }
 }
@@ -1075,9 +1056,37 @@ impl UnivariateTaggedQueryRkyvExt for UnivariateTaggedQueryRkyv {
             placement_index: query.placement_index as u64,
             subcircuit_id: query.subcircuit_id as u64,
             local_wire_index: query.local_wire_index as u64,
-            point: G1SerdeRkyv::from_g1serde(&query.point),
+            point: univariate_g1(&query.point),
         }
     }
+}
+
+fn univariate_g1(value: &G1serde) -> UnivariateG1Rkyv {
+    let archived = G1SerdeRkyv::from_g1serde(value);
+    UnivariateG1Rkyv {
+        x: archived.x,
+        y: archived.y,
+    }
+}
+
+fn univariate_g2(value: &G2serde) -> UnivariateG2Rkyv {
+    let archived = G2SerdeRkyv::from_g2serde(value);
+    UnivariateG2Rkyv {
+        x: archived.x,
+        y: archived.y,
+    }
+}
+
+fn archived_univariate_g1(value: &ArchivedUnivariateG1Rkyv) -> G1serde {
+    let x_field = BaseField::from_bytes_le(&value.x).into();
+    let y_field = BaseField::from_bytes_le(&value.y).into();
+    G1serde(G1Affine::from_limbs(x_field, y_field))
+}
+
+fn archived_univariate_g2(value: &ArchivedUnivariateG2Rkyv) -> G2serde {
+    let x_field = G2BaseField::from_bytes_le(&value.x).into();
+    let y_field = G2BaseField::from_bytes_le(&value.y).into();
+    G2serde(G2Affine::from_limbs(x_field, y_field))
 }
 
 pub trait SigmaVerifyRkyvExt {

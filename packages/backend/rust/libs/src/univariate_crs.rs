@@ -14,7 +14,6 @@ use icicle_bls12_381::curve::{G1Affine, G2Affine, ScalarCfg, ScalarField};
 use icicle_core::ntt;
 use icicle_core::traits::{Arithmetic, FieldImpl, GenerateRandom};
 use rayon::prelude::*;
-use serde::Serialize;
 use std::time::Instant;
 use thiserror::Error;
 
@@ -475,64 +474,6 @@ pub struct UnivariateCrs {
     pub eta_g1: G1serde,
 }
 
-/// JSON projection used at the native/browser conversion boundary.  The RKYV
-/// projection is the native loading format; this form deliberately exposes
-/// the same groups and keys for canonical cross-runtime conversion.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UnivariateCrsJson<'a> {
-    pub schema_id: &'a str,
-    pub shape: UnivariateCrsShapeJson,
-    pub s0_g1: &'a [G1serde],
-    pub sxi_g1: &'a [G1serde],
-    pub spsi_g1: &'a [G1serde],
-    pub one_g2: G2serde,
-    pub tau_g2: G2serde,
-    pub tau_k_g2: G2serde,
-    pub gamma_g2: G2serde,
-    pub eta_g2: G2serde,
-    pub delta_g2: G2serde,
-    pub gamma_inv_public_queries: Vec<UnivariatePublicQueryJson>,
-    pub eta_inv_interface_queries: Vec<UnivariateTaggedQueryJson>,
-    pub delta_inv_internal_queries: Vec<UnivariateTaggedQueryJson>,
-    pub delta_inv_u_masking_queries: &'a [G1serde],
-    pub delta_inv_v_masking_queries: &'a [G1serde],
-    pub delta_inv_w_masking_queries: &'a [G1serde],
-    pub delta_inv_b_masking_queries: &'a [G1serde],
-    pub delta_g1: G1serde,
-    pub eta_g1: G1serde,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UnivariateCrsShapeJson {
-    pub subcircuit_capacity: usize,
-    pub arithmetic_domain_size: usize,
-    pub connection_domain_size: usize,
-    pub intersection_domain_size: usize,
-    pub union_domain_size: usize,
-    pub minimum_capacity: [usize; 3],
-    pub declared_capacity: [usize; 3],
-    pub k: usize,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UnivariatePublicQueryJson {
-    pub buffer_subcircuit_id: usize,
-    pub local_public_wire_index: usize,
-    pub point: G1serde,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UnivariateTaggedQueryJson {
-    pub placement_index: usize,
-    pub subcircuit_id: usize,
-    pub local_wire_index: usize,
-    pub point: G1serde,
-}
-
 impl UnivariateCrsFoundation {
     /// Generates U19's three source sequences and the U18 verifier basis.
     pub fn generate(
@@ -876,57 +817,6 @@ impl UnivariateCrs {
         })
     }
 
-    pub fn json_projection(&self) -> UnivariateCrsJson<'_> {
-        let foundation = &self.foundation;
-        UnivariateCrsJson {
-            schema_id: foundation.schema_id,
-            shape: UnivariateCrsShapeJson {
-                subcircuit_capacity: foundation.shape.subcircuit_capacity,
-                arithmetic_domain_size: foundation.shape.arithmetic_domain_size,
-                connection_domain_size: foundation.shape.connection_domain_size,
-                intersection_domain_size: foundation.shape.intersection_domain_size,
-                union_domain_size: foundation.shape.union_domain_size,
-                minimum_capacity: foundation.shape.minimum_capacity,
-                declared_capacity: foundation.shape.declared_capacity,
-                k: foundation.shape.k,
-            },
-            s0_g1: &foundation.s0_g1,
-            sxi_g1: &foundation.sxi_g1,
-            spsi_g1: &foundation.spsi_g1,
-            one_g2: foundation.one_g2,
-            tau_g2: foundation.tau_g2,
-            tau_k_g2: foundation.tau_k_g2,
-            gamma_g2: foundation.gamma_g2,
-            eta_g2: foundation.eta_g2,
-            delta_g2: foundation.delta_g2,
-            gamma_inv_public_queries: self
-                .gamma_inv_public_queries
-                .par_iter()
-                .map(|query| UnivariatePublicQueryJson {
-                    buffer_subcircuit_id: query.key.buffer_subcircuit_id,
-                    local_public_wire_index: query.key.local_public_wire_index,
-                    point: query.point,
-                })
-                .collect(),
-            eta_inv_interface_queries: self
-                .eta_inv_interface_queries
-                .par_iter()
-                .map(UnivariateTaggedQueryJson::from_query)
-                .collect(),
-            delta_inv_internal_queries: self
-                .delta_inv_internal_queries
-                .par_iter()
-                .map(UnivariateTaggedQueryJson::from_query)
-                .collect(),
-            delta_inv_u_masking_queries: &self.delta_inv_u_masking_queries,
-            delta_inv_v_masking_queries: &self.delta_inv_v_masking_queries,
-            delta_inv_w_masking_queries: &self.delta_inv_w_masking_queries,
-            delta_inv_b_masking_queries: &self.delta_inv_b_masking_queries,
-            delta_g1: self.delta_g1,
-            eta_g1: self.eta_g1,
-        }
-    }
-
     /// Builds reusable indices after native CRS admission. The serialized CRS
     /// is already required to have a canonical, duplicate-free query layout.
     pub fn query_index(&self) -> UnivariateQueryIndex {
@@ -1058,17 +948,6 @@ impl UnivariateCrs {
     }
 }
 
-impl UnivariateTaggedQueryJson {
-    fn from_query(query: &UnivariateTaggedQuery) -> Self {
-        Self {
-            placement_index: query.placement_index,
-            subcircuit_id: query.subcircuit_id,
-            local_wire_index: query.local_wire_index,
-            point: query.point,
-        }
-    }
-}
-
 fn tagged_query_at(
     shape: &UnivariateCrsShape,
     setup: &SetupParams,
@@ -1152,7 +1031,7 @@ mod tests {
     };
     use crate::crs_artifacts::{
         read_univariate_crs_artifact, write_univariate_crs_artifacts, UnivariateCrsRkyvExt,
-        UNIVARIATE_CRS_JSON_FILE_NAME, UNIVARIATE_CRS_RKYV_FILE_NAME,
+        UNIVARIATE_CRS_RKYV_FILE_NAME,
     };
     use crate::frontend_artifacts::public_wire_layout::{GlobalWire, PublicWireLayout};
     use crate::frontend_artifacts::{BufferDirection, SetupParams, SubcircuitInfo};
@@ -1420,20 +1299,19 @@ mod tests {
         assert_eq!(query_index.internal_index((0, 0, 0)), None);
 
         let output = tempfile::tempdir().expect("must create a temporary CRS output");
+        std::fs::write(output.path().join("univariate_crs.json"), b"retired")
+            .expect("must stage a retired JSON projection");
         let digests = write_univariate_crs_artifacts(output.path(), &crs)
-            .expect("complete CRS projections must be writable");
+            .expect("the complete CRS archive must be writable");
+        assert!(!output.path().join("univariate_crs.json").exists());
         let rkyv = std::fs::read(output.path().join(UNIVARIATE_CRS_RKYV_FILE_NAME))
             .expect("must read the RKYV projection");
-        rkyv::check_archived_root::<UnivariateCrsRkyv>(&rkyv)
-            .expect("the RKYV projection must be structurally valid");
-        let json: serde_json::Value = serde_json::from_slice(
-            &std::fs::read(output.path().join(UNIVARIATE_CRS_JSON_FILE_NAME))
-                .expect("must read the JSON projection"),
-        )
-        .expect("the JSON projection must be valid");
-        assert_eq!(json["schemaId"], UNIVARIATE_CRS_SCHEMA_ID);
+        backend_univariate_crs_interface::archive::access::<
+            backend_univariate_crs_interface::ArchivedUnivariateCrsRkyv,
+            backend_univariate_crs_interface::archive::rancor::Error,
+        >(&rkyv)
+        .expect("the RKYV projection must be structurally valid");
         assert_eq!(digests.rkyv_sha256.len(), 64);
-        assert_eq!(digests.json_sha256.len(), 64);
         let loaded = read_univariate_crs_artifact(
             &output.path().join(UNIVARIATE_CRS_RKYV_FILE_NAME),
             &setup,
@@ -1445,7 +1323,10 @@ mod tests {
         let path = output.path().join(UNIVARIATE_CRS_RKYV_FILE_NAME);
         let mut archive = UnivariateCrsRkyv::from_univariate_crs(&crs);
         archive.eta_inv_interface_queries[0].placement_index = 1;
-        let bytes = rkyv::to_bytes::<_, 256>(&archive).expect("archive must serialize");
+        let bytes = backend_univariate_crs_interface::archive::to_bytes::<
+            backend_univariate_crs_interface::archive::rancor::Error,
+        >(&archive)
+        .expect("archive must serialize");
         std::fs::write(&path, bytes.as_ref()).expect("must write malformed CRS archive");
 
         let error = read_univariate_crs_artifact(&path, &setup, &public_layout, &subcircuits)

@@ -115,7 +115,6 @@ mod tests {
             workspace.path(),
             &libs::crs_artifacts::UnivariateCrsDigests {
                 rkyv_sha256: "0".repeat(64),
-                json_sha256: "1".repeat(64),
             },
         )
         .expect("must write univariate trusted-setup provenance");

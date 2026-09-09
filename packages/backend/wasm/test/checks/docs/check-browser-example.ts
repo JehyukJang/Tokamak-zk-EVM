@@ -110,6 +110,10 @@ async function writeReadmeSnippets(applicationRoot: string): Promise<void> {
     path.join(applicationRoot, "src", "load-binary.ts"),
     path.join(snippetRoot, "load-binary.ts"),
   );
+  await cp(
+    path.join(applicationRoot, "src", "load-crs.ts"),
+    path.join(snippetRoot, "load-crs.ts"),
+  );
   await Promise.all(
     snippets.map((source, index) =>
       writeFile(path.join(snippetRoot, `snippet-${index + 1}.ts`), source),
@@ -252,12 +256,14 @@ async function serveBuiltFile(
 ): Promise<void> {
   if (relativePath.startsWith("artifacts/")) {
     const artifactName = relativePath.slice("artifacts/".length);
-    if (artifactName.length === 0 || path.basename(artifactName) !== artifactName) {
+    const fixturePath = path.resolve(FIXTURE_ROOT, artifactName);
+    const fixtureRelative = path.relative(path.resolve(FIXTURE_ROOT), fixturePath);
+    if (artifactName.length === 0 || fixtureRelative.startsWith("..") || path.isAbsolute(fixtureRelative)) {
       response.writeHead(404);
       response.end();
       return;
     }
-    await serveFile(response, path.join(FIXTURE_ROOT, artifactName));
+    await serveFile(response, fixturePath);
     return;
   }
 

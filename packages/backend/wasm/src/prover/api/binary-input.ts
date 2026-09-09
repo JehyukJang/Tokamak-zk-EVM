@@ -7,12 +7,11 @@ import {
   PROVER_PERMUTATION_V1_SPEC,
   PROVER_PLACEMENT_VARIABLES_V1_SPEC,
   PROVER_SELECTOR_V1_SPEC,
-  UNIVARIATE_PROVER_CRS_V1_SPEC,
 } from "../../generated/browser-artifact-contracts.generated.js";
 import { GENERATED_SETUP_PARAMS } from "../../generated/active/setup.generated.js";
 import type { CurveRuntime } from "../../runtime/curve/curve.js";
 import type { FieldElement } from "../../runtime/field/field-types.js";
-import { parseUnivariateProverCrs, type UnivariateProverCrsRuntime } from "../../univariate/crs.js";
+import { parseUnivariateProverCrs, type UnivariateCrsChunkInput, type UnivariateProverCrsRuntime } from "../../univariate/crs.js";
 import type { UnivariateSubcircuit } from "../../univariate/relation.js";
 import {
   GENERATED_PROVER_PACKED_R1CS,
@@ -26,7 +25,7 @@ export interface ProverBinaryInput {
   readonly selector: Uint8Array;
   readonly permutation: Uint8Array;
   readonly instance: Uint8Array;
-  readonly proverCrs: Uint8Array;
+  readonly proverCrs: UnivariateCrsChunkInput;
 }
 
 export interface UnivariateProverRuntimeInput {
@@ -43,14 +42,13 @@ export async function loadProverInputFromBinaryInput(
   runtime: CurveRuntime,
   input: ProverBinaryInput,
 ): Promise<UnivariateProverRuntimeInput> {
-  const [witness, selector, permutation, instance, crs] = await Promise.all([
+  const [witness, selector, permutation, instance] = await Promise.all([
     admitRuntimeBinaryArtifact(input.witness, PROVER_PLACEMENT_VARIABLES_V1_SPEC.kind, PROVER_PLACEMENT_VARIABLES_V1_SPEC),
     admitRuntimeBinaryArtifact(input.selector, PROVER_SELECTOR_V1_SPEC.kind, PROVER_SELECTOR_V1_SPEC),
     admitRuntimeBinaryArtifact(input.permutation, PROVER_PERMUTATION_V1_SPEC.kind, PROVER_PERMUTATION_V1_SPEC),
     admitRuntimeBinaryArtifact(input.instance, INSTANCE_V1_SPEC.kind, INSTANCE_V1_SPEC),
-    admitRuntimeBinaryArtifact(input.proverCrs, UNIVARIATE_PROVER_CRS_V1_SPEC.kind, UNIVARIATE_PROVER_CRS_V1_SPEC),
   ]);
-  for (const artifact of [witness, selector, permutation, instance, crs]) {
+  for (const artifact of [witness, selector, permutation, instance]) {
     assertBinaryArtifactCompatibility(artifact);
   }
   return {
@@ -60,7 +58,7 @@ export async function loadProverInputFromBinaryInput(
     publicInputs: parsePublicInputs(runtime, instance),
     subcircuitInfos: GENERATED_PROVER_SUBCIRCUIT_INFOS,
     subcircuits: currentSubcircuits(),
-    crs: parseUnivariateProverCrs(input.proverCrs),
+    crs: await parseUnivariateProverCrs(input.proverCrs),
   };
 }
 

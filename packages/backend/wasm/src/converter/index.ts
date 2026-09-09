@@ -3,18 +3,12 @@ import { inspectBinary as inspectBinaryInternal } from "./conversion/binary-insp
 import { convertInstance as convertInstanceInternal } from "./conversion/instance-converter.js";
 import { convertPermutation as convertPermutationInternal } from "./conversion/permutation-converter.js";
 import { convertSelector as convertSelectorInternal } from "./conversion/selector-converter.js";
-import { convertUnivariateCrs as convertUnivariateCrsInternal } from "./conversion/univariate-crs-converter.js";
 import { convertWitness as convertWitnessInternal } from "./conversion/witness-converter.js";
-import type { BinaryArtifactInspection, ConvertedCrs } from "./conversion/types.js";
+import type { BinaryArtifactInspection } from "./conversion/types.js";
 import { validateBinary as validateBinaryInternal, type RuntimeArtifactFileValidationResult } from "./validation/validators.js";
 
 export { BackendWasmError } from "../backend-wasm-error.js";
 export type { BackendWasmErrorCode } from "../backend-wasm-error.js";
-
-/** Converts the current native univariate CRS JSON projection. */
-export function convertUnivariateCrs(crs: unknown): Promise<ConvertedCrs> {
-  return runConverter("convertUnivariateCrs", () => convertUnivariateCrsInternal(crs));
-}
 
 export function convertInstance(instance: unknown): Promise<Uint8Array> {
   return runConverter("convertInstance", () => convertInstanceInternal(instance));
@@ -50,4 +44,4 @@ async function runConverter<T>(operation: string, run: () => Promise<T>): Promis
 }
 
 export type { RuntimeArtifactFileValidationResult };
-export type { BinaryArtifactInspection, BinarySectionInspection, ConvertedCrs } from "./conversion/types.js";
+export type { BinaryArtifactInspection, BinarySectionInspection } from "./conversion/types.js";

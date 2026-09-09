@@ -175,8 +175,8 @@ pub fn write_development_only_trusted_setup_provenance(output_dir: &Path) -> std
 }
 
 /// Records a locally generated U18--U21 CRS as development-only.  Unlike the
-/// legacy Sigma marker, this provenance binds the artifact family and both
-/// canonical projections so it cannot be mistaken for a publishable CRS.
+/// legacy Sigma marker, this provenance binds the artifact family and its
+/// canonical RKYV archive so it cannot be mistaken for a publishable CRS.
 pub fn write_development_only_univariate_crs_provenance(
     output_dir: &Path,
     digests: &UnivariateCrsDigests,
@@ -187,7 +187,6 @@ pub fn write_development_only_univariate_crs_provenance(
             release_eligible: DevelopmentOnlyReleaseEligibility,
             protocol_schema_id: UNIVARIATE_CRS_SCHEMA_ID.to_string(),
             univariate_crs_rkyv_sha256: digests.rkyv_sha256.clone(),
-            univariate_crs_json_sha256: digests.json_sha256.clone(),
         },
     );
     let bytes = serde_json::to_vec_pretty(&provenance).map_err(std::io::Error::other)?;

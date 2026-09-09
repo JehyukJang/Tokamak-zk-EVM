@@ -7,6 +7,7 @@
 #![deny(unsafe_code)]
 #![allow(non_snake_case)]
 
+pub use backend_univariate_crs_interface::*;
 use rkyv::check_archived_root;
 
 pub const COMBINED_SIGMA_PAYLOAD_MAGIC: &[u8; 8] = b"TKCRS001";
@@ -132,66 +133,6 @@ pub struct Sigma2Rkyv {
     pub eta: G2SerdeRkyv,
     pub x: G2SerdeRkyv,
     pub y: G2SerdeRkyv,
-}
-
-/// Archive projection for the U18--U21 CRS family.  This is intentionally a
-/// separate schema from `SigmaRkyv`: an archived bivariate Sigma must never be
-/// interpreted as a univariate CRS.
-#[derive(Debug, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
-#[archive(check_bytes)]
-pub struct UnivariateCrsRkyv {
-    pub schema_id: String,
-    pub shape: UnivariateCrsShapeRkyv,
-    pub s0_g1: Vec<G1SerdeRkyv>,
-    pub sxi_g1: Vec<G1SerdeRkyv>,
-    pub spsi_g1: Vec<G1SerdeRkyv>,
-    pub one_g2: G2SerdeRkyv,
-    pub tau_g2: G2SerdeRkyv,
-    pub tau_k_g2: G2SerdeRkyv,
-    pub gamma_g2: G2SerdeRkyv,
-    pub eta_g2: G2SerdeRkyv,
-    pub delta_g2: G2SerdeRkyv,
-    pub gamma_inv_public_queries: Vec<UnivariatePublicQueryRkyv>,
-    pub eta_inv_interface_queries: Vec<UnivariateTaggedQueryRkyv>,
-    pub delta_inv_internal_queries: Vec<UnivariateTaggedQueryRkyv>,
-    pub delta_inv_u_masking_queries: Vec<G1SerdeRkyv>,
-    pub delta_inv_v_masking_queries: Vec<G1SerdeRkyv>,
-    pub delta_inv_w_masking_queries: Vec<G1SerdeRkyv>,
-    pub delta_inv_b_masking_queries: Vec<G1SerdeRkyv>,
-    pub delta_g1: G1SerdeRkyv,
-    pub eta_g1: G1SerdeRkyv,
-}
-
-/// Numeric domain data lets readers reject a mismatched artifact family
-/// before converting any archived curve coordinates.
-#[derive(Debug, Clone, Copy, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
-#[archive(check_bytes)]
-pub struct UnivariateCrsShapeRkyv {
-    pub subcircuit_capacity: u64,
-    pub arithmetic_domain_size: u64,
-    pub connection_domain_size: u64,
-    pub intersection_domain_size: u64,
-    pub union_domain_size: u64,
-    pub minimum_capacity: [u64; 3],
-    pub declared_capacity: [u64; 3],
-    pub k: u64,
-}
-
-#[derive(Debug, Clone, Copy, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
-#[archive(check_bytes)]
-pub struct UnivariatePublicQueryRkyv {
-    pub buffer_subcircuit_id: u64,
-    pub local_public_wire_index: u64,
-    pub point: G1SerdeRkyv,
-}
-
-#[derive(Debug, Clone, Copy, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
-#[archive(check_bytes)]
-pub struct UnivariateTaggedQueryRkyv {
-    pub placement_index: u64,
-    pub subcircuit_id: u64,
-    pub local_wire_index: u64,
-    pub point: G1SerdeRkyv,
 }
 
 /// Validate a combined Sigma archive and project it into the `TKCRS001`

@@ -43,9 +43,7 @@ The current protocol accepts the following independent binary artifacts:
 | `permutation` | Synthesizer | Preprocess, prover, verifier configuration |
 | `witness` | Synthesizer | Prover |
 | `instance` | Synthesizer | Prover and verifier |
-| `proverCrs` | Backend trusted setup | Prover |
-| `preprocessCrs` | Backend trusted setup | Preprocess and verifier configuration |
-| `verifierCrs` | Backend trusted setup | Verifier |
+| `crs` manifest and chunks | Backend trusted setup plus the offline WASM converter | Preprocess, prover, and verifier; each role loads only its required sections |
 | `verifierPreprocess` | `preprocess()` | Verifier |
 | `proof` | `prove()` | Verifier |
 
@@ -53,9 +51,16 @@ The current protocol accepts the following independent binary artifacts:
 nine scalar evaluations. The selector, transcript state, configuration, and
 provenance are not duplicated inside the proof.
 
-All binaries use the backend-owned `TZBWASM1` container. The container records
+All non-CRS binaries use the backend-owned `TZBWASM1` container. The container records
 the artifact kind, producer package version, section table, and self-digest.
 Its layout version is not a protocol-version compatibility layer.
+
+The CRS is different because the production archive can exceed the 4 GiB
+address space of one browser `Uint8Array`. Native trusted setup emits only
+`univariate_crs.rkyv`. An offline 64-bit converter reads that archive with a
+read-only memory map and writes a small manifest plus bounded section chunks.
+Browser runtimes authenticate and load chunks lazily through an
+application-provided callback.
 
 ## Public API reference
 
@@ -71,7 +76,6 @@ Its layout version is not a protocol-version compatibility layer.
 | `convertSelector(value)` | Convert the synthesizer placement selector |
 | `convertPermutation(value)` | Convert the synthesizer permutation |
 | `convertInstance(value)` | Convert the synthesizer public instance |
-| `convertUnivariateCrs(value)` | Split the native univariate CRS JSON projection by runtime role |
 | `inspectBinary(bytes)` | Inspect a binary container without a validity claim |
 | `validateBinary(bytes)` | Validate binary layout, shape, and self-digest |
 
@@ -79,9 +83,10 @@ Public operation types are `ProverInput`, `ProverInstallOptions`,
 `ProverInstallationInfo`, `PreprocessInput`, `PreprocessInstallOptions`,
 `PreprocessInstallationInfo`, `VerifierInput`, and
 `VerifierInstallationInfo`. Converter types are `BinaryArtifactInspection`,
-`BinarySectionInspection`, `ConvertedCrs`, and
+`BinarySectionInspection` and
 `RuntimeArtifactFileValidationResult`. Every public subpath exports
-`BackendWasmError` and `BackendWasmErrorCode`.
+`BackendWasmError` and `BackendWasmErrorCode`. The runtime subpaths also export
+the `UnivariateCrsChunkInput` type.
 
 ## Convert source artifacts
 
@@ -89,35 +94,23 @@ Converters accept the producer-owned JSON shapes and return browser binary
 artifacts. They require no runtime installation.
 
 ```ts
-import {
-  convertInstance,
-  convertPermutation,
-  convertSelector,
-  convertUnivariateCrs,
-  convertWitness,
-  inspectBinary,
-  validateBinary,
-} from '@tokamak-zk-evm/snark-browser-compat/converter';
+import { convertInstance, convertPermutation, convertSelector, convertWitness } from
+  '@tokamak-zk-evm/snark-browser-compat/converter';
 
-const [witnessSource, selectorSource, permutationSource, instanceSource, crsSource] =
+const [witnessSource, selectorSource, permutationSource, instanceSource] =
   await Promise.all([
     fetch('/sources/placementVariables.json').then(response => response.json()),
     fetch('/sources/selector.json').then(response => response.json()),
     fetch('/sources/permutation.json').then(response => response.json()),
     fetch('/sources/instance.json').then(response => response.json()),
-    fetch('/sources/univariate_crs.json').then(response => response.json()),
   ]);
 
-const [witness, selector, permutation, instance, crs] = await Promise.all([
+const [witness, selector, permutation, instance] = await Promise.all([
   convertWitness(witnessSource),
   convertSelector(selectorSource),
   convertPermutation(permutationSource),
   convertInstance(instanceSource),
-  convertUnivariateCrs(crsSource),
 ]);
-
-await validateBinary(crs.proverCrs);
-console.log(await inspectBinary(crs.proverCrs));
 ```
 
 `inspectBinary()` reports container metadata without making a validity claim.
@@ -128,6 +121,36 @@ Development builds generate embedded circuit metadata from the local
 qap-compiler output. Production builds select the pinned npm
 `@tokamak-zk-evm/subcircuit-library` snapshot. Both modes use the same runtime
 artifact interfaces.
+
+Convert the native CRS offline from `packages/backend/wasm`:
+
+```sh
+npm run univariate-crs:convert -- \
+  --input ../rust/setup/trusted-setup/output/debug/univariate_crs.rkyv \
+  --output ./tmp/browser-crs
+```
+
+The command uses a release-built native reader, never materializes the whole
+archive in JavaScript, and publishes the output directory only after all
+chunks and the manifest are complete. Serve the entire directory without
+renaming its relative chunk paths.
+
+Create the runtime CRS source from the served manifest:
+
+```ts
+import type { UnivariateCrsChunkInput } from '@tokamak-zk-evm/snark-browser-compat/prover';
+
+const manifestUrl = new URL('/artifacts/crs/univariate-crs-manifest.json', location.href);
+const manifest = await fetch(manifestUrl).then(response => response.json());
+const crs: UnivariateCrsChunkInput = {
+  manifest,
+  async loadChunk(relativePath: string) {
+    const response = await fetch(new URL(relativePath, manifestUrl));
+    if (!response.ok) throw new Error(`Failed to load CRS chunk: ${response.status}`);
+    return new Uint8Array(await response.arrayBuffer());
+  },
+};
+```
 
 ## Preprocess
 
@@ -140,19 +163,20 @@ import {
   preprocess,
 } from '@tokamak-zk-evm/snark-browser-compat/preprocess';
 import { loadBinary } from './load-binary.js';
+import { loadCrs } from './load-crs.js';
 
 await installPreprocess({ chunkSizeExponent: 17 });
 
-const [selector, permutation, preprocessCrs] = await Promise.all([
+const [selector, permutation, crs] = await Promise.all([
   loadBinary('/artifacts/selector.bin'),
   loadBinary('/artifacts/permutation.bin'),
-  loadBinary('/artifacts/preprocess-crs.bin'),
+  loadCrs('/artifacts/crs/univariate-crs-manifest.json'),
 ]);
 
 const verifierPreprocess = await preprocess({
   selector,
   permutation,
-  preprocessCrs,
+  preprocessCrs: crs,
 });
 ```
 
@@ -169,15 +193,16 @@ import {
   prove,
 } from '@tokamak-zk-evm/snark-browser-compat/prover';
 import { loadBinary } from './load-binary.js';
+import { loadCrs } from './load-crs.js';
 
 await installProver({ chunkSizeExponent: 18 });
 
-const [witness, selector, permutation, instance, proverCrs] = await Promise.all([
+const [witness, selector, permutation, instance, crs] = await Promise.all([
   loadBinary('/artifacts/witness.bin'),
   loadBinary('/artifacts/selector.bin'),
   loadBinary('/artifacts/permutation.bin'),
   loadBinary('/artifacts/instance.bin'),
-  loadBinary('/artifacts/prover-crs.bin'),
+  loadCrs('/artifacts/crs/univariate-crs-manifest.json'),
 ]);
 
 const proof = await prove({
@@ -185,7 +210,7 @@ const proof = await prove({
   selector,
   permutation,
   instance,
-  proverCrs,
+  proverCrs: crs,
 });
 ```
 
@@ -205,18 +230,18 @@ import {
   verify,
 } from '@tokamak-zk-evm/snark-browser-compat/verifier';
 import { loadBinary } from './load-binary.js';
+import { loadCrs } from './load-crs.js';
 
 await installVerifier();
 
-const [proof, instance, selector, permutation, preprocessCrs, verifierPreprocess, verifierCrs] =
+const [proof, instance, selector, permutation, verifierPreprocess, crs] =
   await Promise.all([
     loadBinary('/artifacts/proof.bin'),
     loadBinary('/artifacts/instance.bin'),
     loadBinary('/artifacts/selector.bin'),
     loadBinary('/artifacts/permutation.bin'),
-    loadBinary('/artifacts/preprocess-crs.bin'),
     loadBinary('/artifacts/verifier-preprocess.bin'),
-    loadBinary('/artifacts/verifier-crs.bin'),
+    loadCrs('/artifacts/crs/univariate-crs-manifest.json'),
   ]);
 
 const valid = await verify({
@@ -224,9 +249,9 @@ const valid = await verify({
   instance,
   selector,
   permutation,
-  preprocessCrs,
+  preprocessCrs: crs,
   verifierPreprocess,
-  verifierCrs,
+  verifierCrs: crs,
 });
 ```
 
@@ -267,7 +292,7 @@ npm run univariate:transcript:check
 ```
 
 To prepare local browser E2E inputs, first generate `selector.json` with the
-synthesizer and `univariate_crs.json` with native trusted setup. Then run:
+synthesizer and `univariate_crs.rkyv` with native trusted setup. Then run:
 
 ```sh
 npm run fixtures:copy
@@ -275,8 +300,9 @@ npm run fixtures:prepare
 npm run prover:browser:check
 ```
 
-The fixture preparation step converts owner-package outputs; it does not invoke
-native setup, preprocessing, proving, or verification on behalf of the owner.
+The fixture preparation step invokes only the native mmap CRS converter; it
+does not invoke setup, preprocessing, proving, or verification on behalf of
+the owner.
 
 See [`examples/browser`](./examples/browser) for a runnable Vite workflow.
 

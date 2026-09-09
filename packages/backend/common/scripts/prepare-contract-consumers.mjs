@@ -10,6 +10,7 @@ const buildMetadataValidatorSource = path.join(contractRoot, "typescript", "back
 const provenanceContract = path.join(contractRoot, "crs-provenance-contract.json");
 const buildMetadataContract = path.join(contractRoot, "backend-build-metadata-contract.json");
 const univariateDomainContract = path.join(contractRoot, "univariate-domain-contract.v1.json");
+const univariateCrsChunkContract = path.join(contractRoot, "univariate-crs-chunk-contract.json");
 const versionPolicySource = path.join(repositoryRoot, "scripts", "version-contract.mjs");
 const versionPolicyDeclarationSource = path.join(repositoryRoot, "scripts", "version-contract.d.ts");
 const qapLibraryContract = path.join(
@@ -33,6 +34,7 @@ const backendArtifactContract = path.join(contractRoot, "browser-artifact-contra
 const provenanceContractContents = (await fs.readFile(provenanceContract, "utf8")).trim();
 const buildMetadataContractContents = (await fs.readFile(buildMetadataContract, "utf8")).trim();
 const univariateDomainContractContents = (await fs.readFile(univariateDomainContract, "utf8")).trim();
+const univariateCrsChunkContractContents = (await fs.readFile(univariateCrsChunkContract, "utf8")).trim();
 const check = process.argv.includes("--check");
 const consumers = [
   path.join(repositoryRoot, "packages", "cli", "src", "generated"),
@@ -97,6 +99,10 @@ await synchronizeContents(
 await synchronizeContents(
   `// Generated from packages/backend/common/contracts/univariate-domain-contract.v1.json.\nexport const UNIVARIATE_DOMAIN_CONTRACT = ${univariateDomainContractContents} as const;\n\nexport default UNIVARIATE_DOMAIN_CONTRACT;\n`,
   path.join(browserConsumerDirectory, "univariate-domain-contract.generated.ts"),
+);
+await synchronizeContents(
+  `// Generated from packages/backend/common/contracts/univariate-crs-chunk-contract.json.\nexport const UNIVARIATE_CRS_CHUNK_CONTRACT = ${univariateCrsChunkContractContents} as const;\n\nexport default UNIVARIATE_CRS_CHUNK_CONTRACT;\n`,
+  path.join(browserConsumerDirectory, "univariate-crs-chunk-contract.generated.ts"),
 );
 
 async function synchronize(source, target) {

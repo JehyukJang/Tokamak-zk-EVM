@@ -1,5 +1,5 @@
 import { BackendWasmError } from "../../backend-wasm-error.js";
-import { assertNamedBinaryInput, installCurveRuntime } from "../../api/public-api-utils.js";
+import { assertNamedBinaryInput, assertNamedCrsInput, installCurveRuntime } from "../../api/public-api-utils.js";
 import type { CurveRuntime } from "../../runtime/curve/curve.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
 import { assertRuntimeLibraryCompatibility } from "../../artifacts/binary/compatibility.js";
@@ -49,10 +49,9 @@ export async function verify(input: VerifierInput): Promise<boolean> {
     "instance",
     "selector",
     "permutation",
-    "preprocessCrs",
     "verifierPreprocess",
-    "verifierCrs",
   ]);
+  assertNamedCrsInput(input, "Verifier", ["preprocessCrs", "verifierCrs"]);
   busy = true;
 
   try {

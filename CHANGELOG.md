@@ -50,10 +50,10 @@ The format is based on Keep a Changelog.
   `await createCircuitGenerator(synthesizer)`. The factory no longer accepts
   WASM buffers and returns a `CircuitGenerationResult` containing placements
   and circuit artifacts directly.
-- Browser converter callers must replace `convertCrs(rkyvBytes)` with
-  `convertCrs(rkyvBytes, crsProvenance)`, where `crsProvenance` is the complete
-  canonical `finalMpcCrs` document loaded from the matching
-  `crs_provenance.json`. Legacy or mismatched provenance is rejected.
+- Native trusted setup now emits only `univariate_crs.rkyv`; the JSON CRS
+  projection and monolithic browser CRS binaries are retired. Browser
+  integrations must run the offline backend-wasm CRS converter and provide
+  its manifest plus lazy chunk loader to preprocess, prove, and verify.
 
 ### High-Level Implementation Summary
 

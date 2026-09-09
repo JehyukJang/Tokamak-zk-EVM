@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import { decodeBinaryArtifactFile } from "../../../src/artifacts/binary/binary-artifact-file.js";
-import { BinaryArtifactFileKind, BinarySectionEncoding, BinarySectionType, type BinarySectionView } from "../../../src/artifacts/binary/binary-format.js";
+import { BinaryArtifactFileKind } from "../../../src/artifacts/binary/binary-format.js";
 import { createPreprocessOutput } from "../../../src/preprocess/api/output.js";
 import { preprocessSnark } from "../../../src/preprocess/protocol/preprocess-snark.js";
 import { createCurveRuntime } from "../../../src/runtime/curve/curve.js";
@@ -9,6 +9,7 @@ import { concatBytes } from "../../../src/runtime/bytes.js";
 import { deriveUnivariateDomainShape } from "../../../src/univariate/domain.js";
 import { buildConnectionPermutationPolynomial } from "../../../src/univariate/relation.js";
 import { placementSelectorPolynomial } from "../../../src/univariate/selectors.js";
+import type { UnivariateCrsChunkSection } from "../../../src/univariate/chunked-crs.js";
 
 const setup = {
   l_free: 0,
@@ -80,7 +81,7 @@ try {
 
 console.log("Checked univariate preprocess commitments, output format, and statement admission");
 
-function makeKzgPowers(tau: ReturnType<typeof runtime.Fr.fromBigInt>, count: number): BinarySectionView {
+function makeKzgPowers(tau: ReturnType<typeof runtime.Fr.fromBigInt>, count: number): UnivariateCrsChunkSection {
   const powers = [];
   let tauPower = runtime.Fr.one;
   for (let index = 0; index < count; index += 1) {
@@ -89,15 +90,23 @@ function makeKzgPowers(tau: ReturnType<typeof runtime.Fr.fromBigInt>, count: num
   }
   const data = concatBytes(powers);
   return {
-    type: BinarySectionType.CrsG1,
-    encoding: BinarySectionEncoding.FfjsG1Affine96,
-    label: "crs.g1.kzg-powers",
+    encoding: "ffjs-g1-affine-96",
+    label: "crs.s0",
     elementCount: count,
     elementByteLength: 96,
-    byteOffset: 0,
-    byteLength: data.byteLength,
-    flags: 0,
-    data,
+    async readElement(index) {
+      return this.readElements(index, 1);
+    },
+    async readElements(first, elementCount) {
+      return data.slice(first * 96, (first + elementCount) * 96);
+    },
+    async readStridedElements(first, stride, elementCount) {
+      const output = new Uint8Array(elementCount * 96);
+      for (let index = 0; index < elementCount; index += 1) {
+        output.set(data.subarray((first + index * stride) * 96, (first + index * stride + 1) * 96), index * 96);
+      }
+      return output;
+    },
   };
 }
 

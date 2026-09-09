@@ -7,10 +7,10 @@ export interface AffineMontgomeryMsmChunk {
 
 export async function msmAffineMontgomeryChunks(
   runtime: CurveRuntime,
-  chunks: Iterable<AffineMontgomeryMsmChunk>,
+  chunks: Iterable<AffineMontgomeryMsmChunk> | AsyncIterable<AffineMontgomeryMsmChunk>,
 ): Promise<Uint8Array> {
   let result = runtime.G1.zero;
-  for (const chunk of chunks) {
+  for await (const chunk of chunks) {
     const rawScalars = await runtime.Fr.batchFromMontgomeryBuffer(
       chunk.montgomeryScalars,
     );

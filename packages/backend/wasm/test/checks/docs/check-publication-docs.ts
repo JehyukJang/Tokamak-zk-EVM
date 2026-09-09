@@ -203,7 +203,6 @@ function checkPublicApiReference(readme: string): void {
     "convertSelector(value)",
     "convertPermutation(value)",
     "convertInstance(value)",
-    "convertUnivariateCrs(value)",
     "inspectBinary(bytes)",
     "validateBinary(bytes)",
   ] as const;
@@ -225,7 +224,7 @@ function checkPublicApiReference(readme: string): void {
     "PreprocessInstallationInfo",
     "BinaryArtifactInspection",
     "BinarySectionInspection",
-    "ConvertedCrs",
+    "UnivariateCrsChunkInput",
     "RuntimeArtifactFileValidationResult",
     "BackendWasmError",
     "BackendWasmErrorCode",

@@ -31,6 +31,10 @@ const requiredBoundaries = [
   ['Univariate domain fixed vectors', 'common/contracts/fixtures/univariate-domain-shape.v1.json'],
   ['Univariate domain Rust implementation', 'rust/libs/src/univariate_crs.rs'],
   ['Univariate domain WASM implementation', 'wasm/src/univariate/domain.ts'],
+  ['Univariate CRS chunk authority', 'common/contracts/univariate-crs-chunk-contract.json'],
+  ['Univariate CRS 64-bit RKYV interface', 'common/interface/univariate-crs/src/lib.rs'],
+  ['Univariate CRS RKYV chunk reader', 'wasm/tools/univariate-crs-chunker/src/main.rs'],
+  ['Univariate CRS browser chunk runtime', 'wasm/src/univariate/chunked-crs.ts'],
 ];
 
 const requiredConsumerBoundaries = [
@@ -69,8 +73,8 @@ const requiredConsumerBoundaries = [
   ],
   [
     'backend-wasm univariate CRS adapter',
-    'packages/backend/wasm/src/converter/conversion/univariate-crs-converter.ts',
-    'UNIVARIATE_CRS_SCHEMA_ID',
+    'packages/backend/wasm/scripts/converter/convert-univariate-crs.ts',
+    'UNIVARIATE_CRS_CHUNK_CONTRACT',
   ],
   [
     'backend-wasm runtime artifact contract admission',
@@ -81,6 +85,11 @@ const requiredConsumerBoundaries = [
     'backend-wasm generated univariate domain contract',
     'packages/backend/wasm/src/generated/univariate-domain-contract.generated.ts',
     'UNIVARIATE_DOMAIN_CONTRACT',
+  ],
+  [
+    'backend-wasm generated univariate CRS chunk contract',
+    'packages/backend/wasm/src/generated/univariate-crs-chunk-contract.generated.ts',
+    'UNIVARIATE_CRS_CHUNK_CONTRACT',
   ],
 ];
 

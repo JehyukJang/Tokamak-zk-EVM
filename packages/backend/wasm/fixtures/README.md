@@ -36,14 +36,13 @@ for the role and production source of each artifact kind.
    npm run fixtures:prepare
    ```
 
-   This invokes the public converter APIs and writes independent binaries
-   under ignored `small/runtime/`.
+   This invokes the public JSON converter APIs and the native mmap CRS
+   converter, then writes runtime inputs under ignored `small/runtime/`.
 
 ## Prepared outputs
 
-`witness.bin`, `permutation.bin`, `instance.bin`, `prover-crs.bin`,
-`preprocess-crs.bin`, `verifier-crs.bin`, `proof.bin`, and
-`verifier-preprocess.bin`.
+`witness.bin`, `selector.bin`, `permutation.bin`, `instance.bin`, the `crs/`
+manifest-and-chunk directory, `proof.bin`, and `verifier-preprocess.bin`.
 
 If an owner artifact is missing, the copy or conversion command must fail with
 the required source path. No fallback generation is permitted.

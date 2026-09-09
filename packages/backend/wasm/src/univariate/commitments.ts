@@ -1,4 +1,3 @@
-import type { BinarySectionView } from "../artifacts/binary/binary-format.js";
 import type { CurveRuntime } from "../runtime/curve/curve.js";
 import {
   msmAffineMontgomeryChunks,
@@ -6,19 +5,21 @@ import {
 } from "../runtime/group/affine-msm.js";
 import { G1_AFFINE_BYTES } from "../runtime/group/group.js";
 import type { StridedPolynomial } from "./selectors.js";
+import type { UnivariateCrsChunkSection } from "./chunked-crs.js";
 
 /** Commits a dense coefficient vector with the ordinary KZG power section. */
 export async function commitDenseUnivariatePolynomial(
   runtime: CurveRuntime,
-  kzgPowers: BinarySectionView,
+  kzgPowers: UnivariateCrsChunkSection,
   coefficients: Uint8Array,
   chunkPoints: number,
+  firstPower = 0,
 ): Promise<Uint8Array> {
   const coefficientCount = fieldElementCount(runtime, coefficients, "Dense polynomial coefficients");
-  assertKzgRange(kzgPowers, coefficientCount, "Dense polynomial");
+  assertKzgRange(kzgPowers, firstPower + coefficientCount, "Dense polynomial");
   return msmAffineMontgomeryChunks(
     runtime,
-    contiguousChunks(kzgPowers.data, coefficients, coefficientCount, runtime.Fr.byteLength, chunkPoints),
+    contiguousChunks(kzgPowers, coefficients, firstPower, coefficientCount, runtime.Fr.byteLength, chunkPoints),
   );
 }
 
@@ -29,7 +30,7 @@ export async function commitDenseUnivariatePolynomial(
  */
 export async function commitStridedUnivariatePolynomial(
   runtime: CurveRuntime,
-  kzgPowers: BinarySectionView,
+  kzgPowers: UnivariateCrsChunkSection,
   polynomial: StridedPolynomial,
   chunkPoints: number,
 ): Promise<Uint8Array> {
@@ -49,42 +50,39 @@ export async function commitStridedUnivariatePolynomial(
   const coefficients = runtime.Fr.concat(polynomial.coefficients);
   return msmAffineMontgomeryChunks(
     runtime,
-    stridedChunks(kzgPowers.data, coefficients, polynomial.stride, coefficientCount, runtime.Fr.byteLength, chunkPoints),
+    stridedChunks(kzgPowers, coefficients, polynomial.stride, coefficientCount, runtime.Fr.byteLength, chunkPoints),
   );
 }
 
-function* contiguousChunks(
-  bases: Uint8Array,
+async function* contiguousChunks(
+  bases: UnivariateCrsChunkSection,
   coefficients: Uint8Array,
+  firstPower: number,
   count: number,
   fieldElementBytes: number,
   chunkPoints: number,
-): Iterable<AffineMontgomeryMsmChunk> {
+): AsyncIterable<AffineMontgomeryMsmChunk> {
   assertChunkPoints(chunkPoints);
   for (let start = 0; start < count; start += chunkPoints) {
     const end = Math.min(start + chunkPoints, count);
     yield {
-      bases: bases.subarray(start * G1_AFFINE_BYTES, end * G1_AFFINE_BYTES),
+      bases: await bases.readElements(firstPower + start, end - start),
       montgomeryScalars: coefficients.subarray(start * fieldElementBytes, end * fieldElementBytes),
     };
   }
 }
 
-function* stridedChunks(
-  allBases: Uint8Array,
+async function* stridedChunks(
+  allBases: UnivariateCrsChunkSection,
   coefficients: Uint8Array,
   stride: number,
   count: number,
   fieldElementBytes: number,
   chunkPoints: number,
-): Iterable<AffineMontgomeryMsmChunk> {
+): AsyncIterable<AffineMontgomeryMsmChunk> {
   for (let start = 0; start < count; start += chunkPoints) {
     const end = Math.min(start + chunkPoints, count);
-    const bases = new Uint8Array((end - start) * G1_AFFINE_BYTES);
-    for (let index = start; index < end; index += 1) {
-      const sourceOffset = index * stride * G1_AFFINE_BYTES;
-      bases.set(allBases.subarray(sourceOffset, sourceOffset + G1_AFFINE_BYTES), (index - start) * G1_AFFINE_BYTES);
-    }
+    const bases = await allBases.readStridedElements(start * stride, stride, end - start);
     yield {
       bases,
       montgomeryScalars: coefficients.subarray(start * fieldElementBytes, end * fieldElementBytes),
@@ -99,10 +97,9 @@ function fieldElementCount(runtime: CurveRuntime, values: Uint8Array, label: str
   return values.byteLength / runtime.Fr.byteLength;
 }
 
-function assertKzgRange(section: BinarySectionView, requiredCount: number, label: string): void {
+function assertKzgRange(section: UnivariateCrsChunkSection, requiredCount: number, label: string): void {
   if (
     section.elementByteLength !== G1_AFFINE_BYTES
-    || section.data.byteLength !== section.elementCount * G1_AFFINE_BYTES
     || section.elementCount < requiredCount
   ) {
     throw new Error(`${label} requires ${requiredCount} ordinary KZG powers.`);

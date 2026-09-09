@@ -4,11 +4,10 @@ import { admitRuntimeBinaryArtifact } from '../../artifacts/binary/runtime-admis
 import {
   PROVER_PERMUTATION_V1_SPEC,
   PROVER_SELECTOR_V1_SPEC,
-  UNIVARIATE_PREPROCESS_CRS_V1_SPEC,
 } from '../../generated/browser-artifact-contracts.generated.js';
 import { assertBinaryArtifactCompatibility } from '../../artifacts/binary/compatibility.js';
 import { GENERATED_SETUP_PARAMS } from '../../generated/active/setup.generated.js';
-import { parseUnivariatePreprocessCrs } from '../../univariate/crs.js';
+import { parseUnivariatePreprocessCrs, type UnivariateCrsChunkInput } from '../../univariate/crs.js';
 import type { UnivariatePermutationEntry } from '../../univariate/relation.js';
 import type { PreprocessRuntimeInput } from '../protocol/runtime-input.js';
 export type { PreprocessRuntimeInput } from '../protocol/runtime-input.js';
@@ -20,21 +19,16 @@ const [selectorSectionSpec] = PROVER_SELECTOR_V1_SPEC.sections;
 export interface PreprocessBinaryInput {
   readonly selector: Uint8Array;
   readonly permutation: Uint8Array;
-  readonly preprocessCrs: Uint8Array;
+  readonly preprocessCrs: UnivariateCrsChunkInput;
 }
 
 export async function loadPreprocessInputFromBinaryInput(input: PreprocessBinaryInput): Promise<PreprocessRuntimeInput> {
-  const [selector, permutation, crsArtifact] = await Promise.all([
+  const [selector, permutation] = await Promise.all([
     admitRuntimeBinaryArtifact(input.selector, PROVER_SELECTOR_V1_SPEC.kind, PROVER_SELECTOR_V1_SPEC),
     admitRuntimeBinaryArtifact(input.permutation, PROVER_PERMUTATION_V1_SPEC.kind, PROVER_PERMUTATION_V1_SPEC),
-    admitRuntimeBinaryArtifact(
-      input.preprocessCrs,
-      UNIVARIATE_PREPROCESS_CRS_V1_SPEC.kind,
-      UNIVARIATE_PREPROCESS_CRS_V1_SPEC,
-    ),
   ]);
   const setup = GENERATED_SETUP_PARAMS;
-  for (const artifact of [selector, permutation, crsArtifact]) {
+  for (const artifact of [selector, permutation]) {
     assertBinaryArtifactCompatibility(artifact);
   }
 
@@ -42,7 +36,7 @@ export async function loadPreprocessInputFromBinaryInput(input: PreprocessBinary
     setup,
     selector: parseSelector(selector, setup.s_max),
     permutation: parsePermutation(permutation, setup.l_D - setup.l, setup.s_max),
-    crs: parseUnivariatePreprocessCrs(input.preprocessCrs),
+    crs: await parseUnivariatePreprocessCrs(input.preprocessCrs),
   };
 }
 

@@ -86,6 +86,22 @@ export function assertBinaryArtifactCompatibility(artifact: BinaryArtifactFileVi
   }
 }
 
+export function assertCrsChunkCompatibility(sourcePackageVersion: string): void {
+  const expectedCompatibleVersion = packageCompatibleVersion(
+    SUBCIRCUIT_LIBRARY_PACKAGE_VERSION,
+    "installed subcircuit-library package version",
+  );
+  const crsCompatibleVersion = packageCompatibleVersion(
+    sourcePackageVersion,
+    "CRS sourcePackageVersion",
+  );
+  if (crsCompatibleVersion !== expectedCompatibleVersion) {
+    throw new Error(
+      `CRS compatibility class ${crsCompatibleVersion} does not match installed subcircuit-library compatibility class ${expectedCompatibleVersion}.`,
+    );
+  }
+}
+
 function normalizeCompatibleBackendVersion(value: string, label: string): string {
   try {
     return parseCompatibleBackendVersion(value);

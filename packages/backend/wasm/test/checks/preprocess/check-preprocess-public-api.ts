@@ -10,10 +10,8 @@ import {
 const fixtureRoot = path.resolve("fixtures/small/runtime");
 
 async function main(): Promise<void> {
-  const [permutation, legacyPreprocessCrs] = await Promise.all([
-    readBinary("permutation.bin"),
-    readBinary("preprocess-crs.bin"),
-  ]);
+  const permutation = await readBinary("permutation.bin");
+  const invalidCrs = { manifest: {}, async loadChunk() { return new Uint8Array(); } };
 
   await assertBackendError(() => preprocess({} as never), "INSTALL_REQUIRED");
   await assertBackendError(() => install({ chunkSizeExponent: 9 }), "INVALID_OPTION");
@@ -29,7 +27,7 @@ async function main(): Promise<void> {
     () => preprocess({
       permutation,
       instance: new Uint8Array([1]),
-      preprocessCrs: legacyPreprocessCrs,
+      preprocessCrs: invalidCrs,
     } as never),
     "INVALID_INPUT",
   );
@@ -37,7 +35,7 @@ async function main(): Promise<void> {
     () => preprocess({
       selector: new Uint8Array([1]),
       permutation,
-      preprocessCrs: legacyPreprocessCrs,
+      preprocessCrs: invalidCrs,
     }),
     "INVALID_INPUT",
   );
@@ -45,7 +43,7 @@ async function main(): Promise<void> {
     () => preprocess({
       selector: new Uint8Array([1]),
       permutation: new Uint8Array([1]),
-      preprocessCrs: legacyPreprocessCrs,
+      preprocessCrs: invalidCrs,
     }),
     "INVALID_INPUT",
   );

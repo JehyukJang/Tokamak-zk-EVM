@@ -22,15 +22,17 @@ The page entry point is [`src/main.ts`](./src/main.ts). It coordinates these
 operation-specific modules:
 
 - [`src/run-preprocess.ts`](./src/run-preprocess.ts): install preprocess, load
-  selector, permutation, and preprocess CRS binaries, and generate verifier
+  selector, permutation, and the required CRS chunks, and generate verifier
   preprocess bytes.
 - [`src/generate-proof.ts`](./src/generate-proof.ts): install the prover, load
-  its five binary inputs, and generate proof bytes.
+  its binary inputs and required CRS chunks, and generate proof bytes.
 - [`src/verify-proof.ts`](./src/verify-proof.ts): install the verifier, admit
   its fixed configuration binaries, and verify the generated proof and
   preprocess bytes.
 - [`src/load-binary.ts`](./src/load-binary.ts): fetch one binary artifact and
   reject unsuccessful responses.
+- [`src/load-crs.ts`](./src/load-crs.ts): fetch the CRS manifest and provide
+  lazy chunk acquisition to all three runtimes.
 
 [`index.html`](./index.html), [`src/styles.css`](./src/styles.css), and
 [`src/global.d.ts`](./src/global.d.ts) support the runnable page rather than
@@ -46,18 +48,15 @@ you intend to run:
 | `selector.bin`       | Preprocess, prover, and verifier |
 | `permutation.bin`    | Preprocess, prover, and verifier |
 | `instance.bin`       | Prover and verifier              |
-| `preprocess-crs.bin` | Preprocess and verifier          |
 | `witness.bin`        | Prover                           |
-| `prover-crs.bin`     | Prover                           |
-| `verifier-crs.bin`   | Verifier                         |
+| `crs/` manifest and chunks | Preprocess, prover, and verifier |
 
 The default URLs in the page point to these names. They can be replaced with
-same-origin or CORS-enabled application URLs. The verifier CRS is compiled into
-the package and is not an application input.
+same-origin or CORS-enabled application URLs.
 
-Prepare runtime binaries with the package converter APIs. In particular,
-`convertUnivariateCrs(univariateCrsJson)` returns the named `proverCrs`,
-`preprocessCrs`, and `verifierCrs` files used here. Source artifact
+Prepare ordinary runtime binaries with the package converter APIs. Convert
+`univariate_crs.rkyv` offline with `npm run univariate-crs:convert` and copy its
+complete output directory to `public/artifacts/crs/`. Source artifact
 authentication remains the application's responsibility.
 
 The CRS and witness files are intentionally not included in this example or in
@@ -68,8 +67,8 @@ the npm package.
 These focused modules are source recipes. They are typechecked and published
 with the example, but are not imported by the runnable page:
 
-- [`src/prepare-artifacts.ts`](./src/prepare-artifacts.ts): convert native JSON
-  materials and `combined_sigma.rkyv` into the separate runtime binaries.
+- [`src/prepare-artifacts.ts`](./src/prepare-artifacts.ts): convert synthesizer
+  JSON materials and attach an already converted chunked CRS source.
 - [`src/inspect-and-validate.ts`](./src/inspect-and-validate.ts): inspect binary
   metadata and independently validate the same artifact.
 

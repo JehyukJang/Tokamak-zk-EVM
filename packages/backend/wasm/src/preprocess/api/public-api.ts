@@ -1,5 +1,5 @@
 import { BackendWasmError } from '../../backend-wasm-error.js';
-import { assertNamedBinaryInput, installCurveRuntime, parseChunkSizeExponent } from '../../api/public-api-utils.js';
+import { assertNamedBinaryInput, assertNamedCrsInput, installCurveRuntime, parseChunkSizeExponent } from '../../api/public-api-utils.js';
 import { NATIVE_BACKEND_VERSION, SUBCIRCUIT_LIBRARY_PACKAGE_VERSION } from '../../generated/active/setup.generated.js';
 import type { CurveRuntime } from '../../runtime/curve/curve.js';
 import { BACKEND_WASM_PACKAGE_VERSION } from '../../version.js';
@@ -54,7 +54,8 @@ export async function preprocess(input: PreprocessInput): Promise<Uint8Array> {
     throw new BackendWasmError('BUSY', 'Preprocess is already running.');
   }
 
-  assertNamedBinaryInput(input, 'Preprocess', ['selector', 'permutation', 'preprocessCrs']);
+  assertNamedBinaryInput(input, 'Preprocess', ['selector', 'permutation']);
+  assertNamedCrsInput(input, 'Preprocess', ['preprocessCrs']);
   busy = true;
 
   try {

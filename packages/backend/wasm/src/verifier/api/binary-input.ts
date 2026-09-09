@@ -3,7 +3,6 @@ import { assertBinaryArtifactCompatibility } from "../../artifacts/binary/compat
 import { admitRuntimeBinaryArtifact } from "../../artifacts/binary/runtime-admission.js";
 import {
   INSTANCE_V1_SPEC,
-  UNIVARIATE_VERIFIER_CRS_V1_SPEC,
   UNIVARIATE_VERIFIER_PREPROCESS_V1_SPEC,
 } from "../../generated/browser-artifact-contracts.generated.js";
 import { GENERATED_SETUP_PARAMS } from "../../generated/active/setup.generated.js";
@@ -11,7 +10,7 @@ import type { CurveRuntime } from "../../runtime/curve/curve.js";
 import type { FieldElement } from "../../runtime/field/field-types.js";
 import { loadPreprocessInputFromBinaryInput } from "../../preprocess/api/binary-input.js";
 import { preprocessSnark } from "../../preprocess/protocol/preprocess-snark.js";
-import { parseUnivariateVerifierCrs } from "../../univariate/crs.js";
+import { parseUnivariateVerifierCrs, type UnivariateCrsChunkInput } from "../../univariate/crs.js";
 import { decodeUnivariateProof } from "../../univariate/proof.js";
 import {
   GENERATED_PROVER_SUBCIRCUIT_INFOS,
@@ -23,25 +22,24 @@ export interface VerifierBinaryInput {
   readonly instance: Uint8Array;
   readonly selector: Uint8Array;
   readonly permutation: Uint8Array;
-  readonly preprocessCrs: Uint8Array;
+  readonly preprocessCrs: UnivariateCrsChunkInput;
   readonly verifierPreprocess: Uint8Array;
-  readonly verifierCrs: Uint8Array;
+  readonly verifierCrs: UnivariateCrsChunkInput;
 }
 
 export async function loadVerifierInputFromBinaryInput(
   runtime: CurveRuntime,
   input: VerifierBinaryInput,
 ): Promise<UnivariateReferenceVerifierInput> {
-  const [instance, preprocess, verifierCrs] = await Promise.all([
+  const [instance, preprocess] = await Promise.all([
     admitRuntimeBinaryArtifact(input.instance, INSTANCE_V1_SPEC.kind, INSTANCE_V1_SPEC),
     admitRuntimeBinaryArtifact(
       input.verifierPreprocess,
       UNIVARIATE_VERIFIER_PREPROCESS_V1_SPEC.kind,
       UNIVARIATE_VERIFIER_PREPROCESS_V1_SPEC,
     ),
-    admitRuntimeBinaryArtifact(input.verifierCrs, UNIVARIATE_VERIFIER_CRS_V1_SPEC.kind, UNIVARIATE_VERIFIER_CRS_V1_SPEC),
   ]);
-  for (const artifact of [instance, preprocess, verifierCrs]) assertBinaryArtifactCompatibility(artifact);
+  for (const artifact of [instance, preprocess]) assertBinaryArtifactCompatibility(artifact);
   const preprocessInput = await loadPreprocessInputFromBinaryInput({
     selector: input.selector,
     permutation: input.permutation,
@@ -57,7 +55,7 @@ export async function loadVerifierInputFromBinaryInput(
     subcircuitInfos: GENERATED_PROVER_SUBCIRCUIT_INFOS,
     selector: preprocessInput.selector,
     publicInputs: parsePublicInputs(runtime, instance),
-    crs: parseUnivariateVerifierCrs(input.verifierCrs),
+    crs: await parseUnivariateVerifierCrs(input.verifierCrs),
     preprocess: commitments,
     proof: decodeUnivariateProof(runtime, input.proof),
   };

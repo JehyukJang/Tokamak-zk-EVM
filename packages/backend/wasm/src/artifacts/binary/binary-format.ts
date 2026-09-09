@@ -14,9 +14,6 @@ export enum BinaryArtifactFileKind {
   ProverPlacementVariables = 5,
   ProverSelector = 8,
   ProverPermutation = 9,
-  UnivariatePreprocessCrs = 10,
-  UnivariateProverCrs = 11,
-  UnivariateVerifierCrs = 12,
   UnivariateVerifierPreprocess = 13,
   UnivariateProof = 14,
 }

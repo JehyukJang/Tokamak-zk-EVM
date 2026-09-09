@@ -21,6 +21,7 @@ ark-ec = { workspace = true }
 ark-ff = { workspace = true }
 rkyv = { workspace = true, features = ["alloc", "bytecheck", "validation"] }
 backend-interface = { workspace = true }
+backend-univariate-crs-interface = { workspace = true }
 clap = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }

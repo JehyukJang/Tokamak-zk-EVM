@@ -6,18 +6,21 @@ import {
   convertInstance,
   convertPermutation,
   convertSelector,
-  convertUnivariateCrs,
   convertWitness,
 } from "../../src/converter/index.js";
+import { UNIVARIATE_CRS_CHUNK_CONTRACT } from "../../src/generated/univariate-crs-chunk-contract.generated.js";
+import type { UnivariateCrsChunkInput } from "../../src/univariate/chunked-crs.js";
 import { loadProverInputFromBinaryInput } from "../../src/prover/api/binary-input.js";
 import { loadPreprocessInputFromBinaryInput } from "../../src/preprocess/api/binary-input.js";
 import { createCurveRuntime } from "../../src/runtime/curve/curve.js";
 import { resolveFixtureWorkDirectory } from "./fixture-paths.js";
+import { convertUnivariateCrsRkyv } from "../converter/convert-univariate-crs.js";
 
 interface CopyManifest {
   readonly schemaVersion: 2;
   readonly suite: string;
   readonly workDirectory: string;
+  readonly univariateCrsSource: string;
 }
 
 async function main(argv: readonly string[]): Promise<void> {
@@ -42,9 +45,15 @@ async function main(argv: readonly string[]): Promise<void> {
     path.join(sourceRoot, "synthesizer", "placementVariables.json"),
   );
   const permutation = await readJson(path.join(sourceRoot, "synthesizer", "permutation.json"));
-  const crs = await convertUnivariateCrs(
-    await readJson(path.join(sourceRoot, "setup", "univariate_crs.json")),
-  );
+  await rm(runtimeRoot, { recursive: true, force: true });
+  await mkdir(runtimeRoot, { recursive: true });
+  const crsRoot = path.join(runtimeRoot, "crs");
+  await convertUnivariateCrsRkyv({
+    input: path.resolve(repositoryRoot, manifest.univariateCrsSource),
+    output: crsRoot,
+    chunkBytes: 64 * 1024 * 1024,
+  });
+  const crs = await openChunkedCrs(crsRoot);
   const witness = await convertWitness(placementVariables);
   const selectorArtifact = await convertSelector(selector);
   const permutationArtifact = await convertPermutation(permutation);
@@ -54,21 +63,16 @@ async function main(argv: readonly string[]): Promise<void> {
     selector: selectorArtifact,
     permutation: permutationArtifact,
     instance: instanceArtifact,
-    proverCrs: crs.proverCrs,
-    preprocessCrs: crs.preprocessCrs,
+    proverCrs: crs,
+    preprocessCrs: crs,
   });
   const outputs: Readonly<Record<string, Uint8Array>> = {
     "witness.bin": witness,
     "selector.bin": selectorArtifact,
     "permutation.bin": permutationArtifact,
     "instance.bin": instanceArtifact,
-    "prover-crs.bin": crs.proverCrs,
-    "preprocess-crs.bin": crs.preprocessCrs,
-    "verifier-crs.bin": crs.verifierCrs,
   };
 
-  await rm(runtimeRoot, { recursive: true, force: true });
-  await mkdir(runtimeRoot, { recursive: true });
   await Promise.all(Object.entries(outputs).map(([fileName, bytes]) =>
     writeFile(path.join(runtimeRoot, fileName), bytes),
   ));
@@ -79,8 +83,8 @@ async function validateFixtureRuntimeInputs(input: {
   readonly selector: Uint8Array;
   readonly permutation: Uint8Array;
   readonly instance: Uint8Array;
-  readonly proverCrs: Uint8Array;
-  readonly preprocessCrs: Uint8Array;
+  readonly proverCrs: UnivariateCrsChunkInput;
+  readonly preprocessCrs: UnivariateCrsChunkInput;
 }): Promise<void> {
   const runtime = await createCurveRuntime();
   try {
@@ -117,11 +121,27 @@ function parseCopyManifest(raw: unknown): CopyManifest {
   if (typeof raw.workDirectory !== "string" || raw.workDirectory.trim() === "" || path.isAbsolute(raw.workDirectory)) {
     throw new Error("Copy manifest workDirectory must be a non-empty relative path.");
   }
+  if (typeof raw.univariateCrsSource !== "string" || raw.univariateCrsSource.trim() === "" || path.isAbsolute(raw.univariateCrsSource)) {
+    throw new Error("Copy manifest univariateCrsSource must be a non-empty relative path.");
+  }
 
   return {
     schemaVersion: 2,
     suite: raw.suite,
     workDirectory: path.normalize(raw.workDirectory),
+    univariateCrsSource: path.normalize(raw.univariateCrsSource),
+  };
+}
+
+async function openChunkedCrs(root: string): Promise<UnivariateCrsChunkInput> {
+  const manifest = await readJson(path.join(root, UNIVARIATE_CRS_CHUNK_CONTRACT.manifestFileName));
+  return {
+    manifest,
+    async loadChunk(relativePath) {
+      const resolved = path.resolve(root, relativePath);
+      if (!resolved.startsWith(`${root}${path.sep}`)) throw new Error("CRS chunk path escapes the fixture directory.");
+      return new Uint8Array(await readFile(resolved));
+    },
   };
 }
 

@@ -5,6 +5,7 @@ import {
 } from "@tokamak-zk-evm/snark-browser-compat/verifier";
 
 import { loadBinary } from "./load-binary.js";
+import { loadCrs } from "./load-crs.js";
 
 export interface VerifierExampleInput {
   readonly proof: Uint8Array;
@@ -25,8 +26,8 @@ export async function verifyProof(input: VerifierExampleInput): Promise<boolean>
     loadBinary(input.instance),
     loadBinary(input.selector),
     loadBinary(input.permutation),
-    loadBinary(input.preprocessCrs),
-    loadBinary(input.verifierCrs),
+    loadCrs(input.preprocessCrs),
+    loadCrs(input.verifierCrs),
   ]);
   return verify({
     proof: input.proof,

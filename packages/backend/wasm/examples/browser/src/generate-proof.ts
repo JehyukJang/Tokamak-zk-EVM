@@ -5,6 +5,7 @@ import {
 } from "@tokamak-zk-evm/snark-browser-compat/prover";
 
 import { loadBinary } from "./load-binary.js";
+import { loadCrs } from "./load-crs.js";
 
 export interface ProverArtifactUrls {
   readonly witness: string | URL;
@@ -28,7 +29,7 @@ export async function generateProof(
     loadBinary(urls.selector),
     loadBinary(urls.permutation),
     loadBinary(urls.instance),
-    loadBinary(urls.proverCrs),
+    loadCrs(urls.proverCrs),
   ]);
   return prove({ witness, selector, permutation, instance, proverCrs });
 }

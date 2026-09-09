@@ -1,4 +1,4 @@
-import { assertNamedBinaryInput, installCurveRuntime, parseChunkSizeExponent } from "../../api/public-api-utils.js";
+import { assertNamedBinaryInput, assertNamedCrsInput, installCurveRuntime, parseChunkSizeExponent } from "../../api/public-api-utils.js";
 import { assertRuntimeLibraryCompatibility } from "../../artifacts/binary/compatibility.js";
 import { BackendWasmError } from "../../backend-wasm-error.js";
 import {
@@ -50,7 +50,8 @@ export async function prove(input: ProverInput): Promise<Uint8Array> {
     throw new BackendWasmError("INSTALL_REQUIRED", "Call prover.install() successfully before prove().");
   }
   if (busy) throw new BackendWasmError("BUSY", "The prover is already running.");
-  assertNamedBinaryInput(input, "Prover", ["witness", "selector", "permutation", "instance", "proverCrs"]);
+  assertNamedBinaryInput(input, "Prover", ["witness", "selector", "permutation", "instance"]);
+  assertNamedCrsInput(input, "Prover", ["proverCrs"]);
   busy = true;
   try {
     const parsed = await loadProverInputFromBinaryInput(runtime, input);

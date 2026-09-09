@@ -1,5 +1,4 @@
 import type { SetupParams } from "../artifacts/setup/setup-params.js";
-import type { BinarySectionView } from "../artifacts/binary/binary-format.js";
 import type { CurveRuntime } from "../runtime/curve/curve.js";
 import type { FieldElement } from "../runtime/field/field-types.js";
 import type { G1Point } from "../runtime/group/group.js";
@@ -20,6 +19,7 @@ import {
 } from "./relation.js";
 import { placementSelectorPolynomial, type StridedPolynomial } from "./selectors.js";
 import { encodeEvaluationMessageBlock, encodeG1MessageBlock, UnivariateTranscript } from "./transcript.js";
+import type { UnivariateCrsChunkSection } from "./chunked-crs.js";
 
 export interface UnivariateReferenceProverInput {
   readonly setup: SetupParams;
@@ -90,7 +90,7 @@ export async function proveUnivariateReference(
   const varpi = transcript.challenge(5, 0);
   const openingTerms = [uHat, vHat, wHat, bHat, copy.rHat, qHat, sAPoly, sCPoly]
     .map(polynomial => polynomial.ruffini(zeta).quotient);
-  const sources: readonly [BinarySectionView, number][] = [
+  const sources: readonly [UnivariateCrsChunkSection, number][] = [
     [crs.s0, 0], [crs.sxi, 0], [crs.spsi, 0], [crs.spsi, bigintToSafeNumber(crs.k, "K")],
     [crs.s0, 0], [crs.s0, 0], [crs.s0, 0], [crs.s0, 0],
   ];
@@ -265,7 +265,7 @@ async function buildPrivateBindings(
   for (const [index, mask] of masks.entries()) {
     const section = input.crs.masks[index]!;
     for (let coefficient = 0; coefficient <= mask.degree; coefficient += 1) {
-      oInt = runtime.G1.add(oInt, runtime.G1.mulAffineScalar(pointAt(section, coefficient), runtime.Fr.readBufferElement(mask.coefficients, coefficient)));
+      oInt = runtime.G1.add(oInt, runtime.G1.mulAffineScalar(await section.readElement(coefficient), runtime.Fr.readBufferElement(mask.coefficients, coefficient)));
     }
   }
   return [oIf, oInt];
@@ -277,7 +277,7 @@ async function combineTagged(
   terms: readonly { readonly key: TaggedQueryKey; readonly value: FieldElement }[],
 ): Promise<G1Point> {
   const lookup = new Map<string, number>();
-  for (let index = 0; index < queries.points.elementCount; index += 1) lookup.set(taggedKey(queries.keyAt(index)), index);
+  for (let index = 0; index < queries.points.elementCount; index += 1) lookup.set(taggedKey(await queries.keyAt(index)), index);
   const seen = new Set<string>();
   const bases: G1Point[] = [];
   const scalars: FieldElement[] = [];
@@ -287,7 +287,7 @@ async function combineTagged(
     seen.add(key);
     const index = lookup.get(key);
     if (index === undefined) throw new Error(`Missing CRS binding query ${key}.`);
-    bases.push(pointAt(queries.points, index));
+    bases.push(await queries.points.readElement(index));
     scalars.push(term.value);
   }
   return bases.length === 0 ? runtime.G1.zero : runtime.G1.msmAffine(bases, scalars);
@@ -306,24 +306,13 @@ function validatePublicStatementLayout(
 
 async function commit(
   runtime: CurveRuntime,
-  powers: BinarySectionView,
+  powers: UnivariateCrsChunkSection,
   offset: number,
   polynomial: DenseUnivariatePolynomial,
   chunkPoints: number,
 ): Promise<G1Point> {
   if (offset < 0 || offset + polynomial.degree + 1 > powers.elementCount) throw new Error("CRS sequence is too short for a commitment.");
-  const pointBytes = powers.elementByteLength;
-  return commitDenseUnivariatePolynomial(runtime, {
-    ...powers,
-    data: powers.data.subarray(offset * pointBytes),
-    elementCount: powers.elementCount - offset,
-    byteLength: powers.byteLength - offset * pointBytes,
-  }, polynomial.coefficients, chunkPoints);
-}
-
-function pointAt(section: BinarySectionView, index: number): Uint8Array {
-  if (index < 0 || index >= section.elementCount) throw new Error("CRS point index is out of range.");
-  return section.data.subarray(index * section.elementByteLength, (index + 1) * section.elementByteLength);
+  return commitDenseUnivariatePolynomial(runtime, powers, polynomial.coefficients, chunkPoints, offset);
 }
 
 function constant(field: CurveRuntime["Fr"], value: FieldElement): DenseUnivariatePolynomial {

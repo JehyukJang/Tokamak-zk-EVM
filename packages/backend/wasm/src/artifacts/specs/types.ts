@@ -8,18 +8,10 @@ export interface RuntimeArtifactFormatSpec {
 }
 
 export type RuntimeArtifactFormatSpecName =
-  | "sigma_verify"
-  | "verifier_preprocess"
-  | "verifier_proof"
   | "instance"
-  | "preprocess_crs"
-  | "prover_crs"
   | "prover_placement_variables"
   | "prover_selector"
   | "prover_permutation"
-  | "univariate_preprocess_crs"
-  | "univariate_prover_crs"
-  | "univariate_verifier_crs"
   | "univariate_verifier_preprocess"
   | "univariate_proof";
 

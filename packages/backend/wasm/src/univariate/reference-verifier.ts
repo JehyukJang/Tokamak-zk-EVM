@@ -110,10 +110,10 @@ async function buildPublicBinding(
 ): Promise<G1Point> {
   const queries = new Map<string, G1Point>();
   for (let index = 0; index < crs.publicQueries.points.elementCount; index += 1) {
-    const key = crs.publicQueries.keyAt(index);
+    const key = await crs.publicQueries.keyAt(index);
     const encoded = `${key.bufferSubcircuitId}:${key.localPublicWireIndex}`;
     if (queries.has(encoded)) throw new Error(`Verifier CRS duplicates public query ${encoded}.`);
-    queries.set(encoded, pointAt(crs.publicQueries.points.data, crs.publicQueries.points.elementByteLength, index));
+    queries.set(encoded, await crs.publicQueries.points.readElement(index));
   }
   const bases: G1Point[] = [];
   const scalars: FieldElement[] = [];
@@ -146,8 +146,4 @@ function lagrangeZero(field: CurveRuntime["Fr"], point: FieldElement, domainSize
 
 function addPoints(runtime: CurveRuntime, points: readonly G1Point[]): G1Point {
   return points.reduce((sum, point) => runtime.G1.add(sum, point), runtime.G1.zero);
-}
-
-function pointAt(data: Uint8Array, width: number, index: number): G1Point {
-  return data.subarray(index * width, (index + 1) * width);
 }
