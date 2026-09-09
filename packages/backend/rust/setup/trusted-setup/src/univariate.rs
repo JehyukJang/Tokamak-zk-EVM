@@ -42,13 +42,13 @@ pub(crate) fn build_u18_foundation(
     libs::univariate_crs::UnivariateCrsFoundation::generate(shape, trapdoor, g1, g2)
 }
 
-pub struct GenerateTauSequenceConfig<'a> {
+pub struct Phase1Config<'a> {
     pub capacity: UnivariateTauCapacity,
     pub output_path: &'a str,
     pub fixed_tau: bool,
 }
 
-pub struct SpecializeLibraryConfig<'a> {
+pub struct Phase2Config<'a> {
     pub qap_path: &'a str,
     pub tau_sequence_path: &'a str,
     pub tau_provenance_path: &'a str,
@@ -56,11 +56,9 @@ pub struct SpecializeLibraryConfig<'a> {
     pub fixed_role_scalars: bool,
 }
 
-/// Standalone stage 1: generates only the library-independent U22c terminal
+/// Standalone Phase 1: generates only the library-independent U22c terminal
 /// sequences and commits them atomically.
-pub fn run_generate_tau_sequence(
-    config: &GenerateTauSequenceConfig<'_>,
-) -> Result<(), TrustedSetupError> {
+pub fn run_phase_1(config: &Phase1Config<'_>) -> Result<(), TrustedSetupError> {
     let started = Instant::now();
     let (g1, g2, tau, xi, psi) = sample_tau_sequence_inputs(config.fixed_tau);
     let sequence = UnivariateTauSequence::generate(config.capacity, tau, xi, psi, g1, g2)?;
@@ -99,11 +97,9 @@ pub fn run_generate_tau_sequence(
     Ok(())
 }
 
-/// Standalone stage 2: specializes an already persisted terminal sequence for
-/// one selected subcircuit library and never regenerates stage 1.
-pub fn run_specialize_library(
-    config: &SpecializeLibraryConfig<'_>,
-) -> Result<(), TrustedSetupError> {
+/// Standalone Phase 2: specializes an already persisted terminal sequence for
+/// one selected subcircuit library and never regenerates Phase 1.
+pub fn run_phase_2(config: &Phase2Config<'_>) -> Result<(), TrustedSetupError> {
     let started = Instant::now();
     let tau_path = PathBuf::from(config.tau_sequence_path);
     let provenance_path = PathBuf::from(config.tau_provenance_path);

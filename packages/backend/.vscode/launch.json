@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug trusted-setup stage 1 (generate tau sequence)",
+      "name": "Debug trusted-setup Phase 1",
       "type": "lldb",
       "request": "launch",
       "cargo": {
@@ -11,7 +11,7 @@
       },
       "program": "${cargo:program}",
       "args": [
-        "generate-tau-sequence",
+        "phase-1",
         "--l0",
         "33553410",
         "--l-xi",
@@ -33,7 +33,7 @@
       "sourceLanguages": ["rust"]
     },
     {
-      "name": "Debug trusted-setup stage 2 (specialize local library)",
+      "name": "Debug trusted-setup Phase 2",
       "type": "lldb",
       "request": "launch",
       "cargo": {
@@ -42,7 +42,7 @@
       },
       "program": "${cargo:program}",
       "args": [
-        "specialize-library",
+        "phase-2",
         "--subcircuit-library",
         "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
         "--tau-sequence",

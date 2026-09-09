@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[test]
-fn stage_two_reuses_a_persisted_stage_one_generation() {
+fn phase_2_reuses_a_persisted_phase_1_generation() {
     let workspace = tempfile::tempdir().expect("must create temporary workspace");
     let library = create_minimal_library(workspace.path());
     let tau_output = workspace.path().join("tau-active");
@@ -11,7 +11,7 @@ fn stage_two_reuses_a_persisted_stage_one_generation() {
     let keys_b = workspace.path().join("keys-b");
 
     run(&[
-        "generate-tau-sequence",
+        "phase-1",
         "--l0",
         "16",
         "--l-xi",
@@ -30,7 +30,7 @@ fn stage_two_reuses_a_persisted_stage_one_generation() {
 
     for output in [&keys_a, &keys_b] {
         run(&[
-            "specialize-library",
+            "phase-2",
             "--subcircuit-library",
             path(&library),
             "--tau-sequence",
@@ -49,17 +49,17 @@ fn stage_two_reuses_a_persisted_stage_one_generation() {
     assert_eq!(
         fs::read(tau_output.join("tau_sequence.rkyv")).unwrap(),
         original_tau,
-        "stage two must not alter the persisted stage-one generation"
+        "Phase 2 must not alter the persisted Phase 1 generation"
     );
     assert_ne!(
         fs::read(keys_a.join("prover_keys.rkyv")).unwrap(),
         fs::read(keys_b.join("prover_keys.rkyv")).unwrap(),
-        "fresh stage-two role scalars must specialize the same tau sequence differently"
+        "fresh Phase 2 role scalars must specialize the same tau sequence differently"
     );
 }
 
 #[test]
-fn stage_two_rejects_insufficient_terminal_capacities() {
+fn phase_2_rejects_insufficient_terminal_capacities() {
     let workspace = tempfile::tempdir().expect("must create temporary workspace");
     let library = create_minimal_library(workspace.path());
     for (label, l0, l_xi, l_psi, l2) in [
@@ -77,7 +77,7 @@ fn stage_two_rejects_insufficient_terminal_capacities() {
             l2.to_string(),
         ];
         run(&[
-            "generate-tau-sequence",
+            "phase-1",
             "--l0",
             &capacities[0],
             "--l-xi",
@@ -91,7 +91,7 @@ fn stage_two_rejects_insufficient_terminal_capacities() {
             "--fixed-tau",
         ]);
         run_expect_failure(&[
-            "specialize-library",
+            "phase-2",
             "--subcircuit-library",
             path(&library),
             "--tau-sequence",
@@ -106,13 +106,13 @@ fn stage_two_rejects_insufficient_terminal_capacities() {
 }
 
 #[test]
-fn stage_two_rejects_a_tau_provenance_digest_mismatch() {
+fn phase_2_rejects_a_tau_provenance_digest_mismatch() {
     let workspace = tempfile::tempdir().expect("must create temporary workspace");
     let library = create_minimal_library(workspace.path());
     let tau_output = workspace.path().join("tau-active");
     let keys_output = workspace.path().join("keys-active");
     run(&[
-        "generate-tau-sequence",
+        "phase-1",
         "--l0",
         "16",
         "--l-xi",
@@ -135,7 +135,7 @@ fn stage_two_rejects_a_tau_provenance_digest_mismatch() {
     )
     .unwrap();
     run_expect_failure(&[
-        "specialize-library",
+        "phase-2",
         "--subcircuit-library",
         path(&library),
         "--tau-sequence",
@@ -149,7 +149,7 @@ fn stage_two_rejects_a_tau_provenance_digest_mismatch() {
 }
 
 #[test]
-fn stage_two_rejects_a_corrupt_tau_archive() {
+fn phase_2_rejects_a_corrupt_tau_archive() {
     let workspace = tempfile::tempdir().expect("must create temporary workspace");
     let library = create_minimal_library(workspace.path());
     let tau_output = workspace.path().join("tau-active");
@@ -161,7 +161,7 @@ fn stage_two_rejects_a_corrupt_tau_archive() {
     *final_byte ^= 1;
     fs::write(&archive_path, archive).unwrap();
     run_expect_failure(&[
-        "specialize-library",
+        "phase-2",
         "--subcircuit-library",
         path(&library),
         "--tau-sequence",
@@ -184,7 +184,7 @@ fn operational_admission_rejects_library_and_key_generation_mismatches() {
     generate_minimal_tau(&tau_output);
     for output in [&keys_a, &keys_b] {
         run(&[
-            "specialize-library",
+            "phase-2",
             "--subcircuit-library",
             path(&library),
             "--tau-sequence",
@@ -203,7 +203,7 @@ fn operational_admission_rejects_library_and_key_generation_mismatches() {
         &keys_a,
         &library,
     )
-    .expect("matching stage artifacts and library must be admitted");
+    .expect("matching phase artifacts and library must be admitted");
 
     let constants = library.parent().unwrap().join("circom/constants.circom");
     let original_constants = fs::read(&constants).unwrap();
@@ -252,7 +252,7 @@ fn native_reference_e2e_uses_online_only_verification() {
     run_release(
         "trusted-setup",
         &[
-            "generate-tau-sequence",
+            "phase-1",
             "--l0",
             "16",
             "--l-xi",
@@ -269,7 +269,7 @@ fn native_reference_e2e_uses_online_only_verification() {
     run_release(
         "trusted-setup",
         &[
-            "specialize-library",
+            "phase-2",
             "--subcircuit-library",
             path(&library),
             "--tau-sequence",
@@ -356,7 +356,7 @@ fn run(args: &[&str]) {
 
 fn generate_minimal_tau(output: &Path) {
     run(&[
-        "generate-tau-sequence",
+        "phase-1",
         "--l0",
         "16",
         "--l-xi",
@@ -377,7 +377,7 @@ fn run_expect_failure(args: &[&str]) {
         .expect("trusted-setup command must start");
     assert!(
         !output.status.success(),
-        "trusted-setup unexpectedly accepted invalid stage input\nstdout:\n{}\nstderr:\n{}",
+        "trusted-setup unexpectedly accepted invalid phase input\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );

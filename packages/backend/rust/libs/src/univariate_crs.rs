@@ -387,7 +387,7 @@ pub struct UnivariateTrapdoor {
     delta: ScalarField,
 }
 
-/// Role scalars generated only by the library-specialization stage.
+/// Role scalars generated only by library-specializing Phase 2.
 #[derive(Clone, Debug, PartialEq)]
 pub struct UnivariateRoleTrapdoor {
     gamma: ScalarField,
@@ -1113,7 +1113,7 @@ impl UnivariateCrs {
 
 impl UnivariateTauSequence {
     /// Generates the library-independent U22c terminal families. No
-    /// subcircuit-library shape is consulted at this stage.
+    /// subcircuit-library shape is consulted during this phase.
     pub fn generate(
         capacity: UnivariateTauCapacity,
         tau: ScalarField,
@@ -1291,7 +1291,7 @@ impl UnivariateProverCrs {
 }
 
 /// Specializes one persisted U22c terminal output for a fixed library without
-/// access to the stage-1 trapdoor scalars.
+/// access to the Phase 1 trapdoor scalars.
 pub fn specialize_univariate_keys(
     setup: &SetupParams,
     public_wire_layout: &PublicWireLayout,
@@ -2019,12 +2019,12 @@ mod tests {
             g1,
             g2,
         )
-        .expect("stage 1 must generate the same terminal sequences");
+        .expect("Phase 1 must generate the same terminal sequences");
         let role =
             UnivariateRoleTrapdoor::new(trapdoor.gamma, trapdoor.eta, trapdoor.delta).unwrap();
         let (specialized_prover, specialized_verifier) =
             specialize_univariate_keys(&setup, &public_layout, &subcircuits, &sequence, &role)
-                .expect("stage 2 must specialize persisted terminal sequences");
+                .expect("Phase 2 must specialize persisted terminal sequences");
         assert_eq!(
             specialized_prover.eta_inv_interface_queries,
             crs.eta_inv_interface_queries

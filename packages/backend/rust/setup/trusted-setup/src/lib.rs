@@ -7,10 +7,7 @@ use thiserror::Error;
 mod execution;
 mod univariate;
 
-pub use univariate::{
-    run_generate_tau_sequence, run_specialize_library, GenerateTauSequenceConfig,
-    SpecializeLibraryConfig,
-};
+pub use univariate::{run_phase_1, run_phase_2, Phase1Config, Phase2Config};
 
 pub struct SetupInputPaths<'a> {
     pub qap_path: &'a str,
@@ -57,19 +54,16 @@ impl CliDiagnostic for TrustedSetupError {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        execution::ensure_output_directory, run_generate_tau_sequence, GenerateTauSequenceConfig,
-        TrustedSetupError,
-    };
+    use super::{execution::ensure_output_directory, run_phase_1, Phase1Config, TrustedSetupError};
     use libs::univariate_crs::UnivariateTauCapacity;
     use std::fs;
 
     #[test]
-    fn stage_one_runs_without_a_subcircuit_library() {
+    fn phase_1_runs_without_a_subcircuit_library() {
         let workspace = tempfile::tempdir().expect("must create temporary workspace");
         let output = workspace.path().join("output");
         let output_path = output.to_string_lossy();
-        let config = GenerateTauSequenceConfig {
+        let config = Phase1Config {
             capacity: UnivariateTauCapacity {
                 l0: 4,
                 l_xi: 4,
@@ -80,7 +74,7 @@ mod tests {
             fixed_tau: true,
         };
 
-        run_generate_tau_sequence(&config).expect("stage one must run independently");
+        run_phase_1(&config).expect("Phase 1 must run independently");
 
         assert!(output.join("tau_sequence.rkyv").is_file());
         assert!(output.join("crs_provenance.json").is_file());

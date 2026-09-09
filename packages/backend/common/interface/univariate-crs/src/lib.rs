@@ -31,7 +31,7 @@ pub struct UnivariateTauSequenceRkyv {
 }
 
 /// Terminal U22c capacities. These values are independent of any selected
-/// subcircuit library; stage 2 checks them against its derived U18 shape.
+/// subcircuit library; Phase 2 checks them against its derived U18 shape.
 #[derive(Debug, Clone, Copy, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct UnivariateTauCapacityRkyv {
     pub l0: u64,
