@@ -474,6 +474,62 @@ pub struct UnivariateCrs {
     pub eta_g1: G1serde,
 }
 
+/// Generic powers shared by preprocessing and proving. Their group elements
+/// overlap algebraically with a reusable phase-1 tau sequence; no
+/// circuit-specialized proving or verification key is stored here.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnivariateTauSequence {
+    pub schema_id: &'static str,
+    pub shape: UnivariateCrsShape,
+    pub s0_g1: Box<[G1serde]>,
+    pub sxi_g1: Box<[G1serde]>,
+    pub spsi_g1: Box<[G1serde]>,
+    pub one_g2: G2serde,
+    pub tau_g2: G2serde,
+    pub tau_k_g2: G2serde,
+}
+
+/// Circuit-specialized keys consumed only by the prover. Group elements in
+/// this structure are deliberately disjoint from `UnivariateTauSequence`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnivariateProverKeys {
+    pub schema_id: &'static str,
+    pub shape: UnivariateCrsShape,
+    pub eta_inv_interface_queries: Box<[UnivariateTaggedQuery]>,
+    pub delta_inv_internal_queries: Box<[UnivariateTaggedQuery]>,
+    pub delta_inv_u_masking_queries: Box<[G1serde]>,
+    pub delta_inv_v_masking_queries: Box<[G1serde]>,
+    pub delta_inv_w_masking_queries: Box<[G1serde]>,
+    pub delta_inv_b_masking_queries: Box<[G1serde]>,
+    pub delta_g1: G1serde,
+    pub eta_g1: G1serde,
+}
+
+/// The two files needed by proof generation, admitted as one typed input.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnivariateProverCrs {
+    pub tau_sequence: UnivariateTauSequence,
+    pub prover_keys: UnivariateProverKeys,
+}
+
+/// Proof-verification material. Preprocess generation and admission use the
+/// separate generic tau sequence instead of duplicating S0 here.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnivariateVerifierKeys {
+    pub schema_id: &'static str,
+    pub shape: UnivariateCrsShape,
+    pub one_g1: G1serde,
+    pub xi_g1: G1serde,
+    pub psi_g1: G1serde,
+    pub one_g2: G2serde,
+    pub tau_g2: G2serde,
+    pub tau_k_g2: G2serde,
+    pub gamma_g2: G2serde,
+    pub eta_g2: G2serde,
+    pub delta_g2: G2serde,
+    pub gamma_inv_public_queries: Box<[UnivariatePublicQuery]>,
+}
+
 impl UnivariateCrsFoundation {
     /// Generates U19's three source sequences and the U18 verifier basis.
     pub fn generate(
@@ -948,6 +1004,151 @@ impl UnivariateCrs {
     }
 }
 
+impl UnivariateTauSequence {
+    pub fn commit_dense_polynomial(
+        &self,
+        coefficients: &[ScalarField],
+    ) -> Result<G1serde, UnivariateCrsError> {
+        commit_indexed_coefficients(&self.s0_g1, coefficients.iter().copied().enumerate())
+    }
+
+    pub fn commit_strided_polynomial(
+        &self,
+        polynomial: &crate::univariate_relation::StridedPolynomial,
+    ) -> Result<G1serde, UnivariateCrsError> {
+        commit_indexed_coefficients(
+            &self.s0_g1,
+            polynomial
+                .coefficients
+                .iter()
+                .copied()
+                .enumerate()
+                .map(|(index, coefficient)| {
+                    index
+                        .checked_mul(polynomial.stride)
+                        .ok_or(UnivariateCrsError::CapacityOverflow {
+                            name: "strided KZG commitment index",
+                        })
+                        .map(|power| (power, coefficient))
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        )
+    }
+
+    pub fn commit_tagged_dense_polynomial(
+        &self,
+        source: UnivariateCommitmentSource,
+        coefficients: &[ScalarField],
+        offset: usize,
+    ) -> Result<G1serde, UnivariateCrsError> {
+        let sequence = match source {
+            UnivariateCommitmentSource::S0 => &self.s0_g1,
+            UnivariateCommitmentSource::Sxi => &self.sxi_g1,
+            UnivariateCommitmentSource::Spsi => &self.spsi_g1,
+        };
+        let indexed = coefficients
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(index, value)| {
+                index
+                    .checked_add(offset)
+                    .ok_or(UnivariateCrsError::CapacityOverflow {
+                        name: "tagged commitment index",
+                    })
+                    .map(|power| (power, value))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        commit_indexed_coefficients(sequence, indexed)
+    }
+}
+
+impl UnivariateProverCrs {
+    pub fn query_index(&self) -> UnivariateQueryIndex {
+        UnivariateQueryIndex {
+            public: std::collections::HashMap::new(),
+            interface: self
+                .prover_keys
+                .eta_inv_interface_queries
+                .iter()
+                .enumerate()
+                .map(|(index, query)| {
+                    (
+                        (
+                            query.placement_index,
+                            query.subcircuit_id,
+                            query.local_wire_index,
+                        ),
+                        index,
+                    )
+                })
+                .collect(),
+            internal: self
+                .prover_keys
+                .delta_inv_internal_queries
+                .iter()
+                .enumerate()
+                .map(|(index, query)| {
+                    (
+                        (
+                            query.placement_index,
+                            query.subcircuit_id,
+                            query.local_wire_index,
+                        ),
+                        index,
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    pub fn commit_tagged_dense_polynomial(
+        &self,
+        source: UnivariateCommitmentSource,
+        coefficients: &[ScalarField],
+        offset: usize,
+    ) -> Result<G1serde, UnivariateCrsError> {
+        self.tau_sequence
+            .commit_tagged_dense_polynomial(source, coefficients, offset)
+    }
+}
+
+impl UnivariateVerifierKeys {
+    pub fn query_index(&self) -> UnivariateQueryIndex {
+        UnivariateQueryIndex {
+            public: self
+                .gamma_inv_public_queries
+                .iter()
+                .enumerate()
+                .map(|(index, query)| (query.key, index))
+                .collect(),
+            interface: std::collections::HashMap::new(),
+            internal: std::collections::HashMap::new(),
+        }
+    }
+}
+
+fn commit_indexed_coefficients(
+    sequence: &[G1serde],
+    coefficients: impl IntoIterator<Item = (usize, ScalarField)>,
+) -> Result<G1serde, UnivariateCrsError> {
+    let pairs = coefficients.into_iter().collect::<Vec<_>>();
+    let available = sequence.len();
+    let highest_power = pairs.iter().map(|(power, _)| *power).max();
+    if highest_power.is_some_and(|power| power >= available) {
+        return Err(UnivariateCrsError::CommitmentDegree {
+            actual: highest_power.unwrap_or_default().saturating_add(1),
+            available,
+        });
+    }
+    let scalars = pairs.iter().map(|(_, scalar)| *scalar).collect::<Vec<_>>();
+    let bases = pairs
+        .iter()
+        .map(|(power, _)| sequence[*power].0)
+        .collect::<Vec<_>>();
+    Ok(crate::group_structures::msm_g1_bases(&scalars, &bases))
+}
+
 fn tagged_query_at(
     shape: &UnivariateCrsShape,
     setup: &SetupParams,
@@ -1030,17 +1231,19 @@ mod tests {
         UNIVARIATE_CRS_SCHEMA_ID,
     };
     use crate::crs_artifacts::{
-        read_univariate_crs_artifact, write_univariate_crs_artifacts, UnivariateCrsRkyvExt,
-        UNIVARIATE_CRS_RKYV_FILE_NAME,
+        read_univariate_prover_crs, read_univariate_tau_sequence, read_univariate_verifier_keys,
+        write_univariate_crs_artifacts, UnivariateBoundCrsRkyvExt, PROVER_KEYS_RKYV_FILE_NAME,
+        TAU_SEQUENCE_RKYV_FILE_NAME,
     };
     use crate::frontend_artifacts::public_wire_layout::{GlobalWire, PublicWireLayout};
     use crate::frontend_artifacts::{BufferDirection, SetupParams, SubcircuitInfo};
     use crate::group_structures::{G1serde, G2serde};
-    use backend_interface::UnivariateCrsRkyv;
+    use backend_interface::UnivariateProverKeysRkyv;
     use icicle_bls12_381::curve::{CurveCfg, G2CurveCfg, ScalarField};
     use icicle_core::curve::Curve;
     use icicle_core::traits::{Arithmetic, FieldImpl};
     use serde::Deserialize;
+    use sha2::Digest;
 
     #[derive(Deserialize)]
     struct DomainFixture {
@@ -1304,24 +1507,48 @@ mod tests {
         let digests = write_univariate_crs_artifacts(output.path(), &crs)
             .expect("the complete CRS archive must be writable");
         assert!(!output.path().join("univariate_crs.json").exists());
-        let rkyv = std::fs::read(output.path().join(UNIVARIATE_CRS_RKYV_FILE_NAME))
-            .expect("must read the RKYV projection");
-        backend_univariate_crs_interface::archive::access::<
-            backend_univariate_crs_interface::ArchivedUnivariateCrsRkyv,
+        assert!(!output.path().join("univariate_crs.rkyv").exists());
+        for digest in [
+            &digests.tau_sequence_sha256,
+            &digests.prover_keys_sha256,
+            &digests.verifier_keys_sha256,
+        ] {
+            assert_eq!(digest.len(), 64);
+        }
+        let tau =
+            read_univariate_tau_sequence(&output.path().join(TAU_SEQUENCE_RKYV_FILE_NAME), &setup)
+                .expect("a matching tau sequence must load");
+        assert_eq!(tau.s0_g1, crs.foundation.s0_g1);
+        let prover = read_univariate_prover_crs(output.path(), &setup, &subcircuits)
+            .expect("matching prover material must load");
+        assert_eq!(
+            prover.prover_keys.eta_inv_interface_queries,
+            crs.eta_inv_interface_queries
+        );
+        let tau_bytes = std::fs::read(output.path().join(TAU_SEQUENCE_RKYV_FILE_NAME)).unwrap();
+        let tau_digest = sha2::Sha256::digest(tau_bytes).into();
+        let verifier =
+            read_univariate_verifier_keys(output.path(), &setup, &public_layout, tau_digest)
+                .expect("matching verifier material must load");
+        assert_eq!(
+            verifier.gamma_inv_public_queries,
+            crs.gamma_inv_public_queries
+        );
+
+        let path = output.path().join(PROVER_KEYS_RKYV_FILE_NAME);
+        let mut archive = UnivariateProverKeysRkyv::from_univariate_crs(&crs, [9; 32]);
+        let bytes = backend_univariate_crs_interface::archive::to_bytes::<
             backend_univariate_crs_interface::archive::rancor::Error,
-        >(&rkyv)
-        .expect("the RKYV projection must be structurally valid");
-        assert_eq!(digests.rkyv_sha256.len(), 64);
-        let loaded = read_univariate_crs_artifact(
-            &output.path().join(UNIVARIATE_CRS_RKYV_FILE_NAME),
-            &setup,
-            &public_layout,
-            &subcircuits,
-        )
-        .expect("a matching univariate CRS archive must load");
-        assert_eq!(loaded, crs);
-        let path = output.path().join(UNIVARIATE_CRS_RKYV_FILE_NAME);
-        let mut archive = UnivariateCrsRkyv::from_univariate_crs(&crs);
+        >(&archive)
+        .expect("archive must serialize");
+        std::fs::write(&path, bytes.as_ref()).expect("must write mismatched prover keys");
+        let error = read_univariate_prover_crs(output.path(), &setup, &subcircuits)
+            .expect_err("the reader must reject prover keys bound to another tau sequence");
+        assert!(error
+            .to_string()
+            .contains("prover keys belong to a different tau sequence"));
+
+        archive.tau_sequence_sha256 = tau_digest;
         archive.eta_inv_interface_queries[0].placement_index = 1;
         let bytes = backend_univariate_crs_interface::archive::to_bytes::<
             backend_univariate_crs_interface::archive::rancor::Error,
@@ -1329,7 +1556,7 @@ mod tests {
         .expect("archive must serialize");
         std::fs::write(&path, bytes.as_ref()).expect("must write malformed CRS archive");
 
-        let error = read_univariate_crs_artifact(&path, &setup, &public_layout, &subcircuits)
+        let error = read_univariate_prover_crs(output.path(), &setup, &subcircuits)
             .expect_err("the reader must reject an altered query label");
         assert!(error
             .to_string()

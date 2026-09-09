@@ -332,6 +332,7 @@ version = "2.1.5"
 dependencies = [
  "backend-univariate-crs-interface",
  "clap 4.5.53",
+ "hex",
  "memmap2",
  "serde",
  "serde_json",

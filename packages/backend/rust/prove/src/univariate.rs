@@ -5,12 +5,11 @@ use icicle_core::ntt::{self, NTTConfig, NTTDir};
 use icicle_core::traits::{Arithmetic, FieldImpl};
 use icicle_runtime::memory::HostSlice;
 use libs::field_structures::FieldSerde;
-use libs::frontend_artifacts::public_wire_layout::{PublicQueryKey, PublicWireLayout};
 use libs::frontend_artifacts::{Instance, PlacementVariables, SetupParams};
 use libs::group_structures::G1serde;
 use libs::ntt_domain::init_ntt_domain_for_size;
 use libs::univariate_crs::{
-    UnivariateCommitmentSource, UnivariateCrs, UnivariateCrsShape, UnivariateQueryIndex,
+    UnivariateCommitmentSource, UnivariateCrsShape, UnivariateProverCrs, UnivariateQueryIndex,
     UnivariateTaggedQuery,
 };
 use libs::univariate_polynomial::{DenseUnivariatePolynomial, UnivariatePolynomialError};
@@ -40,11 +39,6 @@ pub enum UnivariateProverError {
     SelectorPlacementMismatch,
     #[error("public instance has {actual} values, expected {expected}")]
     PublicInstanceLength { actual: usize, expected: usize },
-    #[error("public binding query ({subcircuit_id}, {local_wire_index}) is absent or duplicated")]
-    InvalidPublicBindingQuery {
-        subcircuit_id: usize,
-        local_wire_index: usize,
-    },
     #[error(
         "missing {role} U20 query for ({placement_index}, {subcircuit_id}, {local_wire_index})"
     )]
@@ -115,13 +109,6 @@ pub struct SelectedWitnessValues {
     pub internal_values: Vec<TaggedWitnessValue>,
 }
 
-/// One public statement coordinate projected to the compressed U20 key.
-#[derive(Clone, Copy)]
-pub struct PublicWitnessValue {
-    pub key: PublicQueryKey,
-    pub value: ScalarField,
-}
-
 /// The two private binding commitments sent in the first prover message.
 pub struct PrivateBindingCommitments {
     pub o_if: G1serde,
@@ -152,7 +139,7 @@ pub struct UnivariateOpeningPolynomials {
 /// first F1--F5 prover. Artifact readers construct this only after their own
 /// selector, permutation, witness, and CRS admission checks succeed.
 pub struct UnivariateReferenceProvingInput<'a> {
-    pub crs: &'a UnivariateCrs,
+    pub crs: &'a UnivariateProverCrs,
     pub selector: &'a StridedPolynomial,
     pub s_c: &'a DenseDomainPolynomial,
     pub maps: &'a WitnessMaps,
@@ -169,7 +156,7 @@ pub struct UnivariateReferenceProvingInput<'a> {
 /// Serializes the U52 messages produced by the native polynomial stages into
 /// the separate U54 proof family. No legacy Solidity proof field is reused.
 pub fn assemble_univariate_proof(
-    crs: &UnivariateCrs,
+    crs: &UnivariateProverCrs,
     masked: &MaskedArithmeticWitness,
     private_binding: &PrivateBindingCommitments,
     copy: &MaskedCopyRelation,
@@ -188,7 +175,7 @@ pub fn assemble_univariate_proof(
     let c_b = commit(
         UnivariateCommitmentSource::Spsi,
         &masked.b_hat,
-        crs.foundation.shape.k,
+        crs.tau_sequence.shape.k,
     )?;
     let c_r = commit(UnivariateCommitmentSource::S0, &copy.r_hat, 0)?;
     let c_q = commit(UnivariateCommitmentSource::S0, q_hat, 0)?;
@@ -212,7 +199,7 @@ pub fn assemble_univariate_proof(
         UnivariateCommitmentSource::S0,
         UnivariateCommitmentSource::S0,
     ];
-    let offsets = [0, 0, 0, crs.foundation.shape.k, 0, 0, 0, 0];
+    let offsets = [0, 0, 0, crs.tau_sequence.shape.k, 0, 0, 0, 0];
     let mut pi_zeta = G1serde::zero();
     for index in 0..8 {
         pi_zeta = pi_zeta
@@ -251,7 +238,7 @@ pub fn assemble_univariate_proof(
 pub fn prove_univariate_reference(
     input: UnivariateReferenceProvingInput<'_>,
 ) -> Result<(UnivariateProof, UnivariateChallenges), UnivariateProverError> {
-    let shape = &input.crs.foundation.shape;
+    let shape = &input.crs.tau_sequence.shape;
     let randomizers = input.randomizers;
     let masked =
         build_masked_arithmetic_witness(shape, input.selector, input.maps, randomizers.clone())?;
@@ -378,7 +365,7 @@ pub fn combine_quotients(
 /// placement or library entry. The later frontend adapter owns the conversion
 /// from selector-bearing synthesis output to these terms.
 pub fn build_private_binding_commitments(
-    crs: &UnivariateCrs,
+    crs: &UnivariateProverCrs,
     query_index: &UnivariateQueryIndex,
     interface_values: &[TaggedWitnessValue],
     internal_values: &[TaggedWitnessValue],
@@ -388,15 +375,15 @@ pub fn build_private_binding_commitments(
     let o_if = combine_tagged_queries(
         "interface",
         interface_values,
-        &crs.eta_inv_interface_queries,
+        &crs.prover_keys.eta_inv_interface_queries,
         |key| query_index.interface_index(key),
-    )? + crs.delta_g1 * r_o;
+    )? + crs.prover_keys.delta_g1 * r_o;
     let mut o_int = combine_tagged_queries(
         "internal",
         internal_values,
-        &crs.delta_inv_internal_queries,
+        &crs.prover_keys.delta_inv_internal_queries,
         |key| query_index.internal_index(key),
-    )? - crs.eta_g1 * r_o;
+    )? - crs.prover_keys.eta_g1 * r_o;
     let masks = [
         &randomizers.u,
         &randomizers.v,
@@ -404,10 +391,10 @@ pub fn build_private_binding_commitments(
         &randomizers.b,
     ];
     let masking_queries = [
-        &crs.delta_inv_u_masking_queries,
-        &crs.delta_inv_v_masking_queries,
-        &crs.delta_inv_w_masking_queries,
-        &crs.delta_inv_b_masking_queries,
+        &crs.prover_keys.delta_inv_u_masking_queries,
+        &crs.prover_keys.delta_inv_v_masking_queries,
+        &crs.prover_keys.delta_inv_w_masking_queries,
+        &crs.prover_keys.delta_inv_b_masking_queries,
     ];
     for (index, (randomizer, queries)) in masks.into_iter().zip(masking_queries).enumerate() {
         if randomizer.coefficients().len() > queries.len() {
@@ -422,32 +409,6 @@ pub fn build_private_binding_commitments(
         }
     }
     Ok(PrivateBindingCommitments { o_if, o_int })
-}
-
-/// Uses the synthesizer's global-wire public projection: user values, block
-/// values, then function values. Padding has no U20 query and is retained only
-/// in the statement encoding, not in the binding MSM.
-pub fn project_public_binding_values(
-    instance: &Instance,
-    setup: &SetupParams,
-    layout: &PublicWireLayout,
-) -> Result<Vec<PublicWitnessValue>, UnivariateProverError> {
-    let values = collect_public_inputs(instance, setup)?;
-    if layout.len() != setup.l {
-        return Err(UnivariateProverError::PublicInstanceLength {
-            actual: layout.len(),
-            expected: setup.l,
-        });
-    }
-    Ok(values
-        .into_iter()
-        .enumerate()
-        .filter_map(|(global_wire_index, value)| {
-            layout
-                .public_query_key_for_public_wire(global_wire_index)
-                .map(|key| PublicWitnessValue { key, value })
-        })
-        .collect())
 }
 
 /// Returns F1's complete adaptive public statement in the synthesizer's
@@ -471,33 +432,6 @@ pub fn collect_public_inputs(
         });
     }
     Ok(values)
-}
-
-/// Computes U26 from the already-admitted public projection.
-pub fn build_public_binding_commitment(
-    crs: &UnivariateCrs,
-    query_index: &UnivariateQueryIndex,
-    values: &[PublicWitnessValue],
-) -> Result<G1serde, UnivariateProverError> {
-    let mut seen = std::collections::HashSet::with_capacity(values.len());
-    let mut result = G1serde::zero();
-    for value in values {
-        if !seen.insert(value.key) {
-            return Err(UnivariateProverError::InvalidPublicBindingQuery {
-                subcircuit_id: value.key.buffer_subcircuit_id,
-                local_wire_index: value.key.local_public_wire_index,
-            });
-        }
-        let query = query_index
-            .public_index(value.key)
-            .and_then(|index| crs.gamma_inv_public_queries.get(index))
-            .ok_or(UnivariateProverError::InvalidPublicBindingQuery {
-                subcircuit_id: value.key.buffer_subcircuit_id,
-                local_wire_index: value.key.local_public_wire_index,
-            })?;
-        result = result + query.point * value.value;
-    }
-    Ok(result)
 }
 
 /// Aligns the compact synthesizer placement list with the capacity-length

@@ -29,7 +29,9 @@ const contract = {
         "documentKind",
         "releaseEligible",
         "protocolSchemaId",
-        "univariateCrsRkyvSha256"
+        "tauSequenceRkyvSha256",
+        "proverKeysRkyvSha256",
+        "verifierKeysRkyvSha256"
       ],
       "schema": {
         "type": "object",
@@ -38,13 +40,17 @@ const contract = {
           "documentKind",
           "releaseEligible",
           "protocolSchemaId",
-          "univariateCrsRkyvSha256"
+          "tauSequenceRkyvSha256",
+          "proverKeysRkyvSha256",
+          "verifierKeysRkyvSha256"
         ],
         "properties": {
           "documentKind": { "const": "developmentTrustedSetupUnivariateCrs" },
           "releaseEligible": { "const": false },
           "protocolSchemaId": { "const": "tokamak-zk-evm-univariate" },
-          "univariateCrsRkyvSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          "tauSequenceRkyvSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "proverKeysRkyvSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "verifierKeysRkyvSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
         }
       }
     },

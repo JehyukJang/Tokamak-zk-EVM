@@ -11,17 +11,20 @@ use crate::group_structures::{
 #[cfg(feature = "timing")]
 use crate::timing::{record as record_timing, SizeInfo};
 use crate::univariate_crs::{
-    UnivariateCrs, UnivariateCrsShape, UnivariatePublicQuery, UnivariateTaggedQuery,
+    UnivariateCrs, UnivariateCrsShape, UnivariateProverCrs, UnivariateProverKeys,
+    UnivariatePublicQuery, UnivariateTaggedQuery, UnivariateTauSequence, UnivariateVerifierKeys,
 };
 use crate::univariate_relation::UnivariateSubcircuit;
 use crate::vector_operations::resize;
 pub use backend_interface::{
     ArchivedG1SerdeRkyv, ArchivedG2SerdeRkyv, ArchivedPartialSigma1Rkyv, ArchivedSigma1Rkyv,
     ArchivedSigma2Rkyv, ArchivedSigmaPreprocessRkyv, ArchivedSigmaRkyv, ArchivedSigmaVerifyRkyv,
-    ArchivedUnivariateCrsRkyv, ArchivedUnivariateG1Rkyv, ArchivedUnivariateG2Rkyv, G1SerdeRkyv,
+    ArchivedUnivariateG1Rkyv, ArchivedUnivariateG2Rkyv, ArchivedUnivariateProverKeysRkyv,
+    ArchivedUnivariateTauSequenceRkyv, ArchivedUnivariateVerifierKeysRkyv, G1SerdeRkyv,
     G2SerdeRkyv, PartialSigma1Rkyv, PartialSigma1VerifyRkyv, Sigma1Rkyv, Sigma2Rkyv,
-    SigmaPreprocessRkyv, SigmaRkyv, SigmaVerifyRkyv, UnivariateCrsRkyv, UnivariateCrsShapeRkyv,
-    UnivariateG1Rkyv, UnivariateG2Rkyv, UnivariatePublicQueryRkyv, UnivariateTaggedQueryRkyv,
+    SigmaPreprocessRkyv, SigmaRkyv, SigmaVerifyRkyv, UnivariateCrsShapeRkyv, UnivariateG1Rkyv,
+    UnivariateG2Rkyv, UnivariateProverKeysRkyv, UnivariatePublicQueryRkyv,
+    UnivariateTaggedQueryRkyv, UnivariateTauSequenceRkyv, UnivariateVerifierKeysRkyv,
 };
 use icicle_bls12_381::curve::{
     BaseField, G1Affine, G1Projective, G2Affine, G2BaseField, ScalarField,
@@ -62,210 +65,200 @@ pub struct FinalCrsDigests {
     pub sigma_verify_sha256: String,
 }
 
-pub const UNIVARIATE_CRS_RKYV_FILE_NAME: &str = "univariate_crs.rkyv";
+pub const TAU_SEQUENCE_RKYV_FILE_NAME: &str = "tau_sequence.rkyv";
+pub const PROVER_KEYS_RKYV_FILE_NAME: &str = "prover_keys.rkyv";
+pub const VERIFIER_KEYS_RKYV_FILE_NAME: &str = "verifier_keys.rkyv";
 
 #[derive(Debug, Clone)]
 pub struct UnivariateCrsDigests {
-    pub rkyv_sha256: String,
+    pub tau_sequence_sha256: String,
+    pub prover_keys_sha256: String,
+    pub verifier_keys_sha256: String,
 }
 
-/// Writes the canonical RKYV archive of a complete U18--U21 CRS.  Its filename
-/// intentionally differs from the legacy Sigma files so a caller cannot
-/// overwrite a bivariate/MPC CRS in place.
+/// Writes the three canonical role-separated RKYV archives of a U18--U21 CRS.
 pub fn write_univariate_crs_artifacts(
     output_dir: &Path,
     crs: &UnivariateCrs,
 ) -> io::Result<UnivariateCrsDigests> {
     fs::create_dir_all(output_dir)?;
-    let rkyv = UnivariateCrsRkyv::from_univariate_crs(crs);
-    let rkyv_bytes = backend_univariate_crs_interface::archive::to_bytes::<
+    let tau = UnivariateTauSequenceRkyv::from_univariate_crs(crs);
+    let tau_bytes = backend_univariate_crs_interface::archive::to_bytes::<
         backend_univariate_crs_interface::archive::rancor::Error,
-    >(&rkyv)
+    >(&tau)
     .map_err(io::Error::other)?;
-    let rkyv_sha256 = sha256_hex(rkyv_bytes.as_ref());
+    let tau_sequence_sha256: [u8; 32] = Sha256::digest(tau_bytes.as_ref()).into();
+    let tau_sequence_sha256_hex = hex::encode(tau_sequence_sha256);
     fs::write(
-        output_dir.join(UNIVARIATE_CRS_RKYV_FILE_NAME),
-        rkyv_bytes.as_ref(),
+        output_dir.join(TAU_SEQUENCE_RKYV_FILE_NAME),
+        tau_bytes.as_ref(),
     )?;
-    match fs::remove_file(output_dir.join("univariate_crs.json")) {
-        Ok(()) => {}
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error),
+    drop(tau_bytes);
+    drop(tau);
+
+    let prover = UnivariateProverKeysRkyv::from_univariate_crs(crs, tau_sequence_sha256);
+    let prover_bytes = backend_univariate_crs_interface::archive::to_bytes::<
+        backend_univariate_crs_interface::archive::rancor::Error,
+    >(&prover)
+    .map_err(io::Error::other)?;
+    let prover_keys_sha256 = sha256_hex(prover_bytes.as_ref());
+    fs::write(
+        output_dir.join(PROVER_KEYS_RKYV_FILE_NAME),
+        prover_bytes.as_ref(),
+    )?;
+    drop(prover_bytes);
+    drop(prover);
+
+    let verifier = UnivariateVerifierKeysRkyv::from_univariate_crs(crs, tau_sequence_sha256);
+    let verifier_bytes = backend_univariate_crs_interface::archive::to_bytes::<
+        backend_univariate_crs_interface::archive::rancor::Error,
+    >(&verifier)
+    .map_err(io::Error::other)?;
+    let digests = UnivariateCrsDigests {
+        tau_sequence_sha256: tau_sequence_sha256_hex,
+        prover_keys_sha256,
+        verifier_keys_sha256: sha256_hex(verifier_bytes.as_ref()),
+    };
+    fs::write(
+        output_dir.join(VERIFIER_KEYS_RKYV_FILE_NAME),
+        verifier_bytes.as_ref(),
+    )?;
+    for obsolete in ["univariate_crs.rkyv", "univariate_crs.json"] {
+        match fs::remove_file(output_dir.join(obsolete)) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
     }
-    Ok(UnivariateCrsDigests { rkyv_sha256 })
+    Ok(digests)
 }
 
-/// Reads a univariate CRS only after checking its schema, dimensions, and
-/// compressed public-key layout.  Those checks inspect archive metadata and
-/// raw query labels before any archived curve coordinate is decoded.
-pub fn read_univariate_crs_artifact(
+pub fn read_univariate_tau_sequence(
     path: &Path,
     setup: &SetupParams,
-    public_wire_layout: &PublicWireLayout,
-    subcircuits: &[UnivariateSubcircuit<'_>],
-) -> io::Result<UnivariateCrs> {
+) -> io::Result<UnivariateTauSequence> {
+    read_univariate_tau_sequence_with_digest(path, setup).map(|(sequence, _)| sequence)
+}
+
+pub fn read_univariate_tau_sequence_with_digest(
+    path: &Path,
+    setup: &SetupParams,
+) -> io::Result<(UnivariateTauSequence, [u8; 32])> {
     let bytes = fs::read(path)?;
+    let digest = Sha256::digest(&bytes).into();
     let archive = backend_univariate_crs_interface::archive::access::<
-        ArchivedUnivariateCrsRkyv,
+        ArchivedUnivariateTauSequenceRkyv,
         backend_univariate_crs_interface::archive::rancor::Error,
     >(&bytes)
-    .map_err(|error| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("invalid univariate CRS archive: {error:?}"),
-        )
-    })?;
-    let declared_capacity = archive
-        .shape
-        .declared_capacity
-        .map(|value| archived_usize(value.into(), "declared univariate CRS capacity"))
-        .into_iter()
-        .collect::<io::Result<Vec<_>>>()?
-        .try_into()
-        .map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                "invalid declared CRS capacity vector",
-            )
-        })?;
-    let expected_shape = UnivariateCrsShape::from_setup_params(setup)
-        .and_then(|shape| shape.with_declared_capacity(declared_capacity))
-        .map_err(io::Error::other)?;
-    validate_univariate_archive_metadata(
-        archive,
-        setup,
-        &expected_shape,
-        public_wire_layout,
-        subcircuits,
-    )?;
-
-    let public_queries = archive
-        .gamma_inv_public_queries
-        .iter()
-        .map(|query| {
-            Ok(UnivariatePublicQuery {
-                key: crate::frontend_artifacts::public_wire_layout::PublicQueryKey {
-                    buffer_subcircuit_id: archived_usize(
-                        query.buffer_subcircuit_id.into(),
-                        "public buffer subcircuit ID",
-                    )?,
-                    local_public_wire_index: archived_usize(
-                        query.local_public_wire_index.into(),
-                        "public local wire index",
-                    )?,
-                },
-                point: archived_univariate_g1(&query.point),
-            })
-        })
-        .collect::<io::Result<Vec<_>>>()?;
-    let interface_queries = archive
-        .eta_inv_interface_queries
-        .iter()
-        .map(archived_tagged_query)
-        .collect::<io::Result<Vec<_>>>()?;
-    let internal_queries = archive
-        .delta_inv_internal_queries
-        .iter()
-        .map(archived_tagged_query)
-        .collect::<io::Result<Vec<_>>>()?;
-    Ok(UnivariateCrs {
-        foundation: crate::univariate_crs::UnivariateCrsFoundation {
+    .map_err(|error| invalid_crs(&format!("invalid tau sequence archive: {error:?}")))?;
+    let shape = admitted_shape(archive.schema_id.as_str(), &archive.shape, setup)?;
+    if archive.s0_g1.len() != shape.declared_capacity[0] + 1
+        || archive.sxi_g1.len() != shape.declared_capacity[1] + 1
+        || archive.spsi_g1.len() != shape.declared_capacity[2] + 1
+    {
+        return Err(invalid_crs(
+            "tau-sequence counts do not match the declared capacity",
+        ));
+    }
+    Ok((
+        UnivariateTauSequence {
             schema_id: crate::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID,
-            shape: expected_shape,
-            s0_g1: archive
-                .s0_g1
-                .iter()
-                .map(archived_univariate_g1)
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
-            sxi_g1: archive
-                .sxi_g1
-                .iter()
-                .map(archived_univariate_g1)
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
-            spsi_g1: archive
-                .spsi_g1
-                .iter()
-                .map(archived_univariate_g1)
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
+            shape,
+            s0_g1: decode_g1_slice(&archive.s0_g1),
+            sxi_g1: decode_g1_slice(&archive.sxi_g1),
+            spsi_g1: decode_g1_slice(&archive.spsi_g1),
             one_g2: archived_univariate_g2(&archive.one_g2),
             tau_g2: archived_univariate_g2(&archive.tau_g2),
             tau_k_g2: archived_univariate_g2(&archive.tau_k_g2),
-            gamma_g2: archived_univariate_g2(&archive.gamma_g2),
-            eta_g2: archived_univariate_g2(&archive.eta_g2),
-            delta_g2: archived_univariate_g2(&archive.delta_g2),
         },
-        gamma_inv_public_queries: public_queries.into_boxed_slice(),
-        eta_inv_interface_queries: interface_queries.into_boxed_slice(),
-        delta_inv_internal_queries: internal_queries.into_boxed_slice(),
-        delta_inv_u_masking_queries: archive
-            .delta_inv_u_masking_queries
-            .iter()
-            .map(archived_univariate_g1)
-            .collect::<Vec<_>>()
-            .into_boxed_slice(),
-        delta_inv_v_masking_queries: archive
-            .delta_inv_v_masking_queries
-            .iter()
-            .map(archived_univariate_g1)
-            .collect::<Vec<_>>()
-            .into_boxed_slice(),
-        delta_inv_w_masking_queries: archive
-            .delta_inv_w_masking_queries
-            .iter()
-            .map(archived_univariate_g1)
-            .collect::<Vec<_>>()
-            .into_boxed_slice(),
-        delta_inv_b_masking_queries: archive
-            .delta_inv_b_masking_queries
-            .iter()
-            .map(archived_univariate_g1)
-            .collect::<Vec<_>>()
-            .into_boxed_slice(),
-        delta_g1: archived_univariate_g1(&archive.delta_g1),
-        eta_g1: archived_univariate_g1(&archive.eta_g1),
+        digest,
+    ))
+}
+
+pub fn read_univariate_prover_crs(
+    directory: &Path,
+    setup: &SetupParams,
+    subcircuits: &[UnivariateSubcircuit<'_>],
+) -> io::Result<UnivariateProverCrs> {
+    let (tau_sequence, actual_tau_digest) = read_univariate_tau_sequence_with_digest(
+        &directory.join(TAU_SEQUENCE_RKYV_FILE_NAME),
+        setup,
+    )?;
+    let bytes = fs::read(directory.join(PROVER_KEYS_RKYV_FILE_NAME))?;
+    let archive = backend_univariate_crs_interface::archive::access::<
+        ArchivedUnivariateProverKeysRkyv,
+        backend_univariate_crs_interface::archive::rancor::Error,
+    >(&bytes)
+    .map_err(|error| invalid_crs(&format!("invalid prover keys archive: {error:?}")))?;
+    if archive.tau_sequence_sha256 != actual_tau_digest {
+        return Err(invalid_crs(
+            "prover keys belong to a different tau sequence",
+        ));
+    }
+    let shape = admitted_shape(archive.schema_id.as_str(), &archive.shape, setup)?;
+    if shape != tau_sequence.shape {
+        return Err(invalid_crs(
+            "tau sequence and prover keys have different shapes",
+        ));
+    }
+    if archive.delta_inv_u_masking_queries.len() != 2
+        || archive.delta_inv_v_masking_queries.len() != 2
+        || archive.delta_inv_w_masking_queries.len() != 2
+        || archive.delta_inv_b_masking_queries.len() != 2
+    {
+        return Err(invalid_crs(
+            "prover masking-query counts do not match the protocol",
+        ));
+    }
+    validate_tagged_query_layout(
+        archive.eta_inv_interface_queries.as_slice(),
+        setup,
+        subcircuits,
+        |wire| wire >= setup.l && wire < setup.l_D,
+        "interface",
+    )?;
+    validate_tagged_query_layout(
+        archive.delta_inv_internal_queries.as_slice(),
+        setup,
+        subcircuits,
+        |wire| wire >= setup.l_D,
+        "internal",
+    )?;
+    Ok(UnivariateProverCrs {
+        tau_sequence,
+        prover_keys: UnivariateProverKeys {
+            schema_id: crate::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID,
+            shape,
+            eta_inv_interface_queries: decode_tagged_queries(&archive.eta_inv_interface_queries)?,
+            delta_inv_internal_queries: decode_tagged_queries(&archive.delta_inv_internal_queries)?,
+            delta_inv_u_masking_queries: decode_g1_slice(&archive.delta_inv_u_masking_queries),
+            delta_inv_v_masking_queries: decode_g1_slice(&archive.delta_inv_v_masking_queries),
+            delta_inv_w_masking_queries: decode_g1_slice(&archive.delta_inv_w_masking_queries),
+            delta_inv_b_masking_queries: decode_g1_slice(&archive.delta_inv_b_masking_queries),
+            delta_g1: archived_univariate_g1(&archive.delta_g1),
+            eta_g1: archived_univariate_g1(&archive.eta_g1),
+        },
     })
 }
 
-fn validate_univariate_archive_metadata(
-    archive: &ArchivedUnivariateCrsRkyv,
+pub fn read_univariate_verifier_keys(
+    directory: &Path,
     setup: &SetupParams,
-    expected_shape: &UnivariateCrsShape,
     public_wire_layout: &PublicWireLayout,
-    subcircuits: &[UnivariateSubcircuit<'_>],
-) -> io::Result<()> {
-    if archive.schema_id.as_str() != crate::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "CRS does not use the supported univariate schema",
+    expected_tau_digest: [u8; 32],
+) -> io::Result<UnivariateVerifierKeys> {
+    let bytes = fs::read(directory.join(VERIFIER_KEYS_RKYV_FILE_NAME))?;
+    let archive = backend_univariate_crs_interface::archive::access::<
+        ArchivedUnivariateVerifierKeysRkyv,
+        backend_univariate_crs_interface::archive::rancor::Error,
+    >(&bytes)
+    .map_err(|error| invalid_crs(&format!("invalid verifier keys archive: {error:?}")))?;
+    if archive.tau_sequence_sha256 != expected_tau_digest {
+        return Err(invalid_crs(
+            "verifier keys belong to a different tau sequence",
         ));
     }
-    let shape = &archive.shape;
-    let matches_shape = shape.subcircuit_capacity == expected_shape.subcircuit_capacity as u64
-        && shape.arithmetic_domain_size == expected_shape.arithmetic_domain_size as u64
-        && shape.connection_domain_size == expected_shape.connection_domain_size as u64
-        && shape.intersection_domain_size == expected_shape.intersection_domain_size as u64
-        && shape.union_domain_size == expected_shape.union_domain_size as u64
-        && shape.minimum_capacity == expected_shape.minimum_capacity.map(|value| value as u64)
-        && shape.declared_capacity == expected_shape.declared_capacity.map(|value| value as u64)
-        && shape.k == expected_shape.k as u64;
-    if !matches_shape {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "univariate CRS shape does not match the selected subcircuit library",
-        ));
-    }
-    if archive.s0_g1.len() != expected_shape.declared_capacity[0] + 1
-        || archive.sxi_g1.len() != expected_shape.declared_capacity[1] + 1
-        || archive.spsi_g1.len() != expected_shape.declared_capacity[2] + 1
-    {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "univariate CRS source-sequence counts do not match its declared capacity",
-        ));
-    }
+    let shape = admitted_shape(archive.schema_id.as_str(), &archive.shape, setup)?;
     let expected_keys = public_wire_layout
         .public_query_keys()
         .map(|key| {
@@ -287,51 +280,110 @@ fn validate_univariate_archive_metadata(
                 ) != expected
             })
     {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "univariate CRS compressed public-query range does not match the selected library",
+        return Err(invalid_crs(
+            "public-query range does not match the selected library",
         ));
     }
-    if archive.delta_inv_u_masking_queries.len() != 2
-        || archive.delta_inv_v_masking_queries.len() != 2
-        || archive.delta_inv_w_masking_queries.len() != 2
-        || archive.delta_inv_b_masking_queries.len() != 2
-    {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "univariate CRS masking-query counts do not match its shape",
-        ));
-    }
-    validate_tagged_query_layout(
-        archive,
-        setup,
-        subcircuits,
-        |global_wire_index| global_wire_index >= setup.l && global_wire_index < setup.l_D,
-        |archive| &archive.eta_inv_interface_queries,
-        "interface",
-    )?;
-    validate_tagged_query_layout(
-        archive,
-        setup,
-        subcircuits,
-        |global_wire_index| global_wire_index >= setup.l_D,
-        |archive| &archive.delta_inv_internal_queries,
-        "internal",
-    )?;
-    Ok(())
+    let public_queries = archive
+        .gamma_inv_public_queries
+        .iter()
+        .map(|query| {
+            Ok(UnivariatePublicQuery {
+                key: crate::frontend_artifacts::public_wire_layout::PublicQueryKey {
+                    buffer_subcircuit_id: archived_usize(
+                        query.buffer_subcircuit_id.into(),
+                        "public buffer subcircuit ID",
+                    )?,
+                    local_public_wire_index: archived_usize(
+                        query.local_public_wire_index.into(),
+                        "public local wire index",
+                    )?,
+                },
+                point: archived_univariate_g1(&query.point),
+            })
+        })
+        .collect::<io::Result<Vec<_>>>()?;
+    Ok(UnivariateVerifierKeys {
+        schema_id: crate::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID,
+        shape,
+        one_g1: archived_univariate_g1(&archive.one_g1),
+        xi_g1: archived_univariate_g1(&archive.xi_g1),
+        psi_g1: archived_univariate_g1(&archive.psi_g1),
+        one_g2: archived_univariate_g2(&archive.one_g2),
+        tau_g2: archived_univariate_g2(&archive.tau_g2),
+        tau_k_g2: archived_univariate_g2(&archive.tau_k_g2),
+        gamma_g2: archived_univariate_g2(&archive.gamma_g2),
+        eta_g2: archived_univariate_g2(&archive.eta_g2),
+        delta_g2: archived_univariate_g2(&archive.delta_g2),
+        gamma_inv_public_queries: public_queries.into_boxed_slice(),
+    })
 }
 
-/// Validates the canonical U20 tagged-query order without decoding a curve
-/// coordinate.  The query family is determined solely by the global-wire
-/// range; public wires deliberately belong only to the compressed gamma range.
-fn validate_tagged_query_layout<'a>(
-    archive: &'a ArchivedUnivariateCrsRkyv,
+fn admitted_shape(
+    schema_id: &str,
+    archived: &backend_interface::ArchivedUnivariateCrsShapeRkyv,
+    setup: &SetupParams,
+) -> io::Result<UnivariateCrsShape> {
+    if schema_id != crate::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID {
+        return Err(invalid_crs("unsupported schema"));
+    }
+    let declared_capacity = archived
+        .declared_capacity
+        .map(Into::into)
+        .map(|value| archived_usize(value, "declared capacity"))
+        .into_iter()
+        .collect::<io::Result<Vec<_>>>()?
+        .try_into()
+        .map_err(|_| invalid_crs("invalid declared capacity"))?;
+    let shape = UnivariateCrsShape::from_setup_params(setup)
+        .and_then(|shape| shape.with_declared_capacity(declared_capacity))
+        .map_err(io::Error::other)?;
+    if archived.subcircuit_capacity != shape.subcircuit_capacity as u64
+        || archived.arithmetic_domain_size != shape.arithmetic_domain_size as u64
+        || archived.connection_domain_size != shape.connection_domain_size as u64
+        || archived.intersection_domain_size != shape.intersection_domain_size as u64
+        || archived.union_domain_size != shape.union_domain_size as u64
+        || archived.minimum_capacity != shape.minimum_capacity.map(|value| value as u64)
+        || archived.declared_capacity != shape.declared_capacity.map(|value| value as u64)
+        || archived.k != shape.k as u64
+    {
+        return Err(invalid_crs(
+            "shape does not match the selected subcircuit library",
+        ));
+    }
+    Ok(shape)
+}
+
+fn decode_g1_slice(values: &[ArchivedUnivariateG1Rkyv]) -> Box<[G1serde]> {
+    values
+        .iter()
+        .map(archived_univariate_g1)
+        .collect::<Vec<_>>()
+        .into_boxed_slice()
+}
+
+fn decode_tagged_queries(
+    values: &[backend_interface::ArchivedUnivariateTaggedQueryRkyv],
+) -> io::Result<Box<[UnivariateTaggedQuery]>> {
+    values
+        .iter()
+        .map(archived_tagged_query)
+        .collect::<io::Result<Vec<_>>>()
+        .map(Vec::into_boxed_slice)
+}
+
+fn invalid_crs(reason: &str) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        format!("invalid univariate CRS: {reason}"),
+    )
+}
+
+fn validate_tagged_query_layout(
+    queries: &[backend_interface::ArchivedUnivariateTaggedQueryRkyv],
     setup: &SetupParams,
     subcircuits: &[UnivariateSubcircuit<'_>],
     belongs_to_family: impl Fn(usize) -> bool,
-    archived_queries: impl Fn(
-        &'a ArchivedUnivariateCrsRkyv,
-    ) -> &'a [backend_interface::ArchivedUnivariateTaggedQueryRkyv],
     family_name: &str,
 ) -> io::Result<()> {
     if subcircuits.len() != setup.s_D
@@ -362,7 +414,6 @@ fn validate_tagged_query_layout<'a>(
             }
         }
     }
-    let queries = archived_queries(archive);
     if queries.len() != expected.len()
         || queries.iter().zip(expected).any(|(query, expected)| {
             (
@@ -953,11 +1004,15 @@ impl SigmaRkyvExt for SigmaRkyv {
     }
 }
 
-pub trait UnivariateCrsRkyvExt {
+trait UnivariateTauSequenceRkyvExt: Sized {
     fn from_univariate_crs(crs: &UnivariateCrs) -> Self;
 }
 
-impl UnivariateCrsRkyvExt for UnivariateCrsRkyv {
+pub trait UnivariateBoundCrsRkyvExt: Sized {
+    fn from_univariate_crs(crs: &UnivariateCrs, tau_sequence_sha256: [u8; 32]) -> Self;
+}
+
+impl UnivariateTauSequenceRkyvExt for UnivariateTauSequenceRkyv {
     fn from_univariate_crs(crs: &UnivariateCrs) -> Self {
         let foundation = &crs.foundation;
         Self {
@@ -969,14 +1024,17 @@ impl UnivariateCrsRkyvExt for UnivariateCrsRkyv {
             one_g2: univariate_g2(&foundation.one_g2),
             tau_g2: univariate_g2(&foundation.tau_g2),
             tau_k_g2: univariate_g2(&foundation.tau_k_g2),
-            gamma_g2: univariate_g2(&foundation.gamma_g2),
-            eta_g2: univariate_g2(&foundation.eta_g2),
-            delta_g2: univariate_g2(&foundation.delta_g2),
-            gamma_inv_public_queries: crs
-                .gamma_inv_public_queries
-                .par_iter()
-                .map(UnivariatePublicQueryRkyv::from_query)
-                .collect(),
+        }
+    }
+}
+
+impl UnivariateBoundCrsRkyvExt for UnivariateProverKeysRkyv {
+    fn from_univariate_crs(crs: &UnivariateCrs, tau_sequence_sha256: [u8; 32]) -> Self {
+        let foundation = &crs.foundation;
+        Self {
+            schema_id: foundation.schema_id.to_string(),
+            shape: UnivariateCrsShapeRkyv::from_shape(&foundation.shape),
+            tau_sequence_sha256,
             eta_inv_interface_queries: crs
                 .eta_inv_interface_queries
                 .par_iter()
@@ -1009,6 +1067,31 @@ impl UnivariateCrsRkyvExt for UnivariateCrsRkyv {
                 .collect(),
             delta_g1: univariate_g1(&crs.delta_g1),
             eta_g1: univariate_g1(&crs.eta_g1),
+        }
+    }
+}
+
+impl UnivariateBoundCrsRkyvExt for UnivariateVerifierKeysRkyv {
+    fn from_univariate_crs(crs: &UnivariateCrs, tau_sequence_sha256: [u8; 32]) -> Self {
+        let foundation = &crs.foundation;
+        Self {
+            schema_id: foundation.schema_id.to_string(),
+            shape: UnivariateCrsShapeRkyv::from_shape(&foundation.shape),
+            tau_sequence_sha256,
+            one_g1: univariate_g1(&foundation.s0_g1[0]),
+            xi_g1: univariate_g1(&foundation.sxi_g1[0]),
+            psi_g1: univariate_g1(&foundation.spsi_g1[0]),
+            one_g2: univariate_g2(&foundation.one_g2),
+            tau_g2: univariate_g2(&foundation.tau_g2),
+            tau_k_g2: univariate_g2(&foundation.tau_k_g2),
+            gamma_g2: univariate_g2(&foundation.gamma_g2),
+            eta_g2: univariate_g2(&foundation.eta_g2),
+            delta_g2: univariate_g2(&foundation.delta_g2),
+            gamma_inv_public_queries: crs
+                .gamma_inv_public_queries
+                .par_iter()
+                .map(UnivariatePublicQueryRkyv::from_query)
+                .collect(),
         }
     }
 }

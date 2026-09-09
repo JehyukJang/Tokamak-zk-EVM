@@ -55,10 +55,11 @@ All non-CRS binaries use the backend-owned `TZBWASM1` container. The container r
 the artifact kind, producer package version, section table, and self-digest.
 Its layout version is not a protocol-version compatibility layer.
 
-The CRS is different because the production archive can exceed the 4 GiB
-address space of one browser `Uint8Array`. Native trusted setup emits only
-`univariate_crs.rkyv`. An offline 64-bit converter reads that archive with a
-read-only memory map and writes a small manifest plus bounded section chunks.
+The CRS is different because the production archives can exceed the 4 GiB
+address space of one browser `Uint8Array`. Native trusted setup emits
+`tau_sequence.rkyv`, `prover_keys.rkyv`, and `verifier_keys.rkyv`. An offline
+64-bit converter reads that directory with read-only memory maps and writes a
+small manifest plus bounded section chunks.
 Browser runtimes authenticate and load chunks lazily through an
 application-provided callback.
 
@@ -126,7 +127,7 @@ Convert the native CRS offline from `packages/backend/wasm`:
 
 ```sh
 npm run univariate-crs:convert -- \
-  --input ../rust/setup/trusted-setup/output/debug/univariate_crs.rkyv \
+  --input ../rust/setup/trusted-setup/output/debug \
   --output ./tmp/browser-crs
 ```
 
@@ -292,7 +293,8 @@ npm run univariate:transcript:check
 ```
 
 To prepare local browser E2E inputs, first generate `selector.json` with the
-synthesizer and `univariate_crs.rkyv` with native trusted setup. Then run:
+synthesizer and the three role-separated RKYV files with native trusted setup.
+Then run:
 
 ```sh
 npm run fixtures:copy

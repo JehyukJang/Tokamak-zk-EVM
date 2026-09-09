@@ -114,7 +114,9 @@ mod tests {
         libs::subcircuit_library::write_development_only_univariate_crs_provenance(
             workspace.path(),
             &libs::crs_artifacts::UnivariateCrsDigests {
-                rkyv_sha256: "0".repeat(64),
+                tau_sequence_sha256: "0".repeat(64),
+                prover_keys_sha256: "1".repeat(64),
+                verifier_keys_sha256: "2".repeat(64),
             },
         )
         .expect("must write univariate trusted-setup provenance");
@@ -128,6 +130,9 @@ mod tests {
             provenance["documentKind"],
             "developmentTrustedSetupUnivariateCrs"
         );
+        assert_eq!(provenance["tauSequenceRkyvSha256"], "0".repeat(64));
+        assert_eq!(provenance["proverKeysRkyvSha256"], "1".repeat(64));
+        assert_eq!(provenance["verifierKeysRkyvSha256"], "2".repeat(64));
         assert_eq!(provenance["protocolSchemaId"], "tokamak-zk-evm-univariate");
         assert_eq!(provenance["releaseEligible"], false);
     }

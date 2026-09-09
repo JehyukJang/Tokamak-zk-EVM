@@ -86,7 +86,7 @@ the MPC setup flow still consumes only `r1cs/subcircuit*.r1cs` from it.
 
 ### `trusted-setup`
 
-Generates a Sigma directly from the subcircuit library for local development and testing. Its
+Generates the current univariate CRS directly from the subcircuit library for local development and testing. Its
 output is never release-eligible and must not be deployed or published. This holds even when the
 binary itself is built with Cargo's release profile.
 
@@ -113,7 +113,8 @@ cargo run --locked -p trusted-setup -- \
 
 Runs Tokamak native Phase 1 contributions over alpha, X, and Y, fixes the
 circuit, runs the common Phase 2 gamma/delta/eta contribution, and emits the
-same final CRS layout used by `trusted-setup`.
+legacy MPC Sigma layout. MPC migration to the univariate protocol is outside
+the current trusted-setup artifact change.
 
 Release example:
 
@@ -175,10 +176,14 @@ See [rust/setup/mpc-setup/README.md](./rust/setup/mpc-setup/README.md) for the f
 
 `trusted-setup` final output:
 
-- `combined_sigma.rkyv`
-- `sigma_preprocess.rkyv`
-- `sigma_verify.json`
-- `crs_provenance.json` with `releaseEligible: false`
+- `tau_sequence.rkyv`: generic sequences whose group elements overlap
+  algebraically with the reusable phase-1 tau sequence, used by preprocess and prove
+- `prover_keys.rkyv`: prover-only specialized keys, with no element copied from the tau sequence
+- `verifier_keys.rkyv`: proof-verification keys; duplication with the other two files is allowed
+- `crs_provenance.json` with `releaseEligible: false` and a SHA-256 digest for each RKYV file
+
+No separate `preprocess_keys` file is emitted: preprocessing needs only the
+shape and `S0`, both of which are already present in `tau_sequence.rkyv`.
 
 `mpc-setup` final output:
 

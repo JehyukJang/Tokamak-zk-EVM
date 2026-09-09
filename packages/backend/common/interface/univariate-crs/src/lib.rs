@@ -1,4 +1,4 @@
-//! 64-bit RKYV schema for the large univariate CRS archive.
+//! 64-bit RKYV schemas for the role-separated univariate CRS archives.
 //!
 //! This crate is isolated from the 32-bit RKYV schema used by the existing MPC
 //! artifacts. Production univariate CRS files exceed the offset range of
@@ -21,7 +21,7 @@ pub struct UnivariateG2Rkyv {
 }
 
 #[derive(Debug, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
-pub struct UnivariateCrsRkyv {
+pub struct UnivariateTauSequenceRkyv {
     pub schema_id: String,
     pub shape: UnivariateCrsShapeRkyv,
     pub s0_g1: Vec<UnivariateG1Rkyv>,
@@ -30,10 +30,13 @@ pub struct UnivariateCrsRkyv {
     pub one_g2: UnivariateG2Rkyv,
     pub tau_g2: UnivariateG2Rkyv,
     pub tau_k_g2: UnivariateG2Rkyv,
-    pub gamma_g2: UnivariateG2Rkyv,
-    pub eta_g2: UnivariateG2Rkyv,
-    pub delta_g2: UnivariateG2Rkyv,
-    pub gamma_inv_public_queries: Vec<UnivariatePublicQueryRkyv>,
+}
+
+#[derive(Debug, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+pub struct UnivariateProverKeysRkyv {
+    pub schema_id: String,
+    pub shape: UnivariateCrsShapeRkyv,
+    pub tau_sequence_sha256: [u8; 32],
     pub eta_inv_interface_queries: Vec<UnivariateTaggedQueryRkyv>,
     pub delta_inv_internal_queries: Vec<UnivariateTaggedQueryRkyv>,
     pub delta_inv_u_masking_queries: Vec<UnivariateG1Rkyv>,
@@ -42,6 +45,23 @@ pub struct UnivariateCrsRkyv {
     pub delta_inv_b_masking_queries: Vec<UnivariateG1Rkyv>,
     pub delta_g1: UnivariateG1Rkyv,
     pub eta_g1: UnivariateG1Rkyv,
+}
+
+#[derive(Debug, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+pub struct UnivariateVerifierKeysRkyv {
+    pub schema_id: String,
+    pub shape: UnivariateCrsShapeRkyv,
+    pub tau_sequence_sha256: [u8; 32],
+    pub one_g1: UnivariateG1Rkyv,
+    pub xi_g1: UnivariateG1Rkyv,
+    pub psi_g1: UnivariateG1Rkyv,
+    pub gamma_g2: UnivariateG2Rkyv,
+    pub eta_g2: UnivariateG2Rkyv,
+    pub delta_g2: UnivariateG2Rkyv,
+    pub one_g2: UnivariateG2Rkyv,
+    pub tau_g2: UnivariateG2Rkyv,
+    pub tau_k_g2: UnivariateG2Rkyv,
+    pub gamma_inv_public_queries: Vec<UnivariatePublicQueryRkyv>,
 }
 
 #[derive(Debug, Clone, Copy, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]

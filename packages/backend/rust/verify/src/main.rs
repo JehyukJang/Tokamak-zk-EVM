@@ -18,7 +18,7 @@ struct Config {
     #[command(flatten)]
     development_crs_provenance: DevelopmentCrsProvenanceArg,
 
-    /// CRS output directory containing univariate_crs.rkyv
+    /// CRS output directory containing tau_sequence.rkyv and verifier_keys.rkyv
     #[arg(long, value_name = "PATH")]
     crs: String,
 

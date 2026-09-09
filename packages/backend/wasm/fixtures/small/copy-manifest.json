@@ -3,7 +3,7 @@
   "suite": "small",
   "description": "Copy source artifacts from existing owner package outputs into backend-wasm's ignored fixture work area. This manifest does not write final test fixtures.",
   "workDirectory": "packages/backend/wasm/tmp/fixtures/small/source",
-  "univariateCrsSource": "packages/backend/rust/setup/trusted-setup/output/debug/univariate_crs.rkyv",
+  "univariateCrsSourceDirectory": "packages/backend/rust/setup/trusted-setup/output/debug",
   "sources": [
     {
       "source": "packages/frontend/synthesizer/outputs/instance.json",

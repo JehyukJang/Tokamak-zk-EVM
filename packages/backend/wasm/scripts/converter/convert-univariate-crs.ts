@@ -43,10 +43,16 @@ interface CanonicalSection {
 interface CanonicalManifest {
   readonly schemaId: string;
   readonly sourcePackageVersion: string;
-  readonly sourceRkyvSha256: string;
+  readonly sourceRkyvSha256: SourceRkyvDigests;
   readonly declaredCapacity: readonly [number, number, number];
   readonly k: number;
   readonly sections: readonly CanonicalSection[];
+}
+
+interface SourceRkyvDigests {
+  readonly tauSequence: string;
+  readonly proverKeys: string;
+  readonly verifierKeys: string;
 }
 
 export interface UnivariateCrsConversionOptions {
@@ -56,13 +62,13 @@ export interface UnivariateCrsConversionOptions {
 }
 
 async function main(argv: readonly string[]): Promise<void> {
-  await convertUnivariateCrsRkyv(parseArguments(argv));
+  await convertUnivariateCrsDirectory(parseArguments(argv));
 }
 
-export async function convertUnivariateCrsRkyv(args: UnivariateCrsConversionOptions): Promise<void> {
+export async function convertUnivariateCrsDirectory(args: UnivariateCrsConversionOptions): Promise<void> {
   const input = path.resolve(args.input);
   const output = path.resolve(args.output);
-  await requireFile(input);
+  await requireDirectory(input);
   await rejectExistingOutput(output);
   await mkdir(path.dirname(output), { recursive: true });
 
@@ -194,7 +200,7 @@ function parseCanonicalManifest(raw: unknown): CanonicalManifest {
   return {
     schemaId: value.schemaId,
     sourcePackageVersion: requireString(value.sourcePackageVersion, "sourcePackageVersion"),
-    sourceRkyvSha256: requireSha256(value.sourceRkyvSha256, "sourceRkyvSha256"),
+    sourceRkyvSha256: parseSourceRkyvDigests(value.sourceRkyvSha256),
     declaredCapacity: declaredCapacity as unknown as readonly [number, number, number],
     k: requireSafeInteger(value.k, "k"),
     sections,
@@ -266,7 +272,7 @@ function parseArguments(argv: readonly string[]): UnivariateCrsConversionOptions
     else throw new Error(`Unsupported argument: ${name}.`);
   }
   if (input === undefined || output === undefined) {
-    throw new Error("Usage: convert-univariate-crs --input <univariate_crs.rkyv> --output <directory> [--chunk-bytes <bytes>]");
+    throw new Error("Usage: convert-univariate-crs --input <CRS directory> --output <directory> [--chunk-bytes <bytes>]");
   }
   if (!Number.isSafeInteger(chunkBytes) || chunkBytes < 192) {
     throw new Error("--chunk-bytes must be a safe integer of at least 192 bytes.");
@@ -283,9 +289,9 @@ function resolveChunkPath(root: string, relative: string): string {
   return resolved;
 }
 
-async function requireFile(filePath: string): Promise<void> {
-  const info = await stat(filePath).catch(() => undefined);
-  if (!info?.isFile()) throw new Error(`Input CRS is not a file: ${filePath}.`);
+async function requireDirectory(directoryPath: string): Promise<void> {
+  const info = await stat(directoryPath).catch(() => undefined);
+  if (!info?.isDirectory()) throw new Error(`Input CRS is not a directory: ${directoryPath}.`);
 }
 
 async function rejectExistingOutput(output: string): Promise<void> {
@@ -308,6 +314,15 @@ function requireRecord(value: unknown, label: string): Record<string, unknown> {
     throw new Error(`${label} must be an object.`);
   }
   return value as Record<string, unknown>;
+}
+
+function parseSourceRkyvDigests(value: unknown): SourceRkyvDigests {
+  const digests = requireRecord(value, "sourceRkyvSha256");
+  return {
+    tauSequence: requireSha256(digests.tauSequence, "sourceRkyvSha256.tauSequence"),
+    proverKeys: requireSha256(digests.proverKeys, "sourceRkyvSha256.proverKeys"),
+    verifierKeys: requireSha256(digests.verifierKeys, "sourceRkyvSha256.verifierKeys"),
+  };
 }
 
 function requireArray(value: unknown, label: string): readonly unknown[] {

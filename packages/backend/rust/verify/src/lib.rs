@@ -13,7 +13,7 @@ use libs::group_structures::{G1serde, SigmaVerify};
 use libs::proof_protocol::{
     FormattedPreprocess, FormattedProof, Preprocess, Proof, Proof4, Proof4Test, TranscriptManager,
 };
-use libs::univariate_crs::UnivariateCrs;
+use libs::univariate_crs::UnivariateVerifierKeys;
 use libs::univariate_preprocess::UnivariatePreprocess;
 use libs::univariate_proof::UnivariateProof;
 use libs::univariate_transcript::derive_proof_challenges;
@@ -38,16 +38,16 @@ pub struct VerifyInputPaths<'a> {
 /// caller owns artifact decoding and F1--F4 construction; this function never
 /// falls back to the legacy Sigma verifier.
 pub fn verify_univariate_proof(
-    crs: &UnivariateCrs,
+    crs: &UnivariateVerifierKeys,
     preprocess: &UnivariatePreprocess,
     public_binding: G1serde,
     public_inputs: &[ScalarField],
     proof: &UnivariateProof,
 ) -> bool {
-    if crs.foundation.schema_id != libs::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID {
+    if crs.schema_id != libs::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID {
         return false;
     }
-    let shape = &crs.foundation.shape;
+    let shape = &crs.shape;
     let challenges = derive_proof_challenges(
         public_inputs,
         proof,
@@ -95,9 +95,9 @@ pub fn verify_univariate_proof(
     }
 
     let varpi = challenges.varpi;
-    let one = crs.foundation.s0_g1[0];
-    let xi = crs.foundation.sxi_g1[0];
-    let psi = crs.foundation.spsi_g1[0];
+    let one = crs.one_g1;
+    let xi = crs.xi_g1;
+    let psi = crs.psi_g1;
     let a_zeta = proof.c_u - one * u
         + (proof.c_v - xi * v) * varpi
         + (proof.c_w - psi * w) * varpi.pow(2)
@@ -113,18 +113,9 @@ pub fn verify_univariate_proof(
         + (a_plus + proof.pi_plus * (shape.connection_root * zeta)) * mu.pow(3);
     let lhs_second = proof.c_b + (proof.c_w + proof.c_b * challenges.upsilon) * mu;
     let rhs_openings = proof.pi_zeta * mu.pow(2) + proof.pi_plus * mu.pow(3);
-    pairing(
-        &[lhs_first, lhs_second],
-        &[crs.foundation.one_g2, crs.foundation.tau_k_g2],
-    )
-    .eq(&pairing(
+    pairing(&[lhs_first, lhs_second], &[crs.one_g2, crs.tau_k_g2]).eq(&pairing(
         &[public_binding, proof.o_if, proof.o_int, rhs_openings],
-        &[
-            crs.foundation.gamma_g2,
-            crs.foundation.eta_g2,
-            crs.foundation.delta_g2,
-            crs.foundation.tau_g2,
-        ],
+        &[crs.gamma_g2, crs.eta_g2, crs.delta_g2, crs.tau_g2],
     ))
 }
 

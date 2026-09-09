@@ -3,12 +3,14 @@
 use crate::{verify_univariate_proof, VerifyError, VerifyInputPaths};
 use icicle_bls12_381::curve::ScalarField;
 use icicle_core::traits::FieldImpl;
-use libs::crs_artifacts::{read_univariate_crs_artifact, UNIVARIATE_CRS_RKYV_FILE_NAME};
+use libs::crs_artifacts::{
+    read_univariate_tau_sequence_with_digest, read_univariate_verifier_keys,
+    TAU_SEQUENCE_RKYV_FILE_NAME, VERIFIER_KEYS_RKYV_FILE_NAME,
+};
 use libs::errors::{ArtifactError, CrsError};
 use libs::frontend_artifacts::public_wire_layout::{read_global_wires, PublicWireLayout};
 use libs::frontend_artifacts::{read_placement_selector, Instance, Permutation, SubcircuitInfo};
 use libs::group_structures::G1serde;
-use libs::r1cs::SubcircuitR1CS;
 use libs::univariate_preprocess::UnivariatePreprocess;
 use libs::univariate_proof::UnivariateProof;
 use libs::univariate_relation::{connection_permutation_polynomial, placement_selector_polynomial};
@@ -43,38 +45,26 @@ pub fn verify(paths: &VerifyInputPaths<'_>) -> Result<bool, VerifyError> {
                 reason: error.to_string(),
             }
         })?;
-    let r1cs = infos
-        .iter()
-        .enumerate()
-        .map(|(index, info)| {
-            if info.id != index {
-                return Err(ArtifactError::Invalid {
-                    artifact: "subcircuit information",
-                    path: PathBuf::from(paths.qap_path).join("subcircuitInfo.json"),
-                    reason: format!("catalog entry {index} declares subcircuit ID {}", info.id),
-                });
-            }
-            let path = PathBuf::from(paths.qap_path).join(format!("r1cs/subcircuit{index}.r1cs"));
-            SubcircuitR1CS::from_r1cs_sparse_only(path.clone(), &setup, info).map_err(|source| {
-                ArtifactError::Read {
-                    artifact: "subcircuit R1CS",
-                    path,
-                    source,
-                }
-            })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let subcircuits = r1cs
-        .iter()
-        .zip(infos.iter())
-        .map(|(r1cs, info)| r1cs.as_univariate_subcircuit(info))
-        .collect::<Vec<_>>();
-    let crs_path = PathBuf::from(paths.setup_path).join(UNIVARIATE_CRS_RKYV_FILE_NAME);
-    let crs = read_univariate_crs_artifact(&crs_path, &setup, &public_layout, &subcircuits)
+    let crs_directory = PathBuf::from(paths.setup_path);
+    let tau_path = crs_directory.join(TAU_SEQUENCE_RKYV_FILE_NAME);
+    let (tau_sequence, tau_digest) = read_univariate_tau_sequence_with_digest(&tau_path, &setup)
+        .map_err(|source| CrsError::Read {
+            path: tau_path,
+            source,
+        })?;
+    let crs_path = crs_directory.join(VERIFIER_KEYS_RKYV_FILE_NAME);
+    let crs = read_univariate_verifier_keys(&crs_directory, &setup, &public_layout, tau_digest)
         .map_err(|source| CrsError::Read {
             path: crs_path,
             source,
         })?;
+    if tau_sequence.shape != crs.shape {
+        return Err(VerifyError::InvalidFormat {
+            artifact: "univariate CRS",
+            path: PathBuf::from(paths.setup_path),
+            reason: "tau sequence and verifier keys have different shapes".to_string(),
+        });
+    }
     let selector_path = PathBuf::from(paths.synthesizer_path).join("selector.json");
     let selector =
         read_placement_selector(&selector_path, setup.s_max, setup.s_D).map_err(|source| {
@@ -94,13 +84,13 @@ pub fn verify(paths: &VerifyInputPaths<'_>) -> Result<bool, VerifyError> {
             }
         })?;
     let expected_preprocess = UnivariatePreprocess::new(
-        crs.commit_strided_polynomial(&placement_selector_polynomial(
-            &crs.foundation.shape,
+        tau_sequence.commit_strided_polynomial(&placement_selector_polynomial(
+            &tau_sequence.shape,
             &setup,
             &selector,
         )?)?,
-        crs.commit_dense_polynomial(
-            &connection_permutation_polynomial(&crs.foundation.shape, &setup, &permutation)?
+        tau_sequence.commit_dense_polynomial(
+            &connection_permutation_polynomial(&tau_sequence.shape, &setup, &permutation)?
                 .coefficients,
         )?,
     );
@@ -179,7 +169,7 @@ fn collect_public_inputs(
 }
 
 fn build_public_binding(
-    crs: &libs::univariate_crs::UnivariateCrs,
+    crs: &libs::univariate_crs::UnivariateVerifierKeys,
     layout: &PublicWireLayout,
     public_inputs: &[ScalarField],
 ) -> Result<G1serde, VerifyError> {
@@ -201,7 +191,7 @@ fn build_public_binding(
             .and_then(|query_index| crs.gamma_inv_public_queries.get(query_index))
             .ok_or_else(|| VerifyError::InvalidFormat {
                 artifact: "univariate CRS",
-                path: PathBuf::from(UNIVARIATE_CRS_RKYV_FILE_NAME),
+                path: PathBuf::from(VERIFIER_KEYS_RKYV_FILE_NAME),
                 reason: format!(
                     "is missing public query ({}, {})",
                     key.buffer_subcircuit_id, key.local_public_wire_index

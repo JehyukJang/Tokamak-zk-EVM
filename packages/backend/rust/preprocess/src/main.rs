@@ -5,10 +5,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use libs::crs_artifacts::{read_univariate_crs_artifact, UNIVARIATE_CRS_RKYV_FILE_NAME};
-use libs::frontend_artifacts::public_wire_layout::{read_global_wires, PublicWireLayout};
-use libs::frontend_artifacts::{read_placement_selector, Permutation, SubcircuitInfo};
-use libs::r1cs::SubcircuitR1CS;
+use libs::crs_artifacts::{read_univariate_tau_sequence, TAU_SEQUENCE_RKYV_FILE_NAME};
+use libs::frontend_artifacts::{read_placement_selector, Permutation};
 use libs::subcircuit_library::SubcircuitLibraryArg;
 use libs::utils::{try_check_device, try_load_setup_params_from_qap_path};
 use preprocess::{generate_univariate_preprocess, PreprocessError, PreprocessInputPaths};
@@ -19,7 +17,7 @@ struct Config {
     #[command(flatten)]
     subcircuit_library: SubcircuitLibraryArg,
 
-    /// CRS output directory containing univariate_crs.rkyv
+    /// CRS output directory containing tau_sequence.rkyv
     #[arg(long, value_name = "PATH")]
     crs: String,
 
@@ -70,61 +68,13 @@ fn run() -> Result<(), PreprocessError> {
     try_check_device()?;
 
     let setup_params = try_load_setup_params_from_qap_path(paths.qap_path)?;
-    let subcircuit_infos_path = PathBuf::from(paths.qap_path).join("subcircuitInfo.json");
-    let subcircuit_infos = SubcircuitInfo::read_box_from_json(subcircuit_infos_path.clone())
-        .map_err(|source| ArtifactError::Read {
-            artifact: "subcircuit information",
-            path: subcircuit_infos_path,
-            source,
-        })?;
-    let global_wire_list_path = PathBuf::from(paths.qap_path).join("globalWireList.json");
-    let global_wires =
-        read_global_wires(&global_wire_list_path).map_err(|source| ArtifactError::Read {
-            artifact: "global wire list",
-            path: global_wire_list_path.clone(),
-            source,
-        })?;
-    let public_wire_layout =
-        PublicWireLayout::derive(&setup_params, &global_wires, &subcircuit_infos).map_err(
-            |error| ArtifactError::Invalid {
-                artifact: "public wire layout",
-                path: global_wire_list_path,
-                reason: error.to_string(),
-            },
-        )?;
-    let r1cs = subcircuit_infos
-        .iter()
-        .enumerate()
-        .map(|(index, info)| {
-            if info.id != index {
-                return Err(ArtifactError::Invalid {
-                    artifact: "subcircuit information",
-                    path: PathBuf::from(paths.qap_path).join("subcircuitInfo.json"),
-                    reason: format!("catalog entry {index} declares subcircuit ID {}", info.id),
-                });
-            }
-            let path = PathBuf::from(paths.qap_path).join(format!("r1cs/subcircuit{index}.r1cs"));
-            SubcircuitR1CS::from_r1cs_sparse_only(path.clone(), &setup_params, info).map_err(
-                |source| ArtifactError::Read {
-                    artifact: "subcircuit R1CS",
-                    path,
-                    source,
-                },
-            )
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let subcircuits = r1cs
-        .iter()
-        .zip(subcircuit_infos.iter())
-        .map(|(r1cs, info)| r1cs.as_univariate_subcircuit(info))
-        .collect::<Vec<_>>();
-    let crs_path = PathBuf::from(paths.setup_path).join(UNIVARIATE_CRS_RKYV_FILE_NAME);
-    let crs =
-        read_univariate_crs_artifact(&crs_path, &setup_params, &public_wire_layout, &subcircuits)
-            .map_err(|source| CrsError::Read {
+    let crs_path = PathBuf::from(paths.setup_path).join(TAU_SEQUENCE_RKYV_FILE_NAME);
+    let crs = read_univariate_tau_sequence(&crs_path, &setup_params).map_err(|source| {
+        CrsError::Read {
             path: crs_path,
             source,
-        })?;
+        }
+    })?;
 
     let permutation_path = PathBuf::from(paths.synthesizer_path).join("permutation.json");
     let permutation_raw =

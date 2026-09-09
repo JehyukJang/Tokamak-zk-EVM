@@ -1,6 +1,7 @@
 use backend_univariate_crs_interface::{
-    archive, ArchivedUnivariateCrsRkyv, ArchivedUnivariateG1Rkyv, ArchivedUnivariateG2Rkyv,
+    archive, ArchivedUnivariateG1Rkyv, ArchivedUnivariateG2Rkyv, ArchivedUnivariateProverKeysRkyv,
     ArchivedUnivariatePublicQueryRkyv, ArchivedUnivariateTaggedQueryRkyv,
+    ArchivedUnivariateTauSequenceRkyv, ArchivedUnivariateVerifierKeysRkyv,
 };
 use clap::Parser;
 use memmap2::Mmap;
@@ -13,10 +14,13 @@ use std::path::{Path, PathBuf};
 const DEFAULT_CHUNK_BYTES: usize = 64 * 1024 * 1024;
 const CANONICAL_MANIFEST_FILE: &str = "canonical-manifest.json";
 const UNIVARIATE_CRS_SCHEMA_ID: &str = "tokamak-zk-evm-univariate";
+const TAU_SEQUENCE_FILE: &str = "tau_sequence.rkyv";
+const PROVER_KEYS_FILE: &str = "prover_keys.rkyv";
+const VERIFIER_KEYS_FILE: &str = "verifier_keys.rkyv";
 
 #[derive(Debug, Parser)]
 struct Config {
-    #[arg(long, value_name = "FILE")]
+    #[arg(long, value_name = "CRS_DIRECTORY")]
     input: PathBuf,
     #[arg(long, value_name = "DIRECTORY")]
     output: PathBuf,
@@ -29,10 +33,18 @@ struct Config {
 struct CanonicalManifest {
     schema_id: &'static str,
     source_package_version: &'static str,
-    source_rkyv_sha256: String,
+    source_rkyv_sha256: SourceRkyvDigests,
     declared_capacity: [u64; 3],
     k: u64,
     sections: Vec<CanonicalSection>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SourceRkyvDigests {
+    tau_sequence: String,
+    prover_keys: String,
+    verifier_keys: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -67,125 +79,155 @@ fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("output path already exists: {}", config.output.display()).into());
     }
 
-    let input = File::open(&config.input)?;
-    // SAFETY: the mapping is read-only and the input file remains open and
-    // unmodified for the lifetime of the mapping.
-    let bytes = unsafe { Mmap::map(&input)? };
-    let archive = archive::access::<ArchivedUnivariateCrsRkyv, archive::rancor::Error>(&bytes)
-        .map_err(|error| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("invalid univariate CRS archive: {error:?}"),
-            )
-        })?;
-    if archive.schema_id.as_str() != UNIVARIATE_CRS_SCHEMA_ID {
-        return Err(format!("unsupported univariate CRS schema: {}", archive.schema_id).into());
+    let tau_file = File::open(config.input.join(TAU_SEQUENCE_FILE))?;
+    let prover_file = File::open(config.input.join(PROVER_KEYS_FILE))?;
+    let verifier_file = File::open(config.input.join(VERIFIER_KEYS_FILE))?;
+    // SAFETY: these mappings are read-only and each source file remains open
+    // and unmodified for the lifetime of its mapping.
+    let tau_bytes = unsafe { Mmap::map(&tau_file)? };
+    let prover_bytes = unsafe { Mmap::map(&prover_file)? };
+    let verifier_bytes = unsafe { Mmap::map(&verifier_file)? };
+    let tau =
+        archive::access::<ArchivedUnivariateTauSequenceRkyv, archive::rancor::Error>(&tau_bytes)
+            .map_err(|error| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("invalid tau sequence archive: {error:?}"),
+                )
+            })?;
+    let prover =
+        archive::access::<ArchivedUnivariateProverKeysRkyv, archive::rancor::Error>(&prover_bytes)
+            .map_err(|error| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("invalid prover keys archive: {error:?}"),
+                )
+            })?;
+    let verifier = archive::access::<ArchivedUnivariateVerifierKeysRkyv, archive::rancor::Error>(
+        &verifier_bytes,
+    )
+    .map_err(|error| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("invalid verifier keys archive: {error:?}"),
+        )
+    })?;
+    let tau_digest: [u8; 32] = Sha256::digest(tau_bytes.as_ref()).into();
+    let tau_digest_hex = hex::encode(tau_digest);
+    if prover.tau_sequence_sha256 != tau_digest || verifier.tau_sequence_sha256 != tau_digest {
+        return Err("prover or verifier keys belong to a different tau sequence".into());
     }
-    if archive.s0_g1.is_empty() || archive.sxi_g1.is_empty() || archive.spsi_g1.is_empty() {
+    for schema_id in [&tau.schema_id, &prover.schema_id, &verifier.schema_id] {
+        if schema_id.as_str() != UNIVARIATE_CRS_SCHEMA_ID {
+            return Err(format!("unsupported univariate CRS schema: {schema_id}").into());
+        }
+    }
+    if tau.s0_g1.is_empty() || tau.sxi_g1.is_empty() || tau.spsi_g1.is_empty() {
         return Err("univariate CRS source sequences must be non-empty".into());
     }
-    validate_browser_integer_ranges(archive)?;
+    validate_matching_archives(tau, prover, verifier)?;
+    validate_browser_integer_ranges(prover, verifier)?;
 
     fs::create_dir_all(config.output.join("chunks"))?;
     let mut sections = Vec::new();
     sections.push(write_g1_section(
         &config.output,
         "crs.s0",
-        archive.s0_g1.as_slice(),
+        tau.s0_g1.as_slice(),
         config.chunk_bytes,
     )?);
     sections.push(write_g1_section(
         &config.output,
         "crs.sxi",
-        archive.sxi_g1.as_slice(),
+        tau.sxi_g1.as_slice(),
         config.chunk_bytes,
     )?);
     sections.push(write_g1_section(
         &config.output,
         "crs.spsi",
-        archive.spsi_g1.as_slice(),
+        tau.spsi_g1.as_slice(),
         config.chunk_bytes,
     )?);
     sections.push(write_public_keys(
         &config.output,
-        archive.gamma_inv_public_queries.as_slice(),
+        verifier.gamma_inv_public_queries.as_slice(),
         config.chunk_bytes,
     )?);
     sections.push(write_public_points(
         &config.output,
-        archive.gamma_inv_public_queries.as_slice(),
+        verifier.gamma_inv_public_queries.as_slice(),
         config.chunk_bytes,
     )?);
     sections.push(write_tagged_keys(
         &config.output,
         "crs.interface-query-keys",
-        archive.eta_inv_interface_queries.as_slice(),
+        prover.eta_inv_interface_queries.as_slice(),
         config.chunk_bytes,
     )?);
     sections.push(write_tagged_points(
         &config.output,
         "crs.interface-queries",
-        archive.eta_inv_interface_queries.as_slice(),
+        prover.eta_inv_interface_queries.as_slice(),
         config.chunk_bytes,
     )?);
     sections.push(write_tagged_keys(
         &config.output,
         "crs.internal-query-keys",
-        archive.delta_inv_internal_queries.as_slice(),
+        prover.delta_inv_internal_queries.as_slice(),
         config.chunk_bytes,
     )?);
     sections.push(write_tagged_points(
         &config.output,
         "crs.internal-queries",
-        archive.delta_inv_internal_queries.as_slice(),
+        prover.delta_inv_internal_queries.as_slice(),
         config.chunk_bytes,
     )?);
     sections.push(write_g1_section(
         &config.output,
         "crs.mask-u",
-        archive.delta_inv_u_masking_queries.as_slice(),
+        prover.delta_inv_u_masking_queries.as_slice(),
         config.chunk_bytes,
     )?);
     sections.push(write_g1_section(
         &config.output,
         "crs.mask-v",
-        archive.delta_inv_v_masking_queries.as_slice(),
+        prover.delta_inv_v_masking_queries.as_slice(),
         config.chunk_bytes,
     )?);
     sections.push(write_g1_section(
         &config.output,
         "crs.mask-w",
-        archive.delta_inv_w_masking_queries.as_slice(),
+        prover.delta_inv_w_masking_queries.as_slice(),
         config.chunk_bytes,
     )?);
     sections.push(write_g1_section(
         &config.output,
         "crs.mask-b",
-        archive.delta_inv_b_masking_queries.as_slice(),
+        prover.delta_inv_b_masking_queries.as_slice(),
         config.chunk_bytes,
     )?);
     sections.push(write_derived_g1_section(
         &config.output,
         "crs.binding-sources",
-        [&archive.delta_g1, &archive.eta_g1],
+        [&prover.delta_g1, &prover.eta_g1],
         config.chunk_bytes,
     )?);
     sections.push(write_derived_g1_section(
         &config.output,
         "crs.g1-handles",
-        [&archive.s0_g1[0], &archive.sxi_g1[0], &archive.spsi_g1[0]],
+        [&verifier.one_g1, &verifier.xi_g1, &verifier.psi_g1],
         config.chunk_bytes,
     )?);
     sections.push(write_derived_g2_section(
         &config.output,
         "crs.g2",
         [
-            &archive.one_g2,
-            &archive.tau_g2,
-            &archive.tau_k_g2,
-            &archive.gamma_g2,
-            &archive.eta_g2,
-            &archive.delta_g2,
+            &verifier.one_g2,
+            &verifier.tau_g2,
+            &verifier.tau_k_g2,
+            &verifier.gamma_g2,
+            &verifier.eta_g2,
+            &verifier.delta_g2,
         ],
         config.chunk_bytes,
     )?);
@@ -193,9 +235,13 @@ fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     let manifest = CanonicalManifest {
         schema_id: UNIVARIATE_CRS_SCHEMA_ID,
         source_package_version: env!("CARGO_PKG_VERSION"),
-        source_rkyv_sha256: hex_digest(&bytes),
-        declared_capacity: archive.shape.declared_capacity.map(Into::into),
-        k: archive.shape.k.into(),
+        source_rkyv_sha256: SourceRkyvDigests {
+            tau_sequence: tau_digest_hex,
+            prover_keys: hex_digest(&prover_bytes),
+            verifier_keys: hex_digest(&verifier_bytes),
+        },
+        declared_capacity: tau.shape.declared_capacity.map(Into::into),
+        k: tau.shape.k.into(),
         sections,
     };
     fs::write(
@@ -205,7 +251,53 @@ fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn validate_browser_integer_ranges(archive: &ArchivedUnivariateCrsRkyv) -> io::Result<()> {
+fn validate_matching_archives(
+    tau: &ArchivedUnivariateTauSequenceRkyv,
+    prover: &ArchivedUnivariateProverKeysRkyv,
+    verifier: &ArchivedUnivariateVerifierKeysRkyv,
+) -> io::Result<()> {
+    let shape_matches =
+        |other: &backend_univariate_crs_interface::ArchivedUnivariateCrsShapeRkyv| {
+            other.subcircuit_capacity == tau.shape.subcircuit_capacity
+                && other.arithmetic_domain_size == tau.shape.arithmetic_domain_size
+                && other.connection_domain_size == tau.shape.connection_domain_size
+                && other.intersection_domain_size == tau.shape.intersection_domain_size
+                && other.union_domain_size == tau.shape.union_domain_size
+                && other.minimum_capacity == tau.shape.minimum_capacity
+                && other.declared_capacity == tau.shape.declared_capacity
+                && other.k == tau.shape.k
+        };
+    if !shape_matches(&prover.shape) || !shape_matches(&verifier.shape) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "univariate CRS source archives have different shapes",
+        ));
+    }
+    let g1_matches = |left: &ArchivedUnivariateG1Rkyv, right: &ArchivedUnivariateG1Rkyv| {
+        left.x == right.x && left.y == right.y
+    };
+    let g2_matches = |left: &ArchivedUnivariateG2Rkyv, right: &ArchivedUnivariateG2Rkyv| {
+        left.x == right.x && left.y == right.y
+    };
+    if !g1_matches(&tau.s0_g1[0], &verifier.one_g1)
+        || !g1_matches(&tau.sxi_g1[0], &verifier.xi_g1)
+        || !g1_matches(&tau.spsi_g1[0], &verifier.psi_g1)
+        || !g2_matches(&tau.one_g2, &verifier.one_g2)
+        || !g2_matches(&tau.tau_g2, &verifier.tau_g2)
+        || !g2_matches(&tau.tau_k_g2, &verifier.tau_k_g2)
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "univariate CRS verifier handles do not match the tau sequence",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_browser_integer_ranges(
+    prover: &ArchivedUnivariateProverKeysRkyv,
+    verifier: &ArchivedUnivariateVerifierKeysRkyv,
+) -> io::Result<()> {
     let fits_u32 = |value: u64, label: &str| {
         u32::try_from(value).map(|_| ()).map_err(|_| {
             io::Error::new(
@@ -214,7 +306,7 @@ fn validate_browser_integer_ranges(archive: &ArchivedUnivariateCrsRkyv) -> io::R
             )
         })
     };
-    for query in archive.gamma_inv_public_queries.iter() {
+    for query in verifier.gamma_inv_public_queries.iter() {
         fits_u32(
             query.buffer_subcircuit_id.into(),
             "public query subcircuit ID",
@@ -227,11 +319,11 @@ fn validate_browser_integer_ranges(archive: &ArchivedUnivariateCrsRkyv) -> io::R
     for (label, queries) in [
         (
             "interface query",
-            archive.eta_inv_interface_queries.as_slice(),
+            prover.eta_inv_interface_queries.as_slice(),
         ),
         (
             "internal query",
-            archive.delta_inv_internal_queries.as_slice(),
+            prover.delta_inv_internal_queries.as_slice(),
         ),
     ] {
         for query in queries {
@@ -450,8 +542,9 @@ fn hex_digest(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
     use backend_univariate_crs_interface::{
-        UnivariateCrsRkyv, UnivariateCrsShapeRkyv, UnivariateG1Rkyv, UnivariateG2Rkyv,
-        UnivariatePublicQueryRkyv, UnivariateTaggedQueryRkyv,
+        UnivariateCrsShapeRkyv, UnivariateG1Rkyv, UnivariateG2Rkyv, UnivariateProverKeysRkyv,
+        UnivariatePublicQueryRkyv, UnivariateTaggedQueryRkyv, UnivariateTauSequenceRkyv,
+        UnivariateVerifierKeysRkyv,
     };
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -466,13 +559,27 @@ mod tests {
                 .as_nanos(),
         ));
         fs::create_dir_all(&root).unwrap();
-        let input = root.join("univariate_crs.rkyv");
+        let input = root.join("crs");
+        fs::create_dir_all(&input).unwrap();
         let output = root.join("browser-crs");
-        fs::write(
-            &input,
-            archive::to_bytes::<archive::rancor::Error>(&fixture()).unwrap(),
-        )
-        .unwrap();
+        let (tau, mut prover, mut verifier) = fixture();
+        let tau_bytes = archive::to_bytes::<archive::rancor::Error>(&tau).unwrap();
+        let tau_digest = Sha256::digest(tau_bytes.as_ref()).into();
+        prover.tau_sequence_sha256 = tau_digest;
+        verifier.tau_sequence_sha256 = tau_digest;
+        for (file_name, bytes) in [
+            (TAU_SEQUENCE_FILE, tau_bytes),
+            (
+                PROVER_KEYS_FILE,
+                archive::to_bytes::<archive::rancor::Error>(&prover).unwrap(),
+            ),
+            (
+                VERIFIER_KEYS_FILE,
+                archive::to_bytes::<archive::rancor::Error>(&verifier).unwrap(),
+            ),
+        ] {
+            fs::write(input.join(file_name), bytes).unwrap();
+        }
 
         run(Config {
             input,
@@ -502,7 +609,11 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 
-    fn fixture() -> UnivariateCrsRkyv {
+    fn fixture() -> (
+        UnivariateTauSequenceRkyv,
+        UnivariateProverKeysRkyv,
+        UnivariateVerifierKeysRkyv,
+    ) {
         let g1 = UnivariateG1Rkyv {
             x: [0; 48],
             y: [0; 48],
@@ -517,21 +628,46 @@ mod tests {
             local_wire_index: 2,
             point: g1,
         };
-        UnivariateCrsRkyv {
+        let shape = || UnivariateCrsShapeRkyv {
+            subcircuit_capacity: 1,
+            arithmetic_domain_size: 1,
+            connection_domain_size: 1,
+            intersection_domain_size: 1,
+            union_domain_size: 1,
+            minimum_capacity: [1, 1, 1],
+            declared_capacity: [2, 1, 1],
+            k: 1,
+        };
+        let tau = UnivariateTauSequenceRkyv {
             schema_id: UNIVARIATE_CRS_SCHEMA_ID.to_owned(),
-            shape: UnivariateCrsShapeRkyv {
-                subcircuit_capacity: 1,
-                arithmetic_domain_size: 1,
-                connection_domain_size: 1,
-                intersection_domain_size: 1,
-                union_domain_size: 1,
-                minimum_capacity: [1, 1, 1],
-                declared_capacity: [2, 1, 1],
-                k: 1,
-            },
+            shape: shape(),
             s0_g1: vec![g1; 3],
             sxi_g1: vec![g1; 2],
             spsi_g1: vec![g1; 2],
+            one_g2: g2,
+            tau_g2: g2,
+            tau_k_g2: g2,
+        };
+        let prover = UnivariateProverKeysRkyv {
+            schema_id: UNIVARIATE_CRS_SCHEMA_ID.to_owned(),
+            shape: shape(),
+            tau_sequence_sha256: [0; 32],
+            eta_inv_interface_queries: vec![tagged],
+            delta_inv_internal_queries: vec![tagged],
+            delta_inv_u_masking_queries: vec![g1; 2],
+            delta_inv_v_masking_queries: vec![g1; 2],
+            delta_inv_w_masking_queries: vec![g1; 2],
+            delta_inv_b_masking_queries: vec![g1; 2],
+            delta_g1: g1,
+            eta_g1: g1,
+        };
+        let verifier = UnivariateVerifierKeysRkyv {
+            schema_id: UNIVARIATE_CRS_SCHEMA_ID.to_owned(),
+            shape: shape(),
+            tau_sequence_sha256: [0; 32],
+            one_g1: g1,
+            xi_g1: g1,
+            psi_g1: g1,
             one_g2: g2,
             tau_g2: g2,
             tau_k_g2: g2,
@@ -543,14 +679,7 @@ mod tests {
                 local_public_wire_index: 1,
                 point: g1,
             }],
-            eta_inv_interface_queries: vec![tagged],
-            delta_inv_internal_queries: vec![tagged],
-            delta_inv_u_masking_queries: vec![g1; 2],
-            delta_inv_v_masking_queries: vec![g1; 2],
-            delta_inv_w_masking_queries: vec![g1; 2],
-            delta_inv_b_masking_queries: vec![g1; 2],
-            delta_g1: g1,
-            eta_g1: g1,
-        }
+        };
+        (tau, prover, verifier)
     }
 }

@@ -22,7 +22,11 @@ export interface UnivariateCrsChunkSection {
 
 export interface AdmittedUnivariateCrsChunks {
   readonly sourcePackageVersion: string;
-  readonly sourceRkyvSha256: string;
+  readonly sourceRkyvSha256: {
+    readonly tauSequence: string;
+    readonly proverKeys: string;
+    readonly verifierKeys: string;
+  };
   readonly declaredCapacity: readonly [bigint, bigint, bigint];
   readonly k: bigint;
   requireSection(label: string): UnivariateCrsChunkSection;
@@ -60,7 +64,12 @@ export function admitUnivariateCrsChunks(
   }
   const sourcePackageVersion = requireString(manifest.sourcePackageVersion, "sourcePackageVersion");
   assertCrsChunkCompatibility(sourcePackageVersion);
-  const sourceRkyvSha256 = requireSha256(manifest.sourceRkyvSha256, "sourceRkyvSha256");
+  const sourceDigests = requireRecord(manifest.sourceRkyvSha256, "sourceRkyvSha256");
+  const sourceRkyvSha256 = {
+    tauSequence: requireSha256(sourceDigests.tauSequence, "sourceRkyvSha256.tauSequence"),
+    proverKeys: requireSha256(sourceDigests.proverKeys, "sourceRkyvSha256.proverKeys"),
+    verifierKeys: requireSha256(sourceDigests.verifierKeys, "sourceRkyvSha256.verifierKeys"),
+  };
   const capacity = requireSafeIntegerArray(manifest.declaredCapacity, "declaredCapacity");
   if (capacity.length !== 3) throw new Error("Univariate CRS declaredCapacity must contain exactly three values.");
   const k = requireSafeInteger(manifest.k, "k");

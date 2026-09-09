@@ -87,32 +87,29 @@ Do not edit generated inputs manually. The generators write ignored active
 outputs under `src/generated/active`, `src/prover/generated/active`, and
 `src/verifier/generated/active`; compilation consumes only those outputs.
 Both build modes compile the same optimized package output. Their only input
-selection difference is the subcircuit-library and verifier-CRS source.
+selection difference is the subcircuit-library source.
 
-Development selects local qap-compiler output and an explicit trusted-setup
-debug Sigma:
+Development selects local qap-compiler output:
 
 ```sh
-export BACKEND_WASM_VERIFIER_CRS_DIR=../rust/setup/trusted-setup/output/debug
 npm run build:development
 npm run typecheck:development
 ```
 
 Production selects the pinned npm `@tokamak-zk-evm/subcircuit-library`
-snapshot and requires an explicit complete final CRS directory:
+snapshot:
 
 ```sh
-export BACKEND_WASM_VERIFIER_CRS_DIR=/absolute/path/to/final-crs-directory
 npm run build:production
 npm run typecheck:production
 ```
 
-The production verifier generator requires `sigma_verify.json` and
-`crs_provenance.json`, validates the backend provenance contract and
-compatibility class, and verifies all final-artifact digests before embedding
-the verifier Sigma. `prepack` always runs the production build, so it cannot
-reuse locally generated active inputs. The development generator requires only
-the explicit debug Sigma; it does not treat a debug CRS as publishable.
+The CRS is not embedded in either build. Native trusted setup emits a directory
+containing `tau_sequence.rkyv`, `prover_keys.rkyv`, and `verifier_keys.rkyv`.
+The offline converter turns that directory into a manifest and bounded chunks;
+applications supply the resulting manifest and lazy chunk loader at runtime.
+`prepack` always runs the production build, so it cannot reuse a locally
+generated subcircuit-library projection.
 
 ## Test fixture policy
 
@@ -182,7 +179,6 @@ the repository's
 7. Inspect the actual packlist and packed metadata:
 
    ```sh
-   export BACKEND_WASM_VERIFIER_CRS_DIR=/absolute/path/to/final-crs-directory
    npm pack --dry-run
    ```
 

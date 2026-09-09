@@ -88,7 +88,7 @@
     "univariate:transcript:check": "tsx test/checks/univariate/check-univariate-transcript.ts",
     "architecture:check": "tsx test/checks/architecture/check-layering.ts",
     "fixtures:copy": "npm run subcircuit-library:generate:development && tsx scripts/fixtures/copy-fixtures.ts fixtures/small/copy-manifest.json",
-    "fixtures:prepare": "npm run subcircuit-library:generate:development && BACKEND_WASM_VERIFIER_CRS_DIR=../rust/setup/trusted-setup/output/debug npm run verifier-crs:generate:development && tsx scripts/fixtures/prepare-runtime-fixtures.ts fixtures/small/copy-manifest.json",
+    "fixtures:prepare": "npm run subcircuit-library:generate:development && tsx scripts/fixtures/prepare-runtime-fixtures.ts fixtures/small/copy-manifest.json",
     "fixtures:check:native-verifier": "tsx test/checks/fixtures/check-native-verifier-fixture.ts fixtures/small/copy-manifest.json",
     "polynomial:buffer:check": "tsx test/checks/polynomial/check-polynomial-buffer.ts",
     "preprocess:check": "tsx test/checks/univariate/check-univariate-preprocess.ts",

@@ -1,14 +1,13 @@
 //! Native artifact ingress for the univariate reference prover.
 
 use crate::univariate::{
-    build_public_binding_commitment, collect_public_inputs, project_public_binding_values,
-    prove_univariate_reference, select_witness_values, ArithmeticMaskRandomizers,
-    UnivariateReferenceProvingInput,
+    collect_public_inputs, prove_univariate_reference, select_witness_values,
+    ArithmeticMaskRandomizers, UnivariateReferenceProvingInput,
 };
 use crate::{ProveError, ProveInputPaths};
 use icicle_bls12_381::curve::ScalarCfg;
 use icicle_core::traits::GenerateRandom;
-use libs::crs_artifacts::{read_univariate_crs_artifact, UNIVARIATE_CRS_RKYV_FILE_NAME};
+use libs::crs_artifacts::read_univariate_prover_crs;
 use libs::errors::{ArtifactError, CrsError};
 use libs::frontend_artifacts::public_wire_layout::{read_global_wires, PublicWireLayout};
 use libs::frontend_artifacts::{
@@ -77,12 +76,13 @@ pub fn prove(paths: &ProveInputPaths<'_>) -> Result<(), ProveError> {
         .zip(infos.iter())
         .map(|(r1cs, info)| r1cs.as_univariate_subcircuit(info))
         .collect::<Vec<_>>();
-    let crs_path = PathBuf::from(paths.setup_path).join(UNIVARIATE_CRS_RKYV_FILE_NAME);
-    let crs = read_univariate_crs_artifact(&crs_path, &setup, &public_layout, &subcircuits)
-        .map_err(|source| CrsError::Read {
+    let crs_path = PathBuf::from(paths.setup_path);
+    let crs = read_univariate_prover_crs(&crs_path, &setup, &subcircuits).map_err(|source| {
+        CrsError::Read {
             path: crs_path,
             source,
-        })?;
+        }
+    })?;
 
     let selector_path = PathBuf::from(paths.synthesizer_path).join("selector.json");
     let selector =
@@ -126,8 +126,8 @@ pub fn prove(paths: &ProveInputPaths<'_>) -> Result<(), ProveError> {
             source,
         })?;
 
-    let s_kappa = placement_selector_polynomial(&crs.foundation.shape, &setup, &selector)?;
-    let s_c = connection_permutation_polynomial(&crs.foundation.shape, &setup, &permutation)?;
+    let s_kappa = placement_selector_polynomial(&crs.tau_sequence.shape, &setup, &selector)?;
+    let s_c = connection_permutation_polynomial(&crs.tau_sequence.shape, &setup, &permutation)?;
     let selected = select_witness_values(&selector, &placements, &setup, &subcircuits)?;
     let slots = selected
         .slot_values
@@ -142,23 +142,18 @@ pub fn prove(paths: &ProveInputPaths<'_>) -> Result<(), ProveError> {
         })
         .collect::<Vec<_>>();
     let maps = witness_maps(
-        &crs.foundation.shape,
+        &crs.tau_sequence.shape,
         &setup,
         &selector,
         &slots,
         &subcircuits,
     )?;
     let public_inputs = collect_public_inputs(&instance, &setup)?;
-    let public_binding = build_public_binding_commitment(
-        &crs,
-        &crs.query_index(),
-        &project_public_binding_values(&instance, &setup, &public_layout)?,
-    )?;
     let randomizers = ArithmeticMaskRandomizers {
-        u: random_polynomial(crs.delta_inv_u_masking_queries.len()),
-        v: random_polynomial(crs.delta_inv_v_masking_queries.len()),
-        w: random_polynomial(crs.delta_inv_w_masking_queries.len()),
-        b: random_polynomial(crs.delta_inv_b_masking_queries.len()),
+        u: random_polynomial(crs.prover_keys.delta_inv_u_masking_queries.len()),
+        v: random_polynomial(crs.prover_keys.delta_inv_v_masking_queries.len()),
+        w: random_polynomial(crs.prover_keys.delta_inv_w_masking_queries.len()),
+        b: random_polynomial(crs.prover_keys.delta_inv_b_masking_queries.len()),
     };
     let recursion_randomizer = random_polynomial(2);
     let (proof, _challenges) = prove_univariate_reference(UnivariateReferenceProvingInput {
@@ -174,9 +169,6 @@ pub fn prove(paths: &ProveInputPaths<'_>) -> Result<(), ProveError> {
         public_inputs: &public_inputs,
     })?;
 
-    // Keep the public binding computation in the proving ingress: it makes a
-    // malformed public-query projection fail before a proof is emitted.
-    let _ = public_binding;
     let output_dir = PathBuf::from(paths.output_path);
     fs::create_dir_all(&output_dir).map_err(|source| ProveError::WriteOutput {
         path: output_dir.clone(),

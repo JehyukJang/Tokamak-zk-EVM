@@ -6,7 +6,7 @@ use libs::crs_artifacts::{ArchivedPartialSigma1RkyvExt, ArchivedSigmaPreprocessR
 use libs::errors::{ArtifactError, CrsError, DeviceError};
 use libs::frontend_artifacts::{Instance, Permutation, SetupParams};
 use libs::proof_protocol::Preprocess;
-use libs::univariate_crs::{UnivariateCrs, UnivariateCrsError, UnivariateCrsShape};
+use libs::univariate_crs::{UnivariateCrsError, UnivariateCrsShape, UnivariateTauSequence};
 use libs::univariate_preprocess::UnivariatePreprocess;
 use libs::univariate_relation::{
     connection_permutation_polynomial, placement_selector_polynomial, UnivariateRelationError,
@@ -50,14 +50,14 @@ pub enum PreprocessError {
 /// selector and connection permutation.  No legacy bivariate polynomial,
 /// public-instance commitment, or preprocessing digest is involved.
 pub fn generate_univariate_preprocess(
-    crs: &UnivariateCrs,
+    crs: &UnivariateTauSequence,
     selector: &[Option<usize>],
     permutation: &[Permutation],
     setup_params: &SetupParams,
 ) -> Result<UnivariatePreprocess, PreprocessError> {
     let expected_shape = UnivariateCrsShape::from_setup_params(setup_params)?;
-    if crs.foundation.schema_id != libs::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID
-        || !crs.foundation.shape.admits_setup(&expected_shape)
+    if crs.schema_id != libs::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID
+        || !crs.shape.admits_setup(&expected_shape)
     {
         return Err(PreprocessError::UnivariateCrsMismatch);
     }
@@ -122,9 +122,8 @@ mod tests {
     use icicle_core::curve::Curve;
     use icicle_core::traits::{Arithmetic, FieldImpl};
     use libs::frontend_artifacts::SetupParams;
-    use libs::group_structures::G1serde;
     use libs::univariate_crs::{
-        UnivariateCrs, UnivariateCrsFoundation, UnivariateCrsShape, UnivariateTrapdoor,
+        UnivariateCrsFoundation, UnivariateCrsShape, UnivariateTauSequence, UnivariateTrapdoor,
     };
     use libs::univariate_preprocess::UnivariatePreprocess;
     use libs::univariate_relation::{
@@ -168,17 +167,15 @@ mod tests {
             G2CurveCfg::generate_random_affine_points(1)[0],
         )
         .unwrap();
-        let crs = UnivariateCrs {
-            foundation,
-            gamma_inv_public_queries: Box::new([]),
-            eta_inv_interface_queries: Box::new([]),
-            delta_inv_internal_queries: Box::new([]),
-            delta_inv_u_masking_queries: Box::new([]),
-            delta_inv_v_masking_queries: Box::new([]),
-            delta_inv_w_masking_queries: Box::new([]),
-            delta_inv_b_masking_queries: Box::new([]),
-            delta_g1: G1serde::zero(),
-            eta_g1: G1serde::zero(),
+        let crs = UnivariateTauSequence {
+            schema_id: foundation.schema_id,
+            shape: foundation.shape,
+            s0_g1: foundation.s0_g1,
+            sxi_g1: foundation.sxi_g1,
+            spsi_g1: foundation.spsi_g1,
+            one_g2: foundation.one_g2,
+            tau_g2: foundation.tau_g2,
+            tau_k_g2: foundation.tau_k_g2,
         };
         let selector = [Some(0), None];
         let permutation = [];

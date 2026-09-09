@@ -14,13 +14,13 @@ import { loadProverInputFromBinaryInput } from "../../src/prover/api/binary-inpu
 import { loadPreprocessInputFromBinaryInput } from "../../src/preprocess/api/binary-input.js";
 import { createCurveRuntime } from "../../src/runtime/curve/curve.js";
 import { resolveFixtureWorkDirectory } from "./fixture-paths.js";
-import { convertUnivariateCrsRkyv } from "../converter/convert-univariate-crs.js";
+import { convertUnivariateCrsDirectory } from "../converter/convert-univariate-crs.js";
 
 interface CopyManifest {
   readonly schemaVersion: 2;
   readonly suite: string;
   readonly workDirectory: string;
-  readonly univariateCrsSource: string;
+  readonly univariateCrsSourceDirectory: string;
 }
 
 async function main(argv: readonly string[]): Promise<void> {
@@ -48,8 +48,8 @@ async function main(argv: readonly string[]): Promise<void> {
   await rm(runtimeRoot, { recursive: true, force: true });
   await mkdir(runtimeRoot, { recursive: true });
   const crsRoot = path.join(runtimeRoot, "crs");
-  await convertUnivariateCrsRkyv({
-    input: path.resolve(repositoryRoot, manifest.univariateCrsSource),
+  await convertUnivariateCrsDirectory({
+    input: path.resolve(repositoryRoot, manifest.univariateCrsSourceDirectory),
     output: crsRoot,
     chunkBytes: 64 * 1024 * 1024,
   });
@@ -121,15 +121,15 @@ function parseCopyManifest(raw: unknown): CopyManifest {
   if (typeof raw.workDirectory !== "string" || raw.workDirectory.trim() === "" || path.isAbsolute(raw.workDirectory)) {
     throw new Error("Copy manifest workDirectory must be a non-empty relative path.");
   }
-  if (typeof raw.univariateCrsSource !== "string" || raw.univariateCrsSource.trim() === "" || path.isAbsolute(raw.univariateCrsSource)) {
-    throw new Error("Copy manifest univariateCrsSource must be a non-empty relative path.");
+  if (typeof raw.univariateCrsSourceDirectory !== "string" || raw.univariateCrsSourceDirectory.trim() === "" || path.isAbsolute(raw.univariateCrsSourceDirectory)) {
+    throw new Error("Copy manifest univariateCrsSourceDirectory must be a non-empty relative path.");
   }
 
   return {
     schemaVersion: 2,
     suite: raw.suite,
     workDirectory: path.normalize(raw.workDirectory),
-    univariateCrsSource: path.normalize(raw.univariateCrsSource),
+    univariateCrsSourceDirectory: path.normalize(raw.univariateCrsSourceDirectory),
   };
 }
 

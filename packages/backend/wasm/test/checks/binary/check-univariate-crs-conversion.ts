@@ -82,7 +82,11 @@ async function checkCanonicalConversion(): Promise<void> {
     await writeFile(path.join(canonicalRoot, "canonical-manifest.json"), JSON.stringify({
       schemaId: UNIVARIATE_CRS_CHUNK_CONTRACT.sourceSchemaId,
       sourcePackageVersion: BACKEND_WASM_PACKAGE_VERSION,
-      sourceRkyvSha256: "11".repeat(32),
+      sourceRkyvSha256: {
+        tauSequence: "11".repeat(32),
+        proverKeys: "22".repeat(32),
+        verifierKeys: "33".repeat(32),
+      },
       declaredCapacity: [1, 1, 1],
       k: 1,
       sections,
@@ -150,7 +154,11 @@ function createFixture(g1: Uint8Array, g2: Uint8Array, corruptS0 = false): Univa
       schemaId: UNIVARIATE_CRS_CHUNK_CONTRACT.schemaId,
       sourceSchemaId: UNIVARIATE_CRS_CHUNK_CONTRACT.sourceSchemaId,
       sourcePackageVersion: BACKEND_WASM_PACKAGE_VERSION,
-      sourceRkyvSha256: "00".repeat(32),
+      sourceRkyvSha256: {
+        tauSequence: "00".repeat(32),
+        proverKeys: "11".repeat(32),
+        verifierKeys: "22".repeat(32),
+      },
       declaredCapacity: [1, 1, 1],
       k: 1,
       sections,

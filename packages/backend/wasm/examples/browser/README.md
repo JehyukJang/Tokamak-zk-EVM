@@ -54,9 +54,11 @@ you intend to run:
 The default URLs in the page point to these names. They can be replaced with
 same-origin or CORS-enabled application URLs.
 
-Prepare ordinary runtime binaries with the package converter APIs. Convert
-`univariate_crs.rkyv` offline with `npm run univariate-crs:convert` and copy its
-complete output directory to `public/artifacts/crs/`. Source artifact
+Prepare ordinary runtime binaries with the package converter APIs. Convert the
+native trusted-setup output directory containing `tau_sequence.rkyv`,
+`prover_keys.rkyv`, and `verifier_keys.rkyv` with
+`npm run univariate-crs:convert`, then copy its complete output directory to
+`public/artifacts/crs/`. Source artifact
 authentication remains the application's responsibility.
 
 The CRS and witness files are intentionally not included in this example or in

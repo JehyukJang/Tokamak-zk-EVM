@@ -21,7 +21,7 @@ pub const FINAL_MPC_CRS_DOCUMENT_KIND: &str = "finalMpcCrs";
 pub const CEREMONY_PROTOCOL_VERSION: &str = "tokamak-mpc-2phase-v1";
 
 const CRS_PROVENANCE_CONTRACT_SHA256: &str =
-    "fcbff12380b476a5bdfa3d80772bbc2480587b36b44cac4d3def2cbea744985e";
+    "bbad4c4e4ceba8c23e7e36d07af5e2b69362bea62c7221e193e54843eab4f9da";
 const SUPPORTED_SCHEMA_KEYWORDS: &[&str] = &[
     "additionalProperties",
     "const",
@@ -55,7 +55,9 @@ pub struct DevelopmentTrustedSetupSigmaProvenance {
 pub struct DevelopmentTrustedSetupUnivariateCrsProvenance {
     pub release_eligible: DevelopmentOnlyReleaseEligibility,
     pub protocol_schema_id: String,
-    pub univariate_crs_rkyv_sha256: String,
+    pub tau_sequence_rkyv_sha256: String,
+    pub prover_keys_rkyv_sha256: String,
+    pub verifier_keys_rkyv_sha256: String,
 }
 
 /// A serialized `false` that cannot be constructed as `true`.
@@ -461,7 +463,9 @@ mod tests {
             DevelopmentTrustedSetupUnivariateCrsProvenance {
                 release_eligible: DevelopmentOnlyReleaseEligibility,
                 protocol_schema_id: "tokamak-zk-evm-univariate".to_string(),
-                univariate_crs_rkyv_sha256: "0".repeat(64),
+                tau_sequence_rkyv_sha256: "0".repeat(64),
+                prover_keys_rkyv_sha256: "1".repeat(64),
+                verifier_keys_rkyv_sha256: "2".repeat(64),
             },
         );
         let encoded = serde_json::to_value(univariate).expect("must serialize provenance");
