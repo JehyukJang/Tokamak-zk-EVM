@@ -28,6 +28,13 @@ const library = (
 }) as never;
 
 describe('placement selector', () => {
+  it('uses only -1 for unused slots and rejects noncompiled active IDs', () => {
+    expect(derivePlacementSelector([], [], library(2, [], [0]))).toEqual([-1, -1]);
+    for (const id of [-1, -2, 0xffff_ffff, 3]) {
+      expect(() => derivePlacementSelector([placement(id)], [variables(id)], library(2, [], [0])))
+        .toThrow();
+    }
+  });
   it('uses capacity length and preserves an inactive non-buffer slot', () => {
     const placements = [placement(0), placement(1), placement(2), placement(9)];
     const placementVariables = placements.map(({ subcircuitId }) => variables(subcircuitId));

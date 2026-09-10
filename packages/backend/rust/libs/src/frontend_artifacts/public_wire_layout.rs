@@ -651,6 +651,8 @@ mod tests {
             l_D: global_wires.len(),
             m_D: global_wires.len(),
             n: 1,
+            m: global_wires.len().next_power_of_two(),
+            t: 2,
             s_D: 1,
             s_max: 1,
         };
@@ -860,6 +862,13 @@ mod tests {
                 l_D: L,
                 m_D: global_wires.len(),
                 n: 1,
+                m: subcircuits
+                    .iter()
+                    .map(|info| info.Nwires)
+                    .max()
+                    .unwrap()
+                    .next_power_of_two(),
+                t: (subcircuits.len() + 1).next_power_of_two(),
                 s_D: subcircuits.len(),
                 s_max: 8,
             },

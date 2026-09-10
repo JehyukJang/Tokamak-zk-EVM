@@ -219,6 +219,8 @@ mod frontend_index_tests {
             l_D: 4,
             m_D: 4,
             n: 2,
+            m: 4,
+            t: 2,
             s_D: 1,
             s_max: 1,
         }

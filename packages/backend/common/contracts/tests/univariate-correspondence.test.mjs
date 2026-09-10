@@ -5,6 +5,31 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const fixture = JSON.parse(readFileSync(new URL("../fixtures/univariate-selection.json", import.meta.url), "utf8"));
+test("global role coordinates do not assume circuit-major wire numbering", () => {
+  const lFree = 2, l = 3, lD = 7, m = 4;
+  const maps = [[3, 0, 7], [4, 2], [5, 1, 8]];
+  const globals = Array(12).fill(null);
+  for (const [k, map] of maps.entries()) {
+    assert.ok(map.length <= m);
+    for (const [j, g] of map.entries()) {
+      assert.equal(globals[g], null);
+      globals[g] = [k, j];
+    }
+  }
+  assert.deepEqual(globals[6], null); // Interface padding, not a compiled wire.
+  const publicQueries = maps.flatMap((map, k) => map.flatMap((g, j) =>
+    g < l ? [{ i: k, k, j, g, role: g < lFree ? "free" : "fixed" }] : []));
+  publicQueries.sort((a, b) => a.g - b.g);
+  assert.deepEqual(publicQueries.map(({ k, role }) => [k, role]), [[0, "free"], [2, "free"], [1, "fixed"]]);
+  assert.ok(publicQueries.every(({ i, k }) => i === k));
+  for (const [k, map] of maps.entries()) {
+    for (const [j, g] of map.entries()) assert.deepEqual(globals[g], [k, j]);
+  }
+  // A global interface coordinate need not equal the local wire index.
+  assert.equal(maps[2][0] - l, 2);
+  assert.notEqual(maps[2][0] - l, 0);
+  assert.ok(maps[0][2] >= lD);
+});
 const vector = fixture.selection;
 const modulus = BigInt(vector.fieldModulus);
 const mod = (x) => ((x % modulus) + modulus) % modulus;
@@ -274,4 +299,79 @@ test("fixed binding joins the existing five pairing operands with the correct si
   assert.equal(residual, 0n);
   assert.notEqual(mod(residual + b.cFix), 0n, "omitting the fixed subtraction fails");
   assert.notEqual(mod(residual + 2n * b.cFix), 0n, "adding instead of subtracting fails");
+});
+
+const crsContract = JSON.parse(readFileSync(new URL("../univariate-crs-chunk-contract.json", import.meta.url), "utf8"));
+const artifactContract = JSON.parse(readFileSync(new URL("../browser-artifact-contract.v1.json", import.meta.url), "utf8"));
+
+test("domain vectors separate arithmetic coordinates from library selection", () => {
+  const domain = JSON.parse(readFileSync(new URL("../univariate-domain-contract.v1.json", import.meta.url), "utf8"));
+  const vectors = JSON.parse(readFileSync(new URL("../fixtures/univariate-domain-shape.v1.json", import.meta.url), "utf8"));
+  assert.equal(domain.arithmeticDomain.index, "i + s_max * r");
+  assert.equal(domain.selectionDomain.index, "i + s_max * k");
+  for (const {setup: p, expected: e} of vectors.cases) {
+    assert.equal(p.t, ceilPowerOfTwo(p.s_D + 1));
+    const NA = p.n * p.s_max, NC = (p.l_D - p.l) * p.s_max, NS = p.t * p.s_max;
+    const d = Math.max(NA, NC) + 1, h = d + 1;
+    assert.equal(NA, e.N_A); assert.equal(NC, e.N_C); assert.equal(NS, e.N_S);
+    assert.equal(Math.max(2*d + 1, NS + 1, h + p.s_max*(p.t - 1), p.l_free - 1), e.P);
+    assert.equal((p.s_max - 1) + p.s_max*(p.n - 1), e.arithmeticIndex);
+    assert.equal((p.s_max - 1) + p.s_max*(p.t - 1), e.selectionIndex);
+    assert.equal(p.m_D, p.m * p.s_D);
+  }
+});
+
+test("four CRS payloads own each section once and preprocess is self-contained", () => {
+  const labels = crsContract.sections.map(section => section.label);
+  const stored = Object.values(crsContract.payloads).flat();
+  assert.equal(Object.keys(crsContract.payloads).length, 4);
+  assert.equal(new Set(labels).size, labels.length);
+  assert.equal(new Set(stored).size, stored.length);
+  assert.deepEqual([...stored].sort(), [...labels].sort());
+  assert.deepEqual(crsContract.roles.preprocess, crsContract.payloads["preprocess_keys.rkyv"]);
+  assert.ok(!crsContract.roles.prover.includes("crs.fixed-public-queries"));
+  assert.ok(!crsContract.roles.verifier.includes("crs.fixed-public-queries"));
+  for (const role of Object.values(crsContract.roles)) {
+    for (const label of role) assert.ok(labels.includes(label));
+  }
+});
+
+test("preprocess power windows encode S_C and shifted Z_u without unused powers", () => {
+  const NC = publicFixture.mI * publicFixture.s;
+  const omegaC = pow(BigInt(vector.fieldGenerator), (modulus - 1n) / BigInt(NC));
+  const domainC = Array.from({ length: NC }, (_, i) => pow(omegaC, i));
+  const permutation = [...domainC];
+  [permutation[0], permutation[1]] = [permutation[1], permutation[0]];
+  const sc = interpolate(domainC, permutation);
+  assert.notEqual(sc[NC - 1], 0n, "the last allowed S_C coefficient is needed");
+  const scBases = Array.from({ length: NC }, (_, a) => pow(tau, a));
+  const scCommitment = sc.reduce((sum, coefficient, a) => mod(sum + coefficient * scBases[a]), 0n);
+  assert.equal(scCommitment, evaluate(sc, tau));
+  assert.equal(crsContract.order["crs.preprocess-sc"], "tau^a, a=0..N_C-1");
+
+  for (const selector of vector.selectors) {
+    const selected = normalizeSelector(selector, vector.compiled, vector.t, vector.s).map((k, i) => roots[i + vector.s * k]);
+    const zu = fromRoots(roots.filter(root => !selected.includes(root)));
+    const bases = zu.map((_, a) => pow(tau, publicFixture.h + a));
+    const commitment = zu.reduce((sum, coefficient, a) => mod(sum + coefficient * bases[a]), 0n);
+    assert.notEqual(zu[0], 0n);
+    assert.equal(zu.at(-1), 1n);
+    assert.equal(bases.length, vector.s * (vector.t - 1) + 1);
+    assert.equal(commitment, mod(pow(tau, publicFixture.h) * evaluate(zu, tau)));
+  }
+  assert.equal(crsContract.order["crs.preprocess-selection"], "tau^(h+a), a=0..s_max*(t-1)");
+});
+
+test("preprocess output and proof carry only the current protocol elements", () => {
+  const [preprocess, proof] = artifactContract.artifacts;
+  assert.deepEqual(preprocess.sections.map(section => section.points.map(point => point.name)), [["S_C", "C_fix"], ["E_kappa"]]);
+  assert.deepEqual(proof.sections.map(section => section.elementCount), [10, 7]);
+  for (const artifact of artifactContract.artifacts) {
+    for (const section of artifact.sections) {
+      assert.equal(section.elementCount, section.points.length);
+      assert.deepEqual(section.points.map(point => point.index), section.points.map((_, i) => i));
+    }
+  }
+  assert.deepEqual(proof.sections[0].points.map(point => point.name), ["C_L", "C_H", "C_O", "D_Q", "D_QK", "C_D", "C_R", "C_Q", "Pi_chi", "Pi_plus"]);
+  assert.deepEqual(proof.sections[1].points.map(point => point.name), ["s_C", "u", "v", "w", "b", "r", "r_plus"]);
 });

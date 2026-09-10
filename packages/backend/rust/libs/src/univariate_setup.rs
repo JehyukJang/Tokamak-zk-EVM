@@ -1,0 +1,706 @@
+//! Direct, single-command U19--U22a construction for the current protocol.
+//! Only scalar labels are evaluated here; no per-query dense polynomial is built.
+
+use crate::frontend_artifacts::{public_wire_layout::PublicWireLayout, SetupParams};
+use crate::univariate_crs::{UnivariateCrsShape, UNIVARIATE_CRS_SCHEMA_ID};
+use crate::univariate_relation::UnivariateSubcircuit;
+use backend_univariate_crs_interface::{
+    PreprocessKeysRkyv, ProverKeysRkyv, TauSequenceRkyv, UnivariateG1Rkyv, UnivariateG2Rkyv,
+    VerifierKeysRkyv,
+};
+use icicle_bls12_381::curve::{
+    G1Affine, G1Projective, G2Affine, G2Projective, ScalarCfg, ScalarField,
+};
+use icicle_core::{
+    msm::{msm, MSMConfig},
+    traits::{Arithmetic, FieldImpl, GenerateRandom},
+};
+use icicle_runtime::memory::HostSlice;
+use rayon::prelude::*;
+
+pub struct SetupScalars {
+    pub tau: ScalarField,
+    pub xi: ScalarField,
+    pub psi: ScalarField,
+    pub delta: ScalarField,
+    pub weights: Vec<ScalarField>,
+}
+
+impl SetupScalars {
+    pub fn sample(shape: &UnivariateCrsShape, width: usize) -> Self {
+        let nonzero = || loop {
+            let value = ScalarCfg::generate_random(1)[0];
+            if value != ScalarField::zero() {
+                break value;
+            }
+        };
+        let tau = loop {
+            let candidate = nonzero();
+            if [
+                shape.arithmetic_domain_size,
+                shape.connection_domain_size,
+                shape.selection_domain_size,
+            ]
+            .iter()
+            .all(|n| candidate.pow(*n) != ScalarField::one())
+            {
+                break candidate;
+            }
+        };
+        Self {
+            tau,
+            xi: nonzero(),
+            psi: nonzero(),
+            delta: nonzero(),
+            weights: (0..width).into_par_iter().map(|_| nonzero()).collect(),
+        }
+    }
+}
+
+pub struct SetupCrs {
+    pub tau: TauSequenceRkyv,
+    pub prover: ProverKeysRkyv,
+    pub preprocess: PreprocessKeysRkyv,
+    pub verifier: VerifierKeysRkyv,
+}
+
+pub struct SetupCrsDigests {
+    pub tau_sequence_sha256: String,
+    pub prover_keys_sha256: String,
+    pub preprocess_keys_sha256: String,
+    pub verifier_keys_sha256: String,
+}
+
+/// Stage the four role-local archives without exposing a partial generation.
+/// The caller must validate and write their provenance before activation.
+pub fn stage_artifacts(
+    active_output: &std::path::Path,
+    crs: &SetupCrs,
+) -> std::io::Result<(crate::crs_artifacts::StagedUnivariateCrs, SetupCrsDigests)> {
+    use backend_univariate_crs_interface::archive;
+    use sha2::{Digest, Sha256};
+    let stage = crate::crs_artifacts::create_univariate_stage(active_output)?;
+    let directory = stage.staging_directory()?;
+    // These are independent host serialization and I/O operations, not
+    // internally parallel ICICLE calls. Drop each buffer after its write.
+    macro_rules! write_archive {
+        ($name:literal, $value:expr) => {{
+            (|| -> std::io::Result<String> {
+                let bytes = archive::to_bytes::<archive::rancor::Error>($value)
+                    .map_err(std::io::Error::other)?;
+                let digest = hex::encode(Sha256::digest(bytes.as_ref()));
+                std::fs::write(directory.join($name), bytes.as_ref())?;
+                Ok(digest)
+            })()
+        }};
+    }
+    let ((tau, prover), (preprocess, verifier)) = rayon::join(
+        || {
+            rayon::join(
+                || write_archive!("tau_sequence.rkyv", &crs.tau),
+                || write_archive!("prover_keys.rkyv", &crs.prover),
+            )
+        },
+        || {
+            rayon::join(
+                || write_archive!("preprocess_keys.rkyv", &crs.preprocess),
+                || write_archive!("verifier_keys.rkyv", &crs.verifier),
+            )
+        },
+    );
+    let digests = SetupCrsDigests {
+        tau_sequence_sha256: tau?,
+        prover_keys_sha256: prover?,
+        preprocess_keys_sha256: preprocess?,
+        verifier_keys_sha256: verifier?,
+    };
+    Ok((stage, digests))
+}
+
+pub fn generate(
+    setup: &SetupParams,
+    public: &PublicWireLayout,
+    subcircuits: &[UnivariateSubcircuit<'_>],
+    secret: &SetupScalars,
+    g1: G1Affine,
+    g2: G2Affine,
+) -> Result<SetupCrs, String> {
+    let shape = UnivariateCrsShape::from_setup_params(setup).map_err(|e| e.to_string())?;
+    if secret.weights.len() != setup.m
+        || [secret.tau, secret.xi, secret.psi, secret.delta]
+            .iter()
+            .chain(&secret.weights)
+            .any(|value| *value == ScalarField::zero())
+    {
+        return Err("setup scalars must be nonzero and contain m weights".into());
+    }
+    if [
+        shape.arithmetic_domain_size,
+        shape.connection_domain_size,
+        shape.selection_domain_size,
+    ]
+    .iter()
+    .any(|n| secret.tau.pow(*n) == ScalarField::one())
+    {
+        return Err("tau must be outside all three evaluation domains".into());
+    }
+    if subcircuits.len() != setup.s_D
+        || subcircuits
+            .iter()
+            .enumerate()
+            .any(|(k, circuit)| circuit.id != k || circuit.flatten_map.len() > setup.m)
+    {
+        return Err("compiled circuit catalog does not match the library dimensions".into());
+    }
+    for circuit in subcircuits {
+        for (active, rows) in [
+            (circuit.a_active_wires, circuit.a_rows),
+            (circuit.b_active_wires, circuit.b_rows),
+            (circuit.c_active_wires, circuit.c_rows),
+        ] {
+            if rows.len() > setup.n
+                || active.iter().any(|j| *j >= circuit.flatten_map.len())
+                || rows
+                    .iter()
+                    .flatten()
+                    .any(|(column, _)| *column >= active.len())
+            {
+                return Err(format!(
+                    "subcircuit {} contains an out-of-range R1CS column or row",
+                    circuit.id
+                ));
+            }
+        }
+    }
+    let p = shape.declared_capacity[1];
+    let one = ScalarField::one();
+    let tau_k = secret.tau.pow(shape.k);
+    let tau_s = secret.tau.pow(p + 1);
+    let delta_inv = secret.delta.inv();
+    let lag_a = lagrange_at(
+        secret.tau,
+        shape.arithmetic_root,
+        shape.arithmetic_domain_size,
+    );
+    let lag_c = lagrange_at(
+        secret.tau,
+        shape.connection_root,
+        shape.connection_domain_size,
+    );
+    let lag_s = lagrange_at(
+        secret.tau,
+        shape.selection_root,
+        shape.selection_domain_size,
+    );
+    let free_root = icicle_core::ntt::get_root_of_unity::<ScalarField>(setup.l_free as u64);
+    let lag_free = lagrange_at(secret.tau, free_root, setup.l_free);
+    let packed = |i: usize, k: usize, j: usize, image: [ScalarField; 4]| {
+        secret.xi * (image[0] + tau_k * image[1])
+            + secret.psi * (image[2] + tau_k * image[3])
+            + tau_s * secret.weights[j] * lag_s[i + setup.s_max * k]
+    };
+    let public_count = public.public_query_keys().count();
+    let row_len = setup
+        .t
+        .checked_mul(setup.m)
+        .and_then(|n| n.checked_sub(public_count))
+        .ok_or("nonpublic query count overflow")?;
+    let count = setup
+        .s_max
+        .checked_mul(row_len)
+        .ok_or("nonpublic query count overflow")?;
+    let mut nonpublic = vec![ScalarField::zero(); count];
+    nonpublic
+        .par_chunks_mut(row_len)
+        .enumerate()
+        .for_each(|(i, output)| {
+            let mut cursor = 0;
+            for k in 0..setup.t {
+                let images = subcircuits
+                    .get(k)
+                    .map(|circuit| wire_images(setup, circuit, i, &lag_a, &lag_c));
+                for j in 0..setup.m {
+                    if subcircuits
+                        .get(k)
+                        .and_then(|c| c.flatten_map.get(j))
+                        .is_some_and(|g| *g < setup.l)
+                    {
+                        continue;
+                    }
+                    let image = images
+                        .as_ref()
+                        .map(|values| values[j])
+                        .unwrap_or([ScalarField::zero(); 4]);
+                    output[cursor] = delta_inv * packed(i, k, j, image);
+                    cursor += 1;
+                }
+            }
+            assert_eq!(cursor, output.len());
+        });
+    let public_labels = (0..setup.l)
+        .into_par_iter()
+        .filter_map(|global| {
+            public
+                .public_query_key_for_public_wire(global)
+                .map(|key| (global, key))
+        })
+        .map(|(global, key)| {
+            let k = key.buffer_subcircuit_id;
+            let j = key.local_public_wire_index;
+            if k >= setup.s_max {
+                return Err("public buffer cannot occupy its matching placement".to_string());
+            }
+            // Public wires alone use the fixed placement i=k specialization.
+            let images = wire_images(setup, &subcircuits[k], k, &lag_a, &lag_c);
+            let q = packed(k, k, j, images[j]);
+            Ok((
+                global,
+                if global < setup.l_free {
+                    delta_inv * (q + lag_free[global])
+                } else {
+                    q
+                },
+            ))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let free = public_labels
+        .iter()
+        .filter(|(g, _)| *g < setup.l_free)
+        .map(|(_, v)| *v)
+        .collect::<Vec<_>>();
+    let fixed = public_labels
+        .iter()
+        .filter(|(g, _)| *g >= setup.l_free)
+        .map(|(_, v)| *v)
+        .collect::<Vec<_>>();
+    let powers = powers(secret.tau, p * 2 + 1);
+    let weighted = secret
+        .weights
+        .par_iter()
+        .flat_map_iter(|r| powers[..setup.s_max].iter().map(move |power| *r * *power))
+        .collect::<Vec<_>>();
+    let shifted = weighted.par_iter().map(|v| *v * tau_k).collect::<Vec<_>>();
+    let mask = |tag: ScalarField, shift: usize, n: usize| {
+        encode_g1(
+            &[0, 1].map(|a| delta_inv * tag * powers[shift + a] * (secret.tau.pow(n) - one)),
+            g1,
+        )
+        .map(|points| points.try_into().unwrap())
+    };
+    let tau = TauSequenceRkyv {
+        schema_id: UNIVARIATE_CRS_SCHEMA_ID.into(),
+        s0_g1: encode_g1(&powers, g1)?,
+        sxi_g1: encode_g1(
+            &powers[..=p]
+                .par_iter()
+                .map(|v| secret.xi * *v)
+                .collect::<Vec<_>>(),
+            g1,
+        )?,
+        spsi_g1: encode_g1(
+            &powers[..=p]
+                .par_iter()
+                .map(|v| secret.psi * *v)
+                .collect::<Vec<_>>(),
+            g1,
+        )?,
+        tau_powers_g2: encode_g2(&powers[..=p], g2)?,
+        psi_g2: encode_g2(&[secret.psi], g2)?[0],
+    };
+    let preprocess = PreprocessKeysRkyv {
+        schema_id: UNIVARIATE_CRS_SCHEMA_ID.into(),
+        sc_g1: tau.s0_g1[..shape.connection_domain_size]
+            .par_iter()
+            .copied()
+            .collect(),
+        selection_g2: tau.tau_powers_g2[shape.h..=shape.h + setup.s_max * (setup.t - 1)]
+            .par_iter()
+            .copied()
+            .collect(),
+        fixed_public_queries: encode_g1(&fixed, g1)?,
+    };
+    let verifier = VerifierKeysRkyv {
+        schema_id: UNIVARIATE_CRS_SCHEMA_ID.into(),
+        one_g1: tau.s0_g1[0],
+        xi_g1: tau.sxi_g1[0],
+        psi_g1: tau.spsi_g1[0],
+        one_g2: tau.tau_powers_g2[0],
+        tau_g2: tau.tau_powers_g2[1],
+        tau_k_g2: tau.tau_powers_g2[shape.k],
+        delta_g2: encode_g2(&[secret.delta], g2)?[0],
+    };
+    let prover = ProverKeysRkyv {
+        schema_id: UNIVARIATE_CRS_SCHEMA_ID.into(),
+        weighted_g1: encode_g1(&weighted, g1)?,
+        weighted_shifted_g1: encode_g1(&shifted, g1)?,
+        free_public_queries: encode_g1(&free, g1)?,
+        nonpublic_queries: encode_g1(&nonpublic, g1)?,
+        mask_u: mask(secret.xi, 0, shape.arithmetic_domain_size)?,
+        mask_v: mask(secret.xi, shape.k, shape.arithmetic_domain_size)?,
+        mask_w: mask(secret.psi, 0, shape.arithmetic_domain_size)?,
+        mask_b: mask(secret.psi, shape.k, shape.connection_domain_size)?,
+        mask_selection: encode_g1(
+            &[delta_inv * tau_s * (secret.tau.pow(shape.selection_domain_size) - one)],
+            g1,
+        )?[0],
+    };
+    Ok(SetupCrs {
+        tau,
+        prover,
+        preprocess,
+        verifier,
+    })
+}
+
+fn wire_images(
+    setup: &SetupParams,
+    circuit: &UnivariateSubcircuit<'_>,
+    i: usize,
+    lag_a: &[ScalarField],
+    lag_c: &[ScalarField],
+) -> Vec<[ScalarField; 4]> {
+    let mut images = vec![[ScalarField::zero(); 4]; setup.m];
+    for (matrix, (active, rows)) in [
+        (circuit.a_active_wires, circuit.a_rows),
+        (circuit.b_active_wires, circuit.b_rows),
+        (circuit.c_active_wires, circuit.c_rows),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        for (r, row) in rows.iter().enumerate() {
+            let basis = lag_a[i + setup.s_max * r];
+            for (column, coefficient) in row {
+                let j = active[*column];
+                images[j][matrix] = images[j][matrix] + basis * *coefficient;
+            }
+        }
+    }
+    for (j, g) in circuit.flatten_map.iter().enumerate() {
+        if *g >= setup.l && *g < setup.l_D {
+            images[j][3] = lag_c[i + setup.s_max * (*g - setup.l)];
+        }
+    }
+    images
+}
+
+fn lagrange_at(tau: ScalarField, root: ScalarField, count: usize) -> Vec<ScalarField> {
+    let numerator = (tau.pow(count) - ScalarField::one())
+        * ScalarField::from_bytes_le(&count.to_le_bytes()).inv();
+    (0..count)
+        .into_par_iter()
+        .map(|index| {
+            let z = root.pow(index);
+            if tau == z {
+                ScalarField::one()
+            } else {
+                numerator * z * (tau - z).inv()
+            }
+        })
+        .collect()
+}
+
+fn powers(tau: ScalarField, count: usize) -> Vec<ScalarField> {
+    let mut values = vec![ScalarField::zero(); count];
+    values
+        .par_chunks_mut(4096)
+        .enumerate()
+        .for_each(|(index, chunk)| {
+            let mut value = tau.pow(index * 4096);
+            for slot in chunk {
+                *slot = value;
+                value = value * tau;
+            }
+        });
+    values
+}
+
+fn encode_g1(values: &[ScalarField], generator: G1Affine) -> Result<Vec<UnivariateG1Rkyv>, String> {
+    let encode = |point: G1Affine| UnivariateG1Rkyv {
+        x: point.x.to_bytes_le().try_into().unwrap(),
+        y: point.y.to_bytes_le().try_into().unwrap(),
+    };
+    if !crate::utils::cuda_msm_is_available() {
+        let generator = generator.to_projective();
+        return Ok(values
+            .par_iter()
+            .map(|v| encode(G1Affine::from(generator * *v)))
+            .collect());
+    }
+    let mut output = Vec::with_capacity(values.len());
+    // Bound the transient device/result buffer. Bulk ICICLE calls are never
+    // wrapped in another parallel iterator.
+    for scalars in values.chunks(65536) {
+        let mut points = vec![G1Projective::zero(); scalars.len()];
+        msm(
+            HostSlice::from_slice(scalars),
+            HostSlice::from_slice(&[generator]),
+            &MSMConfig::default(),
+            HostSlice::from_mut_slice(&mut points),
+        )
+        .map_err(|e| format!("G1 query encoding failed: {e:?}"))?;
+        output.extend(
+            points
+                .into_par_iter()
+                .map(|p| encode(G1Affine::from(p)))
+                .collect::<Vec<_>>(),
+        );
+    }
+    Ok(output)
+}
+
+fn encode_g2(values: &[ScalarField], generator: G2Affine) -> Result<Vec<UnivariateG2Rkyv>, String> {
+    let encode = |point: G2Affine| UnivariateG2Rkyv {
+        x: point.x.to_bytes_le().try_into().unwrap(),
+        y: point.y.to_bytes_le().try_into().unwrap(),
+    };
+    if !crate::utils::cuda_msm_is_available() {
+        let generator = generator.to_projective();
+        return Ok(values
+            .par_iter()
+            .map(|v| encode(G2Affine::from(generator * *v)))
+            .collect());
+    }
+    let mut output = Vec::with_capacity(values.len());
+    for scalars in values.chunks(65536) {
+        let mut points = vec![G2Projective::zero(); scalars.len()];
+        msm(
+            HostSlice::from_slice(scalars),
+            HostSlice::from_slice(&[generator]),
+            &MSMConfig::default(),
+            HostSlice::from_mut_slice(&mut points),
+        )
+        .map_err(|e| format!("G2 query encoding failed: {e:?}"))?;
+        output.extend(
+            points
+                .into_par_iter()
+                .map(|p| encode(G2Affine::from(p)))
+                .collect::<Vec<_>>(),
+        );
+    }
+    Ok(output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frontend_artifacts::public_wire_layout::GlobalWire;
+    use crate::frontend_artifacts::{BufferDirection, SubcircuitInfo};
+    use crate::univariate_relation::{arithmetic_wire_lifts_at, connection_wire_lift_at};
+    use icicle_bls12_381::curve::{CurveCfg, G2CurveCfg};
+    use icicle_core::curve::Curve;
+
+    #[test]
+    fn four_views_match_direct_public_and_general_query_equations() {
+        let setup = SetupParams {
+            l_free: 2,
+            l: 3,
+            l_user_out: 0,
+            l_user: 0,
+            l_D: 7,
+            m_D: 8,
+            n: 2,
+            m: 4,
+            t: 4,
+            s_D: 2,
+            s_max: 2,
+        };
+        let infos = [[3, 0, 4], [5, 2, 6]]
+            .into_iter()
+            .enumerate()
+            .map(|(id, map)| SubcircuitInfo {
+                id,
+                name: format!("buffer-{id}"),
+                Nwires: 3,
+                Nconsts: 1,
+                Out_idx: Box::new([1, 1]),
+                In_idx: Box::new([2, 1]),
+                flattenMap: Box::new(map),
+                bufferDirection: Some(BufferDirection::Out),
+            })
+            .collect::<Vec<_>>();
+        let mut globals = vec![GlobalWire::Padding; setup.m_D];
+        for info in &infos {
+            for (j, g) in info.flattenMap.iter().enumerate() {
+                globals[*g] = GlobalWire::Mapped {
+                    subcircuit_id: info.id,
+                    local_wire_index: j,
+                };
+            }
+        }
+        let public = PublicWireLayout::derive(&setup, &globals, &infos).unwrap();
+        let one = ScalarField::one();
+        let active = [0, 1, 2];
+        let a = [vec![(1, one)]];
+        let b = [vec![(0, one)]];
+        let c = [vec![(2, one)]];
+        let circuits = infos
+            .iter()
+            .map(|info| UnivariateSubcircuit {
+                id: info.id,
+                flatten_map: &info.flattenMap,
+                a_active_wires: &active,
+                b_active_wires: &active,
+                c_active_wires: &active,
+                a_rows: &a,
+                b_rows: &b,
+                c_rows: &c,
+            })
+            .collect::<Vec<_>>();
+        let secret = SetupScalars {
+            tau: ScalarField::from_u32(7),
+            xi: ScalarField::from_u32(11),
+            psi: ScalarField::from_u32(13),
+            delta: ScalarField::from_u32(17),
+            weights: (19..23).map(ScalarField::from_u32).collect(),
+        };
+        let g1 = CurveCfg::generate_random_affine_points(1)[0];
+        let g2 = G2CurveCfg::generate_random_affine_points(1)[0];
+        let crs = generate(&setup, &public, &circuits, &secret, g1, g2).unwrap();
+        let shape = UnivariateCrsShape::from_setup_params(&setup).unwrap();
+        let p = shape.declared_capacity[1];
+        assert_eq!(crs.tau.s0_g1.len(), 2 * p + 1);
+        assert_eq!(crs.tau.sxi_g1.len(), p + 1);
+        assert_eq!(crs.tau.spsi_g1.len(), p + 1);
+        assert_eq!(crs.tau.tau_powers_g2.len(), p + 1);
+        assert_eq!(crs.prover.weighted_g1.len(), setup.m * setup.s_max);
+        assert_eq!(crs.prover.weighted_shifted_g1.len(), setup.m * setup.s_max);
+        assert_eq!(
+            crs.preprocess.sc_g1,
+            crs.tau.s0_g1[..shape.connection_domain_size]
+        );
+        assert_eq!(
+            crs.preprocess.selection_g2,
+            crs.tau.tau_powers_g2[shape.h..=shape.h + setup.s_max * (setup.t - 1)]
+        );
+        assert_eq!(crs.prover.free_public_queries.len(), 1); // Free padding has no query.
+        assert_eq!(crs.preprocess.fixed_public_queries.len(), 1);
+        let lag_s = lagrange_at(
+            secret.tau,
+            shape.selection_root,
+            shape.selection_domain_size,
+        );
+        let q = |i: usize, k: usize, j: usize| {
+            let mut images = [ScalarField::zero(); 4];
+            if k < setup.s_D && j < circuits[k].flatten_map.len() {
+                images[..3].copy_from_slice(
+                    &arithmetic_wire_lifts_at(&shape, &setup, i, &circuits[k], j, secret.tau)
+                        .unwrap(),
+                );
+                images[3] = connection_wire_lift_at(&shape, &setup, i, &circuits[k], j, secret.tau)
+                    .unwrap();
+            }
+            secret.xi * (images[0] + secret.tau.pow(shape.k) * images[1])
+                + secret.psi * (images[2] + secret.tau.pow(shape.k) * images[3])
+                + secret.tau.pow(p + 1) * secret.weights[j] * lag_s[i + setup.s_max * k]
+        };
+        let mut cursor = 0;
+        for i in 0..setup.s_max {
+            for k in 0..setup.t {
+                for j in 0..setup.m {
+                    if k < setup.s_D && j == 1 {
+                        continue;
+                    }
+                    assert_eq!(
+                        crs.prover.nonpublic_queries[cursor],
+                        encode_g1(&[secret.delta.inv() * q(i, k, j)], g1).unwrap()[0]
+                    );
+                    cursor += 1;
+                }
+            }
+        }
+        assert_eq!(cursor, crs.prover.nonpublic_queries.len());
+        assert_eq!(cursor, setup.s_max * (setup.t * setup.m - 2));
+        let free_root = icicle_core::ntt::get_root_of_unity::<ScalarField>(2);
+        let m0 = lagrange_at(secret.tau, free_root, 2)[0];
+        assert_eq!(
+            crs.prover.free_public_queries[0],
+            encode_g1(&[secret.delta.inv() * (q(0, 0, 1) + m0)], g1).unwrap()[0]
+        );
+        assert_eq!(
+            crs.preprocess.fixed_public_queries[0],
+            encode_g1(&[q(1, 1, 1)], g1).unwrap()[0]
+        );
+        assert_ne!(
+            crs.preprocess.fixed_public_queries[0],
+            encode_g1(&[secret.delta.inv() * q(1, 1, 1)], g1).unwrap()[0]
+        );
+        assert_eq!(
+            crs.verifier.delta_g2,
+            encode_g2(&[secret.delta], g2).unwrap()[0]
+        );
+        for (points, tag, shift, domain) in [
+            (
+                &crs.prover.mask_u,
+                secret.xi,
+                0,
+                shape.arithmetic_domain_size,
+            ),
+            (
+                &crs.prover.mask_v,
+                secret.xi,
+                shape.k,
+                shape.arithmetic_domain_size,
+            ),
+            (
+                &crs.prover.mask_w,
+                secret.psi,
+                0,
+                shape.arithmetic_domain_size,
+            ),
+            (
+                &crs.prover.mask_b,
+                secret.psi,
+                shape.k,
+                shape.connection_domain_size,
+            ),
+        ] {
+            for (a, point) in points.iter().enumerate() {
+                let label = secret.delta.inv()
+                    * tag
+                    * secret.tau.pow(shift + a)
+                    * (secret.tau.pow(domain) - one);
+                assert_eq!(*point, encode_g1(&[label], g1).unwrap()[0]);
+            }
+        }
+        let selection_mask = secret.delta.inv()
+            * secret.tau.pow(p + 1)
+            * (secret.tau.pow(shape.selection_domain_size) - one);
+        assert_eq!(
+            crs.prover.mask_selection,
+            encode_g1(&[selection_mask], g1).unwrap()[0]
+        );
+        use backend_univariate_crs_interface::archive;
+        let bytes = archive::to_bytes::<archive::rancor::Error>(&crs.preprocess).unwrap();
+        let decoded = archive::access::<
+            backend_univariate_crs_interface::ArchivedPreprocessKeysRkyv,
+            archive::rancor::Error,
+        >(&bytes)
+        .unwrap();
+        assert_eq!(decoded.fixed_public_queries.len(), 1);
+        assert!(archive::access::<
+            backend_univariate_crs_interface::ArchivedPreprocessKeysRkyv,
+            archive::rancor::Error,
+        >(&bytes[..bytes.len() / 2])
+        .is_err());
+        let workspace = tempfile::tempdir().unwrap();
+        let active = workspace.path().join("active");
+        let (stage, digests) = stage_artifacts(&active, &crs).unwrap();
+        let directory = stage.staging_directory().unwrap().to_path_buf();
+        assert!(!active.exists());
+        assert_eq!(std::fs::read_dir(&directory).unwrap().count(), 4);
+        use sha2::{Digest, Sha256};
+        for (name, digest) in [
+            ("tau_sequence.rkyv", digests.tau_sequence_sha256),
+            ("prover_keys.rkyv", digests.prover_keys_sha256),
+            ("preprocess_keys.rkyv", digests.preprocess_keys_sha256),
+            ("verifier_keys.rkyv", digests.verifier_keys_sha256),
+        ] {
+            let bytes = std::fs::read(directory.join(name)).unwrap();
+            assert_eq!(digest, hex::encode(Sha256::digest(&bytes)));
+        }
+        drop(stage);
+        assert!(!directory.exists());
+        assert!(!active.exists());
+    }
+}

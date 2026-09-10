@@ -1,3 +1,9 @@
+function ceilPowerOfTwo(value) {
+  let capacity = 1
+  while (capacity < value) capacity *= 2
+  return capacity
+}
+
 function _assignFlattenedWire(globalWireList, subcircuitInfos, globalWireIndex, subcircuitId, subcircuitWireId) {
   if (subcircuitId >= 0 ){
     if ( globalWireList[globalWireIndex] !== undefined ) {
@@ -293,23 +299,21 @@ function buildGlobalWireLayout(subcircuitInfos, libraryLayout) {
   }
 
   const l_free_actual = freePublicWireCount
-  let nextPowerOfTwo = 1
-  while (nextPowerOfTwo < l_free_actual) {
-    nextPowerOfTwo <<= 1
-  }
-  const freePublicWirePadding = nextPowerOfTwo - l_free_actual
+  const freePublicWirePadding = ceilPowerOfTwo(l_free_actual) - l_free_actual
   const l_free = l_free_actual + freePublicWirePadding
   const l = l_free + fixedPublicWireCount
 
-  nextPowerOfTwo = 1
-  while (nextPowerOfTwo < numInterfaceWires) {
-    nextPowerOfTwo <<= 1
-  }
-
-  const interfaceWirePadding = nextPowerOfTwo - numInterfaceWires
+  const interfaceWirePadding = ceilPowerOfTwo(numInterfaceWires) - numInterfaceWires
   const l_D = l + numInterfaceWires + interfaceWirePadding
-  const m_D = numTotalWires + freePublicWirePadding + interfaceWirePadding
-  // interfaceWirePadding makes m_I = l_D - l_free a power of two.
+  const m = ceilPowerOfTwo(Math.max(...layoutSubcircuits.map(({ Nwires }) => Nwires)))
+  const m_D = m * layoutSubcircuits.length
+  // Public/interface domain padding consumes the same total zero-column budget.
+  // It must not be added a second time on top of m * s_D.
+  let assignedRolePadding = freePublicWirePadding + interfaceWirePadding
+  if (numTotalWires + assignedRolePadding > m_D) {
+    throw new Error('buildGlobalWireLayout: Public/interface padding exceeds the m * s_D wire capacity.')
+  }
+  // interfaceWirePadding makes m_I = l_D - l a power of two.
 
   const globalWireList = []
   const publicWireBoundaries = {}
@@ -449,6 +453,15 @@ function buildGlobalWireLayout(subcircuitInfos, libraryLayout) {
         targetSubcircuit.In_idx[0] + targetSubcircuit.In_idx[1] + i,
       )
     }
+    // Charge already-emitted role padding in catalog order, then put each
+    // circuit's remaining zero slots at its private segment boundary. Keep
+    // them unmapped: compiled Nwires and R1CS columns are unchanged.
+    const zeroColumns = m - targetSubcircuit.Nwires
+    const reusedPadding = Math.min(zeroColumns, assignedRolePadding)
+    assignedRolePadding -= reusedPadding
+    for (let i = reusedPadding; i < zeroColumns; i++) {
+      _assignFlattenedWire(globalWireList, layoutSubcircuits, globalWireIndex++, -1, -1)
+    }
   }
 
   if (globalWireIndex !== m_D) {
@@ -464,6 +477,7 @@ function buildGlobalWireLayout(subcircuitInfos, libraryLayout) {
     l,
     l_D,
     m_D,
+    m,
     subcircuits: layoutSubcircuits,
     wireList: globalWireList,
   }
@@ -473,10 +487,7 @@ function buildSetupParams(globalWireInfo, subcircuits, libraryLayout, sMax) {
   const maximumConstraintCount = Math.max(
     ...subcircuits.map(({ Nconsts }) => Nconsts),
   )
-  let n = 1
-  while (n < maximumConstraintCount) {
-    n <<= 1
-  }
+  const n = ceilPowerOfTwo(maximumConstraintCount)
 
   const setupParams = Object.fromEntries(
     libraryLayout.setupWireParameterKeys.map((key) => {
@@ -488,6 +499,9 @@ function buildSetupParams(globalWireInfo, subcircuits, libraryLayout, sMax) {
     }),
   )
   setupParams.n = n
+  setupParams.m = globalWireInfo.m
+  // The last capacity ID is virtual empty; it has no compiled artifact.
+  setupParams.t = ceilPowerOfTwo(subcircuits.length + 1)
   setupParams.s_D = subcircuits.length
   setupParams.s_max = sMax
   return setupParams

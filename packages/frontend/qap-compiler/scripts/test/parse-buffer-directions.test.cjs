@@ -120,7 +120,7 @@ test('derives public wire layout and boundary aliases from configuration', () =>
       l_free: 16,
       l: 18,
       l_D: 50,
-      m_D: 50,
+      m_D: 56,
     },
   )
 })
@@ -133,6 +133,47 @@ test('returns a flattened catalog without mutating the compiled catalog', () => 
   assert.deepEqual(catalog, originalCatalog)
   assert.equal(wireInfo.subcircuits.length, catalog.length)
   assert.ok(Array.isArray(wireInfo.subcircuits[0].flattenMap))
+})
+
+test('counts domain padding once and preserves inverse maps across private segments', () => {
+  const catalog = createRawBufferCatalog().map((entry) => ({ ...entry, Nwires: 6 }))
+  catalog.push({ id: catalog.length, name: 'internal', Nwires: 17, Out_idx: [1, 1], In_idx: [2, 1] })
+  const wireInfo = buildGlobalWireLayout(catalog, LIBRARY_LAYOUT)
+  assert.equal(wireInfo.m, 32)
+  assert.equal(wireInfo.m_D, 32 * catalog.length)
+  assert.equal(wireInfo.wireList.length, wireInfo.m_D)
+  const actualCount = catalog.reduce((sum, { Nwires }) => sum + Nwires, 0)
+  assert.equal(wireInfo.wireList.filter(([k]) => k === -1).length, wireInfo.m_D - actualCount)
+  for (const circuit of wireInfo.subcircuits) {
+    assert.equal(circuit.Nwires, catalog[circuit.id].Nwires)
+    assert.equal(circuit.flattenMap.length, circuit.Nwires)
+    circuit.flattenMap.forEach((g, j) => assert.deepEqual(wireInfo.wireList[g], [circuit.id, j]))
+  }
+  assert.ok(wireInfo.wireList.slice(wireInfo.l_D).some(([k], index, tail) =>
+    k === -1 && tail.slice(index + 1).some(([next]) => next !== -1)))
+  assert.equal(wireInfo.l_D - wireInfo.l, 32)
+})
+
+test('reserves a virtual final ID without adding compiled circuits or wire rows', () => {
+  for (const [actual, t] of [[44, 64], [63, 64], [64, 128]]) {
+    const catalog = createRawBufferCatalog().map((entry) => ({ ...entry, Nconsts: 1 }))
+    while (catalog.length < actual) {
+      catalog.push({ id: catalog.length, name: `internal${catalog.length}`, Nwires: 5,
+        Nconsts: 1, Out_idx: [1, 1], In_idx: [2, 1] })
+    }
+    const wireInfo = buildGlobalWireLayout(catalog, LIBRARY_LAYOUT)
+    const setup = buildSetupParams(wireInfo, wireInfo.subcircuits, LIBRARY_LAYOUT, 256)
+    assert.equal(setup.t, t)
+    assert.equal(setup.s_D, actual)
+    assert.equal(setup.m_D, setup.m * actual)
+    assert.equal(wireInfo.subcircuits.length, actual)
+    assert.ok(wireInfo.wireList.every(([k]) => k < actual))
+  }
+})
+
+test('does not silently enlarge m when global domain padding cannot fit', () => {
+  const catalog = createRawBufferCatalog().map((entry) => ({ ...entry, Nwires: 8 }))
+  assert.throws(() => buildGlobalWireLayout(catalog, LIBRARY_LAYOUT), /padding exceeds/)
 })
 
 test('builds setup parameters from the wire layout and compiled constraints', () => {
@@ -160,8 +201,10 @@ test('builds setup parameters from the wire layout and compiled constraints', ()
     l_user: 8,
     l: 18,
     l_D: 50,
-    m_D: 50,
+    m_D: 56,
     n: 32,
+    m: 8,
+    t: 8,
     s_D: 7,
     s_max: 512,
   })

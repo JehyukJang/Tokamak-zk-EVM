@@ -11,6 +11,7 @@ const provenanceContract = path.join(contractRoot, "crs-provenance-contract.json
 const buildMetadataContract = path.join(contractRoot, "backend-build-metadata-contract.json");
 const univariateDomainContract = path.join(contractRoot, "univariate-domain-contract.v1.json");
 const univariateCrsChunkContract = path.join(contractRoot, "univariate-crs-chunk-contract.json");
+const univariateTranscriptContract = path.join(contractRoot, "univariate-transcript-contract.json");
 const versionPolicySource = path.join(repositoryRoot, "scripts", "version-contract.mjs");
 const versionPolicyDeclarationSource = path.join(repositoryRoot, "scripts", "version-contract.d.ts");
 const qapLibraryContract = path.join(
@@ -67,6 +68,14 @@ await synchronizeContents(
 );
 
 const browserConsumerDirectory = path.join(backendRoot, "wasm", "src", "generated");
+await synchronizeContents(
+  renderReadonlyContractModule(
+    "packages/backend/common/contracts/univariate-transcript-contract.json",
+    "UNIVARIATE_TRANSCRIPT_CONTRACT",
+    await readJsonContract(univariateTranscriptContract),
+  ),
+  path.join(browserConsumerDirectory, "univariate-transcript-contract.generated.ts"),
+);
 const [qapContract, synthesizerContract, browserBackendContract] = await Promise.all([
   readJsonContract(qapLibraryContract),
   readArtifactContract(synthesizerArtifactContract),

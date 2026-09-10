@@ -33,6 +33,8 @@ const setupParams = {
   l_D: 0,
   m_D: 0,
   n: 0,
+  m: 0,
+  t: 0,
   s_D: 0,
   s_max: 0,
 } as const;

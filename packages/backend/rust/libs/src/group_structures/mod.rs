@@ -1011,6 +1011,8 @@ mod public_phase_tests {
             l_D: 3,
             m_D: 7,
             n: 1,
+            m: 4,
+            t: 4,
             s_D: 2,
             s_max: 4,
         };

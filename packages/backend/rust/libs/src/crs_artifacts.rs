@@ -706,7 +706,7 @@ pub fn stage_univariate_specialized_key_artifacts(
     Ok((stage, digests))
 }
 
-fn create_univariate_stage(active_output: &Path) -> io::Result<StagedUnivariateCrs> {
+pub(crate) fn create_univariate_stage(active_output: &Path) -> io::Result<StagedUnivariateCrs> {
     let output_parent = active_output
         .parent()
         .filter(|path| !path.as_os_str().is_empty())
@@ -1992,6 +1992,8 @@ mod decoded_xy_powers_tests {
             l_D: 4,
             m_D: 8,
             n: 4,
+            m: 2,
+            t: 8,
             s_D: 4,
             s_max: 4,
         };

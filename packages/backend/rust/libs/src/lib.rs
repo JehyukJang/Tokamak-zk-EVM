@@ -28,6 +28,8 @@ pub mod univariate_polynomial;
 pub mod univariate_preprocess;
 pub mod univariate_proof;
 pub mod univariate_relation;
+pub mod univariate_selection;
+pub mod univariate_setup;
 pub mod univariate_transcript;
 pub mod utils;
 pub mod vector_operations;

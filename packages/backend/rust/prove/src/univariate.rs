@@ -853,6 +853,8 @@ mod tests {
             l_D: 3,
             m_D: 3,
             n: 2,
+            m: 4,
+            t: 2,
             s_D: 1,
             s_max: 2,
         };
@@ -910,6 +912,8 @@ mod tests {
             l_D: 2,
             m_D: 3,
             n: 1,
+            m: 4,
+            t: 2,
             s_D: 1,
             s_max: 2,
         };
@@ -953,6 +957,8 @@ mod tests {
             l_D: 3,
             m_D: 3,
             n: 2,
+            m: 4,
+            t: 2,
             s_D: 1,
             s_max: 2,
         };

@@ -482,7 +482,7 @@ fn create_minimal_library(root: &Path) -> PathBuf {
 fn create_minimal_synthesizer_output(root: &Path) -> PathBuf {
     let output = root.join("synthesizer");
     fs::create_dir_all(&output).unwrap();
-    fs::write(output.join("selector.json"), b"[0,4294967295]").unwrap();
+    fs::write(output.join("selector.json"), b"[0,-1]").unwrap();
     fs::write(output.join("permutation.json"), b"[]").unwrap();
     fs::write(
         output.join("placementVariables.json"),

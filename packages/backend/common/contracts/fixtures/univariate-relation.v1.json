@@ -1,11 +1,13 @@
 {
   "setup": {
-    "l_free": 0,
+    "l_free": 2,
     "l": 2,
     "l_user_out": 0,
     "l_user": 0,
     "l_D": 4,
-    "m_D": 4,
+    "m_D": 6,
+    "m": 2,
+    "t": 4,
     "n": 2,
     "s_D": 3,
     "s_max": 2

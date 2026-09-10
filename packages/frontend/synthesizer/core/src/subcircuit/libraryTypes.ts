@@ -17,7 +17,7 @@ export const SETUP_PARAMS_KEYS = [
   'l_log_out', 'l_storage_store', 'l_storage_load', 'l_tx_in',
   'l_block_in', 'l_evm_in',
   'l_free', 'l_user_out', 'l_user', 'l',
-  'l_D', 'm_D', 'n', 's_D', 's_max',
+  'l_D', 'm_D', 'n', 'm', 't', 's_D', 's_max',
 ] as const;
 
 // Shapes used by typed exports below

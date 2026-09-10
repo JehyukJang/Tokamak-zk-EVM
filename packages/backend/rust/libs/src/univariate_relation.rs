@@ -250,7 +250,7 @@ pub fn arithmetic_wire_lift(
                     })
                 })?;
         let index = shape
-            .arithmetic_index(placement_index, subcircuit.id, row_index, setup)
+            .arithmetic_index(placement_index, row_index, setup)
             .map_err(|_| UnivariateRelationError::PlacementIndex {
                 value: placement_index,
             })?;
@@ -444,7 +444,7 @@ fn arithmetic_wire_lift_at(
                 return Ok(sum);
             }
             let coordinate = shape
-                .arithmetic_index(placement_index, subcircuit.id, row_index, setup)
+                .arithmetic_index(placement_index, row_index, setup)
                 .map_err(|_| UnivariateRelationError::PlacementIndex {
                     value: placement_index,
                 })?;
@@ -749,7 +749,7 @@ fn write_matrix_evaluations(
             value = value + *coefficient * *wire_value;
         }
         let index = shape
-            .arithmetic_index(placement_index, subcircuit_id, row_index, setup)
+            .arithmetic_index(placement_index, row_index, setup)
             .map_err(|_| UnivariateRelationError::PlacementIndex {
                 value: placement_index,
             })?;
@@ -892,6 +892,8 @@ mod tests {
 
     #[derive(Deserialize)]
     struct FixtureSetup {
+        m: usize,
+        t: usize,
         l_free: usize,
         l: usize,
         l_user_out: usize,
@@ -964,6 +966,8 @@ mod tests {
             l_D: fixture.l_d,
             m_D: fixture.m_d,
             n: fixture.n,
+            m: fixture.m,
+            t: fixture.t,
             s_D: fixture.s_d,
             s_max: fixture.s_max,
         }
@@ -978,6 +982,8 @@ mod tests {
             l_D: 4,
             m_D: 4,
             n: 2,
+            m: 2,
+            t: 4,
             s_D: 3,
             s_max: 2,
         }
@@ -992,11 +998,9 @@ mod tests {
         for placement in 0..setup.s_max {
             for subcircuit in 0..shape.subcircuit_capacity {
                 for row in 0..setup.n {
-                    let point = shape.arithmetic_root.pow(
-                        shape
-                            .arithmetic_index(placement, subcircuit, row, &setup)
-                            .unwrap(),
-                    );
+                    let point = shape
+                        .arithmetic_root
+                        .pow(shape.arithmetic_index(placement, row, &setup).unwrap());
                     let expected = if (placement, subcircuit) == (1, 2) {
                         ScalarField::one()
                     } else {
@@ -1016,11 +1020,9 @@ mod tests {
 
         for placement in 0..setup.s_max {
             for subcircuit in 0..shape.subcircuit_capacity {
-                let point = shape.arithmetic_root.pow(
-                    shape
-                        .arithmetic_index(placement, subcircuit, 0, &setup)
-                        .unwrap(),
-                );
+                let point = shape
+                    .arithmetic_root
+                    .pow(shape.arithmetic_index(placement, 0, &setup).unwrap());
                 let expected = if (placement, subcircuit) == (0, 0) {
                     ScalarField::one()
                 } else {
@@ -1149,19 +1151,19 @@ mod tests {
         let maps =
             witness_maps(&shape, &setup, &fixture.selector, &witnesses, &subcircuits).unwrap();
         assert_eq!(
-            maps.u_a.evaluations[shape.arithmetic_index(0, 0, 0, &setup).unwrap()],
+            maps.u_a.evaluations[shape.arithmetic_index(0, 0, &setup).unwrap()],
             ScalarField::from_u32(fixture.expected.u_a[0])
         );
         assert_eq!(
-            maps.u_a.evaluations[shape.arithmetic_index(0, 0, 1, &setup).unwrap()],
+            maps.u_a.evaluations[shape.arithmetic_index(0, 1, &setup).unwrap()],
             ScalarField::from_u32(fixture.expected.u_a[1])
         );
         assert_eq!(
-            maps.v_a.evaluations[shape.arithmetic_index(0, 0, 0, &setup).unwrap()],
+            maps.v_a.evaluations[shape.arithmetic_index(0, 0, &setup).unwrap()],
             ScalarField::from_u32(fixture.expected.v_a[0])
         );
         assert_eq!(
-            maps.w_a.evaluations[shape.arithmetic_index(0, 0, 1, &setup).unwrap()],
+            maps.w_a.evaluations[shape.arithmetic_index(0, 1, &setup).unwrap()],
             ScalarField::from_u32(fixture.expected.w_a[1])
         );
         assert_eq!(
@@ -1186,11 +1188,11 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            u_lift.evaluations[shape.arithmetic_index(0, 0, 0, &setup).unwrap()],
+            u_lift.evaluations[shape.arithmetic_index(0, 0, &setup).unwrap()],
             ScalarField::zero()
         );
         assert_eq!(
-            u_lift.evaluations[shape.arithmetic_index(0, 0, 1, &setup).unwrap()],
+            u_lift.evaluations[shape.arithmetic_index(0, 1, &setup).unwrap()],
             ScalarField::one()
         );
         let b_lift = connection_wire_lift(

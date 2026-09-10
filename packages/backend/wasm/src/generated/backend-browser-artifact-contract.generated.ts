@@ -23,11 +23,24 @@ export const BACKEND_BROWSER_ARTIFACT_CONTRACT = {
           "points": [
             {
               "index": 0,
-              "name": "S_kappa"
+              "name": "S_C"
             },
             {
               "index": 1,
-              "name": "S_C"
+              "name": "C_fix"
+            }
+          ]
+        },
+        {
+          "label": "preprocess.g2",
+          "type": "Preprocess",
+          "encoding": "ffjs-g2-affine-192",
+          "elementCount": 1,
+          "elementByteLength": null,
+          "points": [
+            {
+              "index": 0,
+              "name": "E_kappa"
             }
           ]
         }
@@ -40,51 +53,47 @@ export const BACKEND_BROWSER_ARTIFACT_CONTRACT = {
           "label": "proof.g1",
           "type": "Proof",
           "encoding": "ffjs-g1-affine-96",
-          "elementCount": 11,
+          "elementCount": 10,
           "elementByteLength": null,
           "points": [
             {
               "index": 0,
-              "name": "C_U"
+              "name": "C_L"
             },
             {
               "index": 1,
-              "name": "C_V"
+              "name": "C_H"
             },
             {
               "index": 2,
-              "name": "C_W"
+              "name": "C_O"
             },
             {
               "index": 3,
-              "name": "C_B"
+              "name": "D_Q"
             },
             {
               "index": 4,
-              "name": "O_if"
+              "name": "D_QK"
             },
             {
               "index": 5,
-              "name": "O_int"
-            },
-            {
-              "index": 6,
               "name": "C_D"
             },
             {
-              "index": 7,
+              "index": 6,
               "name": "C_R"
             },
             {
-              "index": 8,
+              "index": 7,
               "name": "C_Q"
             },
             {
-              "index": 9,
-              "name": "Pi_zeta"
+              "index": 8,
+              "name": "Pi_chi"
             },
             {
-              "index": 10,
+              "index": 9,
               "name": "Pi_plus"
             }
           ]
@@ -93,43 +102,35 @@ export const BACKEND_BROWSER_ARTIFACT_CONTRACT = {
           "label": "proof.evaluations",
           "type": "Proof",
           "encoding": "ffjs-fr-montgomery-le-32",
-          "elementCount": 9,
+          "elementCount": 7,
           "elementByteLength": null,
           "points": [
             {
               "index": 0,
-              "name": "s_A"
-            },
-            {
-              "index": 1,
               "name": "s_C"
             },
             {
-              "index": 2,
+              "index": 1,
               "name": "u"
             },
             {
-              "index": 3,
+              "index": 2,
               "name": "v"
             },
             {
-              "index": 4,
+              "index": 3,
               "name": "w"
             },
             {
-              "index": 5,
+              "index": 4,
               "name": "b"
             },
             {
-              "index": 6,
-              "name": "q_zeta"
-            },
-            {
-              "index": 7,
+              "index": 5,
               "name": "r"
             },
             {
-              "index": 8,
+              "index": 6,
               "name": "r_plus"
             }
           ]

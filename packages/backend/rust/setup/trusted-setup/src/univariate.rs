@@ -338,6 +338,8 @@ mod tests {
             l_D: 4,
             m_D: 4,
             n: 2,
+            m: 2,
+            t: 4,
             s_D: 2,
             s_max: 2,
         }

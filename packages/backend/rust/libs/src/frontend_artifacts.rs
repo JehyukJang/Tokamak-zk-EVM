@@ -64,9 +64,11 @@ pub struct SetupParams {
     pub l: usize,
     pub l_user_out: usize,
     pub l_user: usize,
-    pub l_D: usize, //m_I = l_D - 1
+    pub l_D: usize, // m_I = l_D - l
     pub m_D: usize,
     pub n: usize,
+    pub m: usize,
+    pub t: usize,
     pub s_D: usize,
     pub s_max: usize,
 }
@@ -127,16 +129,16 @@ pub struct Permutation {
 impl_read_box_from_json!(Permutation);
 
 /// Reads the synthesizer-owned, capacity-length placement selector. The
-/// all-ones u32 sentinel denotes an inactive placement slot; all other values
+/// signed -1 sentinel denotes an inactive placement slot; all other values
 /// are fixed subcircuit-library IDs.
 pub fn read_placement_selector(
     path: impl AsRef<std::path::Path>,
     placement_capacity: usize,
     subcircuit_count: usize,
 ) -> io::Result<Vec<Option<usize>>> {
-    const INACTIVE_SELECTOR_ENTRY: u32 = u32::MAX;
+    const INACTIVE_SELECTOR_ENTRY: i32 = -1;
     let file = File::open(path)?;
-    let values: Vec<u32> = serde_json::from_reader(BufReader::new(file))?;
+    let values: Vec<i32> = serde_json::from_reader(BufReader::new(file))?;
     if values.len() != placement_capacity {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -153,7 +155,7 @@ pub fn read_placement_selector(
                 return Ok(None);
             }
             let subcircuit_id = value as usize;
-            if subcircuit_id >= subcircuit_count {
+            if value < 0 || subcircuit_id >= subcircuit_count {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!(
@@ -164,6 +166,35 @@ pub fn read_placement_selector(
             Ok(Some(subcircuit_id))
         })
         .collect()
+}
+
+#[cfg(test)]
+mod selector_tests {
+    use super::read_placement_selector;
+    use std::io::Write;
+
+    #[test]
+    fn signed_selector_preserves_unused_slots() {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        file.write_all(b"[0,2,-1,-1]").unwrap();
+        assert_eq!(
+            read_placement_selector(file.path(), 4, 3).unwrap(),
+            vec![Some(0), Some(2), None, None]
+        );
+        assert!(read_placement_selector(file.path(), 5, 3).is_err());
+    }
+
+    #[test]
+    fn rejects_noncanonical_selector_ids() {
+        for json in ["[4294967295]", "[-2]", "[3]", "[1.5]", "[2147483648]"] {
+            let mut file = tempfile::NamedTempFile::new().unwrap();
+            file.write_all(json.as_bytes()).unwrap();
+            assert!(
+                read_placement_selector(file.path(), 1, 3).is_err(),
+                "accepted {json}"
+            );
+        }
+    }
 }
 
 impl Permutation {

@@ -3,18 +3,93 @@
   "cases": [
     {
       "name": "non-power-of-two-catalog",
-      "setup": {"l": 2, "l_D": 4, "n": 2, "s_D": 3, "s_max": 2},
-      "expected": {"t": 4, "N_A": 16, "N_C": 4, "N_G": 4, "N_union": 16, "D": 32, "arithmeticIndex": 15, "connectionIndex": 3}
+      "setup": {
+        "l": 2,
+        "l_D": 4,
+        "n": 2,
+        "s_D": 3,
+        "s_max": 2,
+        "l_free": 2,
+        "m": 2,
+        "t": 4,
+        "m_D": 6
+      },
+      "expected": {
+        "t": 4,
+        "N_A": 4,
+        "N_C": 4,
+        "N_S": 8,
+        "N_G": 4,
+        "N_union": 4,
+        "D": 8,
+        "P": 12,
+        "K": 7,
+        "h": 6,
+        "S": 13,
+        "arithmeticIndex": 3,
+        "connectionIndex": 3,
+        "selectionIndex": 7
+      }
     },
     {
       "name": "power-of-two-catalog-is-strictly-padded",
-      "setup": {"l": 2, "l_D": 4, "n": 2, "s_D": 4, "s_max": 2},
-      "expected": {"t": 8, "N_A": 32, "N_C": 4, "N_G": 4, "N_union": 32, "D": 64, "arithmeticIndex": 31, "connectionIndex": 3}
+      "setup": {
+        "l": 2,
+        "l_D": 4,
+        "n": 2,
+        "s_D": 4,
+        "s_max": 2,
+        "l_free": 2,
+        "m": 2,
+        "t": 8,
+        "m_D": 8
+      },
+      "expected": {
+        "t": 8,
+        "N_A": 4,
+        "N_C": 4,
+        "N_S": 16,
+        "N_G": 4,
+        "N_union": 4,
+        "D": 8,
+        "P": 20,
+        "K": 15,
+        "h": 6,
+        "S": 21,
+        "arithmeticIndex": 3,
+        "connectionIndex": 3,
+        "selectionIndex": 15
+      }
     },
     {
       "name": "current-library",
-      "setup": {"l": 396, "l_D": 1420, "n": 1024, "s_D": 44, "s_max": 256},
-      "expected": {"t": 64, "N_A": 16777216, "N_C": 262144, "N_G": 262144, "N_union": 16777216, "D": 33553410, "arithmeticIndex": 16777215, "connectionIndex": 262143}
+      "setup": {
+        "l": 396,
+        "l_D": 1420,
+        "n": 1024,
+        "s_D": 44,
+        "s_max": 256,
+        "l_free": 256,
+        "m": 1024,
+        "t": 64,
+        "m_D": 45056
+      },
+      "expected": {
+        "t": 64,
+        "N_A": 262144,
+        "N_C": 262144,
+        "N_S": 16384,
+        "N_G": 262144,
+        "N_union": 262144,
+        "D": 262148,
+        "P": 524291,
+        "K": 262146,
+        "h": 262146,
+        "S": 524292,
+        "arithmeticIndex": 262143,
+        "connectionIndex": 262143,
+        "selectionIndex": 16383
+      }
     }
   ]
 }

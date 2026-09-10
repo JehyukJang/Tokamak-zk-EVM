@@ -22,6 +22,21 @@ listed here remain owned by `packages/backend`.
 
 ## Change Gate
 
+The current univariate protocol contracts also include
+`univariate-transcript-contract.json` and the proof/preprocess sections in
+`browser-artifact-contract.v1.json`. Transcript bytes are covered by
+`fixtures/univariate-fiat-shamir.json` and the independent
+`tests/univariate-transcript.test.mjs` oracle. The generated TypeScript binding
+is `wasm/src/generated/univariate-transcript-contract.generated.ts`.
+
+These updated contracts are the migration target. The existing native and
+WASM protocol implementations are not yet evidence of conformance to them.
+In particular, updating a generated binding does not complete its runtime
+migration. CRS archives must ultimately expose four role-specific files:
+`tau_sequence.rkyv`, `prover_keys.rkyv`, `preprocess_keys.rkyv`, and
+`verifier_keys.rkyv`. Preprocess keys contain the bases for S_C, E_kappa, and
+C_fix; the preprocess output contains the resulting points instead.
+
 For a change to one of these contracts, maintainers must update every affected
 cell in its row before treating the change as complete:
 

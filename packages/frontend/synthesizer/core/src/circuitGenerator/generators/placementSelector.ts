@@ -1,7 +1,7 @@
 import type { ResolvedSubcircuitLibrary } from '../../subcircuit/libraryTypes.ts';
 import type { Placements, PlacementVariables } from '../../synthesizer/types/placements.ts';
 
-export const INACTIVE_PLACEMENT_SELECTOR_ENTRY = 0xffff_ffff;
+export const INACTIVE_PLACEMENT_SELECTOR_ENTRY = -1;
 
 /**
  * Capacity-length placement selector kappa used by the univariate protocol.
@@ -18,8 +18,8 @@ export function derivePlacementSelector(
 ): PlacementSelector {
   const { globalWireList, setupParams, subcircuitInfo } = subcircuitLibrary.data;
   const sMax = setupParams.s_max;
-  if (!Number.isSafeInteger(sMax) || sMax < 0 || sMax >= INACTIVE_PLACEMENT_SELECTOR_ENTRY) {
-    throw new Error('Selector capacity s_max must be a non-negative u32 below the inactive sentinel');
+  if (!Number.isSafeInteger(sMax) || sMax < 0 || sMax > 0xffff_ffff) {
+    throw new Error('Selector capacity s_max must be a non-negative u32');
   }
   if (placements.length > sMax) {
     throw new Error(`Selector has ${placements.length} placements but capacity is ${sMax}`);
@@ -37,7 +37,7 @@ export function derivePlacementSelector(
     if (
       !Number.isSafeInteger(subcircuitId)
       || subcircuitId < 0
-      || subcircuitId >= INACTIVE_PLACEMENT_SELECTOR_ENTRY
+      || subcircuitId > 0x7fff_ffff
     ) {
       throw new Error(`Selector placement ${placementIndex} has an invalid active subcircuit ID`);
     }

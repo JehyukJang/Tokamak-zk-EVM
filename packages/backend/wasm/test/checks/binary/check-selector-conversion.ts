@@ -9,7 +9,7 @@ import { validateBinary } from '../../../src/converter/index.js';
 import { assertEqual } from '../../support/assertions.js';
 
 async function main(): Promise<void> {
-  const entries = [0, 7, 0xffff_ffff];
+  const entries = [0, 7, -1];
   const binary = await convertSelector(entries);
   await validateBinary(binary);
   const artifact = decodeBinaryArtifactFile(binary);
@@ -23,10 +23,12 @@ async function main(): Promise<void> {
   assertEqual(section.elementByteLength, 4, 'selector element width');
   const view = new DataView(section.data.buffer, section.data.byteOffset, section.data.byteLength);
   for (const [index, entry] of entries.entries()) {
-    assertEqual(view.getUint32(index * 4, true), entry, `selector entry ${index}`);
+    assertEqual(view.getInt32(index * 4, true), entry, `selector entry ${index}`);
   }
 
-  await assertRejects(() => convertSelector([0, -1]), 'negative selector entry');
+  assertEqual(view.getUint32(8, true), 0xffff_ffff, 'inactive all-ones bytes');
+  await assertRejects(() => convertSelector([0, -2]), 'invalid negative selector entry');
+  await assertRejects(() => convertSelector([0, 0xffff_ffff]), 'obsolete unsigned JSON sentinel');
   await assertRejects(() => convertSelector([0, 1.5]), 'fractional selector entry');
   console.log('Checked selector conversion and structural admission');
 }

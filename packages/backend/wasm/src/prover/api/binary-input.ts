@@ -70,9 +70,9 @@ function parseSelector(file: BinaryArtifactFileView): readonly (number | null)[]
   }
   const view = new DataView(section.data.buffer, section.data.byteOffset, section.data.byteLength);
   return Array.from({ length: section.elementCount }, (_, index) => {
-    const id = view.getUint32(index * 4, true);
-    if (id === 0xffff_ffff) return null;
-    if (id >= GENERATED_SETUP_PARAMS.s_D) throw new Error(`Selector subcircuit ID ${id} is outside the active library.`);
+    const id = view.getInt32(index * 4, true);
+    if (id === -1) return null;
+    if (id < 0 || id >= GENERATED_SETUP_PARAMS.s_D) throw new Error(`Selector subcircuit ID ${id} is outside the active library.`);
     return id;
   });
 }

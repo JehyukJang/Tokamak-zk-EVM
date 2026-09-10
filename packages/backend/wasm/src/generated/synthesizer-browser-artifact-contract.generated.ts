@@ -67,6 +67,12 @@ export const SYNTHESIZER_BROWSER_ARTIFACT_CONTRACT = {
     {
       "name": "prover_selector",
       "sourceFile": "selector.json",
+      "entries": {
+        "integerEncoding": "i32-le",
+        "inactive": -1,
+        "active": "compiled subcircuit ID",
+        "length": "s_max"
+      },
       "sections": [
         {
           "label": "selector.entries",

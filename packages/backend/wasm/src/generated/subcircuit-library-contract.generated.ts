@@ -13,6 +13,8 @@ export const SUBCIRCUIT_LIBRARY_CONTRACT = {
         "domainPublicLength": "l_D",
         "domainWireLength": "m_D",
         "constraintCount": "n",
+        "localWireCapacity": "m",
+        "subcircuitCapacity": "t",
         "subcircuitCount": "s_D",
         "placementCapacity": "s_max"
       },
@@ -24,13 +26,25 @@ export const SUBCIRCUIT_LIBRARY_CONTRACT = {
         "l_D",
         "m_D",
         "n",
+        "m",
+        "t",
         "s_D",
         "s_max"
       ],
       "derivedDimensions": {
         "functionInstance": "l - l_free",
         "intermediateRows": "l_D - l",
-        "preprocessXyPowers": "(l_D - l) * s_max"
+        "preprocessXyPowers": "(l_D - l) * s_max",
+        "localWireCapacity": "ceilPowerOfTwo(max(Nwires))",
+        "subcircuitCapacity": "ceilPowerOfTwo(s_D + 1)",
+        "emptySubcircuitId": "t - 1",
+        "domainWireLength": "m * s_D"
+      },
+      "subcircuitIds": {
+        "compiled": "[0,s_D)",
+        "unselectable": "[s_D,t-1)",
+        "virtualEmpty": "t-1",
+        "virtualEmptyArtifacts": "none"
       }
     },
     "subcircuitInfo": {

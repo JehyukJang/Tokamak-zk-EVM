@@ -32,6 +32,8 @@ pub const UNIVARIATE_CRS_SCHEMA_ID: &str = "tokamak-zk-evm-univariate";
 
 #[derive(Debug, Error)]
 pub enum UnivariateCrsError {
+    #[error("invalid library capacity: {name}")]
+    InvalidCapacity { name: &'static str },
     #[error("{name} must be greater than one")]
     DomainTooSmall { name: &'static str },
     #[error("{name} must be a nonzero power of two for the selected transform provider")]
@@ -126,112 +128,125 @@ impl UnivariateTauCapacity {
 /// Capacity and domain information fixed by the library and placement bound.
 #[derive(Clone, Debug, PartialEq)]
 pub struct UnivariateCrsShape {
-    /// The power-of-two arithmetic type capacity `t`, strictly above `s_D`.
+    /// The producer-declared selection type capacity, including the final empty ID.
     pub subcircuit_capacity: usize,
     pub arithmetic_domain_size: usize,
     pub connection_domain_size: usize,
+    pub selection_domain_size: usize,
     pub intersection_domain_size: usize,
     pub union_domain_size: usize,
-    /// The U18 minimum `(M_0, M_xi, M_psi)` capacity vector.
+    /// The U18 minimum `(2P, P, P)` exponent bounds.
     pub minimum_capacity: [usize; 3],
-    /// The declared CRS capacity. It may exceed `minimum_capacity` componentwise.
+    /// The declared CRS capacity equals the library-derived minimum.
     pub declared_capacity: [usize; 3],
     /// `K = M_psi - d`, where `d = max(N_A + 1, N_C + 1)`.
     pub k: usize,
+    pub h: usize,
     pub arithmetic_root: ScalarField,
     pub connection_root: ScalarField,
+    pub selection_root: ScalarField,
 }
 
 impl UnivariateCrsShape {
-    /// Derives U18/U22/U59 capacities from the existing library metadata.
+    /// Derives the current U1/U8/U18 geometry from producer-owned capacities.
     pub fn from_setup_params(params: &SetupParams) -> Result<Self, UnivariateCrsError> {
-        let subcircuit_capacity = strict_power_of_two_capacity(params.s_D)?;
+        let expected_t = strict_power_of_two_capacity(params.s_D)?;
+        if params.t != expected_t {
+            return Err(UnivariateCrsError::InvalidCapacity {
+                name: "t = ceilPowerOfTwo(s_D + 1)",
+            });
+        }
+        for (name, value) in [
+            ("n", params.n),
+            ("m", params.m),
+            ("s_max", params.s_max),
+            ("l_free", params.l_free),
+        ] {
+            if !value.is_power_of_two() {
+                return Err(UnivariateCrsError::DomainNotPowerOfTwo { name });
+            }
+        }
+        if params.m.checked_mul(params.s_D) != Some(params.m_D) {
+            return Err(UnivariateCrsError::InvalidCapacity {
+                name: "m_D = m * s_D",
+            });
+        }
         let interface_wire_count =
             params
                 .l_D
                 .checked_sub(params.l)
-                .ok_or(UnivariateCrsError::CapacityOverflow {
+                .ok_or(UnivariateCrsError::InvalidCapacity {
                     name: "m_I = l_D - l",
                 })?;
         if !interface_wire_count.is_power_of_two() {
             return Err(UnivariateCrsError::DomainNotPowerOfTwo { name: "m_I" });
         }
-        let arithmetic_domain_size = params
-            .n
-            .checked_mul(params.s_max)
-            .and_then(|value| value.checked_mul(subcircuit_capacity))
-            .ok_or(UnivariateCrsError::CapacityOverflow {
-                name: "N_A = n * s_max * t",
-            })?;
-        let connection_domain_size = interface_wire_count.checked_mul(params.s_max).ok_or(
-            UnivariateCrsError::CapacityOverflow {
-                name: "N_C = m_I * s_max",
-            },
-        )?;
-        if arithmetic_domain_size <= 1 {
-            return Err(UnivariateCrsError::DomainTooSmall { name: "N_A" });
-        }
-        if connection_domain_size <= 1 {
-            return Err(UnivariateCrsError::DomainTooSmall { name: "N_C" });
-        }
+        let product = |name, a: usize, b: usize| {
+            a.checked_mul(b)
+                .ok_or(UnivariateCrsError::CapacityOverflow { name })
+        };
+        let add = |name, a: usize, b: usize| {
+            a.checked_add(b)
+                .ok_or(UnivariateCrsError::CapacityOverflow { name })
+        };
+        let arithmetic_domain_size = product("N_A", params.n, params.s_max)?;
+        let connection_domain_size = product("N_C", interface_wire_count, params.s_max)?;
+        let selection_domain_size = product("N_S", params.t, params.s_max)?;
         let intersection_domain_size =
             greatest_common_divisor(arithmetic_domain_size, connection_domain_size);
-        let union_domain_size =
-            least_common_multiple(arithmetic_domain_size, connection_domain_size)?;
-        let arithmetic_bound = arithmetic_domain_size
-            .checked_mul(2)
-            .and_then(|value| value.checked_sub(params.n))
-            .and_then(|value| value.checked_add(2))
-            .ok_or(UnivariateCrsError::CapacityOverflow {
-                name: "2 * N_A - n + 2",
-            })?;
-        let connection_bound = connection_domain_size
-            .checked_add(4)
-            .ok_or(UnivariateCrsError::CapacityOverflow { name: "N_C + 4" })?;
-
-        let d = arithmetic_domain_size
-            .checked_add(1)
-            .map(|arithmetic| arithmetic.max(connection_domain_size.saturating_add(1)))
-            .ok_or(UnivariateCrsError::CapacityOverflow { name: "d" })?;
-        let minimum_capacity = [
-            arithmetic_bound.max(connection_bound),
-            arithmetic_domain_size
-                .checked_add(1)
-                .ok_or(UnivariateCrsError::CapacityOverflow { name: "N_A + 1" })?,
-            d.checked_mul(2)
-                .and_then(|value| value.checked_add(1))
-                .ok_or(UnivariateCrsError::CapacityOverflow { name: "2d + 1" })?,
-        ];
-        let k = minimum_capacity[2]
-            .checked_sub(d)
-            .ok_or(UnivariateCrsError::CapacityOverflow { name: "K" })?;
-
+        let union_domain_size = add("N_union", arithmetic_domain_size, connection_domain_size)?
+            - intersection_domain_size;
+        let d = add("d", arithmetic_domain_size.max(connection_domain_size), 1)?;
+        let h = add("h", d, 1)?;
+        let p = [
+            add("2d+1", product("2d", 2, d)?, 1)?,
+            add("N_S+1", selection_domain_size, 1)?,
+            add(
+                "h+s(t-1)",
+                h,
+                product("s(t-1)", params.s_max, params.t - 1)?,
+            )?,
+            params.l_free - 1,
+        ]
+        .into_iter()
+        .max()
+        .unwrap();
+        let minimum_capacity = [product("2P", 2, p)?, p, p];
+        let arithmetic_root = primitive_root("N_A", arithmetic_domain_size)?;
+        let connection_root = primitive_root("N_C", connection_domain_size)?;
+        let selection_root = primitive_root("N_S", selection_domain_size)?;
+        let placement_root = primitive_root("s_max", params.s_max)?;
+        if arithmetic_root.pow(params.n) != placement_root
+            || connection_root.pow(interface_wire_count) != placement_root
+            || selection_root.pow(params.t) != placement_root
+        {
+            return Err(UnivariateCrsError::InvalidDomainRoot {
+                name: "compatible placement roots",
+            });
+        }
         Ok(Self {
-            subcircuit_capacity,
+            subcircuit_capacity: params.t,
             arithmetic_domain_size,
             connection_domain_size,
+            selection_domain_size,
             intersection_domain_size,
             union_domain_size,
             minimum_capacity,
             declared_capacity: minimum_capacity,
-            k,
-            arithmetic_root: primitive_root("N_A", arithmetic_domain_size)?,
-            connection_root: primitive_root("N_C", connection_domain_size)?,
+            k: p - d,
+            h,
+            arithmetic_root,
+            connection_root,
+            selection_root,
         })
     }
 
-    /// Uses a declared U18 capacity vector after checking the componentwise
-    /// lower bound and the derived `K` relation. This deliberately admits
-    /// larger reusable CRS artifacts.
+    /// The current format uses exactly the library-derived minimum capacity.
     pub fn with_declared_capacity(
         mut self,
         declared_capacity: [usize; 3],
     ) -> Result<Self, UnivariateCrsError> {
-        if declared_capacity
-            .iter()
-            .zip(self.minimum_capacity)
-            .any(|(declared, minimum)| *declared < minimum)
-        {
+        if declared_capacity != self.minimum_capacity {
             return Err(UnivariateCrsError::CommitmentDegree {
                 actual: self
                     .minimum_capacity
@@ -254,28 +269,22 @@ impl UnivariateCrsShape {
         Ok(self)
     }
 
-    /// Returns whether this declared CRS shape can serve the selected setup.
-    /// Domain geometry and the protocol minimum must agree exactly; only the
-    /// three reusable source ranges may be larger than the minimum.
+    /// Domain geometry and all exponent capacities must agree with the library.
     pub fn admits_setup(&self, setup_shape: &Self) -> bool {
         self.subcircuit_capacity == setup_shape.subcircuit_capacity
             && self.arithmetic_domain_size == setup_shape.arithmetic_domain_size
             && self.connection_domain_size == setup_shape.connection_domain_size
+            && self.selection_domain_size == setup_shape.selection_domain_size
             && self.intersection_domain_size == setup_shape.intersection_domain_size
             && self.union_domain_size == setup_shape.union_domain_size
             && self.minimum_capacity == setup_shape.minimum_capacity
-            && self
-                .declared_capacity
-                .iter()
-                .zip(setup_shape.minimum_capacity)
-                .all(|(declared, minimum)| *declared >= minimum)
+            && self.declared_capacity == setup_shape.minimum_capacity
     }
 
     /// U1's canonical flat index for an arithmetic-domain coordinate.
     pub fn arithmetic_index(
         &self,
         placement_index: usize,
-        subcircuit_id: usize,
         constraint_row: usize,
         setup: &SetupParams,
     ) -> Result<usize, UnivariateCrsError> {
@@ -283,12 +292,6 @@ impl UnivariateCrsShape {
             return Err(UnivariateCrsError::IndexOutOfRange {
                 coordinate: "placement",
                 value: placement_index,
-            });
-        }
-        if subcircuit_id >= self.subcircuit_capacity {
-            return Err(UnivariateCrsError::IndexOutOfRange {
-                coordinate: "subcircuit",
-                value: subcircuit_id,
             });
         }
         if constraint_row >= setup.n {
@@ -300,15 +303,8 @@ impl UnivariateCrsShape {
 
         setup
             .s_max
-            .checked_mul(subcircuit_id)
-            .and_then(|subcircuit_offset| placement_index.checked_add(subcircuit_offset))
-            .and_then(|prefix| {
-                setup
-                    .s_max
-                    .checked_mul(self.subcircuit_capacity)
-                    .and_then(|stride| stride.checked_mul(constraint_row))
-                    .and_then(|row_offset| prefix.checked_add(row_offset))
-            })
+            .checked_mul(constraint_row)
+            .and_then(|row_offset| placement_index.checked_add(row_offset))
             .ok_or(UnivariateCrsError::CapacityOverflow { name: "U1 index" })
     }
 
@@ -348,8 +344,8 @@ impl UnivariateCrsShape {
 }
 
 /// Returns the smallest power of two strictly greater than the library's
-/// subcircuit catalog size. This is the new protocol's arithmetic type capacity
-/// `t`; IDs in `[s_D, t)` are permanently inactive padding coordinates.
+/// subcircuit catalog size. The final ID is reserved for the virtual empty
+/// circuit; intermediate IDs cannot be selected.
 fn strict_power_of_two_capacity(subcircuit_count: usize) -> Result<usize, UnivariateCrsError> {
     if subcircuit_count == 0 {
         return Err(UnivariateCrsError::DomainTooSmall { name: "s_D" });
@@ -368,12 +364,6 @@ fn greatest_common_divisor(mut left: usize, mut right: usize) -> usize {
         (left, right) = (right, left % right);
     }
     left
-}
-
-fn least_common_multiple(left: usize, right: usize) -> Result<usize, UnivariateCrsError> {
-    (left / greatest_common_divisor(left, right))
-        .checked_mul(right)
-        .ok_or(UnivariateCrsError::CapacityOverflow { name: "N_union" })
 }
 
 /// Analysis-only trapdoors required to construct the U18 basis.
@@ -1545,7 +1535,7 @@ fn arithmetic_wire_commitment(
             }
         }
         if coefficient != ScalarField::zero() {
-            let index = shape.arithmetic_index(placement_index, subcircuit.id, row_index, setup)?;
+            let index = shape.arithmetic_index(placement_index, row_index, setup)?;
             commitment = commitment + lagrange[index] * coefficient;
         }
     }
@@ -1715,8 +1705,11 @@ fn primitive_root(
     name: &'static str,
     domain_size: usize,
 ) -> Result<ScalarField, UnivariateCrsError> {
-    if domain_size <= 1 {
+    if domain_size == 0 {
         return Err(UnivariateCrsError::DomainTooSmall { name });
+    }
+    if domain_size == 1 {
+        return Ok(ScalarField::one());
     }
     let domain_size_u64 =
         u64::try_from(domain_size).map_err(|_| UnivariateCrsError::DomainTooLarge { name })?;
@@ -1794,6 +1787,11 @@ mod tests {
 
     #[derive(Deserialize)]
     struct DomainFixtureSetup {
+        m: usize,
+        t: usize,
+        l_free: usize,
+        #[serde(rename = "m_D")]
+        m_d: usize,
         l: usize,
         #[serde(rename = "l_D")]
         l_d: usize,
@@ -1814,8 +1812,10 @@ mod tests {
         n_g: usize,
         #[serde(rename = "N_union")]
         n_union: usize,
-        #[serde(rename = "D")]
-        d: usize,
+        #[serde(rename = "P")]
+        p: usize,
+        #[serde(rename = "N_S")]
+        n_s: usize,
         #[serde(rename = "arithmeticIndex")]
         arithmetic_index: usize,
         #[serde(rename = "connectionIndex")]
@@ -1831,6 +1831,8 @@ mod tests {
             l_D: 4,
             m_D: 4,
             n: 2,
+            m: 2,
+            t: 4,
             s_D: 2,
             s_max: 2,
         }
@@ -1957,6 +1959,8 @@ mod tests {
             l_D: 3,
             m_D: 3,
             n: 2,
+            m: 4,
+            t: 2,
             s_D: 1,
             s_max: 2,
         };
@@ -2197,13 +2201,15 @@ mod tests {
 
         for case in fixture.cases {
             let shape = UnivariateCrsShape::from_setup_params(&SetupParams {
-                l_free: 0,
+                l_free: case.setup.l_free,
                 l: case.setup.l,
                 l_user_out: 0,
                 l_user: 0,
                 l_D: case.setup.l_d,
-                m_D: case.setup.l_d,
+                m_D: case.setup.m_d,
                 n: case.setup.n,
+                m: case.setup.m,
+                t: case.setup.t,
                 s_D: case.setup.s_d,
                 s_max: case.setup.s_max,
             })
@@ -2213,26 +2219,27 @@ mod tests {
             assert_eq!(shape.connection_domain_size, case.expected.n_c);
             assert_eq!(shape.intersection_domain_size, case.expected.n_g);
             assert_eq!(shape.union_domain_size, case.expected.n_union);
-            assert_eq!(shape.minimum_capacity[0], case.expected.d);
+            assert_eq!(
+                shape.minimum_capacity,
+                [2 * case.expected.p, case.expected.p, case.expected.p]
+            );
+            assert_eq!(shape.selection_domain_size, case.expected.n_s);
             let setup = SetupParams {
-                l_free: 0,
+                l_free: case.setup.l_free,
                 l: case.setup.l,
                 l_user_out: 0,
                 l_user: 0,
                 l_D: case.setup.l_d,
-                m_D: case.setup.l_d,
+                m_D: case.setup.m_d,
                 n: case.setup.n,
+                m: case.setup.m,
+                t: case.setup.t,
                 s_D: case.setup.s_d,
                 s_max: case.setup.s_max,
             };
             assert_eq!(
                 shape
-                    .arithmetic_index(
-                        setup.s_max - 1,
-                        shape.subcircuit_capacity - 1,
-                        setup.n - 1,
-                        &setup,
-                    )
+                    .arithmetic_index(setup.s_max - 1, setup.n - 1, &setup,)
                     .expect("maximum U1 coordinate must be admitted"),
                 case.expected.arithmetic_index
             );

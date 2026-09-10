@@ -16,6 +16,8 @@ export function parseSetupParams(raw: unknown): SetupParams {
     l_D: requireNonNegativeInteger(source[fields.domainPublicLength], fieldLabel(setupContract.fileName, fields.domainPublicLength)),
     m_D: requireNonNegativeInteger(source[fields.domainWireLength], fieldLabel(setupContract.fileName, fields.domainWireLength)),
     n: requireNonNegativeInteger(source[fields.constraintCount], fieldLabel(setupContract.fileName, fields.constraintCount)),
+    m: requireNonNegativeInteger(source[fields.localWireCapacity], fieldLabel(setupContract.fileName, fields.localWireCapacity)),
+    t: requireNonNegativeInteger(source[fields.subcircuitCapacity], fieldLabel(setupContract.fileName, fields.subcircuitCapacity)),
     s_D: requireNonNegativeInteger(source[fields.subcircuitCount], fieldLabel(setupContract.fileName, fields.subcircuitCount)),
     s_max: requireNonNegativeInteger(source[fields.placementCapacity], fieldLabel(setupContract.fileName, fields.placementCapacity)),
   };

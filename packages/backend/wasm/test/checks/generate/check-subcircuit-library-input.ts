@@ -16,6 +16,8 @@ const setup = {
   l_D: 28,
   m_D: 48,
   n: 16,
+  m: 8,
+  t: 2,
   s_D: 1,
   s_max: 8,
   futureFrontendOnlyField: { enabled: true },

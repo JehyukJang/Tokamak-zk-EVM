@@ -6,6 +6,8 @@ export interface SetupParams {
   readonly l_D: number;
   readonly m_D: number;
   readonly n: number;
+  readonly m: number;
+  readonly t: number;
   readonly s_D: number;
   readonly s_max: number;
 }

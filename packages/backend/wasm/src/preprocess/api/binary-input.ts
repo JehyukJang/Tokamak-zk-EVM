@@ -34,21 +34,23 @@ export async function loadPreprocessInputFromBinaryInput(input: PreprocessBinary
 
   return {
     setup,
-    selector: parseSelector(selector, setup.s_max),
+    selector: parseSelector(selector, setup.s_max, setup.s_D),
     permutation: parsePermutation(permutation, setup.l_D - setup.l, setup.s_max),
     crs: await parseUnivariatePreprocessCrs(input.preprocessCrs),
   };
 }
 
-function parseSelector(file: BinaryArtifactFileView, sMax: number): readonly (number | null)[] {
+function parseSelector(file: BinaryArtifactFileView, sMax: number, compiled: number): readonly (number | null)[] {
   const section = requireBinaryArtifactSection(file, selectorSectionSpec);
   if (section.elementCount !== sMax || section.elementByteLength !== 4 || section.data.byteLength !== sMax * 4) {
-    throw new Error(`selector.entries must contain exactly ${sMax} u32 entries.`);
+    throw new Error(`selector.entries must contain exactly ${sMax} i32 entries.`);
   }
   const view = new DataView(section.data.buffer, section.data.byteOffset, section.data.byteLength);
   return Array.from({ length: sMax }, (_, index) => {
-    const value = view.getUint32(index * 4, true);
-    return value === 0xffffffff ? null : value;
+    const value = view.getInt32(index * 4, true);
+    if (value === -1) return null;
+    if (value < 0 || value >= compiled) throw new Error(`Selector subcircuit ID ${value} is outside the active library.`);
+    return value;
   });
 }
 

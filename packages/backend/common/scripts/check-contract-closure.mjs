@@ -32,6 +32,10 @@ const requiredBoundaries = [
   ['Univariate domain Rust implementation', 'rust/libs/src/univariate_crs.rs'],
   ['Univariate domain WASM implementation', 'wasm/src/univariate/domain.ts'],
   ['Univariate CRS chunk authority', 'common/contracts/univariate-crs-chunk-contract.json'],
+  ['Univariate transcript authority', 'common/contracts/univariate-transcript-contract.json'],
+  ['Univariate transcript fixed vectors', 'common/contracts/fixtures/univariate-fiat-shamir.json'],
+  ['Univariate independent correspondence tests', 'common/contracts/tests/univariate-correspondence.test.mjs'],
+  ['Univariate independent transcript tests', 'common/contracts/tests/univariate-transcript.test.mjs'],
   ['Univariate CRS 64-bit RKYV interface', 'common/interface/univariate-crs/src/lib.rs'],
   ['Univariate CRS RKYV chunk reader', 'wasm/tools/univariate-crs-chunker/src/main.rs'],
   ['Univariate CRS browser chunk runtime', 'wasm/src/univariate/chunked-crs.ts'],
@@ -90,6 +94,11 @@ const requiredConsumerBoundaries = [
     'backend-wasm generated univariate CRS chunk contract',
     'packages/backend/wasm/src/generated/univariate-crs-chunk-contract.generated.ts',
     'UNIVARIATE_CRS_CHUNK_CONTRACT',
+  ],
+  [
+    'backend-wasm generated univariate transcript contract',
+    'packages/backend/wasm/src/generated/univariate-transcript-contract.generated.ts',
+    'UNIVARIATE_TRANSCRIPT_CONTRACT',
   ],
 ];
 
