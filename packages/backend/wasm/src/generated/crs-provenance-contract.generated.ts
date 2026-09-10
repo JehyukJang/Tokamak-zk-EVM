@@ -23,44 +23,6 @@ const contract = {
         }
       }
     },
-    "developmentTrustedSetupUnivariateTauSequence": {
-      "releaseEligible": false,
-      "requiredFields": [
-        "documentKind",
-        "releaseEligible",
-        "protocolSchemaId",
-        "terminalCapacity",
-        "tauSequenceRkyvSha256"
-      ],
-      "schema": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "documentKind",
-          "releaseEligible",
-          "protocolSchemaId",
-          "terminalCapacity",
-          "tauSequenceRkyvSha256"
-        ],
-        "properties": {
-          "documentKind": { "const": "developmentTrustedSetupUnivariateTauSequence" },
-          "releaseEligible": { "const": false },
-          "protocolSchemaId": { "const": "tokamak-zk-evm-univariate" },
-          "terminalCapacity": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["l0", "lXi", "lPsi", "l2"],
-            "properties": {
-              "l0": { "type": "integer", "minimum": 0 },
-              "lXi": { "type": "integer", "minimum": 0 },
-              "lPsi": { "type": "integer", "minimum": 0 },
-              "l2": { "type": "integer", "minimum": 0 }
-            }
-          },
-          "tauSequenceRkyvSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
-        }
-      }
-    },
     "developmentTrustedSetupUnivariateKeys": {
       "releaseEligible": false,
       "requiredFields": [
@@ -70,6 +32,7 @@ const contract = {
         "tauSequenceRkyvSha256",
         "subcircuitLibrary",
         "proverKeysRkyvSha256",
+        "preprocessKeysRkyvSha256",
         "verifierKeysRkyvSha256"
       ],
       "schema": {
@@ -82,6 +45,7 @@ const contract = {
           "tauSequenceRkyvSha256",
           "subcircuitLibrary",
           "proverKeysRkyvSha256",
+          "preprocessKeysRkyvSha256",
           "verifierKeysRkyvSha256"
         ],
         "properties": {
@@ -101,6 +65,7 @@ const contract = {
             }
           },
           "proverKeysRkyvSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "preprocessKeysRkyvSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
           "verifierKeysRkyvSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
         }
       }

@@ -3355,6 +3355,7 @@ dependencies = [
 name = "trusted-setup"
 version = "2.1.5"
 dependencies = [
+ "backend-univariate-crs-interface",
  "clap 4.5.53",
  "hex",
  "icicle-bls12-381",

@@ -1,14 +1,13 @@
 use crate::compatibility::{compatibility_from_package_version, parse_compatible_backend_version};
-use crate::crs_artifacts::UnivariateSpecializedKeyDigests;
 use crate::crs_provenance::{
     ensure_crs_provenance_contract_definition, parse_final_mpc_crs_provenance, CrsProvenance,
     DevelopmentOnlyReleaseEligibility, DevelopmentTrustedSetupSigmaProvenance,
-    DevelopmentTrustedSetupUnivariateKeysProvenance,
-    DevelopmentTrustedSetupUnivariateTauSequenceProvenance, SubcircuitLibraryProvenance,
-    UnivariateTerminalCapacityProvenance, CRS_PROVENANCE_FILE_NAME,
+    DevelopmentTrustedSetupUnivariateKeysProvenance, SubcircuitLibraryProvenance,
+    CRS_PROVENANCE_FILE_NAME,
 };
 use crate::errors::CrsError;
-use crate::univariate_crs::{UnivariateTauCapacity, UNIVARIATE_CRS_SCHEMA_ID};
+use crate::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID;
+use crate::univariate_setup::SetupCrsDigests;
 use clap::Args;
 use sha2::{Digest, Sha256};
 use std::env;
@@ -176,42 +175,19 @@ pub fn write_development_only_trusted_setup_provenance(output_dir: &Path) -> std
     fs::write(output_dir.join(CRS_PROVENANCE_FILE_NAME), bytes)
 }
 
-pub fn write_development_only_univariate_tau_provenance(
-    output_dir: &Path,
-    capacity: UnivariateTauCapacity,
-    tau_sequence_sha256: &str,
-) -> std::io::Result<()> {
-    ensure_crs_provenance_contract_definition().map_err(std::io::Error::other)?;
-    let provenance = CrsProvenance::DevelopmentTrustedSetupUnivariateTauSequence(
-        DevelopmentTrustedSetupUnivariateTauSequenceProvenance {
-            release_eligible: DevelopmentOnlyReleaseEligibility,
-            protocol_schema_id: UNIVARIATE_CRS_SCHEMA_ID.to_string(),
-            terminal_capacity: UnivariateTerminalCapacityProvenance {
-                l0: capacity.l0,
-                l_xi: capacity.l_xi,
-                l_psi: capacity.l_psi,
-                l2: capacity.l2,
-            },
-            tau_sequence_rkyv_sha256: tau_sequence_sha256.to_string(),
-        },
-    );
-    let bytes = serde_json::to_vec_pretty(&provenance).map_err(std::io::Error::other)?;
-    fs::write(output_dir.join(CRS_PROVENANCE_FILE_NAME), bytes)
-}
-
 pub fn write_development_only_univariate_keys_provenance(
     output_dir: &Path,
-    tau_sequence_sha256: &str,
     library: SubcircuitLibraryProvenance,
-    digests: &UnivariateSpecializedKeyDigests,
+    digests: &SetupCrsDigests,
 ) -> std::io::Result<()> {
     ensure_crs_provenance_contract_definition().map_err(std::io::Error::other)?;
     let provenance = DevelopmentTrustedSetupUnivariateKeysProvenance {
         release_eligible: DevelopmentOnlyReleaseEligibility,
         protocol_schema_id: UNIVARIATE_CRS_SCHEMA_ID.to_string(),
-        tau_sequence_rkyv_sha256: tau_sequence_sha256.to_string(),
+        tau_sequence_rkyv_sha256: digests.tau_sequence_sha256.clone(),
         subcircuit_library: library,
         prover_keys_rkyv_sha256: digests.prover_keys_sha256.clone(),
+        preprocess_keys_rkyv_sha256: digests.preprocess_keys_sha256.clone(),
         verifier_keys_rkyv_sha256: digests.verifier_keys_sha256.clone(),
     };
     crate::crs_provenance::validate_development_univariate_keys_provenance(&provenance)

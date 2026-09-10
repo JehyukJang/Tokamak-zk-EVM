@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug trusted-setup Phase 1",
+      "name": "Debug trusted-setup",
       "type": "lldb",
       "request": "launch",
       "cargo": {
@@ -11,47 +11,11 @@
       },
       "program": "${cargo:program}",
       "args": [
-        "phase-1",
-        "--l0",
-        "33553410",
-        "--l-xi",
-        "16777217",
-        "--l-psi",
-        "33554435",
-        "--l2",
-        "16777218",
-        "--output",
-        "${workspaceFolder}/rust/setup/trusted-setup/output/debug-tau",
-        "--fixed-tau"
-      ],
-      "cwd": "${workspaceFolder}",
-      "env": {
-        "ICICLE_BACKEND_INSTALL_DIR": "${workspaceFolder}/external-lib/mac/lib/backend",
-        "DYLD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib",
-        "LD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib:${env:LD_LIBRARY_PATH}"
-      },
-      "sourceLanguages": ["rust"]
-    },
-    {
-      "name": "Debug trusted-setup Phase 2",
-      "type": "lldb",
-      "request": "launch",
-      "cargo": {
-        "args": ["build", "--locked", "--release", "-p", "trusted-setup", "--features", "local-development-subcircuit-library"],
-        "filter": { "name": "trusted-setup", "kind": "bin" }
-      },
-      "program": "${cargo:program}",
-      "args": [
-        "phase-2",
         "--subcircuit-library",
         "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
-        "--tau-sequence",
-        "${workspaceFolder}/rust/setup/trusted-setup/output/debug-tau/tau_sequence.rkyv",
-        "--tau-provenance",
-        "${workspaceFolder}/rust/setup/trusted-setup/output/debug-tau/crs_provenance.json",
         "--output",
         "${workspaceFolder}/rust/setup/trusted-setup/output/debug-keys",
-        "--fixed-role-scalars"
+        "--fixed-tau"
       ],
       "cwd": "${workspaceFolder}",
       "env": {
@@ -122,7 +86,7 @@
         "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
         "--allow-unverified-crs",
         "--tau-sequence",
-        "${workspaceFolder}/rust/setup/trusted-setup/output/debug-tau/tau_sequence.rkyv",
+        "${workspaceFolder}/rust/setup/trusted-setup/output/debug-keys/tau_sequence.rkyv",
         "--keys",
         "${workspaceFolder}/rust/setup/trusted-setup/output/debug-keys",
         "--synthesizer-stat",
@@ -152,7 +116,7 @@
         "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
         "--allow-unverified-crs",
         "--tau-sequence",
-        "${workspaceFolder}/rust/setup/trusted-setup/output/debug-tau/tau_sequence.rkyv",
+        "${workspaceFolder}/rust/setup/trusted-setup/output/debug-keys/tau_sequence.rkyv",
         "--keys",
         "${workspaceFolder}/rust/setup/trusted-setup/output/debug-keys",
         "--synthesizer-stat",
