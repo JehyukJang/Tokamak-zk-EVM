@@ -10,17 +10,17 @@
   "capacityCases": [
     {
       "name": "small-library",
-      "input": { "n": 4, "m": 4, "mI": 4, "s": 4, "compiled": 3, "ell": 2 },
+      "input": { "n": 4, "m": 4, "mI": 4, "s": 4, "compiled": 3, "lFree": 2 },
       "expected": { "t": 4, "mD": 12, "NA": 16, "NC": 16, "NS": 16, "d": 17, "P": 35, "K": 18, "h": 18, "S": 36 }
     },
     {
       "name": "selection-capacity-dominates",
-      "input": { "n": 2, "m": 4, "mI": 2, "s": 2, "compiled": 4, "ell": 0 },
+      "input": { "n": 2, "m": 4, "mI": 2, "s": 2, "compiled": 4, "lFree": 1 },
       "expected": { "t": 8, "mD": 16, "NA": 4, "NC": 4, "NS": 16, "d": 5, "P": 20, "K": 15, "h": 6, "S": 21 }
     },
     {
       "name": "current-local-library",
-      "input": { "n": 1024, "m": 1024, "mI": 1024, "s": 256, "compiled": 44, "ell": 396 },
+      "input": { "n": 1024, "m": 1024, "mI": 1024, "s": 256, "compiled": 44, "lFree": 256 },
       "expected": { "t": 64, "mD": 45056, "NA": 262144, "NC": 262144, "NS": 16384, "d": 262145, "P": 524291, "K": 262146, "h": 262146, "S": 524292 }
     }
   ],

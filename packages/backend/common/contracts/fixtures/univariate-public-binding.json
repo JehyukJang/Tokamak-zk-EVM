@@ -1,0 +1,27 @@
+{
+  "fieldModulus": 97,
+  "n": 4,
+  "mI": 4,
+  "s": 4,
+  "t": 4,
+  "K": 18,
+  "h": 18,
+  "S": 36,
+  "xi": 7,
+  "psi": 13,
+  "freeValues": [3, 5, 0, 0],
+  "paddingIndices": [2, 3],
+  "fixedValues": [7, 11],
+  "totalPublicLength": 6,
+  "selector": [0, 1, 2, -1],
+  "imageMasks": [[2, 3], [5, 7], [11, 13], [17, 19]],
+  "selectionMask": 23,
+  "wires": [
+    { "i": 0, "k": 0, "j": 0, "global": 0, "images": [2, 3, 5, 0] },
+    { "i": 1, "k": 1, "j": 0, "global": 1, "images": [7, 11, 13, 0] },
+    { "i": 2, "k": 2, "j": 0, "global": 4, "images": [17, 19, 23, 0] },
+    { "i": 2, "k": 2, "j": 1, "global": 5, "images": [29, 31, 37, 0] },
+    { "i": 0, "k": 0, "j": 1, "global": 7, "value": 13, "images": [41, 43, 47, 0] },
+    { "i": 1, "k": 1, "j": 1, "global": 6, "value": 17, "images": [53, 59, 61, 67] }
+  ]
+}
