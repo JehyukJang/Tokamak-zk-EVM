@@ -137,31 +137,6 @@ impl StridedPolynomial {
     }
 }
 
-/// Builds the U2 selector `C^A_(i,k)` by interpolating one value on the
-/// `s*t` coset-label domain. The returned polynomial has exactly `s*t`
-/// coefficients rather than an `N_A`-element dense representation.
-pub fn arithmetic_coset_selector(
-    shape: &UnivariateCrsShape,
-    setup: &SetupParams,
-    placement_index: usize,
-    subcircuit_id: usize,
-) -> Result<StridedPolynomial, UnivariateRelationError> {
-    if placement_index >= setup.s_max {
-        return Err(UnivariateRelationError::PlacementIndex {
-            value: placement_index,
-        });
-    }
-    if subcircuit_id >= shape.subcircuit_capacity {
-        return Err(UnivariateRelationError::SubcircuitId {
-            value: subcircuit_id,
-        });
-    }
-    let label_count = arithmetic_label_count(shape, setup)?;
-    let mut evaluations = vec![ScalarField::zero(); label_count];
-    evaluations[placement_index + setup.s_max * subcircuit_id] = ScalarField::one();
-    interpolate_selector(evaluations, setup.n)
-}
-
 /// Builds the U9a polynomial `S_kappa` directly from a capacity-length
 /// selector. Only real library IDs are admitted; the `t - s_D` padding range
 /// is never a legal placement value.
@@ -198,8 +173,8 @@ pub fn connection_coset_selector(
 }
 
 /// Builds one U6 lift for a tagged local wire without materializing any
-/// bivariate QAP object. The result is supported on exactly one arithmetic
-/// `(placement_index, subcircuit_id)` coset.
+/// bivariate QAP object. The result is supported on the placement's arithmetic
+/// coset; the subcircuit chooses its R1CS coefficients, not another domain axis.
 pub fn arithmetic_wire_lift(
     shape: &UnivariateCrsShape,
     setup: &SetupParams,
@@ -868,10 +843,10 @@ fn interpolate_selector(
 #[cfg(test)]
 mod tests {
     use super::{
-        arithmetic_coset_selector, arithmetic_wire_lift, arithmetic_wire_lifts_at,
-        connection_copy_factors, connection_coset_selector, connection_permutation_polynomial,
-        connection_wire_lift, connection_wire_lift_at, placement_selector_polynomial, witness_maps,
-        R1csMatrix, SlotWitness, UnivariateRelationError, UnivariateSubcircuit,
+        arithmetic_wire_lift, arithmetic_wire_lifts_at, connection_copy_factors,
+        connection_coset_selector, connection_permutation_polynomial, connection_wire_lift,
+        connection_wire_lift_at, placement_selector_polynomial, witness_maps, R1csMatrix,
+        SlotWitness, UnivariateRelationError, UnivariateSubcircuit,
     };
     use crate::frontend_artifacts::{Permutation, SetupParams};
     use crate::univariate_crs::UnivariateCrsShape;
@@ -986,29 +961,6 @@ mod tests {
             t: 4,
             s_D: 3,
             s_max: 2,
-        }
-    }
-
-    #[test]
-    fn arithmetic_selectors_match_the_u2_coset_values() {
-        let setup = setup();
-        let shape = UnivariateCrsShape::from_setup_params(&setup).unwrap();
-        let selector = arithmetic_coset_selector(&shape, &setup, 1, 2).unwrap();
-
-        for placement in 0..setup.s_max {
-            for subcircuit in 0..shape.subcircuit_capacity {
-                for row in 0..setup.n {
-                    let point = shape
-                        .arithmetic_root
-                        .pow(shape.arithmetic_index(placement, row, &setup).unwrap());
-                    let expected = if (placement, subcircuit) == (1, 2) {
-                        ScalarField::one()
-                    } else {
-                        ScalarField::zero()
-                    };
-                    assert_eq!(selector.evaluate(point), expected);
-                }
-            }
         }
     }
 
