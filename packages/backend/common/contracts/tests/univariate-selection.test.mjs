@@ -77,7 +77,7 @@ test("minimal P satisfies every U18 lower bound without multiplying NA by t", ()
     assert.ok(bounds.some((bound) => P - 1 < bound));
     assert.equal(S, P + 1);
     assert.ok(K > d);
-    // This verifies U18, not the separate, still-unfixed c0 admission bound.
+    // Capacity follows U18 demand; no fixed c0 multiplier gates admission.
   }
 });
 
