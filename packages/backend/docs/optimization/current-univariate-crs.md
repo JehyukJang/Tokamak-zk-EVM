@@ -884,3 +884,30 @@ Evidence: [paired samples](evidence/prover-p13-instrumentation.json),
 The reusable runner is `rust/prove/optimization/compare-release.mjs`, invoked
 from `packages/backend` with control binary, candidate binary and output
 directory. It records fresh randomizers, hashes, nested spans and peak RSS.
+
+### P13.1a: accepted independent-file SHA-256 parallelism
+
+The same three file digests are computed in the default Rayon pool, then
+checked in their original order. SHA-256 bytes and the first reported
+missing-file/mismatch error are unchanged. No input check was removed.
+The new ordered-admission test passes for valid, corrupt and missing files,
+including an earlier mismatch followed by a later missing file.
+
+The independent release comparison (three retained trials after warmup)
+measured serial 1.673004 / 1.662954 / 1.667188 seconds and parallel
+1.133705 / 1.132588 / 1.136631 seconds. All digests matched. Its reproducible
+test is `compare_parallel_univariate_hashes` with `PROVE_BENCH_KEYS` pointing
+to the accepted local CRS directory.
+
+Five alternating full-command pairs averaged **6.061472 seconds control and
+5.474284 seconds candidate (9.69% reduction)**; every pair favored the
+candidate and every run produced the common binary proof. Identity wall time
+fell from 1.800685 to 1.237693 seconds. Peak RSS remained approximately
+3.13 GB. The last control was slower than earlier controls, so the reported
+mean is not an exact isolated estimate of hash savings. The independently
+measured hash reduction and every paired result support acceptance.
+
+Per-file hash/read spans now overlap across threads: their sums are work
+durations, **not elapsed identity time**. Compare `univariate.identity` for
+latency. No protocol arithmetic changed; full E2E remains P8.
+Evidence: [whole-command pairs](evidence/prover-p13-parallel-hash.json).
