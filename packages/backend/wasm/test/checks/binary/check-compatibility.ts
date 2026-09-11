@@ -197,7 +197,9 @@ function compatibleVersion(packageVersion: string): string {
 
 function provenance(version: string): CrsProvenanceInput {
   return {
-    documentKind: 'finalMpcCrs',
+    documentKind: 'crs',
+    protocolSchemaId: 'tokamak-zk-evm-univariate',
+    generationMethod: 'mpc',
     releaseEligible: false,
     generatedAtUtc: '2026-08-24T00:00:00Z',
     compatibleBackendVersion: compatibleVersion(version),
@@ -210,9 +212,12 @@ function provenance(version: string): CrsProvenanceInput {
     phase1SourceProvenance: null,
     ceremonyProtocolVersion: 'tokamak-mpc-2phase-v1',
     ceremonyTranscriptSha256: '3'.repeat(64),
-    combinedSigmaSha256: '0'.repeat(64),
-    sigmaPreprocessSha256: '1'.repeat(64),
-    sigmaVerifySha256: '2'.repeat(64),
+    artifacts: {
+      'tau_sequence.rkyv': '0'.repeat(64),
+      'prover_keys.rkyv': '0'.repeat(64),
+      'preprocess_keys.rkyv': '1'.repeat(64),
+      'verifier_keys.rkyv': '2'.repeat(64),
+    },
   };
 }
 

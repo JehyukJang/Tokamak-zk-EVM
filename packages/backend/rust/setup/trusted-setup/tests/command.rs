@@ -2,7 +2,7 @@ use backend_univariate_crs_interface::{
     archive, ArchivedPreprocessKeysRkyv, ArchivedProverKeysRkyv, ArchivedTauSequenceRkyv,
     ArchivedVerifierKeysRkyv,
 };
-use libs::crs_provenance::parse_development_univariate_keys_provenance;
+use libs::crs_provenance::parse_crs_provenance;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -54,21 +54,16 @@ fn one_command_activates_four_minimal_archives_and_matching_provenance() {
         .is_symlink());
     assert_eq!(fs::read_dir(&active).unwrap().count(), 5);
     let bytes = fs::read(active.join("crs_provenance.json")).unwrap();
-    let provenance = parse_development_univariate_keys_provenance(&bytes).unwrap();
+    let provenance = parse_crs_provenance(&bytes).unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(json["releaseEligible"], false);
     assert_eq!(json["subcircuitLibrary"]["origin"], "localQapCompiler");
     assert!(json["subcircuitLibrary"]["packageVersion"].is_string());
     assert!(json.get("terminalCapacity").is_none());
-    for (name, digest) in [
-        ("tau_sequence.rkyv", &provenance.tau_sequence_rkyv_sha256),
-        ("prover_keys.rkyv", &provenance.prover_keys_rkyv_sha256),
-        (
-            "preprocess_keys.rkyv",
-            &provenance.preprocess_keys_rkyv_sha256,
-        ),
-        ("verifier_keys.rkyv", &provenance.verifier_keys_rkyv_sha256),
-    ] {
+    assert_eq!(json["documentKind"], "crs");
+    assert_eq!(json["generationMethod"], "trustedSetup");
+    assert_eq!(json["ceremonyTranscriptSha256"], serde_json::Value::Null);
+    for (name, digest) in &provenance.artifacts {
         assert_eq!(
             *digest,
             hex::encode(Sha256::digest(fs::read(active.join(name)).unwrap()))
@@ -115,7 +110,11 @@ fn one_command_activates_four_minimal_archives_and_matching_provenance() {
             .count(),
         1
     );
-    assert_eq!(fs::read(active.join("crs_provenance.json")).unwrap(), bytes);
+    let mut repeated =
+        parse_crs_provenance(&fs::read(active.join("crs_provenance.json")).unwrap()).unwrap();
+    // Fixed randomness preserves CRS identity, not the generation timestamp.
+    repeated.generated_at_utc = provenance.generated_at_utc.clone();
+    assert_eq!(repeated, provenance);
 }
 
 #[test]
@@ -151,7 +150,7 @@ fn invalid_library_preserves_active_generation_and_output_files_are_not_overwrit
 }
 
 #[test]
-fn random_setup_changes_the_generation_and_development_policy_cannot_be_relaxed() {
+fn random_setup_changes_the_generation_and_uses_the_common_contract() {
     let workspace = tempfile::tempdir().unwrap();
     let library = create_minimal_library(workspace.path());
     let active = workspace.path().join("active");
@@ -161,26 +160,19 @@ fn random_setup_changes_the_generation_and_development_policy_cannot_be_relaxed(
     assert_ne!(first, fs::read(active.join("tau_sequence.rkyv")).unwrap());
     let json: serde_json::Value =
         serde_json::from_slice(&fs::read(active.join("crs_provenance.json")).unwrap()).unwrap();
-    for (key, value) in [
-        ("releaseEligible", serde_json::json!(true)),
-        ("preprocessKeysRkyvSha256", serde_json::json!("invalid")),
-    ] {
-        let mut invalid = json.clone();
-        invalid[key] = value;
-        assert!(parse_development_univariate_keys_provenance(
-            &serde_json::to_vec(&invalid).unwrap()
-        )
-        .is_err());
-    }
+    let mut invalid = json.clone();
+    invalid["artifacts"]["preprocess_keys.rkyv"] = serde_json::json!("invalid");
+    assert!(parse_crs_provenance(&serde_json::to_vec(&invalid).unwrap()).is_err());
     let mut missing = json.clone();
-    missing
+    missing["artifacts"]
         .as_object_mut()
         .unwrap()
-        .remove("preprocessKeysRkyvSha256");
-    assert!(
-        parse_development_univariate_keys_provenance(&serde_json::to_vec(&missing).unwrap())
-            .is_err()
-    );
+        .remove("preprocess_keys.rkyv");
+    assert!(parse_crs_provenance(&serde_json::to_vec(&missing).unwrap()).is_err());
+    // The shared parser does not decide whether an artifact may be published.
+    let mut eligible = json.clone();
+    eligible["releaseEligible"] = serde_json::json!(true);
+    assert!(parse_crs_provenance(&serde_json::to_vec(&eligible).unwrap()).is_ok());
 }
 
 #[test]

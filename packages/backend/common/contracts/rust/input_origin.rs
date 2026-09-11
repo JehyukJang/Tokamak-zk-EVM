@@ -70,7 +70,7 @@ mod tests {
             serde_json::from_str(include_str!("../crs-provenance-contract.json"))
                 .expect("backend CRS provenance contract must be valid JSON");
         let origins = contract
-            .pointer("/documentKinds/finalMpcCrs/schema/properties/subcircuitLibrary/properties/origin/enum")
+            .pointer("/schema/properties/subcircuitLibrary/properties/origin/enum")
             .and_then(serde_json::Value::as_array)
             .expect("provenance contract must define the origin enum")
             .iter()

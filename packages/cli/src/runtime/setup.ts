@@ -17,8 +17,8 @@ import type { RuntimeContext } from './model.js';
 import { logVerbose } from '../system.js';
 import {
   crsProvenanceFileName,
-  finalMpcCrsArchiveRootFileNames,
-  parseFinalMpcCrsProvenance,
+  crsArchiveRootFileNames,
+  parseCrsProvenance,
 } from '../generated/crs-provenance-validator.generated.js';
 import {
   BACKEND_PACKAGE_NAMES,
@@ -26,11 +26,11 @@ import {
   parseBackendBuildMetadata,
 } from '../generated/backend-build-metadata-validator.generated.js';
 
-type FinalMpcCrsProvenance = import('../generated/crs-provenance-validator.generated.js').FinalMpcCrsProvenance;
+type CrsProvenance = import('../generated/crs-provenance-validator.generated.js').CrsProvenance;
 
 const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = '@tokamak-zk-evm/subcircuit-library';
 const CRS_PROVENANCE_FILE_NAME = crsProvenanceFileName();
-const FINAL_CRS_ARTIFACT_FILES = finalMpcCrsArchiveRootFileNames();
+const FINAL_CRS_ARTIFACT_FILES = crsArchiveRootFileNames();
 const CRS_DRIVE_FOLDER_ID = '14xqCbLoyoVmUVTTlopiXtKnoHPBGL-Sv';
 
 const CRS_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/mobile/folders';
@@ -164,7 +164,7 @@ const ZIP_UNIX_SYMBOLIC_LINK_TYPE = 0o120000;
  * is written to disk. The backend-owned contract defines the only accepted
  * root-level filenames.
  */
-export function validateFinalMpcCrsArchiveEntries(entries: readonly CrsZipEntry[]): Map<string, CrsZipEntry> {
+export function validateCrsArchiveEntries(entries: readonly CrsZipEntry[]): Map<string, CrsZipEntry> {
   const expectedFileNames = new Set(FINAL_CRS_ARTIFACT_FILES);
   const accepted = new Map<string, CrsZipEntry>();
 
@@ -197,8 +197,8 @@ export function validateFinalMpcCrsArchiveEntries(entries: readonly CrsZipEntry[
   return accepted;
 }
 
-/** Extracts only a prevalidated final-MPC CRS archive into a caller-owned staging directory. */
-export async function extractApprovedFinalMpcCrsArchive(
+/** Extracts only a prevalidated CRS archive into a caller-owned staging directory. */
+export async function extractApprovedCrsArchive(
   archivePath: string,
   destinationDir: string,
 ): Promise<void> {
@@ -208,7 +208,7 @@ export async function extractApprovedFinalMpcCrsArchive(
   } catch (error) {
     throw new Error(`Cannot read CRS ZIP archive ${archivePath}: ${errorMessage(error)}`);
   }
-  const acceptedEntries = validateFinalMpcCrsArchiveEntries(archive.getEntries());
+  const acceptedEntries = validateCrsArchiveEntries(archive.getEntries());
   await ensureDir(destinationDir);
   for (const fileName of FINAL_CRS_ARTIFACT_FILES) {
     const contents = acceptedEntries.get(fileName)!.getData();
@@ -249,7 +249,7 @@ export async function validateDownloadedCrsArchive(
   provenancePath: string;
 }> {
   const provenancePath = path.join(extractedDir, CRS_PROVENANCE_FILE_NAME);
-  const provenance = await validateFinalMpcCrsProvenanceContract(
+  const provenance = await validateCrsProvenanceContract(
     await readJsonFile<unknown>(provenancePath),
     archiveName,
   );
@@ -332,28 +332,22 @@ export async function validateDownloadedCrsArchive(
   };
 }
 
-export async function validateFinalMpcCrsProvenanceContract(
+export async function validateCrsProvenanceContract(
   provenance: unknown,
   archiveName: string,
-): Promise<FinalMpcCrsProvenance> {
-  return parseFinalMpcCrsProvenance(provenance, `CRS archive ${archiveName} finalMpcCrs provenance`);
+): Promise<CrsProvenance> {
+  return parseCrsProvenance(provenance, `CRS archive ${archiveName} provenance`);
 }
 
 async function validateCrsArtifactHashes(
   extractedDir: string,
   archiveName: string,
-  provenance: FinalMpcCrsProvenance,
+  provenance: CrsProvenance,
 ): Promise<void> {
-  const checks = [
-    ['combinedSigmaSha256', 'combined_sigma.rkyv'],
-    ['sigmaPreprocessSha256', 'sigma_preprocess.rkyv'],
-    ['sigmaVerifySha256', 'sigma_verify.json'],
-  ] as const;
-
-  for (const [field, fileName] of checks) {
-    const expected = normalizeSha256(provenance[field]);
+  for (const [fileName, digest] of Object.entries(provenance.artifacts)) {
+    const expected = normalizeSha256(digest);
     if (expected === null) {
-      throw new Error(`CRS archive ${archiveName} provenance is missing ${field}.`);
+      throw new Error(`CRS archive ${archiveName} provenance has an invalid digest for ${fileName}.`);
     }
     const filePath = path.join(extractedDir, fileName);
     const actual = await sha256FileHex(filePath);
@@ -374,7 +368,7 @@ export async function installDownloadedSetup(
   const extractedDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-crs-extract-'));
   try {
     const { archivePath, archiveName } = await downloadLatestCrsArchive(context, selection, verbose);
-    await extractApprovedFinalMpcCrsArchive(archivePath, extractedDir);
+    await extractApprovedCrsArchive(archivePath, extractedDir);
     const { provenancePath } = await validateDownloadedCrsArchive(
       extractedDir,
       backendReleaseDir,
@@ -411,7 +405,7 @@ export async function installValidatedCrsGeneration(
       await copyFile(sourcePath, path.join(stagingDirectory, fileName));
     }
 
-    const stagedProvenance = await validateFinalMpcCrsProvenanceContract(
+    const stagedProvenance = await validateCrsProvenanceContract(
       await readJsonFile<unknown>(path.join(stagingDirectory, CRS_PROVENANCE_FILE_NAME)),
       archiveName,
     );

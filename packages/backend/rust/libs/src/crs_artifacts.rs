@@ -929,7 +929,7 @@ pub fn verify_final_crs_artifact_digests(
     Ok(())
 }
 
-fn sha256_file_hex(path: &Path) -> io::Result<String> {
+pub(crate) fn sha256_file_hex(path: &Path) -> io::Result<String> {
     let file = File::open(path)?;
     let mut reader = BufReader::new(file);
     let mut hasher = Sha256::new();

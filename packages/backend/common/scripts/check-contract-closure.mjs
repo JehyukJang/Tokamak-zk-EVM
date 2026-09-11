@@ -12,11 +12,11 @@ const requiredBoundaries = [
   ['Canonical artifact generator', 'common/scripts/generate-artifact-codecs.mjs'],
   ['CRS provenance JSON authority', 'common/contracts/crs-provenance-contract.json'],
   ['CRS provenance Rust representation', 'rust/libs/src/crs_provenance.rs'],
-  ['CRS provenance final writer', 'rust/setup/mpc-setup/src/flows/final_artifacts.rs'],
+  ['CRS provenance common writer', 'rust/libs/src/crs_provenance.rs'],
+  ['CRS provenance trusted-setup producer', 'rust/setup/trusted-setup/src/univariate.rs'],
   ['CRS provenance algorithm ingress', 'rust/libs/src/subcircuit_library.rs'],
   ['CRS provenance publication admission', 'rust/libs/src/crs_publication_admission.rs'],
   ['CRS provenance workflow admission command', 'rust/libs/src/bin/check_crs_publication.rs'],
-  ['CRS provenance publisher ingress', 'rust/setup/mpc-setup/src/drive_upload.rs'],
   ['CRS provenance TypeScript validator', 'common/contracts/typescript/crs-provenance-validator.ts'],
   ['CRS provenance closure inventory', 'common/contracts/CONTRACT_CLOSURE.md'],
   ['Build metadata JSON authority', 'common/contracts/backend-build-metadata-contract.json'],
@@ -46,23 +46,23 @@ const requiredBoundaries = [
 ];
 
 const requiredConsumerBoundaries = [
-  ['CLI CRS provenance consumer', 'packages/cli/src/runtime/setup.ts', 'parseFinalMpcCrsProvenance'],
+  ['CLI CRS provenance consumer', 'packages/cli/src/runtime/setup.ts', 'parseCrsProvenance'],
   ['CLI build metadata consumer', 'packages/cli/src/runtime/setup.ts', 'parseBackendBuildMetadata'],
   ['CLI source-digest comparison', 'packages/cli/src/runtime/setup.ts', 'backendSubcircuitSourceDigest'],
   [
     'backend-wasm CRS provenance consumer',
     'packages/backend/wasm/src/artifacts/binary/compatibility.ts',
-    'parseFinalMpcCrsProvenance',
+    'parseCrsProvenance',
   ],
   [
     'CLI copied provenance validator',
     'packages/cli/src/generated/crs-provenance-validator.generated.ts',
-    'parseFinalMpcCrsProvenance',
+    'parseCrsProvenance',
   ],
   [
     'backend-wasm copied provenance validator',
     'packages/backend/wasm/src/generated/crs-provenance-validator.generated.ts',
-    'parseFinalMpcCrsProvenance',
+    'parseCrsProvenance',
   ],
   [
     'CLI copied build metadata validator',

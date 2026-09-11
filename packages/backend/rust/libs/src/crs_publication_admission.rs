@@ -1,7 +1,7 @@
 use crate::compatibility::compatibility_from_package_version;
-use crate::crs_artifacts::{verify_final_crs_artifact_digests, FinalCrsDigests};
+use crate::crs_artifacts::sha256_file_hex;
 use crate::crs_provenance::{
-    parse_final_mpc_crs_provenance, FinalMpcCrsProvenance, Phase1SourceProvenance,
+    parse_crs_provenance, CrsGenerationMethod, CrsProvenance, Phase1SourceProvenance,
     CRS_PROVENANCE_FILE_NAME,
 };
 use crate::input_origin::SubcircuitLibraryOrigin;
@@ -95,7 +95,7 @@ fn test_publication_identity_override() -> Result<Option<PublicationIdentity>, S
 pub fn admit_final_crs_publication(
     output_directory: &Path,
     expected: &PublicationIdentity,
-) -> Result<FinalMpcCrsProvenance, String> {
+) -> Result<CrsProvenance, String> {
     let provenance_path = output_directory.join(CRS_PROVENANCE_FILE_NAME);
     let provenance_bytes = fs::read(&provenance_path).map_err(|error| {
         format!(
@@ -103,10 +103,18 @@ pub fn admit_final_crs_publication(
             provenance_path.display()
         )
     })?;
-    let provenance = parse_final_mpc_crs_provenance(&provenance_bytes)?;
+    let provenance = parse_crs_provenance(&provenance_bytes)?;
 
     if !provenance.release_eligible {
         return Err("only release-eligible CRS artifacts may be published".to_string());
+    }
+    if provenance.generation_method != CrsGenerationMethod::Mpc {
+        return Err("only MPC-generated CRS artifacts may be published".into());
+    }
+    if provenance.ceremony_protocol_version.is_none()
+        || provenance.ceremony_transcript_sha256.is_none()
+    {
+        return Err("MPC publication requires ceremony protocol and transcript provenance".into());
     }
     let Some(Phase1SourceProvenance::DuskGroth16(dusk)) =
         provenance.phase1_source_provenance.as_ref()
@@ -164,17 +172,15 @@ pub fn admit_final_crs_publication(
         ));
     }
 
-    verify_final_crs_artifact_digests(
-        output_directory,
-        &FinalCrsDigests {
-            combined_sigma_sha256: provenance.combined_sigma_sha256.clone(),
-            sigma_preprocess_sha256: provenance.sigma_preprocess_sha256.clone(),
-            sigma_verify_sha256: provenance.sigma_verify_sha256.clone(),
-        },
-    )
-    .map_err(|error| {
-        format!("cannot publish CRS whose artifacts fail provenance digest validation: {error}")
-    })?;
+    for (name, expected) in &provenance.artifacts {
+        let actual = sha256_file_hex(&output_directory.join(name))
+            .map_err(|error| format!("cannot read CRS artifact {name} for publication: {error}"))?;
+        if actual != *expected {
+            return Err(format!(
+                "cannot publish CRS whose artifacts fail provenance digest validation: {name}"
+            ));
+        }
+    }
 
     Ok(provenance)
 }
@@ -203,6 +209,47 @@ mod tests {
     fn accepts_the_shared_canonical_publication_fixture() {
         admit_final_crs_publication(&fixture("accepted"), &expected())
             .expect("canonical Dusk-backed npm-snapshot fixture must be admitted");
+    }
+
+    #[test]
+    fn common_format_does_not_grant_publication_authority() {
+        let original: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(fixture("accepted").join("crs_provenance.json")).unwrap(),
+        )
+        .unwrap();
+        for (field, value, expected_message) in [
+            (
+                "generationMethod",
+                serde_json::json!("trustedSetup"),
+                "only MPC-generated",
+            ),
+            (
+                "phase1SourceProvenance",
+                serde_json::json!("native"),
+                "only Dusk-backed",
+            ),
+            (
+                "ceremonyProtocolVersion",
+                serde_json::Value::Null,
+                "requires ceremony",
+            ),
+            (
+                "ceremonyTranscriptSha256",
+                serde_json::Value::Null,
+                "requires ceremony",
+            ),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut value_to_write = original.clone();
+            value_to_write[field] = value;
+            std::fs::write(
+                dir.path().join("crs_provenance.json"),
+                serde_json::to_vec(&value_to_write).unwrap(),
+            )
+            .unwrap();
+            let error = admit_final_crs_publication(dir.path(), &expected()).unwrap_err();
+            assert!(error.contains(expected_message), "{error}");
+        }
     }
 
     #[test]

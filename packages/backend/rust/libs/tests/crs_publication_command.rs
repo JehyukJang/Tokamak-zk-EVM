@@ -1,7 +1,7 @@
 #![cfg(feature = "testing-mode")]
 
 use libs::compatibility::compatibility_from_package_version;
-use libs::crs_provenance::final_mpc_crs_archive_root_file_names;
+use libs::crs_provenance::crs_archive_root_file_names;
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -29,9 +29,7 @@ fn prepare_fixture(
     source_digest: &str,
 ) -> tempfile::TempDir {
     let workspace = tempfile::tempdir().expect("must create command fixture workspace");
-    for file_name in
-        final_mpc_crs_archive_root_file_names().expect("archive contract must be valid")
-    {
+    for file_name in crs_archive_root_file_names().expect("archive contract must be valid") {
         fs::copy(
             fixture(name).join(&file_name),
             workspace.path().join(&file_name),

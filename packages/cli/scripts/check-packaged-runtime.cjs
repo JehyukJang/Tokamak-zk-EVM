@@ -91,16 +91,19 @@ async function runInstalledPackageFixture(installedRoot, targetRoot) {
     const extractedDir = path.join(fixtureRoot, 'extracted');
     const activatedOutputDir = path.join(fixtureRoot, 'runtime', 'resource', 'setup', 'output');
     const artifacts = {
-      'combined_sigma.rkyv': 'installed consumer combined sigma',
-      'sigma_preprocess.rkyv': 'installed consumer preprocess sigma',
-      'sigma_verify.json': 'installed consumer verify sigma',
+      'tau_sequence.rkyv': 'synthetic tau payload',
+      'prover_keys.rkyv': 'installed consumer combined sigma',
+      'preprocess_keys.rkyv': 'installed consumer preprocess sigma',
+      'verifier_keys.rkyv': 'installed consumer verify sigma',
     };
     const subcircuitLibrary = runtimeIdentity[0]?.dependencies?.subcircuitLibrary;
     if (subcircuitLibrary === undefined) {
       fail('Installed backend build metadata is missing subcircuit-library identity.');
     }
     const finalProvenance = {
-      documentKind: 'finalMpcCrs',
+      documentKind: 'crs',
+      protocolSchemaId: 'tokamak-zk-evm-univariate',
+      generationMethod: 'mpc',
       releaseEligible: false,
       generatedAtUtc: '2026-08-29T00:00:00Z',
       compatibleBackendVersion,
@@ -111,13 +114,13 @@ async function runInstalledPackageFixture(installedRoot, targetRoot) {
         sourceDigest: subcircuitLibrary.sourceDigest,
       },
       phase1SourceProvenance: null,
-      combinedSigmaSha256: sha256(artifacts['combined_sigma.rkyv']),
-      sigmaPreprocessSha256: sha256(artifacts['sigma_preprocess.rkyv']),
-      sigmaVerifySha256: sha256(artifacts['sigma_verify.json']),
+      ceremonyProtocolVersion: null,
+      ceremonyTranscriptSha256: null,
+      artifacts: Object.fromEntries(Object.entries(artifacts).map(([name, bytes]) => [name, sha256(bytes)])),
     };
 
     const archive = new AdmZip();
-    for (const fileName of provenance.finalMpcCrsArchiveRootFileNames()) {
+    for (const fileName of provenance.crsArchiveRootFileNames()) {
       const contents = fileName === provenance.crsProvenanceFileName()
         ? `${JSON.stringify(finalProvenance)}\n`
         : artifacts[fileName];
@@ -128,7 +131,7 @@ async function runInstalledPackageFixture(installedRoot, targetRoot) {
     }
     archive.writeZip(archivePath);
 
-    await setup.extractApprovedFinalMpcCrsArchive(archivePath, extractedDir);
+    await setup.extractApprovedCrsArchive(archivePath, extractedDir);
     await setup.validateDownloadedCrsArchive(
       extractedDir,
       backendReleaseDir,

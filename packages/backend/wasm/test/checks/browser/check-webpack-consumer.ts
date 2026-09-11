@@ -13,7 +13,9 @@ const execFileAsync = promisify(execFile);
 const PACKAGE_NAME = '@tokamak-zk-evm/snark-browser-compat';
 
 const CRS_PROVENANCE = JSON.stringify({
-  documentKind: 'finalMpcCrs',
+  documentKind: 'crs',
+    protocolSchemaId: 'tokamak-zk-evm-univariate',
+    generationMethod: 'mpc',
   releaseEligible: false,
   generatedAtUtc: '2026-08-24T00:00:00Z',
   compatibleBackendVersion: SUBCIRCUIT_LIBRARY_PACKAGE_VERSION.split('.').slice(0, 2).join('.'),
@@ -24,9 +26,14 @@ const CRS_PROVENANCE = JSON.stringify({
     sourceDigest: `sha256:${'2'.repeat(64)}`,
   },
   phase1SourceProvenance: null,
-  combinedSigmaSha256: '0'.repeat(64),
-  sigmaPreprocessSha256: '1'.repeat(64),
-  sigmaVerifySha256: '2'.repeat(64),
+  ceremonyProtocolVersion: null,
+  ceremonyTranscriptSha256: null,
+  artifacts: {
+      'tau_sequence.rkyv': '0'.repeat(64),
+      'prover_keys.rkyv': '0'.repeat(64),
+      'preprocess_keys.rkyv': '1'.repeat(64),
+      'verifier_keys.rkyv': '2'.repeat(64),
+    },
 });
 const SUBCIRCUIT_LIBRARY_TARBALL = process.env.BACKEND_WASM_SUBCIRCUIT_LIBRARY_TARBALL;
 const APPLICATION_SOURCE = `

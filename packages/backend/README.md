@@ -172,48 +172,48 @@ build.
 
 See [rust/setup/mpc-setup/README.md](./rust/setup/mpc-setup/README.md) for the full MPC operator guide.
 
-## Setup Outputs
+## Setup outputs and common provenance
 
-`trusted-setup` final output:
+The backend-owned CRS interface consists of four RKYV payloads:
 
-- `tau_sequence.rkyv`: generic sequences whose group elements overlap
-  algebraically with the reusable phase-1 tau sequence, used by preprocess and prove
-- `prover_keys.rkyv`: prover-only specialized keys, with no element copied from the tau sequence
-- `verifier_keys.rkyv`: proof-verification keys; duplication with the other two files is allowed
-- `crs_provenance.json` with `releaseEligible: false` and a SHA-256 digest for each RKYV file
+- `tau_sequence.rkyv`: generic tau sequences used by preprocessing and proving.
+- `prover_keys.rkyv`: prover-only specialized keys.
+- `preprocess_keys.rkyv`: keys for the preprocessing commitments, including C_fix.
+- `verifier_keys.rkyv`: online-verification keys.
 
-No separate `preprocess_keys` file is emitted: preprocessing needs only the
-shape and `S0`, both of which are already present in `tau_sequence.rkyv`.
+The single [CRS provenance contract](common/contracts/crs-provenance-contract.json)
+applies independently of the generation algorithm. Its `documentKind` is
+always `crs`; `generationMethod` records `trustedSetup` or `mpc` as data,
+not as a choice of document shape or parser. Both methods must use the same
+four filenames and formats.
 
-`mpc-setup` final output:
+The document records `protocolSchemaId`, `generatedAtUtc`,
+`compatibleBackendVersion`, `subcircuitLibrary`, `releaseEligible`, and
+`artifacts`, a filename-to-SHA-256 mapping for all four payloads.
+`subcircuitLibrary` contains the package name, package version, input origin
+and source digest. Package-version syntax and compatibility classes follow
+the repository-root version policy.
 
-- `combined_sigma.rkyv`
-- `sigma_preprocess.rkyv`
-- `sigma_verify.json`
-- `crs_provenance.json`
+The common fields `phase1SourceProvenance`, `ceremonyProtocolVersion` and
+`ceremonyTranscriptSha256` are explicitly `null` for trusted setup.
+Ceremony-backed generation supplies those values when applicable. Trusted
+setup always writes `releaseEligible: false`. A common parser validates
+document shape, not publication authority: the publication gate separately
+requires release eligibility, MPC generation, Dusk source evidence, ceremony
+metadata, npm input origin, compatible identity and matching payload digests.
+Algorithm consumers do not require `releaseEligible: true`.
 
-The configured MPC output is an active symlink to a complete generation below
-its parent `generations/` directory. MPC writes and validates all four files in
-a private staging generation before atomically replacing that symlink, then
-immediately deletes the preceding generation. Consumers continue to use the
-configured output path.
+Native prove checks content digests only with `--check-digests`, as described
+below. Parsing the document is not a cryptographic check of CRS generation.
 
-Native MPC provenance records `releaseEligible: false`; Dusk-backed MPC records
-`releaseEligible: true`. This field is a Google Drive publisher gate only. The publisher additionally
-requires Dusk phase-1 provenance and npm-snapshot subcircuit-library origin. `preprocess`, `prove`,
-and `verify` do not consume `releaseEligible`; they validate only the CRS compatibility class against
-the selected subcircuit library.
-`crs_provenance.json` also binds final CRS files to their SHA-256 digests. In dusk-backed mode it
-records the pinned Dusk source metadata, the Dusk raw digest, publication metadata, the CRS
-generation timestamp, the backend compatibility class, and the canonical
-subcircuit source digest used for patch-release CRS reuse checks.
-
-The backend-owned canonical provenance format uses camelCase names throughout,
-and phase-1 provenance is `null`, `"native"`, or `{ "duskGroth16": ... }`.
-Backend binaries, subcircuit-library artifacts, and CRS provenance must remain
-on one synchronized release line. Provenance using the earlier snake_case Dusk
-shape is incompatible with the canonical format; see the root
-[Changelog](../../CHANGELOG.md) for release-specific migration boundaries.
+The former algorithm-specific provenance documents are not accepted or
+automatically converted. Generate a new development CRS with the current
+trusted-setup command. The existing MPC implementation has not been migrated
+to this four-file interface and is not a compatible producer yet; its future
+rewrite must consume this common contract rather than introduce another
+provenance format. CLI CRS installation and browser build-time provenance
+ingress use the common contract, but this does not complete the outstanding
+native/WASM protocol or CLI command migration.
 
 ## Preprocess, prove, and verify
 

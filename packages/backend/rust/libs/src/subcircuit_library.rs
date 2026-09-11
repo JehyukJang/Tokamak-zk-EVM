@@ -1,9 +1,7 @@
 use crate::compatibility::{compatibility_from_package_version, parse_compatible_backend_version};
 use crate::crs_provenance::{
-    ensure_crs_provenance_contract_definition, parse_final_mpc_crs_provenance, CrsProvenance,
-    DevelopmentOnlyReleaseEligibility, DevelopmentTrustedSetupSigmaProvenance,
-    DevelopmentTrustedSetupUnivariateKeysProvenance, SubcircuitLibraryProvenance,
-    CRS_PROVENANCE_FILE_NAME,
+    parse_crs_provenance, CrsGenerationMethod, CrsProvenance, SubcircuitLibraryProvenance,
+    CRS_DOCUMENT_KIND, CRS_PROVENANCE_FILE_NAME,
 };
 use crate::errors::CrsError;
 use crate::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID;
@@ -123,7 +121,7 @@ pub fn validate_crs_compatibility(crs_dir: &Path, library_dir: &Path) -> std::io
             ),
         )
     })?;
-    let provenance = parse_final_mpc_crs_provenance(&provenance_bytes).map_err(|reason| {
+    let provenance = parse_crs_provenance(&provenance_bytes).map_err(|reason| {
         std::io::Error::other(format!(
             "cannot validate CRS provenance {}: {reason}",
             provenance_path.display()
@@ -165,38 +163,45 @@ pub fn validate_crs_compatibility(crs_dir: &Path, library_dir: &Path) -> std::io
     Ok(())
 }
 
-pub fn write_development_only_trusted_setup_provenance(output_dir: &Path) -> std::io::Result<()> {
-    ensure_crs_provenance_contract_definition().map_err(std::io::Error::other)?;
-    let provenance =
-        CrsProvenance::DevelopmentTrustedSetupSigma(DevelopmentTrustedSetupSigmaProvenance {
-            release_eligible: DevelopmentOnlyReleaseEligibility,
-        });
-    let bytes = serde_json::to_vec_pretty(&provenance).map_err(std::io::Error::other)?;
-    fs::write(output_dir.join(CRS_PROVENANCE_FILE_NAME), bytes)
-}
-
 pub fn write_development_only_univariate_keys_provenance(
     output_dir: &Path,
     library: SubcircuitLibraryProvenance,
     digests: &SetupCrsDigests,
 ) -> std::io::Result<()> {
-    ensure_crs_provenance_contract_definition().map_err(std::io::Error::other)?;
-    let provenance = DevelopmentTrustedSetupUnivariateKeysProvenance {
-        release_eligible: DevelopmentOnlyReleaseEligibility,
+    let provenance = CrsProvenance {
+        document_kind: CRS_DOCUMENT_KIND.to_string(),
         protocol_schema_id: UNIVARIATE_CRS_SCHEMA_ID.to_string(),
-        tau_sequence_rkyv_sha256: digests.tau_sequence_sha256.clone(),
+        generation_method: CrsGenerationMethod::TrustedSetup,
+        release_eligible: false,
+        generated_at_utc: chrono::Utc::now().to_rfc3339(),
+        compatible_backend_version: compatibility_from_package_version(env!("CARGO_PKG_VERSION"))
+            .map_err(std::io::Error::other)?
+            .to_string(),
         subcircuit_library: library,
-        prover_keys_rkyv_sha256: digests.prover_keys_sha256.clone(),
-        preprocess_keys_rkyv_sha256: digests.preprocess_keys_sha256.clone(),
-        verifier_keys_rkyv_sha256: digests.verifier_keys_sha256.clone(),
+        artifacts: [
+            (
+                "tau_sequence.rkyv".to_string(),
+                digests.tau_sequence_sha256.clone(),
+            ),
+            (
+                "prover_keys.rkyv".to_string(),
+                digests.prover_keys_sha256.clone(),
+            ),
+            (
+                "preprocess_keys.rkyv".to_string(),
+                digests.preprocess_keys_sha256.clone(),
+            ),
+            (
+                "verifier_keys.rkyv".to_string(),
+                digests.verifier_keys_sha256.clone(),
+            ),
+        ]
+        .into(),
+        phase1_source_provenance: None,
+        ceremony_protocol_version: None,
+        ceremony_transcript_sha256: None,
     };
-    crate::crs_provenance::validate_development_univariate_keys_provenance(&provenance)
-        .map_err(std::io::Error::other)?;
-    let bytes = serde_json::to_vec_pretty(&CrsProvenance::DevelopmentTrustedSetupUnivariateKeys(
-        provenance,
-    ))
-    .map_err(std::io::Error::other)?;
-    fs::write(output_dir.join(CRS_PROVENANCE_FILE_NAME), bytes)
+    crate::crs_provenance::write_crs_provenance(output_dir, &provenance)
 }
 
 pub fn validate_operational_crs_compatibility(
@@ -246,8 +251,19 @@ pub fn validate_operational_univariate_crs_compatibility(
             provenance_path.display()
         ))
     })?;
-    let provenance = crate::crs_provenance::parse_development_univariate_keys_provenance(&bytes)
+    let provenance =
+        crate::crs_provenance::parse_crs_provenance(&bytes).map_err(CrsError::Compatibility)?;
+    provenance
+        .require_protocol(UNIVARIATE_CRS_SCHEMA_ID)
         .map_err(CrsError::Compatibility)?;
+    let compiled_compatibility = compatibility_from_package_version(env!("CARGO_PKG_VERSION"))
+        .map_err(|error| CrsError::Compatibility(error.to_string()))?
+        .to_string();
+    if provenance.compatible_backend_version != compiled_compatibility {
+        return Err(CrsError::Compatibility(
+            "CRS compatibleBackendVersion does not match the compiled backend".into(),
+        ));
+    }
     if !check_digests {
         let (origin, version) = selected_subcircuit_library_package_identity();
         if provenance.subcircuit_library.package_name != SUBCIRCUIT_LIBRARY_PACKAGE_NAME
@@ -265,17 +281,17 @@ pub fn validate_operational_univariate_crs_compatibility(
     let mut payloads = validate_univariate_payloads(&[
         (
             tau_sequence_path.to_path_buf(),
-            provenance.tau_sequence_rkyv_sha256.clone(),
+            provenance.artifacts["tau_sequence.rkyv"].clone(),
             "tau",
         ),
         (
             keys_dir.join(crate::crs_artifacts::PROVER_KEYS_RKYV_FILE_NAME),
-            provenance.prover_keys_rkyv_sha256.clone(),
+            provenance.artifacts["prover_keys.rkyv"].clone(),
             "prover_keys",
         ),
         (
             keys_dir.join(crate::crs_artifacts::VERIFIER_KEYS_RKYV_FILE_NAME),
-            provenance.verifier_keys_rkyv_sha256.clone(),
+            provenance.artifacts["verifier_keys.rkyv"].clone(),
             "verifier_keys",
         ),
     ])?;
@@ -612,13 +628,21 @@ mod tests {
         }
         let digest = format!("{:x}", Sha256::digest(b"payload"));
         let provenance = serde_json::json!({
-            "documentKind": "developmentTrustedSetupUnivariateKeys",
+            "documentKind": "crs",
+            "generationMethod": "trustedSetup",
+            "generatedAtUtc": "2026-09-11T00:00:00Z",
+            "compatibleBackendVersion": compatibility_from_package_version(env!("CARGO_PKG_VERSION")).unwrap().to_string(),
+            "phase1SourceProvenance": null,
+            "ceremonyProtocolVersion": null,
+            "ceremonyTranscriptSha256": null,
             "releaseEligible": false,
             "protocolSchemaId": UNIVARIATE_CRS_SCHEMA_ID,
-            "tauSequenceRkyvSha256": digest,
-            "proverKeysRkyvSha256": digest,
-            "preprocessKeysRkyvSha256": digest,
-            "verifierKeysRkyvSha256": digest,
+            "artifacts": {
+                "tau_sequence.rkyv": digest,
+                "prover_keys.rkyv": digest,
+                "preprocess_keys.rkyv": digest,
+                "verifier_keys.rkyv": digest,
+            },
             "subcircuitLibrary": selected_subcircuit_library_provenance(&library).unwrap(),
         });
         (dir, provenance)
@@ -673,12 +697,12 @@ mod tests {
         assert_eq!(validated.tau, b"payload");
         assert_eq!(validated.prover_keys, b"payload");
         for field in [
-            "tauSequenceRkyvSha256",
-            "proverKeysRkyvSha256",
-            "verifierKeysRkyvSha256",
+            "tau_sequence.rkyv",
+            "prover_keys.rkyv",
+            "verifier_keys.rkyv",
         ] {
             let mut wrong = provenance.clone();
-            wrong[field] = "0".repeat(64).into();
+            wrong["artifacts"][field] = "0".repeat(64).into();
             assert!(admit_univariate_identity(dir.path(), &wrong, false)
                 .unwrap()
                 .is_none());
@@ -721,7 +745,7 @@ mod tests {
             for (field, value) in [
                 ("protocolSchemaId", "unsupported"),
                 ("documentKind", "unsupported"),
-                ("tauSequenceRkyvSha256", "malformed"),
+                ("compatibleBackendVersion", "malformed"),
             ] {
                 let mut wrong = provenance.clone();
                 wrong[field] = value.into();
@@ -915,11 +939,9 @@ mod tests {
     }
     use super::{
         validate_crs_compatibility, validate_operational_crs_compatibility,
-        write_development_only_trusted_setup_provenance, DevelopmentCrsProvenanceArg,
+        DevelopmentCrsProvenanceArg,
     };
-    use crate::crs_provenance::{
-        CrsProvenance, FinalMpcCrsProvenance, SubcircuitLibraryProvenance,
-    };
+    use crate::crs_provenance::{CrsGenerationMethod, CrsProvenance, SubcircuitLibraryProvenance};
     use crate::input_origin::SubcircuitLibraryOrigin;
     use std::fs;
     use std::path::PathBuf;
@@ -952,7 +974,10 @@ mod tests {
         release_eligible: bool,
         compatible_version: &str,
     ) {
-        let provenance = CrsProvenance::FinalMpcCrs(FinalMpcCrsProvenance {
+        let provenance = CrsProvenance {
+            document_kind: "crs".into(),
+            protocol_schema_id: crate::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID.into(),
+            generation_method: CrsGenerationMethod::Mpc,
             release_eligible,
             generated_at_utc: "2026-08-24T00:00:00Z".to_string(),
             compatible_backend_version: compatible_version.to_string(),
@@ -965,12 +990,18 @@ mod tests {
                         .to_string(),
             },
             phase1_source_provenance: None,
-            ceremony_protocol_version: crate::crs_provenance::CEREMONY_PROTOCOL_VERSION.to_string(),
-            ceremony_transcript_sha256: "6".repeat(64),
-            combined_sigma_sha256: "0".repeat(64),
-            sigma_preprocess_sha256: "0".repeat(64),
-            sigma_verify_sha256: "0".repeat(64),
-        });
+            ceremony_protocol_version: Some(
+                crate::crs_provenance::CEREMONY_PROTOCOL_VERSION.to_string(),
+            ),
+            ceremony_transcript_sha256: Some("6".repeat(64)),
+            artifacts: [
+                ("tau_sequence.rkyv".to_string(), "0".repeat(64)),
+                ("prover_keys.rkyv".to_string(), "0".repeat(64)),
+                ("preprocess_keys.rkyv".to_string(), "0".repeat(64)),
+                ("verifier_keys.rkyv".to_string(), "0".repeat(64)),
+            ]
+            .into(),
+        };
         fs::write(
             crs_dir.join(super::CRS_PROVENANCE_FILE_NAME),
             serde_json::to_vec(&provenance).expect("must serialize CRS provenance"),
@@ -996,14 +1027,19 @@ mod tests {
         fs::create_dir_all(&library_dir).expect("must create library directory");
         fs::create_dir_all(&crs_dir).expect("must create CRS directory");
         write_package_manifest(&root, compiled_backend_package_version());
-        write_development_only_trusted_setup_provenance(&crs_dir)
-            .expect("must write trusted setup provenance");
+        write_provenance(&crs_dir, false, &compiled_backend_compatible_version());
+        let file = crs_dir.join(super::CRS_PROVENANCE_FILE_NAME);
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("compatibleBackendVersion");
+        fs::write(&file, serde_json::to_vec(&value).unwrap()).unwrap();
 
         let error = validate_crs_compatibility(&crs_dir, &library_dir)
-            .expect_err("development-only CRS must be rejected without the explicit bypass");
-        assert!(error
-            .to_string()
-            .contains("documentKind must equal finalMpcCrs"));
+            .expect_err("CRS without a compatibility version must be rejected");
+        assert!(error.to_string().contains("compatibleBackendVersion"));
         fs::remove_dir_all(root).expect("must remove test directory");
     }
 
@@ -1219,8 +1255,7 @@ mod tests {
         let crs_dir = root.join("crs");
         fs::create_dir_all(&library_dir).expect("must create library directory");
         fs::create_dir_all(&crs_dir).expect("must create CRS directory");
-        write_development_only_trusted_setup_provenance(&crs_dir)
-            .expect("must write development-only trusted setup provenance");
+        write_provenance(&crs_dir, false, &compiled_backend_compatible_version());
 
         let config = <TestConfig as clap::Parser>::try_parse_from([
             "test-command",

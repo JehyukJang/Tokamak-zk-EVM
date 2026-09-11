@@ -1,27 +1,23 @@
 //! Backend-owned contract for `crs_provenance.json`.
 //!
-//! The same filename records either a development-only trusted-setup Sigma or
-//! a final MPC CRS. `documentKind` is therefore mandatory and consumers must
-//! select the representation appropriate to their boundary.
+//! Generation methods supply values to one shared document shape. Protocol
+//! identifiers select artifact sets; publication policy is enforced separately.
 
 use crate::compatibility::{parse_compatible_backend_version, parse_package_version};
 use crate::input_origin::SubcircuitLibraryOrigin;
 use chrono::DateTime;
 use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
-use serde::de::Error as _;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 pub const CRS_PROVENANCE_FILE_NAME: &str = "crs_provenance.json";
-pub const DEVELOPMENT_TRUSTED_SETUP_SIGMA_DOCUMENT_KIND: &str = "developmentTrustedSetupSigma";
-pub const DEVELOPMENT_TRUSTED_SETUP_UNIVARIATE_KEYS_DOCUMENT_KIND: &str =
-    "developmentTrustedSetupUnivariateKeys";
-pub const FINAL_MPC_CRS_DOCUMENT_KIND: &str = "finalMpcCrs";
+pub const CRS_DOCUMENT_KIND: &str = "crs";
 pub const CEREMONY_PROTOCOL_VERSION: &str = "tokamak-mpc-2phase-v1";
 
 const CRS_PROVENANCE_CONTRACT_SHA256: &str =
-    "13e89224f92c212d440f3e92bb56e2903928e44b2565d123567c7e1852c169d4";
+    "a518d412664a38f8fdb6f24fbab9875fb7df39b88cde56ac499024f256266846";
 const SUPPORTED_SCHEMA_KEYWORDS: &[&str] = &[
     "additionalProperties",
     "const",
@@ -36,57 +32,11 @@ const SUPPORTED_SCHEMA_KEYWORDS: &[&str] = &[
     "type",
 ];
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(tag = "documentKind", rename_all = "camelCase")]
-pub enum CrsProvenance {
-    DevelopmentTrustedSetupSigma(DevelopmentTrustedSetupSigmaProvenance),
-    DevelopmentTrustedSetupUnivariateKeys(DevelopmentTrustedSetupUnivariateKeysProvenance),
-    FinalMpcCrs(FinalMpcCrsProvenance),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct DevelopmentTrustedSetupSigmaProvenance {
-    pub release_eligible: DevelopmentOnlyReleaseEligibility,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct DevelopmentTrustedSetupUnivariateKeysProvenance {
-    pub release_eligible: DevelopmentOnlyReleaseEligibility,
-    pub protocol_schema_id: String,
-    pub tau_sequence_rkyv_sha256: String,
-    pub subcircuit_library: SubcircuitLibraryProvenance,
-    pub prover_keys_rkyv_sha256: String,
-    pub preprocess_keys_rkyv_sha256: String,
-    pub verifier_keys_rkyv_sha256: String,
-}
-
-/// A serialized `false` that cannot be constructed as `true`.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct DevelopmentOnlyReleaseEligibility;
-
-impl Serialize for DevelopmentOnlyReleaseEligibility {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_bool(false)
-    }
-}
-
-impl<'de> Deserialize<'de> for DevelopmentOnlyReleaseEligibility {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        if <bool as Deserialize>::deserialize(deserializer)? {
-            return Err(D::Error::custom(
-                "developmentTrustedSetupSigma provenance must set releaseEligible to false",
-            ));
-        }
-        Ok(Self)
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CrsGenerationMethod {
+    TrustedSetup,
+    Mpc,
 }
 
 #[derive(
@@ -104,8 +54,11 @@ pub struct DuskSourceProvenance {
     pub expected_source_sha256: String,
     pub actual_source_sha256: String,
     pub auto_downloaded: bool,
+    #[serde(deserialize_with = "required_option")]
     pub downloaded_contribution: Option<String>,
+    #[serde(deserialize_with = "required_option")]
     pub downloaded_readme_url: Option<String>,
+    #[serde(deserialize_with = "required_option")]
     pub downloaded_drive_file_id: Option<String>,
     pub max_g1_exp_used: usize,
     pub max_g2_exp_used: usize,
@@ -133,17 +86,51 @@ pub struct SubcircuitLibraryProvenance {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct FinalMpcCrsProvenance {
+pub struct CrsProvenance {
+    pub document_kind: String,
+    pub protocol_schema_id: String,
+    pub generation_method: CrsGenerationMethod,
     pub release_eligible: bool,
     pub generated_at_utc: String,
     pub compatible_backend_version: String,
     pub subcircuit_library: SubcircuitLibraryProvenance,
+    #[serde(deserialize_with = "required_option")]
     pub phase1_source_provenance: Option<Phase1SourceProvenance>,
-    pub ceremony_protocol_version: String,
-    pub ceremony_transcript_sha256: String,
-    pub combined_sigma_sha256: String,
-    pub sigma_preprocess_sha256: String,
-    pub sigma_verify_sha256: String,
+    #[serde(deserialize_with = "required_option")]
+    pub ceremony_protocol_version: Option<String>,
+    #[serde(deserialize_with = "required_option")]
+    pub ceremony_transcript_sha256: Option<String>,
+    pub artifacts: BTreeMap<String, String>,
+}
+
+fn required_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    <Option<T> as Deserialize>::deserialize(deserializer)
+}
+
+impl CrsProvenance {
+    pub fn require_protocol(&self, expected: &str) -> Result<(), String> {
+        if self.protocol_schema_id != expected {
+            return Err(format!(
+                "CRS protocolSchemaId {} does not match {expected}",
+                self.protocol_schema_id
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Writes one common document regardless of which setup algorithm produced it.
+pub fn write_crs_provenance(
+    output_dir: &std::path::Path,
+    provenance: &CrsProvenance,
+) -> std::io::Result<()> {
+    validate_crs_provenance(provenance).map_err(std::io::Error::other)?;
+    let bytes = serde_json::to_vec_pretty(provenance).map_err(std::io::Error::other)?;
+    std::fs::write(output_dir.join(CRS_PROVENANCE_FILE_NAME), bytes)
 }
 
 /// Ensures that this Rust adapter still implements the checked-in backend
@@ -156,15 +143,15 @@ pub fn ensure_crs_provenance_contract_definition() -> Result<(), String> {
         .clone()
 }
 
-/// Returns the exact root-level payload files that a final MPC CRS archive may
+/// Returns the exact root-level files that a common CRS archive must
 /// contain. The checked-in backend JSON contract is the single shape authority.
-pub fn final_mpc_crs_archive_root_file_names() -> Result<Vec<String>, String> {
+pub fn crs_archive_root_file_names() -> Result<Vec<String>, String> {
     ensure_crs_provenance_contract_definition()?;
     let contract: serde_json::Value = serde_json::from_slice(include_bytes!(
         "../../../common/contracts/crs-provenance-contract.json"
     ))
-    .map_err(|error| format!("CRS provenance contract is invalid JSON: {error}"))?;
-    final_mpc_crs_archive_root_file_names_from_contract(&contract)
+    .map_err(|error| error.to_string())?;
+    artifact_file_names_from_contract(&contract)
 }
 
 fn validate_crs_provenance_contract_definition() -> Result<(), String> {
@@ -178,64 +165,36 @@ fn validate_crs_provenance_contract_definition() -> Result<(), String> {
 
     let contract: serde_json::Value = serde_json::from_slice(bytes)
         .map_err(|error| format!("CRS provenance contract is invalid JSON: {error}"))?;
-    let document_kinds = contract
-        .get("documentKinds")
-        .and_then(serde_json::Value::as_object)
-        .ok_or_else(|| "CRS provenance contract is missing documentKinds".to_string())?;
-    for document_kind in [
-        DEVELOPMENT_TRUSTED_SETUP_SIGMA_DOCUMENT_KIND,
-        DEVELOPMENT_TRUSTED_SETUP_UNIVARIATE_KEYS_DOCUMENT_KIND,
-        FINAL_MPC_CRS_DOCUMENT_KIND,
-    ] {
-        let schema = document_kinds
-            .get(document_kind)
-            .and_then(|document| document.get("schema"))
-            .ok_or_else(|| format!("CRS provenance contract is missing {document_kind}.schema"))?;
-        validate_supported_schema_keywords(schema, document_kind)?;
-    }
-    final_mpc_crs_archive_root_file_names_from_contract(&contract)?;
+    let schema = contract
+        .get("schema")
+        .ok_or("CRS provenance contract is missing schema")?;
+    validate_supported_schema_keywords(schema, "schema")?;
+    artifact_file_names_from_contract(&contract)?;
     Ok(())
 }
 
-fn final_mpc_crs_archive_root_file_names_from_contract(
-    contract: &serde_json::Value,
-) -> Result<Vec<String>, String> {
-    let root_files = contract
-        .get("finalMpcCrsArchive")
-        .and_then(|archive| archive.get("rootFiles"))
+fn artifact_file_names_from_contract(contract: &serde_json::Value) -> Result<Vec<String>, String> {
+    let values = contract
+        .get("rootFiles")
         .and_then(serde_json::Value::as_array)
-        .ok_or_else(|| {
-            "CRS provenance contract is missing finalMpcCrsArchive.rootFiles".to_string()
-        })?;
-    if root_files.is_empty() {
-        return Err(
-            "CRS provenance contract finalMpcCrsArchive.rootFiles must not be empty".to_string(),
-        );
+        .ok_or("CRS contract is missing rootFiles")?;
+    if values.is_empty() {
+        return Err("CRS artifact set must not be empty".into());
     }
-
-    let mut seen = std::collections::BTreeSet::new();
-    let mut names = Vec::with_capacity(root_files.len());
-    for value in root_files {
-        let name = value.as_str().ok_or_else(|| {
-            "CRS provenance contract finalMpcCrsArchive.rootFiles entries must be strings"
-                .to_string()
-        })?;
-        if !is_root_file_name(name) {
+    let mut names = Vec::new();
+    for value in values {
+        let name = value
+            .as_str()
+            .ok_or("CRS artifact filename must be a string")?;
+        if !is_root_file_name(name) || names.iter().any(|n| n == name) {
             return Err(format!(
-                "CRS provenance contract finalMpcCrsArchive.rootFiles contains invalid root filename {name:?}"
-            ));
-        }
-        if !seen.insert(name) {
-            return Err(format!(
-                "CRS provenance contract finalMpcCrsArchive.rootFiles repeats {name:?}"
+                "invalid or repeated CRS artifact filename {name:?}"
             ));
         }
         names.push(name.to_string());
     }
-    if !seen.contains(CRS_PROVENANCE_FILE_NAME) {
-        return Err(format!(
-            "CRS provenance contract finalMpcCrsArchive.rootFiles must include {CRS_PROVENANCE_FILE_NAME:?}"
-        ));
+    if !names.iter().any(|name| name == CRS_PROVENANCE_FILE_NAME) {
+        return Err("CRS rootFiles must include crs_provenance.json".into());
     }
     Ok(names)
 }
@@ -279,70 +238,20 @@ fn validate_supported_schema_keywords(
     Ok(())
 }
 
-/// Parses and validates a final-MPC CRS provenance document at a backend
-/// boundary. The JSON contract in `packages/backend/common/contracts` is the source
-/// of the accepted document shape and semantic constraints.
-pub fn parse_final_mpc_crs_provenance(bytes: &[u8]) -> Result<FinalMpcCrsProvenance, String> {
+/// Parses the backend-owned common CRS document, not an algorithm-specific variant.
+pub fn parse_crs_provenance(bytes: &[u8]) -> Result<CrsProvenance, String> {
     ensure_crs_provenance_contract_definition()?;
-    let provenance: CrsProvenance =
-        serde_json::from_slice(bytes).map_err(|error| format!("invalid JSON: {error}"))?;
-    let CrsProvenance::FinalMpcCrs(provenance) = provenance else {
-        return Err("documentKind must equal finalMpcCrs".to_string());
-    };
-    validate_final_mpc_crs_provenance(&provenance)?;
+    let provenance: CrsProvenance = serde_json::from_slice(bytes)
+        .map_err(|error| format!("invalid CRS provenance JSON: {error}"))?;
+    validate_crs_provenance(&provenance)?;
     Ok(provenance)
 }
 
-pub fn validate_development_univariate_keys_provenance(
-    provenance: &DevelopmentTrustedSetupUnivariateKeysProvenance,
-) -> Result<(), String> {
+pub fn validate_crs_provenance(provenance: &CrsProvenance) -> Result<(), String> {
     ensure_crs_provenance_contract_definition()?;
-    if provenance.protocol_schema_id != crate::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID {
-        return Err("unsupported univariate protocolSchemaId".to_string());
+    if provenance.document_kind != CRS_DOCUMENT_KIND {
+        return Err("documentKind must equal crs".into());
     }
-    validate_sha256(
-        &provenance.tau_sequence_rkyv_sha256,
-        "tauSequenceRkyvSha256",
-    )?;
-    validate_sha256(&provenance.prover_keys_rkyv_sha256, "proverKeysRkyvSha256")?;
-    validate_sha256(
-        &provenance.preprocess_keys_rkyv_sha256,
-        "preprocessKeysRkyvSha256",
-    )?;
-    validate_sha256(
-        &provenance.verifier_keys_rkyv_sha256,
-        "verifierKeysRkyvSha256",
-    )?;
-    validate_non_empty(
-        &provenance.subcircuit_library.package_name,
-        "subcircuitLibrary.packageName",
-    )?;
-    parse_package_version(&provenance.subcircuit_library.package_version)
-        .map_err(|error| format!("subcircuitLibrary.packageVersion {error}"))?;
-    crate::subcircuit_source_digest::validate_source_digest(
-        &provenance.subcircuit_library.source_digest,
-    )
-    .map_err(|error| format!("subcircuitLibrary.sourceDigest {error}"))
-}
-
-pub fn parse_development_univariate_keys_provenance(
-    bytes: &[u8],
-) -> Result<DevelopmentTrustedSetupUnivariateKeysProvenance, String> {
-    ensure_crs_provenance_contract_definition()?;
-    let provenance: CrsProvenance =
-        serde_json::from_slice(bytes).map_err(|error| format!("invalid JSON: {error}"))?;
-    let CrsProvenance::DevelopmentTrustedSetupUnivariateKeys(provenance) = provenance else {
-        return Err(format!(
-            "documentKind must equal {DEVELOPMENT_TRUSTED_SETUP_UNIVARIATE_KEYS_DOCUMENT_KIND}"
-        ));
-    };
-    validate_development_univariate_keys_provenance(&provenance)?;
-    Ok(provenance)
-}
-
-/// Validates the semantic constraints that Serde types alone cannot express.
-pub fn validate_final_mpc_crs_provenance(provenance: &FinalMpcCrsProvenance) -> Result<(), String> {
-    ensure_crs_provenance_contract_definition()?;
     validate_rfc3339(&provenance.generated_at_utc, "generatedAtUtc")?;
     parse_compatible_backend_version(&provenance.compatible_backend_version)
         .map_err(|error| format!("compatibleBackendVersion {error}"))?;
@@ -354,20 +263,32 @@ pub fn validate_final_mpc_crs_provenance(provenance: &FinalMpcCrsProvenance) -> 
         .map_err(|error| format!("subcircuitLibrary.packageVersion {error}"))?;
     crate::subcircuit_source_digest::validate_source_digest(
         &provenance.subcircuit_library.source_digest,
-    )
-    .map_err(|error| format!("subcircuitLibrary.sourceDigest {error}"))?;
-    if provenance.ceremony_protocol_version != CEREMONY_PROTOCOL_VERSION {
-        return Err(format!(
-            "ceremonyProtocolVersion must equal {CEREMONY_PROTOCOL_VERSION}"
-        ));
-    }
-    validate_sha256(
-        &provenance.ceremony_transcript_sha256,
-        "ceremonyTranscriptSha256",
     )?;
-    validate_sha256(&provenance.combined_sigma_sha256, "combinedSigmaSha256")?;
-    validate_sha256(&provenance.sigma_preprocess_sha256, "sigmaPreprocessSha256")?;
-    validate_sha256(&provenance.sigma_verify_sha256, "sigmaVerifySha256")?;
+    provenance.require_protocol(crate::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID)?;
+    let names = crs_archive_root_file_names()?;
+    if provenance.artifacts.len() + 1 != names.len() {
+        return Err("artifacts must contain exactly the protocol's CRS payload files".into());
+    }
+    for name in names
+        .iter()
+        .filter(|name| name.as_str() != CRS_PROVENANCE_FILE_NAME)
+    {
+        let digest = provenance
+            .artifacts
+            .get(name)
+            .ok_or_else(|| format!("artifacts is missing {name}"))?;
+        validate_sha256(digest, &format!("artifacts.{name}"))?;
+    }
+    if let Some(version) = &provenance.ceremony_protocol_version {
+        if version != CEREMONY_PROTOCOL_VERSION {
+            return Err(format!(
+                "ceremonyProtocolVersion must equal {CEREMONY_PROTOCOL_VERSION}"
+            ));
+        }
+    }
+    if let Some(digest) = &provenance.ceremony_transcript_sha256 {
+        validate_sha256(digest, "ceremonyTranscriptSha256")?;
+    }
 
     if let Some(Phase1SourceProvenance::DuskGroth16(dusk)) =
         provenance.phase1_source_provenance.as_ref()
@@ -437,149 +358,91 @@ fn validate_sha256(value: &str, field: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        ensure_crs_provenance_contract_definition, final_mpc_crs_archive_root_file_names,
-        parse_final_mpc_crs_provenance, validate_supported_schema_keywords, CrsProvenance,
-        DevelopmentOnlyReleaseEligibility, DevelopmentTrustedSetupSigmaProvenance,
-        CRS_PROVENANCE_FILE_NAME, DEVELOPMENT_TRUSTED_SETUP_SIGMA_DOCUMENT_KIND,
-        DEVELOPMENT_TRUSTED_SETUP_UNIVARIATE_KEYS_DOCUMENT_KIND, FINAL_MPC_CRS_DOCUMENT_KIND,
-    };
-    use serde::Deserialize;
-
-    #[derive(Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Contract {
-        file_name: String,
-        document_kinds: serde_json::Map<String, serde_json::Value>,
-    }
+    use super::*;
 
     #[test]
-    fn conforms_to_the_backend_crs_provenance_contract() {
-        let contract: Contract = serde_json::from_str(include_str!(
-            "../../../common/contracts/crs-provenance-contract.json"
-        ))
-        .expect("backend CRS provenance contract must be valid JSON");
-        assert_eq!(contract.file_name, CRS_PROVENANCE_FILE_NAME);
-        assert!(contract
-            .document_kinds
-            .contains_key(DEVELOPMENT_TRUSTED_SETUP_SIGMA_DOCUMENT_KIND));
-        assert!(contract
-            .document_kinds
-            .contains_key(DEVELOPMENT_TRUSTED_SETUP_UNIVARIATE_KEYS_DOCUMENT_KIND));
-        assert!(contract
-            .document_kinds
-            .contains_key(FINAL_MPC_CRS_DOCUMENT_KIND));
-        ensure_crs_provenance_contract_definition()
-            .expect("Rust provenance adapter must implement the checked-in contract");
-        assert_eq!(
-            final_mpc_crs_archive_root_file_names()
-                .expect("final MPC archive layout must satisfy the backend contract"),
-            vec![
-                "combined_sigma.rkyv".to_string(),
-                "sigma_preprocess.rkyv".to_string(),
-                "sigma_verify.json".to_string(),
-                CRS_PROVENANCE_FILE_NAME.to_string(),
-            ]
-        );
-    }
-
-    #[test]
-    fn rejects_unsupported_provenance_schema_keywords() {
+    fn common_contract_and_artifact_sets_are_valid() {
+        ensure_crs_provenance_contract_definition().unwrap();
+        assert_eq!(crs_archive_root_file_names().unwrap().len(), 5);
         assert!(validate_supported_schema_keywords(
-            &serde_json::json!({ "type": "string", "unsupportedKeyword": true }),
+            &serde_json::json!({"unsupported":true}),
             "test"
         )
         .is_err());
     }
 
     #[test]
-    fn development_provenance_is_tagged_and_cannot_be_release_eligible() {
-        let provenance =
-            CrsProvenance::DevelopmentTrustedSetupSigma(DevelopmentTrustedSetupSigmaProvenance {
-                release_eligible: DevelopmentOnlyReleaseEligibility,
-            });
-        let encoded = serde_json::to_value(&provenance).expect("must serialize provenance");
-        assert_eq!(encoded["documentKind"], "developmentTrustedSetupSigma");
-        assert_eq!(encoded["releaseEligible"], false);
-        assert!(serde_json::from_value::<CrsProvenance>(serde_json::json!({
-            "documentKind": "developmentTrustedSetupSigma",
-            "releaseEligible": true,
-        }))
-        .is_err());
-
-        assert!(
-            serde_json::from_value::<CrsProvenance>(serde_json::json!({
-                "documentKind": "developmentTrustedSetupUnivariateTauSequence",
-                "releaseEligible": false
-            }))
-            .is_err(),
-            "withdrawn phase-specific documents must be rejected"
-        );
-    }
-
-    #[test]
-    fn every_canonical_final_mpc_phase1_variant_round_trips_through_rust() {
+    fn canonical_sources_share_one_parser_and_round_trip() {
         for fixture in [
             include_str!("../../../common/contracts/fixtures/final-mpc-crs-provenance.json"),
             include_str!("../../../common/contracts/fixtures/final-mpc-crs-provenance-native.json"),
             include_str!("../../../common/contracts/fixtures/final-mpc-crs-provenance-null.json"),
         ] {
-            let fixture: serde_json::Value =
-                serde_json::from_str(fixture).expect("canonical fixture must be valid JSON");
-            let bytes = serde_json::to_vec(&fixture).expect("fixture must serialize");
-            let provenance = parse_final_mpc_crs_provenance(&bytes)
-                .expect("canonical final MPC fixture must satisfy the Rust contract");
+            let original: serde_json::Value = serde_json::from_str(fixture).unwrap();
+            let p = parse_crs_provenance(fixture.as_bytes()).unwrap();
+            assert_eq!(serde_json::to_value(&p).unwrap(), original);
+            let mut trusted = p.clone();
+            trusted.generation_method = CrsGenerationMethod::TrustedSetup;
+            trusted.release_eligible = false;
+            trusted.phase1_source_provenance = None;
+            trusted.ceremony_protocol_version = None;
+            trusted.ceremony_transcript_sha256 = None;
+            let encoded = serde_json::to_value(&trusted).unwrap();
             assert_eq!(
-                serde_json::to_value(CrsProvenance::FinalMpcCrs(provenance))
-                    .expect("fixture must serialize"),
-                fixture
+                original.as_object().unwrap().keys().collect::<Vec<_>>(),
+                encoded.as_object().unwrap().keys().collect::<Vec<_>>()
+            );
+            assert_eq!(
+                parse_crs_provenance(&serde_json::to_vec(&trusted).unwrap()).unwrap(),
+                trusted
+            );
+            // Eligibility is not an algorithm-consumer gate.
+            trusted.release_eligible = true;
+            assert!(parse_crs_provenance(&serde_json::to_vec(&trusted).unwrap()).is_ok());
+        }
+    }
+
+    #[test]
+    fn common_shape_requires_all_fields_and_exact_artifact_names() {
+        let value: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../common/contracts/fixtures/final-mpc-crs-provenance.json"
+        ))
+        .unwrap();
+        for field in value.as_object().unwrap().keys() {
+            let mut missing = value.clone();
+            missing.as_object_mut().unwrap().remove(field);
+            assert!(
+                parse_crs_provenance(&serde_json::to_vec(&missing).unwrap()).is_err(),
+                "{field}"
             );
         }
-    }
-
-    #[test]
-    fn rejects_malformed_and_legacy_final_mpc_fixtures() {
-        for fixture in [
-            include_str!(
-                "../../../common/contracts/fixtures/final-mpc-crs-provenance-malformed.json"
-            ),
-            include_str!("../../../common/contracts/fixtures/final-mpc-crs-provenance-legacy.json"),
-            include_str!(
-                "../../../common/contracts/fixtures/final-mpc-crs-provenance-missing-source-digest.json"
-            ),
-        ] {
-            let provenance: serde_json::Value =
-                serde_json::from_str(fixture).expect("negative fixture must be valid JSON");
-            assert!(serde_json::from_value::<CrsProvenance>(provenance).is_err());
+        for name in value["artifacts"].as_object().unwrap().keys() {
+            let mut wrong = value.clone();
+            let digest = wrong["artifacts"]
+                .as_object_mut()
+                .unwrap()
+                .remove(name)
+                .unwrap();
+            wrong["artifacts"]["unexpected.rkyv"] = digest;
+            assert!(parse_crs_provenance(&serde_json::to_vec(&wrong).unwrap()).is_err());
         }
     }
 
     #[test]
-    fn rejects_every_semantic_final_mpc_contract_violation_fixture() {
+    fn malformed_contract_fixtures_are_rejected() {
         for fixture in [
-            include_bytes!(
-                "../../../common/contracts/fixtures/final-mpc-crs-provenance-leading-zero.json"
-            ) as &[u8],
-            include_bytes!(
-                "../../../common/contracts/fixtures/final-mpc-crs-provenance-date-only.json"
-            ),
-            include_bytes!(
-                "../../../common/contracts/fixtures/final-mpc-crs-provenance-invalid-digest.json"
-            ),
-            include_bytes!(
-                "../../../common/contracts/fixtures/final-mpc-crs-provenance-empty-string.json"
-            ),
-            include_bytes!(
-                "../../../common/contracts/fixtures/final-mpc-crs-provenance-invalid-phase1.json"
-            ),
-            include_bytes!(
-                "../../../common/contracts/fixtures/final-mpc-crs-provenance-invalid-origin.json"
-            ),
-            include_bytes!(
-                "../../../common/contracts/fixtures/final-mpc-crs-provenance-invalid-source-digest.json"
-            ),
+            include_str!("../../../common/contracts/fixtures/final-mpc-crs-provenance-malformed.json"),
+            include_str!("../../../common/contracts/fixtures/final-mpc-crs-provenance-legacy.json"),
+            include_str!("../../../common/contracts/fixtures/final-mpc-crs-provenance-missing-source-digest.json"),
+            include_str!("../../../common/contracts/fixtures/final-mpc-crs-provenance-leading-zero.json"),
+            include_str!("../../../common/contracts/fixtures/final-mpc-crs-provenance-date-only.json"),
+            include_str!("../../../common/contracts/fixtures/final-mpc-crs-provenance-invalid-digest.json"),
+            include_str!("../../../common/contracts/fixtures/final-mpc-crs-provenance-empty-string.json"),
+            include_str!("../../../common/contracts/fixtures/final-mpc-crs-provenance-invalid-phase1.json"),
+            include_str!("../../../common/contracts/fixtures/final-mpc-crs-provenance-invalid-origin.json"),
+            include_str!("../../../common/contracts/fixtures/final-mpc-crs-provenance-invalid-source-digest.json"),
         ] {
-            assert!(parse_final_mpc_crs_provenance(fixture).is_err());
+            assert!(parse_crs_provenance(fixture.as_bytes()).is_err(), "{fixture}");
         }
     }
 }

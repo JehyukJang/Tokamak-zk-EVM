@@ -22,6 +22,27 @@ listed here remain owned by `packages/backend`.
 
 ## Change Gate
 
+### CRS provenance
+
+`crs-provenance-contract.json` defines one document with `documentKind: crs`
+and the same four RKYV payload filenames for trusted setup and future MPC.
+`generationMethod` and nullable ceremony fields describe the source; they
+do not select a parser. The Rust `CrsProvenance` representation, common writer,
+`parse_crs_provenance`, and copied TypeScript `parseCrsProvenance` implement
+this one contract. `artifacts` maps payload filenames to SHA-256 digests.
+The default native prove path does not check content digests; explicit
+`--check-digests` retains those checks. Publication authority remains separate
+from algorithm consumption.
+
+The current producer is `rust/setup/trusted-setup/src/univariate.rs`, through
+the common writer. Existing MPC source is excluded from the current migration;
+it must adopt this interface when rewritten. It is not a compatible producer
+or evidence that common-provenance publication is integrated with a ceremony.
+The historical MPC writer/Drive entries in the inventory above are migration
+targets, not alternate authorities. Shared fixture filenames containing
+`final-mpc` describe their source scenarios, not distinct accepted formats.
+The retired format is retained only as a negative fixture.
+
 ### Common binary artifacts
 
 `univariate-artifact-contract.json` owns the canonical coordinate encoding,

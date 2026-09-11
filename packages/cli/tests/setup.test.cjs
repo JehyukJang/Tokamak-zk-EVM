@@ -7,15 +7,15 @@ const test = require('node:test');
 const AdmZip = require('adm-zip');
 
 const {
-  extractApprovedFinalMpcCrsArchive,
+  extractApprovedCrsArchive,
   installValidatedCrsGeneration,
-  validateFinalMpcCrsArchiveEntries,
+  validateCrsArchiveEntries,
   validateDownloadedCrsArchive,
-  validateFinalMpcCrsProvenanceContract,
+  validateCrsProvenanceContract,
 } = require('../dist/runtime/setup.js');
 const {
   crsProvenanceFileName,
-  finalMpcCrsArchiveRootFileNames,
+  crsArchiveRootFileNames,
   assertSupportedCrsProvenanceSchema,
 } = require('../dist/generated/crs-provenance-validator.generated.js');
 const {
@@ -33,7 +33,7 @@ const CRS_PROVENANCE_CONTRACT = JSON.parse(
     'utf8',
   ),
 );
-const FINAL_CRS_ARCHIVE_FILES = finalMpcCrsArchiveRootFileNames();
+const FINAL_CRS_ARCHIVE_FILES = crsArchiveRootFileNames();
 const BACKEND_BUILD_METADATA_CONTRACT = JSON.parse(
   require('node:fs').readFileSync(
     path.resolve(__dirname, '..', '..', 'backend', 'common', 'contracts', 'backend-build-metadata-contract.json'),
@@ -269,9 +269,10 @@ async function writeCrsArchiveFixture(
   provenance = undefined,
 ) {
   const artifacts = {
-    'combined_sigma.rkyv': `${label} combined sigma`,
-    'sigma_preprocess.rkyv': `${label} preprocess sigma`,
-    'sigma_verify.json': `${label} verify sigma`,
+    'tau_sequence.rkyv': 'Synthetic tau payload for provenance admission tests.\n',
+    'prover_keys.rkyv': `${label} combined sigma`,
+    'preprocess_keys.rkyv': `${label} preprocess sigma`,
+    'verifier_keys.rkyv': `${label} verify sigma`,
   };
   for (const [filename, contents] of Object.entries(artifacts)) {
     await fs.writeFile(path.join(extractedDir, filename), contents, 'utf8');
@@ -280,7 +281,9 @@ async function writeCrsArchiveFixture(
     path.join(extractedDir, 'crs_provenance.json'),
     `${JSON.stringify(
       provenance ?? {
-        documentKind: 'finalMpcCrs',
+        documentKind: 'crs',
+        protocolSchemaId: 'tokamak-zk-evm-univariate',
+        generationMethod: 'mpc',
         releaseEligible: false,
         generatedAtUtc: '2026-08-24T00:00:00Z',
         compatibleBackendVersion: '2.1',
@@ -293,9 +296,7 @@ async function writeCrsArchiveFixture(
         phase1SourceProvenance: null,
         ceremonyProtocolVersion: 'tokamak-mpc-2phase-v1',
         ceremonyTranscriptSha256: '6'.repeat(64),
-        combinedSigmaSha256: sha256(artifacts['combined_sigma.rkyv']),
-        sigmaPreprocessSha256: sha256(artifacts['sigma_preprocess.rkyv']),
-        sigmaVerifySha256: sha256(artifacts['sigma_verify.json']),
+        artifacts: Object.fromEntries(Object.entries(artifacts).map(([name, bytes]) => [name, sha256(bytes)])),
       },
     )}\n`,
     'utf8',
@@ -306,11 +307,11 @@ test('packages the backend CRS provenance contract unchanged for runtime validat
   const packagedContract = require('../dist/generated/crs-provenance-contract.generated.js').default;
   assert.deepEqual(packagedContract, CRS_PROVENANCE_CONTRACT);
   assert.equal(crsProvenanceFileName(), 'crs_provenance.json');
-  assert.deepEqual(FINAL_CRS_ARCHIVE_FILES, CRS_PROVENANCE_CONTRACT.finalMpcCrsArchive.rootFiles);
+  assert.deepEqual(FINAL_CRS_ARCHIVE_FILES, CRS_PROVENANCE_CONTRACT.rootFiles);
 });
 
 test('accepts exactly the backend-declared root files before CRS archive extraction', () => {
-  const accepted = validateFinalMpcCrsArchiveEntries(validCrsZipEntries());
+  const accepted = validateCrsArchiveEntries(validCrsZipEntries());
   assert.deepEqual([...accepted.keys()], FINAL_CRS_ARCHIVE_FILES);
 });
 
@@ -321,7 +322,7 @@ test('rejects unsafe, duplicate, encrypted, symlink, directory, unexpected, and 
       expected: /unsafe entry path/u,
     },
     {
-      entries: [fakeCrsZipEntry('nested/combined_sigma.rkyv'), ...validCrsZipEntries().slice(1)],
+      entries: [fakeCrsZipEntry('nested/prover_keys.rkyv'), ...validCrsZipEntries().slice(1)],
       expected: /unexpected entry/u,
     },
     {
@@ -358,7 +359,7 @@ test('rejects unsafe, duplicate, encrypted, symlink, directory, unexpected, and 
   ];
 
   for (const { entries, expected } of cases) {
-    assert.throws(() => validateFinalMpcCrsArchiveEntries(entries), expected);
+    assert.throws(() => validateCrsArchiveEntries(entries), expected);
   }
 });
 
@@ -374,7 +375,7 @@ test('rejects a malformed CRS ZIP before writing any entry outside the caller st
     ]);
 
     await assert.rejects(
-      extractApprovedFinalMpcCrsArchive(archivePath, extractionDir),
+      extractApprovedCrsArchive(archivePath, extractionDir),
       /unexpected entry/u,
     );
     assert.deepEqual(await fs.readdir(extractionDir), []);
@@ -394,7 +395,7 @@ test('extracts exactly the backend-declared CRS ZIP payload into the caller stag
       FINAL_CRS_ARCHIVE_FILES.map(name => ({ name, contents: `archive:${name}` })),
     );
 
-    await extractApprovedFinalMpcCrsArchive(archivePath, extractionDir);
+    await extractApprovedCrsArchive(archivePath, extractionDir);
     assert.deepEqual((await fs.readdir(extractionDir)).sort(), [...FINAL_CRS_ARCHIVE_FILES].sort());
     for (const fileName of FINAL_CRS_ARCHIVE_FILES) {
       assert.equal(await fs.readFile(path.join(extractionDir, fileName), 'utf8'), `archive:${fileName}`);
@@ -425,14 +426,20 @@ test('packages the backend build-metadata contract unchanged for runtime validat
   assert.equal(backendBuildMetadataFileName('prove'), 'build-metadata-prove.json');
 });
 
-test('validates canonical and legacy backend final-MPC provenance fixtures', async () => {
+test('accepts common provenance and rejects the retired algorithm-specific format', async () => {
   const archiveName = 'tokamak-backend-crs-v2.1-20260824T000000Z.zip';
-  const validated = await validateFinalMpcCrsProvenanceContract(CANONICAL_FINAL_MPC_PROVENANCE, archiveName);
+  const validated = await validateCrsProvenanceContract(CANONICAL_FINAL_MPC_PROVENANCE, archiveName);
   assert.deepEqual(validated, CANONICAL_FINAL_MPC_PROVENANCE);
 
+  for (const field of Object.keys(CANONICAL_FINAL_MPC_PROVENANCE)) {
+    const missing = structuredClone(CANONICAL_FINAL_MPC_PROVENANCE);
+    delete missing[field];
+    await assert.rejects(validateCrsProvenanceContract(missing, archiveName), /is missing/u);
+  }
+
   await assert.rejects(
-    validateFinalMpcCrsProvenanceContract(LEGACY_FINAL_MPC_PROVENANCE, archiveName),
-    /does not match exactly one allowed contract shape/u,
+    validateCrsProvenanceContract(LEGACY_FINAL_MPC_PROVENANCE, archiveName),
+    /is missing protocolSchemaId/u,
   );
 });
 
@@ -441,8 +448,16 @@ async function generationTarget(setupOutputDir) {
   return path.resolve(path.dirname(setupOutputDir), target);
 }
 
-test('installer ingress accepts every canonical phase-1 provenance variant', async () => {
-  for (const provenance of [CANONICAL_FINAL_MPC_PROVENANCE, NATIVE_FINAL_MPC_PROVENANCE, NULL_FINAL_MPC_PROVENANCE]) {
+test('installer ingress accepts common provenance independently of the generation method', async () => {
+  const trusted = {
+    ...CANONICAL_FINAL_MPC_PROVENANCE,
+    generationMethod: 'trustedSetup',
+    releaseEligible: false,
+    phase1SourceProvenance: null,
+    ceremonyProtocolVersion: null,
+    ceremonyTranscriptSha256: null,
+  };
+  for (const provenance of [trusted, CANONICAL_FINAL_MPC_PROVENANCE, NATIVE_FINAL_MPC_PROVENANCE, NULL_FINAL_MPC_PROVENANCE]) {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-'));
     try {
       const extractedDir = path.join(tempDir, 'archive');
@@ -468,7 +483,7 @@ test('installer ingress accepts every canonical phase-1 provenance variant', asy
   }
 });
 
-test('rejects a development trusted-setup provenance before CRS installation', async () => {
+test('rejects a retired algorithm-specific documentKind before CRS installation', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-'));
   try {
     const extractedDir = path.join(tempDir, 'archive');
@@ -489,7 +504,7 @@ test('rejects a development trusted-setup provenance before CRS installation', a
         '2.1',
         '2.1.5',
       ),
-      /documentKind must equal "finalMpcCrs"/u,
+      /documentKind must equal "crs"/u,
     );
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
@@ -509,9 +524,9 @@ test('installer ingress rejects malformed and semantically invalid provenance fi
       expected: /has unsupported field unexpected/u,
     },
     {
-      name: 'legacy Dusk variant',
+      name: 'retired algorithm-specific format',
       provenance: LEGACY_FINAL_MPC_PROVENANCE,
-      expected: /does not match exactly one allowed contract shape/u,
+      expected: /is missing protocolSchemaId/u,
     },
     {
       name: 'date-only timestamp',
@@ -521,7 +536,7 @@ test('installer ingress rejects malformed and semantically invalid provenance fi
     {
       name: 'invalid digest',
       provenance: INVALID_DIGEST_FINAL_MPC_PROVENANCE,
-      expected: /combinedSigmaSha256 does not match the contract pattern/u,
+      expected: /artifacts.prover_keys.rkyv does not match the contract pattern/u,
     },
     {
       name: 'empty required string',
@@ -817,7 +832,7 @@ test('migrates a legacy setup output directory to one active CRS generation', as
 
     assert.equal((await fs.lstat(setupOutputDir)).isSymbolicLink(), true);
     const activeGeneration = await generationTarget(setupOutputDir);
-    assert.equal(await fs.readFile(path.join(activeGeneration, 'combined_sigma.rkyv'), 'utf8'), 'first combined sigma');
+    assert.equal(await fs.readFile(path.join(activeGeneration, 'prover_keys.rkyv'), 'utf8'), 'first combined sigma');
     await assert.rejects(fs.access(path.join(activeGeneration, 'README.txt')));
     const generations = await fs.readdir(path.join(tempDir, 'resource', 'setup', 'generations'));
     assert.deepEqual(generations, [path.basename(activeGeneration)]);
@@ -990,7 +1005,7 @@ test('atomically replaces the active CRS generation and immediately deletes the 
 
     const secondGeneration = await generationTarget(setupOutputDir);
     assert.notEqual(secondGeneration, firstGeneration);
-    assert.equal(await fs.readFile(path.join(setupOutputDir, 'combined_sigma.rkyv'), 'utf8'), 'second combined sigma');
+    assert.equal(await fs.readFile(path.join(setupOutputDir, 'prover_keys.rkyv'), 'utf8'), 'second combined sigma');
     await assert.rejects(fs.access(firstGeneration));
     assert.deepEqual(await fs.readdir(path.join(tempDir, 'resource', 'setup', 'generations')), [
       path.basename(secondGeneration),

@@ -5,19 +5,19 @@ import {
 } from "../../generated/active/setup.generated.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
 import {
-  parseFinalMpcCrsProvenance,
-  type FinalMpcCrsProvenance,
+  parseCrsProvenance,
+  type CrsProvenance,
 } from "../../generated/crs-provenance-validator.generated.js";
 import {
   compatibilityFromPackageVersion,
   parseCompatibleBackendVersion,
 } from "../../generated/version-policy.generated.js";
-export type CrsProvenanceInput = FinalMpcCrsProvenance;
+export type CrsProvenanceInput = CrsProvenance;
 
 export const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = "@tokamak-zk-evm/subcircuit-library";
 
 export function validateCrsProvenanceCompatibility(provenance: CrsProvenanceInput): void {
-  parseFinalMpcCrsProvenance(provenance);
+  parseCrsProvenance(provenance);
   const provenanceCompatibleVersion = normalizeCompatibleBackendVersion(
     provenance.compatibleBackendVersion,
     "CRS provenance compatibleBackendVersion",
