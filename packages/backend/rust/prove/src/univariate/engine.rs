@@ -101,10 +101,27 @@ impl Engine for Cpu {
         bases: &[UnivariateG1Rkyv],
         scalars: &[Self::F],
     ) -> Result<[u8; 96], UnivariateProverError> {
-        use ark_bls12_381::{Fq, G1Affine, G1Projective};
-        use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
+        use ark_bls12_381::{Fq, G1Affine};
+        use ark_ec::AffineRepr;
         use ark_ff::{BigInteger, PrimeField};
         use rayon::prelude::*;
+        if bases.len() != scalars.len() {
+            return Err("MSM length mismatch".to_owned().into());
+        }
+        let selected = scalars.iter().any(|s| *s == Self::F::zero()).then(|| {
+            let mut points = Vec::with_capacity(bases.len());
+            let mut values = Vec::with_capacity(scalars.len());
+            for (point, scalar) in bases.iter().zip(scalars) {
+                if *scalar != Self::F::zero() {
+                    points.push(*point);
+                    values.push(*scalar);
+                }
+            }
+            (points, values)
+        });
+        let (bases, scalars) = selected
+            .as_ref()
+            .map_or((bases, scalars), |(p, s)| (p.as_slice(), s.as_slice()));
         #[cfg(feature = "timing")]
         let decoding = crate::timing::SpanGuard::new("univariate.commit.decode", "prepare", vec![]);
         let points: Vec<_> = bases
@@ -131,9 +148,7 @@ impl Engine for Cpu {
                 dims: vec![bases.len()],
             }],
         );
-        let p = G1Projective::msm(&points, scalars)
-            .map_err(|_| "MSM length mismatch".to_owned())?
-            .into_affine();
+        let p = super::msm_kernel::msm(&points, scalars);
         let mut bytes = [0; 96];
         if !p.is_zero() {
             bytes[..48].copy_from_slice(&p.x.into_bigint().to_bytes_le());

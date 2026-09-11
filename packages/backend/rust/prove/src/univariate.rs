@@ -1,5 +1,8 @@
 //! One U23--U33 schedule for arkworks CPU and ICICLE CUDA.
 pub mod engine;
+mod msm_kernel;
+#[cfg(test)]
+mod optimization_tests;
 #[cfg(test)]
 mod parity_tests;
 pub mod prepare;
@@ -509,12 +512,7 @@ fn copy_relation<E: Engine>(
     let g = E::add(b, &E::polynomial(&[gamma, beta]));
     #[cfg(feature = "timing")]
     let boundary_span = crate::timing::SpanGuard::new("univariate.copy.boundary", "copy", vec![]);
-    let l0 = E::polynomial(&vec![E::F::from_usize(n).inv(); n]);
-    let q0 = E::divide_vanishing(
-        &E::mul(&E::sub(&r, &E::polynomial(&[E::F::one()])), &l0),
-        n,
-        "copy boundary",
-    )?;
+    let q0 = boundary_quotient::<E>(&r, n)?;
     #[cfg(feature = "timing")]
     drop(boundary_span);
     #[cfg(feature = "timing")]
@@ -531,4 +529,27 @@ fn copy_relation<E: Engine>(
         "copy recurrence",
     )?;
     Ok((r, q0, q1))
+}
+
+fn boundary_quotient<E: Engine>(r: &E::P, n: usize) -> Result<E::P, UnivariateProverError> {
+    // L0 = (X^n - 1)/(n*(X - 1)); cancel the vanishing factor before
+    // multiplication. The remainder check still enforces r(1) = 1,
+    // including the blinded high-degree coefficients.
+    let mut coefficients = E::coefficients(r);
+    coefficients[0] = coefficients[0] - E::F::one();
+    let mut quotient = vec![E::F::zero(); coefficients.len().saturating_sub(1).max(1)];
+    let mut remainder = *coefficients.last().unwrap();
+    for i in (0..coefficients.len() - 1).rev() {
+        quotient[i] = remainder;
+        remainder = remainder + coefficients[i];
+    }
+    if remainder != E::F::zero() {
+        return Err(UnivariateProverError::Unsatisfied {
+            relation: "copy boundary",
+        });
+    }
+    Ok(E::scale(
+        &E::polynomial(&quotient),
+        E::F::from_usize(n).inv(),
+    ))
 }

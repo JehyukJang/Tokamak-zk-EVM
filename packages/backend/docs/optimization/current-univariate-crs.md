@@ -946,7 +946,7 @@ Preserve this independent comparison rather than subtracting means from
 unpaired historical timing runs to estimate the combined gain. Full native
 verification and WASM interoperability remain untested until P8.
 
-### P13.1c: SHA-256 acceleration experiment awaiting scope approval
+### P13.1c: SHA-256 acceleration experiment excluded
 
 Local source and `cargo tree --locked -p prove -e features -i sha2` show
 sha2 0.10.9 with `default` and `std`, without `asm`. In this pinned version,
@@ -960,6 +960,155 @@ Enabling `sha2/asm` also enables its optional `sha2-asm` dependency (declared
 dependencies. This is an available candidate requiring a scope decision,
 not an absence of any acceleration API and not a failed performance trial.
 No dependency, feature, lockfile, vendored crypto code or hash algorithm has
-been changed to bypass that boundary. The experiment and P13.2--P13.5 remain
-pending. Approval can allow this feature/dependency experiment; alternatively,
-the candidate can be explicitly deferred before the remaining experiments.
+been changed to bypass that boundary. The experiment was explicitly excluded
+on 2026-09-12. P13.2--P13.5 proceed without it. Default prove no longer performs
+payload or library-content digest verification; subsequent comparisons use
+that same default mode for both control and candidate.
+
+### P13.2: accepted cancellation in the copy-boundary quotient
+
+Cancel `X^n-1` using `L0=(X^n-1)/(n*(X-1))` before computing
+`q0=(r-1)/(n*(X-1))`. Synthetic division retains the exact zero-remainder
+check and all blinded coefficients. Both engines use their native field
+types; this does not add an arithmetic dependency or change the transcript.
+
+Independent tests cover constant, small, full-size and blinded polynomials,
+invalid remainders, and both arithmetic engines. The existing deterministic
+proof/challenge parity tests pass against the unchanged reference schedule.
+At `n=262144`, the five retained primitive samples average 102.18 ms for the
+control and 2.00 ms for the candidate. Five alternating full-command release
+pairs improve in every pair: mean process wall time falls from 4.2731 s to
+4.1700 s (2.41%). One warmup per binary is excluded. Default digest-disabled
+mode, local QAP inputs, fresh randomizers and the same four-file CRS were used
+throughout; compilation and other task-owned tests were not concurrent.
+
+The production change is accepted at the native proof-generation gate, not
+verified E2E. P8 must requalify it after the consumers exist. Raw inputs,
+binary hashes, timings and RSS are in
+[the boundary experiment evidence](evidence/prover-p13-boundary.json).
+
+### P13.3: accepted CPU zero-scalar filtering
+
+The CPU MSM path checks length, leaves all-nonzero input unfiltered, and
+otherwise gathers only nonzero pairs before affine decoding. Empty input
+returns the identity through the existing MSM. Ordering, fused commitments,
+CRS storage and GPU arithmetic are unchanged. No catalog IDs or witness-size
+thresholds select this behavior.
+
+Independent controls use actual CRS points with synthetic scalars matching
+the measured commitment counts: 30,199/78,190 and 261,121/262,401 nonzero,
+plus dense and small/all-zero inputs. They are distribution experiments,
+not captured witness values. Full timing uses the real local witness.
+Small tests include identity/duplicate bases and zero/one/minus-one scalars;
+deterministic CPU/ICICLE/reference proof parity also passes.
+
+The first five full-command pairs averaged 4.2275 s versus 4.1512 s (1.80%
+improvement, four pairs faster). A second five-pair series averaged 4.3570 s
+versus 4.1958 s, with all five pairs faster. The second control includes a
+4.8186 s outlier, retained in the evidence; its median comparison is the more
+conservative 4.2552 s versus 4.2001 s (1.30%). Acceptance rests on both series,
+not the outlier-inflated mean. Dense-only kernel samples fluctuate slightly
+against the candidate, so this is a measured full-workload win, not a claim
+that filtering accelerates every scalar distribution. P8 qualification is
+still required. Evidence: [first series](evidence/prover-p13-filter-pairs.json),
+[repeat](evidence/prover-p13-filter-repeat.json).
+
+### P13.4: accepted smaller signed windows and half-range buckets
+
+The independent kernel uses arkworks field/group operations, signed digits
+and dynamic Rayon window parallelism. Compared with stock arkworks, its
+input-size heuristic selects one fewer window bit and allocates only the
+signed half-range of buckets in nonfinal windows. The final window retains
+the carry and uses the full range. No fixed local thread count, base
+precomputation or cross-proof state is involved.
+
+The test-only sweep covers neighboring widths, scalar-major versus
+window-major digits, dense and 40%-nonzero input, 64/30,199/262,148/524,548
+bases, and identity/duplicate points with zero/one/minus-one and random
+scalars. Every result equals stock arkworks. At 262,148 dense bases the
+selected kernel averages 211.29 ms versus 230.15 ms; at 524,548 it averages
+381.67 ms versus 417.95 ms. Transposition and wider windows are not retained.
+The existing unsigned bounded-window rejection remains a separate experiment.
+
+Five full release pairs, after excluded warmups, improve in every pair:
+4.1913 s to 3.8691 s mean process wall time (7.69%). This comparison starts
+from the accepted boundary and zero-filter changes. All regular native prover
+tests, including deterministic reference/CPU/ICICLE proof and challenge
+parity, pass. This is a native-only acceptance, pending P8 full E2E.
+See [kernel evidence](evidence/prover-p13-msm-kernel.json) for samples,
+recoding/bucket intervals, binary/input hashes and memory observations.
+
+### P13.5: per-invocation memory experiments
+
+Independent experiments use real CRS records and synthetic repeated,
+shifted, partially overlapping and disjoint ranges, at 64 and 262,148 points.
+Checks compare every gathered record/scalar and decoded affine point. Timing
+includes cache/scratch construction, lookup, copying and disposal within one
+invocation; no persistent state or MSM time is credited to the primitive.
+
+Scratch gather reuse is rejected as marginal and inconsistent: the large
+repeated-range case is 2.333 ms versus 2.137 ms, shifted is 2.412 ms versus
+2.316 ms, and partial overlap is 1.814 ms versus 1.838 ms. These sub-millisecond
+differences do not justify production scratch-state plumbing. No scratch
+gather reuse is integrated.
+
+Range decoding reuse is independently promising: 22.224 ms versus 8.708 ms
+for repeated prefixes, 26.030 ms versus 15.257 ms for shifted/reused ranges,
+and 18.617 ms versus 14.840 ms for partial overlap. Disjoint input loses
+(18.399 ms versus 20.855 ms), so whole-command qualification must include
+misses and retained memory. See [memory primitive evidence](evidence/prover-p13-memory-primitives.json).
+
+The full-command cache candidate is rejected. Five release pairs average
+4.0129 s uncached versus 4.0346 s cached (0.54% slower); four pairs lose.
+The candidate retained only requested nonzero ranges, reused containing
+prefixes, distinguished source identity and offsets, and scoped storage to
+one proof invocation. It also gathered decoded points per source rather
+than raw bytes, so these results describe that complete cache integration,
+not an isolated lookup cost. Construction/misses and copies are included.
+Mean peak RSS is 2.7234 GB versus 2.7263 GB; memory is not a rejection criterion.
+Range tests and deterministic proof parity passed, but correctness alone
+does not justify integration. All temporary cache types and Engine-context
+changes were removed. The existing stateless engine boundary is retained.
+
+See [full-command samples](evidence/prover-p13-affine-cache.json) and the
+[rejected source patch](evidence/prover-p13-affine-cache.patch). The patch is
+an experiment record against the accepted P13 source, not production code;
+apply it with `git apply --unidiff-zero` only in an isolated comparison
+checkout. P13.5 is complete with
+both memory candidates rejected, without combining them.
+
+### P13 final native-only qualification
+
+The accepted production set is copy-boundary cancellation, CPU zero-scalar
+filtering and the signed-window MSM kernel. SHA acceleration is excluded;
+scratch gather reuse and affine caching are not present in production.
+
+A fresh five-pair release comparison directly compares the pre-P13.2 binary
+at `55029af4d` with the final accepted implementation, rather than adding
+improvements from different runs. Every retained pair improves. Both use
+default CPU execution, digest checking disabled, the same current local-QAP
+fixture/CRS and new OS-generated randomizers per invocation. One warmup per
+binary is discarded. Ordinary desktop background activity is uncontrolled.
+
+| Measurement | Control | Accepted |
+| --- | ---: | ---: |
+| Mean process wall time | 4.3237 s | 3.8604 s |
+| Mean instrumented total | 4.3088 s | 3.8470 s |
+| Protocol interval, inclusive | 3.8862 s | 3.4443 s |
+| Sum of MSM intervals | 3.1944 s | 2.8449 s |
+| Copy-boundary interval | 101.579 ms | 2.934 ms |
+| Mean peak RSS | 3.130 GB | 2.723 GB |
+
+Mean wall time improves 10.71%. The protocol, MSM and boundary rows are
+nested; they must not be added. Memory is observed, not capped or used as an
+acceptance target. All runs produce 1,184-byte proofs with zero payload SHA
+events. Twelve regular library tests and one CLI test pass; six experiment
+tests are deliberately opt-in. The new protocol's native/WASM verifier E2E
+remains P8, so successful generation is not reported as verified proof.
+
+[Final paired evidence](evidence/prover-p13-final.json) records raw timing
+events, source/input/binary hashes and per-run RSS. Reproduce with the listed
+binary arguments in `packages/backend`, the configured ICICLE installation,
+release `prove --features timing`, one excluded warmup per binary and five
+alternating-order pairs. Do not compare these default-mode samples directly
+with historical always-on-digest timings.
