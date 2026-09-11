@@ -325,10 +325,20 @@ limitations, and preserving the exact artifacts used by downstream proving and
 verification. A successful command does not by itself establish that a setup or
 deployment satisfies an application's security requirements.
 
-## Timing Report for `prove`
+## Current-protocol setup optimization report
 
-The backend includes a human-readable release timing report for the current local CPU baseline,
-generated from raw timing data:
+The [CRS storage and trusted-setup report](docs/optimization/current-univariate-crs.md)
+records accepted and rejected optimizations, release CPU measurements, exact
+correctness boundaries and reproduction commands. Its
+[reuse guide](docs/optimization/current-univariate-crs.md#reuse-in-prove-and-mpc-setup)
+is the starting point for subsequent prover optimization and MPC setup work;
+it distinguishes transferable techniques from workloads requiring new tests.
+
+## Earlier-implementation timing report for `prove`
+
+The backend retains a human-readable release timing report for the earlier
+implementation's local CPU baseline, generated from raw timing data. It is not
+an E2E or performance baseline for the current univariate protocol:
 
 - report: [rust/prove/optimization/timing.local.cpu.current.md](rust/prove/optimization/timing.local.cpu.current.md)
 - raw data: [rust/prove/optimization/timing.local.cpu.current.json](rust/prove/optimization/timing.local.cpu.current.json)

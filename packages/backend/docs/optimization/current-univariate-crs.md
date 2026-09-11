@@ -3,10 +3,34 @@
 ## Audience and scope
 
 This report is for backend performance engineers and reviewers implementing
-the current univariate protocol. It is separate from the superseded protocol's
+the current univariate protocol, including subsequent prover optimization and
+MPC setup work. It is separate from the superseded protocol's
 prover optimization report. It covers CRS storage and trusted-setup computation,
 with separate controls for each experiment, not complete prove time.
-MPC, publishing and CUDA measurements are outside this experiment.
+MPC implementation, publishing and CUDA measurements are outside this
+experiment. The reuse guidance below identifies candidates, not completed
+prover or MPC optimizations.
+
+## Results at a glance
+
+Two distinct changes were accepted. Storage omission removes query coordinates
+whose witness coefficients are always zero under the admitted input contract.
+CPU encoding then computes the retained points using shared fixed-base
+preprocessing and batch normalization instead of independent scalar products
+and affine conversions.
+
+| Experiment | Control | Accepted result | Evidence boundary |
+| --- | --- | --- | --- |
+| Storage omission (`893c3eb17`) | 1,983,906,512 payload bytes; 373.01 s mean setup | 957,268,688 bytes; 220.08 s mean setup | Two dense and two omitted full-library runs; retained-point and binding equality |
+| CPU point encoding (`6258d1062`) | Compressed setup: 220.240 s mean | 12.216 s mean; 18.03x faster | Two control and five accepted full-library runs; all four payloads byte-identical |
+| ICICLE precomputation comparison (`f9a4bd4df`) | Current arkworks large-input CPU path | Retained arkworks after testing 15 ICICLE configurations | Independent encoding comparison, not a full setup or CUDA comparison |
+
+These timings exclude compilation and refer to the host and library described
+below. The storage and computation controls are separate experiments; the
+18.03x figure is not a prover speedup or a result against the dense control.
+For implementation entry points and transfer conditions, see
+[reuse in prove and MPC setup](#reuse-in-prove-and-mpc-setup). Detailed
+measurements, rejected alternatives and reproduction commands follow.
 
 ## Storage reference and candidates
 
@@ -315,6 +339,103 @@ cargo build --locked --release -p libs --example setup_precompute_benchmark
 ../target/release/examples/setup_precompute_benchmark 1024 3 32:4 64:4 128:2 256:1
 ../target/release/examples/setup_precompute_benchmark 16384 3 64:4
 ```
+
+## Reuse in prove and MPC setup
+
+### Implementation inventory
+
+The arithmetic implementation is
+[`rust/libs/src/univariate_setup.rs`](../../rust/libs/src/univariate_setup.rs).
+The following inventory distinguishes newly measured changes from efficient
+structures already present in their control. Do not assign a separate speedup
+to a component that was not isolated experimentally.
+
+| Mechanism | Implementation | Status and invariant |
+| --- | --- | --- |
+| Omit implicit-zero nonpublic coordinates | `generate`; [`NonpublicQueryLayout`](../../common/interface/univariate-crs/src/nonpublic_queries.rs) | Accepted storage change. Derive retained ranges from existing flatten maps; do not expand omitted coordinates at read time. |
+| Specialize public-buffer queries to placement `i=k` | `generate`, public-label construction | Existing application specialization, retained unchanged. Applies only to public wires of public buffers, not intermediate/private wires or arbitrary placements. Free and fixed public queries retain their distinct encodings. |
+| Evaluate scalar labels directly from sparse R1CS rows and Lagrange values | `wire_images`, `lagrange_at`, `generate` | Already in the control. No dense polynomial per CRS query is constructed; this report does not isolate its speedup. |
+| Build a power sequence by recurrence | `powers` | Already in the control. Each 4,096-element chunk starts with one exponentiation, then repeated multiplication; chunks run in parallel. |
+| Shared fixed-base table and batch normalization | `encode_g1`, `encode_g2`, `encode_fixed_base` | Accepted CPU compute change. Same affine points and ordering as the direct ICICLE oracle. |
+| Write point batches into their final array ranges | `encode_fixed_base` | Accepted on whole-setup timing; isolated collection timing slightly favored the alternative. Treat the I/O-related advantage as host-dependent. |
+| Concurrent host work and staged artifact output | `stage_artifacts`; [`run_trusted_setup`](../../rust/setup/trusted-setup/src/univariate.rs) | Already in the control. Four role files are serialized/hashed/written concurrently; provenance is written before activation. No partial generation is exposed. |
+| Opt-in timing and independent comparison programs | `timing` feature; [`encoding benchmark`](../../rust/libs/examples/setup_encoding_benchmark.rs), [`collection comparison`](../../rust/libs/src/univariate_setup.rs), [`precomputation benchmark`](../../rust/libs/examples/setup_precompute_benchmark.rs) | Measurement infrastructure, not an arithmetic speedup. Preserve total-command timing in addition to component spans. |
+
+### What the accepted CPU encoder actually shares
+
+For a vector `[a_j G]`, all scalar products in one encoding call have the same
+base `G`. The encoder constructs arkworks 0.5's
+`BatchMulPreprocessing::new(G, 16_384)` once, then shares that immutable table
+across calls to `table.batch_mul` on 1,024-scalar chunks. The second constructor
+argument selects a table-sizing heuristic; it is not an input-length limit or
+a memory cap. The table is currently reused within one encoding call, not
+cached across every G1 family or across processes. Cross-call caching is an
+unmeasured candidate, not an implemented optimization.
+
+The table supplies precomputed multiples of `G`; `batch_mul` supplies the
+fixed-base scalar multiplication and batched conversion to affine points.
+The backend supplies chunk scheduling, scalar conversion and output encoding,
+not a new curve algorithm. Table reuse and normalization were measured as a
+combined change, so their individual shares of the speedup are not known.
+Inputs below 16,384 points retain direct ICICLE CPU arithmetic. The cutoff and
+chunk size are measured implementation choices, not protocol parameters or a
+claim of optimal settings on every host.
+
+The serialized point representation is unchanged: canonical little-endian
+affine coordinates, with G2 extension-field components in the existing c0/c1
+order and identity points in the existing zero-coordinate representation.
+Conversion work happens during generation, not when a consumer reconstructs
+the CRS. CUDA retains its ICICLE bulk path. CPU worker counts are selected at
+runtime; do not wrap an internally parallel ICICLE bulk call in an additional
+parallel loop or derive a fixed worker count from the measurement host.
+
+### Match the next workload before reusing an API
+
+| Operation in the target implementation | Applicable lesson | Boundary |
+| --- | --- | --- |
+| Many distinct scalars times one known base, producing separate points | Benchmark fixed-base table reuse and batch normalization directly. | This is the setup workload tested here. Include table setup, scalar conversion and final output in timing. |
+| A proof commitment `sum_j a_j P_j`, with different CRS bases | Reuse profiling, layout locality and the ICICLE-precomputation experiment method. | This is variable-base MSM, not `[a_j G]`. The result here does not justify replacing that MSM with the setup fixed-base encoder. |
+| Repeated commitments using the same list of CRS bases | Test amortized MSM-base precomputation across the actual reuse count. | Count first-use cost separately from warm reuse. The size-one MSM rejection says nothing conclusive about large MSMs. |
+| MPC updates `[r_j P_j]` with different incoming points | Test suitable bulk point operations, normalization and output scheduling. | A common participant secret, or related `r_j`, does not make all bases equal. Do not substitute a single-base table. |
+| Deriving circuit-dependent keys from public powers-of-tau points | Reuse sparse structure and investigate linear combinations of the available points. | Direct trusted setup knows `tau`; a ceremony consumer does not. Do not port secret-scalar evaluation by recovering, substituting or assuming knowledge of `tau`. |
+| Prover reads of compressed nonpublic queries | Use existing placement/circuit ranges and gather only retained points. | Omission requires coefficients to be identically zero for every admitted input, not merely zero in a sample witness. No dense identity expansion is needed. |
+| Independent archive serialization, hashing and writes | Reuse concurrent staging and activation ordering where those responsibilities already apply. | Measure total wall time and preserve failure behavior; overlapping task times are not additive. |
+
+The current storage specialization preserves weighted-selection terms for all
+retained wires. It does not identify a point as removable merely because its
+arithmetic column is zero. Any MPC writer targeting this layout must produce
+the retained mathematical queries; this report does not establish that
+skipping elements during a ceremony update preserves that ceremony's checks.
+Likewise, the development setup's fixed trapdoor controls and publication
+ineligibility are not changed by arithmetic reuse or favorable timing.
+
+### Adoption checklist for follow-up work
+
+1. Profile the target command and classify each hot operation using the table
+   above. Start with the applicable candidates in this report and the separate
+   historical prover report; do not apply an optimization solely because it
+   won in trusted setup. Extract a shared helper only when a real second
+   caller needs the same operation; prefer existing arithmetic APIs.
+2. Build an independent equality test for the candidate before integration.
+   Cover zero/one/minus-one scalars, identities, ordinary random inputs,
+   batch boundaries and the target's real data ordering. For query omission,
+   retain binding equality and the admitted-input justification.
+3. Measure release builds with compilation excluded, identical paired inputs,
+   repeated rotated candidate order and no concurrent benchmark/build.
+   Include allocation, conversions, table construction and transfers. For
+   reusable tables, report both cold construction and realistic amortized
+   reuse, rather than hiding construction outside every measurement. Record
+   memory but impose no memory cap; speed is the selection criterion.
+4. Integrate only a demonstrated improvement, one candidate at a time. For
+   prove, first establish the new-protocol E2E/timing baseline, then repeat
+   affected E2E and whole-prove timing after each optimization. For future
+   MPC work, run the target workflow's required contribution/artifact checks;
+   setup byte equality alone is not evidence of a valid ceremony.
+5. Extend the appropriate new-protocol report with the source commit,
+   environment, raw samples, correctness results, accepted/rejected status
+   and scope limits after each candidate. Preserve these setup controls and
+   do not mix old-protocol timings with new-protocol speedup claims. Retain
+   CUDA support without inferring CUDA performance from these CPU results.
 
 ## Validation boundary
 
