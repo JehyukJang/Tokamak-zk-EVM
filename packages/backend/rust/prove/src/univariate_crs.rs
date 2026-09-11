@@ -33,12 +33,20 @@ impl ProverCrs {
         circuits: &[UnivariateSubcircuit<'_>],
         public: &PublicWireLayout,
     ) -> io::Result<Self> {
-        let tau = archive::from_bytes::<TauSequenceRkyv, archive::rancor::Error>(&fs::read(tau)?)
-            .map_err(io::Error::other)?;
-        let keys = archive::from_bytes::<ProverKeysRkyv, archive::rancor::Error>(&fs::read(
-            keys.join("prover_keys.rkyv"),
-        )?)
-        .map_err(io::Error::other)?;
+        let tau_bytes = crate::time_block!("univariate.crs.read.tau", "input", { fs::read(tau)? });
+        let tau = crate::time_block!("univariate.crs.decode.tau", "input", {
+            archive::from_bytes::<TauSequenceRkyv, archive::rancor::Error>(&tau_bytes)
+                .map_err(io::Error::other)?
+        });
+        drop(tau_bytes);
+        let key_bytes = crate::time_block!("univariate.crs.read.keys", "input", {
+            fs::read(keys.join("prover_keys.rkyv"))?
+        });
+        let keys = crate::time_block!("univariate.crs.decode.keys", "input", {
+            archive::from_bytes::<ProverKeysRkyv, archive::rancor::Error>(&key_bytes)
+                .map_err(io::Error::other)?
+        });
+        drop(key_bytes);
         Self::new(tau, keys, setup, circuits, public).map_err(io::Error::other)
     }
 

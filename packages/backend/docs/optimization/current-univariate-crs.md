@@ -834,3 +834,53 @@ writing the proof. They use fresh randomness; the scalar-oracle tests use
 fixed test masks. Proof-generation success does not establish verification
 success. Requalify the preserved reference and accepted native implementation
 in the full flow after preprocess/verifier and WASM are implemented.
+
+## P13: additional native CPU optimization experiments
+
+This section is for backend performance maintainers. Each experiment retains
+the current protocol, identity checks, four CRS files and binary proof. Native
+proof generation and independent algebraic checks are the current acceptance
+gate; full native/WASM verification remains pending the consumer rewrites.
+
+### P13.0: detailed timing and preserved control
+
+Preserved the original release binary and added timing-only read/hash/decode,
+copy-relation and labeled commitment spans. A separate diagnostic invocation
+reports scalar counts only; its timings are not benchmark samples. Nine
+regular prover tests passed, including cross-engine proof-byte/scalar-oracle
+checks; four opt-in benchmarks were not run as unit tests.
+
+Five alternating-order pairs after one discarded warmup per binary measured
+5.998011 seconds for the original command and 5.995265 for the instrumented
+command. The approximately 0.05% difference is noise, not an optimization.
+Peak resident memory was approximately 3.13 GB. Compilation and simultaneous
+task-owned builds/tests were excluded; ordinary desktop applications remained
+active. Release optimization and default Rayon parallelism were used.
+
+| Instrumented interval | Mean seconds | Interpretation |
+| --- | ---: | --- |
+| Identity file reads | 0.090505 | Sum across separately labeled files |
+| Identity SHA-256 | 1.664105 | Dominant identity cost, not polynomial work |
+| Library identity | 0.037655 | Separate from CRS hashing |
+| CRS rereads | 0.062184 | Tau and prover keys together |
+| CRS decoding | 0.103170 | Tau and prover keys together |
+| Commitment gathering | 0.020489 | Includes binding |
+| Commitment point decoding | 0.093428 | Before MSM |
+| MSM | 3.117050 | Nested within protocol and commitment spans |
+| Copy denominators / inversion / recurrence | 0.020584 | Three disjoint subspans |
+| Copy interpolation | 0.012708 | Excludes its subsequent polynomial products |
+| Copy-boundary quotient | 0.098729 | Actual P13.2 target |
+| Other copy products and coefficient shifting | 0.228004 | Not all copy time is boundary work |
+
+Do not sum these rows with their inclusive parent intervals. The independent
+count-only run found all scalars nonzero in seven commitments. D_Q and D_QK
+each had 1,280 zero scalars out of 262,401; C_O had 47,991 zeros out of 78,190.
+Zero filtering therefore has a small target outside the binding commitment,
+not a demonstrated opportunity to remove most of the 3.117-second MSM sum.
+
+Evidence: [paired samples](evidence/prover-p13-instrumentation.json),
+[count-only diagnostics](evidence/prover-p13-scalar-counts.json), and
+[archived prior retiming](evidence/prover-retiming-before-p13.json).
+The reusable runner is `rust/prove/optimization/compare-release.mjs`, invoked
+from `packages/backend` with control binary, candidate binary and output
+directory. It records fresh randomizers, hashes, nested spans and peak RSS.

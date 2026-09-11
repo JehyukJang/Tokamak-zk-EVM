@@ -105,6 +105,8 @@ impl Engine for Cpu {
         use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
         use ark_ff::{BigInteger, PrimeField};
         use rayon::prelude::*;
+        #[cfg(feature = "timing")]
+        let decoding = crate::timing::SpanGuard::new("univariate.commit.decode", "prepare", vec![]);
         let points: Vec<_> = bases
             .par_iter()
             .map(|p| {
@@ -118,6 +120,8 @@ impl Engine for Cpu {
                 }
             })
             .collect();
+        #[cfg(feature = "timing")]
+        drop(decoding);
         #[cfg(feature = "timing")]
         let _msm = crate::timing::SpanGuard::new(
             "univariate.msm",

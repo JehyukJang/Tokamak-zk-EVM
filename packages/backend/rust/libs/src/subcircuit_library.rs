@@ -236,24 +236,35 @@ pub fn validate_operational_univariate_crs_compatibility(
     })?;
     let provenance = crate::crs_provenance::parse_development_univariate_keys_provenance(&bytes)
         .map_err(CrsError::Compatibility)?;
-    let digest_file = |path: &Path| -> Result<String, CrsError> {
-        fs::read(path)
-            .map(|bytes| format!("{:x}", Sha256::digest(bytes)))
-            .map_err(|source| CrsError::Read {
-                path: path.to_path_buf(),
-                source,
-            })
+    let digest_file = |path: &Path, _label: &'static str| -> Result<String, CrsError> {
+        #[cfg(feature = "timing")]
+        let reading = crate::timing::SpanGuard::new("univariate.identity.read", _label, vec![]);
+        let bytes = fs::read(path).map_err(|source| CrsError::Read {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        #[cfg(feature = "timing")]
+        drop(reading);
+        #[cfg(feature = "timing")]
+        let _hash = crate::timing::SpanGuard::new("univariate.identity.sha256", _label, vec![]);
+        Ok(format!("{:x}", Sha256::digest(bytes)))
     };
-    if digest_file(tau_sequence_path)? != provenance.tau_sequence_rkyv_sha256
-        || digest_file(&keys_dir.join(crate::crs_artifacts::PROVER_KEYS_RKYV_FILE_NAME))?
-            != provenance.prover_keys_rkyv_sha256
-        || digest_file(&keys_dir.join(crate::crs_artifacts::VERIFIER_KEYS_RKYV_FILE_NAME))?
-            != provenance.verifier_keys_rkyv_sha256
+    if digest_file(tau_sequence_path, "tau")? != provenance.tau_sequence_rkyv_sha256
+        || digest_file(
+            &keys_dir.join(crate::crs_artifacts::PROVER_KEYS_RKYV_FILE_NAME),
+            "prover_keys",
+        )? != provenance.prover_keys_rkyv_sha256
+        || digest_file(
+            &keys_dir.join(crate::crs_artifacts::VERIFIER_KEYS_RKYV_FILE_NAME),
+            "verifier_keys",
+        )? != provenance.verifier_keys_rkyv_sha256
     {
         return Err(CrsError::Compatibility(
             "univariate CRS file digest does not match crs_provenance.json".to_string(),
         ));
     }
+    #[cfg(feature = "timing")]
+    let _library = crate::timing::SpanGuard::new("univariate.identity.library", "identity", vec![]);
     let expected = selected_subcircuit_library_provenance(library_dir)
         .map_err(|error| CrsError::Compatibility(error.to_string()))?;
     if provenance.subcircuit_library != expected {

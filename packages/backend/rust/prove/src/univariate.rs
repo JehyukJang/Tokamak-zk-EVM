@@ -123,15 +123,21 @@ pub fn prove<E: Engine>(
         &prepared.public_inputs[..setup.l_free],
         prepare::root::<E::F>(setup.l_free)?,
     );
-    let c_l = commit_sum::<E>(&[
-        (&crs.tau.s0_g1, &E::coefficients(&a), 0),
-        (&crs.tau.sxi_g1, &E::coefficients(&u), 0),
-        (&crs.tau.spsi_g1, &E::coefficients(&w), 0),
-    ])?;
-    let c_h = commit_sum::<E>(&[
-        (&crs.tau.sxi_g1, &E::coefficients(&v), 0),
-        (&crs.tau.spsi_g1, &E::coefficients(&b), 0),
-    ])?;
+    let c_l = commit_sum::<E>(
+        "C_L",
+        &[
+            (&crs.tau.s0_g1, &E::coefficients(&a), 0),
+            (&crs.tau.sxi_g1, &E::coefficients(&u), 0),
+            (&crs.tau.spsi_g1, &E::coefficients(&w), 0),
+        ],
+    )?;
+    let c_h = commit_sum::<E>(
+        "C_H",
+        &[
+            (&crs.tau.sxi_g1, &E::coefficients(&v), 0),
+            (&crs.tau.spsi_g1, &E::coefficients(&b), 0),
+        ],
+    )?;
     let c_o = crate::time_block!("univariate.binding", "prove", {
         binding::<E>(crs, setup, public_layout, selector, prepared, masks)?
     });
@@ -139,30 +145,39 @@ pub fn prove<E: Engine>(
         let (q, zv) = selection::<E>(crs, setup, selector, &prepared.slots)?;
         let zm: Vec<_> = zv.iter().map(|x| *x * masks.selection).collect();
         (
-            commit_sum::<E>(&[(&crs.keys.weighted_g1, &q, 0), (&crs.tau.s0_g1, &zm, 0)])?,
-            commit_sum::<E>(&[
-                (&crs.keys.weighted_shifted_g1, &q, 0),
-                (&crs.tau.s0_g1, &zm, shape.k),
-            ])?,
+            commit_sum::<E>(
+                "D_Q",
+                &[(&crs.keys.weighted_g1, &q, 0), (&crs.tau.s0_g1, &zm, 0)],
+            )?,
+            commit_sum::<E>(
+                "D_QK",
+                &[
+                    (&crs.keys.weighted_shifted_g1, &q, 0),
+                    (&crs.tau.s0_g1, &zm, shape.k),
+                ],
+            )?,
         )
     });
     let mut tr =
         UnivariateTranscript::<E::F>::from_public_inputs(&prepared.public_inputs[..setup.l_free]);
     tr.set_message(&point_message("F2.a1", &[c_l, c_h, c_o, d_q, d_q_k]));
     let upsilon = tr.challenge(1, 0);
-    let c_d = commit_sum::<E>(&[
-        (&crs.tau.s0_g1, &E::coefficients(&a), shape.k),
-        (
-            &crs.tau.sxi_g1,
-            &E::coefficients(&E::add(&u, &E::scale(&v, upsilon))),
-            shape.k,
-        ),
-        (
-            &crs.tau.spsi_g1,
-            &E::coefficients(&E::add(&w, &E::scale(&b, upsilon))),
-            shape.k,
-        ),
-    ])?;
+    let c_d = commit_sum::<E>(
+        "C_D",
+        &[
+            (&crs.tau.s0_g1, &E::coefficients(&a), shape.k),
+            (
+                &crs.tau.sxi_g1,
+                &E::coefficients(&E::add(&u, &E::scale(&v, upsilon))),
+                shape.k,
+            ),
+            (
+                &crs.tau.spsi_g1,
+                &E::coefficients(&E::add(&w, &E::scale(&b, upsilon))),
+                shape.k,
+            ),
+        ],
+    )?;
     tr.set_message(&point_message("F2.a2", &[c_d]));
     let (beta, gamma_c) = tr.challenge_pair(2);
     let sc = E::polynomial(&prepared.s_c.coefficients);
@@ -178,14 +193,14 @@ pub fn prove<E: Engine>(
             &masks.r,
         )?
     });
-    let c_r = commit_sum::<E>(&[(&crs.tau.s0_g1, &E::coefficients(&r), 0)])?;
+    let c_r = commit_sum::<E>("C_R", &[(&crs.tau.s0_g1, &E::coefficients(&r), 0)])?;
     tr.set_message(&point_message("F2.a3", &[c_r]));
     let theta = tr.challenge(3, 0);
     let q = E::add(
         &E::add(&qa, &E::scale(&q0, theta)),
         &E::scale(&q1, theta.pow(2)),
     );
-    let c_q = commit_sum::<E>(&[(&crs.tau.s0_g1, &E::coefficients(&q), 0)])?;
+    let c_q = commit_sum::<E>("C_Q", &[(&crs.tau.s0_g1, &E::coefficients(&q), 0)])?;
     tr.set_message(&point_message("F2.a4", &[c_q]));
     let chi = tr.chi(na, nc);
     let evals = [
@@ -217,12 +232,18 @@ pub fn prove<E: Engine>(
         let xi = E::add(&u, &E::scale(&v, varpi));
         let psi = E::add(&w, &E::scale(&b, varpi));
         (
-            commit_sum::<E>(&[
-                (&crs.tau.s0_g1, &opening::<E>(&ordinary, chi), 0),
-                (&crs.tau.sxi_g1, &opening::<E>(&xi, chi), 0),
-                (&crs.tau.spsi_g1, &opening::<E>(&psi, chi), 0),
-            ])?,
-            commit_sum::<E>(&[(&crs.tau.s0_g1, &opening::<E>(&r, chi * root), 0)])?,
+            commit_sum::<E>(
+                "Pi_chi",
+                &[
+                    (&crs.tau.s0_g1, &opening::<E>(&ordinary, chi), 0),
+                    (&crs.tau.sxi_g1, &opening::<E>(&xi, chi), 0),
+                    (&crs.tau.spsi_g1, &opening::<E>(&psi, chi), 0),
+                ],
+            )?,
+            commit_sum::<E>(
+                "Pi_plus",
+                &[(&crs.tau.s0_g1, &opening::<E>(&r, chi * root), 0)],
+            )?,
         )
     });
     tr.set_message(&point_message("F2.a6", &[pi_chi, pi_plus]));
@@ -270,10 +291,13 @@ fn point_message(label: &str, points: &[[u8; 96]]) -> Vec<u8> {
     e.finish()
 }
 fn commit_sum<E: Engine>(
+    _label: &'static str,
     terms: &[(&[UnivariateG1Rkyv], &[E::F], usize)],
 ) -> Result<[u8; 96], UnivariateProverError> {
     #[cfg(feature = "timing")]
-    let _span = crate::timing::SpanGuard::new("univariate.commit", "commit", vec![]);
+    let _span = crate::timing::SpanGuard::new("univariate.commit", _label, vec![]);
+    #[cfg(feature = "timing")]
+    let gathering = crate::timing::SpanGuard::new("univariate.commit.gather", _label, vec![]);
     let count = terms
         .iter()
         .try_fold(0usize, |n, (_, v, _)| n.checked_add(v.len()))
@@ -291,7 +315,23 @@ fn commit_sum<E: Engine>(
         );
         scalars.extend_from_slice(values);
     }
+    #[cfg(feature = "timing")]
+    drop(gathering);
+    #[cfg(feature = "timing")]
+    diagnose_msm(_label, bases.len(), &scalars);
     E::msm(&bases, &scalars)
+}
+#[cfg(feature = "timing")]
+fn diagnose_msm<F: ProtocolField>(label: &str, bases: usize, scalars: &[F]) {
+    // Counts only; enable in a separate diagnostic run, never timed trials.
+    if std::env::var_os("PROVE_MSM_DIAGNOSTICS").is_some() {
+        eprintln!(
+            "MSM_DIAGNOSTICS {}",
+            serde_json::json!({"commitment":label,
+            "bases":bases,"scalars":scalars.len(),
+            "nonzero":scalars.iter().filter(|s| **s != F::zero()).count()})
+        );
+    }
 }
 fn binding<E: Engine>(
     crs: &ProverCrs,
@@ -301,6 +341,8 @@ fn binding<E: Engine>(
     data: &Prepared<E::F>,
     masks: &ProverRandomizers<E::F>,
 ) -> Result<[u8; 96], UnivariateProverError> {
+    #[cfg(feature = "timing")]
+    let gathering = crate::timing::SpanGuard::new("univariate.commit.gather", "C_O", vec![]);
     let mut bases = Vec::new();
     let mut values = Vec::new();
     for (query, g) in
@@ -337,6 +379,10 @@ fn binding<E: Engine>(
     }
     bases.push(crs.keys.mask_selection);
     values.push(masks.selection);
+    #[cfg(feature = "timing")]
+    drop(gathering);
+    #[cfg(feature = "timing")]
+    diagnose_msm("C_O", bases.len(), &values);
     E::msm(&bases, &values)
 }
 fn blind<E: Engine>(values: &[E::F], mask: &[E::F], n: usize) -> E::P {
@@ -421,6 +467,9 @@ fn copy_relation<E: Engine>(
     if b_values.len() != n || sc.evaluations.len() != n {
         return Err("connection dimensions mismatch".to_owned().into());
     }
+    #[cfg(feature = "timing")]
+    let denominator_span =
+        crate::timing::SpanGuard::new("univariate.copy.denominators", "copy", vec![]);
     let mut denominators = Vec::with_capacity(n);
     let mut z = E::F::one();
     for (i, b) in b_values.iter().enumerate() {
@@ -431,7 +480,14 @@ fn copy_relation<E: Engine>(
         denominators.push(d);
         z = z * root;
     }
-    E::invert(&mut denominators)?;
+    #[cfg(feature = "timing")]
+    drop(denominator_span);
+    crate::time_block!("univariate.copy.inversion", "copy", {
+        E::invert(&mut denominators)?
+    });
+    #[cfg(feature = "timing")]
+    let recurrence_span =
+        crate::timing::SpanGuard::new("univariate.copy.recurrence", "copy", vec![]);
     let mut values = Vec::with_capacity(n);
     let mut product = E::F::one();
     for i in 0..n {
@@ -441,18 +497,28 @@ fn copy_relation<E: Engine>(
     if product != E::F::one() {
         return Err(UnivariateProverError::CopyRecurrenceDoesNotClose);
     }
-    let r = blind::<E>(&E::coefficients(&E::interpolate(&values, root)), mask, n);
+    #[cfg(feature = "timing")]
+    drop(recurrence_span);
+    let r = crate::time_block!("univariate.copy.interpolate", "copy", {
+        blind::<E>(&E::coefficients(&E::interpolate(&values, root)), mask, n)
+    });
     let f = E::add(
         &E::add(b, &E::scale(&E::polynomial(&sc.coefficients), beta)),
         &E::polynomial(&[gamma]),
     );
     let g = E::add(b, &E::polynomial(&[gamma, beta]));
+    #[cfg(feature = "timing")]
+    let boundary_span = crate::timing::SpanGuard::new("univariate.copy.boundary", "copy", vec![]);
     let l0 = E::polynomial(&vec![E::F::from_usize(n).inv(); n]);
     let q0 = E::divide_vanishing(
         &E::mul(&E::sub(&r, &E::polynomial(&[E::F::one()])), &l0),
         n,
         "copy boundary",
     )?;
+    #[cfg(feature = "timing")]
+    drop(boundary_span);
+    #[cfg(feature = "timing")]
+    let _products = crate::timing::SpanGuard::new("univariate.copy.products", "copy", vec![]);
     let mut shifted = E::coefficients(&r);
     let mut power = E::F::one();
     for c in &mut shifted {
