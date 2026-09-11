@@ -30,6 +30,8 @@ pub struct TrustedSetupConfig<'a> {
 pub fn run_trusted_setup(config: &TrustedSetupConfig<'_>) -> Result<(), TrustedSetupError> {
     let started = Instant::now();
     let input_started = Instant::now();
+    #[cfg(feature = "timing")]
+    let input_span = libs::timing::SpanGuard::new("input.load_and_validate", "setup", vec![]);
     let qap_path = PathBuf::from(config.qap_path);
     let setup_params_path = qap_path.join("setupParams.json");
     let setup_params =
@@ -101,6 +103,8 @@ pub fn run_trusted_setup(config: &TrustedSetupConfig<'_>) -> Result<(), TrustedS
         .zip(subcircuit_infos.iter())
         .map(|(r1cs, subcircuit_info)| r1cs.as_univariate_subcircuit(subcircuit_info))
         .collect::<Vec<_>>();
+    #[cfg(feature = "timing")]
+    drop(input_span);
     println!(
         "Loaded and validated univariate setup inputs in {:.6} seconds",
         input_started.elapsed().as_secs_f64(),
@@ -157,13 +161,30 @@ pub fn run_trusted_setup(config: &TrustedSetupConfig<'_>) -> Result<(), TrustedS
     };
     let artifact_started = Instant::now();
     let (stage, digests) = stage_artifacts(&output_path, &crs).map_err(io_error)?;
-    write_development_only_univariate_keys_provenance(
-        stage.staging_directory().map_err(io_error)?,
-        library,
-        &digests,
-    )
-    .map_err(io_error)?;
-    stage.activate().map_err(io_error)?;
+    {
+        #[cfg(feature = "timing")]
+        let _span = libs::timing::SpanGuard::new("provenance.write", "setup", vec![]);
+        write_development_only_univariate_keys_provenance(
+            stage.staging_directory().map_err(io_error)?,
+            library,
+            &digests,
+        )
+        .map_err(io_error)?;
+    }
+    {
+        #[cfg(feature = "timing")]
+        let _span = libs::timing::SpanGuard::new("generation.activate", "setup", vec![]);
+        stage.activate().map_err(io_error)?;
+    }
+    #[cfg(feature = "timing")]
+    for event in libs::timing::take_events() {
+        println!(
+            "[setup-timing] {} {:?} {:.9} seconds",
+            event.name,
+            event.sizes.iter().map(|s| &s.dims).collect::<Vec<_>>(),
+            event.nanos as f64 / 1e9
+        );
+    }
     println!(
         "Serialized and activated four CRS files with provenance in {:.6} seconds",
         artifact_started.elapsed().as_secs_f64()

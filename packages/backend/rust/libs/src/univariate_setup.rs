@@ -18,6 +18,15 @@ use icicle_core::{
 use icicle_runtime::memory::HostSlice;
 use rayon::prelude::*;
 
+// Reuse the existing opt-in timing collector; normal builds allocate no spans.
+macro_rules! measured {
+    ($name:expr, $body:expr) => {{
+        #[cfg(feature = "timing")]
+        let _span = crate::timing::SpanGuard::new($name, "setup", vec![]);
+        $body
+    }};
+}
+
 pub struct SetupScalars {
     pub tau: ScalarField,
     pub xi: ScalarField,
@@ -86,10 +95,19 @@ pub fn stage_artifacts(
     macro_rules! write_archive {
         ($name:literal, $value:expr) => {{
             (|| -> std::io::Result<String> {
-                let bytes = archive::to_bytes::<archive::rancor::Error>($value)
-                    .map_err(std::io::Error::other)?;
-                let digest = hex::encode(Sha256::digest(bytes.as_ref()));
-                std::fs::write(directory.join($name), bytes.as_ref())?;
+                let bytes = measured!(
+                    concat!($name, ".serialize"),
+                    archive::to_bytes::<archive::rancor::Error>($value)
+                )
+                .map_err(std::io::Error::other)?;
+                let digest = measured!(
+                    concat!($name, ".hash"),
+                    hex::encode(Sha256::digest(bytes.as_ref()))
+                );
+                measured!(
+                    concat!($name, ".write"),
+                    std::fs::write(directory.join($name), bytes.as_ref())
+                )?;
                 Ok(digest)
             })()
         }};
@@ -206,26 +224,30 @@ pub fn generate(
     let query_layout = NonpublicQueryLayout::new(setup.s_max, setup.m, setup.l, &maps)?;
     let row_len = query_layout.len() / setup.s_max;
     let mut nonpublic = vec![ScalarField::zero(); query_layout.len()];
-    if row_len != 0 {
-        nonpublic
-            .par_chunks_mut(row_len)
-            .enumerate()
-            .for_each(|(i, output)| {
-                let mut cursor = 0;
-                // Only implicit-zero witness coordinates are omitted. Their original
-                // weighted selection points are not infinity. Keep the full selection
-                // domain above, and every actual nonpublic wire, even when its current
-                // witness or arithmetic column is zero.
-                for (k, circuit) in subcircuits.iter().enumerate() {
-                    let images = wire_images(setup, circuit, i, &lag_a, &lag_c);
-                    for &j in query_layout.local_wires(k).unwrap() {
-                        output[cursor] = delta_inv * packed(i, k, j, images[j]);
-                        cursor += 1;
+    measured!("nonpublic.scalar_labels", {
+        if row_len != 0 {
+            nonpublic
+                .par_chunks_mut(row_len)
+                .enumerate()
+                .for_each(|(i, output)| {
+                    let mut cursor = 0;
+                    // Only implicit-zero witness coordinates are omitted. Their original
+                    // weighted selection points are not infinity. Keep the full selection
+                    // domain above, and every actual nonpublic wire, even when its current
+                    // witness or arithmetic column is zero.
+                    for (k, circuit) in subcircuits.iter().enumerate() {
+                        let images = wire_images(setup, circuit, i, &lag_a, &lag_c);
+                        for &j in query_layout.local_wires(k).unwrap() {
+                            output[cursor] = delta_inv * packed(i, k, j, images[j]);
+                            cursor += 1;
+                        }
                     }
-                }
-                assert_eq!(cursor, output.len());
-            });
-    }
+                    assert_eq!(cursor, output.len());
+                });
+        }
+    });
+    #[cfg(feature = "timing")]
+    let public_span = crate::timing::SpanGuard::new("public.scalar_labels", "setup", vec![]);
     let public_labels = (0..setup.l)
         .into_par_iter()
         .filter_map(|global| {
@@ -262,6 +284,8 @@ pub fn generate(
         .filter(|(g, _)| *g >= setup.l_free)
         .map(|(_, v)| *v)
         .collect::<Vec<_>>();
+    #[cfg(feature = "timing")]
+    drop(public_span);
     let powers = powers(secret.tau, p * 2 + 1);
     let weighted = secret
         .weights
@@ -374,6 +398,15 @@ fn wire_images(
 }
 
 fn lagrange_at(tau: ScalarField, root: ScalarField, count: usize) -> Vec<ScalarField> {
+    #[cfg(feature = "timing")]
+    let _span = crate::timing::SpanGuard::new(
+        "lagrange_at",
+        "setup",
+        vec![crate::timing::SizeInfo {
+            label: "count",
+            dims: vec![count],
+        }],
+    );
     let numerator = (tau.pow(count) - ScalarField::one())
         * ScalarField::from_bytes_le(&count.to_le_bytes()).inv();
     (0..count)
@@ -390,6 +423,15 @@ fn lagrange_at(tau: ScalarField, root: ScalarField, count: usize) -> Vec<ScalarF
 }
 
 fn powers(tau: ScalarField, count: usize) -> Vec<ScalarField> {
+    #[cfg(feature = "timing")]
+    let _span = crate::timing::SpanGuard::new(
+        "powers",
+        "setup",
+        vec![crate::timing::SizeInfo {
+            label: "count",
+            dims: vec![count],
+        }],
+    );
     let mut values = vec![ScalarField::zero(); count];
     values
         .par_chunks_mut(4096)
@@ -405,11 +447,37 @@ fn powers(tau: ScalarField, count: usize) -> Vec<ScalarField> {
 }
 
 fn encode_g1(values: &[ScalarField], generator: G1Affine) -> Result<Vec<UnivariateG1Rkyv>, String> {
+    #[cfg(feature = "timing")]
+    let _span = crate::timing::SpanGuard::new(
+        "encode_g1",
+        "setup",
+        vec![crate::timing::SizeInfo {
+            label: "count",
+            dims: vec![values.len()],
+        }],
+    );
     let encode = |point: G1Affine| UnivariateG1Rkyv {
         x: point.x.to_bytes_le().try_into().unwrap(),
         y: point.y.to_bytes_le().try_into().unwrap(),
     };
+    if generator == G1Affine::zero() {
+        return Ok(vec![encode(generator); values.len()]);
+    }
     if !crate::utils::cuda_msm_is_available() {
+        if values.len() >= FIXED_BASE_MIN_POINTS {
+            use ark_ec::AffineRepr;
+            use ark_ff::{BigInteger, PrimeField};
+            let base = crate::group_structures::icicle_g1_affine_to_ark(&generator).into_group();
+            return Ok(encode_fixed_base(values, base, |point| {
+                if point.is_zero() {
+                    return encode(G1Affine::zero());
+                }
+                UnivariateG1Rkyv {
+                    x: point.x.into_bigint().to_bytes_le().try_into().unwrap(),
+                    y: point.y.into_bigint().to_bytes_le().try_into().unwrap(),
+                }
+            }));
+        }
         let generator = generator.to_projective();
         return Ok(values
             .par_iter()
@@ -439,11 +507,43 @@ fn encode_g1(values: &[ScalarField], generator: G1Affine) -> Result<Vec<Univaria
 }
 
 fn encode_g2(values: &[ScalarField], generator: G2Affine) -> Result<Vec<UnivariateG2Rkyv>, String> {
+    #[cfg(feature = "timing")]
+    let _span = crate::timing::SpanGuard::new(
+        "encode_g2",
+        "setup",
+        vec![crate::timing::SizeInfo {
+            label: "count",
+            dims: vec![values.len()],
+        }],
+    );
     let encode = |point: G2Affine| UnivariateG2Rkyv {
         x: point.x.to_bytes_le().try_into().unwrap(),
         y: point.y.to_bytes_le().try_into().unwrap(),
     };
+    if generator == G2Affine::zero() {
+        return Ok(vec![encode(generator); values.len()]);
+    }
     if !crate::utils::cuda_msm_is_available() {
+        if values.len() >= FIXED_BASE_MIN_POINTS {
+            use ark_ec::AffineRepr;
+            use ark_ff::{BigInteger, PrimeField};
+            let base = crate::group_structures::icicle_g2_affine_to_ark(&generator).into_group();
+            return Ok(encode_fixed_base(values, base, |point| {
+                if point.is_zero() {
+                    return encode(G2Affine::zero());
+                }
+                let coordinate = |f: ark_bls12_381::Fq2| {
+                    let mut bytes = [0; 96];
+                    bytes[..48].copy_from_slice(&f.c0.into_bigint().to_bytes_le());
+                    bytes[48..].copy_from_slice(&f.c1.into_bigint().to_bytes_le());
+                    bytes
+                };
+                UnivariateG2Rkyv {
+                    x: coordinate(point.x),
+                    y: coordinate(point.y),
+                }
+            }));
+        }
         let generator = generator.to_projective();
         return Ok(values
             .par_iter()
@@ -470,6 +570,40 @@ fn encode_g2(values: &[ScalarField], generator: G2Affine) -> Result<Vec<Univaria
     Ok(output)
 }
 
+const FIXED_BASE_MIN_POINTS: usize = 16384;
+const FIXED_BASE_BATCH_POINTS: usize = 1024;
+
+/// CPU-only shared-generator construction using arkworks' fixed-base and
+/// batch-normalization algorithms. Table/chunk sizes do not fix a core count.
+/// No ICICLE bulk call runs inside Rayon; CUDA keeps its existing bulk path.
+fn encode_fixed_base<G, T>(
+    values: &[ScalarField],
+    generator: G,
+    encode: impl Fn(G::Affine) -> T + Sync,
+) -> Vec<T>
+where
+    G: ark_ec::CurveGroup<ScalarField = ark_bls12_381::Fr>,
+    T: Send + Clone,
+{
+    use ark_ec::{scalar_mul::BatchMulPreprocessing, AffineRepr};
+    use ark_ff::PrimeField;
+    let table = BatchMulPreprocessing::new(generator, FIXED_BASE_MIN_POINTS);
+    let mut output = vec![encode(G::Affine::zero()); values.len()];
+    output
+        .par_chunks_mut(FIXED_BASE_BATCH_POINTS)
+        .zip(values.par_chunks(FIXED_BASE_BATCH_POINTS))
+        .for_each(|(destination, chunk)| {
+            let scalars = chunk
+                .iter()
+                .map(|s| ark_bls12_381::Fr::from_le_bytes_mod_order(&s.to_bytes_le()))
+                .collect::<Vec<_>>();
+            for (slot, point) in destination.iter_mut().zip(table.batch_mul(&scalars)) {
+                *slot = encode(point);
+            }
+        });
+    output
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -478,6 +612,89 @@ mod tests {
     use crate::univariate_relation::{arithmetic_wire_lifts_at, connection_wire_lift_at};
     use icicle_bls12_381::curve::{CurveCfg, G2CurveCfg};
     use icicle_core::curve::Curve;
+
+    #[test]
+    #[ignore = "isolated release timing experiment"]
+    fn compare_cpu_output_collection() {
+        use ark_ec::{scalar_mul::BatchMulPreprocessing, AffineRepr};
+        use ark_ff::{BigInteger, PrimeField};
+        assert!(!cfg!(debug_assertions), "use --release");
+        let generator = crate::group_structures::icicle_g1_affine_to_ark(
+            &CurveCfg::generate_random_affine_points(1)[0],
+        )
+        .into_group();
+        let values = ScalarCfg::generate_random(1048583);
+        let encode = |p: ark_bls12_381::G1Affine| UnivariateG1Rkyv {
+            x: p.x.into_bigint().to_bytes_le().try_into().unwrap(),
+            y: p.y.into_bigint().to_bytes_le().try_into().unwrap(),
+        };
+        let unindexed = || {
+            let table = BatchMulPreprocessing::new(generator, FIXED_BASE_MIN_POINTS);
+            values
+                .par_chunks(FIXED_BASE_BATCH_POINTS)
+                .flat_map_iter(|chunk| {
+                    let scalars = chunk
+                        .iter()
+                        .map(|s| ark_bls12_381::Fr::from_le_bytes_mod_order(&s.to_bytes_le()))
+                        .collect::<Vec<_>>();
+                    table.batch_mul(&scalars).into_iter().map(&encode)
+                })
+                .collect::<Vec<_>>()
+        };
+        let direct = || encode_fixed_base(&values, generator, &encode);
+        for trial in 0..7 {
+            let mut outputs = Vec::new();
+            for mode in if trial % 2 == 0 {
+                ["unindexed", "direct"]
+            } else {
+                ["direct", "unindexed"]
+            } {
+                let started = std::time::Instant::now();
+                let points = if mode == "direct" {
+                    direct()
+                } else {
+                    unindexed()
+                };
+                println!(
+                    "[collection-benchmark] {trial} {mode} {:.9}",
+                    started.elapsed().as_secs_f64()
+                );
+                outputs.push(points);
+            }
+            assert_eq!(outputs[0], outputs[1]);
+        }
+    }
+
+    #[test]
+    fn cpu_encoding_matches_icicle_across_the_batch_boundary() {
+        let g1 = CurveCfg::generate_random_affine_points(1)[0];
+        let g2 = G2CurveCfg::generate_random_affine_points(1)[0];
+        let mut values = ScalarCfg::generate_random(16387);
+        values[0] = ScalarField::zero();
+        values[1] = ScalarField::one();
+        values[2] = ScalarField::zero() - ScalarField::one();
+        values[16386] = ScalarField::zero();
+        for count in [0, 1, 17, 16387] {
+            let actual_g1 = encode_g1(&values[..count], g1).unwrap();
+            let actual_g2 = encode_g2(&values[..count], g2).unwrap();
+            (0..count).into_par_iter().for_each(|j| {
+                let expected_g1 = G1Affine::from(g1.to_projective() * values[j]);
+                let expected_g2 = G2Affine::from(g2.to_projective() * values[j]);
+                assert_eq!(actual_g1[j].x.as_slice(), expected_g1.x.to_bytes_le());
+                assert_eq!(actual_g1[j].y.as_slice(), expected_g1.y.to_bytes_le());
+                assert_eq!(actual_g2[j].x.as_slice(), expected_g2.x.to_bytes_le());
+                assert_eq!(actual_g2[j].y.as_slice(), expected_g2.y.to_bytes_le());
+            });
+        }
+        assert!(encode_g1(&values, G1Affine::zero())
+            .unwrap()
+            .iter()
+            .all(|p| p.x == [0; 48] && p.y == [0; 48]));
+        assert!(encode_g2(&values, G2Affine::zero())
+            .unwrap()
+            .iter()
+            .all(|p| p.x == [0; 96] && p.y == [0; 96]));
+    }
 
     #[test]
     fn four_views_match_direct_public_and_general_query_equations() {

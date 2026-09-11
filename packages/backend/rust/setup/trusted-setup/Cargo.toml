@@ -20,6 +20,7 @@ hex = { workspace = true }
 [features]
 default = ["local-development-subcircuit-library"]
 testing-mode = ["libs/testing-mode"]
+timing = ["libs/timing"]
 local-development-subcircuit-library = ["libs/local-development-subcircuit-library"]
 
 [build-dependencies]
