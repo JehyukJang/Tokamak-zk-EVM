@@ -60,6 +60,8 @@ fn main() -> ExitCode {
 fn run() -> Result<(), ProveError> {
     let total_start = Instant::now();
     let config = Config::parse();
+    #[cfg(feature = "timing")]
+    let ingress = prove::timing::SpanGuard::new("univariate.identity", "input", vec![]);
     let qap_library_path =
         try_resolve_subcircuit_library_path(config.subcircuit_library.as_deref())?;
     validate_operational_univariate_crs_compatibility(
@@ -79,6 +81,8 @@ fn run() -> Result<(), ProveError> {
     };
 
     try_check_device()?;
+    #[cfg(feature = "timing")]
+    drop(ingress);
 
     println!("Running the univariate reference prover...");
     univariate_cli::prove(&paths)?;
@@ -89,6 +93,15 @@ fn run() -> Result<(), ProveError> {
         total_elapsed_secs,
         total_elapsed_secs * 1000.0
     );
+    #[cfg(feature = "timing")]
+    {
+        prove::timing::record("univariate.total", "total", total_start.elapsed(), vec![]);
+        println!(
+            "TIMING_JSON {}",
+            serde_json::to_string(&prove::timing::take_events())
+                .expect("timing events must serialize")
+        );
+    }
 
     Ok(())
 }

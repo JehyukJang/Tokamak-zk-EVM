@@ -1,29 +1,33 @@
-# Current univariate CRS storage and setup experiments
+# Current univariate setup and native prover optimization
 
 ## Audience and scope
 
 This report is for backend performance engineers and reviewers implementing
 the current univariate protocol, including subsequent prover optimization and
 MPC setup work. It is separate from the superseded protocol's
-prover optimization report. It covers CRS storage and trusted-setup computation,
-with separate controls for each experiment, not complete prove time.
+prover optimization report. It covers CRS storage, trusted-setup computation
+and native proof generation, with separate controls for each experiment.
 MPC implementation, publishing and CUDA measurements are outside this
-experiment. The reuse guidance below identifies candidates, not completed
-prover or MPC optimizations.
+experiment. The reuse guidance below identifies candidates; only changes
+with explicit acceptance evidence are implemented optimizations.
 
 ## Results at a glance
 
-Two distinct changes were accepted. Storage omission removes query coordinates
+Storage omission removes query coordinates
 whose witness coefficients are always zero under the admitted input contract.
 CPU encoding then computes the retained points using shared fixed-base
 preprocessing and batch normalization instead of independent scalar products
-and affine conversions.
+and affine conversions. Native proving separately reuses selection cofactors,
+batches copy-denominator inversions, and combines multi-source commitments.
 
 | Experiment | Control | Accepted result | Evidence boundary |
 | --- | --- | --- | --- |
 | Storage omission (`893c3eb17`) | 1,983,906,512 payload bytes; 373.01 s mean setup | 957,268,688 bytes; 220.08 s mean setup | Two dense and two omitted full-library runs; retained-point and binding equality |
 | CPU point encoding (`6258d1062`) | Compressed setup: 220.240 s mean | 12.216 s mean; 18.03x faster | Two control and five accepted full-library runs; all four payloads byte-identical |
 | ICICLE precomputation comparison (`f9a4bd4df`) | Current arkworks large-input CPU path | Retained arkworks after testing 15 ICICLE configurations | Independent encoding comparison, not a full setup or CUDA comparison |
+| Native selection interpolation | 594.937 s mean complete proof generation | 10.565 s mean | Two reference and three candidate runs, exact coefficient/oracle checks |
+| Native copy inversion | 10.496 / 10.647 s interleaved controls | 8.970 s mean | Three candidates; zero-denominator and cyclic-recurrence tests |
+| Native multi-source MSM | 8.109 s mean interleaved controls | 7.916 s mean | Five pairs; every candidate faster than its adjacent control |
 
 These timings exclude compilation and refer to the host and library described
 below. The storage and computation controls are separate experiments; the
@@ -426,9 +430,12 @@ ineligibility are not changed by arithmetic reuse or favorable timing.
    reusable tables, report both cold construction and realistic amortized
    reuse, rather than hiding construction outside every measurement. Record
    memory but impose no memory cap; speed is the selection criterion.
-4. Integrate only a demonstrated improvement, one candidate at a time. For
-   prove, first establish the new-protocol E2E/timing baseline, then repeat
-   affected E2E and whole-prove timing after each optimization. For future
+4. Integrate only a demonstrated improvement, one candidate at a time. The
+   native-first stage uses independent algebraic tests and repeated complete
+   proof generation/timing; preprocess and verifier are not prerequisites.
+   Qualify accepted changes against the preserved reference in full E2E once
+   those consumers are implemented. For subsequent integrated optimization,
+   repeat affected E2E and whole-prove timing after each change. For future
    MPC work, run the target workflow's required contribution/artifact checks;
    setup byte equality alone is not evidence of a valid ceremony.
 5. Extend the appropriate new-protocol report with the source commit,
@@ -470,8 +477,231 @@ before relation or compression code runs. Both source files are unchanged
 from `f276370fc`; this compression change does not repair those fixtures.
 The package-wide test suite is therefore **not reported as green**.
 
-Current-protocol native and WASM preprocess/prove/verify still require their
-planned rewrite; full E2E, complete-prove timing, converter/runtime integration
-and final integrated storage qualification remain pending. Old-protocol
+Current-protocol native proof generation is implemented; native preprocess
+and verifier and the WASM flow still require their planned rewrite. Full E2E,
+converter/runtime integration and final integrated storage qualification
+remain pending. Old-protocol
 consumers are not evidence of compatibility with these new archives. Re-run
 the storage comparison if the integrated prover's access pattern changes.
+
+## Native prover: controlled baseline and selection interpolation
+
+The [native measurement record](evidence/current-univariate-prove.json)
+contains all 20 complete command samples, binary/input identities, per-stage
+durations, memory observations and isolated experiments. Stage and nested
+MSM spans overlap and must not be added together. No outliers were removed.
+
+### Scope and controls
+
+The native reference is `cc05a7450`, with timing-only spans added before
+measurement. These runs use release optimization, the ICICLE 3.8 CPU provider,
+an Apple M4 Pro (14 logical CPUs, 48 GiB RAM), Darwin 25.5.0 and rustc 1.95.0.
+Worker counts are not fixed to this host. No build or test runs concurrently
+with a timed proof; ordinary desktop activity is not suppressed. Compilation
+is excluded. There is no memory cap and no CUDA benchmark.
+
+The local library has n=m=1,024, m_I=1,024, s=256, t=64, 44 compiled circuits
+and l_free=256. The synthesizer fixture has 172 active placements. All trials
+use the same compressed trusted-setup generation, library and fixture.
+They include normal CRS/library identity checks and fresh proof randomizers.
+No release-eligibility bypass or deterministic production masks are added.
+
+The baseline executable is preserved separately before rebuilding candidates.
+The two controlled proofs completed in 600.094 and 589.780 seconds (mean
+594.937), including 589.390 and 579.156 seconds in selection interpolation.
+CRS deserialization took 0.147 and 0.153 seconds; witness/map preparation
+took 0.242 and 0.245 seconds. The earlier 598.063-second concurrent smoke
+run is excluded from this comparison.
+
+### Accepted: shared selection cofactors
+
+For selected roots z_i, every wire uses the same weighted cofactor
+`(z_i / N_S) * Z_v(Z) / (Z - z_i)`. U29 obtains q_j by multiplying those
+cofactors by the placement witnesses and summing. The reference instead
+recombines the product tree for each wire: at m=1,024 and s=256 this entails
+522,240 small polynomial multiplications and 261,120 additions, besides leaf
+construction. The shared-cofactor candidate computes the coefficient matrix
+once by synthetic division and reuses it across wires.
+
+The candidate uses the existing arkworks field arithmetic and Rayon for host
+dot products. ICICLE calls remain outside Rayon loops. It requires O(s^2)
+shared cofactor storage (2 MiB at s=256) and O(m*s) assignment/output storage,
+not an m*s*t witness grid. Empty assignments contribute zero without changing
+the selected-root polynomial or query ordering. Polynomial and MSM CUDA
+dispatch remain available, but CUDA performance is unmeasured.
+
+Independent tests passed for s=1,4,16,256, full/partial/empty selectors,
+repeated circuit IDs, all-zero wires, random field values and -1. Every
+coefficient matches the ICICLE product-tree reference. Three alternating
+comparisons using 16 actual fixture wires and all 256 placement slots took
+9.213074, 9.270165, 9.199750 seconds for the reference and 0.001702, 0.001278,
+0.001395 seconds for the candidate, including cofactor preparation and field
+conversion. The shared root tree and input decoding are outside both isolated
+timers. These are interpolation timings, not complete-prove speedups.
+
+After integration, all five prover library tests passed, including the
+deterministically masked scalar oracle for current commitments, challenges
+and openings, fixed/free public inputs, an internal circuit at i!=k,
+selection holes, and rejection of invalid copy/arithmetic relations.
+
+| Variant | Complete command samples, seconds | Mean, seconds | Interpolation samples, seconds |
+| --- | --- | ---: | --- |
+| P5 reference | 600.093561, 589.779525 | 594.936543 | 589.390499, 579.155983 |
+| Shared cofactors | 10.527646, 10.538977, 10.627963 | 10.564862 | 0.017705, 0.017554, 0.018355 |
+
+All five complete runs produced the current 10-point/7-scalar proof and
+exited successfully. The measured whole-command improvement is **56.31x**.
+Peak RSS was 2.047--2.050 GB in both series; process peak memory does not
+resolve the small added cofactor/assignment buffers. Cofactor storage grows
+quadratically with s; these results do not establish the best interpolation
+algorithm at arbitrarily larger placement capacities. The CRS format,
+selected query ranges, masks and transcript schedule are unchanged.
+
+**Disposition: accept shared cofactors for native proving.** This is
+prover-only algebraic/reference validation and complete proof generation,
+not successful native verification or full E2E. Those checks remain pending.
+The copy-relation phase then took 2.32--2.35 seconds and was examined next.
+
+### Accepted: ICICLE bulk copy-denominator inversion
+
+Three alternating isolated trials at each of 1, 17, 64, 256, 1,024, 4,096
+and 262,144 field elements compared scalar `inv()` calls with ICICLE
+`inv_scalars`. All inverses agree, including 1, -1 and random nonzero
+values. Bulk calls were slower through 256 elements, but faster in all
+measured trials at 1,024 and above. At 262,144 elements, scalar calls took
+1.723373--1.745181 seconds and bulk calls 0.170163--0.191556 seconds.
+The production path therefore retains scalar inversion below 1,024 and uses
+the provider's bulk call above that measured boundary. No host-specific
+worker count is introduced and no outer parallel loop wraps ICICLE.
+
+Zero denominators still abort with their first failing index before any bulk
+call, and a nonclosing copy recurrence still fails without challenge retry.
+The independent recurrence test uses a telescoping cyclic permutation at
+n=512,1,024,4,096 and compares the entire masked R polynomial with its analytic
+value. It also checks a zero denominator at the last domain element. All six
+regular prover library tests pass; the separate inversion benchmark passed
+when explicitly selected.
+
+Full runs were interleaved as bulk/control/bulk/control/bulk after preserving
+the cofactor-only executable. Bulk command times were 8.868247, 9.008860 and
+9.032957 seconds (mean 8.970021); the interleaved controls were 10.495965 and
+10.647220 seconds. Copy-relation time fell to 0.720--0.735 seconds. All five
+runs generated proofs successfully. Peak RSS remained approximately
+2.047--2.052 GB. **Accept bulk inversion at the native-only gate.** Full E2E
+and CUDA performance remain unmeasured.
+
+### Rejected: per-proof MSM base precomputation
+
+An independent release test compared three uses of the same xi-source
+prefix with no preprocessing and ICICLE factors 2 and 4, rotating candidate
+order over three trials at 1,024 and 262,146 points. The three uses model
+CL, CH and the xi part of Pi_chi; no shifted commitment is counted as reuse.
+Every output point matches. Inputs include 0, 1, -1 and random scalars.
+Timing includes table allocation/construction and three MSMs, but excludes
+input point decoding shared by all variants.
+
+At 262,146 points, no preprocessing took 0.971--0.985 seconds for three
+MSMs. Factor 2 took over 16 seconds and factor 4 over 30 seconds. Table
+construction dominates the small multiplication saving. The 1,024-point
+results also regress. **Reject these configurations for first-proof use;**
+no precomputed-base cache or production precomputation path is added. This is not
+a claim about arbitrary reuse counts, other configurations or CUDA. The
+setup fixed-base acceleration does not transfer to this variable-base MSM
+workload.
+
+### Not adopted: mmap backing for owned archive decoding
+
+Five alternating warm-file comparisons per archive used the same validated
+RKYV decoder with `fs::read` and mmap backing. The timer includes opening,
+reading/mapping and owned deserialization; byte equality and dropping the
+decoded object are outside it. The source is pre-read and remains immutable,
+so these are not cold-storage measurements. Every mapped/read byte matches.
+
+After first-touch variation, prover-key decoding took about 68--69 ms with
+read backing and 61 ms with mmap. This small isolated difference does not
+establish a complete-prove improvement against the observed command
+variation. No new mapping lifetime contract or unsafe production reader is
+introduced. A zero-copy range-based redesign is a different experiment,
+not a result demonstrated by replacing the input buffer here. Existing
+compressed query indexing and the P3.1 access pattern remain unchanged.
+
+### Accepted: combine multi-source commitment MSMs
+
+The same-point sums in CL, CH, CD and Pi_chi previously invoked a separate
+MSM for each ordinary/xi/psi source. The candidate concatenates the selected
+source slices and corresponding scalars, preserving each exponent offset,
+then performs one ICICLE MSM per sum. It preallocates the combined buffers;
+it does not batch across a Fiat--Shamir round or alter any emitted point.
+The independent test compares shifted source slices, zero/one/-1/random
+scalars, and source lengths [17,17,17], [262146,262146,262146],
+[256,262146,262146] and [0,262146,262146]. All 20 paired comparisons agree
+and favor combining. For the three large sources, means were 0.958848
+seconds separate and 0.889958 seconds combined, including input gathering.
+
+| Paired run | Control, seconds | Combined MSM, seconds |
+| ---: | ---: | ---: |
+| 1 | 8.012785 | 7.852285 |
+| 2 | 8.101029 | 7.921620 |
+| 3 | 8.071576 | 7.972255 |
+| 4 | 8.218668 | 7.915508 |
+| 5 | 8.138478 | 7.919588 |
+| Mean | 8.108507 | 7.916251 |
+
+Every candidate was faster than its adjacent control (2.37% mean reduction),
+and all ten commands generated proofs. MSM calls fell from 19 to 12 without
+changing the total mathematical terms. The six regular prover library tests
+also pass. Peak RSS stayed approximately 2.046--2.052 GB. **Accept the combined
+MSMs at the native-only gate.**
+
+The contemporaneous controls were faster than the preceding bulk-inversion
+series, despite using the same preserved binary and inputs. Do not attribute
+that between-series movement to this change. The original mean of 594.937
+seconds and final mean of 7.916 seconds describe the observed endpoints
+(about 75x); the paired table isolates the last change. The dominant verified
+improvement is the removal of repeated selection interpolation. These CPU
+results are not a latency guarantee for other hardware or library shapes.
+
+### Remaining optimization boundaries and reproduction
+
+The historical sparse binary R1CS reader, coefficient-domain vanishing
+division, source-specific opening aggregation and compact nonpublic range
+selection already exist in the P5 reference. No extra speedup is assigned
+to them here. Bivariate transform/transpose optimizations do not apply to
+these one-variable maps. Outside selection and copy inversion, measured
+arithmetic preparation is subsecond; no unmeasured buffer or polynomial
+rewrite was added. No production CRS reader, artifact contract, setup,
+preprocess, verifier, WASM or MPC code changed in this native experiment.
+
+From `packages/backend`, build before running comparisons:
+
+```sh
+cargo build --locked --release -p prove --features timing
+cargo build --locked --release -p libs --example selection_interpolation_benchmark
+```
+
+With the platform's ICICLE environment configured, the isolated checks are:
+
+```sh
+cargo test --locked --release -p libs --test univariate_math
+cargo test --locked --release -p prove --lib --features timing
+target/release/examples/selection_interpolation_benchmark LIBRARY FIXTURE 16
+cargo test --locked --release -p prove --lib --features timing compare_copy_denominator_inversion -- --ignored --nocapture
+PROVE_BENCH_TAU=TAU_FILE cargo test --locked --release -p prove --lib --features timing compare_reused_msm_precomputation -- --ignored --nocapture
+PROVE_BENCH_TAU=TAU_FILE cargo test --locked --release -p prove --lib --features timing compare_commitment_sum -- --ignored --nocapture
+PROVE_BENCH_TAU=TAU_FILE PROVE_BENCH_KEYS=PROVER_KEYS_FILE cargo test --locked --release -p prove --lib --features timing compare_archive_read_backing -- --ignored --nocapture
+```
+
+Preserve each control binary before rebuilding the candidate. On macOS,
+pass the library environment after `/usr/bin/time`, since its protected
+launcher can strip inherited `DYLD_LIBRARY_PATH`:
+
+```sh
+/usr/bin/time -l env DYLD_LIBRARY_PATH="$PWD/external-lib/mac/lib" ICICLE_BACKEND_INSTALL_DIR="$PWD/external-lib/mac/lib/backend" target/release/prove --subcircuit-library LIBRARY --tau-sequence TAU_FILE --keys CRS_DIRECTORY --synthesizer-stat FIXTURE --output OUTPUT_DIRECTORY
+```
+
+`TIMING_JSON` is emitted only with the timing feature. Complete-command
+measurements include normal identity checks, loading, maps, proving and
+writing the proof. They use fresh randomness; the scalar-oracle tests use
+fixed test masks. Proof-generation success does not establish verification
+success. Requalify the preserved reference and accepted native implementation
+in the full flow after preprocess/verifier and WASM are implemented.

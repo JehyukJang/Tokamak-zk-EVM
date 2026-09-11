@@ -1,7 +1,7 @@
 //! U23--U33 proving over the current arithmetic, connection and selection domains.
 //! ICICLE owns polynomial multiplication/NTT/MSM parallelism on CPU and CUDA.
 
-use crate::univariate_crs::{commit, msm_points, point, ProverCrs};
+use crate::univariate_crs::{commit, commit_sum, msm_points, point, ProverCrs};
 use icicle_bls12_381::{
     curve::{ScalarCfg, ScalarField},
     polynomials::DensePolynomial,
@@ -85,6 +85,8 @@ pub struct ProvingInput<'a> {
 pub fn prove(
     input: ProvingInput<'_>,
 ) -> Result<(UnivariateProof, UnivariateChallenges), UnivariateProverError> {
+    #[cfg(feature = "timing")]
+    let _proving = crate::timing::SpanGuard::new("univariate.protocol", "prove", vec![]);
     let ProvingInput {
         crs,
         setup,
@@ -140,11 +142,15 @@ pub fn prove(
         HostSlice::from_slice(&public_inputs[..setup.l_free]),
         setup.l_free,
     );
-    let c_l = commit(&crs.tau.s0_g1, &coefficients(&a), 0)?
-        + commit(&crs.tau.sxi_g1, &coefficients(&u), 0)?
-        + commit(&crs.tau.spsi_g1, &coefficients(&w), 0)?;
-    let c_h = commit(&crs.tau.sxi_g1, &coefficients(&v), 0)?
-        + commit(&crs.tau.spsi_g1, &coefficients(&b), 0)?;
+    let c_l = commit_sum(&[
+        (&crs.tau.s0_g1, &coefficients(&a), 0),
+        (&crs.tau.sxi_g1, &coefficients(&u), 0),
+        (&crs.tau.spsi_g1, &coefficients(&w), 0),
+    ])?;
+    let c_h = commit_sum(&[
+        (&crs.tau.sxi_g1, &coefficients(&v), 0),
+        (&crs.tau.spsi_g1, &coefficients(&b), 0),
+    ])?;
     let c_o = crate::time_block!("univariate.binding", "prove", {
         binding(
             crs,
@@ -158,22 +164,21 @@ pub fn prove(
     });
     let (d_q, d_q_k) = crate::time_block!("univariate.selection", "prove", {
         let roots = SelectedRoots::new(shape, setup, selector)?;
-        let mut q = Vec::with_capacity(setup.m * setup.s_max);
+        #[cfg(feature = "timing")]
+        let interpolation =
+            crate::timing::SpanGuard::new("univariate.selection.interpolate", "polynomial", vec![]);
+        let mut witness = Vec::with_capacity(setup.m * setup.s_max);
         for j in 0..setup.m {
-            let values = slots
-                .iter()
-                .map(|slot| {
-                    slot.as_ref()
-                        .and_then(|w| w.get(j))
-                        .copied()
-                        .unwrap_or(ScalarField::zero())
-                })
-                .collect::<Vec<_>>();
-            let polynomial = roots.quotient_for_wire(&values)?;
-            let mut wire_coefficients = coefficients(&polynomial);
-            wire_coefficients.resize(setup.s_max, ScalarField::zero());
-            q.extend(wire_coefficients);
+            witness.extend(slots.iter().map(|slot| {
+                slot.as_ref()
+                    .and_then(|w| w.get(j))
+                    .copied()
+                    .unwrap_or(ScalarField::zero())
+            }));
         }
+        let q = roots.quotients_for_wires(&witness)?;
+        #[cfg(feature = "timing")]
+        drop(interpolation);
         let zv = coefficients(roots.selected_polynomial());
         (
             commit(&crs.keys.weighted_g1, &q, 0)?
@@ -188,17 +193,19 @@ pub fn prove(
         &[c_l, c_h, c_o, d_q, d_q_k],
     ));
     let upsilon = transcript.challenge(1, 0);
-    let c_d = commit(&crs.tau.s0_g1, &coefficients(&a), shape.k)?
-        + commit(
+    let c_d = commit_sum(&[
+        (&crs.tau.s0_g1, &coefficients(&a), shape.k),
+        (
             &crs.tau.sxi_g1,
             &coefficients(&u.add(&v.mul_by_scalar(&upsilon))),
             shape.k,
-        )?
-        + commit(
+        ),
+        (
             &crs.tau.spsi_g1,
             &coefficients(&w.add(&b.mul_by_scalar(&upsilon))),
             shape.k,
-        )?;
+        ),
+    ])?;
     transcript.set_message(&encode_g1_message_block("F2.a2", &[c_d]));
     let (beta, gamma_c) = transcript.challenge_pair(2);
     let sc = polynomial(&s_c.coefficients);
@@ -251,9 +258,11 @@ pub fn prove(
             .add(&sc.mul_by_scalar(&varpi.pow(4)));
         let xi = u.add(&v.mul_by_scalar(&varpi));
         let psi = w.add(&b.mul_by_scalar(&varpi));
-        proof.pi_chi = commit(&crs.tau.s0_g1, &opening(&ordinary, chi), 0)?
-            + commit(&crs.tau.sxi_g1, &opening(&xi, chi), 0)?
-            + commit(&crs.tau.spsi_g1, &opening(&psi, chi), 0)?;
+        proof.pi_chi = commit_sum(&[
+            (&crs.tau.s0_g1, &opening(&ordinary, chi), 0),
+            (&crs.tau.sxi_g1, &opening(&xi, chi), 0),
+            (&crs.tau.spsi_g1, &opening(&psi, chi), 0),
+        ])?;
         proof.pi_plus = commit(&crs.tau.s0_g1, &opening(&r, chi * shape.connection_root), 0)?;
     });
     transcript.set_message(&encode_g1_message_block(
@@ -502,17 +511,39 @@ fn copy_relation(
     if b_values.len() != n || sc.evaluations.len() != n {
         return Err("connection dimensions mismatch".to_owned().into());
     }
-    let mut values = vec![ScalarField::zero(); n];
-    let mut product = ScalarField::one();
+    let mut denominators = vec![ScalarField::zero(); n];
     let mut z = ScalarField::one();
     for i in 0..n {
-        values[i] = product;
         let denominator = b_values[i] + beta * z + gamma;
         if denominator == ScalarField::zero() {
             return Err(UnivariateProverError::CopyDenominator { index: i });
         }
-        product = product * (b_values[i] + beta * sc.evaluations[i] + gamma) * denominator.inv();
+        denominators[i] = denominator;
         z = z * root;
+    }
+    // Release comparisons favor scalar inversion below 1,024 elements and
+    // ICICLE bulk inversion above it. This is an operation-size threshold,
+    // not a fixed worker count. ICICLE owns CPU/CUDA dispatch and parallelism.
+    let inverses = if n >= 1_024 {
+        let mut inverses = vec![ScalarField::zero(); n];
+        icicle_core::vec_ops::inv_scalars(
+            HostSlice::from_slice(&denominators),
+            HostSlice::from_mut_slice(&mut inverses),
+            &icicle_core::vec_ops::VecOpsConfig::default(),
+        )
+        .map_err(|error| format!("ICICLE copy inversion failed: {error:?}"))?;
+        inverses
+    } else {
+        for value in &mut denominators {
+            *value = value.inv();
+        }
+        denominators
+    };
+    let mut values = vec![ScalarField::zero(); n];
+    let mut product = ScalarField::one();
+    for i in 0..n {
+        values[i] = product;
+        product = product * (b_values[i] + beta * sc.evaluations[i] + gamma) * inverses[i];
     }
     if product != ScalarField::one() {
         return Err(UnivariateProverError::CopyRecurrenceDoesNotClose);

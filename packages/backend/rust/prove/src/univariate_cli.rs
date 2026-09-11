@@ -20,6 +20,8 @@ use std::path::PathBuf;
 /// Loads the existing synthesizer artifacts into U8/U12/U27 without relying
 /// on the legacy bivariate prover's compact-placement convention.
 pub fn prove(paths: &ProveInputPaths<'_>) -> Result<(), ProveError> {
+    #[cfg(feature = "timing")]
+    let loading = crate::timing::SpanGuard::new("univariate.library", "input", vec![]);
     let setup = try_load_setup_params_from_qap_path(paths.qap_path)?;
     let subcircuit_info_path = PathBuf::from(paths.qap_path).join("subcircuitInfo.json");
     let infos =
@@ -73,6 +75,10 @@ pub fn prove(paths: &ProveInputPaths<'_>) -> Result<(), ProveError> {
         .collect::<Vec<_>>();
     let tau_path = PathBuf::from(paths.tau_sequence_path);
     let keys_path = PathBuf::from(paths.keys_path);
+    #[cfg(feature = "timing")]
+    drop(loading);
+    #[cfg(feature = "timing")]
+    let loading = crate::timing::SpanGuard::new("univariate.crs", "input", vec![]);
     let crs = ProverCrs::read(&tau_path, &keys_path, &setup, &subcircuits, &public_layout)
         .map_err(|source| CrsError::Read {
             path: keys_path,
@@ -80,6 +86,10 @@ pub fn prove(paths: &ProveInputPaths<'_>) -> Result<(), ProveError> {
         })?;
 
     let selector_path = PathBuf::from(paths.synthesizer_path).join("selector.json");
+    #[cfg(feature = "timing")]
+    drop(loading);
+    #[cfg(feature = "timing")]
+    let loading = crate::timing::SpanGuard::new("univariate.fixture", "input", vec![]);
     let selector =
         read_placement_selector(&selector_path, setup.s_max, setup.s_D).map_err(|source| {
             ArtifactError::Read {
@@ -114,6 +124,10 @@ pub fn prove(paths: &ProveInputPaths<'_>) -> Result<(), ProveError> {
             source,
         })?;
 
+    #[cfg(feature = "timing")]
+    drop(loading);
+    #[cfg(feature = "timing")]
+    let preparation = crate::timing::SpanGuard::new("univariate.maps", "prepare", vec![]);
     let s_c = connection_permutation_polynomial(&crs.shape, &setup, &selector, &permutation)?;
     let selected = select_witness_values(&selector, &placements, &setup, &subcircuits)?;
     let slots = selected
@@ -130,6 +144,8 @@ pub fn prove(paths: &ProveInputPaths<'_>) -> Result<(), ProveError> {
     let maps = witness_maps(&crs.shape, &setup, &selector, &slots, &subcircuits)?;
     let public_inputs = collect_public_inputs(&instance, &setup)?;
     let randomizers = ProverRandomizers::sample();
+    #[cfg(feature = "timing")]
+    drop(preparation);
     let (proof, _challenges) = prove_protocol(ProvingInput {
         crs: &crs,
         setup: &setup,

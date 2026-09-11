@@ -14,6 +14,158 @@ fn f(value: u32) -> ScalarField {
 }
 
 #[test]
+#[ignore = "release-only independent performance comparison"]
+fn compare_copy_denominator_inversion() {
+    use icicle_core::vec_ops::{inv_scalars, VecOpsConfig};
+    use std::time::Instant;
+    assert!(!cfg!(debug_assertions), "use --release");
+    libs::utils::try_check_device().unwrap();
+    for count in [1, 17, 64, 256, 1_024, 4_096, 262_144] {
+        let mut values = ScalarCfg::generate_random(count);
+        for value in &mut values {
+            if *value == f(0) {
+                *value = f(1);
+            }
+        }
+        values[0] = f(1);
+        if count > 1 {
+            values[1] = f(0) - f(1);
+        }
+        for trial in 0..3 {
+            let reference = || {
+                let start = Instant::now();
+                let result = values.iter().map(|v| v.inv()).collect::<Vec<_>>();
+                (result, start.elapsed().as_secs_f64())
+            };
+            let candidate = || {
+                let start = Instant::now();
+                let mut result = vec![f(0); count];
+                inv_scalars(
+                    HostSlice::from_slice(&values),
+                    HostSlice::from_mut_slice(&mut result),
+                    &VecOpsConfig::default(),
+                )
+                .unwrap();
+                (result, start.elapsed().as_secs_f64())
+            };
+            let (old, new) = if trial % 2 == 0 {
+                (reference(), candidate())
+            } else {
+                let new = candidate();
+                (reference(), new)
+            };
+            assert_eq!(old.0, new.0);
+            println!(
+                "{}",
+                serde_json::json!({"count":count,"trial":trial,"referenceSeconds":old.1,"candidateSeconds":new.1,"allInversesEqual":true})
+            );
+        }
+    }
+}
+
+#[test]
+fn bulk_copy_recursion_matches_a_telescoping_cycle() {
+    for n in [512, 1_024, 4_096] {
+        init_ntt_domain_for_size((2 * (n + 4usize)).next_power_of_two()).unwrap();
+        let root = icicle_core::ntt::get_root_of_unity::<ScalarField>(n as u64);
+        let mut values = vec![f(7); n];
+        let sc = DenseDomainPolynomial {
+            evaluations: (0..n).map(|i| root.pow((i + 1) % n)).collect(),
+            coefficients: Box::new([f(0), root]),
+        };
+        let b = polynomial(&[f(7)]);
+        let masks = [f(1), f(2), f(3), f(4)];
+        let (r, _, _) = copy_relation(root, n, &values, &sc, &b, f(5), f(3), &masks).unwrap();
+        // f_i = g_(i+1), hence r_i = g_i/g_0 = (10 + 5*z_i)/15.
+        let expected = blind(&[f(10) * f(15).inv(), f(5) * f(15).inv()], &masks, n);
+        assert_eq!(coefficients(&r), coefficients(&expected));
+        values[n - 1] = f(0) - f(5) * root.pow(n - 1) - f(3);
+        assert!(matches!(
+            copy_relation(root, n, &values, &sc, &b, f(5), f(3), &masks),
+            Err(UnivariateProverError::CopyDenominator { index }) if index == n - 1
+        ));
+    }
+}
+
+#[test]
+#[ignore = "release-only comparison requiring PROVE_BENCH_TAU"]
+fn compare_reused_msm_precomputation() {
+    use backend_univariate_crs_interface::{archive, TauSequenceRkyv};
+    use icicle_bls12_381::curve::{G1Affine, G1Projective};
+    use icicle_core::msm::{msm, precompute_bases, MSMConfig};
+    use icicle_runtime::memory::DeviceVec;
+    use std::time::Instant;
+    assert!(!cfg!(debug_assertions), "use --release");
+    libs::utils::try_check_device().unwrap();
+    let path = std::env::var("PROVE_BENCH_TAU")
+        .expect("set PROVE_BENCH_TAU to the measured tau_sequence.rkyv");
+    let tau = archive::from_bytes::<TauSequenceRkyv, archive::rancor::Error>(
+        &std::fs::read(path).unwrap(),
+    )
+    .unwrap();
+    // Three same-prefix uses model the xi source in CL, CH and Pi_chi;
+    // shifted commitments are not credited as reuse in this experiment.
+    for count in [1_024, 262_146] {
+        let bases = tau.sxi_g1[..count].iter().map(point).collect::<Vec<_>>();
+        let mut scalars = ScalarCfg::generate_random(count * 3);
+        scalars[0] = f(0);
+        scalars[1] = f(1);
+        scalars[2] = f(0) - f(1);
+        let expected = scalars
+            .chunks(count)
+            .map(|s| msm_points(&bases, s).unwrap().0)
+            .collect::<Vec<_>>();
+        for trial in 0..3 {
+            for offset in 0..3 {
+                let factor = [1, 2, 4][(trial + offset) % 3];
+                let start = Instant::now();
+                let mut config = MSMConfig::default();
+                config.precompute_factor = factor;
+                let mut precomputed = if factor == 1 {
+                    None
+                } else {
+                    let mut table =
+                        DeviceVec::<G1Affine>::device_malloc(count * factor as usize).unwrap();
+                    precompute_bases(HostSlice::from_slice(&bases), &config, &mut table).unwrap();
+                    Some(table)
+                };
+                let precompute_seconds = start.elapsed().as_secs_f64();
+                let results = scalars
+                    .chunks(count)
+                    .map(|s| {
+                        let mut result = [G1Projective::zero()];
+                        if let Some(table) = precomputed.as_mut() {
+                            msm(
+                                HostSlice::from_slice(s),
+                                table,
+                                &config,
+                                HostSlice::from_mut_slice(&mut result),
+                            )
+                            .unwrap();
+                        } else {
+                            msm(
+                                HostSlice::from_slice(s),
+                                HostSlice::from_slice(&bases),
+                                &config,
+                                HostSlice::from_mut_slice(&mut result),
+                            )
+                            .unwrap();
+                        }
+                        G1Affine::from(result[0])
+                    })
+                    .collect::<Vec<_>>();
+                let seconds = start.elapsed().as_secs_f64();
+                assert_eq!(results, expected);
+                println!(
+                    "{}",
+                    serde_json::json!({"count":count,"reuse":3,"trial":trial,"factor":factor,"precomputeSeconds":precompute_seconds,"totalSeconds":seconds,"allPointsEqual":true})
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn selection_helper_matches_all_roots_at_full_placement_capacity() {
     let setup = SetupParams {
         l_free: 2,
@@ -364,6 +516,10 @@ fn copy_denominator_and_nonclosing_recursion_abort_without_retry() {
     assert!(matches!(
         copy_relation(root, n, &values, &sc, &b, f(0), f(0), &[f(1); 4]),
         Err(UnivariateProverError::CopyDenominator { index: 0 })
+    ));
+    assert!(matches!(
+        copy_relation(root, n, &values, &sc, &b, f(0), f(0) - f(1), &[f(1); 4]),
+        Err(UnivariateProverError::CopyDenominator { index: 1 })
     ));
     let swapped = DenseDomainPolynomial {
         evaluations: Box::new([root, f(1)]),

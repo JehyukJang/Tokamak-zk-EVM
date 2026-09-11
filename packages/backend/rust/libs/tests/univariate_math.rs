@@ -167,3 +167,52 @@ fn selected_root_interpolation_covers_singleton_and_reserved_id_gaps() {
         }
     }
 }
+
+#[test]
+fn shared_cofactors_match_reference_coefficients_for_every_wire() {
+    use icicle_bls12_381::curve::ScalarCfg;
+    use icicle_core::traits::GenerateRandom;
+    use icicle_runtime::memory::HostSlice;
+
+    for s in [1, 4, 16, 256] {
+        let setup = setup(2, 2, s, 44);
+        let shape = UnivariateCrsShape::from_setup_params(&setup).unwrap();
+        for mode in 0..3 {
+            let selector = (0..s)
+                .map(|i| {
+                    if mode == 2 || mode == 1 && i % 3 == 1 {
+                        None
+                    } else {
+                        Some((i * 7) % 44)
+                    }
+                })
+                .collect::<Vec<_>>();
+            let roots = SelectedRoots::new(&shape, &setup, &selector).unwrap();
+            let mut witness = ScalarCfg::generate_random(5 * s);
+            // An all-zero wire, field-boundary values, and empty placement slots.
+            witness[..s].fill(ScalarField::zero());
+            witness[s] = ScalarField::zero() - ScalarField::one();
+            for row in witness.chunks_mut(s) {
+                for (value, id) in row.iter_mut().zip(&selector) {
+                    if id.is_none() {
+                        *value = ScalarField::zero();
+                    }
+                }
+            }
+            let actual = roots.quotients_for_wires(&witness).unwrap();
+            for (row, values) in actual.chunks(s).zip(witness.chunks(s)) {
+                let reference = roots.quotient_for_wire(values).unwrap();
+                let mut expected = vec![ScalarField::zero(); s];
+                let count = (reference.degree() + 1).max(1) as usize;
+                reference.copy_coeffs(0, HostSlice::from_mut_slice(&mut expected[..count]));
+                assert_eq!(row, expected);
+            }
+            assert!(roots.quotients_for_wires(&[]).unwrap().is_empty());
+            if s > 1 {
+                assert!(roots
+                    .quotients_for_wires(&witness[..witness.len() - 1])
+                    .is_err());
+            }
+        }
+    }
+}

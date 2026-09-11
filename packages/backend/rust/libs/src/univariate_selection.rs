@@ -1,5 +1,6 @@
-//! Selected-root product tree and U29 quotients. Polynomial operations use
-//! ICICLE directly; no s*t witness table or per-wire selection-domain NTT is built.
+//! Selected-root product tree and U29 quotients. ICICLE builds the product tree;
+//! batched wire interpolation shares host cofactors. No s*t witness table or
+//! per-wire selection-domain NTT is built.
 
 use crate::frontend_artifacts::SetupParams;
 use crate::ntt_domain::init_ntt_domain_for_size;
@@ -145,6 +146,74 @@ impl SelectedRoots {
                 .collect();
         }
         Ok(numerators.pop().unwrap())
+    }
+
+    /// U29 for a wire-major `m * s` assignment. All wires share the weighted
+    /// cofactors `(z_i / N_S) * Z_v(Z) / (Z - z_i)`. Construct them once by
+    /// synthetic division, then form each quotient by a host-field dot product.
+    /// This uses O(s^2 + m*s) storage, never the selection-domain m*s*t grid.
+    /// Rayon runs only host arithmetic; no ICICLE call is nested inside it.
+    pub fn quotients_for_wires(
+        &self,
+        witness_values: &[ScalarField],
+    ) -> Result<Vec<ScalarField>, String> {
+        use ark_bls12_381::Fr;
+        use ark_ff::{BigInteger, Field, PrimeField, Zero};
+        use rayon::prelude::*;
+
+        let s = self.roots.len();
+        if witness_values.len() % s != 0 {
+            return Err("selection quotients need complete placement rows".into());
+        }
+        let mut zv = vec![ScalarField::zero(); s + 1];
+        self.selected_polynomial()
+            .copy_coeffs(0, HostSlice::from_mut_slice(&mut zv));
+        let zv = zv
+            .iter()
+            .map(|v| Fr::from_le_bytes_mod_order(&v.to_bytes_le()))
+            .collect::<Vec<_>>();
+        let inverse_size = Fr::from(self.domain_size as u64).inverse().unwrap();
+        let roots = self
+            .roots
+            .iter()
+            .map(|v| Fr::from_le_bytes_mod_order(&v.to_bytes_le()))
+            .collect::<Vec<_>>();
+        let mut cofactors = vec![
+            Fr::zero();
+            s.checked_mul(s)
+                .ok_or("selection cofactor capacity overflow")?
+        ];
+        cofactors
+            .par_chunks_mut(s)
+            .zip(roots.par_iter())
+            .for_each(|(row, z)| {
+                let scale = *z * inverse_size;
+                let mut coefficient = zv[s];
+                for a in (0..s).rev() {
+                    row[a] = coefficient * scale;
+                    coefficient = zv[a] + *z * coefficient;
+                }
+            });
+        let mut result = vec![ScalarField::zero(); witness_values.len()];
+        result
+            .par_chunks_mut(s)
+            .zip(witness_values.par_chunks(s))
+            .for_each(|(out, values)| {
+                let mut coefficients = vec![Fr::zero(); s];
+                for (value, row) in values.iter().zip(cofactors.chunks_exact(s)) {
+                    if *value == ScalarField::zero() {
+                        continue;
+                    }
+                    let value = Fr::from_le_bytes_mod_order(&value.to_bytes_le());
+                    for (coefficient, basis) in coefficients.iter_mut().zip(row) {
+                        *coefficient += value * basis;
+                    }
+                }
+                for (out, coefficient) in out.iter_mut().zip(coefficients) {
+                    *out = ScalarField::from_bytes_le(&coefficient.into_bigint().to_bytes_le());
+                }
+            });
+        Ok(result)
     }
 }
 

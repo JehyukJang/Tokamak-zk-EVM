@@ -88,6 +88,15 @@ pub fn point(record: &UnivariateG1Rkyv) -> G1Affine {
 /// One ICICLE MSM owns CPU/CUDA provider parallelism. Callers do not nest
 /// parallel execution around it or perform one scalar multiplication per base.
 pub fn msm_points(bases: &[G1Affine], scalars: &[ScalarField]) -> Result<G1serde, String> {
+    #[cfg(feature = "timing")]
+    let _msm = crate::timing::SpanGuard::new(
+        "univariate.msm",
+        "msm",
+        vec![crate::timing::SizeInfo {
+            label: "bases",
+            dims: vec![bases.len()],
+        }],
+    );
     if bases.len() != scalars.len() {
         return Err("MSM base/scalar length mismatch".into());
     }
@@ -120,4 +129,134 @@ pub fn commit(
         &selected.iter().map(point).collect::<Vec<_>>(),
         coefficients,
     )
+}
+
+/// Commit a sum across distinct CRS sources with one ICICLE MSM. Each source
+/// keeps its own exponent offset; concatenation changes neither scalar order
+/// within a source nor the resulting group element.
+pub fn commit_sum(
+    terms: &[(&[UnivariateG1Rkyv], &[ScalarField], usize)],
+) -> Result<G1serde, String> {
+    let count = terms
+        .iter()
+        .try_fold(0usize, |n, (_, s, _)| n.checked_add(s.len()))
+        .ok_or("commitment length overflow")?;
+    let mut bases = Vec::with_capacity(count);
+    let mut scalars = Vec::with_capacity(count);
+    for (source, coefficients, offset) in terms {
+        let end = offset
+            .checked_add(coefficients.len())
+            .ok_or("commitment exponent overflow")?;
+        let selected = source
+            .get(*offset..end)
+            .ok_or("polynomial exceeds the published source sequence")?;
+        bases.extend(selected.iter().map(point));
+        scalars.extend_from_slice(coefficients);
+    }
+    msm_points(&bases, &scalars)
+}
+
+#[cfg(test)]
+mod benchmarks {
+    use super::*;
+
+    #[test]
+    #[ignore = "release-only comparison requiring PROVE_BENCH_TAU"]
+    fn compare_commitment_sum() {
+        use icicle_bls12_381::curve::ScalarCfg;
+        use icicle_core::traits::GenerateRandom;
+        use std::time::Instant;
+        assert!(!cfg!(debug_assertions), "use --release");
+        libs::utils::try_check_device().unwrap();
+        let path = std::env::var("PROVE_BENCH_TAU").expect("PROVE_BENCH_TAU");
+        let tau = archive::from_bytes::<TauSequenceRkyv, archive::rancor::Error>(
+            &fs::read(path).unwrap(),
+        )
+        .unwrap();
+        for counts in [
+            [17, 17, 17],
+            [262_146; 3],
+            [256, 262_146, 262_146],
+            [0, 262_146, 262_146],
+        ] {
+            let [a, b, c] = counts;
+            let mut scalars = ScalarCfg::generate_random(a + b + c);
+            scalars[0] = ScalarField::zero();
+            scalars[1] = ScalarField::one();
+            scalars[2] = ScalarField::zero() - ScalarField::one();
+            let terms = [
+                (&tau.s0_g1[..], &scalars[..a], 0),
+                (&tau.sxi_g1[..], &scalars[a..a + b], 1),
+                (&tau.spsi_g1[..], &scalars[a + b..], 2),
+            ];
+            for trial in 0..5 {
+                let separate = || {
+                    let start = Instant::now();
+                    let result = terms
+                        .iter()
+                        .map(|(p, s, o)| commit(p, s, *o).unwrap())
+                        .fold(G1serde::zero(), |a, b| a + b);
+                    (result.0, start.elapsed().as_secs_f64())
+                };
+                let combined = || {
+                    let start = Instant::now();
+                    let result = commit_sum(&terms).unwrap();
+                    (result.0, start.elapsed().as_secs_f64())
+                };
+                let (old, new) = if trial % 2 == 0 {
+                    (separate(), combined())
+                } else {
+                    let new = combined();
+                    (separate(), new)
+                };
+                assert_eq!(old.0, new.0);
+                println!(
+                    "{}",
+                    serde_json::json!({"counts":counts,"trial":trial,"referenceSeconds":old.1,"candidateSeconds":new.1,"samePoint":true})
+                );
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "release-only comparison requiring PROVE_BENCH_TAU and PROVE_BENCH_KEYS"]
+    fn compare_archive_read_backing() {
+        use memmap2::Mmap;
+        use std::{fs::File, time::Instant};
+        assert!(!cfg!(debug_assertions), "use --release");
+        // Inputs must remain immutable for the lifetime of each mapping.
+        macro_rules! compare {
+            ($variable:literal, $archive:ty) => {{
+                let path = std::env::var($variable).expect($variable);
+                let expected_bytes = fs::read(&path).unwrap();
+                for trial in 0..5 {
+                    for offset in 0..2 {
+                        let mapped = (trial + offset) % 2 == 1;
+                        let start = Instant::now();
+                        let seconds = if mapped {
+                            let file = File::open(&path).unwrap();
+                            // SAFETY: the benchmark's source archive is immutable
+                            // and the mapping outlives all decoder reads.
+                            let bytes = unsafe { Mmap::map(&file).unwrap() };
+                            let value = archive::from_bytes::<$archive, archive::rancor::Error>(&bytes).unwrap();
+                            std::hint::black_box(&value);
+                            let elapsed = start.elapsed().as_secs_f64();
+                            assert_eq!(&bytes[..], &expected_bytes);
+                            elapsed
+                        } else {
+                            let bytes = fs::read(&path).unwrap();
+                            let value = archive::from_bytes::<$archive, archive::rancor::Error>(&bytes).unwrap();
+                            std::hint::black_box(&value);
+                            let elapsed = start.elapsed().as_secs_f64();
+                            assert_eq!(&bytes, &expected_bytes);
+                            elapsed
+                        };
+                        println!("{}", serde_json::json!({"artifact":$variable,"trial":trial,"mmap":mapped,"seconds":seconds,"bytes":expected_bytes.len(),"sameInputBytes":true}));
+                    }
+                }
+            }};
+        }
+        compare!("PROVE_BENCH_TAU", TauSequenceRkyv);
+        compare!("PROVE_BENCH_KEYS", ProverKeysRkyv);
+    }
 }
