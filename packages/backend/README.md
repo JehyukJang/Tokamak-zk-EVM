@@ -254,6 +254,15 @@ silently switches to CPU. The CPU path skips ICICLE backend discovery and
 device initialization, although the shared native package still links ICICLE
 libraries. Hardware selection does not change the local-QAP/npm input policy.
 
+By default, native `prove` validates the provenance format and library package
+name, version and origin without checking content digests. CRS decoding and
+protocol shape checks still run. Add `--check-digests` to also verify the
+SHA-256 digests of `tau_sequence.rkyv`, `prover_keys.rkyv` and
+`verifier_keys.rkyv`, and the library `sourceDigest`. This option does not hash
+`preprocess_keys.rkyv`. Matching metadata alone does not establish that the
+file contents match those recorded by setup. `--check-digests` cannot be
+combined with the development-only `--allow-unverified-crs` bypass.
+
 Repository-local release example, using an existing current-protocol CRS:
 
 ```bash

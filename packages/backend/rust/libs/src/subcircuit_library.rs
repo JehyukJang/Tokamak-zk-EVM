@@ -226,8 +226,14 @@ pub fn validate_operational_univariate_crs_compatibility(
     tau_sequence_path: &Path,
     keys_dir: &Path,
     library_dir: &Path,
+    check_digests: bool,
 ) -> Result<Option<ValidatedUnivariateCrsBytes>, CrsError> {
     if development.allows_unverified_crs() {
+        if check_digests {
+            return Err(CrsError::Compatibility(
+                "--check-digests cannot be combined with --allow-unverified-crs".to_string(),
+            ));
+        }
         eprintln!(
             "WARNING: skipping CRS provenance compatibility validation for local development"
         );
@@ -242,6 +248,20 @@ pub fn validate_operational_univariate_crs_compatibility(
     })?;
     let provenance = crate::crs_provenance::parse_development_univariate_keys_provenance(&bytes)
         .map_err(CrsError::Compatibility)?;
+    if !check_digests {
+        let (origin, version) = selected_subcircuit_library_package_identity();
+        if provenance.subcircuit_library.package_name != SUBCIRCUIT_LIBRARY_PACKAGE_NAME
+            || provenance.subcircuit_library.package_version != version
+            || provenance.subcircuit_library.origin != origin
+        {
+            return Err(CrsError::Compatibility(
+                "univariate CRS subcircuit-library package identity does not match the selected library"
+                    .to_string(),
+            ));
+        }
+        // Decode and validate the consumed CRS later; no payload or source hashing here.
+        return Ok(None);
+    }
     let mut payloads = validate_univariate_payloads(&[
         (
             tau_sequence_path.to_path_buf(),
@@ -358,9 +378,8 @@ fn selected_library_package_version(library_dir: &Path) -> std::io::Result<Strin
     }
 }
 
-pub fn selected_subcircuit_library_provenance(
-    library_dir: &Path,
-) -> std::io::Result<SubcircuitLibraryProvenance> {
+fn selected_subcircuit_library_package_identity(
+) -> (crate::input_origin::SubcircuitLibraryOrigin, String) {
     #[cfg(tokamak_embedded_subcircuit_library)]
     let origin = crate::input_origin::SubcircuitLibraryOrigin::NpmSnapshot;
     #[cfg(not(tokamak_embedded_subcircuit_library))]
@@ -369,6 +388,13 @@ pub fn selected_subcircuit_library_provenance(
     let package_version = option_env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION")
         .map(str::to_string)
         .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
+    (origin, package_version)
+}
+
+pub fn selected_subcircuit_library_provenance(
+    library_dir: &Path,
+) -> std::io::Result<SubcircuitLibraryProvenance> {
+    let (origin, package_version) = selected_subcircuit_library_package_identity();
     let source_digest = match option_env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_SOURCE_DIGEST") {
         Some(digest) => digest.to_string(),
         None => digest_runtime_subcircuit_library(library_dir)?,
@@ -559,6 +585,175 @@ fn sanitize_component(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    fn univariate_identity_fixture() -> (tempfile::TempDir, serde_json::Value) {
+        let dir = tempfile::tempdir().unwrap();
+        let library = dir.path().join("library");
+        fs::create_dir_all(dir.path().join("circom")).unwrap();
+        fs::write(dir.path().join("circom/constants.circom"), b"").unwrap();
+        for child in ["json", "r1cs", "wasm"] {
+            fs::create_dir_all(library.join(child)).unwrap();
+        }
+        for file in [
+            "frontendCfg.json",
+            "globalWireList.json",
+            "setupParams.json",
+            "subcircuitInfo.json",
+        ] {
+            fs::write(library.join(file), b"{}").unwrap();
+        }
+        for file in [
+            "tau_sequence.rkyv",
+            "prover_keys.rkyv",
+            "verifier_keys.rkyv",
+        ] {
+            fs::write(dir.path().join(file), b"payload").unwrap();
+        }
+        let digest = format!("{:x}", Sha256::digest(b"payload"));
+        let provenance = serde_json::json!({
+            "documentKind": "developmentTrustedSetupUnivariateKeys",
+            "releaseEligible": false,
+            "protocolSchemaId": UNIVARIATE_CRS_SCHEMA_ID,
+            "tauSequenceRkyvSha256": digest,
+            "proverKeysRkyvSha256": digest,
+            "preprocessKeysRkyvSha256": digest,
+            "verifierKeysRkyvSha256": digest,
+            "subcircuitLibrary": selected_subcircuit_library_provenance(&library).unwrap(),
+        });
+        (dir, provenance)
+    }
+
+    fn admit_univariate_identity(
+        dir: &Path,
+        provenance: &serde_json::Value,
+        check_digests: bool,
+    ) -> Result<Option<ValidatedUnivariateCrsBytes>, CrsError> {
+        fs::write(
+            dir.join(CRS_PROVENANCE_FILE_NAME),
+            serde_json::to_vec(provenance).unwrap(),
+        )
+        .unwrap();
+        validate_operational_univariate_crs_compatibility(
+            &DevelopmentCrsProvenanceArg::default(),
+            &dir.join("tau_sequence.rkyv"),
+            dir,
+            &dir.join("library"),
+            check_digests,
+        )
+    }
+
+    #[test]
+    fn univariate_prove_identity_default_does_not_read_payloads_or_hash_library() {
+        let (dir, mut provenance) = univariate_identity_fixture();
+        // Well-formed but mismatched hashes are ignored without the explicit option.
+        provenance["subcircuitLibrary"]["sourceDigest"] =
+            format!("sha256:{}", "0".repeat(64)).into();
+        for file in [
+            "tau_sequence.rkyv",
+            "prover_keys.rkyv",
+            "verifier_keys.rkyv",
+        ] {
+            fs::remove_file(dir.path().join(file)).unwrap();
+        }
+        fs::remove_file(dir.path().join("circom/constants.circom")).unwrap();
+        assert!(admit_univariate_identity(dir.path(), &provenance, false)
+            .unwrap()
+            .is_none());
+        // Missing consumed CRS files remain the responsibility of the subsequent reader.
+        assert!(admit_univariate_identity(dir.path(), &provenance, true).is_err());
+    }
+
+    #[test]
+    fn univariate_prove_identity_opt_in_checks_all_existing_digests() {
+        let (dir, provenance) = univariate_identity_fixture();
+        let validated = admit_univariate_identity(dir.path(), &provenance, true)
+            .unwrap()
+            .unwrap();
+        assert_eq!(validated.tau, b"payload");
+        assert_eq!(validated.prover_keys, b"payload");
+        for field in [
+            "tauSequenceRkyvSha256",
+            "proverKeysRkyvSha256",
+            "verifierKeysRkyvSha256",
+        ] {
+            let mut wrong = provenance.clone();
+            wrong[field] = "0".repeat(64).into();
+            assert!(admit_univariate_identity(dir.path(), &wrong, false)
+                .unwrap()
+                .is_none());
+            assert!(
+                matches!(admit_univariate_identity(dir.path(), &wrong, true),
+                Err(CrsError::Compatibility(message)) if message.contains("file digest"))
+            );
+        }
+        let mut wrong = provenance.clone();
+        wrong["subcircuitLibrary"]["sourceDigest"] = format!("sha256:{}", "0".repeat(64)).into();
+        assert!(admit_univariate_identity(dir.path(), &wrong, false)
+            .unwrap()
+            .is_none());
+        assert!(
+            matches!(admit_univariate_identity(dir.path(), &wrong, true),
+            Err(CrsError::Compatibility(message)) if message.contains("library identity"))
+        );
+    }
+
+    #[test]
+    fn univariate_prove_identity_preserves_metadata_checks_in_both_modes() {
+        let (dir, provenance) = univariate_identity_fixture();
+        for check_digests in [false, true] {
+            for (field, value) in [
+                ("packageName", "wrong-package"),
+                ("packageVersion", "99999.0.0"),
+                (
+                    "origin",
+                    if provenance["subcircuitLibrary"]["origin"] == "localQapCompiler" {
+                        "npmSnapshot"
+                    } else {
+                        "localQapCompiler"
+                    },
+                ),
+            ] {
+                let mut wrong = provenance.clone();
+                wrong["subcircuitLibrary"][field] = value.into();
+                assert!(admit_univariate_identity(dir.path(), &wrong, check_digests).is_err());
+            }
+            for (field, value) in [
+                ("protocolSchemaId", "unsupported"),
+                ("documentKind", "unsupported"),
+                ("tauSequenceRkyvSha256", "malformed"),
+            ] {
+                let mut wrong = provenance.clone();
+                wrong[field] = value.into();
+                assert!(admit_univariate_identity(dir.path(), &wrong, check_digests).is_err());
+            }
+        }
+    }
+
+    #[cfg(all(
+        feature = "development-crs-bypass",
+        not(tokamak_embedded_subcircuit_library)
+    ))]
+    #[test]
+    fn univariate_prove_identity_explicit_digest_check_cannot_be_bypassed() {
+        let dir = tempfile::tempdir().unwrap();
+        let bypass = DevelopmentCrsProvenanceArg {
+            allow_unverified_crs: true,
+        };
+        assert!(matches!(validate_operational_univariate_crs_compatibility(
+            &bypass, dir.path(), dir.path(), dir.path(), true,
+        ), Err(CrsError::Compatibility(message)) if message.contains("cannot be combined")));
+        assert!(validate_operational_univariate_crs_compatibility(
+            &bypass,
+            dir.path(),
+            dir.path(),
+            dir.path(),
+            false,
+        )
+        .unwrap()
+        .is_none());
+    }
+
     #[test]
     fn validated_payloads_retain_exact_bytes_after_path_changes() {
         use super::*;

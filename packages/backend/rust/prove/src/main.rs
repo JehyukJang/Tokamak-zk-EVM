@@ -23,6 +23,10 @@ struct Config {
     #[command(flatten)]
     development_crs_provenance: DevelopmentCrsProvenanceArg,
 
+    /// Check CRS file SHA-256 digests and the subcircuit-library source digest
+    #[arg(long)]
+    check_digests: bool,
+
     /// Trusted-setup tau_sequence.rkyv file
     #[arg(long, value_name = "FILE")]
     tau_sequence: String,
@@ -73,6 +77,7 @@ fn run() -> Result<(), ProveError> {
         PathBuf::from(&config.tau_sequence).as_path(),
         PathBuf::from(&config.keys).as_path(),
         qap_library_path.as_path(),
+        config.check_digests,
     )?;
     let qap_path = qap_library_path.to_string_lossy().into_owned();
 
@@ -145,6 +150,12 @@ mod tests {
             Config::try_parse_from(&args).unwrap().device,
             ProverDevice::Cpu
         ));
+        assert!(!Config::try_parse_from(&args).unwrap().check_digests);
+        assert!(
+            Config::try_parse_from(args.iter().copied().chain(["--check-digests"]))
+                .unwrap()
+                .check_digests
+        );
         let cuda = args.iter().copied().chain(["--device", "cuda"]);
         assert!(matches!(
             Config::try_parse_from(cuda).unwrap().device,
