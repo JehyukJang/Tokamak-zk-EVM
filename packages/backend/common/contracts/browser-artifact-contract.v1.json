@@ -1,4 +1,5 @@
 {
+  "generatedFrom": "univariate-artifact-contract.json",
   "contractVersion": 1,
   "owner": "backend",
   "artifactKinds": {

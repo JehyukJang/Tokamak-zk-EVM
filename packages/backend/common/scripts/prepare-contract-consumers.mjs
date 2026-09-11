@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import "./generate-artifact-codecs.mjs";
 
 const commonRoot = path.resolve(import.meta.dirname, "..");
 const backendRoot = path.resolve(commonRoot, "..");

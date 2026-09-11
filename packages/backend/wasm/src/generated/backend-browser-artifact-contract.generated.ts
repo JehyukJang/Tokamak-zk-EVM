@@ -1,5 +1,6 @@
 // Generated from packages/backend/common/contracts/browser-artifact-contract.v1.json. Do not edit.
 export const BACKEND_BROWSER_ARTIFACT_CONTRACT = {
+  "generatedFrom": "univariate-artifact-contract.json",
   "contractVersion": 1,
   "owner": "backend",
   "artifactKinds": {

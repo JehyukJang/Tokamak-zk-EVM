@@ -6,6 +6,10 @@ const backendRoot = path.resolve(commonRoot, '..');
 const repositoryRoot = path.resolve(backendRoot, '..', '..');
 
 const requiredBoundaries = [
+  ['Canonical artifact JSON authority', 'common/contracts/univariate-artifact-contract.json'],
+  ['Canonical Rust artifact codec', 'common/interface/src/artifact_bytes.rs'],
+  ['Canonical TypeScript artifact codec', 'common/interface/typescript/artifact-bytes.ts'],
+  ['Canonical artifact generator', 'common/scripts/generate-artifact-codecs.mjs'],
   ['CRS provenance JSON authority', 'common/contracts/crs-provenance-contract.json'],
   ['CRS provenance Rust representation', 'rust/libs/src/crs_provenance.rs'],
   ['CRS provenance final writer', 'rust/setup/mpc-setup/src/flows/final_artifacts.rs'],

@@ -22,9 +22,38 @@ listed here remain owned by `packages/backend`.
 
 ## Change Gate
 
+### Common binary artifacts
+
+`univariate-artifact-contract.json` owns the canonical coordinate encoding,
+current four CRS role records, and proof/preprocess field order. The generated
+Rust bindings and Rust/TypeScript codecs live in `common/interface` and have
+no arithmetic-runtime dependency. `generate-artifact-codecs.mjs` refreshes
+them; `prepare-contract-consumers.mjs --check` checks all generated copies.
+The browser artifact JSON is a generated projection into the existing WASM
+Montgomery envelope, not a second definition of proof or preprocess contents.
+
+CRS retains its existing rkyv container and omitted-query layout. Proof is a
+headerless 1,184-byte binary and preprocess output is a headerless 384-byte
+binary; the latter is not `preprocess_keys.rkyv`. Affine coordinates and
+scalars are canonical little-endian integers. Infinity has all-zero
+coordinates. Codecs reject wrong lengths and noncanonical integers; they do
+not replace point validation or protocol verification. File bytes are not F4
+transcript bytes. The independently tested transcript encoding is unchanged.
+
+Rust and WASM own arithmetic and their representation conversions. Future
+`backend/solidity` owns verifier mathematics and the EVM call ABI, not a new
+artifact format. The external private-state CLI consumes the common format
+and ABI; application integration stays outside the verifier. Neither a
+Solidity rkyv parser nor a duplicate CRS export is required by this boundary.
+The contract relocation and external CLI migration have not been performed.
+
+The native proof writer and native/WASM preprocess/verifier readers still
+require migration. Generated codec tests alone do not establish runtime
+interoperability or full proof verification.
+
 The current univariate protocol contracts also include
-`univariate-transcript-contract.json` and the proof/preprocess sections in
-`browser-artifact-contract.v1.json`. Transcript bytes are covered by
+`univariate-transcript-contract.json` and `univariate-artifact-contract.json`.
+Transcript bytes are covered by
 `fixtures/univariate-fiat-shamir.json` and the independent
 `tests/univariate-transcript.test.mjs` oracle. The generated TypeScript binding
 is `wasm/src/generated/univariate-transcript-contract.generated.ts`.
