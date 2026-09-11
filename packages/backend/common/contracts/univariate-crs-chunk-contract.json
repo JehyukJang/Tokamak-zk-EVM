@@ -185,6 +185,6 @@
     "crs.preprocess-selection": "tau^(h+a), a=0..s_max*(t-1)",
     "crs.free-public-queries": "delta^-1*(Q_(k,k,j)+M_global), mapped global wires in [0,l_free) in global order",
     "crs.fixed-public-queries": "Q_(k,k,j), mapped global wires in [l_free,l) in global order; no delta^-1 alias",
-    "crs.nonpublic-queries": "delta^-1*Q_(i,k,j), lexicographic (i,k,j), excluding every actual public-wire column at all placements"
+    "crs.nonpublic-queries": "delta^-1*Q_(i,k,j), lexicographic (i,k,j) with i<s_max, k<s_D, j<flattenMap[k].length and flattenMap[k][j]>=l; virtual IDs, local-capacity padding and public columns have no stored slot; offsets derive from existing library maps"
   }
 }

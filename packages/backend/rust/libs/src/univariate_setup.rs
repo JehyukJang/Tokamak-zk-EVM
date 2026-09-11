@@ -5,8 +5,8 @@ use crate::frontend_artifacts::{public_wire_layout::PublicWireLayout, SetupParam
 use crate::univariate_crs::{UnivariateCrsShape, UNIVARIATE_CRS_SCHEMA_ID};
 use crate::univariate_relation::UnivariateSubcircuit;
 use backend_univariate_crs_interface::{
-    PreprocessKeysRkyv, ProverKeysRkyv, TauSequenceRkyv, UnivariateG1Rkyv, UnivariateG2Rkyv,
-    VerifierKeysRkyv,
+    NonpublicQueryLayout, PreprocessKeysRkyv, ProverKeysRkyv, TauSequenceRkyv, UnivariateG1Rkyv,
+    UnivariateG2Rkyv, VerifierKeysRkyv,
 };
 use icicle_bls12_381::curve::{
     G1Affine, G1Projective, G2Affine, G2Projective, ScalarCfg, ScalarField,
@@ -199,44 +199,33 @@ pub fn generate(
             + secret.psi * (image[2] + tau_k * image[3])
             + tau_s * secret.weights[j] * lag_s[i + setup.s_max * k]
     };
-    let public_count = public.public_query_keys().count();
-    let row_len = setup
-        .t
-        .checked_mul(setup.m)
-        .and_then(|n| n.checked_sub(public_count))
-        .ok_or("nonpublic query count overflow")?;
-    let count = setup
-        .s_max
-        .checked_mul(row_len)
-        .ok_or("nonpublic query count overflow")?;
-    let mut nonpublic = vec![ScalarField::zero(); count];
-    nonpublic
-        .par_chunks_mut(row_len)
-        .enumerate()
-        .for_each(|(i, output)| {
-            let mut cursor = 0;
-            for k in 0..setup.t {
-                let images = subcircuits
-                    .get(k)
-                    .map(|circuit| wire_images(setup, circuit, i, &lag_a, &lag_c));
-                for j in 0..setup.m {
-                    if subcircuits
-                        .get(k)
-                        .and_then(|c| c.flatten_map.get(j))
-                        .is_some_and(|g| *g < setup.l)
-                    {
-                        continue;
+    let maps = subcircuits
+        .iter()
+        .map(|c| c.flatten_map)
+        .collect::<Vec<_>>();
+    let query_layout = NonpublicQueryLayout::new(setup.s_max, setup.m, setup.l, &maps)?;
+    let row_len = query_layout.len() / setup.s_max;
+    let mut nonpublic = vec![ScalarField::zero(); query_layout.len()];
+    if row_len != 0 {
+        nonpublic
+            .par_chunks_mut(row_len)
+            .enumerate()
+            .for_each(|(i, output)| {
+                let mut cursor = 0;
+                // Only implicit-zero witness coordinates are omitted. Their original
+                // weighted selection points are not infinity. Keep the full selection
+                // domain above, and every actual nonpublic wire, even when its current
+                // witness or arithmetic column is zero.
+                for (k, circuit) in subcircuits.iter().enumerate() {
+                    let images = wire_images(setup, circuit, i, &lag_a, &lag_c);
+                    for &j in query_layout.local_wires(k).unwrap() {
+                        output[cursor] = delta_inv * packed(i, k, j, images[j]);
+                        cursor += 1;
                     }
-                    let image = images
-                        .as_ref()
-                        .map(|values| values[j])
-                        .unwrap_or([ScalarField::zero(); 4]);
-                    output[cursor] = delta_inv * packed(i, k, j, image);
-                    cursor += 1;
                 }
-            }
-            assert_eq!(cursor, output.len());
-        });
+                assert_eq!(cursor, output.len());
+            });
+    }
     let public_labels = (0..setup.l)
         .into_par_iter()
         .filter_map(|global| {
@@ -596,9 +585,9 @@ mod tests {
         };
         let mut cursor = 0;
         for i in 0..setup.s_max {
-            for k in 0..setup.t {
-                for j in 0..setup.m {
-                    if k < setup.s_D && j == 1 {
+            for k in 0..setup.s_D {
+                for j in 0..circuits[k].flatten_map.len() {
+                    if j == 1 {
                         continue;
                     }
                     assert_eq!(
@@ -610,7 +599,100 @@ mod tests {
             }
         }
         assert_eq!(cursor, crs.prover.nonpublic_queries.len());
-        assert_eq!(cursor, setup.s_max * (setup.t * setup.m - 2));
+        assert_eq!(cursor, 8);
+        // The omission argument depends on admission, not on silently ignoring
+        // a supplied nonzero coefficient at an implicit-zero coordinate.
+        use crate::univariate_relation::{witness_maps, SlotWitness, UnivariateRelationError};
+        let unexpected = [one; 4];
+        assert!(matches!(
+            witness_maps(
+                &shape,
+                &setup,
+                &[None, None],
+                &[
+                    Some(SlotWitness {
+                        subcircuit_id: 0,
+                        values: &unexpected[..3]
+                    }),
+                    None
+                ],
+                &circuits
+            ),
+            Err(UnivariateRelationError::SlotWitnessMismatch { .. })
+        ));
+        assert!(matches!(
+            witness_maps(
+                &shape,
+                &setup,
+                &[Some(0), None],
+                &[
+                    Some(SlotWitness {
+                        subcircuit_id: 0,
+                        values: &unexpected
+                    }),
+                    None
+                ],
+                &circuits
+            ),
+            Err(UnivariateRelationError::FlattenMapLength { .. })
+        ));
+        assert!(matches!(
+            witness_maps(
+                &shape,
+                &setup,
+                &[Some(setup.t - 1), None],
+                &[
+                    Some(SlotWitness {
+                        subcircuit_id: setup.t - 1,
+                        values: &unexpected
+                    }),
+                    None
+                ],
+                &circuits
+            ),
+            Err(UnivariateRelationError::SlotWitnessMismatch { .. })
+        ));
+        let maps = circuits.iter().map(|c| c.flatten_map).collect::<Vec<_>>();
+        let layout = NonpublicQueryLayout::new(setup.s_max, setup.m, setup.l, &maps).unwrap();
+        for selected in [[None, None], [Some(0), None], [Some(0), Some(1)]] {
+            let mut dense_sum = G1Projective::zero();
+            let mut omitted_sum = G1Projective::zero();
+            for i in 0..setup.s_max {
+                for k in 0..setup.t {
+                    for j in 0..setup.m {
+                        if k < setup.s_D && j == 1 {
+                            continue;
+                        }
+                        let coefficient = if selected[i] == Some(k)
+                            && k < setup.s_D
+                            && j < circuits[k].flatten_map.len()
+                        {
+                            ScalarField::from_u32((j % 2 + 1) as u32)
+                        } else {
+                            ScalarField::zero()
+                        };
+                        let label = secret.delta.inv() * q(i, k, j);
+                        dense_sum = dense_sum + g1.to_projective() * (label * coefficient);
+                    }
+                }
+                if let Some(k) = selected[i] {
+                    for (&j, point) in layout
+                        .local_wires(k)
+                        .unwrap()
+                        .iter()
+                        .zip(&crs.prover.nonpublic_queries[layout.range(i, k).unwrap()])
+                    {
+                        let point = G1Affine::from_limbs(
+                            icicle_bls12_381::curve::BaseField::from_bytes_le(&point.x).into(),
+                            icicle_bls12_381::curve::BaseField::from_bytes_le(&point.y).into(),
+                        );
+                        omitted_sum = omitted_sum
+                            + point.to_projective() * ScalarField::from_u32((j % 2 + 1) as u32);
+                    }
+                }
+            }
+            assert_eq!(G1Affine::from(dense_sum), G1Affine::from(omitted_sum));
+        }
         let free_root = icicle_core::ntt::get_root_of_unity::<ScalarField>(2);
         let m0 = lagrange_at(secret.tau, free_root, 2)[0];
         assert_eq!(

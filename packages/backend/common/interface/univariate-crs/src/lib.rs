@@ -8,6 +8,9 @@
 
 pub use rkyv as archive;
 
+mod nonpublic_queries;
+pub use nonpublic_queries::NonpublicQueryLayout;
+
 /// Current U19 source families. Sequence lengths determine their exponent bounds.
 #[derive(Debug, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct TauSequenceRkyv {
@@ -27,6 +30,9 @@ pub struct ProverKeysRkyv {
     pub weighted_g1: Vec<UnivariateG1Rkyv>,
     pub weighted_shifted_g1: Vec<UnivariateG1Rkyv>,
     pub free_public_queries: Vec<UnivariateG1Rkyv>,
+    /// Lexicographic (placement, compiled circuit, actual local wire), excluding
+    /// public wires. Virtual IDs and local-capacity padding have no stored slot.
+    /// NonpublicQueryLayout derives ranges from the selected library's maps.
     pub nonpublic_queries: Vec<UnivariateG1Rkyv>,
     pub mask_u: [UnivariateG1Rkyv; 2],
     pub mask_v: [UnivariateG1Rkyv; 2],

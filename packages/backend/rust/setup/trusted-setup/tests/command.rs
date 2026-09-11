@@ -88,7 +88,7 @@ fn one_command_activates_four_minimal_archives_and_matching_provenance() {
     assert_eq!(prover.free_public_queries.len(), 1);
     assert_eq!(
         prover.nonpublic_queries.len(),
-        setup.s_max * (setup.t * setup.m - 2)
+        8 // Two placements, two compiled circuits, two real nonpublic wires each.
     );
     let preprocess = aligned(&active.join("preprocess_keys.rkyv"));
     let preprocess =

@@ -1802,6 +1802,8 @@ dependencies = [
  "icicle-bls12-381",
  "icicle-core",
  "icicle-runtime",
+ "libc",
+ "memmap2",
  "rayon",
  "rkyv 0.7.46",
  "serde",

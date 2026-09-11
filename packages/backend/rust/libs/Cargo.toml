@@ -28,6 +28,8 @@ chrono = { workspace = true }
 tiny-keccak = "1.5"
 
 [dev-dependencies]
+libc = "0.2"
+memmap2 = { workspace = true }
 criterion = "0.3"
 tempfile = "3.20.0"
 
