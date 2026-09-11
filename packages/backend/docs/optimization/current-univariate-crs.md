@@ -668,6 +668,17 @@ results are not a latency guarantee for other hardware or library shapes.
 
 ### Remaining optimization boundaries and reproduction
 
+Before the hardware-separated implementation, the preserved combined-MSM
+release binary was rerun three times on the same local library, fixture and
+accepted CRS. Complete-command times were 8.577665, 8.910105 and 8.823285
+seconds (mean 8.770351); all three commands generated proofs. These remain
+ICICLE-centered CPU reference results, not arkworks implementation results,
+verification or CUDA coverage. The binary hash, paths and identity/protocol
+timing breakdown are recorded in
+[`evidence/prover-hardware-split-baseline.json`](evidence/prover-hardware-split-baseline.json).
+Keep this series separate from the earlier paired optimization trials; no
+candidate was interleaved or compared in this reference-only measurement.
+
 The historical sparse binary R1CS reader, coefficient-domain vanishing
 division, source-specific opening aggregation and compact nonpublic range
 selection already exist in the P5 reference. No extra speedup is assigned
