@@ -26,6 +26,37 @@ pub(super) fn compare(
     expected: &UnivariateProof,
     circuits: &[UnivariateSubcircuit<'_>],
 ) {
+    use backend_univariate_crs_interface::archive;
+    use libs::subcircuit_library::ValidatedUnivariateCrsBytes;
+    let tau = archive::to_bytes::<archive::rancor::Error>(&input.crs.tau)
+        .unwrap()
+        .to_vec();
+    let keys = archive::to_bytes::<archive::rancor::Error>(&input.crs.keys)
+        .unwrap()
+        .to_vec();
+    let decode = |tau, prover_keys| {
+        ProverCrs::from_owned_bytes(
+            ValidatedUnivariateCrsBytes { tau, prover_keys },
+            input.setup,
+            circuits,
+            input.public_layout,
+        )
+    };
+    assert!(decode(vec![0], keys.clone()).is_err());
+    assert!(decode(tau.clone(), vec![0]).is_err());
+    let rebuilt = decode(tau.clone(), keys.clone()).unwrap();
+    assert_eq!(
+        archive::to_bytes::<archive::rancor::Error>(&rebuilt.tau)
+            .unwrap()
+            .as_slice(),
+        tau
+    );
+    assert_eq!(
+        archive::to_bytes::<archive::rancor::Error>(&rebuilt.keys)
+            .unwrap()
+            .as_slice(),
+        keys
+    );
     let cpu = check::<Cpu>(&input, expected, circuits);
     let icicle = check::<Icicle>(&input, expected, circuits);
     assert_eq!(cpu, icicle, "CPU and ICICLE common proof bytes");

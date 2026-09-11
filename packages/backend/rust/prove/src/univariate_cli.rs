@@ -30,6 +30,14 @@ pub enum ProverDevice {
 }
 
 pub fn prove(paths: &ProveInputPaths<'_>, device: ProverDevice) -> Result<(), ProveError> {
+    prove_with_validated_crs(paths, device, None)
+}
+
+pub fn prove_with_validated_crs(
+    paths: &ProveInputPaths<'_>,
+    device: ProverDevice,
+    validated: Option<libs::subcircuit_library::ValidatedUnivariateCrsBytes>,
+) -> Result<(), ProveError> {
     #[cfg(feature = "timing")]
     let loading = crate::timing::SpanGuard::new("univariate.library", "input", vec![]);
     let setup = try_load_setup_params_from_qap_path(paths.qap_path)?;
@@ -89,11 +97,15 @@ pub fn prove(paths: &ProveInputPaths<'_>, device: ProverDevice) -> Result<(), Pr
     drop(loading);
     #[cfg(feature = "timing")]
     let loading = crate::timing::SpanGuard::new("univariate.crs", "input", vec![]);
-    let crs = ProverCrs::read(&tau_path, &keys_path, &setup, &subcircuits, &public_layout)
-        .map_err(|source| CrsError::Read {
-            path: keys_path,
-            source,
-        })?;
+    let crs = match validated {
+        Some(bytes) => ProverCrs::from_owned_bytes(bytes, &setup, &subcircuits, &public_layout),
+        // Explicit development bypass and library callers retain their file ingress.
+        None => ProverCrs::read(&tau_path, &keys_path, &setup, &subcircuits, &public_layout),
+    }
+    .map_err(|source| CrsError::Read {
+        path: keys_path,
+        source,
+    })?;
 
     let selector_path = PathBuf::from(paths.synthesizer_path).join("selector.json");
     #[cfg(feature = "timing")]

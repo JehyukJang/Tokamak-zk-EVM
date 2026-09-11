@@ -911,3 +911,55 @@ Per-file hash/read spans now overlap across threads: their sums are work
 durations, **not elapsed identity time**. Compare `univariate.identity` for
 latency. No protocol arithmetic changed; full E2E remains P8.
 Evidence: [whole-command pairs](evidence/prover-p13-parallel-hash.json).
+
+### P13.1b: accepted reuse of validated CRS bytes
+
+The validator returns the owned tau/prover-key bytes after checking the same
+three file digests and library identity. The CLI decodes those exact buffers,
+then drops them; it does not reopen those paths. The explicit development
+bypass and direct library entry point retain their ordinary file ingress.
+There is no persistent cache or new CRS representation.
+
+An independent hash/read/decode comparison measured, in retained trial order,
+reread 1.241684 / 1.246498 / 1.254700 seconds and reuse
+1.186961 / 1.232645 / 1.191126 seconds. Every decoded archive reserialized
+to identical bytes, checked by full output hashes outside the timed interval.
+The test is `compare_validated_read_reuse`, using `PROVE_BENCH_KEYS`.
+New tests also check retained original bytes after a path is overwritten,
+malformed tau/key rejection and exact owned-decoder round trips in the existing
+small protocol oracle fixtures. Eleven regular library-admission tests and
+nine regular prover tests pass; opt-in benchmarks are reported separately.
+
+The first five full-command pairs were marginal: 5.452973 seconds reread
+versus 5.430499 reuse. A second five-pair series measured 5.472115 versus
+5.390867 seconds. Across all ten pairs, means are **5.462544 versus 5.410683
+seconds (0.95% reduction)**; eight pairs favored reuse. No samples were
+discarded beyond the declared warmups. Both series show the reread/decode
+interval falling from approximately 0.165 to 0.103 seconds, while protocol
+timing varies. This is a small input-path improvement, not a faster MSM.
+Peak RSS remains approximately 3.13 GB. The binaries differ only in this
+candidate relative to the already accepted parallel-hash control.
+
+Evidence: [first series](evidence/prover-p13-read-reuse-first.json) and
+[repeat series](evidence/prover-p13-read-reuse-repeat.json).
+Preserve this independent comparison rather than subtracting means from
+unpaired historical timing runs to estimate the combined gain. Full native
+verification and WASM interoperability remain untested until P8.
+
+### P13.1c: SHA-256 acceleration experiment awaiting scope approval
+
+Local source and `cargo tree --locked -p prove -e features -i sha2` show
+sha2 0.10.9 with `default` and `std`, without `asm`. In this pinned version,
+`sha256.rs` selects its ARM hardware backend only under
+`all(feature="asm", target_arch="aarch64")`; otherwise this ARM build uses
+the software backend. Its ARM backend performs runtime SHA2 feature detection.
+This finding explains the selected implementation, not a measured speedup.
+
+Enabling `sha2/asm` also enables its optional `sha2-asm` dependency (declared
+0.6.1), absent from the current lockfile. The authorized plan prohibits new
+dependencies. This is an available candidate requiring a scope decision,
+not an absence of any acceleration API and not a failed performance trial.
+No dependency, feature, lockfile, vendored crypto code or hash algorithm has
+been changed to bypass that boundary. The experiment and P13.2--P13.5 remain
+pending. Approval can allow this feature/dependency experiment; alternatively,
+the candidate can be explicitly deferred before the remaining experiments.

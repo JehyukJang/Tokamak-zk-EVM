@@ -215,17 +215,23 @@ pub fn validate_operational_crs_compatibility(
         .map_err(|error| CrsError::Compatibility(error.to_string()))
 }
 
+/// Owned bytes from one validated invocation; never a persistent identity cache.
+pub struct ValidatedUnivariateCrsBytes {
+    pub tau: Vec<u8>,
+    pub prover_keys: Vec<u8>,
+}
+
 pub fn validate_operational_univariate_crs_compatibility(
     development: &DevelopmentCrsProvenanceArg,
     tau_sequence_path: &Path,
     keys_dir: &Path,
     library_dir: &Path,
-) -> Result<(), CrsError> {
+) -> Result<Option<ValidatedUnivariateCrsBytes>, CrsError> {
     if development.allows_unverified_crs() {
         eprintln!(
             "WARNING: skipping CRS provenance compatibility validation for local development"
         );
-        return Ok(());
+        return Ok(None);
     }
     let provenance_path = keys_dir.join(CRS_PROVENANCE_FILE_NAME);
     let bytes = fs::read(&provenance_path).map_err(|source| {
@@ -236,7 +242,7 @@ pub fn validate_operational_univariate_crs_compatibility(
     })?;
     let provenance = crate::crs_provenance::parse_development_univariate_keys_provenance(&bytes)
         .map_err(CrsError::Compatibility)?;
-    validate_univariate_payloads(&[
+    let mut payloads = validate_univariate_payloads(&[
         (
             tau_sequence_path.to_path_buf(),
             provenance.tau_sequence_rkyv_sha256.clone(),
@@ -263,10 +269,15 @@ pub fn validate_operational_univariate_crs_compatibility(
                 .to_string(),
         ));
     }
-    Ok(())
+    payloads.pop(); // The verifier digest is checked, but prove does not consume its bytes.
+    let prover_keys = payloads.pop().expect("three validated payloads");
+    let tau = payloads.pop().expect("three validated payloads");
+    Ok(Some(ValidatedUnivariateCrsBytes { tau, prover_keys }))
 }
 
-fn validate_univariate_payloads(files: &[(PathBuf, String, &'static str)]) -> Result<(), CrsError> {
+fn validate_univariate_payloads(
+    files: &[(PathBuf, String, &'static str)],
+) -> Result<Vec<Vec<u8>>, CrsError> {
     use rayon::prelude::*;
     let digests: Vec<_> = files
         .par_iter()
@@ -281,18 +292,22 @@ fn validate_univariate_payloads(files: &[(PathBuf, String, &'static str)]) -> Re
             drop(reading);
             #[cfg(feature = "timing")]
             let _hash = crate::timing::SpanGuard::new("univariate.identity.sha256", _label, vec![]);
-            Ok::<_, CrsError>(format!("{:x}", Sha256::digest(bytes)))
+            let digest = format!("{:x}", Sha256::digest(&bytes));
+            Ok::<_, CrsError>((digest, bytes))
         })
         .collect();
     // Parallel work must not change the original ordered error precedence.
-    for (digest, (_, expected, _)) in digests.into_iter().zip(files) {
-        if digest? != *expected {
+    let mut payloads = Vec::with_capacity(files.len());
+    for (result, (_, expected, _)) in digests.into_iter().zip(files) {
+        let (digest, bytes) = result?;
+        if digest != *expected {
             return Err(CrsError::Compatibility(
                 "univariate CRS file digest does not match crs_provenance.json".to_string(),
             ));
         }
+        payloads.push(bytes);
     }
-    Ok(())
+    Ok(payloads)
 }
 
 fn selected_library_package_version(library_dir: &Path) -> std::io::Result<String> {
@@ -544,6 +559,89 @@ fn sanitize_component(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn validated_payloads_retain_exact_bytes_after_path_changes() {
+        use super::*;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("payload");
+        fs::write(&path, b"validated original").unwrap();
+        let expected = format!("{:x}", Sha256::digest(b"validated original"));
+        let bytes = validate_univariate_payloads(&[(path.clone(), expected, "tau")]).unwrap();
+        fs::write(&path, b"subsequent replacement").unwrap();
+        assert_eq!(bytes[0], b"validated original");
+        assert_ne!(bytes[0], fs::read(path).unwrap());
+        assert!(backend_univariate_crs_interface::archive::from_bytes::<
+            backend_univariate_crs_interface::TauSequenceRkyv,
+            backend_univariate_crs_interface::archive::rancor::Error,
+        >(&bytes[0])
+        .is_err());
+    }
+
+    #[test]
+    #[ignore = "release-only full-CRS comparison requiring PROVE_BENCH_KEYS"]
+    fn compare_validated_read_reuse() {
+        use super::*;
+        use backend_univariate_crs_interface::{archive, ProverKeysRkyv, TauSequenceRkyv};
+        assert!(!cfg!(debug_assertions));
+        let dir = PathBuf::from(std::env::var("PROVE_BENCH_KEYS").unwrap());
+        let files: Vec<_> = [
+            "tau_sequence.rkyv",
+            "prover_keys.rkyv",
+            "verifier_keys.rkyv",
+        ]
+        .iter()
+        .map(|name| {
+            let path = dir.join(name);
+            let digest = format!("{:x}", Sha256::digest(fs::read(&path).unwrap()));
+            (path, digest, *name)
+        })
+        .collect();
+        let mut reference = None;
+        for trial in 0..4 {
+            for reuse in if trial % 2 == 0 {
+                [false, true]
+            } else {
+                [true, false]
+            } {
+                let start = std::time::Instant::now();
+                let bytes = validate_univariate_payloads(&files).unwrap();
+                let bytes = if reuse {
+                    bytes
+                } else {
+                    drop(bytes);
+                    vec![
+                        fs::read(&files[0].0).unwrap(),
+                        fs::read(&files[1].0).unwrap(),
+                    ]
+                };
+                let tau = archive::from_bytes::<TauSequenceRkyv, archive::rancor::Error>(&bytes[0])
+                    .unwrap();
+                let keys = archive::from_bytes::<ProverKeysRkyv, archive::rancor::Error>(&bytes[1])
+                    .unwrap();
+                let seconds = start.elapsed().as_secs_f64();
+                // Full decoded-output equality checks are outside the measured interval.
+                let digests = [
+                    format!(
+                        "{:x}",
+                        Sha256::digest(archive::to_bytes::<archive::rancor::Error>(&tau).unwrap())
+                    ),
+                    format!(
+                        "{:x}",
+                        Sha256::digest(archive::to_bytes::<archive::rancor::Error>(&keys).unwrap())
+                    ),
+                ];
+                if let Some(expected) = &reference {
+                    assert_eq!(&digests, expected);
+                } else {
+                    reference = Some(digests);
+                }
+                println!(
+                    "{}",
+                    serde_json::json!({"trial":trial,"warmup":trial==0,"reuse":reuse,"seconds":seconds,"decodedArchivesEqual":true})
+                );
+            }
+        }
+    }
     #[test]
     fn parallel_univariate_payloads_preserve_ordered_admission() {
         use super::*;

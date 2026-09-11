@@ -68,7 +68,7 @@ fn run() -> Result<(), ProveError> {
     let ingress = prove::timing::SpanGuard::new("univariate.identity", "input", vec![]);
     let qap_library_path =
         try_resolve_subcircuit_library_path(config.subcircuit_library.as_deref())?;
-    validate_operational_univariate_crs_compatibility(
+    let validated_crs = validate_operational_univariate_crs_compatibility(
         &config.development_crs_provenance,
         PathBuf::from(&config.tau_sequence).as_path(),
         PathBuf::from(&config.keys).as_path(),
@@ -100,7 +100,7 @@ fn run() -> Result<(), ProveError> {
     drop(ingress);
 
     println!("Running univariate prove: {:?}", config.device);
-    univariate_cli::prove(&paths, config.device)?;
+    univariate_cli::prove_with_validated_crs(&paths, config.device, validated_crs)?;
 
     let total_elapsed_secs = total_start.elapsed().as_secs_f64();
     println!(

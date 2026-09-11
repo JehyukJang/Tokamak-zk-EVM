@@ -26,6 +26,25 @@ pub struct ProverCrs {
 }
 
 impl ProverCrs {
+    pub fn from_owned_bytes(
+        bytes: libs::subcircuit_library::ValidatedUnivariateCrsBytes,
+        setup: &SetupParams,
+        circuits: &[UnivariateSubcircuit<'_>],
+        public: &PublicWireLayout,
+    ) -> io::Result<Self> {
+        let tau = crate::time_block!("univariate.crs.decode.tau", "input", {
+            archive::from_bytes::<TauSequenceRkyv, archive::rancor::Error>(&bytes.tau)
+                .map_err(io::Error::other)?
+        });
+        drop(bytes.tau);
+        let keys = crate::time_block!("univariate.crs.decode.keys", "input", {
+            archive::from_bytes::<ProverKeysRkyv, archive::rancor::Error>(&bytes.prover_keys)
+                .map_err(io::Error::other)?
+        });
+        drop(bytes.prover_keys);
+        Self::new(tau, keys, setup, circuits, public).map_err(io::Error::other)
+    }
+
     pub fn read(
         tau: &Path,
         keys: &Path,
