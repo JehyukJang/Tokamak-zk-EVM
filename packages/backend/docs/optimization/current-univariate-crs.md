@@ -175,9 +175,10 @@ second, power construction about 5 ms, and prover-key serialization about
 40 ms; no additional scalar/buffer algorithm was adopted without isolated
 evidence of an improvement.
 
-The independent G1/G2 comparison passed byte equality for zero, one, modulus
+The initial independent G1/G2 comparison passed byte equality for zero, one, modulus
 minus one and random scalars, including empty and small inputs. CPU ICICLE
-one-point MSM batches were rejected: at 1,024 points G1 took about 792 ms
+one-point MSM batches used default configuration without base precomputation
+and were rejected: at 1,024 points G1 took about 792 ms
 versus 14 ms direct, and G2 took about 11,657 ms versus 199 ms direct. No
 regressing CPU batch implementation was integrated or run at full CRS scale.
 
@@ -240,6 +241,80 @@ cargo build --locked --release -p trusted-setup --features timing
 binary before rebuilding candidates, run them sequentially, and compare all
 four file hashes and their provenance. Compilation is excluded. CUDA remains
 on its existing ICICLE bulk path; it was not benchmarked in this experiment.
+
+### ICICLE base-precomputation comparison
+
+The initial experiment did not test `precompute_bases`; it did not establish
+that arkworks outperforms ICICLE with precomputed bases. A separate follow-up
+on 2026-09-11 tested that API on the same release CPU environment. The
+[measurement record](evidence/current-univariate-icicle-precompute.json)
+contains 124 samples and their correctness results. No production code changed.
+
+The workload produces a vector of separate points `[a_0 G, ..., a_(N-1) G]`,
+not their sum. ICICLE receives one shared base, precomputes it using the public
+API, and performs N size-one MSMs in one batch call. No outer Rayon tasks wrap
+that call. Its output is converted to affine CRS coordinates after the call.
+The arkworks candidate reproduces the current large-input encoding path:
+one shared table with a 16,384-point sizing hint, 1,024-point parallel chunks,
+batch normalization and direct final-array writes.
+
+Each curve/run shares random scalars and one random generator across all
+candidates and trials, including scalar values 0, 1 and -1. Every output
+coordinate is checked against direct ICICLE arithmetic. Timing includes
+precomputation, allocations, scalar conversion, multiplication and affine
+output; it excludes input generation, the oracle, equality checks and logging.
+The separate stage columns in the record are diagnostic: arkworks includes
+normalization in its multiplication stage, whereas ICICLE reports the affine
+stage separately. Total time is the comparable metric. Memory has no cap.
+
+At 1,024 points, each configuration ran three times with rotated candidate
+order. The tested `(precompute_factor, c)` pairs were `(1,0)`, `(2,0)`,
+`(4,0)`, `(8,0)`, `(16,0)`, `(32,0)`, `(4,4)`, `(4,6)`, `(4,10)`, `(16,6)`,
+`(32,6)`, `(32,4)`, `(64,4)`, `(128,2)` and `(256,1)`. Here `c=0` requests
+the ICICLE default window. The last four pairs first passed a 17-point
+correctness screening run. Those single-trial screening times are not used
+to select the production path, which retains direct arithmetic for small inputs.
+
+`factor=64, c=4` was the fastest tested ICICLE configuration for both curves
+at 1,024 points. Raising the factor to 128 or 256 did not improve that result.
+The selected configuration was then compared with arkworks at 16,384 points
+for three alternating trials, with a fresh shared input per curve.
+
+| Points | Curve | ICICLE precomputed median, ms | arkworks median, ms | ICICLE / arkworks |
+| ---: | --- | ---: | ---: | ---: |
+| 1,024 | G1 | 96.878 | 18.105 | 5.35x |
+| 1,024 | G2 | 686.372 | 53.840 | 12.75x |
+| 16,384 | G1 | 1,532.224 | 29.602 | 51.76x |
+| 16,384 | G2 | 11,076.248 | 83.786 | 132.20x |
+
+The 1,024-point table uses paired samples from the extended sweep, not the
+earlier default-configuration run. In the separate initial sweep, default
+ICICLE medians were 793.140 ms G1 and 11,768.361 ms G2. Precomputation and
+window tuning therefore materially improve the measured ICICLE path, but
+do not close the gap with arkworks for this workload.
+
+The [ICICLE v3.8.0 CPU source](https://github.com/ingonyama-zk/icicle/blob/v3.8.0/icicle/backend/cpu/src/curve/cpu_msm.hpp)
+processes batched MSM outputs successively; each size-one MSM still runs
+the bucket-processing stages and their worker scheduling. This structure is
+consistent with the observed per-output overhead, not a separately measured
+breakdown of its cost. Base sharing alone does not make this the same
+algorithm as arkworks' fixed-base vector multiplication and normalization.
+
+**Disposition: retain the current arkworks large-input CPU path.** This is a
+comparison of 15 tested ICICLE configurations, not a proof of globally optimal
+parameters or a claim about CUDA or other CPUs. No full-CRS ICICLE setup was
+run after these slower isolated results; the earlier whole-setup timing and
+four-file equality evidence remain unchanged. No new full proof E2E is claimed.
+
+Reproduce from `packages/backend/rust` with the same ICICLE library environment:
+
+```sh
+cargo build --locked --release -p libs --example setup_precompute_benchmark
+../target/release/examples/setup_precompute_benchmark 1024 3
+../target/release/examples/setup_precompute_benchmark 17 1 32:4 64:4 128:2 256:1
+../target/release/examples/setup_precompute_benchmark 1024 3 32:4 64:4 128:2 256:1
+../target/release/examples/setup_precompute_benchmark 16384 3 64:4
+```
 
 ## Validation boundary
 
