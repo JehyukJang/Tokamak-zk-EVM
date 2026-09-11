@@ -35,6 +35,7 @@ mod sigma_source;
 use sigma_source::SigmaHolder;
 pub mod univariate;
 pub mod univariate_cli;
+pub mod univariate_crs;
 
 #[derive(Debug, Error)]
 pub enum ProveError {

@@ -17,6 +17,7 @@ rkyv = { workspace = true, features = ["alloc", "bytecheck", "validation"] }
 clap = { workspace = true }
 thiserror = { workspace = true }
 serde_json = { workspace = true }
+backend-univariate-crs-interface = { workspace = true }
 
 [build-dependencies]
 serde = { workspace = true }

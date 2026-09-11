@@ -1,23 +1,18 @@
 //! Native artifact ingress for the univariate reference prover.
 
 use crate::univariate::{
-    collect_public_inputs, prove_univariate_reference, select_witness_values,
-    ArithmeticMaskRandomizers, UnivariateReferenceProvingInput,
+    collect_public_inputs, prove as prove_protocol, select_witness_values, ProverRandomizers,
+    ProvingInput,
 };
+use crate::univariate_crs::ProverCrs;
 use crate::{ProveError, ProveInputPaths};
-use icicle_bls12_381::curve::ScalarCfg;
-use icicle_core::traits::GenerateRandom;
-use libs::crs_artifacts::read_univariate_prover_crs;
 use libs::errors::{ArtifactError, CrsError};
 use libs::frontend_artifacts::public_wire_layout::{read_global_wires, PublicWireLayout};
 use libs::frontend_artifacts::{
     read_placement_selector, Instance, Permutation, PlacementVariables, SubcircuitInfo,
 };
 use libs::r1cs::SubcircuitR1CS;
-use libs::univariate_polynomial::DenseUnivariatePolynomial;
-use libs::univariate_relation::{
-    connection_permutation_polynomial, placement_selector_polynomial, witness_maps, SlotWitness,
-};
+use libs::univariate_relation::{connection_permutation_polynomial, witness_maps, SlotWitness};
 use libs::utils::try_load_setup_params_from_qap_path;
 use std::fs;
 use std::path::PathBuf;
@@ -78,12 +73,11 @@ pub fn prove(paths: &ProveInputPaths<'_>) -> Result<(), ProveError> {
         .collect::<Vec<_>>();
     let tau_path = PathBuf::from(paths.tau_sequence_path);
     let keys_path = PathBuf::from(paths.keys_path);
-    let crs = read_univariate_prover_crs(&tau_path, &keys_path, &setup, &subcircuits).map_err(
-        |source| CrsError::Read {
+    let crs = ProverCrs::read(&tau_path, &keys_path, &setup, &subcircuits, &public_layout)
+        .map_err(|source| CrsError::Read {
             path: keys_path,
             source,
-        },
-    )?;
+        })?;
 
     let selector_path = PathBuf::from(paths.synthesizer_path).join("selector.json");
     let selector =
@@ -112,13 +106,6 @@ pub fn prove(paths: &ProveInputPaths<'_>) -> Result<(), ProveError> {
                 source,
             }
         })?;
-    public_layout
-        .validate_runtime_public_buffer_placements(&placements)
-        .map_err(|error| ArtifactError::Invalid {
-            artifact: "placement variables",
-            path: PathBuf::from(paths.synthesizer_path).join("placementVariables.json"),
-            reason: error.to_string(),
-        })?;
     let instance_path = PathBuf::from(paths.synthesizer_path).join("instance.json");
     let instance =
         Instance::read_from_json(instance_path.clone()).map_err(|source| ArtifactError::Read {
@@ -127,12 +114,9 @@ pub fn prove(paths: &ProveInputPaths<'_>) -> Result<(), ProveError> {
             source,
         })?;
 
-    let s_kappa = placement_selector_polynomial(&crs.prover_keys.shape, &setup, &selector)?;
-    let s_c =
-        connection_permutation_polynomial(&crs.prover_keys.shape, &setup, &selector, &permutation)?;
+    let s_c = connection_permutation_polynomial(&crs.shape, &setup, &selector, &permutation)?;
     let selected = select_witness_values(&selector, &placements, &setup, &subcircuits)?;
     let slots = selected
-        .slot_values
         .iter()
         .enumerate()
         .map(|(placement_index, values)| {
@@ -143,31 +127,18 @@ pub fn prove(paths: &ProveInputPaths<'_>) -> Result<(), ProveError> {
             })
         })
         .collect::<Vec<_>>();
-    let maps = witness_maps(
-        &crs.prover_keys.shape,
-        &setup,
-        &selector,
-        &slots,
-        &subcircuits,
-    )?;
+    let maps = witness_maps(&crs.shape, &setup, &selector, &slots, &subcircuits)?;
     let public_inputs = collect_public_inputs(&instance, &setup)?;
-    let randomizers = ArithmeticMaskRandomizers {
-        u: random_polynomial(crs.prover_keys.delta_inv_u_masking_queries.len()),
-        v: random_polynomial(crs.prover_keys.delta_inv_v_masking_queries.len()),
-        w: random_polynomial(crs.prover_keys.delta_inv_w_masking_queries.len()),
-        b: random_polynomial(crs.prover_keys.delta_inv_b_masking_queries.len()),
-    };
-    let recursion_randomizer = random_polynomial(2);
-    let (proof, _challenges) = prove_univariate_reference(UnivariateReferenceProvingInput {
+    let randomizers = ProverRandomizers::sample();
+    let (proof, _challenges) = prove_protocol(ProvingInput {
         crs: &crs,
-        selector: &s_kappa,
+        setup: &setup,
+        public_layout: &public_layout,
+        selector: &selector,
+        slots: &selected,
         s_c: &s_c,
         maps: &maps,
-        interface_values: &selected.interface_values,
-        internal_values: &selected.internal_values,
-        randomizers,
-        recursion_randomizer: &recursion_randomizer,
-        binding_randomizer: ScalarCfg::generate_random(1)[0],
+        randomizers: &randomizers,
         public_inputs: &public_inputs,
     })?;
 
@@ -189,9 +160,4 @@ pub fn prove(paths: &ProveInputPaths<'_>) -> Result<(), ProveError> {
         })?;
     });
     Ok(())
-}
-
-fn random_polynomial(length: usize) -> DenseUnivariatePolynomial {
-    DenseUnivariatePolynomial::new(ScalarCfg::generate_random(length).into_boxed_slice())
-        .expect("U22 randomizer query ranges are nonempty")
 }

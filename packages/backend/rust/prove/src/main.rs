@@ -19,11 +19,11 @@ struct Config {
     #[command(flatten)]
     development_crs_provenance: DevelopmentCrsProvenanceArg,
 
-    /// Phase 1 tau_sequence.rkyv file
+    /// Trusted-setup tau_sequence.rkyv file
     #[arg(long, value_name = "FILE")]
     tau_sequence: String,
 
-    /// Phase 2 output directory containing prover_keys.rkyv
+    /// Trusted-setup output directory containing prover_keys.rkyv
     #[arg(long, value_name = "PATH")]
     keys: String,
 

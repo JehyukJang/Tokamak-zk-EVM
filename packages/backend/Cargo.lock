@@ -2218,6 +2218,7 @@ dependencies = [
 name = "prove"
 version = "2.1.5"
 dependencies = [
+ "backend-univariate-crs-interface",
  "clap 4.5.53",
  "icicle-bls12-381",
  "icicle-core",
