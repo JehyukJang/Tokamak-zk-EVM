@@ -28,6 +28,8 @@ chrono = { workspace = true }
 tiny-keccak = "1.5"
 
 [dev-dependencies]
+ark-poly = { version = "0.5.0", features = ["parallel"] }
+ark-ec = { workspace = true, features = ["parallel"] }
 libc = "0.2"
 memmap2 = { workspace = true }
 criterion = "0.3"

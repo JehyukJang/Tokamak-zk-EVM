@@ -11,6 +11,11 @@ MPC implementation, publishing and CUDA measurements are outside this
 experiment. The reuse guidance below identifies candidates; only changes
 with explicit acceptance evidence are implemented optimizations.
 
+For direct CPU comparisons of variable-base MSM and polynomial multiplication
+and division, see the separate [primitive comparison](current-univariate-primitive-comparison.md).
+Those unit measurements do not constitute an accepted production replacement
+or a new whole-prover timing result.
+
 ## Results at a glance
 
 Storage omission removes query coordinates
