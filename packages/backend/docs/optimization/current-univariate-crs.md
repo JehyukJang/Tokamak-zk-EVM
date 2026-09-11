@@ -27,6 +27,7 @@ batches copy-denominator inversions, and combines multi-source commitments.
 
 | Experiment | Control | Accepted result | Evidence boundary |
 | --- | --- | --- | --- |
+| Hardware-separated native proving | ICICLE CPU: 8.559 s mean command | arkworks CPU: 5.988 s, 30.0% less time | Five alternating-order release pairs; proof generation and deterministic parity, not verification or CUDA timing |
 | Storage omission (`893c3eb17`) | 1,983,906,512 payload bytes; 373.01 s mean setup | 957,268,688 bytes; 220.08 s mean setup | Two dense and two omitted full-library runs; retained-point and binding equality |
 | CPU point encoding (`6258d1062`) | Compressed setup: 220.240 s mean | 12.216 s mean; 18.03x faster | Two control and five accepted full-library runs; all four payloads byte-identical |
 | ICICLE precomputation comparison (`f9a4bd4df`) | Current arkworks large-input CPU path | Retained arkworks after testing 15 ICICLE configurations | Independent encoding comparison, not a full setup or CUDA comparison |
@@ -687,6 +688,118 @@ these one-variable maps. Outside selection and copy inversion, measured
 arithmetic preparation is subsecond; no unmeasured buffer or polynomial
 rewrite was added. No production CRS reader, artifact contract, setup,
 preprocess, verifier, WASM or MPC code changed in this native experiment.
+
+### Hardware-separated native prover
+
+The default native prover now retains arkworks field and polynomial values
+throughout CPU computation. `--device cuda` explicitly selects ICICLE; it
+does not fall back to CPU. Both engines execute one U23--U33 schedule and
+write the common `univariate_proof.bin` directly from canonical affine/field
+bytes. There is no production JSON proof projection. Input-origin selection
+and release optimization remain independent of hardware selection.
+
+The CPU implementation uses arkworks MSM, FFT/interpolation, polynomial
+multiplication, `divide_by_vanishing_poly`, and batch inversion. It retains
+shared selection cofactors and combined-source commitments, with no dense
+`m*s*t` witness expansion. Selected CRS records are converted directly to
+arkworks points, not through ICICLE objects. The canonical domain contract
+pins the existing ICICLE primitive root: arkworks' default root has a
+different ordering, so interpolation explicitly uses the contract root.
+CPU execution skips ICICLE backend discovery/device initialization, but the
+shared native package still links ICICLE libraries.
+
+The ICICLE engine uses its polynomial, MSM and batched vector APIs. Selection
+cofactor sums no longer use arkworks host arithmetic on that route. Its
+specialized vanishing-division API cannot handle the current blinded degree
+greater than twice the divisor degree. The engine therefore retains the
+existing exact coefficient recurrence as its primary division algorithm,
+with a remainder check, rather than treating an unsupported API result as
+a quotient. No CUDA performance claim is made.
+
+#### Controlled full-command comparison
+
+On Apple M4 Pro (14 logical CPUs), both binaries used release builds with
+the timing feature, the same accepted CRS, local QAP library and synthesizer
+fixture, and fresh proof randomizers. One warmup per binary was discarded.
+Five pairs alternated reference/CPU and CPU/reference order. No task-owned
+Cargo build or test ran during the measured pairs; normal desktop applications
+remained active. No worker-count override or memory cap was imposed. The
+reference is the preserved `96f4f2283` ICICLE-centered CPU implementation,
+not the superseded protocol or an earlier measurement of the new CPU code.
+
+| Measured interval | ICICLE CPU reference, s | arkworks CPU, s |
+| --- | ---: | ---: |
+| Complete command (`univariate.total`) | 8.559207 | 5.987615 |
+| Identity checks | 1.833102 | 1.808358 |
+| CRS loading/admission | 0.154093 | 0.163001 |
+| Map preparation | 0.245292 | 0.158918 |
+| Proof protocol (inclusive) | 6.283349 | 3.782914 |
+| Arithmetic relation | 0.191592 | 0.121679 |
+| Public/nonpublic binding commitment | 0.065162 | 0.023685 |
+| Selection construction and commitments | 1.013748 | 0.493769 |
+| Copy relation | 0.738193 | 0.358443 |
+| Openings (inclusive) | 1.280051 | 0.941700 |
+| MSM calls summed (nested in protocol intervals) | 4.237836 | 3.101107 |
+| Proof output | 0.000263 | 0.000235 |
+
+The complete-command reduction is **30.0%**, or **1.429x** speedup. Reference
+samples range from 8.499 to 8.630 seconds; CPU samples range from 5.952 to
+6.078 seconds. Independently observed process wall time averages 8.658 and
+5.997 seconds respectively, including process startup and teardown excluded
+from the internal timer. Keep these metrics separate.
+
+MSM timing excludes input point decoding and includes result normalization;
+the CPU span also includes its final 96-byte encoding. Ten CPU MSMs replace
+twelve reference MSMs because selection masks join their associated query
+MSMs. Parent and child intervals overlap: do not add table rows to reconstruct
+the command total. The diagnostic `selection.interpolate` interval also has
+different coverage (the new engine includes tree construction), so it is not
+used as a directly comparable row. The timing test labels its category sums
+as inclusive and no longer subtracts overlapping sums to infer ingress time.
+
+The protocol interval accounts for about 2.500 seconds of the 2.572-second
+command reduction; identity checks and serialization account for little of
+the difference. These are measurements of the complete implementation
+change, not isolated causal estimates for each arkworks API or mask fusion.
+CRS loading is slightly slower in this series; the command nevertheless
+improves beyond observed sample variation. Earlier 7.916-second optimization
+results and the 8.770-second reference-only series remain separate evidence.
+All samples, events, binary hashes, input hashes and arguments are in
+[`evidence/prover-hardware-split-comparison.json`](evidence/prover-hardware-split-comparison.json).
+
+#### Validation boundary
+
+- Nine prover library tests and the default/explicit device CLI test pass in
+  release mode; four optional benchmark tests remain ignored. Fixed-mask
+  cases compare maps, selection coefficients, all proof bytes and challenges
+  across arkworks, the ICICLE engine on its CPU provider, and the test-only
+  accepted reference. Cases include free/fixed public wires, padding, unequal
+  arithmetic/connection domains, empty slots, singleton domains, invalid
+  witnesses, repeated public buffers and copy failures.
+- All six F4 preimages and seven scalar challenges match the independent
+  fixture on both field implementations. Contract tests (20 Node tests,
+  four Rust interface tests and the TypeScript codec assertions) pass; five
+  actual native binary proofs round-trip through the common TypeScript codec.
+- CPU commands succeed with a nonexistent ICICLE backend discovery directory.
+  The developer timing-test entry also generates a binary proof from the real
+  local fixture with that directory absent; its direct-library timer excludes
+  CLI identity checks and must not be compared with whole-command time.
+  Explicit CUDA selection on this non-CUDA host fails without writing a proof.
+  ICICLE CPU-provider parity is not a CUDA functional run.
+- A broader `libs` univariate run is **not green**: 15 tests pass, nine fail
+  and one benchmark is ignored. Eight failures use existing `l_free=0`
+  fixtures rejected by the existing domain guard; one uses stale catalog
+  capacity. Those unchanged fixture assumptions predate this hardware split
+  and remain assigned to the native consumer migration. The unfinished
+  verifier also still references retired proof/challenge fields and does
+  not compile. Neither issue is hidden by a compatibility layer here.
+
+This closes native proof-generation and CPU-timing checks, not full protocol
+verification, browser runtime interoperability, or package-wide validation.
+The unfinished preprocess/verifier/WASM migration and subsequent E2E remain
+required before claiming those results.
+
+### Reproducing native checks
 
 From `packages/backend`, build before running comparisons:
 

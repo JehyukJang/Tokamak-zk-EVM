@@ -47,8 +47,13 @@ and ABI; application integration stays outside the verifier. Neither a
 Solidity rkyv parser nor a duplicate CRS export is required by this boundary.
 The contract relocation and external CLI migration have not been performed.
 
-The native proof writer and native/WASM preprocess/verifier readers still
-require migration. Generated codec tests alone do not establish runtime
+The native prover now writes this binary directly from arkworks CPU or ICICLE
+field/affine coordinates. Both engines share the F4 schedule, and deterministic
+tests compare their complete proof bytes with the accepted reference. The
+ordered primitive root is explicit in `univariate-domain-contract.v1.json`;
+choosing arkworks does not change the existing CRS evaluation order.
+Native preprocess/verifier and WASM runtime migration remain incomplete.
+Generated codec and native proof-generation tests do not establish runtime
 interoperability or full proof verification.
 
 The current univariate protocol contracts also include

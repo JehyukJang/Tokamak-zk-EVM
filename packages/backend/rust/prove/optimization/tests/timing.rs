@@ -10,8 +10,6 @@ use std::path::PathBuf;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(feature = "timing")]
-use libs::utils::check_device;
-#[cfg(feature = "timing")]
 use prove::{timing, univariate_cli, ProveInputPaths};
 
 #[cfg(feature = "timing")]
@@ -19,7 +17,8 @@ use prove::{timing, univariate_cli, ProveInputPaths};
 struct TimingReport {
     generated_at_unix_ms: u128,
     total_wall_ms: f64,
-    category_ms: BTreeMap<String, f64>,
+    // Parent spans include child spans; these sums are diagnostic, not additive.
+    inclusive_category_ms: BTreeMap<String, f64>,
     events: Vec<timing::TimingEvent>,
 }
 
@@ -55,10 +54,10 @@ fn timing_univariate_prove_stages() {
         output_path: &output_path,
     };
 
-    check_device();
     timing::reset();
     let started = Instant::now();
-    univariate_cli::prove(&paths).expect("univariate timing run must produce a proof");
+    univariate_cli::prove(&paths, univariate_cli::ProverDevice::Cpu)
+        .expect("univariate CPU timing run must produce a proof");
     let total_wall_ms = started.elapsed().as_secs_f64() * 1_000.0;
     let events = timing::take_events();
     let mut category_ms = BTreeMap::new();
@@ -66,18 +65,13 @@ fn timing_univariate_prove_stages() {
         *category_ms.entry(event.category.clone()).or_insert(0.0) +=
             event.nanos as f64 / 1_000_000.0;
     }
-    let observed_ms: f64 = category_ms.values().sum();
-    category_ms.insert(
-        "initialization_and_ingress".to_string(),
-        (total_wall_ms - observed_ms).max(0.0),
-    );
     let report = TimingReport {
         generated_at_unix_ms: SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_millis())
             .unwrap_or(0),
         total_wall_ms,
-        category_ms,
+        inclusive_category_ms: category_ms,
         events,
     };
     if let Some(parent) = report_path.parent() {

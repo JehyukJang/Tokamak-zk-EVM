@@ -245,13 +245,31 @@ Consumes:
 
 Produces:
 
-- `proof.json`
+- `univariate_proof.bin`: the common 1,184-byte proof (10 affine G1 points,
+  then 7 scalars). No JSON proof is written.
 
-CLI package example:
+The native command defaults to arkworks CPU arithmetic. `--device cuda`
+explicitly selects ICICLE CUDA and fails if CUDA is unavailable; it never
+silently switches to CPU. The CPU path skips ICICLE backend discovery and
+device initialization, although the shared native package still links ICICLE
+libraries. Hardware selection does not change the local-QAP/npm input policy.
+
+Repository-local release example, using an existing current-protocol CRS:
 
 ```bash
-tokamak-cli --prove
+cargo run --locked --release -p prove --features timing -- \
+  --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
+  --tau-sequence CRS_DIRECTORY/tau_sequence.rkyv \
+  --keys CRS_DIRECTORY \
+  --synthesizer-stat FIXTURE_DIRECTORY \
+  --output ./rust/prove/output
 ```
+
+Add `--device cuda` after `--` only on a configured CUDA host. The native
+preprocess/verifier and browser runtime have not yet been migrated to the
+current proof contract; this example demonstrates proof generation, not a
+completed verification or CLI-package integration flow. See the
+[current-protocol measurements](docs/optimization/current-univariate-crs.md).
 
 ### `verify`
 
@@ -277,6 +295,10 @@ tokamak-cli --verify
 
 Use the `Run and Debug` panel in VS Code and select one of the backend launch configurations under
 `.vscode/launch.json`.
+
+During the current-protocol migration, `Debug prove` uses the default CPU
+engine and writes the new binary proof. The older preprocess/verify examples
+below do not yet form a runnable end-to-end chain with that output.
 
 The local `trusted-setup`, `preprocess`, `prove`, and `verify` launchers pass
 `--subcircuit-library` explicitly. The production Dusk launcher selects the release MPC build,
@@ -305,7 +327,8 @@ opt-in is limited to debugger launchers; normal CLI execution continues to valid
 provenance compatibility. `Measure prove timing` also uses Cargo's release profile and receives the
 local QAP path explicitly through its test environment.
 
-The ICICLE device policy selects CUDA when it is available. ICICLE 3.8.0 METAL availability is
+The legacy ICICLE device policy used outside the current prover selects CUDA when it is available.
+ICICLE 3.8.0 METAL availability is
 reported but deliberately falls back to CPU; it is not treated as a GPU/MSM capability. Setting
 `USE_GPU=true` for MPC setup therefore selects CUDA or CPU through the same policy and reports a
 backend-initialization failure instead of silently continuing after one.

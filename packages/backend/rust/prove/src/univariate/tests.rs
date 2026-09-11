@@ -340,6 +340,21 @@ fn current_prover_matches_scalar_oracle_with_fixed_free_padding_and_selection_ho
             })
         };
         let (proof, ch) = run(&maps, &instance).unwrap();
+        super::super::parity_tests::compare(
+            ProvingInput {
+                crs: &crs,
+                setup: &setup,
+                public_layout: &public,
+                selector: &selector,
+                slots: &slots,
+                maps: &maps,
+                s_c: &sc,
+                public_inputs: &instance,
+                randomizers: &masks,
+            },
+            &proof,
+            &circuits,
+        );
         assert_eq!(
             ch,
             derive_proof_challenges(
@@ -618,4 +633,19 @@ fn singleton_domains_and_all_empty_selection_produce_a_current_proof() {
     );
     assert_eq!(ch, derive_proof_challenges(&[f(0)], &proof, 1, 1));
     assert_eq!(proof.s_c.0, f(1));
+    super::super::parity_tests::compare(
+        ProvingInput {
+            crs: &crs,
+            setup: &setup,
+            public_layout: &public,
+            selector: &selector,
+            slots: &slots,
+            maps: &maps,
+            s_c: &sc,
+            public_inputs: &[f(0)],
+            randomizers: &masks,
+        },
+        &proof,
+        &circuits,
+    );
 }

@@ -2,6 +2,11 @@
   "contractVersion": 1,
   "owner": "backend",
   "protocolSchema": "tokamak-zk-evm-univariate",
+  "scalarRootOfUnity": {
+    "twoAdicity": 32,
+    "maxRootCanonicalHex": "0212d79e5b416b6f0fd56dc8d168d6c0c4024ff270b3e0941b788f500b912f1f",
+    "derivation": "root(N) = maxRoot^(2^32/N) for power-of-two N"
+  },
   "arithmeticDomain": {
     "size": "n * s_max",
     "index": "i + s_max * r",

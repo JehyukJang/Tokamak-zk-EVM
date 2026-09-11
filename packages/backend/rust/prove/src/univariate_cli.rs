@@ -1,25 +1,35 @@
 //! Native artifact ingress for the univariate reference prover.
 
 use crate::univariate::{
-    collect_public_inputs, prove as prove_protocol, select_witness_values, ProverRandomizers,
-    ProvingInput,
+    engine::{Cpu, Engine, Icicle},
+    prepare::prepare,
+    prove as prove_protocol, ProverRandomizers, ProvingInput,
 };
 use crate::univariate_crs::ProverCrs;
 use crate::{ProveError, ProveInputPaths};
+use backend_interface::ProofBytes;
 use libs::errors::{ArtifactError, CrsError};
 use libs::frontend_artifacts::public_wire_layout::{read_global_wires, PublicWireLayout};
+use libs::frontend_artifacts::SetupParams;
 use libs::frontend_artifacts::{
     read_placement_selector, Instance, Permutation, PlacementVariables, SubcircuitInfo,
 };
 use libs::r1cs::SubcircuitR1CS;
-use libs::univariate_relation::{connection_permutation_polynomial, witness_maps, SlotWitness};
+use libs::univariate_relation::UnivariateSubcircuit;
 use libs::utils::try_load_setup_params_from_qap_path;
 use std::fs;
 use std::path::PathBuf;
 
 /// Loads the existing synthesizer artifacts into U8/U12/U27 without relying
 /// on the legacy bivariate prover's compact-placement convention.
-pub fn prove(paths: &ProveInputPaths<'_>) -> Result<(), ProveError> {
+#[derive(clap::ValueEnum, Clone, Copy, Debug, Default)]
+pub enum ProverDevice {
+    #[default]
+    Cpu,
+    Cuda,
+}
+
+pub fn prove(paths: &ProveInputPaths<'_>, device: ProverDevice) -> Result<(), ProveError> {
     #[cfg(feature = "timing")]
     let loading = crate::timing::SpanGuard::new("univariate.library", "input", vec![]);
     let setup = try_load_setup_params_from_qap_path(paths.qap_path)?;
@@ -126,51 +136,74 @@ pub fn prove(paths: &ProveInputPaths<'_>) -> Result<(), ProveError> {
 
     #[cfg(feature = "timing")]
     drop(loading);
-    #[cfg(feature = "timing")]
-    let preparation = crate::timing::SpanGuard::new("univariate.maps", "prepare", vec![]);
-    let s_c = connection_permutation_polynomial(&crs.shape, &setup, &selector, &permutation)?;
-    let selected = select_witness_values(&selector, &placements, &setup, &subcircuits)?;
-    let slots = selected
-        .iter()
-        .enumerate()
-        .map(|(placement_index, values)| {
-            values.as_ref().map(|values| SlotWitness {
-                subcircuit_id: selector[placement_index]
-                    .expect("selected witness slot must have a selector entry"),
-                values,
-            })
-        })
-        .collect::<Vec<_>>();
-    let maps = witness_maps(&crs.shape, &setup, &selector, &slots, &subcircuits)?;
-    let public_inputs = collect_public_inputs(&instance, &setup)?;
+    match device {
+        ProverDevice::Cpu => finish::<Cpu>(
+            paths,
+            &crs,
+            &setup,
+            &public_layout,
+            &selector,
+            &permutation,
+            &placements,
+            &instance,
+            &subcircuits,
+        ),
+        ProverDevice::Cuda => finish::<Icicle>(
+            paths,
+            &crs,
+            &setup,
+            &public_layout,
+            &selector,
+            &permutation,
+            &placements,
+            &instance,
+            &subcircuits,
+        ),
+    }
+}
+fn finish<E: Engine>(
+    paths: &ProveInputPaths<'_>,
+    crs: &ProverCrs,
+    setup: &SetupParams,
+    public_layout: &PublicWireLayout,
+    selector: &[Option<usize>],
+    permutation: &[Permutation],
+    placements: &[PlacementVariables],
+    instance: &Instance,
+    subcircuits: &[UnivariateSubcircuit<'_>],
+) -> Result<(), ProveError> {
+    let prepared = crate::time_block!("univariate.maps", "prepare", {
+        prepare::<E>(
+            crs,
+            setup,
+            selector,
+            permutation,
+            placements,
+            instance,
+            subcircuits,
+        )?
+    });
     let randomizers = ProverRandomizers::sample();
-    #[cfg(feature = "timing")]
-    drop(preparation);
-    let (proof, _challenges) = prove_protocol(ProvingInput {
-        crs: &crs,
-        setup: &setup,
-        public_layout: &public_layout,
-        selector: &selector,
-        slots: &selected,
-        s_c: &s_c,
-        maps: &maps,
+    let (proof, _) = prove_protocol::<E>(ProvingInput {
+        crs,
+        setup,
+        public_layout,
+        selector,
+        prepared: &prepared,
         randomizers: &randomizers,
-        public_inputs: &public_inputs,
     })?;
-
     let output_dir = PathBuf::from(paths.output_path);
     crate::time_block!("univariate.output", "output", {
         fs::create_dir_all(&output_dir).map_err(|source| ProveError::WriteOutput {
             path: output_dir.clone(),
             source,
         })?;
-        let output_path = output_dir.join("univariate_proof.json");
-        let output =
-            serde_json::to_vec_pretty(&proof).map_err(|source| ProveError::WriteOutput {
-                path: output_path.clone(),
-                source: std::io::Error::other(source),
-            })?;
-        fs::write(&output_path, output).map_err(|source| ProveError::WriteOutput {
+        let output_path = output_dir.join(ProofBytes::FILE_NAME);
+        let bytes = proof.encode().map_err(|e| ProveError::WriteOutput {
+            path: output_path.clone(),
+            source: std::io::Error::other(e),
+        })?;
+        fs::write(&output_path, bytes).map_err(|source| ProveError::WriteOutput {
             path: output_path,
             source,
         })?;

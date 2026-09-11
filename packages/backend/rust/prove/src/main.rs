@@ -1,10 +1,11 @@
 use clap::Parser;
 use libs::cli::render_error;
+use libs::errors::DeviceError;
 use libs::subcircuit_library::{
     try_resolve_subcircuit_library_path, validate_operational_univariate_crs_compatibility,
     DevelopmentCrsProvenanceArg, SubcircuitLibraryArg,
 };
-use libs::utils::try_check_device;
+use prove::univariate_cli::ProverDevice;
 use prove::{univariate_cli, ProveError, ProveInputPaths};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -13,6 +14,9 @@ use std::time::Instant;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Config {
+    /// Arithmetic engine: CPU uses arkworks; CUDA explicitly selects ICICLE
+    #[arg(long, value_enum, default_value = "cpu")]
+    device: ProverDevice,
     #[command(flatten)]
     subcircuit_library: SubcircuitLibraryArg,
 
@@ -31,7 +35,7 @@ struct Config {
     #[arg(long, value_name = "PATH")]
     synthesizer_stat: String,
 
-    /// Output directory for univariate_proof.json
+    /// Output directory for univariate_proof.bin
     #[arg(long, value_name = "PATH")]
     output: String,
 }
@@ -80,12 +84,23 @@ fn run() -> Result<(), ProveError> {
         output_path: &config.output,
     };
 
-    try_check_device()?;
+    if matches!(config.device, ProverDevice::Cuda) {
+        let failure = |e: String| DeviceError::Initialization {
+            device: "CUDA",
+            reason: e,
+        };
+        icicle_runtime::load_backend_from_env_or_default().map_err(|e| failure(e.to_string()))?;
+        let cuda = icicle_runtime::Device::new("CUDA", 0);
+        if !icicle_runtime::is_device_available(&cuda) {
+            return Err(failure("CUDA was requested but is unavailable".into()).into());
+        }
+        icicle_runtime::set_device(&cuda).map_err(|e| failure(e.to_string()))?;
+    }
     #[cfg(feature = "timing")]
     drop(ingress);
 
-    println!("Running the univariate reference prover...");
-    univariate_cli::prove(&paths)?;
+    println!("Running univariate prove: {:?}", config.device);
+    univariate_cli::prove(&paths, config.device)?;
 
     let total_elapsed_secs = total_start.elapsed().as_secs_f64();
     println!(
@@ -104,4 +119,37 @@ fn run() -> Result<(), ProveError> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cpu_is_default_and_cuda_requires_explicit_selection() {
+        let mut args = vec![
+            "prove",
+            "--tau-sequence",
+            "tau",
+            "--keys",
+            "keys",
+            "--synthesizer-stat",
+            "fixture",
+            "--output",
+            "output",
+        ];
+        if cfg!(feature = "local-development-subcircuit-library") {
+            args.extend(["--subcircuit-library", "library"]);
+        }
+        assert!(matches!(
+            Config::try_parse_from(&args).unwrap().device,
+            ProverDevice::Cpu
+        ));
+        let cuda = args.iter().copied().chain(["--device", "cuda"]);
+        assert!(matches!(
+            Config::try_parse_from(cuda).unwrap().device,
+            ProverDevice::Cuda
+        ));
+        assert!(Config::try_parse_from(args.into_iter().chain(["--device", "metal"])).is_err());
+    }
 }

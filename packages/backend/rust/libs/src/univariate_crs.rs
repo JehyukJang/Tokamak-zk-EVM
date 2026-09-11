@@ -15,7 +15,6 @@ use icicle_bls12_381::curve::{CurveCfg, G1Projective};
 use icicle_bls12_381::curve::{G1Affine, G2Affine, ScalarCfg, ScalarField};
 #[cfg(not(test))]
 use icicle_core::ecntt::ecntt_inplace;
-use icicle_core::ntt;
 #[cfg(not(test))]
 use icicle_core::ntt::{NTTConfig, NTTDir};
 use icicle_core::traits::{Arithmetic, FieldImpl, GenerateRandom};
@@ -216,9 +215,18 @@ impl UnivariateCrsShape {
         let connection_root = primitive_root("N_C", connection_domain_size)?;
         let selection_root = primitive_root("N_S", selection_domain_size)?;
         let placement_root = primitive_root("s_max", params.s_max)?;
-        if arithmetic_root.pow(params.n) != placement_root
-            || connection_root.pow(interface_wire_count) != placement_root
-            || selection_root.pow(params.t) != placement_root
+        let power = |value: ScalarField, exponent: usize| {
+            use ark_ff::{BigInteger, Field, PrimeField};
+            ScalarField::from_bytes_le(
+                &ark_bls12_381::Fr::from_le_bytes_mod_order(&value.to_bytes_le())
+                    .pow([exponent as u64])
+                    .into_bigint()
+                    .to_bytes_le(),
+            )
+        };
+        if power(arithmetic_root, params.n) != placement_root
+            || power(connection_root, interface_wire_count) != placement_root
+            || power(selection_root, params.t) != placement_root
         {
             return Err(UnivariateCrsError::InvalidDomainRoot {
                 name: "compatible placement roots",
@@ -1713,15 +1721,19 @@ fn primitive_root(
     }
     let domain_size_u64 =
         u64::try_from(domain_size).map_err(|_| UnivariateCrsError::DomainTooLarge { name })?;
-    let root = ntt::get_root_of_unity::<ScalarField>(domain_size_u64);
-    if root.pow(domain_size) != ScalarField::one()
+    use ark_ff::{BigInteger, Field, One, PrimeField};
+    let root = crate::univariate_field::canonical_root(domain_size)
+        .ok_or(UnivariateCrsError::InvalidDomainRoot { name })?;
+    if root.pow([domain_size_u64]) != ark_bls12_381::Fr::one()
         || distinct_prime_factors(domain_size)
             .iter()
-            .any(|factor| root.pow(domain_size / factor) == ScalarField::one())
+            .any(|factor| root.pow([(domain_size / factor) as u64]) == ark_bls12_381::Fr::one())
     {
         return Err(UnivariateCrsError::InvalidDomainRoot { name });
     }
-    Ok(root)
+    Ok(ScalarField::from_bytes_le(
+        &root.into_bigint().to_bytes_le(),
+    ))
 }
 
 fn distinct_prime_factors(mut value: usize) -> Vec<usize> {

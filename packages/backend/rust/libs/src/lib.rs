@@ -31,6 +31,7 @@ pub mod univariate_relation;
 pub mod univariate_selection;
 pub mod univariate_setup;
 pub mod univariate_transcript;
+pub mod univariate_field;
 pub mod utils;
 pub mod vector_operations;
 

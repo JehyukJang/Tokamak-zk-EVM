@@ -5,26 +5,25 @@
 //! prover messages, and preceding challenges described by F2--F4.
 
 use crate::group_structures::G1serde;
+use crate::univariate_field::{canonical_scalar, ProtocolField};
 use crate::univariate_proof::UnivariateProof;
-use ark_bls12_381::Fr;
-use ark_ff::{BigInteger, PrimeField};
 use icicle_bls12_381::curve::ScalarField;
-use icicle_core::traits::{Arithmetic, FieldImpl};
+use icicle_core::traits::FieldImpl;
 use tiny_keccak::Keccak;
 
 pub const UNIVARIATE_FIAT_SHAMIR_SCHEMA_ID: &str = "tokamak-zk-evm-univariate-fs";
 const TRANSCRIPT_DOMAIN: &[u8] = UNIVARIATE_FIAT_SHAMIR_SCHEMA_ID.as_bytes();
 
-/// The six F3 challenges in their protocol order.
+/// The seven scalar challenges from the six F3 rounds, in protocol order.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct UnivariateChallenges {
-    pub upsilon: ScalarField,
-    pub beta: ScalarField,
-    pub gamma_c: ScalarField,
-    pub theta: ScalarField,
-    pub chi: ScalarField,
-    pub varpi: ScalarField,
-    pub mu: ScalarField,
+pub struct UnivariateChallenges<F = ScalarField> {
+    pub upsilon: F,
+    pub beta: F,
+    pub gamma_c: F,
+    pub theta: F,
+    pub chi: F,
+    pub varpi: F,
+    pub mu: F,
 }
 
 /// Builds an injective type-tagged, length-prefixed encoding for F2--F4.
@@ -48,7 +47,7 @@ impl CanonicalTranscriptEncoder {
         self
     }
 
-    pub fn scalar(mut self, label: &str, value: &ScalarField) -> Self {
+    pub fn scalar<F: ProtocolField>(mut self, label: &str, value: &F) -> Self {
         self.push(label, &scalar_bytes(value));
         self
     }
@@ -75,17 +74,19 @@ impl CanonicalTranscriptEncoder {
 
 /// State for the F4 challenge schedule after canonical public-input encoding.
 #[derive(Clone, Debug)]
-pub struct UnivariateTranscript {
+pub struct UnivariateTranscript<F = ScalarField> {
+    field: std::marker::PhantomData<F>,
     input: Vec<u8>,
     message: Vec<u8>,
 }
 
-impl UnivariateTranscript {
+impl<F: ProtocolField> UnivariateTranscript<F> {
     /// Creates F4 state for one validated fixed verifier configuration and its
     /// adaptive public-input statement. The configuration itself is excluded
     /// by F1 and must have been admitted by the caller before this method.
-    pub fn from_public_inputs(public_inputs: &[ScalarField]) -> Self {
+    pub fn from_public_inputs(public_inputs: &[F]) -> Self {
         Self {
+            field: std::marker::PhantomData,
             input: encode_public_inputs(public_inputs),
             message: Vec::new(),
         }
@@ -97,7 +98,7 @@ impl UnivariateTranscript {
     }
 
     /// Derives one ordinary field challenge and records it for later rounds.
-    pub fn challenge(&mut self, round: u8, output_index: u8) -> ScalarField {
+    pub fn challenge(&mut self, round: u8, output_index: u8) -> F {
         let value = self.sample_value(round, output_index, |_| true);
         self.record_challenges(&[value]);
         value
@@ -105,7 +106,7 @@ impl UnivariateTranscript {
 
     /// Samples F3's paired `(beta, gamma_C)` output from one F4 state. Neither
     /// coordinate may influence the other coordinate's oracle input.
-    pub fn challenge_pair(&mut self, round: u8) -> (ScalarField, ScalarField) {
+    pub fn challenge_pair(&mut self, round: u8) -> (F, F) {
         let first = self.sample_value(round, 0, |_| true);
         let second = self.sample_value(round, 1, |_| true);
         self.record_challenges(&[first, second]);
@@ -113,19 +114,19 @@ impl UnivariateTranscript {
     }
 
     /// Derives F3's `chi`, excluding zero and both protocol domains.
-    pub fn chi(&mut self, arithmetic_size: usize, connection_size: usize) -> ScalarField {
+    pub fn chi(&mut self, arithmetic_size: usize, connection_size: usize) -> F {
         let value = self.sample_value(4, 0, |value| {
-            *value != ScalarField::zero()
-                && value.pow(arithmetic_size) != ScalarField::one()
-                && value.pow(connection_size) != ScalarField::one()
+            *value != F::zero()
+                && value.pow(arithmetic_size) != F::one()
+                && value.pow(connection_size) != F::one()
         });
         self.record_challenges(&[value]);
         value
     }
 
     /// Derives F3's nonzero `mu`.
-    pub fn nonzero_challenge(&mut self, round: u8, output_index: u8) -> ScalarField {
-        let value = self.sample_value(round, output_index, |value| *value != ScalarField::zero());
+    pub fn nonzero_challenge(&mut self, round: u8, output_index: u8) -> F {
+        let value = self.sample_value(round, output_index, |value| *value != F::zero());
         self.record_challenges(&[value]);
         value
     }
@@ -142,7 +143,7 @@ impl UnivariateTranscript {
         a6: &[u8],
         arithmetic_size: usize,
         connection_size: usize,
-    ) -> UnivariateChallenges {
+    ) -> UnivariateChallenges<F> {
         self.set_message(a1);
         let upsilon = self.challenge(1, 0);
         self.set_message(a2);
@@ -166,9 +167,9 @@ impl UnivariateTranscript {
         }
     }
 
-    fn sample_value<F>(&self, round: u8, output_index: u8, accepts: F) -> ScalarField
+    fn sample_value<Accept>(&self, round: u8, output_index: u8, accepts: Accept) -> F
     where
-        F: Fn(&ScalarField) -> bool,
+        Accept: Fn(&F) -> bool,
     {
         for counter in 0u32.. {
             let input = self.oracle_input(round, output_index, counter);
@@ -194,7 +195,7 @@ impl UnivariateTranscript {
             .finish()
     }
 
-    fn record_challenges(&mut self, values: &[ScalarField]) {
+    fn record_challenges(&mut self, values: &[F]) {
         let mut encoder = CanonicalTranscriptEncoder::new();
         for (index, value) in values.iter().enumerate() {
             encoder = encoder.scalar(&format!("challenge.{index}"), value);
@@ -205,7 +206,7 @@ impl UnivariateTranscript {
 
 /// Canonically encodes F1's adaptive statement `a` without any fixed verifier
 /// configuration field.
-pub fn encode_public_inputs(public_inputs: &[ScalarField]) -> Vec<u8> {
+pub fn encode_public_inputs<F: ProtocolField>(public_inputs: &[F]) -> Vec<u8> {
     let mut encoder = CanonicalTranscriptEncoder::new().u32(
         "public-input-count",
         u32::try_from(public_inputs.len()).expect("public-input count exceeds u32"),
@@ -275,27 +276,14 @@ fn keccak256(input: &[u8]) -> [u8; 32] {
     output
 }
 
-fn digest_to_scalar(digest: [u8; 32]) -> Option<ScalarField> {
-    let ark = Fr::from_be_bytes_mod_order(&digest);
-    let bigint = ark.into_bigint();
-    let mut canonical = bigint.to_bytes_be();
-    if canonical.len() > digest.len() {
-        return None;
-    }
-    if canonical.len() < digest.len() {
-        let mut padded = vec![0u8; digest.len() - canonical.len()];
-        padded.append(&mut canonical);
-        canonical = padded;
-    }
-    if canonical.as_slice() != digest {
-        return None;
-    }
-    Some(ScalarField::from_bytes_le(&bigint.to_bytes_le()))
+fn digest_to_scalar<F: ProtocolField>(digest: [u8; 32]) -> Option<F> {
+    let mut bytes = digest;
+    bytes.reverse();
+    canonical_scalar(&bytes).then(|| F::from_le(&bytes))
 }
 
-fn scalar_bytes(value: &ScalarField) -> [u8; 32] {
-    let mut bytes = value.to_bytes_le();
-    bytes.resize(32, 0);
+fn scalar_bytes<F: ProtocolField>(value: &F) -> [u8; 32] {
+    let mut bytes = value.canonical_le();
     bytes.reverse();
     bytes.try_into().expect("BLS scalar must fit in 32 bytes")
 }
@@ -315,6 +303,7 @@ fn g1_bytes(value: &G1serde) -> [u8; 96] {
 mod tests {
     use super::*;
     use crate::field_structures::FieldSerde;
+    use ark_bls12_381::Fr;
     use icicle_bls12_381::curve::{BaseField, G1Affine};
     use icicle_core::traits::FieldImpl;
     #[test]
@@ -397,11 +386,29 @@ mod tests {
             encode_g1_message_block("F2.a6", &[proof.pi_chi, proof.pi_plus]),
         ];
         let mut transcript = UnivariateTranscript::from_public_inputs(&inputs);
+        let ark_inputs: Vec<Fr> = inputs
+            .iter()
+            .map(|v| Fr::from_le(&v.canonical_le()))
+            .collect();
+        let mut ark_transcript = UnivariateTranscript::from_public_inputs(&ark_inputs);
         for (i, block) in blocks.iter().enumerate() {
             let round = (i + 1) as u8;
             transcript.set_message(block);
+            ark_transcript.set_message(block);
             let expected = fixture["expected"][i].as_array().unwrap();
             for (index, vector) in expected.iter().enumerate() {
+                assert_eq!(
+                    ark_transcript.oracle_input(
+                        round,
+                        index as u8,
+                        vector["counter"].as_u64().unwrap() as u32
+                    ),
+                    transcript.oracle_input(
+                        round,
+                        index as u8,
+                        vector["counter"].as_u64().unwrap() as u32
+                    )
+                );
                 assert_eq!(
                     hex::encode(transcript.oracle_input(
                         round,
@@ -420,6 +427,22 @@ mod tests {
                 6 => vec![transcript.nonzero_challenge(round, 0)],
                 _ => vec![transcript.challenge(round, 0)],
             };
+            let ark_actual = match round {
+                2 => {
+                    let (a, b) = ark_transcript.challenge_pair(round);
+                    vec![a, b]
+                }
+                4 => vec![ark_transcript.chi(na, nc)],
+                6 => vec![ark_transcript.nonzero_challenge(round, 0)],
+                _ => vec![ark_transcript.challenge(round, 0)],
+            };
+            assert_eq!(
+                actual.iter().map(|v| v.canonical_le()).collect::<Vec<_>>(),
+                ark_actual
+                    .iter()
+                    .map(|v| v.canonical_le())
+                    .collect::<Vec<_>>()
+            );
             for (value, vector) in actual.iter().zip(expected) {
                 assert_eq!(
                     *value,
@@ -444,7 +467,7 @@ mod tests {
         first.set_message(b"same");
         second.set_message(b"same");
         assert_eq!(first.oracle_input(3, 0, 0), second.oracle_input(3, 0, 0));
-        assert!(digest_to_scalar([255; 32]).is_none());
-        assert_eq!(digest_to_scalar([0; 32]), Some(ScalarField::zero()));
+        assert!(digest_to_scalar::<ScalarField>([255; 32]).is_none());
+        assert_eq!(digest_to_scalar([0; 32]), Some(ScalarField::from_u32(0)));
     }
 }

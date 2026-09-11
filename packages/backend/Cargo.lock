@@ -2224,13 +2224,21 @@ dependencies = [
 name = "prove"
 version = "2.1.5"
 dependencies = [
+ "ark-bls12-381",
+ "ark-ec",
+ "ark-ff",
+ "ark-poly",
+ "backend-interface",
  "backend-univariate-crs-interface",
  "clap 4.5.53",
+ "hex",
  "icicle-bls12-381",
  "icicle-core",
  "icicle-runtime",
  "libs",
  "memmap2",
+ "rand 0.8.5",
+ "rayon",
  "rkyv 0.7.46",
  "serde",
  "serde_json",
