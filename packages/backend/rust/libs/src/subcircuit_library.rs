@@ -244,37 +244,8 @@ pub fn validate_operational_univariate_crs_compatibility(
         );
         return Ok(None);
     }
-    let provenance_path = keys_dir.join(CRS_PROVENANCE_FILE_NAME);
-    let bytes = fs::read(&provenance_path).map_err(|source| {
-        CrsError::Compatibility(format!(
-            "cannot read CRS provenance {}: {source}",
-            provenance_path.display()
-        ))
-    })?;
-    let provenance =
-        crate::crs_provenance::parse_crs_provenance(&bytes).map_err(CrsError::Compatibility)?;
-    provenance
-        .require_protocol(UNIVARIATE_CRS_SCHEMA_ID)
-        .map_err(CrsError::Compatibility)?;
-    let compiled_compatibility = compatibility_from_package_version(env!("CARGO_PKG_VERSION"))
-        .map_err(|error| CrsError::Compatibility(error.to_string()))?
-        .to_string();
-    if provenance.compatible_backend_version != compiled_compatibility {
-        return Err(CrsError::Compatibility(
-            "CRS compatibleBackendVersion does not match the compiled backend".into(),
-        ));
-    }
+    let provenance = read_univariate_crs_identity(keys_dir)?;
     if !check_digests {
-        let (origin, version) = selected_subcircuit_library_package_identity();
-        if provenance.subcircuit_library.package_name != SUBCIRCUIT_LIBRARY_PACKAGE_NAME
-            || provenance.subcircuit_library.package_version != version
-            || provenance.subcircuit_library.origin != origin
-        {
-            return Err(CrsError::Compatibility(
-                "univariate CRS subcircuit-library package identity does not match the selected library"
-                    .to_string(),
-            ));
-        }
         // Decode and validate the consumed CRS later; no payload or source hashing here.
         return Ok(None);
     }
@@ -309,6 +280,44 @@ pub fn validate_operational_univariate_crs_compatibility(
     let prover_keys = payloads.pop().expect("three validated payloads");
     let tau = payloads.pop().expect("three validated payloads");
     Ok(Some(ValidatedUnivariateCrsBytes { tau, prover_keys }))
+}
+
+/// Metadata-only identity shared by native CRS consumers. Does not open other
+/// role payloads, hash circuit sources, or impose publication eligibility.
+pub fn read_univariate_crs_identity(keys_dir: &Path) -> Result<CrsProvenance, CrsError> {
+    let provenance_path = keys_dir.join(CRS_PROVENANCE_FILE_NAME);
+    let bytes = fs::read(&provenance_path).map_err(|source| {
+        CrsError::Compatibility(format!(
+            "cannot read CRS provenance {}: {source}",
+            provenance_path.display()
+        ))
+    })?;
+    let provenance =
+        crate::crs_provenance::parse_crs_provenance(&bytes).map_err(CrsError::Compatibility)?;
+    provenance
+        .require_protocol(UNIVARIATE_CRS_SCHEMA_ID)
+        .map_err(CrsError::Compatibility)?;
+    let compiled_compatibility = compatibility_from_package_version(env!("CARGO_PKG_VERSION"))
+        .map_err(|error| CrsError::Compatibility(error.to_string()))?
+        .to_string();
+    if provenance.compatible_backend_version != compiled_compatibility {
+        return Err(CrsError::Compatibility(
+            "CRS compatibleBackendVersion does not match the compiled backend".into(),
+        ));
+    }
+    {
+        let (origin, version) = selected_subcircuit_library_package_identity();
+        if provenance.subcircuit_library.package_name != SUBCIRCUIT_LIBRARY_PACKAGE_NAME
+            || provenance.subcircuit_library.package_version != version
+            || provenance.subcircuit_library.origin != origin
+        {
+            return Err(CrsError::Compatibility(
+                "univariate CRS subcircuit-library package identity does not match the selected library"
+                    .to_string(),
+            ));
+        }
+    }
+    Ok(provenance)
 }
 
 fn validate_univariate_payloads(

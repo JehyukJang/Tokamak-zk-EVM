@@ -1,199 +1,196 @@
-// Preprocess expressions retain the proving protocol's mathematical notation.
-#![allow(non_snake_case)]
+//! Circuit admission for the current univariate protocol. No online proof
+//! verification or prover CRS is required by this command.
+mod engine;
+mod input;
 
-use libs::cli::CliDiagnostic;
-use libs::crs_artifacts::{ArchivedPartialSigma1RkyvExt, ArchivedSigmaPreprocessRkyv};
-use libs::errors::{ArtifactError, CrsError, DeviceError};
-use libs::frontend_artifacts::{Instance, Permutation, SetupParams};
-use libs::proof_protocol::Preprocess;
-use libs::univariate_crs::{UnivariateCrsError, UnivariateCrsShape, UnivariateTauSequence};
-use libs::univariate_preprocess::UnivariatePreprocess;
-use libs::univariate_relation::{
-    connection_permutation_polynomial, placement_selector_polynomial, UnivariateRelationError,
+use backend_interface::PreprocessBytes;
+use backend_univariate_crs_interface::PreprocessKeysRkyv;
+use engine::{Cpu, Engine, Icicle};
+use libs::frontend_artifacts::{
+    public_wire_layout::PublicWireLayout, Instance, Permutation, SetupParams,
 };
-use libs::utils::{
-    init_ntt_domain, prover_verifier_ntt_domain_size, setup_shape, validate_setup_shape,
-};
-use std::path::PathBuf;
-use thiserror::Error;
+use libs::univariate_crs::UnivariateCrsShape;
+use libs::univariate_field::ProtocolField;
+use libs::univariate_relation::connection_permutation_targets;
 
-pub struct PreprocessInputPaths<'a> {
-    pub qap_path: &'a str,
-    pub synthesizer_path: &'a str,
-    pub tau_sequence_path: &'a str,
-    pub keys_path: &'a str,
-    pub output_path: &'a str,
+pub use input::{preprocess, PreprocessInputPaths};
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
+pub enum PreprocessDevice {
+    #[default]
+    Cpu,
+    Cuda,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum PreprocessError {
     #[error(transparent)]
-    Artifact(#[from] ArtifactError),
+    Artifact(#[from] libs::errors::ArtifactError),
     #[error(transparent)]
-    Crs(#[from] CrsError),
+    Crs(#[from] libs::errors::CrsError),
     #[error(transparent)]
-    Device(#[from] DeviceError),
+    Device(#[from] libs::errors::DeviceError),
     #[error(transparent)]
-    UnivariateCrs(#[from] UnivariateCrsError),
+    Shape(#[from] libs::univariate_crs::UnivariateCrsError),
     #[error(transparent)]
-    UnivariateRelation(#[from] UnivariateRelationError),
-    #[error("univariate CRS schema or shape does not match the selected subcircuit library")]
-    UnivariateCrsMismatch,
-    #[error("failed to write preprocess output at {}: {source}", path.display())]
-    WriteOutput {
-        path: PathBuf,
-        #[source]
+    Relation(#[from] libs::univariate_relation::UnivariateRelationError),
+    #[error("preprocess: {0}")]
+    Invalid(String),
+    #[error("{}: {source}", path.display())]
+    Io {
+        path: std::path::PathBuf,
         source: std::io::Error,
     },
 }
 
-/// Computes U21c's two circuit-specific commitments directly from the
-/// selector and connection permutation.  No legacy bivariate polynomial,
-/// public-instance commitment, or preprocessing digest is involved.
-pub fn generate_univariate_preprocess(
-    crs: &UnivariateTauSequence,
-    selector: &[Option<usize>],
-    permutation: &[Permutation],
-    setup_params: &SetupParams,
-) -> Result<UnivariatePreprocess, PreprocessError> {
-    let expected_shape = UnivariateCrsShape::from_setup_params(setup_params)?;
-    if crs.schema_id != libs::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID
-        || crs.capacity.admits(&expected_shape).is_err()
-    {
-        return Err(PreprocessError::UnivariateCrsMismatch);
+impl From<String> for PreprocessError {
+    fn from(value: String) -> Self {
+        Self::Invalid(value)
     }
-
-    let s_kappa = placement_selector_polynomial(&expected_shape, setup_params, selector)?;
-    let s_c =
-        connection_permutation_polynomial(&expected_shape, setup_params, selector, permutation)?;
-    Ok(UnivariatePreprocess::new(
-        crs.commit_strided_polynomial(&s_kappa)?,
-        crs.commit_dense_polynomial(&s_c.coefficients)?,
-    ))
 }
 
-impl CliDiagnostic for PreprocessError {
+impl libs::cli::CliDiagnostic for PreprocessError {
     fn hint(&self) -> &'static str {
         match self {
-            Self::Artifact(_) => {
-                "Regenerate the frontend artifacts and provide the matching synthesizer directory."
+            Self::Device(_) => {
+                "Install the requested CUDA backend, or explicitly select --device cpu."
             }
-            Self::Crs(_) => {
-                "Use a CRS whose compatible backend version matches the selected subcircuit library, or use the explicit local development bypass only for local testing."
-            }
-            Self::Device(_) => "Check the ICICLE backend installation and the selected device.",
-            Self::UnivariateCrs(_) | Self::UnivariateCrsMismatch => {
-                "Use a complete univariate CRS generated for the selected subcircuit library."
-            }
-            Self::UnivariateRelation(_) => {
-                "Regenerate selector and permutation artifacts for the selected subcircuit library."
-            }
-            Self::WriteOutput { .. } => {
-                "Create or grant write access to the requested output directory, then retry."
-            }
+            Self::Io { .. } => "Check the reported file path and access permissions.",
+            _ => "Use matching current-protocol CRS, library and synthesizer inputs.",
         }
+    }
+}
+
+impl PreprocessDevice {
+    /// CPU never discovers or initializes an ICICLE backend. CUDA failure is
+    /// returned to the caller, never retried on CPU.
+    pub fn initialize(self) -> Result<(), PreprocessError> {
+        if self == Self::Cuda {
+            let failure = |reason: String| libs::errors::DeviceError::Initialization {
+                device: "CUDA",
+                reason,
+            };
+            icicle_runtime::load_backend_from_env_or_default()
+                .map_err(|e| failure(e.to_string()))?;
+            let device = icicle_runtime::Device::new("CUDA", 0);
+            if !icicle_runtime::is_device_available(&device) {
+                return Err(failure("CUDA was requested but is unavailable".into()).into());
+            }
+            icicle_runtime::set_device(&device).map_err(|e| failure(e.to_string()))?;
+        }
+        Ok(())
     }
 }
 
 pub fn generate_preprocess(
-    sigma: &ArchivedSigmaPreprocessRkyv,
-    permutation_raw: &[Permutation],
+    keys: &PreprocessKeysRkyv,
+    setup: &SetupParams,
+    public: &PublicWireLayout,
+    selector: &[Option<usize>],
+    permutation: &[Permutation],
     instance: &Instance,
-    setup_params: &SetupParams,
-) -> Result<Preprocess, String> {
-    let shape = setup_shape(setup_params);
-    validate_setup_shape(&shape);
-    let m_i = shape.m_i;
-    let s_max = shape.s_max;
-    let ntt_domain_size = prover_verifier_ntt_domain_size(&shape);
-    init_ntt_domain(ntt_domain_size);
-    println!("Converting the permutation matrices into polynomials s^0 and s^1...");
-    let (mut s0XY, mut s1XY) = Permutation::to_poly(permutation_raw, m_i, s_max)?;
-    let s0 = sigma.sigma_1.encode_poly(&mut s0XY, setup_params);
-    let s1 = sigma.sigma_1.encode_poly(&mut s1XY, setup_params);
-    let O_pub_fix = sigma
-        .sigma_1
-        .encode_O_pub_fix(&instance.a_pub_function, setup_params)?;
-    Ok(Preprocess { s0, s1, O_pub_fix })
+    device: PreprocessDevice,
+) -> Result<PreprocessBytes, PreprocessError> {
+    device.initialize()?;
+    match device {
+        PreprocessDevice::Cpu => {
+            generate::<Cpu>(keys, setup, public, selector, permutation, instance)
+        }
+        PreprocessDevice::Cuda => {
+            generate::<Icicle>(keys, setup, public, selector, permutation, instance)
+        }
+    }
+}
+
+fn root<F: ProtocolField>(size: usize) -> Result<F, PreprocessError> {
+    libs::univariate_field::canonical_root(size)
+        .map(|r| F::from_le(&r.canonical_le()))
+        .ok_or_else(|| PreprocessError::Invalid("unsupported protocol domain".into()))
+}
+
+fn generate<E: Engine>(
+    keys: &PreprocessKeysRkyv,
+    setup: &SetupParams,
+    public: &PublicWireLayout,
+    selector: &[Option<usize>],
+    permutation: &[Permutation],
+    instance: &Instance,
+) -> Result<PreprocessBytes, PreprocessError> {
+    let shape = UnivariateCrsShape::from_setup_params(setup)?;
+    let targets = connection_permutation_targets(&shape, setup, selector, permutation)?;
+    let fixed = input::fixed_values::<E::F>(setup, public, selector, instance)?;
+    input::validate_keys(keys, &shape, setup, fixed.len())?;
+    E::initialize(
+        (shape.selection_domain_size + 1)
+            .next_power_of_two()
+            .max(shape.connection_domain_size),
+    )?;
+
+    let start = std::time::Instant::now();
+    let connection_root = root::<E::F>(shape.connection_domain_size)?;
+    let mut power = E::F::one();
+    let powers: Vec<_> = (0..shape.connection_domain_size)
+        .map(|_| {
+            let value = power;
+            power = power * connection_root;
+            value
+        })
+        .collect();
+    let evaluations = targets.into_iter().map(|i| powers[i]).collect::<Vec<_>>();
+    let sc = E::coefficients(&E::interpolate(&evaluations, connection_root));
+    let s_c = E::msm_g1(&keys.sc_g1[..sc.len()], &sc)?;
+    println!("preprocess S_C: {:.6} s", start.elapsed().as_secs_f64());
+
+    let start = std::time::Instant::now();
+    let zu = selection_complement::<E>(setup, selector, shape.selection_domain_size)?;
+    // The CRS bases already contain the shift tau^h; the scalars are Z_u's
+    // coefficients, not coefficients of a second shifted polynomial.
+    let e_kappa = E::msm_g2(&keys.selection_g2, &zu)?;
+    println!("preprocess E_kappa: {:.6} s", start.elapsed().as_secs_f64());
+
+    let start = std::time::Instant::now();
+    let c_fix = E::msm_g1(&keys.fixed_public_queries, &fixed)?;
+    println!("preprocess C_fix: {:.6} s", start.elapsed().as_secs_f64());
+    Ok(PreprocessBytes {
+        s_c,
+        c_fix,
+        e_kappa,
+    })
+}
+
+fn selection_complement<E: Engine>(
+    setup: &SetupParams,
+    selector: &[Option<usize>],
+    size: usize,
+) -> Result<Vec<E::F>, PreprocessError> {
+    let omega = root::<E::F>(size)?;
+    // Inactive placements select the library's reserved virtual empty ID.
+    // Z_v has only s roots; divide Z_S by Z_v instead of multiplying s(t-1)
+    // unselected linear factors. The polynomial objects remain engine-native.
+    let mut level = selector
+        .iter()
+        .enumerate()
+        .map(|(i, k)| {
+            let selected = omega.pow(i + setup.s_max * k.unwrap_or(setup.t - 1));
+            E::polynomial(&[E::F::zero() - selected, E::F::one()])
+        })
+        .collect::<Vec<_>>();
+    while level.len() > 1 {
+        level = level
+            .chunks_exact(2)
+            .map(|pair| E::mul(&pair[0], &pair[1]))
+            .collect();
+    }
+    let mut vanishing = vec![E::F::zero(); size + 1];
+    vanishing[0] = E::F::zero() - E::F::one();
+    vanishing[size] = E::F::one();
+    let zu = E::divide_exact(&E::polynomial(&vanishing), &level[0])?;
+    let coefficients = E::coefficients(&zu);
+    if coefficients.len() != size - setup.s_max + 1 {
+        return Err("unexpected selection-complement degree".to_owned().into());
+    }
+    Ok(coefficients)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::generate_univariate_preprocess;
-    use icicle_bls12_381::curve::{CurveCfg, G2CurveCfg, ScalarField};
-    use icicle_core::curve::Curve;
-    use icicle_core::traits::{Arithmetic, FieldImpl};
-    use libs::frontend_artifacts::SetupParams;
-    use libs::univariate_crs::{
-        UnivariateCrsFoundation, UnivariateCrsShape, UnivariateTauSequence, UnivariateTrapdoor,
-    };
-    use libs::univariate_preprocess::UnivariatePreprocess;
-    use libs::univariate_relation::{
-        connection_permutation_polynomial, placement_selector_polynomial,
-    };
-
-    #[test]
-    fn commits_only_u21c_selector_and_permutation_polynomials() {
-        let setup = SetupParams {
-            l_free: 0,
-            l: 1,
-            l_user_out: 0,
-            l_user: 0,
-            l_D: 3,
-            m_D: 3,
-            n: 2,
-            m: 4,
-            t: 2,
-            s_D: 1,
-            s_max: 2,
-        };
-        let shape = UnivariateCrsShape::from_setup_params(&setup).unwrap();
-        let mut tau = ScalarField::from_u32(2);
-        while tau.pow(shape.arithmetic_domain_size) == ScalarField::one()
-            || tau.pow(shape.connection_domain_size) == ScalarField::one()
-        {
-            tau = tau + ScalarField::one();
-        }
-        let trapdoor = UnivariateTrapdoor::new(
-            &shape,
-            tau,
-            ScalarField::from_u32(3),
-            ScalarField::from_u32(5),
-            ScalarField::from_u32(7),
-            ScalarField::from_u32(11),
-            ScalarField::from_u32(13),
-        )
-        .unwrap();
-        let foundation = UnivariateCrsFoundation::generate(
-            shape.clone(),
-            &trapdoor,
-            CurveCfg::generate_random_affine_points(1)[0],
-            G2CurveCfg::generate_random_affine_points(1)[0],
-        )
-        .unwrap();
-        let crs = UnivariateTauSequence {
-            schema_id: foundation.schema_id,
-            capacity: libs::univariate_crs::UnivariateTauCapacity::from_shape(&foundation.shape),
-            s0_g1: foundation.s0_g1,
-            sxi_g1: foundation.sxi_g1,
-            spsi_g1: foundation.spsi_g1,
-            tau_powers_g2: foundation.tau_powers_g2,
-        };
-        let selector = [Some(0), None];
-        let permutation = [];
-        let actual = generate_univariate_preprocess(&crs, &selector, &permutation, &setup).unwrap();
-        let expected = UnivariatePreprocess::new(
-            crs.commit_strided_polynomial(
-                &placement_selector_polynomial(&shape, &setup, &selector).unwrap(),
-            )
-            .unwrap(),
-            crs.commit_dense_polynomial(
-                &connection_permutation_polynomial(&shape, &setup, &selector, &permutation)
-                    .unwrap()
-                    .coefficients,
-            )
-            .unwrap(),
-        );
-        assert_eq!(actual, expected);
-    }
-}
+mod tests;

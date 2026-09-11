@@ -192,30 +192,13 @@ pub fn prepare<E: Engine>(
             coefficients,
         }
     });
-    let mut targets: Vec<_> = (0..nc).collect();
-    let mut explicit = vec![false; nc];
-    for p in permutation {
-        if p.row >= mi || p.X >= mi || p.col >= setup.s_max || p.Y >= setup.s_max {
-            return Err("permutation coordinate outside domain".to_owned().into());
-        }
-        if selector[p.col].is_none() || selector[p.Y].is_none() {
-            return Err("permutation maps an inactive placement".to_owned().into());
-        }
-        let source = p.col + setup.s_max * p.row;
-        let target = p.Y + setup.s_max * p.X;
-        if explicit[source] {
-            return Err("duplicate permutation source".to_owned().into());
-        }
-        explicit[source] = true;
-        targets[source] = target;
-    }
-    let mut seen = vec![false; nc];
-    for t in &targets {
-        if seen[*t] {
-            return Err("nonbijective permutation".to_owned().into());
-        }
-        seen[*t] = true;
-    }
+    let targets = libs::univariate_relation::connection_permutation_targets(
+        &crs.shape,
+        setup,
+        selector,
+        permutation,
+    )
+    .map_err(|e| e.to_string())?;
     let mut powers = Vec::with_capacity(nc);
     let mut power = E::F::one();
     for _ in 0..nc {

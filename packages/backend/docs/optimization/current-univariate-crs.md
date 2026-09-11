@@ -1112,3 +1112,85 @@ binary arguments in `packages/backend`, the configured ICICLE installation,
 release `prove --features timing`, one excluded warmup per binary and five
 alternating-order pairs. Do not compare these default-mode samples directly
 with historical always-on-digest timings.
+
+## Native preprocess: initial release baseline
+
+This 2026-09-12 checkpoint is for backend engineers qualifying the current
+circuit-admission implementation. It is not an optimization comparison with
+the superseded protocol, a CUDA benchmark, or a full proof-verification result.
+Native preprocess is now implemented; native verify and the WASM rewrite
+remain pending. Earlier statements in this report about unfinished preprocess
+describe their historical checkpoints.
+
+The command reads only `preprocess_keys.rkyv` and common provenance from the
+CRS directory. Library metadata, selector, permutation and public instance
+provide the circuit inputs. It computes `S_C`, `E_kappa` and `C_fix`, then writes
+the common 384-byte binary output. The [native reference](../../rust/preprocess/README.md)
+describes the exact input, hardware and encoding boundaries. CPU uses arkworks
+polynomials and stock G1/G2 MSM APIs. ICICLE is selected only through explicit
+CUDA dispatch. No prover-specific MSM optimization was assumed optimal for
+preprocess, and no new performance candidate was accepted in this checkpoint.
+
+### Measurement
+
+The final binary was built with `cargo build -p preprocess --locked --release`
+and the default local-QAP feature. The host was an Apple M4 Pro with 14 logical
+cores; production code does not fix this worker count. One warmup was excluded
+before five serial measurements. Normal desktop background activity was not
+controlled. No memory limit was applied.
+
+The input CRS directory was isolated to contain only the 28,276,128-byte
+preprocess key archive and its 984-byte provenance. It was copied from the
+existing current-protocol trusted-setup output, not regenerated. Each command
+used the current local-QAP library and `tmp/current-local-fixture` and ran
+with `ICICLE_BACKEND_INSTALL_DIR=/nonexistent`; the loader path still supplied
+the executable's linked ICICLE shared libraries. CPU execution did not discover
+or initialize an ICICLE backend. Metadata identity validation stayed enabled;
+publication eligibility and bulk payload digests were not runtime gates.
+
+| Measurement | Five-run mean |
+| --- | ---: |
+| Instrumented command interval | 0.371348 s |
+| Process wall time (`time -l`) | 0.374 s |
+| Input read and archive decode | 0.007373 s |
+| `S_C` interpolation and G1 MSM | 0.223022 s |
+| `Z_u` construction and `E_kappa` G2 MSM | 0.139297 s |
+| `C_fix` G1 MSM | 0.000512 s |
+| Peak RSS | 229.0 MB |
+
+The command interval ranges from 0.364760 to 0.379319 seconds. Its total also
+includes metadata/shape admission and output handling, so the listed sections
+do not exhaust it. Process wall time includes startup and shutdown and has
+the external timer's 0.01-second resolution. These are baseline observations,
+not a claimed speedup. The final output hash was
+`13baed2db3479b1ac5d1c0d06e0a183ea0c49f9e305959b75e03cb69b8ca5ebb`.
+
+[Raw samples and reproduction evidence](evidence/preprocess-p4-baseline.json)
+include commands, source/input/binary hashes, the excluded warmup and all
+five samples. Evidence hashes were calculated separately, outside timed runs.
+
+### Correctness and remaining coverage
+
+Five preprocess library tests and one CLI test pass under default features
+and with `development-crs-bypass`. Independent Lagrange evaluation and direct
+unselected-root products check `S_C` and `E_kappa`; direct group arithmetic
+checks `C_fix`. Tests compare arkworks with the local ICICLE **CPU** backend,
+including full/partial/empty selection polynomials, G1/G2 bytes and identity
+outputs. They also cover fixed/free separation, malformed circuit admission,
+canonical coordinate bounds and truncated archives.
+
+The shared univariate sweep passes 27 tests, with two opt-in experiments
+skipped; this is a scoped sweep, not a whole-workspace test result. Previously
+stale l_free, m_D, t, domain and minimum-capacity expectations were updated
+without weakening production checks. The retired selector-commitment helper
+and its dedicated test were removed. Prove regression passes 12 library tests
+and one CLI test, with six performance experiments skipped.
+Four additional univariate-math and three shared artifact-encoding integration
+tests pass as well.
+
+Explicit CUDA selection on this Mac fails with `CUDA was requested but is
+unavailable`, returns a failing exit status and produces no output. This is
+failure-path coverage, not CUDA arithmetic execution coverage. No CUDA timing,
+production npm execution, MPC, publication or package version change occurred.
+The pending verifier still owns removal of its old configuration model and
+S_kappa dependency. Full native/WASM proof verification and E2E remain pending.

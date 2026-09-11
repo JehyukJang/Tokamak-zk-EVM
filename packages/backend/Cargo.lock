@@ -2199,12 +2199,19 @@ dependencies = [
 name = "preprocess"
 version = "2.1.5"
 dependencies = [
+ "ark-bls12-381",
+ "ark-ec",
+ "ark-ff",
+ "ark-poly",
+ "backend-interface",
+ "backend-univariate-crs-interface",
  "clap 4.5.53",
+ "hex",
  "icicle-bls12-381",
  "icicle-core",
+ "icicle-runtime",
  "libs",
- "memmap2",
- "rkyv 0.7.46",
+ "rayon",
  "serde",
  "serde_json",
  "sha2",

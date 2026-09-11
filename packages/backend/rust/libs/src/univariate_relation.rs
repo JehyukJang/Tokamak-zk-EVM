@@ -137,25 +137,6 @@ impl StridedPolynomial {
     }
 }
 
-/// Builds the U9a polynomial `S_kappa` directly from a capacity-length
-/// selector. Only real library IDs are admitted; the `t - s_D` padding range
-/// is never a legal placement value.
-pub fn placement_selector_polynomial(
-    shape: &UnivariateCrsShape,
-    setup: &SetupParams,
-    selector: &[Option<usize>],
-) -> Result<StridedPolynomial, UnivariateRelationError> {
-    validate_placement_selector(selector, setup)?;
-    let label_count = arithmetic_label_count(shape, setup)?;
-    let mut evaluations = vec![ScalarField::zero(); label_count];
-    for (placement_index, subcircuit_id) in selector.iter().enumerate() {
-        if let Some(subcircuit_id) = subcircuit_id {
-            evaluations[placement_index + setup.s_max * *subcircuit_id] = ScalarField::one();
-        }
-    }
-    interpolate_selector(evaluations, setup.n)
-}
-
 /// Builds the U5 slot selector `C^C_i` over the `s` connection cosets.
 pub fn connection_coset_selector(
     setup: &SetupParams,
@@ -586,6 +567,22 @@ pub fn connection_permutation_polynomial(
     selector: &[Option<usize>],
     permutation: &[Permutation],
 ) -> Result<DenseDomainPolynomial, UnivariateRelationError> {
+    let targets = connection_permutation_targets(shape, setup, selector, permutation)?;
+    let evaluations = targets
+        .into_iter()
+        .map(|target| shape.connection_root.pow(target))
+        .collect();
+    interpolate_dense(evaluations)
+}
+
+/// The hardware-independent connection topology. Omitted entries are identity;
+/// coordinates use placement + s * interface_wire on both native engines.
+pub fn connection_permutation_targets(
+    shape: &UnivariateCrsShape,
+    setup: &SetupParams,
+    selector: &[Option<usize>],
+    permutation: &[Permutation],
+) -> Result<Vec<usize>, UnivariateRelationError> {
     validate_placement_selector(selector, setup)?;
     let interface_count = interface_wire_count(setup)?;
     let domain_size = shape.connection_domain_size;
@@ -640,11 +637,7 @@ pub fn connection_permutation_polynomial(
         seen_targets[*target] = true;
     }
 
-    let mut evaluations = vec![ScalarField::zero(); domain_size];
-    for (source, target) in targets.into_iter().enumerate() {
-        evaluations[source] = shape.connection_root.pow(target);
-    }
-    interpolate_dense(evaluations)
+    Ok(targets)
 }
 
 fn validate_placement_selector(
@@ -805,16 +798,6 @@ fn interpolate_dense(
     })
 }
 
-fn arithmetic_label_count(
-    shape: &UnivariateCrsShape,
-    setup: &SetupParams,
-) -> Result<usize, UnivariateRelationError> {
-    setup
-        .s_max
-        .checked_mul(shape.subcircuit_capacity)
-        .ok_or(UnivariateRelationError::TransformDomainNotPowerOfTwo { name: "s * t" })
-}
-
 fn interpolate_selector(
     evaluations: Vec<ScalarField>,
     stride: usize,
@@ -845,8 +828,8 @@ mod tests {
     use super::{
         arithmetic_wire_lift, arithmetic_wire_lifts_at, connection_copy_factors,
         connection_coset_selector, connection_permutation_polynomial, connection_wire_lift,
-        connection_wire_lift_at, placement_selector_polynomial, witness_maps, R1csMatrix,
-        SlotWitness, UnivariateRelationError, UnivariateSubcircuit,
+        connection_wire_lift_at, witness_maps, R1csMatrix, SlotWitness, UnivariateRelationError,
+        UnivariateSubcircuit,
     };
     use crate::frontend_artifacts::{Permutation, SetupParams};
     use crate::univariate_crs::UnivariateCrsShape;
@@ -950,40 +933,18 @@ mod tests {
 
     fn setup() -> SetupParams {
         SetupParams {
-            l_free: 0,
+            l_free: 2,
             l: 2,
             l_user_out: 0,
             l_user: 0,
             l_D: 4,
-            m_D: 4,
+            m_D: 6,
             n: 2,
             m: 2,
             t: 4,
             s_D: 3,
             s_max: 2,
         }
-    }
-
-    #[test]
-    fn placement_selector_uses_only_real_catalog_ids() {
-        let setup = setup();
-        let shape = UnivariateCrsShape::from_setup_params(&setup).unwrap();
-        let selector = placement_selector_polynomial(&shape, &setup, &[Some(0), None]).unwrap();
-
-        for placement in 0..setup.s_max {
-            for subcircuit in 0..shape.subcircuit_capacity {
-                let point = shape
-                    .arithmetic_root
-                    .pow(shape.arithmetic_index(placement, 0, &setup).unwrap());
-                let expected = if (placement, subcircuit) == (0, 0) {
-                    ScalarField::one()
-                } else {
-                    ScalarField::zero()
-                };
-                assert_eq!(selector.evaluate(point), expected);
-            }
-        }
-        assert!(placement_selector_polynomial(&shape, &setup, &[Some(3), None]).is_err());
     }
 
     #[test]

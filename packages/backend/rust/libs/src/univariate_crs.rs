@@ -1836,7 +1836,7 @@ mod tests {
 
     fn setup_params() -> SetupParams {
         SetupParams {
-            l_free: 0,
+            l_free: 2,
             l: 2,
             l_user_out: 0,
             l_user: 0,
@@ -1870,17 +1870,19 @@ mod tests {
     }
 
     #[test]
-    fn derives_u59_capacity_and_generates_the_u18_basis() {
+    fn derives_current_capacity_and_generates_the_u18_basis() {
         let shape = UnivariateCrsShape::from_setup_params(&setup_params())
             .expect("test setup parameters must define supported domains");
         assert_eq!(shape.subcircuit_capacity, 4);
-        assert_eq!(shape.arithmetic_domain_size, 16);
+        assert_eq!(shape.arithmetic_domain_size, 4);
         assert_eq!(shape.connection_domain_size, 4);
         assert_eq!(shape.intersection_domain_size, 4);
-        assert_eq!(shape.union_domain_size, 16);
-        assert_eq!(shape.minimum_capacity, [32, 17, 35]);
-        assert_eq!(shape.declared_capacity, [32, 17, 35]);
-        assert_eq!(shape.k, 18);
+        assert_eq!(shape.union_domain_size, 4);
+        assert_eq!(shape.selection_domain_size, 8);
+        // d=5, h=6, P=max(2d+1, N_S+1, h+s(t-1), l_free-1)=12.
+        assert_eq!(shape.minimum_capacity, [24, 12, 12]);
+        assert_eq!(shape.declared_capacity, [24, 12, 12]);
+        assert_eq!(shape.k, 7);
 
         let g1 = CurveCfg::generate_random_affine_points(1)[0];
         let g2 = G2CurveCfg::generate_random_affine_points(1)[0];
@@ -1889,9 +1891,9 @@ mod tests {
             .expect("U18 basis generation must succeed");
 
         assert_eq!(foundation.schema_id, UNIVARIATE_CRS_SCHEMA_ID);
-        assert_eq!(foundation.s0_g1.len(), 33);
-        assert_eq!(foundation.sxi_g1.len(), 18);
-        assert_eq!(foundation.spsi_g1.len(), 36);
+        assert_eq!(foundation.s0_g1.len(), 25);
+        assert_eq!(foundation.sxi_g1.len(), 13);
+        assert_eq!(foundation.spsi_g1.len(), 13);
         assert_eq!(foundation.s0_g1[0], G1serde(g1));
         assert_eq!(foundation.s0_g1[3], foundation.s0_g1[2] * trapdoor.tau);
         assert_eq!(foundation.tau_powers_g2[0], G2serde(g2));
@@ -1927,16 +1929,22 @@ mod tests {
     }
 
     #[test]
-    fn admits_a_larger_declared_capacity_without_changing_domain_geometry() {
+    fn admits_only_the_library_derived_minimum_capacity() {
         let minimum = UnivariateCrsShape::from_setup_params(&setup_params()).unwrap();
-        let larger = minimum
+        assert!(minimum
             .clone()
             .with_declared_capacity([48, 24, 48])
-            .expect("componentwise larger capacities must be admitted");
-        assert!(larger.admits_setup(&minimum));
-        assert_eq!(larger.k, 31);
-        let too_small = minimum.clone().with_declared_capacity([31, 17, 35]);
-        assert!(too_small.is_err());
+            .is_err());
+        assert!(minimum
+            .clone()
+            .with_declared_capacity([23, 12, 12])
+            .is_err());
+        let admitted = minimum
+            .clone()
+            .with_declared_capacity([24, 12, 12])
+            .unwrap();
+        assert!(admitted.admits_setup(&minimum));
+        assert_eq!(admitted.k, 7);
     }
 
     #[test]
@@ -1964,12 +1972,12 @@ mod tests {
     #[test]
     fn builds_the_complete_u20_and_u21_query_families_without_public_grid_expansion() {
         let setup = SetupParams {
-            l_free: 0,
+            l_free: 1,
             l: 1,
             l_user_out: 0,
             l_user: 0,
             l_D: 3,
-            m_D: 3,
+            m_D: 4,
             n: 2,
             m: 4,
             t: 2,
@@ -2001,6 +2009,7 @@ mod tests {
                     subcircuit_id: 0,
                     local_wire_index: 0,
                 },
+                GlobalWire::Padding,
             ],
             &infos,
         )
@@ -2169,6 +2178,7 @@ mod tests {
     fn derives_a_strictly_larger_power_of_two_type_capacity() {
         let mut params = setup_params();
         params.s_D = 3;
+        params.m_D = params.m * params.s_D;
         assert_eq!(
             UnivariateCrsShape::from_setup_params(&params)
                 .expect("non-power-of-two catalog must be padded")
@@ -2177,6 +2187,8 @@ mod tests {
         );
 
         params.s_D = 4;
+        params.t = 8;
+        params.m_D = params.m * params.s_D;
         assert_eq!(
             UnivariateCrsShape::from_setup_params(&params)
                 .expect("power-of-two catalog must still use a strictly larger capacity")
@@ -2190,6 +2202,9 @@ mod tests {
         let mut params = setup_params();
         params.n = 1024;
         params.s_D = 44;
+        params.t = 64;
+        params.m = 1024;
+        params.m_D = params.m * params.s_D;
         params.s_max = 256;
         params.l = 396;
         params.l_D = 1420;
@@ -2197,10 +2212,11 @@ mod tests {
         let shape = UnivariateCrsShape::from_setup_params(&params)
             .expect("current library dimensions must define supported domains");
         assert_eq!(shape.subcircuit_capacity, 64);
-        assert_eq!(shape.arithmetic_domain_size, 1 << 24);
+        assert_eq!(shape.arithmetic_domain_size, 1 << 18);
+        assert_eq!(shape.selection_domain_size, 1 << 14);
         assert_eq!(shape.connection_domain_size, 1 << 18);
         assert_eq!(shape.intersection_domain_size, 1 << 18);
-        assert_eq!(shape.union_domain_size, 1 << 24);
+        assert_eq!(shape.union_domain_size, 1 << 18);
     }
 
     #[test]
