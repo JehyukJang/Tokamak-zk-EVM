@@ -12,8 +12,9 @@ The Filecoin family mapping is identified. Intermediate public encodings may
 be extended to support separate wire-weight and delta updates. Security
 analysis of that extension is deferred, not an implementation gate. The
 public-point update and consistency equations below have a test-only model;
-the phase 1 adapter is implemented, while the contribution receipt and
-knowledge proof are not yet implemented. Dusk entry points are retired;
+contributor-local source preparation is implemented, while participant command
+wiring, the contribution receipt and knowledge proof are not yet implemented.
+There is no repository phase 1 or standalone import command. Dusk entry points are retired;
 removal of the remaining legacy files/integration is not complete.
 
 ## Filecoin source mapping
@@ -61,14 +62,34 @@ subgroups, power relations, or contribution history. No full source SHA-256
 or independently verified source ceremony is claimed. Decoding must validate
 the upstream point encoding before converting to common affine bytes.
 
-The adapter now uses that pinned layout. Its point decoder follows the
+Internal participant source preparation uses that pinned layout. Its decoder follows the
 upstream lockfile's [pairing revision c2af46ca](https://github.com/matterinc/pairing/blob/c2af46cac3e6ebc8e1e1f37bb993e5e6c7f689d1/src/bls12_381/ec.rs):
 uncompressed big-endian x/y for G1; x.c1, x.c0, y.c1, y.c0 for G2. A second
 bounded probe fetched the 192-byte G2 generator at offset 25,769,803,744 on
-2026-09-12; the adapter decodes it to the arkworks generator. Full-source
+2026-09-12; the decoder maps it to the arkworks generator. Full-source
 BLAKE2b validation remains unexecuted against the live 72-GiB artifact here.
 Synthetic source-format fixtures exercise the same parser and common archive
 conversion without accepting configurable pins in the production API.
+
+### Participant trust boundary
+
+Each participant independently obtains the original Filecoin source and
+checks its complete Filecoin-published pinned digest before accepting incoming
+ceremony state or generating a secret contribution. The implementation retains
+required ranges during that same authenticated read, then converts them locally.
+The existing library-shape calculation determines P from the selected npm
+metadata; neither the initializer nor an import command supplies P. The future
+participant workflow must resolve that npm snapshot and bind the initialization
+and incoming chain to the locally derived tau.
+
+A coordinator's converted subset, matching subset digest or receipt cannot
+replace original-source authentication. A directly acquired local original
+avoids another download, not the full digest check. Source preparation returns
+the common in-memory tau record without writing a standalone receipt or payload.
+Its source pins remain internal constants for eventual transcript/provenance
+binding; final artifact ownership stays in backend/common. The previous
+standalone phase 1 import architecture is superseded, not another supported
+trust mode. Public relation-check randomness is not a participant secret share.
 
 ## Reference construction and its limit
 
@@ -247,10 +268,16 @@ share, reverse a transition and provide zero shares. These tests check
 unbatched pairing identities, not receipt authentication or knowledge proofs.
 After adding those cases, all six tests passed in the isolated release
 harness on 2026-09-12 (0.27 seconds for the test run, excluding compilation).
-P15.2 subsequently removed the obsolete modules from the active library and
-replaced the CLI entry point. The normal release package test command now
-passes all 15 tests; this is no longer limited to the isolated harness. It
-still does not test a complete live source import or phase 2 ceremony.
+The earlier source-import implementation subsequently excluded obsolete modules
+from the active library and passed 15 normal release package tests. That
+standalone CLI architecture is superseded: source preparation is now internal
+and the import command/receipt are removed. The updated source tests preserve
+the parser/point checks and cover metadata-derived capacity and source rejection.
+Neither the earlier nor current isolated tests establish complete live-source
+authentication or an implemented phase 2 contribution ceremony.
+The internal-source revision passed ten source tests and six algebra-model
+tests in the normal release package command on 2026-09-12. Cargo metadata
+contains only the library and algebra-test targets, with no standalone command.
 
 ## Future work: cryptographic security analysis
 

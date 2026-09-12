@@ -1,6 +1,7 @@
 use super::*;
 use ark_ff::{Field, One};
-use std::io::Cursor;
+use backend_univariate_crs_interface::archive;
+use std::{fs, io::Cursor};
 
 fn source_g1(p: G1Affine) -> Vec<u8> {
     [
@@ -18,7 +19,7 @@ fn source_g2(p: G2Affine) -> Vec<u8> {
 }
 
 // Synthetic upstream-format accumulator; tau/tags here are deliberately known.
-// Production imports cannot override their source length, hash, header or URL.
+// Participant ingress cannot override its source length, hash, header or URL.
 fn fixture(length: usize) -> Vec<u8> {
     let mut bytes = vec![17u8; 64];
     let tau = Fr::from(7u64);
@@ -283,42 +284,109 @@ fn relation_check_includes_chunk_boundary() {
 }
 
 #[test]
-fn output_is_complete_non_overwriting_and_absent_after_validation_failure() {
-    let temp = tempfile::tempdir().unwrap();
-    let output = temp.path().join("import");
+fn internal_preparation_authenticates_before_conversion_and_returns_only_tau() {
     let bytes = fixture(8);
     let hash = digest(&bytes);
     let header = hex::encode(&bytes[..64]);
     let pin = small_pin(&hash, &header);
-    let receipt = import_stream(Cursor::new(&bytes), 3, &output, &pin).unwrap();
-    let payload = fs::read(output.join("tau_sequence.rkyv")).unwrap();
+    let p = required_capacity(&params(), &pin).unwrap();
+    assert_eq!(p, 5);
+    let tau = prepare_stream(Cursor::new(&bytes), p, &pin).unwrap();
+    assert_eq!(tau.s0_g1.len(), 2 * p + 1);
+    assert_eq!(tau.sxi_g1.len(), p + 1);
+    assert_eq!(tau.spsi_g1.len(), p + 1);
+    assert_eq!(tau.tau_powers_g2.len(), p + 1);
+    let payload = archive::to_bytes::<archive::rancor::Error>(&tau).unwrap();
+    let repeated = prepare_stream(Cursor::new(&bytes), p, &pin).unwrap();
     assert_eq!(
-        hex::encode(Sha256::digest(&payload)),
-        receipt.tau_sequence_sha256
+        payload.as_ref(),
+        archive::to_bytes::<archive::rancor::Error>(&repeated)
+            .unwrap()
+            .as_ref()
     );
-    let saved: ImportReceipt =
-        serde_json::from_slice(&fs::read(output.join("import_receipt.json")).unwrap()).unwrap();
-    assert_eq!(saved.capacity, 3);
-    assert_eq!(saved.source_blake2b512, hash);
-    assert_eq!(fs::read_dir(&output).unwrap().count(), 2);
-    assert!(!output.join("crs_provenance.json").exists());
-    assert!(import_stream(Cursor::new(&bytes), 3, &output, &pin).is_err());
-    assert_eq!(fs::read(output.join("tau_sequence.rkyv")).unwrap(), payload);
-    let rejected = temp.path().join("rejected");
-    assert!(import_stream(Cursor::new(&bytes[..20]), 3, &rejected, &pin).is_err());
-    assert!(!rejected.exists());
-    assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
-    // Also exercise cleanup when writing the staged payload succeeds but the
-    // final no-overwrite check rejects activation.
-    assert!(publish(&output, &payload, &receipt).is_err());
-    assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
-    assert_eq!(fs::read(output.join("tau_sequence.rkyv")).unwrap(), payload);
-    assert!(publish(&temp.path().join("missing-parent/out"), &payload, &receipt).is_err());
+    // A malformed point must first fail source authentication, not reach the
+    // decoder. A valid earlier preparation does not bypass this second read.
+    let mut bad = bytes.clone();
+    bad[64] |= 0xe0;
+    assert!(prepare_stream(Cursor::new(&bad), p, &pin)
+        .unwrap_err()
+        .to_string()
+        .contains("BLAKE2b"));
+    let bad_hash = digest(&bad);
+    assert!(
+        prepare_stream(Cursor::new(&bad), p, &small_pin(&bad_hash, &header))
+            .unwrap_err()
+            .to_string()
+            .contains("flags")
+    );
+    assert!(prepare_stream(Cursor::new(&bytes[..20]), p, &pin).is_err());
+    assert!(prepare_stream(Cursor::new(payload.as_ref()), p, &pin).is_err());
+}
+
+fn params() -> SetupParams {
+    SetupParams {
+        l_free: 1,
+        l: 1,
+        l_user_out: 0,
+        l_user: 1,
+        l_D: 2,
+        m_D: 1,
+        n: 1,
+        m: 1,
+        t: 2,
+        s_D: 1,
+        s_max: 1,
+    }
+}
+
+#[test]
+fn capacity_is_derived_from_library_and_rejects_unsupported_shapes() {
+    for (n, expected) in [(1, 5), (2, 7), (4, 11)] {
+        let mut setup = params();
+        setup.n = n;
+        assert_eq!(required_capacity(&setup, &FILECOIN).unwrap(), expected);
+    }
+    let mut setup = params();
+    setup.l_free = 16;
+    assert_eq!(required_capacity(&setup, &FILECOIN).unwrap(), 15);
+    let pin = small_pin("", "");
+    assert!(required_capacity(&setup, &pin).is_err());
+    setup = params();
+    setup.n = 1 << 27;
+    assert!(required_capacity(&setup, &FILECOIN).is_err());
+    for field in ["n", "t", "m_D", "l_free", "l_D"] {
+        let mut setup = params();
+        match field {
+            "n" => setup.n = 3,
+            "t" => setup.t = 4,
+            "m_D" => setup.m_D = 2,
+            "l_free" => setup.l_free = 0,
+            "l_D" => setup.l_D = 0,
+            _ => unreachable!(),
+        }
+        assert!(required_capacity(&setup, &FILECOIN).is_err(), "{field}");
+    }
+}
+
+#[test]
+fn production_sources_reject_invalid_inputs_without_output_or_network() {
+    let temp = tempfile::tempdir().unwrap();
     let source = temp.path().join("synthetic-challenge");
-    fs::write(&source, bytes).unwrap();
-    assert!(import_local(&source, 3, &rejected)
+    fs::write(&source, fixture(8)).unwrap();
+    assert!(prepare_local(&source, &params())
         .unwrap_err()
         .to_string()
         .contains("byte length"));
-    assert!(!rejected.exists());
+    // Invalid metadata is rejected before opening a file or making a request.
+    let mut invalid_params = params();
+    invalid_params.n = 3;
+    assert!(prepare_local(&temp.path().join("missing"), &invalid_params)
+        .unwrap_err()
+        .to_string()
+        .contains("library parameters"));
+    assert!(prepare_download(&invalid_params)
+        .unwrap_err()
+        .to_string()
+        .contains("library parameters"));
+    assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
 }

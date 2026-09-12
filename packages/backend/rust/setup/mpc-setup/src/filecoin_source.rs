@@ -1,48 +1,46 @@
-//! Pinned Filecoin challenge_19 adapter. The source is hashed in full, but only
-//! the requested ranges are retained. No secret tau or tag is generated here.
+//! Internal participant preparation from the original Filecoin challenge_19.
+//! Hash the complete source and retain only library-required ranges in the same
+//! pass. No standalone import artifact, receipt or phase 1 is produced here.
 
 use ark_bls12_381::{Bls12_381, Fq, Fq2, Fr, G1Affine, G1Projective, G2Affine, G2Projective};
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{BigInteger, PrimeField, UniformRand, Zero};
-use backend_univariate_crs_interface::{
-    archive, TauSequenceRkyv, UnivariateG1Rkyv, UnivariateG2Rkyv,
-};
+use backend_univariate_crs_interface::{TauSequenceRkyv, UnivariateG1Rkyv, UnivariateG2Rkyv};
 use blake2::{Blake2b, Digest as BlakeDigest};
+use libs::{frontend_artifacts::SetupParams, univariate_crs::UnivariateCrsShape};
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::{
-    fs::{self, File},
-    io::{self, Read, Write},
+    fs::File,
+    io::{self, Read},
     ops::Range,
     path::Path,
     time::Duration,
 };
 
-pub const SOURCE_URL: &str = "https://trusted-setup.filecoin.io/phase1/challenge_19";
-const SOURCE_REVISION: &str = "2bd49903bac07485fe23e5ef1a2d5fa19561977b";
+pub(crate) const SOURCE_URL: &str = "https://trusted-setup.filecoin.io/phase1/challenge_19";
+pub(crate) const SOURCE_REVISION: &str = "2bd49903bac07485fe23e5ef1a2d5fa19561977b";
 const SOURCE_LENGTH: u64 = 1 << 27;
-const SOURCE_DIGEST: &str = "5a26015ba27d8164152407da8f9b87e47593f17ae4c260e467bac2ba9dda6f66c15fa352487604d1350ef33a3bfedb0d99e37b619161e27545017366274df76b";
+pub(crate) const SOURCE_DIGEST: &str = "5a26015ba27d8164152407da8f9b87e47593f17ae4c260e467bac2ba9dda6f66c15fa352487604d1350ef33a3bfedb0d99e37b619161e27545017366274df76b";
 const PREVIOUS_RESPONSE: &str = "6e3f4b98e6c205d0efa5abc917dd03e28864016df380936fa4e9865595c5d69863eff93e8badf8e6b8c8cbfd5ab3a415ef7ba50b86e124bd9bfcd3f9aab67124";
 const READ_CHUNK: usize = 1024 * 1024;
 const RELATION_CHUNK: usize = 4096;
 
 #[derive(Debug, thiserror::Error)]
-pub enum ImportError {
+pub(crate) enum SourceError {
     #[error("{0}")]
     Invalid(String),
-    #[error("phase 1 I/O: {0}")]
+    #[error("Filecoin source I/O: {0}")]
     Io(#[from] io::Error),
     #[error("Filecoin download: {0}")]
     Download(#[from] reqwest::Error),
 }
-type Result<T> = std::result::Result<T, ImportError>;
+type Result<T> = std::result::Result<T, SourceError>;
 
-fn invalid(message: impl Into<String>) -> ImportError {
-    ImportError::Invalid(message.into())
+fn invalid(message: impl Into<String>) -> SourceError {
+    SourceError::Invalid(message.into())
 }
 
-// The source pin is not configurable through either public import entry point.
+// The source pin is not supplied by a coordinator, receipt or command option.
 // Private smaller pins are used only by tests of the identical stream parser.
 struct SourcePin<'a> {
     length: u64,
@@ -54,18 +52,6 @@ const FILECOIN: SourcePin<'static> = SourcePin {
     digest: SOURCE_DIGEST,
     previous_response: PREVIOUS_RESPONSE,
 };
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ImportReceipt {
-    pub source_url: String,
-    pub source_revision: String,
-    pub source_blake2b512: String,
-    pub capacity: usize,
-    pub tau_sequence_sha256: String,
-    // These checks concern the imported ranges, not every upstream contribution.
-    pub verification: Vec<String>,
-}
 
 impl SourcePin<'_> {
     fn byte_len(&self) -> u64 {
@@ -94,28 +80,27 @@ impl SourcePin<'_> {
     }
 }
 
-fn check_output(output: &Path) -> Result<()> {
-    if output.try_exists()? || fs::symlink_metadata(output).is_ok() {
-        return Err(invalid(
-            "output already exists; phase 1 never overwrites an import",
-        ));
-    }
-    Ok(())
+// Reuse the same capacity calculation as trusted setup; do not accept an
+// initializer's P. Participant-side npm resolution supplies these parameters.
+fn required_capacity(params: &SetupParams, pin: &SourcePin<'_>) -> Result<usize> {
+    let shape = UnivariateCrsShape::from_setup_params(params)
+        .map_err(|e| invalid(format!("invalid phase 2 library parameters: {e}")))?;
+    let p = shape.minimum_capacity[1];
+    pin.ranges(p)?;
+    Ok(p)
 }
 
-pub fn import_local(source: &Path, p: usize, output: &Path) -> Result<ImportReceipt> {
-    FILECOIN.ranges(p)?;
-    check_output(output)?;
+pub(crate) fn prepare_local(source: &Path, params: &SetupParams) -> Result<TauSequenceRkyv> {
+    let p = required_capacity(params, &FILECOIN)?;
     let file = File::open(source)?;
     if file.metadata()?.len() != FILECOIN.byte_len() {
         return Err(invalid("Filecoin source has the wrong byte length"));
     }
-    import_stream(file, p, output, &FILECOIN)
+    prepare_stream(file, p, &FILECOIN)
 }
 
-pub fn import_download(p: usize, output: &Path) -> Result<ImportReceipt> {
-    FILECOIN.ranges(p)?;
-    check_output(output)?;
+pub(crate) fn prepare_download(params: &SetupParams) -> Result<TauSequenceRkyv> {
+    let p = required_capacity(params, &FILECOIN)?;
     let client = reqwest::blocking::Client::builder()
         .https_only(true)
         .connect_timeout(Duration::from_secs(30))
@@ -139,42 +124,17 @@ pub fn import_download(p: usize, output: &Path) -> Result<ImportReceipt> {
             "Filecoin server returned an unexpected length, status or encoding",
         ));
     }
-    import_stream(response, p, output, &FILECOIN)
+    prepare_stream(response, p, &FILECOIN)
 }
 
-fn import_stream(
-    reader: impl Read,
-    p: usize,
-    output: &Path,
-    pin: &SourcePin<'_>,
-) -> Result<ImportReceipt> {
-    check_output(output)?;
+fn prepare_stream(reader: impl Read, p: usize, pin: &SourcePin<'_>) -> Result<TauSequenceRkyv> {
     eprintln!(
-        "Phase 1: hashing {} source bytes; retaining only capacity P={p}",
+        "Filecoin source: hashing {} bytes; retaining only library-required capacity P={p}",
         pin.byte_len()
     );
     let selected = collect_ranges(reader, p, pin)?;
-    eprintln!("Phase 1: validating imported point encodings and power relations");
-    let tau = decode_and_verify(selected)?;
-    let bytes = archive::to_bytes::<archive::rancor::Error>(&tau)
-        .map_err(|e| invalid(format!("tau archive serialization failed: {e}")))?;
-    let receipt = ImportReceipt {
-        source_url: SOURCE_URL.into(),
-        source_revision: SOURCE_REVISION.into(),
-        source_blake2b512: pin.digest.into(),
-        capacity: p,
-        tau_sequence_sha256: hex::encode(Sha256::digest(bytes.as_ref())),
-        verification: vec![
-            "full-source-blake2b512".into(),
-            "preceding-response-header".into(),
-            "selected-point-encoding-and-subgroup".into(),
-            "selected-generators".into(),
-            "selected-randomized-power-relations".into(),
-            "selected-beta-cross-group".into(),
-        ],
-    };
-    publish(output, bytes.as_ref(), &receipt)?;
-    Ok(receipt)
+    eprintln!("Filecoin source: validating selected point encodings and power relations");
+    decode_and_verify(selected)
 }
 
 // Hash and retain in the same read pass: the decoded bytes cannot be changed
@@ -366,26 +326,6 @@ fn decode_and_verify(selected: [Vec<u8>; 5]) -> Result<TauSequenceRkyv> {
     })
 }
 
-fn publish(output: &Path, bytes: &[u8], receipt: &ImportReceipt) -> Result<()> {
-    let parent = output
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or(Path::new("."));
-    let stage = tempfile::Builder::new()
-        .prefix(".filecoin-phase1-")
-        .tempdir_in(parent)?;
-    let mut payload = File::create(stage.path().join("tau_sequence.rkyv"))?;
-    payload.write_all(bytes)?;
-    payload.sync_all()?;
-    let mut manifest = File::create(stage.path().join("import_receipt.json"))?;
-    serde_json::to_writer_pretty(&mut manifest, receipt).map_err(io::Error::other)?;
-    manifest.write_all(b"\n")?;
-    manifest.sync_all()?;
-    check_output(output)?;
-    fs::rename(stage.path(), output)?;
-    Ok(())
-}
-
 #[cfg(test)]
-#[path = "filecoin_phase1_tests.rs"]
+#[path = "filecoin_source_tests.rs"]
 mod tests;

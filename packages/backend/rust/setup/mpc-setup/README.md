@@ -1,100 +1,106 @@
 # Tokamak zk-EVM MPC Setup
 
-This guide is for developers implementing and reviewing the MPC setup and
-operators who prepare, verify, or finalize its artifacts.
+This guide is for developers implementing and reviewing MPC setup and for
+prospective phase 2 contributors assessing its source-authentication boundary.
 
-## Replacement status
+## Implementation status
 
-The target workflow is a Filecoin phase 1 import adapter followed by a
-Tokamak phase 2 ceremony using the `@tokamak-zk-evm/subcircuit-library` npm
-snapshot. Phase 1 conversion does not run a new MPC ceremony. Dusk and the
-previous MPC protocol are retired design targets; their implementation is
-scheduled for removal, without backward compatibility.
+Filecoin supplies the externally completed phase 1. This repository implements
+Tokamak phase 2, not a new phase 1 or a standalone adapter replacing it. Each
+contributor must obtain the original Filecoin source, authenticate its full
+pinned digest, and derive the required tau subset locally. A coordinator's
+converted tau, subset digest or import receipt is not an authentication source.
 
-Phase 1 is implemented as `mpc phase1`. Phase 2 and final CRS generation are
-not implemented yet. The old native/Dusk binaries are no longer Cargo targets,
-and their modules are not part of the compiled library. Remaining legacy
-source/integration files are awaiting removal, not supported entry points.
-The existing
+Internal source preparation is implemented in
+[`filecoin_source.rs`](src/filecoin_source.rs). The independent `mpc phase1`
+command and its `import_receipt.json` output have been removed; there is
+currently no MPC binary target. Initialization, contribution, contribution
+verification and finalization commands are not implemented yet. They will
+connect this internal preparation to every participant operation and resolve
+the identical `@tokamak-zk-evm/subcircuit-library` npm snapshot independently
+for each participant.
+
+Old native/Dusk binaries are not Cargo targets and their modules are excluded
+from the library. Residual Dusk source/integration files await the separate
+retirement step; they are not supported commands. The old
 [two-phase output contract](docs/phase2-output-contract.md) and
 [MPC protocol document](../../../docs/publication/tokamak-mpc-protocol.md)
-also describe that old construction and are not specifications for the new
-phase 2. The references and implementation requirements below apply to the
-replacement.
+describe the retired construction, not specifications for its replacement.
 
-## Phase 1 import
+## Contributor-local source preparation
 
-Use the Rust backend's build prerequisites and run commands from
-`packages/backend`. Phase 1 accepts an exponent capacity, not a circuit
-library; the default build does not read local QAP artifacts or resolve an
-npm snapshot for this command. Production npm selection belongs to phase 2.
-Use `cargo run` below so Cargo supplies native dependency search paths.
+Internal local-file and download functions take the selected library's
+`SetupParams`, not a caller-selected exponent capacity. They reuse
+`UnivariateCrsShape::from_setup_params`, as trusted setup does, to derive the
+minimum required P and reject an invalid shape or insufficient source capacity
+before source I/O. npm resolution and the binding to incoming phase 2 state
+belong to the pending participant workflow; isolated source preparation does
+not authenticate the origin of an arbitrary metadata object by itself.
 
-Import an existing, uncompressed Filecoin `challenge_19` file:
+The expected source URL, producer revision, full BLAKE2b-512 digest and
+preceding-response header are pinned from Filecoin. There is no public
+source-pin, capacity or verification-bypass option. The two internal paths are:
 
-```bash
-cargo run --locked --release -p mpc-setup --bin mpc -- phase1 \
-  --source /path/to/challenge_19 \
-  --capacity 524291 \
-  --output /path/to/new-phase1-import
-```
+- Read a contributor's own original `challenge_19` obtained from Filecoin.
+  Check its full byte length and digest on each preparation, even after a
+  previous successful run.
+- Download the pinned original directly from Filecoin and authenticate the
+  complete stream. Do not accept an independently prepared tau file.
 
-Alternatively, replace `--source /path/to/challenge_19` with `--download`.
-Select exactly one source mode. Both modes require the same pinned source;
-there is no URL, source-digest or verification-bypass option.
+The source contains 77,309,411,488 bytes (about 72 GiB). Every preparation
+reads that entire stream to verify the pinned digest. The same pass retains
+only the selected ranges; no complete source copy needs to be written to disk.
+After authentication, validate and convert those retained bytes. They cannot
+be replaced between hashing and decoding by changing a local source file.
+An interrupted download restarts from the original source; there is no
+alternate-source fallback or trusted converted-subset cache.
 
-The example capacity is not a default or a circuit-independent requirement.
-`P` is the maximum tagged/G2 exponent, not a point count. Output contains
-ordinary G1 exponents 0 through 2P, xi/psi G1 and ordinary G2 exponents 0
-through P, and psi in G2. Valid standalone P is 1 through 134217727. Phase 2
-must check its selected library's demand against that capacity.
+P is the maximum tagged/G2 exponent, not a point count. The in-memory result
+uses the existing common `TauSequenceRkyv` representation: ordinary G1
+exponents 0..2P, xi/psi G1 and ordinary G2 exponents 0..P, and psi in G2.
+Bounds are inclusive. No new archive, receipt or final provenance is written
+by source preparation. It samples no secret tau or tag and grants no release
+eligibility. Necessary source identity and check evidence will be bound to
+the phase 2 transcript and final common provenance, not a new import manifest.
 
-The complete source is 77,309,411,488 bytes (about 72 GiB). Even a small P
-requires reading that entire stream to check its pinned BLAKE2b-512 digest.
-The download path retains only the selected ranges in memory and does not
-write a 72-GiB source copy. It neither resumes an interrupted download nor
-falls back to another source. Rerun an interrupted import from the start.
-
-The parent output directory must exist and the output path must not exist.
-After all validation succeeds, a sibling staging directory is renamed into
-place with two files:
-
-- `tau_sequence.rkyv`: the common, little-endian affine-coordinate archive.
-- `import_receipt.json`: source pin, capacity, output SHA-256 and the checks
-  performed by this import. This is an intermediate import receipt, not
-  `crs_provenance.json` or a phase 2 contribution receipt.
-
-No prover, preprocess or verifier keys are produced. No release eligibility
-is granted. Failure leaves no active import directory and does not overwrite
-an existing import. Operators must not concurrently write the same output
-path.
+The eventual finalized `tau_sequence.rkyv` remains an ordinary prover input.
+Its distribution does not authorize a contributor to trust it instead of the
+original Filecoin source. Trusted setup remains a separate one-command
+development path.
 
 ### Validation and qualification
 
-The adapter checks the full source digest and preceding-response header,
-canonical uncompressed point encodings, nonzero subgroup membership,
-generators, selected adjacent-power relations, and the beta G1/G2 pairing.
-Power checks use independent random nonzero scalar coefficients after source
-capture, with every adjacent pair included across batch boundaries. The
-source and decoder revisions are recorded in the
+Preparation checks the complete source digest and preceding-response header,
+canonical uncompressed coordinates, nonzero subgroup membership, generators,
+selected adjacent-power relations and the beta G1/G2 pairing. Power checks
+sample independent nonzero random coefficients after source authentication;
+every adjacent pair is included across batch boundaries. These are public
+check coefficients, not participant secret shares. The source and decoder
+revisions are recorded in the
 [design checkpoint](docs/current-phase2-design.md#filecoin-source-mapping).
 
-These checks do not replay the historical Filecoin contribution chain or
-verify its participant signatures. The receipt lists only performed checks.
-Circuit-specific evaluation-domain checks belong to phase 2, which knows
-the circuit dimensions.
+These checks do not replay Filecoin's historical contributions or verify its
+participant signatures. The full 72-GiB source has not been processed in this
+qualification; the earlier bounded G1/G2 probes are encoding examples, not
+full-source authentication. Synthetic fixtures use private test-only pins and
+known scalar oracles. They cannot enable a runtime source override.
 
-On 2026-09-12, the release package tests passed: eight adapter tests, one
-command-line test and six phase 2 algebra tests. They cover synthetic
-upstream-format streams, source corruption, invalid points, power/tag
-inconsistency, output failure/overwrite handling and common archive equality.
-A bounded real-source G2 generator probe also matches the pinned encoding.
-The full 72-GiB source has **not** been imported in this qualification run;
-neither production phase 2 nor MPC SNARK E2E has been qualified.
+From `packages/backend`, with the native build prerequisites installed:
 
-```bash
+```sh
 cargo test --locked --release -p mpc-setup
 ```
+
+The source tests cover full-stream corruption (including unretained bytes),
+short reads, invalid points, power/tag inconsistency, common archive equality,
+library-derived capacity and early input rejection. They are independent of
+the unfinished phase 2 engine. Successful source tests do not establish
+participant workflow enforcement, contribution proofs or MPC/native SNARK E2E.
+
+On 2026-09-12, all 16 release tests passed: ten internal source tests and six
+phase 2 algebra-model tests. Cargo metadata confirms that the package exposes
+no binary target. No full-source download or production npm resolution was
+performed for this checkpoint.
 
 ## Phase 2 references
 
