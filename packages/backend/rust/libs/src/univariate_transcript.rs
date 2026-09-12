@@ -276,6 +276,45 @@ fn keccak256(input: &[u8]) -> [u8; 32] {
     output
 }
 
+/// Encode canonical affine bytes in F2 message order, independent of the
+/// arithmetic engine. Artifact coordinates are little-endian; F4 uses big-endian.
+pub fn encode_binary_g1_message(label: &str, points: &[[u8; 96]]) -> Vec<u8> {
+    let mut e = CanonicalTranscriptEncoder::new().u32("count", points.len().try_into().unwrap());
+    for (i, p) in points.iter().enumerate() {
+        let mut be = *p;
+        be[..48].reverse();
+        be[48..].reverse();
+        e = e.bytes(&format!("{label}.{i}"), &be);
+    }
+    e.finish()
+}
+
+/// Replay the current binary proof after canonical field and point admission.
+/// Fixed CRS and circuit preprocessing never enter the proof transcript.
+pub fn derive_binary_proof_challenges<F: ProtocolField>(
+    public_inputs: &[F],
+    proof: &backend_interface::ProofBytes,
+    arithmetic_size: usize,
+    connection_size: usize,
+) -> UnivariateChallenges<F> {
+    let mut evaluations = CanonicalTranscriptEncoder::new();
+    for (label, bytes) in ["s_C", "u", "v", "w", "b", "r", "r_plus"].into_iter().zip([
+        proof.s_c, proof.u, proof.v, proof.w, proof.b, proof.r, proof.r_plus,
+    ]) {
+        evaluations = evaluations.scalar(label, &F::from_le(&bytes));
+    }
+    UnivariateTranscript::from_public_inputs(public_inputs).derive_challenges(
+        &encode_binary_g1_message("F2.a1", &[proof.c_l, proof.c_h, proof.c_o, proof.d_q, proof.d_q_k]),
+        &encode_binary_g1_message("F2.a2", &[proof.c_d]),
+        &encode_binary_g1_message("F2.a3", &[proof.c_r]),
+        &encode_binary_g1_message("F2.a4", &[proof.c_q]),
+        &evaluations.finish(),
+        &encode_binary_g1_message("F2.a6", &[proof.pi_chi, proof.pi_plus]),
+        arithmetic_size,
+        connection_size,
+    )
+}
+
 fn digest_to_scalar<F: ProtocolField>(digest: [u8; 32]) -> Option<F> {
     let mut bytes = digest;
     bytes.reverse();

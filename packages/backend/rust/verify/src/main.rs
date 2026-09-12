@@ -1,23 +1,33 @@
 use clap::Parser;
 use libs::cli::render_error;
-use libs::utils::try_check_device;
-use std::process::ExitCode;
-use verify::{univariate_cli, OnlineVerifyInputPaths, VerifyError};
+use std::{path::PathBuf, process::ExitCode};
+use verify::{
+    univariate_cli::{self, OnlineVerifyInputPaths},
+    VerifyError,
+};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Config {
-    /// Admitted verifier_config.json emitted by preprocess
+    /// verifier_keys.rkyv emitted by setup
     #[arg(long, value_name = "FILE")]
-    verifier_config: String,
+    verifier_keys: PathBuf,
+
+    /// Admitted univariate_verifier_preprocess.bin emitted by preprocess
+    #[arg(long, value_name = "FILE")]
+    preprocess: PathBuf,
 
     /// Public instance.json emitted by the synthesizer
     #[arg(long, value_name = "FILE")]
-    instance: String,
+    instance: PathBuf,
 
-    /// univariate_proof.json emitted by prove
+    /// univariate_proof.bin emitted by prove
     #[arg(long, value_name = "FILE")]
-    proof: String,
+    proof: PathBuf,
+
+    /// Report elapsed input loading and verification time on stderr
+    #[arg(long)]
+    timing: bool,
 
     /// Emit only the versioned machine-readable verification result on stdout
     #[arg(long, hide = true)]
@@ -49,17 +59,23 @@ fn run() -> Result<(), VerifyError> {
     let config = Config::parse();
     let verification_result_json = config.verification_result_json;
     let paths = OnlineVerifyInputPaths {
-        verifier_config_path: &config.verifier_config,
+        verifier_keys_path: &config.verifier_keys,
+        preprocess_path: &config.preprocess,
         instance_path: &config.instance,
         proof_path: &config.proof,
     };
 
-    try_check_device()?;
-
     if !verification_result_json {
         println!("Verifying the proof...");
     }
+    let start = std::time::Instant::now();
     let res_snark = univariate_cli::verify(&paths)?;
+    if config.timing {
+        eprintln!(
+            "verify total (input + verification): {:.6} s",
+            start.elapsed().as_secs_f64()
+        );
+    }
     if verification_result_json {
         libs::cli::print_verification_result(res_snark)
             .map_err(|reason| VerifyError::MachineResult { reason })?;
@@ -68,4 +84,31 @@ fn run() -> Result<(), VerifyError> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn online_cli_has_no_circuit_admission_or_legacy_config_arguments() {
+        let args = [
+            "verify",
+            "--verifier-keys",
+            "keys.rkyv",
+            "--preprocess",
+            "preprocess.bin",
+            "--instance",
+            "instance.json",
+            "--proof",
+            "proof.bin",
+        ];
+        assert!(Config::try_parse_from(args).is_ok());
+        for flag in [
+            "--verifier-config",
+            "--subcircuit-library",
+            "--tau-sequence",
+        ] {
+            assert!(Config::try_parse_from(args.into_iter().chain([flag, "unused"])).is_err());
+        }
+    }
 }

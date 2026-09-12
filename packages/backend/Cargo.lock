@@ -3488,9 +3488,13 @@ dependencies = [
 name = "verify"
 version = "2.1.5"
 dependencies = [
+ "ark-bls12-381",
+ "ark-ec",
+ "ark-ff",
+ "backend-interface",
+ "backend-univariate-crs-interface",
  "clap 4.5.53",
- "icicle-bls12-381",
- "icicle-core",
+ "hex",
  "libs",
  "serde",
  "serde_json",

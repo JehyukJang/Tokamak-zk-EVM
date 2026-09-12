@@ -16,7 +16,8 @@ use libs::{
     frontend_artifacts::{public_wire_layout::PublicWireLayout, SetupParams},
     univariate_field::ProtocolField,
     univariate_transcript::{
-        CanonicalTranscriptEncoder, UnivariateChallenges, UnivariateTranscript,
+        encode_binary_g1_message as point_message, CanonicalTranscriptEncoder,
+        UnivariateChallenges, UnivariateTranscript,
     },
 };
 use thiserror::Error;
@@ -282,16 +283,6 @@ pub fn prove<E: Engine>(
             mu,
         },
     ))
-}
-fn point_message(label: &str, points: &[[u8; 96]]) -> Vec<u8> {
-    let mut e = CanonicalTranscriptEncoder::new().u32("count", points.len().try_into().unwrap());
-    for (i, p) in points.iter().enumerate() {
-        let mut be = *p;
-        be[..48].reverse();
-        be[48..].reverse();
-        e = e.bytes(&format!("{label}.{i}"), &be);
-    }
-    e.finish()
 }
 fn commit_sum<E: Engine>(
     _label: &'static str,

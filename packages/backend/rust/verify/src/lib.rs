@@ -1,564 +1,211 @@
-// Verifier expressions retain the proving protocol's mathematical notation.
-#![allow(non_snake_case)]
-
-use icicle_bls12_381::curve::{ScalarCfg, ScalarField};
-use icicle_core::ntt;
-use icicle_core::traits::{Arithmetic, FieldImpl, GenerateRandom};
-use libs::bivariate_polynomial::{BivariatePolynomial, DensePolynomialExt};
-use libs::cli::CliDiagnostic;
-use libs::errors::{ArtifactError, CrsError, DeviceError};
-use libs::frontend_artifacts::{Instance, SetupParams};
-use libs::group_structures::pairing;
-use libs::group_structures::{G1serde, SigmaVerify};
-use libs::proof_protocol::{
-    FormattedPreprocess, FormattedProof, Preprocess, Proof, Proof4, Proof4Test, TranscriptManager,
-};
-use libs::univariate_preprocess::AdmittedUnivariateVerifierConfig;
-use libs::univariate_proof::UnivariateProof;
-use libs::univariate_transcript::derive_proof_challenges;
-use libs::utils::{
-    prover_verifier_ntt_domain_size, try_init_ntt_domain, try_load_setup_params_from_qap_path,
-    try_setup_shape, try_validate_setup_shape,
-};
-use std::path::PathBuf;
-use thiserror::Error;
-
+//! Online-only U32--U35 verification. Circuit admission belongs to preprocess.
+mod decode;
 pub mod univariate_cli;
 
-/// Library geometry embedded by the build; no runtime metadata reads.
+use ark_bls12_381::{Bls12_381, Fr, G1Affine, G1Projective};
+use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
+use ark_ff::{batch_inversion, Field, One, PrimeField, Zero};
+use backend_interface::{PreprocessBytes, ProofBytes};
+use backend_univariate_crs_interface::{archive, VerifierKeysRkyv};
+use libs::univariate_field::canonical_root;
+use libs::univariate_transcript::{derive_binary_proof_challenges, UnivariateChallenges};
+
+/// Library-owned geometry embedded at build time, never loaded online.
 pub mod parameters {
     include!(concat!(env!("OUT_DIR"), "/verifier_parameters.rs"));
 }
 
-pub struct VerifyInputPaths<'a> {
-    pub qap_path: &'a str,
-    pub synthesizer_path: &'a str,
-    pub setup_path: &'a str,
-    pub preprocess_path: &'a str,
-    pub proof_path: &'a str,
-}
-
-pub struct OnlineVerifyInputPaths<'a> {
-    pub verifier_config_path: &'a str,
-    pub instance_path: &'a str,
-    pub proof_path: &'a str,
-}
-
-/// Verifies U32 and U35 for an already-admitted latest-protocol proof. The
-/// caller owns artifact decoding and F1--F4 construction; this function never
-/// falls back to the legacy Sigma verifier.
-pub fn verify_univariate_proof(
-    config: &AdmittedUnivariateVerifierConfig,
-    public_inputs: &[ScalarField],
-    proof: &UnivariateProof,
-) -> bool {
-    let trace_failure = |reason: &str| {
-        if std::env::var_os("TOKAMAK_VERIFY_TRACE").is_some() {
-            eprintln!("univariate verification rejected: {reason}");
-        }
-        false
-    };
-    if config
-        .validate_for_online_verification(public_inputs.len())
-        .is_err()
-    {
-        return trace_failure("invalid admitted verifier configuration");
-    }
-    let public_binding = config.public_binding(public_inputs);
-    let challenges = derive_proof_challenges(
-        public_inputs,
-        proof,
-        config.arithmetic_domain_size,
-        config.connection_domain_size,
-    );
-    let zeta = challenges.zeta;
-    if zeta == ScalarField::zero()
-        || zeta.pow(config.arithmetic_domain_size) == ScalarField::one()
-        || zeta.pow(config.connection_domain_size) == ScalarField::one()
-    {
-        return trace_failure("zeta belongs to an excluded evaluation domain");
-    }
-    let m_a = complementary_factor_value(
-        zeta,
-        config.connection_domain_size,
-        config.intersection_domain_size,
-    );
-    let m_c = complementary_factor_value(
-        zeta,
-        config.arithmetic_domain_size,
-        config.intersection_domain_size,
-    );
-    let l0_c = lagrange_zero_value(zeta, config.connection_domain_size);
-    let values = (
-        proof.s_a.0,
-        proof.s_c.0,
-        proof.u.0,
-        proof.v.0,
-        proof.w.0,
-        proof.b.0,
-        proof.q_zeta.0,
-        proof.r.0,
-        proof.r_plus.0,
-    );
-    let (s_a, s_c, u, v, w, b, q_zeta, r, r_plus) = values;
-    let quotient_identity = m_a * s_a * (u * v - w)
-        + challenges.theta * m_c * (r - ScalarField::one()) * l0_c
-        + challenges.theta.pow(2)
-            * m_c
-            * (r_plus * (b + challenges.beta * zeta + challenges.gamma_c)
-                - r * (b + challenges.beta * s_c + challenges.gamma_c));
-    if quotient_identity != q_zeta * (zeta.pow(config.union_domain_size) - ScalarField::one()) {
-        return trace_failure("quotient identity failed");
-    }
-
-    let varpi = challenges.varpi;
-    let one = config.one_g1;
-    let xi = config.xi_g1;
-    let psi = config.psi_g1;
-    let a_zeta = proof.c_u - one * u
-        + (proof.c_v - xi * v) * varpi
-        + (proof.c_w - psi * w) * varpi.pow(2)
-        + (proof.c_b - psi * b) * varpi.pow(3)
-        + (proof.c_r - one * r) * varpi.pow(4)
-        + (proof.c_q - one * q_zeta) * varpi.pow(5)
-        + (config.preprocess.s_kappa - one * s_a) * varpi.pow(6)
-        + (config.preprocess.s_c - one * s_c) * varpi.pow(7);
-    let a_plus = proof.c_r - one * r_plus;
-    let mu = challenges.mu;
-    let lhs_first = proof.c_u + proof.c_v + proof.c_w - proof.c_d * mu
-        + (a_zeta + proof.pi_zeta * zeta) * mu.pow(2)
-        + (a_plus + proof.pi_plus * (config.connection_root.0 * zeta)) * mu.pow(3);
-    let lhs_second = proof.c_b + (proof.c_w + proof.c_b * challenges.upsilon) * mu;
-    let rhs_openings = proof.pi_zeta * mu.pow(2) + proof.pi_plus * mu.pow(3);
-    let pairing_identity =
-        pairing(&[lhs_first, lhs_second], &[config.one_g2, config.tau_k_g2]).eq(&pairing(
-            &[public_binding, proof.o_if, proof.o_int, rhs_openings],
-            &[
-                config.gamma_g2,
-                config.eta_g2,
-                config.delta_g2,
-                config.tau_g2,
-            ],
-        ));
-    if !pairing_identity {
-        return trace_failure("pairing identity failed");
-    }
-    true
-}
-
-fn complementary_factor_value(point: ScalarField, large: usize, small: usize) -> ScalarField {
-    let mut result = ScalarField::zero();
-    for exponent in (0..large).step_by(small) {
-        result = result + point.pow(exponent);
-    }
-    result
-}
-
-fn lagrange_zero_value(point: ScalarField, domain_size: usize) -> ScalarField {
-    let inverse = ScalarField::from_u32(u32::try_from(domain_size).expect("domain fits u32")).inv();
-    let mut sum = ScalarField::zero();
-    let mut power = ScalarField::one();
-    for _ in 0..domain_size {
-        sum = sum + power;
-        power = power * point;
-    }
-    sum * inverse
-}
-
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum VerifyError {
-    #[error(transparent)]
-    Artifact(#[from] ArtifactError),
-    #[error(transparent)]
-    Crs(#[from] CrsError),
-    #[error(transparent)]
-    Device(#[from] DeviceError),
-    #[error(transparent)]
-    UnivariateRelation(#[from] libs::univariate_relation::UnivariateRelationError),
-    #[error(transparent)]
-    UnivariateCrs(#[from] libs::univariate_crs::UnivariateCrsError),
-    #[error("invalid {artifact} format at {}: {reason}", path.display())]
-    InvalidFormat {
-        artifact: &'static str,
-        path: PathBuf,
-        reason: String,
+    #[error("invalid verifier input: {0}")]
+    Invalid(String),
+    #[error("{}: {source}", path.display())]
+    Io {
+        path: std::path::PathBuf,
+        source: std::io::Error,
     },
-    #[error("could not emit machine-readable verification result: {reason}")]
+    #[error("cannot write verification result: {reason}")]
     MachineResult { reason: String },
 }
-
-impl CliDiagnostic for VerifyError {
+impl From<&str> for VerifyError {
+    fn from(value: &str) -> Self {
+        Self::Invalid(value.into())
+    }
+}
+impl libs::cli::CliDiagnostic for VerifyError {
     fn hint(&self) -> &'static str {
-        match self {
-            Self::Artifact(_)
-            | Self::InvalidFormat { .. }
-            | Self::MachineResult { .. }
-            | Self::UnivariateRelation(_)
-            | Self::UnivariateCrs(_) => {
-                "Regenerate the matching frontend, preprocess, and proof artifacts, then retry."
-            }
-            Self::Crs(_) => {
-                "Use a CRS whose compatible backend version matches the selected subcircuit library, or use the explicit local development bypass only for local testing."
-            }
-            Self::Device(_) => "Check the ICICLE backend installation and the selected device.",
-        }
+        "Use current binary verifier keys, admitted preprocess and proof, with the matching library build and free public inputs."
     }
 }
 
+/// Decoded fixed operands for repeated online verification. Construction only
+/// checks encodings; it does not perform circuit or ceremony admission.
 pub struct Verifier {
-    pub sigma: SigmaVerify,
-    pub a_pub_X: DensePolynomialExt,
-    pub preprocess: Preprocess,
-    pub setup_params: SetupParams,
-    pub proof: Proof,
-}
-
-struct VerificationChallenges {
-    thetas: Vec<ScalarField>,
-    kappa0: ScalarField,
-    chi: ScalarField,
-    zeta: ScalarField,
-    kappa1: ScalarField,
-    kappa2: ScalarField,
-}
-
-struct VerificationDomainContext {
-    m_i: usize,
-    omega_m_i: ScalarField,
-    omega_s_max: ScalarField,
-    t_n_eval: ScalarField,
-    t_mi_eval: ScalarField,
-    t_smax_eval: ScalarField,
+    one: G1Affine,
+    xi: G1Affine,
+    psi: G1Affine,
+    g2: [<Bls12_381 as Pairing>::G2Prepared; 5],
+    s_c: G1Affine,
+    c_fix: G1Affine,
+    connection_root: Fr,
+    public_roots: Vec<Fr>,
 }
 
 impl Verifier {
-    pub fn init(paths: &VerifyInputPaths) -> Result<Self, VerifyError> {
-        let setup_params_path = PathBuf::from(paths.qap_path).join("setupParams.json");
-        let setup_params = try_load_setup_params_from_qap_path(paths.qap_path)?;
-        let shape = try_setup_shape(&setup_params, &setup_params_path)?;
-        try_validate_setup_shape(&shape, &setup_params_path)?;
-        let ntt_domain_size = prover_verifier_ntt_domain_size(&shape);
-        try_init_ntt_domain(ntt_domain_size)?;
-
-        // Load instance
-        let instance_path = PathBuf::from(paths.synthesizer_path).join("instance.json");
-        let instance = Instance::read_from_json(instance_path.clone()).map_err(|source| {
-            ArtifactError::Read {
-                artifact: "public instance",
-                path: instance_path,
-                source,
-            }
-        })?;
-        // Parsing the inputs
-        let a_pub_X =
-            instance
-                .gen_a_free_X(&setup_params)
-                .map_err(|reason| ArtifactError::Invalid {
-                    artifact: "public instance",
-                    path: PathBuf::from(paths.synthesizer_path).join("instance.json"),
-                    reason,
-                })?;
-
-        // Load Sigma (reference string)
-        let sigma_path = PathBuf::from(paths.setup_path).join("sigma_verify.json");
-        let sigma =
-            SigmaVerify::read_from_json(sigma_path.clone()).map_err(|source| CrsError::Read {
-                path: sigma_path,
-                source,
-            })?;
-
-        // Load Verifier preprocess
-        let preprocess_path = PathBuf::from(paths.preprocess_path).join("preprocess.json");
-        let preprocess = FormattedPreprocess::read_from_json(preprocess_path.clone())
-            .map_err(|source| ArtifactError::Read {
-                artifact: "formatted preprocess",
-                path: preprocess_path.clone(),
-                source,
-            })?
-            .try_recover_proof_from_format()
-            .map_err(|reason| VerifyError::InvalidFormat {
-                artifact: "formatted preprocess",
-                path: preprocess_path,
-                reason,
-            })?;
-
-        // Load Proof
-        let proof_path = PathBuf::from(paths.proof_path).join("proof.json");
-        let proof = FormattedProof::read_from_json(proof_path.clone())
-            .map_err(|source| ArtifactError::Read {
-                artifact: "formatted proof",
-                path: proof_path.clone(),
-                source,
-            })?
-            .try_recover_proof_from_format()
-            .map_err(|reason| VerifyError::InvalidFormat {
-                artifact: "formatted proof",
-                path: proof_path,
-                reason,
-            })?;
-
+    pub fn from_bytes(keys: &[u8], preprocess: &[u8]) -> Result<Self, VerifyError> {
+        let keys = archive::from_bytes::<VerifierKeysRkyv, archive::rancor::Error>(keys)
+            .map_err(|e| VerifyError::Invalid(format!("verifier keys archive: {e}")))?;
+        if keys.schema_id != libs::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID {
+            return Err("unsupported verifier CRS schema".into());
+        }
+        let preprocess = PreprocessBytes::decode(preprocess)?;
+        let one = decode::key_g1(&keys.one_g1)?;
+        let one_g2 = decode::key_g2(&keys.one_g2)?;
+        // Setup samples independent source-group generators; they are not
+        // required to equal arkworks' conventional curve generators.
+        if one.is_zero() || one_g2.is_zero() {
+            return Err("CRS source-group generators must be nonzero".into());
+        }
+        let root =
+            canonical_root(parameters::L_FREE as usize).expect("build-checked public domain");
+        let mut power = Fr::one();
+        let public_roots = (0..parameters::L_FREE)
+            .map(|_| {
+                let value = power;
+                power *= root;
+                value
+            })
+            .collect();
         Ok(Self {
-            sigma,
-            a_pub_X,
-            setup_params,
-            preprocess,
-            proof,
+            one,
+            xi: decode::key_g1(&keys.xi_g1)?,
+            psi: decode::key_g1(&keys.psi_g1)?,
+            g2: [
+                one_g2,
+                decode::key_g2(&keys.tau_g2)?,
+                decode::key_g2(&keys.tau_k_g2)?,
+                decode::key_g2(&keys.delta_g2)?,
+                decode::g2(&preprocess.e_kappa)?,
+            ]
+            .map(Into::into),
+            s_c: decode::g1(&preprocess.s_c)?,
+            c_fix: decode::g1(&preprocess.c_fix)?,
+            connection_root: canonical_root(parameters::N_C as usize)
+                .expect("build-checked connection domain"),
+            public_roots,
         })
     }
 
-    fn collect_challenges(&self) -> VerificationChallenges {
-        let proof0 = &self.proof.proof0;
-        let proof1 = &self.proof.proof1;
-        let proof2 = &self.proof.proof2;
-        let proof3 = &self.proof.proof3;
-        let mut transcript_manager = TranscriptManager::new();
-        let thetas = proof0.verify0_with_manager(&mut transcript_manager);
-        let kappa0 = proof1.verify1_with_manager(&mut transcript_manager);
-        let (chi, zeta) = proof2.verify2_with_manager(&mut transcript_manager);
-        let kappa1 = proof3.verify3_with_manager(&mut transcript_manager);
-        let kappa2 = ScalarCfg::generate_random(1)[0];
-        VerificationChallenges {
-            thetas,
-            kappa0,
-            chi,
-            zeta,
-            kappa1,
-            kappa2,
+    /// Accept exactly the free-public vector. Fixed public values are already
+    /// represented by C_fix and never enter the Fiat--Shamir statement.
+    pub fn verify(&self, public_inputs: &[Fr], bytes: &[u8]) -> Result<bool, VerifyError> {
+        if public_inputs.len() != parameters::L_FREE as usize {
+            return Err("free public input length does not match the built library".into());
         }
-    }
-
-    fn build_domain_context(
-        &self,
-        challenges: &VerificationChallenges,
-    ) -> VerificationDomainContext {
-        let m_i = self.setup_params.l_D - self.setup_params.l;
-        let s_max = self.setup_params.s_max;
-        VerificationDomainContext {
-            m_i,
-            omega_m_i: ntt::get_root_of_unity::<ScalarField>(m_i as u64),
-            omega_s_max: ntt::get_root_of_unity::<ScalarField>(s_max as u64),
-            t_n_eval: challenges.chi.pow(self.setup_params.n) - ScalarField::one(),
-            t_mi_eval: challenges.chi.pow(m_i) - ScalarField::one(),
-            t_smax_eval: challenges.zeta.pow(s_max) - ScalarField::one(),
+        let proof = ProofBytes::decode(bytes)?;
+        let points = [
+            proof.c_l,
+            proof.c_h,
+            proof.c_o,
+            proof.d_q,
+            proof.d_q_k,
+            proof.c_d,
+            proof.c_r,
+            proof.c_q,
+            proof.pi_chi,
+            proof.pi_plus,
+        ];
+        let mut decoded = [G1Affine::identity(); 10];
+        for (out, bytes) in decoded.iter_mut().zip(points) {
+            *out = decode::g1(&bytes)?;
         }
-    }
-
-    fn eval_lagrange_k0(
-        &self,
-        domain: &VerificationDomainContext,
-        challenges: &VerificationChallenges,
-    ) -> ScalarField {
-        if challenges.chi == ScalarField::one() {
-            return ScalarField::one();
-        }
-
-        let m_i = u32::try_from(domain.m_i).expect("m_i must fit into u32");
-        domain.t_mi_eval
-            * ScalarField::from_u32(m_i).inv()
-            * (challenges.chi - ScalarField::one()).inv()
-    }
-
-    fn eval_a_pub(&self, challenges: &VerificationChallenges) -> ScalarField {
-        self.a_pub_X.eval(&challenges.chi, &challenges.zeta)
-    }
-
-    fn lhs_arith(
-        &self,
-        domain: &VerificationDomainContext,
-        challenges: &VerificationChallenges,
-    ) -> G1serde {
-        let proof0 = &self.proof.proof0;
-        let proof3 = &self.proof.proof3;
-        (proof0.U * proof3.V_eval) - proof0.W
-            + (proof0.V - self.sigma.g() * proof3.V_eval) * challenges.kappa1
-            - proof0.Q_AX * domain.t_n_eval
-            - proof0.Q_AY * domain.t_smax_eval
-    }
-
-    fn lhs_copy(
-        &self,
-        domain: &VerificationDomainContext,
-        challenges: &VerificationChallenges,
-        lagrange_k0_eval: ScalarField,
-    ) -> G1serde {
-        let proof0 = &self.proof.proof0;
-        let proof1 = &self.proof.proof1;
-        let proof2 = &self.proof.proof2;
-        let proof3 = &self.proof.proof3;
-        let F = proof0.B
-            + self.preprocess.s0 * challenges.thetas[0]
-            + self.preprocess.s1 * challenges.thetas[1]
-            + self.sigma.g() * challenges.thetas[2];
-        let G = proof0.B
-            + self.sigma.sigma1_x() * challenges.thetas[0]
-            + self.sigma.sigma1_y() * challenges.thetas[1]
-            + self.sigma.g() * challenges.thetas[2];
-        let LHS_C_term1 = self.sigma.lagrange_kl() * (proof3.R_eval - ScalarField::one())
-            + (G * proof3.R_eval - F * proof3.R_omegaX_eval)
-                * (challenges.kappa0 * (challenges.chi - ScalarField::one()))
-            + (G * proof3.R_eval - F * proof3.R_omegaX_omegaY_eval)
-                * (challenges.kappa0.pow(2) * lagrange_k0_eval)
-            - proof2.Q_CX * domain.t_mi_eval
-            - proof2.Q_CY * domain.t_smax_eval;
-        LHS_C_term1 * challenges.kappa1.pow(2)
-            + (proof1.R - self.sigma.g() * proof3.R_eval) * challenges.kappa1.pow(3)
-            + (proof1.R - self.sigma.g() * proof3.R_omegaX_eval) * challenges.kappa2
-            + (proof1.R - self.sigma.g() * proof3.R_omegaX_omegaY_eval) * challenges.kappa2.pow(2)
-    }
-
-    fn lhs_binding(&self, challenges: &VerificationChallenges, a_eval: ScalarField) -> G1serde {
-        let binding = &self.proof.binding;
-        binding.A_free * (ScalarField::one() + (challenges.kappa2 * challenges.kappa1.pow(4)))
-            - self.sigma.g() * (challenges.kappa2 * challenges.kappa1.pow(4) * a_eval)
-    }
-
-    fn snark_aux(
-        &self,
-        proof4: &Proof4,
-        domain: &VerificationDomainContext,
-        challenges: &VerificationChallenges,
-    ) -> (G1serde, G1serde, G1serde) {
-        let AUX = proof4.Pi_X * (challenges.kappa2 * challenges.chi)
-            + proof4.Pi_Y * (challenges.kappa2 * challenges.zeta)
-            + proof4.M_X * (challenges.kappa2.pow(2) * domain.omega_m_i.inv() * challenges.chi)
-            + proof4.M_Y * (challenges.kappa2.pow(2) * challenges.zeta)
-            + proof4.N_X * (challenges.kappa2.pow(3) * domain.omega_m_i.inv() * challenges.chi)
-            + proof4.N_Y * (challenges.kappa2.pow(3) * domain.omega_s_max.inv() * challenges.zeta);
-        let AUX_X = proof4.Pi_X * challenges.kappa2
-            + proof4.M_X * challenges.kappa2.pow(2)
-            + proof4.N_X * challenges.kappa2.pow(3);
-        let AUX_Y = proof4.Pi_Y * challenges.kappa2
-            + proof4.M_Y * challenges.kappa2.pow(2)
-            + proof4.N_Y * challenges.kappa2.pow(3);
-        (AUX, AUX_X, AUX_Y)
-    }
-
-    fn copy_aux(
-        &self,
-        proof4: &Proof4Test,
-        domain: &VerificationDomainContext,
-        challenges: &VerificationChallenges,
-    ) -> (G1serde, G1serde, G1serde) {
-        let AUX_C = proof4.Pi_CX * challenges.chi
-            + proof4.Pi_CY * challenges.zeta
-            + proof4.M_X * (challenges.kappa2 * domain.omega_m_i.inv() * challenges.chi)
-            + proof4.M_Y * (challenges.kappa2 * challenges.zeta)
-            + proof4.N_X * (challenges.kappa2.pow(2) * domain.omega_m_i.inv() * challenges.chi)
-            + proof4.N_Y * (challenges.kappa2.pow(2) * domain.omega_s_max.inv() * challenges.zeta);
-        let AUX_X =
-            proof4.Pi_CX + proof4.M_X * challenges.kappa2 + proof4.N_X * challenges.kappa2.pow(2);
-        let AUX_Y =
-            proof4.Pi_CY + proof4.M_Y * challenges.kappa2 + proof4.N_Y * challenges.kappa2.pow(2);
-        (AUX_C, AUX_X, AUX_Y)
-    }
-
-    fn arith_aux(&self, proof4: &Proof4Test, challenges: &VerificationChallenges) -> G1serde {
-        proof4.Pi_AX * challenges.chi + proof4.Pi_AY * challenges.zeta
-    }
-
-    pub fn verify_snark(&self) -> bool {
-        let binding = &self.proof.binding;
-        let proof0 = &self.proof.proof0;
-        let proof4 = &self.proof.proof4;
-        let challenges = self.collect_challenges();
-        let domain = self.build_domain_context(&challenges);
-        let lagrange_k0_eval = self.eval_lagrange_k0(&domain, &challenges);
-        let a_eval = self.eval_a_pub(&challenges);
-        let lhs_a = self.lhs_arith(&domain, &challenges);
-        let lhs_c = self.lhs_copy(&domain, &challenges, lagrange_k0_eval);
-        let lhs_b = self.lhs_binding(&challenges, a_eval);
-        let lhs = lhs_b + ((lhs_a + lhs_c) * challenges.kappa2);
-        let (aux, aux_x, aux_y) = self.snark_aux(proof4, &domain, &challenges);
-
-        let left_pair = pairing(
-            &[lhs + aux, proof0.B, proof0.U, proof0.V, proof0.W],
-            &[
-                self.sigma.h(),
-                self.sigma.sigma2().alpha4,
-                self.sigma.sigma2().alpha,
-                self.sigma.sigma2().alpha2,
-                self.sigma.sigma2().alpha3,
-            ],
+        let [c_l, c_h, c_o, d_q, d_q_k, c_d, c_r, c_q, pi_chi, pi_plus] = decoded;
+        let [s_c, u, v, w, b, r, r_plus] = [
+            proof.s_c,
+            proof.u,
+            proof.v,
+            proof.w,
+            proof.b,
+            proof.r,
+            proof.r_plus,
+        ]
+        .map(|bytes| Fr::from_le_bytes_mod_order(&bytes));
+        let ch = derive_binary_proof_challenges(
+            public_inputs,
+            &proof,
+            parameters::N_A as usize,
+            parameters::N_C as usize,
         );
-        let right_pair = pairing(
-            &[
-                self.preprocess.O_pub_fix + binding.O_pub_free,
-                binding.O_mid,
-                binding.O_prv,
-                aux_x,
-                aux_y,
-            ],
-            &[
-                self.sigma.sigma2().gamma,
-                self.sigma.sigma2().eta,
-                self.sigma.sigma2().delta,
-                self.sigma.sigma2().x,
-                self.sigma.sigma2().y,
-            ],
+        let q = quotient_at_challenge(
+            &ch,
+            [s_c, u, v, w, b, r, r_plus],
+            parameters::N_A,
+            parameters::N_C,
         );
-        left_pair.eq(&right_pair)
-    }
-
-    pub fn verify_arith(&self, proof4: &Proof4Test) -> bool {
-        let challenges = self.collect_challenges();
-        let domain = self.build_domain_context(&challenges);
-        let lhs_a = self.lhs_arith(&domain, &challenges);
-        let aux_a = self.arith_aux(proof4, &challenges);
-
-        let left_pair = pairing(&[lhs_a + aux_a], &[self.sigma.h()]);
-        let right_pair = pairing(
-            &[proof4.Pi_AX, proof4.Pi_AY],
-            &[self.sigma.sigma2().x, self.sigma.sigma2().y],
-        );
-        return left_pair.eq(&right_pair);
-    }
-
-    pub fn verify_copy(&self, proof4: &Proof4Test) -> bool {
-        let challenges = self.collect_challenges();
-        let domain = self.build_domain_context(&challenges);
-        let lagrange_k0_eval = self.eval_lagrange_k0(&domain, &challenges);
-        let lhs_c = self.lhs_copy(&domain, &challenges, lagrange_k0_eval);
-        let (aux_c, aux_x, aux_y) = self.copy_aux(proof4, &domain, &challenges);
-        let left_pair = pairing(&[lhs_c + aux_c], &[self.sigma.h()]);
-        let right_pair = pairing(
-            &[aux_x, aux_y],
-            &[self.sigma.sigma2().x, self.sigma.sigma2().y],
-        );
-        return left_pair.eq(&right_pair);
-    }
-
-    pub fn verify_binding(&self, proof4: &Proof4Test) -> bool {
-        let binding = &self.proof.binding;
-        let proof0 = &self.proof.proof0;
-        let challenges = self.collect_challenges();
-        let a_eval = self.eval_a_pub(&challenges);
-        let lhs_b = self.lhs_binding(&challenges, a_eval);
-        let aux_b = proof4.Pi_B * (challenges.kappa2 * challenges.chi);
-        let left_pair = pairing(
-            &[lhs_b + aux_b, proof0.B, proof0.U, proof0.V, proof0.W],
-            &[
-                self.sigma.h(),
-                self.sigma.sigma2().alpha4,
-                self.sigma.sigma2().alpha,
-                self.sigma.sigma2().alpha2,
-                self.sigma.sigma2().alpha3,
-            ],
-        );
-        let right_pair = pairing(
-            &[
-                self.preprocess.O_pub_fix + binding.O_pub_free,
-                binding.O_mid,
-                binding.O_prv,
-                proof4.Pi_B * challenges.kappa2,
-            ],
-            &[
-                self.sigma.sigma2().gamma,
-                self.sigma.sigma2().eta,
-                self.sigma.sigma2().delta,
-                self.sigma.sigma2().x,
-            ],
-        );
-
-        return left_pair.eq(&right_pair);
+        let a = evaluate_public(public_inputs, &self.public_roots, ch.chi);
+        let varpi2 = ch.varpi.square();
+        let varpi3 = varpi2 * ch.varpi;
+        let varpi4 = varpi2.square();
+        let mu2 = ch.mu.square();
+        let mu3 = mu2 * ch.mu;
+        let mu4 = mu2.square();
+        // U34: A_free is evaluated in the field; fixed inputs have no MSM here.
+        let a_chi = c_l + c_h * ch.varpi + c_r * varpi2 + c_q * varpi3 + self.s_c * varpi4
+            - self.one * (a + varpi2 * r + varpi3 * q + varpi4 * s_c)
+            - self.xi * (u + ch.varpi * v)
+            - self.psi * (w + ch.varpi * b);
+        let a_plus = c_r - self.one * r_plus;
+        let c_e = c_l + c_h * ch.upsilon;
+        // U35 with the approved free/fixed-public specialization: subtract
+        // C_fix exactly once in the first operand, not in the opening equation.
+        let first = c_l - c_d * ch.mu
+            + (a_chi + pi_chi * ch.chi) * mu2
+            + (a_plus + pi_plus * (self.connection_root * ch.chi)) * mu3
+            - d_q_k * mu4
+            - self.c_fix;
+        let operands = [
+            first,
+            -(pi_chi * mu2 + pi_plus * mu3),
+            c_h + c_e * ch.mu + d_q * mu4,
+            -G1Projective::from(c_o),
+            G1Projective::from(d_q_k),
+        ];
+        let affine = G1Projective::normalize_batch(&operands);
+        Ok(Bls12_381::multi_pairing(affine, self.g2.clone()).is_zero())
     }
 }
+
+fn quotient_at_challenge(ch: &UnivariateChallenges<Fr>, values: [Fr; 7], na: u64, nc: u64) -> Fr {
+    let [s_c, u, v, w, b, r, r_plus] = values;
+    // Both domains are nested radix-two subgroups with the same canonical root.
+    let za = ch.chi.pow([na]) - Fr::one();
+    let zc = ch.chi.pow([nc]) - Fr::one();
+    let zg = ch.chi.pow([na.min(nc)]) - Fr::one();
+    let ma = zc / zg;
+    let mc = za / zg;
+    let l0 = zc / (Fr::from(nc) * (ch.chi - Fr::one()));
+    (ma * (u * v - w)
+        + ch.theta * mc * (r - Fr::one()) * l0
+        + ch.theta.square()
+            * mc
+            * (r_plus * (b + ch.beta * ch.chi + ch.gamma_c) - r * (b + ch.beta * s_c + ch.gamma_c)))
+        / (za * zc / zg)
+}
+
+fn evaluate_public(values: &[Fr], roots: &[Fr], chi: Fr) -> Fr {
+    if let Some(index) = roots.iter().position(|root| *root == chi) {
+        return values[index];
+    }
+    let mut denominators: Vec<_> = roots.iter().map(|root| chi - root).collect();
+    batch_inversion(&mut denominators);
+    let sum: Fr = values
+        .iter()
+        .zip(roots)
+        .zip(denominators)
+        .map(|((value, root), inverse)| *value * root * inverse)
+        .sum();
+    (chi.pow([values.len() as u64]) - Fr::one()) / Fr::from(values.len() as u64) * sum
+}
+
+#[cfg(test)]
+mod tests;

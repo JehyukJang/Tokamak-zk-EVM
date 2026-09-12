@@ -8,8 +8,12 @@ repository = { workspace = true }
 homepage = { workspace = true }
 
 [dependencies]
-icicle-core = { workspace = true }
-icicle-bls12-381 = { workspace = true }
+ark-bls12-381 = { workspace = true }
+ark-ec = { workspace = true }
+ark-ff = { workspace = true }
+backend-interface = { workspace = true }
+backend-univariate-crs-interface = { workspace = true }
+hex = { workspace = true }
 libs = { workspace = true, default-features = false }
 clap = { workspace = true }
 thiserror = { workspace = true }
