@@ -25,6 +25,11 @@ use thiserror::Error;
 
 pub mod univariate_cli;
 
+/// Library geometry embedded by the build; no runtime metadata reads.
+pub mod parameters {
+    include!(concat!(env!("OUT_DIR"), "/verifier_parameters.rs"));
+}
+
 pub struct VerifyInputPaths<'a> {
     pub qap_path: &'a str,
     pub synthesizer_path: &'a str,

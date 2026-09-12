@@ -81,7 +81,7 @@ pub fn configure_embedded_release_subcircuit_library(
 pub fn configure_subcircuit_library_metadata(
     package_name: &str,
     package_version: &str,
-) -> io::Result<()> {
+) -> io::Result<PathBuf> {
     emit_version_contract_rerun_rule();
     emit_cli_package_rerun_rule();
     println!("cargo:rustc-check-cfg=cfg(tokamak_embedded_subcircuit_library)");
@@ -109,8 +109,9 @@ pub fn configure_subcircuit_library_metadata(
             package_version,
             &compatible_backend_version,
         )?;
+        return Ok(snapshot.snapshot_dir);
     }
-    Ok(())
+    Ok(qap_compiler_root()?.join("subcircuits/library"))
 }
 
 pub fn configure_mpc_subcircuit_library(out_dir: &Path, package_version: &str) -> io::Result<()> {
