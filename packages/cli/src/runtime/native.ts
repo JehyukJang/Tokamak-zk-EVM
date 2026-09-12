@@ -41,10 +41,12 @@ export async function buildBackendReleaseBinaries(
   backendRoot: string,
   options: InstallOptions,
   context: RuntimeContext,
+  setupDirectory: string,
 ): Promise<BuiltBackendRelease> {
   for (const packageName of BACKEND_PACKAGE_NAMES) {
     await runCommand('cargo', backendProductionBuildArgs(packageName), {
       cwd: backendRoot,
+      env: { ...process.env, TOKAMAK_VERIFIER_KEYS: path.join(setupDirectory, 'verifier_keys.rkyv') },
       verbose: options.verbose,
     });
   }

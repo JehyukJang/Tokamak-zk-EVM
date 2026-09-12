@@ -37,7 +37,7 @@ export interface ParsedArgs {
   installOptions?: {
     docker: boolean;
     includePrerequisite: boolean;
-    noSetup: boolean;
+    noFullSetup: boolean;
   };
   synthesizeArgs?: string[];
   arg1?: string;
@@ -121,10 +121,10 @@ const PROOF_BUNDLE_OPTIONAL_FILES = [
 function printUsage(): void {
   console.log(`
 Commands:
-  --install [--no-setup] [--include-prerequisite] [--docker]
+  --install [--no-full-setup] [--include-prerequisite] [--docker]
       Build the local Tokamak zk-EVM runtime from the packaged backend workspace and prepare local resources
       By default setup artifacts are installed from the published CRS archive
-      Use --no-setup to skip setup artifact provisioning
+      Use --no-full-setup to fetch only verifier keys and provenance before building
       Use --include-prerequisite to interactively install missing native build prerequisites
       Use --docker on Linux or Windows with Docker Desktop to install and run backend commands through an Ubuntu 22 container
 
@@ -164,7 +164,7 @@ Commands:
 
 Options:
   --verbose        Show detailed output
-  --no-setup       Skip setup artifact provisioning during --install
+  --no-full-setup  Fetch verifier keys and provenance; skip remaining CRS files
   --include-prerequisite
                    Interactively install missing native build prerequisites during --install
   --docker         Install through Docker on Linux or Windows with Docker Desktop and save a Docker bootstrap
@@ -317,7 +317,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   if (argv[0] === '--install') {
     let docker = false;
     let includePrerequisite = false;
-    let noSetup = false;
+    let noFullSetup = false;
     for (const arg of argv.slice(1)) {
       if (arg === '--verbose') continue;
       if (arg === '--docker') {
@@ -328,8 +328,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
         includePrerequisite = true;
         continue;
       }
-      if (arg === '--no-setup') {
-        noSetup = true;
+      if (arg === '--no-full-setup') {
+        noFullSetup = true;
         continue;
       }
       err(`Unknown option for --install: ${arg}`);
@@ -340,7 +340,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     return {
       command: 'install',
       verbose,
-      installOptions: { docker, includePrerequisite, noSetup },
+      installOptions: { docker, includePrerequisite, noFullSetup },
     };
   }
   if (argv[0] === '--uninstall') {
@@ -790,7 +790,7 @@ async function runCommandWithRuntimeLock(parsed: ParsedArgs): Promise<void> {
         docker: parsed.installOptions?.docker ?? false,
         includePrerequisite: parsed.installOptions?.includePrerequisite ?? false,
         verbose: parsed.verbose,
-        noSetup: parsed.installOptions?.noSetup ?? false,
+        noFullSetup: parsed.installOptions?.noFullSetup ?? false,
       });
       ok(`Install complete for package ${context.packageVersion}`);
       return;

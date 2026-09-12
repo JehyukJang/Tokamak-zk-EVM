@@ -12,7 +12,6 @@ ark-bls12-381 = { workspace = true }
 ark-ec = { workspace = true }
 ark-ff = { workspace = true }
 backend-interface = { workspace = true }
-backend-univariate-crs-interface = { workspace = true }
 hex = { workspace = true }
 libs = { workspace = true, default-features = false }
 clap = { workspace = true }
@@ -20,7 +19,15 @@ thiserror = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true }
 
+[dev-dependencies]
+backend-univariate-crs-interface = { workspace = true }
+
 [build-dependencies]
+ark-bls12-381 = { workspace = true }
+ark-ec = { workspace = true }
+ark-ff = { workspace = true }
+backend-univariate-crs-interface = { workspace = true }
+hex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

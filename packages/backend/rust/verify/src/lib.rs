@@ -1,12 +1,17 @@
 //! Online-only U32--U35 verification. Circuit admission belongs to preprocess.
 mod decode;
+mod prepare_g2;
+mod fixed {
+    include!(concat!(env!("OUT_DIR"), "/verifier_fixed.rs"));
+}
 pub mod univariate_cli;
 
 use ark_bls12_381::{Bls12_381, Fr, G1Affine, G1Projective};
-use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
+use ark_ec::scalar_mul::BatchMulPreprocessing;
+use ark_ec::{pairing::Pairing, CurveGroup};
 use ark_ff::{batch_inversion, Field, One, PrimeField, Zero};
 use backend_interface::{PreprocessBytes, ProofBytes};
-use backend_univariate_crs_interface::{archive, VerifierKeysRkyv};
+#[cfg(test)]
 use libs::univariate_field::canonical_root;
 use libs::univariate_transcript::{derive_binary_proof_challenges, UnivariateChallenges};
 
@@ -27,6 +32,11 @@ pub enum VerifyError {
     #[error("cannot write verification result: {reason}")]
     MachineResult { reason: String },
 }
+impl From<String> for VerifyError {
+    fn from(value: String) -> Self {
+        Self::Invalid(value)
+    }
+}
 impl From<&str> for VerifyError {
     fn from(value: &str) -> Self {
         Self::Invalid(value.into())
@@ -34,65 +44,34 @@ impl From<&str> for VerifyError {
 }
 impl libs::cli::CliDiagnostic for VerifyError {
     fn hint(&self) -> &'static str {
-        "Use current binary verifier keys, admitted preprocess and proof, with the matching library build and free public inputs."
+        "Use admitted preprocess and proof with free public inputs matching the library and verifier keys embedded in this executable."
     }
 }
 
-/// Decoded fixed operands for repeated online verification. Construction only
-/// checks encodings; it does not perform circuit or ceremony admission.
+/// Checked dynamic preprocess operands and embedded pairing coefficients for
+/// repeated online verification. Circuit admission belongs to preprocess.
 pub struct Verifier {
-    one: G1Affine,
-    xi: G1Affine,
-    psi: G1Affine,
+    g1: [BatchMulPreprocessing<G1Projective>; 3],
     g2: [<Bls12_381 as Pairing>::G2Prepared; 5],
     s_c: G1Affine,
     c_fix: G1Affine,
-    connection_root: Fr,
-    public_roots: Vec<Fr>,
 }
 
 impl Verifier {
-    pub fn from_bytes(keys: &[u8], preprocess: &[u8]) -> Result<Self, VerifyError> {
-        let keys = archive::from_bytes::<VerifierKeysRkyv, archive::rancor::Error>(keys)
-            .map_err(|e| VerifyError::Invalid(format!("verifier keys archive: {e}")))?;
-        if keys.schema_id != libs::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID {
-            return Err("unsupported verifier CRS schema".into());
-        }
+    pub fn from_bytes(preprocess: &[u8]) -> Result<Self, VerifyError> {
         let preprocess = PreprocessBytes::decode(preprocess)?;
-        let one = decode::key_g1(&keys.one_g1)?;
-        let one_g2 = decode::key_g2(&keys.one_g2)?;
-        // Setup samples independent source-group generators; they are not
-        // required to equal arkworks' conventional curve generators.
-        if one.is_zero() || one_g2.is_zero() {
-            return Err("CRS source-group generators must be nonzero".into());
-        }
-        let root =
-            canonical_root(parameters::L_FREE as usize).expect("build-checked public domain");
-        let mut power = Fr::one();
-        let public_roots = (0..parameters::L_FREE)
-            .map(|_| {
-                let value = power;
-                power *= root;
-                value
-            })
-            .collect();
+        let [one, tau, tau_k, delta] = fixed::prepared_g2();
         Ok(Self {
-            one,
-            xi: decode::key_g1(&keys.xi_g1)?,
-            psi: decode::key_g1(&keys.psi_g1)?,
+            g1: fixed::prepared_g1(),
             g2: [
-                one_g2,
-                decode::key_g2(&keys.tau_g2)?,
-                decode::key_g2(&keys.tau_k_g2)?,
-                decode::key_g2(&keys.delta_g2)?,
-                decode::g2(&preprocess.e_kappa)?,
-            ]
-            .map(Into::into),
+                one,
+                tau,
+                tau_k,
+                delta,
+                prepare_g2::prepare(decode::g2(&preprocess.e_kappa)?),
+            ],
             s_c: decode::g1(&preprocess.s_c)?,
             c_fix: decode::g1(&preprocess.c_fix)?,
-            connection_root: canonical_root(parameters::N_C as usize)
-                .expect("build-checked connection domain"),
-            public_roots,
         })
     }
 
@@ -141,8 +120,14 @@ impl Verifier {
             [s_c, u, v, w, b, r, r_plus],
             parameters::N_A,
             parameters::N_C,
+            fixed::INV_N_C,
         );
-        let a = evaluate_public(public_inputs, &self.public_roots, ch.chi);
+        let a = evaluate_public(
+            public_inputs,
+            &fixed::PUBLIC_ROOTS,
+            &fixed::PUBLIC_WEIGHTS,
+            ch.chi,
+        );
         let varpi2 = ch.varpi.square();
         let varpi3 = varpi2 * ch.varpi;
         let varpi4 = varpi2.square();
@@ -150,17 +135,23 @@ impl Verifier {
         let mu3 = mu2 * ch.mu;
         let mu4 = mu2.square();
         // U34: A_free is evaluated in the field; fixed inputs have no MSM here.
-        let a_chi = c_l + c_h * ch.varpi + c_r * varpi2 + c_q * varpi3 + self.s_c * varpi4
-            - self.one * (a + varpi2 * r + varpi3 * q + varpi4 * s_c)
-            - self.xi * (u + ch.varpi * v)
-            - self.psi * (w + ch.varpi * b);
-        let a_plus = c_r - self.one * r_plus;
+        // Factor fixed-base terms through U35 in the field before multiplying
+        // their bases. ONE needs one scalar multiplication instead of two.
+        let one = self.g1[0]
+            .batch_mul(&[(a + varpi2 * r + varpi3 * q + varpi4 * s_c) * mu2 + r_plus * mu3])[0];
+        let xi = self.g1[1].batch_mul(&[(u + ch.varpi * v) * mu2])[0];
+        let psi = self.g1[2].batch_mul(&[(w + ch.varpi * b) * mu2])[0];
+        let opening_commitments =
+            c_l + c_h * ch.varpi + c_r * varpi2 + c_q * varpi3 + self.s_c * varpi4;
         let c_e = c_l + c_h * ch.upsilon;
         // U35 with the approved free/fixed-public specialization: subtract
         // C_fix exactly once in the first operand, not in the opening equation.
         let first = c_l - c_d * ch.mu
-            + (a_chi + pi_chi * ch.chi) * mu2
-            + (a_plus + pi_plus * (self.connection_root * ch.chi)) * mu3
+            + (opening_commitments + pi_chi * ch.chi) * mu2
+            + (c_r + pi_plus * (fixed::CONNECTION_ROOT * ch.chi)) * mu3
+            - one
+            - xi
+            - psi
             - d_q_k * mu4
             - self.c_fix;
         let operands = [
@@ -175,7 +166,13 @@ impl Verifier {
     }
 }
 
-fn quotient_at_challenge(ch: &UnivariateChallenges<Fr>, values: [Fr; 7], na: u64, nc: u64) -> Fr {
+fn quotient_at_challenge(
+    ch: &UnivariateChallenges<Fr>,
+    values: [Fr; 7],
+    na: u64,
+    nc: u64,
+    inv_nc: Fr,
+) -> Fr {
     let [s_c, u, v, w, b, r, r_plus] = values;
     // Both domains are nested radix-two subgroups with the same canonical root.
     let za = ch.chi.pow([na]) - Fr::one();
@@ -183,7 +180,7 @@ fn quotient_at_challenge(ch: &UnivariateChallenges<Fr>, values: [Fr; 7], na: u64
     let zg = ch.chi.pow([na.min(nc)]) - Fr::one();
     let ma = zc / zg;
     let mc = za / zg;
-    let l0 = zc / (Fr::from(nc) * (ch.chi - Fr::one()));
+    let l0 = zc * inv_nc / (ch.chi - Fr::one());
     (ma * (u * v - w)
         + ch.theta * mc * (r - Fr::one()) * l0
         + ch.theta.square()
@@ -192,7 +189,7 @@ fn quotient_at_challenge(ch: &UnivariateChallenges<Fr>, values: [Fr; 7], na: u64
         / (za * zc / zg)
 }
 
-fn evaluate_public(values: &[Fr], roots: &[Fr], chi: Fr) -> Fr {
+fn evaluate_public(values: &[Fr], roots: &[Fr], weights: &[Fr], chi: Fr) -> Fr {
     if let Some(index) = roots.iter().position(|root| *root == chi) {
         return values[index];
     }
@@ -200,11 +197,11 @@ fn evaluate_public(values: &[Fr], roots: &[Fr], chi: Fr) -> Fr {
     batch_inversion(&mut denominators);
     let sum: Fr = values
         .iter()
-        .zip(roots)
+        .zip(weights)
         .zip(denominators)
         .map(|((value, root), inverse)| *value * root * inverse)
         .sum();
-    (chi.pow([values.len() as u64]) - Fr::one()) / Fr::from(values.len() as u64) * sum
+    (chi.pow([values.len() as u64]) - Fr::one()) * sum
 }
 
 #[cfg(test)]

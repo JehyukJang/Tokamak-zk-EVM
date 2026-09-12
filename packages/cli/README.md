@@ -37,7 +37,22 @@ backend npm package.
 | `tokamak-cli --install`                        | Build with prerequisites already installed and download compatible CRS artifacts |
 | `tokamak-cli --install --include-prerequisite` | Offer to install missing prerequisites on macOS or supported Ubuntu releases     |
 | `tokamak-cli --install --docker`               | Build and run in the packaged Linux container workflow                           |
-| `tokamak-cli --install --no-setup`             | Install without CRS artifacts; preprocess, prove, and verify remain unavailable  |
+| `tokamak-cli --install --no-full-setup` | Embed verifier keys; skip prover, preprocess and tau downloads |
+
+Every installation downloads CRS provenance and `verifier_keys.rkyv` before
+compiling the release-optimized verifier. `--no-full-setup` still requires
+Google Drive access. It omits the data needed to generate proofs and preprocess;
+the native verifier accepts externally supplied proof, public input and
+preprocess without reading CRS files at runtime. The retired `--no-setup`
+option is not accepted.
+
+The Drive root contains one folder named by each compatible backend version
+(for example, `2.1`), holding `prover_keys.rkyv`, `preprocess_keys.rkyv`,
+`verifier_keys.rkyv` and `crs_provenance.json`. Its separate `tau_sequence`
+folder holds `<SHA-256>.rkyv` files. Full installation selects the tau digest
+recorded in the version's provenance and installs it as `tau_sequence.rkyv`.
+ZIP-based CRS releases are not supported. These files must be published in
+the new layout before production installation can be qualified.
 
 ### Native requirements
 
@@ -57,10 +72,10 @@ offer installation of missing or incompatible tools.
 | Ninja | Not required | `ninja` |
 | pkg-config | `pkg-config` | `pkg-config` |
 | tar | `tar` | `tar` |
-| unzip | Required unless `--no-setup` is used | Required unless `--no-setup` is used |
+| unzip | Not required for CRS installation | Not required for CRS installation |
 
 Native installation also requires outbound HTTPS to npm, crates.io, GitHub,
-GitHub Releases, and, unless setup is skipped, Google Drive.
+GitHub Releases, and Google Drive.
 
 Native targets are macOS, Ubuntu 20.04, and Ubuntu 22.04. Other Linux
 distributions should use Docker. Native Windows is unsupported; use WSL2 or

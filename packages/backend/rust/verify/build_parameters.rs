@@ -1,7 +1,7 @@
 use std::io;
 
 /// Derive verifier constants only from producer-owned setup parameters.
-pub fn generate(bytes: &[u8]) -> io::Result<String> {
+pub fn read(bytes: &[u8]) -> io::Result<(u64, u64, u64)> {
     let setup: serde_json::Value = serde_json::from_slice(bytes)?;
     let invalid = |message: String| io::Error::new(io::ErrorKind::InvalidData, message);
     let read = |name: &str| {
@@ -32,6 +32,11 @@ pub fn generate(bytes: &[u8]) -> io::Result<String> {
             )));
         }
     }
+    Ok((n_a, n_c, l_free))
+}
+
+pub fn generate(bytes: &[u8]) -> io::Result<String> {
+    let (n_a, n_c, l_free) = read(bytes)?;
     Ok(format!(
         "// Generated from the selected subcircuit library at build time.\n\
          pub const N_A: u64 = {n_a};\n\

@@ -9,10 +9,6 @@ use verify::{
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Config {
-    /// verifier_keys.rkyv emitted by setup
-    #[arg(long, value_name = "FILE")]
-    verifier_keys: PathBuf,
-
     /// Admitted univariate_verifier_preprocess.bin emitted by preprocess
     #[arg(long, value_name = "FILE")]
     preprocess: PathBuf,
@@ -59,7 +55,6 @@ fn run() -> Result<(), VerifyError> {
     let config = Config::parse();
     let verification_result_json = config.verification_result_json;
     let paths = OnlineVerifyInputPaths {
-        verifier_keys_path: &config.verifier_keys,
         preprocess_path: &config.preprocess,
         instance_path: &config.instance,
         proof_path: &config.proof,
@@ -93,8 +88,6 @@ mod tests {
     fn online_cli_has_no_circuit_admission_or_legacy_config_arguments() {
         let args = [
             "verify",
-            "--verifier-keys",
-            "keys.rkyv",
             "--preprocess",
             "preprocess.bin",
             "--instance",
@@ -104,6 +97,7 @@ mod tests {
         ];
         assert!(Config::try_parse_from(args).is_ok());
         for flag in [
+            "--verifier-keys",
             "--verifier-config",
             "--subcircuit-library",
             "--tau-sequence",

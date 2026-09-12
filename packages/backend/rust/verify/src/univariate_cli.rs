@@ -6,17 +6,13 @@ use libs::frontend_artifacts::Instance;
 use std::{fs, path::Path};
 
 pub struct OnlineVerifyInputPaths<'a> {
-    pub verifier_keys_path: &'a Path,
     pub preprocess_path: &'a Path,
     pub instance_path: &'a Path,
     pub proof_path: &'a Path,
 }
 
 pub fn verify(paths: &OnlineVerifyInputPaths<'_>) -> Result<bool, VerifyError> {
-    let verifier = Verifier::from_bytes(
-        &read(paths.verifier_keys_path)?,
-        &read(paths.preprocess_path)?,
-    )?;
+    let verifier = Verifier::from_bytes(&read(paths.preprocess_path)?)?;
     let public = read_public_inputs(paths.instance_path)?;
     verifier.verify(&public, &read(paths.proof_path)?)
 }

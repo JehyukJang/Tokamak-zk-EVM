@@ -6,7 +6,6 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const AdmZip = require('adm-zip');
 
 const packageRoot = path.resolve(__dirname, '..');
 const vendoredBackendRoot = path.join(packageRoot, 'vendor', 'backend');
@@ -87,7 +86,6 @@ async function runInstalledPackageFixture(installedRoot, targetRoot) {
 
   const fixtureRoot = await fsp.mkdtemp(path.join(targetRoot, 'installed-fixture-'));
   try {
-    const archivePath = path.join(fixtureRoot, 'final-crs.zip');
     const extractedDir = path.join(fixtureRoot, 'extracted');
     const activatedOutputDir = path.join(fixtureRoot, 'runtime', 'resource', 'setup', 'output');
     const artifacts = {
@@ -119,7 +117,7 @@ async function runInstalledPackageFixture(installedRoot, targetRoot) {
       artifacts: Object.fromEntries(Object.entries(artifacts).map(([name, bytes]) => [name, sha256(bytes)])),
     };
 
-    const archive = new AdmZip();
+    await fsp.mkdir(extractedDir);
     for (const fileName of provenance.crsArchiveRootFileNames()) {
       const contents = fileName === provenance.crsProvenanceFileName()
         ? `${JSON.stringify(finalProvenance)}\n`
@@ -127,15 +125,13 @@ async function runInstalledPackageFixture(installedRoot, targetRoot) {
       if (typeof contents !== 'string') {
         fail(`Installed CRS contract declared an unexpected fixture entry ${fileName}.`);
       }
-      archive.addFile(fileName, Buffer.from(contents));
+      await fsp.writeFile(path.join(extractedDir, fileName), contents);
     }
-    archive.writeZip(archivePath);
 
-    await setup.extractApprovedCrsArchive(archivePath, extractedDir);
-    await setup.validateDownloadedCrsArchive(
+    await setup.validateDownloadedCrs(
       extractedDir,
       backendReleaseDir,
-      'tokamak-backend-crs-v2.1-20260829T000000Z.zip',
+      compatibleBackendVersion,
       compatibleBackendVersion,
       packageManifest.version,
     );
@@ -143,7 +139,7 @@ async function runInstalledPackageFixture(installedRoot, targetRoot) {
       extractedDir,
       path.join(extractedDir, provenance.crsProvenanceFileName()),
       activatedOutputDir,
-      'tokamak-backend-crs-v2.1-20260829T000000Z.zip',
+      compatibleBackendVersion,
     );
     if (!fs.lstatSync(activatedOutputDir).isSymbolicLink()) {
       fail('Installed package fixture did not atomically activate the CRS generation.');

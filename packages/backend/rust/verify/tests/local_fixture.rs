@@ -15,11 +15,10 @@ fn input(name: &str) -> PathBuf {
 #[test]
 #[ignore = "requires matching current-protocol local fixture paths"]
 fn accepts_real_proof_and_rejects_tampering() {
-    let keys = fs::read(input("VERIFY_TEST_KEYS")).unwrap();
     let preprocess = fs::read(input("VERIFY_TEST_PREPROCESS")).unwrap();
     let proof = fs::read(input("VERIFY_TEST_PROOF")).unwrap();
     let public = read_public_inputs(&input("VERIFY_TEST_INSTANCE")).unwrap();
-    let verifier = Verifier::from_bytes(&keys, &preprocess).unwrap();
+    let verifier = Verifier::from_bytes(&preprocess).unwrap();
     assert!(verifier.verify(&public, &proof).unwrap());
     let mut wrong_public = public.clone();
     wrong_public[0] += Fr::from(1);
@@ -34,8 +33,7 @@ fn accepts_real_proof_and_rejects_tampering() {
     let mut extra = proof.clone();
     extra.push(0);
     assert!(verifier.verify(&public, &extra).is_err());
-    assert!(Verifier::from_bytes(&keys[..keys.len() - 1], &preprocess).is_err());
-    assert!(Verifier::from_bytes(&keys, &preprocess[..preprocess.len() - 1]).is_err());
+    assert!(Verifier::from_bytes(&preprocess[..preprocess.len() - 1]).is_err());
     // Every proof point is authenticated. Replace it by a different valid
     // source-group encoding, rather than merely triggering curve validation.
     for index in 0..10 {
@@ -78,7 +76,7 @@ fn accepts_real_proof_and_rejects_tampering() {
             changed, pp,
             "fixture must exercise preprocess operand {index}"
         );
-        let verifier = Verifier::from_bytes(&keys, &changed.encode().unwrap()).unwrap();
+        let verifier = Verifier::from_bytes(&changed.encode().unwrap()).unwrap();
         assert!(
             !verifier.verify(&public, &proof).unwrap(),
             "preprocess operand {index}"

@@ -5,7 +5,7 @@ import { createRuntimeContext, prepareNativeRuntime } from './runtime.js';
 import type { InstallOptions, RuntimeContext } from './runtime/model.js';
 
 interface WorkerArguments {
-  readonly noSetup: boolean;
+  readonly noFullSetup: boolean;
   readonly stagingRoot: string;
   readonly verbose: boolean;
 }
@@ -24,7 +24,7 @@ async function main(): Promise<void> {
   const options: InstallOptions = {
     docker: false,
     includePrerequisite: false,
-    noSetup: workerArgs.noSetup,
+    noFullSetup: workerArgs.noFullSetup,
     verbose: workerArgs.verbose,
   };
   const backendRuntimeIdentity = await prepareNativeRuntime(context, nativeOs, options, stagingContext);
@@ -36,13 +36,13 @@ async function main(): Promise<void> {
 }
 
 function parseArguments(argv: readonly string[]): WorkerArguments {
-  let noSetup = false;
+  let noFullSetup = false;
   let stagingRoot: string | undefined;
   let verbose = false;
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index]!;
-    if (argument === '--no-setup') {
-      noSetup = true;
+    if (argument === '--no-full-setup') {
+      noFullSetup = true;
       continue;
     }
     if (argument === '--verbose') {
@@ -62,7 +62,7 @@ function parseArguments(argv: readonly string[]): WorkerArguments {
   if (stagingRoot === undefined) {
     throw new Error('The runtime preparation worker requires --staging-root.');
   }
-  return { noSetup, stagingRoot, verbose };
+  return { noFullSetup, stagingRoot, verbose };
 }
 
 function requireStagingRoot(context: RuntimeContext, value: string): string {

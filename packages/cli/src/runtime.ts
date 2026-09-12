@@ -26,7 +26,7 @@ import {
   copyBuiltBackendBinaries,
   ensureVendoredBackendExists,
 } from './runtime/native.js';
-import { installDownloadedSetup, writeSkippedSetupNotice } from './runtime/setup.js';
+import { installDownloadedSetup, withDownloadedVerifierSetup, type DownloadedVerifierSetup } from './runtime/setup.js';
 import { installStagedRuntime } from './runtime/transaction.js';
 import type {
   InstallOptions,
@@ -68,11 +68,10 @@ export async function requireInstalledRuntime(): Promise<RuntimeExecution> {
 
 function collectPrerequisiteFailures(
   nativeOs: SupportedNativeOs,
-  options: InstallOptions,
 ): PrerequisiteFailure[] {
   const failures = collectBootstrapPrerequisiteFailures();
   for (const failure of prerequisiteVerificationFailures(
-    detectNativeInstallPrerequisites(nativeOs, { includeSetup: !options.noSetup }),
+    detectNativeInstallPrerequisites(nativeOs),
   )) {
     failures.push({ name: 'managed prerequisite', reason: failure });
   }
@@ -102,8 +101,8 @@ function throwPrerequisiteFailures(heading: string, failures: readonly Prerequis
   ].join('\n'));
 }
 
-function ensureInstallPrerequisites(nativeOs: SupportedNativeOs, options: InstallOptions): void {
-  const failures = collectPrerequisiteFailures(nativeOs, options);
+function ensureInstallPrerequisites(nativeOs: SupportedNativeOs): void {
+  const failures = collectPrerequisiteFailures(nativeOs);
   if (failures.length === 0) {
     return;
   }
@@ -131,7 +130,7 @@ async function installMissingPrerequisites(
   assertPrerequisiteInstallMayRunAsCurrentUser();
   assertPrerequisiteInstallIsInteractive();
   const probe = createSystemCommandProbe();
-  const statuses = detectNativeInstallPrerequisites(nativeOs, { includeSetup: !options.noSetup }, probe);
+  const statuses = detectNativeInstallPrerequisites(nativeOs, probe);
   const plan = buildPrerequisiteInstallationPlan(
     nativeOs,
     statuses,
@@ -153,7 +152,7 @@ async function installMissingPrerequisites(
     }
   }
 
-  const verifiedStatuses = detectNativeInstallPrerequisites(nativeOs, { includeSetup: !options.noSetup });
+  const verifiedStatuses = detectNativeInstallPrerequisites(nativeOs);
   const verificationFailures = prerequisiteVerificationFailures(verifiedStatuses);
   if (verificationFailures.length > 0) {
     throw new Error(
@@ -178,21 +177,22 @@ export async function installRuntime(options: InstallOptions): Promise<RuntimeCo
   if (options.includePrerequisite) {
     await installMissingPrerequisites(nativeOs, options);
   }
-  ensureInstallPrerequisites(nativeOs, options);
+  ensureInstallPrerequisites(nativeOs);
   const backendRoot = await ensureVendoredBackendExists(context.packageRoot);
 
   logVerbose(options.verbose, `Using vendored backend ${backendRoot}`);
-  const builtBackend = await buildBackendReleaseBinaries(backendRoot, options, context);
-  logVerbose(options.verbose, `Using backend release output ${builtBackend.backendReleaseDir}`);
-  const state: RuntimeState = {
-    backendRuntimeIdentity: builtBackend.runtimeIdentity,
-    installMode: 'native',
-    packageVersion: context.packageVersion,
-    platform: context.platform,
-    installedAt: new Date().toISOString(),
-  };
-  await installStagedRuntime(context, state, async (stagingContext) => {
-    await populateNativeRuntime(stagingContext, nativeOs, options, builtBackend.backendReleaseDir);
+  await withDownloadedVerifierSetup(context, options.verbose, async (setup) => {
+    const builtBackend = await buildBackendReleaseBinaries(backendRoot, options, context, setup.directory);
+    const state: RuntimeState = {
+      backendRuntimeIdentity: builtBackend.runtimeIdentity,
+      installMode: 'native',
+      packageVersion: context.packageVersion,
+      platform: context.platform,
+      installedAt: new Date().toISOString(),
+    };
+    await installStagedRuntime(context, state, async (stagingContext) => {
+      await populateNativeRuntime(stagingContext, nativeOs, options, builtBackend.backendReleaseDir, setup);
+    });
   });
   return context;
 }
@@ -208,9 +208,11 @@ export async function prepareNativeRuntime(
     throw new Error('Prepared native runtime must use a distinct staging directory for the selected platform.');
   }
   const backendRoot = await ensureVendoredBackendExists(context.packageRoot);
-  const builtBackend = await buildBackendReleaseBinaries(backendRoot, options, context);
-  await populateNativeRuntime(stagingContext, nativeOs, options, builtBackend.backendReleaseDir);
-  return builtBackend.runtimeIdentity;
+  return withDownloadedVerifierSetup(context, options.verbose, async (setup) => {
+    const builtBackend = await buildBackendReleaseBinaries(backendRoot, options, context, setup.directory);
+    await populateNativeRuntime(stagingContext, nativeOs, options, builtBackend.backendReleaseDir, setup);
+    return builtBackend.runtimeIdentity;
+  });
 }
 
 async function populateNativeRuntime(
@@ -218,16 +220,13 @@ async function populateNativeRuntime(
   nativeOs: NativeRuntimeOs,
   options: InstallOptions,
   backendReleaseDir: string,
+  setup: DownloadedVerifierSetup,
 ): Promise<void> {
   await copyBuiltBackendBinaries(stagingContext, backendReleaseDir);
   await installIcicleRuntime(stagingContext, nativeOs, options.verbose);
   await configureMacosRuntime(stagingContext, options.verbose);
 
-  if (options.noSetup) {
-    await writeSkippedSetupNotice(stagingContext);
-  } else {
-    await installDownloadedSetup(stagingContext, backendReleaseDir, options.verbose);
-  }
+  await installDownloadedSetup(stagingContext, backendReleaseDir, options.verbose, setup, options.noFullSetup);
 }
 
 export async function uninstallRuntime(): Promise<RuntimeContext> {

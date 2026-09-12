@@ -1,3 +1,4 @@
+mod build_fixed;
 mod build_parameters;
 #[path = "../build-support/subcircuit_library.rs"]
 mod subcircuit_library;
@@ -21,6 +22,20 @@ fn main() -> io::Result<()> {
         env::var_os("OUT_DIR").ok_or_else(|| io::Error::other("Cargo did not provide OUT_DIR"))?,
     );
     fs::write(out_dir.join("verifier_parameters.rs"), generated)?;
+    println!("cargo:rerun-if-env-changed=TOKAMAK_VERIFIER_KEYS");
+    let key_path = PathBuf::from(env::var_os("TOKAMAK_VERIFIER_KEYS").ok_or_else(|| {
+        io::Error::other("TOKAMAK_VERIFIER_KEYS must identify the trusted-setup or downloaded verifier_keys.rkyv before building verify")
+    })?);
+    println!("cargo:rerun-if-changed={}", key_path.display());
+    let resolved = fs::canonicalize(&key_path)?;
+    println!("cargo:rerun-if-changed={}", resolved.display());
+    let (_, nc, l_free) = build_parameters::read(&bytes)?;
+    let fixed =
+        build_fixed::generate(&fs::read(&resolved)?, nc, l_free).map_err(io::Error::other)?;
+    fs::write(out_dir.join("verifier_fixed.rs"), fixed)?;
+    println!("cargo:rerun-if-changed=build_fixed.rs");
+    println!("cargo:rerun-if-changed=src/decode.rs");
+    println!("cargo:rerun-if-changed=../../common/contracts/univariate-domain-contract.v1.json");
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=build_parameters.rs");
     println!("cargo:rerun-if-changed=../build-support/subcircuit_library.rs");

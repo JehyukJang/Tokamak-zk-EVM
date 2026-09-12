@@ -1,11 +1,9 @@
 //! Native decoding of the common canonical affine-byte contract. Never reduce
 //! malformed coordinates modulo the field or skip source-group membership.
-use crate::VerifyError;
 use ark_bls12_381::{Fq, Fq2, G1Affine, G2Affine};
 use ark_ff::{BigInteger, PrimeField};
-use backend_univariate_crs_interface::{UnivariateG1Rkyv, UnivariateG2Rkyv};
 
-fn fq(bytes: &[u8]) -> Result<Fq, VerifyError> {
+fn fq(bytes: &[u8]) -> Result<Fq, String> {
     if bytes.len() != 48
         || bytes
             .iter()
@@ -17,7 +15,7 @@ fn fq(bytes: &[u8]) -> Result<Fq, VerifyError> {
     }
     Ok(Fq::from_le_bytes_mod_order(bytes))
 }
-pub(crate) fn g1(bytes: &[u8; 96]) -> Result<G1Affine, VerifyError> {
+pub(crate) fn g1(bytes: &[u8; 96]) -> Result<G1Affine, String> {
     if *bytes == [0; 96] {
         return Ok(G1Affine::identity());
     }
@@ -27,7 +25,7 @@ pub(crate) fn g1(bytes: &[u8; 96]) -> Result<G1Affine, VerifyError> {
     }
     Ok(point)
 }
-pub(crate) fn g2(bytes: &[u8; 192]) -> Result<G2Affine, VerifyError> {
+pub(crate) fn g2(bytes: &[u8; 192]) -> Result<G2Affine, String> {
     if *bytes == [0; 192] {
         return Ok(G2Affine::identity());
     }
@@ -39,16 +37,4 @@ pub(crate) fn g2(bytes: &[u8; 192]) -> Result<G2Affine, VerifyError> {
         return Err("G2 point is outside the prime-order source group".into());
     }
     Ok(point)
-}
-pub(crate) fn key_g1(p: &UnivariateG1Rkyv) -> Result<G1Affine, VerifyError> {
-    let mut bytes = [0; 96];
-    bytes[..48].copy_from_slice(&p.x);
-    bytes[48..].copy_from_slice(&p.y);
-    g1(&bytes)
-}
-pub(crate) fn key_g2(p: &UnivariateG2Rkyv) -> Result<G2Affine, VerifyError> {
-    let mut bytes = [0; 192];
-    bytes[..96].copy_from_slice(&p.x);
-    bytes[96..].copy_from_slice(&p.y);
-    g2(&bytes)
 }

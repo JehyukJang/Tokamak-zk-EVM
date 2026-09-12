@@ -653,7 +653,7 @@ process.exit(args.some((argument) => argument.endsWith('/prepare-runtime.js')) ?
     Object.defineProperty(process, 'platform', { configurable: true, value: 'linux' });
 
     await assert.rejects(
-      installRuntime({ docker: true, includePrerequisite: false, noSetup: true, verbose: false }),
+      installRuntime({ docker: true, includePrerequisite: false, noFullSetup: true, verbose: false }),
       /docker exited with code 1/u,
     );
     assert.equal(await fs.readFile(path.join(runtimeDir, 'marker.txt'), 'utf8'), 'previous runtime\n');
@@ -734,7 +734,9 @@ if (args.some((argument) => argument.endsWith('/prepare-runtime.js'))) {
   for (const binary of ['preprocess', 'prove', 'verify']) {
     fs.writeFileSync(path.join(runtimeRoot, 'bin', binary), 'binary');
   }
-  fs.writeFileSync(path.join(runtimeRoot, 'resource', 'setup', 'output', 'README.txt'), 'Setup artifacts were skipped during installation.\\n');
+  for (const name of ['verifier_keys.rkyv', 'crs_provenance.json']) {
+    fs.writeFileSync(path.join(runtimeRoot, 'resource', 'setup', 'output', name), 'fixture');
+  }
   fs.writeFileSync(path.join(stagingRoot, 'backend-runtime-identity.json'), JSON.stringify(${nestedIdentity}));
 }
 process.exit(0);
@@ -754,7 +756,7 @@ process.exit(0);
     await installRuntime({
       docker: true,
       includePrerequisite: false,
-      noSetup: true,
+      noFullSetup: true,
       verbose: false,
     });
 

@@ -136,16 +136,19 @@
       "request": "launch",
       "cargo": {
         "args": ["build", "--locked", "--release", "-p", "verify"],
+        "env": {
+          "TOKAMAK_VERIFIER_KEYS": "${workspaceFolder}/rust/setup/trusted-setup/output/debug-keys/verifier_keys.rkyv"
+        },
         "filter": { "name": "verify", "kind": "bin" }
       },
       "program": "${cargo:program}",
       "args": [
-        "--verifier-config",
-        "${workspaceFolder}/rust/preprocess/output/verifier_config.json",
+        "--preprocess",
+        "${workspaceFolder}/rust/preprocess/output/univariate_verifier_preprocess.bin",
         "--instance",
         "${workspaceFolder}/../frontend/synthesizer/outputs/instance.json",
         "--proof",
-        "${workspaceFolder}/rust/prove/output/univariate_proof.json"
+        "${workspaceFolder}/rust/prove/output/univariate_proof.bin"
       ],
       "cwd": "${workspaceFolder}",
       "env": {

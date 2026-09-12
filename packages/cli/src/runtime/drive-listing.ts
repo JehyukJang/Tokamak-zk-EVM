@@ -1,35 +1,5 @@
-import { normalizeCompatibleBackendVersion } from './context.js';
-
-export interface DriveArchiveSelection {
-  readonly compatibleBackendVersion: string;
-  readonly fileId: string;
-  readonly name: string;
-  readonly generatedAt: string;
-  readonly sizeBytes: number;
-}
-
 const DRIVE_LISTING_ASSIGNMENT = "window['_DRIVE_ivd']";
 const MAX_DRIVE_LISTING_CHARACTERS = 8 * 1024 * 1024;
-
-export function parseDriveArchiveName(
-  name: string,
-): Pick<DriveArchiveSelection, 'compatibleBackendVersion' | 'generatedAt'> | null {
-  const parsed = name.match(/^tokamak-backend-crs-v(\d+)\.(\d+)-(\d{8}T\d{6}Z)\.zip$/iu);
-  if (!parsed) {
-    return null;
-  }
-  try {
-    return {
-      compatibleBackendVersion: normalizeCompatibleBackendVersion(
-        `${parsed[1]}.${parsed[2]}`,
-        `CRS archive name ${JSON.stringify(name)} compatibility version`,
-      ),
-      generatedAt: parsed[3],
-    };
-  } catch {
-    return null;
-  }
-}
 
 function decodeHexQuad(value: string): string {
   if (!/^[0-9a-f]{4}$/iu.test(value)) {
@@ -121,50 +91,35 @@ function parseListingPayload(html: string): unknown {
   }
 }
 
-/** Selects the unambiguous latest archive candidate from an untrusted Drive listing. */
-export function selectLatestDriveArchive(
-  html: string,
-  expectedCompatibleVersion: string,
-): DriveArchiveSelection {
-  const payload = parseListingPayload(html);
-  const entriesById = new Map<string, DriveArchiveSelection>();
 
+export interface DriveEntry {
+  readonly fileId: string;
+  readonly name: string;
+  readonly sizeBytes: number;
+}
+
+/** Resolve one exact child; folders and files never substitute for each other. */
+export function selectDriveEntry(html: string, name: string, kind: 'file' | 'folder'): DriveEntry {
+  const entries: DriveEntry[] = [];
   const walk = (node: unknown): void => {
     if (!Array.isArray(node)) return;
-    if (typeof node[0] === 'string' && typeof node[2] === 'string' && node[3] === 'application/zip') {
-      const parsedName = parseDriveArchiveName(node[2]);
-      const sizeBytes = typeof node[13] === 'number' && Number.isFinite(node[13]) ? node[13] : null;
-      if (
-        parsedName &&
-        parsedName.compatibleBackendVersion === expectedCompatibleVersion &&
-        sizeBytes !== null &&
-        sizeBytes > 0
-      ) {
-        if (entriesById.has(node[0])) {
-          throw new Error(`Google Drive listing repeats CRS archive entry ${JSON.stringify(node[0])}.`);
-        }
-        entriesById.set(node[0], {
-          fileId: node[0],
-          name: node[2],
-          compatibleBackendVersion: parsedName.compatibleBackendVersion,
-          generatedAt: parsedName.generatedAt,
-          sizeBytes,
-        });
+    if (typeof node[0] === 'string' && node[2] === name && typeof node[3] === 'string') {
+      const isFolder = node[3] === 'application/vnd.google-apps.folder';
+      if (isFolder !== (kind === 'folder')) {
+        throw new Error(`Google Drive entry ${JSON.stringify(name)} must be a ${kind}.`);
       }
+      if (!/^[a-zA-Z0-9_-]+$/u.test(node[0])) throw new Error('Invalid Google Drive file ID.');
+      const sizeBytes = kind === 'folder' ? 0 : node[13];
+      if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 0 || (kind === 'file' && sizeBytes === 0)) {
+        throw new Error(`Google Drive file ${JSON.stringify(name)} has an invalid size.`);
+      }
+      entries.push({ fileId: node[0], name, sizeBytes });
     }
     for (const child of node) walk(child);
   };
-
-  walk(payload);
-  const entries = [...entriesById.values()];
-  if (entries.length === 0) {
-    throw new Error(
-      `No CRS archive matching compatibility version ${expectedCompatibleVersion} was found in Google Drive.`,
-    );
-  }
-  entries.sort((left, right) => right.generatedAt.localeCompare(left.generatedAt));
-  if (entries.length > 1 && entries[0].generatedAt === entries[1].generatedAt) {
-    throw new Error(`Google Drive listing has multiple latest CRS archives for ${expectedCompatibleVersion}.`);
+  walk(parseListingPayload(html));
+  if (entries.length !== 1) {
+    throw new Error(`Expected exactly one Google Drive ${kind} ${JSON.stringify(name)}, found ${entries.length}.`);
   }
   return entries[0];
 }
