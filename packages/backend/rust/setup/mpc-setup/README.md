@@ -66,6 +66,11 @@ that public view and the applicable assumptions explicitly. Point consistency,
 file hashes and an accepting SNARK proof do not replace proof-of-knowledge
 checks or the security argument for the contribution construction.
 
+The [current phase 2 derivation checkpoint](docs/current-phase2-design.md)
+records the pinned Filecoin family mapping, the packed-weight update identity,
+and the unresolved public-view differences. It is not a completed ceremony
+implementation or a security approval.
+
 ## Legacy implementation overview
 
 The implementation has two ceremony phases and two source routes:
