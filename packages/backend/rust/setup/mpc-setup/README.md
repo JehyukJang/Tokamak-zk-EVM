@@ -61,15 +61,18 @@ extension. In particular, cover the wire weights, weighted-selection queries,
 inverse-delta queries and unscaled fixed-public queries.
 
 Neither paper automatically proves security for those extensions or for the
-complete public Filecoin history plus Tokamak contribution transcript. Review
-that public view and the applicable assumptions explicitly. Point consistency,
+complete public Filecoin history plus Tokamak contribution transcript. The
+intermediate public-view extension is permitted; its cryptographic security
+analysis is [future work](docs/current-phase2-design.md#future-work-cryptographic-security-analysis),
+not a prerequisite for the current implementation. Point consistency,
 file hashes and an accepting SNARK proof do not replace proof-of-knowledge
 checks or the security argument for the contribution construction.
 
 The [current phase 2 derivation checkpoint](docs/current-phase2-design.md)
-records the pinned Filecoin family mapping, the packed-weight update identity,
-and the unresolved public-view differences. It is not a completed ceremony
-implementation or a security approval.
+records the pinned Filecoin family mapping, intermediate state, packed-weight
+updates and public consistency equations. It is not a completed ceremony
+implementation or a security certification. Contribution proof-of-knowledge
+verification remains required even though the broader analysis is deferred.
 
 ## Legacy implementation overview
 

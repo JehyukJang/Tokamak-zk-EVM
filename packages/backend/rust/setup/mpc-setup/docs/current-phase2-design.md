@@ -8,11 +8,12 @@ ceremony specification or a security certification. The final CRS is defined
 by the current Tokamak manuscript and backend/common contracts. References
 are maintained in the [MPC README](../README.md#phase-2-references).
 
-The Filecoin family mapping is identified. The phase 2 contribution protocol
-is not yet approved: the reference delta-only update does not cover changing
-Tokamak's packed wire weights, and its contribution evidence has a different
-public view. No production adapter or contribution kernel has been added at
-this checkpoint. Dusk retirement remains required, not completed.
+The Filecoin family mapping is identified. Intermediate public encodings may
+be extended to support separate wire-weight and delta updates. Security
+analysis of that extension is deferred, not an implementation gate. The
+public-point update and consistency equations below have a test-only model;
+the production adapter, contribution receipt and knowledge proof are not yet
+implemented. Dusk retirement remains required, not completed.
 
 ## Filecoin source mapping
 
@@ -74,8 +75,9 @@ The Tokamak manuscript's U21 and complete-public-view discussion explicitly
 exclude a positive-role first-source encoding. Copying Figure 6's delta
 receipt therefore adds `[delta]_1` outside the current Tokamak view. Merely
 omitting that element does not implement Figure 7 or inherit its security
-argument. A different contribution proof or an explicitly reviewed public-view
-extension is needed before production implementation.
+argument. The intermediate extension is now permitted; its security analysis
+remains future work. Keep these extra encodings out of the final CRS. This
+approval does not change the manuscript or establish a security theorem.
 
 ## Packed-query update calculation
 
@@ -123,14 +125,92 @@ that exposing the candidate summand alone is a demonstrated attack.
 | Weighted helper for wire j | Multiply by v_j | Direct identity |
 | Inverse-delta masking queries | Multiply by u^-1 | Reference-style identity |
 | `[delta]_2` | Multiply by u | Direct identity; knowledge/chain proof still needed |
-| Packed nonpublic and free-public queries | Inverse-delta scaling plus selection correction | Additional construction needed |
-| Unscaled fixed-public queries | Add `(v_j-1)[r_j T_p]_1` | Additional construction needed |
+| Packed nonpublic and free-public queries | Inverse-delta scaling plus selection correction | Intermediate equations below |
+| Unscaled fixed-public queries | Add `(v_j-1)[r_j T_p]_1` | Intermediate equations below |
 
 Choosing all r_j publicly or leaving them under one initializer's control
 would change the stated independent-secret requirements. It is not an
 implementation shortcut authorized by this plan.
 
-## Evidence and continuation gate
+## Intermediate state and public consistency equations
+
+This is a Tokamak-specific algebraic extension of the reference update, not
+a claim that its proof covers Tokamak. Let G and H be the generators of G1
+and G2, and let e be their pairing. Retain each final query plus only the
+selection summand needed to update it:
+
+- For each retained inverse-delta query J_p, store
+  `C_p = [r_j T_p / delta]_1` alongside it. No separate storage of
+  `[A_p / delta]_1` is needed: it is J_p - C_p.
+- For each retained fixed-public query F_p, store
+  `B_p = [r_j T_p]_1` alongside it. Here B_p names a ceremony correction
+  point, not the interface polynomial B inside A_p.
+- Maintain cumulative `D1 = [delta]_1`, `D2 = [delta]_2` and
+  `R_j = [r_j]_2`. D2 is already a final verifier element. D1 and R_j are
+  intermediate verification elements. Use one shared delta for all families
+  and an independently contributed weight for each wire index j.
+
+Reconstruct the fixed images `[A_p]_1`, `[T_p]_1` and masking numerators by
+group-linear combination of the imported powers and the selected circuit
+polynomials. Initialize delta and all r_j to one. This requires no recovery
+of tau, xi or psi; the known initializer is not counted as a contribution.
+Public-query coordinates still use i=k only for public buffer wires. Retain
+the existing omission of implicit-zero witness queries, without omitting
+their selection-domain blocks or changing the polynomial domain.
+
+For one participant's nonzero shares u and v_j, publish their encodings in
+both source groups and the reference proof of knowledge for each share.
+Write `U1=[u]_1`, `U2=[u]_2`, `V1_j=[v_j]_1`, `V2_j=[v_j]_2`.
+Only the participant knows u and v_j; cumulative delta and r_j are not inputs
+to the update routine.
+
+| Family | Update | Public transition equation |
+| --- | --- | --- |
+| Inverse-delta selection correction | C'_p = (v_j/u) C_p | e(C'_p, U2) = e(C_p, V2_j) |
+| Packed query | J'_p = (J_p + (v_j-1) C_p)/u | e(J'_p-C'_p, U2) = e(J_p-C_p, H) |
+| Fixed-public selection correction | B'_p = v_j B_p | e(B'_p, H) = e(B_p, V2_j) |
+| Fixed-public query | F'_p = F_p + (v_j-1) B_p | F'_p-B'_p = F_p-B_p |
+| Both weighted-helper ranges for j | Q'_j = v_j Q_j | e(Q'_j, H) = e(Q_j, V2_j) |
+| Each of eight tag masks and the selection mask | M' = M/u | e(M', U2) = e(M, H) |
+| Cumulative role | D1'=u D1; D2'=u D2 | e(D1',H)=e(D1,U2)=e(G,D2') |
+| Cumulative wire weight | R'_j=v_j R_j | e(V1_j,R_j)=e(G,R'_j) |
+
+Check e(U1,H)=e(G,U2) and e(V1_j,H)=e(G,V2_j). Reject identity
+share and cumulative-role/weight points. Query points themselves may be
+identity. Pairing equations do not establish knowledge of a share: each
+share must also pass the reference `Verify_dl` operation. Contribution
+evidence must identify its previous/current states, circuit snapshot, source
+and wire index; a receipt for another transition or wire must not be reused.
+The concrete receipt encoding and proof implementation remain P15.3 work,
+not completed by this test model. Do not reuse the old gamma/delta/eta proof
+profile or treat a digest chain as a proof of knowledge.
+
+Check initialization against the imported group-linear images. At any later
+state, the following give independent final-family consistency equations:
+
+```text
+e(J_p-C_p, D2) = e([A_p]_1, H)
+e(C_p, D2)     = e([T_p]_1, R_j)
+F_p-B_p        = [A_p]_1
+e(B_p, H)      = e([T_p]_1, R_j)
+e(Q_j, H)     = e(unweighted helper, R_j)
+e(M, D2)      = e(mask numerator, H)
+```
+
+The free-public interpolation term belongs to A_p. Fixed-public A_p omits
+that term. Never use the free-public image for a fixed-public query. Imported
+tau/tagged families, ordinary preprocess G1 powers, shifted selection G2
+powers and every verifier element other than D2 stay unchanged; validate
+their correspondence to the pinned source rather than contributing to them.
+The source must also place tau outside all required evaluation domains, as
+trusted setup requires; this can be checked through encoded vanishing values.
+
+Finalization copies J_p, F_p, weighted helpers, masks and D2 into their
+existing common artifact fields. C_p, B_p, D1, R_j and share evidence belong
+only to the ceremony state/transcript, not to the four final RKYV payloads.
+Omitting them from those payloads does not erase their public exposure.
+
+## Evidence and implementation status
 
 `tests/current_phase2_derivation.rs` checks the source size/capacity arithmetic,
 the probed generator coordinates, the delta-only reference identity and two successive weight/delta updates
@@ -148,11 +228,22 @@ be reported as a successful MPC package build. On 2026-09-12, all four tests
 passed in an isolated release harness using arkworks 0.5.0. This is not source
 ceremony verification, proof-of-knowledge verification, or SNARK E2E.
 
-Before implementing the affected kernels, decide whether the design may
-extend the ceremony's public view, followed by a security analysis of that
-extension, or must preserve the existing view and use a different contribution
-construction. The latter preserves the current protocol boundary but still
-needs a derivation; feasibility and cost are not established here. The former
-does not become safe solely by citing the Groth16 references. No change to
-the manuscript, final CRS or contribution security assumptions is made by
-this checkpoint.
+The additional public-point model initializes from encoded images and applies
+two contributions using only each participant's own shares. The oracle alone
+tracks the cumulative scalars for comparison. It checks both weighted-helper
+ranges, all nine masks, free/nonpublic and fixed queries, and cumulative
+roles. Negative cases modify every mutable point family, substitute a wire's
+share, reverse a transition and provide zero shares. These tests check
+unbatched pairing identities, not receipt authentication or knowledge proofs.
+After adding those cases, all six tests passed in the isolated release
+harness on 2026-09-12 (0.27 seconds for the test run, excluding compilation).
+
+## Future work: cryptographic security analysis
+
+Analyze the complete exposure from the original Filecoin ceremony, the
+separated correction points, cumulative encodings and contribution proofs.
+Establish which assumptions and extraction arguments apply to this Tokamak
+extension. That analysis is explicitly deferred and does not block current
+implementation. Do not report equation tests, a successful SNARK E2E, source
+hash verification or the Groth16 citation as completing it. Release eligibility
+and production ceremony operation are separate decisions, not granted here.
