@@ -1,9 +1,72 @@
 # Tokamak zk-EVM MPC Setup
 
-This guide is for developers who contribute to a Tokamak ceremony and operators
-who prepare, verify, or finalize its artifacts. Maintainers who need the checked
-monomial ranges and transition equations should also read the
-[two-phase protocol contract](docs/phase2-output-contract.md).
+This guide is for developers implementing and reviewing the MPC setup and
+operators who prepare, verify, or finalize its artifacts.
+
+## Replacement status
+
+The target workflow is a Filecoin phase 1 import adapter followed by a
+Tokamak phase 2 ceremony using the `@tokamak-zk-evm/subcircuit-library` npm
+snapshot. Phase 1 conversion does not run a new MPC ceremony. Dusk and the
+previous MPC protocol are retired design targets; their implementation is
+scheduled for removal, without backward compatibility.
+
+The replacement is not implemented yet. The operational sections below
+describe the old code awaiting replacement, not instructions for generating
+the current univariate CRS. The existing
+[two-phase output contract](docs/phase2-output-contract.md) and
+[MPC protocol document](../../../docs/publication/tokamak-mpc-protocol.md)
+also describe that old construction and are not specifications for the new
+phase 2. The references and implementation requirements below apply to the
+replacement.
+
+## Phase 2 references
+
+1. **Primary security and contribution reference: Snarky Ceremonies.**
+   Markulf Kohlweiss, Mary Maller, Janno Siim, and Mikhail Volkhov.
+   *Advances in Cryptology — ASIACRYPT 2021*, Part III, pp. 98–127.
+   [Publication](https://doi.org/10.1007/978-3-030-92078-4_4);
+   [ePrint 2021/219](https://eprint.iacr.org/2021/219).
+   Use its ceremony framework, `Update` and `VerifySRS` algorithms, and
+   proof-of-knowledge construction to derive participant updates and public
+   verification. It revisits the BGM Groth16 ceremony and analyzes security
+   without a random beacon, under its stated algebraic-group, random-oracle
+   and hardness assumptions. Those assumptions are part of the reference,
+   not an unconditional guarantee for a different CRS.
+2. **Foundational construction: Scalable Multi-party Computation for
+   zk-SNARK Parameters in the Random Beacon Model.**
+   Sean Bowe, Ariel Gabizon, and Ian Miers. Cryptology ePrint Archive,
+   Report 2017/1050 (BGM).
+   [Paper](https://eprint.iacr.org/2017/1050).
+   Use its two-phase structure, circuit specialization from encoded powers,
+   sequential contribution construction, and consistency checks. Read its
+   random-beacon security model together with the later analysis in
+   *Snarky Ceremonies*; do not mix their assumptions or proof systems
+   without establishing the resulting construction's requirements.
+3. **Supporting implementation reference: Filecoin Phase2.**
+   [Official source](https://github.com/filecoin-project/filecoin-phase2).
+   This implements Groth16 phase 2 for Filecoin circuits. Use it to inspect
+   engineering choices and the producer ecosystem, not as a specification
+   for Tokamak's different queries or as evidence of their security.
+
+### Applying the references to Tokamak
+
+Derive phase 2 from these references rather than porting the previous
+Tokamak MPC kernels. The current Tokamak protocol and common artifact
+contracts determine the final CRS; the references determine the starting
+point for the contribution and verification design. Before implementing a
+kernel, map its state, update equation, verification equation and public
+evidence to the cited construction, identifying every Tokamak-specific
+extension. In particular, cover the wire weights, weighted-selection queries,
+inverse-delta queries and unscaled fixed-public queries.
+
+Neither paper automatically proves security for those extensions or for the
+complete public Filecoin history plus Tokamak contribution transcript. Review
+that public view and the applicable assumptions explicitly. Point consistency,
+file hashes and an accepting SNARK proof do not replace proof-of-knowledge
+checks or the security argument for the contribution construction.
+
+## Legacy implementation overview
 
 The implementation has two ceremony phases and two source routes:
 
