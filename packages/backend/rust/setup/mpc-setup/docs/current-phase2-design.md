@@ -12,8 +12,9 @@ The Filecoin family mapping is identified. Intermediate public encodings may
 be extended to support separate wire-weight and delta updates. Security
 analysis of that extension is deferred, not an implementation gate. The
 public-point update and consistency equations below have a test-only model;
-contributor-local source preparation is implemented, while participant command
-wiring, the contribution receipt and knowledge proof are not yet implemented.
+contributor-local source preparation and an isolated share-knowledge proof
+are implemented. Participant command wiring and the contribution receipt
+are not yet implemented.
 There is no repository phase 1 or standalone import command. Dusk entry points are retired;
 removal of the remaining legacy files/integration is not complete.
 
@@ -212,8 +213,9 @@ identity. Pairing equations do not establish knowledge of a share: each
 share must also pass the reference `Verify_dl` operation. Contribution
 evidence must identify its previous/current states, circuit snapshot, source
 and wire index; a receipt for another transition or wire must not be reused.
-The concrete receipt encoding and proof implementation remain P15.3 work,
-not completed by this test model. Do not reuse the old gamma/delta/eta proof
+The concrete receipt encoding and participant integration remain P15.3 work.
+The isolated proof implementation is specified below; it is not supplied by
+the algebra model. Do not reuse the old gamma/delta/eta proof
 profile or treat a digest chain as a proof of knowledge.
 
 Check initialization against the imported group-linear images. At any later
@@ -240,6 +242,78 @@ Finalization copies J_p, F_p, weighted helpers, masks and D2 into their
 existing common artifact fields. C_p, B_p, D1, R_j and share evidence belong
 only to the ceremony state/transcript, not to the four final RKYV payloads.
 Omitting them from those payloads does not erase their public exposure.
+
+## Contribution proof profile
+
+`src/contribution_proof.rs` follows the engineering choices in Filecoin's
+[SnapDeals phase 2 revision 934fe8c6d2df2589644302579838976d070c48a7](https://github.com/filecoin-project/filecoin-phase2/blob/934fe8c6d2df2589644302579838976d070c48a7/src/lib.rs)
+(`keypair`, `hash_to_g2`, `HashWriter`). It does not implement a Filecoin
+receipt or claim byte compatibility with Filecoin's Groth16 transcripts.
+Tokamak adds the already-required source/library, state and wire bindings.
+No random beacon, new phase 1, SNARK challenge change or release authority
+is introduced by this choice.
+
+For each nonzero share u (delta or one wire weight), sample a nonidentity G1
+base s and form s_u=u*s. Hash the bound public message with BLAKE2b-512,
+seed ChaCha20 with its first 32 bytes, and obtain r in G2 using Filecoin's
+point sampler. Publish r_u=u*r alongside s, s_u and the approved U1=uG,
+U2=uH. Verify nonidentity subgroup points and the three equations:
+
+```text
+e(U1, H) = e(G, U2)
+e(s_u, H) = e(s, U2)
+e(s_u, r) = e(s, r_u)
+```
+
+The first two connect the proof's share to the public transition equations;
+the last is the reference-style share-knowledge check. Ratios alone do not
+replace it. Whole-ceremony security analysis remains future work.
+
+The BLAKE2b input is the following concatenation, in order:
+
+1. ASCII `TOKAMAK_MPC_PHASE2_SHARE` and the 128 ASCII hex characters of the
+   pinned original Filecoin BLAKE2b digest.
+2. The UTF-8 npm library version, prefixed by its byte length as u64 big endian.
+3. Library-content SHA-256, derived-tau SHA-256, previous-state SHA-256 and
+   next-state SHA-256, each exactly 32 bytes.
+4. Role byte 0 for delta, or role byte 1 followed by the wire index as u64
+   big endian for a wire weight.
+5. U1, U2, s and s_u, in that order, as uncompressed big-endian affine
+   coordinates: G1 x/y (96 bytes); G2 x.c1/x.c0/y.c1/y.c0 (192 bytes).
+
+State digests refer to public states, excluding proof receipts, so no proof
+hash depends on itself. The participant workflow must compute these bindings
+from independently authenticated inputs and the actual states being checked.
+A caller-supplied binding alone is not evidence of source authentication.
+These are intermediate transcript encodings, not new final artifact fields;
+the final common CRS encoding and SNARK's Keccak transcript are unchanged.
+
+Filecoin pins `rand_chacha 0.3.1` and `blstrs 0.4.1`; that blstrs release
+pins `blst 0.3.6`. Its [G2 sampler](https://github.com/filecoin-project/blstrs/blob/v0.4.1/src/g2.rs#L598-L617)
+draws 64 message bytes from the RNG and calls `blst_encode_to_g2` with 16
+zero DST bytes and 16 zero augmentation bytes. The G1 sampler uses the same
+pattern with `blst_encode_to_g1`. This implementation pins ChaCha20 and blst
+to those versions and directly invokes those primitives. Resolving the old
+blstrs dependency tree failed because its ff/bitvec chain requires yanked
+`funty 1.2.0`; using the underlying primitive preserves the selected mapping
+without restoring that obsolete dependency tree. The small FFI boundary
+converts the resulting affine coordinates into arkworks; it does not
+implement its own curve map. Dependency changes must preserve the replay
+vectors, not silently alter the ceremony hash profile.
+
+Do not substitute `hash-derived scalar * G2 generator`. The share U2 is
+public, so that substitution would allow r_u to be computed as the public
+scalar times U2 without knowing u. The negative regression test demonstrates
+this failing construction and rejects its evidence under the actual mapper.
+
+Fixed vectors were generated in a separate replay program using Filecoin's
+BLAKE2b implementation (`blake2b_simd 0.5.11`), `rand 0.8.4`, ChaCha and
+the exact blst calls above. Inputs are the empty string, ASCII
+`Filecoin phase 2`, and 1,024 bytes of 0xa5. The production code uses the
+existing `blake2 0.8.1`; tests compare both the full digest and all 192 output
+bytes with the replay results. This checks integration and byte order against
+a reference replay sharing blst, not an independent implementation of the
+curve map, an official published vector set or a real contribution.
 
 ## Evidence and implementation status
 
@@ -278,6 +352,11 @@ authentication or an implemented phase 2 contribution ceremony.
 The internal-source revision passed ten source tests and six algebra-model
 tests in the normal release package command on 2026-09-12. Cargo metadata
 contains only the library and algebra-test targets, with no standalone command.
+
+On 2026-09-13, the normal release test command passed 25 tests: the existing
+16 plus nine share-proof tests. This qualifies the internal proof component,
+not participant source enforcement, serialized state chains, finalization,
+live Filecoin processing or native SNARK E2E. Those remain P15.3--P15.5 work.
 
 ## Future work: cryptographic security analysis
 

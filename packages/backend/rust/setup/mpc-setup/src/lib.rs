@@ -8,3 +8,12 @@
     reason = "phase 2 participant operation wiring is not implemented yet"
 )]
 pub(crate) mod filecoin_source;
+
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "phase 2 participant operation wiring is not implemented yet"
+    )
+)]
+mod contribution_proof;

@@ -20,6 +20,11 @@ connect this internal preparation to every participant operation and resolve
 the identical `@tokamak-zk-evm/subcircuit-library` npm snapshot independently
 for each participant.
 
+The internal [share-knowledge proof](src/contribution_proof.rs) follows
+Filecoin's SnapDeals phase 2 hash/point-sampling profile. Its isolated tests
+pass, but it is not yet wired to participant commands or persisted ceremony
+state. See the [exact profile and scope](docs/current-phase2-design.md#contribution-proof-profile).
+
 Old native/Dusk binaries are not Cargo targets and their modules are excluded
 from the library. Residual Dusk source/integration files await the separate
 retirement step; they are not supported commands. The old
@@ -97,8 +102,12 @@ library-derived capacity and early input rejection. They are independent of
 the unfinished phase 2 engine. Successful source tests do not establish
 participant workflow enforcement, contribution proofs or MPC/native SNARK E2E.
 
-On 2026-09-12, all 16 release tests passed: ten internal source tests and six
-phase 2 algebra-model tests. Cargo metadata confirms that the package exposes
+On 2026-09-13, all 25 release tests passed: ten internal source tests, nine
+share-proof tests and six phase 2 algebra-model tests. The share-proof tests
+include fixed Filecoin-profile replay vectors, context and wire rebinding,
+malformed/identity points, zero shares and forged evidence. They do not
+establish an operational ceremony or its security theorem.
+Cargo metadata confirms that the package exposes
 no binary target. No full-source download or production npm resolution was
 performed for this checkpoint.
 
@@ -126,10 +135,13 @@ performed for this checkpoint.
    *Snarky Ceremonies*; do not mix their assumptions or proof systems
    without establishing the resulting construction's requirements.
 3. **Supporting implementation reference: Filecoin Phase2.**
-   [Official source](https://github.com/filecoin-project/filecoin-phase2).
+   [SnapDeals revision 934fe8c6d2df2589644302579838976d070c48a7](https://github.com/filecoin-project/filecoin-phase2/tree/934fe8c6d2df2589644302579838976d070c48a7),
+   identified in the [official ceremony record](https://github.com/filecoin-project/phase2-attestations).
    This implements Groth16 phase 2 for Filecoin circuits. Use it to inspect
-   engineering choices and the producer ecosystem, not as a specification
-   for Tokamak's different queries or as evidence of their security.
+   engineering choices and the producer ecosystem. The contribution proof
+   adopts its BLAKE2b-512, ChaCha20 and G2 point-sampling choices, not the
+   previously proposed direct RFC 9380 suite. This reference does not specify
+   Tokamak's different queries or establish their security.
 
 ### Applying the references to Tokamak
 
