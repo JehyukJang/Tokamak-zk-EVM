@@ -16,6 +16,16 @@ and division, see the separate [primitive comparison](current-univariate-primiti
 Those unit measurements do not constitute an accepted production replacement
 or a new whole-prover timing result.
 
+For variable-base table reuse, see the separate
+[arkworks MSM precomputation experiment](prover-arkworks-msm-reuse.md).
+Its negative result is distinct from setup's successful fixed-generator
+precomputation and from the later accepted signed-window prover kernel.
+
+Reconciled against the implementation at `987474c2a` on 2026-09-12. This is
+a documentation/evidence audit, not a new benchmark of that revision. Earlier
+sections retain their experiment-time controls and validation scope; the
+current status below supersedes their then-pending migration descriptions.
+
 ## Results at a glance
 
 Storage omission removes query coordinates
@@ -27,6 +37,7 @@ batches copy-denominator inversions, and combines multi-source commitments.
 
 | Experiment | Control | Accepted result | Evidence boundary |
 | --- | --- | --- | --- |
+| Final P13 CPU optimizations, default digest-disabled mode | 4.3237 s mean process wall; 4.3088 s instrumented total | 3.8604 s wall; 3.8470 s total, 10.71% wall reduction | Five release pairs; quotient cancellation, zero filtering and signed-window MSM; later native verification is separate evidence |
 | Hardware-separated native proving | ICICLE CPU: 8.559 s mean command | arkworks CPU: 5.988 s, 30.0% less time | Five alternating-order release pairs; proof generation and deterministic parity, not verification or CUDA timing |
 | Storage omission (`893c3eb17`) | 1,983,906,512 payload bytes; 373.01 s mean setup | 957,268,688 bytes; 220.08 s mean setup | Two dense and two omitted full-library runs; retained-point and binding equality |
 | CPU point encoding (`6258d1062`) | Compressed setup: 220.240 s mean | 12.216 s mean; 18.03x faster | Two control and five accepted full-library runs; all four payloads byte-identical |
@@ -41,6 +52,90 @@ below. The storage and computation controls are separate experiments; the
 For implementation entry points and transfer conditions, see
 [reuse in prove and MPC setup](#reuse-in-prove-and-mpc-setup). Detailed
 measurements, rejected alternatives and reproduction commands follow.
+
+## Current prover implementation and evidence inventory
+
+The latest recorded paired complete-prove result is the P13 row above, not
+a new timing of HEAD. Its input policy differs from the historical always-on
+digest runs. Do not multiply the successive speedups, add nested spans, or
+attribute the difference between unrelated series to an individual API.
+CPU/GPU selection, binary output and optional hashing are policy changes;
+their costs must not be confused with isolated arithmetic improvements.
+
+| Experiment or mechanism | Disposition and current path | Evidence / implementation |
+| --- | --- | --- |
+| Shared selection cofactors | Retained on both engines; one shared cofactor matrix, no dense witness grid | [Original isolated and full-command samples](evidence/current-univariate-prove.json); [engine](../../rust/prove/src/univariate/engine.rs), [schedule](../../rust/prove/src/univariate.rs) |
+| Bulk copy inversion | Retained algorithmically; CPU now uses arkworks batch inversion, ICICLE retains its own field path. The historical ICICLE threshold is not a CPU rule | Same original samples; [engine](../../rust/prove/src/univariate/engine.rs) |
+| Combined-source MSMs | Retained; hardware split also joins selection masks to query MSMs | [Original samples](evidence/current-univariate-prove.json), [hardware comparison](evidence/prover-hardware-split-comparison.json); [schedule](../../rust/prove/src/univariate.rs) |
+| ICICLE per-proof base precomputation | Factors 2/4 rejected including table construction and three uses; no production cache | `msmPrecomputation` in [original evidence](evidence/current-univariate-prove.json); [isolated tests](../../rust/prove/src/univariate/tests.rs) |
+| Mmap-backed owned decoding | Not adopted: isolated difference did not establish a whole-command win | `readBacking` in [original evidence](evidence/current-univariate-prove.json); [archive tests](../../rust/prove/src/univariate_crs.rs) |
+| Primitive API comparison | Measurement only; conversion/kernel/output costs separated. Subsequent hardware split supplies integration evidence | [Specialist report](current-univariate-primitive-comparison.md), [raw samples](evidence/current-univariate-primitives.jsonl) |
+| CPU arkworks / explicit ICICLE GPU, canonical binary proof | Implemented; only CPU whole-command speed measured, ICICLE CPU-provider parity is not CUDA execution | [Pre-split retiming](evidence/prover-hardware-split-baseline.json), [paired comparison](evidence/prover-hardware-split-comparison.json); [engine](../../rust/prove/src/univariate/engine.rs), [CLI](../../rust/prove/src/main.rs) |
+| Arkworks reusable base tables and unsigned bounded windows | Rejected at three/four uses including construction; this does not reject the later signed-window kernel | [Specialist report](prover-arkworks-msm-reuse.md), [samples](evidence/prover-arkworks-msm-reuse.json); [benchmark](../../rust/prove/examples/msm_reuse_benchmark.rs) |
+| P13.0 instrumentation and scalar counts | Diagnostic, not a speedup | [Paired timing](evidence/prover-p13-instrumentation.json), [counts](evidence/prover-p13-scalar-counts.json), [prior retiming](evidence/prover-retiming-before-p13.json) |
+| P13.1 parallel hashes and validated-byte reuse | Retained on `--check-digests` only; not part of the current default path | [Hash pairs](evidence/prover-p13-parallel-hash.json), [reuse first](evidence/prover-p13-read-reuse-first.json), [reuse repeat](evidence/prover-p13-read-reuse-repeat.json); [admission](../../rust/libs/src/subcircuit_library.rs), [loader](../../rust/prove/src/univariate_cli.rs) |
+| SHA acceleration | Excluded, not measured or implemented | P13.1c below; no hardware-hash speedup claimed |
+| Copy-boundary cancellation | Retained on both engines with exact remainder check | [Primitive and command samples](evidence/prover-p13-boundary.json); [schedule](../../rust/prove/src/univariate.rs) |
+| CPU zero-scalar filtering before point decoding | Retained; no GPU arithmetic or stored-query change | [First pairs](evidence/prover-p13-filter-pairs.json), [repeat](evidence/prover-p13-filter-repeat.json); [engine](../../rust/prove/src/univariate/engine.rs) |
+| Signed windows and half-range buckets | Retained on CPU; stock arkworks remains a test oracle, wider/transposed alternatives rejected | [Kernel and command samples](evidence/prover-p13-msm-kernel.json); [kernel](../../rust/prove/src/univariate/msm_kernel.rs) |
+| Scratch gathering and affine-range caching | Both rejected; scratch gains inconsistent, integrated affine cache slower | [Primitives](evidence/prover-p13-memory-primitives.json), [full cache pairs](evidence/prover-p13-affine-cache.json), [rejected patch](evidence/prover-p13-affine-cache.patch); [benchmark](../../rust/prove/examples/commitment_memory_benchmark.rs) |
+| Final combined P13 qualification | Retained set measured directly, not by summing prior gains | [Five-pair final record](evidence/prover-p13-final.json) |
+
+Sparse R1CS/map preparation, coefficient-domain vanishing division, compact
+nonpublic ranges and source-specific opening aggregation were inherited from
+the reference. Their presence is not evidence of a separately measured gain.
+CPU currently uses arkworks `divide_by_vanishing_poly`; ICICLE uses the exact
+coefficient recurrence for the required blinded degrees. Both check remainder.
+
+### Current input modes and validation status
+
+Default CLI execution reads common provenance identity metadata, then loads
+and structurally admits the consumed CRS without hashing payloads or library
+contents. With `--check-digests`, independent payload hashes run in parallel
+and the loader reuses the validated tau/prover byte buffers. The explicit
+development provenance bypass and direct library entry have their own file
+ingress; neither is the default benchmark mode. Default digest disabling does
+not disable mathematical input checks or authorize malformed archives.
+
+The P13 final record includes a successful explicit-digest proof-generation
+smoke test, not a new paired performance qualification of that mode. Historical
+hash/reuse speedups remain scoped to their digest-enabled controls. The
+historical primitive report's conversion boundary is likewise not the current
+arkworks-native CPU pipeline.
+
+The [preprocess qualification](#correctness-and-remaining-coverage) subsequently
+resolved the stale shared fixtures. The implemented native verifier accepted a
+fresh local proof, and [fixed-input verification qualification](current-univariate-verifier.md)
+records valid-proof acceptance and tamper rejection after the retained verifier
+changes. These results do not retrospectively verify every saved benchmark
+proof or complete the native/WASM cross-proof and storage/reference matrix.
+That full matrix, WASM runtime qualification, actual CUDA arithmetic execution
+and MPC qualification remain separate. Native verifier builds require matching
+library metadata and `TOKAMAK_VERIFIER_KEYS`; keys are not runtime inputs.
+
+### Evidence audit and reproduction limits
+
+The 2026-09-12 audit recomputed retained full-command means from the tracked
+hardware-split and P13 instrumentation/hash/reuse/boundary/filter/kernel/cache/
+final JSON records, excluding their declared warmups. The published rounded
+means agree; raw samples and rejected patches were not changed. The primitive
+and original native-stage records remain linked with their independent scope.
+No new proof, benchmark or E2E was run for this audit.
+
+The final P13 control/candidate binaries and listed local input paths were
+present at audit time. Presence is not a fresh hash verification, nor a durable
+distribution mechanism: these `/tmp` inputs and binaries are not tracked
+reproduction assets. Check the recorded identities before replay; replacement
+inputs produce a new experiment, not a reproduction of those samples.
+
+[`compare-release.mjs`](../../rust/prove/optimization/compare-release.mjs)
+is a historical macOS runner: it reads arguments, host metadata and input paths
+from the hardware-split evidence, uses `/usr/bin/time -l`, and assumes the
+macOS native-library location. It checks input hashes but does not discover a
+new host or arbitrary fixtures. Do not use it as a portable automatic benchmark
+or interpret its copied host fields as new hardware detection. Historical
+controls require their pinned revision/binary and matching inputs; current
+commands below do not recreate earlier implementations.
 
 ## Storage reference and candidates
 
@@ -767,7 +862,7 @@ results and the 8.770-second reference-only series remain separate evidence.
 All samples, events, binary hashes, input hashes and arguments are in
 [`evidence/prover-hardware-split-comparison.json`](evidence/prover-hardware-split-comparison.json).
 
-#### Validation boundary
+#### Validation boundary at the hardware-split checkpoint
 
 - Nine prover library tests and the default/explicit device CLI test pass in
   release mode; four optional benchmark tests remain ignored. Fixed-mask
@@ -786,22 +881,26 @@ All samples, events, binary hashes, input hashes and arguments are in
   CLI identity checks and must not be compared with whole-command time.
   Explicit CUDA selection on this non-CUDA host fails without writing a proof.
   ICICLE CPU-provider parity is not a CUDA functional run.
-- A broader `libs` univariate run is **not green**: 15 tests pass, nine fail
+- At that checkpoint a broader `libs` univariate run was **not green**: 15 tests passed, nine failed
   and one benchmark is ignored. Eight failures use existing `l_free=0`
   fixtures rejected by the existing domain guard; one uses stale catalog
   capacity. Those unchanged fixture assumptions predate this hardware split
-  and remain assigned to the native consumer migration. The unfinished
-  verifier also still references retired proof/challenge fields and does
-  not compile. Neither issue is hidden by a compatibility layer here.
+  and were assigned to the native consumer migration. The then-unfinished
+  verifier still referenced retired proof/challenge fields and did not compile.
+  These were subsequently resolved by native preprocess/verifier work; see
+  [current validation status](#current-input-modes-and-validation-status).
 
 This closes native proof-generation and CPU-timing checks, not full protocol
 verification, browser runtime interoperability, or package-wide validation.
-The unfinished preprocess/verifier/WASM migration and subsequent E2E remain
-required before claiming those results.
+It did not establish later native verification or the still-pending full
+native/WASM matrix; their scopes must remain separate.
 
 ### Reproducing native checks
 
-From `packages/backend`, build before running comparisons:
+From `packages/backend`, build before running comparisons. The default feature
+selects local QAP output; `--subcircuit-library` can select the matching local
+library directory. Release optimization does not select npm inputs. Configure
+native libraries for the host; the example below is specifically macOS.
 
 ```sh
 cargo build --locked --release -p prove --features timing
@@ -818,6 +917,7 @@ cargo test --locked --release -p prove --lib --features timing compare_copy_deno
 PROVE_BENCH_TAU=TAU_FILE cargo test --locked --release -p prove --lib --features timing compare_reused_msm_precomputation -- --ignored --nocapture
 PROVE_BENCH_TAU=TAU_FILE cargo test --locked --release -p prove --lib --features timing compare_commitment_sum -- --ignored --nocapture
 PROVE_BENCH_TAU=TAU_FILE PROVE_BENCH_KEYS=PROVER_KEYS_FILE cargo test --locked --release -p prove --lib --features timing compare_archive_read_backing -- --ignored --nocapture
+PROVE_BENCH_KEYS=CRS_DIRECTORY cargo test --locked --release -p libs --features timing compare_validated_read_reuse -- --ignored --nocapture
 ```
 
 Preserve each control binary before rebuilding the candidate. On macOS,
@@ -825,22 +925,28 @@ pass the library environment after `/usr/bin/time`, since its protected
 launcher can strip inherited `DYLD_LIBRARY_PATH`:
 
 ```sh
-/usr/bin/time -l env DYLD_LIBRARY_PATH="$PWD/external-lib/mac/lib" ICICLE_BACKEND_INSTALL_DIR="$PWD/external-lib/mac/lib/backend" target/release/prove --subcircuit-library LIBRARY --tau-sequence TAU_FILE --keys CRS_DIRECTORY --synthesizer-stat FIXTURE --output OUTPUT_DIRECTORY
+/usr/bin/time -l env DYLD_LIBRARY_PATH="$PWD/external-lib/mac/lib" ICICLE_BACKEND_INSTALL_DIR="$PWD/external-lib/mac/lib/backend" target/release/prove --device cpu --subcircuit-library LIBRARY --tau-sequence TAU_FILE --keys CRS_DIRECTORY --synthesizer-stat FIXTURE --output OUTPUT_DIRECTORY
 ```
 
 `TIMING_JSON` is emitted only with the timing feature. Complete-command
-measurements include normal identity checks, loading, maps, proving and
-writing the proof. They use fresh randomness; the scalar-oracle tests use
-fixed test masks. Proof-generation success does not establish verification
-success. Requalify the preserved reference and accepted native implementation
-in the full flow after preprocess/verifier and WASM are implemented.
+measurements include the selected identity mode, loading, maps, proving and
+writing the proof. The command above uses default digest-disabled CPU mode;
+append `--check-digests` only for a declared digest-enabled comparison and use
+the same mode for both binaries. Do not combine it with the development bypass.
+Commands use fresh randomness; scalar-oracle tests use fixed test masks.
+Proof-generation success does not establish verification success. Native
+verification is now implemented, but full cross-runtime/reference qualification
+remains pending. Build a verifier with the matching fixed keys before verifying
+a newly generated proof; do not add verifier time to a prove-only measurement.
 
 ## P13: additional native CPU optimization experiments
 
-This section is for backend performance maintainers. Each experiment retains
-the current protocol, identity checks, four CRS files and binary proof. Native
-proof generation and independent algebraic checks are the current acceptance
-gate; full native/WASM verification remains pending the consumer rewrites.
+This section records experiments for backend performance maintainers. They
+retain the protocol, four CRS files and binary proof. P13.0/P13.1a/b used
+digest-enabled ingress; P13.2--P13.5 and the final comparison used the later
+default digest-disabled policy on both binaries. Their acceptance gate was
+native proof generation and independent algebraic checks. Later native
+verification and pending cross-runtime qualification are summarized above.
 
 ### P13.0: detailed timing and preserved control
 
@@ -887,7 +993,8 @@ directory. It records fresh randomizers, hashes, nested spans and peak RSS.
 
 ### P13.1a: accepted independent-file SHA-256 parallelism
 
-The same three file digests are computed in the default Rayon pool, then
+In the measured digest-enabled path, the same three file digests are computed
+in the default Rayon pool, then
 checked in their original order. SHA-256 bytes and the first reported
 missing-file/mismatch error are unchanged. No input check was removed.
 The new ordered-admission test passes for valid, corrupt and missing files,
@@ -914,7 +1021,7 @@ Evidence: [whole-command pairs](evidence/prover-p13-parallel-hash.json).
 
 ### P13.1b: accepted reuse of validated CRS bytes
 
-The validator returns the owned tau/prover-key bytes after checking the same
+With `--check-digests`, the validator returns owned tau/prover-key bytes after checking the same
 three file digests and library identity. The CLI decodes those exact buffers,
 then drops them; it does not reopen those paths. The explicit development
 bypass and direct library entry point retain their ordinary file ingress.
@@ -1192,5 +1299,7 @@ Explicit CUDA selection on this Mac fails with `CUDA was requested but is
 unavailable`, returns a failing exit status and produces no output. This is
 failure-path coverage, not CUDA arithmetic execution coverage. No CUDA timing,
 production npm execution, MPC, publication or package version change occurred.
-The pending verifier still owns removal of its old configuration model and
-S_kappa dependency. Full native/WASM proof verification and E2E remain pending.
+At this preprocess checkpoint the verifier rewrite was still pending. It has
+since removed the old configuration/S_kappa dependency and passed the scoped
+native qualification linked above. Full native/WASM cross-verification and
+storage/reference requalification remain pending.

@@ -4,8 +4,11 @@
 
 This report is for backend engineers choosing implementations for the current
 univariate prover. It compares individual operations, not whole-proof timing.
-Production dispatch, protocol, CRS, preprocess and verifier implementations are
-unchanged. The experiment is independent of the earlier fixed-base setup
+Production dispatch, protocol, CRS, preprocess and verifier implementations were
+unchanged by this experiment. Later CPU/GPU separation and prover optimizations
+are recorded in the [consolidated report](current-univariate-crs.md#current-prover-implementation-and-evidence-inventory).
+The ICICLE-to-arkworks conversion boundary measured here is historical, not
+the current arkworks-native CPU pipeline. The experiment is independent of the earlier fixed-base setup
 encoding comparison: variable-base MSM returns one sum, not one point per scalar.
 
 **Result:** ICICLE is not uniformly faster on this CPU. arkworks wins the

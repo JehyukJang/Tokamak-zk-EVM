@@ -2,14 +2,20 @@
 
 ## Result
 
-For backend maintainers evaluating CPU prover optimizations: retain the current
-arkworks MSM. The tested base-precomputation candidates increase total time at
+For backend maintainers evaluating CPU prover optimizations: the experiment
+retained the then-current stock arkworks MSM. The tested base-precomputation candidates increase total time at
 three and four uses of the same CRS prefix. A twofold base table reduces warm
 MSM time by approximately 11%, but its construction costs more than those uses
 save. No production arithmetic or artifact format was changed.
 
 This is an independent primitive experiment, not a new whole-proof timing or
 E2E result. It does not rule out other precomputation algorithms.
+
+The later [consolidated prover report](current-univariate-crs.md#current-prover-implementation-and-evidence-inventory)
+records the accepted signed-window CPU kernel. That kernel uses arkworks group
+operations but is not the stock API measured here. This report's negative
+base-table result remains valid for its controls; it is not an instruction to
+revert the later kernel. No precomputed base table was added by that change.
 
 ## Method
 

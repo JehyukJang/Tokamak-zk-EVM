@@ -1,6 +1,6 @@
 # Tokamak zk-EVM Proving Performance History
 
-> Status: live performance report. Update this document when a materially different proving implementation is measured or an accepted optimization changes the reference result.
+> Status: historical report for the superseded protocol. Its accepted-reference labels apply to the recorded release lines, not the current univariate implementation. See the [current-protocol optimization report](../../../../docs/optimization/current-univariate-crs.md) for subsequent work; keep new-protocol measurements separate.
 >
 > Last consolidated: 2026-09-01. The figures below preserve the historical measurements that were previously distributed across dated mini-reports and timing reports.
 
