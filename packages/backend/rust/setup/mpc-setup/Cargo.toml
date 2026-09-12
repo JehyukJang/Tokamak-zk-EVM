@@ -6,9 +6,15 @@ license = { workspace = true }
 authors = { workspace = true }
 repository = { workspace = true }
 homepage = { workspace = true }
+autobins = false
+
+[[bin]]
+name = "mpc"
+path = "src/bin/mpc.rs"
 
 [dependencies]
 serde = { workspace = true }
+backend-univariate-crs-interface = { workspace = true }
 
 icicle-core = { workspace = true }
 icicle-bls12-381 = { workspace = true }

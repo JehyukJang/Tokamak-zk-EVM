@@ -1919,6 +1919,7 @@ dependencies = [
  "ark-ff",
  "ark-serialize",
  "ark-std",
+ "backend-univariate-crs-interface",
  "blake2",
  "blake3",
  "chrono",

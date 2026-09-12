@@ -12,8 +12,9 @@ The Filecoin family mapping is identified. Intermediate public encodings may
 be extended to support separate wire-weight and delta updates. Security
 analysis of that extension is deferred, not an implementation gate. The
 public-point update and consistency equations below have a test-only model;
-the production adapter, contribution receipt and knowledge proof are not yet
-implemented. Dusk retirement remains required, not completed.
+the phase 1 adapter is implemented, while the contribution receipt and
+knowledge proof are not yet implemented. Dusk entry points are retired;
+removal of the remaining legacy files/integration is not complete.
 
 ## Filecoin source mapping
 
@@ -59,6 +60,15 @@ This checks the header/layout candidate, not the full challenge digest,
 subgroups, power relations, or contribution history. No full source SHA-256
 or independently verified source ceremony is claimed. Decoding must validate
 the upstream point encoding before converting to common affine bytes.
+
+The adapter now uses that pinned layout. Its point decoder follows the
+upstream lockfile's [pairing revision c2af46ca](https://github.com/matterinc/pairing/blob/c2af46cac3e6ebc8e1e1f37bb993e5e6c7f689d1/src/bls12_381/ec.rs):
+uncompressed big-endian x/y for G1; x.c1, x.c0, y.c1, y.c0 for G2. A second
+bounded probe fetched the 192-byte G2 generator at offset 25,769,803,744 on
+2026-09-12; the adapter decodes it to the arkworks generator. Full-source
+BLAKE2b validation remains unexecuted against the live 72-GiB artifact here.
+Synthetic source-format fixtures exercise the same parser and common archive
+conversion without accepting configurable pins in the production API.
 
 ## Reference construction and its limit
 
@@ -219,12 +229,12 @@ both naive scaling approaches fail and that the correction identity agrees
 with the direct oracle, including fixed queries, helpers and masks. Supplying
 the missing summand from known scalars in a test is not an MPC algorithm.
 
-The normal package test command currently fails while compiling old MPC
+The initial normal package test command failed while compiling old MPC
 imports of the removed `FinalMpcCrsProvenance` API in `drive_upload.rs` and
 `flows/final_artifacts.rs`. These are existing replacement work, not a reason
 to restore the legacy provenance contract. An isolated harness can execute
 the algebra tests without that old production library; its result must not
-be reported as a successful MPC package build. On 2026-09-12, all four tests
+be reported as a successful MPC package build. At that checkpoint on 2026-09-12, all four tests
 passed in an isolated release harness using arkworks 0.5.0. This is not source
 ceremony verification, proof-of-knowledge verification, or SNARK E2E.
 
@@ -237,6 +247,10 @@ share, reverse a transition and provide zero shares. These tests check
 unbatched pairing identities, not receipt authentication or knowledge proofs.
 After adding those cases, all six tests passed in the isolated release
 harness on 2026-09-12 (0.27 seconds for the test run, excluding compilation).
+P15.2 subsequently removed the obsolete modules from the active library and
+replaced the CLI entry point. The normal release package test command now
+passes all 15 tests; this is no longer limited to the isolated harness. It
+still does not test a complete live source import or phase 2 ceremony.
 
 ## Future work: cryptographic security analysis
 
