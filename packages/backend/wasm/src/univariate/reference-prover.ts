@@ -178,10 +178,16 @@ async function buildCopyRelation(runtime: CurveRuntime, root: FieldElement, doma
   const sCPoly = DenseUnivariatePolynomial.fromCoefficients(field, sC.coefficients);
   const fHat = bHat.add(sCPoly.scale(beta)).add(constant(field, gammaC));
   const gHat = bHat.add(linear(field, gammaC, beta));
-  const l0 = DenseUnivariatePolynomial.fromCoefficients(field, field.concat(Array.from({ length: domainSize }, () => field.inv(field.fromBigInt(BigInt(domainSize))))));
-  const qC0 = (await rHat.sub(constant(field, field.one)).multiply(l0)).divideVanishingExact(domainSize);
+  const qC0 = copyBoundaryQuotient(field, rHat, domainSize);
   const qC1 = (await rHat.scaleArgument(root).multiply(gHat)).sub(await rHat.multiply(fHat)).divideVanishingExact(domainSize);
   return { rHat, qC0, qC1 };
+}
+
+/** L_0=(X^N-1)/(N*(X-1)); cancel only after checking R_hat(1)=1. */
+export function copyBoundaryQuotient(field: CurveRuntime["Fr"], rHat: DenseUnivariatePolynomial, domainSize: number): DenseUnivariatePolynomial {
+  const boundary = rHat.ruffini(field.one);
+  if (!field.eq(boundary.value, field.one)) throw new Error("Copy boundary R_hat(1) must equal one.");
+  return boundary.quotient.scale(field.inv(field.fromBigInt(BigInt(domainSize))));
 }
 
 function combineQuotients(

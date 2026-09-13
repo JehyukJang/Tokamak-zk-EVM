@@ -92,6 +92,26 @@ The candidate adds a packed s*s cofactor buffer and one copy per active worker
 input/output buffers. This is an allocation bound, not a sampled memory peak.
 [Whole-call evidence](evidence/wasm-w1-selection.json).
 
+### W2: copy-boundary cancellation — accepted
+
+The prover computes `(R_hat-1)/(N_C*(X-1))` by synthetic division and checks
+the remainder equals one before scaling. It no longer constructs dense L_0
+or multiplies and divides by the connection vanishing polynomial. Masked,
+constant and malformed boundary tests at N=1/2/8/64 match the previous dense
+formula exactly or reject. At N=262144, independent alternating measurements
+were 1041.547/995.953 ms control and 150.217/150.180 ms candidate.
+
+| Release-optimized browser prove | Run 1 (s) | Run 2 (s) | Mean (s) |
+| --- | ---: | ---: | ---: |
+| W1 control, digest off | 32.732015 | 32.695200 | 32.713608 |
+| W2 candidate, digest off | 31.610860 | 31.318540 | 31.464700 |
+
+The paired mean decreased 3.82%. All four samples passed browser verification,
+native preprocess byte equality and release native cross-verification. Direct
+TypeScript checking passed. At this domain the 8-MiB L_0 vector and the larger
+product/FFT temporaries are removed; peak memory was not sampled.
+[Whole-call evidence](evidence/wasm-w2-copy-boundary.json).
+
 ## WASM optimization baseline and execution plan — 2026-09-13
 
 This section records the detailed pre-optimization timing table for backend

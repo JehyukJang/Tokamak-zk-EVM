@@ -25,7 +25,7 @@ const boundaries = {
     ['  const ordinary =', 'prove.opening-combination'], ['  const piChi =', 'prove.opening-piChi'],
     ['  const piPlus =', 'prove.opening-piPlus'], ['  transcript.setMessage(encodeG1MessageBlock("F2.a6"', 'prove.final-transcript'],
     ['  const rEvals =', 'prove.copy-recurrence'], ['  const rBase =', 'prove.copy-interpolation'],
-    ['  const l0 =', 'prove.copy-l0'], ['  const qC0 =', 'prove.copy-qC0'], ['  const qC1 =', 'prove.copy-qC1'],
+    ['  const qC0 =', 'prove.copy-qC0'], ['  const qC1 =', 'prove.copy-qC1'],
   ],
   'prover/api/public-api.ts': [['    const parsed =', 'prove.input-admission'], ['    return await encodeUnivariateProof', 'prove.encode']],
   'preprocess/api/public-api.ts': [['      runtimeInput =', 'preprocess.input-admission'], ['      return await createPreprocessOutput', 'preprocess.encode']],
