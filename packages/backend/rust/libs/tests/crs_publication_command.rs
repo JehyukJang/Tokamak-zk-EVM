@@ -1,8 +1,8 @@
-//! The workflow command must remain fail-closed before publication is authorized.
+//! Metadata alone must not admit missing publication payloads.
 use std::process::Command;
 
 #[test]
-fn workflow_rejects_current_crs_even_when_the_manifest_claims_eligibility() {
+fn workflow_rejects_missing_payloads_even_when_the_manifest_claims_eligibility() {
     let mut value: serde_json::Value = serde_json::from_str(include_str!(
         "../../../common/contracts/fixtures/final-mpc-crs-provenance.json"
     ))
@@ -20,6 +20,6 @@ fn workflow_rejects_current_crs_even_when_the_manifest_claims_eligibility() {
             .output()
             .unwrap();
         assert!(!output.status.success());
-        assert!(String::from_utf8_lossy(&output.stderr).contains("publication is disabled"));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("publication admission failed"));
     }
 }

@@ -16,7 +16,7 @@ MPC runs only from a local repository checkout; it is not an installed CLI compo
 - `--mode development` copies the existing local `frontend/qap-compiler/subcircuits` build into a private temporary snapshot. Build QAP first. This mode does not access npm and cannot authorize publication.
 - `--mode publish --library-version MAJOR.MINOR.PATCH` acquires that exact `@tokamak-zk-evm/subcircuit-library` version through npm at runtime into a private temporary installation. Node.js and npm are required. Lifecycle scripts are disabled, and repository manifests and dependencies are not modified. The package must match the backend compatibility class and current circuit format; there is no local-QAP fallback.
 
-Specify the mode before the operation on every invocation. Publish denotes preparation for **CRS output publication to Google Drive**, not binary distribution. Actual upload remains disabled as described below. Neither optimization profile nor Cargo feature selects the MPC circuit source.
+Specify the mode before the operation on every invocation. Publish mode selects the circuit input for **CRS output publication to Google Drive**, not binary distribution. Only the explicit `publish` operation uploads; `finalize` remains offline in either mode. Neither optimization profile nor Cargo feature selects the MPC circuit source.
 
 Obtain `challenge_19` directly from the pinned [Filecoin source](https://trusted-setup.filecoin.io/phase1/challenge_19), or omit `--filecoin-source` to download it during the operation. The source is 77,309,411,488 bytes (about 72 GiB). Every invocation, including verification and finalization, reads and hashes the complete original before accepting incoming state or sampling secret shares. Keeping your own raw copy avoids a download, not the digest check. A coordinator's converted tau, matching subset digest or previous receipt grants no authority.
 
@@ -61,7 +61,50 @@ Finalization requires at least one verified contribution. It uses the same seria
 - `verifier_keys.rkyv`: online-only verifier elements.
 - `crs_provenance.json`: the common backend-owned document, with Filecoin source evidence, the full transcript SHA-256 and all four payload digests.
 
-There is no JSON point projection. Intermediate correction/role points and share proofs are not added to the final CRS. Filecoin results write `releaseEligible: false`; publication is disabled pending an authorized Filecoin publication policy. No Drive upload, ZIP packaging or publisher command is provided. Ordinary prover users may consume distributed tau files; contributors must still authenticate the original Filecoin source themselves.
+There is no JSON point projection. Intermediate correction/role points and share proofs are not added to the final CRS. Offline `finalize` writes `releaseEligible: false`, including in publish mode. Ordinary prover users may consume distributed tau files; contributors must still authenticate the original Filecoin source themselves.
+
+## Publish a completed ceremony
+
+After participants have independently completed a publish-mode transcript, one operator command verifies it, derives the final CRS and uploads it. It does not create contributions or coordinate participants:
+
+```sh
+target/release/mpc --mode publish --library-version <exact-compatible-version> \
+  publish --input /path/to/final.mpc --output ./publication-keys \
+  --filecoin-source /path/to/challenge_19
+```
+
+The command authenticates the complete original Filecoin source, acquires the exact npm snapshot, verifies initialization and every contribution, and requires at least one contribution. Only this verified publish-mode result receives `releaseEligible: true`. Common metadata and all four payload hashes are checked before transfer. The standalone `check_crs_publication` tool checks metadata and payloads only: it does not verify a ceremony or authorize upload. Runtime prove, preprocess and verify do not acquire publication-eligibility gates.
+
+Configure these environment variables in the operator's environment:
+
+| Variable | Value |
+| --- | --- |
+| `TOKAMAK_MPC_DRIVE_FOLDER_ID` | Writable CRS root folder used by consumers; provision anonymous folder listing in advance. |
+| `TOKAMAK_MPC_DRIVE_OAUTH_CLIENT_JSON_PATH` | Installed-app OAuth client configuration file. |
+| `TOKAMAK_MPC_DRIVE_OAUTH_TOKEN_PATH` | Token cache path; an existing cache must be a regular owner-only file (`chmod 600` on Unix). |
+
+The installed OAuth flow may request browser authorization. Keep credential files outside Git. Credentials are accessed only after successful local finalization. The command checks root access without changing root permissions; it grants and tests public read access only for the version/tau folders and their publication files. Organizational restrictions on public sharing cause failure, not a private release reported as public.
+
+The Drive layout matches the current full and verifier-only installers:
+
+```text
+<configured CRS root>/
+  tau_sequence/
+    <tau SHA-256>.rkyv
+  <compatibleBackendVersion>/
+    prover_keys.rkyv
+    preprocess_keys.rkyv
+    verifier_keys.rkyv
+    crs_provenance.json
+```
+
+The version directory is the compatibility class (major.minor); the exact npm package version remains in provenance. Tau is shared independently of that directory. There is no ZIP or legacy layout. The remote provenance is byte-for-byte identical to the frozen local document; upload status and links are printed in the terminal, never written back to it.
+
+Large payloads use 8-MiB chunks and [Drive resumable uploads](https://developers.google.com/workspace/drive/api/guides/manage-uploads). Completion requires size and server-computed SHA-256 agreement; if Drive omits its optional [checksum field](https://developers.google.com/workspace/drive/api/reference/rest/v3/files), the command reads and hashes the remote bytes. A matching filename alone is insufficient. Existing conflicting tau, duplicate matches or a different release in the same version directory are rejected without overwriting published payloads.
+
+Keys and provenance are prepared under a non-release staging name. The version name becomes visible only after all referenced files are complete and publicly readable. This is a staged activation, not a multi-file Drive transaction; do not run concurrent publishers for the same version.
+
+On failure, the command exits unsuccessfully, preserves local output and reports the failed stage or remote staging object. Rerun the same command with the same transcript, library and output path: source and transcript are checked again, keys are rederived and compared, and the original provenance timestamp and bytes are preserved. A resumable session can recover uncertain chunk responses within an invocation; a later invocation restarts an unfinished staging file and reuses verified completed files. An already published identical result is verified without creating another release. To publish a different result, do not reuse a version directory containing an existing release.
 
 ## Qualification and limits
 
@@ -71,9 +114,9 @@ Run local release checks with:
 cargo test --locked --release -p mpc-setup
 ```
 
-Synthetic tests compare all four finalized archive byte streams to trusted setup under identical effective test scalars after two sequential updates. They exercise public/free/fixed specialization, omitted queries, every updated family, share evidence, replay, context substitution, truncation and non-overwriting output. These are correctness tests, not a security proof or real Filecoin/npm E2E qualification.
+Synthetic tests compare all four finalized archive byte streams to trusted setup under identical effective test scalars after two sequential updates. They exercise public/free/fixed specialization, omitted queries, every updated family, share evidence, replay, context substitution, truncation and non-overwriting output. Fake-Drive tests cover publication layout, tau reuse, failures during staging, permission/checksum rejection, conflicting versions, retries and identical provenance bytes. These are correctness tests, not a security proof or real Filecoin/npm/Drive E2E qualification.
 
-Development qualification can use the local QAP build with the live 72-GiB source for multi-contributor finalization and native preprocess/prove/verify. Publish qualification additionally requires a compatible published current-protocol npm library. Record the mode and input identity with any qualified release timing; development results do not qualify the publish path. No successful live ceremony, native MPC E2E or timing baseline is claimed here. The broader security analysis of the extra intermediate public encodings is deferred; do not treat the reference paper's Groth16 theorem as a theorem for this Tokamak extension. Publication authorization is a separate future task.
+Development qualification can use the local QAP build with the live 72-GiB source for multi-contributor finalization and native preprocess/prove/verify. Publish qualification additionally requires a compatible published current-protocol npm library, a completed publish transcript, configured OAuth/destination access and authorization to upload. Record the mode and input identity with any qualified release timing; development results do not qualify the publish path. No successful live ceremony, native MPC E2E, Drive release or timing baseline is claimed here. The broader security analysis of the extra intermediate public encodings is deferred; do not treat the reference paper's Groth16 theorem as a theorem for this Tokamak extension. Additional cryptographic release attestations and separation of release authorities remain future work; the current publication guard is operational.
 
 ## Phase 2 references
 
@@ -128,8 +171,8 @@ checks or the security argument for the contribution construction.
 
 The [current phase 2 derivation checkpoint](docs/current-phase2-design.md)
 records the pinned Filecoin family mapping, intermediate state, packed-weight
-updates and public consistency equations. It is not a completed ceremony
-implementation or a security certification. Contribution proof-of-knowledge
+updates and public consistency equations. It is not a live-ceremony
+qualification or a security certification. Contribution proof-of-knowledge
 verification remains required even though the broader analysis is deferred.
 
 ## License

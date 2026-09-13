@@ -12,7 +12,7 @@ The backend is organized around five user-facing binaries:
 - `verify`
 
 `trusted-setup` generates development-only CRS artifacts. `mpc` implements Filecoin-backed phase 2.
-Both emit the four common CRS files. Filecoin publication is disabled until its publication policy is authorized.
+Both emit the four common CRS files. MPC's explicit publish operation verifies a completed publish-mode ceremony, finalizes those files and uploads them to Google Drive; offline finalization remains ineligible.
 `preprocess`, `prove`, and `verify` accept any CRS whose compatibility version matches the selected
 subcircuit library, together with transaction-specific data from the frontend synthesizer.
 
@@ -116,7 +116,7 @@ cargo run --locked --release -p mpc-setup --bin mpc -- --mode development \
   init --filecoin-source /path/to/challenge_19 --output ./initial.mpc
 ```
 
-The output path must not already exist. Subsequent `contribute`, `verify` and `finalize` operations repeat original-source authentication. See the [MPC operator guide](rust/setup/mpc-setup/README.md) for commands and qualification limits. No Drive upload is performed.
+The transcript output path must not already exist. Subsequent operations repeat original-source authentication. Initialization does not upload. For a completed publish-mode transcript, `mpc --mode publish --library-version <exact-version> publish --input <transcript> --output <directory> --filecoin-source <original>` verifies, finalizes and uploads in one command. See the [MPC operator guide](rust/setup/mpc-setup/README.md#publish-a-completed-ceremony) for configuration, retry behavior and qualification limits.
 
 ## Setup outputs and common provenance
 
@@ -144,8 +144,9 @@ The common fields `phase1SourceProvenance`, `ceremonyProtocolVersion` and
 `ceremonyTranscriptSha256` are explicitly `null` for trusted setup.
 Ceremony-backed generation supplies those values when applicable. Trusted
 setup always writes `releaseEligible: false`. A common parser validates
-document shape, not publication authority. Filecoin MPC also writes `releaseEligible: false`;
-the publication gate rejects all current outputs pending an authorized publication policy.
+document shape, not publication authority. Filecoin MPC's offline `finalize` also writes
+`releaseEligible: false`. Only the explicit publish operation marks its verified
+publish-mode result eligible before transferring the unchanged document and payloads.
 Algorithm consumers do not require `releaseEligible: true`.
 
 Native prove checks content digests only with `--check-digests`, as described
@@ -255,9 +256,12 @@ Every launcher uses Cargo's release optimization. `MPC: initialize Filecoin phas
 selects `--mode development` and reads the local QAP build.
 It writes a new `initial.mpc` transcript, not a publication;
 without `--filecoin-source`, execution downloads and authenticates the complete pinned Filecoin source.
-All other launchers also use local QAP build artifacts. The same MPC executable supports
-`--mode publish --library-version MAJOR.MINOR.PATCH` for runtime npm input selection;
-actual Drive upload remains disabled. MPC does not overwrite trusted-setup output.
+The single `MPC: publish verified ceremony to Google Drive (npm)` launcher instead uses
+`--mode publish --library-version MAJOR.MINOR.PATCH` for runtime npm input selection
+and prompts for a completed publish transcript and output path. Configure the operator
+environment as described in the MPC guide before launching: this entry uploads real
+files. The remaining launchers use local QAP build artifacts. MPC publication must
+use its own output directory, not trusted-setup output.
 
 The preprocess, prove, and verify launchers use the local `qap-compiler/subcircuits/library`
 output. They compile the development-only `development-crs-bypass` feature and pass

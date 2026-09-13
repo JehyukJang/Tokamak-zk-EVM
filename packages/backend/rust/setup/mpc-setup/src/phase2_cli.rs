@@ -8,8 +8,8 @@ use crate::{
 use backend_univariate_crs_interface::archive;
 use clap::{Parser, Subcommand};
 use libs::crs_provenance::{
-    write_crs_provenance, CrsGenerationMethod, CrsProvenance, FilecoinSourceProvenance,
-    Phase1SourceProvenance, CEREMONY_PROTOCOL_VERSION, CRS_DOCUMENT_KIND,
+    CrsGenerationMethod, CrsProvenance, FilecoinSourceProvenance, Phase1SourceProvenance,
+    CEREMONY_PROTOCOL_VERSION, CRS_DOCUMENT_KIND,
 };
 use libs::frontend_artifacts::{
     public_wire_layout::{read_global_wires, PublicWireLayout},
@@ -17,7 +17,7 @@ use libs::frontend_artifacts::{
 };
 use libs::r1cs::SubcircuitR1CS;
 use libs::univariate_crs::{UnivariateCrsShape, UNIVARIATE_CRS_SCHEMA_ID};
-use libs::univariate_setup::{stage_artifacts, SetupCrs};
+use libs::univariate_setup::SetupCrs;
 use rayon::prelude::*;
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
@@ -30,7 +30,7 @@ use std::time::Instant;
 )]
 struct Args {
     /// Select local QAP testing or npm-backed publication preparation.
-    /// Publish mode does not bypass the separate, currently closed upload gate.
+    /// Only the explicit publish operation verifies, finalizes and uploads.
     #[arg(long, value_enum)]
     mode: Mode,
     /// Exact npm library version; required only with --mode publish.
@@ -70,6 +70,13 @@ enum Operation {
         #[arg(long)]
         output: PathBuf,
     },
+    /// Verify the completed publish ceremony, finalize CRS and upload to Google Drive.
+    Publish {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
 }
 
 pub fn run() -> Result<(), String> {
@@ -77,6 +84,10 @@ pub fn run() -> Result<(), String> {
 }
 
 fn execute(args: Args) -> Result<(), String> {
+    let publishing = matches!(&args.operation, Operation::Publish { .. });
+    if publishing && args.mode != Mode::Publish {
+        return Err("the publish operation requires --mode publish".into());
+    }
     args.mode.validate(args.library_version.as_deref())?;
     let all = Instant::now();
     let started = Instant::now();
@@ -170,7 +181,8 @@ fn execute(args: Args) -> Result<(), String> {
         Operation::Init { .. } => None,
         Operation::Contribute { input, .. }
         | Operation::Verify { input }
-        | Operation::Finalize { input, .. } => Some(input),
+        | Operation::Finalize { input, .. }
+        | Operation::Publish { input, .. } => Some(input),
     };
     let transcript = if let Some(input) = input {
         Transcript::read(
@@ -195,7 +207,7 @@ fn execute(args: Args) -> Result<(), String> {
                 .write_new(&output)?;
         }
         Operation::Verify { .. } => {}
-        Operation::Finalize { output, .. } => {
+        Operation::Finalize { output, .. } | Operation::Publish { output, .. } => {
             if transcript.contributions == 0 {
                 return Err("finalization requires a verified participant contribution".into());
             }
@@ -207,12 +219,11 @@ fn execute(args: Args) -> Result<(), String> {
                 preprocess,
                 verifier,
             };
-            let (stage, digests) = stage_artifacts(&output, &crs).map_err(|e| e.to_string())?;
             let provenance = CrsProvenance {
                 document_kind: CRS_DOCUMENT_KIND.into(),
                 protocol_schema_id: UNIVARIATE_CRS_SCHEMA_ID.into(),
                 generation_method: CrsGenerationMethod::Mpc,
-                release_eligible: false,
+                release_eligible: publishing,
                 generated_at_utc: chrono::Utc::now().to_rfc3339(),
                 compatible_backend_version:
                     libs::compatibility::compatibility_from_package_version(env!(
@@ -229,24 +240,27 @@ fn execute(args: Args) -> Result<(), String> {
                 )),
                 ceremony_protocol_version: Some(CEREMONY_PROTOCOL_VERSION.into()),
                 ceremony_transcript_sha256: Some(transcript.file_digest()),
-                artifacts: [
-                    ("tau_sequence.rkyv".into(), digests.tau_sequence_sha256),
-                    ("prover_keys.rkyv".into(), digests.prover_keys_sha256),
-                    (
-                        "preprocess_keys.rkyv".into(),
-                        digests.preprocess_keys_sha256,
-                    ),
-                    ("verifier_keys.rkyv".into(), digests.verifier_keys_sha256),
-                ]
-                .into(),
+                artifacts: Default::default(),
             };
-            write_crs_provenance(
-                stage.staging_directory().map_err(|e| e.to_string())?,
-                &provenance,
-            )
-            .map_err(|e| e.to_string())?;
-            stage.activate().map_err(|e| e.to_string())?;
-            println!("[mpc] finalized local CRS; releaseEligible=false, Drive upload disabled");
+            if let Some(mut snapshot) =
+                crate::publication::finalize(&output, &crs, provenance, publishing)?
+            {
+                println!(
+                    "[mpc] verified local publication files saved in {}; starting Drive preflight",
+                    output.display()
+                );
+                let uploaded = (|| {
+                    let mut drive = crate::drive::GoogleDrive::connect()?;
+                    let root = drive.root.clone();
+                    crate::publication::publish(&mut drive, &root, &mut snapshot)
+                })();
+                let url = uploaded.map_err(|e: String| {
+                    format!("{e}; local CRS preserved at {}", output.display())
+                })?;
+                println!("[mpc] publication complete: {url}");
+            } else {
+                println!("[mpc] finalized local CRS; releaseEligible=false, no upload requested");
+            }
         }
     }
     println!(
@@ -262,7 +276,7 @@ mod tests {
     use super::*;
     #[test]
     fn command_surface_has_no_source_pin_or_subset_bypass() {
-        for command in ["init", "contribute", "verify", "finalize"] {
+        for command in ["init", "contribute", "verify", "finalize", "publish"] {
             let mut valid = vec!["mpc", "--mode", "development", command];
             if command != "init" {
                 valid.extend(["--input", "previous.mpc"]);
@@ -308,5 +322,23 @@ mod tests {
                     .unwrap();
             assert_eq!(args.mode.name(), mode);
         }
+    }
+
+    #[test]
+    fn development_publish_fails_before_input_or_drive_access() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("out");
+        let error = execute(Args {
+            mode: Mode::Development,
+            library_version: None,
+            filecoin_source: None,
+            operation: Operation::Publish {
+                input: dir.path().join("missing"),
+                output: output.clone(),
+            },
+        })
+        .unwrap_err();
+        assert!(error.contains("requires --mode publish"));
+        assert!(!output.exists());
     }
 }

@@ -591,6 +591,7 @@ mod tests {
             same_bytes!(preprocess, expected.preprocess);
             same_bytes!(verifier, expected.verifier);
             same_bytes!(initial.tau, expected.tau);
+            crate::publication::tests::check_local_retry(&expected);
         }
         // Every independently updated family must be checked, not just roles.
         for family in 0..9 {

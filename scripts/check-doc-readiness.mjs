@@ -478,6 +478,10 @@ function checkMpcCommandContract() {
     requireIncludes(relativePath, '--mode development', 'the local-QAP phase 2 execution mode');
     requireIncludes(relativePath, '--mode publish --library-version', 'the runtime npm phase 2 execution mode');
     requireIncludes(relativePath, 'Filecoin', 'the original-source trust boundary');
+    requireIncludes(relativePath, 'publish --input', 'the single verify/finalize/upload operation');
+  }
+  for (const variable of ['TOKAMAK_MPC_DRIVE_FOLDER_ID', 'TOKAMAK_MPC_DRIVE_OAUTH_CLIENT_JSON_PATH', 'TOKAMAK_MPC_DRIVE_OAUTH_TOKEN_PATH']) {
+    requireIncludes('packages/backend/rust/setup/mpc-setup/README.md', variable, 'the operator publication configuration');
   }
 }
 
