@@ -86,51 +86,159 @@ sparse unit benchmark. No rejected candidate remains enabled.
 
 ### Final prove stage diagnostic
 
-One instrumented final run, default digest off; milliseconds. Stage intervals
-partition this run. Nested operation counters in the raw file overlap these
+One instrumented final run, default digest off; milliseconds. Named stage
+intervals cover all but 0.045 ms of the public call; that residual is listed
+separately rather than attributed to arithmetic. Nested counters overlap these
 intervals (and concurrent field operations can overlap each other), so they
 must not be added to this table. This is a diagnostic sample, not the paired
 acceptance control.
 
-| Stage | Time (ms) |
-| --- | ---: |
-| Input admission | 2.935 |
-| Domain | 0.020 |
-| Connection permutation | 141.065 |
-| Witness slots | 3.840 |
-| Witness maps | 325.610 |
-| Public checks and masks | 11.110 |
-| Arithmetic quotient | 586.535 |
-| Public polynomial | 0.610 |
-| Commit C_L / C_H | 5286.610 |
-| Binding C_O | 336.885 |
-| Selected roots | 14.865 |
-| Selection witness | 6.515 |
-| Selection quotients | 178.015 |
-| Commit D_Q / D_Q,K | 2637.990 |
-| First transcript | 4.205 |
-| Commit C_D | 2632.605 |
-| Second transcript | 0.450 |
-| Copy-relation dispatch | 0.040 |
-| Copy recurrence | 422.895 |
-| Copy interpolation / factor preparation | 114.690 |
-| Copy boundary quotient | 152.305 |
-| Copy product quotient | 768.045 |
-| Commit C_R | 1306.825 |
-| Combine quotients | 21.210 |
-| Commit C_Q | 1317.660 |
-| Challenge evaluations | 36.845 |
-| Opening combination | 25.125 |
-| Opening pi_chi | 4052.775 |
-| Opening pi_plus | 1339.495 |
-| Final transcript | 0.460 |
-| Encode | 0.690 |
-| Public prove total | 21728.970 |
+| Stage | Time (ms) | Prove share | Further candidate |
+| --- | ---: | ---: | --- |
+| Input admission | 2.935 | 0.01% | Low priority; retain admission |
+| Domain | 0.020 | 0.00% | Low priority |
+| Connection permutation | 141.065 | 0.65% | W10.6 evaluation-vector batching |
+| Witness slots | 3.840 | 0.02% | Low priority |
+| Witness maps | 325.610 | 1.50% | W10.6 coarser sparse tasks |
+| Public checks and masks | 11.110 | 0.05% | Low priority; retain checks/masks |
+| Arithmetic quotient | 586.535 | 2.70% | W10.5 coset quotient; W10.6 mask fusion |
+| Public polynomial | 0.610 | 0.00% | Low priority |
+| Commit C_L / C_H | 5286.610 | 24.33% | W10.3 delivery reuse; W10.4 signed MSM |
+| Binding C_O | 336.885 | 1.55% | W10.3/4 MSM; W10.6 bounded read-ahead |
+| Selected roots | 14.865 | 0.07% | Low priority |
+| Selection witness | 6.515 | 0.03% | Low priority |
+| Selection quotients | 178.015 | 0.82% | W10.6 cofactor batching/access locality |
+| Commit D_Q / D_Q,K | 2637.990 | 12.14% | W10.3 shared scalar preparation; W10.4 MSM |
+| First transcript | 4.205 | 0.02% | Low priority; preserve message order |
+| Commit C_D | 2632.605 | 12.12% | W10.3/4 MSM; W10.6 linear-combination fusion |
+| Second transcript | 0.450 | 0.00% | Low priority |
+| Copy-relation dispatch | 0.040 | 0.00% | Low priority |
+| Copy recurrence | 422.895 | 1.95% | W10.2 numerator/denominator batching |
+| Copy interpolation / factor preparation | 114.690 | 0.53% | W10.6 linear-combination fusion |
+| Copy boundary quotient | 152.305 | 0.70% | W10.1 existing batched Ruffini/scale |
+| Copy product quotient | 768.045 | 3.53% | W10.5 coset quotient; W10.6 pointwise fusion |
+| Commit C_R | 1306.825 | 6.01% | W10.3/4 MSM |
+| Combine quotients | 21.210 | 0.10% | W10.6 linear-combination fusion |
+| Commit C_Q | 1317.660 | 6.06% | W10.3/4 MSM |
+| Challenge evaluations | 36.845 | 0.17% | Already batched/concurrent; low priority |
+| Opening combination | 25.125 | 0.12% | W10.6 combination/opening fusion |
+| Opening pi_chi | 4052.775 | 18.65% | W10.3/4 MSM; W10.6 intermediate buffers |
+| Opening pi_plus | 1339.495 | 6.16% | W10.3/4 MSM |
+| Final transcript | 0.460 | 0.00% | Low priority |
+| Encode | 0.690 | 0.00% | Low priority |
+| Unattributed public-call residual | 0.045 | 0.00% | Not a measured arithmetic stage |
+| Public prove total | 21728.970 | 100% | |
 
 The remaining large stages are commitments/openings, including their CRS
 reads and MSM dispatch; they are not measurements of pure curve instructions.
 W8 preprocess and W9 online-verifier experiments remain separate, unstarted
 work. No live MPC, publishing, CUDA measurement or version update was performed.
+
+### Further WASM prove opportunities after W0--W7 — review, not results
+
+This section is for engineers selecting follow-up experiments against
+`d148f0c9d`. The stage table above is the existing final W0--W7 diagnostic,
+not a new measurement or a prediction. The follow-up W10 identifiers do not
+reopen completed W0--W7 experiments. W8 preprocess and W9 verifier retain
+their earlier execution priority; W10 follows them and requires a fresh
+control if their shared-runtime changes affect proving.
+
+Aggregation of the `profile-off` operation records in
+[the final evidence](evidence/wasm-w0-w7-final.json) gives:
+
+| Nested prove operation | Calls | Time (ms) | Prove share |
+| --- | ---: | ---: | ---: |
+| G1 MSM API | 31 | 17906.705 | 82.41% |
+| CRS range reads | 243 | 768.295 | 3.54% |
+| Scalar Montgomery-to-raw batches | 31 | 49.290 | 0.23% |
+| CRS payload hashes | 0 | 0 | 0% |
+
+These intervals are already inside the stage table. The MSM boundary includes
+dispatch, worker copies, arithmetic and reduction; it does not establish that
+82.41% is pure group arithmetic. Commitments and openings together account
+for 18910.845 ms, including their reading, field work and MSM. Concurrent
+witness IFFTs and challenge evaluations have overlapping operation durations;
+do not sum them as elapsed time. No new candidate timing has been measured.
+
+**W10.1: finish batching the copy boundary.**
+[The current boundary](../../wasm/src/univariate/reference-prover.ts) still
+calls synchronous `ruffini()` and `scale()`: 91.755 and 60.440 ms respectively.
+Use the existing buffer Ruffini and scaling operations already exercised by
+openings. Preserve `R_hat(1)=1`, masks and constant-polynomial behavior.
+The target is the remaining scalar implementation, not another application
+of the already accepted vanishing-factor cancellation.
+
+**W10.2: batch recurrence operand construction.**
+The recurrence's numerator/denominator construction and successive root powers
+remain a JS scalar loop. The recorded batch inverse costs 14.285 ms and the
+ordered recurrence 48.345 ms within the 422.895-ms stage. The approximately
+360.265-ms remainder includes construction and surrounding work, not a
+separately measured pure construction interval. Move construction into a
+whole-buffer kernel; partition independent ranges using their correct initial
+root powers if worthwhile. Preserve zero-denominator rejection and final
+cycle closure. Do not replace the already batched inverse or ordered recurrence
+with a prefix-scan implementation before this target is measured.
+
+**W10.3: reduce repeated delivery inside MSM.**
+The installed ffjavascript 0.3.1 `src/engine_multiexp.js` submits identical
+base/scalar buffers in a separate `ALLOCSET` task for each scalar window.
+At 262144 points, its rule chooses 14-bit windows and 19 window tasks. Each
+input contains 24 MiB of affine G1 bases and 8 MiB of scalars: 608 MiB summed
+over those tasks. This is a source-derived logical task payload, not measured
+bandwidth, total copy count or peak memory.
+
+First measure preparation, queue/transfer, bucket computation and reduction
+separately. Then test multiple windows per existing worker task, retaining
+parallelism based on the available worker count. Separately test shared scalar
+conversion/recoding for D_Q and D_Q,K and shared base delivery for C_L/C_H.
+Keep all outputs distinct; sharing inputs is not combining transcript points.
+Use invocation-local task buffers rather than a new persistent cache, worker
+pool or public lifecycle API. Compare the complete operation including copies.
+
+**W10.4: signed-window MSM and half-range buckets.**
+[Native's accepted kernel](../../rust/prove/src/univariate/msm_kernel.rs) uses
+signed digits, smaller nonfinal bucket ranges and an input-size window rule.
+The installed wasmcurves `src/build_multiexp.js` extracts unsigned digits and
+allocates the full bucket range. Test the native arithmetic approach using
+existing WASM group primitives, with independent nearby window-width tests.
+Preserve the final carry and identity-safe accumulation. Native P13.4's
+7.69% whole-prover improvement is motivation, not a WASM estimate; neither
+its exact window heuristic nor its rejected alternatives are pre-accepted.
+
+**W10.5: coset quotient construction.**
+Compare the current unmasked 2N-transform product/division path with evaluation
+on an N-point coset, division by the nonzero vanishing value, and interpolation
+of the degree-below-N quotient. Retain the accepted short-mask decomposition.
+Arithmetic and copy quotients are separate experiments, each with its own
+degree proof and divisibility checks. Smaller transforms do not imply half
+the time: additional operand transforms, coefficient scaling, checking and
+copies must be included. A coset interpolation alone does not prove exact
+division; retain an equivalent check that the numerator vanishes on the
+original domain, and test non-divisible inputs. The existing product/division
+implementation is the independent test oracle. No protocol or CRS change is
+needed for a valid implementation specialization.
+
+**W10.6: remaining field and delivery candidates.**
+After re-profiling, independently test multi-term linear-combination kernels,
+short-mask convolution, fused pointwise product differences, and
+combination-plus-Ruffini processing where they remove measured transfers or
+intermediate buffers. Secondary targets are coarser placement-level sparse
+tasks, permutation-vector construction, cofactor construction/access locality
+and bounded CRS read-ahead. Each is a separate accept/reject experiment;
+none has a promised benefit. Preserve remainder, selector, public-buffer and
+structural checks. Do not optimize the sub-millisecond transcript/encoding
+path by weakening it.
+
+For every candidate: run isolated equivalence/rejection tests, affected
+native/WASM E2E, alternating optimized-browser timings and a report update
+before the next change. Record preparation/transfer costs, memory, raw samples,
+warm-up exclusions and variation; retain only reproducible improvements.
+Keep digest off by default and verify the explicit-on path separately.
+Do not repeat the rejected cache enlargement, zero-copy view, unchanged-kernel
+chunk-size tuning or JS zero-scalar filtering without new evidence. W10.3's
+worker-task grouping and W10.4's arithmetic kernel are different experiments
+from those rejected delivery-bound changes. No SHA acceleration, unbounded
+MSM, speculative fixed-base tables or competing outer worker pool is planned.
 
 ### W7: masked quotient FFT reduction — mask separation and spectrum reuse accepted
 
