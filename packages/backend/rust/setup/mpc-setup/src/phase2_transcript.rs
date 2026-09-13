@@ -4,7 +4,7 @@
 
 use crate::circuit_input::Mode;
 use crate::contribution_proof::{ContributionBinding, ShareProof, ShareRole};
-use crate::phase2_engine::{Engine, State};
+use crate::phase2_engine::{Engine, State, VerifiedState};
 use ark_bls12_381::{Bls12_381, Fr, G1Affine, G2Affine};
 use ark_ec::{pairing::Pairing, AffineRepr};
 use ark_ff::{UniformRand, Zero};
@@ -22,18 +22,27 @@ pub(crate) struct Identity {
     pub tau_digest: [u8; 32],
 }
 
-pub(crate) struct Transcript {
+pub(crate) struct Transcript<'a> {
     bytes: Vec<u8>,
-    pub state: State,
-    pub contributions: usize,
-    pub digest: [u8; 32],
+    state: VerifiedState<'a>,
+    identity: &'a Identity,
+    contributions: usize,
+    digest: [u8; 32],
 }
 
-impl Transcript {
+impl<'a> Transcript<'a> {
+    pub(crate) fn state(&self) -> &VerifiedState<'a> {
+        &self.state
+    }
+
+    pub(crate) fn contributions(&self) -> usize {
+        self.contributions
+    }
+
     pub fn file_digest(&self) -> String {
         format!("{:x}", Sha256::digest(&self.bytes))
     }
-    pub fn initialize(engine: &Engine, identity: &Identity) -> Result<Self, String> {
+    pub fn initialize(engine: &'a Engine, identity: &'a Identity) -> Result<Self, String> {
         let mut bytes = b"TOKAMAK_MPC_PHASE2\0".to_vec();
         let mut context = Sha256::new();
         // Even byte-identical circuit inputs cannot promote a development
@@ -44,17 +53,22 @@ impl Transcript {
         context.update(identity.version.as_bytes());
         context.update(identity.library_digest);
         context.update(identity.tau_digest);
-        context.update(encode_state(&engine.initial)?);
+        context.update(encode_state(engine.initial())?);
         bytes.extend_from_slice(&context.finalize());
         Ok(Self {
             digest: Sha256::digest(&bytes).into(),
             bytes,
-            state: engine.initial.clone(),
+            state: engine.initial_state(),
+            identity,
             contributions: 0,
         })
     }
 
-    pub fn read(bytes: Vec<u8>, engine: &Engine, identity: &Identity) -> Result<Self, String> {
+    pub fn read(
+        bytes: Vec<u8>,
+        engine: &'a Engine,
+        identity: &'a Identity,
+    ) -> Result<Self, String> {
         let mut result = Self::initialize(engine, identity)?;
         if !bytes.starts_with(&result.bytes) {
             return Err(
@@ -63,55 +77,57 @@ impl Transcript {
         }
         let mut input = &bytes[result.bytes.len()..];
         while !input.is_empty() {
-            let record_start = input;
-            let state = decode_state(&mut input, &engine.initial)?;
-            let state_length = record_start.len() - input.len();
-            let binding = ContributionBinding {
-                library_version: &identity.version,
-                library_digest: identity.library_digest,
-                tau_digest: identity.tau_digest,
-                // Includes the prior receipt, so replaying even an identity
-                // update (share=1) cannot duplicate a contribution.
-                previous_record_digest: result.digest,
-                next_state_digest: Sha256::digest(&record_start[..state_length]).into(),
-            };
-            let delta = decode_proof(&mut input)?;
-            if !delta.verify(&binding, ShareRole::Delta)
-                || Bls12_381::pairing(result.state.delta_g1, delta.share_g2)
-                    != Bls12_381::pairing(state.delta_g1, G2Affine::generator())
-            {
-                return Err("invalid delta contribution or predecessor binding".into());
-            }
-            for j in 0..engine.initial.weights.len() {
-                let proof = decode_proof(&mut input)?;
-                if !proof.verify(&binding, ShareRole::WireWeight(j as u64))
-                    || Bls12_381::pairing(proof.share_g1, result.state.weights[j])
-                        != Bls12_381::pairing(G1Affine::generator(), state.weights[j])
-                {
-                    return Err(format!(
-                        "invalid wire contribution or predecessor binding at {j}"
-                    ));
-                }
-            }
-            engine.verify_state(&state)?;
-            let record = &record_start[..record_start.len() - input.len()];
-            let mut hash = Sha256::new();
-            hash.update(result.digest);
-            hash.update(record);
-            result.digest = hash.finalize().into();
-            result.contributions += 1;
-            result.state = state;
+            result.verify_record(&mut input)?;
         }
         result.bytes = bytes;
         Ok(result)
     }
 
-    pub fn contribute(
-        mut self,
-        engine: &Engine,
-        identity: &Identity,
-        rng: &mut (impl RngCore + CryptoRng),
-    ) -> Result<Self, String> {
+    /// Check one record against the already-qualified prefix. Both external
+    /// reads and local appends validate the same serialized record bytes here.
+    fn verify_record(&mut self, input: &mut &[u8]) -> Result<(), String> {
+        let record_start = *input;
+        let state = decode_state(input, self.state.get())?;
+        let state_length = record_start.len() - input.len();
+        let binding = ContributionBinding {
+            library_version: &self.identity.version,
+            library_digest: self.identity.library_digest,
+            tau_digest: self.identity.tau_digest,
+            // Includes the prior receipt, so replaying even an identity
+            // update (share=1) cannot duplicate a contribution.
+            previous_record_digest: self.digest,
+            next_state_digest: Sha256::digest(&record_start[..state_length]).into(),
+        };
+        let delta = decode_proof(input)?;
+        if !delta.verify(&binding, ShareRole::Delta)
+            || Bls12_381::pairing(self.state.get().delta_g1, delta.share_g2)
+                != Bls12_381::pairing(state.delta_g1, G2Affine::generator())
+        {
+            return Err("invalid delta contribution or predecessor binding".into());
+        }
+        for j in 0..self.state.get().weights.len() {
+            let proof = decode_proof(input)?;
+            if !proof.verify(&binding, ShareRole::WireWeight(j as u64))
+                || Bls12_381::pairing(proof.share_g1, self.state.get().weights[j])
+                    != Bls12_381::pairing(G1Affine::generator(), state.weights[j])
+            {
+                return Err(format!(
+                    "invalid wire contribution or predecessor binding at {j}"
+                ));
+            }
+        }
+        let state = self.state.verify_successor(state)?;
+        let record = &record_start[..record_start.len() - input.len()];
+        let mut hash = Sha256::new();
+        hash.update(self.digest);
+        hash.update(record);
+        self.digest = hash.finalize().into();
+        self.contributions += 1;
+        self.state = state;
+        Ok(())
+    }
+
+    pub fn contribute(mut self, rng: &mut (impl RngCore + CryptoRng)) -> Result<Self, String> {
         let nonzero = |rng: &mut _| loop {
             let share = Fr::rand(rng);
             if !share.is_zero() {
@@ -120,16 +136,16 @@ impl Transcript {
         };
         let u = Zeroizing::new(nonzero(rng));
         let v = Zeroizing::new(
-            (0..engine.initial.weights.len())
+            (0..self.state.get().weights.len())
                 .map(|_| nonzero(rng))
                 .collect::<Vec<_>>(),
         );
-        let state = engine.contribute(&self.state, *u, &v)?;
+        let state = self.state.contribute(*u, &v)?;
         let mut record = encode_state(&state)?;
         let binding = ContributionBinding {
-            library_version: &identity.version,
-            library_digest: identity.library_digest,
-            tau_digest: identity.tau_digest,
+            library_version: &self.identity.version,
+            library_digest: self.identity.library_digest,
+            tau_digest: self.identity.tau_digest,
             previous_record_digest: self.digest,
             next_state_digest: Sha256::digest(&record).into(),
         };
@@ -147,8 +163,13 @@ impl Transcript {
         // participant before exposing output. Private shares are not encoded.
         drop(u);
         drop(v);
+        let mut input = record.as_slice();
+        self.verify_record(&mut input)?;
+        if !input.is_empty() {
+            return Err("unexpected trailing bytes in generated contribution".into());
+        }
         self.bytes.extend_from_slice(&record);
-        Self::read(self.bytes, engine, identity)
+        Ok(self)
     }
 
     pub fn write_new(&self, path: &Path) -> Result<(), String> {

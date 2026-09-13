@@ -117,25 +117,26 @@ fn prepare_native_e2e_keys() {
     println!(
         "[test-mpc] initialization {:.3}s; packed={} weighted={}",
         started.elapsed().as_secs_f64(),
-        engine.initial.packed.len(),
-        engine.initial.weighted.len()
+        engine.initial().packed.len(),
+        engine.initial().weighted.len()
     );
     let mut transcript = Transcript::initialize(&engine, &identity).unwrap();
     for seed in [1u8, 2] {
         let started = Instant::now();
-        println!("[test-mpc] starting contribution {seed}, including incoming-state and whole-chain verification");
+        println!("[test-mpc] starting contribution {seed}, including new-record verification");
         let mut rng = rand_chacha::ChaCha20Rng::from_seed([seed; 32]);
-        transcript = transcript.contribute(&engine, &identity, &mut rng).unwrap();
+        transcript = transcript.contribute(&mut rng).unwrap();
         println!(
             "[test-mpc] contribution {seed} verified in {:.3}s",
             started.elapsed().as_secs_f64()
         );
     }
-    assert_eq!(transcript.contributions, 2);
+    assert_eq!(transcript.contributions(), 2);
+    assert_eq!(engine.state_check_count(), 2);
     let started = Instant::now();
     println!("[test-mpc] starting verified final-key projection");
-    let (prover, preprocess, verifier) =
-        engine.final_keys(&transcript.state, &tau, &setup).unwrap();
+    let (prover, preprocess, verifier) = transcript.state().final_keys(&tau, &setup).unwrap();
+    assert_eq!(engine.state_check_count(), 2);
     let crs = SetupCrs {
         tau,
         prover,

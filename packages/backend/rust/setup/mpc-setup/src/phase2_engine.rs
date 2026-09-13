@@ -32,14 +32,63 @@ pub(crate) struct State {
 }
 
 pub(crate) struct Engine {
-    pub initial: State,
-    pub packed_wires: Vec<usize>,
-    pub fixed_wires: Vec<usize>,
-    pub nonpublic_count: usize,
-    pub placements: usize,
+    initial: State,
+    packed_wires: Vec<usize>,
+    fixed_wires: Vec<usize>,
+    nonpublic_count: usize,
+    placements: usize,
+    #[cfg(test)]
+    state_checks: std::sync::atomic::AtomicUsize,
+}
+
+/// Immutable state qualified against this exact, immutably borrowed engine.
+/// Only local initialization and full state verification can construct it.
+pub(crate) struct VerifiedState<'a> {
+    engine: &'a Engine,
+    state: State,
+}
+
+impl VerifiedState<'_> {
+    pub(crate) fn get(&self) -> &State {
+        &self.state
+    }
+
+    pub(crate) fn contribute(&self, u: Fr, v: &[Fr]) -> Result<State, String> {
+        self.engine.contribute(&self.state, u, v)
+    }
+
+    pub(crate) fn final_keys(
+        &self,
+        tau: &TauSequenceRkyv,
+        setup: &SetupParams,
+    ) -> Result<(ProverKeysRkyv, PreprocessKeysRkyv, VerifierKeysRkyv), String> {
+        self.engine.final_keys(&self.state, tau, setup)
+    }
+}
+
+impl<'a> VerifiedState<'a> {
+    pub(crate) fn verify_successor(&self, state: State) -> Result<Self, String> {
+        self.engine.verify_state(state)
+    }
 }
 
 impl Engine {
+    pub(crate) fn initial(&self) -> &State {
+        &self.initial
+    }
+
+    #[cfg(test)]
+    pub(crate) fn state_check_count(&self) -> usize {
+        self.state_checks.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub(crate) fn initial_state(&self) -> VerifiedState<'_> {
+        VerifiedState {
+            engine: self,
+            state: self.initial.clone(),
+        }
+    }
+
     /// The caller authenticates the source before this function; malformed
     /// capacities and metadata are rejected before any indexed construction.
     pub(crate) fn initialize(
@@ -214,11 +263,13 @@ impl Engine {
             fixed_wires,
             nonpublic_count,
             placements: setup.s_max,
+            #[cfg(test)]
+            state_checks: std::sync::atomic::AtomicUsize::new(0),
         })
     }
 
-    pub(crate) fn contribute(&self, old: &State, u: Fr, v: &[Fr]) -> Result<State, String> {
-        self.verify_state(old)?;
+    // Production callers enter through VerifiedState, not an arbitrary State.
+    fn contribute(&self, old: &State, u: Fr, v: &[Fr]) -> Result<State, String> {
         if u.is_zero() || v.len() != old.weights.len() || v.iter().any(Zero::is_zero) {
             return Err("contribution needs one nonzero delta and m nonzero wire shares".into());
         }
@@ -277,7 +328,10 @@ impl Engine {
 
     /// These equations qualify the whole public state against locally derived
     /// initialization. Share knowledge and predecessor binding are separate.
-    pub(crate) fn verify_state(&self, state: &State) -> Result<(), String> {
+    fn verify_state(&self, state: State) -> Result<VerifiedState<'_>, String> {
+        #[cfg(test)]
+        self.state_checks
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let init = &self.initial;
         if [
             state.packed.len(),
@@ -368,16 +422,18 @@ impl Engine {
         {
             return Err("ceremony state does not match authenticated circuit/source images".into());
         }
-        Ok(())
+        Ok(VerifiedState {
+            engine: self,
+            state,
+        })
     }
 
-    pub(crate) fn final_keys(
+    fn final_keys(
         &self,
         state: &State,
         tau: &TauSequenceRkyv,
         setup: &SetupParams,
     ) -> Result<(ProverKeysRkyv, PreprocessKeysRkyv, VerifierKeysRkyv), String> {
-        self.verify_state(state)?;
         let shape = UnivariateCrsShape::from_setup_params(setup).map_err(|e| e.to_string())?;
         let enc = |values: &[G1Affine]| values.par_iter().copied().map(encode_g1).collect();
         let prover = ProverKeysRkyv {
@@ -572,8 +628,8 @@ mod tests {
                 *r = *r * ScalarField::from_u32(v);
             }
             let expected = generate(&setup, &public, &circuits, &secret, g1, g2).unwrap();
-            let (prover, preprocess, verifier) =
-                engine.final_keys(&state, &initial.tau, &setup).unwrap();
+            let verified = engine.verify_state(state.clone()).unwrap();
+            let (prover, preprocess, verifier) = verified.final_keys(&initial.tau, &setup).unwrap();
             use backend_univariate_crs_interface::archive;
             macro_rules! same_bytes {
                 ($a:expr, $b:expr) => {
@@ -608,11 +664,11 @@ mod tests {
                 _ => &mut bad.delta_g1,
             };
             *point = (*point + G1Affine::generator()).into_affine();
-            assert!(engine.verify_state(&bad).is_err(), "family {family}");
+            assert!(engine.verify_state(bad).is_err(), "family {family}");
         }
         let mut bad = state.clone();
         bad.weights[0] = G2Affine::zero();
-        assert!(engine.verify_state(&bad).is_err());
+        assert!(engine.verify_state(bad).is_err());
         assert!(engine
             .contribute(&state, Fr::zero(), &vec![Fr::one(); setup.m])
             .is_err());
@@ -626,24 +682,65 @@ mod tests {
             library_digest: [1; 32],
             tau_digest: [2; 32],
         };
+        let checks = engine.state_check_count();
         let zero = Transcript::initialize(&engine, &identity).unwrap();
+        assert_eq!(engine.state_check_count(), checks);
         let directory = tempfile::tempdir().unwrap();
         let first_path = directory.path().join("first.mpc");
         zero.write_new(&first_path).unwrap();
         let original = std::fs::read(&first_path).unwrap();
         assert!(zero.write_new(&first_path).is_err());
         assert_eq!(std::fs::read(&first_path).unwrap(), original);
-        let one = zero
-            .contribute(&engine, &identity, &mut StdRng::seed_from_u64(91))
-            .unwrap();
+        let one = zero.contribute(&mut StdRng::seed_from_u64(91)).unwrap();
+        assert_eq!(engine.state_check_count(), checks + 1);
         let next_path = directory.path().join("next.mpc");
         one.write_new(&next_path).unwrap();
         let first = std::fs::read(&next_path).unwrap();
         let second = Transcript::read(first.clone(), &engine, &identity)
             .unwrap()
-            .contribute(&engine, &identity, &mut StdRng::seed_from_u64(92))
+            .contribute(&mut StdRng::seed_from_u64(92))
             .unwrap();
-        assert_eq!(second.contributions, 2);
+        assert_eq!(second.contributions(), 2);
+        // One external record is fully verified on import, then only the new
+        // record is verified on append. Projection must not repeat either.
+        assert_eq!(engine.state_check_count(), checks + 3);
+        let projected = second.state().final_keys(&initial.tau, &setup).unwrap();
+        let key_bytes = |keys: &(ProverKeysRkyv, PreprocessKeysRkyv, VerifierKeysRkyv)| {
+            backend_univariate_crs_interface::archive::to_bytes::<
+                backend_univariate_crs_interface::archive::rancor::Error,
+            >(keys)
+            .unwrap()
+            .to_vec()
+        };
+        assert_eq!(engine.state_check_count(), checks + 3);
+        let second_path = directory.path().join("second.mpc");
+        second.write_new(&second_path).unwrap();
+        let imported =
+            Transcript::read(std::fs::read(&second_path).unwrap(), &engine, &identity).unwrap();
+        assert_eq!(engine.state_check_count(), checks + 5);
+        assert_eq!(imported.file_digest(), second.file_digest());
+        assert_eq!(imported.state().get(), second.state().get());
+        assert_eq!(
+            key_bytes(&imported.state().final_keys(&initial.tau, &setup).unwrap()),
+            key_bytes(&projected)
+        );
+        assert_eq!(engine.state_check_count(), checks + 5);
+
+        // Match the continuous native fixture: two updates, two state checks,
+        // byte-identical transcript and final keys to the external-read path.
+        let continuous = Transcript::initialize(&engine, &identity)
+            .unwrap()
+            .contribute(&mut StdRng::seed_from_u64(91))
+            .unwrap()
+            .contribute(&mut StdRng::seed_from_u64(92))
+            .unwrap();
+        assert_eq!(engine.state_check_count(), checks + 7);
+        assert_eq!(continuous.file_digest(), second.file_digest());
+        assert_eq!(
+            key_bytes(&continuous.state().final_keys(&initial.tau, &setup).unwrap()),
+            key_bytes(&projected)
+        );
+        assert_eq!(engine.state_check_count(), checks + 7);
         let mut replay = first.clone();
         replay.extend_from_slice(&first[original.len()..]);
         assert!(Transcript::read(replay, &engine, &identity).is_err());

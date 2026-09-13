@@ -118,6 +118,14 @@ verification and the production MPC final-key projection. Trusted-setup final
 prover/preprocess/verifier keys are not reused. The full local library can make
 key preparation expensive even without the original Filecoin download.
 
+Within one invocation, the transcript retains immutable, engine-bound verified
+state. Each append checks its new serialized record, share proofs, predecessor
+binding and full state equations once; it does not reverify the unchanged
+prefix. Key projection reuses that state. Thus two continuous test contributions
+perform two full state checks, not six. A separate participant or finalizer
+still verifies every record read from an external transcript; this reuse is
+not an on-disk verification receipt or a substitute for source authentication.
+
 From `packages/backend`, with current local QAP and matching synthesizer outputs:
 
 ```sh

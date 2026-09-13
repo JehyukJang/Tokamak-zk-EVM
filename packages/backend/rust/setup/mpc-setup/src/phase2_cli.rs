@@ -195,7 +195,7 @@ fn execute(args: Args) -> Result<(), String> {
     };
     println!(
         "[mpc] verified {} contributions in {:.6}s",
-        transcript.contributions,
+        transcript.contributions(),
         started.elapsed().as_secs_f64()
     );
     let started = Instant::now();
@@ -203,16 +203,15 @@ fn execute(args: Args) -> Result<(), String> {
         Operation::Init { output } => transcript.write_new(&output)?,
         Operation::Contribute { output, .. } => {
             transcript
-                .contribute(&engine, &identity, &mut rand::rngs::OsRng)?
+                .contribute(&mut rand::rngs::OsRng)?
                 .write_new(&output)?;
         }
         Operation::Verify { .. } => {}
         Operation::Finalize { output, .. } | Operation::Publish { output, .. } => {
-            if transcript.contributions == 0 {
+            if transcript.contributions() == 0 {
                 return Err("finalization requires a verified participant contribution".into());
             }
-            let (prover, preprocess, verifier) =
-                engine.final_keys(&transcript.state, &tau, &setup)?;
+            let (prover, preprocess, verifier) = transcript.state().final_keys(&tau, &setup)?;
             let crs = SetupCrs {
                 tau,
                 prover,
