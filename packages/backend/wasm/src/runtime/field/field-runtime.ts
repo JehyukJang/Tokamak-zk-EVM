@@ -34,6 +34,7 @@ import {
   FIELD_SPARSE_ROW_DOT,
   FIELD_SELECTION_ACCUMULATE,
   FIELD_ORDERED_RECURRENCE,
+  FIELD_UNIVARIATE_VANISHING,
 } from "./kernel-names.js";
 import {
   assertLinearBatchExports,
@@ -179,6 +180,21 @@ export function createFieldRuntime(field: FfField): FieldRuntime {
       assertFieldBuffer(buffer, field.n8);
       assertFieldElement(factor, field.n8, "Scale factor");
       return await field.batchApplyKey(buffer, factor, field.one);
+    },
+    async divideUnivariateVanishingBuffer(coefficients, domainSize) {
+      assertFieldBuffer(coefficients, field.n8);
+      assertPositiveSafeInteger(domainSize, "Vanishing domain size");
+      const count = coefficients.length / field.n8;
+      if (count <= domainSize) throw new Error("Vanishing division requires degree at least the domain size.");
+      const quotientBytes = (count - domainSize) * field.n8;
+      const outputs = requireTaskOutputs(await field.tm.queueAction([
+        { cmd: "ALLOCSET", var: 0, buff: coefficients },
+        { cmd: "ALLOC", var: 1, len: quotientBytes },
+        { cmd: "CALL", fnName: FIELD_UNIVARIATE_VANISHING, params: [{ var: 0 }, { val: count }, { val: domainSize }, { var: 1 }] },
+        { cmd: "GET", out: 0, var: 1, len: quotientBytes },
+        { cmd: "GET", out: 1, var: 0, len: domainSize * field.n8 },
+      ]), 2, "Univariate vanishing division");
+      return { quotient: outputs[0], remainder: outputs[1] };
     },
     async orderedRecurrenceBuffer(numerators, inverseDenominators) {
       assertMatchingFieldBuffers(numerators, inverseDenominators, field.n8, "Ordered recurrence");

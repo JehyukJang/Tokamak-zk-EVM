@@ -30,6 +30,45 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
+### W6: whole-buffer polynomial operations — accepted
+
+The candidate uses existing worker kernels for long linear combinations,
+Horner evaluation, argument scaling and Ruffini openings. A univariate
+descending-coefficient kernel returns both quotient and remainder for division
+by `X^N-1`; the caller still rejects every nonzero remainder. Short masks now
+update only their low and shifted coefficients, and products with a degree-at-most-three
+factor use shifted batch additions instead of a large FFT. No new worker pool,
+hidden trust cache or synchronous WASM-memory adapter is introduced.
+
+Independent exact comparisons covered constants, unequal polynomial lengths,
+overlapping vanishing shifts, degrees above twice the domain size, zero
+polynomials and non-divisible inputs. At 262,144 coefficients, two alternating
+unit pairs measured the following means, including preparation and worker
+transfers (not browser whole-prover times):
+
+| Operation | Scalar/FFT control (ms) | Batched candidate (ms) |
+| --- | ---: | ---: |
+| Two-term linear combination | 115.985 | 10.618 |
+| Exact vanishing division | 173.342 | 44.851 |
+| Horner evaluation | 91.645 | 24.483 |
+| Ruffini quotient | 93.755 | 30.278 |
+| Long polynomial × cubic mask | 427.453 | 17.291 |
+| Cubic mask × vanishing polynomial | 44.492 | 0.321 |
+
+[Unit samples](evidence/wasm-w6-polynomial-micro.json). Whole-prover admission
+requires the separate paired E2E measurements below; these unit ratios alone
+are not a claimed prover speedup. Worker input/output copies remain, and
+concurrent evaluations may temporarily retain several full coefficient
+buffers. Peak process memory has not been sampled.
+
+With the same W4 compressed fixture and W5 fusion control, minified ES2022
+browser prove measured **25.902140 / 26.426145 s** for control and
+**23.204800 / 23.247765 s** for the candidate: means **26.164143 → 23.226283 s**,
+an **11.23% reduction**, improving both pairs. All four browser verifications,
+native proof cross-verifications and preprocess byte comparisons passed.
+Direct TypeScript checking passed. W6 is accepted; no extrapolation from
+the unit speedup factors is used. [E2E samples](evidence/wasm-w6-polynomial.json).
+
 ### W0: explicit runtime digest checking — accepted policy alignment
 
 The public prove/preprocess APIs now default to no CRS payload hashing and

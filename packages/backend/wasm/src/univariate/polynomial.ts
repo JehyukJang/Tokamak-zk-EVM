@@ -18,6 +18,29 @@ export class DenseUnivariatePolynomial {
     return new DenseUnivariatePolynomial(field.createZeroBuffer(1), field);
   }
 
+  static async linearCombination(field: FieldRuntime, terms: readonly (readonly [DenseUnivariatePolynomial, FieldElement])[]): Promise<DenseUnivariatePolynomial> {
+    const count = Math.max(0, ...terms.map(([p]) => p.degree)) + 1;
+    let result = field.createZeroBuffer(count);
+    for (const [polynomial, factor] of terms) {
+      if (field.isZero(factor)) continue;
+      const source = field.createZeroBuffer(count);
+      source.set(polynomial.coefficients);
+      result = await field.batchAddScaledBuffer(result, source, factor);
+    }
+    return DenseUnivariatePolynomial.fromCoefficients(field, result);
+  }
+
+  async divideVanishingExactBatched(domainSize: number): Promise<DenseUnivariatePolynomial> {
+    if (!Number.isSafeInteger(domainSize) || domainSize < 1) throw new Error("Vanishing domain must be positive.");
+    if (this.degree < domainSize) {
+      if (this.coefficients.some(byte => byte !== 0)) throw new Error("Polynomial is not divisible by the vanishing polynomial.");
+      return DenseUnivariatePolynomial.zero(this.field);
+    }
+    const { quotient, remainder } = await this.field.divideUnivariateVanishingBuffer(this.coefficients, domainSize);
+    if (remainder.some(byte => byte !== 0)) throw new Error("Polynomial is not divisible by the vanishing polynomial.");
+    return DenseUnivariatePolynomial.fromCoefficients(this.field, quotient);
+  }
+
   get degree(): number {
     return this.field.bufferElementCount(this.coefficients) - 1;
   }
@@ -98,6 +121,18 @@ export class DenseUnivariatePolynomial {
     if (count <= 64) {
       return this.multiplySmall(rhs, count);
     }
+    if (Math.min(this.degree, rhs.degree) <= 3) {
+      const [long, short] = this.degree >= rhs.degree ? [this, rhs] : [rhs, this];
+      let result = this.field.createZeroBuffer(count);
+      for (let i = 0; i <= short.degree; i++) {
+        const factor = this.field.readBufferElement(short.coefficients, i);
+        if (this.field.isZero(factor)) continue;
+        const shifted = this.field.createZeroBuffer(count);
+        shifted.set(long.coefficients, i * this.field.byteLength);
+        result = await this.field.batchAddScaledBuffer(result, shifted, factor);
+      }
+      return DenseUnivariatePolynomial.fromCoefficients(this.field, result);
+    }
     const transformSize = nextPowerOfTwo(count);
     const left = this.field.createZeroBuffer(transformSize);
     const right = this.field.createZeroBuffer(transformSize);
@@ -113,7 +148,13 @@ export class DenseUnivariatePolynomial {
   }
 
   multiplyVanishing(domainSize: number): DenseUnivariatePolynomial {
-    return this.shift(domainSize).sub(this);
+    if (!Number.isSafeInteger(domainSize) || domainSize < 0) throw new Error("Vanishing degree must be non-negative.");
+    const coefficients = this.field.createZeroBuffer(this.degree + domainSize + 1);
+    coefficients.set(this.coefficients, domainSize * this.field.byteLength);
+    for (let i = 0; i <= this.degree; i++) {
+      this.field.writeBufferElement(coefficients, i, this.field.sub(this.field.readBufferElement(coefficients, i), this.field.readBufferElement(this.coefficients, i)));
+    }
+    return DenseUnivariatePolynomial.fromCoefficients(this.field, coefficients);
   }
 
   divideVanishingExact(domainSize: number): DenseUnivariatePolynomial {

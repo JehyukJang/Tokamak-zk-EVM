@@ -4,6 +4,7 @@ import {
   FIELD_RUFFINI_Y,
   FIELD_VANISHING_X,
   FIELD_VANISHING_Y,
+  FIELD_UNIVARIATE_VANISHING,
 } from "../kernel-names.js";
 
 export function installRuffiniKernels(module: WasmModuleBuilder): void {
@@ -14,6 +15,25 @@ export function installRuffiniKernels(module: WasmModuleBuilder): void {
 export function installVanishingKernels(module: WasmModuleBuilder): void {
   buildVanishingYKernel(module);
   buildVanishingXKernel(module);
+  const fn = module.addFunction(FIELD_UNIVARIATE_VANISHING);
+  for (const name of ["remainder", "count", "domain", "quotient"]) fn.addParam(name, "i32");
+  fn.addLocal("i", "i32");
+  const c = fn.getCodeBuilder();
+  const high = c.i32_add(c.getLocal("remainder"), c.i32_mul(c.getLocal("i"), c.i32_const(32)));
+  const offset = c.i32_mul(c.i32_sub(c.getLocal("i"), c.getLocal("domain")), c.i32_const(32));
+  const low = c.i32_add(c.getLocal("remainder"), offset);
+  fn.addCode(
+    c.setLocal("i", c.getLocal("count")),
+    c.block(c.loop(
+      c.br_if(1, c.i32_eq(c.getLocal("i"), c.getLocal("domain"))),
+      c.setLocal("i", c.i32_sub(c.getLocal("i"), c.i32_const(1))),
+      c.call("frm_copy", high, c.i32_add(c.getLocal("quotient"), offset)),
+      c.call("frm_add", low, high, low),
+      c.call("frm_zero", high),
+      c.br(0),
+    )),
+  );
+  module.exportFunction(FIELD_UNIVARIATE_VANISHING);
 }
 
 function buildRuffiniXKernel(module: WasmModuleBuilder): void {
