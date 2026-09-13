@@ -40,6 +40,98 @@ unit timings are diagnostic, not replacements for the recorded browser pairs.
 The unrelated aggregate development-typecheck fixture failure documented in
 W0 remains outside this optimization change.
 
+### Final closure and timing summary
+
+The final minified ES2022 build completed three additional fresh-context E2E
+runs on Chromium 149.0.7827.55, with 14 reported logical CPUs/runtime workers.
+The existing local-QAP 207-placement fixture and W4's logically identical
+compressed CRS were reused; no new trusted setup or MPC was run for these
+experiments. Every browser verification returned true, every browser proof
+was accepted by the release native verifier, and every preprocess output
+matched native bytes. Proof size remained 1,184 bytes.
+
+| Final mode | Preprocess (s) | Prove (s) | Verify (ms) |
+| --- | ---: | ---: | ---: |
+| Default digest off, uninstrumented | 3.365085 | 21.545060 | 25.985 |
+| Default digest off, instrumented | 3.327365 | 21.728970 | 25.485 |
+| Explicit digest on, uninstrumented | 3.442125 | 23.836170 | 27.115 |
+
+These three closure samples check the final paths; they are not an alternating
+policy-performance experiment. The instrumented default path recorded no CRS
+payload hashes. Fixture acquisition and installation precede the public prove
+timer; CRS reads, preparation, worker transfers and proving are inside it.
+[Final raw evidence](evidence/wasm-w0-w7-final.json).
+
+The acceptance table uses each candidate's freshly measured, digest-off,
+uninstrumented control, not adjacent rows as a continuous timing series.
+Different sessions have different baselines; do not sum the reductions or
+attribute between-session differences to code changes.
+
+| Experiment | Control mean (s) | Candidate mean (s) | Decision |
+| --- | ---: | ---: | --- |
+| W1 selection accumulation | 37.897788 | 32.739713 | Accept, 13.61% |
+| W2 boundary cancellation | 32.713608 | 31.464700 | Accept, 3.82% |
+| W3 copy recurrence | 31.556713 | 29.215220 | Accept, 7.42% |
+| W4 nonpublic chunk partition | 26.856055 | 26.531263 | Accept, 1.21% |
+| W5 same-commitment MSM fusion | 26.376928 | 26.133078 | Accept, 0.92% |
+| W6 polynomial batch operations | 26.164143 | 23.226283 | Accept, 11.23% |
+| W7 mask separation | 23.128028 | 22.105708 | Accept, 4.42% |
+| W7 subsequent spectrum reuse | 21.900315 | 21.692540 | Accept, 0.95% |
+
+W0 is a separately approved default-off/explicit-opt-in digest policy, not
+an arithmetic optimization. Rejected candidates were zero-copy CRS views,
+cache expansion, changing the MSM chunk exponent and density-aware scalar
+filtering. The last one regressed in both whole-prover pairs despite a useful
+sparse unit benchmark. No rejected candidate remains enabled.
+
+### Final prove stage diagnostic
+
+One instrumented final run, default digest off; milliseconds. Stage intervals
+partition this run. Nested operation counters in the raw file overlap these
+intervals (and concurrent field operations can overlap each other), so they
+must not be added to this table. This is a diagnostic sample, not the paired
+acceptance control.
+
+| Stage | Time (ms) |
+| --- | ---: |
+| Input admission | 2.935 |
+| Domain | 0.020 |
+| Connection permutation | 141.065 |
+| Witness slots | 3.840 |
+| Witness maps | 325.610 |
+| Public checks and masks | 11.110 |
+| Arithmetic quotient | 586.535 |
+| Public polynomial | 0.610 |
+| Commit C_L / C_H | 5286.610 |
+| Binding C_O | 336.885 |
+| Selected roots | 14.865 |
+| Selection witness | 6.515 |
+| Selection quotients | 178.015 |
+| Commit D_Q / D_Q,K | 2637.990 |
+| First transcript | 4.205 |
+| Commit C_D | 2632.605 |
+| Second transcript | 0.450 |
+| Copy-relation dispatch | 0.040 |
+| Copy recurrence | 422.895 |
+| Copy interpolation / factor preparation | 114.690 |
+| Copy boundary quotient | 152.305 |
+| Copy product quotient | 768.045 |
+| Commit C_R | 1306.825 |
+| Combine quotients | 21.210 |
+| Commit C_Q | 1317.660 |
+| Challenge evaluations | 36.845 |
+| Opening combination | 25.125 |
+| Opening pi_chi | 4052.775 |
+| Opening pi_plus | 1339.495 |
+| Final transcript | 0.460 |
+| Encode | 0.690 |
+| Public prove total | 21728.970 |
+
+The remaining large stages are commitments/openings, including their CRS
+reads and MSM dispatch; they are not measurements of pure curve instructions.
+W8 preprocess and W9 online-verifier experiments remain separate, unstarted
+work. No live MPC, publishing, CUDA measurement or version update was performed.
+
 ### W7: masked quotient FFT reduction — mask separation and spectrum reuse accepted
 
 The first candidate expands the mask terms algebraically before division.
