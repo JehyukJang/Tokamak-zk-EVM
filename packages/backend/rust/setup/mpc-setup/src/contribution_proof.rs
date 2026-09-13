@@ -3,8 +3,9 @@
 //! The group mapping is pinned to Filecoin 934fe8c / blstrs 0.4.1. Tokamak
 //! binds its own source, library and transition; this is not a Filecoin receipt.
 
-use ark_bls12_381::{Bls12_381, Fq, Fq2, Fr, G1Affine, G2Affine};
-use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
+use crate::phase2_pairing::equal as pairing_equal;
+use ark_bls12_381::{Fq, Fq2, Fr, G1Affine, G2Affine};
+use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{BigInteger, PrimeField, Zero};
 use blake2::{Blake2b, Digest};
 use rand::{CryptoRng, RngCore, SeedableRng};
@@ -49,8 +50,14 @@ impl ShareProof {
         if share.is_zero() {
             return Err("phase 2 contribution share must be nonzero");
         }
+        Self::from_sample(share, binding, role, Self::sample_point(rng))
+    }
+
+    // Keep RNG consumption serial and unchanged when evaluating wire proofs
+    // in parallel. Only public sampled points cross into the worker pool.
+    pub(crate) fn sample_point(rng: &mut (impl RngCore + CryptoRng)) -> G1Affine {
         // As in Filecoin, sample a point, not a public scalar times a generator.
-        let s = loop {
+        loop {
             let mut message = [0; 64];
             rng.fill_bytes(&mut message);
             let mut point = blst::blst_p1::default();
@@ -80,7 +87,18 @@ impl ShareProof {
             if !s.is_zero() {
                 break s;
             }
-        };
+        }
+    }
+
+    pub(crate) fn from_sample(
+        share: Fr,
+        binding: &ContributionBinding<'_>,
+        role: ShareRole,
+        s: G1Affine,
+    ) -> Result<Self, &'static str> {
+        if share.is_zero() {
+            return Err("phase 2 contribution share must be nonzero");
+        }
         let share_g1 = (G1Affine::generator() * share).into_affine();
         let share_g2 = (G2Affine::generator() * share).into_affine();
         let s_share = (s * share).into_affine();
@@ -125,10 +143,6 @@ impl ShareProof {
             && pairing_equal(self.s_share, G2Affine::generator(), self.s, self.share_g2)
             && pairing_equal(self.s_share, r, self.s, self.r_share)
     }
-}
-
-fn pairing_equal(a: G1Affine, b: G2Affine, c: G1Affine, d: G2Affine) -> bool {
-    Bls12_381::pairing(a, b) == Bls12_381::pairing(c, d)
 }
 
 fn challenge(

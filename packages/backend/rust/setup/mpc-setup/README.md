@@ -175,6 +175,13 @@ cargo test --locked --release -p mpc-setup
 
 Synthetic tests compare all four finalized archive byte streams to trusted setup under identical effective test scalars after two sequential updates. They exercise public/free/fixed specialization, omitted queries, every updated family, share evidence, replay, context substitution, truncation and non-overwriting output. Fake-Drive tests cover publication layout, tau reuse, failures during staging, permission/checksum rejection, conflicting versions, retries and identical provenance bytes. These are correctness tests, not a security proof or real Filecoin/npm/Drive E2E qualification.
 
+Local CPU arithmetic measurements, rejected candidates and reproduction commands
+are recorded in [the MPC optimization report](../../../docs/optimization/current-univariate-mpc.md).
+They qualify isolated kernels, not complete ceremony performance. Add
+`--features timing` to the release build or the ignored native fixture to emit
+`[mpc-timing]` JSON events. Parent spans include child spans; do not sum them.
+This feature changes instrumentation only, not input mode or validation policy.
+
 Development qualification can use the local QAP build with the live 72-GiB source for multi-contributor finalization and native preprocess/prove/verify. Publish qualification additionally requires a compatible published current-protocol npm library, a completed publish transcript, configured OAuth/destination access and authorization to upload. Record the mode and input identity with any qualified release timing; development results do not qualify the publish path. No successful live ceremony, native MPC E2E, Drive release or timing baseline is claimed here. The broader security analysis of the extra intermediate public encodings is deferred; do not treat the reference paper's Groth16 theorem as a theorem for this Tokamak extension. Additional cryptographic release attestations and separation of release authorities remain future work; the current publication guard is operational.
 
 ## Phase 2 references

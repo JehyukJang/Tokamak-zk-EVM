@@ -35,6 +35,18 @@ fn required(name: &str) -> PathBuf {
 #[test]
 #[ignore = "prepares full local-QAP test MPC keys for native E2E"]
 fn prepare_native_e2e_keys() {
+    #[cfg(feature = "timing")]
+    struct PrintTiming;
+    #[cfg(feature = "timing")]
+    impl Drop for PrintTiming {
+        fn drop(&mut self) {
+            for event in libs::timing::take_events() {
+                println!("[mpc-timing] {}", serde_json::to_string(&event).unwrap());
+            }
+        }
+    }
+    #[cfg(feature = "timing")]
+    let _timing = PrintTiming;
     let output = required("MPC_TEST_OUTPUT");
     assert!(!output.exists(), "use a new test output directory");
     let all = Instant::now();

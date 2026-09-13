@@ -5,11 +5,13 @@
 use crate::circuit_input::Mode;
 use crate::contribution_proof::{ContributionBinding, ShareProof, ShareRole};
 use crate::phase2_engine::{Engine, State, VerifiedState};
-use ark_bls12_381::{Bls12_381, Fr, G1Affine, G2Affine};
-use ark_ec::{pairing::Pairing, AffineRepr};
+use crate::phase2_pairing::equal;
+use ark_bls12_381::{Fr, G1Affine, G2Affine};
+use ark_ec::AffineRepr;
 use ark_ff::{UniformRand, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use rand::{CryptoRng, RngCore};
+use rayon::prelude::*;
 use sha2::{Digest, Sha256};
 use std::io::Write;
 use std::path::Path;
@@ -86,6 +88,8 @@ impl<'a> Transcript<'a> {
     /// Check one record against the already-qualified prefix. Both external
     /// reads and local appends validate the same serialized record bytes here.
     fn verify_record(&mut self, input: &mut &[u8]) -> Result<(), String> {
+        #[cfg(feature = "timing")]
+        let _record = libs::timing::SpanGuard::new("mpc.verify_record", "mpc", vec![]);
         let record_start = *input;
         let state = decode_state(input, self.state.get())?;
         let state_length = record_start.len() - input.len();
@@ -96,27 +100,51 @@ impl<'a> Transcript<'a> {
             // Includes the prior receipt, so replaying even an identity
             // update (share=1) cannot duplicate a contribution.
             previous_record_digest: self.digest,
-            next_state_digest: Sha256::digest(&record_start[..state_length]).into(),
+            next_state_digest: state_digest(&record_start[..state_length]),
         };
+        #[cfg(feature = "timing")]
+        let proofs_span = libs::timing::SpanGuard::new("mpc.share_verification", "mpc", vec![]);
         let delta = decode_proof(input)?;
-        if !delta.verify(&binding, ShareRole::Delta)
-            || Bls12_381::pairing(self.state.get().delta_g1, delta.share_g2)
-                != Bls12_381::pairing(state.delta_g1, G2Affine::generator())
+        if !delta.verify(&binding, ShareRole::Delta) {
+            return Err("invalid delta contribution".into());
+        }
+        let proofs = (0..self.state.get().weights.len())
+            .map(|_| decode_proof(input))
+            .collect::<Result<Vec<_>, _>>()?;
+        if !proofs
+            .par_iter()
+            .enumerate()
+            .all(|(j, proof)| proof.verify(&binding, ShareRole::WireWeight(j as u64)))
         {
+            return Err("invalid wire contribution".into());
+        }
+        // Decoding above checks byte syntax, not group membership. Admit all
+        // state points and equations before using them in predecessor pairings.
+        // ShareProof::verify independently admits all of its public points.
+        #[cfg(feature = "timing")]
+        drop(proofs_span);
+        let state = self.state.verify_successor(state)?;
+        #[cfg(feature = "timing")]
+        let _links = libs::timing::SpanGuard::new("mpc.predecessor_and_chain_hash", "mpc", vec![]);
+
+        if !equal(
+            self.state.get().delta_g1,
+            delta.share_g2,
+            state.get().delta_g1,
+            G2Affine::generator(),
+        ) {
             return Err("invalid delta contribution or predecessor binding".into());
         }
-        for j in 0..self.state.get().weights.len() {
-            let proof = decode_proof(input)?;
-            if !proof.verify(&binding, ShareRole::WireWeight(j as u64))
-                || Bls12_381::pairing(proof.share_g1, self.state.get().weights[j])
-                    != Bls12_381::pairing(G1Affine::generator(), state.weights[j])
-            {
-                return Err(format!(
-                    "invalid wire contribution or predecessor binding at {j}"
-                ));
-            }
+        if !proofs.par_iter().enumerate().all(|(j, proof)| {
+            equal(
+                proof.share_g1,
+                self.state.get().weights[j],
+                G1Affine::generator(),
+                state.get().weights[j],
+            )
+        }) {
+            return Err("invalid wire predecessor binding".into());
         }
-        let state = self.state.verify_successor(state)?;
         let record = &record_start[..record_start.len() - input.len()];
         let mut hash = Sha256::new();
         hash.update(self.digest);
@@ -128,6 +156,8 @@ impl<'a> Transcript<'a> {
     }
 
     pub fn contribute(mut self, rng: &mut (impl RngCore + CryptoRng)) -> Result<Self, String> {
+        #[cfg(feature = "timing")]
+        let _contribute = libs::timing::SpanGuard::new("mpc.contribute", "mpc", vec![]);
         let nonzero = |rng: &mut _| loop {
             let share = Fr::rand(rng);
             if !share.is_zero() {
@@ -147,18 +177,31 @@ impl<'a> Transcript<'a> {
             library_digest: self.identity.library_digest,
             tau_digest: self.identity.tau_digest,
             previous_record_digest: self.digest,
-            next_state_digest: Sha256::digest(&record).into(),
+            next_state_digest: state_digest(&record),
         };
+        #[cfg(feature = "timing")]
+        let generation_span = libs::timing::SpanGuard::new("mpc.share_generation", "mpc", vec![]);
         encode_proof(
             &ShareProof::create(*u, &binding, ShareRole::Delta, rng)?,
             &mut record,
         )?;
-        for (j, share) in v.iter().enumerate() {
-            encode_proof(
-                &ShareProof::create(*share, &binding, ShareRole::WireWeight(j as u64), rng)?,
-                &mut record,
-            )?;
+        let samples = v
+            .iter()
+            .map(|_| ShareProof::sample_point(rng))
+            .collect::<Vec<_>>();
+        let proofs = v
+            .par_iter()
+            .zip(samples)
+            .enumerate()
+            .map(|(j, (share, s))| {
+                ShareProof::from_sample(*share, &binding, ShareRole::WireWeight(j as u64), s)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        for proof in proofs {
+            encode_proof(&proof, &mut record)?;
         }
+        #[cfg(feature = "timing")]
+        drop(generation_span);
         // Verify exactly the public bytes that will be handed to the next
         // participant before exposing output. Private shares are not encoded.
         drop(u);
@@ -186,7 +229,18 @@ impl<'a> Transcript<'a> {
 }
 
 fn encode_state(state: &State) -> Result<Vec<u8>, String> {
-    let mut bytes = Vec::new();
+    #[cfg(feature = "timing")]
+    let _span = libs::timing::SpanGuard::new("mpc.serialize", "mpc", vec![]);
+    let size = (state.packed.len()
+        + state.correction.len()
+        + state.fixed.len()
+        + state.fixed_correction.len()
+        + state.weighted.len()
+        + state.shifted.len()
+        + 10)
+        * 96
+        + (state.weights.len() + 1) * 192;
+    let mut bytes = Vec::with_capacity(size);
     for points in [
         &state.packed,
         &state.correction,
@@ -195,22 +249,33 @@ fn encode_state(state: &State) -> Result<Vec<u8>, String> {
         &state.weighted,
         &state.shifted,
     ] {
-        for point in points {
-            put(point, &mut bytes)?;
-        }
+        put_points(points, &mut bytes)?;
     }
     for point in state.masks {
         put(&point, &mut bytes)?;
     }
     put(&state.delta_g1, &mut bytes)?;
     put(&state.delta_g2, &mut bytes)?;
-    for point in &state.weights {
-        put(point, &mut bytes)?;
-    }
+    put_points(&state.weights, &mut bytes)?;
     Ok(bytes)
 }
 
+fn put_points<T: CanonicalSerialize + Sync>(points: &[T], out: &mut Vec<u8>) -> Result<(), String> {
+    let Some(first) = points.first() else {
+        return Ok(());
+    };
+    let width = first.uncompressed_size();
+    let start = out.len();
+    out.resize(start + points.len() * width, 0);
+    out[start..]
+        .par_chunks_exact_mut(width)
+        .zip(points)
+        .try_for_each(|(out, p)| p.serialize_uncompressed(out).map_err(|e| e.to_string()))
+}
+
 fn decode_state(input: &mut &[u8], shape: &State) -> Result<State, String> {
+    #[cfg(feature = "timing")]
+    let _span = libs::timing::SpanGuard::new("mpc.decode", "mpc", vec![]);
     // Counts come only from the independently selected library, never from an
     // allocation length supplied in the transcript. Reject truncation first.
     let g1_count = shape.packed.len()
@@ -227,20 +292,35 @@ fn decode_state(input: &mut &[u8], shape: &State) -> Result<State, String> {
     if input.len() < size {
         return Err("truncated ceremony state".into());
     }
-    fn points<T: CanonicalDeserialize>(input: &mut &[u8], n: usize) -> Result<Vec<T>, String> {
-        (0..n).map(|_| get(input)).collect()
+    fn points<T: CanonicalDeserialize + Send>(
+        input: &mut &[u8],
+        n: usize,
+        width: usize,
+    ) -> Result<Vec<T>, String> {
+        let size = n
+            .checked_mul(width)
+            .ok_or("ceremony point count overflow")?;
+        let (bytes, rest) = input
+            .split_at_checked(size)
+            .ok_or("truncated ceremony points")?;
+        let points = bytes
+            .par_chunks_exact(width)
+            .map(|mut bytes| get(&mut bytes))
+            .collect::<Result<Vec<_>, _>>()?;
+        *input = rest;
+        Ok(points)
     }
     Ok(State {
-        packed: points(input, shape.packed.len())?,
-        correction: points(input, shape.correction.len())?,
-        fixed: points(input, shape.fixed.len())?,
-        fixed_correction: points(input, shape.fixed_correction.len())?,
-        weighted: points(input, shape.weighted.len())?,
-        shifted: points(input, shape.shifted.len())?,
-        masks: points(input, 9)?.try_into().unwrap(),
+        packed: points(input, shape.packed.len(), 96)?,
+        correction: points(input, shape.correction.len(), 96)?,
+        fixed: points(input, shape.fixed.len(), 96)?,
+        fixed_correction: points(input, shape.fixed_correction.len(), 96)?,
+        weighted: points(input, shape.weighted.len(), 96)?,
+        shifted: points(input, shape.shifted.len(), 96)?,
+        masks: points(input, 9, 96)?.try_into().unwrap(),
         delta_g1: get(input)?,
         delta_g2: get(input)?,
-        weights: points(input, shape.weights.len())?,
+        weights: points(input, shape.weights.len(), 192)?,
     })
 }
 fn encode_proof(proof: &ShareProof, out: &mut Vec<u8>) -> Result<(), String> {
@@ -265,5 +345,111 @@ fn put<T: CanonicalSerialize>(point: &T, out: &mut Vec<u8>) -> Result<(), String
     point.serialize_uncompressed(out).map_err(|e| e.to_string())
 }
 fn get<T: CanonicalDeserialize>(input: &mut &[u8]) -> Result<T, String> {
-    T::deserialize_uncompressed(input).map_err(|e| format!("invalid ceremony point encoding: {e}"))
+    // Every caller passes these raw points to state/share admission before any
+    // pairing. This parser alone does not establish a valid curve/subgroup point.
+    T::deserialize_uncompressed_unchecked(input)
+        .map_err(|e| format!("invalid ceremony point encoding: {e}"))
+}
+
+fn state_digest(bytes: &[u8]) -> [u8; 32] {
+    #[cfg(feature = "timing")]
+    let _span = libs::timing::SpanGuard::new("mpc.state_hash", "mpc", vec![]);
+    Sha256::digest(bytes).into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parallel_state_encoding_matches_serial_bytes_and_digest() {
+        let g = G1Affine::generator();
+        let state = State {
+            packed: vec![g; 4100],
+            correction: vec![G1Affine::zero(); 4100],
+            fixed: vec![],
+            fixed_correction: vec![],
+            weighted: vec![g; 9],
+            shifted: vec![g; 17],
+            masks: [g; 9],
+            delta_g1: g,
+            delta_g2: G2Affine::generator(),
+            weights: vec![G2Affine::generator(); 19],
+        };
+        let mut serial = Vec::new();
+        for points in [
+            &state.packed,
+            &state.correction,
+            &state.fixed,
+            &state.fixed_correction,
+            &state.weighted,
+            &state.shifted,
+        ] {
+            for p in points {
+                put(p, &mut serial).unwrap();
+            }
+        }
+        for p in state.masks {
+            put(&p, &mut serial).unwrap();
+        }
+        put(&state.delta_g1, &mut serial).unwrap();
+        put(&state.delta_g2, &mut serial).unwrap();
+        for p in &state.weights {
+            put(p, &mut serial).unwrap();
+        }
+        let parallel = encode_state(&state).unwrap();
+        assert_eq!(parallel, serial);
+        assert_eq!(state_digest(&parallel), state_digest(&serial));
+        let mut input = parallel.as_slice();
+        assert_eq!(decode_state(&mut input, &state).unwrap(), state);
+        assert!(input.is_empty());
+    }
+
+    #[test]
+    fn parallel_share_generation_preserves_rng_stream_and_record_bytes() {
+        use rand::SeedableRng;
+        let binding = ContributionBinding {
+            library_version: "2.1.5",
+            library_digest: [1; 32],
+            tau_digest: [2; 32],
+            previous_record_digest: [3; 32],
+            next_state_digest: [4; 32],
+        };
+        let mut serial_rng = rand::rngs::StdRng::seed_from_u64(15183);
+        let mut parallel_rng = serial_rng.clone();
+        let shares = (1u64..=9).map(Fr::from).collect::<Vec<_>>();
+        let mut serial = Vec::new();
+        for (j, share) in shares.iter().enumerate() {
+            encode_proof(
+                &ShareProof::create(
+                    *share,
+                    &binding,
+                    ShareRole::WireWeight(j as u64),
+                    &mut serial_rng,
+                )
+                .unwrap(),
+                &mut serial,
+            )
+            .unwrap();
+        }
+        let points = shares
+            .iter()
+            .map(|_| ShareProof::sample_point(&mut parallel_rng))
+            .collect::<Vec<_>>();
+        let proofs = shares
+            .par_iter()
+            .zip(points)
+            .enumerate()
+            .map(|(j, (share, s))| {
+                ShareProof::from_sample(*share, &binding, ShareRole::WireWeight(j as u64), s)
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+        let mut parallel = Vec::new();
+        for proof in proofs {
+            encode_proof(&proof, &mut parallel).unwrap();
+        }
+        assert_eq!(parallel, serial);
+        assert_eq!(parallel_rng.next_u64(), serial_rng.next_u64());
+    }
 }

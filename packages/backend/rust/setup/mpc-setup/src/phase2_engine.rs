@@ -1,8 +1,9 @@
 //! Current-query initialization and updates using only encoded Filecoin powers.
 //! There is no tau/tag scalar input and no call to trusted setup.
 
-use ark_bls12_381::{Bls12_381, Fq, Fr, G1Affine, G1Projective, G2Affine};
-use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
+use crate::phase2_pairing::{equal, PreparedG2};
+use ark_bls12_381::{Fq, Fr, G1Affine, G1Projective, G2Affine};
+use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{BigInteger, Field, One, PrimeField, Zero};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
 use backend_univariate_crs_interface::{
@@ -33,6 +34,8 @@ pub(crate) struct State {
 
 pub(crate) struct Engine {
     initial: State,
+    // Per-invocation public images only; not a persisted trust receipt.
+    packed_images: Vec<G1Affine>,
     packed_wires: Vec<usize>,
     fixed_wires: Vec<usize>,
     nonpublic_count: usize,
@@ -97,6 +100,8 @@ impl Engine {
         circuits: &[UnivariateSubcircuit<'_>],
         tau: &TauSequenceRkyv,
     ) -> Result<Self, String> {
+        #[cfg(feature = "timing")]
+        let _initialize = libs::timing::SpanGuard::new("mpc.initialize", "mpc", vec![]);
         let shape = UnivariateCrsShape::from_setup_params(setup).map_err(|e| e.to_string())?;
         let p = shape.declared_capacity[1];
         if tau.schema_id != UNIVARIATE_CRS_SCHEMA_ID
@@ -187,7 +192,7 @@ impl Engine {
                     let values = image(i, c);
                     let correction = selection[i + setup.s_max * k];
                     for &j in layout.local_wires(k).unwrap() {
-                        out.push(((values[j] + correction).into_affine(), correction, j));
+                        out.push((values[j] + correction, correction, j));
                     }
                 }
                 out
@@ -218,16 +223,24 @@ impl Engine {
                 let c = selection[k + setup.s_max * k];
                 let q = image(k, &circuits[k])[j] + c;
                 if g < setup.l_free {
-                    packed.push((q + free[g]).into_affine());
+                    packed.push(q + free[g]);
                     correction.push(c);
                     packed_wires.push(j);
                 } else {
-                    fixed.push(q.into_affine());
+                    fixed.push(q);
                     fixed_correction.push(c);
                     fixed_wires.push(j);
                 }
             }
         }
+        let (packed, fixed) = rayon::join(|| normalize(packed), || normalize(fixed));
+        let packed_images = normalize(
+            packed
+                .par_iter()
+                .zip(&correction)
+                .map(|(q, c)| *q - *c)
+                .collect(),
+        );
         let mut masks = [G1Affine::zero(); 9];
         for (slot, tag, shift, n) in [
             (0, &xi, 0, na),
@@ -259,6 +272,7 @@ impl Engine {
                 delta_g2: G2Affine::generator(),
                 weights: vec![G2Affine::generator(); setup.m],
             },
+            packed_images,
             packed_wires,
             fixed_wires,
             nonpublic_count,
@@ -270,42 +284,35 @@ impl Engine {
 
     // Production callers enter through VerifiedState, not an arbitrary State.
     fn contribute(&self, old: &State, u: Fr, v: &[Fr]) -> Result<State, String> {
+        #[cfg(feature = "timing")]
+        let _update = libs::timing::SpanGuard::new("mpc.update", "mpc", vec![]);
         if u.is_zero() || v.len() != old.weights.len() || v.iter().any(Zero::is_zero) {
             return Err("contribution needs one nonzero delta and m nonzero wire shares".into());
         }
         let inv = u.inverse().unwrap();
-        let correction = old
-            .correction
-            .par_iter()
-            .zip(&self.packed_wires)
-            .map(|(c, j)| (*c * (v[*j] * inv)).into_affine())
-            .collect();
-        let packed = old
-            .packed
-            .par_iter()
-            .zip(&old.correction)
-            .zip(&self.packed_wires)
-            .map(|((q, c), j)| ((q.into_group() + *c * (v[*j] - Fr::one())) * inv).into_affine())
-            .collect();
-        let fixed_correction = old
-            .fixed_correction
-            .par_iter()
-            .zip(&self.fixed_wires)
-            .map(|(c, j)| (*c * v[*j]).into_affine())
-            .collect();
-        let fixed = old
-            .fixed
-            .par_iter()
-            .zip(&old.fixed_correction)
-            .zip(&self.fixed_wires)
-            .map(|((q, c), j)| (q.into_group() + *c * (v[*j] - Fr::one())).into_affine())
-            .collect();
+        let factors = zeroize::Zeroizing::new(v.iter().map(|v| *v * inv).collect::<Vec<_>>());
+        let (packed, correction) = update_queries(
+            &old.packed,
+            &old.correction,
+            &self.packed_wires,
+            inv,
+            &factors,
+        );
+        let (fixed, fixed_correction) = update_queries(
+            &old.fixed,
+            &old.fixed_correction,
+            &self.fixed_wires,
+            Fr::one(),
+            v,
+        );
         let scale = |points: &[G1Affine]| {
-            points
-                .par_iter()
-                .enumerate()
-                .map(|(index, q)| (*q * v[index / self.placements]).into_affine())
-                .collect()
+            normalize(
+                points
+                    .par_iter()
+                    .enumerate()
+                    .map(|(index, q)| *q * v[index / self.placements])
+                    .collect(),
+            )
         };
         Ok(State {
             packed,
@@ -329,6 +336,10 @@ impl Engine {
     /// These equations qualify the whole public state against locally derived
     /// initialization. Share knowledge and predecessor binding are separate.
     fn verify_state(&self, state: State) -> Result<VerifiedState<'_>, String> {
+        #[cfg(feature = "timing")]
+        let _verify = libs::timing::SpanGuard::new("mpc.verify_state", "mpc", vec![]);
+        #[cfg(feature = "timing")]
+        let points_span = libs::timing::SpanGuard::new("mpc.point_admission", "mpc", vec![]);
         #[cfg(test)]
         self.state_checks
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -374,30 +385,54 @@ impl Engine {
         {
             return Err("invalid ceremony point".into());
         }
-        let h = G2Affine::generator();
-        if !equal(state.delta_g1, h, G1Affine::generator(), state.delta_g2) {
+        #[cfg(feature = "timing")]
+        drop(points_span);
+        #[cfg(feature = "timing")]
+        let _equations = libs::timing::SpanGuard::new("mpc.state_equations", "mpc", vec![]);
+        let h = PreparedG2::from(G2Affine::generator());
+        let delta = PreparedG2::from(state.delta_g2);
+        let weights = state
+            .weights
+            .par_iter()
+            .copied()
+            .map(PreparedG2::from)
+            .collect::<Vec<_>>();
+        if !equal(
+            state.delta_g1,
+            h.clone(),
+            G1Affine::generator(),
+            delta.clone(),
+        ) {
             return Err("role encodings disagree".into());
         }
+        let state_images = normalize(
+            state
+                .packed
+                .par_iter()
+                .zip(&state.correction)
+                .map(|(q, c)| *q - *c)
+                .collect(),
+        );
         let packed_ok = (0..state.packed.len()).into_par_iter().all(|i| {
             equal(
-                (state.packed[i] - state.correction[i]).into_affine(),
-                state.delta_g2,
-                (init.packed[i] - init.correction[i]).into_affine(),
-                h,
+                state_images[i],
+                delta.clone(),
+                self.packed_images[i],
+                h.clone(),
             ) && equal(
                 state.correction[i],
-                state.delta_g2,
+                delta.clone(),
                 init.correction[i],
-                state.weights[self.packed_wires[i]],
+                weights[self.packed_wires[i]].clone(),
             )
         });
         let fixed_ok = (0..state.fixed.len()).into_par_iter().all(|i| {
             state.fixed[i] - state.fixed_correction[i] == init.fixed[i] - init.fixed_correction[i]
                 && equal(
                     state.fixed_correction[i],
-                    h,
+                    h.clone(),
                     init.fixed_correction[i],
-                    state.weights[self.fixed_wires[i]],
+                    weights[self.fixed_wires[i]].clone(),
                 )
         });
         let helpers_ok = [
@@ -409,7 +444,7 @@ impl Engine {
             a.par_iter()
                 .zip(b)
                 .enumerate()
-                .all(|(i, (a, b))| equal(*a, h, *b, state.weights[i / self.placements]))
+                .all(|(i, (a, b))| equal(*a, h.clone(), *b, weights[i / self.placements].clone()))
         });
         if !packed_ok
             || !fixed_ok
@@ -418,7 +453,7 @@ impl Engine {
                 .masks
                 .iter()
                 .zip(init.masks)
-                .all(|(a, b)| equal(*a, state.delta_g2, b, h))
+                .all(|(a, b)| equal(*a, delta.clone(), b, h.clone()))
         {
             return Err("ceremony state does not match authenticated circuit/source images".into());
         }
@@ -435,6 +470,8 @@ impl Engine {
         setup: &SetupParams,
     ) -> Result<(ProverKeysRkyv, PreprocessKeysRkyv, VerifierKeysRkyv), String> {
         let shape = UnivariateCrsShape::from_setup_params(setup).map_err(|e| e.to_string())?;
+        #[cfg(feature = "timing")]
+        let _projection = libs::timing::SpanGuard::new("mpc.final_projection", "mpc", vec![]);
         let enc = |values: &[G1Affine]| values.par_iter().copied().map(encode_g1).collect();
         let prover = ProverKeysRkyv {
             schema_id: UNIVARIATE_CRS_SCHEMA_ID.into(),
@@ -469,9 +506,41 @@ impl Engine {
     }
 }
 
-fn equal(a: G1Affine, b: G2Affine, c: G1Affine, d: G2Affine) -> bool {
-    Bls12_381::pairing(a, b) == Bls12_381::pairing(c, d)
+pub(crate) fn normalize(points: Vec<G1Projective>) -> Vec<G1Affine> {
+    points
+        .par_chunks(4096)
+        .flat_map_iter(G1Projective::normalize_batch)
+        .collect()
 }
+
+/// Fuse query/correction updates: (Q-C)/u + C', where C'=v*C/u.
+/// Fixed-public queries use inverse=1 and factors=v. All points stay distinct.
+pub(crate) fn update_queries(
+    queries: &[G1Affine],
+    corrections: &[G1Affine],
+    wires: &[usize],
+    inverse: Fr,
+    factors: &[Fr],
+) -> (Vec<G1Affine>, Vec<G1Affine>) {
+    let unscaled = inverse.is_one();
+    let (queries, corrections): (Vec<_>, Vec<_>) = queries
+        .par_iter()
+        .zip(corrections)
+        .zip(wires)
+        .map(|((q, c), j)| {
+            let next_c = *c * factors[*j];
+            let difference = *q - *c;
+            let next_q = (if unscaled {
+                difference
+            } else {
+                difference * inverse
+            }) + next_c;
+            (next_q, next_c)
+        })
+        .unzip();
+    rayon::join(|| normalize(queries), || normalize(corrections))
+}
+
 fn basis(powers: &[G1Affine]) -> Vec<G1Affine> {
     let mut domain = Radix2EvaluationDomain::<Fr>::new(powers.len()).expect("validated domain");
     domain.group_gen = canonical_root(powers.len()).expect("validated root");
@@ -483,7 +552,9 @@ fn basis(powers: &[G1Affine]) -> Vec<G1Affine> {
         .collect::<Vec<_>>();
     G1Projective::normalize_batch(&domain.ifft(&coefficients))
 }
-fn decode_all(points: &[UnivariateG1Rkyv]) -> Result<Vec<G1Affine>, String> {
+pub(crate) fn decode_all(points: &[UnivariateG1Rkyv]) -> Result<Vec<G1Affine>, String> {
+    #[cfg(feature = "timing")]
+    let _span = libs::timing::SpanGuard::new("mpc.source_decode", "mpc", vec![]);
     points
         .par_iter()
         .map(|p| {
@@ -535,6 +606,41 @@ mod tests {
     use libs::frontend_artifacts::public_wire_layout::GlobalWire;
     use libs::frontend_artifacts::{BufferDirection, SubcircuitInfo};
     use libs::univariate_setup::{generate, SetupScalars};
+
+    #[test]
+    fn fused_updates_preserve_identity_unit_and_dense_cases() {
+        use ark_ff::UniformRand;
+        use rand::SeedableRng;
+        let mut rng = rand::rngs::StdRng::seed_from_u64(15184);
+        let scalars = (0..65).map(|_| Fr::rand(&mut rng)).collect::<Vec<_>>();
+        let q = scalars
+            .iter()
+            .map(|s| (G1Affine::generator() * s).into_affine())
+            .collect::<Vec<_>>();
+        let mut c = q.iter().rev().copied().collect::<Vec<_>>();
+        c[0] = G1Affine::zero();
+        c[1] = q[1];
+        let wires = (0..q.len()).map(|j| j % 4).collect::<Vec<_>>();
+        for inverse in [Fr::one(), Fr::rand(&mut rng)] {
+            for v in [[Fr::one(); 4], [Fr::rand(&mut rng); 4]] {
+                let factors = v.map(|v| v * inverse);
+                let (next, correction) = update_queries(&q, &c, &wires, inverse, &factors);
+                for j in 0..q.len() {
+                    assert_eq!(
+                        next[j],
+                        ((q[j] + c[j] * (v[wires[j]] - Fr::one())) * inverse).into_affine()
+                    );
+                    assert_eq!(correction[j], (c[j] * factors[wires[j]]).into_affine());
+                }
+            }
+        }
+        assert_eq!(
+            update_queries(&[], &[], &[], Fr::one(), &[]),
+            (vec![], vec![])
+        );
+        let points = vec![G1Projective::zero(); 4097];
+        assert_eq!(normalize(points), vec![G1Affine::zero(); 4097]);
+    }
 
     #[test]
     fn two_updates_match_every_trusted_setup_output_and_reject_tampering() {
@@ -669,6 +775,18 @@ mod tests {
         let mut bad = state.clone();
         bad.weights[0] = G2Affine::zero();
         assert!(engine.verify_state(bad).is_err());
+        let mut bad = state.clone();
+        bad.packed[0] = G1Affine::new_unchecked(Fq::one(), Fq::one());
+        assert!(!bad.packed[0].is_on_curve());
+        assert!(engine.verify_state(bad).is_err());
+        let mut bad = state.clone();
+        bad.packed[0] = G1Affine::new_unchecked(Fq::zero(), Fq::from(2u64));
+        assert!(bad.packed[0].is_on_curve());
+        assert!(!bad.packed[0].is_in_correct_subgroup_assuming_on_curve());
+        assert!(engine.verify_state(bad).is_err());
+        let mut bad = state.clone();
+        bad.packed.pop();
+        assert!(engine.verify_state(bad).is_err());
         assert!(engine
             .contribute(&state, Fr::zero(), &vec![Fr::one(); setup.m])
             .is_err());
@@ -745,6 +863,12 @@ mod tests {
         replay.extend_from_slice(&first[original.len()..]);
         assert!(Transcript::read(replay, &engine, &identity).is_err());
         assert!(Transcript::read(first[..first.len() - 1].to_vec(), &engine, &identity).is_err());
+        let mut trailing = first.clone();
+        trailing.push(0);
+        assert!(Transcript::read(trailing, &engine, &identity).is_err());
+        let mut noncanonical = first.clone();
+        noncanonical[original.len()..original.len() + 48].fill(0xff);
+        assert!(Transcript::read(noncanonical, &engine, &identity).is_err());
         let mut modified = first.clone();
         *modified.last_mut().unwrap() ^= 1;
         assert!(Transcript::read(modified, &engine, &identity).is_err());
