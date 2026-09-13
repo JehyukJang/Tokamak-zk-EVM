@@ -176,6 +176,44 @@ but increase manifest entries/file requests; no peak-memory claim is made.
 [Partition evidence](evidence/wasm-w4-partition.json). These per-candidate
 controls are used instead of combining timings from different run sessions.
 
+### W5: MSM delivery experiments — fusion accepted; filtering/chunk change rejected
+
+Independent timings include scalar conversion and any filtering/fusion copies.
+The bounded 2^16/17/18/19 point sweep did not justify changing the existing
+2^18 default (means 1364.558/1249.029/1254.520/1269.147 ms). Dense filtering
+regressed; 50% or more zeros gave a clearer benefit. Combining 256 small MSM
+sources belonging to one commitment decreased unit time from 629.483 to
+170.510 ms. [Independent samples](evidence/wasm-w5-msm-micro.json).
+
+The all-zero test exposed a pre-existing identity bug: ffjavascript returns
+projective infinity for an all-zero MSM, but adding it to affine infinity
+produces an invalid point. The shared MSM accumulator now skips identity
+terms and initializes from the first nonidentity result. Empty/all-zero,
+uneven chunks, scalar-sum and invalid-length tests pass; no group encoding or
+verifier policy was changed. This is a correctness repair, not a claimed
+speedup. A bounded coalescer then combines only C_O's public, nonpublic and
+mask terms. No different transcript commitments are merged.
+
+| Release-optimized browser prove | Run 1 (s) | Run 2 (s) | Mean (s) |
+| --- | ---: | ---: | ---: |
+| W4 control, digest off | 26.255945 | 26.497910 | 26.376928 |
+| C_O fusion candidate, digest off | 26.122150 | 26.144005 | 26.133078 |
+
+Both pairs improved; the mean decreased 0.92%. All four native/browser checks
+passed with identical native preprocess bytes. The coalescer adds at most one
+current output pair of maxPoints*(96+32) bytes (32 MiB at 2^18), with a fresh
+pair after a yielded full chunk; this is not a peak-memory measurement.
+[Whole-call fusion evidence](evidence/wasm-w5-fusion.json).
+
+The subsequent density-aware candidate scanned every chunk and compacted only
+when at least half its scalars were zero. Despite the sparse microbenchmark
+gain, whole-prover controls were 25.950790/26.163495 s and candidates were
+26.100950/26.378725 s: a 0.70% regression in the mean, worse in both pairs.
+Rejected and removed. The retained implementation has no new scalar scan or
+index/compaction allocation. All four native/browser checks passed.
+[Filtering evidence](evidence/wasm-w5-filter.json). W5 is complete: identity-safe
+accumulation and bounded C_O fusion remain; the original MSM chunk size stays.
+
 ## WASM optimization baseline and execution plan — 2026-09-13
 
 This section records the detailed pre-optimization timing table for backend

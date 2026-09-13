@@ -2,6 +2,7 @@ import type { SetupParams } from "../artifacts/setup/setup-params.js";
 import type { CurveRuntime } from "../runtime/curve/curve.js";
 import type { FieldElement } from "../runtime/field/field-types.js";
 import type { G1Point } from "../runtime/group/group.js";
+import { coalesceAffineMsmChunks, msmAffineMontgomeryChunks, type AffineMontgomeryMsmChunk } from "../runtime/group/affine-msm.js";
 import { PublicWireLayout } from "../prover/protocol/public-wire-layout.js";
 import type { ProverPlacementVariables, ProverSubcircuitInfo } from "../prover/protocol/witness.js";
 import { placementCount, placementSubcircuitId, placementVariableAt, placementVariableCount } from "../prover/protocol/witness.js";
@@ -208,23 +209,27 @@ async function buildBinding(runtime: CurveRuntime, input: UnivariateReferencePro
   const free = input.publicInputs.slice(0, setup.l_free).filter((_, g) => layout.sourceForPublicWire(g) !== undefined);
   if(crs.freePublic.elementCount !== free.length)
     throw new Error("Free-public query cardinality mismatch.");
-  let result = free.length === 0 ? runtime.G1.zero : await commitDenseUnivariatePolynomial(runtime, crs.freePublic, f.concat(free), input.chunkPoints);
   const wireLists = input.subcircuitInfos.map(info => info.flattenMap.flatMap((g, j) => g >= setup.l ? [j] : []));
   const perPlacement = wireLists.reduce((n, list) => n + list.length, 0);
   if(crs.nonpublic.elementCount !== perPlacement * setup.s_max)
     throw new Error("Nonpublic query cardinality mismatch.");
-  for(let i = 0; i < slots.length; i++) {
-    const slot = slots[i];
-    if(!slot)
-      continue;
-    const prefix = wireLists.slice(0, slot.subcircuitId).reduce((n, list) => n + list.length, 0);
-    const wires = wireLists[slot.subcircuitId]!;
-    if(wires.length)
-      result = runtime.G1.add(result, await commitDenseUnivariatePolynomial(runtime, crs.nonpublic, f.concat(wires.map(j => f.readBufferElement(slot.values, j))), input.chunkPoints, i * perPlacement + prefix));
+  async function* sources(): AsyncIterable<AffineMontgomeryMsmChunk> {
+    if (free.length) yield { bases: await crs.freePublic.readElements(0, free.length), montgomeryScalars: f.concat(free) };
+    for(let i = 0; i < slots.length; i++) {
+      const slot = slots[i];
+      if(!slot) continue;
+      const prefix = wireLists.slice(0, slot.subcircuitId).reduce((n, list) => n + list.length, 0);
+      const wires = wireLists[slot.subcircuitId]!;
+      for (let first = 0; first < wires.length; first += input.chunkPoints) {
+        const count = Math.min(input.chunkPoints, wires.length - first);
+        yield { bases: await crs.nonpublic.readElements(i * perPlacement + prefix + first, count), montgomeryScalars: f.concat(wires.slice(first, first + count).map(j => f.readBufferElement(slot.values, j))) };
+      }
+    }
+    for(let i = 0; i < 4; i++)
+      yield { bases: await crs.masks[i]!.readElements(0, f.bufferElementCount(masks[i]!.coefficients)), montgomeryScalars: masks[i]!.coefficients };
+    yield { bases: crs.maskSelection, montgomeryScalars: selectionMask };
   }
-  for(let i = 0; i < 4; i++)
-    result = runtime.G1.add(result, await commitDenseUnivariatePolynomial(runtime, crs.masks[i]!, masks[i]!.coefficients, input.chunkPoints));
-  return runtime.G1.add(result, runtime.G1.mulScalar(crs.maskSelection, selectionMask));
+  return msmAffineMontgomeryChunks(runtime, coalesceAffineMsmChunks(sources(), input.chunkPoints));
 }
 function validatePublicStatement(runtime: CurveRuntime, input: UnivariateReferenceProverInput, slots: readonly (UnivariateSlotWitness | null)[], layout: PublicWireLayout): void {
   if(input.publicInputs.length !== input.setup.l)
