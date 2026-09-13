@@ -142,7 +142,19 @@ must come from the same local QAP build. Run the resulting verifier on the newly
 generated preprocess/proof and the matching synthesizer instance. Then run
 `verify`'s ignored `local_fixture` test with `VERIFY_TEST_PREPROCESS`,
 `VERIFY_TEST_PROOF` and `VERIFY_TEST_INSTANCE` pointing to those files, preserving
-`TOKAMAK_VERIFIER_KEYS` during that test build. An accepting proof and tamper
+`TOKAMAK_VERIFIER_KEYS` during that test build:
+
+```sh
+export TOKAMAK_VERIFIER_KEYS=/absolute/path/to/new-test-crs/verifier_keys.rkyv
+cargo build --locked --release -p verify --features local-development-subcircuit-library
+VERIFY_TEST_PREPROCESS=/absolute/path/to/preprocess/univariate_verifier_preprocess.bin \
+VERIFY_TEST_PROOF=/absolute/path/to/prove/univariate_proof.bin \
+VERIFY_TEST_INSTANCE=/absolute/path/to/synthesizer/outputs/instance.json \
+cargo test --locked --release -p verify --features local-development-subcircuit-library \
+  --test local_fixture -- --ignored --exact accepts_real_proof_and_rejects_tampering --nocapture
+```
+
+Do not proceed to native consumers if key preparation fails. An accepting proof and tamper
 rejection qualify this native test flow only, not live ceremony or publication.
 
 ### Test suites and live qualification
