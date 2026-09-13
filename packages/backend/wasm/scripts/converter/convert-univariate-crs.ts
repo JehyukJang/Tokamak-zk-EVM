@@ -44,14 +44,13 @@ interface CanonicalManifest {
   readonly schemaId: string;
   readonly sourcePackageVersion: string;
   readonly sourceRkyvSha256: SourceRkyvDigests;
-  readonly declaredCapacity: readonly [number, number, number];
-  readonly k: number;
   readonly sections: readonly CanonicalSection[];
 }
 
 interface SourceRkyvDigests {
   readonly tauSequence: string;
   readonly proverKeys: string;
+  readonly preprocessKeys: string;
   readonly verifierKeys: string;
 }
 
@@ -153,8 +152,6 @@ export async function convertCanonicalCrsChunks(canonicalRoot: string, runtimeRo
         sourceSchemaId: canonical.schemaId,
         sourcePackageVersion: canonical.sourcePackageVersion,
         sourceRkyvSha256: canonical.sourceRkyvSha256,
-        declaredCapacity: canonical.declaredCapacity,
-        k: canonical.k,
         sections,
       }, null, 2)}\n`,
     );
@@ -181,10 +178,6 @@ function parseCanonicalManifest(raw: unknown): CanonicalManifest {
   if (value.schemaId !== UNIVARIATE_CRS_CHUNK_CONTRACT.sourceSchemaId) {
     throw new Error("Canonical CRS manifest uses an unsupported source schema.");
   }
-  const declaredCapacity = requireSafeIntegerArray(value.declaredCapacity, "declaredCapacity");
-  if (declaredCapacity.length !== 3) {
-    throw new Error("Canonical CRS declaredCapacity must contain exactly three values.");
-  }
   const sections = requireArray(value.sections, "sections").map((entry, index) => {
     const section = requireRecord(entry, `sections[${index}]`);
     return {
@@ -208,8 +201,6 @@ function parseCanonicalManifest(raw: unknown): CanonicalManifest {
     schemaId: value.schemaId,
     sourcePackageVersion: requireString(value.sourcePackageVersion, "sourcePackageVersion"),
     sourceRkyvSha256: parseSourceRkyvDigests(value.sourceRkyvSha256),
-    declaredCapacity: declaredCapacity as unknown as readonly [number, number, number],
-    k: requireSafeInteger(value.k, "k"),
     sections,
   };
 }
@@ -247,21 +238,6 @@ function validateCanonicalManifest(manifest: CanonicalManifest): void {
     if (cursor !== section.elementCount) {
       throw new Error(`Canonical CRS section '${section.label}' chunks do not cover the section.`);
     }
-  }
-  const count = (label: string): number => manifest.sections.find((section) => section.label === label)!.elementCount;
-  if (
-    count("crs.s0") !== manifest.declaredCapacity[0] + 1
-    || count("crs.sxi") !== manifest.declaredCapacity[1] + 1
-    || count("crs.spsi") !== manifest.declaredCapacity[2] + 1
-  ) {
-    throw new Error("Canonical CRS sequence lengths do not match declaredCapacity.");
-  }
-  for (const [keys, points] of [
-    ["crs.public-query-keys", "crs.public-queries"],
-    ["crs.interface-query-keys", "crs.interface-queries"],
-    ["crs.internal-query-keys", "crs.internal-queries"],
-  ] as const) {
-    if (count(keys) !== count(points)) throw new Error(`Canonical CRS ${keys} and ${points} cardinalities differ.`);
   }
 }
 
@@ -335,6 +311,7 @@ function parseSourceRkyvDigests(value: unknown): SourceRkyvDigests {
   return {
     tauSequence: requireSha256(digests.tauSequence, "sourceRkyvSha256.tauSequence"),
     proverKeys: requireSha256(digests.proverKeys, "sourceRkyvSha256.proverKeys"),
+    preprocessKeys: requireSha256(digests.preprocessKeys, "sourceRkyvSha256.preprocessKeys"),
     verifierKeys: requireSha256(digests.verifierKeys, "sourceRkyvSha256.verifierKeys"),
   };
 }
@@ -354,10 +331,6 @@ function requireSafeInteger(value: unknown, label: string): number {
     throw new Error(`${label} must be a non-negative safe integer.`);
   }
   return value;
-}
-
-function requireSafeIntegerArray(value: unknown, label: string): readonly number[] {
-  return requireArray(value, label).map((entry, index) => requireSafeInteger(entry, `${label}[${index}]`));
 }
 
 function requireSha256(value: unknown, label: string): string {

@@ -82,6 +82,7 @@
     "typecheck:scripts": "tsc -p tsconfig.dev.json --pretty false",
     "binary:check": "npm run contracts:check && tsx test/checks/binary/check-artifact-contract-closure.ts && tsx test/checks/binary/check-instance-conversion.ts && tsx test/checks/binary/check-selector-conversion.ts && tsx test/checks/binary/check-univariate-crs-conversion.ts",
     "univariate-crs:convert": "tsx scripts/converter/convert-univariate-crs.ts",
+    "univariate-crs:offline:check": "npm run contracts:check && tsx test/checks/binary/check-crs-offline.ts",
     "univariate:domain:check": "npm run contracts:check && tsx test/checks/univariate/check-univariate-domain.ts",
     "univariate:relation:check": "npm run contracts:check && tsx test/checks/univariate/check-univariate-relation.ts",
     "univariate:polynomial:check": "tsx test/checks/univariate/check-univariate-polynomial.ts",
