@@ -32,6 +32,7 @@ import {
   FIELD_FUSED_LINEAR_Y,
   FIELD_RECURSION_RECURRENCE,
   FIELD_SPARSE_ROW_DOT,
+  FIELD_SELECTION_ACCUMULATE,
 } from "./kernel-names.js";
 import {
   assertLinearBatchExports,
@@ -177,6 +178,24 @@ export function createFieldRuntime(field: FfField): FieldRuntime {
       assertFieldBuffer(buffer, field.n8);
       assertFieldElement(factor, field.n8, "Scale factor");
       return await field.batchApplyKey(buffer, factor, field.one);
+    },
+    async selectionAccumulateBuffer(values, cofactors, width) {
+      assertPositiveSafeInteger(width, "Selection row width");
+      assertFieldBuffer(values, field.n8);
+      assertPolynomialBufferShape(cofactors, width, width, field.n8, "Selection cofactors");
+      const rowBytes = width * field.n8;
+      if (values.byteLength % rowBytes !== 0) throw new Error("Incomplete selection witness row.");
+      const results = await Promise.all(splitRanges(values.byteLength / rowBytes, field.tm.concurrency).map(({ start, count }) => {
+        const bytes = count * rowBytes;
+        return field.tm.queueAction([
+          { cmd: "ALLOCSET", var: 0, buff: values.slice(start * rowBytes, (start + count) * rowBytes) },
+          { cmd: "ALLOCSET", var: 1, buff: cofactors },
+          { cmd: "ALLOCSET", var: 2, buff: new Uint8Array(bytes) },
+          { cmd: "CALL", fnName: FIELD_SELECTION_ACCUMULATE, params: [{ var: 0 }, { var: 1 }, { val: count }, { val: width }, { var: 2 }] },
+          { cmd: "GET", out: 0, var: 2, len: bytes },
+        ]);
+      }));
+      return assembleTaskOutputs(results, values.byteLength);
     },
     async batchAddScaledBuffer(target, source, factor) {
       assertMatchingFieldBuffers(target, source, field.n8, "Add-scaled buffers");

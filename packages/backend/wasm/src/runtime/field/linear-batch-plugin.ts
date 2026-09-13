@@ -4,6 +4,7 @@ import { installEvaluationKernels } from "./kernels/evaluation-kernels.js";
 import { installBasicLinearKernels, installSpecialLinearKernels } from "./kernels/linear-kernels.js";
 import { installRecurrenceKernels } from "./kernels/recurrence-kernels.js";
 import { buildSparseRowDotKernel } from "./kernels/sparse-witness-kernels.js";
+import { buildSelectionAccumulateKernel } from "./kernels/selection-kernel.js";
 
 export function installLinearBatchPlugin(module: WasmModuleBuilder): void {
   installBasicLinearKernels(module);
@@ -13,4 +14,5 @@ export function installLinearBatchPlugin(module: WasmModuleBuilder): void {
   installRecurrenceKernels(module);
   installSpecialLinearKernels(module);
   buildSparseRowDotKernel(module);
+  buildSelectionAccumulateKernel(module);
 }

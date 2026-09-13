@@ -61,11 +61,36 @@ That unrelated fixture was not repaired or counted as a passing test. Initial
 native cross-verification needed the documented macOS `DYLD_LIBRARY_PATH`;
 with it supplied, verification succeeded without code changes to native.
 
-W1--W9 experiments remain pending. Reproduction from `wasm`:
+W1 results follow below; W2--W9 remain pending. Reproduction from `wasm`:
 
 ```sh
 DYLD_LIBRARY_PATH="$PWD/../external-lib/mac/lib" node test/profiling/run-current-univariate.mjs /tmp/tokamak-p8-trusted-e2e-9jQ5E1 tmp/optimization-w0-qualification profile-off profile-on profile-off profile-on
 ```
+
+### W1: batched selection accumulation — accepted
+
+One worker task now accumulates multiple independent wire rows using the
+existing scaled-add WASM kernel internally. Worker count follows the existing
+runtime; no outer worker pool was introduced. Scalar polynomial oracles cover
+widths 1/2/8/32, empty and uneven row counts, zeros, negative field values and
+inactive selector slots; malformed shapes reject. Direct TypeScript checking
+passed. At width 256 and 32 rows, alternating independent Node measurements
+(including dispatch/copy) were 974.468/967.835 ms control versus 28.834/30.623 ms
+candidate for dense values, and 61.981/65.522 versus 3.196/3.521 ms for sparse
+values. These microbenchmarks are not whole-prover speedups.
+
+| Release-optimized browser prove | Run 1 (s) | Run 2 (s) | Mean (s) |
+| --- | ---: | ---: | ---: |
+| W0 control, digest off | 37.991455 | 37.804120 | 37.897788 |
+| W1 candidate, digest off | 32.820850 | 32.658575 | 32.739713 |
+
+The paired mean decreased 13.61%. All four samples returned true, matched
+native preprocess bytes and passed release native cross-verification. The
+minified uninstrumented bundles used Chromium 149 and the same compressed CRS.
+The candidate adds a packed s*s cofactor buffer and one copy per active worker
+(2 MiB each at s=256; up to 14 worker copies on this host), plus batched
+input/output buffers. This is an allocation bound, not a sampled memory peak.
+[Whole-call evidence](evidence/wasm-w1-selection.json).
 
 ## WASM optimization baseline and execution plan — 2026-09-13
 

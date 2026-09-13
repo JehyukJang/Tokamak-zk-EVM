@@ -56,16 +56,8 @@ export class SelectedRoots {
       row.set(q.coefficients);
       return row;
     });
-    const result = f.createZeroBuffer(count);
-    for(let wire = 0; wire < count / s; wire++) {
-      let row = f.createZeroBuffer(s);
-      for(let i = 0; i < s; i++) {
-        const value = f.readBufferElement(wireMajorValues, wire * s + i);
-        if(!f.isZero(value))
-          row = await f.batchAddScaledBuffer(row, cofactors[i]!, value);
-      }
-      result.set(row, wire * s * f.byteLength);
-    }
-    return result;
+    const packed = f.createZeroBuffer(s * s);
+    cofactors.forEach((row, index) => packed.set(row, index * s * f.byteLength));
+    return f.selectionAccumulateBuffer(wireMajorValues, packed, s);
   }
 }

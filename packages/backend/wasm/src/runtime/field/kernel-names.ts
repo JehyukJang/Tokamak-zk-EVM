@@ -26,3 +26,4 @@ export const FIELD_SPECIAL_TERM9 = "tokamak_frm_term9";
 export const FIELD_FUSED_LINEAR_X = "tokamak_frm_fusedLinearX";
 export const FIELD_FUSED_LINEAR_Y = "tokamak_frm_fusedLinearY";
 export const FIELD_SPARSE_ROW_DOT = "tokamak_frm_sparseRowDot";
+export const FIELD_SELECTION_ACCUMULATE = "tokamak_frm_selectionAccumulate";
