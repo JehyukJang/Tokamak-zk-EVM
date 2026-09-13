@@ -135,6 +135,47 @@ each at this domain plus worker copies; it does not introduce another worker
 pool. Peak memory was not sampled.
 [Whole-call evidence](evidence/wasm-w3-copy-recurrence.json).
 
+### W4: reader experiments — sparse partition accepted; cache/view rejected
+
+The independent `compare-crs-reads.mjs` trace replays 207 actual binding reads
+and a separate nine-read repeated-sequence workload. Every variant returned
+the same post-timing output SHA. Positional local file reads are not browser
+fetch timings. A single-chunk subarray/view did not improve these samples
+(binding 50.071 ms mean versus 47.656 ms copy control) and may retain a large
+backing buffer for a small result; it was not promoted.
+
+Sixteen retained chunks reduced repeated-sequence reads from 301,988,736 to
+100,662,912 bytes, but did not reduce first-touch binding overfetch. Browser
+control times were 28.948305/29.121165 s; cache-16 times were
+28.479370/29.164230 s. The 0.73% mean difference reversed in the second pair
+and overlaps ordinary variation. Rejected: the production cache remains two
+chunks, avoiding an unsupported increase from 16 to 128 MiB retained payload
+at the fixture's 8-MiB partition. All four native/browser checks passed.
+[Cache experiment](evidence/wasm-w4-cache.json).
+
+The same binding trace read 469,760,256 bytes at the original partition,
+226,478,592 at 1 MiB and 62,375,040 at 256 KiB. Mean local read times were
+47.656, 36.378 and 27.578 ms respectively; request counts rose from 56 to
+216/238. The subsequent paired browser experiment used the same source bytes,
+with only nonpublic physical chunks repartitioned to at most 256 KiB:
+
+| Release-optimized browser prove | Run 1 (s) | Run 2 (s) | Mean (s) |
+| --- | ---: | ---: | ---: |
+| Original 8-MiB partition | 26.859375 | 26.852735 | 26.856055 |
+| Nonpublic 256-KiB partition | 26.506055 | 26.556470 | 26.531263 |
+
+Both pairs improved (mean 1.21%). All browser/native verification and
+preprocess byte checks passed. The converter now caps only nonpublic chunks
+at 256 KiB; other sections retain the requested partition. The native CRS
+and logical point sequences are unchanged. A full conversion of the existing
+trusted-setup CRS produced exactly the same chunk ranges and payload SHA
+values as the E2E-qualified repartition. An independent 6001-point offline
+roundtrip tests split boundaries, digests, empty sections and malformed input.
+Direct TypeScript checking passed. Smaller chunks reduce payload retention
+but increase manifest entries/file requests; no peak-memory claim is made.
+[Partition evidence](evidence/wasm-w4-partition.json). These per-candidate
+controls are used instead of combining timings from different run sessions.
+
 ## WASM optimization baseline and execution plan — 2026-09-13
 
 This section records the detailed pre-optimization timing table for backend

@@ -130,12 +130,19 @@ export async function convertCanonicalCrsChunks(canonicalRoot: string, runtimeRo
         const converted = section.encoding === "canonical-g1-affine-le" || section.encoding === "canonical-g2-affine-le"
           ? await batchToMontgomeryInChunks(curve.F1, source)
           : source;
-        const convertedSha256 = digestHex(converted);
-        const destinationPath = resolveChunkPath(runtimeRoot, chunk.path);
-        await mkdir(path.dirname(destinationPath), { recursive: true });
-        await writeFile(destinationPath, converted);
+        // Nonpublic reads select short placement ranges; large physical chunks overfetch.
+        const maxElements = section.label === "crs.nonpublic-queries"
+          ? Math.floor(256 * 1024 / section.elementByteLength) : chunk.elementCount;
+        for (let first = 0; first < chunk.elementCount; first += maxElements) {
+          const elementCount = Math.min(maxElements, chunk.elementCount - first);
+          const part = converted.subarray(first * section.elementByteLength, (first + elementCount) * section.elementByteLength);
+          const relativePath = chunk.elementCount <= maxElements ? chunk.path : `${chunk.path}.${first}.bin`;
+          const destinationPath = resolveChunkPath(runtimeRoot, relativePath);
+          await mkdir(path.dirname(destinationPath), { recursive: true });
+          await writeFile(destinationPath, part);
+          chunks.push({ path: relativePath, firstElement: chunk.firstElement + first, elementCount, byteLength: part.byteLength, sha256: digestHex(part) });
+        }
         await rm(sourcePath);
-        chunks.push({ ...chunk, byteLength: converted.byteLength, sha256: convertedSha256 });
       }
       sections.push({
         label: section.label,

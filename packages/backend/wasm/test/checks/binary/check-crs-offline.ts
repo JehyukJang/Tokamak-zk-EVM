@@ -8,7 +8,7 @@ import { convertCanonicalCrsChunks } from "../../../scripts/converter/convert-un
 import { UNIVARIATE_CRS_CHUNK_CONTRACT as contract } from "../../../src/generated/univariate-crs-chunk-contract.generated.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../../src/version.js";
 
-// Offline conversion is tested independently of the unfinished protocol readers.
+// Offline conversion is tested independently of the runtime readers.
 const root = await mkdtemp(path.join(os.tmpdir(), "tokamak-crs-offline-"));
 const canonical = path.join(root, "canonical");
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
@@ -22,7 +22,7 @@ try {
   const sections = [];
   const source = new Map<string, Uint8Array>();
   for (const spec of contract.sections) {
-    const count = "elementCount" in spec ? spec.elementCount : spec.label === "crs.nonpublic-queries" ? 0 : 3;
+    const count = "elementCount" in spec ? spec.elementCount : spec.label === "crs.nonpublic-queries" ? 6001 : spec.label === "crs.fixed-public-queries" ? 0 : 3;
     const bytes = new Uint8Array(count * spec.elementByteLength);
     // Nonzero canonical coordinates distinguish conversion from a byte copy.
     for (let i = 0; i < bytes.length; i += 48) bytes[i] = (i / 48) % 31 + 1;
@@ -73,8 +73,17 @@ try {
     assert.equal(section.encoding, spec.encoding);
     assert.equal(section.elementCount * spec.elementByteLength, source.get(spec.label)!.length);
     if (section.elementCount === 0) { assert.deepEqual(section.chunks, []); continue; }
-    const bytes = new Uint8Array(await readFile(path.join(output, section.chunks[0].path)));
-    assert.equal(hash(bytes), section.chunks[0].sha256);
+    const parts: Uint8Array[] = [];
+    let first = 0;
+    for (const chunk of section.chunks) {
+      const bytes = new Uint8Array(await readFile(path.join(output, chunk.path)));
+      assert.equal(hash(bytes), chunk.sha256);
+      assert.equal(chunk.firstElement, first);
+      first += chunk.elementCount;
+      if (spec.label === "crs.nonpublic-queries") assert(bytes.length <= 256 * 1024);
+      parts.push(bytes);
+    }
+    const bytes = new Uint8Array(Buffer.concat(parts));
     assert.deepEqual(await curve.F1.batchFromMontgomery(bytes), source.get(spec.label));
   }
   console.log("Offline CRS: all current sections, four source identities, empty ranges, canonical roundtrip and malformed-input rejection passed");
