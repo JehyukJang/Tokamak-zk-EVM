@@ -140,6 +140,36 @@ Important observations:
 The measured target intervals below are not predicted savings. Candidate
 effects overlap; do not add them or promise a final latency.
 
+### W0. Align CRS digest policy with native prove, then rebaseline
+
+Approved policy — 2026-09-13; implementation is not yet started.
+Native prove's `--check-digests` defaults to false. WASM runtime CRS reading
+will follow the same opt-in policy: no payload digest computation by default,
+with an explicit per-call `checkDigests: true` option to request it. Apply
+the same default in the shared reader used by prove and preprocess; do not
+make it depend on input origin, build optimization or a sticky install option.
+
+Keep existing metadata/schema, lengths, section ranges and arithmetic checks.
+Keep digest fields and their format checks in the manifest. When enabled,
+check every loaded chunk against its declared digest and fail on mismatch;
+do not silently retry with checks disabled. This validates consumed browser
+chunks, not the original RKYV archives or unused roles. Do not reconstruct
+native files or add runtime npm-library hashing merely to mimic native storage.
+The converter/build-time integrity workflow and online verifier are unchanged.
+
+Tests must prove zero CRS payload-hasher calls in the default path, positive
+checks and mismatch rejection in the opt-in path, unchanged structural failure
+behavior in both, and no option/cache state leaking between invocations.
+Default mode does not promise early detection of well-shaped byte corruption
+through a digest. Record this boundary explicitly in the public API docs.
+
+Run native/WASM E2E and repeat both default/off and explicit/on timings before
+W1. Preserve all tables above as the pre-change digest-on evidence. Subtracting
+11.905 seconds from the prior total is not a new measured default baseline.
+The policy change is required independently of its measured speed effect;
+later arithmetic/data-delivery candidates still require demonstrated gains.
+No SHA acceleration experiment is included.
+
 ### W1. Fuse selection accumulation into coarse WASM tasks
 
 Target: selection quotient, 5.027 s.
@@ -195,18 +225,22 @@ Test separately:
 1. Smaller physical chunks for sparse `crs.nonpublic-queries` within the
    existing manifest contract; retain larger sequential power chunks.
    Measure fetched/hash bytes and request count as well as latency.
-2. Retain reused validated power chunks within one proof invocation using a
+2. Retain reused power-chunk bytes within one proof invocation using a
    byte-budgeted cache or explicit lifetime-based retention. The current
    fixed two-entry policy is not a performance requirement. Avoid a global
-   trust cache or cross-proof stale-byte assumptions.
+   trust cache or cross-proof stale-byte assumptions. In opt-in digest mode,
+   reuse a digest result only while retaining the exact checked bytes.
 3. Return a view when a requested range lies in one retained immutable chunk;
    otherwise use bounded gathering. Index chunk ranges instead of rescanning
    all descriptors if the scan is material in later profiles.
 
 The optional reader-controlled memory budget must not be tuned only to this
 host. Preserve bounded MSM calls even when more memory is available.
-No SHA acceleration experiment or digest-policy change is proposed. Keep
-corrupt-chunk rejection, roles, public/nonpublic indexing and producer contracts.
+Reprofile this target on W0's digest-off default; the original 13.351-second
+interval includes SHA and is not the new loading baseline. Keep structural
+rejection in both modes and digest-mismatch rejection in opt-in mode, plus
+roles, public/nonpublic indexing and producer contracts. No SHA acceleration
+experiment or further digest-policy change is part of W4.
 
 ### W5. Requalify MSM delivery, fusion and zero filtering
 
@@ -317,8 +351,9 @@ dynamic point/field checks. No runtime verifier CRS load exists.
 
 ## Experiment gate and remaining plan
 
-Complete this profiling/recommendation checkpoint first. Each subsequent
-candidate remains unimplemented and unaccepted. For each candidate:
+The profiling/recommendation checkpoint is complete. W0's policy alignment
+and all candidate implementations remain unstarted. Execute W0 and record the
+new default baseline before W1--W9. For each optimization candidate:
 
 1. Preserve this compressed-CRS implementation as the reference.
 2. Run isolated exact polynomial/group tests, including affected rejection
@@ -330,9 +365,10 @@ candidate remains unimplemented and unaccepted. For each candidate:
    complete API and separate loading/arithmetic, including memory impact.
 5. Record acceptance or rejection before the next candidate.
 
-W1--W7 are the proposed prove sequence; W8 and W9 are separately measured
-consumer opportunities. Policy changes and artifact-contract changes are not
-implied by these proposals. The review does not run live MPC, publish artifacts,
+W0 precedes the W1--W7 prove sequence; W8 and W9 are separately scoped
+preprocess and verifier experiments after that sequence. Apart from the
+approved W0 digest policy, no trust-policy or artifact-contract change is
+implied. The review does not run live MPC, publish artifacts,
 change versions, or reinstate a dense-CRS performance benchmark.
 
 ## Reproduction and source evidence

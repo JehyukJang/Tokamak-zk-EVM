@@ -28,6 +28,152 @@ a documentation/evidence audit, not a new benchmark of that revision. Earlier
 sections retain their experiment-time controls and validation scope; the
 current status below supersedes their then-pending migration descriptions.
 
+## WASM optimization baseline and execution plan — 2026-09-13
+
+This section records the detailed pre-optimization timing table for backend
+performance engineers. It complements the earlier Chromium 149 functional
+qualification rather than replacing its measurements.
+
+Source: `cd72c162281c2b4058e6bbc70e130988ec4ed516`; Apple M4 Pro,
+14 logical CPUs, Chrome 153, minified ES2022 bundle and ffjavascript 0.3.1.
+The existing 207-placement local-QAP fixture and compressed trusted-setup CRS
+were reused. The two profiled and two completed uninstrumented runs all
+verified successfully and matched native preprocess bytes. Runtime CRS
+loading, SHA and worker transfers are included; compilation, initial fixture
+fetch and installation are separate. No optimization candidate was applied.
+
+**Digest mode of these samples:** the measured WASM reader unconditionally
+checked loaded chunk digests. The subsequent policy decision aligns runtime
+CRS reads with native prove: default digest computation is off; an explicit
+option enables it. That change is planned, not implemented or measured here.
+Do not subtract the SHA span from these totals and present the result as a
+measurement of the future default path.
+
+The [detailed opportunity report](current-univariate-wasm-profile.md) owns
+the candidate rationale and reproduction procedure. The
+[raw samples](evidence/current-univariate-wasm-profile.json) are unchanged.
+
+### Whole-call timings
+
+| API | Uninstrumented run 1 (s) | Uninstrumented run 2 (s) | Mean (s) | Profiled mean (s) |
+| --- | ---: | ---: | ---: | ---: |
+| install | 0.176025 | 0.176630 | 0.176327 | 0.176345 |
+| preprocess | 3.948915 | 3.872850 | 3.910882 | 3.886733 |
+| prove | 48.969780 | 49.192960 | 49.081370 | 48.832385 |
+| verify | 0.025230 | 0.025525 | 0.025377 | 0.025868 |
+
+The profiled prove mean is about 0.5% below the control mean; the runs do not
+resolve instrumentation overhead from ordinary variation. The earlier P8
+38.090625-second sample used Chromium 149 and a different harness. It is not
+a paired control for this profile, so the approximately 49-second measurement
+must not be labeled a code regression or attributed to a browser change.
+
+### Detailed prove stages
+
+Mean of two instrumented runs. Commitment/opening rows include the CRS reads,
+scalar conversion and MSM they call. Percentages use the 48.832385-second
+profiled public prove mean, not the native prover time.
+
+| Sequential stage | Mean (s) | Prove share |
+| --- | ---: | ---: |
+| Input admission, domain and witness slots | 0.006 | 0.01% |
+| Permutation polynomial | 0.152 | 0.31% |
+| Witness maps (sparse R1CS + four IFFTs) | 0.368 | 0.75% |
+| Public checks and polynomial blinding | 0.412 | 0.84% |
+| Arithmetic quotient q_A | 1.311 | 2.68% |
+| Commitments C_L and C_H | 7.358 | 15.07% |
+| Binding commitment C_O | 7.245 | 14.84% |
+| Selected roots and witness rearrangement | 0.026 | 0.05% |
+| Selection quotients | 5.027 | 10.29% |
+| Commitments D_Q and D_Q,K | 3.694 | 7.56% |
+| Commitment C_D | 3.632 | 7.44% |
+| Copy recurrence | 2.486 | 5.09% |
+| Copy interpolation and linear operands | 0.401 | 0.82% |
+| L_0 materialization | 0.301 | 0.62% |
+| Copy boundary quotient q_C,0 | 1.232 | 2.52% |
+| Copy product quotient q_C,1 | 2.453 | 5.02% |
+| Commitment C_R | 1.791 | 3.67% |
+| Quotient combination | 0.245 | 0.50% |
+| Commitment C_Q | 1.799 | 3.68% |
+| Seven challenge-point evaluations | 0.665 | 1.36% |
+| Opening polynomial combination | 0.355 | 0.73% |
+| Opening proof pi_chi | 5.977 | 12.24% |
+| Opening proof pi_plus | 1.893 | 3.88% |
+| Remaining transcript and encoding | 0.006 | 0.01% |
+| Total public prove | 48.832385 | 100% |
+
+### Inclusive operation breakdown
+
+These rows overlap the stage table and, where indicated, each other. They
+must not be added to the stage totals.
+
+| Operation boundary | Mean (s) | Interpretation |
+| --- | ---: | --- |
+| G1 MSM API calls | 19.060 | 242 calls; includes ffjavascript dispatch, worker copying and result reduction, not pure curve instructions |
+| CRS range reads | 13.351 | Fetch, digest, copying and cache behavior combined |
+| SHA inside CRS reads | 11.905 | Subset of range-read time; 121 hash events covering 931149312 bytes per run |
+| Montgomery-to-raw scalar batches | 0.089 | Already batched; not a primary target |
+| Polynomial multiply | 3.991 | Includes FFT, pointwise product, inverse FFT and materialization |
+| Polynomial add/sub/scale | 2.088 | Scalar-loop work across several stages; excludes scaleArgument |
+| Exact vanishing division | 0.636 | Three calls, included in quotient rows |
+| Ruffini division | 0.421 | Cofactors plus four opening divisions |
+
+### Preprocess and verify stages
+
+Mean of two profiled runs; milliseconds.
+
+| Preprocess stage | Mean (ms) |
+| --- | ---: |
+| input-admission | 0.763 |
+| domain | 0.040 |
+| selected-roots | 18.047 |
+| permutation | 160.855 |
+| public-check | 1.838 |
+| commit-SC | 1724.585 |
+| commit-Cfix | 2.933 |
+| unselected-division | 1630.657 |
+| commit-Ekappa | 346.527 |
+| encode | 0.443 |
+
+| Verify stage | Mean (ms) |
+| --- | ---: |
+| decode | 6.655 |
+| online | 1.775 |
+| field-algebra | 1.013 |
+| group-algebra | 7.385 |
+| prepare-G2 | 0.505 |
+| pairing | 8.510 |
+
+The verify `online` interval here is transcript reconstruction before field
+algebra; it is not an additional parent total. Decoding includes mandatory
+dynamic point/field checks. No runtime verifier CRS load exists.
+
+
+### Planned execution and evidence gates
+
+1. W0: align optional CRS digest checking with native prove and measure new
+   default/off and explicit/on baselines separately. Preserve structural
+   admission and opt-in digest-mismatch rejection.
+2. W1--W3: selection accumulation batching, copy-boundary cancellation and
+   batched copy inversion/ordered recurrence.
+3. W4--W7: independently evaluate CRS loading, MSM delivery/filtering,
+   whole-buffer polynomial kernels and mask-aware quotient FFT reduction.
+   Use the W0 default-path baseline for optimization acceptance, with digest-on
+   compatibility tests reported separately.
+4. W8: preprocess division/MSM experiments. W9: low-priority online verifier
+   experiments, only after the larger targets and with separate timing.
+
+For every candidate, record the hypothesis, isolated correctness test,
+complete affected native/WASM E2E, alternating repeated optimized-build
+timings, memory/loading costs and acceptance or rejection before proceeding.
+Keep the same compressed CRS unless the candidate specifically tests its
+physical chunk partition; then retain identical logical points and inputs.
+No dense delivery format, SHA acceleration experiment, live MPC, publication,
+version bump or verifier trust-policy change is part of this sequence.
+
+The implementation plan is maintained in ignored `packages/backend/tmp/planning.md`.
+All W0--W9 implementation/experiment steps remain unstarted at this checkpoint.
+
 ## Native and browser E2E qualification — 2026-09-13
 
 Fresh native trusted setup supplied all four CRS files for each of two local
@@ -96,7 +242,7 @@ the nonidentity subgroup check. An independent roundtrip regression covers
 both G1 and G2 identities. Singleton-domain parity also removed a retired
 WASM-only nontrivial-domain restriction.
 
-### Storage requalification and remaining comparison
+### Completed storage correctness requalification
 
 The four native payloads total 957,268,688 bytes. Their browser representation
 has 19 sections and 132 chunks, totaling 957,268,320 point bytes; the largest
@@ -113,13 +259,12 @@ sections agree. Release tests also requalified dense/omitted binding equality,
 the scalar-oracle proof, CPU/ICICLE parity and retained arithmetic kernels.
 ICICLE CPU-provider parity does not establish CUDA execution.
 
-This does **not** complete a new controlled whole-prover latency A/B between
-dense and omitted physical storage. The current production reader accepts
-only the omitted layout; the preserved dense oracle cannot be passed to it
-as a current CRS. A test-only dense reader or an explicitly accounted
-projection is needed before that measurement can be claimed. The earlier
-paired storage and native optimization measurements below remain intact.
-WASM-specific optimization has not started.
+No new dense-versus-omitted whole-prover timing experiment was performed.
+That comparison and its proposed test-only dense reader were withdrawn:
+dense CRS is not a delivery format. P8's functional and storage-correctness
+qualification is complete. The earlier paired storage and native optimization
+measurements below remain intact. WASM profiling is complete; optimization
+implementation remains unstarted and uses the actual compressed CRS.
 
 The [machine-readable record](evidence/current-univariate-e2e.json) contains
 timings, source hashes, file sizes, all section counts and qualification
