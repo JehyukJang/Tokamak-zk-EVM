@@ -3,19 +3,6 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-pub(crate) fn write_mpc_subcircuit_library_path(
-    out_dir: &Path,
-    library_dir: &Path,
-) -> io::Result<()> {
-    fs::write(
-        out_dir.join("mpc_subcircuit_library.rs"),
-        format!(
-            "pub const MPC_SUBCIRCUIT_LIBRARY_PATH: &str = {:?};\n",
-            library_dir.to_string_lossy()
-        ),
-    )
-}
-
 pub(crate) fn generate_embedded_module(
     snapshot: &ResolvedSubcircuitLibrary,
     out_dir: &Path,

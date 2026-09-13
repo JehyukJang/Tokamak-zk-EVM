@@ -19,7 +19,7 @@ pub(crate) struct ContributionBinding<'a> {
     pub library_version: &'a str,
     pub library_digest: [u8; 32],
     pub tau_digest: [u8; 32],
-    pub previous_state_digest: [u8; 32],
+    pub previous_record_digest: [u8; 32],
     pub next_state_digest: [u8; 32],
 }
 
@@ -146,7 +146,7 @@ fn challenge(
     hash.input(binding.library_version.as_bytes());
     hash.input(binding.library_digest);
     hash.input(binding.tau_digest);
-    hash.input(binding.previous_state_digest);
+    hash.input(binding.previous_record_digest);
     hash.input(binding.next_state_digest);
     match role {
         ShareRole::Delta => hash.input([0]),

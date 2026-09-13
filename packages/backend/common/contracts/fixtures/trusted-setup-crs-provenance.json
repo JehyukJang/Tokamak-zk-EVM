@@ -9,11 +9,11 @@
     "origin": "localQapCompiler",
     "sourceDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
   },
-  "phase1SourceProvenance": "native",
-  "ceremonyProtocolVersion": "tokamak-mpc-2phase-v1",
-  "ceremonyTranscriptSha256": "6666666666666666666666666666666666666666666666666666666666666666",
+  "phase1SourceProvenance": null,
+  "ceremonyProtocolVersion": null,
+  "ceremonyTranscriptSha256": null,
   "protocolSchemaId": "tokamak-zk-evm-univariate",
-  "generationMethod": "mpc",
+  "generationMethod": "trustedSetup",
   "artifacts": {
     "prover_keys.rkyv": "7afc09d6cb52ac887cc570bc14c82bb8431f955992f57700cb82583e2b34d035",
     "preprocess_keys.rkyv": "0b9e88f13bc7936a9014dc986b5c0a9e47e5dda5ed88a4e12bd7fc048e8907af",

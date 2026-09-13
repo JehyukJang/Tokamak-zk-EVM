@@ -6,8 +6,19 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["build", "--locked", "--release", "-p", "trusted-setup", "--features", "local-development-subcircuit-library"],
-        "filter": { "name": "trusted-setup", "kind": "bin" }
+        "args": [
+          "build",
+          "--locked",
+          "--release",
+          "-p",
+          "trusted-setup",
+          "--features",
+          "local-development-subcircuit-library"
+        ],
+        "filter": {
+          "name": "trusted-setup",
+          "kind": "bin"
+        }
       },
       "program": "${cargo:program}",
       "args": [
@@ -23,22 +34,37 @@
         "DYLD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib",
         "LD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib:${env:LD_LIBRARY_PATH}"
       },
-      "sourceLanguages": ["rust"]
+      "sourceLanguages": [
+        "rust"
+      ]
     },
     {
-      "name": "Debug native MPC setup",
+      "name": "MPC: initialize Filecoin phase 2 (npm)",
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["build", "--locked", "--release", "-p", "mpc-setup", "--features", "local-development-subcircuit-library"],
-        "filter": { "name": "native_mpc_setup", "kind": "bin" }
+        "args": [
+          "build",
+          "--locked",
+          "--release",
+          "-p",
+          "mpc-setup",
+          "--no-default-features",
+          "--features",
+          "production-npm-subcircuit-library",
+          "--bin",
+          "mpc"
+        ],
+        "filter": {
+          "name": "mpc",
+          "kind": "bin"
+        }
       },
       "program": "${cargo:program}",
       "args": [
-        "--intermediate",
-        "${workspaceFolder}/rust/setup/mpc-setup/output/native-debug.intermediate",
+        "init",
         "--output",
-        "${workspaceFolder}/rust/setup/mpc-setup/output/native-debug.final"
+        "${workspaceFolder}/rust/setup/mpc-setup/output/initial.mpc"
       ],
       "cwd": "${workspaceFolder}",
       "env": {
@@ -46,39 +72,28 @@
         "DYLD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib",
         "LD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib:${env:LD_LIBRARY_PATH}"
       },
-      "sourceLanguages": ["rust"]
-    },
-    {
-      "name": "Release Dusk-backed MPC to Google Drive",
-      "type": "lldb",
-      "request": "launch",
-      "cargo": {
-        "args": ["build", "--locked", "--release", "-p", "mpc-setup", "--no-default-features", "--features", "production-npm-subcircuit-library", "--bin", "dusk_backed_mpc_setup"],
-        "filter": { "name": "dusk_backed_mpc_setup", "kind": "bin" }
-      },
-      "program": "${cargo:program}",
-      "args": [
-        "run",
-        "--intermediate",
-        "${workspaceFolder}/rust/setup/mpc-setup/output/dusk-release.intermediate",
-        "--output",
-        "${workspaceFolder}/rust/setup/mpc-setup/output/dusk-release.final"
-      ],
-      "cwd": "${workspaceFolder}",
-      "env": {
-        "ICICLE_BACKEND_INSTALL_DIR": "${workspaceFolder}/external-lib/mac/lib/backend",
-        "DYLD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib",
-        "LD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib:${env:LD_LIBRARY_PATH}"
-      },
-      "sourceLanguages": ["rust"]
+      "sourceLanguages": [
+        "rust"
+      ]
     },
     {
       "name": "Debug preprocess",
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["build", "--locked", "--release", "-p", "preprocess", "--features", "development-crs-bypass,local-development-subcircuit-library"],
-        "filter": { "name": "preprocess", "kind": "bin" }
+        "args": [
+          "build",
+          "--locked",
+          "--release",
+          "-p",
+          "preprocess",
+          "--features",
+          "development-crs-bypass,local-development-subcircuit-library"
+        ],
+        "filter": {
+          "name": "preprocess",
+          "kind": "bin"
+        }
       },
       "program": "${cargo:program}",
       "args": [
@@ -98,15 +113,28 @@
         "DYLD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib",
         "LD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib:${env:LD_LIBRARY_PATH}"
       },
-      "sourceLanguages": ["rust"]
+      "sourceLanguages": [
+        "rust"
+      ]
     },
     {
       "name": "Debug prove",
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["build", "--locked", "--release", "-p", "prove", "--features", "development-crs-bypass,local-development-subcircuit-library"],
-        "filter": { "name": "prove", "kind": "bin" }
+        "args": [
+          "build",
+          "--locked",
+          "--release",
+          "-p",
+          "prove",
+          "--features",
+          "development-crs-bypass,local-development-subcircuit-library"
+        ],
+        "filter": {
+          "name": "prove",
+          "kind": "bin"
+        }
       },
       "program": "${cargo:program}",
       "args": [
@@ -128,18 +156,29 @@
         "DYLD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib",
         "LD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib:${env:LD_LIBRARY_PATH}"
       },
-      "sourceLanguages": ["rust"]
+      "sourceLanguages": [
+        "rust"
+      ]
     },
     {
       "name": "Debug verify",
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["build", "--locked", "--release", "-p", "verify"],
+        "args": [
+          "build",
+          "--locked",
+          "--release",
+          "-p",
+          "verify"
+        ],
         "env": {
           "TOKAMAK_VERIFIER_KEYS": "${workspaceFolder}/rust/setup/trusted-setup/output/debug-keys/verifier_keys.rkyv"
         },
-        "filter": { "name": "verify", "kind": "bin" }
+        "filter": {
+          "name": "verify",
+          "kind": "bin"
+        }
       },
       "program": "${cargo:program}",
       "args": [
@@ -156,15 +195,32 @@
         "DYLD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib",
         "LD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib:${env:LD_LIBRARY_PATH}"
       },
-      "sourceLanguages": ["rust"]
+      "sourceLanguages": [
+        "rust"
+      ]
     },
     {
       "name": "Measure prove timing",
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["test", "--locked", "--release", "-p", "prove", "--features", "timing,local-development-subcircuit-library", "--test", "timing", "--", "--nocapture"],
-        "filter": { "name": "timing", "kind": "test" }
+        "args": [
+          "test",
+          "--locked",
+          "--release",
+          "-p",
+          "prove",
+          "--features",
+          "timing,local-development-subcircuit-library",
+          "--test",
+          "timing",
+          "--",
+          "--nocapture"
+        ],
+        "filter": {
+          "name": "timing",
+          "kind": "test"
+        }
       },
       "program": "${cargo:program}",
       "args": [],
@@ -172,7 +228,7 @@
       "env": {
         "PROVE_QAP_PATH": "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
         "PROVE_SYNTHESIZER_PATH": "${workspaceFolder}/../frontend/synthesizer/outputs",
-        "PROVE_SETUP_PATH": "${workspaceFolder}/rust/setup/mpc-setup/output/native-debug.final",
+        "PROVE_SETUP_PATH": "${workspaceFolder}/rust/setup/trusted-setup/output/debug-keys",
         "PROVE_OUT_PATH": "${workspaceFolder}/rust/prove/output",
         "TIMING_OUT": "${workspaceFolder}/rust/prove/optimization/timing.release.json",
         "ICICLE_BACKEND_INSTALL_DIR": "${workspaceFolder}/external-lib/mac/lib/backend",
@@ -180,7 +236,9 @@
         "LD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib:${env:LD_LIBRARY_PATH}"
       },
       "postDebugTask": "timing:json-to-md",
-      "sourceLanguages": ["rust"]
+      "sourceLanguages": [
+        "rust"
+      ]
     }
   ]
 }

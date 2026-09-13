@@ -1,115 +1,68 @@
-# Tokamak zk-EVM MPC Setup
+# Tokamak zk-EVM MPC setup
 
-This guide is for developers implementing and reviewing MPC setup and for
-prospective phase 2 contributors assessing its source-authentication boundary.
+For phase 2 contributors, operators and backend implementers. Filecoin supplies the externally completed phase 1; this repository implements only Tokamak phase 2. There is no standalone phase 1 adapter or trusted import receipt.
 
-## Implementation status
+## Prerequisites and commands
 
-Filecoin supplies the externally completed phase 1. This repository implements
-Tokamak phase 2, not a new phase 1 or a standalone adapter replacing it. Each
-contributor must obtain the original Filecoin source, authenticate its full
-pinned digest, and derive the required tau subset locally. A coordinator's
-converted tau, subset digest or import receipt is not an authentication source.
+Use the repository's native build prerequisites and a compatible published `@tokamak-zk-evm/subcircuit-library` snapshot. Every operation uses the participant's own build-resolved npm snapshot, extracted into a private temporary directory. Local QAP inputs are rejected. All examples use release optimization.
 
-Internal source preparation is implemented in
-[`filecoin_source.rs`](src/filecoin_source.rs). The independent `mpc phase1`
-command and its `import_receipt.json` output have been removed; there is
-currently no MPC binary target. Initialization, contribution, contribution
-verification and finalization commands are not implemented yet. They will
-connect this internal preparation to every participant operation and resolve
-the identical `@tokamak-zk-evm/subcircuit-library` npm snapshot independently
-for each participant.
+Obtain `challenge_19` directly from the pinned [Filecoin source](https://trusted-setup.filecoin.io/phase1/challenge_19), or omit `--filecoin-source` to download it during the operation. The source is 77,309,411,488 bytes (about 72 GiB). Every invocation, including verification and finalization, reads and hashes the complete original before accepting incoming state or sampling secret shares. Keeping your own raw copy avoids a download, not the digest check. A coordinator's converted tau, matching subset digest or previous receipt grants no authority.
 
-The internal [share-knowledge proof](src/contribution_proof.rs) follows
-Filecoin's SnapDeals phase 2 hash/point-sampling profile. Its isolated tests
-pass, but it is not yet wired to participant commands or persisted ceremony
-state. See the [exact profile and scope](docs/current-phase2-design.md#contribution-proof-profile).
+From `packages/backend`:
 
-Old native/Dusk binaries are not Cargo targets and their modules are excluded
-from the library. Residual Dusk source/integration files await the separate
-retirement step; they are not supported commands. The old
-[two-phase output contract](docs/phase2-output-contract.md) and
-[MPC protocol document](../../../docs/publication/tokamak-mpc-protocol.md)
-describe the retired construction, not specifications for its replacement.
+```sh
+cargo run --locked --release -p mpc-setup --no-default-features \
+  --features production-npm-subcircuit-library --bin mpc -- \
+  init --filecoin-source /path/to/challenge_19 --output ./initial.mpc
 
-## Contributor-local source preparation
+cargo run --locked --release -p mpc-setup --no-default-features \\
+  --features production-npm-subcircuit-library --bin mpc -- \\
+  contribute --filecoin-source /path/to/challenge_19 --input ./initial.mpc --output ./alice.mpc
 
-Internal local-file and download functions take the selected library's
-`SetupParams`, not a caller-selected exponent capacity. They reuse
-`UnivariateCrsShape::from_setup_params`, as trusted setup does, to derive the
-minimum required P and reject an invalid shape or insufficient source capacity
-before source I/O. npm resolution and the binding to incoming phase 2 state
-belong to the pending participant workflow; isolated source preparation does
-not authenticate the origin of an arbitrary metadata object by itself.
+cargo run --locked --release -p mpc-setup --no-default-features \\
+  --features production-npm-subcircuit-library --bin mpc -- \\
+  contribute --filecoin-source /path/to/challenge_19 --input ./alice.mpc --output ./bob.mpc
 
-The expected source URL, producer revision, full BLAKE2b-512 digest and
-preceding-response header are pinned from Filecoin. There is no public
-source-pin, capacity or verification-bypass option. The two internal paths are:
+cargo run --locked --release -p mpc-setup --no-default-features \\
+  --features production-npm-subcircuit-library --bin mpc -- \\
+  verify --filecoin-source /path/to/challenge_19 --input ./bob.mpc
 
-- Read a contributor's own original `challenge_19` obtained from Filecoin.
-  Check its full byte length and digest on each preparation, even after a
-  previous successful run.
-- Download the pinned original directly from Filecoin and authenticate the
-  complete stream. Do not accept an independently prepared tau file.
+cargo run --locked --release -p mpc-setup --no-default-features \\
+  --features production-npm-subcircuit-library --bin mpc -- \\
+  finalize --filecoin-source /path/to/challenge_19 --input ./bob.mpc --output ./final-keys
+```
 
-The source contains 77,309,411,488 bytes (about 72 GiB). Every preparation
-reads that entire stream to verify the pinned digest. The same pass retains
-only the selected ranges; no complete source copy needs to be written to disk.
-After authentication, validate and convert those retained bytes. They cannot
-be replaced between hashing and decoding by changing a local source file.
-An interrupted download restarts from the original source; there is no
-alternate-source fallback or trusted converted-subset cache.
+Run contributor commands in each contributor's own environment, not by sharing a trusted executable or source-verification cache. Initialization is deterministic and is not counted as a contribution. Transcript outputs must be new paths; failed operations preserve existing files. Resuming means using the last completed public transcript as the next input. There is no source-check bypass, source-pin override or converted-tau input option.
 
-P is the maximum tagged/G2 exponent, not a point count. The in-memory result
-uses the existing common `TauSequenceRkyv` representation: ordinary G1
-exponents 0..2P, xi/psi G1 and ordinary G2 exponents 0..P, and psi in G2.
-Bounds are inclusive. No new archive, receipt or final provenance is written
-by source preparation. It samples no secret tau or tag and grants no release
-eligibility. Necessary source identity and check evidence will be bound to
-the phase 2 transcript and final common provenance, not a new import manifest.
+## Checks and outputs
 
-The eventual finalized `tau_sequence.rkyv` remains an ordinary prover input.
-Its distribution does not authorize a contributor to trust it instead of the
-original Filecoin source. Trusted setup remains a separate one-command
-development path.
+Original-source preparation verifies the pinned BLAKE2b-512 digest, file length and preceding-response header, then checks canonical subgroup points, generators, adjacent powers and tagged families in the retained ranges. It cannot replay historical Filecoin attestations. Source pins and exact encoding are in the [design record](docs/current-phase2-design.md#filecoin-source-mapping).
 
-### Validation and qualification
+Initialization uses group IFFTs and sparse R1CS combinations of encoded powers, never a recovered tau or tag scalar. Each contribution updates delta and independent wire weights and supplies the [Filecoin-profile share-knowledge evidence](docs/current-phase2-design.md#contribution-proof-profile). Verification rederives initialization, checks every record, validates its share proofs and cumulative roles, and checks all final-family equations. Public-buffer placement specialization and implicit-zero query omission match trusted setup.
 
-Preparation checks the complete source digest and preceding-response header,
-canonical uncompressed coordinates, nonzero subgroup membership, generators,
-selected adjacent-power relations and the beta G1/G2 pairing. Power checks
-sample independent nonzero random coefficients after source authentication;
-every adjacent pair is included across batch boundaries. These are public
-check coefficients, not participant secret shares. The source and decoder
-revisions are recorded in the
-[design checkpoint](docs/current-phase2-design.md#filecoin-source-mapping).
+The public transcript has a context-bound header followed by full state/proof records. Its counts come from the selected library. Each proof binds the preceding record chain, the new state, source/library identity and share role. Even an identity update cannot replay the previous receipt. The correctness baseline retains all public states and verifies the full chain; this is not yet a measured or optimized large-ceremony storage/verification design. Shares are never serialized and their owned buffers are cleared after use; this is not a guarantee against host compromise or all compiler-generated copies.
 
-These checks do not replay Filecoin's historical contributions or verify its
-participant signatures. The full 72-GiB source has not been processed in this
-qualification; the earlier bounded G1/G2 probes are encoding examples, not
-full-source authentication. Synthetic fixtures use private test-only pins and
-known scalar oracles. They cannot enable a runtime source override.
+Finalization requires at least one verified contribution. It uses the same serializers and atomic generation activation as trusted setup:
 
-From `packages/backend`, with the native build prerequisites installed:
+- `tau_sequence.rkyv`: unchanged, locally derived Filecoin powers.
+- `prover_keys.rkyv`: compressed prover queries and helpers.
+- `preprocess_keys.rkyv`: self-contained preprocessing keys, including fixed-public queries.
+- `verifier_keys.rkyv`: online-only verifier elements.
+- `crs_provenance.json`: the common backend-owned document, with Filecoin source evidence, the full transcript SHA-256 and all four payload digests.
+
+There is no JSON point projection. Intermediate correction/role points and share proofs are not added to the final CRS. Filecoin results write `releaseEligible: false`; publication is disabled pending an authorized Filecoin publication policy. No Drive upload, ZIP packaging or publisher command is provided. Ordinary prover users may consume distributed tau files; contributors must still authenticate the original Filecoin source themselves.
+
+## Qualification and limits
+
+Run local release checks with:
 
 ```sh
 cargo test --locked --release -p mpc-setup
 ```
 
-The source tests cover full-stream corruption (including unretained bytes),
-short reads, invalid points, power/tag inconsistency, common archive equality,
-library-derived capacity and early input rejection. They are independent of
-the unfinished phase 2 engine. Successful source tests do not establish
-participant workflow enforcement, contribution proofs or MPC/native SNARK E2E.
+Synthetic tests compare all four finalized archive byte streams to trusted setup under identical effective test scalars after two sequential updates. They exercise public/free/fixed specialization, omitted queries, every updated family, share evidence, replay, context substitution, truncation and non-overwriting output. These are correctness tests, not a security proof or real Filecoin/npm E2E qualification.
 
-On 2026-09-13, all 25 release tests passed: ten internal source tests, nine
-share-proof tests and six phase 2 algebra-model tests. The share-proof tests
-include fixed Filecoin-profile replay vectors, context and wire rebinding,
-malformed/identity points, zero shares and forged evidence. They do not
-establish an operational ceremony or its security theorem.
-Cargo metadata confirms that the package exposes
-no binary target. No full-source download or production npm resolution was
-performed for this checkpoint.
+The live 72-GiB source and a compatible published current-protocol npm library must pass multi-contributor finalization and native preprocess/prove/verify before release timing is recorded as a qualified baseline. No successful live ceremony, native MPC E2E or timing baseline is claimed here. The broader security analysis of the extra intermediate public encodings is deferred; do not treat the reference paper's Groth16 theorem as a theorem for this Tokamak extension. Publication authorization is a separate future task.
 
 ## Phase 2 references
 

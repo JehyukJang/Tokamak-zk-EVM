@@ -1,5 +1,4 @@
 use super::backend_build_metadata_contract::{metadata_file_name, BackendBuildMetadata};
-use super::input_origin_contract::SubcircuitLibraryOrigin;
 use super::{ResolvedSubcircuitLibrary, PACKAGE_NAME};
 use std::fs;
 use std::io;
@@ -40,17 +39,4 @@ pub(crate) fn emit_subcircuit_library_build_env(
     println!("cargo:rustc-env=TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_NAME={PACKAGE_NAME}");
     println!("cargo:rustc-env=TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION={version}");
     println!("cargo:rustc-env=TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_SOURCE_DIGEST={source_digest}");
-}
-
-pub(crate) fn emit_mpc_subcircuit_library_build_env(
-    version: &str,
-    source_digest: &str,
-    compatible_backend_version: &str,
-    origin: SubcircuitLibraryOrigin,
-) {
-    emit_subcircuit_library_build_env(version, source_digest, compatible_backend_version);
-    println!(
-        "cargo:rustc-env=TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_ORIGIN={}",
-        origin.as_str()
-    );
 }

@@ -10,8 +10,6 @@ mod generated;
 mod input_origin_contract;
 #[path = "subcircuit_library/integrity.rs"]
 mod integrity;
-#[path = "subcircuit_library/local_qap.rs"]
-mod local_qap;
 #[path = "subcircuit_library/npm_snapshot.rs"]
 mod npm_snapshot;
 #[path = "subcircuit_library/source_selection.rs"]
@@ -112,44 +110,6 @@ pub fn configure_subcircuit_library_metadata(
         return Ok(snapshot.snapshot_dir);
     }
     Ok(qap_compiler_root()?.join("subcircuits/library"))
-}
-
-pub fn configure_mpc_subcircuit_library(out_dir: &Path, package_version: &str) -> io::Result<()> {
-    emit_version_contract_rerun_rule();
-    emit_cli_package_rerun_rule();
-    println!("cargo:rustc-check-cfg=cfg(tokamak_release_profile)");
-    println!("cargo:rustc-check-cfg=cfg(tokamak_production_npm_subcircuit_library)");
-    source_selection::emit_input_origin_rerun_rules();
-
-    if env::var("PROFILE").ok().as_deref() == Some("release") {
-        println!("cargo:rustc-cfg=tokamak_release_profile");
-    }
-
-    let selection = source_selection::select_mpc_subcircuit_library(package_version)?;
-    match selection.source {
-        source_selection::MpcSubcircuitLibrary::NpmSnapshot(snapshot) => {
-            cargo_env::emit_mpc_subcircuit_library_build_env(
-                &snapshot.version,
-                &snapshot.source_digest,
-                &selection.compatible_backend_version,
-                input_origin_contract::SubcircuitLibraryOrigin::NpmSnapshot,
-            );
-            write_mpc_subcircuit_library_path(out_dir, &snapshot.snapshot_dir)
-        }
-        source_selection::MpcSubcircuitLibrary::LocalQapCompiler(library) => {
-            cargo_env::emit_mpc_subcircuit_library_build_env(
-                &library.version,
-                &library.source_digest,
-                &selection.compatible_backend_version,
-                input_origin_contract::SubcircuitLibraryOrigin::LocalQapCompiler,
-            );
-            write_mpc_subcircuit_library_path(out_dir, &library.library_dir)
-        }
-    }
-}
-
-fn write_mpc_subcircuit_library_path(out_dir: &Path, library_dir: &Path) -> io::Result<()> {
-    generated::write_mpc_subcircuit_library_path(out_dir, library_dir)
 }
 
 fn prepare_release_subcircuit_library(

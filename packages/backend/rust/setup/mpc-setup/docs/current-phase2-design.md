@@ -1,4 +1,4 @@
-# Current-protocol phase 2: derivation checkpoint
+# Current-protocol phase 2: construction and contribution format
 
 ## Audience and status
 
@@ -8,15 +8,7 @@ ceremony specification or a security certification. The final CRS is defined
 by the current Tokamak manuscript and backend/common contracts. References
 are maintained in the [MPC README](../README.md#phase-2-references).
 
-The Filecoin family mapping is identified. Intermediate public encodings may
-be extended to support separate wire-weight and delta updates. Security
-analysis of that extension is deferred, not an implementation gate. The
-public-point update and consistency equations below have a test-only model;
-contributor-local source preparation and an isolated share-knowledge proof
-are implemented. Participant command wiring and the contribution receipt
-are not yet implemented.
-There is no repository phase 1 or standalone import command. Dusk entry points are retired;
-removal of the remaining legacy files/integration is not complete.
+The implemented group-linear engine, share evidence and resumable commands follow the construction below. Extra intermediate public encodings are permitted; their security analysis remains deferred, not an implementation gate. The previous ceremony implementation has been removed. There is no repository phase 1 or standalone import command. Synthetic release tests pass; live Filecoin/npm/native E2E remains unqualified. The build-resolved npm 2.1.5 snapshot lacks the current protocol's m and t metadata.
 
 ## Filecoin source mapping
 
@@ -79,8 +71,8 @@ checks its complete Filecoin-published pinned digest before accepting incoming
 ceremony state or generating a secret contribution. The implementation retains
 required ranges during that same authenticated read, then converts them locally.
 The existing library-shape calculation determines P from the selected npm
-metadata; neither the initializer nor an import command supplies P. The future
-participant workflow must resolve that npm snapshot and bind the initialization
+metadata; neither the initializer nor an import command supplies P. The
+participant workflow resolves that npm snapshot and binds the initialization
 and incoming chain to the locally derived tau.
 
 A coordinator's converted subset, matching subset digest or receipt cannot
@@ -213,7 +205,7 @@ identity. Pairing equations do not establish knowledge of a share: each
 share must also pass the reference `Verify_dl` operation. Contribution
 evidence must identify its previous/current states, circuit snapshot, source
 and wire index; a receipt for another transition or wire must not be reused.
-The concrete receipt encoding and participant integration remain P15.3 work.
+The record encoding and participant integration are implemented in `phase2_transcript.rs` and `phase2_cli.rs`.
 The isolated proof implementation is specified below; it is not supplied by
 the algebra model. Do not reuse the old gamma/delta/eta proof
 profile or treat a digest chain as a proof of knowledge.
@@ -274,17 +266,16 @@ The BLAKE2b input is the following concatenation, in order:
 1. ASCII `TOKAMAK_MPC_PHASE2_SHARE` and the 128 ASCII hex characters of the
    pinned original Filecoin BLAKE2b digest.
 2. The UTF-8 npm library version, prefixed by its byte length as u64 big endian.
-3. Library-content SHA-256, derived-tau SHA-256, previous-state SHA-256 and
+3. Library-content SHA-256, derived-tau SHA-256, previous-record chain SHA-256 and
    next-state SHA-256, each exactly 32 bytes.
 4. Role byte 0 for delta, or role byte 1 followed by the wire index as u64
    big endian for a wire weight.
 5. U1, U2, s and s_u, in that order, as uncompressed big-endian affine
    coordinates: G1 x/y (96 bytes); G2 x.c1/x.c0/y.c1/y.c0 (192 bytes).
 
-State digests refer to public states, excluding proof receipts, so no proof
-hash depends on itself. The participant workflow must compute these bindings
-from independently authenticated inputs and the actual states being checked.
-A caller-supplied binding alone is not evidence of source authentication.
+The next-state digest excludes the current proof, avoiding a circular hash. The predecessor digest is the accumulated record chain, including earlier proofs, not merely the preceding state's point values; otherwise an update with shares equal to one could replay a receipt. The header begins with `TOKAMAK_MPC_PHASE2` plus a zero byte and a SHA-256 of the length-prefixed library version, library digest, tau digest and locally derived initial state. The initial chain digest hashes that header. Each subsequent chain digest hashes the previous chain digest followed by the complete state/proof record.
+
+Records encode the six G1 vectors in State field order, nine masks, D1, D2 and wire-weight G2 points, followed by the delta proof and each wire proof. Counts come from the local engine. Points use arkworks canonical uncompressed encoding to avoid square-root decompression; proofs order U1, U2, s, s_u, r_u. Every record is retained and checked. A caller-supplied binding alone is not evidence of source authentication.
 These are intermediate transcript encodings, not new final artifact fields;
 the final common CRS encoding and SNARK's Keccak transcript are unchanged.
 
@@ -324,7 +315,7 @@ both naive scaling approaches fail and that the correction identity agrees
 with the direct oracle, including fixed queries, helpers and masks. Supplying
 the missing summand from known scalars in a test is not an MPC algorithm.
 
-The initial normal package test command failed while compiling old MPC
+Historically, the initial normal package test command failed while compiling old MPC
 imports of the removed `FinalMpcCrsProvenance` API in `drive_upload.rs` and
 `flows/final_artifacts.rs`. These are existing replacement work, not a reason
 to restore the legacy provenance contract. An isolated harness can execute

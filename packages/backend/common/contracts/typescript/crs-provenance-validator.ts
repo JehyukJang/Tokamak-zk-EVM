@@ -7,22 +7,9 @@ import { parseCompatibleBackendVersion, parsePackageVersion } from './version-po
 
 export type SubcircuitLibraryOrigin = 'npmSnapshot' | 'localQapCompiler';
 
-export interface DuskSourceProvenance {
+export interface FilecoinSourceProvenance {
   readonly sourceUrl: string;
-  readonly sourceSizeBytes: number;
-  readonly rawEncoding: string;
-  readonly pinnedContribution: string;
-  readonly pinnedReadmeUrl: string;
-  readonly pinnedDriveFileId: string;
-  readonly expectedSourceSha256: string;
-  readonly actualSourceSha256: string;
-  readonly autoDownloaded: boolean;
-  readonly downloadedContribution: string | null;
-  readonly downloadedReadmeUrl: string | null;
-  readonly downloadedDriveFileId: string | null;
-  readonly maxG1ExpUsed: number;
-  readonly maxG2ExpUsed: number;
-  readonly transcriptConsistencyVerified: boolean;
+  readonly sourceBlake2b512: string;
 }
 
 export interface CrsProvenance {
@@ -38,8 +25,8 @@ export interface CrsProvenance {
     readonly origin: SubcircuitLibraryOrigin;
     readonly sourceDigest: string;
   };
-  readonly phase1SourceProvenance: null | 'native' | { readonly duskGroth16: DuskSourceProvenance };
-  readonly ceremonyProtocolVersion: 'tokamak-mpc-2phase-v1' | null;
+  readonly phase1SourceProvenance: null | { readonly filecoin: FilecoinSourceProvenance };
+  readonly ceremonyProtocolVersion: 'tokamak-filecoin-phase2' | null;
   readonly ceremonyTranscriptSha256: string | null;
   readonly artifacts: Readonly<Record<string, string>>;
 }

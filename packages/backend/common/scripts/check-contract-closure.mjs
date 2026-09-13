@@ -13,6 +13,7 @@ const requiredBoundaries = [
   ['CRS provenance JSON authority', 'common/contracts/crs-provenance-contract.json'],
   ['CRS provenance Rust representation', 'rust/libs/src/crs_provenance.rs'],
   ['CRS provenance common writer', 'rust/libs/src/crs_provenance.rs'],
+  ['CRS provenance MPC producer', 'rust/setup/mpc-setup/src/phase2_cli.rs'],
   ['CRS provenance trusted-setup producer', 'rust/setup/trusted-setup/src/univariate.rs'],
   ['CRS provenance algorithm ingress', 'rust/libs/src/subcircuit_library.rs'],
   ['CRS provenance publication admission', 'rust/libs/src/crs_publication_admission.rs'],

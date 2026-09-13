@@ -5,7 +5,7 @@ fn binding() -> ContributionBinding<'static> {
         library_version: "2.1.5",
         library_digest: [1; 32],
         tau_digest: [2; 32],
-        previous_state_digest: [3; 32],
+        previous_record_digest: [3; 32],
         next_state_digest: [4; 32],
     }
 }
@@ -72,7 +72,7 @@ fn rejects_rebinding_each_input_and_transition() {
         let bytes = match field {
             0 => &mut changed.library_digest,
             1 => &mut changed.tau_digest,
-            2 => &mut changed.previous_state_digest,
+            2 => &mut changed.previous_record_digest,
             _ => &mut changed.next_state_digest,
         };
         bytes[0] ^= 1;

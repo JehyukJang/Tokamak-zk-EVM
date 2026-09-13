@@ -3,17 +3,16 @@
 This package group contains the Rust implementations of the backend algorithms described in the
 [Tokamak zk-SNARK manuscript](https://eprint.iacr.org/2024/507).
 
-The backend is organized around six user-facing binaries:
+The backend is organized around five user-facing binaries:
 
 - `trusted-setup`
-- `native_mpc_setup`
-- `dusk_backed_mpc_setup`
+- `mpc`
 - `preprocess`
 - `prove`
 - `verify`
 
-`trusted-setup` generates local-development Sigma artifacts. Native and Dusk-backed MPC generate
-final CRS artifacts; only Dusk-backed MPC generates a CRS eligible for Google Drive publication.
+`trusted-setup` generates development-only CRS artifacts. `mpc` implements Filecoin-backed phase 2.
+Both emit the four common CRS files. Filecoin publication is disabled until its publication policy is authorized.
 `preprocess`, `prove`, and `verify` accept any CRS whose compatibility version matches the selected
 subcircuit library, together with transaction-specific data from the frontend synthesizer.
 
@@ -22,8 +21,7 @@ subcircuit library, together with transaction-specific data from the frontend sy
 | Binary                  | Responsibility                                                                       |
 | ----------------------- | ------------------------------------------------------------------------------------ |
 | `trusted-setup`         | Generate a local-development Sigma artifact.                                         |
-| `native_mpc_setup`      | Run Tokamak phase 1 and phase 2 for a local CRS.                                     |
-| `dusk_backed_mpc_setup` | Derive phase 2 from the pinned Dusk source and optionally publish the resulting CRS. |
+| `mpc` | Authenticate Filecoin input, initialize, contribute, verify and finalize phase 2. |
 | `preprocess`            | Commit permutation and fixed function-instance data.                                 |
 | `prove`                 | Generate a proof for one synthesized transaction.                                    |
 | `verify`                | Verify the proof, preprocess commitments, and public instance.                       |
@@ -109,68 +107,17 @@ cargo run --locked -p trusted-setup -- \
   --output ./rust/setup/trusted-setup/output
 ```
 
-### `native_mpc_setup`
+### `mpc`
 
-Runs Tokamak native Phase 1 contributions over alpha, X, and Y, fixes the
-circuit, runs the common Phase 2 gamma/delta/eta contribution, and emits the
-legacy MPC Sigma layout. MPC migration to the univariate protocol is outside
-the current trusted-setup artifact change.
+Each invocation resolves its own npm snapshot and authenticates the complete original Filecoin source. There is no repository phase 1, standalone import receipt or source-check bypass. For initialization:
 
-Release example:
-
-```bash
-cargo run --locked --release -p mpc-setup --bin native_mpc_setup -- \
-  --intermediate ./rust/setup/mpc-setup/output/native.intermediate \
-  --output ./rust/setup/mpc-setup/output/native.final
-```
-
-### `dusk_backed_mpc_setup`
-
-Verifies and adapts a pinned Dusk Groth16 powers-of-tau artifact into the
-Tokamak alpha/X basis. The adaptor is not a ceremony phase. Tokamak Phase 1
-then contributes Y, after which the route uses the same circuit-bound Phase 2
-gamma/delta/eta implementation as native mode. Ceremony and Google Drive
-publication are separate operations; only `publish` and the composite `run`
-require publication credentials.
-
-Create a publication-eligible CRS without opening or mutating Drive:
-
-```bash
+```sh
 cargo run --locked --release -p mpc-setup --no-default-features \
-  --features production-npm-subcircuit-library --bin dusk_backed_mpc_setup -- \
-  ceremony \
-  --intermediate ./rust/setup/mpc-setup/output/dusk.intermediate \
-  --output ./rust/setup/mpc-setup/output/dusk.final
+  --features production-npm-subcircuit-library --bin mpc -- \
+  init --filecoin-source /path/to/challenge_19 --output ./initial.mpc
 ```
 
-Publish a completed local CRS:
-
-```bash
-cargo run --locked --release -p mpc-setup --no-default-features \
-  --features production-npm-subcircuit-library --bin dusk_backed_mpc_setup -- \
-  publish \
-  --intermediate ./rust/setup/mpc-setup/output/dusk.intermediate \
-  --output ./rust/setup/mpc-setup/output/dusk.final
-```
-
-Use `run` in place of `ceremony` to retain the one-command ceremony-then-publication workflow.
-It is available only from the release build with
-`production-npm-subcircuit-library`; it validates the Google Drive publication
-environment before creating or downloading ceremony state.
-
-The ceremony validates the pinned Dusk source digest and used tau ranges. Publication:
-
-- requires Dusk phase-1 provenance and npm-snapshot subcircuit-library origin
-- rejects publication if the configured Google Drive folder already contains a CRS archive for the
-  current backend version
-- uploads a zip containing the final CRS artifacts and `crs_provenance.json`
-
-The default-feature ceremony uses the local qap-compiler source and is for
-development only. Its `localQapCompiler` provenance remains ineligible for
-publication even if `publish` is later invoked from a production-feature
-build.
-
-See [rust/setup/mpc-setup/README.md](./rust/setup/mpc-setup/README.md) for the full MPC operator guide.
+The output path must not already exist. Subsequent `contribute`, `verify` and `finalize` operations repeat original-source authentication. See the [MPC operator guide](rust/setup/mpc-setup/README.md) for commands and qualification limits. No Drive upload is performed.
 
 ## Setup outputs and common provenance
 
@@ -198,9 +145,8 @@ The common fields `phase1SourceProvenance`, `ceremonyProtocolVersion` and
 `ceremonyTranscriptSha256` are explicitly `null` for trusted setup.
 Ceremony-backed generation supplies those values when applicable. Trusted
 setup always writes `releaseEligible: false`. A common parser validates
-document shape, not publication authority: the publication gate separately
-requires release eligibility, MPC generation, Dusk source evidence, ceremony
-metadata, npm input origin, compatible identity and matching payload digests.
+document shape, not publication authority. Filecoin MPC also writes `releaseEligible: false`;
+the publication gate rejects all current outputs pending an authorized publication policy.
 Algorithm consumers do not require `releaseEligible: true`.
 
 Native prove checks content digests only with `--check-digests`, as described
@@ -208,12 +154,9 @@ below. Parsing the document is not a cryptographic check of CRS generation.
 
 The former algorithm-specific provenance documents are not accepted or
 automatically converted. Generate a new development CRS with the current
-trusted-setup command. The existing MPC implementation has not been migrated
-to this four-file interface and is not a compatible producer yet; its future
-rewrite must consume this common contract rather than introduce another
-provenance format. CLI CRS installation and browser build-time provenance
-ingress use the common contract, but this does not complete the outstanding
-native/WASM protocol or CLI command migration.
+trusted-setup command. MPC finalization uses this same contract and the same serializers.
+Its source field records Filecoin's original URL and BLAKE2b-512 digest; the transcript SHA-256
+identifies the complete public contribution file. See the MPC guide for actual qualification status.
 
 ## Preprocess, prove, and verify
 
@@ -309,25 +252,11 @@ During the current-protocol migration, `Debug prove` uses the default CPU
 engine and writes the new binary proof. The older preprocess/verify examples
 below do not yet form a runnable end-to-end chain with that output.
 
-The local `trusted-setup`, `preprocess`, `prove`, and `verify` launchers pass
-`--subcircuit-library` explicitly. The production Dusk launcher selects the release MPC build,
-which prepares the npm subcircuit-library snapshot.
-
-Every VS Code launcher uses Cargo's release profile. Every launcher except `Release Dusk-backed
-MPC to Google Drive` is a local developer entry point and enables
-`local-development-subcircuit-library`. Run `Debug trusted-setup`, then `Debug preprocess`,
-`Debug prove`, and `Debug verify` in that order. The latter three read
-`rust/setup/trusted-setup/output/debug`, use the local QAP compiler output, and pass the explicit
-development bypass. The native and Dusk MPC launchers write separate final CRS directories and do
-not overwrite this trusted-setup output.
-
-`Release Dusk-backed MPC to Google Drive` is the sole production launcher. It builds
-`dusk_backed_mpc_setup` in Cargo's release profile with
-`production-npm-subcircuit-library`, takes the `run` path that performs ceremony followed by
-Google Drive publication, and uses the npm subcircuit-library snapshot prepared by that explicit
-production build. The build fails before the ceremony when the npm package major.minor does not
-equal the backend compatibility class. It writes only to
-`rust/setup/mpc-setup/output/dusk-release.*`.
+Every launcher uses Cargo's release optimization. `MPC: initialize Filecoin phase 2 (npm)`
+is the production-input entry point and selects `production-npm-subcircuit-library`.
+It writes a new `initial.mpc` transcript, not a publication. It requires a compatible npm snapshot;
+without `--filecoin-source`, execution downloads and authenticates the complete pinned Filecoin source.
+All other launchers use local QAP build artifacts. MPC does not overwrite their trusted-setup output.
 
 The preprocess, prove, and verify launchers use the local `qap-compiler/subcircuits/library`
 output. They compile the development-only `development-crs-bypass` feature and pass
@@ -336,20 +265,16 @@ opt-in is limited to debugger launchers; normal CLI execution continues to valid
 provenance compatibility. `Measure prove timing` also uses Cargo's release profile and receives the
 local QAP path explicitly through its test environment.
 
-The legacy ICICLE device policy used outside the current prover selects CUDA when it is available.
-ICICLE 3.8.0 METAL availability is
-reported but deliberately falls back to CPU; it is not treated as a GPU/MSM capability. Setting
-`USE_GPU=true` for MPC setup therefore selects CUDA or CPU through the same policy and reports a
-backend-initialization failure instead of silently continuing after one.
+The current phase-2 correctness baseline uses arkworks CPU group operations. Its release timing
+and optimization qualification follow the real-source/native E2E gate in the MPC guide.
 
 ## Security and operator responsibilities
 
 Use only a CRS and subcircuit library whose release identities and
 compatibility class match the backend. Verify artifact digests and provenance
 before loading them, and keep OAuth credentials and tokens outside version
-control. A trusted-setup or native-MPC result is for local development only;
-only an admitted Dusk-backed CRS is eligible for the repository publication
-workflow.
+control. Trusted setup is development-only. MPC generation does not authorize publication;
+the current Filecoin publication gate is closed.
 
 The operator remains responsible for securing ceremony state, authenticating
 the publication destination, reviewing the documented phase-2 trust

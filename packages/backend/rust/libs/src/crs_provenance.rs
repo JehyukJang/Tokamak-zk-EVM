@@ -14,10 +14,10 @@ use std::sync::OnceLock;
 
 pub const CRS_PROVENANCE_FILE_NAME: &str = "crs_provenance.json";
 pub const CRS_DOCUMENT_KIND: &str = "crs";
-pub const CEREMONY_PROTOCOL_VERSION: &str = "tokamak-mpc-2phase-v1";
+pub const CEREMONY_PROTOCOL_VERSION: &str = "tokamak-filecoin-phase2";
 
 const CRS_PROVENANCE_CONTRACT_SHA256: &str =
-    "a518d412664a38f8fdb6f24fbab9875fb7df39b88cde56ac499024f256266846";
+    "cd3458fcf83933aa52839d258f48eae173ed1a2312c6be189433a7afe20f7a4d";
 const SUPPORTED_SCHEMA_KEYWORDS: &[&str] = &[
     "additionalProperties",
     "const",
@@ -44,25 +44,9 @@ pub enum CrsGenerationMethod {
 )]
 #[archive(check_bytes)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct DuskSourceProvenance {
+pub struct FilecoinSourceProvenance {
     pub source_url: String,
-    pub source_size_bytes: u64,
-    pub raw_encoding: String,
-    pub pinned_contribution: String,
-    pub pinned_readme_url: String,
-    pub pinned_drive_file_id: String,
-    pub expected_source_sha256: String,
-    pub actual_source_sha256: String,
-    pub auto_downloaded: bool,
-    #[serde(deserialize_with = "required_option")]
-    pub downloaded_contribution: Option<String>,
-    #[serde(deserialize_with = "required_option")]
-    pub downloaded_readme_url: Option<String>,
-    #[serde(deserialize_with = "required_option")]
-    pub downloaded_drive_file_id: Option<String>,
-    pub max_g1_exp_used: usize,
-    pub max_g2_exp_used: usize,
-    pub transcript_consistency_verified: bool,
+    pub source_blake2b512: String,
 }
 
 #[derive(
@@ -71,8 +55,7 @@ pub struct DuskSourceProvenance {
 #[archive(check_bytes)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub enum Phase1SourceProvenance {
-    Native,
-    DuskGroth16(DuskSourceProvenance),
+    Filecoin(FilecoinSourceProvenance),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -290,43 +273,20 @@ pub fn validate_crs_provenance(provenance: &CrsProvenance) -> Result<(), String>
         validate_sha256(digest, "ceremonyTranscriptSha256")?;
     }
 
-    if let Some(Phase1SourceProvenance::DuskGroth16(dusk)) =
-        provenance.phase1_source_provenance.as_ref()
-    {
-        for (field, value) in [
-            (
-                "phase1SourceProvenance.duskGroth16.sourceUrl",
-                &dusk.source_url,
-            ),
-            (
-                "phase1SourceProvenance.duskGroth16.rawEncoding",
-                &dusk.raw_encoding,
-            ),
-            (
-                "phase1SourceProvenance.duskGroth16.pinnedContribution",
-                &dusk.pinned_contribution,
-            ),
-            (
-                "phase1SourceProvenance.duskGroth16.pinnedReadmeUrl",
-                &dusk.pinned_readme_url,
-            ),
-            (
-                "phase1SourceProvenance.duskGroth16.pinnedDriveFileId",
-                &dusk.pinned_drive_file_id,
-            ),
-        ] {
-            validate_non_empty(value, field)?;
+    if let Some(Phase1SourceProvenance::Filecoin(source)) = &provenance.phase1_source_provenance {
+        validate_non_empty(
+            &source.source_url,
+            "phase1SourceProvenance.filecoin.sourceUrl",
+        )?;
+        if source.source_blake2b512.len() != 128
+            || !source
+                .source_blake2b512
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return Err("phase1SourceProvenance.filecoin.sourceBlake2b512 must be 128 lowercase hexadecimal characters".into());
         }
-        validate_sha256(
-            &dusk.expected_source_sha256,
-            "phase1SourceProvenance.duskGroth16.expectedSourceSha256",
-        )?;
-        validate_sha256(
-            &dusk.actual_source_sha256,
-            "phase1SourceProvenance.duskGroth16.actualSourceSha256",
-        )?;
     }
-
     Ok(())
 }
 
@@ -375,7 +335,7 @@ mod tests {
     fn canonical_sources_share_one_parser_and_round_trip() {
         for fixture in [
             include_str!("../../../common/contracts/fixtures/final-mpc-crs-provenance.json"),
-            include_str!("../../../common/contracts/fixtures/final-mpc-crs-provenance-native.json"),
+            include_str!("../../../common/contracts/fixtures/trusted-setup-crs-provenance.json"),
             include_str!("../../../common/contracts/fixtures/final-mpc-crs-provenance-null.json"),
         ] {
             let original: serde_json::Value = serde_json::from_str(fixture).unwrap();

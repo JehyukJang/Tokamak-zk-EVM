@@ -191,7 +191,7 @@ A minor change requires:
 
 - A package version bump to the new `MAJOR.MINOR.0` line.
 - An update to `packages/cli/package.json tokamakZkEvm.compatibleBackendVersion`.
-- A new dusk-backed MPC setup.
+- A new Filecoin-backed phase 2 setup.
 - A new public CRS archive named with the new `MAJOR.MINOR`.
 
 ### Major Version
@@ -230,9 +230,7 @@ binary. The metadata must include:
 }
 ```
 
-For `mpc-setup`, local setup builds use the local qap-compiler output and record the local subcircuit package version and
-source digest. Non-`mpc-setup` backend packages continue to resolve the published npm `@tokamak-zk-evm/subcircuit-library`
-package for release builds.
+MPC participant operations require the explicit `production-npm-subcircuit-library` feature and the participant's build-resolved npm snapshot. They do not accept local QAP inputs. Other backend packages select local or npm input using their explicit source features, independently of release optimization. Filecoin publication remains disabled pending a separately authorized policy.
 
 Metadata validation must fail when:
 
@@ -380,7 +378,7 @@ Use this flow when the subcircuit source digest and CRS remain valid:
 
 1. Bump all synchronized package versions by `PATCH`.
 2. Keep `packages/cli/package.json tokamakZkEvm.compatibleBackendVersion` unchanged.
-3. Do not run a new dusk-backed MPC setup.
+3. Do not run a new Filecoin-backed phase 2 setup.
 4. Do not upload a new CRS archive.
 5. Publish npm packages.
 6. Confirm install CI validates the existing CRS `MAJOR.MINOR` against the new package `MAJOR.MINOR.PATCH`.
@@ -391,7 +389,7 @@ Use this flow when CRS compatibility changes:
 
 1. Bump all synchronized package versions to the new `MAJOR.MINOR.0` line.
 2. Update `packages/cli/package.json tokamakZkEvm.compatibleBackendVersion` to the new `MAJOR.MINOR`.
-3. Run dusk-backed MPC setup.
+3. Run Filecoin-backed phase 2 setup.
 4. Confirm `crs_provenance.json compatibleBackendVersion` is the new `MAJOR.MINOR`.
 5. Confirm `crs_provenance.json subcircuitLibrary.sourceDigest` matches the
    exact subcircuit snapshot used by the backend release.

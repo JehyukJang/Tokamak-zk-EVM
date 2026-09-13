@@ -105,99 +105,27 @@ const contract = {
             "type": "null"
           },
           {
-            "const": "native"
-          },
-          {
             "type": "object",
             "additionalProperties": false,
             "required": [
-              "duskGroth16"
+              "filecoin"
             ],
             "properties": {
-              "duskGroth16": {
+              "filecoin": {
                 "type": "object",
                 "additionalProperties": false,
                 "required": [
                   "sourceUrl",
-                  "sourceSizeBytes",
-                  "rawEncoding",
-                  "pinnedContribution",
-                  "pinnedReadmeUrl",
-                  "pinnedDriveFileId",
-                  "expectedSourceSha256",
-                  "actualSourceSha256",
-                  "autoDownloaded",
-                  "downloadedContribution",
-                  "downloadedReadmeUrl",
-                  "downloadedDriveFileId",
-                  "maxG1ExpUsed",
-                  "maxG2ExpUsed",
-                  "transcriptConsistencyVerified"
+                  "sourceBlake2b512"
                 ],
                 "properties": {
                   "sourceUrl": {
                     "type": "string",
                     "minLength": 1
                   },
-                  "sourceSizeBytes": {
-                    "type": "integer",
-                    "minimum": 0
-                  },
-                  "rawEncoding": {
+                  "sourceBlake2b512": {
                     "type": "string",
-                    "minLength": 1
-                  },
-                  "pinnedContribution": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "pinnedReadmeUrl": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "pinnedDriveFileId": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "expectedSourceSha256": {
-                    "type": "string",
-                    "pattern": "^[0-9a-f]{64}$"
-                  },
-                  "actualSourceSha256": {
-                    "type": "string",
-                    "pattern": "^[0-9a-f]{64}$"
-                  },
-                  "autoDownloaded": {
-                    "type": "boolean"
-                  },
-                  "downloadedContribution": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "downloadedReadmeUrl": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "downloadedDriveFileId": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "maxG1ExpUsed": {
-                    "type": "integer",
-                    "minimum": 0
-                  },
-                  "maxG2ExpUsed": {
-                    "type": "integer",
-                    "minimum": 0
-                  },
-                  "transcriptConsistencyVerified": {
-                    "type": "boolean"
+                    "pattern": "^[0-9a-f]{128}$"
                   }
                 }
               }
@@ -211,7 +139,7 @@ const contract = {
             "type": "null"
           },
           {
-            "const": "tokamak-mpc-2phase-v1"
+            "const": "tokamak-filecoin-phase2"
           }
         ]
       },

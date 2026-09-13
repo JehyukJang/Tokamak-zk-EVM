@@ -1,4 +1,4 @@
-use libs::crs_publication_admission::{admit_final_crs_publication, PublicationIdentity};
+use libs::crs_publication_admission::admit_final_crs_publication;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -15,14 +15,7 @@ fn main() -> ExitCode {
     }
 
     let output_directory = PathBuf::from(output_directory);
-    let expected = match PublicationIdentity::current_package() {
-        Ok(expected) => expected,
-        Err(error) => {
-            eprintln!("Cannot derive publication identity: {error}");
-            return ExitCode::FAILURE;
-        }
-    };
-    match admit_final_crs_publication(&output_directory, &expected) {
+    match admit_final_crs_publication(&output_directory) {
         Ok(provenance) => {
             println!(
                 "Final CRS publication admission passed: compatibility={} subcircuit-library={}@{} source-digest={}",

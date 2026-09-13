@@ -432,6 +432,31 @@ pub fn selected_subcircuit_library_provenance(
     })
 }
 
+/// A ceremony participant reads a private copy of its own build-resolved npm
+/// snapshot, not the mutable runtime cache or a coordinator-supplied directory.
+/// Other native consumers keep their existing input and digest policies.
+pub fn prepare_mpc_subcircuit_library(
+    destination: &Path,
+) -> std::io::Result<SubcircuitLibraryProvenance> {
+    #[cfg(tokamak_embedded_subcircuit_library)]
+    {
+        fs::create_dir(destination)?;
+        for file in EMBEDDED_SUBCIRCUIT_LIBRARY_FILES {
+            let path = destination.join(file.relative_path);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::write(path, file.bytes)?;
+        }
+        selected_subcircuit_library_provenance(destination)
+    }
+    #[cfg(not(tokamak_embedded_subcircuit_library))]
+    {
+        let _ = destination;
+        Err(std::io::Error::other("MPC requires --no-default-features --features production-npm-subcircuit-library; local QAP inputs are not accepted"))
+    }
+}
+
 fn digest_runtime_subcircuit_library(library_dir: &Path) -> std::io::Result<String> {
     let snapshot_root = library_dir.parent().ok_or_else(|| {
         std::io::Error::other(format!(
@@ -1108,7 +1133,7 @@ mod tests {
     fn accepts_every_canonical_final_mpc_phase1_variant_at_the_algorithm_boundary() {
         for fixture in [
             include_str!("../../../common/contracts/fixtures/final-mpc-crs-provenance.json"),
-            include_str!("../../../common/contracts/fixtures/final-mpc-crs-provenance-native.json"),
+            include_str!("../../../common/contracts/fixtures/trusted-setup-crs-provenance.json"),
             include_str!("../../../common/contracts/fixtures/final-mpc-crs-provenance-null.json"),
         ] {
             let root = test_root();
@@ -1210,7 +1235,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_legacy_snake_case_dusk_provenance_at_the_algorithm_boundary() {
+    fn rejects_retired_provenance_at_the_algorithm_boundary() {
         let root = test_root();
         let library_dir = root.join("subcircuits").join("library");
         let crs_dir = root.join("crs");

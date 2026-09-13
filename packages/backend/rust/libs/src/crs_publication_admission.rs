@@ -1,288 +1,38 @@
-use crate::compatibility::compatibility_from_package_version;
-use crate::crs_artifacts::sha256_file_hex;
-use crate::crs_provenance::{
-    parse_crs_provenance, CrsGenerationMethod, CrsProvenance, Phase1SourceProvenance,
-    CRS_PROVENANCE_FILE_NAME,
-};
-use crate::input_origin::SubcircuitLibraryOrigin;
-use std::fs;
+//! Publication remains closed while the Filecoin publication policy is deferred.
+//! Algorithm consumers do not use this gate.
+use crate::crs_provenance::{parse_crs_provenance, CrsProvenance, CRS_PROVENANCE_FILE_NAME};
 use std::path::Path;
 
-const SUBCIRCUIT_LIBRARY_PACKAGE_NAME: &str = "@tokamak-zk-evm/subcircuit-library";
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PublicationIdentity {
-    pub compatible_backend_version: String,
-    pub subcircuit_library_package_name: String,
-    pub subcircuit_library_package_version: String,
-    pub subcircuit_library_source_digest: String,
-}
-
-impl PublicationIdentity {
-    pub fn new(
-        compatible_backend_version: impl Into<String>,
-        subcircuit_library_package_name: impl Into<String>,
-        subcircuit_library_package_version: impl Into<String>,
-        subcircuit_library_source_digest: impl Into<String>,
-    ) -> Self {
-        Self {
-            compatible_backend_version: compatible_backend_version.into(),
-            subcircuit_library_package_name: subcircuit_library_package_name.into(),
-            subcircuit_library_package_version: subcircuit_library_package_version.into(),
-            subcircuit_library_source_digest: subcircuit_library_source_digest.into(),
-        }
-    }
-
-    pub fn current_package() -> Result<Self, String> {
-        #[cfg(all(feature = "testing-mode", debug_assertions))]
-        if let Some(identity) = test_publication_identity_override()? {
-            return Ok(identity);
-        }
-        let package_version = env!("CARGO_PKG_VERSION");
-        let compatible_backend_version = compatibility_from_package_version(package_version)
-            .map_err(|error| format!("backend package version {error}"))?
-            .to_string();
-        Ok(Self::new(
-            compatible_backend_version,
-            SUBCIRCUIT_LIBRARY_PACKAGE_NAME,
-            package_version,
-            option_env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_SOURCE_DIGEST").ok_or_else(|| {
-                "publication admission must be built with the production npm subcircuit-library snapshot"
-                    .to_string()
-            })?,
-        ))
-    }
-}
-
-#[cfg(all(feature = "testing-mode", debug_assertions))]
-fn test_publication_identity_override() -> Result<Option<PublicationIdentity>, String> {
-    const COMPATIBILITY: &str = "TOKAMAK_ZKEVM_TEST_PUBLICATION_COMPATIBILITY";
-    const PACKAGE_VERSION: &str = "TOKAMAK_ZKEVM_TEST_PUBLICATION_PACKAGE_VERSION";
-    const SOURCE_DIGEST: &str = "TOKAMAK_ZKEVM_TEST_PUBLICATION_SOURCE_DIGEST";
-    let values = [
-        std::env::var(COMPATIBILITY).ok(),
-        std::env::var(PACKAGE_VERSION).ok(),
-        std::env::var(SOURCE_DIGEST).ok(),
-    ];
-    if values.iter().all(Option::is_none) {
-        return Ok(None);
-    }
-    let [Some(compatibility), Some(package_version), Some(source_digest)] = values else {
-        return Err(format!(
-            "testing publication identity requires {COMPATIBILITY}, {PACKAGE_VERSION}, and {SOURCE_DIGEST} together"
-        ));
-    };
-    let derived = compatibility_from_package_version(&package_version)
-        .map_err(|error| format!("testing publication package version {error}"))?
-        .to_string();
-    if derived != compatibility {
-        return Err(format!(
-            "testing publication package version {package_version} belongs to {derived}, not {compatibility}"
-        ));
-    }
-    crate::subcircuit_source_digest::validate_source_digest(&source_digest)?;
-    Ok(Some(PublicationIdentity::new(
-        compatibility,
-        SUBCIRCUIT_LIBRARY_PACKAGE_NAME,
-        package_version,
-        source_digest,
-    )))
-}
-
-/// Admits a finalized CRS for public release without performing any Drive or
-/// OAuth operation. This is the single publication policy shared by the local
-/// publisher and the release-workflow validator.
-pub fn admit_final_crs_publication(
-    output_directory: &Path,
-    expected: &PublicationIdentity,
-) -> Result<CrsProvenance, String> {
-    let provenance_path = output_directory.join(CRS_PROVENANCE_FILE_NAME);
-    let provenance_bytes = fs::read(&provenance_path).map_err(|error| {
-        format!(
-            "cannot read final CRS provenance {}: {error}",
-            provenance_path.display()
-        )
-    })?;
-    let provenance = parse_crs_provenance(&provenance_bytes)?;
-
-    if !provenance.release_eligible {
-        return Err("only release-eligible CRS artifacts may be published".to_string());
-    }
-    if provenance.generation_method != CrsGenerationMethod::Mpc {
-        return Err("only MPC-generated CRS artifacts may be published".into());
-    }
-    if provenance.ceremony_protocol_version.is_none()
-        || provenance.ceremony_transcript_sha256.is_none()
-    {
-        return Err("MPC publication requires ceremony protocol and transcript provenance".into());
-    }
-    let Some(Phase1SourceProvenance::DuskGroth16(dusk)) =
-        provenance.phase1_source_provenance.as_ref()
-    else {
-        return Err("only Dusk-backed CRS artifacts may be published".to_string());
-    };
-    if dusk.expected_source_sha256 != dusk.actual_source_sha256 {
-        return Err(
-            "Dusk provenance expectedSourceSha256 must equal actualSourceSha256 for publication"
-                .to_string(),
-        );
-    }
-    if !dusk.transcript_consistency_verified {
-        return Err(
-            "Dusk provenance must record successful transcript consistency verification for publication"
-                .to_string(),
-        );
-    }
-    if provenance.subcircuit_library.origin != SubcircuitLibraryOrigin::NpmSnapshot {
-        return Err(
-            "only CRS artifacts generated from an npm subcircuit-library snapshot may be published"
-                .to_string(),
-        );
-    }
-    if provenance.compatible_backend_version != expected.compatible_backend_version {
-        return Err(format!(
-            "crs_provenance.json compatibleBackendVersion {} does not match expected backend compatibility version {}",
-            provenance.compatible_backend_version, expected.compatible_backend_version
-        ));
-    }
-    if provenance.subcircuit_library.package_name != expected.subcircuit_library_package_name {
-        return Err(format!(
-            "crs_provenance.json subcircuitLibrary packageName {} does not match expected package {}",
-            provenance.subcircuit_library.package_name, expected.subcircuit_library_package_name
-        ));
-    }
-    if provenance.subcircuit_library.source_digest != expected.subcircuit_library_source_digest {
-        return Err(format!(
-            "crs_provenance.json subcircuitLibrary sourceDigest {} does not match expected source digest {}",
-            provenance.subcircuit_library.source_digest,
-            expected.subcircuit_library_source_digest
-        ));
-    }
-
-    let library_compatibility =
-        compatibility_from_package_version(&provenance.subcircuit_library.package_version)
-            .map_err(|error| {
-                format!("crs_provenance.json subcircuitLibrary packageVersion {error}")
-            })?
-            .to_string();
-    if library_compatibility != expected.compatible_backend_version {
-        return Err(format!(
-            "crs_provenance.json subcircuitLibrary packageVersion {} is outside compatibility class {}",
-            provenance.subcircuit_library.package_version, expected.compatible_backend_version
-        ));
-    }
-
-    for (name, expected) in &provenance.artifacts {
-        let actual = sha256_file_hex(&output_directory.join(name))
-            .map_err(|error| format!("cannot read CRS artifact {name} for publication: {error}"))?;
-        if actual != *expected {
-            return Err(format!(
-                "cannot publish CRS whose artifacts fail provenance digest validation: {name}"
-            ));
-        }
-    }
-
-    Ok(provenance)
+pub fn admit_final_crs_publication(output_directory: &Path) -> Result<CrsProvenance, String> {
+    let bytes = std::fs::read(output_directory.join(CRS_PROVENANCE_FILE_NAME))
+        .map_err(|e| e.to_string())?;
+    parse_crs_provenance(&bytes)?;
+    Err(
+        "CRS publication is disabled: the Filecoin publication policy has not been authorized"
+            .into(),
+    )
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{admit_final_crs_publication, PublicationIdentity};
-    use std::path::{Path, PathBuf};
-
-    fn fixture(name: &str) -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../common/contracts/fixtures/publication-admission")
-            .join(name)
-    }
-
-    fn expected() -> PublicationIdentity {
-        PublicationIdentity::new(
-            "2.1",
-            "@tokamak-zk-evm/subcircuit-library",
-            "2.1.5",
-            "sha256:2222222222222222222222222222222222222222222222222222222222222222",
-        )
-    }
-
+    use super::*;
     #[test]
-    fn accepts_the_shared_canonical_publication_fixture() {
-        admit_final_crs_publication(&fixture("accepted"), &expected())
-            .expect("canonical Dusk-backed npm-snapshot fixture must be admitted");
-    }
-
-    #[test]
-    fn common_format_does_not_grant_publication_authority() {
-        let original: serde_json::Value = serde_json::from_slice(
-            &std::fs::read(fixture("accepted").join("crs_provenance.json")).unwrap(),
-        )
+    fn a_claim_of_release_eligibility_does_not_authorize_publication() {
+        let mut value: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../common/contracts/fixtures/final-mpc-crs-provenance.json"
+        ))
         .unwrap();
-        for (field, value, expected_message) in [
-            (
-                "generationMethod",
-                serde_json::json!("trustedSetup"),
-                "only MPC-generated",
-            ),
-            (
-                "phase1SourceProvenance",
-                serde_json::json!("native"),
-                "only Dusk-backed",
-            ),
-            (
-                "ceremonyProtocolVersion",
-                serde_json::Value::Null,
-                "requires ceremony",
-            ),
-            (
-                "ceremonyTranscriptSha256",
-                serde_json::Value::Null,
-                "requires ceremony",
-            ),
-        ] {
-            let dir = tempfile::tempdir().unwrap();
-            let mut value_to_write = original.clone();
-            value_to_write[field] = value;
+        let directory = tempfile::tempdir().unwrap();
+        for eligible in [false, true] {
+            value["releaseEligible"] = eligible.into();
             std::fs::write(
-                dir.path().join("crs_provenance.json"),
-                serde_json::to_vec(&value_to_write).unwrap(),
+                directory.path().join(CRS_PROVENANCE_FILE_NAME),
+                serde_json::to_vec(&value).unwrap(),
             )
             .unwrap();
-            let error = admit_final_crs_publication(dir.path(), &expected()).unwrap_err();
-            assert!(error.contains(expected_message), "{error}");
+            assert!(admit_final_crs_publication(directory.path())
+                .unwrap_err()
+                .contains("publication is disabled"));
         }
-    }
-
-    #[test]
-    fn accepts_a_different_patch_identity_when_compatibility_and_digest_match() {
-        let expected = PublicationIdentity::new(
-            "2.1",
-            "@tokamak-zk-evm/subcircuit-library",
-            "2.1.6",
-            "sha256:2222222222222222222222222222222222222222222222222222222222222222",
-        );
-        admit_final_crs_publication(&fixture("accepted"), &expected)
-            .expect("patch package identity is diagnostic when compatibility and digest match");
-    }
-
-    #[test]
-    fn rejects_a_matching_patch_line_with_a_different_source_digest() {
-        let expected = PublicationIdentity::new(
-            "2.1",
-            "@tokamak-zk-evm/subcircuit-library",
-            "2.1.6",
-            "sha256:3333333333333333333333333333333333333333333333333333333333333333",
-        );
-        let error = admit_final_crs_publication(&fixture("accepted"), &expected)
-            .expect_err("source digest mismatch must reject patch reuse");
-        assert!(error.contains("sourceDigest"));
-    }
-
-    #[test]
-    fn rejects_the_shared_consumer_compatible_but_publication_ineligible_fixture() {
-        let error =
-            admit_final_crs_publication(&fixture("consumer-compatible-ineligible"), &expected())
-                .expect_err("consumer compatibility must not imply publication eligibility");
-
-        assert!(error.contains("only release-eligible CRS artifacts"));
     }
 }

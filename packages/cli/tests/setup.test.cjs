@@ -136,9 +136,9 @@ const EMPTY_STRING_FINAL_MPC_PROVENANCE = JSON.parse(
     'utf8',
   ),
 );
-const NATIVE_FINAL_MPC_PROVENANCE = JSON.parse(
+const TRUSTED_SETUP_PROVENANCE = JSON.parse(
   require('node:fs').readFileSync(
-    path.resolve(__dirname, '..', '..', 'backend', 'common', 'contracts', 'fixtures', 'final-mpc-crs-provenance-native.json'),
+    path.resolve(__dirname, '..', '..', 'backend', 'common', 'contracts', 'fixtures', 'trusted-setup-crs-provenance.json'),
     'utf8',
   ),
 );
@@ -357,7 +357,7 @@ async function writeCrsArchiveFixture(
           sourceDigest: SUBCIRCUIT_LIBRARY_SOURCE_DIGEST,
         },
         phase1SourceProvenance: null,
-        ceremonyProtocolVersion: 'tokamak-mpc-2phase-v1',
+        ceremonyProtocolVersion: 'tokamak-filecoin-phase2',
         ceremonyTranscriptSha256: '6'.repeat(64),
         artifacts: Object.fromEntries(Object.entries(artifacts).map(([name, bytes]) => [name, sha256(bytes)])),
       },
@@ -425,7 +425,7 @@ test('installer ingress accepts common provenance independently of the generatio
     ceremonyProtocolVersion: null,
     ceremonyTranscriptSha256: null,
   };
-  for (const provenance of [trusted, CANONICAL_FINAL_MPC_PROVENANCE, NATIVE_FINAL_MPC_PROVENANCE, NULL_FINAL_MPC_PROVENANCE]) {
+  for (const provenance of [trusted, CANONICAL_FINAL_MPC_PROVENANCE, TRUSTED_SETUP_PROVENANCE, NULL_FINAL_MPC_PROVENANCE]) {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-'));
     try {
       const extractedDir = path.join(tempDir, 'archive');

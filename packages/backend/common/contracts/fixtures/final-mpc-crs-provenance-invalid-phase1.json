@@ -10,7 +10,7 @@
     "sourceDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
   },
   "phase1SourceProvenance": "unsupported",
-  "ceremonyProtocolVersion": "tokamak-mpc-2phase-v1",
+  "ceremonyProtocolVersion": "tokamak-filecoin-phase2",
   "ceremonyTranscriptSha256": "6666666666666666666666666666666666666666666666666666666666666666",
   "protocolSchemaId": "tokamak-zk-evm-univariate",
   "generationMethod": "mpc",

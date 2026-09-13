@@ -10,25 +10,12 @@
     "sourceDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
   },
   "phase1SourceProvenance": {
-    "duskGroth16": {
-      "sourceUrl": "https://example.invalid/dusk.response",
-      "sourceSizeBytes": 1024,
-      "rawEncoding": "dusk-groth16-raw",
-      "pinnedContribution": "0015",
-      "pinnedReadmeUrl": "https://example.invalid/README.md",
-      "pinnedDriveFileId": "example-drive-file-id",
-      "expectedSourceSha256": "4444444444444444444444444444444444444444444444444444444444444444",
-      "actualSourceSha256": "5555555555555555555555555555555555555555555555555555555555555555",
-      "autoDownloaded": true,
-      "downloadedContribution": "0015",
-      "downloadedReadmeUrl": "https://example.invalid/README.md",
-      "downloadedDriveFileId": "example-drive-file-id",
-      "maxG1ExpUsed": 1024,
-      "maxG2ExpUsed": 64,
-      "transcriptConsistencyVerified": true
+    "filecoin": {
+      "sourceUrl": "https://example.invalid/challenge_19",
+      "sourceBlake2b512": "44444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444"
     }
   },
-  "ceremonyProtocolVersion": "tokamak-mpc-2phase-v1",
+  "ceremonyProtocolVersion": "tokamak-filecoin-phase2",
   "ceremonyTranscriptSha256": "6666666666666666666666666666666666666666666666666666666666666666",
   "protocolSchemaId": "tokamak-zk-evm-univariate",
   "generationMethod": "mpc",

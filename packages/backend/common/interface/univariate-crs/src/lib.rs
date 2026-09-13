@@ -1,8 +1,7 @@
 //! 64-bit RKYV schemas for the role-separated univariate CRS archives.
 //!
-//! This crate is isolated from the 32-bit RKYV schema used by the existing MPC
-//! artifacts. Production univariate CRS files exceed the offset range of
-//! RKYV's default 32-bit relative pointers.
+//! Production univariate CRS files exceed the offset range of RKYV's default
+//! 32-bit relative pointers. Both trusted setup and MPC use these role records.
 
 #![deny(unsafe_code)]
 

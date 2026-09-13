@@ -10,10 +10,10 @@
     "sourceDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
   },
   "phase1SourceProvenance": {
-    "DuskGroth16": {
-      "sourceUrl": "https://example.invalid/dusk.response",
+    "RetiredSource": {
+      "sourceUrl": "https://example.invalid/retired.response",
       "sourceSizeBytes": 1024,
-      "rawEncoding": "dusk-groth16-raw",
+      "rawEncoding": "retired-groth16-raw",
       "pinnedContribution": "0015",
       "pinnedReadmeUrl": "https://example.invalid/README.md",
       "pinnedDriveFileId": "example-drive-file-id",
@@ -28,7 +28,7 @@
       "transcriptConsistencyVerified": true
     }
   },
-  "ceremonyProtocolVersion": "tokamak-mpc-2phase-v1",
+  "ceremonyProtocolVersion": "tokamak-filecoin-phase2",
   "ceremonyTranscriptSha256": "6666666666666666666666666666666666666666666666666666666666666666",
   "combinedSigmaSha256": "7afc09d6cb52ac887cc570bc14c82bb8431f955992f57700cb82583e2b34d035",
   "sigmaPreprocessSha256": "0b9e88f13bc7936a9014dc986b5c0a9e47e5dda5ed88a4e12bd7fc048e8907af",
