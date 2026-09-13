@@ -2,6 +2,7 @@ import { build } from 'esbuild';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import path from 'node:path';
+import { instrumentMsm } from './instrument-msm.mjs';
 
 const root = process.cwd();
 const output = path.join(root, 'tmp/optimization-profile');
@@ -49,7 +50,11 @@ function inject(text, key) {
 for (const profiled of [false, true]) await build({
   entryPoints: [path.join(root, 'test/profiling/current-univariate-entry.ts')], outfile: path.join(output, profiled ? 'profile.js' : 'control.js'),
   bundle: true, format: 'esm', platform: 'browser', target: 'es2022', minify: true,
-  plugins: profiled ? [{ name: 'measurement-only', setup(b) { b.onLoad({ filter: /\/src\/.*\.ts$/ }, async args => {
+  plugins: profiled ? [{ name: 'measurement-only', setup(b) {
+    b.onLoad({ filter: /ffjavascript\/build\/browser\.esm\.js$/ }, async args => ({
+      contents: instrumentMsm(await readFile(args.path, 'utf8'), args.path), loader: 'js',
+    }));
+    b.onLoad({ filter: /\/src\/.*\.ts$/ }, async args => {
     const key = args.path.split('/src/')[1];
     if (!(key in boundaries) && !['runtime/curve/curve.ts', 'univariate/chunked-crs.ts'].includes(key)) return;
     return { contents: inject(await readFile(args.path, 'utf8'), key), loader: 'ts' };

@@ -31,6 +31,42 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
+### W10.0 control and MSM diagnostics — 2026-09-14
+
+The new order is W10 prove -> W9 verifier -> W8 preprocess. W10.0 reused the
+existing W4 compressed fixture and minified browser control, without changing
+production arithmetic. Chromium 149 and 14 workers completed the following
+fresh-context samples; all returned true, matched native preprocess bytes,
+and passed the release native verifier. Direct TypeScript checking passed.
+
+| Mode | Preprocess (ms) | Prove (ms) | Verify (ms) |
+| --- | ---: | ---: | ---: |
+| Default off, uninstrumented | 3370.770 | 22941.005 | 28.615 |
+| Explicit on, uninstrumented | 3616.965 | 25683.535 | 28.025 |
+| Default off, full worker diagnostic | 3543.230 | 23957.365 | 27.360 |
+
+[Initial samples](evidence/wasm-w10-baseline.json) include a preliminary
+23367.850-ms profile whose worker instrumentation did not reach the browser
+dependency bundle. It is E2E evidence only, not complete worker timing.
+[The completed diagnostic](evidence/wasm-w10-msm-profile.json) instruments the
+actual bundled worker source without modifying installed dependency files.
+These are single controls/diagnostics, not paired optimization results. A
+separate preserved uninstrumented bundle is used for candidate comparisons.
+
+The complete profile records 31 prove MSM calls taking 19618.065 ms inclusive,
+3530 window tasks, 9161142016 input bytes summed over tasks, and 508320 output
+bytes. The separate per-task sums are 53267.410 ms waiting for dispatch,
+1961.295 ms worker allocation/input copying, 190977.515 ms bucket kernel work,
+and 106.840 ms output copying. These are overlapping worker-work sums, not
+elapsed proving time and not measurements of peak memory. Queue-to-result
+intervals also include message transport and must not be interpreted as pure
+transfer time. Main-thread reduction takes 25.960 ms across all profiled G1
+MSMs, including preprocess. Tiny tail MSMs generate many single-bit tasks;
+task count alone does not establish where most arithmetic time is spent.
+
+W10.0 is complete. W10.1 onward must pass independent tests and paired
+whole-prover measurements before acceptance; no speedup is claimed here.
+
 W0--W7 are complete at the individual gates below. The final regression run
 passed direct `tsc --noEmit`, `univariate:optimization:check`, current CRS
 admission/digest tests, offline compressed-CRS conversion tests and the
@@ -139,9 +175,9 @@ work. No live MPC, publishing, CUDA measurement or version update was performed.
 This section is for engineers selecting follow-up experiments against
 `d148f0c9d`. The stage table above is the existing final W0--W7 diagnostic,
 not a new measurement or a prediction. The follow-up W10 identifiers do not
-reopen completed W0--W7 experiments. W8 preprocess and W9 verifier retain
-their earlier execution priority; W10 follows them and requires a fresh
-control if their shared-runtime changes affect proving.
+reopen completed W0--W7 experiments. The 2026-09-14 execution order is W10
+prove, W9 verifier, then W8 preprocess. Later controls must include shared
+changes already accepted in earlier experiments.
 
 Aggregation of the `profile-off` operation records in
 [the final evidence](evidence/wasm-w0-w7-final.json) gives:
