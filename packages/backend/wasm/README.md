@@ -60,17 +60,17 @@ address space of one browser `Uint8Array`. Native trusted setup emits
 `tau_sequence.rkyv`, `prover_keys.rkyv`, `preprocess_keys.rkyv`, and `verifier_keys.rkyv`. An offline
 64-bit converter reads that directory with read-only memory maps and writes a
 small manifest plus bounded section chunks.
-Browser runtimes authenticate and load chunks lazily through an
-application-provided callback.
+Browser runtimes load chunks lazily through an application-provided callback.
+CRS payload digests are checked only when explicitly requested.
 
 ## Public API reference
 
 | Export | Purpose |
 | --- | --- |
 | `prover.install(options?)` | Install or reconfigure the prover runtime while idle |
-| `prover.prove(input)` | Produce one complete proof binary |
+| `prover.prove(input, options?)` | Produce one complete proof binary |
 | `preprocess.install(options?)` | Install or reconfigure the preprocessing runtime while idle |
-| `preprocess.preprocess(input)` | Produce S_C, C_fix and E_kappa |
+| `preprocess.preprocess(input, options?)` | Produce S_C, C_fix and E_kappa |
 | `verifier.install()` | Install the verifier runtime |
 | `verifier.verify(input)` | Check one current-protocol proof |
 | `convertWitness(value)` | Convert synthesizer placement variables |
@@ -80,8 +80,17 @@ application-provided callback.
 | `inspectBinary(bytes)` | Inspect a binary container without a validity claim |
 | `validateBinary(bytes)` | Validate binary layout, shape, and self-digest |
 
-Public operation types are `ProverInput`, `ProverInstallOptions`,
-`ProverInstallationInfo`, `PreprocessInput`, `PreprocessInstallOptions`,
+Both `prove(input, { checkDigests: true })` and
+`preprocess(input, { checkDigests: true })` check SHA-256 for each loaded CRS
+chunk before consuming it. The option defaults to false independently on each
+call, matching native prove's opt-in `--check-digests` policy. Manifest format,
+version, section bounds, lengths and arithmetic checks remain mandatory in
+both modes. Default mode does not guarantee detection of well-shaped payload
+corruption. Converter and build-time validation are unchanged. This option
+does not authenticate the manifest's publisher.
+
+Public operation types are `ProverInput`, `ProverOptions`, `ProverInstallOptions`,
+`ProverInstallationInfo`, `PreprocessInput`, `PreprocessOptions`, `PreprocessInstallOptions`,
 `PreprocessInstallationInfo`, `VerifierInput`, and
 `VerifierInstallationInfo`. Converter types are `BinaryArtifactInspection`,
 `BinarySectionInspection` and

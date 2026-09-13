@@ -28,6 +28,45 @@ a documentation/evidence audit, not a new benchmark of that revision. Earlier
 sections retain their experiment-time controls and validation scope; the
 current status below supersedes their then-pending migration descriptions.
 
+## WASM optimization execution results — 2026-09-13
+
+### W0: explicit runtime digest checking — accepted policy alignment
+
+The public prove/preprocess APIs now default to no CRS payload hashing and
+accept per-call `checkDigests: true`. Structural admission and converter/build
+validation are unchanged. Isolated tests cover zero default hasher calls,
+opt-in success/mismatch, checked-byte reuse, independent calls and malformed
+length/section rejection in both modes. Direct TypeScript checking passed.
+
+Four alternating minified ES2022 runs used the same existing compressed CRS
+and 207-placement fixture. All browser verifications returned true, preprocess
+bytes matched native, and the release native verifier accepted all four browser
+proofs. This reproducible runner uses installed Chromium **149.0.7827.55**;
+the older Chrome 153 table below is not its paired performance control.
+
+| Mode | Prove run 1 (s) | Prove run 2 (s) | Prove mean (s) | Preprocess mean (s) |
+| --- | ---: | ---: | ---: | ---: |
+| Default digest off | 37.863755 | 37.475035 | 37.669395 | 3.518960 |
+| Explicit digest on | 41.642445 | 41.824145 | 41.733295 | 3.669640 |
+
+These are fresh measured instrumented samples, not subtraction of an earlier
+SHA span. Off-mode instrumentation recorded no payload hashes. Reader cache
+capacity remains two chunks; no persistent state or new CRS allocation was
+introduced. Peak memory was not measured for this policy-only change.
+[Raw samples](evidence/wasm-w0-digest-baseline.json).
+
+The broader `typecheck:development` command fails in an unchanged generator
+test fixture (`m_D=48`, `m=8`, `s_D=1`) which violates `m_D=m*s_D`.
+That unrelated fixture was not repaired or counted as a passing test. Initial
+native cross-verification needed the documented macOS `DYLD_LIBRARY_PATH`;
+with it supplied, verification succeeded without code changes to native.
+
+W1--W9 experiments remain pending. Reproduction from `wasm`:
+
+```sh
+DYLD_LIBRARY_PATH="$PWD/../external-lib/mac/lib" node test/profiling/run-current-univariate.mjs /tmp/tokamak-p8-trusted-e2e-9jQ5E1 tmp/optimization-w0-qualification profile-off profile-on profile-off profile-on
+```
+
 ## WASM optimization baseline and execution plan — 2026-09-13
 
 This section records the detailed pre-optimization timing table for backend

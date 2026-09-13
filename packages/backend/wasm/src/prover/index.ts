@@ -5,6 +5,7 @@ export {
   install,
   prove,
   type ProverInput,
+  type ProverOptions,
   type ProverInstallationInfo,
   type ProverInstallOptions,
 } from "./api/public-api.js";

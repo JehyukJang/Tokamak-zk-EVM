@@ -28,6 +28,11 @@ export interface ProverInstallationInfo {
 
 export type ProverInput = ProverBinaryInput;
 
+export interface ProverOptions {
+  /** Check SHA-256 of loaded CRS chunks. Defaults to false, independently for each call. */
+  readonly checkDigests?: boolean;
+}
+
 let runtime: CurveRuntime | undefined;
 let installationPromise: Promise<CurveRuntime> | undefined;
 let busy = false;
@@ -45,7 +50,7 @@ export async function install(options: ProverInstallOptions = {}): Promise<Prove
 }
 
 /** Produces one complete current-protocol F5 proof in a single operation. */
-export async function prove(input: ProverInput): Promise<Uint8Array> {
+export async function prove(input: ProverInput, options: ProverOptions = {}): Promise<Uint8Array> {
   if (runtime === undefined) {
     throw new BackendWasmError("INSTALL_REQUIRED", "Call prover.install() successfully before prove().");
   }
@@ -54,7 +59,7 @@ export async function prove(input: ProverInput): Promise<Uint8Array> {
   assertNamedCrsInput(input, "Prover", ["proverCrs"]);
   busy = true;
   try {
-    const parsed = await loadProverInputFromBinaryInput(runtime, input);
+    const parsed = await loadProverInputFromBinaryInput(runtime, input, options.checkDigests === true);
     const proof = await proveUnivariateReference(runtime, {
       ...parsed,
       setup: GENERATED_SETUP_PARAMS,

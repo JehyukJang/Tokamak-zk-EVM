@@ -42,7 +42,7 @@ function inject(text, key) {
   if (key === 'univariate/chunked-crs.ts') {
     text = text.replace('    requireRange(firstElement, elementCount, this.elementCount, this.label);', '    const __start = performance.now();\n    requireRange(firstElement, elementCount, this.elementCount, this.label);');
     text = text.replace('    return output;\n  }\n\n  async readStridedElements', '    globalThis.__probe.add("CRS.readElements", __start, elementCount);\n    return output;\n  }\n\n  async readStridedElements');
-    text = text.replace('        if (hex(sha256(bytes)) !== descriptor.sha256) {', '        const __startHash = performance.now();\n        const __digest = hex(sha256(bytes));\n        globalThis.__probe.add("CRS.sha256", __startHash, bytes.length);\n        if (__digest !== descriptor.sha256) {');
+    text = text.replace('hex(sha256(bytes))', '(() => { const start = performance.now(); const digest = hex(sha256(bytes)); globalThis.__probe.add("CRS.sha256", start, bytes.length); return digest; })()');
   }
   return text;
 }
@@ -59,9 +59,10 @@ const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     res.setHeader('Cross-Origin-Opener-Policy', 'same-origin'); res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
-    if (url.pathname === '/') { res.setHeader('Content-Type', 'text/html'); res.end(`<title>WASM optimization profile</title><p>Measurement-only current protocol harness</p><script type="module" src="/${url.searchParams.has('profile') ? 'profile' : 'control'}.js"></script>`); return; }
+    if (url.pathname === '/') { res.setHeader('Content-Type', 'text/html'); res.end(`<title>WASM optimization profile</title><p>Measurement-only current protocol harness</p><script type="module" src="/${url.searchParams.has('baseline') ? 'baseline' : url.searchParams.has('profile') ? 'profile' : 'control'}.js"></script>`); return; }
     let file;
     if (['/control.js', '/profile.js'].includes(url.pathname)) file = path.join(output, url.pathname.slice(1));
+    else if (url.pathname === '/baseline.js' && process.env.BACKEND_WASM_PROFILE_CONTROL_BUNDLE) file = path.resolve(process.env.BACKEND_WASM_PROFILE_CONTROL_BUNDLE);
     else if (url.pathname.startsWith('/fixture/')) file = path.join(fixture, 'browser', path.basename(url.pathname));
     else if (url.pathname.startsWith('/crs/') && !url.pathname.includes('..')) file = path.join(fixture, 'chunks', url.pathname.slice(5));
     if (!file) { res.writeHead(404); res.end(); return; }

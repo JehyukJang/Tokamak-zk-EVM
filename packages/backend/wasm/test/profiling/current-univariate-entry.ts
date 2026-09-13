@@ -49,13 +49,15 @@ w.run = async () => {
     const timings: any[] = [];
     const timed = async (label: string, f: () => Promise<any>) => { const start = performance.now(); const value = await f(); timings.push({ label, ms: performance.now() - start }); return value; };
     await timed('install', () => Promise.all([prover.install(), preprocess.install(), verifier.install()]));
-    const pp = await timed('preprocess', () => preprocess.preprocess({ selector, permutation, instance, preprocessCrs: crs }));
+    const checkDigests = new URLSearchParams(location.search).has('checkDigests');
+    const pp = await timed('preprocess', () => preprocess.preprocess({ selector, permutation, instance, preprocessCrs: crs }, { checkDigests }));
     probe.mark('');
-    const proof = await timed('prove', () => prover.prove({ witness, selector, permutation, instance, proverCrs: crs }));
+    const proof = await timed('prove', () => prover.prove({ witness, selector, permutation, instance, proverCrs: crs }, { checkDigests }));
     probe.mark('');
     const valid = await timed('verify', () => verifier.verify({ instance, proof, verifierPreprocess: pp }));
     probe.mark('');
     if (!valid || pp.length !== nativePreprocess.length || !pp.every((x: number, i: number) => x === nativePreprocess[i])) throw Error('Verification/preprocess parity failed');
-    w.result = { status: 'ok', valid, preprocessMatchesNative: true, proofBytes: proof.length, timings, stages: probe.stages, operations: probe.operations, runtimes: probe.runtimes, hardwareConcurrency: navigator.hardwareConcurrency, userAgent: navigator.userAgent };
+    w.proof = Array.from(proof);
+    w.result = { status: 'ok', checkDigests, valid, preprocessMatchesNative: true, proofBytes: proof.length, timings, stages: probe.stages, operations: probe.operations, runtimes: probe.runtimes, hardwareConcurrency: navigator.hardwareConcurrency, userAgent: navigator.userAgent };
   } catch (e: any) { w.result = { status: 'error', error: e.stack, cause: e.cause?.stack }; }
 };

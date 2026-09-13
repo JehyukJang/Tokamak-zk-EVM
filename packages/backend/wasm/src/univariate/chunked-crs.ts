@@ -45,7 +45,7 @@ interface SectionDescriptor {
   readonly elementByteLength: number;
   readonly chunks: readonly ChunkDescriptor[];
 }
-export function admitUnivariateCrsChunks(input: UnivariateCrsChunkInput, role: UnivariateCrsRole): AdmittedUnivariateCrsChunks {
+export function admitUnivariateCrsChunks(input: UnivariateCrsChunkInput, role: UnivariateCrsRole, checkDigests = false): AdmittedUnivariateCrsChunks {
   if(typeof input !== "object" || input === null || typeof input.loadChunk !== "function") {
     throw new Error("Univariate CRS input must provide a manifest and loadChunk function.");
   }
@@ -67,7 +67,7 @@ export function admitUnivariateCrsChunks(input: UnivariateCrsChunkInput, role: U
   };
   const sectionDescriptors = parseSections(manifest.sections);
   assertCompleteSectionSet(sectionDescriptors);
-  const cache = new ChunkCache(input.loadChunk);
+  const cache = new ChunkCache(input.loadChunk, checkDigests);
   const sections = new Map(sectionDescriptors.map((descriptor) => [
     descriptor.label,
     new ChunkSection(descriptor, cache),
@@ -156,11 +156,13 @@ class ChunkSection implements UnivariateCrsChunkSection {
 }
 
 class ChunkCache {
+  readonly #checkDigests: boolean;
   readonly #loadChunk: (relativePath: string) => Promise<Uint8Array>;
   readonly #entries = new Map<string, Promise<Uint8Array>>();
 
-  constructor(loadChunk: (relativePath: string) => Promise<Uint8Array>) {
+  constructor(loadChunk: (relativePath: string) => Promise<Uint8Array>, checkDigests: boolean) {
     this.#loadChunk = loadChunk;
+    this.#checkDigests = checkDigests;
   }
 
   load(descriptor: ChunkDescriptor): Promise<Uint8Array> {
@@ -171,7 +173,7 @@ class ChunkCache {
         if (!(bytes instanceof Uint8Array) || bytes.byteLength !== descriptor.byteLength) {
           throw new Error(`CRS chunk '${descriptor.path}' has an invalid byte length.`);
         }
-        if (hex(sha256(bytes)) !== descriptor.sha256) {
+        if (this.#checkDigests && hex(sha256(bytes)) !== descriptor.sha256) {
           throw new Error(`CRS chunk '${descriptor.path}' digest mismatch.`);
         }
         return bytes;

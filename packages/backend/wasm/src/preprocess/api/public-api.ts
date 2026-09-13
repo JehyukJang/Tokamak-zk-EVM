@@ -24,6 +24,11 @@ export interface PreprocessInstallationInfo {
 
 export type PreprocessInput = PreprocessBinaryInput;
 
+export interface PreprocessOptions {
+  /** Check SHA-256 of loaded CRS chunks. Defaults to false, independently for each call. */
+  readonly checkDigests?: boolean;
+}
+
 let runtime: CurveRuntime | undefined;
 let installationPromise: Promise<CurveRuntime> | undefined;
 let busy = false;
@@ -44,7 +49,7 @@ export async function install(options: PreprocessInstallOptions = {}): Promise<P
 
   return installationInfo();
 }
-export async function preprocess(input: PreprocessInput): Promise<Uint8Array> {
+export async function preprocess(input: PreprocessInput, options: PreprocessOptions = {}): Promise<Uint8Array> {
   const installedRuntime = runtime;
   if(installedRuntime === undefined) {
     throw new BackendWasmError('INSTALL_REQUIRED', 'Call preprocess.install() successfully before preprocess().');
@@ -58,7 +63,7 @@ export async function preprocess(input: PreprocessInput): Promise<Uint8Array> {
   try {
     let runtimeInput;
     try {
-      runtimeInput = await loadPreprocessInputFromBinaryInput(installedRuntime, input);
+      runtimeInput = await loadPreprocessInputFromBinaryInput(installedRuntime, input, options.checkDigests === true);
     }
     catch(cause) {
       throw new BackendWasmError('INVALID_INPUT', 'The preprocess input binaries could not be decoded.', { cause });

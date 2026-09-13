@@ -15,12 +15,12 @@ export interface UnivariateProverCrsRuntime {
   readonly masks: readonly UnivariateCrsChunkSection[];
   readonly maskSelection: Uint8Array;
 }
-export async function parseUnivariatePreprocessCrs(input: UnivariateCrsChunkInput): Promise<UnivariatePreprocessCrsRuntime> {
-  const crs = admitUnivariateCrsChunks(input, "preprocess");
+export async function parseUnivariatePreprocessCrs(input: UnivariateCrsChunkInput, checkDigests = false): Promise<UnivariatePreprocessCrsRuntime> {
+  const crs = admitUnivariateCrsChunks(input, "preprocess", checkDigests);
   return { sc: crs.requireSection("crs.preprocess-sc"), selection: crs.requireSection("crs.preprocess-selection"), fixedPublic: crs.requireSection("crs.fixed-public-queries") };
 }
-export async function parseUnivariateProverCrs(input: UnivariateCrsChunkInput): Promise<UnivariateProverCrsRuntime> {
-  const crs = admitUnivariateCrsChunks(input, "prover");
+export async function parseUnivariateProverCrs(input: UnivariateCrsChunkInput, checkDigests = false): Promise<UnivariateProverCrsRuntime> {
+  const crs = admitUnivariateCrsChunks(input, "prover", checkDigests);
   return {
     s0: crs.requireSection("crs.s0"), sxi: crs.requireSection("crs.sxi"), spsi: crs.requireSection("crs.spsi"),
     weighted: crs.requireSection("crs.weighted"), weightedShifted: crs.requireSection("crs.weighted-shifted"),

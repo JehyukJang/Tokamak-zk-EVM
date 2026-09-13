@@ -20,7 +20,7 @@ export interface PreprocessBinaryInput {
   readonly permutation: Uint8Array;
   readonly preprocessCrs: UnivariateCrsChunkInput;
 }
-export async function loadPreprocessInputFromBinaryInput(runtime: CurveRuntime, input: PreprocessBinaryInput): Promise<PreprocessRuntimeInput> {
+export async function loadPreprocessInputFromBinaryInput(runtime: CurveRuntime, input: PreprocessBinaryInput, checkDigests = false): Promise<PreprocessRuntimeInput> {
   const [selector, permutation, instance] = await Promise.all([
     admitRuntimeBinaryArtifact(input.selector, PROVER_SELECTOR_V1_SPEC.kind, PROVER_SELECTOR_V1_SPEC),
     admitRuntimeBinaryArtifact(input.permutation, PROVER_PERMUTATION_V1_SPEC.kind, PROVER_PERMUTATION_V1_SPEC),
@@ -36,7 +36,7 @@ export async function loadPreprocessInputFromBinaryInput(runtime: CurveRuntime, 
     subcircuitInfos: GENERATED_PROVER_SUBCIRCUIT_INFOS,
     selector: parseSelector(selector, setup.s_max, setup.s_D),
     permutation: parsePermutation(permutation, setup.l_D - setup.l, setup.s_max),
-    crs: await parseUnivariatePreprocessCrs(input.preprocessCrs),
+    crs: await parseUnivariatePreprocessCrs(input.preprocessCrs, checkDigests),
   };
 }
 

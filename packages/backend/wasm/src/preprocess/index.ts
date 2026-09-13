@@ -5,6 +5,7 @@ export {
   install,
   preprocess,
   type PreprocessInput,
+  type PreprocessOptions,
   type PreprocessInstallationInfo,
   type PreprocessInstallOptions,
 } from "./api/public-api.js";

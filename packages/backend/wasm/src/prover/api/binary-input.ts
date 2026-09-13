@@ -41,6 +41,7 @@ export interface UnivariateProverRuntimeInput {
 export async function loadProverInputFromBinaryInput(
   runtime: CurveRuntime,
   input: ProverBinaryInput,
+  checkDigests = false,
 ): Promise<UnivariateProverRuntimeInput> {
   const [witness, selector, permutation, instance] = await Promise.all([
     admitRuntimeBinaryArtifact(input.witness, PROVER_PLACEMENT_VARIABLES_V1_SPEC.kind, PROVER_PLACEMENT_VARIABLES_V1_SPEC),
@@ -58,7 +59,7 @@ export async function loadProverInputFromBinaryInput(
     publicInputs: parsePublicInputs(runtime, instance),
     subcircuitInfos: GENERATED_PROVER_SUBCIRCUIT_INFOS,
     subcircuits: currentSubcircuits(),
-    crs: await parseUnivariateProverCrs(input.proverCrs),
+    crs: await parseUnivariateProverCrs(input.proverCrs, checkDigests),
   };
 }
 
