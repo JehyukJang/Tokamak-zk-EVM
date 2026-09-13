@@ -33,6 +33,7 @@ import {
   FIELD_RECURSION_RECURRENCE,
   FIELD_SPARSE_ROW_DOT,
   FIELD_SELECTION_ACCUMULATE,
+  FIELD_ORDERED_RECURRENCE,
 } from "./kernel-names.js";
 import {
   assertLinearBatchExports,
@@ -178,6 +179,20 @@ export function createFieldRuntime(field: FfField): FieldRuntime {
       assertFieldBuffer(buffer, field.n8);
       assertFieldElement(factor, field.n8, "Scale factor");
       return await field.batchApplyKey(buffer, factor, field.one);
+    },
+    async orderedRecurrenceBuffer(numerators, inverseDenominators) {
+      assertMatchingFieldBuffers(numerators, inverseDenominators, field.n8, "Ordered recurrence");
+      const count = numerators.byteLength / field.n8;
+      assertPositiveSafeInteger(count, "Ordered recurrence length");
+      const outputs = await field.tm.queueAction([
+        { cmd: "ALLOCSET", var: 0, buff: numerators },
+        { cmd: "ALLOCSET", var: 1, buff: inverseDenominators },
+        { cmd: "ALLOCSET", var: 2, buff: field.one },
+        { cmd: "ALLOC", var: 3, len: numerators.byteLength },
+        { cmd: "CALL", fnName: FIELD_ORDERED_RECURRENCE, params: [{ var: 0 }, { var: 1 }, { val: count }, { var: 2 }, { var: 3 }] },
+        { cmd: "GET", out: 0, var: 3, len: numerators.byteLength },
+      ]);
+      return requireTaskOutputs(outputs, 1, "Ordered recurrence")[0];
     },
     async selectionAccumulateBuffer(values, cofactors, width) {
       assertPositiveSafeInteger(width, "Selection row width");

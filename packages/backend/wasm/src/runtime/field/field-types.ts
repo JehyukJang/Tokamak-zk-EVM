@@ -47,6 +47,7 @@ export interface FieldRuntime {
   batchScaleBuffer(buffer: Uint8Array, factor: FieldElement): Promise<Uint8Array>;
   batchAddScaledBuffer(target: Uint8Array, source: Uint8Array, factor: FieldElement): Promise<Uint8Array>;
   selectionAccumulateBuffer(values: Uint8Array, cofactors: Uint8Array, width: number): Promise<Uint8Array>;
+  orderedRecurrenceBuffer(numerators: Uint8Array, inverseDenominators: Uint8Array): Promise<Uint8Array>;
   batchAddScaledPrefixBuffer(
     target: Uint8Array,
     targetXSize: number,

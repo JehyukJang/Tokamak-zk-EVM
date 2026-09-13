@@ -112,6 +112,29 @@ TypeScript checking passed. At this domain the 8-MiB L_0 vector and the larger
 product/FFT temporaries are removed; peak memory was not sampled.
 [Whole-call evidence](evidence/wasm-w2-copy-boundary.json).
 
+### W3: batched inversion and forward recurrence — accepted
+
+Every denominator is checked for zero before batch inversion. A whole-loop
+WASM kernel computes the forward univariate prefix product, and the caller
+checks the final closure equation. The old bivariate reverse/transposed
+recurrence is not reused. Independent tests match scalar division at lengths
+1/2/8/32/262144 and reject zero first/last denominators, invalid closure and
+empty kernel input. At length 262144, alternating unit times were
+2402.355/2376.173 ms control versus 397.033/424.399 ms candidate, including
+factor construction, inversion and worker transfer.
+
+| Release-optimized browser prove | Run 1 (s) | Run 2 (s) | Mean (s) |
+| --- | ---: | ---: | ---: |
+| W2 control, digest off | 31.667390 | 31.446035 | 31.556713 |
+| W3 candidate, digest off | 29.119290 | 29.311150 | 29.215220 |
+
+The paired mean decreased 7.42%. All four browser/native cross-checks passed;
+preprocess bytes were unchanged and direct TypeScript checking passed.
+The candidate uses additional numerator/denominator/inverse buffers of 8 MiB
+each at this domain plus worker copies; it does not introduce another worker
+pool. Peak memory was not sampled.
+[Whole-call evidence](evidence/wasm-w3-copy-recurrence.json).
+
 ## WASM optimization baseline and execution plan — 2026-09-13
 
 This section records the detailed pre-optimization timing table for backend

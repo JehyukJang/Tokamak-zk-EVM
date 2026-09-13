@@ -156,23 +156,7 @@ async function buildCopyRelation(runtime: CurveRuntime, root: FieldElement, doma
   readonly qC1: DenseUnivariatePolynomial;
 }> {
   const field = runtime.Fr;
-  const rEvals = field.createZeroBuffer(domainSize);
-  field.writeBufferElement(rEvals, 0, field.one);
-  let point = field.one;
-  for(let index = 0; index < domainSize; index += 1) {
-    const bValue = field.readBufferElement(b.evaluations, index);
-    const f = field.add(field.add(bValue, field.mul(beta, field.readBufferElement(sC.evaluations, index))), gammaC);
-    const g = field.add(field.add(bValue, field.mul(beta, point)), gammaC);
-    if(field.isZero(g))
-      throw new Error(`Copy recursion denominator vanishes at index ${index}.`);
-    if(index + 1 < domainSize) {
-      field.writeBufferElement(rEvals, index + 1, field.div(field.mul(field.readBufferElement(rEvals, index), f), g));
-    }
-    else if(!field.eq(field.mul(field.readBufferElement(rEvals, index), f), g)) {
-      throw new Error("Copy recursion does not close around the connection domain.");
-    }
-    point = field.mul(point, root);
-  }
+  const rEvals = await buildCopyRecurrence(field, root, domainSize, b.evaluations, sC.evaluations, beta, gammaC);
   const rBase = DenseUnivariatePolynomial.fromCoefficients(field, await field.ifftBuffer(rEvals));
   const rHat = blind(rBase, maskR, domainSize);
   const sCPoly = DenseUnivariatePolynomial.fromCoefficients(field, sC.coefficients);
@@ -181,6 +165,26 @@ async function buildCopyRelation(runtime: CurveRuntime, root: FieldElement, doma
   const qC0 = copyBoundaryQuotient(field, rHat, domainSize);
   const qC1 = (await rHat.scaleArgument(root).multiply(gHat)).sub(await rHat.multiply(fHat)).divideVanishingExact(domainSize);
   return { rHat, qC0, qC1 };
+}
+
+export async function buildCopyRecurrence(field: CurveRuntime["Fr"], root: FieldElement, domainSize: number, b: Uint8Array, sC: Uint8Array, beta: FieldElement, gammaC: FieldElement): Promise<Uint8Array> {
+  const numerators = field.createZeroBuffer(domainSize), denominators = field.createZeroBuffer(domainSize);
+  let point = field.one;
+  for(let index = 0; index < domainSize; index += 1) {
+    const bValue = field.readBufferElement(b, index);
+    const f = field.add(field.add(bValue, field.mul(beta, field.readBufferElement(sC, index))), gammaC);
+    const g = field.add(field.add(bValue, field.mul(beta, point)), gammaC);
+    if(field.isZero(g))
+      throw new Error(`Copy recursion denominator vanishes at index ${index}.`);
+    field.writeBufferElement(numerators, index, f);
+    field.writeBufferElement(denominators, index, g);
+    point = field.mul(point, root);
+  }
+  const evaluations = await field.orderedRecurrenceBuffer(numerators, await field.batchInverseBuffer(denominators));
+  const last = domainSize - 1;
+  if (!field.eq(field.mul(field.readBufferElement(evaluations, last), field.readBufferElement(numerators, last)), field.readBufferElement(denominators, last)))
+    throw new Error("Copy recursion does not close around the connection domain.");
+  return evaluations;
 }
 
 /** L_0=(X^N-1)/(N*(X-1)); cancel only after checking R_hat(1)=1. */
