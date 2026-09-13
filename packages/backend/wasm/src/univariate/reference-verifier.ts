@@ -1,148 +1,82 @@
-import type { SetupParams } from "../artifacts/setup/setup-params.js";
+
 import type { CurveRuntime } from "../runtime/curve/curve.js";
 import type { FieldElement } from "../runtime/field/field-types.js";
-import type { G1Point } from "../runtime/group/group.js";
-import { PublicWireLayout } from "../prover/protocol/public-wire-layout.js";
-import type { ProverSubcircuitInfo } from "../prover/protocol/witness.js";
-import type { UnivariateVerifierCrsRuntime } from "./crs.js";
-import { arithmeticComplementAt, connectionComplementAt, deriveUnivariateDomainShape, unionVanishingAt } from "./domain.js";
 import type { UnivariateProof } from "./proof.js";
 import { encodeEvaluationMessageBlock, encodeG1MessageBlock, UnivariateTranscript } from "./transcript.js";
-
+export interface FixedVerifier {
+  readonly arithmeticSize: number;
+  readonly connectionSize: number;
+  readonly freePublicLength: number;
+  readonly connectionRoot: Uint8Array;
+  readonly inverseConnectionSize: Uint8Array;
+  readonly publicRoots: readonly Uint8Array[];
+  readonly publicWeights: readonly Uint8Array[];
+  readonly g1Tables: readonly (readonly Uint8Array[])[];
+  readonly preparedG2: readonly Uint8Array[];
+}
 export interface UnivariateReferenceVerifierInput {
-  readonly setup: SetupParams;
-  readonly subcircuitInfos: readonly ProverSubcircuitInfo[];
-  readonly selector: readonly (number | null)[];
   readonly publicInputs: readonly FieldElement[];
-  readonly crs: UnivariateVerifierCrsRuntime;
-  readonly preprocess: readonly [G1Point, G1Point];
+  readonly fixed: FixedVerifier;
+  readonly preprocess: {
+    readonly sC: Uint8Array;
+    readonly cFix: Uint8Array;
+    readonly eKappa: Uint8Array;
+  };
   readonly proof: UnivariateProof;
 }
-
-/** Direct U32/U35 verifier after immutable configuration admission. */
-export async function verifyUnivariateReference(
-  runtime: CurveRuntime,
-  input: UnivariateReferenceVerifierInput,
-): Promise<boolean> {
-  const field = runtime.Fr;
-  const domain = deriveUnivariateDomainShape(field, input.setup);
-  if (!hasSufficientCapacity(input.crs, domain.arithmeticSize, domain.connectionSize)) return false;
-  if (input.publicInputs.length !== input.setup.l) return false;
-  const layout = PublicWireLayout.derive(input.setup, input.subcircuitInfos);
-  for (const segment of layout.segments()) {
-    if (input.selector[segment.placementPhase] !== segment.subcircuitId) {
-      return false;
-    }
-  }
-  const publicBinding = await buildPublicBinding(runtime, input.publicInputs, layout, input.crs);
-  const [cU, cV, cW, cB, oIf, oInt, cD, cR, cQ, piZeta, piPlus] = input.proof.g1;
-  const [sA, sC, u, v, w, b, qZeta, r, rPlus] = input.proof.evaluations;
-  const transcript = new UnivariateTranscript(field, input.publicInputs);
-  transcript.appendMessageBlock(1, encodeG1MessageBlock("F2.a1", runtime.G1, [cU, cV, cW, cB, oIf, oInt]));
+/** Online verification: all circuit/key-only arithmetic was performed at build time. */
+export async function verifyUnivariateReference(runtime: CurveRuntime, input: UnivariateReferenceVerifierInput): Promise<boolean> {
+  const f = runtime.Fr, g = runtime.G1, { fixed, preprocess, proof } = input;
+  if(input.publicInputs.length !== fixed.freePublicLength)
+    return false;
+  const [cL, cH, cO, dQ, dQK, cD, cR, cQ, piChi, piPlus] = proof.g1;
+  const [sc, u, v, w, b, r, rPlus] = proof.evaluations;
+  const transcript = new UnivariateTranscript(f, input.publicInputs);
+  transcript.setMessage(encodeG1MessageBlock("F2.a1", g, [cL, cH, cO, dQ, dQK]));
   const upsilon = transcript.challenge(1, 0);
-  transcript.appendMessageBlock(2, encodeG1MessageBlock("F2.a2", runtime.G1, [cD]));
-  const [beta, gammaC] = transcript.challengePair(2);
-  transcript.appendMessageBlock(3, encodeG1MessageBlock("F2.a3", runtime.G1, [cR]));
+  transcript.setMessage(encodeG1MessageBlock("F2.a2", g, [cD]));
+  const [beta, gamma] = transcript.challengePair(2);
+  transcript.setMessage(encodeG1MessageBlock("F2.a3", g, [cR]));
   const theta = transcript.challenge(3, 0);
-  transcript.appendMessageBlock(4, encodeG1MessageBlock("F2.a4", runtime.G1, [cQ]));
-  const zeta = transcript.zeta(domain.arithmeticSize, domain.connectionSize);
-  transcript.appendMessageBlock(5, encodeEvaluationMessageBlock(field, input.proof.evaluations));
+  transcript.setMessage(encodeG1MessageBlock("F2.a4", g, [cQ]));
+  const chi = transcript.zeta(fixed.arithmeticSize, fixed.connectionSize);
+  transcript.setMessage(encodeEvaluationMessageBlock(f, proof.evaluations));
   const varpi = transcript.challenge(5, 0);
-  transcript.appendMessageBlock(6, encodeG1MessageBlock("F2.a6", runtime.G1, [piZeta, piPlus]));
+  transcript.setMessage(encodeG1MessageBlock("F2.a6", g, [piChi, piPlus]));
   const mu = transcript.nonzeroChallenge(6, 0);
-
-  const quotient = field.add(
-    field.add(
-      field.mul(arithmeticComplementAt(field, domain, zeta), field.mul(sA, field.sub(field.mul(u, v), w))),
-      field.mul(
-        field.mul(theta, connectionComplementAt(field, domain, zeta)),
-        field.mul(field.sub(r, field.one), lagrangeZero(field, zeta, domain.connectionSize)),
-      ),
-    ),
-    field.mul(
-      field.mul(field.mul(theta, theta), connectionComplementAt(field, domain, zeta)),
-      field.sub(
-        field.mul(rPlus, field.add(field.add(b, field.mul(beta, zeta)), gammaC)),
-        field.mul(r, field.add(field.add(b, field.mul(beta, sC)), gammaC)),
-      ),
-    ),
-  );
-  if (!field.eq(quotient, field.mul(qZeta, unionVanishingAt(field, domain, zeta)))) return false;
-
-  const aZeta = addPoints(runtime, [
-    runtime.G1.sub(cU, runtime.G1.mulAffineScalar(input.crs.oneG1, u)),
-    runtime.G1.mulScalar(runtime.G1.sub(cV, runtime.G1.mulAffineScalar(input.crs.xiG1, v)), varpi),
-    runtime.G1.mulScalar(runtime.G1.sub(cW, runtime.G1.mulAffineScalar(input.crs.psiG1, w)), field.pow(varpi, 2)),
-    runtime.G1.mulScalar(runtime.G1.sub(cB, runtime.G1.mulAffineScalar(input.crs.psiG1, b)), field.pow(varpi, 3)),
-    runtime.G1.mulScalar(runtime.G1.sub(cR, runtime.G1.mulAffineScalar(input.crs.oneG1, r)), field.pow(varpi, 4)),
-    runtime.G1.mulScalar(runtime.G1.sub(cQ, runtime.G1.mulAffineScalar(input.crs.oneG1, qZeta)), field.pow(varpi, 5)),
-    runtime.G1.mulScalar(runtime.G1.sub(input.preprocess[0], runtime.G1.mulAffineScalar(input.crs.oneG1, sA)), field.pow(varpi, 6)),
-    runtime.G1.mulScalar(runtime.G1.sub(input.preprocess[1], runtime.G1.mulAffineScalar(input.crs.oneG1, sC)), field.pow(varpi, 7)),
-  ]);
-  const aPlus = runtime.G1.sub(cR, runtime.G1.mulAffineScalar(input.crs.oneG1, rPlus));
-  const lhsFirst = addPoints(runtime, [
-    cU,
-    cV,
-    cW,
-    runtime.G1.neg(runtime.G1.mulScalar(cD, mu)),
-    runtime.G1.mulScalar(runtime.G1.add(aZeta, runtime.G1.mulScalar(piZeta, zeta)), field.pow(mu, 2)),
-    runtime.G1.mulScalar(runtime.G1.add(aPlus, runtime.G1.mulScalar(piPlus, field.mul(domain.connectionRoot, zeta))), field.pow(mu, 3)),
-  ]);
-  const lhsSecond = runtime.G1.add(cB, runtime.G1.mulScalar(runtime.G1.add(cW, runtime.G1.mulScalar(cB, upsilon)), mu));
-  const rhsOpenings = runtime.G1.add(runtime.G1.mulScalar(piZeta, field.pow(mu, 2)), runtime.G1.mulScalar(piPlus, field.pow(mu, 3)));
-  return runtime.pairing.productsEqual(
-    [{ g1: lhsFirst, g2: input.crs.oneG2 }, { g1: lhsSecond, g2: input.crs.tauKG2 }],
-    [
-      { g1: publicBinding, g2: input.crs.gammaG2 },
-      { g1: oIf, g2: input.crs.etaG2 },
-      { g1: oInt, g2: input.crs.deltaG2 },
-      { g1: rhsOpenings, g2: input.crs.tauG2 },
-    ],
-  );
-}
-
-async function buildPublicBinding(
-  runtime: CurveRuntime,
-  publicInputs: readonly FieldElement[],
-  layout: PublicWireLayout,
-  crs: UnivariateVerifierCrsRuntime,
-): Promise<G1Point> {
-  const queries = new Map<string, G1Point>();
-  for (let index = 0; index < crs.publicQueries.points.elementCount; index += 1) {
-    const key = await crs.publicQueries.keyAt(index);
-    const encoded = `${key.bufferSubcircuitId}:${key.localPublicWireIndex}`;
-    if (queries.has(encoded)) throw new Error(`Verifier CRS duplicates public query ${encoded}.`);
-    queries.set(encoded, await crs.publicQueries.points.readElement(index));
+  const za = f.sub(f.pow(chi, fixed.arithmeticSize), f.one), zc = f.sub(f.pow(chi, fixed.connectionSize), f.one);
+  const zg = f.sub(f.pow(chi, Math.min(fixed.arithmeticSize, fixed.connectionSize)), f.one);
+  const ma = f.div(zc, zg), mc = f.div(za, zg), union = f.mul(za, ma);
+  const l0 = f.div(f.mul(zc, fixed.inverseConnectionSize), f.sub(chi, f.one));
+  const q = f.div(f.add(f.add(f.mul(ma, f.sub(f.mul(u, v), w)), f.mul(f.mul(theta, mc), f.mul(f.sub(r, f.one), l0))), f.mul(f.mul(f.square(theta), mc), f.sub(f.mul(rPlus, f.add(f.add(b, f.mul(beta, chi)), gamma)), f.mul(r, f.add(f.add(b, f.mul(beta, sc)), gamma))))), union);
+  let a = f.zero;
+  const rootIndex = fixed.publicRoots.findIndex(root => f.eq(root, chi));
+  if(rootIndex >= 0)
+    a = input.publicInputs[rootIndex]!;
+  else if(fixed.freePublicLength > 0) {
+    const inverses = await f.batchInverseBuffer(f.concat(fixed.publicRoots.map(root => f.sub(chi, root))));
+    for(let i = 0; i < input.publicInputs.length; i++)
+      a = f.add(a, f.mul(f.mul(input.publicInputs[i]!, fixed.publicWeights[i]!), f.readBufferElement(inverses, i)));
+    a = f.mul(a, f.sub(f.pow(chi, fixed.freePublicLength), f.one));
   }
-  const bases: G1Point[] = [];
-  const scalars: FieldElement[] = [];
-  for (const [globalIndex, value] of publicInputs.entries()) {
-    const key = layout.publicQueryKeyForPublicWire(globalIndex);
-    if (key === undefined) continue;
-    const point = queries.get(`${key.bufferSubcircuitId}:${key.localPublicWireIndex}`);
-    if (point === undefined) throw new Error("Verifier CRS is missing a required public binding query.");
-    bases.push(point);
-    scalars.push(value);
-  }
-  return bases.length === 0 ? runtime.G1.zero : runtime.G1.msmAffine(bases, scalars);
-}
-
-function hasSufficientCapacity(crs: UnivariateVerifierCrsRuntime, arithmetic: number, connection: number): boolean {
-  const [m0, mXi, mPsi] = crs.declaredCapacity;
-  return m0 + 1n >= BigInt(arithmetic) && mXi + 1n >= BigInt(arithmetic) && mPsi + 1n >= BigInt(connection) + crs.k;
-}
-
-function lagrangeZero(field: CurveRuntime["Fr"], point: FieldElement, domainSize: number): FieldElement {
-  const inverse = field.inv(field.fromBigInt(BigInt(domainSize)));
-  let sum = field.zero;
-  let power = field.one;
-  for (let index = 0; index < domainSize; index += 1) {
-    sum = field.add(sum, power);
-    power = field.mul(power, point);
-  }
-  return field.mul(sum, inverse);
-}
-
-function addPoints(runtime: CurveRuntime, points: readonly G1Point[]): G1Point {
-  return points.reduce((sum, point) => runtime.G1.add(sum, point), runtime.G1.zero);
+  const v2 = f.square(varpi), v3 = f.mul(v2, varpi), v4 = f.square(v2);
+  const m2 = f.square(mu), m3 = f.mul(m2, mu), m4 = f.square(m2);
+  const add = (...points: Uint8Array[]) => points.reduce((a, b) => g.add(a, b), g.zero);
+  const mul = (point: Uint8Array, scalar: Uint8Array) => g.mulScalar(point, scalar);
+  const opening = add(cL, mul(cH, varpi), mul(cR, v2), mul(cQ, v3), mul(preprocess.sC, v4));
+  const ce = add(cL, mul(cH, upsilon));
+  const fixedMul = (index: number, scalar: Uint8Array) => {
+    const bytes = f.toRawLittleEndian(scalar), table = fixed.g1Tables[index]!;
+    let result = g.zero;
+    for(let window = 0; window < 64; window++) {
+      const digit = (bytes[window >> 1]! >> ((window & 1) * 4)) & 15;
+      if(digit !== 0)
+        result = g.add(result, table[window * 15 + digit - 1]!);
+    }
+    return result;
+  };
+  const first = add(cL, g.neg(mul(cD, mu)), mul(add(opening, mul(piChi, chi)), m2), mul(add(cR, mul(piPlus, f.mul(fixed.connectionRoot, chi))), m3), g.neg(fixedMul(0, f.add(f.mul(f.add(f.add(a, f.mul(v2, r)), f.add(f.mul(v3, q), f.mul(v4, sc))), m2), f.mul(rPlus, m3)))), g.neg(fixedMul(1, f.mul(f.add(u, f.mul(varpi, v)), m2))), g.neg(fixedMul(2, f.mul(f.add(w, f.mul(varpi, b)), m2))), g.neg(mul(dQK, m4)), g.neg(preprocess.cFix));
+  const operands = [first, g.neg(add(mul(piChi, m2), mul(piPlus, m3))), add(cH, mul(ce, mu), mul(dQ, m4)), g.neg(cO), dQK];
+  const prepared = [...fixed.preparedG2, runtime.pairing.prepareG2(preprocess.eKappa)];
+  return runtime.pairing.preparedProductIsOne(operands.map((g1, i) => ({ g1, preparedG2: prepared[i]! })));
 }

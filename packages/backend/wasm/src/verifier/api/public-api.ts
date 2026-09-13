@@ -1,8 +1,7 @@
 import { BackendWasmError } from "../../backend-wasm-error.js";
-import { assertNamedBinaryInput, assertNamedCrsInput, installCurveRuntime } from "../../api/public-api-utils.js";
+import { assertNamedBinaryInput, installCurveRuntime } from "../../api/public-api-utils.js";
 import type { CurveRuntime } from "../../runtime/curve/curve.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
-import { assertRuntimeLibraryCompatibility } from "../../artifacts/binary/compatibility.js";
 import {
   NATIVE_BACKEND_VERSION,
   SUBCIRCUIT_LIBRARY_PACKAGE_VERSION,
@@ -21,9 +20,7 @@ export type VerifierInput = VerifierBinaryInput;
 let runtime: CurveRuntime | undefined;
 let installationPromise: Promise<CurveRuntime> | undefined;
 let busy = false;
-
 export async function install(): Promise<VerifierInstallationInfo> {
-  assertRuntimeLibraryCompatibility();
   runtime = await requireInstalledRuntime();
   return {
     packageVersion: BACKEND_WASM_PACKAGE_VERSION,
@@ -31,49 +28,38 @@ export async function install(): Promise<VerifierInstallationInfo> {
     subcircuitLibraryVersion: SUBCIRCUIT_LIBRARY_PACKAGE_VERSION,
   };
 }
-
 export async function verify(input: VerifierInput): Promise<boolean> {
   const installedRuntime = runtime;
-  if (installedRuntime === undefined) {
-    throw new BackendWasmError(
-      "INSTALL_REQUIRED",
-      "Call verifier.install() successfully before verify().",
-    );
+  if(installedRuntime === undefined) {
+    throw new BackendWasmError("INSTALL_REQUIRED", "Call verifier.install() successfully before verify().");
   }
-  if (busy) {
+  if(busy) {
     throw new BackendWasmError("BUSY", "The verifier is already running.");
   }
-
   assertNamedBinaryInput(input, "Verifier", [
     "proof",
     "instance",
-    "selector",
-    "permutation",
     "verifierPreprocess",
   ]);
-  assertNamedCrsInput(input, "Verifier", ["preprocessCrs", "verifierCrs"]);
   busy = true;
-
   try {
     let runtimeInput;
     try {
       runtimeInput = await loadVerifierInputFromBinaryInput(installedRuntime, input);
-    } catch (cause) {
-      throw new BackendWasmError(
-        "INVALID_INPUT",
-        "The verifier input binaries could not be decoded.",
-        { cause },
-      );
     }
-
+    catch(cause) {
+      throw new BackendWasmError("INVALID_INPUT", "The verifier input binaries could not be decoded.", { cause });
+    }
     try {
       return await verifyUnivariateReference(installedRuntime, runtimeInput);
-    } catch (cause) {
+    }
+    catch(cause) {
       throw new BackendWasmError("RUNTIME_FAILED", "The verifier runtime failed.", {
         cause,
       });
     }
-  } finally {
+  }
+  finally {
     busy = false;
   }
 }

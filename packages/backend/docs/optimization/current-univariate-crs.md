@@ -1,4 +1,4 @@
-# Current univariate setup and native prover optimization
+# Current univariate setup, proving and E2E qualification
 
 ## Audience and scope
 
@@ -7,6 +7,8 @@ the current univariate protocol, including subsequent prover optimization and
 MPC setup work. It is separate from the superseded protocol's
 prover optimization report. It covers CRS storage, trusted-setup computation
 and native proof generation, with separate controls for each experiment.
+The native/browser qualification below extends that evidence without claiming
+a browser optimization or a fresh dense-versus-omitted whole-prover speedup.
 MPC implementation, publishing and CUDA measurements are outside this
 experiment. The reuse guidance below identifies candidates; only changes
 with explicit acceptance evidence are implemented optimizations.
@@ -25,6 +27,125 @@ Reconciled against the implementation at `987474c2a` on 2026-09-12. This is
 a documentation/evidence audit, not a new benchmark of that revision. Earlier
 sections retain their experiment-time controls and validation scope; the
 current status below supersedes their then-pending migration descriptions.
+
+## Native and browser E2E qualification — 2026-09-13
+
+Fresh native trusted setup supplied all four CRS files for each of two local
+execution fixtures. Both used the current local QAP library: 44 compiled
+circuits, n=m=m_I=1024, s=256, t=64, l=396 and l_free=256.
+The minimal execution retained only the six required public buffers, with
+250 inactive slots and identity interface permutation. The application-sized
+execution used 207 active placements and 49 inactive slots. The minimal
+execution is not a reduced-size circuit library.
+
+Native preprocess and prove used the release-built arkworks CPU path.
+The native verifier was rebuilt for each generated key. Browser code was
+bundled with esbuild minification, ES2022 target, and ffjavascript 0.3.1;
+verification used build-generated field values, G1 tables and prepared G2
+operands, not a runtime verifier CRS. Chromium 149.0.7827.55 ran headlessly.
+No MPC, CUDA benchmark, npm publication or Drive operation was performed.
+
+| Stage | Minimal native | Minimal Chromium | Application-sized native | Application-sized Chromium |
+| --- | ---: | ---: | ---: | ---: |
+| Trusted setup, entire internal operation | 11.090 s | Native output reused | 11.656 s | Native output reused |
+| Preprocess | 0.170 s | 2.207 s | 0.391 s | 3.358 s |
+| Prove, including runtime input loading | 2.315 s | 22.818 s | 3.920 s | 38.091 s |
+| Verify, including dynamic input decoding | 4.048 ms | 25.965 ms | 4.198 ms | 24.725 ms |
+| Verification result | true | true | true | true |
+
+These are individual functional-qualification samples, not alternating paired
+performance experiments. Native spans exclude compilation; cached cargo
+startup is also excluded from these internal timings. Browser timings include
+HTTP chunk loading. Browser installation was separate: 67.570 ms in the final
+application-sized sample. Its earlier sample measured prove at 40.671 s;
+that variation is retained rather than attributed to a new optimization.
+Node using the same WASM arithmetic measured 37.951 s for application-sized
+proving, separately from Chromium.
+
+The application-sized native process RSS maxima were 2,404,679,680 bytes for
+setup, 230,129,664 for preprocess, 2,728,148,992 for prove and 9,601,024 for
+verify. These use macOS `time -l` around cached cargo invocations. Chromium's
+maximum sampled sum of process RSS was 6,367,330,304 bytes at one-second
+intervals. It includes browser infrastructure and is not an exact peak or
+a directly comparable single-process measurement.
+
+### Interoperability and rejection evidence
+
+- Native and WASM preprocess outputs are byte-identical on both executions.
+- Native proofs verify in Chromium; Chromium proofs verify in native.
+- The canonical proof is 1,184 bytes: ten G1 points and seven scalars.
+  Preprocess is 384 bytes: S_C and C_fix in G1, E_kappa in G2.
+- Three test-only native scalar-oracle fixtures produce exactly the same
+  complete proof bytes in WASM. They cover unequal arithmetic/connection
+  domains in both directions, a fixed-public value, free-public padding,
+  an internal circuit with placement different from its ID, a selector hole,
+  and singleton domains with all placements inactive.
+- All six Fiat–Shamir rounds match the common native preimage/challenge
+  fixtures. The production API has no deterministic-randomness option.
+- Native and WASM reject mutations of each of the ten proof points, seven
+  evaluations, three preprocess operands and a free-public value. Malformed
+  lengths, noncanonical scalars and wrong-subgroup points are rejected.
+- The WASM fixed-key build rejects missing, truncated, noncanonical,
+  zero and wrong-subgroup keys. A development directory containing only
+  `verifier_keys.rkyv` suffices; unrelated CRS roles are not read to build it.
+
+The rejection checks exposed an ffjavascript affine-identity edge case:
+multiplying its affine identity by the scalar-group order did not preserve
+the identity encoding. Point admission now recognizes the identity before
+the nonidentity subgroup check. An independent roundtrip regression covers
+both G1 and G2 identities. Singleton-domain parity also removed a retired
+WASM-only nontrivial-domain restriction.
+
+### Storage requalification and remaining comparison
+
+The four native payloads total 957,268,688 bytes. Their browser representation
+has 19 sections and 132 chunks, totaling 957,268,320 point bytes; the largest
+chunk is 8,388,576 bytes. No whole-CRS JavaScript buffer is created. An untimed
+scan of every stored point found zero infinities in every section, hence
+empty infinity-run histograms and zero run-table entries. Omitted coordinates
+are not counted as stored infinities.
+
+The separate library-invariant omission count remains 10,694,144 nonpublic
+query slots. There are 6,006,784 retained nonpublic points and no per-point
+query-coordinate metadata. The preserved dense and omitted oracle archives
+were compared again: all 6,006,784 retained points and all other prover
+sections agree. Release tests also requalified dense/omitted binding equality,
+the scalar-oracle proof, CPU/ICICLE parity and retained arithmetic kernels.
+ICICLE CPU-provider parity does not establish CUDA execution.
+
+This does **not** complete a new controlled whole-prover latency A/B between
+dense and omitted physical storage. The current production reader accepts
+only the omitted layout; the preserved dense oracle cannot be passed to it
+as a current CRS. A test-only dense reader or an explicitly accounted
+projection is needed before that measurement can be claimed. The earlier
+paired storage and native optimization measurements below remain intact.
+WASM-specific optimization has not started.
+
+The [machine-readable record](evidence/current-univariate-e2e.json) contains
+timings, source hashes, file sizes, all section counts and qualification
+boundaries. Native release tests passed for prove (12, with 6 opt-in
+benchmarks ignored), libs (133, with 6 opt-in tests ignored) and the explicit
+real-proof tamper test. All 20 common contract tests and the targeted WASM
+type, contract, domain, relation, polynomial, transcript, preprocess, offline
+CRS and architecture checks passed. This is not a claim that every historical
+package script or production deployment workflow has been qualified.
+
+To reproduce the cross-consumer checks from `packages/backend/wasm`, first
+prepare an E2E directory with `inputs/subcircuits/library`,
+`inputs/synthesizer`, native `crs`, `preprocess` and `prove` outputs.
+Build the verifier against that directory's key and convert the four CRS
+roles to its `chunks` directory:
+
+```sh
+BACKEND_WASM_VERIFIER_CRS_DIR=E2E_DIR/crs npm run build:development
+npm run univariate-crs:convert -- --tau-sequence E2E_DIR/crs/tau_sequence.rkyv --keys E2E_DIR/crs --output E2E_DIR/chunks --chunk-bytes 8388608
+npx tsx test/checks/univariate/check-native-cross.ts E2E_DIR E2E_DIR/chunks
+npx tsx test/checks/browser/check-univariate-reference-browser.ts E2E_DIR
+```
+
+Rebuild native verify with `TOKAMAK_VERIFIER_KEYS=E2E_DIR/crs/verifier_keys.rkyv`
+before checking the browser outputs. The fixtures must use the same local
+library that the two builds select.
 
 ## Results at a glance
 
@@ -109,9 +230,11 @@ fresh local proof, and [fixed-input verification qualification](current-univaria
 records valid-proof acceptance and tamper rejection after the retained verifier
 changes. These results do not retrospectively verify every saved benchmark
 proof or complete the native/WASM cross-proof and storage/reference matrix.
-That full matrix, WASM runtime qualification, actual CUDA arithmetic execution
-and MPC qualification remain separate. Native verifier builds require matching
-library metadata and `TOKAMAK_VERIFIER_KEYS`; keys are not runtime inputs.
+The fresh native/Chromium runs above now qualify WASM and cross-proof
+interoperability. The controlled whole-prover storage A/B, actual CUDA
+arithmetic execution and live MPC qualification remain separate. Native
+verifier builds require matching library metadata and `TOKAMAK_VERIFIER_KEYS`;
+keys are not runtime inputs.
 
 ### Evidence audit and reproduction limits
 

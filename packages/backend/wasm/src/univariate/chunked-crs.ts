@@ -19,16 +19,14 @@ export interface UnivariateCrsChunkSection {
   readElements(firstElement: number, elementCount: number): Promise<Uint8Array>;
   readStridedElements(firstElement: number, stride: number, elementCount: number): Promise<Uint8Array>;
 }
-
 export interface AdmittedUnivariateCrsChunks {
   readonly sourcePackageVersion: string;
   readonly sourceRkyvSha256: {
     readonly tauSequence: string;
     readonly proverKeys: string;
     readonly verifierKeys: string;
+    readonly preprocessKeys: string;
   };
-  readonly declaredCapacity: readonly [bigint, bigint, bigint];
-  readonly k: bigint;
   requireSection(label: string): UnivariateCrsChunkSection;
 }
 
@@ -47,19 +45,15 @@ interface SectionDescriptor {
   readonly elementByteLength: number;
   readonly chunks: readonly ChunkDescriptor[];
 }
-
-export function admitUnivariateCrsChunks(
-  input: UnivariateCrsChunkInput,
-  role: UnivariateCrsRole,
-): AdmittedUnivariateCrsChunks {
-  if (typeof input !== "object" || input === null || typeof input.loadChunk !== "function") {
+export function admitUnivariateCrsChunks(input: UnivariateCrsChunkInput, role: UnivariateCrsRole): AdmittedUnivariateCrsChunks {
+  if(typeof input !== "object" || input === null || typeof input.loadChunk !== "function") {
     throw new Error("Univariate CRS input must provide a manifest and loadChunk function.");
   }
   const manifest = requireRecord(input.manifest, "univariate CRS manifest");
-  if (manifest.schemaId !== UNIVARIATE_CRS_CHUNK_CONTRACT.schemaId) {
+  if(manifest.schemaId !== UNIVARIATE_CRS_CHUNK_CONTRACT.schemaId) {
     throw new Error("Univariate CRS chunk manifest uses an unsupported schema.");
   }
-  if (manifest.sourceSchemaId !== UNIVARIATE_CRS_CHUNK_CONTRACT.sourceSchemaId) {
+  if(manifest.sourceSchemaId !== UNIVARIATE_CRS_CHUNK_CONTRACT.sourceSchemaId) {
     throw new Error("Univariate CRS chunk manifest uses an unsupported source CRS schema.");
   }
   const sourcePackageVersion = requireString(manifest.sourcePackageVersion, "sourcePackageVersion");
@@ -68,32 +62,27 @@ export function admitUnivariateCrsChunks(
   const sourceRkyvSha256 = {
     tauSequence: requireSha256(sourceDigests.tauSequence, "sourceRkyvSha256.tauSequence"),
     proverKeys: requireSha256(sourceDigests.proverKeys, "sourceRkyvSha256.proverKeys"),
+    preprocessKeys: requireSha256(sourceDigests.preprocessKeys, "sourceRkyvSha256.preprocessKeys"),
     verifierKeys: requireSha256(sourceDigests.verifierKeys, "sourceRkyvSha256.verifierKeys"),
   };
-  const capacity = requireSafeIntegerArray(manifest.declaredCapacity, "declaredCapacity");
-  if (capacity.length !== 3) throw new Error("Univariate CRS declaredCapacity must contain exactly three values.");
-  const k = requireSafeInteger(manifest.k, "k");
-
   const sectionDescriptors = parseSections(manifest.sections);
   assertCompleteSectionSet(sectionDescriptors);
-  assertCrossSectionShape(sectionDescriptors, capacity);
   const cache = new ChunkCache(input.loadChunk);
   const sections = new Map(sectionDescriptors.map((descriptor) => [
     descriptor.label,
     new ChunkSection(descriptor, cache),
   ]));
-  for (const label of UNIVARIATE_CRS_CHUNK_CONTRACT.roles[role]) {
-    if (!sections.has(label)) throw new Error(`Univariate CRS is missing ${role} section '${label}'.`);
+  for(const label of UNIVARIATE_CRS_CHUNK_CONTRACT.roles[role]) {
+    if(!sections.has(label))
+      throw new Error(`Univariate CRS is missing ${role} section '${label}'.`);
   }
-
   return {
     sourcePackageVersion,
     sourceRkyvSha256,
-    declaredCapacity: capacity.map(BigInt) as unknown as readonly [bigint, bigint, bigint],
-    k: BigInt(k),
     requireSection(label) {
       const section = sections.get(label);
-      if (section === undefined) throw new Error(`Univariate CRS section '${label}' is unavailable.`);
+      if(section === undefined)
+        throw new Error(`Univariate CRS section '${label}' is unavailable.`);
       return section;
     },
   };
@@ -258,26 +247,6 @@ function assertCompleteSectionSet(sections: readonly SectionDescriptor[]): void 
   }
 }
 
-function assertCrossSectionShape(sections: readonly SectionDescriptor[], capacity: readonly number[]): void {
-  const count = (label: string): number => {
-    const section = sections.find((candidate) => candidate.label === label);
-    if (section === undefined) throw new Error(`Univariate CRS is missing section '${label}'.`);
-    return section.elementCount;
-  };
-  if (count("crs.s0") !== capacity[0]! + 1 || count("crs.sxi") !== capacity[1]! + 1 || count("crs.spsi") !== capacity[2]! + 1) {
-    throw new Error("Univariate CRS sequence lengths do not match declaredCapacity.");
-  }
-  if (count("crs.public-query-keys") !== count("crs.public-queries")) {
-    throw new Error("Univariate CRS public query keys and points have different cardinalities.");
-  }
-  if (count("crs.interface-query-keys") !== count("crs.interface-queries")) {
-    throw new Error("Univariate CRS interface query keys and points have different cardinalities.");
-  }
-  if (count("crs.internal-query-keys") !== count("crs.internal-queries")) {
-    throw new Error("Univariate CRS internal query keys and points have different cardinalities.");
-  }
-}
-
 function requireRange(first: number, count: number, total: number, label: string): void {
   if (!Number.isSafeInteger(first) || !Number.isSafeInteger(count) || first < 0 || count < 0 || first + count > total) {
     throw new Error(`Requested range is outside CRS section '${label}'.`);
@@ -299,11 +268,6 @@ function requireSafeInteger(value: unknown, label: string): number {
     throw new Error(`${label} must be a non-negative safe integer.`);
   }
   return value;
-}
-
-function requireSafeIntegerArray(value: unknown, label: string): readonly number[] {
-  if (!Array.isArray(value)) throw new Error(`${label} must be an array.`);
-  return value.map((entry, index) => requireSafeInteger(entry, `${label}[${index}]`));
 }
 
 function requireSha256(value: unknown, label: string): string {

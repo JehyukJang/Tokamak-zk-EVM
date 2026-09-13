@@ -39,25 +39,25 @@ The current protocol accepts the following independent binary artifacts:
 
 | Artifact | Owner | Consumer |
 | --- | --- | --- |
-| `selector` | Synthesizer | Preprocess, prover, verifier configuration |
-| `permutation` | Synthesizer | Preprocess, prover, verifier configuration |
+| `selector` | Synthesizer | Preprocess and prover |
+| `permutation` | Synthesizer | Preprocess and prover |
 | `witness` | Synthesizer | Prover |
-| `instance` | Synthesizer | Prover and verifier |
-| `crs` manifest and chunks | Backend trusted setup plus the offline WASM converter | Preprocess, prover, and verifier; each role loads only its required sections |
+| `instance` | Synthesizer | Preprocess, prover and verifier |
+| `crs` manifest and chunks | Backend trusted setup plus the offline WASM converter | Preprocess and prover; each loads only its required sections |
 | `verifierPreprocess` | `preprocess()` | Verifier |
 | `proof` | `prove()` | Verifier |
 
-`proof` contains exactly the current protocol's eleven affine G1 values and
-nine scalar evaluations. The selector, transcript state, configuration, and
+`proof` contains exactly the current protocol's ten affine G1 values and
+seven scalar evaluations. The selector, transcript state, configuration, and
 provenance are not duplicated inside the proof.
 
-All non-CRS binaries use the backend-owned `TZBWASM1` container. The container records
+Frontend input binaries use the producer-defined `TZBWASM1` container. The container records
 the artifact kind, producer package version, section table, and self-digest.
-Its layout version is not a protocol-version compatibility layer.
+Proof and preprocess use the backend common fixed-layout codecs directly: 1,184 and 384 bytes, respectively. Their coordinates are canonical little-endian affine bytes, not Montgomery memory, and carry no browser envelope.
 
 The CRS is different because the production archives can exceed the 4 GiB
 address space of one browser `Uint8Array`. Native trusted setup emits
-`tau_sequence.rkyv`, `prover_keys.rkyv`, and `verifier_keys.rkyv`. An offline
+`tau_sequence.rkyv`, `prover_keys.rkyv`, `preprocess_keys.rkyv`, and `verifier_keys.rkyv`. An offline
 64-bit converter reads that directory with read-only memory maps and writes a
 small manifest plus bounded section chunks.
 Browser runtimes authenticate and load chunks lazily through an
@@ -70,7 +70,7 @@ application-provided callback.
 | `prover.install(options?)` | Install or reconfigure the prover runtime while idle |
 | `prover.prove(input)` | Produce one complete proof binary |
 | `preprocess.install(options?)` | Install or reconfigure the preprocessing runtime while idle |
-| `preprocess.preprocess(input)` | Produce the two verifier preprocessing commitments |
+| `preprocess.preprocess(input)` | Produce S_C, C_fix and E_kappa |
 | `verifier.install()` | Install the verifier runtime |
 | `verifier.verify(input)` | Check one current-protocol proof |
 | `convertWitness(value)` | Convert synthesizer placement variables |
@@ -86,8 +86,7 @@ Public operation types are `ProverInput`, `ProverInstallOptions`,
 `VerifierInstallationInfo`. Converter types are `BinaryArtifactInspection`,
 `BinarySectionInspection` and
 `RuntimeArtifactFileValidationResult`. Every public subpath exports
-`BackendWasmError` and `BackendWasmErrorCode`. The runtime subpaths also export
-the `UnivariateCrsChunkInput` type.
+`BackendWasmError` and `BackendWasmErrorCode`. The prover and preprocess subpaths also export the `UnivariateCrsChunkInput` type.
 
 ## Convert source artifacts
 
@@ -121,14 +120,14 @@ self-digest. Neither function authenticates the producer.
 Development builds generate embedded circuit metadata from the local
 qap-compiler output. Production builds select the pinned npm
 `@tokamak-zk-evm/subcircuit-library` snapshot. Both modes use the same runtime
-artifact interfaces.
+artifact interfaces. Both builds require `BACKEND_WASM_VERIFIER_CRS_DIR`: trusted-setup output for development, or a supplied matching release key plus `crs_provenance.json` for production. Only `verifier_keys.rkyv` is read to build the fixed verifier; the production build additionally checks provenance compatibility and its key digest. Missing keys fail the build. No key or circuit package is downloaded by the verifier runtime.
 
 Convert the native CRS offline from `packages/backend/wasm`:
 
 ```sh
 npm run univariate-crs:convert -- \
-  --tau-sequence ../rust/setup/trusted-setup/output/tau-active/tau_sequence.rkyv \
-  --keys ../rust/setup/trusted-setup/output/keys-active \
+  --tau-sequence ../rust/setup/output/tau_sequence.rkyv \
+  --keys ../rust/setup/output \
   --output ./tmp/browser-crs
 ```
 
@@ -169,21 +168,22 @@ import { loadCrs } from './load-crs.js';
 
 await installPreprocess({ chunkSizeExponent: 17 });
 
-const [selector, permutation, crs] = await Promise.all([
+const [instance, selector, permutation, crs] = await Promise.all([
+  loadBinary('/artifacts/instance.bin'),
   loadBinary('/artifacts/selector.bin'),
   loadBinary('/artifacts/permutation.bin'),
   loadCrs('/artifacts/crs/univariate-crs-manifest.json'),
 ]);
 
 const verifierPreprocess = await preprocess({
+  instance,
   selector,
   permutation,
   preprocessCrs: crs,
 });
 ```
 
-`preprocess()` returns the two G1 commitments required by the current verifier.
-It does not consume the witness or public instance.
+`preprocess()` returns S_C and C_fix in G1 and E_kappa in G2. It uses the fixed-public values in the instance to construct C_fix, but does not consume the witness.
 
 ## Prove
 
@@ -222,9 +222,7 @@ integer from 10 through 19 and may be changed while the runtime is idle.
 
 ## Verify
 
-The verifier admits the fixed selector, permutation, preprocessing CRS,
-preprocessing commitments, and verifier CRS before checking the proof and
-public instance.
+The verifier performs online verification only. Its key, fixed field values, prepared G2 operands and G1 tables are bound when the package is built. Replacing the CRS requires rebuilding the verifier. Runtime inputs are the free-public statement, proof and admitted preprocess output; no selector, permutation or CRS is read at runtime.
 
 ```ts
 import {
@@ -232,28 +230,20 @@ import {
   verify,
 } from '@tokamak-zk-evm/snark-browser-compat/verifier';
 import { loadBinary } from './load-binary.js';
-import { loadCrs } from './load-crs.js';
 
 await installVerifier();
 
-const [proof, instance, selector, permutation, verifierPreprocess, crs] =
+const [proof, instance, verifierPreprocess] =
   await Promise.all([
     loadBinary('/artifacts/proof.bin'),
     loadBinary('/artifacts/instance.bin'),
-    loadBinary('/artifacts/selector.bin'),
-    loadBinary('/artifacts/permutation.bin'),
     loadBinary('/artifacts/verifier-preprocess.bin'),
-    loadCrs('/artifacts/crs/univariate-crs-manifest.json'),
   ]);
 
 const valid = await verify({
   proof,
   instance,
-  selector,
-  permutation,
-  preprocessCrs: crs,
   verifierPreprocess,
-  verifierCrs: crs,
 });
 ```
 
@@ -283,7 +273,7 @@ admission checks the exact binary kind and required sections but does not use
 From `packages/backend/wasm`:
 
 ```sh
-npm run build:development
+BACKEND_WASM_VERIFIER_CRS_DIR=../rust/setup/output npm run build:development
 npm run typecheck:development
 npm run typecheck:scripts
 npm run binary:check
@@ -294,7 +284,7 @@ npm run univariate:transcript:check
 ```
 
 To prepare local browser E2E inputs, first generate `selector.json` with the
-synthesizer and the three role-separated RKYV files with native trusted setup.
+synthesizer and the four role-separated RKYV files with native trusted setup.
 Then run:
 
 ```sh

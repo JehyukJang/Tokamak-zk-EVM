@@ -79,7 +79,6 @@ async function main(argv: readonly string[]): Promise<void> {
     writeFile(path.join(runtimeRoot, fileName), bytes),
   ));
 }
-
 async function validateFixtureRuntimeInputs(input: {
   readonly witness: Uint8Array;
   readonly selector: Uint8Array;
@@ -90,7 +89,8 @@ async function validateFixtureRuntimeInputs(input: {
 }): Promise<void> {
   const runtime = await createCurveRuntime();
   try {
-    await loadPreprocessInputFromBinaryInput({
+    await loadPreprocessInputFromBinaryInput(runtime, {
+      instance: input.instance,
       selector: input.selector,
       permutation: input.permutation,
       preprocessCrs: input.preprocessCrs,
@@ -102,7 +102,8 @@ async function validateFixtureRuntimeInputs(input: {
       instance: input.instance,
       proverCrs: input.proverCrs,
     });
-  } finally {
+  }
+  finally {
     await runtime.terminate();
   }
 }

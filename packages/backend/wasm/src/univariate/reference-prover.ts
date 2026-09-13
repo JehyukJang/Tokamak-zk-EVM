@@ -6,7 +6,7 @@ import { PublicWireLayout } from "../prover/protocol/public-wire-layout.js";
 import type { ProverPlacementVariables, ProverSubcircuitInfo } from "../prover/protocol/witness.js";
 import { placementCount, placementSubcircuitId, placementVariableAt, placementVariableCount } from "../prover/protocol/witness.js";
 import { commitDenseUnivariatePolynomial } from "./commitments.js";
-import type { UnivariateProverCrsRuntime, TaggedQueryKey } from "./crs.js";
+import type { UnivariateProverCrsRuntime } from "./crs.js";
 import { deriveUnivariateDomainShape } from "./domain.js";
 import { DenseUnivariatePolynomial } from "./polynomial.js";
 import { type UnivariateProof } from "./proof.js";
@@ -17,7 +17,7 @@ import {
   type UnivariateSlotWitness,
   type UnivariateSubcircuit,
 } from "./relation.js";
-import { placementSelectorPolynomial, type StridedPolynomial } from "./selectors.js";
+import { SelectedRoots } from "./selected-roots.js";
 import { encodeEvaluationMessageBlock, encodeG1MessageBlock, UnivariateTranscript } from "./transcript.js";
 import type { UnivariateCrsChunkSection } from "./chunked-crs.js";
 
@@ -32,99 +32,74 @@ export interface UnivariateReferenceProverInput {
   readonly crs: UnivariateProverCrsRuntime;
   readonly chunkPoints: number;
 }
-
 /** Correctness-first F1--F5 prover over the current univariate artifacts. */
-export async function proveUnivariateReference(
-  runtime: CurveRuntime,
-  input: UnivariateReferenceProverInput,
-): Promise<UnivariateProof> {
+export async function proveUnivariateReference(runtime: CurveRuntime, input: UnivariateReferenceProverInput): Promise<UnivariateProof> {
   const { setup, crs } = input;
   const field = runtime.Fr;
   const domain = deriveUnivariateDomainShape(field, setup);
-  assertCrsCapacity(crs, domain.arithmeticSize, domain.connectionSize);
-  const selector = await placementSelectorPolynomial(field, domain, setup, input.selector);
+  const d = Math.max(domain.arithmeticSize, domain.connectionSize) + 1;
+  const p = Math.max(2 * d + 1, setup.s_max * setup.t + 1, d + 1 + setup.s_max * (setup.t - 1), setup.l_free - 1);
+  const k = p - d;
+  if(crs.s0.elementCount !== 2 * p + 1 || crs.sxi.elementCount !== p + 1 || crs.spsi.elementCount !== p + 1)
+    throw new Error("CRS sequence capacity does not match the library.");
   const sC = await buildConnectionPermutationPolynomial(field, domain, setup, input.selector, input.permutation);
   const slots = selectWitnessSlots(field, input.selector, input.placements, input.subcircuits, setup);
   const maps = await buildWitnessMaps(field, domain, setup, input.selector, slots, input.subcircuits);
-  validatePublicStatementLayout(input.publicInputs, setup, input.subcircuitInfos, input.placements);
-
+  const layout = PublicWireLayout.derive(setup, input.subcircuitInfos);
+  validatePublicStatement(runtime, input, slots, layout);
   const masks = await Promise.all(Array.from({ length: 4 }, () => randomPolynomial(runtime, 2)));
+  const maskR = await randomPolynomial(runtime, 4);
+  const selectionMask = await runtime.randomScalar();
   const uHat = blind(DenseUnivariatePolynomial.fromCoefficients(field, maps.uA.coefficients), masks[0]!, domain.arithmeticSize);
   const vHat = blind(DenseUnivariatePolynomial.fromCoefficients(field, maps.vA.coefficients), masks[1]!, domain.arithmeticSize);
   const wHat = blind(DenseUnivariatePolynomial.fromCoefficients(field, maps.wA.coefficients), masks[2]!, domain.arithmeticSize);
   const bHat = blind(DenseUnivariatePolynomial.fromCoefficients(field, maps.bC.coefficients), masks[3]!, domain.connectionSize);
-  const denseSelector = expandSelector(field, selector, domain.arithmeticSize);
-  const qA = (await denseSelector.multiply(await uHat.multiply(vHat))).sub(await denseSelector.multiply(wHat)).divideVanishingExact(domain.arithmeticSize);
-
-  const cU = await commit(runtime, crs.s0, 0, uHat, input.chunkPoints);
-  const cV = await commit(runtime, crs.sxi, 0, vHat, input.chunkPoints);
-  const cW = await commit(runtime, crs.spsi, 0, wHat, input.chunkPoints);
-  const cB = await commit(runtime, crs.spsi, 0, bHat, input.chunkPoints);
-  const bindingRandomizer = await runtime.randomScalar();
-  const [oIf, oInt] = await buildPrivateBindings(runtime, input, slots, masks, bindingRandomizer);
-
-  const transcript = new UnivariateTranscript(field, input.publicInputs);
-  transcript.appendMessageBlock(1, encodeG1MessageBlock("F2.a1", runtime.G1, [cU, cV, cW, cB, oIf, oInt]));
+  const qA = (await uHat.multiply(vHat)).sub(wHat).divideVanishingExact(domain.arithmeticSize);
+  const a = setup.l_free === 0 ? DenseUnivariatePolynomial.zero(field) :
+    DenseUnivariatePolynomial.fromCoefficients(field, await field.ifftBuffer(field.concat(input.publicInputs.slice(0, setup.l_free))));
+  const c = (section: UnivariateCrsChunkSection, poly: DenseUnivariatePolynomial, offset = 0) => commit(runtime, section, offset, poly, input.chunkPoints);
+  const add = (...points: G1Point[]) => points.reduce((a, b) => runtime.G1.add(a, b), runtime.G1.zero);
+  const cL = add(await c(crs.s0, a), await c(crs.sxi, uHat), await c(crs.spsi, wHat));
+  const cH = add(await c(crs.sxi, vHat), await c(crs.spsi, bHat));
+  const cO = await buildBinding(runtime, input, slots, layout, masks, selectionMask);
+  const roots = await SelectedRoots.create(field, setup, input.selector);
+  const witness = field.createZeroBuffer(setup.m * setup.s_max);
+  for(let j = 0; j < setup.m; j++)
+    for(let i = 0; i < slots.length; i++) {
+      const slot = slots[i];
+      if(slot && j < field.bufferElementCount(slot.values))
+        field.writeBufferElement(witness, j * setup.s_max + i, field.readBufferElement(slot.values, j));
+    }
+  const qSelection = await roots.quotients(witness);
+  if(crs.weighted.elementCount !== setup.m * setup.s_max || crs.weightedShifted.elementCount !== setup.m * setup.s_max)
+    throw new Error("Weighted query cardinality mismatch.");
+  const dQ = add(await commitDenseUnivariatePolynomial(runtime, crs.weighted, qSelection, input.chunkPoints), runtime.G1.mulScalar(await c(crs.s0, roots.polynomial), selectionMask));
+  const dQK = add(await commitDenseUnivariatePolynomial(runtime, crs.weightedShifted, qSelection, input.chunkPoints), runtime.G1.mulScalar(await c(crs.s0, roots.polynomial, k), selectionMask));
+  const transcript = new UnivariateTranscript(field, input.publicInputs.slice(0, setup.l_free));
+  transcript.setMessage(encodeG1MessageBlock("F2.a1", runtime.G1, [cL, cH, cO, dQ, dQK]));
   const upsilon = transcript.challenge(1, 0);
-  const cD = await commit(
-    runtime,
-    crs.spsi,
-    bigintToSafeNumber(crs.k, "K"),
-    wHat.add(bHat.scale(upsilon)),
-    input.chunkPoints,
-  );
-  transcript.appendMessageBlock(2, encodeG1MessageBlock("F2.a2", runtime.G1, [cD]));
+  const cD = add(await c(crs.s0, a, k), await c(crs.sxi, uHat.add(vHat.scale(upsilon)), k), await c(crs.spsi, wHat.add(bHat.scale(upsilon)), k));
+  transcript.setMessage(encodeG1MessageBlock("F2.a2", runtime.G1, [cD]));
   const [beta, gammaC] = transcript.challengePair(2);
-
-  const copy = await buildCopyRelation(runtime, domain.connectionRoot, domain.connectionSize, maps.bC, sC, bHat, beta, gammaC);
-  const cR = await commit(runtime, crs.s0, 0, copy.rHat, input.chunkPoints);
-  transcript.appendMessageBlock(3, encodeG1MessageBlock("F2.a3", runtime.G1, [cR]));
+  const copy = await buildCopyRelation(runtime, domain.connectionRoot, domain.connectionSize, maps.bC, sC, bHat, beta, gammaC, maskR);
+  const cR = await c(crs.s0, copy.rHat);
+  transcript.setMessage(encodeG1MessageBlock("F2.a3", runtime.G1, [cR]));
   const theta = transcript.challenge(3, 0);
   const qHat = combineQuotients(field, qA, copy.qC0, copy.qC1, theta);
-  const cQ = await commit(runtime, crs.s0, 0, qHat, input.chunkPoints);
-  transcript.appendMessageBlock(4, encodeG1MessageBlock("F2.a4", runtime.G1, [cQ]));
-  const zeta = transcript.zeta(domain.arithmeticSize, domain.connectionSize);
-
-  const sAPoly = denseSelector;
-  const sCPoly = DenseUnivariatePolynomial.fromCoefficients(field, sC.coefficients);
-  const evaluations = [
-    sAPoly.evaluate(zeta), sCPoly.evaluate(zeta), uHat.evaluate(zeta), vHat.evaluate(zeta),
-    wHat.evaluate(zeta), bHat.evaluate(zeta), qHat.evaluate(zeta), copy.rHat.evaluate(zeta),
-    copy.rHat.evaluate(field.mul(domain.connectionRoot, zeta)),
-  ] as const;
-  transcript.appendMessageBlock(5, encodeEvaluationMessageBlock(field, evaluations));
+  const cQ = await c(crs.s0, qHat);
+  transcript.setMessage(encodeG1MessageBlock("F2.a4", runtime.G1, [cQ]));
+  const chi = transcript.zeta(domain.arithmeticSize, domain.connectionSize);
+  const scPoly = DenseUnivariatePolynomial.fromCoefficients(field, sC.coefficients);
+  const evaluations = [scPoly.evaluate(chi), uHat.evaluate(chi), vHat.evaluate(chi), wHat.evaluate(chi), bHat.evaluate(chi),
+  copy.rHat.evaluate(chi), copy.rHat.evaluate(field.mul(domain.connectionRoot, chi))] as const;
+  transcript.setMessage(encodeEvaluationMessageBlock(field, evaluations));
   const varpi = transcript.challenge(5, 0);
-  const openingTerms = [uHat, vHat, wHat, bHat, copy.rHat, qHat, sAPoly, sCPoly]
-    .map(polynomial => polynomial.ruffini(zeta).quotient);
-  const sources: readonly [UnivariateCrsChunkSection, number][] = [
-    [crs.s0, 0], [crs.sxi, 0], [crs.spsi, 0], [crs.spsi, 0],
-    [crs.s0, 0], [crs.s0, 0], [crs.s0, 0], [crs.s0, 0],
-  ];
-  let piZeta = runtime.G1.zero;
-  let factor = field.one;
-  for (let index = 0; index < openingTerms.length; index += 1) {
-    const [powers, offset] = sources[index]!;
-    piZeta = runtime.G1.add(piZeta, runtime.G1.mulScalar(
-      await commit(runtime, powers, offset, openingTerms[index]!, input.chunkPoints),
-      factor,
-    ));
-    factor = field.mul(factor, varpi);
-  }
-  const piPlusPolynomial = copy.rHat
-    .sub(constant(field, evaluations[8]))
-    .ruffini(field.mul(domain.connectionRoot, zeta)).quotient;
-  const piPlus = await commit(runtime, crs.s0, 0, piPlusPolynomial, input.chunkPoints);
-  transcript.appendMessageBlock(6, encodeG1MessageBlock("F2.a6", runtime.G1, [piZeta, piPlus]));
+  const ordinary = a.add(copy.rHat.scale(field.pow(varpi, 2))).add(qHat.scale(field.pow(varpi, 3))).add(scPoly.scale(field.pow(varpi, 4)));
+  const piChi = add(await c(crs.s0, ordinary.ruffini(chi).quotient), await c(crs.sxi, uHat.add(vHat.scale(varpi)).ruffini(chi).quotient), await c(crs.spsi, wHat.add(bHat.scale(varpi)).ruffini(chi).quotient));
+  const piPlus = await c(crs.s0, copy.rHat.ruffini(field.mul(domain.connectionRoot, chi)).quotient);
+  transcript.setMessage(encodeG1MessageBlock("F2.a6", runtime.G1, [piChi, piPlus]));
   transcript.nonzeroChallenge(6, 0);
-
-  return { g1: [cU, cV, cW, cB, oIf, oInt, cD, cR, cQ, piZeta, piPlus], evaluations };
-}
-
-function assertCrsCapacity(crs: UnivariateProverCrsRuntime, arithmetic: number, connection: number): void {
-  const [m0, mXi, mPsi] = crs.declaredCapacity.map(value => bigintToSafeNumber(value, "CRS capacity"));
-  if (m0 + 1 < arithmetic || mXi + 1 < arithmetic || mPsi + 1 < connection + Number(crs.k)) {
-    throw new Error("Univariate prover CRS capacity is insufficient for the admitted setup.");
-  }
+  return { g1: [cL, cH, cO, dQ, dQK, cD, cR, cQ, piChi, piPlus], evaluations };
 }
 
 function selectWitnessSlots(
@@ -175,45 +150,31 @@ async function randomPolynomial(runtime: CurveRuntime, length: number): Promise<
     runtime.Fr.concat(await Promise.all(Array.from({ length }, () => runtime.randomScalar()))),
   );
 }
-
-function expandSelector(field: CurveRuntime["Fr"], selector: StridedPolynomial, arithmeticSize: number): DenseUnivariatePolynomial {
-  const highest = (selector.coefficients.length - 1) * selector.stride;
-  if (highest >= arithmeticSize) throw new Error("Selector degree exceeds the arithmetic domain.");
-  const coefficients = field.createZeroBuffer(highest + 1);
-  for (const [index, coefficient] of selector.coefficients.entries()) {
-    field.writeBufferElement(coefficients, index * selector.stride, coefficient);
-  }
-  return DenseUnivariatePolynomial.fromCoefficients(field, coefficients);
-}
-
-async function buildCopyRelation(
-  runtime: CurveRuntime,
-  root: FieldElement,
-  domainSize: number,
-  b: DenseDomainPolynomial,
-  sC: DenseDomainPolynomial,
-  bHat: DenseUnivariatePolynomial,
-  beta: FieldElement,
-  gammaC: FieldElement,
-): Promise<{ readonly rHat: DenseUnivariatePolynomial; readonly qC0: DenseUnivariatePolynomial; readonly qC1: DenseUnivariatePolynomial }> {
+async function buildCopyRelation(runtime: CurveRuntime, root: FieldElement, domainSize: number, b: DenseDomainPolynomial, sC: DenseDomainPolynomial, bHat: DenseUnivariatePolynomial, beta: FieldElement, gammaC: FieldElement, maskR: DenseUnivariatePolynomial): Promise<{
+  readonly rHat: DenseUnivariatePolynomial;
+  readonly qC0: DenseUnivariatePolynomial;
+  readonly qC1: DenseUnivariatePolynomial;
+}> {
   const field = runtime.Fr;
   const rEvals = field.createZeroBuffer(domainSize);
   field.writeBufferElement(rEvals, 0, field.one);
   let point = field.one;
-  for (let index = 0; index < domainSize; index += 1) {
+  for(let index = 0; index < domainSize; index += 1) {
     const bValue = field.readBufferElement(b.evaluations, index);
     const f = field.add(field.add(bValue, field.mul(beta, field.readBufferElement(sC.evaluations, index))), gammaC);
     const g = field.add(field.add(bValue, field.mul(beta, point)), gammaC);
-    if (field.isZero(g)) throw new Error(`Copy recursion denominator vanishes at index ${index}.`);
-    if (index + 1 < domainSize) {
+    if(field.isZero(g))
+      throw new Error(`Copy recursion denominator vanishes at index ${index}.`);
+    if(index + 1 < domainSize) {
       field.writeBufferElement(rEvals, index + 1, field.div(field.mul(field.readBufferElement(rEvals, index), f), g));
-    } else if (!field.eq(field.mul(field.readBufferElement(rEvals, index), f), g)) {
+    }
+    else if(!field.eq(field.mul(field.readBufferElement(rEvals, index), f), g)) {
       throw new Error("Copy recursion does not close around the connection domain.");
     }
     point = field.mul(point, root);
   }
   const rBase = DenseUnivariatePolynomial.fromCoefficients(field, await field.ifftBuffer(rEvals));
-  const rHat = blind(rBase, await randomPolynomial(runtime, 2), domainSize);
+  const rHat = blind(rBase, maskR, domainSize);
   const sCPoly = DenseUnivariatePolynomial.fromCoefficients(field, sC.coefficients);
   const fHat = bHat.add(sCPoly.scale(beta)).add(constant(field, gammaC));
   const gHat = bHat.add(linear(field, gammaC, beta));
@@ -232,68 +193,49 @@ function combineQuotients(
 ): DenseUnivariatePolynomial {
   return qA.add(qC0.scale(theta)).add(qC1.scale(field.mul(theta, theta)));
 }
-
-async function buildPrivateBindings(
-  runtime: CurveRuntime,
-  input: UnivariateReferenceProverInput,
-  slots: readonly (UnivariateSlotWitness | null)[],
-  masks: readonly DenseUnivariatePolynomial[],
-  randomizer: FieldElement,
-): Promise<readonly [G1Point, G1Point]> {
-  const interfaceTerms: { key: TaggedQueryKey; value: FieldElement }[] = [];
-  const internalTerms: { key: TaggedQueryKey; value: FieldElement }[] = [];
-  for (const [placementIndex, slot] of slots.entries()) {
-    if (slot === null) continue;
-    const info = input.subcircuitInfos[slot.subcircuitId]!;
-    for (let localWireIndex = 0; localWireIndex < info.flattenMap.length; localWireIndex += 1) {
-      const global = info.flattenMap[localWireIndex]!;
-      const term = { key: { placementIndex, subcircuitId: slot.subcircuitId, localWireIndex }, value: runtime.Fr.readBufferElement(slot.values, localWireIndex) };
-      if (global >= input.setup.l && global < input.setup.l_D) interfaceTerms.push(term);
-      else if (global >= input.setup.l_D) internalTerms.push(term);
-    }
+async function buildBinding(runtime: CurveRuntime, input: UnivariateReferenceProverInput, slots: readonly (UnivariateSlotWitness | null)[], layout: PublicWireLayout, masks: readonly DenseUnivariatePolynomial[], selectionMask: FieldElement): Promise<G1Point> {
+  const f = runtime.Fr, { setup, crs } = input;
+  const free = input.publicInputs.slice(0, setup.l_free).filter((_, g) => layout.sourceForPublicWire(g) !== undefined);
+  if(crs.freePublic.elementCount !== free.length)
+    throw new Error("Free-public query cardinality mismatch.");
+  let result = free.length === 0 ? runtime.G1.zero : await commitDenseUnivariatePolynomial(runtime, crs.freePublic, f.concat(free), input.chunkPoints);
+  const wireLists = input.subcircuitInfos.map(info => info.flattenMap.flatMap((g, j) => g >= setup.l ? [j] : []));
+  const perPlacement = wireLists.reduce((n, list) => n + list.length, 0);
+  if(crs.nonpublic.elementCount !== perPlacement * setup.s_max)
+    throw new Error("Nonpublic query cardinality mismatch.");
+  for(let i = 0; i < slots.length; i++) {
+    const slot = slots[i];
+    if(!slot)
+      continue;
+    const prefix = wireLists.slice(0, slot.subcircuitId).reduce((n, list) => n + list.length, 0);
+    const wires = wireLists[slot.subcircuitId]!;
+    if(wires.length)
+      result = runtime.G1.add(result, await commitDenseUnivariatePolynomial(runtime, crs.nonpublic, f.concat(wires.map(j => f.readBufferElement(slot.values, j))), input.chunkPoints, i * perPlacement + prefix));
   }
-  const oIf = runtime.G1.add(await combineTagged(runtime, input.crs.interfaceQueries, interfaceTerms), runtime.G1.mulAffineScalar(input.crs.deltaG1, randomizer));
-  let oInt = runtime.G1.sub(await combineTagged(runtime, input.crs.internalQueries, internalTerms), runtime.G1.mulAffineScalar(input.crs.etaG1, randomizer));
-  for (const [index, mask] of masks.entries()) {
-    const section = input.crs.masks[index]!;
-    for (let coefficient = 0; coefficient <= mask.degree; coefficient += 1) {
-      oInt = runtime.G1.add(oInt, runtime.G1.mulAffineScalar(await section.readElement(coefficient), runtime.Fr.readBufferElement(mask.coefficients, coefficient)));
-    }
-  }
-  return [oIf, oInt];
+  for(let i = 0; i < 4; i++)
+    result = runtime.G1.add(result, await commitDenseUnivariatePolynomial(runtime, crs.masks[i]!, masks[i]!.coefficients, input.chunkPoints));
+  return runtime.G1.add(result, runtime.G1.mulScalar(crs.maskSelection, selectionMask));
 }
-
-async function combineTagged(
-  runtime: CurveRuntime,
-  queries: UnivariateProverCrsRuntime["interfaceQueries"],
-  terms: readonly { readonly key: TaggedQueryKey; readonly value: FieldElement }[],
-): Promise<G1Point> {
-  const lookup = new Map<string, number>();
-  for (let index = 0; index < queries.points.elementCount; index += 1) lookup.set(taggedKey(await queries.keyAt(index)), index);
-  const seen = new Set<string>();
-  const bases: G1Point[] = [];
-  const scalars: FieldElement[] = [];
-  for (const term of terms) {
-    const key = taggedKey(term.key);
-    if (seen.has(key)) throw new Error(`Duplicate witness binding coordinate ${key}.`);
-    seen.add(key);
-    const index = lookup.get(key);
-    if (index === undefined) throw new Error(`Missing CRS binding query ${key}.`);
-    bases.push(await queries.points.readElement(index));
-    scalars.push(term.value);
+function validatePublicStatement(runtime: CurveRuntime, input: UnivariateReferenceProverInput, slots: readonly (UnivariateSlotWitness | null)[], layout: PublicWireLayout): void {
+  if(input.publicInputs.length !== input.setup.l)
+    throw new Error("Public statement length mismatch.");
+  const publicIds = new Set(layout.segments().map(s => s.subcircuitId));
+  for(const [i, slot] of slots.entries())
+    if(slot && publicIds.has(slot.subcircuitId) && i !== slot.subcircuitId)
+      throw new Error("Public buffer appears outside its fixed placement.");
+  for(let g = 0; g < input.setup.l; g++) {
+    const source = layout.sourceForPublicWire(g);
+    let expected = runtime.Fr.zero;
+    if(source) {
+      // Public wires alone specialize placement index == subcircuit ID.
+      const slot = slots[source.subcircuitId];
+      if(!slot || slot.subcircuitId !== source.subcircuitId)
+        throw new Error("Missing fixed public-buffer placement.");
+      expected = runtime.Fr.readBufferElement(slot.values, source.localWireIndex);
+    }
+    if(!runtime.Fr.eq(expected, input.publicInputs[g]!))
+      throw new Error("Public input differs from witness or structural zero padding.");
   }
-  return bases.length === 0 ? runtime.G1.zero : runtime.G1.msmAffine(bases, scalars);
-}
-
-function validatePublicStatementLayout(
-  publicInputs: readonly FieldElement[],
-  setup: SetupParams,
-  infos: readonly ProverSubcircuitInfo[],
-  placements: ProverPlacementVariables,
-): void {
-  if (publicInputs.length !== setup.l) throw new Error(`Public statement length is ${publicInputs.length}, expected ${setup.l}.`);
-  const layout = PublicWireLayout.derive(setup, infos);
-  layout.validateRuntimeBufferPlacements(placements);
 }
 
 async function commit(
@@ -313,13 +255,4 @@ function constant(field: CurveRuntime["Fr"], value: FieldElement): DenseUnivaria
 
 function linear(field: CurveRuntime["Fr"], constantTerm: FieldElement, linearTerm: FieldElement): DenseUnivariatePolynomial {
   return DenseUnivariatePolynomial.fromCoefficients(field, field.concat([constantTerm, linearTerm]));
-}
-
-function taggedKey(key: TaggedQueryKey): string {
-  return `${key.placementIndex}:${key.subcircuitId}:${key.localWireIndex}`;
-}
-
-function bigintToSafeNumber(value: bigint, label: string): number {
-  if (value > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error(`${label} exceeds the supported integer range.`);
-  return Number(value);
 }

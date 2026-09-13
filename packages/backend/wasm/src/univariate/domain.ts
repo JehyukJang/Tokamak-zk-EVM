@@ -13,53 +13,35 @@ export interface UnivariateDomainShape {
   readonly arithmeticRoot: FieldElement;
   readonly connectionRoot: FieldElement;
 }
-
 /**
  * Derives the U1/U4 domains from the published library dimensions.
  *
- * `t` deliberately exceeds the real catalog size. Its unused ID suffix gives
- * the arithmetic domain a radix-two size without changing the selector or
- * library input formats.
+ * The arithmetic domain is n*s and the connection domain is m_I*s.
+ * The separate selection capacity t reserves its final ID for the empty circuit.
  */
-export function deriveUnivariateDomainShape(
-  field: FieldRuntime,
-  setup: SetupParams,
-): UnivariateDomainShape {
+export function deriveUnivariateDomainShape(field: FieldRuntime, setup: SetupParams): UnivariateDomainShape {
   validateSetupParams(setup);
-  const subcircuitCapacity = strictPowerOfTwoAbove(setup.s_D);
-  const arithmeticSize = checkedProduct("N_A", setup.n, setup.s_max, subcircuitCapacity);
+  const subcircuitCapacity = setup.t;
+  const arithmeticSize = checkedProduct("N_A", setup.n, setup.s_max);
   const connectionSize = checkedProduct("N_C", setup.l_D - setup.l, setup.s_max);
   const intersectionSize = greatestCommonDivisor(arithmeticSize, connectionSize);
-
   return {
     schema: UNIVARIATE_DOMAIN_CONTRACT.protocolSchema,
     subcircuitCapacity,
     arithmeticSize,
     connectionSize,
     intersectionSize,
-    unionSize: leastCommonMultiple(arithmeticSize, connectionSize),
+    unionSize: arithmeticSize + connectionSize - intersectionSize,
     arithmeticRoot: field.rootOfUnity(arithmeticSize),
     connectionRoot: field.rootOfUnity(connectionSize),
   };
 }
-
 /** U1's canonical flat arithmetic-domain index. */
-export function arithmeticIndex(
-  domain: UnivariateDomainShape,
-  setup: SetupParams,
-  placementIndex: number,
-  subcircuitId: number,
-  constraintRow: number,
-): number {
+export function arithmeticIndex(domain: UnivariateDomainShape, setup: SetupParams, placementIndex: number, subcircuitId: number, constraintRow: number): number {
   assertIndex(placementIndex, setup.s_max, "placement");
   assertIndex(subcircuitId, domain.subcircuitCapacity, "subcircuit");
   assertIndex(constraintRow, setup.n, "constraint row");
-  return checkedSum(
-    "U1 index",
-    checkedNonnegativeProduct("U1 row offset", setup.s_max, domain.subcircuitCapacity, constraintRow),
-    checkedNonnegativeProduct("U1 subcircuit offset", setup.s_max, subcircuitId),
-    placementIndex,
-  );
+  return checkedSum("U1 index", checkedNonnegativeProduct("U1 row offset", setup.s_max, constraintRow), placementIndex);
 }
 
 /** U4's canonical flat connection-domain index. */
@@ -129,26 +111,10 @@ export function connectionComplementAt(
 ): FieldElement {
   return vanishingQuotientAt(field, point, domain.arithmeticSize, domain.intersectionSize);
 }
-
-function strictPowerOfTwoAbove(value: number): number {
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new Error("s_D must be a positive safe integer.");
-  }
-
-  let capacity = 1;
-  while (capacity <= value) {
-    if (capacity > Number.MAX_SAFE_INTEGER / 2) {
-      throw new Error("t exceeds the supported safe-integer range.");
-    }
-    capacity *= 2;
-  }
-  return capacity;
-}
-
 function checkedProduct(name: string, ...values: readonly number[]): number {
   const result = values.reduce((product, value) => product * value, 1);
-  if (!Number.isSafeInteger(result) || result <= 1) {
-    throw new Error(`${name} must be a safe integer greater than one.`);
+  if(!Number.isSafeInteger(result) || result < 1) {
+    throw new Error(`${name} must be a positive safe integer.`);
   }
   return result;
 }
@@ -171,15 +137,6 @@ function checkedSum(name: string, ...values: readonly number[]): number {
   const result = values.reduce((sum, value) => sum + value, 0);
   if (!Number.isSafeInteger(result) || result < 0) {
     throw new Error(`${name} must be a non-negative safe integer.`);
-  }
-  return result;
-}
-
-function leastCommonMultiple(left: number, right: number): number {
-  const gcd = greatestCommonDivisor(left, right);
-  const result = (left / gcd) * right;
-  if (!Number.isSafeInteger(result)) {
-    throw new Error("Z_union domain size exceeds the supported safe-integer range.");
   }
   return result;
 }

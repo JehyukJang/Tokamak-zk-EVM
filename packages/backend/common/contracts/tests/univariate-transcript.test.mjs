@@ -75,9 +75,9 @@ test("six F4 rounds match the fixed Keccak preimages and challenge vectors", () 
   assert.deepEqual(actual, fixture.expected);
 });
 test("message cardinalities match the current proof and exclude fixed configuration", () => {
-  const proof = read("browser-artifact-contract.v1.json").artifacts.find(x => x.name === "univariate_proof");
+  const proof = read("univariate-artifact-contract.json").artifacts.find(x => x.name === "univariate_proof");
   const names = contract.rounds.flatMap(round => round.message).sort();
-  assert.deepEqual(names, proof.sections.flatMap(section => section.points.map(point => point.name)).sort());
+  assert.deepEqual(names, proof.fields.map(([name]) => ({ d_q_k: "D_QK", pi_chi: "Pi_chi", pi_plus: "Pi_plus", s_c: "s_C" }[name] ?? (name.startsWith("c_") || name.startsWith("d_") ? name.toUpperCase() : name))).sort());
   for (const label of ["C_fix", "crs", "selector", "permutation", "q_chi"]) assert.ok(!names.includes(label));
   for (let i = 1; i < 6; i++) assert.deepEqual(contract.rounds[i].input, contract.rounds[i - 1].challenges);
 });

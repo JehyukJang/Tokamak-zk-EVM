@@ -13,12 +13,12 @@ export interface AffinePointJson {
   readonly x: string;
   readonly y: string;
 }
-
 export interface G1Runtime {
   readonly zero: G1Point;
   readonly generator: G1Point;
   parseAffine(value: unknown): G1Point;
   formatAffine(value: G1Point): AffinePointJson;
+  assertValid(value: Uint8Array): void;
   toAffine(value: G1Point): G1Point;
   add(left: G1Point, right: G1Point): G1Point;
   sub(left: G1Point, right: G1Point): G1Point;
@@ -30,12 +30,12 @@ export interface G1Runtime {
   msmAffine(bases: readonly G1Point[], scalars: readonly FieldElement[]): Promise<G1Point>;
   msmAffineRaw(bases: Uint8Array, scalars: Uint8Array): Promise<G1Point>;
 }
-
 export interface G2Runtime {
   readonly zero: G2Point;
   readonly generator: G2Point;
   parseAffine(value: unknown): G2Point;
   formatAffine(value: G2Point): AffinePointJson;
+  assertValid(value: Uint8Array): void;
   toAffine(value: G2Point): G2Point;
   add(left: G2Point, right: G2Point): G2Point;
   sub(left: G2Point, right: G2Point): G2Point;
@@ -43,8 +43,8 @@ export interface G2Runtime {
   eq(left: G2Point, right: G2Point): boolean;
   isZero(value: G2Point): boolean;
   mulScalar(point: G2Point, scalar: FieldElement): G2Point;
+  msmAffineRaw(bases: Uint8Array, rawScalars: Uint8Array): Promise<G2Point>;
 }
-
 export function createG1Runtime(group: FfGroup, scalarField: FieldRuntime): G1Runtime {
   return {
     zero: group.zeroAffine,
@@ -53,26 +53,36 @@ export function createG1Runtime(group: FfGroup, scalarField: FieldRuntime): G1Ru
       const point = parseAffineJson(value);
       const x = parseCanonicalHex(point.x);
       const y = parseCanonicalHex(point.y);
-
-      if (x === 0n && y === 0n) {
+      if(x === 0n && y === 0n) {
         return group.zeroAffine;
       }
-
       return group.fromObject([x, y, 1n]);
     },
     formatAffine(value) {
-      if (group.isZero(value)) {
+      if(group.isZero(value)) {
         return {
           x: formatHex(0n, G1_COORDINATE_BYTES),
           y: formatHex(0n, G1_COORDINATE_BYTES),
         };
       }
-
-      const [x, y] = group.toObject(group.toAffine(value)) as [bigint, bigint, bigint];
+      const [x, y] = group.toObject(group.toAffine(value)) as [
+        bigint,
+        bigint,
+        bigint
+      ];
       return {
         x: formatHex(x, G1_COORDINATE_BYTES),
         y: formatHex(y, G1_COORDINATE_BYTES),
       };
+    },
+    assertValid(value) {
+      // The identity belongs to the subgroup. ffjavascript's affine scalar
+      // multiplication does not preserve its identity encoding.
+      if(group.isZero(value))
+        return;
+      if(!group.isValid(value) || !group.isZero(group.timesScalar(value, SCALAR_MODULUS))) {
+        throw new Error("Artifact point is not in the prime-order subgroup.");
+      }
     },
     toAffine(value) {
       return group.toAffine(value);
@@ -100,65 +110,79 @@ export function createG1Runtime(group: FfGroup, scalarField: FieldRuntime): G1Ru
       return group.timesFr(point, scalar);
     },
     async msmAffine(bases, scalars) {
-      if (bases.length !== scalars.length) {
+      if(bases.length !== scalars.length) {
         throw new Error("MSM bases and scalars must have the same length.");
       }
-
-      for (let index = 0; index < bases.length; index += 1) {
+      for(let index = 0; index < bases.length; index += 1) {
         assertG1AffinePoint(bases[index], `G1 MSM base ${index}`);
       }
-
       const rawScalars = scalars.map((scalar) => scalarField.toRawLittleEndian(scalar));
       return group.multiExpAffine(concatBytes(bases), concatBytes(rawScalars));
     },
     async msmAffineRaw(bases, scalars) {
-      if (bases.byteLength % G1_AFFINE_BYTES !== 0) {
+      if(bases.byteLength % G1_AFFINE_BYTES !== 0) {
         throw new Error("G1 MSM base buffer must contain whole affine G1 points.");
       }
-
       const count = bases.byteLength / G1_AFFINE_BYTES;
-      if (scalars.byteLength !== count * SCALAR_RAW_BYTES) {
+      if(scalars.byteLength !== count * SCALAR_RAW_BYTES) {
         throw new Error("G1 MSM scalar buffer length does not match the base count.");
       }
-
       return group.multiExpAffine(bases, scalars);
     },
   };
 }
-
 export function createG2Runtime(group: FfGroup): G2Runtime {
   return {
+    async msmAffineRaw(bases, scalars) {
+      if(bases.length % 192 !== 0 || scalars.length !== bases.length / 192 * 32)
+        throw new Error("G2 MSM length mismatch.");
+      return bases.length === 0 ? group.zeroAffine : group.multiExpAffine(bases, scalars);
+    },
     zero: group.zeroAffine,
     generator: group.oneAffine,
     parseAffine(value) {
       const point = parseAffineJson(value);
       const x = parseG2Coordinate(point.x);
       const y = parseG2Coordinate(point.y);
-
-      if (x[0] === 0n && x[1] === 0n && y[0] === 0n && y[1] === 0n) {
+      if(x[0] === 0n && x[1] === 0n && y[0] === 0n && y[1] === 0n) {
         return group.zeroAffine;
       }
-
       return group.fromObject([x, y, [1n, 0n]]);
     },
     formatAffine(value) {
-      if (group.isZero(value)) {
+      if(group.isZero(value)) {
         return {
           x: formatHex(0n, G2_COORDINATE_BYTES),
           y: formatHex(0n, G2_COORDINATE_BYTES),
         };
       }
-
       const [x, y] = group.toObject(group.toAffine(value)) as [
-        [bigint, bigint],
-        [bigint, bigint],
-        [bigint, bigint],
+        [
+          bigint,
+          bigint
+        ],
+        [
+          bigint,
+          bigint
+        ],
+        [
+          bigint,
+          bigint
+        ]
       ];
-
       return {
         x: formatG2Coordinate(x),
         y: formatG2Coordinate(y),
       };
+    },
+    assertValid(value) {
+      // The identity belongs to the subgroup. ffjavascript's affine scalar
+      // multiplication does not preserve its identity encoding.
+      if(group.isZero(value))
+        return;
+      if(!group.isValid(value) || !group.isZero(group.timesScalar(value, SCALAR_MODULUS))) {
+        throw new Error("Artifact point is not in the prime-order subgroup.");
+      }
     },
     toAffine(value) {
       return group.toAffine(value);
@@ -183,6 +207,7 @@ export function createG2Runtime(group: FfGroup): G2Runtime {
     },
   };
 }
+const SCALAR_MODULUS = 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001n;
 
 const G1_COORDINATE_BYTES = G1_AFFINE_BYTES / 2;
 const FQ_COORDINATE_BYTES = 48;

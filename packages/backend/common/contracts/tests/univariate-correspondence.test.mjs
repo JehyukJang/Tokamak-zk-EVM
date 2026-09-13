@@ -302,7 +302,7 @@ test("fixed binding joins the existing five pairing operands with the correct si
 });
 
 const crsContract = JSON.parse(readFileSync(new URL("../univariate-crs-chunk-contract.json", import.meta.url), "utf8"));
-const artifactContract = JSON.parse(readFileSync(new URL("../browser-artifact-contract.v1.json", import.meta.url), "utf8"));
+const artifactContract = JSON.parse(readFileSync(new URL("../univariate-artifact-contract.json", import.meta.url), "utf8"));
 
 test("domain vectors separate arithmetic coordinates from library selection", () => {
   const domain = JSON.parse(readFileSync(new URL("../univariate-domain-contract.v1.json", import.meta.url), "utf8"));
@@ -363,15 +363,11 @@ test("preprocess power windows encode S_C and shifted Z_u without unused powers"
 });
 
 test("preprocess output and proof carry only the current protocol elements", () => {
-  const [preprocess, proof] = artifactContract.artifacts;
-  assert.deepEqual(preprocess.sections.map(section => section.points.map(point => point.name)), [["S_C", "C_fix"], ["E_kappa"]]);
-  assert.deepEqual(proof.sections.map(section => section.elementCount), [10, 7]);
-  for (const artifact of artifactContract.artifacts) {
-    for (const section of artifact.sections) {
-      assert.equal(section.elementCount, section.points.length);
-      assert.deepEqual(section.points.map(point => point.index), section.points.map((_, i) => i));
-    }
-  }
-  assert.deepEqual(proof.sections[0].points.map(point => point.name), ["C_L", "C_H", "C_O", "D_Q", "D_QK", "C_D", "C_R", "C_Q", "Pi_chi", "Pi_plus"]);
-  assert.deepEqual(proof.sections[1].points.map(point => point.name), ["s_C", "u", "v", "w", "b", "r", "r_plus"]);
+  const proof = artifactContract.artifacts.find(a => a.record === "ProofBytes");
+  const preprocess = artifactContract.artifacts.find(a => a.record === "PreprocessBytes");
+  assert.deepEqual(preprocess.fields, [["s_c","g1"],["c_fix","g1"],["e_kappa","g2"]]);
+  assert.deepEqual(proof.fields.filter(([,kind]) => kind === "g1").map(([name]) => name),
+    ["c_l","c_h","c_o","d_q","d_q_k","c_d","c_r","c_q","pi_chi","pi_plus"]);
+  assert.deepEqual(proof.fields.filter(([,kind]) => kind === "scalar").map(([name]) => name),
+    ["s_c","u","v","w","b","r","r_plus"]);
 });

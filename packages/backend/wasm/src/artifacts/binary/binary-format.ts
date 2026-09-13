@@ -8,14 +8,11 @@ export const BINARY_DIGEST_ENTRY_BYTES = 40;
 export const BINARY_SECTION_ENTRY_BYTES = 96;
 export const BINARY_SECTION_LABEL_BYTES = 40;
 export const BINARY_DIGEST_BYTES = 32;
-
 export enum BinaryArtifactFileKind {
   Instance = 1,
   ProverPlacementVariables = 5,
   ProverSelector = 8,
-  ProverPermutation = 9,
-  UnivariateVerifierPreprocess = 13,
-  UnivariateProof = 14,
+  ProverPermutation = 9
 }
 
 export const BINARY_SELF_DIGEST_ENTRY_TYPE = 1;

@@ -340,6 +340,62 @@ fn current_prover_matches_scalar_oracle_with_fixed_free_padding_and_selection_ho
             })
         };
         let (proof, ch) = run(&maps, &instance).unwrap();
+        // Opt-in cross-language vectors are emitted only by this test oracle.
+        // Never expose deterministic proof masks on the production CLI.
+        if let Some(output) = std::env::var_os("WASM_PARITY_OUTPUT") {
+            let path = std::path::PathBuf::from(output).join(format!("n{n}"));
+            std::fs::create_dir(&path).unwrap();
+            for (name, bytes) in [
+                (
+                    "tau_sequence.rkyv",
+                    archive::to_bytes::<archive::rancor::Error>(&generated.tau).unwrap(),
+                ),
+                (
+                    "prover_keys.rkyv",
+                    archive::to_bytes::<archive::rancor::Error>(&generated.prover).unwrap(),
+                ),
+                (
+                    "preprocess_keys.rkyv",
+                    archive::to_bytes::<archive::rancor::Error>(&generated.preprocess).unwrap(),
+                ),
+                (
+                    "verifier_keys.rkyv",
+                    archive::to_bytes::<archive::rancor::Error>(&generated.verifier).unwrap(),
+                ),
+            ] {
+                std::fs::write(path.join(name), bytes).unwrap();
+            }
+            let scalar = |v: ScalarField| {
+                let mut bytes = v.to_bytes_le();
+                bytes.reverse();
+                format!("0x{}", hex::encode(bytes))
+            };
+            let data = serde_json::json!({
+                "setup": { "l_free": setup.l_free, "l": setup.l, "l_user_out": setup.l_user_out,
+                    "l_user": setup.l_user, "l_D": setup.l_D, "m_D": setup.m_D, "n": setup.n,
+                    "m": setup.m, "t": setup.t, "s_D": setup.s_D, "s_max": setup.s_max },
+                "infos": infos.iter().map(|info| serde_json::json!({
+                    "id": info.id, "name": info.name, "Nwires": info.Nwires, "Nconsts": info.Nconsts,
+                    "Out_idx": info.Out_idx, "In_idx": info.In_idx, "flattenMap": info.flattenMap,
+                    "bufferDirection": if info.id < 2 { Some("out") } else { None }
+                })).collect::<Vec<_>>(),
+                "selector": selector,
+                "witness": slots.iter().map(|slot| slot.as_ref().map(|v| v.iter().copied().map(scalar).collect::<Vec<_>>())).collect::<Vec<_>>(),
+                "publicInputs": instance.map(scalar),
+                "masks": (2..15).map(|i| scalar(f(i))).collect::<Vec<_>>(),
+                "rows": { "A": [[ [1, "0x1"] ]], "B": [[ [0, "0x1"] ]], "C": [[ [2, "0x1"] ]] }
+            });
+            std::fs::write(
+                path.join("fixture.json"),
+                serde_json::to_vec_pretty(&data).unwrap(),
+            )
+            .unwrap();
+            std::fs::write(
+                path.join("univariate_proof.bin"),
+                super::super::parity_tests::expected_bytes(&proof),
+            )
+            .unwrap();
+        }
         super::super::parity_tests::compare(
             ProvingInput {
                 crs: &crs,
@@ -609,6 +665,32 @@ fn singleton_domains_and_all_empty_selection_produce_a_current_proof() {
         weights: vec![f(19); 4],
     };
     let generated = generate(&setup, &public, &circuits, &secret, g1, g2).unwrap();
+    let parity_path = std::env::var_os("WASM_PARITY_OUTPUT")
+        .map(|root| std::path::PathBuf::from(root).join("singleton"));
+    if let Some(path) = &parity_path {
+        use backend_univariate_crs_interface::archive;
+        std::fs::create_dir(path).unwrap();
+        for (name, bytes) in [
+            (
+                "tau_sequence.rkyv",
+                archive::to_bytes::<archive::rancor::Error>(&generated.tau).unwrap(),
+            ),
+            (
+                "prover_keys.rkyv",
+                archive::to_bytes::<archive::rancor::Error>(&generated.prover).unwrap(),
+            ),
+            (
+                "preprocess_keys.rkyv",
+                archive::to_bytes::<archive::rancor::Error>(&generated.preprocess).unwrap(),
+            ),
+            (
+                "verifier_keys.rkyv",
+                archive::to_bytes::<archive::rancor::Error>(&generated.verifier).unwrap(),
+            ),
+        ] {
+            std::fs::write(path.join(name), bytes).unwrap();
+        }
+    }
     let crs = ProverCrs::new(generated.tau, generated.prover, &setup, &circuits, &public).unwrap();
     let selector = [None];
     let slots = [None];
@@ -633,6 +715,29 @@ fn singleton_domains_and_all_empty_selection_produce_a_current_proof() {
     );
     assert_eq!(ch, derive_proof_challenges(&[f(0)], &proof, 1, 1));
     assert_eq!(proof.s_c.0, f(1));
+    if let Some(path) = &parity_path {
+        let scalar = |v: ScalarField| {
+            let mut bytes = v.to_bytes_le();
+            bytes.reverse();
+            format!("0x{}", hex::encode(bytes))
+        };
+        let data = serde_json::json!({
+            "setup": {"l_free":1,"l":1,"l_user_out":0,"l_user":0,"l_D":2,"m_D":4,"n":1,"m":4,"t":2,"s_D":1,"s_max":1},
+            "infos": [{"id":0,"name":info.name,"Nwires":3,"Nconsts":1,"Out_idx":[1,0],"In_idx":[2,1],"flattenMap":[1,2,3],"bufferDirection":"out"}],
+            "selector": [null], "witness": [null], "publicInputs": ["0x0"],
+            "masks": masks.u.into_iter().chain(masks.v).chain(masks.w).chain(masks.b).chain(masks.r).chain([masks.selection]).map(scalar).collect::<Vec<_>>()
+        });
+        std::fs::write(
+            path.join("fixture.json"),
+            serde_json::to_vec_pretty(&data).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(
+            path.join("univariate_proof.bin"),
+            super::super::parity_tests::expected_bytes(&proof),
+        )
+        .unwrap();
+    }
     super::super::parity_tests::compare(
         ProvingInput {
             crs: &crs,

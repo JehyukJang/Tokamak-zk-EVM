@@ -1,87 +1,26 @@
 import { requireBinaryArtifactSection } from "../../artifacts/binary/binary-artifact-file.js";
 import { assertBinaryArtifactCompatibility } from "../../artifacts/binary/compatibility.js";
 import { admitRuntimeBinaryArtifact } from "../../artifacts/binary/runtime-admission.js";
-import {
-  INSTANCE_V1_SPEC,
-  UNIVARIATE_VERIFIER_PREPROCESS_V1_SPEC,
-} from "../../generated/browser-artifact-contracts.generated.js";
-import { GENERATED_SETUP_PARAMS } from "../../generated/active/setup.generated.js";
+import { INSTANCE_V1_SPEC } from "../../generated/browser-artifact-contracts.generated.js";
+import { decodePreprocessBytes } from "../../generated/artifact-bytes.generated.js";
+import { FIXED_VERIFIER } from "../generated/active/verifier.generated.js";
 import type { CurveRuntime } from "../../runtime/curve/curve.js";
-import type { FieldElement } from "../../runtime/field/field-types.js";
-import { loadPreprocessInputFromBinaryInput } from "../../preprocess/api/binary-input.js";
-import { preprocessSnark } from "../../preprocess/protocol/preprocess-snark.js";
-import { parseUnivariateVerifierCrs, type UnivariateCrsChunkInput } from "../../univariate/crs.js";
 import { decodeUnivariateProof } from "../../univariate/proof.js";
-import {
-  GENERATED_PROVER_SUBCIRCUIT_INFOS,
-} from "../../prover/generated/active/subcircuit-library.generated.js";
+import { decodePoint } from "../../univariate/artifact-points.js";
 import type { UnivariateReferenceVerifierInput } from "../../univariate/reference-verifier.js";
-
 export interface VerifierBinaryInput {
   readonly proof: Uint8Array;
   readonly instance: Uint8Array;
-  readonly selector: Uint8Array;
-  readonly permutation: Uint8Array;
-  readonly preprocessCrs: UnivariateCrsChunkInput;
   readonly verifierPreprocess: Uint8Array;
-  readonly verifierCrs: UnivariateCrsChunkInput;
 }
-
-export async function loadVerifierInputFromBinaryInput(
-  runtime: CurveRuntime,
-  input: VerifierBinaryInput,
-): Promise<UnivariateReferenceVerifierInput> {
-  const [instance, preprocess] = await Promise.all([
-    admitRuntimeBinaryArtifact(input.instance, INSTANCE_V1_SPEC.kind, INSTANCE_V1_SPEC),
-    admitRuntimeBinaryArtifact(
-      input.verifierPreprocess,
-      UNIVARIATE_VERIFIER_PREPROCESS_V1_SPEC.kind,
-      UNIVARIATE_VERIFIER_PREPROCESS_V1_SPEC,
-    ),
-  ]);
-  for (const artifact of [instance, preprocess]) assertBinaryArtifactCompatibility(artifact);
-  const preprocessInput = await loadPreprocessInputFromBinaryInput({
-    selector: input.selector,
-    permutation: input.permutation,
-    preprocessCrs: input.preprocessCrs,
-  });
-  const expected = await preprocessSnark(runtime, preprocessInput);
-  const commitments = parsePreprocess(runtime, preprocess);
-  if (!runtime.G1.eq(expected.sKappa, commitments[0]) || !runtime.G1.eq(expected.sC, commitments[1])) {
-    throw new Error("Verifier preprocess does not match the admitted selector and permutation.");
-  }
+export async function loadVerifierInputFromBinaryInput(runtime: CurveRuntime, input: VerifierBinaryInput): Promise<UnivariateReferenceVerifierInput> {
+  const instance = admitRuntimeBinaryArtifact(input.instance, INSTANCE_V1_SPEC.kind, INSTANCE_V1_SPEC);
+  assertBinaryArtifactCompatibility(instance);
+  const [publicSpec] = INSTANCE_V1_SPEC.sections;
+  const publicInputs = runtime.Fr.split(requireBinaryArtifactSection(instance, publicSpec).data);
+  const p = decodePreprocessBytes(input.verifierPreprocess);
   return {
-    setup: GENERATED_SETUP_PARAMS,
-    subcircuitInfos: GENERATED_PROVER_SUBCIRCUIT_INFOS,
-    selector: preprocessInput.selector,
-    publicInputs: parsePublicInputs(runtime, instance),
-    crs: await parseUnivariateVerifierCrs(input.verifierCrs),
-    preprocess: commitments,
-    proof: decodeUnivariateProof(runtime, input.proof),
+    publicInputs, fixed: FIXED_VERIFIER, proof: decodeUnivariateProof(runtime, input.proof),
+    preprocess: { sC: decodePoint(runtime, p.s_c), cFix: decodePoint(runtime, p.c_fix), eKappa: decodePoint(runtime, p.e_kappa, true) },
   };
-}
-
-function parsePreprocess(
-  runtime: CurveRuntime,
-  artifact: ReturnType<typeof admitRuntimeBinaryArtifact>,
-): readonly [Uint8Array, Uint8Array] {
-  const [spec] = UNIVARIATE_VERIFIER_PREPROCESS_V1_SPEC.sections;
-  const section = requireBinaryArtifactSection(artifact, spec);
-  return [
-    runtime.G1.toAffine(section.data.subarray(0, section.elementByteLength)),
-    runtime.G1.toAffine(section.data.subarray(section.elementByteLength, 2 * section.elementByteLength)),
-  ];
-}
-
-function parsePublicInputs(
-  runtime: CurveRuntime,
-  artifact: ReturnType<typeof admitRuntimeBinaryArtifact>,
-): readonly FieldElement[] {
-  const [publicSpec, functionSpec] = INSTANCE_V1_SPEC.sections;
-  const values = [
-    ...runtime.Fr.split(requireBinaryArtifactSection(artifact, publicSpec).data),
-    ...runtime.Fr.split(requireBinaryArtifactSection(artifact, functionSpec).data),
-  ];
-  if (values.length !== GENERATED_SETUP_PARAMS.l) throw new Error("Public instance does not match the active setup.");
-  return values;
 }

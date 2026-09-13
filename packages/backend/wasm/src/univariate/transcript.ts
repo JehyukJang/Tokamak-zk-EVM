@@ -47,97 +47,69 @@ export class CanonicalTranscriptEncoder {
     return output;
   }
 }
-
 /** F4 Keccak-256 challenge state for the univariate protocol. */
 export class UnivariateTranscript {
-  private history = new Uint8Array();
-  private readonly statement: Uint8Array;
-
-  constructor(
-    private readonly field: FieldRuntime,
-    publicInputs: readonly FieldElement[],
-  ) {
-    this.statement = encodePublicInputs(field, publicInputs);
+  private input: Uint8Array;
+  private message: Uint8Array = new Uint8Array();
+  constructor(private readonly field: FieldRuntime, publicInputs: readonly FieldElement[]) {
+    this.input = encodePublicInputs(field, publicInputs);
   }
-
-  appendMessageBlock(block: number, encodedMessage: Uint8Array): void {
-    this.append(
-      new CanonicalTranscriptEncoder()
-        .u32("message-block", block)
-        .bytes("message", encodedMessage)
-        .finish(),
-    );
+  setMessage(encodedMessage: Uint8Array): void {
+    this.message = encodedMessage;
   }
-
   challenge(round: number, outputIndex: number): FieldElement {
     const value = this.sampleValue(round, outputIndex, () => true);
-    this.recordChallenge(round, outputIndex, value);
+    this.recordChallenge(outputIndex, value);
     return value;
   }
-
   /** Samples F3's `(beta, gamma_C)` from the same F4 transcript state. */
-  challengePair(round: number): readonly [FieldElement, FieldElement] {
+  challengePair(round: number): readonly [
+    FieldElement,
+    FieldElement
+  ] {
     const first = this.sampleValue(round, 0, () => true);
     const second = this.sampleValue(round, 1, () => true);
-    this.recordChallenge(round, 0, first);
-    this.recordChallenge(round, 1, second);
+    this.input = new CanonicalTranscriptEncoder()
+      .scalar("challenge.0", this.field, first)
+      .scalar("challenge.1", this.field, second).finish();
     return [first, second];
   }
-
   zeta(arithmeticSize: number, connectionSize: number): FieldElement {
-    const value = this.sampleValue(4, 0, (candidate) => (
-      !this.field.eq(candidate, this.field.zero)
+    const value = this.sampleValue(4, 0, (candidate) => (!this.field.eq(candidate, this.field.zero)
       && !this.field.eq(this.field.pow(candidate, arithmeticSize), this.field.one)
-      && !this.field.eq(this.field.pow(candidate, connectionSize), this.field.one)
-    ));
-    this.recordChallenge(4, 0, value);
+      && !this.field.eq(this.field.pow(candidate, connectionSize), this.field.one)));
+    this.recordChallenge(0, value);
     return value;
   }
-
   nonzeroChallenge(round: number, outputIndex: number): FieldElement {
     const value = this.sampleValue(round, outputIndex, (candidate) => !this.field.eq(candidate, this.field.zero));
-    this.recordChallenge(round, outputIndex, value);
+    this.recordChallenge(outputIndex, value);
     return value;
   }
-
   private sampleValue(round: number, outputIndex: number, accepts: (value: FieldElement) => boolean): FieldElement {
-    for (let counter = 0; counter <= 0xffffffff; counter += 1) {
+    for(let counter = 0; counter <= 0xffffffff; counter += 1) {
       const input = new CanonicalTranscriptEncoder()
         .bytes("protocol", TRANSCRIPT_DOMAIN)
         .u32("round", round)
         .u32("output-index", outputIndex)
-        .bytes("statement", this.statement)
-        .bytes("history", this.history)
+        .bytes("input", this.input)
+        .bytes("message", this.message)
         .u32("rejection-counter", counter)
         .finish();
       const candidate = bytesToBigInt(keccak256(input));
-      if (candidate >= this.field.modulus) {
+      if(candidate >= this.field.modulus) {
         continue;
       }
       const value = this.field.fromBigInt(candidate);
-      if (!accepts(value)) {
+      if(!accepts(value)) {
         continue;
       }
       return value;
     }
     throw new Error("Fiat--Shamir rejection counter overflow.");
   }
-
-  private recordChallenge(round: number, outputIndex: number, value: FieldElement): void {
-    this.append(
-      new CanonicalTranscriptEncoder()
-        .u32("challenge-round", round)
-        .u32("challenge-output-index", outputIndex)
-        .scalar("challenge", this.field, value)
-        .finish(),
-    );
-  }
-
-  private append(value: Uint8Array): void {
-    const next = new Uint8Array(this.history.byteLength + value.byteLength);
-    next.set(this.history);
-    next.set(value, this.history.byteLength);
-    this.history = next;
+  private recordChallenge(outputIndex: number, value: FieldElement): void {
+    this.input = new CanonicalTranscriptEncoder().scalar(`challenge.${outputIndex}`, this.field, value).finish();
   }
 }
 
@@ -162,18 +134,14 @@ export function encodeG1MessageBlock(
   }
   return encoder.finish();
 }
-
-/** Encodes F4's nine scalar evaluation values in their fixed protocol order. */
-export function encodeEvaluationMessageBlock(
-  field: FieldRuntime,
-  evaluations: readonly FieldElement[],
-): Uint8Array {
-  if (evaluations.length !== 9) {
-    throw new Error("F4 evaluation message must contain exactly nine field elements.");
+/** Encodes F4's seven scalar evaluation values in their fixed protocol order. */
+export function encodeEvaluationMessageBlock(field: FieldRuntime, evaluations: readonly FieldElement[]): Uint8Array {
+  if(evaluations.length !== 7) {
+    throw new Error("F4 evaluation message must contain exactly seven field elements.");
   }
-  const labels = ["sA", "sC", "u", "v", "w", "b", "qZeta", "r", "rPlus"];
+  const labels = ["s_C", "u", "v", "w", "b", "r", "r_plus"];
   let encoder = new CanonicalTranscriptEncoder();
-  for (const [index, value] of evaluations.entries()) {
+  for(const [index, value] of evaluations.entries()) {
     encoder = encoder.scalar(labels[index]!, field, value);
   }
   return encoder.finish();

@@ -1,90 +1,40 @@
-import { createBinaryArtifactFile, requireBinaryArtifactSection } from "../artifacts/binary/binary-artifact-file.js";
-import type { BinaryArtifactFileView } from "../artifacts/binary/binary-format.js";
-import { admitRuntimeBinaryArtifact } from "../artifacts/binary/runtime-admission.js";
-import { UNIVARIATE_PROOF_V1_SPEC } from "../generated/browser-artifact-contracts.generated.js";
+import { encodeProofBytes, decodeProofBytes } from "../generated/artifact-bytes.generated.js";
 import type { CurveRuntime } from "../runtime/curve/curve.js";
 import type { FieldElement } from "../runtime/field/field-types.js";
 import type { G1Point } from "../runtime/group/group.js";
-import { BACKEND_WASM_PACKAGE_VERSION } from "../version.js";
-
-/** F5's exact public proof object: eleven affine G1 values and nine scalars. */
+import { encodePoint, decodePoint, decodeScalar } from "./artifact-points.js";
 export interface UnivariateProof {
   readonly g1: readonly [
-    G1Point, G1Point, G1Point, G1Point, G1Point, G1Point,
-    G1Point, G1Point, G1Point, G1Point, G1Point,
+    G1Point,
+    G1Point,
+    G1Point,
+    G1Point,
+    G1Point,
+    G1Point,
+    G1Point,
+    G1Point,
+    G1Point,
+    G1Point
   ];
   readonly evaluations: readonly [
-    FieldElement, FieldElement, FieldElement, FieldElement, FieldElement,
-    FieldElement, FieldElement, FieldElement, FieldElement,
+    FieldElement,
+    FieldElement,
+    FieldElement,
+    FieldElement,
+    FieldElement,
+    FieldElement,
+    FieldElement
   ];
 }
-
 export async function encodeUnivariateProof(runtime: CurveRuntime, proof: UnivariateProof): Promise<Uint8Array> {
-  const [g1Section, evaluationSection] = UNIVARIATE_PROOF_V1_SPEC.sections;
-  const g1 = proof.g1.map(point => runtime.G1.toAffine(point));
-  const evaluations = runtime.Fr.concat(proof.evaluations);
-  return createBinaryArtifactFile({
-    kind: UNIVARIATE_PROOF_V1_SPEC.kind,
-    sourcePackageVersion: BACKEND_WASM_PACKAGE_VERSION,
-    sections: [
-      {
-        ...g1Section,
-        elementCount: g1.length,
-        elementByteLength: g1[0]!.byteLength,
-        data: concat(g1),
-      },
-      {
-        ...evaluationSection,
-        elementCount: proof.evaluations.length,
-        elementByteLength: runtime.Fr.byteLength,
-        data: evaluations,
-      },
-    ],
-  });
+  const [c_l, c_h, c_o, d_q, d_q_k, c_d, c_r, c_q, pi_chi, pi_plus] = proof.g1.map(p => encodePoint(runtime, p));
+  const [s_c, u, v, w, b, r, r_plus] = proof.evaluations.map(v => runtime.Fr.toRawLittleEndian(v));
+  return encodeProofBytes({ c_l, c_h, c_o, d_q, d_q_k, c_d, c_r, c_q, pi_chi, pi_plus, s_c, u, v, w, b, r, r_plus });
 }
-
 export function decodeUnivariateProof(runtime: CurveRuntime, bytes: Uint8Array): UnivariateProof {
-  const artifact = admitRuntimeBinaryArtifact(
-    bytes,
-    UNIVARIATE_PROOF_V1_SPEC.kind,
-    UNIVARIATE_PROOF_V1_SPEC,
-  );
-  return decodeUnivariateProofArtifact(runtime, artifact);
-}
-
-export function decodeUnivariateProofArtifact(
-  runtime: CurveRuntime,
-  artifact: BinaryArtifactFileView,
-): UnivariateProof {
-  const [g1Spec, evaluationSpec] = UNIVARIATE_PROOF_V1_SPEC.sections;
-  const g1Section = requireBinaryArtifactSection(artifact, g1Spec);
-  const evaluationSection = requireBinaryArtifactSection(artifact, evaluationSpec);
-  const g1 = Array.from({ length: 11 }, (_, index) =>
-    runtime.G1.toAffine(g1Section.data.subarray(index * g1Section.elementByteLength, (index + 1) * g1Section.elementByteLength)),
-  );
-  const evaluations = runtime.Fr.split(evaluationSection.data);
+  const p = decodeProofBytes(bytes);
   return {
-    g1: tuple11(g1),
-    evaluations: tuple9(evaluations),
+    g1: [p.c_l, p.c_h, p.c_o, p.d_q, p.d_q_k, p.c_d, p.c_r, p.c_q, p.pi_chi, p.pi_plus].map(p => decodePoint(runtime, p)) as unknown as UnivariateProof["g1"],
+    evaluations: [p.s_c, p.u, p.v, p.w, p.b, p.r, p.r_plus].map(v => decodeScalar(runtime, v)) as unknown as UnivariateProof["evaluations"],
   };
-}
-
-function concat(points: readonly Uint8Array[]): Uint8Array {
-  const result = new Uint8Array(points.reduce((length, point) => length + point.byteLength, 0));
-  let offset = 0;
-  for (const point of points) {
-    result.set(point, offset);
-    offset += point.byteLength;
-  }
-  return result;
-}
-
-function tuple11<T>(values: readonly T[]): [T, T, T, T, T, T, T, T, T, T, T] {
-  if (values.length !== 11) throw new Error("F5 proof must contain exactly eleven G1 values.");
-  return values as [T, T, T, T, T, T, T, T, T, T, T];
-}
-
-function tuple9<T>(values: readonly T[]): [T, T, T, T, T, T, T, T, T] {
-  if (values.length !== 9) throw new Error("F5 proof must contain exactly nine scalar values.");
-  return values as [T, T, T, T, T, T, T, T, T];
 }

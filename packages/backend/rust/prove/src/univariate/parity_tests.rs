@@ -3,7 +3,7 @@ use engine::{Cpu, Icicle};
 use icicle_bls12_381::curve::ScalarField;
 use libs::{univariate_proof::UnivariateProof, univariate_relation::UnivariateSubcircuit};
 
-fn expected_bytes(p: &UnivariateProof) -> Vec<u8> {
+pub(super) fn expected_bytes(p: &UnivariateProof) -> Vec<u8> {
     use icicle_core::traits::FieldImpl;
     let mut bytes = Vec::new();
     for g in [
@@ -159,12 +159,22 @@ fn check<E: Engine>(
     let (proof, ch) = run(&data).unwrap();
     let bytes = proof.encode().unwrap();
     let replay = libs::univariate_transcript::derive_binary_proof_challenges(
-        &data.public_inputs[..old.setup.l_free], &proof,
-        old.crs.shape.arithmetic_domain_size, old.crs.shape.connection_domain_size,
+        &data.public_inputs[..old.setup.l_free],
+        &proof,
+        old.crs.shape.arithmetic_domain_size,
+        old.crs.shape.connection_domain_size,
     );
     assert_eq!(
         [ch.upsilon, ch.beta, ch.gamma_c, ch.theta, ch.chi, ch.varpi, ch.mu],
-        [replay.upsilon, replay.beta, replay.gamma_c, replay.theta, replay.chi, replay.varpi, replay.mu]
+        [
+            replay.upsilon,
+            replay.beta,
+            replay.gamma_c,
+            replay.theta,
+            replay.chi,
+            replay.varpi,
+            replay.mu
+        ]
     );
     assert_eq!(bytes, expected_bytes(expected));
     let legacy = libs::univariate_transcript::derive_proof_challenges(

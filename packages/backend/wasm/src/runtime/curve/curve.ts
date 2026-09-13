@@ -78,7 +78,6 @@ export type FfWorkerCallParam =
   | {
       readonly val: number;
     };
-
 export interface FfGroup {
   readonly zero: Uint8Array;
   readonly zeroAffine: Uint8Array;
@@ -93,18 +92,28 @@ export interface FfGroup {
   isZero(value: Uint8Array): boolean;
   toAffine(value: Uint8Array): Uint8Array;
   toJacobian(value: Uint8Array): Uint8Array;
+  isValid(point: Uint8Array): boolean;
+  timesScalar(point: Uint8Array, scalar: bigint): Uint8Array;
   timesFr(point: Uint8Array, scalar: Uint8Array): Uint8Array;
   toObject(value: Uint8Array): unknown[];
   fromObject(value: unknown[]): Uint8Array;
   multiExp(bases: Uint8Array, scalars: Uint8Array): Promise<Uint8Array>;
   multiExpAffine(bases: Uint8Array, scalars: Uint8Array): Promise<Uint8Array>;
 }
-
 export interface FfCurve {
   readonly name: "bls12381";
   readonly Fr: FfField;
   readonly G1: FfGroup;
   readonly G2: FfGroup;
+  readonly Gt: {
+    readonly one: Uint8Array;
+    mul(a: Uint8Array, b: Uint8Array): Uint8Array;
+    eq(a: Uint8Array, b: Uint8Array): boolean;
+  };
+  prepareG1(point: Uint8Array): Uint8Array;
+  prepareG2(point: Uint8Array): Uint8Array;
+  millerLoop(p: Uint8Array, q: Uint8Array): Uint8Array;
+  finalExponentiation(value: Uint8Array): Uint8Array;
   pairingEq(...terms: Uint8Array[]): Promise<boolean>;
   terminate?(): Promise<void>;
 }

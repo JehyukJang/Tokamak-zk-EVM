@@ -44,39 +44,38 @@ export async function install(options: PreprocessInstallOptions = {}): Promise<P
 
   return installationInfo();
 }
-
 export async function preprocess(input: PreprocessInput): Promise<Uint8Array> {
   const installedRuntime = runtime;
-  if (installedRuntime === undefined) {
+  if(installedRuntime === undefined) {
     throw new BackendWasmError('INSTALL_REQUIRED', 'Call preprocess.install() successfully before preprocess().');
   }
-  if (busy) {
+  if(busy) {
     throw new BackendWasmError('BUSY', 'Preprocess is already running.');
   }
-
-  assertNamedBinaryInput(input, 'Preprocess', ['selector', 'permutation']);
+  assertNamedBinaryInput(input, 'Preprocess', ['selector', 'permutation', 'instance']);
   assertNamedCrsInput(input, 'Preprocess', ['preprocessCrs']);
   busy = true;
-
   try {
     let runtimeInput;
     try {
-      runtimeInput = await loadPreprocessInputFromBinaryInput(input);
-    } catch (cause) {
+      runtimeInput = await loadPreprocessInputFromBinaryInput(installedRuntime, input);
+    }
+    catch(cause) {
       throw new BackendWasmError('INVALID_INPUT', 'The preprocess input binaries could not be decoded.', { cause });
     }
-
     try {
       const output = await preprocessSnark(installedRuntime, runtimeInput, {
         denseMsmChunkPoints: 2 ** chunkSizeExponent,
       });
-      return await createPreprocessOutput(installedRuntime, output.sKappa, output.sC);
-    } catch (cause) {
+      return await createPreprocessOutput(installedRuntime, output);
+    }
+    catch(cause) {
       throw new BackendWasmError('RUNTIME_FAILED', 'The preprocess runtime failed.', {
         cause,
       });
     }
-  } finally {
+  }
+  finally {
     busy = false;
   }
 }

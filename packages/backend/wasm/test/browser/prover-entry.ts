@@ -98,24 +98,22 @@ async function main(): Promise<void> {
     timings,
   };
 }
-
 async function loadPreparedBinaryFixture(): Promise<BinaryWorkflowFixture> {
-  const [witness, selector, permutation, instance, crsManifest] =
-    await Promise.all([
-      fetchBinary("/fixtures/small/runtime/witness.bin"),
-      fetchBinary("/fixtures/small/runtime/selector.bin"),
-      fetchBinary("/fixtures/small/runtime/permutation.bin"),
-      fetchBinary("/fixtures/small/runtime/instance.bin"),
-      fetchJson("/fixtures/small/runtime/crs/univariate-crs-manifest.json"),
-    ]);
+  const [witness, selector, permutation, instance, crsManifest] = await Promise.all([
+    fetchBinary("/fixtures/small/runtime/witness.bin"),
+    fetchBinary("/fixtures/small/runtime/selector.bin"),
+    fetchBinary("/fixtures/small/runtime/permutation.bin"),
+    fetchBinary("/fixtures/small/runtime/instance.bin"),
+    fetchJson("/fixtures/small/runtime/crs/univariate-crs-manifest.json"),
+  ]);
   const crs = {
     manifest: crsManifest,
     loadChunk: (relativePath: string) => fetchBinary(`/fixtures/small/runtime/crs/${relativePath}`),
   };
   return {
     prover: { witness, selector, permutation, instance, proverCrs: crs },
-    preprocess: { selector, permutation, preprocessCrs: crs },
-    verifier: { instance, selector, permutation, preprocessCrs: crs, verifierCrs: crs },
+    preprocess: { selector, permutation, instance, preprocessCrs: crs },
+    verifier: { instance },
   };
 }
 

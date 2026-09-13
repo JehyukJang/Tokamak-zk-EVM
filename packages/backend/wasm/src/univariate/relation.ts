@@ -387,8 +387,8 @@ function assertRelationInputs(
   if (subcircuits.length !== setup.s_D) {
     throw new Error(`Subcircuit catalog has ${subcircuits.length} entries, expected ${setup.s_D}.`);
   }
-  if (domain.arithmeticSize <= 1 || domain.connectionSize <= 1) {
-    throw new Error("Univariate domains must be nontrivial.");
+  if (domain.arithmeticSize < 1 || domain.connectionSize < 1) {
+    throw new Error("Univariate domains must be nonempty.");
   }
 }
 

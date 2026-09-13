@@ -11,7 +11,6 @@ import {
   type UnivariateSubcircuit,
 } from "../../../src/univariate/relation.js";
 import { arithmeticIndex, connectionIndex, deriveUnivariateDomainShape } from "../../../src/univariate/domain.js";
-
 interface RelationFixture {
   readonly setup: {
     readonly l_free: number;
@@ -20,6 +19,8 @@ interface RelationFixture {
     readonly l_user: number;
     readonly l_D: number;
     readonly m_D: number;
+    readonly m: number;
+    readonly t: number;
     readonly n: number;
     readonly s_D: number;
     readonly s_max: number;
@@ -31,12 +32,29 @@ interface RelationFixture {
     readonly aActiveWires: readonly number[];
     readonly bActiveWires: readonly number[];
     readonly cActiveWires: readonly number[];
-    readonly aRows: readonly (readonly (readonly [number, number])[])[];
-    readonly bRows: readonly (readonly (readonly [number, number])[])[];
-    readonly cRows: readonly (readonly (readonly [number, number])[])[];
+    readonly aRows: readonly (readonly (readonly [
+      number,
+      number
+    ])[])[];
+    readonly bRows: readonly (readonly (readonly [
+      number,
+      number
+    ])[])[];
+    readonly cRows: readonly (readonly (readonly [
+      number,
+      number
+    ])[])[];
   }[];
-  readonly witnessesBySlot: readonly ({ readonly subcircuitId: number; readonly values: readonly number[] } | null)[];
-  readonly permutation: readonly { readonly row: number; readonly col: number; readonly X: number; readonly Y: number }[];
+  readonly witnessesBySlot: readonly ({
+    readonly subcircuitId: number;
+    readonly values: readonly number[];
+  } | null)[];
+  readonly permutation: readonly {
+    readonly row: number;
+    readonly col: number;
+    readonly X: number;
+    readonly Y: number;
+  }[];
   readonly expected: {
     readonly uA: readonly number[];
     readonly vA: readonly number[];

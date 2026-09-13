@@ -8,27 +8,14 @@ const enc = contract.encoding;
 const widths = { g1: 2 * enc.baseFieldBytes, g2: 4 * enc.baseFieldBytes, scalar: enc.scalarBytes };
 const banner = "// Generated from common/contracts/univariate-artifact-contract.json. Do not edit.\n";
 const le = (hex) => [...Buffer.from(hex, "hex")].reverse();
-// This is an execution binding for the existing WASM Montgomery envelope,
-// not the public binary layout. P7 replaces its runtime readers and writers.
+// Only frontend artifacts use the browser container. Proof/preprocess use
+// the canonical records generated below, identically for every consumer.
 const browser = {
   generatedFrom: "univariate-artifact-contract.json",
   contractVersion: 1,
   owner: "backend",
-  artifactKinds: { instance: 1, prover_placement_variables: 5, prover_selector: 8, prover_permutation: 9, univariate_verifier_preprocess: 13, univariate_proof: 14 },
-  artifacts: contract.artifacts.slice().reverse().map(a => {
-    const prefix = a.record === "ProofBytes" ? "proof" : "preprocess";
-    const name = f => ({ d_q_k: "D_QK", pi_chi: "Pi_chi", pi_plus: "Pi_plus", c_fix: "C_fix", e_kappa: "E_kappa" }[f] ?? f.toUpperCase());
-    return { name: a.name, sections: ["g1", "g2", "scalar"].flatMap(kind => {
-      const fields = a.fields.filter(f => f[1] === kind);
-      return fields.length ? [{
-        label: `${prefix}.${kind === "scalar" ? "evaluations" : kind}`,
-        type: prefix === "proof" ? "Proof" : "Preprocess",
-        encoding: { g1: "ffjs-g1-affine-96", g2: "ffjs-g2-affine-192", scalar: "ffjs-fr-montgomery-le-32" }[kind],
-        elementCount: fields.length, elementByteLength: null,
-        points: fields.map(([f], index) => ({ index, name: kind === "scalar" ? (f === "s_c" ? "s_C" : f) : name(f) })),
-      }] : [];
-    }) };
-  }),
+  artifactKinds: { instance: 1, prover_placement_variables: 5, prover_selector: 8, prover_permutation: 9 },
+  artifacts: [],
 };
 let rust = banner + `fn canonical(bytes: &[u8], scalar: bool) -> bool {
     let modulus: &[u8] = if scalar { &${JSON.stringify(le(enc.scalarModulus))} } else { &${JSON.stringify(le(enc.baseFieldModulus))} };
