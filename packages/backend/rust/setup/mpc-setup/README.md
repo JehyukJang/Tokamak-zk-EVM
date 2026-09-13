@@ -165,6 +165,14 @@ cargo test --locked --release -p verify --features local-development-subcircuit-
 Do not proceed to native consumers if key preparation fails. An accepting proof and tamper
 rejection qualify this native test flow only, not live ceremony or publication.
 
+The full local-library run on 2026-09-13 passed two contribution checks,
+finalization, native verification (`true`) and the tamper regression. See the
+[MPC report](../../../docs/optimization/current-univariate-mpc.md#full-local-library-mpc-output-native-e2e)
+for commands, timing and provenance evidence. Use current synthesizer outputs:
+the saved fixture in that run had to regenerate its selector with the current
+producer's signed `-1` inactive entries before preprocessing. Do not make the
+backend accept the obsolete positive sentinel to accommodate a stale fixture.
+
 ### Test suites and live qualification
 
 Run local release checks with:
@@ -182,7 +190,7 @@ They qualify isolated kernels, not complete ceremony performance. Add
 `[mpc-timing]` JSON events. Parent spans include child spans; do not sum them.
 This feature changes instrumentation only, not input mode or validation policy.
 
-Development qualification can use the local QAP build with the live 72-GiB source for multi-contributor finalization and native preprocess/prove/verify. Publish qualification additionally requires a compatible published current-protocol npm library, a completed publish transcript, configured OAuth/destination access and authorization to upload. Record the mode and input identity with any qualified release timing; development results do not qualify the publish path. No successful live ceremony, native MPC E2E, Drive release or timing baseline is claimed here. The broader security analysis of the extra intermediate public encodings is deferred; do not treat the reference paper's Groth16 theorem as a theorem for this Tokamak extension. Additional cryptographic release attestations and separation of release authorities remain future work; the current publication guard is operational.
+Development qualification can use the local QAP build with the live 72-GiB source for multi-contributor finalization and native preprocess/prove/verify. Publish qualification additionally requires a compatible published current-protocol npm library, a completed publish transcript, configured OAuth/destination access and authorization to upload. Record the mode and input identity with any qualified release timing; development results do not qualify the publish path. The completed synthetic-tau native E2E does not establish a successful live ceremony, Drive release or live timing baseline. The broader security analysis of the extra intermediate public encodings is deferred; do not treat the reference paper's Groth16 theorem as a theorem for this Tokamak extension. Additional cryptographic release attestations and separation of release authorities remain future work; the current publication guard is operational.
 
 ## Phase 2 references
 

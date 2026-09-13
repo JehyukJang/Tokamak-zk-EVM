@@ -1,4 +1,4 @@
-# Current univariate MPC: local arithmetic experiments
+# Current univariate MPC: local arithmetic and native E2E
 
 ## Audience and qualification boundary
 
@@ -7,12 +7,14 @@ deterministic CPU improvements to the current phase-2 implementation, measured
 on 2026-09-13. It is separate from the trusted-setup and prover report because
 MPC manipulates imported bases and validates public contribution records.
 
-The selected code is **kernel-qualified, not whole-path-qualified**. Isolated
-release experiments and synthetic correctness tests have run. A fresh full
-local-library MPC-output native E2E and command timing remain necessary. There
-is no measured whole-MPC speedup, authenticated live Filecoin ceremony, native
-MPC E2E success, publication result or security certification in this report.
-Do not add the rows below or multiply their speedup factors.
+The selected code passed isolated release experiments and a full local-library
+test-MPC-output native E2E on 2026-09-13. Two contributions were verified, final
+keys were written, and native preprocess -> prove -> verify returned `true`;
+the native tamper regression also passed. This qualifies the local integration
+path, not a live ceremony. The single whole-path timing below is not a paired
+speedup measurement. No authenticated live Filecoin ceremony, publication or
+security certification is claimed. Do not add nested timings or multiply the
+isolated speedup factors.
 
 ## Control, inputs and measurement method
 
@@ -161,7 +163,8 @@ prepared per-wire G2 tables. The engine also retains one affine initial-image
 array. Memory is not capped and thread selection remains Rayon-controlled.
 `phase2_bench::allocation_layout` reports the pinned implementation's element
 and prepared-table backing sizes; these are allocation estimates, not peak
-whole-ceremony RSS. A full-library peak-memory result is still unavailable.
+whole-ceremony RSS. The full-library test below reported 10,042,687,488 bytes
+(9.353 GiB) maximum resident set size through macOS `/usr/bin/time -l`.
 
 On this build G1 affine/projective values occupy 104/144 bytes and Fr occupies
 32 bytes. A nonidentity G2Prepared has a 32-byte header, 19,584 bytes of live
@@ -176,8 +179,8 @@ against trusted setup after two contributions; independent-import and continuous
 transcript identity; unchanged check counts; malformed encoding, curve/subgroup,
 identity, shape, replay and context failures; cancellation-resistant individual
 pairing checks; query-update identity/unit/dense cases; and serial/parallel
-state/proof byte equivalence. Passing these tests does not replace the deferred
-full-library native E2E or authenticate a live Filecoin source.
+state/proof byte equivalence. These unit tests are separate from the completed
+full-library native E2E below; neither authenticates a live Filecoin source.
 
 The final release suite, both without and with the `timing` feature, passes
 38 unit tests (one is an allocation-layout diagnostic) and six derivation tests.
@@ -190,7 +193,97 @@ WASM README markers, including the retired `combined_sigma.rkyv` name. That
 unrelated migration work is not changed by this MPC optimization and is not
 reported as passing here.
 
-## Reproduction and pending whole-path gate
+## Full local-library MPC-output native E2E
+
+The implementation at `c082122e4a8e73612f1ff0e535c2e1a214b5cf68` completed
+this run in `/tmp/tokamak-mpc-native-e2e-optimized-BMRiqX`. All commands used
+the release profile on the CPU host above; MPC and prove enabled `timing`.
+[Run evidence](evidence/mpc-native-e2e.json) preserves commands, logs, nested
+timing events, artifact hashes, provenance and the fixture-preparation script.
+These are single-run observations, not repeated means or cold-cache results.
+
+The input was the current local `qap-compiler/subcircuits` build, not its older
+`dist` copy or an npm snapshot. Its digest was
+`sha256:e2d425690aa68524ffa46a755d0a1eab7419d202f44a16805852c5dbfbdb0c92`.
+It contains 44 compiled circuits, with `n=1024`, `m=1024`, `t=64`,
+`s_max=256`, `l_free=256`, `l=396` and `m_D=45056`. Local library and
+synthesizer inputs were copied into an isolated run directory before native
+execution. The test generated standard-generator synthetic tau, discarded
+the trusted-setup oracle's other keys, and used production MPC initialization,
+two contribution updates, complete record checks and final-key projection.
+The test's two-state-check assertion passed. No separate external-transcript
+finalizer was invoked; its independent-import checks are not bypassed by this
+continuous-invocation result.
+
+### MPC preparation and final files
+
+| Stage | Seconds |
+| --- | ---: |
+| Test input and synthetic tau preparation | 10.563 |
+| MPC initialization | 399.889 |
+| Contribution 1, including its new-record verification | 978.975 |
+| Contribution 2, including its new-record verification | 990.024 |
+| Final projection and archive publication to the local directory | 6.041 |
+| Fixture total, including intervening work | 2387.779 |
+| Cargo test process wall time, including 6.05 s compilation | 2394.72 |
+
+Within contributions 1 and 2, state equations took 837.063 s and 845.213 s;
+point admission took 39.345 s and 38.976 s; query updates took 94.951 s and
+98.463 s. State equations remain the dominant measured cost. Record validation
+includes state admission and equations; these nested spans must not be added
+again to contribution time. The 0.101 s `mpc.final_projection` span is narrower
+than the 6.041 s projection/archive stage, which includes output preparation,
+serialization, hashing and writes. No additional optimization was selected
+from this single run.
+
+| Final archive | Bytes |
+| --- | ---: |
+| `tau_sequence.rkyv` | 301,992,400 |
+| `prover_keys.rkyv` | 626,999,056 |
+| `preprocess_keys.rkyv` | 28,276,128 |
+| `verifier_keys.rkyv` | 1,104 |
+| Total, excluding provenance | 957,268,688 |
+
+`crs_provenance.json` is also present (1,058 bytes). It records
+`generationMethod: "mpc"`, `origin: "localQapCompiler"`, package version
+`2.1.5`, `releaseEligible: false` and `phase1SourceProvenance: null`.
+The four recorded SHA-256 values were matched against the files after the run.
+This provenance does not assert that the synthetic tau came from Filecoin.
+
+### Native consumers and recovered fixture failure
+
+The initial preprocess attempt rejected an old saved selector containing
+`4294967295`: the current producer and backend reader use signed `-1` for
+inactive placements. The failed attempt is preserved separately in the evidence.
+The current synthesizer `derivePlacementSelector` function regenerated only
+the test copy of `selector.json`, using the snapshotted placements, witness
+and library metadata. Its 207 active entries were unchanged; the 49 inactive
+entries became `-1`. No backend acceptance fallback, production-code change,
+original-fixture modification or MPC rerun was needed. Reproduction requires
+current producer output, not the stale positive-sentinel selector.
+
+| Native command | Internal elapsed, seconds | Cargo run wall, seconds | Maximum RSS, bytes |
+| --- | ---: | ---: | ---: |
+| Preprocess | 0.382203 | 0.68 | 229,457,920 |
+| Prove | 3.758160 | 4.28 | 2,727,706,624 |
+| Verify, input plus online verification | 0.004044 | 0.56 | 9,633,792 |
+
+Each binary was release-built before its timed `cargo run`; the wall column
+still includes Cargo startup and process overhead. Internal prove time includes
+input loading and proof output; its protocol span alone was 3.348863 s.
+Prove used the existing default without optional full artifact digest checking.
+No release-eligibility bypass or live-source qualification was added.
+
+The verifier was freshly compiled with `TOKAMAK_VERIFIER_KEYS` set to this
+MPC result's verifier key and with local-QAP build-time constants. It returned
+`true` for the new 1,184-byte proof and 384-byte preprocess artifact. The
+release `accepts_real_proof_and_rejects_tampering` test passed: changed public
+input, all ten proof-point identities, seven changed scalar evaluations and
+each of the three changed preprocess operands were rejected; malformed length,
+scalar and subgroup cases were also rejected. This completes the local native
+acceptance gate, not WASM interoperability or independent live contributors.
+
+## Reproduction
 
 Run from `packages/backend` with a fresh existing output directory:
 
@@ -211,10 +304,11 @@ update, record decode, point admission, share generation/verification, state
 equations, predecessor/chain hash, state hash, serialization and projection.
 Spans nest: never sum a parent with its children to estimate command time.
 
-Next run the documented test-MPC-output native E2E with a fresh output directory
-and freshly built verifier, including valid and tampered cases. Record complete
-release command times and memory before promoting local kernel selections to
-whole-path results. The earlier full fixture was interrupted during its second
+The completed E2E used the [documented test-MPC path](../../rust/setup/mpc-setup/README.md#native-e2e-with-test-mpc-output)
+with `--locked --offline --release --features timing`; the evidence retains
+the exact native commands and verifier-key environment. For another run, use
+a fresh output directory, current producer fixtures and a freshly built
+verifier. The earlier full fixture was interrupted during its second
 contribution, produced no final keys and did not run native consumers. Its
 416.675 s initialization and 3659.122 s first contribution used the older
 duplicate-check path; neither is a paired control for the table above.
