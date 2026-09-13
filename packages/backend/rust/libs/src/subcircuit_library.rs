@@ -432,32 +432,8 @@ pub fn selected_subcircuit_library_provenance(
     })
 }
 
-/// A ceremony participant reads a private copy of its own build-resolved npm
-/// snapshot, not the mutable runtime cache or a coordinator-supplied directory.
-/// Other native consumers keep their existing input and digest policies.
-pub fn prepare_mpc_subcircuit_library(
-    destination: &Path,
-) -> std::io::Result<SubcircuitLibraryProvenance> {
-    #[cfg(tokamak_embedded_subcircuit_library)]
-    {
-        fs::create_dir(destination)?;
-        for file in EMBEDDED_SUBCIRCUIT_LIBRARY_FILES {
-            let path = destination.join(file.relative_path);
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            fs::write(path, file.bytes)?;
-        }
-        selected_subcircuit_library_provenance(destination)
-    }
-    #[cfg(not(tokamak_embedded_subcircuit_library))]
-    {
-        let _ = destination;
-        Err(std::io::Error::other("MPC requires --no-default-features --features production-npm-subcircuit-library; local QAP inputs are not accepted"))
-    }
-}
-
-fn digest_runtime_subcircuit_library(library_dir: &Path) -> std::io::Result<String> {
+/// Hash the supplied circuit snapshot independently of build-time source selection.
+pub fn digest_runtime_subcircuit_library(library_dir: &Path) -> std::io::Result<String> {
     let snapshot_root = library_dir.parent().ok_or_else(|| {
         std::io::Error::other(format!(
             "cannot derive subcircuit snapshot root from {}",

@@ -109,11 +109,10 @@ cargo run --locked -p trusted-setup -- \
 
 ### `mpc`
 
-Each invocation resolves its own npm snapshot and authenticates the complete original Filecoin source. There is no repository phase 1, standalone import receipt or source-check bypass. For initialization:
+Each invocation prepares its own circuit snapshot and authenticates the complete original Filecoin source. Development reads local QAP build artifacts; `--mode publish --library-version MAJOR.MINOR.PATCH` acquires an exact npm version at runtime. Both use the same repository-built release executable. There is no repository phase 1, standalone import receipt or source-check bypass. For development initialization:
 
 ```sh
-cargo run --locked --release -p mpc-setup --no-default-features \
-  --features production-npm-subcircuit-library --bin mpc -- \
+cargo run --locked --release -p mpc-setup --bin mpc -- --mode development \
   init --filecoin-source /path/to/challenge_19 --output ./initial.mpc
 ```
 
@@ -252,11 +251,13 @@ During the current-protocol migration, `Debug prove` uses the default CPU
 engine and writes the new binary proof. The older preprocess/verify examples
 below do not yet form a runnable end-to-end chain with that output.
 
-Every launcher uses Cargo's release optimization. `MPC: initialize Filecoin phase 2 (npm)`
-is the production-input entry point and selects `production-npm-subcircuit-library`.
-It writes a new `initial.mpc` transcript, not a publication. It requires a compatible npm snapshot;
+Every launcher uses Cargo's release optimization. `MPC: initialize Filecoin phase 2 (local QAP)`
+selects `--mode development` and reads the local QAP build.
+It writes a new `initial.mpc` transcript, not a publication;
 without `--filecoin-source`, execution downloads and authenticates the complete pinned Filecoin source.
-All other launchers use local QAP build artifacts. MPC does not overwrite their trusted-setup output.
+All other launchers also use local QAP build artifacts. The same MPC executable supports
+`--mode publish --library-version MAJOR.MINOR.PATCH` for runtime npm input selection;
+actual Drive upload remains disabled. MPC does not overwrite trusted-setup output.
 
 The preprocess, prove, and verify launchers use the local `qap-compiler/subcircuits/library`
 output. They compile the development-only `development-crs-bypass` feature and pass

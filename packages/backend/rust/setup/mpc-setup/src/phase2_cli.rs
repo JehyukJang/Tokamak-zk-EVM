@@ -1,5 +1,6 @@
 //! Resumable operations with contributor-local input authentication on every run.
 use crate::{
+    circuit_input::{self, Mode},
     filecoin_source,
     phase2_engine::Engine,
     phase2_transcript::{Identity, Transcript},
@@ -14,9 +15,7 @@ use libs::frontend_artifacts::{
     public_wire_layout::{read_global_wires, PublicWireLayout},
     SetupParams, SubcircuitInfo,
 };
-use libs::input_origin::SubcircuitLibraryOrigin;
 use libs::r1cs::SubcircuitR1CS;
-use libs::subcircuit_library::prepare_mpc_subcircuit_library;
 use libs::univariate_crs::{UnivariateCrsShape, UNIVARIATE_CRS_SCHEMA_ID};
 use libs::univariate_setup::{stage_artifacts, SetupCrs};
 use rayon::prelude::*;
@@ -30,6 +29,13 @@ use std::time::Instant;
     about = "Tokamak phase 2 using independently authenticated Filecoin input"
 )]
 struct Args {
+    /// Select local QAP testing or npm-backed publication preparation.
+    /// Publish mode does not bypass the separate, currently closed upload gate.
+    #[arg(long, value_enum)]
+    mode: Mode,
+    /// Exact npm library version; required only with --mode publish.
+    #[arg(long)]
+    library_version: Option<String>,
     /// Original Filecoin challenge_19 acquired by this participant. Omit to
     /// download the pinned original. The full digest is checked on every run.
     #[arg(long, global = true)]
@@ -71,27 +77,23 @@ pub fn run() -> Result<(), String> {
 }
 
 fn execute(args: Args) -> Result<(), String> {
+    args.mode.validate(args.library_version.as_deref())?;
     let all = Instant::now();
     let started = Instant::now();
     let directory = tempfile::Builder::new()
         .prefix("tokamak-mpc-input-")
         .tempdir()
         .map_err(|e| e.to_string())?;
-    let path = directory.path().join("library");
-    let library = prepare_mpc_subcircuit_library(&path).map_err(|e| e.to_string())?;
-    if library.origin != SubcircuitLibraryOrigin::NpmSnapshot {
-        return Err(
-            "MPC accepts only the participant's independently resolved npm snapshot".into(),
-        );
-    }
+    let (path, library) =
+        circuit_input::prepare(args.mode, args.library_version.as_deref(), directory.path())?;
     let setup = SetupParams::read_from_json(path.join("setupParams.json")).map_err(|e| {
         format!(
-            "npm snapshot {} is incompatible with the current protocol: {e}",
+            "circuit library {} is incompatible with the current protocol: {e}",
             library.package_version
         )
     })?;
     UnivariateCrsShape::from_setup_params(&setup)
-        .map_err(|e| format!("npm snapshot is incompatible with the current protocol: {e}"))?;
+        .map_err(|e| format!("circuit library is incompatible with the current protocol: {e}"))?;
     let infos = SubcircuitInfo::read_box_from_json(path.join("subcircuitInfo.json"))
         .map_err(|e| e.to_string())?;
     let globals =
@@ -102,7 +104,7 @@ fn execute(args: Args) -> Result<(), String> {
         .enumerate()
         .map(|(k, info)| {
             if info.id != k {
-                return Err("npm catalog ID/order mismatch".into());
+                return Err("circuit catalog ID/order mismatch".into());
             }
             SubcircuitR1CS::from_r1cs_sparse_only(
                 path.join(format!("r1cs/subcircuit{k}.r1cs")),
@@ -118,7 +120,8 @@ fn execute(args: Args) -> Result<(), String> {
         .map(|(r, i)| r.as_univariate_subcircuit(i))
         .collect::<Vec<_>>();
     println!(
-        "[mpc] npm input {} in {:.6}s",
+        "[mpc] {} input {} in {:.6}s",
+        args.mode.name(),
         library.package_version,
         started.elapsed().as_secs_f64()
     );
@@ -140,16 +143,17 @@ fn execute(args: Args) -> Result<(), String> {
         started.elapsed().as_secs_f64()
     );
     let identity = Identity {
+        mode: args.mode,
         version: library.package_version.clone(),
         library_digest: hex::decode(
             library
                 .source_digest
                 .strip_prefix("sha256:")
-                .ok_or("invalid npm source digest")?,
+                .ok_or("invalid circuit source digest")?,
         )
         .map_err(|e| e.to_string())?
         .try_into()
-        .map_err(|_| "invalid npm source digest length")?,
+        .map_err(|_| "invalid circuit source digest length")?,
         tau_digest: Sha256::digest(
             archive::to_bytes::<archive::rancor::Error>(&tau).map_err(|e| e.to_string())?,
         )
@@ -242,6 +246,7 @@ fn execute(args: Args) -> Result<(), String> {
             )
             .map_err(|e| e.to_string())?;
             stage.activate().map_err(|e| e.to_string())?;
+            println!("[mpc] finalized local CRS; releaseEligible=false, Drive upload disabled");
         }
     }
     println!(
@@ -258,27 +263,50 @@ mod tests {
     #[test]
     fn command_surface_has_no_source_pin_or_subset_bypass() {
         for command in ["init", "contribute", "verify", "finalize"] {
-            assert!(
-                Args::try_parse_from(["mpc", command, "--tau-sequence", "coordinator.rkyv"])
-                    .is_err()
-            );
-            assert!(Args::try_parse_from(["mpc", command, "--skip-source-verification"]).is_err());
+            let mut valid = vec!["mpc", "--mode", "development", command];
+            if command != "init" {
+                valid.extend(["--input", "previous.mpc"]);
+            }
+            if command != "verify" {
+                valid.extend(["--output", "next"]);
+            }
+            assert!(Args::try_parse_from(&valid).is_ok());
+            for extra in [
+                vec!["--tau-sequence", "coordinator.rkyv"],
+                vec!["--skip-source-verification"],
+            ] {
+                let mut invalid = valid.clone();
+                invalid.extend(extra);
+                assert!(Args::try_parse_from(invalid).is_err());
+            }
         }
         assert!(Args::try_parse_from(["mpc", "phase1"]).is_err());
     }
-    #[cfg(not(feature = "production-npm-subcircuit-library"))]
     #[test]
-    fn local_build_stops_before_source_io_or_output() {
+    fn missing_publish_version_stops_before_source_io_or_output() {
         let dir = tempfile::tempdir().unwrap();
         let output = dir.path().join("must-not-exist");
         let error = execute(Args {
+            mode: Mode::Publish,
+            library_version: None,
             filecoin_source: Some(dir.path().join("missing-source")),
             operation: Operation::Init {
                 output: output.clone(),
             },
         })
         .unwrap_err();
-        assert!(error.contains("production-npm-subcircuit-library"));
+        assert!(error.contains("--library-version"));
         assert!(!output.exists());
+    }
+
+    #[test]
+    fn execution_mode_is_explicit_and_independent_of_the_build() {
+        assert!(Args::try_parse_from(["mpc", "init", "--output", "initial.mpc"]).is_err());
+        for mode in ["development", "publish"] {
+            let args =
+                Args::try_parse_from(["mpc", "--mode", mode, "init", "--output", "initial.mpc"])
+                    .unwrap();
+            assert_eq!(args.mode.name(), mode);
+        }
     }
 }

@@ -620,6 +620,7 @@ mod tests {
         use crate::phase2_transcript::{Identity, Transcript};
         use rand::{rngs::StdRng, SeedableRng};
         let identity = Identity {
+            mode: crate::circuit_input::Mode::Development,
             version: "2.1.5".into(),
             library_digest: [1; 32],
             tau_digest: [2; 32],
@@ -649,6 +650,12 @@ mod tests {
         let mut modified = first.clone();
         *modified.last_mut().unwrap() ^= 1;
         assert!(Transcript::read(modified, &engine, &identity).is_err());
+        let publish = Identity {
+            mode: crate::circuit_input::Mode::Publish,
+            version: identity.version.clone(),
+            ..identity
+        };
+        assert!(Transcript::read(first.clone(), &engine, &publish).is_err());
         let other = Identity {
             version: "2.1.6".into(),
             ..identity

@@ -1,4 +1,5 @@
 //! Current-protocol phase 2; original-source preparation is internal to every participant operation.
+mod circuit_input;
 mod contribution_proof;
 mod filecoin_source;
 mod phase2_cli;

@@ -8,7 +8,7 @@ ceremony specification or a security certification. The final CRS is defined
 by the current Tokamak manuscript and backend/common contracts. References
 are maintained in the [MPC README](../README.md#phase-2-references).
 
-The implemented group-linear engine, share evidence and resumable commands follow the construction below. Extra intermediate public encodings are permitted; their security analysis remains deferred, not an implementation gate. The previous ceremony implementation has been removed. There is no repository phase 1 or standalone import command. Synthetic release tests pass; live Filecoin/npm/native E2E remains unqualified. The build-resolved npm 2.1.5 snapshot lacks the current protocol's m and t metadata.
+The implemented group-linear engine, share evidence and resumable commands follow the construction below. Extra intermediate public encodings are permitted; their security analysis remains deferred, not an implementation gate. The previous ceremony implementation has been removed. There is no repository phase 1 or standalone import command. Synthetic release tests pass; live Filecoin/native E2E remains unqualified. One repository-built release executable selects local QAP input in development mode or an exact runtime npm snapshot in publish mode. The published npm 2.1.5 snapshot lacks the current protocol's m and t metadata; this blocks publish qualification, not development input preparation. Neither mode currently uploads results.
 
 ## Filecoin source mapping
 
@@ -70,10 +70,13 @@ Each participant independently obtains the original Filecoin source and
 checks its complete Filecoin-published pinned digest before accepting incoming
 ceremony state or generating a secret contribution. The implementation retains
 required ranges during that same authenticated read, then converts them locally.
-The existing library-shape calculation determines P from the selected npm
+The existing library-shape calculation determines P from the selected circuit
 metadata; neither the initializer nor an import command supplies P. The
-participant workflow resolves that npm snapshot and binds the initialization
-and incoming chain to the locally derived tau.
+participant workflow prepares its own snapshot and binds the initialization
+and incoming chain to the execution mode, package version, circuit content
+and locally derived tau. Development reads the local QAP build; publish
+acquires the exact npm version at runtime. No Cargo feature switches modes,
+and no development transcript can be promoted to a publish transcript.
 
 A coordinator's converted subset, matching subset digest or receipt cannot
 replace original-source authentication. A directly acquired local original

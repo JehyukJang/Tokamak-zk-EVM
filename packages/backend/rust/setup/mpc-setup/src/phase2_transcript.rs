@@ -2,6 +2,7 @@
 //! never deserialized from the coordinator. No source-verification receipt is
 //! accepted here: callers must construct the engine from authenticated inputs.
 
+use crate::circuit_input::Mode;
 use crate::contribution_proof::{ContributionBinding, ShareProof, ShareRole};
 use crate::phase2_engine::{Engine, State};
 use ark_bls12_381::{Bls12_381, Fr, G1Affine, G2Affine};
@@ -15,6 +16,7 @@ use std::path::Path;
 use zeroize::Zeroizing;
 
 pub(crate) struct Identity {
+    pub mode: Mode,
     pub version: String,
     pub library_digest: [u8; 32],
     pub tau_digest: [u8; 32],
@@ -34,6 +36,10 @@ impl Transcript {
     pub fn initialize(engine: &Engine, identity: &Identity) -> Result<Self, String> {
         let mut bytes = b"TOKAMAK_MPC_PHASE2\0".to_vec();
         let mut context = Sha256::new();
+        // Even byte-identical circuit inputs cannot promote a development
+        // ceremony into a publish ceremony. The record chain inherits this binding.
+        context.update((identity.mode.name().len() as u64).to_be_bytes());
+        context.update(identity.mode.name().as_bytes());
         context.update((identity.version.len() as u64).to_be_bytes());
         context.update(identity.version.as_bytes());
         context.update(identity.library_digest);

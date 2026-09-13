@@ -4,33 +4,44 @@ For phase 2 contributors, operators and backend implementers. Filecoin supplies 
 
 ## Prerequisites and commands
 
-Use the repository's native build prerequisites and a compatible published `@tokamak-zk-evm/subcircuit-library` snapshot. Every operation uses the participant's own build-resolved npm snapshot, extracted into a private temporary directory. Local QAP inputs are rejected. All examples use release optimization.
+Follow the [native build prerequisites](../../../README.md#prerequisites).
+The executable still links ICICLE through the shared native library. When
+running `target/release/mpc` directly, include your ICICLE library directory
+in `DYLD_LIBRARY_PATH` on macOS or `LD_LIBRARY_PATH` on Linux. The local
+macOS build uses `external-lib/mac/lib` relative to `packages/backend`;
+the VS Code launcher already sets that environment.
+
+MPC runs only from a local repository checkout; it is not an installed CLI component or a distributed production binary. Build one release-optimized executable for both execution modes:
+
+- `--mode development` copies the existing local `frontend/qap-compiler/subcircuits` build into a private temporary snapshot. Build QAP first. This mode does not access npm and cannot authorize publication.
+- `--mode publish --library-version MAJOR.MINOR.PATCH` acquires that exact `@tokamak-zk-evm/subcircuit-library` version through npm at runtime into a private temporary installation. Node.js and npm are required. Lifecycle scripts are disabled, and repository manifests and dependencies are not modified. The package must match the backend compatibility class and current circuit format; there is no local-QAP fallback.
+
+Specify the mode before the operation on every invocation. Publish denotes preparation for **CRS output publication to Google Drive**, not binary distribution. Actual upload remains disabled as described below. Neither optimization profile nor Cargo feature selects the MPC circuit source.
 
 Obtain `challenge_19` directly from the pinned [Filecoin source](https://trusted-setup.filecoin.io/phase1/challenge_19), or omit `--filecoin-source` to download it during the operation. The source is 77,309,411,488 bytes (about 72 GiB). Every invocation, including verification and finalization, reads and hashes the complete original before accepting incoming state or sampling secret shares. Keeping your own raw copy avoids a download, not the digest check. A coordinator's converted tau, matching subset digest or previous receipt grants no authority.
 
 From `packages/backend`:
 
 ```sh
-cargo run --locked --release -p mpc-setup --no-default-features \
-  --features production-npm-subcircuit-library --bin mpc -- \
+cargo build --locked --release -p mpc-setup --bin mpc
+
+target/release/mpc --mode development \
   init --filecoin-source /path/to/challenge_19 --output ./initial.mpc
 
-cargo run --locked --release -p mpc-setup --no-default-features \\
-  --features production-npm-subcircuit-library --bin mpc -- \\
+target/release/mpc --mode development \
   contribute --filecoin-source /path/to/challenge_19 --input ./initial.mpc --output ./alice.mpc
 
-cargo run --locked --release -p mpc-setup --no-default-features \\
-  --features production-npm-subcircuit-library --bin mpc -- \\
+target/release/mpc --mode development \
   contribute --filecoin-source /path/to/challenge_19 --input ./alice.mpc --output ./bob.mpc
 
-cargo run --locked --release -p mpc-setup --no-default-features \\
-  --features production-npm-subcircuit-library --bin mpc -- \\
+target/release/mpc --mode development \
   verify --filecoin-source /path/to/challenge_19 --input ./bob.mpc
 
-cargo run --locked --release -p mpc-setup --no-default-features \\
-  --features production-npm-subcircuit-library --bin mpc -- \\
+target/release/mpc --mode development \
   finalize --filecoin-source /path/to/challenge_19 --input ./bob.mpc --output ./final-keys
 ```
+
+For a publish ceremony, replace `--mode development` in every command with `--mode publish --library-version <exact-compatible-version>`; replace the placeholder with an available package version. Do not rebuild the executable to change modes. A published library without the new m/t fields cannot run the current protocol. This does not block development-mode input preparation.
 
 Run contributor commands in each contributor's own environment, not by sharing a trusted executable or source-verification cache. Initialization is deterministic and is not counted as a contribution. Transcript outputs must be new paths; failed operations preserve existing files. Resuming means using the last completed public transcript as the next input. There is no source-check bypass, source-pin override or converted-tau input option.
 
@@ -40,7 +51,7 @@ Original-source preparation verifies the pinned BLAKE2b-512 digest, file length 
 
 Initialization uses group IFFTs and sparse R1CS combinations of encoded powers, never a recovered tau or tag scalar. Each contribution updates delta and independent wire weights and supplies the [Filecoin-profile share-knowledge evidence](docs/current-phase2-design.md#contribution-proof-profile). Verification rederives initialization, checks every record, validates its share proofs and cumulative roles, and checks all final-family equations. Public-buffer placement specialization and implicit-zero query omission match trusted setup.
 
-The public transcript has a context-bound header followed by full state/proof records. Its counts come from the selected library. Each proof binds the preceding record chain, the new state, source/library identity and share role. Even an identity update cannot replay the previous receipt. The correctness baseline retains all public states and verifies the full chain; this is not yet a measured or optimized large-ceremony storage/verification design. Shares are never serialized and their owned buffers are cleared after use; this is not a guarantee against host compromise or all compiler-generated copies.
+The public transcript has a context-bound header followed by full state/proof records. Its counts come from the selected library. The header binds the execution mode, exact package version, circuit content digest and locally derived tau; later records inherit this binding. A development transcript cannot be continued or finalized in publish mode, even with byte-identical circuits. Each proof binds the preceding record chain, the new state, source/library identity and share role. Even an identity update cannot replay the previous receipt. The correctness baseline retains all public states and verifies the full chain; this is not yet a measured or optimized large-ceremony storage/verification design. Shares are never serialized and their owned buffers are cleared after use; this is not a guarantee against host compromise or all compiler-generated copies.
 
 Finalization requires at least one verified contribution. It uses the same serializers and atomic generation activation as trusted setup:
 
@@ -62,7 +73,7 @@ cargo test --locked --release -p mpc-setup
 
 Synthetic tests compare all four finalized archive byte streams to trusted setup under identical effective test scalars after two sequential updates. They exercise public/free/fixed specialization, omitted queries, every updated family, share evidence, replay, context substitution, truncation and non-overwriting output. These are correctness tests, not a security proof or real Filecoin/npm E2E qualification.
 
-The live 72-GiB source and a compatible published current-protocol npm library must pass multi-contributor finalization and native preprocess/prove/verify before release timing is recorded as a qualified baseline. No successful live ceremony, native MPC E2E or timing baseline is claimed here. The broader security analysis of the extra intermediate public encodings is deferred; do not treat the reference paper's Groth16 theorem as a theorem for this Tokamak extension. Publication authorization is a separate future task.
+Development qualification can use the local QAP build with the live 72-GiB source for multi-contributor finalization and native preprocess/prove/verify. Publish qualification additionally requires a compatible published current-protocol npm library. Record the mode and input identity with any qualified release timing; development results do not qualify the publish path. No successful live ceremony, native MPC E2E or timing baseline is claimed here. The broader security analysis of the extra intermediate public encodings is deferred; do not treat the reference paper's Groth16 theorem as a theorem for this Tokamak extension. Publication authorization is a separate future task.
 
 ## Phase 2 references
 

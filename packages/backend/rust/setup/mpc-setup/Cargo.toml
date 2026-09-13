@@ -18,7 +18,8 @@ backend-univariate-crs-interface = { workspace = true }
 icicle-core = { workspace = true }
 icicle-bls12-381 = { workspace = true }
 
-libs = { workspace = true, default-features = false }
+libs = { workspace = true, default-features = false, features = ["local-development-subcircuit-library"] }
+serde_json = { workspace = true }
 rayon = { workspace = true }
 ark-bls12-381 = { workspace = true }
 ark-ec = { workspace = true }
@@ -40,7 +41,4 @@ tempfile = "3.20.0"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 sha2 = "0.10"
 [features]
-default = ["local-development-subcircuit-library"]
 testing-mode = ["libs/testing-mode"]
-local-development-subcircuit-library = ["libs/local-development-subcircuit-library"]
-production-npm-subcircuit-library = ["libs/production-npm-subcircuit-library"]

@@ -475,7 +475,8 @@ function checkSynthesizerFaq() {
 
 function checkMpcCommandContract() {
   for (const relativePath of ['packages/backend/README.md', 'packages/backend/rust/setup/mpc-setup/README.md']) {
-    requireIncludes(relativePath, '--features production-npm-subcircuit-library --bin mpc', 'the npm-only phase 2 command');
+    requireIncludes(relativePath, '--mode development', 'the local-QAP phase 2 execution mode');
+    requireIncludes(relativePath, '--mode publish --library-version', 'the runtime npm phase 2 execution mode');
     requireIncludes(relativePath, 'Filecoin', 'the original-source trust boundary');
   }
 }
