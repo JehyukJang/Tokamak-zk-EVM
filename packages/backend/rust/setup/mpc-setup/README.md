@@ -108,6 +108,45 @@ On failure, the command exits unsuccessfully, preserves local output and reports
 
 ## Qualification and limits
 
+### Native E2E with test MPC output
+
+This path is for repository developers testing native consumers without a live
+Filecoin ceremony. It is an ignored Rust test, not an operator command or a
+source-authentication override. It uses the local QAP build, a generated
+standard-generator development tau, two deterministic test contributions, complete contribution
+verification and the production MPC final-key projection. Trusted-setup final
+prover/preprocess/verifier keys are not reused. The full local library can make
+key preparation expensive even without the original Filecoin download.
+
+From `packages/backend`, with current local QAP and matching synthesizer outputs:
+
+```sh
+MPC_TEST_OUTPUT=/absolute/path/to/new-test-crs \
+cargo test --locked --release -p mpc-setup --lib \
+  native_fixture::prepare_native_e2e_keys -- --ignored --exact --nocapture
+```
+
+The output uses the four common archives and common provenance, with
+`generationMethod: "mpc"`, local-QAP input, `releaseEligible: false` and
+`phase1SourceProvenance: null`. The null source records that no Filecoin original
+was authenticated. Deterministic contributions and development tau make these
+keys unsuitable for release; the test never invokes OAuth or publication.
+It uses the shared trusted-setup API to obtain test tau only and discards its
+other keys. Arbitrary trusted-setup tau files are not interchangeable here:
+they may use nonstandard G1/G2 bases, whereas the MPC kernel expects the
+standard bases of its pinned Filecoin input.
+
+Use the generated directory for native preprocess and prove. Build verify with
+`TOKAMAK_VERIFIER_KEYS` pointing to its `verifier_keys.rkyv`; verifier parameters
+must come from the same local QAP build. Run the resulting verifier on the newly
+generated preprocess/proof and the matching synthesizer instance. Then run
+`verify`'s ignored `local_fixture` test with `VERIFY_TEST_PREPROCESS`,
+`VERIFY_TEST_PROOF` and `VERIFY_TEST_INSTANCE` pointing to those files, preserving
+`TOKAMAK_VERIFIER_KEYS` during that test build. An accepting proof and tamper
+rejection qualify this native test flow only, not live ceremony or publication.
+
+### Test suites and live qualification
+
 Run local release checks with:
 
 ```sh
