@@ -28,12 +28,12 @@ const probe = w.__probe = {
   },
   runtime(fr: any, g1: any, g2: any, raw: any) {
     this.runtimes.push({ workers: raw.Fr.tm.concurrency });
-    for (const name of ['fftBuffer', 'ifftBuffer', 'batchMulBuffer', 'batchAddScaledBuffer', 'batchFromMontgomeryBuffer', 'sparseRowDotBuffer']) this.wrap(fr, name, 'Fr.');
+    for (const name of ['fftBuffer', 'ifftBuffer', 'batchMulBuffer', 'batchSubBuffer', 'batchAddScaledBuffer', 'batchFromMontgomeryBuffer', 'sparseRowDotBuffer', 'selectionAccumulateBuffer', 'orderedRecurrenceBuffer', 'batchInverseBuffer', 'divideUnivariateVanishingBuffer', 'evaluatePolynomialBuffer', 'ruffiniYBuffer', 'batchApplyKeyBuffer']) this.wrap(fr, name, 'Fr.');
     this.wrap(g1, 'msmAffineRaw', 'G1.'); this.wrap(g2, 'msmAffineRaw', 'G2.');
   }
 };
 if (location.search.includes('profile')) {
-  for (const name of ['add', 'sub', 'scale', 'scaleArgument', 'multiply', 'divideVanishingExact', 'ruffini', 'evaluate']) probe.wrap(DenseUnivariatePolynomial.prototype, name, 'poly.');
+  for (const name of ['add', 'sub', 'scale', 'scaleArgument', 'multiply', 'divideVanishingExact', 'divideVanishingExactBatched', 'ruffini', 'evaluate']) probe.wrap(DenseUnivariatePolynomial.prototype, name, 'poly.');
 }
 
 async function bytes(url: string) {

@@ -351,9 +351,11 @@ dynamic point/field checks. No runtime verifier CRS load exists.
 
 ## Experiment gate and remaining plan
 
-The profiling/recommendation checkpoint is complete. W0's policy alignment
-and all candidate implementations remain unstarted. Execute W0 and record the
-new default baseline before W1--W9. For each optimization candidate:
+The profiling/recommendation checkpoint is complete. These tables retain
+the original SHA-inclusive baseline and are not timings of the optimized
+implementation. The [execution report](current-univariate-crs.md) records
+W0--W7 completion and their sequential qualification, including rejected
+experiments; W8/W9 remain pending. For each optimization candidate:
 
 1. Preserve this compressed-CRS implementation as the reference.
 2. Run isolated exact polynomial/group tests, including affected rejection

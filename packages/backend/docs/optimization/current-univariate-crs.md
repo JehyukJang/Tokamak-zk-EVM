@@ -7,8 +7,9 @@ the current univariate protocol, including subsequent prover optimization and
 MPC setup work. It is separate from the superseded protocol's
 prover optimization report. It covers CRS storage, trusted-setup computation
 and native proof generation, with separate controls for each experiment.
-The native/browser qualification below extends that evidence without claiming
-a browser optimization or a fresh dense-versus-omitted whole-prover speedup.
+The native/browser qualification and separately controlled WASM optimization
+experiments below extend that evidence. Neither claims a fresh
+dense-versus-omitted whole-prover speedup.
 MPC implementation, publishing and CUDA measurements are outside this
 experiment. The reuse guidance below identifies candidates; only changes
 with explicit acceptance evidence are implemented optimizations.
@@ -30,7 +31,16 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
-### W7: masked quotient FFT reduction — mask separation accepted
+W0--W7 are complete at the individual gates below. The final regression run
+passed direct `tsc --noEmit`, `univariate:optimization:check`, current CRS
+admission/digest tests, offline compressed-CRS conversion tests and the
+existing univariate polynomial suite. `univariate:optimization:check` is the
+reproducible regression entry point for the new coefficient/group tests; its
+unit timings are diagnostic, not replacements for the recorded browser pairs.
+The unrelated aggregate development-typecheck fixture failure documented in
+W0 remains outside this optimization change.
+
+### W7: masked quotient FFT reduction — mask separation and spectrum reuse accepted
 
 The first candidate expands the mask terms algebraically before division.
 Writing `Z=X^N-1`, the arithmetic quotient is
@@ -56,6 +66,31 @@ All browser verifications, release-native cross-verifications and native
 preprocess byte comparisons passed; direct TypeScript checking passed.
 Mask separation is accepted. [E2E samples](evidence/wasm-w7-masks.json).
 The subsequent compatible-spectrum reuse experiment is a separate gate.
+Its candidate shares `R`'s forward transform between the two copy products,
+rotates its spectrum by two entries on the `2N` FFT domain to represent
+`R(omega_N*X)`, subtracts products before inversion, and performs one inverse
+transform. It checks the root relation and degree bounds needed to prevent
+cyclic aliasing. Arithmetic and connection domains are not conflated.
+Existing parallel FFT APIs are called sequentially; no competing worker pool
+is introduced. Live buffers include three `2N` spectra and a rotated spectrum
+plus products/worker copies, trading retained buffers for two fewer transforms.
+These are allocation bounds, not a sampled peak-memory result.
+
+Independent base-product comparisons passed at `N=1,2,8,32,262144`;
+out-of-bound degrees and noncanonical copy roots were rejected. Full masked
+quotient equivalence and unequal-domain tests passed again. The isolated
+base-difference means were **870.416 → 577.268 ms**; the whole-prover
+control is the accepted mask-separated implementation, not the original
+generic masked product. [Spectrum unit samples](evidence/wasm-w7-spectrum-micro.json).
+
+Four further alternating optimized browser runs measured **21.832085 /
+21.968545 s** for the mask-separated control and **21.637600 / 21.747480 s**
+with spectrum reuse: means **21.900315 → 21.692540 s**, a further **0.95%
+reduction**, improving both pairs. All four browser verifications,
+native cross-verifications and preprocess byte comparisons passed. Spectrum
+reuse is accepted on this measured fixture; the small whole-prover gain must
+not be described as the much larger unit-level gain or a hardware-independent
+guarantee. [Spectrum E2E samples](evidence/wasm-w7-spectrum.json).
 
 ### W6: whole-buffer polynomial operations — accepted
 
@@ -127,7 +162,8 @@ That unrelated fixture was not repaired or counted as a passing test. Initial
 native cross-verification needed the documented macOS `DYLD_LIBRARY_PATH`;
 with it supplied, verification succeeded without code changes to native.
 
-W1 results follow below; W2--W9 remain pending. Reproduction from `wasm`:
+The execution sections record each subsequent acceptance/rejection gate.
+W8/W9 remain separate preprocess/verifier work. Reproduction from `wasm`:
 
 ```sh
 DYLD_LIBRARY_PATH="$PWD/../external-lib/mac/lib" node test/profiling/run-current-univariate.mjs /tmp/tokamak-p8-trusted-e2e-9jQ5E1 tmp/optimization-w0-qualification profile-off profile-on profile-off profile-on
@@ -424,7 +460,8 @@ No dense delivery format, SHA acceleration experiment, live MPC, publication,
 version bump or verifier trust-policy change is part of this sequence.
 
 The implementation plan is maintained in ignored `packages/backend/tmp/planning.md`.
-All W0--W9 implementation/experiment steps remain unstarted at this checkpoint.
+This historical profiling checkpoint preceded implementation. The WASM
+optimization execution sections above supersede its then-unstarted status.
 
 ## Native and browser E2E qualification — 2026-09-13
 

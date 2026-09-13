@@ -36,6 +36,9 @@ import {
   FIELD_SPARSE_ROW_DOT,
   FIELD_VANISHING_X,
   FIELD_VANISHING_Y,
+  FIELD_SELECTION_ACCUMULATE,
+  FIELD_ORDERED_RECURRENCE,
+  FIELD_UNIVARIATE_VANISHING,
 } from "../kernel-names.js";
 
 interface FfFieldWithWorkerTasks extends FfField {
@@ -265,6 +268,9 @@ export function assertLinearBatchExports(field: FfField): void {
     FIELD_SPARSE_ROW_DOT,
     FIELD_VANISHING_X,
     FIELD_VANISHING_Y,
+    FIELD_SELECTION_ACCUMULATE,
+    FIELD_ORDERED_RECURRENCE,
+    FIELD_UNIVARIATE_VANISHING,
   ];
   for (const name of requiredExports) {
     if (typeof field.tm.instance?.exports[name] !== "function") {
