@@ -10,6 +10,7 @@ import { commitDenseUnivariatePolynomial } from "./commitments.js";
 import type { UnivariateProverCrsRuntime } from "./crs.js";
 import { deriveUnivariateDomainShape } from "./domain.js";
 import { DenseUnivariatePolynomial } from "./polynomial.js";
+import { arithmeticQuotient, copyProductQuotient } from "./quotients.js";
 import { type UnivariateProof } from "./proof.js";
 import {
   buildConnectionPermutationPolynomial,
@@ -57,7 +58,9 @@ export async function proveUnivariateReference(runtime: CurveRuntime, input: Uni
   const vHat = blind(field, DenseUnivariatePolynomial.fromCoefficients(field, maps.vA.coefficients), masks[1]!, domain.arithmeticSize);
   const wHat = blind(field, DenseUnivariatePolynomial.fromCoefficients(field, maps.wA.coefficients), masks[2]!, domain.arithmeticSize);
   const bHat = blind(field, DenseUnivariatePolynomial.fromCoefficients(field, maps.bC.coefficients), masks[3]!, domain.connectionSize);
-  const qA = await (await combine([[await uHat.multiply(vHat), field.one], [wHat, field.neg(field.one)]])).divideVanishingExactBatched(domain.arithmeticSize);
+  const qA = await arithmeticQuotient(field, domain.arithmeticSize,
+    DenseUnivariatePolynomial.fromCoefficients(field, maps.uA.coefficients), DenseUnivariatePolynomial.fromCoefficients(field, maps.vA.coefficients),
+    DenseUnivariatePolynomial.fromCoefficients(field, maps.wA.coefficients), masks[0]!, masks[1]!, masks[2]!);
   const a = setup.l_free === 0 ? DenseUnivariatePolynomial.zero(field) :
     DenseUnivariatePolynomial.fromCoefficients(field, await field.ifftBuffer(field.concat(input.publicInputs.slice(0, setup.l_free))));
   const c = (section: UnivariateCrsChunkSection, poly: DenseUnivariatePolynomial, offset = 0) => commit(runtime, section, offset, poly, input.chunkPoints);
@@ -84,7 +87,7 @@ export async function proveUnivariateReference(runtime: CurveRuntime, input: Uni
   const cD = add(await c(crs.s0, a, k), await c(crs.sxi, await combine([[uHat, field.one], [vHat, upsilon]]), k), await c(crs.spsi, await combine([[wHat, field.one], [bHat, upsilon]]), k));
   transcript.setMessage(encodeG1MessageBlock("F2.a2", runtime.G1, [cD]));
   const [beta, gammaC] = transcript.challengePair(2);
-  const copy = await buildCopyRelation(runtime, domain.connectionRoot, domain.connectionSize, maps.bC, sC, bHat, beta, gammaC, maskR);
+  const copy = await buildCopyRelation(runtime, domain.connectionRoot, domain.connectionSize, maps.bC, sC, beta, gammaC, maskR, masks[3]!);
   const cR = await c(crs.s0, copy.rHat);
   transcript.setMessage(encodeG1MessageBlock("F2.a3", runtime.G1, [cR]));
   const theta = transcript.challenge(3, 0);
@@ -162,7 +165,7 @@ async function randomPolynomial(runtime: CurveRuntime, length: number): Promise<
     runtime.Fr.concat(await Promise.all(Array.from({ length }, () => runtime.randomScalar()))),
   );
 }
-async function buildCopyRelation(runtime: CurveRuntime, root: FieldElement, domainSize: number, b: DenseDomainPolynomial, sC: DenseDomainPolynomial, bHat: DenseUnivariatePolynomial, beta: FieldElement, gammaC: FieldElement, maskR: DenseUnivariatePolynomial): Promise<{
+async function buildCopyRelation(runtime: CurveRuntime, root: FieldElement, domainSize: number, b: DenseDomainPolynomial, sC: DenseDomainPolynomial, beta: FieldElement, gammaC: FieldElement, maskR: DenseUnivariatePolynomial, maskB: DenseUnivariatePolynomial): Promise<{
   readonly rHat: DenseUnivariatePolynomial;
   readonly qC0: DenseUnivariatePolynomial;
   readonly qC1: DenseUnivariatePolynomial;
@@ -172,11 +175,11 @@ async function buildCopyRelation(runtime: CurveRuntime, root: FieldElement, doma
   const rBase = DenseUnivariatePolynomial.fromCoefficients(field, await field.ifftBuffer(rEvals));
   const rHat = blind(field, rBase, maskR, domainSize);
   const sCPoly = DenseUnivariatePolynomial.fromCoefficients(field, sC.coefficients);
-  const fHat = await DenseUnivariatePolynomial.linearCombination(field, [[bHat, field.one], [sCPoly, beta], [constant(field, gammaC), field.one]]);
-  const gHat = await DenseUnivariatePolynomial.linearCombination(field, [[bHat, field.one], [linear(field, gammaC, beta), field.one]]);
+  const bBase = DenseUnivariatePolynomial.fromCoefficients(field, b.coefficients);
+  const fBase = await DenseUnivariatePolynomial.linearCombination(field, [[bBase, field.one], [sCPoly, beta], [constant(field, gammaC), field.one]]);
+  const gBase = await DenseUnivariatePolynomial.linearCombination(field, [[bBase, field.one], [linear(field, gammaC, beta), field.one]]);
   const qC0 = copyBoundaryQuotient(field, rHat, domainSize);
-  const shifted = DenseUnivariatePolynomial.fromCoefficients(field, await field.batchApplyKeyBuffer(rHat.coefficients, field.one, root));
-  const qC1 = await (await DenseUnivariatePolynomial.linearCombination(field, [[await shifted.multiply(gHat), field.one], [await rHat.multiply(fHat), field.neg(field.one)]])).divideVanishingExactBatched(domainSize);
+  const qC1 = await copyProductQuotient(field, domainSize, root, rBase, fBase, gBase, maskR, maskB);
   return { rHat, qC0, qC1 };
 }
 

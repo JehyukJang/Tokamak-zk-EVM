@@ -30,6 +30,33 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
+### W7: masked quotient FFT reduction — mask separation accepted
+
+The first candidate expands the mask terms algebraically before division.
+Writing `Z=X^N-1`, the arithmetic quotient is
+`(U*V-W)/Z + U*muV + V*muU + muU*muV*Z - muW`.
+For the copy quotient, with `Rplus=R(omega*X)` and
+`muRplus=muR(omega*X)`, it is
+`(Rplus*G-R*F)/Z + (Rplus-R)*muB + muRplus*G - muR*F + (muRplus-muR)*muB*Z`.
+All masks and exact divisibility checks remain. The large products operate
+on unmasked degree-below-domain polynomials; for the application fixture this
+halves the transform size from 1,048,576 to 524,288 field elements. Short
+cross terms use W6's measured batch-add multiplication.
+
+Independent comparisons included zero/nonzero masks, non-divisible inputs,
+and arithmetic/copy domain pairs `(1,2)`, `(8,32)` and `(64,16)` without
+assuming equal domains. At `N=262144`, two alternating unit pairs measured
+arithmetic means **1083.198 → 526.205 ms** and copy means
+**1939.864 → 996.310 ms**, with exact quotient coefficient equality.
+[Unit samples](evidence/wasm-w7-masks-micro.json).
+Four alternating minified ES2022 E2E samples measured control prove
+**22.981670 / 23.274385 s** and candidate **22.009630 / 22.201785 s**.
+Means were **23.128028 → 22.105708 s (4.42% reduction)**, improving both pairs.
+All browser verifications, release-native cross-verifications and native
+preprocess byte comparisons passed; direct TypeScript checking passed.
+Mask separation is accepted. [E2E samples](evidence/wasm-w7-masks.json).
+The subsequent compatible-spectrum reuse experiment is a separate gate.
+
 ### W6: whole-buffer polynomial operations — accepted
 
 The candidate uses existing worker kernels for long linear combinations,
