@@ -31,7 +31,7 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
-### W10.6g worker cofactor construction — under qualification
+### W10.6g worker cofactor construction — accepted
 
 The candidate groups selected roots across the existing worker concurrency.
 Each task reuses the existing Ruffini and scale kernels and returns the same
@@ -41,7 +41,25 @@ Five isolated construction pairs at 256 roots average 38.454 / 2.804 ms,
 including packing, dispatch and retrieval. Scalar-polynomial equality covers
 singleton/inactive roots, row order, empty/sparse witnesses and malformed
 shapes. [Unit samples](evidence/wasm-w10-selection-cofactors-unit.json).
-Whole-prover qualification is pending.
+Existing selection tests and three native proof-byte oracles pass. All 24
+browser invocations pass native/browser verification and preprocess parity.
+Each session excludes its first warmup pair. The first five pairs average
+20252.213 / 19934.894 ms (1.57% faster), medians 20001.545 / 19946.660 ms,
+ranges 19969.565--20787.265 / 19864.675--19972.695 ms; all five improve.
+The reversed repeat averages 19965.986 / 19938.713 ms (0.14% faster),
+medians 19957.890 / 19939.470 ms, ranges 19945.885--19990.420 /
+19901.360--19982.360 ms; four of five improve. Nine of ten pairs improve;
+the median paired saving across both sessions is 48.572 ms. Both session
+means and medians improve, but the first mean is inflated by control drift:
+do not present 1.57% as the expected cofactor gain. Retain this small, repeated
+improvement, not a promise of a fixed wall-time reduction.
+[First samples](evidence/wasm-w10-selection-cofactors.json),
+[repeat samples](evidence/wasm-w10-selection-cofactors-repeat.json).
+At 256 roots the result is the same 2-MiB matrix; each worker task gets one
+8224-byte polynomial plus its root/scalar commands and reuses an 8192-byte
+quotient scratch row. No long-lived cofactor cache is added. Candidate source
+is `65a9daa93`; the next control bundle is preserved in ignored
+`wasm/tmp/optimization-w10-selection-cofactors/control.js`.
 
 ### W10.6f placement-level sparse task batching — inconclusive, not retained
 
