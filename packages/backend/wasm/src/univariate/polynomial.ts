@@ -19,15 +19,8 @@ export class DenseUnivariatePolynomial {
   }
 
   static async linearCombination(field: FieldRuntime, terms: readonly (readonly [DenseUnivariatePolynomial, FieldElement])[]): Promise<DenseUnivariatePolynomial> {
-    const count = Math.max(0, ...terms.map(([p]) => p.degree)) + 1;
-    let result = field.createZeroBuffer(count);
-    for (const [polynomial, factor] of terms) {
-      if (field.isZero(factor)) continue;
-      const source = field.createZeroBuffer(count);
-      source.set(polynomial.coefficients);
-      result = await field.batchAddScaledBuffer(result, source, factor);
-    }
-    return DenseUnivariatePolynomial.fromCoefficients(field, result);
+    return DenseUnivariatePolynomial.fromCoefficients(field,
+      await field.linearCombinationBuffer(terms.map(([p, factor]) => [p.coefficients, factor])));
   }
 
   async divideVanishingExactBatched(domainSize: number): Promise<DenseUnivariatePolynomial> {

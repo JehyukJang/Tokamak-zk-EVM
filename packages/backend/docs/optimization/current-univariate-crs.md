@@ -31,6 +31,45 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
+### W10.6 entry profile and local fusion experiments
+
+The accepted-copy-coset profile passes browser/native verification and
+preprocess parity: instrumented prove 21108.795 ms; a separate uninstrumented
+explicit-on digest invocation takes 23389.265 ms and also passes. These are
+diagnostics, not a paired speedup claim. [Full profile](evidence/wasm-w10-copy-coset-profile.json).
+
+| Stage | Instrumented elapsed (ms) |
+| --- | ---: |
+| Permutation | 152.770 |
+| Witness maps | 367.880 |
+| Arithmetic quotient | 668.530 |
+| C_L/C_H | 5231.605 |
+| C_O binding | 391.110 |
+| Selected roots / selection quotients | 17.090 / 175.340 |
+| D_Q/D_Q,K | 2580.255 |
+| C_D | 2612.695 |
+| Copy recurrence / interpolation | 91.510 / 121.425 |
+| Copy boundary qC0 / product qC1 | 41.300 / 579.745 |
+| C_R / C_Q | 1295.395 / 1302.695 |
+| Evaluations | 39.090 |
+| Opening combination | 27.375 |
+| pi_chi / pi_plus | 4022.575 / 1334.755 |
+
+Other input/transcript/output intervals are in the raw profile. Nested API
+durations and concurrent worker durations must not be added to these stages.
+This is the control checkpoint for the subsequent independent W10.6 candidates.
+
+**W10.6a multi-term worker accumulation — under qualification.** Keep each
+range's accumulator in one existing-worker task while invoking the existing
+add-scaled kernel for each term. Short terms touch only their actual prefix;
+no whole-polynomial padding or intermediate round trip is necessary. No new
+worker pool, field arithmetic or public artifact contract is introduced.
+Independent tests match the prior batched and small scalar controls, including
+empty/zero terms, cancellation, unequal lengths and malformed buffers.
+Five 262144-element four-term pairs average 20.075 ms versus 9.674 ms including
+task construction/copies and result assembly. [Unit samples](evidence/wasm-w10-linear-combination-unit.json).
+Whole-prover qualification remains pending.
+
 ### W10.5b copy coset quotient — accepted
 
 The candidate uses the recurrence's existing numerator, denominator and R
