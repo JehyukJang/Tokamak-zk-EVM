@@ -59,8 +59,7 @@ export async function proveUnivariateReference(runtime: CurveRuntime, input: Uni
   const wHat = blind(field, DenseUnivariatePolynomial.fromCoefficients(field, maps.wA.coefficients), masks[2]!, domain.arithmeticSize);
   const bHat = blind(field, DenseUnivariatePolynomial.fromCoefficients(field, maps.bC.coefficients), masks[3]!, domain.connectionSize);
   const qA = await arithmeticQuotient(field, domain.arithmeticSize,
-    DenseUnivariatePolynomial.fromCoefficients(field, maps.uA.coefficients), DenseUnivariatePolynomial.fromCoefficients(field, maps.vA.coefficients),
-    DenseUnivariatePolynomial.fromCoefficients(field, maps.wA.coefficients), masks[0]!, masks[1]!, masks[2]!);
+    maps.uA, maps.vA, maps.wA, masks[0]!, masks[1]!, masks[2]!);
   const a = setup.l_free === 0 ? DenseUnivariatePolynomial.zero(field) :
     DenseUnivariatePolynomial.fromCoefficients(field, await field.ifftBuffer(field.concat(input.publicInputs.slice(0, setup.l_free))));
   const c = (section: UnivariateCrsChunkSection, poly: DenseUnivariatePolynomial, offset = 0) => commit(runtime, section, offset, poly, input.chunkPoints);

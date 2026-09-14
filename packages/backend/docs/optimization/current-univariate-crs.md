@@ -31,6 +31,39 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
+### W10.5a arithmetic coset quotient — under qualification
+
+This candidate checks `UV-W=0` on the existing witness interpolation domain,
+then evaluates the unmasked numerator on a disjoint N-point coset. Since its
+degree is at most 2N-2, an exact quotient has degree below N. One inverse
+transform plus geometric scaling recovers it. The accepted short-mask cross
+terms are unchanged. Evaluation/coefficient pairs come from the same internal
+witness-map interpolation; no new artifact or public input contract is added.
+
+The prior mask-separated product/exact-division path is the control, not the
+older fully masked product. Independent N=1,2,8,64,262144 tests check exact
+coefficients, zero/nonzero masks, leading zeros and non-divisible rejection.
+Five unit pairs, including transforms, validation and buffers, average
+579.865 ms control versus 433.135 ms candidate. Three existing deterministic
+native-oracle fixtures also match proof bytes and verify successfully.
+[Unit samples](evidence/wasm-w10-arithmetic-coset-unit.json).
+
+Two fresh-context browser sessions preserve the accepted W10.4 bundle as
+control. Each excludes one warmup pair and measures five alternating pairs;
+the second reverses the order. All 24 invocations pass native/browser
+verification and native preprocess byte parity.
+
+| Session | Control mean / median (ms) | Coset mean / median (ms) | Improved pairs |
+| --- | ---: | ---: | ---: |
+| First | 21380.974 / 21423.960 | 21330.680 / 21330.535 | 3/5 |
+| Reversed schedule | 21766.469 / 21821.155 | 21403.138 / 21302.050 | 4/5 |
+
+The mean differences are 0.24% and 1.67%; these are small relative to observed
+desktop variation. A third session is required before an acceptance decision.
+All outliers remain in the [first samples](evidence/wasm-w10-arithmetic-coset.json)
+and [repeat samples](evidence/wasm-w10-arithmetic-coset-repeat.json).
+No copy-coset or later fusion candidate is included in these measurements.
+
 ### W10.4 signed-window G1 MSM — accepted, 2026-09-14
 
 The native signed-digit/half-range-bucket idea now uses existing WASM G1
