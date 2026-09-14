@@ -31,6 +31,24 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
+### W10.6d same-worker combination plus Ruffini — rejected at unit gate
+
+The test-only candidate accumulates the combination in the same worker that
+performs Ruffini, eliminating the intermediate return/copy. It reuses existing
+field kernels and treats constants explicitly. Quotient and remainder match
+the accepted control for constants, empty/zero terms, cancellation and unequal
+lengths. The retained test is an experiment, not a public runtime option.
+
+At 262144 coefficients, five paired means are 34.555 / 63.737 ms for two
+terms and 43.745 / 83.339 ms for four terms. Every candidate loses. Keeping
+the whole accumulation on one worker removes the parallel range processing
+used by the control; the saved transfer does not offset that work in this
+experiment. [Raw unit samples](evidence/wasm-w10-combination-ruffini-unit.json).
+The candidate fails the independent performance gate and is not integrated
+into the prover. No candidate E2E or whole-prover speedup is claimed. This
+does not authorize a new parallel prefix algorithm or an additional worker
+pool; those are not part of this experiment.
+
 ### W10.6c pointwise product-difference fusion — rejected
 
 One existing-worker range task computes A*B-C*D with two field multiplications
