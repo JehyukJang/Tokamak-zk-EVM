@@ -31,6 +31,42 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
+### W10.1 batched copy boundary — accepted, 2026-09-14
+
+The remaining scalar Ruffini and scale calls now use the existing buffer APIs.
+The R_hat(1)=1 check is unchanged. Independent tests cover N=1/2/8/64,
+constant and masked/nonconstant valid polynomials, invalid boundaries and
+262144-coefficient exact equality to the scalar cancellation implementation.
+[Unit samples](evidence/wasm-w10-boundary-unit.json) include both preparation
+and worker delivery: five pairs after excluded warmups measured about
+150.315 ms scalar versus 32.690 ms batched. Direct TypeScript checking passed.
+
+The minified browser experiment uses the preserved W10.0 control and unchanged
+compressed CRS, local-QAP inputs and default-off digest mode. Each session
+excludes its first control/candidate pair as warmup. Reverse execution order
+was added because the first session showed a decreasing runtime trend.
+
+| Session, five measured pairs | Control mean (ms) | Candidate mean (ms) | Control median (ms) | Candidate median (ms) |
+| --- | ---: | ---: | ---: | ---: |
+| Control first | 22479.951 | 22105.540 | 22503.860 | 22294.950 |
+| Candidate first | 23381.306 | 23039.373 | 23291.190 | 23000.685 |
+
+Control/candidate ranges were 21711.220--23353.695 / 21532.425--22543.775 ms
+in the first session and 22996.500--23844.895 / 22833.575--23372.845 ms in
+the reverse session. Nine of ten measured pairs improved; one regressed by
+81.655 ms and is retained in the evidence. Session mean reductions are 1.67%
+and 1.46%, not a hardware-independent forecast or the unit-operation ratio.
+All 24 runs, including four excluded warmups, returned true, matched native
+preprocess bytes and passed release-native verification with 1184-byte proofs.
+[Forward raw samples](evidence/wasm-w10-boundary.json),
+[reverse raw samples](evidence/wasm-w10-boundary-reverse.json).
+
+This small production change is accepted. It adds worker input/output copies
+for the quotient rather than avoiding all memory traffic; no cache or new
+worker pool was added. Peak memory was not sampled. The existing boundary
+coefficient buffers remain O(N); allocation/transfer cost is inside both unit
+and full-call measurements. W10.2 uses this accepted version as its control.
+
 ### W10.0 control and MSM diagnostics — 2026-09-14
 
 The new order is W10 prove -> W9 verifier -> W8 preprocess. W10.0 reused the

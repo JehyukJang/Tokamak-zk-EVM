@@ -178,7 +178,7 @@ async function buildCopyRelation(runtime: CurveRuntime, root: FieldElement, doma
   const bBase = DenseUnivariatePolynomial.fromCoefficients(field, b.coefficients);
   const fBase = await DenseUnivariatePolynomial.linearCombination(field, [[bBase, field.one], [sCPoly, beta], [constant(field, gammaC), field.one]]);
   const gBase = await DenseUnivariatePolynomial.linearCombination(field, [[bBase, field.one], [linear(field, gammaC, beta), field.one]]);
-  const qC0 = copyBoundaryQuotient(field, rHat, domainSize);
+  const qC0 = await copyBoundaryQuotient(field, rHat, domainSize);
   const qC1 = await copyProductQuotient(field, domainSize, root, rBase, fBase, gBase, maskR, maskB);
   return { rHat, qC0, qC1 };
 }
@@ -204,10 +204,11 @@ export async function buildCopyRecurrence(field: CurveRuntime["Fr"], root: Field
 }
 
 /** L_0=(X^N-1)/(N*(X-1)); cancel only after checking R_hat(1)=1. */
-export function copyBoundaryQuotient(field: CurveRuntime["Fr"], rHat: DenseUnivariatePolynomial, domainSize: number): DenseUnivariatePolynomial {
-  const boundary = rHat.ruffini(field.one);
-  if (!field.eq(boundary.value, field.one)) throw new Error("Copy boundary R_hat(1) must equal one.");
-  return boundary.quotient.scale(field.inv(field.fromBigInt(BigInt(domainSize))));
+export async function copyBoundaryQuotient(field: CurveRuntime["Fr"], rHat: DenseUnivariatePolynomial, domainSize: number): Promise<DenseUnivariatePolynomial> {
+  const boundary = await field.ruffiniYBuffer(rHat.coefficients, rHat.degree + 1, field.one);
+  if (!field.eq(boundary.remainder, field.one)) throw new Error("Copy boundary R_hat(1) must equal one.");
+  return DenseUnivariatePolynomial.fromCoefficients(field,
+    await field.batchScaleBuffer(boundary.quotient, field.inv(field.fromBigInt(BigInt(domainSize)))));
 }
 
 async function buildBinding(runtime: CurveRuntime, input: UnivariateReferenceProverInput, slots: readonly (UnivariateSlotWitness | null)[], layout: PublicWireLayout, masks: readonly DenseUnivariatePolynomial[], selectionMask: FieldElement): Promise<G1Point> {

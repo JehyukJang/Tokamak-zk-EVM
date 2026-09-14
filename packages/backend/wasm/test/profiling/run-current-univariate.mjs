@@ -41,6 +41,11 @@ try {
       await page.waitForFunction(() => window.result?.status !== 'running', undefined, { timeout: 1800000 });
       const result = await page.evaluate(() => window.result);
       assert.equal(result.status, 'ok', JSON.stringify(result));
+      if (mode.startsWith('profile-')) {
+        const tasks = result.msm.tasks.filter(task => task.phase.startsWith('prove.'));
+        assert(tasks.length > 0 && tasks.every(task => Number.isFinite(task.kernelMs)),
+          'Profile must instrument actual browser worker kernels');
+      }
       const proofPath = path.join(output, `proof-${index}.bin`);
       await writeFile(proofPath, Uint8Array.from(await page.evaluate(() => window.proof)));
       const { stdout } = await promisify(execFile)(path.resolve('../target/release/verify'), [
