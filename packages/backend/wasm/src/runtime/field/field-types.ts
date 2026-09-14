@@ -1,13 +1,5 @@
 export type FieldElement = Uint8Array;
 
-export interface SparseRowDotInput {
-  readonly rowOffsets: Uint8Array;
-  readonly columns: Uint8Array;
-  readonly coefficients: Uint8Array;
-  readonly variables: Uint8Array;
-  readonly rowCount: number;
-}
-
 export type SpecialPolynomialOperation =
   | "x-minus-one"
   | "one-minus-x"
@@ -16,7 +8,6 @@ export type SpecialPolynomialOperation =
   | "term9";
 
 export interface FieldRuntime {
-  sparseRowDotBatchBuffer(inputs: readonly SparseRowDotInput[]): Promise<readonly Uint8Array[]>;
   readonly byteLength: number;
   readonly modulus: bigint;
   readonly zero: FieldElement;

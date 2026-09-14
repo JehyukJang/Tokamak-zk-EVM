@@ -31,6 +31,7 @@ import {
   FIELD_FUSED_LINEAR_X,
   FIELD_FUSED_LINEAR_Y,
   FIELD_RECURSION_RECURRENCE,
+  FIELD_SPARSE_ROW_DOT,
   FIELD_SELECTION_ACCUMULATE,
   FIELD_ORDERED_RECURRENCE,
   FIELD_COPY_OPERANDS,
@@ -52,7 +53,6 @@ import {
   buildSpecialPolynomialTask,
   buildVanishingXTask,
   buildVanishingYTask,
-  buildSparseRowDotTask,
   evaluateRows,
   evaluateRowsFused,
   specialPolynomialFunctionName,
@@ -844,14 +844,40 @@ export function createFieldRuntime(field: FfField): FieldRuntime {
       return output;
     },
     async sparseRowDotBuffer(rowOffsets, columns, coefficients, variables, rowCount) {
-      return requireTaskOutputs(await field.tm.queueAction(buildSparseRowDotTask(field,
-        { rowOffsets, columns, coefficients, variables, rowCount })), 1, "sparse row dot")[0];
-    },
-    async sparseRowDotBatchBuffer(inputs) {
-      const task = inputs.flatMap((input, index) => buildSparseRowDotTask(field, input).map(command =>
-        command.cmd === "GET" ? { ...command, out: index } : command));
-      if (task.length === 0) return [];
-      return requireTaskOutputs(await field.tm.queueAction(task), inputs.length, "sparse row dot batch");
+      assertNonNegativeSafeInteger(rowCount, "Sparse row count");
+      if (rowOffsets.byteLength !== (rowCount + 1) * 4) {
+        throw new Error("Sparse row-offset buffer length does not match the row count.");
+      }
+      if (columns.byteLength % 4 !== 0) {
+        throw new Error("Sparse column buffer length must be a multiple of four bytes.");
+      }
+      assertFieldBuffer(coefficients, field.n8);
+      assertFieldBuffer(variables, field.n8);
+      if (columns.byteLength / 4 !== coefficients.byteLength / field.n8) {
+        throw new Error("Sparse columns and coefficients must contain the same number of entries.");
+      }
+      const outputBytes = rowCount * field.n8;
+      const outputs = await field.tm.queueAction([
+        { cmd: "ALLOCSET", var: 0, buff: rowOffsets },
+        { cmd: "ALLOCSET", var: 1, buff: columns },
+        { cmd: "ALLOCSET", var: 2, buff: coefficients },
+        { cmd: "ALLOCSET", var: 3, buff: variables },
+        { cmd: "ALLOC", var: 4, len: outputBytes },
+        {
+          cmd: "CALL",
+          fnName: FIELD_SPARSE_ROW_DOT,
+          params: [
+            { var: 0 },
+            { var: 1 },
+            { var: 2 },
+            { var: 3 },
+            { val: rowCount },
+            { var: 4 },
+          ],
+        },
+        { cmd: "GET", out: 0, var: 4, len: outputBytes },
+      ]);
+      return requireTaskOutputs(outputs, 1, "sparse row dot")[0];
     },
     async fft(values) {
       return splitFieldBuffer(await field.fft(concatFieldElements(values, field.n8)), field.n8);

@@ -31,7 +31,7 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
-### W10.6f placement-level sparse task batching — under qualification
+### W10.6f placement-level sparse task batching — inconclusive, not retained
 
 The candidate sends one placement's A/B/C row-dot operations to one existing
 worker task, retaining order and three separate outputs. Gathering and
@@ -45,7 +45,18 @@ Five unit pairs over 207 synthetic placements, with A/B/C row counts
 1024/512/1024, average 88.729 ms control versus 81.626 ms candidate. Packing,
 dispatch and output retrieval are included; common witness gather/scatter is
 outside this primitive comparison. [Unit samples](evidence/wasm-w10-sparse-placement-unit.json).
-Whole-prover qualification is pending.
+Three native-oracle fixtures match all proof bytes. All 24 browser E2E runs
+pass native/browser verification and preprocess parity. Each session excludes
+its first warmup pair. The first five measured pairs average 21013.655 /
+20907.098 ms (0.51% faster); medians are 21029.730 / 20835.305 ms and ranges
+20920.070--21047.765 / 20728.765--21115.920 ms. Three pairs improve.
+The reversed session averages 21011.321 / 21023.411 ms (0.06% slower);
+medians are 21092.630 / 21101.585 ms and ranges 20754.495--21130.320 /
+20801.980--21262.970 ms. Three pairs improve. This does not establish a
+repeatable whole-prover gain. The production candidate and isolated test
+are removed and recoverable at `3f77a1c3c`.
+[First samples](evidence/wasm-w10-sparse-placement.json),
+[repeat samples](evidence/wasm-w10-sparse-placement-repeat.json).
 
 ### W10.6e batched permutation roots and gather — inconclusive, not retained
 
