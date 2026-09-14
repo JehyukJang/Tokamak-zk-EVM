@@ -31,7 +31,7 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
-### W10.6b short-mask convolution — under qualification
+### W10.6b short-mask convolution — inconclusive, not retained
 
 A narrow WASM kernel computes one output range and its short left halo in one
 task, replacing separately padded add-scaled passes for masks of at most four
@@ -45,8 +45,20 @@ Five unit pairs average 10.831 / 7.917 ms for two coefficients and
 17.370 / 12.626 ms for four coefficients, including packing, dispatch and
 assembly. The slow two-coefficient pair is retained.
 [Unit samples](evidence/wasm-w10-short-convolution-unit.json).
-Whole-prover qualification is pending; a small unit saving is not an
-acceptance result.
+The first five-pair browser session averages 19981.440 / 19930.796 ms (0.25%);
+medians are 19972.050 / 19904.215 ms and ranges 19898.065--20087.755 /
+19864.910--19993.110 ms. Four pairs improve; one regresses. All twelve E2E
+invocations, including the excluded warmup pair, pass native/browser
+verification and preprocess byte parity. [First samples](evidence/wasm-w10-short-convolution.json).
+The reversed-order repeat averages 19960.583 / 19945.065 ms (0.08%), with
+medians 19966.180 / 19929.485 ms and ranges 19907.030--20015.035 /
+19919.755--19978.950 ms. Three of five pairs improve. Seven of ten paired
+improvements and a combined mean saving of only 33.081 ms do not demonstrate
+a repeatable whole-prover benefit beyond the observed variation. All 24 E2E
+invocations and three deterministic native-oracle proof comparisons pass.
+[Repeat samples](evidence/wasm-w10-short-convolution-repeat.json).
+The candidate snapshot is `64200da0c`. Its kernel, runtime method and isolated
+test were removed; the prior short-product implementation is retained.
 
 ### W10.6 entry profile and local fusion experiments
 
