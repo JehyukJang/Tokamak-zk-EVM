@@ -27,7 +27,7 @@ const boundaries = {
     ['  const sC = await', 'prove.permutation'], ['  const slots =', 'prove.witness-slots'],
     ['  const maps =', 'prove.witness-maps'], ['  const layout =', 'prove.public-check-masks'],
     ['  const qA =', 'prove.arithmetic-quotient'], ['  const a = setup.l_free', 'prove.public-polynomial'],
-    ['  const cA =', 'prove.commit-cL-cH'], ['  const cO =', 'prove.binding-cO'],
+    ['  const cL =', 'prove.commit-cL-cH'], ['  const cO =', 'prove.binding-cO'],
     ['  const roots =', 'prove.selected-roots'], ['  const witness =', 'prove.selection-witness'],
     ['  const qSelection =', 'prove.selection-quotients'], ['  const dQ =', 'prove.commit-dQ-dQK'],
     ['  const transcript =', 'prove.transcript-1'], ['  const cD =', 'prove.commit-cD'],

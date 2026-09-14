@@ -1,5 +1,4 @@
-import type { FfGroup, FfThreadManager } from "../curve/curve.js";
-import { pairedG1Msm } from "./paired-msm.js";
+import type { FfGroup } from "../curve/curve.js";
 import { concatBytes } from "../bytes.js";
 import { formatHex, parseCanonicalHex } from "../field/field-encoding.js";
 import type { FieldElement, FieldRuntime } from "../field/field-runtime.js";
@@ -30,7 +29,6 @@ export interface G1Runtime {
   mulAffineScalar(point: G1Point, scalar: FieldElement): G1Point;
   msmAffine(bases: readonly G1Point[], scalars: readonly FieldElement[]): Promise<G1Point>;
   msmAffineRaw(bases: Uint8Array, scalars: Uint8Array): Promise<G1Point>;
-  msmAffineRawPair(bases: Uint8Array, first: Uint8Array, second: Uint8Array): Promise<readonly [G1Point, G1Point]>;
 }
 export interface G2Runtime {
   readonly zero: G2Point;
@@ -47,9 +45,8 @@ export interface G2Runtime {
   mulScalar(point: G2Point, scalar: FieldElement): G2Point;
   msmAffineRaw(bases: Uint8Array, rawScalars: Uint8Array): Promise<G2Point>;
 }
-export function createG1Runtime(group: FfGroup, scalarField: FieldRuntime, tm: FfThreadManager): G1Runtime {
+export function createG1Runtime(group: FfGroup, scalarField: FieldRuntime): G1Runtime {
   return {
-    msmAffineRawPair: (bases, first, second) => pairedG1Msm(group, tm, bases, first, second),
     zero: group.zeroAffine,
     generator: group.oneAffine,
     parseAffine(value) {

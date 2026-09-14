@@ -31,6 +31,44 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
+### W10.3c shared C_L/C_H base delivery — inconclusive, not retained
+
+Two independent stock unsigned MSM kernels received one base buffer and two
+scalar buffers per window task. C_L/C_H results and transcript positions were
+unchanged. Unequal polynomial lengths were padded with zero coefficients;
+CRS ranges were read once through the same admitted reader. Independent tests
+cover separate-output equality, full-width scalars, identities/negative bases,
+empty/unequal vectors, chunk tails and malformed bounds.
+
+For a 262144-point pair, 19-window logical input delivery falls from 1216 to
+760 MiB; outputs are unchanged. This is a payload calculation, not peak RSS.
+The isolated Node pair averages 1784.049 ms control versus 1812.844 ms candidate,
+including one slow candidate sample. [Unit evidence](evidence/wasm-w10-shared-bases-unit.json).
+
+Two minified-browser sessions each exclude one warmup pair, then measure five
+fresh-context pairs with opposite alternating order schedules. The control is
+W10.2; Chromium 149, 14 available workers, default-off digest policy and the
+same compressed local-QAP inputs are unchanged.
+
+| Session | Control mean / median (ms) | Candidate mean / median (ms) | Improved pairs |
+| --- | ---: | ---: | ---: |
+| First | 22963.621 / 22819.700 | 22845.297 / 22852.270 | 1/5 |
+| Reversed schedule | 22863.478 / 22864.055 | 22811.787 / 22868.660 | 3/5 |
+
+Control/candidate ranges are 22410.255--24135.655 / 22526.825--23122.580 ms
+and 22691.945--22996.570 / 22697.345--22925.515 ms. Mean reductions of 0.52%
+and 0.23% do not establish a consistent gain: only four of ten pairs improve,
+and the candidate median is higher in both sessions. All 24 runs pass native
+and browser verification and native preprocess-byte parity. Allocation, reads
+and worker copying are included; peak memory is not sampled.
+[First samples](evidence/wasm-w10-shared-bases.json),
+[repeat samples](evidence/wasm-w10-shared-bases-repeat.json).
+
+The experimental implementation and unit test are reproducible at commit
+`5365363b3`, then removed from the retained code. W10.3 is complete with no
+MSM-sharing production changes. W10.4 evaluates signed-window arithmetic
+separately; none of these inconclusive schedules is assumed beneficial there.
+
 ### W10.3b shared selection-scalar conversion — inconclusive, not retained
 
 The candidate converts each D_Q/D_Q,K coefficient chunk out of Montgomery
