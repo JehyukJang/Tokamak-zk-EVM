@@ -48,6 +48,7 @@ export interface FieldRuntime {
   batchAddScaledBuffer(target: Uint8Array, source: Uint8Array, factor: FieldElement): Promise<Uint8Array>;
   selectionAccumulateBuffer(values: Uint8Array, cofactors: Uint8Array, width: number): Promise<Uint8Array>;
   orderedRecurrenceBuffer(numerators: Uint8Array, inverseDenominators: Uint8Array): Promise<Uint8Array>;
+  copyOperandsBuffer(b: Uint8Array, sc: Uint8Array, root: FieldElement, beta: FieldElement, gamma: FieldElement): Promise<{ readonly numerators: Uint8Array; readonly denominators: Uint8Array }>;
   divideUnivariateVanishingBuffer(coefficients: Uint8Array, domainSize: number): Promise<{ readonly quotient: Uint8Array; readonly remainder: Uint8Array }>;
   batchAddScaledPrefixBuffer(
     target: Uint8Array,

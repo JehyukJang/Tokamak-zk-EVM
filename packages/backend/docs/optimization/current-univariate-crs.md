@@ -31,6 +31,43 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
+### W10.2 batched copy operands — accepted, 2026-09-14
+
+The independent numerator/denominator loop now runs inside existing WASM
+workers. Each range starts at beta times the appropriate root power; batch
+inversion, ordered recurrence, zero-denominator rejection and cycle closure
+are unchanged. Unit tests compare complete vectors to the previous operand
+loop and small scalar recurrence oracle, including uneven ranges, N=1,
+zero/negative challenges and invalid denominators at multiple positions.
+Masked quotient regression and direct TypeScript checking also pass.
+
+[Unit evidence](evidence/wasm-w10-recurrence-unit.json) measures the complete
+recurrence against the **previous batched-inverse/recurrence implementation**,
+not an obsolete per-element division algorithm: five pairs after warmup give
+402.530 ms control versus 82.792 ms candidate. Extra worker input/output copies
+and final assembly are included. Two O(N) output buffers remain; no new pool,
+persistent cache or fixed worker count is introduced. Peak memory was not
+sampled.
+
+Minified-browser comparisons use W10.1 as control, Chromium 149, 14 available
+workers, the same compressed local-QAP fixture and default-off digests. Each
+session excludes the first pair, then measures five pairs in fresh contexts.
+
+| Order | Control mean (ms) | Candidate mean (ms) | Control median (ms) | Candidate median (ms) |
+| --- | ---: | ---: | ---: | ---: |
+| Control first | 23060.367 | 22653.091 | 22649.090 | 22723.940 |
+| Candidate first | 22903.286 | 22572.758 | 22851.355 | 22533.850 |
+
+Forward control/candidate ranges are 22585.465--24276.675 /
+22321.060--23023.985 ms; reverse ranges are 22789.215--23164.805 /
+22438.375--22812.575 ms. Nine of ten pairs improve; the forward 255.110-ms
+regression remains in the data. Mean reductions are 1.77% and 1.44%; this is
+a small whole-prover improvement, not the unit-operation speedup. All 24 runs,
+including four excluded warmups, pass browser/native verification and native
+preprocess-byte parity with 1184-byte proofs.
+[Forward samples](evidence/wasm-w10-recurrence.json),
+[reverse samples](evidence/wasm-w10-recurrence-reverse.json).
+
 ### W10.1 batched copy boundary — accepted, 2026-09-14
 
 The remaining scalar Ruffini and scale calls now use the existing buffer APIs.

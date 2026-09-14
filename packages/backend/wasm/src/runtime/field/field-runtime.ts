@@ -34,6 +34,7 @@ import {
   FIELD_SPARSE_ROW_DOT,
   FIELD_SELECTION_ACCUMULATE,
   FIELD_ORDERED_RECURRENCE,
+  FIELD_COPY_OPERANDS,
   FIELD_UNIVARIATE_VANISHING,
 } from "./kernel-names.js";
 import {
@@ -195,6 +196,36 @@ export function createFieldRuntime(field: FfField): FieldRuntime {
         { cmd: "GET", out: 1, var: 0, len: domainSize * field.n8 },
       ]), 2, "Univariate vanishing division");
       return { quotient: outputs[0], remainder: outputs[1] };
+    },
+    async copyOperandsBuffer(b, sc, root, beta, gamma) {
+      assertMatchingFieldBuffers(b, sc, field.n8, "Copy operands");
+      for (const value of [root, beta, gamma]) assertFieldElement(value, field.n8, "Copy operand scalar");
+      const length = b.byteLength / field.n8;
+      assertPositiveSafeInteger(length, "Copy operand length");
+      const ranges = splitRanges(length, field.tm.concurrency);
+      const results = await Promise.all(ranges.map(({ start, count }) => {
+        const bytes = count * field.n8;
+        return field.tm.queueAction([
+          { cmd: "ALLOCSET", var: 0, buff: b.slice(start * field.n8, (start + count) * field.n8) },
+          { cmd: "ALLOCSET", var: 1, buff: sc.slice(start * field.n8, (start + count) * field.n8) },
+          { cmd: "ALLOCSET", var: 2, buff: beta },
+          { cmd: "ALLOCSET", var: 3, buff: gamma },
+          { cmd: "ALLOCSET", var: 4, buff: field.mul(beta, field.exp(root, BigInt(start))) },
+          { cmd: "ALLOCSET", var: 5, buff: root },
+          { cmd: "ALLOC", var: 6, len: bytes },
+          { cmd: "ALLOC", var: 7, len: bytes },
+          { cmd: "CALL", fnName: FIELD_COPY_OPERANDS, params: [{ var: 0 }, { var: 1 }, { var: 2 }, { var: 3 }, { var: 4 }, { var: 5 }, { val: count }, { var: 6 }, { var: 7 }] },
+          { cmd: "GET", out: 0, var: 6, len: bytes },
+          { cmd: "GET", out: 1, var: 7, len: bytes },
+        ]);
+      }));
+      const numerators = new Uint8Array(b.byteLength), denominators = new Uint8Array(b.byteLength);
+      for (let i = 0; i < ranges.length; i++) {
+        const out = requireTaskOutputs(results[i], 2, "Copy operands");
+        numerators.set(out[0], ranges[i].start * field.n8);
+        denominators.set(out[1], ranges[i].start * field.n8);
+      }
+      return { numerators, denominators };
     },
     async orderedRecurrenceBuffer(numerators, inverseDenominators) {
       assertMatchingFieldBuffers(numerators, inverseDenominators, field.n8, "Ordered recurrence");

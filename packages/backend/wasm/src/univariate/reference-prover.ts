@@ -184,17 +184,12 @@ async function buildCopyRelation(runtime: CurveRuntime, root: FieldElement, doma
 }
 
 export async function buildCopyRecurrence(field: CurveRuntime["Fr"], root: FieldElement, domainSize: number, b: Uint8Array, sC: Uint8Array, beta: FieldElement, gammaC: FieldElement): Promise<Uint8Array> {
-  const numerators = field.createZeroBuffer(domainSize), denominators = field.createZeroBuffer(domainSize);
-  let point = field.one;
+  if (field.bufferElementCount(b) !== domainSize || field.bufferElementCount(sC) !== domainSize)
+    throw new Error("Copy operand length does not match the connection domain.");
+  const { numerators, denominators } = await field.copyOperandsBuffer(b, sC, root, beta, gammaC);
   for(let index = 0; index < domainSize; index += 1) {
-    const bValue = field.readBufferElement(b, index);
-    const f = field.add(field.add(bValue, field.mul(beta, field.readBufferElement(sC, index))), gammaC);
-    const g = field.add(field.add(bValue, field.mul(beta, point)), gammaC);
-    if(field.isZero(g))
+    if(field.isZero(field.readBufferElement(denominators, index)))
       throw new Error(`Copy recursion denominator vanishes at index ${index}.`);
-    field.writeBufferElement(numerators, index, f);
-    field.writeBufferElement(denominators, index, g);
-    point = field.mul(point, root);
   }
   const evaluations = await field.orderedRecurrenceBuffer(numerators, await field.batchInverseBuffer(denominators));
   const last = domainSize - 1;

@@ -38,6 +38,7 @@ import {
   FIELD_VANISHING_Y,
   FIELD_SELECTION_ACCUMULATE,
   FIELD_ORDERED_RECURRENCE,
+  FIELD_COPY_OPERANDS,
   FIELD_UNIVARIATE_VANISHING,
 } from "../kernel-names.js";
 
@@ -270,6 +271,7 @@ export function assertLinearBatchExports(field: FfField): void {
     FIELD_VANISHING_Y,
     FIELD_SELECTION_ACCUMULATE,
     FIELD_ORDERED_RECURRENCE,
+    FIELD_COPY_OPERANDS,
     FIELD_UNIVARIATE_VANISHING,
   ];
   for (const name of requiredExports) {

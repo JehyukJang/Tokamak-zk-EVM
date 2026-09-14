@@ -28,4 +28,5 @@ export const FIELD_FUSED_LINEAR_Y = "tokamak_frm_fusedLinearY";
 export const FIELD_SPARSE_ROW_DOT = "tokamak_frm_sparseRowDot";
 export const FIELD_SELECTION_ACCUMULATE = "tokamak_frm_selectionAccumulate";
 export const FIELD_ORDERED_RECURRENCE = "tokamak_frm_orderedRecurrence";
+export const FIELD_COPY_OPERANDS = "tokamak_frm_copyOperands";
 export const FIELD_UNIVARIATE_VANISHING = "tokamak_frm_univariateVanishing";
