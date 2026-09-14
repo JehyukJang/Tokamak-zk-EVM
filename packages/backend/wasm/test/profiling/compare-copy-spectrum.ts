@@ -24,7 +24,8 @@ try {
     if (n < 100) {
       await assert.rejects(() => copyProductDifference(f, n, poly(n + 1, 3), a, b), /exceeds/);
       await assert.rejects(() => copyProductDifference(f, n, r, poly(n + 2, 3), b), /exceeds/);
-      await assert.rejects(() => copyProductQuotient(f, n, f.fromBigInt(7n), r, a, b, P.zero(f), P.zero(f)), /canonical root/);
+      const input = (p: P) => ({ coefficients: p.coefficients, evaluations: f.createZeroBuffer(n) });
+      await assert.rejects(() => copyProductQuotient(f, n, f.fromBigInt(7n), input(r), input(a), input(b), P.zero(f), P.zero(f)), /canonical root/);
     }
   }
   console.log(JSON.stringify({ n: 262144, samples }));

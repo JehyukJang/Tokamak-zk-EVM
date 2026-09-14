@@ -31,7 +31,7 @@ try {
       const mr = masked ? poly(4, 37) : P.zero(f), mb = masked ? poly(2, 41) : P.zero(f);
       for (const [name, old, candidate] of [
         ["arithmetic", () => genericArithmetic(na, u, v, w, mu, mv, mw), () => arithmeticQuotient(f, na, u, v, w, mu, mv, mw)],
-        ["copy", () => genericCopy(nc, root, r, a, b, mr, mb), () => copyProductQuotient(f, nc, root, r, a, b, mr, mb)],
+        ["copy", () => genericCopy(nc, root, r, a, b, mr, mb), () => copyProductQuotient(f, nc, root, { coefficients: r.coefficients, evaluations: rValues }, { coefficients: a.coefficients, evaluations: aValues }, { coefficients: b.coefficients, evaluations: gValues }, mr, mb)],
       ] as const) {
         const samples = [], expected = (await old()).coefficients;
         for (let i = 0; i < (na > 100 ? 4 : 1); i++) {
@@ -44,7 +44,9 @@ try {
       }
       if (na < 100) {
         await assert.rejects(() => arithmeticQuotient(f, na, u, v, w.add(poly(1)), mu, mv, mw), /not divisible/);
-        await assert.rejects(() => copyProductQuotient(f, nc, root, r, a.add(poly(1)), b, mr, mb), /not divisible/);
+        const badA = a.add(poly(1)), padded = f.createZeroBuffer(nc); padded.set(badA.coefficients);
+        const badValues = await f.fftBuffer(padded);
+        await assert.rejects(() => copyProductQuotient(f, nc, root, { coefficients: r.coefficients, evaluations: rValues }, { coefficients: badA.coefficients, evaluations: badValues }, { coefficients: b.coefficients, evaluations: gValues }, mr, mb), /not divisible/);
       }
     }
   }

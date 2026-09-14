@@ -171,7 +171,7 @@ async function buildCopyRelation(runtime: CurveRuntime, root: FieldElement, doma
   readonly qC1: DenseUnivariatePolynomial;
 }> {
   const field = runtime.Fr;
-  const rEvals = await buildCopyRecurrence(field, root, domainSize, b.evaluations, sC.evaluations, beta, gammaC);
+  const { evaluations: rEvals, numerators, denominators } = await buildCopyRecurrence(field, root, domainSize, b.evaluations, sC.evaluations, beta, gammaC);
   const rBase = DenseUnivariatePolynomial.fromCoefficients(field, await field.ifftBuffer(rEvals));
   const rHat = blind(field, rBase, maskR, domainSize);
   const sCPoly = DenseUnivariatePolynomial.fromCoefficients(field, sC.coefficients);
@@ -179,11 +179,14 @@ async function buildCopyRelation(runtime: CurveRuntime, root: FieldElement, doma
   const fBase = await DenseUnivariatePolynomial.linearCombination(field, [[bBase, field.one], [sCPoly, beta], [constant(field, gammaC), field.one]]);
   const gBase = await DenseUnivariatePolynomial.linearCombination(field, [[bBase, field.one], [linear(field, gammaC, beta), field.one]]);
   const qC0 = await copyBoundaryQuotient(field, rHat, domainSize);
-  const qC1 = await copyProductQuotient(field, domainSize, root, rBase, fBase, gBase, maskR, maskB);
+  const qC1 = await copyProductQuotient(field, domainSize, root,
+    { coefficients: rBase.coefficients, evaluations: rEvals },
+    { coefficients: fBase.coefficients, evaluations: numerators },
+    { coefficients: gBase.coefficients, evaluations: denominators }, maskR, maskB);
   return { rHat, qC0, qC1 };
 }
 
-export async function buildCopyRecurrence(field: CurveRuntime["Fr"], root: FieldElement, domainSize: number, b: Uint8Array, sC: Uint8Array, beta: FieldElement, gammaC: FieldElement): Promise<Uint8Array> {
+export async function buildCopyRecurrence(field: CurveRuntime["Fr"], root: FieldElement, domainSize: number, b: Uint8Array, sC: Uint8Array, beta: FieldElement, gammaC: FieldElement): Promise<{ readonly evaluations: Uint8Array; readonly numerators: Uint8Array; readonly denominators: Uint8Array }> {
   if (field.bufferElementCount(b) !== domainSize || field.bufferElementCount(sC) !== domainSize)
     throw new Error("Copy operand length does not match the connection domain.");
   const { numerators, denominators } = await field.copyOperandsBuffer(b, sC, root, beta, gammaC);
@@ -195,7 +198,7 @@ export async function buildCopyRecurrence(field: CurveRuntime["Fr"], root: Field
   const last = domainSize - 1;
   if (!field.eq(field.mul(field.readBufferElement(evaluations, last), field.readBufferElement(numerators, last)), field.readBufferElement(denominators, last)))
     throw new Error("Copy recursion does not close around the connection domain.");
-  return evaluations;
+  return { evaluations, numerators, denominators };
 }
 
 /** L_0=(X^N-1)/(N*(X-1)); cancel only after checking R_hat(1)=1. */

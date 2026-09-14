@@ -1,5 +1,6 @@
 import type { FieldElement, FieldRuntime } from "../runtime/field/field-types.js";
 import { DenseUnivariatePolynomial as P } from "./polynomial.js";
+import type { DenseDomainPolynomial } from "./relation.js";
 
 /** Expand only the short masks; the main arithmetic product stays unmasked. */
 export async function arithmeticQuotient(
@@ -16,12 +17,37 @@ export async function arithmeticQuotient(
 /** Z(omega*X)=Z(X); preserve every cross term of the masked copy product. */
 export async function copyProductQuotient(
   field: FieldRuntime, domainSize: number, root: FieldElement,
-  r: P, f: P, g: P, maskR: P, maskB: P,
+  rInput: DenseDomainPolynomial, fInput: DenseDomainPolynomial, gInput: DenseDomainPolynomial, maskR: P, maskB: P,
 ): Promise<P> {
   if (!field.eq(root, field.rootOfUnity(domainSize))) throw new Error("Copy quotient requires the connection domain's canonical root.");
+  const r = P.fromCoefficients(field, rInput.coefficients), f = P.fromCoefficients(field, fInput.coefficients), g = P.fromCoefficients(field, gInput.coefficients);
+  if (r.degree >= domainSize || f.degree > domainSize || g.degree > domainSize ||
+      [rInput, fInput, gInput].some(p => field.bufferElementCount(p.evaluations) !== domainSize)) throw new Error("Copy product exceeds its interpolation domain.");
+  const rotate = (values: Uint8Array) => {
+    const out = field.createZeroBuffer(domainSize), offset = (1 % domainSize) * field.byteLength;
+    out.set(values.subarray(offset)); out.set(values.subarray(0, offset), values.byteLength - offset);
+    return out;
+  };
+  // The recurrence already supplies these domain values. Keep the exact
+  // numerator-zero check: interpolation on a coset alone cannot prove division.
+  const residue = await field.batchSubBuffer(await field.batchMulBuffer(rotate(rInput.evaluations), gInput.evaluations), await field.batchMulBuffer(rInput.evaluations, fInput.evaluations));
+  if (residue.some(byte => byte !== 0)) throw new Error("Polynomial is not divisible by the vanishing polynomial.");
+  const shift = field.rootOfUnity(2 * domainSize), shiftN = field.pow(shift, domainSize), z = field.sub(shiftN, field.one);
+  if (field.isZero(z) || !field.eq(field.pow(shift, 2), root)) throw new Error("Incompatible quotient coset roots.");
+  const evaluate = async (poly: P) => {
+    const coefficients = field.createZeroBuffer(domainSize);
+    coefficients.set(poly.coefficients.subarray(0, coefficients.byteLength));
+    // F/G can have degree N (notably beta*X at N=1). On this coset X^N
+    // is constant, so fold that coefficient rather than dropping it.
+    if (poly.degree === domainSize) field.writeBufferElement(coefficients, 0, field.add(field.readBufferElement(coefficients, 0), field.mul(field.readBufferElement(poly.coefficients, domainSize), shiftN)));
+    return field.fftBuffer(await field.batchApplyKeyBuffer(coefficients, field.one, shift));
+  };
+  const rc = await evaluate(r), fc = await evaluate(f), gc = await evaluate(g);
+  const numerator = await field.batchSubBuffer(await field.batchMulBuffer(rotate(rc), gc), await field.batchMulBuffer(rc, fc));
+  // deg(R(omega X)G-RF) <= 2N-1, so an exact quotient has degree below N.
+  const base = P.fromCoefficients(field, await field.batchApplyKeyBuffer(await field.ifftBuffer(numerator), field.inv(z), field.inv(shift)));
   const shifted = P.fromCoefficients(field, await field.batchApplyKeyBuffer(r.coefficients, field.one, root));
   const shiftedMask = maskR.scaleArgument(root);
-  const base = await (await copyProductDifference(field, domainSize, r, f, g)).divideVanishingExactBatched(domainSize);
   const deltaR = await P.linearCombination(field, [[shifted, field.one], [r, field.neg(field.one)]]);
   return P.linearCombination(field, [
     [base, field.one], [await deltaR.multiply(maskB), field.one],

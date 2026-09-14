@@ -56,7 +56,7 @@ try {
     let expected: Uint8Array | undefined;
     for (let repeat = 0; repeat < 10; repeat++) {
       const start = performance.now();
-      const out = repeat % 2 ? await buildCopyRecurrence(f, root, n, b, sc, beta, gamma) : await control(root, n, b, sc, beta, gamma);
+      const out = repeat % 2 ? (await buildCopyRecurrence(f, root, n, b, sc, beta, gamma)).evaluations : await control(root, n, b, sc, beta, gamma);
       samples.push({ candidate: Boolean(repeat % 2), ms: performance.now() - start });
       expected ??= out;
       assert.deepEqual(out, expected);

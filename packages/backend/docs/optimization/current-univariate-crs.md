@@ -31,6 +31,27 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
+### W10.5b copy coset quotient — under qualification
+
+The candidate uses the recurrence's existing numerator, denominator and R
+evaluations for the original-domain zero check. The unmasked quotient degree
+is below N; it is recovered from a disjoint N-point coset instead of the
+previous 2N-point product and exact division. R(omega X) is a one-slot rotation
+on the coset. F/G degree-N coefficients are folded using the constant coset
+value of X^N, including N=1. Short-mask terms, denominator rejection and cycle
+closure remain unchanged. All transforms use the existing worker runtime;
+there is no additional FFT pool or public artifact change.
+
+Independent tests compare exact coefficients against the accepted W10.4
+mask-separated control at N=1,2,8,64,262144, with zero/nonzero masks, zero
+polynomials, degree-N terms, leading zeros and invalid-relation rejection.
+Five unit pairs average 773.098 ms control versus 491.566 ms candidate;
+the interval includes validation, buffers, transforms and mask expansion.
+[Unit samples](evidence/wasm-w10-copy-coset-unit.json).
+The existing masked-quotient/recurrence suites pass, and n2, n8 and singleton
+native-oracle fixtures produce identical proof bytes and verify successfully.
+Paired browser qualification is pending; no whole-prover gain is claimed yet.
+
 ### W10.5a arithmetic coset quotient — inconclusive, not retained
 
 This candidate checks `UV-W=0` on the existing witness interpolation domain,
