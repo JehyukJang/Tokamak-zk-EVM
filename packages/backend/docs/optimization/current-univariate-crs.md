@@ -31,6 +31,40 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
+### W10.3b shared selection-scalar conversion — inconclusive, not retained
+
+The candidate converts each D_Q/D_Q,K coefficient chunk out of Montgomery
+representation once and reuses it for two separate stock MSMs. It changes no
+worker kernel or transcript point. Separate-output equality, zero/empty
+vectors, chunk tails and malformed capacities pass. Isolated conversion time
+falls from 5.564 to 2.492 ms for 262144 scalars (five pairs, excluded warmups,
+equality assertions outside timing). [Unit evidence](evidence/wasm-w10-shared-scalars-unit.json).
+
+Two minified-browser sessions each exclude one warmup pair and measure five
+pairs, reversing the alternating pair-order schedule in the second session.
+The control remains W10.2, with default-off digests, Chromium 149 and 14
+available workers.
+
+| Session | Control mean / median (ms) | Candidate mean / median (ms) | Improved pairs |
+| --- | ---: | ---: | ---: |
+| First | 22879.058 / 22722.680 | 22741.285 / 22737.245 | 2/5 |
+| Reversed schedule | 22869.288 / 22754.610 | 22529.464 / 22521.890 | 4/5 |
+
+Control/candidate ranges are 22320.010--23610.460 / 22393.780--22962.930 ms
+and 22364.515--23767.380 / 22322.130--22694.525 ms. Means improve by 0.60%
+and 1.49%, but paired differences range from a 356.780-ms regression to a
+1072.855-ms improvement; only six of ten pairs improve. The additional session
+does not establish a consistent whole-prover gain from this small operation.
+This is inconclusive, not proof of no possible benefit and not an accepted
+optimization. All 24 runs pass browser/native verification and native
+preprocess-byte parity. Allocation and transfer are included; peak memory is
+not measured. [First samples](evidence/wasm-w10-shared-scalars.json),
+[repeat samples](evidence/wasm-w10-shared-scalars-repeat.json).
+
+The candidate and dedicated unit test are preserved at commit `2335cd7c3` for
+reproduction, then removed from the retained implementation. No shared-scalar
+production helper remains. Existing W10.1/W10.2 optimizations are unchanged.
+
 ### W10.3a grouped MSM windows — rejected, 2026-09-14
 
 The candidate retains ffjavascript's unsigned bucket kernel and width table,
