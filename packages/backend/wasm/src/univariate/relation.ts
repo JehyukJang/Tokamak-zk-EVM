@@ -270,20 +270,15 @@ export async function buildConnectionPermutationPolynomial(
     seenTargets[target] = 1;
   }
 
+  const identities = field.createZeroBuffer(domain.connectionSize);
+  identities.set(field.one);
+  for (let filled = field.byteLength; filled < identities.byteLength; filled *= 2)
+    identities.set(identities.subarray(0, Math.min(filled, identities.byteLength - filled)), filled);
+  const powers = await field.batchApplyKeyBuffer(identities, field.one, domain.connectionRoot);
   const evaluations = field.createZeroBuffer(domain.connectionSize);
-  let identityPoint = field.one;
   for (let source = 0; source < domain.connectionSize; source += 1) {
-    field.writeBufferElement(evaluations, source, identityPoint);
-    identityPoint = field.mul(identityPoint, domain.connectionRoot);
-  }
-  for (let source = 0; source < domain.connectionSize; source += 1) {
-    if (explicitlyMapped[source] !== 0) {
-      field.writeBufferElement(
-        evaluations,
-        source,
-        field.pow(domain.connectionRoot, targets[source]),
-      );
-    }
+    const offset = targets[source] * field.byteLength;
+    evaluations.set(powers.subarray(offset, offset + field.byteLength), source * field.byteLength);
   }
   return { evaluations, coefficients: await field.ifftBuffer(evaluations) };
 }

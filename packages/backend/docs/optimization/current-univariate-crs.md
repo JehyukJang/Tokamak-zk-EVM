@@ -31,6 +31,23 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
+### W10.6e batched permutation roots and gather — under qualification
+
+All coordinate, duplicate-source/target and inactive-slot admission remains.
+The candidate fills an all-one buffer by doubling byte copies, uses the
+existing worker-backed geometric-key API to construct domain powers, and
+gathers values by the already checked target indices. It avoids per-element
+JS field multiplication and repeated target exponentiation. No new field
+kernel, worker pool or input format is introduced.
+
+Five independent construction pairs at 262144 elements and 32768 explicit
+mappings average 110.163 ms versus 13.780 ms. Both exclude unchanged admission
+and IFFT; real helper output and coefficients are checked separately. Tests
+include singleton, identity and inactive slots and malformed permutation
+rejection. [Unit samples](evidence/wasm-w10-permutation-unit.json).
+The synthetic mapping distribution is not the application fixture; whole-
+prover qualification is pending.
+
 ### W10.6d same-worker combination plus Ruffini — rejected at unit gate
 
 The test-only candidate accumulates the combination in the same worker that
