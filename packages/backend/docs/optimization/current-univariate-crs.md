@@ -31,7 +31,7 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
-### W10.5a arithmetic coset quotient — under qualification
+### W10.5a arithmetic coset quotient — inconclusive, not retained
 
 This candidate checks `UV-W=0` on the existing witness interpolation domain,
 then evaluates the unmasked numerator on a disjoint N-point coset. Since its
@@ -57,11 +57,21 @@ verification and native preprocess byte parity.
 | --- | ---: | ---: | ---: |
 | First | 21380.974 / 21423.960 | 21330.680 / 21330.535 | 3/5 |
 | Reversed schedule | 21766.469 / 21821.155 | 21403.138 / 21302.050 | 4/5 |
+| Third | 21415.918 / 21427.260 | 21320.123 / 21163.010 | 3/5 |
 
-The mean differences are 0.24% and 1.67%; these are small relative to observed
-desktop variation. A third session is required before an acceptance decision.
+The mean differences are 0.24%, 1.67% and 0.45%; these are small relative to
+observed desktop variation. Across fifteen pairs, mean savings are 169.807 ms
+with a 373.841 ms sample standard deviation. A descriptive paired Student-t
+95% interval is -37.240 to 376.854 ms; uncontrolled desktop samples are not
+assumed independent enough to treat this interval as a formal guarantee.
+Ten of fifteen pairs improve. This is insufficiently reproducible to retain
+the extra coset representation/validation path in production. The candidate
+and its isolated test are recoverable at `867343c13`; both were removed after
+qualification. This does not reject the mathematics or its isolated gain.
 All outliers remain in the [first samples](evidence/wasm-w10-arithmetic-coset.json)
-and [repeat samples](evidence/wasm-w10-arithmetic-coset-repeat.json).
+and [repeat samples](evidence/wasm-w10-arithmetic-coset-repeat.json), plus
+[third-session samples](evidence/wasm-w10-arithmetic-coset-third.json).
+All 36 invocations pass native/browser verification and preprocess parity.
 No copy-coset or later fusion candidate is included in these measurements.
 
 ### W10.4 signed-window G1 MSM — accepted, 2026-09-14

@@ -20,8 +20,7 @@ try {
   // The arithmetic and copy domains are deliberately independent and unequal.
   for (const [na, nc] of [[1, 2], [8, 32], [64, 16], [262144, 262144]]) {
     const uValues = poly(na).coefficients, vValues = poly(na, 11).coefficients;
-    const wValues = await f.batchMulBuffer(uValues, vValues);
-    const u = await interpolate(uValues), v = await interpolate(vValues), w = await interpolate(wValues);
+    const u = await interpolate(uValues), v = await interpolate(vValues), w = await interpolate(await f.batchMulBuffer(uValues, vValues));
     const rValues = poly(nc, 13).coefficients, gValues = poly(nc, 19).coefficients;
     const nextR = f.createZeroBuffer(nc);
     nextR.set(rValues.subarray(f.byteLength)); nextR.set(rValues.subarray(0, f.byteLength), (nc - 1) * f.byteLength);
@@ -31,7 +30,7 @@ try {
       const mu = masked ? poly(2, 23) : P.zero(f), mv = masked ? poly(2, 29) : P.zero(f), mw = masked ? poly(2, 31) : P.zero(f);
       const mr = masked ? poly(4, 37) : P.zero(f), mb = masked ? poly(2, 41) : P.zero(f);
       for (const [name, old, candidate] of [
-        ["arithmetic", () => genericArithmetic(na, u, v, w, mu, mv, mw), () => arithmeticQuotient(f, na, { evaluations: uValues, coefficients: u.coefficients }, { evaluations: vValues, coefficients: v.coefficients }, { evaluations: wValues, coefficients: w.coefficients }, mu, mv, mw)],
+        ["arithmetic", () => genericArithmetic(na, u, v, w, mu, mv, mw), () => arithmeticQuotient(f, na, u, v, w, mu, mv, mw)],
         ["copy", () => genericCopy(nc, root, r, a, b, mr, mb), () => copyProductQuotient(f, nc, root, r, a, b, mr, mb)],
       ] as const) {
         const samples = [], expected = (await old()).coefficients;
@@ -44,9 +43,7 @@ try {
         if (na > 100) results.push({ name, na, nc, samples });
       }
       if (na < 100) {
-        const badW = w.add(poly(1)), padded = f.createZeroBuffer(na); padded.set(badW.coefficients);
-        const badDomain = { coefficients: badW.coefficients, evaluations: await f.fftBuffer(padded) };
-        await assert.rejects(() => arithmeticQuotient(f, na, { evaluations: uValues, coefficients: u.coefficients }, { evaluations: vValues, coefficients: v.coefficients }, badDomain, mu, mv, mw), /not divisible/);
+        await assert.rejects(() => arithmeticQuotient(f, na, u, v, w.add(poly(1)), mu, mv, mw), /not divisible/);
         await assert.rejects(() => copyProductQuotient(f, nc, root, r, a.add(poly(1)), b, mr, mb), /not divisible/);
       }
     }
