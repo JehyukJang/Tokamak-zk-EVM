@@ -31,6 +31,40 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
+### W10.3a grouped MSM windows — rejected, 2026-09-14
+
+The candidate retains ffjavascript's unsigned bucket kernel and width table,
+but delivers several windows per worker task. Groups follow available
+concurrency; buffers are invocation-local. For 262144 points, 19 windows become
+14 tasks on this host, reducing repeated logical input delivery from 608 to
+448 MiB per MSM. This is a task-payload calculation, not peak memory. Tiny
+tail MSMs also submit fewer tasks. Each task still executes its windows in
+sequence, which changes load balancing.
+
+Independent stock-MSM and known-generator-sum comparisons pass for full-width
+scalars, identities, duplicated/negated bases, zero/one/r-1 scalars, uneven
+window groups and point-count boundaries. In the small-base-pool Node test,
+five paired 262144-point calls average 718.124 ms control versus 734.274 ms
+candidate. The unit distribution is not the CRS distribution.
+[Unit evidence](evidence/wasm-w10-grouped-unit.json).
+
+Five fresh-context browser pairs with alternating pair order, after one
+excluded warmup pair, average 22838.973 ms control versus 23014.925 ms
+candidate (0.77% slower). Medians are 22677.655 / 22922.995 ms; ranges are
+22352.090--23353.860 / 22813.425--23574.205 ms. Four of five pairs regress.
+All twelve runs pass browser/native verification and preprocess byte parity.
+The control is accepted W10.2; digest mode is off, Chromium is 149, available
+workers are 14. Copies, allocation and reduction are included; peak memory
+was not measured. [Browser evidence](evidence/wasm-w10-grouped.json).
+
+No grouped-window production path is retained. The candidate and its equality
+test remain under `wasm/test` for reproducibility. With the preserved W10.2
+control bundle and the usual profiling runner, set
+`BACKEND_WASM_PROFILE_CANDIDATE=grouped-msm` to build the experimental bundle.
+This result rejects this grouping schedule, not every possible MSM-sharing
+technique. Shared D_Q/D_Q,K preparation and C_L/C_H base delivery remain
+separate experiments.
+
 ### W10.2 batched copy operands — accepted, 2026-09-14
 
 The independent numerator/denominator loop now runs inside existing WASM

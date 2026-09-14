@@ -8,6 +8,18 @@ const root = process.cwd();
 const output = path.join(root, 'tmp/optimization-profile');
 if (!process.argv[2]) throw Error('Usage: node test/profiling/current-univariate-server.mjs E2E_DIRECTORY');
 const fixture = path.resolve(process.argv[2]);
+const candidate = process.env.BACKEND_WASM_PROFILE_CANDIDATE;
+if (candidate && candidate !== 'grouped-msm') throw Error('Unknown profiling candidate: ' + candidate);
+const candidatePlugins = candidate ? [{ name: 'experimental-msm', setup(b) {
+  b.onLoad({ filter: /\/src\/runtime\/group\/group\.ts$/ }, async args => {
+    let text = await readFile(args.path, 'utf8');
+    text = `import { groupedG1Msm } from ${JSON.stringify(path.join(root, 'test/profiling/candidates/grouped-msm.ts'))};\n` + text;
+    const end = text.indexOf('export function createG2Runtime');
+    if (end < 0) throw Error('Missing G1/G2 boundary in grouped MSM experiment');
+    text = text.slice(0, end).replaceAll('group.multiExpAffine(', 'groupedG1Msm(group, group.tm, ') + text.slice(end);
+    return { contents: text, loader: 'ts' };
+  });
+} }] : [];
 const mark = label => `globalThis.__probe.mark(${JSON.stringify(label)});\n`;
 const boundaries = {
   'univariate/reference-prover.ts': [
@@ -50,7 +62,7 @@ function inject(text, key) {
 for (const profiled of [false, true]) await build({
   entryPoints: [path.join(root, 'test/profiling/current-univariate-entry.ts')], outfile: path.join(output, profiled ? 'profile.js' : 'control.js'),
   bundle: true, format: 'esm', platform: 'browser', target: 'es2022', minify: true,
-  plugins: profiled ? [{ name: 'measurement-only', setup(b) {
+  plugins: [...candidatePlugins, ...(profiled ? [{ name: 'measurement-only', setup(b) {
     b.onLoad({ filter: /ffjavascript\/build\/browser\.esm\.js$/ }, async args => ({
       contents: instrumentMsm(await readFile(args.path, 'utf8'), args.path), loader: 'js',
     }));
@@ -58,7 +70,7 @@ for (const profiled of [false, true]) await build({
     const key = args.path.split('/src/')[1];
     if (!(key in boundaries) && !['runtime/curve/curve.ts', 'univariate/chunked-crs.ts'].includes(key)) return;
     return { contents: inject(await readFile(args.path, 'utf8'), key), loader: 'ts' };
-  }); } }] : [],
+  }); } }] : [])],
 });
 const server = createServer(async (req, res) => {
   try {

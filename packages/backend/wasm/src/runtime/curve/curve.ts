@@ -91,6 +91,7 @@ export interface FfGroup {
   eq(left: Uint8Array, right: Uint8Array): boolean;
   isZero(value: Uint8Array): boolean;
   toAffine(value: Uint8Array): Uint8Array;
+  double(value: Uint8Array): Uint8Array;
   toJacobian(value: Uint8Array): Uint8Array;
   isValid(point: Uint8Array): boolean;
   timesScalar(point: Uint8Array, scalar: bigint): Uint8Array;
