@@ -36,6 +36,7 @@ export interface FieldRuntime {
   batchAddBuffer(left: Uint8Array, right: Uint8Array): Promise<Uint8Array>;
   batchSubBuffer(left: Uint8Array, right: Uint8Array): Promise<Uint8Array>;
   batchMulBuffer(left: Uint8Array, right: Uint8Array): Promise<Uint8Array>;
+  batchProductDifferenceBuffer(a: Uint8Array, b: Uint8Array, c: Uint8Array, d: Uint8Array): Promise<Uint8Array>;
   batchMulShiftedBuffer(
     left: Uint8Array,
     right: Uint8Array,
@@ -46,6 +47,8 @@ export interface FieldRuntime {
   ): Promise<Uint8Array>;
   batchScaleBuffer(buffer: Uint8Array, factor: FieldElement): Promise<Uint8Array>;
   batchAddScaledBuffer(target: Uint8Array, source: Uint8Array, factor: FieldElement): Promise<Uint8Array>;
+  shortConvolutionBuffer(long: Uint8Array, short: Uint8Array): Promise<Uint8Array>;
+  linearCombinationBuffer(terms: readonly (readonly [Uint8Array, FieldElement])[]): Promise<Uint8Array>;
   selectionAccumulateBuffer(values: Uint8Array, cofactors: Uint8Array, width: number): Promise<Uint8Array>;
   selectionCofactorsBuffer(polynomial: Uint8Array, roots: Uint8Array, inverse: FieldElement): Promise<Uint8Array>;
   orderedRecurrenceBuffer(numerators: Uint8Array, inverseDenominators: Uint8Array): Promise<Uint8Array>;

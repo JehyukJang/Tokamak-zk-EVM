@@ -31,9 +31,89 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13–14
 
+### Combined six-candidate remeasurement — 2026-09-14
+
+This follow-up restores shared scalar conversion, arithmetic coset division,
+multi-term linear-combination fusion, short-mask convolution, product-difference
+fusion and permutation batching together on top of `5c51ef29f`. The five
+previously retained W10 changes remain enabled. These six candidates are now
+present in the implementation for the requested combined experiment; the
+individual historical dispositions below describe their earlier qualification,
+not the current source state.
+
+Exactly two successful runs of the unchanged implementation preceded two runs
+of the combined implementation. All four ran sequentially, with no additional
+warmup runs or omitted successful samples. Both bundles are minified ES2022
+browser builds using the same existing profiling hooks, Chromium 149.0.7827.55,
+Apple M4 Pro and 14 runtime workers. Test processes did not overlap; the
+prover's internal worker parallelism was not disabled. Each run used a fresh
+browser context, runtime and reader, with digest checking off. Installation,
+preprocess and verification are outside the public prove timer.
+
+The reboot removed the former `/tmp` fixture. Preparation reused the persisted
+207-placement JSON inputs, converted W4 CRS and W10 native preprocess. Archived
+selector padding `0xffffffff` was represented as signed `-1`, preserving its
+binary bits. Failed preparation/harness starts occurred before proving and
+produced no timing samples. Both measured conditions use the same restored
+fixture; this experiment does not compare a newly generated CRS with an old one.
+
+| Public prove elapsed time | Before | Combined six |
+| --- | ---: | ---: |
+| Run 1 | 20950.905 ms | 20833.980 ms |
+| Run 2 | 20826.125 ms | 20378.010 ms |
+| Mean | 20888.515 ms | 20605.995 ms |
+
+The observed mean reduction is **282.520 ms (1.35%)**. Both conditions pass
+browser verification, native release verification and native preprocess byte
+parity in both runs; all four proofs are 1184 bytes. Source and script
+TypeScript checks pass. No further unit suites or timing runs were executed.
+
+The following intervals are consecutive prove stages, averaged over the two
+runs. Positive savings denote shorter elapsed time. Nested operation and worker
+counters must not be added to these intervals.
+
+| Prove stage | Before, ms | Combined six, ms | Saved, ms |
+| --- | ---: | ---: | ---: |
+| Connection permutation | 150.810 | 114.498 | 36.312 |
+| Witness maps | 366.352 | 375.228 | -8.875 |
+| Arithmetic quotient | 666.757 | 457.040 | 209.717 |
+| Commit C_L / C_H | 5234.982 | 5256.635 | -21.652 |
+| Bind C_O | 418.090 | 382.843 | 35.247 |
+| Selection quotients | 124.672 | 128.390 | -3.718 |
+| Commit D_Q / shifted D_Q | 2560.032 | 2570.112 | -10.080 |
+| Commit C_D | 2584.100 | 2602.027 | -17.927 |
+| Copy-product quotient | 567.157 | 504.540 | 62.618 |
+| Commit C_R | 1284.730 | 1299.755 | -15.025 |
+| Combine quotients | 21.207 | 14.815 | 6.392 |
+| Commit C_Q | 1279.033 | 1288.407 | -9.375 |
+| Opening combination | 25.083 | 13.928 | 11.155 |
+| Opening pi_chi | 3953.332 | 3959.860 | -6.528 |
+| Opening pi_plus | 1312.733 | 1314.525 | -1.792 |
+
+Arithmetic, copy-product and permutation work shows lower elapsed time in the
+combined implementation. The large commitment/opening spans do not show a
+corresponding reduction. In particular, scalar conversion reuse does not
+remove either MSM: the D_Q pair still takes approximately 2.57 seconds.
+Arithmetic and copy quotient intervals also include the newly fused linear
+combinations and short products, so their improvements cannot be attributed
+to a single candidate from this combined experiment.
+
+Two samples in before-before-after-after order do not establish statistical
+significance, eliminate time-order/cache effects, or justify interpreting each
+small negative stage delta as a regression. The combined second run is
+455.970 ms faster than its first run, exceeding the 282.520 ms mean difference
+between conditions. The measured improvement is therefore reported as an
+observation, not a guaranteed speedup or independent acceptance of all six.
+
+[Evidence](evidence/wasm-w10-combined-six.json) preserves all four elapsed
+timings, every prove stage, operation counters, MSM calls, aggregated worker
+counters, source experiment references and bundle/input hashes. The profiler
+places shared scalar preparation inside the complete D_Q commitment interval
+in the candidate, preserving the original stage boundary's meaning.
+
 ### W10 retained-set qualification — complete
 
-W10 is complete on 2026-09-14. Five changes are retained; the other eleven
+At the original W10 completion on 2026-09-14, five changes were retained; the other eleven
 candidates are rejected or inconclusive and are not production alternatives.
 W9 verifier and W8 preprocess experiments have not been executed. Shared
 runtime improvements from W10 must be part of their future controls.

@@ -36,6 +36,8 @@ import {
   FIELD_ORDERED_RECURRENCE,
   FIELD_COPY_OPERANDS,
   FIELD_UNIVARIATE_VANISHING,
+  FIELD_PRODUCT_DIFFERENCE,
+  FIELD_SHORT_CONVOLUTION,
   FIELD_RUFFINI_Y,
 } from "./kernel-names.js";
 import {
@@ -74,6 +76,41 @@ export function createFieldRuntime(field: FfField): FieldRuntime {
     bufferElementCount(buffer) {
       assertFieldBuffer(buffer, field.n8);
       return buffer.byteLength / field.n8;
+    },
+    async batchProductDifferenceBuffer(a, b, c, d) {
+      for (const other of [b, c, d]) assertMatchingFieldBuffers(a, other, field.n8, "Product difference");
+      const results = await Promise.all(splitRanges(a.byteLength / field.n8, field.tm.concurrency).map(({ start, count }) => {
+        const from = start * field.n8, end = (start + count) * field.n8, bytes = count * field.n8;
+        return field.tm.queueAction([
+          { cmd: "ALLOCSET", var: 0, buff: a.slice(from, end) },
+          { cmd: "ALLOCSET", var: 1, buff: b.slice(from, end) },
+          { cmd: "ALLOCSET", var: 2, buff: c.slice(from, end) },
+          { cmd: "ALLOCSET", var: 3, buff: d.slice(from, end) },
+          { cmd: "ALLOC", var: 4, len: bytes },
+          { cmd: "CALL", fnName: FIELD_PRODUCT_DIFFERENCE, params: [{ var: 0 }, { var: 1 }, { var: 2 }, { var: 3 }, { val: count }, { var: 4 }] },
+          { cmd: "GET", out: 0, var: 4, len: bytes },
+        ]);
+      }));
+      return assembleTaskOutputs(results, a.byteLength);
+    },
+    async shortConvolutionBuffer(long, short) {
+      assertFieldBuffer(long, field.n8); assertFieldBuffer(short, field.n8);
+      const n = long.byteLength / field.n8, width = short.byteLength / field.n8;
+      if (n < 1 || width < 1 || width > 4) throw new Error("Short convolution requires a nonempty polynomial and one to four mask coefficients.");
+      const length = n + width - 1;
+      const results = await Promise.all(splitRanges(length, field.tm.concurrency).map(({ start, count }) => {
+        const first = start - width + 1, from = Math.max(0, first), end = Math.min(n, start + count);
+        const halo = new Uint8Array((count + width - 1) * field.n8);
+        halo.set(long.subarray(from * field.n8, end * field.n8), (from - first) * field.n8);
+        return field.tm.queueAction([
+          { cmd: "ALLOCSET", var: 0, buff: halo },
+          { cmd: "ALLOCSET", var: 1, buff: short },
+          { cmd: "ALLOC", var: 2, len: count * field.n8 },
+          { cmd: "CALL", fnName: FIELD_SHORT_CONVOLUTION, params: [{ var: 0 }, { var: 1 }, { val: width }, { val: count }, { var: 2 }] },
+          { cmd: "GET", out: 0, var: 2, len: count * field.n8 },
+        ]);
+      }));
+      return assembleTaskOutputs(results, length * field.n8);
     },
     createZeroBuffer(elementCount) {
       assertNonNegativeSafeInteger(elementCount, "Field buffer element count");
@@ -290,6 +327,33 @@ export function createFieldRuntime(field: FfField): FieldRuntime {
         ]);
       }));
       return assembleTaskOutputs(results, values.byteLength);
+    },
+    async linearCombinationBuffer(terms) {
+      let length = 1;
+      for (const [source, factor] of terms) {
+        assertFieldBuffer(source, field.n8);
+        assertFieldElement(factor, field.n8, "Linear combination factor");
+        length = Math.max(length, source.byteLength / field.n8);
+      }
+      const active = terms.filter(([, factor]) => !field.isZero(factor));
+      if (active.length === 0) return new Uint8Array(length * field.n8);
+      const results = await Promise.all(splitRanges(length, field.tm.concurrency).map(({ start, count }) => {
+        // Retain each range's accumulator inside one existing-worker task.
+        // Short sources leave the remaining accumulator coefficients untouched.
+        const task: FfWorkerCommand[] = [{ cmd: "ALLOCSET", var: 0, buff: new Uint8Array(count * field.n8) }];
+        for (const [source, factor] of active) {
+          const available = Math.min(count, source.byteLength / field.n8 - start);
+          if (available <= 0) continue;
+          task.push(
+            { cmd: "ALLOCSET", var: 1, buff: source.slice(start * field.n8, (start + available) * field.n8) },
+            { cmd: "ALLOCSET", var: 2, buff: factor },
+            { cmd: "CALL", fnName: FIELD_BATCH_ADD_SCALED, params: [{ var: 0 }, { var: 1 }, { var: 2 }, { val: available }, { var: 0 }] },
+          );
+        }
+        task.push({ cmd: "GET", out: 0, var: 0, len: count * field.n8 });
+        return field.tm.queueAction(task);
+      }));
+      return assembleTaskOutputs(results, length * field.n8);
     },
     async batchAddScaledBuffer(target, source, factor) {
       assertMatchingFieldBuffers(target, source, field.n8, "Add-scaled buffers");

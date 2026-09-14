@@ -22,6 +22,30 @@ export async function commitDenseUnivariatePolynomial(
   );
 }
 
+/** The two selection queries use identical coefficients, but distinct bases. */
+export async function commitSharedCoefficients(
+  runtime: CurveRuntime,
+  first: UnivariateCrsChunkSection,
+  second: UnivariateCrsChunkSection,
+  coefficients: Uint8Array,
+  chunkPoints: number,
+): Promise<readonly [Uint8Array, Uint8Array]> {
+  const count = fieldElementCount(runtime, coefficients, "Shared polynomial coefficients");
+  assertKzgRange(first, count, "First shared polynomial");
+  assertKzgRange(second, count, "Second shared polynomial");
+  assertChunkPoints(chunkPoints);
+  const outputs = [runtime.G1.zero, runtime.G1.zero];
+  for (let start = 0; start < count; start += chunkPoints) {
+    const take = Math.min(chunkPoints, count - start);
+    const scalars = await runtime.Fr.batchFromMontgomeryBuffer(coefficients.subarray(start * 32, (start + take) * 32));
+    for (const [index, section] of [first, second].entries()) {
+      const term = await runtime.G1.msmAffineRaw(await section.readElements(start, take), scalars);
+      if (!runtime.G1.isZero(term)) outputs[index] = runtime.G1.isZero(outputs[index]!) ? term : runtime.G1.add(outputs[index]!, term);
+    }
+  }
+  return [outputs[0]!, outputs[1]!];
+}
+
 async function* contiguousChunks(
   bases: UnivariateCrsChunkSection,
   coefficients: Uint8Array,

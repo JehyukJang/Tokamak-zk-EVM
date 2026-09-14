@@ -6,7 +6,7 @@ import { coalesceAffineMsmChunks, msmAffineMontgomeryChunks, type AffineMontgome
 import { PublicWireLayout } from "../prover/protocol/public-wire-layout.js";
 import type { ProverPlacementVariables, ProverSubcircuitInfo } from "../prover/protocol/witness.js";
 import { placementCount, placementSubcircuitId, placementVariableAt, placementVariableCount } from "../prover/protocol/witness.js";
-import { commitDenseUnivariatePolynomial } from "./commitments.js";
+import { commitDenseUnivariatePolynomial, commitSharedCoefficients } from "./commitments.js";
 import type { UnivariateProverCrsRuntime } from "./crs.js";
 import { deriveUnivariateDomainShape } from "./domain.js";
 import { DenseUnivariatePolynomial } from "./polynomial.js";
@@ -59,8 +59,7 @@ export async function proveUnivariateReference(runtime: CurveRuntime, input: Uni
   const wHat = blind(field, DenseUnivariatePolynomial.fromCoefficients(field, maps.wA.coefficients), masks[2]!, domain.arithmeticSize);
   const bHat = blind(field, DenseUnivariatePolynomial.fromCoefficients(field, maps.bC.coefficients), masks[3]!, domain.connectionSize);
   const qA = await arithmeticQuotient(field, domain.arithmeticSize,
-    DenseUnivariatePolynomial.fromCoefficients(field, maps.uA.coefficients), DenseUnivariatePolynomial.fromCoefficients(field, maps.vA.coefficients),
-    DenseUnivariatePolynomial.fromCoefficients(field, maps.wA.coefficients), masks[0]!, masks[1]!, masks[2]!);
+    maps.uA, maps.vA, maps.wA, masks[0]!, masks[1]!, masks[2]!);
   const a = setup.l_free === 0 ? DenseUnivariatePolynomial.zero(field) :
     DenseUnivariatePolynomial.fromCoefficients(field, await field.ifftBuffer(field.concat(input.publicInputs.slice(0, setup.l_free))));
   const c = (section: UnivariateCrsChunkSection, poly: DenseUnivariatePolynomial, offset = 0) => commit(runtime, section, offset, poly, input.chunkPoints);
@@ -79,8 +78,9 @@ export async function proveUnivariateReference(runtime: CurveRuntime, input: Uni
   const qSelection = await roots.quotients(witness);
   if(crs.weighted.elementCount !== setup.m * setup.s_max || crs.weightedShifted.elementCount !== setup.m * setup.s_max)
     throw new Error("Weighted query cardinality mismatch.");
-  const dQ = add(await commitDenseUnivariatePolynomial(runtime, crs.weighted, qSelection, input.chunkPoints), runtime.G1.mulScalar(await c(crs.s0, roots.polynomial), selectionMask));
-  const dQK = add(await commitDenseUnivariatePolynomial(runtime, crs.weightedShifted, qSelection, input.chunkPoints), runtime.G1.mulScalar(await c(crs.s0, roots.polynomial, k), selectionMask));
+  const [weightedQ, shiftedQ] = await commitSharedCoefficients(runtime, crs.weighted, crs.weightedShifted, qSelection, input.chunkPoints);
+  const dQ = add(weightedQ, runtime.G1.mulScalar(await c(crs.s0, roots.polynomial), selectionMask));
+  const dQK = add(shiftedQ, runtime.G1.mulScalar(await c(crs.s0, roots.polynomial, k), selectionMask));
   const transcript = new UnivariateTranscript(field, input.publicInputs.slice(0, setup.l_free));
   transcript.setMessage(encodeG1MessageBlock("F2.a1", runtime.G1, [cL, cH, cO, dQ, dQK]));
   const upsilon = transcript.challenge(1, 0);

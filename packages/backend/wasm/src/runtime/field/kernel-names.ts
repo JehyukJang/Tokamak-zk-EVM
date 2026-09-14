@@ -30,3 +30,5 @@ export const FIELD_SELECTION_ACCUMULATE = "tokamak_frm_selectionAccumulate";
 export const FIELD_ORDERED_RECURRENCE = "tokamak_frm_orderedRecurrence";
 export const FIELD_COPY_OPERANDS = "tokamak_frm_copyOperands";
 export const FIELD_UNIVARIATE_VANISHING = "tokamak_frm_univariateVanishing";
+export const FIELD_PRODUCT_DIFFERENCE = "tokamak_frm_productDifference";
+export const FIELD_SHORT_CONVOLUTION = "tokamak_frm_shortConvolution";

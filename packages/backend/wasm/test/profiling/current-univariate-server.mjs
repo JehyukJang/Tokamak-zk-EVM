@@ -49,8 +49,11 @@ const boundaries = {
 };
 function inject(text, key) {
   for (const [needle, label] of boundaries[key] ?? []) {
-    if (!text.includes(needle)) throw Error('Missing instrumentation anchor: ' + needle);
-    text = text.replace(needle, mark(label) + needle);
+    // Shared scalar preparation belongs to the same complete D_Q commitment span.
+    const anchor = label === 'prove.commit-dQ-dQK' && text.includes('  const [weightedQ, shiftedQ] =')
+      ? '  const [weightedQ, shiftedQ] =' : needle;
+    if (!text.includes(anchor)) throw Error('Missing instrumentation anchor: ' + anchor);
+    text = text.replace(anchor, mark(label) + anchor);
   }
   if (key === 'runtime/curve/curve.ts') text = text.replace('  return {\n    name: "bls12-381",', '  globalThis.__probe.runtime(Fr, G1, G2, raw);\n  return {\n    name: "bls12-381",');
   if (key === 'runtime/group/signed-msm.ts') {

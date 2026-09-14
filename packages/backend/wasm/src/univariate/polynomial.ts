@@ -19,15 +19,8 @@ export class DenseUnivariatePolynomial {
   }
 
   static async linearCombination(field: FieldRuntime, terms: readonly (readonly [DenseUnivariatePolynomial, FieldElement])[]): Promise<DenseUnivariatePolynomial> {
-    const count = Math.max(0, ...terms.map(([p]) => p.degree)) + 1;
-    let result = field.createZeroBuffer(count);
-    for (const [polynomial, factor] of terms) {
-      if (field.isZero(factor)) continue;
-      const source = field.createZeroBuffer(count);
-      source.set(polynomial.coefficients);
-      result = await field.batchAddScaledBuffer(result, source, factor);
-    }
-    return DenseUnivariatePolynomial.fromCoefficients(field, result);
+    return DenseUnivariatePolynomial.fromCoefficients(field,
+      await field.linearCombinationBuffer(terms.map(([p, factor]) => [p.coefficients, factor])));
   }
 
   async divideVanishingExactBatched(domainSize: number): Promise<DenseUnivariatePolynomial> {
@@ -123,15 +116,8 @@ export class DenseUnivariatePolynomial {
     }
     if (Math.min(this.degree, rhs.degree) <= 3) {
       const [long, short] = this.degree >= rhs.degree ? [this, rhs] : [rhs, this];
-      let result = this.field.createZeroBuffer(count);
-      for (let i = 0; i <= short.degree; i++) {
-        const factor = this.field.readBufferElement(short.coefficients, i);
-        if (this.field.isZero(factor)) continue;
-        const shifted = this.field.createZeroBuffer(count);
-        shifted.set(long.coefficients, i * this.field.byteLength);
-        result = await this.field.batchAddScaledBuffer(result, shifted, factor);
-      }
-      return DenseUnivariatePolynomial.fromCoefficients(this.field, result);
+      return DenseUnivariatePolynomial.fromCoefficients(this.field,
+        await this.field.shortConvolutionBuffer(long.coefficients, short.coefficients));
     }
     const transformSize = nextPowerOfTwo(count);
     const left = this.field.createZeroBuffer(transformSize);
