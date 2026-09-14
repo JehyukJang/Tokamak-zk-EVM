@@ -29,7 +29,7 @@ const boundaries = {
     ['  const qA =', 'prove.arithmetic-quotient'], ['  const a = setup.l_free', 'prove.public-polynomial'],
     ['  const cL =', 'prove.commit-cL-cH'], ['  const cO =', 'prove.binding-cO'],
     ['  const roots =', 'prove.selected-roots'], ['  const witness =', 'prove.selection-witness'],
-    ['  const qSelection =', 'prove.selection-quotients'], ['  const dQ =', 'prove.commit-dQ-dQK'],
+    ['  const qSelection =', 'prove.selection-quotients'], ['  const [weightedQ, shiftedQ] =', 'prove.commit-dQ-dQK'],
     ['  const transcript =', 'prove.transcript-1'], ['  const cD =', 'prove.commit-cD'],
     ['  transcript.setMessage(encodeG1MessageBlock("F2.a2"', 'prove.transcript-2'],
     ['  const copy =', 'prove.copy-relation'], ['  const cR =', 'prove.commit-cR'],
