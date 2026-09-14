@@ -30,7 +30,7 @@ export async function copyProductQuotient(
   };
   // The recurrence already supplies these domain values. Keep the exact
   // numerator-zero check: interpolation on a coset alone cannot prove division.
-  const residue = await field.batchSubBuffer(await field.batchMulBuffer(rotate(rInput.evaluations), gInput.evaluations), await field.batchMulBuffer(rInput.evaluations, fInput.evaluations));
+  const residue = await field.batchProductDifferenceBuffer(rotate(rInput.evaluations), gInput.evaluations, rInput.evaluations, fInput.evaluations);
   if (residue.some(byte => byte !== 0)) throw new Error("Polynomial is not divisible by the vanishing polynomial.");
   const shift = field.rootOfUnity(2 * domainSize), shiftN = field.pow(shift, domainSize), z = field.sub(shiftN, field.one);
   if (field.isZero(z) || !field.eq(field.pow(shift, 2), root)) throw new Error("Incompatible quotient coset roots.");
@@ -43,7 +43,7 @@ export async function copyProductQuotient(
     return field.fftBuffer(await field.batchApplyKeyBuffer(coefficients, field.one, shift));
   };
   const rc = await evaluate(r), fc = await evaluate(f), gc = await evaluate(g);
-  const numerator = await field.batchSubBuffer(await field.batchMulBuffer(rotate(rc), gc), await field.batchMulBuffer(rc, fc));
+  const numerator = await field.batchProductDifferenceBuffer(rotate(rc), gc, rc, fc);
   // deg(R(omega X)G-RF) <= 2N-1, so an exact quotient has degree below N.
   const base = P.fromCoefficients(field, await field.batchApplyKeyBuffer(await field.ifftBuffer(numerator), field.inv(z), field.inv(shift)));
   const shifted = P.fromCoefficients(field, await field.batchApplyKeyBuffer(r.coefficients, field.one, root));

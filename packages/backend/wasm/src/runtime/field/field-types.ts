@@ -36,6 +36,7 @@ export interface FieldRuntime {
   batchAddBuffer(left: Uint8Array, right: Uint8Array): Promise<Uint8Array>;
   batchSubBuffer(left: Uint8Array, right: Uint8Array): Promise<Uint8Array>;
   batchMulBuffer(left: Uint8Array, right: Uint8Array): Promise<Uint8Array>;
+  batchProductDifferenceBuffer(a: Uint8Array, b: Uint8Array, c: Uint8Array, d: Uint8Array): Promise<Uint8Array>;
   batchMulShiftedBuffer(
     left: Uint8Array,
     right: Uint8Array,

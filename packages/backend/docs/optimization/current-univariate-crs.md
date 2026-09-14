@@ -31,6 +31,19 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
+### W10.6c pointwise product-difference fusion — under qualification
+
+One existing-worker range task computes A*B-C*D with two field multiplications
+and one subtraction per element, without exporting intermediate products.
+Only the two copy-coset numerator evaluations use it; exact original-domain
+zero checks and all mask terms remain. Five isolated pairs average 11.178 ms
+control versus 8.747 ms candidate at 262144 elements, including copies and
+assembly; both slow first-pair values are retained.
+[Unit samples](evidence/wasm-w10-product-difference-unit.json).
+Empty/uneven buffers, cancellation, zero inputs and malformed-buffer rejection
+pass. Copy-coset boundary tests and three exact native-oracle proof comparisons
+also pass. Whole-prover qualification is pending.
+
 ### W10.6b short-mask convolution — inconclusive, not retained
 
 A narrow WASM kernel computes one output range and its short left halo in one
