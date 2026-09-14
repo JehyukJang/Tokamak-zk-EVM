@@ -15,7 +15,6 @@ import {
   FIELD_SPECIAL_ONE_MINUS_X,
   FIELD_SPECIAL_TERM9,
   FIELD_SPECIAL_X_MINUS_ONE,
-  FIELD_PRODUCT_DIFFERENCE,
 } from "../kernel-names.js";
 
 type SpecialPolynomialOperation =
@@ -34,27 +33,6 @@ export function installBasicLinearKernels(module: WasmModuleBuilder): void {
   buildScaleXKernel(module);
   buildScaleYKernel(module);
   buildShiftedMultiplyKernel(module);
-  buildProductDifferenceKernel(module);
-}
-
-/** Elementwise A*B-C*D without two intermediate product buffers. */
-function buildProductDifferenceKernel(module: WasmModuleBuilder): void {
-  const fn = module.addFunction(FIELD_PRODUCT_DIFFERENCE);
-  for (const name of ["a", "b", "c", "d", "count", "out"]) fn.addParam(name, "i32");
-  fn.addLocal("i", "i32");
-  const code = fn.getCodeBuilder(), term = code.i32_const(module.alloc(32));
-  const at = (base: string) => code.i32_add(code.getLocal(base), code.i32_mul(code.getLocal("i"), code.i32_const(32)));
-  fn.addCode(
-    code.setLocal("i", code.i32_const(0)),
-    code.block(code.loop(
-      code.br_if(1, code.i32_eq(code.getLocal("i"), code.getLocal("count"))),
-      code.call("frm_mul", at("a"), at("b"), at("out")),
-      code.call("frm_mul", at("c"), at("d"), term),
-      code.call("frm_sub", at("out"), term, at("out")),
-      code.setLocal("i", code.i32_add(code.getLocal("i"), code.i32_const(1))), code.br(0),
-    )),
-  );
-  module.exportFunction(FIELD_PRODUCT_DIFFERENCE);
 }
 
 export function installSpecialLinearKernels(module: WasmModuleBuilder): void {

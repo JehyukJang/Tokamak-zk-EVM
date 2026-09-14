@@ -31,7 +31,7 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
-### W10.6c pointwise product-difference fusion — under qualification
+### W10.6c pointwise product-difference fusion — rejected
 
 One existing-worker range task computes A*B-C*D with two field multiplications
 and one subtraction per element, without exporting intermediate products.
@@ -42,7 +42,15 @@ assembly; both slow first-pair values are retained.
 [Unit samples](evidence/wasm-w10-product-difference-unit.json).
 Empty/uneven buffers, cancellation, zero inputs and malformed-buffer rejection
 pass. Copy-coset boundary tests and three exact native-oracle proof comparisons
-also pass. Whole-prover qualification is pending.
+also pass. Five alternating browser pairs average 19975.303 ms control versus
+19984.364 ms candidate (0.05% slower); four pairs regress. Medians are
+19968.060 / 19989.395 ms, ranges 19952.070--20006.330 /
+19935.800--20045.340 ms. All twelve invocations, including the excluded
+warmup pair, pass native/browser verification and preprocess parity.
+[Browser samples](evidence/wasm-w10-product-difference.json).
+No whole-prover benefit is established. The candidate, retained at snapshot
+`e7c59c46d`, was removed together with its isolated test. This rejects the
+integration, not the algebraic equivalence or the observed small unit saving.
 
 ### W10.6b short-mask convolution — inconclusive, not retained
 

@@ -36,7 +36,6 @@ import {
   FIELD_ORDERED_RECURRENCE,
   FIELD_COPY_OPERANDS,
   FIELD_UNIVARIATE_VANISHING,
-  FIELD_PRODUCT_DIFFERENCE,
 } from "./kernel-names.js";
 import {
   assertLinearBatchExports,
@@ -152,22 +151,6 @@ export function createFieldRuntime(field: FfField): FieldRuntime {
     },
     async batchMulBuffer(left, right) {
       return await batchBinaryBuffer(field, left, right, FIELD_BATCH_MUL);
-    },
-    async batchProductDifferenceBuffer(a, b, c, d) {
-      for (const other of [b, c, d]) assertMatchingFieldBuffers(a, other, field.n8, "Product difference");
-      const results = await Promise.all(splitRanges(a.byteLength / field.n8, field.tm.concurrency).map(({ start, count }) => {
-        const from = start * field.n8, end = (start + count) * field.n8, bytes = count * field.n8;
-        return field.tm.queueAction([
-          { cmd: "ALLOCSET", var: 0, buff: a.slice(from, end) },
-          { cmd: "ALLOCSET", var: 1, buff: b.slice(from, end) },
-          { cmd: "ALLOCSET", var: 2, buff: c.slice(from, end) },
-          { cmd: "ALLOCSET", var: 3, buff: d.slice(from, end) },
-          { cmd: "ALLOC", var: 4, len: bytes },
-          { cmd: "CALL", fnName: FIELD_PRODUCT_DIFFERENCE, params: [{ var: 0 }, { var: 1 }, { var: 2 }, { var: 3 }, { val: count }, { var: 4 }] },
-          { cmd: "GET", out: 0, var: 4, len: bytes },
-        ]);
-      }));
-      return assembleTaskOutputs(results, a.byteLength);
     },
     async batchMulShiftedBuffer(left, right, xSize, ySize, xShift, yShift) {
       assertPolynomialBufferShape(left, xSize, ySize, field.n8, "Shifted multiplication left");
