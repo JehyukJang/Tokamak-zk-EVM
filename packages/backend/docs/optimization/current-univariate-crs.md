@@ -31,6 +31,22 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
+### W10.6f placement-level sparse task batching — under qualification
+
+The candidate sends one placement's A/B/C row-dot operations to one existing
+worker task, retaining order and three separate outputs. Gathering and
+scattering keep the existing placement/wire coordinates. Single and batched
+calls share the previous command construction and shape checks, without
+changing sparse arithmetic, repacking CSR matrices or adding a worker pool.
+Independent sequential/scalar equality covers empty/unequal row counts and
+malformed buffers; the existing relation suite also passes.
+
+Five unit pairs over 207 synthetic placements, with A/B/C row counts
+1024/512/1024, average 88.729 ms control versus 81.626 ms candidate. Packing,
+dispatch and output retrieval are included; common witness gather/scatter is
+outside this primitive comparison. [Unit samples](evidence/wasm-w10-sparse-placement-unit.json).
+Whole-prover qualification is pending.
+
 ### W10.6e batched permutation roots and gather — inconclusive, not retained
 
 All coordinate, duplicate-source/target and inactive-slot admission remains.

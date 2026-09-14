@@ -161,39 +161,8 @@ export async function buildWitnessMaps(
       throw new Error(`Subcircuit ${subcircuitId} flattenMap does not match its witness width.`);
     }
 
-    await writeArithmeticMatrix(
-      field,
-      uEvaluations,
-      domain,
-      setup,
-      placementIndex,
-      subcircuitId,
-      subcircuit.A,
-      witness.values,
-      "A",
-    );
-    await writeArithmeticMatrix(
-      field,
-      vEvaluations,
-      domain,
-      setup,
-      placementIndex,
-      subcircuitId,
-      subcircuit.B,
-      witness.values,
-      "B",
-    );
-    await writeArithmeticMatrix(
-      field,
-      wEvaluations,
-      domain,
-      setup,
-      placementIndex,
-      subcircuitId,
-      subcircuit.C,
-      witness.values,
-      "C",
-    );
+    await writeArithmeticMatrices(field, domain, setup, placementIndex, subcircuit, witness.values,
+      [uEvaluations, vEvaluations, wEvaluations]);
     writeConnectionAssignment(
       field,
       bEvaluations,
@@ -307,43 +276,28 @@ export async function buildConnectionCopyFactors(
   return [fC, gC];
 }
 
-async function writeArithmeticMatrix(
-  field: FieldRuntime,
-  evaluations: Uint8Array,
-  domain: UnivariateDomainShape,
-  setup: SetupParams,
-  placementIndex: number,
-  subcircuitId: number,
-  matrix: UnivariateSparseMatrix,
-  values: Uint8Array,
-  matrixName: string,
+async function writeArithmeticMatrices(
+  field: FieldRuntime, domain: UnivariateDomainShape, setup: SetupParams,
+  placementIndex: number, subcircuit: UnivariateSubcircuit, values: Uint8Array,
+  destinations: readonly [Uint8Array, Uint8Array, Uint8Array],
 ): Promise<void> {
-  if (matrix.rowCount > setup.n) {
-    throw new Error(`Subcircuit ${subcircuitId} ${matrixName} rows exceed n.`);
-  }
-  const activeValues = field.createZeroBuffer(matrix.activeWires.length);
-  const valueCount = field.bufferElementCount(values);
-  for (let index = 0; index < matrix.activeWires.length; index += 1) {
-    const localWire = matrix.activeWires[index];
-    if (!Number.isSafeInteger(localWire) || localWire < 0 || localWire >= valueCount) {
-      throw new Error(`Subcircuit ${subcircuitId} ${matrixName} references local wire ${localWire} outside its witness.`);
+  const requests = (["A", "B", "C"] as const).map(name => {
+    const matrix = subcircuit[name];
+    if (matrix.rowCount > setup.n) throw new Error(`Subcircuit ${subcircuit.id} ${name} rows exceed n.`);
+    const activeValues = field.createZeroBuffer(matrix.activeWires.length), valueCount = field.bufferElementCount(values);
+    for (let index = 0; index < matrix.activeWires.length; index++) {
+      const wire = matrix.activeWires[index]!;
+      if (!Number.isSafeInteger(wire) || wire < 0 || wire >= valueCount)
+        throw new Error(`Subcircuit ${subcircuit.id} ${name} references local wire ${wire} outside its witness.`);
+      field.writeBufferElement(activeValues, index, field.readBufferElement(values, wire));
     }
-    field.writeBufferElement(activeValues, index, field.readBufferElement(values, localWire));
-  }
-  const rows = await field.sparseRowDotBuffer(
-    matrix.rowOffsets,
-    matrix.columns,
-    matrix.coefficients,
-    activeValues,
-    matrix.rowCount,
-  );
-  for (let row = 0; row < matrix.rowCount; row += 1) {
-    field.writeBufferElement(
-      evaluations,
-      arithmeticIndex(domain, setup, placementIndex, subcircuitId, row),
-      field.readBufferElement(rows, row),
-    );
-  }
+    return { rowOffsets: matrix.rowOffsets, columns: matrix.columns, coefficients: matrix.coefficients, variables: activeValues, rowCount: matrix.rowCount };
+  });
+  // One placement task retains the existing A/B/C order and distinct outputs.
+  const rows = await field.sparseRowDotBatchBuffer(requests);
+  for (let matrix = 0; matrix < requests.length; matrix++)
+    for (let row = 0; row < requests[matrix]!.rowCount; row++)
+      field.writeBufferElement(destinations[matrix]!, arithmeticIndex(domain, setup, placementIndex, subcircuit.id, row), field.readBufferElement(rows[matrix]!, row));
 }
 
 function writeConnectionAssignment(

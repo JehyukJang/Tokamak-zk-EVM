@@ -5,8 +5,10 @@ import {
   checkedPowerOfTwoLog,
   requireTaskOutputs,
   splitRanges,
+  assertNonNegativeSafeInteger,
+  assertFieldBuffer,
 } from "../buffer-utils.js";
-import type { FieldElement, SpecialPolynomialOperation } from "../field-types.js";
+import type { FieldElement, SpecialPolynomialOperation, SparseRowDotInput } from "../field-types.js";
 import {
   FIELD_BATCH_ADD,
   FIELD_BATCH_ADD_SCALED,
@@ -44,6 +46,43 @@ import {
 
 interface FfFieldWithWorkerTasks extends FfField {
   readonly prefix: string;
+}
+
+export function buildSparseRowDotTask(field: FfField, input: SparseRowDotInput): FfWorkerCommand[] {
+  const { rowOffsets, columns, coefficients, variables, rowCount } = input;
+  assertNonNegativeSafeInteger(rowCount, "Sparse row count");
+  if (rowOffsets.byteLength !== (rowCount + 1) * 4) {
+    throw new Error("Sparse row-offset buffer length does not match the row count.");
+  }
+  if (columns.byteLength % 4 !== 0) {
+    throw new Error("Sparse column buffer length must be a multiple of four bytes.");
+  }
+  assertFieldBuffer(coefficients, field.n8);
+  assertFieldBuffer(variables, field.n8);
+  if (columns.byteLength / 4 !== coefficients.byteLength / field.n8) {
+    throw new Error("Sparse columns and coefficients must contain the same number of entries.");
+  }
+  const outputBytes = rowCount * field.n8;
+  return [
+    { cmd: "ALLOCSET", var: 0, buff: rowOffsets },
+    { cmd: "ALLOCSET", var: 1, buff: columns },
+    { cmd: "ALLOCSET", var: 2, buff: coefficients },
+    { cmd: "ALLOCSET", var: 3, buff: variables },
+    { cmd: "ALLOC", var: 4, len: outputBytes },
+    {
+      cmd: "CALL",
+      fnName: FIELD_SPARSE_ROW_DOT,
+      params: [
+        { var: 0 },
+        { var: 1 },
+        { var: 2 },
+        { var: 3 },
+        { val: rowCount },
+        { var: 4 },
+      ],
+    },
+    { cmd: "GET", out: 0, var: 4, len: outputBytes },
+  ];
 }
 
 const MAX_FFT_MIX_BITS_PER_BATCH_TASK = 14;
