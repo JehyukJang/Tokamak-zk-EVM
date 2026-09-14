@@ -31,7 +31,7 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
-### W10.6h bounded requested-range CRS readahead — under qualification
+### W10.6h bounded requested-range CRS readahead — not retained
 
 The candidate starts the next requested chunk while awaiting the current
 chunk, in both contiguous and strided reads. It does not speculate outside
@@ -47,7 +47,15 @@ of two simultaneous loads for a sequential range read. Eight synthetic
 loads with an explicit 3-ms delay average 27.533 / 13.787 ms over five pairs.
 This verifies overlap, not actual browser network speed; both paths load
 the same eight chunks. [Unit samples](evidence/wasm-w10-crs-readahead-unit.json).
-Whole-prover qualification is pending.
+Three native proof-byte oracles and all twelve browser/native E2E runs pass.
+After the excluded warmup pair, five measured pairs average 20817.779 /
+20820.122 ms (0.01% slower), with medians 20772.245 / 20817.140 ms and
+ranges 20718.055--21007.560 / 20794.560--20851.550 ms. Three pairs regress.
+There is no observed whole-prover benefit under the actual fixture loader;
+the synthetic overlap result does not justify retaining extra reader/cache
+logic. Restore the original reader. This is not a claim that readahead never
+helps other network environments. The candidate and isolated test remain
+recoverable at `c318baece`. [Browser samples](evidence/wasm-w10-crs-readahead.json).
 
 ### W10.6g worker cofactor construction — accepted
 

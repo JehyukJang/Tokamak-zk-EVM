@@ -114,15 +114,12 @@ class ChunkSection implements UnivariateCrsChunkSection {
     const output = new Uint8Array(elementCount * this.elementByteLength);
     if (elementCount === 0) return output;
     const endElement = firstElement + elementCount;
-    const chunks = this.#chunks.filter(chunk => chunk.firstElement < endElement && chunk.firstElement + chunk.elementCount > firstElement);
-    for (const [index, descriptor] of chunks.entries()) {
+    for (const descriptor of this.#chunks) {
       const chunkEnd = descriptor.firstElement + descriptor.elementCount;
       const overlapStart = Math.max(firstElement, descriptor.firstElement);
       const overlapEnd = Math.min(endElement, chunkEnd);
       if (overlapStart >= overlapEnd) continue;
-      const pending = this.#cache.load(descriptor);
-      if (chunks[index + 1]) this.#cache.prefetch(chunks[index + 1]!);
-      const bytes = await pending;
+      const bytes = await this.#cache.load(descriptor);
       const sourceOffset = (overlapStart - descriptor.firstElement) * this.elementByteLength;
       const destinationOffset = (overlapStart - firstElement) * this.elementByteLength;
       output.set(
@@ -138,19 +135,12 @@ class ChunkSection implements UnivariateCrsChunkSection {
     const lastElement = elementCount === 0 ? firstElement : firstElement + (elementCount - 1) * stride;
     requireRange(firstElement, elementCount === 0 ? 0 : lastElement - firstElement + 1, this.elementCount, this.label);
     const output = new Uint8Array(elementCount * this.elementByteLength);
-    const chunks = this.#chunks.filter(chunk => {
-      const first = Math.max(0, Math.ceil((chunk.firstElement - firstElement) / stride));
-      const last = Math.min(elementCount - 1, Math.floor((chunk.firstElement + chunk.elementCount - 1 - firstElement) / stride));
-      return first <= last;
-    });
-    for (const [index, descriptor] of chunks.entries()) {
+    for (const descriptor of this.#chunks) {
       const chunkEnd = descriptor.firstElement + descriptor.elementCount;
       const firstOutput = Math.max(0, Math.ceil((descriptor.firstElement - firstElement) / stride));
       const lastOutput = Math.min(elementCount - 1, Math.floor((chunkEnd - 1 - firstElement) / stride));
       if (firstOutput > lastOutput) continue;
-      const pending = this.#cache.load(descriptor);
-      if (chunks[index + 1]) this.#cache.prefetch(chunks[index + 1]!);
-      const bytes = await pending;
+      const bytes = await this.#cache.load(descriptor);
       for (let outputIndex = firstOutput; outputIndex <= lastOutput; outputIndex += 1) {
         const element = firstElement + outputIndex * stride;
         const sourceOffset = (element - descriptor.firstElement) * this.elementByteLength;
@@ -165,15 +155,10 @@ class ChunkSection implements UnivariateCrsChunkSection {
 
 }
 
-interface ChunkCacheEntry {
-  readonly raw: Promise<Uint8Array>;
-  checked?: Promise<Uint8Array>;
-}
-
 class ChunkCache {
   readonly #checkDigests: boolean;
   readonly #loadChunk: (relativePath: string) => Promise<Uint8Array>;
-  readonly #entries = new Map<string, ChunkCacheEntry>();
+  readonly #entries = new Map<string, Promise<Uint8Array>>();
 
   constructor(loadChunk: (relativePath: string) => Promise<Uint8Array>, checkDigests: boolean) {
     this.#loadChunk = loadChunk;
@@ -182,9 +167,9 @@ class ChunkCache {
 
   load(descriptor: ChunkDescriptor): Promise<Uint8Array> {
     const cacheKey = `${descriptor.path}:${descriptor.byteLength}:${descriptor.sha256}`;
-    const entry = this.prefetch(descriptor);
-    if (entry.checked === undefined) {
-      entry.checked = entry.raw.then((bytes) => {
+    let pending = this.#entries.get(cacheKey);
+    if (pending === undefined) {
+      pending = this.#loadChunk(descriptor.path).then((bytes) => {
         if (!(bytes instanceof Uint8Array) || bytes.byteLength !== descriptor.byteLength) {
           throw new Error(`CRS chunk '${descriptor.path}' has an invalid byte length.`);
         }
@@ -193,23 +178,10 @@ class ChunkCache {
         }
         return bytes;
       }).catch((error: unknown) => {
-        if (this.#entries.get(cacheKey) === entry) this.#entries.delete(cacheKey);
+        this.#entries.delete(cacheKey);
         throw error;
       });
-    }
-    return entry.checked;
-  }
-
-  prefetch(descriptor: ChunkDescriptor): ChunkCacheEntry {
-    const cacheKey = `${descriptor.path}:${descriptor.byteLength}:${descriptor.sha256}`;
-    let entry = this.#entries.get(cacheKey);
-    if (entry === undefined) {
-      const raw = Promise.resolve().then(() => this.#loadChunk(descriptor.path));
-      // An unconsumed read must neither hash bytes nor report an unhandled
-      // rejection. Keep the original promise: load still propagates its error.
-      void raw.catch(() => {});
-      entry = { raw };
-      this.#entries.set(cacheKey, entry);
+      this.#entries.set(cacheKey, pending);
       while (this.#entries.size > 2) {
         const oldest = this.#entries.keys().next().value as string | undefined;
         if (oldest === undefined) break;
@@ -217,9 +189,9 @@ class ChunkCache {
       }
     } else {
       this.#entries.delete(cacheKey);
-      this.#entries.set(cacheKey, entry);
+      this.#entries.set(cacheKey, pending);
     }
-    return entry;
+    return pending;
   }
 }
 
