@@ -31,6 +31,24 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
+### W10.6h bounded requested-range CRS readahead — under qualification
+
+The candidate starts the next requested chunk while awaiting the current
+chunk, in both contiguous and strided reads. It does not speculate outside
+the requested range. The existing two-entry cache holds raw read promises;
+length/digest checks run when a chunk is consumed. Unconsumed prefetch
+failures have a rejection observer, but the original rejected promise is
+retained and its error reaches any later consumer. The loader interface,
+structural admission and off-by-default digest policy are unchanged.
+
+Independent tests cover ordering, range boundaries, empty reads, invalid
+shapes, default/on digest counts, consumed/unconsumed errors and a maximum
+of two simultaneous loads for a sequential range read. Eight synthetic
+loads with an explicit 3-ms delay average 27.533 / 13.787 ms over five pairs.
+This verifies overlap, not actual browser network speed; both paths load
+the same eight chunks. [Unit samples](evidence/wasm-w10-crs-readahead-unit.json).
+Whole-prover qualification is pending.
+
 ### W10.6g worker cofactor construction — accepted
 
 The candidate groups selected roots across the existing worker concurrency.
