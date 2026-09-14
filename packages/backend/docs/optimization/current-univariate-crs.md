@@ -29,7 +29,138 @@ a documentation/evidence audit, not a new benchmark of that revision. Earlier
 sections retain their experiment-time controls and validation scope; the
 current status below supersedes their then-pending migration descriptions.
 
-## WASM optimization execution results — 2026-09-13
+## WASM optimization execution results — 2026-09-13–14
+
+### W10 retained-set qualification — complete
+
+W10 is complete on 2026-09-14. Five changes are retained; the other eleven
+candidates are rejected or inconclusive and are not production alternatives.
+W9 verifier and W8 preprocess experiments have not been executed. Shared
+runtime improvements from W10 must be part of their future controls.
+
+The final comparison uses the preserved W10-entry control from `d2e23ef83`
+and the retained implementation at `f8dc5c0fb`. Both are minified ES2022
+browser bundles; generated WASM arithmetic is unchanged except for the
+individually qualified kernels. Measurements use Apple M4 Pro, 14 available
+workers and Chromium 149.0.7827.55, the same local-QAP 207-placement fixture,
+and the same compressed CRS. Digest checking is off for both. Each invocation
+has a fresh browser context, reader and runtime; this is not a cold OS-cache
+test. No competing benchmark was run. One initial control/candidate warmup
+pair is excluded, followed by five alternating measured pairs.
+
+| Whole public prove call | W10-entry control | Retained W10 |
+| --- | ---: | ---: |
+| Mean | 22608.533 ms | 20733.702 ms |
+| Median | 22627.765 ms | 20740.370 ms |
+| Minimum | 22450.820 ms | 20706.830 ms |
+| Maximum | 22696.400 ms | 20759.655 ms |
+
+All five pairs improve. The mean reduction is **1874.831 ms (8.29%)**.
+This is a direct retained-set comparison, not a sum of earlier improvements
+measured in different sessions. All twelve invocations, including warmups,
+pass browser verification, native verification and preprocess byte parity;
+each proof is 1184 bytes. Initialization, preprocess and verify have separate
+timers and are not included in the prove row.
+[Complete samples](evidence/wasm-w10-final-comparison.json).
+
+| Candidate | Final disposition |
+| --- | --- |
+| W10.1 copy-boundary division/scaling | Retained |
+| W10.2 copy-recurrence operands | Retained |
+| W10.3a grouped MSM windows | Rejected |
+| W10.3b shared scalar preparation | Inconclusive; removed |
+| W10.3c shared base delivery | Inconclusive; removed |
+| W10.4 signed-window G1 MSM | Retained |
+| W10.5a arithmetic coset quotient | Inconclusive; removed |
+| W10.5b copy coset quotient | Retained |
+| W10.6a multi-term accumulation | Inconclusive; removed |
+| W10.6b short-mask convolution | Inconclusive; removed |
+| W10.6c pointwise product-difference fusion | Rejected |
+| W10.6d same-worker combination/Ruffini | Rejected at independent unit gate; no production integration |
+| W10.6e permutation roots/gather | Inconclusive; removed |
+| W10.6f placement-level sparse task batching | Inconclusive; removed |
+| W10.6g selection cofactor construction | Retained; small repeated benefit |
+| W10.6h bounded CRS readahead | No observed whole-prover benefit; removed |
+
+The per-candidate sections below retain controls, unfavorable samples, unit
+results and recoverable source snapshots. Existing successful techniques are
+not generalized into new caches or fallback algorithms without evidence.
+
+#### Final detailed profile
+
+The separate instrumented default-off invocation takes 20712.940 ms for
+prove, 179.570 ms for initialization, 3352.410 ms for preprocess and
+26.645 ms for verify. These are diagnostic single samples, not additional
+paired timing observations. The subsequent uninstrumented explicit-on run
+takes 22929.315 ms for prove and also passes browser/native verification and
+preprocess parity. [Profile and explicit-on evidence](evidence/wasm-w10-final-profile.json).
+
+| Prove stage | Elapsed ms |
+| --- | ---: |
+| Input admission | 3.780 |
+| Domain construction | 0.035 |
+| Connection permutation | 150.280 |
+| Witness slots | 4.070 |
+| Witness maps | 349.230 |
+| Public checks and masks | 10.165 |
+| Arithmetic quotient | 638.110 |
+| Public polynomial | 0.620 |
+| Commit C_L and C_H | 5166.680 |
+| Bind C_O | 418.110 |
+| Selected roots | 16.520 |
+| Selection witness | 6.090 |
+| Selection quotients | 120.585 |
+| Commit D_Q and shifted D_Q | 2556.120 |
+| First transcript update | 5.860 |
+| Commit C_D | 2565.805 |
+| Second transcript update | 0.340 |
+| Copy-relation dispatch | 0.045 |
+| Copy recurrence and operands | 92.830 |
+| Copy interpolation | 118.490 |
+| Copy-boundary quotient | 41.680 |
+| Copy-product quotient | 552.505 |
+| Commit C_R | 1272.710 |
+| Combine quotients | 19.715 |
+| Commit C_Q | 1268.975 |
+| Evaluations | 38.760 |
+| Opening combination | 26.195 |
+| Opening pi_chi | 3938.575 |
+| Opening pi_plus | 1328.760 |
+| Final transcript update | 0.550 |
+| Proof encoding | 0.710 |
+
+Stage intervals sum to 20712.900 ms; the remaining 0.040 ms is timer/entry
+overhead. Nested counters are **not additive** to this table. The cofactor
+worker call is 3.465 ms, and selection accumulation is 116.995 ms. Prove's
+31 G1 MSM API calls total 17377.690 ms including delivery and reduction;
+1494 window tasks transfer 7541218600 input bytes and 215136 output bytes.
+Their summed worker kernel time is 172497.675 ms because workers overlap;
+it is not elapsed prove time. Contiguous CRS-read counters total 890.960 ms,
+already inside the stage intervals. Transfer totals are not peak resident
+memory measurements; no new process-RSS peak is claimed here.
+
+#### Correctness and remaining unrelated limitation
+
+Using the existing CRS, native release preprocess -> prove -> verify passes
+again with `true`; the native preprocess bytes match the reference. The new
+native proof passes WASM verification, and a newly generated WASM proof passes
+both verifiers. Independent native-oracle fixtures `n2`, `n8` and `singleton`
+match all proof bytes with test-only masks. All six challenge rounds and root
+orientation match the shared fixture. Tests reject changes to all ten proof
+points, seven evaluations, three preprocess operands and the public input,
+as well as malformed encodings. Digest-off/on and malformed CRS regression
+checks pass. No setup regeneration, real MPC, publication or CUDA measurement
+was performed. [Qualification record](evidence/wasm-w10-final-qualification.json).
+
+The optimization suite now includes signed MSM, copy coset and cofactor
+regressions. Direct production TypeScript checking, script/test TypeScript
+checking, contract closure, polynomial/relation/preprocess, binary conversion,
+field-operation and ownership checks pass. The broader
+`npm run typecheck:development` still fails in the **pre-existing unrelated**
+generator test fixture: `m_D=48`, `m=8`, `s_D=1` violates `m_D=m*s_D`.
+That fixture and validation code are unchanged since the W10 baseline. This
+scoped qualification is not a claim that the aggregate development check or
+the package release gate is clean; repairing that fixture is outside W10.
 
 ### W10.6h bounded requested-range CRS readahead — not retained
 

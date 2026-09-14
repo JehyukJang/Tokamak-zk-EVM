@@ -57,7 +57,7 @@ const probe = w.__probe = {
       probe.msm.calls.push({ phase, points: bases.byteLength / 96, ms: performance.now() - start });
       return out;
     };
-    for (const name of ['fftBuffer', 'ifftBuffer', 'batchMulBuffer', 'batchSubBuffer', 'batchAddScaledBuffer', 'batchFromMontgomeryBuffer', 'sparseRowDotBuffer', 'selectionAccumulateBuffer', 'copyOperandsBuffer', 'orderedRecurrenceBuffer', 'batchInverseBuffer', 'divideUnivariateVanishingBuffer', 'evaluatePolynomialBuffer', 'ruffiniYBuffer', 'batchApplyKeyBuffer']) this.wrap(fr, name, 'Fr.');
+    for (const name of ['fftBuffer', 'ifftBuffer', 'batchMulBuffer', 'batchSubBuffer', 'batchAddScaledBuffer', 'batchFromMontgomeryBuffer', 'sparseRowDotBuffer', 'selectionAccumulateBuffer', 'selectionCofactorsBuffer', 'copyOperandsBuffer', 'orderedRecurrenceBuffer', 'batchInverseBuffer', 'divideUnivariateVanishingBuffer', 'evaluatePolynomialBuffer', 'ruffiniYBuffer', 'batchApplyKeyBuffer']) this.wrap(fr, name, 'Fr.');
     this.wrap(g1, 'msmAffineRaw', 'G1.'); this.wrap(g2, 'msmAffineRaw', 'G2.');
   }
 };
