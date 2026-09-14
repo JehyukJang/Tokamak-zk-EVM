@@ -31,15 +31,18 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13–14
 
-### Combined six-candidate remeasurement — 2026-09-14
+### Combined six-candidate remeasurement — retained, 2026-09-14
 
 This follow-up restores shared scalar conversion, arithmetic coset division,
 multi-term linear-combination fusion, short-mask convolution, product-difference
 fusion and permutation batching together on top of `5c51ef29f`. The five
-previously retained W10 changes remain enabled. These six candidates are now
-present in the implementation for the requested combined experiment; the
-individual historical dispositions below describe their earlier qualification,
-not the current source state.
+previously retained W10 changes remain enabled. All six additions at
+`29c3defc7` are confirmed for retention by the project owner on 2026-09-14.
+The current retained set therefore contains eleven of the sixteen W10
+candidates. Future optimization comparisons must include these six additions
+in their control. This adoption decision supersedes their earlier individual
+rejection or inconclusive disposition; it does not change the historical
+measurements or establish an independent speedup for each addition.
 
 Exactly two successful runs of the unchanged implementation preceded two runs
 of the combined implementation. All four ran sequentially, with no additional
@@ -114,7 +117,8 @@ in the candidate, preserving the original stage boundary's meaning.
 ### W10 retained-set qualification — complete
 
 At the original W10 completion on 2026-09-14, five changes were retained; the other eleven
-candidates are rejected or inconclusive and are not production alternatives.
+candidates were rejected or inconclusive. The combined-six retention decision
+above supersedes six of those historical dispositions.
 W9 verifier and W8 preprocess experiments have not been executed. Shared
 runtime improvements from W10 must be part of their future controls.
 
@@ -143,27 +147,28 @@ each proof is 1184 bytes. Initialization, preprocess and verify have separate
 timers and are not included in the prove row.
 [Complete samples](evidence/wasm-w10-final-comparison.json).
 
-| Candidate | Final disposition |
+| Candidate | Current disposition after combined-six retention |
 | --- | --- |
 | W10.1 copy-boundary division/scaling | Retained |
 | W10.2 copy-recurrence operands | Retained |
 | W10.3a grouped MSM windows | Rejected |
-| W10.3b shared scalar preparation | Inconclusive; removed |
+| W10.3b shared scalar preparation | Retained in confirmed combined six |
 | W10.3c shared base delivery | Inconclusive; removed |
 | W10.4 signed-window G1 MSM | Retained |
-| W10.5a arithmetic coset quotient | Inconclusive; removed |
+| W10.5a arithmetic coset quotient | Retained in confirmed combined six |
 | W10.5b copy coset quotient | Retained |
-| W10.6a multi-term accumulation | Inconclusive; removed |
-| W10.6b short-mask convolution | Inconclusive; removed |
-| W10.6c pointwise product-difference fusion | Rejected |
+| W10.6a multi-term accumulation | Retained in confirmed combined six |
+| W10.6b short-mask convolution | Retained in confirmed combined six |
+| W10.6c pointwise product-difference fusion | Retained in confirmed combined six |
 | W10.6d same-worker combination/Ruffini | Rejected at independent unit gate; no production integration |
-| W10.6e permutation roots/gather | Inconclusive; removed |
+| W10.6e permutation roots/gather | Retained in confirmed combined six |
 | W10.6f placement-level sparse task batching | Inconclusive; removed |
 | W10.6g selection cofactor construction | Retained; small repeated benefit |
 | W10.6h bounded CRS readahead | No observed whole-prover benefit; removed |
 
-The per-candidate sections below retain controls, unfavorable samples, unit
-results and recoverable source snapshots. Existing successful techniques are
+The per-candidate sections below preserve historical experiment-time decisions,
+controls, unfavorable samples, unit results and recoverable source snapshots.
+The current disposition table above controls retention. Existing successful techniques are
 not generalized into new caches or fallback algorithms without evidence.
 
 #### Final detailed profile
