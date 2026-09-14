@@ -31,7 +31,7 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
-### W10.6e batched permutation roots and gather — under qualification
+### W10.6e batched permutation roots and gather — inconclusive, not retained
 
 All coordinate, duplicate-source/target and inactive-slot admission remains.
 The candidate fills an all-one buffer by doubling byte copies, uses the
@@ -45,8 +45,21 @@ mappings average 110.163 ms versus 13.780 ms. Both exclude unchanged admission
 and IFFT; real helper output and coefficients are checked separately. Tests
 include singleton, identity and inactive slots and malformed permutation
 rejection. [Unit samples](evidence/wasm-w10-permutation-unit.json).
-The synthetic mapping distribution is not the application fixture; whole-
-prover qualification is pending.
+The synthetic mapping distribution is not the application fixture. The first
+five browser pairs average 20905.655 / 20912.369 ms (0.03% slower); four pairs
+improve but one loses 462.810 ms. Medians are 20853.310 / 20780.310 ms, ranges
+20792.795--21115.020 / 20733.620--21314.965 ms. All twelve invocations,
+including the excluded warmup pair, pass native/browser verification and
+preprocess parity. Existing relation tests and three native-oracle proof-byte
+comparisons also pass. [First samples](evidence/wasm-w10-permutation.json).
+The reversed-order repeat averages 20985.083 / 20973.695 ms (0.05% faster),
+but medians are 20921.745 / 20959.975 ms. Ranges are
+20768.370--21292.845 / 20797.435--21156.795 ms; only two of five pairs improve.
+Across ten pairs six improve, and the combined mean saving is 2.337 ms.
+This does not establish a repeatable whole-prover gain. All 24 E2E invocations
+pass. [Repeat samples](evidence/wasm-w10-permutation-repeat.json).
+The candidate and isolated test are preserved at `c3358279f` and removed
+from the retained implementation. The unfavorable samples are not excluded.
 
 ### W10.6d same-worker combination plus Ruffini — rejected at unit gate
 
