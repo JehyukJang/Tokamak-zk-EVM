@@ -6,7 +6,7 @@ import { coalesceAffineMsmChunks, msmAffineMontgomeryChunks, type AffineMontgome
 import { PublicWireLayout } from "../prover/protocol/public-wire-layout.js";
 import type { ProverPlacementVariables, ProverSubcircuitInfo } from "../prover/protocol/witness.js";
 import { placementCount, placementSubcircuitId, placementVariableAt, placementVariableCount } from "../prover/protocol/witness.js";
-import { commitDenseUnivariatePolynomial } from "./commitments.js";
+import { commitDenseUnivariatePolynomial, commitSharedBases } from "./commitments.js";
 import type { UnivariateProverCrsRuntime } from "./crs.js";
 import { deriveUnivariateDomainShape } from "./domain.js";
 import { DenseUnivariatePolynomial } from "./polynomial.js";
@@ -65,8 +65,11 @@ export async function proveUnivariateReference(runtime: CurveRuntime, input: Uni
     DenseUnivariatePolynomial.fromCoefficients(field, await field.ifftBuffer(field.concat(input.publicInputs.slice(0, setup.l_free))));
   const c = (section: UnivariateCrsChunkSection, poly: DenseUnivariatePolynomial, offset = 0) => commit(runtime, section, offset, poly, input.chunkPoints);
   const add = (...points: G1Point[]) => points.reduce((a, b) => runtime.G1.add(a, b), runtime.G1.zero);
-  const cL = add(await c(crs.s0, a), await c(crs.sxi, uHat), await c(crs.spsi, wHat));
-  const cH = add(await c(crs.sxi, vHat), await c(crs.spsi, bHat));
+  const cA = await c(crs.s0, a);
+  const [cU, cV] = await commitSharedBases(runtime, crs.sxi, uHat.coefficients, vHat.coefficients, input.chunkPoints);
+  const [cW, cB] = await commitSharedBases(runtime, crs.spsi, wHat.coefficients, bHat.coefficients, input.chunkPoints);
+  const cL = add(cA, cU, cW);
+  const cH = add(cV, cB);
   const cO = await buildBinding(runtime, input, slots, layout, masks, selectionMask);
   const roots = await SelectedRoots.create(field, setup, input.selector);
   const witness = field.createZeroBuffer(setup.m * setup.s_max);

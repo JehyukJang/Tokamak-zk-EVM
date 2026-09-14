@@ -132,7 +132,7 @@ export interface CurveRuntime {
 export async function createCurveRuntime(): Promise<CurveRuntime> {
   const raw = (await getCurveFromName("bls12381", false, installLinearBatchPlugin)) as FfCurve;
   const Fr = createFieldRuntime(raw.Fr);
-  const G1 = createG1Runtime(raw.G1, Fr);
+  const G1 = createG1Runtime(raw.G1, Fr, raw.Fr.tm);
   const G2 = createG2Runtime(raw.G2);
 
   return {
