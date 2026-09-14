@@ -31,7 +31,7 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
-### W10.5b copy coset quotient — under qualification
+### W10.5b copy coset quotient — accepted
 
 The candidate uses the recurrence's existing numerator, denominator and R
 evaluations for the original-domain zero check. The unmasked quotient degree
@@ -50,7 +50,19 @@ the interval includes validation, buffers, transforms and mask expansion.
 [Unit samples](evidence/wasm-w10-copy-coset-unit.json).
 The existing masked-quotient/recurrence suites pass, and n2, n8 and singleton
 native-oracle fixtures produce identical proof bytes and verify successfully.
-Paired browser qualification is pending; no whole-prover gain is claimed yet.
+The first five alternating browser pairs reduce mean prove time from
+21267.697 to 20912.620 ms (1.67%); all five improve. Medians are 21200.700
+and 20866.950 ms, ranges 21098.980--21485.630 and 20749.755--21131.930 ms.
+All twelve invocations, including the excluded warmup pair, pass native/browser
+verification and preprocess byte parity. [First browser samples](evidence/wasm-w10-copy-coset.json).
+A reversed-schedule repeat averages 21277.003 versus 20947.550 ms (1.55%);
+medians are 21308.775 / 21022.685 ms, ranges 21025.165--21499.085 /
+20739.315--21109.805 ms. All five pairs improve, although the last saving is
+only 2.480 ms. Across both sessions ten of ten pairs improve; all 24 E2E
+invocations pass. [Repeat samples](evidence/wasm-w10-copy-coset-repeat.json).
+The copy candidate is retained independently of the rejected arithmetic
+candidate. A subsequent isolated test extends degree-N coverage to F as well
+as G; all exact coefficient and rejection assertions pass.
 
 ### W10.5a arithmetic coset quotient — inconclusive, not retained
 

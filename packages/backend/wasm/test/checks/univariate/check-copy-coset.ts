@@ -22,12 +22,14 @@ try {
     // Adding a multiple of Z_N preserves the domain relation but exercises
     // the degree-N coefficient fold, including the singleton beta*X case.
     const bPoly = P.fromCoefficients(f, b.coefficients).add(P.fromCoefficients(f, f.fromBigInt(19n)).multiplyVanishing(n));
+    const aPoly = P.fromCoefficients(f, a.coefficients).add(P.fromCoefficients(f, f.fromBigInt(23n)).multiplyVanishing(n));
+    const aInput = { ...a, coefficients: aPoly.coefficients };
     const bInput = { ...b, coefficients: bPoly.coefficients };
     for (const masked of [false, true]) {
       const mr = masked ? P.fromCoefficients(f, f.concat([3n, 5n, 7n, 11n].map(x => f.fromBigInt(x)))) : P.zero(f);
       const mb = masked ? P.fromCoefficients(f, f.concat([13n, 17n].map(x => f.fromBigInt(x)))) : P.zero(f);
-      const old = () => control(n, P.fromCoefficients(f, r.coefficients), P.fromCoefficients(f, a.coefficients), bPoly, mr, mb);
-      const candidate = () => copyProductQuotient(f, n, f.rootOfUnity(n), r, a, bInput, mr, mb);
+      const old = () => control(n, P.fromCoefficients(f, r.coefficients), aPoly, bPoly, mr, mb);
+      const candidate = () => copyProductQuotient(f, n, f.rootOfUnity(n), r, aInput, bInput, mr, mb);
       const expected = await old(); assert.deepEqual((await candidate()).coefficients, expected.coefficients);
       if (n === 262144 && masked) {
         const samples = [];
@@ -46,6 +48,7 @@ try {
       assert.deepEqual((await copyProductQuotient(f, n, f.rootOfUnity(n), zero, zero, zero, P.zero(f), P.zero(f))).coefficients, f.zero);
       const extra = P.fromCoefficients(f, f.one).shift(n);
       await assert.rejects(() => copyProductQuotient(f, n, f.rootOfUnity(n), { ...r, coefficients: extra.coefficients }, a, bInput, P.zero(f), P.zero(f)), /interpolation domain/);
+      await assert.rejects(() => copyProductQuotient(f, n, f.rootOfUnity(n), r, aInput, { ...bInput, coefficients: extra.shift(1).coefficients }, P.zero(f), P.zero(f)), /interpolation domain/);
     }
   }
 } finally { await runtime.terminate(); }
