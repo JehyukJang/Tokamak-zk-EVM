@@ -1,4 +1,4 @@
-import type { FfField } from "../curve/curve.js";
+import type { FfField, FfWorkerCommand } from "../curve/curve.js";
 import {
   assemblePolynomialColumns,
   assembleTaskOutputs,
@@ -36,6 +36,7 @@ import {
   FIELD_ORDERED_RECURRENCE,
   FIELD_COPY_OPERANDS,
   FIELD_UNIVARIATE_VANISHING,
+  FIELD_RUFFINI_Y,
 } from "./kernel-names.js";
 import {
   assertLinearBatchExports,
@@ -240,6 +241,37 @@ export function createFieldRuntime(field: FfField): FieldRuntime {
         { cmd: "GET", out: 0, var: 3, len: numerators.byteLength },
       ]);
       return requireTaskOutputs(outputs, 1, "Ordered recurrence")[0];
+    },
+    async selectionCofactorsBuffer(polynomial, roots, inverse) {
+      assertFieldBuffer(roots, field.n8);
+      const width = roots.byteLength / field.n8;
+      assertPositiveSafeInteger(width, "Selection cofactor width");
+      assertPolynomialBufferShape(polynomial, 1, width + 1, field.n8, "Selection polynomial");
+      assertFieldElement(inverse, field.n8, "Selection normalization");
+      const rowBytes = width * field.n8;
+      const results = await Promise.all(splitRanges(width, field.tm.concurrency).map(({ start, count }) => {
+        const task: FfWorkerCommand[] = [
+          { cmd: "ALLOCSET", var: 0, buff: polynomial },
+          { cmd: "ALLOCSET", var: 1, buff: field.one },
+          { cmd: "ALLOC", var: 2, len: rowBytes },
+          { cmd: "ALLOC", var: 3, len: field.n8 },
+        ];
+        for (let i = 0; i < count; i++) {
+          const root = roots.slice((start + i) * field.n8, (start + i + 1) * field.n8);
+          task.push(
+            { cmd: "ALLOCSET", var: 4, buff: root },
+            { cmd: "ALLOCSET", var: 5, buff: field.mul(root, inverse) },
+            { cmd: "CALL", fnName: FIELD_RUFFINI_Y, params: [{ var: 0 }, { val: width + 1 }, { var: 4 }, { var: 2 }, { var: 3 }] },
+            { cmd: "CALL", fnName: FIELD_BATCH_SCALE_X, params: [{ var: 2 }, { var: 1 }, { var: 5 }, { val: 1 }, { val: width }, { var: 2 }] },
+            { cmd: "GET", out: i, var: 2, len: rowBytes },
+          );
+        }
+        return field.tm.queueAction(task);
+      }));
+      const packed = new Uint8Array(width * rowBytes);
+      let offset = 0;
+      for (const rows of results) for (const row of rows) { packed.set(row, offset); offset += rowBytes; }
+      return packed;
     },
     async selectionAccumulateBuffer(values, cofactors, width) {
       assertPositiveSafeInteger(width, "Selection row width");

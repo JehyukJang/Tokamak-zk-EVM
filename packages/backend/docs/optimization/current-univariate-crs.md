@@ -31,6 +31,18 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
+### W10.6g worker cofactor construction — under qualification
+
+The candidate groups selected roots across the existing worker concurrency.
+Each task reuses the existing Ruffini and scale kernels and returns the same
+row-major cofactor buffer. The selection polynomial is copied once per task;
+no new arithmetic kernel, worker pool or persistent cache is introduced.
+Five isolated construction pairs at 256 roots average 38.454 / 2.804 ms,
+including packing, dispatch and retrieval. Scalar-polynomial equality covers
+singleton/inactive roots, row order, empty/sparse witnesses and malformed
+shapes. [Unit samples](evidence/wasm-w10-selection-cofactors-unit.json).
+Whole-prover qualification is pending.
+
 ### W10.6f placement-level sparse task batching — inconclusive, not retained
 
 The candidate sends one placement's A/B/C row-dot operations to one existing

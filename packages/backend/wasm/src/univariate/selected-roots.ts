@@ -50,14 +50,7 @@ export class SelectedRoots {
     if(count % s !== 0)
       throw new Error("Incomplete selection witness row.");
     const inverse = f.inv(f.fromBigInt(BigInt(this.size)));
-    const cofactors = this.roots.map(z => {
-      const q = this.polynomial.ruffini(z).quotient.scale(f.mul(z, inverse));
-      const row = f.createZeroBuffer(s);
-      row.set(q.coefficients);
-      return row;
-    });
-    const packed = f.createZeroBuffer(s * s);
-    cofactors.forEach((row, index) => packed.set(row, index * s * f.byteLength));
+    const packed = await f.selectionCofactorsBuffer(this.polynomial.coefficients, f.concat(this.roots), inverse);
     return f.selectionAccumulateBuffer(wireMajorValues, packed, s);
   }
 }
