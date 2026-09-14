@@ -40,6 +40,7 @@ import {
   FIELD_ORDERED_RECURRENCE,
   FIELD_COPY_OPERANDS,
   FIELD_UNIVARIATE_VANISHING,
+  FIELD_SHORT_CONVOLUTION,
 } from "../kernel-names.js";
 
 interface FfFieldWithWorkerTasks extends FfField {
@@ -273,6 +274,7 @@ export function assertLinearBatchExports(field: FfField): void {
     FIELD_ORDERED_RECURRENCE,
     FIELD_COPY_OPERANDS,
     FIELD_UNIVARIATE_VANISHING,
+    FIELD_SHORT_CONVOLUTION,
   ];
   for (const name of requiredExports) {
     if (typeof field.tm.instance?.exports[name] !== "function") {

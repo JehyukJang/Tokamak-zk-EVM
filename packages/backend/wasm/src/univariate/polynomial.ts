@@ -123,15 +123,8 @@ export class DenseUnivariatePolynomial {
     }
     if (Math.min(this.degree, rhs.degree) <= 3) {
       const [long, short] = this.degree >= rhs.degree ? [this, rhs] : [rhs, this];
-      let result = this.field.createZeroBuffer(count);
-      for (let i = 0; i <= short.degree; i++) {
-        const factor = this.field.readBufferElement(short.coefficients, i);
-        if (this.field.isZero(factor)) continue;
-        const shifted = this.field.createZeroBuffer(count);
-        shifted.set(long.coefficients, i * this.field.byteLength);
-        result = await this.field.batchAddScaledBuffer(result, shifted, factor);
-      }
-      return DenseUnivariatePolynomial.fromCoefficients(this.field, result);
+      return DenseUnivariatePolynomial.fromCoefficients(this.field,
+        await this.field.shortConvolutionBuffer(long.coefficients, short.coefficients));
     }
     const transformSize = nextPowerOfTwo(count);
     const left = this.field.createZeroBuffer(transformSize);

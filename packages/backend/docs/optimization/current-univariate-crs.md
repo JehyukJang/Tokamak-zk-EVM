@@ -31,6 +31,23 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
+### W10.6b short-mask convolution — under qualification
+
+A narrow WASM kernel computes one output range and its short left halo in one
+task, replacing separately padded add-scaled passes for masks of at most four
+coefficients. Existing small direct products and general FFT products are
+unchanged. Worker count follows the runtime; every output is explicitly
+initialized, and boundary halos contain algebraic zeros rather than omitted
+mask terms. Independent equality includes both operand orders, widths 1--4,
+N=1 through 262144, uneven shards and sparse/zero masks.
+
+Five unit pairs average 10.831 / 7.917 ms for two coefficients and
+17.370 / 12.626 ms for four coefficients, including packing, dispatch and
+assembly. The slow two-coefficient pair is retained.
+[Unit samples](evidence/wasm-w10-short-convolution-unit.json).
+Whole-prover qualification is pending; a small unit saving is not an
+acceptance result.
+
 ### W10.6 entry profile and local fusion experiments
 
 The accepted-copy-coset profile passes browser/native verification and

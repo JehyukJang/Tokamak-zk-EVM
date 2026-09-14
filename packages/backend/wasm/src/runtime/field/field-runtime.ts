@@ -36,6 +36,7 @@ import {
   FIELD_ORDERED_RECURRENCE,
   FIELD_COPY_OPERANDS,
   FIELD_UNIVARIATE_VANISHING,
+  FIELD_SHORT_CONVOLUTION,
 } from "./kernel-names.js";
 import {
   assertLinearBatchExports,
@@ -258,6 +259,25 @@ export function createFieldRuntime(field: FfField): FieldRuntime {
         ]);
       }));
       return assembleTaskOutputs(results, values.byteLength);
+    },
+    async shortConvolutionBuffer(long, short) {
+      assertFieldBuffer(long, field.n8); assertFieldBuffer(short, field.n8);
+      const n = long.byteLength / field.n8, width = short.byteLength / field.n8;
+      if (n < 1 || width < 1 || width > 4) throw new Error("Short convolution requires a nonempty polynomial and one to four mask coefficients.");
+      const length = n + width - 1;
+      const results = await Promise.all(splitRanges(length, field.tm.concurrency).map(({ start, count }) => {
+        const first = start - width + 1, from = Math.max(0, first), end = Math.min(n, start + count);
+        const halo = new Uint8Array((count + width - 1) * field.n8);
+        halo.set(long.subarray(from * field.n8, end * field.n8), (from - first) * field.n8);
+        return field.tm.queueAction([
+          { cmd: "ALLOCSET", var: 0, buff: halo },
+          { cmd: "ALLOCSET", var: 1, buff: short },
+          { cmd: "ALLOC", var: 2, len: count * field.n8 },
+          { cmd: "CALL", fnName: FIELD_SHORT_CONVOLUTION, params: [{ var: 0 }, { var: 1 }, { val: width }, { val: count }, { var: 2 }] },
+          { cmd: "GET", out: 0, var: 2, len: count * field.n8 },
+        ]);
+      }));
+      return assembleTaskOutputs(results, length * field.n8);
     },
     async batchAddScaledBuffer(target, source, factor) {
       assertMatchingFieldBuffers(target, source, field.n8, "Add-scaled buffers");
