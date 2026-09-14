@@ -31,6 +31,81 @@ current status below supersedes their then-pending migration descriptions.
 
 ## WASM optimization execution results — 2026-09-13
 
+### W10.4 signed-window G1 MSM — accepted, 2026-09-14
+
+The native signed-digit/half-range-bucket idea now uses existing WASM G1
+mixed-add, mixed-subtract and projective-add primitives. Scalars are recoded
+once per point chunk; each existing worker processes one signed window.
+Nonfinal digits use half-range buckets. The final window retains its carry
+and allocates its required unsigned range. Identity-safe reduction, separate
+commitments and the existing point-chunk upper bound remain. W10.3's rejected
+grouped-window and paired-commitment schedules are not included.
+
+The input-size width rule is the native rule: width 3 below 32 points,
+otherwise floor(ceil(log2(point count)) * 69 / 100) + 1. Independent neighboring
+widths were tested, not assumed optimal from native performance. Repeat unit
+means, including recoding, allocation, copying and reduction, are:
+
+| Points | Width | Stock unsigned (ms) | Signed (ms) |
+| --- | ---: | ---: | ---: |
+| 4097 | 8 | 16.246 | 14.983 |
+| 4097 | 9 | 16.313 | 14.267 |
+| 4097 | 10 | 18.056 | 15.299 |
+| 262144 | 12 | 698.490 | 659.997 |
+| 262144 | 13 | 702.705 | 655.462 |
+| 262144 | 14 | 712.966 | 660.750 |
+
+These use a known small base pool, not the browser CRS distribution. Five
+pairs per width follow equality/warmup calls. Both the first measurements and
+the repeat, including slower/outlying samples, remain available:
+[first unit evidence](evidence/wasm-w10-signed-unit.json),
+[repeat unit evidence](evidence/wasm-w10-signed-unit-repeat.json).
+The tested rule is retained, not claimed globally optimal for every input or
+device. No worker count is fixed in production.
+
+Two minified-browser sessions compare accepted W10.2 with signed MSM. Each
+excludes one warmup pair and measures five pairs in fresh contexts; the
+second reverses the alternating order schedule. Chromium 149, 14 available
+workers, compressed local-QAP inputs and default-off digest mode are unchanged.
+
+| Session | Control mean / median (ms) | Signed mean / median (ms) | Improved pairs |
+| --- | ---: | ---: | ---: |
+| First | 22888.146 / 22801.075 | 22589.593 / 22122.100 | 3/5 |
+| Reversed schedule | 22315.610 / 22343.850 | 21267.051 / 21229.850 | 5/5 |
+
+Control/signed ranges are 22536.525--23204.655 / 21547.440--24078.480 ms
+and 22165.440--22461.560 / 21206.900--21431.070 ms. Session means improve by
+1.30% and 4.70%, with eight of ten paired improvements. The two slower first-
+session candidates are not excluded; these measurements are not a guarantee
+of a device-independent speedup. [First samples](evidence/wasm-w10-signed.json),
+[repeat samples](evidence/wasm-w10-signed-repeat.json).
+
+All 24 runs, including excluded warmups, pass browser/native verification and
+native preprocess-byte parity. Independent tests check exact integer digit
+reconstruction through 256-bit boundaries, maximum-value carry, zero/one/r-1
+and full-width scalars, identity/duplicate/negative bases, cancellation,
+point-count boundaries and external chunk assembly. Complete deterministic
+proof bytes also match the existing native scalar oracle for n2, n8 and
+singleton fixtures; all three verify true. Direct TypeScript checking passes.
+An initial development-only command-array encoding bug was fixed before any
+recorded unit timings or production-entry E2E execution.
+
+At 262144 points and width 13, signed digit scratch is 20 MiB plus an 8-MiB
+padded scalar copy. Logical per-window inputs total 500 MiB versus stock's
+608 MiB, while nonfinal buckets fall from 16384 to 4096 points. These are
+buffer/payload counts, not measured peak memory. Timing includes all of these
+costs. No persistent table cache, new worker pool or CRS format change is added.
+W9/W8 must use this shared G1 runtime as part of their controls.
+
+A separate closure profile records 21208.000 ms prove, 17543.765 ms inclusive
+across 31 G1 MSM calls, 1494 window tasks, 7541218600 logical input bytes and
+215136 output bytes. Worker kernel work sums to 174282.930 ms and overlaps
+across workers; it is not elapsed proving time. Main-thread MSM reduction
+sums to 21.765 ms. Explicit-on digest execution separately records 23548.370 ms
+prove. Both pass browser/native verification and preprocess parity. These
+single diagnostic/on runs are not new paired speedup estimates.
+[Closure profile and on-mode evidence](evidence/wasm-w10-signed-profile.json).
+
 ### W10.3c shared C_L/C_H base delivery — inconclusive, not retained
 
 Two independent stock unsigned MSM kernels received one base buffer and two
@@ -131,7 +206,7 @@ was not measured. [Browser evidence](evidence/wasm-w10-grouped.json).
 
 No grouped-window production path is retained. The candidate and its equality
 test remain under `wasm/test` for reproducibility. With the preserved W10.2
-control bundle and the usual profiling runner, set
+control bundle and the profiling runner at commit `ef38a70a8`, set
 `BACKEND_WASM_PROFILE_CANDIDATE=grouped-msm` to build the experimental bundle.
 This result rejects this grouping schedule, not every possible MSM-sharing
 technique. Shared D_Q/D_Q,K preparation and C_L/C_H base delivery remain

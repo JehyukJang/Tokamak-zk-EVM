@@ -41,7 +41,9 @@ const probe = w.__probe = {
       const record: any = { phase: probe.phase, start: performance.now(), queueMs: 0,
         inputBytes: task.filter(x => x.cmd === 'ALLOCSET').reduce((n, x) => n + x.buff.byteLength, 0),
         outputBytes: task.filter(x => x.cmd === 'GET').reduce((n, x) => n + x.len, 0),
-        windows: calls.map(x => ({ points: x.params[3]?.val, startBit: x.params[4]?.val, bits: x.params[5]?.val })) };
+        windows: calls.map(x => x.fnName === 'g1m_multiexpSigned_window'
+          ? { signed: true, points: x.params[2]?.val, buckets: x.params[3]?.val }
+          : { points: x.params[3]?.val, startBit: x.params[4]?.val, bits: x.params[5]?.val }) };
       queued.set(task, record);
       return originalQueue.call(this, task, ...rest).then((out: any) => {
         probe.msm.tasks.push({ ...record, start: undefined, elapsedMs: performance.now() - record.start, ...out.msmDiagnostic });

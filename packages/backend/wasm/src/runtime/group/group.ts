@@ -1,4 +1,5 @@
-import type { FfGroup } from "../curve/curve.js";
+import type { FfGroup, FfThreadManager } from "../curve/curve.js";
+import { signedG1Msm } from "./signed-msm.js";
 import { concatBytes } from "../bytes.js";
 import { formatHex, parseCanonicalHex } from "../field/field-encoding.js";
 import type { FieldElement, FieldRuntime } from "../field/field-runtime.js";
@@ -45,7 +46,7 @@ export interface G2Runtime {
   mulScalar(point: G2Point, scalar: FieldElement): G2Point;
   msmAffineRaw(bases: Uint8Array, rawScalars: Uint8Array): Promise<G2Point>;
 }
-export function createG1Runtime(group: FfGroup, scalarField: FieldRuntime): G1Runtime {
+export function createG1Runtime(group: FfGroup, scalarField: FieldRuntime, tm: FfThreadManager): G1Runtime {
   return {
     zero: group.zeroAffine,
     generator: group.oneAffine,
@@ -117,7 +118,7 @@ export function createG1Runtime(group: FfGroup, scalarField: FieldRuntime): G1Ru
         assertG1AffinePoint(bases[index], `G1 MSM base ${index}`);
       }
       const rawScalars = scalars.map((scalar) => scalarField.toRawLittleEndian(scalar));
-      return group.multiExpAffine(concatBytes(bases), concatBytes(rawScalars));
+      return signedG1Msm(group, tm, concatBytes(bases), concatBytes(rawScalars));
     },
     async msmAffineRaw(bases, scalars) {
       if(bases.byteLength % G1_AFFINE_BYTES !== 0) {
@@ -127,7 +128,7 @@ export function createG1Runtime(group: FfGroup, scalarField: FieldRuntime): G1Ru
       if(scalars.byteLength !== count * SCALAR_RAW_BYTES) {
         throw new Error("G1 MSM scalar buffer length does not match the base count.");
       }
-      return group.multiExpAffine(bases, scalars);
+      return signedG1Msm(group, tm, bases, scalars);
     },
   };
 }

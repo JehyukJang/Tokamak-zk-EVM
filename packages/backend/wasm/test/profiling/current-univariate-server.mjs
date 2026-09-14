@@ -16,6 +16,7 @@ const candidatePlugins = candidate ? [{ name: 'experimental-msm', setup(b) {
     text = `import { groupedG1Msm } from ${JSON.stringify(path.join(root, 'test/profiling/candidates/grouped-msm.ts'))};\n` + text;
     const end = text.indexOf('export function createG2Runtime');
     if (end < 0) throw Error('Missing G1/G2 boundary in grouped MSM experiment');
+    if (text.slice(0, end).split('group.multiExpAffine(').length !== 3) throw Error('Grouped MSM experiment requires its recorded unsigned control revision');
     text = text.slice(0, end).replaceAll('group.multiExpAffine(', 'groupedG1Msm(group, group.tm, ') + text.slice(end);
     return { contents: text, loader: 'ts' };
   });
@@ -52,6 +53,10 @@ function inject(text, key) {
     text = text.replace(needle, mark(label) + needle);
   }
   if (key === 'runtime/curve/curve.ts') text = text.replace('  return {\n    name: "bls12-381",', '  globalThis.__probe.runtime(Fr, G1, G2, raw);\n  return {\n    name: "bls12-381",');
+  if (key === 'runtime/group/signed-msm.ts') {
+    text = text.replace('  let out = group.zero;', '  const reductionStart = performance.now();\n  let out = group.zero;');
+    text = text.replace('  return out;', '  globalThis.__probe.msm.reductionMs += performance.now() - reductionStart;\n  return out;');
+  }
   if (key === 'univariate/chunked-crs.ts') {
     text = text.replace('    requireRange(firstElement, elementCount, this.elementCount, this.label);', '    const __start = performance.now();\n    requireRange(firstElement, elementCount, this.elementCount, this.label);');
     text = text.replace('    return output;\n  }\n\n  async readStridedElements', '    globalThis.__probe.add("CRS.readElements", __start, elementCount);\n    return output;\n  }\n\n  async readStridedElements');
@@ -68,7 +73,7 @@ for (const profiled of [false, true]) await build({
     }));
     b.onLoad({ filter: /\/src\/.*\.ts$/ }, async args => {
     const key = args.path.split('/src/')[1];
-    if (!(key in boundaries) && !['runtime/curve/curve.ts', 'univariate/chunked-crs.ts'].includes(key)) return;
+    if (!(key in boundaries) && !['runtime/curve/curve.ts', 'runtime/group/signed-msm.ts', 'univariate/chunked-crs.ts'].includes(key)) return;
     return { contents: inject(await readFile(args.path, 'utf8'), key), loader: 'ts' };
   }); } }] : [])],
 });

@@ -5,6 +5,8 @@ import { installLinearBatchPlugin } from "../field/linear-batch-plugin.js";
 import { createG1Runtime, createG2Runtime, type G1Runtime, type G2Runtime } from "../group/group.js";
 import { createPairingRuntime, type PairingRuntime } from "../pairing/pairing.js";
 import type { FieldElement } from "../field/field-runtime.js";
+import type { WasmModuleBuilder } from "../field/kernel-builder-types.js";
+import { buildSignedMsmKernel } from "../group/signed-msm-kernel.js";
 
 export type RandomScalarSource = () => FieldElement | Promise<FieldElement>;
 
@@ -130,9 +132,12 @@ export interface CurveRuntime {
 }
 
 export async function createCurveRuntime(): Promise<CurveRuntime> {
-  const raw = (await getCurveFromName("bls12381", false, installLinearBatchPlugin)) as FfCurve;
+  const raw = (await getCurveFromName("bls12381", false, (module: WasmModuleBuilder) => {
+    installLinearBatchPlugin(module);
+    buildSignedMsmKernel(module);
+  })) as FfCurve;
   const Fr = createFieldRuntime(raw.Fr);
-  const G1 = createG1Runtime(raw.G1, Fr);
+  const G1 = createG1Runtime(raw.G1, Fr, raw.Fr.tm);
   const G2 = createG2Runtime(raw.G2);
 
   return {
