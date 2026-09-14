@@ -59,7 +59,7 @@ Other input/transcript/output intervals are in the raw profile. Nested API
 durations and concurrent worker durations must not be added to these stages.
 This is the control checkpoint for the subsequent independent W10.6 candidates.
 
-**W10.6a multi-term worker accumulation — under qualification.** Keep each
+**W10.6a multi-term worker accumulation — inconclusive, not retained.** Keep each
 range's accumulator in one existing-worker task while invoking the existing
 add-scaled kernel for each term. Short terms touch only their actual prefix;
 no whole-polynomial padding or intermediate round trip is necessary. No new
@@ -68,7 +68,24 @@ Independent tests match the prior batched and small scalar controls, including
 empty/zero terms, cancellation, unequal lengths and malformed buffers.
 Five 262144-element four-term pairs average 20.075 ms versus 9.674 ms including
 task construction/copies and result assembly. [Unit samples](evidence/wasm-w10-linear-combination-unit.json).
-Whole-prover qualification remains pending.
+The first five-pair browser session averages 20937.747 ms control versus
+20773.569 ms candidate (0.78%); medians are 20838.395 / 20735.970 ms,
+ranges 20756.960--21237.175 / 20674.430--21004.065 ms. All five pairs improve;
+the smallest saving is only 20.990 ms. All twelve invocations, including the
+excluded warmup pair, pass native/browser verification and preprocess parity.
+[First browser samples](evidence/wasm-w10-linear-combination.json).
+The reversed-schedule repeat averages 20288.103 / 20231.913 ms (0.28%),
+but medians are 19984.280 / 20038.095 ms. Ranges are
+19953.770--20775.870 / 19899.610--20991.810 ms; three of five pairs improve.
+Across ten pairs the mean saving is 110.184 ms, sample standard deviation
+294.763 ms; a descriptive paired-t 95% interval spans -100.662 to 321.030 ms.
+Eight pairs improve, but the second session's worse median and mixed large
+differences do not establish a sufficiently repeatable whole-prover gain.
+Both sessions' means also drift, indicating uncontrolled desktop variation.
+All 24 invocations pass native/browser verification and preprocess parity.
+[Repeat samples](evidence/wasm-w10-linear-combination-repeat.json).
+The candidate and isolated test are recoverable at `09b6f954d`; the additional
+runtime method and integration were removed. No unqualified fusion remains.
 
 ### W10.5b copy coset quotient — accepted
 

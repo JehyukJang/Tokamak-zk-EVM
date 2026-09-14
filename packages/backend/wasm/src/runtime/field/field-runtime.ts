@@ -1,4 +1,4 @@
-import type { FfField, FfWorkerCommand } from "../curve/curve.js";
+import type { FfField } from "../curve/curve.js";
 import {
   assemblePolynomialColumns,
   assembleTaskOutputs,
@@ -258,33 +258,6 @@ export function createFieldRuntime(field: FfField): FieldRuntime {
         ]);
       }));
       return assembleTaskOutputs(results, values.byteLength);
-    },
-    async linearCombinationBuffer(terms) {
-      let length = 1;
-      for (const [source, factor] of terms) {
-        assertFieldBuffer(source, field.n8);
-        assertFieldElement(factor, field.n8, "Linear combination factor");
-        length = Math.max(length, source.byteLength / field.n8);
-      }
-      const active = terms.filter(([, factor]) => !field.isZero(factor));
-      if (active.length === 0) return new Uint8Array(length * field.n8);
-      const results = await Promise.all(splitRanges(length, field.tm.concurrency).map(({ start, count }) => {
-        // Retain each range's accumulator inside one existing-worker task.
-        // Short sources leave the remaining accumulator coefficients untouched.
-        const task: FfWorkerCommand[] = [{ cmd: "ALLOCSET", var: 0, buff: new Uint8Array(count * field.n8) }];
-        for (const [source, factor] of active) {
-          const available = Math.min(count, source.byteLength / field.n8 - start);
-          if (available <= 0) continue;
-          task.push(
-            { cmd: "ALLOCSET", var: 1, buff: source.slice(start * field.n8, (start + available) * field.n8) },
-            { cmd: "ALLOCSET", var: 2, buff: factor },
-            { cmd: "CALL", fnName: FIELD_BATCH_ADD_SCALED, params: [{ var: 0 }, { var: 1 }, { var: 2 }, { val: available }, { var: 0 }] },
-          );
-        }
-        task.push({ cmd: "GET", out: 0, var: 0, len: count * field.n8 });
-        return field.tm.queueAction(task);
-      }));
-      return assembleTaskOutputs(results, length * field.n8);
     },
     async batchAddScaledBuffer(target, source, factor) {
       assertMatchingFieldBuffers(target, source, field.n8, "Add-scaled buffers");
