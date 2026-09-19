@@ -43,6 +43,7 @@
     "scripts/parse-interfaces.js",
     "scripts/parse-symbols.js",
     "scripts/qap-compiler.mjs",
+    "scripts/normalize-r1cs.js",
     "scripts/reload-constants.sh",
     "scripts/tokamakL2js/**/*",
     "scripts/write-library-artifacts.js",

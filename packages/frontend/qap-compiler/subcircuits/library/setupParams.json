@@ -1,19 +1,39 @@
 {
-  "l_log_out": 50,
-  "l_storage_store": 80,
-  "l_storage_load": 130,
-  "l_tx_in": 134,
-  "l_block_in": 158,
-  "l_evm_in": 396,
-  "l_free": 256,
-  "l_user_out": 130,
-  "l_user": 134,
-  "l": 396,
-  "l_D": 1420,
-  "m_D": 45056,
   "n": 1024,
-  "m": 1024,
+  "m": 2048,
+  "m_b": 512,
   "t": 64,
-  "s_D": 44,
-  "s_max": 256
+  "s": 256,
+  "publicWirePhases": [
+    {
+      "name": "user-output",
+      "region": "free",
+      "subcircuitIds": [
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "name": "user-input",
+      "region": "free",
+      "subcircuitIds": [
+        3
+      ]
+    },
+    {
+      "name": "block-input",
+      "region": "free",
+      "subcircuitIds": [
+        4
+      ]
+    },
+    {
+      "name": "function-input",
+      "region": "fixed",
+      "subcircuitIds": [
+        5
+      ]
+    }
+  ]
 }
