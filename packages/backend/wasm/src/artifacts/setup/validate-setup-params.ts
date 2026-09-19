@@ -1,49 +1,25 @@
 import type { SetupParams } from "./setup-params.js";
-const NUMERIC_SETUP_FIELDS: readonly (keyof SetupParams)[] = [
-  "l_free",
-  "l",
-  "l_user_out",
-  "l_user",
-  "l_D",
-  "m_D",
-  "n",
-  "m",
-  "t",
-  "s_D",
-  "s_max",
-];
-/** Validates the setup relationships required by every browser protocol path. */
+
+const NUMERIC_SETUP_FIELDS = ["n", "m", "m_b", "t", "s"] as const;
+
+/** Validates the normalized setup capacities required by every browser path. */
 export function validateSetupParams(setup: SetupParams): void {
-  for(const field of NUMERIC_SETUP_FIELDS) {
-    if(!Number.isSafeInteger(setup[field]) || setup[field] < 0) {
-      throw new Error(`Invalid setup parameter '${field}'.`);
+  for (const field of NUMERIC_SETUP_FIELDS) {
+    if (!isPowerOfTwo(setup[field])) {
+      throw new Error(`Setup parameter '${field}' must be a positive power of two.`);
     }
   }
-  if(setup.l_user_out > setup.l_user || setup.l_user > setup.l_free) {
-    throw new Error("Setup user-public boundaries are invalid.");
+  if (setup.m_b > setup.m) {
+    throw new Error("Setup wiring capacity m_b must not exceed local wire capacity m.");
   }
-  if(setup.l_free > setup.l || setup.l_D <= setup.l || setup.l_D > setup.m_D) {
-    throw new Error("Setup public and interface boundaries are invalid.");
-  }
-  if(!isPowerOfTwo(setup.m) || !isPowerOfTwo(setup.t) || setup.t <= setup.s_D || setup.t / 2 > setup.s_D || setup.m_D !== setup.m * setup.s_D || (setup.l_free !== 0 && !isPowerOfTwo(setup.l_free))) {
-    throw new Error("Invalid padded library dimensions.");
-  }
-  if(setup.n <= 0 || setup.s_max <= 0) {
-    throw new Error("Setup n and s_max must be positive.");
-  }
-  if(!isPowerOfTwo(setup.l_D - setup.l) || !isPowerOfTwo(setup.n) || !isPowerOfTwo(setup.s_max)) {
-    throw new Error("Setup m_i, n, and s_max domains must be powers of two.");
+  if (!Array.isArray(setup.publicWirePhases)) {
+    throw new Error("Setup publicWirePhases must be an array.");
   }
 }
 
 function isPowerOfTwo(value: number): boolean {
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    return false;
-  }
-
+  if (!Number.isSafeInteger(value) || value <= 0) return false;
   let remaining = value;
-  while (remaining % 2 === 0) {
-    remaining /= 2;
-  }
+  while (remaining % 2 === 0) remaining /= 2;
   return remaining === 1;
 }

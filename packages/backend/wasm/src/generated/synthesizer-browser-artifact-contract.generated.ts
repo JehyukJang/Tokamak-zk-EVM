@@ -71,7 +71,7 @@ export const SYNTHESIZER_BROWSER_ARTIFACT_CONTRACT = {
         "integerEncoding": "i32-le",
         "inactive": -1,
         "active": "compiled subcircuit ID",
-        "length": "s_max"
+        "length": "s"
       },
       "sections": [
         {

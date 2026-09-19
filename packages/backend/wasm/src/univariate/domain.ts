@@ -16,14 +16,14 @@ export interface UnivariateDomainShape {
 /**
  * Derives the U1/U4 domains from the published library dimensions.
  *
- * The arithmetic domain is n*s and the connection domain is m_I*s.
+ * The arithmetic domain is n*s and the connection domain is m_b*s.
  * The separate selection capacity t reserves its final ID for the empty circuit.
  */
 export function deriveUnivariateDomainShape(field: FieldRuntime, setup: SetupParams): UnivariateDomainShape {
   validateSetupParams(setup);
   const subcircuitCapacity = setup.t;
-  const arithmeticSize = checkedProduct("N_A", setup.n, setup.s_max);
-  const connectionSize = checkedProduct("N_C", setup.l_D - setup.l, setup.s_max);
+  const arithmeticSize = checkedProduct("N_A", setup.n, setup.s);
+  const connectionSize = checkedProduct("N_C", setup.m_b, setup.s);
   const intersectionSize = greatestCommonDivisor(arithmeticSize, connectionSize);
   return {
     schema: UNIVARIATE_DOMAIN_CONTRACT.protocolSchema,
@@ -38,23 +38,23 @@ export function deriveUnivariateDomainShape(field: FieldRuntime, setup: SetupPar
 }
 /** U1's canonical flat arithmetic-domain index. */
 export function arithmeticIndex(domain: UnivariateDomainShape, setup: SetupParams, placementIndex: number, subcircuitId: number, constraintRow: number): number {
-  assertIndex(placementIndex, setup.s_max, "placement");
+  assertIndex(placementIndex, setup.s, "placement");
   assertIndex(subcircuitId, domain.subcircuitCapacity, "subcircuit");
   assertIndex(constraintRow, setup.n, "constraint row");
-  return checkedSum("U1 index", checkedNonnegativeProduct("U1 row offset", setup.s_max, constraintRow), placementIndex);
+  return checkedSum("U1 index", checkedNonnegativeProduct("U1 row offset", setup.s, constraintRow), placementIndex);
 }
 
 /** U4's canonical flat connection-domain index. */
 export function connectionIndex(
   setup: SetupParams,
   placementIndex: number,
-  interfaceWireIndex: number,
+  localWireIndex: number,
 ): number {
-  assertIndex(placementIndex, setup.s_max, "placement");
-  assertIndex(interfaceWireIndex, setup.l_D - setup.l, "interface wire");
+  assertIndex(placementIndex, setup.s, "placement");
+  assertIndex(localWireIndex, setup.m_b, "wiring wire");
   return checkedSum(
     "U4 index",
-    checkedNonnegativeProduct("U4 wire offset", setup.s_max, interfaceWireIndex),
+    checkedNonnegativeProduct("U4 wire offset", setup.s, localWireIndex),
     placementIndex,
   );
 }

@@ -6,7 +6,7 @@ const runtime = await createCurveRuntime();
 try {
   const f = runtime.Fr;
   for (const width of [1, 2, 8, 32]) {
-    const setup = { l_free: 0, l: 1, l_D: 3, l_user: 0, l_user_out: 0, m_D: 4, m: 4, t: 2, s_D: 1, s_max: width, n: 2 };
+    const setup = { m: 4, m_b: 2, t: 2, s: width, n: 2, publicWirePhases: [] };
     const roots = await SelectedRoots.create(f, setup, Array.from({ length: width }, (_, i) => i % 2 ? null : 0));
     for (const rows of [0, 1, 3, 17]) {
       const values = f.concat(Array.from({ length: rows * width }, (_, i) => f.fromBigInt((BigInt(i % 5 ? i - 7 : 0) + f.modulus) % f.modulus)));

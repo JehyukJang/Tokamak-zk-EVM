@@ -1,6 +1,9 @@
 import { createBinaryArtifactFile } from "../../artifacts/binary/binary-artifact-file.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../version.js";
-import { GENERATED_SETUP_PARAMS } from "../../generated/active/setup.generated.js";
+import {
+  GENERATED_FREE_PUBLIC_LENGTH,
+  GENERATED_PUBLIC_INPUT_LENGTH,
+} from "../../generated/active/setup.generated.js";
 import { INSTANCE_V1_SPEC } from "../../generated/browser-artifact-contracts.generated.js";
 import { SYNTHESIZER_BROWSER_ARTIFACT_CONTRACT } from "../../generated/synthesizer-browser-artifact-contract.generated.js";
 import { concatBytes } from "../../runtime/bytes.js";
@@ -22,12 +25,6 @@ const blockPublicField = requireProducerSourceField(instanceSourceFields, "block
 const functionPublicField = requireProducerSourceField(instanceSourceFields, "functionPublic", INSTANCE_ARTIFACT_NAME);
 const [publicInstanceSectionSpec, functionInstanceSectionSpec] = INSTANCE_V1_SPEC.sections;
 
-interface VerifierSetupParamsJson {
-  readonly l_free: number;
-  readonly l_user: number;
-  readonly l: number;
-}
-
 interface InstanceJson {
   readonly a_pub_user: readonly string[];
   readonly a_pub_block: readonly string[];
@@ -45,11 +42,11 @@ async function createInstanceArtifact(
   sourcePackageVersion: string,
 ): Promise<Uint8Array> {
   const instance = parseInstanceJson(raw);
-  const publicInstance = readPublicInstance(runtime, instance, GENERATED_SETUP_PARAMS);
+  const publicInstance = readPublicInstance(runtime, instance, GENERATED_FREE_PUBLIC_LENGTH);
   const functionInstance = readFunctionInstance(
     runtime,
     instance,
-    GENERATED_SETUP_PARAMS,
+    GENERATED_PUBLIC_INPUT_LENGTH - GENERATED_FREE_PUBLIC_LENGTH,
   );
 
   return createBinaryArtifactFile({
@@ -75,15 +72,15 @@ async function createInstanceArtifact(
 function readPublicInstance(
   runtime: CurveRuntime,
   instance: InstanceJson,
-  setup: VerifierSetupParamsJson,
+  expectedLength: number,
 ): readonly Uint8Array[] {
   const publicInstance = [
-    ...instance.a_pub_user.slice(0, setup.l_user),
-    ...instance.a_pub_block.slice(0, setup.l_free - setup.l_user),
+    ...instance.a_pub_user,
+    ...instance.a_pub_block,
   ];
 
-  if (publicInstance.length !== setup.l_free) {
-    throw new Error("Verifier public instance length does not match setupParams.l_free.");
+  if (publicInstance.length !== expectedLength) {
+    throw new Error(`Verifier free-public instance length must be ${expectedLength}.`);
   }
 
   return publicInstance.map((value) => runtime.Fr.fromHex(value));
@@ -92,12 +89,11 @@ function readPublicInstance(
 function readFunctionInstance(
   runtime: CurveRuntime,
   instance: InstanceJson,
-  setup: VerifierSetupParamsJson,
+  expectedLength: number,
 ): readonly Uint8Array[] {
-  const expectedLength = setup.l - setup.l_free;
   if (instance.a_pub_function.length !== expectedLength) {
     throw new Error(
-      `Function instance length must equal setupParams.l - setupParams.l_free (${expectedLength}).`,
+      `Function instance length must equal the derived fixed-public length (${expectedLength}).`,
     );
   }
 

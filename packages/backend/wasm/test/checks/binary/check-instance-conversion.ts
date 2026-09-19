@@ -9,19 +9,23 @@ import {
 } from "../../../src/artifacts/binary/binary-format.js";
 import { convertInstance } from "../../../src/converter/conversion/instance-converter.js";
 import { validateBinary } from "../../../src/converter/index.js";
-import { GENERATED_SETUP_PARAMS } from "../../../src/generated/active/setup.generated.js";
+import {
+  GENERATED_FREE_PUBLIC_LENGTH,
+  GENERATED_PUBLIC_INPUT_LENGTH,
+} from "../../../src/generated/active/setup.generated.js";
 import { BACKEND_WASM_PACKAGE_VERSION } from "../../../src/version.js";
 import { createCurveRuntime } from "../../../src/runtime/curve/curve.js";
 import { assertEqual } from "../../support/assertions.js";
 import { assertBytesEqual, concatBytes } from "../../support/bytes.js";
 
-const setup = GENERATED_SETUP_PARAMS;
+const freeLength = GENERATED_FREE_PUBLIC_LENGTH;
+const fixedLength = GENERATED_PUBLIC_INPUT_LENGTH - freeLength;
 
 async function main(): Promise<void> {
   const source = {
-    a_pub_user: hexValues(setup.l_user, 1),
-    a_pub_block: hexValues(setup.l_free - setup.l_user, 1_001),
-    a_pub_function: hexValues(setup.l - setup.l_free, 2_001),
+    a_pub_user: hexValues(freeLength - 1, 1),
+    a_pub_block: hexValues(1, 1_001),
+    a_pub_function: hexValues(fixedLength, 2_001),
   };
   const binary = await convertInstance(source);
   const artifact = await decodeBinaryArtifactFile(binary);
@@ -29,8 +33,8 @@ async function main(): Promise<void> {
   await assertSlicedInputAccepted(binary);
 
   assertEqual(artifact.sections.length, 2, "instance section count");
-  assertSection(artifact.sections[0], "instance.public", setup.l_free);
-  assertSection(artifact.sections[1], "instance.function", setup.l - setup.l_free);
+  assertSection(artifact.sections[0], "instance.public", freeLength);
+  assertSection(artifact.sections[1], "instance.function", fixedLength);
 
   const runtime = await createCurveRuntime();
   try {
@@ -51,7 +55,7 @@ async function main(): Promise<void> {
         ...source,
         a_pub_function: source.a_pub_function.slice(1),
       }),
-    `Function instance length must equal setupParams.l - setupParams.l_free (${setup.l - setup.l_free}).`,
+    `Function instance length must equal the derived fixed-public length (${fixedLength}).`,
   );
   await assertOldInstanceRejected();
 
@@ -85,9 +89,9 @@ async function assertOldInstanceRejected(): Promise<void> {
         type: BinarySectionType.Instance,
         encoding: BinarySectionEncoding.FfjsFrMontgomeryLe32,
         label: "instance.public",
-        elementCount: setup.l_free,
+        elementCount: freeLength,
         elementByteLength: 32,
-        data: new Uint8Array(setup.l_free * 32),
+        data: new Uint8Array(freeLength * 32),
       },
     ],
   });
@@ -107,7 +111,7 @@ async function assertSlicedInputAccepted(binary: Uint8Array): Promise<void> {
   assertEqual(artifact.byteLength, binary.byteLength, "sliced instance byte length");
   assertEqual(
     artifact.sections[0].data.byteLength,
-    setup.l_free * 32,
+    freeLength * 32,
     "sliced public section length",
   );
   await validateBinary(sliced);

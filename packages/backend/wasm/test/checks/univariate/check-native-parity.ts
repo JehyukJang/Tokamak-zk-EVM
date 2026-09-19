@@ -12,6 +12,7 @@ import { verifyUnivariateReference } from "../../../src/univariate/reference-ver
 import { encodeUnivariateProof, decodeUnivariateProof } from "../../../src/univariate/proof.js";
 import type { SetupParams } from "../../../src/artifacts/setup/setup-params.js";
 import type { ProverSubcircuitInfo } from "../../../src/prover/protocol/witness.js";
+import { PublicWireLayout } from "../../../src/prover/protocol/public-wire-layout.js";
 // This oracle uses test-only masks exported by the native scalar-oracle test.
 // It does not add deterministic randomness to a production entry point.
 const root = path.resolve(process.argv[2]!);
@@ -31,7 +32,8 @@ for(const name of ["n2", "n8", "singleton"]) {
   try {
     const f = runtime.Fr;
     const canonical = execFileSync(path.resolve("../target/release/export-verifier"), [path.join(directory, "verifier_keys.rkyv")]);
-    const fixed = prepareFixedVerifier(runtime, canonical, fixture.setup);
+    const publicLayout = PublicWireLayout.derive(fixture.setup, fixture.infos);
+    const fixed = prepareFixedVerifier(runtime, canonical, fixture.setup, publicLayout.freePublicLen());
     const crs = {
       manifest: JSON.parse(await readFile(path.join(output, "univariate-crs-manifest.json"), "utf8")),
       loadChunk: async (name: string) => new Uint8Array(await readFile(path.join(output, name))),
@@ -45,7 +47,7 @@ for(const name of ["n2", "n8", "singleton"]) {
       activeWires: [0, 1, 2], rowCount: 1, rowOffsets: words([0, 1]),
       columns: words([wire]), coefficients: f.concat([f.one]),
     });
-    const subcircuits = fixture.infos.map(info => ({ id: info.id, flattenMap: info.flattenMap, A: matrix(1), B: matrix(0), C: matrix(2) }));
+    const subcircuits = fixture.infos.map(info => ({ id: info.id, info, A: matrix(1), B: matrix(0), C: matrix(2) }));
     const active = fixture.witness.flatMap((values, i) => values ? [{ id: fixture.selector[i]!, values }] : []);
     const offsets = [0];
     active.forEach(slot => offsets.push(offsets.at(-1)! + slot.values.length));
@@ -75,7 +77,7 @@ for(const name of ["n2", "n8", "singleton"]) {
     const native = await readFile(path.join(directory, "univariate_proof.bin"));
     assert.deepEqual(bytes, new Uint8Array(native), "Fixed-mask native/WASM proof bytes differ.");
     assert.equal(await verifyUnivariateReference(runtime, {
-      fixed, publicInputs: publicInputs.slice(0, fixture.setup.l_free), preprocess, proof: decodeUnivariateProof(runtime, native),
+      fixed, publicInputs: publicInputs.slice(0, publicLayout.freePublicLen()), preprocess, proof: decodeUnivariateProof(runtime, native),
     }), true);
     await writeFile(path.join(directory, "wasm-proof.bin"), bytes);
     console.log("Exact native/WASM proof bytes and verification pass for " + name);

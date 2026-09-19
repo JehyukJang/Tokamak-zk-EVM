@@ -31,7 +31,7 @@
     {
       "name": "prover_selector",
       "sourceFile": "selector.json",
-      "entries": {"integerEncoding": "i32-le", "inactive": -1, "active": "compiled subcircuit ID", "length": "s_max"},
+      "entries": {"integerEncoding": "i32-le", "inactive": -1, "active": "compiled subcircuit ID", "length": "s"},
       "sections": [
         {"label": "selector.entries", "type": "Placement", "encoding": "bytes", "elementCount": null, "elementByteLength": 4, "points": []}
       ]

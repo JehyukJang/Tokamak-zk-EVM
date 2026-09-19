@@ -5,12 +5,12 @@ import { DenseUnivariatePolynomial as Polynomial } from "./polynomial.js";
 export class SelectedRoots {
   private constructor(readonly roots: readonly FieldElement[], readonly polynomial: Polynomial, private readonly field: FieldRuntime, private readonly size: number) { }
   static async create(field: FieldRuntime, setup: SetupParams, selector: readonly (number | null)[]): Promise<SelectedRoots> {
-    if(selector.length !== setup.s_max || selector.some(id => id !== null && (!Number.isInteger(id) || id < 0 || id >= setup.s_D))) {
-      throw new Error("Selector must contain compiled IDs or inactive slots at s_max positions.");
+    if(selector.length !== setup.s || selector.some(id => id !== null && (!Number.isInteger(id) || id < 0 || id >= setup.t - 1))) {
+      throw new Error("Selector must contain compiled IDs or inactive slots at s positions.");
     }
-    const size = setup.s_max * setup.t;
+    const size = setup.s * setup.t;
     const root = field.rootOfUnity(size);
-    const roots = selector.map((id, i) => field.pow(root, i + setup.s_max * (id ?? setup.t - 1)));
+    const roots = selector.map((id, i) => field.pow(root, i + setup.s * (id ?? setup.t - 1)));
     let level = roots.map(z => Polynomial.fromCoefficients(field, field.concat([field.neg(z), field.one])));
     while(level.length > 1) {
       const next: Polynomial[] = [];

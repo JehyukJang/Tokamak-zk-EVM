@@ -1844,17 +1844,10 @@ mod tests {
     #[derive(Deserialize)]
     struct DomainFixtureSetup {
         m: usize,
+        m_b: usize,
         t: usize,
-        l_free: usize,
-        #[serde(rename = "m_D")]
-        m_d: usize,
-        l: usize,
-        #[serde(rename = "l_D")]
-        l_d: usize,
         n: usize,
-        #[serde(rename = "s_D")]
-        s_d: usize,
-        s_max: usize,
+        s: usize,
     }
 
     #[derive(Deserialize)]
@@ -2293,19 +2286,15 @@ mod tests {
         .expect("univariate domain fixture must be valid JSON");
 
         for case in fixture.cases {
-            let shape = UnivariateCrsShape::from_setup_params(&SetupParams {
-                l_free: case.setup.l_free,
-                l: case.setup.l,
-                l_user_out: 0,
-                l_user: 0,
-                l_D: case.setup.l_d,
-                m_D: case.setup.m_d,
+            let setup = NormalizedSetupParams {
                 n: case.setup.n,
                 m: case.setup.m,
+                m_b: case.setup.m_b,
                 t: case.setup.t,
-                s_D: case.setup.s_d,
-                s_max: case.setup.s_max,
-            })
+                s: case.setup.s,
+                public_wire_phases: Box::new([]),
+            };
+            let shape = UnivariateCrsShape::from_normalized_setup(&setup, 1)
             .expect("fixture must describe a supported univariate domain");
             assert_eq!(shape.subcircuit_capacity, case.expected.t);
             assert_eq!(shape.arithmetic_domain_size, case.expected.n_a);
@@ -2317,29 +2306,12 @@ mod tests {
                 [2 * case.expected.p, case.expected.p, case.expected.p]
             );
             assert_eq!(shape.selection_domain_size, case.expected.n_s);
-            let setup = SetupParams {
-                l_free: case.setup.l_free,
-                l: case.setup.l,
-                l_user_out: 0,
-                l_user: 0,
-                l_D: case.setup.l_d,
-                m_D: case.setup.m_d,
-                n: case.setup.n,
-                m: case.setup.m,
-                t: case.setup.t,
-                s_D: case.setup.s_d,
-                s_max: case.setup.s_max,
-            };
             assert_eq!(
-                shape
-                    .arithmetic_index(setup.s_max - 1, setup.n - 1, &setup,)
-                    .expect("maximum U1 coordinate must be admitted"),
+                (setup.s - 1) + setup.s * (setup.n - 1),
                 case.expected.arithmetic_index
             );
             assert_eq!(
-                shape
-                    .connection_index(setup.s_max - 1, setup.l_D - setup.l - 1, &setup)
-                    .expect("maximum U4 coordinate must be admitted"),
+                (setup.s - 1) + setup.s * (setup.m_b - 1),
                 case.expected.connection_index
             );
         }

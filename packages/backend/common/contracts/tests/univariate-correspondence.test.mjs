@@ -307,17 +307,16 @@ const artifactContract = JSON.parse(readFileSync(new URL("../univariate-artifact
 test("domain vectors separate arithmetic coordinates from library selection", () => {
   const domain = JSON.parse(readFileSync(new URL("../univariate-domain-contract.v1.json", import.meta.url), "utf8"));
   const vectors = JSON.parse(readFileSync(new URL("../fixtures/univariate-domain-shape.v1.json", import.meta.url), "utf8"));
-  assert.equal(domain.arithmeticDomain.index, "i + s_max * r");
-  assert.equal(domain.selectionDomain.index, "i + s_max * k");
+  assert.equal(domain.arithmeticDomain.index, "i + s * r");
+  assert.equal(domain.connectionDomain.index, "i + s * j");
+  assert.equal(domain.selectionDomain.index, "i + s * k");
   for (const {setup: p, expected: e} of vectors.cases) {
-    assert.equal(p.t, ceilPowerOfTwo(p.s_D + 1));
-    const NA = p.n * p.s_max, NC = (p.l_D - p.l) * p.s_max, NS = p.t * p.s_max;
+    const NA = p.n * p.s, NC = p.m_b * p.s, NS = p.t * p.s;
     const d = Math.max(NA, NC) + 1, h = d + 1;
     assert.equal(NA, e.N_A); assert.equal(NC, e.N_C); assert.equal(NS, e.N_S);
-    assert.equal(Math.max(2*d + 1, NS + 1, h + p.s_max*(p.t - 1), p.l_free - 1), e.P);
-    assert.equal((p.s_max - 1) + p.s_max*(p.n - 1), e.arithmeticIndex);
-    assert.equal((p.s_max - 1) + p.s_max*(p.t - 1), e.selectionIndex);
-    assert.equal(p.m_D, p.m * p.s_D);
+    assert.equal(Math.max(2*d + 1, NS + 1, h + p.s*(p.t - 1), 1), e.P);
+    assert.equal((p.s - 1) + p.s*(p.n - 1), e.arithmeticIndex);
+    assert.equal((p.s - 1) + p.s*(p.t - 1), e.selectionIndex);
   }
 });
 
@@ -359,7 +358,7 @@ test("preprocess power windows encode S_C and shifted Z_u without unused powers"
     assert.equal(bases.length, vector.s * (vector.t - 1) + 1);
     assert.equal(commitment, mod(pow(tau, publicFixture.h) * evaluate(zu, tau)));
   }
-  assert.equal(crsContract.order["crs.preprocess-selection"], "tau^(h+a), a=0..s_max*(t-1)");
+  assert.equal(crsContract.order["crs.preprocess-selection"], "tau^(h+a), a=0..s*(t-1)");
 });
 
 test("preprocess output and proof carry only the current protocol elements", () => {

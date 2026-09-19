@@ -5,11 +5,15 @@ export interface ProverSubcircuitInfo {
   readonly id: number;
   readonly name: string;
   readonly Nwires: number;
+  readonly NrealWires: number;
   readonly Nconsts: number;
-  readonly Out_idx: readonly number[];
-  readonly In_idx: readonly number[];
-  readonly flattenMap: readonly number[];
+  readonly Out_idx: readonly [number, number];
+  readonly In_idx: readonly [number, number];
+  readonly Wiring_idx: readonly [number, number];
+  readonly Public_idx: readonly [number, number];
+  readonly Internal_idx: readonly [number, number];
   readonly bufferDirection?: "in" | "out";
+  readonly publicPhase?: string;
 }
 
 export interface ProverPlacementVariables {
@@ -50,12 +54,12 @@ export function validateProverPlacements(
   if (placements.variableOffsets.at(-1) !== placements.variables.byteLength / placements.fieldByteLength) {
     throw new Error("The terminal placement offset does not match the value count.");
   }
-  if (placementCount(placements) > setup.s_max) throw new Error("Placement count exceeds s_max.");
+  if (placementCount(placements) > setup.s) throw new Error("Placement count exceeds s.");
   for (let index = 0; index < placementCount(placements); index += 1) {
     const subcircuitId = placementSubcircuitId(placements, index);
     const info = subcircuitInfos[subcircuitId];
     if (info === undefined) throw new Error(`Placement ${index} has an unknown subcircuit ID.`);
-    if (placementVariableCount(placements, index) !== info.flattenMap.length) {
+    if (placementVariableCount(placements, index) !== setup.m) {
       throw new Error(`Placement ${index} width does not match subcircuit ${subcircuitId}.`);
     }
   }

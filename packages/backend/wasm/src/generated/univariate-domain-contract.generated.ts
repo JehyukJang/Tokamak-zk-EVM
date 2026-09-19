@@ -9,13 +9,13 @@ export const UNIVARIATE_DOMAIN_CONTRACT = {
     "derivation": "root(N) = maxRoot^(2^32/N) for power-of-two N"
   },
   "arithmeticDomain": {
-    "size": "n * s_max",
-    "index": "i + s_max * r",
+    "size": "n * s",
+    "index": "i + s * r",
     "vanishingPolynomial": "Z_A(Z) = Z^N_A - 1"
   },
   "connectionDomain": {
-    "size": "(l_D - l) * s_max",
-    "index": "i + s_max * h",
+    "size": "m_b * s",
+    "index": "i + s * j",
     "vanishingPolynomial": "Z_C(Z) = Z^N_C - 1"
   },
   "combinedDomain": {
@@ -29,28 +29,27 @@ export const UNIVARIATE_DOMAIN_CONTRACT = {
     "connection": "M_C(Z) = Z_A(Z) / Z_G(Z)"
   },
   "selectionDomain": {
-    "size": "s_max * t",
-    "index": "i + s_max * k",
+    "size": "s * t",
+    "index": "i + s * k",
     "typeCapacity": {
       "symbol": "t",
-      "derivation": "ceilPow2(s_D + 1)",
       "emptySubcircuitId": "t - 1",
-      "unselectableSubcircuitIdRange": "[s_D, t - 1)",
+      "compiledSubcircuitIdRange": "[0, actualSubcircuitCount)",
+      "unselectableSubcircuitIdRange": "[actualSubcircuitCount, t - 1)",
       "externalInactiveSelector": -1
     },
-    "vanishingPolynomial": "Z_S(Z) = Z^(s_max*t) - 1"
+    "vanishingPolynomial": "Z_S(Z) = Z^(s*t) - 1"
   },
   "publicDomain": {
-    "size": "l_free",
-    "index": "globalWireIndex",
-    "root": "canonicalRootOfUnity(l_free)",
-    "fixedPublicRange": "[l_free, l)",
+    "order": "publicWirePhases order, then subcircuitIds order, then ascending local wire in Public_idx",
+    "freeSize": "ceilPow2(max(1, actual free public coordinates))",
+    "fixedPublicRange": "[freeSize, total public coordinates)",
     "fixedBufferPlacement": "placementIndex == subcircuitId"
   },
   "capacity": {
     "d": "max(N_A + 1, N_C + 1)",
     "h": "d + 1",
-    "P": "max(2*d + 1, N_S + 1, h + s_max*(t - 1), l_free - 1)",
+    "P": "max(2*d + 1, N_S + 1, h + s*(t - 1), freeSize - 1)",
     "K": "P - d",
     "S": "P + 1",
     "ordinaryMaximumExponent": "2*P",

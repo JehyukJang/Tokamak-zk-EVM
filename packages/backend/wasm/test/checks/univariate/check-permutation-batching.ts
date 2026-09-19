@@ -6,12 +6,21 @@ import { deriveUnivariateDomainShape } from "../../../src/univariate/domain.js";
 const runtime = await createCurveRuntime();
 try {
   const f = runtime.Fr;
-  for (const n of [1, 2, 16, 64, 262144]) {
-    const setup = { n: 2, m: n, t: 2, s_D: 1, s_max: 1, l: 0, l_free: 0, l_user_out: 0, l_user: 0, l_D: n, m_D: n };
+  for (const n of [2, 16, 64, 262144]) {
+    const setup = { n: 2, m: n, m_b: n, t: 2, s: 1, publicWirePhases: [{ name: "output", region: "free" as const, subcircuitIds: [0] }] };
+    const infos = [{
+      id: 0, name: "buffer", Nwires: n, NrealWires: n, Nconsts: 0,
+      Out_idx: [1, 1] as const, In_idx: [2, n - 2] as const, Wiring_idx: [0, n] as const,
+      Public_idx: [1, 1] as const, Internal_idx: [n, 0] as const,
+      bufferDirection: "out" as const, publicPhase: "output",
+    }];
     const domain = deriveUnivariateDomainShape(f, setup), root = domain.connectionRoot;
     const targets = Uint32Array.from({ length: n }, (_, i) => i), mapped = new Uint8Array(n);
-    const permutation: { row: number; col: number; X: number; Y: number }[] = [];
-    for (let i = 0; i + 1 < n; i += 16) {
+    const permutation: { row: number; col: number; X: number; Y: number }[] = [
+      { row: 1, col: 0, X: 0, Y: 0 }, { row: 0, col: 0, X: 1, Y: 0 },
+    ];
+    targets[0] = 1; targets[1] = 0; mapped[0] = mapped[1] = 1;
+    for (let i = 2; i + 1 < n; i += 16) {
       targets[i] = i + 1; targets[i + 1] = i; mapped[i] = mapped[i + 1] = 1;
       permutation.push({ row: i, col: 0, X: i + 1, Y: 0 }, { row: i + 1, col: 0, X: i, Y: 0 });
     }
@@ -31,15 +40,13 @@ try {
       return values;
     };
     const expected = control(); assert.deepEqual(await candidate(), expected);
-    const actual = await buildConnectionPermutationPolynomial(f, domain, setup, [0], permutation);
+    const actual = await buildConnectionPermutationPolynomial(f, domain, setup, [0], permutation, infos);
     assert.deepEqual(actual.evaluations, expected); assert.deepEqual(actual.coefficients, await f.ifftBuffer(expected));
-    const identity = await buildConnectionPermutationPolynomial(f, domain, setup, [null], []);
-    assert.deepEqual(await f.fftBuffer(identity.coefficients), identity.evaluations);
     if (n > 1) {
-      await assert.rejects(() => buildConnectionPermutationPolynomial(f, domain, setup, [null], permutation), /inactive/);
-      await assert.rejects(() => buildConnectionPermutationPolynomial(f, domain, setup, [0], [permutation[0]!, permutation[0]!]), /duplicate source/);
-      await assert.rejects(() => buildConnectionPermutationPolynomial(f, domain, setup, [0], [permutation[0]!]), /more than one source/);
-      await assert.rejects(() => buildConnectionPermutationPolynomial(f, domain, setup, [0], [{ row: n, col: 0, X: 0, Y: 0 }]));
+      await assert.rejects(() => buildConnectionPermutationPolynomial(f, domain, setup, [null], permutation, infos));
+      await assert.rejects(() => buildConnectionPermutationPolynomial(f, domain, setup, [0], [permutation[0]!, permutation[0]!], infos));
+      await assert.rejects(() => buildConnectionPermutationPolynomial(f, domain, setup, [0], [permutation[0]!], infos));
+      await assert.rejects(() => buildConnectionPermutationPolynomial(f, domain, setup, [0], [{ row: n, col: 0, X: 0, Y: 0 }], infos));
     }
     if (n === 262144) {
       const samples = [];

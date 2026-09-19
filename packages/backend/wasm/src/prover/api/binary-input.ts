@@ -8,7 +8,10 @@ import {
   PROVER_PLACEMENT_VARIABLES_V1_SPEC,
   PROVER_SELECTOR_V1_SPEC,
 } from "../../generated/browser-artifact-contracts.generated.js";
-import { GENERATED_SETUP_PARAMS } from "../../generated/active/setup.generated.js";
+import {
+  GENERATED_PUBLIC_INPUT_LENGTH,
+  GENERATED_SETUP_PARAMS,
+} from "../../generated/active/setup.generated.js";
 import type { CurveRuntime } from "../../runtime/curve/curve.js";
 import type { FieldElement } from "../../runtime/field/field-types.js";
 import { parseUnivariateProverCrs, type UnivariateCrsChunkInput, type UnivariateProverCrsRuntime } from "../../univariate/crs.js";
@@ -66,14 +69,14 @@ export async function loadProverInputFromBinaryInput(
 function parseSelector(file: BinaryArtifactFileView): readonly (number | null)[] {
   const [spec] = PROVER_SELECTOR_V1_SPEC.sections;
   const section = requireBinaryArtifactSection(file, spec);
-  if (section.elementCount !== GENERATED_SETUP_PARAMS.s_max || section.elementByteLength !== 4) {
+  if (section.elementCount !== GENERATED_SETUP_PARAMS.s || section.elementByteLength !== 4) {
     throw new Error("Selector section does not match the active setup capacity.");
   }
   const view = new DataView(section.data.buffer, section.data.byteOffset, section.data.byteLength);
   return Array.from({ length: section.elementCount }, (_, index) => {
     const id = view.getInt32(index * 4, true);
     if (id === -1) return null;
-    if (id < 0 || id >= GENERATED_SETUP_PARAMS.s_D) throw new Error(`Selector subcircuit ID ${id} is outside the active library.`);
+    if (id < 0 || id >= GENERATED_PROVER_SUBCIRCUIT_INFOS.length) throw new Error(`Selector subcircuit ID ${id} is outside the active library.`);
     return id;
   });
 }
@@ -85,12 +88,19 @@ function parsePermutation(file: BinaryArtifactFileView): readonly { readonly row
     throw new Error("Permutation section has an invalid entry layout.");
   }
   const view = new DataView(section.data.buffer, section.data.byteOffset, section.data.byteLength);
-  return Array.from({ length: section.elementCount }, (_, index) => ({
-    row: view.getUint32(index * 16, true),
-    col: view.getUint32(index * 16 + 4, true),
-    X: view.getUint32(index * 16 + 8, true),
-    Y: view.getUint32(index * 16 + 12, true),
-  }));
+  return Array.from({ length: section.elementCount }, (_, index) => {
+    const entry = {
+      row: view.getUint32(index * 16, true),
+      col: view.getUint32(index * 16 + 4, true),
+      X: view.getUint32(index * 16 + 8, true),
+      Y: view.getUint32(index * 16 + 12, true),
+    };
+    if (entry.row >= GENERATED_SETUP_PARAMS.m_b || entry.X >= GENERATED_SETUP_PARAMS.m_b
+      || entry.col >= GENERATED_SETUP_PARAMS.s || entry.Y >= GENERATED_SETUP_PARAMS.s) {
+      throw new Error("Permutation entry is outside the normalized wiring grid.");
+    }
+    return entry;
+  });
 }
 
 function parsePlacements(runtime: CurveRuntime, file: BinaryArtifactFileView): ProverPlacementVariables {
@@ -113,8 +123,8 @@ function parsePublicInputs(runtime: CurveRuntime, file: BinaryArtifactFileView):
     ...runtime.Fr.split(requireBinaryArtifactSection(file, publicSpec).data),
     ...runtime.Fr.split(requireBinaryArtifactSection(file, functionSpec).data),
   ];
-  if (values.length !== GENERATED_SETUP_PARAMS.l) {
-    throw new Error(`Public instance length is ${values.length}, expected ${GENERATED_SETUP_PARAMS.l}.`);
+  if (values.length !== GENERATED_PUBLIC_INPUT_LENGTH) {
+    throw new Error(`Public instance length is ${values.length}, expected ${GENERATED_PUBLIC_INPUT_LENGTH}.`);
   }
   return values;
 }
@@ -124,7 +134,7 @@ function currentSubcircuits(): readonly UnivariateSubcircuit[] {
   return GENERATED_PROVER_SUBCIRCUIT_INFOS.map(info => {
     const r1cs = r1csById.get(info.id);
     if (r1cs === undefined) throw new Error(`Active library is missing R1CS for subcircuit ${info.id}.`);
-    return { id: info.id, flattenMap: info.flattenMap, A: r1cs.A, B: r1cs.B, C: r1cs.C };
+    return { id: info.id, info, A: r1cs.A, B: r1cs.B, C: r1cs.C };
   });
 }
 

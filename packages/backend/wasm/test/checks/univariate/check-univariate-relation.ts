@@ -1,93 +1,102 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { createCurveRuntime } from "../../../src/runtime/curve/curve.js";
 import {
+  buildArithmeticWireLift,
   buildConnectionCopyFactors,
   buildConnectionPermutationPolynomial,
   buildConnectionWireLift,
-  buildArithmeticWireLift,
   buildWitnessMaps,
   type UnivariateSparseMatrix,
   type UnivariateSubcircuit,
 } from "../../../src/univariate/relation.js";
 import { arithmeticIndex, connectionIndex, deriveUnivariateDomainShape } from "../../../src/univariate/domain.js";
-interface RelationFixture {
-  readonly setup: {
-    readonly l_free: number;
-    readonly l: number;
-    readonly l_user_out: number;
-    readonly l_user: number;
-    readonly l_D: number;
-    readonly m_D: number;
-    readonly m: number;
-    readonly t: number;
-    readonly n: number;
-    readonly s_D: number;
-    readonly s_max: number;
-  };
-  readonly selector: readonly (number | null)[];
-  readonly subcircuits: readonly {
-    readonly id: number;
-    readonly flattenMap: readonly number[];
-    readonly aActiveWires: readonly number[];
-    readonly bActiveWires: readonly number[];
-    readonly cActiveWires: readonly number[];
-    readonly aRows: readonly (readonly (readonly [
-      number,
-      number
-    ])[])[];
-    readonly bRows: readonly (readonly (readonly [
-      number,
-      number
-    ])[])[];
-    readonly cRows: readonly (readonly (readonly [
-      number,
-      number
-    ])[])[];
-  }[];
-  readonly witnessesBySlot: readonly ({
-    readonly subcircuitId: number;
-    readonly values: readonly number[];
-  } | null)[];
-  readonly permutation: readonly {
-    readonly row: number;
-    readonly col: number;
-    readonly X: number;
-    readonly Y: number;
-  }[];
-  readonly expected: {
-    readonly uA: readonly number[];
-    readonly vA: readonly number[];
-    readonly wA: readonly number[];
-    readonly bC: number;
-    readonly u6LocalWire: number;
-    readonly connectionLocalWire: number;
-  };
-}
+import type { SetupParams } from "../../../src/artifacts/setup/setup-params.js";
+import type { ProverSubcircuitInfo } from "../../../src/prover/protocol/witness.js";
 
-const fixture = JSON.parse(
-  await readFile(new URL("../../../../common/contracts/fixtures/univariate-relation.v1.json", import.meta.url), "utf8"),
-) as RelationFixture;
 const runtime = await createCurveRuntime();
-const field = runtime.Fr;
-const setup = fixture.setup;
-const domain = deriveUnivariateDomainShape(field, setup);
+try {
+  const field = runtime.Fr;
+  const setup: SetupParams = {
+    n: 2, m: 4, m_b: 2, t: 4, s: 2,
+    publicWirePhases: [{ name: "output", region: "free", subcircuitIds: [0] }],
+  };
+  const infos: readonly ProverSubcircuitInfo[] = [
+    info(0, "public", [1, 1], [2, 0], [1, 1], "out", "output"),
+    info(1, "ordinary", [1, 0], [1, 1], [0, 0]),
+  ];
+  const subcircuits: readonly UnivariateSubcircuit[] = [
+    { id: 0, info: infos[0]!, A: matrix([0, 1], [[[0, 1]], [[1, 1]]]), B: matrix([0, 1], [[[1, 1]], [[0, 1]]]), C: matrix([0, 1], [[[0, 1]], [[1, 1]]]) },
+    { id: 1, info: infos[1]!, A: matrix([], []), B: matrix([], []), C: matrix([], []) },
+  ];
+  const selector = [0, 1] as const;
+  const witness = (subcircuitId: number, values: readonly number[]) => ({
+    subcircuitId,
+    values: field.concat(values.map(value => field.fromBigInt(BigInt(value)))),
+  });
+  const witnesses = [witness(0, [1, 5, 0, 0]), witness(1, [1, 7, 0, 0])];
+  const domain = deriveUnivariateDomainShape(field, setup);
+  const maps = await buildWitnessMaps(field, domain, setup, selector, witnesses, subcircuits);
+  assert(field.eq(field.readBufferElement(maps.uA.evaluations, arithmeticIndex(domain, setup, 0, 0, 0)), field.one));
+  assert(field.eq(field.readBufferElement(maps.uA.evaluations, arithmeticIndex(domain, setup, 0, 0, 1)), field.fromBigInt(5n)));
+  assert(field.eq(field.readBufferElement(maps.bC.evaluations, connectionIndex(setup, 0, 1)), field.fromBigInt(5n)));
 
-function u32(values: readonly number[]): Uint8Array {
-  return new Uint8Array(Uint32Array.from(values).buffer);
+  const arithmeticLift = await buildArithmeticWireLift(field, domain, setup, 0, subcircuits[0]!, 1, "A");
+  assert(field.eq(field.readBufferElement(arithmeticLift.evaluations, arithmeticIndex(domain, setup, 0, 0, 1)), field.one));
+  const connectionLift = await buildConnectionWireLift(field, domain, setup, 0, subcircuits[0]!, 1);
+  assert(field.eq(field.readBufferElement(connectionLift.evaluations, connectionIndex(setup, 0, 1)), field.one));
+
+  const permutation = [
+    { row: 1, col: 0, X: 0, Y: 0 },
+    { row: 0, col: 0, X: 0, Y: 1 },
+    { row: 0, col: 1, X: 1, Y: 0 },
+  ];
+  const sC = await buildConnectionPermutationPolynomial(field, domain, setup, selector, permutation, infos);
+  assert(field.eq(
+    field.readBufferElement(sC.evaluations, connectionIndex(setup, 0, 1)),
+    field.pow(domain.connectionRoot, connectionIndex(setup, 0, 0)),
+  ));
+  const [fC, gC] = await buildConnectionCopyFactors(field, maps.bC, sC, field.fromBigInt(7n), field.fromBigInt(11n));
+  assert.equal(field.bufferElementCount(fC), domain.connectionSize);
+  assert.equal(field.bufferElementCount(gC), domain.connectionSize);
+
+  await assert.rejects(
+    buildWitnessMaps(field, domain, setup, selector, [witness(0, [2, 5, 0, 0]), witnesses[1]!], subcircuits),
+    /wire zero/,
+  );
+  await assert.rejects(
+    buildConnectionPermutationPolynomial(field, domain, setup, selector, permutation.slice(1), infos),
+    /Exactly one public coordinate/,
+  );
+} finally {
+  await runtime.terminate();
+}
+console.log("Checked normalized witness maps, public-and-bus permutation topology, and copy factors");
+
+function info(
+  id: number,
+  name: string,
+  Out_idx: readonly [number, number],
+  In_idx: readonly [number, number],
+  Public_idx: readonly [number, number],
+  bufferDirection?: "in" | "out",
+  publicPhase?: string,
+): ProverSubcircuitInfo {
+  return {
+    id, name, Nwires: 4, NrealWires: 2, Nconsts: id === 0 ? 2 : 0,
+    Out_idx, In_idx, Wiring_idx: [0, 2], Public_idx, Internal_idx: [2, 0],
+    ...(bufferDirection === undefined ? {} : { bufferDirection }),
+    ...(publicPhase === undefined ? {} : { publicPhase }),
+  };
 }
 
-function matrix(
-  activeWires: readonly number[],
-  rows: readonly (readonly (readonly [number, number])[])[],
-): UnivariateSparseMatrix {
+function matrix(activeWires: readonly number[], rows: readonly (readonly (readonly [number, number])[])[]): UnivariateSparseMatrix {
   const rowOffsets = [0];
   const columns: number[] = [];
-  const coefficients: ReturnType<typeof field.fromBigInt>[] = [];
+  const coefficients: Uint8Array[] = [];
   for (const row of rows) {
-    for (const [compactIndex, coefficient] of row) {
-      columns.push(compactIndex);
-      coefficients.push(field.fromBigInt(BigInt(coefficient)));
+    for (const [column, coefficient] of row) {
+      columns.push(column);
+      coefficients.push(runtime.Fr.fromBigInt(BigInt(coefficient)));
     }
     rowOffsets.push(columns.length);
   }
@@ -95,106 +104,14 @@ function matrix(
     activeWires,
     rowOffsets: u32(rowOffsets),
     columns: u32(columns),
-    coefficients: field.concat(coefficients),
+    coefficients: runtime.Fr.concat(coefficients),
     rowCount: rows.length,
   };
 }
 
-const subcircuits: readonly UnivariateSubcircuit[] = fixture.subcircuits.map((subcircuit) => ({
-  id: subcircuit.id,
-  flattenMap: subcircuit.flattenMap,
-  A: matrix(subcircuit.aActiveWires, subcircuit.aRows),
-  B: matrix(subcircuit.bActiveWires, subcircuit.bRows),
-  C: matrix(subcircuit.cActiveWires, subcircuit.cRows),
-}));
-const witnessesBySlot = fixture.witnessesBySlot.map((witness) => witness === null
-  ? null
-  : {
-      subcircuitId: witness.subcircuitId,
-      values: field.concat(witness.values.map((value) => field.fromBigInt(BigInt(value)))),
-    });
-const maps = await buildWitnessMaps(
-  field,
-  domain,
-  setup,
-  fixture.selector,
-  witnessesBySlot,
-  subcircuits,
-);
-
-assert.ok(field.eq(
-  field.readBufferElement(maps.uA.evaluations, arithmeticIndex(domain, setup, 0, 0, 0)),
-  field.fromBigInt(BigInt(fixture.expected.uA[0]!)),
-));
-assert.ok(field.eq(
-  field.readBufferElement(maps.uA.evaluations, arithmeticIndex(domain, setup, 0, 0, 1)),
-  field.fromBigInt(BigInt(fixture.expected.uA[1]!)),
-));
-
-const uLift = await buildArithmeticWireLift(
-  field,
-  domain,
-  setup,
-  0,
-  subcircuits[0]!,
-  fixture.expected.u6LocalWire,
-  "A",
-);
-assert.ok(field.eq(
-  field.readBufferElement(uLift.evaluations, arithmeticIndex(domain, setup, 0, 0, 0)),
-  field.zero,
-));
-assert.ok(field.eq(
-  field.readBufferElement(uLift.evaluations, arithmeticIndex(domain, setup, 0, 0, 1)),
-  field.one,
-));
-const bLift = await buildConnectionWireLift(
-  field,
-  domain,
-  setup,
-  0,
-  subcircuits[0]!,
-  fixture.expected.connectionLocalWire,
-);
-assert.ok(field.eq(
-  field.readBufferElement(bLift.evaluations, connectionIndex(setup, 0, 0)),
-  field.one,
-));
-assert.ok(field.eq(
-  field.readBufferElement(maps.vA.evaluations, arithmeticIndex(domain, setup, 0, 0, 0)),
-  field.fromBigInt(BigInt(fixture.expected.vA[0]!)),
-));
-assert.ok(field.eq(
-  field.readBufferElement(maps.bC.evaluations, connectionIndex(setup, 0, 0)),
-  field.fromBigInt(BigInt(fixture.expected.bC)),
-));
-
-const sC = await buildConnectionPermutationPolynomial(field, domain, setup, fixture.selector, fixture.permutation);
-assert.ok(field.eq(
-  field.readBufferElement(sC.evaluations, connectionIndex(setup, 0, 0)),
-  field.pow(domain.connectionRoot, connectionIndex(setup, 1, 1)),
-));
-assert.ok(field.eq(
-  field.readBufferElement(sC.evaluations, connectionIndex(setup, 1, 1)),
-  field.one,
-));
-
-const [fC, gC] = await buildConnectionCopyFactors(
-  field,
-  maps.bC,
-  sC,
-  field.fromBigInt(7n),
-  field.fromBigInt(11n),
-);
-assert.equal(field.bufferElementCount(fC), domain.connectionSize);
-assert.equal(field.bufferElementCount(gC), domain.connectionSize);
-
-await assert.rejects(
-  buildConnectionPermutationPolynomial(field, domain, setup, fixture.selector, [
-    { row: 0, col: 0, X: 0, Y: 1 },
-  ]),
-  /more than one source/,
-);
-
-await runtime.terminate();
-console.log("Checked univariate witness maps, permutation interpolation, and copy factors");
+function u32(values: readonly number[]): Uint8Array {
+  const output = new Uint8Array(values.length * 4);
+  const view = new DataView(output.buffer);
+  values.forEach((value, index) => view.setUint32(index * 4, value, true));
+  return output;
+}

@@ -14,14 +14,16 @@ export async function preprocessSnark(runtime: CurveRuntime, input: PreprocessRu
   const f = runtime.Fr, { setup, crs } = input;
   const domain = deriveUnivariateDomainShape(f, setup);
   const roots = await SelectedRoots.create(f, setup, input.selector);
-  const permutation = await buildConnectionPermutationPolynomial(f, domain, setup, input.selector, input.permutation);
-  if(crs.sc.elementCount !== domain.connectionSize || crs.selection.elementCount !== setup.s_max * (setup.t - 1) + 1)
+  const permutation = await buildConnectionPermutationPolynomial(
+    f, domain, setup, input.selector, input.permutation, input.subcircuitInfos,
+  );
+  if(crs.sc.elementCount !== domain.connectionSize || crs.selection.elementCount !== setup.s * (setup.t - 1) + 1)
     throw new Error("Preprocess key cardinality mismatch.");
   const layout = PublicWireLayout.derive(setup, input.subcircuitInfos);
-  if(input.publicInputs.length !== setup.l)
+  if(input.publicInputs.length !== layout.length())
     throw new Error("Public instance length mismatch.");
   const fixed: Uint8Array[] = [];
-  for(let g = setup.l_free; g < setup.l; g++) {
+  for(let g = layout.freePublicLen(); g < layout.length(); g++) {
     const source = layout.sourceForPublicWire(g);
     if(source) {
       if(input.selector[source.subcircuitId] !== source.subcircuitId)

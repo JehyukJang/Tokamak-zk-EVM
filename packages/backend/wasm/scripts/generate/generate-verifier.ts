@@ -5,7 +5,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createCurveRuntime } from "../../src/runtime/curve/curve.js";
 import { prepareFixedVerifier, renderFixedVerifier } from "./verifier-fixed.js";
-import { GENERATED_SETUP_PARAMS, SUBCIRCUIT_LIBRARY_ORIGIN } from "../../src/generated/active/setup.generated.js";
+import {
+  GENERATED_FREE_PUBLIC_LENGTH,
+  GENERATED_SETUP_PARAMS,
+  SUBCIRCUIT_LIBRARY_ORIGIN,
+} from "../../src/generated/active/setup.generated.js";
 import { parseCrsProvenance } from "../../src/generated/crs-provenance-validator.generated.js";
 import { assertRuntimeLibraryCompatibility, validateCrsProvenanceCompatibility } from "../../src/artifacts/binary/compatibility.js";
 import type { SetupParams } from "../../src/artifacts/setup/setup-params.js";
@@ -28,7 +32,7 @@ if(canonical.length !== 3 * 96 + 4 * 192)
   throw new Error("Invalid exported verifier key length.");
 const runtime = await createCurveRuntime();
 try {
-  const source = renderFixedVerifier(prepareFixedVerifier(runtime, canonical, setup));
+  const source = renderFixedVerifier(prepareFixedVerifier(runtime, canonical, setup, GENERATED_FREE_PUBLIC_LENGTH));
   const output = path.join(backend, "wasm/src/verifier/generated/active/verifier.generated.ts");
   await mkdir(path.dirname(output), { recursive: true });
   await writeFile(output, source);

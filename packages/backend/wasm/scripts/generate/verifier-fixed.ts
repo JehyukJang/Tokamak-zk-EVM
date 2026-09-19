@@ -4,7 +4,12 @@ import type { FixedVerifier } from "../../src/univariate/reference-verifier.js";
 import { decodePoint } from "../../src/univariate/artifact-points.js";
 import { deriveUnivariateDomainShape } from "../../src/univariate/domain.js";
 /** Build-only preparation, also used to compile independent small E2E fixtures. */
-export function prepareFixedVerifier(runtime: CurveRuntime, canonical: Uint8Array, setup: SetupParams): FixedVerifier {
+export function prepareFixedVerifier(
+  runtime: CurveRuntime,
+  canonical: Uint8Array,
+  setup: SetupParams,
+  freePublicLength: number,
+): FixedVerifier {
   if(canonical.length !== 3 * 96 + 4 * 192)
     throw new Error("Invalid exported verifier key length.");
   const f = runtime.Fr, domain = deriveUnivariateDomainShape(f, setup);
@@ -12,9 +17,9 @@ export function prepareFixedVerifier(runtime: CurveRuntime, canonical: Uint8Arra
   const g2 = Array.from({ length: 4 }, (_, i) => decodePoint(runtime, canonical.subarray(288 + i * 192, 288 + (i + 1) * 192), true));
   if(g1.some(p => runtime.G1.isZero(p)) || g2.some(p => runtime.G2.isZero(p)))
     throw new Error("Fixed verifier keys must be nonzero.");
-  const root = setup.l_free === 0 ? f.one : f.rootOfUnity(setup.l_free);
-  const inv = setup.l_free === 0 ? f.zero : f.inv(f.fromBigInt(BigInt(setup.l_free)));
-  const roots = Array.from({ length: setup.l_free }, (_, i) => f.pow(root, i));
+  const root = f.rootOfUnity(freePublicLength);
+  const inv = f.inv(f.fromBigInt(BigInt(freePublicLength)));
+  const roots = Array.from({ length: freePublicLength }, (_, i) => f.pow(root, i));
   const tables = g1.map(base => {
     const points: Uint8Array[] = [];
     for(let window = 0; window < 64; window++) {
@@ -28,7 +33,7 @@ export function prepareFixedVerifier(runtime: CurveRuntime, canonical: Uint8Arra
     return points;
   });
   return {
-    arithmeticSize: domain.arithmeticSize, connectionSize: domain.connectionSize, freePublicLength: setup.l_free,
+    arithmeticSize: domain.arithmeticSize, connectionSize: domain.connectionSize, freePublicLength,
     connectionRoot: domain.connectionRoot, inverseConnectionSize: f.inv(f.fromBigInt(BigInt(domain.connectionSize))),
     publicRoots: roots, publicWeights: roots.map(z => f.mul(z, inv)), g1Tables: tables,
     preparedG2: g2.map(p => runtime.pairing.prepareG2(p)),

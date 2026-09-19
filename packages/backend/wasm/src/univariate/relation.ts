@@ -1,4 +1,11 @@
 import type { SetupParams } from "../artifacts/setup/setup-params.js";
+import {
+  isInternalPadding,
+  isWiringPadding,
+  wireRange,
+} from "../prover/protocol/subcircuit-library-validation.js";
+import { PublicWireLayout } from "../prover/protocol/public-wire-layout.js";
+import type { ProverSubcircuitInfo } from "../prover/protocol/witness.js";
 import type { FieldElement, FieldRuntime } from "../runtime/field/field-types.js";
 import { arithmeticIndex, connectionIndex, type UnivariateDomainShape } from "./domain.js";
 
@@ -14,7 +21,7 @@ export interface UnivariateSparseMatrix {
 /** Fixed library data required for one selected subcircuit. */
 export interface UnivariateSubcircuit {
   readonly id: number;
-  readonly flattenMap: readonly number[];
+  readonly info: ProverSubcircuitInfo;
   readonly A: UnivariateSparseMatrix;
   readonly B: UnivariateSparseMatrix;
   readonly C: UnivariateSparseMatrix;
@@ -60,10 +67,10 @@ export async function buildArithmeticWireLift(
   localWireIndex: number,
   matrixName: R1csMatrixName,
 ): Promise<DenseDomainPolynomial> {
-  if (!Number.isSafeInteger(placementIndex) || placementIndex < 0 || placementIndex >= setup.s_max) {
+  if (!Number.isSafeInteger(placementIndex) || placementIndex < 0 || placementIndex >= setup.s) {
     throw new Error(`Placement index ${placementIndex} is outside the placement capacity.`);
   }
-  if (!Number.isSafeInteger(localWireIndex) || localWireIndex < 0 || localWireIndex >= subcircuit.flattenMap.length) {
+  if (!Number.isSafeInteger(localWireIndex) || localWireIndex < 0 || localWireIndex >= setup.m) {
     throw new Error(`Subcircuit ${subcircuit.id} local wire ${localWireIndex} is outside its wire range.`);
   }
   const matrix = subcircuit[matrixName];
@@ -103,18 +110,17 @@ export async function buildConnectionWireLift(
   subcircuit: UnivariateSubcircuit,
   localWireIndex: number,
 ): Promise<DenseDomainPolynomial> {
-  if (!Number.isSafeInteger(placementIndex) || placementIndex < 0 || placementIndex >= setup.s_max) {
+  if (!Number.isSafeInteger(placementIndex) || placementIndex < 0 || placementIndex >= setup.s) {
     throw new Error(`Placement index ${placementIndex} is outside the placement capacity.`);
   }
-  const globalIndex = subcircuit.flattenMap[localWireIndex];
-  if (!Number.isSafeInteger(globalIndex) || globalIndex < 0) {
+  if (!Number.isSafeInteger(localWireIndex) || localWireIndex < 0 || localWireIndex >= setup.m) {
     throw new Error(`Subcircuit ${subcircuit.id} local wire ${localWireIndex} is outside its wire range.`);
   }
   const evaluations = field.createZeroBuffer(domain.connectionSize);
-  if (globalIndex >= setup.l && globalIndex < setup.l_D) {
+  if (localWireIndex < setup.m_b && !isWiringPadding(subcircuit.info, setup, localWireIndex)) {
     field.writeBufferElement(
       evaluations,
-      connectionIndex(setup, placementIndex, globalIndex - setup.l),
+      connectionIndex(setup, placementIndex, localWireIndex),
       field.one,
     );
   }
@@ -140,7 +146,7 @@ export async function buildWitnessMaps(
   const wEvaluations = field.createZeroBuffer(domain.arithmeticSize);
   const bEvaluations = field.createZeroBuffer(domain.connectionSize);
 
-  for (let placementIndex = 0; placementIndex < setup.s_max; placementIndex += 1) {
+  for (let placementIndex = 0; placementIndex < setup.s; placementIndex += 1) {
     const subcircuitId = selector[placementIndex];
     const witness = witnessesBySlot[placementIndex];
     if (subcircuitId === null && witness === null) {
@@ -149,7 +155,7 @@ export async function buildWitnessMaps(
     if (subcircuitId === null || witness === null || witness.subcircuitId !== subcircuitId) {
       throw new Error(`Selector slot ${placementIndex} and witness slot disagree.`);
     }
-    if (subcircuitId < 0 || subcircuitId >= setup.s_D) {
+    if (subcircuitId < 0 || subcircuitId >= subcircuits.length) {
       throw new Error(`Selector subcircuit id ${subcircuitId} is outside the library range.`);
     }
     const subcircuit = subcircuits[subcircuitId];
@@ -157,9 +163,10 @@ export async function buildWitnessMaps(
       throw new Error(`Missing subcircuit metadata for selected id ${subcircuitId}.`);
     }
     const variableCount = field.bufferElementCount(witness.values);
-    if (subcircuit.flattenMap.length !== variableCount) {
-      throw new Error(`Subcircuit ${subcircuitId} flattenMap does not match its witness width.`);
+    if (variableCount !== setup.m) {
+      throw new Error(`Subcircuit ${subcircuitId} witness width does not match m.`);
     }
+    validateNormalizedWitness(field, setup, subcircuit.info, witness.values);
 
     await writeArithmeticMatrix(
       field,
@@ -228,16 +235,17 @@ export async function buildConnectionPermutationPolynomial(
   setup: SetupParams,
   selector: readonly (number | null)[],
   permutation: readonly UnivariatePermutationEntry[],
+  subcircuitInfos: readonly ProverSubcircuitInfo[],
 ): Promise<DenseDomainPolynomial> {
-  if (selector.length !== setup.s_max) {
-    throw new Error(`Selector capacity is ${selector.length}, expected ${setup.s_max}.`);
+  if (selector.length !== setup.s) {
+    throw new Error(`Selector capacity is ${selector.length}, expected ${setup.s}.`);
   }
   for (const [placementIndex, subcircuitId] of selector.entries()) {
-    if (subcircuitId !== null && (subcircuitId < 0 || subcircuitId >= setup.s_D)) {
+    if (subcircuitId !== null && (subcircuitId < 0 || subcircuitId >= subcircuitInfos.length)) {
       throw new Error(`Selector placement ${placementIndex} subcircuit index is outside its admitted range.`);
     }
   }
-  const mI = interfaceWireCount(setup);
+  validateApplicationTopology(setup, selector, permutation, subcircuitInfos);
   const targets = new Uint32Array(domain.connectionSize);
   const explicitlyMapped = new Uint8Array(domain.connectionSize);
   for (let source = 0; source < domain.connectionSize; source += 1) {
@@ -245,13 +253,17 @@ export async function buildConnectionPermutationPolynomial(
   }
 
   for (const entry of permutation) {
-    assertPermutationCoordinate(entry.row, entry.col, mI, setup.s_max);
-    assertPermutationCoordinate(entry.X, entry.Y, mI, setup.s_max);
+    assertPermutationCoordinate(entry.row, entry.col, setup.m_b, setup.s);
+    assertPermutationCoordinate(entry.X, entry.Y, setup.m_b, setup.s);
     if (selector[entry.col] === null) {
       throw new Error(`Permutation explicitly maps inactive placement slot ${entry.col}.`);
     }
     if (selector[entry.Y] === null) {
       throw new Error(`Permutation explicitly maps inactive placement slot ${entry.Y}.`);
+    }
+    if (isWiringPadding(subcircuitInfos[selector[entry.col]!]!, setup, entry.row)
+      || isWiringPadding(subcircuitInfos[selector[entry.Y]!]!, setup, entry.X)) {
+      throw new Error("Permutation explicitly maps producer-declared wiring padding.");
     }
     const source = connectionIndex(setup, entry.col, entry.row);
     const target = connectionIndex(setup, entry.Y, entry.X);
@@ -349,20 +361,12 @@ function writeConnectionAssignment(
   subcircuit: UnivariateSubcircuit,
   values: Uint8Array,
 ): void {
-  const mI = interfaceWireCount(setup);
-  const seenInterface = new Uint8Array(mI);
-  for (const [localIndex, globalIndex] of subcircuit.flattenMap.entries()) {
-    if (globalIndex < setup.l || globalIndex >= setup.l_D) {
-      continue;
-    }
-    const interfaceIndex = globalIndex - setup.l;
-    if (seenInterface[interfaceIndex] !== 0) {
-      throw new Error(`Subcircuit ${subcircuit.id} maps multiple local wires to interface coordinate ${interfaceIndex}.`);
-    }
-    seenInterface[interfaceIndex] = 1;
+  // The destination starts at zero, so producer-declared wiring padding stays
+  // implicit and incurs no per-coordinate decode or assignment work.
+  for (let localIndex = 0; localIndex < wireRange(subcircuit.info.Wiring_idx).end; localIndex += 1) {
     field.writeBufferElement(
       evaluations,
-      connectionIndex(setup, placementIndex, interfaceIndex),
+      connectionIndex(setup, placementIndex, localIndex),
       field.readBufferElement(values, localIndex),
     );
   }
@@ -375,41 +379,78 @@ function assertRelationInputs(
   witnessesBySlot: readonly (UnivariateSlotWitness | null)[],
   subcircuits: readonly UnivariateSubcircuit[],
 ): void {
-  interfaceWireCount(setup);
-  if (selector.length !== setup.s_max || witnessesBySlot.length !== setup.s_max) {
-    throw new Error("Selector and slot-witness arrays must have exactly s_max entries.");
+  if (selector.length !== setup.s || witnessesBySlot.length !== setup.s) {
+    throw new Error("Selector and slot-witness arrays must have exactly s entries.");
   }
-  if (subcircuits.length !== setup.s_D) {
-    throw new Error(`Subcircuit catalog has ${subcircuits.length} entries, expected ${setup.s_D}.`);
+  if (subcircuits.length >= setup.t) {
+    throw new Error("Subcircuit catalog does not reserve the virtual empty ID.");
   }
   if (domain.arithmeticSize < 1 || domain.connectionSize < 1) {
     throw new Error("Univariate domains must be nonempty.");
   }
 }
 
-function interfaceWireCount(setup: SetupParams): number {
-  const mI = setup.l_D - setup.l;
-  if (!isPowerOfTwo(mI)) {
-    throw new Error("m_I = l_D - l must be a nonzero power of two.");
+function validateNormalizedWitness(
+  field: FieldRuntime,
+  setup: SetupParams,
+  info: ProverSubcircuitInfo,
+  values: Uint8Array,
+): void {
+  if (!field.eq(field.readBufferElement(values, 0), field.one)) {
+    throw new Error("Selected local wire zero must equal one.");
   }
-  return mI;
-}
-
-function isPowerOfTwo(value: number): boolean {
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    return false;
-  }
-  while (value > 1) {
-    if (value % 2 !== 0) {
-      return false;
+  for (let localWire = 0; localWire < setup.m; localWire += 1) {
+    if ((isWiringPadding(info, setup, localWire) || isInternalPadding(info, setup, localWire))
+      && !field.isZero(field.readBufferElement(values, localWire))) {
+      throw new Error("Producer-declared witness padding must equal zero.");
     }
-    value /= 2;
   }
-  return true;
 }
 
-function assertPermutationCoordinate(row: number, col: number, mI: number, s: number): void {
-  if (!Number.isSafeInteger(row) || !Number.isSafeInteger(col) || row < 0 || row >= mI || col < 0 || col >= s) {
+function validateApplicationTopology(
+  setup: SetupParams,
+  selector: readonly (number | null)[],
+  permutation: readonly UnivariatePermutationEntry[],
+  subcircuitInfos: readonly ProverSubcircuitInfo[],
+): void {
+  const layout = PublicWireLayout.derive(setup, subcircuitInfos);
+  const publicCoordinates = new Set<string>();
+  for (const segment of layout.segments()) {
+    for (let index = segment.start; index < segment.end; index += 1) {
+      const source = layout.sourceForPublicWire(index);
+      if (source !== undefined) publicCoordinates.add(coordinate(source.localWireIndex, segment.placementPhase));
+    }
+  }
+  const edges = new Map(permutation.map(entry => [coordinate(entry.row, entry.col), coordinate(entry.X, entry.Y)]));
+  const sparsePublic = [...edges.keys()].filter(key => publicCoordinates.has(key));
+  if (sparsePublic.length !== 1) {
+    throw new Error("Exactly one public coordinate must represent CIRCOM_CONST_ONE.");
+  }
+  const representative = sparsePublic[0]!;
+  const expected = new Set<string>([representative]);
+  for (const [placement, selected] of selector.entries()) {
+    if (selected !== null) expected.add(coordinate(0, placement));
+  }
+  const actual = new Set<string>();
+  let current = representative;
+  while (!actual.has(current)) {
+    actual.add(current);
+    const next = edges.get(current);
+    if (next === undefined) throw new Error("The CIRCOM_CONST_ONE cycle is incomplete.");
+    current = next;
+  }
+  if (current !== representative || actual.size !== expected.size
+    || [...actual].some(key => !expected.has(key))) {
+    throw new Error("The CIRCOM_CONST_ONE cycle must contain only its public representative and wire zero of every actual placement.");
+  }
+}
+
+function coordinate(row: number, placement: number): string {
+  return `${row}:${placement}`;
+}
+
+function assertPermutationCoordinate(row: number, col: number, wiringWidth: number, placements: number): void {
+  if (!Number.isSafeInteger(row) || !Number.isSafeInteger(col) || row < 0 || row >= wiringWidth || col < 0 || col >= placements) {
     throw new Error(`Permutation coordinate (${row}, ${col}) is outside the connection domain.`);
   }
 }

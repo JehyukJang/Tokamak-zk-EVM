@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { createCurveRuntime } from "../../../src/runtime/curve/curve.js";
 import { prepareFixedVerifier } from "../../../scripts/generate/verifier-fixed.js";
-import { GENERATED_SETUP_PARAMS } from "../../../src/generated/active/setup.generated.js";
+import { GENERATED_FREE_PUBLIC_LENGTH, GENERATED_SETUP_PARAMS } from "../../../src/generated/active/setup.generated.js";
 import { encodePoint } from "../../../src/univariate/artifact-points.js";
 
 const directory = path.resolve(process.argv[2]!);
@@ -13,19 +13,19 @@ const key = path.join(directory, "verifier_keys.rkyv");
 const canonical = new Uint8Array(execFileSync(path.resolve("../target/release/export-verifier"), [key]));
 const runtime = await createCurveRuntime();
 try {
-  const fixed = prepareFixedVerifier(runtime, canonical, GENERATED_SETUP_PARAMS);
+  const fixed = prepareFixedVerifier(runtime, canonical, GENERATED_SETUP_PARAMS, GENERATED_FREE_PUBLIC_LENGTH);
   assert.equal(fixed.g1Tables.length, 3);
   assert.equal(fixed.preparedG2.length, 4);
   assert.equal(fixed.g1Tables[0]!.length, 64 * 15);
-  assert.throws(() => prepareFixedVerifier(runtime, canonical.subarray(1), GENERATED_SETUP_PARAMS), /length/);
+  assert.throws(() => prepareFixedVerifier(runtime, canonical.subarray(1), GENERATED_SETUP_PARAMS, GENERATED_FREE_PUBLIC_LENGTH), /length/);
   for(const [start, width] of [[0, 96], [288, 192]] as const) {
     const zero = canonical.slice(); zero.fill(0, start, start + width);
-    assert.throws(() => prepareFixedVerifier(runtime, zero, GENERATED_SETUP_PARAMS), /nonzero/);
+    assert.throws(() => prepareFixedVerifier(runtime, zero, GENERATED_SETUP_PARAMS, GENERATED_FREE_PUBLIC_LENGTH), /nonzero/);
     const noncanonical = canonical.slice(); noncanonical.fill(255, start, start + 48);
-    assert.throws(() => prepareFixedVerifier(runtime, noncanonical, GENERATED_SETUP_PARAMS), /Noncanonical/);
+    assert.throws(() => prepareFixedVerifier(runtime, noncanonical, GENERATED_SETUP_PARAMS, GENERATED_FREE_PUBLIC_LENGTH), /Noncanonical/);
   }
   const wrongGroup = canonical.slice(); wrongGroup.fill(0, 0, 96); wrongGroup[48] = 2;
-  assert.throws(() => prepareFixedVerifier(runtime, wrongGroup, GENERATED_SETUP_PARAMS), /subgroup/);
+  assert.throws(() => prepareFixedVerifier(runtime, wrongGroup, GENERATED_SETUP_PARAMS, GENERATED_FREE_PUBLIC_LENGTH), /subgroup/);
   for(let base = 0; base < 3; base++) {
     assert.deepEqual(encodePoint(runtime, fixed.g1Tables[base]![0]!), canonical.subarray(base * 96, (base + 1) * 96));
   }

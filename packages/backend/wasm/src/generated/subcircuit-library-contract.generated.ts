@@ -5,76 +5,75 @@ export const SUBCIRCUIT_LIBRARY_CONTRACT = {
   "libraryArtifacts": {
     "setupParams": {
       "fileName": "setupParams.json",
-      "fields": {
-        "freePublicLength": "l_free",
-        "publicLength": "l",
-        "userOutputLength": "l_user_out",
-        "userLength": "l_user",
-        "domainPublicLength": "l_D",
-        "domainWireLength": "m_D",
-        "constraintCount": "n",
-        "localWireCapacity": "m",
-        "subcircuitCapacity": "t",
-        "subcircuitCount": "s_D",
-        "placementCapacity": "s_max"
-      },
       "requiredFields": [
-        "l_free",
-        "l",
-        "l_user_out",
-        "l_user",
-        "l_D",
-        "m_D",
         "n",
         "m",
+        "m_b",
         "t",
-        "s_D",
-        "s_max"
+        "s",
+        "publicWirePhases"
       ],
-      "derivedDimensions": {
-        "functionInstance": "l - l_free",
-        "intermediateRows": "l_D - l",
-        "preprocessXyPowers": "(l_D - l) * s_max",
-        "localWireCapacity": "ceilPowerOfTwo(max(Nwires))",
-        "subcircuitCapacity": "ceilPowerOfTwo(s_D + 1)",
-        "emptySubcircuitId": "t - 1",
-        "domainWireLength": "m * s_D"
+      "fields": {
+        "constraintCapacity": "n",
+        "localWireCapacity": "m",
+        "wiringCapacity": "m_b",
+        "subcircuitCapacity": "t",
+        "placementCapacity": "s",
+        "orderedPublicWirePhases": "publicWirePhases"
       },
-      "subcircuitIds": {
-        "compiled": "[0,s_D)",
-        "unselectable": "[s_D,t-1)",
-        "virtualEmpty": "t-1",
-        "virtualEmptyArtifacts": "none"
-      }
+      "derivedDimensions": {
+        "arithmeticDomain": "n * s",
+        "connectionDomain": "m_b * s",
+        "selectionDomain": "t * s",
+        "emptySubcircuitId": "t - 1"
+      },
+      "publicCoordinateOrder": "phase order, then subcircuitIds order, then ascending local wire in Public_idx"
     },
     "subcircuitInfo": {
       "fileName": "subcircuitInfo.json",
-      "fields": {
-        "id": "id",
-        "name": "name",
-        "wireCount": "Nwires",
-        "constraintCount": "Nconsts",
-        "outputRange": "Out_idx",
-        "inputRange": "In_idx",
-        "globalWireMap": "flattenMap",
-        "bufferDirection": "bufferDirection"
-      },
       "requiredFields": [
         "id",
         "name",
         "Nwires",
+        "NrealWires",
         "Nconsts",
         "Out_idx",
         "In_idx",
-        "flattenMap"
+        "Wiring_idx",
+        "Public_idx",
+        "Internal_idx"
       ],
       "optionalFields": [
-        "bufferDirection"
-      ]
+        "bufferDirection",
+        "publicPhase",
+        "logicalInterface"
+      ],
+      "fields": {
+        "normalizedWireCount": "Nwires",
+        "compiledRealWireCount": "NrealWires",
+        "constraintCount": "Nconsts",
+        "normalizedOutputRange": "Out_idx",
+        "normalizedInputRange": "In_idx",
+        "realWiringRange": "Wiring_idx",
+        "publicWiringRange": "Public_idx",
+        "realInternalRange": "Internal_idx"
+      },
+      "derivedRanges": {
+        "bus": "Wiring_idx minus Public_idx",
+        "wiringPadding": "[end(Wiring_idx), m_b)",
+        "internalPadding": "[end(Internal_idx), m)"
+      },
+      "invariants": {
+        "constantWire": "local wire 0 is real, constant-one, and bus",
+        "publicInputBuffer": "Public_idx equals In_idx",
+        "publicOutputBuffer": "Public_idx equals Out_idx",
+        "otherSubcircuits": "Public_idx is empty"
+      }
     },
     "r1cs": {
       "directoryName": "r1cs",
       "fileNamePattern": "subcircuit{id}.r1cs",
+      "wireIndexing": "normalized local wire index",
       "transport": {
         "format": "circom-r1cs",
         "magic": "r1cs",

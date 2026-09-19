@@ -3,7 +3,7 @@ import { type BinaryArtifactFileView } from '../../artifacts/binary/binary-forma
 import { admitRuntimeBinaryArtifact } from '../../artifacts/binary/runtime-admission.js';
 import { INSTANCE_V1_SPEC, PROVER_PERMUTATION_V1_SPEC, PROVER_SELECTOR_V1_SPEC, } from '../../generated/browser-artifact-contracts.generated.js';
 import { assertBinaryArtifactCompatibility } from '../../artifacts/binary/compatibility.js';
-import { GENERATED_SETUP_PARAMS } from '../../generated/active/setup.generated.js';
+import { GENERATED_PUBLIC_INPUT_LENGTH, GENERATED_SETUP_PARAMS } from '../../generated/active/setup.generated.js';
 import { parseUnivariatePreprocessCrs, type UnivariateCrsChunkInput } from '../../univariate/crs.js';
 import type { UnivariatePermutationEntry } from '../../univariate/relation.js';
 import type { CurveRuntime } from '../../runtime/curve/curve.js';
@@ -32,12 +32,20 @@ export async function loadPreprocessInputFromBinaryInput(runtime: CurveRuntime, 
   }
   return {
     setup,
-    publicInputs: INSTANCE_V1_SPEC.sections.flatMap(spec => runtime.Fr.split(requireBinaryArtifactSection(instance, spec).data)),
+    publicInputs: parsePublicInputs(runtime, instance),
     subcircuitInfos: GENERATED_PROVER_SUBCIRCUIT_INFOS,
-    selector: parseSelector(selector, setup.s_max, setup.s_D),
-    permutation: parsePermutation(permutation, setup.l_D - setup.l, setup.s_max),
+    selector: parseSelector(selector, setup.s, GENERATED_PROVER_SUBCIRCUIT_INFOS.length),
+    permutation: parsePermutation(permutation, setup.m_b, setup.s),
     crs: await parseUnivariatePreprocessCrs(input.preprocessCrs, checkDigests),
   };
+}
+
+function parsePublicInputs(runtime: CurveRuntime, instance: BinaryArtifactFileView) {
+  const values = INSTANCE_V1_SPEC.sections.flatMap(spec => runtime.Fr.split(requireBinaryArtifactSection(instance, spec).data));
+  if (values.length !== GENERATED_PUBLIC_INPUT_LENGTH) {
+    throw new Error(`Public instance length is ${values.length}, expected ${GENERATED_PUBLIC_INPUT_LENGTH}.`);
+  }
+  return values;
 }
 
 function parseSelector(file: BinaryArtifactFileView, sMax: number, compiled: number): readonly (number | null)[] {

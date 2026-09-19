@@ -9,8 +9,17 @@ import { deriveUnivariateDomainShape } from "../../../src/univariate/domain.js";
 import { buildConnectionPermutationPolynomial } from "../../../src/univariate/relation.js";
 import { DenseUnivariatePolynomial } from "../../../src/univariate/polynomial.js";
 import type { UnivariateCrsChunkSection } from "../../../src/univariate/chunked-crs.js";
-const setup = { l_free: 0, l: 1, l_user_out: 0, l_user: 0, l_D: 3, m_D: 4, m: 4, t: 2, n: 2, s_D: 1, s_max: 2 };
-const infos = [{ id: 0, name: "buffer", Nwires: 3, Nconsts: 0, Out_idx: [], In_idx: [1, 1], flattenMap: [3, 0, 1], bufferDirection: "in" as const }];
+const setup = { n: 2, m: 4, m_b: 2, t: 2, s: 2, publicWirePhases: [{ name: "function-input", region: "fixed" as const, subcircuitIds: [0] }] };
+const infos = [{
+  id: 0, name: "buffer", Nwires: 4, NrealWires: 2, Nconsts: 0,
+  Out_idx: [1, 0] as const, In_idx: [1, 1] as const, Wiring_idx: [0, 2] as const,
+  Public_idx: [1, 1] as const, Internal_idx: [2, 0] as const,
+  bufferDirection: "in" as const, publicPhase: "function-input",
+}];
+const permutation = [
+  { row: 1, col: 0, X: 0, Y: 0 },
+  { row: 0, col: 0, X: 1, Y: 0 },
+];
 
 const runtime = await createCurveRuntime();
 try {
@@ -33,24 +42,24 @@ try {
     };
   };
   const input = {
-    setup, selector: [0, null], permutation: [], subcircuitInfos: infos, publicInputs: [f.fromBigInt(5n)],
+    setup, selector: [0, null], permutation, subcircuitInfos: infos, publicInputs: [f.zero, f.fromBigInt(5n)],
     crs: { sc: section(4), selection: section(3, true, 6), fixedPublic: section(1) }
   };
   const pre = await preprocessSnark(runtime, input, { denseMsmChunkPoints: 2 });
   const domain = deriveUnivariateDomainShape(f, setup);
-  const sc = await buildConnectionPermutationPolynomial(f, domain, setup, input.selector, []);
+  const sc = await buildConnectionPermutationPolynomial(f, domain, setup, input.selector, permutation, infos);
   const scPoly = DenseUnivariatePolynomial.fromCoefficients(f, sc.coefficients);
   assert(runtime.G1.eq(pre.sC, runtime.G1.mulScalar(runtime.G1.generator, scPoly.evaluate(tau))));
   const roots = await SelectedRoots.create(f, setup, input.selector);
   assert(runtime.G2.eq(pre.eKappa, runtime.G2.mulScalar(runtime.G2.generator, f.mul(f.pow(tau, 6), roots.unselected().evaluate(tau)))));
-  assert(runtime.G1.eq(pre.cFix, runtime.G1.mulScalar(runtime.G1.generator, input.publicInputs[0]!)));
+  assert(runtime.G1.eq(pre.cFix, runtime.G1.mulScalar(runtime.G1.generator, input.publicInputs[1]!)));
   const bytes = await createPreprocessOutput(runtime, pre);
   assert.equal(bytes.length, 384);
   const decoded = decodePreprocessBytes(bytes);
   assert(runtime.G2.eq(decodePoint(runtime, decoded.e_kappa, true), pre.eKappa));
   assert.throws(() => decodePreprocessBytes(bytes.subarray(1)));
-  await assert.rejects(() => preprocessSnark(runtime, { ...input, selector: [null, 0] }), /matching placement/);
-  await assert.rejects(() => preprocessSnark(runtime, { ...input, permutation: [{ row: 0, col: 0, X: 1, Y: 0 }] }), /more than one source/);
+  await assert.rejects(() => preprocessSnark(runtime, { ...input, selector: [null, 0] }), /CIRCOM_CONST_ONE/);
+  await assert.rejects(() => preprocessSnark(runtime, { ...input, permutation: permutation.slice(1) }), /Exactly one public coordinate/);
 }
 finally {
   await runtime.terminate();
