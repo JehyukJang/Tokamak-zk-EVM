@@ -67,6 +67,28 @@ test('selects only the declared public-facing port range', () => {
   }
 })
 
+test('keeps ordinary and private-only wiring nonpublic with real constant wire zero', () => {
+  const catalog = createBufferCatalog()
+  catalog.push({
+    id: catalog.length,
+    name: 'ordinary',
+    Nwires: 9,
+    Nconsts: 1,
+    Out_idx: [1, 2],
+    In_idx: [3, 2],
+    logicalInterface: { inputs: [], outputs: [] },
+  })
+  const layout = buildNormalizedWireLayout(catalog, LIBRARY_LAYOUT)
+
+  for (const name of ['bufferPrvIn', 'ordinary']) {
+    const subcircuit = layout.subcircuits.find((entry) => entry.name === name)
+    assert.deepEqual(subcircuit.Public_idx, [0, 0])
+    assert.deepEqual(subcircuit.Wiring_idx, [0, 5])
+    assert.equal(subcircuit.Wiring_idx[0], 0)
+    assert.ok(subcircuit.Wiring_idx[1] <= layout.m_b)
+  }
+})
+
 test('publishes public coordinate ordering without aggregate wire boundaries', () => {
   const layout = buildNormalizedWireLayout(createBufferCatalog(), LIBRARY_LAYOUT)
   const setup = buildSetupParams(layout, layout.subcircuits, 512)
@@ -104,8 +126,10 @@ test('reserves the final capacity id for the virtual empty subcircuit', () => {
       })
     }
     const layout = buildNormalizedWireLayout(catalog, LIBRARY_LAYOUT)
-    assert.equal(buildSetupParams(layout, layout.subcircuits, 256).t, t)
+    const setup = buildSetupParams(layout, layout.subcircuits, 256)
+    assert.equal(setup.t, t)
     assert.equal(layout.subcircuits.length, actual)
+    assert.equal(layout.subcircuits.some(({ id }) => id === setup.t - 1), false)
   }
 })
 

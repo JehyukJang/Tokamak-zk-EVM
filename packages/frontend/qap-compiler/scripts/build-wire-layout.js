@@ -181,22 +181,8 @@ function buildSetupParams(normalizedLayout, subcircuits, s) {
   }
 }
 
-function buildTransitionalGlobalWireArtifacts(subcircuits, m) {
-  const wireList = []
-  const withFlattenMaps = subcircuits.map((subcircuit) => {
-    const flattenMap = Array.from({ length: m }, (_, localWire) => {
-      const globalWire = subcircuit.id * m + localWire
-      wireList[globalWire] = [subcircuit.id, localWire]
-      return globalWire
-    })
-    return { ...subcircuit, flattenMap }
-  })
-  return { subcircuits: withFlattenMaps, wireList }
-}
-
 module.exports = {
   buildNormalizedWireLayout,
   buildSetupParams,
-  buildTransitionalGlobalWireArtifacts,
   ceilPowerOfTwo,
 }

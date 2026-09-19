@@ -60,8 +60,7 @@ All files are acquired from the same installed npm package version:
 | `subcircuits/library/wasm/subcircuit<N>.wasm`      | Witness generator for one subcircuit                     | WebAssembly                 | `subcircuit0.wasm` |
 | `subcircuits/library/json/subcircuit<N>.json`      | Compiler metadata for one subcircuit                     | JSON                        | `subcircuit0.json` |
 | `subcircuits/library/setupParams.json`             | Circuit capacity and setup parameters                    | JSON numeric object         | Published file     |
-| `subcircuits/library/globalWireList.json`          | Global-to-local wire mapping                             | JSON two-number tuple array | Published file     |
-| `subcircuits/library/subcircuitInfo.json`          | Subcircuit catalog, wire ranges, and flattening metadata | JSON record array           | Published file     |
+| `subcircuits/library/subcircuitInfo.json`          | Subcircuit catalog and normalized local wire ranges      | JSON record array           | Published file     |
 | `subcircuits/library/frontendCfg.json`             | Frontend buffer and subcircuit configuration             | JSON                        | Published file     |
 | `subcircuits/library/generate_witness.js`          | Witness-generation entry point                           | JavaScript module           | Published file     |
 | `subcircuits/library/witness-input-diagnostics.js` | Original-input format diagnostics                        | JavaScript module           | Published file     |

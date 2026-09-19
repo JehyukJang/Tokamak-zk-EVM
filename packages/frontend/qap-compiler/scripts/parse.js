@@ -13,7 +13,6 @@ const { parseCompilerReport } = require('./parse-compiler-report.js')
 const {
   buildNormalizedWireLayout,
   buildSetupParams,
-  buildTransitionalGlobalWireArtifacts,
 } = require('./build-wire-layout.js')
 const {
   normalizeConstraintJsonFile,
@@ -77,14 +76,8 @@ function main({ outputDir, compilerOutputPath }) {
       layout,
     )
   }
-  const transitional = buildTransitionalGlobalWireArtifacts(
-    subcircuits,
-    normalizedLayout.m,
-  )
-
   writeLibraryArtifacts(outputDir, {
-    subcircuits: transitional.subcircuits,
-    globalWireList: transitional.wireList,
+    subcircuits,
     setupParams,
   })
 }
