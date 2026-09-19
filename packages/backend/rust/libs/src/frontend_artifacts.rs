@@ -16,6 +16,7 @@ use std::ops::Deref;
 use std::path::PathBuf;
 
 pub mod public_wire_layout;
+pub mod normalized_library;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HexString(pub String);
@@ -198,6 +199,50 @@ mod selector_tests {
 }
 
 impl Permutation {
+    pub fn validate_normalized_sparse(
+        perm_raw: &[Self],
+        wiring_width: usize,
+        placement_capacity: usize,
+    ) -> Result<(), String> {
+        use std::collections::HashSet;
+
+        let mut sources = HashSet::with_capacity(perm_raw.len());
+        let mut targets = HashSet::with_capacity(perm_raw.len());
+        for entry in perm_raw {
+            if entry.row >= wiring_width || entry.X >= wiring_width {
+                return Err(format!(
+                    "permutation row coordinate is outside normalized wiring width {wiring_width}"
+                ));
+            }
+            if entry.col >= placement_capacity || entry.Y >= placement_capacity {
+                return Err(format!(
+                    "permutation placement coordinate is outside placement capacity {placement_capacity}"
+                ));
+            }
+            let source = (entry.row, entry.col);
+            let target = (entry.X, entry.Y);
+            if source == target {
+                return Err("sparse permutation contains an explicit identity record".to_owned());
+            }
+            if !sources.insert(source) {
+                return Err(format!(
+                    "sparse permutation contains duplicate source ({}, {})",
+                    entry.row, entry.col
+                ));
+            }
+            if !targets.insert(target) {
+                return Err(format!(
+                    "sparse permutation contains duplicate target ({}, {})",
+                    entry.X, entry.Y
+                ));
+            }
+        }
+        if sources != targets {
+            return Err("sparse permutation records do not form closed cycles".to_owned());
+        }
+        Ok(())
+    }
+
     pub fn to_poly(
         perm_raw: &[Self],
         m_i: usize,
@@ -350,6 +395,66 @@ mod tests {
         );
 
         assert!(matches!(result, Err(error) if error.contains("X coordinate 2")));
+    }
+
+    #[test]
+    fn normalized_sparse_permutation_requires_closed_unique_cycles() {
+        let cycle = [
+            Permutation {
+                row: 0,
+                col: 0,
+                X: 1,
+                Y: 1,
+            },
+            Permutation {
+                row: 1,
+                col: 1,
+                X: 0,
+                Y: 0,
+            },
+        ];
+        Permutation::validate_normalized_sparse(&cycle, 2, 2).unwrap();
+
+        let open = [Permutation {
+            row: 0,
+            col: 0,
+            X: 1,
+            Y: 1,
+        }];
+        assert!(Permutation::validate_normalized_sparse(&open, 2, 2)
+            .unwrap_err()
+            .contains("closed cycles"));
+    }
+
+    #[test]
+    fn normalized_sparse_permutation_rejects_identity_and_global_coordinates() {
+        let identity = [Permutation {
+            row: 0,
+            col: 0,
+            X: 0,
+            Y: 0,
+        }];
+        assert!(Permutation::validate_normalized_sparse(&identity, 2, 2)
+            .unwrap_err()
+            .contains("identity"));
+
+        let global = [
+            Permutation {
+                row: 2,
+                col: 0,
+                X: 0,
+                Y: 1,
+            },
+            Permutation {
+                row: 0,
+                col: 1,
+                X: 2,
+                Y: 0,
+            },
+        ];
+        assert!(Permutation::validate_normalized_sparse(&global, 2, 2)
+            .unwrap_err()
+            .contains("normalized wiring width"));
     }
 
     #[test]

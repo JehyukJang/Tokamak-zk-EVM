@@ -43,7 +43,6 @@ const QAP_COMPILER_SCRIPT: &str = "scripts/qap-compiler.mjs";
 const DIGEST_LIBRARY_DIRECTORIES: &[&str] = &["json", "r1cs", "wasm"];
 const DIGEST_LIBRARY_FILES: &[&str] = &[
     "frontendCfg.json",
-    "globalWireList.json",
     "setupParams.json",
     "subcircuitInfo.json",
 ];
