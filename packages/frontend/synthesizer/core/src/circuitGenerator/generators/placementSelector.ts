@@ -16,10 +16,10 @@ export function derivePlacementSelector(
   placementVariables: PlacementVariables,
   subcircuitLibrary: ResolvedSubcircuitLibrary,
 ): PlacementSelector {
-  const { globalWireList, setupParams, subcircuitInfo } = subcircuitLibrary.data;
-  const sMax = setupParams.s_max;
+  const { setupParams, subcircuitInfo } = subcircuitLibrary.data;
+  const sMax = setupParams.s;
   if (!Number.isSafeInteger(sMax) || sMax < 0 || sMax > 0xffff_ffff) {
-    throw new Error('Selector capacity s_max must be a non-negative u32');
+    throw new Error('Selector capacity s must be a non-negative u32');
   }
   if (placements.length > sMax) {
     throw new Error(`Selector has ${placements.length} placements but capacity is ${sMax}`);
@@ -63,11 +63,10 @@ export function derivePlacementSelector(
     throw new Error('Selector active entries do not match placement-variable scan order');
   }
 
-  const publicBufferIds = [...new Set(
-    globalWireList
-      .slice(0, setupParams.l)
-      .flatMap(([subcircuitId]) => subcircuitId < 0 ? [] : [subcircuitId]),
-  )].sort((left, right) => left - right);
+  const publicBufferIds = subcircuitInfo
+    .filter(entry => entry.Public_idx[1] > 0)
+    .map(entry => entry.id)
+    .sort((left, right) => left - right);
   for (const [bufferIndex, subcircuitId] of publicBufferIds.entries()) {
     if (subcircuitId !== bufferIndex) {
       throw new Error('Public buffer IDs must form the canonical zero-based prefix');

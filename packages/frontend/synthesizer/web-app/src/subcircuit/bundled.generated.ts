@@ -1,5 +1,4 @@
 import setupParamsJson from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/setupParams.json' with { type: 'json' };
-import globalWireListJson from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/globalWireList.json' with { type: 'json' };
 import frontendCfgJson from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/frontendCfg.json' with { type: 'json' };
 import subcircuitInfoJson from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/subcircuitInfo.json' with { type: 'json' };
 import wasm0 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/subcircuit0.wasm';
@@ -49,7 +48,6 @@ import wasm43 from '@tokamak-zk-evm/subcircuit-library/subcircuits/library/wasm/
 
 export {
   setupParamsJson,
-  globalWireListJson,
   frontendCfgJson,
   subcircuitInfoJson,
 };

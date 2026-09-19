@@ -6,31 +6,32 @@ import { BIT_DATA_PT_TYPE, type DataPt } from '../../../core/src/synthesizer/typ
 import type { Placements, PlacementVariables } from '../../../core/src/synthesizer/types/placements.ts';
 import { BUFFER_LIST } from '../../../core/src/subcircuit/configuredTypes.ts';
 
-const point = (source: number): DataPt =>
-  DataPtFactory.create(
-    {
-      source,
-      wireIndex: 0,
-      dataPtType: BIT_DATA_PT_TYPE,
-    },
-    1n,
-  );
+const point = (source: number, wireIndex = 0): DataPt =>
+  DataPtFactory.create({ source, wireIndex, dataPtType: BIT_DATA_PT_TYPE }, 1n);
 
-const subcircuit = (id: number, name: string, base: number, bufferDirection: 'in' | 'out') => ({
+const subcircuit = (
+  id: number,
+  name: string,
+  bufferDirection: 'in' | 'out',
+  publicRange: readonly [number, number] = [0, 0],
+) => ({
   id,
   name,
-  NWires: 3,
+  NWires: 5,
+  NRealWires: 3,
   NInWires: 1,
   NOutWires: 1,
   inWireIndex: 2,
   outWireIndex: 1,
-  flattenMap: [base, base + 1, base + 2],
+  wiringRange: [0, 3] as const,
+  publicRange,
+  internalRange: [4, 0] as const,
   bufferDirection,
 });
 
-const privateInfo = subcircuit(0, 'bufferPrvIn', 0, 'in');
-const storageLoadInfo = subcircuit(1, 'bufferStorageLoad', 3, 'out');
-const evmInfo = subcircuit(2, 'bufferEVMIn', 6, 'in');
+const privateInfo = subcircuit(0, 'bufferPrvIn', 'in');
+const storageLoadInfo = subcircuit(1, 'bufferStorageLoad', 'out');
+const evmInfo = subcircuit(2, 'bufferEVMIn', 'in', [2, 1]);
 
 const createLibrary = () => {
   const subcircuitInfoByName = new Map([
@@ -41,19 +42,18 @@ const createLibrary = () => {
   const subcircuitBufferMapping = Object.fromEntries(
     BUFFER_LIST.map(buffer => {
       switch (buffer) {
-        case 'PRIVATE_IN':
-          return [buffer, privateInfo];
-        case 'STORAGE_LOAD':
-          return [buffer, storageLoadInfo];
-        case 'EVM_IN':
-          return [buffer, evmInfo];
-        default:
-          return [buffer, undefined];
+        case 'PRIVATE_IN': return [buffer, privateInfo];
+        case 'STORAGE_LOAD': return [buffer, storageLoadInfo];
+        case 'EVM_IN': return [buffer, evmInfo];
+        default: return [buffer, undefined];
       }
     }),
   );
   return {
-    data: { setupParams: { l: 0, l_D: 9, s_max: 16 } },
+    data: {
+      setupParams: { n: 4, m: 5, m_b: 4, t: 4, s: 16, publicWirePhases: [] },
+      subcircuitInfo: [privateInfo, storageLoadInfo, evmInfo],
+    },
     subcircuitInfoByName,
     subcircuitBufferMapping,
   } as never;
@@ -87,27 +87,25 @@ const successfulPlacements = (): Placements => [
 const variablesFor = (placements: Placements): PlacementVariables =>
   placements.map(placement => ({
     subcircuitId: placement.subcircuitId,
-    variables: ['0x01', '0x01', '0x01'],
-    instanceList: ['', '', ''],
+    variables: ['0x01', '0x01', '0x01', '0x00', '0x00'],
+    instanceList: ['', '', '', '', ''],
   }));
 
 const createPermutationGenerator = (
   placements: Placements,
   placementVariables = variablesFor(placements),
-): PermutationGenerator =>
-  new PermutationGenerator(placements, placementVariables, createLibrary());
+): PermutationGenerator => new PermutationGenerator(placements, placementVariables, createLibrary());
 
-describe('PermutationGenerator structural hardening', () => {
-  it('permits an internal no-parent root from an input buffer', () => {
-    const placements = successfulPlacements();
-
-    expect(
-      () =>
-        createPermutationGenerator(placements),
-    ).not.toThrow();
+describe('PermutationGenerator normalized wiring grid', () => {
+  it('keeps unused input-buffer wires as identities and emits the constant-one cycle', () => {
+    const result = createPermutationGenerator(successfulPlacements()).permutation;
+    expect(result).toHaveLength(7);
+    expect(result.some(entry => entry.row === 2 && entry.col === 5)).toBe(true);
+    expect(result.some(entry => entry.row === 0 && entry.col === 0)).toBe(true);
+    expect(result.some(entry => entry.row === 1 || entry.row === 3)).toBe(false);
   });
 
-  it('rejects an unparented internal input of an output buffer', () => {
+  it('rejects an unparented real input of an output buffer', () => {
     const placements: Placements = [
       {
         name: 'bufferStorageLoad',
@@ -118,32 +116,20 @@ describe('PermutationGenerator structural hardening', () => {
       },
       ...successfulPlacements().slice(1),
     ];
-
-    expect(
-      () =>
-        createPermutationGenerator(placements),
-    ).toThrow('although it is not qualified');
+    expect(() => createPermutationGenerator(placements)).toThrow('ordinary input wire has no parent output');
   });
 
-  it('rejects a mapped interface cell that belongs to two groups', () => {
+  it('rejects non-zero declared wiring padding', () => {
     const placements = successfulPlacements();
-    const generator = createPermutationGenerator(placements);
-    const privateGenerator = generator as unknown as {
-      permGroup: Set<string>[];
-      _validatePermGroupOwnership(): Set<string>;
-    };
-    privateGenerator.permGroup.push(new Set(privateGenerator.permGroup[0]));
-
-    expect(() => privateGenerator._validatePermGroupOwnership()).toThrow('belongs to multiple groups');
+    const variables = variablesFor(placements);
+    variables[0]!.variables[3] = '0x01';
+    expect(() => createPermutationGenerator(placements, variables)).toThrow('non-zero wiring padding');
   });
 
   it('rejects placement variables that do not match placement order', () => {
     const placements = successfulPlacements();
     const variables = variablesFor(placements);
     variables[0] = { ...variables[0]!, subcircuitId: evmInfo.id };
-
-    expect(() => createPermutationGenerator(placements, variables)).toThrow(
-      'does not match its variable entry subcircuit ID',
-    );
+    expect(() => createPermutationGenerator(placements, variables)).toThrow('does not match its variable entry');
   });
 });

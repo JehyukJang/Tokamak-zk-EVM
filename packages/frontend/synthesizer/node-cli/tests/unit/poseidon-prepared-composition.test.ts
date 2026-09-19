@@ -50,7 +50,6 @@ const createPlacementManager = (): PlacementManager => {
       NOutWires: 2,
       inWireIndex: 3,
       outWireIndex: 1,
-      flattenMap: [],
       logicalInterface,
     }]]),
     subcircuitLibrary: {

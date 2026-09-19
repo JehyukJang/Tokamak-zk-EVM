@@ -66,12 +66,12 @@ const createBufferGenerator = (privateBufferCapacity: number): VariableGenerator
       placements: [],
       subcircuitLibrary: {
         subcircuitBufferMapping,
-        data: { setupParams: { s_max: 256 } },
+        data: { setupParams: { s: 256 } },
       },
     } as never,
     {
       subcircuitBufferMapping,
-      data: { setupParams: { s_max: 256 } },
+      data: { setupParams: { s: 256 } },
     } as never,
   );
 };
@@ -101,7 +101,6 @@ const prepareCircuitInstance = (
 
 const createGeneratorWithSubcircuits = (
   subcircuits: readonly { name: string; id: number; NInWires: number; NOutWires: number }[],
-  globalWireList: readonly (readonly [number, number])[] = [],
   bufferNames: readonly string[] = [],
 ): VariableGenerator => {
   const subcircuitInfoByName = new Map(
@@ -110,9 +109,12 @@ const createGeneratorWithSubcircuits = (
       {
         ...subcircuit,
         NWires: 1 + subcircuit.NOutWires + subcircuit.NInWires,
+        NRealWires: 1 + subcircuit.NOutWires + subcircuit.NInWires,
         inWireIndex: 1 + subcircuit.NOutWires,
         outWireIndex: 1,
-        flattenMap: [],
+        wiringRange: [0, 1 + subcircuit.NOutWires + subcircuit.NInWires],
+        publicRange: [0, 0],
+        internalRange: [1 + subcircuit.NOutWires + subcircuit.NInWires, 0],
       },
     ]),
   );
@@ -130,8 +132,7 @@ const createGeneratorWithSubcircuits = (
       subcircuitInfoByName,
       subcircuitBufferMapping,
       data: {
-        globalWireList,
-        setupParams: { l: globalWireList.length, l_user: 0, l_free: 0, s_max: 256 },
+        setupParams: { s: 256 },
       },
     } as never,
   );
@@ -187,30 +188,33 @@ describe('VariableGenerator word encoding', () => {
 });
 
 describe('VariableGenerator interface materialization', () => {
-  it('uses declared physical port offsets when checking witness outputs and descriptions', async () => {
+  it('normalizes wiring and internal witness blocks while zero-filling only padding', async () => {
     const subcircuitInfo = {
       id: 10,
       name: 'ADD',
       NInWires: 1,
       NOutWires: 1,
-      NWires: 5,
-      inWireIndex: 4,
-      outWireIndex: 2,
-      flattenMap: [0, 1, 2, 3, 4],
+      NWires: 8,
+      NRealWires: 5,
+      inWireIndex: 2,
+      outWireIndex: 1,
+      wiringRange: [0, 3],
+      publicRange: [0, 0],
+      internalRange: [4, 2],
     };
     const generator = new VariableGenerator(
       {} as never,
       {
         subcircuitInfoByName: new Map([[subcircuitInfo.name, subcircuitInfo]]),
         subcircuitBufferMapping: {},
-        data: { setupParams: { s_max: 1 } },
+        data: { setupParams: { s: 1 } },
       } as never,
     );
     const privateGenerator = generator as unknown as {
       _generateSubcircuitWitness(subcircuitId: number, inValues: string[]): Promise<string[]>;
       _generatePlacementVariables(placements: Placements): Promise<PlacementVariables>;
     };
-    privateGenerator._generateSubcircuitWitness = async () => ['0x1', '0x00', '0x05', '0x00', '0x07'];
+    privateGenerator._generateSubcircuitWitness = async () => ['0x1', '0x05', '0x07', '0xaa', '0xbb'];
     const placement: PlacementEntry = {
       name: 'ADD',
       usage: 'ADD',
@@ -221,8 +225,8 @@ describe('VariableGenerator interface materialization', () => {
 
     await expect(privateGenerator._generatePlacementVariables([placement])).resolves.toEqual([{
       subcircuitId: 10,
-      variables: ['0x1', '0x00', '0x05', '0x00', '0x07'],
-      instanceList: ['', '', 'output', '', 'input'],
+      variables: ['0x1', '0x05', '0x07', '0x00', '0xaa', '0xbb', '0x00', '0x00'],
+      instanceList: ['', 'output', 'input', '', '', '', '', ''],
     }]);
   });
 
@@ -258,7 +262,6 @@ describe('VariableGenerator interface materialization', () => {
   it('continues to zero-pad unused declared buffer capacity', () => {
     const generator = createGeneratorWithSubcircuits(
       [{ name: 'bufferEVMIn', id: 10, NInWires: 2, NOutWires: 2 }],
-      [],
       ['EVM_IN'],
     );
     const placement: PlacementEntry = {

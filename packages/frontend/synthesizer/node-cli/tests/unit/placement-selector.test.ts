@@ -16,14 +16,12 @@ const variables = (subcircuitId: number) => ({
 
 const library = (
   sMax: number,
-  globalWireList: readonly (readonly [number, number])[],
+  publicSubcircuitIds: readonly number[],
   ids: readonly number[],
-  publicWireCount = globalWireList.length,
 ) => ({
   data: {
-    setupParams: { s_max: sMax, l: publicWireCount },
-    globalWireList,
-    subcircuitInfo: ids.map((id) => ({ id })),
+    setupParams: { s: sMax },
+    subcircuitInfo: ids.map((id) => ({ id, Public_idx: [0, publicSubcircuitIds.includes(id) ? 1 : 0] })),
   },
 }) as never;
 
@@ -42,7 +40,7 @@ describe('placement selector', () => {
     expect(derivePlacementSelector(
       placements,
       placementVariables,
-      library(6, [[0, 0], [1, 0], [2, 0]], [0, 1, 2, 9]),
+      library(6, [0, 1, 2], [0, 1, 2, 9]),
     )).toEqual([
       0,
       1,
@@ -60,7 +58,7 @@ describe('placement selector', () => {
     expect(() => derivePlacementSelector(
       placements,
       placementVariables,
-      library(4, [[0, 0], [1, 0], [2, 0]], [0, 1, 2, 8, 9]),
+      library(4, [0, 1, 2], [0, 1, 2, 8, 9]),
     )).toThrow('does not match its placement-variable subcircuit ID');
   });
 
@@ -71,7 +69,7 @@ describe('placement selector', () => {
     expect(() => derivePlacementSelector(
       placements,
       placementVariables,
-      library(4, [[0, 0], [1, 0], [2, 0]], [0, 1, 2, 9]),
+      library(4, [0, 1, 2], [0, 1, 2, 9]),
     )).toThrow('Public buffer 1 must occupy its matching placement index 1');
   });
 
@@ -82,7 +80,7 @@ describe('placement selector', () => {
     expect(derivePlacementSelector(
       placements,
       placementVariables,
-      library(4, [[0, 0], [1, 0], [2, 0]], [0, 1, 2, 9], 1),
+      library(4, [0], [0, 1, 2, 9]),
     )).toEqual([0, 9, 2, 1]);
   });
 

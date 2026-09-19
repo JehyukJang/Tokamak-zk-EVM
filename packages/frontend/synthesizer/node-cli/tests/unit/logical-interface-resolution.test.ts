@@ -20,23 +20,12 @@ const frontendCfg = {
 } as const;
 
 const setupParams = {
-  l_log_out: 0,
-  l_storage_store: 0,
-  l_storage_load: 0,
-  l_tx_in: 0,
-  l_block_in: 0,
-  l_evm_in: 0,
-  l_free: 0,
-  l_user_out: 0,
-  l_user: 0,
-  l: 0,
-  l_D: 0,
-  m_D: 0,
-  n: 0,
-  m: 0,
-  t: 0,
-  s_D: 0,
-  s_max: 0,
+  n: 8,
+  m: 8,
+  m_b: 8,
+  t: 2,
+  s: 2,
+  publicWirePhases: [],
 } as const;
 
 function createLibraryData(
@@ -45,16 +34,18 @@ function createLibraryData(
 ): SubcircuitLibraryData {
   return {
     setupParams,
-    globalWireList: [],
     frontendCfg: { ...frontendCfg },
     subcircuitInfo: [{
       id: 0,
       name: 'ALU3',
       Nwires: 8,
+      NrealWires: 1 + inputWireCount + outputWireCount,
       Nconsts: 0,
       In_idx: [3, inputWireCount],
       Out_idx: [1, outputWireCount],
-      flattenMap: [],
+      Wiring_idx: [0, 8],
+      Public_idx: [0, 0],
+      Internal_idx: [8, 0],
       logicalInterface: {
         inputs: [
           { name: 'selector', logicalType: { kind: 'uint', bits: 32 } },
