@@ -78,6 +78,14 @@ impl NormalizedSubcircuitInfo {
     pub fn is_internal_padding(&self, local_wire_index: usize, wire_width: usize) -> bool {
         local_wire_index >= self.internal_range().end && local_wire_index < wire_width
     }
+
+    pub fn retained_nonpublic_wires(&self) -> Vec<usize> {
+        let public = self.public_range();
+        self.wiring_range()
+            .filter(|local_wire_index| !public.contains(local_wire_index))
+            .chain(self.internal_range())
+            .collect()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -404,6 +412,14 @@ mod tests {
         assert_eq!(library.public.free_public_len(), 256);
         assert_eq!(library.public.len(), 396);
         assert_eq!(
+            library
+                .subcircuits
+                .iter()
+                .map(|circuit| circuit.retained_nonpublic_wires().len())
+                .sum::<usize>(),
+            23_464
+        );
+        assert_eq!(
             library.physical_wire_offset(43, 2047),
             Some(43 * 2048 + 2047)
         );
@@ -418,5 +434,39 @@ mod tests {
         assert!(!circuit.is_wiring_padding(0, library.setup.m_b));
         assert!(circuit.is_wiring_padding(circuit.wiring_range().end, library.setup.m_b));
         assert!(circuit.is_internal_padding(circuit.internal_range().end, library.setup.m));
+    }
+
+    #[test]
+    fn retained_queries_match_a_dense_zero_padding_reference() {
+        let library = NormalizedSubcircuitLibrary::read_from_qap_path(repository_library_path())
+            .expect("current local QAP artifacts must satisfy the normalized contract");
+        let circuit = &library.subcircuits[7];
+        let retained = circuit.retained_nonpublic_wires();
+        let public = circuit.public_range();
+        let witness = (0..library.setup.m)
+            .map(|local_wire_index| {
+                if circuit.is_wiring_padding(local_wire_index, library.setup.m_b)
+                    || circuit.is_internal_padding(local_wire_index, library.setup.m)
+                    || public.contains(&local_wire_index)
+                {
+                    0usize
+                } else {
+                    local_wire_index + 1
+                }
+            })
+            .collect::<Vec<_>>();
+        let dense = witness
+            .iter()
+            .enumerate()
+            .map(|(local_wire_index, value)| (local_wire_index + 3) * value)
+            .sum::<usize>();
+        let sparse = retained
+            .iter()
+            .map(|local_wire_index| (local_wire_index + 3) * witness[*local_wire_index])
+            .sum::<usize>();
+        assert_eq!(sparse, dense);
+        assert!(retained.contains(&0));
+        assert!(!retained.contains(&circuit.wiring_range().end));
+        assert!(!retained.contains(&circuit.internal_range().end));
     }
 }

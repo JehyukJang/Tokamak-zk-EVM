@@ -1,7 +1,8 @@
-//! Library-derived indexing of retained nonpublic U28 queries.
+//! Library-derived indexing of retained nonpublic queries.
 //!
-//! This table is reconstructed from existing flatten maps, never serialized.
-//! A real wire is retained even if a particular execution assigns it zero.
+//! This table is reconstructed from producer-owned local wire ranges and is
+//! never serialized. A real wire is retained even if a particular execution
+//! assigns it zero.
 
 use std::ops::Range;
 
@@ -14,6 +15,38 @@ pub struct NonpublicQueryLayout {
 }
 
 impl NonpublicQueryLayout {
+    pub fn from_retained_wires(
+        placements: usize,
+        retained_wires: Vec<Vec<usize>>,
+    ) -> Result<Self, &'static str> {
+        if placements == 0 || retained_wires.is_empty() {
+            return Err("query layout requires nonempty library dimensions");
+        }
+        let mut offsets = Vec::with_capacity(retained_wires.len() + 1);
+        offsets.push(0usize);
+        for wires in &retained_wires {
+            if wires.windows(2).any(|pair| pair[0] >= pair[1]) {
+                return Err("retained local wires must be strictly increasing");
+            }
+            offsets.push(
+                offsets
+                    .last()
+                    .unwrap()
+                    .checked_add(wires.len())
+                    .ok_or("query count overflow")?,
+            );
+        }
+        let count = placements
+            .checked_mul(*offsets.last().unwrap())
+            .ok_or("query count overflow")?;
+        Ok(Self {
+            placements,
+            offsets,
+            wires: retained_wires,
+            count,
+        })
+    }
+
     pub fn new(
         placements: usize,
         wire_capacity: usize,
@@ -23,7 +56,6 @@ impl NonpublicQueryLayout {
         if placements == 0 || wire_capacity == 0 || flatten_maps.is_empty() {
             return Err("query layout requires nonempty library dimensions");
         }
-        let mut offsets = vec![0usize];
         let mut wires = Vec::with_capacity(flatten_maps.len());
         for map in flatten_maps {
             if map.len() > wire_capacity {
@@ -34,24 +66,9 @@ impl NonpublicQueryLayout {
                 .enumerate()
                 .filter_map(|(j, global)| (*global >= public_limit).then_some(j))
                 .collect::<Vec<_>>();
-            offsets.push(
-                offsets
-                    .last()
-                    .unwrap()
-                    .checked_add(retained.len())
-                    .ok_or("query count overflow")?,
-            );
             wires.push(retained);
         }
-        let count = placements
-            .checked_mul(*offsets.last().unwrap())
-            .ok_or("query count overflow")?;
-        Ok(Self {
-            placements,
-            offsets,
-            wires,
-            count,
-        })
+        Self::from_retained_wires(placements, wires)
     }
 
     pub fn len(&self) -> usize {
@@ -119,6 +136,17 @@ mod tests {
         let public_only = NonpublicQueryLayout::new(2, 1, 2, &[&[0]]).unwrap();
         assert!(public_only.is_empty());
         assert_eq!(public_only.range(1, 0).unwrap(), 0..0);
+    }
+
+    #[test]
+    fn normalized_ranges_use_explicit_retained_local_wires() {
+        let layout =
+            NonpublicQueryLayout::from_retained_wires(3, vec![vec![0, 2, 8], vec![0, 1]]).unwrap();
+        assert_eq!(layout.len(), 15);
+        assert_eq!(layout.local_wires(0).unwrap(), &[0, 2, 8]);
+        assert_eq!(layout.range(2, 1).unwrap(), 13..15);
+        assert!(NonpublicQueryLayout::from_retained_wires(1, vec![vec![2, 2]]).is_err());
+        assert!(NonpublicQueryLayout::from_retained_wires(0, vec![vec![]]).is_err());
     }
 
     #[test]

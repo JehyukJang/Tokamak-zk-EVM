@@ -2,12 +2,15 @@
 #![allow(non_snake_case)]
 
 use crate::bivariate_polynomial::{BivariatePolynomial, DensePolynomialExt};
+use crate::frontend_artifacts::normalized_library::{
+    NormalizedSetupParams, NormalizedSubcircuitInfo,
+};
 use crate::frontend_artifacts::{
     read_global_wire_list_as_boxed_boxed_numbers, HexString, PlacementVariables, SetupParams,
     SubcircuitInfo,
 };
 use crate::polynomial_structures::{from_subcircuit_to_QAP, QAP};
-use crate::univariate_relation::UnivariateSubcircuit;
+use crate::univariate_relation::{NormalizedUnivariateSubcircuit, UnivariateSubcircuit};
 use crate::vector_operations::{matrix_matrix_mul, transpose_inplace};
 use icicle_bls12_381::curve::ScalarField;
 use icicle_core::traits::FieldImpl;
@@ -206,6 +209,21 @@ fn read_u64_le(data: &[u8], offset: &mut usize) -> io::Result<u64> {
 }
 
 impl SubcircuitR1CS {
+    pub fn as_normalized_univariate_subcircuit<'a>(
+        &'a self,
+        subcircuit_info: &'a NormalizedSubcircuitInfo,
+    ) -> NormalizedUnivariateSubcircuit<'a> {
+        NormalizedUnivariateSubcircuit {
+            info: subcircuit_info,
+            a_active_wires: &self.A_active_wires,
+            b_active_wires: &self.B_active_wires,
+            c_active_wires: &self.C_active_wires,
+            a_rows: &self.A_sparse_rows,
+            b_rows: &self.B_sparse_rows,
+            c_rows: &self.C_sparse_rows,
+        }
+    }
+
     /// Borrows the existing compact sparse R1CS representation for the
     /// univariate relation. The rows retain compact-column indices; no dense
     /// matrix or legacy QAP polynomial is constructed.
@@ -230,7 +248,15 @@ impl SubcircuitR1CS {
         setup_params: &SetupParams,
         subcircuit_info: &SubcircuitInfo,
     ) -> io::Result<Self> {
-        Self::from_r1cs_with_mode(path, setup_params, subcircuit_info, true, false)
+        Self::from_r1cs_with_dimensions(
+            path,
+            setup_params.n,
+            subcircuit_info.id,
+            subcircuit_info.Nwires,
+            subcircuit_info.Nconsts,
+            true,
+            false,
+        )
     }
 
     pub fn from_r1cs_sparse_only(
@@ -238,13 +264,39 @@ impl SubcircuitR1CS {
         setup_params: &SetupParams,
         subcircuit_info: &SubcircuitInfo,
     ) -> io::Result<Self> {
-        Self::from_r1cs_with_mode(path, setup_params, subcircuit_info, false, true)
+        Self::from_r1cs_with_dimensions(
+            path,
+            setup_params.n,
+            subcircuit_info.id,
+            subcircuit_info.Nwires,
+            subcircuit_info.Nconsts,
+            false,
+            true,
+        )
     }
 
-    fn from_r1cs_with_mode(
+    pub fn from_normalized_r1cs_sparse_only(
         path: PathBuf,
-        setup_params: &SetupParams,
-        subcircuit_info: &SubcircuitInfo,
+        setup_params: &NormalizedSetupParams,
+        subcircuit_info: &NormalizedSubcircuitInfo,
+    ) -> io::Result<Self> {
+        Self::from_r1cs_with_dimensions(
+            path,
+            setup_params.n,
+            subcircuit_info.id,
+            subcircuit_info.Nwires,
+            subcircuit_info.Nconsts,
+            false,
+            true,
+        )
+    }
+
+    fn from_r1cs_with_dimensions(
+        path: PathBuf,
+        n: usize,
+        subcircuit_id: usize,
+        wire_count: usize,
+        constraint_count: usize,
         include_compact_matrices: bool,
         include_sparse_rows: bool,
     ) -> io::Result<Self> {
@@ -254,33 +306,32 @@ impl SubcircuitR1CS {
         let read_binary_start = phase_profile.then(Instant::now);
         let binary = R1csBinary::read(path)?;
         if let Some(start) = read_binary_start {
-            print_r1cs_binary_phase(
-                subcircuit_info.id,
-                "read_binary",
-                start.elapsed().as_nanos(),
-            );
+            print_r1cs_binary_phase(subcircuit_id, "read_binary", start.elapsed().as_nanos());
         }
 
-        if binary.n_wires != subcircuit_info.Nwires {
+        if binary.n_wires != wire_count {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!(
                     "R1CS nWires mismatch for subcircuit {}: binary={}, info={}",
-                    subcircuit_info.id, binary.n_wires, subcircuit_info.Nwires
+                    subcircuit_id, binary.n_wires, wire_count
                 ),
             ));
         }
-        if binary.n_constraints != subcircuit_info.Nconsts {
+        if binary.n_constraints != constraint_count {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!(
                     "R1CS nConstraints mismatch for subcircuit {}: binary={}, info={}",
-                    subcircuit_info.id, binary.n_constraints, subcircuit_info.Nconsts
+                    subcircuit_id, binary.n_constraints, constraint_count
                 ),
             ));
         }
-        if setup_params.n < subcircuit_info.Nconsts {
-            panic!("n is smaller than the actual number of constraints.");
+        if n < constraint_count {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "n is smaller than the actual number of constraints",
+            ));
         }
 
         let active_wire_scan_start = phase_profile.then(Instant::now);
@@ -294,7 +345,7 @@ impl SubcircuitR1CS {
         })?;
         if let Some(start) = active_wire_scan_start {
             print_r1cs_binary_phase(
-                subcircuit_info.id,
+                subcircuit_id,
                 "active_wire_scan",
                 start.elapsed().as_nanos(),
             );
@@ -309,36 +360,35 @@ impl SubcircuitR1CS {
         C_active_wire_indices.sort_unstable();
         if let Some(start) = active_wire_sort_start {
             print_r1cs_binary_phase(
-                subcircuit_info.id,
+                subcircuit_id,
                 "active_wire_sort",
                 start.elapsed().as_nanos(),
             );
         }
 
         let index_map_start = phase_profile.then(Instant::now);
-        let mut a_index_map = vec![usize::MAX; subcircuit_info.Nwires];
+        let mut a_index_map = vec![usize::MAX; wire_count];
         for (i, &wire_idx) in A_active_wire_indices.iter().enumerate() {
             a_index_map[wire_idx] = i;
         }
-        let mut b_index_map = vec![usize::MAX; subcircuit_info.Nwires];
+        let mut b_index_map = vec![usize::MAX; wire_count];
         for (i, &wire_idx) in B_active_wire_indices.iter().enumerate() {
             b_index_map[wire_idx] = i;
         }
-        let mut c_index_map = vec![usize::MAX; subcircuit_info.Nwires];
+        let mut c_index_map = vec![usize::MAX; wire_count];
         for (i, &wire_idx) in C_active_wire_indices.iter().enumerate() {
             c_index_map[wire_idx] = i;
         }
         let index_maps = [a_index_map, b_index_map, c_index_map];
         if let Some(start) = index_map_start {
             print_r1cs_binary_phase(
-                subcircuit_info.id,
+                subcircuit_id,
                 "compact_index_maps",
                 start.elapsed().as_nanos(),
             );
         }
 
         let alloc_sparse_start = phase_profile.then(Instant::now);
-        let n = setup_params.n;
         let A_len = A_active_wire_indices.len();
         let B_len = B_active_wire_indices.len();
         let C_len = C_active_wire_indices.len();
@@ -368,7 +418,7 @@ impl SubcircuitR1CS {
         };
         if let Some(start) = alloc_sparse_start {
             print_r1cs_binary_phase(
-                subcircuit_info.id,
+                subcircuit_id,
                 "alloc_sparse_rows",
                 start.elapsed().as_nanos(),
             );
@@ -400,7 +450,7 @@ impl SubcircuitR1CS {
         }
         if let Some(start) = fill_sparse_start {
             print_r1cs_binary_phase(
-                subcircuit_info.id,
+                subcircuit_id,
                 "fill_sparse_rows",
                 start.elapsed().as_nanos(),
             );
@@ -413,7 +463,7 @@ impl SubcircuitR1CS {
             transpose_inplace(&mut C_compact_col_mat, n, C_len);
             if let Some(start) = transpose_compact_start {
                 print_r1cs_binary_phase(
-                    subcircuit_info.id,
+                    subcircuit_id,
                     "transpose_compact",
                     start.elapsed().as_nanos(),
                 );
@@ -421,7 +471,7 @@ impl SubcircuitR1CS {
         }
 
         if let Some(start) = total_start {
-            print_r1cs_binary_phase(subcircuit_info.id, "total", start.elapsed().as_nanos());
+            print_r1cs_binary_phase(subcircuit_id, "total", start.elapsed().as_nanos());
         }
 
         Ok(Self {

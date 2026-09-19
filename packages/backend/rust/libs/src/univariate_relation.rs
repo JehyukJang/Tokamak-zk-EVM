@@ -4,6 +4,7 @@
 //! by U2 and U5. They never expand a selector into an `N_A` or `N_C` dense
 //! vector.
 
+use crate::frontend_artifacts::normalized_library::NormalizedSubcircuitInfo;
 use crate::frontend_artifacts::{Permutation, SetupParams};
 use crate::ntt_domain::init_ntt_domain_for_size;
 use crate::univariate_crs::UnivariateCrsShape;
@@ -94,6 +95,19 @@ pub struct DenseDomainPolynomial {
 pub struct UnivariateSubcircuit<'a> {
     pub id: usize,
     pub flatten_map: &'a [usize],
+    pub a_active_wires: &'a [usize],
+    pub b_active_wires: &'a [usize],
+    pub c_active_wires: &'a [usize],
+    pub a_rows: &'a [Vec<(usize, ScalarField)>],
+    pub b_rows: &'a [Vec<(usize, ScalarField)>],
+    pub c_rows: &'a [Vec<(usize, ScalarField)>],
+}
+
+/// Sparse R1CS data paired with producer-owned normalized local wire ranges.
+/// This is the canonical input to the rewritten setup/runtime algorithms;
+/// it deliberately carries no global-wire map.
+pub struct NormalizedUnivariateSubcircuit<'a> {
+    pub info: &'a NormalizedSubcircuitInfo,
     pub a_active_wires: &'a [usize],
     pub b_active_wires: &'a [usize],
     pub c_active_wires: &'a [usize],

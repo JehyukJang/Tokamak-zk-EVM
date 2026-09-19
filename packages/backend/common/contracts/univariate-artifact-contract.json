@@ -20,7 +20,7 @@
       "preprocess_keys.rkyv": "PreprocessKeysRkyv",
       "verifier_keys.rkyv": "VerifierKeysRkyv"
     },
-    "nonpublicQueryOrder": "placement, compiled subcircuit, actual nonpublic local wire; omit virtual IDs and wire-capacity padding",
+    "nonpublicQueryOrder": "placement, compiled subcircuit, retained normalized local wire; retain every real bus/internal wire, omit public wires, producer-declared wiring/internal padding, and virtual IDs",
     "records": {
       "TauSequenceRkyv": [["schema_id", "String"], ["s0_g1", "Vec<UnivariateG1Rkyv>"], ["sxi_g1", "Vec<UnivariateG1Rkyv>"], ["spsi_g1", "Vec<UnivariateG1Rkyv>"], ["tau_powers_g2", "Vec<UnivariateG2Rkyv>"], ["psi_g2", "UnivariateG2Rkyv"]],
       "ProverKeysRkyv": [["schema_id", "String"], ["weighted_g1", "Vec<UnivariateG1Rkyv>"], ["weighted_shifted_g1", "Vec<UnivariateG1Rkyv>"], ["free_public_queries", "Vec<UnivariateG1Rkyv>"], ["nonpublic_queries", "Vec<UnivariateG1Rkyv>"], ["mask_u", "[UnivariateG1Rkyv; 2]"], ["mask_v", "[UnivariateG1Rkyv; 2]"], ["mask_w", "[UnivariateG1Rkyv; 2]"], ["mask_b", "[UnivariateG1Rkyv; 2]"], ["mask_selection", "UnivariateG1Rkyv"]],

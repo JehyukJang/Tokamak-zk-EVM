@@ -3,6 +3,7 @@
 //! `crate::crs_artifacts` so this module remains independent of filesystem and
 //! archive concerns.
 
+use crate::frontend_artifacts::normalized_library::NormalizedSetupParams;
 use crate::frontend_artifacts::public_wire_layout::{PublicQueryKey, PublicWireLayout};
 use crate::frontend_artifacts::SetupParams;
 use crate::group_structures::{G1serde, G2serde};
@@ -147,6 +148,30 @@ pub struct UnivariateCrsShape {
 }
 
 impl UnivariateCrsShape {
+    pub fn from_normalized_setup(
+        params: &NormalizedSetupParams,
+        free_public_len: usize,
+    ) -> Result<Self, UnivariateCrsError> {
+        for (name, value) in [
+            ("n", params.n),
+            ("m", params.m),
+            ("m_b", params.m_b),
+            ("t", params.t),
+            ("s", params.s),
+            ("free public length", free_public_len),
+        ] {
+            if !value.is_power_of_two() {
+                return Err(UnivariateCrsError::DomainNotPowerOfTwo { name });
+            }
+        }
+        if params.m_b > params.m || params.t < 2 {
+            return Err(UnivariateCrsError::InvalidCapacity {
+                name: "normalized local grid",
+            });
+        }
+        Self::from_capacities(params.n, params.m_b, params.t, params.s, free_public_len)
+    }
+
     /// Derives the current U1/U8/U18 geometry from producer-owned capacities.
     pub fn from_setup_params(params: &SetupParams) -> Result<Self, UnivariateCrsError> {
         let expected_t = strict_power_of_two_capacity(params.s_D)?;
@@ -180,6 +205,22 @@ impl UnivariateCrsShape {
         if !interface_wire_count.is_power_of_two() {
             return Err(UnivariateCrsError::DomainNotPowerOfTwo { name: "m_I" });
         }
+        Self::from_capacities(
+            params.n,
+            interface_wire_count,
+            params.t,
+            params.s_max,
+            params.l_free,
+        )
+    }
+
+    fn from_capacities(
+        arithmetic_width: usize,
+        wiring_width: usize,
+        subcircuit_capacity: usize,
+        placement_capacity: usize,
+        free_public_len: usize,
+    ) -> Result<Self, UnivariateCrsError> {
         let product = |name, a: usize, b: usize| {
             a.checked_mul(b)
                 .ok_or(UnivariateCrsError::CapacityOverflow { name })
@@ -188,9 +229,9 @@ impl UnivariateCrsShape {
             a.checked_add(b)
                 .ok_or(UnivariateCrsError::CapacityOverflow { name })
         };
-        let arithmetic_domain_size = product("N_A", params.n, params.s_max)?;
-        let connection_domain_size = product("N_C", interface_wire_count, params.s_max)?;
-        let selection_domain_size = product("N_S", params.t, params.s_max)?;
+        let arithmetic_domain_size = product("N_A", arithmetic_width, placement_capacity)?;
+        let connection_domain_size = product("N_C", wiring_width, placement_capacity)?;
+        let selection_domain_size = product("N_S", subcircuit_capacity, placement_capacity)?;
         let intersection_domain_size =
             greatest_common_divisor(arithmetic_domain_size, connection_domain_size);
         let union_domain_size = add("N_union", arithmetic_domain_size, connection_domain_size)?
@@ -203,9 +244,9 @@ impl UnivariateCrsShape {
             add(
                 "h+s(t-1)",
                 h,
-                product("s(t-1)", params.s_max, params.t - 1)?,
+                product("s(t-1)", placement_capacity, subcircuit_capacity - 1)?,
             )?,
-            params.l_free - 1,
+            free_public_len - 1,
         ]
         .into_iter()
         .max()
@@ -214,7 +255,7 @@ impl UnivariateCrsShape {
         let arithmetic_root = primitive_root("N_A", arithmetic_domain_size)?;
         let connection_root = primitive_root("N_C", connection_domain_size)?;
         let selection_root = primitive_root("N_S", selection_domain_size)?;
-        let placement_root = primitive_root("s_max", params.s_max)?;
+        let placement_root = primitive_root("s", placement_capacity)?;
         let power = |value: ScalarField, exponent: usize| {
             use ark_ff::{BigInteger, Field, PrimeField};
             ScalarField::from_bytes_le(
@@ -224,16 +265,16 @@ impl UnivariateCrsShape {
                     .to_bytes_le(),
             )
         };
-        if power(arithmetic_root, params.n) != placement_root
-            || power(connection_root, interface_wire_count) != placement_root
-            || power(selection_root, params.t) != placement_root
+        if power(arithmetic_root, arithmetic_width) != placement_root
+            || power(connection_root, wiring_width) != placement_root
+            || power(selection_root, subcircuit_capacity) != placement_root
         {
             return Err(UnivariateCrsError::InvalidDomainRoot {
                 name: "compatible placement roots",
             });
         }
         Ok(Self {
-            subcircuit_capacity: params.t,
+            subcircuit_capacity,
             arithmetic_domain_size,
             connection_domain_size,
             selection_domain_size,
@@ -1776,6 +1817,9 @@ mod tests {
         write_univariate_crs_artifacts, UnivariateBoundCrsRkyvExt, PROVER_KEYS_RKYV_FILE_NAME,
         TAU_SEQUENCE_RKYV_FILE_NAME,
     };
+    use crate::frontend_artifacts::normalized_library::{
+        NormalizedSetupParams, PublicRegion, PublicWirePhase,
+    };
     use crate::frontend_artifacts::public_wire_layout::{GlobalWire, PublicWireLayout};
     use crate::frontend_artifacts::{BufferDirection, SetupParams, SubcircuitInfo};
     use crate::group_structures::{G1serde, G2serde};
@@ -1848,6 +1892,27 @@ mod tests {
             s_D: 2,
             s_max: 2,
         }
+    }
+
+    #[test]
+    fn normalized_shape_uses_the_public_and_bus_wiring_domain() {
+        let setup = NormalizedSetupParams {
+            n: 1024,
+            m: 2048,
+            m_b: 512,
+            t: 64,
+            s: 256,
+            public_wire_phases: vec![PublicWirePhase {
+                name: "public".into(),
+                region: PublicRegion::Free,
+                subcircuit_ids: vec![0].into_boxed_slice(),
+            }]
+            .into_boxed_slice(),
+        };
+        let shape = UnivariateCrsShape::from_normalized_setup(&setup, 256).unwrap();
+        assert_eq!(shape.arithmetic_domain_size, 1 << 18);
+        assert_eq!(shape.connection_domain_size, 1 << 17);
+        assert_eq!(shape.selection_domain_size, 1 << 14);
     }
 
     fn test_trapdoor(shape: &UnivariateCrsShape) -> UnivariateTrapdoor {

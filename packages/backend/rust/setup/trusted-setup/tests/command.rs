@@ -69,10 +69,13 @@ fn one_command_activates_four_minimal_archives_and_matching_provenance() {
             hex::encode(Sha256::digest(fs::read(active.join(name)).unwrap()))
         );
     }
-    let setup =
-        libs::frontend_artifacts::SetupParams::read_from_json(library.join("setupParams.json"))
-            .unwrap();
-    let shape = libs::univariate_crs::UnivariateCrsShape::from_setup_params(&setup).unwrap();
+    let library_contract = libs::frontend_artifacts::normalized_library::NormalizedSubcircuitLibrary::read_from_qap_path(&library).unwrap();
+    let setup = &library_contract.setup;
+    let shape = libs::univariate_crs::UnivariateCrsShape::from_normalized_setup(
+        setup,
+        library_contract.public.free_public_len(),
+    )
+    .unwrap();
     let tau = aligned(&active.join("tau_sequence.rkyv"));
     let tau = archive::access::<ArchivedTauSequenceRkyv, archive::rancor::Error>(&tau).unwrap();
     assert_eq!(tau.s0_g1.len(), 2 * shape.declared_capacity[1] + 1);
@@ -83,16 +86,13 @@ fn one_command_activates_four_minimal_archives_and_matching_provenance() {
     assert_eq!(prover.free_public_queries.len(), 1);
     assert_eq!(
         prover.nonpublic_queries.len(),
-        8 // Two placements, two compiled circuits, two real nonpublic wires each.
+        12 // Two placements, two compiled circuits, three retained nonpublic wires each.
     );
     let preprocess = aligned(&active.join("preprocess_keys.rkyv"));
     let preprocess =
         archive::access::<ArchivedPreprocessKeysRkyv, archive::rancor::Error>(&preprocess).unwrap();
     assert_eq!(preprocess.sc_g1.len(), shape.connection_domain_size);
-    assert_eq!(
-        preprocess.selection_g2.len(),
-        setup.s_max * (setup.t - 1) + 1
-    );
+    assert_eq!(preprocess.selection_g2.len(), setup.s * (setup.t - 1) + 1);
     assert_eq!(preprocess.fixed_public_queries.len(), 1);
     let verifier = aligned(&active.join("verifier_keys.rkyv"));
     archive::access::<ArchivedVerifierKeysRkyv, archive::rancor::Error>(&verifier).unwrap();
@@ -211,34 +211,31 @@ fn create_minimal_library(root: &Path) -> PathBuf {
     fs::write(
         library.join("setupParams.json"),
         br#"{
-          "l_free": 2,
-          "l_user_out": 0,
-          "l_user": 0,
-          "l": 3,
-          "l_D": 7,
-          "m_D": 8,
           "n": 2,
-          "m": 4,
+          "m": 8,
+          "m_b": 4,
           "t": 4,
-          "s_D": 2,
-          "s_max": 2
+          "s": 2,
+          "publicWirePhases": [
+            {"name":"free", "region":"free", "subcircuitIds":[0]},
+            {"name":"fixed", "region":"fixed", "subcircuitIds":[1]}
+          ]
         }"#,
     )
     .unwrap();
     fs::write(
         library.join("subcircuitInfo.json"),
         br#"[{
-          "id": 0, "name": "free-buffer", "Nwires": 3, "Nconsts": 0,
-          "Out_idx": [1,1], "In_idx": [2,1], "flattenMap": [3,0,4], "bufferDirection": "out"
+          "id":0, "name":"free-buffer", "Nwires":8, "NrealWires":4, "Nconsts":0,
+          "Out_idx":[1,1], "In_idx":[2,1], "Wiring_idx":[0,3],
+          "Public_idx":[1,1], "Internal_idx":[4,1],
+          "bufferDirection":"out", "publicPhase":"free"
         },{
-          "id": 1, "name": "fixed-buffer", "Nwires": 3, "Nconsts": 0,
-          "Out_idx": [1,1], "In_idx": [2,1], "flattenMap": [5,2,6], "bufferDirection": "out"
+          "id":1, "name":"fixed-buffer", "Nwires":8, "NrealWires":4, "Nconsts":0,
+          "Out_idx":[1,1], "In_idx":[2,1], "Wiring_idx":[0,3],
+          "Public_idx":[1,1], "Internal_idx":[4,1],
+          "bufferDirection":"out", "publicPhase":"fixed"
         }]"#,
-    )
-    .unwrap();
-    fs::write(
-        library.join("globalWireList.json"),
-        b"[[0,1],[-1,-1],[1,1],[0,0],[0,2],[1,0],[1,2],[-1,-1]]",
     )
     .unwrap();
     for id in 0..2 {
@@ -255,11 +252,11 @@ fn empty_r1cs() -> Vec<u8> {
     let mut header = Vec::new();
     header.extend_from_slice(&32u32.to_le_bytes());
     header.extend_from_slice(&[0u8; 32]);
-    header.extend_from_slice(&3u32.to_le_bytes());
+    header.extend_from_slice(&8u32.to_le_bytes());
     header.extend_from_slice(&0u32.to_le_bytes());
     header.extend_from_slice(&0u32.to_le_bytes());
     header.extend_from_slice(&0u32.to_le_bytes());
-    header.extend_from_slice(&3u64.to_le_bytes());
+    header.extend_from_slice(&8u64.to_le_bytes());
     header.extend_from_slice(&0u32.to_le_bytes());
 
     let mut bytes = Vec::new();

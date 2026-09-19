@@ -446,7 +446,6 @@ pub fn digest_runtime_subcircuit_library(library_dir: &Path) -> std::io::Result<
     )];
     for file in [
         "frontendCfg.json",
-        "globalWireList.json",
         "setupParams.json",
         "subcircuitInfo.json",
     ] {

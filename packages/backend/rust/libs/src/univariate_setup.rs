@@ -1,9 +1,13 @@
 //! Direct, single-command U19--U22a construction for the current protocol.
 //! Only scalar labels are evaluated here; no per-query dense polynomial is built.
 
-use crate::frontend_artifacts::{public_wire_layout::PublicWireLayout, SetupParams};
+use crate::frontend_artifacts::{
+    normalized_library::{NormalizedSubcircuitLibrary, PublicWireSource},
+    public_wire_layout::PublicWireLayout,
+    SetupParams,
+};
 use crate::univariate_crs::{UnivariateCrsShape, UNIVARIATE_CRS_SCHEMA_ID};
-use crate::univariate_relation::UnivariateSubcircuit;
+use crate::univariate_relation::{NormalizedUnivariateSubcircuit, UnivariateSubcircuit};
 use backend_univariate_crs_interface::{
     NonpublicQueryLayout, PreprocessKeysRkyv, ProverKeysRkyv, TauSequenceRkyv, UnivariateG1Rkyv,
     UnivariateG2Rkyv, VerifierKeysRkyv,
@@ -133,6 +137,130 @@ pub fn stage_artifacts(
         verifier_keys_sha256: verifier?,
     };
     Ok((stage, digests))
+}
+
+pub fn generate_normalized(
+    library: &NormalizedSubcircuitLibrary,
+    subcircuits: &[NormalizedUnivariateSubcircuit<'_>],
+    secret: &SetupScalars,
+    g1: G1Affine,
+    g2: G2Affine,
+) -> Result<SetupCrs, String> {
+    let setup = &library.setup;
+    let shape = UnivariateCrsShape::from_normalized_setup(setup, library.public.free_public_len())
+        .map_err(|error| error.to_string())?;
+    validate_normalized_setup_inputs(library, subcircuits, secret, &shape)?;
+
+    let one = ScalarField::one();
+    let p = shape.declared_capacity[1];
+    let tau_k = secret.tau.pow(shape.k);
+    let tau_s = secret.tau.pow(p + 1);
+    let delta_inv = secret.delta.inv();
+    let lag_a = lagrange_at(
+        secret.tau,
+        shape.arithmetic_root,
+        shape.arithmetic_domain_size,
+    );
+    let lag_c = lagrange_at(
+        secret.tau,
+        shape.connection_root,
+        shape.connection_domain_size,
+    );
+    let lag_s = lagrange_at(
+        secret.tau,
+        shape.selection_root,
+        shape.selection_domain_size,
+    );
+    let free_root =
+        icicle_core::ntt::get_root_of_unity::<ScalarField>(library.public.free_public_len() as u64);
+    let lag_free = lagrange_at(secret.tau, free_root, library.public.free_public_len());
+    let packed = |i: usize, k: usize, j: usize, image: [ScalarField; 4]| {
+        secret.xi * (image[0] + tau_k * image[1])
+            + secret.psi * (image[2] + tau_k * image[3])
+            + tau_s * secret.weights[j] * lag_s[i + setup.s * k]
+    };
+
+    let retained_wires = library
+        .subcircuits
+        .iter()
+        .map(|circuit| circuit.retained_nonpublic_wires())
+        .collect::<Vec<_>>();
+    let query_layout = NonpublicQueryLayout::from_retained_wires(setup.s, retained_wires)?;
+    let row_len = query_layout.len() / setup.s;
+    let mut nonpublic = vec![ScalarField::zero(); query_layout.len()];
+    measured!("nonpublic.scalar_labels", {
+        nonpublic
+            .par_chunks_mut(row_len)
+            .enumerate()
+            .for_each(|(i, output)| {
+                let mut cursor = 0;
+                for (k, circuit) in subcircuits.iter().enumerate() {
+                    let images = normalized_wire_images(
+                        setup.s, setup.m, setup.m_b, circuit, i, &lag_a, &lag_c,
+                    );
+                    for &j in query_layout.local_wires(k).unwrap() {
+                        output[cursor] = delta_inv * packed(i, k, j, images[j]);
+                        cursor += 1;
+                    }
+                }
+                assert_eq!(cursor, output.len());
+            });
+    });
+
+    #[cfg(feature = "timing")]
+    let public_span = crate::timing::SpanGuard::new("public.scalar_labels", "setup", vec![]);
+    let public_labels = (0..library.public.len())
+        .into_par_iter()
+        .filter_map(|public_index| match library.public.source(public_index) {
+            Some(PublicWireSource::Mapped {
+                subcircuit_id,
+                local_wire_index,
+            }) => Some((public_index, subcircuit_id, local_wire_index)),
+            Some(PublicWireSource::Padding) | None => None,
+        })
+        .map(|(public_index, k, j)| {
+            if k >= setup.s || k >= subcircuits.len() {
+                return Err("public buffer cannot occupy its matching placement".to_owned());
+            }
+            // Public buffers use the approved placement-index equals
+            // subcircuit-ID specialization. Their values still participate in
+            // the complete public-and-bus connection relation.
+            let images = normalized_wire_images(
+                setup.s,
+                setup.m,
+                setup.m_b,
+                &subcircuits[k],
+                k,
+                &lag_a,
+                &lag_c,
+            );
+            let q = packed(k, k, j, images[j]);
+            Ok((
+                public_index,
+                if public_index < library.public.free_public_len() {
+                    delta_inv * (q + lag_free[public_index])
+                } else {
+                    q
+                },
+            ))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let free = public_labels
+        .iter()
+        .filter(|(index, _)| *index < library.public.free_public_len())
+        .map(|(_, value)| *value)
+        .collect::<Vec<_>>();
+    let fixed = public_labels
+        .iter()
+        .filter(|(index, _)| *index >= library.public.free_public_len())
+        .map(|(_, value)| *value)
+        .collect::<Vec<_>>();
+    #[cfg(feature = "timing")]
+    drop(public_span);
+
+    assemble_crs(
+        &shape, setup.s, setup.t, one, secret, g1, g2, free, fixed, nonpublic,
+    )
 }
 
 pub fn generate(
@@ -286,11 +414,46 @@ pub fn generate(
         .collect::<Vec<_>>();
     #[cfg(feature = "timing")]
     drop(public_span);
+    assemble_crs(
+        &shape,
+        setup.s_max,
+        setup.t,
+        one,
+        secret,
+        g1,
+        g2,
+        free,
+        fixed,
+        nonpublic,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn assemble_crs(
+    shape: &UnivariateCrsShape,
+    placement_capacity: usize,
+    subcircuit_capacity: usize,
+    one: ScalarField,
+    secret: &SetupScalars,
+    g1: G1Affine,
+    g2: G2Affine,
+    free: Vec<ScalarField>,
+    fixed: Vec<ScalarField>,
+    nonpublic: Vec<ScalarField>,
+) -> Result<SetupCrs, String> {
+    let p = shape.declared_capacity[1];
+    let tau_k = secret.tau.pow(shape.k);
+    let tau_s = secret.tau.pow(p + 1);
+    let delta_inv = secret.delta.inv();
     let powers = powers(secret.tau, p * 2 + 1);
     let weighted = secret
         .weights
         .par_iter()
-        .flat_map_iter(|r| powers[..setup.s_max].iter().map(move |power| *r * *power))
+        .flat_map_iter(|r| {
+            powers[..placement_capacity]
+                .iter()
+                .map(move |power| *r * *power)
+        })
         .collect::<Vec<_>>();
     let shifted = weighted.par_iter().map(|v| *v * tau_k).collect::<Vec<_>>();
     let mask = |tag: ScalarField, shift: usize, n: usize| {
@@ -326,7 +489,8 @@ pub fn generate(
             .par_iter()
             .copied()
             .collect(),
-        selection_g2: tau.tau_powers_g2[shape.h..=shape.h + setup.s_max * (setup.t - 1)]
+        selection_g2: tau.tau_powers_g2
+            [shape.h..=shape.h + placement_capacity * (subcircuit_capacity - 1)]
             .par_iter()
             .copied()
             .collect(),
@@ -363,6 +527,99 @@ pub fn generate(
         preprocess,
         verifier,
     })
+}
+
+fn validate_normalized_setup_inputs(
+    library: &NormalizedSubcircuitLibrary,
+    subcircuits: &[NormalizedUnivariateSubcircuit<'_>],
+    secret: &SetupScalars,
+    shape: &UnivariateCrsShape,
+) -> Result<(), String> {
+    let setup = &library.setup;
+    if secret.weights.len() != setup.m
+        || [secret.tau, secret.xi, secret.psi, secret.delta]
+            .iter()
+            .chain(&secret.weights)
+            .any(|value| *value == ScalarField::zero())
+    {
+        return Err("setup scalars must be nonzero and contain m weights".into());
+    }
+    if [
+        shape.arithmetic_domain_size,
+        shape.connection_domain_size,
+        shape.selection_domain_size,
+    ]
+    .iter()
+    .any(|domain_size| secret.tau.pow(*domain_size) == ScalarField::one())
+    {
+        return Err("tau must be outside all three evaluation domains".into());
+    }
+    if subcircuits.len() != library.subcircuits.len()
+        || subcircuits
+            .iter()
+            .zip(&library.subcircuits)
+            .any(|(circuit, info)| circuit.info.id != info.id || circuit.info != info)
+    {
+        return Err("compiled circuit catalog does not match normalized metadata".into());
+    }
+    for circuit in subcircuits {
+        for (active, rows) in [
+            (circuit.a_active_wires, circuit.a_rows),
+            (circuit.b_active_wires, circuit.b_rows),
+            (circuit.c_active_wires, circuit.c_rows),
+        ] {
+            if rows.len() != setup.n
+                || active.iter().any(|wire| {
+                    *wire >= setup.m
+                        || circuit.info.is_wiring_padding(*wire, setup.m_b)
+                        || circuit.info.is_internal_padding(*wire, setup.m)
+                })
+                || rows
+                    .iter()
+                    .flatten()
+                    .any(|(column, _)| *column >= active.len())
+            {
+                return Err(format!(
+                    "subcircuit {} contains an out-of-range or padded R1CS column",
+                    circuit.info.id
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn normalized_wire_images(
+    placement_capacity: usize,
+    wire_width: usize,
+    wiring_width: usize,
+    circuit: &NormalizedUnivariateSubcircuit<'_>,
+    placement_index: usize,
+    lag_a: &[ScalarField],
+    lag_c: &[ScalarField],
+) -> Vec<[ScalarField; 4]> {
+    let mut images = vec![[ScalarField::zero(); 4]; wire_width];
+    for (matrix, (active, rows)) in [
+        (circuit.a_active_wires, circuit.a_rows),
+        (circuit.b_active_wires, circuit.b_rows),
+        (circuit.c_active_wires, circuit.c_rows),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        for (constraint_row, row) in rows.iter().enumerate() {
+            let basis = lag_a[placement_index + placement_capacity * constraint_row];
+            for (column, coefficient) in row {
+                let local_wire_index = active[*column];
+                images[local_wire_index][matrix] =
+                    images[local_wire_index][matrix] + basis * *coefficient;
+            }
+        }
+    }
+    for (local_wire_index, image) in images[..wiring_width].iter_mut().enumerate() {
+        image[3] = lag_c[placement_index + placement_capacity * local_wire_index];
+    }
+    images
 }
 
 fn wire_images(

@@ -7,14 +7,13 @@ use icicle_core::curve::Curve;
 use icicle_core::traits::{Arithmetic, FieldImpl};
 use libs::errors::ArtifactError;
 use libs::field_structures::Tau;
-use libs::frontend_artifacts::public_wire_layout::{read_global_wires, PublicWireLayout};
-use libs::frontend_artifacts::{SetupParams, SubcircuitInfo};
+use libs::frontend_artifacts::normalized_library::NormalizedSubcircuitLibrary;
 use libs::r1cs::SubcircuitR1CS;
 use libs::subcircuit_library::{
     selected_subcircuit_library_provenance, write_development_only_univariate_keys_provenance,
 };
 use libs::univariate_crs::UnivariateCrsShape;
-use libs::univariate_setup::{generate, stage_artifacts, SetupScalars};
+use libs::univariate_setup::{generate_normalized, stage_artifacts, SetupScalars};
 use rayon::prelude::*;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -33,49 +32,21 @@ pub fn run_trusted_setup(config: &TrustedSetupConfig<'_>) -> Result<(), TrustedS
     #[cfg(feature = "timing")]
     let input_span = libs::timing::SpanGuard::new("input.load_and_validate", "setup", vec![]);
     let qap_path = PathBuf::from(config.qap_path);
-    let setup_params_path = qap_path.join("setupParams.json");
-    let setup_params =
-        SetupParams::read_from_json(setup_params_path.clone()).map_err(|source| {
+    let normalized_library =
+        NormalizedSubcircuitLibrary::read_from_qap_path(&qap_path).map_err(|source| {
             ArtifactError::Read {
-                artifact: "setup parameters",
-                path: setup_params_path,
+                artifact: "normalized subcircuit library",
+                path: qap_path.clone(),
                 source,
             }
         })?;
-    let shape = UnivariateCrsShape::from_setup_params(&setup_params)?;
+    let shape = UnivariateCrsShape::from_normalized_setup(
+        &normalized_library.setup,
+        normalized_library.public.free_public_len(),
+    )?;
 
-    let subcircuit_infos_path = qap_path.join("subcircuitInfo.json");
-    let global_wire_list_path = qap_path.join("globalWireList.json");
-    let (subcircuit_infos, global_wires) = rayon::join(
-        || {
-            SubcircuitInfo::read_box_from_json(subcircuit_infos_path.clone()).map_err(|source| {
-                ArtifactError::Read {
-                    artifact: "subcircuit information",
-                    path: subcircuit_infos_path,
-                    source,
-                }
-            })
-        },
-        || {
-            read_global_wires(&global_wire_list_path).map_err(|source| ArtifactError::Read {
-                artifact: "global wire list",
-                path: global_wire_list_path.clone(),
-                source,
-            })
-        },
-    );
-    let subcircuit_infos = subcircuit_infos?;
-    let global_wires = global_wires?;
-    let public_wire_layout =
-        PublicWireLayout::derive(&setup_params, &global_wires, &subcircuit_infos).map_err(
-            |error| ArtifactError::Invalid {
-                artifact: "public wire layout",
-                path: global_wire_list_path,
-                reason: error.to_string(),
-            },
-        )?;
-
-    let r1cs = subcircuit_infos
+    let r1cs = normalized_library
+        .subcircuits
         .par_iter()
         .enumerate()
         .map(|(index, subcircuit_info)| {
@@ -90,18 +61,22 @@ pub fn run_trusted_setup(config: &TrustedSetupConfig<'_>) -> Result<(), TrustedS
                 });
             }
             let path = qap_path.join(format!("r1cs/subcircuit{index}.r1cs"));
-            SubcircuitR1CS::from_r1cs_sparse_only(path.clone(), &setup_params, subcircuit_info)
-                .map_err(|source| ArtifactError::Read {
-                    artifact: "subcircuit R1CS",
-                    path,
-                    source,
-                })
+            SubcircuitR1CS::from_normalized_r1cs_sparse_only(
+                path.clone(),
+                &normalized_library.setup,
+                subcircuit_info,
+            )
+            .map_err(|source| ArtifactError::Read {
+                artifact: "subcircuit R1CS",
+                path,
+                source,
+            })
         })
         .collect::<Result<Vec<_>, _>>()?;
     let subcircuits = r1cs
         .iter()
-        .zip(subcircuit_infos.iter())
-        .map(|(r1cs, subcircuit_info)| r1cs.as_univariate_subcircuit(subcircuit_info))
+        .zip(normalized_library.subcircuits.iter())
+        .map(|(r1cs, subcircuit_info)| r1cs.as_normalized_univariate_subcircuit(subcircuit_info))
         .collect::<Vec<_>>();
     #[cfg(feature = "timing")]
     drop(input_span);
@@ -127,7 +102,7 @@ pub fn run_trusted_setup(config: &TrustedSetupConfig<'_>) -> Result<(), TrustedS
                 xi,
                 psi,
                 delta: Tau::gen_fixed().delta,
-                weights: (1..=setup_params.m)
+                weights: (1..=normalized_library.setup.m)
                     .into_par_iter()
                     .map(|j| ScalarField::from_bytes_le(&j.to_le_bytes()))
                     .collect(),
@@ -137,19 +112,12 @@ pub fn run_trusted_setup(config: &TrustedSetupConfig<'_>) -> Result<(), TrustedS
         (
             CurveCfg::generate_random_affine_points(1)[0],
             G2CurveCfg::generate_random_affine_points(1)[0],
-            SetupScalars::sample(&shape, setup_params.m),
+            SetupScalars::sample(&shape, normalized_library.setup.m),
         )
     };
     let generation_started = Instant::now();
-    let crs = generate(
-        &setup_params,
-        &public_wire_layout,
-        &subcircuits,
-        &secret,
-        g1,
-        g2,
-    )
-    .map_err(TrustedSetupError::Construction)?;
+    let crs = generate_normalized(&normalized_library, &subcircuits, &secret, g1, g2)
+        .map_err(TrustedSetupError::Construction)?;
     println!(
         "Generated current-protocol CRS in {:.6} seconds",
         generation_started.elapsed().as_secs_f64()
