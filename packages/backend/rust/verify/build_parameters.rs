@@ -1,42 +1,40 @@
 use std::io;
 
 /// Derive verifier constants only from producer-owned setup parameters.
-pub fn read(bytes: &[u8]) -> io::Result<(u64, u64, u64)> {
-    let setup: serde_json::Value = serde_json::from_slice(bytes)?;
-    let invalid = |message: String| io::Error::new(io::ErrorKind::InvalidData, message);
-    let read = |name: &str| {
-        setup[name]
-            .as_u64()
-            .ok_or_else(|| invalid(format!("{name} must be an unsigned integer")))
+pub fn read(setup_bytes: &[u8], subcircuit_bytes: &[u8]) -> io::Result<(u64, u64, u64)> {
+    use crate::normalized_library::{
+        NormalizedSetupParams, NormalizedSubcircuitInfo, NormalizedSubcircuitLibrary,
     };
-    let n = read("n")?;
-    let s = read("s_max")?;
-    let l = read("l")?;
-    let l_d = read("l_D")?;
-    let l_free = read("l_free")?;
-    let n_a = n
-        .checked_mul(s)
+
+    let setup: NormalizedSetupParams = serde_json::from_slice(setup_bytes)?;
+    let subcircuits: Box<[NormalizedSubcircuitInfo]> = serde_json::from_slice(subcircuit_bytes)?;
+    let invalid = |message: String| io::Error::new(io::ErrorKind::InvalidData, message);
+    let library = NormalizedSubcircuitLibrary::new(setup, subcircuits)
+        .map_err(|error| invalid(error.to_string()))?;
+    let n_a = library
+        .setup
+        .n
+        .checked_mul(library.setup.s)
         .ok_or_else(|| invalid("N_A overflow".into()))?;
-    let n_c = l_d
-        .checked_sub(l)
-        .and_then(|wires| wires.checked_mul(s))
-        .ok_or_else(|| invalid("invalid l_D - l or N_C overflow".into()))?;
-    if l_free > l {
-        return Err(invalid("l_free exceeds l".into()));
-    }
+    let n_c = library
+        .setup
+        .m_b
+        .checked_mul(library.setup.s)
+        .ok_or_else(|| invalid("N_C overflow".into()))?;
+    let l_free = library.public.free_public_len();
     for (name, size) in [("N_A", n_a), ("N_C", n_c), ("L_FREE", l_free)] {
         // The BLS12-381 scalar field supports radix-two domains up to 2^32.
-        if !size.is_power_of_two() || size > (1u64 << 32) {
+        if !size.is_power_of_two() || size > (1usize << 32) {
             return Err(invalid(format!(
                 "{name} must be a power of two at most 2^32"
             )));
         }
     }
-    Ok((n_a, n_c, l_free))
+    Ok((n_a as u64, n_c as u64, l_free as u64))
 }
 
-pub fn generate(bytes: &[u8]) -> io::Result<String> {
-    let (n_a, n_c, l_free) = read(bytes)?;
+pub fn generate(setup_bytes: &[u8], subcircuit_bytes: &[u8]) -> io::Result<String> {
+    let (n_a, n_c, l_free) = read(setup_bytes, subcircuit_bytes)?;
     Ok(format!(
         "// Generated from the selected subcircuit library at build time.\n\
          pub const N_A: u64 = {n_a};\n\

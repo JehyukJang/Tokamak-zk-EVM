@@ -7,11 +7,11 @@ use backend_interface::PreprocessBytes;
 use backend_univariate_crs_interface::PreprocessKeysRkyv;
 use engine::{Cpu, Engine, Icicle};
 use libs::frontend_artifacts::{
-    public_wire_layout::PublicWireLayout, Instance, Permutation, SetupParams,
+    normalized_library::NormalizedSubcircuitLibrary, Instance, Permutation,
 };
 use libs::univariate_crs::UnivariateCrsShape;
 use libs::univariate_field::ProtocolField;
-use libs::univariate_relation::connection_permutation_targets;
+use libs::univariate_relation::normalized_connection_permutation_targets;
 
 pub use input::{preprocess, PreprocessInputPaths};
 
@@ -84,8 +84,7 @@ impl PreprocessDevice {
 
 pub fn generate_preprocess(
     keys: &PreprocessKeysRkyv,
-    setup: &SetupParams,
-    public: &PublicWireLayout,
+    library: &NormalizedSubcircuitLibrary,
     selector: &[Option<usize>],
     permutation: &[Permutation],
     instance: &Instance,
@@ -93,11 +92,9 @@ pub fn generate_preprocess(
 ) -> Result<PreprocessBytes, PreprocessError> {
     device.initialize()?;
     match device {
-        PreprocessDevice::Cpu => {
-            generate::<Cpu>(keys, setup, public, selector, permutation, instance)
-        }
+        PreprocessDevice::Cpu => generate::<Cpu>(keys, library, selector, permutation, instance),
         PreprocessDevice::Cuda => {
-            generate::<Icicle>(keys, setup, public, selector, permutation, instance)
+            generate::<Icicle>(keys, library, selector, permutation, instance)
         }
     }
 }
@@ -110,15 +107,16 @@ fn root<F: ProtocolField>(size: usize) -> Result<F, PreprocessError> {
 
 fn generate<E: Engine>(
     keys: &PreprocessKeysRkyv,
-    setup: &SetupParams,
-    public: &PublicWireLayout,
+    library: &NormalizedSubcircuitLibrary,
     selector: &[Option<usize>],
     permutation: &[Permutation],
     instance: &Instance,
 ) -> Result<PreprocessBytes, PreprocessError> {
-    let shape = UnivariateCrsShape::from_setup_params(setup)?;
-    let targets = connection_permutation_targets(&shape, setup, selector, permutation)?;
-    let fixed = input::fixed_values::<E::F>(setup, public, selector, instance)?;
+    let setup = &library.setup;
+    let shape = UnivariateCrsShape::from_normalized_setup(setup, library.public.free_public_len())?;
+    let targets =
+        normalized_connection_permutation_targets(&shape, library, selector, permutation)?;
+    let fixed = input::fixed_values::<E::F>(library, selector, instance)?;
     input::validate_keys(keys, &shape, setup, fixed.len())?;
     E::initialize(
         (shape.selection_domain_size + 1)
@@ -159,7 +157,7 @@ fn generate<E: Engine>(
 }
 
 fn selection_complement<E: Engine>(
-    setup: &SetupParams,
+    setup: &libs::frontend_artifacts::normalized_library::NormalizedSetupParams,
     selector: &[Option<usize>],
     size: usize,
 ) -> Result<Vec<E::F>, PreprocessError> {
@@ -171,7 +169,7 @@ fn selection_complement<E: Engine>(
         .iter()
         .enumerate()
         .map(|(i, k)| {
-            let selected = omega.pow(i + setup.s_max * k.unwrap_or(setup.t - 1));
+            let selected = omega.pow(i + setup.s * k.unwrap_or(setup.t - 1));
             E::polynomial(&[E::F::zero() - selected, E::F::one()])
         })
         .collect::<Vec<_>>();
@@ -186,7 +184,7 @@ fn selection_complement<E: Engine>(
     vanishing[size] = E::F::one();
     let zu = E::divide_exact(&E::polynomial(&vanishing), &level[0])?;
     let coefficients = E::coefficients(&zu);
-    if coefficients.len() != size - setup.s_max + 1 {
+    if coefficients.len() != size - setup.s + 1 {
         return Err("unexpected selection-complement degree".to_owned().into());
     }
     Ok(coefficients)

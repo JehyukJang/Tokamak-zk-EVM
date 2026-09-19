@@ -4,7 +4,11 @@ use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{BigInteger, PrimeField};
 use backend_univariate_crs_interface::{UnivariateG1Rkyv, UnivariateG2Rkyv};
 use libs::frontend_artifacts::{
-    public_wire_layout::GlobalWire, BufferDirection, HexString, SubcircuitInfo,
+    normalized_library::{
+        BufferDirection, NormalizedSetupParams, NormalizedSubcircuitInfo,
+        NormalizedSubcircuitLibrary, PublicRegion, PublicWirePhase,
+    },
+    HexString,
 };
 
 fn g1(value: Fr) -> UnivariateG1Rkyv {
@@ -49,65 +53,68 @@ fn bytes_g2(value: Fr) -> [u8; 192] {
         .unwrap()
 }
 
-fn fixture() -> (SetupParams, PublicWireLayout, PreprocessKeysRkyv, Instance) {
-    let setup = SetupParams {
-        l_free: 2,
-        l: 3,
-        l_user_out: 0,
-        l_user: 0,
-        l_D: 7,
-        m_D: 8,
+fn fixture() -> (NormalizedSubcircuitLibrary, PreprocessKeysRkyv, Instance) {
+    let setup = NormalizedSetupParams {
         n: 2,
-        m: 4,
+        m: 8,
+        m_b: 4,
         t: 4,
-        s_D: 2,
-        s_max: 4,
+        s: 4,
+        public_wire_phases: vec![
+            PublicWirePhase {
+                name: "free".into(),
+                region: PublicRegion::Free,
+                subcircuit_ids: vec![0].into_boxed_slice(),
+            },
+            PublicWirePhase {
+                name: "fixed".into(),
+                region: PublicRegion::Fixed,
+                subcircuit_ids: vec![1].into_boxed_slice(),
+            },
+        ]
+        .into_boxed_slice(),
     };
-    let infos = [[3, 0, 4], [5, 2, 6]]
-        .into_iter()
-        .enumerate()
-        .map(|(id, map)| SubcircuitInfo {
+    let infos = (0..2)
+        .map(|id| NormalizedSubcircuitInfo {
             id,
             name: format!("buffer-{id}"),
-            Nwires: 3,
+            Nwires: 8,
+            NrealWires: 4,
             Nconsts: 1,
-            Out_idx: Box::new([1, 1]),
-            In_idx: Box::new([2, 1]),
-            flattenMap: Box::new(map),
+            Out_idx: [1, 1],
+            In_idx: [2, 1],
+            Wiring_idx: [0, 3],
+            Public_idx: [1, 1],
+            Internal_idx: [4, 1],
             bufferDirection: Some(BufferDirection::Out),
+            publicPhase: Some(if id == 0 { "free" } else { "fixed" }.into()),
         })
-        .collect::<Vec<_>>();
-    let mut globals = vec![GlobalWire::Padding; setup.m_D];
-    for info in &infos {
-        for (j, g) in info.flattenMap.iter().enumerate() {
-            globals[*g] = GlobalWire::Mapped {
-                subcircuit_id: info.id,
-                local_wire_index: j,
-            };
-        }
-    }
-    let public = PublicWireLayout::derive(&setup, &globals, &infos).unwrap();
-    let shape = UnivariateCrsShape::from_setup_params(&setup).unwrap();
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
+    let library = NormalizedSubcircuitLibrary::new(setup, infos).unwrap();
+    let shape =
+        UnivariateCrsShape::from_normalized_setup(&library.setup, library.public.free_public_len())
+            .unwrap();
     let tau = Fr::from(7u64);
     let keys = PreprocessKeysRkyv {
         schema_id: libs::univariate_crs::UNIVARIATE_CRS_SCHEMA_ID.into(),
         sc_g1: (0..shape.connection_domain_size)
             .map(|j| g1(tau.pow(j)))
             .collect(),
-        selection_g2: (0..=setup.s_max * (setup.t - 1))
+        selection_g2: (0..=library.setup.s * (library.setup.t - 1))
             .map(|j| g2(tau.pow(shape.h + j)))
             .collect(),
         fixed_public_queries: vec![g1(Fr::from(17u64))],
     };
     let instance = Instance {
-        a_pub_user: Box::new([HexString("03".into()), HexString("00".into())]),
+        a_pub_user: Box::new([HexString("01".into())]),
         a_pub_block: Box::new([]),
         a_pub_function: Box::new([HexString("05".into())]),
     };
-    (setup, public, keys, instance)
+    (library, keys, instance)
 }
 
-fn permutation() -> [Permutation; 2] {
+fn permutation() -> [Permutation; 3] {
     [
         Permutation {
             row: 0,
@@ -118,6 +125,12 @@ fn permutation() -> [Permutation; 2] {
         Permutation {
             row: 0,
             col: 1,
+            X: 1,
+            Y: 0,
+        },
+        Permutation {
+            row: 1,
+            col: 0,
             X: 0,
             Y: 0,
         },
@@ -126,12 +139,13 @@ fn permutation() -> [Permutation; 2] {
 
 #[test]
 fn cpu_matches_direct_group_equations_and_binary_contract() {
-    let (setup, public, keys, instance) = fixture();
+    let (library, keys, instance) = fixture();
+    let setup = &library.setup;
     let selector = [Some(0), Some(1), None, None];
-    let output =
-        generate::<Cpu>(&keys, &setup, &public, &selector, &permutation(), &instance).unwrap();
+    let output = generate::<Cpu>(&keys, &library, &selector, &permutation(), &instance).unwrap();
     let tau = Fr::from(7u64);
-    let shape = UnivariateCrsShape::from_setup_params(&setup).unwrap();
+    let shape =
+        UnivariateCrsShape::from_normalized_setup(setup, library.public.free_public_len()).unwrap();
     let omega_c = root::<Fr>(shape.connection_domain_size).unwrap();
     // Independent Lagrange evaluation oracle, not the production inverse NTT.
     let n = shape.connection_domain_size;
@@ -139,7 +153,8 @@ fn cpu_matches_direct_group_equations_and_binary_contract() {
     for i in 0..n {
         let target = match i {
             0 => 1,
-            1 => 0,
+            1 => 4,
+            4 => 0,
             _ => i,
         };
         let x = omega_c.pow(i);
@@ -155,7 +170,7 @@ fn cpu_matches_direct_group_equations_and_binary_contract() {
     for (i, selected) in selector.iter().enumerate() {
         for k in 0..setup.t {
             if k != selected.unwrap_or(setup.t - 1) {
-                zu = zu * (tau - omega_s.pow(i + setup.s_max * k));
+                zu = zu * (tau - omega_s.pow(i + setup.s * k));
             }
         }
     }
@@ -171,7 +186,8 @@ fn cpu_matches_direct_group_equations_and_binary_contract() {
 fn icicle_cpu_backend_matches_arkworks_fields_polynomials_and_group_bytes() {
     icicle_runtime::load_backend_from_env_or_default().unwrap();
     icicle_runtime::set_device(&icicle_runtime::Device::new("CPU", 0)).unwrap();
-    let (setup, public, keys, mut instance) = fixture();
+    let (library, keys, mut instance) = fixture();
+    let setup = &library.setup;
     let selector = [Some(0), Some(1), None, None];
     Icicle::initialize(64).unwrap();
     for selection in [selector, [None; 4], [Some(0); 4]] {
@@ -193,10 +209,9 @@ fn icicle_cpu_backend_matches_arkworks_fields_polynomials_and_group_bytes() {
     for fixed in ["05", "00"] {
         instance.a_pub_function[0] = HexString(fixed.into());
         let expected =
-            generate::<Cpu>(&keys, &setup, &public, &selector, &permutation(), &instance).unwrap();
+            generate::<Cpu>(&keys, &library, &selector, &permutation(), &instance).unwrap();
         let actual =
-            generate::<Icicle>(&keys, &setup, &public, &selector, &permutation(), &instance)
-                .unwrap();
+            generate::<Icicle>(&keys, &library, &selector, &permutation(), &instance).unwrap();
         assert_eq!(actual.encode().unwrap(), expected.encode().unwrap());
     }
     assert_eq!(Icicle::msm_g1(&[], &[]).unwrap(), [0; 96]);
@@ -207,17 +222,17 @@ fn icicle_cpu_backend_matches_arkworks_fields_polynomials_and_group_bytes() {
 
 #[test]
 fn fixed_commitment_does_not_depend_on_free_public_values() {
-    let (setup, public, keys, mut instance) = fixture();
+    let (library, keys, mut instance) = fixture();
     let selector = [Some(0), Some(1), None, None];
-    let before = generate::<Cpu>(&keys, &setup, &public, &selector, &[], &instance).unwrap();
+    let before = generate::<Cpu>(&keys, &library, &selector, &permutation(), &instance).unwrap();
     instance.a_pub_user[0] = HexString("0f".into());
-    let after = generate::<Cpu>(&keys, &setup, &public, &selector, &[], &instance).unwrap();
+    let after = generate::<Cpu>(&keys, &library, &selector, &permutation(), &instance).unwrap();
     assert_eq!(before, after);
 }
 
 #[test]
 fn rejects_inconsistent_admission_inputs() {
-    let (setup, public, mut keys, mut instance) = fixture();
+    let (library, mut keys, instance) = fixture();
     let selector = [Some(0), Some(1), None, None];
     for invalid in [
         vec![Some(0)],
@@ -225,7 +240,7 @@ fn rejects_inconsistent_admission_inputs() {
         vec![Some(1), Some(0), None, None],
         vec![Some(0), Some(1), Some(0), None],
     ] {
-        assert!(generate::<Cpu>(&keys, &setup, &public, &invalid, &[], &instance).is_err());
+        assert!(generate::<Cpu>(&keys, &library, &invalid, &[], &instance).is_err());
     }
     for invalid in [
         vec![Permutation {
@@ -247,21 +262,18 @@ fn rejects_inconsistent_admission_inputs() {
             Y: 0,
         }],
     ] {
-        assert!(generate::<Cpu>(&keys, &setup, &public, &selector, &invalid, &instance).is_err());
+        assert!(generate::<Cpu>(&keys, &library, &selector, &invalid, &instance).is_err());
     }
-    instance.a_pub_user[1] = HexString("01".into());
-    assert!(generate::<Cpu>(&keys, &setup, &public, &selector, &[], &instance).is_err());
-    instance.a_pub_user[1] = HexString("00".into());
     keys.sc_g1[0].x = [255; 48];
-    assert!(generate::<Cpu>(&keys, &setup, &public, &selector, &[], &instance).is_err());
+    assert!(generate::<Cpu>(&keys, &library, &selector, &[], &instance).is_err());
     keys.sc_g1.pop();
-    assert!(generate::<Cpu>(&keys, &setup, &public, &selector, &[], &instance).is_err());
+    assert!(generate::<Cpu>(&keys, &library, &selector, &[], &instance).is_err());
 }
 
 #[test]
 fn archive_round_trip_and_truncation() {
     use backend_univariate_crs_interface::archive;
-    let (_, _, keys, _) = fixture();
+    let (_, keys, _) = fixture();
     let bytes = archive::to_bytes::<archive::rancor::Error>(&keys).unwrap();
     let decoded =
         archive::from_bytes::<PreprocessKeysRkyv, archive::rancor::Error>(&bytes).unwrap();

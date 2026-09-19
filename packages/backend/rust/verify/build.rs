@@ -1,5 +1,8 @@
 mod build_fixed;
 mod build_parameters;
+#[allow(dead_code)]
+#[path = "../build-support/normalized_library.rs"]
+mod normalized_library;
 #[path = "../build-support/subcircuit_library.rs"]
 mod subcircuit_library;
 
@@ -15,7 +18,15 @@ fn main() -> io::Result<()> {
     let bytes = fs::read(&setup_path).map_err(|error| {
         io::Error::new(error.kind(), format!("{}: {error}", setup_path.display()))
     })?;
-    let generated = build_parameters::generate(&bytes).map_err(|error| {
+    let subcircuit_path = library_dir.join("subcircuitInfo.json");
+    println!("cargo:rerun-if-changed={}", subcircuit_path.display());
+    let subcircuit_bytes = fs::read(&subcircuit_path).map_err(|error| {
+        io::Error::new(
+            error.kind(),
+            format!("{}: {error}", subcircuit_path.display()),
+        )
+    })?;
+    let generated = build_parameters::generate(&bytes, &subcircuit_bytes).map_err(|error| {
         io::Error::new(error.kind(), format!("{}: {error}", setup_path.display()))
     })?;
     let out_dir = PathBuf::from(
@@ -29,7 +40,7 @@ fn main() -> io::Result<()> {
     println!("cargo:rerun-if-changed={}", key_path.display());
     let resolved = fs::canonicalize(&key_path)?;
     println!("cargo:rerun-if-changed={}", resolved.display());
-    let (_, nc, l_free) = build_parameters::read(&bytes)?;
+    let (_, nc, l_free) = build_parameters::read(&bytes, &subcircuit_bytes)?;
     let fixed =
         build_fixed::generate(&fs::read(&resolved)?, nc, l_free).map_err(io::Error::other)?;
     fs::write(out_dir.join("verifier_fixed.rs"), fixed)?;

@@ -9,14 +9,12 @@ use crate::univariate_crs::ProverCrs;
 use crate::{ProveError, ProveInputPaths};
 use backend_interface::ProofBytes;
 use libs::errors::{ArtifactError, CrsError};
-use libs::frontend_artifacts::public_wire_layout::{read_global_wires, PublicWireLayout};
-use libs::frontend_artifacts::SetupParams;
 use libs::frontend_artifacts::{
-    read_placement_selector, Instance, Permutation, PlacementVariables, SubcircuitInfo,
+    normalized_library::NormalizedSubcircuitLibrary, read_placement_selector, Instance,
+    Permutation, PlacementVariables,
 };
 use libs::r1cs::SubcircuitR1CS;
-use libs::univariate_relation::UnivariateSubcircuit;
-use libs::utils::try_load_setup_params_from_qap_path;
+use libs::univariate_relation::NormalizedUnivariateSubcircuit;
 use std::fs;
 use std::path::PathBuf;
 
@@ -40,32 +38,16 @@ pub fn prove_with_validated_crs(
 ) -> Result<(), ProveError> {
     #[cfg(feature = "timing")]
     let loading = crate::timing::SpanGuard::new("univariate.library", "input", vec![]);
-    let setup = try_load_setup_params_from_qap_path(paths.qap_path)?;
-    let subcircuit_info_path = PathBuf::from(paths.qap_path).join("subcircuitInfo.json");
-    let infos =
-        SubcircuitInfo::read_box_from_json(subcircuit_info_path.clone()).map_err(|source| {
-            ArtifactError::Read {
-                artifact: "subcircuit information",
-                path: subcircuit_info_path,
-                source,
-            }
-        })?;
-    let global_wire_path = PathBuf::from(paths.qap_path).join("globalWireList.json");
-    let global_wires =
-        read_global_wires(&global_wire_path).map_err(|source| ArtifactError::Read {
-            artifact: "global wire list",
-            path: global_wire_path.clone(),
+    let qap_path = PathBuf::from(paths.qap_path);
+    let library = NormalizedSubcircuitLibrary::read_from_qap_path(&qap_path).map_err(|source| {
+        ArtifactError::Read {
+            artifact: "normalized subcircuit library",
+            path: qap_path.clone(),
             source,
-        })?;
-    let public_layout =
-        PublicWireLayout::derive(&setup, &global_wires, &infos).map_err(|error| {
-            ArtifactError::Invalid {
-                artifact: "public wire layout",
-                path: global_wire_path,
-                reason: error.to_string(),
-            }
-        })?;
-    let r1cs = infos
+        }
+    })?;
+    let r1cs = library
+        .subcircuits
         .iter()
         .enumerate()
         .map(|(index, info)| {
@@ -76,20 +58,19 @@ pub fn prove_with_validated_crs(
                     reason: format!("catalog entry {index} declares subcircuit ID {}", info.id),
                 });
             }
-            let path = PathBuf::from(paths.qap_path).join(format!("r1cs/subcircuit{index}.r1cs"));
-            SubcircuitR1CS::from_r1cs_sparse_only(path.clone(), &setup, info).map_err(|source| {
-                ArtifactError::Read {
+            let path = qap_path.join(format!("r1cs/subcircuit{index}.r1cs"));
+            SubcircuitR1CS::from_normalized_r1cs_sparse_only(path.clone(), &library.setup, info)
+                .map_err(|source| ArtifactError::Read {
                     artifact: "subcircuit R1CS",
                     path,
                     source,
-                }
-            })
+                })
         })
         .collect::<Result<Vec<_>, _>>()?;
     let subcircuits = r1cs
         .iter()
-        .zip(infos.iter())
-        .map(|(r1cs, info)| r1cs.as_univariate_subcircuit(info))
+        .zip(library.subcircuits.iter())
+        .map(|(r1cs, info)| r1cs.as_normalized_univariate_subcircuit(info))
         .collect::<Vec<_>>();
     let tau_path = PathBuf::from(paths.tau_sequence_path);
     let keys_path = PathBuf::from(paths.keys_path);
@@ -98,9 +79,9 @@ pub fn prove_with_validated_crs(
     #[cfg(feature = "timing")]
     let loading = crate::timing::SpanGuard::new("univariate.crs", "input", vec![]);
     let crs = match validated {
-        Some(bytes) => ProverCrs::from_owned_bytes(bytes, &setup, &subcircuits, &public_layout),
+        Some(bytes) => ProverCrs::from_owned_bytes(bytes, &library),
         // Explicit development bypass and library callers retain their file ingress.
-        None => ProverCrs::read(&tau_path, &keys_path, &setup, &subcircuits, &public_layout),
+        None => ProverCrs::read(&tau_path, &keys_path, &library),
     }
     .map_err(|source| CrsError::Read {
         path: keys_path,
@@ -112,14 +93,16 @@ pub fn prove_with_validated_crs(
     drop(loading);
     #[cfg(feature = "timing")]
     let loading = crate::timing::SpanGuard::new("univariate.fixture", "input", vec![]);
-    let selector =
-        read_placement_selector(&selector_path, setup.s_max, setup.s_D).map_err(|source| {
-            ArtifactError::Read {
-                artifact: "placement selector",
-                path: selector_path,
-                source,
-            }
-        })?;
+    let selector = read_placement_selector(
+        &selector_path,
+        library.setup.s,
+        library.actual_subcircuit_count(),
+    )
+    .map_err(|source| ArtifactError::Read {
+        artifact: "placement selector",
+        path: selector_path,
+        source,
+    })?;
     let permutation_path = PathBuf::from(paths.synthesizer_path).join("permutation.json");
     let permutation =
         Permutation::read_box_from_json(permutation_path.clone()).map_err(|source| {
@@ -152,8 +135,7 @@ pub fn prove_with_validated_crs(
         ProverDevice::Cpu => finish::<Cpu>(
             paths,
             &crs,
-            &setup,
-            &public_layout,
+            &library,
             &selector,
             &permutation,
             &placements,
@@ -163,8 +145,7 @@ pub fn prove_with_validated_crs(
         ProverDevice::Cuda => finish::<Icicle>(
             paths,
             &crs,
-            &setup,
-            &public_layout,
+            &library,
             &selector,
             &permutation,
             &placements,
@@ -176,18 +157,17 @@ pub fn prove_with_validated_crs(
 fn finish<E: Engine>(
     paths: &ProveInputPaths<'_>,
     crs: &ProverCrs,
-    setup: &SetupParams,
-    public_layout: &PublicWireLayout,
+    library: &NormalizedSubcircuitLibrary,
     selector: &[Option<usize>],
     permutation: &[Permutation],
     placements: &[PlacementVariables],
     instance: &Instance,
-    subcircuits: &[UnivariateSubcircuit<'_>],
+    subcircuits: &[NormalizedUnivariateSubcircuit<'_>],
 ) -> Result<(), ProveError> {
     let prepared = crate::time_block!("univariate.maps", "prepare", {
         prepare::<E>(
             crs,
-            setup,
+            library,
             selector,
             permutation,
             placements,
@@ -198,8 +178,7 @@ fn finish<E: Engine>(
     let randomizers = ProverRandomizers::sample();
     let (proof, _) = prove_protocol::<E>(ProvingInput {
         crs,
-        setup,
-        public_layout,
+        library,
         selector,
         prepared: &prepared,
         randomizers: &randomizers,

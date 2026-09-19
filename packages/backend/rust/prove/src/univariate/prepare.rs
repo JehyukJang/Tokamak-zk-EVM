@@ -3,11 +3,11 @@ use super::{engine::Engine, DomainPolynomial, Prepared, UnivariateProverError};
 use crate::univariate_crs::ProverCrs;
 use libs::{
     frontend_artifacts::{
-        public_wire_layout::PublicWireLayout, Instance, Permutation, PlacementVariables,
-        SetupParams,
+        normalized_library::{NormalizedSubcircuitLibrary, PublicWireSource},
+        Instance, Permutation, PlacementVariables,
     },
     univariate_field::ProtocolField,
-    univariate_relation::UnivariateSubcircuit,
+    univariate_relation::NormalizedUnivariateSubcircuit,
 };
 
 pub fn root<F: ProtocolField>(n: usize) -> Result<F, UnivariateProverError> {
@@ -54,19 +54,227 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn normalized_prepare_includes_public_wires_in_b_and_rejects_nonzero_padding() {
+        use crate::univariate::engine::Cpu;
+        use crate::univariate_crs::ProverCrs;
+        use backend_univariate_crs_interface::{
+            ProverKeysRkyv, TauSequenceRkyv, UnivariateG1Rkyv, UnivariateG2Rkyv,
+        };
+        use libs::frontend_artifacts::{
+            normalized_library::{
+                BufferDirection, NormalizedSetupParams, NormalizedSubcircuitInfo, PublicRegion,
+                PublicWirePhase,
+            },
+            HexString,
+        };
+        use libs::univariate_crs::{UnivariateCrsShape, UNIVARIATE_CRS_SCHEMA_ID};
+
+        let library = NormalizedSubcircuitLibrary::new(
+            NormalizedSetupParams {
+                n: 1,
+                m: 8,
+                m_b: 4,
+                t: 2,
+                s: 1,
+                public_wire_phases: vec![PublicWirePhase {
+                    name: "free".into(),
+                    region: PublicRegion::Free,
+                    subcircuit_ids: vec![0].into_boxed_slice(),
+                }]
+                .into_boxed_slice(),
+            },
+            vec![NormalizedSubcircuitInfo {
+                id: 0,
+                name: "public-buffer".into(),
+                Nwires: 8,
+                NrealWires: 3,
+                Nconsts: 1,
+                Out_idx: [1, 1],
+                In_idx: [2, 1],
+                Wiring_idx: [0, 3],
+                Public_idx: [1, 1],
+                Internal_idx: [4, 0],
+                bufferDirection: Some(BufferDirection::Out),
+                publicPhase: Some("free".into()),
+            }]
+            .into_boxed_slice(),
+        )
+        .unwrap();
+        let shape = UnivariateCrsShape::from_normalized_setup(
+            &library.setup,
+            library.public.free_public_len(),
+        )
+        .unwrap();
+        let g1 = UnivariateG1Rkyv {
+            x: [0; 48],
+            y: [0; 48],
+        };
+        let g2 = UnivariateG2Rkyv {
+            x: [0; 96],
+            y: [0; 96],
+        };
+        let crs = ProverCrs::new(
+            TauSequenceRkyv {
+                schema_id: UNIVARIATE_CRS_SCHEMA_ID.into(),
+                s0_g1: vec![g1; shape.minimum_capacity[0] + 1],
+                sxi_g1: vec![g1; shape.minimum_capacity[1] + 1],
+                spsi_g1: vec![g1; shape.minimum_capacity[2] + 1],
+                tau_powers_g2: Vec::new(),
+                psi_g2: g2,
+            },
+            ProverKeysRkyv {
+                schema_id: UNIVARIATE_CRS_SCHEMA_ID.into(),
+                weighted_g1: vec![g1; 8],
+                weighted_shifted_g1: vec![g1; 8],
+                free_public_queries: vec![g1],
+                nonpublic_queries: vec![g1; 2],
+                mask_u: [g1; 2],
+                mask_v: [g1; 2],
+                mask_w: [g1; 2],
+                mask_b: [g1; 2],
+                mask_selection: g1,
+            },
+            &library,
+        )
+        .unwrap();
+        let selector = [Some(0)];
+        let permutation = [
+            Permutation {
+                row: 0,
+                col: 0,
+                X: 1,
+                Y: 0,
+            },
+            Permutation {
+                row: 1,
+                col: 0,
+                X: 0,
+                Y: 0,
+            },
+        ];
+        let instance = Instance {
+            a_pub_user: Box::new([HexString("01".into())]),
+            a_pub_block: Box::new([]),
+            a_pub_function: Box::new([]),
+        };
+        let circuit = NormalizedUnivariateSubcircuit {
+            info: &library.subcircuits[0],
+            a_active_wires: &[],
+            b_active_wires: &[],
+            c_active_wires: &[],
+            a_rows: &[],
+            b_rows: &[],
+            c_rows: &[],
+        };
+        let placements = [PlacementVariables {
+            subcircuitId: 0,
+            variables: ["01", "01", "00", "00", "00", "00", "00", "00"]
+                .map(|value| HexString(value.into()))
+                .into(),
+        }];
+        let prepared = prepare::<Cpu>(
+            &crs,
+            &library,
+            &selector,
+            &permutation,
+            &placements,
+            &instance,
+            &[circuit],
+        )
+        .unwrap();
+        assert_eq!(
+            prepared.maps[3].evaluations,
+            vec![1u64.into(), 1u64.into(), 0u64.into(), 0u64.into()]
+        );
+        assert_eq!(crs.layout.local_wires(0).unwrap(), &[0, 2]);
+        validate_public(
+            &library,
+            &selector,
+            &prepared.slots,
+            &prepared.public_inputs,
+        )
+        .unwrap();
+        let masks = super::super::ProverRandomizers {
+            u: [2u64.into(), 3u64.into()],
+            v: [4u64.into(), 5u64.into()],
+            w: [6u64.into(), 7u64.into()],
+            b: [8u64.into(), 9u64.into()],
+            r: [10u64.into(), 11u64.into(), 12u64.into(), 13u64.into()],
+            selection: 14u64.into(),
+        };
+        let (proof, _) = super::super::prove::<Cpu>(super::super::ProvingInput {
+            crs: &crs,
+            library: &library,
+            selector: &selector,
+            prepared: &prepared,
+            randomizers: &masks,
+        })
+        .unwrap();
+        assert_eq!(proof.encode().unwrap().len(), 1_184);
+
+        let mut invalid = placements.clone();
+        invalid[0].variables[3] = HexString("01".into());
+        assert!(prepare::<Cpu>(
+            &crs,
+            &library,
+            &selector,
+            &permutation,
+            &invalid,
+            &instance,
+            &[NormalizedUnivariateSubcircuit {
+                info: &library.subcircuits[0],
+                a_active_wires: &[],
+                b_active_wires: &[],
+                c_active_wires: &[],
+                a_rows: &[],
+                b_rows: &[],
+                c_rows: &[],
+            }],
+        )
+        .is_err());
+        let mut invalid = placements;
+        invalid[0].variables[0] = HexString("00".into());
+        assert!(prepare::<Cpu>(
+            &crs,
+            &library,
+            &selector,
+            &permutation,
+            &invalid,
+            &instance,
+            &[NormalizedUnivariateSubcircuit {
+                info: &library.subcircuits[0],
+                a_active_wires: &[],
+                b_active_wires: &[],
+                c_active_wires: &[],
+                a_rows: &[],
+                b_rows: &[],
+                c_rows: &[],
+            }],
+        )
+        .is_err());
+        let mut invalid_public = prepared.public_inputs.clone();
+        invalid_public[0] = 2u64.into();
+        assert!(validate_public(&library, &selector, &prepared.slots, &invalid_public,).is_err());
+    }
 }
 pub fn prepare<E: Engine>(
     crs: &ProverCrs,
-    setup: &SetupParams,
+    library: &NormalizedSubcircuitLibrary,
     selector: &[Option<usize>],
     permutation: &[Permutation],
     placements: &[PlacementVariables],
     instance: &Instance,
-    circuits: &[UnivariateSubcircuit<'_>],
+    circuits: &[NormalizedUnivariateSubcircuit<'_>],
 ) -> Result<Prepared<E::F>, UnivariateProverError> {
-    if selector.len() != setup.s_max
-        || circuits.len() != setup.s_D
-        || selector.iter().flatten().any(|k| *k >= setup.s_D)
+    let setup = &library.setup;
+    if selector.len() != setup.s
+        || circuits.len() != library.actual_subcircuit_count()
+        || selector
+            .iter()
+            .flatten()
+            .any(|k| *k >= library.actual_subcircuit_count())
     {
         return Err("selector or catalog dimensions mismatch".to_owned().into());
     }
@@ -78,22 +286,38 @@ pub fn prepare<E: Engine>(
             .max((crs.shape.selection_domain_size + 1).next_power_of_two()),
     )?;
     let mut records = placements.iter();
-    let mut slots = Vec::with_capacity(setup.s_max);
+    let mut slots = Vec::with_capacity(setup.s);
     for k in selector {
         match k {
             None => slots.push(None),
             Some(k) => {
                 let record = records.next().ok_or("missing placement".to_owned())?;
-                if record.subcircuitId != *k
-                    || record.variables.len() != circuits[*k].flatten_map.len()
-                {
+                if record.subcircuitId != *k || record.variables.len() != setup.m {
                     return Err("selector and witness mismatch".to_owned().into());
                 }
+                let circuit = &library.subcircuits[*k];
                 slots.push(Some(
                     record
                         .variables
                         .iter()
-                        .map(|s| parse::<E::F>(s.as_ref()))
+                        .enumerate()
+                        .map(|(local_wire_index, text)| {
+                            let value = parse::<E::F>(text.as_ref())?;
+                            if local_wire_index == 0 && value != E::F::one() {
+                                return Err(UnivariateProverError::Invalid(
+                                    "selected local wire zero must equal one".to_owned(),
+                                ));
+                            }
+                            if (circuit.is_wiring_padding(local_wire_index, setup.m_b)
+                                || circuit.is_internal_padding(local_wire_index, setup.m))
+                                && value != E::F::zero()
+                            {
+                                return Err(UnivariateProverError::Invalid(
+                                    "producer-declared witness padding must equal zero".to_owned(),
+                                ));
+                            }
+                            Ok(value)
+                        })
                         .collect::<Result<Vec<_>, _>>()?
                         .into_boxed_slice(),
                 ));
@@ -110,7 +334,7 @@ pub fn prepare<E: Engine>(
         .chain(instance.a_pub_function.iter())
         .map(|s| parse::<E::F>(s.as_ref()))
         .collect::<Result<Vec<_>, _>>()?;
-    if public_inputs.len() != setup.l {
+    if public_inputs.len() != library.public.len() {
         return Err("public instance length mismatch".to_owned().into());
     }
     let mut evaluations = [
@@ -143,12 +367,11 @@ pub fn prepare<E: Engine>(
             })
         })
         .collect();
-    let mi = setup.l_D - setup.l;
     for (i, slot) in slots.iter().enumerate() {
         if let Some(w) = slot {
             let k = selector[i].unwrap();
             let c = &circuits[k];
-            if c.id != k {
+            if c.info.id != k {
                 return Err("catalog ID mismatch".to_owned().into());
             }
             for (matrix, (active, rows)) in matrices[k].iter().enumerate() {
@@ -164,19 +387,11 @@ pub fn prepare<E: Engine>(
                         value = value
                             + *v * *w.get(local).ok_or("R1CS wire outside witness".to_owned())?;
                     }
-                    evaluations[matrix][i + setup.s_max * r] = value;
+                    evaluations[matrix][i + setup.s * r] = value;
                 }
             }
-            let mut seen = vec![false; mi];
-            for (j, g) in c.flatten_map.iter().enumerate() {
-                if *g >= setup.l && *g < setup.l_D {
-                    let h = *g - setup.l;
-                    if seen[h] {
-                        return Err("duplicate interface coordinate".to_owned().into());
-                    }
-                    seen[h] = true;
-                    evaluations[3][i + setup.s_max * h] = w[j];
-                }
+            for (local_wire_index, value) in w[..setup.m_b].iter().enumerate() {
+                evaluations[3][i + setup.s * local_wire_index] = *value;
             }
         }
     }
@@ -192,9 +407,9 @@ pub fn prepare<E: Engine>(
             coefficients,
         }
     });
-    let targets = libs::univariate_relation::connection_permutation_targets(
+    let targets = libs::univariate_relation::normalized_connection_permutation_targets(
         &crs.shape,
-        setup,
+        library,
         selector,
         permutation,
     )
@@ -219,13 +434,14 @@ pub fn prepare<E: Engine>(
 }
 
 pub fn validate_public<F: ProtocolField>(
-    setup: &SetupParams,
-    public: &PublicWireLayout,
+    library: &NormalizedSubcircuitLibrary,
     selector: &[Option<usize>],
     slots: &[Option<Box<[F]>>],
     values: &[F],
 ) -> Result<(), UnivariateProverError> {
-    if values.len() != setup.l || selector.len() != setup.s_max || slots.len() != setup.s_max {
+    let setup = &library.setup;
+    let public = &library.public;
+    if values.len() != public.len() || selector.len() != setup.s || slots.len() != setup.s {
         return Err("proving input dimensions mismatch".to_owned().into());
     }
     for (i, k) in selector.iter().enumerate() {
@@ -238,10 +454,13 @@ pub fn validate_public<F: ProtocolField>(
         }
     }
     for (g, value) in values.iter().enumerate() {
-        let expected = if let Some(key) = public.public_query_key_for_public_wire(g) {
+        let expected = if let Some(PublicWireSource::Mapped {
+            subcircuit_id: k,
+            local_wire_index,
+        }) = public.source(g)
+        {
             // The i == subcircuit ID specialization applies only to public
             // buffer wires. Private/intermediate queries use actual placements.
-            let k = key.buffer_subcircuit_id;
             if selector.get(k) != Some(&Some(k)) {
                 return Err("public buffer must occupy its matching placement"
                     .to_owned()
@@ -249,7 +468,7 @@ pub fn validate_public<F: ProtocolField>(
             }
             slots[k]
                 .as_ref()
-                .and_then(|w| w.get(key.local_public_wire_index))
+                .and_then(|w| w.get(local_wire_index))
                 .copied()
                 .ok_or("missing public witness".to_owned())?
         } else {

@@ -3,17 +3,15 @@ pub mod engine;
 mod msm_kernel;
 #[cfg(test)]
 mod optimization_tests;
-#[cfg(test)]
-mod parity_tests;
 pub mod prepare;
-#[cfg(test)]
-mod reference;
 use crate::univariate_crs::ProverCrs;
 use backend_interface::ProofBytes;
 use backend_univariate_crs_interface::UnivariateG1Rkyv;
 use engine::Engine;
 use libs::{
-    frontend_artifacts::{public_wire_layout::PublicWireLayout, SetupParams},
+    frontend_artifacts::normalized_library::{
+        NormalizedSetupParams, NormalizedSubcircuitLibrary, PublicWireSource,
+    },
     univariate_field::ProtocolField,
     univariate_transcript::{
         encode_binary_g1_message as point_message, CanonicalTranscriptEncoder,
@@ -80,8 +78,7 @@ pub struct Prepared<F> {
 }
 pub struct ProvingInput<'a, E: Engine> {
     pub crs: &'a ProverCrs,
-    pub setup: &'a SetupParams,
-    pub public_layout: &'a PublicWireLayout,
+    pub library: &'a NormalizedSubcircuitLibrary,
     pub selector: &'a [Option<usize>],
     pub prepared: &'a Prepared<E::F>,
     pub randomizers: &'a ProverRandomizers<E::F>,
@@ -93,23 +90,18 @@ pub fn prove<E: Engine>(
     let _span = crate::timing::SpanGuard::new("univariate.protocol", "prove", vec![]);
     let ProvingInput {
         crs,
-        setup,
-        public_layout,
+        library,
         selector,
         prepared,
         randomizers: masks,
     } = input;
+    let setup = &library.setup;
+    let l_free = library.public.free_public_len();
     let shape = &crs.shape;
     let na = shape.arithmetic_domain_size;
     let nc = shape.connection_domain_size;
     let root = E::F::from_le(&shape.connection_root.canonical_le());
-    prepare::validate_public(
-        setup,
-        public_layout,
-        selector,
-        &prepared.slots,
-        &prepared.public_inputs,
-    )?;
+    prepare::validate_public(library, selector, &prepared.slots, &prepared.public_inputs)?;
     E::initialize(
         (2 * (na.max(nc) + 4))
             .next_power_of_two()
@@ -124,8 +116,8 @@ pub fn prove<E: Engine>(
         (u, v, w, b, q)
     });
     let a = E::interpolate(
-        &prepared.public_inputs[..setup.l_free],
-        prepare::root::<E::F>(setup.l_free)?,
+        &prepared.public_inputs[..l_free],
+        prepare::root::<E::F>(l_free)?,
     );
     let c_l = commit_sum::<E>(
         "C_L",
@@ -143,7 +135,7 @@ pub fn prove<E: Engine>(
         ],
     )?;
     let c_o = crate::time_block!("univariate.binding", "prove", {
-        binding::<E>(crs, setup, public_layout, selector, prepared, masks)?
+        binding::<E>(crs, library, selector, prepared, masks)?
     });
     let (d_q, d_q_k) = crate::time_block!("univariate.selection", "prove", {
         let (q, zv) = selection::<E>(crs, setup, selector, &prepared.slots)?;
@@ -163,7 +155,7 @@ pub fn prove<E: Engine>(
         )
     });
     let mut tr =
-        UnivariateTranscript::<E::F>::from_public_inputs(&prepared.public_inputs[..setup.l_free]);
+        UnivariateTranscript::<E::F>::from_public_inputs(&prepared.public_inputs[..l_free]);
     tr.set_message(&point_message("F2.a1", &[c_l, c_h, c_o, d_q, d_q_k]));
     let upsilon = tr.challenge(1, 0);
     let c_d = commit_sum::<E>(
@@ -329,8 +321,7 @@ fn diagnose_msm<F: ProtocolField>(label: &str, bases: usize, scalars: &[F]) {
 }
 fn binding<E: Engine>(
     crs: &ProverCrs,
-    setup: &SetupParams,
-    public: &PublicWireLayout,
+    library: &NormalizedSubcircuitLibrary,
     selector: &[Option<usize>],
     data: &Prepared<E::F>,
     masks: &ProverRandomizers<E::F>,
@@ -339,13 +330,19 @@ fn binding<E: Engine>(
     let gathering = crate::timing::SpanGuard::new("univariate.commit.gather", "C_O", vec![]);
     let mut bases = Vec::new();
     let mut values = Vec::new();
-    for (query, g) in
-        crs.keys.free_public_queries.iter().zip(
-            (0..setup.l_free).filter(|g| public.public_query_key_for_public_wire(*g).is_some()),
-        )
+    for (query, public_index) in
+        crs.keys
+            .free_public_queries
+            .iter()
+            .zip((0..library.public.free_public_len()).filter(|index| {
+                matches!(
+                    library.public.source(*index),
+                    Some(PublicWireSource::Mapped { .. })
+                )
+            }))
     {
         bases.push(*query);
-        values.push(data.public_inputs[g]);
+        values.push(data.public_inputs[public_index]);
     }
     for (i, k) in selector.iter().enumerate() {
         if let Some(k) = k {
@@ -403,14 +400,14 @@ fn opening<E: Engine>(p: &E::P, z: E::F) -> Vec<E::F> {
 }
 pub(crate) fn selection<E: Engine>(
     crs: &ProverCrs,
-    setup: &SetupParams,
+    setup: &NormalizedSetupParams,
     selector: &[Option<usize>],
     slots: &[Option<Box<[E::F]>>],
 ) -> Result<(Vec<E::F>, Vec<E::F>), UnivariateProverError> {
     #[cfg(feature = "timing")]
     let _span =
         crate::timing::SpanGuard::new("univariate.selection.interpolate", "polynomial", vec![]);
-    let s = setup.s_max;
+    let s = setup.s;
     let size = crs.shape.selection_domain_size;
     let omega = E::F::from_le(&crs.shape.selection_root.canonical_le());
     let roots: Vec<_> = selector

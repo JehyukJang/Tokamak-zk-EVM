@@ -2,8 +2,8 @@ use crate::{generate_preprocess, PreprocessDevice, PreprocessError};
 use backend_interface::PreprocessBytes;
 use backend_univariate_crs_interface::{archive, PreprocessKeysRkyv};
 use libs::frontend_artifacts::{
-    public_wire_layout::PublicWireLayout, read_placement_selector, Instance, Permutation,
-    SetupParams,
+    normalized_library::{NormalizedSetupParams, NormalizedSubcircuitLibrary, PublicWireSource},
+    read_placement_selector, Instance, Permutation,
 };
 use libs::univariate_crs::{UnivariateCrsShape, UNIVARIATE_CRS_SCHEMA_ID};
 use libs::univariate_field::{canonical_scalar, ProtocolField};
@@ -31,16 +31,18 @@ pub fn preprocess(
     device: PreprocessDevice,
 ) -> Result<PathBuf, PreprocessError> {
     let started = std::time::Instant::now();
-    let setup =
-        libs::utils::try_load_setup_params_from_qap_path(&paths.qap_path.to_string_lossy())?;
-    let public = io(
+    let library = io(
         paths.qap_path,
-        PublicWireLayout::read_from_qap_path(paths.qap_path),
+        NormalizedSubcircuitLibrary::read_from_qap_path(paths.qap_path),
     )?;
     let selector_path = paths.synthesizer_path.join("selector.json");
     let selector = io(
         &selector_path,
-        read_placement_selector(&selector_path, setup.s_max, setup.s_D),
+        read_placement_selector(
+            &selector_path,
+            library.setup.s,
+            library.actual_subcircuit_count(),
+        ),
     )?;
     let permutation_path = paths.synthesizer_path.join("permutation.json");
     let permutation = io(
@@ -58,17 +60,9 @@ pub fn preprocess(
         .map_err(|e| PreprocessError::Invalid(format!("{}: {e}", key_path.display())))?;
     drop(bytes);
     println!("preprocess input: {:.6} s", started.elapsed().as_secs_f64());
-    let output = generate_preprocess(
-        &keys,
-        &setup,
-        &public,
-        &selector,
-        &permutation,
-        &instance,
-        device,
-    )?
-    .encode()
-    .map_err(|e| PreprocessError::Invalid(e.into()))?;
+    let output = generate_preprocess(&keys, &library, &selector, &permutation, &instance, device)?
+        .encode()
+        .map_err(|e| PreprocessError::Invalid(e.into()))?;
     io(paths.output_path, fs::create_dir_all(paths.output_path))?;
     let path = paths.output_path.join(PreprocessBytes::FILE_NAME);
     let temporary = path.with_extension(format!("bin.tmp-{}", std::process::id()));
@@ -78,14 +72,11 @@ pub fn preprocess(
 }
 
 pub(crate) fn fixed_values<F: ProtocolField>(
-    setup: &SetupParams,
-    public: &PublicWireLayout,
+    library: &NormalizedSubcircuitLibrary,
     selector: &[Option<usize>],
     instance: &Instance,
 ) -> Result<Vec<F>, PreprocessError> {
-    if public.len() != setup.l || public.free_public_len() != setup.l_free {
-        return Err("public layout dimensions mismatch".to_owned().into());
-    }
+    let public = &library.public;
     // Only public-buffer public wires use the fixed placement == subcircuit ID
     // specialization. Neither intermediate wires nor private wires use it.
     for segment in public.segments() {
@@ -106,7 +97,7 @@ pub(crate) fn fixed_values<F: ProtocolField>(
         .chain(instance.a_pub_block.iter())
         .chain(instance.a_pub_function.iter())
         .collect::<Vec<_>>();
-    if values.len() != setup.l {
+    if values.len() != public.len() {
         return Err("public instance length mismatch".to_owned().into());
     }
     let mut fixed = Vec::new();
@@ -127,11 +118,11 @@ pub(crate) fn fixed_values<F: ProtocolField>(
             return Err("noncanonical public scalar".to_owned().into());
         }
         let value = F::from_le(&bytes);
-        if public.public_query_key_for_public_wire(g).is_none() {
+        if public.source(g) == Some(PublicWireSource::Padding) {
             if value != F::zero() {
                 return Err("nonzero public padding".to_owned().into());
             }
-        } else if g >= setup.l_free {
+        } else if g >= public.free_public_len() {
             fixed.push(value);
         }
     }
@@ -141,12 +132,12 @@ pub(crate) fn fixed_values<F: ProtocolField>(
 pub(crate) fn validate_keys(
     keys: &PreprocessKeysRkyv,
     shape: &UnivariateCrsShape,
-    setup: &SetupParams,
+    setup: &NormalizedSetupParams,
     fixed_count: usize,
 ) -> Result<(), PreprocessError> {
     if keys.schema_id != UNIVARIATE_CRS_SCHEMA_ID
         || keys.sc_g1.len() != shape.connection_domain_size
-        || keys.selection_g2.len() != setup.s_max * (setup.t - 1) + 1
+        || keys.selection_g2.len() != setup.s * (setup.t - 1) + 1
         || keys.fixed_public_queries.len() != fixed_count
     {
         return Err(

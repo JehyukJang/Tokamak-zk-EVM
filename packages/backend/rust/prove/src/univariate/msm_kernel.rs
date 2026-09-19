@@ -73,7 +73,7 @@ pub(super) fn msm(bases: &[G1Affine], scalars: &[Fr]) -> G1Affine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_ec::{AffineRepr, VariableBaseMSM};
+    use ark_ec::VariableBaseMSM;
     use ark_ff::UniformRand;
     use rand::{rngs::StdRng, SeedableRng};
 

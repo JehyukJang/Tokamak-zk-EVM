@@ -4,7 +4,9 @@
 //! by U2 and U5. They never expand a selector into an `N_A` or `N_C` dense
 //! vector.
 
-use crate::frontend_artifacts::normalized_library::NormalizedSubcircuitInfo;
+use crate::frontend_artifacts::normalized_library::{
+    NormalizedSetupParams, NormalizedSubcircuitInfo, NormalizedSubcircuitLibrary,
+};
 use crate::frontend_artifacts::{Permutation, SetupParams};
 use crate::ntt_domain::init_ntt_domain_for_size;
 use crate::univariate_crs::UnivariateCrsShape;
@@ -62,6 +64,8 @@ pub enum UnivariateRelationError {
     PermutationInactivePlacement { placement_index: usize },
     #[error("permutation maps more than one source to connection coordinate {index}")]
     PermutationNotBijective { index: usize },
+    #[error("permutation violates the application topology: {reason}")]
+    PermutationTopology { reason: &'static str },
     #[error("ICICLE NTT failed: {0:?}")]
     Ntt(eIcicleError),
     #[error("{name} is too large to convert into the scalar field")]
@@ -654,6 +658,139 @@ pub fn connection_permutation_targets(
     Ok(targets)
 }
 
+/// Normalized public-and-bus permutation targets. Omitted sparse records are
+/// identities over the complete `s * m_b` domain.
+pub fn normalized_connection_permutation_targets(
+    shape: &UnivariateCrsShape,
+    library: &NormalizedSubcircuitLibrary,
+    selector: &[Option<usize>],
+    permutation: &[Permutation],
+) -> Result<Vec<usize>, UnivariateRelationError> {
+    let setup = &library.setup;
+    validate_normalized_selector(selector, setup, library.subcircuits.len())?;
+    Permutation::validate_normalized_sparse(permutation, setup.m_b, setup.s)
+        .map_err(|_| UnivariateRelationError::PermutationNotBijective { index: 0 })?;
+    if shape.connection_domain_size != setup.m_b * setup.s {
+        return Err(UnivariateRelationError::InterfaceWireCount);
+    }
+    validate_normalized_application_topology(library, selector, permutation)?;
+    let mut targets = (0..shape.connection_domain_size).collect::<Vec<_>>();
+    for entry in permutation {
+        for (row, placement) in [(entry.row, entry.col), (entry.X, entry.Y)] {
+            let Some(subcircuit_id) = selector[placement] else {
+                return Err(UnivariateRelationError::PermutationInactivePlacement {
+                    placement_index: placement,
+                });
+            };
+            let circuit = &library.subcircuits[subcircuit_id];
+            if circuit.is_wiring_padding(row, setup.m_b) {
+                return Err(UnivariateRelationError::PermutationCoordinate {
+                    row,
+                    col: placement,
+                });
+            }
+        }
+        let source = entry.col + setup.s * entry.row;
+        let target = entry.Y + setup.s * entry.X;
+        targets[source] = target;
+    }
+    Ok(targets)
+}
+
+fn validate_normalized_application_topology(
+    library: &NormalizedSubcircuitLibrary,
+    selector: &[Option<usize>],
+    permutation: &[Permutation],
+) -> Result<(), UnivariateRelationError> {
+    use std::collections::{HashMap, HashSet};
+
+    let public_coordinates = library
+        .public
+        .segments()
+        .iter()
+        .flat_map(|segment| {
+            (segment.start..segment.end).filter_map(|public_index| {
+                match library.public.source(public_index) {
+                    Some(
+                        crate::frontend_artifacts::normalized_library::PublicWireSource::Mapped {
+                            local_wire_index,
+                            ..
+                        },
+                    ) => Some((local_wire_index, segment.placement_phase)),
+                    _ => None,
+                }
+            })
+        })
+        .collect::<HashSet<_>>();
+    let edges = permutation
+        .iter()
+        .map(|entry| ((entry.row, entry.col), (entry.X, entry.Y)))
+        .collect::<HashMap<_, _>>();
+    let sparse_public = edges
+        .keys()
+        .filter(|coordinate| public_coordinates.contains(coordinate))
+        .copied()
+        .collect::<Vec<_>>();
+    if sparse_public.len() != 1 {
+        return Err(UnivariateRelationError::PermutationTopology {
+            reason: "exactly one public coordinate must represent CIRCOM_CONST_ONE",
+        });
+    }
+    let representative = sparse_public[0];
+    let mut expected = selector
+        .iter()
+        .enumerate()
+        .filter_map(|(placement, selected)| selected.map(|_| (0, placement)))
+        .collect::<HashSet<_>>();
+    expected.insert(representative);
+
+    let mut actual = HashSet::with_capacity(expected.len());
+    let mut current = representative;
+    loop {
+        if !actual.insert(current) {
+            if current != representative {
+                return Err(UnivariateRelationError::PermutationTopology {
+                    reason:
+                        "the CIRCOM_CONST_ONE cycle repeats before returning to its representative",
+                });
+            }
+            break;
+        }
+        current = *edges
+            .get(&current)
+            .ok_or(UnivariateRelationError::PermutationTopology {
+                reason: "the CIRCOM_CONST_ONE cycle is incomplete",
+            })?;
+    }
+    if actual != expected {
+        return Err(UnivariateRelationError::PermutationTopology {
+            reason: "the CIRCOM_CONST_ONE cycle must contain only its public representative and wire zero of every actual placement",
+        });
+    }
+    Ok(())
+}
+
+fn validate_normalized_selector(
+    selector: &[Option<usize>],
+    setup: &NormalizedSetupParams,
+    actual_subcircuit_count: usize,
+) -> Result<(), UnivariateRelationError> {
+    if selector.len() != setup.s {
+        return Err(UnivariateRelationError::SelectorCapacity {
+            actual: selector.len(),
+            expected: setup.s,
+        });
+    }
+    if let Some(value) = selector
+        .iter()
+        .flatten()
+        .find(|value| **value >= actual_subcircuit_count)
+    {
+        return Err(UnivariateRelationError::SubcircuitId { value: *value });
+    }
+    Ok(())
+}
+
 fn validate_placement_selector(
     selector: &[Option<usize>],
     setup: &SetupParams,
@@ -842,10 +979,16 @@ mod tests {
     use super::{
         arithmetic_wire_lift, arithmetic_wire_lifts_at, connection_copy_factors,
         connection_coset_selector, connection_permutation_polynomial, connection_wire_lift,
-        connection_wire_lift_at, witness_maps, R1csMatrix, SlotWitness, UnivariateRelationError,
-        UnivariateSubcircuit,
+        connection_wire_lift_at, normalized_connection_permutation_targets, witness_maps,
+        R1csMatrix, SlotWitness, UnivariateRelationError, UnivariateSubcircuit,
     };
-    use crate::frontend_artifacts::{Permutation, SetupParams};
+    use crate::frontend_artifacts::{
+        normalized_library::{
+            BufferDirection, NormalizedSetupParams, NormalizedSubcircuitInfo,
+            NormalizedSubcircuitLibrary, PublicRegion, PublicWirePhase,
+        },
+        Permutation, SetupParams,
+    };
     use crate::univariate_crs::UnivariateCrsShape;
     use icicle_bls12_381::curve::ScalarField;
     use icicle_core::traits::{Arithmetic, FieldImpl};
@@ -959,6 +1102,134 @@ mod tests {
             s_D: 3,
             s_max: 2,
         }
+    }
+
+    fn normalized_library() -> NormalizedSubcircuitLibrary {
+        let setup = NormalizedSetupParams {
+            n: 2,
+            m: 8,
+            m_b: 4,
+            t: 4,
+            s: 4,
+            public_wire_phases: vec![PublicWirePhase {
+                name: "free".into(),
+                region: PublicRegion::Free,
+                subcircuit_ids: vec![0, 1].into_boxed_slice(),
+            }]
+            .into_boxed_slice(),
+        };
+        let subcircuits = (0..2)
+            .map(|id| NormalizedSubcircuitInfo {
+                id,
+                name: format!("buffer-{id}"),
+                Nwires: 8,
+                NrealWires: 2,
+                Nconsts: 1,
+                Out_idx: [1, 1],
+                In_idx: [2, 0],
+                Wiring_idx: [0, 2],
+                Public_idx: [1, 1],
+                Internal_idx: [4, 0],
+                bufferDirection: Some(BufferDirection::Out),
+                publicPhase: Some("free".into()),
+            })
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        NormalizedSubcircuitLibrary::new(setup, subcircuits).unwrap()
+    }
+
+    #[test]
+    fn normalized_permutation_enforces_the_constant_one_cycle_and_public_identities() {
+        let library = normalized_library();
+        let shape = UnivariateCrsShape::from_normalized_setup(
+            &library.setup,
+            library.public.free_public_len(),
+        )
+        .unwrap();
+        let selector = [Some(0), Some(1), None, None];
+        let valid = [
+            Permutation {
+                row: 0,
+                col: 0,
+                X: 0,
+                Y: 1,
+            },
+            Permutation {
+                row: 0,
+                col: 1,
+                X: 1,
+                Y: 0,
+            },
+            Permutation {
+                row: 1,
+                col: 0,
+                X: 0,
+                Y: 0,
+            },
+        ];
+        let targets =
+            normalized_connection_permutation_targets(&shape, &library, &selector, &valid).unwrap();
+        assert_eq!((targets[0], targets[1], targets[4]), (1, 4, 0));
+
+        let no_public_representative = [
+            Permutation {
+                row: 0,
+                col: 0,
+                X: 0,
+                Y: 1,
+            },
+            Permutation {
+                row: 0,
+                col: 1,
+                X: 0,
+                Y: 0,
+            },
+        ];
+        assert!(matches!(
+            normalized_connection_permutation_targets(
+                &shape,
+                &library,
+                &selector,
+                &no_public_representative
+            ),
+            Err(UnivariateRelationError::PermutationTopology { .. })
+        ));
+
+        let two_public_coordinates = [
+            Permutation {
+                row: 0,
+                col: 0,
+                X: 0,
+                Y: 1,
+            },
+            Permutation {
+                row: 0,
+                col: 1,
+                X: 1,
+                Y: 0,
+            },
+            Permutation {
+                row: 1,
+                col: 0,
+                X: 1,
+                Y: 1,
+            },
+            Permutation {
+                row: 1,
+                col: 1,
+                X: 0,
+                Y: 0,
+            },
+        ];
+        assert!(matches!(
+            normalized_connection_permutation_targets(
+                &shape,
+                &library,
+                &selector,
+                &two_public_coordinates
+            ),
+            Err(UnivariateRelationError::PermutationTopology { .. })
+        ));
     }
 
     #[test]

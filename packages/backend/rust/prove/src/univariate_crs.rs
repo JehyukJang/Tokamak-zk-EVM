@@ -11,10 +11,9 @@ use icicle_core::{
 };
 use icicle_runtime::memory::HostSlice;
 use libs::{
-    frontend_artifacts::{public_wire_layout::PublicWireLayout, SetupParams},
+    frontend_artifacts::normalized_library::{NormalizedSubcircuitLibrary, PublicWireSource},
     group_structures::G1serde,
     univariate_crs::{UnivariateCrsShape, UNIVARIATE_CRS_SCHEMA_ID},
-    univariate_relation::UnivariateSubcircuit,
 };
 use std::{fs, io, path::Path};
 
@@ -28,9 +27,7 @@ pub struct ProverCrs {
 impl ProverCrs {
     pub fn from_owned_bytes(
         bytes: libs::subcircuit_library::ValidatedUnivariateCrsBytes,
-        setup: &SetupParams,
-        circuits: &[UnivariateSubcircuit<'_>],
-        public: &PublicWireLayout,
+        library: &NormalizedSubcircuitLibrary,
     ) -> io::Result<Self> {
         let tau = crate::time_block!("univariate.crs.decode.tau", "input", {
             archive::from_bytes::<TauSequenceRkyv, archive::rancor::Error>(&bytes.tau)
@@ -42,15 +39,13 @@ impl ProverCrs {
                 .map_err(io::Error::other)?
         });
         drop(bytes.prover_keys);
-        Self::new(tau, keys, setup, circuits, public).map_err(io::Error::other)
+        Self::new(tau, keys, library).map_err(io::Error::other)
     }
 
     pub fn read(
         tau: &Path,
         keys: &Path,
-        setup: &SetupParams,
-        circuits: &[UnivariateSubcircuit<'_>],
-        public: &PublicWireLayout,
+        library: &NormalizedSubcircuitLibrary,
     ) -> io::Result<Self> {
         let tau_bytes = crate::time_block!("univariate.crs.read.tau", "input", { fs::read(tau)? });
         let tau = crate::time_block!("univariate.crs.decode.tau", "input", {
@@ -66,29 +61,41 @@ impl ProverCrs {
                 .map_err(io::Error::other)?
         });
         drop(key_bytes);
-        Self::new(tau, keys, setup, circuits, public).map_err(io::Error::other)
+        Self::new(tau, keys, library).map_err(io::Error::other)
     }
 
     pub fn new(
         tau: TauSequenceRkyv,
         keys: ProverKeysRkyv,
-        setup: &SetupParams,
-        circuits: &[UnivariateSubcircuit<'_>],
-        public: &PublicWireLayout,
+        library: &NormalizedSubcircuitLibrary,
     ) -> Result<Self, String> {
-        let shape = UnivariateCrsShape::from_setup_params(setup).map_err(|e| e.to_string())?;
-        let maps = circuits.iter().map(|c| c.flatten_map).collect::<Vec<_>>();
-        let layout = NonpublicQueryLayout::new(setup.s_max, setup.m, setup.l, &maps)?;
-        let free_count = (0..setup.l_free)
-            .filter(|g| public.public_query_key_for_public_wire(*g).is_some())
+        let setup = &library.setup;
+        let shape =
+            UnivariateCrsShape::from_normalized_setup(setup, library.public.free_public_len())
+                .map_err(|e| e.to_string())?;
+        let layout = NonpublicQueryLayout::from_retained_wires(
+            setup.s,
+            library
+                .subcircuits
+                .iter()
+                .map(|circuit| circuit.retained_nonpublic_wires())
+                .collect(),
+        )?;
+        let free_count = (0..library.public.free_public_len())
+            .filter(|index| {
+                matches!(
+                    library.public.source(*index),
+                    Some(PublicWireSource::Mapped { .. })
+                )
+            })
             .count();
         if tau.schema_id != UNIVARIATE_CRS_SCHEMA_ID
             || keys.schema_id != UNIVARIATE_CRS_SCHEMA_ID
             || tau.s0_g1.len() != shape.minimum_capacity[0] + 1
             || tau.sxi_g1.len() != shape.minimum_capacity[1] + 1
             || tau.spsi_g1.len() != shape.minimum_capacity[2] + 1
-            || keys.weighted_g1.len() != setup.m * setup.s_max
-            || keys.weighted_shifted_g1.len() != setup.m * setup.s_max
+            || keys.weighted_g1.len() != setup.m * setup.s
+            || keys.weighted_shifted_g1.len() != setup.m * setup.s
             || keys.nonpublic_queries.len() != layout.len()
             || keys.free_public_queries.len() != free_count
         {
