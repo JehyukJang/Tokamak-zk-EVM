@@ -12,7 +12,7 @@ import {
   PublicInstanceDescription,
 } from './types/types.ts';
 
-const extractPublicProjection = (
+export const extractPublicProjection = (
   placementVariables: PlacementVariables,
   synthesizer: SynthesizerInterface,
 ): Readonly<{
@@ -60,10 +60,22 @@ const extractPublicProjection = (
   }
   const valuesFor = (name: typeof requiredPhaseNames[number]) => phaseValues.get(name)!;
   const descriptionsFor = (name: typeof requiredPhaseNames[number]) => phaseDescriptions.get(name)!;
+  const freePublicCount = setupParams.publicWirePhases
+    .filter(phase => phase.region === 'free')
+    .reduce(
+      (count, phase) =>
+        count + valuesFor(phase.name as typeof requiredPhaseNames[number]).length,
+      0,
+    );
+  const freePublicCapacity = 2 ** Math.ceil(Math.log2(Math.max(1, freePublicCount)));
+  const freePublicPadding = freePublicCapacity - freePublicCount;
   return {
     publicInstance: {
       a_pub_user: [...valuesFor('user-output'), ...valuesFor('user-input')],
-      a_pub_block: valuesFor('block-input'),
+      a_pub_block: [
+        ...valuesFor('block-input'),
+        ...Array<`0x${string}`>(freePublicPadding).fill('0x00'),
+      ],
       a_pub_function: valuesFor('function-input'),
     },
     publicInstanceDescription: {
@@ -71,7 +83,10 @@ const extractPublicProjection = (
         ...descriptionsFor('user-output'),
         ...descriptionsFor('user-input'),
       ],
-      a_pub_block_description: descriptionsFor('block-input'),
+      a_pub_block_description: [
+        ...descriptionsFor('block-input'),
+        ...Array<string>(freePublicPadding).fill(''),
+      ],
       a_pub_function_description: descriptionsFor('function-input'),
     },
   };
