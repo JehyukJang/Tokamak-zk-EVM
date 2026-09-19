@@ -29,6 +29,59 @@ a documentation/evidence audit, not a new benchmark of that revision. Earlier
 sections retain their experiment-time controls and validation scope; the
 current status below supersedes their then-pending migration descriptions.
 
+## Normalized public-and-bus wiring qualification — 2026-09-20
+
+P17 replaces the retired global-wire connection layout with normalized local
+coordinates. The current library uses `m=2048`, `m_b=512`, `s=256`, and
+`t=64`; consequently the arithmetic and connection domains are `n*s=262144`
+and `m_b*s=131072`. Public wires participate in both the arithmetic statement
+and the public-and-bus copy relation. Only producer-declared capacity padding
+is supplied as implicit zero and omitted from wire-specific CRS queries. A
+real wire whose value happens to be zero follows the ordinary query path.
+
+A fresh 172-placement local-QAP fixture and fresh development trusted setup
+qualified this contract. Release native trusted setup, preprocess, prove, and
+verify completed in sequence and verification returned `true`. The same CRS
+was converted to the browser chunk contract. Chromium completed preprocess,
+prove, and verify with `true`; the browser preprocess bytes equal the native
+384-byte output. WASM accepted the native proof and native accepted the WASM
+proof. Tampering with each proof point, each claimed evaluation, each
+preprocess operand, or the public input was rejected.
+
+| Functional sample | Elapsed time |
+| --- | ---: |
+| Native trusted setup, internal | 11.992173 s |
+| Native trusted setup, process wall | 12.38 s |
+| Native preprocess, internal | 0.257277 s |
+| Native prove, internal | 3.366 s |
+| Native verify, internal | 0.008045 s |
+| Chromium preprocess | 2436.065 ms |
+| Chromium prove | 17675.875 ms |
+| Chromium verify | 26.540 ms |
+
+The four native CRS payloads total 995,017,424 bytes (0.926682 GiB):
+301,992,400 bytes of tau sequences, 677,330,704 bytes of prover keys,
+15,693,216 bytes of preprocess keys, and 1,104 bytes of verifier keys. The
+browser chunk representation totals 995,641,080 bytes including manifests and
+chunk-level framing. These are one-run functional measurements, not an
+optimization A/B comparison, cold-cache benchmark, CUDA result, MPC result,
+or production-npm qualification.
+
+The release native package sweep passed 140 library unit tests plus the
+artifact, univariate-math, trusted-setup, preprocess, prove, and verifier
+suites. Ten frontend selector/permutation tests and the normalized WASM
+relation and preprocess checks also passed. These tests cover the canonical
+`CIRCOM_CONST_ONE` cycle, public singleton identities, inactive selector
+slots, rejection of unparented ordinary inputs, wire-zero admission, and the
+distinction between real zero-valued wires and declared padding. Sparse-query
+tests establish that declared padded slots have no stored point and therefore
+perform no decode or MSM work.
+
+[Machine-readable evidence](evidence/p17-normalized-wiring-e2e.json) records
+the hashes, exact payload sizes, timings, host, fixture cardinalities, and
+qualification boundaries. Earlier protocol measurements below remain
+historical and are not evidence for the normalized wiring contract.
+
 ## WASM optimization execution results — 2026-09-13–14
 
 ### Combined six-candidate remeasurement — retained, 2026-09-14
