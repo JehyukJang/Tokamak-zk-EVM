@@ -82,6 +82,28 @@ the hashes, exact payload sizes, timings, host, fixture cardinalities, and
 qualification boundaries. Earlier protocol measurements below remain
 historical and are not evidence for the normalized wiring contract.
 
+## P18 padding-work candidate triage — 2026-09-20
+
+After compact weighted CRS rows removed globally declared padding, we assessed
+the remaining padding-related compute candidates against the current
+release-optimized local fixture. None met the project's material whole-path
+improvement threshold, so no second image-accumulation path, sparse witness
+representation, copy-recurrence branch, or sparse FFT was added.
+
+| Candidate | Measured upper bound | Decision |
+| --- | ---: | --- |
+| Direct retained-target setup image accumulation | 223.49 ms / 11.47 s setup | Reject: at most 1.95%; fixed-base point encoding dominates. |
+| Parse only real witness ranges | 80.97 ms / 3.57 s proof | Reject: this is the entire fixture-ingress span, not parsing alone. |
+| Identity-copy recurrence compaction | 10.77 ms / 3.57 s proof | Reject: only 0.30%; dense quotient products remain required. |
+| Execution-local all-zero weighted rows | at most 3.88 ms / 3.57 s proof | Reject: CPU MSM already filters zero scalar/base pairs. |
+
+For this fixture, 127 of 1295 retained weighted rows have all-zero witness
+values. They remain normal retained coordinates in the CRS; their omission is
+an execution-local arithmetic choice, not a reusable-format rule. The compact
+format continues to omit only producer-declared padding. The full inputs,
+timings, scalar counts, and decisions are recorded in
+[the P18 evidence file](evidence/p18-padding-candidates.json).
+
 ## WASM optimization execution results — 2026-09-13–14
 
 ### Combined six-candidate remeasurement — retained, 2026-09-14
