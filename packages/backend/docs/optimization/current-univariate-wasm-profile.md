@@ -297,9 +297,11 @@ the chosen FFT domain and root make the rotation exact. Retain generic
 unequal-domain behavior. Blind concurrent scheduling of already parallel FFTs
 is not an accepted optimization.
 
-### W8. Tune preprocess separately
+### W8. Tune preprocess separately — discarded
 
-Preprocess is not part of the public prove timing.
+Preprocess is not part of the public prove timing. This proposal was discarded
+on 2026-09-20 without implementation; the details below are historical
+profiling notes, not an active optimization plan.
 
 - Move the selected/unselected polynomial long division into a whole-loop
   WASM kernel first, preserving exact remainder checks. Only consider
@@ -310,9 +312,10 @@ Preprocess is not part of the public prove timing.
 - E_kappa has a G2 MSM; preserve its group and do not reuse a G1-specific
   window rule without measurement. C_fix and root construction are minor.
 
-### W9. Verify only after larger targets are exhausted
+### W9. Verify only after larger targets are exhausted — discarded
 
 Verification is approximately 25 ms, not a current end-to-end bottleneck.
+This proposal was discarded on 2026-09-20 without implementation.
 Fixed G1 tables and four fixed prepared G2 operands already exist. Possible
 later tests are fused dynamic G1 linear combinations and dispatch-threshold
 tuning for the 256-element public interpolation. Keep canonical coordinate,
@@ -355,7 +358,7 @@ The profiling/recommendation checkpoint is complete. These tables retain
 the original SHA-inclusive baseline and are not timings of the optimized
 implementation. The [execution report](current-univariate-crs.md) records
 W0--W7 completion and their sequential qualification, including rejected
-experiments; W8/W9 remain pending. For each optimization candidate:
+experiments; W8/W9 were later discarded. For each retained optimization candidate:
 
 1. Preserve this compressed-CRS implementation as the reference.
 2. Run isolated exact polynomial/group tests, including affected rejection
@@ -367,8 +370,8 @@ experiments; W8/W9 remain pending. For each optimization candidate:
    complete API and separate loading/arithmetic, including memory impact.
 5. Record acceptance or rejection before the next candidate.
 
-W0 precedes the W1--W7 prove sequence; W8 and W9 are separately scoped
-preprocess and verifier experiments after that sequence. Apart from the
+W0 precedes the W1--W7 prove sequence. W8 and W9 were separately scoped
+preprocess and verifier proposals before their later discard. Apart from the
 approved W0 digest policy, no trust-policy or artifact-contract change is
 implied. The review does not run live MPC, publish artifacts,
 change versions, or reinstate a dense-CRS performance benchmark.

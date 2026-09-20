@@ -92,17 +92,10 @@ The generated `crs_provenance.json` records `releaseEligible: false`. Google Dri
 rejects it. The direct trusted-setup CRS has no compatibility-version metadata, so the documented
 local development workflow uses it with the explicit `--allow-unverified-crs` option.
 
-Release example:
+Repository-local development example:
 
 ```bash
 cargo run --locked --release -p trusted-setup -- \
-  --output ./rust/setup/trusted-setup/output
-```
-
-Non-release example:
-
-```bash
-cargo run --locked -p trusted-setup -- \
   --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
   --output ./rust/setup/trusted-setup/output
 ```
@@ -165,12 +158,13 @@ identifies the complete public contribution file. See the MPC guide for actual q
 Consumes:
 
 - the subcircuit library
-- `sigma_preprocess.rkyv`
+- `preprocess_keys.rkyv` and `crs_provenance.json` from the CRS directory
 - synthesizer outputs such as `instance.json` and `permutation.json`
 
 Produces:
 
-- `preprocess.json`
+- `univariate_verifier_preprocess.bin`: the common 384-byte binary output
+  containing `S_C`, `C_fix`, and `E_kappa`
 
 CLI package example:
 
@@ -218,20 +212,17 @@ cargo run --locked --release -p prove --features timing -- \
 ```
 
 Add `--device cuda` after `--` only on a configured CUDA host. The native
-preprocess/verifier and browser runtime have not yet been migrated to the
-current proof contract; this example demonstrates proof generation, not a
-completed verification or CLI-package integration flow. See the
+preprocess/verifier and browser runtime use the same current common proof and
+preprocess layouts. See the
 [current-protocol measurements](docs/optimization/current-univariate-crs.md).
 
 ### `verify`
 
 Consumes:
 
-- the subcircuit library
-- CRS artifacts from setup
-- synthesizer outputs
-- `preprocess.json`
-- `proof.json`
+- `univariate_verifier_preprocess.bin` emitted by `preprocess`
+- `univariate_proof.bin` emitted by `prove`
+- the synthesizer's `instance.json` free-public statement
 
 Produces:
 
@@ -248,9 +239,9 @@ tokamak-cli --verify
 Use the `Run and Debug` panel in VS Code and select one of the backend launch configurations under
 `.vscode/launch.json`.
 
-During the current-protocol migration, `Debug prove` uses the default CPU
-engine and writes the new binary proof. The older preprocess/verify examples
-below do not yet form a runnable end-to-end chain with that output.
+`Debug prove` uses the default CPU engine and writes the common binary proof.
+Together, the local trusted-setup, preprocess, prove, and verify launchers
+form the repository development E2E path with local QAP inputs.
 
 Every launcher uses Cargo's release optimization. `MPC: initialize Filecoin phase 2 (local QAP)`
 selects `--mode development` and reads the local QAP build.

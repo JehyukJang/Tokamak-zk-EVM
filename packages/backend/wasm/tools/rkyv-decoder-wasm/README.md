@@ -1,94 +1,30 @@
-# backend-wasm rkyv decoder
+# Legacy combined-Sigma decoder
 
-This crate is the Rust/WASM boundary for backend-wasm artifact converter tooling.
-It is not prover or verifier runtime code.
+This crate is retained only as an internal decoder for historical test material
+that contains a `combined_sigma.rkyv` archive. It is not part of the current
+Tokamak zk-EVM CRS interface and is not imported by the browser prover,
+preprocess, verifier, or public converter API.
 
-The converter implementation in `src/converter/conversion/rkyv-to-binary.ts` accepts
-bytes and delegates native rkyv archive decoding to this package. The decoder must
-use the same rkyv version line and archive shapes as the native backend artifacts.
+Current CRS conversion is performed by the release-built native
+`univariate-crs:convert` command. It reads the four role-separated backend
+files (`tau_sequence.rkyv`, `prover_keys.rkyv`, `preprocess_keys.rkyv`, and
+`verifier_keys.rkyv`) and emits a manifest with bounded browser chunks. See the
+[backend-wasm README](../../README.md#artifact-model) for the supported
+interface.
 
-Supported target archive kinds:
+`decode_combined_sigma` and its wasm-bindgen export intentionally remain narrow:
+they decode only the legacy `SigmaRkyv` archive shape and return an internal
+section-payload container. They do not define a generic rkyv decoder, a
+persisted browser artifact format, or a replacement for the current CRS
+converter.
 
-- `combined_sigma.rkyv` -> standalone backend-wasm prover, preprocess, and
-  verifier CRS binaries.
+## Maintenance
 
-This crate intentionally does not implement a generic rkyv decoder. rkyv archives
-are Rust type-layout dependent and must be decoded through explicit supported
-archive types.
-
-`decode_combined_sigma` validates the native `SigmaRkyv` archive shape and returns
-a compact section-payload container. TypeScript converter code parses that payload
-and remains responsible for writing backend-wasm binary artifact files, file kinds,
-section labels, and digest tables.
-
-The crate also exports `decodeCombinedSigma` through `wasm-bindgen`. The generated
-JavaScript package should be lazy-loaded by converter tooling rather than imported
-by prover or verifier runtime code.
-
-The payload container is an internal Rust/WASM-to-TypeScript adapter format, not a
-runtime artifact file and not a persisted fixture format.
-
-## Browser build
-
-Build the browser package from this directory with:
-
-```sh
-npm run build
-```
-
-From the backend-wasm package root, the same build is available as:
-
-```sh
-npm run rkyv-decoder:build
-```
-
-The build requires:
-
-- `cargo`
-- `rustc` with the `wasm32-unknown-unknown` target installed
-- `wasm-bindgen` CLI
-
-The script always rebuilds the Rust WASM target and regenerates `pkg/` from that
-target. `pkg/` and `target/` are generated outputs and are not tracked.
-
-To check only whether the required build tools are installed:
-
-```sh
-npm run check:build-tools
-```
-
-## Browser API
-
-The published backend-wasm converter owns browser decoder loading. Its
-`convertCrs` function transfers the source buffer to a temporary Worker, loads
-the generated decoder WASM there, produces standalone prover, preprocess, and
-verifier CRS artifacts, and terminates the Worker.
-
-```js
-import { convertCrs } from '@tokamak-zk-evm/snark-browser-compat/converter';
-
-const { proverCrs, preprocessCrs, verifierCrs } = await convertCrs(combinedSigmaRkyv, crsProvenance);
-```
-
-The transfer detaches `combinedSigmaRkyv`. Pass
-`combinedSigmaRkyv.slice()` when the application must retain the source.
-Prover and verifier runtime modules must not import this decoder package.
-
-## Node.js Fixture API
-
-The Node.js wrapper is for local fixture preparation only. It reads the generated
-WASM file from `pkg/` and exposes the same payload decoder shape:
-
-```js
-import { createCombinedSigmaRkyvPayloadDecoder } from '../../src/converter/conversion/rkyv-to-binary.js';
-import { loadCombinedSigmaPayloadDecoder } from './tools/rkyv-decoder-wasm/src/node.js';
-
-const payloadDecoder = await loadCombinedSigmaPayloadDecoder();
-const decoder = createCombinedSigmaRkyvPayloadDecoder(payloadDecoder.decodeCombinedSigmaPayload);
-```
-
-Run `npm run rkyv-decoder:build` before using the Node.js wrapper. The wrapper is
-still tooling-only and must not be imported by prover or verifier runtime modules.
+Do not add new production callers to this crate. A current-artifact change
+belongs in the backend common contract and the native chunk converter, not in
+this compatibility tool. Generated `pkg/` and `target/` outputs are untracked.
+This crate has no npm publication status: it is not a published package or a
+supported application dependency.
 
 ## License
 

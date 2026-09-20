@@ -33,6 +33,13 @@ The browser runtime uses BLS12-381 through ffjavascript. Vite and Webpack ESM
 consumers are supported. Applications must serve WebAssembly and emitted worker
 assets with appropriate MIME types and content-security policy.
 
+## Runtime artifact guide and acquisition
+
+Applications acquire synthesizer artifacts and browser CRS chunks through their
+own authenticated storage path, then pass bytes to this package. The current
+runtime does not accept the retired `combined_sigma.rkyv` archive; it consumes
+the four-role CRS after offline conversion to a manifest and bounded chunks.
+
 ## Artifact model
 
 The current protocol accepts the following independent binary artifacts:
@@ -308,7 +315,7 @@ the owner.
 
 See [`examples/browser`](./examples/browser) for a runnable Vite workflow.
 
-## Security and lifecycle
+## Security and application responsibilities
 
 - Treat witness and proof-generation state as sensitive application data.
 - Do not run two operations concurrently through the same installed subpath.
@@ -317,6 +324,14 @@ See [`examples/browser`](./examples/browser) for a runnable Vite workflow.
 - Validate and authenticate source artifacts at the application's trust
   boundary; a binary self-digest is not producer authentication.
 - Development trusted-setup output is not release or deployment material.
+
+## npm publication
+
+The supported browser package is
+[`@tokamak-zk-evm/snark-browser-compat`](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat).
+Published builds use the production npm subcircuit-library snapshot and a
+matching verifier key at build time. They do not package local development
+fixtures, trusted-setup output, or CRS chunks.
 
 ## Project and license
 

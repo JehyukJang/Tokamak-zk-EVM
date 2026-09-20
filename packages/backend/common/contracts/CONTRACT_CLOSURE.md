@@ -34,14 +34,14 @@ The default native prove path does not check content digests; explicit
 `--check-digests` retains those checks. Publication authority remains separate
 from algorithm consumption.
 
-The current producer is `rust/setup/trusted-setup/src/univariate.rs`, through
-the common writer. Existing MPC source is excluded from the current migration;
-it must adopt this interface when rewritten. It is not a compatible producer
-or evidence that common-provenance publication is integrated with a ceremony.
-The historical MPC writer/Drive entries in the inventory above are migration
-targets, not alternate authorities. Shared fixture filenames containing
-`final-mpc` describe their source scenarios, not distinct accepted formats.
-The retired format is retained only as a negative fixture.
+The current producers are `rust/setup/trusted-setup/src/univariate.rs` and
+the MPC phase-2 finalizer, both through the common writer. They emit the same
+document shape and four payload filenames. The generation method records how
+the CRS was produced; it does not create an alternate consumer interface.
+MPC's local test output is not publication evidence, and live Filecoin/Drive
+qualification remains a separate operator activity. Shared fixture filenames
+containing `final-mpc` describe source scenarios, not distinct accepted
+formats. Retired formats remain negative fixtures only.
 
 ### Common binary artifacts
 
@@ -73,9 +73,10 @@ field/affine coordinates. Both engines share the F4 schedule, and deterministic
 tests compare their complete proof bytes with the accepted reference. The
 ordered primitive root is explicit in `univariate-domain-contract.v1.json`;
 choosing arkworks does not change the existing CRS evaluation order.
-Native preprocess/verifier and WASM runtime migration remain incomplete.
-Generated codec and native proof-generation tests do not establish runtime
-interoperability or full proof verification.
+Native preprocess, native online verification, and the WASM runtime consume
+these common proof/preprocess layouts. Their E2E qualification is recorded in
+the backend optimization reports; generated-codec tests remain narrower
+format checks and do not replace protocol E2E tests.
 
 The current univariate protocol contracts also include
 `univariate-transcript-contract.json` and `univariate-artifact-contract.json`.
@@ -84,10 +85,9 @@ Transcript bytes are covered by
 `tests/univariate-transcript.test.mjs` oracle. The generated TypeScript binding
 is `wasm/src/generated/univariate-transcript-contract.generated.ts`.
 
-These updated contracts are the migration target. The existing native and
-WASM protocol implementations are not yet evidence of conformance to them.
-In particular, updating a generated binding does not complete its runtime
-migration. CRS archives must ultimately expose four role-specific files:
+These contracts are current. Updating a generated binding alone is still not
+enough: a contract change must update its operational producer and every
+reader. CRS archives expose four role-specific files:
 `tau_sequence.rkyv`, `prover_keys.rkyv`, `preprocess_keys.rkyv`, and
 `verifier_keys.rkyv`. Preprocess keys contain the bases for S_C, E_kappa, and
 C_fix; the preprocess output contains the resulting points instead.

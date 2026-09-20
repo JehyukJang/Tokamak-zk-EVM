@@ -239,8 +239,9 @@ in the candidate, preserving the original stage boundary's meaning.
 At the original W10 completion on 2026-09-14, five changes were retained; the other eleven
 candidates were rejected or inconclusive. The combined-six retention decision
 above supersedes six of those historical dispositions.
-W9 verifier and W8 preprocess experiments have not been executed. Shared
-runtime improvements from W10 must be part of their future controls.
+W9 verifier and W8 preprocess proposals were not executed and were discarded
+on 2026-09-20. W10's shared-runtime improvements remain part of the measured
+prover implementation; they do not create pending work in either consumer.
 
 The final comparison uses the preserved W10-entry control from `d2e23ef83`
 and the retained implementation at `f8dc5c0fb`. Both are minified ES2022
@@ -744,7 +745,8 @@ padded scalar copy. Logical per-window inputs total 500 MiB versus stock's
 608 MiB, while nonfinal buckets fall from 16384 to 4096 points. These are
 buffer/payload counts, not measured peak memory. Timing includes all of these
 costs. No persistent table cache, new worker pool or CRS format change is added.
-W9/W8 must use this shared G1 runtime as part of their controls.
+The discarded W9/W8 proposals would have used this shared G1 runtime as their
+control; no such follow-up is planned.
 
 A separate closure profile records 21208.000 ms prove, 17543.765 ms inclusive
 across 31 G1 MSM calls, 1494 window tasks, 7541218600 logical input bytes and
@@ -936,11 +938,12 @@ and full-call measurements. W10.2 uses this accepted version as its control.
 
 ### W10.0 control and MSM diagnostics — 2026-09-14
 
-The new order is W10 prove -> W9 verifier -> W8 preprocess. W10.0 reused the
-existing W4 compressed fixture and minified browser control, without changing
-production arithmetic. Chromium 149 and 14 workers completed the following
-fresh-context samples; all returned true, matched native preprocess bytes,
-and passed the release native verifier. Direct TypeScript checking passed.
+At the time, W10 was followed by W9 and W8. Those two proposals were later
+discarded without implementation. W10.0 reused the existing W4 compressed
+fixture and minified browser control, without changing production arithmetic.
+Chromium 149 and 14 workers completed the following fresh-context samples; all
+returned true, matched native preprocess bytes, and passed the release native
+verifier. Direct TypeScript checking passed.
 
 | Mode | Preprocess (ms) | Prove (ms) | Verify (ms) |
 | --- | ---: | ---: | ---: |
@@ -1070,17 +1073,17 @@ acceptance control.
 
 The remaining large stages are commitments/openings, including their CRS
 reads and MSM dispatch; they are not measurements of pure curve instructions.
-W8 preprocess and W9 online-verifier experiments remain separate, unstarted
-work. No live MPC, publishing, CUDA measurement or version update was performed.
+The W8 preprocess and W9 online-verifier proposals were later discarded. No
+live MPC, publishing, CUDA measurement or version update was performed.
 
 ### Further WASM prove opportunities after W0--W7 — review, not results
 
 This section is for engineers selecting follow-up experiments against
 `d148f0c9d`. The stage table above is the existing final W0--W7 diagnostic,
 not a new measurement or a prediction. The follow-up W10 identifiers do not
-reopen completed W0--W7 experiments. The 2026-09-14 execution order is W10
-prove, W9 verifier, then W8 preprocess. Later controls must include shared
-changes already accepted in earlier experiments.
+reopen completed W0--W7 experiments. The historical 2026-09-14 sequence
+placed W10 before W9 and W8; W9 and W8 were later discarded. Controls include
+shared changes already accepted in earlier experiments.
 
 Aggregation of the `profile-off` operation records in
 [the final evidence](evidence/wasm-w0-w7-final.json) gives:
@@ -1301,8 +1304,8 @@ That unrelated fixture was not repaired or counted as a passing test. Initial
 native cross-verification needed the documented macOS `DYLD_LIBRARY_PATH`;
 with it supplied, verification succeeded without code changes to native.
 
-The execution sections record each subsequent acceptance/rejection gate.
-W8/W9 remain separate preprocess/verifier work. Reproduction from `wasm`:
+The execution sections record each subsequent acceptance/rejection gate. W8
+and W9 were later discarded rather than implemented. Reproduction from `wasm`:
 
 ```sh
 DYLD_LIBRARY_PATH="$PWD/../external-lib/mac/lib" node test/profiling/run-current-univariate.mjs /tmp/tokamak-p8-trusted-e2e-9jQ5E1 tmp/optimization-w0-qualification profile-off profile-on profile-off profile-on
@@ -1586,8 +1589,8 @@ dynamic point/field checks. No runtime verifier CRS load exists.
    whole-buffer polynomial kernels and mask-aware quotient FFT reduction.
    Use the W0 default-path baseline for optimization acceptance, with digest-on
    compatibility tests reported separately.
-4. W8: preprocess division/MSM experiments. W9: low-priority online verifier
-   experiments, only after the larger targets and with separate timing.
+4. W8 preprocess and W9 online-verifier experiments were proposed in this
+   historical profile, then discarded on 2026-09-20 without implementation.
 
 For every candidate, record the hypothesis, isolated correctness test,
 complete affected native/WASM E2E, alternating repeated optimized-build
