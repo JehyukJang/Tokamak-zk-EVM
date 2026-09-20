@@ -104,6 +104,28 @@ format continues to omit only producer-declared padding. The full inputs,
 timings, scalar counts, and decisions are recorded in
 [the P18 evidence file](evidence/p18-padding-candidates.json).
 
+## P18 cheap-restoration CRS audit — 2026-09-20
+
+The freshly generated compact CRS was converted into its 19 canonical point
+sections and scanned record by record. It contains no point-at-infinity record,
+no infinity run, and no adjacent repeated affine point. Therefore run-length
+encoding cannot remove any stored point without introducing a general sparse
+container.
+
+Two larger aliases are exact: `preprocess-sc` is the `s0` prefix (12,582,912
+bytes), and `preprocess-selection` is a tau-G2 range (3,096,768 bytes). They
+remain duplicated by policy so a preprocess-only consumer need not download
+the much larger tau sequence. The three G1 verifier handles and three tau-G2
+verifier handles are also exact aliases, but their combined 864 bytes are
+deliberately retained to preserve verifier-only installation.
+
+Independent LZ4 compression of every at-most-64-MiB canonical section chunk
+increased 958,005,600 point bytes by 4,151 bytes. It also makes a range ready
+only after decoding the enclosing compressed chunk. LZ4 is therefore rejected;
+no codec or consumer decompression path was added. The detailed scan and
+timing data are in
+[the cheap-restoration evidence file](evidence/p18-cheap-restoration-scan.json).
+
 ## WASM optimization execution results — 2026-09-13–14
 
 ### Combined six-candidate remeasurement — retained, 2026-09-14
