@@ -433,7 +433,12 @@ pub(crate) fn selection<E: Engine>(
             c = zv[a] + *z * c;
         }
     }
-    let witness: Vec<_> = (0..setup.m)
+    // The CRS stores weighted bases only for library-declared real local-wire
+    // ranges. Build scalars in that same row-major compact order: local wire,
+    // then placement. Runtime-zero witnesses remain represented.
+    let witness: Vec<_> = crs
+        .weighted_layout
+        .retained_wires()
         .flat_map(|j| {
             slots.iter().map(move |slot| {
                 slot.as_ref()

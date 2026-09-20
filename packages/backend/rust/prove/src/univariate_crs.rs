@@ -3,6 +3,7 @@
 
 use backend_univariate_crs_interface::{
     archive, NonpublicQueryLayout, ProverKeysRkyv, TauSequenceRkyv, UnivariateG1Rkyv,
+    WeightedQueryLayout,
 };
 use icicle_bls12_381::curve::{BaseField, G1Affine, G1Projective, ScalarField};
 use icicle_core::{
@@ -22,6 +23,10 @@ pub struct ProverCrs {
     pub keys: ProverKeysRkyv,
     pub shape: UnivariateCrsShape,
     pub layout: NonpublicQueryLayout,
+    /// Compact CRS row order for weighted selection queries. This excludes
+    /// only producer-declared local-wire padding; a retained wire is present
+    /// even when its witness value is zero.
+    pub weighted_layout: WeightedQueryLayout,
 }
 
 impl ProverCrs {
@@ -81,6 +86,15 @@ impl ProverCrs {
                 .map(|circuit| circuit.retained_nonpublic_wires())
                 .collect(),
         )?;
+        let weighted_layout = WeightedQueryLayout::from_normalized_ranges(
+            setup.s,
+            setup.m,
+            setup.m_b,
+            library
+                .subcircuits
+                .iter()
+                .map(|circuit| (circuit.wiring_range().len(), circuit.internal_range().len())),
+        )?;
         let free_count = (0..library.public.free_public_len())
             .filter(|index| {
                 matches!(
@@ -94,8 +108,8 @@ impl ProverCrs {
             || tau.s0_g1.len() != shape.minimum_capacity[0] + 1
             || tau.sxi_g1.len() != shape.minimum_capacity[1] + 1
             || tau.spsi_g1.len() != shape.minimum_capacity[2] + 1
-            || keys.weighted_g1.len() != setup.m * setup.s
-            || keys.weighted_shifted_g1.len() != setup.m * setup.s
+            || keys.weighted_g1.len() != weighted_layout.len()
+            || keys.weighted_shifted_g1.len() != weighted_layout.len()
             || keys.nonpublic_queries.len() != layout.len()
             || keys.free_public_queries.len() != free_count
         {
@@ -108,6 +122,7 @@ impl ProverCrs {
             keys,
             shape,
             layout,
+            weighted_layout,
         })
     }
 }

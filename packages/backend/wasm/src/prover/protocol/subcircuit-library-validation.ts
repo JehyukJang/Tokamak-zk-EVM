@@ -70,6 +70,29 @@ export function retainedNonpublicWires(info: ProverSubcircuitInfo): readonly num
   ];
 }
 
+/**
+ * CRS row order for weighted selection commitments.
+ *
+ * The result is derived from the union of producer-declared real local-wire
+ * ranges across the compiled library. It omits only local-wire padding; a
+ * retained wire remains present even when a particular witness assigns zero.
+ */
+export function retainedWeightedWires(
+  setup: SetupParams,
+  subcircuits: readonly ProverSubcircuitInfo[],
+): readonly number[] {
+  let wiringEnd = 0;
+  let internalEnd = setup.m_b;
+  for (const info of subcircuits) {
+    wiringEnd = Math.max(wiringEnd, wireRange(info.Wiring_idx).end);
+    internalEnd = Math.max(internalEnd, wireRange(info.Internal_idx).end);
+  }
+  return [
+    ...range(0, wiringEnd),
+    ...range(setup.m_b, internalEnd),
+  ];
+}
+
 function contains(rangeValue: WireRange, index: number): boolean {
   return index >= rangeValue.start && index < rangeValue.end;
 }

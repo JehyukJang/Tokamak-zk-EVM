@@ -4,7 +4,10 @@ import type { FieldElement } from "../runtime/field/field-types.js";
 import type { G1Point } from "../runtime/group/group.js";
 import { coalesceAffineMsmChunks, msmAffineMontgomeryChunks, type AffineMontgomeryMsmChunk } from "../runtime/group/affine-msm.js";
 import { PublicWireLayout } from "../prover/protocol/public-wire-layout.js";
-import { retainedNonpublicWires } from "../prover/protocol/subcircuit-library-validation.js";
+import {
+  retainedNonpublicWires,
+  retainedWeightedWires,
+} from "../prover/protocol/subcircuit-library-validation.js";
 import type { ProverPlacementVariables, ProverSubcircuitInfo } from "../prover/protocol/witness.js";
 import { placementCount, placementSubcircuitId, placementVariableAt, placementVariableCount } from "../prover/protocol/witness.js";
 import { commitDenseUnivariatePolynomial, commitSharedCoefficients } from "./commitments.js";
@@ -72,15 +75,16 @@ export async function proveUnivariateReference(runtime: CurveRuntime, input: Uni
   const cH = add(await c(crs.sxi, vHat), await c(crs.spsi, bHat));
   const cO = await buildBinding(runtime, input, slots, layout, masks, selectionMask);
   const roots = await SelectedRoots.create(field, setup, input.selector);
-  const witness = field.createZeroBuffer(setup.m * setup.s);
-  for(let j = 0; j < setup.m; j++)
+  const weightedWires = retainedWeightedWires(setup, input.subcircuitInfos);
+  const witness = field.createZeroBuffer(weightedWires.length * setup.s);
+  for(const [row, j] of weightedWires.entries())
     for(let i = 0; i < slots.length; i++) {
       const slot = slots[i];
       if(slot && j < field.bufferElementCount(slot.values))
-        field.writeBufferElement(witness, j * setup.s + i, field.readBufferElement(slot.values, j));
+        field.writeBufferElement(witness, row * setup.s + i, field.readBufferElement(slot.values, j));
     }
   const qSelection = await roots.quotients(witness);
-  if(crs.weighted.elementCount !== setup.m * setup.s || crs.weightedShifted.elementCount !== setup.m * setup.s)
+  if(crs.weighted.elementCount !== field.bufferElementCount(witness) || crs.weightedShifted.elementCount !== field.bufferElementCount(witness))
     throw new Error("Weighted query cardinality mismatch.");
   const [weightedQ, shiftedQ] = await commitSharedCoefficients(runtime, crs.weighted, crs.weightedShifted, qSelection, input.chunkPoints);
   const dQ = add(weightedQ, runtime.G1.mulScalar(await c(crs.s0, roots.polynomial), selectionMask));

@@ -12,6 +12,7 @@ import {
 import { arithmeticIndex, connectionIndex, deriveUnivariateDomainShape } from "../../../src/univariate/domain.js";
 import type { SetupParams } from "../../../src/artifacts/setup/setup-params.js";
 import type { ProverSubcircuitInfo } from "../../../src/prover/protocol/witness.js";
+import { retainedWeightedWires } from "../../../src/prover/protocol/subcircuit-library-validation.js";
 
 const runtime = await createCurveRuntime();
 try {
@@ -35,6 +36,17 @@ try {
   });
   const witnesses = [witness(0, [1, 5, 0, 0]), witness(1, [1, 7, 0, 0])];
   const domain = deriveUnivariateDomainShape(field, setup);
+  assert.deepEqual(
+    retainedWeightedWires(
+      { ...setup, m: 8, m_b: 4 },
+      [
+        { ...infos[0]!, Nwires: 8, Wiring_idx: [0, 2], Internal_idx: [4, 3] },
+        { ...infos[1]!, Nwires: 8, Wiring_idx: [0, 3], Internal_idx: [4, 1] },
+      ],
+    ),
+    [0, 1, 2, 4, 5, 6],
+    "weighted CRS rows retain real ranges and omit only declared padding",
+  );
   const maps = await buildWitnessMaps(field, domain, setup, selector, witnesses, subcircuits);
   assert(field.eq(field.readBufferElement(maps.uA.evaluations, arithmeticIndex(domain, setup, 0, 0, 0)), field.one));
   assert(field.eq(field.readBufferElement(maps.uA.evaluations, arithmeticIndex(domain, setup, 0, 0, 1)), field.fromBigInt(5n)));

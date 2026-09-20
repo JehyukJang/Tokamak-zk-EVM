@@ -127,8 +127,8 @@ mod tests {
             },
             ProverKeysRkyv {
                 schema_id: UNIVARIATE_CRS_SCHEMA_ID.into(),
-                weighted_g1: vec![g1; 8],
-                weighted_shifted_g1: vec![g1; 8],
+                weighted_g1: vec![g1; 3],
+                weighted_shifted_g1: vec![g1; 3],
                 free_public_queries: vec![g1],
                 nonpublic_queries: vec![g1; 2],
                 mask_u: [g1; 2],
