@@ -67,6 +67,20 @@ impl Drop for StagedUnivariateCrs {
 }
 
 pub(crate) fn create_univariate_stage(active_output: &Path) -> io::Result<StagedUnivariateCrs> {
+    // Activation atomically replaces an active symlink.  Never let that rename
+    // replace a caller-owned regular file or directory at the requested output
+    // path: setup must fail before it creates a staged generation in that case.
+    if let Ok(metadata) = fs::symlink_metadata(active_output) {
+        if !metadata.file_type().is_symlink() {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!(
+                    "CRS output path is occupied by a non-symlink: {}",
+                    active_output.display()
+                ),
+            ));
+        }
+    }
     let parent = active_output.parent().filter(|path| !path.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
     let generations_directory = parent.join("generations");

@@ -126,6 +126,29 @@ no codec or consumer decompression path was added. The detailed scan and
 timing data are in
 [the cheap-restoration evidence file](evidence/p18-cheap-restoration-scan.json).
 
+## P18 compact-CRS qualification — 2026-09-20
+
+The compact weighted layout is qualified end to end.  The CRS stores 331,520
+points in each weighted family, in canonical retained-row order, rather than
+the former `m * s = 524,288` points.  Native and browser provers construct
+their scalar vectors directly in that order; neither reconstructs a dense
+weighted image.
+
+Three release native CPU proof runs took 3.465 s, 3.440 s, and 3.445 s
+(mean 3.450 s).  Three Chromium runs over the converted compact CRS took
+17.672 s, 17.860 s, and 18.044 s for proving (mean 17.859 s); each run also
+completed preprocess and verification successfully.  The direct trusted setup
+release runs generated the four role archives in 11.264 s, 11.154 s, and
+11.400 s.  The active four-file CRS, including provenance, is 913.627 MiB.
+
+A fresh local-QAP synthetic two-contribution MPC fixture atomically emitted
+the same four-file compact format.  Its artifact digests matched provenance,
+and native preprocess -> prove -> verify on that MPC output returned `true`.
+This is a development qualification only: it does not authenticate a Filecoin
+source, perform a public ceremony, or publish a CRS.  The complete point
+counts, timings, artifact sizes, and cross-runtime checks are in
+[the P18 qualification evidence](evidence/p18-compact-qualification.json).
+
 ## WASM optimization execution results — 2026-09-13–14
 
 ### Combined six-candidate remeasurement — retained, 2026-09-14
