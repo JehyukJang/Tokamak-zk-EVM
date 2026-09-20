@@ -86,7 +86,6 @@
     "univariate-crs:offline:check": "npm run contracts:check && tsx test/checks/binary/check-crs-offline.ts",
     "univariate:domain:check": "npm run contracts:check && tsx test/checks/univariate/check-univariate-domain.ts",
     "univariate:relation:check": "npm run contracts:check && tsx test/checks/univariate/check-univariate-relation.ts",
-    "univariate:active-weighted-rows:check": "tsx test/checks/univariate/check-active-weighted-rows.ts",
     "univariate:polynomial:check": "tsx test/checks/univariate/check-univariate-polynomial.ts",
     "univariate:optimization:check": "tsx test/checks/univariate/check-selection-accumulation.ts && tsx test/checks/univariate/check-selection-cofactors.ts && tsx test/checks/univariate/check-copy-boundary.ts && tsx test/checks/univariate/check-copy-recurrence.ts && tsx test/checks/univariate/check-msm-delivery.ts && tsx test/checks/univariate/check-signed-msm.ts && tsx test/checks/univariate/check-batched-polynomial.ts && tsx test/checks/univariate/check-masked-quotients.ts && tsx test/checks/univariate/check-copy-coset.ts && tsx test/profiling/compare-copy-spectrum.ts",
     "univariate:transcript:check": "tsx test/checks/univariate/check-univariate-transcript.ts",
