@@ -9,8 +9,8 @@ use crate::frontend_artifacts::{
 use crate::univariate_crs::{UnivariateCrsShape, UNIVARIATE_CRS_SCHEMA_ID};
 use crate::univariate_relation::{NormalizedUnivariateSubcircuit, UnivariateSubcircuit};
 use backend_univariate_crs_interface::{
-    NonpublicQueryLayout, PreprocessKeysRkyv, ProverKeysRkyv, TauSequenceRkyv, UnivariateG1Rkyv,
-    UnivariateG2Rkyv, VerifierKeysRkyv,
+    NonpublicQueryLayout, PreprocessKeysRkyv, ProverKeysRkyv, TauSequenceRkyv,
+    UnivariateG1Rkyv, UnivariateG2Rkyv, VerifierKeysRkyv, WeightedQueryLayout,
 };
 use icicle_bls12_381::curve::{
     G1Affine, G1Projective, G2Affine, G2Projective, ScalarCfg, ScalarField,
@@ -186,6 +186,15 @@ pub fn generate_normalized(
         .map(|circuit| circuit.retained_nonpublic_wires())
         .collect::<Vec<_>>();
     let query_layout = NonpublicQueryLayout::from_retained_wires(setup.s, retained_wires)?;
+    let weighted_layout = WeightedQueryLayout::from_normalized_ranges(
+        setup.s,
+        setup.m,
+        setup.m_b,
+        library
+            .subcircuits
+            .iter()
+            .map(|circuit| (circuit.wiring_range().len(), circuit.internal_range().len())),
+    )?;
     let row_len = query_layout.len() / setup.s;
     let mut nonpublic = vec![ScalarField::zero(); query_layout.len()];
     measured!("nonpublic.scalar_labels", {
@@ -259,7 +268,17 @@ pub fn generate_normalized(
     drop(public_span);
 
     assemble_crs(
-        &shape, setup.s, setup.t, one, secret, g1, g2, free, fixed, nonpublic,
+        &shape,
+        setup.s,
+        setup.t,
+        Some(&weighted_layout),
+        one,
+        secret,
+        g1,
+        g2,
+        free,
+        fixed,
+        nonpublic,
     )
 }
 
@@ -418,6 +437,7 @@ pub fn generate(
         &shape,
         setup.s_max,
         setup.t,
+        None,
         one,
         secret,
         g1,
@@ -433,6 +453,7 @@ fn assemble_crs(
     shape: &UnivariateCrsShape,
     placement_capacity: usize,
     subcircuit_capacity: usize,
+    weighted_layout: Option<&WeightedQueryLayout>,
     one: ScalarField,
     secret: &SetupScalars,
     g1: G1Affine,
@@ -446,13 +467,16 @@ fn assemble_crs(
     let tau_s = secret.tau.pow(p + 1);
     let delta_inv = secret.delta.inv();
     let powers = powers(secret.tau, p * 2 + 1);
-    let weighted = secret
-        .weights
+    let weighted_rows = weighted_layout
+        .map(|layout| layout.retained_wires().collect::<Vec<_>>())
+        .unwrap_or_else(|| (0..secret.weights.len()).collect());
+    let weighted = weighted_rows
         .par_iter()
-        .flat_map_iter(|r| {
+        .flat_map_iter(|&j| {
+            let r = secret.weights[j];
             powers[..placement_capacity]
                 .iter()
-                .map(move |power| *r * *power)
+                .map(move |power| r * *power)
         })
         .collect::<Vec<_>>();
     let shifted = weighted.par_iter().map(|v| *v * tau_k).collect::<Vec<_>>();

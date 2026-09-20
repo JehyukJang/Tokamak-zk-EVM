@@ -9,6 +9,8 @@ pub use rkyv as archive;
 
 mod nonpublic_queries;
 pub use nonpublic_queries::NonpublicQueryLayout;
+mod weighted_queries;
+pub use weighted_queries::WeightedQueryLayout;
 
 // Current role records are generated from the common JSON artifact contract.
 // NonpublicQueryLayout selects stored coordinates without expanding omitted

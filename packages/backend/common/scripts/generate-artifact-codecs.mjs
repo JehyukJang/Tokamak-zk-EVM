@@ -88,7 +88,7 @@ ${fields.map(f => `  if (record.${f.name}.length !== ${f.width}) throw new Error
 `;
 }
 const crs = banner + "use super::{UnivariateG1Rkyv, UnivariateG2Rkyv};\n" + Object.entries(contract.crs.records).map(([name, fields]) =>
-    `#[derive(Debug, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]\npub struct ${name} {\n${fields.map(([f, type]) => `pub ${f}: ${type},`).join("\n")}\n}`
+    `#[derive(Debug, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]\npub struct ${name} {\n${fields.map(([f, type]) => `    pub ${f}: ${type},`).join("\n")}\n}`
   ).join("\n") + "\n";
 for (const [relative, contents] of [
   ["interface/univariate-crs/src/roles.rs", crs],
