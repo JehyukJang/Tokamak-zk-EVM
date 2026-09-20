@@ -50,14 +50,13 @@ The format is based on Keep a Changelog.
   `await createCircuitGenerator(synthesizer)`. The factory no longer accepts
   WASM buffers and returns a `CircuitGenerationResult` containing placements
   and circuit artifacts directly.
-- Native trusted setup now emits `tau_sequence.rkyv`, `prover_keys.rkyv`, and
-  `verifier_keys.rkyv` instead of one monolithic CRS archive. Preprocess uses
-  the reusable tau sequence, prove combines it with prover-only keys, and
-  proof verification uses verifier-only keys. No separate preprocess key file
-  is needed, and verifier keys do not carry preprocessing sequences. The JSON
-  CRS projection and monolithic browser CRS binaries are retired; browser
-  integrations convert the three-file directory into the existing
-  manifest-plus-chunk interface.
+- Native trusted setup now emits `tau_sequence.rkyv`, `prover_keys.rkyv`,
+  `preprocess_keys.rkyv`, and `verifier_keys.rkyv` instead of one monolithic
+  CRS archive. Prove combines the reusable tau sequence with prover-only keys;
+  preprocess consumes its dedicated preprocess keys; and online verification
+  uses verifier-only keys. The JSON CRS projection and monolithic browser CRS
+  binaries are retired; browser integrations convert the four-file directory
+  into the existing manifest-plus-chunk interface.
 
 ### High-Level Implementation Summary
 
