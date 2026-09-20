@@ -1376,14 +1376,13 @@ each at this domain plus worker copies; it does not introduce another worker
 pool. Peak memory was not sampled.
 [Whole-call evidence](evidence/wasm-w3-copy-recurrence.json).
 
-### W4: reader experiments — sparse partition accepted; cache/view rejected
+### W4: retired aggregate-reader experiment — historical only
 
-The independent `compare-crs-reads.mjs` trace replays 207 actual binding reads
-and a separate nine-read repeated-sequence workload. Every variant returned
-the same post-timing output SHA. Positional local file reads are not browser
-fetch timings. A single-chunk subarray/view did not improve these samples
-(binding 50.071 ms mean versus 47.656 ms copy control) and may retain a large
-backing buffer for a small result; it was not promoted.
+The former `compare-crs-reads.mjs` trace and its aggregate/global-wire fixture
+were removed with P18.0.4. The measurements below are retained solely as
+historical evidence for the superseded reader; they are not an executable
+benchmark, current input format, or decision input for the normalized local-grid
+protocol. Positional local file reads were never browser-fetch timings.
 
 Sixteen retained chunks reduced repeated-sequence reads from 301,988,736 to
 100,662,912 bytes, but did not reduce first-touch binding overfetch. Browser
