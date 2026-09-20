@@ -26,7 +26,6 @@ export const POLICY_SURFACES = Object.freeze([
   '.github/workflows/build-release.yml',
   '.github/workflows/publish-tokamak-zk-evm.yml',
   'packages/backend/.vscode/launch.json',
-  'packages/backend/wasm/tools/rkyv-decoder-wasm/scripts/build.mjs',
   'packages/backend/wasm/test/checks/fixtures/check-native-verifier-fixture.ts',
   'packages/cli/src/runtime/native.ts',
 ]);
@@ -155,11 +154,6 @@ export function collectReleaseReproducibilityFailures(
     }
   }
 
-  requirePattern(
-    'packages/backend/wasm/tools/rkyv-decoder-wasm/scripts/build.mjs',
-    /run\(cargo,\s*\[\s*'build',\s*'--locked'/su,
-    'the decoder workspace build must be locked',
-  );
   requirePattern(
     'packages/backend/wasm/test/checks/fixtures/check-native-verifier-fixture.ts',
     /const args = \[\s*'run',\s*'--locked'/su,

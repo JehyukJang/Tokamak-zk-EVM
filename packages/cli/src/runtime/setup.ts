@@ -290,16 +290,15 @@ async function activateCrsGeneration(
       `Existing setup output symlink is not managed by this CLI installation: ${setupOutputDir} -> ${outputState.target}`,
     );
   }
+  if (outputState.kind === 'directory') {
+    throw new Error(
+      `Existing setup output uses the retired directory layout: ${setupOutputDir}. Remove it before installing the current CRS layout.`,
+    );
+  }
   const temporaryLink = `${setupOutputDir}.next`;
   await removeManagedTemporarySetupLink(temporaryLink, generationsDirectory);
   await fs.symlink(path.relative(path.dirname(setupOutputDir), nextGenerationDirectory), temporaryLink, 'dir');
   let temporaryLinkCreated = true;
-
-  let migratedLegacyDirectory: string | undefined;
-  if (outputState.kind === 'directory') {
-    migratedLegacyDirectory = path.join(generationsDirectory, `legacy-${Date.now()}-${process.pid}`);
-    await fs.rename(setupOutputDir, migratedLegacyDirectory);
-  }
 
   try {
     await fs.rename(temporaryLink, setupOutputDir);
@@ -308,13 +307,10 @@ async function activateCrsGeneration(
     if (temporaryLinkCreated) {
       await removeManagedTemporarySetupLink(temporaryLink, generationsDirectory);
     }
-    if (migratedLegacyDirectory !== undefined) {
-      await fs.rename(migratedLegacyDirectory, setupOutputDir);
-    }
     throw error;
   }
 
-  return outputState.kind === 'symlink' ? outputState.targetGenerationDirectory : migratedLegacyDirectory;
+  return outputState.kind === 'symlink' ? outputState.targetGenerationDirectory : undefined;
 }
 
 async function removeManagedTemporarySetupLink(

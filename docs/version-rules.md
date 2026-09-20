@@ -25,7 +25,6 @@ The synchronized package version applies to:
 - `packages/frontend/synthesizer/node-cli/package.json`.
 - `packages/frontend/synthesizer/web-app/package.json`.
 - `packages/backend/wasm/package.json`.
-- `packages/backend/wasm/tools/rkyv-decoder-wasm/package.json`.
 - `packages/backend/wasm/src/version.ts`.
 - `packages/backend/Cargo.toml` workspace package version.
 - Backend workspace packages such as `libs`, `mpc-setup`, `preprocess`, `prove`, `trusted-setup`, and `verify`.

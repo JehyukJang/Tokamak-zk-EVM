@@ -9,7 +9,6 @@ members = [
     "rust/prove",
     "rust/verify",
     "rust/preprocess",
-    "wasm/tools/rkyv-decoder-wasm",
     "wasm/tools/univariate-crs-chunker",
 ]
 

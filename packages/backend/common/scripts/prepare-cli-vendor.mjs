@@ -92,12 +92,10 @@ async function rewriteFile(filePath, replacements) {
 
 async function makeRuntimeOnlyWorkspace(output) {
   await rewriteFile(path.join(output, 'Cargo.toml'), [[
-    'members = [\n    "common/interface",\n    "common/interface/univariate-crs",\n    "rust/libs",\n    "rust/setup/trusted-setup",\n    "rust/setup/mpc-setup",\n    "rust/prove",\n    "rust/verify",\n    "rust/preprocess",\n    "wasm/tools/rkyv-decoder-wasm",\n    "wasm/tools/univariate-crs-chunker",\n]',
+    'members = [\n    "common/interface",\n    "common/interface/univariate-crs",\n    "rust/libs",\n    "rust/setup/trusted-setup",\n    "rust/setup/mpc-setup",\n    "rust/prove",\n    "rust/verify",\n    "rust/preprocess",\n    "wasm/tools/univariate-crs-chunker",\n]',
     'members = [\n    "common/interface",\n    "common/interface/univariate-crs",\n    "rust/libs",\n    "rust/prove",\n    "rust/verify",\n    "rust/preprocess",\n]',
   ]]);
   await rewriteFile(path.join(output, 'rust', 'libs', 'Cargo.toml'), [
-    ['\n[[bench]]\nname = "outer_product_bench"\nharness = false\n', '\n'],
-    ['\n[[bench]]\nname = "matrix_matrix_mul_bench"\nharness = false\n', '\n'],
     ['\ncriterion = "0.3"\n', '\n'],
   ]);
   await rewriteFile(path.join(output, 'rust', 'prove', 'Cargo.toml'), [[

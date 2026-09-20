@@ -5,7 +5,6 @@ export const SOURCE_PACKAGE_VERSION_TARGETS = Object.freeze([
   'packages/frontend/synthesizer/node-cli/package.json',
   'packages/frontend/synthesizer/web-app/package.json',
   'packages/backend/wasm/package.json',
-  'packages/backend/wasm/tools/rkyv-decoder-wasm/package.json',
 ]);
 
 export const SYNCHRONIZED_DEPENDENCY_TARGETS = Object.freeze([

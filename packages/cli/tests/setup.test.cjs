@@ -781,7 +781,7 @@ test('installer ingress rejects every build-metadata contract violation', async 
   }
 });
 
-test('migrates a legacy setup output directory to one active CRS generation', async () => {
+test('rejects a legacy setup output directory', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-'));
   try {
     const extractedDir = path.join(tempDir, 'archive');
@@ -791,19 +791,17 @@ test('migrates a legacy setup output directory to one active CRS generation', as
     await fs.writeFile(path.join(setupOutputDir, 'README.txt'), 'legacy setup output\n', 'utf8');
     await writeCrsArchiveFixture(extractedDir, '2.1.5', 'first');
 
-    await installValidatedCrsGeneration(
-      extractedDir,
-      path.join(extractedDir, 'crs_provenance.json'),
-      setupOutputDir,
-      '2.1',
+    await assert.rejects(
+      installValidatedCrsGeneration(
+        extractedDir,
+        path.join(extractedDir, 'crs_provenance.json'),
+        setupOutputDir,
+        '2.1',
+      ),
+      /retired directory layout/,
     );
-
-    assert.equal((await fs.lstat(setupOutputDir)).isSymbolicLink(), true);
-    const activeGeneration = await generationTarget(setupOutputDir);
-    assert.equal(await fs.readFile(path.join(activeGeneration, 'prover_keys.rkyv'), 'utf8'), 'first combined sigma');
-    await assert.rejects(fs.access(path.join(activeGeneration, 'README.txt')));
-    const generations = await fs.readdir(path.join(tempDir, 'resource', 'setup', 'generations'));
-    assert.deepEqual(generations, [path.basename(activeGeneration)]);
+    assert.equal((await fs.lstat(setupOutputDir)).isDirectory(), true);
+    assert.equal(await fs.readFile(path.join(setupOutputDir, 'README.txt'), 'utf8'), 'legacy setup output\n');
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }

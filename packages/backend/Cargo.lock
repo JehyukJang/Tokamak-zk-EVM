@@ -291,15 +291,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "backend-wasm-rkyv-decoder"
-version = "0.0.0"
-dependencies = [
- "backend-interface",
- "rkyv 0.7.46",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "backend-wasm-univariate-crs-chunker"
 version = "2.1.5"
 dependencies = [

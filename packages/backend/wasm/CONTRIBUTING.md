@@ -41,14 +41,12 @@ packages/backend/wasm/
     runtime/
     verifier/
   test/
-  tools/
-    rkyv-decoder-wasm/
   tmp/
 ```
 
 - `src/artifacts`: binary containers, decoded views, and versioned specs.
 - `src/converter`: public converter API, material conversion, optional
-  inspection and validation, and the prover CRS Worker.
+  inspection, and validation.
 - `src/generated`: shared generated setup and dependency-version constants.
 - `src/preprocess`: independent preprocess lifecycle, permutation-polynomial
   construction, and verifier-preprocess commitment output.
@@ -58,7 +56,6 @@ packages/backend/wasm/
 - `src/verifier`: public verifier lifecycle and verification protocol math.
 - `scripts`: generated-source, fixture-copy, and package-maintenance commands.
 - `test`: checks, browser entry points, diagnostics, and test-only references.
-- `tools/rkyv-decoder-wasm`: Rust/WASM decoder source built into the converter.
 - `tmp`: ignored planning, benchmark, audit, and other temporary output.
 
 ## Prerequisites
@@ -66,19 +63,11 @@ packages/backend/wasm/
 - Node.js 20 or newer
 - npm
 - Rust and Cargo
-- the `wasm32-unknown-unknown` Rust target
-- `wasm-bindgen-cli` matching the decoder crate's wasm-bindgen version
 
 Install JavaScript dependencies from this package directory:
 
 ```sh
 npm install
-```
-
-Check the Rust/WASM build prerequisites:
-
-```sh
-npm run rkyv-decoder:check-tools
 ```
 
 ## Generated build inputs
@@ -161,8 +150,7 @@ the repository's
 
 1. Run `npm run version:sync -- X.Y.Z` at the repository root. This updates
    the tracked package manifests, lockfile declarations, source version
-   constants, and private decoder package together with the other synchronized
-   release surfaces.
+   constants together with the other synchronized release surfaces.
 2. Before foundation publication, run
    `npm run version:prepublication:check` at the repository root. This check
    does not require an npm resolution for the unpublished foundation package.
