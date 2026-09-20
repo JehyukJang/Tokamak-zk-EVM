@@ -1132,6 +1132,7 @@ mod tests {
                 Internal_idx: [4, 0],
                 bufferDirection: Some(BufferDirection::Out),
                 publicPhase: Some("free".into()),
+                logicalInterface: None,
             })
             .collect::<Vec<_>>()
             .into_boxed_slice();

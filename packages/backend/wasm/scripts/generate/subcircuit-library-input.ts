@@ -7,6 +7,7 @@ const { setupParams: setupContract, subcircuitInfo: subcircuitContract } =
 
 export function parseSetupParams(raw: unknown): SetupParams {
   const source = requireRecord(raw, setupContract.fileName);
+  requireOnlyKeys(source, setupContract.requiredFields, setupContract.fileName);
   const fields = setupContract.fields;
   return {
     n: requireNonNegativeInteger(source[fields.constraintCapacity], fieldLabel(setupContract.fileName, fields.constraintCapacity)),
@@ -26,6 +27,11 @@ export function parseProverSubcircuitInfos(raw: unknown): readonly ProverSubcirc
   return raw.map((entry, index) => {
     const entryLabel = `${subcircuitContract.fileName}[${index}]`;
     const source = requireRecord(entry, entryLabel);
+    requireOnlyKeys(
+      source,
+      [...subcircuitContract.requiredFields, ...subcircuitContract.optionalFields],
+      entryLabel,
+    );
     const fields = subcircuitContract.fields;
     const id = requireNonNegativeInteger(source.id, `${entryLabel}.id`);
     if (id !== index) throw new Error(`${entryLabel}.id must equal its array index.`);
@@ -53,6 +59,7 @@ function parsePublicWirePhases(value: unknown, label: string): SetupParams["publ
   if (!Array.isArray(value)) throw new Error(`${label} must be an array.`);
   return value.map((entry, index) => {
     const phase = requireRecord(entry, `${label}[${index}]`);
+    requireOnlyKeys(phase, ["name", "region", "subcircuitIds"], `${label}[${index}]`);
     if (phase.region !== "free" && phase.region !== "fixed") {
       throw new Error(`${label}[${index}].region must be "free" or "fixed".`);
     }
@@ -90,6 +97,18 @@ function requireRecord(value: unknown, label: string): Record<string, unknown> {
     throw new Error(`${label} must be an object.`);
   }
   return value as Record<string, unknown>;
+}
+
+function requireOnlyKeys(
+  value: Record<string, unknown>,
+  allowedKeys: readonly string[],
+  label: string,
+): void {
+  for (const key of Object.keys(value)) {
+    if (!allowedKeys.includes(key)) {
+      throw new Error(`${label} contains unsupported field ${key}.`);
+    }
+  }
 }
 
 function requireNonEmptyString(value: unknown, label: string): string {

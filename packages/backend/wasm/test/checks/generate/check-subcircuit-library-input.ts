@@ -15,7 +15,6 @@ const setup = {
   t: 2,
   s: 8,
   publicWirePhases: [{ name: "output", region: "free", subcircuitIds: [0] }],
-  futureFrontendOnlyField: { enabled: true },
 };
 
 const subcircuit = {
@@ -35,9 +34,6 @@ const subcircuit = {
 };
 
 const projectedSetup = parseSetupParams(setup);
-if (hasOwn(projectedSetup, "futureFrontendOnlyField")) {
-  throw new Error("Setup projection must omit frontend-owned extension fields.");
-}
 if (projectedSetup.m_b !== setup.m_b) {
   throw new Error("Setup projection changed a required field.");
 }
@@ -76,8 +72,23 @@ expectFailure(
   "Setup decoder must reject malformed required fields.",
 );
 expectFailure(
+  () => parseSetupParams({ ...setup, retiredAggregateInterfaceCapacity: 8 }),
+  "Setup decoder must reject fields outside the current normalized contract.",
+);
+expectFailure(
+  () => parseSetupParams({
+    ...setup,
+    publicWirePhases: [{ ...setup.publicWirePhases[0], globalWireOffset: 0 }],
+  }),
+  "Setup decoder must reject fields outside the current public-phase contract.",
+);
+expectFailure(
   () => parseProverSubcircuitInfos([{ ...subcircuit, Internal_idx: undefined }]),
   "Subcircuit decoder must reject missing required fields.",
+);
+expectFailure(
+  () => parseProverSubcircuitInfos([{ ...subcircuit, flattenMap: [] }]),
+  "Subcircuit decoder must reject fields outside the current normalized contract.",
 );
 expectFailure(
   () => validateProverSubcircuitLibrary({ ...projectedSetup, n: 12 }, projectedSubcircuits),

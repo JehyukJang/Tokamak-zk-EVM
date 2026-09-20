@@ -88,6 +88,7 @@ fn fixture() -> (NormalizedSubcircuitLibrary, PreprocessKeysRkyv, Instance) {
             Internal_idx: [4, 1],
             bufferDirection: Some(BufferDirection::Out),
             publicPhase: Some(if id == 0 { "free" } else { "fixed" }.into()),
+            logicalInterface: None,
         })
         .collect::<Vec<_>>()
         .into_boxed_slice();

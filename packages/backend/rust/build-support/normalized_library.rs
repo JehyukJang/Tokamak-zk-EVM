@@ -15,6 +15,7 @@ pub enum PublicRegion {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct PublicWirePhase {
     pub name: String,
     pub region: PublicRegion,
@@ -22,6 +23,7 @@ pub struct PublicWirePhase {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct NormalizedSetupParams {
     pub n: usize,
     pub m: usize,
@@ -41,6 +43,7 @@ pub enum BufferDirection {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[allow(non_snake_case)]
+#[serde(deny_unknown_fields)]
 pub struct NormalizedSubcircuitInfo {
     pub id: usize,
     pub name: String,
@@ -56,6 +59,10 @@ pub struct NormalizedSubcircuitInfo {
     pub bufferDirection: Option<BufferDirection>,
     #[serde(default)]
     pub publicPhase: Option<String>,
+    // This producer-owned extension is intentionally admitted but not interpreted by the
+    // proving backend. Its schema and semantics belong to the qap-compiler/synthesizer.
+    #[serde(default)]
+    pub logicalInterface: Option<serde_json::Value>,
 }
 
 impl NormalizedSubcircuitInfo {
@@ -468,5 +475,37 @@ mod tests {
         assert!(retained.contains(&0));
         assert!(!retained.contains(&circuit.wiring_range().end));
         assert!(!retained.contains(&circuit.internal_range().end));
+    }
+
+    #[test]
+    fn rejects_retired_aggregate_setup_fields() {
+        let setup = r#"{
+            "n": 16,
+            "m": 8,
+            "m_b": 8,
+            "t": 2,
+            "s": 8,
+            "publicWirePhases": [],
+            "globalWireList": []
+        }"#;
+        assert!(serde_json::from_str::<NormalizedSetupParams>(setup).is_err());
+
+        let subcircuit = r#"{
+            "id": 0,
+            "name": "buffer",
+            "Nwires": 8,
+            "NrealWires": 2,
+            "Nconsts": 1,
+            "Out_idx": [1, 1],
+            "In_idx": [2, 0],
+            "Wiring_idx": [0, 2],
+            "Public_idx": [1, 1],
+            "Internal_idx": [8, 0],
+            "bufferDirection": "out",
+            "publicPhase": "free",
+            "logicalInterface": { "inputs": [], "outputs": [] },
+            "flattenMap": [0, 1]
+        }"#;
+        assert!(serde_json::from_str::<NormalizedSubcircuitInfo>(subcircuit).is_err());
     }
 }

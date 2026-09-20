@@ -31,6 +31,36 @@ const getRequiredNumber = (record: Record<string, unknown>, key: string): number
   return value;
 };
 
+const SETUP_PARAMS_ALLOWED_KEYS = [...SETUP_PARAMS_KEYS, 'publicWirePhases'] as const;
+const SUBCIRCUIT_INFO_ALLOWED_KEYS = [
+  'id',
+  'name',
+  'Nwires',
+  'NrealWires',
+  'Nconsts',
+  'Out_idx',
+  'In_idx',
+  'Wiring_idx',
+  'Public_idx',
+  'Internal_idx',
+  'bufferDirection',
+  'publicPhase',
+  'logicalInterface',
+] as const;
+const PUBLIC_WIRE_PHASE_ALLOWED_KEYS = ['name', 'region', 'subcircuitIds'] as const;
+
+function requireOnlyKeys(
+  record: Record<string, unknown>,
+  allowedKeys: readonly string[],
+  label: string,
+): void {
+  for (const key of Object.keys(record)) {
+    if (!allowedKeys.includes(key)) {
+      throw new Error(`Unexpected key in ${label}: ${key}`);
+    }
+  }
+}
+
 export function parseSetupParams(value: unknown): SetupParams {
   if (!isObjectRecord(value)) {
     throw new Error('Invalid shape for setupParams.json: expected object');
@@ -40,6 +70,7 @@ export function parseSetupParams(value: unknown): SetupParams {
     || !Array.isArray(value.publicWirePhases)) {
     throw new Error('Invalid values in setupParams.json: all keys must be finite numbers');
   }
+  requireOnlyKeys(value, SETUP_PARAMS_ALLOWED_KEYS, 'setupParams.json');
 
   const publicWirePhases = value.publicWirePhases.map((phase) => {
     if (!isObjectRecord(phase) || typeof phase.name !== 'string'
@@ -47,6 +78,7 @@ export function parseSetupParams(value: unknown): SetupParams {
       || !isNumberArray(phase.subcircuitIds)) {
       throw new Error('Invalid public wire phase in setupParams.json');
     }
+    requireOnlyKeys(phase, PUBLIC_WIRE_PHASE_ALLOWED_KEYS, 'setupParams.json public wire phase');
     return {
       name: phase.name,
       region: phase.region,
@@ -102,6 +134,7 @@ export function parseSubcircuitInfo(value: unknown): SubcircuitInfo {
     if (!isObjectRecord(entry)) {
       throw new Error('Invalid item in subcircuitInfo.json: expected object');
     }
+    requireOnlyKeys(entry, SUBCIRCUIT_INFO_ALLOWED_KEYS, 'subcircuitInfo.json');
 
     const id = entry.id;
     const name = entry.name;
