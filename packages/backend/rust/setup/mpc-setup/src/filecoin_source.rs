@@ -7,7 +7,7 @@ use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::{BigInteger, PrimeField, UniformRand, Zero};
 use backend_univariate_crs_interface::{TauSequenceRkyv, UnivariateG1Rkyv, UnivariateG2Rkyv};
 use blake2::{Blake2b, Digest as BlakeDigest};
-use libs::{frontend_artifacts::SetupParams, univariate_crs::UnivariateCrsShape};
+use libs::univariate_crs::UnivariateCrsShape;
 use rayon::prelude::*;
 use std::{
     fs::File,
@@ -80,18 +80,16 @@ impl SourcePin<'_> {
     }
 }
 
-// Reuse the same capacity calculation as trusted setup; do not accept an
-// initializer's P. Participant-side npm resolution supplies these parameters.
-fn required_capacity(params: &SetupParams, pin: &SourcePin<'_>) -> Result<usize> {
-    let shape = UnivariateCrsShape::from_setup_params(params)
-        .map_err(|e| invalid(format!("invalid phase 2 library parameters: {e}")))?;
+// Reuse the already-admitted normalized library shape. Participants do not
+// reinterpret aggregate setup metadata or accept a coordinator-supplied P.
+fn required_capacity(shape: &UnivariateCrsShape, pin: &SourcePin<'_>) -> Result<usize> {
     let p = shape.minimum_capacity[1];
     pin.ranges(p)?;
     Ok(p)
 }
 
-pub(crate) fn prepare_local(source: &Path, params: &SetupParams) -> Result<TauSequenceRkyv> {
-    let p = required_capacity(params, &FILECOIN)?;
+pub(crate) fn prepare_local(source: &Path, shape: &UnivariateCrsShape) -> Result<TauSequenceRkyv> {
+    let p = required_capacity(shape, &FILECOIN)?;
     let file = File::open(source)?;
     if file.metadata()?.len() != FILECOIN.byte_len() {
         return Err(invalid("Filecoin source has the wrong byte length"));
@@ -99,8 +97,8 @@ pub(crate) fn prepare_local(source: &Path, params: &SetupParams) -> Result<TauSe
     prepare_stream(file, p, &FILECOIN)
 }
 
-pub(crate) fn prepare_download(params: &SetupParams) -> Result<TauSequenceRkyv> {
-    let p = required_capacity(params, &FILECOIN)?;
+pub(crate) fn prepare_download(shape: &UnivariateCrsShape) -> Result<TauSequenceRkyv> {
+    let p = required_capacity(shape, &FILECOIN)?;
     let client = reqwest::blocking::Client::builder()
         .https_only(true)
         .connect_timeout(Duration::from_secs(30))

@@ -11,10 +11,7 @@ use libs::crs_provenance::{
     CrsGenerationMethod, CrsProvenance, FilecoinSourceProvenance, Phase1SourceProvenance,
     CEREMONY_PROTOCOL_VERSION, CRS_DOCUMENT_KIND,
 };
-use libs::frontend_artifacts::{
-    public_wire_layout::{read_global_wires, PublicWireLayout},
-    SetupParams, SubcircuitInfo,
-};
+use libs::frontend_artifacts::normalized_library::NormalizedSubcircuitLibrary;
 use libs::r1cs::SubcircuitR1CS;
 use libs::univariate_crs::{UnivariateCrsShape, UNIVARIATE_CRS_SCHEMA_ID};
 use libs::univariate_setup::SetupCrs;
@@ -97,29 +94,29 @@ fn execute(args: Args) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let (path, library) =
         circuit_input::prepare(args.mode, args.library_version.as_deref(), directory.path())?;
-    let setup = SetupParams::read_from_json(path.join("setupParams.json")).map_err(|e| {
-        format!(
-            "circuit library {} is incompatible with the current protocol: {e}",
-            library.package_version
-        )
-    })?;
-    UnivariateCrsShape::from_setup_params(&setup)
-        .map_err(|e| format!("circuit library is incompatible with the current protocol: {e}"))?;
-    let infos = SubcircuitInfo::read_box_from_json(path.join("subcircuitInfo.json"))
-        .map_err(|e| e.to_string())?;
-    let globals =
-        read_global_wires(&path.join("globalWireList.json")).map_err(|e| e.to_string())?;
-    let public = PublicWireLayout::derive(&setup, &globals, &infos).map_err(|e| e.to_string())?;
-    let r1cs = infos
+    let normalized_library =
+        NormalizedSubcircuitLibrary::read_from_qap_path(&path).map_err(|e| {
+            format!(
+                "circuit library {} is incompatible with the current protocol: {e}",
+                library.package_version
+            )
+        })?;
+    let shape = UnivariateCrsShape::from_normalized_setup(
+        &normalized_library.setup,
+        normalized_library.public.free_public_len(),
+    )
+    .map_err(|e| format!("circuit library is incompatible with the current protocol: {e}"))?;
+    let r1cs = normalized_library
+        .subcircuits
         .par_iter()
         .enumerate()
         .map(|(k, info)| {
             if info.id != k {
                 return Err("circuit catalog ID/order mismatch".into());
             }
-            SubcircuitR1CS::from_r1cs_sparse_only(
+            SubcircuitR1CS::from_normalized_r1cs_sparse_only(
                 path.join(format!("r1cs/subcircuit{k}.r1cs")),
-                &setup,
+                &normalized_library.setup,
                 info,
             )
             .map_err(|e| e.to_string())
@@ -127,8 +124,8 @@ fn execute(args: Args) -> Result<(), String> {
         .collect::<Result<Vec<_>, String>>()?;
     let circuits = r1cs
         .iter()
-        .zip(infos.iter())
-        .map(|(r, i)| r.as_univariate_subcircuit(i))
+        .zip(normalized_library.subcircuits.iter())
+        .map(|(r, i)| r.as_normalized_univariate_subcircuit(i))
         .collect::<Vec<_>>();
     println!(
         "[mpc] {} input {} in {:.6}s",
@@ -145,8 +142,8 @@ fn execute(args: Args) -> Result<(), String> {
         filecoin_source::SOURCE_REVISION
     );
     let tau = match args.filecoin_source {
-        Some(path) => filecoin_source::prepare_local(&path, &setup),
-        None => filecoin_source::prepare_download(&setup),
+        Some(path) => filecoin_source::prepare_local(&path, &shape),
+        None => filecoin_source::prepare_download(&shape),
     }
     .map_err(|e| e.to_string())?;
     println!(
@@ -171,7 +168,7 @@ fn execute(args: Args) -> Result<(), String> {
         .into(),
     };
     let started = Instant::now();
-    let engine = Engine::initialize(&setup, &public, &circuits, &tau)?;
+    let engine = Engine::initialize(&normalized_library, &circuits, &tau)?;
     println!(
         "[mpc] encoded-power initialization in {:.6}s",
         started.elapsed().as_secs_f64()
@@ -211,7 +208,8 @@ fn execute(args: Args) -> Result<(), String> {
             if transcript.contributions() == 0 {
                 return Err("finalization requires a verified participant contribution".into());
             }
-            let (prover, preprocess, verifier) = transcript.state().final_keys(&tau, &setup)?;
+            let (prover, preprocess, verifier) =
+                transcript.state().final_keys(&tau, &normalized_library)?;
             let crs = SetupCrs {
                 tau,
                 prover,

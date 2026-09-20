@@ -8,13 +8,13 @@ use ark_ff::{BigInteger, Field, One, PrimeField, Zero};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
 use backend_univariate_crs_interface::{
     NonpublicQueryLayout, PreprocessKeysRkyv, ProverKeysRkyv, TauSequenceRkyv, UnivariateG1Rkyv,
-    UnivariateG2Rkyv, VerifierKeysRkyv,
+    UnivariateG2Rkyv, VerifierKeysRkyv, WeightedQueryLayout,
 };
 use icicle_core::traits::FieldImpl;
-use libs::frontend_artifacts::{public_wire_layout::PublicWireLayout, SetupParams};
+use libs::frontend_artifacts::normalized_library::{NormalizedSubcircuitLibrary, PublicWireSource};
 use libs::univariate_crs::{UnivariateCrsShape, UNIVARIATE_CRS_SCHEMA_ID};
 use libs::univariate_field::canonical_root;
-use libs::univariate_relation::UnivariateSubcircuit;
+use libs::univariate_relation::NormalizedUnivariateSubcircuit;
 use rayon::prelude::*;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -63,9 +63,9 @@ impl VerifiedState<'_> {
     pub(crate) fn final_keys(
         &self,
         tau: &TauSequenceRkyv,
-        setup: &SetupParams,
+        library: &NormalizedSubcircuitLibrary,
     ) -> Result<(ProverKeysRkyv, PreprocessKeysRkyv, VerifierKeysRkyv), String> {
-        self.engine.final_keys(&self.state, tau, setup)
+        self.engine.final_keys(&self.state, tau, library)
     }
 }
 
@@ -95,14 +95,16 @@ impl Engine {
     /// The caller authenticates the source before this function; malformed
     /// capacities and metadata are rejected before any indexed construction.
     pub(crate) fn initialize(
-        setup: &SetupParams,
-        public: &PublicWireLayout,
-        circuits: &[UnivariateSubcircuit<'_>],
+        library: &NormalizedSubcircuitLibrary,
+        circuits: &[NormalizedUnivariateSubcircuit<'_>],
         tau: &TauSequenceRkyv,
     ) -> Result<Self, String> {
         #[cfg(feature = "timing")]
         let _initialize = libs::timing::SpanGuard::new("mpc.initialize", "mpc", vec![]);
-        let shape = UnivariateCrsShape::from_setup_params(setup).map_err(|e| e.to_string())?;
+        let setup = &library.setup;
+        let shape =
+            UnivariateCrsShape::from_normalized_setup(setup, library.public.free_public_len())
+                .map_err(|e| e.to_string())?;
         let p = shape.declared_capacity[1];
         if tau.schema_id != UNIVARIATE_CRS_SCHEMA_ID
             || tau.s0_g1.len() != 2 * p + 1
@@ -112,15 +114,12 @@ impl Engine {
         {
             return Err("source capacity does not match the selected library".into());
         }
-        if circuits.len() != setup.s_D {
+        if circuits.len() != library.actual_subcircuit_count() {
             return Err("compiled catalog length mismatch".into());
         }
         for (k, c) in circuits.iter().enumerate() {
-            if c.id != k
-                || c.flatten_map.len() > setup.m
-                || c.flatten_map.iter().any(|g| *g >= setup.m_D)
-            {
-                return Err("invalid circuit wire map".into());
+            if c.info.id != k {
+                return Err("normalized circuit catalog ID/order mismatch".into());
             }
             for (active, rows) in [
                 (c.a_active_wires, c.a_rows),
@@ -128,7 +127,7 @@ impl Engine {
                 (c.c_active_wires, c.c_rows),
             ] {
                 if rows.len() > setup.n
-                    || active.iter().any(|j| *j >= c.flatten_map.len())
+                    || active.iter().any(|j| *j >= setup.m)
                     || rows.iter().flatten().any(|(col, _)| *col >= active.len())
                 {
                     return Err("invalid sparse R1CS coordinates".into());
@@ -142,7 +141,7 @@ impl Engine {
             shape.arithmetic_domain_size,
             shape.connection_domain_size,
             shape.selection_domain_size,
-            setup.l_free,
+            library.public.free_public_len(),
         ] {
             if ordinary[n] == ordinary[0] {
                 return Err("source tau is inside an evaluation domain".into());
@@ -159,40 +158,56 @@ impl Engine {
             || rayon::join(|| basis(&psi[..na]), || basis(&psi[k..k + nc])),
         );
         let selection = basis(&ordinary[p + 1..p + 1 + ns]);
-        let free = basis(&ordinary[..setup.l_free]);
-        let maps = circuits.iter().map(|c| c.flatten_map).collect::<Vec<_>>();
-        let layout = NonpublicQueryLayout::new(setup.s_max, setup.m, setup.l, &maps)?;
-        let image = |i: usize, c: &UnivariateSubcircuit<'_>| {
-            let mut result = vec![G1Projective::zero(); c.flatten_map.len()];
+        let free = basis(&ordinary[..library.public.free_public_len()]);
+        let layout = NonpublicQueryLayout::from_retained_wires(
+            setup.s,
+            library
+                .subcircuits
+                .iter()
+                .map(|circuit| circuit.retained_nonpublic_wires())
+                .collect::<Vec<_>>(),
+        )?;
+        let weighted_layout = WeightedQueryLayout::from_normalized_ranges(
+            setup.s,
+            setup.m,
+            setup.m_b,
+            library
+                .subcircuits
+                .iter()
+                .map(|circuit| (circuit.wiring_range().len(), circuit.internal_range().len())),
+        )?;
+        let image = |i: usize, c: &NormalizedUnivariateSubcircuit<'_>| {
+            let mut result = vec![G1Projective::zero(); setup.m];
             for (active, rows, values) in [
                 (c.a_active_wires, c.a_rows, &u),
                 (c.b_active_wires, c.b_rows, &v),
                 (c.c_active_wires, c.c_rows, &w),
             ] {
                 for (row, terms) in rows.iter().enumerate() {
-                    let base = values[i + setup.s_max * row];
+                    let base = values[i + setup.s * row];
                     for (column, coef) in terms {
                         result[active[*column]] +=
                             base * Fr::from_le_bytes_mod_order(&coef.to_bytes_le());
                     }
                 }
             }
-            for (j, g) in c.flatten_map.iter().enumerate() {
-                if *g >= setup.l && *g < setup.l_D {
-                    result[j] += b[i + setup.s_max * (*g - setup.l)];
-                }
+            for (j, value) in result[..setup.m_b].iter_mut().enumerate() {
+                *value += b[i + setup.s * j];
             }
             result
         };
-        let rows = (0..setup.s_max)
+        let rows = (0..setup.s)
             .into_par_iter()
             .map(|i| {
                 let mut out = Vec::new();
                 for (k, c) in circuits.iter().enumerate() {
                     let values = image(i, c);
-                    let correction = selection[i + setup.s_max * k];
+                    let correction = selection[i + setup.s * k];
                     for &j in layout.local_wires(k).unwrap() {
-                        out.push((values[j] + correction, correction, j));
+                        let row = weighted_layout
+                            .compact_row(j)
+                            .expect("retained non-public wire must have a compact weighted row");
+                        out.push((values[j] + correction, correction, row));
                     }
                 }
                 out
@@ -212,25 +227,31 @@ impl Engine {
         let mut fixed = Vec::new();
         let mut fixed_correction = Vec::new();
         let mut fixed_wires = Vec::new();
-        for g in 0..setup.l {
-            if let Some(key) = public.public_query_key_for_public_wire(g) {
-                let k = key.buffer_subcircuit_id;
-                let j = key.local_public_wire_index;
-                if k >= circuits.len() || k >= setup.s_max || j >= circuits[k].flatten_map.len() {
-                    return Err("invalid public query coordinate".into());
-                }
-                // Fixed placement i=k applies ONLY to public buffer wires.
-                let c = selection[k + setup.s_max * k];
-                let q = image(k, &circuits[k])[j] + c;
-                if g < setup.l_free {
-                    packed.push(q + free[g]);
-                    correction.push(c);
-                    packed_wires.push(j);
-                } else {
-                    fixed.push(q);
-                    fixed_correction.push(c);
-                    fixed_wires.push(j);
-                }
+        for public_index in 0..library.public.len() {
+            let Some(PublicWireSource::Mapped {
+                subcircuit_id: k,
+                local_wire_index: j,
+            }) = library.public.source(public_index)
+            else {
+                continue;
+            };
+            if k >= circuits.len() || k >= setup.s || j >= setup.m_b {
+                return Err("invalid normalized public query coordinate".into());
+            }
+            let row = weighted_layout
+                .compact_row(j)
+                .map_err(|_| "public wire unexpectedly omitted from weighted layout")?;
+            // Fixed placement i=k applies only to producer-declared public buffer wires.
+            let c = selection[k + setup.s * k];
+            let q = image(k, &circuits[k])[j] + c;
+            if public_index < library.public.free_public_len() {
+                packed.push(q + free[public_index]);
+                correction.push(c);
+                packed_wires.push(row);
+            } else {
+                fixed.push(q);
+                fixed_correction.push(c);
+                fixed_wires.push(row);
             }
         }
         let (packed, fixed) = rayon::join(|| normalize(packed), || normalize(fixed));
@@ -253,11 +274,11 @@ impl Engine {
             }
         }
         masks[8] = (ordinary[p + 1 + ns] - ordinary[p + 1]).into_affine();
-        let weighted = (0..setup.m)
-            .flat_map(|_| ordinary[..setup.s_max].iter().copied())
+        let weighted = (0..weighted_layout.retained_rows())
+            .flat_map(|_| ordinary[..setup.s].iter().copied())
             .collect();
-        let shifted = (0..setup.m)
-            .flat_map(|_| ordinary[k..k + setup.s_max].iter().copied())
+        let shifted = (0..weighted_layout.retained_rows())
+            .flat_map(|_| ordinary[k..k + setup.s].iter().copied())
             .collect();
         Ok(Self {
             initial: State {
@@ -270,13 +291,13 @@ impl Engine {
                 masks,
                 delta_g1: G1Affine::generator(),
                 delta_g2: G2Affine::generator(),
-                weights: vec![G2Affine::generator(); setup.m],
+                weights: vec![G2Affine::generator(); weighted_layout.retained_rows()],
             },
             packed_images,
             packed_wires,
             fixed_wires,
             nonpublic_count,
-            placements: setup.s_max,
+            placements: setup.s,
             #[cfg(test)]
             state_checks: std::sync::atomic::AtomicUsize::new(0),
         })
@@ -467,9 +488,12 @@ impl Engine {
         &self,
         state: &State,
         tau: &TauSequenceRkyv,
-        setup: &SetupParams,
+        library: &NormalizedSubcircuitLibrary,
     ) -> Result<(ProverKeysRkyv, PreprocessKeysRkyv, VerifierKeysRkyv), String> {
-        let shape = UnivariateCrsShape::from_setup_params(setup).map_err(|e| e.to_string())?;
+        let setup = &library.setup;
+        let shape =
+            UnivariateCrsShape::from_normalized_setup(setup, library.public.free_public_len())
+                .map_err(|e| e.to_string())?;
         #[cfg(feature = "timing")]
         let _projection = libs::timing::SpanGuard::new("mpc.final_projection", "mpc", vec![]);
         let enc = |values: &[G1Affine]| values.par_iter().copied().map(encode_g1).collect();
@@ -488,8 +512,7 @@ impl Engine {
         let preprocess = PreprocessKeysRkyv {
             schema_id: UNIVARIATE_CRS_SCHEMA_ID.into(),
             sc_g1: tau.s0_g1[..shape.connection_domain_size].to_vec(),
-            selection_g2: tau.tau_powers_g2[shape.h..=shape.h + setup.s_max * (setup.t - 1)]
-                .to_vec(),
+            selection_g2: tau.tau_powers_g2[shape.h..=shape.h + setup.s * (setup.t - 1)].to_vec(),
             fixed_public_queries: enc(&state.fixed),
         };
         let verifier = VerifierKeysRkyv {
@@ -603,9 +626,11 @@ pub(crate) fn encode_g2(p: G2Affine) -> UnivariateG2Rkyv {
 mod tests {
     use super::*;
     use icicle_bls12_381::curve::ScalarField;
-    use libs::frontend_artifacts::public_wire_layout::GlobalWire;
-    use libs::frontend_artifacts::{BufferDirection, SubcircuitInfo};
-    use libs::univariate_setup::{generate, SetupScalars};
+    use libs::frontend_artifacts::normalized_library::{
+        BufferDirection, NormalizedSetupParams, NormalizedSubcircuitInfo,
+        NormalizedSubcircuitLibrary, PublicRegion, PublicWirePhase,
+    };
+    use libs::univariate_setup::{generate_normalized, SetupScalars};
 
     #[test]
     fn fused_updates_preserve_identity_unit_and_dense_cases() {
@@ -644,43 +669,45 @@ mod tests {
 
     #[test]
     fn two_updates_match_every_trusted_setup_output_and_reject_tampering() {
-        let setup = SetupParams {
-            l_free: 2,
-            l: 3,
-            l_user_out: 0,
-            l_user: 0,
-            l_D: 7,
-            m_D: 8,
+        let setup = NormalizedSetupParams {
             n: 2,
             m: 4,
+            m_b: 4,
             t: 4,
-            s_D: 2,
-            s_max: 2,
+            s: 2,
+            public_wire_phases: vec![
+                PublicWirePhase {
+                    name: "free".into(),
+                    region: PublicRegion::Free,
+                    subcircuit_ids: vec![0].into_boxed_slice(),
+                },
+                PublicWirePhase {
+                    name: "fixed".into(),
+                    region: PublicRegion::Fixed,
+                    subcircuit_ids: vec![1].into_boxed_slice(),
+                },
+            ]
+            .into_boxed_slice(),
         };
-        let infos = [[3, 0, 4], [5, 2, 6]]
-            .into_iter()
-            .enumerate()
-            .map(|(id, map)| SubcircuitInfo {
+        let infos = (0..2)
+            .map(|id| NormalizedSubcircuitInfo {
                 id,
                 name: format!("buffer-{id}"),
-                Nwires: 3,
+                Nwires: 4,
+                NrealWires: 3,
                 Nconsts: 2,
-                Out_idx: Box::new([1, 1]),
-                In_idx: Box::new([2, 1]),
-                flattenMap: Box::new(map),
+                Out_idx: [1, 1],
+                In_idx: [2, 1],
+                Wiring_idx: [0, 3],
+                Public_idx: [1, 1],
+                Internal_idx: [4, 0],
                 bufferDirection: Some(BufferDirection::Out),
+                publicPhase: Some(if id == 0 { "free" } else { "fixed" }.into()),
+                logicalInterface: None,
             })
-            .collect::<Vec<_>>();
-        let mut globals = vec![GlobalWire::Padding; setup.m_D];
-        for info in &infos {
-            for (j, g) in info.flattenMap.iter().enumerate() {
-                globals[*g] = GlobalWire::Mapped {
-                    subcircuit_id: info.id,
-                    local_wire_index: j,
-                };
-            }
-        }
-        let public = PublicWireLayout::derive(&setup, &globals, &infos).unwrap();
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        let library = NormalizedSubcircuitLibrary::new(setup, infos).unwrap();
         let active = [0, 1, 2];
         let a = [
             vec![(1, ScalarField::from_u32(2))],
@@ -694,11 +721,11 @@ mod tests {
             vec![(2, ScalarField::from_u32(11))],
             vec![(0, ScalarField::from_u32(13))],
         ];
-        let circuits = infos
+        let circuits = library
+            .subcircuits
             .iter()
-            .map(|info| UnivariateSubcircuit {
-                id: info.id,
-                flatten_map: &info.flattenMap,
+            .map(|info| NormalizedUnivariateSubcircuit {
+                info,
                 a_active_wires: &active,
                 b_active_wires: &active,
                 c_active_wires: &active,
@@ -720,12 +747,12 @@ mod tests {
             xi: ScalarField::from_u32(11),
             psi: ScalarField::from_u32(13),
             delta: ScalarField::one(),
-            weights: vec![ScalarField::one(); setup.m],
+            weights: vec![ScalarField::one(); library.setup.m],
         };
-        let initial = generate(&setup, &public, &circuits, &secret, g1, g2).unwrap();
-        let engine = Engine::initialize(&setup, &public, &circuits, &initial.tau).unwrap();
+        let initial = generate_normalized(&library, &circuits, &secret, g1, g2).unwrap();
+        let engine = Engine::initialize(&library, &circuits, &initial.tau).unwrap();
         let mut state = engine.initial.clone();
-        for (u, v) in [(17u32, [19u32, 23, 29, 31]), (37, [41, 43, 47, 53])] {
+        for (u, v) in [(17u32, [19u32, 23, 29]), (37, [41, 43, 47])] {
             state = engine
                 .contribute(&state, Fr::from(u), &v.map(Fr::from))
                 .unwrap();
@@ -733,9 +760,10 @@ mod tests {
             for (r, v) in secret.weights.iter_mut().zip(v) {
                 *r = *r * ScalarField::from_u32(v);
             }
-            let expected = generate(&setup, &public, &circuits, &secret, g1, g2).unwrap();
+            let expected = generate_normalized(&library, &circuits, &secret, g1, g2).unwrap();
             let verified = engine.verify_state(state.clone()).unwrap();
-            let (prover, preprocess, verifier) = verified.final_keys(&initial.tau, &setup).unwrap();
+            let (prover, preprocess, verifier) =
+                verified.final_keys(&initial.tau, &library).unwrap();
             use backend_univariate_crs_interface::archive;
             macro_rules! same_bytes {
                 ($a:expr, $b:expr) => {
@@ -788,7 +816,7 @@ mod tests {
         bad.packed.pop();
         assert!(engine.verify_state(bad).is_err());
         assert!(engine
-            .contribute(&state, Fr::zero(), &vec![Fr::one(); setup.m])
+            .contribute(&state, Fr::zero(), &vec![Fr::one(); library.setup.m])
             .is_err());
         assert!(engine.contribute(&state, Fr::one(), &[]).is_err());
 
@@ -822,7 +850,7 @@ mod tests {
         // One external record is fully verified on import, then only the new
         // record is verified on append. Projection must not repeat either.
         assert_eq!(engine.state_check_count(), checks + 3);
-        let projected = second.state().final_keys(&initial.tau, &setup).unwrap();
+        let projected = second.state().final_keys(&initial.tau, &library).unwrap();
         let key_bytes = |keys: &(ProverKeysRkyv, PreprocessKeysRkyv, VerifierKeysRkyv)| {
             backend_univariate_crs_interface::archive::to_bytes::<
                 backend_univariate_crs_interface::archive::rancor::Error,
@@ -839,7 +867,7 @@ mod tests {
         assert_eq!(imported.file_digest(), second.file_digest());
         assert_eq!(imported.state().get(), second.state().get());
         assert_eq!(
-            key_bytes(&imported.state().final_keys(&initial.tau, &setup).unwrap()),
+            key_bytes(&imported.state().final_keys(&initial.tau, &library).unwrap()),
             key_bytes(&projected)
         );
         assert_eq!(engine.state_check_count(), checks + 5);
@@ -855,7 +883,12 @@ mod tests {
         assert_eq!(engine.state_check_count(), checks + 7);
         assert_eq!(continuous.file_digest(), second.file_digest());
         assert_eq!(
-            key_bytes(&continuous.state().final_keys(&initial.tau, &setup).unwrap()),
+            key_bytes(
+                &continuous
+                    .state()
+                    .final_keys(&initial.tau, &library)
+                    .unwrap()
+            ),
             key_bytes(&projected)
         );
         assert_eq!(engine.state_check_count(), checks + 7);

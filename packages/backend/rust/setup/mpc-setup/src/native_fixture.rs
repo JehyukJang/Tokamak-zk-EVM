@@ -13,13 +13,10 @@ use libs::{
     crs_provenance::{
         CrsGenerationMethod, CrsProvenance, CEREMONY_PROTOCOL_VERSION, CRS_DOCUMENT_KIND,
     },
-    frontend_artifacts::{
-        public_wire_layout::{read_global_wires, PublicWireLayout},
-        SetupParams, SubcircuitInfo,
-    },
+    frontend_artifacts::normalized_library::NormalizedSubcircuitLibrary,
     r1cs::SubcircuitR1CS,
-    univariate_crs::{UnivariateCrsShape, UNIVARIATE_CRS_SCHEMA_ID},
-    univariate_setup::{generate, SetupCrs, SetupScalars},
+    univariate_crs::UNIVARIATE_CRS_SCHEMA_ID,
+    univariate_setup::{generate_normalized, SetupCrs, SetupScalars},
 };
 use rand::SeedableRng;
 use rayon::prelude::*;
@@ -53,19 +50,16 @@ fn prepare_native_e2e_keys() {
     let temporary = tempfile::tempdir().unwrap();
     let (path, library) =
         circuit_input::prepare(Mode::Development, None, temporary.path()).unwrap();
-    let setup = SetupParams::read_from_json(path.join("setupParams.json")).unwrap();
-    UnivariateCrsShape::from_setup_params(&setup).unwrap();
-    let infos = SubcircuitInfo::read_box_from_json(path.join("subcircuitInfo.json")).unwrap();
-    let globals = read_global_wires(&path.join("globalWireList.json")).unwrap();
-    let public = PublicWireLayout::derive(&setup, &globals, &infos).unwrap();
-    let r1cs = infos
+    let normalized_library = NormalizedSubcircuitLibrary::read_from_qap_path(&path).unwrap();
+    let r1cs = normalized_library
+        .subcircuits
         .par_iter()
         .enumerate()
         .map(|(k, info)| {
             assert_eq!(info.id, k);
-            SubcircuitR1CS::from_r1cs_sparse_only(
+            SubcircuitR1CS::from_normalized_r1cs_sparse_only(
                 path.join(format!("r1cs/subcircuit{k}.r1cs")),
-                &setup,
+                &normalized_library.setup,
                 info,
             )
             .unwrap()
@@ -73,8 +67,8 @@ fn prepare_native_e2e_keys() {
         .collect::<Vec<_>>();
     let circuits = r1cs
         .iter()
-        .zip(infos.iter())
-        .map(|(r, i)| r.as_univariate_subcircuit(i))
+        .zip(normalized_library.subcircuits.iter())
+        .map(|(r, i)| r.as_normalized_univariate_subcircuit(i))
         .collect::<Vec<_>>();
     println!("[test-mpc] preparing standard-generator synthetic tau");
     let g1_record = crate::phase2_engine::encode_g1(ark_bls12_381::G1Affine::generator());
@@ -90,13 +84,14 @@ fn prepare_native_e2e_keys() {
         xi: ScalarField::from_u32(11),
         psi: ScalarField::from_u32(13),
         delta: ScalarField::one(),
-        weights: vec![ScalarField::one(); setup.m],
+        weights: vec![ScalarField::one(); normalized_library.setup.m],
     };
     // Reuse the test oracle's public API for tau only. Its other keys are
     // immediately discarded, not passed to native consumers or persisted.
-    let tau: TauSequenceRkyv = generate(&setup, &public, &circuits, &scalars, g1, g2)
-        .unwrap()
-        .tau;
+    let tau: TauSequenceRkyv =
+        generate_normalized(&normalized_library, &circuits, &scalars, g1, g2)
+            .unwrap()
+            .tau;
     let tau_bytes = archive::to_bytes::<archive::rancor::Error>(&tau).unwrap();
     assert_eq!(
         tau.s0_g1[0],
@@ -125,7 +120,7 @@ fn prepare_native_e2e_keys() {
     );
     let started = Instant::now();
     println!("[test-mpc] starting encoded-power initialization");
-    let engine = Engine::initialize(&setup, &public, &circuits, &tau).unwrap();
+    let engine = Engine::initialize(&normalized_library, &circuits, &tau).unwrap();
     println!(
         "[test-mpc] initialization {:.3}s; packed={} weighted={}",
         started.elapsed().as_secs_f64(),
@@ -147,7 +142,10 @@ fn prepare_native_e2e_keys() {
     assert_eq!(engine.state_check_count(), 2);
     let started = Instant::now();
     println!("[test-mpc] starting verified final-key projection");
-    let (prover, preprocess, verifier) = transcript.state().final_keys(&tau, &setup).unwrap();
+    let (prover, preprocess, verifier) = transcript
+        .state()
+        .final_keys(&tau, &normalized_library)
+        .unwrap();
     assert_eq!(engine.state_check_count(), 2);
     let crs = SetupCrs {
         tau,

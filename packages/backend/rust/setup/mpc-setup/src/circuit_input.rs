@@ -156,7 +156,6 @@ fn copy_local_snapshot(source: &Path, destination: &Path) -> std::io::Result<()>
     fs::create_dir(&library)?;
     for name in [
         "frontendCfg.json",
-        "globalWireList.json",
         "setupParams.json",
         "subcircuitInfo.json",
     ] {
@@ -206,7 +205,6 @@ mod tests {
         fs::write(source.join("circom/constants.circom"), b"constants").unwrap();
         for name in [
             "frontendCfg.json",
-            "globalWireList.json",
             "setupParams.json",
             "subcircuitInfo.json",
         ] {

@@ -289,7 +289,7 @@ fn internal_preparation_authenticates_before_conversion_and_returns_only_tau() {
     let hash = digest(&bytes);
     let header = hex::encode(&bytes[..64]);
     let pin = small_pin(&hash, &header);
-    let p = required_capacity(&params(), &pin).unwrap();
+    let p = required_capacity(&shape(1, 1), &pin).unwrap();
     assert_eq!(p, 5);
     let tau = prepare_stream(Cursor::new(&bytes), p, &pin).unwrap();
     assert_eq!(tau.s0_g1.len(), 2 * p + 1);
@@ -323,49 +323,33 @@ fn internal_preparation_authenticates_before_conversion_and_returns_only_tau() {
     assert!(prepare_stream(Cursor::new(payload.as_ref()), p, &pin).is_err());
 }
 
-fn params() -> SetupParams {
-    SetupParams {
-        l_free: 1,
-        l: 1,
-        l_user_out: 0,
-        l_user: 1,
-        l_D: 2,
-        m_D: 1,
-        n: 1,
-        m: 1,
-        t: 2,
-        s_D: 1,
-        s_max: 1,
-    }
+fn shape(n: usize, free_public_len: usize) -> UnivariateCrsShape {
+    use libs::frontend_artifacts::normalized_library::NormalizedSetupParams;
+    UnivariateCrsShape::from_normalized_setup(
+        &NormalizedSetupParams {
+            n,
+            m: 1,
+            m_b: 1,
+            t: 2,
+            s: 1,
+            public_wire_phases: Box::new([]),
+        },
+        free_public_len,
+    )
+    .unwrap()
 }
 
 #[test]
-fn capacity_is_derived_from_library_and_rejects_unsupported_shapes() {
+fn capacity_is_derived_from_the_admitted_normalized_shape() {
     for (n, expected) in [(1, 5), (2, 7), (4, 11)] {
-        let mut setup = params();
-        setup.n = n;
-        assert_eq!(required_capacity(&setup, &FILECOIN).unwrap(), expected);
+        assert_eq!(
+            required_capacity(&shape(n, 1), &FILECOIN).unwrap(),
+            expected
+        );
     }
-    let mut setup = params();
-    setup.l_free = 16;
-    assert_eq!(required_capacity(&setup, &FILECOIN).unwrap(), 15);
+    assert_eq!(required_capacity(&shape(1, 16), &FILECOIN).unwrap(), 15);
     let pin = small_pin("", "");
-    assert!(required_capacity(&setup, &pin).is_err());
-    setup = params();
-    setup.n = 1 << 27;
-    assert!(required_capacity(&setup, &FILECOIN).is_err());
-    for field in ["n", "t", "m_D", "l_free", "l_D"] {
-        let mut setup = params();
-        match field {
-            "n" => setup.n = 3,
-            "t" => setup.t = 4,
-            "m_D" => setup.m_D = 2,
-            "l_free" => setup.l_free = 0,
-            "l_D" => setup.l_D = 0,
-            _ => unreachable!(),
-        }
-        assert!(required_capacity(&setup, &FILECOIN).is_err(), "{field}");
-    }
+    assert!(required_capacity(&shape(1, 16), &pin).is_err());
 }
 
 #[test]
@@ -373,20 +357,9 @@ fn production_sources_reject_invalid_inputs_without_output_or_network() {
     let temp = tempfile::tempdir().unwrap();
     let source = temp.path().join("synthetic-challenge");
     fs::write(&source, fixture(8)).unwrap();
-    assert!(prepare_local(&source, &params())
+    assert!(prepare_local(&source, &shape(1, 1))
         .unwrap_err()
         .to_string()
         .contains("byte length"));
-    // Invalid metadata is rejected before opening a file or making a request.
-    let mut invalid_params = params();
-    invalid_params.n = 3;
-    assert!(prepare_local(&temp.path().join("missing"), &invalid_params)
-        .unwrap_err()
-        .to_string()
-        .contains("library parameters"));
-    assert!(prepare_download(&invalid_params)
-        .unwrap_err()
-        .to_string()
-        .contains("library parameters"));
     assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
 }
