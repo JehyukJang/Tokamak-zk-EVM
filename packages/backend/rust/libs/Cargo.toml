@@ -35,14 +35,6 @@ memmap2 = { workspace = true }
 criterion = "0.3"
 tempfile = "3.20.0"
 
-[[bench]]
-name = "outer_product_bench"
-harness = false
-
-[[bench]]
-name = "matrix_matrix_mul_bench"
-harness = false
-
 [features]
 default = ["local-development-subcircuit-library"]
 testing-mode = []

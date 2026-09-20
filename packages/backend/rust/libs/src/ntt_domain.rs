@@ -40,10 +40,6 @@ pub fn init_ntt_domain_for_size(size: usize) -> Result<(), eIcicleError> {
     Ok(())
 }
 
-pub(crate) fn initialized_ntt_domain_size() -> Option<usize> {
-    *ntt_domain_size_cell().lock().ok()?
-}
-
 fn requested_ntt_domain_size(size: usize) -> usize {
     #[cfg(test)]
     {

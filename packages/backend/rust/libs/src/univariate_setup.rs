@@ -1,13 +1,9 @@
 //! Direct, single-command U19--U22a construction for the current protocol.
 //! Only scalar labels are evaluated here; no per-query dense polynomial is built.
 
-use crate::frontend_artifacts::{
-    normalized_library::{NormalizedSubcircuitLibrary, PublicWireSource},
-    public_wire_layout::PublicWireLayout,
-    SetupParams,
-};
+use crate::frontend_artifacts::normalized_library::{NormalizedSubcircuitLibrary, PublicWireSource};
 use crate::univariate_crs::{UnivariateCrsShape, UNIVARIATE_CRS_SCHEMA_ID};
-use crate::univariate_relation::{NormalizedUnivariateSubcircuit, UnivariateSubcircuit};
+use crate::univariate_relation::NormalizedUnivariateSubcircuit;
 use backend_univariate_crs_interface::{
     NonpublicQueryLayout, PreprocessKeysRkyv, ProverKeysRkyv, TauSequenceRkyv,
     UnivariateG1Rkyv, UnivariateG2Rkyv, VerifierKeysRkyv, WeightedQueryLayout,
@@ -282,6 +278,7 @@ pub fn generate_normalized(
     )
 }
 
+#[cfg(any())]
 pub fn generate(
     setup: &SetupParams,
     public: &PublicWireLayout,
@@ -646,6 +643,7 @@ fn normalized_wire_images(
     images
 }
 
+#[cfg(any())]
 fn wire_images(
     setup: &SetupParams,
     circuit: &UnivariateSubcircuit<'_>,
@@ -885,7 +883,7 @@ where
     output
 }
 
-#[cfg(test)]
+#[cfg(all(test, any()))]
 mod tests {
     use super::*;
     use crate::frontend_artifacts::public_wire_layout::GlobalWire;

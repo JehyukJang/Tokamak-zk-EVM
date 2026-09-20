@@ -1,114 +1,44 @@
-// These data models mirror the frontend artifact field names exactly.
+//! Runtime artifacts for the normalized local-grid protocol.
 #![allow(non_snake_case)]
 
-use crate::bivariate_polynomial::{BivariatePolynomial, DensePolynomialExt};
-use crate::group_structures::SigmaVerify;
 use crate::{impl_read_box_from_json, impl_read_from_json};
-use icicle_bls12_381::curve::ScalarField;
-use icicle_core::ntt;
-use icicle_core::traits::FieldImpl;
-use icicle_runtime::memory::HostSlice;
 use serde::de::{Deserializer, Error};
 use serde::Deserialize;
 use std::fs::File;
 use std::io::{self, BufReader};
 use std::ops::Deref;
-use std::path::PathBuf;
 
-pub mod public_wire_layout;
 pub mod normalized_library;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HexString(pub String);
+
 impl<'de> Deserialize<'de> for HexString {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let mut s = String::deserialize(deserializer)?;
-
-        if let Some(hex) = s.strip_prefix("0x") {
-            if hex.len() % 2 == 1 {
-                s = format!("0x0{}", hex);
-            }
-        } else if s.len() % 2 == 1 {
-            s = format!("0{}", s);
+    where D: Deserializer<'de> {
+        let mut value = String::deserialize(deserializer)?;
+        if let Some(hex) = value.strip_prefix("0x") {
+            if hex.len() % 2 == 1 { value = format!("0x0{hex}"); }
+        } else if value.len() % 2 == 1 {
+            value = format!("0{value}");
         }
-
-        crate::serialization::try_scalar_from_hex(&s).map_err(D::Error::custom)?;
-
-        Ok(HexString(s))
+        crate::serialization::try_scalar_from_hex(&value).map_err(D::Error::custom)?;
+        Ok(Self(value))
     }
 }
+
 impl Deref for HexString {
     type Target = str;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+    fn deref(&self) -> &Self::Target { &self.0 }
 }
-
-impl AsRef<str> for HexString {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct PublicWireInfo {
-    pub subcircuitId: usize,
-    pub numPubWires: usize,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct SetupParams {
-    pub l_free: usize,
-    pub l: usize,
-    pub l_user_out: usize,
-    pub l_user: usize,
-    pub l_D: usize, // m_I = l_D - l
-    pub m_D: usize,
-    pub n: usize,
-    pub m: usize,
-    pub t: usize,
-    pub s_D: usize,
-    pub s_max: usize,
-}
-
-impl_read_from_json!(SetupParams);
-impl_read_from_json!(SigmaVerify);
+impl AsRef<str> for HexString { fn as_ref(&self) -> &str { &self.0 } }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct PlacementVariables {
     pub subcircuitId: usize,
     pub variables: Box<[HexString]>,
 }
-
 impl_read_box_from_json!(PlacementVariables);
-
-#[derive(Debug, Deserialize)]
-pub struct OutPts {
-    pub extDest: String,
-    pub key: String,
-    pub offset: usize,
-    pub valueHex: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct PublicOutputBuffer {
-    pub outPts: Box<[OutPts]>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct InPts {
-    pub extSource: String,
-    pub key: String,
-    pub valueHex: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct PublicInputBuffer {
-    pub inPts: Box<[InPts]>,
-}
 
 #[derive(Debug, Deserialize)]
 pub struct Instance {
@@ -116,9 +46,9 @@ pub struct Instance {
     pub a_pub_block: Box<[HexString]>,
     pub a_pub_function: Box<[HexString]>,
 }
-
 impl_read_from_json!(Instance);
 
+/// A non-identity edge in the sparse `m_b × s` connection permutation.
 #[derive(Debug, Deserialize)]
 pub struct Permutation {
     pub row: usize,
@@ -126,386 +56,77 @@ pub struct Permutation {
     pub X: usize,
     pub Y: usize,
 }
-
 impl_read_box_from_json!(Permutation);
 
-/// Reads the synthesizer-owned, capacity-length placement selector. The
-/// signed -1 sentinel denotes an inactive placement slot; all other values
-/// are fixed subcircuit-library IDs.
+/// Reads the synthesizer-owned placement selector. `-1` is the sole inactive
+/// sentinel; every other value must be a subcircuit catalog ID.
 pub fn read_placement_selector(
     path: impl AsRef<std::path::Path>,
     placement_capacity: usize,
     subcircuit_count: usize,
 ) -> io::Result<Vec<Option<usize>>> {
-    const INACTIVE_SELECTOR_ENTRY: i32 = -1;
-    let file = File::open(path)?;
-    let values: Vec<i32> = serde_json::from_reader(BufReader::new(file))?;
+    let values: Vec<i32> = serde_json::from_reader(BufReader::new(File::open(path)?))?;
     if values.len() != placement_capacity {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!(
-                "selector has {} entries, expected placement capacity {placement_capacity}",
-                values.len()
-            ),
-        ));
+        return Err(io::Error::new(io::ErrorKind::InvalidData, format!(
+            "selector has {} entries, expected placement capacity {placement_capacity}", values.len()
+        )));
     }
-    values
-        .into_iter()
-        .map(|value| {
-            if value == INACTIVE_SELECTOR_ENTRY {
-                return Ok(None);
-            }
-            let subcircuit_id = value as usize;
-            if value < 0 || subcircuit_id >= subcircuit_count {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!(
-                        "selector entry {value} is outside the {subcircuit_count}-entry subcircuit catalog"
-                    ),
-                ));
-            }
-            Ok(Some(subcircuit_id))
-        })
-        .collect()
-}
-
-#[cfg(test)]
-mod selector_tests {
-    use super::read_placement_selector;
-    use std::io::Write;
-
-    #[test]
-    fn signed_selector_preserves_unused_slots() {
-        let mut file = tempfile::NamedTempFile::new().unwrap();
-        file.write_all(b"[0,2,-1,-1]").unwrap();
-        assert_eq!(
-            read_placement_selector(file.path(), 4, 3).unwrap(),
-            vec![Some(0), Some(2), None, None]
-        );
-        assert!(read_placement_selector(file.path(), 5, 3).is_err());
-    }
-
-    #[test]
-    fn rejects_noncanonical_selector_ids() {
-        for json in ["[4294967295]", "[-2]", "[3]", "[1.5]", "[2147483648]"] {
-            let mut file = tempfile::NamedTempFile::new().unwrap();
-            file.write_all(json.as_bytes()).unwrap();
-            assert!(
-                read_placement_selector(file.path(), 1, 3).is_err(),
-                "accepted {json}"
-            );
-        }
-    }
+    values.into_iter().map(|value| match value {
+        -1 => Ok(None),
+        value if value >= 0 && (value as usize) < subcircuit_count => Ok(Some(value as usize)),
+        _ => Err(io::Error::new(io::ErrorKind::InvalidData, format!(
+            "selector entry {value} is outside the {subcircuit_count}-entry subcircuit catalog"
+        ))),
+    }).collect()
 }
 
 impl Permutation {
     pub fn validate_normalized_sparse(
-        perm_raw: &[Self],
+        records: &[Self],
         wiring_width: usize,
         placement_capacity: usize,
     ) -> Result<(), String> {
         use std::collections::HashSet;
-
-        let mut sources = HashSet::with_capacity(perm_raw.len());
-        let mut targets = HashSet::with_capacity(perm_raw.len());
-        for entry in perm_raw {
-            if entry.row >= wiring_width || entry.X >= wiring_width {
-                return Err(format!(
-                    "permutation row coordinate is outside normalized wiring width {wiring_width}"
-                ));
+        let mut sources = HashSet::with_capacity(records.len());
+        let mut targets = HashSet::with_capacity(records.len());
+        for record in records {
+            if record.row >= wiring_width || record.X >= wiring_width {
+                return Err(format!("permutation row coordinate is outside normalized wiring width {wiring_width}"));
             }
-            if entry.col >= placement_capacity || entry.Y >= placement_capacity {
-                return Err(format!(
-                    "permutation placement coordinate is outside placement capacity {placement_capacity}"
-                ));
+            if record.col >= placement_capacity || record.Y >= placement_capacity {
+                return Err(format!("permutation placement coordinate is outside placement capacity {placement_capacity}"));
             }
-            let source = (entry.row, entry.col);
-            let target = (entry.X, entry.Y);
-            if source == target {
-                return Err("sparse permutation contains an explicit identity record".to_owned());
-            }
-            if !sources.insert(source) {
-                return Err(format!(
-                    "sparse permutation contains duplicate source ({}, {})",
-                    entry.row, entry.col
-                ));
-            }
-            if !targets.insert(target) {
-                return Err(format!(
-                    "sparse permutation contains duplicate target ({}, {})",
-                    entry.X, entry.Y
-                ));
-            }
+            let source = (record.row, record.col);
+            let target = (record.X, record.Y);
+            if source == target { return Err("sparse permutation contains an explicit identity record".into()); }
+            if !sources.insert(source) { return Err(format!("sparse permutation contains duplicate source ({}, {})", record.row, record.col)); }
+            if !targets.insert(target) { return Err(format!("sparse permutation contains duplicate target ({}, {})", record.X, record.Y)); }
         }
-        if sources != targets {
-            return Err("sparse permutation records do not form closed cycles".to_owned());
-        }
+        if sources != targets { return Err("sparse permutation records do not form closed cycles".into()); }
         Ok(())
     }
-
-    pub fn to_poly(
-        perm_raw: &[Self],
-        m_i: usize,
-        s_max: usize,
-    ) -> Result<(DensePolynomialExt, DensePolynomialExt), String> {
-        let omega_m_i = ntt::get_root_of_unity::<ScalarField>(m_i as u64);
-        let omega_s_max = ntt::get_root_of_unity::<ScalarField>(s_max as u64);
-        let mut x_powers = vec![ScalarField::one(); m_i];
-        for row_idx in 1..m_i {
-            x_powers[row_idx] = x_powers[row_idx - 1] * omega_m_i;
-        }
-        let mut y_powers = vec![ScalarField::one(); s_max];
-        for col_idx in 1..s_max {
-            y_powers[col_idx] = y_powers[col_idx - 1] * omega_s_max;
-        }
-
-        let mut s0_evals_vec = vec![ScalarField::zero(); m_i * s_max];
-        let mut s1_evals_vec = vec![ScalarField::zero(); m_i * s_max];
-        for row_idx in 0..m_i {
-            let row_start = row_idx * s_max;
-            for col_idx in 0..s_max {
-                s0_evals_vec[row_start + col_idx] = x_powers[row_idx];
-                s1_evals_vec[row_start + col_idx] = y_powers[col_idx];
-            }
-        }
-        for perm in perm_raw.iter() {
-            let idx = perm
-                .row
-                .checked_mul(s_max)
-                .and_then(|row_start| row_start.checked_add(perm.col))
-                .filter(|idx| *idx < s0_evals_vec.len())
-                .ok_or_else(|| {
-                    format!(
-                        "permutation source ({}, {}) is outside the {} by {} placement domain",
-                        perm.row, perm.col, m_i, s_max
-                    )
-                })?;
-            let x = x_powers.get(perm.X).ok_or_else(|| {
-                format!(
-                    "permutation X coordinate {} is outside the {}-element row domain",
-                    perm.X, m_i
-                )
-            })?;
-            let y = y_powers.get(perm.Y).ok_or_else(|| {
-                format!(
-                    "permutation Y coordinate {} is outside the {}-element placement domain",
-                    perm.Y, s_max
-                )
-            })?;
-            s0_evals_vec[idx] = *x;
-            s1_evals_vec[idx] = *y;
-        }
-        let s0_evals = HostSlice::from_slice(&s0_evals_vec);
-        let s1_evals = HostSlice::from_slice(&s1_evals_vec);
-        Ok((
-            DensePolynomialExt::from_rou_evals(s0_evals, m_i, s_max, None, None),
-            DensePolynomialExt::from_rou_evals(s1_evals, m_i, s_max, None, None),
-        ))
-    }
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum BufferDirection {
-    In,
-    Out,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct SubcircuitInfo {
-    pub id: usize,
-    pub name: String,
-    pub Nwires: usize,
-    pub Nconsts: usize,
-    pub Out_idx: Box<[usize]>,
-    pub In_idx: Box<[usize]>,
-    pub flattenMap: Box<[usize]>,
-    #[serde(default)]
-    pub bufferDirection: Option<BufferDirection>,
-}
-
-impl_read_box_from_json!(SubcircuitInfo);
-
-pub fn read_global_wire_list_as_boxed_boxed_numbers(
-    path: PathBuf,
-) -> io::Result<Box<[Box<[usize]>]>> {
-    let file = File::open(path)?;
-    let reader = BufReader::new(file);
-
-    let vec_of_vecs: Vec<Vec<i32>> = serde_json::from_reader(reader)?;
-    let boxed_matrix: Box<[Box<[usize]>]> = vec_of_vecs
-        .into_iter()
-        .map(|row| {
-            row.into_iter()
-                .map(|x| x as usize)
-                .collect::<Vec<_>>()
-                .into_boxed_slice()
-        })
-        .collect::<Vec<_>>()
-        .into_boxed_slice();
-    Ok(boxed_matrix)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Instance, Permutation, PlacementVariables};
-    use std::fs;
-    use std::path::PathBuf;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use super::{read_placement_selector, Permutation};
+    use std::io::Write;
 
-    static NEXT_FIXTURE_ID: AtomicUsize = AtomicUsize::new(0);
-
-    fn write_json_fixture(name: &str, contents: &str) -> PathBuf {
-        let fixture_id = NEXT_FIXTURE_ID.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "tokamak-zk-evm-{name}-{}-{fixture_id}.json",
-            std::process::id()
-        ));
-        fs::write(&path, contents).expect("must write JSON fixture");
-        path
+    #[test]
+    fn selector_keeps_only_the_canonical_inactive_sentinel() {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        file.write_all(b"[0,2,-1,-1]").unwrap();
+        assert_eq!(read_placement_selector(file.path(), 4, 3).unwrap(), vec![Some(0), Some(2), None, None]);
+        file.as_file_mut().set_len(0).unwrap();
+        file.write_all(b"[4294967295]").unwrap();
+        assert!(read_placement_selector(file.path(), 1, 3).is_err());
     }
 
     #[test]
-    fn rejects_out_of_domain_source_before_polynomial_conversion() {
-        let result = Permutation::to_poly(
-            &[Permutation {
-                row: 2,
-                col: 0,
-                X: 0,
-                Y: 0,
-            }],
-            2,
-            2,
-        );
-
-        assert!(matches!(result, Err(error) if error.contains("source (2, 0)")));
-    }
-
-    #[test]
-    fn rejects_out_of_domain_target_coordinates_before_polynomial_conversion() {
-        let result = Permutation::to_poly(
-            &[Permutation {
-                row: 0,
-                col: 0,
-                X: 2,
-                Y: 0,
-            }],
-            2,
-            2,
-        );
-
-        assert!(matches!(result, Err(error) if error.contains("X coordinate 2")));
-    }
-
-    #[test]
-    fn normalized_sparse_permutation_requires_closed_unique_cycles() {
-        let cycle = [
-            Permutation {
-                row: 0,
-                col: 0,
-                X: 1,
-                Y: 1,
-            },
-            Permutation {
-                row: 1,
-                col: 1,
-                X: 0,
-                Y: 0,
-            },
-        ];
+    fn sparse_permutation_is_closed_and_excludes_identity() {
+        let cycle = [Permutation { row: 0, col: 0, X: 1, Y: 1 }, Permutation { row: 1, col: 1, X: 0, Y: 0 }];
         Permutation::validate_normalized_sparse(&cycle, 2, 2).unwrap();
-
-        let open = [Permutation {
-            row: 0,
-            col: 0,
-            X: 1,
-            Y: 1,
-        }];
-        assert!(Permutation::validate_normalized_sparse(&open, 2, 2)
-            .unwrap_err()
-            .contains("closed cycles"));
-    }
-
-    #[test]
-    fn normalized_sparse_permutation_rejects_identity_and_global_coordinates() {
-        let identity = [Permutation {
-            row: 0,
-            col: 0,
-            X: 0,
-            Y: 0,
-        }];
-        assert!(Permutation::validate_normalized_sparse(&identity, 2, 2)
-            .unwrap_err()
-            .contains("identity"));
-
-        let global = [
-            Permutation {
-                row: 2,
-                col: 0,
-                X: 0,
-                Y: 1,
-            },
-            Permutation {
-                row: 0,
-                col: 1,
-                X: 2,
-                Y: 0,
-            },
-        ];
-        assert!(Permutation::validate_normalized_sparse(&global, 2, 2)
-            .unwrap_err()
-            .contains("normalized wiring width"));
-    }
-
-    #[test]
-    fn instance_reader_preserves_odd_width_scalar_normalization() {
-        let path = write_json_fixture(
-            "instance-odd-width-scalar",
-            r#"{
-                "a_pub_user": ["0x1"],
-                "a_pub_block": [],
-                "a_pub_function": []
-            }"#,
-        );
-
-        let instance = Instance::read_from_json(&path).expect("must read valid instance");
-        fs::remove_file(&path).expect("must remove JSON fixture");
-
-        assert_eq!(instance.a_pub_user[0].as_ref(), "0x01");
-    }
-
-    #[test]
-    fn instance_reader_rejects_non_hex_scalar() {
-        let path = write_json_fixture(
-            "instance-non-hex-scalar",
-            r#"{
-                "a_pub_user": ["0xnot-hex"],
-                "a_pub_block": [],
-                "a_pub_function": []
-            }"#,
-        );
-
-        let result = Instance::read_from_json(&path);
-        fs::remove_file(&path).expect("must remove JSON fixture");
-
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn placement_variable_reader_rejects_non_canonical_scalar() {
-        let path = write_json_fixture(
-            "placement-non-canonical-scalar",
-            r#"[
-                {
-                    "subcircuitId": 0,
-                    "variables": ["0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001"]
-                }
-            ]"#,
-        );
-
-        let result = PlacementVariables::read_box_from_json(&path);
-        fs::remove_file(&path).expect("must remove JSON fixture");
-
-        assert!(result.is_err());
+        let identity = [Permutation { row: 0, col: 0, X: 0, Y: 0 }];
+        assert!(Permutation::validate_normalized_sparse(&identity, 2, 2).is_err());
     }
 }

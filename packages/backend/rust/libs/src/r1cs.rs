@@ -1,26 +1,17 @@
 // R1CS matrices and derived QAP terms retain their established protocol notation.
 #![allow(non_snake_case)]
 
-use crate::bivariate_polynomial::{BivariatePolynomial, DensePolynomialExt};
 use crate::frontend_artifacts::normalized_library::{
     NormalizedSetupParams, NormalizedSubcircuitInfo,
 };
-use crate::frontend_artifacts::{
-    read_global_wire_list_as_boxed_boxed_numbers, HexString, PlacementVariables, SetupParams,
-    SubcircuitInfo,
-};
-use crate::polynomial_structures::{from_subcircuit_to_QAP, QAP};
-use crate::univariate_relation::{NormalizedUnivariateSubcircuit, UnivariateSubcircuit};
-use crate::vector_operations::{matrix_matrix_mul, transpose_inplace};
+use crate::univariate_relation::NormalizedUnivariateSubcircuit;
 use icicle_bls12_381::curve::ScalarField;
 use icicle_core::traits::FieldImpl;
-use icicle_runtime::memory::HostSlice;
 use std::collections::HashSet;
 use std::env;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 pub struct SubcircuitR1CS {
@@ -227,6 +218,7 @@ impl SubcircuitR1CS {
     /// Borrows the existing compact sparse R1CS representation for the
     /// univariate relation. The rows retain compact-column indices; no dense
     /// matrix or legacy QAP polynomial is constructed.
+    #[cfg(any())]
     pub fn as_univariate_subcircuit<'a>(
         &'a self,
         subcircuit_info: &'a SubcircuitInfo,
@@ -243,6 +235,7 @@ impl SubcircuitR1CS {
         }
     }
 
+    #[cfg(any())]
     pub fn from_r1cs_path(
         path: PathBuf,
         setup_params: &SetupParams,
@@ -259,6 +252,7 @@ impl SubcircuitR1CS {
         )
     }
 
+    #[cfg(any())]
     pub fn from_r1cs_sparse_only(
         path: PathBuf,
         setup_params: &SetupParams,
@@ -456,19 +450,9 @@ impl SubcircuitR1CS {
             );
         }
 
-        if include_compact_matrices {
-            let transpose_compact_start = phase_profile.then(Instant::now);
-            transpose_inplace(&mut A_compact_col_mat, n, A_len);
-            transpose_inplace(&mut B_compact_col_mat, n, B_len);
-            transpose_inplace(&mut C_compact_col_mat, n, C_len);
-            if let Some(start) = transpose_compact_start {
-                print_r1cs_binary_phase(
-                    subcircuit_id,
-                    "transpose_compact",
-                    start.elapsed().as_nanos(),
-                );
-            }
-        }
+        // The normalized path requests sparse rows only. Compact-column
+        // matrices are retained in the struct solely to keep the binary reader
+        // allocation-free for current callers.
 
         if let Some(start) = total_start {
             print_r1cs_binary_phase(subcircuit_id, "total", start.elapsed().as_nanos());
@@ -492,6 +476,7 @@ fn print_r1cs_binary_phase(subcircuit_id: usize, name: &str, nanos: u128) {
     println!("r1cs_binary.phase subcircuit={subcircuit_id} name={name} nanos={nanos}");
 }
 
+#[cfg(any())]
 impl QAP {
     pub fn gen_from_R1CS(
         qap_path: &PathBuf,
@@ -546,6 +531,7 @@ impl QAP {
     }
 }
 
+#[cfg(any())]
 pub fn read_R1CS_gen_uvwXY(
     qap_path: &str,
     placement_variables: &Box<[PlacementVariables]>,
@@ -716,10 +702,12 @@ pub fn read_R1CS_gen_uvwXY(
     Ok((uXY, vXY, wXY))
 }
 
+#[cfg(any())]
 fn print_uvwxy_phase(name: &str, nanos: u128) {
     println!("uvwXY.phase name={name} nanos={nanos}");
 }
 
+#[cfg(any())]
 fn eval_uvwxy_sparse_rows(
     placement_variables: &Box<[PlacementVariables]>,
     r1cs_by_id: &[Option<SubcircuitR1CS>],
@@ -819,6 +807,7 @@ fn eval_uvwxy_sparse_rows(
     }
 }
 
+#[cfg(any())]
 fn print_uvwxy_profile_row(
     subcircuit_id: usize,
     matrix: &str,
@@ -834,6 +823,7 @@ fn print_uvwxy_profile_row(
     );
 }
 
+#[cfg(any())]
 fn _from_r1cs_to_eval(
     variables: &Box<[String]>,
     compact_mat: &Vec<ScalarField>,
@@ -855,6 +845,7 @@ fn _from_r1cs_to_eval(
 }
 
 // without hex caching (direct parse)
+#[cfg(any())]
 fn _from_r1cs_to_eval_slice(
     variables: &Box<[HexString]>,
     compact_mat: &Vec<ScalarField>,
@@ -875,6 +866,7 @@ fn _from_r1cs_to_eval_slice(
     }
 }
 
+#[cfg(any())]
 fn build_d_vec(variables: &Box<[HexString]>, active_wires: &Vec<usize>) -> Vec<ScalarField> {
     let mut d_vec = Vec::with_capacity(active_wires.len());
     for &local_idx in active_wires.iter() {
@@ -884,6 +876,7 @@ fn build_d_vec(variables: &Box<[HexString]>, active_wires: &Vec<usize>) -> Vec<S
     d_vec
 }
 
+#[cfg(any())]
 fn eval_sparse_rows(
     d_vec: &Vec<ScalarField>,
     rows: &Vec<Vec<(usize, ScalarField)>>,

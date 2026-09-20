@@ -1,10 +1,10 @@
-use super::bivariate_polynomial::{BivariatePolynomial, DensePolynomialExt};
 use icicle_bls12_381::curve::{ScalarCfg, ScalarField};
 use icicle_core::traits::FieldImpl;
 use icicle_core::vec_ops::{VecOps, VecOpsConfig};
 use icicle_runtime::errors::eIcicleError;
 use icicle_runtime::memory::{DeviceSlice, DeviceVec, HostOrDeviceSlice, HostSlice};
 
+#[cfg(any())]
 pub fn gen_evaled_lagrange_bases(val: &ScalarField, size: usize, res: &mut [ScalarField]) {
     let mut val_pows = vec![ScalarField::one(); size];
     for i in 1..size {
