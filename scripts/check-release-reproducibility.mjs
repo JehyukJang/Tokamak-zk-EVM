@@ -26,8 +26,6 @@ export const POLICY_SURFACES = Object.freeze([
   '.github/workflows/build-release.yml',
   '.github/workflows/publish-tokamak-zk-evm.yml',
   'packages/backend/.vscode/launch.json',
-  'packages/backend/rust/setup/mpc-setup/Dockerfile.amd64',
-  'packages/backend/rust/setup/mpc-setup/Dockerfile.arm64',
   'packages/backend/wasm/tools/rkyv-decoder-wasm/scripts/build.mjs',
   'packages/backend/wasm/test/checks/fixtures/check-native-verifier-fixture.ts',
   'packages/cli/src/runtime/native.ts',
@@ -138,22 +136,22 @@ export function collectReleaseReproducibilityFailures(
   if (!workflows[1][1].includes('run: npm ci --ignore-scripts')) {
     fail('The browser production jobs must use the committed standalone npm lock with npm ci.');
   }
+  for (const [relativePath, workflow] of workflows) {
+    if (!workflow.includes('run: ./download-ICICLE-lib.sh')) {
+      fail(`${relativePath} must install the ICICLE CPU runtime before generating a local verifier key.`);
+    }
+    if (!workflow.includes('cargo run --locked --release -p trusted-setup --')) {
+      fail(`${relativePath} must generate a local verifier key before checking the backend workspace.`);
+    }
+    if (!workflow.includes('TOKAMAK_VERIFIER_KEYS: ${{ runner.temp }}/tokamak-development-crs/verifier_keys.rkyv')) {
+      fail(`${relativePath} must provide the generated verifier key to the backend workspace check.`);
+    }
+  }
 
   const launchConfiguration = read('packages/backend/.vscode/launch.json');
   for (const line of launchConfiguration.split('\n')) {
     if (/"args": \["(?:build|test)"/u.test(line) && !line.includes('"--locked"')) {
       fail(`packages/backend/.vscode/launch.json contains an unlocked Cargo launch: ${line.trim()}`);
-    }
-  }
-
-  for (const relativePath of [
-    'packages/backend/rust/setup/mpc-setup/Dockerfile.amd64',
-    'packages/backend/rust/setup/mpc-setup/Dockerfile.arm64',
-  ]) {
-    for (const line of read(relativePath).split('\n')) {
-      if (/\bcargo\s+(?:build|run)\b/u.test(line) && !line.includes('--locked')) {
-        fail(`${relativePath} contains an unlocked Cargo command: ${line.trim()}`);
-      }
     }
   }
 

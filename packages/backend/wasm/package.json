@@ -94,7 +94,6 @@
     "fixtures:copy": "npm run subcircuit-library:generate:development && tsx scripts/fixtures/copy-fixtures.ts fixtures/small/copy-manifest.json",
     "fixtures:prepare": "npm run subcircuit-library:generate:development && tsx scripts/fixtures/prepare-runtime-fixtures.ts fixtures/small/copy-manifest.json",
     "fixtures:check:native-verifier": "tsx test/checks/fixtures/check-native-verifier-fixture.ts fixtures/small/copy-manifest.json",
-    "polynomial:buffer:check": "tsx test/checks/polynomial/check-polynomial-buffer.ts",
     "preprocess:check": "tsx test/checks/univariate/check-univariate-preprocess.ts",
     "preprocess:public-api:check": "tsx test/checks/preprocess/check-preprocess-public-api.ts",
     "prover:ops:check": "npm run prover:ops:field && npm run univariate:polynomial:check && npm run univariate:relation:check",

@@ -130,6 +130,22 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Install ICICLE CPU runtime
+        working-directory: packages/backend
+        run: ./download-ICICLE-lib.sh
+
+      - name: Generate local verifier key
+        working-directory: packages/backend
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/packages/backend/external-lib/linux22/lib
+          ICICLE_BACKEND_INSTALL_DIR: ${{ github.workspace }}/packages/backend/external-lib/linux22/lib/backend
+        run: |
+          cargo run --locked --release -p trusted-setup -- \
+            --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
+            --output "$RUNNER_TEMP/tokamak-development-crs"
+
       - name: Check backend workspace
         working-directory: packages/backend
         run: cargo check --workspace --locked
+        env:
+          TOKAMAK_VERIFIER_KEYS: ${{ runner.temp }}/tokamak-development-crs/verifier_keys.rkyv

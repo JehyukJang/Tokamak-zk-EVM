@@ -314,7 +314,7 @@ The standard production acceptance sequence is:
 ```bash
 npm run typecheck
 npm run typecheck:scripts
-npm run polynomial:buffer:check
+npm run univariate:polynomial:check
 npm run prover:ops:check
 npm run prover:stage-timing:check
 npm run build
@@ -766,7 +766,8 @@ Verification:
 ```bash
 npm run typecheck
 npm run typecheck:scripts
-npm run polynomial:buffer:check
+# The historical bivariate buffer check is retired; use univariate:polynomial:check for current validation.
+npm run univariate:polynomial:check
 npm run prover:ops:polynomial
 npm run prover:ops:check
 npm run bench:2d-ntt -- --shapes=1024x256,4096x256 --modes=single,parallel --directions=forward,inverse --iterations=1 --warmup=0 --json=tmp/timing/2d-ntt-segment-scheduler-after-production.json
@@ -1400,7 +1401,7 @@ Interpretation:
 Verification:
 
 - `npm run typecheck` passed.
-- `npm run polynomial:buffer:check` passed.
+- The then-current bivariate buffer check passed. That retired command is now covered by `npm run univariate:polynomial:check`.
 - `npm run prover:ops:polynomial` passed.
 - `npm run prover:ops:check` passed.
 - `npm run prover:testing-mode:check` passed.
@@ -1599,7 +1600,7 @@ Verification:
 
 - `npm run typecheck` passed.
 - `npm run typecheck:scripts` passed.
-- `npm run polynomial:buffer:check` passed.
+- The then-current bivariate buffer check passed. That retired command is now covered by `npm run univariate:polynomial:check`.
 - `npm run prover:ops:polynomial` passed.
 - `npm run prover:testing-mode:check` passed.
 - `npm run prover:stage-timing:check` passed and verified the generated proof.

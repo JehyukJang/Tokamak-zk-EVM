@@ -61,6 +61,16 @@ runTest('rejects an unlocked Cargo build', fixtureRoot => {
   assert.match(failures(fixtureRoot), /contains an unlocked Cargo command/u);
 });
 
+runTest('rejects a workspace check without its generated verifier key', fixtureRoot => {
+  replace(
+    fixtureRoot,
+    '.github/workflows/build-release.yml',
+    'TOKAMAK_VERIFIER_KEYS: ${{ runner.temp }}/tokamak-development-crs/verifier_keys.rkyv',
+    'TOKAMAK_VERIFIER_KEYS: ',
+  );
+  assert.match(failures(fixtureRoot), /must provide the generated verifier key/u);
+});
+
 runTest('rejects a different compiler release', fixtureRoot => {
   const result = collectReleaseReproducibilityFailures(fixtureRoot, {
     rustcVersion: 'rustc 1.96.0 (test fixture)',
