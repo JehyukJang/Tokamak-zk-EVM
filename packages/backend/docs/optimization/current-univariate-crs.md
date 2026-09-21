@@ -29,6 +29,46 @@ a documentation/evidence audit, not a new benchmark of that revision. Earlier
 sections retain their experiment-time controls and validation scope; the
 current status below supersedes their then-pending migration descriptions.
 
+## PR #8 cross-release remeasurement — 2026-09-21
+
+This is the authoritative PR-facing comparison between remote `origin/dev`
+at `40a70fa06f31f50f8b3436cfc8c2487a1a21d827` and the current
+`feat/new-snark` revision at `186b78cdae70969c7f8d75175d1e3435481958b1`.
+It replaces earlier PR-facing figures that came from different intermediate
+revisions or fixtures. It is a CPU-only release-build measurement on an Apple
+M4 Pro (14 logical CPUs, 48 GiB memory), with ICICLE available but falling
+back to CPU. Digest checking was disabled in both normal prover paths.
+
+For each revision, the same `tokamak-ch-tx` example inputs were synthesized
+by that revision, producing 207 placement instances. A fresh fixed-tau
+development trusted setup was then generated from that revision's local QAP
+library. The explicit development provenance bypass was necessary because
+these trusted-setup artifacts are not release CRS artifacts. One proof warmup
+was excluded and five proof runs were performed serially; normal desktop
+background activity was not controlled.
+
+| Measurement | `origin/dev` | `feat/new-snark` | Change |
+| --- | ---: | ---: | ---: |
+| Trusted setup, process wall (one run) | 103.11 s | 12.29 s | 8.39x faster |
+| CRS serialized payload | 783,635,785 B (0.730 GiB) | 958,006,952 B (0.892 GiB) | 22.25% larger |
+| Native prove, mean of five | 11.180 s | 3.598 s | 3.11x faster |
+| Native prove, standard deviation | 0.051 s | 0.019 s | — |
+| Emitted native proof artifact | `proof.json`, 4,768 B | `univariate_proof.bin`, 1,184 B | 75.17% smaller |
+
+The proof-size row compares the actual emitted interfaces, not only abstract
+proof elements: the baseline writes JSON while the new protocol writes the
+common binary proof format. The CRS row is likewise a serialized-payload
+comparison. The new CRS deliberately contains separately addressed tau,
+prover, preprocess, and verifier key files, so its payload size is not
+expected to track the former combined sigma layout one-for-one.
+
+The new prover's mean instrumented total is 3.598 s. Its nested stage means
+are 0.198 s for CRS loading, 0.101 s for fixture loading, 0.214 s for map
+preparation, 0.521 s for selection work, 0.147 s for the copy relation, and
+0.753 s for openings. These nested intervals must not be summed. The complete
+commands, raw samples, artifact sizes, revisions, and interpretation limits
+are recorded in the [cross-release evidence](evidence/pr-8-cross-release-remeasurement.json).
+
 ## Normalized public-and-bus wiring qualification — 2026-09-20
 
 P17 replaces the retired global-wire connection layout with normalized local
