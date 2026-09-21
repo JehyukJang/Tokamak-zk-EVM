@@ -76,7 +76,7 @@ function assertOrdered(value: string, markers: readonly string[]): void {
 
 function checkNegativeCases(value: string): void {
   expectRejection(
-    value.replace("npm run verifier-crs:input:check", "echo skipped-crs-boundary"),
+    value.replaceAll("npm run verifier-crs:input:check", "echo skipped-crs-boundary"),
     "The workflow check must reject bypassing the browser CRS boundary check.",
   );
   expectRejection(

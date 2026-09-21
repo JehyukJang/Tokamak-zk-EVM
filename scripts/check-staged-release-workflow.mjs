@@ -37,7 +37,7 @@ function checkController(value) {
     'Publish final candidate package tarballs',
     'npm publish --access public --ignore-scripts',
     'test "${{ steps.foundation.outputs.should_publish }}" = false',
-    'Reject release-relevant direct push',
+    'Permit only fixed controller maintenance or complete release verification',
   ]) {
     if (!value.includes(required)) throw new Error(`Release controller is missing ${required}.`);
   }
@@ -45,7 +45,7 @@ function checkController(value) {
   if ((value.match(/id-token: write/gu) ?? []).length !== 2) {
     throw new Error('Only the two fixed publisher jobs may receive npm OIDC permission.');
   }
-  if ((value.match(/persist-credentials: false/gu) ?? []).length !== 8) {
+  if (value.includes('persist-credentials: true') || (value.match(/persist-credentials: false/gu) ?? []).length < 12) {
     throw new Error('Controller and candidate checkouts must not persist a GitHub token.');
   }
   if ((value.match(/npm publish --access public --ignore-scripts/gu) ?? []).length !== 5) {
