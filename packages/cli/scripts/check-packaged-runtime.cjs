@@ -112,6 +112,9 @@ async function runInstalledPackageFixture(installedRoot, targetRoot) {
   if (typeof packageManifest.version !== 'string' || typeof compatibleBackendVersion !== 'string') {
     fail('Installed package manifest is missing its version identity.');
   }
+  if (packageManifest.dependencies?.['@tokamak-zk-evm/subcircuit-library'] !== packageManifest.version) {
+    fail('Installed CLI package must directly pin its runtime-resolved subcircuit-library version.');
+  }
 
   const native = require(path.join(installedRoot, 'dist', 'runtime', 'native.js'));
   const cli = require(path.join(installedRoot, 'dist', 'cli.js'));
