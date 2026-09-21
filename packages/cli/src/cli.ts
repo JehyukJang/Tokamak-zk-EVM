@@ -57,29 +57,29 @@ interface StageInputSyncRule {
   requiredFiles: readonly string[];
 }
 
-const PREPROCESS_INPUT_RULES = [
+export const PREPROCESS_INPUT_RULES = [
   {
     destinationDir: 'synthOutputDir',
-    requiredFiles: ['permutation.json', 'instance.json'],
+    requiredFiles: ['selector.json', 'permutation.json', 'instance.json'],
   },
 ] as const satisfies readonly StageInputSyncRule[];
 
-const PROVE_INPUT_RULES = [
+export const PROVE_INPUT_RULES = [
   {
     destinationDir: 'synthOutputDir',
-    requiredFiles: ['instance.json', 'permutation.json', 'placementVariables.json'],
+    requiredFiles: ['selector.json', 'instance.json', 'permutation.json', 'placementVariables.json'],
     optionalFiles: ['instance_description.json', 'state_snapshot.json'],
   },
 ] as const satisfies readonly StageInputSyncRule[];
 
-const VERIFY_INPUT_RULES = [
+export const VERIFY_INPUT_RULES = [
   {
     destinationDir: 'proveOutputDir',
-    requiredFiles: ['proof.json'],
+    requiredFiles: ['univariate_proof.bin'],
   },
   {
     destinationDir: 'preprocessOutputDir',
-    requiredFiles: ['preprocess.json'],
+    requiredFiles: ['univariate_verifier_preprocess.bin'],
   },
   {
     destinationDir: 'synthOutputDir',
@@ -87,35 +87,34 @@ const VERIFY_INPUT_RULES = [
   },
 ] as const satisfies readonly StageInputSyncRule[];
 
-const PREPROCESS_REQUIRED_FILES = [
-  { directory: 'setupOutputDir', filename: 'sigma_preprocess.rkyv' },
+export const PREPROCESS_REQUIRED_FILES = [
+  { directory: 'setupOutputDir', filename: 'preprocess_keys.rkyv' },
+  { directory: 'setupOutputDir', filename: 'crs_provenance.json' },
+  { directory: 'synthOutputDir', filename: 'selector.json' },
   { directory: 'synthOutputDir', filename: 'permutation.json' },
   { directory: 'synthOutputDir', filename: 'instance.json' },
 ] as const satisfies readonly RuntimeFileRef[];
 
-const PROVE_REQUIRED_FILES = [
-  { directory: 'setupOutputDir', filename: 'combined_sigma.rkyv' },
+export const PROVE_REQUIRED_FILES = [
+  { directory: 'setupOutputDir', filename: 'tau_sequence.rkyv' },
+  { directory: 'setupOutputDir', filename: 'prover_keys.rkyv' },
+  { directory: 'setupOutputDir', filename: 'crs_provenance.json' },
+  { directory: 'synthOutputDir', filename: 'selector.json' },
   { directory: 'synthOutputDir', filename: 'instance.json' },
   { directory: 'synthOutputDir', filename: 'permutation.json' },
   { directory: 'synthOutputDir', filename: 'placementVariables.json' },
 ] as const satisfies readonly RuntimeFileRef[];
 
-const VERIFY_REQUIRED_FILES = [
-  { directory: 'setupOutputDir', filename: 'sigma_verify.json' },
-  { directory: 'preprocessOutputDir', filename: 'preprocess.json' },
-  { directory: 'proveOutputDir', filename: 'proof.json' },
+export const VERIFY_REQUIRED_FILES = [
+  { directory: 'preprocessOutputDir', filename: 'univariate_verifier_preprocess.bin' },
+  { directory: 'proveOutputDir', filename: 'univariate_proof.bin' },
   { directory: 'synthOutputDir', filename: 'instance.json' },
 ] as const satisfies readonly RuntimeFileRef[];
 
-const PROOF_BUNDLE_REQUIRED_FILES = [
+export const PROOF_BUNDLE_REQUIRED_FILES = [
   { directory: 'synthOutputDir', filename: 'instance.json' },
-  { directory: 'synthOutputDir', filename: 'instance_description.json' },
-  { directory: 'preprocessOutputDir', filename: 'preprocess.json' },
-  { directory: 'proveOutputDir', filename: 'proof.json' },
-] as const satisfies readonly RuntimeFileRef[];
-
-const PROOF_BUNDLE_OPTIONAL_FILES = [
-  { directory: 'proveOutputDir', filename: 'benchmark.json' },
+  { directory: 'preprocessOutputDir', filename: 'univariate_verifier_preprocess.bin' },
+  { directory: 'proveOutputDir', filename: 'univariate_proof.bin' },
 ] as const satisfies readonly RuntimeFileRef[];
 
 function printUsage(): void {
@@ -123,7 +122,7 @@ function printUsage(): void {
 Commands:
   --install [--no-full-setup] [--include-prerequisite] [--docker]
       Build the local Tokamak zk-EVM runtime from the packaged backend workspace and prepare local resources
-      By default setup artifacts are installed from the published CRS archive
+      By default setup artifacts are installed from the published CRS files
       Use --no-full-setup to fetch only verifier keys and provenance before building
       Use --include-prerequisite to interactively install missing native build prerequisites
       Use --docker on Linux or Windows with Docker Desktop to install and run backend commands through an Ubuntu 22 container
@@ -143,15 +142,15 @@ Commands:
 
   --preprocess [<SYNTH_OUTPUT_ZIP|DIR>]
       Run backend preprocess stage
-      If an input directory or zip is provided, it must include permutation.json and instance.json
+      If an input directory or zip is provided, it must include selector.json, permutation.json, and instance.json
 
   --prove [<SYNTH_OUTPUT_ZIP|DIR>]
       Run backend prove stage
-      If an input directory or zip is provided, it must include placementVariables.json, permutation.json, and instance.json
+      If an input directory or zip is provided, it must include selector.json, placementVariables.json, permutation.json, and instance.json
 
   --verify [<PROOF_ZIP|DIR>]
       Verify a proof saved under the installed runtime
-      If an input directory or zip is provided, it must include proof.json, preprocess.json, and instance.json
+      If an input directory or zip is provided, it must include univariate_proof.bin, univariate_verifier_preprocess.bin, and instance.json
 
   --extract-proof <OUTPUT_ZIP_PATH>
       Collect proof artifacts from the installed runtime and zip them to the given path
@@ -454,7 +453,7 @@ async function runPreprocess(
     successMessage: `Preprocess complete → ${paths.preprocessOutputDir}`,
     inputRules: PREPROCESS_INPUT_RULES,
     verbose,
-    args: stagePaths => backendOutputArgs(stagePaths, stagePaths.preprocessOutputDir),
+    args: stagePaths => backendPreprocessArgs(stagePaths, stagePaths.preprocessOutputDir),
   });
 }
 
@@ -470,7 +469,7 @@ async function runProve(execution: RuntimeExecution, inputPath: string | undefin
     successMessage: `Proof artifacts available in ${paths.proveOutputDir}`,
     inputRules: PROVE_INPUT_RULES,
     verbose,
-    args: stagePaths => backendOutputArgs(stagePaths, stagePaths.proveOutputDir),
+    args: stagePaths => backendProveArgs(stagePaths, stagePaths.proveOutputDir),
   });
 }
 
@@ -547,20 +546,33 @@ async function copyDirectoryIfPresent(sourcePath: string, destinationPath: strin
   await fs.mkdir(destinationPath, { recursive: true });
 }
 
-function backendOutputArgs(paths: RuntimePaths, outputDir: string): string[] {
-  return ['--crs', paths.setupOutputDir, '--synthesizer-stat', paths.synthOutputDir, '--output', outputDir];
+type BackendStagePaths = Pick<RuntimePaths, 'setupOutputDir' | 'synthOutputDir'>;
+
+export function backendPreprocessArgs(paths: BackendStagePaths, outputDir: string): string[] {
+  return ['--keys', paths.setupOutputDir, '--synthesizer-stat', paths.synthOutputDir, '--output', outputDir];
 }
 
-function backendVerifyArgs(paths: RuntimePaths): string[] {
+export function backendProveArgs(paths: BackendStagePaths, outputDir: string): string[] {
   return [
-    '--crs',
+    '--tau-sequence',
+    path.join(paths.setupOutputDir, 'tau_sequence.rkyv'),
+    '--keys',
     paths.setupOutputDir,
     '--synthesizer-stat',
     paths.synthOutputDir,
+    '--output',
+    outputDir,
+  ];
+}
+
+export function backendVerifyArgs(paths: RuntimePaths): string[] {
+  return [
     '--preprocess',
-    paths.preprocessOutputDir,
+    path.join(paths.preprocessOutputDir, 'univariate_verifier_preprocess.bin'),
     '--proof',
-    paths.proveOutputDir,
+    path.join(paths.proveOutputDir, 'univariate_proof.bin'),
+    '--instance',
+    path.join(paths.synthOutputDir, 'instance.json'),
   ];
 }
 
@@ -638,11 +650,6 @@ async function extractProofBundle(context: RuntimeContext, outputPathRaw: string
   const archive = new AdmZip();
   for (const filePath of resolveRuntimeFiles(paths, PROOF_BUNDLE_REQUIRED_FILES)) {
     archive.addLocalFile(filePath);
-  }
-  for (const filePath of resolveRuntimeFiles(paths, PROOF_BUNDLE_OPTIONAL_FILES)) {
-    if (await fileExists(filePath)) {
-      archive.addLocalFile(filePath);
-    }
   }
   info(verbose, `Writing proof bundle archive: ${outputName}`);
   const temporaryArchivePath = path.join(outputDir, `.${outputName}.staging-${randomUUID()}.zip`);

@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 
 import fs from 'node:fs/promises';
+import { execFile } from 'node:child_process';
 import path from 'node:path';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 
 const commonRoot = path.resolve(import.meta.dirname, '..');
 const backendRoot = path.resolve(commonRoot, '..');
@@ -125,6 +129,11 @@ async function makeRuntimeOnlyWorkspace(output) {
   ]]);
 }
 
+async function normalizeRuntimeCargoLock(output) {
+  await execFileAsync('cargo', ['metadata', '--format-version', '1'], { cwd: output });
+  await execFileAsync('cargo', ['metadata', '--locked', '--format-version', '1', '--no-deps'], { cwd: output });
+}
+
 async function writeAndValidateProductManifest(output) {
   const files = (await listRegularFiles(output))
     .map((filePath) => path.relative(output, filePath).split(path.sep).join('/'))
@@ -155,6 +164,7 @@ async function main() {
     filter: (source) => source === backendRoot || shouldCopy(path.relative(backendRoot, source)),
   });
   await makeRuntimeOnlyWorkspace(output);
+  await normalizeRuntimeCargoLock(output);
   await writeAndValidateProductManifest(output);
 }
 

@@ -123,7 +123,7 @@ The installer:
 - builds the native backend;
 - downloads ICICLE runtime archives and verifies their packaged SHA-256
   digests;
-- downloads the compatible CRS unless setup is skipped, validating version,
+- downloads the compatible CRS artifacts unless setup is skipped, validating version,
   provenance, and artifact hashes; and
 - stores runtime resources under the CLI cache.
 
@@ -222,33 +222,38 @@ Without an argument, backend commands use the preceding outputs in the runtime
 cache. A supplied directory or ZIP contains only transaction-specific files;
 the compatible CRS remains in the installed cache.
 
-| Command        | External input            | Role and acquisition                                         |
-| -------------- | ------------------------- | ------------------------------------------------------------ |
-| `--preprocess` | `permutation.json`        | Synthesizer wire-equality cycles                             |
-| `--preprocess` | `instance.json`           | Public and function-instance values from the same synthesis  |
-| `--prove`      | `placementVariables.json` | Placement IDs, offsets, and witnesses from synthesis         |
-| `--prove`      | `permutation.json`        | Matching Synthesizer permutation                             |
-| `--prove`      | `instance.json`           | Matching Synthesizer instance                                |
-| `--verify`     | `proof.json`              | Output of the matching prove run or a trusted proof producer |
-| `--verify`     | `preprocess.json`         | Commitments from the matching preprocess run                 |
-| `--verify`     | `instance.json`           | Instance asserted by the proof                               |
+| Command        | External input                       | Role and acquisition                                         |
+| -------------- | ------------------------------------ | ------------------------------------------------------------ |
+| `--preprocess` | `selector.json`                      | Synthesizer placement selector                               |
+| `--preprocess` | `permutation.json`                   | Synthesizer wire-equality cycles                             |
+| `--preprocess` | `instance.json`                      | Public and function-instance values from the same synthesis  |
+| `--prove`      | `selector.json`                      | Matching Synthesizer placement selector                      |
+| `--prove`      | `placementVariables.json`            | Placement IDs, offsets, and witnesses from synthesis         |
+| `--prove`      | `permutation.json`                   | Matching Synthesizer permutation                             |
+| `--prove`      | `instance.json`                      | Matching Synthesizer instance                                |
+| `--verify`     | `univariate_proof.bin`               | Binary proof emitted by the matching prove run               |
+| `--verify`     | `univariate_verifier_preprocess.bin` | Binary preprocess emitted by the matching preprocess run     |
+| `--verify`     | `instance.json`                      | Instance asserted by the proof                               |
 
 Installed setup files are:
 
-| Cache file              | Used by    | Format                                   |
-| ----------------------- | ---------- | ---------------------------------------- |
-| `sigma_preprocess.rkyv` | Preprocess | Opaque versioned Rust CRS archive        |
-| `combined_sigma.rkyv`   | Prove      | Opaque versioned Rust prover CRS archive |
-| `sigma_verify.json`     | Verify     | JSON verifier CRS                        |
+| Cache file             | Used by    | Format                                                   |
+| ---------------------- | ---------- | -------------------------------------------------------- |
+| `tau_sequence.rkyv`    | Prove      | Trusted setup tau sequence                              |
+| `prover_keys.rkyv`     | Prove      | Opaque versioned Rust prover keys                       |
+| `preprocess_keys.rkyv` | Preprocess | Opaque versioned Rust preprocess keys                   |
+| `verifier_keys.rkyv`   | Install    | Opaque versioned Rust verifier keys compiled into verify |
+| `crs_provenance.json`  | Setup      | Compatible CRS identity and artifact digest record       |
 
 Do not place setup files in an external transaction directory. Do not mix
 files from different synthesis runs or incompatible releases.
 
 ```text
-preprocess-input/       prove-input/                 verify-input/
-├── instance.json       ├── instance.json            ├── instance.json
-└── permutation.json    ├── permutation.json         ├── preprocess.json
-                        └── placementVariables.json  └── proof.json
+preprocess-input/       prove-input/                         verify-input/
+├── selector.json       ├── selector.json                    ├── instance.json
+├── instance.json       ├── instance.json                    ├── univariate_proof.bin
+└── permutation.json    ├── permutation.json                 └── univariate_verifier_preprocess.bin
+                        └── placementVariables.json
 ```
 
 ```bash
@@ -270,18 +275,17 @@ The default cache root is `~/.tokamak-zk-evm`; override it with
 └── prove/output
 ```
 
-Synthesis writes `placementVariables.json`, `instance.json`,
+Synthesis writes `placementVariables.json`, `selector.json`, `instance.json`,
 `instance_description.json`, `permutation.json`, and `state_snapshot.json`.
-Preprocess writes `preprocess.json`; prove writes `proof.json`.
+Preprocess writes `univariate_verifier_preprocess.bin`; prove writes
+`univariate_proof.bin`.
 `--synthesize` clears its previous output directory before writing.
 
 `--extract-proof <OUTPUT_ZIP_PATH>` writes to the requested path and includes:
 
-- `proof.json`
-- `preprocess.json`
+- `univariate_proof.bin`
+- `univariate_verifier_preprocess.bin`
 - `instance.json`
-- `instance_description.json`
-- `benchmark.json` when available
 
 ```bash
 tokamak-cli --extract-proof ./proof-bundle.zip

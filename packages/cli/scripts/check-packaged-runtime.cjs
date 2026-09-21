@@ -67,6 +67,45 @@ function sha256(contents) {
   return crypto.createHash('sha256').update(contents).digest('hex');
 }
 
+function assertJsonEqual(actual, expected, subject) {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    fail(`${subject} did not match the current backend command contract.`);
+  }
+}
+
+function assertInstalledStageContract(cli) {
+  const paths = {
+    setupOutputDir: path.join(path.sep, 'crs'),
+    synthOutputDir: path.join(path.sep, 'synth'),
+    preprocessOutputDir: path.join(path.sep, 'preprocess'),
+    proveOutputDir: path.join(path.sep, 'prove'),
+  };
+  assertJsonEqual(
+    cli.backendPreprocessArgs(paths, paths.preprocessOutputDir),
+    ['--keys', paths.setupOutputDir, '--synthesizer-stat', paths.synthOutputDir, '--output', paths.preprocessOutputDir],
+    'Packaged preprocess arguments',
+  );
+  assertJsonEqual(
+    cli.backendProveArgs(paths, paths.proveOutputDir),
+    [
+      '--tau-sequence', path.join(paths.setupOutputDir, 'tau_sequence.rkyv'),
+      '--keys', paths.setupOutputDir,
+      '--synthesizer-stat', paths.synthOutputDir,
+      '--output', paths.proveOutputDir,
+    ],
+    'Packaged prove arguments',
+  );
+  assertJsonEqual(
+    cli.backendVerifyArgs(paths),
+    [
+      '--preprocess', path.join(paths.preprocessOutputDir, 'univariate_verifier_preprocess.bin'),
+      '--proof', path.join(paths.proveOutputDir, 'univariate_proof.bin'),
+      '--instance', path.join(paths.synthOutputDir, 'instance.json'),
+    ],
+    'Packaged verify arguments',
+  );
+}
+
 async function runInstalledPackageFixture(installedRoot, targetRoot) {
   const packageManifest = JSON.parse(fs.readFileSync(path.join(installedRoot, 'package.json'), 'utf8'));
   const compatibleBackendVersion = packageManifest.tokamakZkEvm?.compatibleBackendVersion;
@@ -75,10 +114,12 @@ async function runInstalledPackageFixture(installedRoot, targetRoot) {
   }
 
   const native = require(path.join(installedRoot, 'dist', 'runtime', 'native.js'));
+  const cli = require(path.join(installedRoot, 'dist', 'cli.js'));
   const setup = require(path.join(installedRoot, 'dist', 'runtime', 'setup.js'));
   const metadata = require(path.join(installedRoot, 'dist', 'generated', 'backend-build-metadata-validator.generated.js'));
   const provenance = require(path.join(installedRoot, 'dist', 'generated', 'crs-provenance-validator.generated.js'));
   const backendReleaseDir = path.join(targetRoot, 'release');
+  assertInstalledStageContract(cli);
   const runtimeIdentity = await native.validateProductionBuildMetadata(backendReleaseDir);
   if (runtimeIdentity.length !== metadata.BACKEND_PACKAGE_NAMES.length) {
     fail('Installed backend build metadata did not describe every backend package.');
