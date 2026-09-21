@@ -3,8 +3,17 @@
 use ark_bls12_381::Fr;
 use ark_ff::{BigInteger, PrimeField};
 use backend_interface::{PreprocessBytes, ProofBytes};
-use std::{fs, path::PathBuf};
+use serde::Deserialize;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 use verify::{univariate_cli::read_public_inputs, Verifier};
+
+#[derive(Deserialize)]
+struct InstanceDescription {
+    a_pub_user_description: Vec<String>,
+}
 
 fn input(name: &str) -> PathBuf {
     std::env::var_os(name)
@@ -12,16 +21,43 @@ fn input(name: &str) -> PathBuf {
         .into()
 }
 
+fn channel_transaction_index_offset(instance_path: &Path) -> usize {
+    let description_path = instance_path.with_file_name("instance_description.json");
+    let description: InstanceDescription =
+        serde_json::from_slice(&fs::read(&description_path).unwrap())
+            .unwrap_or_else(|error| panic!("{}: {error}", description_path.display()));
+    let offsets = description
+        .a_pub_user_description
+        .iter()
+        .enumerate()
+        .filter_map(|(offset, label)| {
+            (label == "Signed channel transaction index").then_some(offset)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        offsets.len(),
+        1,
+        "expected one channel transaction index metadata entry"
+    );
+    offsets[0]
+}
+
 #[test]
 #[ignore = "requires matching current-protocol local fixture paths"]
 fn accepts_real_proof_and_rejects_tampering() {
     let preprocess = fs::read(input("VERIFY_TEST_PREPROCESS")).unwrap();
     let proof = fs::read(input("VERIFY_TEST_PROOF")).unwrap();
-    let public = read_public_inputs(&input("VERIFY_TEST_INSTANCE")).unwrap();
+    let instance_path = input("VERIFY_TEST_INSTANCE");
+    let public = read_public_inputs(&instance_path).unwrap();
     let verifier = Verifier::from_bytes(&preprocess).unwrap();
     assert!(verifier.verify(&public, &proof).unwrap());
     let mut wrong_public = public.clone();
-    wrong_public[0] += Fr::from(1);
+    let channel_transaction_index = channel_transaction_index_offset(&instance_path);
+    assert!(
+        channel_transaction_index < wrong_public.len(),
+        "channel transaction index must be part of the free public statement"
+    );
+    wrong_public[channel_transaction_index] += Fr::from(1);
     assert!(!verifier.verify(&wrong_public, &proof).unwrap());
     assert!(verifier
         .verify(&public[..public.len() - 1], &proof)

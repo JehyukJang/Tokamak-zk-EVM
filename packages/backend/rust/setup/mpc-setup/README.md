@@ -149,8 +149,10 @@ Use the generated directory for native preprocess and prove. Build verify with
 must come from the same local QAP build. Run the resulting verifier on the newly
 generated preprocess/proof and the matching synthesizer instance. Then run
 `verify`'s ignored `local_fixture` test with `VERIFY_TEST_PREPROCESS`,
-`VERIFY_TEST_PROOF` and `VERIFY_TEST_INSTANCE` pointing to those files, preserving
-`TOKAMAK_VERIFIER_KEYS` during that test build:
+`VERIFY_TEST_PROOF` and `VERIFY_TEST_INSTANCE` pointing to those files. Keep
+the synthesizer-generated `instance_description.json` beside `instance.json`,
+because the test locates the signature-bound channel transaction index through
+that metadata. Preserve `TOKAMAK_VERIFIER_KEYS` during that test build:
 
 ```sh
 export TOKAMAK_VERIFIER_KEYS=/absolute/path/to/new-test-crs/verifier_keys.rkyv

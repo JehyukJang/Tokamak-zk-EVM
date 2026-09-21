@@ -337,6 +337,8 @@ const createTransactionSignatureCorpus = () => {
 
   const changedMessageWords = [...messageWords];
   changedMessageWords[3] += 1n;
+  const changedChannelTransactionIndex = [...messageWords];
+  changedChannelTransactionIndex[0] += 1n;
   const aliasedChannelTransactionIndex = [...messageWords];
   aliasedChannelTransactionIndex[0] += FIELD_PRIME;
   const oversizedContractWords = [...messageWords];
@@ -396,6 +398,11 @@ const createTransactionSignatureCorpus = () => {
     vector("reject-mutated-message", DISPOSITIONS.CIRCUIT_LOCAL_REJECTION, {
       messageWords: changedMessageWords,
     }),
+    vector(
+      "reject-mutated-channel-transaction-index",
+      DISPOSITIONS.CIRCUIT_LOCAL_REJECTION,
+      { messageWords: changedChannelTransactionIndex },
+    ),
     vector("reject-mutated-public-key", DISPOSITIONS.CIRCUIT_LOCAL_REJECTION, {
       publicKey: jubjub.Point.BASE.multiply(PRIVATE_KEY + 1n),
     }),

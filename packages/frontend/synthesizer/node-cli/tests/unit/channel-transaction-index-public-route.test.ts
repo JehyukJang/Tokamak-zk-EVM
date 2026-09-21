@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { installedSubcircuitLibrary } from '../../src/subcircuit/installedLibrary.ts'
+import { extractPublicProjection } from '../../../core/src/circuitGenerator/circuitGenerator.ts'
 import { BUFFER_LIST } from '../../../core/src/subcircuit/configuredTypes.ts'
 import { createTransactionSignatureVerifyCompositionMapping } from '../../../core/src/subcircuit/special-builders/txSignVerifyComposition.ts'
 import {
@@ -31,5 +32,43 @@ describe('channel transaction index public route', () => {
       installedSubcircuitLibrary.data.frontendCfg.nPrivateMessageInputs,
     )
     expect(composition.steps[0]!.inputs.at(-1)).toEqual({ kind: 'operand', index: 4 })
+  })
+
+  it('emits the index once at its canonical user-public metadata offset', () => {
+    const channelTransactionIndex = VARIABLE_DESCRIPTION.CHANNEL_TX_INDEX
+    const txIn = installedSubcircuitLibrary.subcircuitBufferMapping.TX_IN!
+    const libraryData = installedSubcircuitLibrary.data
+    const entries = libraryData.subcircuitInfo
+      .filter(entry => entry.publicPhase !== undefined)
+      .map(entry => ({
+        subcircuitId: entry.id,
+        variables: Array<string>(entry.Nwires).fill('00'),
+        instanceList: Array<string>(entry.Nwires).fill(''),
+      }))
+    const txInEntry = entries.find(entry => entry.subcircuitId === txIn.id)!
+    const indexWire = txIn.inWireIndex + channelTransactionIndex.wireIndex
+    txInEntry.variables[indexWire] = '2a'
+    txInEntry.instanceList[indexWire] = channelTransactionIndex.extSource!
+
+    const projection = extractPublicProjection(
+      entries as never,
+      { subcircuitLibrary: installedSubcircuitLibrary } as never,
+    )
+    const userOutputWireCount = libraryData.setupParams.publicWirePhases
+      .find(phase => phase.name === 'user-output')!
+      .subcircuitIds
+      .reduce(
+        (count, subcircuitId) => count + libraryData.subcircuitInfo[subcircuitId]!.Public_idx[1],
+        0,
+      )
+    const indexOffset = userOutputWireCount + indexWire - txIn.publicRange[0]
+
+    expect(projection.publicInstance.a_pub_user[indexOffset]).toBe('0x2a')
+    expect(projection.publicInstanceDescription.a_pub_user_description[indexOffset])
+      .toBe('Signed channel transaction index')
+    expect(
+      projection.publicInstanceDescription.a_pub_user_description
+        .filter(description => description === 'Signed channel transaction index'),
+    ).toHaveLength(1)
   })
 })

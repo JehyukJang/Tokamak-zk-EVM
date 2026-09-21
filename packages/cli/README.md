@@ -182,8 +182,9 @@ Relative paths are resolved from the current working directory.
 must remain aligned. Storage-slot keys and trie database keys are not
 interchangeable.
 
-`TxSnapshot` contains `nonce`, `to`, hex calldata in `data`, `senderPubKey`,
-and optional signature strings `v`, `r`, and `s`.
+`TxSnapshot` contains `channelTransactionIndex`, `to`, hex calldata in `data`,
+`senderPubKey`, and optional signature strings `v`, `r`, and `s`. The index is
+the first signature-bound transaction word; it is not an Ethereum account nonce.
 
 `block_info.json` contains `0x`-prefixed `coinBase`, `timeStamp`,
 `blockNumber`, `prevRanDao`, `gasLimit`, `chainId`, `selfBalance`, and

@@ -63,12 +63,16 @@ cargo test --locked --release -p verify --test fixed_arithmetic -- --ignored --n
 ```
 
 For the opt-in proof test, additionally set `VERIFY_TEST_PREPROCESS`,
-`VERIFY_TEST_PROOF` and `VERIFY_TEST_INSTANCE` to matching files, then run:
+`VERIFY_TEST_PROOF` and `VERIFY_TEST_INSTANCE` to matching files. The
+`instance.json` directory must also contain the synthesizer-generated
+`instance_description.json`, which identifies the single signed channel
+transaction index in the public statement. Then run:
 
 ```sh
 cargo test --locked --release -p verify --test local_fixture -- --ignored
 ```
 
 The fixture test checks a real proof and rejects changes to all proof points,
-all claimed evaluations, each preprocess operand and the free public inputs.
+all claimed evaluations, each preprocess operand and the signature-bound
+channel transaction index in the free public inputs.
 It does not generate a new ceremony or qualify unpublished production files.
