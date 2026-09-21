@@ -62,7 +62,7 @@ function parseSelector(file: BinaryArtifactFileView, sMax: number, compiled: num
   });
 }
 
-function parsePermutation(file: BinaryArtifactFileView, mI: number, sMax: number): readonly UnivariatePermutationEntry[] {
+function parsePermutation(file: BinaryArtifactFileView, wiringWidth: number, sMax: number): readonly UnivariatePermutationEntry[] {
   const section = requireBinaryArtifactSection(file, permutationSectionSpec);
   if (section.data.byteLength % PERMUTATION_ENTRY_BYTES !== 0) {
     throw new Error('permutation.entries byte length must be divisible by 16.');
@@ -77,8 +77,8 @@ function parsePermutation(file: BinaryArtifactFileView, mI: number, sMax: number
       X: view.getUint32(offset + 8, true),
       Y: view.getUint32(offset + 12, true),
     };
-    assertIndex(entry.row, mI, 'row');
-    assertIndex(entry.X, mI, 'X');
+    assertIndex(entry.row, wiringWidth, 'row');
+    assertIndex(entry.X, wiringWidth, 'X');
     assertIndex(entry.col, sMax, 'col');
     assertIndex(entry.Y, sMax, 'Y');
     entries.push(entry);

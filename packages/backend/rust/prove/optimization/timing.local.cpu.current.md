@@ -1,4 +1,8 @@
-# Prove Timing Report
+# Historical Pre-Normalized Prove Timing Report
+
+> This record belongs to the superseded pre-normalized protocol. Its aggregate
+> width labels are retained only to preserve the original timing evidence; they
+> are not current protocol parameters.
 
 ## Total Time
 

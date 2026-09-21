@@ -104,16 +104,16 @@ The format is based on Keep a Changelog.
   producer contracts, CRS provenance, and representative native/browser proof
   interoperability before publication.
 
-### Quantified Circuit and Setup Changes
+### Historical Pre-Normalized Circuit Snapshot
 
-The `2.1.5` values below come from release commit `7b9495379` and its checked-in
-`setupParams.json` and `subcircuitInfo.json`. The current values come from the
-same generated files in this unreleased tree. These tables describe circuit and
-setup dimensions rather than end-to-end performance. Controlled native CPU and
-browser proving comparisons are reported separately below; no GPU
-proving-time claim is made for this circuit set.
+The values below are retained as a pre-normalized development snapshot; they
+do not describe the current protocol. The current unreleased library uses
+`n = 1024`, `m = 2048`, `m_b = 512`, `t = 64`, and `s = 256`. Its active
+domains are `n × s` for constraints and `m_b × s` for connections; the retired
+aggregate interface-width and global-wire layout are not part of the current
+protocol.
 
-| Generated catalog metric | `2.1.5` | Current | Change |
+| Generated catalog metric | `2.1.5` | Pre-normalized candidate | Change |
 | --- | ---: | ---: | ---: |
 | Compiled and declared subcircuit types (`s_D`) | 14 | 44 | +30 (+214.3%) |
 | Sum of constraints across one instance of every distinct type | 24,275 | 23,667 | -608 (-2.5%) |
@@ -123,9 +123,7 @@ proving-time claim is made for this circuit set.
 | Setup constraint-domain parameter (`n`) | 4,096 | 1,024 | -3,072 (-75.0%) |
 | Total generated matrix dimension (`m_D`) | 26,591 | 24,079 | -2,512 (-9.4%) |
 | Total generated wire-domain boundary (`l_D`) | 4,824 | 1,420 | -3,404 (-70.6%) |
-| Internal placement-interface width (`m_I = l_D - l`) | 4,096 | 1,024 | -3,072 (-75.0%) |
 | Constraint grid size (`n × s_max`) | 1,048,576 | 262,144 | -786,432 (-75.0%) |
-| Interface grid size (`m_I × s_max`) | 1,048,576 | 262,144 | -786,432 (-75.0%) |
 
 The public-wire boundaries and declared static buffer capacities changed as
 follows. Capacities are physical field wires, not logical record counts.
@@ -146,7 +144,7 @@ follows. Capacities are physical field wires, not logical record counts.
 | Initial storage-read capacity (`nStorageLoad`) | Not present | 50 wires | Added |
 | Final storage-write capacity (`nStorageStore`) | Not present | 30 wires | Added |
 
-The current named public buffers account for 298 non-padding wires within the
+The pre-normalized candidate's named public buffers account for 298 non-padding wires within the
 396-wire public boundary. The remaining 98 wires are free-boundary layout
 padding. In `2.1.5`, the named public buffers accounted for 709 of 728 public
 wires, leaving 19 padding wires.
@@ -158,7 +156,7 @@ supports five complete records. The 50-wire log buffer holds at most 25
 256-bit topic or data elements. A log uses a variable number of those elements,
 so this is not a 25-log capacity.
 
-The current public sections end at `l_log_out = 50`,
+The pre-normalized candidate's public sections end at `l_log_out = 50`,
 `l_storage_store = 80`, `l_storage_load = 130`, `l_tx_in = 134`,
 `l_block_in = 158`, and `l_evm_in = 396`. The current signature circuit uses
 `nPrivateMessageInputs = 29`, `nPoseidonInputs = 2`, and a Poseidon batch size
@@ -168,7 +166,7 @@ synchronized TokamakL2JS specification. The former Merkle depth of 36
 and EVM exponentiation batch of 32 were removed rather than replaced by new
 capacity parameters.
 
-### Proof Generation Comparison
+### Historical Proof Generation Comparison
 
 The following measurements use the private-state dapp's `transferNotes1To2`
 operation on one Apple M4 Pro host. Each release line used its compatible
@@ -176,10 +174,9 @@ serialized input and CRS, one discarded environment-preparation run, and five
 fresh first-proof samples. The table reports the arithmetic mean; every
 retained proof was accepted by the matching verifier.
 
-| Execution path | `2.1.5` | Current candidate | Absolute decrease | Decrease | Speedup | Evidence |
+| Execution path | `origin/dev` | Current candidate | Absolute decrease | Decrease | Speedup | Evidence |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| Native Rust, CPU, Cargo release profile | 38.000 s | 11.059 s | 26.942 s | 70.9% | 3.44x | [Native report](./packages/backend/rust/prove/optimization/publication/optimization-report.md#30-release-candidate-comparison) |
-| Browser WASM, Chromium | 125.056 s | 30.875 s | 94.180 s | 75.3% | 4.05x | [Browser report](./packages/backend/wasm/docs/optimization/prover-optimization-history.md#300-release-candidate-comparison) |
+| Native Rust, CPU, Cargo release profile | 11.180 s | 3.598 s | 7.582 s | 67.8% | 3.11x | [Current report](./packages/backend/docs/optimization/current-univariate-crs.md#pr-8-cross-release-remeasurement--2026-09-21) |
 
 The native comparison used the Cargo release profile. The browser comparison
 used one fixed browser harness and bundle configuration in Chromium
@@ -190,14 +187,8 @@ packaged local circuit snapshot and matching development CRS because the final
 operator-controlled `3.0` CRS does not exist before the release checkpoint; it
 is performance evidence, not a release-eligibility claim.
 
-The principal structural explanation is the circuit and interface reduction:
-`n` and `m_I` fell from 4,096 to 1,024, both dominant `n x s_max` and
-`m_I x s_max` grids fell 75.0%, `l_D` fell 70.6%, and the public boundary
-fell 45.6%. On native CPU, mean initialization fell from 5.292 s to 1.113 s,
-polynomial work from 11.510 s to 3.789 s, and encoding from 20.245 s to
-5.741 s. Other implementation differences and host variation remain part of
-this release-level comparison, so the measurements do not assign every saved
-second exclusively to one change.
+The measurements compare complete compatible input and CRS sets. They do not
+assign every saved second to one structural change.
 
 These are reference observations from one machine and workload, not portable
 performance guarantees. The linked reports retain the exact samples, build

@@ -1,7 +1,6 @@
 //! Direct ICICLE-backed coefficient operations required by U24--U30.
 //!
-//! The type is univariate by construction.  It does not adapt or depend on
-//! the legacy bivariate polynomial representation.
+//! The type is univariate by construction.
 
 use crate::ntt_domain::init_ntt_domain_for_size;
 use crate::vector_operations::point_mul_two_vecs;

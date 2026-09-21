@@ -172,8 +172,9 @@ Fixture scripts must fail when owner artifacts are absent. They must not invoke
 native setup, preprocess, prove, verifier, or fixture-export programs.
 
 Tests and diagnostics live under `test`. The only retained optimization
-instrumentation is the prover timing-table generator. Test-only dense
-polynomial code remains under `test/support` as an independent parity oracle.
+instrumentation is the prover timing-table generator. Current univariate
+polynomial and relation checks provide the retained arithmetic coverage; no
+retired dense or bivariate test oracle is shipped.
 
 ## Publication Boundary
 

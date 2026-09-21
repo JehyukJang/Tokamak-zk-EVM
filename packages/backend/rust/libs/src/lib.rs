@@ -119,6 +119,3 @@ pub mod timing {
         }
     }
 }
-
-#[cfg(all(test, any()))]
-mod tests;

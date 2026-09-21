@@ -622,7 +622,6 @@ mod tests {
         }
         for file in [
             "frontendCfg.json",
-            "globalWireList.json",
             "setupParams.json",
             "subcircuitInfo.json",
         ] {

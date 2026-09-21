@@ -2,7 +2,7 @@
 
 Audience: backend-wasm engineers measuring and optimizing prover performance.
 
-This document records prover timing baselines and optimization decisions. `tmp/timing/prover-stage-timing.json` and `tmp/timing/prover-stage-timing.md` are overwritten on each run, so this file is the durable audit trail.
+This document records prover timing baselines and optimization decisions. `tmp/timing/prover-stage-timing.json` and `tmp/timing/prover-stage-timing.md` are overwritten on each run, so this file is the durable audit trail. Pre-normalized sections retain historical measurements only: their aggregate interface-width and bivariate terminology do not describe the current protocol or its artifacts.
 
 ## Document Authority
 
@@ -21,7 +21,7 @@ measurements, implementation boundaries, and acceptance results. When a
 historical section conflicts with the current-state summary in this section,
 the current-state summary governs.
 
-## 3.0.0 Release Candidate Comparison
+## Historical Pre-Normalized Release Candidate Comparison
 
 The controlled comparison uses the private-state dapp's `transferNotes1To2`
 operation: one private input note is transferred into two output notes. Each
@@ -58,7 +58,7 @@ not yet exist, verifier data was generated from the matching development CRS.
 This preserves the measured circuit shape and proving implementation but does
 not make the candidate a release-eligible production artifact.
 
-The principal structural cause is the 75.0% reduction in both the
+The recorded structural explanation was the 75.0% reduction in both the
 `n x s_max` constraint grid and the `m_I x s_max` interface grid, together
 with the 70.6% reduction in `l_D` and 45.6% reduction in the public boundary.
 The operation used 234 placements under `2.1.5` and 207 under the candidate.
@@ -70,9 +70,9 @@ All ten retained machine-readable samples are in
 These measurements are a reference for one host and workload, not a portable
 performance guarantee.
 
-## 2.1.5 Production Snapshot
+## Historical 2.1.5 Production Snapshot
 
-The current production prover is one stateful binary-input prover.
+The historical production prover was one stateful binary-input prover.
 `prove(input)` is the complete wrapper over the same opaque session exposed by
 `begin(input)`. Applications may advance that session through arithmetic,
 copy, binding, and integrated-finalization calls. These calls preserve one

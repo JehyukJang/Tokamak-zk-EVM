@@ -18,8 +18,7 @@ use libs::univariate_relation::NormalizedUnivariateSubcircuit;
 use std::fs;
 use std::path::PathBuf;
 
-/// Loads the existing synthesizer artifacts into U8/U12/U27 without relying
-/// on the legacy bivariate prover's compact-placement convention.
+/// Chooses the arithmetic engine for the native univariate prover.
 #[derive(clap::ValueEnum, Clone, Copy, Debug, Default)]
 pub enum ProverDevice {
     #[default]

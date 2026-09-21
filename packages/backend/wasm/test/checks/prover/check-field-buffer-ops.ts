@@ -83,17 +83,6 @@ async function checkFieldBufferOps(field: FieldRuntime): Promise<void> {
   );
   assertFields(
     field,
-    field.split(await field.batchMulShiftedBuffer(buffer, otherBuffer, 2, 2, -1, -1)),
-    [
-      field.mul(values[3], otherValues[0]),
-      field.mul(values[2], otherValues[1]),
-      field.mul(values[1], otherValues[2]),
-      field.mul(values[0], otherValues[3]),
-    ],
-    "batchMulShiftedBuffer",
-  );
-  assertFields(
-    field,
     field.split(await field.batchScaleBuffer(buffer, firstKey)),
     values.map((value) => field.mul(value, firstKey)),
     "batchScaleBuffer",
@@ -105,31 +94,6 @@ async function checkFieldBufferOps(field: FieldRuntime): Promise<void> {
     "batchAddScaledBuffer",
   );
 
-  const prefixSource = field.concat(otherValues.slice(0, 2));
-  const prefixResult = await field.batchAddScaledPrefixBuffer(buffer, 2, 2, prefixSource, 2, 1, firstKey);
-  assertFields(
-    field,
-    field.split(prefixResult),
-    [
-      field.add(values[0], field.mul(otherValues[0], firstKey)),
-      values[1],
-      field.add(values[2], field.mul(otherValues[1], firstKey)),
-      values[3],
-    ],
-    "batchAddScaledPrefixBuffer",
-  );
-  assertFields(
-    field,
-    field.split(await field.batchScaleCoeffsXBuffer(buffer, 2, 2, firstKey)),
-    [values[0], values[1], field.mul(values[2], firstKey), field.mul(values[3], firstKey)],
-    "batchScaleCoeffsXBuffer",
-  );
-  assertFields(
-    field,
-    field.split(await field.batchScaleCoeffsYBuffer(buffer, 2, 2, firstKey)),
-    [values[0], field.mul(values[1], firstKey), values[2], field.mul(values[3], firstKey)],
-    "batchScaleCoeffsYBuffer",
-  );
 
   const raw = await field.batchFromMontgomeryBuffer(buffer);
   assertBytesEqual(raw, concatBytes(values.map((value) => field.toRawLittleEndian(value))), "batchFromMontgomeryBuffer");

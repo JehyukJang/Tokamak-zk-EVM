@@ -1644,7 +1644,11 @@ The implementation plan is maintained in ignored `packages/backend/tmp/planning.
 This historical profiling checkpoint preceded implementation. The WASM
 optimization execution sections above supersede its then-unstarted status.
 
-## Native and browser E2E qualification — 2026-09-13
+## Historical native and browser E2E qualification — 2026-09-13
+
+This pre-normalized-layout checkpoint is retained only as historical evidence.
+Its retired aggregate interface-width terminology and global-wire details do
+not describe the current protocol or artifact format.
 
 Fresh native trusted setup supplied all four CRS files for each of two local
 execution fixtures. Both used the current local QAP library: 44 compiled
@@ -1875,7 +1879,11 @@ or interpret its copied host fields as new hardware detection. Historical
 controls require their pinned revision/binary and matching inputs; current
 commands below do not recreate earlier implementations.
 
-## Storage reference and candidates
+## Historical Pre-Normalized Storage Reference and Candidates
+
+This experiment predates the normalized library layout. Its aggregate-width and
+flatten-map references are historical observations, not an input or storage
+contract for the current prover or CRS.
 
 The dense reference is commit `f276370fc`. The local QAP library contains 44
 compiled circuits, with n=m=1,024, m_I=1,024, s=256, t=64 and m_D=45,056.
@@ -2323,7 +2331,11 @@ remain pending. Old-protocol
 consumers are not evidence of compatibility with these new archives. Re-run
 the storage comparison if the integrated prover's access pattern changes.
 
-## Native prover: controlled baseline and selection interpolation
+## Historical Pre-Normalized Native Prover Baseline and Selection Interpolation
+
+This baseline predates the normalized library layout. Its aggregate-width
+measurements are retained for chronology only and must not be used as current
+parameter or performance evidence.
 
 The [native measurement record](evidence/current-univariate-prove.json)
 contains all 20 complete command samples, binary/input identities, per-stage

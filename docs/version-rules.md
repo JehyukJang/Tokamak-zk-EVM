@@ -122,7 +122,6 @@ subcircuits/library/r1cs/*
 subcircuits/library/wasm/*
 subcircuits/library/json/*
 subcircuits/library/frontendCfg.json
-subcircuits/library/globalWireList.json
 subcircuits/library/setupParams.json
 subcircuits/library/subcircuitInfo.json
 ```

@@ -24,8 +24,9 @@ does not match the complete proving access pattern.
   arithmetic in the measured browser path. Minification is not a claim that
   the browser arithmetic is equivalent to a Cargo release build.
 - Existing P8 trusted-setup CRS and 207-placement application fixture;
-  `n=m=m_I=1024`, `s=256`, `t=64`, 44 compiled circuits,
-  `N_A=N_C=262144`. Actual compressed CRS only; no dense archive or reader.
+  `n=1024`, `m=2048`, `m_b=512`, `s=256`, `t=64`, 44 compiled circuits,
+  `N_A=262144` and `N_C=131072`. Actual compressed CRS only; no dense archive
+  or reader.
 - MSM delivery bounds: 262144 points for prove, 131072 for preprocess.
   Physical CRS chunks are at most 8 MiB (87381 G1 points in a full chunk).
 - Two profiled runs and two completed uninstrumented controls. Each run

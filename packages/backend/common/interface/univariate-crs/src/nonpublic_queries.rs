@@ -47,30 +47,6 @@ impl NonpublicQueryLayout {
         })
     }
 
-    pub fn new(
-        placements: usize,
-        wire_capacity: usize,
-        public_limit: usize,
-        flatten_maps: &[&[usize]],
-    ) -> Result<Self, &'static str> {
-        if placements == 0 || wire_capacity == 0 || flatten_maps.is_empty() {
-            return Err("query layout requires nonempty library dimensions");
-        }
-        let mut wires = Vec::with_capacity(flatten_maps.len());
-        for map in flatten_maps {
-            if map.len() > wire_capacity {
-                return Err("flatten map exceeds the local wire capacity");
-            }
-            let retained = map
-                .iter()
-                .enumerate()
-                .filter_map(|(j, global)| (*global >= public_limit).then_some(j))
-                .collect::<Vec<_>>();
-            wires.push(retained);
-        }
-        Self::from_retained_wires(placements, wires)
-    }
-
     pub fn len(&self) -> usize {
         self.count
     }
@@ -120,8 +96,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ranges_skip_public_and_padding_without_per_point_descriptors() {
-        let layout = NonpublicQueryLayout::new(3, 4, 2, &[&[3, 0, 4], &[1, 5]]).unwrap();
+    fn ranges_follow_normalized_retained_wires_without_per_point_descriptors() {
+        let layout = NonpublicQueryLayout::from_retained_wires(3, vec![vec![0, 2], vec![1]]).unwrap();
         assert_eq!(layout.len(), 9);
         assert_eq!(layout.local_wires(0).unwrap(), &[0, 2]);
         assert_eq!(layout.local_wires(1).unwrap(), &[1]);
@@ -131,9 +107,8 @@ mod tests {
         assert!(layout.range(3, 0).is_err());
         assert!(layout.range(0, 2).is_err());
         assert!(layout.local_wires(2).is_err());
-        assert!(NonpublicQueryLayout::new(usize::MAX, 2, 0, &[&[0, 1]]).is_err());
-        assert!(NonpublicQueryLayout::new(1, 1, 0, &[&[0, 1]]).is_err());
-        let public_only = NonpublicQueryLayout::new(2, 1, 2, &[&[0]]).unwrap();
+        assert!(NonpublicQueryLayout::from_retained_wires(usize::MAX, vec![vec![0, 1]]).is_err());
+        let public_only = NonpublicQueryLayout::from_retained_wires(2, vec![vec![]]).unwrap();
         assert!(public_only.is_empty());
         assert_eq!(public_only.range(1, 0).unwrap(), 0..0);
     }
@@ -156,7 +131,7 @@ mod tests {
             x: [0; 48],
             y: [0; 48],
         };
-        let layout = NonpublicQueryLayout::new(2, 4, 2, &[&[3, 0, 4], &[1, 5]]).unwrap();
+        let layout = NonpublicQueryLayout::from_retained_wires(2, vec![vec![0, 2], vec![1]]).unwrap();
         for count in [5, 6, 7] {
             let keys = ProverKeysRkyv {
                 schema_id: "test".into(),

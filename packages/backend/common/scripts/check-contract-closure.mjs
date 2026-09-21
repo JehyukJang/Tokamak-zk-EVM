@@ -39,7 +39,6 @@ const requiredBoundaries = [
   ['Univariate CRS chunk authority', 'common/contracts/univariate-crs-chunk-contract.json'],
   ['Univariate transcript authority', 'common/contracts/univariate-transcript-contract.json'],
   ['Univariate transcript fixed vectors', 'common/contracts/fixtures/univariate-fiat-shamir.json'],
-  ['Univariate independent correspondence tests', 'common/contracts/tests/univariate-correspondence.test.mjs'],
   ['Univariate independent transcript tests', 'common/contracts/tests/univariate-transcript.test.mjs'],
   ['Univariate CRS 64-bit RKYV interface', 'common/interface/univariate-crs/src/lib.rs'],
   ['Univariate CRS RKYV chunk reader', 'wasm/tools/univariate-crs-chunker/src/main.rs'],

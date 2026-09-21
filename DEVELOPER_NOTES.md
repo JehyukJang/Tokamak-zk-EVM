@@ -65,7 +65,7 @@ npm run build:library
 
 `npm run build:library` runs `qap-compiler --build`, which compiles the Circom subcircuits and
 rewrites `subcircuits/library` with the generated R1CS files, WASM files, JSON metadata,
-`setupParams.json`, `subcircuitInfo.json`, `globalWireList.json`, and `frontendCfg.json`.
+`setupParams.json`, `subcircuitInfo.json`, and the generated circuit artifacts.
 
 Then run the Synthesizer again with the same application transaction snapshot. Repeat the process
 until the smallest practical buffer sizes and the smallest valid `S_MAX` are known. Record the
@@ -78,8 +78,8 @@ The qap-compiler values are not harmless limits. They become part of the generat
 
 - buffer sizes affect public, private, and interface wire counts
 - `S_MAX` controls the maximum number of subcircuit placements in a synthesized transaction
-- backend proving code allocates and processes data over domains such as `n * s_max` and
-  `m_I * s_max`
+- backend proving code allocates and processes data over the normalized `n * s`
+  constraint and `m_b * s` connection domains
 - setup and proving work generally grow when these domains grow
 
 Because of that, the goal is not "large enough for every possible future contract." The goal is the
@@ -88,45 +88,36 @@ support.
 
 ## CRS generation and publication
 
-Once the qap-compiler parameters are fixed, generate a CRS for that exact subcircuit library. The
-dusk-backed setup flow is:
+Once the qap-compiler parameters are fixed, generate a CRS for that exact
+subcircuit library. Local development uses trusted setup; a release ceremony
+uses the Filecoin-backed MPC workflow documented in
+[`packages/backend/rust/setup/mpc-setup/README.md`](./packages/backend/rust/setup/mpc-setup/README.md).
+For a local CRS:
 
 ```bash
 cd packages/backend
-cargo run --locked --release -p mpc-setup --no-default-features \
-  --features production-npm-subcircuit-library --bin dusk_backed_mpc_setup -- \
-  ceremony \
-  --intermediate ./setup/mpc-setup/output/dusk.intermediate \
-  --output ./setup/mpc-setup/output/dusk.final
+cargo run --locked --release -p trusted-setup -- \
+  --output ./setup/trusted-setup/output
 ```
 
-The Dusk adaptor verifies the pinned Groth16 powers-of-tau artifact and reindexes
-its alpha/X basis. Tokamak Phase 1 then requires a Y contribution. After the
-circuit is fixed, Tokamak Phase 2 requires a gamma/delta/eta contribution. The
-`ceremony` command writes and verifies the local CRS without publishing it;
-`publish` uploads an existing eligible CRS, while `run` performs those two
-operations in order.
-
-Required `.env` keys for publication are documented in
-[`packages/backend/rust/setup/mpc-setup/README.md`](./packages/backend/rust/setup/mpc-setup/README.md):
-
-- `TOKAMAK_MPC_DRIVE_FOLDER_ID`
-- `TOKAMAK_MPC_DRIVE_OAUTH_CLIENT_JSON_PATH`
-- `TOKAMAK_MPC_DRIVE_OAUTH_TOKEN_PATH`
+Trusted setup is for local development and produces a non-release CRS. The
+MPC `publish` operation is the sole path that verifies a completed
+Filecoin-backed ceremony, derives a release-eligible CRS, and uploads it to
+Google Drive. Its required environment variables and Drive layout are defined
+by the MPC README.
 
 The final output directory contains:
 
-- `combined_sigma.rkyv`
-- `sigma_preprocess.rkyv`
-- `sigma_verify.json`
+- `tau_sequence.rkyv`
+- `prover_keys.rkyv`
+- `preprocess_keys.rkyv`
+- `verifier_keys.rkyv`
 - `crs_provenance.json`
 
 Operators should preserve and publish `crs_provenance.json` with the CRS. It
 binds the CRS to the backend compatibility class, the canonical
-`sha256:`-prefixed subcircuit-library source digest, the pinned Dusk source
-metadata, the two-phase ceremony protocol, the SHA-256 of the canonical
-ceremony transcript retained with the intermediate workspace, and SHA-256
-hashes of the final CRS files. Runtime
+`sha256:`-prefixed subcircuit-library source digest, the Filecoin source and
+MPC transcript when applicable, and SHA-256 hashes of the final CRS files. Runtime
 `build-metadata-{preprocess,prove,verify}.json` files independently record the
 same subcircuit source digest for CLI installation checks; they are not CRS
 archive members.
@@ -142,11 +133,10 @@ it to existing applications should require explicit coordination with users and 
 
 - identify which applications and transaction flows require the new capacity
 - publish the exact subcircuit-library build and CRS provenance
-- keep old CRS artifacts available for applications that still depend on them
 - define which CLI/backend versions are allowed to consume the new CRS
-- communicate the migration window and rollback policy before changing production services
+- publish the synchronized package and CRS set before changing production services
 
-The CLI downloads the latest CRS archive matching its compatible backend version and verifies the
-archive metadata and file hashes before installing it into the local runtime. That protection helps
+The CLI downloads the CRS files matching its compatible backend version and verifies the
+provenance metadata and file hashes before installing them into the local runtime. That protection helps
 with accidental mismatch, but it is not a substitute for social and operational agreement about
 which CRS the service should trust.
