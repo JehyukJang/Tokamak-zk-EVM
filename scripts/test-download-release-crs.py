@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 
+import hashlib
 import importlib.util
-import io
-import tempfile
+import json
 import unittest
-import zipfile
 from pathlib import Path
 
 MODULE_PATH = Path(__file__).with_name("download-release-crs.py")
@@ -13,51 +12,41 @@ MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
 
-def archive_bytes(names):
-    output = io.BytesIO()
-    with zipfile.ZipFile(output, "w") as archive:
-        for name in names:
-            archive.writestr(name, name.encode("utf-8"))
-    return output.getvalue()
+def entry(name, folder=False):
+    return {
+        "id": name,
+        "name": name,
+        "mimeType": MODULE.FOLDER_MIME_TYPE if folder else "application/octet-stream",
+    }
 
 
 class ReleaseCrsTest(unittest.TestCase):
-    def test_extracts_exact_canonical_members(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            output = Path(temporary) / "crs"
-            MODULE.extract_canonical_archive(archive_bytes(MODULE.ARCHIVE_FILES), output)
-            self.assertEqual({path.name for path in output.iterdir()}, MODULE.ARCHIVE_FILES)
+    def test_uses_compatibility_class(self):
+        self.assertEqual(MODULE.compatible_version("3.0.7"), "3.0")
+        with self.assertRaisesRegex(ValueError, "canonical"):
+            MODULE.compatible_version("3.0")
 
-    def test_rejects_missing_member(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            with self.assertRaisesRegex(ValueError, "missing"):
-                MODULE.extract_canonical_archive(
-                    archive_bytes(MODULE.ARCHIVE_FILES - {"crs_provenance.json"}),
-                    Path(temporary) / "crs",
-                )
+    def test_accepts_exact_version_directory_members(self):
+        MODULE.validate_version_entries([entry(name) for name in MODULE.CRS_PAYLOAD_FILES])
 
-    def test_rejects_extra_member(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            with self.assertRaisesRegex(ValueError, "extra"):
-                MODULE.extract_canonical_archive(
-                    archive_bytes(MODULE.ARCHIVE_FILES | {"build-metadata-mpc-setup.json"}),
-                    Path(temporary) / "crs",
-                )
+    def test_rejects_missing_or_unexpected_version_directory_members(self):
+        with self.assertRaisesRegex(ValueError, "missing"):
+            MODULE.validate_version_entries([entry(name) for name in MODULE.CRS_PAYLOAD_FILES - {"verifier_keys.rkyv"}])
+        with self.assertRaisesRegex(ValueError, "extra"):
+            MODULE.validate_version_entries([entry(name) for name in MODULE.CRS_PAYLOAD_FILES | {"legacy.zip"}])
 
-    def test_uses_compatibility_class_in_archive_name(self):
-        pattern = MODULE.canonical_archive_name_pattern("3.0.7")
-        self.assertIsNotNone(pattern.fullmatch("tokamak-backend-crs-v3.0-20260831T120000Z.zip"))
-        self.assertIsNone(pattern.fullmatch("tokamak-backend-crs-v3.0-20260831.zip"))
-        self.assertIsNone(pattern.fullmatch("tokamak-backend-crs-v3.1-20260831T120000Z.zip"))
-
-    def test_rejects_duplicate_compatibility_archives(self):
+    def test_rejects_duplicate_or_wrong_type_entries(self):
         with self.assertRaisesRegex(ValueError, "duplicate"):
-            MODULE.require_unique_match(
-                [
-                    {"name": "tokamak-backend-crs-v3.0-20260831T120000Z.zip", "id": "one"},
-                    {"name": "tokamak-backend-crs-v3.0-20260831T130000Z.zip", "id": "two"},
-                ]
-            )
+            MODULE.require_unique([entry("3.0", True), entry("3.0", True)], "3.0", True)
+        with self.assertRaisesRegex(ValueError, "wrong"):
+            MODULE.require_unique([entry("3.0")], "3.0", True)
+
+    def test_derives_shared_tau_filename_from_provenance(self):
+        digest = hashlib.sha256(b"tau").hexdigest()
+        provenance = json.dumps({"artifacts": {name: digest for name in MODULE.CRS_PAYLOAD_FILES | {"tau_sequence.rkyv"}}}).encode()
+        self.assertEqual(MODULE.expected_tau_name(provenance), f"{digest}.rkyv")
+        with self.assertRaisesRegex(ValueError, "invalid"):
+            MODULE.expected_tau_name(json.dumps({"artifacts": {name: "bad" for name in MODULE.CRS_PAYLOAD_FILES | {"tau_sequence.rkyv"}}}).encode())
 
 
 if __name__ == "__main__":
