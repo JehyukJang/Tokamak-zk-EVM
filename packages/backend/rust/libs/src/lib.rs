@@ -1,12 +1,11 @@
 #[path = "../../../common/contracts/rust/backend_build_metadata.rs"]
 pub mod backend_build_metadata;
-pub mod bivariate_polynomial;
 pub mod cli;
-pub mod commitments;
 #[path = "../../../../../versioning/compatibility.rs"]
 pub mod compatibility;
 pub mod crs_artifacts;
 pub mod crs_provenance;
+pub mod crs_publication_admission;
 pub mod errors;
 pub mod field_structures;
 pub mod frontend_artifacts;
@@ -14,11 +13,18 @@ pub mod group_structures;
 #[path = "../../../common/contracts/rust/input_origin.rs"]
 pub mod input_origin;
 mod input_origin_serde;
-pub mod polynomial_structures;
-pub mod proof_protocol;
+pub mod ntt_domain;
 pub mod r1cs;
-pub mod serialization;
 pub mod subcircuit_library;
+#[path = "../../../common/contracts/rust/subcircuit_source_digest.rs"]
+pub mod subcircuit_source_digest;
+pub mod univariate_crs;
+pub mod univariate_field;
+pub mod univariate_polynomial;
+pub mod univariate_proof;
+pub mod univariate_relation;
+pub mod univariate_setup;
+pub mod univariate_transcript;
 pub mod utils;
 pub mod vector_operations;
 
@@ -112,6 +118,3 @@ pub mod timing {
         }
     }
 }
-
-#[cfg(test)]
-mod tests;

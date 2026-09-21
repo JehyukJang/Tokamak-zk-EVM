@@ -25,7 +25,6 @@ The synchronized package version applies to:
 - `packages/frontend/synthesizer/node-cli/package.json`.
 - `packages/frontend/synthesizer/web-app/package.json`.
 - `packages/backend/wasm/package.json`.
-- `packages/backend/wasm/tools/rkyv-decoder-wasm/package.json`.
 - `packages/backend/wasm/src/version.ts`.
 - `packages/backend/Cargo.toml` workspace package version.
 - Backend workspace packages such as `libs`, `mpc-setup`, `preprocess`, `prove`, `trusted-setup`, and `verify`.
@@ -123,7 +122,6 @@ subcircuits/library/r1cs/*
 subcircuits/library/wasm/*
 subcircuits/library/json/*
 subcircuits/library/frontendCfg.json
-subcircuits/library/globalWireList.json
 subcircuits/library/setupParams.json
 subcircuits/library/subcircuitInfo.json
 ```
@@ -131,10 +129,17 @@ subcircuits/library/subcircuitInfo.json
 The source digest must not include package metadata, changelogs, generated witness helper JavaScript files, diagnostic
 `info` output, or other files that do not change the CRS-relevant circuit artifacts.
 
+The digest is SHA-256 and is encoded as `sha256:<64 lowercase hexadecimal
+characters>`. Each path is a qap-compiler package-relative POSIX path encoded
+as UTF-8. Entries are sorted lexicographically by those encoded path bytes.
+For each entry, the hash input appends an unsigned 64-bit big-endian path-byte
+length, the path bytes, an unsigned 64-bit big-endian content-byte length, and
+the content bytes. No prior FNV digest is accepted as a compatibility identity.
+
 The required rule is:
 
 ```text
-CRS build-metadata-mpc-setup.json dependencies.subcircuitLibrary.sourceDigest
+CRS crs_provenance.json subcircuitLibrary.sourceDigest
   ==
 backend build-metadata-{preprocess,prove,verify}.json dependencies.subcircuitLibrary.sourceDigest
 ```
@@ -184,7 +189,7 @@ A minor change requires:
 
 - A package version bump to the new `MAJOR.MINOR.0` line.
 - An update to `packages/cli/package.json tokamakZkEvm.compatibleBackendVersion`.
-- A new dusk-backed MPC setup.
+- A new Filecoin-backed phase 2 setup.
 - A new public CRS archive named with the new `MAJOR.MINOR`.
 
 ### Major Version
@@ -215,7 +220,7 @@ binary. The metadata must include:
     "subcircuitLibrary": {
       "packageName": "@tokamak-zk-evm/subcircuit-library",
       "buildVersion": "MAJOR.MINOR.PATCH",
-      "declaredRange": "latest",
+      "declaredRange": "MAJOR.MINOR.PATCH",
       "runtimeMode": "bundled",
       "sourceDigest": "..."
     }
@@ -223,9 +228,7 @@ binary. The metadata must include:
 }
 ```
 
-For `mpc-setup`, local setup builds use the local qap-compiler output and record the local subcircuit package version and
-source digest. Non-`mpc-setup` backend packages continue to resolve the published npm `@tokamak-zk-evm/subcircuit-library`
-package for release builds.
+MPC participant operations require the explicit `production-npm-subcircuit-library` feature and the participant's build-resolved npm snapshot. They do not accept local QAP inputs. Other backend packages select local or npm input using their explicit source features, independently of release optimization. Filecoin publication remains disabled pending a separately authorized policy.
 
 Metadata validation must fail when:
 
@@ -235,6 +238,44 @@ Metadata validation must fail when:
 - `packageVersion` is not strict `MAJOR.MINOR.PATCH`.
 - `packageVersion` does not normalize to the same `MAJOR.MINOR`.
 - `dependencies.subcircuitLibrary.sourceDigest` is missing.
+
+## Release Version Gates
+
+Version validation is split because a genuine npm resolution for a new
+`@tokamak-zk-evm/subcircuit-library` version cannot exist before that foundation package is published.
+
+Before foundation publication, run:
+
+```sh
+npm run version:prepublication:check
+```
+
+This gate validates the synchronized source versions and exact internal dependency declarations. It validates the
+standalone browser lockfile declaration, but deliberately does not accept its resolved npm snapshot as evidence for an
+unpublished version. An unchanged-version integration pull request may retain `## Unreleased`. A version-changing pull
+request must already contain its dated release entry, using the calendar date on which that pull request was prepared
+offline, and must not retain `## Unreleased`. That date may differ from GitHub creation, merge, and npm publication dates.
+
+After the synchronized subcircuit library is available from npm, Stage 2 Actions automation runs:
+
+```sh
+npm run version:production-snapshot:refresh
+npm run version:production-snapshot:check
+node scripts/check-version-sync.mjs
+```
+
+The refresh command regenerates the standalone browser lockfile from the exact manifest declaration, installs the
+locked dependency, regenerates the production subcircuit inputs, and compares the lockfile tarball URL and integrity
+with the published npm metadata. It restores the tracked lockfile if any refresh or validation step fails.
+
+The automation commits only the refreshed `packages/backend/wasm/package-lock.json` to a dedicated pull-request branch.
+The generated active setup module remains ignored and must not be committed. The workflow explicitly dispatches the
+`Source build` pull-request check for the exact generated head; a repository owner reviews and merges the pull request.
+Lockfile-only pull requests are excluded from the ordinary `pull_request` trigger so the bot-authored event cannot leave
+an approval-gated duplicate check; the explicit dispatch is the sole validation run for that one-file change.
+No dependent package may be packed or published until the production-snapshot check and the full repository version
+check pass on that lockfile commit. The full repository check requires the exact synchronized version to have a dated
+Changelog entry.
 
 ## CLI Install Compatibility Checks
 
@@ -247,21 +288,22 @@ The install flow must:
 3. Validate that the CLI package version normalizes to the same `MAJOR.MINOR`.
 4. Select only Google Drive CRS archive names matching `tokamak-backend-crs-vMAJOR.MINOR-YYYYMMDDTHHMMSSZ.zip`.
 5. Download the latest matching archive by timestamp.
-6. Validate `crs_provenance.json backend_version`.
+6. Validate `crs_provenance.json compatibleBackendVersion`.
 7. Validate CRS artifact hashes from `crs_provenance.json`.
-8. Validate `build-metadata-mpc-setup.json compatibleBackendVersion`.
-9. Validate `build-metadata-mpc-setup.json packageVersion` after normalizing to `MAJOR.MINOR`.
-10. Validate that each built backend binary metadata file reports the same compatible backend version.
-11. Validate that each built backend binary metadata file reports a package version whose `MAJOR.MINOR` matches the CRS.
-12. Validate that each built backend binary metadata file has the same subcircuit source digest as the CRS metadata.
+8. Validate the CRS subcircuit package name, package compatibility class, and
+   canonical source digest.
+9. Validate that each built backend binary metadata file reports the same compatible backend version.
+10. Validate that each built backend binary metadata file reports the exact current CLI package version.
+11. Validate that each built backend binary metadata file has the same subcircuit source digest as the CRS provenance.
 
 The Google Drive file name and file ID are not trusted by themselves. Selection is complete only after the downloaded
 archive's embedded provenance, metadata, and hashes pass validation.
 
 ## Publish CI Checks
 
-The publish workflow must check the latest public CRS archive for the current CLI compatibility version before publishing
-the CLI package or building the browser-compatible SNARK package.
+The publish workflow is a restartable three-stage workflow. A version transition can publish only the foundation
+subcircuit package. A manual Stage 2 dispatch verifies the operator-owned CRS and creates the npm-backed production
+snapshot pull request without publishing. The snapshot merge can publish dependent packages after every gate passes.
 
 The CRS check must:
 
@@ -270,12 +312,13 @@ The CRS check must:
 - Ensure the value equals the CLI package `MAJOR.MINOR`.
 - Ensure the value equals the backend workspace package `MAJOR.MINOR`.
 - Search Google Drive only for `tokamak-backend-crs-vMAJOR.MINOR-YYYYMMDDTHHMMSSZ.zip`.
-- Select the latest matching archive by timestamp.
-- Download that single selected archive.
-- Validate `crs_provenance.json backend_version`.
-- Validate `build-metadata-mpc-setup.json compatibleBackendVersion`.
-- Validate `build-metadata-mpc-setup.json packageVersion` after normalizing to `MAJOR.MINOR`.
-- Validate `build-metadata-mpc-setup.json dependencies.subcircuitLibrary.sourceDigest`.
+- Require exactly one matching compatibility archive; zero archives is the expected Stage 1 waiting state, while
+  multiple matching archives are an invalid state.
+- Download the single matching archive and require exactly the canonical four members.
+- Validate `crs_provenance.json compatibleBackendVersion`.
+- Validate `crs_provenance.json subcircuitLibrary.packageName`, the package
+  compatibility class, npm-snapshot origin, and `sourceDigest` against the exact
+  selected npm subcircuit snapshot.
 - Validate CRS artifact hashes against provenance.
 - Export the validated `sigma_verify.json` as a workflow artifact for the browser-compatible SNARK build.
 
@@ -286,15 +329,44 @@ The browser-compatible SNARK release build must:
 - resolve the exact synchronized `@tokamak-zk-evm/subcircuit-library` version from npm;
 - build and validate the converter Worker without bundling `ffjavascript`, `wasmbuilder`, or `wasmcurves`;
 - pack and validate one `@tokamak-zk-evm/snark-browser-compat` tarball; and
-- compare the synchronized tarball version with npm, publishing it through the
-  configured npm Trusted Publisher only when it is strictly newer.
+- query the exact synchronized version, compare an existing package's registry
+  integrity with the source-built tarball, and publish an absent version through
+  the configured npm Trusted Publisher.
 
-The workflow must skip publication when npm already contains the synchronized
-version and fail when the repository version is older than npm. npm versions
-are immutable and must never be reused for changed package contents.
+Only a verified npm `E404` means that an exact version is absent. Authentication,
+authorization, network, and malformed-response failures stop the workflow. The
+workflow skips an existing exact version only when its source-built tarball
+integrity matches npm. npm versions are immutable and must never be reused for
+changed package contents.
 
-The check must not download every candidate archive in the Drive folder. It must first narrow candidates by strict file
-name and then download only the latest matching archive.
+The check must not download every candidate archive in the Drive folder. It first narrows candidates by strict file name,
+rejects duplicates, and downloads only the unique compatibility archive.
+
+### Staged workflow states and authorities
+
+- `validation-only`: a `main` merge that does not change the synchronized
+  version runs source validation and cannot reach an npm publication job.
+- `foundation-publication`: the version-changing merge may publish only the
+  subcircuit library, then stops in `waiting-for-crs-snapshot`.
+- `production-snapshot`: the Google Drive folder owner has supplied the unique
+  CRS, and a manual dispatch from the current `main` commit may create or reuse
+  the one-file production-snapshot pull request. It publishes no npm package.
+- `dependent-publication`: merging that pull request verifies the production
+  lock and CRS, then publishes Synthesizer Node and Web, the CLI, and the
+  browser package in dependency order.
+- `complete`: reruns rebuild and verify exact npm identities but publish
+  nothing.
+
+Every npm stage is restartable. A rerun verifies already-published exact
+tarballs and continues with only absent packages; an identity mismatch or any
+registry failure stops the run. The `JehyukJang` GitHub authority reviews and
+merges pull requests, the `jehyuk` npm authority owns package publication, and
+the Google Drive folder owner owns CRS mutation. Actions uses the built-in
+token for generated branches and validation dispatch, npm OIDC for publication,
+read-only check access to confirm exact-head association, and the active Drive
+read credential for CRS admission. No long-lived GitHub credential or local
+npm publication command is used by this staged Actions path; independently
+maintained local publication tools remain outside this `3.0.0` workflow.
 
 ## Operational Playbooks
 
@@ -304,7 +376,7 @@ Use this flow when the subcircuit source digest and CRS remain valid:
 
 1. Bump all synchronized package versions by `PATCH`.
 2. Keep `packages/cli/package.json tokamakZkEvm.compatibleBackendVersion` unchanged.
-3. Do not run a new dusk-backed MPC setup.
+3. Do not run a new Filecoin-backed phase 2 setup.
 4. Do not upload a new CRS archive.
 5. Publish npm packages.
 6. Confirm install CI validates the existing CRS `MAJOR.MINOR` against the new package `MAJOR.MINOR.PATCH`.
@@ -315,9 +387,10 @@ Use this flow when CRS compatibility changes:
 
 1. Bump all synchronized package versions to the new `MAJOR.MINOR.0` line.
 2. Update `packages/cli/package.json tokamakZkEvm.compatibleBackendVersion` to the new `MAJOR.MINOR`.
-3. Run dusk-backed MPC setup.
-4. Confirm `crs_provenance.json backend_version` is the new `MAJOR.MINOR`.
-5. Confirm `build-metadata-mpc-setup.json compatibleBackendVersion` is the new `MAJOR.MINOR`.
+3. Run Filecoin-backed phase 2 setup.
+4. Confirm `crs_provenance.json compatibleBackendVersion` is the new `MAJOR.MINOR`.
+5. Confirm `crs_provenance.json subcircuitLibrary.sourceDigest` matches the
+   exact subcircuit snapshot used by the backend release.
 6. Upload a CRS archive named `tokamak-backend-crs-vMAJOR.MINOR-YYYYMMDDTHHMMSSZ.zip`.
 7. Publish npm packages only after the public CRS is available and CI can validate it.
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseFrontendConfig } from '../../../core/src/subcircuit/libraryData.ts';
+import { parseFrontendConfig, parseSetupParams } from '../../../core/src/subcircuit/libraryData.ts';
 
 const validConfig = {
   nTxIn: 6,
@@ -34,5 +34,17 @@ describe('frontend configuration parsing', () => {
       ...validConfig,
       nJubjubExpBatch: 37,
     })).toThrow('Unexpected key in frontendCfg.json: nJubjubExpBatch');
+  });
+
+  it('rejects setup metadata outside the normalized library contract', () => {
+    expect(() => parseSetupParams({
+      n: 16,
+      m: 8,
+      m_b: 8,
+      t: 2,
+      s: 8,
+      publicWirePhases: [],
+      globalWireList: [],
+    })).toThrow('Unexpected key in setupParams.json: globalWireList');
   });
 });

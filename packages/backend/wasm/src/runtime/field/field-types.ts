@@ -1,12 +1,5 @@
 export type FieldElement = Uint8Array;
 
-export type SpecialPolynomialOperation =
-  | "x-minus-one"
-  | "one-minus-x"
-  | "linear-x"
-  | "linear-y"
-  | "term9";
-
 export interface FieldRuntime {
   readonly byteLength: number;
   readonly modulus: bigint;
@@ -36,45 +29,18 @@ export interface FieldRuntime {
   batchAddBuffer(left: Uint8Array, right: Uint8Array): Promise<Uint8Array>;
   batchSubBuffer(left: Uint8Array, right: Uint8Array): Promise<Uint8Array>;
   batchMulBuffer(left: Uint8Array, right: Uint8Array): Promise<Uint8Array>;
-  batchMulShiftedBuffer(
-    left: Uint8Array,
-    right: Uint8Array,
-    xSize: number,
-    ySize: number,
-    xShift: number,
-    yShift: number,
-  ): Promise<Uint8Array>;
+  batchProductDifferenceBuffer(a: Uint8Array, b: Uint8Array, c: Uint8Array, d: Uint8Array): Promise<Uint8Array>;
   batchScaleBuffer(buffer: Uint8Array, factor: FieldElement): Promise<Uint8Array>;
   batchAddScaledBuffer(target: Uint8Array, source: Uint8Array, factor: FieldElement): Promise<Uint8Array>;
-  batchAddScaledPrefixBuffer(
-    target: Uint8Array,
-    targetXSize: number,
-    targetYSize: number,
-    source: Uint8Array,
-    sourceXSize: number,
-    sourceYSize: number,
-    factor: FieldElement,
-  ): Promise<Uint8Array>;
-  batchScaleCoeffsXBuffer(
-    buffer: Uint8Array,
-    xSize: number,
-    ySize: number,
-    factor: FieldElement,
-  ): Promise<Uint8Array>;
-  batchScaleCoeffsYBuffer(
-    buffer: Uint8Array,
-    xSize: number,
-    ySize: number,
-    factor: FieldElement,
-  ): Promise<Uint8Array>;
+  shortConvolutionBuffer(long: Uint8Array, short: Uint8Array): Promise<Uint8Array>;
+  linearCombinationBuffer(terms: readonly (readonly [Uint8Array, FieldElement])[]): Promise<Uint8Array>;
+  selectionAccumulateBuffer(values: Uint8Array, cofactors: Uint8Array, width: number): Promise<Uint8Array>;
+  selectionCofactorsBuffer(polynomial: Uint8Array, roots: Uint8Array, inverse: FieldElement): Promise<Uint8Array>;
+  orderedRecurrenceBuffer(numerators: Uint8Array, inverseDenominators: Uint8Array): Promise<Uint8Array>;
+  copyOperandsBuffer(b: Uint8Array, sc: Uint8Array, root: FieldElement, beta: FieldElement, gamma: FieldElement): Promise<{ readonly numerators: Uint8Array; readonly denominators: Uint8Array }>;
+  divideUnivariateVanishingBuffer(coefficients: Uint8Array, domainSize: number): Promise<{ readonly quotient: Uint8Array; readonly remainder: Uint8Array }>;
   batchFromMontgomeryBuffer(buffer: Uint8Array): Promise<Uint8Array>;
   batchInverseBuffer(buffer: Uint8Array): Promise<Uint8Array>;
-  ruffiniXBuffer(
-    buffer: Uint8Array,
-    xSize: number,
-    ySize: number,
-    point: FieldElement,
-  ): Promise<{ readonly quotient: Uint8Array; readonly remainder: Uint8Array }>;
   ruffiniYBuffer(
     buffer: Uint8Array,
     ySize: number,
@@ -87,74 +53,6 @@ export interface FieldRuntime {
     xPoint: FieldElement,
     yPoint: FieldElement,
   ): Promise<FieldElement>;
-  evaluateScaledChallengeSetBuffer(
-    buffer: Uint8Array,
-    xSize: number,
-    ySize: number,
-    xPoint: FieldElement,
-    scaledXPoint: FieldElement,
-    yPoint: FieldElement,
-    scaledYPoint: FieldElement,
-  ): Promise<readonly [FieldElement, FieldElement, FieldElement]>;
-  divideByVanishingBuffer(
-    buffer: Uint8Array,
-    xSize: number,
-    ySize: number,
-    xDegree: number,
-    yDegree: number,
-  ): Promise<{ readonly quotientX: Uint8Array; readonly quotientY: Uint8Array }>;
-  computeRecursionRecurrenceBuffer(
-    gEvals: Uint8Array,
-    inverseFEvals: Uint8Array,
-    mI: number,
-    sMax: number,
-  ): Promise<Uint8Array>;
-  k0RecurrenceBuffer(
-    buffer: Uint8Array,
-    inputXSize: number,
-    inputYSize: number,
-    outputXSize: number,
-    outputYSize: number,
-    mI: number,
-  ): Promise<Uint8Array>;
-  klRecurrenceBuffer(
-    buffer: Uint8Array,
-    inputXSize: number,
-    inputYSize: number,
-    outputXSize: number,
-    outputYSize: number,
-    mI: number,
-    sMax: number,
-  ): Promise<Uint8Array>;
-  specialPolynomialBuffer(
-    buffer: Uint8Array,
-    inputXSize: number,
-    inputYSize: number,
-    activeXSize: number,
-    activeYSize: number,
-    outputXSize: number,
-    outputYSize: number,
-    operation: SpecialPolynomialOperation,
-    constant: FieldElement,
-    xCoefficient: FieldElement,
-    yCoefficient: FieldElement,
-  ): Promise<Uint8Array>;
-  fusedLinearPolynomialBuffer(
-    buffer: Uint8Array,
-    inputXSize: number,
-    inputYSize: number,
-    activeXSize: number,
-    activeYSize: number,
-    addend: Uint8Array,
-    addendXSize: number,
-    addendYSize: number,
-    outputXSize: number,
-    outputYSize: number,
-    axis: "x" | "y",
-    constant: FieldElement,
-    shiftCoefficient: FieldElement,
-    addendScale: FieldElement,
-  ): Promise<Uint8Array>;
   sparseRowDotBuffer(
     rowOffsets: Uint8Array,
     columns: Uint8Array,

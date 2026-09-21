@@ -9,35 +9,32 @@ import { PublicWireLayout } from "../../../src/prover/protocol/public-wire-layou
 import { validateProverSubcircuitLibrary } from "../../../src/prover/protocol/subcircuit-library-validation.js";
 
 const setup = {
-  l_free: 8,
-  l: 12,
-  l_user_out: 4,
-  l_user: 5,
-  l_D: 28,
-  m_D: 48,
   n: 16,
-  s_D: 1,
-  s_max: 8,
-  futureFrontendOnlyField: { enabled: true },
+  m: 8,
+  m_b: 8,
+  t: 2,
+  s: 8,
+  publicWirePhases: [{ name: "output", region: "free", subcircuitIds: [0] }],
 };
 
 const subcircuit = {
   id: 0,
   name: "example",
-  Nwires: 5,
+  Nwires: 8,
+  NrealWires: 5,
   Nconsts: 2,
-  Out_idx: [1, 4],
-  In_idx: [1, 4],
-  flattenMap: [12, 8, 9, 10, 11],
+  Out_idx: [1, 2],
+  In_idx: [3, 2],
+  Wiring_idx: [0, 5],
+  Public_idx: [1, 2],
+  Internal_idx: [8, 0],
   bufferDirection: "out",
+  publicPhase: "output",
   logicalInterface: { inputs: [], outputs: [] },
 };
 
 const projectedSetup = parseSetupParams(setup);
-if (hasOwn(projectedSetup, "futureFrontendOnlyField")) {
-  throw new Error("Setup projection must omit frontend-owned extension fields.");
-}
-if (projectedSetup.l !== setup.l) {
+if (projectedSetup.m_b !== setup.m_b) {
   throw new Error("Setup projection changed a required field.");
 }
 
@@ -71,12 +68,27 @@ expectFailure(
 );
 
 expectFailure(
-  () => parseSetupParams({ ...setup, l_free: "8" }),
+  () => parseSetupParams({ ...setup, m_b: "8" }),
   "Setup decoder must reject malformed required fields.",
 );
 expectFailure(
-  () => parseProverSubcircuitInfos([{ ...subcircuit, flattenMap: undefined }]),
+  () => parseSetupParams({ ...setup, retiredAggregateInterfaceCapacity: 8 }),
+  "Setup decoder must reject fields outside the current normalized contract.",
+);
+expectFailure(
+  () => parseSetupParams({
+    ...setup,
+    publicWirePhases: [{ ...setup.publicWirePhases[0], globalWireOffset: 0 }],
+  }),
+  "Setup decoder must reject fields outside the current public-phase contract.",
+);
+expectFailure(
+  () => parseProverSubcircuitInfos([{ ...subcircuit, Internal_idx: undefined }]),
   "Subcircuit decoder must reject missing required fields.",
+);
+expectFailure(
+  () => parseProverSubcircuitInfos([{ ...subcircuit, flattenMap: [] }]),
+  "Subcircuit decoder must reject fields outside the current normalized contract.",
 );
 expectFailure(
   () => validateProverSubcircuitLibrary({ ...projectedSetup, n: 12 }, projectedSubcircuits),
@@ -85,14 +97,14 @@ expectFailure(
 expectFailure(
   () => validateProverSubcircuitLibrary(
     projectedSetup,
-    [{ ...projectedSubcircuits[0], flattenMap: [12, 8, 9, 10, 48] }],
+    [{ ...projectedSubcircuits[0], NrealWires: 6 }],
   ),
-  "Semantic validation must reject a flatten map outside m_D.",
+  "Semantic validation must reject inconsistent normalized real-wire counts.",
 );
 expectFailure(
   () => validateProverSubcircuitLibrary(
     projectedSetup,
-    [{ ...projectedSubcircuits[0], Out_idx: [0, 4] }],
+    [{ ...projectedSubcircuits[0], Out_idx: [0, 2] }],
   ),
   "Semantic validation must reject an invalid buffer public port.",
 );

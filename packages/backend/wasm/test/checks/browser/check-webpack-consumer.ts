@@ -7,46 +7,23 @@ import { promisify } from 'node:util';
 
 import { chromium } from 'playwright';
 import webpack, { type Configuration } from 'webpack';
-import { SUBCIRCUIT_LIBRARY_PACKAGE_VERSION } from '../../../src/generated/active/setup.generated.js';
-
 const execFileAsync = promisify(execFile);
 const PACKAGE_NAME = '@tokamak-zk-evm/snark-browser-compat';
 
-const CRS_PROVENANCE = JSON.stringify({
-  documentKind: 'finalMpcCrs',
-  releaseEligible: false,
-  generatedAtUtc: '2026-08-24T00:00:00Z',
-  compatibleBackendVersion: SUBCIRCUIT_LIBRARY_PACKAGE_VERSION.split('.').slice(0, 2).join('.'),
-  subcircuitLibrary: {
-    packageName: '@tokamak-zk-evm/subcircuit-library',
-    packageVersion: SUBCIRCUIT_LIBRARY_PACKAGE_VERSION,
-    origin: 'npmSnapshot',
-  },
-  phase1SourceProvenance: null,
-  combinedSigmaSha256: '0'.repeat(64),
-  sigmaPreprocessSha256: '1'.repeat(64),
-  sigmaVerifySha256: '2'.repeat(64),
-});
 const SUBCIRCUIT_LIBRARY_TARBALL = process.env.BACKEND_WASM_SUBCIRCUIT_LIBRARY_TARBALL;
 const APPLICATION_SOURCE = `
-import { convertCrs } from "@tokamak-zk-evm/snark-browser-compat/converter";
+import { convertSelector } from "@tokamak-zk-evm/snark-browser-compat/converter";
 
-const input = new Uint8Array([1, 2, 3, 4]);
 try {
-  await convertCrs(input, ${CRS_PROVENANCE});
+  await convertSelector({});
   window.__webpackResult = { status: "unexpected-success" };
 } catch (error) {
-  const cause = error && typeof error === "object" && "cause" in error
-    ? error.cause
-    : undefined;
   window.__webpackResult = {
     status: "ok",
-    detached: input.byteLength === 0 && input.buffer.byteLength === 0,
     code: error && typeof error === "object" && "code" in error
       ? error.code
       : undefined,
     message: error instanceof Error ? error.message : String(error),
-    causeMessage: cause instanceof Error ? cause.message : String(cause ?? ""),
   };
 }
 `;
@@ -59,10 +36,8 @@ const TEST_PAGE = `<!doctype html>
 
 interface WebpackResult {
   readonly status: 'ok' | 'unexpected-success';
-  readonly detached?: boolean;
   readonly code?: string;
   readonly message?: string;
-  readonly causeMessage?: string;
 }
 
 interface NpmPackResult {
@@ -110,14 +85,13 @@ async function main(): Promise<void> {
       { cwd: applicationRoot },
     );
 
-    await assertFfjavascriptIsExternal(path.join(applicationRoot, 'node_modules', ...PACKAGE_NAME.split('/')));
     await buildApplication(applicationRoot, outputRoot);
     await checkBuiltApplication(outputRoot);
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
 
-  console.log('Checked packed converter with external ffjavascript in a production Webpack browser build');
+  console.log('Checked packed current converter API in a production Webpack browser build');
 }
 
 async function packCurrentPackage(packageArchiveRoot: string): Promise<string> {
@@ -131,14 +105,6 @@ async function packCurrentPackage(packageArchiveRoot: string): Promise<string> {
     throw new Error(`Expected one packed package, received ${result.length}.`);
   }
   return path.join(packageArchiveRoot, result[0].filename);
-}
-
-async function assertFfjavascriptIsExternal(installedPackageRoot: string): Promise<void> {
-  const workerPath = path.join(installedPackageRoot, 'dist', 'converter', 'worker', 'crs-converter-worker.js');
-  const workerSource = await readFile(workerPath, 'utf8');
-  if (!/from\s+["']ffjavascript["']/.test(workerSource)) {
-    throw new Error('Packed converter Worker does not retain ffjavascript as an external import.');
-  }
 }
 
 async function buildApplication(applicationRoot: string, outputRoot: string): Promise<void> {
@@ -209,13 +175,10 @@ async function checkBuiltApplication(outputRoot: string): Promise<void> {
     if (value.status !== 'ok') {
       throw new Error('Invalid rkyv input unexpectedly converted successfully.');
     }
-    if (value.detached !== true || value.code !== 'INVALID_INPUT') {
+    if (value.code !== 'INVALID_INPUT') {
       throw new Error(`Unexpected Webpack converter result: ${JSON.stringify(value)}.`);
     }
-    if (
-      value.message !== 'convertCrs could not process its input.' ||
-      !value.causeMessage?.includes('invalid archive shape')
-    ) {
+    if (value.message !== 'convertSelector could not process its input.') {
       throw new Error(`Unexpected Webpack converter failure: ${JSON.stringify(value)}.`);
     }
   } finally {

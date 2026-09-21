@@ -8,16 +8,11 @@ export const BINARY_DIGEST_ENTRY_BYTES = 40;
 export const BINARY_SECTION_ENTRY_BYTES = 96;
 export const BINARY_SECTION_LABEL_BYTES = 40;
 export const BINARY_DIGEST_BYTES = 32;
-
 export enum BinaryArtifactFileKind {
   Instance = 1,
-  VerifierProof = 2,
-  VerifierCrs = 3,
-  VerifierPreprocess = 4,
   ProverPlacementVariables = 5,
-  ProverCrs = 6,
-  PreprocessCrs = 7,
-  ProverPermutation = 9,
+  ProverSelector = 8,
+  ProverPermutation = 9
 }
 
 export const BINARY_SELF_DIGEST_ENTRY_TYPE = 1;
@@ -37,6 +32,7 @@ export enum BinarySectionType {
   Permutation = 9,
   CrsG1 = 11,
   CrsG2 = 12,
+  CrsMetadata = 13,
 }
 
 export interface BinarySectionInput {

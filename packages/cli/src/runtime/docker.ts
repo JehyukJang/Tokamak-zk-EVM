@@ -386,8 +386,8 @@ function dockerPrepareArgs(
     '--staging-root',
     toContainerPath(stagingRoot, context),
   ];
-  if (options.noSetup) {
-    args.push('--no-setup');
+  if (options.noFullSetup) {
+    args.push('--no-full-setup');
   }
   if (options.verbose) {
     args.push('--verbose');
@@ -427,7 +427,7 @@ export async function installDockerRuntime(options: InstallOptions): Promise<Run
       context,
       'Docker backend runtime identity',
     );
-    await validatePreparedDockerRuntime(stagingContext, options.noSetup);
+    await validatePreparedDockerRuntime(stagingContext, options.noFullSetup);
     await fs.writeFile(stagingBootstrapPath, `${JSON.stringify(bootstrap, null, 2)}\n`, {
       encoding: 'utf8',
       flag: 'wx',
@@ -453,7 +453,7 @@ export async function installDockerRuntime(options: InstallOptions): Promise<Run
   return context;
 }
 
-async function validatePreparedDockerRuntime(context: RuntimeContext, noSetup: boolean): Promise<void> {
+async function validatePreparedDockerRuntime(context: RuntimeContext, noFullSetup: boolean): Promise<void> {
   const paths = runtimePaths(context);
   const runtimeStat = await fs.stat(context.runtimeDir);
   if (!runtimeStat.isDirectory()) {
@@ -469,8 +469,11 @@ async function validatePreparedDockerRuntime(context: RuntimeContext, noSetup: b
   if (!icicleStat.isDirectory()) {
     throw new Error('Docker-prepared runtime is missing the ICICLE library directory.');
   }
-  const setupMarker = noSetup
-    ? path.join(paths.setupOutputDir, 'README.txt')
-    : paths.setupOutputDir;
-  await fs.access(setupMarker);
+  for (const name of noFullSetup
+    ? ['verifier_keys.rkyv', 'crs_provenance.json']
+    : ['verifier_keys.rkyv', 'crs_provenance.json', 'prover_keys.rkyv', 'preprocess_keys.rkyv', 'tau_sequence.rkyv']) {
+    if (!(await fs.stat(path.join(paths.setupOutputDir, name))).isFile()) {
+      throw new Error(`Docker-prepared runtime is missing CRS file ${name}.`);
+    }
+  }
 }

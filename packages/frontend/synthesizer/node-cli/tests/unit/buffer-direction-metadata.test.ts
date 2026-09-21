@@ -5,11 +5,15 @@ import { parseSubcircuitInfo } from '../../../core/src/subcircuit/libraryData.ts
 const bufferEntry = (bufferDirection: unknown = undefined) => ({
   id: 0,
   name: 'bufferTxIn',
-  Nwires: 3,
+  Nwires: 4,
+  NrealWires: 3,
   Nconsts: 2,
   Out_idx: [1, 1],
   In_idx: [2, 1],
-  flattenMap: [0, 1, 2],
+  Wiring_idx: [0, 3],
+  Public_idx: [2, 1],
+  Internal_idx: [4, 0],
+  publicPhase: 'user-input',
   ...(bufferDirection === undefined ? {} : { bufferDirection }),
 });
 
@@ -17,10 +21,13 @@ const compositionEntry = (bufferDirection: unknown = undefined) => ({
   id: 1,
   name: 'ALU3',
   Nwires: 8,
+  NrealWires: 8,
   Nconsts: 0,
   Out_idx: [1, 2],
   In_idx: [3, 5],
-  flattenMap: [],
+  Wiring_idx: [0, 8],
+  Public_idx: [0, 0],
+  Internal_idx: [8, 0],
   logicalInterface: {
     inputs: [
       { name: 'selector', logicalType: { kind: 'uint', bits: 32 } },

@@ -138,13 +138,17 @@ export type SubcircuitInfoByNameEntry = {
   name: SubcircuitNames;
   id: number;
   NWires: number;
+  NRealWires: number;
   inWireIndex: number;
   NInWires: number;
   outWireIndex: number;
   NOutWires: number;
-  flattenMap: number[];
+  wiringRange: readonly [start: number, count: number];
+  publicRange: readonly [start: number, count: number];
+  internalRange: readonly [start: number, count: number];
   logicalInterface?: LogicalInterface;
   bufferDirection?: BufferDirection;
+  publicPhase?: string;
 };
 
 export type SubcircuitInfoByName = Map<SubcircuitNames, SubcircuitInfoByNameEntry>;

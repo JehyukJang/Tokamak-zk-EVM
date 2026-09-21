@@ -10,6 +10,8 @@ export interface WasmCodeBuilder {
   i32_ge_u(left: unknown, right: unknown): unknown;
   i32_gt_u(left: unknown, right: unknown): unknown;
   i32_lt_u(left: unknown, right: unknown): unknown;
+  i32_gt_s(left: unknown, right: unknown): unknown;
+  i32_lt_s(left: unknown, right: unknown): unknown;
   i32_load(pointer: unknown): unknown;
   call(name: string, ...params: unknown[]): unknown;
   br(depth: number): unknown;

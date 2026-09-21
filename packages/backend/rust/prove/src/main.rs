@@ -1,12 +1,12 @@
 use clap::Parser;
 use libs::cli::render_error;
-use libs::proof_protocol::{Proof, TranscriptManager};
+use libs::errors::DeviceError;
 use libs::subcircuit_library::{
-    try_resolve_subcircuit_library_path, validate_operational_crs_compatibility,
+    try_resolve_subcircuit_library_path, validate_operational_univariate_crs_compatibility,
     DevelopmentCrsProvenanceArg, SubcircuitLibraryArg,
 };
-use libs::utils::try_check_device;
-use prove::{ProveError, ProveInputPaths, Prover};
+use prove::univariate_cli::ProverDevice;
+use prove::{univariate_cli, ProveError, ProveInputPaths};
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Instant;
@@ -14,21 +14,32 @@ use std::time::Instant;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Config {
+    /// Arithmetic engine: CPU uses arkworks; CUDA explicitly selects ICICLE
+    #[arg(long, value_enum, default_value = "cpu")]
+    device: ProverDevice,
     #[command(flatten)]
     subcircuit_library: SubcircuitLibraryArg,
 
     #[command(flatten)]
     development_crs_provenance: DevelopmentCrsProvenanceArg,
 
-    /// CRS output directory containing proof setup artifacts
-    #[arg(long, value_name = "PATH")]
-    crs: String,
+    /// Check CRS file SHA-256 digests and the subcircuit-library source digest
+    #[arg(long)]
+    check_digests: bool,
 
-    /// Synthesizer output directory containing proving inputs
+    /// Trusted-setup tau_sequence.rkyv file
+    #[arg(long, value_name = "FILE")]
+    tau_sequence: String,
+
+    /// Trusted-setup output directory containing prover_keys.rkyv
+    #[arg(long, value_name = "PATH")]
+    keys: String,
+
+    /// Synthesizer output directory containing selector, permutation, instance, and witnesses
     #[arg(long, value_name = "PATH")]
     synthesizer_stat: String,
 
-    /// Output directory for proof.json
+    /// Output directory for univariate_proof.bin
     #[arg(long, value_name = "PATH")]
     output: String,
 }
@@ -39,6 +50,7 @@ fn main() -> ExitCode {
         env!("CARGO_PKG_VERSION"),
         option_env!("TOKAMAK_ZKEVM_COMPATIBLE_BACKEND_VERSION"),
         option_env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION"),
+        option_env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_SOURCE_DIGEST"),
     ) {
         Ok(true) => return ExitCode::SUCCESS,
         Ok(false) => {}
@@ -56,89 +68,99 @@ fn main() -> ExitCode {
 fn run() -> Result<(), ProveError> {
     let total_start = Instant::now();
     let config = Config::parse();
+    #[cfg(feature = "timing")]
+    let ingress = prove::timing::SpanGuard::new("univariate.identity", "input", vec![]);
     let qap_library_path =
         try_resolve_subcircuit_library_path(config.subcircuit_library.as_deref())?;
-    validate_operational_crs_compatibility(
+    let validated_crs = validate_operational_univariate_crs_compatibility(
         &config.development_crs_provenance,
-        PathBuf::from(&config.crs).as_path(),
+        PathBuf::from(&config.tau_sequence).as_path(),
+        PathBuf::from(&config.keys).as_path(),
         qap_library_path.as_path(),
+        config.check_digests,
     )?;
     let qap_path = qap_library_path.to_string_lossy().into_owned();
 
     let paths = ProveInputPaths {
         qap_path: &qap_path,
         synthesizer_path: &config.synthesizer_stat,
-        setup_path: &config.crs,
+        tau_sequence_path: &config.tau_sequence,
+        keys_path: &config.keys,
         output_path: &config.output,
     };
 
-    try_check_device()?;
-
-    println!("Prover initialization...");
-    let (mut prover, binding) = Prover::init(&paths)?;
-
-    let mut manager = TranscriptManager::new();
-
-    println!("Running prove0...");
-    let proof0 = prover.prove0();
-    let thetas = proof0.verify0_with_manager(&mut manager);
-
-    println!("Running prove1...");
-    let proof1 = prover.prove1(&thetas);
-    let kappa0 = proof1.verify1_with_manager(&mut manager);
-
-    println!("Running prove2...");
-    let proof2 = prover.prove2(&thetas, kappa0);
-    let (chi, zeta) = proof2.verify2_with_manager(&mut manager);
-
-    println!("Running prove3...");
-    let proof3 = prover.prove3(chi, zeta);
-    let kappa1 = proof3.verify3_with_manager(&mut manager);
-
-    println!("Running prove4...");
-    let (proof4, proof4_test) = prover.prove4(&proof3, &thetas, kappa0, chi, zeta, kappa1);
-    #[cfg(not(feature = "testing-mode"))]
-    let _ = &proof4_test;
-
-    let proof = Proof {
-        binding,
-        proof0,
-        proof1,
-        proof2,
-        proof3,
-        proof4,
-    };
-
-    println!("Writing the proof into JSON (formatted for Solidity verifier)...");
-    let formatted_proof = proof.convert_format_for_solidity_verifier();
-    let output_path = PathBuf::from(paths.output_path).join("proof.json");
-    formatted_proof
-        .write_into_json(output_path.clone())
-        .map_err(|source| ProveError::WriteOutput {
-            path: output_path,
-            source,
-        })?;
-
-    #[cfg(feature = "testing-mode")]
-    {
-        let test_output_path = PathBuf::from(paths.output_path).join("proof4_test.json");
-        proof4_test
-            .write_into_json(test_output_path.clone())
-            .map_err(|source| ProveError::WriteOutput {
-                path: test_output_path,
-                source,
-            })?;
-
-        println!("kappa1: {}", kappa1.to_string());
-        println!("chi: {}", chi.to_string());
+    if matches!(config.device, ProverDevice::Cuda) {
+        let failure = |e: String| DeviceError::Initialization {
+            device: "CUDA",
+            reason: e,
+        };
+        icicle_runtime::load_backend_from_env_or_default().map_err(|e| failure(e.to_string()))?;
+        let cuda = icicle_runtime::Device::new("CUDA", 0);
+        if !icicle_runtime::is_device_available(&cuda) {
+            return Err(failure("CUDA was requested but is unavailable".into()).into());
+        }
+        icicle_runtime::set_device(&cuda).map_err(|e| failure(e.to_string()))?;
     }
+    #[cfg(feature = "timing")]
+    drop(ingress);
+
+    println!("Running univariate prove: {:?}", config.device);
+    univariate_cli::prove_with_validated_crs(&paths, config.device, validated_crs)?;
 
     let total_elapsed_secs = total_start.elapsed().as_secs_f64();
     println!(
-        "Prove completed. Total elapsed time: {:.3}s ({:.0} ms)",
+        "Univariate prove completed. Total elapsed time: {:.3}s ({:.0} ms)",
         total_elapsed_secs,
         total_elapsed_secs * 1000.0
     );
+    #[cfg(feature = "timing")]
+    {
+        prove::timing::record("univariate.total", "total", total_start.elapsed(), vec![]);
+        println!(
+            "TIMING_JSON {}",
+            serde_json::to_string(&prove::timing::take_events())
+                .expect("timing events must serialize")
+        );
+    }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cpu_is_default_and_cuda_requires_explicit_selection() {
+        let mut args = vec![
+            "prove",
+            "--tau-sequence",
+            "tau",
+            "--keys",
+            "keys",
+            "--synthesizer-stat",
+            "fixture",
+            "--output",
+            "output",
+        ];
+        if cfg!(feature = "local-development-subcircuit-library") {
+            args.extend(["--subcircuit-library", "library"]);
+        }
+        assert!(matches!(
+            Config::try_parse_from(&args).unwrap().device,
+            ProverDevice::Cpu
+        ));
+        assert!(!Config::try_parse_from(&args).unwrap().check_digests);
+        assert!(
+            Config::try_parse_from(args.iter().copied().chain(["--check-digests"]))
+                .unwrap()
+                .check_digests
+        );
+        let cuda = args.iter().copied().chain(["--device", "cuda"]);
+        assert!(matches!(
+            Config::try_parse_from(cuda).unwrap().device,
+            ProverDevice::Cuda
+        ));
+        assert!(Config::try_parse_from(args.into_iter().chain(["--device", "metal"])).is_err());
+    }
 }

@@ -6,6 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import AdmZip from 'adm-zip';
 import {
+  buildMetadata as synthesizerBuildMetadata,
   runTokamakChannelTxFromFiles,
   type TokamakChannelTxFiles,
 } from '@tokamak-zk-evm/synthesizer-node';
@@ -22,20 +23,13 @@ import {
 } from './runtime.js';
 import type { CommandResult } from './system.js';
 import { BACKEND_PACKAGE_NAMES } from './generated/backend-build-metadata-validator.generated.js';
-import { assertLiveBackendRuntimeIdentity } from './runtime/identity.js';
+import { assertLiveBackendRuntimeIdentity, validateSynthesizerBuildMetadataForContext } from './runtime/identity.js';
 import { acquireRuntimeOperationLock } from './runtime/operation-lock.js';
 import { promoteStagedRuntimePaths } from './runtime/stage-transaction.js';
 import { parseBackendVerificationResult } from './runtime/verification-result.js';
 
 type CommandName =
-  | 'install'
-  | 'uninstall'
-  | 'synthesize'
-  | 'preprocess'
-  | 'prove'
-  | 'verify'
-  | 'extract-proof'
-  | 'doctor';
+  'install' | 'uninstall' | 'synthesize' | 'preprocess' | 'prove' | 'verify' | 'extract-proof' | 'doctor';
 
 export interface ParsedArgs {
   command: CommandName;
@@ -43,18 +37,14 @@ export interface ParsedArgs {
   installOptions?: {
     docker: boolean;
     includePrerequisite: boolean;
-    noSetup: boolean;
+    noFullSetup: boolean;
   };
   synthesizeArgs?: string[];
   arg1?: string;
 }
 
 type RuntimePaths = ReturnType<typeof runtimePaths>;
-type RuntimeDirectoryKey =
-  | 'setupOutputDir'
-  | 'synthOutputDir'
-  | 'preprocessOutputDir'
-  | 'proveOutputDir';
+type RuntimeDirectoryKey = 'setupOutputDir' | 'synthOutputDir' | 'preprocessOutputDir' | 'proveOutputDir';
 
 interface RuntimeFileRef {
   directory: RuntimeDirectoryKey;
@@ -67,29 +57,29 @@ interface StageInputSyncRule {
   requiredFiles: readonly string[];
 }
 
-const PREPROCESS_INPUT_RULES = [
+export const PREPROCESS_INPUT_RULES = [
   {
     destinationDir: 'synthOutputDir',
-    requiredFiles: ['permutation.json', 'instance.json'],
+    requiredFiles: ['selector.json', 'permutation.json', 'instance.json'],
   },
 ] as const satisfies readonly StageInputSyncRule[];
 
-const PROVE_INPUT_RULES = [
+export const PROVE_INPUT_RULES = [
   {
     destinationDir: 'synthOutputDir',
-    requiredFiles: ['instance.json', 'permutation.json', 'placementVariables.json'],
+    requiredFiles: ['selector.json', 'instance.json', 'permutation.json', 'placementVariables.json'],
     optionalFiles: ['instance_description.json', 'state_snapshot.json'],
   },
 ] as const satisfies readonly StageInputSyncRule[];
 
-const VERIFY_INPUT_RULES = [
+export const VERIFY_INPUT_RULES = [
   {
     destinationDir: 'proveOutputDir',
-    requiredFiles: ['proof.json'],
+    requiredFiles: ['univariate_proof.bin'],
   },
   {
     destinationDir: 'preprocessOutputDir',
-    requiredFiles: ['preprocess.json'],
+    requiredFiles: ['univariate_verifier_preprocess.bin'],
   },
   {
     destinationDir: 'synthOutputDir',
@@ -97,44 +87,43 @@ const VERIFY_INPUT_RULES = [
   },
 ] as const satisfies readonly StageInputSyncRule[];
 
-const PREPROCESS_REQUIRED_FILES = [
-  { directory: 'setupOutputDir', filename: 'sigma_preprocess.rkyv' },
+export const PREPROCESS_REQUIRED_FILES = [
+  { directory: 'setupOutputDir', filename: 'preprocess_keys.rkyv' },
+  { directory: 'setupOutputDir', filename: 'crs_provenance.json' },
+  { directory: 'synthOutputDir', filename: 'selector.json' },
   { directory: 'synthOutputDir', filename: 'permutation.json' },
   { directory: 'synthOutputDir', filename: 'instance.json' },
 ] as const satisfies readonly RuntimeFileRef[];
 
-const PROVE_REQUIRED_FILES = [
-  { directory: 'setupOutputDir', filename: 'combined_sigma.rkyv' },
+export const PROVE_REQUIRED_FILES = [
+  { directory: 'setupOutputDir', filename: 'tau_sequence.rkyv' },
+  { directory: 'setupOutputDir', filename: 'prover_keys.rkyv' },
+  { directory: 'setupOutputDir', filename: 'crs_provenance.json' },
+  { directory: 'synthOutputDir', filename: 'selector.json' },
   { directory: 'synthOutputDir', filename: 'instance.json' },
   { directory: 'synthOutputDir', filename: 'permutation.json' },
   { directory: 'synthOutputDir', filename: 'placementVariables.json' },
 ] as const satisfies readonly RuntimeFileRef[];
 
-const VERIFY_REQUIRED_FILES = [
-  { directory: 'setupOutputDir', filename: 'sigma_verify.json' },
-  { directory: 'preprocessOutputDir', filename: 'preprocess.json' },
-  { directory: 'proveOutputDir', filename: 'proof.json' },
+export const VERIFY_REQUIRED_FILES = [
+  { directory: 'preprocessOutputDir', filename: 'univariate_verifier_preprocess.bin' },
+  { directory: 'proveOutputDir', filename: 'univariate_proof.bin' },
   { directory: 'synthOutputDir', filename: 'instance.json' },
 ] as const satisfies readonly RuntimeFileRef[];
 
-const PROOF_BUNDLE_REQUIRED_FILES = [
+export const PROOF_BUNDLE_REQUIRED_FILES = [
   { directory: 'synthOutputDir', filename: 'instance.json' },
-  { directory: 'synthOutputDir', filename: 'instance_description.json' },
-  { directory: 'preprocessOutputDir', filename: 'preprocess.json' },
-  { directory: 'proveOutputDir', filename: 'proof.json' },
-] as const satisfies readonly RuntimeFileRef[];
-
-const PROOF_BUNDLE_OPTIONAL_FILES = [
-  { directory: 'proveOutputDir', filename: 'benchmark.json' },
+  { directory: 'preprocessOutputDir', filename: 'univariate_verifier_preprocess.bin' },
+  { directory: 'proveOutputDir', filename: 'univariate_proof.bin' },
 ] as const satisfies readonly RuntimeFileRef[];
 
 function printUsage(): void {
   console.log(`
 Commands:
-  --install [--no-setup] [--include-prerequisite] [--docker]
+  --install [--no-full-setup] [--include-prerequisite] [--docker]
       Build the local Tokamak zk-EVM runtime from the packaged backend workspace and prepare local resources
-      By default setup artifacts are installed from the published CRS archive
-      Use --no-setup to skip setup artifact provisioning
+      By default setup artifacts are installed from the published CRS files
+      Use --no-full-setup to fetch only verifier keys and provenance before building
       Use --include-prerequisite to interactively install missing native build prerequisites
       Use --docker on Linux or Windows with Docker Desktop to install and run backend commands through an Ubuntu 22 container
 
@@ -153,15 +142,15 @@ Commands:
 
   --preprocess [<SYNTH_OUTPUT_ZIP|DIR>]
       Run backend preprocess stage
-      If an input directory or zip is provided, it must include permutation.json and instance.json
+      If an input directory or zip is provided, it must include selector.json, permutation.json, and instance.json
 
   --prove [<SYNTH_OUTPUT_ZIP|DIR>]
       Run backend prove stage
-      If an input directory or zip is provided, it must include placementVariables.json, permutation.json, and instance.json
+      If an input directory or zip is provided, it must include selector.json, placementVariables.json, permutation.json, and instance.json
 
   --verify [<PROOF_ZIP|DIR>]
       Verify a proof saved under the installed runtime
-      If an input directory or zip is provided, it must include proof.json, preprocess.json, and instance.json
+      If an input directory or zip is provided, it must include univariate_proof.bin, univariate_verifier_preprocess.bin, and instance.json
 
   --extract-proof <OUTPUT_ZIP_PATH>
       Collect proof artifacts from the installed runtime and zip them to the given path
@@ -174,7 +163,7 @@ Commands:
 
 Options:
   --verbose        Show detailed output
-  --no-setup       Skip setup artifact provisioning during --install
+  --no-full-setup  Fetch verifier keys and provenance; skip remaining CRS files
   --include-prerequisite
                    Interactively install missing native build prerequisites during --install
   --docker         Install through Docker on Linux or Windows with Docker Desktop and save a Docker bootstrap
@@ -260,7 +249,7 @@ async function extractZipToTemp(zipPath: string, prefix: string): Promise<string
 }
 
 function parseSinglePathArg(argv: string[], command: string, required: boolean): string | undefined {
-  const args = argv.slice(1).filter((arg) => arg !== '--verbose');
+  const args = argv.slice(1).filter(arg => arg !== '--verbose');
   if (args.length === 0) {
     if (required) {
       err(`${command} requires <OUTPUT_ZIP_PATH>`);
@@ -327,7 +316,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   if (argv[0] === '--install') {
     let docker = false;
     let includePrerequisite = false;
-    let noSetup = false;
+    let noFullSetup = false;
     for (const arg of argv.slice(1)) {
       if (arg === '--verbose') continue;
       if (arg === '--docker') {
@@ -338,8 +327,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
         includePrerequisite = true;
         continue;
       }
-      if (arg === '--no-setup') {
-        noSetup = true;
+      if (arg === '--no-full-setup') {
+        noFullSetup = true;
         continue;
       }
       err(`Unknown option for --install: ${arg}`);
@@ -350,7 +339,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     return {
       command: 'install',
       verbose,
-      installOptions: { docker, includePrerequisite, noSetup },
+      installOptions: { docker, includePrerequisite, noFullSetup },
     };
   }
   if (argv[0] === '--uninstall') {
@@ -362,7 +351,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     return {
       command: 'synthesize',
       verbose,
-      synthesizeArgs: argv.slice(1).filter((arg) => arg !== '--verbose'),
+      synthesizeArgs: argv.slice(1).filter(arg => arg !== '--verbose'),
     };
   }
 
@@ -448,7 +437,11 @@ function normalizeSynthesizeArgs(args: string[]): TokamakChannelTxFiles {
   return parsed as TokamakChannelTxFiles;
 }
 
-async function runPreprocess(execution: RuntimeExecution, inputPath: string | undefined, verbose: boolean): Promise<void> {
+async function runPreprocess(
+  execution: RuntimeExecution,
+  inputPath: string | undefined,
+  verbose: boolean,
+): Promise<void> {
   const { context } = execution;
   const paths = runtimePaths(context);
   await runBackendStage(execution, {
@@ -460,7 +453,7 @@ async function runPreprocess(execution: RuntimeExecution, inputPath: string | un
     successMessage: `Preprocess complete → ${paths.preprocessOutputDir}`,
     inputRules: PREPROCESS_INPUT_RULES,
     verbose,
-    args: stagePaths => backendOutputArgs(stagePaths, stagePaths.preprocessOutputDir),
+    args: stagePaths => backendPreprocessArgs(stagePaths, stagePaths.preprocessOutputDir),
   });
 }
 
@@ -476,7 +469,7 @@ async function runProve(execution: RuntimeExecution, inputPath: string | undefin
     successMessage: `Proof artifacts available in ${paths.proveOutputDir}`,
     inputRules: PROVE_INPUT_RULES,
     verbose,
-    args: stagePaths => backendOutputArgs(stagePaths, stagePaths.proveOutputDir),
+    args: stagePaths => backendProveArgs(stagePaths, stagePaths.proveOutputDir),
   });
 }
 
@@ -487,7 +480,7 @@ async function runVerify(execution: RuntimeExecution, inputPath: string | undefi
     binaryPath: paths.verifyBinary,
     inputPath,
     logMessage: `Verify: using artifacts in ${paths.resourceDir}`,
-    postProcessResult: (result) => {
+    postProcessResult: result => {
       const verification = parseBackendVerificationResult(result.stdout);
       if (!verification.verified) {
         err('Verify: verification failed');
@@ -507,7 +500,7 @@ function runtimeFilePath(paths: RuntimePaths, file: RuntimeFileRef): string {
 }
 
 function resolveRuntimeFiles(paths: RuntimePaths, files: readonly RuntimeFileRef[]): string[] {
-  return files.map((file) => runtimeFilePath(paths, file));
+  return files.map(file => runtimeFilePath(paths, file));
 }
 
 async function withStagedRuntimePaths<T>(
@@ -553,9 +546,17 @@ async function copyDirectoryIfPresent(sourcePath: string, destinationPath: strin
   await fs.mkdir(destinationPath, { recursive: true });
 }
 
-function backendOutputArgs(paths: RuntimePaths, outputDir: string): string[] {
+type BackendStagePaths = Pick<RuntimePaths, 'setupOutputDir' | 'synthOutputDir'>;
+
+export function backendPreprocessArgs(paths: BackendStagePaths, outputDir: string): string[] {
+  return ['--keys', paths.setupOutputDir, '--synthesizer-stat', paths.synthOutputDir, '--output', outputDir];
+}
+
+export function backendProveArgs(paths: BackendStagePaths, outputDir: string): string[] {
   return [
-    '--crs',
+    '--tau-sequence',
+    path.join(paths.setupOutputDir, 'tau_sequence.rkyv'),
+    '--keys',
     paths.setupOutputDir,
     '--synthesizer-stat',
     paths.synthOutputDir,
@@ -564,16 +565,14 @@ function backendOutputArgs(paths: RuntimePaths, outputDir: string): string[] {
   ];
 }
 
-function backendVerifyArgs(paths: RuntimePaths): string[] {
+export function backendVerifyArgs(paths: RuntimePaths): string[] {
   return [
-    '--crs',
-    paths.setupOutputDir,
-    '--synthesizer-stat',
-    paths.synthOutputDir,
     '--preprocess',
-    paths.preprocessOutputDir,
+    path.join(paths.preprocessOutputDir, 'univariate_verifier_preprocess.bin'),
     '--proof',
-    paths.proveOutputDir,
+    path.join(paths.proveOutputDir, 'univariate_proof.bin'),
+    '--instance',
+    path.join(paths.synthOutputDir, 'instance.json'),
   ];
 }
 
@@ -583,7 +582,7 @@ async function syncStageInputs(
   paths: RuntimePaths,
   rules: readonly StageInputSyncRule[],
 ): Promise<void> {
-  await withDirFromPath(inputPath, prefix, async (dirPath) => {
+  await withDirFromPath(inputPath, prefix, async dirPath => {
     for (const rule of rules) {
       await validateNamedFilesFromDir(dirPath, rule.requiredFiles, true);
       if (rule.optionalFiles?.length) {
@@ -601,9 +600,8 @@ async function syncStageInputs(
 
 async function runBackendStage(execution: RuntimeExecution, options: BackendStageOptions): Promise<void> {
   const paths = runtimePaths(execution.context);
-  const stagedInputDirectories = options.inputPath === undefined
-    ? []
-    : [...new Set((options.inputRules ?? []).map(rule => rule.destinationDir))];
+  const stagedInputDirectories =
+    options.inputPath === undefined ? [] : [...new Set((options.inputRules ?? []).map(rule => rule.destinationDir))];
   const successMessage = await withStagedRuntimePaths(
     paths,
     path.basename(options.binaryPath),
@@ -611,7 +609,12 @@ async function runBackendStage(execution: RuntimeExecution, options: BackendStag
     options.outputDirectory,
     async stagePaths => {
       if (options.inputPath !== undefined) {
-        await syncStageInputs(options.inputPath, `tokamak-${path.basename(options.binaryPath)}`, stagePaths, options.inputRules ?? []);
+        await syncStageInputs(
+          options.inputPath,
+          `tokamak-${path.basename(options.binaryPath)}`,
+          stagePaths,
+          options.inputRules ?? [],
+        );
       }
       for (const requiredFile of options.requiredFiles(stagePaths)) {
         await ensureFile(requiredFile);
@@ -620,13 +623,10 @@ async function runBackendStage(execution: RuntimeExecution, options: BackendStag
         await fs.mkdir(stagePaths[options.outputDirectory], { recursive: true });
       }
       log(options.logMessage);
-      const result = await runBackendCommand(
-        execution,
-        options.binaryPath,
-        options.args(stagePaths),
-        options.verbose,
-        { quiet: options.quiet, suppressStdout: options.suppressStdout },
-      );
+      const result = await runBackendCommand(execution, options.binaryPath, options.args(stagePaths), options.verbose, {
+        quiet: options.quiet,
+        suppressStdout: options.suppressStdout,
+      });
       return options.postProcessResult?.(result) ?? options.successMessage;
     },
   );
@@ -651,11 +651,6 @@ async function extractProofBundle(context: RuntimeContext, outputPathRaw: string
   for (const filePath of resolveRuntimeFiles(paths, PROOF_BUNDLE_REQUIRED_FILES)) {
     archive.addLocalFile(filePath);
   }
-  for (const filePath of resolveRuntimeFiles(paths, PROOF_BUNDLE_OPTIONAL_FILES)) {
-    if (await fileExists(filePath)) {
-      archive.addLocalFile(filePath);
-    }
-  }
   info(verbose, `Writing proof bundle archive: ${outputName}`);
   const temporaryArchivePath = path.join(outputDir, `.${outputName}.staging-${randomUUID()}.zip`);
   try {
@@ -668,9 +663,7 @@ async function extractProofBundle(context: RuntimeContext, outputPathRaw: string
 }
 
 async function runDoctor(verbose: boolean): Promise<void> {
-  const installCommand = process.platform === 'win32'
-    ? 'tokamak-cli --install --docker'
-    : 'tokamak-cli --install';
+  const installCommand = process.platform === 'win32' ? 'tokamak-cli --install --docker' : 'tokamak-cli --install';
   const execution = await requireInstalledRuntime().catch((error: unknown) => {
     if (error instanceof Error && error.message.startsWith('Unsupported')) {
       throw error;
@@ -694,21 +687,23 @@ async function runDoctor(verbose: boolean): Promise<void> {
   const paths = runtimePaths(context);
   for (const packageName of BACKEND_PACKAGE_NAMES) {
     const binaryPath = path.join(paths.binaryDir, packageName);
-    const result = await runBackendCommand(
-      execution,
-      binaryPath,
-      ['--build-identity-json'],
-      verbose,
-      { suppressStdout: true },
-    );
+    const result = await runBackendCommand(execution, binaryPath, ['--build-identity-json'], verbose, {
+      suppressStdout: true,
+    });
     let liveIdentity: unknown;
     try {
       liveIdentity = JSON.parse(result.stdout) as unknown;
     } catch (error) {
       err(`Could not read ${packageName} machine identity: ${error instanceof Error ? error.message : String(error)}`);
     }
-    const metadata = assertLiveBackendRuntimeIdentity(execution.state.backendRuntimeIdentity, packageName, liveIdentity);
-    ok(`${packageName} identity: ${metadata.packageVersion} / subcircuit-library ${metadata.dependencies.subcircuitLibrary.buildVersion}`);
+    const metadata = assertLiveBackendRuntimeIdentity(
+      execution.state.backendRuntimeIdentity,
+      packageName,
+      liveIdentity,
+    );
+    ok(
+      `${packageName} identity: ${metadata.packageVersion} / subcircuit-library ${metadata.dependencies.subcircuitLibrary.buildVersion}`,
+    );
   }
   ok(`Runtime workspace: ${context.runtimeDir}`);
   ok('Runtime installation looks healthy');
@@ -717,12 +712,72 @@ async function runDoctor(verbose: boolean): Promise<void> {
 async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
   const lockContext = await runtimeContextForOperation(parsed);
+  await assertSynthesizerRuntimeMatchesContext(lockContext);
   const operationLock = await acquireRuntimeOperationLock(lockContext, parsed.command);
   try {
     await runCommandWithRuntimeLock(parsed);
   } finally {
     await operationLock.release();
   }
+}
+
+async function assertSynthesizerRuntimeMatchesContext(context: RuntimeContext): Promise<void> {
+  validateSynthesizerBuildMetadataForContext(synthesizerBuildMetadata, context);
+  const synthesizer = await readResolvedPackageManifest(
+    '@tokamak-zk-evm/synthesizer-node',
+    '@tokamak-zk-evm/synthesizer-node',
+  );
+  if (synthesizer.version !== context.packageVersion) {
+    throw new Error(
+      `Installed Node Synthesizer package version ${synthesizer.version} does not match current CLI package version ${context.packageVersion}. Reinstall matching ${context.packageVersion} packages.`,
+    );
+  }
+  const subcircuitLibrary = await readResolvedPackageManifest(
+    '@tokamak-zk-evm/subcircuit-library/package.json',
+    '@tokamak-zk-evm/subcircuit-library',
+  );
+  if (subcircuitLibrary.version !== context.packageVersion) {
+    throw new Error(
+      `Installed subcircuit-library package version ${subcircuitLibrary.version} does not match current CLI package version ${context.packageVersion}. Reinstall matching ${context.packageVersion} packages.`,
+    );
+  }
+}
+
+async function readResolvedPackageManifest(
+  request: string,
+  expectedName: string,
+): Promise<{ name: string; version: string }> {
+  const entryPath = require.resolve(request);
+  let directory = path.dirname(entryPath);
+  while (true) {
+    const manifestPath = path.join(directory, 'package.json');
+    try {
+      const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8')) as Partial<{
+        name: unknown;
+        version: unknown;
+      }>;
+      if (manifest.name === expectedName && typeof manifest.version === 'string') {
+        return { name: manifest.name, version: manifest.version };
+      }
+    } catch (error) {
+      if (!isMissingPathErrorForCli(error)) {
+        throw new Error(`Unable to read installed package metadata at ${manifestPath}: ${errorMessageForCli(error)}`);
+      }
+    }
+    const parent = path.dirname(directory);
+    if (parent === directory) {
+      throw new Error(`Unable to locate installed package metadata for ${expectedName} from ${request}.`);
+    }
+    directory = parent;
+  }
+}
+
+function isMissingPathErrorForCli(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT';
+}
+
+function errorMessageForCli(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function runtimeContextForOperation(parsed: ParsedArgs): Promise<RuntimeContext> {
@@ -742,7 +797,7 @@ async function runCommandWithRuntimeLock(parsed: ParsedArgs): Promise<void> {
         docker: parsed.installOptions?.docker ?? false,
         includePrerequisite: parsed.installOptions?.includePrerequisite ?? false,
         verbose: parsed.verbose,
-        noSetup: parsed.installOptions?.noSetup ?? false,
+        noFullSetup: parsed.installOptions?.noFullSetup ?? false,
       });
       ok(`Install complete for package ${context.packageVersion}`);
       return;
@@ -792,7 +847,7 @@ async function runCommandWithRuntimeLock(parsed: ParsedArgs): Promise<void> {
 }
 
 if (require.main === module) {
-  void main().catch((error) => {
+  void main().catch(error => {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`\x1b[1;31m[error]\x1b[0m ${message}`);
     process.exit(1);

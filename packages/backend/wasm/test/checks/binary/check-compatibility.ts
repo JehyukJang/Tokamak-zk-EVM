@@ -125,7 +125,7 @@ const EMPTY_STRING_FINAL_MPC_PROVENANCE = JSON.parse(
     'utf8',
   ),
 ) as CrsProvenanceInput;
-const NATIVE_FINAL_MPC_PROVENANCE = JSON.parse(
+const TRUSTED_SETUP_PROVENANCE = JSON.parse(
   readFileSync(
     path.resolve(
       import.meta.dirname,
@@ -136,7 +136,7 @@ const NATIVE_FINAL_MPC_PROVENANCE = JSON.parse(
       'common',
       'contracts',
       'fixtures',
-      'final-mpc-crs-provenance-native.json',
+      'trusted-setup-crs-provenance.json',
     ),
     'utf8',
   ),
@@ -197,7 +197,9 @@ function compatibleVersion(packageVersion: string): string {
 
 function provenance(version: string): CrsProvenanceInput {
   return {
-    documentKind: 'finalMpcCrs',
+    documentKind: 'crs',
+    protocolSchemaId: 'tokamak-zk-evm-univariate',
+    generationMethod: 'mpc',
     releaseEligible: false,
     generatedAtUtc: '2026-08-24T00:00:00Z',
     compatibleBackendVersion: compatibleVersion(version),
@@ -205,17 +207,22 @@ function provenance(version: string): CrsProvenanceInput {
       packageName: PACKAGE_NAME,
       packageVersion: version,
       origin: SUBCIRCUIT_LIBRARY_ORIGIN,
+      sourceDigest: `sha256:${'2'.repeat(64)}`,
     },
     phase1SourceProvenance: null,
-    combinedSigmaSha256: '0'.repeat(64),
-    sigmaPreprocessSha256: '1'.repeat(64),
-    sigmaVerifySha256: '2'.repeat(64),
+    ceremonyProtocolVersion: 'tokamak-filecoin-phase2',
+    ceremonyTranscriptSha256: '3'.repeat(64),
+    artifacts: {
+      'tau_sequence.rkyv': '0'.repeat(64),
+      'prover_keys.rkyv': '0'.repeat(64),
+      'preprocess_keys.rkyv': '1'.repeat(64),
+      'verifier_keys.rkyv': '2'.repeat(64),
+    },
   };
 }
-
 function artifact(sourcePackageVersion: string): BinaryArtifactFileView {
   return {
-    kind: BinaryArtifactFileKind.ProverCrs,
+    kind: BinaryArtifactFileKind.Instance,
     formatVersion: 1,
     sourcePackageVersion,
     byteLength: 0,
@@ -237,7 +244,7 @@ function main(): void {
   const expected = provenance(SUBCIRCUIT_LIBRARY_PACKAGE_VERSION);
   validateCrsProvenanceCompatibility(expected);
   validateCrsProvenanceCompatibility(withSelectedOrigin(CANONICAL_FINAL_MPC_PROVENANCE));
-  validateCrsProvenanceCompatibility(withSelectedOrigin(NATIVE_FINAL_MPC_PROVENANCE));
+  validateCrsProvenanceCompatibility(withSelectedOrigin(TRUSTED_SETUP_PROVENANCE));
   validateCrsProvenanceCompatibility(withSelectedOrigin(NULL_FINAL_MPC_PROVENANCE));
   assertBinaryArtifactCompatibility(artifact(SUBCIRCUIT_LIBRARY_PACKAGE_VERSION));
 
@@ -267,7 +274,7 @@ function main(): void {
   );
   expectFailure(
     () => validateCrsProvenanceCompatibility(LEGACY_FINAL_MPC_PROVENANCE),
-    'Legacy snake_case Dusk provenance must be rejected.',
+    'Legacy snake_case retired source provenance must be rejected.',
   );
   expectFailure(
     () => validateCrsProvenanceCompatibility(DATE_ONLY_FINAL_MPC_PROVENANCE),

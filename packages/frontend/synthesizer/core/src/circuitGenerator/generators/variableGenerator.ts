@@ -110,8 +110,17 @@ export class VariableGenerator {
             );
           }
         }
-        if (subcircuitInfo.flattenMap.length !== variables.length) {
-          throw new Error(`Flatten map cannot be applied to the placement variables due to difference lengths`);
+        if (subcircuitInfo.NRealWires !== variables.length) {
+          throw new Error(`Compiled witness length does not match subcircuit metadata`);
+        }
+        const normalizedVariables = Array<string>(subcircuitInfo.NWires).fill('0x00');
+        const wiringCount = subcircuitInfo.wiringRange[1];
+        for (let localWire = 0; localWire < wiringCount; localWire++) {
+          normalizedVariables[localWire] = variables[localWire]!;
+        }
+        const [internalStart, internalCount] = subcircuitInfo.internalRange;
+        for (let offset = 0; offset < internalCount; offset++) {
+          normalizedVariables[internalStart + offset] = variables[wiringCount + offset]!;
         }
         const instanceList = Array<string>(subcircuitInfo.NWires).fill('');
         outs.descriptions.forEach((description, index) => {
@@ -122,7 +131,7 @@ export class VariableGenerator {
         });
         return {
           subcircuitId: placement.subcircuitId,
-          variables,
+          variables: normalizedVariables,
           instanceList,
         };
       }),
@@ -276,10 +285,10 @@ export class VariableGenerator {
         );
       }
     }
-    if (outPlacements.length > this.subcircuitLibrary.data.setupParams.s_max) {
+    if (outPlacements.length > this.subcircuitLibrary.data.setupParams.s) {
       flags.push(false);
       console.log(
-        `Error: Synthesizer: Insufficient s_max. Ask the qap-compiler for increasing s_max (required s_max: ${outPlacements.length}).`,
+        `Error: Synthesizer: Insufficient placement capacity s (required: ${outPlacements.length}).`,
       );
     }
     if (flags.includes(false)) {

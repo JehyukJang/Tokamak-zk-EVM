@@ -5,10 +5,11 @@ import {
 } from "@tokamak-zk-evm/snark-browser-compat/preprocess";
 
 import { loadBinary } from "./load-binary.js";
+import { loadCrs } from "./load-crs.js";
 
 export interface PreprocessArtifactUrls {
+  readonly selector: string | URL;
   readonly permutation: string | URL;
-  readonly instance: string | URL;
   readonly preprocessCrs: string | URL;
 }
 
@@ -21,10 +22,10 @@ export function installPreprocessRuntime(
 export async function generateVerifierPreprocess(
   urls: PreprocessArtifactUrls,
 ): Promise<Uint8Array> {
-  const [permutation, instance, preprocessCrs] = await Promise.all([
+  const [selector, permutation, preprocessCrs] = await Promise.all([
+    loadBinary(urls.selector),
     loadBinary(urls.permutation),
-    loadBinary(urls.instance),
-    loadBinary(urls.preprocessCrs),
+    loadCrs(urls.preprocessCrs),
   ]);
-  return preprocess({ permutation, instance, preprocessCrs });
+  return preprocess({ selector, permutation, preprocessCrs });
 }

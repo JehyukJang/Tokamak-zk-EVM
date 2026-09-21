@@ -6,7 +6,6 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const AdmZip = require('adm-zip');
 
 const packageRoot = path.resolve(__dirname, '..');
 const vendoredBackendRoot = path.join(packageRoot, 'vendor', 'backend');
@@ -68,18 +67,62 @@ function sha256(contents) {
   return crypto.createHash('sha256').update(contents).digest('hex');
 }
 
+function assertJsonEqual(actual, expected, subject) {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    fail(`${subject} did not match the current backend command contract.`);
+  }
+}
+
+function assertInstalledStageContract(cli) {
+  const paths = {
+    setupOutputDir: path.join(path.sep, 'crs'),
+    synthOutputDir: path.join(path.sep, 'synth'),
+    preprocessOutputDir: path.join(path.sep, 'preprocess'),
+    proveOutputDir: path.join(path.sep, 'prove'),
+  };
+  assertJsonEqual(
+    cli.backendPreprocessArgs(paths, paths.preprocessOutputDir),
+    ['--keys', paths.setupOutputDir, '--synthesizer-stat', paths.synthOutputDir, '--output', paths.preprocessOutputDir],
+    'Packaged preprocess arguments',
+  );
+  assertJsonEqual(
+    cli.backendProveArgs(paths, paths.proveOutputDir),
+    [
+      '--tau-sequence', path.join(paths.setupOutputDir, 'tau_sequence.rkyv'),
+      '--keys', paths.setupOutputDir,
+      '--synthesizer-stat', paths.synthOutputDir,
+      '--output', paths.proveOutputDir,
+    ],
+    'Packaged prove arguments',
+  );
+  assertJsonEqual(
+    cli.backendVerifyArgs(paths),
+    [
+      '--preprocess', path.join(paths.preprocessOutputDir, 'univariate_verifier_preprocess.bin'),
+      '--proof', path.join(paths.proveOutputDir, 'univariate_proof.bin'),
+      '--instance', path.join(paths.synthOutputDir, 'instance.json'),
+    ],
+    'Packaged verify arguments',
+  );
+}
+
 async function runInstalledPackageFixture(installedRoot, targetRoot) {
   const packageManifest = JSON.parse(fs.readFileSync(path.join(installedRoot, 'package.json'), 'utf8'));
   const compatibleBackendVersion = packageManifest.tokamakZkEvm?.compatibleBackendVersion;
   if (typeof packageManifest.version !== 'string' || typeof compatibleBackendVersion !== 'string') {
     fail('Installed package manifest is missing its version identity.');
   }
+  if (packageManifest.dependencies?.['@tokamak-zk-evm/subcircuit-library'] !== packageManifest.version) {
+    fail('Installed CLI package must directly pin its runtime-resolved subcircuit-library version.');
+  }
 
   const native = require(path.join(installedRoot, 'dist', 'runtime', 'native.js'));
+  const cli = require(path.join(installedRoot, 'dist', 'cli.js'));
   const setup = require(path.join(installedRoot, 'dist', 'runtime', 'setup.js'));
   const metadata = require(path.join(installedRoot, 'dist', 'generated', 'backend-build-metadata-validator.generated.js'));
   const provenance = require(path.join(installedRoot, 'dist', 'generated', 'crs-provenance-validator.generated.js'));
   const backendReleaseDir = path.join(targetRoot, 'release');
+  assertInstalledStageContract(cli);
   const runtimeIdentity = await native.validateProductionBuildMetadata(backendReleaseDir);
   if (runtimeIdentity.length !== metadata.BACKEND_PACKAGE_NAMES.length) {
     fail('Installed backend build metadata did not describe every backend package.');
@@ -87,20 +130,22 @@ async function runInstalledPackageFixture(installedRoot, targetRoot) {
 
   const fixtureRoot = await fsp.mkdtemp(path.join(targetRoot, 'installed-fixture-'));
   try {
-    const archivePath = path.join(fixtureRoot, 'final-crs.zip');
     const extractedDir = path.join(fixtureRoot, 'extracted');
     const activatedOutputDir = path.join(fixtureRoot, 'runtime', 'resource', 'setup', 'output');
     const artifacts = {
-      'combined_sigma.rkyv': 'installed consumer combined sigma',
-      'sigma_preprocess.rkyv': 'installed consumer preprocess sigma',
-      'sigma_verify.json': 'installed consumer verify sigma',
+      'tau_sequence.rkyv': 'synthetic tau payload',
+      'prover_keys.rkyv': 'installed consumer combined sigma',
+      'preprocess_keys.rkyv': 'installed consumer preprocess sigma',
+      'verifier_keys.rkyv': 'installed consumer verify sigma',
     };
     const subcircuitLibrary = runtimeIdentity[0]?.dependencies?.subcircuitLibrary;
     if (subcircuitLibrary === undefined) {
       fail('Installed backend build metadata is missing subcircuit-library identity.');
     }
     const finalProvenance = {
-      documentKind: 'finalMpcCrs',
+      documentKind: 'crs',
+      protocolSchemaId: 'tokamak-zk-evm-univariate',
+      generationMethod: 'mpc',
       releaseEligible: false,
       generatedAtUtc: '2026-08-29T00:00:00Z',
       compatibleBackendVersion,
@@ -108,30 +153,29 @@ async function runInstalledPackageFixture(installedRoot, targetRoot) {
         packageName: subcircuitLibrary.packageName,
         packageVersion: subcircuitLibrary.buildVersion,
         origin: 'npmSnapshot',
+        sourceDigest: subcircuitLibrary.sourceDigest,
       },
       phase1SourceProvenance: null,
-      combinedSigmaSha256: sha256(artifacts['combined_sigma.rkyv']),
-      sigmaPreprocessSha256: sha256(artifacts['sigma_preprocess.rkyv']),
-      sigmaVerifySha256: sha256(artifacts['sigma_verify.json']),
+      ceremonyProtocolVersion: null,
+      ceremonyTranscriptSha256: null,
+      artifacts: Object.fromEntries(Object.entries(artifacts).map(([name, bytes]) => [name, sha256(bytes)])),
     };
 
-    const archive = new AdmZip();
-    for (const fileName of provenance.finalMpcCrsArchiveRootFileNames()) {
+    await fsp.mkdir(extractedDir);
+    for (const fileName of provenance.crsArchiveRootFileNames()) {
       const contents = fileName === provenance.crsProvenanceFileName()
         ? `${JSON.stringify(finalProvenance)}\n`
         : artifacts[fileName];
       if (typeof contents !== 'string') {
         fail(`Installed CRS contract declared an unexpected fixture entry ${fileName}.`);
       }
-      archive.addFile(fileName, Buffer.from(contents));
+      await fsp.writeFile(path.join(extractedDir, fileName), contents);
     }
-    archive.writeZip(archivePath);
 
-    await setup.extractApprovedFinalMpcCrsArchive(archivePath, extractedDir);
-    await setup.validateDownloadedCrsArchive(
+    await setup.validateDownloadedCrs(
       extractedDir,
       backendReleaseDir,
-      'tokamak-backend-crs-v2.1-20260829T000000Z.zip',
+      compatibleBackendVersion,
       compatibleBackendVersion,
       packageManifest.version,
     );
@@ -139,7 +183,7 @@ async function runInstalledPackageFixture(installedRoot, targetRoot) {
       extractedDir,
       path.join(extractedDir, provenance.crsProvenanceFileName()),
       activatedOutputDir,
-      'tokamak-backend-crs-v2.1-20260829T000000Z.zip',
+      compatibleBackendVersion,
     );
     if (!fs.lstatSync(activatedOutputDir).isSymbolicLink()) {
       fail('Installed package fixture did not atomically activate the CRS generation.');

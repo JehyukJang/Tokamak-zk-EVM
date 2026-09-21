@@ -47,7 +47,6 @@ const subcircuitInfo = (
   NOutWires: wireCount(outputBits),
   inWireIndex: 1 + wireCount(outputBits),
   outWireIndex: 1,
-  flattenMap: [],
   logicalInterface: {
     inputs: ports(inputBits, 'in'),
     outputs: ports(outputBits, 'out'),

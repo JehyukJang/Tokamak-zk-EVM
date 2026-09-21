@@ -1,11 +1,11 @@
-import { spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { resolveFixtureWorkDirectory } from "../../../scripts/fixtures/fixture-paths.js";
+import { spawn } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { resolveFixtureWorkDirectory } from '../../../scripts/fixtures/fixture-paths.js';
 
 interface CopyManifest {
-  readonly schemaVersion: 2;
+  readonly schemaVersion: 3;
   readonly suite: string;
   readonly workDirectory: string;
 }
@@ -22,53 +22,43 @@ interface NativeVerifierReport {
 
 async function main(argv: readonly string[]): Promise<void> {
   if (argv.length !== 1) {
-    throw new Error("Usage: check-native-verifier-fixture <copy-manifest.json>");
+    throw new Error('Usage: check-native-verifier-fixture <copy-manifest.json>');
   }
 
   const manifestPath = path.resolve(argv[0]);
   const manifestDirectory = path.dirname(manifestPath);
-  const backendWasmRoot = path.resolve(manifestDirectory, "../..");
-  const repositoryRoot = path.resolve(backendWasmRoot, "../../..");
-  const backendRoot = path.join(repositoryRoot, "packages", "backend");
-  const manifest = parseCopyManifest(JSON.parse(await readFile(manifestPath, "utf8")) as unknown);
-  const sourceRoot = resolveFixtureWorkDirectory(
-    repositoryRoot,
-    backendWasmRoot,
-    manifest.workDirectory,
-  );
-  const subcircuitLibrary = path.join(
-    repositoryRoot,
-    "packages",
-    "frontend",
-    "qap-compiler",
-    "subcircuits",
-    "library",
-  );
+  const backendWasmRoot = path.resolve(manifestDirectory, '../..');
+  const repositoryRoot = path.resolve(backendWasmRoot, '../../..');
+  const backendRoot = path.join(repositoryRoot, 'packages', 'backend');
+  const manifest = parseCopyManifest(JSON.parse(await readFile(manifestPath, 'utf8')) as unknown);
+  const sourceRoot = resolveFixtureWorkDirectory(repositoryRoot, backendWasmRoot, manifest.workDirectory);
+  const subcircuitLibrary = path.join(repositoryRoot, 'packages', 'frontend', 'qap-compiler', 'subcircuits', 'library');
   const args = [
-    "run",
-    "--manifest-path",
-    path.join(backendRoot, "Cargo.toml"),
-    "-p",
-    "verify",
-    "--features",
-    "development-crs-bypass,local-development-subcircuit-library",
-    "--",
-    "--subcircuit-library",
+    'run',
+    '--locked',
+    '--manifest-path',
+    path.join(backendRoot, 'Cargo.toml'),
+    '-p',
+    'verify',
+    '--features',
+    'development-crs-bypass,local-development-subcircuit-library',
+    '--',
+    '--subcircuit-library',
     subcircuitLibrary,
-    "--allow-unverified-crs",
-    "--crs",
-    path.join(sourceRoot, "setup"),
-    "--synthesizer-stat",
-    path.join(sourceRoot, "synthesizer"),
-    "--preprocess",
-    path.join(sourceRoot, "preprocess"),
-    "--proof",
-    path.join(sourceRoot, "prove"),
+    '--allow-unverified-crs',
+    '--crs',
+    path.join(sourceRoot, 'setup'),
+    '--synthesizer-stat',
+    path.join(sourceRoot, 'synthesizer'),
+    '--preprocess',
+    path.join(sourceRoot, 'preprocess'),
+    '--proof',
+    path.join(sourceRoot, 'prove'),
   ];
-  const result = await runCommand("cargo", args, backendWasmRoot);
+  const result = await runCommand('cargo', args, backendWasmRoot);
   const report: NativeVerifierReport = {
     suite: manifest.suite,
-    command: ["cargo", ...args],
+    command: ['cargo', ...args],
     sourceRoot: path.relative(process.cwd(), sourceRoot),
     subcircuitLibrary: path.relative(process.cwd(), subcircuitLibrary),
     stdout: result.stdout.trim(),
@@ -81,31 +71,31 @@ async function main(argv: readonly string[]): Promise<void> {
   if (report.accepted !== true) {
     throw new Error(
       report.accepted === false
-        ? "Native verifier rejected the copied fixture."
-        : "Native verifier did not print a parseable boolean result.",
+        ? 'Native verifier rejected the copied fixture.'
+        : 'Native verifier did not print a parseable boolean result.',
     );
   }
 }
 
 function parseCopyManifest(raw: unknown): CopyManifest {
   if (!isRecord(raw)) {
-    throw new Error("Copy manifest must be a JSON object.");
+    throw new Error('Copy manifest must be a JSON object.');
   }
 
-  if (raw.schemaVersion !== 2) {
-    throw new Error("Copy manifest schemaVersion must be 2.");
+  if (raw.schemaVersion !== 3) {
+    throw new Error('Copy manifest schemaVersion must be 3.');
   }
 
-  if (typeof raw.suite !== "string" || raw.suite.trim() === "") {
-    throw new Error("Copy manifest suite must be a non-empty string.");
+  if (typeof raw.suite !== 'string' || raw.suite.trim() === '') {
+    throw new Error('Copy manifest suite must be a non-empty string.');
   }
 
-  if (typeof raw.workDirectory !== "string" || raw.workDirectory.trim() === "" || path.isAbsolute(raw.workDirectory)) {
-    throw new Error("Copy manifest workDirectory must be a non-empty relative path.");
+  if (typeof raw.workDirectory !== 'string' || raw.workDirectory.trim() === '' || path.isAbsolute(raw.workDirectory)) {
+    throw new Error('Copy manifest workDirectory must be a non-empty relative path.');
   }
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     suite: raw.suite,
     workDirectory: path.normalize(raw.workDirectory),
   };
@@ -114,15 +104,15 @@ function parseCopyManifest(raw: unknown): CopyManifest {
 function parseVerifierResult(stdout: string): boolean | null {
   const lines = stdout
     .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line !== "");
+    .map(line => line.trim())
+    .filter(line => line !== '');
 
   for (let index = lines.length - 1; index >= 0; index -= 1) {
-    if (lines[index] === "true") {
+    if (lines[index] === 'true') {
       return true;
     }
 
-    if (lines[index] === "false") {
+    if (lines[index] === 'false') {
       return false;
     }
   }
@@ -138,29 +128,29 @@ async function runCommand(
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ['ignore', 'pipe', 'pipe'],
       env: process.env,
     });
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
 
-    child.stdout.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
-    child.stderr.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
-    child.on("error", reject);
-    child.on("close", (code) => {
-      const stdout = Buffer.concat(stdoutChunks).toString("utf8");
-      const stderr = Buffer.concat(stderrChunks).toString("utf8");
+    child.stdout.on('data', (chunk: Buffer) => stdoutChunks.push(chunk));
+    child.stderr.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
+    child.on('error', reject);
+    child.on('close', code => {
+      const stdout = Buffer.concat(stdoutChunks).toString('utf8');
+      const stderr = Buffer.concat(stderrChunks).toString('utf8');
 
       if (code !== 0) {
         reject(
           new Error(
             [
-              `${command} ${args.join(" ")} failed with exit code ${code}.`,
-              stdout.trim() === "" ? undefined : `stdout:\n${stdout.trim()}`,
-              stderr.trim() === "" ? undefined : `stderr:\n${stderr.trim()}`,
+              `${command} ${args.join(' ')} failed with exit code ${code}.`,
+              stdout.trim() === '' ? undefined : `stdout:\n${stdout.trim()}`,
+              stderr.trim() === '' ? undefined : `stderr:\n${stderr.trim()}`,
             ]
               .filter(Boolean)
-              .join("\n"),
+              .join('\n'),
           ),
         );
         return;
@@ -172,7 +162,7 @@ async function runCommand(
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 const entrypoint = fileURLToPath(import.meta.url);

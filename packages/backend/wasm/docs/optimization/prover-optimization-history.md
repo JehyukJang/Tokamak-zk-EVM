@@ -2,7 +2,7 @@
 
 Audience: backend-wasm engineers measuring and optimizing prover performance.
 
-This document records prover timing baselines and optimization decisions. `tmp/timing/prover-stage-timing.json` and `tmp/timing/prover-stage-timing.md` are overwritten on each run, so this file is the durable audit trail.
+This document records prover timing baselines and optimization decisions. `tmp/timing/prover-stage-timing.json` and `tmp/timing/prover-stage-timing.md` are overwritten on each run, so this file is the durable audit trail. Pre-normalized sections retain historical measurements only: their aggregate interface-width and bivariate terminology do not describe the current protocol or its artifacts.
 
 ## Document Authority
 
@@ -21,9 +21,58 @@ measurements, implementation boundaries, and acceptance results. When a
 historical section conflicts with the current-state summary in this section,
 the current-state summary governs.
 
-## Current Production Snapshot
+## Historical Pre-Normalized Release Candidate Comparison
 
-The current production prover is one stateful binary-input prover.
+The controlled comparison uses the private-state dapp's `transferNotes1To2`
+operation: one private input note is transferred into two output notes. Each
+release line used its compatible committed state and transaction snapshot,
+generated circuit library, native proof artifacts, and matching CRS.
+
+| release line | Chromium first-proof samples | arithmetic mean |
+| --- | --- | ---: |
+| `2.1.5` (`7b9495379`) | 123.808 s, 123.963 s, 127.097 s, 125.564 s, 124.846 s | **125.056 s** |
+| `3.0.0` candidate (`f8cd7f78c`) | 30.786 s, 30.705 s, 30.701 s, 31.041 s, 31.144 s | **30.875 s** |
+
+The observed decrease is **94.180 s (75.3%)**, or a **4.05x** speedup. Every
+run generated a 2,328-byte proof that the same Chromium session accepted with
+the matching verifier. One complete run per release line was discarded before
+the five retained fresh-browser samples, and no retained outlier was removed.
+
+The comparison ran on a MacBook Pro with Apple M4 Pro, 14 CPU cores, 48 GB
+memory, and macOS 26.5.2 (build 25F84). Both lines used Node 24.20.0, npm
+11.19.0, Chromium 149.0.7827.55, public `dist` entrypoints, and the same
+esbuild-minimized browser bundle configuration. The rkyv decoder WASM was
+compiled with Cargo `--release`. These details identify the recorded run;
+source-versus-`dist` packaging and minification are not distinct
+proving-performance modes because the proof timer excludes loading and
+installation and the same proving implementation runs in either packaging.
+
+The baseline used the `2.1.5` package build. Its checked-in package lock named
+subcircuit-library 2.1.5 but resolved 2.1.3, so the isolated reproduction
+refreshed that one inconsistent snapshot to the immutable 2.1.5 package; the
+resulting lock SHA-256 was
+`c77a840818a817ea62eea95e580fdcc9eb76f901cf3f9bbfad5ec740c094349f`.
+The candidate used the packaged local circuit output as an `npmSnapshot`
+production-origin input. Because the final operator-controlled `3.0` CRS does
+not yet exist, verifier data was generated from the matching development CRS.
+This preserves the measured circuit shape and proving implementation but does
+not make the candidate a release-eligible production artifact.
+
+The recorded structural explanation was the 75.0% reduction in both the
+`n x s_max` constraint grid and the `m_I x s_max` interface grid, together
+with the 70.6% reduction in `l_D` and 45.6% reduction in the public boundary.
+The operation used 234 placements under `2.1.5` and 207 under the candidate.
+Other implementation differences and host variation remain in this
+release-level observation, so the result is not an exclusive attribution.
+
+All ten retained machine-readable samples are in
+[`evidence/3.0.0-release-comparison`](./evidence/3.0.0-release-comparison/).
+These measurements are a reference for one host and workload, not a portable
+performance guarantee.
+
+## Historical 2.1.5 Production Snapshot
+
+The historical production prover was one stateful binary-input prover.
 `prove(input)` is the complete wrapper over the same opaque session exposed by
 `begin(input)`. Applications may advance that session through arithmetic,
 copy, binding, and integrated-finalization calls. These calls preserve one
@@ -265,7 +314,7 @@ The standard production acceptance sequence is:
 ```bash
 npm run typecheck
 npm run typecheck:scripts
-npm run polynomial:buffer:check
+npm run univariate:polynomial:check
 npm run prover:ops:check
 npm run prover:stage-timing:check
 npm run build
@@ -717,7 +766,8 @@ Verification:
 ```bash
 npm run typecheck
 npm run typecheck:scripts
-npm run polynomial:buffer:check
+# The historical bivariate buffer check is retired; use univariate:polynomial:check for current validation.
+npm run univariate:polynomial:check
 npm run prover:ops:polynomial
 npm run prover:ops:check
 npm run bench:2d-ntt -- --shapes=1024x256,4096x256 --modes=single,parallel --directions=forward,inverse --iterations=1 --warmup=0 --json=tmp/timing/2d-ntt-segment-scheduler-after-production.json
@@ -1351,7 +1401,7 @@ Interpretation:
 Verification:
 
 - `npm run typecheck` passed.
-- `npm run polynomial:buffer:check` passed.
+- The then-current bivariate buffer check passed. That retired command is now covered by `npm run univariate:polynomial:check`.
 - `npm run prover:ops:polynomial` passed.
 - `npm run prover:ops:check` passed.
 - `npm run prover:testing-mode:check` passed.
@@ -1550,7 +1600,7 @@ Verification:
 
 - `npm run typecheck` passed.
 - `npm run typecheck:scripts` passed.
-- `npm run polynomial:buffer:check` passed.
+- The then-current bivariate buffer check passed. That retired command is now covered by `npm run univariate:polynomial:check`.
 - `npm run prover:ops:polynomial` passed.
 - `npm run prover:testing-mode:check` passed.
 - `npm run prover:stage-timing:check` passed and verified the generated proof.

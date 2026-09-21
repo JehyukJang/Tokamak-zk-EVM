@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 
 import fs from 'node:fs/promises';
+import { execFile } from 'node:child_process';
 import path from 'node:path';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 
 const commonRoot = path.resolve(import.meta.dirname, '..');
 const backendRoot = path.resolve(commonRoot, '..');
@@ -92,12 +96,10 @@ async function rewriteFile(filePath, replacements) {
 
 async function makeRuntimeOnlyWorkspace(output) {
   await rewriteFile(path.join(output, 'Cargo.toml'), [[
-    'members = [\n    "common/interface",\n    "rust/libs",\n    "rust/setup/trusted-setup",\n    "rust/setup/mpc-setup",\n    "rust/prove",\n    "rust/verify",\n    "rust/preprocess",\n    "wasm/tools/rkyv-decoder-wasm",\n]',
-    'members = [\n    "common/interface",\n    "rust/libs",\n    "rust/prove",\n    "rust/verify",\n    "rust/preprocess",\n]',
+    'members = [\n    "common/interface",\n    "common/interface/univariate-crs",\n    "rust/libs",\n    "rust/setup/trusted-setup",\n    "rust/setup/mpc-setup",\n    "rust/prove",\n    "rust/verify",\n    "rust/preprocess",\n    "wasm/tools/univariate-crs-chunker",\n]',
+    'members = [\n    "common/interface",\n    "common/interface/univariate-crs",\n    "rust/libs",\n    "rust/prove",\n    "rust/verify",\n    "rust/preprocess",\n]',
   ]]);
   await rewriteFile(path.join(output, 'rust', 'libs', 'Cargo.toml'), [
-    ['\n[[bench]]\nname = "outer_product_bench"\nharness = false\n', '\n'],
-    ['\n[[bench]]\nname = "matrix_matrix_mul_bench"\nharness = false\n', '\n'],
     ['\ncriterion = "0.3"\n', '\n'],
   ]);
   await rewriteFile(path.join(output, 'rust', 'prove', 'Cargo.toml'), [[
@@ -125,6 +127,11 @@ async function makeRuntimeOnlyWorkspace(output) {
     '#[path = "../../../../../versioning/compatibility.rs"]',
     '#[path = "../../../versioning/compatibility.rs"]',
   ]]);
+}
+
+async function normalizeRuntimeCargoLock(output) {
+  await execFileAsync('cargo', ['metadata', '--format-version', '1'], { cwd: output });
+  await execFileAsync('cargo', ['metadata', '--locked', '--format-version', '1', '--no-deps'], { cwd: output });
 }
 
 async function writeAndValidateProductManifest(output) {
@@ -157,6 +164,7 @@ async function main() {
     filter: (source) => source === backendRoot || shouldCopy(path.relative(backendRoot, source)),
   });
   await makeRuntimeOnlyWorkspace(output);
+  await normalizeRuntimeCargoLock(output);
   await writeAndValidateProductManifest(output);
 }
 

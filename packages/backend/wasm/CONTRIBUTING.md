@@ -41,14 +41,12 @@ packages/backend/wasm/
     runtime/
     verifier/
   test/
-  tools/
-    rkyv-decoder-wasm/
   tmp/
 ```
 
 - `src/artifacts`: binary containers, decoded views, and versioned specs.
 - `src/converter`: public converter API, material conversion, optional
-  inspection and validation, and the prover CRS Worker.
+  inspection, and validation.
 - `src/generated`: shared generated setup and dependency-version constants.
 - `src/preprocess`: independent preprocess lifecycle, permutation-polynomial
   construction, and verifier-preprocess commitment output.
@@ -58,7 +56,6 @@ packages/backend/wasm/
 - `src/verifier`: public verifier lifecycle and verification protocol math.
 - `scripts`: generated-source, fixture-copy, and package-maintenance commands.
 - `test`: checks, browser entry points, diagnostics, and test-only references.
-- `tools/rkyv-decoder-wasm`: Rust/WASM decoder source built into the converter.
 - `tmp`: ignored planning, benchmark, audit, and other temporary output.
 
 ## Prerequisites
@@ -66,19 +63,11 @@ packages/backend/wasm/
 - Node.js 20 or newer
 - npm
 - Rust and Cargo
-- the `wasm32-unknown-unknown` Rust target
-- `wasm-bindgen-cli` matching the decoder crate's wasm-bindgen version
 
 Install JavaScript dependencies from this package directory:
 
 ```sh
 npm install
-```
-
-Check the Rust/WASM build prerequisites:
-
-```sh
-npm run rkyv-decoder:check-tools
 ```
 
 ## Generated build inputs
@@ -87,32 +76,29 @@ Do not edit generated inputs manually. The generators write ignored active
 outputs under `src/generated/active`, `src/prover/generated/active`, and
 `src/verifier/generated/active`; compilation consumes only those outputs.
 Both build modes compile the same optimized package output. Their only input
-selection difference is the subcircuit-library and verifier-CRS source.
+selection difference is the subcircuit-library source.
 
-Development selects local qap-compiler output and an explicit trusted-setup
-debug Sigma:
+Development selects local qap-compiler output:
 
 ```sh
-export BACKEND_WASM_VERIFIER_CRS_DIR=../rust/setup/trusted-setup/output/debug
 npm run build:development
 npm run typecheck:development
 ```
 
 Production selects the pinned npm `@tokamak-zk-evm/subcircuit-library`
-snapshot and requires an explicit complete final CRS directory:
+snapshot:
 
 ```sh
-export BACKEND_WASM_VERIFIER_CRS_DIR=/absolute/path/to/final-crs-directory
 npm run build:production
 npm run typecheck:production
 ```
 
-The production verifier generator requires `sigma_verify.json` and
-`crs_provenance.json`, validates the backend provenance contract and
-compatibility class, and verifies all final-artifact digests before embedding
-the verifier Sigma. `prepack` always runs the production build, so it cannot
-reuse locally generated active inputs. The development generator requires only
-the explicit debug Sigma; it does not treat a debug CRS as publishable.
+The CRS is not embedded in either build. Native trusted setup emits a directory
+containing `tau_sequence.rkyv`, `prover_keys.rkyv`, and `verifier_keys.rkyv`.
+The offline converter turns that directory into a manifest and bounded chunks;
+applications supply the resulting manifest and lazy chunk loader at runtime.
+`prepack` always runs the production build, so it cannot reuse a locally
+generated subcircuit-library projection.
 
 ## Test fixture policy
 
@@ -144,7 +130,6 @@ npm run prover:ops:check
 npm run prover:witness:check
 npm run verifier:check
 npm run preprocess:public-api:check
-npm run preprocess:browser:check
 npm run prover:check
 npm run verifier:browser:check
 npm run prover:browser:check
@@ -164,37 +149,44 @@ the repository's
 ## Publication preparation
 
 1. Run `npm run version:sync -- X.Y.Z` at the repository root. This updates
-   the package manifest, lockfile declaration, generated version constants,
-   and private decoder package together with the other synchronized release
-   surfaces.
-2. Run `npm run version:check` at the repository root.
-3. Regenerate production inputs with `npm run build:production` and run the
+   the tracked package manifests, lockfile declarations, source version
+   constants together with the other synchronized release surfaces.
+2. Before foundation publication, run
+   `npm run version:prepublication:check` at the repository root. This check
+   does not require an npm resolution for the unpublished foundation package.
+3. Publish the exact synchronized `@tokamak-zk-evm/subcircuit-library`
+   foundation package through the release workflow.
+4. Run `npm run version:production-snapshot:refresh` at the repository root.
+   Commit the resulting `packages/backend/wasm/package-lock.json` change to the
+   release branch, then run `npm run version:production-snapshot:check` and
+   `node scripts/check-version-sync.mjs`. The active generated setup module is
+   ignored and is not part of this commit.
+5. Regenerate production inputs with `npm run build:production` and run the
    complete relevant production check set.
-4. Build the exact package candidate.
-5. Inspect the actual packlist and packed metadata:
+6. Build the exact package candidate.
+7. Inspect the actual packlist and packed metadata:
 
    ```sh
-   export BACKEND_WASM_VERIFIER_CRS_DIR=/absolute/path/to/final-crs-directory
    npm pack --dry-run
    ```
 
-6. Confirm that `dist`, README, both package licenses, third-party notices, the
+8. Confirm that `dist`, README, both package licenses, third-party notices, the
    converter Worker, and decoder WASM are included.
-7. Confirm that `test`, `scripts`, `fixtures`, `tools`, `tmp`, diagnostics, and
+9. Confirm that `test`, `scripts`, `fixtures`, `tools`, `tmp`, diagnostics, and
    copied artifacts are excluded.
-8. Exercise the packed package through the browser consumer checks before
-   publication:
+10. Exercise the packed package through the browser consumer checks before
+    publication:
 
-   ```sh
-npm run converter:browser:check
-npm run converter:crs:browser:check
-npm run converter:webpack:check
-   ```
+    ```sh
+    npm run converter:browser:check
+    npm run converter:crs:browser:check
+    npm run converter:webpack:check
+    ```
 
-   `converter:crs:browser:check` requires the copied and prepared owner
-   fixtures described above. The release CI runs the converter error and
-   Worker-boundary check because it does not acquire or generate test CRS
-   fixtures.
+    `converter:crs:browser:check` requires the copied and prepared owner
+    fixtures described above. The release CI runs the converter error and
+    Worker-boundary check because it does not acquire or generate test CRS
+    fixtures.
 
 The package intentionally remains outside the root npm workspace. Its release
 build resolves the exact synchronized `@tokamak-zk-evm/subcircuit-library`

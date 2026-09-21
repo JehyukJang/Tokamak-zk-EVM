@@ -3,17 +3,16 @@
 This package group contains the Rust implementations of the backend algorithms described in the
 [Tokamak zk-SNARK manuscript](https://eprint.iacr.org/2024/507).
 
-The backend is organized around six user-facing binaries:
+The backend is organized around five user-facing binaries:
 
 - `trusted-setup`
-- `native_mpc_setup`
-- `dusk_backed_mpc_setup`
+- `mpc`
 - `preprocess`
 - `prove`
 - `verify`
 
-`trusted-setup` generates local-development Sigma artifacts. Native and Dusk-backed MPC generate
-final CRS artifacts; only Dusk-backed MPC generates a CRS eligible for Google Drive publication.
+`trusted-setup` generates development-only CRS artifacts. `mpc` implements Filecoin-backed phase 2.
+Both emit the four common CRS files. MPC's explicit publish operation verifies a completed publish-mode ceremony, finalizes those files and uploads them to Google Drive; offline finalization remains ineligible.
 `preprocess`, `prove`, and `verify` accept any CRS whose compatibility version matches the selected
 subcircuit library, together with transaction-specific data from the frontend synthesizer.
 
@@ -22,8 +21,7 @@ subcircuit library, together with transaction-specific data from the frontend sy
 | Binary                  | Responsibility                                                                       |
 | ----------------------- | ------------------------------------------------------------------------------------ |
 | `trusted-setup`         | Generate a local-development Sigma artifact.                                         |
-| `native_mpc_setup`      | Run Tokamak phase 1 and phase 2 for a local CRS.                                     |
-| `dusk_backed_mpc_setup` | Derive phase 2 from the pinned Dusk source and optionally publish the resulting CRS. |
+| `mpc` | Authenticate Filecoin input, initialize, contribute, verify and finalize phase 2. |
 | `preprocess`            | Commit permutation and fixed function-instance data.                                 |
 | `prove`                 | Generate a proof for one synthesized transaction.                                    |
 | `verify`                | Verify the proof, preprocess commitments, and public instance.                       |
@@ -86,7 +84,7 @@ the MPC setup flow still consumes only `r1cs/subcircuit*.r1cs` from it.
 
 ### `trusted-setup`
 
-Generates a Sigma directly from the subcircuit library for local development and testing. Its
+Generates the current univariate CRS directly from the subcircuit library for local development and testing. Its
 output is never release-eligible and must not be deployed or published. This holds even when the
 binary itself is built with Cargo's release profile.
 
@@ -94,123 +92,79 @@ The generated `crs_provenance.json` records `releaseEligible: false`. Google Dri
 rejects it. The direct trusted-setup CRS has no compatibility-version metadata, so the documented
 local development workflow uses it with the explicit `--allow-unverified-crs` option.
 
-Release example:
+Repository-local development example:
 
 ```bash
-cargo run --release -p trusted-setup -- \
-  --output ./rust/setup/trusted-setup/output
-```
-
-Non-release example:
-
-```bash
-cargo run -p trusted-setup -- \
+cargo run --locked --release -p trusted-setup -- \
   --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
   --output ./rust/setup/trusted-setup/output
 ```
 
-### `native_mpc_setup`
+### `mpc`
 
-Runs Tokamak native phase 1 and phase 2, then emits the same final CRS layout used by
-`trusted-setup`.
+Each invocation prepares its own circuit snapshot and authenticates the complete original Filecoin source. Development reads local QAP build artifacts; `--mode publish --library-version MAJOR.MINOR.PATCH` acquires an exact npm version at runtime. Both use the same repository-built release executable. There is no repository phase 1, standalone import receipt or source-check bypass. For development initialization:
 
-Release example:
-
-```bash
-cargo run --release -p mpc-setup --bin native_mpc_setup -- \
-  --intermediate ./rust/setup/mpc-setup/output/native.intermediate \
-  --output ./rust/setup/mpc-setup/output/native.final
+```sh
+cargo run --locked --release -p mpc-setup --bin mpc -- --mode development \
+  init --filecoin-source /path/to/challenge_19 --output ./initial.mpc
 ```
 
-### `dusk_backed_mpc_setup`
+The transcript output path must not already exist. Subsequent operations repeat original-source authentication. Initialization does not upload. For a completed publish-mode transcript, `mpc --mode publish --library-version <exact-version> publish --input <transcript> --output <directory> --filecoin-source <original>` verifies, finalizes and uploads in one command. See the [MPC operator guide](rust/setup/mpc-setup/README.md#publish-a-completed-ceremony) for configuration, retry behavior and qualification limits.
 
-Skips Tokamak phase 1, derives the phase-2 source from a pinned Dusk Groth16 raw powers-of-tau
-artifact, and then runs Tokamak phase 2. Ceremony and Google Drive publication are separate
-operations; only `publish` and the composite `run` require publication credentials.
+## Setup outputs and common provenance
 
-Create a local CRS without Drive access:
+The backend-owned CRS interface consists of four RKYV payloads:
 
-```bash
-cargo run --release -p mpc-setup --bin dusk_backed_mpc_setup -- \
-  ceremony \
-  --intermediate ./rust/setup/mpc-setup/output/dusk.intermediate \
-  --output ./rust/setup/mpc-setup/output/dusk.final
-```
+- `tau_sequence.rkyv`: generic tau sequences used by preprocessing and proving.
+- `prover_keys.rkyv`: prover-only specialized keys.
+- `preprocess_keys.rkyv`: keys for the preprocessing commitments, including C_fix.
+- `verifier_keys.rkyv`: online-verification keys.
 
-Publish a completed local CRS:
+The single [CRS provenance contract](common/contracts/crs-provenance-contract.json)
+applies independently of the generation algorithm. Its `documentKind` is
+always `crs`; `generationMethod` records `trustedSetup` or `mpc` as data,
+not as a choice of document shape or parser. Both methods must use the same
+four filenames and formats.
 
-```bash
-cargo run --release -p mpc-setup --no-default-features \
-  --features production-npm-subcircuit-library --bin dusk_backed_mpc_setup -- \
-  publish \
-  --intermediate ./rust/setup/mpc-setup/output/dusk.intermediate \
-  --output ./rust/setup/mpc-setup/output/dusk.final
-```
+The document records `protocolSchemaId`, `generatedAtUtc`,
+`compatibleBackendVersion`, `subcircuitLibrary`, `releaseEligible`, and
+`artifacts`, a filename-to-SHA-256 mapping for all four payloads.
+`subcircuitLibrary` contains the package name, package version, input origin
+and source digest. Package-version syntax and compatibility classes follow
+the repository-root version policy.
 
-Use `run` in place of `ceremony` to retain the one-command ceremony-then-publication workflow.
-It is available only from the release build with
-`production-npm-subcircuit-library`; it validates the Google Drive publication
-environment before creating or downloading ceremony state.
+The common fields `phase1SourceProvenance`, `ceremonyProtocolVersion` and
+`ceremonyTranscriptSha256` are explicitly `null` for trusted setup.
+Ceremony-backed generation supplies those values when applicable. Trusted
+setup always writes `releaseEligible: false`. A common parser validates
+document shape, not publication authority. Filecoin MPC's offline `finalize` also writes
+`releaseEligible: false`. Only the explicit publish operation marks its verified
+publish-mode result eligible before transferring the unchanged document and payloads.
+Algorithm consumers do not require `releaseEligible: true`.
 
-The ceremony validates the pinned Dusk source digest and used tau ranges. Publication:
+Native prove checks content digests only with `--check-digests`, as described
+below. Parsing the document is not a cryptographic check of CRS generation.
 
-- requires Dusk phase-1 provenance and npm-snapshot subcircuit-library origin
-- rejects publication if the configured Google Drive folder already contains a CRS archive for the
-  current backend version
-- uploads a zip containing the final CRS artifacts and `crs_provenance.json`
+The former algorithm-specific provenance documents are not accepted or
+automatically converted. Generate a new development CRS with the current
+trusted-setup command. MPC finalization uses this same contract and the same serializers.
+Its source field records Filecoin's original URL and BLAKE2b-512 digest; the transcript SHA-256
+identifies the complete public contribution file. See the MPC guide for actual qualification status.
 
-See [rust/setup/mpc-setup/README.md](./rust/setup/mpc-setup/README.md) for the full MPC operator guide.
-
-## Setup Outputs
-
-`trusted-setup` final output:
-
-- `combined_sigma.rkyv`
-- `sigma_preprocess.rkyv`
-- `sigma_verify.json`
-- `crs_provenance.json` with `releaseEligible: false`
-
-`mpc-setup` final output:
-
-- `combined_sigma.rkyv`
-- `sigma_preprocess.rkyv`
-- `sigma_verify.json`
-- `crs_provenance.json`
-
-The configured MPC output is an active symlink to a complete generation below
-its parent `generations/` directory. MPC writes and validates all four files in
-a private staging generation before atomically replacing that symlink, then
-immediately deletes the preceding generation. Consumers continue to use the
-configured output path.
-
-Native MPC provenance records `releaseEligible: false`; Dusk-backed MPC records
-`releaseEligible: true`. This field is a Google Drive publisher gate only. The publisher additionally
-requires Dusk phase-1 provenance and npm-snapshot subcircuit-library origin. `preprocess`, `prove`,
-and `verify` do not consume `releaseEligible`; they validate only the CRS compatibility class against
-the selected subcircuit library.
-`crs_provenance.json` also binds final CRS files to their SHA-256 digests. In dusk-backed mode it
-records the pinned Dusk source metadata, the Dusk raw digest, publication metadata, the CRS
-generation timestamp, and the backend version.
-
-The planned 3.0 repository-managed Tokamak zk-EVM/CRS version pair uses the backend-owned canonical
-provenance format and the root-owned package-version policy: all nested names are camelCase and
-phase-1 provenance is `null`, `"native"`, or `{ "duskGroth16": ... }`. This unreleased 2.1.5 source tree prepares that format. It is
-intentionally incompatible with published 2.1.x snake_case Dusk provenance; do not combine CRS
-artifacts and backend binaries across that boundary.
-
-## Prove and Verify Inputs
+## Preprocess, prove, and verify
 
 ### `preprocess`
 
 Consumes:
 
 - the subcircuit library
-- `sigma_preprocess.rkyv`
+- `preprocess_keys.rkyv` and `crs_provenance.json` from the CRS directory
 - synthesizer outputs such as `instance.json` and `permutation.json`
 
 Produces:
 
-- `preprocess.json`
+- `univariate_verifier_preprocess.bin`: the common 384-byte binary output
+  containing `S_C`, `C_fix`, and `E_kappa`
 
 CLI package example:
 
@@ -228,23 +182,47 @@ Consumes:
 
 Produces:
 
-- `proof.json`
+- `univariate_proof.bin`: the common 1,184-byte proof (10 affine G1 points,
+  then 7 scalars). No JSON proof is written.
 
-CLI package example:
+The native command defaults to arkworks CPU arithmetic. `--device cuda`
+explicitly selects ICICLE CUDA and fails if CUDA is unavailable; it never
+silently switches to CPU. The CPU path skips ICICLE backend discovery and
+device initialization, although the shared native package still links ICICLE
+libraries. Hardware selection does not change the local-QAP/npm input policy.
+
+By default, native `prove` validates the provenance format and library package
+name, version and origin without checking content digests. CRS decoding and
+protocol shape checks still run. Add `--check-digests` to also verify the
+SHA-256 digests of `tau_sequence.rkyv`, `prover_keys.rkyv` and
+`verifier_keys.rkyv`, and the library `sourceDigest`. This option does not hash
+`preprocess_keys.rkyv`. Matching metadata alone does not establish that the
+file contents match those recorded by setup. `--check-digests` cannot be
+combined with the development-only `--allow-unverified-crs` bypass.
+
+Repository-local release example, using an existing current-protocol CRS:
 
 ```bash
-tokamak-cli --prove
+cargo run --locked --release -p prove --features timing -- \
+  --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
+  --tau-sequence CRS_DIRECTORY/tau_sequence.rkyv \
+  --keys CRS_DIRECTORY \
+  --synthesizer-stat FIXTURE_DIRECTORY \
+  --output ./rust/prove/output
 ```
+
+Add `--device cuda` after `--` only on a configured CUDA host. The native
+preprocess/verifier and browser runtime use the same current common proof and
+preprocess layouts. See the
+[current-protocol measurements](docs/optimization/current-univariate-crs.md).
 
 ### `verify`
 
 Consumes:
 
-- the subcircuit library
-- CRS artifacts from setup
-- synthesizer outputs
-- `preprocess.json`
-- `proof.json`
+- `univariate_verifier_preprocess.bin` emitted by `preprocess`
+- `univariate_proof.bin` emitted by `prove`
+- the synthesizer's `instance.json` free-public statement
 
 Produces:
 
@@ -261,25 +239,20 @@ tokamak-cli --verify
 Use the `Run and Debug` panel in VS Code and select one of the backend launch configurations under
 `.vscode/launch.json`.
 
-The local `trusted-setup`, `preprocess`, `prove`, and `verify` launchers pass
-`--subcircuit-library` explicitly. The production Dusk launcher selects the release MPC build,
-which prepares the npm subcircuit-library snapshot.
+`Debug prove` uses the default CPU engine and writes the common binary proof.
+Together, the local trusted-setup, preprocess, prove, and verify launchers
+form the repository development E2E path with local QAP inputs.
 
-Every VS Code launcher uses Cargo's release profile. Every launcher except `Release Dusk-backed
-MPC to Google Drive` is a local developer entry point and enables
-`local-development-subcircuit-library`. Run `Debug trusted-setup`, then `Debug preprocess`,
-`Debug prove`, and `Debug verify` in that order. The latter three read
-`rust/setup/trusted-setup/output/debug`, use the local QAP compiler output, and pass the explicit
-development bypass. The native and Dusk MPC launchers write separate final CRS directories and do
-not overwrite this trusted-setup output.
-
-`Release Dusk-backed MPC to Google Drive` is the sole production launcher. It builds
-`dusk_backed_mpc_setup` in Cargo's release profile with
-`production-npm-subcircuit-library`, takes the `run` path that performs ceremony followed by
-Google Drive publication, and uses the npm subcircuit-library snapshot prepared by that explicit
-production build. The build fails before the ceremony when the npm package major.minor does not
-equal the backend compatibility class. It writes only to
-`rust/setup/mpc-setup/output/dusk-release.*`.
+Every launcher uses Cargo's release optimization. `MPC: initialize Filecoin phase 2 (local QAP)`
+selects `--mode development` and reads the local QAP build.
+It writes a new `initial.mpc` transcript, not a publication;
+without `--filecoin-source`, execution downloads and authenticates the complete pinned Filecoin source.
+The single `MPC: publish verified ceremony to Google Drive (npm)` launcher instead uses
+`--mode publish --library-version MAJOR.MINOR.PATCH` for runtime npm input selection
+and prompts for a completed publish transcript and output path. Configure the operator
+environment as described in the MPC guide before launching: this entry uploads real
+files. The remaining launchers use local QAP build artifacts. MPC publication must
+use its own output directory, not trusted-setup output.
 
 The preprocess, prove, and verify launchers use the local `qap-compiler/subcircuits/library`
 output. They compile the development-only `development-crs-bypass` feature and pass
@@ -288,15 +261,37 @@ opt-in is limited to debugger launchers; normal CLI execution continues to valid
 provenance compatibility. `Measure prove timing` also uses Cargo's release profile and receives the
 local QAP path explicitly through its test environment.
 
-The ICICLE device policy selects CUDA when it is available. ICICLE 3.8.0 METAL availability is
-reported but deliberately falls back to CPU; it is not treated as a GPU/MSM capability. Setting
-`USE_GPU=true` for MPC setup therefore selects CUDA or CPU through the same policy and reports a
-backend-initialization failure instead of silently continuing after one.
+The current phase-2 correctness baseline uses arkworks CPU group operations. Its release timing
+and optimization qualification follow the real-source/native E2E gate in the MPC guide.
 
-## Timing Report for `prove`
+## Security and operator responsibilities
 
-The backend includes a human-readable release timing report for the current local CPU baseline,
-generated from raw timing data:
+Use only a CRS and subcircuit library whose release identities and
+compatibility class match the backend. Verify artifact digests and provenance
+before loading them, and keep OAuth credentials and tokens outside version
+control. Trusted setup is development-only. MPC generation does not authorize publication;
+the current Filecoin publication gate is closed.
+
+The operator remains responsible for securing ceremony state, authenticating
+the publication destination, reviewing the documented phase-2 trust
+limitations, and preserving the exact artifacts used by downstream proving and
+verification. A successful command does not by itself establish that a setup or
+deployment satisfies an application's security requirements.
+
+## Current-protocol setup optimization report
+
+The [CRS storage and trusted-setup report](docs/optimization/current-univariate-crs.md)
+records accepted and rejected optimizations, release CPU measurements, exact
+correctness boundaries and reproduction commands. Its
+[reuse guide](docs/optimization/current-univariate-crs.md#reuse-in-prove-and-mpc-setup)
+is the starting point for subsequent prover optimization and MPC setup work;
+it distinguishes transferable techniques from workloads requiring new tests.
+
+## Earlier-implementation timing report for `prove`
+
+The backend retains a human-readable release timing report for the earlier
+implementation's local CPU baseline, generated from raw timing data. It is not
+an E2E or performance baseline for the current univariate protocol:
 
 - report: [rust/prove/optimization/timing.local.cpu.current.md](rust/prove/optimization/timing.local.cpu.current.md)
 - raw data: [rust/prove/optimization/timing.local.cpu.current.json](rust/prove/optimization/timing.local.cpu.current.json)

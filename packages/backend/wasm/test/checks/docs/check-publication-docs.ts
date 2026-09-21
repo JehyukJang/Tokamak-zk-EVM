@@ -195,22 +195,14 @@ function checkPublicApiReference(readme: string): void {
   const exactEntries = [
     "prover.install(options?)",
     "prover.prove(input)",
-    "prover.begin(input)",
-    "ProverSession.proveArithmetic()",
-    "ProverSession.proveCopy()",
-    "ProverSession.proveBinding()",
-    "ProverSession.finalize()",
-    "ProverSession.dispose()",
     "verifier.install()",
     "verifier.verify(input)",
     "preprocess.install(options?)",
     "preprocess.preprocess(input)",
     "convertWitness(value)",
+    "convertSelector(value)",
     "convertPermutation(value)",
     "convertInstance(value)",
-    "convertVerifierPreprocess(value)",
-    "convertProof(input)",
-    "convertCrs(bytes, provenance)",
     "inspectBinary(bytes)",
     "validateBinary(bytes)",
   ] as const;
@@ -225,7 +217,6 @@ function checkPublicApiReference(readme: string): void {
     "ProverInput",
     "ProverInstallOptions",
     "ProverInstallationInfo",
-    "ProverSession",
     "VerifierInput",
     "VerifierInstallationInfo",
     "PreprocessInput",
@@ -233,11 +224,7 @@ function checkPublicApiReference(readme: string): void {
     "PreprocessInstallationInfo",
     "BinaryArtifactInspection",
     "BinarySectionInspection",
-    "ConvertedCrs",
-    "ConverterArtifactJson",
-    "ConvertProofBinaryInput",
-    "ConvertProofInput",
-    "ConvertProofJsonInput",
+    "UnivariateCrsChunkInput",
     "RuntimeArtifactFileValidationResult",
     "BackendWasmError",
     "BackendWasmErrorCode",
@@ -249,7 +236,7 @@ function checkPublicApiReference(readme: string): void {
   }
 
   const workflows = readme.slice(reference.length);
-  for (const entry of ["install(", "preprocess(", "verify(", "prove(", "begin(", "convert", "inspectBinary(", "validateBinary("]) {
+  for (const entry of ["install(", "preprocess(", "verify(", "prove(", "convert", "inspectBinary(", "validateBinary("]) {
     if (!workflows.includes(entry)) {
       throw new Error(`README workflows do not use or select ${entry}.`);
     }
@@ -259,12 +246,10 @@ function checkPublicApiReference(readme: string): void {
 function checkQualifiedClaims(readme: string): void {
   const normalized = readme.replace(/\s+/g, " ");
   const requiredStatements = [
-    "Firefox or Safari | Not yet verified",
-    "Chromium with a Webpack production build | Verified",
-    "not minimum requirements",
-    "does not authenticate the producer",
-    "does not silently fall back",
-    "This information is not legal advice.",
+    "It is not a generic proving-system API",
+    "The package performs no network or filesystem I/O",
+    "Neither function authenticates the producer",
+    "Development trusted-setup output is not release or deployment material",
   ] as const;
   for (const statement of requiredStatements) {
     if (!normalized.includes(statement)) {
@@ -328,24 +313,6 @@ async function checkPackedPackage(expectedOrigin: SubcircuitLibraryOrigin): Prom
     }
     const result = results[0];
     const files = new Set(result.files.map((file) => file.path));
-    const requiredThirdPartyLicenses = [
-      "third-party-licenses/rkyv-decoder-wasm/ahash-0.7.8/LICENSE-MIT",
-      "third-party-licenses/rkyv-decoder-wasm/bytecheck-0.6.12/LICENSE",
-      "third-party-licenses/rkyv-decoder-wasm/cfg-if-1.0.4/LICENSE-MIT",
-      "third-party-licenses/rkyv-decoder-wasm/hashbrown-0.12.3/LICENSE-MIT",
-      "third-party-licenses/rkyv-decoder-wasm/once_cell-1.21.4/LICENSE-MIT",
-      "third-party-licenses/rkyv-decoder-wasm/ptr_meta-0.1.4/LICENSE",
-      "third-party-licenses/rkyv-decoder-wasm/rend-0.4.2/LICENSE",
-      "third-party-licenses/rkyv-decoder-wasm/rkyv-0.7.46/LICENSE",
-      "third-party-licenses/rkyv-decoder-wasm/rust-1.95.0/COPYRIGHT",
-      "third-party-licenses/rkyv-decoder-wasm/rust-1.95.0/LICENSE-MIT",
-      "third-party-licenses/rkyv-decoder-wasm/seahash-4.1.0/LICENSE-MIT",
-      "third-party-licenses/rkyv-decoder-wasm/simdutf8-0.1.5/LICENSE-MIT",
-      "third-party-licenses/rkyv-decoder-wasm/unicode-ident-1.0.24/LICENSE-MIT",
-      "third-party-licenses/rkyv-decoder-wasm/unicode-ident-1.0.24/LICENSE-UNICODE",
-      "third-party-licenses/rkyv-decoder-wasm/wasm-bindgen-0.2.126/LICENSE-MIT",
-      "third-party-licenses/rkyv-decoder-wasm/wasm-bindgen-shared-0.2.126/LICENSE-MIT",
-    ] as const;
     const required = [
       "package.json",
       "README.md",
@@ -353,7 +320,6 @@ async function checkPackedPackage(expectedOrigin: SubcircuitLibraryOrigin): Prom
       "LICENSE-MIT",
       "LICENSE-APACHE",
       "THIRD_PARTY_NOTICES.md",
-      ...requiredThirdPartyLicenses,
       "dist/prover/index.js",
       "dist/prover/index.d.ts",
       "dist/preprocess/index.js",
@@ -366,9 +332,8 @@ async function checkPackedPackage(expectedOrigin: SubcircuitLibraryOrigin): Prom
       "dist/verifier/index.d.ts",
       "dist/converter/index.js",
       "dist/converter/index.d.ts",
-      "dist/converter/worker/crs-converter-worker.js",
-      "dist/converter/worker/backend_wasm_rkyv_decoder_bg.wasm",
-      "dist/verifier/generated/active/sigma-verify.generated.js",
+      "dist/univariate/reference-prover.js",
+      "dist/univariate/reference-verifier.js",
       "examples/browser/README.md",
       "examples/browser/index.html",
       "examples/browser/package.json",
@@ -380,7 +345,6 @@ async function checkPackedPackage(expectedOrigin: SubcircuitLibraryOrigin): Prom
       "examples/browser/src/main.ts",
       "examples/browser/src/prepare-artifacts.ts",
       "examples/browser/src/run-preprocess.ts",
-      "examples/browser/src/staged-proof.ts",
       "examples/browser/src/styles.css",
       "examples/browser/src/verify-proof.ts",
     ] as const;
@@ -390,21 +354,6 @@ async function checkPackedPackage(expectedOrigin: SubcircuitLibraryOrigin): Prom
       }
     }
     await checkPackedDistMatchesTrackedSource(files);
-    const packedThirdPartyLicenses = [...files]
-      .filter((file) => file.startsWith("third-party-licenses/"))
-      .sort();
-    const expectedThirdPartyLicenses = [...requiredThirdPartyLicenses].sort();
-    if (
-      packedThirdPartyLicenses.length !== expectedThirdPartyLicenses.length
-      || packedThirdPartyLicenses.some(
-        (file, index) => file !== expectedThirdPartyLicenses[index],
-      )
-    ) {
-      throw new Error(
-        `Packed third-party license set differs from the selected runtime license set: ${JSON.stringify(packedThirdPartyLicenses)}.`,
-      );
-    }
-
     const excludedPrefixes = [
       "test/",
       "scripts/",
@@ -443,10 +392,10 @@ async function checkPackedPackage(expectedOrigin: SubcircuitLibraryOrigin): Prom
     }
     if (
       manifest.scripts["build:production"]
-        !== "npm run contracts:prepare && npm run subcircuit-library:generate:production && npm run verifier-crs:generate:production && npm run rkyv-decoder:build && tsc -p tsconfig.json --pretty false && npm run converter-worker:build"
+        !== "npm run contracts:prepare && npm run subcircuit-library:generate:production && tsc -p tsconfig.json --pretty false"
     ) {
       throw new Error(
-        "Package build:production must regenerate npm-snapshot and canonical-final-CRS inputs.",
+        "Package build:production must select and check the npm snapshot input.",
       );
     }
     const exports = Object.keys(manifest.exports).sort();
@@ -502,7 +451,6 @@ async function checkPackedDistMatchesTrackedSource(
     { cwd: process.cwd(), maxBuffer: 1024 * 1024 },
   );
   const expected = new Set<string>([
-    "dist/converter/worker/backend_wasm_rkyv_decoder_bg.wasm",
     ...generatedActiveDistFiles(),
   ]);
 
@@ -546,7 +494,6 @@ function generatedActiveDistFiles(): readonly string[] {
   const activeModules = [
     "generated/active/setup.generated",
     "prover/generated/active/subcircuit-library.generated",
-    "verifier/generated/active/sigma-verify.generated",
   ] as const;
   return activeModules.flatMap((module) => [
     `dist/${module}.js`,

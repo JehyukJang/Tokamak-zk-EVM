@@ -12,18 +12,17 @@ import type {
   SubcircuitInfoByNameEntry,
 } from './configuredTypes.ts';
 
-// Single source of truth for SetupParams keys
-export const SETUP_PARAMS_KEYS = [
-  'l_log_out', 'l_storage_store', 'l_storage_load', 'l_tx_in',
-  'l_block_in', 'l_evm_in',
-  'l_free', 'l_user_out', 'l_user', 'l',
-  'l_D', 'm_D', 'n', 's_D', 's_max',
-] as const;
+export const SETUP_PARAMS_KEYS = ['n', 'm', 'm_b', 't', 's'] as const;
 
-// Shapes used by typed exports below
-export type SetupParams = Record<typeof SETUP_PARAMS_KEYS[number], number>;
-export type GlobalWireEntry = readonly [subcircuitId: number, localWireIndex: number];
-export type GlobalWireList = GlobalWireEntry[];
+export type PublicWirePhase = Readonly<{
+  name: string;
+  region: 'free' | 'fixed';
+  subcircuitIds: readonly number[];
+}>;
+
+export type SetupParams = Record<typeof SETUP_PARAMS_KEYS[number], number> & Readonly<{
+  publicWirePhases: readonly PublicWirePhase[];
+}>;
 
 export type LogicalInterfaceType =
   | Readonly<{ kind: 'uint'; bits: number }>
@@ -56,12 +55,16 @@ type SubcircuitInfoItem = {
   id: number;
   name: SubcircuitNames;
   Nwires: number;
+  NrealWires: number;
   Nconsts: number;
   Out_idx: [number, number];
   In_idx: [number, number];
-  flattenMap: number[];
+  Wiring_idx: [number, number];
+  Public_idx: [number, number];
+  Internal_idx: [number, number];
   logicalInterface?: LogicalInterface;
   bufferDirection?: BufferDirection;
+  publicPhase?: string;
 };
 // Array of items
 export type SubcircuitInfo = SubcircuitInfoItem[];
@@ -87,7 +90,6 @@ export type FrontendConfig = Record<CircomKey, number>;
 
 export interface SubcircuitLibraryData {
   setupParams: SetupParams;
-  globalWireList: GlobalWireList;
   frontendCfg: FrontendConfig;
   subcircuitInfo: SubcircuitInfo;
 }

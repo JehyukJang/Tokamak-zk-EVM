@@ -123,13 +123,13 @@ preprocess installation without changing the prover's independent default.
 - `conversion`: browser-compatible, material-specific converters plus binary
   inspection.
 - `validation`: optional binary layout, digest, and spec validation.
-- `worker`: temporary unified CRS conversion Worker and its RKYV decoder
-  integration.
+- `worker`: temporary worker support used by offline CRS conversion.
 
-Each converter handles one source material per call. `convertCrs` is the sole
-multi-output converter because one `combined_sigma.rkyv` decode produces the
-standalone prover, preprocess, and verifier CRS artifacts. No converter builds
-a bundle or manifest.
+Each converter handles one producer material per call. The offline native
+`univariate-crs:convert` command reads the four role-separated RKYV files and
+writes the browser manifest and chunks. Browser runtime code only consumes
+that manifest/chunk interface; it does not decode a legacy combined Sigma
+archive or build a bundle.
 
 ## Artifact Ownership
 
@@ -148,14 +148,14 @@ are generated under `src/prover/generated/active`; and verifier Sigma is
 generated under `src/verifier/generated/active`. These ignored active outputs
 are the only generated inputs that compilation imports.
 
-Development generation selects local qap-compiler data and an explicit
-trusted-setup debug Sigma. Production generation selects the pinned npm
-`@tokamak-zk-evm/subcircuit-library` snapshot and a complete canonical final
-CRS directory. The selection changes input provenance, not compiler
+Development generation selects local qap-compiler data and an explicit local
+`verifier_keys.rkyv`. Production generation selects the pinned npm
+`@tokamak-zk-evm/subcircuit-library` snapshot and the matching downloaded
+`verifier_keys.rkyv`. The selection changes input provenance, not compiler
 optimization. `prepack` always selects production inputs, preventing local
-generated inputs from entering a publishable tarball. Verifier does not consume
-the standalone verifier CRS emitted by `convertCrs`. Prover and preprocess CRS
-remain runtime binary inputs prepared through `convertCrs`.
+generated inputs from entering a publishable tarball. The verifier binds only
+its build-time key; prover and preprocess receive browser CRS chunks at
+runtime.
 
 ## Generated And Development Assets
 
@@ -172,8 +172,9 @@ Fixture scripts must fail when owner artifacts are absent. They must not invoke
 native setup, preprocess, prove, verifier, or fixture-export programs.
 
 Tests and diagnostics live under `test`. The only retained optimization
-instrumentation is the prover timing-table generator. Test-only dense
-polynomial code remains under `test/support` as an independent parity oracle.
+instrumentation is the prover timing-table generator. Current univariate
+polynomial and relation checks provide the retained arithmetic coverage; no
+retired dense or bivariate test oracle is shipped.
 
 ## Publication Boundary
 

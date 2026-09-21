@@ -1,130 +1,165 @@
 {
   "fileName": "crs_provenance.json",
-  "finalMpcCrsArchive": {
-    "rootFiles": [
-      "combined_sigma.rkyv",
-      "sigma_preprocess.rkyv",
-      "sigma_verify.json",
-      "crs_provenance.json"
-    ]
-  },
-  "documentKinds": {
-    "developmentTrustedSetupSigma": {
-      "releaseEligible": false,
-      "requiredFields": ["documentKind", "releaseEligible"],
-      "schema": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["documentKind", "releaseEligible"],
-        "properties": {
-          "documentKind": { "const": "developmentTrustedSetupSigma" },
-          "releaseEligible": { "const": false }
-        }
-      }
-    },
-    "finalMpcCrs": {
-      "requiredFields": [
-        "documentKind",
-        "releaseEligible",
-        "generatedAtUtc",
-        "compatibleBackendVersion",
-        "subcircuitLibrary",
-        "phase1SourceProvenance",
-        "combinedSigmaSha256",
-        "sigmaPreprocessSha256",
-        "sigmaVerifySha256"
-      ],
-      "schema": {
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "documentKind",
+      "protocolSchemaId",
+      "generationMethod",
+      "releaseEligible",
+      "generatedAtUtc",
+      "compatibleBackendVersion",
+      "subcircuitLibrary",
+      "artifacts",
+      "phase1SourceProvenance",
+      "ceremonyProtocolVersion",
+      "ceremonyTranscriptSha256"
+    ],
+    "properties": {
+      "documentKind": {
+        "const": "crs"
+      },
+      "protocolSchemaId": {
+        "const": "tokamak-zk-evm-univariate"
+      },
+      "generationMethod": {
+        "enum": [
+          "trustedSetup",
+          "mpc"
+        ]
+      },
+      "releaseEligible": {
+        "type": "boolean"
+      },
+      "generatedAtUtc": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "compatibleBackendVersion": {
+        "type": "string",
+        "pattern": "^[0-9]+\\.[0-9]+$"
+      },
+      "subcircuitLibrary": {
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "documentKind",
-          "releaseEligible",
-          "generatedAtUtc",
-          "compatibleBackendVersion",
-          "subcircuitLibrary",
-          "phase1SourceProvenance",
-          "combinedSigmaSha256",
-          "sigmaPreprocessSha256",
-          "sigmaVerifySha256"
+          "packageName",
+          "packageVersion",
+          "origin",
+          "sourceDigest"
         ],
         "properties": {
-          "documentKind": { "const": "finalMpcCrs" },
-          "releaseEligible": { "type": "boolean" },
-          "generatedAtUtc": { "type": "string", "format": "date-time" },
-          "compatibleBackendVersion": {
+          "packageName": {
             "type": "string",
-            "pattern": "^[0-9]+\\.[0-9]+$"
+            "minLength": 1
           },
-          "subcircuitLibrary": {
+          "packageVersion": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+          },
+          "origin": {
+            "enum": [
+              "npmSnapshot",
+              "localQapCompiler"
+            ]
+          },
+          "sourceDigest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        }
+      },
+      "artifacts": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "tau_sequence.rkyv",
+          "prover_keys.rkyv",
+          "preprocess_keys.rkyv",
+          "verifier_keys.rkyv"
+        ],
+        "properties": {
+          "tau_sequence.rkyv": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "prover_keys.rkyv": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "preprocess_keys.rkyv": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "verifier_keys.rkyv": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      },
+      "phase1SourceProvenance": {
+        "oneOf": [
+          {
+            "type": "null"
+          },
+          {
             "type": "object",
             "additionalProperties": false,
-            "required": ["packageName", "packageVersion", "origin"],
+            "required": [
+              "filecoin"
+            ],
             "properties": {
-              "packageName": { "type": "string", "minLength": 1 },
-              "packageVersion": {
-                "type": "string",
-                "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
-              },
-              "origin": { "enum": ["npmSnapshot", "localQapCompiler"] }
-            }
-          },
-          "phase1SourceProvenance": {
-            "oneOf": [
-              { "type": "null" },
-              { "const": "native" },
-              {
+              "filecoin": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["duskGroth16"],
+                "required": [
+                  "sourceUrl",
+                  "sourceBlake2b512"
+                ],
                 "properties": {
-                  "duskGroth16": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": [
-                      "sourceUrl",
-                      "sourceSizeBytes",
-                      "rawEncoding",
-                      "pinnedContribution",
-                      "pinnedReadmeUrl",
-                      "pinnedDriveFileId",
-                      "expectedSourceSha256",
-                      "actualSourceSha256",
-                      "autoDownloaded",
-                      "downloadedContribution",
-                      "downloadedReadmeUrl",
-                      "downloadedDriveFileId",
-                      "maxG1ExpUsed",
-                      "maxG2ExpUsed",
-                      "transcriptConsistencyVerified"
-                    ],
-                    "properties": {
-                      "sourceUrl": { "type": "string", "minLength": 1 },
-                      "sourceSizeBytes": { "type": "integer", "minimum": 0 },
-                      "rawEncoding": { "type": "string", "minLength": 1 },
-                      "pinnedContribution": { "type": "string", "minLength": 1 },
-                      "pinnedReadmeUrl": { "type": "string", "minLength": 1 },
-                      "pinnedDriveFileId": { "type": "string", "minLength": 1 },
-                      "expectedSourceSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-                      "actualSourceSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-                      "autoDownloaded": { "type": "boolean" },
-                      "downloadedContribution": { "type": ["string", "null"] },
-                      "downloadedReadmeUrl": { "type": ["string", "null"] },
-                      "downloadedDriveFileId": { "type": ["string", "null"] },
-                      "maxG1ExpUsed": { "type": "integer", "minimum": 0 },
-                      "maxG2ExpUsed": { "type": "integer", "minimum": 0 },
-                      "transcriptConsistencyVerified": { "type": "boolean" }
-                    }
+                  "sourceUrl": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "sourceBlake2b512": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{128}$"
                   }
                 }
               }
-            ]
+            }
+          }
+        ]
+      },
+      "ceremonyProtocolVersion": {
+        "oneOf": [
+          {
+            "type": "null"
           },
-          "combinedSigmaSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-          "sigmaPreprocessSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-          "sigmaVerifySha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
-        }
+          {
+            "const": "tokamak-filecoin-phase2"
+          }
+        ]
+      },
+      "ceremonyTranscriptSha256": {
+        "oneOf": [
+          {
+            "type": "null"
+          },
+          {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        ]
       }
     }
-  }
+  },
+  "rootFiles": [
+    "tau_sequence.rkyv",
+    "prover_keys.rkyv",
+    "preprocess_keys.rkyv",
+    "verifier_keys.rkyv",
+    "crs_provenance.json"
+  ]
 }

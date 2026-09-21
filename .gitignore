@@ -1,6 +1,7 @@
 # Rust
 target/
 Cargo.lock
+!packages/backend/Cargo.lock
 **/*.rs.bk
 **/output/
 !packages/backend/rust/prove/output/

@@ -1,5 +1,5 @@
 import { BackendWasmError } from '../../backend-wasm-error.js';
-import { assertNamedBinaryInput, installCurveRuntime, parseChunkSizeExponent } from '../../api/public-api-utils.js';
+import { assertNamedBinaryInput, assertNamedCrsInput, installCurveRuntime, parseChunkSizeExponent } from '../../api/public-api-utils.js';
 import { NATIVE_BACKEND_VERSION, SUBCIRCUIT_LIBRARY_PACKAGE_VERSION } from '../../generated/active/setup.generated.js';
 import type { CurveRuntime } from '../../runtime/curve/curve.js';
 import { BACKEND_WASM_PACKAGE_VERSION } from '../../version.js';
@@ -24,6 +24,11 @@ export interface PreprocessInstallationInfo {
 
 export type PreprocessInput = PreprocessBinaryInput;
 
+export interface PreprocessOptions {
+  /** Check SHA-256 of loaded CRS chunks. Defaults to false, independently for each call. */
+  readonly checkDigests?: boolean;
+}
+
 let runtime: CurveRuntime | undefined;
 let installationPromise: Promise<CurveRuntime> | undefined;
 let busy = false;
@@ -44,38 +49,38 @@ export async function install(options: PreprocessInstallOptions = {}): Promise<P
 
   return installationInfo();
 }
-
-export async function preprocess(input: PreprocessInput): Promise<Uint8Array> {
+export async function preprocess(input: PreprocessInput, options: PreprocessOptions = {}): Promise<Uint8Array> {
   const installedRuntime = runtime;
-  if (installedRuntime === undefined) {
+  if(installedRuntime === undefined) {
     throw new BackendWasmError('INSTALL_REQUIRED', 'Call preprocess.install() successfully before preprocess().');
   }
-  if (busy) {
+  if(busy) {
     throw new BackendWasmError('BUSY', 'Preprocess is already running.');
   }
-
-  assertNamedBinaryInput(input, 'Preprocess', ['permutation', 'instance', 'preprocessCrs']);
+  assertNamedBinaryInput(input, 'Preprocess', ['selector', 'permutation', 'instance']);
+  assertNamedCrsInput(input, 'Preprocess', ['preprocessCrs']);
   busy = true;
-
   try {
     let runtimeInput;
     try {
-      runtimeInput = await loadPreprocessInputFromBinaryInput(installedRuntime, input);
-    } catch (cause) {
+      runtimeInput = await loadPreprocessInputFromBinaryInput(installedRuntime, input, options.checkDigests === true);
+    }
+    catch(cause) {
       throw new BackendWasmError('INVALID_INPUT', 'The preprocess input binaries could not be decoded.', { cause });
     }
-
     try {
       const output = await preprocessSnark(installedRuntime, runtimeInput, {
         denseMsmChunkPoints: 2 ** chunkSizeExponent,
       });
-      return await createPreprocessOutput(installedRuntime, output.s0, output.s1, output.oPubFix);
-    } catch (cause) {
+      return await createPreprocessOutput(installedRuntime, output);
+    }
+    catch(cause) {
       throw new BackendWasmError('RUNTIME_FAILED', 'The preprocess runtime failed.', {
         cause,
       });
     }
-  } finally {
+  }
+  finally {
     busy = false;
   }
 }

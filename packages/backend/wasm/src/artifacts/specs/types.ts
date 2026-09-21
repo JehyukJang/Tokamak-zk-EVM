@@ -8,14 +8,12 @@ export interface RuntimeArtifactFormatSpec {
 }
 
 export type RuntimeArtifactFormatSpecName =
-  | "sigma_verify"
-  | "verifier_preprocess"
-  | "verifier_proof"
   | "instance"
-  | "preprocess_crs"
-  | "prover_crs"
   | "prover_placement_variables"
-  | "prover_permutation";
+  | "prover_selector"
+  | "prover_permutation"
+  | "univariate_verifier_preprocess"
+  | "univariate_proof";
 
 export interface RuntimeArtifactSectionSpec {
   readonly label: string;

@@ -10,12 +10,12 @@ mod generated;
 mod input_origin_contract;
 #[path = "subcircuit_library/integrity.rs"]
 mod integrity;
-#[path = "subcircuit_library/local_qap.rs"]
-mod local_qap;
 #[path = "subcircuit_library/npm_snapshot.rs"]
 mod npm_snapshot;
 #[path = "subcircuit_library/source_selection.rs"]
 mod source_selection;
+#[path = "../../common/contracts/rust/subcircuit_source_digest.rs"]
+mod subcircuit_source_digest;
 #[path = "subcircuit_library/types.rs"]
 mod types;
 #[path = "../../../../versioning/compatibility.rs"]
@@ -43,7 +43,6 @@ const QAP_COMPILER_SCRIPT: &str = "scripts/qap-compiler.mjs";
 const DIGEST_LIBRARY_DIRECTORIES: &[&str] = &["json", "r1cs", "wasm"];
 const DIGEST_LIBRARY_FILES: &[&str] = &[
     "frontendCfg.json",
-    "globalWireList.json",
     "setupParams.json",
     "subcircuitInfo.json",
 ];
@@ -63,6 +62,13 @@ pub fn configure_embedded_release_subcircuit_library(
         }
         source_selection::SelectedInputOrigin::NpmSnapshot => {
             let snapshot = prepare_production_npm_subcircuit_library(package_version)?;
+            let compatible_backend_version =
+                integrity::package_major_minor(package_version, "backend package version")?;
+            cargo_env::emit_subcircuit_library_build_env(
+                &snapshot.version,
+                &snapshot.source_digest,
+                &compatible_backend_version,
+            );
             println!("cargo:rustc-cfg=tokamak_embedded_subcircuit_library");
             generate_embedded_module(&snapshot, out_dir)
         }
@@ -72,7 +78,7 @@ pub fn configure_embedded_release_subcircuit_library(
 pub fn configure_subcircuit_library_metadata(
     package_name: &str,
     package_version: &str,
-) -> io::Result<()> {
+) -> io::Result<PathBuf> {
     emit_version_contract_rerun_rule();
     emit_cli_package_rerun_rule();
     println!("cargo:rustc-check-cfg=cfg(tokamak_embedded_subcircuit_library)");
@@ -91,6 +97,7 @@ pub fn configure_subcircuit_library_metadata(
         println!("cargo:rustc-cfg=tokamak_embedded_subcircuit_library");
         cargo_env::emit_subcircuit_library_build_env(
             &snapshot.version,
+            &snapshot.source_digest,
             &compatible_backend_version,
         );
         cargo_env::emit_build_metadata(
@@ -99,44 +106,9 @@ pub fn configure_subcircuit_library_metadata(
             package_version,
             &compatible_backend_version,
         )?;
+        return Ok(snapshot.snapshot_dir);
     }
-    Ok(())
-}
-
-pub fn configure_mpc_subcircuit_library(out_dir: &Path, package_version: &str) -> io::Result<()> {
-    emit_version_contract_rerun_rule();
-    emit_cli_package_rerun_rule();
-    println!("cargo:rustc-check-cfg=cfg(tokamak_release_profile)");
-    println!("cargo:rustc-check-cfg=cfg(tokamak_production_npm_subcircuit_library)");
-    source_selection::emit_input_origin_rerun_rules();
-
-    if env::var("PROFILE").ok().as_deref() == Some("release") {
-        println!("cargo:rustc-cfg=tokamak_release_profile");
-    }
-
-    let selection = source_selection::select_mpc_subcircuit_library(package_version)?;
-    match selection.source {
-        source_selection::MpcSubcircuitLibrary::NpmSnapshot(snapshot) => {
-            cargo_env::emit_mpc_subcircuit_library_build_env(
-                &snapshot.version,
-                &selection.compatible_backend_version,
-                input_origin_contract::SubcircuitLibraryOrigin::NpmSnapshot,
-            );
-            write_mpc_subcircuit_library_path(out_dir, &snapshot.snapshot_dir)
-        }
-        source_selection::MpcSubcircuitLibrary::LocalQapCompiler(library) => {
-            cargo_env::emit_mpc_subcircuit_library_build_env(
-                &library.version,
-                &selection.compatible_backend_version,
-                input_origin_contract::SubcircuitLibraryOrigin::LocalQapCompiler,
-            );
-            write_mpc_subcircuit_library_path(out_dir, &library.library_dir)
-        }
-    }
-}
-
-fn write_mpc_subcircuit_library_path(out_dir: &Path, library_dir: &Path) -> io::Result<()> {
-    generated::write_mpc_subcircuit_library_path(out_dir, library_dir)
+    Ok(qap_compiler_root()?.join("subcircuits/library"))
 }
 
 fn prepare_release_subcircuit_library(

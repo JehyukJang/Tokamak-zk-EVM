@@ -1,50 +1,33 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-
-const {
-  decodeDriveListingLiteral,
-  selectLatestDriveArchive,
-} = require('../dist/runtime/drive-listing.js');
-
-function archiveEntry(fileId, name, sizeBytes) {
-  const entry = Array(14).fill(null);
-  entry[0] = fileId;
-  entry[2] = name;
-  entry[3] = 'application/zip';
-  entry[13] = sizeBytes;
-  return entry;
+const { decodeDriveListingLiteral, selectDriveEntry } = require('../dist/runtime/drive-listing.js');
+function entry(id, name, folder = false, size = 12) {
+  const result = Array(14).fill(null);
+  result[0] = id; result[2] = name;
+  result[3] = folder ? 'application/vnd.google-apps.folder' : 'application/octet-stream';
+  result[13] = size;
+  return result;
 }
-
-function listingHtml(payload) {
+function html(payload) {
   const literal = JSON.stringify(JSON.stringify(payload)).slice(1, -1).replaceAll("'", "\\'");
   return `<script>window['_DRIVE_ivd'] = '${literal}';</script>`;
 }
-
-test('selects the latest matching CRS archive from a quoted Drive listing literal', () => {
-  const selection = selectLatestDriveArchive(listingHtml([
-    archiveEntry('older', 'tokamak-backend-crs-v2.1-20260828T010203Z.zip', 12),
-    archiveEntry('latest', 'tokamak-backend-crs-v2.1-20260829T010203Z.zip', 34),
-  ]), '2.1');
-  assert.deepEqual(selection, {
-    fileId: 'latest',
-    name: 'tokamak-backend-crs-v2.1-20260829T010203Z.zip',
-    compatibleBackendVersion: '2.1',
-    generatedAt: '20260829T010203Z',
-    sizeBytes: 34,
-  });
+test('selects exact version folders and digest-named tau files', () => {
+  assert.equal(selectDriveEntry(html([entry('version', '2.1', true), entry('tau', 'tau_sequence', true)]), '2.1', 'folder').fileId, 'version');
+  const name = 'a'.repeat(64) + '.rkyv';
+  assert.equal(selectDriveEntry(html([entry('point', name)]), name, 'file').sizeBytes, 12);
 });
-
-test('fails closed for changed markup, malformed literals, and unsupported escapes', () => {
+test('rejects missing, duplicate, wrong-kind, unsafe IDs and invalid sizes', () => {
+  for (const entries of [
+    [], [entry('one', '2.1')], [entry('a', '2.1', true), entry('b', '2.1', true)],
+    [entry('../bad', '2.1', true)], [entry('old', 'tokamak-backend-crs-v2.1-20260824T000000Z.zip')],
+  ]) assert.throws(() => selectDriveEntry(html(entries), '2.1', 'folder'));
+  for (const size of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(() => selectDriveEntry(html([entry('a', 'key', false, size)]), 'key', 'file'));
+  }
+});
+test('fails closed on changed markup, malformed literals and unsupported escapes', () => {
   assert.throws(() => decodeDriveListingLiteral("<script>window['OTHER'] = '[]';</script>"));
   assert.throws(() => decodeDriveListingLiteral("<script>window['_DRIVE_ivd'] = '[ ]</script>"));
-  assert.throws(() => decodeDriveListingLiteral("<script>window['_DRIVE_ivd'] = '\\x5b\\x5d';</script>"));
-});
-
-test('rejects duplicate and ambiguous latest CRS entries', () => {
-  const duplicate = archiveEntry('same-id', 'tokamak-backend-crs-v2.1-20260829T010203Z.zip', 12);
-  assert.throws(() => selectLatestDriveArchive(listingHtml([duplicate, duplicate]), '2.1'));
-  assert.throws(() => selectLatestDriveArchive(listingHtml([
-    archiveEntry('first', 'tokamak-backend-crs-v2.1-20260829T010203Z.zip', 12),
-    archiveEntry('second', 'tokamak-backend-crs-v2.1-20260829T010203Z.zip', 34),
-  ]), '2.1'));
+  assert.throws(() => decodeDriveListingLiteral(String.raw`window['_DRIVE_ivd'] = '\x5b\x5d';`));
 });

@@ -4,16 +4,14 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const {
-  backendProductionBuildArgs,
-  validateProductionBuildMetadata,
-} = require('../dist/runtime/native.js');
+const { backendProductionBuildArgs, validateProductionBuildMetadata } = require('../dist/runtime/native.js');
 const {
   BACKEND_PACKAGE_NAMES,
   backendBuildMetadataFileName,
 } = require('../dist/generated/backend-build-metadata-validator.generated.js');
 const VALID_METADATA = require('../../backend/common/contracts/fixtures/backend-build-metadata-valid.json');
-const BACKEND_BUILD_METADATA_CONTRACT = require('../dist/generated/backend-build-metadata-contract.generated.js').default;
+const BACKEND_BUILD_METADATA_CONTRACT =
+  require('../dist/generated/backend-build-metadata-contract.generated.js').default;
 
 test('runtime package registry is supplied by the backend build-metadata contract', () => {
   assert.deepEqual(BACKEND_PACKAGE_NAMES, BACKEND_BUILD_METADATA_CONTRACT.backendPackageNames);
@@ -23,6 +21,7 @@ test('production backend builds select the npm subcircuit-library feature explic
   for (const packageName of BACKEND_PACKAGE_NAMES) {
     assert.deepEqual(backendProductionBuildArgs(packageName), [
       'build',
+      '--locked',
       '-p',
       packageName,
       '--release',

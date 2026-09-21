@@ -1,10 +1,14 @@
 import {
   BackendWasmError,
-  begin,
   install as installProver,
   prove,
   type ProverInput,
 } from "../../src/prover/index.js";
+import {
+  install as installPreprocess,
+  preprocess,
+  type PreprocessInput,
+} from "../../src/preprocess/index.js";
 import {
   install as installVerifier,
   verify,
@@ -19,31 +23,21 @@ declare global {
 
 interface BrowserProverResult {
   readonly status: "pending" | "ok" | "error";
-  readonly mode?: ProverExecutionMode;
   readonly valid?: boolean;
   readonly proofBytes?: number;
-  readonly phases?: readonly ProverPhase[];
   readonly timings?: readonly BrowserTiming[];
   readonly error?: string;
 }
-
-type ProverExecutionMode = "one-call" | "staged";
-type ProverPhase =
-  | "preparing"
-  | "arithmetic"
-  | "copy"
-  | "binding"
-  | "finalizing"
-  | "completed";
 
 interface BrowserTiming {
   readonly label: string;
   readonly ms: number;
 }
 
-interface BinaryProverVerifierFixture {
+interface BinaryWorkflowFixture {
   readonly prover: ProverInput;
-  readonly verifier: VerifierInput;
+  readonly preprocess: PreprocessInput;
+  readonly verifier: Omit<VerifierInput, "proof" | "verifierPreprocess">;
 }
 
 window.__tokamakProverResult = { status: "pending" };
@@ -51,157 +45,99 @@ window.__tokamakProverResult = { status: "pending" };
 main().catch((error: unknown) => {
   window.__tokamakProverResult = {
     status: "error",
-    error: error instanceof Error ? error.stack ?? error.message : String(error),
+    error: formatError(error),
   };
 });
 
+function formatError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const summary = error.stack ?? error.message;
+  const cause = (error as Error & { readonly cause?: unknown }).cause;
+  return cause === undefined ? summary : `${summary}\nCaused by: ${formatError(cause)}`;
+}
+
 async function main(): Promise<void> {
   const timings: BrowserTiming[] = [];
-  const phases: ProverPhase[] = [];
-  const mode = readExecutionMode();
   const fixture = await timed(timings, "load fixture binaries", loadPreparedBinaryFixture);
 
   await expectBackendError(() => prove(fixture.prover), "INSTALL_REQUIRED");
-  await expectBackendError(
-    () => installProver({ chunkSizeExponent: 20 }),
-    "INVALID_OPTION",
-  );
+  await expectBackendError(() => installProver({ chunkSizeExponent: 20 }), "INVALID_OPTION");
 
-  const [proverInstallation, concurrentInstallation] = await timed(
+  const [preprocessInstallation, proverInstallation, verifierInstallation] = await timed(
     timings,
-    "install prover",
+    "install runtimes",
     () => Promise.all([
+      installPreprocess({ chunkSizeExponent: 17 }),
       installProver({ chunkSizeExponent: 18 }),
-      installProver(),
+      installVerifier(),
     ]),
   );
-  if (proverInstallation.chunkSize !== 262_144) {
-    throw new Error("Prover installation returned an unexpected chunk size.");
+  if (preprocessInstallation.chunkSize !== 131_072 || proverInstallation.chunkSize !== 262_144) {
+    throw new Error("Runtime installation returned an unexpected chunk size.");
   }
-  if (concurrentInstallation.chunkSize !== proverInstallation.chunkSize) {
-    throw new Error("Concurrent prover install calls returned inconsistent configuration.");
+  if (verifierInstallation.nativeBackendVersion !== proverInstallation.nativeBackendVersion) {
+    throw new Error("Installed runtimes report different native backend versions.");
   }
 
-  const proofPromise = mode === "staged"
-    ? timed(timings, "prove binary staged", async () => {
-        phases.push("preparing");
-        const session = await begin(fixture.prover);
-        try {
-          await expectBackendError(() => prove(fixture.prover), "BUSY");
-          phases.push("arithmetic");
-          await session.proveArithmetic();
-          phases.push("copy");
-          await session.proveCopy();
-          phases.push("binding");
-          await session.proveBinding();
-          phases.push("finalizing");
-          const proof = await session.finalize();
-          phases.push("completed");
-          return proof;
-        } catch (error) {
-          session.dispose();
-          throw error;
-        }
-      })
-    : timed(timings, "prove binary one-call", () => prove(fixture.prover));
-  if (mode === "one-call") {
-    await expectBackendError(() => prove(fixture.prover), "BUSY");
-  }
-  await expectBackendError(
-    () => installProver({ chunkSizeExponent: 17 }),
-    "BUSY",
-  );
-  const sameConfiguration = await installProver({ chunkSizeExponent: 18 });
-  if (sameConfiguration.chunkSize !== proverInstallation.chunkSize) {
-    throw new Error("Same-value prover install changed the active configuration.");
-  }
+  const verifierPreprocess = await timed(timings, "preprocess", () => preprocess(fixture.preprocess));
+  const proofPromise = timed(timings, "prove", () => prove(fixture.prover));
+  await expectBackendError(() => prove(fixture.prover), "BUSY");
+  await expectBackendError(() => installProver({ chunkSizeExponent: 17 }), "BUSY");
   const proof = await proofPromise;
-  const updatedConfiguration = await installProver({ chunkSizeExponent: 17 });
-  const preservedConfiguration = await installProver();
-  if (
-    updatedConfiguration.chunkSizeExponent !== 17
-    || preservedConfiguration.chunkSizeExponent !== 17
-  ) {
-    throw new Error("Optionless prover install did not preserve the updated configuration.");
-  }
-  if (mode === "staged") {
-    await timed(timings, "check staged session lifecycle", () =>
-      checkStagedSessionLifecycle(fixture.prover)
-    );
-  }
-
-  await timed(timings, "install verifier", installVerifier);
-  const verificationResult = await timed(timings, "verify generated proof", () =>
-    verify({ ...fixture.verifier, proof })
-  );
-  if (!verificationResult) {
-    throw new Error("Browser verifier rejected the proof generated by browser prover.");
-  }
+  const valid = await timed(timings, "verify", () => verify({
+    ...fixture.verifier,
+    proof,
+    verifierPreprocess,
+  }));
+  if (!valid) throw new Error("Browser verifier rejected the proof generated by the browser prover.");
 
   window.__tokamakProverResult = {
     status: "ok",
-    mode,
-    valid: verificationResult,
+    valid,
     proofBytes: proof.byteLength,
-    phases: mode === "staged" ? phases : undefined,
     timings,
   };
 }
-
-async function checkStagedSessionLifecycle(input: ProverInput): Promise<void> {
-  const disposedSession = await begin(input);
-  disposedSession.dispose();
-  await expectBackendError(() => disposedSession.proveArithmetic(), "RUNTIME_FAILED");
-
-  const invalidSequenceSession = await begin(input);
-  await expectBackendError(() => invalidSequenceSession.proveCopy(), "RUNTIME_FAILED");
-  await installProver();
-}
-
-function readExecutionMode(): ProverExecutionMode {
-  const mode = new URL(window.location.href).searchParams.get("mode");
-  if (mode === null || mode === "one-call") {
-    return "one-call";
-  }
-  if (mode === "staged") {
-    return mode;
-  }
-  throw new Error(`Unsupported prover execution mode: ${mode}.`);
-}
-
-async function loadPreparedBinaryFixture(): Promise<BinaryProverVerifierFixture> {
-  const [witness, permutation, instance, proverCrs, proof, verifierPreprocess] = await Promise.all([
+async function loadPreparedBinaryFixture(): Promise<BinaryWorkflowFixture> {
+  const [witness, selector, permutation, instance, crsManifest] = await Promise.all([
     fetchBinary("/fixtures/small/runtime/witness.bin"),
+    fetchBinary("/fixtures/small/runtime/selector.bin"),
     fetchBinary("/fixtures/small/runtime/permutation.bin"),
     fetchBinary("/fixtures/small/runtime/instance.bin"),
-    fetchBinary("/fixtures/small/runtime/prover-crs.bin"),
-    fetchBinary("/fixtures/small/runtime/proof.bin"),
-    fetchBinary("/fixtures/small/runtime/verifier-preprocess.bin"),
+    fetchJson("/fixtures/small/runtime/crs/univariate-crs-manifest.json"),
   ]);
-
-  return {
-    prover: { witness, permutation, instance, proverCrs },
-    verifier: { proof, instance, verifierPreprocess },
+  const crs = {
+    manifest: crsManifest,
+    loadChunk: (relativePath: string) => fetchBinary(`/fixtures/small/runtime/crs/${relativePath}`),
   };
+  return {
+    prover: { witness, selector, permutation, instance, proverCrs: crs },
+    preprocess: { selector, permutation, instance, preprocessCrs: crs },
+    verifier: { instance },
+  };
+}
+
+async function fetchJson(path: string): Promise<unknown> {
+  const response = await fetch(path);
+  if (!response.ok) throw new Error(`Failed to fetch prepared runtime fixture ${path}: ${response.status}.`);
+  return response.json() as Promise<unknown>;
 }
 
 async function fetchBinary(path: string): Promise<Uint8Array> {
   const response = await fetch(path);
   if (!response.ok) {
-    throw new Error(describePreparedFixtureFetchFailure(path, response.status));
+    throw new Error([
+      `Failed to fetch prepared runtime fixture ${path}: ${response.status}.`,
+      "Run npm run fixtures:copy and npm run fixtures:prepare first.",
+    ].join(" "));
   }
-
   return new Uint8Array(await response.arrayBuffer());
 }
 
-async function timed<T>(timings: BrowserTiming[], label: string, callback: () => Promise<T>): Promise<T> {
-  console.log(`Starting ${label}...`);
-  const start = performance.now();
-  const result = await callback();
-  const ms = performance.now() - start;
-  timings.push({ label, ms });
-  console.log(`Finished ${label} in ${formatDuration(ms)}.`);
-
+async function timed<T>(timings: BrowserTiming[], label: string, operation: () => Promise<T>): Promise<T> {
+  const started = performance.now();
+  const result = await operation();
+  timings.push({ label, ms: performance.now() - started });
   return result;
 }
 
@@ -212,29 +148,8 @@ async function expectBackendError(
   try {
     await operation();
   } catch (error) {
-    if (error instanceof BackendWasmError && error.code === expectedCode) {
-      return;
-    }
+    if (error instanceof BackendWasmError && error.code === expectedCode) return;
     throw error;
   }
   throw new Error(`Expected BackendWasmError code ${expectedCode}.`);
-}
-
-function formatDuration(milliseconds: number): string {
-  if (milliseconds < 1000) {
-    return `${milliseconds.toFixed(0)} ms`;
-  }
-
-  return `${(milliseconds / 1000).toFixed(2)} s`;
-}
-
-function describePreparedFixtureFetchFailure(path: string, status: number): string {
-  if (path.startsWith("/fixtures/small/runtime/")) {
-    return [
-      `Failed to fetch prepared prover runtime fixture file ${path}: ${status}.`,
-      "Prepare owner package outputs, run npm run fixtures:copy, then run npm run fixtures:prepare.",
-    ].join(" ");
-  }
-
-  return `Failed to fetch ${path}: ${status}.`;
 }

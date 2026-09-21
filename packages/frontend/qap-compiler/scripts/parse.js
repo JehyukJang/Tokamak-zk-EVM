@@ -11,9 +11,13 @@ const {
 } = require('./parse-symbols.js')
 const { parseCompilerReport } = require('./parse-compiler-report.js')
 const {
-  buildGlobalWireLayout,
+  buildNormalizedWireLayout,
   buildSetupParams,
 } = require('./build-wire-layout.js')
+const {
+  normalizeConstraintJsonFile,
+  normalizeR1csFile,
+} = require('./normalize-r1cs.js')
 const { writeLibraryArtifacts } = require('./write-library-artifacts.js')
 
 const interfaceDir = path.resolve(__dirname, '../subcircuits/interface')
@@ -49,18 +53,31 @@ function main({ outputDir, compilerOutputPath }) {
     interfaceDir,
     constantsPath,
   )
-  const globalWireInfo = buildGlobalWireLayout(subcircuits, LIBRARY_LAYOUT)
-  subcircuits = globalWireInfo.subcircuits
+  const normalizedLayout = buildNormalizedWireLayout(subcircuits, LIBRARY_LAYOUT)
+  subcircuits = normalizedLayout.subcircuits
   const setupParams = buildSetupParams(
-    globalWireInfo,
+    normalizedLayout,
     subcircuits,
-    LIBRARY_LAYOUT,
     S_MAX,
   )
-
+  for (const subcircuit of subcircuits) {
+    const layout = {
+      m: normalizedLayout.m,
+      m_b: normalizedLayout.m_b,
+      realWireCount: subcircuit.NrealWires,
+      wiringCount: subcircuit.Wiring_idx[1],
+    }
+    normalizeR1csFile(
+      path.join(outputDir, `r1cs/subcircuit${subcircuit.id}.r1cs`),
+      layout,
+    )
+    normalizeConstraintJsonFile(
+      path.join(outputDir, `json/subcircuit${subcircuit.id}.json`),
+      layout,
+    )
+  }
   writeLibraryArtifacts(outputDir, {
     subcircuits,
-    globalWireList: globalWireInfo.wireList,
     setupParams,
   })
 }

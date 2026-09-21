@@ -307,9 +307,10 @@ function checkPackageReadmes() {
   for (const requirement of [
     '## Distribution',
     '## Preprocess, prove, and verify',
-    'combined_sigma.rkyv',
-    'sigma_preprocess.rkyv',
-    'sigma_verify.json',
+    'tau_sequence.rkyv',
+    'prover_keys.rkyv',
+    'preprocess_keys.rkyv',
+    'verifier_keys.rkyv',
     '## Security and operator responsibilities',
   ]) {
     requireIncludes('packages/backend/README.md', requirement);
@@ -330,7 +331,6 @@ function checkReadmeResponsibilities() {
     'packages/backend/wasm/docs/optimization/README.md',
     'packages/backend/wasm/examples/browser/README.md',
     'packages/backend/wasm/fixtures/README.md',
-    'packages/backend/wasm/tools/rkyv-decoder-wasm/README.md',
     'packages/cli/README.md',
     'packages/frontend/qap-compiler/README.md',
     'packages/frontend/qap-compiler/docs/README.md',
@@ -340,12 +340,21 @@ function checkReadmeResponsibilities() {
     'packages/frontend/synthesizer/web-app/README.md',
   ];
 
+  const synchronizedSourceClaim =
+    /(?:\bcurrent\s+(?:package|release|repository|source|version)\b|\bunreleased\s+\d+\.\d+\.\d+\s+source\b|\bsource\s+(?:package|release\s+line|target|tree)\b).*\b\d+\.\d+\.\d+\b/iu;
+
   for (const relativePath of readmes) {
     checkMarkdownStructure(relativePath);
     checkLocalMarkdownLinks(relativePath);
     const repositoryVersion = readJson('package.json').version;
-    if (readText(relativePath).includes(repositoryVersion)) {
+    const text = readText(relativePath);
+    if (text.includes(repositoryVersion)) {
       fail(`${relativePath} must not hard-code the synchronized repository version.`);
+    }
+    for (const line of text.split('\n')) {
+      if (synchronizedSourceClaim.test(line)) {
+        fail(`${relativePath} must not hard-code a synchronized source-version claim: ${line.trim()}`);
+      }
     }
   }
 
@@ -355,7 +364,6 @@ function checkReadmeResponsibilities() {
     'packages/backend/rust/setup/mpc-setup/README.md',
     'packages/backend/wasm/README.md',
     'packages/backend/wasm/examples/browser/README.md',
-    'packages/backend/wasm/tools/rkyv-decoder-wasm/README.md',
     'packages/cli/README.md',
     'packages/frontend/qap-compiler/README.md',
     'packages/frontend/synthesizer/README.md',
@@ -448,13 +456,30 @@ function checkPackageMetadata() {
 
 function checkSynthesizerFaq() {
   const relativePath = 'packages/frontend/synthesizer/README.md';
-  for (const required of [
-    '<a id="transaction-support-faq"></a>',
-    '## Transaction support',
-    'It supports contract calls when execution stays within the opcode',
-    'It should not be described as supporting every arbitrary Ethereum transaction.',
-  ]) {
+  for (const required of ['<a id="transaction-support-faq"></a>', '## Transaction support']) {
     requireIncludes(relativePath, required);
+  }
+  requirePattern(
+    relativePath,
+    /It supports contract calls when execution stays within the opcode/iu,
+    'the fixed-opcode support boundary',
+  );
+  requirePattern(
+    relativePath,
+    /It should not be described as supporting\s+every arbitrary Ethereum transaction\./iu,
+    'the arbitrary-Ethereum-transaction limitation',
+  );
+}
+
+function checkMpcCommandContract() {
+  for (const relativePath of ['packages/backend/README.md', 'packages/backend/rust/setup/mpc-setup/README.md']) {
+    requireIncludes(relativePath, '--mode development', 'the local-QAP phase 2 execution mode');
+    requireIncludes(relativePath, '--mode publish --library-version', 'the runtime npm phase 2 execution mode');
+    requireIncludes(relativePath, 'Filecoin', 'the original-source trust boundary');
+    requireIncludes(relativePath, 'publish --input', 'the single verify/finalize/upload operation');
+  }
+  for (const variable of ['TOKAMAK_MPC_DRIVE_FOLDER_ID', 'TOKAMAK_MPC_DRIVE_OAUTH_CLIENT_JSON_PATH', 'TOKAMAK_MPC_DRIVE_OAUTH_TOKEN_PATH']) {
+    requireIncludes('packages/backend/rust/setup/mpc-setup/README.md', variable, 'the operator publication configuration');
   }
 }
 
@@ -465,6 +490,7 @@ checkReadmeResponsibilities();
 checkLicensing();
 checkPackageMetadata();
 checkSynthesizerFaq();
+checkMpcCommandContract();
 
 if (failures.length > 0) {
   for (const failure of failures) {

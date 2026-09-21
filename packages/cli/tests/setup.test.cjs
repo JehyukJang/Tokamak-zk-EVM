@@ -4,18 +4,17 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const AdmZip = require('adm-zip');
 
 const {
-  extractApprovedFinalMpcCrsArchive,
+  withDownloadedVerifierSetup,
+  installDownloadedSetup,
   installValidatedCrsGeneration,
-  validateFinalMpcCrsArchiveEntries,
-  validateDownloadedCrsArchive,
-  validateFinalMpcCrsProvenanceContract,
+  validateDownloadedCrs,
+  validateCrsProvenanceContract,
 } = require('../dist/runtime/setup.js');
 const {
   crsProvenanceFileName,
-  finalMpcCrsArchiveRootFileNames,
+  crsArchiveRootFileNames,
   assertSupportedCrsProvenanceSchema,
 } = require('../dist/generated/crs-provenance-validator.generated.js');
 const {
@@ -25,13 +24,15 @@ const {
 } = require('../dist/generated/backend-build-metadata-validator.generated.js');
 
 const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = '@tokamak-zk-evm/subcircuit-library';
+const SUBCIRCUIT_LIBRARY_SOURCE_DIGEST =
+  'sha256:2222222222222222222222222222222222222222222222222222222222222222';
 const CRS_PROVENANCE_CONTRACT = JSON.parse(
   require('node:fs').readFileSync(
     path.resolve(__dirname, '..', '..', 'backend', 'common', 'contracts', 'crs-provenance-contract.json'),
     'utf8',
   ),
 );
-const FINAL_CRS_ARCHIVE_FILES = finalMpcCrsArchiveRootFileNames();
+const FINAL_CRS_ARCHIVE_FILES = crsArchiveRootFileNames();
 const BACKEND_BUILD_METADATA_CONTRACT = JSON.parse(
   require('node:fs').readFileSync(
     path.resolve(__dirname, '..', '..', 'backend', 'common', 'contracts', 'backend-build-metadata-contract.json'),
@@ -62,32 +63,10 @@ const INVALID_BUILD_METADATA_FIXTURES = {
   leadingZeroLibraryVersion: readBackendBuildMetadataFixture(
     'backend-build-metadata-invalid-leading-zero-library-version.json',
   ),
+  missingSourceDigest: readBackendBuildMetadataFixture('backend-build-metadata-missing-source-digest.json'),
+  invalidSourceDigest: readBackendBuildMetadataFixture('backend-build-metadata-invalid-source-digest.json'),
 };
 
-function fakeCrsZipEntry(entryName, overrides = {}) {
-  return {
-    entryName,
-    header: {
-      attr: 0,
-      flags: 0,
-      ...(overrides.header ?? {}),
-    },
-    isDirectory: overrides.isDirectory ?? false,
-    getData: overrides.getData ?? (() => Buffer.from(`contents:${entryName}`)),
-  };
-}
-
-function validCrsZipEntries() {
-  return FINAL_CRS_ARCHIVE_FILES.map(fileName => fakeCrsZipEntry(fileName));
-}
-
-function writeZipArchive(archivePath, entries) {
-  const archive = new AdmZip();
-  for (const entry of entries) {
-    archive.addFile(entry.name, Buffer.from(entry.contents ?? `contents:${entry.name}`));
-  }
-  archive.writeZip(archivePath);
-}
 const CANONICAL_FINAL_MPC_PROVENANCE = JSON.parse(
   require('node:fs').readFileSync(
     path.resolve(__dirname, '..', '..', 'backend', 'common', 'contracts', 'fixtures', 'final-mpc-crs-provenance.json'),
@@ -157,9 +136,9 @@ const EMPTY_STRING_FINAL_MPC_PROVENANCE = JSON.parse(
     'utf8',
   ),
 );
-const NATIVE_FINAL_MPC_PROVENANCE = JSON.parse(
+const TRUSTED_SETUP_PROVENANCE = JSON.parse(
   require('node:fs').readFileSync(
-    path.resolve(__dirname, '..', '..', 'backend', 'common', 'contracts', 'fixtures', 'final-mpc-crs-provenance-native.json'),
+    path.resolve(__dirname, '..', '..', 'backend', 'common', 'contracts', 'fixtures', 'trusted-setup-crs-provenance.json'),
     'utf8',
   ),
 );
@@ -199,10 +178,128 @@ const INVALID_ORIGIN_FINAL_MPC_PROVENANCE = JSON.parse(
     'utf8',
   ),
 );
+const MISSING_SOURCE_DIGEST_FINAL_MPC_PROVENANCE = JSON.parse(
+  require('node:fs').readFileSync(
+    path.resolve(
+      __dirname,
+      '..',
+      '..',
+      'backend',
+      'common',
+      'contracts',
+      'fixtures',
+      'final-mpc-crs-provenance-missing-source-digest.json',
+    ),
+    'utf8',
+  ),
+);
+const INVALID_SOURCE_DIGEST_FINAL_MPC_PROVENANCE = JSON.parse(
+  require('node:fs').readFileSync(
+    path.resolve(
+      __dirname,
+      '..',
+      '..',
+      'backend',
+      'common',
+      'contracts',
+      'fixtures',
+      'final-mpc-crs-provenance-invalid-source-digest.json',
+    ),
+    'utf8',
+  ),
+);
 
 function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
 }
+
+function driveHtml(entries) {
+  const literal = JSON.stringify(JSON.stringify(entries)).slice(1, -1).replaceAll("'", "\\'");
+  return `window['_DRIVE_ivd'] = '${literal}';`;
+}
+function driveEntry(id, name, contents) {
+  const row = Array(14).fill(null);
+  row[0] = id; row[2] = name;
+  row[3] = contents === undefined ? 'application/vnd.google-apps.folder' : 'application/octet-stream';
+  row[13] = contents === undefined ? null : contents.length;
+  return row;
+}
+
+test('version-folder provisioning obtains verifier input first and selects shared tau only for full setup', async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-drive-layout-'));
+  const originalFetch = global.fetch;
+  try {
+    const fixture = path.join(temp, 'fixture');
+    const backend = path.join(temp, 'release');
+    await fs.mkdir(fixture); await fs.mkdir(backend);
+    await writeCrsArchiveFixture(fixture); await writeBackendMetadata(backend);
+    const files = Object.fromEntries(await Promise.all(FINAL_CRS_ARCHIVE_FILES.map(async name => [name, await fs.readFile(path.join(fixture, name))])));
+    const tauName = `${sha256(files['tau_sequence.rkyv'])}.rkyv`;
+    const fileById = new Map();
+    const versionRows = FINAL_CRS_ARCHIVE_FILES.filter(name => name !== 'tau_sequence.rkyv').map((name, i) => {
+      const id = `file-${i}`; fileById.set(id, { name, contents: files[name] });
+      return driveEntry(id, name, files[name]);
+    });
+    fileById.set('shared-tau', { name: 'tau_sequence.rkyv', contents: files['tau_sequence.rkyv'] });
+    const downloaded = [];
+    let tauListings = 0;
+    let corruptKey = false;
+    global.fetch = async (url, options) => {
+      const address = new URL(url);
+      if (address.pathname.includes('/folders/')) {
+        const id = address.pathname.split('/').at(-1);
+        if (id === 'version') return new Response(driveHtml(versionRows));
+        if (id === 'tau-folder') {
+          tauListings++;
+          return new Response(driveHtml([driveEntry('shared-tau', tauName, files['tau_sequence.rkyv'])]));
+        }
+        assert.equal(id, '14xqCbLoyoVmUVTTlopiXtKnoHPBGL-Sv');
+        return new Response(driveHtml([driveEntry('version', '2.1'), driveEntry('tau-folder', 'tau_sequence')]));
+      }
+      const item = fileById.get(address.searchParams.get('id'));
+      assert.ok(item);
+      downloaded.push(item.name);
+      let body = item.contents;
+      if (corruptKey && item.name === 'verifier_keys.rkyv') body = Buffer.alloc(body.length, 1);
+      assert.equal(options.headers.Range, `bytes=0-${body.length - 1}`);
+      return new Response(body, { status: 206, headers: {
+        'content-type': item.name === 'crs_provenance.json' ? 'application/json' : 'application/octet-stream',
+        'content-range': `bytes 0-${body.length - 1}/${body.length}`,
+      } });
+    };
+    const context = {
+      cacheRoot: path.join(temp, 'cache'), platformDir: path.join(temp, 'cache', 'linux'),
+      runtimeDir: path.join(temp, 'runtime'), packageRoot: temp, platform: 'linux',
+      statePath: path.join(temp, 'state.json'), compatibleBackendVersion: '2.1', packageVersion: '2.1.5',
+    };
+    for (const noFullSetup of [true, false, false]) {
+      downloaded.length = 0;
+      let stagedDirectory;
+      await withDownloadedVerifierSetup(context, false, async setup => {
+        stagedDirectory = setup.directory;
+        assert.deepEqual(downloaded, ['crs_provenance.json', 'verifier_keys.rkyv']);
+        assert.deepEqual((await fs.readdir(setup.directory)).sort(), ['crs_provenance.json', 'verifier_keys.rkyv']);
+        await installDownloadedSetup(context, backend, false, setup, noFullSetup);
+      });
+      await assert.rejects(fs.access(stagedDirectory), { code: 'ENOENT' });
+      if (noFullSetup) {
+        assert.equal(tauListings, 0);
+        assert.deepEqual(downloaded, ['crs_provenance.json', 'verifier_keys.rkyv']);
+      } else {
+        assert.ok(downloaded.includes('prover_keys.rkyv'));
+        assert.ok(downloaded.includes('preprocess_keys.rkyv'));
+        assert.equal(downloaded.includes('tau_sequence.rkyv'), tauListings === 1);
+      }
+    }
+    corruptKey = true;
+    let enteredBuild = false;
+    await assert.rejects(withDownloadedVerifierSetup(context, false, async () => { enteredBuild = true; }), /sha256 validation/u);
+    assert.equal(enteredBuild, false);
+  } finally {
+    global.fetch = originalFetch;
+    await fs.rm(temp, { recursive: true, force: true });
+  }
+});
 
 async function writeBackendMetadata(backendReleaseDir, mutate = undefined) {
   for (const name of BACKEND_PACKAGE_NAMES) {
@@ -214,6 +311,7 @@ async function writeBackendMetadata(backendReleaseDir, mutate = undefined) {
           declaredRange: '2.1.5',
           packageName: SUBCIRCUIT_LIBRARY_PACKAGE_NAME,
           runtimeMode: 'bundled',
+          sourceDigest: SUBCIRCUIT_LIBRARY_SOURCE_DIGEST,
         },
       },
       packageName: name,
@@ -234,9 +332,10 @@ async function writeCrsArchiveFixture(
   provenance = undefined,
 ) {
   const artifacts = {
-    'combined_sigma.rkyv': `${label} combined sigma`,
-    'sigma_preprocess.rkyv': `${label} preprocess sigma`,
-    'sigma_verify.json': `${label} verify sigma`,
+    'tau_sequence.rkyv': 'Synthetic tau payload for provenance admission tests.\n',
+    'prover_keys.rkyv': `${label} combined sigma`,
+    'preprocess_keys.rkyv': `${label} preprocess sigma`,
+    'verifier_keys.rkyv': `${label} verify sigma`,
   };
   for (const [filename, contents] of Object.entries(artifacts)) {
     await fs.writeFile(path.join(extractedDir, filename), contents, 'utf8');
@@ -245,7 +344,9 @@ async function writeCrsArchiveFixture(
     path.join(extractedDir, 'crs_provenance.json'),
     `${JSON.stringify(
       provenance ?? {
-        documentKind: 'finalMpcCrs',
+        documentKind: 'crs',
+        protocolSchemaId: 'tokamak-zk-evm-univariate',
+        generationMethod: 'mpc',
         releaseEligible: false,
         generatedAtUtc: '2026-08-24T00:00:00Z',
         compatibleBackendVersion: '2.1',
@@ -253,11 +354,12 @@ async function writeCrsArchiveFixture(
           packageName: SUBCIRCUIT_LIBRARY_PACKAGE_NAME,
           packageVersion: subcircuitLibraryVersion,
           origin: 'npmSnapshot',
+          sourceDigest: SUBCIRCUIT_LIBRARY_SOURCE_DIGEST,
         },
         phase1SourceProvenance: null,
-        combinedSigmaSha256: sha256(artifacts['combined_sigma.rkyv']),
-        sigmaPreprocessSha256: sha256(artifacts['sigma_preprocess.rkyv']),
-        sigmaVerifySha256: sha256(artifacts['sigma_verify.json']),
+        ceremonyProtocolVersion: 'tokamak-filecoin-phase2',
+        ceremonyTranscriptSha256: '6'.repeat(64),
+        artifacts: Object.fromEntries(Object.entries(artifacts).map(([name, bytes]) => [name, sha256(bytes)])),
       },
     )}\n`,
     'utf8',
@@ -268,102 +370,7 @@ test('packages the backend CRS provenance contract unchanged for runtime validat
   const packagedContract = require('../dist/generated/crs-provenance-contract.generated.js').default;
   assert.deepEqual(packagedContract, CRS_PROVENANCE_CONTRACT);
   assert.equal(crsProvenanceFileName(), 'crs_provenance.json');
-  assert.deepEqual(FINAL_CRS_ARCHIVE_FILES, CRS_PROVENANCE_CONTRACT.finalMpcCrsArchive.rootFiles);
-});
-
-test('accepts exactly the backend-declared root files before CRS archive extraction', () => {
-  const accepted = validateFinalMpcCrsArchiveEntries(validCrsZipEntries());
-  assert.deepEqual([...accepted.keys()], FINAL_CRS_ARCHIVE_FILES);
-});
-
-test('rejects unsafe, duplicate, encrypted, symlink, directory, unexpected, and incomplete CRS archive entries', () => {
-  const cases = [
-    {
-      entries: [fakeCrsZipEntry('../outside'), ...validCrsZipEntries().slice(1)],
-      expected: /unsafe entry path/u,
-    },
-    {
-      entries: [fakeCrsZipEntry('nested/combined_sigma.rkyv'), ...validCrsZipEntries().slice(1)],
-      expected: /unexpected entry/u,
-    },
-    {
-      entries: [...validCrsZipEntries(), fakeCrsZipEntry(FINAL_CRS_ARCHIVE_FILES[0])],
-      expected: /repeats entry/u,
-    },
-    {
-      entries: [
-        fakeCrsZipEntry(FINAL_CRS_ARCHIVE_FILES[0], { isDirectory: true }),
-        ...validCrsZipEntries().slice(1),
-      ],
-      expected: /not a directory/u,
-    },
-    {
-      entries: [
-        fakeCrsZipEntry(FINAL_CRS_ARCHIVE_FILES[0], {
-          header: { attr: (0o120000 << 16) >>> 0 },
-        }),
-        ...validCrsZipEntries().slice(1),
-      ],
-      expected: /symbolic link/u,
-    },
-    {
-      entries: [
-        fakeCrsZipEntry(FINAL_CRS_ARCHIVE_FILES[0], { header: { flags: 0x1 } }),
-        ...validCrsZipEntries().slice(1),
-      ],
-      expected: /must not be encrypted/u,
-    },
-    {
-      entries: validCrsZipEntries().slice(1),
-      expected: /missing required entry/u,
-    },
-  ];
-
-  for (const { entries, expected } of cases) {
-    assert.throws(() => validateFinalMpcCrsArchiveEntries(entries), expected);
-  }
-});
-
-test('rejects a malformed CRS ZIP before writing any entry outside the caller staging directory', async () => {
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-zip-'));
-  try {
-    const archivePath = path.join(tempDir, 'malformed.zip');
-    const extractionDir = path.join(tempDir, 'staging');
-    await fs.mkdir(extractionDir);
-    writeZipArchive(archivePath, [
-      { name: FINAL_CRS_ARCHIVE_FILES[0] },
-      { name: 'unexpected.txt' },
-    ]);
-
-    await assert.rejects(
-      extractApprovedFinalMpcCrsArchive(archivePath, extractionDir),
-      /unexpected entry/u,
-    );
-    assert.deepEqual(await fs.readdir(extractionDir), []);
-  } finally {
-    await fs.rm(tempDir, { recursive: true, force: true });
-  }
-});
-
-test('extracts exactly the backend-declared CRS ZIP payload into the caller staging directory', async () => {
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-zip-'));
-  try {
-    const archivePath = path.join(tempDir, 'canonical.zip');
-    const extractionDir = path.join(tempDir, 'staging');
-    await fs.mkdir(extractionDir);
-    writeZipArchive(
-      archivePath,
-      FINAL_CRS_ARCHIVE_FILES.map(name => ({ name, contents: `archive:${name}` })),
-    );
-
-    await extractApprovedFinalMpcCrsArchive(archivePath, extractionDir);
-    assert.deepEqual((await fs.readdir(extractionDir)).sort(), [...FINAL_CRS_ARCHIVE_FILES].sort());
-    for (const fileName of FINAL_CRS_ARCHIVE_FILES) {
-      assert.equal(await fs.readFile(path.join(extractionDir, fileName), 'utf8'), `archive:${fileName}`);
-    }
-  } finally {
-    await fs.rm(tempDir, { recursive: true, force: true });
-  }
+  assert.deepEqual(FINAL_CRS_ARCHIVE_FILES, CRS_PROVENANCE_CONTRACT.rootFiles);
 });
 
 test('rejects unimplemented CRS provenance schema keywords before validation', () => {
@@ -387,14 +394,20 @@ test('packages the backend build-metadata contract unchanged for runtime validat
   assert.equal(backendBuildMetadataFileName('prove'), 'build-metadata-prove.json');
 });
 
-test('validates canonical and legacy backend final-MPC provenance fixtures', async () => {
-  const archiveName = 'tokamak-backend-crs-v2.1-20260824T000000Z.zip';
-  const validated = await validateFinalMpcCrsProvenanceContract(CANONICAL_FINAL_MPC_PROVENANCE, archiveName);
+test('accepts common provenance and rejects the retired algorithm-specific format', async () => {
+  const archiveName = '2.1';
+  const validated = await validateCrsProvenanceContract(CANONICAL_FINAL_MPC_PROVENANCE, archiveName);
   assert.deepEqual(validated, CANONICAL_FINAL_MPC_PROVENANCE);
 
+  for (const field of Object.keys(CANONICAL_FINAL_MPC_PROVENANCE)) {
+    const missing = structuredClone(CANONICAL_FINAL_MPC_PROVENANCE);
+    delete missing[field];
+    await assert.rejects(validateCrsProvenanceContract(missing, archiveName), /is missing/u);
+  }
+
   await assert.rejects(
-    validateFinalMpcCrsProvenanceContract(LEGACY_FINAL_MPC_PROVENANCE, archiveName),
-    /does not match exactly one allowed contract shape/u,
+    validateCrsProvenanceContract(LEGACY_FINAL_MPC_PROVENANCE, archiveName),
+    /is missing protocolSchemaId/u,
   );
 });
 
@@ -403,8 +416,16 @@ async function generationTarget(setupOutputDir) {
   return path.resolve(path.dirname(setupOutputDir), target);
 }
 
-test('installer ingress accepts every canonical phase-1 provenance variant', async () => {
-  for (const provenance of [CANONICAL_FINAL_MPC_PROVENANCE, NATIVE_FINAL_MPC_PROVENANCE, NULL_FINAL_MPC_PROVENANCE]) {
+test('installer ingress accepts common provenance independently of the generation method', async () => {
+  const trusted = {
+    ...CANONICAL_FINAL_MPC_PROVENANCE,
+    generationMethod: 'trustedSetup',
+    releaseEligible: false,
+    phase1SourceProvenance: null,
+    ceremonyProtocolVersion: null,
+    ceremonyTranscriptSha256: null,
+  };
+  for (const provenance of [trusted, CANONICAL_FINAL_MPC_PROVENANCE, TRUSTED_SETUP_PROVENANCE, NULL_FINAL_MPC_PROVENANCE]) {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-'));
     try {
       const extractedDir = path.join(tempDir, 'archive');
@@ -414,10 +435,10 @@ test('installer ingress accepts every canonical phase-1 provenance variant', asy
       await writeCrsArchiveFixture(extractedDir, '2.1.5', 'canonical', provenance);
       await writeBackendMetadata(backendReleaseDir);
 
-      const result = await validateDownloadedCrsArchive(
+      const result = await validateDownloadedCrs(
         extractedDir,
         backendReleaseDir,
-        'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
+        '2.1',
         '2.1',
         '2.1.5',
       );
@@ -430,7 +451,7 @@ test('installer ingress accepts every canonical phase-1 provenance variant', asy
   }
 });
 
-test('rejects a development trusted-setup provenance before CRS installation', async () => {
+test('rejects a retired algorithm-specific documentKind before CRS installation', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-'));
   try {
     const extractedDir = path.join(tempDir, 'archive');
@@ -444,14 +465,14 @@ test('rejects a development trusted-setup provenance before CRS installation', a
     await fs.writeFile(provenancePath, `${JSON.stringify(provenance)}\n`, 'utf8');
 
     await assert.rejects(
-      validateDownloadedCrsArchive(
+      validateDownloadedCrs(
         extractedDir,
         backendReleaseDir,
-        'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
+        '2.1',
         '2.1',
         '2.1.5',
       ),
-      /documentKind must equal "finalMpcCrs"/u,
+      /documentKind must equal "crs"/u,
     );
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
@@ -471,9 +492,9 @@ test('installer ingress rejects malformed and semantically invalid provenance fi
       expected: /has unsupported field unexpected/u,
     },
     {
-      name: 'legacy Dusk variant',
+      name: 'retired algorithm-specific format',
       provenance: LEGACY_FINAL_MPC_PROVENANCE,
-      expected: /does not match exactly one allowed contract shape/u,
+      expected: /is missing protocolSchemaId/u,
     },
     {
       name: 'date-only timestamp',
@@ -483,7 +504,7 @@ test('installer ingress rejects malformed and semantically invalid provenance fi
     {
       name: 'invalid digest',
       provenance: INVALID_DIGEST_FINAL_MPC_PROVENANCE,
-      expected: /combinedSigmaSha256 does not match the contract pattern/u,
+      expected: /artifacts.prover_keys.rkyv does not match the contract pattern/u,
     },
     {
       name: 'empty required string',
@@ -500,6 +521,16 @@ test('installer ingress rejects malformed and semantically invalid provenance fi
       provenance: INVALID_ORIGIN_FINAL_MPC_PROVENANCE,
       expected: /subcircuitLibrary\.origin has an unsupported value/u,
     },
+    {
+      name: 'missing subcircuit source digest',
+      provenance: MISSING_SOURCE_DIGEST_FINAL_MPC_PROVENANCE,
+      expected: /subcircuitLibrary is missing sourceDigest/u,
+    },
+    {
+      name: 'invalid subcircuit source digest',
+      provenance: INVALID_SOURCE_DIGEST_FINAL_MPC_PROVENANCE,
+      expected: /subcircuitLibrary\.sourceDigest does not match the contract pattern/u,
+    },
   ];
 
   for (const testCase of cases) {
@@ -512,10 +543,10 @@ test('installer ingress rejects malformed and semantically invalid provenance fi
       await writeCrsArchiveFixture(extractedDir, '2.1.5', 'canonical', testCase.provenance);
 
       await assert.rejects(
-        validateDownloadedCrsArchive(
+        validateDownloadedCrs(
           extractedDir,
           backendReleaseDir,
-          'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
+          '2.1',
           '2.1',
           '2.1.5',
         ),
@@ -539,10 +570,10 @@ test('rejects CRS provenance with an incompatible subcircuit-library package ver
     await writeBackendMetadata(backendReleaseDir);
 
     await assert.rejects(
-      validateDownloadedCrsArchive(
+      validateDownloadedCrs(
         extractedDir,
         backendReleaseDir,
-        'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
+        '2.1',
         '2.1',
         '2.1.5',
       ),
@@ -564,13 +595,51 @@ test('keeps CRS provenance library version as a release-line check rather than a
     await writeBackendMetadata(backendReleaseDir);
 
     await assert.doesNotReject(
-      validateDownloadedCrsArchive(
+      validateDownloadedCrs(
         extractedDir,
         backendReleaseDir,
-        'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
+        '2.1',
         '2.1',
         '2.1.5',
       ),
+    );
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('rejects a CRS whose source digest differs from any installed backend package', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-'));
+  try {
+    const extractedDir = path.join(tempDir, 'archive');
+    const backendReleaseDir = path.join(tempDir, 'backend');
+    await fs.mkdir(extractedDir);
+    await fs.mkdir(backendReleaseDir);
+    await writeCrsArchiveFixture(extractedDir, '2.1.4');
+    await writeBackendMetadata(backendReleaseDir, (metadata, backendName) =>
+      backendName === 'prove'
+        ? {
+            ...metadata,
+            dependencies: {
+              subcircuitLibrary: {
+                ...metadata.dependencies.subcircuitLibrary,
+                sourceDigest:
+                  'sha256:3333333333333333333333333333333333333333333333333333333333333333',
+              },
+            },
+          }
+        : metadata,
+    );
+
+    await assert.rejects(
+      validateDownloadedCrs(
+        extractedDir,
+        backendReleaseDir,
+        '2.1',
+        '2.1',
+        '2.1.5',
+      ),
+      /Backend package prove subcircuit-library sourceDigest .* does not match CRS sourceDigest/u,
     );
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
@@ -608,10 +677,10 @@ test('requires every backend package metadata version to match the current CLI p
       await writeBackendMetadata(backendReleaseDir, testCase.mutate);
 
       await assert.rejects(
-        validateDownloadedCrsArchive(
+        validateDownloadedCrs(
           extractedDir,
           backendReleaseDir,
-          'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
+          '2.1',
           '2.1',
           '2.1.5',
         ),
@@ -671,6 +740,16 @@ test('installer ingress rejects every build-metadata contract violation', async 
       metadata: INVALID_BUILD_METADATA_FIXTURES.leadingZeroLibraryVersion,
       expected: /subcircuitLibrary\.buildVersion.*leading zeroes are not canonical/u,
     },
+    {
+      name: 'missing subcircuit source digest',
+      metadata: INVALID_BUILD_METADATA_FIXTURES.missingSourceDigest,
+      expected: /subcircuitLibrary is missing sourceDigest/u,
+    },
+    {
+      name: 'invalid subcircuit source digest',
+      metadata: INVALID_BUILD_METADATA_FIXTURES.invalidSourceDigest,
+      expected: /subcircuitLibrary\.sourceDigest does not match the contract pattern/u,
+    },
   ];
 
   for (const testCase of cases) {
@@ -686,10 +765,10 @@ test('installer ingress rejects every build-metadata contract violation', async 
       );
 
       await assert.rejects(
-        validateDownloadedCrsArchive(
+        validateDownloadedCrs(
           extractedDir,
           backendReleaseDir,
-          'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
+          '2.1',
           '2.1',
           '2.1.5',
         ),
@@ -702,7 +781,7 @@ test('installer ingress rejects every build-metadata contract violation', async 
   }
 });
 
-test('migrates a legacy setup output directory to one active CRS generation', async () => {
+test('rejects a legacy setup output directory', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-'));
   try {
     const extractedDir = path.join(tempDir, 'archive');
@@ -712,19 +791,17 @@ test('migrates a legacy setup output directory to one active CRS generation', as
     await fs.writeFile(path.join(setupOutputDir, 'README.txt'), 'legacy setup output\n', 'utf8');
     await writeCrsArchiveFixture(extractedDir, '2.1.5', 'first');
 
-    await installValidatedCrsGeneration(
-      extractedDir,
-      path.join(extractedDir, 'crs_provenance.json'),
-      setupOutputDir,
-      'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
+    await assert.rejects(
+      installValidatedCrsGeneration(
+        extractedDir,
+        path.join(extractedDir, 'crs_provenance.json'),
+        setupOutputDir,
+        '2.1',
+      ),
+      /retired directory layout/,
     );
-
-    assert.equal((await fs.lstat(setupOutputDir)).isSymbolicLink(), true);
-    const activeGeneration = await generationTarget(setupOutputDir);
-    assert.equal(await fs.readFile(path.join(activeGeneration, 'combined_sigma.rkyv'), 'utf8'), 'first combined sigma');
-    await assert.rejects(fs.access(path.join(activeGeneration, 'README.txt')));
-    const generations = await fs.readdir(path.join(tempDir, 'resource', 'setup', 'generations'));
-    assert.deepEqual(generations, [path.basename(activeGeneration)]);
+    assert.equal((await fs.lstat(setupOutputDir)).isDirectory(), true);
+    assert.equal(await fs.readFile(path.join(setupOutputDir, 'README.txt'), 'utf8'), 'legacy setup output\n');
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
@@ -748,7 +825,7 @@ test('rejects an unmanaged active CRS symlink without replacing it', async () =>
         extractedDir,
         path.join(extractedDir, 'crs_provenance.json'),
         setupOutputDir,
-        'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
+        '2.1',
       ),
       /not managed by this CLI installation/u,
     );
@@ -814,7 +891,7 @@ test('rejects every unowned CRS activation temporary path without modifying it',
           extractedDir,
           path.join(extractedDir, 'crs_provenance.json'),
           setupOutputDir,
-          'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
+          '2.1',
         ),
         /activation temporary.*not managed/u,
         testCase.name,
@@ -845,7 +922,7 @@ test('keeps the prior setup output intact when any staged CRS copy fails', async
           extractedDir,
           path.join(extractedDir, 'crs_provenance.json'),
           setupOutputDir,
-          'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
+          '2.1',
           async (source, destination) => {
             copyCount += 1;
             if (copyCount === failingCopy) {
@@ -881,7 +958,7 @@ test('atomically replaces the active CRS generation and immediately deletes the 
       firstArchiveDir,
       path.join(firstArchiveDir, 'crs_provenance.json'),
       setupOutputDir,
-      'tokamak-backend-crs-v2.1-20260824T000000Z.zip',
+      '2.1',
     );
     const firstGeneration = await generationTarget(setupOutputDir);
 
@@ -894,7 +971,7 @@ test('atomically replaces the active CRS generation and immediately deletes the 
 
     const secondGeneration = await generationTarget(setupOutputDir);
     assert.notEqual(secondGeneration, firstGeneration);
-    assert.equal(await fs.readFile(path.join(setupOutputDir, 'combined_sigma.rkyv'), 'utf8'), 'second combined sigma');
+    assert.equal(await fs.readFile(path.join(setupOutputDir, 'prover_keys.rkyv'), 'utf8'), 'second combined sigma');
     await assert.rejects(fs.access(firstGeneration));
     assert.deepEqual(await fs.readdir(path.join(tempDir, 'resource', 'setup', 'generations')), [
       path.basename(secondGeneration),

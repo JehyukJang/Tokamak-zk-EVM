@@ -4,21 +4,23 @@ import path from "node:path";
 
 import {
   crsProvenanceFileName,
-  parseFinalMpcCrsProvenance,
-  type FinalMpcCrsProvenance,
+  parseCrsProvenance,
+  type CrsProvenance,
 } from "../../src/generated/crs-provenance-validator.generated.js";
 import { validateCrsProvenanceCompatibility } from "../../src/artifacts/binary/compatibility.js";
 
-const COMBINED_SIGMA_FILE_NAME = "combined_sigma.rkyv";
-const SIGMA_PREPROCESS_FILE_NAME = "sigma_preprocess.rkyv";
-const SIGMA_VERIFY_FILE_NAME = "sigma_verify.json";
+const TAU_SEQUENCE_FILE_NAME = "tau_sequence.rkyv";
+const PROVER_KEYS_FILE_NAME = "prover_keys.rkyv";
+const PREPROCESS_KEYS_FILE_NAME = "preprocess_keys.rkyv";
+const VERIFIER_KEYS_FILE_NAME = "verifier_keys.rkyv";
 
 export interface VerifiedFinalCrsInput {
   readonly directory: string;
-  readonly provenance: FinalMpcCrsProvenance;
-  readonly combinedSigma: Uint8Array;
-  readonly sigmaPreprocess: Uint8Array;
-  readonly sigmaVerify: Uint8Array;
+  readonly provenance: CrsProvenance;
+  readonly tauSequence: Uint8Array;
+  readonly proverKeys: Uint8Array;
+  readonly preprocessKeys: Uint8Array;
+  readonly verifierKeys: Uint8Array;
 }
 
 /**
@@ -32,28 +34,31 @@ export async function loadVerifiedFinalCrsInput(
   await assertDirectory(directory);
 
   const provenancePath = path.join(directory, crsProvenanceFileName());
-  const [provenanceBytes, combinedSigma, sigmaPreprocess, sigmaVerify] = await Promise.all([
+  const [provenanceBytes, tauSequence, proverKeys, preprocessKeys, verifierKeys] = await Promise.all([
     readRequiredFile(provenancePath),
-    readRequiredFile(path.join(directory, COMBINED_SIGMA_FILE_NAME)),
-    readRequiredFile(path.join(directory, SIGMA_PREPROCESS_FILE_NAME)),
-    readRequiredFile(path.join(directory, SIGMA_VERIFY_FILE_NAME)),
+    readRequiredFile(path.join(directory, TAU_SEQUENCE_FILE_NAME)),
+    readRequiredFile(path.join(directory, PROVER_KEYS_FILE_NAME)),
+    readRequiredFile(path.join(directory, PREPROCESS_KEYS_FILE_NAME)),
+    readRequiredFile(path.join(directory, VERIFIER_KEYS_FILE_NAME)),
   ]);
   const provenance = parseProvenance(provenanceBytes, provenancePath);
   validateCrsProvenanceCompatibility(provenance);
-  assertDigest(combinedSigma, provenance.combinedSigmaSha256, COMBINED_SIGMA_FILE_NAME);
+  assertDigest(tauSequence, provenance.artifacts[TAU_SEQUENCE_FILE_NAME]!, TAU_SEQUENCE_FILE_NAME);
+  assertDigest(proverKeys, provenance.artifacts[PROVER_KEYS_FILE_NAME]!, PROVER_KEYS_FILE_NAME);
   assertDigest(
-    sigmaPreprocess,
-    provenance.sigmaPreprocessSha256,
-    SIGMA_PREPROCESS_FILE_NAME,
+    preprocessKeys,
+    provenance.artifacts[PREPROCESS_KEYS_FILE_NAME]!,
+    PREPROCESS_KEYS_FILE_NAME,
   );
-  assertDigest(sigmaVerify, provenance.sigmaVerifySha256, SIGMA_VERIFY_FILE_NAME);
+  assertDigest(verifierKeys, provenance.artifacts[VERIFIER_KEYS_FILE_NAME]!, VERIFIER_KEYS_FILE_NAME);
 
   return {
     directory,
     provenance,
-    combinedSigma,
-    sigmaPreprocess,
-    sigmaVerify,
+    tauSequence,
+    proverKeys,
+    preprocessKeys,
+    verifierKeys,
   };
 }
 
@@ -84,14 +89,14 @@ async function readRequiredFile(filePath: string): Promise<Uint8Array> {
   }
 }
 
-function parseProvenance(bytes: Uint8Array, filePath: string): FinalMpcCrsProvenance {
+function parseProvenance(bytes: Uint8Array, filePath: string): CrsProvenance {
   let value: unknown;
   try {
     value = JSON.parse(new TextDecoder().decode(bytes));
   } catch (error) {
     throw new Error(`Cannot parse final CRS provenance ${filePath}: ${message(error)}`);
   }
-  return parseFinalMpcCrsProvenance(value, `Final CRS provenance ${filePath}`);
+  return parseCrsProvenance(value, `Final CRS provenance ${filePath}`);
 }
 
 function assertDigest(bytes: Uint8Array, expected: string, fileName: string): void {

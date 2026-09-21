@@ -7,26 +7,15 @@ import { parseCompatibleBackendVersion, parsePackageVersion } from './version-po
 
 export type SubcircuitLibraryOrigin = 'npmSnapshot' | 'localQapCompiler';
 
-export interface DuskSourceProvenance {
+export interface FilecoinSourceProvenance {
   readonly sourceUrl: string;
-  readonly sourceSizeBytes: number;
-  readonly rawEncoding: string;
-  readonly pinnedContribution: string;
-  readonly pinnedReadmeUrl: string;
-  readonly pinnedDriveFileId: string;
-  readonly expectedSourceSha256: string;
-  readonly actualSourceSha256: string;
-  readonly autoDownloaded: boolean;
-  readonly downloadedContribution: string | null;
-  readonly downloadedReadmeUrl: string | null;
-  readonly downloadedDriveFileId: string | null;
-  readonly maxG1ExpUsed: number;
-  readonly maxG2ExpUsed: number;
-  readonly transcriptConsistencyVerified: boolean;
+  readonly sourceBlake2b512: string;
 }
 
-export interface FinalMpcCrsProvenance {
-  readonly documentKind: 'finalMpcCrs';
+export interface CrsProvenance {
+  readonly documentKind: 'crs';
+  readonly protocolSchemaId: string;
+  readonly generationMethod: 'trustedSetup' | 'mpc';
   readonly releaseEligible: boolean;
   readonly generatedAtUtc: string;
   readonly compatibleBackendVersion: string;
@@ -34,11 +23,12 @@ export interface FinalMpcCrsProvenance {
     readonly packageName: string;
     readonly packageVersion: string;
     readonly origin: SubcircuitLibraryOrigin;
+    readonly sourceDigest: string;
   };
-  readonly phase1SourceProvenance: null | 'native' | { readonly duskGroth16: DuskSourceProvenance };
-  readonly combinedSigmaSha256: string;
-  readonly sigmaPreprocessSha256: string;
-  readonly sigmaVerifySha256: string;
+  readonly phase1SourceProvenance: null | { readonly filecoin: FilecoinSourceProvenance };
+  readonly ceremonyProtocolVersion: 'tokamak-filecoin-phase2' | null;
+  readonly ceremonyTranscriptSha256: string | null;
+  readonly artifacts: Readonly<Record<string, string>>;
 }
 
 type JsonSchema = {
@@ -57,12 +47,8 @@ type JsonSchema = {
 
 type ProvenanceContract = {
   readonly fileName?: unknown;
-  readonly finalMpcCrsArchive?: {
-    readonly rootFiles?: unknown;
-  };
-  readonly documentKinds: {
-    readonly finalMpcCrs?: { readonly schema?: JsonSchema };
-  };
+  readonly rootFiles?: readonly string[];
+  readonly schema?: JsonSchema;
 };
 
 const SUPPORTED_SCHEMA_KEYWORDS = new Set([
@@ -79,11 +65,16 @@ const SUPPORTED_SCHEMA_KEYWORDS = new Set([
   'type',
 ]);
 
-/** Validates a final-MPC document against the backend-owned JSON contract. */
-export function parseFinalMpcCrsProvenance(value: unknown, subject = 'CRS provenance'): FinalMpcCrsProvenance {
-  validateJsonSchema(finalMpcCrsSchema(), value, subject);
-  const provenance = value as FinalMpcCrsProvenance;
+/** Validates a CRS document from any supported generation method against the backend-owned JSON contract. */
+export function parseCrsProvenance(value: unknown, subject = 'CRS provenance'): CrsProvenance {
+  validateJsonSchema(crsProvenanceSchema(), value, subject);
+  const provenance = value as CrsProvenance;
   validateVersionPolicy(provenance, subject);
+  const names = crsArchiveRootFileNames().filter(name => name !== crsProvenanceFileName());
+  if (Object.keys(provenance.artifacts).length !== names.length ||
+      names.some(name => !hasOwn(provenance.artifacts, name))) {
+    throw new Error(`${subject}.artifacts must contain exactly the protocol's CRS payload files.`);
+  }
   return provenance;
 }
 
@@ -96,28 +87,17 @@ export function crsProvenanceFileName(): string {
   return fileName;
 }
 
-/** Returns the exact root-level payload files allowed in a final MPC CRS archive. */
-export function finalMpcCrsArchiveRootFileNames(): readonly string[] {
-  const rootFiles = (contract as ProvenanceContract).finalMpcCrsArchive?.rootFiles;
-  if (!Array.isArray(rootFiles) || rootFiles.length === 0) {
-    throw new Error('Backend CRS provenance contract must define non-empty finalMpcCrsArchive.rootFiles.');
+/** Returns the exact archive filenames for a protocol, independent of generation method. */
+export function crsArchiveRootFileNames(): readonly string[] {
+  const names = (contract as ProvenanceContract).rootFiles;
+  if (!Array.isArray(names) || names.length === 0 || !names.includes(crsProvenanceFileName())) {
+    throw new Error('Backend CRS contract must list payloads and provenance in rootFiles.');
   }
-
-  const seen = new Set<string>();
-  for (const fileName of rootFiles) {
-    if (typeof fileName !== 'string' || !isRootFileName(fileName)) {
-      throw new Error('Backend CRS provenance contract contains an invalid final MPC archive root filename.');
-    }
-    if (seen.has(fileName)) {
-      throw new Error(`Backend CRS provenance contract repeats final MPC archive file ${JSON.stringify(fileName)}.`);
-    }
-    seen.add(fileName);
+  if (names.some(name => typeof name !== 'string' || !isRootFileName(name)) ||
+      new Set(names).size !== names.length) {
+    throw new Error('Backend CRS contract contains invalid or duplicate artifact filenames.');
   }
-
-  if (!seen.has(crsProvenanceFileName())) {
-    throw new Error('Backend CRS provenance contract final MPC archive must include its provenance filename.');
-  }
-  return rootFiles;
+  return names;
 }
 
 /** Parses an input origin using the enum in the backend-owned provenance contract. */
@@ -242,17 +222,17 @@ function isRootFileName(value: string): boolean {
   );
 }
 
-function finalMpcCrsSchema(): JsonSchema {
-  const schema = (contract as ProvenanceContract).documentKinds.finalMpcCrs?.schema;
+function crsProvenanceSchema(): JsonSchema {
+  const schema = (contract as ProvenanceContract).schema;
   if (schema === undefined) {
-    throw new Error('Backend CRS provenance contract does not define finalMpcCrs.');
+    throw new Error('Backend CRS provenance contract does not define its shared schema.');
   }
   assertSupportedCrsProvenanceSchema(schema);
   return schema;
 }
 
 function subcircuitLibraryOriginSchema(): JsonSchema {
-  const finalMpcSchema = finalMpcCrsSchema();
+  const finalMpcSchema = crsProvenanceSchema();
   const subcircuitLibrarySchema = finalMpcSchema.properties?.subcircuitLibrary;
   const originSchema = subcircuitLibrarySchema?.properties?.origin;
   if (originSchema === undefined) {
@@ -263,7 +243,7 @@ function subcircuitLibraryOriginSchema(): JsonSchema {
 
 /** Rejects schema evolution that this boundary validator does not implement. */
 export function assertSupportedCrsProvenanceSchema(schema: unknown): void {
-  assertSupportedSchemaKeywords(schema, 'finalMpcCrs schema');
+  assertSupportedSchemaKeywords(schema, 'CRS provenance schema');
 }
 
 function assertSupportedSchemaKeywords(schema: unknown, path: string): void {
@@ -293,7 +273,7 @@ function assertSupportedSchemaKeywords(schema: unknown, path: string): void {
   }
 }
 
-function validateVersionPolicy(provenance: FinalMpcCrsProvenance, subject: string): void {
+function validateVersionPolicy(provenance: CrsProvenance, subject: string): void {
   try {
     parseCompatibleBackendVersion(provenance.compatibleBackendVersion);
   } catch (error) {

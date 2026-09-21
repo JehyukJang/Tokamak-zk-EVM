@@ -57,7 +57,6 @@ function createPlacementManager(
       NOutWires: 2,
       inWireIndex: 3,
       outWireIndex: 1,
-      flattenMap: [],
       logicalInterface: {
         inputs: [
           { name: 'selector', logicalType: { kind: 'uint', bits: 32 } },

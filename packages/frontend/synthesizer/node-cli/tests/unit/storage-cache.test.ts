@@ -34,7 +34,6 @@ const storageAccessInfo = {
   NOutWires: 0,
   inWireIndex: 1,
   outWireIndex: 1,
-  flattenMap: [],
 };
 
 const logOutInfo = {
@@ -45,7 +44,6 @@ const logOutInfo = {
   NOutWires: 64,
   inWireIndex: 65,
   outWireIndex: 1,
-  flattenMap: [],
 };
 
 const createManagers = () => {

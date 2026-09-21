@@ -41,6 +41,7 @@ pub fn print_backend_build_identity_if_requested(
     package_version: &str,
     compatible_backend_version: Option<&str>,
     subcircuit_library_package_version: Option<&str>,
+    subcircuit_library_source_digest: Option<&str>,
 ) -> Result<bool, String> {
     let arguments = env::args_os().skip(1).collect::<Vec<_>>();
     if !arguments
@@ -65,11 +66,17 @@ pub fn print_backend_build_identity_if_requested(
             "{BACKEND_BUILD_IDENTITY_ARGUMENT} is unavailable because this binary was not built with the production subcircuit-library input"
         )
     })?;
+    let subcircuit_library_source_digest = subcircuit_library_source_digest.ok_or_else(|| {
+        format!(
+            "{BACKEND_BUILD_IDENTITY_ARGUMENT} is unavailable because this binary was not built with the production subcircuit-library input"
+        )
+    })?;
     let metadata = BackendBuildMetadata::new(
         package_name,
         package_version,
         compatible_backend_version,
         subcircuit_library_package_version,
+        subcircuit_library_source_digest,
     )?;
     println!(
         "{}",

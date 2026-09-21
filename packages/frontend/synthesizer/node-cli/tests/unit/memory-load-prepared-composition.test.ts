@@ -35,7 +35,6 @@ const memoryViewInfo = {
   NOutWires: 3,
   inWireIndex: 4,
   outWireIndex: 1,
-  flattenMap: [],
   logicalInterface: {
     inputs: [
       { name: 'sourceWord', logicalType: { kind: 'uint' as const, bits: 256 } },

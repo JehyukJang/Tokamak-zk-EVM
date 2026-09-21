@@ -43,6 +43,7 @@
     "scripts/parse-interfaces.js",
     "scripts/parse-symbols.js",
     "scripts/qap-compiler.mjs",
+    "scripts/normalize-r1cs.js",
     "scripts/reload-constants.sh",
     "scripts/tokamakL2js/**/*",
     "scripts/write-library-artifacts.js",
@@ -65,7 +66,7 @@
     "reload-constants": "npx qap-compiler --reload-constants",
     "build:library": "npx qap-compiler --build",
     "dist": "npx qap-compiler --dist",
-    "publish": "npm install && npx qap-compiler --reload-constants && npx qap-compiler --build && npx qap-compiler --dist && npm publish ./dist"
+    "publish": "npm ci --workspaces=false && npx qap-compiler --reload-constants && npx qap-compiler --build && npx qap-compiler --dist && npm publish ./dist"
   },
   "bin": {
     "qap-compiler": "scripts/qap-compiler.mjs"
@@ -91,7 +92,7 @@
     "ffjavascript": "^0.2.55",
     "mocha": "^11.0.1",
     "poseidon-bls12381-circom": "^1.0.0",
-    "tokamak-l2js": "latest",
+    "tokamak-l2js": "0.2.0",
     "tsx": "^4.20.3"
   },
   "devDependencies": {

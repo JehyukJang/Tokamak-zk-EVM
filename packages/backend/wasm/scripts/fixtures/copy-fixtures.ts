@@ -14,7 +14,7 @@ import {
 } from "./fixture-paths.js";
 
 interface CopyManifest {
-  readonly schemaVersion: 2;
+  readonly schemaVersion: 3;
   readonly suite: string;
   readonly workDirectory: string;
   readonly sources: readonly CopySourceEntry[];
@@ -114,8 +114,8 @@ function parseManifest(raw: unknown): CopyManifest {
     throw new Error("Copy manifest must be a JSON object.");
   }
 
-  if (raw.schemaVersion !== 2) {
-    throw new Error("Copy manifest schemaVersion must be 2.");
+  if (raw.schemaVersion !== 3) {
+    throw new Error("Copy manifest schemaVersion must be 3.");
   }
 
   if (typeof raw.suite !== "string" || raw.suite.trim() === "") {
@@ -129,7 +129,7 @@ function parseManifest(raw: unknown): CopyManifest {
   }
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     suite: raw.suite,
     workDirectory,
     sources: raw.sources.map((entry, index): CopySourceEntry => {

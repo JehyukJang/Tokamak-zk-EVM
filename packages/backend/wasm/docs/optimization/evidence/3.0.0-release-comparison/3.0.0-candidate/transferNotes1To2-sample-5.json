@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-31T20:51:31.604Z",
+  "nodeVersion": "v24.20.0",
+  "browserVersion": "149.0.7827.55",
+  "releaseBuild": true,
+  "result": {
+    "status": "ok",
+    "mode": "one-call",
+    "valid": true,
+    "proofBytes": 2328,
+    "timings": [
+      {
+        "label": "load fixture binaries",
+        "ms": 237.35500000044703
+      },
+      {
+        "label": "install prover",
+        "ms": 73.57500000018626
+      },
+      {
+        "label": "prove binary one-call",
+        "ms": 31143.81000000052
+      },
+      {
+        "label": "install verifier",
+        "ms": 0.30999999959021807
+      },
+      {
+        "label": "verify generated proof",
+        "ms": 20.615000000223517
+      }
+    ]
+  }
+}

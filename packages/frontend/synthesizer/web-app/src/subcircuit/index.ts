@@ -6,7 +6,6 @@ import {
 import { parseSubcircuitLibraryData } from '../../../core/src/subcircuit.ts';
 import {
   frontendCfgJson,
-  globalWireListJson,
   setupParamsJson,
   subcircuitInfoJson,
   wasmFiles,
@@ -14,7 +13,6 @@ import {
 
 const bundledSubcircuitLibraryData = parseSubcircuitLibraryData({
   setupParams: setupParamsJson,
-  globalWireList: globalWireListJson,
   frontendCfg: frontendCfgJson,
   subcircuitInfo: subcircuitInfoJson,
 });

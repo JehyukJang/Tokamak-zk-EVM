@@ -5,6 +5,8 @@ import { installLinearBatchPlugin } from "../field/linear-batch-plugin.js";
 import { createG1Runtime, createG2Runtime, type G1Runtime, type G2Runtime } from "../group/group.js";
 import { createPairingRuntime, type PairingRuntime } from "../pairing/pairing.js";
 import type { FieldElement } from "../field/field-runtime.js";
+import type { WasmModuleBuilder } from "../field/kernel-builder-types.js";
+import { buildSignedMsmKernel } from "../group/signed-msm-kernel.js";
 
 export type RandomScalarSource = () => FieldElement | Promise<FieldElement>;
 
@@ -78,7 +80,6 @@ export type FfWorkerCallParam =
   | {
       readonly val: number;
     };
-
 export interface FfGroup {
   readonly zero: Uint8Array;
   readonly zeroAffine: Uint8Array;
@@ -92,19 +93,30 @@ export interface FfGroup {
   eq(left: Uint8Array, right: Uint8Array): boolean;
   isZero(value: Uint8Array): boolean;
   toAffine(value: Uint8Array): Uint8Array;
+  double(value: Uint8Array): Uint8Array;
   toJacobian(value: Uint8Array): Uint8Array;
+  isValid(point: Uint8Array): boolean;
+  timesScalar(point: Uint8Array, scalar: bigint): Uint8Array;
   timesFr(point: Uint8Array, scalar: Uint8Array): Uint8Array;
   toObject(value: Uint8Array): unknown[];
   fromObject(value: unknown[]): Uint8Array;
   multiExp(bases: Uint8Array, scalars: Uint8Array): Promise<Uint8Array>;
   multiExpAffine(bases: Uint8Array, scalars: Uint8Array): Promise<Uint8Array>;
 }
-
 export interface FfCurve {
   readonly name: "bls12381";
   readonly Fr: FfField;
   readonly G1: FfGroup;
   readonly G2: FfGroup;
+  readonly Gt: {
+    readonly one: Uint8Array;
+    mul(a: Uint8Array, b: Uint8Array): Uint8Array;
+    eq(a: Uint8Array, b: Uint8Array): boolean;
+  };
+  prepareG1(point: Uint8Array): Uint8Array;
+  prepareG2(point: Uint8Array): Uint8Array;
+  millerLoop(p: Uint8Array, q: Uint8Array): Uint8Array;
+  finalExponentiation(value: Uint8Array): Uint8Array;
   pairingEq(...terms: Uint8Array[]): Promise<boolean>;
   terminate?(): Promise<void>;
 }
@@ -120,9 +132,12 @@ export interface CurveRuntime {
 }
 
 export async function createCurveRuntime(): Promise<CurveRuntime> {
-  const raw = (await getCurveFromName("bls12381", false, installLinearBatchPlugin)) as FfCurve;
+  const raw = (await getCurveFromName("bls12381", false, (module: WasmModuleBuilder) => {
+    installLinearBatchPlugin(module);
+    buildSignedMsmKernel(module);
+  })) as FfCurve;
   const Fr = createFieldRuntime(raw.Fr);
-  const G1 = createG1Runtime(raw.G1, Fr);
+  const G1 = createG1Runtime(raw.G1, Fr, raw.Fr.tm);
   const G2 = createG2Runtime(raw.G2);
 
   return {

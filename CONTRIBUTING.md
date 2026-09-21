@@ -65,7 +65,7 @@ Thank you for your interest in contributing to Tokamak-zk-EVM! This document pro
 - Follow language-specific conventions:
   - Rust: Follow `rustfmt` guidelines
   - Solidity: Follow Solidity style guide
-  - TypeScript: Use prettier and eslint configurations
+  - TypeScript: Follow the repository TypeScript and ESLint conventions
 
 ## Testing
 

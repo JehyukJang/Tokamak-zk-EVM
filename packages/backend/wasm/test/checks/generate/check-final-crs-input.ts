@@ -15,9 +15,10 @@ async function main(): Promise<void> {
   const directory = await mkdtemp(path.join(tmpdir(), "backend-wasm-final-crs-input-"));
   try {
     const files = {
-      combinedSigma: Uint8Array.from([1, 2, 3]),
-      sigmaPreprocess: Uint8Array.from([4, 5, 6]),
-      sigmaVerify: Uint8Array.from([7, 8, 9]),
+      tauSequence: Uint8Array.from([10, 11, 12]),
+      proverKeys: Uint8Array.from([1, 2, 3]),
+      preprocessKeys: Uint8Array.from([4, 5, 6]),
+      verifierKeys: Uint8Array.from([7, 8, 9]),
     };
     await writeFinalCrsDirectory(directory, files);
 
@@ -28,28 +29,28 @@ async function main(): Promise<void> {
 
     await expectFailure(
       async () => {
-        await writeFile(path.join(directory, "sigma_verify.json"), Uint8Array.from([9, 8, 7]));
+        await writeFile(path.join(directory, "verifier_keys.rkyv"), Uint8Array.from([9, 8, 7]));
         await loadVerifiedFinalCrsInput(directory);
       },
-      "Final CRS ingress must reject a Sigma digest mismatch.",
+      "Final CRS ingress must reject a verifier-keys digest mismatch.",
     );
 
     await writeFinalCrsDirectory(directory, files);
     await expectFailure(
       async () => {
-        await writeFile(path.join(directory, "combined_sigma.rkyv"), Uint8Array.from([3, 2, 1]));
+        await writeFile(path.join(directory, "prover_keys.rkyv"), Uint8Array.from([3, 2, 1]));
         await loadVerifiedFinalCrsInput(directory);
       },
-      "Final CRS ingress must reject a combined Sigma digest mismatch.",
+      "Final CRS ingress must reject a prover keys digest mismatch.",
     );
 
     await writeFinalCrsDirectory(directory, files);
     await expectFailure(
       async () => {
-        await writeFile(path.join(directory, "sigma_preprocess.rkyv"), Uint8Array.from([6, 5, 4]));
+        await writeFile(path.join(directory, "preprocess_keys.rkyv"), Uint8Array.from([6, 5, 4]));
         await loadVerifiedFinalCrsInput(directory);
       },
-      "Final CRS ingress must reject a preprocess Sigma digest mismatch.",
+      "Final CRS ingress must reject a preprocess keys digest mismatch.",
     );
 
     await writeFinalCrsDirectory(directory, files, {
@@ -76,9 +77,10 @@ async function main(): Promise<void> {
 async function writeFinalCrsDirectory(
   directory: string,
   files: {
-    readonly combinedSigma: Uint8Array;
-    readonly sigmaPreprocess: Uint8Array;
-    readonly sigmaVerify: Uint8Array;
+    readonly tauSequence: Uint8Array;
+    readonly proverKeys: Uint8Array;
+    readonly preprocessKeys: Uint8Array;
+    readonly verifierKeys: Uint8Array;
   },
   overrides: {
     readonly compatibleBackendVersion?: string;
@@ -86,13 +88,16 @@ async function writeFinalCrsDirectory(
   } = {},
 ): Promise<void> {
   await Promise.all([
-    writeFile(path.join(directory, "combined_sigma.rkyv"), files.combinedSigma),
-    writeFile(path.join(directory, "sigma_preprocess.rkyv"), files.sigmaPreprocess),
-    writeFile(path.join(directory, "sigma_verify.json"), files.sigmaVerify),
+    writeFile(path.join(directory, "tau_sequence.rkyv"), files.tauSequence),
+    writeFile(path.join(directory, "prover_keys.rkyv"), files.proverKeys),
+    writeFile(path.join(directory, "preprocess_keys.rkyv"), files.preprocessKeys),
+    writeFile(path.join(directory, "verifier_keys.rkyv"), files.verifierKeys),
   ]);
   const version = overrides.subcircuitLibraryVersion ?? SUBCIRCUIT_LIBRARY_PACKAGE_VERSION;
   const provenance = {
-    documentKind: "finalMpcCrs",
+    documentKind: "crs",
+    protocolSchemaId: "tokamak-zk-evm-univariate",
+    generationMethod: "trustedSetup",
     releaseEligible: false,
     generatedAtUtc: "2026-08-26T00:00:00Z",
     compatibleBackendVersion: overrides.compatibleBackendVersion ?? compatibleVersion(version),
@@ -100,11 +105,17 @@ async function writeFinalCrsDirectory(
       packageName: SUBCIRCUIT_LIBRARY_PACKAGE_NAME,
       packageVersion: version,
       origin: SUBCIRCUIT_LIBRARY_ORIGIN,
+      sourceDigest: `sha256:${"2".repeat(64)}`,
     },
     phase1SourceProvenance: null,
-    combinedSigmaSha256: sha256(files.combinedSigma),
-    sigmaPreprocessSha256: sha256(files.sigmaPreprocess),
-    sigmaVerifySha256: sha256(files.sigmaVerify),
+    ceremonyProtocolVersion: null,
+    ceremonyTranscriptSha256: null,
+    artifacts: {
+      "tau_sequence.rkyv": sha256(files.tauSequence),
+      "prover_keys.rkyv": sha256(files.proverKeys),
+      "preprocess_keys.rkyv": sha256(files.preprocessKeys),
+      "verifier_keys.rkyv": sha256(files.verifierKeys),
+    },
   };
   await writeFile(
     path.join(directory, "crs_provenance.json"),

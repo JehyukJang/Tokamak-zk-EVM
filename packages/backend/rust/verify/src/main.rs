@@ -1,42 +1,29 @@
 use clap::Parser;
 use libs::cli::render_error;
-#[cfg(feature = "testing-mode")]
-use libs::errors::ArtifactError;
-#[cfg(feature = "testing-mode")]
-use libs::proof_protocol::Proof4Test;
-use libs::subcircuit_library::{
-    try_resolve_subcircuit_library_path, validate_operational_crs_compatibility,
-    DevelopmentCrsProvenanceArg, SubcircuitLibraryArg,
+use std::{path::PathBuf, process::ExitCode};
+use verify::{
+    univariate_cli::{self, OnlineVerifyInputPaths},
+    VerifyError,
 };
-use libs::utils::try_check_device;
-use std::path::PathBuf;
-use std::process::ExitCode;
-use verify::{Verifier, VerifyError, VerifyInputPaths};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Config {
-    #[command(flatten)]
-    subcircuit_library: SubcircuitLibraryArg,
+    /// Admitted univariate_verifier_preprocess.bin emitted by preprocess
+    #[arg(long, value_name = "FILE")]
+    preprocess: PathBuf,
 
-    #[command(flatten)]
-    development_crs_provenance: DevelopmentCrsProvenanceArg,
+    /// Public instance.json emitted by the synthesizer
+    #[arg(long, value_name = "FILE")]
+    instance: PathBuf,
 
-    /// CRS output directory containing sigma_verify.json
-    #[arg(long, value_name = "PATH")]
-    crs: String,
+    /// univariate_proof.bin emitted by prove
+    #[arg(long, value_name = "FILE")]
+    proof: PathBuf,
 
-    /// Synthesizer output directory containing verification inputs
-    #[arg(long, value_name = "PATH")]
-    synthesizer_stat: String,
-
-    /// Preprocess output directory containing preprocess.json
-    #[arg(long, value_name = "PATH")]
-    preprocess: String,
-
-    /// Proof output directory containing proof.json
-    #[arg(long, value_name = "PATH")]
-    proof: String,
+    /// Report elapsed input loading and verification time on stderr
+    #[arg(long)]
+    timing: bool,
 
     /// Emit only the versioned machine-readable verification result on stdout
     #[arg(long, hide = true)]
@@ -49,6 +36,7 @@ fn main() -> ExitCode {
         env!("CARGO_PKG_VERSION"),
         option_env!("TOKAMAK_ZKEVM_COMPATIBLE_BACKEND_VERSION"),
         option_env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_PACKAGE_VERSION"),
+        option_env!("TOKAMAK_ZKEVM_SUBCIRCUIT_LIBRARY_SOURCE_DIGEST"),
     ) {
         Ok(true) => return ExitCode::SUCCESS,
         Ok(false) => {}
@@ -66,34 +54,23 @@ fn main() -> ExitCode {
 fn run() -> Result<(), VerifyError> {
     let config = Config::parse();
     let verification_result_json = config.verification_result_json;
-    let qap_library_path =
-        try_resolve_subcircuit_library_path(config.subcircuit_library.as_deref())?;
-    validate_operational_crs_compatibility(
-        &config.development_crs_provenance,
-        PathBuf::from(&config.crs).as_path(),
-        qap_library_path.as_path(),
-    )?;
-    let qap_path = qap_library_path.to_string_lossy().into_owned();
-
-    let paths = VerifyInputPaths {
-        qap_path: &qap_path,
-        synthesizer_path: &config.synthesizer_stat,
-        setup_path: &config.crs,
+    let paths = OnlineVerifyInputPaths {
         preprocess_path: &config.preprocess,
+        instance_path: &config.instance,
         proof_path: &config.proof,
     };
-
-    try_check_device()?;
-
-    if !verification_result_json {
-        println!("Verifier initialization...");
-    }
-    let verifier = Verifier::init(&paths)?;
 
     if !verification_result_json {
         println!("Verifying the proof...");
     }
-    let res_snark = verifier.verify_snark();
+    let start = std::time::Instant::now();
+    let res_snark = univariate_cli::verify(&paths)?;
+    if config.timing {
+        eprintln!(
+            "verify total (input + verification): {:.6} s",
+            start.elapsed().as_secs_f64()
+        );
+    }
     if verification_result_json {
         libs::cli::print_verification_result(res_snark)
             .map_err(|reason| VerifyError::MachineResult { reason })?;
@@ -101,28 +78,31 @@ fn run() -> Result<(), VerifyError> {
         println!("{}", res_snark);
     }
 
-    #[cfg(feature = "testing-mode")]
-    {
-        use std::path::PathBuf;
-        let test_proof_path = PathBuf::from(paths.proof_path).join("proof4_test.json");
-        let proof4_test =
-            Proof4Test::read_from_json(test_proof_path.clone()).map_err(|source| {
-                ArtifactError::Read {
-                    artifact: "proof arithmetic test data",
-                    path: test_proof_path,
-                    source,
-                }
-            })?;
-        println!(
-            "Verification arithmetic: {}",
-            verifier.verify_arith(&proof4_test)
-        );
-        println!("Verification copy: {}", verifier.verify_copy(&proof4_test));
-        println!(
-            "Verification binding: {}",
-            verifier.verify_binding(&proof4_test)
-        );
-    }
-
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn online_cli_has_no_circuit_admission_or_legacy_config_arguments() {
+        let args = [
+            "verify",
+            "--preprocess",
+            "preprocess.bin",
+            "--instance",
+            "instance.json",
+            "--proof",
+            "proof.bin",
+        ];
+        assert!(Config::try_parse_from(args).is_ok());
+        for flag in [
+            "--verifier-keys",
+            "--verifier-config",
+            "--subcircuit-library",
+            "--tau-sequence",
+        ] {
+            assert!(Config::try_parse_from(args.into_iter().chain([flag, "unused"])).is_err());
+        }
+    }
 }

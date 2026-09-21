@@ -76,10 +76,6 @@ export interface PrerequisiteInstallationPlan {
   statuses: readonly PrerequisiteStatus[];
 }
 
-export interface NativeInstallPrerequisiteOptions {
-  readonly includeSetup: boolean;
-}
-
 export interface PrerequisiteInstallExecutionOptions {
   verbose: boolean;
 }
@@ -709,15 +705,14 @@ export function detectManagedPrerequisites(
 
 /**
  * Returns the managed prerequisite set required by a native backend install.
- * Setup provisioning is the only operation that requires `unzip`.
+ * Drive provisions individual files, so neither installation mode needs unzip.
  */
 export function detectNativeInstallPrerequisites(
   os: SupportedNativeOs,
-  options: NativeInstallPrerequisiteOptions,
   probe: CommandProbe = createSystemCommandProbe(),
 ): PrerequisiteStatus[] {
   return detectManagedPrerequisites(os, probe)
-    .filter((status) => options.includeSetup || status.id !== 'unzip');
+    .filter((status) => status.id !== 'unzip');
 }
 
 export function prerequisiteVerificationFailures(

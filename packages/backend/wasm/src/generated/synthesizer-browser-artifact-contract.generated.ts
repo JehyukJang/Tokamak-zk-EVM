@@ -65,6 +65,26 @@ export const SYNTHESIZER_BROWSER_ARTIFACT_CONTRACT = {
       ]
     },
     {
+      "name": "prover_selector",
+      "sourceFile": "selector.json",
+      "entries": {
+        "integerEncoding": "i32-le",
+        "inactive": -1,
+        "active": "compiled subcircuit ID",
+        "length": "s"
+      },
+      "sections": [
+        {
+          "label": "selector.entries",
+          "type": "Placement",
+          "encoding": "bytes",
+          "elementCount": null,
+          "elementByteLength": 4,
+          "points": []
+        }
+      ]
+    },
+    {
       "name": "prover_permutation",
       "sourceFile": "permutation.json",
       "sourceFields": {

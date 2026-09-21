@@ -19,7 +19,6 @@ const subcircuitInfo = (name: 'ADD' | 'CheckBus256', id: number, inputCount: num
   NOutWires: name === 'CheckBus256' ? 0 : 2,
   inWireIndex: name === 'CheckBus256' ? 1 : 3,
   outWireIndex: 1,
-  flattenMap: [],
   logicalInterface: {
     inputs: Array.from({ length: inputCount }, (_, index) => ({
       name: `in${index}`,

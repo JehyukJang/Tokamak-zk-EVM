@@ -2,13 +2,14 @@
 resolver = "2"
 members = [
     "common/interface",
+    "common/interface/univariate-crs",
     "rust/libs",
     "rust/setup/trusted-setup",
     "rust/setup/mpc-setup",
     "rust/prove",
     "rust/verify",
     "rust/preprocess",
-    "wasm/tools/rkyv-decoder-wasm",
+    "wasm/tools/univariate-crs-chunker",
 ]
 
 [workspace.package]
@@ -32,13 +33,15 @@ verify = { path = "rust/verify" }
 preprocess = { path = "rust/preprocess" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+sha2 = "0.10"
 rayon = "1.7"
 rand = "0.8"
 bincode = "1.3"
 hex = "0.4"
 memmap2 = "0.9"
-rkyv = { version = "0.7", features = ["alloc", "bytecheck", "validation"] }
+rkyv = { version = "=0.7.46", features = ["alloc", "bytecheck", "validation"] }
 backend-interface = { path = "common/interface" }
+backend-univariate-crs-interface = { path = "common/interface/univariate-crs" }
 clap = { version = "4.4", features = ["derive"] }
 thiserror = "2.0.12"
 chrono = "0.4"

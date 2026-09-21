@@ -1,12 +1,15 @@
 //! Shared, byte-stable Rust interfaces for Tokamak zk-EVM backend artifacts.
 //!
-//! This crate owns only archive schemas and deterministic archive projections.
+//! This crate owns only archive bindings and deterministic artifact codecs.
 //! Native curve conversion and browser binding code belong to their respective
 //! runtime packages.
 
 #![deny(unsafe_code)]
 #![allow(non_snake_case)]
 
+pub use backend_univariate_crs_interface::*;
+mod artifact_bytes;
+pub use artifact_bytes::{PreprocessBytes, ProofBytes};
 use rkyv::check_archived_root;
 
 pub const COMBINED_SIGMA_PAYLOAD_MAGIC: &[u8; 8] = b"TKCRS001";

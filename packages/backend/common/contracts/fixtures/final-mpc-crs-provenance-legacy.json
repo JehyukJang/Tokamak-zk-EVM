@@ -6,13 +6,14 @@
   "subcircuitLibrary": {
     "packageName": "@tokamak-zk-evm/subcircuit-library",
     "packageVersion": "2.1.5",
-    "origin": "npmSnapshot"
+    "origin": "npmSnapshot",
+    "sourceDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
   },
   "phase1SourceProvenance": {
-    "DuskGroth16": {
-      "sourceUrl": "https://example.invalid/dusk.response",
+    "RetiredSource": {
+      "sourceUrl": "https://example.invalid/retired.response",
       "sourceSizeBytes": 1024,
-      "rawEncoding": "dusk-groth16-raw",
+      "rawEncoding": "retired-groth16-raw",
       "pinnedContribution": "0015",
       "pinnedReadmeUrl": "https://example.invalid/README.md",
       "pinnedDriveFileId": "example-drive-file-id",
@@ -27,6 +28,8 @@
       "transcriptConsistencyVerified": true
     }
   },
+  "ceremonyProtocolVersion": "tokamak-filecoin-phase2",
+  "ceremonyTranscriptSha256": "6666666666666666666666666666666666666666666666666666666666666666",
   "combinedSigmaSha256": "7afc09d6cb52ac887cc570bc14c82bb8431f955992f57700cb82583e2b34d035",
   "sigmaPreprocessSha256": "0b9e88f13bc7936a9014dc986b5c0a9e47e5dda5ed88a4e12bd7fc048e8907af",
   "sigmaVerifySha256": "56c2e6635d084af4952ef94fb6277f4e1fc18e7f6b98e60c56c818032b37b528"

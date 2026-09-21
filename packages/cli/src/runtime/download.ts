@@ -257,12 +257,13 @@ async function finalizeResumableDownload(
   await fs.rm(resumableDownloadStatePath(partialPath), { force: true });
 }
 
-function isBinaryDownloadResponse(response: Response): boolean {
+function isCrsDownloadResponse(response: Response): boolean {
   const contentType = (response.headers.get('content-type') ?? '').toLowerCase();
   const contentDisposition = (response.headers.get('content-disposition') ?? '').toLowerCase();
   return (
     contentDisposition.includes('attachment') ||
     contentType.includes('application/octet-stream') ||
+    contentType.split(';')[0].trim() === 'application/json' ||
     contentType.includes('application/zip') ||
     contentType.includes('application/x-zip-compressed')
   );
@@ -317,9 +318,9 @@ export async function downloadFileWithResume(
       if (response.body === null) {
         throw new Error(`Download response did not contain a body: ${request.url}`);
       }
-      if (!isBinaryDownloadResponse(response)) {
+      if (!isCrsDownloadResponse(response)) {
         throw new Error(
-          `Expected a binary CRS download response, received status ${response.status} with content-type ${response.headers.get('content-type') ?? '<missing>'}.`,
+          `Expected a CRS file download response, received status ${response.status} with content-type ${response.headers.get('content-type') ?? '<missing>'}.`,
         );
       }
       if (response.status !== 206) {

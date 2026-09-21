@@ -5,7 +5,7 @@ export type CliPlatform = 'linux' | 'macos';
 export interface InstallOptions {
   docker: boolean;
   includePrerequisite: boolean;
-  noSetup: boolean;
+  noFullSetup: boolean;
   verbose: boolean;
 }
 
