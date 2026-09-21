@@ -23,17 +23,13 @@ console.log("Checked browser release workflow final CRS provenance boundary");
 
 function checkFinalCrsReleaseWorkflow(value: string): void {
   for (const required of [
+    "Resolve public CRS with read-only Drive access",
+    "Build frozen browser package without mutation credentials",
+    "TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON",
     "BACKEND_WASM_VERIFIER_CRS_DIR",
-    "npm run subcircuit-library:generate:production",
+    "tokamak-zk-evm-verified-final-crs",
     "npm run verifier-crs:input:check",
     "npm run verifier-crs:input:validate",
-    "name: verified-final-crs",
-    "combined_sigma.rkyv",
-    "sigma_preprocess.rkyv",
-    "sigma_verify.json",
-    "crs_provenance.json",
-    "--release -p libs --bin check_crs_publication",
-    "--no-default-features --features production-npm-subcircuit-library",
     "npm run converter:browser:check:production",
     "npm run converter:webpack:check:production",
     "npm run package:publication:check",
@@ -44,9 +40,9 @@ function checkFinalCrsReleaseWorkflow(value: string): void {
   }
 
   for (const forbidden of [
-    "BACKEND_WASM_VERIFIER_CRS_SOURCE",
-    "build-metadata-mpc-setup.json",
-    'provenance.get("backend_version")',
+    "combined_sigma.rkyv",
+    "sigma_preprocess.rkyv",
+    "sigma_verify.json",
     "combined_sigma_sha256",
     "sigma_preprocess_sha256",
     "sigma_verify_sha256",
@@ -57,13 +53,10 @@ function checkFinalCrsReleaseWorkflow(value: string): void {
   }
 
   assertOrdered(value, [
-    "- name: Resolve canonical CRS archive from Google Drive",
-    "- name: Enforce final CRS publication admission",
-    "- name: Install browser-package dependencies for CRS validation",
-    "- name: Prepare production subcircuit input for CRS validation",
-    "- name: Check final CRS release boundary",
-    "- name: Validate canonical final CRS input",
-    "- name: Upload verified final CRS",
+    "- name: Download and hash-check canonical CRS layout",
+    "- name: Upload verified public CRS",
+    "- name: Download verified public CRS",
+    "- name: Build and pack browser package",
   ]);
 }
 
@@ -83,23 +76,16 @@ function assertOrdered(value: string, markers: readonly string[]): void {
 
 function checkNegativeCases(value: string): void {
   expectRejection(
-    value.replace("--release -p libs --bin check_crs_publication", "--release -p libs"),
-    "The workflow check must reject removal of centralized CRS publication admission.",
-  );
-  expectRejection(
-    value.replace(
-      "--no-default-features --features production-npm-subcircuit-library",
-      "--features testing-mode",
-    ),
-    "The workflow check must reject a non-production publication identity.",
-  );
-  expectRejection(
     value.replace("npm run verifier-crs:input:check", "echo skipped-crs-boundary"),
     "The workflow check must reject bypassing the browser CRS boundary check.",
   );
   expectRejection(
-    `${value}\n# build-metadata-mpc-setup.json\n`,
-    "The workflow check must reject restoration of removed CRS metadata.",
+    value.replaceAll("TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON", "UNCONFIGURED_DRIVE_CREDENTIAL"),
+    "The workflow check must reject removal of the read-only CRS resolver boundary.",
+  );
+  expectRejection(
+    `${value}\n# combined_sigma.rkyv\n`,
+    "The workflow check must reject restoration of a legacy CRS payload.",
   );
 }
 

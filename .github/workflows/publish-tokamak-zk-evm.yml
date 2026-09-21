@@ -1,28 +1,25 @@
-name: Publish release
+name: Main release controller
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
     inputs:
       operation:
-        description: Non-publishing continuation operation
+        description: Approved release operation
         required: true
         type: choice
-        options:
-          - stage2-snapshot
-          - validate-pr
-      pull_request_number:
-        description: Existing pull request to validate when operation is validate-pr
-        required: false
-        type: string
+        options: [bootstrap-foundation, final-release]
       expected_head_sha:
-        description: Exact pull-request head when operation is validate-pr
-        required: false
+        description: Frozen candidate commit SHA
+        required: true
         type: string
       base_sha:
-        description: Exact main base when operation is validate-pr
+        description: Frozen main commit SHA
+        required: true
+        type: string
+      pull_request_number:
+        description: Final dev-to-main pull request number (required only for final-release)
         required: false
         type: string
 
@@ -30,92 +27,99 @@ permissions:
   contents: read
 
 jobs:
-  dispatch-pr-validation:
-    name: Dispatch pull-request validation
-    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'validate-pr'
+  reject-unadmitted-main-mutation:
+    name: Reject unadmitted release-relevant main mutation
+    if: github.event_name == 'push'
     runs-on: ubuntu-22.04
-    permissions:
-      actions: write
-      checks: read
-      contents: read
-      pull-requests: read
-
     steps:
-      - name: Checkout current main automation
+      - name: Checkout merged source
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
-      - name: Validate required dispatch inputs
+      - name: Reject release-relevant direct push
         env:
-          BASE_SHA: ${{ inputs.base_sha }}
-          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
-          PR_NUMBER: ${{ inputs.pull_request_number }}
+          BEFORE: ${{ github.event.before }}
         run: |
-          test "$GITHUB_REF" = "refs/heads/main"
-          test "$GITHUB_SHA" = "$BASE_SHA"
-          test -n "$EXPECTED_HEAD_SHA"
-          test -n "$PR_NUMBER"
+          test -n "$BEFORE"
+          if git diff --quiet "$BEFORE" "$GITHUB_SHA" -- \
+            package.json package-lock.json packages .github/workflows/publish-tokamak-zk-evm.yml; then
+            echo "No release-relevant source changed; this push is release-neutral."
+            exit 0
+          fi
+          echo "A release-relevant main change must be the already admitted final PR tree."
+          exit 1
 
-      - name: Dispatch exact-head Source build validation
+  validate-dispatch:
+    name: Validate frozen release identity
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-22.04
+    outputs:
+      package_version: ${{ steps.identity.outputs.package_version }}
+    steps:
+      - name: Checkout fixed controller
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Require owner, fixed controller, and exact source identity
+        id: identity
         env:
           BASE_SHA: ${{ inputs.base_sha }}
           EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
           GH_TOKEN: ${{ github.token }}
+          OPERATION: ${{ inputs.operation }}
           PR_NUMBER: ${{ inputs.pull_request_number }}
         run: |
-          node scripts/dispatch-pr-validation.mjs \
-            "--pull-request=$PR_NUMBER" \
-            "--head-sha=$EXPECTED_HEAD_SHA" \
-            "--base-sha=$BASE_SHA"
+          test "$GITHUB_ACTOR" = "JehyukJang"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_SHA" = "$BASE_SHA"
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
 
-  git-context:
-    name: Classify Git release context
-    if: github.event_name == 'push' || inputs.operation == 'stage2-snapshot'
-    runs-on: ubuntu-22.04
-    outputs:
-      change_kind: ${{ steps.change.outputs.change_kind }}
-
-    steps:
-      - name: Checkout release commit and first parent
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      - name: Classify tracked change
-        id: change
-        shell: bash
-        run: |
-          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-            test "$GITHUB_REF" = "refs/heads/main"
-            echo "change_kind=manual-continuation" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          parent_sha="$(git rev-parse HEAD^1)"
-          current_version="$(jq -r '.version' package.json)"
-          parent_version="$(git show "${parent_sha}:package.json" | jq -r '.version')"
-          if [ "$current_version" != "$parent_version" ]; then
-            echo "change_kind=version-bump" >> "$GITHUB_OUTPUT"
-          elif [ "$(git diff --name-only "$parent_sha" HEAD)" = "packages/backend/wasm/package-lock.json" ]; then
-            echo "change_kind=snapshot-lock-only" >> "$GITHUB_OUTPUT"
+          if [ "$OPERATION" = "bootstrap-foundation" ]; then
+            actual_head="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/dev" --jq '.object.sha')"
+            git fetch --no-tags origin dev:refs/remotes/origin/release-bootstrap
           else
-            echo "change_kind=unchanged-general" >> "$GITHUB_OUTPUT"
+            test "$OPERATION" = "final-release"
+            [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+            pr="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
+            test "$(jq -r '.state' <<<"$pr")" = "open"
+            test "$(jq -r '.base.ref' <<<"$pr")" = "main"
+            test "$(jq -r '.base.sha' <<<"$pr")" = "$BASE_SHA"
+            actual_head="$(jq -r '.head.sha' <<<"$pr")"
+            git fetch --no-tags origin "pull/$PR_NUMBER/head:refs/remotes/origin/release-final"
           fi
+          test "$actual_head" = "$EXPECTED_HEAD_SHA"
+          package_version="$(git show "$EXPECTED_HEAD_SHA:package.json" | jq -r '.version')"
+          [[ "$package_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "package_version=$package_version" >> "$GITHUB_OUTPUT"
 
-  source-build:
-    name: Source build
-    needs: git-context
-    if: needs.git-context.result == 'success'
+  build-candidate:
+    name: Build frozen candidate without mutation credentials
+    needs: validate-dispatch
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     env:
       QAP_COMPILER_EXPECTED_CIRCOM_VERSION: '2.2.2'
-
     steps:
-      - name: Checkout code
+      - name: Checkout fixed controller
         uses: actions/checkout@v4
         with:
+          path: controller
+          persist-credentials: false
+
+      - name: Checkout frozen candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_head_sha }}
+          path: candidate
           submodules: recursive
-          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Confirm candidate checkout
+        working-directory: candidate
+        run: test "$(git rev-parse HEAD)" = "${{ inputs.expected_head_sha }}"
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -128,546 +132,139 @@ jobs:
           test "$(node --version)" = "v24.20.0"
           test "$(npm --version)" = "11.19.0"
 
-      - name: Install workspace dependencies
+      - name: Install candidate dependencies
+        working-directory: candidate
         run: npm ci
 
-      - name: Check synchronized versions
-        run: npm run version:check
+      - name: Validate candidate release contract
+        working-directory: candidate
+        run: |
+          npm run release:candidate:check -- --base-ref="${{ inputs.base_sha }}"
+          npm run version:prepublication:check
+          npm run release:reproducibility:check
 
-      - name: Check release-candidate date boundary
-        run: npm run release:candidate:check -- --base-ref="$(git rev-parse HEAD^1)"
+      - name: Require final candidate production lock
+        if: inputs.operation == 'final-release'
+        working-directory: candidate
+        run: npm run version:production-snapshot:check
 
       - name: Install Rust and Cargo
         uses: dtolnay/rust-toolchain@1.95.0
-
-      - name: Check release reproducibility policy
-        run: npm run release:reproducibility:check
 
       - name: Install Circom compiler
         run: cargo install --locked --git https://github.com/iden3/circom --tag v2.2.2 circom
 
       - name: Verify Circom compiler
-        run: |
-          circom --version
-          test "$(circom --version)" = "circom compiler 2.2.2"
+        run: test "$(circom --version)" = "circom compiler 2.2.2"
 
       - name: Build subcircuit library
-        working-directory: packages/frontend/qap-compiler
+        working-directory: candidate/packages/frontend/qap-compiler
         run: |
           npx qap-compiler --reload-constants
           npx qap-compiler --build
           npx qap-compiler --dist
 
-      - name: Build synthesizer packages
-        run: npm run build --workspace @tokamak-zk-evm/synthesizer-node
-
-      - name: Build synthesizer web package
-        run: npm run build --workspace @tokamak-zk-evm/synthesizer-web
-
-      - name: Build CLI package
-        run: npm run build --workspace @tokamak-zk-evm/cli
-
-      - name: Install system dependencies
+      - name: Build synthesizer and CLI packages
+        working-directory: candidate
         run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake build-essential pkg-config
+          npm run build --workspace @tokamak-zk-evm/synthesizer-node
+          npm run build --workspace @tokamak-zk-evm/synthesizer-web
+          npm run build --workspace @tokamak-zk-evm/cli
+          npm run --workspace @tokamak-zk-evm/cli release:check
+          npm run --workspace @tokamak-zk-evm/cli release:package:check
 
-      - name: Cache Rust dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            packages/backend/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+      - name: Install backend build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y cmake build-essential pkg-config
 
       - name: Install ICICLE CPU runtime
-        working-directory: packages/backend
+        working-directory: candidate/packages/backend
         run: ./download-ICICLE-lib.sh
 
-      - name: Generate local verifier key
-        working-directory: packages/backend
+      - name: Generate local verifier key and check backend workspace
+        working-directory: candidate/packages/backend
         env:
-          LD_LIBRARY_PATH: ${{ github.workspace }}/packages/backend/external-lib/linux22/lib
-          ICICLE_BACKEND_INSTALL_DIR: ${{ github.workspace }}/packages/backend/external-lib/linux22/lib/backend
+          LD_LIBRARY_PATH: ${{ github.workspace }}/candidate/packages/backend/external-lib/linux22/lib
+          ICICLE_BACKEND_INSTALL_DIR: ${{ github.workspace }}/candidate/packages/backend/external-lib/linux22/lib/backend
+          TOKAMAK_VERIFIER_KEYS: ${{ runner.temp }}/tokamak-development-crs/verifier_keys.rkyv
         run: |
           cargo run --locked --release -p trusted-setup -- \
             --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
             --output "$RUNNER_TEMP/tokamak-development-crs"
+          cargo check --workspace --locked
 
-      - name: Check backend workspace
-        working-directory: packages/backend
-        run: cargo check --workspace --locked
-        env:
-          TOKAMAK_VERIFIER_KEYS: ${{ runner.temp }}/tokamak-development-crs/verifier_keys.rkyv
-
-      - name: Validate CLI release readiness
-        run: npm run --workspace @tokamak-zk-evm/cli release:check
-
-      - name: Validate packaged CLI source boundary
-        run: npm run --workspace @tokamak-zk-evm/cli release:package:check
-
-      - name: Pack release tarballs
+      - name: Pack foundation, synthesizer, and CLI tarballs
+        working-directory: candidate
         run: |
-          rm -rf package-tarballs
-          mkdir -p package-tarballs
-
+          mkdir package-tarballs
           npm pack ./packages/frontend/qap-compiler/dist --pack-destination package-tarballs --ignore-scripts
           npm pack ./packages/frontend/synthesizer/node-cli --pack-destination package-tarballs --ignore-scripts
           npm pack ./packages/frontend/synthesizer/web-app --pack-destination package-tarballs --ignore-scripts
           npm pack ./packages/cli --pack-destination package-tarballs --ignore-scripts
 
-          node <<'EOF_NODE'
-          const { execFileSync } = require('node:child_process');
-          const fs = require('node:fs');
-          const path = require('node:path');
-
-          const tarballDir = path.resolve('package-tarballs');
-          const expectedNames = new Set([
-            '@tokamak-zk-evm/subcircuit-library',
-            '@tokamak-zk-evm/synthesizer-node',
-            '@tokamak-zk-evm/synthesizer-web',
-            '@tokamak-zk-evm/cli',
-          ]);
-          const packages = fs
-            .readdirSync(tarballDir)
-            .filter((file) => file.endsWith('.tgz'))
-            .map((file) => {
-              const packageJson = JSON.parse(
-                execFileSync('tar', ['-xOf', path.join(tarballDir, file), 'package/package.json'], {
-                  encoding: 'utf8',
-                }),
-              );
-              return {
-                name: packageJson.name,
-                version: packageJson.version,
-                file,
-              };
-            })
-            .sort((left, right) => left.name.localeCompare(right.name));
-
-          for (const pkg of packages) {
-            const entries = execFileSync('tar', ['-tzf', path.join(tarballDir, pkg.file)], {
-              encoding: 'utf8',
-            })
-              .split('\n')
-              .filter(Boolean);
-            if (entries.some((entry) => entry === 'package/CHANGELOG.md')) {
-              throw new Error(`${pkg.file} must not include CHANGELOG.md`);
-            }
-          }
-
-          const actualNames = new Set(packages.map((pkg) => pkg.name));
-          for (const expectedName of expectedNames) {
-            if (!actualNames.has(expectedName)) {
-              throw new Error(`Missing release tarball for ${expectedName}`);
-            }
-          }
-
-          fs.writeFileSync(
-            path.join(tarballDir, 'manifest.json'),
-            `${JSON.stringify({ packages }, null, 2)}\n`,
-          );
-          console.log(JSON.stringify({ packages }, null, 2));
-          EOF_NODE
-
-      - name: Upload release tarballs
+      - name: Upload source-built tarballs
         uses: actions/upload-artifact@v4
         with:
-          name: tokamak-zk-evm-release-tarballs
-          path: package-tarballs/
+          name: tokamak-zk-evm-candidate-tarballs
+          path: candidate/package-tarballs/*.tgz
           if-no-files-found: error
+          retention-days: 7
 
-  publish-subcircuit-library:
-    name: Publish subcircuit-library to npm
+  resolve-final-crs:
+    name: Resolve public CRS with read-only Drive access
+    if: inputs.operation == 'final-release'
+    needs: validate-dispatch
     runs-on: ubuntu-22.04
-    needs:
-      - classify-release
-      - evm-compat-test
-    if: needs.classify-release.outputs.state == 'foundation-publication'
-    permissions:
-      contents: read
-      id-token: write
-
     steps:
-      - name: Checkout release automation
+      - name: Checkout fixed controller
         uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
         with:
-          node-version: '24.20.0'
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Install and verify pinned npm
-        run: |
-          npm install --global npm@11.19.0
-          test "$(node --version)" = "v24.20.0"
-          test "$(npm --version)" = "11.19.0"
-
-      - name: Download release tarballs
-        uses: actions/download-artifact@v4
-        with:
-          name: tokamak-zk-evm-release-tarballs
-          path: package-tarballs
-
-      - name: Check exact npm package identity
-        id: version-check
-        run: >-
-          node scripts/check-release-package.mjs
-          --package-name=@tokamak-zk-evm/subcircuit-library
-          --tarball-dir=package-tarballs
-      - name: Show version decision
-        run: |
-          echo "Package: ${{ steps.version-check.outputs.package_name }}"
-          echo "Local version: ${{ steps.version-check.outputs.local_version }}"
-          echo "Published state: ${{ steps.version-check.outputs.published_state }}"
-          echo "Should publish: ${{ steps.version-check.outputs.should_publish }}"
-          echo "Tarball: ${{ steps.version-check.outputs.tarball }}"
-
-      - name: Validate npm package contents
-        if: steps.version-check.outputs.should_publish == 'true'
-        run: npm publish --dry-run --ignore-scripts "${{ steps.version-check.outputs.tarball }}"
-
-      - name: Publish to npm
-        if: steps.version-check.outputs.should_publish == 'true'
-        run: npm publish --ignore-scripts "${{ steps.version-check.outputs.tarball }}"
-
-  publish-synthesizer:
-    name: Publish synthesizer packages to npm
-    runs-on: ubuntu-22.04
-    needs: pre-publish-test-build
-    permissions:
-      contents: read
-      id-token: write
-
-    steps:
-      - name: Checkout release automation
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24.20.0'
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Install and verify pinned npm
-        run: |
-          npm install --global npm@11.19.0
-          test "$(node --version)" = "v24.20.0"
-          test "$(npm --version)" = "11.19.0"
-
-      - name: Download release tarballs
-        uses: actions/download-artifact@v4
-        with:
-          name: tokamak-zk-evm-release-tarballs
-          path: package-tarballs
-
-      - name: Check exact npm package identities
-        id: version-check
-        run: |
-          node scripts/check-release-package.mjs \
-            --package-name=@tokamak-zk-evm/synthesizer-node \
-            --tarball-dir=package-tarballs \
-            --output-prefix=node
-          node scripts/check-release-package.mjs \
-            --package-name=@tokamak-zk-evm/synthesizer-web \
-            --tarball-dir=package-tarballs \
-            --output-prefix=web
-      - name: Show version decision
-        run: |
-          echo "Node package: ${{ steps.version-check.outputs.node_package_name }}"
-          echo "Node local version: ${{ steps.version-check.outputs.node_local_version }}"
-          echo "Node published state: ${{ steps.version-check.outputs.node_published_state }}"
-          echo "Node should publish: ${{ steps.version-check.outputs.node_should_publish }}"
-          echo "Web package: ${{ steps.version-check.outputs.web_package_name }}"
-          echo "Web local version: ${{ steps.version-check.outputs.web_local_version }}"
-          echo "Web published state: ${{ steps.version-check.outputs.web_published_state }}"
-          echo "Web should publish: ${{ steps.version-check.outputs.web_should_publish }}"
-          echo "Node tarball: ${{ steps.version-check.outputs.node_tarball }}"
-          echo "Web tarball: ${{ steps.version-check.outputs.web_tarball }}"
-
-      - name: Validate node package contents
-        if: steps.version-check.outputs.node_should_publish == 'true'
-        run: npm publish --dry-run --ignore-scripts "${{ steps.version-check.outputs.node_tarball }}"
-
-      - name: Publish node package to npm
-        if: steps.version-check.outputs.node_should_publish == 'true'
-        run: npm publish --ignore-scripts "${{ steps.version-check.outputs.node_tarball }}"
-
-      - name: Validate web package contents
-        if: steps.version-check.outputs.web_should_publish == 'true'
-        run: npm publish --dry-run --ignore-scripts "${{ steps.version-check.outputs.web_tarball }}"
-
-      - name: Publish web package to npm
-        if: steps.version-check.outputs.web_should_publish == 'true'
-        run: npm publish --ignore-scripts "${{ steps.version-check.outputs.web_tarball }}"
-
-  check-main-crs:
-    name: Resolve published CRS for current backend version
-    runs-on: ubuntu-22.04
-    needs:
-      - git-context
-      - source-build
-    if: needs.git-context.outputs.change_kind != 'unchanged-general'
-    outputs:
-      crs_state: ${{ steps.download-crs.outputs.found == 'true' && 'verified' || 'missing' }}
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24.20.0'
-
-      - name: Install and verify pinned npm
-        run: |
-          npm install --global npm@11.19.0
-          test "$(node --version)" = "v24.20.0"
-          test "$(npm --version)" = "11.19.0"
-
-      - name: Install Rust and Cargo
-        uses: dtolnay/rust-toolchain@1.95.0
-
-      - name: Download release tarballs
-        uses: actions/download-artifact@v4
-        with:
-          name: tokamak-zk-evm-release-tarballs
-          path: package-tarballs
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install Google API client
+      - name: Install fixed Drive client
         run: python -m pip install google-api-python-client==2.198.0 google-auth==2.50.0
 
-      - name: Write Google service account key
+      - name: Write read-only Drive credential
         env:
           TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON }}
         run: |
-          if [ -z "${TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON}" ]; then
-            echo "Missing repository secret TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON"
-            exit 1
-          fi
-          printf '%s' "${TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON}" > "$RUNNER_TEMP/tokamak-mpc-drive-service-account.json"
+          test -n "$TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/tokamak-mpc-drive-service-account.json"
 
-      - name: Resolve canonical CRS archive from Google Drive
-        id: download-crs
+      - name: Download and hash-check canonical CRS layout
         env:
           TOKAMAK_MPC_DRIVE_FOLDER_ID: ${{ vars.TOKAMAK_MPC_DRIVE_FOLDER_ID }}
           TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON_PATH: ${{ runner.temp }}/tokamak-mpc-drive-service-account.json
-        run: |
-          version="$(node -p "require('./package.json').version")"
-          python scripts/download-release-crs.py \
-            --version="$version" \
-            --output=verified-final-crs \
-            --allow-missing
-
-      - name: Enforce final CRS publication admission
-        if: steps.download-crs.outputs.found == 'true'
         run: >-
-          cargo run --manifest-path packages/backend/Cargo.toml --locked
-          --release -p libs --bin check_crs_publication
-          --no-default-features --features production-npm-subcircuit-library --
-          verified-final-crs
+          python scripts/download-release-crs.py
+          --version="${{ needs.validate-dispatch.outputs.package_version }}"
+          --output=verified-final-crs
 
-      - name: Install browser-package dependencies for CRS validation
-        if: steps.download-crs.outputs.found == 'true'
-        working-directory: packages/backend/wasm
-        run: npm ci --ignore-scripts
-
-      - name: Prepare production subcircuit input for CRS validation
-        if: steps.download-crs.outputs.found == 'true'
-        working-directory: packages/backend/wasm
-        run: npm run subcircuit-library:generate:production
-
-      - name: Check final CRS release boundary
-        if: steps.download-crs.outputs.found == 'true'
-        working-directory: packages/backend/wasm
-        run: npm run verifier-crs:input:check
-
-      - name: Validate canonical final CRS input
-        if: steps.download-crs.outputs.found == 'true'
-        working-directory: packages/backend/wasm
-        env:
-          BACKEND_WASM_VERIFIER_CRS_DIR: ../../verified-final-crs
-        run: npm run verifier-crs:input:validate
-
-      - name: Upload verified final CRS
-        if: steps.download-crs.outputs.found == 'true'
+      - name: Upload verified public CRS
         uses: actions/upload-artifact@v4
         with:
-          name: verified-final-crs
+          name: tokamak-zk-evm-verified-final-crs
           path: verified-final-crs
           if-no-files-found: error
           retention-days: 7
 
-  classify-release:
-    name: Classify staged release state
+  build-browser-package:
+    name: Build frozen browser package without mutation credentials
+    if: inputs.operation == 'final-release'
+    needs: [validate-dispatch, resolve-final-crs]
     runs-on: ubuntu-22.04
-    needs:
-      - git-context
-      - source-build
-      - check-main-crs
-    if: >-
-      always() &&
-      needs.source-build.result == 'success' &&
-      (needs.check-main-crs.result == 'success' || needs.check-main-crs.result == 'skipped')
-    outputs:
-      state: ${{ steps.classify.outputs.state }}
-      version: ${{ steps.classify.outputs.version }}
-
-    steps:
-      - name: Checkout release state
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      - name: Fetch current main identity
-        if: github.event_name == 'workflow_dispatch'
-        run: git fetch --no-tags origin main:refs/remotes/origin/main
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24.20.0'
-
-      - name: Install and verify pinned npm
-        run: |
-          npm install --global npm@11.19.0
-          test "$(node --version)" = "v24.20.0"
-          test "$(npm --version)" = "11.19.0"
-
-      - name: Download source-built release tarballs
-        uses: actions/download-artifact@v4
-        with:
-          name: tokamak-zk-evm-release-tarballs
-          path: package-tarballs
-
-      - name: Classify Git, npm, lock, and CRS facts
-        id: classify
-        env:
-          CRS_STATE: ${{ needs.check-main-crs.outputs.crs_state || 'missing' }}
-        run: >-
-          npm run release:state:classify --
-          --crs-state="$CRS_STATE"
-          --tarball-dir=package-tarballs
-
-  prepare-production-snapshot:
-    name: Prepare npm-backed production snapshot pull request
-    runs-on: ubuntu-22.04
-    needs: classify-release
-    if: needs.classify-release.outputs.state == 'production-snapshot'
-    permissions:
-      actions: write
-      checks: read
-      contents: write
-      pull-requests: write
-
-    steps:
-      - name: Checkout current main
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Revalidate selected main commit
-        run: |
-          git fetch --no-tags origin main:refs/remotes/origin/main
-          test "$GITHUB_REF" = "refs/heads/main"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24.20.0'
-
-      - name: Install and verify pinned npm
-        run: |
-          npm install --global npm@11.19.0
-          test "$(node --version)" = "v24.20.0"
-          test "$(npm --version)" = "11.19.0"
-
-      - name: Refresh and validate genuine production snapshot
-        run: npm run version:production-snapshot:refresh
-
-      - name: Require the workflow-owned tracked diff
-        run: |
-          test "$(git diff --name-only)" = "packages/backend/wasm/package-lock.json"
-          test -z "$(git diff --cached --name-only)"
-          test -z "$(git ls-files --others --exclude-standard)"
-
-      - name: Create or reuse production-snapshot pull request
-        id: snapshot-pr
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ needs.classify-release.outputs.version }}
-        shell: bash
-        run: |
-          base_sha="$(git rev-parse HEAD)"
-          branch="codex/production-snapshot-${RELEASE_VERSION}"
-          remote_ref="refs/remotes/origin/${branch}"
-
-          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
-            git fetch --no-tags origin "$branch:$remote_ref"
-            test "$(git diff --name-only "${base_sha}...${remote_ref}")" = "packages/backend/wasm/package-lock.json"
-            git show "${remote_ref}:packages/backend/wasm/package-lock.json" > "$RUNNER_TEMP/existing-package-lock.json"
-            cmp packages/backend/wasm/package-lock.json "$RUNNER_TEMP/existing-package-lock.json"
-            pr_number="$(gh pr list --state open --base main --head "$branch" --json number --jq '.[0].number')"
-            test -n "$pr_number"
-            head_sha="$(git rev-parse "$remote_ref")"
-          else
-            git switch -c "$branch"
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add packages/backend/wasm/package-lock.json
-            git commit -m "Record npm-backed production snapshot for ${RELEASE_VERSION}"
-            test "$(git diff --name-only "${base_sha}...HEAD")" = "packages/backend/wasm/package-lock.json"
-            git push origin "$branch"
-            gh pr create \
-              --base main \
-              --head "$branch" \
-              --title "Record npm-backed production snapshot for ${RELEASE_VERSION}" \
-              --body "Records the exact npm registry lock for @tokamak-zk-evm/subcircuit-library@${RELEASE_VERSION}. This pull request publishes nothing and changes only the workflow-owned browser lockfile."
-            pr_number="$(gh pr view "$branch" --json number --jq '.number')"
-            head_sha="$(git rev-parse HEAD)"
-          fi
-
-          echo "base_sha=$base_sha" >> "$GITHUB_OUTPUT"
-          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
-          echo "pull_request_number=$pr_number" >> "$GITHUB_OUTPUT"
-
-      - name: Dispatch exact-head Source build validation
-        env:
-          BASE_SHA: ${{ steps.snapshot-pr.outputs.base_sha }}
-          GH_TOKEN: ${{ github.token }}
-          EXPECTED_HEAD_SHA: ${{ steps.snapshot-pr.outputs.head_sha }}
-          PR_NUMBER: ${{ steps.snapshot-pr.outputs.pull_request_number }}
-        run: |
-          node scripts/dispatch-pr-validation.mjs \
-            "--pull-request=$PR_NUMBER" \
-            "--head-sha=$EXPECTED_HEAD_SHA" \
-            "--base-sha=$BASE_SHA"
-
-  build-snark-browser-compat:
-    name: Build browser-compatible SNARK package
-    runs-on: ubuntu-22.04
-    needs: classify-release
-    if: >-
-      needs.classify-release.outputs.state == 'dependent-publication' ||
-      needs.classify-release.outputs.state == 'complete'
     timeout-minutes: 45
-    env:
-      BACKEND_WASM_VERIFIER_CRS_DIR: ../rust/setup/output
-
     steps:
-      - name: Checkout code
+      - name: Checkout frozen candidate
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_head_sha }}
+          path: candidate
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -680,548 +277,176 @@ jobs:
           test "$(node --version)" = "v24.20.0"
           test "$(npm --version)" = "11.19.0"
 
-      - name: Install Rust and Cargo
-        uses: dtolnay/rust-toolchain@1.95.0
-        with:
-          targets: wasm32-unknown-unknown
-
-      - name: Install wasm-bindgen CLI
-        run: cargo install wasm-bindgen-cli --version 0.2.126 --locked
-
-      - name: Download verified final CRS
+      - name: Download verified public CRS
         uses: actions/download-artifact@v4
         with:
-          name: verified-final-crs
-          path: packages/backend/rust/setup/output
+          name: tokamak-zk-evm-verified-final-crs
+          path: candidate/packages/backend/rust/setup/output
 
-      - name: Validate final CRS input files
+      - name: Build and pack browser package
+        working-directory: candidate/packages/backend/wasm
+        env:
+          BACKEND_WASM_VERIFIER_CRS_DIR: ../rust/setup/output
         run: |
-          test -s packages/backend/rust/setup/output/combined_sigma.rkyv
-          test -s packages/backend/rust/setup/output/sigma_preprocess.rkyv
-          test -s packages/backend/rust/setup/output/sigma_verify.json
-          test -s packages/backend/rust/setup/output/crs_provenance.json
-
-      - name: Install package dependencies
-        working-directory: packages/backend/wasm
-        run: npm ci --ignore-scripts
-
-      - name: Install Chromium
-        working-directory: packages/backend/wasm
-        run: npx playwright install --with-deps chromium
-
-      - name: Build package
-        working-directory: packages/backend/wasm
-        run: npm run build:production
-
-      - name: Check package types and generated inputs
-        working-directory: packages/backend/wasm
-        run: |
+          npm ci --ignore-scripts
+          npm run build:production
           npm run typecheck:production
           npm run typecheck:scripts
-
-      - name: Validate production subcircuit-library snapshot
-        run: npm run version:production-snapshot:check
-
-      - name: Check converter browser boundaries
-        working-directory: packages/backend/wasm
-        run: |
+          npm run verifier-crs:input:check
+          npm run verifier-crs:input:validate
           npm run converter:browser:check:production
           npm run converter:webpack:check:production
+          npm run package:publication:check
+          mkdir -p ../../../browser-tarball
+          npm pack --ignore-scripts --pack-destination ../../../browser-tarball
 
-      - name: Check publication documentation and package boundary
-        working-directory: packages/backend/wasm
-        run: npm run package:publication:check
-
-      - name: Pack browser-compatible SNARK package
-        working-directory: packages/backend/wasm
-        run: |
-          mkdir -p ../../snark-browser-compat-tarball
-          npm pack --ignore-scripts --pack-destination ../../snark-browser-compat-tarball
-
-      - name: Validate browser-compatible SNARK tarball
-        run: |
-          node <<'EOF_NODE'
-          const { execFileSync } = require('node:child_process');
-          const fs = require('node:fs');
-          const path = require('node:path');
-
-          const tarballDir = path.resolve('snark-browser-compat-tarball');
-          const tarballs = fs.readdirSync(tarballDir).filter((file) => file.endsWith('.tgz'));
-          if (tarballs.length !== 1) {
-            throw new Error(`Expected one browser-compatible SNARK tarball, found ${tarballs.length}.`);
-          }
-
-          const tarball = path.join(tarballDir, tarballs[0]);
-          const manifest = JSON.parse(
-            execFileSync('tar', ['-xOf', tarball, 'package/package.json'], {
-              encoding: 'utf8',
-            }),
-          );
-          const rootVersion = require('./package.json').version;
-          if (manifest.name !== '@tokamak-zk-evm/snark-browser-compat') {
-            throw new Error(`Unexpected package name ${manifest.name}.`);
-          }
-          if (manifest.version !== rootVersion) {
-            throw new Error(
-              `Browser-compatible SNARK version ${manifest.version} does not match root ${rootVersion}.`,
-            );
-          }
-
-          const entries = execFileSync('tar', ['-tzf', tarball], { encoding: 'utf8' })
-            .split('\n')
-            .filter(Boolean);
-          for (const forbiddenPrefix of [
-            'package/test/',
-            'package/fixtures/',
-            'package/scripts/',
-            'package/tools/',
-            'package/tmp/',
-            'package/docs/',
-          ]) {
-            if (entries.some((entry) => entry.startsWith(forbiddenPrefix))) {
-              throw new Error(`${tarballs[0]} contains forbidden path ${forbiddenPrefix}.`);
-            }
-          }
-          if (entries.includes('package/CHANGELOG.md')) {
-            throw new Error(`${tarballs[0]} must not include CHANGELOG.md.`);
-          }
-
-          console.log(
-            JSON.stringify(
-              {
-                package: manifest.name,
-                version: manifest.version,
-                tarball: tarballs[0],
-                entries: entries.length,
-              },
-              null,
-              2,
-            ),
-          );
-          EOF_NODE
-
-          (
-            cd snark-browser-compat-tarball
-            sha256sum ./*.tgz > SHA256SUMS
-            sha256sum --check SHA256SUMS
-          )
-
-      - name: Upload browser-compatible SNARK tarball
+      - name: Upload browser package tarball
         uses: actions/upload-artifact@v4
         with:
-          name: snark-browser-compat-release-tarball
-          path: snark-browser-compat-tarball/
+          name: tokamak-zk-evm-browser-tarball
+          path: candidate/browser-tarball/*.tgz
           if-no-files-found: error
           retention-days: 7
 
-  publish-cli:
-    name: Publish @tokamak-zk-evm/cli to npm
+  publish-bootstrap-foundation:
+    name: Publish approved bootstrap foundation tarball
+    if: inputs.operation == 'bootstrap-foundation'
+    needs: [validate-dispatch, build-candidate]
     runs-on: ubuntu-22.04
-    needs: publish-synthesizer
     permissions:
       contents: read
       id-token: write
-
     steps:
-      - name: Checkout release automation
+      - name: Checkout fixed controller
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: '24.20.0'
-          registry-url: 'https://registry.npmjs.org'
+          registry-url: https://registry.npmjs.org
 
       - name: Install and verify pinned npm
         run: |
           npm install --global npm@11.19.0
-          test "$(node --version)" = "v24.20.0"
           test "$(npm --version)" = "11.19.0"
 
-      - name: Download release tarballs
+      - name: Download source-built bootstrap tarball
         uses: actions/download-artifact@v4
         with:
-          name: tokamak-zk-evm-release-tarballs
+          name: tokamak-zk-evm-candidate-tarballs
           path: package-tarballs
 
-      - name: Build and install Docker runtime with published dependencies
-        env:
-          TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON }}
+      - name: Require exact foundation identity or an absent version
+        id: foundation
+        run: >-
+          node scripts/check-release-package.mjs
+          --package-name=@tokamak-zk-evm/subcircuit-library
+          --tarball-dir=package-tarballs
+
+      - name: Publish foundation tarball
+        if: steps.foundation.outputs.should_publish == 'true'
+        run: >-
+          npm publish --access public --ignore-scripts
+          "${{ steps.foundation.outputs.tarball }}"
+
+  publish-final-packages:
+    name: Publish final candidate package tarballs
+    if: inputs.operation == 'final-release'
+    needs: [validate-dispatch, build-candidate, build-browser-package]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout fixed controller
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.20.0'
+          registry-url: https://registry.npmjs.org
+
+      - name: Install and verify pinned npm
         run: |
-          docker_context="$RUNNER_TEMP/tokamak-zk-evm-cli-docker"
-          node <<'EOF_NODE'
-          const { execFileSync } = require('node:child_process');
-          const fs = require('node:fs');
-          const path = require('node:path');
+          npm install --global npm@11.19.0
+          test "$(npm --version)" = "11.19.0"
 
-          const tarballDir = path.resolve('package-tarballs');
-          const dockerContext = `${process.env.RUNNER_TEMP}/tokamak-zk-evm-cli-docker`;
-          const tarball = fs.readdirSync(tarballDir)
-            .filter((file) => file.endsWith('.tgz'))
-            .map((file) => path.join(tarballDir, file))
-            .find((file) => JSON.parse(execFileSync('tar', ['-xOf', file, 'package/package.json'], { encoding: 'utf8' })).name === '@tokamak-zk-evm/cli');
-          if (!tarball) throw new Error('Missing @tokamak-zk-evm/cli release tarball.');
-          fs.rmSync(dockerContext, { recursive: true, force: true });
-          fs.mkdirSync(dockerContext, { recursive: true });
-          execFileSync('tar', ['-xzf', tarball, '-C', dockerContext]);
-          EOF_NODE
-          docker build \
-            --build-arg BASE_IMAGE=ubuntu:22.04 \
-            --tag tokamak-zk-evm-cli-release-test \
-            --file "$docker_context/package/docker/Dockerfile" \
-            "$docker_context/package"
-          docker run --rm \
-            -e TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON \
-            tokamak-zk-evm-cli-release-test --install
+      - name: Download source-built candidate tarballs
+        uses: actions/download-artifact@v4
+        with:
+          name: tokamak-zk-evm-candidate-tarballs
+          path: package-tarballs
 
-      - name: Check exact npm package identity
-        id: version-check
+      - name: Download source-built browser tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: tokamak-zk-evm-browser-tarball
+          path: package-tarballs
+
+      - name: Require already-published bootstrap identity
+        id: foundation
+        run: >-
+          node scripts/check-release-package.mjs
+          --package-name=@tokamak-zk-evm/subcircuit-library
+          --tarball-dir=package-tarballs
+
+      - name: Refuse a final release without its exact bootstrap package
+        run: test "${{ steps.foundation.outputs.should_publish }}" = false
+
+      - name: Check Synthesizer Node package identity
+        id: synthesizer_node
+        run: >-
+          node scripts/check-release-package.mjs
+          --package-name=@tokamak-zk-evm/synthesizer-node
+          --tarball-dir=package-tarballs
+
+      - name: Publish Synthesizer Node
+        if: steps.synthesizer_node.outputs.should_publish == 'true'
+        run: >-
+          npm publish --access public --ignore-scripts
+          "${{ steps.synthesizer_node.outputs.tarball }}"
+
+      - name: Check Synthesizer Web package identity
+        id: synthesizer_web
+        run: >-
+          node scripts/check-release-package.mjs
+          --package-name=@tokamak-zk-evm/synthesizer-web
+          --tarball-dir=package-tarballs
+
+      - name: Publish Synthesizer Web
+        if: steps.synthesizer_web.outputs.should_publish == 'true'
+        run: >-
+          npm publish --access public --ignore-scripts
+          "${{ steps.synthesizer_web.outputs.tarball }}"
+
+      - name: Check CLI package identity
+        id: cli
         run: >-
           node scripts/check-release-package.mjs
           --package-name=@tokamak-zk-evm/cli
           --tarball-dir=package-tarballs
-      - name: Show version decision
-        run: |
-          echo "Package: ${{ steps.version-check.outputs.package_name }}"
-          echo "Local version: ${{ steps.version-check.outputs.local_version }}"
-          echo "Published state: ${{ steps.version-check.outputs.published_state }}"
-          echo "Should publish: ${{ steps.version-check.outputs.should_publish }}"
-          echo "Tarball: ${{ steps.version-check.outputs.tarball }}"
 
-      - name: Validate npm package contents
-        if: steps.version-check.outputs.should_publish == 'true'
-        run: npm publish --dry-run --ignore-scripts "${{ steps.version-check.outputs.tarball }}"
+      - name: Publish CLI
+        if: steps.cli.outputs.should_publish == 'true'
+        run: >-
+          npm publish --access public --ignore-scripts
+          "${{ steps.cli.outputs.tarball }}"
 
-      - name: Publish to npm
-        if: steps.version-check.outputs.should_publish == 'true'
-        run: npm publish --ignore-scripts "${{ steps.version-check.outputs.tarball }}"
-
-  publish-snark-browser-compat:
-    name: Publish browser-compatible SNARK package to npm
-    runs-on: ubuntu-22.04
-    needs:
-      - build-snark-browser-compat
-      - pre-publish-test-build
-      - publish-cli
-    permissions:
-      contents: read
-      id-token: write
-
-    steps:
-      - name: Checkout release automation
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24.20.0'
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Install and verify pinned npm
-        run: |
-          npm install --global npm@11.19.0
-          test "$(node --version)" = "v24.20.0"
-          test "$(npm --version)" = "11.19.0"
-
-      - name: Download browser-compatible SNARK tarball
-        uses: actions/download-artifact@v4
-        with:
-          name: snark-browser-compat-release-tarball
-          path: snark-browser-compat-tarball
-
-      - name: Check exact npm package identity
-        id: version-check
+      - name: Check browser package identity
+        id: browser
         run: >-
           node scripts/check-release-package.mjs
           --package-name=@tokamak-zk-evm/snark-browser-compat
-          --tarball-dir=snark-browser-compat-tarball
+          --tarball-dir=package-tarballs
 
-      - name: Show version decision
-        run: |
-          echo "Package: ${{ steps.version-check.outputs.package_name }}"
-          echo "Local version: ${{ steps.version-check.outputs.local_version }}"
-          echo "Published state: ${{ steps.version-check.outputs.published_state }}"
-          echo "Should publish: ${{ steps.version-check.outputs.should_publish }}"
-          echo "Tarball: ${{ steps.version-check.outputs.tarball }}"
-
-      - name: Verify tarball digest
-        run: |
-          cd snark-browser-compat-tarball
-          sha256sum --check SHA256SUMS
-
-      - name: Validate npm package contents
-        if: steps.version-check.outputs.should_publish == 'true'
-        run: npm publish --dry-run --access public --ignore-scripts "${{ steps.version-check.outputs.tarball }}"
-
-      - name: Publish to npm
-        if: steps.version-check.outputs.should_publish == 'true'
-        run: npm publish --access public --ignore-scripts "${{ steps.version-check.outputs.tarball }}"
-
-  evm-compat-test:
-    name: EVM compatibility tests
-    runs-on: ubuntu-22.04
-    needs: source-build
-    timeout-minutes: 60
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24.20.0'
-
-      - name: Install and verify pinned npm
-        run: |
-          npm install --global npm@11.19.0
-          test "$(node --version)" = "v24.20.0"
-          test "$(npm --version)" = "11.19.0"
-
-      - name: Download release tarballs
-        uses: actions/download-artifact@v4
-        with:
-          name: tokamak-zk-evm-release-tarballs
-          path: package-tarballs
-
-      - name: Install release tarballs in consumer workspace
-        env:
-          CONSUMER_DIR: ${{ runner.temp }}/tokamak-evm-compat-consumer
-        run: |
-          mkdir -p "$CONSUMER_DIR"
-          cd "$CONSUMER_DIR"
-          npm init -y
-          npm install "$GITHUB_WORKSPACE"/package-tarballs/*.tgz
-
-      - name: Verify tarball package resolutions
-        env:
-          CONSUMER_DIR: ${{ runner.temp }}/tokamak-evm-compat-consumer
-        run: |
-          cd "$CONSUMER_DIR"
-          node <<'EOF_NODE'
-          const lock = require('./package-lock.json');
-          const expectedTarballPackages = [
-            'node_modules/@tokamak-zk-evm/subcircuit-library',
-            'node_modules/@tokamak-zk-evm/synthesizer-node',
-            'node_modules/@tokamak-zk-evm/synthesizer-web',
-            'node_modules/@tokamak-zk-evm/cli',
-          ];
-          for (const packagePath of expectedTarballPackages) {
-            const entry = lock.packages[packagePath];
-            if (!entry || !String(entry.resolved ?? '').startsWith('file:')) {
-              throw new Error(`${packagePath} must resolve to a source-build tarball`);
-            }
-          }
-          const tokamakL2js = lock.packages['node_modules/tokamak-l2js'];
-          if (!tokamakL2js || !String(tokamakL2js.resolved ?? '').startsWith('https://registry.npmjs.org/')) {
-            throw new Error('tokamak-l2js must remain resolved from npm registry');
-          }
-          EOF_NODE
-
-      - name: Run tarball EVM compatibility test
-        env:
-          CONSUMER_DIR: ${{ runner.temp }}/tokamak-evm-compat-consumer
-        run: |
-          cd "$CONSUMER_DIR"
-          node <<'EOF_NODE'
-          const fs = require('node:fs/promises');
-          const path = require('node:path');
-          const { runTokamakChannelTxFromFiles } = require('@tokamak-zk-evm/synthesizer-node');
-
-          async function main() {
-            const repoRoot = process.env.GITHUB_WORKSPACE;
-            const fixtureDir = path.join(
-              repoRoot,
-              'packages/frontend/synthesizer/examples/L2StateChannel',
-            );
-            const outputDir = path.join(
-              repoRoot,
-              'packages/frontend/synthesizer/outputs/evm-compat-tarball',
-            );
-            await fs.rm(outputDir, { recursive: true, force: true });
-            await runTokamakChannelTxFromFiles(
-              {
-                previousState: path.join(fixtureDir, 'previous_state_snapshot.json'),
-                transaction: path.join(fixtureDir, 'transaction.json'),
-                blockInfo: path.join(fixtureDir, 'block_info.json'),
-                contractCode: path.join(fixtureDir, 'contract_codes.json'),
-              },
-              outputDir,
-            );
-            await fs.access(path.join(outputDir, 'instance.json'));
-            await fs.access(path.join(outputDir, 'instance_description.json'));
-            await fs.access(path.join(outputDir, 'permutation.json'));
-          }
-
-          main().catch((error) => {
-            console.error(error);
-            process.exit(1);
-          });
-          EOF_NODE
-
-      - name: Upload EVM compatibility outputs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: evm-compat-test-outputs-${{ github.run_number }}
-          path: packages/frontend/synthesizer/outputs/
-          retention-days: 7
-
-  pre-publish-test-build:
-    name: Pre-publish Test & Build
-    runs-on: ubuntu-22.04
-    needs: classify-release
-    if: >-
-      needs.classify-release.outputs.state == 'dependent-publication' ||
-      needs.classify-release.outputs.state == 'complete'
-    timeout-minutes: 90
-    env:
-      TOKAMAK_ZKEVM_CLI_CACHE_DIR: ${{ github.workspace }}/.tokamak-cli-cache
-      CONSUMER_DIR: ${{ github.workspace }}/tokamak-cli-consumer
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24.20.0'
-
-      - name: Install and verify pinned npm
-        run: |
-          npm install --global npm@11.19.0
-          test "$(node --version)" = "v24.20.0"
-          test "$(npm --version)" = "11.19.0"
-
-      - name: Download release tarballs
-        uses: actions/download-artifact@v4
-        with:
-          name: tokamak-zk-evm-release-tarballs
-          path: package-tarballs
-
-      - name: Install release tarballs in consumer workspace
-        run: |
-          mkdir -p "$CONSUMER_DIR"
-          cd "$CONSUMER_DIR"
-          npm init -y
-          npm install "$GITHUB_WORKSPACE"/package-tarballs/*.tgz
-
-      - name: Verify tarball package resolutions
-        run: |
-          cd "$CONSUMER_DIR"
-          node <<'EOF_NODE'
-          const lock = require('./package-lock.json');
-          const expectedTarballPackages = [
-            'node_modules/@tokamak-zk-evm/subcircuit-library',
-            'node_modules/@tokamak-zk-evm/synthesizer-node',
-            'node_modules/@tokamak-zk-evm/synthesizer-web',
-            'node_modules/@tokamak-zk-evm/cli',
-          ];
-          for (const packagePath of expectedTarballPackages) {
-            const entry = lock.packages[packagePath];
-            if (!entry || !String(entry.resolved ?? '').startsWith('file:')) {
-              throw new Error(`${packagePath} must resolve to a source-build tarball`);
-            }
-          }
-          const tokamakL2js = lock.packages['node_modules/tokamak-l2js'];
-          if (!tokamakL2js || !String(tokamakL2js.resolved ?? '').startsWith('https://registry.npmjs.org/')) {
-            throw new Error('tokamak-l2js must remain resolved from npm registry');
-          }
-          EOF_NODE
-
-      - name: Read release version
-        id: release-version
-        run: |
-          version="$(node -p "require('${CONSUMER_DIR}/node_modules/@tokamak-zk-evm/cli/package.json').version")"
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "Release version: ${version}"
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake dos2unix pkg-config tar unzip zip
-
-      - name: Install Rust and Cargo
-        uses: dtolnay/rust-toolchain@1.95.0
-
-      - name: Install Circom compiler
-        run: cargo install --locked --git https://github.com/iden3/circom --tag v2.2.2 circom
-
-      - name: Verify Circom compiler
-        run: |
-          circom --version
-          test "$(circom --version)" = "circom compiler 2.2.2"
-
-      - name: Cache Rust dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-pre-publish-cargo-${{ steps.release-version.outputs.version }}
-          restore-keys: |
-            ${{ runner.os }}-pre-publish-cargo-
-
-      - name: Restore CRS download cache
-        uses: actions/cache/restore@v4
-        with:
-          path: .tokamak-cli-cache/linux/downloads/crs/
-          key: ${{ runner.os }}-pre-publish-cli-crs-${{ github.run_id }}
-          restore-keys: |
-            ${{ runner.os }}-pre-publish-cli-crs-
-
-      - name: Restore ICICLE download cache
-        id: icicle-download-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: .tokamak-cli-cache/linux/downloads/icicle/
-          key: ${{ runner.os }}-pre-publish-cli-icicle-${{ steps.release-version.outputs.version }}
-
-      - name: Install local runtime and CRS
-        env:
-          TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON }}
-        run: node "$CONSUMER_DIR/node_modules/@tokamak-zk-evm/cli/dist/cli.js" --install
-
-      - name: Save CRS download cache
-        uses: actions/cache/save@v4
-        with:
-          path: .tokamak-cli-cache/linux/downloads/crs/
-          key: ${{ runner.os }}-pre-publish-cli-crs-${{ github.run_id }}
-
-      - name: Save ICICLE download cache
-        if: steps.icicle-download-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: .tokamak-cli-cache/linux/downloads/icicle/
-          key: ${{ runner.os }}-pre-publish-cli-icicle-${{ steps.release-version.outputs.version }}
-
-      - name: Validate installed setup outputs
-        run: |
-          runtime_dir="$TOKAMAK_ZKEVM_CLI_CACHE_DIR/linux/runtime"
-          required=(
-            "$runtime_dir/resource/setup/output/combined_sigma.rkyv"
-            "$runtime_dir/resource/setup/output/sigma_preprocess.rkyv"
-            "$runtime_dir/resource/setup/output/sigma_verify.json"
-          )
-          for file in "${required[@]}"; do
-            if [ ! -f "$file" ]; then
-              echo "Missing setup artifact in published runtime: $file"
-              exit 1
-            fi
-          done
-          echo "Local runtime setup artifacts are ready"
-
-      - name: Run L2StateChannel synthesize
-        run: |
-          node "$CONSUMER_DIR/node_modules/@tokamak-zk-evm/cli/dist/cli.js" --synthesize \
-            "${{ github.workspace }}/packages/frontend/synthesizer/examples/L2StateChannel"
-
-      - name: Run preprocess
-        run: node "$CONSUMER_DIR/node_modules/@tokamak-zk-evm/cli/dist/cli.js" --preprocess
-
-      - name: Run prove
-        run: node "$CONSUMER_DIR/node_modules/@tokamak-zk-evm/cli/dist/cli.js" --prove
-
-      - name: Run verify
-        run: node "$CONSUMER_DIR/node_modules/@tokamak-zk-evm/cli/dist/cli.js" --verify
+      - name: Publish browser package
+        if: steps.browser.outputs.should_publish == 'true'
+        run: >-
+          npm publish --access public --ignore-scripts
+          "${{ steps.browser.outputs.tarball }}"

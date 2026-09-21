@@ -93,10 +93,12 @@ export function collectReleaseReproducibilityFailures(
     }
   }
 
-  const workflows = ['.github/workflows/build-release.yml', '.github/workflows/publish-tokamak-zk-evm.yml'].map(
-    relativePath => [relativePath, read(relativePath)],
-  );
-  for (const [relativePath, workflow] of workflows) {
+  const buildWorkflow = read('.github/workflows/build-release.yml');
+  const controllerWorkflow = read('.github/workflows/publish-tokamak-zk-evm.yml');
+  for (const [relativePath, workflow] of [
+    ['.github/workflows/build-release.yml', buildWorkflow],
+    ['.github/workflows/publish-tokamak-zk-evm.yml', controllerWorkflow],
+  ]) {
     const nodeSetups = [...workflow.matchAll(/node-version:\s*['"]?([^'"\s]+)/gu)];
     for (const match of nodeSetups) {
       if (match[1] !== PINNED_NODE_VERSION) {
@@ -107,17 +109,11 @@ export function collectReleaseReproducibilityFailures(
     if (npmPins.length !== nodeSetups.length) {
       fail(`${relativePath} must install npm ${PINNED_NPM_VERSION} after every Node.js setup.`);
     }
-    if (!workflow.includes(`dtolnay/rust-toolchain@${PINNED_RUST_VERSION}`)) {
-      fail(`${relativePath} must install Rust ${PINNED_RUST_VERSION}.`);
-    }
     if (workflow.includes('dtolnay/rust-toolchain@stable')) {
       fail(`${relativePath} must not resolve the floating Rust stable channel.`);
     }
     if (workflow.includes('npm install --package-lock=false')) {
       fail(`${relativePath} must not bypass committed npm locks.`);
-    }
-    if (!workflow.includes('npm run release:reproducibility:check')) {
-      fail(`${relativePath} must execute the release reproducibility check.`);
     }
     for (const line of workflow.split('\n')) {
       if (/\bcargo\s+(?:build|check|run|test|bench|install)\b/u.test(line) && !line.includes('--locked')) {
@@ -126,25 +122,35 @@ export function collectReleaseReproducibilityFailures(
     }
   }
   if (
-    !workflows[0][1].includes(`node-version: '${PINNED_NODE_VERSION}'`) ||
-    !workflows[0][1].includes(`npm@${PINNED_NPM_VERSION}`) ||
-    !workflows[0][1].includes('run: npm ci')
+    !buildWorkflow.includes(`node-version: '${PINNED_NODE_VERSION}'`) ||
+    !buildWorkflow.includes(`npm@${PINNED_NPM_VERSION}`) ||
+    !buildWorkflow.includes('run: npm ci')
   ) {
     fail(`The pull-request source build must use Node.js ${PINNED_NODE_VERSION}, npm ${PINNED_NPM_VERSION}, and npm ci.`);
   }
-  if (!workflows[1][1].includes('run: npm ci --ignore-scripts')) {
+  if (!buildWorkflow.includes(`dtolnay/rust-toolchain@${PINNED_RUST_VERSION}`)) {
+    fail(`The pull-request source build must install Rust ${PINNED_RUST_VERSION}.`);
+  }
+  if (!buildWorkflow.includes('npm run release:reproducibility:check')) {
+    fail('The pull-request source build must execute the release reproducibility check.');
+  }
+  if (!controllerWorkflow.includes('npm ci --ignore-scripts')) {
     fail('The browser production jobs must use the committed standalone npm lock with npm ci.');
   }
-  for (const [relativePath, workflow] of workflows) {
-    if (!workflow.includes('run: ./download-ICICLE-lib.sh')) {
-      fail(`${relativePath} must install the ICICLE CPU runtime before generating a local verifier key.`);
-    }
-    if (!workflow.includes('cargo run --locked --release -p trusted-setup --')) {
-      fail(`${relativePath} must generate a local verifier key before checking the backend workspace.`);
-    }
-    if (!workflow.includes('TOKAMAK_VERIFIER_KEYS: ${{ runner.temp }}/tokamak-development-crs/verifier_keys.rkyv')) {
-      fail(`${relativePath} must provide the generated verifier key to the backend workspace check.`);
-    }
+  if (!controllerWorkflow.includes(`dtolnay/rust-toolchain@${PINNED_RUST_VERSION}`)) {
+    fail(`The fixed release controller must install Rust ${PINNED_RUST_VERSION} for candidate validation.`);
+  }
+  if (!controllerWorkflow.includes('npm run release:reproducibility:check')) {
+    fail('The fixed release controller must execute the reproducibility policy against the candidate.');
+  }
+  if (!buildWorkflow.includes('run: ./download-ICICLE-lib.sh')) {
+    fail('The pull-request source build must install the ICICLE CPU runtime before generating a local verifier key.');
+  }
+  if (!buildWorkflow.includes('cargo run --locked --release -p trusted-setup --')) {
+    fail('The pull-request source build must generate a local verifier key before checking the backend workspace.');
+  }
+  if (!buildWorkflow.includes('TOKAMAK_VERIFIER_KEYS: ${{ runner.temp }}/tokamak-development-crs/verifier_keys.rkyv')) {
+    fail('The pull-request source build must provide the generated verifier key to the backend workspace check.');
   }
 
   const launchConfiguration = read('packages/backend/.vscode/launch.json');
