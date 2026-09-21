@@ -97,7 +97,8 @@ mod tests {
 
     #[test]
     fn ranges_follow_normalized_retained_wires_without_per_point_descriptors() {
-        let layout = NonpublicQueryLayout::from_retained_wires(3, vec![vec![0, 2], vec![1]]).unwrap();
+        let layout =
+            NonpublicQueryLayout::from_retained_wires(3, vec![vec![0, 2], vec![1]]).unwrap();
         assert_eq!(layout.len(), 9);
         assert_eq!(layout.local_wires(0).unwrap(), &[0, 2]);
         assert_eq!(layout.local_wires(1).unwrap(), &[1]);
@@ -131,7 +132,8 @@ mod tests {
             x: [0; 48],
             y: [0; 48],
         };
-        let layout = NonpublicQueryLayout::from_retained_wires(2, vec![vec![0, 2], vec![1]]).unwrap();
+        let layout =
+            NonpublicQueryLayout::from_retained_wires(2, vec![vec![0, 2], vec![1]]).unwrap();
         for count in [5, 6, 7] {
             let keys = ProverKeysRkyv {
                 schema_id: "test".into(),

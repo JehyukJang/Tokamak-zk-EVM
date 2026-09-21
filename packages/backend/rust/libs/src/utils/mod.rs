@@ -10,9 +10,11 @@ pub fn cuda_msm_is_available() -> bool {
 }
 
 pub fn try_check_device() -> Result<&'static str, DeviceError> {
-    icicle_runtime::load_backend_from_env_or_default().map_err(|error| DeviceError::Initialization {
-        device: "ICICLE backend",
-        reason: error.to_string(),
+    icicle_runtime::load_backend_from_env_or_default().map_err(|error| {
+        DeviceError::Initialization {
+            device: "ICICLE backend",
+            reason: error.to_string(),
+        }
     })?;
     let cpu = Device::new("CPU", 0);
     let cuda = Device::new("CUDA", 0);
@@ -28,8 +30,4 @@ pub fn try_check_device() -> Result<&'static str, DeviceError> {
         reason: error.to_string(),
     })?;
     Ok(selected.1)
-}
-
-pub fn check_device() -> &'static str {
-    try_check_device().unwrap_or_else(|error| panic!("{error}"))
 }

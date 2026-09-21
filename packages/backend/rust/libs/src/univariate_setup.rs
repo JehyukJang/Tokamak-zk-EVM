@@ -1,12 +1,14 @@
 //! Direct, single-command U19--U22a construction for the current protocol.
 //! Only scalar labels are evaluated here; no per-query dense polynomial is built.
 
-use crate::frontend_artifacts::normalized_library::{NormalizedSubcircuitLibrary, PublicWireSource};
+use crate::frontend_artifacts::normalized_library::{
+    NormalizedSubcircuitLibrary, PublicWireSource,
+};
 use crate::univariate_crs::{UnivariateCrsShape, UNIVARIATE_CRS_SCHEMA_ID};
 use crate::univariate_relation::NormalizedUnivariateSubcircuit;
 use backend_univariate_crs_interface::{
-    NonpublicQueryLayout, PreprocessKeysRkyv, ProverKeysRkyv, TauSequenceRkyv,
-    UnivariateG1Rkyv, UnivariateG2Rkyv, VerifierKeysRkyv, WeightedQueryLayout,
+    NonpublicQueryLayout, PreprocessKeysRkyv, ProverKeysRkyv, TauSequenceRkyv, UnivariateG1Rkyv,
+    UnivariateG2Rkyv, VerifierKeysRkyv, WeightedQueryLayout,
 };
 use icicle_bls12_381::curve::{
     G1Affine, G1Projective, G2Affine, G2Projective, ScalarCfg, ScalarField,
@@ -278,7 +280,6 @@ pub fn generate_normalized(
     )
 }
 
-
 #[allow(clippy::too_many_arguments)]
 fn assemble_crs(
     shape: &UnivariateCrsShape,
@@ -476,7 +477,6 @@ fn normalized_wire_images(
     }
     images
 }
-
 
 fn lagrange_at(tau: ScalarField, root: ScalarField, count: usize) -> Vec<ScalarField> {
     #[cfg(feature = "timing")]

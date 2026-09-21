@@ -65,7 +65,10 @@ pub fn normalized_connection_permutation_targets(
                 });
             };
             if library.subcircuits[subcircuit_id].is_wiring_padding(row, setup.m_b) {
-                return Err(UnivariateRelationError::PermutationCoordinate { row, col: placement });
+                return Err(UnivariateRelationError::PermutationCoordinate {
+                    row,
+                    col: placement,
+                });
             }
         }
         targets[entry.col + setup.s * entry.row] = entry.Y + setup.s * entry.X;
@@ -79,9 +82,16 @@ fn validate_selector(
     subcircuit_count: usize,
 ) -> Result<(), UnivariateRelationError> {
     if selector.len() != setup.s {
-        return Err(UnivariateRelationError::SelectorCapacity { actual: selector.len(), expected: setup.s });
+        return Err(UnivariateRelationError::SelectorCapacity {
+            actual: selector.len(),
+            expected: setup.s,
+        });
     }
-    if let Some(value) = selector.iter().flatten().find(|id| **id >= subcircuit_count) {
+    if let Some(value) = selector
+        .iter()
+        .flatten()
+        .find(|id| **id >= subcircuit_count)
+    {
         return Err(UnivariateRelationError::SubcircuitId { value: *value });
     }
     Ok(())
@@ -96,27 +106,41 @@ fn validate_application_topology(
 ) -> Result<(), UnivariateRelationError> {
     use std::collections::{HashMap, HashSet};
 
-    let public_coordinates = library.public.segments().iter().flat_map(|segment| {
-        (segment.start..segment.end).filter_map(|public_index| match library.public.source(public_index) {
-            Some(PublicWireSource::Mapped { local_wire_index, .. }) => {
-                Some((local_wire_index, segment.placement_phase))
-            }
-            _ => None,
+    let public_coordinates = library
+        .public
+        .segments()
+        .iter()
+        .flat_map(|segment| {
+            (segment.start..segment.end).filter_map(|public_index| {
+                match library.public.source(public_index) {
+                    Some(PublicWireSource::Mapped {
+                        local_wire_index, ..
+                    }) => Some((local_wire_index, segment.placement_phase)),
+                    _ => None,
+                }
+            })
         })
-    }).collect::<HashSet<_>>();
-    let edges = permutation.iter().map(|entry| ((entry.row, entry.col), (entry.X, entry.Y)))
+        .collect::<HashSet<_>>();
+    let edges = permutation
+        .iter()
+        .map(|entry| ((entry.row, entry.col), (entry.X, entry.Y)))
         .collect::<HashMap<_, _>>();
-    let sparse_public = edges.keys().filter(|coordinate| public_coordinates.contains(coordinate))
-        .copied().collect::<Vec<_>>();
+    let sparse_public = edges
+        .keys()
+        .filter(|coordinate| public_coordinates.contains(coordinate))
+        .copied()
+        .collect::<Vec<_>>();
     if sparse_public.len() != 1 {
         return Err(UnivariateRelationError::PermutationTopology {
             reason: "exactly one public coordinate must represent CIRCOM_CONST_ONE",
         });
     }
     let representative = sparse_public[0];
-    let mut expected = selector.iter().enumerate().filter_map(|(placement, selected)| {
-        selected.map(|_| (0, placement))
-    }).collect::<HashSet<_>>();
+    let mut expected = selector
+        .iter()
+        .enumerate()
+        .filter_map(|(placement, selected)| selected.map(|_| (0, placement)))
+        .collect::<HashSet<_>>();
     expected.insert(representative);
     let mut actual = HashSet::with_capacity(expected.len());
     let mut current = representative;
@@ -124,14 +148,17 @@ fn validate_application_topology(
         if !actual.insert(current) {
             if current != representative {
                 return Err(UnivariateRelationError::PermutationTopology {
-                    reason: "the CIRCOM_CONST_ONE cycle repeats before returning to its representative",
+                    reason:
+                        "the CIRCOM_CONST_ONE cycle repeats before returning to its representative",
                 });
             }
             break;
         }
-        current = *edges.get(&current).ok_or(UnivariateRelationError::PermutationTopology {
-            reason: "the CIRCOM_CONST_ONE cycle is incomplete",
-        })?;
+        current = *edges
+            .get(&current)
+            .ok_or(UnivariateRelationError::PermutationTopology {
+                reason: "the CIRCOM_CONST_ONE cycle is incomplete",
+            })?;
     }
     if actual != expected {
         return Err(UnivariateRelationError::PermutationTopology {

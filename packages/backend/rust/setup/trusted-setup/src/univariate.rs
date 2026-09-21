@@ -93,7 +93,7 @@ pub fn run_trusted_setup(config: &TrustedSetupConfig<'_>) -> Result<(), TrustedS
         }
     })?;
     let (g1, g2, secret) = if config.fixed_tau {
-        let (g1, g2, tau, xi, psi) = fixed_inputs();
+        let (g1, g2, tau, xi, psi, delta) = fixed_inputs();
         (
             g1,
             g2,
@@ -101,7 +101,7 @@ pub fn run_trusted_setup(config: &TrustedSetupConfig<'_>) -> Result<(), TrustedS
                 tau,
                 xi,
                 psi,
-                delta: Tau::gen_fixed().delta,
+                delta,
                 weights: (1..=normalized_library.setup.m)
                     .into_par_iter()
                     .map(|j| ScalarField::from_bytes_le(&j.to_le_bytes()))
@@ -164,7 +164,14 @@ pub fn run_trusted_setup(config: &TrustedSetupConfig<'_>) -> Result<(), TrustedS
     Ok(())
 }
 
-fn fixed_inputs() -> (G1Affine, G2Affine, ScalarField, ScalarField, ScalarField) {
+fn fixed_inputs() -> (
+    G1Affine,
+    G2Affine,
+    ScalarField,
+    ScalarField,
+    ScalarField,
+    ScalarField,
+) {
     println!("Using hardcoded generators and development trapdoor");
     let g1 = G1Affine::from_limbs(
             BaseField::from_hex("0x0b001b4cc05fa01578be7d4e821d6ff58f2a05c584fba3cb31a37942dece65eadec9a878add2282f7c2513abb8d4ab05").into(),
@@ -178,5 +185,5 @@ fn fixed_inputs() -> (G1Affine, G2Affine, ScalarField, ScalarField, ScalarField)
     // This route is development-only. Reuse the fixed test trapdoor to
     // derive deterministic nonzero xi and psi values without treating the
     // resulting CRS as ceremony output.
-    (g1, g2, tau.x, tau.alpha, tau.alpha.pow(2))
+    (g1, g2, tau.x, tau.alpha, tau.alpha.pow(2), tau.delta)
 }

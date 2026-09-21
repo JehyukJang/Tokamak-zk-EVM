@@ -15,17 +15,16 @@ pub mod input_origin;
 mod input_origin_serde;
 pub mod ntt_domain;
 pub mod r1cs;
-pub mod serialization;
 pub mod subcircuit_library;
 #[path = "../../../common/contracts/rust/subcircuit_source_digest.rs"]
 pub mod subcircuit_source_digest;
 pub mod univariate_crs;
+pub mod univariate_field;
 pub mod univariate_polynomial;
 pub mod univariate_proof;
 pub mod univariate_relation;
 pub mod univariate_setup;
 pub mod univariate_transcript;
-pub mod univariate_field;
 pub mod utils;
 pub mod vector_operations;
 

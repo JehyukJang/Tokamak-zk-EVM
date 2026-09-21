@@ -2,10 +2,8 @@
 
 use crate::field_structures::FieldSerde;
 use crate::group_structures::G1serde;
-use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct UnivariateProof {
     pub c_l: G1serde,
     pub c_h: G1serde,

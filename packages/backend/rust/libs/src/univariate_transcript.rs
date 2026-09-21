@@ -299,12 +299,21 @@ pub fn derive_binary_proof_challenges<F: ProtocolField>(
 ) -> UnivariateChallenges<F> {
     let mut evaluations = CanonicalTranscriptEncoder::new();
     for (label, bytes) in ["s_C", "u", "v", "w", "b", "r", "r_plus"].into_iter().zip([
-        proof.s_c, proof.u, proof.v, proof.w, proof.b, proof.r, proof.r_plus,
+        proof.s_c,
+        proof.u,
+        proof.v,
+        proof.w,
+        proof.b,
+        proof.r,
+        proof.r_plus,
     ]) {
         evaluations = evaluations.scalar(label, &F::from_le(&bytes));
     }
     UnivariateTranscript::from_public_inputs(public_inputs).derive_challenges(
-        &encode_binary_g1_message("F2.a1", &[proof.c_l, proof.c_h, proof.c_o, proof.d_q, proof.d_q_k]),
+        &encode_binary_g1_message(
+            "F2.a1",
+            &[proof.c_l, proof.c_h, proof.c_o, proof.d_q, proof.d_q_k],
+        ),
         &encode_binary_g1_message("F2.a2", &[proof.c_d]),
         &encode_binary_g1_message("F2.a3", &[proof.c_r]),
         &encode_binary_g1_message("F2.a4", &[proof.c_q]),

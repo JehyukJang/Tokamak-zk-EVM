@@ -21,8 +21,14 @@ pub enum UnivariateCrsError {
     InvalidDomainRoot { name: &'static str },
     #[error("{name} overflows while deriving univariate CRS capacity")]
     CapacityOverflow { name: &'static str },
-    #[error("terminal tau sequence capacity {name}={available} is smaller than required {required}")]
-    InsufficientTauCapacity { name: &'static str, available: usize, required: usize },
+    #[error(
+        "terminal tau sequence capacity {name}={available} is smaller than required {required}"
+    )]
+    InsufficientTauCapacity {
+        name: &'static str,
+        available: usize,
+        required: usize,
+    },
     #[error("polynomial commitment needs {actual} CRS powers, but the selected CRS sequence has {available}")]
     CommitmentDegree { actual: usize, available: usize },
 }
@@ -37,7 +43,12 @@ pub struct UnivariateTauCapacity {
 
 impl UnivariateTauCapacity {
     pub fn from_shape(shape: &UnivariateCrsShape) -> Self {
-        Self { l0: shape.declared_capacity[0], l_xi: shape.declared_capacity[1], l_psi: shape.declared_capacity[2], l2: shape.k }
+        Self {
+            l0: shape.declared_capacity[0],
+            l_xi: shape.declared_capacity[1],
+            l_psi: shape.declared_capacity[2],
+            l2: shape.k,
+        }
     }
 
     pub fn admits(self, shape: &UnivariateCrsShape) -> Result<(), UnivariateCrsError> {
@@ -48,7 +59,11 @@ impl UnivariateTauCapacity {
             ("L_2", self.l2, shape.k),
         ] {
             if available < required {
-                return Err(UnivariateCrsError::InsufficientTauCapacity { name, available, required });
+                return Err(UnivariateCrsError::InsufficientTauCapacity {
+                    name,
+                    available,
+                    required,
+                });
             }
         }
         Ok(())
@@ -79,15 +94,21 @@ impl UnivariateCrsShape {
         free_public_len: usize,
     ) -> Result<Self, UnivariateCrsError> {
         for (name, value) in [
-            ("n", params.n), ("m", params.m), ("m_b", params.m_b),
-            ("t", params.t), ("s", params.s), ("free public length", free_public_len),
+            ("n", params.n),
+            ("m", params.m),
+            ("m_b", params.m_b),
+            ("t", params.t),
+            ("s", params.s),
+            ("free public length", free_public_len),
         ] {
             if !value.is_power_of_two() {
                 return Err(UnivariateCrsError::DomainNotPowerOfTwo { name });
             }
         }
         if params.m_b > params.m || params.t < 2 {
-            return Err(UnivariateCrsError::InvalidCapacity { name: "normalized local grid" });
+            return Err(UnivariateCrsError::InvalidCapacity {
+                name: "normalized local grid",
+            });
         }
         Self::from_capacities(params.n, params.m_b, params.t, params.s, free_public_len)
     }
@@ -99,21 +120,36 @@ impl UnivariateCrsShape {
         placement_capacity: usize,
         free_public_len: usize,
     ) -> Result<Self, UnivariateCrsError> {
-        let product = |name, a: usize, b: usize| a.checked_mul(b).ok_or(UnivariateCrsError::CapacityOverflow { name });
-        let add = |name, a: usize, b: usize| a.checked_add(b).ok_or(UnivariateCrsError::CapacityOverflow { name });
+        let product = |name, a: usize, b: usize| {
+            a.checked_mul(b)
+                .ok_or(UnivariateCrsError::CapacityOverflow { name })
+        };
+        let add = |name, a: usize, b: usize| {
+            a.checked_add(b)
+                .ok_or(UnivariateCrsError::CapacityOverflow { name })
+        };
         let arithmetic_domain_size = product("N_A", arithmetic_width, placement_capacity)?;
         let connection_domain_size = product("N_C", wiring_width, placement_capacity)?;
         let selection_domain_size = product("N_S", subcircuit_capacity, placement_capacity)?;
-        let intersection_domain_size = greatest_common_divisor(arithmetic_domain_size, connection_domain_size);
-        let union_domain_size = add("N_union", arithmetic_domain_size, connection_domain_size)? - intersection_domain_size;
+        let intersection_domain_size =
+            greatest_common_divisor(arithmetic_domain_size, connection_domain_size);
+        let union_domain_size = add("N_union", arithmetic_domain_size, connection_domain_size)?
+            - intersection_domain_size;
         let d = add("d", arithmetic_domain_size.max(connection_domain_size), 1)?;
         let h = add("h", d, 1)?;
         let p = [
             add("2d+1", product("2d", 2, d)?, 1)?,
             add("N_S+1", selection_domain_size, 1)?,
-            add("h+s(t-1)", h, product("s(t-1)", placement_capacity, subcircuit_capacity - 1)?)?,
+            add(
+                "h+s(t-1)",
+                h,
+                product("s(t-1)", placement_capacity, subcircuit_capacity - 1)?,
+            )?,
             free_public_len - 1,
-        ].into_iter().max().unwrap();
+        ]
+        .into_iter()
+        .max()
+        .unwrap();
         let minimum_capacity = [product("2P", 2, p)?, p, p];
         let arithmetic_root = primitive_root("N_A", arithmetic_domain_size)?;
         let connection_root = primitive_root("N_C", connection_domain_size)?;
@@ -121,26 +157,46 @@ impl UnivariateCrsShape {
         let placement_root = primitive_root("s", placement_capacity)?;
         if arithmetic_root.pow(arithmetic_width) != placement_root
             || connection_root.pow(wiring_width) != placement_root
-            || selection_root.pow(subcircuit_capacity) != placement_root {
-            return Err(UnivariateCrsError::InvalidDomainRoot { name: "compatible placement roots" });
+            || selection_root.pow(subcircuit_capacity) != placement_root
+        {
+            return Err(UnivariateCrsError::InvalidDomainRoot {
+                name: "compatible placement roots",
+            });
         }
         Ok(Self {
-            subcircuit_capacity, arithmetic_domain_size, connection_domain_size, selection_domain_size,
-            intersection_domain_size, union_domain_size, minimum_capacity, declared_capacity: minimum_capacity,
-            k: p - d, h, arithmetic_root, connection_root, selection_root,
+            subcircuit_capacity,
+            arithmetic_domain_size,
+            connection_domain_size,
+            selection_domain_size,
+            intersection_domain_size,
+            union_domain_size,
+            minimum_capacity,
+            declared_capacity: minimum_capacity,
+            k: p - d,
+            h,
+            arithmetic_root,
+            connection_root,
+            selection_root,
         })
     }
 
-    pub fn with_declared_capacity(mut self, declared_capacity: [usize; 3]) -> Result<Self, UnivariateCrsError> {
+    pub fn with_declared_capacity(
+        mut self,
+        declared_capacity: [usize; 3],
+    ) -> Result<Self, UnivariateCrsError> {
         if declared_capacity != self.minimum_capacity {
             return Err(UnivariateCrsError::CommitmentDegree {
                 actual: self.minimum_capacity.into_iter().max().unwrap_or_default(),
                 available: declared_capacity.into_iter().max().unwrap_or_default(),
             });
         }
-        let d = self.arithmetic_domain_size.max(self.connection_domain_size)
-            .checked_add(1).ok_or(UnivariateCrsError::CapacityOverflow { name: "d" })?;
-        self.k = declared_capacity[2].checked_sub(d)
+        let d = self
+            .arithmetic_domain_size
+            .max(self.connection_domain_size)
+            .checked_add(1)
+            .ok_or(UnivariateCrsError::CapacityOverflow { name: "d" })?;
+        self.k = declared_capacity[2]
+            .checked_sub(d)
             .ok_or(UnivariateCrsError::CapacityOverflow { name: "K" })?;
         self.declared_capacity = declared_capacity;
         Ok(self)
@@ -159,22 +215,37 @@ impl UnivariateCrsShape {
 }
 
 fn greatest_common_divisor(mut left: usize, mut right: usize) -> usize {
-    while right != 0 { (left, right) = (right, left % right); }
+    while right != 0 {
+        (left, right) = (right, left % right);
+    }
     left
 }
 
-fn primitive_root(name: &'static str, domain_size: usize) -> Result<ScalarField, UnivariateCrsError> {
-    if domain_size == 0 { return Err(UnivariateCrsError::DomainTooSmall { name }); }
-    if domain_size == 1 { return Ok(ScalarField::one()); }
-    let domain_size_u64 = u64::try_from(domain_size).map_err(|_| UnivariateCrsError::DomainTooLarge { name })?;
+fn primitive_root(
+    name: &'static str,
+    domain_size: usize,
+) -> Result<ScalarField, UnivariateCrsError> {
+    if domain_size == 0 {
+        return Err(UnivariateCrsError::DomainTooSmall { name });
+    }
+    if domain_size == 1 {
+        return Ok(ScalarField::one());
+    }
+    let domain_size_u64 =
+        u64::try_from(domain_size).map_err(|_| UnivariateCrsError::DomainTooLarge { name })?;
     use ark_ff::{BigInteger, Field, One, PrimeField};
     let root = crate::univariate_field::canonical_root(domain_size)
         .ok_or(UnivariateCrsError::InvalidDomainRoot { name })?;
     if root.pow([domain_size_u64]) != ark_bls12_381::Fr::one()
-        || distinct_prime_factors(domain_size).iter().any(|factor| root.pow([(domain_size / factor) as u64]) == ark_bls12_381::Fr::one()) {
+        || distinct_prime_factors(domain_size)
+            .iter()
+            .any(|factor| root.pow([(domain_size / factor) as u64]) == ark_bls12_381::Fr::one())
+    {
         return Err(UnivariateCrsError::InvalidDomainRoot { name });
     }
-    Ok(ScalarField::from_bytes_le(&root.into_bigint().to_bytes_le()))
+    Ok(ScalarField::from_bytes_le(
+        &root.into_bigint().to_bytes_le(),
+    ))
 }
 
 fn distinct_prime_factors(mut value: usize) -> Vec<usize> {
@@ -183,10 +254,14 @@ fn distinct_prime_factors(mut value: usize) -> Vec<usize> {
     while divisor <= value / divisor {
         if value % divisor == 0 {
             factors.push(divisor);
-            while value % divisor == 0 { value /= divisor; }
+            while value % divisor == 0 {
+                value /= divisor;
+            }
         }
         divisor += if divisor == 2 { 1 } else { 2 };
     }
-    if value > 1 { factors.push(value); }
+    if value > 1 {
+        factors.push(value);
+    }
     factors
 }

@@ -26,29 +26,37 @@ impl StagedUnivariateCrs {
     }
 
     pub fn write_provenance(&self, provenance: &[u8]) -> io::Result<()> {
-        fs::write(self.staging_directory()?.join("crs_provenance.json"), provenance)
+        fs::write(
+            self.staging_directory()?.join("crs_provenance.json"),
+            provenance,
+        )
     }
 
     pub fn activate(mut self) -> io::Result<()> {
         let staged = self.staging_directory()?.to_path_buf();
         let former = fs::read_link(&self.active_output).ok();
-        let temporary_link = self.active_output.with_extension(format!(
-            "next-{}", std::process::id()
-        ));
+        let temporary_link = self
+            .active_output
+            .with_extension(format!("next-{}", std::process::id()));
         if temporary_link.exists() {
             fs::remove_file(&temporary_link)?;
         }
         #[cfg(unix)]
         std::os::unix::fs::symlink(&staged, &temporary_link)?;
         #[cfg(not(unix))]
-        return Err(io::Error::other("atomic CRS activation requires symlink support"));
+        return Err(io::Error::other(
+            "atomic CRS activation requires symlink support",
+        ));
         fs::rename(&temporary_link, &self.active_output)?;
         self.staging_directory = None;
         if let Some(former) = former {
             let former = if former.is_absolute() {
                 former
             } else {
-                self.active_output.parent().unwrap_or_else(|| Path::new(".")).join(former)
+                self.active_output
+                    .parent()
+                    .unwrap_or_else(|| Path::new("."))
+                    .join(former)
             };
             if former.starts_with(&self.generations_directory) && former != staged {
                 fs::remove_dir_all(former)?;
@@ -81,13 +89,17 @@ pub(crate) fn create_univariate_stage(active_output: &Path) -> io::Result<Staged
             ));
         }
     }
-    let parent = active_output.parent().filter(|path| !path.as_os_str().is_empty())
+    let parent = active_output
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
     let generations_directory = parent.join("generations");
     fs::create_dir_all(&generations_directory)?;
     static NEXT_GENERATION: AtomicU64 = AtomicU64::new(0);
     let staged = generations_directory.join(format!(
-        ".staging-{}-{}", std::process::id(), NEXT_GENERATION.fetch_add(1, Ordering::Relaxed)
+        ".staging-{}-{}",
+        std::process::id(),
+        NEXT_GENERATION.fetch_add(1, Ordering::Relaxed)
     ));
     fs::create_dir(&staged)?;
     Ok(StagedUnivariateCrs {
