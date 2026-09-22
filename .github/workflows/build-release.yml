@@ -110,6 +110,9 @@ jobs:
           circom --version
           test "$(circom --version)" = "circom compiler 2.2.3"
 
+      - name: Check canonical subcircuit-library reproducibility
+        run: npm run subcircuit-library:reproducibility:check
+
       - name: Build subcircuit library
         working-directory: packages/frontend/qap-compiler
         run: |

@@ -177,6 +177,7 @@ jobs:
       - name: Build source packages
         run: |
           test "$(circom --version)" = "circom compiler 2.2.3"
+          npm run subcircuit-library:reproducibility:check
           (cd packages/frontend/qap-compiler && npx qap-compiler --reload-constants && npx qap-compiler --build && npx qap-compiler --dist)
           npm run build --workspace @tokamak-zk-evm/synthesizer-node
           npm run build --workspace @tokamak-zk-evm/synthesizer-web
@@ -486,6 +487,10 @@ jobs:
 
       - name: Verify Circom compiler
         run: test "$(circom --version)" = "circom compiler 2.2.3"
+
+      - name: Check canonical subcircuit-library reproducibility
+        working-directory: candidate
+        run: npm run subcircuit-library:reproducibility:check
 
       - name: Build subcircuit library
         working-directory: candidate/packages/frontend/qap-compiler

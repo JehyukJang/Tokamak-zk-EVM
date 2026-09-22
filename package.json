@@ -25,6 +25,8 @@
     "version:contract:check": "node scripts/check-version-contract.mjs",
     "release:reproducibility:check": "node scripts/check-release-reproducibility.mjs",
     "release:reproducibility:test": "node scripts/test-release-reproducibility.mjs",
+    "subcircuit-library:reproducibility:check": "node scripts/check-subcircuit-library-reproducibility.mjs",
+    "subcircuit-library:reproducibility:test": "node scripts/test-subcircuit-library-reproducibility.mjs",
     "release:registry:test": "node scripts/test-release-registry.mjs",
     "release:crs:test": "python3 scripts/test-download-release-crs.py",
     "release:candidate:check": "node scripts/check-release-candidate.mjs",

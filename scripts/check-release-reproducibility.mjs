@@ -26,6 +26,7 @@ export const POLICY_SURFACES = Object.freeze([
   'packages/frontend/qap-compiler/package.json',
   'packages/frontend/qap-compiler/scripts/qap-compiler.mjs',
   'packages/frontend/qap-compiler/scripts/dist-package.mjs',
+  'scripts/check-subcircuit-library-reproducibility.mjs',
   'docs/version-rules.md',
   '.github/workflows/build-release.yml',
   '.github/workflows/publish-tokamak-zk-evm.yml',
@@ -149,6 +150,14 @@ export function collectReleaseReproducibilityFailures(
   }
   if (!buildWorkflow.includes('npm run release:reproducibility:check')) {
     fail('The pull-request source build must execute the release reproducibility check.');
+  }
+  for (const [relativePath, workflow] of [
+    ['.github/workflows/build-release.yml', buildWorkflow],
+    ['.github/workflows/publish-tokamak-zk-evm.yml', controllerWorkflow],
+  ]) {
+    if (!workflow.includes('npm run subcircuit-library:reproducibility:check')) {
+      fail(`${relativePath} must check the canonical subcircuit-library surface before building release artifacts.`);
+    }
   }
   if (!controllerWorkflow.includes('npm ci --ignore-scripts')) {
     fail('The browser production jobs must use the committed standalone npm lock with npm ci.');
