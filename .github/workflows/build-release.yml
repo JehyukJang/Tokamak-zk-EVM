@@ -3,6 +3,14 @@ name: Pre-publish Test & Build
 on:
   pull_request:
     branches: [main]
+    paths-ignore:
+      - .github/workflows/build-release.yml
+      - .github/workflows/publish-tokamak-zk-evm.yml
+      - scripts/check-release-package.mjs
+      - scripts/check-staged-release-workflow.mjs
+      - scripts/download-release-crs.py
+      - scripts/release-registry.mjs
+      - scripts/test-download-release-crs.py
 
 concurrency:
   group: pre-publish-test-build-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}

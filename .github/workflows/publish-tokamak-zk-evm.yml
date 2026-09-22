@@ -3,6 +3,16 @@ name: Main release controller
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/build-release.yml
+      - .github/workflows/publish-tokamak-zk-evm.yml
+      - scripts/check-release-package.mjs
+      - scripts/check-staged-release-workflow.mjs
+      - scripts/download-release-crs.py
+      - scripts/release-registry.mjs
+      - scripts/test-download-release-crs.py
   workflow_dispatch:
     inputs:
       operation:
@@ -48,11 +58,37 @@ jobs:
           test -n "$BEFORE"
           changed="$(git diff --name-only "$BEFORE" "$GITHUB_SHA")"
           test -n "$changed"
-          if grep -Eqv '^(\.github/workflows/publish-tokamak-zk-evm\.yml|scripts/(check-release-package|check-staged-release-workflow|download-release-crs|release-registry|test-download-release-crs)\.(mjs|py))$' <<<"$changed"; then
+          if grep -Eqv '^(\.github/workflows/(build-release|publish-tokamak-zk-evm)\.yml|scripts/(check-release-package|check-staged-release-workflow|download-release-crs|release-registry|test-download-release-crs)\.(mjs|py))$' <<<"$changed"; then
             echo "scope=complete-release" >> "$GITHUB_OUTPUT"
           else
             echo "scope=controller-maintenance" >> "$GITHUB_OUTPUT"
           fi
+
+  verify-controller-pull-request:
+    name: Verify controller maintenance pull request
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout controller change
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.20.0'
+
+      - name: Install and verify pinned npm
+        run: |
+          npm install --global npm@11.19.0
+          test "$(node --version)" = "v24.20.0"
+          test "$(npm --version)" = "11.19.0"
+
+      - name: Verify fixed controller boundaries
+        run: |
+          node scripts/check-staged-release-workflow.mjs
+          python3 scripts/test-download-release-crs.py
 
   verify-controller-maintenance:
     name: Verify path-restricted controller maintenance
