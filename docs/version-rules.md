@@ -107,9 +107,12 @@ or creates a pull request.
 
 The bootstrap operation accepts only the current `dev` head. The final-release
 operation accepts only an open `dev` to `main` pull request with the supplied
-head and base. A retry uses the same frozen head and base, rechecks every
-published identity, and publishes only missing packages. It cannot repair a
-source change or replace an immutable version.
+head, base, and approved bootstrap-candidate SHA. The controller requires that
+the bootstrap candidate is an ancestor of the final head and that their tracked
+diff contains only `packages/backend/wasm/package-lock.json`. A retry uses the
+same frozen identities, rechecks every published identity, and publishes only
+missing packages. It cannot repair a source change or replace an immutable
+version.
 
 A `main` push is verification-only. It must not publish npm packages, mutate
 Drive, create branches, or create pull requests. A release-relevant direct

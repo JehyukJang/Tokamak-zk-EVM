@@ -22,6 +22,7 @@ expectFailure(workflow.replace('npm publish --access public --ignore-scripts', '
 expectFailure(workflow.replace('test "${{ steps.foundation.outputs.should_publish }}" = false', 'true'));
 expectFailure(workflow.replace('group: tokamak-zk-evm-release-controller', 'group: another-controller'));
 expectFailure(workflow.replaceAll('git/ref/heads/main', 'git/ref/heads/development'));
+expectFailure(workflow.replace('test "$changed" = "packages/backend/wasm/package-lock.json"', 'true'));
 
 console.log('[release-controller-workflow] Authority and exact-identity boundaries passed.');
 
@@ -31,12 +32,15 @@ function checkController(value) {
     'branches: [main]',
     'group: tokamak-zk-evm-release-controller',
     'options: [bootstrap-foundation, final-release]',
+    'bootstrap_head_sha',
     'test "$GITHUB_ACTOR" = "JehyukJang"',
     'test "$GITHUB_REF" = "refs/heads/main"',
     'test "$GITHUB_SHA" = "$BASE_SHA"',
     'git/ref/heads/main',
     'repos/$GITHUB_REPOSITORY/git/ref/heads/dev',
     'repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER',
+    'git merge-base --is-ancestor "$BOOTSTRAP_HEAD_SHA" "$EXPECTED_HEAD_SHA"',
+    'test "$changed" = "packages/backend/wasm/package-lock.json"',
     'Build frozen candidate without mutation credentials',
     'Resolve public CRS with read-only Drive access',
     'TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON',

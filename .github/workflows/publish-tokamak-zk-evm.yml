@@ -37,6 +37,10 @@ on:
         description: Final dev-to-main pull request number (required only for final-release)
         required: false
         type: string
+      bootstrap_head_sha:
+        description: Approved bootstrap candidate commit SHA (required only for final-release)
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -386,6 +390,7 @@ jobs:
         env:
           BASE_SHA: ${{ inputs.base_sha }}
           EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+          BOOTSTRAP_HEAD_SHA: ${{ inputs.bootstrap_head_sha }}
           GH_TOKEN: ${{ github.token }}
           OPERATION: ${{ inputs.operation }}
           PR_NUMBER: ${{ inputs.pull_request_number }}
@@ -397,17 +402,23 @@ jobs:
           [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
 
           if [ "$OPERATION" = "bootstrap-foundation" ]; then
+            test -z "$BOOTSTRAP_HEAD_SHA"
             actual_head="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/dev" --jq '.object.sha')"
             git fetch --no-tags origin dev:refs/remotes/origin/release-bootstrap
           else
             test "$OPERATION" = "final-release"
             [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+            [[ "$BOOTSTRAP_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
             pr="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
             test "$(jq -r '.state' <<<"$pr")" = "open"
             test "$(jq -r '.base.ref' <<<"$pr")" = "main"
             test "$(jq -r '.base.sha' <<<"$pr")" = "$BASE_SHA"
             actual_head="$(jq -r '.head.sha' <<<"$pr")"
             git fetch --no-tags origin "pull/$PR_NUMBER/head:refs/remotes/origin/release-final"
+            git fetch --no-tags origin "$BOOTSTRAP_HEAD_SHA:refs/remotes/origin/release-bootstrap-candidate"
+            git merge-base --is-ancestor "$BOOTSTRAP_HEAD_SHA" "$EXPECTED_HEAD_SHA"
+            changed="$(git diff --name-only "$BOOTSTRAP_HEAD_SHA" "$EXPECTED_HEAD_SHA")"
+            test "$changed" = "packages/backend/wasm/package-lock.json"
           fi
           test "$actual_head" = "$EXPECTED_HEAD_SHA"
           package_version="$(git show "$EXPECTED_HEAD_SHA:package.json" | jq -r '.version')"
