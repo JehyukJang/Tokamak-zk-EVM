@@ -1,6 +1,6 @@
 {
   "name": "@tokamak-zk-evm/subcircuit-library",
-  "version": "2.1.5",
+  "version": "3.0.0",
   "description": "Prebuilt R1CS subcircuit library package for Tokamak zk-EVM",
   "private": true,
   "keywords": [
@@ -92,7 +92,7 @@
     "ffjavascript": "^0.2.55",
     "mocha": "^11.0.1",
     "poseidon-bls12381-circom": "^1.0.0",
-    "tokamak-l2js": "0.2.0",
+    "tokamak-l2js": "^0.2.0",
     "tsx": "^4.20.3"
   },
   "devDependencies": {

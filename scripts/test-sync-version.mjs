@@ -35,10 +35,11 @@ const fixtureFiles = new Set([
 ]);
 
 await runTest('source-only synchronization succeeds in a fresh fixture', fixtureRoot => {
+  const initialLockVersion = readJson(fixtureRoot, 'package-lock.json').version;
   run(fixtureRoot, ['scripts/sync-version.mjs', '--source-only', '3.0.0']);
   run(fixtureRoot, ['scripts/check-version-sync.mjs', '--source-only']);
   assert.equal(readJson(fixtureRoot, 'package.json').version, '3.0.0');
-  assert.equal(readJson(fixtureRoot, 'package-lock.json').version, '2.1.5');
+  assert.equal(readJson(fixtureRoot, 'package-lock.json').version, initialLockVersion);
   assert.equal(fs.existsSync(path.join(fixtureRoot, 'packages/backend/wasm/src/generated/active')), false);
 });
 
@@ -117,7 +118,7 @@ await runTest('malformed targets fail before any write', fixtureRoot => {
 
 await runTest('an injected write failure rolls back every attempted write', fixtureRoot => {
   const before = snapshot(fixtureRoot);
-  const result = runFailure(fixtureRoot, ['scripts/sync-version.mjs', '--source-only', '3.0.0'], {
+  const result = runFailure(fixtureRoot, ['scripts/sync-version.mjs', '--source-only', '3.0.1'], {
     NODE_ENV: 'test',
     TOKAMAK_ZK_EVM_SYNC_TEST_FAIL_AFTER_WRITES: '2',
   });

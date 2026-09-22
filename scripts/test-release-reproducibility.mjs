@@ -16,6 +16,7 @@ import {
 } from './check-release-reproducibility.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const currentVersion = JSON.parse(fs.readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8')).version;
 const validVersions = {
   rustcVersion: `rustc ${PINNED_RUST_VERSION} (test fixture)`,
   cargoVersion: `cargo ${PINNED_RUST_VERSION} (test fixture)`,
@@ -36,10 +37,10 @@ runTest('rejects an unsynchronized backend-interface lock entry', fixtureRoot =>
   replace(
     fixtureRoot,
     'packages/backend/Cargo.lock',
-    'name = "backend-interface"\nversion = "2.1.5"',
+    `name = "backend-interface"\nversion = "${currentVersion}"`,
     'name = "backend-interface"\nversion = "2.1.4"',
   );
-  assert.match(failures(fixtureRoot), /backend-interface@2\.1\.5/u);
+  assert.match(failures(fixtureRoot), new RegExp(`backend-interface@${currentVersion.replaceAll('.', '\\.')}`, 'u'));
 });
 
 runTest('rejects a floating Rust toolchain', fixtureRoot => {
