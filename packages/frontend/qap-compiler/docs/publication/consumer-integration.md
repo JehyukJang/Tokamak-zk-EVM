@@ -1,5 +1,7 @@
 # Consumer Integration
 
+Last updated: 2026-09-05
+
 This document explains how the Tokamak zk-EVM Subcircuit Library is consumed by the supported `main`-branch consumers.
 
 ## tokamak-cli

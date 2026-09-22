@@ -10,10 +10,12 @@ const workflow = fs.readFileSync(workflowPath, 'utf8');
 
 checkController(workflow);
 expectFailure(workflow.replace('persist-credentials: false', 'persist-credentials: true'));
-expectFailure(workflow.replace('test "$GITHUB_ACTOR" = "JehyukJang"', 'true'));
+expectFailure(workflow.replaceAll('test "$GITHUB_ACTOR" = "JehyukJang"', 'true'));
 expectFailure(workflow.replace('id-token: write', 'id-token: read'));
 expectFailure(workflow.replace('npm publish --access public --ignore-scripts', 'npm publish --access public'));
 expectFailure(workflow.replace('test "${{ steps.foundation.outputs.should_publish }}" = false', 'true'));
+expectFailure(workflow.replace('group: tokamak-zk-evm-release-controller', 'group: another-controller'));
+expectFailure(workflow.replaceAll('git/ref/heads/main', 'git/ref/heads/development'));
 
 console.log('[release-controller-workflow] Authority and exact-identity boundaries passed.');
 
@@ -21,10 +23,12 @@ function checkController(value) {
   for (const required of [
     'name: Main release controller',
     'branches: [main]',
+    'group: tokamak-zk-evm-release-controller',
     'options: [bootstrap-foundation, final-release]',
     'test "$GITHUB_ACTOR" = "JehyukJang"',
     'test "$GITHUB_REF" = "refs/heads/main"',
     'test "$GITHUB_SHA" = "$BASE_SHA"',
+    'git/ref/heads/main',
     'repos/$GITHUB_REPOSITORY/git/ref/heads/dev',
     'repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER',
     'Build frozen candidate without mutation credentials',
@@ -36,6 +40,7 @@ function checkController(value) {
     'Publish approved bootstrap foundation tarball',
     'Publish final candidate package tarballs',
     'npm publish --access public --ignore-scripts',
+    'Revalidate frozen release identity before npm publication',
     'test "${{ steps.foundation.outputs.should_publish }}" = false',
     'Permit only fixed controller maintenance or complete release verification',
   ]) {

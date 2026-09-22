@@ -26,11 +26,10 @@ const values = {
   tarball,
 };
 if (process.env.GITHUB_OUTPUT) {
-  const prefix = options.outputPrefix ? `${options.outputPrefix}_` : '';
   fs.appendFileSync(
     process.env.GITHUB_OUTPUT,
     Object.entries(values)
-      .map(([name, value]) => `${prefix}${name}=${value}`)
+      .map(([name, value]) => `${name}=${value}`)
       .join('\n') + '\n',
   );
 }
@@ -49,13 +48,9 @@ function parseOptions(argumentsList) {
   return {
     packageName: options['package-name'],
     tarballDirectory: path.resolve(options['tarball-dir']),
-    outputPrefix: options['output-prefix'] ?? '',
   };
 }
 
 function readTarballManifest(tarballPath) {
-  const packageDirectory = path.dirname(tarballPath);
-  const matching = fs.readdirSync(packageDirectory).includes(path.basename(tarballPath));
-  if (!matching) throw new Error(`Tarball disappeared before inspection: ${tarballPath}.`);
   return JSON.parse(execFileSync('tar', ['-xOf', tarballPath, 'package/package.json'], { encoding: 'utf8' }));
 }

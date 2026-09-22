@@ -41,12 +41,14 @@ class ReleaseCrsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "wrong"):
             MODULE.require_unique([entry("3.0")], "3.0", True)
 
-    def test_derives_shared_tau_filename_from_provenance(self):
+    def test_validates_shared_tau_digest_from_provenance(self):
         digest = hashlib.sha256(b"tau").hexdigest()
         provenance = json.dumps({"artifacts": {name: digest for name in MODULE.CRS_PAYLOAD_FILES | {"tau_sequence.rkyv"}}}).encode()
-        self.assertEqual(MODULE.expected_tau_name(provenance), f"{digest}.rkyv")
+        self.assertEqual(MODULE.provenance_artifact_digests(provenance)["tau_sequence.rkyv"], digest)
         with self.assertRaisesRegex(ValueError, "invalid"):
-            MODULE.expected_tau_name(json.dumps({"artifacts": {name: "bad" for name in MODULE.CRS_PAYLOAD_FILES | {"tau_sequence.rkyv"}}}).encode())
+            MODULE.provenance_artifact_digests(
+                json.dumps({"artifacts": {name: "bad" for name in MODULE.CRS_PAYLOAD_FILES | {"tau_sequence.rkyv"}}}).encode()
+            )
 
 
 if __name__ == "__main__":

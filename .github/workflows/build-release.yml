@@ -6,6 +6,18 @@ on:
     branches: [main]
     paths-ignore:
       - packages/backend/wasm/package-lock.json
+      - .github/workflows/build-release.yml
+      - .github/workflows/publish-tokamak-zk-evm.yml
+      - docs/version-rules.md
+      - scripts/check-doc-readiness.mjs
+      - scripts/check-release-package.mjs
+      - scripts/check-release-reproducibility.mjs
+      - scripts/check-staged-release-workflow.mjs
+      - scripts/download-release-crs.py
+      - scripts/release-registry.mjs
+      - scripts/test-download-release-crs.py
+      - scripts/test-release-registry.mjs
+      - packages/backend/wasm/test/checks/generate/check-final-crs-release-workflow.ts
   workflow_dispatch:
     inputs:
       pull_request_number:
