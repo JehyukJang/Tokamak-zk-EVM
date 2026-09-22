@@ -174,18 +174,19 @@ serialized input and CRS, one discarded environment-preparation run, and five
 fresh first-proof samples. The table reports the arithmetic mean; every
 retained proof was accepted by the matching verifier.
 
-| Execution path | `origin/dev` | Current candidate | Absolute decrease | Decrease | Speedup | Evidence |
+| Execution path | `40a70fa06f31f50f8b3436cfc8c2487a1a21d827` | `186b78cdae70969c7f8d75175d1e3435481958b1` | Absolute decrease | Decrease | Speedup | Evidence |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | Native Rust, CPU, Cargo release profile | 11.180 s | 3.598 s | 7.582 s | 67.8% | 3.11x | [Current report](./packages/backend/docs/optimization/current-univariate-crs.md#pr-8-cross-release-remeasurement--2026-09-21) |
 
-The native comparison used the Cargo release profile. The browser comparison
-used one fixed browser harness and bundle configuration in Chromium
-149.0.7827.55. Browser source-versus-`dist` packaging and minification are not
-separate proving-performance modes because they do not change the measured
-proof-generation implementation or timing boundary. The candidate used the
-packaged local circuit snapshot and matching development CRS because the final
-operator-controlled `3.0` CRS does not exist before the release checkpoint; it
-is performance evidence, not a release-eligibility claim.
+The native comparison used the Cargo release profile. A browser WASM row is
+intentionally absent: the retained browser observations concern a different,
+pre-normalized protocol revision and do not establish this current-protocol
+comparison. It will be added only with a fixed release-optimized browser
+harness, the two exact revisions, compatible inputs and CRS, and retained raw
+samples. The candidate used the packaged local circuit snapshot and matching
+development CRS because the final operator-controlled `3.0` CRS does not exist
+before the release checkpoint; it is performance evidence, not a
+release-eligibility claim.
 
 The measurements compare complete compatible input and CRS sets. They do not
 assign every saved second to one structural change.

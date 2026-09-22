@@ -31,9 +31,9 @@ current status below supersedes their then-pending migration descriptions.
 
 ## PR #8 cross-release remeasurement — 2026-09-21
 
-This is the authoritative PR-facing comparison between remote `origin/dev`
-at `40a70fa06f31f50f8b3436cfc8c2487a1a21d827` and the current
-`feat/new-snark` revision at `186b78cdae70969c7f8d75175d1e3435481958b1`.
+This is the authoritative native PR-facing comparison between
+`40a70fa06f31f50f8b3436cfc8c2487a1a21d827` and
+`186b78cdae70969c7f8d75175d1e3435481958b1`.
 It replaces earlier PR-facing figures that came from different intermediate
 revisions or fixtures. It is a CPU-only release-build measurement on an Apple
 M4 Pro (14 logical CPUs, 48 GiB memory), with ICICLE available but falling
@@ -54,6 +54,12 @@ background activity was not controlled.
 | Native prove, mean of five | 11.180 s | 3.598 s | 3.11x faster |
 | Native prove, standard deviation | 0.051 s | 0.019 s | — |
 | Emitted native proof artifact | `proof.json`, 4,768 B | `univariate_proof.bin`, 1,184 B | 75.17% smaller |
+
+No browser cross-release timing is reported in this table. The retained
+browser release comparison covers a pre-normalized protocol and does not
+establish a timing comparison between these revisions. A current-protocol row
+requires a fixed release-optimized browser bundle and harness, compatible CRS
+and inputs for both exact revisions, and retained raw samples.
 
 The proof-size row compares the actual emitted interfaces, not only abstract
 proof elements: the baseline writes JSON while the new protocol writes the
