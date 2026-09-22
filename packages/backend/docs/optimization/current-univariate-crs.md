@@ -29,15 +29,26 @@ a documentation/evidence audit, not a new benchmark of that revision. Earlier
 sections retain their experiment-time controls and validation scope; the
 current status below supersedes their then-pending migration descriptions.
 
-## PR #8 cross-release remeasurement — 2026-09-21
+## Release-line comparison status
 
-This is the authoritative native PR-facing comparison between
-`40a70fa06f31f50f8b3436cfc8c2487a1a21d827` and
-`186b78cdae70969c7f8d75175d1e3435481958b1`.
-It replaces earlier PR-facing figures that came from different intermediate
-revisions or fixtures. It is a CPU-only release-build measurement on an Apple
-M4 Pro (14 logical CPUs, 48 GiB memory), with ICICLE available but falling
-back to CPU. Digest checking was disabled in both normal prover paths.
+The previous native timing experiment compared development branches rather
+than the published 2.1.5 release. It is retained below only as dated
+engineering history and is not release-line evidence. Do not use its values in
+release notes or for a 2.1.5 claim.
+
+The exact 2.1.5 source and published CLI do not retain an immutable Cargo lock
+or release binary. An unlocked rebuild would not identify the released native
+dependency graph, so no native cross-release timing is published until a
+future release preserves both artifacts.
+
+The auditable current release-line comparison is browser WASM:
+`transferNotes1To2` averaged 126.717 s for published 2.1.5 and 18.812 s for
+the current candidate, a 107.905 s (85.2%) decrease or 6.74x speedup. Its raw
+samples, package integrity, input and CRS digests, verifier acceptance, method,
+and limits are recorded in the
+[browser release-comparison evidence](../../wasm/docs/optimization/evidence/3.0.0-browser-release-comparison.json).
+
+### Historical development-only experiment
 
 For each revision, the same `tokamak-ch-tx` example inputs were synthesized
 by that revision, producing 207 placement instances. A fresh fixed-tau
@@ -55,11 +66,8 @@ background activity was not controlled.
 | Native prove, standard deviation | 0.051 s | 0.019 s | — |
 | Emitted native proof artifact | `proof.json`, 4,768 B | `univariate_proof.bin`, 1,184 B | 75.17% smaller |
 
-No browser cross-release timing is reported in this table. The retained
-browser release comparison covers a pre-normalized protocol and does not
-establish a timing comparison between these revisions. A current-protocol row
-requires a fixed release-optimized browser bundle and harness, compatible CRS
-and inputs for both exact revisions, and retained raw samples.
+This historical table has no release-line browser counterpart. The audited
+browser comparison is the release-line evidence named above.
 
 The proof-size row compares the actual emitted interfaces, not only abstract
 proof elements: the baseline writes JSON while the new protocol writes the
@@ -68,12 +76,13 @@ comparison. The new CRS deliberately contains separately addressed tau,
 prover, preprocess, and verifier key files, so its payload size is not
 expected to track the former combined sigma layout one-for-one.
 
-The new prover's mean instrumented total is 3.598 s. Its nested stage means
+The new prover's historical mean instrumented total is 3.598 s. Its nested stage means
 are 0.198 s for CRS loading, 0.101 s for fixture loading, 0.214 s for map
 preparation, 0.521 s for selection work, 0.147 s for the copy relation, and
 0.753 s for openings. These nested intervals must not be summed. The complete
 commands, raw samples, artifact sizes, revisions, and interpretation limits
-are recorded in the [cross-release evidence](evidence/pr-8-cross-release-remeasurement.json).
+were recorded for the development experiment. They are not retained as
+release-comparison evidence.
 
 ## Normalized public-and-bus wiring qualification — 2026-09-20
 

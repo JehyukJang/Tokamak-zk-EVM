@@ -14,26 +14,33 @@ This report separates three kinds of evidence:
 
 `total wall` is end-to-end proving elapsed time. Lower is better. Component timings are diagnostic only and must be compared only when their timing boundaries match.
 
-## 3.0 Release Candidate Comparison
+## Release Comparison Status
 
-The controlled release comparison uses the private-state dapp's
-`transferNotes1To2` operation. The operation transfers one private note into
-two output notes. Each incompatible release line used the transaction and
-state snapshot committed with that release, its generated circuit library, and
-its matching CRS.
+No native 2.1.5-to-current timing is published in this report. The exact
+2.1.5 source and its published CLI retain neither an immutable backend Cargo
+lock nor a release binary. An unlocked rebuild would not identify the released
+native dependency graph, and a comparison against a non-release branch is not
+a substitute.
+
+The native values below are retained only as a historical development
+experiment. They are not a 2.1.5 release comparison and must not be cited as
+one. The audited release-line comparison is the browser-WASM
+`transferNotes1To2` measurement in the
+[current-protocol report](../../../../docs/optimization/current-univariate-crs.md#release-line-comparison-status).
 
 | release line | release-profile proof samples | arithmetic mean |
 | --- | --- | ---: |
 | `2.1.5` (`7b9495379`) | 38.028825 s, 37.977969 s, 37.884700 s, 38.268852 s, 37.840041 s | **38.000077 s** |
 | `3.0.0` candidate (`f8cd7f78c`) | 11.042374 s, 11.089024 s, 10.995898 s, 11.060470 s, 11.104894 s | **11.058532 s** |
 
-The observed decrease is **26.941545 s (70.9%)**, or a **3.44x** speedup.
+The historical development experiment observed a **26.941545 s (70.9%)**
+decrease, or a **3.44x** speedup.
 One complete run per release line was discarded before the five retained
 first-proof samples. No retained outlier was removed. Every retained run wrote
 a proof after the timed boundary, and the matching release verifier accepted
 that proof.
 
-### Component evidence
+### Historical development component detail
 
 | compatible timing boundary | `2.1.5` mean | `3.0.0` candidate mean | decrease |
 | --- | ---: | ---: | ---: |
@@ -50,7 +57,7 @@ from 728 to 396 (-45.6%). `s_max` remained 256. The same logical operation used
 region increased from 21,767 to 22,659 wires (+4.1%), so the report does not
 attribute every saved second to a uniformly smaller artifact.
 
-### Reproduction identity and limits
+### Historical development identity and limits
 
 - Host: MacBook Pro, Apple M4 Pro, 14 CPU cores, 48 GB memory, macOS 26.5.2
   (build 25F84). Both lines used the ICICLE CPU fallback.
@@ -72,9 +79,8 @@ attribute every saved second to a uniformly smaller artifact.
   The candidate CRS has the correct circuit shape but is not a final
   release-eligible `3.0` ceremony artifact.
 - The representative current single-run record is
-  [`timing.local.cpu.current.json`](../timing.local.cpu.current.json). All ten
-  retained raw reports are in
-  [`evidence/3.0.0-release-comparison`](../evidence/3.0.0-release-comparison/).
+  [`timing.local.cpu.current.json`](../timing.local.cpu.current.json). These
+  historical development samples are not release evidence.
 
 These are observations for one host and logical operation. They are not a
 portable performance guarantee, and they do not isolate other implementation

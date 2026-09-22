@@ -167,34 +167,37 @@ synchronized TokamakL2JS specification. The former Merkle depth of 36
 and EVM exponentiation batch of 32 were removed rather than replaced by new
 capacity parameters.
 
-### Historical Proof Generation Comparison
+### Proof Generation Comparison
 
-The following measurements use the private-state dapp's `transferNotes1To2`
-operation on one Apple M4 Pro host. Each release line used its compatible
-serialized input and CRS, one discarded environment-preparation run, and five
-fresh first-proof samples. The table reports the arithmetic mean; every
-retained proof was accepted by the matching verifier.
+The private-state dapp's `transferNotes1To2` operation was used for the
+release-line browser comparison. It transfers one private note into two output
+notes. Timers cover `prove` only: installation, preprocessing, verification,
+loading, and browser startup are excluded. Each reported browser proof was
+accepted by its matching browser verifier; every current-candidate proof was
+also accepted by the native release verifier.
 
-| Execution path | `40a70fa06f31f50f8b3436cfc8c2487a1a21d827` | `186b78cdae70969c7f8d75175d1e3435481958b1` | Absolute decrease | Decrease | Speedup | Evidence |
-| --- | ---: | ---: | ---: | ---: | ---: | --- |
-| Native Rust, CPU, Cargo release profile | 11.180 s | 3.598 s | 7.582 s | 67.8% | 3.11x | [Current report](./packages/backend/docs/optimization/current-univariate-crs.md#pr-8-cross-release-remeasurement--2026-09-21) |
+| Execution path | Published `2.1.5` | Current 3.0 candidate | Absolute decrease | Decrease | Speedup |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Browser WASM, minified ES2022 bundle | 126.717 s | 18.812 s | 107.905 s | 85.2% | 6.74x |
+| Native Rust, Cargo release profile | No verified 2.1.5 baseline | Not reported | — | — | — |
 
-The native comparison used the Cargo release profile. A browser WASM row is
-intentionally absent: the retained browser observations concern a different,
-pre-normalized protocol revision and do not establish this current-protocol
-comparison. It will be added only with a fixed release-optimized browser
-harness, the two exact revisions, compatible inputs and CRS, and retained raw
-samples. The candidate used the packaged local circuit snapshot and matching
-development CRS because the final operator-controlled `3.0` CRS does not exist
-before the release checkpoint; it is performance evidence, not a
-release-eligibility claim.
+The browser rows are five-sample means on an Apple M4 Pro with Node 24.20.0,
+npm 11.19.0, and Chromium 149.0.7827.55. The 2.1.5 row uses the immutable
+published `@tokamak-zk-evm/snark-browser-compat@2.1.5` package. The current
+candidate uses the same workload with its matching local development inputs
+and CRS; it is performance evidence, not release-admission evidence.
 
-The measurements compare complete compatible input and CRS sets. They do not
-assign every saved second to one structural change.
+A quantitative Rust comparison is intentionally omitted. Neither the exact
+2.1.5 source revision nor its published CLI preserves an immutable Cargo lock
+or release binary, so an unlocked rebuild would not identify the released
+native dependency graph. The former comparison against a non-release branch
+has been removed rather than presented as a 2.1.5 baseline.
 
-These are reference observations from one machine and workload, not portable
-performance guarantees. The linked reports retain the exact samples, build
-and toolchain identities, circuit and CRS identities, method, and limitations.
+The observed browser improvement is consistent with the documented reductions
+in circuit size and interface boundaries. It does not assign every saved second
+to an individual implementation change. Full samples, package identity,
+input/CRS identities, method, and limitations are in the
+[browser release-comparison evidence](./packages/backend/wasm/docs/optimization/evidence/3.0.0-browser-release-comparison.json).
 
 ### Subcircuit Library
 

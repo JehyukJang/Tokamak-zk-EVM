@@ -21,54 +21,36 @@ measurements, implementation boundaries, and acceptance results. When a
 historical section conflicts with the current-state summary in this section,
 the current-state summary governs.
 
-## Historical Pre-Normalized Release Candidate Comparison
+## Current Release-Line Browser Comparison
 
-The controlled comparison uses the private-state dapp's `transferNotes1To2`
-operation: one private input note is transferred into two output notes. Each
-release line used its compatible committed state and transaction snapshot,
-generated circuit library, native proof artifacts, and matching CRS.
+The audited comparison uses the private-state dapp's `transferNotes1To2`
+operation: one private note is transferred into two output notes.
 
-| release line | Chromium first-proof samples | arithmetic mean |
-| --- | --- | ---: |
-| `2.1.5` (`7b9495379`) | 123.808 s, 123.963 s, 127.097 s, 125.564 s, 124.846 s | **125.056 s** |
-| `3.0.0` candidate (`f8cd7f78c`) | 30.786 s, 30.705 s, 30.701 s, 31.041 s, 31.144 s | **30.875 s** |
+| release line | five-sample proof mean | sample standard deviation |
+| --- | ---: | ---: |
+| Published `@tokamak-zk-evm/snark-browser-compat@2.1.5` | 126.717 s | 0.376 s |
+| Current candidate source | 18.812 s | 0.543 s |
 
-The observed decrease is **94.180 s (75.3%)**, or a **4.05x** speedup. Every
-run generated a 2,328-byte proof that the same Chromium session accepted with
-the matching verifier. One complete run per release line was discarded before
-the five retained fresh-browser samples, and no retained outlier was removed.
+The observed decrease is **107.905 s (85.2%)**, or a **6.74x** speedup. Every
+proof was accepted by its matching browser verifier; every current-candidate
+proof was also accepted by the native release verifier.
 
-The comparison ran on a MacBook Pro with Apple M4 Pro, 14 CPU cores, 48 GB
-memory, and macOS 26.5.2 (build 25F84). Both lines used Node 24.20.0, npm
-11.19.0, Chromium 149.0.7827.55, public `dist` entrypoints, and the same
-esbuild-minimized browser bundle configuration. The rkyv decoder WASM was
-compiled with Cargo `--release`. These details identify the recorded run;
-source-versus-`dist` packaging and minification are not distinct
-proving-performance modes because the proof timer excludes loading and
-installation and the same proving implementation runs in either packaging.
+The comparison ran on an Apple M4 Pro host with 14 CPU cores, 48 GB memory,
+and macOS 26.5.2 (build 25F84). Both sides use Node 24.20.0, npm 11.19.0,
+Chromium 149.0.7827.55, and an esbuild-minified ES2022 bundle. The immutable
+baseline imports the published package; the unpublished candidate bundles the
+current source. This distinction does not add load or installation time to the
+proof timer, but it is retained as an experiment limitation.
 
-The baseline used the `2.1.5` package build. Its checked-in package lock named
-subcircuit-library 2.1.5 but resolved 2.1.3, so the isolated reproduction
-refreshed that one inconsistent snapshot to the immutable 2.1.5 package; the
-resulting lock SHA-256 was
-`c77a840818a817ea62eea95e580fdcc9eb76f901cf3f9bbfad5ec740c094349f`.
-The candidate used the packaged local circuit output as an `npmSnapshot`
-production-origin input. Because the final operator-controlled `3.0` CRS does
-not yet exist, verifier data was generated from the matching development CRS.
-This preserves the measured circuit shape and proving implementation but does
-not make the candidate a release-eligible production artifact.
+The candidate uses matching local development inputs and CRS because a final
+operator-controlled 3.0 CRS does not yet exist. It establishes the current
+circuit shape and proving path, but is not release-admission evidence.
 
-The recorded structural explanation was the 75.0% reduction in both the
-`n x s_max` constraint grid and the `m_I x s_max` interface grid, together
-with the 70.6% reduction in `l_D` and 45.6% reduction in the public boundary.
-The operation used 234 placements under `2.1.5` and 207 under the candidate.
-Other implementation differences and host variation remain in this
-release-level observation, so the result is not an exclusive attribution.
-
-All ten retained machine-readable samples are in
-[`evidence/3.0.0-release-comparison`](./evidence/3.0.0-release-comparison/).
-These measurements are a reference for one host and workload, not a portable
-performance guarantee.
+The release-level interpretation is limited to the documented reductions in
+circuit size and interface boundaries. Other implementation differences and
+host variation remain in the observation, so it does not attribute every saved
+second to one change. The complete machine-readable samples and limits are in
+[`evidence/3.0.0-browser-release-comparison.json`](./evidence/3.0.0-browser-release-comparison.json).
 
 ## Historical 2.1.5 Production Snapshot
 
