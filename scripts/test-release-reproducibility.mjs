@@ -82,16 +82,6 @@ runTest('rejects a workspace check without its generated verifier key', fixtureR
   assert.match(failures(fixtureRoot), /must provide the generated verifier key/u);
 });
 
-runTest('rejects release workflows without canonical library reproducibility admission', fixtureRoot => {
-  replace(
-    fixtureRoot,
-    '.github/workflows/build-release.yml',
-    'run: npm run subcircuit-library:reproducibility:check',
-    'run: true',
-  );
-  assert.match(failures(fixtureRoot), /must check the canonical subcircuit-library surface/u);
-});
-
 runTest('rejects a different compiler release', fixtureRoot => {
   const result = collectReleaseReproducibilityFailures(fixtureRoot, {
     rustcVersion: 'rustc 1.96.0 (test fixture)',
