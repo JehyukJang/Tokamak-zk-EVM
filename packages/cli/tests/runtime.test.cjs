@@ -4,6 +4,8 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const releaseVersion = require('../package.json').version;
+const releaseCompatibility = releaseVersion.split('.').slice(0, 2).join('.');
 
 const { installRuntime } = require('../dist/runtime.js');
 const { assertInstalledRuntimeMatchesContext, parseInstalledRuntimeState } = require('../dist/runtime/context.js');
@@ -52,9 +54,9 @@ function dockerRuntimeState() {
   };
 }
 
-function runtimeIdentity(packageVersion = '2.1.5') {
+function runtimeIdentity(packageVersion = '2.1.5', compatibleBackendVersion = '2.1') {
   return ['preprocess', 'prove', 'verify'].map(packageName => ({
-    compatibleBackendVersion: '2.1',
+    compatibleBackendVersion,
     dependencies: {
       subcircuitLibrary: {
         buildVersion: packageVersion,
@@ -715,7 +717,7 @@ test('writes only Docker bootstrap state and removes the legacy launcher', async
   try {
     await fs.mkdir(fakeBin);
     const dockerPath = path.join(fakeBin, 'docker');
-    const nestedIdentity = JSON.stringify(runtimeIdentity());
+    const nestedIdentity = JSON.stringify(runtimeIdentity(releaseVersion, releaseCompatibility));
     await fs.writeFile(
       dockerPath,
       `#!/usr/bin/env node
