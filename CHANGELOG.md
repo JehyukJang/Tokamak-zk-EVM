@@ -75,6 +75,7 @@ The format is based on Keep a Changelog.
 - Development builds consume local circuit output, while production builds
   consume the synchronized published library. Optimization settings do not
   change the selected artifact origin.
+- Release and maintainer-side subcircuit-library builds require Circom `2.2.3`.
 - Production CRS artifacts require canonical provenance and matching artifact
   hashes. Runtime and CRS updates are staged before activation so a failed
   update preserves the previous working generation.

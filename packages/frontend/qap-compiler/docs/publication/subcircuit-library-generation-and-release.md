@@ -34,8 +34,9 @@ The maintainer-side flow is:
    the `latest` release line; the reload command is the explicit maintainer action
    that synchronizes generated constants to the then-current npm release.
 2. Build the generated subcircuit library into `subcircuits/library`. The build
-   invokes Circom with explicit O2 optimization; compiler-default, O0, and O1
-   artifacts are not valid library outputs or constraint-measurement baselines.
+   requires Circom `2.2.3` and invokes it with explicit O2 optimization;
+   compiler-default, O0, and O1 artifacts are not valid library outputs or
+   constraint-measurement baselines.
 3. Assemble the publishable `dist` package from the generated library, synced constants, package metadata, and the consumer-facing README.
 4. Publish `dist` to npm.
 

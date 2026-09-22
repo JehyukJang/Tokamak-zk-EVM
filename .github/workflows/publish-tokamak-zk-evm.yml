@@ -141,7 +141,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     env:
-      QAP_COMPILER_EXPECTED_CIRCOM_VERSION: '2.2.2'
+      QAP_COMPILER_EXPECTED_CIRCOM_VERSION: '2.2.3'
     steps:
       - name: Checkout merged source
         uses: actions/checkout@v4
@@ -172,11 +172,11 @@ jobs:
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Install Circom compiler
-        run: cargo install --locked --git https://github.com/iden3/circom --tag v2.2.2 circom
+        run: cargo install --locked --git https://github.com/iden3/circom --tag v2.2.3 circom
 
       - name: Build source packages
         run: |
-          test "$(circom --version)" = "circom compiler 2.2.2"
+          test "$(circom --version)" = "circom compiler 2.2.3"
           (cd packages/frontend/qap-compiler && npx qap-compiler --reload-constants && npx qap-compiler --build && npx qap-compiler --dist)
           npm run build --workspace @tokamak-zk-evm/synthesizer-node
           npm run build --workspace @tokamak-zk-evm/synthesizer-web
@@ -431,7 +431,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     env:
-      QAP_COMPILER_EXPECTED_CIRCOM_VERSION: '2.2.2'
+      QAP_COMPILER_EXPECTED_CIRCOM_VERSION: '2.2.3'
     steps:
       - name: Checkout fixed controller
         uses: actions/checkout@v4
@@ -482,10 +482,10 @@ jobs:
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Install Circom compiler
-        run: cargo install --locked --git https://github.com/iden3/circom --tag v2.2.2 circom
+        run: cargo install --locked --git https://github.com/iden3/circom --tag v2.2.3 circom
 
       - name: Verify Circom compiler
-        run: test "$(circom --version)" = "circom compiler 2.2.2"
+        run: test "$(circom --version)" = "circom compiler 2.2.3"
 
       - name: Build subcircuit library
         working-directory: candidate/packages/frontend/qap-compiler

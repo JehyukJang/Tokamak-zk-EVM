@@ -15,7 +15,7 @@ const rootPackageJsonPath = path.resolve(packageRoot, 'package.json');
 const readmePath = path.resolve(packageRoot, 'README.md');
 const libraryDir = path.resolve(packageRoot, 'subcircuits/library');
 const constantsPath = path.resolve(packageRoot, 'subcircuits/circom/constants.circom');
-const expectedCircomVersion = process.env.QAP_COMPILER_EXPECTED_CIRCOM_VERSION ?? null;
+const expectedCircomVersion = '2.2.3';
 
 const resolvePackageJsonPath = packageName => {
   let currentPath = path.dirname(require.resolve(packageName, { paths: [packageRoot] }));

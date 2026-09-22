@@ -91,8 +91,8 @@ const setupParamsPath = require.resolve('@tokamak-zk-evm/subcircuit-library/subc
 ## Compatibility
 
 - Consumer artifacts are platform-neutral.
-- Maintainer-side regeneration requires Node.js 18+, Circom, and the validation
-  process in [the maintainer documentation](./docs/README.md).
+- Maintainer-side regeneration requires Node.js 18+, Circom `2.2.3`, and the
+  validation process in [the maintainer documentation](./docs/README.md).
 - The package is versioned with the other supported Tokamak zk-EVM packages.
 
 ## npm publication

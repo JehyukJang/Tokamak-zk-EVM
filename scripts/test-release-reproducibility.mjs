@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   collectReleaseReproducibilityFailures,
+  PINNED_CIRCOM_VERSION,
   PINNED_NODE_VERSION,
   PINNED_NPM_VERSION,
   PINNED_RUST_VERSION,
@@ -49,6 +50,16 @@ runTest('rejects a floating Rust toolchain', fixtureRoot => {
 runTest('rejects an npm install that bypasses the committed lock', fixtureRoot => {
   replace(fixtureRoot, '.github/workflows/build-release.yml', 'run: npm ci', 'run: npm install --package-lock=false');
   assert.match(failures(fixtureRoot), /must not bypass committed npm locks/u);
+});
+
+runTest('rejects a different Circom release', fixtureRoot => {
+  replace(
+    fixtureRoot,
+    '.github/workflows/build-release.yml',
+    `QAP_COMPILER_EXPECTED_CIRCOM_VERSION: '${PINNED_CIRCOM_VERSION}'`,
+    "QAP_COMPILER_EXPECTED_CIRCOM_VERSION: '2.2.2'",
+  );
+  assert.match(failures(fixtureRoot), new RegExp(`must require Circom ${PINNED_CIRCOM_VERSION.replaceAll('.', '\\.')}`, 'u'));
 });
 
 runTest('rejects an unlocked Cargo build', fixtureRoot => {

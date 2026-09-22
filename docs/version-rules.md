@@ -125,7 +125,7 @@ package and CRS admission checks.
 - The CLI must fail before runtime work when synchronized `3.0.0` packages are
   mixed with `2.x.y` packages.
 - Release checks use Node.js `24.20.0`, npm `11.19.0`, Rust `1.95.0`, Circom
-  `2.2.2`, and committed locks.
+  `2.2.3`, and committed locks.
 - Only a verified npm `E404` establishes that an exact version is absent.
   Authentication, authorization, malformed metadata, network errors, or an
   existing non-identical tarball stop admission.

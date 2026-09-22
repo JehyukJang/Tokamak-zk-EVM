@@ -9,6 +9,7 @@ import { BACKEND_WORKSPACE_PACKAGE_NAMES } from './version-targets.mjs';
 export const PINNED_RUST_VERSION = '1.95.0';
 export const PINNED_NODE_VERSION = '24.20.0';
 export const PINNED_NPM_VERSION = '11.19.0';
+export const PINNED_CIRCOM_VERSION = '2.2.3';
 export const REQUIRED_LOCKFILES = Object.freeze([
   'package-lock.json',
   'packages/frontend/qap-compiler/package-lock.json',
@@ -23,6 +24,9 @@ export const POLICY_SURFACES = Object.freeze([
   'rust-toolchain.toml',
   'package.json',
   'packages/frontend/qap-compiler/package.json',
+  'packages/frontend/qap-compiler/scripts/qap-compiler.mjs',
+  'packages/frontend/qap-compiler/scripts/dist-package.mjs',
+  'docs/version-rules.md',
   '.github/workflows/build-release.yml',
   '.github/workflows/publish-tokamak-zk-evm.yml',
   'packages/backend/.vscode/launch.json',
@@ -115,6 +119,18 @@ export function collectReleaseReproducibilityFailures(
     if (workflow.includes('npm install --package-lock=false')) {
       fail(`${relativePath} must not bypass committed npm locks.`);
     }
+    const circomPins = [
+      ...workflow.matchAll(/QAP_COMPILER_EXPECTED_CIRCOM_VERSION:\s*['"]?([^'"\s]+)/gu),
+    ];
+    if (circomPins.length === 0 || circomPins.some(match => match[1] !== PINNED_CIRCOM_VERSION)) {
+      fail(`${relativePath} must require Circom ${PINNED_CIRCOM_VERSION}.`);
+    }
+    if (!workflow.includes(`--tag v${PINNED_CIRCOM_VERSION} circom`)) {
+      fail(`${relativePath} must install Circom ${PINNED_CIRCOM_VERSION}.`);
+    }
+    if (!workflow.includes(`circom compiler ${PINNED_CIRCOM_VERSION}`)) {
+      fail(`${relativePath} must verify Circom ${PINNED_CIRCOM_VERSION}.`);
+    }
     for (const line of workflow.split('\n')) {
       if (/\bcargo\s+(?:build|check|run|test|bench|install)\b/u.test(line) && !line.includes('--locked')) {
         fail(`${relativePath} contains an unlocked Cargo command: ${line.trim()}`);
@@ -174,6 +190,21 @@ export function collectReleaseReproducibilityFailures(
     'packages/frontend/qap-compiler/package.json',
     '"publish": "npm ci --workspaces=false',
     'the subcircuit-library release script must use its committed lock',
+  );
+  for (const relativePath of [
+    'packages/frontend/qap-compiler/scripts/qap-compiler.mjs',
+    'packages/frontend/qap-compiler/scripts/dist-package.mjs',
+  ]) {
+    requireFragment(
+      relativePath,
+      `const expectedCircomVersion = '${PINNED_CIRCOM_VERSION}';`,
+      `the local subcircuit-library build must require Circom ${PINNED_CIRCOM_VERSION}`,
+    );
+  }
+  requireFragment(
+    'docs/version-rules.md',
+    `Circom\n  \`${PINNED_CIRCOM_VERSION}\`, and committed locks.`,
+    `the release policy must record Circom ${PINNED_CIRCOM_VERSION}`,
   );
   return failures;
 

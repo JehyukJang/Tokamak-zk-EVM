@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     env:
-      QAP_COMPILER_EXPECTED_CIRCOM_VERSION: '2.2.2'
+      QAP_COMPILER_EXPECTED_CIRCOM_VERSION: '2.2.3'
 
     steps:
       - name: Checkout code
@@ -103,12 +103,12 @@ jobs:
         run: npm run release:reproducibility:check
 
       - name: Install Circom compiler
-        run: cargo install --locked --git https://github.com/iden3/circom --tag v2.2.2 circom
+        run: cargo install --locked --git https://github.com/iden3/circom --tag v2.2.3 circom
 
       - name: Verify Circom compiler
         run: |
           circom --version
-          test "$(circom --version)" = "circom compiler 2.2.2"
+          test "$(circom --version)" = "circom compiler 2.2.3"
 
       - name: Build subcircuit library
         working-directory: packages/frontend/qap-compiler
