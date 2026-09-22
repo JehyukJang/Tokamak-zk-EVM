@@ -6,7 +6,6 @@ import argparse
 import hashlib
 import io
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -58,10 +57,6 @@ def provenance_artifact_digests(provenance_bytes: bytes) -> dict[str, str]:
     if invalid:
         raise ValueError(f"CRS provenance has invalid SHA-256 digests: {invalid}")
     return digests
-
-
-def expected_tau_name(provenance_bytes: bytes) -> str:
-    return f"{provenance_artifact_digests(provenance_bytes)[TAU_PROVENANCE_KEY]}.rkyv"
 
 
 def validate_version_entries(entries: list[dict]) -> None:
@@ -160,18 +155,10 @@ def service_account_drive(credential_path: str):
     return build("drive", "v3", credentials=credentials, cache_discovery=False)
 
 
-def write_outputs(found: bool) -> None:
-    output_path = os.environ.get("GITHUB_OUTPUT")
-    if output_path:
-        with open(output_path, "a", encoding="utf-8") as output:
-            output.write(f"found={'true' if found else 'false'}\n")
-
-
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", required=True)
     parser.add_argument("--output", required=True, type=Path)
-    parser.add_argument("--allow-missing", action="store_true")
     args = parser.parse_args()
     folder_id = os.environ.get("TOKAMAK_MPC_DRIVE_FOLDER_ID", "").strip()
     credential_path = os.environ.get("TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON_PATH", "").strip()
@@ -179,12 +166,7 @@ def main() -> int:
         raise ValueError("Drive folder configuration and service-account credential path are required")
     found = resolve_drive_layout(service_account_drive(credential_path), args.version, folder_id, args.output)
     if not found:
-        if not args.allow_missing:
-            raise ValueError(f"No canonical CRS directory exists for compatibility {compatible_version(args.version)}")
-        write_outputs(False)
-        print(json.dumps({"found": False, "compatibility": compatible_version(args.version)}))
-        return 0
-    write_outputs(True)
+        raise ValueError(f"No canonical CRS directory exists for compatibility {compatible_version(args.version)}")
     print(json.dumps({"found": True, "compatibility": compatible_version(args.version)}))
     return 0
 
