@@ -67,13 +67,14 @@ function main({ outputDir, compilerOutputPath }) {
       realWireCount: subcircuit.NrealWires,
       wiringCount: subcircuit.Wiring_idx[1],
     }
-    normalizeR1csFile(
+    const canonicalR1cs = normalizeR1csFile(
       path.join(outputDir, `r1cs/subcircuit${subcircuit.id}.r1cs`),
       layout,
     )
     normalizeConstraintJsonFile(
       path.join(outputDir, `json/subcircuit${subcircuit.id}.json`),
       layout,
+      canonicalR1cs,
     )
   }
   writeLibraryArtifacts(outputDir, {
