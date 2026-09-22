@@ -11,6 +11,7 @@ on:
       - scripts/download-release-crs.py
       - scripts/release-registry.mjs
       - scripts/test-download-release-crs.py
+      - scripts/test-release-registry.mjs
 
 concurrency:
   group: pre-publish-test-build-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
