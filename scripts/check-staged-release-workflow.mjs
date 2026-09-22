@@ -8,6 +8,12 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 const workflowPath = path.join(repositoryRoot, '.github/workflows/publish-tokamak-zk-evm.yml');
 const workflow = fs.readFileSync(workflowPath, 'utf8');
 
+for (const legacyPath of ['scripts/classify-release.mjs', 'scripts/release-state.mjs', 'scripts/test-release-state.mjs']) {
+  if (fs.existsSync(path.join(repositoryRoot, legacyPath))) {
+    throw new Error(`Release controller must not retain legacy staged-release route ${legacyPath}.`);
+  }
+}
+
 checkController(workflow);
 expectFailure(workflow.replace('persist-credentials: false', 'persist-credentials: true'));
 expectFailure(workflow.replaceAll('test "$GITHUB_ACTOR" = "JehyukJang"', 'true'));
