@@ -67,6 +67,8 @@ converter's optional self-digest validator or provenance policy.
 
 ### `src/generated`
 
+- ignored contract projections generated from backend-owned contract sources;
+  `npm run contracts:prepare` refreshes these files;
 - shared setup parameters and native/backend dependency versions. The ignored
   `active` child is generated from the explicitly selected input origin.
 
@@ -142,11 +144,13 @@ The application completes transport and storage I/O before invoking the runtime
 API. Runtime code performs no network or filesystem I/O and does not fetch
 Google Drive assets.
 
-Shared setup parameters and dependency versions are generated under
+Contract projections under `src/generated` are generated from the backend-owned
+contract sources. Selected build inputs are generated under
 `src/generated/active`; prover-only packed R1CS data and subcircuit metadata
 are generated under `src/prover/generated/active`; and verifier Sigma is
-generated under `src/verifier/generated/active`. These ignored active outputs
-are the only generated inputs that compilation imports.
+generated under `src/verifier/generated/active`. All of these outputs are
+ignored. Compilation imports both the contract projections and the selected
+active outputs.
 
 Development generation selects local qap-compiler data and an explicit local
 `verifier_keys.rkyv`. Production generation selects the pinned npm

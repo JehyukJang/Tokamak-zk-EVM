@@ -1303,4 +1303,7 @@ The Tokamak zk-EVM is designed specifically for Layer 2 state channel applicatio
 | `0x1c` | SHR        | ALU3          | `1 << 28` | 816         | 638        | 178    |
 | `0x1d` | SAR        | ALU3          | `1 << 29` | 816         | 638        | 178    |
 
-_Source: [`packages/frontend/qap-compiler/subcircuits/library/info/`](https://github.com/JehyukJang/Tokamak-zk-EVM/tree/main/packages/frontend/qap-compiler/subcircuits/library/info) - Compiled subcircuit constraint information from Circom circuits_
+_Source: the archived 2025 generated subcircuit catalog. Generated library
+files are no longer tracked in the current repository; see the [current
+subcircuit-library README](../../../../../../qap-compiler/README.md) for the
+supported acquisition path._

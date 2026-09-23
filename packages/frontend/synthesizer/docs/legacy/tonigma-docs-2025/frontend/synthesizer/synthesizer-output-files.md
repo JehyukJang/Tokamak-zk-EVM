@@ -381,7 +381,10 @@ Interpretation:
 
 ### Subcircuit IDs
 
-Complete subcircuit list (from [`qap-compiler/subcircuits/library/subcircuitInfo.ts`](https://github.com/JehyukJang/Tokamak-zk-EVM/blob/main/packages/frontend/qap-compiler/subcircuits/library/subcircuitInfo.ts)):
+The following table is the complete subcircuit list recorded by this archived
+2025 snapshot. It is not the current catalog; see the [current
+subcircuit-library README](../../../../../../qap-compiler/README.md) for the
+supported acquisition path:
 
 | ID  | Name         | Description                                                | Inputs | Outputs |
 | --- | ------------ | ---------------------------------------------------------- | ------ | ------- |

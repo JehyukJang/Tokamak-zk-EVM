@@ -55,11 +55,11 @@ The default URLs in the page point to these names. They can be replaced with
 same-origin or CORS-enabled application URLs.
 
 Prepare ordinary runtime binaries with the package converter APIs. Convert the
-native Phase 1 `tau_sequence.rkyv` and Phase 2 directory containing
-`prover_keys.rkyv` and `verifier_keys.rkyv` with
+native Phase 1 `tau_sequence.rkyv` and the Phase 2 directory containing
+`prover_keys.rkyv`, `preprocess_keys.rkyv`, and `verifier_keys.rkyv` with
 `npm run univariate-crs:convert`, then copy its complete output directory to
-`public/artifacts/crs/`. Source artifact
-authentication remains the application's responsibility.
+`public/artifacts/crs/`. Source artifact authentication remains the
+application's responsibility.
 
 The CRS and witness files are intentionally not included in this example or in
 the npm package.
