@@ -24,7 +24,7 @@ expectFailure(workflow.replace('group: tokamak-zk-evm-release-controller', 'grou
 expectFailure(workflow.replaceAll('git/ref/heads/main', 'git/ref/heads/development'));
 expectFailure(
   workflow.replace(
-    `test "$changed" = "$(printf 'CHANGELOG.md\\npackages/backend/wasm/package-lock.json')"`,
+    `test "$changed" = "$(printf '.github/workflows/publish-tokamak-zk-evm.yml\\nCHANGELOG.md\\ndocs/version-rules.md\\npackages/backend/wasm/package-lock.json\\nscripts/check-staged-release-workflow.mjs')"`,
     'true',
   ),
 );
@@ -45,7 +45,7 @@ function checkController(value) {
     'repos/$GITHUB_REPOSITORY/git/ref/heads/dev',
     'repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER',
     'git merge-base --is-ancestor "$BOOTSTRAP_HEAD_SHA" "$EXPECTED_HEAD_SHA"',
-    `test "$changed" = "$(printf 'CHANGELOG.md\\npackages/backend/wasm/package-lock.json')"`,
+    `test "$changed" = "$(printf '.github/workflows/publish-tokamak-zk-evm.yml\\nCHANGELOG.md\\ndocs/version-rules.md\\npackages/backend/wasm/package-lock.json\\nscripts/check-staged-release-workflow.mjs')"`,
     'Build frozen candidate without mutation credentials',
     'Resolve public CRS with read-only Drive access',
     'TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON',

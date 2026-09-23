@@ -418,7 +418,7 @@ jobs:
             git fetch --no-tags origin "$BOOTSTRAP_HEAD_SHA:refs/remotes/origin/release-bootstrap-candidate"
             git merge-base --is-ancestor "$BOOTSTRAP_HEAD_SHA" "$EXPECTED_HEAD_SHA"
             changed="$(git diff --name-only "$BOOTSTRAP_HEAD_SHA" "$EXPECTED_HEAD_SHA")"
-            test "$changed" = "$(printf 'CHANGELOG.md\npackages/backend/wasm/package-lock.json')"
+            test "$changed" = "$(printf '.github/workflows/publish-tokamak-zk-evm.yml\nCHANGELOG.md\ndocs/version-rules.md\npackages/backend/wasm/package-lock.json\nscripts/check-staged-release-workflow.mjs')"
           fi
           test "$actual_head" = "$EXPECTED_HEAD_SHA"
           package_version="$(git show "$EXPECTED_HEAD_SHA:package.json" | jq -r '.version')"

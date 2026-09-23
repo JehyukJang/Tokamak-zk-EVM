@@ -80,9 +80,12 @@ The sole bootstrap exception is
 `@tokamak-zk-evm/subcircuit-library@3.0.0`. It may be published before the
 final tree because the npm metadata is required to create the browser
 production lock. The bootstrap and final trees may differ only at
-`packages/backend/wasm/package-lock.json`, and re-packing the final foundation
-source must reproduce the published tarball identity. No CRS or other package
-uses this exception.
+`packages/backend/wasm/package-lock.json`, the constrained final Changelog
+metadata, and the fixed-controller policy files that enforce this rule. The
+Changelog replaces `Unreleased` with the dated 3.0.0 entry and retains the
+offline-preparation-date explanation. Re-packing the final foundation source
+must reproduce the published tarball identity. No CRS or other package uses
+this exception.
 
 ## Fixed main release controller
 
@@ -109,7 +112,8 @@ The bootstrap operation accepts only the current `dev` head. The final-release
 operation accepts only an open `dev` to `main` pull request with the supplied
 head, base, and approved bootstrap-candidate SHA. The controller requires that
 the bootstrap candidate is an ancestor of the final head and that their tracked
-diff contains only `packages/backend/wasm/package-lock.json`. A retry uses the
+diff contains only the production snapshot, constrained Changelog metadata,
+and the fixed-controller policy files listed above. A retry uses the
 same frozen identities, rechecks every published identity, and publishes only
 missing packages. It cannot repair a source change or replace an immutable
 version.
