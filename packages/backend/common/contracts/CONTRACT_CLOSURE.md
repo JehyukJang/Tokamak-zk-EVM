@@ -102,6 +102,8 @@ cell in its row before treating the change as complete:
 5. user-facing documentation when the serialized or operational interface
    changes.
 
-The focused closure check verifies that the listed implementation boundaries
-remain present and that copied consumer assets are current. It complements,
-but does not replace, the contract-specific semantic tests.
+`prepare-contract-consumers.mjs` regenerates the ignored consumer projections
+from these authorities before package checks. The focused closure check then
+verifies that the listed implementation boundaries remain present and that the
+generated copies are current. It complements, but does not replace, the
+contract-specific semantic tests.

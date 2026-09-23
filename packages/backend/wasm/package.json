@@ -75,7 +75,7 @@
     "build:production": "npm run contracts:prepare && npm run subcircuit-library:generate:production && npm run verifier:generate && tsc -p tsconfig.json --pretty false",
     "verifier:generate": "tsx scripts/generate/generate-verifier.ts",
     "contracts:prepare": "node ../common/scripts/prepare-contract-consumers.mjs",
-    "contracts:check": "node ../common/scripts/check-contract-closure.mjs && node ../common/scripts/prepare-contract-consumers.mjs --check",
+    "contracts:check": "npm run contracts:prepare && node ../common/scripts/check-contract-closure.mjs && node ../common/scripts/prepare-contract-consumers.mjs --check",
     "prepack": "npm run clean && npm run build:production",
     "typecheck": "npm run typecheck:development",
     "typecheck:development": "npm run contracts:check && npm run subcircuit-library:check:development && tsc -p tsconfig.json --pretty false --noEmit",

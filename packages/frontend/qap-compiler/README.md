@@ -16,6 +16,11 @@ npm install @tokamak-zk-evm/subcircuit-library
 Consumers install the npm package. They do not need to run the QAP compiler or
 rebuild the circuits.
 
+The repository's `subcircuits/library` directory is a local build output and is
+intentionally not tracked in Git. The package build regenerates it from the
+tracked Circom sources and includes the resulting files in the published npm
+package.
+
 ## When to use this package
 
 Most applications should let the Synthesizer, CLI, or proving backend select

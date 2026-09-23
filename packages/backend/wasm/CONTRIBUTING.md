@@ -47,7 +47,8 @@ packages/backend/wasm/
 - `src/artifacts`: binary containers, decoded views, and versioned specs.
 - `src/converter`: public converter API, material conversion, optional
   inspection, and validation.
-- `src/generated`: shared generated setup and dependency-version constants.
+- `src/generated`: ignored projections generated from backend-owned contracts,
+  setup inputs, and dependency-version authorities.
 - `src/preprocess`: independent preprocess lifecycle, permutation-polynomial
   construction, and verifier-preprocess commitment output.
 - `src/prover`: public prover lifecycle and integrated protocol operations.
@@ -72,9 +73,11 @@ npm install
 
 ## Generated build inputs
 
-Do not edit generated inputs manually. The generators write ignored active
-outputs under `src/generated/active`, `src/prover/generated/active`, and
-`src/verifier/generated/active`; compilation consumes only those outputs.
+Do not edit generated inputs manually. `npm run contracts:prepare` regenerates
+the ignored contract projections under `src/generated`. The other generators
+write ignored active outputs under `src/generated/active`,
+`src/prover/generated/active`, and `src/verifier/generated/active`; compilation
+consumes only those outputs.
 Both build modes compile the same optimized package output. Their only input
 selection difference is the subcircuit-library source.
 

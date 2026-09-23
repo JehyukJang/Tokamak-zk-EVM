@@ -31,8 +31,9 @@ The maintainer-side flow is:
    `tokamak-l2js` `0.2.0`, then updates only `nPrivateMessageInputs` and
    `nPoseidonInputs` in `subcircuits/circom/constants.circom`. The generated
    constants and package metadata must continue to identify exactly `0.2.0`.
-2. Build the generated subcircuit library into `subcircuits/library`. The build
-   requires Circom `2.2.3` and invokes it with explicit O2 optimization;
+2. Build the generated subcircuit library into the ignored local
+   `subcircuits/library` directory. The build requires Circom `2.2.3` and
+   invokes it with explicit O2 optimization;
    compiler-default, O0, and O1 artifacts are not valid library outputs or
    constraint-measurement baselines.
 3. Assemble the publishable `dist` package from the generated library, synced constants, package metadata, and the consumer-facing README.
