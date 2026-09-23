@@ -24,7 +24,8 @@ even when the benchmark implementation that produced it is removed.
   representative commands, timing, memory evidence, and rejection reasons for
   removed candidate implementations.
 
-Executable optimization benchmarks have been removed. The prover timing-table
-generator remains available as `npm run prover:stage-timing:check`. Production
-optimization changes must update the chronological history after correctness and
-end-to-end timing checks pass.
+The former standalone executable optimization benchmarks have been retired. The
+current proof correctness gate is `npm run prover:browser:check`; retained
+timing evidence is recorded in the chronological history and its evidence
+files. Production optimization changes must update that history after
+correctness and end-to-end timing checks pass.

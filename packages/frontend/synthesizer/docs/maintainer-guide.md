@@ -40,10 +40,13 @@ The canonical changelog is the repository root `CHANGELOG.md`.
 
 Rules:
 
-- Keep an `Unreleased` section at the top.
-- Each released version that changes synthesizer behavior must include a `### Synthesizer` section.
+- A release PR replaces its candidate `Unreleased` section with the dated
+  version entry before the PR is opened. The release entry date is the offline
+  preparation date described in the repository version rules.
+- Each released version that changes synthesizer behavior must include a
+  `### Synthesizer Packages` section.
 - If there is no user-visible synthesizer change in a synchronized release, write `No consumer-facing synthesizer changes.`
-- The `### Synthesizer` section must be written from consumer impact, not from internal refactor detail.
+- The `### Synthesizer Packages` section must be written from consumer impact, not from internal refactor detail.
 - Record only changes that affect npm-published package artifacts or their consumer-facing behavior.
 
 For package publishing, changelog content stays only in the repository root `CHANGELOG.md`. Package artifacts do not include package-local changelog files; package READMEs link to the root changelog instead.

@@ -1,16 +1,20 @@
 # Staged Prover API Benchmark
 
+> Historical benchmark record: the staged API benchmark and its dedicated
+> command were removed from the current WASM package scripts. The measurements
+> below remain as historical evidence and are not current reproduction steps.
+
 ## Audience
 
-This report is for backend-wasm maintainers and application integrators deciding
-whether to use the one-call or staged prover API.
+This historical report is for backend-wasm maintainers reviewing the former
+one-call and staged prover API boundary.
 
 ## Purpose
 
-The prover exposes its arithmetic constraints, copy constraints, binding, and
-integrated-finalization work as four ordered application-callable operations.
-This benchmark checks whether those API boundaries add proof time or peak
-process memory relative to `prove(input)`.
+At the time of measurement, the prover exposed its arithmetic constraints, copy
+constraints, binding, and integrated-finalization work as four ordered
+application-callable operations. This benchmark checked whether those API
+boundaries added proof time or peak process memory relative to `prove(input)`.
 
 ## Implementation Boundary
 
@@ -44,7 +48,7 @@ challenges exist.
 - Dense Sigma1 MSM chunk size: `262144`.
 - Commands:
   - `npm run prover:browser:check`
-  - `npm run prover:staged:browser:check`
+  - historical `prover:staged:browser:check` command (removed)
 - Correctness gate: each run generated a 2328-byte proof and the browser
   verifier returned `true`.
 - Memory sampling: every second, sum the RSS of all

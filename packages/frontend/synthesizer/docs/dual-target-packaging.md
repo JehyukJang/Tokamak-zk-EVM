@@ -93,8 +93,7 @@ The current shared entrypoints are:
   - subcircuit-library resolution helpers
 - `core/src/circuit.ts`
   - `createCircuitGenerator`
-  - `CircuitGenerator`
-  - `CircuitArtifacts`
+  - `CircuitArtifacts` and `CircuitGenerationResult` types
 - `core/src/synthesizer.ts`
   - `createSynthesizer`
   - `SynthesizerInterface`

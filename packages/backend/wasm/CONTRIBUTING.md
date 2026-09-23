@@ -131,10 +131,8 @@ npm run typecheck:scripts
 npm run contracts:check
 npm run binary:check
 npm run prover:ops:check
-npm run prover:witness:check
-npm run verifier:check
+npm run preprocess:check
 npm run preprocess:public-api:check
-npm run prover:check
 npm run verifier:browser:check
 npm run prover:browser:check
 npm run converter:browser:check
@@ -142,9 +140,12 @@ npm run docs:examples:check
 npm run build
 ```
 
-`npm run prover:stage-timing:check` is the retained development-only timing
-table generator. Timing, diagnostics, tests, fixtures, scripts, tools, and
-`tmp` output must not enter the npm tarball.
+The former standalone stage-timing checker is not part of the current package
+scripts. Current proof correctness is checked by `npm run prover:browser:check`,
+and retained timing evidence is recorded in
+[`prover-optimization-history.md`](docs/optimization/prover-optimization-history.md).
+Timing, diagnostics, tests, fixtures, scripts, tools, and `tmp` output must not
+enter the npm tarball.
 
 Optimization work must preserve the benchmark and correctness requirements in
 the repository's

@@ -57,5 +57,6 @@ Primary outputs are selected by default. Supplementary outputs are selected only
 
 ## supplement/message_code_addresses.json
 - Distinct message code addresses observed during execution.
-- Emitted from the StateManager-owned transaction-wide code-address snapshot.
+- Emitted from the `ContextManager`-owned transaction-wide code-address
+  snapshot.
 - Supplementary output.

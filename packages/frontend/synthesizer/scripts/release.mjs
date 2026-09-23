@@ -192,20 +192,20 @@ function validateDocs(version) {
   }
 
   const changelog = readRepoText('CHANGELOG.md');
-  if (!changelog.includes('## Unreleased')) {
-    fail("Root CHANGELOG.md must include an 'Unreleased' section.");
+  const versionHeadingPattern = new RegExp(
+    `^## \\[${version.replaceAll('.', '\\.')}\\] - (\\d{4}-\\d{2}-\\d{2})$`,
+    'mu',
+  );
+  if (!versionHeadingPattern.test(changelog)) {
+    fail(`Root CHANGELOG.md must include a dated '[${version}] - YYYY-MM-DD' section.`);
   }
 
-  const versionHeading = `## [${version}]`;
-  if (!changelog.includes(versionHeading)) {
-    fail(`Root CHANGELOG.md must include a '${versionHeading}' section.`);
+  if (/^## Unreleased$/mu.test(changelog)) {
+    fail('Root CHANGELOG.md must not retain an Unreleased section for a release.');
   }
 
-  for (const section of ['Synthesizer']) {
-    const sectionHeading = `### ${section}`;
-    if (!changelog.includes(sectionHeading)) {
-      fail(`Root CHANGELOG.md must include a '${sectionHeading}' subsection for released versions.`);
-    }
+  if (!/^### Synthesizer Packages$/mu.test(changelog)) {
+    fail("Root CHANGELOG.md must include a '### Synthesizer Packages' subsection for released versions.");
   }
 }
 

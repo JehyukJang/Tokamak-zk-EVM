@@ -19,7 +19,9 @@ required to understand:
 The chronological sections below retain detailed benchmark commands, local
 measurements, implementation boundaries, and acceptance results. When a
 historical section conflicts with the current-state summary in this section,
-the current-state summary governs.
+the current-state summary governs. Commands retained in those historical
+sections are evidence of past runs; they are not current reproduction steps
+unless they also appear in the current package scripts.
 
 ## Current Release-Line Browser Comparison
 

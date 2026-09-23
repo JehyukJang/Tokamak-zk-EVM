@@ -16,13 +16,13 @@ Most low-level structures live under `core/src/synthesizer/types/` and `core/src
 
 - Defined in `core/src/synthesizer/types/placements.ts`
 - Each entry is shaped like `{ name, usage, subcircuitId, inPts, outPts }`
-- Buffer placements are created first by `BufferManager`; opcode handlers append new placements in execution order
+- Buffer placements are created first by `PlacementManager`; opcode handlers append new placements in execution order
 
 ## Buffers and reserved variables
 
 - Buffer names: `LOG_OUT`, `STORAGE_STORE`, `STORAGE_LOAD`, `TX_IN`, `BLOCK_IN`, `EVM_IN`, `PRIVATE_IN`
 - Buffer metadata lives in `core/src/subcircuit/configuredTypes.ts`
-- Reserved variables such as `FUNCTION_SELECTOR`, `CONTRACT_ADDRESS`, and `EDDSA_PUBLIC_KEY_X` are preloaded into buffers via `BufferManager`; storage and log tuples are added dynamically
+- Reserved variables such as `FUNCTION_SELECTOR`, `CONTRACT_ADDRESS`, and `EDDSA_PUBLIC_KEY_X` are added to buffers through `PlacementManager`; storage and log tuples are added dynamically
 - Buffer wires are the only entry and exit points for non-symbolic values
 
 ## StackPt and MemoryPt
@@ -40,7 +40,7 @@ Most low-level structures live under `core/src/synthesizer/types/` and `core/src
 
 - `StorageCache` indexes entries by concrete address and key while retaining canonical address/key `DataPt`s, the latest value `DataPt`, and a dirty flag
 - Repeated storage accesses place `StorageAccess` against the canonical address/key pair before reusing the cached value
-- `InitialStorageReadList` retains the first address/key/value triple for each location, and frame snapshots roll back cache changes from reverted calls
+- `ContextManager.initialStorageReads` retains the first address/key/value triple for each location, and frame snapshots roll back cache changes from reverted calls
 - After a successful transaction, dirty cache entries are emitted through `STORAGE_STORE`
 
 ## Block and transaction context

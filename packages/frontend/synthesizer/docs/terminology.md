@@ -8,9 +8,9 @@
 - **Buffer placements**: Fixed subcircuits that interface external values:
   - `TX_IN`, `BLOCK_IN`, `EVM_IN`, `PRIVATE_IN` (inputs)
   - `LOG_OUT`, `STORAGE_LOAD`, `STORAGE_STORE` (outputs)
-  Reserved variables in `types/buffers.ts` describe specific wires (e.g., `FUNCTION_SELECTOR`, `EDDSA_SIGNATURE`, `BLOCKHASH_i`).
+  Reserved variables in `core/src/synthesizer/types/buffers.ts` describe specific wires (e.g., `FUNCTION_SELECTOR`, `EDDSA_SIGNATURE`, `BLOCKHASH_i`).
 - **StackPt / MemoryPt**: Symbolic mirrors of the EVM stack and memory. `StackPt` handles push/dup/swap/pop; `MemoryPt` tracks time-ordered writes and overlapping reads for alias reconstruction.
-- **Storage cache**: `StateManager.storageCache` retains the canonical address/key `DataPt`s and latest value for each accessed storage location. Frame snapshots restore entries after reverted calls, while `InitialStorageReadList` preserves first-read triples for `STORAGE_LOAD`.
+- **Storage cache**: `ContextManager.storageCache` retains the canonical address/key `DataPt`s and latest value for each accessed storage location. Frame snapshots restore entries after reverted calls, while `ContextManager.initialStorageReads` preserves first-read triples for `STORAGE_LOAD`.
 - **Subcircuit library**: Pre-built circuits (ALU, Poseidon, Jubjub, buffers) from `@tokamak-zk-evm/subcircuit-library`. Shared parsing and resolved-library types live under `core/src/subcircuit/` and `core/src/subcircuit.ts`.
 - **Permutation**: Wire-equality cycles emitted to `permutation.json`, ensuring all placements that share a value are constrained together.
 - **Public instance**: Extracted subset of witness values split into user, block, and function sections according to the resolved setup parameters in the shared subcircuit library context.

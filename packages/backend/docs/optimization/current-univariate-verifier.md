@@ -102,8 +102,12 @@ matching and failure-safe activation. Native and Docker install arguments use
 `--no-full-setup`; the retired flag is rejected. The CLI package's static
 vendoring check includes the common CRS crate and verifier build sources.
 
-The live production Drive layout and current-protocol npm library remain
-unpublished. Mocked downloads and local native verification do not establish
-production installation or Docker execution against those future artifacts.
-MPC, publication and the remaining current-protocol CLI stage-command migration
-are outside this fixed-input installation change.
+The current-protocol subcircuit library is published as
+`@tokamak-zk-evm/subcircuit-library@3.0.0`. The browser-compatible package is
+still `@tokamak-zk-evm/snark-browser-compat@2.1.5` in npm; the local 3.0.0
+browser candidate and operator-controlled CRS are not established as final
+production-admission artifacts by this report. Mocked downloads and local
+native verification do not establish production installation or Docker
+execution against those pending artifacts. MPC, publication, and the remaining
+CLI release work are outside this fixed-input installation change. The npm
+registry status above was checked on 2026-09-23.
