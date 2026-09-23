@@ -88,9 +88,11 @@ formats.
 - `api`: public lifecycle, binary input decoding, proof output, and internal
   decoded-input entry points.
 - `protocol`: one stateful prover flow and protocol-specific state/formulas.
-- `commitments`: Sigma1 encoding and statement/binding commitments.
-- `polynomial`: prover-owned polynomial formulas built on runtime buffers.
 - `generated`: prover-only packed R1CS data and subcircuit metadata.
+
+The current prover's protocol formulas and commitments are implemented in the
+shared `src/univariate` layer and are called by the public prover API. They are
+not duplicated under `src/prover`.
 
 File boundaries must not recreate numbered `prove0` through `prove4` modules or
 independent scheduling barriers. The four public session operations preserve
@@ -100,9 +102,11 @@ they do not serialize, validate, or recompute intermediates.
 ### `src/verifier`
 
 - `api`: public lifecycle and named binary input decoding.
-- `protocol`: challenges, domains, equations, public-instance polynomial work,
-  and verification orchestration.
 - `generated`: build-generated verifier CRS constants.
+
+The current verification equations and transcript orchestration are implemented
+by `src/univariate/reference-verifier.ts` and called by the verifier API. There
+is no separate `src/verifier/protocol` directory.
 
 The verifier returns boolean validity and does not produce an output artifact.
 
@@ -111,7 +115,9 @@ The verifier returns boolean validity and does not produce an output artifact.
 - `api`: independent public lifecycle, named binary input decoding, and binary
   output creation.
 - `protocol`: permutation-polynomial construction and preprocess orchestration.
-- `commitments`: dense Sigma1 and function-instance commitments.
+
+Preprocess commitment and polynomial helpers are shared through `src/univariate`;
+there is no separate `src/preprocess/commitments` directory.
 
 Preprocess produces one verifier-preprocess binary containing `s0`, `s1`, and
 `O_pub_fix`. It does not call the prover, share prover installation state, or

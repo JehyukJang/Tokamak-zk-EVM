@@ -14,16 +14,14 @@ async function main(): Promise<void> {
 async function assertNoReverseApiImports(): Promise<void> {
   const roots = [
     "src/preprocess/protocol",
-    "src/preprocess/commitments",
     "src/prover/protocol",
-    "src/prover/commitments",
-    "src/verifier/protocol",
+    "src/univariate",
   ];
   for (const root of roots) {
     for (const filePath of await typeScriptFiles(path.join(packageRoot, root))) {
       const source = await readFile(filePath, "utf8");
       if (/from\s+["'][^"']*\/api\//.test(source)) {
-        throw new Error(`Protocol or commitment module imports an API adapter: ${relative(filePath)}.`);
+        throw new Error(`Protocol module imports an API adapter: ${relative(filePath)}.`);
       }
     }
   }

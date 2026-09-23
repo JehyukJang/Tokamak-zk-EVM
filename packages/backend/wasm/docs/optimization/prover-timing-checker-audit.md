@@ -1,19 +1,29 @@
 # Prover Timing Checker Ownership Audit
 
+> Historical record: this report documents a retired stage-timing checker and
+> the source layout used by that checker. Its ownership paths, function names,
+> and timing taxonomy are not the current WASM implementation. Use the
+> [current prover optimization history](./prover-optimization-history.md) for
+> current architecture and timing evidence.
+
 ## Audience
 
-This report is for backend-wasm maintainers changing prover protocol logic or
-the retained timing-table checker.
+This report is for backend-wasm maintainers reviewing the historical timing
+evidence or the retired timing-table checker.
 
 ## Purpose
 
-`test/checks/prover/check-prover-stage-timing.ts` intentionally mirrors
-protocol orchestration so it can place mutually exclusive timing spans around
-the same production primitives. Production must not contain timing hooks or
-diagnostic branches, so this mirror cannot call the integrated orchestration
-entry and still retain the required lowest-operation taxonomy.
+At the time of this audit, `test/checks/prover/check-prover-stage-timing.ts`
+intentionally mirrored protocol orchestration so it could place mutually
+exclusive timing spans around the same production primitives. Production did
+not contain timing hooks or diagnostic branches, so that mirror could not call
+the integrated orchestration entry and still retain the required
+lowest-operation taxonomy.
 
-## Ownership Map
+## Historical Ownership Map
+
+The following paths and helper names describe the retired checker snapshot;
+they are retained only to explain that audit's evidence.
 
 | Timing checker boundary | Production owner |
 | --- | --- |
@@ -29,7 +39,7 @@ entry and still retain the required lowest-operation taxonomy.
 | Fixture loading | shared `test/support/runtime-inputs.ts` |
 | Final verification | shared `test/support/verifier/verify-binary.ts` |
 
-## Extraction Decision
+## Historical Extraction Decision
 
 No extraction was made during this audit:
 
@@ -49,10 +59,11 @@ The large checker is therefore accepted as an explicit test-only protocol
 mirror. This is narrower and safer than introducing production diagnostics
 abstractions.
 
-## Drift Rules
+## Retired Checker Drift Rules
 
-Any production change to one of the mapped protocol owners must update the
-corresponding timed boundary in the same change. The retained checker must then:
+For the retired checker, a production change to one of the mapped protocol
+owners required updating the corresponding timed boundary in the same change.
+The checker then had to:
 
 1. generate a proof accepted by the verifier;
 2. preserve the fixed lowest, middle, top, and execution-boundary taxonomies
@@ -60,7 +71,7 @@ corresponding timed boundary in the same change. The retained checker must then:
 3. pass every parent/child and exclusivity invariant;
 4. remain outside `dist` and the npm tarball.
 
-## Verification
+## Historical Verification Record
 
 The audit reran the complete checker on the real fixture. The operation counts
 before and after the audit were identical:

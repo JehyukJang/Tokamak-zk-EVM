@@ -77,7 +77,7 @@ Do not edit generated inputs manually. `npm run contracts:prepare` regenerates
 the ignored contract projections under `src/generated`. The other generators
 write ignored active outputs under `src/generated/active`,
 `src/prover/generated/active`, and `src/verifier/generated/active`; compilation
-consumes only those outputs.
+consumes both the contract projections and those selected active outputs.
 Both build modes compile the same optimized package output. Their only input
 selection difference is the subcircuit-library source.
 
