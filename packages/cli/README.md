@@ -47,7 +47,7 @@ preprocess without reading CRS files at runtime. The retired `--no-setup`
 option is not accepted.
 
 The Drive root contains one folder named by each compatible backend version
-(for example, `2.1`), holding `prover_keys.rkyv`, `preprocess_keys.rkyv`,
+(`MAJOR.MINOR`), holding `prover_keys.rkyv`, `preprocess_keys.rkyv`,
 `verifier_keys.rkyv` and `crs_provenance.json`. Its separate `tau_sequence`
 folder holds `<SHA-256>.rkyv` files. Full installation selects the tau digest
 recorded in the version's provenance and installs it as `tau_sequence.rkyv`.

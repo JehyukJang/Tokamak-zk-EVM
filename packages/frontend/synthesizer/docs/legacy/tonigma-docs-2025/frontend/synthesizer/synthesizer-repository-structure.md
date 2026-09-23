@@ -1,3 +1,7 @@
+> Historical archive: this 2025 Tonigma-docs snapshot describes an earlier
+> Synthesizer implementation. Use the current package README and maintainer
+> documentation for supported behavior.
+
 # Synthesizer: Repository Structure
 
 This document provides a detailed overview of the [Synthesizer](synthesizer-terminology.md#synthesizer) codebase file structure and organization.

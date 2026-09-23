@@ -1,3 +1,7 @@
+> Historical archive: this 2025 Tonigma-docs snapshot describes an earlier
+> Synthesizer implementation. Use the current package README and maintainer
+> documentation for supported behavior.
+
 # Synthesizer: Opcode Reference
 
 This document describes how [Synthesizer](synthesizer-terminology.md#synthesizer) handles each EVM opcode, comparing standard EVM behavior with circuit generation.

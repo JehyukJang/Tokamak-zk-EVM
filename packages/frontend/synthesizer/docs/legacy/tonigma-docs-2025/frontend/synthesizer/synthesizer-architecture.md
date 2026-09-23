@@ -1,3 +1,7 @@
+> Historical archive: this 2025 Tonigma-docs snapshot describes an earlier
+> Synthesizer implementation. Use the current package README and maintainer
+> documentation for supported behavior.
+
 # Synthesizer: Code Architecture
 
 This document provides a detailed technical view of Synthesizer's internal structure, class relationships, and code-level implementation.

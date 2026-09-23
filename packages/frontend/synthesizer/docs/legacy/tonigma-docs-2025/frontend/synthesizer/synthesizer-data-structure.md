@@ -1,3 +1,7 @@
+> Historical archive: this 2025 Tonigma-docs snapshot describes an earlier
+> Synthesizer implementation. Use the current package README and maintainer
+> documentation for supported behavior.
+
 # Synthesizer: Data Structures
 
 This document explains the core data structures used in the Tokamak [Synthesizer](synthesizer-terminology.md#synthesizer) for [symbol processing](synthesizer-terminology.md#symbol-processing) and circuit generation.

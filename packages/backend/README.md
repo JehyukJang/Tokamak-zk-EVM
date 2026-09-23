@@ -20,7 +20,7 @@ subcircuit library, together with transaction-specific data from the frontend sy
 
 | Binary                  | Responsibility                                                                       |
 | ----------------------- | ------------------------------------------------------------------------------------ |
-| `trusted-setup`         | Generate a local-development Sigma artifact.                                         |
+| `trusted-setup`         | Generate a local-development four-file CRS.                                          |
 | `mpc` | Authenticate Filecoin input, initialize, contribute, verify and finalize phase 2. |
 | `preprocess`            | Commit permutation and fixed function-instance data.                                 |
 | `prove`                 | Generate a proof for one synthesized transaction.                                    |

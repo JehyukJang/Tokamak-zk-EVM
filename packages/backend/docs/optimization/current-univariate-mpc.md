@@ -188,10 +188,10 @@ A separate one-worker run passes the
 phase-2 regression subset. The ignored native fixture is not included in these
 counts; ignored benchmark tests were invoked separately as described above.
 
-Repository document-readiness checking still reports five pre-existing missing
-WASM README markers, including the retired `combined_sigma.rkyv` name. That
-unrelated migration work is not changed by this MPC optimization and is not
-reported as passing here.
+Repository document-readiness checking now passes for the tracked WASM
+documentation. The retired `combined_sigma.rkyv` name remains only where
+historical migration records identify the format; it is not a current runtime
+input.
 
 ## Full local-library MPC-output native E2E
 

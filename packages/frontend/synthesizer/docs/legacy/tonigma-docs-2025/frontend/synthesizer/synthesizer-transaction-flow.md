@@ -1,3 +1,7 @@
+> Historical archive: this 2025 Tonigma-docs snapshot describes an earlier
+> Synthesizer implementation. Use the current package README and maintainer
+> documentation for supported behavior.
+
 # Synthesizer: Transaction Processing Flow
 
 This document provides a detailed walkthrough of how Synthesizer processes Ethereum transactions, from initialization to finalization, with code-level details at each step.

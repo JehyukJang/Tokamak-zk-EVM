@@ -1,8 +1,9 @@
-# Snark-browser-compat 2.1.4 License Audit
+# Historical Snark-browser-compat 2.1.4 License Audit
 
 Audience: maintainers preparing the `@tokamak-zk-evm/snark-browser-compat` npm release.
 
-Audit date: 2026-07-31
+Audit date: 2026-07-31. This is a historical release record; its commands and
+package identities are not the current 3.0.0 release procedure.
 
 ## Publication candidate
 
@@ -86,7 +87,8 @@ The following checks passed:
 - `npm run converter:browser:check`
 - `npm run converter:crs:browser:check`
 - `npm run converter:webpack:check`
-- `npm run docs:publication:check`
+- historical command `npm run docs:publication:check` (not present in the
+  current release scripts)
 - exact tarball `npm pack --json` metadata and independent SHA-256 inspection
 - all four packed public subpath imports through the Vite browser example
 - packed Vite and Webpack production consumer execution

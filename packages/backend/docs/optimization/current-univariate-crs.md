@@ -1655,9 +1655,9 @@ physical chunk partition; then retain identical logical points and inputs.
 No dense delivery format, SHA acceleration experiment, live MPC, publication,
 version bump or verifier trust-policy change is part of this sequence.
 
-The implementation plan is maintained in ignored `packages/backend/tmp/planning.md`.
 This historical profiling checkpoint preceded implementation. The WASM
-optimization execution sections above supersede its then-unstarted status.
+optimization execution sections above supersede its then-unstarted status;
+temporary planning records are not required to interpret this report.
 
 ## Historical native and browser E2E qualification — 2026-09-13
 

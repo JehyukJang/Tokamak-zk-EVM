@@ -1,3 +1,7 @@
+> Historical archive: this 2025 Tonigma-docs snapshot describes an earlier
+> Synthesizer implementation. Use the current package README and maintainer
+> documentation for supported behavior.
+
 # Synthesizer: Class Structure
 
 This document provides detailed information about [Synthesizer](synthesizer-terminology.md#synthesizer)'s class structure, relationships, and implementation details.

@@ -195,8 +195,8 @@ build resolves the exact synchronized `@tokamak-zk-evm/subcircuit-library`
 version from npm after the release workflow publishes that package.
 
 `docs:development-package:check` validates documentation and a package built
-from local QAP and the explicit debug Sigma. It is not a publication-candidate
-check. The release workflow runs `package:publication:check` only after
+from local QAP and an explicit development four-file CRS. It is not a
+publication-candidate check. The release workflow runs `package:publication:check` only after
 `build:production`; that command requires packed active setup metadata to
 identify the npm snapshot.
 
@@ -224,5 +224,5 @@ License and redistribution findings for release 2.1.4 are recorded in the
 repository's
 [`snark-browser-compat-2.1.4-license-audit.md`](https://github.com/tokamak-network/Tokamak-zk-EVM/blob/main/packages/backend/wasm/docs/release/snark-browser-compat-2.1.4-license-audit.md).
 
-Use `npm run clean:temp` to remove package-local temporary output while
-preserving `tmp/planning.md`.
+Use `npm run clean:temp` to remove package-local temporary output. Local
+planning and audit records are temporary files and are not release artifacts.

@@ -194,17 +194,15 @@ signature verification uses 17 placements of seven distinct types.
 
 > **Implementation and release status**
 >
-> The qap source catalog and qap-local direct-composition tests described here
-> are implemented. The revised transaction-signature composition is not yet
-> enabled by the Synthesizer. The qap memory-load step is also implemented, but
-> the Synthesizer still uses the obsolete generated `Accumulator` artifacts
-> until its separately reviewed memory-load composition migration is complete.
-> Compatibility replay against the released
-> TokamakL2JS implementation of issue #2 and the delegated Solidity public
-> checks are still pending. Checked-in generated circuit artifacts and the CRS
-> have not been updated for this source catalog. This page therefore describes
-> source implementation and required integration contracts; it is not a
-> statement that the complete system is ready to publish or deploy.
+> The qap source catalog, generated library artifacts, and qap-local
+> direct-composition tests described here are implemented. The Synthesizer uses
+> the revised transaction-signature composition and the `MemoryViewStep`
+> memory-load composition against the current library metadata. Compatibility
+> replay against the released TokamakL2JS implementation of issue #2 and the
+> delegated Solidity public checks remain separate qualification work. A
+> checked-in generated library is not, by itself, a publication or deployment
+> approval; an operator-controlled CRS must still pass the release qualification
+> process for the matching source digest.
 
 Constraint counts were measured from the current source with Circom 2.2.3,
 explicit O2 optimization, the BLS12-381 scalar field, and the
