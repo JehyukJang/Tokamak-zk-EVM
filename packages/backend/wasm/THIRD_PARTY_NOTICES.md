@@ -9,7 +9,7 @@ from dependencies that remain external npm packages.
 | Package | Declared version | Declared license |
 | --- | --- | --- |
 | `@noble/hashes` | `^1.8.0` | MIT |
-| `@tokamak-zk-evm/subcircuit-library` | `2.1.5` | MIT OR Apache-2.0 |
+| `@tokamak-zk-evm/subcircuit-library` | `3.0.0` | MIT OR Apache-2.0 |
 | `ffjavascript` | `^0.3.1` | GPL-3.0 |
 
 The installed npm packages carry their own license files. Transitive

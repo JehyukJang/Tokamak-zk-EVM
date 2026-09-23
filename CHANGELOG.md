@@ -39,7 +39,7 @@ Release-entry dates are the dates on which version-bump pull requests are prepar
 - Upgrade the CLI, subcircuit library, Node and Web Synthesizers,
   browser-compatible SNARK package, native backend, and CRS as one synchronized
   compatibility set. The `2.1.5` circuit artifacts, generated metadata, browser
-  binaries, and CRS are not compatible with this unreleased circuit set.
+  binaries, and CRS are not compatible with the 3.0.0 release line.
 - Regenerate transaction snapshots with `tokamak-l2js` `0.2.0`, rebuild the
   subcircuit library artifacts, generate a matching CRS, and run
   `tokamak-cli --install` again after upgrading. Do not combine artifacts or
@@ -110,7 +110,7 @@ Release-entry dates are the dates on which version-bump pull requests are prepar
 ### Historical Pre-Normalized Circuit Snapshot
 
 The values below are retained as a pre-normalized development snapshot; they
-do not describe the current protocol. The current unreleased library uses
+do not describe the current protocol. The current 3.0.0 library uses
 `n = 1024`, `m = 2048`, `m_b = 512`, `t = 64`, and `s = 256`. Its active
 domains are `n × s` for constraints and `m_b × s` for connections; the retired
 aggregate interface-width and global-wire layout are not part of the current

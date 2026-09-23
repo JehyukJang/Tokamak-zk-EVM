@@ -1,6 +1,6 @@
 # Subcircuit Library Generation and Release
 
-Last updated: 2026-09-05
+Last updated: 2026-09-23
 
 This document describes how the maintainer-side `qap-compiler` workflow relates to the published Tokamak zk-EVM Subcircuit Library package.
 
@@ -27,12 +27,10 @@ More concretely:
 
 The maintainer-side flow is:
 
-1. Run `npx qap-compiler --reload-constants`. The command resolves npm's current
-   `tokamak-l2js` `latest` release, installs that exact version locally, and updates
-   only `nPrivateMessageInputs` and `nPoseidonInputs` in
-   `subcircuits/circom/constants.circom`. A normal initial install also declares
-   the `latest` release line; the reload command is the explicit maintainer action
-   that synchronizes generated constants to the then-current npm release.
+1. Run `npx qap-compiler --reload-constants`. The command requires and installs
+   `tokamak-l2js` `0.2.0`, then updates only `nPrivateMessageInputs` and
+   `nPoseidonInputs` in `subcircuits/circom/constants.circom`. The generated
+   constants and package metadata must continue to identify exactly `0.2.0`.
 2. Build the generated subcircuit library into `subcircuits/library`. The build
    requires Circom `2.2.3` and invokes it with explicit O2 optimization;
    compiler-default, O0, and O1 artifacts are not valid library outputs or

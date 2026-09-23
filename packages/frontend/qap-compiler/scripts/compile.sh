@@ -7,6 +7,7 @@ CURVE_NAME="bls12381"
 original_cwd="$(pwd)"
 script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 package_root="${script_dir}/.."
+canonical_package_root="$(cd "$package_root" && pwd)"
 cd "$script_dir"
 
 names=()
@@ -119,7 +120,13 @@ for (( i = 0 ; i < ${#names[@]} ; i++ )) ; do
     cd "$circom_work_dir"
     "${circom_cmd[@]}" "${package_root}/subcircuits/circom/${names[$i]}_circuit.circom" --r1cs --wasm --json --sym --O2 -o "$output_dir_path" -p "$CURVE_NAME" "${include_args[@]}"
   ) | tee "$output_dir_path/info/subcircuit${i}_${names[$i]}_info.txt"
-  cat "$output_dir_path/info/subcircuit${i}_${names[$i]}_info.txt" >> "$compiler_output_file"
+  info_file="$output_dir_path/info/subcircuit${i}_${names[$i]}_info.txt"
+  QAP_COMPILER_PACKAGE_ROOT="$canonical_package_root" perl -0pi -e '
+    my $root = $ENV{QAP_COMPILER_PACKAGE_ROOT};
+    s#\Q$root\E/scripts/\.\./#<qap-compiler>/#g;
+    s#\Q$root\E/#<qap-compiler>/#g;
+  ' "$info_file"
+  cat "$info_file" >> "$compiler_output_file"
   mv "$output_dir_path/${names[$i]}_circuit_constraints.json" "$output_dir_path/json/subcircuit${i}.json"
   mv "$output_dir_path/${names[$i]}_circuit.r1cs" "$output_dir_path/r1cs/subcircuit${i}.r1cs"
   mv "$output_dir_path/${names[$i]}_circuit_js/${names[$i]}_circuit.wasm" "$output_dir_path/wasm/subcircuit${i}.wasm"

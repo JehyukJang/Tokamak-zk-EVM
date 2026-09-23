@@ -1,6 +1,9 @@
 # Consumer Integration
 
-Last updated: 2026-09-05
+Last updated: 2026-09-23
+
+Audience: maintainers validating the repository's package boundaries and
+consumer relationships. This is not a standalone application guide.
 
 This document explains how the Tokamak zk-EVM Subcircuit Library is consumed by the supported `main`-branch consumers.
 
@@ -12,11 +15,14 @@ This document explains how the Tokamak zk-EVM Subcircuit Library is consumed by 
 
 ### How It Consumes the Package
 
-`tokamak-cli` consumes the subcircuit library through repository-generated library output. Its install and packaging flow compiles the library, carries the generated artifacts into packaged runtime resources, and then uses those artifacts as part of the end-to-end CLI workflow.
+`tokamak-cli` consumes the synchronized published subcircuit-library package as
+the production backend build input. Development builds may use repository-local
+generated output, but that path is not the published consumer contract.
 
 ### Main-Branch Compatibility
 
-Supported on `main` through same-repository integration with the generated Tokamak zk-EVM subcircuit library output.
+Supported on `main` through the synchronized package and backend identity
+checks described in the release controller.
 
 ### Integration Notes
 
@@ -48,11 +54,14 @@ The synthesizer expects the published metadata and artifact layout to remain ali
 
 ### How It Consumes the Package
 
-`backend` consumes the generated subcircuit library as setup and proving input. The library acts as the fixed subcircuit basis that is paired with synthesizer-produced transaction-specific data during the backend pipeline.
+`backend` consumes the synchronized published subcircuit library as setup and
+proving input. Development builds can select local QAP output explicitly; the
+production backend embeds the npm snapshot selected by the release build.
 
 ### Main-Branch Compatibility
 
-Supported on `main` through repository-generated subcircuit library output consumed by the backend workflows.
+Supported on `main` through the synchronized package snapshot and its recorded
+source digest.
 
 ### Integration Notes
 

@@ -269,8 +269,11 @@ and optimization qualification follow the real-source/native E2E gate in the MPC
 Use only a CRS and subcircuit library whose release identities and
 compatibility class match the backend. Verify artifact digests and provenance
 before loading them, and keep OAuth credentials and tokens outside version
-control. Trusted setup is development-only. MPC generation does not authorize publication;
-the current Filecoin publication gate is closed.
+control. Trusted setup is development-only. MPC generation alone does not
+authorize publication: only a completed publish-mode transcript that passes
+the publication admission checks can produce release-eligible CRS output.
+Live ceremony qualification and the deferred phase-2 security-boundary review
+remain separate operator responsibilities.
 
 The operator remains responsible for securing ceremony state, authenticating
 the publication destination, reviewing the documented phase-2 trust

@@ -1,8 +1,47 @@
-# Tokamak zk-EVM Proving Performance History
+# Tokamak zk-EVM Proving Performance Report
 
-> Status: historical report for the superseded protocol. Its accepted-reference labels apply to the recorded release lines, not the current univariate implementation. See the [current-protocol optimization report](../../../../docs/optimization/current-univariate-crs.md) for subsequent work; keep new-protocol measurements separate.
+> Status: 3.0.0 publication summary followed by a clearly marked historical
+> appendix. The current-protocol report contains the full evidence ledger; this
+> document presents the externally comparable results without treating
+> superseded-protocol experiments as current release evidence.
 >
-> Last consolidated: 2026-09-01. The figures below preserve the historical measurements that were previously distributed across dated mini-reports and timing reports.
+> Last consolidated: 2026-09-23.
+
+## 3.0.0 Release Summary
+
+The 3.0.0 circuit and interface reductions reduce the amount of constraint and
+boundary data processed during proving. The measured browser result is a
+release-line comparison; the native result below is explicitly a development
+comparison because the published 2.1.5 release does not preserve the locked
+native dependency graph needed for an auditable baseline.
+
+| Execution path | 2.1.5 reference | 3.0.0 result | Change |
+| --- | ---: | ---: | ---: |
+| Browser WASM `transferNotes1To2` | 126.717 s | 18.812 s | 107.905 s faster (85.2%, 6.74x) |
+| Native Rust release-profile development comparison | 38.000077 s* | 11.058532 s* | 26.941545 s faster* (70.9%, 3.44x)* |
+
+`transferNotes1To2` transfers one private note into two output notes. Browser
+timers cover proof generation only and use five-sample means; proofs were
+accepted by the matching browser verifier, and the 3.0.0 candidate proofs were
+also accepted by the native release verifier. The browser evidence is recorded
+in the [current-protocol report](../../../../docs/optimization/current-univariate-crs.md)
+and its [machine-readable samples](../../../../wasm/docs/optimization/evidence/3.0.0-browser-release-comparison.json).
+
+\*The native row is a historical development experiment, not a published
+2.1.5-to-3.0.0 release comparison. Its source, lockfile and CRS identities are
+documented in the historical appendix below and must not be presented as
+release-admission evidence.
+
+The documented cause of the improvement is the reduction in circuit size and
+public/interface boundaries: the principal constraint grids changed from
+1,048,576 to 262,144 cells (-75.0%), `l_D` changed from 4,824 to 1,420
+(-70.6%), and the final public boundary changed from 728 to 396 wires
+(-45.6%). These structural reductions explain the direction of the result but
+do not assign every saved second to one implementation change.
+
+The remainder of this document is a historical appendix for the superseded
+protocol and earlier optimization experiments. Its measurements are retained
+for auditability, not as current 3.0.0 claims.
 
 ## How To Read This Report
 

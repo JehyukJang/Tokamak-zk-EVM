@@ -94,7 +94,8 @@ npm run typecheck:production
 ```
 
 The CRS is not embedded in either build. Native trusted setup emits a directory
-containing `tau_sequence.rkyv`, `prover_keys.rkyv`, and `verifier_keys.rkyv`.
+containing `tau_sequence.rkyv`, `prover_keys.rkyv`, `preprocess_keys.rkyv`, and
+`verifier_keys.rkyv`.
 The offline converter turns that directory into a manifest and bounded chunks;
 applications supply the resulting manifest and lazy chunk loader at runtime.
 `prepack` always runs the production build, so it cannot reuse a locally
@@ -154,8 +155,9 @@ the repository's
 2. Before foundation publication, run
    `npm run version:prepublication:check` at the repository root. This check
    does not require an npm resolution for the unpublished foundation package.
-3. Publish the exact synchronized `@tokamak-zk-evm/subcircuit-library`
-   foundation package through the release workflow.
+3. Complete the approved foundation bootstrap operation for the exact
+   synchronized `@tokamak-zk-evm/subcircuit-library` package. The fixed release
+   controller publishes or verifies only the frozen foundation tarball.
 4. Run `npm run version:production-snapshot:refresh` at the repository root.
    Commit the resulting `packages/backend/wasm/package-lock.json` change to the
    release branch, then run `npm run version:production-snapshot:check` and
@@ -198,13 +200,15 @@ check. The release workflow runs `package:publication:check` only after
 `build:production`; that command requires packed active setup metadata to
 identify the npm snapshot.
 
-The repository release workflow validates the latest compatible public CRS,
-exports its verified `sigma_verify.json`, rebuilds the embedded verifier CRS,
-and uploads `snark-browser-compat-release-tarball`. It compares the synchronized
-tarball version with npm and uses the configured npm Trusted Publisher to
-publish only a strictly newer version. An equal version is validated but not
-republished; an older repository version fails. npm versions are immutable and
-must never be reused for changed package contents.
+The release controller resolves the exact compatible CRS directory from the
+read-only Drive view, verifies its provenance and payload hashes, builds the
+browser package from the frozen candidate, and uploads the resulting
+`tokamak-zk-evm-browser-tarball` for final identity checks. It publishes only
+the exact candidate tarball after the frozen release identities have been
+revalidated. It never converts or publishes the retired `sigma_*` artifacts.
+An already-published identical version is verified and skipped; a changed
+tarball or an older repository version fails because npm versions are
+immutable.
 
 For a synchronized release:
 
@@ -213,8 +217,8 @@ For a synchronized release:
 3. Require the browser-compatible SNARK build and pre-publish checks to pass.
 4. Confirm the publish job selects the exact verified tarball and reports the
    expected local and previously published versions.
-5. Download `snark-browser-compat-release-tarball` when an independent archive
-   review is required and run `sha256sum --check SHA256SUMS`.
+5. Download `tokamak-zk-evm-browser-tarball` when an independent archive review
+   is required and inspect its package identity before publication.
 
 License and redistribution findings for release 2.1.4 are recorded in the
 repository's

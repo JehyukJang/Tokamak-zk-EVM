@@ -1,8 +1,10 @@
 # Releasing `@tokamak-zk-evm/cli`
 
-The normal release path publishes this package automatically from `main`. A
-manual maintainer command remains available for an intentional direct
-publication or recovery.
+The normal release path uses the fixed release controller from `main`. A push
+to `main` is verification-only; an authorized owner explicitly dispatches the
+bootstrap or final-release operation with frozen commit identities. A manual
+maintainer command remains available for an intentional direct publication or
+recovery.
 
 ## Before You Merge
 
@@ -13,7 +15,7 @@ publication or recovery.
 5. Run:
 
 ```bash
-npm run version:sync -- 2.0.12
+npm run version:sync -- X.Y.Z
 npm run version:check
 npm run --workspace @tokamak-zk-evm/cli release:check
 npm run --workspace @tokamak-zk-evm/cli release:runtime:check
@@ -52,21 +54,22 @@ symbolic link is an installation error and must remain unchanged.
 ## What Happens On `main`
 
 When a commit reaches `main`,
-`.github/workflows/publish-tokamak-zk-evm.yml`:
+`.github/workflows/publish-tokamak-zk-evm.yml` verifies the resulting release
+tree only. The explicit controller dispatch then:
 
-1. Classifies the Git version transition and exact npm package state.
-2. Publishes only the foundation subcircuit package after a version bump.
-3. Waits for the operator-controlled CRS and npm-backed production-snapshot
-   pull request.
-4. After that pull request reaches `main`, validates the CRS, production lock,
-   packaged runtime, and source-built tarball identity.
-5. Publishes the Synthesizer packages, then the CLI, and finally the browser
-   package. An already-published exact tarball is verified and skipped.
+1. Validates the owner, frozen candidate head, frozen `main` base, and any
+   approved foundation bootstrap identity.
+2. Builds the candidate without npm or Drive mutation credentials.
+3. Resolves and hash-checks the public CRS through read-only Drive access.
+4. Validates the production lock and source-built tarball identities.
+5. Publishes the foundation package during the bootstrap operation, then the
+   Synthesizer packages, CLI, and browser package during final release. An
+   already-published identical tarball is verified and skipped.
 
-The staged Actions workflow is the selected path for the `3.0.0` release.
-Registry failures other than an exact `E404` stop that workflow. The separately
-maintained manual publishing command remains available outside that workflow;
-it is not invoked by this release plan.
+The staged controller is the selected path for the `3.0.0` release. Registry
+failures other than an exact `E404` stop the operation. The separately
+maintained manual publishing command remains available outside that controller;
+it is not part of the normal frozen-tree release path.
 
 ## Manual Publishing
 
