@@ -6,7 +6,9 @@ The repository uses a synchronized release version for the CLI, subcircuit libra
 
 The format is based on Keep a Changelog.
 
-## Unreleased
+Release-entry dates are the dates on which version-bump pull requests are prepared offline and may differ from GitHub pull-request creation, merge, and npm publication dates.
+
+## [3.0.0] - 2026-09-23
 
 ### Protocol Changes
 
