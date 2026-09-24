@@ -1,9 +1,15 @@
-# Prover Dense MSM Chunk Size Benchmark
+# Historical Prover Dense MSM Chunk Size Benchmark
 
 Audience: backend-wasm maintainers and prover performance engineers.
 
 This note records a Chromium full-prover benchmark for the dense `sigma1.xy-powers`
 MSM chunk size used by `encodePolynomialBufferWithSigma1(...)`.
+
+This is historical performance evidence, not release-toolchain qualification.
+The benchmark used Node.js 26.0.0, while release checks use the pinned Node.js
+24.20.0 and npm 11.19.0 toolchain. Do not use this note's environment to claim
+release reproducibility or to compare release artifacts without a new
+measurement under the pinned toolchain.
 
 ## Purpose
 

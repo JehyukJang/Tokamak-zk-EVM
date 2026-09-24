@@ -1,11 +1,14 @@
-# Current-protocol WASM optimization opportunity profile
+# Historical current-protocol WASM optimization opportunity profile
 
 ## Audience and decision
 
 For backend engineers selecting the next WASM optimization experiments.
-This is a diagnostic profile of the implementation at
-`cd72c162281c2b4058e6bbc70e130988ec4ed516`, not an accepted optimization
-or a new protocol/CRS-format decision. No production algorithm was changed.
+This is a historical diagnostic profile of the implementation at
+`cd72c162281c2b4058e6bbc70e130988ec4ed516`, captured before the W0 policy
+was implemented. It is not the current execution plan, an accepted
+optimization, or a new protocol/CRS-format decision. No production algorithm
+was changed by the snapshot described here. The current W0--W7 status and
+evidence are maintained in the [current univariate CRS report](current-univariate-crs.md).
 
 Prioritize unnecessary data movement, undersized worker jobs and avoidable
 algebra before changing the arithmetic library. The prover already uses
@@ -143,7 +146,10 @@ effects overlap; do not add them or promise a final latency.
 
 ### W0. Align CRS digest policy with native prove, then rebaseline
 
-Approved policy — 2026-09-13; implementation is not yet started.
+Historical proposal recorded on 2026-09-13; the policy was subsequently
+implemented and accepted. At the time of this profile, implementation had not
+started. The proposal was:
+
 Native prove's `--check-digests` defaults to false. WASM runtime CRS reading
 will follow the same opt-in policy: no payload digest computation by default,
 with an explicit per-call `checkDigests: true` option to request it. Apply
@@ -371,11 +377,12 @@ experiments; W8/W9 were later discarded. For each retained optimization candidat
    complete API and separate loading/arithmetic, including memory impact.
 5. Record acceptance or rejection before the next candidate.
 
-W0 precedes the W1--W7 prove sequence. W8 and W9 were separately scoped
-preprocess and verifier proposals before their later discard. Apart from the
-approved W0 digest policy, no trust-policy or artifact-contract change is
-implied. The review does not run live MPC, publish artifacts,
-change versions, or reinstate a dense-CRS performance benchmark.
+In the historical sequence, W0 preceded the W1--W7 prove sequence. W8 and W9
+were separately scoped preprocess and verifier proposals before their later
+discard. Apart from the approved W0 digest policy, no trust-policy or
+artifact-contract change was implied. This historical review did not run live
+MPC, publish artifacts, change versions, or reinstate a dense-CRS performance
+benchmark.
 
 ## Reproduction and source evidence
 

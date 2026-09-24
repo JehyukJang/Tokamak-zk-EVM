@@ -54,12 +54,23 @@ you intend to run:
 The default URLs in the page point to these names. They can be replaced with
 same-origin or CORS-enabled application URLs.
 
-Prepare ordinary runtime binaries with the package converter APIs. Convert the
-native Phase 1 `tau_sequence.rkyv` and the Phase 2 directory containing
-`prover_keys.rkyv`, `preprocess_keys.rkyv`, and `verifier_keys.rkyv` with
-`npm run univariate-crs:convert`, then copy its complete output directory to
-`public/artifacts/crs/`. Source artifact authentication remains the
-application's responsibility.
+Prepare ordinary runtime binaries with the package converter APIs. The example
+package does not define the converter script, so run it from the parent WASM
+package:
+
+```sh
+cd packages/backend/wasm
+npm run univariate-crs:convert -- \
+  --tau-sequence ../rust/setup/output/tau_sequence.rkyv \
+  --keys ../rust/setup/output \
+  --output ./tmp/browser-crs
+```
+
+The command converts the native Phase 1 `tau_sequence.rkyv` and the Phase 2
+directory containing `prover_keys.rkyv`, `preprocess_keys.rkyv`, and
+`verifier_keys.rkyv`. Copy its complete output directory to
+`examples/browser/public/artifacts/crs/`. Source artifact authentication
+remains the application's responsibility.
 
 The CRS and witness files are intentionally not included in this example or in
 the npm package.

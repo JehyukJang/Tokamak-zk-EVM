@@ -101,12 +101,18 @@ root changelog, and intended commit are aligned before using it.
 Use this format:
 
 ```md
-## [2.0.12] - 2026-04-29
+## [MAJOR.MINOR.PATCH] - YYYY-MM-DD
 
 ### CLI
 
 - Short user-facing change
 - Another user-facing change
 ```
+
+For a real release, replace the placeholders with the synchronized release
+version and the local calendar date on which the release pull request is
+prepared offline. That date may differ from the npm publication date and the
+GitHub merge date. The release entry must be dated; do not leave an
+`Unreleased` heading in the release pull request.
 
 Keep changelog entries short and written for package consumers. Record only changes that affect npm-published package artifacts or their consumer-facing behavior. Package artifacts do not include changelog files; package READMEs link to the root changelog instead.
