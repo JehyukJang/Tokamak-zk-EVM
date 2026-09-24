@@ -89,14 +89,21 @@ Build model:
 
 Release model:
 
-- The workspace root provides the official `npm run publish` entry point.
-- `npm run release` remains as an alias to the same workflow.
-- The release script runs `npm install` before the workspace build and publish steps.
-- The release script compares local package versions with npm.
-- If remote version lookup fails for any package, the release stops.
-- If neither package needs publishing, the release fails instead of silently succeeding.
-- Build and publish order is `node-cli` first, then `web-app`.
-- After any actual publish succeeds, create the Git tag `synthesizer-vX.Y.Z`.
+- The normal synchronized release uses the fixed main release controller
+  described in the repository [version and release rules](../../../../docs/version-rules.md).
+  It builds and publishes the exact tarballs admitted from the frozen release
+  tree.
+- The workspace `npm run publish` command and its `npm run release` alias are
+  manual recovery commands for an explicitly authorized direct publication.
+  They are not the normal frozen-tree release path.
+- The manual release script runs `npm install`, builds the workspace, compares
+  local package versions with npm, publishes from the current checkout, and
+  creates a `synthesizer-vX.Y.Z` tag. Confirm the checkout, version, changelog,
+  and intended commit before using it.
+- If remote version lookup fails for any package, the manual release stops.
+- If neither package needs publishing, the manual release fails instead of
+  silently succeeding.
+- The manual build and publish order is `node-cli` first, then `web-app`.
 
 Version-bump policy:
 

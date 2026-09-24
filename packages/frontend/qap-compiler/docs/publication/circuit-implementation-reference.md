@@ -165,7 +165,11 @@ the surrounding protocol assigns meaning to the values.
 The tables cover every production target in
 [`scripts/compile.sh`](../../scripts/compile.sh). The values describe the current
 source tree, not necessarily the contents of an older installed package or the
-checked-in generated library.
+checked-in generated library. This publication candidate describes synchronized
+version `3.0.0` at source snapshot
+`6991047705d46d2218fd56d957e051248217802b` (2026-09-23), measured with Circom
+`2.2.3` and explicit O2 optimization. Update the snapshot identity and all
+derived tables together when the circuit source or constants change.
 
 The production list currently contains 44 compiled subcircuit types: seven
 generic buffers, 30 general computational or support types, and seven
@@ -194,15 +198,16 @@ signature verification uses 17 placements of seven distinct types.
 
 > **Implementation and release status**
 >
-> The qap source catalog, its generation pipeline, and qap-local
+> The qap source catalog, its generation pipeline, and compiler-local
 > direct-composition tests described here are implemented. The Synthesizer uses
 > the revised transaction-signature composition and the `MemoryViewStep`
-> memory-load composition against the current library metadata. Compatibility
-> replay against the released TokamakL2JS implementation of issue #2 and the
-> delegated Solidity public checks remain separate qualification work. The
-> generated library is a build-time output and is intentionally not checked in;
-> an operator-controlled CRS must still pass the release qualification process
-> for the matching source digest.
+> component, which reconstructs one EVM memory word from byte fragments, against
+> the current library metadata. Compatibility replay against the released
+> TokamakL2JS implementation and the surrounding Solidity verifier's public
+> value checks remain separate qualification work. The generated library is a
+> build-time output and is intentionally not checked in; an operator-controlled
+> CRS must still pass the release qualification process for the matching source
+> digest.
 
 Constraint counts were measured from the current source with Circom 2.2.3,
 explicit O2 optimization, the BLS12-381 scalar field, and the

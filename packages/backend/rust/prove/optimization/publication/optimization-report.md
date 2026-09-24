@@ -7,7 +7,7 @@
 >
 > Last consolidated: 2026-09-23.
 
-## 3.0.0 Release Summary
+## 3.0.0 Release-Line Summary
 
 The 3.0.0 circuit and interface reductions reduce the amount of constraint and
 boundary data processed during proving. The measured browser result is a
@@ -15,7 +15,7 @@ release-line comparison; the native result below is explicitly a development
 comparison because the published 2.1.5 release does not preserve the locked
 native dependency graph needed for an auditable baseline.
 
-| Execution path | 2.1.5 reference | 3.0.0 result | Change |
+| Execution path | 2.1.5 reference | 3.0.0 candidate result | Change |
 | --- | ---: | ---: | ---: |
 | Browser WASM `transferNotes1To2` | 126.717 s | 18.812 s | 107.905 s faster (85.2%, 6.74x) |
 | Native Rust release-profile development comparison | 38.000077 s* | 11.058532 s* | 26.941545 s faster* (70.9%, 3.44x)* |
@@ -52,6 +52,14 @@ This report separates three kinds of evidence:
 - **Historical or provisional result**: useful diagnostic evidence that must not be presented as the current result because the setup differs or the measured stack included a later-reverted experiment.
 
 `total wall` is end-to-end proving elapsed time. Lower is better. Component timings are diagnostic only and must be compared only when their timing boundaries match.
+
+The historical appendix uses internal circuit-size counters: `n`, `l_D`, `l`,
+`m_I`, and `s_max`. They describe constraint, wire-boundary, and placement
+dimensions rather than consumer-facing API values. `MSM` means multi-scalar
+multiplication, and ICICLE is the arithmetic backend used by the native
+measurements. The appendix retains these terms to identify the measured
+structural changes; the reader-facing result is the reduction in circuit and
+interface data described above.
 
 ## Release Comparison Status
 
