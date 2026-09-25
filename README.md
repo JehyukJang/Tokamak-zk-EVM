@@ -89,9 +89,9 @@ sequenceDiagram
 
 [Tokamak Private App Channels](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts)
 is a concrete integration of this flow. Its
-[bridge](https://etherscan.io/address/0x992E2Ae206620d811832a8F697c526c4f95974b6#code)
-coordinates a [registry](https://etherscan.io/address/0x88Ab290a9dc0a169240EBC282Ec1F7C8524645aA#code)
-of DApps admitted for TPAC. Each
+[bridge](https://etherscan.io/address/0xB1815dF9382449F48E2c26cAd75a07a51E3d72Fa#code)
+coordinates a [registry of DApps admitted for TPAC](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts#mainnet-registered-dapps).
+Each
 [channel](https://etherscan.io/address/0x3108d92A38bFb4B3396DE7ad4D92318a8fbE61D7#code)
 is associated with one registered DApp and maintains its own state commitment.
 The bridge calls the deployed
