@@ -180,27 +180,14 @@ system.
 
 ## Versioning and distribution
 
-All public npm packages use one synchronized `MAJOR.MINOR.PATCH` version. The
-Rust backend is not separately published: the
-[`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli)
-packages compatible source and builds it locally.
-
-`MAJOR.MINOR` defines the backend and CRS compatibility class. Changes to the
-circuit, public-input contract, proving semantics, or verification semantics
-require a new class and matching CRS. A patch release can reuse a CRS only when
-the CRS-relevant circuit source digest is unchanged.
-
-A package is public only after it appears on npm, whose package page is the
-source of truth for published availability. The CLI downloads compatible CRS
-artifacts from Google Drive and validates their provenance and hashes before
-use. Release candidates are admitted from a frozen `dev`-to-`main` source tree;
-an immutable package version is never republished with different contents.
-
-[CHANGELOG.md](./CHANGELOG.md) records consumer-facing protocol, compatibility,
-and performance changes. Its release date is the local date on which the
-release pull request was prepared and may differ from the npm publication or
-GitHub merge date. See the maintainer-facing
-[version and release rules](./docs/version-rules.md) for the complete policy.
+- The repository root centrally manages the synchronized version of every
+  package.
+- The root [CHANGELOG.md](./CHANGELOG.md) centrally records changes for those
+  package versions.
+- The `main` branch is kept at the source code for deployed versions.
+- Backend-RUST binaries are not distributed directly. The
+  [`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli)
+  distributes the compatible source and builds them locally.
 
 ## Learn more
 
