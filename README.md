@@ -125,7 +125,7 @@ reuse, then creates commitments for recipient notes while preserving total
 value. A direct call to the controller on native Ethereum publishes its note and
 transfer data in transaction calldata. In contrast, the Tokamak L2 path submits
 a proof and the required public inputs to the ChannelManager instead of the raw
-transaction. The input notes, including their ownership, are not published on
+transaction, so the input notes and their ownership are not published on
 Ethereum.
 
 This is an application-defined privacy boundary, not an automatic privacy layer
