@@ -7,8 +7,18 @@ import { fileURLToPath } from 'node:url';
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const workflowPath = path.join(repositoryRoot, '.github/workflows/publish-tokamak-zk-evm.yml');
 const workflow = fs.readFileSync(workflowPath, 'utf8');
+const buildWorkflow = fs.readFileSync(path.join(repositoryRoot, '.github/workflows/build-release.yml'), 'utf8');
+
+for (const legacyPath of ['scripts/classify-release.mjs', 'scripts/release-state.mjs', 'scripts/test-release-state.mjs']) {
+  if (fs.existsSync(path.join(repositoryRoot, legacyPath))) {
+    throw new Error(`Release controller must not retain legacy staged-release route ${legacyPath}.`);
+  }
+}
 
 checkController(workflow);
+if (!buildWorkflow.includes('Check public documentation')) {
+  throw new Error('Release source validation must check public documentation.');
+}
 expectFailure(workflow.replace('persist-credentials: false', 'persist-credentials: true'));
 expectFailure(workflow.replaceAll('test "$GITHUB_ACTOR" = "JehyukJang"', 'true'));
 expectFailure(workflow.replace('id-token: write', 'id-token: read'));
@@ -16,6 +26,12 @@ expectFailure(workflow.replace('npm publish --access public --ignore-scripts', '
 expectFailure(workflow.replace('test "${{ steps.foundation.outputs.should_publish }}" = false', 'true'));
 expectFailure(workflow.replace('group: tokamak-zk-evm-release-controller', 'group: another-controller'));
 expectFailure(workflow.replaceAll('git/ref/heads/main', 'git/ref/heads/development'));
+expectFailure(
+  workflow.replace(
+    `test "$changed" = "$(printf '.github/workflows/publish-tokamak-zk-evm.yml\\nCHANGELOG.md\\ndocs/version-rules.md\\npackages/backend/wasm/package-lock.json\\nscripts/check-staged-release-workflow.mjs')"`,
+    'true',
+  ),
+);
 
 console.log('[release-controller-workflow] Authority and exact-identity boundaries passed.');
 
@@ -25,12 +41,15 @@ function checkController(value) {
     'branches: [main]',
     'group: tokamak-zk-evm-release-controller',
     'options: [bootstrap-foundation, final-release]',
+    'bootstrap_head_sha',
     'test "$GITHUB_ACTOR" = "JehyukJang"',
     'test "$GITHUB_REF" = "refs/heads/main"',
     'test "$GITHUB_SHA" = "$BASE_SHA"',
     'git/ref/heads/main',
     'repos/$GITHUB_REPOSITORY/git/ref/heads/dev',
     'repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER',
+    'git merge-base --is-ancestor "$BOOTSTRAP_HEAD_SHA" "$EXPECTED_HEAD_SHA"',
+    `test "$changed" = "$(printf '.github/workflows/publish-tokamak-zk-evm.yml\\nCHANGELOG.md\\ndocs/version-rules.md\\npackages/backend/wasm/package-lock.json\\nscripts/check-staged-release-workflow.mjs')"`,
     'Build frozen candidate without mutation credentials',
     'Resolve public CRS with read-only Drive access',
     'TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON',
