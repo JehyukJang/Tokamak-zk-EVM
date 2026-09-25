@@ -39,6 +39,11 @@ function checkFinalCrsReleaseWorkflow(value: string): void {
     }
   }
 
+  const finalDevHeadGuard = `test "$(jq -r '.head.ref' <<<"$pr")" = "dev"`;
+  if (value.split(finalDevHeadGuard).length - 1 !== 2) {
+    throw new Error("The final-release workflow must enforce a dev-to-main pull request in both identity checks.");
+  }
+
   for (const forbidden of [
     "combined_sigma.rkyv",
     "sigma_preprocess.rkyv",

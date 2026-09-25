@@ -413,6 +413,7 @@ jobs:
             test "$(jq -r '.state' <<<"$pr")" = "open"
             test "$(jq -r '.base.ref' <<<"$pr")" = "main"
             test "$(jq -r '.base.sha' <<<"$pr")" = "$BASE_SHA"
+            test "$(jq -r '.head.ref' <<<"$pr")" = "dev"
             actual_head="$(jq -r '.head.sha' <<<"$pr")"
             git fetch --no-tags origin "pull/$PR_NUMBER/head:refs/remotes/origin/release-final"
             git fetch --no-tags origin "$BOOTSTRAP_HEAD_SHA:refs/remotes/origin/release-bootstrap-candidate"
@@ -746,6 +747,7 @@ jobs:
           test "$(jq -r '.state' <<<"$pr")" = "open"
           test "$(jq -r '.base.ref' <<<"$pr")" = "main"
           test "$(jq -r '.base.sha' <<<"$pr")" = "$BASE_SHA"
+          test "$(jq -r '.head.ref' <<<"$pr")" = "dev"
           test "$(jq -r '.head.sha' <<<"$pr")" = "$EXPECTED_HEAD_SHA"
 
       - name: Require already-published bootstrap identity

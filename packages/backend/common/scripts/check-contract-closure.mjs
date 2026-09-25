@@ -10,6 +10,7 @@ const requiredBoundaries = [
   ['Canonical Rust artifact codec', 'common/interface/src/artifact_bytes.rs'],
   ['Canonical TypeScript artifact codec', 'common/interface/typescript/artifact-bytes.ts'],
   ['Canonical artifact generator', 'common/scripts/generate-artifact-codecs.mjs'],
+  ['Contract consumer generator', 'common/scripts/prepare-contract-consumers.mjs'],
   ['CRS provenance JSON authority', 'common/contracts/crs-provenance-contract.json'],
   ['CRS provenance Rust representation', 'rust/libs/src/crs_provenance.rs'],
   ['CRS provenance common writer', 'rust/libs/src/crs_provenance.rs'],
@@ -55,21 +56,6 @@ const requiredConsumerBoundaries = [
     'parseCrsProvenance',
   ],
   [
-    'CLI copied provenance validator',
-    'packages/cli/src/generated/crs-provenance-validator.generated.ts',
-    'parseCrsProvenance',
-  ],
-  [
-    'backend-wasm copied provenance validator',
-    'packages/backend/wasm/src/generated/crs-provenance-validator.generated.ts',
-    'parseCrsProvenance',
-  ],
-  [
-    'CLI copied build metadata validator',
-    'packages/cli/src/generated/backend-build-metadata-validator.generated.ts',
-    'parseBackendBuildMetadata',
-  ],
-  [
     'backend-wasm qap contract adapter',
     'packages/backend/wasm/scripts/generate/subcircuit-library-input.ts',
     'SUBCIRCUIT_LIBRARY_CONTRACT',
@@ -88,21 +74,6 @@ const requiredConsumerBoundaries = [
     'backend-wasm runtime artifact contract admission',
     'packages/backend/wasm/src/artifacts/binary/runtime-admission.ts',
     'RuntimeArtifactFormatSpec',
-  ],
-  [
-    'backend-wasm generated univariate domain contract',
-    'packages/backend/wasm/src/generated/univariate-domain-contract.generated.ts',
-    'UNIVARIATE_DOMAIN_CONTRACT',
-  ],
-  [
-    'backend-wasm generated univariate CRS chunk contract',
-    'packages/backend/wasm/src/generated/univariate-crs-chunk-contract.generated.ts',
-    'UNIVARIATE_CRS_CHUNK_CONTRACT',
-  ],
-  [
-    'backend-wasm generated univariate transcript contract',
-    'packages/backend/wasm/src/generated/univariate-transcript-contract.generated.ts',
-    'UNIVARIATE_TRANSCRIPT_CONTRACT',
   ],
 ];
 
