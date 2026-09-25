@@ -1,17 +1,45 @@
 name: Pre-publish Test & Build
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('PR validation {0} ({1})', inputs.pull_request_number, inputs.dispatch_nonce) || github.event.pull_request.title }}
 
 on:
   pull_request:
     branches: [main]
     paths-ignore:
+      - packages/backend/wasm/package-lock.json
       - .github/workflows/build-release.yml
       - .github/workflows/publish-tokamak-zk-evm.yml
+      - docs/version-rules.md
+      - scripts/check-doc-readiness.mjs
       - scripts/check-release-package.mjs
+      - scripts/check-release-reproducibility.mjs
       - scripts/check-staged-release-workflow.mjs
       - scripts/download-release-crs.py
       - scripts/release-registry.mjs
       - scripts/test-download-release-crs.py
       - scripts/test-release-registry.mjs
+      - packages/backend/wasm/test/checks/generate/check-final-crs-release-workflow.ts
+  workflow_dispatch:
+    inputs:
+      pull_request_number:
+        description: Pull request whose exact head is being validated
+        required: true
+        type: string
+      expected_head_sha:
+        description: Exact pull-request head commit to validate
+        required: true
+        type: string
+      base_sha:
+        description: Exact main commit used as the pull-request base
+        required: true
+        type: string
+      dispatch_nonce:
+        description: Unique caller correlation value
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
 
 concurrency:
   group: pre-publish-test-build-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -23,35 +51,67 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     env:
-      QAP_COMPILER_EXPECTED_CIRCOM_VERSION: '2.2.2'
+      QAP_COMPILER_EXPECTED_CIRCOM_VERSION: '2.2.3'
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.expected_head_sha || github.sha }}
+
+      - name: Validate dispatched pull-request identity
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_BASE_SHA: ${{ inputs.base_sha }}
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+          PR_NUMBER: ${{ inputs.pull_request_number }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.base.ref')" = "main"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.base.sha')" = "$EXPECTED_BASE_SHA"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')" = "$EXPECTED_HEAD_SHA"
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24.20.0'
+
+      - name: Install and verify pinned npm
+        run: |
+          npm install --global npm@11.19.0
+          test "$(node --version)" = "v24.20.0"
+          test "$(npm --version)" = "11.19.0"
 
       - name: Install workspace dependencies
-        run: npm install --package-lock=false
+        run: npm ci
+
+      - name: Check release-candidate date boundary
+        env:
+          BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.base_sha || github.event.pull_request.base.sha }}
+        run: npm run release:candidate:check -- --base-ref="$BASE_SHA"
+
+      - name: Check public documentation
+        run: npm run docs:check
 
       - name: Check synchronized versions
         run: npm run version:check
 
       - name: Install Rust and Cargo
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Check release reproducibility policy
+        run: npm run release:reproducibility:check
 
       - name: Install Circom compiler
-        run: cargo install --git https://github.com/iden3/circom --tag v2.2.2 circom
+        run: cargo install --locked --git https://github.com/iden3/circom --tag v2.2.3 circom
 
       - name: Verify Circom compiler
         run: |
           circom --version
-          test "$(circom --version)" = "circom compiler 2.2.2"
+          test "$(circom --version)" = "circom compiler 2.2.3"
 
       - name: Build subcircuit library
         working-directory: packages/frontend/qap-compiler
@@ -85,6 +145,22 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Install ICICLE CPU runtime
+        working-directory: packages/backend
+        run: ./download-ICICLE-lib.sh
+
+      - name: Generate local verifier key
+        working-directory: packages/backend
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/packages/backend/external-lib/linux22/lib
+          ICICLE_BACKEND_INSTALL_DIR: ${{ github.workspace }}/packages/backend/external-lib/linux22/lib/backend
+        run: |
+          cargo run --locked --release -p trusted-setup -- \
+            --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
+            --output "$RUNNER_TEMP/tokamak-development-crs"
+
       - name: Check backend workspace
         working-directory: packages/backend
-        run: cargo check --workspace
+        run: cargo check --workspace --locked
+        env:
+          TOKAMAK_VERIFIER_KEYS: ${{ runner.temp }}/tokamak-development-crs/verifier_keys.rkyv

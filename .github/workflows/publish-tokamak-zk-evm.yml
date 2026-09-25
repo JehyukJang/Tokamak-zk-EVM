@@ -8,12 +8,16 @@ on:
     paths:
       - .github/workflows/build-release.yml
       - .github/workflows/publish-tokamak-zk-evm.yml
+      - docs/version-rules.md
+      - scripts/check-doc-readiness.mjs
       - scripts/check-release-package.mjs
+      - scripts/check-release-reproducibility.mjs
       - scripts/check-staged-release-workflow.mjs
       - scripts/download-release-crs.py
       - scripts/release-registry.mjs
       - scripts/test-download-release-crs.py
       - scripts/test-release-registry.mjs
+      - packages/backend/wasm/test/checks/generate/check-final-crs-release-workflow.ts
   workflow_dispatch:
     inputs:
       operation:
@@ -31,6 +35,10 @@ on:
         type: string
       pull_request_number:
         description: Final dev-to-main pull request number (required only for final-release)
+        required: false
+        type: string
+      bootstrap_head_sha:
+        description: Approved bootstrap candidate commit SHA (required only for final-release)
         required: false
         type: string
 
@@ -63,7 +71,7 @@ jobs:
           test -n "$BEFORE"
           changed="$(git diff --name-only "$BEFORE" "$GITHUB_SHA")"
           test -n "$changed"
-          if grep -Eqv '^(\.github/workflows/(build-release|publish-tokamak-zk-evm)\.yml|scripts/(check-release-package|check-staged-release-workflow|download-release-crs|release-registry|test-download-release-crs|test-release-registry)\.(mjs|py))$' <<<"$changed"; then
+          if grep -Eqv '^(\.github/workflows/(build-release|publish-tokamak-zk-evm)\.yml|docs/version-rules\.md|scripts/(check-doc-readiness|check-release-package|check-release-reproducibility|check-staged-release-workflow|download-release-crs|release-registry|test-download-release-crs|test-release-registry)\.(mjs|py)|packages/backend/wasm/test/checks/generate/check-final-crs-release-workflow\.ts)$' <<<"$changed"; then
             echo "scope=complete-release" >> "$GITHUB_OUTPUT"
           else
             echo "scope=controller-maintenance" >> "$GITHUB_OUTPUT"
@@ -121,6 +129,7 @@ jobs:
       - name: Verify fixed controller boundaries
         run: |
           node scripts/check-staged-release-workflow.mjs
+          python3 scripts/test-download-release-crs.py
           node scripts/test-release-registry.mjs
 
   rebuild-main-release:
@@ -130,7 +139,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     env:
-      QAP_COMPILER_EXPECTED_CIRCOM_VERSION: '2.2.2'
+      QAP_COMPILER_EXPECTED_CIRCOM_VERSION: '2.2.3'
     steps:
       - name: Checkout merged source
         uses: actions/checkout@v4
@@ -161,11 +170,11 @@ jobs:
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Install Circom compiler
-        run: cargo install --locked --git https://github.com/iden3/circom --tag v2.2.2 circom
+        run: cargo install --locked --git https://github.com/iden3/circom --tag v2.2.3 circom
 
       - name: Build source packages
         run: |
-          test "$(circom --version)" = "circom compiler 2.2.2"
+          test "$(circom --version)" = "circom compiler 2.2.3"
           (cd packages/frontend/qap-compiler && npx qap-compiler --reload-constants && npx qap-compiler --build && npx qap-compiler --dist)
           npm run build --workspace @tokamak-zk-evm/synthesizer-node
           npm run build --workspace @tokamak-zk-evm/synthesizer-web
@@ -379,6 +388,7 @@ jobs:
         env:
           BASE_SHA: ${{ inputs.base_sha }}
           EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+          BOOTSTRAP_HEAD_SHA: ${{ inputs.bootstrap_head_sha }}
           GH_TOKEN: ${{ github.token }}
           OPERATION: ${{ inputs.operation }}
           PR_NUMBER: ${{ inputs.pull_request_number }}
@@ -390,17 +400,24 @@ jobs:
           [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
 
           if [ "$OPERATION" = "bootstrap-foundation" ]; then
+            test -z "$BOOTSTRAP_HEAD_SHA"
             actual_head="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/dev" --jq '.object.sha')"
             git fetch --no-tags origin dev:refs/remotes/origin/release-bootstrap
           else
             test "$OPERATION" = "final-release"
             [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+            [[ "$BOOTSTRAP_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
             pr="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
             test "$(jq -r '.state' <<<"$pr")" = "open"
             test "$(jq -r '.base.ref' <<<"$pr")" = "main"
             test "$(jq -r '.base.sha' <<<"$pr")" = "$BASE_SHA"
+            test "$(jq -r '.head.ref' <<<"$pr")" = "dev"
             actual_head="$(jq -r '.head.sha' <<<"$pr")"
             git fetch --no-tags origin "pull/$PR_NUMBER/head:refs/remotes/origin/release-final"
+            git fetch --no-tags origin "$BOOTSTRAP_HEAD_SHA:refs/remotes/origin/release-bootstrap-candidate"
+            git merge-base --is-ancestor "$BOOTSTRAP_HEAD_SHA" "$EXPECTED_HEAD_SHA"
+            changed="$(git diff --name-only "$BOOTSTRAP_HEAD_SHA" "$EXPECTED_HEAD_SHA")"
+            test "$changed" = "$(printf '.github/workflows/publish-tokamak-zk-evm.yml\nCHANGELOG.md\ndocs/version-rules.md\npackages/backend/wasm/package-lock.json\nscripts/check-staged-release-workflow.mjs')"
           fi
           test "$actual_head" = "$EXPECTED_HEAD_SHA"
           package_version="$(git show "$EXPECTED_HEAD_SHA:package.json" | jq -r '.version')"
@@ -413,7 +430,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     env:
-      QAP_COMPILER_EXPECTED_CIRCOM_VERSION: '2.2.2'
+      QAP_COMPILER_EXPECTED_CIRCOM_VERSION: '2.2.3'
     steps:
       - name: Checkout fixed controller
         uses: actions/checkout@v4
@@ -464,10 +481,10 @@ jobs:
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Install Circom compiler
-        run: cargo install --locked --git https://github.com/iden3/circom --tag v2.2.2 circom
+        run: cargo install --locked --git https://github.com/iden3/circom --tag v2.2.3 circom
 
       - name: Verify Circom compiler
-        run: test "$(circom --version)" = "circom compiler 2.2.2"
+        run: test "$(circom --version)" = "circom compiler 2.2.3"
 
       - name: Build subcircuit library
         working-directory: candidate/packages/frontend/qap-compiler
@@ -728,6 +745,7 @@ jobs:
           test "$(jq -r '.state' <<<"$pr")" = "open"
           test "$(jq -r '.base.ref' <<<"$pr")" = "main"
           test "$(jq -r '.base.sha' <<<"$pr")" = "$BASE_SHA"
+          test "$(jq -r '.head.ref' <<<"$pr")" = "dev"
           test "$(jq -r '.head.sha' <<<"$pr")" = "$EXPECTED_HEAD_SHA"
 
       - name: Require already-published bootstrap identity
