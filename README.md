@@ -116,11 +116,12 @@ transfer function defined by the
 [PrivateStateController](https://etherscan.io/address/0x67C6233A99D9f122Fef9DC111e89948107b34c2F#code),
 which is deployed on Ethereum mainnet. The DApp's state records note commitments
 and nullifiers for spent notes. To transfer value, the owner must submit
-privacy-sensitive data in transaction calldata. A direct call to the controller
-on native Ethereum publishes this calldata. In contrast, the Tokamak L2 path
-submits a proof and the required public inputs to the ChannelManager instead of
-the raw transaction, so the input notes and their ownership are not published on
-Ethereum.
+privacy-sensitive data in transaction calldata. That data identifies the sender,
+recipients, and transferred amounts, so publishing it exposes who sent how much
+to whom. A direct call to the controller on native Ethereum publishes this
+calldata. In contrast, the Tokamak L2 path submits a proof and the required
+public inputs to the ChannelManager instead of the raw transaction, so the input
+notes and their ownership are not published on Ethereum.
 
 This is an application-defined privacy boundary, not an automatic privacy layer
 for a native Ethereum DApp. [Ethereum.org defines data availability](https://ethereum.org/developers/docs/data-availability/)
