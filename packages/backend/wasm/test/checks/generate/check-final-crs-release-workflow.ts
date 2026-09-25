@@ -81,11 +81,11 @@ function assertOrdered(value: string, markers: readonly string[]): void {
 
 function checkNegativeCases(value: string): void {
   expectRejection(
-    value.replaceAll("npm run verifier-crs:input:check", "echo skipped-crs-boundary"),
+    value.split("npm run verifier-crs:input:check").join("echo skipped-crs-boundary"),
     "The workflow check must reject bypassing the browser CRS boundary check.",
   );
   expectRejection(
-    value.replaceAll("TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON", "UNCONFIGURED_DRIVE_CREDENTIAL"),
+    value.split("TOKAMAK_MPC_DRIVE_SERVICE_ACCOUNT_JSON").join("UNCONFIGURED_DRIVE_CREDENTIAL"),
     "The workflow check must reject removal of the read-only CRS resolver boundary.",
   );
   expectRejection(

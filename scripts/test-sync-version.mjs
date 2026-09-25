@@ -44,6 +44,11 @@ await runTest('source-only synchronization succeeds in a fresh fixture', fixture
 });
 
 await runTest('complete synchronization excludes ignored generated inputs', fixtureRoot => {
+  const changelogPath = path.join(fixtureRoot, 'CHANGELOG.md');
+  const changelog = fs.readFileSync(changelogPath, 'utf8');
+  const candidateChangelog = replaceDatedReleaseHeading(changelog, '## Unreleased');
+  fs.writeFileSync(changelogPath, candidateChangelog);
+
   run(fixtureRoot, ['scripts/sync-version.mjs', '3.0.0']);
   run(fixtureRoot, ['scripts/check-version-sync.mjs', '--pre-publication']);
   assert.equal(readJson(fixtureRoot, 'package.json').version, '3.0.0');
@@ -90,7 +95,11 @@ await runTest('complete synchronization requires the backend workspace lock', fi
 await runTest('pre-publication rejects a candidate without a changelog entry', fixtureRoot => {
   run(fixtureRoot, ['scripts/sync-version.mjs', '3.0.0']);
   const changelogPath = path.join(fixtureRoot, 'CHANGELOG.md');
-  fs.writeFileSync(changelogPath, fs.readFileSync(changelogPath, 'utf8').replace('## Unreleased', '## Pending'));
+  const changelogWithoutReleaseEntry = replaceDatedReleaseHeading(
+    fs.readFileSync(changelogPath, 'utf8'),
+    '## Pending',
+  ).replace(/^## Unreleased$/gmu, '## Pending');
+  fs.writeFileSync(changelogPath, changelogWithoutReleaseEntry);
   const result = runFailure(fixtureRoot, ['scripts/check-version-sync.mjs', '--pre-publication']);
   assert.match(result.stderr, /either an Unreleased candidate entry or a dated release entry for 3\.0\.0/u);
 });
@@ -141,6 +150,16 @@ async function runTest(name, testBody) {
   } finally {
     fs.rmSync(fixtureRoot, { force: true, recursive: true });
   }
+}
+
+/** @param {string} changelog @param {string} replacement */
+function replaceDatedReleaseHeading(changelog, replacement) {
+  const updated = changelog.replace(
+    /^## \[3\.0\.0\] - \d{4}-\d{2}-\d{2}$/mu,
+    replacement,
+  );
+  assert.notEqual(updated, changelog, 'Expected the fixture to contain a dated 3.0.0 entry.');
+  return updated;
 }
 
 /** @param {string} fixtureRoot */
