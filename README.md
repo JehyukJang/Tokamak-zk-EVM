@@ -113,18 +113,21 @@ the channel's state commitment.
 
 The private-state note-transfer DApp is one TPAC example. A user calls a
 transfer function defined by the
-[PrivateStateController](https://etherscan.io/address/0x67C6233A99D9f122Fef9DC111e89948107b34c2F#code)
-which is deployed on Ethereum mainnet, to consume existing notes, mark them
-spent through nullifiers, and create new note commitments with encrypted
-payloads for their recipients. This implements a note-based transfer of
-channel-local value. The Synthesizer consumes the controller's deployed bytecode
-to produce circuit artifacts, and the bridge registry records the resulting
-per-function preprocessing-input commitments. A direct call to
-the controller on native Ethereum publishes its note and transfer data in
-transaction calldata. In contrast, the Synthesizer replays the supported
-function from a Tokamak L2 transaction off-chain; the proving backends generate
-a proof, and the user submits that proof and only the required public inputs to
-the ChannelManager. The original transaction input is not published on Ethereum.
+[PrivateStateController](https://etherscan.io/address/0x67C6233A99D9f122Fef9DC111e89948107b34c2F#code),
+which is deployed on Ethereum mainnet. The DApp's state includes a liquid
+balance for each account, a registry of created note commitments, and a registry
+of used nullifiers. A note commitment binds an owner, a value, and a salt; an
+encrypted note payload delivers the corresponding note data to its intended
+recipient. To transfer value, a user provides each input note's owner, value,
+and salt, which reconstruct the registered commitment; the caller must be that
+owner. The controller derives and records a nullifier for each input to prevent
+reuse, then creates commitments for recipient notes while preserving total
+value. A direct call to the controller on native Ethereum publishes its note and
+transfer data in transaction calldata. In contrast, the Synthesizer replays the
+supported function from a Tokamak L2 transaction off-chain; the proving backends
+generate a proof, and the user submits that proof and only the required public
+inputs to the ChannelManager. The original transaction input is not published on
+Ethereum.
 
 This is an application-defined privacy boundary, not an automatic privacy layer
 for a native Ethereum DApp. [Ethereum.org defines data availability](https://ethereum.org/developers/docs/data-availability/)
