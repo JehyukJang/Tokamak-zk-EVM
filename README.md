@@ -123,8 +123,9 @@ flow, the user submits only a proof and public inputs such as the current and
 updated state commitments, and the relevant block context,
 keeping privacy-sensitive data off-chain.
 
-This is an application-defined privacy boundary, not an automatic privacy layer
-for a native Ethereum DApp. [Ethereum.org defines data availability](https://ethereum.org/developers/docs/data-availability/)
+Using Tokamak zk-EVM with the Tokamak L2 execution environment keeps
+transaction data off-chain, but it does not by itself make a native Ethereum
+DApp privacy-preserving. [Ethereum.org defines data availability](https://ethereum.org/developers/docs/data-availability/)
 as “the confidence a user can have that the data required to verify a block is
 really available to all network participants.” The DApp must therefore keep the
 state data required for verification and continued use available. In the
