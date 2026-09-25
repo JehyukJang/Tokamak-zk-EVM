@@ -189,6 +189,9 @@ system.
   [`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli)
   distributes the compatible source and builds them locally.
 
+For package-specific and release-operation details, see the relevant package
+README and the [version and release rules](./docs/version-rules.md).
+
 ## Learn more
 
 - [Project overview on Medium](https://medium.com/tokamak-network/project-tokamak-zk-evm-67483656fd21) (updated January 2026)
