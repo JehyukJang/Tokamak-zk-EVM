@@ -11,8 +11,11 @@ The backend is organized around five user-facing binaries:
 - `prove`
 - `verify`
 
-`trusted-setup` generates development-only CRS artifacts. `mpc` implements Filecoin-backed phase 2.
-Both emit the four common CRS files. MPC's explicit publish operation verifies a completed publish-mode ceremony, finalizes those files and uploads them to Google Drive; offline finalization remains ineligible.
+`trusted-setup` generates development-only CRS artifacts. `mpc` implements
+Tokamak phase 2 using the externally completed Filecoin phase 1. Both emit the
+four common CRS files. MPC's explicit publish operation verifies a completed
+publish-mode ceremony, finalizes those files and uploads them to Google Drive;
+offline finalization remains ineligible.
 `preprocess`, `prove`, and `verify` accept any CRS whose compatibility version matches the selected
 subcircuit library, together with transaction-specific data from the frontend synthesizer.
 

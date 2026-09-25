@@ -32,7 +32,7 @@ operation-specific modules:
 - [`src/load-binary.ts`](./src/load-binary.ts): fetch one binary artifact and
   reject unsuccessful responses.
 - [`src/load-crs.ts`](./src/load-crs.ts): fetch the CRS manifest and provide
-  lazy chunk acquisition to all three runtimes.
+  lazy chunk acquisition to preprocess and prover.
 
 [`index.html`](./index.html), [`src/styles.css`](./src/styles.css), and
 [`src/global.d.ts`](./src/global.d.ts) support the runnable page rather than
@@ -45,11 +45,11 @@ you intend to run:
 
 | File                 | Used by                          |
 | -------------------- | -------------------------------- |
-| `selector.bin`       | Preprocess, prover, and verifier |
-| `permutation.bin`    | Preprocess, prover, and verifier |
-| `instance.bin`       | Prover and verifier              |
+| `selector.bin`       | Preprocess and prover            |
+| `permutation.bin`    | Preprocess and prover            |
+| `instance.bin`       | Preprocess, prover, and verifier |
 | `witness.bin`        | Prover                           |
-| `crs/` manifest and chunks | Preprocess, prover, and verifier |
+| `crs/` manifest and chunks | Preprocess and prover            |
 
 The default URLs in the page point to these names. They can be replaced with
 same-origin or CORS-enabled application URLs.
