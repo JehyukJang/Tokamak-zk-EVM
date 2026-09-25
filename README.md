@@ -1,10 +1,11 @@
 # Tokamak zk-EVM
 
 Tokamak zk-EVM converts Tokamak Network Layer 2 transaction execution into
-Tokamak zk-SNARK proof artifacts. This monorepo contains the transaction
-Synthesizer, a prebuilt subcircuit library, native and browser proving
-backends, and the CLI that connects the complete workflow. Its proving protocol
-is described in the [Tokamak zk-SNARK paper](https://eprint.iacr.org/2024/507).
+Tokamak zk-SNARK proof artifacts. Its proving protocol is described in the
+[Tokamak zk-SNARK paper](https://eprint.iacr.org/2024/507).
+
+The system combines a transaction Synthesizer, a prebuilt subcircuit library,
+native and browser proving backends, and a CLI for the end-to-end workflow.
 
 ## Scope and compatibility
 
