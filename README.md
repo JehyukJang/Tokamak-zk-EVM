@@ -52,7 +52,7 @@ Ethereum DApp, including one compiled from Solidity, when the call falls within
 the supported boundary. It reads that function's EVM bytecode while replaying
 the Tokamak L2 call and produces the transaction-specific circuit artifacts
 used to prove the execution. This gives the DApp a path to reuse its contract
-code in Tokamak L2 and, together with Tokamak zk-EVM, become a
+code in Tokamak L2 and, together with the proving backends, become a
 privacy-preserving DApp.
 
 [Tokamak Private App Channels](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts)
