@@ -158,9 +158,9 @@ active CRS link rather than replacing it.
 | Command                     | Input                                         | Result                                                |
 | --------------------------- | --------------------------------------------- | ----------------------------------------------------- |
 | `--install`                 | Installation options                          | Prepared local runtime                                |
-| `--synthesize <DIR>`        | Four transaction replay JSON files            | Placement, instance, permutation, and state artifacts |
-| `--preprocess [DIR_OR_ZIP]` | Matching permutation and instance             | Verifier preprocessing commitments                    |
-| `--prove [DIR_OR_ZIP]`      | Matching placement, permutation, and instance | Proof                                                 |
+| `--synthesize <DIR>`        | Four transaction replay JSON files                      | Placement selector, placement, instance, permutation, and state artifacts |
+| `--preprocess [DIR_OR_ZIP]` | Matching selector, permutation, and instance            | Verifier preprocessing commitments                              |
+| `--prove [DIR_OR_ZIP]`      | Matching selector, placement, permutation, and instance | Proof                                                           |
 | `--verify [DIR_OR_ZIP]`     | Matching proof, preprocess, and instance      | Verification result                                   |
 | `--extract-proof <ZIP>`     | Completed cached workflow                     | Portable proof bundle                                 |
 | `--doctor`                  | Installed runtime                             | Runtime path and installation status                  |

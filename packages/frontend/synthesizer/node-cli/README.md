@@ -100,6 +100,7 @@ as it writes the file.
 | File                        | Purpose                                               |
 | --------------------------- | ----------------------------------------------------- |
 | `placementVariables.json`   | Placement subcircuit IDs, offsets, and witness values |
+| `selector.json`             | Capacity-length placement selector for preprocessing and proving |
 | `instance.json`             | Public and function-instance field values             |
 | `instance_description.json` | Human-readable instance descriptions                  |
 | `permutation.json`          | Wire-equality cycles used by preprocess and prove     |

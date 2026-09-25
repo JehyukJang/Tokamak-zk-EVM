@@ -87,6 +87,7 @@ Use the four values from one coherent state and block context. See the complete
 | File                        | Purpose                                           |
 | --------------------------- | ------------------------------------------------- |
 | `placementVariables.json`   | Placement IDs, offsets, and witness values        |
+| `selector.json`             | Capacity-length placement selector for preprocessing and proving |
 | `instance.json`             | Public and function-instance values               |
 | `instance_description.json` | Human-readable instance descriptions              |
 | `permutation.json`          | Wire-equality cycles used by preprocess and prove |

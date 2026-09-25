@@ -162,7 +162,7 @@ Consumes:
 
 - the subcircuit library
 - `preprocess_keys.rkyv` and `crs_provenance.json` from the CRS directory
-- synthesizer outputs such as `instance.json` and `permutation.json`
+- synthesizer outputs: `selector.json`, `permutation.json`, and `instance.json`
 
 Produces:
 
