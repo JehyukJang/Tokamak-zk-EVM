@@ -8,6 +8,7 @@ const enc = contract.encoding;
 const widths = { g1: 2 * enc.baseFieldBytes, g2: 4 * enc.baseFieldBytes, scalar: enc.scalarBytes };
 const banner = "// Generated from common/contracts/univariate-artifact-contract.json. Do not edit.\n";
 const le = (hex) => [...Buffer.from(hex, "hex")].reverse();
+const rustByteString = (bytes) => `b"${bytes.map((byte) => `\\x${byte.toString(16).padStart(2, "0")}`).join("")}"`;
 // Only frontend artifacts use the browser container. Proof/preprocess use
 // the canonical records generated below, identically for every consumer.
 const browser = {
@@ -17,13 +18,24 @@ const browser = {
   artifactKinds: { instance: 1, prover_placement_variables: 5, prover_selector: 8, prover_permutation: 9 },
   artifacts: [],
 };
-let rust = banner + `fn canonical(bytes: &[u8], scalar: bool) -> bool {
-    let modulus: &[u8] = if scalar { &${JSON.stringify(le(enc.scalarModulus))} } else { &${JSON.stringify(le(enc.baseFieldModulus))} };
+let rust = banner + `const SCALAR_MODULUS_LE: &[u8] = ${rustByteString(le(enc.scalarModulus))};
+const BASE_FIELD_MODULUS_LE: &[u8] = ${rustByteString(le(enc.baseFieldModulus))};
+
+fn canonical(bytes: &[u8], scalar: bool) -> bool {
+    let modulus = if scalar {
+        SCALAR_MODULUS_LE
+    } else {
+        BASE_FIELD_MODULUS_LE
+    };
     bytes.len() == modulus.len() && bytes.iter().rev().cmp(modulus.iter().rev()).is_lt()
 }
 fn check_field(bytes: &[u8], scalar: bool) -> Result<(), &'static str> {
     let width = if scalar { ${enc.scalarBytes} } else { ${enc.baseFieldBytes} };
-    if bytes.chunks_exact(width).all(|c| canonical(c, scalar)) { Ok(()) } else { Err("noncanonical artifact field") }
+    if bytes.chunks_exact(width).all(|c| canonical(c, scalar)) {
+        Ok(())
+    } else {
+        Err("noncanonical artifact field")
+    }
 }
 `;
 let ts = banner + `function checkField(bytes: Uint8Array, scalar: boolean): void {
@@ -54,7 +66,9 @@ impl ${a.record} {
     pub const BYTE_LENGTH: usize = ${offset};
     pub const FILE_NAME: &'static str = ${JSON.stringify(a.fileName)};
     pub fn decode(bytes: &[u8]) -> Result<Self, &'static str> {
-        if bytes.len() != Self::BYTE_LENGTH { return Err("invalid artifact byte length"); }
+        if bytes.len() != Self::BYTE_LENGTH {
+            return Err("invalid artifact byte length");
+        }
 ${fields.map(f => `        check_field(&bytes[${f.offset}..${f.offset + f.width}], ${f.kind === "scalar"})?;`).join("\n")}
         Ok(Self {
 ${fields.map(f => `            ${f.name}: bytes[${f.offset}..${f.offset + f.width}].try_into().unwrap(),`).join("\n")}
@@ -71,8 +85,6 @@ ${fields.map(f => `        check_field(&self.${f.name}, ${f.kind === "scalar"})?
 export interface ${a.record} {
 ${fields.map(f => `  ${f.name}: Uint8Array;`).join("\n")}
 }
-export const ${a.record}Length = ${offset};
-export const ${a.record}FileName = ${JSON.stringify(a.fileName)};
 export function decode${a.record}(bytes: Uint8Array): ${a.record} {
   if (bytes.length !== ${offset}) throw new Error("invalid artifact byte length");
 ${fields.map(f => `  checkField(bytes.subarray(${f.offset}, ${f.offset + f.width}), ${f.kind === "scalar"});`).join("\n")}

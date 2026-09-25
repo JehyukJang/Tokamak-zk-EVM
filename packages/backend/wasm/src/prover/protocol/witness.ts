@@ -1,4 +1,3 @@
-import type { SetupParams } from "../../artifacts/setup/setup-params.js";
 import type { FieldElement } from "../../runtime/field/field-types.js";
 
 export interface ProverSubcircuitInfo {
@@ -36,33 +35,6 @@ export interface ProverPackedSparseSubcircuitR1cs {
   readonly A: ProverPackedSparseMatrix;
   readonly B: ProverPackedSparseMatrix;
   readonly C: ProverPackedSparseMatrix;
-}
-
-export function validateProverPlacements(
-  placements: ProverPlacementVariables,
-  subcircuitInfos: readonly ProverSubcircuitInfo[],
-  setup: SetupParams,
-): void {
-  if (placements.fieldByteLength <= 0) throw new Error("Placement field width must be positive.");
-  if (placements.variables.byteLength % placements.fieldByteLength !== 0) {
-    throw new Error("Placement values are not aligned to the field width.");
-  }
-  if (placements.variableOffsets.length !== placements.subcircuitIds.length + 1) {
-    throw new Error("Placement offsets must contain one terminal entry.");
-  }
-  if (placements.variableOffsets[0] !== 0) throw new Error("Placement offsets must start at zero.");
-  if (placements.variableOffsets.at(-1) !== placements.variables.byteLength / placements.fieldByteLength) {
-    throw new Error("The terminal placement offset does not match the value count.");
-  }
-  if (placementCount(placements) > setup.s) throw new Error("Placement count exceeds s.");
-  for (let index = 0; index < placementCount(placements); index += 1) {
-    const subcircuitId = placementSubcircuitId(placements, index);
-    const info = subcircuitInfos[subcircuitId];
-    if (info === undefined) throw new Error(`Placement ${index} has an unknown subcircuit ID.`);
-    if (placementVariableCount(placements, index) !== setup.m) {
-      throw new Error(`Placement ${index} width does not match subcircuit ${subcircuitId}.`);
-    }
-  }
 }
 
 export function placementCount(placements: ProverPlacementVariables): number {

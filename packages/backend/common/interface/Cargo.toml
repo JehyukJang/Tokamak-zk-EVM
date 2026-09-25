@@ -9,5 +9,4 @@ homepage = { workspace = true }
 publish = false
 
 [dependencies]
-rkyv = { workspace = true, features = ["alloc", "bytecheck", "validation"] }
 backend-univariate-crs-interface = { workspace = true }

@@ -28,8 +28,6 @@ export interface ProofBytes {
   r: Uint8Array;
   r_plus: Uint8Array;
 }
-export const ProofBytesLength = 1184;
-export const ProofBytesFileName = "univariate_proof.bin";
 export function decodeProofBytes(bytes: Uint8Array): ProofBytes {
   if (bytes.length !== 1184) throw new Error("invalid artifact byte length");
   checkField(bytes.subarray(0, 96), false);
@@ -130,8 +128,6 @@ export interface PreprocessBytes {
   c_fix: Uint8Array;
   e_kappa: Uint8Array;
 }
-export const PreprocessBytesLength = 384;
-export const PreprocessBytesFileName = "univariate_verifier_preprocess.bin";
 export function decodePreprocessBytes(bytes: Uint8Array): PreprocessBytes {
   if (bytes.length !== 384) throw new Error("invalid artifact byte length");
   checkField(bytes.subarray(0, 96), false);

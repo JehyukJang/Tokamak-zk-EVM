@@ -163,7 +163,7 @@ function renderBrowserArtifactContracts(synthesizer, backend) {
     }
     return renderArtifact(artifact, kind);
   });
-  const constants = artifacts.map((artifact) => artifact.name.toUpperCase().replaceAll("_", "_") + "_V1_SPEC");
+  const constants = artifacts.map((artifact) => artifact.name.toUpperCase() + "_V1_SPEC");
   return `// Generated from producer-owned browser artifact contracts. Do not edit.\nimport { BinarySectionEncoding, BinarySectionType } from "../artifacts/binary/binary-format.js";\nimport type { RuntimeArtifactFormatSpec } from "../artifacts/specs/types.js";\n\n${rendered.join("\n\n")}\n\nexport const RUNTIME_ARTIFACT_SPECS = [${constants.join(", ")}] as const;\n\nexport function requireRuntimeArtifactSpecForKind(kind: number): RuntimeArtifactFormatSpec {\n  const spec = RUNTIME_ARTIFACT_SPECS.find((candidate) => candidate.kind === kind);\n  if (spec === undefined) {\n    throw new Error(\`Unsupported binary artifact kind: \${kind}.\`);\n  }\n  return spec;\n}\n`;
 }
 
@@ -172,7 +172,7 @@ function renderReadonlyContractModule(sourcePath, bindingName, contract) {
 }
 
 function renderArtifact(artifact, kind) {
-  const constantName = artifact.name.toUpperCase().replaceAll("_", "_") + "_V1_SPEC";
+  const constantName = artifact.name.toUpperCase() + "_V1_SPEC";
   const sections = artifact.sections.map((section) => {
     if (!section || typeof section.label !== "string" || typeof section.type !== "string" || typeof section.encoding !== "string") {
       throw new Error(`Malformed section in browser artifact ${artifact.name}.`);

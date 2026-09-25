@@ -1,5 +1,5 @@
 
-import { BIT_DATA_PT_TYPE, MemoryPts, synthesizerOpcodeByName, SynthesizerOpts, SynthesizerSupportedArithOpcodes, SynthesizerSupportedBlockOpcodes, SynthesizerSupportedEnvironmentOpcodes, SynthesizerSupportedLogOpcodes, SynthesizerSupportedSysFlowOpcodes, type DataPt, type ReservedVariable, type SynthesizerSupportedOpcodes, UINT256_DATA_PT_TYPE } from '../types/index.ts';
+import { MemoryPts, synthesizerOpcodeByName, SynthesizerOpts, SynthesizerSupportedArithOpcodes, SynthesizerSupportedBlockOpcodes, SynthesizerSupportedEnvironmentOpcodes, SynthesizerSupportedLogOpcodes, SynthesizerSupportedSysFlowOpcodes, type DataPt, type ReservedVariable, type SynthesizerSupportedOpcodes, UINT256_DATA_PT_TYPE } from '../types/index.ts';
 
 import {
   Address,
@@ -556,7 +556,7 @@ export class InstructionHandler {
     
     const stackPt = opts.stackPt;
     const memoryPt = opts.memoryPt;
-    const inPts = this._popStackPtAndCheckInputConsistency(opts.stackPt, ins)
+    this._popStackPtAndCheckInputConsistency(opts.stackPt, ins)
     const op = opts.op as SynthesizerSupportedEnvironmentOpcodes
     const staticInDesc = `Static input for ${opts.op} instruction at PC ${opts.pc} of code address ${opts.codeAddress} (depth : ${opts.callDepth})`
     switch (op) {

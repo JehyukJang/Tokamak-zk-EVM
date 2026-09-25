@@ -1,17 +1,3 @@
-export type ConverterArtifactJson = Record<string, unknown>;
-
-export interface ConvertProofJsonInput {
-  readonly sourceFormat: "json";
-  readonly proof: unknown;
-}
-
-export interface ConvertProofBinaryInput {
-  readonly sourceFormat: "binary";
-  readonly proof: Uint8Array;
-}
-
-export type ConvertProofInput = ConvertProofJsonInput | ConvertProofBinaryInput;
-
 export interface BinaryArtifactInspection {
   readonly kind: number;
   readonly formatVersion: number;

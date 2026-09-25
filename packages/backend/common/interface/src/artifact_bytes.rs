@@ -1,11 +1,22 @@
 // Generated from common/contracts/univariate-artifact-contract.json. Do not edit.
+const SCALAR_MODULUS_LE: &[u8] = b"\x01\x00\x00\x00\xff\xff\xff\xff\xfe\x5b\xfe\xff\x02\xa4\xbd\x53\x05\xd8\xa1\x09\x08\xd8\x39\x33\x48\x7d\x9d\x29\x53\xa7\xed\x73";
+const BASE_FIELD_MODULUS_LE: &[u8] = b"\xab\xaa\xff\xff\xff\xff\xfe\xb9\xff\xff\x53\xb1\xfe\xff\xab\x1e\x24\xf6\xb0\xf6\xa0\xd2\x30\x67\xbf\x12\x85\xf3\x84\x4b\x77\x64\xd7\xac\x4b\x43\xb6\xa7\x1b\x4b\x9a\xe6\x7f\x39\xea\x11\x01\x1a";
+
 fn canonical(bytes: &[u8], scalar: bool) -> bool {
-    let modulus: &[u8] = if scalar { &[1,0,0,0,255,255,255,255,254,91,254,255,2,164,189,83,5,216,161,9,8,216,57,51,72,125,157,41,83,167,237,115] } else { &[171,170,255,255,255,255,254,185,255,255,83,177,254,255,171,30,36,246,176,246,160,210,48,103,191,18,133,243,132,75,119,100,215,172,75,67,182,167,27,75,154,230,127,57,234,17,1,26] };
+    let modulus = if scalar {
+        SCALAR_MODULUS_LE
+    } else {
+        BASE_FIELD_MODULUS_LE
+    };
     bytes.len() == modulus.len() && bytes.iter().rev().cmp(modulus.iter().rev()).is_lt()
 }
 fn check_field(bytes: &[u8], scalar: bool) -> Result<(), &'static str> {
     let width = if scalar { 32 } else { 48 };
-    if bytes.chunks_exact(width).all(|c| canonical(c, scalar)) { Ok(()) } else { Err("noncanonical artifact field") }
+    if bytes.chunks_exact(width).all(|c| canonical(c, scalar)) {
+        Ok(())
+    } else {
+        Err("noncanonical artifact field")
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -32,7 +43,9 @@ impl ProofBytes {
     pub const BYTE_LENGTH: usize = 1184;
     pub const FILE_NAME: &'static str = "univariate_proof.bin";
     pub fn decode(bytes: &[u8]) -> Result<Self, &'static str> {
-        if bytes.len() != Self::BYTE_LENGTH { return Err("invalid artifact byte length"); }
+        if bytes.len() != Self::BYTE_LENGTH {
+            return Err("invalid artifact byte length");
+        }
         check_field(&bytes[0..96], false)?;
         check_field(&bytes[96..192], false)?;
         check_field(&bytes[192..288], false)?;
@@ -120,7 +133,9 @@ impl PreprocessBytes {
     pub const BYTE_LENGTH: usize = 384;
     pub const FILE_NAME: &'static str = "univariate_verifier_preprocess.bin";
     pub fn decode(bytes: &[u8]) -> Result<Self, &'static str> {
-        if bytes.len() != Self::BYTE_LENGTH { return Err("invalid artifact byte length"); }
+        if bytes.len() != Self::BYTE_LENGTH {
+            return Err("invalid artifact byte length");
+        }
         check_field(&bytes[0..96], false)?;
         check_field(&bytes[96..192], false)?;
         check_field(&bytes[192..384], false)?;

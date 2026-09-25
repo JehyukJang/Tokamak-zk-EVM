@@ -318,11 +318,6 @@ export async function ensureDir(dirPath: string): Promise<void> {
   await fs.mkdir(dirPath, { recursive: true });
 }
 
-export async function emptyDir(dirPath: string): Promise<void> {
-  await fs.rm(dirPath, { recursive: true, force: true });
-  await fs.mkdir(dirPath, { recursive: true });
-}
-
 function prependEnvPath(existing: string | undefined, nextValue: string): string {
   return existing && existing.length > 0 ? `${nextValue}:${existing}` : nextValue;
 }

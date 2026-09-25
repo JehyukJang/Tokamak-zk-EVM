@@ -21,53 +21,6 @@ pub enum UnivariateCrsError {
     InvalidDomainRoot { name: &'static str },
     #[error("{name} overflows while deriving univariate CRS capacity")]
     CapacityOverflow { name: &'static str },
-    #[error(
-        "terminal tau sequence capacity {name}={available} is smaller than required {required}"
-    )]
-    InsufficientTauCapacity {
-        name: &'static str,
-        available: usize,
-        required: usize,
-    },
-    #[error("polynomial commitment needs {actual} CRS powers, but the selected CRS sequence has {available}")]
-    CommitmentDegree { actual: usize, available: usize },
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct UnivariateTauCapacity {
-    pub l0: usize,
-    pub l_xi: usize,
-    pub l_psi: usize,
-    pub l2: usize,
-}
-
-impl UnivariateTauCapacity {
-    pub fn from_shape(shape: &UnivariateCrsShape) -> Self {
-        Self {
-            l0: shape.declared_capacity[0],
-            l_xi: shape.declared_capacity[1],
-            l_psi: shape.declared_capacity[2],
-            l2: shape.k,
-        }
-    }
-
-    pub fn admits(self, shape: &UnivariateCrsShape) -> Result<(), UnivariateCrsError> {
-        for (name, available, required) in [
-            ("L_0", self.l0, shape.declared_capacity[0]),
-            ("L_xi", self.l_xi, shape.declared_capacity[1]),
-            ("L_psi", self.l_psi, shape.declared_capacity[2]),
-            ("L_2", self.l2, shape.k),
-        ] {
-            if available < required {
-                return Err(UnivariateCrsError::InsufficientTauCapacity {
-                    name,
-                    available,
-                    required,
-                });
-            }
-        }
-        Ok(())
-    }
 }
 
 /// Capacity and roots fixed exclusively by normalized library metadata.
@@ -178,39 +131,6 @@ impl UnivariateCrsShape {
             connection_root,
             selection_root,
         })
-    }
-
-    pub fn with_declared_capacity(
-        mut self,
-        declared_capacity: [usize; 3],
-    ) -> Result<Self, UnivariateCrsError> {
-        if declared_capacity != self.minimum_capacity {
-            return Err(UnivariateCrsError::CommitmentDegree {
-                actual: self.minimum_capacity.into_iter().max().unwrap_or_default(),
-                available: declared_capacity.into_iter().max().unwrap_or_default(),
-            });
-        }
-        let d = self
-            .arithmetic_domain_size
-            .max(self.connection_domain_size)
-            .checked_add(1)
-            .ok_or(UnivariateCrsError::CapacityOverflow { name: "d" })?;
-        self.k = declared_capacity[2]
-            .checked_sub(d)
-            .ok_or(UnivariateCrsError::CapacityOverflow { name: "K" })?;
-        self.declared_capacity = declared_capacity;
-        Ok(self)
-    }
-
-    pub fn admits_setup(&self, setup_shape: &Self) -> bool {
-        self.subcircuit_capacity == setup_shape.subcircuit_capacity
-            && self.arithmetic_domain_size == setup_shape.arithmetic_domain_size
-            && self.connection_domain_size == setup_shape.connection_domain_size
-            && self.selection_domain_size == setup_shape.selection_domain_size
-            && self.intersection_domain_size == setup_shape.intersection_domain_size
-            && self.union_domain_size == setup_shape.union_domain_size
-            && self.minimum_capacity == setup_shape.minimum_capacity
-            && self.declared_capacity == setup_shape.minimum_capacity
     }
 }
 

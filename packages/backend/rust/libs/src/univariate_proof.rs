@@ -23,12 +23,3 @@ pub struct UnivariateProof {
     pub pi_chi: G1serde,
     pub pi_plus: G1serde,
 }
-
-impl UnivariateProof {
-    pub fn g1_element_count(&self) -> usize {
-        10
-    }
-    pub fn scalar_element_count(&self) -> usize {
-        7
-    }
-}

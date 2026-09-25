@@ -14,7 +14,6 @@ import {
 import type {
   DataPt,
   MemoryPts,
-  ReservedVariable,
   StorageCacheEntries,
   StorageCacheEntry,
 } from '../types/index.ts';

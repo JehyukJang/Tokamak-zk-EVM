@@ -280,7 +280,6 @@ name = "backend-interface"
 version = "3.0.0"
 dependencies = [
  "backend-univariate-crs-interface",
- "rkyv 0.7.46",
 ]
 
 [[package]]

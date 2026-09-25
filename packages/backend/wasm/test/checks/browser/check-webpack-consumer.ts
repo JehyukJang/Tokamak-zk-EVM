@@ -8,7 +8,6 @@ import { promisify } from 'node:util';
 import { chromium } from 'playwright';
 import webpack, { type Configuration } from 'webpack';
 const execFileAsync = promisify(execFile);
-const PACKAGE_NAME = '@tokamak-zk-evm/snark-browser-compat';
 
 const SUBCIRCUIT_LIBRARY_TARBALL = process.env.BACKEND_WASM_SUBCIRCUIT_LIBRARY_TARBALL;
 const APPLICATION_SOURCE = `

@@ -230,61 +230,6 @@ const evmSub = (ins: bigint[]): bigint => {
   return (ins[0] - ins[1]) & MAX_UINT256;
 };
 
-const evmDiv = (ins: bigint[]): bigint => {
-  if (ins.length !== 2) {
-    throw new Error('div expected two inputs');
-  }
-  return ins[1] === 0n ? 0n : ins[0] / ins[1];
-};
-
-const evmSdiv = (ins: bigint[]): bigint => {
-  if (ins.length !== 2) {
-    throw new Error('sdiv expected two inputs');
-  }
-  if (ins[1] === 0n) return 0n;
-  const signedA = convertToSigned(ins[0]);
-  const signedB = convertToSigned(ins[1]);
-  const result = signedA / signedB;
-  return result < 0n ? MAX_UINT256 + result + 1n : result;
-};
-
-/**
- * Modulo operations
- */
-const evmMod = (ins: bigint[]): bigint => {
-  if (ins.length !== 2) {
-    throw new Error('mod expected two inputs');
-  }
-  return ins[1] === 0n ? 0n : ins[0] % ins[1];
-};
-
-const evmSmod = (ins: bigint[]): bigint => {
-  if (ins.length !== 2) {
-    throw new Error('smod expected two inputs');
-  }
-  if (ins[1] === 0n) return 0n;
-  const signedA = convertToSigned(ins[0]);
-  const signedB = convertToSigned(ins[1]);
-  const result = signedA % signedB;
-  return result < 0n ? MAX_UINT256 + result + 1n : result;
-};
-
-const evmAddmod = (ins: bigint[]): bigint => {
-  if (ins.length !== 3) {
-    throw new Error('addmod expected three inputs');
-  }
-  if (ins[2] === 0n) return 0n;
-  return ((ins[0] % ins[2]) + (ins[1] % ins[2])) % ins[2];
-};
-
-const evmMulmod = (ins: bigint[]): bigint => {
-  if (ins.length !== 3) {
-    throw new Error('mulmod expected three inputs');
-  }
-  if (ins[2] === 0n) return 0n;
-  return ((ins[0] % ins[2]) * (ins[1] % ins[2])) % ins[2];
-};
-
 /**
  * Comparison operations
  */

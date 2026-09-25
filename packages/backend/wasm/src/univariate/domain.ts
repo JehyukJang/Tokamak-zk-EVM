@@ -67,22 +67,6 @@ export function arithmeticVanishingAt(
   return field.sub(field.pow(point, domain.arithmeticSize), field.one);
 }
 
-export function connectionVanishingAt(
-  field: FieldRuntime,
-  domain: UnivariateDomainShape,
-  point: FieldElement,
-): FieldElement {
-  return field.sub(field.pow(point, domain.connectionSize), field.one);
-}
-
-export function intersectionVanishingAt(
-  field: FieldRuntime,
-  domain: UnivariateDomainShape,
-  point: FieldElement,
-): FieldElement {
-  return field.sub(field.pow(point, domain.intersectionSize), field.one);
-}
-
 export function unionVanishingAt(
   field: FieldRuntime,
   domain: UnivariateDomainShape,

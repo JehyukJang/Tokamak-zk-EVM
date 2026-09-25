@@ -72,68 +72,6 @@ export function splitFieldBuffer(buffer: Uint8Array, byteLength: number): FieldE
   return values;
 }
 
-export function extractPolynomialBlockRows(
-  source: Uint8Array,
-  xSize: number,
-  ySize: number,
-  xDegree: number,
-  localStart: number,
-  localCount: number,
-  elementBytes: number,
-): Uint8Array {
-  const blockCount = xSize / xDegree;
-  const rowBytes = ySize * elementBytes;
-  const output = new Uint8Array(blockCount * localCount * rowBytes);
-  for (let block = 0; block < blockCount; block += 1) {
-    const sourceStart = (block * xDegree + localStart) * rowBytes;
-    output.set(
-      source.subarray(sourceStart, sourceStart + localCount * rowBytes),
-      block * localCount * rowBytes,
-    );
-  }
-  return output;
-}
-
-export function extractPolynomialColumns(
-  source: Uint8Array,
-  xSize: number,
-  sourceYSize: number,
-  yStart: number,
-  yCount: number,
-  elementBytes: number,
-): Uint8Array {
-  const output = new Uint8Array(xSize * yCount * elementBytes);
-  for (let x = 0; x < xSize; x += 1) {
-    const sourceStart = (x * sourceYSize + yStart) * elementBytes;
-    output.set(
-      source.subarray(sourceStart, sourceStart + yCount * elementBytes),
-      x * yCount * elementBytes,
-    );
-  }
-  return output;
-}
-
-export function assemblePolynomialColumns(
-  shards: readonly Uint8Array[],
-  ranges: readonly BufferRange[],
-  xSize: number,
-  ySize: number,
-  elementBytes: number,
-): Uint8Array {
-  const output = new Uint8Array(xSize * ySize * elementBytes);
-  for (let shardIndex = 0; shardIndex < shards.length; shardIndex += 1) {
-    const shard = shards[shardIndex];
-    const { start, count } = ranges[shardIndex];
-    for (let x = 0; x < xSize; x += 1) {
-      output.set(
-        shard.subarray(x * count * elementBytes, (x + 1) * count * elementBytes),
-        (x * ySize + start) * elementBytes,
-      );
-    }
-  }
-  return output;
-}
-
 export function requireTaskOutputs(
   result: readonly Uint8Array[],
   expectedCount: number,
@@ -198,10 +136,6 @@ export function assertFieldElement(value: Uint8Array, elementBytes: number, labe
   if (value.byteLength !== elementBytes) {
     throw new Error(`${label} byte length does not match the runtime field.`);
   }
-}
-
-export function modulo(value: number, modulus: number): number {
-  return ((value % modulus) + modulus) % modulus;
 }
 
 export function assertPolynomialBufferShape(
