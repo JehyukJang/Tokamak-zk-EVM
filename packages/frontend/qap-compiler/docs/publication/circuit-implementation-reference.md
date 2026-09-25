@@ -498,8 +498,9 @@ five public semantic inputs are the one-wire contract, selector, and `S`
 values plus the two coordinates of `O`; the remaining 34 direct-composition
 inputs are private. The six direct-composition outputs are the two-limb
 contract, two-limb selector, and two-limb origin views. These diagnostic
-composition counts describe qap-local testing, not the final public indices of
-an enabled Synthesizer build.
+composition counts come from tests that exercise the compiler's composition
+directly; they do not represent the final public indices of an enabled
+Synthesizer build.
 
 ### Memory-view composition
 
