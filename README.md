@@ -58,26 +58,26 @@ privacy-preserving DApp.
 ```text
 Native Ethereum execution
 
-On-chain                                             Off-chain
---------                                             ---------
-DApp contract <--- Ethereum transaction <--- User creates a transaction
-     |
-     +--- Ethereum validators execute and validate the transaction
+On-chain DApp            Off-chain user        Ethereum validators
+     |                         |                       |
+     |--- contract + state --->|                       |
+     |                         |--- transaction ------>|
+     |--- contract + state --------------------------->|
+     |                         |                       |--- execute and validate
+     |<------------------------------------------------| updated state
 
 
 Privacy-preserving Tokamak L2 execution of the same DApp
 
-On-chain                                                    Off-chain
---------                                                    ---------
-DApp contract --- contract code ---> User creates a Tokamak L2 transaction
-                                                                  |
-                                                                  +--- execute the transaction
-                                                                         |
-                                                                         +--- generate a proof of execution
-                                                                                      |
-public inputs and proof (not the transaction) <--------------------------+
-     |
-     +--- Ethereum validators verify the proof
+On-chain DApp            Off-chain user        Ethereum validators
+     |                         |                       |
+     |--- contract + state --->|                       |
+     |                         |--- create and execute an L2 transaction
+     |                         |--- generate proof + public inputs
+     |--- contract + state --------------------------->|
+     |                         |--- public inputs + proof (no transaction) -->|
+     |                         |                       |--- verify proof
+     |<------------------------------------------------| updated state
 ```
 
 [Tokamak Private App Channels](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts)
