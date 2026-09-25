@@ -104,9 +104,10 @@ calls the deployed
 Ethereum validators execute this contract path; only an accepted proof updates
 the channel's state commitment.
 
-The private-state note-transfer DApp is one TPAC example. Its
+The private-state note-transfer DApp is one TPAC example. A user calls a
+transfer function defined by the
 [PrivateStateController](https://etherscan.io/address/0x67C6233A99D9f122Fef9DC111e89948107b34c2F#code)
-consumes existing notes, marks them spent through nullifiers, and creates new
+to consume existing notes, mark them spent through nullifiers, and create new
 note commitments with encrypted payloads for their recipients. This implements
 a note-based transfer of channel-local value. The controller and
 [L2AccountingVault](https://etherscan.io/address/0x9A6c9eb158269BBEd8885649F95aCEFA8AAfC3aA#code)
