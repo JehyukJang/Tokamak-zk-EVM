@@ -167,16 +167,16 @@ constraint system, a witness contains the values that satisfy those
 constraints, and a CRS is the common reference string used by the proving
 system.
 
-## Choose a package
+## Packages
 
-| Need                                            | Package                                     | Documentation and publication                                                                                                        |
-| ----------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Complete local proof workflow                   | `@tokamak-zk-evm/cli`                       | [README](./packages/cli/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/cli)                                        |
-| File-based synthesis in Node.js                 | `@tokamak-zk-evm/synthesizer-node`          | [README](./packages/frontend/synthesizer/node-cli/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-node) |
-| Synthesis in a browser application              | `@tokamak-zk-evm/synthesizer-web`           | [README](./packages/frontend/synthesizer/web-app/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-web)   |
-| Browser preprocessing, proving, or verification | `@tokamak-zk-evm/snark-browser-compat`      | [README](./packages/backend/wasm/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat)              |
-| Prebuilt circuit artifacts                      | `@tokamak-zk-evm/subcircuit-library`        | [README](./packages/frontend/qap-compiler/README.md) · [npm](https://www.npmjs.com/package/@tokamak-zk-evm/subcircuit-library)       |
-| Direct Rust backend development                 | Backend workspace; not separately published | [README](./packages/backend/README.md)                                                                                               |
+| Repository package | npm package | README | Inputs and outputs |
+| --- | --- | --- | --- |
+| CLI | [`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli) | [README](./packages/cli/README.md) | Tokamak L2 transaction inputs → synthesis artifacts, preprocessing artifacts, a proof, and a verification result |
+| Node Synthesizer | [`@tokamak-zk-evm/synthesizer-node`](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-node) | [README](./packages/frontend/synthesizer/node-cli/README.md) | State snapshot, signed transaction, block context, and deployed bytecode → transaction-specific circuit artifacts |
+| Web Synthesizer | [`@tokamak-zk-evm/synthesizer-web`](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-web) | [README](./packages/frontend/synthesizer/web-app/README.md) | State snapshot, signed transaction, block context, and deployed bytecode → transaction-specific circuit artifacts |
+| Browser proving backend | [`@tokamak-zk-evm/snark-browser-compat`](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat) | [README](./packages/backend/wasm/README.md) | Synthesizer artifacts and a compatible CRS → preprocessing artifacts, a proof, or a verification result |
+| QAP compiler | [`@tokamak-zk-evm/subcircuit-library`](https://www.npmjs.com/package/@tokamak-zk-evm/subcircuit-library) | [README](./packages/frontend/qap-compiler/README.md) | Circom sources → R1CS constraints, WASM witness generators, and circuit metadata |
+| Rust backend workspace | Not separately published | [README](./packages/backend/README.md) | Subcircuit-library and Synthesizer artifacts with a compatible CRS → preprocessing artifacts, a proof, or a verification result |
 
 ## Releases and npm publication
 
