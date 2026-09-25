@@ -88,16 +88,42 @@ sequenceDiagram
 ```
 
 [Tokamak Private App Channels](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts)
-is a concrete integration of this flow. Each channel is associated with one
-registered DApp and maintains its own state commitment. For a supported channel
-transaction, the application supplies the signed Tokamak L2 transaction,
-pre-transaction state snapshot, block context, and deployed bytecode to the
-Synthesizer. The Synthesizer replays that call and emits the circuit artifacts
-that a proving backend uses to generate the proof. The Ethereum bridge then
-checks the proof, the DApp and function metadata commitments, and the channel
-state commitment before accepting the new channel state. The transaction's
-private execution details remain off-chain, while Ethereum remains the custody,
-proof-verification, and settlement layer.
+is a concrete integration of this flow. Its
+[bridge](https://etherscan.io/address/0x992E2Ae206620d811832a8F697c526c4f95974b6#code)
+coordinates a [registry](https://etherscan.io/address/0x88Ab290a9dc0a169240EBC282Ec1F7C8524645aA#code)
+of DApps admitted for TPAC. Each
+[channel](https://etherscan.io/address/0x3108d92A38bFb4B3396DE7ad4D92318a8fbE61D7#code)
+is associated with one registered DApp and maintains its own state commitment.
+The bridge calls the deployed
+[Tokamak verifier](https://etherscan.io/address/0x9fDBDFDfD5CFbd38348FE709296E2E1063Bbd2Bd#code),
+which Ethereum validators execute to check transition proofs.
+
+The private-state note-transfer DApp is one TPAC example. A transfer consumes
+existing notes, marks them spent through nullifiers, and creates new note
+commitments with encrypted payloads for their recipients. This lets users move
+channel-local value without making counterparty relationships or note provenance
+publicly reconstructable by default. Its
+[PrivateStateController](https://etherscan.io/address/0x67C6233A99D9f122Fef9DC111e89948107b34c2F#code)
+and
+[L2AccountingVault](https://etherscan.io/address/0x9A6c9eb158269BBEd8885649F95aCEFA8AAfC3aA#code)
+contracts are deployed on Ethereum mainnet. The Synthesizer consumes their
+deployed bytecode to produce circuit artifacts, and the bridge registry records
+the resulting per-function preprocessing-input commitments.
+
+This is a privacy boundary, not an automatic privacy layer for a native Ethereum
+DApp. Tokamak L2 and Tokamak zk-EVM allow a user to use a DApp without directly
+publishing the original transaction, but they do not decide which application
+data is private. [Ethereum.org defines data availability](https://ethereum.org/developers/docs/data-availability/)
+as “the confidence a user can have that the data required to verify a block is
+really available to all network participants.” A privacy-preserving DApp must
+therefore make the state data required for verification and continued use
+available, while deliberately choosing which information remains in private
+transaction inputs. The
+private-state note-transfer DApp illustrates that choice: its state stores note
+commitments and nullifiers instead of most note ownership and transfer data,
+moving sensitive information into transaction inputs. Tokamak zk-EVM leaves
+that disclosure design independent of the proving system, so a DApp can express
+it in an Ethereum smart-contract language such as Solidity.
 
 ## How the repository fits together
 
