@@ -64,7 +64,7 @@ On-chain DApp            Off-chain user        Ethereum validators
      |                         |--- transaction ------>|
      |--- contract + state --------------------------->|
      |                         |                       |--- execute and validate
-     |<------------------------------------------------| updated state
+     |<--- updated state ------------------------------|
 
 
 Privacy-preserving Tokamak L2 execution of the same DApp
@@ -77,7 +77,7 @@ On-chain DApp            Off-chain user        Ethereum validators
      |--- contract + state --------------------------->|
      |                         |--- public inputs + proof (no transaction) -->|
      |                         |                       |--- verify proof
-     |<------------------------------------------------| updated state
+     |<--- updated state ------------------------------|
 ```
 
 [Tokamak Private App Channels](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts)
