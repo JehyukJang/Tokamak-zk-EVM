@@ -46,13 +46,14 @@ their intended domain using the
 
 ## Concrete application
 
-The Synthesizer replays a supported transaction that invokes an EVM contract
-function, including a function compiled from Solidity, and produces the
-transaction-specific circuit artifacts needed to prove that execution. Existing
-native Ethereum DApps can reuse qualifying contract functions in Tokamak L2
-when their supported calls meet the execution boundary. Combined with Tokamak
-zk-EVM, those functions can support privacy-enhanced DApp behavior in the
-Tokamak L2 environment.
+Although Tokamak zk-EVM does not claim compatibility with arbitrary native
+Ethereum L1 execution, the Synthesizer can generate transaction-specific
+circuit artifacts for a qualifying EVM contract function already used by a
+native Ethereum DApp, including one compiled from Solidity. The artifact is
+generated for a supported Tokamak L2 call to that function. Existing contract
+code can therefore be reused in Tokamak L2 when its supported calls meet the
+execution boundary, and can support privacy-enhanced DApp behavior when
+combined with Tokamak zk-EVM.
 
 [Tokamak Private App Channels](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts)
 is one such application: it uses Tokamak zk-EVM for proof-backed state
