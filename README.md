@@ -40,7 +40,7 @@ conditions. First, every successful call in its intended domain must use only
 supported execution features. Second, those calls must retain one fixed
 execution trace and circuit layout: changing a permitted input or state value
 must not change the executed instruction path, call or return flow, number and
-order of memory or storage accesses, emitted logs, or circuit placements.
+order of memory or storage accesses, or emitted logs.
 
 For example, a private-state transfer can process different note values when
 each successful transfer follows the same path and accesses the same shaped
@@ -58,9 +58,10 @@ Synthesizer can reuse an EVM contract function already used by a native
 Ethereum DApp, including one compiled from Solidity, when the call falls within
 the supported boundary. It reads that function's EVM bytecode while replaying
 the Tokamak L2 call and produces the transaction-specific circuit artifacts
-used to prove the execution. This gives the DApp a path to reuse its contract
-code in Tokamak L2 and, together with the proving backends, become a
-privacy-preserving DApp.
+used to prove the execution. This lets a DApp defined in an Ethereum
+smart-contract language such as Solidity reuse its contract code on Tokamak L2.
+It also lets privacy-preserving DApps be defined in Ethereum smart-contract
+languages.
 
 ### Abstract model of DApp execution on native Ethereum
 
@@ -97,19 +98,14 @@ sequenceDiagram
 [Tokamak Private App Channels](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts)
 is a concrete integration of this flow. Its
 [BridgeCore](https://etherscan.io/address/0xB1815dF9382449F48E2c26cAd75a07a51E3d72Fa#code)
-is the on-chain coordinator: it records channel deployments, coordinates shared
-custody, and creates a
+coordinates channels and shared custody, creating a
 [ChannelManager](https://etherscan.io/address/0x3108d92A38bFb4B3396DE7ad4D92318a8fbE61D7#code)
-for a DApp in the [TPAC DApp registry](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts#mainnet-registered-dapps),
-using that DApp's registered metadata and verifier snapshot. Each channel is
-associated with one registered DApp and maintains its own state commitment. In
-the diagram, the Ethereum-validator lane is concretely a proof-submission
-transaction to the ChannelManager. The ChannelManager checks the public inputs
-against the DApp's fixed function metadata and current state commitment, then
-calls the deployed
+for each DApp in the [TPAC DApp registry](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts#mainnet-registered-dapps).
+Each channel maintains its DApp's state commitment. A proof-submission
+transaction invokes the ChannelManager, which checks the supported function and
+current state before calling the deployed
 [TokamakVerifier](https://etherscan.io/address/0x9fDBDFDfD5CFbd38348FE709296E2E1063Bbd2Bd#code).
-Ethereum validators execute this contract path; only an accepted proof updates
-the channel's state commitment.
+An accepted proof updates the channel's state commitment.
 
 The private-state note-transfer DApp is one TPAC example. A user calls a
 transfer function defined by the
@@ -152,9 +148,11 @@ Synthesizer ──► transaction-specific artifacts
 ```
 
 The [CLI](./packages/cli/README.md) is the supported end-to-end local entry
-point and carries the TokamakL2JS transaction and state contract through that
-workflow. Each package README provides its installation, commands, APIs, input
-formats, examples, and operational responsibilities.
+point and uses the TokamakL2JS-defined transaction and state formats throughout
+that workflow. To get started, follow the CLI README to install the local
+runtime and run synthesis, preprocessing, proving, and verification. Each
+package README provides its installation, commands, APIs, input formats,
+examples, and operational responsibilities.
 
 Native proving runs on CPU by default and can use ICICLE CUDA acceleration
 when explicitly selected. The browser package supports bundler-based
