@@ -112,7 +112,9 @@ publicly reconstructable by default. Its
 [PrivateStateController](https://etherscan.io/address/0x67C6233A99D9f122Fef9DC111e89948107b34c2F#code)
 and
 [L2AccountingVault](https://etherscan.io/address/0x9A6c9eb158269BBEd8885649F95aCEFA8AAfC3aA#code)
-contracts are deployed on Ethereum mainnet. The Synthesizer consumes their
+contracts are deployed on Ethereum mainnet; the
+[deployment record](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts/blob/main/docs/audit/monitoring/data/TPAC-Contract-Addresses.json)
+lists their addresses. The Synthesizer consumes their
 deployed bytecode to produce circuit artifacts, and the bridge registry records
 the resulting per-function preprocessing-input commitments.
 
