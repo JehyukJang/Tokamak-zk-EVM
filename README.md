@@ -89,14 +89,20 @@ sequenceDiagram
 
 [Tokamak Private App Channels](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts)
 is a concrete integration of this flow. Its
-[bridge](https://etherscan.io/address/0xB1815dF9382449F48E2c26cAd75a07a51E3d72Fa#code)
-coordinates a [registry of DApps admitted for TPAC](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts#mainnet-registered-dapps).
-Each
-[channel](https://etherscan.io/address/0x3108d92A38bFb4B3396DE7ad4D92318a8fbE61D7#code)
-is associated with one registered DApp and maintains its own state commitment.
-The bridge calls the deployed
-[Tokamak verifier](https://etherscan.io/address/0x9fDBDFDfD5CFbd38348FE709296E2E1063Bbd2Bd#code),
-which Ethereum validators execute to check transition proofs.
+[BridgeCore](https://etherscan.io/address/0xB1815dF9382449F48E2c26cAd75a07a51E3d72Fa#code)
+is the L1 coordinator: it records channel deployments, coordinates shared
+custody, and creates a
+[ChannelManager](https://etherscan.io/address/0x3108d92A38bFb4B3396DE7ad4D92318a8fbE61D7#code)
+for a DApp in the [TPAC DApp registry](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts#mainnet-registered-dapps),
+using that DApp's registered metadata and verifier snapshot. Each channel is
+associated with one registered DApp and maintains its own state commitment. In
+the diagram, the Ethereum-validator lane is concretely a proof-submission
+transaction to the ChannelManager. The ChannelManager checks the public inputs
+against the DApp's fixed function metadata and current state commitment, then
+calls the deployed
+[TokamakVerifier](https://etherscan.io/address/0x9fDBDFDfD5CFbd38348FE709296E2E1063Bbd2Bd#code).
+Ethereum validators execute this contract path; only an accepted proof updates
+the channel's state commitment.
 
 The private-state note-transfer DApp is one TPAC example. A transfer consumes
 existing notes, marks them spent through nullifiers, and creates new note
