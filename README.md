@@ -193,8 +193,7 @@ Backend-RUST binaries are not published separately. Instead, the
 includes compatible backend source and builds it locally during the CLI
 workflow.
 
-For package-specific and release-operation details, see the relevant package
-README and the [version and release rules](./docs/version-rules.md).
+For details, see the [version and release rules](./docs/version-rules.md).
 
 ## Learn more
 
