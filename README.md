@@ -20,11 +20,11 @@ repository depends. A Tokamak L2 transaction has its own transaction shape and
 signing flow, uses zero-knowledge-proof-friendly cryptographic primitives, and
 executes against supplied state snapshots and block context. These are defined by
 [TokamakL2JS](https://github.com/tokamak-network/TokamakL2JS), which supplies
-the common transaction, state, cryptographic, and protocol-constant contract
-for Tokamak zk-EVM. Tokamak zk-EVM is limited to a defined subset of EVM
-contract functions: it generates circuit artifacts for those functions,
-produces proofs that Tokamak L2 transactions executed them correctly, and
-verifies the resulting proofs.
+the shared specification for transactions, state, cryptographic primitives, and
+protocol constants used by Tokamak zk-EVM. Tokamak zk-EVM is limited to a
+defined subset of EVM contract functions. It generates circuit artifacts for
+those functions, produces proofs that Tokamak L2 transactions executed them
+correctly, and verifies the resulting proofs.
 
 Tokamak zk-EVM therefore does not claim compatibility with arbitrary native
 Ethereum L1 execution. Its transaction format, signing and cryptographic
@@ -143,7 +143,7 @@ Solidity, independently of the proving system.
 | Backend-WASM | [`@tokamak-zk-evm/snark-browser-compat`](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat) | [README](./packages/backend/wasm/README.md) | Provides a browser interface for preprocessing, proving, verification, and artifact conversion |
 | CLI | [`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli) | [README](./packages/cli/README.md) | Installs and runs the complete local proving workflow |
 
-## Package dependency
+## Proof workflow
 
 ```mermaid
 flowchart TD
@@ -168,11 +168,6 @@ that workflow. To get started, follow the CLI README to install the local
 runtime and run synthesis, preprocessing, proving, and verification. Each
 package README provides its installation, commands, APIs, input formats,
 examples, and operational responsibilities.
-
-Backend-RUST runs on CPU by default and can use ICICLE CUDA acceleration when
-explicitly selected. Backend-WASM supports bundler-based preprocessing, proving,
-and verification. Package-specific compatibility and verified environments are
-documented in the corresponding package README.
 
 ## Versioning and distribution
 
