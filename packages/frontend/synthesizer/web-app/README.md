@@ -124,8 +124,8 @@ security of the application, circuit library, setup, or surrounding protocol.
 
 ## Project and license
 
-- [Source](https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main/packages/frontend/synthesizer/web-app)
-- [Issues](https://github.com/tokamak-network/Tokamak-zk-EVM/issues)
+- [Source](https://github.com/JehyukJang/Tokamak-zk-EVM/tree/main/packages/frontend/synthesizer/web-app)
+- [Issues](https://github.com/JehyukJang/Tokamak-zk-EVM/issues)
 - [Workspace overview](../README.md)
 
 Dual-licensed under `MIT OR Apache-2.0`.

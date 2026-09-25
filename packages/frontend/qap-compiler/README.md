@@ -116,6 +116,6 @@ dependencies.
 
 - [Maintainer documentation](./docs/README.md)
 - [Tokamak zk-SNARK paper](https://eprint.iacr.org/2024/507)
-- [Issues](https://github.com/tokamak-network/Tokamak-zk-EVM/issues)
+- [Issues](https://github.com/JehyukJang/Tokamak-zk-EVM/issues)
 
 Dual-licensed under `MIT OR Apache-2.0`.
