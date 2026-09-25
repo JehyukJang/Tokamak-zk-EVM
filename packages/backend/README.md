@@ -1,4 +1,4 @@
-# Tokamak-zk-EVM Backend
+# Tokamak zk-EVM Backend
 
 This package group contains the Rust implementations of the backend algorithms described in the
 [Tokamak zk-SNARK manuscript](https://eprint.iacr.org/2024/507).

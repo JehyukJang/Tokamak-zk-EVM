@@ -3,8 +3,7 @@
 This reference is for backend developers preparing circuit-specific inputs for
 the current univariate verifier. Preprocessing admits the circuit; it does not
 verify an individual proof. The online verifier is implemented separately under
-`../verify`; full native/WASM end-to-end release qualification remains a
-separate workstream.
+`../verify`.
 
 ## Inputs and output
 

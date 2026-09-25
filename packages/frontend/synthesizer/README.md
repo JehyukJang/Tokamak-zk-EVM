@@ -1,7 +1,8 @@
 # Tokamak zk-EVM Synthesizer
 
-The Synthesizer replays one Tokamak Layer 2 transaction and produces the
-transaction-specific circuit artifacts required by the proving backends.
+The Synthesizer replays one Tokamak Layer 2 (Tokamak L2) transaction and
+produces the transaction-specific circuit artifacts required by the proving
+backends.
 
 ## Choose a runtime
 
