@@ -96,13 +96,10 @@ both modes. Default mode does not guarantee detection of well-shaped payload
 corruption. Converter and build-time validation are unchanged. This option
 does not authenticate the manifest's publisher.
 
-Public operation types are `ProverInput`, `ProverOptions`, `ProverInstallOptions`,
-`ProverInstallationInfo`, `PreprocessInput`, `PreprocessOptions`, `PreprocessInstallOptions`,
-`PreprocessInstallationInfo`, `VerifierInput`, and
-`VerifierInstallationInfo`. Converter types are `BinaryArtifactInspection`,
-`BinarySectionInspection` and
-`RuntimeArtifactFileValidationResult`. Every public subpath exports
-`BackendWasmError` and `BackendWasmErrorCode`. The prover and preprocess subpaths also export the `UnivariateCrsChunkInput` type.
+Each public subpath exports its operation types and the `BackendWasmError`
+error taxonomy. The prover and preprocess subpaths also export the CRS chunk
+input type. Use the package declarations in an editor for the complete type
+surface.
 
 ## Convert source artifacts
 
@@ -152,21 +149,29 @@ archive in JavaScript, and publishes the output directory only after all
 chunks and the manifest are complete. Serve the entire directory without
 renaming its relative chunk paths.
 
-Create the runtime CRS source from the served manifest:
+Create a reusable runtime CRS loader from the served manifest:
 
 ```ts
 import type { UnivariateCrsChunkInput } from '@tokamak-zk-evm/snark-browser-compat/prover';
 
-const manifestUrl = new URL('/artifacts/crs/univariate-crs-manifest.json', location.href);
-const manifest = await fetch(manifestUrl).then(response => response.json());
-const crs: UnivariateCrsChunkInput = {
-  manifest,
-  async loadChunk(relativePath: string) {
-    const response = await fetch(new URL(relativePath, manifestUrl));
-    if (!response.ok) throw new Error(`Failed to load CRS chunk: ${response.status}`);
-    return new Uint8Array(await response.arrayBuffer());
-  },
-};
+export async function loadCrs(
+  manifestPath: string | URL,
+): Promise<UnivariateCrsChunkInput> {
+  const manifestUrl = new URL(manifestPath, location.href);
+  const manifestResponse = await fetch(manifestUrl);
+  if (!manifestResponse.ok) {
+    throw new Error(`Failed to load CRS manifest: ${manifestResponse.status}`);
+  }
+
+  return {
+    manifest: await manifestResponse.json(),
+    async loadChunk(relativePath: string) {
+      const response = await fetch(new URL(relativePath, manifestUrl));
+      if (!response.ok) throw new Error(`Failed to load CRS chunk: ${response.status}`);
+      return new Uint8Array(await response.arrayBuffer());
+    },
+  };
+}
 ```
 
 ## Preprocess
@@ -284,36 +289,12 @@ Source provenance remains an application trust-boundary concern. Runtime
 admission checks the exact binary kind and required sections but does not use
 `releaseEligible` as a preprocess, prove, or verify gate.
 
-## Development workflow
+## Contributor workflow
 
-From `packages/backend/wasm`:
-
-```sh
-BACKEND_WASM_VERIFIER_CRS_DIR=../rust/setup/output npm run build:development
-npm run typecheck:development
-npm run typecheck:scripts
-npm run binary:check
-npm run univariate:domain:check
-npm run univariate:relation:check
-npm run univariate:polynomial:check
-npm run univariate:transcript:check
-```
-
-To prepare local browser E2E inputs, first generate `selector.json` with the
-synthesizer and the four role-separated RKYV files with native trusted setup.
-Then run:
-
-```sh
-npm run fixtures:copy
-npm run fixtures:prepare
-npm run prover:browser:check
-```
-
-The fixture preparation step invokes only the native mmap CRS converter; it
-does not invoke setup, preprocessing, proving, or verification on behalf of
-the owner.
-
-See [`examples/browser`](./examples/browser) for a runnable Vite workflow.
+The [browser contributor guide](docs/development.md) covers local build,
+typecheck, and fixture qualification commands. For an application integration,
+use the API examples above or the runnable
+[`examples/browser`](./examples/browser) Vite project instead.
 
 ## Security and application responsibilities
 

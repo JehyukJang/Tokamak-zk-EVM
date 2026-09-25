@@ -1,11 +1,8 @@
 # `@tokamak-zk-evm/subcircuit-library`
 
 Prebuilt circuit artifacts consumed by the Tokamak zk-EVM Synthesizer and
-proving backends. The repository directory retains the historical
-`qap-compiler` name because it also contains maintainer-side generation tools.
-The dependency direction is one-way: consumers interpret this package's
-qap-owned circuit metadata; this package does not import or model a consumer's
-internal data structures.
+proving backends. The repository directory also contains the maintainer tools
+that generate these artifacts.
 
 ## Install
 
@@ -43,17 +40,10 @@ subcircuit.
 The Node Synthesizer resolves installed assets at runtime. The Web Synthesizer
 bundles the matching JSON and WASM assets at build time.
 
-Fixed-capacity public-output buffers are zero-padded. The higher-level protocol
-is responsible for filtering storage tuples with a zero address and log tuples
-whose fields are all zero. Generic buffers carry physical field wires without
-assigning one uniform value type to every slot.
-
-For non-buffer subcircuits, `subcircuitInfo.json` declares each logical input
-and output with one closed type. `uint` values of at most 160 bits use one wire;
-wider `uint` values use lower-then-upper 128-bit limbs. `bls12-381-fr` and
-`jubjub-scalar` values each use one native field wire. The scalar type records a
-distinct semantic bound even though its physical wire belongs to the circuit
-field. Consumers must not infer or override a separate wire layout.
+The metadata defines fixed-capacity buffers and wire layouts. Treat it as the
+source of truth: do not infer layouts, change padding rules, or combine assets
+from different builds. The [circuit implementation reference](./docs/publication/circuit-implementation-reference.md)
+explains these interface rules and their application-level implications.
 
 ## Published artifacts
 

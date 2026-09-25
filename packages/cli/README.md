@@ -9,7 +9,9 @@ proof export.
 First prepare a directory containing the
 [four synthesis input files](#synthesis-inputs). The
 [`L2StateChannel` example](../frontend/synthesizer/examples/L2StateChannel)
-shows the expected layout and values.
+shows the expected layout and values. Clone or download that example from this
+repository before using it: it is not installed with the npm CLI package. You
+can instead provide your own directory with the same four inputs.
 
 The quick start below assumes that the
 [native requirements](#native-requirements) are already installed and

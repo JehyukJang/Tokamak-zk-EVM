@@ -84,20 +84,30 @@ execution. Contract creation, precompiles, transient storage, blob opcodes,
 invalid/self-destruct paths, and other unvalidated execution combinations are
 outside the supported boundary.
 
-Tokamak zk-EVM also supports only contract functions whose successful calls
-preserve one fixed circuit topology across their supported transaction inputs
-and states. This excludes functions whose accepted inputs or state values can
-change the successful execution path, memory-view geometry, storage-access
-schedule, stack-access structure, or circuit-placement layout. See the
+Tokamak zk-EVM supports contract functions whose successful calls retain a
+stable execution shape for all supported inputs and states. Applications must
+validate their intended input and state domain against that boundary. See the
 [Synthesizer transaction-support guide](./packages/frontend/synthesizer/README.md#transaction-support)
 for the complete definition and validation guidance.
 
-Native proving uses ICICLE acceleration. The browser package supports
+Native proving runs on CPU by default and can use ICICLE CUDA acceleration
+when explicitly selected. The browser package supports
 bundler-based preprocessing, proving, and verification. Tokamak zk-EVM is also
 used by
 [Tokamak Private App Channels](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts).
 Package-specific compatibility and verified environments are documented in the
 corresponding package README.
+
+## Technical evaluation
+
+Tokamak zk-EVM is a specialized proving pipeline for the supported Tokamak L2
+execution model, not a general Ethereum execution environment. Evaluate a
+release against its published package versions, supported execution boundary,
+and application-specific setup and deployment requirements. The
+[changelog](./CHANGELOG.md) summarizes protocol and measured performance
+changes; [backend reports](./packages/backend/docs/optimization/) record the
+supporting qualification evidence. Setup and artifact provenance remain an
+application trust-boundary responsibility.
 
 ## Learn more
 
