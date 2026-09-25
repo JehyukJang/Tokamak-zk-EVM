@@ -172,10 +172,10 @@ system.
 | Repository package | npm package | README | Description |
 | --- | --- | --- | --- |
 | QAP compiler | [`@tokamak-zk-evm/subcircuit-library`](https://www.npmjs.com/package/@tokamak-zk-evm/subcircuit-library) | [README](./packages/frontend/qap-compiler/README.md) | Builds the reusable circuit library for supported execution |
-| Node Synthesizer | [`@tokamak-zk-evm/synthesizer-node`](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-node) | [README](./packages/frontend/synthesizer/node-cli/README.md) | Turns Tokamak L2 transaction execution into circuit artifacts in Node.js |
-| Web Synthesizer | [`@tokamak-zk-evm/synthesizer-web`](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-web) | [README](./packages/frontend/synthesizer/web-app/README.md) | Provides the Synthesizer through a browser-compatible API |
-| Rust backend workspace | Not separately published | [README](./packages/backend/README.md) | Implements native trusted setup, preprocessing, proving, and verification |
-| Browser proving backend | [`@tokamak-zk-evm/snark-browser-compat`](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat) | [README](./packages/backend/wasm/README.md) | Provides browser-compatible APIs for preprocessing, proving, verification, and artifact conversion |
+| Synthesizer-NodeJS | [`@tokamak-zk-evm/synthesizer-node`](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-node) | [README](./packages/frontend/synthesizer/node-cli/README.md) | Turns Tokamak L2 transaction execution into circuit artifacts in Node.js |
+| Synthesizer-browser | [`@tokamak-zk-evm/synthesizer-web`](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-web) | [README](./packages/frontend/synthesizer/web-app/README.md) | Provides a browser interface for transaction synthesis |
+| Backend-RUST | Not separately published | [README](./packages/backend/README.md) | Implements native trusted setup, preprocessing, proving, and verification |
+| Backend-WASM | [`@tokamak-zk-evm/snark-browser-compat`](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat) | [README](./packages/backend/wasm/README.md) | Provides a browser interface for preprocessing, proving, verification, and artifact conversion |
 | CLI | [`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli) | [README](./packages/cli/README.md) | Installs and runs the complete local proving workflow |
 
 ## Releases and npm publication
