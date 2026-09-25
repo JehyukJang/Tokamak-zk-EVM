@@ -41,6 +41,27 @@ The maintainer-side flow is:
 
 The published `dist` package excludes the build-log-style `info` directory and keeps the consumer-facing artifact surface focused on the generated library outputs and synced constants.
 
+## Capacity changes
+
+Before changing capacity, reproduce a representative supported transaction with
+the Synthesizer. A buffer-capacity failure reports the required buffer length,
+and a placement-capacity failure reports the required `s` value. These errors
+do not make an unsupported EVM feature or execution topology supportable; they
+only show that a supported flow exceeds the current circuit capacity.
+
+`S_MAX` in `scripts/configure.js` determines the placement capacity recorded
+as `s` in the generated setup parameters. The buffer capacities in
+`subcircuits/circom/constants.circom` determine the capacities of transaction,
+storage, log, block, EVM, and private-input buffers. `nPrevBlockHashes()`
+separately controls the supported block-hash history. Select the smallest
+values that cover the intended transaction set, because larger circuit
+capacities increase setup material, memory use, and proving work.
+
+After a capacity change, rebuild the library with `npm run build:library` and
+follow the [circuit update checklist](../publication/circuit-implementation-reference.md#update-checklist).
+The rebuilt library requires matching setup artifacts; a CRS generated for the
+previous library must not be reused.
+
 ## Published Artifact Surface
 
 The published package contains:
