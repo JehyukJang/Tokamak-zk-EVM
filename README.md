@@ -14,8 +14,10 @@ flow, uses zero-knowledge-proof-friendly cryptographic primitives, and executes
 against supplied state snapshots and block context. These are defined by
 [TokamakL2JS](https://github.com/tokamak-network/TokamakL2JS), which supplies
 the common transaction, state, cryptographic, and protocol-constant contract
-for Tokamak zk-EVM. The Synthesizer replays it, the circuit library encodes its
-relevant rules, and the proving backends consume the resulting artifacts.
+for Tokamak zk-EVM. Tokamak zk-EVM is limited to a defined subset of EVM
+contract functions: it generates circuit artifacts for those functions,
+produces proofs that Tokamak L2 transactions executed them correctly, and
+verifies the resulting proofs.
 
 Tokamak zk-EVM therefore does not claim compatibility with arbitrary native
 Ethereum L1 execution. Its transaction format, signing and cryptographic
