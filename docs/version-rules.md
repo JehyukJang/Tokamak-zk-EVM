@@ -49,12 +49,13 @@ Google Drive as:
 <root>/MAJOR.MINOR/crs_provenance.json
 ```
 
-The compatibility directory contains exactly its three role-key files and
-provenance. Provenance names the digest-addressed shared tau and records the
-SHA-256 of every payload. Readers resolve exactly one compatibility directory,
-reject unexpected or duplicate objects, download provenance first, then fetch
-only the named tau and role-key files. ZIP archives, timestamp selection,
-combined sigma files, and legacy archive names are not release authorities.
+The compatibility directory contains the three role-key files and provenance.
+Provenance names the digest-addressed shared tau and records the SHA-256 of the
+tau and role-key payloads. Readers resolve exactly one compatibility directory,
+reject duplicate required objects, download provenance first, then fetch only
+the named tau and role-key files. Additional directory objects are ignored.
+ZIP archives, timestamp selection, combined sigma files, and legacy archive
+names are not release authorities.
 
 CRS reuse requires both the compatibility class and equality of the source
 digest in CRS provenance and all backend build metadata. A changed circuit,

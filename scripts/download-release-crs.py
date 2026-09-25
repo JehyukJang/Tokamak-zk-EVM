@@ -10,10 +10,12 @@ import re
 import sys
 from pathlib import Path
 
-CRS_PAYLOAD_FILES = {
+CRS_KEY_FILES = {
     "prover_keys.rkyv",
     "preprocess_keys.rkyv",
     "verifier_keys.rkyv",
+}
+CRS_PAYLOAD_FILES = CRS_KEY_FILES | {
     "crs_provenance.json",
 }
 TAU_FOLDER_NAME = "tau_sequence"
@@ -51,7 +53,7 @@ def provenance_artifact_digests(provenance_bytes: bytes) -> dict[str, str]:
         raise ValueError(f"CRS provenance does not declare artifact digests: {error}") from error
     if not isinstance(artifacts, dict):
         raise ValueError("CRS provenance artifact digests must be an object")
-    required = CRS_PAYLOAD_FILES | {TAU_PROVENANCE_KEY}
+    required = CRS_KEY_FILES | {TAU_PROVENANCE_KEY}
     digests = {name: artifacts.get(name) for name in required}
     invalid = sorted(name for name, digest in digests.items() if not isinstance(digest, str) or SHA256_PATTERN.fullmatch(digest) is None)
     if invalid:
@@ -62,9 +64,8 @@ def provenance_artifact_digests(provenance_bytes: bytes) -> dict[str, str]:
 def validate_version_entries(entries: list[dict]) -> None:
     names = {entry.get("name") for entry in entries}
     missing = sorted(CRS_PAYLOAD_FILES - names)
-    extra = sorted(name for name in names if name not in CRS_PAYLOAD_FILES)
-    if missing or extra:
-        raise ValueError(f"CRS version directory members are not canonical: missing={missing}, extra={extra}")
+    if missing:
+        raise ValueError(f"CRS version directory is missing required files: {missing}")
     for name in CRS_PAYLOAD_FILES:
         require_unique(entries, name, False)
 

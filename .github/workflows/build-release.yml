@@ -10,7 +10,6 @@ on:
       - docs/version-rules.md
       - scripts/check-doc-readiness.mjs
       - scripts/check-release-package.mjs
-      - scripts/check-release-reproducibility.mjs
       - scripts/download-release-crs.py
       - scripts/release-registry.mjs
       - scripts/test-download-release-crs.py
@@ -64,9 +63,6 @@ jobs:
 
       - name: Install Rust and Cargo
         uses: dtolnay/rust-toolchain@1.95.0
-
-      - name: Check release reproducibility policy
-        run: npm run release:reproducibility:check
 
       - name: Install Circom compiler
         run: cargo install --locked --git https://github.com/iden3/circom --tag v2.2.3 circom

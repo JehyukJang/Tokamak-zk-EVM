@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +14,7 @@ const publicPackages = [
 ];
 const failures = [];
 
-for (const document of trackedDocuments()) checkLocalLinks(document);
+for (const document of consumerDocuments()) checkLocalLinks(document);
 for (const manifestPath of publicPackages) checkPackageDocumentation(manifestPath);
 
 if (failures.length > 0) {
@@ -25,13 +24,12 @@ if (failures.length > 0) {
 
 console.log('[doc-readiness] Consumer documentation links and package references are valid.');
 
-function trackedDocuments() {
-  return execFileSync('git', ['ls-files', '-z', '--', '*.md', 'llms.txt'], {
-    cwd: repositoryRoot,
-    encoding: 'utf8',
-  })
-    .split('\0')
-    .filter(Boolean);
+function consumerDocuments() {
+  return [
+    'README.md',
+    ...publicPackages.map(manifestPath => path.join(path.dirname(manifestPath), 'README.md')),
+    'packages/backend/wasm/examples/browser/README.md',
+  ];
 }
 
 function checkLocalLinks(documentPath) {

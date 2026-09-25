@@ -104,7 +104,7 @@ Version-bump policy:
 Release-related checks validate:
 
 - synchronized package versions
-- local links in tracked documentation and consumer package references
+- local links in consumer documentation and consumer package references
 - the dated Changelog entry for a version-changing candidate
 - publish eligibility against npm
 

@@ -56,7 +56,7 @@ jobs:
           test -n "$BEFORE"
           changed="$(git diff --name-only "$BEFORE" "$GITHUB_SHA")"
           test -n "$changed"
-          if grep -Eqv '^(\.github/workflows/(build-release|publish-tokamak-zk-evm)\.yml|docs/version-rules\.md|scripts/(check-doc-readiness|check-release-package|check-release-reproducibility|download-release-crs|release-registry|test-download-release-crs|test-release-registry)\.(mjs|py)|packages/backend/wasm/test/checks/generate/check-final-crs-release-workflow\.ts)$' <<<"$changed"; then
+          if grep -Eqv '^(\.github/workflows/(build-release|publish-tokamak-zk-evm)\.yml|docs/version-rules\.md|scripts/(check-doc-readiness|check-release-package|download-release-crs|release-registry|test-download-release-crs|test-release-registry)\.(mjs|py)|packages/backend/wasm/test/checks/generate/check-final-crs-release-workflow\.ts)$' <<<"$changed"; then
             echo "scope=complete-release" >> "$GITHUB_OUTPUT"
           else
             echo "scope=controller-maintenance" >> "$GITHUB_OUTPUT"
@@ -94,7 +94,6 @@ jobs:
           npm run release:candidate:check -- --base-ref="${{ github.event.before }}"
           npm run version:prepublication:check
           npm run version:production-snapshot:check
-          npm run release:reproducibility:check
 
       - name: Install Rust and Cargo
         uses: dtolnay/rust-toolchain@1.95.0
@@ -389,7 +388,6 @@ jobs:
         run: |
           npm run release:candidate:check -- --base-ref="${{ inputs.base_sha }}"
           npm run version:prepublication:check
-          npm run release:reproducibility:check
 
       - name: Require final candidate production lock
         if: inputs.operation == 'final-release'

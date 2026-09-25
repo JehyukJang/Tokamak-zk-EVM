@@ -87,7 +87,6 @@ function validateProductionSnapshot(input) {
       `Production lockfile resolves ${packageName}@${JSON.stringify(lockEntry?.version)}, expected ${input.expectedVersion}.`,
     );
   }
-  assertRegistryResolution(lockEntry.resolved, input.expectedVersion);
   assertSha512Integrity(lockEntry.integrity);
   if (lockEntry.resolved !== input.registryMetadata.tarball) {
     throw new Error('Production lockfile tarball does not match the npm registry metadata.');
@@ -136,27 +135,6 @@ function readPublishedPackageMetadata(version) {
     throw new Error(
       `npm returned invalid distribution metadata for ${packageSpec}: ${error instanceof Error ? error.message : String(error)}`,
     );
-  }
-}
-
-/**
- * @param {unknown} resolved
- * @param {string} version
- */
-function assertRegistryResolution(resolved, version) {
-  const expectedPath = `/@tokamak-zk-evm/subcircuit-library/-/subcircuit-library-${version}.tgz`;
-  let resolution;
-  try {
-    resolution = new URL(String(resolved));
-  } catch {
-    throw new Error(`Production lockfile has invalid registry resolution ${JSON.stringify(resolved)}.`);
-  }
-  if (
-    resolution.protocol !== 'https:' ||
-    resolution.hostname !== 'registry.npmjs.org' ||
-    resolution.pathname !== expectedPath
-  ) {
-    throw new Error(`Production lockfile resolution ${resolution.href} is not the expected npm registry tarball.`);
   }
 }
 

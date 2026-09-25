@@ -23,10 +23,6 @@ export const LOCKFILE_PACKAGE_VERSION_TARGETS = Object.freeze([
   ['package-lock.json', 'packages/frontend/synthesizer/node-cli'],
   ['package-lock.json', 'packages/frontend/synthesizer/web-app'],
   ['packages/frontend/qap-compiler/package-lock.json', ''],
-  ['packages/frontend/synthesizer/package-lock.json', 'node-cli'],
-  ['packages/frontend/synthesizer/package-lock.json', 'web-app'],
-  ['packages/frontend/synthesizer/node-cli/package-lock.json', ''],
-  ['packages/frontend/synthesizer/web-app/package-lock.json', ''],
   ['packages/backend/wasm/package-lock.json', ''],
 ]);
 
@@ -35,10 +31,6 @@ export const LOCKFILE_DEPENDENCY_TARGETS = Object.freeze([
   ['package-lock.json', 'packages/cli', '@tokamak-zk-evm/subcircuit-library'],
   ['package-lock.json', 'packages/frontend/synthesizer/node-cli', '@tokamak-zk-evm/subcircuit-library'],
   ['package-lock.json', 'packages/frontend/synthesizer/web-app', '@tokamak-zk-evm/subcircuit-library'],
-  ['packages/frontend/synthesizer/package-lock.json', 'node-cli', '@tokamak-zk-evm/subcircuit-library'],
-  ['packages/frontend/synthesizer/package-lock.json', 'web-app', '@tokamak-zk-evm/subcircuit-library'],
-  ['packages/frontend/synthesizer/node-cli/package-lock.json', '', '@tokamak-zk-evm/subcircuit-library'],
-  ['packages/frontend/synthesizer/web-app/package-lock.json', '', '@tokamak-zk-evm/subcircuit-library'],
   ['packages/backend/wasm/package-lock.json', '', '@tokamak-zk-evm/subcircuit-library'],
 ]);
 
@@ -46,9 +38,6 @@ export const OPTIONAL_LOCKFILES = Object.freeze(
   new Set([
     'package-lock.json',
     'packages/frontend/qap-compiler/package-lock.json',
-    'packages/frontend/synthesizer/package-lock.json',
-    'packages/frontend/synthesizer/node-cli/package-lock.json',
-    'packages/frontend/synthesizer/web-app/package-lock.json',
   ]),
 );
 

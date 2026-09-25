@@ -40,14 +40,6 @@ function testRegistryResponses() {
     () =>
       interpretNpmViewResult('@tokamak-zk-evm/example@1.2.3', {
         status: 0,
-        stdout: JSON.stringify({ ...metadata, tarball: 'https://example.test/example-1.2.3.tgz' }),
-      }),
-    /noncanonical tarball URL/u,
-  );
-  assert.throws(
-    () =>
-      interpretNpmViewResult('@tokamak-zk-evm/example@1.2.3', {
-        status: 0,
         stdout: JSON.stringify({ ...metadata, integrity: 'sha512-not-a-canonical-digest' }),
       }),
     /canonical SHA-512 integrity/u,

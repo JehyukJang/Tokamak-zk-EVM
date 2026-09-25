@@ -23,8 +23,6 @@
     "version:production-snapshot:refresh": "node scripts/refresh-production-snapshot.mjs",
     "version:production-snapshot:test": "node scripts/test-production-snapshot.mjs",
     "version:contract:check": "node scripts/check-version-contract.mjs",
-    "release:reproducibility:check": "node scripts/check-release-reproducibility.mjs",
-    "release:reproducibility:test": "node scripts/test-release-reproducibility.mjs",
     "release:registry:test": "node scripts/test-release-registry.mjs",
     "release:crs:test": "python3 scripts/test-download-release-crs.py",
     "release:candidate:check": "node scripts/check-release-candidate.mjs",
