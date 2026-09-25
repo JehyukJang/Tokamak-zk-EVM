@@ -107,7 +107,6 @@ jobs:
           (cd packages/frontend/qap-compiler && npx qap-compiler --reload-constants && npx qap-compiler --build && npx qap-compiler --dist)
           npm run build --workspace @tokamak-zk-evm/synthesizer-node
           npm run build --workspace @tokamak-zk-evm/synthesizer-web
-          npm run build --workspace @tokamak-zk-evm/cli
           npm run --workspace @tokamak-zk-evm/cli release:package:check
 
       - name: Check backend source
@@ -415,7 +414,6 @@ jobs:
         run: |
           npm run build --workspace @tokamak-zk-evm/synthesizer-node
           npm run build --workspace @tokamak-zk-evm/synthesizer-web
-          npm run build --workspace @tokamak-zk-evm/cli
           npm run --workspace @tokamak-zk-evm/cli release:package:check
 
       - name: Install backend build prerequisites

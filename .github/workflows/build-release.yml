@@ -69,7 +69,6 @@ jobs:
 
       - name: Verify Circom compiler
         run: |
-          circom --version
           test "$(circom --version)" = "circom compiler 2.2.3"
 
       - name: Build subcircuit library
