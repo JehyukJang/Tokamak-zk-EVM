@@ -168,23 +168,22 @@ function checkRootReadme() {
   const relativePath = 'README.md';
 
   for (const required of [
-    '## How the repository fits together',
-    '## Choose a package',
+    '## Scope and compatibility',
+    '## Concrete application',
+    '## Packages',
+    '## Proof workflow',
+    '## Versioning and distribution',
     '@tokamak-zk-evm/cli',
     '@tokamak-zk-evm/subcircuit-library',
     '@tokamak-zk-evm/synthesizer-node',
     '@tokamak-zk-evm/synthesizer-web',
     '@tokamak-zk-evm/snark-browser-compat',
-    '## Releases and npm publication',
-    '## Repository map',
-    '## Scope and compatibility',
     '## Learn more',
     '## License',
     'https://github.com/tokamak-network/TokamakL2JS',
-    'An Efficient SNARK for Field-Programmable and RAM Circuits',
     'https://eprint.iacr.org/2024/507',
-    'bridge/src/verifiers/TokamakVerifier.sol',
-    'TPAC-Contract-Addresses.json',
+    'TokamakVerifier',
+    'TPAC DApp registry',
     'MIT',
     'Apache-2.0',
     'CHANGELOG.md',
@@ -193,8 +192,8 @@ function checkRootReadme() {
   }
   requirePattern(
     relativePath,
-    /a manifest version is not a published release\s+until it appears\s+on npm/iu,
-    'the distinction between source and published versions',
+    /branch is kept aligned with deployed releases/iu,
+    'the main-branch deployment reference',
   );
   requirePattern(relativePath, /tokamak-?l2js/iu, 'the TokamakL2JS input-format owner');
 
