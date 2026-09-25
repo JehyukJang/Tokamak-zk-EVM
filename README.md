@@ -180,14 +180,18 @@ system.
 
 ## Versioning and distribution
 
-- The repository root centrally manages the synchronized version of every
-  package.
-- The root [CHANGELOG.md](./CHANGELOG.md) centrally records changes for those
-  package versions.
-- The `main` branch is kept at the source code for deployed versions.
-- Backend-RUST binaries are not distributed directly. The
-  [`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli)
-  distributes the compatible source and builds them locally.
+The repository root synchronizes package versions and maintains the root
+[CHANGELOG.md](./CHANGELOG.md) as the single record of changes for each release.
+This lets consumers identify the set of components and documented changes that
+belong to one version.
+
+The `main` branch is kept at the source code for deployed versions, providing a
+stable source reference for each release.
+
+Backend-RUST binaries are not distributed directly. Instead, the
+[`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli)
+distributes compatible backend source and builds it locally as part of the CLI
+workflow.
 
 For package-specific and release-operation details, see the relevant package
 README and the [version and release rules](./docs/version-rules.md).
