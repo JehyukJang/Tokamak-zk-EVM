@@ -113,15 +113,15 @@ a note-based transfer of channel-local value. The controller and
 [L2AccountingVault](https://etherscan.io/address/0x9A6c9eb158269BBEd8885649F95aCEFA8AAfC3aA#code)
 are deployed on Ethereum mainnet. The Synthesizer consumes their
 deployed bytecode to produce circuit artifacts, and the bridge registry records
-the resulting per-function preprocessing-input commitments.
+the resulting per-function preprocessing-input commitments. A direct call to
+the controller on native Ethereum publishes its note and transfer data in
+transaction calldata. In contrast, the Synthesizer replays the supported
+function from a Tokamak L2 transaction off-chain; the proving backends generate
+a proof, and the user submits that proof and only the required public inputs to
+the ChannelManager. The original transaction input is not published on Ethereum.
 
-This is a privacy boundary, not an automatic privacy layer for a native Ethereum
-DApp. A direct call to `PrivateStateController` on native Ethereum publishes
-its note and transfer data in transaction calldata. In the TPAC path, the
-Synthesizer replays the supported function from the Tokamak L2 transaction
-off-chain, and the proving backends produce a proof. The user submits that proof
-and only the required public inputs to the ChannelManager, not the original
-transaction. [Ethereum.org defines data availability](https://ethereum.org/developers/docs/data-availability/)
+This is an application-defined privacy boundary, not an automatic privacy layer
+for a native Ethereum DApp. [Ethereum.org defines data availability](https://ethereum.org/developers/docs/data-availability/)
 as “the confidence a user can have that the data required to verify a block is
 really available to all network participants.” The DApp must therefore keep the
 state data required for verification and continued use available. In the
