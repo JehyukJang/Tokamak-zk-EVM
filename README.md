@@ -81,8 +81,8 @@ sequenceDiagram
     DApp->>User: DApp contracts and state
     User->>User: Create and execute L2 transaction
     User->>User: Generate proof and public inputs
-    DApp->>Validators: DApp contracts and state
     User->>Validators: Public inputs and proof (no transaction)
+    DApp->>Validators: DApp contracts and state
     Validators->>Validators: Verify proof
     Validators->>DApp: Updated state
 ```
