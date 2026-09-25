@@ -118,7 +118,7 @@ which is deployed on Ethereum mainnet. The DApp's state records note commitments
 and nullifiers for spent notes. To transfer value, the owner must submit
 privacy-sensitive data in transaction calldata, which identifies the sender,
 recipients, and transferred amounts. A direct call to the controller on native
-Ethereum publishes this calldata. In contrast, the Tokamak L2 path submits a
+Ethereum exposes this calldata. In contrast, the Tokamak L2 path submits a
 proof and the required public inputs to the ChannelManager instead of the raw
 transaction, so the input notes and their ownership are not published on
 Ethereum.
