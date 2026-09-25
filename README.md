@@ -90,7 +90,7 @@ sequenceDiagram
 [Tokamak Private App Channels](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts)
 is a concrete integration of this flow. Its
 [BridgeCore](https://etherscan.io/address/0xB1815dF9382449F48E2c26cAd75a07a51E3d72Fa#code)
-is the L1 coordinator: it records channel deployments, coordinates shared
+is the on-chain coordinator: it records channel deployments, coordinates shared
 custody, and creates a
 [ChannelManager](https://etherscan.io/address/0x3108d92A38bFb4B3396DE7ad4D92318a8fbE61D7#code)
 for a DApp in the [TPAC DApp registry](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts#mainnet-registered-dapps),
