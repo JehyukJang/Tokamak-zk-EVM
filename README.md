@@ -4,8 +4,12 @@ Tokamak zk-EVM converts Tokamak Network Layer 2 transaction execution into
 Tokamak zk-SNARK proof artifacts. Its proving protocol is described in the
 [Tokamak zk-SNARK paper](https://eprint.iacr.org/2024/507).
 
-The system combines a transaction Synthesizer, a prebuilt subcircuit library,
-native and browser proving backends, and a CLI for the end-to-end workflow.
+The system includes:
+
+- A transaction Synthesizer
+- A prebuilt subcircuit library
+- Native and browser proving backends
+- A CLI for the end-to-end workflow
 
 ## Scope and compatibility
 
