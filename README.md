@@ -115,13 +115,11 @@ The private-state note-transfer DApp is one TPAC example. A user calls a
 transfer function defined by the
 [PrivateStateController](https://etherscan.io/address/0x67C6233A99D9f122Fef9DC111e89948107b34c2F#code),
 which is deployed on Ethereum mainnet. The DApp's state records note commitments
-and nullifiers for spent notes. Each commitment is derived from a note's owner,
-value, and salt. To transfer value, the owner presents input notes; the
-controller records their nullifiers and creates commitments for recipient notes
-with the same total value. A direct call to the controller on native Ethereum
-publishes its note and transfer data in transaction calldata. In contrast, the
-Tokamak L2 path submits a proof and the required public inputs to the
-ChannelManager instead of the raw transaction, so the input notes and their
+and nullifiers for spent notes. To transfer value, the owner presents input
+notes and specifies recipient notes. A direct call to the controller on native
+Ethereum publishes its note and transfer data in transaction calldata. In
+contrast, the Tokamak L2 path submits a proof and the required public inputs to
+the ChannelManager instead of the raw transaction, so the input notes and their
 ownership are not published on Ethereum.
 
 This is an application-defined privacy boundary, not an automatic privacy layer
