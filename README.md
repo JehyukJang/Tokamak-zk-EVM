@@ -119,9 +119,7 @@ and nullifiers for spent notes. To transfer value, the owner must submit
 privacy-sensitive data in transaction calldata, which identifies the sender,
 recipients, and transferred amounts. When a user directly calls the controller
 on native Ethereum, their transaction exposes this calldata. In the Tokamak L2
-flow, the user instead submits a proof and the required public inputs to the
-ChannelManager; the raw transaction, including the input notes and their
-ownership, is not published on Ethereum.
+flow, the user submits only a proof and the required public inputs.
 
 This is an application-defined privacy boundary, not an automatic privacy layer
 for a native Ethereum DApp. [Ethereum.org defines data availability](https://ethereum.org/developers/docs/data-availability/)
