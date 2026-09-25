@@ -131,9 +131,9 @@ and continued use available. To support privacy, a DApp must also avoid storing
 privacy-sensitive data directly in the state it manages. For example, a DApp can
 retain only commitments to sensitive data in its state and have its contract
 functions validate the integrity of the original data. The private-state
-note-transfer DApp is one such case. Tokamak zk-EVM leaves that disclosure design
-independent of the proving system, so a DApp can express it in an Ethereum
-smart-contract language such as Solidity.
+note-transfer DApp is one such case. Tokamak zk-EVM lets a DApp define this
+privacy boundary entirely in an Ethereum smart-contract language such as
+Solidity, independently of the proving system.
 
 ## How the repository fits together
 
