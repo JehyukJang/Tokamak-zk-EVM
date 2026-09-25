@@ -180,17 +180,17 @@ system.
 
 ## Versioning and distribution
 
-The repository root synchronizes package versions and maintains the root
-[CHANGELOG.md](./CHANGELOG.md) as the single record of changes for each release.
-This lets consumers identify the set of components and documented changes that
-belong to one version.
+Tokamak zk-EVM releases its npm packages as one versioned set. The repository
+root controls the shared package version, and the root
+[CHANGELOG.md](./CHANGELOG.md) records the changes in each release. Together,
+they identify the components and documented changes that belong to a version.
 
-The `main` branch is kept at the source code for deployed versions, providing a
-stable source reference for each release.
+The `main` branch is kept aligned with deployed releases, so it is the source
+reference for a published version.
 
-Backend-RUST binaries are not distributed directly. Instead, the
+Backend-RUST binaries are not published separately. Instead, the
 [`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli)
-distributes compatible backend source and builds it locally as part of the CLI
+includes compatible backend source and builds it locally during the CLI
 workflow.
 
 For package-specific and release-operation details, see the relevant package
