@@ -175,7 +175,7 @@ system.
 | Node Synthesizer | [`@tokamak-zk-evm/synthesizer-node`](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-node) | [README](./packages/frontend/synthesizer/node-cli/README.md) | Turns Tokamak L2 transaction execution into circuit artifacts in Node.js |
 | Web Synthesizer | [`@tokamak-zk-evm/synthesizer-web`](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-web) | [README](./packages/frontend/synthesizer/web-app/README.md) | Provides the Synthesizer through a browser-compatible API |
 | Rust backend workspace | Not separately published | [README](./packages/backend/README.md) | Implements native trusted setup, preprocessing, proving, and verification |
-| Browser proving backend | [`@tokamak-zk-evm/snark-browser-compat`](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat) | [README](./packages/backend/wasm/README.md) | Makes the proving protocol available to browser applications |
+| Browser proving backend | [`@tokamak-zk-evm/snark-browser-compat`](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat) | [README](./packages/backend/wasm/README.md) | Provides browser-compatible APIs for preprocessing, proving, verification, and artifact conversion |
 | CLI | [`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli) | [README](./packages/cli/README.md) | Installs and runs the complete local proving workflow |
 
 ## Releases and npm publication
