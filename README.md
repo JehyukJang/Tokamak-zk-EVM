@@ -36,19 +36,20 @@ paths, and other unvalidated execution combinations are outside the supported
 boundary.
 
 Within that environment, a supported contract function must meet two
-conditions. First, every successful call in its intended domain must use only
-supported execution features. Second, those calls must retain one fixed
-execution trace and circuit layout: changing a permitted input or state value
-must not change the executed instruction path, call or return flow, number and
-order of memory or storage accesses, or emitted logs.
+conditions. First, every successful call among the input and state combinations
+that an application intends to support must use only supported execution
+features. Second, those calls must retain one fixed execution trace and circuit
+layout: changing a permitted input or state value must not change the executed
+instruction path, call or return flow, number and order of memory or storage
+accesses, or emitted logs.
 
 For example, a private-state transfer can process different note values when
-each successful transfer follows the same path and accesses the same shaped
-state. A function is outside the supported boundary if a permitted input selects
-a different branch, changes a loop or call count, or changes the memory or
-storage-access pattern. A successful proof for one transaction does not by
+each successful transfer follows the same path and uses the same state
+structure. A function is outside the supported boundary if a permitted input
+selects a different branch, changes a loop or call count, or changes the memory
+or storage-access pattern. A successful proof for one transaction does not by
 itself establish support for every input and state. Applications must validate
-their intended domain using the
+their planned input and state combinations using the
 [Synthesizer transaction-support guide](./packages/frontend/synthesizer/README.md#transaction-support).
 
 ## Concrete application
@@ -131,7 +132,18 @@ note-transfer DApp is one such case. Tokamak zk-EVM lets a DApp define this
 privacy boundary entirely in an Ethereum smart-contract language such as
 Solidity, independently of the proving system.
 
-## How the repository fits together
+## Packages
+
+| Repository package | npm package | README | Description |
+| --- | --- | --- | --- |
+| QAP compiler | [`@tokamak-zk-evm/subcircuit-library`](https://www.npmjs.com/package/@tokamak-zk-evm/subcircuit-library) | [README](./packages/frontend/qap-compiler/README.md) | Builds the reusable circuit library for supported execution |
+| Synthesizer-NodeJS | [`@tokamak-zk-evm/synthesizer-node`](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-node) | [README](./packages/frontend/synthesizer/node-cli/README.md) | Turns Tokamak L2 transaction execution into circuit artifacts in Node.js |
+| Synthesizer-browser | [`@tokamak-zk-evm/synthesizer-web`](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-web) | [README](./packages/frontend/synthesizer/web-app/README.md) | Provides a browser interface for transaction synthesis |
+| Backend-RUST | Not separately published | [README](./packages/backend/README.md) | Implements native trusted setup, preprocessing, proving, and verification |
+| Backend-WASM | [`@tokamak-zk-evm/snark-browser-compat`](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat) | [README](./packages/backend/wasm/README.md) | Provides a browser interface for preprocessing, proving, verification, and artifact conversion |
+| CLI | [`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli) | [README](./packages/cli/README.md) | Installs and runs the complete local proving workflow |
+
+## Package dependency
 
 ```text
 Tokamak L2 snapshot
@@ -139,9 +151,9 @@ Tokamak L2 snapshot
         ▼
 Synthesizer ──► transaction-specific artifacts
         │
-        ├──► Native Rust backend ──► preprocess, proof, verification
+        ├──► Backend-RUST ──► preprocess, proof, verification
         │
-        └──► Browser backend ──────► preprocess, proof, verification
+        └──► Backend-WASM ──► preprocess, proof, verification
                  ▲
                  │
        Subcircuit library and compatible setup material
@@ -154,27 +166,10 @@ runtime and run synthesis, preprocessing, proving, and verification. Each
 package README provides its installation, commands, APIs, input formats,
 examples, and operational responsibilities.
 
-Native proving runs on CPU by default and can use ICICLE CUDA acceleration
-when explicitly selected. The browser package supports bundler-based
-preprocessing, proving, and verification. Package-specific compatibility and
-verified environments are documented in the corresponding package README.
-
-Unless you are embedding one component in another application, start with the
-CLI. In the package descriptions below, R1CS means the circuit's rank-1
-constraint system, a witness contains the values that satisfy those
-constraints, and a CRS is the common reference string used by the proving
-system.
-
-## Packages
-
-| Repository package | npm package | README | Description |
-| --- | --- | --- | --- |
-| QAP compiler | [`@tokamak-zk-evm/subcircuit-library`](https://www.npmjs.com/package/@tokamak-zk-evm/subcircuit-library) | [README](./packages/frontend/qap-compiler/README.md) | Builds the reusable circuit library for supported execution |
-| Synthesizer-NodeJS | [`@tokamak-zk-evm/synthesizer-node`](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-node) | [README](./packages/frontend/synthesizer/node-cli/README.md) | Turns Tokamak L2 transaction execution into circuit artifacts in Node.js |
-| Synthesizer-browser | [`@tokamak-zk-evm/synthesizer-web`](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-web) | [README](./packages/frontend/synthesizer/web-app/README.md) | Provides a browser interface for transaction synthesis |
-| Backend-RUST | Not separately published | [README](./packages/backend/README.md) | Implements native trusted setup, preprocessing, proving, and verification |
-| Backend-WASM | [`@tokamak-zk-evm/snark-browser-compat`](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat) | [README](./packages/backend/wasm/README.md) | Provides a browser interface for preprocessing, proving, verification, and artifact conversion |
-| CLI | [`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli) | [README](./packages/cli/README.md) | Installs and runs the complete local proving workflow |
+Backend-RUST runs on CPU by default and can use ICICLE CUDA acceleration when
+explicitly selected. Backend-WASM supports bundler-based preprocessing, proving,
+and verification. Package-specific compatibility and verified environments are
+documented in the corresponding package README.
 
 ## Versioning and distribution
 
