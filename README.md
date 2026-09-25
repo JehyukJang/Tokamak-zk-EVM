@@ -9,6 +9,26 @@ backends, and the CLI that connects the complete workflow.
 Tokamak L2 transaction and state snapshots consumed by the Synthesizer. The
 proving protocol is described in the [Tokamak zk-SNARK paper](https://eprint.iacr.org/2024/507).
 
+## Scope and compatibility
+
+The supported pipeline verifies transaction signatures and input state,
+executes supported opcodes, and reconstructs output state for the Tokamak L2
+runtime model. It is not a claim of compatibility with arbitrary Ethereum L1
+execution. Contract creation, precompiles, transient storage, blob opcodes,
+invalid/self-destruct paths, and other unvalidated execution combinations are
+outside the supported boundary.
+
+Tokamak zk-EVM supports contract functions whose successful calls retain a
+stable execution shape for all supported inputs and states. Applications must
+validate their intended input and state domain against that boundary. See the
+[Synthesizer transaction-support guide](./packages/frontend/synthesizer/README.md#transaction-support)
+for the complete definition and validation guidance.
+
+## Concrete application
+
+[Tokamak Private App Channels](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts)
+uses Tokamak zk-EVM for its proof workflow.
+
 ## How the repository fits together
 
 ```text
@@ -28,6 +48,11 @@ Synthesizer ──► placement, instance, and permutation artifacts
 The CLI is the supported end-to-end local entry point. Package READMEs own
 installation, commands, APIs, input formats, examples, and operational
 responsibilities.
+
+Native proving runs on CPU by default and can use ICICLE CUDA acceleration
+when explicitly selected. The browser package supports bundler-based
+preprocessing, proving, and verification. Package-specific compatibility and
+verified environments are documented in the corresponding package README.
 
 Unless you are embedding one component in another application, start with the
 CLI. In the package descriptions below, R1CS means the circuit's rank-1
@@ -73,32 +98,6 @@ Use that repository's
 [mainnet monitoring artifact](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts/blob/main/docs/audit/monitoring/data/TPAC-Contract-Addresses.json)
 for current deployment addresses rather than copying an address from this
 README.
-
-## Scope and compatibility
-
-The supported pipeline verifies transaction signatures and input state,
-executes supported opcodes, and reconstructs output state for the Tokamak L2
-runtime model. It is not a claim of compatibility with arbitrary Ethereum L1
-execution. Contract creation, precompiles, transient storage, blob opcodes,
-invalid/self-destruct paths, and other unvalidated execution combinations are
-outside the supported boundary.
-
-Tokamak zk-EVM supports contract functions whose successful calls retain a
-stable execution shape for all supported inputs and states. Applications must
-validate their intended input and state domain against that boundary. See the
-[Synthesizer transaction-support guide](./packages/frontend/synthesizer/README.md#transaction-support)
-for the complete definition and validation guidance.
-
-Tokamak zk-EVM is also
-used by
-[Tokamak Private App Channels](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts).
-
-Native proving runs on CPU by default and can use ICICLE CUDA acceleration
-when explicitly selected. The browser package supports
-bundler-based preprocessing, proving, and verification.
-
-Package-specific compatibility and verified environments are documented in the
-corresponding package README.
 
 ## Technical evaluation
 
