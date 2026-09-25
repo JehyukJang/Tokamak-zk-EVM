@@ -15,10 +15,10 @@ Tokamak zk-EVM consists of:
 
 ## Scope and compatibility
 
-Tokamak Network Layer 2 (Tokamak L2) is the execution model proved by this
-repository. A Tokamak L2 transaction has its own transaction shape and signing
-flow, uses zero-knowledge-proof-friendly cryptographic primitives, and executes
-against supplied state snapshots and block context. These are defined by
+Tokamak Network Layer 2 (Tokamak L2) is the execution model on which this
+repository depends. A Tokamak L2 transaction has its own transaction shape and
+signing flow, uses zero-knowledge-proof-friendly cryptographic primitives, and
+executes against supplied state snapshots and block context. These are defined by
 [TokamakL2JS](https://github.com/tokamak-network/TokamakL2JS), which supplies
 the common transaction, state, cryptographic, and protocol-constant contract
 for Tokamak zk-EVM. Tokamak zk-EVM is limited to a defined subset of EVM
@@ -90,7 +90,7 @@ sequenceDiagram
     DApp->>User: DApp contracts and state
     User->>User: Create and execute L2 transaction
     User->>User: Generate proof and public inputs
-    User->>Validators: Public inputs and proof (no transaction)
+    User->>Validators: Public inputs and proof (no original transaction data)
     DApp->>Validators: DApp contracts and state
     Validators->>Validators: Verify proof
     Validators->>DApp: Updated state
@@ -102,11 +102,11 @@ is a concrete integration of this flow. Its
 coordinates channels and shared custody, creating a
 [ChannelManager](https://etherscan.io/address/0x3108d92A38bFb4B3396DE7ad4D92318a8fbE61D7#code)
 for each DApp in the [TPAC DApp registry](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts#mainnet-registered-dapps).
-Each channel maintains its DApp's state commitment. A proof-submission
-transaction invokes the ChannelManager, which checks the supported function and
-current state before calling the deployed
-[TokamakVerifier](https://etherscan.io/address/0x9fDBDFDfD5CFbd38348FE709296E2E1063Bbd2Bd#code).
-An accepted proof updates the channel's state commitment.
+Each channel maintains its DApp's state commitment. Channel users generate a
+proof locally that the registered DApp executed correctly. When the deployed
+[TokamakVerifier](https://etherscan.io/address/0x9fDBDFDfD5CFbd38348FE709296E2E1063Bbd2Bd#code)
+accepts the proof on-chain, the ChannelManager updates the channel's state
+commitment.
 
 The private-state note-transfer DApp is one TPAC example. A user calls a
 transfer function defined by the
@@ -145,18 +145,21 @@ Solidity, independently of the proving system.
 
 ## Package dependency
 
-```text
-Tokamak L2 snapshot
-        │
-        ▼
-Synthesizer ──► transaction-specific artifacts
-        │
-        ├──► Backend-RUST ──► preprocess, proof, verification
-        │
-        └──► Backend-WASM ──► preprocess, proof, verification
-                 ▲
-                 │
-       Subcircuit library and compatible setup material
+```mermaid
+flowchart TD
+    snapshot[Tokamak L2 snapshot] --> synthesizer[Synthesizer]
+    library[Subcircuit library] --> synthesizer
+    synthesizer --> artifacts[Transaction-specific artifacts]
+
+    library --> rust[Backend-RUST]
+    library --> wasm[Backend-WASM]
+    artifacts --> rust
+    artifacts --> wasm
+    setup[Compatible setup material] --> rust
+    setup --> wasm
+
+    rust --> nativeOutput[Preprocess, proof, and verification]
+    wasm --> browserOutput[Preprocess, proof, and verification]
 ```
 
 The [CLI](./packages/cli/README.md) is the supported end-to-end local entry
