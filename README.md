@@ -107,13 +107,12 @@ the channel's state commitment.
 The private-state note-transfer DApp is one TPAC example. A user calls a
 transfer function defined by the
 [PrivateStateController](https://etherscan.io/address/0x67C6233A99D9f122Fef9DC111e89948107b34c2F#code)
-to consume existing notes, mark them spent through nullifiers, and create new
-note commitments with encrypted payloads for their recipients. This implements
-a note-based transfer of channel-local value. The controller and
-[L2AccountingVault](https://etherscan.io/address/0x9A6c9eb158269BBEd8885649F95aCEFA8AAfC3aA#code)
-are deployed on Ethereum mainnet. The Synthesizer consumes their
-deployed bytecode to produce circuit artifacts, and the bridge registry records
-the resulting per-function preprocessing-input commitments. A direct call to
+which is deployed on Ethereum mainnet, to consume existing notes, mark them
+spent through nullifiers, and create new note commitments with encrypted
+payloads for their recipients. This implements a note-based transfer of
+channel-local value. The Synthesizer consumes the controller's deployed bytecode
+to produce circuit artifacts, and the bridge registry records the resulting
+per-function preprocessing-input commitments. A direct call to
 the controller on native Ethereum publishes its note and transfer data in
 transaction calldata. In contrast, the Synthesizer replays the supported
 function from a Tokamak L2 transaction off-chain; the proving backends generate
