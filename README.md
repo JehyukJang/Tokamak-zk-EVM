@@ -46,10 +46,18 @@ their intended domain using the
 
 ## Concrete application
 
+The Synthesizer replays a supported transaction that invokes an EVM contract
+function, including a function compiled from Solidity, and produces the
+transaction-specific circuit artifacts needed to prove that execution. Existing
+native Ethereum DApps can reuse qualifying contract functions in Tokamak L2
+when their supported calls meet the execution boundary. Combined with Tokamak
+zk-EVM, those functions can support privacy-enhanced DApp behavior in the
+Tokamak L2 environment.
+
 [Tokamak Private App Channels](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts)
-uses Tokamak zk-EVM for proof-backed state transitions in DApp-specific
-channels. Ethereum remains the custody, proof-verification, and settlement
-layer for those channels.
+is one such application: it uses Tokamak zk-EVM for proof-backed state
+transitions in DApp-specific channels. Ethereum remains the custody,
+proof-verification, and settlement layer for those channels.
 
 ## How the repository fits together
 
