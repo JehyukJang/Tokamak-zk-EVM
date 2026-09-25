@@ -55,39 +55,36 @@ used to prove the execution. This gives the DApp a path to reuse its contract
 code in Tokamak L2 and, together with the proving backends, become a
 privacy-preserving DApp.
 
-```text
-Native Ethereum execution
+### Native Ethereum execution
 
-On-chain DApp            Off-chain user        Ethereum validators
-     |                         |                       |
-     |  DApp contracts + state |                       |
-     |------------------------>|                       |
-     |                         |  transaction          |
-     |                         |---------------------->|
-     |  DApp contracts + state |                       |
-     |------------------------------------------------>|
-     |                         |  execute and validate |
-     |  updated state          |                       |
-     |<------------------------------------------------|
+```mermaid
+sequenceDiagram
+    participant DApp as On-chain DApp
+    participant User as Off-chain user
+    participant Validators as Ethereum validators
 
+    DApp->>User: DApp contracts and state
+    User->>Validators: Transaction
+    DApp->>Validators: DApp contracts and state
+    Validators->>Validators: Execute and validate transaction
+    Validators->>DApp: Updated state
+```
 
-Privacy-preserving Tokamak L2 execution of the same DApp
+### Privacy-preserving Tokamak L2 execution of the same DApp
 
-On-chain DApp            Off-chain user        Ethereum validators
-     |                         |                       |
-     |  DApp contracts + state |                       |
-     |------------------------>|                       |
-     |                         |  create L2 transaction|
-     |                         |  execute locally      |
-     |                         |  generate proof       |
-     |  DApp contracts + state |                       |
-     |------------------------------------------------>|
-     |                         |  public inputs + proof|
-     |                         |  (not the transaction)|
-     |                         |---------------------->|
-     |                         |  verify proof         |
-     |  updated state          |                       |
-     |<------------------------------------------------|
+```mermaid
+sequenceDiagram
+    participant DApp as On-chain DApp
+    participant User as Off-chain user
+    participant Validators as Ethereum validators
+
+    DApp->>User: DApp contracts and state
+    User->>User: Create and execute L2 transaction
+    User->>User: Generate proof and public inputs
+    DApp->>Validators: DApp contracts and state
+    User->>Validators: Public inputs and proof (no transaction)
+    Validators->>Validators: Verify proof
+    Validators->>DApp: Updated state
 ```
 
 [Tokamak Private App Channels](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts)
