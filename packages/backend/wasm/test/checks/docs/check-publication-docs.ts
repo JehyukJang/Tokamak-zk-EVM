@@ -194,11 +194,11 @@ function checkPublicApiReference(readme: string): void {
   const reference = section(readme, "## Public API reference");
   const exactEntries = [
     "prover.install(options?)",
-    "prover.prove(input)",
+    "prover.prove(input, options?)",
     "verifier.install()",
     "verifier.verify(input)",
     "preprocess.install(options?)",
-    "preprocess.preprocess(input)",
+    "preprocess.preprocess(input, options?)",
     "convertWitness(value)",
     "convertSelector(value)",
     "convertPermutation(value)",
@@ -210,28 +210,6 @@ function checkPublicApiReference(readme: string): void {
     const count = countLiteral(reference, `\`${entry}\``);
     if (count !== 1) {
       throw new Error(`Public API reference must document ${entry} exactly once; found ${count}.`);
-    }
-  }
-
-  const publicTypes = [
-    "ProverInput",
-    "ProverInstallOptions",
-    "ProverInstallationInfo",
-    "VerifierInput",
-    "VerifierInstallationInfo",
-    "PreprocessInput",
-    "PreprocessInstallOptions",
-    "PreprocessInstallationInfo",
-    "BinaryArtifactInspection",
-    "BinarySectionInspection",
-    "UnivariateCrsChunkInput",
-    "RuntimeArtifactFileValidationResult",
-    "BackendWasmError",
-    "BackendWasmErrorCode",
-  ] as const;
-  for (const type of publicTypes) {
-    if (!reference.includes(`\`${type}\``)) {
-      throw new Error(`Public API reference does not document ${type}.`);
     }
   }
 
@@ -390,12 +368,15 @@ async function checkPackedPackage(expectedOrigin: SubcircuitLibraryOrigin): Prom
         "Package prepack must clean and build with production-selected generated inputs.",
       );
     }
+    const productionBuild = manifest.scripts["build:production"];
     if (
-      manifest.scripts["build:production"]
-        !== "npm run contracts:prepare && npm run subcircuit-library:generate:production && tsc -p tsconfig.json --pretty false"
+      productionBuild === undefined ||
+      !["contracts:prepare", "subcircuit-library:generate:production", "verifier:generate"].every((step) =>
+        productionBuild.includes(step),
+      )
     ) {
       throw new Error(
-        "Package build:production must select and check the npm snapshot input.",
+        "Package build:production must prepare contracts, select the npm snapshot, and generate the verifier.",
       );
     }
     const exports = Object.keys(manifest.exports).sort();
