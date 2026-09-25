@@ -55,6 +55,29 @@ used to prove the execution. This gives the DApp a path to reuse its contract
 code in Tokamak L2 and, together with the proving backends, become a
 privacy-preserving DApp.
 
+```text
+Native Ethereum execution
+
+DApp user ── Ethereum transaction ──> EVM contract ──> public execution and state update
+
+
+Privacy-preserving Tokamak L2 execution of the same DApp
+
+DApp user ── Tokamak L2 transaction and state snapshot ──> Synthesizer
+                                                         │ reads EVM bytecode
+                                                         ▼
+                                           transaction-specific circuit artifacts
+                                                         │
+                                                         ▼
+                                                  proving backends ──> proof
+                                                         │
+                                                         ▼
+                                  proof-backed, privacy-preserving state transition
+                                                         │
+                                                         ▼
+                                      Ethereum L1 proof verification and settlement
+```
+
 [Tokamak Private App Channels](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts)
 is one such application: it uses Tokamak zk-EVM for proof-backed state
 transitions in DApp-specific channels. Ethereum remains the custody,
