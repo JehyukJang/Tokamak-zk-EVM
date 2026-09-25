@@ -169,14 +169,14 @@ system.
 
 ## Packages
 
-| Repository package | npm package | README | Inputs and outputs |
+| Repository package | npm package | README | Description |
 | --- | --- | --- | --- |
-| CLI | [`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli) | [README](./packages/cli/README.md) | Tokamak L2 transaction inputs → synthesis artifacts, preprocessing artifacts, a proof, and a verification result |
-| Node Synthesizer | [`@tokamak-zk-evm/synthesizer-node`](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-node) | [README](./packages/frontend/synthesizer/node-cli/README.md) | State snapshot, signed transaction, block context, and deployed bytecode → transaction-specific circuit artifacts |
-| Web Synthesizer | [`@tokamak-zk-evm/synthesizer-web`](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-web) | [README](./packages/frontend/synthesizer/web-app/README.md) | State snapshot, signed transaction, block context, and deployed bytecode → transaction-specific circuit artifacts |
-| Browser proving backend | [`@tokamak-zk-evm/snark-browser-compat`](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat) | [README](./packages/backend/wasm/README.md) | Synthesizer artifacts and a compatible CRS → preprocessing artifacts, a proof, or a verification result |
-| QAP compiler | [`@tokamak-zk-evm/subcircuit-library`](https://www.npmjs.com/package/@tokamak-zk-evm/subcircuit-library) | [README](./packages/frontend/qap-compiler/README.md) | Circom sources → R1CS constraints, WASM witness generators, and circuit metadata |
-| Rust backend workspace | Not separately published | [README](./packages/backend/README.md) | Subcircuit-library and Synthesizer artifacts with a compatible CRS → preprocessing artifacts, a proof, or a verification result |
+| CLI | [`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli) | [README](./packages/cli/README.md) | Installs and runs the complete local proving workflow |
+| Node Synthesizer | [`@tokamak-zk-evm/synthesizer-node`](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-node) | [README](./packages/frontend/synthesizer/node-cli/README.md) | Turns Tokamak L2 transaction execution into circuit artifacts in Node.js |
+| Web Synthesizer | [`@tokamak-zk-evm/synthesizer-web`](https://www.npmjs.com/package/@tokamak-zk-evm/synthesizer-web) | [README](./packages/frontend/synthesizer/web-app/README.md) | Turns Tokamak L2 transaction execution into circuit artifacts in a browser application |
+| Browser proving backend | [`@tokamak-zk-evm/snark-browser-compat`](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat) | [README](./packages/backend/wasm/README.md) | Runs the Tokamak proving protocol in browser applications |
+| QAP compiler | [`@tokamak-zk-evm/subcircuit-library`](https://www.npmjs.com/package/@tokamak-zk-evm/subcircuit-library) | [README](./packages/frontend/qap-compiler/README.md) | Builds the reusable circuit library for supported execution |
+| Rust backend workspace | Not separately published | [README](./packages/backend/README.md) | Implements native trusted setup, preprocessing, proving, and verification |
 
 ## Releases and npm publication
 
