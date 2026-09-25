@@ -26,7 +26,9 @@ for the complete definition and validation guidance.
 ## Concrete application
 
 [Tokamak Private App Channels](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts)
-uses Tokamak zk-EVM for its proof workflow.
+uses Tokamak zk-EVM for proof-backed state transitions in DApp-specific
+channels. Ethereum remains the custody, proof-verification, and settlement
+layer for those channels.
 
 ## How the repository fits together
 
@@ -34,19 +36,19 @@ uses Tokamak zk-EVM for its proof workflow.
 Tokamak L2 snapshot
         │
         ▼
-Synthesizer ──► placement, instance, and permutation artifacts
+Synthesizer ──► transaction-specific artifacts
         │
         ├──► Native Rust backend ──► preprocess, proof, verification
         │
         └──► Browser backend ──────► preprocess, proof, verification
                  ▲
                  │
-       Subcircuit library and compatible CRS
+       Subcircuit library and compatible setup material
 ```
 
-The CLI is the supported end-to-end local entry point. Package READMEs own
-installation, commands, APIs, input formats, examples, and operational
-responsibilities.
+The [CLI](./packages/cli/README.md) is the supported end-to-end local entry
+point. Each package README provides its installation, commands, APIs, input
+formats, examples, and operational responsibilities.
 
 Native proving runs on CPU by default and can use ICICLE CUDA acceleration
 when explicitly selected. The browser package supports bundler-based
@@ -72,49 +74,36 @@ system.
 
 ## Releases and npm publication
 
-The supported packages share one repository source version and compatible
-release line. A manifest version is not a published release until it appears
-on npm; use the npm links above as the source of truth for published versions
-and dist-tags.
+Use mutually compatible versions of the supported packages. A version becomes
+publicly available only when it appears on npm; the npm package pages above are
+the source of truth for published versions and release tags.
 
 The Rust backend is not published as a standalone npm package. The CLI ships
 the compatible source and builds it locally. Consumer-facing release notes are
 maintained in [CHANGELOG.md](./CHANGELOG.md).
-
-## Repository map
-
-| Path                                                                 | Language                       | Responsibility                                                        |
-| -------------------------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------- |
-| [`packages/cli`](./packages/cli)                                     | TypeScript                     | Native workflow installation and orchestration                        |
-| [`packages/frontend/synthesizer`](./packages/frontend/synthesizer)   | TypeScript                     | Shared transaction-to-circuit runtime and Node/browser adapters       |
-| [`packages/frontend/qap-compiler`](./packages/frontend/qap-compiler) | Circom, TypeScript, JavaScript | Circuit source generation and the published subcircuit library        |
-| [`packages/backend`](./packages/backend)                             | Rust                           | Trusted/MPC setup, preprocessing, proving, and verification           |
-| [`packages/backend/wasm`](./packages/backend/wasm)                   | TypeScript, WebAssembly        | Browser preprocessing, proving, verification, and artifact conversion |
-
-The on-chain Solidity verifier is maintained separately in
-[`Tokamak-zk-EVM-contracts`](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts/blob/main/bridge/src/verifiers/TokamakVerifier.sol).
-Use that repository's
-[mainnet monitoring artifact](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts/blob/main/docs/audit/monitoring/data/TPAC-Contract-Addresses.json)
-for current deployment addresses rather than copying an address from this
-README.
 
 ## Technical evaluation
 
 Tokamak zk-EVM is a specialized proving pipeline for the supported Tokamak L2
 execution model, not a general Ethereum execution environment. Evaluate a
 release against its published package versions, supported execution boundary,
-and application-specific setup and deployment requirements. The
-[changelog](./CHANGELOG.md) summarizes protocol and measured performance
-changes; [backend reports](./packages/backend/docs/optimization/) record the
-supporting qualification evidence. Setup and artifact provenance remain an
-application trust-boundary responsibility.
+and application-specific setup and deployment requirements.
+
+- The [changelog](./CHANGELOG.md) records public protocol, compatibility, and
+  measured performance changes.
+- The [backend reports](./packages/backend/docs/optimization/) provide the
+  underlying qualification and measurement evidence.
+
+Setup and artifact provenance remain an application trust-boundary
+responsibility.
 
 ## Learn more
 
-- [LLM-readable repository map](./llms.txt)
 - [Project overview on Medium](https://medium.com/tokamak-network/project-tokamak-zk-evm-67483656fd21) (updated January 2026)
 - [Project slides](https://docs.google.com/presentation/d/1D49fRElwkZYbEvQXB_rp5DEy22HFsabnXyeMQdNgjRw/edit?usp=sharing)
 - [Legacy Synthesizer GitBook](https://tokamak-network-zk-evm.gitbook.io/tokamak-network-zk-evm) (historical; package READMEs are current)
+- [On-chain verifier and current deployment records](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts)
+- [LLM-readable repository map](./llms.txt)
 
 ## License
 
