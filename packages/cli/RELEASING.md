@@ -1,23 +1,18 @@
 # Releasing `@tokamak-zk-evm/cli`
 
-The normal release path uses the fixed release controller from `main`. A push
-to `main` is verification-only; an authorized owner explicitly dispatches the
-bootstrap or final-release operation with frozen commit identities. A manual
-maintainer command remains available for an intentional direct publication or
-recovery.
+The fixed release controller on `main` is the only publication path. A push to
+`main` is verification-only; the bootstrap or final-release operation is
+explicitly dispatched with frozen commit identities.
 
 ## Before You Merge
 
-1. Run the root version sync script with the next synchronized repository version.
-2. Add a new top entry to the root `CHANGELOG.md`.
-3. Make sure the top changelog entry version matches the synchronized repository version.
-4. Make sure the top changelog entry includes a `### CLI` section with at least one user-facing bullet.
-5. Run:
+1. Synchronize the repository version and add the corresponding dated entry to
+   the root `CHANGELOG.md`.
+2. Run:
 
 ```bash
 npm run version:sync -- X.Y.Z
 npm run version:check
-npm run --workspace @tokamak-zk-evm/cli release:check
 npm run --workspace @tokamak-zk-evm/cli release:runtime:check
 ```
 
@@ -57,8 +52,8 @@ When a commit reaches `main`,
 `.github/workflows/publish-tokamak-zk-evm.yml` verifies the resulting release
 tree only. The explicit controller dispatch then:
 
-1. Validates the owner, frozen candidate head, frozen `main` base, and any
-   approved foundation bootstrap identity.
+1. Validates the frozen candidate head, frozen `main` base, and any approved
+   foundation bootstrap identity.
 2. Builds the candidate without npm or Drive mutation credentials.
 3. Resolves and hash-checks the public CRS through read-only Drive access.
 4. Validates the production lock and source-built tarball identities.
@@ -66,53 +61,6 @@ tree only. The explicit controller dispatch then:
    Synthesizer packages, CLI, and browser package during final release. An
    already-published identical tarball is verified and skipped.
 
-The staged controller is the selected path for the `3.0.0` release. Registry
-failures other than an exact `E404` stop the operation. The separately
-maintained manual publishing command remains available outside that controller;
-it is not part of the normal frozen-tree release path.
-
-## Manual Publishing
-
-Use the manual path only when publishing the current checkout directly is
-intentional:
-
-```bash
-npm run --workspace @tokamak-zk-evm/cli release:publish
-```
-
-The command first runs the root repository version-policy check, then validates
-CLI release readiness, verifies the packed runtime's production backend build
-and installer contracts, and runs `npm publish --access public
---ignore-scripts`. It requires an npm identity authorized to publish
-`@tokamak-zk-evm/cli`. Additional npm publish arguments may be passed after
-`--`, for example:
-
-```bash
-npm run --workspace @tokamak-zk-evm/cli release:publish -- --dry-run
-```
-
-Unlike the normal workflow, this command publishes from the local checkout
-rather than the synchronized release tarball produced by GitHub Actions. The
-maintainer is responsible for confirming that the checkout, package version,
-root changelog, and intended commit are aligned before using it.
-
-## Changelog Format
-
-Use this format:
-
-```md
-## [MAJOR.MINOR.PATCH] - YYYY-MM-DD
-
-### CLI
-
-- Short user-facing change
-- Another user-facing change
-```
-
-For a real release, replace the placeholders with the synchronized release
-version and the local calendar date on which the release pull request is
-prepared offline. That date may differ from the npm publication date and the
-GitHub merge date. The release entry must be dated; do not leave an
-`Unreleased` heading in the release pull request.
-
-Keep changelog entries short and written for package consumers. Record only changes that affect npm-published package artifacts or their consumer-facing behavior. Package artifacts do not include changelog files; package READMEs link to the root changelog instead.
+Registry failures other than an exact `E404` stop the operation. The root
+[version and release rules](../../docs/version-rules.md) define the Changelog
+date and staged foundation exception.

@@ -16,14 +16,6 @@ export function validateReleaseCandidate({ currentVersion, baseVersion, changelo
     throw new Error('Version-changing pull requests must not retain an Unreleased entry.');
   }
   assertCalendarDate(heading[1]);
-  if (
-    !/release-entry dates are the dates on which version-bump pull requests are prepared offline/iu.test(changelog) ||
-    !/may differ from (?:the )?GitHub pull-request creation, merge, and npm publication dates/iu.test(changelog)
-  ) {
-    throw new Error(
-      'The Changelog must explain that offline pull-request preparation dates may differ from GitHub and npm dates.',
-    );
-  }
   return { changed: true, version: currentVersion, date: heading[1] };
 }
 

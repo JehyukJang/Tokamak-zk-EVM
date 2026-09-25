@@ -109,7 +109,6 @@ jobs:
           npm run build --workspace @tokamak-zk-evm/synthesizer-node
           npm run build --workspace @tokamak-zk-evm/synthesizer-web
           npm run build --workspace @tokamak-zk-evm/cli
-          npm run --workspace @tokamak-zk-evm/cli release:check
           npm run --workspace @tokamak-zk-evm/cli release:package:check
 
       - name: Check backend source
@@ -419,7 +418,6 @@ jobs:
           npm run build --workspace @tokamak-zk-evm/synthesizer-node
           npm run build --workspace @tokamak-zk-evm/synthesizer-web
           npm run build --workspace @tokamak-zk-evm/cli
-          npm run --workspace @tokamak-zk-evm/cli release:check
           npm run --workspace @tokamak-zk-evm/cli release:package:check
 
       - name: Install backend build prerequisites

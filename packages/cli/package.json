@@ -57,12 +57,10 @@
     "contracts:check": "npm run contracts:prepare && node ../backend/common/scripts/check-contract-closure.mjs && node ../backend/common/scripts/prepare-contract-consumers.mjs --check",
     "build": "npm run prepare:package && npm run clean && tsc -p tsconfig.json --pretty false",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
-    "release:check": "node scripts/release-readiness.cjs",
     "release:package:check": "npm run build && node scripts/check-packaged-runtime.cjs --static-only",
     "release:runtime:check": "npm run build && node scripts/check-packaged-runtime.cjs",
     "test": "npm run contracts:check && npm run build && node --test tests/*.test.cjs",
     "typecheck": "npm run contracts:check && tsc -p tsconfig.json --pretty false --noEmit",
-    "release:publish": "node scripts/publish-package.cjs",
     "prepack": "npm run build"
   },
   "dependencies": {
