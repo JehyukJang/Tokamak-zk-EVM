@@ -7,8 +7,7 @@ backends, and the CLI that connects the complete workflow.
 
 [TokamakL2JS](https://github.com/tokamak-network/TokamakL2JS) defines the
 Tokamak L2 transaction and state snapshots consumed by the Synthesizer. The
-proving protocol is described in
-[An Efficient SNARK for Field-Programmable and RAM Circuits](https://eprint.iacr.org/2024/507).
+proving protocol is described in the [Tokamak zk-SNARK paper](https://eprint.iacr.org/2024/507).
 
 ## How the repository fits together
 
@@ -90,11 +89,14 @@ validate their intended input and state domain against that boundary. See the
 [Synthesizer transaction-support guide](./packages/frontend/synthesizer/README.md#transaction-support)
 for the complete definition and validation guidance.
 
-Native proving runs on CPU by default and can use ICICLE CUDA acceleration
-when explicitly selected. The browser package supports
-bundler-based preprocessing, proving, and verification. Tokamak zk-EVM is also
+Tokamak zk-EVM is also
 used by
 [Tokamak Private App Channels](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts).
+
+Native proving runs on CPU by default and can use ICICLE CUDA acceleration
+when explicitly selected. The browser package supports
+bundler-based preprocessing, proving, and verification.
+
 Package-specific compatibility and verified environments are documented in the
 corresponding package README.
 
