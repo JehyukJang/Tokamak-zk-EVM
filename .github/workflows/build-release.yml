@@ -93,6 +93,9 @@ jobs:
           BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.base_sha || github.event.pull_request.base.sha }}
         run: npm run release:candidate:check -- --base-ref="$BASE_SHA"
 
+      - name: Check public documentation
+        run: npm run docs:check
+
       - name: Check synchronized versions
         run: npm run version:check
 

@@ -100,8 +100,7 @@ jobs:
 
       - name: Verify fixed controller boundaries
         run: |
-          npm run release:workflow:check
-          npm run docs:check
+          node scripts/check-staged-release-workflow.mjs
           python3 scripts/test-download-release-crs.py
           node scripts/test-release-registry.mjs
 
@@ -129,8 +128,7 @@ jobs:
 
       - name: Verify fixed controller boundaries
         run: |
-          npm run release:workflow:check
-          npm run docs:check
+          node scripts/check-staged-release-workflow.mjs
           python3 scripts/test-download-release-crs.py
           node scripts/test-release-registry.mjs
 

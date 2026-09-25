@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const workflowPath = path.join(repositoryRoot, '.github/workflows/publish-tokamak-zk-evm.yml');
 const workflow = fs.readFileSync(workflowPath, 'utf8');
+const buildWorkflow = fs.readFileSync(path.join(repositoryRoot, '.github/workflows/build-release.yml'), 'utf8');
 
 for (const legacyPath of ['scripts/classify-release.mjs', 'scripts/release-state.mjs', 'scripts/test-release-state.mjs']) {
   if (fs.existsSync(path.join(repositoryRoot, legacyPath))) {
@@ -15,6 +16,9 @@ for (const legacyPath of ['scripts/classify-release.mjs', 'scripts/release-state
 }
 
 checkController(workflow);
+if (!buildWorkflow.includes('Check public documentation')) {
+  throw new Error('Release source validation must check public documentation.');
+}
 expectFailure(workflow.replace('persist-credentials: false', 'persist-credentials: true'));
 expectFailure(workflow.replaceAll('test "$GITHUB_ACTOR" = "JehyukJang"', 'true'));
 expectFailure(workflow.replace('id-token: write', 'id-token: read'));
