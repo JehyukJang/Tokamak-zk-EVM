@@ -79,13 +79,9 @@ republished from changed contents.
 The sole bootstrap exception is
 `@tokamak-zk-evm/subcircuit-library@3.0.0`. It may be published before the
 final tree because the npm metadata is required to create the browser
-production lock. The bootstrap and final trees may differ only at
-`packages/backend/wasm/package-lock.json`, the constrained final Changelog
-metadata, and the fixed-controller policy files that enforce this rule. The
-Changelog replaces `Unreleased` with the dated 3.0.0 entry and retains the
-offline-preparation-date explanation. Re-packing the final foundation source
-must reproduce the published tarball identity. No CRS or other package uses
-this exception.
+production lock. The bootstrap candidate must be an ancestor of the final
+candidate. Re-packing the foundation from the final candidate must reproduce
+the published tarball identity. No CRS or other package uses this exception.
 
 ## Fixed main release controller
 
@@ -95,12 +91,12 @@ part of a candidate that it authorizes. The controller has a fixed inventory
 and fixed publication order, so no per-release manifest or mutable release
 state file is authoritative.
 
-An owner dispatches the controller from the frozen `main` base. It accepts only
-`JehyukJang` as the GitHub authority, validates the exact candidate and base,
-and executes candidate source only in jobs without npm OIDC or Drive mutation
-credentials. Fixed-controller jobs receive built tarballs and query npm by
-exact package version. They either confirm an existing byte-identical package
-or publish an absent one with npm Trusted Publishing and `--ignore-scripts`.
+An authorized repository maintainer dispatches the controller from the frozen
+`main` base. It validates the exact candidate and base, and executes candidate
+source only in jobs without npm OIDC or Drive mutation credentials.
+Fixed-controller jobs receive built tarballs and query npm by exact package
+version. They either confirm an existing byte-identical package or publish an
+absent one with npm Trusted Publishing and `--ignore-scripts`.
 
 The Google Drive folder owner performs CRS publication locally after ceremony
 qualification. The controller has only the existing read-only Drive credential:
@@ -111,9 +107,8 @@ or creates a pull request.
 The bootstrap operation accepts only the current `dev` head. The final-release
 operation accepts only an open `dev` to `main` pull request with the supplied
 head, base, and approved bootstrap-candidate SHA. The controller requires that
-the bootstrap candidate is an ancestor of the final head and that their tracked
-diff contains only the production snapshot, constrained Changelog metadata,
-and the fixed-controller policy files listed above. A retry uses the
+the bootstrap candidate is an ancestor of the final head and that the final
+candidate reproduces the published foundation tarball. A retry uses the
 same frozen identities, rechecks every published identity, and publishes only
 missing packages. It cannot repair a source change or replace an immutable
 version.

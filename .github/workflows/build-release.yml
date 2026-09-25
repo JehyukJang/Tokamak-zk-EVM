@@ -12,7 +12,6 @@ on:
       - scripts/check-doc-readiness.mjs
       - scripts/check-release-package.mjs
       - scripts/check-release-reproducibility.mjs
-      - scripts/check-staged-release-workflow.mjs
       - scripts/download-release-crs.py
       - scripts/release-registry.mjs
       - scripts/test-download-release-crs.py

@@ -32,7 +32,6 @@
     "release:package:check": "node scripts/check-release-package.mjs",
     "release:dispatch-pr-validation": "node scripts/dispatch-pr-validation.mjs",
     "release:dispatch-pr-validation:test": "node scripts/test-dispatch-pr-validation.mjs",
-    "release:workflow:check": "node scripts/check-staged-release-workflow.mjs",
     "source-digest:test": "tsx scripts/test-subcircuit-source-digest.ts",
     "synthesizer:build-tools:check": "tsc -p tsconfig.synthesizer-build-tools.json --pretty false && node scripts/check-synthesizer-build-tools.mjs"
   },

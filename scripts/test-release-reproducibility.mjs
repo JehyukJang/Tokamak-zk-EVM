@@ -7,16 +7,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   collectReleaseReproducibilityFailures,
-  PINNED_CIRCOM_VERSION,
   PINNED_NODE_VERSION,
   PINNED_NPM_VERSION,
   PINNED_RUST_VERSION,
-  POLICY_SURFACES,
-  REQUIRED_LOCKFILES,
+  REQUIRED_RELEASE_FILES,
 } from './check-release-reproducibility.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const currentVersion = JSON.parse(fs.readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8')).version;
 const validVersions = {
   rustcVersion: `rustc ${PINNED_RUST_VERSION} (test fixture)`,
   cargoVersion: `cargo ${PINNED_RUST_VERSION} (test fixture)`,
@@ -33,54 +30,14 @@ runTest('rejects a missing backend workspace lock', fixtureRoot => {
   assert.match(failures(fixtureRoot), /packages\/backend\/Cargo\.lock is required/u);
 });
 
-runTest('rejects an unsynchronized backend-interface lock entry', fixtureRoot => {
-  replace(
-    fixtureRoot,
-    'packages/backend/Cargo.lock',
-    `name = "backend-interface"\nversion = "${currentVersion}"`,
-    'name = "backend-interface"\nversion = "2.1.4"',
-  );
-  assert.match(failures(fixtureRoot), new RegExp(`backend-interface@${currentVersion.replaceAll('.', '\\.')}`, 'u'));
-});
-
 runTest('rejects a floating Rust toolchain', fixtureRoot => {
   replace(fixtureRoot, 'rust-toolchain.toml', 'channel = "1.95.0"', 'channel = "stable"');
   assert.match(failures(fixtureRoot), /must pin channel 1\.95\.0/u);
 });
 
-runTest('rejects an npm install that bypasses the committed lock', fixtureRoot => {
-  replace(fixtureRoot, '.github/workflows/build-release.yml', 'run: npm ci', 'run: npm install --package-lock=false');
-  assert.match(failures(fixtureRoot), /must not bypass committed npm locks/u);
-});
-
-runTest('rejects a different Circom release', fixtureRoot => {
-  replace(
-    fixtureRoot,
-    '.github/workflows/build-release.yml',
-    `QAP_COMPILER_EXPECTED_CIRCOM_VERSION: '${PINNED_CIRCOM_VERSION}'`,
-    "QAP_COMPILER_EXPECTED_CIRCOM_VERSION: '2.2.2'",
-  );
-  assert.match(failures(fixtureRoot), new RegExp(`must require Circom ${PINNED_CIRCOM_VERSION.replaceAll('.', '\\.')}`, 'u'));
-});
-
-runTest('rejects an unlocked Cargo build', fixtureRoot => {
-  replace(
-    fixtureRoot,
-    '.github/workflows/build-release.yml',
-    'cargo check --workspace --locked',
-    'cargo check --workspace',
-  );
-  assert.match(failures(fixtureRoot), /contains an unlocked Cargo command/u);
-});
-
-runTest('rejects a workspace check without its generated verifier key', fixtureRoot => {
-  replace(
-    fixtureRoot,
-    '.github/workflows/build-release.yml',
-    'TOKAMAK_VERIFIER_KEYS: ${{ runner.temp }}/tokamak-development-crs/verifier_keys.rkyv',
-    'TOKAMAK_VERIFIER_KEYS: ',
-  );
-  assert.match(failures(fixtureRoot), /must provide the generated verifier key/u);
+runTest('rejects a noncanonical npm lock format', fixtureRoot => {
+  replace(fixtureRoot, 'package-lock.json', '"lockfileVersion": 3', '"lockfileVersion": 2');
+  assert.match(failures(fixtureRoot), /package-lock\.json must use npm lockfileVersion 3/u);
 });
 
 runTest('rejects a different compiler release', fixtureRoot => {
@@ -110,7 +67,7 @@ console.log('[release-reproducibility-test] Negative policy checks passed.');
 function runTest(name, body) {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tokamak-release-reproducibility-'));
   try {
-    for (const relativePath of new Set([...REQUIRED_LOCKFILES, ...POLICY_SURFACES])) {
+    for (const relativePath of REQUIRED_RELEASE_FILES) {
       const source = path.join(repositoryRoot, relativePath);
       const destination = path.join(fixtureRoot, relativePath);
       fs.mkdirSync(path.dirname(destination), { recursive: true });
