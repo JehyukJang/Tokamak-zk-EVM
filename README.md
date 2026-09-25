@@ -8,20 +8,40 @@ is described in the [Tokamak zk-SNARK paper](https://eprint.iacr.org/2024/507).
 
 ## Scope and compatibility
 
-The supported pipeline verifies transaction signatures and input state,
-executes supported opcodes, and reconstructs output state for the Tokamak L2
-runtime model. The Synthesizer consumes the transaction and state snapshots
-defined by [TokamakL2JS](https://github.com/tokamak-network/TokamakL2JS). This
-is not a claim of compatibility with arbitrary Ethereum L1 execution. Contract
+Tokamak Network Layer 2 (Tokamak L2) is the execution model proved by this
+repository. A Tokamak L2 transaction has its own transaction shape and signing
+flow, uses zero-knowledge-proof-friendly cryptographic primitives, and executes
+against supplied state snapshots and block context. These are defined by
+[TokamakL2JS](https://github.com/tokamak-network/TokamakL2JS), which supplies
+the common transaction, state, cryptographic, and protocol-constant contract
+for every Tokamak zk-EVM component. The CLI carries it through the local
+workflow, the Synthesizer replays it, the circuit library encodes its relevant
+rules, and the proving backends consume the resulting artifacts.
+
+Tokamak zk-EVM therefore does not claim compatibility with arbitrary native
+Ethereum L1 execution. Its transaction format, signing and cryptographic
+primitives, state representation, and supplied execution context differ from
+the native Ethereum environment. A function that runs in an Ethereum toolchain
+is not automatically a supported Tokamak zk-EVM function. In addition, contract
 creation, precompiles, transient storage, blob opcodes, invalid/self-destruct
 paths, and other unvalidated execution combinations are outside the supported
 boundary.
 
-Tokamak zk-EVM supports contract functions whose successful calls retain a
-stable execution shape for all supported inputs and states. Applications must
-validate their intended input and state domain against that boundary. See the
-[Synthesizer transaction-support guide](./packages/frontend/synthesizer/README.md#transaction-support)
-for the complete definition and validation guidance.
+Within that environment, a supported contract function must meet two
+conditions. First, every successful call in its intended domain must use only
+supported execution features. Second, those calls must retain one fixed
+execution trace and circuit layout: changing a permitted input or state value
+must not change the executed instruction path, call or return flow, number and
+order of memory or storage accesses, emitted logs, or circuit placements.
+
+For example, a private-state transfer can process different note values when
+each successful transfer follows the same path and accesses the same shaped
+state. A function is outside the supported boundary if a permitted input selects
+a different branch, changes a loop or call count, or changes the memory or
+storage-access pattern. A successful proof for one transaction does not by
+itself establish support for every input and state. Applications must validate
+their intended domain using the
+[Synthesizer transaction-support guide](./packages/frontend/synthesizer/README.md#transaction-support).
 
 ## Concrete application
 
