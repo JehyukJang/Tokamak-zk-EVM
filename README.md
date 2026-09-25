@@ -50,10 +50,12 @@ Although Tokamak zk-EVM does not claim compatibility with arbitrary native
 Ethereum L1 execution, the Synthesizer can generate transaction-specific
 circuit artifacts for a qualifying EVM contract function already used by a
 native Ethereum DApp, including one compiled from Solidity. The artifact is
-generated for a supported Tokamak L2 call to that function. Existing contract
-code can therefore be reused in Tokamak L2 when its supported calls meet the
-execution boundary, and can support privacy-enhanced DApp behavior when
-combined with Tokamak zk-EVM.
+generated for a supported Tokamak L2 call to that function: the Synthesizer
+reads the contract's EVM bytecode while replaying the call and assembles the
+circuit artifacts from the supported execution. Existing contract code can
+therefore be reused in Tokamak L2 when its supported calls meet the execution
+boundary, and can support privacy-enhanced DApp behavior when combined with
+Tokamak zk-EVM.
 
 [Tokamak Private App Channels](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts)
 is one such application: it uses Tokamak zk-EVM for proof-backed state
