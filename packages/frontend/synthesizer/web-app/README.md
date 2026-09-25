@@ -101,7 +101,8 @@ saveSynthesisOutputToFiles(output, { outputSupplement: true });
 await postSynthesisOutput(url, output, undefined, { outputSupplement: true });
 ```
 
-Keep placement, instance, and permutation artifacts from the same result.
+Keep selector, placement, instance, and permutation artifacts from the same
+result.
 Transaction support follows the
 [shared Synthesizer boundary](../README.md#transaction-support).
 

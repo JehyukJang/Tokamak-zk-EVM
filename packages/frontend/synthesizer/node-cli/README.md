@@ -108,8 +108,8 @@ as it writes the file.
 
 `--output-supplement` additionally writes execution steps, expanded placements,
 and observed message-code addresses under `supplement/`. Keep
-`placementVariables.json`, `instance.json`, and `permutation.json` from the
-same run.
+`placementVariables.json`, `selector.json`, `instance.json`, and
+`permutation.json` from the same run.
 
 Transaction support follows the
 [shared Synthesizer boundary](../README.md#transaction-support).
