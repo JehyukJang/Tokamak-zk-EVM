@@ -178,30 +178,29 @@ system.
 | Backend-WASM | [`@tokamak-zk-evm/snark-browser-compat`](https://www.npmjs.com/package/@tokamak-zk-evm/snark-browser-compat) | [README](./packages/backend/wasm/README.md) | Provides a browser interface for preprocessing, proving, verification, and artifact conversion |
 | CLI | [`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli) | [README](./packages/cli/README.md) | Installs and runs the complete local proving workflow |
 
-## Releases and npm publication
+## Versioning and distribution
 
-Use mutually compatible versions of the supported packages. A version becomes
-publicly available only when it appears on npm; the npm package pages above are
-the source of truth for published versions and release tags.
+All public npm packages use one synchronized `MAJOR.MINOR.PATCH` version. The
+Rust backend is not separately published: the
+[`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli)
+packages compatible source and builds it locally.
 
-The Rust backend is not published as a standalone npm package. The CLI ships
-the compatible source and builds it locally. Consumer-facing release notes are
-maintained in [CHANGELOG.md](./CHANGELOG.md).
+`MAJOR.MINOR` defines the backend and CRS compatibility class. Changes to the
+circuit, public-input contract, proving semantics, or verification semantics
+require a new class and matching CRS. A patch release can reuse a CRS only when
+the CRS-relevant circuit source digest is unchanged.
 
-## Technical evaluation
+A package is public only after it appears on npm, whose package page is the
+source of truth for published availability. The CLI downloads compatible CRS
+artifacts from Google Drive and validates their provenance and hashes before
+use. Release candidates are admitted from a frozen `dev`-to-`main` source tree;
+an immutable package version is never republished with different contents.
 
-Tokamak zk-EVM is a specialized proving pipeline for the supported Tokamak L2
-execution model, not a general Ethereum execution environment. Evaluate a
-release against its published package versions, supported execution boundary,
-and application-specific setup and deployment requirements.
-
-- The [changelog](./CHANGELOG.md) records public protocol, compatibility, and
-  measured performance changes.
-- The [backend reports](./packages/backend/docs/optimization/) provide the
-  underlying qualification and measurement evidence.
-
-Setup and artifact provenance remain an application trust-boundary
-responsibility.
+[CHANGELOG.md](./CHANGELOG.md) records consumer-facing protocol, compatibility,
+and performance changes. Its release date is the local date on which the
+release pull request was prepared and may differ from the npm publication or
+GitHub merge date. See the maintainer-facing
+[version and release rules](./docs/version-rules.md) for the complete policy.
 
 ## Learn more
 
