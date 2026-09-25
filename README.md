@@ -88,9 +88,16 @@ sequenceDiagram
 ```
 
 [Tokamak Private App Channels](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts)
-is one such application: it uses Tokamak zk-EVM for proof-backed state
-transitions in DApp-specific channels. Ethereum remains the custody,
-proof-verification, and settlement layer for those channels.
+is a concrete integration of this flow. Each channel is associated with one
+registered DApp and maintains its own state commitment. For a supported channel
+transaction, the application supplies the signed Tokamak L2 transaction,
+pre-transaction state snapshot, block context, and deployed bytecode to the
+Synthesizer. The Synthesizer replays that call and emits the circuit artifacts
+that a proving backend uses to generate the proof. The Ethereum bridge then
+checks the proof, the DApp and function metadata commitments, and the channel
+state commitment before accepting the new channel state. The transaction's
+private execution details remain off-chain, while Ethereum remains the custody,
+proof-verification, and settlement layer.
 
 ## How the repository fits together
 
