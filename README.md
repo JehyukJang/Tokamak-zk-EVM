@@ -107,28 +107,28 @@ the channel's state commitment.
 The private-state note-transfer DApp is one TPAC example. Its
 [PrivateStateController](https://etherscan.io/address/0x67C6233A99D9f122Fef9DC111e89948107b34c2F#code)
 consumes existing notes, marks them spent through nullifiers, and creates new
-note commitments with encrypted payloads for their recipients. This lets users
-move channel-local value without making counterparty relationships or note
-provenance publicly reconstructable by default. The controller and
+note commitments with encrypted payloads for their recipients. This implements
+a note-based transfer of channel-local value. The controller and
 [L2AccountingVault](https://etherscan.io/address/0x9A6c9eb158269BBEd8885649F95aCEFA8AAfC3aA#code)
 are deployed on Ethereum mainnet. The Synthesizer consumes their
 deployed bytecode to produce circuit artifacts, and the bridge registry records
 the resulting per-function preprocessing-input commitments.
 
 This is a privacy boundary, not an automatic privacy layer for a native Ethereum
-DApp. Tokamak L2 and Tokamak zk-EVM allow a user to use a DApp without directly
-publishing the original transaction, but they do not decide which application
-data is private. [Ethereum.org defines data availability](https://ethereum.org/developers/docs/data-availability/)
+DApp. A direct call to `PrivateStateController` on native Ethereum publishes
+its note and transfer data in transaction calldata. In the TPAC path, the
+Synthesizer replays the supported function from the Tokamak L2 transaction
+off-chain, and the proving backends produce a proof. The user submits that proof
+and only the required public inputs to the ChannelManager, not the original
+transaction. [Ethereum.org defines data availability](https://ethereum.org/developers/docs/data-availability/)
 as “the confidence a user can have that the data required to verify a block is
-really available to all network participants.” A privacy-preserving DApp must
-therefore make the state data required for verification and continued use
-available, while deliberately choosing which information remains in private
-transaction inputs. The
-private-state note-transfer DApp illustrates that choice: its state stores note
-commitments and nullifiers instead of most note ownership and transfer data,
-moving sensitive information into transaction inputs. Tokamak zk-EVM leaves
-that disclosure design independent of the proving system, so a DApp can express
-it in an Ethereum smart-contract language such as Solidity.
+really available to all network participants.” The DApp must therefore keep the
+state data required for verification and continued use available. In the
+private-state design, public state records note commitments and nullifiers while
+privacy-sensitive note and transfer data remain in the original off-chain
+transaction input. Tokamak zk-EVM leaves that disclosure design independent of
+the proving system, so a DApp can express it in an Ethereum smart-contract
+language such as Solidity.
 
 ## How the repository fits together
 
