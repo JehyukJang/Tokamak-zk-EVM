@@ -55,7 +55,7 @@ used to prove the execution. This gives the DApp a path to reuse its contract
 code in Tokamak L2 and, together with the proving backends, become a
 privacy-preserving DApp.
 
-### Native Ethereum execution
+### Abstract model of DApp execution on native Ethereum
 
 ```mermaid
 sequenceDiagram
@@ -70,7 +70,7 @@ sequenceDiagram
     Validators->>DApp: Updated state
 ```
 
-### Privacy-preserving Tokamak L2 execution of the same DApp
+### Abstract model of privacy-preserving DApp execution on Tokamak L2 using Tokamak zk-EVM
 
 ```mermaid
 sequenceDiagram
