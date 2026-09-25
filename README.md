@@ -128,12 +128,9 @@ transaction data off-chain, but it does not by itself make a native Ethereum
 DApp privacy-preserving. [Data availability](https://ethereum.org/developers/docs/data-availability/)
 nevertheless requires the DApp to keep the state data required for verification
 and continued use available. To support privacy, a DApp must also avoid storing
-privacy-sensitive data directly in the state it manages. In the private-state
-design, public state records note commitments and nullifiers while
-privacy-sensitive note and transfer data remain in the original off-chain
-transaction input. Tokamak zk-EVM leaves that disclosure design independent of
-the proving system, so a DApp can express it in an Ethereum smart-contract
-language such as Solidity.
+privacy-sensitive data directly in the state it manages. Tokamak zk-EVM leaves
+that disclosure design independent of the proving system, so a DApp can express
+it in an Ethereum smart-contract language such as Solidity.
 
 ## How the repository fits together
 
