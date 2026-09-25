@@ -29,11 +29,12 @@ class ReleaseCrsTest(unittest.TestCase):
     def test_accepts_exact_version_directory_members(self):
         MODULE.validate_version_entries([entry(name) for name in MODULE.CRS_PAYLOAD_FILES])
 
-    def test_rejects_missing_or_unexpected_version_directory_members(self):
+    def test_rejects_missing_required_version_directory_members(self):
         with self.assertRaisesRegex(ValueError, "missing"):
             MODULE.validate_version_entries([entry(name) for name in MODULE.CRS_PAYLOAD_FILES - {"verifier_keys.rkyv"}])
-        with self.assertRaisesRegex(ValueError, "extra"):
-            MODULE.validate_version_entries([entry(name) for name in MODULE.CRS_PAYLOAD_FILES | {"legacy.zip"}])
+
+    def test_ignores_extra_version_directory_members(self):
+        MODULE.validate_version_entries([entry(name) for name in MODULE.CRS_PAYLOAD_FILES | {"operator-note.txt"}])
 
     def test_rejects_duplicate_or_wrong_type_entries(self):
         with self.assertRaisesRegex(ValueError, "duplicate"):
@@ -43,11 +44,11 @@ class ReleaseCrsTest(unittest.TestCase):
 
     def test_validates_shared_tau_digest_from_provenance(self):
         digest = hashlib.sha256(b"tau").hexdigest()
-        provenance = json.dumps({"artifacts": {name: digest for name in MODULE.CRS_PAYLOAD_FILES | {"tau_sequence.rkyv"}}}).encode()
+        provenance = json.dumps({"artifacts": {name: digest for name in MODULE.CRS_KEY_FILES | {"tau_sequence.rkyv"}}}).encode()
         self.assertEqual(MODULE.provenance_artifact_digests(provenance)["tau_sequence.rkyv"], digest)
         with self.assertRaisesRegex(ValueError, "invalid"):
             MODULE.provenance_artifact_digests(
-                json.dumps({"artifacts": {name: "bad" for name in MODULE.CRS_PAYLOAD_FILES | {"tau_sequence.rkyv"}}}).encode()
+                json.dumps({"artifacts": {name: "bad" for name in MODULE.CRS_KEY_FILES | {"tau_sequence.rkyv"}}}).encode()
             )
 
 
