@@ -3,20 +3,19 @@
 Tokamak zk-EVM converts Tokamak Network Layer 2 transaction execution into
 Tokamak zk-SNARK proof artifacts. This monorepo contains the transaction
 Synthesizer, a prebuilt subcircuit library, native and browser proving
-backends, and the CLI that connects the complete workflow.
-
-[TokamakL2JS](https://github.com/tokamak-network/TokamakL2JS) defines the
-Tokamak L2 transaction and state snapshots consumed by the Synthesizer. The
-proving protocol is described in the [Tokamak zk-SNARK paper](https://eprint.iacr.org/2024/507).
+backends, and the CLI that connects the complete workflow. Its proving protocol
+is described in the [Tokamak zk-SNARK paper](https://eprint.iacr.org/2024/507).
 
 ## Scope and compatibility
 
 The supported pipeline verifies transaction signatures and input state,
 executes supported opcodes, and reconstructs output state for the Tokamak L2
-runtime model. It is not a claim of compatibility with arbitrary Ethereum L1
-execution. Contract creation, precompiles, transient storage, blob opcodes,
-invalid/self-destruct paths, and other unvalidated execution combinations are
-outside the supported boundary.
+runtime model. The Synthesizer consumes the transaction and state snapshots
+defined by [TokamakL2JS](https://github.com/tokamak-network/TokamakL2JS). This
+is not a claim of compatibility with arbitrary Ethereum L1 execution. Contract
+creation, precompiles, transient storage, blob opcodes, invalid/self-destruct
+paths, and other unvalidated execution combinations are outside the supported
+boundary.
 
 Tokamak zk-EVM supports contract functions whose successful calls retain a
 stable execution shape for all supported inputs and states. Applications must
