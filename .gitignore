@@ -27,6 +27,7 @@ coverage.json
 
 # Temporary workspace files
 tmp/
+/packages/backend/rust/setup/mpc-setup/filecoin-phase1/
 
 # Misc
 .DS_Store
