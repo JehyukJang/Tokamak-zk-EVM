@@ -26,16 +26,27 @@ impl Mode {
         }
     }
 
-    pub fn validate(self, version: Option<&str>) -> Result<(), String> {
-        match (self, version) {
-            (Self::Development, None) => Ok(()),
-            (Self::Development, Some(_)) => {
-                Err("--library-version is only valid in publish mode".into())
+    pub fn validate(
+        self,
+        version: Option<&str>,
+        subcircuit_library: Option<&Path>,
+    ) -> Result<(), String> {
+        match self {
+            Self::Development => {
+                if version.is_some() {
+                    return Err("--library-version is only valid in publish mode".into());
+                }
+                if subcircuit_library.is_none() {
+                    return Err("development mode requires --subcircuit-library PATH".into());
+                }
+                Ok(())
             }
-            (Self::Publish, None) => {
-                Err("publish mode requires --library-version MAJOR.MINOR.PATCH".into())
-            }
-            (Self::Publish, Some(version)) => {
+            Self::Publish => {
+                if subcircuit_library.is_some() {
+                    return Err("--subcircuit-library is only valid in development mode".into());
+                }
+                let version =
+                    version.ok_or("publish mode requires --library-version MAJOR.MINOR.PATCH")?;
                 let selected = parse_package_version(version).map_err(|e| e.to_string())?;
                 let backend = compatibility_from_package_version(env!("CARGO_PKG_VERSION"))
                     .map_err(|e| e.to_string())?;
@@ -53,11 +64,28 @@ impl Mode {
 pub(crate) fn prepare(
     mode: Mode,
     version: Option<&str>,
+    subcircuit_library: Option<&Path>,
     temporary: &Path,
 ) -> Result<(PathBuf, SubcircuitLibraryProvenance), String> {
-    mode.validate(version)?;
+    mode.validate(version, subcircuit_library)?;
     match mode {
         Mode::Development => {
+            let local_library =
+                subcircuit_library.ok_or("development mode requires --subcircuit-library PATH")?;
+            let library_path = fs::canonicalize(local_library)
+                .map_err(|error| format!("cannot resolve local subcircuit library: {error}"))?;
+            if !library_path.is_dir() {
+                return Err(format!(
+                    "local subcircuit library is not a directory: {}",
+                    library_path.display()
+                ));
+            }
+            let subcircuits = library_path.parent().ok_or_else(|| {
+                format!(
+                    "local subcircuit library has no parent directory: {}",
+                    library_path.display()
+                )
+            })?;
             let qap =
                 Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../frontend/qap-compiler");
             let manifest: serde_json::Value = serde_json::from_slice(
@@ -69,8 +97,11 @@ pub(crate) fn prepare(
                 .ok_or("QAP package version is missing")?;
             parse_package_version(version).map_err(|e| e.to_string())?;
             let snapshot = temporary.join("subcircuits");
-            copy_local_snapshot(&qap.join("subcircuits"), &snapshot).map_err(|e| {
-                format!("cannot copy local QAP build; build qap-compiler first: {e}")
+            copy_local_snapshot(subcircuits, &snapshot).map_err(|e| {
+                format!(
+                    "cannot copy local QAP build from {}; build qap-compiler first: {e}",
+                    library_path.display()
+                )
             })?;
             describe(
                 snapshot.join("library"),
@@ -185,14 +216,26 @@ mod tests {
 
     #[test]
     fn mode_requires_an_exact_publish_version_and_forbids_development_override() {
-        assert!(Mode::Development.validate(None).is_ok());
-        assert!(Mode::Development.validate(Some("2.1.5")).is_err());
-        assert!(Mode::Publish.validate(None).is_err());
-        assert!(Mode::Publish
-            .validate(Some(env!("CARGO_PKG_VERSION")))
+        let local_library = Path::new("subcircuits/library");
+        assert!(Mode::Development
+            .validate(None, Some(local_library))
             .is_ok());
+        assert!(Mode::Development.validate(None, None).is_err());
+        assert!(Mode::Development
+            .validate(Some("2.1.5"), Some(local_library))
+            .is_err());
+        assert!(Mode::Publish.validate(None, None).is_err());
+        assert!(Mode::Publish
+            .validate(Some(env!("CARGO_PKG_VERSION")), None)
+            .is_ok());
+        assert!(Mode::Publish
+            .validate(Some(env!("CARGO_PKG_VERSION")), Some(local_library))
+            .is_err());
         for value in ["latest", "^2.1.5", "02.1.5", "file:../library", "999.0.0"] {
-            assert!(Mode::Publish.validate(Some(value)).is_err(), "{value}");
+            assert!(
+                Mode::Publish.validate(Some(value), None).is_err(),
+                "{value}"
+            );
         }
     }
 

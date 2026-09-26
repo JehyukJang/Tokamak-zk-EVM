@@ -48,8 +48,15 @@ fn prepare_native_e2e_keys() {
     assert!(!output.exists(), "use a new test output directory");
     let all = Instant::now();
     let temporary = tempfile::tempdir().unwrap();
-    let (path, library) =
-        circuit_input::prepare(Mode::Development, None, temporary.path()).unwrap();
+    let local_library = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../frontend/qap-compiler/subcircuits/library");
+    let (path, library) = circuit_input::prepare(
+        Mode::Development,
+        None,
+        Some(&local_library),
+        temporary.path(),
+    )
+    .unwrap();
     let normalized_library = NormalizedSubcircuitLibrary::read_from_qap_path(&path).unwrap();
     let r1cs = normalized_library
         .subcircuits

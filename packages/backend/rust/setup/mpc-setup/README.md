@@ -15,8 +15,9 @@ The executable links ICICLE through the shared native library. When running
 MPC runs only from a local repository checkout. Build one release-optimized
 executable for both execution modes:
 
-- `--mode development` takes a private snapshot of the local QAP build. Build
-  QAP first. This mode cannot authorize publication.
+- `--mode development` requires `--subcircuit-library PATH` and takes a private
+  snapshot of that local QAP build. Build QAP first. This mode cannot authorize
+  publication.
 - `--mode publish --library-version MAJOR.MINOR.PATCH` acquires that exact
   npm package at runtime. It requires Node.js and npm, does not modify
   repository manifests or dependencies, and has no local-QAP fallback.
@@ -39,22 +40,28 @@ From `packages/backend`:
 cargo build --locked --release -p mpc-setup --bin mpc
 
 target/release/mpc --mode development \
+  --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
   init --filecoin-source /path/to/challenge_19 --output ./initial.mpc
 
 target/release/mpc --mode development \
+  --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
   contribute --filecoin-source /path/to/challenge_19 --input ./initial.mpc --output ./alice.mpc
 
 target/release/mpc --mode development \
+  --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
   contribute --filecoin-source /path/to/challenge_19 --input ./alice.mpc --output ./bob.mpc
 
 target/release/mpc --mode development \
+  --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
   verify --filecoin-source /path/to/challenge_19 --input ./bob.mpc
 
 target/release/mpc --mode development \
+  --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
   finalize --filecoin-source /path/to/challenge_19 --input ./bob.mpc --output ./final-keys
 ```
 
-For a publish ceremony, replace `--mode development` in every command with
+For a publish ceremony, remove `--subcircuit-library ...` and replace
+`--mode development` in every command with
 `--mode publish --library-version <exact-compatible-version>`. Do not rebuild
 the executable to change modes. Run contributor commands in each contributor's
 own environment. Initialization is deterministic and is not a contribution;

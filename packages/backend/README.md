@@ -109,6 +109,7 @@ Each invocation prepares its own circuit snapshot and authenticates the complete
 
 ```sh
 cargo run --locked --release -p mpc-setup --bin mpc -- --mode development \
+  --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
   init --filecoin-source /path/to/challenge_19 --output ./initial.mpc
 ```
 

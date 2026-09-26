@@ -33,6 +33,9 @@ struct Args {
     /// Exact npm library version; required only with --mode publish.
     #[arg(long)]
     library_version: Option<String>,
+    /// Local QAP library directory; required only with --mode development.
+    #[arg(long, value_name = "PATH")]
+    subcircuit_library: Option<PathBuf>,
     /// Original Filecoin challenge_19 acquired by this participant. Omit to
     /// download the pinned original. The full digest is checked on every run.
     #[arg(long, global = true)]
@@ -85,15 +88,22 @@ fn execute(args: Args) -> Result<(), String> {
     if publishing && args.mode != Mode::Publish {
         return Err("the publish operation requires --mode publish".into());
     }
-    args.mode.validate(args.library_version.as_deref())?;
+    args.mode.validate(
+        args.library_version.as_deref(),
+        args.subcircuit_library.as_deref(),
+    )?;
     let all = Instant::now();
     let started = Instant::now();
     let directory = tempfile::Builder::new()
         .prefix("tokamak-mpc-input-")
         .tempdir()
         .map_err(|e| e.to_string())?;
-    let (path, library) =
-        circuit_input::prepare(args.mode, args.library_version.as_deref(), directory.path())?;
+    let (path, library) = circuit_input::prepare(
+        args.mode,
+        args.library_version.as_deref(),
+        args.subcircuit_library.as_deref(),
+        directory.path(),
+    )?;
     let normalized_library =
         NormalizedSubcircuitLibrary::read_from_qap_path(&path).map_err(|e| {
             format!(
@@ -274,7 +284,14 @@ mod tests {
     #[test]
     fn command_surface_has_no_source_pin_or_subset_bypass() {
         for command in ["init", "contribute", "verify", "finalize", "publish"] {
-            let mut valid = vec!["mpc", "--mode", "development", command];
+            let mut valid = vec![
+                "mpc",
+                "--mode",
+                "development",
+                "--subcircuit-library",
+                "local-library",
+                command,
+            ];
             if command != "init" {
                 valid.extend(["--input", "previous.mpc"]);
             }
@@ -300,6 +317,7 @@ mod tests {
         let error = execute(Args {
             mode: Mode::Publish,
             library_version: None,
+            subcircuit_library: None,
             filecoin_source: Some(dir.path().join("missing-source")),
             operation: Operation::Init {
                 output: output.clone(),
@@ -313,12 +331,34 @@ mod tests {
     #[test]
     fn execution_mode_is_explicit_and_independent_of_the_build() {
         assert!(Args::try_parse_from(["mpc", "init", "--output", "initial.mpc"]).is_err());
-        for mode in ["development", "publish"] {
-            let args =
-                Args::try_parse_from(["mpc", "--mode", mode, "init", "--output", "initial.mpc"])
-                    .unwrap();
+        for (mode, source_args) in [
+            ("development", vec!["--subcircuit-library", "local-library"]),
+            ("publish", vec!["--library-version", "3.0.0"]),
+        ] {
+            let mut argv = vec!["mpc", "--mode", mode];
+            argv.extend(source_args);
+            argv.extend(["init", "--output", "initial.mpc"]);
+            let args = Args::try_parse_from(argv).unwrap();
             assert_eq!(args.mode.name(), mode);
         }
+    }
+
+    #[test]
+    fn development_requires_a_local_library_before_source_io_or_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("must-not-exist");
+        let error = execute(Args {
+            mode: Mode::Development,
+            library_version: None,
+            subcircuit_library: None,
+            filecoin_source: Some(dir.path().join("missing-source")),
+            operation: Operation::Init {
+                output: output.clone(),
+            },
+        })
+        .unwrap_err();
+        assert!(error.contains("--subcircuit-library"));
+        assert!(!output.exists());
     }
 
     #[test]
@@ -328,6 +368,7 @@ mod tests {
         let error = execute(Args {
             mode: Mode::Development,
             library_version: None,
+            subcircuit_library: Some(dir.path().join("local-library")),
             filecoin_source: None,
             operation: Operation::Publish {
                 input: dir.path().join("missing"),
