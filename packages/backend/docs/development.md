@@ -28,11 +28,13 @@ compatibility.
 a new `initial.mpc` transcript. Without `--filecoin-source`, it downloads and
 authenticates the pinned Filecoin source. It never publishes a CRS.
 
-`MPC: publish verified ceremony to Google Drive (npm)` uses publish mode with a
-runtime npm library version. It prompts for a completed publish transcript and
-a separate output directory, and uploads real files. Configure the operator
-environment described in the [MPC operator guide](../rust/setup/mpc-setup/README.md)
-before using it.
+`MPC: publish verified ceremony to Google Drive (npm)` passes its version,
+transcript, CRS output directory, and Filecoin source as command-line arguments.
+It verifies the completed ceremony and uploads the CRS. Its paths use the
+current `setup/mpc-setup/output`, `setup/output`, and
+`setup/mpc-setup/filecoin-phase1` layout. Configure the operator environment
+described in the [MPC operator guide](../rust/setup/mpc-setup/README.md) before
+using it.
 
 `Measure prove timing` uses Cargo's release profile and receives the local QAP
 path through its test environment. The current phase-2 correctness baseline

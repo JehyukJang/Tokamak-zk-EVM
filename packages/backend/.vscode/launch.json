@@ -25,7 +25,7 @@
         "--subcircuit-library",
         "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
         "--output",
-        "${workspaceFolder}/rust/setup/trusted-setup/output/debug-keys",
+        "${workspaceFolder}/rust/setup/mpc-setup/output/crs",
         "--fixed-tau"
       ],
       "cwd": "${workspaceFolder}",
@@ -76,6 +76,49 @@
       ]
     },
     {
+      "name": "MPC: publish verified ceremony to Google Drive (npm)",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": [
+          "build",
+          "--locked",
+          "--release",
+          "-p",
+          "mpc-setup",
+          "--bin",
+          "mpc"
+        ],
+        "filter": {
+          "name": "mpc",
+          "kind": "bin"
+        }
+      },
+      "program": "${cargo:program}",
+      "args": [
+        "--mode",
+        "publish",
+        "--library-version",
+        "3.0.0",
+        "publish",
+        "--input",
+        "${workspaceFolder}/rust/setup/mpc-setup/output/contribution-1.mpc",
+        "--output",
+        "${workspaceFolder}/rust/setup/mpc-setup/output/crs",
+        "--filecoin-source",
+        "${workspaceFolder}/rust/setup/mpc-setup/filecoin-phase1/challenge_19"
+      ],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "ICICLE_BACKEND_INSTALL_DIR": "${workspaceFolder}/external-lib/mac/lib/backend",
+        "DYLD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib",
+        "LD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib:${env:LD_LIBRARY_PATH}"
+      },
+      "sourceLanguages": [
+        "rust"
+      ]
+    },
+    {
       "name": "Debug preprocess",
       "type": "lldb",
       "request": "launch",
@@ -100,7 +143,7 @@
         "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
         "--allow-unverified-crs",
         "--keys",
-        "${workspaceFolder}/rust/setup/trusted-setup/output/debug-keys",
+        "${workspaceFolder}/rust/setup/output",
         "--synthesizer-stat",
         "${workspaceFolder}/../frontend/synthesizer/outputs",
         "--output",
@@ -141,9 +184,9 @@
         "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
         "--allow-unverified-crs",
         "--tau-sequence",
-        "${workspaceFolder}/rust/setup/trusted-setup/output/debug-keys/tau_sequence.rkyv",
+        "${workspaceFolder}/rust/setup/output/tau_sequence.rkyv",
         "--keys",
-        "${workspaceFolder}/rust/setup/trusted-setup/output/debug-keys",
+        "${workspaceFolder}/rust/setup/output",
         "--synthesizer-stat",
         "${workspaceFolder}/../frontend/synthesizer/outputs",
         "--output",
@@ -172,7 +215,7 @@
           "verify"
         ],
         "env": {
-          "TOKAMAK_VERIFIER_KEYS": "${workspaceFolder}/rust/setup/trusted-setup/output/debug-keys/verifier_keys.rkyv"
+          "TOKAMAK_VERIFIER_KEYS": "${workspaceFolder}/rust/setup/output/verifier_keys.rkyv"
         },
         "filter": {
           "name": "verify",
@@ -227,7 +270,7 @@
       "env": {
         "PROVE_QAP_PATH": "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
         "PROVE_SYNTHESIZER_PATH": "${workspaceFolder}/../frontend/synthesizer/outputs",
-        "PROVE_SETUP_PATH": "${workspaceFolder}/rust/setup/trusted-setup/output/debug-keys",
+        "PROVE_SETUP_PATH": "${workspaceFolder}/rust/setup/output",
         "PROVE_OUT_PATH": "${workspaceFolder}/rust/prove/output",
         "TIMING_OUT": "${workspaceFolder}/rust/prove/optimization/timing.release.json",
         "ICICLE_BACKEND_INSTALL_DIR": "${workspaceFolder}/external-lib/mac/lib/backend",

@@ -29,7 +29,6 @@ coverage.json
 tmp/
 /packages/backend/rust/setup/mpc-setup/filecoin-phase1/
 /packages/backend/rust/setup/output
-/packages/backend/rust/setup/generations/
 
 # Misc
 .DS_Store
