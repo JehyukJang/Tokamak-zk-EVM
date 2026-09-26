@@ -30,7 +30,7 @@ struct Args {
     /// Only the explicit publish operation verifies, finalizes and uploads.
     #[arg(long, value_enum)]
     mode: Mode,
-    /// Exact npm library version; required only with --mode publish.
+    /// Exact npm library version; defaults to the latest stable backend-compatible version.
     #[arg(long)]
     library_version: Option<String>,
     /// Local QAP library directory; required only with --mode development.
@@ -311,21 +311,20 @@ mod tests {
         assert!(Args::try_parse_from(["mpc", "phase1"]).is_err());
     }
     #[test]
-    fn missing_publish_version_stops_before_source_io_or_output() {
-        let dir = tempfile::tempdir().unwrap();
-        let output = dir.path().join("must-not-exist");
-        let error = execute(Args {
-            mode: Mode::Publish,
-            library_version: None,
-            subcircuit_library: None,
-            filecoin_source: Some(dir.path().join("missing-source")),
-            operation: Operation::Init {
-                output: output.clone(),
-            },
-        })
-        .unwrap_err();
-        assert!(error.contains("--library-version"));
-        assert!(!output.exists());
+    fn publish_version_can_be_omitted_or_pinned_explicitly() {
+        assert!(Args::try_parse_from([
+            "mpc",
+            "--mode",
+            "publish",
+            "init",
+            "--output",
+            "initial.mpc"
+        ])
+        .is_ok());
+        assert!(Mode::Publish.validate(None, None).is_ok());
+        assert!(Mode::Publish
+            .validate(Some(env!("CARGO_PKG_VERSION")), None)
+            .is_ok());
     }
 
     #[test]
@@ -333,7 +332,7 @@ mod tests {
         assert!(Args::try_parse_from(["mpc", "init", "--output", "initial.mpc"]).is_err());
         for (mode, source_args) in [
             ("development", vec!["--subcircuit-library", "local-library"]),
-            ("publish", vec!["--library-version", "3.0.0"]),
+            ("publish", vec![]),
         ] {
             let mut argv = vec!["mpc", "--mode", mode];
             argv.extend(source_args);

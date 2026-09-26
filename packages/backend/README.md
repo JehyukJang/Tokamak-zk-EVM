@@ -105,7 +105,7 @@ cargo run --locked --release -p trusted-setup -- \
 
 ### `mpc`
 
-Each invocation prepares its own circuit snapshot and authenticates the complete original Filecoin source. Development reads local QAP build artifacts; `--mode publish --library-version MAJOR.MINOR.PATCH` acquires an exact npm version at runtime. Both use the same repository-built release executable. There is no repository phase 1, standalone import receipt or source-check bypass. For development initialization:
+Each invocation prepares its own circuit snapshot and authenticates the complete original Filecoin source. Development reads local QAP build artifacts; publish mode acquires an npm circuit library at runtime. Pass `--library-version MAJOR.MINOR.PATCH` to pin an exact version, or omit it to select the latest stable patch release compatible with the backend's `MAJOR.MINOR` version. The resolved exact version is recorded in CRS provenance. Both modes use the same repository-built release executable. There is no repository phase 1, standalone import receipt or source-check bypass. For development initialization:
 
 ```sh
 cargo run --locked --release -p mpc-setup --bin mpc -- --mode development \
@@ -113,7 +113,7 @@ cargo run --locked --release -p mpc-setup --bin mpc -- --mode development \
   init --filecoin-source /path/to/challenge_19 --output ./initial.mpc
 ```
 
-The transcript output path must not already exist. Subsequent operations repeat original-source authentication. Initialization does not upload. For a completed publish-mode transcript, `mpc --mode publish --library-version <exact-version> publish --input <transcript> --output <directory> --filecoin-source <original>` verifies, finalizes and uploads in one command. See the [MPC operator guide](rust/setup/mpc-setup/README.md#publish-a-completed-ceremony) for configuration, retry behavior and qualification limits.
+The transcript output path must not already exist. Subsequent operations repeat original-source authentication. Initialization does not upload. For a completed publish-mode transcript, `mpc --mode publish [--library-version <exact-compatible-version>] publish --input <transcript> --output <directory> --filecoin-source <original>` verifies, finalizes and uploads in one command. See the [MPC operator guide](rust/setup/mpc-setup/README.md#publish-a-completed-ceremony) for configuration, retry behavior and qualification limits.
 
 ## Setup outputs and common provenance
 

@@ -45,15 +45,8 @@ impl Mode {
                 if subcircuit_library.is_some() {
                     return Err("--subcircuit-library is only valid in development mode".into());
                 }
-                let version =
-                    version.ok_or("publish mode requires --library-version MAJOR.MINOR.PATCH")?;
-                let selected = parse_package_version(version).map_err(|e| e.to_string())?;
-                let backend = compatibility_from_package_version(env!("CARGO_PKG_VERSION"))
-                    .map_err(|e| e.to_string())?;
-                if selected.compatibility_version() != backend {
-                    return Err(format!(
-                        "library {version} is incompatible with backend class {backend}"
-                    ));
+                if let Some(version) = version {
+                    validate_publish_version(version)?;
                 }
                 Ok(())
             }
@@ -110,7 +103,7 @@ pub(crate) fn prepare(
             )
         }
         Mode::Publish => {
-            let version = version.ok_or("publish mode requires --library-version")?;
+            let package_spec = npm_package_spec(version)?;
             // npm authenticates the registry tarball integrity. Lifecycle scripts
             // are disabled; no repository manifests or node_modules are changed.
             let output = Command::new("npm")
@@ -125,7 +118,7 @@ pub(crate) fn prepare(
                     "--prefix",
                 ])
                 .arg(temporary)
-                .arg(format!("{PACKAGE}@{version}"))
+                .arg(format!("{PACKAGE}@{package_spec}"))
                 .current_dir(temporary)
                 .output()
                 .map_err(|e| format!("cannot run npm: {e}"))?;
@@ -140,18 +133,50 @@ pub(crate) fn prepare(
     }
 }
 
+fn validate_publish_version(version: &str) -> Result<(), String> {
+    let selected = parse_package_version(version).map_err(|e| e.to_string())?;
+    let backend =
+        compatibility_from_package_version(env!("CARGO_PKG_VERSION")).map_err(|e| e.to_string())?;
+    if selected.compatibility_version() != backend {
+        return Err(format!(
+            "library {version} is incompatible with backend class {backend}"
+        ));
+    }
+    Ok(())
+}
+
+fn npm_package_spec(version: Option<&str>) -> Result<String, String> {
+    match version {
+        Some(version) => {
+            validate_publish_version(version)?;
+            Ok(version.into())
+        }
+        None => {
+            let backend = compatibility_from_package_version(env!("CARGO_PKG_VERSION"))
+                .map_err(|e| e.to_string())?;
+            Ok(format!("~{backend}.0"))
+        }
+    }
+}
+
 fn describe_npm(
     package: &Path,
-    version: &str,
+    requested_version: Option<&str>,
 ) -> Result<(PathBuf, SubcircuitLibraryProvenance), String> {
     let manifest: serde_json::Value =
         serde_json::from_slice(&fs::read(package.join("package.json")).map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;
-    if manifest["name"].as_str() != Some(PACKAGE) || manifest["version"].as_str() != Some(version) {
+    let version = manifest["version"]
+        .as_str()
+        .ok_or("npm snapshot package version is missing")?;
+    if manifest["name"].as_str() != Some(PACKAGE)
+        || requested_version.is_some_and(|requested| requested != version)
+    {
         return Err(
-            "npm snapshot package identity differs from the requested exact version".into(),
+            "npm snapshot package identity differs from the requested package version".into(),
         );
     }
+    validate_publish_version(version)?;
     describe(
         package.join("subcircuits/library"),
         version,
@@ -215,7 +240,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mode_requires_an_exact_publish_version_and_forbids_development_override() {
+    fn publish_version_is_optional_but_exact_overrides_must_be_compatible() {
         let local_library = Path::new("subcircuits/library");
         assert!(Mode::Development
             .validate(None, Some(local_library))
@@ -224,7 +249,7 @@ mod tests {
         assert!(Mode::Development
             .validate(Some("2.1.5"), Some(local_library))
             .is_err());
-        assert!(Mode::Publish.validate(None, None).is_err());
+        assert!(Mode::Publish.validate(None, None).is_ok());
         assert!(Mode::Publish
             .validate(Some(env!("CARGO_PKG_VERSION")), None)
             .is_ok());
@@ -237,6 +262,21 @@ mod tests {
                 "{value}"
             );
         }
+    }
+
+    #[test]
+    fn omitted_publish_version_uses_the_backend_compatible_patch_range() {
+        assert_eq!(
+            npm_package_spec(None).unwrap(),
+            format!(
+                "~{}.0",
+                compatibility_from_package_version(env!("CARGO_PKG_VERSION")).unwrap()
+            )
+        );
+        assert_eq!(
+            npm_package_spec(Some(env!("CARGO_PKG_VERSION"))).unwrap(),
+            env!("CARGO_PKG_VERSION")
+        );
     }
 
     #[test]
@@ -280,7 +320,7 @@ mod tests {
             br#"{"name":"wrong","version":"2.1.5"}"#,
         )
         .unwrap();
-        assert!(describe_npm(directory.path(), "2.1.5")
+        assert!(describe_npm(directory.path(), Some("2.1.5"))
             .unwrap_err()
             .contains("identity"));
     }
