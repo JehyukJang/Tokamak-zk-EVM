@@ -28,6 +28,9 @@ pub(crate) struct GoogleDrive {
 
 impl GoogleDrive {
     pub fn connect() -> Result<Self, String> {
+        // Preserve the established local operator flow: the ignored backend
+        // .env supplies Drive credentials to the VS Code launch configuration.
+        let _ = dotenvy::dotenv();
         let required = |name| env::var(name).map_err(|_| format!("missing {name}"));
         let root = required("TOKAMAK_MPC_DRIVE_FOLDER_ID")?;
         valid_id(&root)?;
