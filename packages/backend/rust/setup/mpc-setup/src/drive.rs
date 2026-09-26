@@ -28,8 +28,8 @@ pub(crate) struct GoogleDrive {
 
 impl GoogleDrive {
     pub fn connect() -> Result<Self, String> {
-        // Preserve the established local operator flow: the ignored backend
-        // .env supplies Drive credentials to the VS Code launch configuration.
+        // Preserve the established local operator flow by loading the ignored
+        // backend .env before resolving Drive configuration.
         let _ = dotenvy::dotenv();
         let required = |name| env::var(name).map_err(|_| format!("missing {name}"));
         let root = required("TOKAMAK_MPC_DRIVE_FOLDER_ID")?;
@@ -254,10 +254,13 @@ fn resume_offset(range: Option<&str>, size: u64) -> Result<u64, String> {
 }
 
 fn valid_id(id: &str) -> Result<(), String> {
+    // Drive IDs are opaque values. Only reject delimiters that would change
+    // the request path or turn an ID into a URL rather than imposing a
+    // character set that can reject IDs returned by the Drive API itself.
     if id.is_empty()
-        || !id
+        || id
             .bytes()
-            .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
+            .any(|c| c.is_ascii_whitespace() || matches!(c, b'/' | b'?' | b'#'))
     {
         return Err("invalid Drive object ID".into());
     }
@@ -523,6 +526,14 @@ mod tests {
             "nonsense",
         ] {
             assert!(resume_offset(Some(bad), 256).is_err());
+        }
+    }
+
+    #[test]
+    fn drive_ids_are_opaque_but_not_urls() {
+        assert!(valid_id("1opaque~Drive.ID=").is_ok());
+        for invalid in ["", "folder/id", "folder?id", "folder#id", "folder id"] {
+            assert!(valid_id(invalid).is_err());
         }
     }
 }
