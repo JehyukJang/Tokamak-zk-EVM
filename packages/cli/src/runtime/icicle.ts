@@ -3,7 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { ensureDir } from './context.js';
 import { downloadFile, fileExists, normalizeSha256, sha256FileHex } from './download.js';
-import type { DockerEnvironment, NativeRuntimeOs, RuntimeContext } from './model.js';
+import type { NativeRuntimeOs, RuntimeContext } from './model.js';
 import { commandExists, logVerbose, runCommand } from '../system.js';
 
 interface IcicleAsset {
@@ -16,8 +16,6 @@ interface IcicleManifest {
   version: string;
   assets: Record<string, IcicleAsset>;
 }
-
-const DOCKER_ENVIRONMENT_ENV = 'TOKAMAK_ZKEVM_CLI_DOCKER_ENVIRONMENT';
 
 const ICICLE_VERSION = '3.8.0';
 
@@ -94,11 +92,6 @@ function selectIcicleAsset(manifest: IcicleManifest, key: string): IcicleAsset {
   };
 }
 
-function dockerEnvironmentOverride(): DockerEnvironment | null {
-  const value = process.env[DOCKER_ENVIRONMENT_ENV]?.trim();
-  return value === 'ubuntu22' || value === 'ubuntu22-cuda122' ? value : null;
-}
-
 async function downloadIcicleAssetWithCache(
   context: RuntimeContext,
   asset: IcicleAsset,
@@ -153,15 +146,13 @@ export async function installIcicleRuntime(
         throw new Error('Internal error: the detected operating system does not match the Linux runtime.');
       }
       const ubuntuMajor = nativeOs.ubuntuVersion.slice(0, 2);
-      const dockerEnvironment = dockerEnvironmentOverride();
       const commonTarball = await downloadIcicleAssetWithCache(
         context,
         selectIcicleAsset(manifest, `ubuntu${ubuntuMajor}`),
         verbose,
       );
       await extractTarArchive(commonTarball, tempRoot, verbose);
-      const installCudaBackend = dockerEnvironment === 'ubuntu22-cuda122'
-        || (dockerEnvironment === null && await linuxCudaBackendAvailable(verbose));
+      const installCudaBackend = await linuxCudaBackendAvailable(verbose);
       if (installCudaBackend) {
         logVerbose(verbose, 'Installing CUDA ICICLE backend package.');
         const backendTarball = await downloadIcicleAssetWithCache(

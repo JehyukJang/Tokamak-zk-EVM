@@ -1,299 +1,173 @@
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import vm from 'node:vm';
-import { backendEnvironment, ensureDir, packageCompatibleVersion, runtimePaths } from './context.js';
+import { ensureDir, packageCompatibleVersion, runtimePaths } from './context.js';
+import { selectDriveEntry, type DriveEntry } from './drive-listing.js';
 import { downloadFileWithResume, fileExists, normalizeSha256, sha256FileHex } from './download.js';
 import type { RuntimeContext } from './model.js';
-import { runCommand, logVerbose } from '../system.js';
+import { crsProvenanceFileName, crsArchiveRootFileNames, parseCrsProvenance } from '../generated/crs-provenance-validator.generated.js';
+import { BACKEND_PACKAGE_NAMES, backendBuildMetadataFileName, parseBackendBuildMetadata } from '../generated/backend-build-metadata-validator.generated.js';
 
-interface DriveArchiveSelection {
-  compatibleBackendVersion: string;
-  fileId: string;
-  name: string;
-  generatedAt: string;
-  sizeBytes: number;
-}
-
-interface BackendBuildMetadata {
-  compatibleBackendVersion?: string;
-  dependencies?: {
-    subcircuitLibrary?: {
-      buildVersion?: string;
-      sourceDigest?: string;
-    };
-  };
-  packageVersion?: string;
-}
-
-interface CrsProvenance {
-  backend_version?: string;
-  combined_sigma_sha256?: string;
-  sigma_preprocess_sha256?: string;
-  sigma_verify_sha256?: string;
-}
-
-const BACKEND_BINARY_NAMES = ['preprocess', 'prove', 'verify'] as const;
-
+type CrsProvenance = import('../generated/crs-provenance-validator.generated.js').CrsProvenance;
+const SUBCIRCUIT_LIBRARY_PACKAGE_NAME = '@tokamak-zk-evm/subcircuit-library';
+const CRS_PROVENANCE_FILE_NAME = crsProvenanceFileName();
+const FINAL_CRS_ARTIFACT_FILES = crsArchiveRootFileNames();
 const CRS_DRIVE_FOLDER_ID = '14xqCbLoyoVmUVTTlopiXtKnoHPBGL-Sv';
-
-const CRS_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/mobile/folders';
-
-const CRS_DOWNLOAD_BASE_URL = 'https://drive.usercontent.google.com/download';
-
-const CRS_DOWNLOAD_ANONYMOUS_MAX_RETRIES = 5;
 
 async function readJsonFile<T>(filePath: string): Promise<T> {
   return JSON.parse(await fs.readFile(filePath, 'utf8')) as T;
 }
-
-async function findNamedFile(rootDir: string, filename: string): Promise<string> {
-  const queue: string[] = [rootDir];
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    const entries = await fs.readdir(current, { withFileTypes: true });
-    for (const entry of entries) {
-      const entryPath = path.join(current, entry.name);
-      if (entry.isFile() && entry.name === filename) {
-        return entryPath;
-      }
-      if (entry.isDirectory()) {
-        queue.push(entryPath);
-      }
-    }
-  }
-  throw new Error(`Missing ${filename} under ${rootDir}`);
+async function listing(folderId: string): Promise<string> {
+  const response = await fetch(`https://drive.google.com/drive/mobile/folders/${folderId}`);
+  if (!response.ok) throw new Error(`Failed to read CRS listing: ${response.status} ${response.statusText}`);
+  return response.text();
 }
-
-function parseDriveArchiveName(name: string): Pick<DriveArchiveSelection, 'compatibleBackendVersion' | 'generatedAt'> | null {
-  const parsed = name.match(/^tokamak-backend-crs-v(\d+)\.(\d+)-(\d{8}T\d{6}Z)\.zip$/iu);
-  if (!parsed) {
-    return null;
+async function download(entry: DriveEntry, destination: string, verbose: boolean, digest?: string): Promise<void> {
+  if (await fileExists(destination)) {
+    if ((await fs.stat(destination)).size === entry.sizeBytes &&
+        digest !== undefined && await sha256FileHex(destination) === digest) return;
+    await fs.rm(destination, { force: true });
   }
-  return {
-    compatibleBackendVersion: `${Number(parsed[1])}.${Number(parsed[2])}`,
-    generatedAt: parsed[3],
-  };
-}
-
-function parseDriveArchiveSelection(html: string, expectedCompatibleVersion: string): DriveArchiveSelection {
-  const match = html.match(/window\['_DRIVE_ivd'\]\s*=\s*('(?:\\.|[^'])*')/u);
-  if (!match) {
-    throw new Error('Unable to locate Google Drive listing payload.');
-  }
-
-  const decoded = vm.runInNewContext(match[1]) as string;
-  const payload = JSON.parse(decoded) as unknown;
-  const entriesById = new Map<string, DriveArchiveSelection>();
-
-  const walk = (node: unknown): void => {
-    if (!Array.isArray(node)) {
-      return;
-    }
-
-    if (typeof node[0] === 'string' && typeof node[2] === 'string' && node[3] === 'application/zip') {
-      const parsedName = parseDriveArchiveName(node[2]);
-      const sizeBytes = typeof node[13] === 'number' && Number.isFinite(node[13]) ? node[13] : null;
-      if (
-        parsedName &&
-        parsedName.compatibleBackendVersion === expectedCompatibleVersion &&
-        sizeBytes !== null &&
-        sizeBytes > 0
-      ) {
-        entriesById.set(node[0], {
-          fileId: node[0],
-          name: node[2],
-          compatibleBackendVersion: parsedName.compatibleBackendVersion,
-          generatedAt: parsedName.generatedAt,
-          sizeBytes,
-        });
-      }
-    }
-
-    for (const child of node) {
-      walk(child);
-    }
-  };
-
-  walk(payload);
-
-  const entries = [...entriesById.values()];
-  if (entries.length === 0) {
-    throw new Error(
-      `No CRS archive matching compatibility version ${expectedCompatibleVersion} was found in Google Drive.`,
-    );
-  }
-
-  entries.sort((left, right) => {
-    return right.generatedAt.localeCompare(left.generatedAt);
+  await downloadFileWithResume(destination, {
+    archiveName: entry.name, contentLength: entry.sizeBytes, fileId: entry.fileId,
+  }, verbose, {
+    describe: 'Anonymous CRS file download',
+    maxRetries: 5,
+    request: (offset, end) => ({
+      url: `https://drive.usercontent.google.com/download?id=${entry.fileId}&export=download&confirm=t`,
+      headers: { Range: `bytes=${offset}-${end}` },
+    }),
   });
-  return entries[0];
-}
-
-async function selectLatestDriveArchive(compatibleBackendVersion: string): Promise<DriveArchiveSelection> {
-  const response = await fetch(`${CRS_DRIVE_FOLDER_URL}/${CRS_DRIVE_FOLDER_ID}`);
-  if (!response.ok) {
-    throw new Error(`Failed to read CRS listing: ${response.status} ${response.statusText}`);
+  if ((await fs.stat(destination)).size !== entry.sizeBytes ||
+      (digest !== undefined && await sha256FileHex(destination) !== digest)) {
+    await fs.rm(destination, { force: true });
+    throw new Error(`Downloaded CRS file ${entry.name} failed size or sha256 validation.`);
   }
-  return parseDriveArchiveSelection(await response.text(), compatibleBackendVersion);
 }
 
-async function crsArchiveCacheMatches(
-  archivePath: string,
-  selection: DriveArchiveSelection,
-  verbose: boolean,
-): Promise<boolean> {
+export interface DownloadedVerifierSetup {
+  readonly directory: string;
+  readonly rootListing: string;
+  readonly versionListing: string;
+  readonly provenance: CrsProvenance;
+}
+
+/** Keep a single selected release and its checked key alive across compilation. */
+export async function withDownloadedVerifierSetup<T>(
+  context: RuntimeContext, verbose: boolean,
+  action: (setup: DownloadedVerifierSetup) => Promise<T>,
+): Promise<T> {
+  const rootListing = await listing(CRS_DRIVE_FOLDER_ID);
+  const versionFolder = selectDriveEntry(rootListing, context.compatibleBackendVersion, 'folder');
+  const versionListing = await listing(versionFolder.fileId);
+  const provenanceEntry = selectDriveEntry(versionListing, CRS_PROVENANCE_FILE_NAME, 'file');
+  if (provenanceEntry.sizeBytes > 1024 * 1024) throw new Error('CRS provenance exceeds 1 MiB.');
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-crs-input-'));
   try {
-    const archiveName = path.basename(archivePath);
-    const parsedName = parseDriveArchiveName(archiveName);
-    if (parsedName === null) {
-      logVerbose(verbose, `Ignoring cached CRS archive ${archivePath}: archive name does not match the expected CRS naming convention.`);
-      return false;
+    const provenancePath = path.join(directory, CRS_PROVENANCE_FILE_NAME);
+    await download(provenanceEntry, provenancePath, verbose);
+    const provenance = parseCrsProvenance(await readJsonFile<unknown>(provenancePath));
+    if (provenance.compatibleBackendVersion !== context.compatibleBackendVersion ||
+        provenance.subcircuitLibrary.origin !== 'npmSnapshot' ||
+        provenance.subcircuitLibrary.packageName !== SUBCIRCUIT_LIBRARY_PACKAGE_NAME ||
+        packageCompatibleVersion(provenance.subcircuitLibrary.packageVersion!, 'CRS library version') !== context.compatibleBackendVersion) {
+      throw new Error('CRS provenance does not identify the selected production library version.');
     }
-    if (
-      parsedName.generatedAt !== selection.generatedAt ||
-      parsedName.compatibleBackendVersion !== selection.compatibleBackendVersion
-    ) {
-      logVerbose(
-        verbose,
-        `Ignoring cached CRS archive ${archivePath}: archive compatibility version ${parsedName.compatibleBackendVersion} at ${parsedName.generatedAt} does not match selected CRS ${selection.compatibleBackendVersion} at ${selection.generatedAt}.`,
-      );
-      return false;
-    }
-
-    const stats = await fs.stat(archivePath);
-    if (!stats.isFile()) {
-      logVerbose(verbose, `Ignoring cached CRS archive ${archivePath}: cached path is not a file.`);
-      return false;
-    }
-    if (stats.size !== selection.sizeBytes) {
-      logVerbose(
-        verbose,
-        `Ignoring cached CRS archive ${archivePath}: file size ${stats.size} does not match latest CRS size ${selection.sizeBytes}.`,
-      );
-      return false;
-    }
-    return true;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logVerbose(verbose, `Ignoring cached CRS archive ${archivePath}: ${message}`);
-    return false;
+    const key = selectDriveEntry(versionListing, 'verifier_keys.rkyv', 'file');
+    await download(key, path.join(directory, key.name), verbose, provenance.artifacts['verifier_keys.rkyv']);
+    return await action({ directory, rootListing, versionListing, provenance });
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
   }
 }
 
-async function downloadLatestCrsArchive(
-  context: RuntimeContext,
-  selection: DriveArchiveSelection,
-  verbose: boolean,
-): Promise<{ archivePath: string; archiveName: string }> {
-  const url = `${CRS_DOWNLOAD_BASE_URL}?id=${selection.fileId}&export=download&confirm=t`;
-  const downloadDir = path.join(context.platformDir, 'downloads', 'crs');
-  const archivePath = path.join(downloadDir, selection.name);
-  if (await fileExists(archivePath)) {
-    if (await crsArchiveCacheMatches(archivePath, selection, verbose)) {
-      logVerbose(verbose, `Using cached CRS archive ${archivePath}`);
-      return {
-        archivePath,
-        archiveName: selection.name,
-      };
+/** Complete only a full installation; verifier-only mode never lists or downloads tau. */
+export async function installDownloadedSetup(
+  context: RuntimeContext, backendReleaseDir: string, verbose: boolean,
+  setup: DownloadedVerifierSetup, noFullSetup: boolean,
+): Promise<void> {
+  if (!noFullSetup) {
+    for (const name of ['prover_keys.rkyv', 'preprocess_keys.rkyv'] as const) {
+      await download(selectDriveEntry(setup.versionListing, name, 'file'),
+        path.join(setup.directory, name), verbose, setup.provenance.artifacts[name]);
     }
-    await fs.rm(archivePath, { force: true });
+    const tauFolder = selectDriveEntry(setup.rootListing, 'tau_sequence', 'folder');
+    const tauDigest = setup.provenance.artifacts['tau_sequence.rkyv'];
+    const tau = selectDriveEntry(await listing(tauFolder.fileId), `${tauDigest}.rkyv`, 'file');
+    // Share the platform's content-addressed cache across CRS versions.
+    const tauCache = path.join(context.platformDir, 'downloads', 'tau_sequence', tau.name);
+    await ensureDir(path.dirname(tauCache));
+    await download(tau, tauCache, verbose, tauDigest);
+    await fs.copyFile(tauCache, path.join(setup.directory, 'tau_sequence.rkyv'));
   }
-
-  const resumableState = {
-    archiveName: selection.name,
-    contentLength: selection.sizeBytes,
-    fileId: selection.fileId,
-  };
-
-  await downloadFileWithResume(
-    archivePath,
-    resumableState,
-    verbose,
-    {
-      describe: 'Anonymous CRS download',
-      maxRetries: CRS_DOWNLOAD_ANONYMOUS_MAX_RETRIES,
-      request: (offset, chunkEnd) => ({
-        url,
-        headers: {
-          Range: `bytes=${offset}-${chunkEnd}`,
-        },
-      }),
-    },
-  );
-  if (!(await crsArchiveCacheMatches(archivePath, selection, verbose))) {
-    await fs.rm(archivePath, { force: true });
-    throw new Error(`Downloaded CRS archive ${selection.name} failed archive name and size validation.`);
-  }
-  return {
-    archivePath,
-    archiveName: selection.name,
-  };
+  const { provenancePath } = await validateDownloadedCrs(setup.directory, backendReleaseDir,
+    context.compatibleBackendVersion, context.compatibleBackendVersion, context.packageVersion, noFullSetup);
+  await installValidatedCrsGeneration(setup.directory, provenancePath,
+    runtimePaths(context).setupOutputDir, context.compatibleBackendVersion, fs.copyFile, noFullSetup);
 }
 
-async function extractZipArchive(zipPath: string, destinationDir: string, verbose: boolean): Promise<void> {
-  await ensureDir(destinationDir);
-  await runCommand('unzip', ['-q', zipPath, '-d', destinationDir], {
-    verbose,
-  });
-}
-
-async function validateDownloadedCrsVersions(
+export async function validateDownloadedCrs(
   extractedDir: string,
   backendReleaseDir: string,
-  archiveName: string,
+  releaseName: string,
   compatibleBackendVersion: string,
+  expectedBackendPackageVersion: string,
+  noFullSetup = false,
 ): Promise<{
-  mpcMetadataPath: string;
   provenancePath: string;
 }> {
-  const provenancePath = await findNamedFile(extractedDir, 'crs_provenance.json');
-  const provenance = await readJsonFile<CrsProvenance>(provenancePath);
-  if (provenance.backend_version !== compatibleBackendVersion) {
+  const provenancePath = path.join(extractedDir, CRS_PROVENANCE_FILE_NAME);
+  const provenance = await validateCrsProvenanceContract(
+    await readJsonFile<unknown>(provenancePath),
+    releaseName,
+  );
+  if (provenance.compatibleBackendVersion !== compatibleBackendVersion) {
     throw new Error(
-      `CRS archive ${archiveName} has backend_version ${provenance.backend_version ?? '<missing>'}, expected ${compatibleBackendVersion}.`,
+      `CRS release ${releaseName} has compatibleBackendVersion ${provenance.compatibleBackendVersion ?? '<missing>'}, expected ${compatibleBackendVersion}.`,
     );
   }
-  await validateCrsArtifactHashes(extractedDir, archiveName, provenance);
+  await validateCrsArtifactHashes(extractedDir, releaseName, provenance, noFullSetup);
 
-  const mpcMetadataPath = await findNamedFile(extractedDir, 'build-metadata-mpc-setup.json');
-  const mpcMetadata = await readJsonFile<BackendBuildMetadata>(mpcMetadataPath);
-  const mpcSubcircuitVersion = mpcMetadata.dependencies?.subcircuitLibrary?.buildVersion;
-  const mpcSubcircuitSourceDigest = mpcMetadata.dependencies?.subcircuitLibrary?.sourceDigest;
-  const mpcVersion = mpcMetadata.packageVersion;
-  const mpcCompatibleVersion = mpcMetadata.compatibleBackendVersion;
-  if (!mpcSubcircuitVersion || !mpcSubcircuitSourceDigest || !mpcVersion || !mpcCompatibleVersion) {
-    throw new Error(`CRS archive ${archiveName} is missing required metadata.`);
+  const provenanceSubcircuitPackageName = provenance.subcircuitLibrary?.packageName;
+  const provenanceSubcircuitPackageVersion = provenance.subcircuitLibrary?.packageVersion;
+  const provenanceSubcircuitSourceDigest = provenance.subcircuitLibrary?.sourceDigest;
+  if (!provenanceSubcircuitPackageName || !provenanceSubcircuitPackageVersion || !provenanceSubcircuitSourceDigest) {
+    throw new Error(`CRS release ${releaseName} provenance is missing subcircuit-library package information.`);
   }
-  if (mpcCompatibleVersion !== compatibleBackendVersion) {
+  if (provenanceSubcircuitPackageName !== SUBCIRCUIT_LIBRARY_PACKAGE_NAME) {
     throw new Error(
-      `CRS archive ${archiveName} metadata compatibleBackendVersion ${mpcCompatibleVersion} does not match expected ${compatibleBackendVersion}.`,
+      `CRS release ${releaseName} provenance subcircuit-library package ${provenanceSubcircuitPackageName} does not match ${SUBCIRCUIT_LIBRARY_PACKAGE_NAME}.`,
     );
   }
-  if (packageCompatibleVersion(mpcVersion, 'CRS metadata packageVersion') !== compatibleBackendVersion) {
+  if (
+    packageCompatibleVersion(provenanceSubcircuitPackageVersion, 'CRS provenance subcircuit-library packageVersion') !==
+    compatibleBackendVersion
+  ) {
     throw new Error(
-      `CRS archive ${archiveName} metadata packageVersion ${mpcVersion} is not compatible with ${compatibleBackendVersion}.`,
+      `CRS release ${releaseName} provenance subcircuit-library version ${provenanceSubcircuitPackageVersion} is not compatible with ${compatibleBackendVersion}.`,
     );
   }
 
-  for (const backendName of BACKEND_BINARY_NAMES) {
-    const backendMetadataPath = path.join(backendReleaseDir, `build-metadata-${backendName}.json`);
-    const backendMetadata = await readJsonFile<BackendBuildMetadata>(backendMetadataPath);
+  for (const backendName of BACKEND_PACKAGE_NAMES) {
+    const backendMetadataPath = path.join(backendReleaseDir, backendBuildMetadataFileName(backendName));
+    const backendMetadata = parseBackendBuildMetadata(
+      await readJsonFile<unknown>(backendMetadataPath),
+      backendName,
+      `Backend package ${backendName} build metadata`,
+    );
     const backendVersion = backendMetadata.packageVersion;
     const backendCompatibleVersion = backendMetadata.compatibleBackendVersion;
-    const backendSubcircuitVersion = backendMetadata.dependencies?.subcircuitLibrary?.buildVersion;
-    const backendSubcircuitSourceDigest = backendMetadata.dependencies?.subcircuitLibrary?.sourceDigest;
-    if (
-      !backendVersion ||
-      !backendCompatibleVersion ||
-      !backendSubcircuitVersion ||
-      !backendSubcircuitSourceDigest
-    ) {
-      throw new Error(`Backend package ${backendName} is missing required build metadata.`);
-    }
+    const backendSubcircuitVersion = backendMetadata.dependencies.subcircuitLibrary.buildVersion;
+    const backendSubcircuitPackageName = backendMetadata.dependencies.subcircuitLibrary.packageName;
+    const backendSubcircuitSourceDigest = backendMetadata.dependencies.subcircuitLibrary.sourceDigest;
     if (backendCompatibleVersion !== compatibleBackendVersion) {
       throw new Error(
         `Backend package ${backendName} has compatibleBackendVersion ${backendCompatibleVersion}, but the downloaded CRS expects ${compatibleBackendVersion}.`,
+      );
+    }
+    if (backendVersion !== expectedBackendPackageVersion) {
+      throw new Error(
+        `Backend package ${backendName} has version ${backendVersion}, expected current CLI package version ${expectedBackendPackageVersion}.`,
       );
     }
     if (packageCompatibleVersion(backendVersion, `${backendName} packageVersion`) !== compatibleBackendVersion) {
@@ -301,107 +175,209 @@ async function validateDownloadedCrsVersions(
         `Backend package ${backendName} has version ${backendVersion}, which is not compatible with CRS version ${compatibleBackendVersion}.`,
       );
     }
-    if (backendSubcircuitSourceDigest !== mpcSubcircuitSourceDigest) {
+    if (backendSubcircuitPackageName !== SUBCIRCUIT_LIBRARY_PACKAGE_NAME) {
       throw new Error(
-        `Backend package ${backendName} embeds subcircuit-library source digest ${backendSubcircuitSourceDigest}, but CRS archive ${archiveName} expects ${mpcSubcircuitSourceDigest}.`,
+        `Backend package ${backendName} records subcircuit-library package ${backendSubcircuitPackageName}, expected ${SUBCIRCUIT_LIBRARY_PACKAGE_NAME}.`,
+      );
+    }
+    if (
+      packageCompatibleVersion(backendSubcircuitVersion, `${backendName} subcircuit-library buildVersion`) !==
+      compatibleBackendVersion
+    ) {
+      throw new Error(
+        `Backend package ${backendName} embeds subcircuit-library version ${backendSubcircuitVersion}, which is not compatible with CRS version ${compatibleBackendVersion}.`,
+      );
+    }
+    if (backendSubcircuitSourceDigest !== provenanceSubcircuitSourceDigest) {
+      throw new Error(
+        `Backend package ${backendName} subcircuit-library sourceDigest ${backendSubcircuitSourceDigest} does not match CRS sourceDigest ${provenanceSubcircuitSourceDigest}.`,
       );
     }
   }
 
   return {
-    mpcMetadataPath,
     provenancePath,
   };
 }
 
+export async function validateCrsProvenanceContract(
+  provenance: unknown,
+  releaseName: string,
+): Promise<CrsProvenance> {
+  return parseCrsProvenance(provenance, `CRS release ${releaseName} provenance`);
+}
+
 async function validateCrsArtifactHashes(
   extractedDir: string,
-  archiveName: string,
+  releaseName: string,
   provenance: CrsProvenance,
+  noFullSetup = false,
 ): Promise<void> {
-  const checks = [
-    ['combined_sigma_sha256', 'combined_sigma.rkyv'],
-    ['sigma_preprocess_sha256', 'sigma_preprocess.rkyv'],
-    ['sigma_verify_sha256', 'sigma_verify.json'],
-  ] as const;
-
-  for (const [field, fileName] of checks) {
-    const expected = normalizeSha256(provenance[field]);
+  for (const [fileName, digest] of Object.entries(provenance.artifacts)) {
+    if (noFullSetup && fileName !== 'verifier_keys.rkyv') continue;
+    const expected = normalizeSha256(digest);
     if (expected === null) {
-      throw new Error(`CRS archive ${archiveName} provenance is missing ${field}.`);
+      throw new Error(`CRS release ${releaseName} provenance has an invalid digest for ${fileName}.`);
     }
-    const filePath = await findNamedFile(extractedDir, fileName);
+    const filePath = path.join(extractedDir, fileName);
     const actual = await sha256FileHex(filePath);
     if (actual !== expected) {
-      throw new Error(
-        `CRS archive ${archiveName} ${fileName} sha256 mismatch: expected=${expected} actual=${actual}.`,
-      );
+      throw new Error(`CRS release ${releaseName} ${fileName} sha256 mismatch: expected=${expected} actual=${actual}.`);
     }
   }
 }
 
-export async function installDownloadedSetup(
-  context: RuntimeContext,
-  backendReleaseDir: string,
-  verbose: boolean,
+export async function installValidatedCrsGeneration(
+  extractedDir: string,
+  provenancePath: string,
+  setupOutputDir: string,
+  releaseName: string,
+  copyFile: typeof fs.copyFile = fs.copyFile,
+  noFullSetup = false,
 ): Promise<void> {
-  const paths = runtimePaths(context);
-  const selection = await selectLatestDriveArchive(context.compatibleBackendVersion);
+  const setupDirectory = path.dirname(setupOutputDir);
+  const generationsDirectory = path.join(setupDirectory, 'generations');
+  await ensureDir(generationsDirectory);
 
-  const extractedDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-crs-extract-'));
+  const stagingDirectory = await fs.mkdtemp(path.join(generationsDirectory, '.staging-'));
+  let generationDirectory: string | undefined;
+  let activated = false;
   try {
-    const { archivePath, archiveName } = await downloadLatestCrsArchive(context, selection, verbose);
-    await extractZipArchive(archivePath, extractedDir, verbose);
-    const { mpcMetadataPath, provenancePath } = await validateDownloadedCrsVersions(
-      extractedDir,
-      backendReleaseDir,
-      archiveName,
-      context.compatibleBackendVersion,
-    );
+    for (const fileName of noFullSetup ? [CRS_PROVENANCE_FILE_NAME, 'verifier_keys.rkyv'] : FINAL_CRS_ARTIFACT_FILES) {
+      const sourcePath = fileName === CRS_PROVENANCE_FILE_NAME
+        ? provenancePath
+        : path.join(extractedDir, fileName);
+      await copyFile(sourcePath, path.join(stagingDirectory, fileName));
+    }
 
-    await ensureDir(paths.setupOutputDir);
-    await fs.copyFile(
-      await findNamedFile(extractedDir, 'combined_sigma.rkyv'),
-      path.join(paths.setupOutputDir, 'combined_sigma.rkyv'),
+    const stagedProvenance = await validateCrsProvenanceContract(
+      await readJsonFile<unknown>(path.join(stagingDirectory, CRS_PROVENANCE_FILE_NAME)),
+      releaseName,
     );
-    await fs.copyFile(
-      await findNamedFile(extractedDir, 'sigma_preprocess.rkyv'),
-      path.join(paths.setupOutputDir, 'sigma_preprocess.rkyv'),
+    await validateCrsArtifactHashes(stagingDirectory, releaseName, stagedProvenance, noFullSetup);
+
+    generationDirectory = path.join(
+      generationsDirectory,
+      `generation-${path.basename(stagingDirectory).replace(/^\.staging-/u, '')}`,
     );
-    await fs.copyFile(
-      await findNamedFile(extractedDir, 'sigma_verify.json'),
-      path.join(paths.setupOutputDir, 'sigma_verify.json'),
+    await fs.rename(stagingDirectory, generationDirectory);
+    const previousGenerationDirectory = await activateCrsGeneration(
+      setupOutputDir,
+      generationsDirectory,
+      generationDirectory,
     );
-    await fs.copyFile(
-      mpcMetadataPath,
-      path.join(paths.setupOutputDir, 'build-metadata-mpc-setup.json'),
-    );
-    await fs.copyFile(provenancePath, path.join(paths.setupOutputDir, 'crs_provenance.json'));
+    activated = true;
+    if (previousGenerationDirectory !== undefined && previousGenerationDirectory !== generationDirectory) {
+      await fs.rm(previousGenerationDirectory, { recursive: true, force: true });
+    }
   } finally {
-    await fs.rm(extractedDir, { recursive: true, force: true });
+    if (!activated && generationDirectory !== undefined) {
+      await fs.rm(generationDirectory, { recursive: true, force: true });
+    } else if (!activated) {
+      await fs.rm(stagingDirectory, { recursive: true, force: true });
+    }
   }
 }
 
-export async function writeSkippedSetupNotice(context: RuntimeContext): Promise<void> {
-  const paths = runtimePaths(context);
-  await ensureDir(paths.setupOutputDir);
-  await fs.writeFile(
-    path.join(paths.setupOutputDir, 'README.txt'),
-    'Setup artifacts were skipped during installation.\n',
-    'utf8',
+async function activateCrsGeneration(
+  setupOutputDir: string,
+  generationsDirectory: string,
+  nextGenerationDirectory: string,
+): Promise<string | undefined> {
+  const outputState = await inspectSetupOutput(setupOutputDir, generationsDirectory);
+  if (outputState.kind === 'unmanaged-symlink') {
+    throw new Error(
+      `Existing setup output symlink is not managed by this CLI installation: ${setupOutputDir} -> ${outputState.target}`,
+    );
+  }
+  if (outputState.kind === 'directory') {
+    throw new Error(
+      `Existing setup output uses the retired directory layout: ${setupOutputDir}. Remove it before installing the current CRS layout.`,
+    );
+  }
+  const temporaryLink = `${setupOutputDir}.next`;
+  await removeManagedTemporarySetupLink(temporaryLink, generationsDirectory);
+  await fs.symlink(path.relative(path.dirname(setupOutputDir), nextGenerationDirectory), temporaryLink, 'dir');
+  let temporaryLinkCreated = true;
+
+  try {
+    await fs.rename(temporaryLink, setupOutputDir);
+    temporaryLinkCreated = false;
+  } catch (error) {
+    if (temporaryLinkCreated) {
+      await removeManagedTemporarySetupLink(temporaryLink, generationsDirectory);
+    }
+    throw error;
+  }
+
+  return outputState.kind === 'symlink' ? outputState.targetGenerationDirectory : undefined;
+}
+
+async function removeManagedTemporarySetupLink(
+  temporaryLink: string,
+  generationsDirectory: string,
+): Promise<void> {
+  let temporaryLinkStat: Awaited<ReturnType<typeof fs.lstat>>;
+  try {
+    temporaryLinkStat = await fs.lstat(temporaryLink);
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      return;
+    }
+    throw error;
+  }
+  if (!temporaryLinkStat.isSymbolicLink()) {
+    throw new Error(`Existing setup activation temporary path is not managed by this CLI installation: ${temporaryLink}`);
+  }
+  const target = await fs.readlink(temporaryLink);
+  const resolvedTarget = path.resolve(path.dirname(temporaryLink), target);
+  if (!isPathInside(generationsDirectory, resolvedTarget)) {
+    throw new Error(
+      `Existing setup activation temporary symlink is not managed by this CLI installation: ${temporaryLink} -> ${target}`,
+    );
+  }
+  await fs.rm(temporaryLink, { force: true });
+}
+
+type SetupOutputState =
+  | { kind: 'missing' }
+  | { kind: 'directory' }
+  | { kind: 'symlink'; targetGenerationDirectory: string }
+  | { kind: 'unmanaged-symlink'; target: string };
+
+async function inspectSetupOutput(setupOutputDir: string, generationsDirectory: string): Promise<SetupOutputState> {
+  try {
+    const outputStat = await fs.lstat(setupOutputDir);
+    if (outputStat.isDirectory()) {
+      return { kind: 'directory' };
+    }
+    if (!outputStat.isSymbolicLink()) {
+      throw new Error(`Existing setup output path is neither a directory nor a symbolic link: ${setupOutputDir}`);
+    }
+    const target = await fs.readlink(setupOutputDir);
+    const resolvedTarget = path.resolve(path.dirname(setupOutputDir), target);
+    if (!isPathInside(generationsDirectory, resolvedTarget)) {
+      return { kind: 'unmanaged-symlink', target };
+    }
+    return {
+      kind: 'symlink',
+      targetGenerationDirectory: resolvedTarget,
+    };
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      return { kind: 'missing' };
+    }
+    throw error;
+  }
+}
+
+function isPathInside(directory: string, candidate: string): boolean {
+  const relative = path.relative(directory, candidate);
+  return (
+    relative.length > 0 && !relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative)
   );
 }
 
-export async function runTrustedSetup(context: RuntimeContext, verbose: boolean): Promise<void> {
-  const paths = runtimePaths(context);
-  await ensureDir(paths.setupOutputDir);
-  await fs.access(paths.trustedSetupBinary);
-  await runCommand(
-    paths.trustedSetupBinary,
-    ['--output', paths.setupOutputDir, '--fixed-tau'],
-    {
-      env: backendEnvironment(context),
-      verbose,
-    },
-  );
+function isMissingPathError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT';
 }

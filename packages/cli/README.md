@@ -9,7 +9,9 @@ proof export.
 First prepare a directory containing the
 [four synthesis input files](#synthesis-inputs). The
 [`L2StateChannel` example](../frontend/synthesizer/examples/L2StateChannel)
-shows the expected layout and values.
+shows the expected layout and values. Clone or download that example from this
+repository before using it: it is not installed with the npm CLI package. You
+can instead provide your own directory with the same four inputs.
 
 The quick start below assumes that the
 [native requirements](#native-requirements) are already installed and
@@ -37,18 +39,45 @@ backend npm package.
 | `tokamak-cli --install`                        | Build with prerequisites already installed and download compatible CRS artifacts |
 | `tokamak-cli --install --include-prerequisite` | Offer to install missing prerequisites on macOS or supported Ubuntu releases     |
 | `tokamak-cli --install --docker`               | Build and run in the packaged Linux container workflow                           |
-| `tokamak-cli --install --trusted-setup`        | Generate setup artifacts locally instead of downloading them                     |
-| `tokamak-cli --install --no-setup`             | Install without CRS artifacts; preprocess, prove, and verify remain unavailable  |
+| `tokamak-cli --install --no-full-setup` | Embed verifier keys; skip prover, preprocess and tau downloads |
+
+Every installation downloads CRS provenance and `verifier_keys.rkyv` before
+compiling the release-optimized verifier. `--no-full-setup` still requires
+Google Drive access. It omits the data needed to generate proofs and preprocess;
+the native verifier accepts externally supplied proof, public input and
+preprocess without reading CRS files at runtime. The retired `--no-setup`
+option is not accepted.
+
+The Drive root contains one folder named by each compatible backend version
+(`MAJOR.MINOR`), holding `prover_keys.rkyv`, `preprocess_keys.rkyv`,
+`verifier_keys.rkyv` and `crs_provenance.json`. Its separate `tau_sequence`
+folder holds `<SHA-256>.rkyv` files. Full installation selects the tau digest
+recorded in the version's provenance and installs it as `tau_sequence.rkyv`.
+ZIP-based CRS releases are not supported. These files must be published in
+the new layout before production installation can be qualified.
 
 ### Native requirements
 
-- Node.js 20 or newer and npm
-- Rust and Cargo 1.85 or newer
-- CMake 3.18 or newer
-- `pkg-config`, `tar`, and `unzip`
-- C/C++ build tools
-- Git, Ninja, Clang, LLDB, and LLD on Ubuntu
-- outbound HTTPS to npm, crates.io, GitHub, GitHub Releases, and Google Drive
+Node.js 20 or newer and npm are bootstrap requirements. The CLI does not
+install either of them. Every native `--install` then checks the following
+managed prerequisite policy; `--include-prerequisite` uses the same policy to
+offer installation of missing or incompatible tools.
+
+| Managed requirement | macOS | Ubuntu 20.04 / 22.04 |
+| --- | --- | --- |
+| Rust | `rustc` 1.85 or newer | `rustc` 1.85 or newer |
+| Cargo | `cargo` 1.85 or newer | `cargo` 1.85 or newer |
+| CMake | 3.18 or newer | 3.18 or newer |
+| C/C++ toolchain | `cc`, `c++`, `install_name_tool` | `cc`, `c++`, `make` |
+| LLVM toolchain | Not required | `clang`, `lldb`, `ld.lld` |
+| Git | Not required | `git` |
+| Ninja | Not required | `ninja` |
+| pkg-config | `pkg-config` | `pkg-config` |
+| tar | `tar` | `tar` |
+| unzip | Not required for CRS installation | Not required for CRS installation |
+
+Native installation also requires outbound HTTPS to npm, crates.io, GitHub,
+GitHub Releases, and Google Drive.
 
 Native targets are macOS, Ubuntu 20.04, and Ubuntu 22.04. Other Linux
 distributions should use Docker. Native Windows is unsupported; use WSL2 or
@@ -96,23 +125,42 @@ The installer:
 - builds the native backend;
 - downloads ICICLE runtime archives and verifies their packaged SHA-256
   digests;
-- downloads the compatible CRS unless setup is skipped, validating version,
+- downloads the compatible CRS artifacts unless setup is skipped, validating version,
   provenance, and artifact hashes; and
 - stores runtime resources under the CLI cache.
 
-Docker installation records its state in
-`~/.tokamak-zk-evm/linux/docker/bootstrap.json`. Linux falls back to a valid
-native runtime when Docker is unavailable. Windows requires Docker Desktop
-because native backend execution is unsupported.
+Runtime mode is selected only by
+`~/.tokamak-zk-evm/<platform>/installation.json`. A Docker installation also
+stores its subordinate launch descriptor in
+`~/.tokamak-zk-evm/linux/docker/bootstrap.json`; the CLI validates that the
+descriptor's package version, Docker environment, and image name match the
+selected installation before invoking Docker. A residual descriptor cannot
+switch a native installation to Docker. After a valid Docker selection, Linux
+falls back to the installed native Linux runtime only when the Docker daemon is
+unavailable. Windows requires Docker Desktop because native backend execution
+is unsupported.
+
+### Runtime upgrades and ownership
+
+The cached runtime is valid only for the exact installed CLI package version.
+After upgrading or reinstalling `@tokamak-zk-evm/cli`, run `tokamak-cli
+--install` before running synthesis or backend commands. On Windows, use
+`tokamak-cli --install --docker` instead. The CLI does not reuse a runtime
+from a different package version.
+
+The installer manages CRS generations below its runtime cache and activates one
+generation through its own `setup/output` symbolic link. Do not replace that
+link with a path owned by another tool; the installer rejects an unmanaged
+active CRS link rather than replacing it.
 
 ## Commands
 
 | Command                     | Input                                         | Result                                                |
 | --------------------------- | --------------------------------------------- | ----------------------------------------------------- |
 | `--install`                 | Installation options                          | Prepared local runtime                                |
-| `--synthesize <DIR>`        | Four transaction replay JSON files            | Placement, instance, permutation, and state artifacts |
-| `--preprocess [DIR_OR_ZIP]` | Matching permutation and instance             | Verifier preprocessing commitments                    |
-| `--prove [DIR_OR_ZIP]`      | Matching placement, permutation, and instance | Proof                                                 |
+| `--synthesize <DIR>`        | Four transaction replay JSON files                      | Placement selector, placement, instance, permutation, and state artifacts |
+| `--preprocess [DIR_OR_ZIP]` | Matching selector, permutation, and instance            | Verifier preprocessing commitments                              |
+| `--prove [DIR_OR_ZIP]`      | Matching selector, placement, permutation, and instance | Proof                                                           |
 | `--verify [DIR_OR_ZIP]`     | Matching proof, preprocess, and instance      | Verification result                                   |
 | `--extract-proof <ZIP>`     | Completed cached workflow                     | Portable proof bundle                                 |
 | `--doctor`                  | Installed runtime                             | Runtime path and installation status                  |
@@ -136,8 +184,9 @@ Relative paths are resolved from the current working directory.
 must remain aligned. Storage-slot keys and trie database keys are not
 interchangeable.
 
-`TxSnapshot` contains `nonce`, `to`, hex calldata in `data`, `senderPubKey`,
-and optional signature strings `v`, `r`, and `s`.
+`TxSnapshot` contains `channelTransactionIndex`, `to`, hex calldata in `data`,
+`senderPubKey`, and optional signature strings `v`, `r`, and `s`. The index is
+the first signature-bound transaction word; it is not an Ethereum account nonce.
 
 `block_info.json` contains `0x`-prefixed `coinBase`, `timeStamp`,
 `blockNumber`, `prevRanDao`, `gasLimit`, `chainId`, `selfBalance`, and
@@ -176,33 +225,38 @@ Without an argument, backend commands use the preceding outputs in the runtime
 cache. A supplied directory or ZIP contains only transaction-specific files;
 the compatible CRS remains in the installed cache.
 
-| Command        | External input            | Role and acquisition                                         |
-| -------------- | ------------------------- | ------------------------------------------------------------ |
-| `--preprocess` | `permutation.json`        | Synthesizer wire-equality cycles                             |
-| `--preprocess` | `instance.json`           | Public and function-instance values from the same synthesis  |
-| `--prove`      | `placementVariables.json` | Placement IDs, offsets, and witnesses from synthesis         |
-| `--prove`      | `permutation.json`        | Matching Synthesizer permutation                             |
-| `--prove`      | `instance.json`           | Matching Synthesizer instance                                |
-| `--verify`     | `proof.json`              | Output of the matching prove run or a trusted proof producer |
-| `--verify`     | `preprocess.json`         | Commitments from the matching preprocess run                 |
-| `--verify`     | `instance.json`           | Instance asserted by the proof                               |
+| Command        | External input                       | Role and acquisition                                         |
+| -------------- | ------------------------------------ | ------------------------------------------------------------ |
+| `--preprocess` | `selector.json`                      | Synthesizer placement selector                               |
+| `--preprocess` | `permutation.json`                   | Synthesizer wire-equality cycles                             |
+| `--preprocess` | `instance.json`                      | Public and function-instance values from the same synthesis  |
+| `--prove`      | `selector.json`                      | Matching Synthesizer placement selector                      |
+| `--prove`      | `placementVariables.json`            | Placement IDs, offsets, and witnesses from synthesis         |
+| `--prove`      | `permutation.json`                   | Matching Synthesizer permutation                             |
+| `--prove`      | `instance.json`                      | Matching Synthesizer instance                                |
+| `--verify`     | `univariate_proof.bin`               | Binary proof emitted by the matching prove run               |
+| `--verify`     | `univariate_verifier_preprocess.bin` | Binary preprocess emitted by the matching preprocess run     |
+| `--verify`     | `instance.json`                      | Instance asserted by the proof                               |
 
 Installed setup files are:
 
-| Cache file              | Used by    | Format                                   |
-| ----------------------- | ---------- | ---------------------------------------- |
-| `sigma_preprocess.rkyv` | Preprocess | Opaque versioned Rust CRS archive        |
-| `combined_sigma.rkyv`   | Prove      | Opaque versioned Rust prover CRS archive |
-| `sigma_verify.json`     | Verify     | JSON verifier CRS                        |
+| Cache file             | Used by    | Format                                                   |
+| ---------------------- | ---------- | -------------------------------------------------------- |
+| `tau_sequence.rkyv`    | Prove      | Trusted setup tau sequence                              |
+| `prover_keys.rkyv`     | Prove      | Opaque versioned Rust prover keys                       |
+| `preprocess_keys.rkyv` | Preprocess | Opaque versioned Rust preprocess keys                   |
+| `verifier_keys.rkyv`   | Install    | Opaque versioned Rust verifier keys compiled into verify |
+| `crs_provenance.json`  | Setup      | Compatible CRS identity and artifact digest record       |
 
 Do not place setup files in an external transaction directory. Do not mix
 files from different synthesis runs or incompatible releases.
 
 ```text
-preprocess-input/       prove-input/                 verify-input/
-├── instance.json       ├── instance.json            ├── instance.json
-└── permutation.json    ├── permutation.json         ├── preprocess.json
-                        └── placementVariables.json  └── proof.json
+preprocess-input/       prove-input/                         verify-input/
+├── selector.json       ├── selector.json                    ├── instance.json
+├── instance.json       ├── instance.json                    ├── univariate_proof.bin
+└── permutation.json    ├── permutation.json                 └── univariate_verifier_preprocess.bin
+                        └── placementVariables.json
 ```
 
 ```bash
@@ -224,26 +278,25 @@ The default cache root is `~/.tokamak-zk-evm`; override it with
 └── prove/output
 ```
 
-Synthesis writes `placementVariables.json`, `instance.json`,
+Synthesis writes `placementVariables.json`, `selector.json`, `instance.json`,
 `instance_description.json`, `permutation.json`, and `state_snapshot.json`.
-Preprocess writes `preprocess.json`; prove writes `proof.json`.
+Preprocess writes `univariate_verifier_preprocess.bin`; prove writes
+`univariate_proof.bin`.
 `--synthesize` clears its previous output directory before writing.
 
 `--extract-proof <OUTPUT_ZIP_PATH>` writes to the requested path and includes:
 
-- `proof.json`
-- `preprocess.json`
+- `univariate_proof.bin`
+- `univariate_verifier_preprocess.bin`
 - `instance.json`
-- `instance_description.json`
-- `benchmark.json` when available
 
 ```bash
 tokamak-cli --extract-proof ./proof-bundle.zip
 tokamak-cli --verify ./proof-bundle.zip
 ```
 
-`--doctor` prints the absolute runtime path and verifies that the current
-platform has an installed runtime.
+`--doctor` prints the absolute runtime path and verifies that the current CLI
+package version has a valid installed runtime for the current platform.
 
 ## npm publication
 
@@ -270,8 +323,8 @@ security of the application, circuit library, setup, or surrounding protocol.
 
 ## Project and license
 
-- [Source](https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main/packages/cli)
-- [Issues](https://github.com/tokamak-network/Tokamak-zk-EVM/issues)
+- [Source](https://github.com/JehyukJang/Tokamak-zk-EVM/tree/main/packages/cli)
+- [Issues](https://github.com/JehyukJang/Tokamak-zk-EVM/issues)
 - [Native backend](../backend/README.md)
 
 Dual-licensed under `MIT OR Apache-2.0`. Dependencies retain their own

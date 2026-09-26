@@ -51,7 +51,7 @@ capture methods instead of recreating compatibility interfaces.
 The address-indexed arrays must stay aligned. `storageKeys` values are storage
 slots; `storageTrieDb[*][*].key` values are trie database keys.
 
-`transaction.json` contains `nonce`, `to`, hex calldata in `data`,
+`transaction.json` contains `channelTransactionIndex`, `to`, hex calldata in `data`,
 `senderPubKey`, and optional signature strings `v`, `r`, and `s`.
 
 `block_info.json` contains `0x`-prefixed `coinBase`, `timeStamp`,
@@ -100,6 +100,7 @@ as it writes the file.
 | File                        | Purpose                                               |
 | --------------------------- | ----------------------------------------------------- |
 | `placementVariables.json`   | Placement subcircuit IDs, offsets, and witness values |
+| `selector.json`             | Capacity-length placement selector for preprocessing and proving |
 | `instance.json`             | Public and function-instance field values             |
 | `instance_description.json` | Human-readable instance descriptions                  |
 | `permutation.json`          | Wire-equality cycles used by preprocess and prove     |
@@ -107,8 +108,8 @@ as it writes the file.
 
 `--output-supplement` additionally writes execution steps, expanded placements,
 and observed message-code addresses under `supplement/`. Keep
-`placementVariables.json`, `instance.json`, and `permutation.json` from the
-same run.
+`placementVariables.json`, `selector.json`, `instance.json`, and
+`permutation.json` from the same run.
 
 Transaction support follows the
 [shared Synthesizer boundary](../README.md#transaction-support).
@@ -132,8 +133,8 @@ surrounding protocol.
 
 ## Project and license
 
-- [Source](https://github.com/tokamak-network/Tokamak-zk-EVM/tree/main/packages/frontend/synthesizer/node-cli)
-- [Issues](https://github.com/tokamak-network/Tokamak-zk-EVM/issues)
+- [Source](https://github.com/JehyukJang/Tokamak-zk-EVM/tree/main/packages/frontend/synthesizer/node-cli)
+- [Issues](https://github.com/JehyukJang/Tokamak-zk-EVM/issues)
 - [Workspace overview](../README.md)
 
 Dual-licensed under `MIT OR Apache-2.0`.

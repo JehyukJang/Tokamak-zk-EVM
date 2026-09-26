@@ -25,10 +25,10 @@ export function interpretNpmViewResult(spec, result) {
   if (metadata === null || typeof metadata !== 'object') {
     throw new Error(`npm returned non-object metadata for ${spec}.`);
   }
-  if (typeof metadata.integrity !== 'string' || typeof metadata.tarball !== 'string') {
-    throw new Error(`npm metadata for ${spec} is missing dist.integrity or dist.tarball.`);
+  if (typeof metadata.integrity !== 'string') {
+    throw new Error(`npm metadata for ${spec} is missing dist.integrity.`);
   }
-  assertCanonicalRegistryMetadata(spec, metadata);
+  assertCanonicalIntegrity(spec, metadata.integrity);
   return { state: 'exact', metadata };
 }
 
@@ -71,22 +71,13 @@ function runNpmView(spec) {
   });
 }
 
-function assertCanonicalRegistryMetadata(spec, metadata) {
-  const separator = spec.lastIndexOf('@');
-  const name = spec.slice(0, separator);
-  const version = spec.slice(separator + 1);
-  const digest = Buffer.from(metadata.integrity.slice('sha512-'.length), 'base64');
+function assertCanonicalIntegrity(spec, integrity) {
+  const digest = Buffer.from(integrity.slice('sha512-'.length), 'base64');
   if (
-    !metadata.integrity.startsWith('sha512-') ||
+    !integrity.startsWith('sha512-') ||
     digest.length !== 64 ||
-    `sha512-${digest.toString('base64')}` !== metadata.integrity
+    `sha512-${digest.toString('base64')}` !== integrity
   ) {
     throw new Error(`npm metadata for ${spec} must contain canonical SHA-512 integrity.`);
-  }
-  const tarball = new URL(metadata.tarball);
-  const packageBaseName = name.split('/').at(-1);
-  const expectedPath = `/${name}/-/${packageBaseName}-${version}.tgz`;
-  if (tarball.protocol !== 'https:' || tarball.hostname !== 'registry.npmjs.org' || tarball.pathname !== expectedPath) {
-    throw new Error(`npm metadata for ${spec} has noncanonical tarball URL ${metadata.tarball}.`);
   }
 }

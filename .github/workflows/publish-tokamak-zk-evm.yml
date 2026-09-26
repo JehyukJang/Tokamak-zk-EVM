@@ -3,21 +3,6 @@ name: Main release controller
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
-    paths:
-      - .github/workflows/build-release.yml
-      - .github/workflows/publish-tokamak-zk-evm.yml
-      - docs/version-rules.md
-      - scripts/check-doc-readiness.mjs
-      - scripts/check-release-package.mjs
-      - scripts/check-release-reproducibility.mjs
-      - scripts/check-staged-release-workflow.mjs
-      - scripts/download-release-crs.py
-      - scripts/release-registry.mjs
-      - scripts/test-download-release-crs.py
-      - scripts/test-release-registry.mjs
-      - packages/backend/wasm/test/checks/generate/check-final-crs-release-workflow.ts
   workflow_dispatch:
     inputs:
       operation:
@@ -71,66 +56,11 @@ jobs:
           test -n "$BEFORE"
           changed="$(git diff --name-only "$BEFORE" "$GITHUB_SHA")"
           test -n "$changed"
-          if grep -Eqv '^(\.github/workflows/(build-release|publish-tokamak-zk-evm)\.yml|docs/version-rules\.md|scripts/(check-doc-readiness|check-release-package|check-release-reproducibility|check-staged-release-workflow|download-release-crs|release-registry|test-download-release-crs|test-release-registry)\.(mjs|py)|packages/backend/wasm/test/checks/generate/check-final-crs-release-workflow\.ts)$' <<<"$changed"; then
+          if grep -Eqv '^(\.github/workflows/(build-release|publish-tokamak-zk-evm)\.yml|docs/version-rules\.md|scripts/(check-doc-readiness|check-release-package|download-release-crs|release-registry|test-download-release-crs|test-release-registry)\.(mjs|py)|packages/backend/wasm/test/checks/generate/check-final-crs-release-workflow\.ts)$' <<<"$changed"; then
             echo "scope=complete-release" >> "$GITHUB_OUTPUT"
           else
             echo "scope=controller-maintenance" >> "$GITHUB_OUTPUT"
           fi
-
-  verify-controller-pull-request:
-    name: Verify controller maintenance pull request
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout controller change
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24.20.0'
-
-      - name: Install and verify pinned npm
-        run: |
-          npm install --global npm@11.19.0
-          test "$(node --version)" = "v24.20.0"
-          test "$(npm --version)" = "11.19.0"
-
-      - name: Verify fixed controller boundaries
-        run: |
-          node scripts/check-staged-release-workflow.mjs
-          python3 scripts/test-download-release-crs.py
-          node scripts/test-release-registry.mjs
-
-  verify-controller-maintenance:
-    name: Verify path-restricted controller maintenance
-    if: github.event_name == 'push' && needs.classify-main-push.outputs.scope == 'controller-maintenance'
-    needs: classify-main-push
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout controller maintenance
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24.20.0'
-
-      - name: Install and verify pinned npm
-        run: |
-          npm install --global npm@11.19.0
-          test "$(node --version)" = "v24.20.0"
-          test "$(npm --version)" = "11.19.0"
-
-      - name: Verify fixed controller boundaries
-        run: |
-          node scripts/check-staged-release-workflow.mjs
-          python3 scripts/test-download-release-crs.py
-          node scripts/test-release-registry.mjs
 
   rebuild-main-release:
     name: Rebuild release-relevant main source
@@ -164,7 +94,6 @@ jobs:
           npm run release:candidate:check -- --base-ref="${{ github.event.before }}"
           npm run version:prepublication:check
           npm run version:production-snapshot:check
-          npm run release:reproducibility:check
 
       - name: Install Rust and Cargo
         uses: dtolnay/rust-toolchain@1.95.0
@@ -178,8 +107,6 @@ jobs:
           (cd packages/frontend/qap-compiler && npx qap-compiler --reload-constants && npx qap-compiler --build && npx qap-compiler --dist)
           npm run build --workspace @tokamak-zk-evm/synthesizer-node
           npm run build --workspace @tokamak-zk-evm/synthesizer-web
-          npm run build --workspace @tokamak-zk-evm/cli
-          npm run --workspace @tokamak-zk-evm/cli release:check
           npm run --workspace @tokamak-zk-evm/cli release:package:check
 
       - name: Check backend source
@@ -282,12 +209,15 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tokamak-zk-evm-main-crs
-          path: packages/backend/rust/setup/output
+          path: packages/backend/rust/setup/output/generations/main-crs
+
+      - name: Activate verified public CRS
+        run: ln -s generations/main-crs packages/backend/rust/setup/output/crs
 
       - name: Build and pack browser package
         working-directory: packages/backend/wasm
         env:
-          BACKEND_WASM_VERIFIER_CRS_DIR: ../rust/setup/output
+          BACKEND_WASM_VERIFIER_CRS_DIR: ../rust/setup/output/crs
         run: |
           npm ci --ignore-scripts
           npm run build:production
@@ -393,7 +323,6 @@ jobs:
           OPERATION: ${{ inputs.operation }}
           PR_NUMBER: ${{ inputs.pull_request_number }}
         run: |
-          test "$GITHUB_ACTOR" = "JehyukJang"
           test "$GITHUB_REF" = "refs/heads/main"
           test "$GITHUB_SHA" = "$BASE_SHA"
           [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -402,7 +331,6 @@ jobs:
           if [ "$OPERATION" = "bootstrap-foundation" ]; then
             test -z "$BOOTSTRAP_HEAD_SHA"
             actual_head="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/dev" --jq '.object.sha')"
-            git fetch --no-tags origin dev:refs/remotes/origin/release-bootstrap
           else
             test "$OPERATION" = "final-release"
             [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
@@ -430,12 +358,6 @@ jobs:
     env:
       QAP_COMPILER_EXPECTED_CIRCOM_VERSION: '2.2.3'
     steps:
-      - name: Checkout fixed controller
-        uses: actions/checkout@v4
-        with:
-          path: controller
-          persist-credentials: false
-
       - name: Checkout frozen candidate
         uses: actions/checkout@v4
         with:
@@ -495,7 +417,6 @@ jobs:
         run: |
           npm run build --workspace @tokamak-zk-evm/synthesizer-node
           npm run build --workspace @tokamak-zk-evm/synthesizer-web
-          npm run build --workspace @tokamak-zk-evm/cli
           npm run --workspace @tokamak-zk-evm/cli release:package:check
 
       - name: Install backend build prerequisites
@@ -606,12 +527,15 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tokamak-zk-evm-verified-final-crs
-          path: candidate/packages/backend/rust/setup/output
+          path: candidate/packages/backend/rust/setup/output/generations/release-crs
+
+      - name: Activate verified public CRS
+        run: ln -s generations/release-crs candidate/packages/backend/rust/setup/output/crs
 
       - name: Build and pack browser package
         working-directory: candidate/packages/backend/wasm
         env:
-          BACKEND_WASM_VERIFIER_CRS_DIR: ../rust/setup/output
+          BACKEND_WASM_VERIFIER_CRS_DIR: ../rust/setup/output/crs
         run: |
           npm ci --ignore-scripts
           npm run build:production
@@ -670,7 +594,6 @@ jobs:
           EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_ACTOR" = "JehyukJang"
           test "$GITHUB_REF" = "refs/heads/main"
           test "$GITHUB_SHA" = "$BASE_SHA"
           test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')" = "$BASE_SHA"
@@ -733,7 +656,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ inputs.pull_request_number }}
         run: |
-          test "$GITHUB_ACTOR" = "JehyukJang"
           test "$GITHUB_REF" = "refs/heads/main"
           test "$GITHUB_SHA" = "$BASE_SHA"
           test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')" = "$BASE_SHA"

@@ -10,13 +10,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const require = createRequire(import.meta.url);
 const packageRoot = path.resolve(__dirname, '..');
-const repoRoot = path.resolve(packageRoot, '..', '..', '..');
 const distDir = path.resolve(packageRoot, 'dist');
 const rootPackageJsonPath = path.resolve(packageRoot, 'package.json');
 const readmePath = path.resolve(packageRoot, 'README.md');
 const libraryDir = path.resolve(packageRoot, 'subcircuits/library');
 const constantsPath = path.resolve(packageRoot, 'subcircuits/circom/constants.circom');
-const expectedCircomVersion = process.env.QAP_COMPILER_EXPECTED_CIRCOM_VERSION ?? null;
+const expectedCircomVersion = '2.2.3';
 
 const resolvePackageJsonPath = packageName => {
   let currentPath = path.dirname(require.resolve(packageName, { paths: [packageRoot] }));

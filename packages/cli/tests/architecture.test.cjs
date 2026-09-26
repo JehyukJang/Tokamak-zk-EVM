@@ -9,14 +9,53 @@ const requiredRuntimeModules = new Set([
   'context.ts',
   'docker.ts',
   'download.ts',
+  'drive-listing.ts',
+  'identity.ts',
   'icicle.ts',
   'model.ts',
   'native.ts',
+  'operation-lock.ts',
+  'stage-transaction.ts',
   'setup.ts',
+  'transaction.ts',
+  'verification-result.ts',
 ]);
 const runtimeDomains = new Set(['docker.ts', 'icicle.ts', 'native.ts', 'setup.ts']);
-const runtimeFoundations = new Set(['context.ts', 'model.ts']);
+const runtimeFoundations = new Set([
+  'context.ts',
+  'drive-listing.ts',
+  'identity.ts',
+  'model.ts',
+  'operation-lock.ts',
+  'stage-transaction.ts',
+  'transaction.ts',
+]);
 const allowedDownloadConsumers = new Set(['icicle.ts', 'setup.ts']);
+const reviewedTopLevelDependencies = new Map([
+  ['system.ts', new Set()],
+  ['prerequisites.ts', new Set(['system.ts'])],
+  ['runtime.ts', new Set([
+    'prerequisites.ts',
+    'runtime/context.ts',
+    'runtime/docker.ts',
+    'runtime/icicle.ts',
+    'runtime/model.ts',
+    'runtime/native.ts',
+    'runtime/setup.ts',
+    'runtime/transaction.ts',
+    'system.ts',
+  ])],
+  ['prepare-runtime.ts', new Set(['prerequisites.ts', 'runtime.ts', 'runtime/model.ts'])],
+  ['cli.ts', new Set([
+    'runtime.ts',
+    'system.ts',
+    'generated/backend-build-metadata-validator.generated.ts',
+    'runtime/identity.ts',
+    'runtime/operation-lock.ts',
+    'runtime/stage-transaction.ts',
+    'runtime/verification-result.ts',
+  ])],
+]);
 
 function sourceFiles(root) {
   return fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
@@ -57,7 +96,28 @@ test('runtime modules preserve the reviewed acyclic dependency boundaries', () =
   assert.deepEqual(actualRuntimeModules, requiredRuntimeModules);
 
   const modelPath = path.join(sourceRoot, 'runtime', 'model.ts');
-  assert.deepEqual(graph.get(modelPath), [], 'runtime/model.ts must contain types only');
+  assert.deepEqual(
+    (graph.get(modelPath) ?? []).filter((dependency) => path.dirname(dependency) === path.join(sourceRoot, 'runtime')),
+    [],
+    'runtime/model.ts must not depend on runtime behavior modules',
+  );
+
+  for (const [sourceName, allowedDependencies] of reviewedTopLevelDependencies) {
+    const sourcePath = path.join(sourceRoot, sourceName);
+    const actualDependencies = new Set((graph.get(sourcePath) ?? []).map(relativeName));
+    assert.deepEqual(
+      actualDependencies,
+      allowedDependencies,
+      `${sourceName} must use only its documented direct dependency direction`,
+    );
+  }
+
+  const systemPath = path.join(sourceRoot, 'system.ts');
+  assert.deepEqual(
+    graph.get(systemPath) ?? [],
+    [],
+    'system.ts must not depend on runtime domains',
+  );
 
   for (const domainName of runtimeDomains) {
     const domainPath = path.join(sourceRoot, 'runtime', domainName);

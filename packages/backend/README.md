@@ -1,203 +1,291 @@
-# Tokamak zk-EVM native backend
+# Tokamak zk-EVM Backend
 
-Rust workspace implementing the Tokamak zk-SNARK setup, preprocessing, proving,
-and verification algorithms described in the
-[protocol paper](https://eprint.iacr.org/2024/507).
+This package group contains the Rust implementations of the backend algorithms described in the
+[Tokamak zk-SNARK manuscript](https://eprint.iacr.org/2024/507).
 
-Use this guide when operating an individual Rust binary or contributing to the
-backend. For an end-to-end local workflow, use the
-[`@tokamak-zk-evm/cli`](../cli/README.md).
+The backend is organized around five user-facing binaries:
 
-In this guide, CRS means the common reference string used by the proving
-system, R1CS means the rank-1 constraint system that represents circuit
-constraints, and QAP means the corresponding quadratic arithmetic program.
+- `trusted-setup`
+- `mpc`
+- `preprocess`
+- `prove`
+- `verify`
+
+`trusted-setup` generates development-only CRS artifacts. `mpc` implements
+Tokamak phase 2 using the externally completed Filecoin phase 1. Both emit the
+four common CRS files. For a transcript created with `--step init`, MPC verifies
+the transcript and finalizes a release-eligible CRS locally. A separate
+`upload` operation sends that completed CRS to Google Drive without replaying
+the ceremony or regenerating keys.
+`preprocess`, `prove`, and `verify` accept any CRS whose compatibility version matches the selected
+subcircuit library, together with transaction-specific data from the frontend synthesizer.
 
 ## Components
 
-| Binary                  | Responsibility                                                |
-| ----------------------- | ------------------------------------------------------------- |
-| `trusted-setup`         | Generate a CRS with one trusted setup operator                |
-| `native_mpc_setup`      | Run Tokamak phase 1 and phase 2                               |
-| `dusk_backed_mpc_setup` | Derive phase 2 from a pinned Dusk powers-of-tau artifact      |
-| `preprocess`            | Commit permutation and fixed function-instance data           |
-| `prove`                 | Generate a proof for one synthesized transaction              |
-| `verify`                | Verify the proof, preprocess commitments, and public instance |
+| Binary                  | Responsibility                                                                       |
+| ----------------------- | ------------------------------------------------------------------------------------ |
+| `trusted-setup`         | Generate a local-development four-file CRS.                                          |
+| `mpc` | Manage phase 2 initialization and contributions; `finalize` verifies the transcript and derives the CRS, while `upload` sends the finalized CRS to Google Drive. |
+| `preprocess`            | Commit permutation and fixed function-instance data.                                 |
+| `prove`                 | Generate a proof for one synthesized transaction.                                    |
+| `verify`                | Verify the proof, preprocess commitments, and public instance.                       |
 
 ## Distribution
 
 The backend is not published as a standalone npm or crates.io package. Users
 obtain the supported native workflow through
 [`@tokamak-zk-evm/cli`](https://www.npmjs.com/package/@tokamak-zk-evm/cli),
-which ships the compatible source, builds it locally, and installs its runtime
-resources.
-
-See [CHANGELOG.md](../../CHANGELOG.md) for consumer-facing changes. The direct
-Cargo commands below are for backend operators and repository contributors.
+which supplies compatible source and runtime resources. The direct Cargo
+commands in this document are for backend operators and repository contributors.
 
 ## Prerequisites
 
-- Rust and Cargo
-- Node.js and npm
-- CMake and a working C/C++ toolchain
-- Circom for setup and local subcircuit-library generation
-- Platform dependencies documented by the [CLI](../cli/README.md)
+- Node.js: https://nodejs.org/
+- Circom: https://docs.circom.io/getting-started/installation/
+- Rust: https://www.rust-lang.org/tools/install
+- CMake: https://cmake.org/download/
 
-Run commands from the backend workspace:
+Run all commands from:
 
 ```bash
-cd /path/to/Tokamak-zk-EVM/packages/backend
+cd "$REPO_ROOT/packages/backend"
 ```
 
-## Circuit library
+## Subcircuit library selection
 
-All binaries use the same binary R1CS subcircuit library.
-
-- Release builds of `trusted-setup`, `preprocess`, `prove`, and `verify` embed
-  the library selected at build time.
-- Non-release builds require
-  `--subcircuit-library ../frontend/qap-compiler/subcircuits/library`.
-- MPC builds prepare the local QAP compiler output and record it in
-  `build-metadata-mpc-setup.json`.
-
-The selected directory must contain `r1cs/subcircuit<N>.r1cs`. JSON R1CS files
-are not accepted.
-
-## Setup
-
-### Trusted setup
+All backend binaries consume the same subcircuit library generated by the frontend QAP compiler.
+The input-source feature determines whether a binary accepts a runtime library
+path; Cargo's profile determines build optimization. The default and development selection is
+`local-development-subcircuit-library`; it requires
+`--subcircuit-library <PATH>` even with Cargo's release profile. The explicit production selection
+is `production-npm-subcircuit-library`; it embeds the npm snapshot and does not take
+`--subcircuit-library`. Because the development feature is the default, production commands use
+`--no-default-features --features production-npm-subcircuit-library` and require
+Cargo's release profile. The local path must point to a generated
+subcircuit-library directory, typically:
 
 ```bash
-cargo run --release -p trusted-setup -- \
-  --output ./setup/trusted-setup/output
+../frontend/qap-compiler/subcircuits/library
 ```
 
-For a non-release build:
+The backend only reads binary R1CS constraint files from the selected library:
+
+```text
+<PATH>/r1cs/subcircuit0.r1cs
+<PATH>/r1cs/subcircuit1.r1cs
+...
+```
+
+JSON R1CS files are not accepted by backend binaries.
+
+MPC source selection is explicit. The local feature selects frontend QAP compiler
+output and its explicit runtime path; the production feature selects the npm
+snapshot and additionally requires Cargo's release profile. The build records
+the selected input origin in final CRS provenance, and the MPC setup flow still
+consumes only `r1cs/subcircuit*.r1cs` from it.
+
+## Setup Flows
+
+### `trusted-setup`
+
+Generates the current univariate CRS directly from the subcircuit library for local development and testing. Its
+output is never release-eligible and must not be deployed or published. This holds even when the
+binary itself is built with Cargo's release profile.
+
+The generated `crs_provenance.json` records `releaseEligible: false`. Google Drive publication
+rejects it. The direct trusted-setup CRS has no compatibility-version metadata, so the documented
+local development workflow uses it with the explicit `--allow-unverified-crs` option.
+
+Repository-local development example:
 
 ```bash
-cargo run -p trusted-setup -- \
+cargo run --locked --release -p trusted-setup -- \
   --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
-  --output ./setup/trusted-setup/output
+  --output ./rust/setup/output/crs
 ```
 
-### MPC setup
+### `mpc`
 
-Use the [MPC operator guide](./setup/mpc-setup/README.md) for native and
-Dusk-backed commands, ceremony configuration, provenance checks, publication,
-and the phase-2 trust limitation.
+Each invocation prepares its own circuit snapshot and authenticates the complete original Filecoin source. `--step init` starts a publish ceremony from npm; `--step init-dev` starts a development ceremony from the local QAP build and requires `--subcircuit-library`. On `init`, pass `--library-version MAJOR.MINOR.PATCH` to select an exact npm version, or omit it to select the latest published version compatible with the backend's `MAJOR.MINOR` version. The selected version is recorded in the transcript and CRS provenance. Later `contribute` and `finalize` steps infer the source mode and exact npm version from their input transcript; development transcripts require the local `--subcircuit-library` path on each step. `--library-version` is rejected outside `--step init`; `upload` accepts only a finalized CRS directory and does not read a transcript. Both source modes use the same repository-built release executable. There is no repository phase 1, standalone import receipt or source-check bypass. For development initialization:
 
-### Setup outputs
+```sh
+cargo run --locked --release -p mpc-setup --bin mpc -- \
+  --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
+  --step init-dev --filecoin-source /path/to/challenge_19 --output ./initial.mpc
+```
 
-| File                    | Role                                                    | Used by                            |
-| ----------------------- | ------------------------------------------------------- | ---------------------------------- |
-| `combined_sigma.rkyv`   | Opaque versioned prover CRS archive                     | `prove` and browser CRS conversion |
-| `sigma_preprocess.rkyv` | Opaque versioned preprocessing CRS archive              | `preprocess`                       |
-| `sigma_verify.json`     | Verifier CRS in JSON                                    | `verify`                           |
-| `crs_provenance.json`   | Ceremony source, version, publication, and SHA-256 data | Artifact authentication            |
+The transcript output path must not already exist. Subsequent operations repeat original-source authentication. Initialization does not upload. Finalizing a transcript created with `--step init` verifies it and writes a release-eligible CRS locally; `--step upload --crs-directory <directory>` transfers that completed CRS to Google Drive. See the [MPC operator guide](rust/setup/mpc-setup/README.md#upload-a-finalized-crs) for configuration, retry behavior and qualification limits.
 
-Generate these files with a setup command or download the compatible immutable
-archive from the
-[CRS release folder](https://drive.google.com/drive/folders/14xqCbLoyoVmUVTTlopiXtKnoHPBGL-Sv).
-Keep the set together and verify `crs_provenance.json`. Do not edit or
-reserialize `.rkyv` files.
+## Setup outputs and common provenance
+
+The backend-owned CRS interface consists of four RKYV payloads:
+
+- `tau_sequence.rkyv`: generic tau sequences used by preprocessing and proving.
+- `prover_keys.rkyv`: prover-only specialized keys.
+- `preprocess_keys.rkyv`: keys for the preprocessing commitments, including C_fix.
+- `verifier_keys.rkyv`: online-verification keys.
+
+The single [CRS provenance contract](common/contracts/crs-provenance-contract.json)
+applies independently of the generation algorithm. Its `documentKind` is
+always `crs`; `generationMethod` records `trustedSetup` or `mpc` as data,
+not as a choice of document shape or parser. Both methods must use the same
+four filenames and formats.
+
+The document records `protocolSchemaId`, `generatedAtUtc`,
+`compatibleBackendVersion`, `subcircuitLibrary`, `releaseEligible`, and
+`artifacts`, a filename-to-SHA-256 mapping for all four payloads.
+`subcircuitLibrary` contains the package name, package version, input origin
+and source digest. Package-version syntax and compatibility classes follow
+the repository-root version policy.
+
+The phase-2 fields `phase1SourceProvenance`, `ceremonyProtocolVersion`,
+`ceremonyTranscriptSha256` and `phase2ContributionCount` are explicitly `null`
+for trusted setup. MPC generation records the transcript digest and the
+verified cumulative number of phase-2 contributions. Trusted
+setup always writes `releaseEligible: false`. A common parser validates
+document shape, not publication authority. Finalizing a transcript created with
+`--step init-dev` writes `releaseEligible: false`; finalizing one created with
+`--step init` marks the verified result eligible and saves it locally. The
+separate `upload` operation checks the completed CRS metadata and payload
+digests before transferring those files to Google Drive. Algorithm consumers
+do not require `releaseEligible: true`.
+
+Native prove checks content digests only with `--check-digests`, as described
+below. Parsing the document is not a cryptographic check of CRS generation.
+
+The former algorithm-specific provenance documents are not accepted or
+automatically converted. Generate a new development CRS with the current
+trusted-setup command. MPC finalization uses this same contract and the same serializers.
+Its source field records Filecoin's original URL and BLAKE2b-512 digest; the transcript SHA-256
+identifies the complete public contribution file. See the MPC guide for actual qualification status.
 
 ## Preprocess, prove, and verify
 
-The Synthesizer files in each command must come from the same transaction.
+### `preprocess`
 
-### Preprocess
+Consumes:
 
-```bash
-cargo run --release -p preprocess -- \
-  --crs ./setup/output \
-  --synthesizer-stat ./synthesizer/output \
-  --output ./preprocess/output
-```
+- the subcircuit library
+- `preprocess_keys.rkyv` and `crs_provenance.json` from the CRS directory
+- synthesizer outputs: `selector.json`, `permutation.json`, and `instance.json`
 
-| Input                   | Role                                | Acquisition                                              |
-| ----------------------- | ----------------------------------- | -------------------------------------------------------- |
-| `sigma_preprocess.rkyv` | Preprocessing CRS                   | Compatible setup output or authenticated release archive |
-| `permutation.json`      | Wire-equality cycles                | Synthesizer output                                       |
-| `instance.json`         | Public and function-instance values | Same Synthesizer run                                     |
-| Binary R1CS library     | Constraint definitions              | Embedded release library or explicit non-release path    |
+Produces:
 
-Output: `preprocess.json`, containing verifier commitments as hex strings.
+- `univariate_verifier_preprocess.bin`: the common 384-byte binary output
+  containing `S_C`, `C_fix`, and `E_kappa`
 
-### Prove
+CLI package example:
 
 ```bash
-cargo run --release -p prove -- \
-  --crs ./setup/output \
-  --synthesizer-stat ./synthesizer/output \
-  --output ./prove/output
+tokamak-cli --preprocess
 ```
 
-| Input                     | Role                                  | Acquisition                                              |
-| ------------------------- | ------------------------------------- | -------------------------------------------------------- |
-| `combined_sigma.rkyv`     | Prover CRS                            | Compatible setup output or authenticated release archive |
-| `placementVariables.json` | Placement IDs, offsets, and witnesses | Synthesizer output                                       |
-| `permutation.json`        | Wire-equality cycles                  | Same Synthesizer run                                     |
-| `instance.json`           | Public and function-instance values   | Same Synthesizer run                                     |
-| Binary R1CS library       | Constraint definitions                | Embedded release library or explicit non-release path    |
+### `prove`
 
-Output: `proof.json`, using the native verifier/Solidity-compatible field and
-point representation.
+Consumes:
 
-### Verify
+- the subcircuit library
+- CRS artifacts from setup
+- synthesizer outputs
+
+Produces:
+
+- `univariate_proof.bin`: the common 1,184-byte proof (10 affine G1 points,
+  then 7 scalars). No JSON proof is written.
+
+The native command defaults to arkworks CPU arithmetic. `--device cuda`
+explicitly selects ICICLE CUDA and fails if CUDA is unavailable; it never
+silently switches to CPU. The CPU path skips ICICLE backend discovery and
+device initialization, although the shared native package still links ICICLE
+libraries. Hardware selection does not change the local-QAP/npm input policy.
+
+By default, native `prove` validates the provenance format and library package
+name, version and origin without checking content digests. CRS decoding and
+protocol shape checks still run. Add `--check-digests` to also verify the
+SHA-256 digests of `tau_sequence.rkyv`, `prover_keys.rkyv` and
+`verifier_keys.rkyv`, and the library `sourceDigest`. This option does not hash
+`preprocess_keys.rkyv`. Matching metadata alone does not establish that the
+file contents match those recorded by setup. `--check-digests` cannot be
+combined with the development-only `--allow-unverified-crs` bypass.
+
+Repository-local release example, using an existing current-protocol CRS:
 
 ```bash
-cargo run --release -p verify -- \
-  --crs ./setup/output \
-  --synthesizer-stat ./synthesizer/output \
-  --preprocess ./preprocess/output \
-  --proof ./prove/output
+cargo run --locked --release -p prove --features timing -- \
+  --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
+  --tau-sequence CRS_DIRECTORY/tau_sequence.rkyv \
+  --keys CRS_DIRECTORY \
+  --synthesizer-stat FIXTURE_DIRECTORY \
+  --output ./rust/prove/output
 ```
 
-| Input               | Role                                                           | Acquisition                                           |
-| ------------------- | -------------------------------------------------------------- | ----------------------------------------------------- |
-| `sigma_verify.json` | Verifier CRS                                                   | Matching setup output                                 |
-| `instance.json`     | Public values asserted by the proof                            | Matching Synthesizer run or proof bundle              |
-| `preprocess.json`   | Commitments for the matching permutation and function instance | Matching preprocess run                               |
-| `proof.json`        | Proof to verify                                                | Matching prove run or trusted producer                |
-| Binary R1CS library | Constraint definitions                                         | Embedded release library or explicit non-release path |
+Add `--device cuda` after `--` only on a configured CUDA host. The native
+preprocess/verifier and browser runtime use the same current common proof and
+preprocess layouts. See the
+[current-protocol measurements](docs/optimization/current-univariate-crs.md).
 
-Output: `true` or `false` on stdout.
+### `verify`
 
-```text
-setup/output/        synthesizer/output/       preprocess/output/   prove/output/
-├── combined_sigma.rkyv  ├── instance.json        └── preprocess.json  └── proof.json
-├── sigma_preprocess.rkyv├── permutation.json
-└── sigma_verify.json    └── placementVariables.json
+Consumes:
+
+- `univariate_verifier_preprocess.bin` emitted by `preprocess`
+- `univariate_proof.bin` emitted by `prove`
+- the synthesizer's `instance.json` free-public statement
+
+Produces:
+
+- `true` or `false` on stdout
+
+CLI package example:
+
+```bash
+tokamak-cli --verify
 ```
 
-The CRS, circuit library, Synthesizer output, preprocess commitments, proof,
-and backend must belong to compatible release lines.
+## Contributor tooling
 
-## Performance and debugging
-
-- [Measured native proving report](./prove/optimization/timing.release.md)
-- [Raw timing data](./prove/optimization/timing.release.json)
-- VS Code launch configurations: `.vscode/launch.json`
-
-Timing results are reference observations for their recorded environment, not
-deployment guarantees.
+VS Code debugging is optional and requires the
+[CodeLLDB extension](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb).
+The repository launch configurations, their local-development CRS exception,
+and their safety boundaries are documented in the
+[backend contributor guide](docs/development.md). They are not release
+qualification commands.
 
 ## Security and operator responsibilities
 
-Setup operators own ceremony integrity, contributor coordination, provenance,
-digest publication, and disposal of trusted-setup secrets. Artifact consumers
-must authenticate the source and verify published digests.
+Use only a CRS and subcircuit library whose release identities and
+compatibility class match the backend. Verify artifact digests and provenance
+before loading them, and keep OAuth credentials and tokens outside version
+control. Trusted setup is development-only. MPC generation alone does not
+authorize publication: only finalization of a completed transcript created
+with `--step init` can produce release-eligible CRS output. The separate upload
+operation transfers an already finalized output and does not repeat ceremony
+verification.
+Live ceremony qualification and the deferred phase-2 security-boundary review
+remain separate operator responsibilities.
 
-Protect witnesses, instances, proofs, and transaction-derived files according
-to the application's data policy. Keep RPC credentials and signing keys out of
-backend directories. Backend commands can consume substantial CPU, GPU,
-memory, disk, and time; apply suitable limits and isolation. A successful
-proof or `true` result does not establish the security of the application,
-circuit library, setup, distribution channel, or surrounding protocol.
+The operator remains responsible for securing ceremony state, authenticating
+the publication destination, reviewing the documented phase-2 trust
+limitations, and preserving the exact artifacts used by downstream proving and
+verification. A successful command does not by itself establish that a setup or
+deployment satisfies an application's security requirements.
 
-## Project and license
+## Performance and design evidence
 
-- [CLI package](../cli/README.md)
-- [Subcircuit Library](../frontend/qap-compiler/README.md)
-- [Contributing](../../CONTRIBUTING.md)
+Current-protocol setup and proving qualification is recorded in the
+[backend optimization reports](docs/optimization/). The retained
+[earlier-implementation CPU timing report](rust/prove/optimization/timing.local.cpu.current.md)
+is historical context only and is not a current protocol or end-to-end baseline.
+
+## Contributing
+
+See [../../CONTRIBUTING.md](../../CONTRIBUTING.md).
+
+## Original Contribution
+
+- [JehyukJang](https://github.com/JehyukJang): algorithm design, analysis, implementation, and optimization
+- [jason hwang](https://github.com/cd4761): parallel-computing optimization
+
+## License
 
 The native backend is dual-licensed under `MIT OR Apache-2.0`.

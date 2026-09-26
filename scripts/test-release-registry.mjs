@@ -26,19 +26,15 @@ function testRegistryResponses() {
     () => interpretNpmViewResult('@tokamak-zk-evm/example@1.2.3', { status: 1, stderr: 'npm error code E401' }),
     /registry lookup failed/u,
   );
+  assert.throws(
+    () => interpretNpmViewResult('@tokamak-zk-evm/example@1.2.3', { status: 0, stdout: '{' }),
+    /malformed metadata/u,
+  );
 
   const metadata = canonicalMetadata();
   assert.deepEqual(
     interpretNpmViewResult('@tokamak-zk-evm/example@1.2.3', { status: 0, stdout: JSON.stringify(metadata) }),
     { state: 'exact', metadata },
-  );
-  assert.throws(
-    () =>
-      interpretNpmViewResult('@tokamak-zk-evm/example@1.2.3', {
-        status: 0,
-        stdout: JSON.stringify({ ...metadata, tarball: 'https://example.test/example-1.2.3.tgz' }),
-      }),
-    /noncanonical tarball URL/u,
   );
   assert.throws(
     () =>

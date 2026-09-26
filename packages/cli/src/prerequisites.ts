@@ -703,6 +703,18 @@ export function detectManagedPrerequisites(
     });
 }
 
+/**
+ * Returns the managed prerequisite set required by a native backend install.
+ * Drive provisions individual files, so neither installation mode needs unzip.
+ */
+export function detectNativeInstallPrerequisites(
+  os: SupportedNativeOs,
+  probe: CommandProbe = createSystemCommandProbe(),
+): PrerequisiteStatus[] {
+  return detectManagedPrerequisites(os, probe)
+    .filter((status) => status.id !== 'unzip');
+}
+
 export function prerequisiteVerificationFailures(
   statuses: readonly PrerequisiteStatus[],
 ): string[] {

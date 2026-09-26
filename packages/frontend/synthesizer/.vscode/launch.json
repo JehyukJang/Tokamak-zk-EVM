@@ -20,27 +20,6 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "L2 transfer on mainnet/sepolia",
-      "runtimeExecutable": "node",
-      "program": "${workspaceFolder}/examples/config-runner.ts",
-      "args": [
-        "erc20-transfer",
-        "${workspaceFolder}/examples/erc20Transfers/usdt/config-usdt-sepolia.json",
-        "--output-supplement"
-      ],
-      "cwd": "${workspaceFolder}/node-cli",
-      "skipFiles": [
-        "<node_internals>/**"
-      ],
-      "console": "integratedTerminal",
-      "runtimeArgs": [
-        "--import",
-        "tsx"
-      ]
-    },
-    {
-      "type": "node",
-      "request": "launch",
       "name": "Private-state mintNotes1 on anvil",
       "runtimeExecutable": "node",
       "program": "${workspaceFolder}/node-cli/src/cli/index.ts",

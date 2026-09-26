@@ -50,9 +50,12 @@ COPY manifests ./manifests
 COPY vendor ./vendor
 
 RUN test -f dist/cli.js \
+    && test -f dist/prepare-runtime.js \
     && test -f manifests/icicle-v3.8.0.json \
     && test -f manifests/cmake-v3.27.4.json \
     && test -f vendor/backend/Cargo.toml \
+    && test -f vendor/backend/cli-vendor-product.json \
+    && test -f vendor/backend/versioning/compatibility.rs \
     && chmod -R a+rwx /opt/tokamak-cli
 
 ENTRYPOINT ["node", "/opt/tokamak-cli/dist/cli.js"]
