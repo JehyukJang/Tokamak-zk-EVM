@@ -111,10 +111,10 @@ Each invocation prepares its own circuit snapshot and authenticates the complete
 ```sh
 cargo run --locked --release -p mpc-setup --bin mpc -- --mode development \
   --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
-  init --filecoin-source /path/to/challenge_19 --output ./initial.mpc
+  --step init --filecoin-source /path/to/challenge_19 --output ./initial.mpc
 ```
 
-The transcript output path must not already exist. Subsequent operations repeat original-source authentication. Initialization does not upload. In publish mode, `finalize --input <transcript> --output <directory>` verifies the transcript and writes a release-eligible CRS locally; `upload --crs-directory <directory>` transfers that completed CRS to Google Drive. See the [MPC operator guide](rust/setup/mpc-setup/README.md#upload-a-finalized-crs) for configuration, retry behavior and qualification limits.
+The transcript output path must not already exist. Subsequent operations repeat original-source authentication. Initialization does not upload. In publish mode, `--step finalize --input <transcript> --output <directory>` verifies the transcript and writes a release-eligible CRS locally; `--step upload --crs-directory <directory>` transfers that completed CRS to Google Drive. See the [MPC operator guide](rust/setup/mpc-setup/README.md#upload-a-finalized-crs) for configuration, retry behavior and qualification limits.
 
 ## Setup outputs and common provenance
 

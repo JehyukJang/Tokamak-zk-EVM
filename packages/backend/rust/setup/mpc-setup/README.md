@@ -51,19 +51,19 @@ cargo build --locked --release -p mpc-setup --bin mpc
 
 target/release/mpc --mode development \
   --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
-  init --filecoin-source /path/to/challenge_19 --output ./initial.mpc
+  --step init --filecoin-source /path/to/challenge_19 --output ./initial.mpc
 
 target/release/mpc --mode development \
   --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
-  contribute --filecoin-source /path/to/challenge_19 --input ./initial.mpc --output ./alice.mpc
+  --step contribute --filecoin-source /path/to/challenge_19 --input ./initial.mpc --output ./alice.mpc
 
 target/release/mpc --mode development \
   --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
-  contribute --filecoin-source /path/to/challenge_19 --input ./alice.mpc --output ./bob.mpc
+  --step contribute --filecoin-source /path/to/challenge_19 --input ./alice.mpc --output ./bob.mpc
 
 target/release/mpc --mode development \
   --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
-  finalize --filecoin-source /path/to/challenge_19 --input ./bob.mpc --output ./final-keys
+  --step finalize --filecoin-source /path/to/challenge_19 --input ./bob.mpc --output ./final-keys
 ```
 
 For a publish ceremony, remove `--subcircuit-library ...` and replace
@@ -98,7 +98,7 @@ CRS directory, upload only that completed output:
 
 ```sh
 target/release/mpc --mode publish \
-  upload --crs-directory ./rust/setup/output/crs
+  --step upload --crs-directory ./rust/setup/output/crs
 ```
 
 The upload operation does not accept a transcript, library version, or Filecoin

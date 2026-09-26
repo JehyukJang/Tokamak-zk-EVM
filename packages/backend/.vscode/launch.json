@@ -63,6 +63,7 @@
         "development",
         "--subcircuit-library",
         "${workspaceFolder}/../frontend/qap-compiler/subcircuits/library",
+        "--step",
         "init",
         "--output",
         "${workspaceFolder}/rust/setup/mpc-setup/output/initial.mpc"
@@ -100,6 +101,7 @@
       "args": [
         "--mode",
         "publish",
+        "--step",
         "init",
         "--filecoin-source",
         "${workspaceFolder}/rust/setup/mpc-setup/filecoin-phase1/challenge_19",
@@ -139,6 +141,7 @@
       "args": [
         "--mode",
         "publish",
+        "--step",
         "upload",
         "--crs-directory",
         "${workspaceFolder}/rust/setup/output/crs"
