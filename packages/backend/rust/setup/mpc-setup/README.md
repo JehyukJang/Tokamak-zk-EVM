@@ -81,7 +81,7 @@ operator can verify it, derive the final CRS, and upload it:
 
 ```sh
 target/release/mpc --mode publish --library-version <exact-compatible-version> \
-  publish --input /path/to/final.mpc --output ./publication-keys \
+  publish --input /path/to/final.mpc --output ./rust/setup/output/crs \
   --filecoin-source /path/to/challenge_19
 ```
 

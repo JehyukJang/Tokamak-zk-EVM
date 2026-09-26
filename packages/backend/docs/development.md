@@ -31,8 +31,10 @@ authenticates the pinned Filecoin source. It never publishes a CRS.
 `MPC: publish verified ceremony to Google Drive (npm)` passes its version,
 transcript, CRS output directory, and Filecoin source as command-line arguments.
 It verifies the completed ceremony and uploads the CRS. Its paths use the
-current `setup/mpc-setup/output`, `setup/output`, and
-`setup/mpc-setup/filecoin-phase1` layout. Configure the operator environment
+current `setup/mpc-setup/output` transcript directory, shared
+`setup/output/crs` active CRS path, and `setup/mpc-setup/filecoin-phase1`
+source layout. Both trusted-setup and MPC create CRS generations under
+`setup/output/generations`. Configure the operator environment
 described in the [MPC operator guide](../rust/setup/mpc-setup/README.md) before
 using it.
 

@@ -13,7 +13,7 @@ From `packages/backend`, with the native dependency loader configured as in
 the backend development environment:
 
 ```sh
-TOKAMAK_VERIFIER_KEYS="$PWD/rust/setup/trusted-setup/output/debug-keys/verifier_keys.rkyv" \
+TOKAMAK_VERIFIER_KEYS="$PWD/rust/setup/output/crs/verifier_keys.rkyv" \
   cargo build --locked --release -p verify
 
 ./target/release/verify \

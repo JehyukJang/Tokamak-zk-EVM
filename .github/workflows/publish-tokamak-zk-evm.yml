@@ -209,12 +209,15 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tokamak-zk-evm-main-crs
-          path: packages/backend/rust/setup/output
+          path: packages/backend/rust/setup/output/generations/main-crs
+
+      - name: Activate verified public CRS
+        run: ln -s generations/main-crs packages/backend/rust/setup/output/crs
 
       - name: Build and pack browser package
         working-directory: packages/backend/wasm
         env:
-          BACKEND_WASM_VERIFIER_CRS_DIR: ../rust/setup/output
+          BACKEND_WASM_VERIFIER_CRS_DIR: ../rust/setup/output/crs
         run: |
           npm ci --ignore-scripts
           npm run build:production
@@ -524,12 +527,15 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tokamak-zk-evm-verified-final-crs
-          path: candidate/packages/backend/rust/setup/output
+          path: candidate/packages/backend/rust/setup/output/generations/release-crs
+
+      - name: Activate verified public CRS
+        run: ln -s generations/release-crs candidate/packages/backend/rust/setup/output/crs
 
       - name: Build and pack browser package
         working-directory: candidate/packages/backend/wasm
         env:
-          BACKEND_WASM_VERIFIER_CRS_DIR: ../rust/setup/output
+          BACKEND_WASM_VERIFIER_CRS_DIR: ../rust/setup/output/crs
         run: |
           npm ci --ignore-scripts
           npm run build:production

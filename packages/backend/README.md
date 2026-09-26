@@ -100,7 +100,7 @@ Repository-local development example:
 ```bash
 cargo run --locked --release -p trusted-setup -- \
   --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
-  --output ./rust/setup/trusted-setup/output
+  --output ./rust/setup/output/crs
 ```
 
 ### `mpc`

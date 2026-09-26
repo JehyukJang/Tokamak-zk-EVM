@@ -7,7 +7,7 @@ build. Application developers should use the package README or the runnable
 From `packages/backend/wasm`, build and check a development package with:
 
 ```sh
-BACKEND_WASM_VERIFIER_CRS_DIR=../rust/setup/output npm run build:development
+BACKEND_WASM_VERIFIER_CRS_DIR=../rust/setup/output/crs npm run build:development
 npm run typecheck:development
 npm run typecheck:scripts
 npm run binary:check
