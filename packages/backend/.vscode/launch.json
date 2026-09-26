@@ -76,34 +76,6 @@
       ]
     },
     {
-      "name": "MPC: publish verified ceremony to Google Drive (npm)",
-      "type": "lldb",
-      "request": "launch",
-      "cargo": {
-        "args": ["build", "--locked", "--release", "-p", "mpc-setup", "--bin", "mpc"],
-        "filter": {"name": "mpc", "kind": "bin"}
-      },
-      "program": "${cargo:program}",
-      "args": [
-        "--mode", "publish",
-        "--library-version", "${input:mpcLibraryVersion}",
-        "publish",
-        "--input", "${input:mpcFinalTranscript}",
-        "--output", "${input:mpcPublicationOutput}",
-        "--filecoin-source", "${input:mpcFilecoinSource}"
-      ],
-      "cwd": "${workspaceFolder}",
-      "env": {
-        "ICICLE_BACKEND_INSTALL_DIR": "${workspaceFolder}/external-lib/mac/lib/backend",
-        "DYLD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib",
-        "LD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib:${env:LD_LIBRARY_PATH}",
-        "TOKAMAK_MPC_DRIVE_FOLDER_ID": "${env:TOKAMAK_MPC_DRIVE_FOLDER_ID}",
-        "TOKAMAK_MPC_DRIVE_OAUTH_CLIENT_JSON_PATH": "${env:TOKAMAK_MPC_DRIVE_OAUTH_CLIENT_JSON_PATH}",
-        "TOKAMAK_MPC_DRIVE_OAUTH_TOKEN_PATH": "${env:TOKAMAK_MPC_DRIVE_OAUTH_TOKEN_PATH}"
-      },
-      "sourceLanguages": ["rust"]
-    },
-    {
       "name": "Debug preprocess",
       "type": "lldb",
       "request": "launch",
@@ -267,11 +239,5 @@
         "rust"
       ]
     }
-  ],
-  "inputs": [
-    {"id": "mpcLibraryVersion", "type": "promptString", "description": "Exact compatible npm subcircuit-library version for this publish ceremony"},
-    {"id": "mpcFinalTranscript", "type": "promptString", "description": "Absolute path to the completed publish-mode transcript"},
-    {"id": "mpcPublicationOutput", "type": "promptString", "description": "Absolute local CRS output path (reuse only for retrying this same publication)"},
-    {"id": "mpcFilecoinSource", "type": "promptString", "description": "Absolute path to your original Filecoin challenge_19"}
   ]
 }
