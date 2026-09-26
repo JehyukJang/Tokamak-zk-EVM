@@ -22,11 +22,13 @@ executable for both execution modes:
   `--library-version MAJOR.MINOR.PATCH` on `init` to select an exact version;
   omit it there to select the latest published version matching the backend's
   `MAJOR.MINOR` version. The selected version is recorded in the transcript.
-  Later publish-mode operations use that recorded version and reject this
-  option. Development-mode transcripts record `null` and use the local library
-  path for subsequent operations. Publish mode requires Node.js and npm, does
-  not modify repository manifests or dependencies, and has no local-QAP
-  fallback.
+  Publish-mode `contribute` and `finalize` use the version recorded in their
+  input transcript. The CLI rejects `--library-version` on every other
+  operation. `upload` accepts only a finalized CRS directory and does not read
+  a transcript. Development-mode transcripts record `null`; each development
+  operation uses its supplied local library path. Publish mode requires Node.js
+  and npm, does not modify repository manifests or dependencies, and has no
+  local-QAP fallback.
 
 Specify the mode before every operation. Publish mode selects the circuit input
 for a release-eligible CRS; it does not distribute a binary. `finalize` verifies
@@ -66,11 +68,12 @@ target/release/mpc --mode development \
 
 For a publish ceremony, remove `--subcircuit-library ...` and replace
 `--mode development` in every command with `--mode publish`. On `init`,
-`--library-version <exact-compatible-version>` is optional; later operations
-take the exact version from the input transcript and reject that option. Do not
-rebuild the executable to change modes. Run contributor commands in each
-contributor's own environment. Initialization is deterministic and is not a
-contribution; each transcript output must use a new path.
+`--library-version <exact-compatible-version>` is optional; `contribute` and
+`finalize` take the exact version from their input transcript and reject that
+option. `upload` takes only the finalized CRS directory. Do not rebuild the
+executable to change modes. Run contributor commands in each contributor's
+own environment. Initialization is deterministic and is not a contribution;
+each transcript output must use a new path.
 
 ## Checks and outputs
 

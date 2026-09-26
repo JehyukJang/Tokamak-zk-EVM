@@ -25,7 +25,7 @@ subcircuit library, together with transaction-specific data from the frontend sy
 | Binary                  | Responsibility                                                                       |
 | ----------------------- | ------------------------------------------------------------------------------------ |
 | `trusted-setup`         | Generate a local-development four-file CRS.                                          |
-| `mpc` | Authenticate Filecoin input, initialize, contribute, verify and finalize phase 2. |
+| `mpc` | Manage phase 2 initialization and contributions; `finalize` verifies the transcript and derives the CRS, while `upload` sends the finalized CRS to Google Drive. |
 | `preprocess`            | Commit permutation and fixed function-instance data.                                 |
 | `prove`                 | Generate a proof for one synthesized transaction.                                    |
 | `verify`                | Verify the proof, preprocess commitments, and public instance.                       |
@@ -106,7 +106,7 @@ cargo run --locked --release -p trusted-setup -- \
 
 ### `mpc`
 
-Each invocation prepares its own circuit snapshot and authenticates the complete original Filecoin source. Development reads local QAP build artifacts; publish mode acquires an npm circuit library at runtime. On `init`, pass `--library-version MAJOR.MINOR.PATCH` to select an exact version, or omit it to select the latest published version compatible with the backend's `MAJOR.MINOR` version. The selected version is recorded in the transcript and CRS provenance; later operations use the transcript's version. Both modes use the same repository-built release executable. There is no repository phase 1, standalone import receipt or source-check bypass. For development initialization:
+Each invocation prepares its own circuit snapshot and authenticates the complete original Filecoin source. Development reads local QAP build artifacts; publish mode acquires an npm circuit library at runtime. On `init`, pass `--library-version MAJOR.MINOR.PATCH` to select an exact version, or omit it to select the latest published version compatible with the backend's `MAJOR.MINOR` version. The selected version is recorded in the transcript and CRS provenance; the ceremony steps `contribute` and `finalize` use the version recorded in their input transcript. `--library-version` is rejected outside publish-mode `init`; `upload` accepts only a finalized CRS directory and does not read a transcript. Both modes use the same repository-built release executable. There is no repository phase 1, standalone import receipt or source-check bypass. For development initialization:
 
 ```sh
 cargo run --locked --release -p mpc-setup --bin mpc -- --mode development \
