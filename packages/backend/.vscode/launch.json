@@ -115,6 +115,86 @@
       ]
     },
     {
+      "name": "MPC: contribute to Filecoin phase 2",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": [
+          "build",
+          "--locked",
+          "--release",
+          "-p",
+          "mpc-setup",
+          "--bin",
+          "mpc"
+        ],
+        "filter": {
+          "name": "mpc",
+          "kind": "bin"
+        }
+      },
+      "program": "${cargo:program}",
+      "args": [
+        "--step",
+        "contribute",
+        "--filecoin-source",
+        "${workspaceFolder}/rust/setup/mpc-setup/filecoin-phase1/challenge_19",
+        "--input",
+        "${workspaceFolder}/rust/setup/mpc-setup/output/initial.mpc",
+        "--output",
+        "${workspaceFolder}/rust/setup/mpc-setup/output/contribution-1.mpc"
+      ],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "ICICLE_BACKEND_INSTALL_DIR": "${workspaceFolder}/external-lib/mac/lib/backend",
+        "DYLD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib",
+        "LD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib:${env:LD_LIBRARY_PATH}"
+      },
+      "sourceLanguages": [
+        "rust"
+      ]
+    },
+    {
+      "name": "MPC: finalize Filecoin phase 2 CRS",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": [
+          "build",
+          "--locked",
+          "--release",
+          "-p",
+          "mpc-setup",
+          "--bin",
+          "mpc"
+        ],
+        "filter": {
+          "name": "mpc",
+          "kind": "bin"
+        }
+      },
+      "program": "${cargo:program}",
+      "args": [
+        "--step",
+        "finalize",
+        "--filecoin-source",
+        "${workspaceFolder}/rust/setup/mpc-setup/filecoin-phase1/challenge_19",
+        "--input",
+        "${workspaceFolder}/rust/setup/mpc-setup/output/contribution-1.mpc",
+        "--output",
+        "${workspaceFolder}/rust/setup/output/crs"
+      ],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "ICICLE_BACKEND_INSTALL_DIR": "${workspaceFolder}/external-lib/mac/lib/backend",
+        "DYLD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib",
+        "LD_LIBRARY_PATH": "${workspaceFolder}/external-lib/mac/lib:${env:LD_LIBRARY_PATH}"
+      },
+      "sourceLanguages": [
+        "rust"
+      ]
+    },
+    {
       "name": "MPC: upload finalized CRS to Google Drive",
       "type": "lldb",
       "request": "launch",
