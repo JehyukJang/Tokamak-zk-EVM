@@ -13,10 +13,10 @@ The backend is organized around five user-facing binaries:
 
 `trusted-setup` generates development-only CRS artifacts. `mpc` implements
 Tokamak phase 2 using the externally completed Filecoin phase 1. Both emit the
-four common CRS files. In publish mode, MPC verifies the transcript and
-finalizes a release-eligible CRS locally; a separate `upload` operation sends
-that completed CRS to Google Drive without replaying the ceremony or
-regenerating keys.
+four common CRS files. For a transcript created with `--step init`, MPC verifies
+the transcript and finalizes a release-eligible CRS locally. A separate
+`upload` operation sends that completed CRS to Google Drive without replaying
+the ceremony or regenerating keys.
 `preprocess`, `prove`, and `verify` accept any CRS whose compatibility version matches the selected
 subcircuit library, together with transaction-specific data from the frontend synthesizer.
 
@@ -106,15 +106,15 @@ cargo run --locked --release -p trusted-setup -- \
 
 ### `mpc`
 
-Each invocation prepares its own circuit snapshot and authenticates the complete original Filecoin source. Development reads local QAP build artifacts; publish mode acquires an npm circuit library at runtime. On `init`, pass `--library-version MAJOR.MINOR.PATCH` to select an exact version, or omit it to select the latest published version compatible with the backend's `MAJOR.MINOR` version. The selected version is recorded in the transcript and CRS provenance; the ceremony steps `contribute` and `finalize` use the version recorded in their input transcript. `--library-version` is rejected outside publish-mode `init`; `upload` accepts only a finalized CRS directory and does not read a transcript. Both modes use the same repository-built release executable. There is no repository phase 1, standalone import receipt or source-check bypass. For development initialization:
+Each invocation prepares its own circuit snapshot and authenticates the complete original Filecoin source. `--step init` starts a publish ceremony from npm; `--step init-dev` starts a development ceremony from the local QAP build and requires `--subcircuit-library`. On `init`, pass `--library-version MAJOR.MINOR.PATCH` to select an exact npm version, or omit it to select the latest published version compatible with the backend's `MAJOR.MINOR` version. The selected version is recorded in the transcript and CRS provenance. Later `contribute` and `finalize` steps infer the source mode and exact npm version from their input transcript; development transcripts require the local `--subcircuit-library` path on each step. `--library-version` is rejected outside `--step init`; `upload` accepts only a finalized CRS directory and does not read a transcript. Both source modes use the same repository-built release executable. There is no repository phase 1, standalone import receipt or source-check bypass. For development initialization:
 
 ```sh
-cargo run --locked --release -p mpc-setup --bin mpc -- --mode development \
+cargo run --locked --release -p mpc-setup --bin mpc -- \
   --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
-  --step init --filecoin-source /path/to/challenge_19 --output ./initial.mpc
+  --step init-dev --filecoin-source /path/to/challenge_19 --output ./initial.mpc
 ```
 
-The transcript output path must not already exist. Subsequent operations repeat original-source authentication. Initialization does not upload. In publish mode, `--step finalize --input <transcript> --output <directory>` verifies the transcript and writes a release-eligible CRS locally; `--step upload --crs-directory <directory>` transfers that completed CRS to Google Drive. See the [MPC operator guide](rust/setup/mpc-setup/README.md#upload-a-finalized-crs) for configuration, retry behavior and qualification limits.
+The transcript output path must not already exist. Subsequent operations repeat original-source authentication. Initialization does not upload. Finalizing a transcript created with `--step init` verifies it and writes a release-eligible CRS locally; `--step upload --crs-directory <directory>` transfers that completed CRS to Google Drive. See the [MPC operator guide](rust/setup/mpc-setup/README.md#upload-a-finalized-crs) for configuration, retry behavior and qualification limits.
 
 ## Setup outputs and common provenance
 
@@ -143,11 +143,12 @@ The phase-2 fields `phase1SourceProvenance`, `ceremonyProtocolVersion`,
 for trusted setup. MPC generation records the transcript digest and the
 verified cumulative number of phase-2 contributions. Trusted
 setup always writes `releaseEligible: false`. A common parser validates
-document shape, not publication authority. Development finalization writes
-`releaseEligible: false`; publish-mode finalization marks the verified result
-eligible and saves it locally. The separate `upload` operation checks the
-completed CRS metadata and payload digests before transferring those files to
-Google Drive. Algorithm consumers do not require `releaseEligible: true`.
+document shape, not publication authority. Finalizing a transcript created with
+`--step init-dev` writes `releaseEligible: false`; finalizing one created with
+`--step init` marks the verified result eligible and saves it locally. The
+separate `upload` operation checks the completed CRS metadata and payload
+digests before transferring those files to Google Drive. Algorithm consumers
+do not require `releaseEligible: true`.
 
 Native prove checks content digests only with `--check-digests`, as described
 below. Parsing the document is not a cryptographic check of CRS generation.
@@ -256,9 +257,10 @@ Use only a CRS and subcircuit library whose release identities and
 compatibility class match the backend. Verify artifact digests and provenance
 before loading them, and keep OAuth credentials and tokens outside version
 control. Trusted setup is development-only. MPC generation alone does not
-authorize publication: only publish-mode finalization of a completed transcript
-can produce release-eligible CRS output. The separate upload operation transfers
-an already finalized output and does not repeat ceremony verification.
+authorize publication: only finalization of a completed transcript created
+with `--step init` can produce release-eligible CRS output. The separate upload
+operation transfers an already finalized output and does not repeat ceremony
+verification.
 Live ceremony qualification and the deferred phase-2 security-boundary review
 remain separate operator responsibilities.
 

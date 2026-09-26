@@ -20,20 +20,16 @@ use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use std::time::Instant;
 
-#[derive(Clone, Parser)]
+#[derive(Parser)]
 #[command(
     name = "mpc",
     about = "Tokamak phase 2 using independently authenticated Filecoin input"
 )]
 struct Args {
-    /// Select local QAP testing or npm-backed publication preparation.
-    /// Only upload sends finalized CRS artifacts to Google Drive.
-    #[arg(long, value_enum)]
-    mode: Mode,
-    /// Exact npm library version for publish init only; defaults to the latest compatible release.
+    /// Exact npm library version for --step init; defaults to the latest compatible release.
     #[arg(long)]
     library_version: Option<String>,
-    /// Local QAP library directory; required only with --mode development.
+    /// Local QAP library directory; required for init-dev and development transcripts.
     #[arg(long, value_name = "PATH")]
     subcircuit_library: Option<PathBuf>,
     /// Original Filecoin challenge_19 acquired by this participant. Omit to
@@ -57,6 +53,7 @@ struct Args {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
 enum Step {
     Init,
+    InitDev,
     Contribute,
     Finalize,
     Upload,
@@ -64,6 +61,7 @@ enum Step {
 
 enum Operation {
     Init { output: PathBuf },
+    InitDev { output: PathBuf },
     Contribute { input: PathBuf, output: PathBuf },
     Finalize { input: PathBuf, output: PathBuf },
     Upload { crs_directory: PathBuf },
@@ -91,6 +89,15 @@ impl Args {
                 no_unexpected_paths(false, true, false)?;
                 Ok(Operation::Init {
                     output: self.output.clone().ok_or("init requires --output PATH")?,
+                })
+            }
+            Step::InitDev => {
+                no_unexpected_paths(false, true, false)?;
+                Ok(Operation::InitDev {
+                    output: self
+                        .output
+                        .clone()
+                        .ok_or("init-dev requires --output PATH")?,
                 })
             }
             Step::Contribute => {
@@ -136,15 +143,12 @@ pub fn run() -> Result<(), String> {
 fn execute(args: Args) -> Result<(), String> {
     let operation = args.operation()?;
     if let Operation::Upload { crs_directory } = &operation {
-        if args.mode != Mode::Publish {
-            return Err("the upload operation requires --mode publish".into());
-        }
         if args.library_version.is_some()
             || args.subcircuit_library.is_some()
             || args.filecoin_source.is_some()
         {
             return Err(
-                "upload accepts only --mode publish and --crs-directory; setup inputs are not used"
+                "upload accepts only --step upload and --crs-directory; setup inputs are not used"
                     .into(),
             );
         }
@@ -155,7 +159,7 @@ fn execute(args: Args) -> Result<(), String> {
         println!("[mpc] upload complete: {url}");
         return Ok(());
     }
-    let library_version = library_version_for_run(&args)?;
+    let (mode, library_version) = mode_and_library_version_for_run(&args, &operation)?;
     let all = Instant::now();
     let started = Instant::now();
     let directory = tempfile::Builder::new()
@@ -163,7 +167,7 @@ fn execute(args: Args) -> Result<(), String> {
         .tempdir()
         .map_err(|e| e.to_string())?;
     let (path, library) = circuit_input::prepare(
-        args.mode,
+        mode,
         library_version.as_deref(),
         args.subcircuit_library.as_deref(),
         directory.path(),
@@ -203,7 +207,7 @@ fn execute(args: Args) -> Result<(), String> {
         .collect::<Vec<_>>();
     println!(
         "[mpc] {} input {} in {:.6}s",
-        args.mode.name(),
+        mode.name(),
         library.package_version,
         started.elapsed().as_secs_f64()
     );
@@ -225,7 +229,7 @@ fn execute(args: Args) -> Result<(), String> {
         started.elapsed().as_secs_f64()
     );
     let identity = Identity {
-        mode: args.mode,
+        mode,
         version: library.package_version.clone(),
         library_digest: hex::decode(
             library
@@ -249,7 +253,7 @@ fn execute(args: Args) -> Result<(), String> {
     );
     let started = Instant::now();
     let input = match &operation {
-        Operation::Init { .. } => None,
+        Operation::Init { .. } | Operation::InitDev { .. } => None,
         Operation::Contribute { input, .. } | Operation::Finalize { input, .. } => Some(input),
         Operation::Upload { .. } => unreachable!("upload handled before MPC setup"),
     };
@@ -269,7 +273,9 @@ fn execute(args: Args) -> Result<(), String> {
     );
     let started = Instant::now();
     match operation {
-        Operation::Init { output } => transcript.write_new(&output)?,
+        Operation::Init { output } | Operation::InitDev { output } => {
+            transcript.write_new(&output)?
+        }
         Operation::Contribute { output, .. } => {
             transcript
                 .contribute(&mut rand::rngs::OsRng)?
@@ -291,7 +297,7 @@ fn execute(args: Args) -> Result<(), String> {
                 document_kind: CRS_DOCUMENT_KIND.into(),
                 protocol_schema_id: UNIVARIATE_CRS_SCHEMA_ID.into(),
                 generation_method: CrsGenerationMethod::Mpc,
-                release_eligible: args.mode == Mode::Publish,
+                release_eligible: mode == Mode::Publish,
                 generated_at_utc: chrono::Utc::now().to_rfc3339(),
                 compatible_backend_version:
                     libs::compatibility::compatibility_from_package_version(env!(
@@ -311,7 +317,7 @@ fn execute(args: Args) -> Result<(), String> {
                 phase2_contribution_count: Some(transcript.contributions() as u64),
                 artifacts: Default::default(),
             };
-            let release_eligible = args.mode == Mode::Publish;
+            let release_eligible = mode == Mode::Publish;
             crate::publication::finalize(&output, &crs, provenance, release_eligible)?;
             if release_eligible {
                 println!(
@@ -332,274 +338,209 @@ fn execute(args: Args) -> Result<(), String> {
     Ok(())
 }
 
-fn library_version_for_run(args: &Args) -> Result<Option<String>, String> {
-    let operation = args.operation()?;
-    let is_init = matches!(&operation, Operation::Init { .. });
-    if args.library_version.is_some() && (args.mode != Mode::Publish || !is_init) {
-        return Err("--library-version is only accepted with --mode publish init".into());
+fn mode_and_library_version_for_run(
+    args: &Args,
+    operation: &Operation,
+) -> Result<(Mode, Option<String>), String> {
+    if args.library_version.is_some() && !matches!(operation, Operation::Init { .. }) {
+        return Err("--library-version is only accepted with --step init".into());
     }
-    args.mode.validate(
-        args.library_version.as_deref(),
-        args.subcircuit_library.as_deref(),
-    )?;
-
-    if args.mode == Mode::Development {
-        return Ok(None);
-    }
-    if is_init {
-        return Ok(args.library_version.clone());
-    }
-
-    let input = match &operation {
-        Operation::Contribute { input, .. } | Operation::Finalize { input, .. } => input,
-        Operation::Init { .. } => unreachable!("init handled above"),
+    match operation {
+        Operation::Init { .. } => {
+            Mode::Publish.validate(
+                args.library_version.as_deref(),
+                args.subcircuit_library.as_deref(),
+            )?;
+            Ok((Mode::Publish, args.library_version.clone()))
+        }
+        Operation::InitDev { .. } => {
+            Mode::Development.validate(
+                args.library_version.as_deref(),
+                args.subcircuit_library.as_deref(),
+            )?;
+            Ok((Mode::Development, None))
+        }
+        Operation::Contribute { input, .. } | Operation::Finalize { input, .. } => {
+            match Transcript::library_version_from_file(input)? {
+                Some(version) => {
+                    Mode::Publish.validate(Some(&version), args.subcircuit_library.as_deref())?;
+                    Ok((Mode::Publish, Some(version)))
+                }
+                None => {
+                    Mode::Development.validate(None, args.subcircuit_library.as_deref())?;
+                    Ok((Mode::Development, None))
+                }
+            }
+        }
         Operation::Upload { .. } => unreachable!("upload handled before MPC setup"),
-    };
-    let version = Transcript::library_version_from_file(input)?
-        .ok_or("input transcript does not record a publish-mode library version")?;
-    args.mode.validate(Some(&version), None)?;
-    Ok(Some(version))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn command_surface_has_no_source_pin_or_subset_bypass() {
-        for command in ["init", "contribute", "finalize"] {
-            let mut valid = vec![
-                "mpc",
-                "--mode",
-                "development",
-                "--subcircuit-library",
-                "local-library",
-                "--step",
-                command,
-            ];
-            if command != "init" {
-                valid.extend(["--input", "previous.mpc"]);
-            }
-            valid.extend(["--output", "next"]);
-            assert!(Args::try_parse_from(&valid).is_ok());
-            for extra in [
-                vec!["--tau-sequence", "coordinator.rkyv"],
-                vec!["--skip-source-verification"],
-            ] {
-                let mut invalid = valid.clone();
-                invalid.extend(extra);
-                assert!(Args::try_parse_from(invalid).is_err());
-            }
+
+    fn args(step: Step, input: Option<PathBuf>, output: Option<PathBuf>) -> Args {
+        Args {
+            library_version: None,
+            subcircuit_library: None,
+            filecoin_source: None,
+            step,
+            input,
+            output,
+            crs_directory: None,
         }
-        assert!(Args::try_parse_from([
-            "mpc",
-            "--mode",
-            "development",
-            "--subcircuit-library",
-            "local-library",
-            "--step",
-            "verify",
-            "--input",
-            "previous.mpc"
-        ])
-        .is_err());
-        assert!(Args::try_parse_from([
-            "mpc",
-            "--mode",
-            "publish",
-            "--step",
-            "upload",
-            "--crs-directory",
-            "./final-crs"
-        ])
-        .is_ok());
-        assert!(Args::try_parse_from([
-            "mpc",
-            "--mode",
-            "publish",
-            "init",
-            "--output",
-            "initial.mpc"
-        ])
-        .is_err());
-        assert!(Args::try_parse_from(["mpc", "--mode", "publish", "--step", "phase1"]).is_err());
+    }
+
+    #[test]
+    fn command_surface_uses_init_variants_and_no_mode_flag() {
+        for (step, extra) in [
+            ("init", vec!["--output", "init.mpc"]),
+            (
+                "init-dev",
+                vec!["--subcircuit-library", "library", "--output", "init.mpc"],
+            ),
+            (
+                "contribute",
+                vec!["--input", "init.mpc", "--output", "next.mpc"],
+            ),
+            ("finalize", vec!["--input", "final.mpc", "--output", "crs"]),
+            ("upload", vec!["--crs-directory", "crs"]),
+        ] {
+            let mut argv = vec!["mpc", "--step", step];
+            argv.extend(extra);
+            assert!(Args::try_parse_from(argv).is_ok(), "{step}");
+        }
+        assert!(Args::try_parse_from(["mpc", "--mode", "publish", "--step", "init"]).is_err());
+        assert!(Args::try_parse_from(["mpc", "init", "--output", "init.mpc"]).is_err());
+        assert!(Args::try_parse_from(["mpc", "--step", "verify"]).is_err());
     }
 
     #[test]
     fn each_step_requires_only_its_own_path_arguments() {
-        for (step, required, forbidden) in [
-            (
-                Step::Init,
-                vec![(false, true, false)],
-                vec![(true, true, false)],
-            ),
-            (
+        let valid = [
+            args(Step::Init, None, Some("init.mpc".into())),
+            args(Step::InitDev, None, Some("init.mpc".into())),
+            args(
                 Step::Contribute,
-                vec![(true, true, false)],
-                vec![(false, true, false), (true, false, false)],
+                Some("input.mpc".into()),
+                Some("output.mpc".into()),
             ),
-            (
-                Step::Finalize,
-                vec![(true, true, false)],
-                vec![(true, false, false), (false, true, false)],
-            ),
-            (
-                Step::Upload,
-                vec![(false, false, true)],
-                vec![(false, true, true)],
-            ),
-        ] {
-            let required = required[0];
-            let args = Args {
-                mode: if step == Step::Upload {
-                    Mode::Publish
-                } else {
-                    Mode::Development
-                },
-                library_version: None,
-                subcircuit_library: (step != Step::Upload).then(|| PathBuf::from("library")),
-                filecoin_source: None,
-                step,
-                input: required.0.then(|| PathBuf::from("input")),
-                output: required.1.then(|| PathBuf::from("output")),
-                crs_directory: required.2.then(|| PathBuf::from("crs")),
-            };
-            assert!(args.operation().is_ok(), "{step:?}");
-
-            for forbidden in forbidden {
-                let invalid = Args {
-                    input: forbidden.0.then(|| PathBuf::from("input")),
-                    output: forbidden.1.then(|| PathBuf::from("output")),
-                    crs_directory: forbidden.2.then(|| PathBuf::from("crs")),
-                    ..args.clone()
-                };
-                assert!(invalid.operation().is_err(), "{step:?} {forbidden:?}");
-            }
+            args(Step::Finalize, Some("input.mpc".into()), Some("crs".into())),
+        ];
+        for args in valid {
+            assert!(args.operation().is_ok(), "{:?}", args.step);
         }
+        assert!(args(Step::Contribute, None, Some("output.mpc".into()))
+            .operation()
+            .is_err());
+        assert!(args(Step::Finalize, Some("input.mpc".into()), None)
+            .operation()
+            .is_err());
+        let mut upload = args(Step::Upload, None, None);
+        upload.crs_directory = Some("crs".into());
+        assert!(upload.operation().is_ok());
+        upload.output = Some("unexpected".into());
+        assert!(upload.operation().is_err());
     }
+
     #[test]
-    fn publish_init_can_omit_or_pin_the_library_version() {
-        let args = Args::try_parse_from([
-            "mpc",
-            "--mode",
-            "publish",
-            "--step",
-            "init",
-            "--output",
-            "initial.mpc",
-        ])
-        .unwrap();
-        assert_eq!(library_version_for_run(&args).unwrap(), None);
-        let mut pinned = args;
+    fn init_step_selects_the_mode_and_library_source() {
+        let publish = args(Step::Init, None, Some("init.mpc".into()));
+        assert_eq!(
+            mode_and_library_version_for_run(&publish, &publish.operation().unwrap()).unwrap(),
+            (Mode::Publish, None)
+        );
+        let mut pinned = publish;
         pinned.library_version = Some(env!("CARGO_PKG_VERSION").into());
         assert_eq!(
-            library_version_for_run(&pinned).unwrap(),
-            Some(env!("CARGO_PKG_VERSION").into())
+            mode_and_library_version_for_run(&pinned, &pinned.operation().unwrap()).unwrap(),
+            (Mode::Publish, Some(env!("CARGO_PKG_VERSION").into()))
         );
+
+        let mut development = args(Step::InitDev, None, Some("init.mpc".into()));
+        development.subcircuit_library = Some("library".into());
+        assert_eq!(
+            mode_and_library_version_for_run(&development, &development.operation().unwrap())
+                .unwrap(),
+            (Mode::Development, None)
+        );
+        development.library_version = Some(env!("CARGO_PKG_VERSION").into());
+        assert!(
+            mode_and_library_version_for_run(&development, &development.operation().unwrap())
+                .is_err()
+        );
+        assert!(mode_and_library_version_for_run(
+            &args(Step::InitDev, None, Some("init.mpc".into())),
+            &args(Step::InitDev, None, Some("init.mpc".into()))
+                .operation()
+                .unwrap()
+        )
+        .is_err());
     }
 
     #[test]
-    fn publish_contribution_uses_transcript_version_and_rejects_override() {
+    fn later_steps_infer_source_mode_from_the_transcript_header() {
         let dir = tempfile::tempdir().unwrap();
         let input = dir.path().join("initial.mpc");
         let version = env!("CARGO_PKG_VERSION");
-        let mut header = b"TOKAMAK_MPC_PHASE2_TRANSCRIPT_V1\0".to_vec();
-        header.extend([1, 1]);
-        header.extend_from_slice(&(version.len() as u16).to_be_bytes());
-        header.extend_from_slice(version.as_bytes());
-        std::fs::write(&input, header).unwrap();
-        let mut args = Args {
-            mode: Mode::Publish,
-            library_version: None,
-            subcircuit_library: None,
-            filecoin_source: None,
-            step: Step::Contribute,
-            input: Some(input),
-            output: Some(dir.path().join("next.mpc")),
-            crs_directory: None,
-        };
-        assert_eq!(
-            library_version_for_run(&args).unwrap(),
-            Some(version.to_owned())
+        let mut publish_header = b"TOKAMAK_MPC_PHASE2_TRANSCRIPT_V1\0".to_vec();
+        publish_header.extend([1, 1]);
+        publish_header.extend_from_slice(&(version.len() as u16).to_be_bytes());
+        publish_header.extend_from_slice(version.as_bytes());
+        std::fs::write(&input, publish_header).unwrap();
+
+        let mut publish = args(
+            Step::Contribute,
+            Some(input.clone()),
+            Some(dir.path().join("next.mpc")),
         );
-        args.library_version = Some(version.into());
-        assert!(library_version_for_run(&args)
+        let operation = publish.operation().unwrap();
+        assert_eq!(
+            mode_and_library_version_for_run(&publish, &operation).unwrap(),
+            (Mode::Publish, Some(version.to_owned()))
+        );
+        let finalize = args(
+            Step::Finalize,
+            Some(input.clone()),
+            Some(dir.path().join("crs")),
+        );
+        assert_eq!(
+            mode_and_library_version_for_run(&finalize, &finalize.operation().unwrap()).unwrap(),
+            (Mode::Publish, Some(version.to_owned()))
+        );
+        publish.library_version = Some(version.into());
+        assert!(mode_and_library_version_for_run(&publish, &operation)
             .unwrap_err()
-            .contains("only accepted with --mode publish init"));
+            .contains("only accepted with --step init"));
+
+        let dev_input = dir.path().join("development.mpc");
+        std::fs::write(&dev_input, b"TOKAMAK_MPC_PHASE2_TRANSCRIPT_V1\0\x01\x00").unwrap();
+        let mut development = args(
+            Step::Contribute,
+            Some(dev_input),
+            Some(dir.path().join("development-next.mpc")),
+        );
+        development.subcircuit_library = Some("local-library".into());
+        assert_eq!(
+            mode_and_library_version_for_run(&development, &development.operation().unwrap())
+                .unwrap(),
+            (Mode::Development, None)
+        );
+        development.subcircuit_library = None;
+        assert!(
+            mode_and_library_version_for_run(&development, &development.operation().unwrap())
+                .is_err()
+        );
     }
 
     #[test]
-    fn execution_mode_is_explicit_and_independent_of_the_build() {
-        assert!(Args::try_parse_from([
-            "mpc",
-            "--mode",
-            "publish",
-            "init",
-            "--output",
-            "initial.mpc"
-        ])
-        .is_err());
-        for (mode, source_args) in [
-            ("development", vec!["--subcircuit-library", "local-library"]),
-            ("publish", vec![]),
-        ] {
-            let mut argv = vec!["mpc", "--mode", mode];
-            argv.extend(source_args);
-            argv.extend(["--step", "init", "--output", "initial.mpc"]);
-            let args = Args::try_parse_from(argv).unwrap();
-            assert_eq!(args.mode.name(), mode);
-        }
-    }
-
-    #[test]
-    fn development_requires_a_local_library_before_source_io_or_output() {
+    fn upload_does_not_take_mode_or_ceremony_inputs() {
         let dir = tempfile::tempdir().unwrap();
-        let output = dir.path().join("must-not-exist");
-        let error = execute(Args {
-            mode: Mode::Development,
-            library_version: None,
-            subcircuit_library: None,
-            filecoin_source: Some(dir.path().join("missing-source")),
-            step: Step::Init,
-            input: None,
-            output: Some(output.clone()),
-            crs_directory: None,
-        })
-        .unwrap_err();
-        assert!(error.contains("--subcircuit-library"));
-        assert!(!output.exists());
-    }
-
-    #[test]
-    fn development_upload_fails_before_crs_or_drive_access() {
-        let dir = tempfile::tempdir().unwrap();
-        let error = execute(Args {
-            mode: Mode::Development,
-            library_version: None,
-            subcircuit_library: Some(dir.path().join("local-library")),
-            filecoin_source: None,
-            step: Step::Upload,
-            input: None,
-            output: None,
-            crs_directory: Some(dir.path().join("missing")),
-        })
-        .unwrap_err();
-        assert!(error.contains("requires --mode publish"));
-    }
-
-    #[test]
-    fn upload_rejects_ceremony_inputs_before_reading_the_crs_or_connecting_to_drive() {
-        let dir = tempfile::tempdir().unwrap();
-        let error = execute(Args {
-            mode: Mode::Publish,
-            library_version: None,
-            subcircuit_library: None,
-            filecoin_source: Some(dir.path().join("unused-source")),
-            step: Step::Upload,
-            input: None,
-            output: None,
-            crs_directory: Some(dir.path().join("missing-crs")),
-        })
-        .unwrap_err();
+        let mut args = args(Step::Upload, None, None);
+        args.crs_directory = Some(dir.path().join("missing-crs"));
+        args.filecoin_source = Some(dir.path().join("unused-source"));
+        let error = execute(args).unwrap_err();
         assert!(error.contains("setup inputs are not used"));
     }
 }

@@ -34,16 +34,20 @@ impl Mode {
         match self {
             Self::Development => {
                 if version.is_some() {
-                    return Err("--library-version is only valid in publish mode".into());
+                    return Err("--library-version is only valid with --step init".into());
                 }
                 if subcircuit_library.is_none() {
-                    return Err("development mode requires --subcircuit-library PATH".into());
+                    return Err(
+                        "--subcircuit-library PATH is required for --step init-dev and development transcripts".into(),
+                    );
                 }
                 Ok(())
             }
             Self::Publish => {
                 if subcircuit_library.is_some() {
-                    return Err("--subcircuit-library is only valid in development mode".into());
+                    return Err(
+                        "--subcircuit-library is only valid for --step init-dev or development transcripts".into(),
+                    );
                 }
                 if let Some(version) = version {
                     validate_publish_version(version)?;
@@ -63,8 +67,9 @@ pub(crate) fn prepare(
     mode.validate(version, subcircuit_library)?;
     match mode {
         Mode::Development => {
-            let local_library =
-                subcircuit_library.ok_or("development mode requires --subcircuit-library PATH")?;
+            let local_library = subcircuit_library.ok_or(
+                "--subcircuit-library PATH is required for --step init-dev and development transcripts",
+            )?;
             let library_path = fs::canonicalize(local_library)
                 .map_err(|error| format!("cannot resolve local subcircuit library: {error}"))?;
             if !library_path.is_dir() {

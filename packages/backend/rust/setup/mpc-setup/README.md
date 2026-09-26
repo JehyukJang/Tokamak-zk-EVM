@@ -13,29 +13,30 @@ The executable links ICICLE through the shared native library. When running
 `DYLD_LIBRARY_PATH` on macOS or `LD_LIBRARY_PATH` on Linux.
 
 MPC runs only from a local repository checkout. Build one release-optimized
-executable for both execution modes:
+executable for both initialization choices:
 
-- `--mode development` requires `--subcircuit-library PATH` and takes a private
-  snapshot of that local QAP build. Build QAP first. This mode cannot authorize
-  publication.
-- `--mode publish` acquires a compatible npm package at runtime. Pass
-  `--library-version MAJOR.MINOR.PATCH` on `init` to select an exact version;
-  omit it there to select the latest published version matching the backend's
-  `MAJOR.MINOR` version. The selected version is recorded in the transcript.
-  Publish-mode `contribute` and `finalize` use the version recorded in their
-  input transcript. The CLI rejects `--library-version` on every other
-  operation. `upload` accepts only a finalized CRS directory and does not read
-  a transcript. Development-mode transcripts record `null`; each development
-  operation uses its supplied local library path. Publish mode requires Node.js
-  and npm, does not modify repository manifests or dependencies, and has no
-  local-QAP fallback.
+- `--step init` starts a publish ceremony and acquires a compatible npm package
+  at runtime. Pass `--library-version MAJOR.MINOR.PATCH` to select an exact
+  version; omit it to select the latest published version compatible with the
+  backend's `MAJOR.MINOR` version. The selected version is recorded in the
+  transcript.
+- `--step init-dev` starts a development ceremony from the local QAP build and
+  requires `--subcircuit-library PATH`. Build QAP first. Its transcript records
+  a `null` npm version and cannot authorize publication.
+- `contribute` and `finalize` infer the source mode from the input transcript.
+  Publish transcripts select the recorded npm version; development transcripts
+  require `--subcircuit-library PATH` on each operation. The CLI rejects
+  `--library-version` outside `--step init`. `upload` accepts only a finalized
+  CRS directory and uses its release eligibility metadata. Publish setup
+  requires Node.js and npm, does not modify repository manifests or
+  dependencies, and has no local-QAP fallback.
 
-Specify the mode before every operation. Publish mode selects the circuit input
-for a release-eligible CRS; it does not distribute a binary. `finalize` verifies
-the transcript and writes the completed CRS locally. The separate `upload`
-operation sends that already finalized CRS to Google Drive without replaying the
-ceremony or regenerating keys. Neither the Cargo profile nor a Cargo feature
-selects the MPC circuit source.
+Only initialization selects the source mode: use `--step init` for the npm
+library or `--step init-dev` for local QAP output. `finalize` verifies the
+transcript and writes the completed CRS locally. The separate `upload` operation
+sends that already finalized CRS to Google Drive without replaying the ceremony
+or regenerating keys. Neither the Cargo profile nor a Cargo feature selects the
+MPC circuit source.
 
 Obtain `challenge_19` directly from the pinned
 [Filecoin source](https://trusted-setup.filecoin.io/phase1/challenge_19), or
@@ -49,31 +50,31 @@ From `packages/backend`:
 ```sh
 cargo build --locked --release -p mpc-setup --bin mpc
 
-target/release/mpc --mode development \
+target/release/mpc \
   --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
-  --step init --filecoin-source /path/to/challenge_19 --output ./initial.mpc
+  --step init-dev --filecoin-source /path/to/challenge_19 --output ./initial.mpc
 
-target/release/mpc --mode development \
+target/release/mpc \
   --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
   --step contribute --filecoin-source /path/to/challenge_19 --input ./initial.mpc --output ./alice.mpc
 
-target/release/mpc --mode development \
+target/release/mpc \
   --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
   --step contribute --filecoin-source /path/to/challenge_19 --input ./alice.mpc --output ./bob.mpc
 
-target/release/mpc --mode development \
+target/release/mpc \
   --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
   --step finalize --filecoin-source /path/to/challenge_19 --input ./bob.mpc --output ./final-keys
 ```
 
-For a publish ceremony, remove `--subcircuit-library ...` and replace
-`--mode development` in every command with `--mode publish`. On `init`,
-`--library-version <exact-compatible-version>` is optional; `contribute` and
-`finalize` take the exact version from their input transcript and reject that
-option. `upload` takes only the finalized CRS directory. Do not rebuild the
-executable to change modes. Run contributor commands in each contributor's
-own environment. Initialization is deterministic and is not a contribution;
-each transcript output must use a new path.
+For a publish ceremony, use `--step init` without a local library path;
+`--library-version <exact-compatible-version>` is optional. For development,
+use `--step init-dev` with the local QAP library path. `contribute` and
+`finalize` infer the source mode and, for publish transcripts, the exact npm
+version from their input transcript. `upload` takes only the finalized CRS
+directory. Do not rebuild the executable to change modes. Run contributor
+commands in each contributor's own environment. Initialization is deterministic
+and is not a contribution; each transcript output must use a new path.
 
 ## Checks and outputs
 
@@ -87,9 +88,10 @@ contribution evidence, and query handling.
 
 Finalization requires at least one verified contribution and writes four common
 CRS payloads plus `crs_provenance.json`, which records the cumulative verified
-phase-2 contribution count. Offline finalization always records
-`releaseEligible: false`. Ordinary proving users can consume distributed tau
-files; contributors must authenticate the original Filecoin source themselves.
+phase-2 contribution count. Finalizing an `init-dev` transcript records
+`releaseEligible: false`; finalizing an `init` transcript marks the verified
+CRS release-eligible. Ordinary proving users can consume distributed tau files;
+contributors must authenticate the original Filecoin source themselves.
 
 ## Upload a finalized CRS
 
@@ -97,7 +99,7 @@ After `finalize` has verified the transcript and produced a release-eligible
 CRS directory, upload only that completed output:
 
 ```sh
-target/release/mpc --mode publish \
+target/release/mpc \
   --step upload --crs-directory ./rust/setup/output/crs
 ```
 

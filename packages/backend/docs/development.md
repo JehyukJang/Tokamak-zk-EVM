@@ -24,7 +24,7 @@ compatibility.
 
 ## MPC launchers
 
-`MPC: initialize Filecoin phase 2 (local QAP)` uses development mode and writes
+`MPC: initialize Filecoin phase 2 (local QAP)` uses `--step init-dev` and writes
 a new `initial.mpc` transcript. Without `--filecoin-source`, it downloads and
 authenticates the pinned Filecoin source. It never publishes a CRS.
 
