@@ -77,6 +77,13 @@ jobs:
           submodules: recursive
           persist-credentials: false
 
+      - name: Fetch previous main commit for version comparison
+        env:
+          BASE_SHA: ${{ github.event.before }}
+        run: |
+          test -n "$BASE_SHA"
+          git fetch --no-tags origin "$BASE_SHA"
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -124,10 +131,11 @@ jobs:
             --output "$RUNNER_TEMP/tokamak-main-development-crs"
           cargo check --workspace --locked
 
-      - name: Pack source-built package tarballs
+      - name: Pack release package tarballs
         run: |
           mkdir package-tarballs
-          npm pack ./packages/frontend/qap-compiler/dist --pack-destination package-tarballs --ignore-scripts
+          library_version="$(node -p "require('./packages/frontend/qap-compiler/package.json').version")"
+          npm pack "@tokamak-zk-evm/subcircuit-library@${library_version}" --pack-destination package-tarballs --ignore-scripts
           npm pack ./packages/frontend/synthesizer/node-cli --pack-destination package-tarballs --ignore-scripts
           npm pack ./packages/frontend/synthesizer/web-app --pack-destination package-tarballs --ignore-scripts
           npm pack ./packages/cli --pack-destination package-tarballs --ignore-scripts
@@ -440,9 +448,16 @@ jobs:
 
       - name: Pack foundation, synthesizer, and CLI tarballs
         working-directory: candidate
+        env:
+          RELEASE_OPERATION: ${{ inputs.operation }}
         run: |
           mkdir package-tarballs
-          npm pack ./packages/frontend/qap-compiler/dist --pack-destination package-tarballs --ignore-scripts
+          if [ "$RELEASE_OPERATION" = "final-release" ]; then
+            library_version="$(node -p "require('./packages/frontend/qap-compiler/package.json').version")"
+            npm pack "@tokamak-zk-evm/subcircuit-library@${library_version}" --pack-destination package-tarballs --ignore-scripts
+          else
+            npm pack ./packages/frontend/qap-compiler/dist --pack-destination package-tarballs --ignore-scripts
+          fi
           npm pack ./packages/frontend/synthesizer/node-cli --pack-destination package-tarballs --ignore-scripts
           npm pack ./packages/frontend/synthesizer/web-app --pack-destination package-tarballs --ignore-scripts
           npm pack ./packages/cli --pack-destination package-tarballs --ignore-scripts
