@@ -16,8 +16,7 @@ pub const CRS_PROVENANCE_FILE_NAME: &str = "crs_provenance.json";
 pub const CRS_DOCUMENT_KIND: &str = "crs";
 pub const CEREMONY_PROTOCOL_VERSION: &str = "tokamak-filecoin-phase2";
 
-const CRS_PROVENANCE_CONTRACT_SHA256: &str =
-    "cd3458fcf83933aa52839d258f48eae173ed1a2312c6be189433a7afe20f7a4d";
+const CRS_PROVENANCE_CONTRACT_SHA256: &str = "PENDING";
 const SUPPORTED_SCHEMA_KEYWORDS: &[&str] = &[
     "additionalProperties",
     "const",
@@ -83,6 +82,8 @@ pub struct CrsProvenance {
     pub ceremony_protocol_version: Option<String>,
     #[serde(deserialize_with = "required_option")]
     pub ceremony_transcript_sha256: Option<String>,
+    #[serde(deserialize_with = "required_option")]
+    pub phase2_contribution_count: Option<u64>,
     pub artifacts: BTreeMap<String, String>,
 }
 
@@ -272,6 +273,16 @@ pub fn validate_crs_provenance(provenance: &CrsProvenance) -> Result<(), String>
     if let Some(digest) = &provenance.ceremony_transcript_sha256 {
         validate_sha256(digest, "ceremonyTranscriptSha256")?;
     }
+    match (provenance.generation_method, provenance.phase2_contribution_count) {
+        (CrsGenerationMethod::Mpc, Some(count)) if count > 0 => {}
+        (CrsGenerationMethod::Mpc, _) => {
+            return Err("MPC provenance must record a positive phase2ContributionCount".into())
+        }
+        (CrsGenerationMethod::TrustedSetup, None) => {}
+        (CrsGenerationMethod::TrustedSetup, Some(_)) => {
+            return Err("trusted-setup provenance must not record phase2ContributionCount".into())
+        }
+    }
 
     if let Some(Phase1SourceProvenance::Filecoin(source)) = &provenance.phase1_source_provenance {
         validate_non_empty(
@@ -347,6 +358,7 @@ mod tests {
             trusted.phase1_source_provenance = None;
             trusted.ceremony_protocol_version = None;
             trusted.ceremony_transcript_sha256 = None;
+            trusted.phase2_contribution_count = None;
             let encoded = serde_json::to_value(&trusted).unwrap();
             assert_eq!(
                 original.as_object().unwrap().keys().collect::<Vec<_>>(),

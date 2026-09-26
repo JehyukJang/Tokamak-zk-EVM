@@ -19,11 +19,14 @@ executable for both execution modes:
   snapshot of that local QAP build. Build QAP first. This mode cannot authorize
   publication.
 - `--mode publish` acquires a compatible npm package at runtime. Pass
-  `--library-version MAJOR.MINOR.PATCH` to select an exact version; omit it to
-  select the latest stable patch release matching the backend's `MAJOR.MINOR`
-  version. The resolved exact version is recorded in CRS provenance. This mode
-  requires Node.js and npm, does not modify repository manifests or
-  dependencies, and has no local-QAP fallback.
+  `--library-version MAJOR.MINOR.PATCH` on `init` to select an exact version;
+  omit it there to select the latest published version matching the backend's
+  `MAJOR.MINOR` version. The selected version is recorded in the transcript.
+  Later publish-mode operations use that recorded version and reject this
+  option. Development-mode transcripts record `null` and use the local library
+  path for subsequent operations. Publish mode requires Node.js and npm, does
+  not modify repository manifests or dependencies, and has no local-QAP
+  fallback.
 
 Specify the mode before every operation. Publish mode selects the circuit input
 for CRS publication to Google Drive; it does not distribute a binary. Only
@@ -64,13 +67,12 @@ target/release/mpc --mode development \
 ```
 
 For a publish ceremony, remove `--subcircuit-library ...` and replace
-`--mode development` in every command with `--mode publish`. Add
-`--library-version <exact-compatible-version>` to pin the same package version
-for every operation; if omitted, each invocation independently selects the
-latest compatible version. Do not rebuild the executable to change modes. Run
-contributor commands in each contributor's own environment. Initialization is
-deterministic and is not a contribution; each transcript output must use a new
-path.
+`--mode development` in every command with `--mode publish`. On `init`,
+`--library-version <exact-compatible-version>` is optional; later operations
+take the exact version from the input transcript and reject that option. Do not
+rebuild the executable to change modes. Run contributor commands in each
+contributor's own environment. Initialization is deterministic and is not a
+contribution; each transcript output must use a new path.
 
 ## Checks and outputs
 
@@ -92,14 +94,15 @@ After participants independently complete a publish-mode transcript, one
 operator can verify it, derive the final CRS, and upload it:
 
 ```sh
-target/release/mpc --mode publish --library-version <exact-compatible-version> \
+target/release/mpc --mode publish \
   publish --input /path/to/final.mpc --output ./rust/setup/output/crs \
   --filecoin-source /path/to/challenge_19
 ```
 
-The command authenticates the original source, acquires the selected npm
-snapshot, verifies initialization and every contribution, and requires at least
-one contribution. Only this result receives `releaseEligible: true`. The standalone
+The command authenticates the original source, acquires the npm version recorded
+in the transcript, verifies initialization and every contribution, and
+requires at least one contribution. Only this result receives
+`releaseEligible: true`. The standalone
 `check_crs_publication` tool checks metadata and payloads only; it neither
 verifies a ceremony nor authorizes upload.
 

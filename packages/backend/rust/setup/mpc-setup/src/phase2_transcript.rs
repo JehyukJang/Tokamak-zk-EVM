@@ -13,9 +13,13 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use rand::{CryptoRng, RngCore};
 use rayon::prelude::*;
 use sha2::{Digest, Sha256};
-use std::io::Write;
+use std::fs::File;
+use std::io::{Read, Write};
 use std::path::Path;
 use zeroize::Zeroizing;
+
+const TRANSCRIPT_MAGIC: &[u8] = b"TOKAMAK_MPC_PHASE2_TRANSCRIPT_V1\0";
+const TRANSCRIPT_FORMAT_VERSION: u8 = 1;
 
 pub(crate) struct Identity {
     pub mode: Mode,
@@ -44,11 +48,22 @@ impl<'a> Transcript<'a> {
     pub fn file_digest(&self) -> String {
         format!("{:x}", Sha256::digest(&self.bytes))
     }
+
+    pub(crate) fn library_version_from_file(path: &Path) -> Result<Option<String>, String> {
+        let mut file = File::open(path).map_err(|e| e.to_string())?;
+        read_library_version(&mut file)
+    }
+
     pub fn initialize(engine: &'a Engine, identity: &'a Identity) -> Result<Self, String> {
-        let mut bytes = b"TOKAMAK_MPC_PHASE2\0".to_vec();
+        let library_version = match identity.mode {
+            Mode::Development => None,
+            Mode::Publish => Some(identity.version.as_str()),
+        };
+        let mut bytes = encode_header(library_version)?;
         let mut context = Sha256::new();
         // Even byte-identical circuit inputs cannot promote a development
         // ceremony into a publish ceremony. The record chain inherits this binding.
+        context.update(&bytes);
         context.update((identity.mode.name().len() as u64).to_be_bytes());
         context.update(identity.mode.name().as_bytes());
         context.update((identity.version.len() as u64).to_be_bytes());
@@ -228,6 +243,62 @@ impl<'a> Transcript<'a> {
     }
 }
 
+fn encode_header(library_version: Option<&str>) -> Result<Vec<u8>, String> {
+    let mut header = TRANSCRIPT_MAGIC.to_vec();
+    header.push(TRANSCRIPT_FORMAT_VERSION);
+    match library_version {
+        None => header.push(0),
+        Some(version) => {
+            libs::compatibility::parse_package_version(version).map_err(|e| e.to_string())?;
+            let length = u16::try_from(version.len())
+                .map_err(|_| "transcript library version is too long")?;
+            header.push(1);
+            header.extend_from_slice(&length.to_be_bytes());
+            header.extend_from_slice(version.as_bytes());
+        }
+    }
+    Ok(header)
+}
+
+fn read_library_version(reader: &mut impl Read) -> Result<Option<String>, String> {
+    let mut magic = vec![0; TRANSCRIPT_MAGIC.len()];
+    reader
+        .read_exact(&mut magic)
+        .map_err(|_| "invalid or unsupported MPC transcript header".to_string())?;
+    if magic != TRANSCRIPT_MAGIC {
+        return Err("invalid or unsupported MPC transcript header".into());
+    }
+    let mut fixed = [0; 2];
+    reader
+        .read_exact(&mut fixed)
+        .map_err(|_| "truncated MPC transcript header".to_string())?;
+    if fixed[0] != TRANSCRIPT_FORMAT_VERSION {
+        return Err("unsupported MPC transcript format version".into());
+    }
+    match fixed[1] {
+        0 => Ok(None),
+        1 => {
+            let mut length = [0; 2];
+            reader
+                .read_exact(&mut length)
+                .map_err(|_| "truncated MPC transcript library version".to_string())?;
+            let length = u16::from_be_bytes(length) as usize;
+            if length == 0 {
+                return Err("empty MPC transcript library version".into());
+            }
+            let mut version = vec![0; length];
+            reader
+                .read_exact(&mut version)
+                .map_err(|_| "truncated MPC transcript library version".to_string())?;
+            let version =
+                String::from_utf8(version).map_err(|_| "invalid transcript library version")?;
+            libs::compatibility::parse_package_version(&version).map_err(|e| e.to_string())?;
+            Ok(Some(version))
+        }
+        _ => Err("invalid MPC transcript library version marker".into()),
+    }
+}
+
 fn encode_state(state: &State) -> Result<Vec<u8>, String> {
     #[cfg(feature = "timing")]
     let _span = libs::timing::SpanGuard::new("mpc.serialize", "mpc", vec![]);
@@ -360,6 +431,22 @@ fn state_digest(bytes: &[u8]) -> [u8; 32] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transcript_header_records_publish_version_or_development_null() {
+        let publish = encode_header(Some("3.0.7")).unwrap();
+        assert_eq!(
+            read_library_version(&mut publish.as_slice()).unwrap(),
+            Some("3.0.7".into())
+        );
+
+        let development = encode_header(None).unwrap();
+        assert_eq!(
+            read_library_version(&mut development.as_slice()).unwrap(),
+            None
+        );
+        assert!(encode_header(Some("latest")).is_err());
+    }
 
     #[test]
     fn parallel_state_encoding_matches_serial_bytes_and_digest() {

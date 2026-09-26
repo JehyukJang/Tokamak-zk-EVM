@@ -28,6 +28,7 @@ export interface CrsProvenance {
   readonly phase1SourceProvenance: null | { readonly filecoin: FilecoinSourceProvenance };
   readonly ceremonyProtocolVersion: 'tokamak-filecoin-phase2' | null;
   readonly ceremonyTranscriptSha256: string | null;
+  readonly phase2ContributionCount: number | null;
   readonly artifacts: Readonly<Record<string, string>>;
 }
 
@@ -70,6 +71,13 @@ export function parseCrsProvenance(value: unknown, subject = 'CRS provenance'): 
   validateJsonSchema(crsProvenanceSchema(), value, subject);
   const provenance = value as CrsProvenance;
   validateVersionPolicy(provenance, subject);
+  if (provenance.generationMethod === 'mpc' &&
+      (!Number.isSafeInteger(provenance.phase2ContributionCount) || provenance.phase2ContributionCount! < 1)) {
+    throw new Error(`${subject}.phase2ContributionCount must be a positive integer for MPC provenance.`);
+  }
+  if (provenance.generationMethod === 'trustedSetup' && provenance.phase2ContributionCount !== null) {
+    throw new Error(`${subject}.phase2ContributionCount must be null for trusted-setup provenance.`);
+  }
   const names = crsArchiveRootFileNames().filter(name => name !== crsProvenanceFileName());
   if (Object.keys(provenance.artifacts).length !== names.length ||
       names.some(name => !hasOwn(provenance.artifacts, name))) {

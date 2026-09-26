@@ -200,6 +200,7 @@ pub fn write_development_only_univariate_keys_provenance(
         phase1_source_provenance: None,
         ceremony_protocol_version: None,
         ceremony_transcript_sha256: None,
+        phase2_contribution_count: None,
     };
     crate::crs_provenance::write_crs_provenance(output_dir, &provenance)
 }
@@ -643,6 +644,7 @@ mod tests {
             "phase1SourceProvenance": null,
             "ceremonyProtocolVersion": null,
             "ceremonyTranscriptSha256": null,
+            "phase2ContributionCount": null,
             "releaseEligible": false,
             "protocolSchemaId": UNIVARIATE_CRS_SCHEMA_ID,
             "artifacts": {

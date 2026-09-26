@@ -30,7 +30,7 @@ struct Args {
     /// Only the explicit publish operation verifies, finalizes and uploads.
     #[arg(long, value_enum)]
     mode: Mode,
-    /// Exact npm library version; defaults to the latest stable backend-compatible version.
+    /// Exact npm library version for publish init only; defaults to the latest compatible release.
     #[arg(long)]
     library_version: Option<String>,
     /// Local QAP library directory; required only with --mode development.
@@ -88,10 +88,7 @@ fn execute(args: Args) -> Result<(), String> {
     if publishing && args.mode != Mode::Publish {
         return Err("the publish operation requires --mode publish".into());
     }
-    args.mode.validate(
-        args.library_version.as_deref(),
-        args.subcircuit_library.as_deref(),
-    )?;
+    let library_version = library_version_for_run(&args)?;
     let all = Instant::now();
     let started = Instant::now();
     let directory = tempfile::Builder::new()
@@ -100,7 +97,7 @@ fn execute(args: Args) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let (path, library) = circuit_input::prepare(
         args.mode,
-        args.library_version.as_deref(),
+        library_version.as_deref(),
         args.subcircuit_library.as_deref(),
         directory.path(),
     )?;
@@ -247,6 +244,7 @@ fn execute(args: Args) -> Result<(), String> {
                 )),
                 ceremony_protocol_version: Some(CEREMONY_PROTOCOL_VERSION.into()),
                 ceremony_transcript_sha256: Some(transcript.file_digest()),
+                phase2_contribution_count: Some(transcript.contributions() as u64),
                 artifacts: Default::default(),
             };
             if let Some(mut snapshot) =
@@ -276,6 +274,36 @@ fn execute(args: Args) -> Result<(), String> {
         all.elapsed().as_secs_f64()
     );
     Ok(())
+}
+
+fn library_version_for_run(args: &Args) -> Result<Option<String>, String> {
+    let is_init = matches!(&args.operation, Operation::Init { .. });
+    if args.library_version.is_some() && (args.mode != Mode::Publish || !is_init) {
+        return Err("--library-version is only accepted with --mode publish init".into());
+    }
+    args.mode.validate(
+        args.library_version.as_deref(),
+        args.subcircuit_library.as_deref(),
+    )?;
+
+    if args.mode == Mode::Development {
+        return Ok(None);
+    }
+    if is_init {
+        return Ok(args.library_version.clone());
+    }
+
+    let input = match &args.operation {
+        Operation::Contribute { input, .. }
+        | Operation::Verify { input }
+        | Operation::Finalize { input, .. }
+        | Operation::Publish { input, .. } => input,
+        Operation::Init { .. } => unreachable!("init handled above"),
+    };
+    let version = Transcript::library_version_from_file(input)?
+        .ok_or("input transcript does not record a publish-mode library version")?;
+    args.mode.validate(Some(&version), None)?;
+    Ok(Some(version))
 }
 
 #[cfg(test)]
@@ -311,20 +339,53 @@ mod tests {
         assert!(Args::try_parse_from(["mpc", "phase1"]).is_err());
     }
     #[test]
-    fn publish_version_can_be_omitted_or_pinned_explicitly() {
-        assert!(Args::try_parse_from([
+    fn publish_init_can_omit_or_pin_the_library_version() {
+        let args = Args::try_parse_from([
             "mpc",
             "--mode",
             "publish",
             "init",
             "--output",
-            "initial.mpc"
+            "initial.mpc",
         ])
-        .is_ok());
-        assert!(Mode::Publish.validate(None, None).is_ok());
-        assert!(Mode::Publish
-            .validate(Some(env!("CARGO_PKG_VERSION")), None)
-            .is_ok());
+        .unwrap();
+        assert_eq!(library_version_for_run(&args).unwrap(), None);
+        let mut pinned = args;
+        pinned.library_version = Some(env!("CARGO_PKG_VERSION").into());
+        assert_eq!(
+            library_version_for_run(&pinned).unwrap(),
+            Some(env!("CARGO_PKG_VERSION").into())
+        );
+    }
+
+    #[test]
+    fn publish_contribution_uses_transcript_version_and_rejects_override() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("initial.mpc");
+        let version = env!("CARGO_PKG_VERSION");
+        let mut header = b"TOKAMAK_MPC_PHASE2_TRANSCRIPT_V1\0".to_vec();
+        header.extend([1, 1]);
+        header.extend_from_slice(&(version.len() as u16).to_be_bytes());
+        header.extend_from_slice(version.as_bytes());
+        std::fs::write(&input, header).unwrap();
+        let mut args = Args {
+            mode: Mode::Publish,
+            library_version: None,
+            subcircuit_library: None,
+            filecoin_source: None,
+            operation: Operation::Contribute {
+                input,
+                output: dir.path().join("next.mpc"),
+            },
+        };
+        assert_eq!(
+            library_version_for_run(&args).unwrap(),
+            Some(version.to_owned())
+        );
+        args.library_version = Some(version.into());
+        assert!(library_version_for_run(&args)
+            .unwrap_err()
+            .contains("only accepted with --mode publish init"));
     }
 
     #[test]

@@ -141,8 +141,6 @@
       "args": [
         "--mode",
         "publish",
-        "--library-version",
-        "3.0.0",
         "publish",
         "--input",
         "${workspaceFolder}/rust/setup/mpc-setup/output/contribution-1.mpc",

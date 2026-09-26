@@ -176,6 +176,7 @@ fn prepare_native_e2e_keys() {
         phase1_source_provenance: None,
         ceremony_protocol_version: Some(CEREMONY_PROTOCOL_VERSION.into()),
         ceremony_transcript_sha256: Some(transcript.file_digest()),
+        phase2_contribution_count: Some(transcript.contributions() as u64),
         artifacts: Default::default(),
     };
     assert!(

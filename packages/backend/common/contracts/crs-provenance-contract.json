@@ -14,7 +14,8 @@
       "artifacts",
       "phase1SourceProvenance",
       "ceremonyProtocolVersion",
-      "ceremonyTranscriptSha256"
+      "ceremonyTranscriptSha256",
+      "phase2ContributionCount"
     ],
     "properties": {
       "documentKind": {
@@ -150,6 +151,17 @@
           {
             "type": "string",
             "pattern": "^[0-9a-f]{64}$"
+          }
+        ]
+      },
+      "phase2ContributionCount": {
+        "oneOf": [
+          {
+            "type": "null"
+          },
+          {
+            "type": "integer",
+            "minimum": 1
           }
         ]
       }
