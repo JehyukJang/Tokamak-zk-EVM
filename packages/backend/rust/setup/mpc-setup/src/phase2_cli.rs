@@ -27,7 +27,7 @@ use std::time::Instant;
 )]
 struct Args {
     /// Select local QAP testing or npm-backed publication preparation.
-    /// Only the explicit publish operation verifies, finalizes and uploads.
+    /// Only upload sends finalized CRS artifacts to Google Drive.
     #[arg(long, value_enum)]
     mode: Mode,
     /// Exact npm library version for publish init only; defaults to the latest compatible release.
@@ -58,24 +58,17 @@ enum Operation {
         #[arg(long)]
         output: PathBuf,
     },
-    /// Independently rederive initialization and verify every contribution.
-    Verify {
-        #[arg(long)]
-        input: PathBuf,
-    },
-    /// Verify contributions and atomically activate the four common CRS files.
+    /// Verify every contribution, then atomically activate the four common CRS files.
     Finalize {
         #[arg(long)]
         input: PathBuf,
         #[arg(long)]
         output: PathBuf,
     },
-    /// Verify the completed publish ceremony, finalize CRS and upload to Google Drive.
-    Publish {
+    /// Upload a completed, release-eligible CRS directory to Google Drive.
+    Upload {
         #[arg(long)]
-        input: PathBuf,
-        #[arg(long)]
-        output: PathBuf,
+        crs_directory: PathBuf,
     },
 }
 
@@ -84,9 +77,25 @@ pub fn run() -> Result<(), String> {
 }
 
 fn execute(args: Args) -> Result<(), String> {
-    let publishing = matches!(&args.operation, Operation::Publish { .. });
-    if publishing && args.mode != Mode::Publish {
-        return Err("the publish operation requires --mode publish".into());
+    if let Operation::Upload { crs_directory } = &args.operation {
+        if args.mode != Mode::Publish {
+            return Err("the upload operation requires --mode publish".into());
+        }
+        if args.library_version.is_some()
+            || args.subcircuit_library.is_some()
+            || args.filecoin_source.is_some()
+        {
+            return Err(
+                "upload accepts only --mode publish and --crs-directory; setup inputs are not used"
+                    .into(),
+            );
+        }
+        let mut snapshot = crate::publication::read_finalized_snapshot(crs_directory)?;
+        let mut drive = crate::drive::GoogleDrive::connect()?;
+        let root = drive.root.clone();
+        let url = crate::publication::upload(&mut drive, &root, &mut snapshot)?;
+        println!("[mpc] upload complete: {url}");
+        return Ok(());
     }
     let library_version = library_version_for_run(&args)?;
     let all = Instant::now();
@@ -183,10 +192,8 @@ fn execute(args: Args) -> Result<(), String> {
     let started = Instant::now();
     let input = match &args.operation {
         Operation::Init { .. } => None,
-        Operation::Contribute { input, .. }
-        | Operation::Verify { input }
-        | Operation::Finalize { input, .. }
-        | Operation::Publish { input, .. } => Some(input),
+        Operation::Contribute { input, .. } | Operation::Finalize { input, .. } => Some(input),
+        Operation::Upload { .. } => unreachable!("upload handled before MPC setup"),
     };
     let transcript = if let Some(input) = input {
         Transcript::read(
@@ -210,8 +217,7 @@ fn execute(args: Args) -> Result<(), String> {
                 .contribute(&mut rand::rngs::OsRng)?
                 .write_new(&output)?;
         }
-        Operation::Verify { .. } => {}
-        Operation::Finalize { output, .. } | Operation::Publish { output, .. } => {
+        Operation::Finalize { output, .. } => {
             if transcript.contributions() == 0 {
                 return Err("finalization requires a verified participant contribution".into());
             }
@@ -227,7 +233,7 @@ fn execute(args: Args) -> Result<(), String> {
                 document_kind: CRS_DOCUMENT_KIND.into(),
                 protocol_schema_id: UNIVARIATE_CRS_SCHEMA_ID.into(),
                 generation_method: CrsGenerationMethod::Mpc,
-                release_eligible: publishing,
+                release_eligible: args.mode == Mode::Publish,
                 generated_at_utc: chrono::Utc::now().to_rfc3339(),
                 compatible_backend_version:
                     libs::compatibility::compatibility_from_package_version(env!(
@@ -247,26 +253,18 @@ fn execute(args: Args) -> Result<(), String> {
                 phase2_contribution_count: Some(transcript.contributions() as u64),
                 artifacts: Default::default(),
             };
-            if let Some(mut snapshot) =
-                crate::publication::finalize(&output, &crs, provenance, publishing)?
-            {
+            let release_eligible = args.mode == Mode::Publish;
+            crate::publication::finalize(&output, &crs, provenance, release_eligible)?;
+            if release_eligible {
                 println!(
-                    "[mpc] verified local publication files saved in {}; starting Drive preflight",
+                    "[mpc] finalized release-eligible CRS at {}; run the upload operation to send it to Google Drive",
                     output.display()
                 );
-                let uploaded = (|| {
-                    let mut drive = crate::drive::GoogleDrive::connect()?;
-                    let root = drive.root.clone();
-                    crate::publication::publish(&mut drive, &root, &mut snapshot)
-                })();
-                let url = uploaded.map_err(|e: String| {
-                    format!("{e}; local CRS preserved at {}", output.display())
-                })?;
-                println!("[mpc] publication complete: {url}");
             } else {
                 println!("[mpc] finalized local CRS; releaseEligible=false, no upload requested");
             }
         }
+        Operation::Upload { .. } => unreachable!("upload handled before MPC setup"),
     }
     println!(
         "[mpc] operation/output in {:.6}s; total {:.6}s",
@@ -294,11 +292,9 @@ fn library_version_for_run(args: &Args) -> Result<Option<String>, String> {
     }
 
     let input = match &args.operation {
-        Operation::Contribute { input, .. }
-        | Operation::Verify { input }
-        | Operation::Finalize { input, .. }
-        | Operation::Publish { input, .. } => input,
+        Operation::Contribute { input, .. } | Operation::Finalize { input, .. } => input,
         Operation::Init { .. } => unreachable!("init handled above"),
+        Operation::Upload { .. } => unreachable!("upload handled before MPC setup"),
     };
     let version = Transcript::library_version_from_file(input)?
         .ok_or("input transcript does not record a publish-mode library version")?;
@@ -311,7 +307,7 @@ mod tests {
     use super::*;
     #[test]
     fn command_surface_has_no_source_pin_or_subset_bypass() {
-        for command in ["init", "contribute", "verify", "finalize", "publish"] {
+        for command in ["init", "contribute", "finalize"] {
             let mut valid = vec![
                 "mpc",
                 "--mode",
@@ -323,9 +319,7 @@ mod tests {
             if command != "init" {
                 valid.extend(["--input", "previous.mpc"]);
             }
-            if command != "verify" {
-                valid.extend(["--output", "next"]);
-            }
+            valid.extend(["--output", "next"]);
             assert!(Args::try_parse_from(&valid).is_ok());
             for extra in [
                 vec!["--tau-sequence", "coordinator.rkyv"],
@@ -336,6 +330,26 @@ mod tests {
                 assert!(Args::try_parse_from(invalid).is_err());
             }
         }
+        assert!(Args::try_parse_from([
+            "mpc",
+            "--mode",
+            "development",
+            "--subcircuit-library",
+            "local-library",
+            "verify",
+            "--input",
+            "previous.mpc"
+        ])
+        .is_err());
+        assert!(Args::try_parse_from([
+            "mpc",
+            "--mode",
+            "publish",
+            "upload",
+            "--crs-directory",
+            "./final-crs"
+        ])
+        .is_ok());
         assert!(Args::try_parse_from(["mpc", "phase1"]).is_err());
     }
     #[test]
@@ -422,21 +436,34 @@ mod tests {
     }
 
     #[test]
-    fn development_publish_fails_before_input_or_drive_access() {
+    fn development_upload_fails_before_crs_or_drive_access() {
         let dir = tempfile::tempdir().unwrap();
-        let output = dir.path().join("out");
         let error = execute(Args {
             mode: Mode::Development,
             library_version: None,
             subcircuit_library: Some(dir.path().join("local-library")),
             filecoin_source: None,
-            operation: Operation::Publish {
-                input: dir.path().join("missing"),
-                output: output.clone(),
+            operation: Operation::Upload {
+                crs_directory: dir.path().join("missing"),
             },
         })
         .unwrap_err();
         assert!(error.contains("requires --mode publish"));
-        assert!(!output.exists());
+    }
+
+    #[test]
+    fn upload_rejects_ceremony_inputs_before_reading_the_crs_or_connecting_to_drive() {
+        let dir = tempfile::tempdir().unwrap();
+        let error = execute(Args {
+            mode: Mode::Publish,
+            library_version: None,
+            subcircuit_library: None,
+            filecoin_source: Some(dir.path().join("unused-source")),
+            operation: Operation::Upload {
+                crs_directory: dir.path().join("missing-crs"),
+            },
+        })
+        .unwrap_err();
+        assert!(error.contains("setup inputs are not used"));
     }
 }

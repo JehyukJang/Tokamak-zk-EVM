@@ -29,9 +29,11 @@ executable for both execution modes:
   fallback.
 
 Specify the mode before every operation. Publish mode selects the circuit input
-for CRS publication to Google Drive; it does not distribute a binary. Only
-`publish` uploads; `finalize` remains offline. Neither the Cargo profile nor a
-Cargo feature selects the MPC circuit source.
+for a release-eligible CRS; it does not distribute a binary. `finalize` verifies
+the transcript and writes the completed CRS locally. The separate `upload`
+operation sends that already finalized CRS to Google Drive without replaying the
+ceremony or regenerating keys. Neither the Cargo profile nor a Cargo feature
+selects the MPC circuit source.
 
 Obtain `challenge_19` directly from the pinned
 [Filecoin source](https://trusted-setup.filecoin.io/phase1/challenge_19), or
@@ -59,10 +61,6 @@ target/release/mpc --mode development \
 
 target/release/mpc --mode development \
   --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
-  verify --filecoin-source /path/to/challenge_19 --input ./bob.mpc
-
-target/release/mpc --mode development \
-  --subcircuit-library ../frontend/qap-compiler/subcircuits/library \
   finalize --filecoin-source /path/to/challenge_19 --input ./bob.mpc --output ./final-keys
 ```
 
@@ -79,9 +77,10 @@ contribution; each transcript output must use a new path.
 Source preparation verifies the pinned digest, file length, response header,
 and required point families. Initialization derives circuit-specific material
 from encoded powers. Each contribution updates the designated phase 2 state and
-provides share-knowledge evidence; verification checks the full record chain
-and final-family equations. The [design record](docs/current-phase2-design.md)
-defines the exact source mapping, contribution evidence, and query handling.
+provides share-knowledge evidence. `finalize` verifies the full record chain
+and final-family equations before deriving CRS keys. The
+[design record](docs/current-phase2-design.md) defines the exact source mapping,
+contribution evidence, and query handling.
 
 Finalization requires at least one verified contribution and writes four common
 CRS payloads plus `crs_provenance.json`, which records the cumulative verified
@@ -89,21 +88,21 @@ phase-2 contribution count. Offline finalization always records
 `releaseEligible: false`. Ordinary proving users can consume distributed tau
 files; contributors must authenticate the original Filecoin source themselves.
 
-## Publish a completed ceremony
+## Upload a finalized CRS
 
-After participants independently complete a publish-mode transcript, one
-operator can verify it, derive the final CRS, and upload it:
+After `finalize` has verified the transcript and produced a release-eligible
+CRS directory, upload only that completed output:
 
 ```sh
 target/release/mpc --mode publish \
-  publish --input /path/to/final.mpc --output ./rust/setup/output/crs \
-  --filecoin-source /path/to/challenge_19
+  upload --crs-directory ./rust/setup/output/crs
 ```
 
-The command authenticates the original source, acquires the npm version recorded
-in the transcript, verifies initialization and every contribution, and
-requires at least one contribution. Only this result receives
-`releaseEligible: true`. The standalone
+The upload operation does not accept a transcript, library version, or Filecoin
+source. It checks that the local directory contains a release-eligible CRS with
+valid payload digests, then transfers those files. It does not verify the
+ceremony or regenerate CRS keys. If a transfer is interrupted, rerun `upload`
+with the same finalized CRS directory. The standalone
 `check_crs_publication` tool checks metadata and payloads only; it neither
 verifies a ceremony nor authorizes upload.
 
@@ -115,11 +114,11 @@ Configure these environment variables only in the operator environment:
 | `TOKAMAK_MPC_DRIVE_OAUTH_CLIENT_JSON_PATH` | Installed-app OAuth client configuration. |
 | `TOKAMAK_MPC_DRIVE_OAUTH_TOKEN_PATH` | Owner-only token-cache path. |
 
-Keep credential files outside Git. Publication verifies completed payloads and
-their SHA-256 values before staged activation. It rejects conflicting releases
-and does not overwrite published artifacts. A failed command preserves local
-output and reports the failed stage; rerunning rechecks the source and
-transcript.
+Keep credential files outside Git. Finalization verifies the transcript and
+creates the local CRS before upload. Upload checks the completed payloads and
+their SHA-256 values, rejects conflicting releases, and does not overwrite
+published artifacts. A failed upload preserves local output and reports the
+failed stage.
 
 ## Qualification and security status
 

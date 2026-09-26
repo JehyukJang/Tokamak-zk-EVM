@@ -1,4 +1,4 @@
-//! Publication of one immutable, already verified generation. No standalone uploader.
+//! Finalize verified CRS generations and upload already completed artifacts.
 use libs::crs_provenance::{parse_crs_provenance, CrsProvenance, CRS_PROVENANCE_FILE_NAME};
 use libs::crs_publication_admission::admit_final_crs_publication;
 use libs::univariate_setup::{stage_artifacts, SetupCrs};
@@ -27,8 +27,8 @@ pub(crate) fn finalize(
     output: &Path,
     crs: &SetupCrs,
     mut provenance: CrsProvenance,
-    publish: bool,
-) -> Result<Option<Snapshot>, String> {
+    release_eligible: bool,
+) -> Result<(), String> {
     let (stage, digests) = stage_artifacts(output, crs).map_err(|e| e.to_string())?;
     provenance.artifacts = [
         ("tau_sequence.rkyv".into(), digests.tau_sequence_sha256),
@@ -46,7 +46,7 @@ pub(crate) fn finalize(
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
         Err(e) => return Err(e.to_string()),
     };
-    let bytes = if publish && exists {
+    let bytes = if release_eligible && exists {
         let bytes = fs::read(output.join(CRS_PROVENANCE_FILE_NAME)).map_err(|e| e.to_string())?;
         let old = admit_final_crs_publication(output)?;
         // Everything except the originally generated timestamp must match the
@@ -64,35 +64,11 @@ pub(crate) fn finalize(
     };
     parse_crs_provenance(&bytes)?;
     fs::write(path.join(CRS_PROVENANCE_FILE_NAME), &bytes).map_err(|e| e.to_string())?;
-    let snapshot = if publish {
+    if release_eligible {
         admit_final_crs_publication(path)?;
-        let mut payloads = Vec::new();
-        for (name, digest) in &provenance.artifacts {
-            let file = File::open(path.join(name)).map_err(|e| e.to_string())?;
-            payloads.push(Payload {
-                name: name.clone(),
-                size: file.metadata().map_err(|e| e.to_string())?.len(),
-                file,
-                digest: digest.clone(),
-            });
-        }
-        payloads.push(Payload {
-            name: CRS_PROVENANCE_FILE_NAME.into(),
-            size: bytes.len() as u64,
-            file: File::open(path.join(CRS_PROVENANCE_FILE_NAME)).map_err(|e| e.to_string())?,
-            digest: format!("{:x}", Sha256::digest(&bytes)),
-        });
-        Some(Snapshot {
-            provenance,
-            payloads,
-        })
-    } else {
-        None
-    };
-    // Open handles above remain bound to this generation after rename/unlink,
-    // rather than following an active symlink again during network transfer.
+    }
     stage.activate().map_err(|e| e.to_string())?;
-    Ok(snapshot)
+    Ok(())
 }
 
 #[derive(Clone, Debug)]
@@ -126,7 +102,37 @@ fn named(entries: &[Entry], name: &str, folder: bool) -> Result<Option<Entry>, S
     }
 }
 
-pub(crate) fn publish(
+pub(crate) fn read_finalized_snapshot(directory: &Path) -> Result<Snapshot, String> {
+    // Resolve the active CRS link once so all opened files come from one
+    // immutable generation, even if the active link changes during upload.
+    let directory = fs::canonicalize(directory).map_err(|e| e.to_string())?;
+    let provenance_bytes =
+        fs::read(directory.join(CRS_PROVENANCE_FILE_NAME)).map_err(|e| e.to_string())?;
+    let provenance = parse_crs_provenance(&provenance_bytes)?;
+    let mut payloads = Vec::new();
+    for (name, digest) in &provenance.artifacts {
+        let file = File::open(directory.join(name)).map_err(|e| format!("{name}: {e}"))?;
+        payloads.push(Payload {
+            name: name.clone(),
+            size: file.metadata().map_err(|e| e.to_string())?.len(),
+            file,
+            digest: digest.clone(),
+        });
+    }
+    let file = File::open(directory.join(CRS_PROVENANCE_FILE_NAME)).map_err(|e| e.to_string())?;
+    payloads.push(Payload {
+        name: CRS_PROVENANCE_FILE_NAME.into(),
+        size: file.metadata().map_err(|e| e.to_string())?.len(),
+        file,
+        digest: format!("{:x}", Sha256::digest(&provenance_bytes)),
+    });
+    Ok(Snapshot {
+        provenance,
+        payloads,
+    })
+}
+
+pub(crate) fn upload(
     drive: &mut impl Drive,
     root: &str,
     snapshot: &mut Snapshot,

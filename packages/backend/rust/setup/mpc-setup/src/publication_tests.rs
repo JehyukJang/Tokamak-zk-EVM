@@ -131,7 +131,7 @@ fn snapshot() -> Snapshot {
 fn publishes_exact_consumer_layout_and_identical_provenance_then_noops() {
     let mut snapshot = snapshot();
     let mut drive = FakeDrive::default();
-    let url = publish(&mut drive, "root", &mut snapshot).unwrap();
+    let url = upload(&mut drive, "root", &mut snapshot).unwrap();
     assert!(url.starts_with("https://drive.google.com/drive/folders/"));
     let root = drive.children("root").unwrap();
     let version = named(&root, "2.1", true).unwrap().unwrap();
@@ -163,14 +163,14 @@ fn publishes_exact_consumer_layout_and_identical_provenance_then_noops() {
     );
     assert_eq!(drive.public.len(), drive.entries.len());
     let writes = drive.writes;
-    publish(&mut drive, "root", &mut snapshot).unwrap();
+    upload(&mut drive, "root", &mut snapshot).unwrap();
     assert_eq!(drive.writes, writes);
 }
 
 #[test]
 fn interrupted_transfers_are_not_visible_as_releases_and_retry_keeps_bytes() {
     let mut successful = FakeDrive::default();
-    publish(&mut successful, "root", &mut snapshot()).unwrap();
+    upload(&mut successful, "root", &mut snapshot()).unwrap();
     for failure in 1..=successful.writes {
         let mut drive = FakeDrive {
             fail_at: Some(failure),
@@ -178,12 +178,12 @@ fn interrupted_transfers_are_not_visible_as_releases_and_retry_keeps_bytes() {
         };
         let mut snapshot = snapshot();
         let before = serde_json::to_vec(&snapshot.provenance).unwrap();
-        assert!(publish(&mut drive, "root", &mut snapshot).is_err());
+        assert!(upload(&mut drive, "root", &mut snapshot).is_err());
         assert!(named(&drive.children("root").unwrap(), "2.1", true)
             .unwrap()
             .is_none());
         drive.fail_at = None;
-        publish(&mut drive, "root", &mut snapshot).unwrap();
+        upload(&mut drive, "root", &mut snapshot).unwrap();
         assert_eq!(before, serde_json::to_vec(&snapshot.provenance).unwrap());
     }
 }
@@ -195,9 +195,9 @@ fn uncertain_activation_is_reconciled_without_duplicate_release() {
         ..Default::default()
     };
     let mut snapshot = snapshot();
-    assert!(publish(&mut drive, "root", &mut snapshot).is_err());
+    assert!(upload(&mut drive, "root", &mut snapshot).is_err());
     let count = drive.entries.len();
-    publish(&mut drive, "root", &mut snapshot).unwrap();
+    upload(&mut drive, "root", &mut snapshot).unwrap();
     assert_eq!(drive.entries.len(), count);
 }
 
@@ -209,7 +209,7 @@ fn corruption_permissions_and_duplicate_versions_fail_closed() {
             corrupt_upload: !permission_failure,
             ..Default::default()
         };
-        assert!(publish(&mut drive, "root", &mut snapshot()).is_err());
+        assert!(upload(&mut drive, "root", &mut snapshot()).is_err());
         assert!(named(&drive.children("root").unwrap(), "2.1", true)
             .unwrap()
             .is_none());
@@ -217,7 +217,7 @@ fn corruption_permissions_and_duplicate_versions_fail_closed() {
     let mut drive = FakeDrive::default();
     drive.add("root", "2.1", true, vec![]);
     drive.add("root", "2.1", true, vec![]);
-    assert!(publish(&mut drive, "root", &mut snapshot())
+    assert!(upload(&mut drive, "root", &mut snapshot())
         .unwrap_err()
         .contains("duplicate"));
     assert_eq!(drive.writes, 0);
@@ -227,7 +227,7 @@ fn corruption_permissions_and_duplicate_versions_fail_closed() {
 fn shared_tau_and_published_payload_conflicts_are_not_overwritten() {
     let mut snapshot = snapshot();
     let mut drive = FakeDrive::default();
-    publish(&mut drive, "root", &mut snapshot).unwrap();
+    upload(&mut drive, "root", &mut snapshot).unwrap();
     for name in [
         "verifier_keys.rkyv",
         &format!(
@@ -246,7 +246,7 @@ fn shared_tau_and_published_payload_conflicts_are_not_overwritten() {
             public: drive.public.clone(),
             ..Default::default()
         };
-        assert!(publish(&mut bad, "root", &mut snapshot).is_err());
+        assert!(upload(&mut bad, "root", &mut snapshot).is_err());
         assert_eq!(bad.writes, 0);
     }
 }
@@ -289,7 +289,7 @@ fn invalid_local_inputs_never_call_drive() {
             }
             _ => s.payloads[0].digest = "00".repeat(32),
         }
-        assert!(publish(&mut drive, "root", &mut s).is_err());
+        assert!(upload(&mut drive, "root", &mut s).is_err());
         assert_eq!(drive.writes, 0);
         assert!(drive.entries.is_empty());
     }
@@ -299,11 +299,13 @@ fn invalid_local_inputs_never_call_drive() {
 pub(crate) fn check_local_retry(crs: &SetupCrs) {
     let dir = tempfile::tempdir().unwrap();
     let output = dir.path().join("crs");
-    let mut first = finalize(&output, crs, metadata(), true).unwrap().unwrap();
+    finalize(&output, crs, metadata(), true).unwrap();
+    let mut first = read_finalized_snapshot(&output).unwrap();
     let before = fs::read(output.join(CRS_PROVENANCE_FILE_NAME)).unwrap();
     let mut fresh = metadata();
     fresh.generated_at_utc = "2026-09-13T12:00:00Z".into();
-    let retry = finalize(&output, crs, fresh, true).unwrap().unwrap();
+    finalize(&output, crs, fresh, true).unwrap();
+    let retry = read_finalized_snapshot(&output).unwrap();
     assert_eq!(
         before,
         fs::read(output.join(CRS_PROVENANCE_FILE_NAME)).unwrap()

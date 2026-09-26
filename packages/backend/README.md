@@ -13,9 +13,10 @@ The backend is organized around five user-facing binaries:
 
 `trusted-setup` generates development-only CRS artifacts. `mpc` implements
 Tokamak phase 2 using the externally completed Filecoin phase 1. Both emit the
-four common CRS files. MPC's explicit publish operation verifies a completed
-publish-mode ceremony, finalizes those files and uploads them to Google Drive;
-offline finalization remains ineligible.
+four common CRS files. In publish mode, MPC verifies the transcript and
+finalizes a release-eligible CRS locally; a separate `upload` operation sends
+that completed CRS to Google Drive without replaying the ceremony or
+regenerating keys.
 `preprocess`, `prove`, and `verify` accept any CRS whose compatibility version matches the selected
 subcircuit library, together with transaction-specific data from the frontend synthesizer.
 
@@ -113,7 +114,7 @@ cargo run --locked --release -p mpc-setup --bin mpc -- --mode development \
   init --filecoin-source /path/to/challenge_19 --output ./initial.mpc
 ```
 
-The transcript output path must not already exist. Subsequent operations repeat original-source authentication. Initialization does not upload. For a completed publish-mode transcript, `mpc --mode publish publish --input <transcript> --output <directory> --filecoin-source <original>` verifies, finalizes and uploads in one command, using the library version recorded in the transcript. See the [MPC operator guide](rust/setup/mpc-setup/README.md#publish-a-completed-ceremony) for configuration, retry behavior and qualification limits.
+The transcript output path must not already exist. Subsequent operations repeat original-source authentication. Initialization does not upload. In publish mode, `finalize --input <transcript> --output <directory>` verifies the transcript and writes a release-eligible CRS locally; `upload --crs-directory <directory>` transfers that completed CRS to Google Drive. See the [MPC operator guide](rust/setup/mpc-setup/README.md#upload-a-finalized-crs) for configuration, retry behavior and qualification limits.
 
 ## Setup outputs and common provenance
 
@@ -142,10 +143,11 @@ The phase-2 fields `phase1SourceProvenance`, `ceremonyProtocolVersion`,
 for trusted setup. MPC generation records the transcript digest and the
 verified cumulative number of phase-2 contributions. Trusted
 setup always writes `releaseEligible: false`. A common parser validates
-document shape, not publication authority. Filecoin MPC's offline `finalize` also writes
-`releaseEligible: false`. Only the explicit publish operation marks its verified
-publish-mode result eligible before transferring the unchanged document and payloads.
-Algorithm consumers do not require `releaseEligible: true`.
+document shape, not publication authority. Development finalization writes
+`releaseEligible: false`; publish-mode finalization marks the verified result
+eligible and saves it locally. The separate `upload` operation checks the
+completed CRS metadata and payload digests before transferring those files to
+Google Drive. Algorithm consumers do not require `releaseEligible: true`.
 
 Native prove checks content digests only with `--check-digests`, as described
 below. Parsing the document is not a cryptographic check of CRS generation.
@@ -254,8 +256,9 @@ Use only a CRS and subcircuit library whose release identities and
 compatibility class match the backend. Verify artifact digests and provenance
 before loading them, and keep OAuth credentials and tokens outside version
 control. Trusted setup is development-only. MPC generation alone does not
-authorize publication: only a completed publish-mode transcript that passes
-the publication admission checks can produce release-eligible CRS output.
+authorize publication: only publish-mode finalization of a completed transcript
+can produce release-eligible CRS output. The separate upload operation transfers
+an already finalized output and does not repeat ceremony verification.
 Live ceremony qualification and the deferred phase-2 security-boundary review
 remain separate operator responsibilities.
 

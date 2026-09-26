@@ -1,4 +1,4 @@
-//! Google Drive v3 transport. Only the verified MPC publication workflow calls it.
+//! Google Drive v3 transport. Only the MPC upload operation calls it.
 use crate::publication::{Drive, Entry, Payload};
 use reqwest::{
     blocking::{Client, RequestBuilder, Response},
@@ -202,7 +202,7 @@ impl GoogleDrive {
                 _ => {
                     failures += 1;
                     if failures > 5 {
-                        return Err("Drive upload interrupted; rerun the publish command".into());
+                        return Err("Drive upload interrupted; rerun the upload command".into());
                     }
                     std::thread::sleep(Duration::from_secs(1 << failures));
                     let request = self
@@ -219,12 +219,12 @@ impl GoogleDrive {
                         }
                         Ok(r) => {
                             return Err(format!(
-                                "Drive resumable status failed: HTTP {}; rerun publish",
+                                "Drive resumable status failed: HTTP {}; rerun upload",
                                 r.status()
                             ))
                         }
                         Err(_) => {
-                            return Err("Drive resumable status unavailable; rerun publish".into())
+                            return Err("Drive resumable status unavailable; rerun upload".into())
                         }
                     }
                 }

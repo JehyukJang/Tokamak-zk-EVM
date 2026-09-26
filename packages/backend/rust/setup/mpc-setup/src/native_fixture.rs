@@ -179,10 +179,6 @@ fn prepare_native_e2e_keys() {
         phase2_contribution_count: Some(transcript.contributions() as u64),
         artifacts: Default::default(),
     };
-    assert!(
-        crate::publication::finalize(&output, &crs, provenance, false)
-            .unwrap()
-            .is_none()
-    );
+    crate::publication::finalize(&output, &crs, provenance, false).unwrap();
     println!("[test-mpc] final projection/archive {:.3}s; output {}; total {:.3}s; TEST ONLY, NOT FILECOIN QUALIFICATION", started.elapsed().as_secs_f64(), output.display(), all.elapsed().as_secs_f64());
 }

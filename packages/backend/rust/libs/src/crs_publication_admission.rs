@@ -1,5 +1,5 @@
 //! Operational metadata/payload checks, not ceremony verification or upload authority.
-//! The MPC publisher additionally verifies the original source and transcript.
+//! MPC finalization verifies the original source and transcript before marking a CRS eligible.
 //! Algorithm consumers do not use this gate.
 use crate::compatibility::compatibility_from_package_version;
 use crate::crs_provenance::{
