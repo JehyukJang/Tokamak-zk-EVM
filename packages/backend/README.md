@@ -137,9 +137,10 @@ The document records `protocolSchemaId`, `generatedAtUtc`,
 and source digest. Package-version syntax and compatibility classes follow
 the repository-root version policy.
 
-The common fields `phase1SourceProvenance`, `ceremonyProtocolVersion` and
-`ceremonyTranscriptSha256` are explicitly `null` for trusted setup.
-Ceremony-backed generation supplies those values when applicable. Trusted
+The phase-2 fields `phase1SourceProvenance`, `ceremonyProtocolVersion`,
+`ceremonyTranscriptSha256` and `phase2ContributionCount` are explicitly `null`
+for trusted setup. MPC generation records the transcript digest and the
+verified cumulative number of phase-2 contributions. Trusted
 setup always writes `releaseEligible: false`. A common parser validates
 document shape, not publication authority. Filecoin MPC's offline `finalize` also writes
 `releaseEligible: false`. Only the explicit publish operation marks its verified

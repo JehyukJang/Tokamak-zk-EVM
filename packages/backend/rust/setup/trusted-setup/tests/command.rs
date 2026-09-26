@@ -63,6 +63,7 @@ fn one_command_activates_four_minimal_archives_and_matching_provenance() {
     assert_eq!(json["documentKind"], "crs");
     assert_eq!(json["generationMethod"], "trustedSetup");
     assert_eq!(json["ceremonyTranscriptSha256"], serde_json::Value::Null);
+    assert_eq!(json["phase2ContributionCount"], serde_json::Value::Null);
     for (name, digest) in &provenance.artifacts {
         assert_eq!(
             *digest,

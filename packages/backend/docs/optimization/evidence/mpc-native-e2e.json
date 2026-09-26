@@ -17,9 +17,10 @@
       "sourceDigest": "sha256:e2d425690aa68524ffa46a755d0a1eab7419d202f44a16805852c5dbfbdb0c92"
     },
     "phase1SourceProvenance": null,
-    "ceremonyProtocolVersion": "tokamak-filecoin-phase2",
-    "ceremonyTranscriptSha256": "721c2dbfbea4f3de95e9dfaf24c0d5e6fd6611b0cb03c5beaeea448844f47b64",
-    "artifacts": {
+      "ceremonyProtocolVersion": "tokamak-filecoin-phase2",
+      "ceremonyTranscriptSha256": "721c2dbfbea4f3de95e9dfaf24c0d5e6fd6611b0cb03c5beaeea448844f47b64",
+      "phase2ContributionCount": 2,
+      "artifacts": {
       "preprocess_keys.rkyv": "425d1388556c58268f8790181ff8e1b5239fbbfdec7d43a597f9d905eff282e9",
       "prover_keys.rkyv": "0ab5af6bc805b930d05364e6dcf18658c55de86ebd02624d4dd9b764d82e7686",
       "tau_sequence.rkyv": "3c729d434e2ddb56140fff70adb0a0f1c87c657bf38897e8c6434030e7314c5b",

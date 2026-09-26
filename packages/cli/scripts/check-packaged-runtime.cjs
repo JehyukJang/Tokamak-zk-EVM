@@ -158,6 +158,7 @@ async function runInstalledPackageFixture(installedRoot, targetRoot) {
       phase1SourceProvenance: null,
       ceremonyProtocolVersion: null,
       ceremonyTranscriptSha256: null,
+      phase2ContributionCount: null,
       artifacts: Object.fromEntries(Object.entries(artifacts).map(([name, bytes]) => [name, sha256(bytes)])),
     };
 

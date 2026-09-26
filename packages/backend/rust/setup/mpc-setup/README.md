@@ -84,7 +84,8 @@ and final-family equations. The [design record](docs/current-phase2-design.md)
 defines the exact source mapping, contribution evidence, and query handling.
 
 Finalization requires at least one verified contribution and writes four common
-CRS payloads plus `crs_provenance.json`. Offline finalization always records
+CRS payloads plus `crs_provenance.json`, which records the cumulative verified
+phase-2 contribution count. Offline finalization always records
 `releaseEligible: false`. Ordinary proving users can consume distributed tau
 files; contributors must authenticate the original Filecoin source themselves.
 

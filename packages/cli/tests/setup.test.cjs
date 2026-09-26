@@ -359,6 +359,7 @@ async function writeCrsArchiveFixture(
         phase1SourceProvenance: null,
         ceremonyProtocolVersion: 'tokamak-filecoin-phase2',
         ceremonyTranscriptSha256: '6'.repeat(64),
+        phase2ContributionCount: 1,
         artifacts: Object.fromEntries(Object.entries(artifacts).map(([name, bytes]) => [name, sha256(bytes)])),
       },
     )}\n`,
@@ -424,6 +425,7 @@ test('installer ingress accepts common provenance independently of the generatio
     phase1SourceProvenance: null,
     ceremonyProtocolVersion: null,
     ceremonyTranscriptSha256: null,
+    phase2ContributionCount: null,
   };
   for (const provenance of [trusted, CANONICAL_FINAL_MPC_PROVENANCE, TRUSTED_SETUP_PROVENANCE, NULL_FINAL_MPC_PROVENANCE]) {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tokamak-cli-crs-'));

@@ -110,6 +110,7 @@ async function writeFinalCrsDirectory(
     phase1SourceProvenance: null,
     ceremonyProtocolVersion: null,
     ceremonyTranscriptSha256: null,
+    phase2ContributionCount: null,
     artifacts: {
       "tau_sequence.rkyv": sha256(files.tauSequence),
       "prover_keys.rkyv": sha256(files.proverKeys),

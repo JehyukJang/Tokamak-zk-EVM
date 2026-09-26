@@ -12,6 +12,7 @@
   "phase1SourceProvenance": null,
   "ceremonyProtocolVersion": null,
   "ceremonyTranscriptSha256": null,
+  "phase2ContributionCount": null,
   "protocolSchemaId": "tokamak-zk-evm-univariate",
   "generationMethod": "trustedSetup",
   "artifacts": {

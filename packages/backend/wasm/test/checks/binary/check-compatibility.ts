@@ -212,6 +212,7 @@ function provenance(version: string): CrsProvenanceInput {
     phase1SourceProvenance: null,
     ceremonyProtocolVersion: 'tokamak-filecoin-phase2',
     ceremonyTranscriptSha256: '3'.repeat(64),
+    phase2ContributionCount: 1,
     artifacts: {
       'tau_sequence.rkyv': '0'.repeat(64),
       'prover_keys.rkyv': '0'.repeat(64),

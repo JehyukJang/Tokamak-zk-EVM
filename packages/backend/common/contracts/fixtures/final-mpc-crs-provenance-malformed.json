@@ -12,6 +12,7 @@
   "phase1SourceProvenance": null,
   "ceremonyProtocolVersion": "tokamak-filecoin-phase2",
   "ceremonyTranscriptSha256": "6666666666666666666666666666666666666666666666666666666666666666",
+  "phase2ContributionCount": 1,
   "unexpected": true,
   "protocolSchemaId": "tokamak-zk-evm-univariate",
   "generationMethod": "mpc",

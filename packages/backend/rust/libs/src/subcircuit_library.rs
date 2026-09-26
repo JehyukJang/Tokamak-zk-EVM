@@ -1004,6 +1004,7 @@ mod tests {
                 crate::crs_provenance::CEREMONY_PROTOCOL_VERSION.to_string(),
             ),
             ceremony_transcript_sha256: Some("6".repeat(64)),
+            phase2_contribution_count: Some(1),
             artifacts: [
                 ("tau_sequence.rkyv".to_string(), "0".repeat(64)),
                 ("prover_keys.rkyv".to_string(), "0".repeat(64)),

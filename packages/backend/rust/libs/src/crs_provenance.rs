@@ -16,7 +16,8 @@ pub const CRS_PROVENANCE_FILE_NAME: &str = "crs_provenance.json";
 pub const CRS_DOCUMENT_KIND: &str = "crs";
 pub const CEREMONY_PROTOCOL_VERSION: &str = "tokamak-filecoin-phase2";
 
-const CRS_PROVENANCE_CONTRACT_SHA256: &str = "PENDING";
+const CRS_PROVENANCE_CONTRACT_SHA256: &str =
+    "30edd06fb64175823d6db0e06f444a9cf27e8ee32a41ac78e824dc3a2ae5900d";
 const SUPPORTED_SCHEMA_KEYWORDS: &[&str] = &[
     "additionalProperties",
     "const",
@@ -273,7 +274,10 @@ pub fn validate_crs_provenance(provenance: &CrsProvenance) -> Result<(), String>
     if let Some(digest) = &provenance.ceremony_transcript_sha256 {
         validate_sha256(digest, "ceremonyTranscriptSha256")?;
     }
-    match (provenance.generation_method, provenance.phase2_contribution_count) {
+    match (
+        provenance.generation_method,
+        provenance.phase2_contribution_count,
+    ) {
         (CrsGenerationMethod::Mpc, Some(count)) if count > 0 => {}
         (CrsGenerationMethod::Mpc, _) => {
             return Err("MPC provenance must record a positive phase2ContributionCount".into())
@@ -398,6 +402,22 @@ mod tests {
             wrong["artifacts"]["unexpected.rkyv"] = digest;
             assert!(parse_crs_provenance(&serde_json::to_vec(&wrong).unwrap()).is_err());
         }
+    }
+
+    #[test]
+    fn contribution_count_is_required_for_mpc_and_absent_for_trusted_setup() {
+        let bytes =
+            include_str!("../../../common/contracts/fixtures/final-mpc-crs-provenance.json");
+        let mut mpc: serde_json::Value = serde_json::from_str(bytes).unwrap();
+        mpc["phase2ContributionCount"] = serde_json::json!(0);
+        assert!(parse_crs_provenance(&serde_json::to_vec(&mpc).unwrap()).is_err());
+
+        mpc["phase2ContributionCount"] = serde_json::Value::Null;
+        assert!(parse_crs_provenance(&serde_json::to_vec(&mpc).unwrap()).is_err());
+
+        mpc["phase2ContributionCount"] = serde_json::json!(1);
+        mpc["generationMethod"] = serde_json::json!("trustedSetup");
+        assert!(parse_crs_provenance(&serde_json::to_vec(&mpc).unwrap()).is_err());
     }
 
     #[test]
