@@ -9,11 +9,13 @@ from smaller **subcircuits**, each of which handles a particular relation such
 as addition, comparison, hashing, signature arithmetic, or movement across a
 public input/output boundary.
 
-This document explains every subcircuit built from the current qap-compiler
-source. For each one, it answers five questions:
+This document explains the subcircuit library and the contracts needed to
+compose it safely. It includes a versioned catalog for the circuit artifacts
+introduced in `3.0.0` and reused in `3.0.1`. For each type, it answers five
+questions:
 
 1. What operation does it perform?
-2. How many constraints does it contain?
+2. How many constraints did the recorded build contain?
 3. How many input and output wires does it expose?
 4. Which wires are public and which remain private?
 5. Is the subcircuit sufficient by itself, or does it rely on a particular
@@ -159,26 +161,31 @@ the surrounding protocol assigns meaning to the values.
   on a restricted producer.
 - **Update checklist** tells maintainers which synchronized artifacts and
   contracts must be reconsidered when the implementation changes.
+- **Build-specific composition record** preserves partition choices and
+  composition measurements for the catalog snapshot, separately from the
+  operation-level proof obligations.
 
-## Scope and source snapshot
+## Catalog scope and build snapshot
 
 The tables cover every production target in
-[`scripts/compile.sh`](../../scripts/compile.sh). The values describe the current
-source tree, not necessarily the contents of an older installed package or the
-generated output of an earlier build. The `3.0.1` library reuses the circuit
-artifacts introduced in `3.0.0`. The catalog was measured from source snapshot
+[`scripts/compile.sh`](../../scripts/compile.sh) at the recorded snapshot. The
+`3.0.1` library reuses the circuit artifacts introduced in `3.0.0`. The catalog
+was measured from source snapshot
 `6991047705d46d2218fd56d957e051248217802b` (2026-09-23) with Circom
-`2.2.3` and explicit O2 optimization. Update the snapshot identity and all
-derived tables together when the circuit source or constants change.
+`2.2.3`, explicit O2 optimization, and the BLS12-381 scalar field. These tables
+record that build's types, capacities, physical interfaces, and measured costs;
+they are not a promise that every later build has the same counts. For an
+installed library, use its generated metadata and matching composition
+definitions to resolve the artifact layout.
 
-The production list currently contains 44 compiled subcircuit types: seven
+The snapshot contains 44 compiled subcircuit types: seven
 generic buffers, 30 general computational or support types, and seven
 transaction-signature component types. This is a physical library catalog,
 not a count of EVM operations or transaction placements. A logical operation
 may select one type, compose several different types, or place the same type
 multiple times.
 
-The integrated O2 build has the following catalog totals. These values sum
+The recorded O2 build has the following catalog totals. These values sum
 each distinct compiled type exactly once; they are not a transaction's dynamic
 placement count or its placement-weighted proving cost. “Internal wires”
 excludes each wrapper's constant-one wire and declared input/output ports.
@@ -192,30 +199,26 @@ excludes each wrapper's constant-one wire and declared input/output ports.
 
 A hypothetical “one placement of every type” would contain 44 placements, but
 it is not an operation supported by the system. Actual placement multiplicity
-is defined by the composition contracts below. For example, most ALU opcodes
-use one placement, division uses the `ALU4A -> ALU4B` pair, and transaction
-signature verification uses 17 placements of seven distinct types.
+depends on the operation and its composition. For example, most ALU opcodes
+use one placement, while division uses the `ALU4A -> ALU4B` pair. The
+[build-specific composition record](#build-specific-composition-record)
+identifies the measured signature and exponentiation topologies.
 
-> **Implementation and release status**
+> **Evidence and qualification boundary**
 >
-> The qap source catalog, its generation pipeline, and compiler-local
-> direct-composition tests described here are implemented. The Synthesizer uses
-> the revised transaction-signature composition and the `MemoryViewStep`
-> component, which reconstructs one EVM memory word from byte fragments, against
-> the current library metadata. The transaction-signature composition and
-> compatibility replay against `tokamak-l2js@0.2.0` pass the 22-vector regression
-> corpus. These tests do not establish that a deployed Solidity verifier
-> enforces every public-boundary check; that requires separate integration
-> verification. The generated library is a build-time output and is
-> intentionally not checked in. Release qualification requires matching
-> circuit artifacts and CRS source identity; this page is not a record of a
-> particular deployment's qualification.
+> Circuit-local tests and Synthesizer routing tests provide evidence for the
+> relations and connections described here. They do not establish that a
+> deployed Solidity verifier enforces every public-boundary check; that
+> requires separate integration verification. The generated library is a
+> build-time output and is intentionally not checked in. Release qualification
+> requires matching circuit artifacts and CRS source identity; this page is
+> not a record of a particular deployment's qualification.
 
-Constraint counts were measured from the current source with Circom 2.2.3,
-explicit O2 optimization, the BLS12-381 scalar field, and the
-production target list in `scripts/compile.sh`. A total is the sum of the
-reported nonlinear and linear constraints. Re-run the production compile
-before relying on these numbers after any source or constant change.
+A constraint total is the sum of the compiler's reported nonlinear and linear
+constraints. Counts can change with compiler settings or equivalent constraint
+optimizations without changing the proved relation. Such changes do not make
+this dated measurement inaccurate. A new measurement must identify its own
+source and toolchain rather than silently replacing part of this snapshot.
 
 O2 may eliminate a private signal that is used only through linear relations.
 Every compiled subcircuit wrapper therefore exposes its intended physical
@@ -263,7 +266,7 @@ wire, while a 256-bit EVM word occupies two 128-bit-limb input wires. Mixed
 values therefore consume capacity according to their actual physical wire
 layouts after expansion by the composition layer.
 
-| Subcircuit | Role and current capacity | Constraints (nonlinear + linear = total) | Final interface visibility | Soundness contract |
+| Subcircuit | Role and snapshot capacity | Snapshot constraints (nonlinear + linear = total) | Final interface visibility | Soundness contract |
 | --- | --- | ---: | --- | --- |
 | `bufferLogOut` | Committed EVM log output; 50 input wires | 50 + 50 = 100 | 50 private inputs -> 50 public outputs | Local equality; the higher protocol interprets tuple layout and all-zero padding. |
 | `bufferStorageStore` | Final storage writes; 30 input wires | 30 + 30 = 60 | 30 private inputs -> 30 public outputs | Local equality; triples must be routed as address, key, value. |
@@ -285,7 +288,7 @@ stated local relation requires it. All interfaces in this table are private
 inside the final composed proof; the verifier does not receive each arithmetic
 input and intermediate result as a separate public value.
 
-| Subcircuit | Operation or role | Constraints (nonlinear + linear = total) | Private interface | Status |
+| Subcircuit | Operation or role | Snapshot constraints (nonlinear + linear = total) | Private interface | Status |
 | --- | --- | ---: | --- | --- |
 | `ADD` | EVM `ADD` | 258 + 0 = 258 | 4 inputs: two words; 2 outputs: one word | Composition-dependent for operand canonicality. It constrains truncated addition and a canonical result; direct buffer operands require preceding `CheckBus256` placements. |
 | `MUL` | EVM `MUL` | 909 + 0 = 909 | 4 inputs: two words; 2 outputs: one word | Locally sound. It decomposes both operands into canonical limbs, constrains truncated multiplication, and canonicalizes the result. |
@@ -314,7 +317,7 @@ input and intermediate result as a separate public value.
 | `SubExp` | One LSB-first square-and-multiply step for EVM `EXP`, including the exponent-remainder transition | 796 + 0 = 796 | 6 inputs: accumulator, base power, and exponent remainder as three words; 6 outputs: the next three state words | Composition-dependent; never use independently. It canonicalizes accumulator and base-power inputs, derives the current exponent bit, constrains the remainder shift, and constrains truncated square and multiplication modulo `2^256`. The initial exponent must be canonical, and all six state wires must feed the exact next step. The final remainder must feed `AssertZeroWord`, and the final accumulator must feed `CheckBus256`. The unused final base power is discarded. |
 | `CheckBus256` | Canonicalizes one 256-bit word | 256 constraints | 2 inputs: one word; no outputs | Locally sound. It is a constraint-only consumer: direct buffer operands feed it and their consuming operation in parallel. In the EVM `EXP` composition it is the mandatory terminal consumer of the final `SubExp` accumulator, while that accumulator remains the operation result. |
 | `MemoryViewStep` | Applies one byte-aligned fragment to a running 256-bit memory view and its packed byte-ownership state | 614 + 1 = 615 | 7 inputs: source word, encoded byte shift, incoming ownership, previous word, and previous ownership; 3 outputs: next word and ownership | Composition-dependent; never use independently. Source limbs, the six-bit encoded shift, ownership masks, byte shifting, masking, and disjointness are constrained locally. The first placement must receive an exact zero state, and every later placement must receive the previous placement's exact three outputs. |
-| `Poseidon` | Selector-chosen chain of up to four two-input Poseidon compressions over `uint(256)` words; current batch size is 4 | 964 + 0 = 964 | 11 inputs: selector and five lower-first `uint(256)` words; 2 outputs: one lower-first `uint(256)` word | Composition-dependent for exact limb representation. The local hash relation is `PoseidonFr(x mod Fr)` for each input word and intentionally does not require `x < Fr`; connected producers or the public-boundary verifier must constrain each physical limb to its declared width. |
+| `Poseidon` | Selector-chosen chain of up to four two-input Poseidon compressions over `uint(256)` words in this snapshot | 964 + 0 = 964 | 11 inputs: selector and five lower-first `uint(256)` words; 2 outputs: one lower-first `uint(256)` word | Composition-dependent for exact limb representation. The local hash relation is `PoseidonFr(x mod Fr)` for each input word and intentionally does not require `x < Fr`; connected producers or the public-boundary verifier must constrain each physical limb to its declared width. |
 | `FrToLimbsPair` | Converts two independent native BLS12-381 scalar-field values to lower-first two-limb EVM words | 1,022 + 2 = 1,024 | 2 native-field inputs; 4 outputs: two lower-first limb pairs | Locally sound as two canonical conversions. Each input is constrained to its unique integer representation `0 ≤ x < Fr`; the circuit is general-purpose and is not part of the TSV placement catalog. |
 | `TransactionSignaturePoseidonBatch4` | Performs either four consecutive native-field Poseidon compressions or one independent compression plus a three-compression chain | 950 + 0 = 950 | 7 inputs: mode and six native field wires; 2 native-field outputs | Composition-dependent. Mode is locally Boolean, but the composition must assign the approved structural mode and connect every chain state exactly. |
 | `TransactionSignaturePointPolicy` | Checks contract width, validates `A` and `R`, applies the public-key cofactor policy, rejects an identity randomizer, builds the variable-base table, and computes `R8` | 223 + 5 = 228 | 8 inputs; 16 outputs: two selector limbs, two lower-first contract-word limbs, 8 table coordinates, and 4 `R8` coordinates | Composition-dependent. Solidity must bind selector width and the identity point; later signature placements must consume the exact table and `R8` outputs. The selector and contract word are derived from the constrained public inputs. |
@@ -326,6 +329,12 @@ input and intermediate result as a separate public value.
 | `StorageAccess` | Binds a repeated storage address/key pair to its canonical cached identity | 8 + 0 = 8 | Current 256-bit address, current 256-bit key, canonical 256-bit address, and canonical 256-bit key; no outputs | Locally sound as address and key equality. Storage consistency additionally depends on the composition layer routing the current and cached values to the corresponding positions. |
 
 ## Mandatory and conditional composition contracts
+
+The proof obligations below explain why each composition is sound. Named
+stages and physical port layouts refer to the catalog artifacts above: they
+must be followed exactly when those artifacts are used. Their partition sizes
+are implementation choices, not requirements that every future realization of
+the same operation must preserve.
 
 ### Division family: `ALU4A -> ALU4B`
 
@@ -357,9 +366,7 @@ All eight physical preparation outputs must feed their declared
 `ADDMODVerify` inputs without host reconstruction, substitution, or
 reordering. The exact original modulus operand supplied to `ADDMODPrepare`
 must also feed the two dedicated modulus inputs of `ADDMODVerify`. Only the
-final two `ADDMODVerify` outputs form the EVM result. The two targets contain
-944 and 959 constraints respectively, for a one-per-type sum of 1,903; each
-target remains below the 1,024-constraint limit. Neither target is an
+final two `ADDMODVerify` outputs form the EVM result. Neither target is an
 independently usable EVM operation.
 
 Circom inspection intentionally reports the `ADDMODPrepare` modulus and
@@ -384,9 +391,7 @@ twelve outputs of `MULMODCandidate`, must feed `MULMODVerify` in their declared
 order. This produces 30 exact producer-consumer wire connections across the
 composition. Host reconstruction, substitution, reordering, omission, or
 independent use of any stage violates the soundness contract. Only the final
-two `MULMODVerify` outputs form the EVM result. The three targets contain 774,
-774, and 983 constraints respectively, for a one-per-type sum of 2,531; each
-target remains below the 1,024-constraint limit.
+two `MULMODVerify` outputs form the EVM result.
 
 Circom inspection intentionally reports the quotient and remainder candidate
 signals in `MULMODPrepare` as locally unconstrained. They are witness-generation
@@ -404,7 +409,8 @@ return zero for a zero modulus without truncating the numerator.
 
 ### EVM exponentiation: `SubExp*` with terminal zero and range checks
 
-EVM `EXP(base, exponent)` uses exactly 256 serial `SubExp` placements. Each
+The catalog's EVM `EXP(base, exponent)` composition processes the full 256-bit
+exponent through serial `SubExp` placements. Each
 step consumes and produces three two-limb words: an accumulator, a base power,
 and the remaining exponent. The first step receives `1`, `base`, and the full
 canonical exponent. Each step derives its current least-significant exponent
@@ -424,24 +430,22 @@ first step. Every six-wire state transition must be connected without
 substitution or reconstruction, and both terminal checks are mandatory. A
 standalone `SubExp` is not an independently usable exponentiation statement.
 
-The three target types `SubExp`, `AssertZeroWord`, and `CheckBus256` contain
-796, 2, and 256 constraints respectively, so each remains below the
-1,024-constraint limit. The core composition uses 258 placements and
-`256 * 796 + 2 + 256 = 204,034` placement-weighted constraints. Its
-distinct-type constraint sum is 1,054. If the initial exponent needs an
-additional `CheckBus256`, that producer guard adds one placement and 256
-constraints; it is not included in the core totals.
+The number of steps and their measured cost are recorded below. A different
+partition must still process the entire exponent, preserve exact state
+continuity, and enforce the initial-domain and terminal conditions; merely
+connecting some `SubExp` placements is not sufficient.
 
 ### Poseidon chain expansion
 
-One `Poseidon` placement supports up to `nPoseidonBatch()` consecutive
-two-input compressions. The current batch size is 4, so selectors `1`, `2`,
-`4`, and `8` select one through four compressions, respectively. A placement
-always receives five padded `uint(256)` words: the first chain value followed
-by four possible right-hand inputs. For a longer input list, the composition
-layer repeats this normalized placement and connects each previous hash output
-as the first input of the next placement. This repetition and every selector
-are structurally determined by the input count, not by witness values.
+The composition layer folds an ordered input list through consecutive
+two-input Poseidon compressions. It groups those compressions into placements
+using the library's batch capacity. Each later placement must consume the exact
+previous hash output as its first chain value. The input order, active
+compression count, and selector are structurally determined by the input
+count, not by witness values. The
+[composition definition](../../../synthesizer/core/src/subcircuit/special-builders/poseidonComposition.ts)
+and matching library interface specify the batch layout; the snapshot's
+selector encoding and padding are recorded below.
 
 The repeated topology is required for the higher-arity hash operation. Unique
 `uint(256)` limb representation remains a separate producer or public-boundary
@@ -453,48 +457,41 @@ reconstructed 256-bit integer is greater than or equal to `Fr`.
 
 ### Transaction-signature composition
 
-Transaction signature verification is one operation implemented by seven
-compiled subcircuit types and 17 placements. The types are not seven independent
-signature schemes. Their exact ordered composition is the security boundary:
+Transaction signature verification is one operation split across hash, point
+policy, scalar-multiplication, and terminal-check stages. These components are
+not independent signature schemes. The complete composition must enforce all
+of the following:
 
-1. Eight chain-mode `TransactionSignaturePoseidonBatch4` placements compute
-   challenge hashes 0–31. One independent-mode placement computes the public-key
-   hash and challenge hashes 32–34. This accounts for all 35 challenge
-   compressions and the one public-key compression without using the general
-   split-limb EVM `Poseidon` circuit.
-2. One `TransactionSignaturePointPolicy` placement owns point validity,
-   public-key cofactor policy, randomizer identity rejection, the 160-bit
-   contract check, selector limb projection, the runtime variable-base table,
-   and `R8`.
-3. One `TransactionSignatureFixedPrefix70` placement canonically decomposes
-   `S`, consumes response bits 0–209 in fixed-base windows 0–69, and exposes
-   only response bits 210–251 plus its four-coordinate accumulator.
-4. One `TransactionSignatureChallengeChunks` placement canonically decomposes
-   the exact final challenge hash and emits one 63-bit leading chunk followed
-   by three 64-bit chunks.
-5. One `TransactionSignatureVariableFirstBatch32` placement consumes the
-   leading chunk and the runtime table. It handles the padded first 32 windows
-   and creates the extended accumulator internally. Three serial
-   `TransactionSignatureVariableBatch32` placements then consume chunks 1–3,
-   the same exact runtime-table wires, and the preceding four-wire accumulator.
-6. One `TransactionSignatureFinal` placement consumes the packed 42-bit
-   response tail, both final accumulator chains, exact four-wire `R8`, and the
-   exact native public-key hash. It processes the remaining 14 fixed windows,
-   enforces the cofactored equation, canonically decomposes the hash internally,
-   and exposes only the lower-first two-limb origin result.
+1. Bind every signed transaction value, including the public transaction
+   index, into the prescribed ordered challenge hash. Compute the public-key
+   hash from the exact authenticated key coordinates. These hashes use native
+   field inputs, not the split-limb EVM `Poseidon` adapter.
+2. Validate the signer and randomizer points, apply the public-key cofactor
+   policy, reject an identity randomizer, and enforce the contract's 160-bit
+   width. Derive the variable-base table and cofactored randomizer `R8` from
+   those exact points.
+3. Decompose the response scalar and challenge hash canonically, covering every
+   bit required by the scalar-multiplication relation. Each multiplication
+   stage must consume the exact preceding accumulator and the corresponding
+   scalar segment in order. All variable-base stages must use the exact
+   point-policy table.
+4. Bind the remaining response segment, both final accumulator chains, `R8`,
+   and the public-key hash into the terminal check. Enforce the cofactored
+   signature equation and derive the origin from a canonical hash view. The
+   output is a lower-first two-limb EVM word, with `origin < 2^160`.
 
-For 29 private transaction inputs, the seven distinct types contain 5,383 O2
-constraints and 5,427 R1CS wires in total. The 17 placements contain 14,967
-constraints before final cross-placement permutation. Their declared
-interfaces contain 116 physical placement input wires and 66 physical
-placement output wires.
-A diagnostic direct composition compiles to 14,943 nonlinear plus 3 linear
-constraints, 14,969 wires, and 135,511 nonzero matrix entries. The
+The
+[composition definition](../../../synthesizer/core/src/subcircuit/special-builders/txSignVerifyComposition.ts)
+specifies the physical routing for the selected library configuration. The
+snapshot's hash batches and scalar windows are listed in the build-specific
+record, not treated as universal signature-protocol requirements. The
 [direct-composition regression test](../../subcircuits/test/test_transaction_signature_production_composition.cjs)
-checks circuit-local acceptance and rejection against the 22-vector policy
-corpus and compares contract, selector, and origin outputs for every
-circuit-accepted vector. Cases that require delegated public checks remain
-verifier-boundary obligations, not expected local circuit rejections.
+checks circuit-local acceptance and rejection and compares contract, selector,
+and origin outputs for accepted cases. The
+[compatibility replay](../../subcircuits/test/test_transaction_signature_tokamak_l2js_compatibility.cjs)
+checks agreement with `tokamak-l2js@0.2.0`. Cases that require delegated public
+checks remain verifier-boundary obligations, not expected local circuit
+rejections.
 
 The circuit owns contract width, point validity, public-key cofactor policy,
 randomizer identity rejection, canonical challenge and public-key-hash views,
@@ -503,18 +500,16 @@ Transaction inputs remain native field wires during signature verification.
 When later EVM execution needs 256-bit words, the composition layer must place
 general `FrToLimbsPair` conversions on those exact authenticated input wires
 and must route only the conversion outputs into the EVM path; those conversions
-are deliberately outside the 17 signature placements. The Solidity verifier
+are outside the signature-verification composition. The Solidity verifier
 must bind the exact public wires and enforce
 `S < n`, `selector < 2^32`, and `O = (0, 1)`. These delegated checks are part of
 the complete statement and cannot be omitted. Signer points, private transaction
 inputs, hash values, and intermediate accumulator coordinates remain private
 internal wires.
 
-The diagnostic direct composition declares five public inputs: the one-wire
-contract, selector, and `S` values plus the two coordinates of `O`. Its other
-34 inputs, including the channel transaction index, are private in that test
-wrapper. Its six outputs are the two-limb contract, selector, and origin views.
-In the actual Synthesizer composition, the channel transaction index instead
+The diagnostic direct composition has its own test-wrapper visibility. It
+does not reproduce the final proof's public-buffer layout. In particular, its
+channel transaction index is private, whereas in the Synthesizer it
 comes from the public `bufferTxIn` boundary and feeds the exact signature
 challenge wire. The
 [public-route tests](../../../synthesizer/node-cli/tests/unit/channel-transaction-index-public-route.test.ts)
@@ -540,10 +535,9 @@ ownership output is composition state and is not an EVM result.
 Each placement receives the original, unshifted source word; a six-bit encoded
 shift whose low five bits are the byte-shift magnitude and whose high bit is the
 direction (`0` left, `1` right); and one packed ownership bit for every target
-byte supplied by that fragment. One `Num2Bits(6)` decomposition supplies both
-shift controls directly. The circuit decomposes the source and ownership values,
-performs one five-stage byte barrel shift, masks unowned bytes, rejects ownership
-overlap, and adds only disjoint byte positions to the running word. Consequently
+byte supplied by that fragment. The circuit constrains the shift, masks unowned
+bytes, rejects ownership overlap, and combines only disjoint byte positions
+with the running word. Consequently
 the serial composition needs neither an addition carry witness nor a terminal
 word range-check placement.
 
@@ -551,9 +545,8 @@ Every placement returns the real ownership union. The composition layer must
 bind all three state wires exactly and selects the last placement's word as the
 reconstructed result. Any unowned byte remains zero by induction from the exact
 zero initial state and the rule that a step writes only bytes it owns. There is
-no separate expected-coverage input: it was derived from the fragment ownership
-masks and provided no independent circuit information after terminal gap closure
-was removed.
+no separate expected-coverage input; coverage follows from the constrained
+ownership masks and state transitions.
 
 The composition layer must convert each selected memory byte from its existing
 `FF`/`00` value mask to the same-position ownership bit and reject malformed
@@ -579,21 +572,82 @@ For the general `Poseidon` adapter, the boundary instead enforces the declared
 
 ## Update checklist
 
-When a subcircuit, capacity constant, or composition changes:
+Update the semantic reference when a change affects the proved relation,
+accepted input domains, public/private boundaries, or mandatory composition
+contracts. A compiler change, equivalent constraint optimization, or addition
+of regression cases does not by itself require rewriting those explanations.
 
-1. Update the production target list and every consumer-side target registry together.
-2. Add or update the non-buffer interface JSON and verify that each declared
-   logical port expands to the compiled physical input and output wire counts.
-3. Recompile every production target and update constraint and wire counts in
-   this document.
-4. Re-evaluate local soundness and every mandatory producer/consumer contract.
-5. Update consumer-side composition definitions and exact-wire permutation tests.
-6. Re-evaluate public/private boundaries in `scripts/configure.js` and
-   `scripts/parse.js`.
-7. Verify that every supported closed logical type still has one unambiguous
-   physical expansion and that generic buffers have not acquired an implicit
-   value type.
-8. Verify witness diagnostics cover every declared input port, while keeping
-   warnings explicitly non-authoritative for proof soundness.
-9. Regenerate published circuit artifacts and any setup material only after
-   the topology and soundness review is approved.
+For implementation changes, review the affected contracts and artifacts:
+
+1. If targets or ports change, synchronize the production target list,
+   consumer registries, interface JSON, and composition definitions. Verify
+   that logical ports expand to the compiled physical wire layout.
+2. If a topology or input domain changes, re-evaluate local soundness and exact
+   producer/consumer routing, and update the corresponding permutation tests.
+   Recheck initial state, terminal conditions, and public/private boundaries.
+3. Preserve unambiguous physical expansion for every supported logical type;
+   generic buffers must not acquire an implicit value type. Witness warnings
+   remain diagnostic, not a substitute for constraints or verifier checks.
+4. Rebuild and validate affected artifacts before use. Regenerate published
+   artifacts and setup material as required by the reviewed change; this page
+   does not replace artifact compatibility or release qualification.
+5. When publishing a new catalog measurement, identify its source snapshot,
+   compiler, field, and optimization settings, and refresh the derived tables
+   and composition costs together. Do not present the existing dated counts
+   as measurements of a later build.
+
+## Build-specific composition record
+
+This section records implementation partitions and costs for the source and
+toolchain identified in [the catalog snapshot](#catalog-scope-and-build-snapshot).
+The partition choices explain that build, not every possible implementation of
+the same relations. They must nevertheless be respected when composing its
+artifacts.
+
+### Arithmetic placement costs
+
+| Operation | Snapshot placements | Placement-weighted constraints |
+| --- | --- | ---: |
+| `ADDMOD` | One `ADDMODPrepare` and one `ADDMODVerify` | `944 + 959 = 1,903` |
+| `MULMOD` | One each of `MULMODPrepare`, `MULMODCandidate`, and `MULMODVerify` | `774 + 774 + 983 = 2,531` |
+| `EXP` | 256 serial `SubExp`, one `AssertZeroWord`, and one terminal `CheckBus256`: 258 placements | `256 * 796 + 2 + 256 = 204,034` |
+
+Each distinct target stays within the 1,024-constraint limit. The three
+distinct `EXP` types sum to 1,054 constraints, which is not the cost of their
+repeated composition. If the initial exponent needs an additional
+`CheckBus256`, it adds one placement and 256 constraints to the recorded core.
+
+### Poseidon batch layout
+
+The snapshot groups up to four two-input compressions into one `Poseidon`
+placement. Selectors `1`, `2`, `4`, and `8` select one through four
+compressions. Each placement receives five padded `uint(256)` words: the chain
+value and four possible right-hand inputs. Longer lists repeat this layout
+with exact hash-state continuity.
+
+### Transaction-signature partition and measurements
+
+For 29 private transaction inputs, the snapshot uses seven types in 17
+placements:
+
+| Type | Placements | Snapshot partition |
+| --- | ---: | --- |
+| `TransactionSignaturePoseidonBatch4` | 9 | Eight chain-mode batches compute challenge hashes 0–31; one independent-mode batch computes the public-key hash and challenge hashes 32–34. |
+| `TransactionSignaturePointPolicy` | 1 | Produces the selector and contract views, runtime table, and `R8`. |
+| `TransactionSignatureFixedPrefix70` | 1 | Processes response bits 0–209 in fixed-base windows 0–69; emits the packed 42-bit tail (bits 210–251) and accumulator. |
+| `TransactionSignatureChallengeChunks` | 1 | Emits the canonical challenge as one leading 63-bit chunk and three 64-bit chunks. |
+| `TransactionSignatureVariableFirstBatch32` | 1 | Processes the padded first 32 two-bit windows using chunk 0 and creates the accumulator. |
+| `TransactionSignatureVariableBatch32` | 3 | Serial batches process chunks 1–3 using the same runtime table and exact preceding accumulator. |
+| `TransactionSignatureFinal` | 1 | Processes fixed-base windows 70–83, consumes both final accumulator chains, `R8`, and the public-key hash, and checks the signature equation and origin. |
+
+These hash placements cover 35 challenge compressions and one public-key
+compression. The seven distinct types contain 5,383 constraints and 5,427 R1CS
+wires. The 17 placements contain 14,967 constraints before final cross-placement
+permutation, with 135 physical input ports and 61 physical output ports counted
+across placements. General `FrToLimbsPair` conversions for subsequent EVM use
+are not included.
+
+The snapshot's diagnostic direct composition compiled to 14,943 nonlinear plus
+3 linear constraints, 14,969 R1CS wires, and 135,511 nonzero coefficients. These
+are measurements of a standalone test wrapper, not the cost or visibility of
+the final composed transaction proof.
