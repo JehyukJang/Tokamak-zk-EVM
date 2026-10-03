@@ -210,9 +210,11 @@ Reconstruct the fixed images `[A_p]_1`, `[T_p]_1` and masking numerators by
 group-linear combination of the imported powers and the selected circuit
 polynomials. Initialize delta and all r_j to one. This requires no recovery
 of tau, xi or psi; the known initializer is not counted as a contribution.
-Public-query coordinates still use i=k only for public buffer wires. Retain
-the existing omission of implicit-zero witness queries, without omitting
-their selection-domain blocks or changing the polynomial domain.
+Public-query coordinates still use i=k only for public buffer wires. Query
+storage must preserve the polynomial domains, including the selection-domain
+blocks, and the construction's public group elements. The
+[nonpublic-query layout](../../../../common/interface/univariate-crs/src/nonpublic_queries.rs)
+defines the current sparse representation.
 
 For one participant's nonzero shares u and v_j, publish their encodings in
 both source groups and the bound share evidence described below.
@@ -281,10 +283,9 @@ share-evidence construction. Tokamak adds source/library, state and wire
 bindings; its evidence is not byte-compatible with Filecoin's Groth16
 transcripts.
 
-The proof routine handles one nonzero share at a time. In this section, u
-denotes that share: the delta share or one of the wire shares v_j above.
-Sample a nonidentity G1 base s and form s_u=u*s. Hash the bound public
-message with BLAKE2b-512, seed ChaCha20 with its first 32 bytes, and obtain r
+For each share proof, let u denote the nonzero delta share or one of the wire
+shares v_j above. Sample a nonidentity G1 base s and form s_u=u*s. Hash the bound
+public message with BLAKE2b-512, seed ChaCha20 with its first 32 bytes, and obtain r
 in G2 using Filecoin's point sampler. Publish r_u=u*r alongside s, s_u and the
 approved U1=uG, U2=uH. Verify nonidentity subgroup points and the three
 equations:
