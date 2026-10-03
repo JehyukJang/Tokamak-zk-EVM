@@ -43,9 +43,11 @@ MPC circuit source.
 Obtain `challenge_19` directly from the pinned
 [Filecoin source](https://trusted-setup.filecoin.io/phase1/challenge_19), or
 omit `--filecoin-source` to download it during the operation. The source is
-77,309,411,488 bytes (about 72 GiB). Every invocation reads and hashes the
-complete original before accepting state or sampling secret shares. Keeping a
-local copy avoids a download, not the digest check.
+77,309,411,488 bytes (about 72 GiB). Each ceremony operation (`init`,
+`init-dev`, `contribute`, `verify` and `finalize`) reads and hashes the complete
+original before accepting state or sampling secret shares. `upload` does not
+replay the ceremony. Keeping a local copy avoids a download, not the digest
+check.
 
 From `packages/backend`:
 
