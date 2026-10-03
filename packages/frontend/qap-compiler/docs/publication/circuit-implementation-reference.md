@@ -116,8 +116,11 @@ model used by Tokamak zk-EVM:
 
 An `Incomplete` row is a warning about the repository state described by this
 page, not a conclusion about every previously published npm release. A release
-must be evaluated using the source, generated artifacts, and setup material
-from that same version. Never mix artifacts from different versions.
+must be evaluated using its actual source, circuit artifacts, and CRS. Package
+versions must remain synchronized. A patch release may reuse a CRS only when
+the `MAJOR.MINOR` compatibility class and CRS-relevant source digest are
+unchanged, as defined in the
+[version and release rules](../../../../../docs/version-rules.md).
 
 This page is an engineering reference, not a formal proof or third-party
 security certification. It reports composition dependencies explicitly so
@@ -126,7 +129,7 @@ not mistakenly attributed to an isolated artifact.
 
 ## Three representative examples
 
-### A self-contained arithmetic operation
+### Addition with canonical operands
 
 For `ADD`, the composition layer places the selector-free `ADD` subcircuit with
 two EVM words. `ADD` constrains the truncated EVM addition and canonicalizes
