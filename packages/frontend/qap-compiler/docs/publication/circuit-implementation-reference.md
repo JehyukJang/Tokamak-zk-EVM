@@ -165,9 +165,9 @@ the surrounding protocol assigns meaning to the values.
 The tables cover every production target in
 [`scripts/compile.sh`](../../scripts/compile.sh). The values describe the current
 source tree, not necessarily the contents of an older installed package or the
-checked-in generated library. This publication candidate describes synchronized
-version `3.0.0` at source snapshot
-`6991047705d46d2218fd56d957e051248217802b` (2026-09-23), measured with Circom
+generated output of an earlier build. The `3.0.1` library reuses the circuit
+artifacts introduced in `3.0.0`. The catalog was measured from source snapshot
+`6991047705d46d2218fd56d957e051248217802b` (2026-09-23) with Circom
 `2.2.3` and explicit O2 optimization. Update the snapshot identity and all
 derived tables together when the circuit source or constants change.
 
@@ -202,12 +202,14 @@ signature verification uses 17 placements of seven distinct types.
 > direct-composition tests described here are implemented. The Synthesizer uses
 > the revised transaction-signature composition and the `MemoryViewStep`
 > component, which reconstructs one EVM memory word from byte fragments, against
-> the current library metadata. Compatibility replay against the released
-> TokamakL2JS implementation and the surrounding Solidity verifier's public
-> value checks remain separate qualification work. The generated library is a
-> build-time output and is intentionally not checked in; an operator-controlled
-> CRS must still pass the release qualification process for the matching source
-> digest.
+> the current library metadata. The transaction-signature composition and
+> compatibility replay against `tokamak-l2js@0.2.0` pass the 22-vector regression
+> corpus. These tests do not establish that a deployed Solidity verifier
+> enforces every public-boundary check; that requires separate integration
+> verification. The generated library is a build-time output and is
+> intentionally not checked in. Release qualification requires matching
+> circuit artifacts and CRS source identity; this page is not a record of a
+> particular deployment's qualification.
 
 Constraint counts were measured from the current source with Circom 2.2.3,
 explicit O2 optimization, the BLS12-381 scalar field, and the
@@ -235,13 +237,15 @@ interfaces are private internal wires. The public side of each buffer is
 selected explicitly by `LIBRARY_LAYOUT.publicWireSegments`.
 
 Physical non-buffer privacy must not be confused with semantic disclosure.
-For transaction-signature verification, `contract`, `selector`, `S`, and the
-identity point `O` are bound through public buffers even though their wires are
-routed privately after crossing that boundary. `A`, `R`, private transaction
-inputs, the challenge hash, the public-key hash, and all signature accumulator
-state remain hidden. A composition is valid only if it connects these exact
-boundary-supplied wires; substituting an equal-looking host value is not an
-equivalent security contract.
+For transaction-signature verification, `contract`, `selector`, `S`, the signed
+channel transaction index, and the identity point `O` are bound through public
+buffers even though their wires are routed privately after crossing that
+boundary. The index is a native field value supplied through `bufferTxIn` and
+included in the signature challenge; it binds the signature to the public
+transaction identity. `A`, `R`, private transaction inputs, the challenge hash,
+the public-key hash, and all signature accumulator state remain hidden. A
+composition is valid only if it connects these exact boundary-supplied wires;
+substituting an equal-looking host value is not an equivalent security contract.
 
 ## Buffer subcircuits
 
@@ -263,11 +267,11 @@ layouts after expansion by the composition layer.
 | --- | --- | ---: | --- | --- |
 | `bufferLogOut` | Committed EVM log output; 50 input wires | 50 + 50 = 100 | 50 private inputs -> 50 public outputs | Local equality; the higher protocol interprets tuple layout and all-zero padding. |
 | `bufferStorageStore` | Final storage writes; 30 input wires | 30 + 30 = 60 | 30 private inputs -> 30 public outputs | Local equality; triples must be routed as address, key, value. |
-| `bufferStorageLoad` | Initial storage reads; 40 input wires | 40 + 40 = 80 | 40 private inputs -> 40 public outputs | Local equality; triples must be routed as address, key, value. |
-| `bufferTxIn` | Transaction inputs; 6 input wires | 6 + 6 = 12 | 6 public inputs -> 6 private outputs | Local equality plus public-boundary format checking. |
+| `bufferStorageLoad` | Initial storage reads; 50 input wires | 50 + 50 = 100 | 50 private inputs -> 50 public outputs | Local equality; triples must be routed as address, key, value. |
+| `bufferTxIn` | Public signature response, target contract, function selector, and signed channel transaction index; 4 input wires | 4 + 4 = 8 | 4 public inputs -> 4 private outputs | Local equality plus public-boundary format checking; the exact index wire feeds the signature challenge. |
 | `bufferBlockIn` | Block fields and previous block hashes; 24 input wires | 24 + 24 = 48 | 24 public inputs -> 24 private outputs | Local equality plus public-boundary format checking. |
-| `bufferEVMIn` | Fixed EVM inputs and constants; 530 input wires | 530 + 530 = 1,060 | 530 public inputs -> 530 private outputs | Local equality plus public-boundary format checking. |
-| `bufferPrvIn` | Private witness inputs; 80 input wires | 80 + 80 = 160 | 80 private inputs -> 80 private outputs | Local equality; it is intentionally absent from `LIBRARY_LAYOUT.publicWireSegments`. |
+| `bufferEVMIn` | Fixed EVM inputs and constants; 140 input wires | 140 + 140 = 280 | 140 public inputs -> 140 private outputs | Local equality plus public-boundary format checking. |
+| `bufferPrvIn` | Private witness inputs; 50 input wires | 50 + 50 = 100 | 50 private inputs -> 50 private outputs | Local equality; it is intentionally absent from `LIBRARY_LAYOUT.publicWireSegments`. |
 
 Public-output buffers are fixed-capacity and zero-padded. The higher-level
 protocol filters storage entries with a zero address and log entries whose
@@ -306,8 +310,8 @@ input and intermediate result as a separate public value.
 | `MULMODPrepare` | Canonicalizes the three EVM operands and generates the full-width quotient and remainder candidates | 768 + 6 = 774 | 6 inputs: three words; 18 outputs: twelve 64-bit operand words, four quotient limbs, and two remainder limbs | Composition-dependent; never use independently. The operand words are canonical, but the quotient and remainder outputs are witness candidates whose validity is established only by the following two stages. |
 | `MULMODCandidate` | Canonicalizes the quotient and remainder candidates for the full-width reduction relation | 768 + 6 = 774 | 6 inputs: four quotient limbs and two remainder limbs; 12 outputs: eight quotient words and four remainder words | Composition-dependent; never use independently. Its six inputs must be the exact candidate outputs of `MULMODPrepare`, without host reconstruction or substitution. |
 | `MULMODVerify` | Proves the complete 512-bit multiplication and modular-reduction relation and returns the EVM result | 981 + 2 = 983 | 24 inputs: twelve operand words, eight quotient words, and four remainder words; 2 outputs: one word | Composition-dependent; never use independently. It proves `lhs * rhs = quotient * safeModulus + remainder`, enforces `remainder < safeModulus`, and uses a safe modulus of one so zero modulus returns zero. |
-| `DecToBit` | Decomposes one canonical 256-bit word into 256 LSB-first bits | 256 + 2 = 258 | 2 inputs: one word; 256 bit outputs | Locally sound. It supplies exponent or scalar bits to composed exponentiation chains. |
-| `SubExp` | One LSB-first square-and-multiply step for EVM `EXP` | 794 + 0 = 794 | 5 inputs: accumulator word, base-power word, and one bit; 4 outputs: next accumulator and base-power words | Composition-dependent; never use independently. It canonicalizes both input words and constrains the conditional factor, truncated square, and truncated accumulator product modulo `2^256`. Its bit must be the exact corresponding output of `DecToBit`. Both output words must feed the exact next `SubExp`; after the last step, the accumulator must feed `CheckBus256`. The unused final base-power word is discarded. |
+| `AssertZeroWord` | Requires a two-limb word to be exactly zero | 0 + 2 = 2 | 2 inputs: one word; no outputs | Locally sound as a zero check. In EVM `EXP`, it must consume the exact final exponent remainder; it is not an exponentiation proof by itself. |
+| `SubExp` | One LSB-first square-and-multiply step for EVM `EXP`, including the exponent-remainder transition | 796 + 0 = 796 | 6 inputs: accumulator, base power, and exponent remainder as three words; 6 outputs: the next three state words | Composition-dependent; never use independently. It canonicalizes accumulator and base-power inputs, derives the current exponent bit, constrains the remainder shift, and constrains truncated square and multiplication modulo `2^256`. The initial exponent must be canonical, and all six state wires must feed the exact next step. The final remainder must feed `AssertZeroWord`, and the final accumulator must feed `CheckBus256`. The unused final base power is discarded. |
 | `CheckBus256` | Canonicalizes one 256-bit word | 256 constraints | 2 inputs: one word; no outputs | Locally sound. It is a constraint-only consumer: direct buffer operands feed it and their consuming operation in parallel. In the EVM `EXP` composition it is the mandatory terminal consumer of the final `SubExp` accumulator, while that accumulator remains the operation result. |
 | `MemoryViewStep` | Applies one byte-aligned fragment to a running 256-bit memory view and its packed byte-ownership state | 614 + 1 = 615 | 7 inputs: source word, encoded byte shift, incoming ownership, previous word, and previous ownership; 3 outputs: next word and ownership | Composition-dependent; never use independently. Source limbs, the six-bit encoded shift, ownership masks, byte shifting, masking, and disjointness are constrained locally. The first placement must receive an exact zero state, and every later placement must receive the previous placement's exact three outputs. |
 | `Poseidon` | Selector-chosen chain of up to four two-input Poseidon compressions over `uint(256)` words; current batch size is 4 | 964 + 0 = 964 | 11 inputs: selector and five lower-first `uint(256)` words; 2 outputs: one lower-first `uint(256)` word | Composition-dependent for exact limb representation. The local hash relation is `PoseidonFr(x mod Fr)` for each input word and intentionally does not require `x < Fr`; connected producers or the public-boundary verifier must constrain each physical limb to its declared width. |
@@ -398,27 +402,35 @@ EVM zero modulus, proves the complete quotient-product-plus-remainder identity,
 and constrains the remainder below the safe modulus. Both operations therefore
 return zero for a zero modulus without truncating the numerator.
 
-### EVM exponentiation: `DecToBit -> SubExp* -> CheckBus256`
+### EVM exponentiation: `SubExp*` with terminal zero and range checks
 
-EVM `EXP(base, exponent)` uses one `DecToBit` placement on the exponent,
-followed by exactly 256 serial `SubExp` placements and one terminal
-`CheckBus256` placement. The first step receives accumulator `1`, base-power
-`base`, and exponent bit 0. Each later step consumes all four exact state
-outputs of its predecessor and the next LSB-first exponent bit. The terminal
-checker consumes the exact final accumulator and returns the EVM result; the
-final base-power output is discarded because no later statement uses it.
+EVM `EXP(base, exponent)` uses exactly 256 serial `SubExp` placements. Each
+step consumes and produces three two-limb words: an accumulator, a base power,
+and the remaining exponent. The first step receives `1`, `base`, and the full
+canonical exponent. Each step derives its current least-significant exponent
+bit and shifts the remainder internally; no `DecToBit` target or separately
+supplied bit sequence is used.
 
-This topology is part of the soundness contract. Every bit input must be the
-corresponding Boolean output of the same `DecToBit` placement, every four-wire
-state transition must be connected without substitution or reconstruction,
-and the terminal accumulator must pass through `CheckBus256`. A standalone
-`SubExp` does not locally canonicalize its outputs and is therefore not an
-independently usable exponentiation statement.
+Each later step must consume all six exact state outputs of its predecessor.
+After the last step, `AssertZeroWord` requires the exact exponent remainder to
+be zero, while `CheckBus256` requires the exact final accumulator to be a
+canonical EVM word. Both are constraint-only consumers with no outputs; the
+final accumulator itself remains the EVM result. The final base power is
+discarded.
 
-The three target types contain 258, 794, and 258 constraints respectively, so
-every physical target remains below the 1,024-constraint limit. A full EVM
-`EXP` uses 258 placements and 203,780 placement-weighted constraints. The
-distinct-type constraint sum for this composition is 1,310.
+This topology is part of the soundness contract. The initial exponent must
+come from a canonical producer or feed a preceding `CheckBus256` alongside the
+first step. Every six-wire state transition must be connected without
+substitution or reconstruction, and both terminal checks are mandatory. A
+standalone `SubExp` is not an independently usable exponentiation statement.
+
+The three target types `SubExp`, `AssertZeroWord`, and `CheckBus256` contain
+796, 2, and 256 constraints respectively, so each remains below the
+1,024-constraint limit. The core composition uses 258 placements and
+`256 * 796 + 2 + 256 = 204,034` placement-weighted constraints. Its
+distinct-type constraint sum is 1,054. If the initial exponent needs an
+additional `CheckBus256`, that producer guard adds one placement and 256
+constraints; it is not included in the core totals.
 
 ### Poseidon chain expansion
 
@@ -477,10 +489,12 @@ constraints before final cross-placement permutation. Their declared
 interfaces contain 116 physical placement input wires and 66 physical
 placement output wires.
 A diagnostic direct composition compiles to 14,943 nonlinear plus 3 linear
-constraints, 14,969 wires, and 135,500 nonzero matrix entries. The direct
-composition and the monolithic reference accept and reject the same complete
-21-vector regression corpus and produce the same contract, selector, and
-origin outputs for every accepted vector.
+constraints, 14,969 wires, and 135,511 nonzero matrix entries. The
+[direct-composition regression test](../../subcircuits/test/test_transaction_signature_production_composition.cjs)
+checks circuit-local acceptance and rejection against the 22-vector policy
+corpus and compares contract, selector, and origin outputs for every
+circuit-accepted vector. Cases that require delegated public checks remain
+verifier-boundary obligations, not expected local circuit rejections.
 
 The circuit owns contract width, point validity, public-key cofactor policy,
 randomizer identity rejection, canonical challenge and public-key-hash views,
@@ -492,15 +506,21 @@ and must route only the conversion outputs into the EVM path; those conversions
 are deliberately outside the 17 signature placements. The Solidity verifier
 must bind the exact public wires and enforce
 `S < n`, `selector < 2^32`, and `O = (0, 1)`. These delegated checks are part of
-the complete statement and cannot be omitted. All native field operands and
-all intermediate accumulator coordinates remain private internal wires. The
-five public semantic inputs are the one-wire contract, selector, and `S`
-values plus the two coordinates of `O`; the remaining 34 direct-composition
-inputs are private. The six direct-composition outputs are the two-limb
-contract, two-limb selector, and two-limb origin views. These diagnostic
-composition counts come from tests that exercise the compiler's composition
-directly; they do not represent the final public indices of an enabled
-Synthesizer build.
+the complete statement and cannot be omitted. Signer points, private transaction
+inputs, hash values, and intermediate accumulator coordinates remain private
+internal wires.
+
+The diagnostic direct composition declares five public inputs: the one-wire
+contract, selector, and `S` values plus the two coordinates of `O`. Its other
+34 inputs, including the channel transaction index, are private in that test
+wrapper. Its six outputs are the two-limb contract, selector, and origin views.
+In the actual Synthesizer composition, the channel transaction index instead
+comes from the public `bufferTxIn` boundary and feeds the exact signature
+challenge wire. The
+[public-route tests](../../../synthesizer/node-cli/tests/unit/channel-transaction-index-public-route.test.ts)
+check that connection and its public-instance projection. Diagnostic wrapper
+counts must not be treated as the visibility or public indices of the final
+composed proof.
 
 ### Memory-view composition
 
