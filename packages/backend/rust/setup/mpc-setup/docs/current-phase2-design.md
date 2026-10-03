@@ -1,4 +1,4 @@
-# Current-protocol phase 2: construction and contribution format
+# Current phase 2: construction and trust boundary
 
 ## Audience and status
 
@@ -11,30 +11,18 @@ defines the final CRS fields; the setup formulas below describe the current
 [phase 2 engine](../src/phase2_engine.rs). External security references are
 listed in the [MPC security references](security-references.md).
 
-The implemented group-linear engine, share evidence and resumable commands
-follow the construction below. Extra intermediate public encodings are
-permitted; their security analysis remains deferred, not an implementation
-gate. The previous ceremony implementation has been removed. There is no
-repository phase 1 or standalone import command.
+Initialization binds a selected circuit library to independently authenticated
+Filecoin powers and derives a deterministic initial state. Each participant
+updates that state with secret multiplicative shares and publishes evidence of
+the update. Verification reconstructs initialization and checks the complete
+contribution chain. Finalization requires at least one verified contribution
+and projects the final CRS from the verified state.
 
-One repository-built release executable provides `init`, `init-dev`,
-`contribute`, `verify`, `finalize` and `upload`. `init` selects an exact
-compatible npm library with `--library-version` or, when omitted, the latest
-published patch in the backend's compatible major-minor line. `init-dev` uses
-a local QAP build. The transcript records the selected npm version for `init`
-and no npm version for `init-dev`; subsequent operations infer the mode and
-npm version from that record. Development operations require the local QAP
-path. `verify` checks a transcript independently without creating keys.
-`finalize` performs the same transcript verification whether or not `verify`
-was run separately, requires at least one verified contribution and writes
-the local CRS. Only a publish-origin transcript can produce
-release-eligible keys. The separate `upload` operation transfers an already
-finalized CRS without replaying the ceremony, as described in the
-[operator guide](../README.md#upload-a-finalized-crs).
-
-Local tests exercise the implementation but do not certify the
-Tokamak-specific security extension or independently qualify a live ceremony.
-Finalizing an `init-dev` transcript remains ineligible for upload.
+The construction exposes additional intermediate group elements whose
+Tokamak-specific security analysis remains future work. The
+[operator guide](../README.md) defines commands, library selection and upload
+requirements; this document explains the algebra and the information that
+participants must authenticate and bind.
 
 ## Filecoin source mapping
 
@@ -46,20 +34,18 @@ participant's [attestation](https://github.com/arielgabizon/perpetualpowersoftau
 These are source pins for the derivation, not evidence that the entire
 historical ceremony has been independently verified here.
 
-The actual [verification binary](https://github.com/arielgabizon/powersoftau/blob/2bd49903bac07485fe23e5ef1a2d5fa19561977b/src/bin/verify_transform_constrained.rs)
-selects `small_bls12_381::Bls12CeremonyParameters`. Despite that module's
-name and stale comment, its [configured power is 27](https://github.com/arielgabizon/powersoftau/blob/2bd49903bac07485fe23e5ef1a2d5fa19561977b/src/small_bls12_381/mod.rs).
-Let L = 2^27. Let P be the power capacity derived from the selected library by
-[`UnivariateCrsShape`](../../../libs/src/univariate_crs.rs). Filecoin's
-alpha-tagged powers supply xi; its beta-tagged powers supply psi.
+The pinned upstream [ceremony parameters](https://github.com/arielgabizon/powersoftau/blob/2bd49903bac07485fe23e5ef1a2d5fa19561977b/src/small_bls12_381/mod.rs)
+use L = 2^27. Let P be the power capacity derived from the selected library,
+as defined [below](#packed-query-update-calculation). Filecoin's alpha-tagged
+powers supply xi; its beta-tagged powers supply psi.
 
-| Filecoin family | Available exponents | Current target | Required exponents |
+| Filecoin family | Available exponents | Tokamak family | Required exponents |
 | --- | --- | --- | --- |
-| Ordinary G1 powers | 0 through 2L-2 | `s0_g1` | 0 through 2P |
-| Alpha-tagged G1 powers | 0 through L-1 | `sxi_g1` | 0 through P |
-| Beta-tagged G1 powers | 0 through L-1 | `spsi_g1` | 0 through P |
-| Ordinary G2 powers | 0 through L-1 | `tau_powers_g2` | 0 through P |
-| Beta in G2 | One element | `psi_g2` | One element |
+| Ordinary G1 powers | 0 through 2L-2 | `[tau^a]_1` | 0 through 2P |
+| Alpha-tagged G1 powers | 0 through L-1 | `[xi tau^a]_1` | 0 through P |
+| Beta-tagged G1 powers | 0 through L-1 | `[psi tau^a]_1` | 0 through P |
+| Ordinary G2 powers | 0 through L-1 | `[tau^a]_2` | 0 through P |
+| Beta in G2 | One element | `[psi]_2` | One element |
 
 The upstream [layout implementation](https://github.com/arielgabizon/powersoftau/blob/2bd49903bac07485fe23e5ef1a2d5fa19561977b/src/batched_accumulator.rs)
 orders the file as: 64-byte hash, ordinary G1, ordinary G2, alpha G1, beta
@@ -75,82 +61,75 @@ The attestation declares the decompressed challenge's BLAKE2b-512 digest:
 5a26015ba27d8164152407da8f9b87e47593f17ae4c260e467bac2ba9dda6f66c15fa352487604d1350ef33a3bfedb0d99e37b619161e27545017366274df76b
 ```
 
-A bounded live probe on 2026-09-12 observed that exact file size and fetched
-only bytes 0..159. Its first 64 bytes matched the attested preceding response
-digest; the next 96 bytes matched the standard uncompressed G1 generator.
-That probe checked only the header/layout candidate. The current participant
-implementation instead hashes the entire pinned original and validates the
-retained point encodings and power relations on each ceremony operation
-(`init`, `init-dev`, `contribute`, `verify`, `finalize`). These runtime
-checks do not independently verify the historical Filecoin contribution chain.
-
-Internal participant source preparation uses that pinned layout. Its decoder follows the
-upstream lockfile's [pairing revision c2af46ca](https://github.com/matterinc/pairing/blob/c2af46cac3e6ebc8e1e1f37bb993e5e6c7f689d1/src/bls12_381/ec.rs):
-uncompressed big-endian x/y for G1; x.c1, x.c0, y.c1, y.c0 for G2. A second
-bounded probe fetched the 192-byte G2 generator at offset 25,769,803,744 on
-2026-09-12; the decoder maps it to the arkworks generator. The probe alone did
-not perform the full-source BLAKE2b validation required by current ceremony
-operations.
-Synthetic source-format fixtures exercise the same parser and common archive
-conversion without accepting configurable pins in the production API.
+Source authentication checks the entire pinned original, then admits the
+required points and power relations. The pinned upstream
+[point encoding](https://github.com/matterinc/pairing/blob/c2af46cac3e6ebc8e1e1f37bb993e5e6c7f689d1/src/bls12_381/ec.rs)
+defines the source representation. These checks authenticate the selected
+Filecoin output; they do not independently verify its historical contribution
+chain.
 
 ### Participant trust boundary
 
 Each participant independently obtains the original Filecoin source and
 checks its complete Filecoin-published pinned digest before accepting incoming
-ceremony state or generating a secret contribution. The implementation retains
-required ranges during that same authenticated read, then converts them locally.
-The existing library-shape calculation determines P from the selected circuit
-metadata; neither the initializer nor an import command supplies P. The
-participant workflow prepares its own snapshot and binds the initialization
-and incoming chain to the execution mode, package version, circuit content
-and locally derived tau. Development reads the local QAP build; publish
-acquires the exact npm version at runtime. No Cargo feature switches modes,
-and no development transcript can be promoted to a publish transcript.
+ceremony state or generating a secret contribution. The bytes used to derive
+the retained powers must be the bytes authenticated by that check. Circuit
+metadata determines P. Initialization and each incoming chain are bound to
+the source mode, library version and content, and locally derived tau.
+Development and publication inputs have distinct provenance; a development
+transcript cannot authorize publication.
 
 A coordinator's converted subset, matching subset digest or receipt cannot
 replace original-source authentication. A directly acquired local original
-avoids another download, not the full digest check. Source preparation returns
-the common in-memory tau record without writing a standalone receipt or payload.
-Its source pins remain internal constants: the share challenge binds the pinned
-source digest, the transcript binds the locally derived tau digest, and final
-provenance records the source identity. Final artifact ownership stays in
-backend/common. The previous standalone phase 1 import architecture is
-superseded, not another supported trust mode. Public relation-check randomness
-is not a participant secret share.
+avoids another download, not the full digest check. The share challenge binds
+the pinned source digest, the transcript binds the locally derived tau digest,
+and final provenance records the source identity. Public relation-check
+randomness is not a participant secret share.
 
 ## Reference construction and its limit
 
 Use [*Snarky Ceremonies*](https://eprint.iacr.org/2021/219), ePrint 2021/219,
 revision dated 2021-09-21 on the ePrint record. Section 5.2, Figure 6
 (printed p. 17) gives initialization, specialization and updates; Figure 7
-(p. 18) gives SRS verification. Its
-phase 2 samples a nonzero delta share, scales role elements forward and
+(p. 18) gives SRS verification. Its phase 2 samples a nonzero delta share,
+scales role elements forward and
 specialized queries inversely, and proves knowledge of the share. Its update
 receipt and specialized SRS include delta encodings in both source groups.
 Its formal security result concerns its own Groth16 construction and public
 view, not arbitrary extra secret parameters in Tokamak queries.
 
-The [final CRS contract](../../../../common/contracts/univariate-artifact-contract.json)
-defines `delta_g2`, the encoding `[delta]_2`, but no `[delta]_1` field. Figure
-6's delta receipt exposes the latter encoding; this implementation retains it
-only in the public intermediate transcript. Its absence from the final CRS
-does not remove that exposure. Tokamak's contribution evidence does not
+The final CRS contains `[delta]_2` but no separate `[delta]_1` element, as
+specified by its [artifact contract](../../../../common/contracts/univariate-artifact-contract.json).
+Figure 6's delta receipt exposes the latter encoding; this construction
+retains it only in the public intermediate transcript. Its absence from the
+final CRS does not remove that exposure. Tokamak's contribution evidence does not
 implement Figure 7 unchanged or inherit its security argument. The security
 analysis of this Tokamak-specific intermediate view remains future work; the
 implementation does not establish a new security theorem.
 
 ## Packed-query update calculation
 
-Use additive group notation. A retained coordinate p=(i,k,j) identifies
+Use additive group notation: `[x]_1 = xG` and `[x]_2 = xH`, where G and H
+generate G1 and G2. Let n be the arithmetic row capacity, m_b the
+wiring width, t the subcircuit capacity, s the placement capacity and f the
+free-public interpolation-domain size. The library fixes the domain sizes and
+power shifts:
+
+```text
+N_A = n s; N_C = m_b s; N_S = t s
+d = max(N_A, N_C) + 1
+P = max(2d + 1, N_S + 1, d + 1 + s(t - 1), f - 1)
+K = P - d; S = P + 1
+```
+
+The [library geometry calculation](../../../libs/src/univariate_crs.rs)
+implements these definitions. A retained coordinate p=(i,k,j) identifies
 placement i, subcircuit k and normalized local wire j. U_p, V_p and W_p are
 that wire's polynomial images of the three arithmetic R1CS matrices (A, B and
 C, respectively); B_p is its separate connection image, zero outside wiring
-wires. L_(i,k) is the selection-domain Lagrange polynomial at index i+s*k,
-where s is the placement capacity. The library-derived shift K is
-`UnivariateCrsShape::k`, and S=P+1. The phase 2 scalars delta and r_j are the
-cumulative role and local-wire weight, respectively. These images and power
-shifts are constructed in
+wires. L_(i,k) is the selection-domain Lagrange polynomial at index i+s*k.
+The phase 2 scalars delta and r_j are the cumulative role and local-wire
+weight, respectively. The images and power shifts are constructed in
 [`univariate_setup.rs`](../../../libs/src/univariate_setup.rs). Write
 
 ```text
@@ -184,7 +163,7 @@ Consequently:
   not directly supply this inverse-delta selection summand. A pairing value
   is not a replacement for the missing source-group point.
 
-This identifies why the existing family-scaling kernel is insufficient. It
+This identifies why uniform scaling of each packed query is insufficient. It
 does not prove that no secure alternative MPC construction can exist, or
 that exposing the candidate summand alone is a demonstrated attack.
 
@@ -219,14 +198,13 @@ selection summand needed to update it:
   intermediate verification elements. Use one shared delta for all families
   and an independently contributed weight for each retained local-wire row.
 
-The j in p=(i,k,j) is a normalized local-wire coordinate. The implementation
-stores retained rows compactly: first the wiring prefix up to the maximum real
-wiring length, then the internal range from `m_b` up to `m_b` plus the maximum
-real internal length. Let c(j) be the compact index of a retained local wire j.
-The stored weight, share and proof at c(j) implement the corresponding r_j;
-proof role indices use c(j). Padding rows in `0..m` have no stored weighted
-query, cumulative weight or share proof. The selected library, not the
-transcript, determines this mapping and the record lengths.
+Each retained normalized local wire j has one cumulative weight and one share
+per contribution. The selected library determines the retained set; padding
+wires do not receive weights or share evidence. A deterministic mapping binds
+each wire to its proof role identifier. The [weighted-query layout](../../../../common/interface/univariate-crs/src/weighted_queries.rs)
+defines that mapping, and the [transcript encoding](../src/phase2_transcript.rs)
+defines its serialized representation. Storage compaction does not change the
+wire's mathematical role or the requirement to bind evidence to that wire.
 
 Reconstruct the fixed images `[A_p]_1`, `[T_p]_1` and masking numerators by
 group-linear combination of the imported powers and the selected circuit
@@ -259,12 +237,8 @@ identity. These transition equations alone do not establish knowledge of a
 share: each share must also pass the bound evidence checks in the
 [contribution proof profile](#contribution-proof-profile). Contribution
 evidence must identify its previous/current states, circuit snapshot, source
-and compact wire-row index; a receipt for another transition or wire must not
-be reused.
-The record encoding and participant integration are implemented in `phase2_transcript.rs` and `phase2_cli.rs`.
-The isolated proof implementation is specified below; it is not supplied by
-the algebra model. Do not reuse the old gamma/delta/eta proof
-profile or treat a digest chain as a proof of knowledge.
+and wire role; a receipt for another transition or wire must not be reused.
+A digest chain alone is not evidence of share knowledge.
 
 Check initialization against the imported group-linear images. At any later
 state, the following give independent final-family consistency equations:
@@ -286,32 +260,26 @@ their correspondence to the pinned source rather than contributing to them.
 The source must also place tau outside all required evaluation domains, as
 trusted setup requires; this can be checked through encoded vanishing values.
 
-Finalization copies J_p, F_p, weighted helpers, masks and D2 into their
-existing common artifact fields. C_p, B_p, D1, R_j and share evidence belong
-only to the ceremony state/transcript, not to the four final RKYV payloads.
+Finalization projects J_p, F_p, weighted helpers, masks and D2 into the final
+CRS. C_p, B_p, D1, R_j and share evidence belong only to the ceremony
+state/transcript, not to the final CRS payloads.
 Omitting them from those payloads does not erase their public exposure.
 
-`finalize` first re-authenticates the Filecoin original, reconstructs the
-library-bound initial state and verifies every contribution record. It requires
-at least one verified contribution. The four CRS payloads are accompanied by
-`crs_provenance.json`. Its `subcircuitLibrary` and `phase1SourceProvenance`
-identify the selected library and pinned Filecoin source;
-`ceremonyProtocolVersion`, `ceremonyTranscriptSha256` and
-`phase2ContributionCount` bind the verified ceremony;
-`compatibleBackendVersion`, `releaseEligible` and the `artifacts` SHA-256 map
-define the consumer and publication boundary. `upload` checks this finalized
-output and its eligibility. It neither verifies the transcript again nor
-derives keys.
+Finalization authenticates the source, reconstructs initialization and verifies
+every contribution before producing keys. The output's provenance binds the
+library and phase 1 source to the verified ceremony and final payloads. Its
+field definitions belong to the
+[CRS provenance contract](../../../../common/contracts/crs-provenance-contract.json).
+Uploading that completed output is an operational step described in the
+[operator guide](../README.md#upload-a-finalized-crs).
 
 ## Contribution proof profile
 
-`src/contribution_proof.rs` follows the engineering choices in Filecoin's
+The contribution evidence follows Filecoin's
 [SnapDeals phase 2 revision 934fe8c6d2df2589644302579838976d070c48a7](https://github.com/filecoin-project/filecoin-phase2/blob/934fe8c6d2df2589644302579838976d070c48a7/src/lib.rs)
-(`keypair`, `hash_to_g2`, `HashWriter`). It does not implement a Filecoin
-receipt or claim byte compatibility with Filecoin's Groth16 transcripts.
-Tokamak adds the already-required source/library, state and wire bindings.
-No random beacon, new phase 1, SNARK challenge change or release authority
-is introduced by this choice.
+share-evidence construction. Tokamak adds source/library, state and wire
+bindings; its evidence is not byte-compatible with Filecoin's Groth16
+transcripts.
 
 The proof routine handles one nonzero share at a time. In this section, u
 denotes that share: the delta share or one of the wire shares v_j above.
@@ -352,78 +320,47 @@ The predecessor digest is the accumulated record chain, including earlier
 proofs, not merely the preceding state's point values; otherwise an update
 with shares equal to one could replay a receipt.
 
-The transcript starts with the ASCII magic
-`TOKAMAK_MPC_PHASE2_TRANSCRIPT_V1` and a zero byte, followed by a one-byte
-format version (`1`) and a one-byte npm-version marker. Marker `0` means a
-development transcript with no npm version in the header. Marker `1` is
-followed by a u16 big-endian byte length and the UTF-8 npm library version
-selected at `init`. A 32-byte initialization-context SHA-256 follows. Its
-input is the complete preceding header, then the byte-length-prefixed mode
-name and actual library version (each length is u64 big endian),
-library-content SHA-256, derived-tau SHA-256 and the locally derived initial
-state encoding. Even for development, the context binds the actual local QAP
-package version; only the npm-version header field is absent. The initial
-record-chain digest hashes the full header and initialization-context digest.
-Each subsequent chain digest hashes its previous value followed by the
-complete state/proof record.
+The initialization context binds the source mode, actual library version and
+content, derived tau and locally reconstructed initial state. The initial
+SHA-256 record-chain digest binds that context and its header. Each subsequent
+SHA-256 chain digest hashes its predecessor followed by the complete
+state/proof record. Every contribution is retained and checked. The versioned
+[transcript encoding](../src/phase2_transcript.rs) defines the context framing,
+record ordering and point serialization. Changes to that encoding affect
+transcript compatibility even when the update equations remain unchanged.
 
-Records encode the six G1 vectors in State field order, nine masks, D1, D2 and wire-weight G2 points, followed by the delta proof and each wire proof. Counts come from the local engine. Points use arkworks canonical uncompressed encoding to avoid square-root decompression; proofs order U1, U2, s, s_u, r_u. Every record is retained and checked. A caller-supplied binding alone is not evidence of source authentication.
-These are intermediate transcript encodings, not new final artifact fields;
-the final common CRS encoding and SNARK's Keccak transcript are unchanged.
-
-Filecoin pins `rand_chacha 0.3.1` and `blstrs 0.4.1`; that blstrs release
-pins `blst 0.3.6`. Its [G2 sampler](https://github.com/filecoin-project/blstrs/blob/v0.4.1/src/g2.rs#L598-L617)
-draws 64 message bytes from the RNG and calls `blst_encode_to_g2` with 16
-zero DST bytes and 16 zero augmentation bytes. The G1 sampler uses the same
-pattern with `blst_encode_to_g1`. This implementation pins ChaCha20 and blst
-to those versions and directly invokes those primitives. Resolving the old
-blstrs dependency tree failed because its ff/bitvec chain requires yanked
-`funty 1.2.0`; using the underlying primitive preserves the selected mapping
-without restoring that obsolete dependency tree. The small FFI boundary
-converts the resulting affine coordinates into arkworks; it does not
-implement its own curve map. Dependency changes must preserve the replay
-vectors, not silently alter the ceremony hash profile.
+The curve mapping is fixed by Filecoin's pinned
+[G2 sampler](https://github.com/filecoin-project/blstrs/blob/v0.4.1/src/g2.rs#L598-L617):
+the seeded ChaCha20 stream supplies 64 message bytes to the G2 encoding map,
+with 16 zero DST bytes and 16 zero augmentation bytes. The random G1 base uses
+the corresponding G1 map with 64 fresh message bytes and the same DST and
+augmentation lengths. A replacement implementation must preserve this mapping
+and the challenge bytes, regardless of its dependency versions or API.
 
 Do not substitute `hash-derived scalar * G2 generator`. The share U2 is
 public, so that substitution would allow r_u to be computed as the public
-scalar times U2 without knowing u. The negative regression test demonstrates
-this failing construction and rejects its evidence under the actual mapper.
+scalar times U2 without knowing u. The
+[share-evidence tests](../src/contribution_proof_tests.rs) include replay
+vectors for the selected mapping and rejection of this substitution. Those
+vectors check compatibility with a reference replay; they are not an
+independent curve-map implementation or live-ceremony evidence.
 
-Fixed vectors were generated in a separate replay program using Filecoin's
-BLAKE2b implementation (`blake2b_simd 0.5.11`), `rand 0.8.4`, ChaCha and
-the exact blst calls above. Inputs are the empty string, ASCII
-`Filecoin phase 2`, and 1,024 bytes of 0xa5. The production code uses the
-existing `blake2 0.8.1`; tests compare both the full digest and all 192 output
-bytes with the replay results. This checks integration and byte order against
-a reference replay sharing blst, not an independent implementation of the
-curve map, an official published vector set or a real contribution.
+## Validation evidence and limits
 
-## Evidence and implementation status
-
-The repository now defines an `mpc` executable with the six operations described
-above. `tests/current_phase2_derivation.rs` covers source capacity and the
-algebraic update identities. Package tests cover source-format rejection,
-share evidence, transcript-chain and state verification, final-key projection,
-and publication retry and conflict behavior. These are tests of the implemented
-construction; the known test scalars and synthetic source fixtures are not
-contributions to a live ceremony.
-
-The development-only native fixture generates keys from a local QAP build,
-then exercises native preprocess, prove and verify, including tamper rejection.
-It does not authenticate a live Filecoin original and cannot produce a
-release-eligible CRS. The [qualification guide](qualification.md) defines the
-current test commands and their limits; the
+The [qualification guide](qualification.md) defines correctness tests and their
+scope; the
 [MPC optimization report](../../../../docs/optimization/current-univariate-mpc.md)
-records the measured local E2E. Neither local correctness tests nor a
-release-eligibility flag constitute a security proof or independent audit of
-the historical Filecoin ceremony.
+records measured native end-to-end behavior. Synthetic source fixtures and
+known test scalars are not contributions to a live ceremony. Local correctness
+tests and publication eligibility do not constitute a security proof or an
+independent audit of the historical Filecoin ceremony.
 
 ## Future work: cryptographic security analysis
 
-Analyze the complete exposure from the original Filecoin ceremony, the
-separated correction points, cumulative encodings and contribution proofs.
-Establish which assumptions and extraction arguments apply to this Tokamak
-extension. That analysis is explicitly deferred and does not block current
-implementation. Do not report equation tests, native E2E, source-hash
-verification, a release-eligibility flag or the Groth16 citation as completing
-it. Operational publication and cryptographic assurance remain distinct.
+The remaining security analysis must account for the complete exposure from
+the original Filecoin ceremony, separated correction points, cumulative
+encodings and contribution proofs. It must identify the assumptions and
+extraction arguments that apply to this Tokamak extension. Equation tests,
+native end-to-end tests, source authentication and publication eligibility do
+not establish that result. Operational publication and cryptographic assurance
+remain distinct.
