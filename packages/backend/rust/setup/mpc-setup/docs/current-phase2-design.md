@@ -4,9 +4,12 @@
 
 For engineers and cryptographic reviewers of the implemented Filecoin-backed
 Tokamak MPC phase 2. This records its construction and trust boundary, not an
-executable ceremony specification or a security certification. The final CRS
-is defined by the current Tokamak manuscript and backend/common contracts.
-References are maintained in the [MPC README](../README.md).
+executable ceremony specification or a security certification. The
+[backend/common artifact contract](../../../../common/contracts/univariate-artifact-contract.json)
+defines the final CRS fields; the setup formulas below describe the current
+[CRS construction](../../../libs/src/univariate_setup.rs) and
+[phase 2 engine](../src/phase2_engine.rs). External security references are
+listed in the [MPC security references](security-references.md).
 
 The implemented group-linear engine, share evidence and resumable commands
 follow the construction below. Extra intermediate public encodings are
@@ -46,7 +49,9 @@ historical ceremony has been independently verified here.
 The actual [verification binary](https://github.com/arielgabizon/powersoftau/blob/2bd49903bac07485fe23e5ef1a2d5fa19561977b/src/bin/verify_transform_constrained.rs)
 selects `small_bls12_381::Bls12CeremonyParameters`. Despite that module's
 name and stale comment, its [configured power is 27](https://github.com/arielgabizon/powersoftau/blob/2bd49903bac07485fe23e5ef1a2d5fa19561977b/src/small_bls12_381/mod.rs).
-Let L = 2^27. The target uses xi = alpha and psi = beta.
+Let L = 2^27. Let P be the power capacity derived from the selected library by
+[`UnivariateCrsShape`](../../../libs/src/univariate_crs.rs). Filecoin's
+alpha-tagged powers supply xi; its beta-tagged powers supply psi.
 
 | Filecoin family | Available exponents | Current target | Required exponents |
 | --- | --- | --- | --- |
@@ -60,9 +65,9 @@ The upstream [layout implementation](https://github.com/arielgabizon/powersoftau
 orders the file as: 64-byte hash, ordinary G1, ordinary G2, alpha G1, beta
 G1, then beta G2. Challenge points are uncompressed. G1/G2 sizes are 96/192
 bytes. The total is 576L+160 = 77,309,411,488 bytes. This is the upstream
-source size, not the size of the converted Tokamak CRS. The current library's
-P=524,291 fits all these ranges; production capacity must still be derived
-from the selected npm library rather than this example.
+source size, not the size of the converted Tokamak CRS. The participant derives
+P from the selected library and rejects P outside 1 through L-1; no example
+package's capacity is a production constant.
 
 The attestation declares the decompressed challenge's BLAKE2b-512 digest:
 
@@ -116,26 +121,37 @@ is not a participant secret share.
 
 ## Reference construction and its limit
 
-Use *Snarky Ceremonies*, ePrint 2021/219, revision dated 2021-09-21 on the
-ePrint record. Section 5.2, Figure 6 (printed p. 17) gives initialization,
-specialization and updates; Figure 7 (p. 18) gives SRS verification. Its
+Use [*Snarky Ceremonies*](https://eprint.iacr.org/2021/219), ePrint 2021/219,
+revision dated 2021-09-21 on the ePrint record. Section 5.2, Figure 6
+(printed p. 17) gives initialization, specialization and updates; Figure 7
+(p. 18) gives SRS verification. Its
 phase 2 samples a nonzero delta share, scales role elements forward and
 specialized queries inversely, and proves knowledge of the share. Its update
 receipt and specialized SRS include delta encodings in both source groups.
 Its formal security result concerns its own Groth16 construction and public
 view, not arbitrary extra secret parameters in Tokamak queries.
 
-The Tokamak manuscript's U21 and complete-public-view discussion explicitly
-exclude a positive-role first-source encoding. Copying Figure 6's delta
-receipt therefore adds `[delta]_1` outside the current Tokamak view. Merely
-omitting that element does not implement Figure 7 or inherit its security
-argument. The intermediate extension is now permitted; its security analysis
-remains future work. Keep these extra encodings out of the final CRS. This
-approval does not change the manuscript or establish a security theorem.
+The [final CRS contract](../../../../common/contracts/univariate-artifact-contract.json)
+defines `delta_g2`, the encoding `[delta]_2`, but no `[delta]_1` field. Figure
+6's delta receipt exposes the latter encoding; this implementation retains it
+only in the public intermediate transcript. Its absence from the final CRS
+does not remove that exposure. Tokamak's contribution evidence does not
+implement Figure 7 unchanged or inherit its security argument. The security
+analysis of this Tokamak-specific intermediate view remains future work; the
+implementation does not establish a new security theorem.
 
 ## Packed-query update calculation
 
-Use additive group notation. For a retained coordinate p=(i,k,j), write
+Use additive group notation. A retained coordinate p=(i,k,j) identifies
+placement i, subcircuit k and normalized local wire j. U_p, V_p and W_p are
+that wire's polynomial images of the three arithmetic R1CS matrices (A, B and
+C, respectively); B_p is its separate connection image, zero outside wiring
+wires. L_(i,k) is the selection-domain Lagrange polynomial at index i+s*k,
+where s is the placement capacity. The library-derived shift K is
+`UnivariateCrsShape::k`, and S=P+1. The phase 2 scalars delta and r_j are the
+cumulative role and local-wire weight, respectively. These images and power
+shifts are constructed in
+[`univariate_setup.rs`](../../../libs/src/univariate_setup.rs). Write
 
 ```text
 A_p = xi (U_p(tau) + tau^K V_p(tau))
@@ -144,9 +160,8 @@ T_p = tau^S L_(i,k)(tau)
 J_p = [(A_p + r_j T_p) / delta]_1
 ```
 
-Here T_p names the selection factor; B_p(tau) inside A_p is the protocol's
-interface image. For a free public query,
-include its public interpolation term M in A_p. Fixed public queries contain
+Here T_p names the selection factor. For a free public query, include its
+public interpolation term I_p(tau) in A_p. Fixed public queries contain
 `[A_p + r_j T_p]_1` without division by delta.
 
 Suppose one contribution uses delta' = u delta and r'_j = v_j r_j. The exact
@@ -222,7 +237,7 @@ the existing omission of implicit-zero witness queries, without omitting
 their selection-domain blocks or changing the polynomial domain.
 
 For one participant's nonzero shares u and v_j, publish their encodings in
-both source groups and the reference proof of knowledge for each share.
+both source groups and the bound share evidence described below.
 Write `U1=[u]_1`, `U2=[u]_2`, `V1_j=[v_j]_1`, `V2_j=[v_j]_2`.
 Only the participant knows u and v_j; cumulative delta and r_j are not inputs
 to the update routine.
@@ -240,8 +255,9 @@ to the update routine.
 
 Check e(U1,H)=e(G,U2) and e(V1_j,H)=e(G,V2_j). Reject identity
 share and cumulative-role/weight points. Query points themselves may be
-identity. Pairing equations do not establish knowledge of a share: each
-share must also pass the reference `Verify_dl` operation. Contribution
+identity. These transition equations alone do not establish knowledge of a
+share: each share must also pass the bound evidence checks in the
+[contribution proof profile](#contribution-proof-profile). Contribution
 evidence must identify its previous/current states, circuit snapshot, source
 and compact wire-row index; a receipt for another transition or wire must not
 be reused.
@@ -297,11 +313,13 @@ Tokamak adds the already-required source/library, state and wire bindings.
 No random beacon, new phase 1, SNARK challenge change or release authority
 is introduced by this choice.
 
-For each nonzero share u (delta or one wire weight), sample a nonidentity G1
-base s and form s_u=u*s. Hash the bound public message with BLAKE2b-512,
-seed ChaCha20 with its first 32 bytes, and obtain r in G2 using Filecoin's
-point sampler. Publish r_u=u*r alongside s, s_u and the approved U1=uG,
-U2=uH. Verify nonidentity subgroup points and the three equations:
+The proof routine handles one nonzero share at a time. In this section, u
+denotes that share: the delta share or one of the wire shares v_j above.
+Sample a nonidentity G1 base s and form s_u=u*s. Hash the bound public
+message with BLAKE2b-512, seed ChaCha20 with its first 32 bytes, and obtain r
+in G2 using Filecoin's point sampler. Publish r_u=u*r alongside s, s_u and the
+approved U1=uG, U2=uH. Verify nonidentity subgroup points and the three
+equations:
 
 ```text
 e(U1, H) = e(G, U2)
@@ -309,9 +327,12 @@ e(s_u, H) = e(s, U2)
 e(s_u, r) = e(s, r_u)
 ```
 
-The first two connect the proof's share to the public transition equations;
-the last is the reference-style share-knowledge check. Ratios alone do not
-replace it. Whole-ceremony security analysis remains future work.
+The first two connect the share encodings to the public transition equations;
+the last checks their relation to the hash-derived point r. Together with the
+message binding, these are the implemented share-evidence checks. The
+reference paper's proof-of-knowledge result does not automatically establish
+the extraction properties of this Tokamak-bound variant. Whole-ceremony
+security analysis remains future work.
 
 The BLAKE2b input is the following concatenation, in order:
 
