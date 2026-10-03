@@ -524,8 +524,14 @@ composed proof.
 
 ### Memory-view composition
 
-A memory-view reconstruction places one `MemoryViewStep` for every source
-fragment. The first placement receives the exact state `[wordLow = 0,
+Two memory-view cases need no `MemoryViewStep` placement. A completely
+uninitialized view uses the exact static-zero route. A view consisting of one
+fragment that owns all 32 bytes and needs no shift reuses the exact source-word
+wires. For this reuse, the zero shift and full ownership mask must be
+topology-fixed constants, and the result must retain the source wire identity.
+
+All other memory views place one `MemoryViewStep` for every source fragment.
+The first placement receives the exact state `[wordLow = 0,
 wordHigh = 0, ownership = 0]`. Each later placement receives the preceding
 placement's two word limbs and packed ownership output without substitution or
 reordering. The final two word outputs form the reconstructed EVM word; the
@@ -552,8 +558,7 @@ was removed.
 The composition layer must convert each selected memory byte from its existing
 `FF`/`00` value mask to the same-position ownership bit and reject malformed
 mask bytes and non-byte-aligned shifts. It must not add a synthetic zero-valued
-fragment for uninitialized gaps. A completely uninitialized view may
-use the exact static-zero route without placing this target. These producer,
+fragment for uninitialized gaps. These producer,
 ownership, and state-wiring conditions are mandatory soundness dependencies
 and require Synthesizer permutation tests before the source catalog can be
 enabled.
@@ -564,9 +569,11 @@ A complete system and every releasable artifact set must validate the format
 of every public buffer input and output in the verifier wrapper. Non-buffer
 inputs and outputs remain private internal wires connected by the final
 permutation. The current source catalog alone does not prove that a deployed
-wrapper already satisfies this requirement. If a future composition exposes a
-native field or Jubjub value through a public buffer, that boundary must enforce
-the value's declared domain rather than relying only on field normalization.
+wrapper already satisfies this requirement. Current public buffers already
+carry native-field values, including the signed channel transaction index, and
+the Jubjub response scalar `S`. The verifier boundary must enforce each value's
+declared domain, including the canonical native-field range and `S < n`, rather
+than relying only on field normalization.
 For the general `Poseidon` adapter, the boundary instead enforces the declared
 `uint(256)` limb widths; `x < Fr` is intentionally not part of that operation.
 
